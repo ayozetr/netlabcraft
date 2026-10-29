@@ -69,7 +69,7 @@ pub fn router_id(d: &Device) -> Option<Ipv4Addr> {
 }
 
 /// Ports reachable at layer 2 from a port (through cables, switches and hubs).
-fn l2_reach(t: &Topology, from: End) -> BTreeSet<End> {
+pub(crate) fn l2_reach(t: &Topology, from: End) -> BTreeSet<End> {
     let mut seen = BTreeSet::new();
     let mut todo = vec![from];
     while let Some(e) = todo.pop() {
@@ -213,7 +213,7 @@ pub fn fingerprint(t: &Topology) -> u64 {
             }
         }
         if d.kind == DeviceKind::Router {
-            format!("{:?}{:?}", d.ospf, d.routes).hash(&mut h);
+            format!("{:?}{:?}{:?}", d.ospf, d.rip, d.routes).hash(&mut h);
         }
     }
     h.finish()

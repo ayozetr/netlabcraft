@@ -126,6 +126,18 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip nat pool WORD` | config | router | Delete a NAT pool |
 | `show ip nat translations` | user, privileged | router | Translations in use |
 | `clear ip nat translation *` | privileged | router | Forget dynamic translations |
+| `router rip` | config | router | Start or configure RIP |
+| `no router rip` | config | router | Stop RIP |
+| `version {1\|2}` |  | router | RIP version |
+| `network A.B.C.D` |  | router | Run RIP on this classful network's interfaces |
+| `no network A.B.C.D` |  | router | Stop RIP on these interfaces |
+| `passive-interface <interface>` |  | router | Advertise but send no updates there |
+| `no passive-interface <interface>` |  | router | Send updates there again |
+| `default-information originate` |  | router | Advertise this router's default route |
+| `no default-information originate` |  | router | Stop advertising the default route |
+| `auto-summary` |  | router | Summarise at classful boundaries (kept, not simulated) |
+| `no auto-summary` |  | router | Advertise subnets as they are |
+| `show ip rip database` | user, privileged | router | Routes RIP knows |
 | `router ospf <1-65535>` | config | router | Start or configure OSPF |
 | `no router ospf <1-65535>` | config | router | Stop OSPF |
 | `network A.B.C.D WILDCARD area <0-4294967295>` |  | router | Run OSPF on matching interfaces |

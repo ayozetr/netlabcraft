@@ -254,6 +254,25 @@ pub fn running_config(d: &Device) -> String {
         }
         let _ = writeln!(s, "!");
     }
+    if let Some(r) = &d.rip {
+        let _ = writeln!(s, "router rip");
+        if r.version != 1 {
+            let _ = writeln!(s, " version {}", r.version);
+        }
+        for p in &r.passive {
+            let _ = writeln!(s, " passive-interface {p}");
+        }
+        for n in &r.networks {
+            let _ = writeln!(s, " network {n}");
+        }
+        if r.default_originate {
+            let _ = writeln!(s, " default-information originate");
+        }
+        if !r.auto_summary {
+            let _ = writeln!(s, " no auto-summary");
+        }
+        let _ = writeln!(s, "!");
+    }
     if d.kind == DeviceKind::Switch
         && let Some(g) = d.gateway
     {
@@ -335,7 +354,7 @@ pub fn ip_int_brief(t: &Topology, d: &Device) -> String {
 /// The routing table.
 pub fn ip_route(t: &Topology, d: &Device) -> String {
     let table = routing_table(t, d);
-    let mut s = String::from("Codes: C connected, L local, S static, O OSPF, O*E2 OSPF external default\n\n");
+    let mut s = String::from("Codes: C connected, L local, S static, R RIP, O OSPF, O*E2 OSPF external default\n\n");
     if d.kind == DeviceKind::Switch && !d.ip_routing {
         let _ = writeln!(
             s,
@@ -675,8 +694,46 @@ pub fn ospf_neighbors(t: &Topology, d: &Device, st: &packetcraft_sim::ospf::Ospf
 }
 
 /// `show ip protocols`.
-pub fn ip_protocols(d: &Device, st: &packetcraft_sim::ospf::OspfState) -> String {
-    let Some(o) = &d.ospf else { return "No routing protocol is running (static routes only).".into() };
+pub fn ip_protocols(d: &Device, st: &packetcraft_sim::ospf::OspfState, rs: &packetcraft_sim::rip::RipState) -> String {
+    let mut parts = Vec::new();
+    if d.ospf.is_some() {
+        parts.push(ospf_protocol(d, st));
+    }
+    if let Some(r) = &d.rip {
+        let mut s = format!("Routing protocol: RIP version {}\n", r.version);
+        s.push_str("  Networks:\n");
+        for n in &r.networks {
+            let _ = writeln!(s, "    {n}");
+        }
+        if !r.passive.is_empty() {
+            let _ = writeln!(s, "  Passive interfaces: {}", r.passive.iter().map(|p| ifname::short(p)).collect::<Vec<_>>().join(", "));
+        }
+        let ifs = rs.interfaces.get(&d.id).cloned().unwrap_or_default();
+        let _ = writeln!(
+            s,
+            "  Interfaces running RIP: {}",
+            if ifs.is_empty() { "none".to_string() } else { ifs.iter().map(|(n, _, _)| ifname::short(n)).collect::<Vec<_>>().join(", ") }
+        );
+        let heard: Vec<String> = rs.neighbors.get(&d.id).into_iter().flatten().map(|(_, a, i)| format!("{a} on {}", ifname::short(i))).collect();
+        let _ = writeln!(s, "  Neighbours heard: {}", if heard.is_empty() { "none".to_string() } else { heard.join(", ") });
+        if r.default_originate {
+            s.push_str("  Advertises its default route\n");
+        }
+        let _ = write!(
+            s,
+            "  Automatic summarisation {}; administrative distance 120",
+            if r.auto_summary { "on (not simulated: subnets are advertised)" } else { "off" }
+        );
+        parts.push(s);
+    }
+    if parts.is_empty() {
+        return "No routing protocol is running (static routes only).".into();
+    }
+    parts.join("\n\n")
+}
+
+fn ospf_protocol(d: &Device, st: &packetcraft_sim::ospf::OspfState) -> String {
+    let Some(o) = &d.ospf else { return String::new() };
     let mut s = format!("Routing protocol: OSPF, process {}\n", o.process);
     let _ = writeln!(s, "  Router id: {}", st.router_ids.get(&d.id).map_or("none (no interface address)".to_string(), |i| i.to_string()));
     s.push_str("  Networks:\n");
@@ -884,5 +941,21 @@ pub fn ipv6_neighbors(sim: &Sim, d: &Device) -> String {
     if entries.is_empty() {
         s.push_str("(no neighbours yet)");
     }
+    s.trim_end().to_string()
+}
+
+/// `show ip rip database`.
+pub fn rip_database(t: &Topology, d: &Device, st: &packetcraft_sim::rip::RipState) -> String {
+    if d.rip.is_none() {
+        return "RIP is not running on this router.".into();
+    }
+    let mut s = format!("{:<20} {:<6} {:<16} {}\n", "Network", "Hops", "Next hop", "Interface");
+    for (name, net, _) in st.interfaces.get(&d.id).into_iter().flatten() {
+        let _ = writeln!(s, "{:<20} {:<6} {:<16} {}", net.to_string(), 0, "directly", ifname::short(name));
+    }
+    for r in st.routes.get(&d.id).into_iter().flatten() {
+        let _ = writeln!(s, "{:<20} {:<6} {:<16} {}", r.net.to_string(), r.hops, r.via.to_string(), ifname::short(&r.iface));
+    }
+    let _ = t;
     s.trim_end().to_string()
 }

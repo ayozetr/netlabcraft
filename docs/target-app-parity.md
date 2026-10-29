@@ -18,7 +18,8 @@ _Updated 2026-10-29. Authoritative assessment against Cisco Packet Tracer as a C
 | Switch VLAN interface (management SVI, default gateway) | yes | yes | |
 | Layer-3 switch (`ip routing`) | yes | yes | VLAN interfaces and routed ports, static routes; no OSPF on switches yet |
 | OSPF | yes | single area, computed convergence | No hello/LSA frames yet. |
-| RIP, EIGRP, BGP | yes | no | |
+| RIP | yes | yes | v1/v2 computed, classless; no update packets or auto-summary |
+| EIGRP, BGP | yes | no | |
 | IPv6 | yes | yes | addressing, NDP, SLAAC, static routes, ping/traceroute; no OSPFv3, DHCPv6 or IPv6 ACLs |
 | DHCP server/relay | yes | yes | Routers and servers; relay; clients on hosts. |
 | DNS, HTTP (server and browser) | yes | yes | HTTP over simulated TCP; no HTTPS. |

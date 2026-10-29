@@ -47,6 +47,8 @@ pub enum Mode {
     Svi(VlanId),
     /// `R1(config-router)#`
     Ospf,
+    /// `R1(config-router)#` under `router rip`.
+    Rip,
     /// `R1(config-std-nacl)#` / `R1(config-ext-nacl)#`: the list's name.
     Acl(String),
 }
@@ -64,6 +66,7 @@ impl Mode {
             Mode::DhcpPool(_) => Modes::DHCP,
             Mode::Svi(_) => Modes::SVI,
             Mode::Ospf => Modes::OSPF,
+            Mode::Rip => Modes::RIP,
             Mode::Acl(_) => Modes::ACL,
         }
     }
@@ -274,7 +277,7 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::Line(_) => format!("{n}(config-line)#"),
         Mode::DhcpPool(_) => format!("{n}(dhcp-config)#"),
         Mode::Svi(_) => format!("{n}(config-if)#"),
-        Mode::Ospf => format!("{n}(config-router)#"),
+        Mode::Ospf | Mode::Rip => format!("{n}(config-router)#"),
         Mode::Acl(name) => {
             let ext = d.acls.iter().find(|a| &a.name == name).is_some_and(|a| a.extended);
             format!("{n}(config-{}-nacl)#", if ext { "ext" } else { "std" })
@@ -445,7 +448,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
     let mut resolved = grammar::resolve(&words, cli.mode.bits(), dbits);
     // A sub-mode falls back to global configuration commands, which leave the sub-mode.
     if resolved.is_err()
-        && matches!(cli.mode, Mode::Iface(_) | Mode::Vlan(_) | Mode::Line(_) | Mode::DhcpPool(_) | Mode::Svi(_) | Mode::Ospf | Mode::Acl(_))
+        && matches!(
+            cli.mode,
+            Mode::Iface(_) | Mode::Vlan(_) | Mode::Line(_) | Mode::DhcpPool(_) | Mode::Svi(_) | Mode::Ospf | Mode::Rip | Mode::Acl(_)
+        )
         && let Ok(r) = grammar::resolve(&words, Modes::CONFIG, dbits)
     {
         cli.mode = Mode::Config;
@@ -479,7 +485,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 Mode::User => return c.logout(),
                 Mode::Exec => Mode::User,
                 Mode::Config => Mode::Exec,
-                Mode::Iface(_) | Mode::Vlan(_) | Mode::Line(_) | Mode::DhcpPool(_) | Mode::Svi(_) | Mode::Ospf | Mode::Acl(_) => Mode::Config,
+                Mode::Iface(_) | Mode::Vlan(_) | Mode::Line(_) | Mode::DhcpPool(_) | Mode::Svi(_) | Mode::Ospf | Mode::Rip | Mode::Acl(_) => {
+                    Mode::Config
+                }
             };
             c.set_mode(next)
         }
@@ -1211,6 +1219,70 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             c.sim.clear_nat(c.dev);
             Ok(String::new())
         }
+        Id::RouterRip => {
+            let d = c.dm()?;
+            if d.rip.is_none() {
+                d.rip = Some(packetcraft_model::Rip::default());
+            }
+            c.cli.mode = Mode::Rip;
+            Ok(String::new())
+        }
+        Id::NoRouterRip => {
+            let d = c.dm()?;
+            if d.rip.take().is_none() {
+                return Err("% RIP is not running".into());
+            }
+            Ok(String::new())
+        }
+        Id::RipVersion => {
+            let v: u8 = arg(0).parse().ok().filter(|v| (1..=2).contains(v)).ok_or("% Version 1 or 2")?;
+            c.dm()?.rip.as_mut().ok_or("% Not in RIP mode")?.version = v;
+            Ok(String::new())
+        }
+        Id::RipNetwork | Id::NoRipNetwork => {
+            let a = parse_ip(arg(0)).map_err(|e| format!("% {e}"))?;
+            let net = packetcraft_model::Rip::classful(a).addr;
+            let r = c.dm()?.rip.as_mut().ok_or("% Not in RIP mode")?;
+            if spec.id == Id::RipNetwork {
+                if !r.networks.contains(&net) {
+                    if r.networks.len() >= 256 {
+                        return Err("% At most 256 network statements".into());
+                    }
+                    r.networks.push(net);
+                    r.networks.sort();
+                }
+                // RIP takes the classful network, whatever was typed.
+                Ok(if net == a { String::new() } else { format!("Taken as network {net} (RIP networks are classful).") })
+            } else {
+                let before = r.networks.len();
+                r.networks.retain(|n| *n != net);
+                if r.networks.len() == before { Err("% No such network statement".into()) } else { Ok(String::new()) }
+            }
+        }
+        Id::RipPassive | Id::NoRipPassive => {
+            let r = c.iface_ref(arg(0))?;
+            let d = c.d()?;
+            let port = d.ports.get(r.port).ok_or("% No such port")?;
+            let name = r.sub.map_or(port.name.clone(), |s| format!("{}.{s}", port.name));
+            let rip = c.dm()?.rip.as_mut().ok_or("% Not in RIP mode")?;
+            rip.passive.retain(|p| *p != name);
+            if spec.id == Id::RipPassive {
+                rip.passive.push(name);
+            }
+            Ok(String::new())
+        }
+        Id::RipDefaultOriginate | Id::NoRipDefaultOriginate => {
+            c.dm()?.rip.as_mut().ok_or("% Not in RIP mode")?.default_originate = spec.id == Id::RipDefaultOriginate;
+            Ok(String::new())
+        }
+        Id::RipAutoSummary | Id::NoRipAutoSummary => {
+            c.dm()?.rip.as_mut().ok_or("% Not in RIP mode")?.auto_summary = spec.id == Id::RipAutoSummary;
+            Ok(String::new())
+        }
+        Id::ShowIpRipDatabase => {
+            let st = c.sim.rip_state(c.t);
+            Ok(render::rip_database(c.t, c.d()?, &st))
+        }
         Id::RouterOspf => {
             let n: u16 = arg(0).parse().ok().filter(|n| *n >= 1).ok_or("% The process id is 1-65535")?;
             let d = c.dm()?;
@@ -1284,7 +1356,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::ShowIpProtocols => {
             let st = c.sim.ospf_state(c.t);
-            Ok(render::ip_protocols(c.d()?, &st))
+            let rs = c.sim.rip_state(c.t);
+            Ok(render::ip_protocols(c.d()?, &st, &rs))
         }
         Id::HelperAddress | Id::NoHelperAddress => {
             let target =

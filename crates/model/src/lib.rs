@@ -537,6 +537,9 @@ pub struct Device {
     /// Routers: OSPF (`router ospf N`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ospf: Option<Ospf>,
+    /// Routers: RIP (`router rip`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rip: Option<Rip>,
     /// Routers: access lists.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub acls: Vec<acl::Acl>,
@@ -632,6 +635,48 @@ pub struct Ospf {
     /// `default-information originate`: advertise this router's default route.
     #[serde(default)]
     pub default_originate: bool,
+}
+
+/// `router rip`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Rip {
+    /// 1 or 2 (both behave classless here; see the simulator).
+    pub version: u8,
+    /// `network <address>`: classful networks whose interfaces run RIP.
+    #[serde(default)]
+    pub networks: Vec<Ipv4Addr>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub passive: Vec<String>,
+    #[serde(default)]
+    pub default_originate: bool,
+    #[serde(default)]
+    pub auto_summary: bool,
+}
+
+impl Default for Rip {
+    fn default() -> Self {
+        Rip { version: 1, networks: Vec::new(), passive: Vec::new(), default_originate: false, auto_summary: false }
+    }
+}
+
+impl Rip {
+    /// The classful network of an address (class A /8, B /16, C /24).
+    pub fn classful(a: Ipv4Addr) -> Ipv4Net {
+        let first = a.octets()[0];
+        let prefix = if first < 128 {
+            8
+        } else if first < 192 {
+            16
+        } else {
+            24
+        };
+        Ipv4Net::new(a, prefix).network()
+    }
+
+    /// Whether an interface address falls under a `network` statement.
+    pub fn covers(&self, ip: Ipv4Addr) -> bool {
+        self.networks.iter().any(|n| Rip::classful(*n).contains(ip))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -881,6 +926,7 @@ impl Device {
             stp_priority: BTreeMap::new(),
             svis: Vec::new(),
             ospf: None,
+            rip: None,
             acls: Vec::new(),
             nat: Nat::default(),
             services: if kind == DeviceKind::Server { services::Services::server_defaults() } else { services::Services::default() },
@@ -911,6 +957,7 @@ impl Device {
         self.stp_priority.clear();
         self.svis.clear();
         self.ospf = None;
+        self.rip = None;
         self.acls.clear();
         self.nat = Nat::default();
         self.services = fresh.services;

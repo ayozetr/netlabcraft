@@ -33,8 +33,10 @@ impl Modes {
     pub const OSPF: Modes = Modes(2048);
     /// `ip access-list`.
     pub const ACL: Modes = Modes(4096);
+    /// `router rip`.
+    pub const RIP: Modes = Modes(8192);
     /// Every command mode, either device.
-    pub const ANY_MODE: Modes = Modes(63 | 256 | 512 | 1024 | 2048 | 4096);
+    pub const ANY_MODE: Modes = Modes(63 | 256 | 512 | 1024 | 2048 | 4096 | 8192);
     pub const BOTH: Modes = Modes(192);
 
     pub const fn or(self, o: Modes) -> Modes {
@@ -229,12 +231,25 @@ pub enum Id {
     NoIpRouting,
     NoSwitchport,
     SwitchportOn,
+    RouterRip,
+    NoRouterRip,
+    RipVersion,
+    RipNetwork,
+    NoRipNetwork,
+    RipPassive,
+    NoRipPassive,
+    RipDefaultOriginate,
+    NoRipDefaultOriginate,
+    RipAutoSummary,
+    NoRipAutoSummary,
+    ShowIpRipDatabase,
 }
 
 use Tok::{Arg, K, Rest};
 
 const EXECS: Modes = Modes::USER.or(Modes::EXEC);
-const SUBMODES: Modes = Modes::IF.or(Modes::SUBIF).or(Modes::VLAN).or(Modes::LINE).or(Modes::DHCP).or(Modes::SVI).or(Modes::OSPF).or(Modes::ACL);
+const SUBMODES: Modes =
+    Modes::IF.or(Modes::SUBIF).or(Modes::VLAN).or(Modes::LINE).or(Modes::DHCP).or(Modes::SVI).or(Modes::OSPF).or(Modes::ACL).or(Modes::RIP);
 const IFS: Modes = Modes::IF.or(Modes::SUBIF);
 const ANY_IF: Modes = IFS.or(Modes::SVI);
 
@@ -371,6 +386,24 @@ pub static SPECS: &[Spec] = &[
     spec!(NoNatPool, Modes::CONFIG, Modes::ROUTER, [K("no"), K("ip"), K("nat"), K("pool"), Arg("WORD")], "Delete a NAT pool"),
     spec!(ShowNat, EXECS, Modes::ROUTER, [K("show"), K("ip"), K("nat"), K("translations")], "Translations in use"),
     spec!(ClearNat, Modes::EXEC, Modes::ROUTER, [K("clear"), K("ip"), K("nat"), K("translation"), Rest("*")], "Forget dynamic translations"),
+    spec!(RouterRip, Modes::CONFIG, Modes::ROUTER, [K("router"), K("rip")], "Start or configure RIP"),
+    spec!(NoRouterRip, Modes::CONFIG, Modes::ROUTER, [K("no"), K("router"), K("rip")], "Stop RIP"),
+    spec!(RipVersion, Modes::RIP, Modes::ROUTER, [K("version"), Arg("{1|2}")], "RIP version"),
+    spec!(RipNetwork, Modes::RIP, Modes::ROUTER, [K("network"), Arg("A.B.C.D")], "Run RIP on this classful network's interfaces"),
+    spec!(NoRipNetwork, Modes::RIP, Modes::ROUTER, [K("no"), K("network"), Arg("A.B.C.D")], "Stop RIP on these interfaces"),
+    spec!(RipPassive, Modes::RIP, Modes::ROUTER, [K("passive-interface"), Rest("<interface>")], "Advertise but send no updates there"),
+    spec!(NoRipPassive, Modes::RIP, Modes::ROUTER, [K("no"), K("passive-interface"), Rest("<interface>")], "Send updates there again"),
+    spec!(RipDefaultOriginate, Modes::RIP, Modes::ROUTER, [K("default-information"), K("originate")], "Advertise this router's default route"),
+    spec!(
+        NoRipDefaultOriginate,
+        Modes::RIP,
+        Modes::ROUTER,
+        [K("no"), K("default-information"), K("originate")],
+        "Stop advertising the default route"
+    ),
+    spec!(RipAutoSummary, Modes::RIP, Modes::ROUTER, [K("auto-summary")], "Summarise at classful boundaries (kept, not simulated)"),
+    spec!(NoRipAutoSummary, Modes::RIP, Modes::ROUTER, [K("no"), K("auto-summary")], "Advertise subnets as they are"),
+    spec!(ShowIpRipDatabase, EXECS, Modes::ROUTER, [K("show"), K("ip"), K("rip"), K("database")], "Routes RIP knows"),
     spec!(RouterOspf, Modes::CONFIG, Modes::ROUTER, [K("router"), K("ospf"), Arg("<1-65535>")], "Start or configure OSPF"),
     spec!(NoRouterOspf, Modes::CONFIG, Modes::ROUTER, [K("no"), K("router"), K("ospf"), Arg("<1-65535>")], "Stop OSPF"),
     spec!(
@@ -842,6 +875,7 @@ mod tests {
                 Modes::SVI,
                 Modes::OSPF,
                 Modes::ACL,
+                Modes::RIP,
             ]
             .into_iter()
             .find(|m| s.modes.has(*m))

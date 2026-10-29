@@ -24,6 +24,7 @@ use packetcraft_wire::{Arp, ArpOp, ETHERTYPE_ARP, ETHERTYPE_IPV4, Frame, Icmp, I
 
 pub mod channel;
 pub mod ospf;
+pub mod rip;
 pub mod stp;
 #[cfg(test)]
 mod tests;
@@ -176,6 +177,16 @@ pub fn routing_table(t: &Topology, d: &Device) -> Vec<RouteEntry> {
         }
         out.sort_by_key(|r| (r.net.addr, r.net.prefix, r.code));
     }
+    if d.rip.is_some() {
+        let st = rip::compute(t);
+        let have: Vec<Ipv4Net> = out.iter().map(|r| r.net).collect();
+        for r in st.routes.get(&d.id).into_iter().flatten() {
+            if !have.contains(&r.net) {
+                out.push(RouteEntry { code: 'R', net: r.net, via: Some(r.via), iface: Some(r.iface.clone()) });
+            }
+        }
+        out.sort_by_key(|r| (r.net.addr, r.net.prefix, r.code));
+    }
     out
 }
 
@@ -216,12 +227,25 @@ fn find_iface<'a>(ifs: &'a [L3If], name: &str) -> Option<&'a L3If> {
 /// Where a datagram to `dst` leaves a device: the interface and the next hop to ARP for.
 pub fn route(t: &Topology, d: &Device, dst: Ipv4Addr) -> Option<(L3If, Ipv4Addr)> {
     let st = if d.ospf.is_some() { Some(ospf::compute(t)) } else { None };
-    route_with(t, d, dst, st.as_ref().and_then(|s| s.routes.get(&d.id)).map_or(&[][..], Vec::as_slice))
+    let rp = if d.rip.is_some() { Some(rip::compute(t)) } else { None };
+    route_with(
+        t,
+        d,
+        dst,
+        st.as_ref().and_then(|s| s.routes.get(&d.id)).map_or(&[][..], Vec::as_slice),
+        rp.as_ref().and_then(|s| s.routes.get(&d.id)).map_or(&[][..], Vec::as_slice),
+    )
 }
 
 /// [`route`] with OSPF's routes for this device given (connected beats static beats OSPF at
 /// equal prefix length, as their administrative distances say).
-pub fn route_with(t: &Topology, d: &Device, dst: Ipv4Addr, ospf_routes: &[ospf::OspfRoute]) -> Option<(L3If, Ipv4Addr)> {
+pub fn route_with(
+    t: &Topology,
+    d: &Device,
+    dst: Ipv4Addr,
+    ospf_routes: &[ospf::OspfRoute],
+    rip_routes: &[rip::RipRoute],
+) -> Option<(L3If, Ipv4Addr)> {
     let ifs = up_ifaces(t, d);
     if d.kind.is_host() {
         let i = ifs.into_iter().next()?;
@@ -272,6 +296,12 @@ pub fn route_with(t: &Topology, d: &Device, dst: Ipv4Addr, ospf_routes: &[ospf::
         }
     }
     for r in ospf_routes.iter().filter(|r| r.net.contains(dst)) {
+        if let Some(i) = ifs.iter().find(|i| i.name == r.iface) {
+            consider(r.net.prefix, i, r.via);
+        }
+    }
+    // RIP last: at equal prefix length the others win (administrative distance 120).
+    for r in rip_routes.iter().filter(|r| r.net.contains(dst)) {
         if let Some(i) = ifs.iter().find(|i| i.name == r.iface) {
             consider(r.net.prefix, i, r.via);
         }
@@ -495,6 +525,8 @@ pub struct Sim {
     /// OSPF's routes, for the topology with this fingerprint.
     ospf_for: u64,
     ospf: Option<ospf::OspfState>,
+    rip_for: u64,
+    rip: Option<rip::RipState>,
     /// Lab changes waiting for the engine.
     events: Vec<PortEvent>,
 }
@@ -841,7 +873,26 @@ impl Sim {
 
     fn route(&mut self, t: &Topology, d: &Device, dst: Ipv4Addr) -> Option<(L3If, Ipv4Addr)> {
         let o = self.ospf_routes(t, d);
-        route_with(t, d, dst, &o)
+        let r = self.rip_routes(t, d);
+        route_with(t, d, dst, &o, &r)
+    }
+
+    /// RIP's routes for a device (cached per topology).
+    fn rip_routes(&mut self, t: &Topology, d: &Device) -> Vec<rip::RipRoute> {
+        if d.rip.is_none() {
+            return Vec::new();
+        }
+        self.rip_state(t).routes.get(&d.id).cloned().unwrap_or_default()
+    }
+
+    /// RIP's view of the lab (neighbours, routes).
+    pub fn rip_state(&mut self, t: &Topology) -> rip::RipState {
+        let f = ospf::fingerprint(t);
+        if self.rip.is_none() || self.rip_for != f {
+            self.rip_for = f;
+            self.rip = Some(rip::compute(t));
+        }
+        self.rip.clone().unwrap_or_default()
     }
 
     /// OSPF's view of the lab (neighbours, router ids, routes).

@@ -56,6 +56,11 @@ pub static SAMPLES: &[Sample] = &[
         description: "A multilayer switch routes between VLAN 10 and 20 with its VLAN interfaces, and reaches a router through a routed port.",
     },
     Sample {
+        id: "rip",
+        title: "RIP version 2 on three routers",
+        description: "Three routers in a line learn each other's networks with RIPv2; R3 hands out a default route.",
+    },
+    Sample {
         id: "ospf",
         title: "OSPF on three routers",
         description: "Three routers in a triangle learn each other's networks with OSPF; cut a link and the routes move.",
@@ -390,6 +395,40 @@ pub fn build(id: &str) -> Result<Topology> {
             )?;
             b.type_in("SRV1", "ipconfig 172.16.0.10 255.255.255.0 172.16.0.1")?;
             b.t.notes = "MLS1 routes between VLAN 10 and VLAN 20 (`ip routing`, interfaces Vlan10 and Vlan20) and sends everything else to R1 over a routed port (`no switchport`). Try `show ip route` on MLS1 and a ping from PC1 to PC4 or to SRV1.".into();
+        }
+        "rip" => {
+            for (name, x) in [("R1", 120.0), ("R2", 360.0), ("R3", 600.0)] {
+                b.add_model("Router-2", name, x, 80.0)?;
+            }
+            b.cable("R1", "g0/1", "R2", "g0/0")?;
+            b.cable("R2", "g0/1", "R3", "g0/0")?;
+            b.add(DeviceKind::Pc, "PC1", 120.0, 300.0)?;
+            b.add(DeviceKind::Server, "SRV1", 600.0, 300.0)?;
+            b.cable("PC1", "fa0", "R1", "g0/0")?;
+            b.cable("SRV1", "g0", "R3", "g0/1")?;
+            b.type_in("PC1", "ipconfig 192.168.1.10 255.255.255.0 192.168.1.1")?;
+            b.type_in("SRV1", "ipconfig 192.168.3.10 255.255.255.0 192.168.3.1")?;
+            let routers = [
+                ("R1", "192.168.1.1 255.255.255.0", "10.0.12.1 255.255.255.252"),
+                ("R2", "10.0.12.2 255.255.255.252", "10.0.23.1 255.255.255.252"),
+                ("R3", "10.0.23.2 255.255.255.252", "192.168.3.1 255.255.255.0"),
+            ];
+            for (r, a0, a1) in routers {
+                let nets: Vec<String> = [a0, a1]
+                    .iter()
+                    .filter_map(|a| a.split_whitespace().next())
+                    .map(|ip| packetcraft_model::Rip::classful(ip.parse().unwrap_or(std::net::Ipv4Addr::UNSPECIFIED)).addr.to_string())
+                    .collect();
+                let mut lines = format!(
+                    "enable\nconfigure terminal\ninterface g0/0\nip address {a0}\nno shutdown\ninterface g0/1\nip address {a1}\nno shutdown\nexit\nrouter rip\nversion 2\nno auto-summary\n"
+                );
+                for n in nets {
+                    lines.push_str(&format!("network {n}\n"));
+                }
+                lines.push_str("end");
+                b.type_in(r, &lines)?;
+            }
+            b.t.notes = "Every router runs RIPv2. Compare `show ip route` (R routes, hop counts in `show ip rip database`) on R1 and R3, then shut R2's g0/1 and watch the routes go.".into();
         }
         "ospf" => {
             for (name, x, y) in [("R1", 120.0, 80.0), ("R2", 600.0, 80.0), ("R3", 360.0, 260.0)] {

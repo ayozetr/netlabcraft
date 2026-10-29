@@ -948,3 +948,51 @@ fn multilayer_switch_by_typing() {
     lab.run(plain, "exit");
     assert!(lab.try_run(plain, "ip route 0.0.0.0 0.0.0.0 1.1.1.1").contains("ip routing"));
 }
+
+#[test]
+fn rip_by_typing() {
+    let mut lab = Lab::new();
+    let r1 = lab.add(DeviceKind::Router);
+    let r2 = lab.add(DeviceKind::Router);
+    let r3 = lab.add(DeviceKind::Router);
+    let a = lab.add(DeviceKind::Pc);
+    let b = lab.add(DeviceKind::Pc);
+    lab.cable(a, "fa0", r1, "g0/0");
+    lab.cable(r1, "g0/1", r2, "g0/0");
+    lab.cable(r2, "g0/1", r3, "g0/0");
+    lab.cable(b, "fa0", r3, "g0/1");
+    lab.run(a, "ipconfig 192.168.1.10 255.255.255.0 192.168.1.1");
+    lab.run(b, "ipconfig 192.168.3.10 255.255.255.0 192.168.3.1");
+    let cfg = [
+        (r1, "192.168.1.1", "10.0.12.1", "g0/0", "g0/1"),
+        (r2, "10.0.12.2", "10.0.23.1", "g0/0", "g0/1"),
+        (r3, "10.0.23.2", "192.168.3.1", "g0/0", "g0/1"),
+    ];
+    for (r, ip0, ip1, i0, i1) in cfg {
+        let m0 = if ip0.starts_with("10.") { "255.255.255.252" } else { "255.255.255.0" };
+        let m1 = if ip1.starts_with("10.") { "255.255.255.252" } else { "255.255.255.0" };
+        lab.run(r, &format!("en\nconf t\nint {i0}\nip address {ip0} {m0}\nno shut\nint {i1}\nip address {ip1} {m1}\nno shut\nexit"));
+    }
+    lab.run(r1, "router rip\nversion 2\nnetwork 192.168.1.0\nnetwork 10.0.0.0\nno auto-summary\npassive-interface g0/0\nend");
+    lab.run(r2, "router rip\nversion 2\nnetwork 10.1.2.3\nend");
+    lab.run(r3, "router rip\nversion 2\nnetwork 10.0.0.0\nnetwork 192.168.3.0\nexit\nip route 0.0.0.0 0.0.0.0 192.168.3.10\nrouter rip\ndefault-information originate\nend");
+    let rt = lab.run(r1, "show ip route");
+    assert!(rt.contains("R ") && rt.contains("192.168.3.0/24") && rt.contains("10.0.23.0/30"), "{rt}");
+    let db = lab.run(r1, "show ip rip database");
+    assert!(db.contains("192.168.3.0/24       2"), "{db}");
+    assert!(lab.run(r1, "show ip route").contains("Default route: via 10.0.12.2"));
+    lab.run(a, "ping 192.168.3.10");
+    assert!(lab.run(a, "ping 192.168.3.10").contains("4 answered"));
+    let pr = lab.run(r2, "show ip protocols");
+    assert!(pr.contains("RIP version 2") && pr.contains("10.0.12.1 on Gi0/0") && pr.contains("distance 120"), "{pr}");
+    let run = lab.run(r1, "show running-config");
+    assert!(
+        run.contains("router rip\n version 2\n passive-interface GigabitEthernet0/0\n network 10.0.0.0\n network 192.168.1.0\n no auto-summary"),
+        "{run}"
+    );
+    // Cut the R2-R3 link: the far networks go away.
+    lab.run(r3, "conf t\nint g0/0\nshutdown\nend");
+    assert!(!lab.run(r1, "show ip route").contains("192.168.3.0/24"));
+    lab.run(r1, "conf t\nno router rip\nend");
+    assert!(lab.run(r1, "show ip protocols").contains("No routing protocol"));
+}
