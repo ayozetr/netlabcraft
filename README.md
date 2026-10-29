@@ -6,7 +6,7 @@ PacketCraft follows the conventions of the storytold Crafting Apps. It is an ind
 
 ## What works today
 
-- **Devices:** routers, switches, a hub, PCs, laptops, servers and a printer (11 generic models).
+- **Devices:** routers, switches (also a multilayer one that routes), a hub, PCs, laptops, servers and a printer (12 generic models).
 - **Switching:** learning bridges with MAC aging, VLANs, access and 802.1Q trunk ports (native VLAN, allowed lists), per-VLAN spanning tree, EtherChannel (LACP, PAgP, static), VTP, port security, switch VLAN interfaces.
 - **Routing:** connected, static and OSPF routes, longest-prefix match, proxy ARP, router-on-a-stick, ACLs, NAT and PAT, DHCP server and relay.
 - **Services:** servers with HTTP (and a web browser on the PCs), DNS and DHCP; Telnet and SSH between devices.
@@ -15,7 +15,7 @@ PacketCraft follows the conventions of the storytold Crafting Apps. It is an ind
 - **Console:** user / privileged / configuration / interface / subinterface / VLAN / line / DHCP / OSPF / ACL modes, passwords, abbreviations (`sh ip int br`), `?` help, Tab completion, history, `do`, `interface range`, `running-config` / `startup-config` / `write` / `reload`.
 - **Host shell:** `ipconfig` (static or DHCP), `ipv6config` (static or automatic), `ping`, `tracert`, `nslookup`, `telnet`, `ssh`, `arp`.
 - **Simulation mode:** an event list of every frame with drop reasons, a layer-by-layer decode and hex dump, a replay on the canvas, and **pcap export** for any packet analyser.
-- **Labs:** saved as readable JSON (`.pcraft`), with undo/redo, notes, drawings and twelve sample labs.
+- **Labs:** saved as readable JSON (`.pcraft`), with undo/redo, notes, drawings and thirteen sample labs.
 - **Front ends:** desktop app, browser (WASM), `packetcraft-cli`, and an MCP server so AI agents can build and test labs.
 
 See [`ROADMAP.md`](ROADMAP.md) and [`docs/target-app-parity.md`](docs/target-app-parity.md) for what is missing (OSPFv3, wireless, more server services…).

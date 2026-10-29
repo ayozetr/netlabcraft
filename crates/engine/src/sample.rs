@@ -51,6 +51,11 @@ pub static SAMPLES: &[Sample] = &[
         description: "PC1 and PC2 take their IPv6 addresses from R1 (autoconfiguration); PC3 is set by hand behind R2; static routes join the two.",
     },
     Sample {
+        id: "multilayer",
+        title: "Inter-VLAN routing on a multilayer switch",
+        description: "A multilayer switch routes between VLAN 10 and 20 with its VLAN interfaces, and reaches a router through a routed port.",
+    },
+    Sample {
         id: "ospf",
         title: "OSPF on three routers",
         description: "Three routers in a triangle learn each other's networks with OSPF; cut a link and the routes move.",
@@ -360,6 +365,31 @@ pub fn build(id: &str) -> Result<Topology> {
             b.cable("PC3", "fa0", "R2", "g0/0")?;
             b.type_in("PC3", "ipv6config 2001:db8:2::10/64 fe80::2")?;
             b.t.notes = "PC1 and PC2 autoconfigure from R1's router advertisements (ipv6config). Try `ping 2001:db8:2::10` from PC1, `show ipv6 route` and `show ipv6 neighbors` on the routers, and watch NDP in Simulation mode.".into();
+        }
+        "multilayer" => {
+            b.add_model("Switch-ML-24", "MLS1", 360.0, 190.0)?;
+            b.add_model("Router-2", "R1", 360.0, 45.0)?;
+            b.add(DeviceKind::Server, "SRV1", 620.0, 45.0)?;
+            b.cable("MLS1", "g0/1", "R1", "g0/0")?;
+            b.cable("SRV1", "g0", "R1", "g0/1")?;
+            for (pc, port, x, n) in
+                [("PC1", "fa0/1", 60.0, 10), ("PC2", "fa0/2", 260.0, 10), ("PC3", "fa0/3", 460.0, 20), ("PC4", "fa0/4", 660.0, 20)]
+            {
+                b.add(DeviceKind::Pc, pc, x, 340.0)?;
+                b.cable(pc, "fa0", "MLS1", port)?;
+                let host = if pc == "PC1" || pc == "PC3" { 10 } else { 11 };
+                b.type_in(pc, &format!("ipconfig 192.168.{n}.{host} 255.255.255.0 192.168.{n}.1"))?;
+            }
+            b.type_in(
+                "MLS1",
+                "enable\nconfigure terminal\nip routing\nvlan 10\nname Alumnos\nvlan 20\nname Profesores\nexit\ninterface range fa0/1 - 2\nswitchport access vlan 10\ninterface range fa0/3 - 4\nswitchport access vlan 20\nexit\ninterface vlan 10\nip address 192.168.10.1 255.255.255.0\nno shutdown\ninterface vlan 20\nip address 192.168.20.1 255.255.255.0\nno shutdown\ninterface g0/1\nno switchport\nip address 10.0.0.1 255.255.255.252\nexit\nip route 0.0.0.0 0.0.0.0 10.0.0.2\nend",
+            )?;
+            b.type_in(
+                "R1",
+                "enable\nconfigure terminal\ninterface g0/0\nip address 10.0.0.2 255.255.255.252\nno shutdown\ninterface g0/1\nip address 172.16.0.1 255.255.255.0\nno shutdown\nexit\nip route 192.168.0.0 255.255.0.0 10.0.0.1\nend",
+            )?;
+            b.type_in("SRV1", "ipconfig 172.16.0.10 255.255.255.0 172.16.0.1")?;
+            b.t.notes = "MLS1 routes between VLAN 10 and VLAN 20 (`ip routing`, interfaces Vlan10 and Vlan20) and sends everything else to R1 over a routed port (`no switchport`). Try `show ip route` on MLS1 and a ping from PC1 to PC4 or to SRV1.".into();
         }
         "ospf" => {
             for (name, x, y) in [("R1", 120.0, 80.0), ("R2", 600.0, 80.0), ("R3", 360.0, 260.0)] {

@@ -360,6 +360,9 @@ pub struct Port {
     pub port_security: Option<PortSecurity>,
     #[serde(default, skip_serializing_if = "Ipv6Conf::is_default")]
     pub ipv6: Ipv6Conf,
+    /// Multilayer switches: `no switchport` made this a routed port (it takes `ip address`).
+    #[serde(default)]
+    pub routed: bool,
     /// Switches: `channel-group N mode M`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub channel: Option<ChannelGroup>,
@@ -488,6 +491,9 @@ pub struct Device {
     /// Hosts: the IPv6 default gateway (often a router's link-local address).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gateway6: Option<Ipv6Addr>,
+    /// Multilayer switches: `ip routing`.
+    #[serde(default)]
+    pub ip_routing: bool,
     /// Routers: `ipv6 unicast-routing` (forward IPv6 and send router advertisements).
     #[serde(default)]
     pub ipv6_routing: bool,
@@ -842,6 +848,7 @@ impl Device {
                 port_security: None,
                 ipv6: Ipv6Conf::default(),
                 channel: None,
+                routed: false,
                 err_disabled: false,
                 helpers: Vec::new(),
                 access: AccessGroups::default(),
@@ -859,6 +866,7 @@ impl Device {
             ports,
             gateway: None,
             gateway6: None,
+            ip_routing: false,
             ipv6_routing: false,
             routes6: Vec::new(),
             routes: Vec::new(),
@@ -889,6 +897,7 @@ impl Device {
         }
         self.gateway = None;
         self.gateway6 = None;
+        self.ip_routing = false;
         self.ipv6_routing = false;
         self.routes6.clear();
         self.routes.clear();
@@ -910,6 +919,12 @@ impl Device {
     /// What the workspace shows under the icon.
     pub fn display_name(&self) -> &str {
         self.label.as_deref().filter(|l| !l.trim().is_empty()).unwrap_or(&self.name)
+    }
+
+    /// Whether this device forwards IPv4 between its interfaces: a router, or a multilayer
+    /// switch with `ip routing`.
+    pub fn routes_ip(&self) -> bool {
+        self.kind == DeviceKind::Router || (self.kind == DeviceKind::Switch && self.ip_routing)
     }
 
     /// The catalogue entry of this device (the kind's default if the id is unknown).

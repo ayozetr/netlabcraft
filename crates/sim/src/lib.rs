@@ -83,12 +83,19 @@ pub fn svi_mac(d: &Device) -> MacAddr {
 pub fn l3_ifaces(d: &Device) -> Vec<L3If> {
     if d.kind == DeviceKind::Switch {
         let mac = svi_mac(d);
-        return d
+        let mut out: Vec<L3If> = d
             .svis
             .iter()
             .filter(|s| !s.shutdown)
             .filter_map(|s| s.ip.map(|net| L3If { port: SVI_PORT, sub: None, vlan: Some(s.vlan.get()), net, mac, name: format!("Vlan{}", s.vlan) }))
             .collect();
+        // Routed ports of a multilayer switch.
+        for (i, p) in d.ports.iter().enumerate() {
+            if let (true, false, Some(net)) = (p.routed, p.shutdown, p.ip) {
+                out.push(L3If { port: i, sub: None, vlan: None, net, mac: p.mac, name: p.name.clone() });
+            }
+        }
+        return out;
     }
     if d.kind == DeviceKind::Hub {
         return Vec::new();
@@ -181,7 +188,7 @@ fn routing_table_static(t: &Topology, d: &Device) -> Vec<RouteEntry> {
             out.push(RouteEntry { code: 'L', net: Ipv4Net::new(i.net.addr, 32), via: None, iface: Some(i.name.clone()) });
         }
     }
-    if d.kind == DeviceKind::Router {
+    if d.routes_ip() {
         for r in &d.routes {
             match &r.via {
                 NextHop::Address(a) => {
@@ -224,7 +231,7 @@ pub fn route_with(t: &Topology, d: &Device, dst: Ipv4Addr, ospf_routes: &[ospf::
         let gw = d.gateway.filter(|g| i.net.contains(*g))?;
         return Some((i, gw));
     }
-    if d.kind == DeviceKind::Switch {
+    if d.kind == DeviceKind::Switch && !d.ip_routing {
         // A switch doesn't route: connected VLAN interfaces, else its default gateway.
         if let Some(i) = ifs.iter().filter(|i| i.net.contains(dst)).max_by_key(|i| i.net.prefix) {
             return Some((i.clone(), dst));
@@ -233,7 +240,7 @@ pub fn route_with(t: &Topology, d: &Device, dst: Ipv4Addr, ospf_routes: &[ospf::
         let i = ifs.into_iter().find(|i| i.net.contains(gw))?;
         return Some((i, gw));
     }
-    if matches!(d.kind, DeviceKind::Switch | DeviceKind::Hub) {
+    if d.kind == DeviceKind::Hub {
         return None;
     }
     let mut best: Option<(u8, L3If, Ipv4Addr)> = None;
@@ -674,6 +681,7 @@ impl Sim {
         }
         let f = Frame::decode(bytes).map_err(|e| e.to_string())?;
         match d.kind {
+            DeviceKind::Switch if port.routed => self.l3_in(t, d, at.port, f),
             DeviceKind::Switch => self.switch_in(t, d, at.port, f, hops),
             DeviceKind::Hub => self.hub_in(t, d, at.port, bytes, hops),
             _ => self.l3_in(t, d, at.port, f),
@@ -1133,7 +1141,7 @@ impl Sim {
         if mine || ip.dst == Ipv4Addr::BROADCAST || (ifc.net.prefix < 31 && ip.dst == ifc.net.broadcast()) {
             return self.local_in(t, d, ifc, ip);
         }
-        if d.kind != DeviceKind::Router {
+        if !d.routes_ip() {
             return Err(format!("{} is not this device's address", ip.dst));
         }
         if ip.ttl <= 1 {
@@ -1310,7 +1318,7 @@ impl Sim {
             self.l3_emit(t, d, out, frame);
             return Ok(());
         }
-        let host = d.kind != DeviceKind::Router;
+        let host = !d.routes_ip();
         let st = self.st(d.id);
         st.pending.retain(|p| now.saturating_sub(p.since) < ARP_WAIT_US);
         // Hosts hold the packet until ARP answers; routers drop it, as real routers do.
@@ -1860,7 +1868,7 @@ impl Sim {
             return Ok(Probe::Reply { from: dst.into(), rtt_us: 0 });
         }
         let sent = self.now;
-        if self.send_ip(t, d, ip).is_err() && d.kind != DeviceKind::Router {
+        if self.send_ip(t, d, ip).is_err() && !d.routes_ip() {
             return Ok(Probe::Timeout);
         }
         let matches = |s: &Sim| s.state.get(&dev).is_some_and(|st| st.icmp.iter().any(|e| e.id == id && e.seq == seq));
@@ -1913,9 +1921,9 @@ fn default_ttl(kind: DeviceKind) -> u8 {
     if kind.is_host() { 128 } else { 255 }
 }
 
-/// Whether switch port `p` carries `vlan`.
+/// Whether switch port `p` carries `vlan` (a routed port carries none).
 fn carries(d: &Device, p: usize, vlan: VlanId) -> bool {
-    d.ports.get(p).is_some_and(|port| match port.switchport.mode {
+    d.ports.get(p).filter(|port| !port.routed).is_some_and(|port| match port.switchport.mode {
         SwitchportMode::Access => port.switchport.access_vlan == vlan,
         SwitchportMode::Trunk => port.switchport.allowed.contains(vlan),
     })

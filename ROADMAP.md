@@ -13,7 +13,7 @@ _Updated 2026-10-29._
 | Console commands | 58 grammar entries, 6 modes |
 | Device models | 11 (routers with 2/3/4 ports, switches with 8/24/48 ports, hub, PC, laptop, server, printer) |
 | Sample labs | 9 |
-| Tests | 107 (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Tests | 108 (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 
 ## Dimensions (rough parity with the reference app, for a CCNA-level lab)
 
@@ -31,6 +31,9 @@ _Updated 2026-10-29._
 | Agent control | MCP server and CLI over the full command catalog |
 
 ## Progress log
+
+- **2026-10-29 — Multilayer switch.** A Switch-ML-24 model routes with `ip routing` between its VLAN interfaces and routed ports (`no switchport`), with static routes and `show ip route`; drawn with a small router mark; multilayer sample lab.
+
 
 - **2026-10-29 — IPv6.** Real IPv6/ICMPv6/NDP frames; global, EUI-64 and link-local addresses; neighbour discovery; router advertisements and host autoconfiguration; static routes (link-local next hops too); ping and traceroute; `show ipv6 interface brief|route|neighbors`; IPv6 in the PC IP Configuration and router port pages; ipv6 sample lab.
 

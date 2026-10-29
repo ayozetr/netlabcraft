@@ -896,3 +896,55 @@ fn ipv6_by_typing() {
     lab.run(r1, "no ipv6 unicast-routing\nend");
     assert!(lab.run(a, "ping 2001:db8:2::10").contains(" 0 answered"));
 }
+
+#[test]
+fn multilayer_switch_by_typing() {
+    let mut lab = Lab::new();
+    let ml = lab.t.add_model(packetcraft_model::models::find("Switch-ML-24").unwrap(), None, 0.0, 0.0).unwrap();
+    let plain = lab.add(DeviceKind::Switch);
+    let r = lab.add(DeviceKind::Router);
+    let a = lab.add(DeviceKind::Pc);
+    let b = lab.add(DeviceKind::Pc);
+    let c = lab.add(DeviceKind::Pc);
+    lab.cable(a, "fa0", ml, "fa0/1");
+    lab.cable(b, "fa0", ml, "fa0/2");
+    lab.cable(ml, "g0/1", r, "g0/0");
+    lab.cable(c, "fa0", r, "g0/1");
+    lab.run(a, "ipconfig 192.168.10.10 255.255.255.0 192.168.10.1");
+    lab.run(b, "ipconfig 192.168.20.10 255.255.255.0 192.168.20.1");
+    lab.run(c, "ipconfig 172.16.0.10 255.255.255.0 172.16.0.1");
+    lab.run(
+        ml,
+        "en\nconf t\nvlan 10\nvlan 20\nexit\nint fa0/1\nswitchport access vlan 10\nint fa0/2\nswitchport access vlan 20\nexit\n\
+         interface vlan 10\nip address 192.168.10.1 255.255.255.0\nno shut\ninterface vlan 20\nip address 192.168.20.1 255.255.255.0\nno shut\nexit",
+    );
+    // Without `ip routing` the VLANs stay apart.
+    assert!(lab.run(a, "ping 192.168.20.10").contains(" 0 answered"));
+    lab.run(ml, "ip routing");
+    let p = lab.run(a, "ping 192.168.20.10");
+    assert!(p.contains("answered") && !p.contains(" 0 answered"), "{p}");
+    // A routed port to the router, and a default route.
+    lab.run(ml, "int g0/1\nno switchport\nip address 10.0.0.1 255.255.255.252\nexit\nip route 0.0.0.0 0.0.0.0 10.0.0.2\nend");
+    lab.run(r, "en\nconf t\nint g0/0\nip address 10.0.0.2 255.255.255.252\nno shut\nint g0/1\nip address 172.16.0.1 255.255.255.0\nno shut\nexit\nip route 192.168.0.0 255.255.0.0 10.0.0.1\nend");
+    lab.run(a, "ping 172.16.0.10");
+    assert!(lab.run(a, "ping 172.16.0.10").contains("4 answered"));
+    let rt = lab.run(ml, "show ip route");
+    assert!(rt.contains("Vlan10") && rt.contains("GigabitEthernet0/1") && rt.contains("Default route: via 10.0.0.2"), "{rt}");
+    let run = lab.run(ml, "show running-config");
+    assert!(
+        run.contains("ip routing")
+            && run.contains(" no switchport\n ip address 10.0.0.1 255.255.255.252")
+            && run.contains("ip route 0.0.0.0 0.0.0.0 10.0.0.2"),
+        "{run}"
+    );
+    // The routed port is not a switch port any more: no spanning tree, no VLANs.
+    assert!(!lab.run(ml, "show spanning-tree").contains("Gi0/1"));
+    // A plain switch refuses.
+    lab.run(plain, "en\nconf t");
+    assert!(lab.try_run(plain, "ip routing").contains("multilayer"));
+    lab.run(plain, "int fa0/1");
+    assert!(lab.try_run(plain, "no switchport").contains("multilayer"));
+    assert!(lab.try_run(plain, "ip address 1.1.1.1 255.255.255.0").contains("switch port"));
+    lab.run(plain, "exit");
+    assert!(lab.try_run(plain, "ip route 0.0.0.0 0.0.0.0 1.1.1.1").contains("ip routing"));
+}

@@ -6,7 +6,7 @@ _Updated 2026-10-29. Authoritative assessment against Cisco Packet Tracer as a C
 |---|---|---|---|
 | Logical workspace (place, move, cable devices) | yes | yes | Port chooser per cable; link lights; zoom/pan; grid snap. |
 | Physical workspace (buildings, racks) | yes | no | Low priority. |
-| Device catalogue | many models | 4 generic kinds | Generic on purpose; modular slots later. |
+| Device catalogue | many models | 12 generic models (routers, switches incl. multilayer, hub, hosts) | Generic on purpose; modular slots later. |
 | Cable types (straight, cross, fibre, serial, console) | yes | one Ethernet cable, auto-MDIX | Serial (PPP/HDLC) planned with WAN work. |
 | Switch MAC learning, VLANs, trunks | yes | yes | |
 | STP / RSTP | yes | per-VLAN tree, computed instantly | No BPDU frames or timers yet. |
@@ -16,16 +16,16 @@ _Updated 2026-10-29. Authoritative assessment against Cisco Packet Tracer as a C
 | DTP | yes | no | |
 | IPv4 static routing, router-on-a-stick | yes | yes | |
 | Switch VLAN interface (management SVI, default gateway) | yes | yes | |
-| Layer-3 switch (`ip routing`) | yes | no | |
+| Layer-3 switch (`ip routing`) | yes | yes | VLAN interfaces and routed ports, static routes; no OSPF on switches yet |
 | OSPF | yes | single area, computed convergence | No hello/LSA frames yet. |
 | RIP, EIGRP, BGP | yes | no | |
 | IPv6 | yes | yes | addressing, NDP, SLAAC, static routes, ping/traceroute; no OSPFv3, DHCPv6 or IPv6 ACLs |
-| DHCP server/relay | yes | server on routers, relay, clients on hosts | No DHCP service on servers yet. |
+| DHCP server/relay | yes | yes | Routers and servers; relay; clients on hosts. |
 | DNS, HTTP (server and browser) | yes | yes | HTTP over simulated TCP; no HTTPS. |
 | FTP, TFTP, email, syslog, NTP, AAA | yes | no | |
 | ACLs, NAT/PAT | yes | yes | Standard/extended, numbered/named; static, pool, PAT. |
 | Passwords / `enable secret` / lines / banner | yes | yes | Real password prompts on the console. |
-| SSH / Telnet | yes | no | |
+| SSH / Telnet | yes | yes | Local users, `login local`, `transport input`. |
 | Router/switch console (modes, abbreviations, `?`, Tab) | yes | yes | Our own messages and table layouts. |
 | Running/startup config, `write`, `reload` | yes | yes | |
 | PC desktop (IP config, command prompt, web browser) | yes | yes | No email client, terminal or Telnet/SSH client yet. |

@@ -111,7 +111,7 @@ pub fn bridge_id(d: &Device, vlan: VlanId) -> BridgeId {
 pub fn carries(d: &Device, port: usize, vlan: VlanId) -> bool {
     d.kind == DeviceKind::Switch
         && d.vlans.contains_key(&vlan)
-        && d.ports.get(port).is_some_and(|p| match p.switchport.mode {
+        && d.ports.get(port).filter(|p| !p.routed).is_some_and(|p| match p.switchport.mode {
             SwitchportMode::Access => p.switchport.access_vlan == vlan,
             SwitchportMode::Trunk => p.switchport.allowed.contains(vlan),
         })
@@ -285,7 +285,7 @@ pub fn fingerprint(t: &Topology) -> u64 {
     for d in &t.devices {
         d.id.hash(&mut h);
         for p in &d.ports {
-            (p.shutdown, p.err_disabled, p.channel).hash(&mut h);
+            (p.shutdown, p.err_disabled, p.channel, p.routed).hash(&mut h);
             if d.kind == DeviceKind::Switch {
                 format!("{:?}", p.switchport).hash(&mut h);
             }

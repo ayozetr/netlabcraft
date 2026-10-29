@@ -732,6 +732,31 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::ShowIpv6IntBrief => Ok(render::ipv6_brief(c.t, c.d()?)),
         Id::ShowIpv6Route => Ok(render::ipv6_route(c.t, c.d()?)),
         Id::ShowIpv6Neighbors => Ok(render::ipv6_neighbors(c.sim, c.d()?)),
+        Id::IpRouting | Id::NoIpRouting => {
+            let d = c.dm()?;
+            if !d.catalogue_model().multilayer() {
+                return Err(format!("% A {} can't route; use a multilayer switch (Switch-ML-24)", d.catalogue_model().label));
+            }
+            d.ip_routing = spec.id == Id::IpRouting;
+            Ok(String::new())
+        }
+        Id::NoSwitchport | Id::SwitchportOn => {
+            let routed = spec.id == Id::NoSwitchport;
+            let ml = c.d()?.catalogue_model().multilayer();
+            c.each_if(|p, _| {
+                if routed && !ml {
+                    return Err("% Only a multilayer switch has routed ports".into());
+                }
+                if routed && p.channel.is_some() {
+                    return Err(format!("% {} is in an EtherChannel", p.name));
+                }
+                p.routed = routed;
+                if !routed {
+                    p.ip = None;
+                }
+                Ok(())
+            })
+        }
         Id::VtpModeCmd => {
             let mode = match arg(0).to_ascii_lowercase().as_str() {
                 "server" => packetcraft_model::VtpMode::Server,
@@ -1905,6 +1930,13 @@ impl Ctx<'_> {
         let [r] = ifs.as_slice() else { return Err("% Set addresses one interface at a time".into()) };
         let r = *r;
         let d = self.d()?;
+        if d.kind == DeviceKind::Switch && d.ports.get(r.port).is_some_and(|p| !p.routed) {
+            return Err("% This is a switch port: `no switchport` first (multilayer switches), or address a VLAN interface".into());
+        }
+        // VLAN interfaces count too on a switch.
+        if let Some(s) = d.svis.iter().find(|s| s.ip.is_some_and(|ip| ip.overlaps(net))) {
+            return Err(format!("% {} overlaps Vlan{}", net.network(), s.vlan));
+        }
         // No two interfaces of one router on overlapping subnets.
         for (i, p) in d.ports.iter().enumerate() {
             let others = std::iter::once((None, p.ip)).chain(p.subifs.iter().map(|s| (Some(s.number), s.ip)));
@@ -1933,6 +1965,9 @@ impl Ctx<'_> {
     }
 
     fn ip_route(&mut self, net: &str, mask: &str, target: Option<&str>, add: bool) -> R {
+        if self.d()?.kind == DeviceKind::Switch && !self.d()?.ip_routing {
+            return Err("% Static routes need `ip routing` (multilayer switches); a plain switch uses `ip default-gateway`".into());
+        }
         let n = Ipv4Net::with_mask(parse_ip(net).map_err(|e| format!("% {e}"))?, parse_ip(mask).map_err(|e| format!("% {e}"))?)
             .map_err(|e| format!("% {e}"))?;
         if n.network() != n {

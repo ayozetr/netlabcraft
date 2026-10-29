@@ -67,7 +67,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show running-config` | privileged | router, switch | Current configuration |
 | `show startup-config` | privileged | router, switch | Saved configuration |
 | `show ip interface brief` | user, privileged | router, switch | Interface addresses and status |
-| `show ip route` | user, privileged | router | Routing table |
+| `show ip route` | user, privileged | router, switch | Routing table |
 | `show ip arp` | user, privileged | router | ARP cache |
 | `show arp` | user, privileged | router | ARP cache |
 | `show interfaces` | user, privileged | router, switch | Interface details |
@@ -89,9 +89,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `interface range <interfaces>` | config | router, switch | Configure several interfaces |
 | `interface <interface>` | config | router, switch | Configure an interface |
 | `no interface <subinterface>` | config | router | Delete a subinterface |
-| `ip route A.B.C.D MASK <next hop or interface>` | config | router | Add a static route |
-| `no ip route A.B.C.D MASK <next hop or interface>` | config | router | Remove a static route |
-| `no ip route A.B.C.D MASK` | config | router | Remove static routes |
+| `ip route A.B.C.D MASK <next hop or interface>` | config | router, switch | Add a static route |
+| `no ip route A.B.C.D MASK <next hop or interface>` | config | router, switch | Remove a static route |
+| `no ip route A.B.C.D MASK` | config | router, switch | Remove static routes |
 | `vlan <1-4094>[,-]` | config | switch | Create or edit VLANs |
 | `no vlan <1-4094>[,-]` | config | switch | Delete VLANs |
 | `do <command>` | config, interface, subinterface, vlan | router, switch | Run a privileged command |
@@ -145,6 +145,10 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no interface vlan <1-4094>` | config | switch | Delete a VLAN interface |
 | `ip default-gateway A.B.C.D` | config | switch | Gateway for the switch's own traffic |
 | `no ip default-gateway` | config | switch | Remove the gateway |
+| `no switchport` | interface | switch | Make this a routed port (multilayer switches) |
+| `switchport` | interface | switch | Make this a switch port again |
+| `ip address A.B.C.D MASK` | interface | switch | Address a routed port |
+| `no ip address` | interface | switch | Remove a routed port's address |
 | `switchport mode access` | interface | switch | Carry one VLAN, untagged |
 | `switchport mode trunk` | interface | switch | Carry many VLANs, 802.1Q tagged |
 | `switchport access vlan <1-4094>` | interface | switch | Set the access VLAN |
@@ -193,6 +197,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ipv6 interface brief` | user, privileged | router | IPv6 addresses and status |
 | `show ipv6 route` | user, privileged | router | IPv6 routing table |
 | `show ipv6 neighbors` | user, privileged | router | IPv6 neighbour cache |
+| `ip routing` | config | switch | Route between VLAN interfaces and routed ports |
+| `no ip routing` | config | switch | Stop routing |
 | `vtp mode {server\|client\|transparent}` | config | switch | How this switch takes part in VTP |
 | `vtp domain WORD` | config | switch | The VTP domain this switch belongs to |
 | `vtp password WORD` | config | switch | Only switches with the same password share VLANs |

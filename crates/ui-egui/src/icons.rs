@@ -6,6 +6,22 @@ use packetcraft_model::DeviceKind;
 
 use crate::theme::{Tokens, device_color, shade};
 
+/// The mark a multilayer switch carries over its switch icon: a small router drum (it routes).
+pub fn multilayer_mark(p: &Painter, rect: Rect) {
+    let w = rect.width();
+    let c = device_color(DeviceKind::Router);
+    let center = pos2(rect.center().x + w * 0.02, rect.center().y - w * 0.3);
+    let (rx, ry) = (w * 0.3, w * 0.12);
+    p.add(Shape::convex_polygon(
+        ellipse_points(center, rx, ry, 0.0, std::f32::consts::TAU),
+        shade(c, 1.3),
+        Stroke::new((w / 30.0).max(1.0), shade(c, 0.6)),
+    ));
+    let s = Stroke::new((w / 28.0).max(1.0), Color32::WHITE);
+    arrow(p, center + vec2(-rx * 0.15, 0.0), center + vec2(-rx * 0.8, 0.0), s);
+    arrow(p, center + vec2(rx * 0.15, 0.0), center + vec2(rx * 0.8, 0.0), s);
+}
+
 /// Draws a device icon filling `rect`.
 pub fn device(p: &Painter, rect: Rect, kind: DeviceKind, _tk: &Tokens) {
     let c = device_color(kind);

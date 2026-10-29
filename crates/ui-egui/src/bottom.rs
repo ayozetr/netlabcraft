@@ -41,6 +41,7 @@ struct Tile {
     kind: Option<DeviceKind>,
     tool: Tool,
     short: &'static str,
+    multilayer: bool,
     long: &'static str,
 }
 
@@ -57,13 +58,21 @@ fn sub_of(kind: DeviceKind) -> Sub {
 fn tiles() -> Vec<Tile> {
     let mut t: Vec<Tile> = models::MODELS
         .iter()
-        .map(|m| Tile { sub: sub_of(m.kind), kind: Some(m.kind), tool: Tool::Place(m.id), short: m.label, long: m.description })
+        .map(|m| Tile {
+            sub: sub_of(m.kind),
+            kind: Some(m.kind),
+            tool: Tool::Place(m.id),
+            short: m.label,
+            long: m.description,
+            multilayer: m.multilayer(),
+        })
         .collect();
     t.push(Tile {
         sub: Sub::Cables,
         kind: None,
         tool: Tool::Cable,
         short: "Copper",
+        multilayer: false,
         long: "Copper Ethernet cable (every port is auto-MDIX: one cable fits all)",
     });
     t
@@ -182,7 +191,12 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                         );
                         let icon = egui::Rect::from_center_size(rect.center_top() + vec2(0.0, 22.0), vec2(36.0, 36.0));
                         match m.kind {
-                            Some(k) => icons::device(&p, icon, k, &tk),
+                            Some(k) => {
+                                icons::device(&p, icon, k, &tk);
+                                if m.multilayer {
+                                    icons::multilayer_mark(&p, icon);
+                                }
+                            }
                             None => icons::glyph(&p, icon.shrink(4.0), Glyph::Cable, tk.cable),
                         }
                         p.text(

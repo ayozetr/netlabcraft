@@ -225,6 +225,10 @@ pub enum Id {
     ShowIpv6IntBrief,
     ShowIpv6Route,
     ShowIpv6Neighbors,
+    IpRouting,
+    NoIpRouting,
+    NoSwitchport,
+    SwitchportOn,
 }
 
 use Tok::{Arg, K, Rest};
@@ -254,7 +258,7 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowRun, Modes::EXEC, Modes::BOTH, [K("show"), K("running-config")], "Current configuration"),
     spec!(ShowStartup, Modes::EXEC, Modes::BOTH, [K("show"), K("startup-config")], "Saved configuration"),
     spec!(ShowIpIntBrief, EXECS, Modes::BOTH, [K("show"), K("ip"), K("interface"), K("brief")], "Interface addresses and status"),
-    spec!(ShowIpRoute, EXECS, Modes::ROUTER, [K("show"), K("ip"), K("route")], "Routing table"),
+    spec!(ShowIpRoute, EXECS, Modes::BOTH, [K("show"), K("ip"), K("route")], "Routing table"),
     spec!(ShowArp, EXECS, Modes::ROUTER, [K("show"), K("ip"), K("arp")], "ARP cache"),
     spec!(ShowArp, EXECS, Modes::ROUTER, [K("show"), K("arp")], "ARP cache"),
     spec!(ShowInterfaces, EXECS, Modes::BOTH, [K("show"), K("interfaces")], "Interface details"),
@@ -279,18 +283,18 @@ pub static SPECS: &[Spec] = &[
     spec!(
         IpRoute,
         Modes::CONFIG,
-        Modes::ROUTER,
+        Modes::BOTH,
         [K("ip"), K("route"), Arg("A.B.C.D"), Arg("MASK"), Rest("<next hop or interface>")],
         "Add a static route"
     ),
     spec!(
         NoIpRoute,
         Modes::CONFIG,
-        Modes::ROUTER,
+        Modes::BOTH,
         [K("no"), K("ip"), K("route"), Arg("A.B.C.D"), Arg("MASK"), Rest("<next hop or interface>")],
         "Remove a static route"
     ),
-    spec!(NoIpRoute, Modes::CONFIG, Modes::ROUTER, [K("no"), K("ip"), K("route"), Arg("A.B.C.D"), Arg("MASK")], "Remove static routes"),
+    spec!(NoIpRoute, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("route"), Arg("A.B.C.D"), Arg("MASK")], "Remove static routes"),
     spec!(Vlan, Modes::CONFIG, Modes::SWITCH, [K("vlan"), Arg("<1-4094>[,-]")], "Create or edit VLANs"),
     spec!(NoVlan, Modes::CONFIG, Modes::SWITCH, [K("no"), K("vlan"), Arg("<1-4094>[,-]")], "Delete VLANs"),
     spec!(Do, Modes::CONFIG.or(SUBMODES), Modes::BOTH, [K("do"), Rest("<command>")], "Run a privileged command"),
@@ -410,6 +414,10 @@ pub static SPECS: &[Spec] = &[
     spec!(NoInterfaceVlan, Modes::CONFIG, Modes::SWITCH, [K("no"), K("interface"), K("vlan"), Arg("<1-4094>")], "Delete a VLAN interface"),
     spec!(DefaultGateway, Modes::CONFIG, Modes::SWITCH, [K("ip"), K("default-gateway"), Arg("A.B.C.D")], "Gateway for the switch's own traffic"),
     spec!(NoDefaultGateway, Modes::CONFIG, Modes::SWITCH, [K("no"), K("ip"), K("default-gateway")], "Remove the gateway"),
+    spec!(NoSwitchport, Modes::IF, Modes::SWITCH, [K("no"), K("switchport")], "Make this a routed port (multilayer switches)"),
+    spec!(SwitchportOn, Modes::IF, Modes::SWITCH, [K("switchport")], "Make this a switch port again"),
+    spec!(IpAddress, Modes::IF, Modes::SWITCH, [K("ip"), K("address"), Arg("A.B.C.D"), Arg("MASK")], "Address a routed port"),
+    spec!(NoIpAddress, Modes::IF, Modes::SWITCH, [K("no"), K("ip"), K("address")], "Remove a routed port's address"),
     spec!(SwModeAccess, Modes::IF, Modes::SWITCH, [K("switchport"), K("mode"), K("access")], "Carry one VLAN, untagged"),
     spec!(SwModeTrunk, Modes::IF, Modes::SWITCH, [K("switchport"), K("mode"), K("trunk")], "Carry many VLANs, 802.1Q tagged"),
     spec!(SwAccessVlan, Modes::IF, Modes::SWITCH, [K("switchport"), K("access"), K("vlan"), Arg("<1-4094>")], "Set the access VLAN"),
@@ -506,6 +514,8 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowIpv6IntBrief, EXECS, Modes::ROUTER, [K("show"), K("ipv6"), K("interface"), K("brief")], "IPv6 addresses and status"),
     spec!(ShowIpv6Route, EXECS, Modes::ROUTER, [K("show"), K("ipv6"), K("route")], "IPv6 routing table"),
     spec!(ShowIpv6Neighbors, EXECS, Modes::ROUTER, [K("show"), K("ipv6"), K("neighbors")], "IPv6 neighbour cache"),
+    spec!(IpRouting, Modes::CONFIG, Modes::SWITCH, [K("ip"), K("routing")], "Route between VLAN interfaces and routed ports"),
+    spec!(NoIpRouting, Modes::CONFIG, Modes::SWITCH, [K("no"), K("ip"), K("routing")], "Stop routing"),
     spec!(VtpModeCmd, Modes::CONFIG, Modes::SWITCH, [K("vtp"), K("mode"), Arg("{server|client|transparent}")], "How this switch takes part in VTP"),
     spec!(VtpDomain, Modes::CONFIG, Modes::SWITCH, [K("vtp"), K("domain"), Arg("WORD")], "The VTP domain this switch belongs to"),
     spec!(VtpPassword, Modes::CONFIG, Modes::SWITCH, [K("vtp"), K("password"), Arg("WORD")], "Only switches with the same password share VLANs"),
@@ -794,7 +804,7 @@ mod tests {
         // Mode and device gate commands.
         assert!(resolve(&["configure", "terminal"], Modes::USER, R).is_err());
         assert!(resolve(&["vlan", "10"], Modes::CONFIG, R).is_err());
-        assert!(resolve(&["ip", "address", "1.1.1.1", "255.0.0.0"], Modes::IF, S).is_err());
+        assert!(resolve(&["router", "ospf", "1"], Modes::CONFIG, S).is_err());
     }
 
     #[test]

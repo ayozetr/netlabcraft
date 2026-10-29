@@ -19,6 +19,9 @@ pub fn running_config(d: &Device) -> String {
         let _ = writeln!(s, "service password-encryption");
     }
     let _ = writeln!(s, "!\nhostname {}\n!", d.name);
+    if d.ip_routing {
+        let _ = writeln!(s, "ip routing\n!");
+    }
     if d.ipv6_routing {
         let _ = writeln!(s, "ipv6 unicast-routing\n!");
     }
@@ -97,7 +100,10 @@ pub fn running_config(d: &Device) -> String {
         if !p.description.is_empty() {
             let _ = writeln!(s, " description {}", p.description);
         }
-        if d.kind == DeviceKind::Switch {
+        if d.kind == DeviceKind::Switch && p.routed {
+            let _ = writeln!(s, " no switchport");
+        }
+        if d.kind == DeviceKind::Switch && !p.routed {
             let sp = &p.switchport;
             if sp.access_vlan != VlanId::DEFAULT {
                 let _ = writeln!(s, " switchport access vlan {}", sp.access_vlan);
@@ -330,6 +336,13 @@ pub fn ip_int_brief(t: &Topology, d: &Device) -> String {
 pub fn ip_route(t: &Topology, d: &Device) -> String {
     let table = routing_table(t, d);
     let mut s = String::from("Codes: C connected, L local, S static, O OSPF, O*E2 OSPF external default\n\n");
+    if d.kind == DeviceKind::Switch && !d.ip_routing {
+        let _ = writeln!(
+            s,
+            "IP routing is off: this switch only reaches other networks through its default gateway ({})\n",
+            d.gateway.map_or("not set".to_string(), |g| g.to_string())
+        );
+    }
     let default = table.iter().find(|r| r.net.prefix == 0);
     match default {
         Some(r) => {

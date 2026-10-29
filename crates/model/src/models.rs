@@ -21,6 +21,13 @@ pub struct Model {
     pub ports: &'static [PortRun],
 }
 
+impl Model {
+    /// A multilayer switch: can route (`ip routing`) and have routed ports (`no switchport`).
+    pub fn multilayer(&self) -> bool {
+        self.id.starts_with("Switch-ML")
+    }
+}
+
 const fn run(prefix: &'static str, first: u32, last: u32) -> PortRun {
     PortRun { prefix, first, last }
 }
@@ -59,6 +66,13 @@ pub static MODELS: &[Model] = &[
         kind: DeviceKind::Switch,
         label: "Switch-24",
         description: "Switch with 24 Fast Ethernet + 2 Gigabit Ethernet ports",
+        ports: &[run("FastEthernet0/", 1, 24), run("GigabitEthernet0/", 1, 2)],
+    },
+    Model {
+        id: "Switch-ML-24",
+        kind: DeviceKind::Switch,
+        label: "Switch-ML-24",
+        description: "Multilayer switch with 24 Fast Ethernet + 2 Gigabit Ethernet ports: switches, and routes with `ip routing`",
         ports: &[run("FastEthernet0/", 1, 24), run("GigabitEthernet0/", 1, 2)],
     },
     Model {
