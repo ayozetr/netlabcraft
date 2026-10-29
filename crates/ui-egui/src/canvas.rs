@@ -208,10 +208,27 @@ pub fn note_editor(app: &mut PacketApp, ctx: &egui::Context) {
 fn hit_link(app: &PacketApp, view: &View, p: Pos2) -> Option<End> {
     let t = &app.session.topology;
     t.links.iter().find_map(|l| {
-        let (a, b) = (t.device(l.a.device)?, t.device(l.b.device)?);
-        let (pa, pb) = (view.screen(a.x, a.y), view.screen(b.x, b.y));
+        let (pa, pb) = cable_ends(t, view, l)?;
         (segment_distance(p, pa, pb) < 6.0).then_some(l.a)
     })
+}
+
+/// Where a cable is drawn. Cables between the same two devices (an EtherChannel, or a
+/// redundant pair) sit side by side instead of on top of each other.
+fn cable_ends(t: &packetcraft_model::Topology, view: &View, l: &packetcraft_model::Link) -> Option<(Pos2, Pos2)> {
+    let (a, b) = (t.device(l.a.device)?, t.device(l.b.device)?);
+    let (pa, pb) = (view.screen(a.x, a.y), view.screen(b.x, b.y));
+    let pair = |x: &packetcraft_model::Link| (x.a.device.min(x.b.device), x.a.device.max(x.b.device));
+    let same: Vec<&packetcraft_model::Link> = t.links.iter().filter(|x| pair(x) == pair(l)).collect();
+    let len = (pb - pa).length();
+    if same.len() < 2 || len < 1.0 {
+        return Some((pa, pb));
+    }
+    let k = same.iter().position(|x| *x == l)?;
+    // The side is measured from the lower device id, so both ends agree.
+    let d = if l.a.device <= l.b.device { (pb - pa) / len } else { (pa - pb) / len };
+    let off = vec2(-d.y, d.x) * (k as f32 - (same.len() - 1) as f32 / 2.0) * 18.0 * view.zoom;
+    Some((pa + off, pb + off))
 }
 
 fn segment_distance(p: Pos2, a: Pos2, b: Pos2) -> f32 {
@@ -340,9 +357,14 @@ fn draw_links(app: &mut PacketApp, painter: &egui::Painter, view: &View, tk: &To
     let ends: Vec<End> = app.session.topology.links.iter().flat_map(|l| [l.a, l.b]).collect();
     let blocked: Vec<End> = ends.into_iter().filter(|e| stp_blocked(app, *e)).collect();
     let t = &app.session.topology;
+    let mut lights: Vec<(End, Pos2)> = Vec::new();
     for l in &t.links {
-        let (Some(a), Some(b)) = (t.device(l.a.device), t.device(l.b.device)) else { continue };
-        let (pa, pb) = (view.screen(a.x, a.y), view.screen(b.x, b.y));
+        let Some((pa, pb)) = cable_ends(t, view, l) else { continue };
+        // How far this cable sits from the straight line between its devices (side-by-side cables).
+        let spread = match (t.device(l.a.device), t.device(l.b.device)) {
+            (Some(a), Some(b)) => ((pa - view.screen(a.x, a.y)) + (pb - view.screen(b.x, b.y))) * 0.5,
+            _ => Vec2::ZERO,
+        };
         painter.line_segment([pa, pb], Stroke::new((2.2 * view.zoom).max(1.0), tk.cable));
         let len = (pb - pa).length();
         if len < 1.0 {
@@ -354,6 +376,7 @@ fn draw_links(app: &mut PacketApp, painter: &egui::Painter, view: &View, tk: &To
             let below = (dir * sign).y.max(0.0);
             let inset = (ICON * 0.5 + 26.0 + 40.0 * below * below) * view.zoom;
             let light = at + dir * sign * inset.min(len * 0.45);
+            lights.push((end, light));
             let color = if !port_up(t, end) {
                 tk.link_down
             } else if blocked.contains(&end) {
@@ -372,9 +395,29 @@ fn draw_links(app: &mut PacketApp, painter: &egui::Painter, view: &View, tk: &To
             ));
             if view.zoom >= 0.6 {
                 let name = t.device(end.device).and_then(|d| d.ports.get(end.port)).map(|p| ifname::short(&p.name)).unwrap_or_default();
-                let side = if n.y > 0.0 { -n } else { n };
+                // Side by side cables label outwards; a lone cable labels above.
+                let side = if spread.length() > 0.5 {
+                    if n.dot(spread) > 0.0 { n } else { -n }
+                } else if n.y > 0.0 {
+                    -n
+                } else {
+                    n
+                };
                 painter.text(light + side * 14.0 + d * 8.0, Align2::CENTER_CENTER, name, FontId::proportional(16.0 * view.zoom.min(1.3)), tk.text);
             }
+        }
+    }
+    // An EtherChannel: a ring around its bundled cables, next to each switch.
+    for d in t.devices.iter().filter(|d| d.kind == packetcraft_model::DeviceKind::Switch) {
+        for c in packetcraft_sim::channel::channels(t, d) {
+            let pts: Vec<Pos2> =
+                c.bundled().iter().filter_map(|p| lights.iter().find(|(e, _)| e.device == d.id && e.port == *p).map(|(_, at)| *at)).collect();
+            if pts.len() < 2 {
+                continue;
+            }
+            let center = pts.iter().fold(Vec2::ZERO, |s, p| s + p.to_vec2()) / pts.len() as f32;
+            let r = pts.iter().map(|p| (p.to_vec2() - center).length()).fold(0.0, f32::max) + 9.0 * view.zoom;
+            painter.circle_stroke(center.to_pos2(), r, Stroke::new((1.6 * view.zoom).max(1.0), tk.text));
         }
     }
 }
@@ -409,7 +452,13 @@ fn draw_packet(app: &PacketApp, ui: &Ui, painter: &egui::Painter, view: &View, t
     let t = &app.session.topology;
     let Some(ev) = app.session.sim.trace().iter().find(|e| e.id == sel) else { return };
     let (Some(a), Some(b)) = (t.device(ev.from.device), t.device(ev.to.device)) else { return };
-    let (pa, pb) = (view.screen(a.x, a.y), view.screen(b.x, b.y));
+    let cable = t.links.iter().find(|l| l.a == ev.from || l.b == ev.from).and_then(|l| cable_ends(t, view, l));
+    let (pa, pb) = match cable {
+        // Along the cable it took, from the sender's end.
+        Some((x, y)) if t.links.iter().any(|l| l.a == ev.from) => (x, y),
+        Some((x, y)) => (y, x),
+        None => (view.screen(a.x, a.y), view.screen(b.x, b.y)),
+    };
     let progress = app.ui.events.progress(ui.input(|i| i.time));
     let at = pa + (pb - pa) * progress;
     painter.line_segment([pa, pb], Stroke::new((4.0 * view.zoom).max(2.0), theme::protocol_color(ev.protocol).gamma_multiply(0.5)));

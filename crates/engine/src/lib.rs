@@ -98,6 +98,10 @@ impl Session {
         let before = self.topology.clone();
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| cmd::run(self, id, &params)));
         self.apply_sim_events();
+        // A new cable or trunk can join switches into a VTP domain.
+        if packetcraft_sim::vtp::sync(&mut self.topology) {
+            self.sim.topology_changed(&self.topology);
+        }
         match outcome {
             Ok(r) => r,
             Err(_) => {

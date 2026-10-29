@@ -1,5 +1,5 @@
 use packetcraft_core::DeviceId;
-use packetcraft_model::{DeviceKind, End, Topology};
+use packetcraft_model::{DeviceKind, End, SwitchportMode, Topology};
 use packetcraft_sim::Sim;
 
 use crate::grammar::{SPECS, Tok};
@@ -739,4 +739,102 @@ fn port_security_by_typing() {
     assert!(lab.run(a, "ping 10.0.0.3").contains("answered"));
     lab.run(s, "conf t\nint g0/1\nswitchport mode trunk");
     assert!(lab.try_run(s, "switchport port-security").contains("trunk"));
+}
+
+#[test]
+fn etherchannel_by_typing() {
+    let mut lab = Lab::new();
+    let s1 = lab.add(DeviceKind::Switch);
+    let s2 = lab.add(DeviceKind::Switch);
+    lab.cable(s1, "fa0/23", s2, "fa0/23");
+    lab.cable(s1, "fa0/24", s2, "fa0/24");
+    let a = lab.add(DeviceKind::Pc);
+    let b = lab.add(DeviceKind::Pc);
+    lab.cable(a, "fa0", s1, "fa0/1");
+    lab.cable(b, "fa0", s2, "fa0/1");
+    lab.run(a, "ipconfig 10.0.0.1 255.255.255.0");
+    lab.run(b, "ipconfig 10.0.0.2 255.255.255.0");
+    // LACP on both ends: one logical link, nothing blocked by spanning tree.
+    lab.run(s1, "en\nconf t\ninterface range fa0/23 - 24\nchannel-group 1 mode active\nend");
+    lab.run(s2, "en\nconf t\ninterface range fa0/23-24\nchannel-group 1 mode passive\nend");
+    let ec = lab.run(s1, "show etherchannel summary");
+    assert!(ec.contains("Port-channel1 (LACP), up, 2 of 2 ports bundled"), "{ec}");
+    let st = lab.run(s2, "show spanning-tree");
+    assert!(st.contains("Po1") && !st.contains("BLK") && !st.contains("Fa0/24"), "{st}");
+    assert!(st.contains("Po1        Root FWD   12"), "{st}");
+    assert!(lab.run(a, "ping 10.0.0.2").contains("4 answered"));
+    assert!(lab.run(s1, "show mac address-table").contains("Po1"));
+    // Settings on the port channel reach every member.
+    lab.run(s1, "conf t\ninterface port-channel 1\nswitchport mode trunk\nend");
+    lab.run(s2, "conf t\nint po1\nswitchport mode trunk\nend");
+    assert!(lab.t.device(s1).unwrap().ports.iter().filter(|p| p.channel.is_some()).all(|p| p.switchport.mode == SwitchportMode::Trunk));
+    assert!(lab.run(a, "ping 10.0.0.2").contains("4 answered"));
+    // One member cut: the bundle carries on.
+    lab.run(s1, "conf t\nint fa0/23\nshutdown\nend");
+    assert!(lab.run(s1, "show etherchannel").contains("1 of 2 ports bundled"));
+    assert!(lab.run(a, "ping 10.0.0.2").contains("4 answered"));
+    lab.run(s1, "conf t\nint fa0/23\nno shutdown\nend");
+    let run = lab.run(s1, "show run");
+    assert!(run.contains(" channel-group 1 mode active"), "{run}");
+    // passive with passive: no bundle; the ports work alone and spanning tree blocks one.
+    lab.run(s1, "conf t\ninterface range fa0/23 - 24\nno channel-group\nchannel-group 1 mode passive\nend");
+    let ec = lab.run(s1, "show etherchannel");
+    assert!(ec.contains("down, 0 of 2") && ec.contains("on its own"), "{ec}");
+    assert!(lab.run(s2, "show spanning-tree").contains("BLK"));
+    assert!(lab.run(a, "ping 10.0.0.2").contains("4 answered"));
+    // on against LACP: the ports are suspended, no path left.
+    lab.run(s1, "conf t\ninterface range fa0/23 - 24\nno channel-group\nchannel-group 1 mode on\nend");
+    assert!(lab.run(s1, "show etherchannel").contains("suspended"));
+    assert!(lab.run(a, "ping 10.0.0.2").contains("0 answered"));
+    // Mixing protocols in one group is refused; so is port security on a member.
+    lab.run(s1, "conf t\nint fa0/22");
+    assert!(lab.try_run(s1, "channel-group 1 mode desirable").contains("already uses"));
+    lab.run(s1, "exit\nint fa0/23\nswitchport mode access");
+    assert!(lab.try_run(s1, "switchport port-security").contains("EtherChannel"));
+    assert!(lab.try_run(s1, "exit").is_empty());
+    assert!(lab.try_run(s1, "interface port-channel 9").contains("no ports yet"));
+}
+
+#[test]
+fn vtp_by_typing() {
+    let mut lab = Lab::new();
+    let s1 = lab.add(DeviceKind::Switch);
+    let s2 = lab.add(DeviceKind::Switch);
+    let s3 = lab.add(DeviceKind::Switch);
+    let s4 = lab.add(DeviceKind::Switch);
+    // S1 server - S2 transparent - S3 client; S4 hangs off S3.
+    lab.cable(s1, "g0/1", s2, "g0/1");
+    lab.cable(s2, "g0/2", s3, "g0/1");
+    lab.cable(s3, "g0/2", s4, "g0/1");
+    for s in [s1, s2, s3, s4] {
+        lab.run(s, "en\nconf t\ninterface range g0/1 - 2\nswitchport mode trunk\nexit");
+    }
+    lab.run(s1, "vtp domain LAB\nvtp password clase\nvtp version 2\nvlan 10\nname Ventas\nvlan 20\nexit");
+    lab.run(s2, "vtp mode transparent\nvtp version 2\nvlan 3000\nexit");
+    lab.run(s3, "vtp mode client\nvtp domain LAB\nvtp password clase");
+    assert!(lab.try_run(s3, "vlan 30").contains("VTP client"));
+    let st = lab.run(s3, "do show vtp status");
+    assert!(st.contains("client") && st.contains("LAB") && st.contains("Revision            3"), "{st}");
+    let vl = lab.run(s3, "do show vlan brief");
+    assert!(vl.contains("Ventas") && vl.contains("20") && !vl.contains("3000"), "{vl}");
+    // The transparent switch keeps its own database.
+    assert!(!lab.run(s2, "do show vlan brief").contains("Ventas"));
+    // S4, a server with no domain, joins LAB but its password differs: no VLANs.
+    assert!(lab.run(s4, "do show vtp status").contains("LAB"));
+    assert!(!lab.run(s4, "do show vlan brief").contains("Ventas"));
+    lab.run(s4, "vtp password clase");
+    assert!(lab.run(s4, "do show vlan brief").contains("Ventas"));
+    // A change on the server reaches everyone in the domain.
+    lab.run(s1, "no vlan 20");
+    assert!(!lab.run(s3, "do show vlan brief").contains("VLAN0020"));
+    // The classic accident: a switch with a higher revision overwrites the domain.
+    lab.run(s4, "vlan 99\nvlan 98\nvlan 97\nvlan 96\nexit\nno vlan 10");
+    assert!(lab.run(s1, "do show vtp status").contains("Revision            9"));
+    assert!(!lab.run(s1, "do show vlan brief").contains("Ventas"));
+    assert!(lab.try_run(s1, "vlan 2000").contains("transparent"));
+    // A client's VLANs are not in its configuration, and survive a reload.
+    lab.run(s3, "end\ncopy running-config startup-config");
+    assert!(!lab.run(s3, "show running-config").contains("vlan 99"));
+    lab.run(s3, "reload");
+    assert!(lab.run(s3, "en\nshow vlan brief").contains("VLAN0099"));
 }

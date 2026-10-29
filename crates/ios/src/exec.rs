@@ -348,6 +348,8 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, li
     };
     let changed = t.device(dev).cloned() != before;
     if changed {
+        // VLAN or VTP changes reach the rest of the domain at once.
+        packetcraft_sim::vtp::sync(t);
         sim.topology_changed(t);
     }
     Outcome { output, changed, clear: false }
@@ -412,6 +414,7 @@ pub fn apply_config(t: &mut Topology, sim: &mut Sim, dev: DeviceId, config: &str
             cli.mode = Mode::Config;
         }
     }
+    packetcraft_sim::vtp::sync(t);
     sim.topology_changed(t);
     failed
 }
@@ -530,6 +533,23 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(String::new())
         }
         Id::Interface => {
+            if let Some(n) = port_channel(arg(0)) {
+                let n = n?;
+                let members: Vec<IfRef> = c
+                    .d()?
+                    .ports
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, p)| p.channel.is_some_and(|g| g.number == n))
+                    .map(|(port, _)| IfRef { port, sub: None })
+                    .collect();
+                if members.is_empty() {
+                    return Err(format!("% Port-channel{n} has no ports yet: put them in with `channel-group {n} mode ...`"));
+                }
+                // Settings typed here go to every member, which keeps the bundle consistent.
+                c.cli.mode = Mode::Iface(members);
+                return Ok(String::new());
+            }
             if let Some(v) = vlan_iface(arg(0)) {
                 let v = v?;
                 if c.d()?.kind != DeviceKind::Switch {
@@ -565,9 +585,15 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let set = VlanSet::parse_list(arg(0)).map_err(|e| format!("% {e}"))?;
             let ids: Vec<VlanId> = set.iter().collect();
             let d = c.dm()?;
+            let missing = ids.iter().any(|v| !d.vlans.contains_key(v));
+            if missing {
+                vtp_may_edit(d, &ids)?;
+            }
+            let before = d.vlans.clone();
             for v in &ids {
                 d.vlans.entry(*v).or_insert_with(|| Device::default_vlan_name(*v));
             }
+            vtp_bump(d, &before);
             c.cli.mode = Mode::Vlan(ids);
             Ok(String::new())
         }
@@ -577,11 +603,57 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 return Err("% VLAN 1 is the default VLAN and can't be deleted".into());
             }
             let d = c.dm()?;
+            let ids: Vec<VlanId> = set.iter().collect();
+            vtp_may_edit(d, &ids)?;
+            let before = d.vlans.clone();
             for v in set.iter() {
                 d.vlans.remove(&v);
             }
+            vtp_bump(d, &before);
             Ok(String::new())
         }
+        Id::VtpModeCmd => {
+            let mode = match arg(0).to_ascii_lowercase().as_str() {
+                "server" => packetcraft_model::VtpMode::Server,
+                "client" => packetcraft_model::VtpMode::Client,
+                "transparent" => packetcraft_model::VtpMode::Transparent,
+                _ => return Err("% server, client or transparent".into()),
+            };
+            let d = c.dm()?;
+            if mode != packetcraft_model::VtpMode::Transparent && d.vlans.keys().any(|v| v.get() > packetcraft_model::VTP_MAX_VLAN) {
+                return Err("% Delete the VLANs above 1005 first: only a transparent switch can keep them".into());
+            }
+            // Leaving or entering transparent mode starts the database revision again.
+            if (mode == packetcraft_model::VtpMode::Transparent) != (d.vtp.mode == packetcraft_model::VtpMode::Transparent) {
+                d.vtp.revision = 0;
+            }
+            d.vtp.mode = mode;
+            Ok(format!("This switch is now a VTP {}.", mode.name()))
+        }
+        Id::VtpDomain => {
+            let name: String = arg(0).chars().take(32).collect();
+            let d = c.dm()?;
+            if d.vtp.domain != name {
+                d.vtp.domain = name.clone();
+                d.vtp.revision = 0;
+            }
+            Ok(format!("VTP domain set to {name}."))
+        }
+        Id::VtpPassword | Id::NoVtpPassword => {
+            let pw = (spec.id == Id::VtpPassword).then(|| arg(0).chars().take(64).collect::<String>());
+            c.dm()?.vtp.password = pw;
+            Ok(String::new())
+        }
+        Id::VtpVersion => {
+            let v: u8 = arg(0).parse().ok().filter(|v| (1..=2).contains(v)).ok_or("% Version 1 or 2")?;
+            c.dm()?.vtp.version = v;
+            Ok(String::new())
+        }
+        Id::ShowVtpStatus => Ok(render::vtp(c.d()?)),
+        Id::ShowVtpPassword => Ok(match &c.d()?.vtp.password {
+            Some(p) => format!("VTP password: {p}"),
+            None => "No VTP password is set.".into(),
+        }),
         Id::Do => {
             let saved = std::mem::replace(&mut c.cli.mode, Mode::Exec);
             let r = dispatch(c.t, c.sim, c.dev, c.cli, arg(0));
@@ -792,6 +864,40 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             line.transport = Some(list);
             Ok(String::new())
         }
+        Id::ChannelGroup | Id::NoChannelGroup => {
+            let group = if spec.id == Id::ChannelGroup {
+                let n = arg(0).parse::<u16>().ok().filter(|n| (1..=packetcraft_model::MAX_CHANNEL_GROUP).contains(n)).ok_or("% The group is 1-48")?;
+                let mode = packetcraft_model::ChannelMode::parse(arg(1)).ok_or("% on, active, passive, desirable or auto")?;
+                Some(packetcraft_model::ChannelGroup { number: n, mode })
+            } else {
+                None
+            };
+            // Every port of a group speaks the same protocol.
+            if let Some(g) = group {
+                let mine: Vec<usize> = match &c.cli.mode {
+                    Mode::Iface(ifs) => ifs.iter().map(|r| r.port).collect(),
+                    _ => Vec::new(),
+                };
+                let clash = c.d()?.ports.iter().enumerate().find_map(|(i, p)| {
+                    let o = p.channel.filter(|o| o.number == g.number && !mine.contains(&i))?;
+                    (o.mode.protocol() != g.mode.protocol()).then(|| (p.name.clone(), o.mode))
+                });
+                if let Some((name, m)) = clash {
+                    return Err(format!("% Port-channel{} already uses {} ({name} is `mode {}`)", g.number, m.protocol(), m.name()));
+                }
+            }
+            c.each_if(|p, sub| {
+                if sub.is_some() {
+                    return Err("% EtherChannel is for physical switch ports".into());
+                }
+                if group.is_some() && p.port_security.is_some() {
+                    return Err(format!("% {} has port security: a channel member can't", p.name));
+                }
+                p.channel = group;
+                Ok(())
+            })
+        }
+        Id::ShowEtherchannel => Ok(render::etherchannel(c.t, c.d()?)),
         Id::PortSecurity | Id::NoPortSecurity | Id::PortSecMax | Id::PortSecViolation | Id::PortSecSticky | Id::PortSecMac => {
             let max = if spec.id == Id::PortSecMax {
                 Some(arg(0).parse::<u16>().ok().filter(|n| (1..=132).contains(n)).ok_or("% The maximum is 1-132")?)
@@ -818,6 +924,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 }
                 if p.switchport.mode == SwitchportMode::Trunk {
                     return Err(format!("% {} is a trunk: port security needs `switchport mode access`", p.name));
+                }
+                if p.channel.is_some() {
+                    return Err(format!("% {} is in an EtherChannel: port security can't be used there", p.name));
                 }
                 let ps = p.port_security.get_or_insert_with(packetcraft_model::PortSecurity::default);
                 if let Some(m) = max {
@@ -1368,10 +1477,13 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let ids = ids.clone();
             let name: String = arg(0).split_whitespace().next().unwrap_or("").chars().take(32).collect();
             let d = c.dm()?;
+            vtp_may_edit(d, &ids)?;
+            let before = d.vlans.clone();
             for v in ids {
                 let n = if spec.id == Id::VlanName { name.clone() } else { Device::default_vlan_name(v) };
                 d.vlans.insert(v, n);
             }
+            vtp_bump(d, &before);
             Ok(String::new())
         }
     }
@@ -1773,5 +1885,40 @@ impl Ctx<'_> {
                 Ok("Restarted with factory settings (no saved configuration).".into())
             }
         }
+    }
+}
+
+/// `port-channel 1`, `Port-channel1`, `po1`: the group number, if the name is a port channel.
+fn port_channel(name: &str) -> Option<Result<u16, String>> {
+    let compact: String = name.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_ascii_lowercase();
+    let digits = ["port-channel", "port-chan", "port-ch", "po"].iter().find_map(|p| compact.strip_prefix(p))?;
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    Some(
+        digits
+            .parse::<u16>()
+            .ok()
+            .filter(|n| (1..=packetcraft_model::MAX_CHANNEL_GROUP).contains(n))
+            .ok_or_else(|| "% Port channels are 1-48".to_string()),
+    )
+}
+
+/// Whether this switch may change these VLANs under its VTP mode.
+fn vtp_may_edit(d: &Device, ids: &[VlanId]) -> Result<(), String> {
+    use packetcraft_model::VtpMode;
+    if d.vtp.mode == VtpMode::Client {
+        return Err("% This switch is a VTP client: VLANs are changed on a server of the domain".into());
+    }
+    if d.vtp.mode == VtpMode::Server && ids.iter().any(|v| v.get() > packetcraft_model::VTP_MAX_VLAN) {
+        return Err("% VLANs 1006-4094 need `vtp mode transparent`".into());
+    }
+    Ok(())
+}
+
+/// A server's VLAN database changed: one revision more, so the domain takes it.
+fn vtp_bump(d: &mut Device, before: &std::collections::BTreeMap<VlanId, String>) {
+    if d.vtp.mode == packetcraft_model::VtpMode::Server && d.vlans != *before {
+        d.vtp.revision = d.vtp.revision.saturating_add(1);
     }
 }

@@ -36,6 +36,16 @@ pub static SAMPLES: &[Sample] = &[
         description: "Three switches wired in a loop: spanning tree blocks one port (amber light) and traffic still flows.",
     },
     Sample {
+        id: "etherchannel",
+        title: "EtherChannel between two switches",
+        description: "Two cables bundled with LACP into one logical link: spanning tree blocks nothing, and one cable can fail without a break.",
+    },
+    Sample {
+        id: "vtp",
+        title: "VTP: VLANs from one server",
+        description: "S1 is the VTP server of domain LAB; S2 and S3 are clients and learn its VLANs over the trunks.",
+    },
+    Sample {
         id: "ospf",
         title: "OSPF on three routers",
         description: "Three routers in a triangle learn each other's networks with OSPF; cut a link and the routes move.",
@@ -272,6 +282,55 @@ pub fn build(id: &str) -> Result<Topology> {
             b.type_in("PC2", "ipconfig 10.10.10.2 255.255.255.0")?;
             b.type_in("S1", "enable\nconfigure terminal\nspanning-tree vlan 1 root primary\nend")?;
             b.t.notes = "S1 is the root bridge. One port on the S2-S3 link blocks (amber). Compare `show spanning-tree` on each switch, then unplug S1-S3 and watch the blocked port start forwarding.".into();
+        }
+        "etherchannel" => {
+            b.add(DeviceKind::Switch, "S1", 180.0, 140.0)?;
+            b.add(DeviceKind::Switch, "S2", 540.0, 140.0)?;
+            b.cable("S1", "fa0/23", "S2", "fa0/23")?;
+            b.cable("S1", "fa0/24", "S2", "fa0/24")?;
+            for (pc, sw, port, x, n) in [
+                ("PC1", "S1", "fa0/1", 60.0, 1),
+                ("PC2", "S1", "fa0/2", 260.0, 2),
+                ("PC3", "S2", "fa0/1", 460.0, 3),
+                ("PC4", "S2", "fa0/2", 660.0, 4),
+            ] {
+                b.add(DeviceKind::Pc, pc, x, 320.0)?;
+                b.cable(pc, "fa0", sw, port)?;
+                b.type_in(pc, &format!("ipconfig 10.20.0.{n} 255.255.255.0"))?;
+            }
+            for (sw, mode) in [("S1", "active"), ("S2", "passive")] {
+                b.type_in(
+                    sw,
+                    &format!("enable\nconfigure terminal\ninterface range fa0/23 - 24\nswitchport mode trunk\nchannel-group 1 mode {mode}\nend"),
+                )?;
+            }
+            b.t.notes = "Fa0/23 and Fa0/24 form Port-channel1 (LACP: S1 active, S2 passive). Try `show etherchannel summary` and `show spanning-tree`, then shut one member down and ping again.".into();
+        }
+        "vtp" => {
+            b.add(DeviceKind::Switch, "S1", 360.0, 60.0)?;
+            b.add(DeviceKind::Switch, "S2", 180.0, 220.0)?;
+            b.add(DeviceKind::Switch, "S3", 540.0, 220.0)?;
+            b.cable("S1", "g0/1", "S2", "g0/1")?;
+            b.cable("S1", "g0/2", "S3", "g0/1")?;
+            for (pc, sw, x, ip) in [
+                ("PC1", "S2", 100.0, "10.10.0.1"),
+                ("PC2", "S2", 260.0, "10.20.0.1"),
+                ("PC3", "S3", 460.0, "10.10.0.2"),
+                ("PC4", "S3", 620.0, "10.20.0.2"),
+            ] {
+                b.add(DeviceKind::Pc, pc, x, 400.0)?;
+                let port = if pc == "PC1" || pc == "PC3" { "fa0/1" } else { "fa0/2" };
+                b.cable(pc, "fa0", sw, port)?;
+                b.type_in(pc, &format!("ipconfig {ip} 255.255.255.0"))?;
+            }
+            b.type_in("S1", "enable\nconfigure terminal\nvtp domain LAB\nvtp password clase\nvlan 10\nname Ventas\nvlan 20\nname Compras\nexit\ninterface range g0/1 - 2\nswitchport mode trunk\nend")?;
+            for sw in ["S2", "S3"] {
+                b.type_in(
+                    sw,
+                    "enable\nconfigure terminal\nvtp mode client\nvtp domain LAB\nvtp password clase\ninterface g0/1\nswitchport mode trunk\ninterface fa0/1\nswitchport access vlan 10\ninterface fa0/2\nswitchport access vlan 20\nend",
+                )?;
+            }
+            b.t.notes = "S1 creates VLANs 10 and 20; the clients S2 and S3 learn them (`show vtp status`, `show vlan brief`). Add `vlan 30` on S1 and look again on a client. PC1 reaches PC3 (VLAN 10), PC2 reaches PC4 (VLAN 20).".into();
         }
         "ospf" => {
             for (name, x, y) in [("R1", 120.0, 80.0), ("R2", 600.0, 80.0), ("R3", 360.0, 260.0)] {

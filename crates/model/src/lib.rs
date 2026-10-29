@@ -175,6 +175,120 @@ impl Default for PortSecurity {
     }
 }
 
+/// VLANs VTP shares (the normal range); 1006-4094 only exist on transparent switches.
+pub const VTP_MAX_VLAN: u16 = 1005;
+
+/// A switch's VTP settings and its VLAN database revision. Like the VLAN database itself they
+/// survive a reload.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Vtp {
+    pub mode: VtpMode,
+    /// Empty until set, or learned from a neighbour's advertisement.
+    #[serde(default)]
+    pub domain: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub password: Option<String>,
+    pub version: u8,
+    /// Goes up by one with every VLAN change on a server; the highest revision wins.
+    #[serde(default)]
+    pub revision: u32,
+}
+
+impl Default for Vtp {
+    fn default() -> Self {
+        Vtp { mode: VtpMode::Server, domain: String::new(), password: None, version: 1, revision: 0 }
+    }
+}
+
+impl Vtp {
+    pub fn is_default(&self) -> bool {
+        *self == Vtp::default()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum VtpMode {
+    /// Creates VLANs and advertises them.
+    Server,
+    /// Takes its VLANs from the domain's advertisements; can't create any.
+    Client,
+    /// Keeps its own VLANs; passes advertisements on.
+    Transparent,
+}
+
+impl VtpMode {
+    pub fn name(self) -> &'static str {
+        match self {
+            VtpMode::Server => "server",
+            VtpMode::Client => "client",
+            VtpMode::Transparent => "transparent",
+        }
+    }
+}
+
+/// Most EtherChannel groups on a switch.
+pub const MAX_CHANNEL_GROUP: u16 = 48;
+
+/// `channel-group N mode M`: the port belongs to EtherChannel `number`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ChannelGroup {
+    pub number: u16,
+    pub mode: ChannelMode,
+}
+
+/// How a port joins its EtherChannel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ChannelMode {
+    /// Bundled without negotiation; the other end must say `on` too.
+    On,
+    /// LACP, starts the negotiation.
+    Active,
+    /// LACP, answers an active end.
+    Passive,
+    /// PAgP, starts the negotiation.
+    Desirable,
+    /// PAgP, answers a desirable end.
+    Auto,
+}
+
+impl ChannelMode {
+    pub const ALL: [ChannelMode; 5] = [ChannelMode::On, ChannelMode::Active, ChannelMode::Passive, ChannelMode::Desirable, ChannelMode::Auto];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            ChannelMode::On => "on",
+            ChannelMode::Active => "active",
+            ChannelMode::Passive => "passive",
+            ChannelMode::Desirable => "desirable",
+            ChannelMode::Auto => "auto",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<ChannelMode> {
+        ChannelMode::ALL.into_iter().find(|m| m.name().eq_ignore_ascii_case(s))
+    }
+
+    /// The negotiation protocol: LACP (IEEE 802.1AX), PAgP, or none.
+    pub fn protocol(self) -> &'static str {
+        match self {
+            ChannelMode::On => "none",
+            ChannelMode::Active | ChannelMode::Passive => "LACP",
+            ChannelMode::Desirable | ChannelMode::Auto => "PAgP",
+        }
+    }
+
+    /// Whether two ends in these modes form a bundle.
+    pub fn bundles_with(self, other: ChannelMode) -> bool {
+        use ChannelMode::*;
+        matches!(
+            (self, other),
+            (On, On) | (Active, Active) | (Active, Passive) | (Passive, Active) | (Desirable, Desirable) | (Desirable, Auto) | (Auto, Desirable)
+        )
+    }
+}
+
 /// What a port does when one address too many shows up.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -244,6 +358,9 @@ pub struct Port {
     /// Switches: `switchport port-security`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub port_security: Option<PortSecurity>,
+    /// Switches: `channel-group N mode M`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel: Option<ChannelGroup>,
     /// Shut down by a port-security violation, until `shutdown` / `no shutdown`.
     #[serde(default)]
     pub err_disabled: bool,
@@ -330,6 +447,9 @@ pub struct Device {
     /// Switches: the VLAN database (id → name). VLAN 1 always exists.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub vlans: BTreeMap<VlanId, String>,
+    /// Switches: VTP.
+    #[serde(default, skip_serializing_if = "Vtp::is_default")]
+    pub vtp: Vtp,
     /// The saved configuration (`copy running-config startup-config`), as command lines.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub startup: Option<String>,
@@ -667,6 +787,7 @@ impl Device {
                 subifs: Vec::new(),
                 portfast: false,
                 port_security: None,
+                channel: None,
                 err_disabled: false,
                 helpers: Vec::new(),
                 access: AccessGroups::default(),
@@ -685,6 +806,7 @@ impl Device {
             gateway: None,
             routes: Vec::new(),
             vlans: BTreeMap::new(),
+            vtp: Vtp::default(),
             startup: None,
             dhcp_pools: Vec::new(),
             dhcp_excluded: Vec::new(),
@@ -710,7 +832,8 @@ impl Device {
         }
         self.gateway = None;
         self.routes.clear();
-        self.vlans = fresh.vlans;
+        // The VLAN database and VTP settings live apart from the configuration (as in a
+        // switch's flash) and survive a reload.
         self.dhcp_pools.clear();
         self.dhcp_excluded.clear();
         self.dhcp_client = false;

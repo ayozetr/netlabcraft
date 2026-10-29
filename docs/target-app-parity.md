@@ -11,7 +11,9 @@ _Updated 2026-10-29. Authoritative assessment against Cisco Packet Tracer as a C
 | Switch MAC learning, VLANs, trunks | yes | yes | |
 | STP / RSTP | yes | per-VLAN tree, computed instantly | No BPDU frames or timers yet. |
 | Port security | yes | yes | sticky, static, three violation modes, err-disabled |
-| EtherChannel, VTP, DTP | yes | no | |
+| EtherChannel (LACP, PAgP, static) | yes | yes | computed negotiation; members spread traffic by address |
+| VTP | yes | yes | computed; no pruning or version 3 |
+| DTP | yes | no | |
 | IPv4 static routing, router-on-a-stick | yes | yes | |
 | Switch VLAN interface (management SVI, default gateway) | yes | yes | |
 | Layer-3 switch (`ip routing`) | yes | no | |

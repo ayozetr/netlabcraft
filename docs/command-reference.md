@@ -178,6 +178,17 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `crypto key generate rsa [general-keys] modulus <360-4096>` | config | router, switch | Generate the SSH keys |
 | `crypto key zeroize rsa` | config | router, switch | Delete the SSH keys |
 | `ip ssh version {1\|2}` | config | router, switch | SSH protocol version |
+| `vtp mode {server\|client\|transparent}` | config | switch | How this switch takes part in VTP |
+| `vtp domain WORD` | config | switch | The VTP domain this switch belongs to |
+| `vtp password WORD` | config | switch | Only switches with the same password share VLANs |
+| `no vtp password` | config | switch | Remove the VTP password |
+| `vtp version {1\|2}` | config | switch | VTP version |
+| `show vtp status` | user, privileged | switch | VTP mode, domain and revision |
+| `show vtp password` | user, privileged | switch | The VTP password |
+| `channel-group <1-48> mode {on\|active\|passive\|desirable\|auto}` | interface | switch | Bundle this port into an EtherChannel |
+| `no channel-group` | interface | switch | Take the port out of its EtherChannel |
+| `show etherchannel` | user, privileged | switch | EtherChannels and their ports |
+| `show etherchannel summary` | user, privileged | switch | EtherChannels and their ports |
 | `switchport port-security` | interface | switch | Limit the MAC addresses on this port |
 | `no switchport port-security` | interface | switch | Turn port security off |
 | `switchport port-security maximum <1-132>` | interface | switch | Most addresses allowed |

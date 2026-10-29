@@ -40,6 +40,11 @@ fn every_sample_builds_and_its_hosts_reach_each_other() {
                 if sample.id == "nat-acl" && from == "Web" {
                     continue;
                 }
+                // The VTP lab has no router: each VLAN only reaches itself.
+                let own = hosts.iter().find(|(n, _)| n == from).map(|(_, a)| a.rsplit_once('.').map(|x| x.0.to_string()));
+                if sample.id == "vtp" && own != Some(ip.rsplit_once('.').map(|x| x.0.to_string())) {
+                    continue;
+                }
                 // Warm ARP everywhere (each router drops one packet per new neighbour), then expect a clean run.
                 s.execute("net.ping", json!({"from": from, "to": ip, "count": 6})).unwrap();
                 let r = s.execute("net.ping", json!({"from": from, "to": ip, "count": 3})).unwrap();

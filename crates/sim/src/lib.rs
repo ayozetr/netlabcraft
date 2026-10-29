@@ -22,10 +22,12 @@ use packetcraft_wire::dhcp::{self, Dhcp, DhcpKind};
 use packetcraft_wire::tcp::{self, Tcp};
 use packetcraft_wire::{Arp, ArpOp, ETHERTYPE_ARP, ETHERTYPE_IPV4, Frame, Icmp, Ipv4, PROTO_ICMP, PROTO_TCP, PROTO_UDP, Protocol, Udp, dns};
 
+pub mod channel;
 pub mod ospf;
 pub mod stp;
 #[cfg(test)]
 mod tests;
+pub mod vtp;
 
 /// One cable hop (serialisation + propagation), in microseconds.
 pub const LINK_DELAY_US: u64 = 250;
@@ -473,6 +475,8 @@ pub struct Sim {
     /// Spanning trees per VLAN, for the topology with this fingerprint.
     stp_for: u64,
     stp: BTreeMap<u16, stp::VlanTree>,
+    /// EtherChannel bundles per switch, for the same topology as `stp`.
+    chmaps: BTreeMap<DeviceId, channel::PortMap>,
     /// OSPF's routes, for the topology with this fingerprint.
     ospf_for: u64,
     ospf: Option<ospf::OspfState>,
@@ -884,6 +888,12 @@ impl Sim {
         if f != self.stp_for {
             self.stp_for = f;
             self.stp.clear();
+            self.chmaps.clear();
+            // A topology change: switches flush what they learned, as a topology-change
+            // notification makes them do, so no address points at a path that is gone.
+            for st in self.state.values_mut() {
+                st.macs.clear();
+            }
         }
     }
 
@@ -891,6 +901,10 @@ impl Sim {
     pub fn spanning_tree(&mut self, t: &Topology, vlan: VlanId) -> &stp::VlanTree {
         self.refresh_stp(t);
         self.stp.entry(vlan.get()).or_insert_with(|| stp::compute(t, vlan))
+    }
+
+    fn chmap(&mut self, t: &Topology, d: &Device) -> channel::PortMap {
+        self.chmaps.entry(d.id).or_insert_with(|| channel::PortMap::new(t, d)).clone()
     }
 
     fn stp_forwards(&mut self, t: &Topology, dev: DeviceId, port: usize, vlan: VlanId) -> bool {
@@ -926,7 +940,11 @@ impl Sim {
         if !d.vlans.contains_key(&vlan) {
             return Err(format!("VLAN {vlan} does not exist on this switch"));
         }
-        if !self.stp_forwards(t, d.id, in_port, vlan) {
+        let chm = self.chmap(t, d);
+        if chm.suspended(in_port) {
+            return Err("port suspended: it can't join its EtherChannel".into());
+        }
+        if !self.stp_forwards(t, d.id, chm.logical(in_port), vlan) {
             return Err(format!("port blocked by spanning tree (VLAN {vlan})"));
         }
         self.port_security(d, in_port, f.src)?;
@@ -937,6 +955,9 @@ impl Sim {
     /// within `vlan`. `in_port` is `None` for frames the switch itself sends.
     fn switch_forward(&mut self, t: &Topology, d: &Device, in_port: Option<usize>, vlan: VlanId, f: Frame, hops: u8) -> Result<(), String> {
         let now = self.now;
+        // A bundle is one port: learn on it, never send back into it, flood it once.
+        let chm = self.chmap(t, d);
+        let in_port = in_port.map(|p| chm.logical(p));
         let st = self.st(d.id);
         if let Some(p) = in_port
             && !f.src.is_group()
@@ -967,11 +988,12 @@ impl Sim {
         let outs: Vec<usize> = match known {
             Some(p) if Some(p) == in_port => return Err("destination is on the arrival port (filtered)".into()),
             Some(p) => vec![p],
-            None => (0..d.ports.len()).filter(|&p| Some(p) != in_port && carries(d, p, vlan)).collect(),
+            None => (0..d.ports.len()).filter(|&p| Some(p) != in_port && !chm.hidden(p) && !chm.suspended(p) && carries(d, p, vlan)).collect(),
         };
         let outs: Vec<usize> = outs.into_iter().filter(|&p| self.stp_forwards(t, d.id, p, vlan)).collect();
         let mut sent = 0;
         for p in outs {
+            let p = chm.pick(p, f.src, f.dst);
             let Some(port) = d.ports.get(p) else { continue };
             let tag = match port.switchport.mode {
                 SwitchportMode::Access => None,

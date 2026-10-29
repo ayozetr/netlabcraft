@@ -12,6 +12,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use packetcraft_core::{DeviceId, MacAddr, VlanId};
 use packetcraft_model::{Device, DeviceKind, End, STP_DEFAULT_PRIORITY, SwitchportMode, Topology};
 
+use crate::channel::PortMap;
 use crate::port_up;
 
 /// A port's role in one VLAN's tree.
@@ -120,6 +121,17 @@ pub fn carries(d: &Device, port: usize, vlan: VlanId) -> bool {
 pub fn compute(t: &Topology, vlan: VlanId) -> VlanTree {
     let mut tree = VlanTree::default();
     let switches: Vec<&Device> = t.devices.iter().filter(|d| d.kind == DeviceKind::Switch && d.vlans.contains_key(&vlan)).collect();
+    // An EtherChannel takes part as one port: its lead member, costed by the bundle's speed.
+    let maps: BTreeMap<DeviceId, PortMap> = switches.iter().map(|d| (d.id, PortMap::new(t, d))).collect();
+    let logical = |dev: DeviceId, p: usize| maps.get(&dev).map_or(p, |m| m.logical(p));
+    let blocked = |dev: DeviceId, p: usize| maps.get(&dev).is_some_and(|m| m.suspended(p));
+    let cost_of = |dev: DeviceId, port: usize| {
+        let Some(d) = t.device(dev) else { return 100 };
+        let members = maps.get(&dev).map_or_else(|| vec![port], |m| m.members(port));
+        let mbps: u32 = members.iter().filter_map(|p| d.ports.get(*p)).map(|p| speed_mbps(&p.name)).sum();
+        cost_for_speed(mbps)
+    };
+    let mut linkset: BTreeSet<(DeviceId, usize, DeviceId, usize)> = BTreeSet::new();
     let ids: BTreeMap<DeviceId, BridgeId> = switches.iter().map(|d| (d.id, bridge_id(d, vlan))).collect();
     // Switch-to-switch links carrying the VLAN: (a, port a, b, port b).
     let mut links: Vec<(DeviceId, usize, DeviceId, usize)> = Vec::new();
@@ -129,24 +141,29 @@ pub fn compute(t: &Topology, vlan: VlanId) -> VlanTree {
             if !carries(d, p, vlan) {
                 continue;
             }
-            if !port_up(t, end) {
-                tree.ports.insert((d.id, p), PortInfo { role: Role::Disabled, cost: port_cost(&d.ports[p].name), port_id: port_id(p) });
+            let lp = logical(d.id, p);
+            if !port_up(t, end) || blocked(d.id, p) {
+                if lp == p {
+                    tree.ports.insert((d.id, p), PortInfo { role: Role::Disabled, cost: cost_of(d.id, p), port_id: port_id(p) });
+                }
                 continue;
             }
             match t.peer(end).and_then(|q| t.device(q.device).map(|pd| (q, pd))) {
-                Some((q, pd)) if carries(pd, q.port, vlan) => {
-                    if (d.id, p) < (q.device, q.port) {
-                        links.push((d.id, p, q.device, q.port));
-                    }
+                Some((q, pd)) if carries(pd, q.port, vlan) && !blocked(q.device, q.port) => {
+                    let (a, b) = ((d.id, lp), (q.device, logical(q.device, q.port)));
+                    let (a, b) = if a < b { (a, b) } else { (b, a) };
+                    linkset.insert((a.0, a.1, b.0, b.1));
                 }
-                _ => {
+                _ if lp == p => {
                     // Faces a host, router or hub: an edge, always designated.
-                    tree.ports.insert((d.id, p), PortInfo { role: Role::Designated, cost: port_cost(&d.ports[p].name), port_id: port_id(p) });
+                    tree.ports.insert((d.id, p), PortInfo { role: Role::Designated, cost: cost_of(d.id, p), port_id: port_id(p) });
                 }
+                _ => {}
             }
         }
     }
-    let cost_of = |dev: DeviceId, port: usize| t.device(dev).and_then(|d| d.ports.get(port)).map_or(100, |p| port_cost(&p.name));
+    links.extend(linkset);
+
     // Components, each with its own root.
     let mut seen: BTreeSet<DeviceId> = BTreeSet::new();
     for start in ids.keys() {
@@ -234,6 +251,30 @@ pub fn compute(t: &Topology, vlan: VlanId) -> VlanTree {
     tree
 }
 
+/// A port's speed from its name.
+fn speed_mbps(name: &str) -> u32 {
+    if name.starts_with("GigabitEthernet") {
+        1_000
+    } else if name.starts_with("FastEthernet") {
+        100
+    } else {
+        10
+    }
+}
+
+/// Path cost for a link (or bundle) speed: faster links cost less.
+fn cost_for_speed(mbps: u32) -> u32 {
+    match mbps {
+        4_000.. => 2,
+        2_000.. => 3,
+        1_000.. => 4,
+        400.. => 9,
+        200.. => 12,
+        100.. => 19,
+        _ => 100,
+    }
+}
+
 /// A cheap fingerprint of everything the trees depend on.
 pub fn fingerprint(t: &Topology) -> u64 {
     use std::hash::{Hash, Hasher};
@@ -244,7 +285,7 @@ pub fn fingerprint(t: &Topology) -> u64 {
     for d in &t.devices {
         d.id.hash(&mut h);
         for p in &d.ports {
-            p.shutdown.hash(&mut h);
+            (p.shutdown, p.err_disabled, p.channel).hash(&mut h);
             if d.kind == DeviceKind::Switch {
                 format!("{:?}", p.switchport).hash(&mut h);
             }

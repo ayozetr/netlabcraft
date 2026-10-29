@@ -76,7 +76,8 @@ pub fn running_config(d: &Device) -> String {
     if !d.stp_priority.is_empty() {
         let _ = writeln!(s, "!");
     }
-    if d.kind == DeviceKind::Switch {
+    // A VTP client's VLANs come from its domain, not from its configuration.
+    if d.kind == DeviceKind::Switch && d.vtp.mode != packetcraft_model::VtpMode::Client {
         for (v, name) in &d.vlans {
             if *v == VlanId::DEFAULT {
                 continue;
@@ -121,6 +122,9 @@ pub fn running_config(d: &Device) -> String {
                 for m in &ps.macs {
                     let _ = writeln!(s, " switchport port-security mac-address {}{}", if ps.sticky { "sticky " } else { "" }, m.dotted());
                 }
+            }
+            if let Some(g) = p.channel {
+                let _ = writeln!(s, " channel-group {} mode {}", g.number, g.mode.name());
             }
             if p.portfast {
                 let _ = writeln!(s, " spanning-tree portfast");
@@ -467,11 +471,10 @@ pub fn mac_table(t: &Topology, sim: &Sim, d: &Device) -> String {
                 continue;
             }
             n += 1;
-            let port = d.ports.get(e.port).map_or("?".to_string(), |p| ifname::short(&p.name));
+            let port = if d.ports.get(e.port).is_some() { packetcraft_sim::channel::port_label(t, d, e.port, true) } else { "?".to_string() };
             let _ = writeln!(s, "{:<6} {:<19} {:<9} {port}", vlan, mac.dotted(), "learned");
         }
     }
-    let _ = t;
     let _ = write!(s, "{n} entr{}", if n == 1 { "y" } else { "ies" });
     s
 }
@@ -594,7 +597,7 @@ pub fn spanning_tree(t: &Topology, d: &Device, vlan: VlanId, tree: &packetcraft_
     if me.root == me.id {
         s.push_str("             This switch is the root\n");
     } else {
-        let rp = me.root_port.and_then(|p| d.ports.get(p)).map_or("-".to_string(), |p| ifname::short(&p.name));
+        let rp = me.root_port.filter(|p| d.ports.get(*p).is_some()).map_or("-".to_string(), |p| packetcraft_sim::channel::port_label(t, d, p, true));
         let _ = writeln!(s, "             Cost {}, reached through {rp}", me.root_cost);
     }
     let _ = writeln!(s, "  Bridge ID  Priority {:<6} Address {}\n", me.id.priority, me.id.mac.dotted());
@@ -612,7 +615,7 @@ pub fn spanning_tree(t: &Topology, d: &Device, vlan: VlanId, tree: &packetcraft_
         let _ = writeln!(
             s,
             "{:<10} {:<4} {:<5} {:<6} {:<8} {kind}",
-            ifname::short(&port.name),
+            packetcraft_sim::channel::port_label(t, d, *p, true),
             info.role.short(),
             info.role.state(),
             info.cost,
@@ -753,4 +756,37 @@ pub fn port_security(sim: &Sim, d: &Device) -> String {
         }
     }
     s.trim_end().to_string()
+}
+
+/// `show etherchannel summary`.
+pub fn etherchannel(t: &Topology, d: &Device) -> String {
+    let chans = packetcraft_sim::channel::channels(t, d);
+    if chans.is_empty() {
+        return "No EtherChannel on this switch.".into();
+    }
+    let mut s = String::new();
+    for c in &chans {
+        let state = if c.is_up() { "up" } else { "down" };
+        let _ = writeln!(s, "Port-channel{} ({}), {state}, {} of {} ports bundled", c.number, c.protocol(d), c.bundled().len(), c.members.len());
+        for (p, st) in &c.members {
+            let Some(port) = d.ports.get(*p) else { continue };
+            let mode = port.channel.map_or("", |g| g.mode.name());
+            let _ = writeln!(s, "  {:<9} mode {:<10} {}", ifname::short(&port.name), mode, st.name());
+        }
+    }
+    s.trim_end().to_string()
+}
+
+/// `show vtp status`.
+pub fn vtp(d: &Device) -> String {
+    let v = &d.vtp;
+    let domain = if v.domain.is_empty() { "(none yet: joins the first domain it hears on a trunk)" } else { v.domain.as_str() };
+    let mut s = String::new();
+    let _ = writeln!(s, "Mode                {}", v.mode.name());
+    let _ = writeln!(s, "Domain              {domain}");
+    let _ = writeln!(s, "Version             {}", v.version);
+    let _ = writeln!(s, "Revision            {}", v.revision);
+    let _ = writeln!(s, "Password            {}", if v.password.is_some() { "set" } else { "not set" });
+    let _ = write!(s, "VLANs               {}", d.vlans.len());
+    s
 }

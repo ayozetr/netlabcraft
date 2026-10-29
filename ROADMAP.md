@@ -13,13 +13,13 @@ _Updated 2026-10-29._
 | Console commands | 58 grammar entries, 6 modes |
 | Device models | 11 (routers with 2/3/4 ports, switches with 8/24/48 ports, hub, PC, laptop, server, printer) |
 | Sample labs | 9 |
-| Tests | 100 (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Tests | 102 (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 
 ## Dimensions (rough parity with the reference app, for a CCNA-level lab)
 
 | Dimension | Status |
 |---|---|
-| Layer 2: switching, VLANs, trunks, STP | working, with port security; no VTP, EtherChannel |
+| Layer 2: switching, VLANs, trunks, STP | working, with port security, EtherChannel and VTP; no DTP |
 | Layer 3: IPv4, ARP, ICMP, static routing, OSPF | working; no IPv6, RIP or EIGRP |
 | Services: DHCP, DNS, HTTP, FTP, email | DHCP (routers and servers), DNS, HTTP with browser; no FTP or email yet |
 | Security: ACLs, NAT, SSH, passwords | ACLs, NAT/PAT, passwords, lines, banner; no SSH yet |
@@ -31,6 +31,12 @@ _Updated 2026-10-29._
 | Agent control | MCP server and CLI over the full command catalog |
 
 ## Progress log
+
+- **2026-10-29 — VTP.** Servers, clients and transparent switches share VLANs over trunks by domain and password, highest revision first (including the classic overwrite by a switch with a higher revision); the VLAN database survives reloads; `show vtp status`; vtp sample lab.
+
+
+- **2026-10-29 — EtherChannel.** `channel-group` with LACP, PAgP or static bundling, negotiated from both ends; a bundle is one spanning-tree port and spreads traffic over its cables; `interface port-channel`, `show etherchannel summary`; parallel cables drawn side by side with a ring around each bundle; switches flush learned addresses when the topology changes; etherchannel sample lab.
+
 
 - **2026-10-29 — Port security, Telnet/SSH, one-click devices.** `switchport port-security` with maximum, violation modes and sticky addresses; ports go err-disabled and come back with `shutdown`/`no shutdown`; `show port-security`. Remote consoles over Telnet and SSH with local users. A single click opens a device, as in the reference app.
 
