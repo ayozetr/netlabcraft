@@ -46,6 +46,11 @@ pub static SAMPLES: &[Sample] = &[
         description: "S1 is the VTP server of domain LAB; S2 and S3 are clients and learn its VLANs over the trunks.",
     },
     Sample {
+        id: "ipv6",
+        title: "IPv6 with two routers",
+        description: "PC1 and PC2 take their IPv6 addresses from R1 (autoconfiguration); PC3 is set by hand behind R2; static routes join the two.",
+    },
+    Sample {
         id: "ospf",
         title: "OSPF on three routers",
         description: "Three routers in a triangle learn each other's networks with OSPF; cut a link and the routes move.",
@@ -331,6 +336,30 @@ pub fn build(id: &str) -> Result<Topology> {
                 )?;
             }
             b.t.notes = "S1 creates VLANs 10 and 20; the clients S2 and S3 learn them (`show vtp status`, `show vlan brief`). Add `vlan 30` on S1 and look again on a client. PC1 reaches PC3 (VLAN 10), PC2 reaches PC4 (VLAN 20).".into();
+        }
+        "ipv6" => {
+            b.add_model("Router-3", "R1", 240.0, 80.0)?;
+            b.add_model("Router-3", "R2", 520.0, 80.0)?;
+            b.add(DeviceKind::Switch, "S1", 240.0, 240.0)?;
+            b.cable("R1", "g0/0", "S1", "g0/1")?;
+            b.cable("R1", "g0/1", "R2", "g0/1")?;
+            b.type_in(
+                "R1",
+                "enable\nconfigure terminal\nipv6 unicast-routing\ninterface g0/0\nipv6 address 2001:db8:1::1/64\nipv6 address fe80::1 link-local\nno shutdown\ninterface g0/1\nipv6 address 2001:db8:12::1/64\nno shutdown\nexit\nipv6 route 2001:db8:2::/64 2001:db8:12::2\nend",
+            )?;
+            b.type_in(
+                "R2",
+                "enable\nconfigure terminal\nipv6 unicast-routing\ninterface g0/0\nipv6 address 2001:db8:2::1/64\nipv6 address fe80::2 link-local\nno shutdown\ninterface g0/1\nipv6 address 2001:db8:12::2/64\nno shutdown\nexit\nipv6 route 2001:db8:1::/64 2001:db8:12::1\nend",
+            )?;
+            for (pc, x, port) in [("PC1", 140.0, "fa0/1"), ("PC2", 340.0, "fa0/2")] {
+                b.add(DeviceKind::Pc, pc, x, 400.0)?;
+                b.cable(pc, "fa0", "S1", port)?;
+                b.type_in(pc, "ipv6config auto")?;
+            }
+            b.add(DeviceKind::Pc, "PC3", 520.0, 300.0)?;
+            b.cable("PC3", "fa0", "R2", "g0/0")?;
+            b.type_in("PC3", "ipv6config 2001:db8:2::10/64 fe80::2")?;
+            b.t.notes = "PC1 and PC2 autoconfigure from R1's router advertisements (ipv6config). Try `ping 2001:db8:2::10` from PC1, `show ipv6 route` and `show ipv6 neighbors` on the routers, and watch NDP in Simulation mode.".into();
         }
         "ospf" => {
             for (name, x, y) in [("R1", 120.0, 80.0), ("R2", 600.0, 80.0), ("R3", 360.0, 260.0)] {

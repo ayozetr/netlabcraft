@@ -19,6 +19,9 @@ pub fn running_config(d: &Device) -> String {
         let _ = writeln!(s, "service password-encryption");
     }
     let _ = writeln!(s, "!\nhostname {}\n!", d.name);
+    if d.ipv6_routing {
+        let _ = writeln!(s, "ipv6 unicast-routing\n!");
+    }
     if let Some(h) = &a.enable_secret {
         let _ = writeln!(s, "enable secret 5 {h}");
     }
@@ -139,6 +142,17 @@ pub fn running_config(d: &Device) -> String {
             }
             None => {}
         }
+        if d.kind == DeviceKind::Router {
+            if let Some(ll) = p.ipv6.link_local {
+                let _ = writeln!(s, " ipv6 address {ll} link-local");
+            }
+            for a in &p.ipv6.addresses {
+                let _ = writeln!(s, " ipv6 address {a}");
+            }
+            if p.ipv6.enabled {
+                let _ = writeln!(s, " ipv6 enable");
+            }
+        }
         for h in &p.helpers {
             let _ = writeln!(s, " ip helper-address {h}");
         }
@@ -238,6 +252,10 @@ pub fn running_config(d: &Device) -> String {
         && let Some(g) = d.gateway
     {
         let _ = writeln!(s, "ip default-gateway {g}\n!");
+    }
+    for r in &d.routes6 {
+        let via = [r.iface.clone(), r.next_hop.map(|a| a.to_string())].into_iter().flatten().collect::<Vec<_>>().join(" ");
+        let _ = writeln!(s, "ipv6 route {} {via}", r.net);
     }
     for r in &d.routes {
         let via = match &r.via {
@@ -512,7 +530,7 @@ pub fn ms(us: u64) -> String {
 }
 
 /// The router/switch ping report.
-pub fn ping(dst: Ipv4Addr, probes: &[Probe], opts: PingOptions) -> String {
+pub fn ping(dst: std::net::IpAddr, probes: &[Probe], opts: PingOptions) -> String {
     let marks: String = probes.iter().map(|p| p.mark()).collect();
     let ok: Vec<u64> = probes
         .iter()
@@ -521,7 +539,8 @@ pub fn ping(dst: Ipv4Addr, probes: &[Probe], opts: PingOptions) -> String {
             _ => None,
         })
         .collect();
-    let mut s = format!("Sending {} ICMP echo requests to {dst}, {} s timeout:\n{marks}\n", probes.len(), opts.timeout_us / 1_000_000);
+    let icmp = if dst.is_ipv6() { "ICMPv6" } else { "ICMP" };
+    let mut s = format!("Sending {} {icmp} echo requests to {dst}, {} s timeout:\n{marks}\n", probes.len(), opts.timeout_us / 1_000_000);
     let pct = ok.len() * 100 / probes.len().max(1);
     let _ = write!(s, "{pct}% answered ({}/{})", ok.len(), probes.len());
     if let (Some(min), Some(max)) = (ok.iter().min(), ok.iter().max()) {
@@ -533,7 +552,7 @@ pub fn ping(dst: Ipv4Addr, probes: &[Probe], opts: PingOptions) -> String {
 }
 
 /// The router/switch traceroute report.
-pub fn traceroute(dst: Ipv4Addr, hops: &[Hop]) -> String {
+pub fn traceroute(dst: std::net::IpAddr, hops: &[Hop]) -> String {
     let mut s = format!("Tracing the route to {dst} (30 hops at most):\n");
     for h in hops {
         let from = h.probes.iter().find_map(|p| match p {
@@ -789,4 +808,68 @@ pub fn vtp(d: &Device) -> String {
     let _ = writeln!(s, "Password            {}", if v.password.is_some() { "set" } else { "not set" });
     let _ = write!(s, "VLANs               {}", d.vlans.len());
     s
+}
+
+/// `show ipv6 interface brief`.
+pub fn ipv6_brief(t: &Topology, d: &Device) -> String {
+    let mut s = format!("{:<24} {:<22} {}\n", "Interface", "Status", "IPv6 addresses");
+    let ifs = packetcraft_sim::v6::l3_ifaces6(d);
+    for (i, p) in d.ports.iter().enumerate() {
+        let status = if p.shutdown {
+            "administratively down"
+        } else if port_up(t, End { device: d.id, port: i }) {
+            "up"
+        } else {
+            "down"
+        };
+        let _ = write!(s, "{:<24} {:<22} ", p.name, status);
+        match ifs.iter().find(|x| x.port == i) {
+            Some(x) => {
+                let _ = writeln!(s, "{} (link-local)", x.link_local);
+                for a in &x.addresses {
+                    let _ = writeln!(s, "{:<47} {a}", "");
+                }
+            }
+            None => {
+                let _ = writeln!(s, "IPv6 off");
+            }
+        }
+    }
+    s.trim_end().to_string()
+}
+
+/// `show ipv6 route`.
+pub fn ipv6_route(t: &Topology, d: &Device) -> String {
+    let table = packetcraft_sim::v6::routing_table6(t, d);
+    let mut s = String::from("Codes: C connected, L local, S static\n");
+    if !d.ipv6_routing {
+        s.push_str("IPv6 forwarding is off (no `ipv6 unicast-routing`)\n");
+    }
+    for r in &table {
+        let via = match (&r.next_hop, &r.iface) {
+            (Some(nh), Some(i)) => format!("via {nh}, {i}"),
+            (Some(nh), None) => format!("via {nh}"),
+            (None, Some(i)) if r.code == 'S' => format!("out of {i}"),
+            (None, Some(i)) => format!("directly on {i}"),
+            (None, None) => String::new(),
+        };
+        let _ = writeln!(s, "{}  {:<28} {via}", r.code, r.net.to_string());
+    }
+    if table.is_empty() {
+        s.push_str("(no IPv6 routes)");
+    }
+    s.trim_end().to_string()
+}
+
+/// `show ipv6 neighbors`.
+pub fn ipv6_neighbors(sim: &Sim, d: &Device) -> String {
+    let mut s = format!("{:<28} {:<19} {}\n", "IPv6 address", "MAC address", "Interface");
+    let entries = sim.state(d.id).map(|st| st.nd.iter().collect::<Vec<_>>()).unwrap_or_default();
+    for (ip, e) in &entries {
+        let _ = writeln!(s, "{:<28} {:<19} {}", ip.to_string(), e.mac.dotted(), ifname::short(&e.iface));
+    }
+    if entries.is_empty() {
+        s.push_str("(no neighbours yet)");
+    }
+    s.trim_end().to_string()
 }

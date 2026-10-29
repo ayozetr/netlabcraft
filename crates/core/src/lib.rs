@@ -9,7 +9,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 use std::fmt;
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
@@ -27,6 +27,8 @@ pub enum CoreError {
     Prefix(String),
     #[error("`{0}` is not a VLAN id (1-4094)")]
     Vlan(String),
+    #[error("`{0}` is not an IPv6 address with a prefix length (2001:db8::1/64)")]
+    Ip6(String),
 }
 
 /// A device's id, stable for the life of a topology (never reused after removal).
@@ -214,6 +216,82 @@ impl<'de> Deserialize<'de> for Ipv4Net {
         let s = String::deserialize(d)?;
         s.parse().map_err(serde::de::Error::custom)
     }
+}
+
+/// An IPv6 address with a prefix length (`2001:db8:1::1/64`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Ipv6Net {
+    pub addr: Ipv6Addr,
+    pub prefix: u8,
+}
+
+impl Ipv6Net {
+    /// `prefix` is clamped to 128.
+    pub fn new(addr: Ipv6Addr, prefix: u8) -> Ipv6Net {
+        Ipv6Net { addr, prefix: prefix.min(128) }
+    }
+
+    fn mask(self) -> u128 {
+        let p = u32::from(self.prefix.min(128));
+        if p == 0 { 0 } else { u128::MAX << (128 - p) }
+    }
+
+    /// The network: host bits cleared.
+    pub fn network(self) -> Ipv6Net {
+        Ipv6Net { addr: Ipv6Addr::from(u128::from(self.addr) & self.mask()), prefix: self.prefix }
+    }
+
+    pub fn contains(self, ip: Ipv6Addr) -> bool {
+        u128::from(ip) & self.mask() == u128::from(self.addr) & self.mask()
+    }
+
+    /// Link-local (`fe80::/10`).
+    pub fn is_link_local(addr: Ipv6Addr) -> bool {
+        addr.segments()[0] & 0xffc0 == 0xfe80
+    }
+}
+
+impl fmt::Display for Ipv6Net {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}/{}", self.addr, self.prefix)
+    }
+}
+
+impl FromStr for Ipv6Net {
+    type Err = CoreError;
+    /// `2001:db8::1/64`; a bare address is a /128.
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let bad = || CoreError::Ip6(s.to_string());
+        let (a, p) = s.split_once('/').unwrap_or((s, "128"));
+        let prefix: u8 = p.parse().ok().filter(|p| *p <= 128).ok_or_else(bad)?;
+        Ok(Ipv6Net { addr: a.parse().map_err(|_| bad())?, prefix })
+    }
+}
+
+impl Serialize for Ipv6Net {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.collect_str(self)
+    }
+}
+
+impl<'de> Deserialize<'de> for Ipv6Net {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        s.parse().map_err(serde::de::Error::custom)
+    }
+}
+
+/// The interface identifier a MAC address gives (modified EUI-64, RFC 4291 appendix A), placed
+/// after a /64 prefix.
+pub fn eui64(prefix: Ipv6Addr, mac: MacAddr) -> Ipv6Addr {
+    let m = mac.0;
+    let iid = u64::from_be_bytes([m[0] ^ 0x02, m[1], m[2], 0xff, 0xfe, m[3], m[4], m[5]]);
+    Ipv6Addr::from((u128::from(prefix) & (u128::MAX << 64)) | u128::from(iid))
+}
+
+/// The link-local address a MAC address gives (`fe80::` + EUI-64).
+pub fn link_local(mac: MacAddr) -> Ipv6Addr {
+    eui64(Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 0), mac)
 }
 
 /// An IEEE 802.1Q VLAN id, 1–4094.
@@ -413,6 +491,19 @@ impl<'de> Deserialize<'de> for VlanSet {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ipv6_nets_and_eui64() {
+        let n: Ipv6Net = "2001:db8:1::1/64".parse().unwrap();
+        assert!(n.contains("2001:db8:1::ffff".parse().unwrap()) && !n.contains("2001:db8:2::1".parse().unwrap()));
+        assert_eq!(n.network().to_string(), "2001:db8:1::/64");
+        assert!("2001:db8::1/129".parse::<Ipv6Net>().is_err() && "nope/64".parse::<Ipv6Net>().is_err());
+        // RFC 4291 appendix A: flip the universal/local bit, put ff:fe in the middle.
+        let mac = MacAddr([0x00, 0x1a, 0x2b, 0x3c, 0x4d, 0x5e]);
+        assert_eq!(link_local(mac).to_string(), "fe80::21a:2bff:fe3c:4d5e");
+        assert_eq!(eui64("2001:db8:1::".parse().unwrap(), mac).to_string(), "2001:db8:1:0:21a:2bff:fe3c:4d5e");
+        assert!(Ipv6Net::is_link_local(link_local(mac)));
+    }
 
     #[test]
     fn mac_forms_round_trip() {

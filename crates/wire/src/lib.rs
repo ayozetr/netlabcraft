@@ -14,6 +14,7 @@ use packetcraft_core::MacAddr;
 
 pub mod dhcp;
 pub mod dns;
+pub mod ipv6;
 pub mod pcap;
 pub mod tcp;
 
@@ -403,6 +404,10 @@ pub enum Protocol {
     Tcp,
     Udp,
     Ipv4,
+    Icmpv6,
+    /// IPv6 neighbour discovery (neighbour and router solicitations and advertisements).
+    Ndp,
+    Ipv6,
     Other,
 }
 
@@ -417,6 +422,9 @@ impl Protocol {
             Protocol::Tcp => "TCP",
             Protocol::Udp => "UDP",
             Protocol::Ipv4 => "IPv4",
+            Protocol::Icmpv6 => "ICMPv6",
+            Protocol::Ndp => "NDP",
+            Protocol::Ipv6 => "IPv6",
             Protocol::Other => "Other",
         }
     }
@@ -483,6 +491,20 @@ pub fn summarize(bytes: &[u8]) -> (Protocol, String) {
                 }
             }
             Err(e) => (Protocol::Ipv4, format!("IPv4 ({e}){tag}")),
+        },
+        ipv6::ETHERTYPE_IPV6 => match ipv6::Ipv6::decode(&f.payload) {
+            Ok(ip) => {
+                let (ndp, text) = ipv6::describe(&ip);
+                let proto = if ndp {
+                    Protocol::Ndp
+                } else if ip.next_header == ipv6::PROTO_ICMPV6 {
+                    Protocol::Icmpv6
+                } else {
+                    Protocol::Ipv6
+                };
+                (proto, format!("{text}{tag}"))
+            }
+            Err(e) => (Protocol::Ipv6, format!("IPv6 ({e}){tag}")),
         },
         other => (Protocol::Other, format!("ethertype 0x{other:04x}{tag}")),
     }

@@ -374,10 +374,14 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         }
         "net.ping" => {
             let d = device_param(s, p, "from")?;
-            let dst = parse_ip(str_param(p, "to")?).map_err(|e| bad(e.to_string()))?;
+                        let to = str_param(p, "to")?;
             let count = p.get("count").and_then(Value::as_u64).map_or(4, |c| c.clamp(1, 1_000) as u16);
             let opts = PingOptions { count, ..PingOptions::default() };
-            let probes = s.sim.ping(&s.topology, d, dst, opts).map_err(|e| EngineError::Failed(e.to_string()))?;
+            let probes = match to.parse::<std::net::Ipv6Addr>() {
+                Ok(dst6) => s.sim.ping6(&s.topology, d, dst6, opts),
+                Err(_) => s.sim.ping(&s.topology, d, parse_ip(to).map_err(|e| bad(e.to_string()))?, opts),
+            }
+            .map_err(|e| EngineError::Failed(e.to_string()))?;
             s.revision += 1;
             let marks: String = probes.iter().map(|p| p.mark()).collect();
             let replies = probes.iter().filter(|p| matches!(p, Probe::Reply { .. })).count();
@@ -385,8 +389,12 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         }
         "net.traceroute" => {
             let d = device_param(s, p, "from")?;
-            let dst = parse_ip(str_param(p, "to")?).map_err(|e| bad(e.to_string()))?;
-            let hops = s.sim.traceroute(&s.topology, d, dst, 30, 2_000_000).map_err(|e| EngineError::Failed(e.to_string()))?;
+                        let to = str_param(p, "to")?;
+            let hops = match to.parse::<std::net::Ipv6Addr>() {
+                Ok(dst6) => s.sim.traceroute6(&s.topology, d, dst6, 30, 2_000_000),
+                Err(_) => s.sim.traceroute(&s.topology, d, parse_ip(to).map_err(|e| bad(e.to_string()))?, 30, 2_000_000),
+            }
+            .map_err(|e| EngineError::Failed(e.to_string()))?;
             s.revision += 1;
             Ok(json!({"hops": hops.iter().map(|h| json!({"ttl": h.ttl, "probes": h.probes.iter().map(probe_json).collect::<Vec<_>>()})).collect::<Vec<_>>()}))
         }

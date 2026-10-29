@@ -94,8 +94,8 @@ pub static CATALOG: &[CommandInfo] = &[
     c!("cli.help", "Command help (?)", "", None, r#"{"device", "line"} → {"help"}"#, false),
     c!("cli.complete", "Complete a command (Tab)", "", None, r#"{"device", "line"} → {"line"|null}"#, false),
     c!("cli.prompt", "Console prompt", "", None, r#"{"device"} → {"prompt"}"#, false),
-    c!("net.ping", "Ping", "Simulation", None, r#"{"from": "device", "to": "address", "count"?: 4} → {"probes", "text"}"#, false),
-    c!("net.traceroute", "Traceroute", "Simulation", None, r#"{"from": "device", "to": "address"} → {"hops", "text"}"#, false),
+    c!("net.ping", "Ping", "Simulation", None, r#"{"from": "device", "to": "IPv4 or IPv6 address", "count"?: 4} → {"probes", "text"}"#, false),
+    c!("net.traceroute", "Traceroute", "Simulation", None, r#"{"from": "device", "to": "IPv4 or IPv6 address"} → {"hops", "text"}"#, false),
     c!(
         "device.configure",
         "Apply configuration lines",

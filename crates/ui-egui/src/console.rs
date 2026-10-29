@@ -55,6 +55,11 @@ pub struct DeviceWindow {
     mask: String,
     gateway: String,
     dns: String,
+    /// IPv6 address with its length (`2001:db8::10/64`) and gateway.
+    ip6: String,
+    gw6: String,
+    /// "Static" picked for IPv6, before an address is applied.
+    v6_static: bool,
     vlan_id: String,
     vlan_name: String,
     route_net: String,
@@ -103,6 +108,8 @@ fn fill_host(w: &mut DeviceWindow, dev: &Device) {
     w.mask = p.and_then(|p| p.ip).map(|ip| ip.mask().to_string()).unwrap_or_else(|| "255.255.255.0".into());
     w.gateway = dev.gateway.map(|g| g.to_string()).unwrap_or_default();
     w.dns = dev.dns.map(|g| g.to_string()).unwrap_or_default();
+    w.ip6 = p.and_then(|p| p.ipv6.addresses.first()).map(|a| a.to_string()).unwrap_or_default();
+    w.gw6 = dev.gateway6.map(|g| g.to_string()).unwrap_or_default();
 }
 
 fn fill_port(w: &mut DeviceWindow, dev: &Device, port: usize) {
@@ -110,6 +117,7 @@ fn fill_port(w: &mut DeviceWindow, dev: &Device, port: usize) {
         w.ip = p.ip.map(|ip| ip.addr.to_string()).unwrap_or_default();
         w.mask = p.ip.map(|ip| ip.mask().to_string()).unwrap_or_default();
         w.port_vlan = p.switchport.access_vlan.to_string();
+        w.ip6 = p.ipv6.addresses.first().map(|a| a.to_string()).unwrap_or_default();
     }
 }
 
@@ -702,6 +710,19 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
                     vec![iface.clone(), format!("ip address {} {}", w.ip.trim(), w.mask.trim())]
                 });
             }
+            ui.add_space(6.0);
+            field(ui, "IPv6 Address", &mut w.ip6);
+            ui.label(format!(
+                "Link Local Address: {}",
+                packetcraft_sim::v6::l3_ifaces6(dev).iter().find(|x| x.port == i).map_or("(IPv6 off)".to_string(), |x| x.link_local.to_string())
+            ));
+            if ui.button("Apply IPv6").clicked() {
+                let mut l = vec![iface.clone(), "no ipv6 address".into()];
+                if !w.ip6.trim().is_empty() {
+                    l.push(format!("ipv6 address {}", w.ip6.trim()));
+                }
+                lines = Some(l);
+            }
         }
         DeviceKind::Switch => {
             let mut trunk = port.switchport.mode == SwitchportMode::Trunk;
@@ -836,6 +857,62 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                         if let Some(v) = app.run("cli.exec", json!({"device": d.0, "line": line.trim()})) {
                             let out = v.get("output").and_then(Value::as_str).unwrap_or("").to_string();
                             app.info(out);
+                        }
+                    }
+                    ui.add_space(10.0);
+                    ui.label(RichText::new("IPv6 Configuration").strong());
+                    let conf = dev.ports.first().map(|p| p.ipv6.clone()).unwrap_or_default();
+                    #[derive(PartialEq, Clone, Copy)]
+                    enum V6 {
+                        Off,
+                        Auto,
+                        Static,
+                    }
+                    let chosen = app.ui.windows.get(&d).is_some_and(|w| w.v6_static);
+                    let now = if conf.autoconfig {
+                        V6::Auto
+                    } else if conf.active() || chosen {
+                        V6::Static
+                    } else {
+                        V6::Off
+                    };
+                    let mut pick = now;
+                    let mut run: Option<String> = None;
+                    ui.horizontal(|ui| {
+                        ui.radio_value(&mut pick, V6::Off, "Off");
+                        ui.radio_value(&mut pick, V6::Auto, "Automatic");
+                        ui.radio_value(&mut pick, V6::Static, "Static");
+                    });
+                    let Some(w) = app.ui.windows.get_mut(&d) else { return };
+                    if pick != now {
+                        w.v6_static = pick == V6::Static;
+                        match pick {
+                            V6::Off => run = Some("ipv6config off".into()),
+                            V6::Auto => run = Some("ipv6config auto".into()),
+                            V6::Static => {}
+                        }
+                    }
+                    if conf.autoconfig {
+                        fill_host(w, dev);
+                    }
+                    field(ui, "IPv6 Address", &mut w.ip6);
+                    let ll = packetcraft_sim::v6::l3_ifaces6(dev).first().map_or("(IPv6 off)".to_string(), |x| x.link_local.to_string());
+                    ui.horizontal(|ui| {
+                        ui.add_sized([130.0, 22.0], egui::Label::new("Link Local Address"));
+                        ui.label(ll);
+                    });
+                    field(ui, "IPv6 Gateway", &mut w.gw6);
+                    if pick == V6::Static && ui.button("Apply IPv6").clicked() {
+                        run = Some(format!("ipv6config {} {}", w.ip6.trim(), w.gw6.trim()));
+                    }
+                    if let Some(line) = run
+                        && let Some(v) = app.run("cli.exec", json!({"device": d.0, "line": line.trim()}))
+                    {
+                        let out = v.get("output").and_then(Value::as_str).unwrap_or("").to_string();
+                        let failed = out.contains("failed") || out.starts_with("Usage") || out.contains("can't") || out.contains("not");
+                        app.ui.status = Some((out, failed));
+                        if let (Some(now), Some(w)) = (app.session.topology.device(d).cloned(), app.ui.windows.get_mut(&d)) {
+                            fill_host(w, &now);
                         }
                     }
                 }

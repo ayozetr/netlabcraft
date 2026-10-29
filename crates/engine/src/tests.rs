@@ -29,8 +29,13 @@ fn every_sample_builds_and_its_hosts_reach_each_other() {
     for sample in sample::SAMPLES {
         let mut s = Session::new();
         s.execute("file.new", json!({"sample": sample.id})).unwrap();
-        let hosts: Vec<(String, String)> =
-            s.topology.devices.iter().filter(|d| d.kind.is_host()).map(|d| (d.name.clone(), d.ports[0].ip.unwrap().addr.to_string())).collect();
+        let hosts: Vec<(String, String)> = s
+            .topology
+            .devices
+            .iter()
+            .filter(|d| d.kind.is_host())
+            .map(|d| (d.name.clone(), d.ports[0].ip.map(|a| a.addr.to_string()).unwrap_or_else(|| d.ports[0].ipv6.addresses[0].addr.to_string())))
+            .collect();
         for (from, _) in &hosts {
             for (to, ip) in &hosts {
                 if from == to || blocked.contains(&(sample.id, from.as_str(), to.as_str())) {

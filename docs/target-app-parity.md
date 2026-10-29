@@ -19,7 +19,7 @@ _Updated 2026-10-29. Authoritative assessment against Cisco Packet Tracer as a C
 | Layer-3 switch (`ip routing`) | yes | no | |
 | OSPF | yes | single area, computed convergence | No hello/LSA frames yet. |
 | RIP, EIGRP, BGP | yes | no | |
-| IPv6 | yes | no | |
+| IPv6 | yes | yes | addressing, NDP, SLAAC, static routes, ping/traceroute; no OSPFv3, DHCPv6 or IPv6 ACLs |
 | DHCP server/relay | yes | server on routers, relay, clients on hosts | No DHCP service on servers yet. |
 | DNS, HTTP (server and browser) | yes | yes | HTTP over simulated TCP; no HTTPS. |
 | FTP, TFTP, email, syslog, NTP, AAA | yes | no | |

@@ -838,3 +838,61 @@ fn vtp_by_typing() {
     lab.run(s3, "reload");
     assert!(lab.run(s3, "en\nshow vlan brief").contains("VLAN0099"));
 }
+
+#[test]
+fn ipv6_by_typing() {
+    let mut lab = Lab::new();
+    let r1 = lab.add(DeviceKind::Router);
+    let r2 = lab.add(DeviceKind::Router);
+    let s1 = lab.add(DeviceKind::Switch);
+    let a = lab.add(DeviceKind::Pc);
+    let b = lab.add(DeviceKind::Pc);
+    lab.cable(a, "fa0", s1, "fa0/1");
+    lab.cable(s1, "g0/1", r1, "g0/0");
+    lab.cable(r1, "g0/1", r2, "g0/1");
+    lab.cable(b, "fa0", r2, "g0/0");
+    lab.run(
+        r1,
+        "en\nconf t\nipv6 unicast-routing\nint g0/0\nipv6 address 2001:db8:1::1/64\nno shut\nint g0/1\nipv6 address 2001:db8:12::/64 eui-64\nipv6 address fe80::1 link-local\nno shut\nexit\nipv6 route 2001:db8:2::/64 2001:db8:12::2\nend",
+    );
+    lab.run(
+        r2,
+        "en\nconf t\nipv6 unicast-routing\nint g0/0\nipv6 address 2001:db8:2::1/64\nipv6 address fe80::2 link-local\nno shut\nint g0/1\nipv6 address 2001:db8:12::2/64\nno shut\nexit\nipv6 route ::/0 g0/1 fe80::1\nend",
+    );
+    // PC1 takes its address from R1's router advertisement; PC2 is set by hand.
+    let auto = lab.run(a, "ipv6config auto");
+    assert!(auto.contains("Autoconfigured 2001:db8:1::ff:fe") && auto.contains("/64, gateway fe80::"), "{auto}");
+    lab.run(b, "ipv6config 2001:db8:2::10/64 fe80::2");
+    assert!(lab.run(a, "ipconfig").contains("Link-local  fe80::"));
+    let p = lab.run(a, "ping 2001:db8:2::10");
+    assert!(p.contains("4 answered"), "{p}");
+    assert!(lab.run(a, "ping 2001:db8:2::10").contains("4 answered"));
+    let tr = lab.run(b, "tracert 2001:db8:1::1");
+    assert!(tr.contains("2001:db8:12::") || tr.contains("2001:db8:1::1"), "{tr}");
+    let br = lab.run(r1, "show ipv6 interface brief");
+    assert!(br.contains("fe80::1 (link-local)") && br.contains("2001:db8:12::") && br.contains("ff:fe"), "{br}");
+    let rt = lab.run(r1, "show ipv6 route");
+    assert!(rt.contains("C  2001:db8:1::/64") && rt.contains("S  2001:db8:2::/64") && rt.contains("L  2001:db8:1::1/128"), "{rt}");
+    assert!(lab.run(r2, "show ipv6 route").contains("via fe80::1, GigabitEthernet0/1"));
+    assert!(lab.run(r1, "show ipv6 neighbors").contains("2001:db8:12::2"));
+    let run = lab.run(r2, "show running-config");
+    assert!(
+        run.contains("ipv6 unicast-routing")
+            && run.contains(" ipv6 address fe80::2 link-local")
+            && run.contains("ipv6 route ::/0 GigabitEthernet0/1 fe80::1"),
+        "{run}"
+    );
+    // The router's own ping, and no route.
+    assert!(lab.run(r1, "ping 2001:db8:2::10").contains("!!"));
+    assert!(lab.run(a, "ping 2001:db8:99::1").contains("unreachable"));
+    // Errors.
+    lab.run(r1, "conf t\nint g0/2");
+    assert!(lab.try_run(r1, "ipv6 address 2001:db8:1::5/64").contains("overlaps"));
+    assert!(lab.try_run(r1, "ipv6 address 2001:db8:5::/48 eui-64").contains("/64"));
+    assert!(lab.try_run(r1, "ipv6 address fe80::9/64").contains("link-local"));
+    assert!(lab.try_run(r1, "exit").is_empty());
+    assert!(lab.try_run(r1, "ipv6 route 2001:db8:7::/64 fe80::7").contains("needs its interface"));
+    // IPv6 off on R1: no more router.
+    lab.run(r1, "no ipv6 unicast-routing\nend");
+    assert!(lab.run(a, "ping 2001:db8:2::10").contains(" 0 answered"));
+}

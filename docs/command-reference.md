@@ -38,8 +38,8 @@ Every front end (UI, `packetcraft-cli run`, MCP `packetcraft_run`) runs these.
 | `cli.help` | Command help (?) |  |  | `{"device", "line"} → {"help"}` |
 | `cli.complete` | Complete a command (Tab) |  |  | `{"device", "line"} → {"line"\|null}` |
 | `cli.prompt` | Console prompt |  |  | `{"device"} → {"prompt"}` |
-| `net.ping` | Ping | Simulation |  | `{"from": "device", "to": "address", "count"?: 4} → {"probes", "text"}` |
-| `net.traceroute` | Traceroute | Simulation |  | `{"from": "device", "to": "address"} → {"hops", "text"}` |
+| `net.ping` | Ping | Simulation |  | `{"from": "device", "to": "IPv4 or IPv6 address", "count"?: 4} → {"probes", "text"}` |
+| `net.traceroute` | Traceroute | Simulation |  | `{"from": "device", "to": "IPv4 or IPv6 address"} → {"hops", "text"}` |
 | `device.configure` | Apply configuration lines |  |  | `{"device", "lines": ["…"] or "text"} → {"applied", "errors"} (configuration mode, the console's own mode untouched)` |
 | `sim.advance` | Fast forward time | Simulation |  | `{"seconds"?: 30}` |
 | `sim.reset` | Reset simulation | Simulation |  | `{} (forget ARP/MAC tables and events)` |
@@ -61,9 +61,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `logout` | user, privileged | router, switch | End the session |
 | `end` | config, interface, subinterface, vlan | router, switch | Return to privileged mode |
 | `configure terminal` | privileged | router, switch | Configure from the terminal |
-| `ping A.B.C.D` | user, privileged | router, switch | Send echo requests |
+| `ping A.B.C.D\|X:X::X` | user, privileged | router, switch | Send echo requests |
 | `ping A.B.C.D repeat <1-1000>` | user, privileged | router, switch | Send echo requests |
-| `traceroute A.B.C.D` | user, privileged | router, switch | Trace the route to a destination |
+| `traceroute A.B.C.D\|X:X::X` | user, privileged | router, switch | Trace the route to a destination |
 | `show running-config` | privileged | router, switch | Current configuration |
 | `show startup-config` | privileged | router, switch | Saved configuration |
 | `show ip interface brief` | user, privileged | router, switch | Interface addresses and status |
@@ -178,6 +178,21 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `crypto key generate rsa [general-keys] modulus <360-4096>` | config | router, switch | Generate the SSH keys |
 | `crypto key zeroize rsa` | config | router, switch | Delete the SSH keys |
 | `ip ssh version {1\|2}` | config | router, switch | SSH protocol version |
+| `ipv6 unicast-routing` | config | router | Forward IPv6 and advertise prefixes |
+| `no ipv6 unicast-routing` | config | router | Stop forwarding IPv6 |
+| `ipv6 route X:X::X/<0-128> <next hop and/or interface>` | config | router | Add an IPv6 static route |
+| `no ipv6 route X:X::X/<0-128>` | config | router | Remove IPv6 static routes |
+| `no ipv6 route X:X::X/<0-128> <next hop and/or interface>` | config | router | Remove an IPv6 static route |
+| `ipv6 address X:X::X/<0-128>` | interface | router | Add an IPv6 address |
+| `ipv6 address X:X::/64 eui-64` | interface | router | Add an address built from the MAC address |
+| `ipv6 address FE80::X link-local` | interface | router | Set the link-local address |
+| `no ipv6 address` | interface | router | Remove every IPv6 address |
+| `no ipv6 address <address>` | interface | router | Remove one IPv6 address |
+| `ipv6 enable` | interface | router | IPv6 with a link-local address only |
+| `no ipv6 enable` | interface | router | Turn link-local-only IPv6 off |
+| `show ipv6 interface brief` | user, privileged | router | IPv6 addresses and status |
+| `show ipv6 route` | user, privileged | router | IPv6 routing table |
+| `show ipv6 neighbors` | user, privileged | router | IPv6 neighbour cache |
 | `vtp mode {server\|client\|transparent}` | config | switch | How this switch takes part in VTP |
 | `vtp domain WORD` | config | switch | The VTP domain this switch belongs to |
 | `vtp password WORD` | config | switch | Only switches with the same password share VLANs |
@@ -232,7 +247,11 @@ Commands:
   ipconfig                         show this host's address
     ipconfig <address> <mask> [gw] [dns]  set the address (gateway, DNS server)
     ipconfig /renew                  ask a DHCP server for an address
-  ipconfig /release                remove the address
+    ipconfig /release                remove the address
+  ipv6config                       show the IPv6 settings
+    ipv6config <address/len> [gw]    set an IPv6 address (and gateway)
+    ipv6config auto                  take an address from the router (SLAAC)
+    ipv6config off                   turn IPv6 off
     ping [-n count] <address|name>   send echo requests
   tracert <address|name>           trace the route (also: traceroute)
   nslookup <name>                  ask the DNS server for a name

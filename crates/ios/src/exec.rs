@@ -612,6 +612,126 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             vtp_bump(d, &before);
             Ok(String::new())
         }
+        Id::Ipv6UnicastRouting | Id::NoIpv6UnicastRouting => {
+            c.dm()?.ipv6_routing = spec.id == Id::Ipv6UnicastRouting;
+            Ok(String::new())
+        }
+        Id::Ipv6Route | Id::NoIpv6Route => {
+            let net: packetcraft_core::Ipv6Net = arg(0).parse().map_err(|e| format!("% {e}"))?;
+            let net = net.network();
+            let via = match args.get(1) {
+                Some(rest) => Some(c.route6_via(rest)?),
+                None => None,
+            };
+            let d = c.dm()?;
+            if spec.id == Id::NoIpv6Route {
+                let before = d.routes6.len();
+                d.routes6.retain(|r| r.net != net || via.as_ref().is_some_and(|(i, n)| (&r.iface, &r.next_hop) != (i, n)));
+                return if d.routes6.len() == before { Err("% No such IPv6 route".into()) } else { Ok(String::new()) };
+            }
+            let (iface, next_hop) = via.ok_or("% Give a next hop, an interface, or both")?;
+            let r = packetcraft_model::StaticRoute6 { net, iface, next_hop };
+            if !d.routes6.contains(&r) {
+                if d.routes6.len() >= packetcraft_model::MAX_ROUTES {
+                    return Err("% Too many routes".into());
+                }
+                d.routes6.push(r);
+                d.routes6.sort();
+            }
+            Ok(String::new())
+        }
+        Id::Ipv6Address | Id::Ipv6AddressEui => {
+            let net: packetcraft_core::Ipv6Net = arg(0).parse().map_err(|e| format!("% {e}"))?;
+            if net.addr.is_multicast() || net.addr.is_unspecified() || net.addr.is_loopback() {
+                return Err(format!("% {} can't be an interface address", net.addr));
+            }
+            if packetcraft_core::Ipv6Net::is_link_local(net.addr) {
+                return Err("% For a link-local address use `ipv6 address FE80::X link-local`".into());
+            }
+            if spec.id == Id::Ipv6AddressEui && net.prefix != 64 {
+                return Err("% EUI-64 needs a /64 prefix".into());
+            }
+            let eui = spec.id == Id::Ipv6AddressEui;
+            let mine = match &c.cli.mode {
+                Mode::Iface(ifs) => ifs.iter().map(|r| r.port).collect::<Vec<_>>(),
+                _ => Vec::new(),
+            };
+            let clash =
+                c.d()?.ports.iter().enumerate().find(|(i, p)| !mine.contains(i) && p.ipv6.addresses.iter().any(|a| a.network() == net.network()));
+            if let Some((_, p)) = clash {
+                return Err(format!("% {} overlaps with {}", net.network(), p.name));
+            }
+            c.each_if(|p, sub| {
+                if sub.is_some() {
+                    return Err("% IPv6 on subinterfaces is not simulated yet".into());
+                }
+                let a = if eui { packetcraft_core::Ipv6Net::new(packetcraft_core::eui64(net.addr, p.mac), 64) } else { net };
+                if !p.ipv6.addresses.contains(&a) {
+                    if p.ipv6.addresses.len() >= packetcraft_model::MAX_IPV6_ADDRESSES {
+                        return Err(format!("% {} has {} IPv6 addresses already", p.name, packetcraft_model::MAX_IPV6_ADDRESSES));
+                    }
+                    p.ipv6.addresses.push(a);
+                }
+                Ok(())
+            })
+        }
+        Id::Ipv6AddressLinkLocal => {
+            let a: std::net::Ipv6Addr = arg(0).parse().map_err(|_| format!("% `{}` is not an IPv6 address", arg(0)))?;
+            if !packetcraft_core::Ipv6Net::is_link_local(a) {
+                return Err("% A link-local address is in FE80::/10".into());
+            }
+            c.each_if(|p, sub| {
+                if sub.is_some() {
+                    return Err("% IPv6 on subinterfaces is not simulated yet".into());
+                }
+                p.ipv6.link_local = Some(a);
+                Ok(())
+            })
+        }
+        Id::NoIpv6Address => {
+            let one = match args.first() {
+                Some(a) => {
+                    let first = a.split_whitespace().next().unwrap_or("");
+                    Some(
+                        first
+                            .split('/')
+                            .next()
+                            .unwrap_or("")
+                            .parse::<std::net::Ipv6Addr>()
+                            .map_err(|_| format!("% `{first}` is not an IPv6 address"))?,
+                    )
+                }
+                None => None,
+            };
+            c.each_if(|p, _| {
+                match one {
+                    Some(a) => {
+                        p.ipv6.addresses.retain(|n| n.addr != a);
+                        if p.ipv6.link_local == Some(a) {
+                            p.ipv6.link_local = None;
+                        }
+                    }
+                    None => {
+                        p.ipv6.addresses.clear();
+                        p.ipv6.link_local = None;
+                    }
+                }
+                Ok(())
+            })
+        }
+        Id::Ipv6Enable | Id::NoIpv6Enable => {
+            let on = spec.id == Id::Ipv6Enable;
+            c.each_if(|p, sub| {
+                if sub.is_some() {
+                    return Err("% IPv6 on subinterfaces is not simulated yet".into());
+                }
+                p.ipv6.enabled = on;
+                Ok(())
+            })
+        }
+        Id::ShowIpv6IntBrief => Ok(render::ipv6_brief(c.t, c.d()?)),
+        Id::ShowIpv6Route => Ok(render::ipv6_route(c.t, c.d()?)),
+        Id::ShowIpv6Neighbors => Ok(render::ipv6_neighbors(c.sim, c.d()?)),
         Id::VtpModeCmd => {
             let mode = match arg(0).to_ascii_lowercase().as_str() {
                 "server" => packetcraft_model::VtpMode::Server,
@@ -1851,17 +1971,51 @@ impl Ctx<'_> {
         Ok(String::new())
     }
 
+    /// The `<next hop and/or interface>` part of `ipv6 route`.
+    fn route6_via(&self, rest: &str) -> Result<(Option<String>, Option<std::net::Ipv6Addr>), String> {
+        let words: Vec<&str> = rest.split_whitespace().collect();
+        let addr = |w: &str| w.parse::<std::net::Ipv6Addr>().map_err(|_| format!("% `{w}` is not an IPv6 address"));
+        match words.as_slice() {
+            [w] if w.contains(':') => {
+                let nh = addr(w)?;
+                if packetcraft_core::Ipv6Net::is_link_local(nh) {
+                    return Err("% A link-local next hop needs its interface: `ipv6 route P/L <interface> FE80::X`".into());
+                }
+                Ok((None, Some(nh)))
+            }
+            [i] => Ok((Some(self.port_name(i)?), None)),
+            [i, w] => Ok((Some(self.port_name(i)?), Some(addr(w)?))),
+            _ => Err("% Give a next hop, an interface, or an interface and a next hop".into()),
+        }
+    }
+
+    fn port_name(&self, name: &str) -> Result<String, String> {
+        let r = self.iface_ref(name)?;
+        if r.sub.is_some() {
+            return Err("% IPv6 on subinterfaces is not simulated yet".into());
+        }
+        self.d()?.ports.get(r.port).map(|p| p.name.clone()).ok_or_else(|| "% No such port".into())
+    }
+
     fn ping(&mut self, target: &str, count: u16) -> R {
-        let dst = parse_ip(target).map_err(|e| format!("% {e}"))?;
         let opts = PingOptions { count, ..PingOptions::default() };
+        if let Ok(dst6) = target.parse::<std::net::Ipv6Addr>() {
+            let probes = self.sim.ping6(self.t, self.dev, dst6, opts).map_err(|e| format!("% {e}"))?;
+            return Ok(render::ping(dst6.into(), &probes, opts));
+        }
+        let dst = parse_ip(target).map_err(|e| format!("% {e}"))?;
         let probes = self.sim.ping(self.t, self.dev, dst, opts).map_err(|e| format!("% {e}"))?;
-        Ok(render::ping(dst, &probes, opts))
+        Ok(render::ping(dst.into(), &probes, opts))
     }
 
     fn traceroute(&mut self, target: &str) -> R {
+        if let Ok(dst6) = target.parse::<std::net::Ipv6Addr>() {
+            let hops = self.sim.traceroute6(self.t, self.dev, dst6, 30, 2_000_000).map_err(|e| format!("% {e}"))?;
+            return Ok(render::traceroute(dst6.into(), &hops));
+        }
         let dst = parse_ip(target).map_err(|e| format!("% {e}"))?;
         let hops = self.sim.traceroute(self.t, self.dev, dst, 30, 2_000_000).map_err(|e| format!("% {e}"))?;
-        Ok(render::traceroute(dst, &hops))
+        Ok(render::traceroute(dst.into(), &hops))
     }
 
     fn reload(&mut self) -> R {

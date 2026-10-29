@@ -7,8 +7,20 @@ use serde_json::json;
 
 use crate::{PacketApp, theme};
 
-const FILTERS: [Protocol; 9] =
-    [Protocol::Arp, Protocol::Icmp, Protocol::Dhcp, Protocol::Dns, Protocol::Http, Protocol::Tcp, Protocol::Udp, Protocol::Ipv4, Protocol::Other];
+const FILTERS: [Protocol; 12] = [
+    Protocol::Arp,
+    Protocol::Icmp,
+    Protocol::Dhcp,
+    Protocol::Dns,
+    Protocol::Http,
+    Protocol::Tcp,
+    Protocol::Udp,
+    Protocol::Ipv4,
+    Protocol::Icmpv6,
+    Protocol::Ndp,
+    Protocol::Ipv6,
+    Protocol::Other,
+];
 
 #[derive(Debug, Clone)]
 pub struct EventView {

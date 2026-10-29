@@ -11,7 +11,7 @@ _Updated 2026-10-29. Pick from the top; each item lands with tests and doc updat
 7. **Remote access**: passwords are done (`enable secret/password`, console and vty `password`/`login`, `banner motd`, `service password-encryption`); still to do: `username`/`login local`, Telnet/SSH between devices.
 8. **Activity checks**: a lab can carry expected results (pings that must succeed, config lines that must exist) and a score.
 9. **Serial WAN links** (PPP/HDLC, clock rate) and more device models (modular slots).
-10. **IPv6** (addressing, ND, static routes, OSPFv3).
+10. ~~IPv6~~ — done 2026-10-29 (global, EUI-64 and link-local addresses, neighbour discovery, router solicitations/advertisements and host autoconfiguration, static routes with link-local next hops, `ipv6 unicast-routing`, ICMPv6 echo/errors, ping and traceroute, `show ipv6 interface brief|route|neighbors`, PC IPv6 configuration, ipv6 sample lab). Still to do: OSPFv3, DHCPv6, IPv6 on subinterfaces and switch VLAN interfaces, IPv6 ACLs.
 11. **Translations** through `craft-i18n`.
 12. **Packaging**: desktop icons, installers, release workflow like the other Craft apps.
 13. ~~Services on Server devices~~ — done 2026-10-29 (HTTP over simulated TCP with a file manager, DNS A records, DHCP pools on servers; Web Browser on the PC Desktop; `nslookup`, names in `ping`/`tracert`). Still to do: HTTPS, Email, FTP, TFTP, NTP, Syslog, AAA.

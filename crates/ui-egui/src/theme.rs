@@ -110,6 +110,9 @@ pub fn protocol_color(p: Protocol) -> Color32 {
         Protocol::Tcp => Color32::from_rgb(0x5d, 0x7f, 0xa8),
         Protocol::Udp => Color32::from_rgb(0x3f, 0x8f, 0xe0),
         Protocol::Ipv4 => Color32::from_rgb(0x3b, 0xa3, 0x6b),
+        Protocol::Icmpv6 => Color32::from_rgb(0xd9, 0x5f, 0x8e),
+        Protocol::Ndp => Color32::from_rgb(0xc9, 0x8a, 0x2e),
+        Protocol::Ipv6 => Color32::from_rgb(0x2f, 0x8f, 0x8a),
         Protocol::Other => Color32::from_rgb(0x88, 0x88, 0x88),
     }
 }

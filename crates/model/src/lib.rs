@@ -6,9 +6,9 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 use std::collections::BTreeMap;
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 
-use packetcraft_core::{DeviceId, Ipv4Net, MacAddr, VlanId, VlanSet};
+use packetcraft_core::{DeviceId, Ipv4Net, Ipv6Net, MacAddr, VlanId, VlanSet};
 use serde::{Deserialize, Serialize};
 
 pub mod acl;
@@ -358,6 +358,8 @@ pub struct Port {
     /// Switches: `switchport port-security`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub port_security: Option<PortSecurity>,
+    #[serde(default, skip_serializing_if = "Ipv6Conf::is_default")]
+    pub ipv6: Ipv6Conf,
     /// Switches: `channel-group N mode M`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub channel: Option<ChannelGroup>,
@@ -421,6 +423,48 @@ pub struct StaticRoute {
     pub via: NextHop,
 }
 
+/// An IPv6 static route: out of an interface, towards a next hop, or both (a link-local next
+/// hop needs its interface).
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct StaticRoute6 {
+    /// Network (host bits clear).
+    pub net: Ipv6Net,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub iface: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_hop: Option<Ipv6Addr>,
+}
+
+/// Most IPv6 addresses on one interface.
+pub const MAX_IPV6_ADDRESSES: usize = 8;
+
+/// A port's IPv6 settings.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Ipv6Conf {
+    /// `ipv6 enable`: IPv6 with only a link-local address. Any address enables it too.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Global (and unique-local) addresses.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub addresses: Vec<Ipv6Net>,
+    /// `ipv6 address X link-local`; otherwise the EUI-64 one from the MAC address.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link_local: Option<Ipv6Addr>,
+    /// Hosts: addresses come from router advertisements (stateless autoconfiguration).
+    #[serde(default)]
+    pub autoconfig: bool,
+}
+
+impl Ipv6Conf {
+    pub fn is_default(&self) -> bool {
+        *self == Ipv6Conf::default()
+    }
+
+    pub fn active(&self) -> bool {
+        self.enabled || self.autoconfig || !self.addresses.is_empty() || self.link_local.is_some()
+    }
+}
+
 /// A device: identity, position on the canvas, ports, and its configuration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Device {
@@ -441,6 +485,15 @@ pub struct Device {
     /// Hosts: the default gateway.
     #[serde(default)]
     pub gateway: Option<Ipv4Addr>,
+    /// Hosts: the IPv6 default gateway (often a router's link-local address).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gateway6: Option<Ipv6Addr>,
+    /// Routers: `ipv6 unicast-routing` (forward IPv6 and send router advertisements).
+    #[serde(default)]
+    pub ipv6_routing: bool,
+    /// Routers: IPv6 static routes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub routes6: Vec<StaticRoute6>,
     /// Routers: static routes.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub routes: Vec<StaticRoute>,
@@ -787,6 +840,7 @@ impl Device {
                 subifs: Vec::new(),
                 portfast: false,
                 port_security: None,
+                ipv6: Ipv6Conf::default(),
                 channel: None,
                 err_disabled: false,
                 helpers: Vec::new(),
@@ -804,6 +858,9 @@ impl Device {
             y,
             ports,
             gateway: None,
+            gateway6: None,
+            ipv6_routing: false,
+            routes6: Vec::new(),
             routes: Vec::new(),
             vlans: BTreeMap::new(),
             vtp: Vtp::default(),
@@ -831,6 +888,9 @@ impl Device {
             *p = Port { mac: p.mac, ..f };
         }
         self.gateway = None;
+        self.gateway6 = None;
+        self.ipv6_routing = false;
+        self.routes6.clear();
         self.routes.clear();
         // The VLAN database and VTP settings live apart from the configuration (as in a
         // switch's flash) and survive a reload.

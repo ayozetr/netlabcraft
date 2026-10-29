@@ -14,7 +14,11 @@ Commands:
   ipconfig                         show this host's address
     ipconfig <address> <mask> [gw] [dns]  set the address (gateway, DNS server)
     ipconfig /renew                  ask a DHCP server for an address
-  ipconfig /release                remove the address
+    ipconfig /release                remove the address
+  ipv6config                       show the IPv6 settings
+    ipv6config <address/len> [gw]    set an IPv6 address (and gateway)
+    ipv6config auto                  take an address from the router (SLAAC)
+    ipv6config off                   turn IPv6 off
     ping [-n count] <address|name>   send echo requests
   tracert <address|name>           trace the route (also: traceroute)
   nslookup <name>                  ask the DNS server for a name
@@ -39,14 +43,21 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut crate::
         "hostname" => out(t.device(dev).map(|d| d.name.clone()).unwrap_or_default()),
         "ipconfig" | "ifconfig" => ipconfig(t, sim, dev, words.get(1..).unwrap_or_default()),
         "ping" => out(host_ping(t, sim, dev, words.get(1..).unwrap_or_default())),
+        "ipv6config" => ipv6config(t, sim, dev, words.get(1..).unwrap_or_default()),
         "tracert" | "traceroute" => {
             let Some(target) = words.get(1) else { return out("Usage: tracert <address or name>".into()) };
+            if let Ok(dst6) = target.parse::<std::net::Ipv6Addr>() {
+                return match sim.traceroute6(t, dev, dst6, 30, 2_000_000) {
+                    Ok(h) => out(traceroute(dst6.into(), &h)),
+                    Err(e) => out(e.to_string()),
+                };
+            }
             let dst = match sim.dns_resolve(t, dev, target) {
                 Ok(a) => a,
                 Err(e) => return out(e.to_string()),
             };
             match sim.traceroute(t, dev, dst, 30, 2_000_000) {
-                Ok(h) => out(traceroute(dst, &h)),
+                Ok(h) => out(traceroute(dst.into(), &h)),
                 Err(e) => out(e.to_string()),
             }
         }
@@ -111,7 +122,7 @@ fn ipconfig(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Ou
             d.gateway.map_or("not set".to_string(), |g| g.to_string()),
             d.dns.map_or("not set".to_string(), |g| g.to_string()),
             if d.dhcp_client { "by DHCP" } else { "by hand (static)" },
-        )
+        ) + &ipv6_lines(d)
     };
     let Some(d) = t.device(dev) else { return Outcome::default() };
     let result: Result<String, String> = match args {
@@ -202,12 +213,17 @@ fn host_ping(t: &Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Strin
         }
     }
     let Some(target) = target else { return "Usage: ping [-n count] <address or name>".into() };
-    let dst = match sim.dns_resolve(t, dev, target) {
-        Ok(a) => a,
-        Err(e) => return e.to_string(),
-    };
     let opts = PingOptions { count, size: 32, ..PingOptions::default() };
-    let probes = match sim.ping(t, dev, dst, opts) {
+    let (dst, probes): (std::net::IpAddr, _) = if let Ok(dst6) = target.parse::<std::net::Ipv6Addr>() {
+        (dst6.into(), sim.ping6(t, dev, dst6, opts))
+    } else {
+        let dst = match sim.dns_resolve(t, dev, target) {
+            Ok(a) => a,
+            Err(e) => return e.to_string(),
+        };
+        (dst.into(), sim.ping(t, dev, dst, opts))
+    };
+    let probes = match probes {
         Ok(p) => p,
         Err(e) => return e.to_string(),
     };
@@ -224,4 +240,84 @@ fn host_ping(t: &Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Strin
     let got = probes.iter().filter(|p| matches!(p, Probe::Reply { .. })).count();
     let _ = write!(s, "{} sent, {got} answered, {}% lost", probes.len(), (probes.len() - got) * 100 / probes.len().max(1));
     s
+}
+
+/// The IPv6 part of `ipconfig` and `ipv6config`.
+fn ipv6_lines(d: &Device) -> String {
+    let Some(i) = packetcraft_sim::v6::l3_ifaces6(d).into_iter().next() else { return "\nIPv6        off".into() };
+    let mut s = format!("\nLink-local  {}", i.link_local);
+    for a in &i.addresses {
+        let _ = write!(s, "\nIPv6        {a}");
+    }
+    let how = if d.ports.first().is_some_and(|p| p.ipv6.autoconfig) { " (from the router)" } else { "" };
+    let _ = write!(s, "\nIPv6 gw     {}{how}", d.gateway6.map_or("not set".to_string(), |g| g.to_string()));
+    s
+}
+
+fn ipv6config(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Outcome {
+    let Some(d) = t.device(dev) else { return Outcome::default() };
+    let result: Result<String, String> = match args {
+        [] => return Outcome { output: ipv6_lines(d).trim_start().to_string(), ..Outcome::default() },
+        [w] if w.eq_ignore_ascii_case("off") => {
+            if let Some(d) = t.device_mut(dev) {
+                if let Some(p) = d.ports.first_mut() {
+                    p.ipv6 = packetcraft_model::Ipv6Conf::default();
+                }
+                d.gateway6 = None;
+            }
+            Ok("IPv6 turned off.".into())
+        }
+        [w] if w.eq_ignore_ascii_case("auto") => {
+            // Link-local first, so the router solicitation has a source.
+            if let Some(p) = t.device_mut(dev).and_then(|d| d.ports.first_mut()) {
+                p.ipv6.enabled = true;
+            }
+            sim.topology_changed(t);
+            match sim.autoconfig6(t, dev) {
+                Ok((addr, router)) => {
+                    if let Some(d) = t.device_mut(dev) {
+                        if let Some(p) = d.ports.first_mut() {
+                            p.ipv6 = packetcraft_model::Ipv6Conf { enabled: true, addresses: vec![addr], link_local: None, autoconfig: true };
+                        }
+                        d.gateway6 = Some(router);
+                    }
+                    Ok(format!("Autoconfigured {addr}, gateway {router}."))
+                }
+                Err(e) => Err(format!("Autoconfiguration failed: {e}.")),
+            }
+        }
+        [addr, rest @ ..] if rest.len() <= 1 => (|| {
+            let net: packetcraft_core::Ipv6Net = addr.parse().map_err(|e: packetcraft_core::CoreError| e.to_string())?;
+            if net.addr.is_multicast() || net.addr.is_unspecified() || packetcraft_core::Ipv6Net::is_link_local(net.addr) {
+                return Err(format!("{} can't be this host's address", net.addr));
+            }
+            let gw = match rest.first() {
+                Some(g) => Some(g.parse::<std::net::Ipv6Addr>().map_err(|_| format!("`{g}` is not an IPv6 address"))?),
+                None => None,
+            };
+            if let Some(g) = gw
+                && !packetcraft_core::Ipv6Net::is_link_local(g)
+                && !net.contains(g)
+            {
+                return Err(format!("the gateway {g} is not on {}", net.network()));
+            }
+            let d = t.device_mut(dev).ok_or("the device no longer exists")?;
+            if let Some(p) = d.ports.first_mut() {
+                p.ipv6 = packetcraft_model::Ipv6Conf { enabled: true, addresses: vec![net], link_local: None, autoconfig: false };
+            }
+            d.gateway6 = gw;
+            Ok(format!("IPv6 address set to {net}{}.", gw.map(|g| format!(", gateway {g}")).unwrap_or_default()))
+        })(),
+        _ => Err("Usage: ipv6config [<address/len> [<gateway>] | auto | off]".into()),
+    };
+    match result {
+        Ok(s) => {
+            sim.topology_changed(t);
+            Outcome { output: s, changed: true, clear: false }
+        }
+        Err(e) => {
+            sim.topology_changed(t);
+            Outcome { output: e, changed: true, clear: false }
+        }
+    }
 }

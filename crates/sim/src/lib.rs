@@ -14,7 +14,7 @@
 
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BinaryHeap, VecDeque};
-use std::net::Ipv4Addr;
+use std::net::{IpAddr, Ipv4Addr};
 
 use packetcraft_core::{DeviceId, Ipv4Net, MacAddr, VlanId};
 use packetcraft_model::{Device, DeviceKind, End, NextHop, SwitchportMode, Topology, ifname};
@@ -27,6 +27,7 @@ pub mod ospf;
 pub mod stp;
 #[cfg(test)]
 mod tests;
+pub mod v6;
 pub mod vtp;
 
 /// One cable hop (serialisation + propagation), in microseconds.
@@ -375,6 +376,13 @@ pub struct DevState {
     pending: Vec<Pending>,
     arp_asked: BTreeMap<Ipv4Addr, u64>,
     icmp: Vec<IcmpEvent>,
+    /// IPv6 neighbour cache (the ARP table's counterpart).
+    pub nd: BTreeMap<std::net::Ipv6Addr, ArpEntry>,
+    nd_asked: BTreeMap<std::net::Ipv6Addr, u64>,
+    pending6: Vec<v6::Pending6>,
+    icmp6: Vec<v6::Icmp6Event>,
+    /// Hosts: the last router advertisement heard (router's address, prefixes).
+    ra: Option<(std::net::Ipv6Addr, Vec<packetcraft_wire::ipv6::PrefixInfo>)>,
 }
 
 /// One frame delivered across a cable.
@@ -434,9 +442,9 @@ impl Default for PingOptions {
 /// The outcome of one echo request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Probe {
-    Reply { from: Ipv4Addr, rtt_us: u64 },
-    TtlExceeded { from: Ipv4Addr, rtt_us: u64 },
-    Unreachable { from: Ipv4Addr, code: u8 },
+    Reply { from: IpAddr, rtt_us: u64 },
+    TtlExceeded { from: IpAddr, rtt_us: u64 },
+    Unreachable { from: IpAddr, code: u8 },
     Timeout,
 }
 
@@ -552,6 +560,9 @@ impl Sim {
             let ifs = up_ifaces(t, d);
             st.arp.retain(|ip, e| ifs.iter().any(|i| i.name == e.iface && i.net.contains(*ip)));
             st.pending.retain(|p| ifs.iter().any(|i| i.name == p.iface.name));
+            let ifs6 = v6::up_ifaces6(t, d);
+            st.nd.retain(|_, e| ifs6.iter().any(|i| i.name == e.iface));
+            st.pending6.retain(|p| ifs6.iter().any(|i| i.port == p.port()));
         }
         let queue = std::mem::take(&mut self.queue);
         self.queue = queue.into_iter().filter(|Reverse(q)| t.peer(q.from) == Some(q.to)).collect();
@@ -1037,6 +1048,9 @@ impl Sim {
     // ---- hosts and routers ----
 
     fn l3_in(&mut self, t: &Topology, d: &Device, in_port: usize, f: Frame) -> Result<(), String> {
+        if f.ethertype == packetcraft_wire::ipv6::ETHERTYPE_IPV6 {
+            return self.ip6_in(t, d, in_port, &f);
+        }
         // A host waiting for DHCP takes answers before it has an address.
         if d.kind.is_host()
             && self.state.get(&d.id).is_some_and(|s| s.dhcp_xid.is_some())
@@ -1843,7 +1857,7 @@ impl Sim {
         };
         // An echo to ourselves never touches a cable.
         if l3_ifaces(d).iter().any(|i| i.net.addr == dst) {
-            return Ok(Probe::Reply { from: dst, rtt_us: 0 });
+            return Ok(Probe::Reply { from: dst.into(), rtt_us: 0 });
         }
         let sent = self.now;
         if self.send_ip(t, d, ip).is_err() && d.kind != DeviceKind::Router {
@@ -1856,9 +1870,11 @@ impl Sim {
         let ev = found.map(|i| st.icmp.remove(i));
         st.icmp.retain(|e| sent.saturating_sub(e.at) < 60_000_000);
         Ok(match ev {
-            Some(IcmpEvent { kind: IcmpKind::Reply, from, at, .. }) => Probe::Reply { from, rtt_us: at.saturating_sub(sent) },
-            Some(IcmpEvent { kind: IcmpKind::TimeExceeded, from, at, .. }) => Probe::TtlExceeded { from, rtt_us: at.saturating_sub(sent) },
-            Some(IcmpEvent { kind: IcmpKind::Unreachable(code), from, .. }) => Probe::Unreachable { from, code },
+            Some(IcmpEvent { kind: IcmpKind::Reply, from, at, .. }) => Probe::Reply { from: from.into(), rtt_us: at.saturating_sub(sent) },
+            Some(IcmpEvent { kind: IcmpKind::TimeExceeded, from, at, .. }) => {
+                Probe::TtlExceeded { from: from.into(), rtt_us: at.saturating_sub(sent) }
+            }
+            Some(IcmpEvent { kind: IcmpKind::Unreachable(code), from, .. }) => Probe::Unreachable { from: from.into(), code },
             None => Probe::Timeout,
         })
     }
