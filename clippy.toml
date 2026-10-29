@@ -1,0 +1,12 @@
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-indexing-slicing-in-tests = true
+
+# The web app (wasm32-unknown-unknown) has no clock: these trap (`RuntimeError: unreachable`)
+# instead of returning. Simulated time lives in `packetcraft-sim`; read the wall clock only off
+# wasm and allow the lint at that call.
+disallowed-methods = [
+    { path = "std::time::Instant::now", reason = "traps on wasm; read the clock only off wasm" },
+    { path = "std::time::SystemTime::now", reason = "traps on wasm; read the clock only off wasm" },
+]

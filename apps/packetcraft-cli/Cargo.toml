@@ -1,0 +1,15 @@
+[package]
+name = "packetcraft-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "PacketCraft headless: run commands on lab files, type at device consoles, serve MCP"
+
+[lints]
+workspace = true
+
+[dependencies]
+packetcraft-engine = { workspace = true }
+packetcraft-mcp = { workspace = true }
+serde_json = { workspace = true }

@@ -1,0 +1,174 @@
+//! PacketCraft on the desktop: `packetcraft [LAB.pcraft] [--sample ID]`.
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
+use packetcraft_engine::Session;
+use packetcraft_ui_egui::{PacketApp, UiRequest};
+use serde_json::json;
+
+/// What to do with unsaved changes when the window closes.
+#[derive(PartialEq, Eq)]
+enum Closing {
+    No,
+    Asking,
+    Confirmed,
+}
+
+struct App {
+    app: PacketApp,
+    title: String,
+    closing: Closing,
+}
+
+impl App {
+    fn serve(&mut self, ctx: &egui::Context) {
+        for r in self.app.take_requests() {
+            match r {
+                UiRequest::Open => {
+                    if let Some(p) = rfd::FileDialog::new().add_filter("PacketCraft lab", &["pcraft"]).pick_file() {
+                        self.app.open_path(&p.to_string_lossy());
+                    }
+                }
+                UiRequest::Save { path, .. } => {
+                    let path = path
+                        .map(std::path::PathBuf::from)
+                        .or_else(|| rfd::FileDialog::new().add_filter("PacketCraft lab", &["pcraft"]).set_file_name("lab.pcraft").save_file());
+                    if let Some(p) = path {
+                        let p = p.to_string_lossy().to_string();
+                        if self.app.run("file.save", json!({"path": p})).is_some() {
+                            self.app.saved_to(&p);
+                            if self.closing == Closing::Asking {
+                                self.closing = Closing::Confirmed;
+                                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                            }
+                        }
+                    }
+                }
+                UiRequest::ExportPcap(bytes) => {
+                    if let Some(p) = rfd::FileDialog::new().add_filter("Packet capture", &["pcap"]).set_file_name("capture.pcap").save_file() {
+                        match std::fs::write(&p, &bytes) {
+                            Ok(()) => self.app.info(format!("Wrote {} ({} bytes)", p.display(), bytes.len())),
+                            Err(e) => self.app.ui.status = Some((format!("{}: {e}", p.display()), true)),
+                        }
+                    }
+                }
+                UiRequest::SaveText { name, text } => {
+                    if let Some(p) = rfd::FileDialog::new().add_filter("Text", &["txt"]).set_file_name(&name).save_file() {
+                        match std::fs::write(&p, text.as_bytes()) {
+                            Ok(()) => self.app.info(format!("Wrote {}", p.display())),
+                            Err(e) => self.app.ui.status = Some((format!("{}: {e}", p.display()), true)),
+                        }
+                    }
+                }
+                UiRequest::OpenText { device, merge } => {
+                    if let Some(p) = rfd::FileDialog::new().add_filter("Text", &["txt", "cfg", "conf"]).pick_file() {
+                        match std::fs::read(&p) {
+                            Ok(b) if b.len() <= 1_000_000 => self.app.text_opened(device, merge, &String::from_utf8_lossy(&b)),
+                            Ok(_) => self.app.ui.status = Some(("That file is too large to be a configuration.".into(), true)),
+                            Err(e) => self.app.ui.status = Some((format!("{}: {e}", p.display()), true)),
+                        }
+                    }
+                }
+                UiRequest::ImportWebFile { device } => {
+                    if let Some(p) = rfd::FileDialog::new().add_filter("Web page", &["html", "htm", "txt"]).pick_file() {
+                        let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "page.html".into());
+                        match std::fs::read(&p) {
+                            Ok(b) if b.len() <= 200_000 => self.app.web_file_imported(device, &name, &String::from_utf8_lossy(&b)),
+                            Ok(_) => self.app.ui.status = Some(("That file is too large for the simulated web server.".into(), true)),
+                            Err(e) => self.app.ui.status = Some((format!("{}: {e}", p.display()), true)),
+                        }
+                    }
+                }
+                UiRequest::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+            }
+        }
+    }
+
+    fn unsaved_dialog(&mut self, ctx: &egui::Context) {
+        if self.closing != Closing::Asking {
+            return;
+        }
+        egui::Window::new("Unsaved changes").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
+            ui.label(format!("Save the changes to {} before closing?", self.app.session.title().trim_end_matches(" •")));
+            ui.horizontal(|ui| {
+                if ui.button("Save").clicked() {
+                    self.app.save(false);
+                }
+                if ui.button("Discard").clicked() {
+                    self.closing = Closing::Confirmed;
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+                if ui.button("Cancel").clicked() {
+                    self.closing = Closing::No;
+                }
+            });
+        });
+    }
+}
+
+impl eframe::App for App {
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw: &mut egui::RawInput) {
+        for f in std::mem::take(&mut raw.dropped_files) {
+            if let Some(p) = f.path().to_str().filter(|p| !p.is_empty()) {
+                self.app.open_path(p);
+            }
+        }
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+        if ctx.input(|i| i.viewport().close_requested()) && self.app.session.dirty && self.closing != Closing::Confirmed {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.closing = Closing::Asking;
+        }
+        self.app.ui(ui);
+        self.unsaved_dialog(&ctx);
+        self.serve(&ctx);
+        let title = self.app.title();
+        if title != self.title {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+            self.title = title;
+        }
+    }
+}
+
+fn main() -> eframe::Result {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut session = Session::new();
+    let mut i = 0;
+    while let Some(a) = args.get(i) {
+        let r = match a.as_str() {
+            "--sample" => {
+                i += 1;
+                session.execute("file.new", json!({"sample": args.get(i).map_or("lan", String::as_str)}))
+            }
+            "--version" => {
+                println!("packetcraft {}", env!("CARGO_PKG_VERSION"));
+                return Ok(());
+            }
+            path => session.execute("file.open", json!({"path": path})),
+        };
+        if let Err(e) = r {
+            eprintln!("packetcraft: {e}");
+        }
+        i += 1;
+    }
+    let app = PacketApp::new(session);
+    let title = app.title();
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_title(title.clone())
+            .with_inner_size([1280.0, 820.0])
+            .with_min_inner_size([720.0, 480.0])
+            .with_app_id("packetcraft"),
+        ..Default::default()
+    };
+    eframe::run_native(
+        "PacketCraft",
+        options,
+        Box::new(move |cc| {
+            app.apply_theme(&cc.egui_ctx);
+            Ok(Box::new(App { app, title, closing: Closing::No }))
+        }),
+    )
+}

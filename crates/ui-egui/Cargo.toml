@@ -1,0 +1,24 @@
+[package]
+name = "packetcraft-ui-egui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "PacketCraft L6: the egui interface (topology canvas, device consoles, simulation event list)"
+
+[lints]
+workspace = true
+
+[dependencies]
+packetcraft-core = { workspace = true }
+packetcraft-wire = { workspace = true }
+packetcraft-model = { workspace = true }
+packetcraft-sim = { workspace = true }
+packetcraft-ios = { workspace = true }
+packetcraft-engine = { workspace = true }
+egui = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }
+
+[dev-dependencies]
+egui_kittest = { workspace = true, features = ["wgpu", "snapshot"] }

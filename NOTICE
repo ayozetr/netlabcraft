@@ -1,0 +1,15 @@
+PacketCraft
+Copyright (c) 2026 the PacketCraft contributors.
+Licensed under the MIT License or the Apache License, Version 2.0, at your option
+(LICENSE-MIT, LICENSE-APACHE).
+
+Cisco, Cisco IOS and Packet Tracer are trademarks of Cisco Systems, Inc. PacketCraft is an
+independent, clean-room project: it is not affiliated with, endorsed by or derived from Cisco or
+its software. Command names that follow the conventions network engineers already know are used
+only to name features.
+
+Third-party material
+
+PacketCraft has no bundled assets of its own: the device icons and every other picture are drawn
+in code. The UI uses egui's default fonts (epaint_default_fonts), listed with their licences in
+ATTRIBUTION.md.

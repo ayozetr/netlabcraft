@@ -1,0 +1,1981 @@
+//! PacketCraft L3: the network simulator.
+//!
+//! A discrete-event simulator over simulated time (microseconds). Devices exchange real
+//! Ethernet frames ([`packetcraft_wire`]) across the cables of a [`Topology`]; every delivery is
+//! recorded in the event list ([`TraceEvent`]) so the UI can replay it and export a pcap.
+//!
+//! The simulator reads configuration from the topology on every event and keeps only dynamic
+//! state of its own (ARP caches, MAC tables, packets waiting for ARP). After the topology
+//! changes, call [`Sim::topology_changed`].
+//!
+//! Behaviour follows the public standards (IEEE 802.1D learning bridges, 802.1Q, RFC 826, RFC
+//! 791, RFC 792, RFC 1812 for router forwarding).
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
+
+use std::cmp::Reverse;
+use std::collections::{BTreeMap, BinaryHeap, VecDeque};
+use std::net::Ipv4Addr;
+
+use packetcraft_core::{DeviceId, Ipv4Net, MacAddr, VlanId};
+use packetcraft_model::{Device, DeviceKind, End, NextHop, SwitchportMode, Topology, ifname};
+use packetcraft_wire::dhcp::{self, Dhcp, DhcpKind};
+use packetcraft_wire::tcp::{self, Tcp};
+use packetcraft_wire::{Arp, ArpOp, ETHERTYPE_ARP, ETHERTYPE_IPV4, Frame, Icmp, Ipv4, PROTO_ICMP, PROTO_TCP, PROTO_UDP, Protocol, Udp, dns};
+
+pub mod ospf;
+pub mod stp;
+#[cfg(test)]
+mod tests;
+
+/// One cable hop (serialisation + propagation), in microseconds.
+pub const LINK_DELAY_US: u64 = 250;
+/// Events one call may process before the simulator declares a storm and drops everything in
+/// flight (a last-resort guard; loops are normally caught by [`MAX_SWITCH_HOPS`]).
+pub const MAX_EVENTS_PER_RUN: usize = 200_000;
+/// Switches one frame may cross. Ethernet has no hop limit, so without a spanning tree a frame
+/// in a switching loop circles forever; past this many switches the simulator drops it and
+/// reports a storm. Real switched networks are far shallower.
+pub const MAX_SWITCH_HOPS: u8 = 64;
+/// Event-list length; older events are forgotten.
+pub const TRACE_CAP: usize = 20_000;
+pub const MAC_AGING_US: u64 = 300 * 1_000_000;
+pub const ARP_AGING_US: u64 = 4 * 3_600 * 1_000_000;
+/// How long a host keeps a packet waiting for an ARP reply, and how often it re-asks.
+const ARP_WAIT_US: u64 = 2_000_000;
+const ARP_RETRY_US: u64 = 1_000_000;
+const MAX_PENDING: usize = 64;
+const MAX_MAC_ENTRIES: usize = 8_192;
+const MAX_ARP_ENTRIES: usize = 4_096;
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum SimError {
+    #[error("no device {0}")]
+    NoDevice(DeviceId),
+    #[error("{0}")]
+    NoSource(String),
+}
+
+/// A layer-3 interface: a routed port, a subinterface, or a host's port.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct L3If {
+    pub port: usize,
+    /// Subinterface number (`.10`), if any.
+    pub sub: Option<u32>,
+    /// The 802.1Q tag the interface sends and accepts (subinterfaces).
+    pub vlan: Option<u16>,
+    pub net: Ipv4Net,
+    pub mac: MacAddr,
+    pub name: String,
+}
+
+/// The layer-3 interfaces a device has configured and not shut down (whether or not cabled).
+/// The port index that stands for a switch's VLAN interfaces (its own "CPU" port).
+pub const SVI_PORT: usize = usize::MAX;
+
+/// The MAC address of a switch's VLAN interfaces.
+pub fn svi_mac(d: &Device) -> MacAddr {
+    MacAddr::local(d.id, 0xfffe)
+}
+
+pub fn l3_ifaces(d: &Device) -> Vec<L3If> {
+    if d.kind == DeviceKind::Switch {
+        let mac = svi_mac(d);
+        return d
+            .svis
+            .iter()
+            .filter(|s| !s.shutdown)
+            .filter_map(|s| s.ip.map(|net| L3If { port: SVI_PORT, sub: None, vlan: Some(s.vlan.get()), net, mac, name: format!("Vlan{}", s.vlan) }))
+            .collect();
+    }
+    if d.kind == DeviceKind::Hub {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for (i, p) in d.ports.iter().enumerate() {
+        if p.shutdown {
+            continue;
+        }
+        if let Some(net) = p.ip {
+            out.push(L3If { port: i, sub: None, vlan: None, net, mac: p.mac, name: p.name.clone() });
+        }
+        if d.kind == DeviceKind::Router {
+            for s in &p.subifs {
+                if let (Some(net), Some(v), false) = (s.ip, s.vlan, s.shutdown) {
+                    out.push(L3If { port: i, sub: Some(s.number), vlan: Some(v.get()), net, mac: p.mac, name: format!("{}.{}", p.name, s.number) });
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Whether a port can pass traffic: not shut down, cabled, and the far port not shut down.
+pub fn port_up(t: &Topology, end: End) -> bool {
+    let ok = |p: &packetcraft_model::Port| !p.shutdown && !p.err_disabled;
+    let own = t.device(end.device).and_then(|d| d.ports.get(end.port)).is_some_and(ok);
+    own && t.peer(end).and_then(|p| t.device(p.device).and_then(|d| d.ports.get(p.port))).is_some_and(ok)
+}
+
+/// Something the simulator decided that changes the lab: the engine applies it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PortEvent {
+    /// A port-security violation shut the port down.
+    ErrDisabled { device: DeviceId, port: usize },
+    /// A sticky address was learned.
+    Sticky { device: DeviceId, port: usize, mac: MacAddr },
+}
+
+/// The layer-3 interfaces that are up (connected routes exist only for these).
+pub fn up_ifaces(t: &Topology, d: &Device) -> Vec<L3If> {
+    l3_ifaces(d)
+        .into_iter()
+        .filter(|i| {
+            if i.port == SVI_PORT {
+                // A VLAN interface is up while some port of its VLAN is up.
+                i.vlan
+                    .and_then(VlanId::new)
+                    .is_some_and(|v| (0..d.ports.len()).any(|p| stp::carries(d, p, v) && port_up(t, End { device: d.id, port: p })))
+            } else {
+                port_up(t, End { device: d.id, port: i.port })
+            }
+        })
+        .collect()
+}
+
+/// A routing-table row, as `show ip route` prints it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RouteEntry {
+    /// `C` connected, `L` local address, `S` static.
+    pub code: char,
+    pub net: Ipv4Net,
+    pub via: Option<Ipv4Addr>,
+    pub iface: Option<String>,
+}
+
+/// The device's routing table: connected and local routes of up interfaces, static routes
+/// whose next hop resolves, and OSPF routes (code `O`; `E` for an external default).
+pub fn routing_table(t: &Topology, d: &Device) -> Vec<RouteEntry> {
+    let mut out = routing_table_static(t, d);
+    if d.ospf.is_some() {
+        let st = ospf::compute(t);
+        let have: Vec<Ipv4Net> = out.iter().map(|r| r.net).collect();
+        for r in st.routes.get(&d.id).into_iter().flatten() {
+            if !have.contains(&r.net) {
+                out.push(RouteEntry { code: if r.external { 'E' } else { 'O' }, net: r.net, via: Some(r.via), iface: Some(r.iface.clone()) });
+            }
+        }
+        out.sort_by_key(|r| (r.net.addr, r.net.prefix, r.code));
+    }
+    out
+}
+
+fn routing_table_static(t: &Topology, d: &Device) -> Vec<RouteEntry> {
+    let ifs = up_ifaces(t, d);
+    let mut out = Vec::new();
+    for i in &ifs {
+        out.push(RouteEntry { code: 'C', net: i.net.network(), via: None, iface: Some(i.name.clone()) });
+        if i.net.prefix < 32 {
+            out.push(RouteEntry { code: 'L', net: Ipv4Net::new(i.net.addr, 32), via: None, iface: Some(i.name.clone()) });
+        }
+    }
+    if d.kind == DeviceKind::Router {
+        for r in &d.routes {
+            match &r.via {
+                NextHop::Address(a) => {
+                    if ifs.iter().any(|i| i.net.contains(*a)) {
+                        out.push(RouteEntry { code: 'S', net: r.net, via: Some(*a), iface: None });
+                    }
+                }
+                NextHop::Interface(n) => {
+                    if let Some(i) = find_iface(&ifs, n) {
+                        out.push(RouteEntry { code: 'S', net: r.net, via: None, iface: Some(i.name.clone()) });
+                    }
+                }
+            }
+        }
+    }
+    out.sort_by_key(|r| (r.net.addr, r.net.prefix, r.code));
+    out
+}
+
+fn find_iface<'a>(ifs: &'a [L3If], name: &str) -> Option<&'a L3If> {
+    let n = ifname::parse(name)?;
+    ifs.iter().find(|i| ifname::parse(&i.name).is_some_and(|m| m == n))
+}
+
+/// Where a datagram to `dst` leaves a device: the interface and the next hop to ARP for.
+pub fn route(t: &Topology, d: &Device, dst: Ipv4Addr) -> Option<(L3If, Ipv4Addr)> {
+    let st = if d.ospf.is_some() { Some(ospf::compute(t)) } else { None };
+    route_with(t, d, dst, st.as_ref().and_then(|s| s.routes.get(&d.id)).map_or(&[][..], Vec::as_slice))
+}
+
+/// [`route`] with OSPF's routes for this device given (connected beats static beats OSPF at
+/// equal prefix length, as their administrative distances say).
+pub fn route_with(t: &Topology, d: &Device, dst: Ipv4Addr, ospf_routes: &[ospf::OspfRoute]) -> Option<(L3If, Ipv4Addr)> {
+    let ifs = up_ifaces(t, d);
+    if d.kind.is_host() {
+        let i = ifs.into_iter().next()?;
+        if i.net.contains(dst) || dst == Ipv4Addr::BROADCAST {
+            return Some((i, dst));
+        }
+        let gw = d.gateway.filter(|g| i.net.contains(*g))?;
+        return Some((i, gw));
+    }
+    if d.kind == DeviceKind::Switch {
+        // A switch doesn't route: connected VLAN interfaces, else its default gateway.
+        if let Some(i) = ifs.iter().filter(|i| i.net.contains(dst)).max_by_key(|i| i.net.prefix) {
+            return Some((i.clone(), dst));
+        }
+        let gw = d.gateway?;
+        let i = ifs.into_iter().find(|i| i.net.contains(gw))?;
+        return Some((i, gw));
+    }
+    if matches!(d.kind, DeviceKind::Switch | DeviceKind::Hub) {
+        return None;
+    }
+    let mut best: Option<(u8, L3If, Ipv4Addr)> = None;
+    let mut consider = |prefix: u8, i: &L3If, nh: Ipv4Addr| {
+        if best.as_ref().is_none_or(|(p, _, _)| prefix > *p) {
+            best = Some((prefix, i.clone(), nh));
+        }
+    };
+    for i in &ifs {
+        if i.net.contains(dst) {
+            consider(i.net.prefix, i, dst);
+        }
+    }
+    for r in &d.routes {
+        if !r.net.contains(dst) {
+            continue;
+        }
+        match &r.via {
+            NextHop::Address(a) => {
+                if let Some(i) = ifs.iter().filter(|i| i.net.contains(*a)).max_by_key(|i| i.net.prefix) {
+                    consider(r.net.prefix, i, *a);
+                }
+            }
+            NextHop::Interface(n) => {
+                if let Some(i) = find_iface(&ifs, n) {
+                    consider(r.net.prefix, i, dst);
+                }
+            }
+        }
+    }
+    for r in ospf_routes.iter().filter(|r| r.net.contains(dst)) {
+        if let Some(i) = ifs.iter().find(|i| i.name == r.iface) {
+            consider(r.net.prefix, i, r.via);
+        }
+    }
+    best.map(|(_, i, nh)| (i, nh))
+}
+
+/// A learned ARP binding.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArpEntry {
+    pub mac: MacAddr,
+    pub learned_us: u64,
+    /// The interface it was learned on.
+    pub iface: String,
+}
+
+/// A learned MAC-table entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MacEntry {
+    pub port: usize,
+    pub learned_us: u64,
+}
+
+#[derive(Debug, Clone)]
+struct Pending {
+    next_hop: Ipv4Addr,
+    iface: L3If,
+    datagram: Vec<u8>,
+    since: u64,
+}
+
+/// What came back for one of our echo requests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IcmpKind {
+    Reply,
+    TimeExceeded,
+    Unreachable(u8),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct IcmpEvent {
+    at: u64,
+    from: Ipv4Addr,
+    id: u16,
+    seq: u16,
+    kind: IcmpKind,
+}
+
+/// An address a DHCP server handed out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Lease {
+    pub mac: MacAddr,
+    pub pool: String,
+    pub since_us: u64,
+}
+
+/// What a DHCP client obtained.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DhcpResult {
+    pub address: Ipv4Net,
+    pub router: Option<Ipv4Addr>,
+    pub dns: Option<Ipv4Addr>,
+    pub server: Option<Ipv4Addr>,
+}
+
+/// One NAT translation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NatEntry {
+    /// IPv4 protocol number (1 ICMP, 17 UDP).
+    pub protocol: u8,
+    pub inside_local: Ipv4Addr,
+    /// ICMP identifier or UDP port, when translated per flow (PAT).
+    pub local_id: Option<u16>,
+    pub inside_global: Ipv4Addr,
+    pub global_id: Option<u16>,
+    pub outside: Ipv4Addr,
+    /// From an `ip nat inside source static` line.
+    pub fixed: bool,
+}
+
+const MAX_NAT_ENTRIES: usize = 4_096;
+
+/// Addresses a pool may scan for a free one.
+const MAX_POOL_SCAN: u32 = 65_536;
+
+/// A device's dynamic state.
+#[derive(Debug, Clone, Default)]
+pub struct DevState {
+    pub arp: BTreeMap<Ipv4Addr, ArpEntry>,
+    /// Keyed by (VLAN, MAC).
+    pub macs: BTreeMap<(u16, MacAddr), MacEntry>,
+    /// DHCP servers: addresses handed out.
+    pub leases: BTreeMap<Ipv4Addr, Lease>,
+    /// Access-list matches: (list, entry index or `usize::MAX` for the implicit deny) → count.
+    pub acl_hits: BTreeMap<(String, usize), u64>,
+    /// NAT translations in use.
+    pub nat: Vec<NatEntry>,
+    /// Port security: addresses learned per port (not sticky), and violations counted.
+    pub secure: BTreeMap<usize, Vec<MacAddr>>,
+    pub violations: BTreeMap<usize, u64>,
+    dhcp_xid: Option<u32>,
+    dhcp_inbox: Vec<Dhcp>,
+    /// A DNS question in flight: (local port, id), and its answer.
+    dns_wait: Option<(u16, u16)>,
+    dns_answer: Option<dns::Dns>,
+    /// TCP segments for a client connection in flight: (local port, remote port).
+    tcp_wait: Option<(u16, u16)>,
+    tcp_inbox: Vec<tcp::Tcp>,
+    pending: Vec<Pending>,
+    arp_asked: BTreeMap<Ipv4Addr, u64>,
+    icmp: Vec<IcmpEvent>,
+}
+
+/// One frame delivered across a cable.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TraceEvent {
+    pub id: u64,
+    pub at_us: u64,
+    pub from: End,
+    pub to: End,
+    pub frame: Vec<u8>,
+    pub protocol: Protocol,
+    pub summary: String,
+    /// Why the receiver discarded it, if it did.
+    pub dropped: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Queued {
+    at: u64,
+    seq: u64,
+    from: End,
+    to: End,
+    frame: Vec<u8>,
+    /// Switches crossed so far (simulator bookkeeping, not on the wire).
+    hops: u8,
+}
+
+impl Ord for Queued {
+    fn cmp(&self, o: &Self) -> std::cmp::Ordering {
+        (self.at, self.seq).cmp(&(o.at, o.seq))
+    }
+}
+
+impl PartialOrd for Queued {
+    fn partial_cmp(&self, o: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(o))
+    }
+}
+
+/// Options of a ping.
+#[derive(Debug, Clone, Copy)]
+pub struct PingOptions {
+    pub count: u16,
+    pub timeout_us: u64,
+    /// ICMP data bytes.
+    pub size: usize,
+    /// `None`: the device's default (128 on hosts, 255 on routers).
+    pub ttl: Option<u8>,
+}
+
+impl Default for PingOptions {
+    fn default() -> Self {
+        PingOptions { count: 5, timeout_us: 2_000_000, size: 72, ttl: None }
+    }
+}
+
+/// The outcome of one echo request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Probe {
+    Reply { from: Ipv4Addr, rtt_us: u64 },
+    TtlExceeded { from: Ipv4Addr, rtt_us: u64 },
+    Unreachable { from: Ipv4Addr, code: u8 },
+    Timeout,
+}
+
+impl Probe {
+    /// The one-character mark a ping line shows: `!` reply, `.` timeout, `U` unreachable,
+    /// `T` TTL exceeded.
+    pub fn mark(self) -> char {
+        match self {
+            Probe::Reply { .. } => '!',
+            Probe::TtlExceeded { .. } => 'T',
+            Probe::Unreachable { .. } => 'U',
+            Probe::Timeout => '.',
+        }
+    }
+}
+
+/// One traceroute hop.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Hop {
+    pub ttl: u8,
+    pub probes: Vec<Probe>,
+}
+
+/// The simulator.
+#[derive(Debug, Clone, Default)]
+pub struct Sim {
+    now: u64,
+    seq: u64,
+    queue: BinaryHeap<Reverse<Queued>>,
+    state: BTreeMap<DeviceId, DevState>,
+    trace: VecDeque<TraceEvent>,
+    next_event: u64,
+    next_ip_id: u16,
+    next_echo_id: u16,
+    storm: bool,
+    /// Spanning trees per VLAN, for the topology with this fingerprint.
+    stp_for: u64,
+    stp: BTreeMap<u16, stp::VlanTree>,
+    /// OSPF's routes, for the topology with this fingerprint.
+    ospf_for: u64,
+    ospf: Option<ospf::OspfState>,
+    /// Lab changes waiting for the engine.
+    events: Vec<PortEvent>,
+}
+
+impl Sim {
+    pub fn new() -> Sim {
+        Sim::default()
+    }
+
+    /// Simulated time, in microseconds.
+    pub fn now_us(&self) -> u64 {
+        self.now
+    }
+
+    pub fn state(&self, d: DeviceId) -> Option<&DevState> {
+        self.state.get(&d)
+    }
+
+    pub fn trace(&self) -> &VecDeque<TraceEvent> {
+        &self.trace
+    }
+
+    pub fn clear_trace(&mut self) {
+        self.trace.clear();
+    }
+
+    /// Whether the last run had to stop a broadcast storm.
+    pub fn storm_detected(&self) -> bool {
+        self.storm
+    }
+
+    /// Forgets all dynamic state and events (power-cycles the whole lab).
+    pub fn reset(&mut self) {
+        *self = Sim { next_event: self.next_event, ..Sim::default() };
+    }
+
+    /// Forgets one device's dynamic state (it reloaded).
+    pub fn reset_device(&mut self, d: DeviceId) {
+        self.state.remove(&d);
+    }
+
+    /// Empties a switch's MAC table.
+    pub fn clear_macs(&mut self, d: DeviceId) {
+        if let Some(st) = self.state.get_mut(&d) {
+            st.macs.clear();
+        }
+    }
+
+    /// Empties a device's ARP cache.
+    pub fn clear_arp(&mut self, d: DeviceId) {
+        if let Some(st) = self.state.get_mut(&d) {
+            st.arp.clear();
+            st.arp_asked.clear();
+        }
+    }
+
+    /// Drops state the new topology invalidates: removed devices, entries on ports that went
+    /// down, and frames in flight on removed cables.
+    pub fn topology_changed(&mut self, t: &Topology) {
+        self.state.retain(|id, _| t.device(*id).is_some());
+        // Ports reset by `shutdown`/`no shutdown`, or no longer secured, forget what they learned.
+        for (id, st) in &mut self.state {
+            if let Some(d) = t.device(*id) {
+                st.secure.retain(|p, _| d.ports.get(*p).is_some_and(|x| x.port_security.is_some() && !x.err_disabled && !x.shutdown));
+            }
+        }
+        for (id, st) in &mut self.state {
+            let Some(d) = t.device(*id) else { continue };
+            st.macs.retain(|_, e| port_up(t, End { device: *id, port: e.port }));
+            let ifs = up_ifaces(t, d);
+            st.arp.retain(|ip, e| ifs.iter().any(|i| i.name == e.iface && i.net.contains(*ip)));
+            st.pending.retain(|p| ifs.iter().any(|i| i.name == p.iface.name));
+        }
+        let queue = std::mem::take(&mut self.queue);
+        self.queue = queue.into_iter().filter(|Reverse(q)| t.peer(q.from) == Some(q.to)).collect();
+    }
+
+    /// A capture of the event list, in pcap format.
+    pub fn pcap(&self) -> Vec<u8> {
+        packetcraft_wire::pcap::write(self.trace.iter().map(|e| (e.at_us, e.frame.as_slice())))
+    }
+
+    fn st(&mut self, d: DeviceId) -> &mut DevState {
+        self.state.entry(d).or_default()
+    }
+
+    fn emit(&mut self, t: &Topology, from: End, frame: Vec<u8>) -> bool {
+        self.emit_hops(t, from, frame, 0)
+    }
+
+    fn emit_hops(&mut self, t: &Topology, from: End, frame: Vec<u8>, hops: u8) -> bool {
+        if !port_up(t, from) || self.err_disabled_now(from.device, from.port) {
+            return false;
+        }
+        let Some(to) = t.peer(from) else { return false };
+        if self.err_disabled_now(to.device, to.port) {
+            return false;
+        }
+        self.seq += 1;
+        self.queue.push(Reverse(Queued { at: self.now + LINK_DELAY_US, seq: self.seq, from, to, frame, hops }));
+        true
+    }
+
+    /// Processes events up to `deadline`, stopping early when `stop` says so. Returns whether
+    /// it stopped early.
+    fn advance(&mut self, t: &Topology, deadline: u64, mut stop: impl FnMut(&Sim) -> bool) -> bool {
+        self.storm = false;
+        self.refresh_stp(t);
+        let mut count = 0usize;
+        while let Some(Reverse(top)) = self.queue.peek() {
+            if top.at > deadline {
+                break;
+            }
+            let Some(Reverse(q)) = self.queue.pop() else { break };
+            self.now = self.now.max(q.at);
+            self.deliver(t, q);
+            count += 1;
+            if count >= MAX_EVENTS_PER_RUN {
+                self.storm = true;
+                self.queue.clear();
+                break;
+            }
+            if stop(self) {
+                return true;
+            }
+        }
+        self.now = self.now.max(deadline);
+        false
+    }
+
+    /// Runs the simulation for `us` microseconds.
+    pub fn run_for(&mut self, t: &Topology, us: u64) {
+        let deadline = self.now.saturating_add(us);
+        self.advance(t, deadline, |_| false);
+    }
+
+    /// Runs until nothing is in flight (at most [`MAX_EVENTS_PER_RUN`] events).
+    pub fn settle(&mut self, t: &Topology) {
+        let mut budget = MAX_EVENTS_PER_RUN;
+        while let Some(Reverse(top)) = self.queue.peek() {
+            let at = top.at;
+            let before = self.next_event;
+            self.advance(t, at.saturating_add(10_000_000), |_| false);
+            let used = usize::try_from(self.next_event.saturating_sub(before)).unwrap_or(usize::MAX);
+            budget = budget.saturating_sub(used.max(1));
+            if self.storm || budget == 0 {
+                self.storm = self.storm || !self.queue.is_empty();
+                self.queue.clear();
+                break;
+            }
+        }
+    }
+
+    fn deliver(&mut self, t: &Topology, q: Queued) {
+        let (protocol, summary) = packetcraft_wire::summarize(&q.frame);
+        self.next_event += 1;
+        if self.trace.len() >= TRACE_CAP {
+            self.trace.pop_front();
+        }
+        self.trace.push_back(TraceEvent {
+            id: self.next_event,
+            at_us: q.at,
+            from: q.from,
+            to: q.to,
+            frame: q.frame.clone(),
+            protocol,
+            summary,
+            dropped: None,
+        });
+        let dropped = self.receive(t, q.to, &q.frame, q.hops).err();
+        if let (Some(reason), Some(ev)) = (dropped, self.trace.back_mut()) {
+            ev.dropped = Some(reason);
+        }
+    }
+
+    fn receive(&mut self, t: &Topology, at: End, bytes: &[u8], hops: u8) -> Result<(), String> {
+        let d = t.device(at.device).ok_or("device removed")?;
+        let port = d.ports.get(at.port).ok_or("port removed")?;
+        if port.shutdown {
+            return Err("port is shut down".into());
+        }
+        let f = Frame::decode(bytes).map_err(|e| e.to_string())?;
+        match d.kind {
+            DeviceKind::Switch => self.switch_in(t, d, at.port, f, hops),
+            DeviceKind::Hub => self.hub_in(t, d, at.port, bytes, hops),
+            _ => self.l3_in(t, d, at.port, f),
+        }
+    }
+
+    // ---- NAT ----
+
+    /// Inside to outside: the translated packet (`None`: no rule applies, sent as is).
+    fn nat_translate(&mut self, d: &Device, ip: &Ipv4) -> Result<Option<Ipv4>, String> {
+        let id = flow_id(ip, true);
+        let st = self.st(d.id);
+        if let Some(e) = st.nat.iter().find(|e| {
+            e.inside_local == ip.src && e.protocol == ip.protocol && (e.local_id.is_none() || e.local_id == id) && (e.fixed || e.outside == ip.dst)
+        }) {
+            return Ok(Some(rewrite(ip, true, e.inside_global, e.global_id)));
+        }
+        let entry = if let Some((_, global)) = d.nat.statics.iter().find(|(l, _)| *l == ip.src) {
+            NatEntry {
+                protocol: ip.protocol,
+                inside_local: ip.src,
+                local_id: None,
+                inside_global: *global,
+                global_id: None,
+                outside: ip.dst,
+                fixed: true,
+            }
+        } else {
+            let key = packetcraft_model::acl::PacketKey { protocol: ip.protocol, src: ip.src, dst: ip.dst, src_port: None, dst_port: None };
+            let Some(rule) = d.nat.rules.iter().find(|r| d.acls.iter().find(|a| a.name == r.acl).is_some_and(|a| a.evaluate(&key).0)) else {
+                return Ok(None);
+            };
+            let (global, pat) = match &rule.target {
+                packetcraft_model::NatTarget::Interface(name) => {
+                    let ifc = l3_ifaces(d)
+                        .into_iter()
+                        .find(|i| packetcraft_model::ifname::parse(name).is_some_and(|n| n.to_string() == i.name))
+                        .ok_or_else(|| format!("NAT interface {name} has no address"))?;
+                    (ifc.net.addr, true)
+                }
+                packetcraft_model::NatTarget::Pool(name) => {
+                    let pool = d.nat.pools.iter().find(|p| &p.name == name).ok_or_else(|| format!("NAT pool {name} doesn't exist"))?;
+                    let st = self.st(d.id);
+                    let (a, b) = (u32::from(pool.start), u32::from(pool.end));
+                    if rule.overload {
+                        (pool.start, true)
+                    } else {
+                        let mine = st.nat.iter().find(|e| e.inside_local == ip.src && !e.fixed).map(|e| e.inside_global);
+                        let free = mine.or_else(|| (a..=b).take(65_536).map(Ipv4Addr::from).find(|g| !st.nat.iter().any(|e| e.inside_global == *g)));
+                        (free.ok_or_else(|| format!("NAT pool {name} is exhausted"))?, false)
+                    }
+                }
+            };
+            let global_id = if pat {
+                let st = self.st(d.id);
+                id.map(|want| {
+                    let taken = |c: u16| st.nat.iter().any(|e| e.inside_global == global && e.global_id == Some(c) && e.protocol == ip.protocol);
+                    if !taken(want) { want } else { (1024..=u16::MAX).find(|c| !taken(*c)).unwrap_or(want) }
+                })
+            } else {
+                None
+            };
+            NatEntry {
+                protocol: ip.protocol,
+                inside_local: ip.src,
+                local_id: if pat { id } else { None },
+                inside_global: global,
+                global_id,
+                outside: ip.dst,
+                fixed: false,
+            }
+        };
+        let out = rewrite(ip, true, entry.inside_global, entry.global_id);
+        let st = self.st(d.id);
+        if st.nat.len() >= MAX_NAT_ENTRIES {
+            st.nat.remove(0);
+        }
+        st.nat.push(entry);
+        Ok(Some(out))
+    }
+
+    /// Outside to inside: the packet with its inside address restored, if it matches a
+    /// translation (or a static one).
+    fn nat_untranslate(&mut self, d: &Device, ip: &Ipv4) -> Option<Ipv4> {
+        let id = flow_id(ip, false);
+        let st = self.state.get(&d.id);
+        if let Some(e) = st.and_then(|s| {
+            s.nat.iter().find(|e| e.inside_global == ip.dst && e.protocol == ip.protocol && (e.global_id.is_none() || e.global_id == id))
+        }) {
+            return Some(rewrite(ip, false, e.inside_local, e.local_id));
+        }
+        d.nat.statics.iter().find(|(_, g)| *g == ip.dst).map(|(l, _)| rewrite(ip, false, *l, None))
+    }
+
+    /// Whether NAT makes this router answer for an address (static or pool globals).
+    fn nat_owns(d: &Device, a: Ipv4Addr) -> bool {
+        d.nat.statics.iter().any(|(_, g)| *g == a) || d.nat.pools.iter().any(|p| (u32::from(p.start)..=u32::from(p.end)).contains(&u32::from(a)))
+    }
+
+    /// Forgets dynamic translations (`clear ip nat translation *`).
+    pub fn clear_nat(&mut self, d: DeviceId) {
+        if let Some(st) = self.state.get_mut(&d) {
+            st.nat.clear();
+        }
+    }
+
+    // ---- access lists ----
+
+    /// Applies the interface's inbound or outbound access list. A denied packet is dropped and
+    /// its sender told "administratively prohibited".
+    fn acl_check(&mut self, t: &Topology, d: &Device, ifc: &L3If, ip: &Ipv4, raw: &[u8], inbound: bool) -> Result<(), String> {
+        let Some(port) = d.ports.get(ifc.port) else { return Ok(()) };
+        let groups = match ifc.sub {
+            Some(n) => port.subif(n).map(|s| &s.access),
+            None => Some(&port.access),
+        };
+        let Some(name) = groups.and_then(|g| if inbound { g.inbound.as_ref() } else { g.outbound.as_ref() }) else { return Ok(()) };
+        // An applied list that doesn't exist permits everything, as on real routers.
+        let Some(acl) = d.acls.iter().find(|a| &a.name == name) else { return Ok(()) };
+        let (src_port, dst_port) = match ip.protocol {
+            PROTO_UDP => Udp::decode(&ip.payload, ip.src, ip.dst).map_or((None, None), |u| (Some(u.src_port), Some(u.dst_port))),
+            PROTO_TCP => Tcp::decode(&ip.payload, ip.src, ip.dst).map_or((None, None), |u| (Some(u.src_port), Some(u.dst_port))),
+            _ => (None, None),
+        };
+        let key = packetcraft_model::acl::PacketKey { protocol: ip.protocol, src: ip.src, dst: ip.dst, src_port, dst_port };
+        let (permit, entry) = acl.evaluate(&key);
+        let st = self.st(d.id);
+        *st.acl_hits.entry((acl.name.clone(), entry.unwrap_or(usize::MAX))).or_insert(0) += 1;
+        if permit {
+            return Ok(());
+        }
+        self.icmp_error(t, d, ifc, ip, Icmp::Unreachable { code: packetcraft_wire::UNREACH_ADMIN, original: Icmp::quote(raw) });
+        Err(format!("denied by access list {} ({})", acl.name, if inbound { "in" } else { "out" }))
+    }
+
+    /// Forgets access-list match counts (`clear access-list counters`).
+    pub fn clear_acl_hits(&mut self, d: DeviceId) {
+        if let Some(st) = self.state.get_mut(&d) {
+            st.acl_hits.clear();
+        }
+    }
+
+    // ---- routing ----
+
+    /// OSPF's routes for a device (cached per topology).
+    fn ospf_routes(&mut self, t: &Topology, d: &Device) -> Vec<ospf::OspfRoute> {
+        if d.ospf.is_none() {
+            return Vec::new();
+        }
+        let f = ospf::fingerprint(t);
+        if self.ospf.is_none() || self.ospf_for != f {
+            self.ospf_for = f;
+            self.ospf = Some(ospf::compute(t));
+        }
+        self.ospf.as_ref().and_then(|s| s.routes.get(&d.id).cloned()).unwrap_or_default()
+    }
+
+    fn route(&mut self, t: &Topology, d: &Device, dst: Ipv4Addr) -> Option<(L3If, Ipv4Addr)> {
+        let o = self.ospf_routes(t, d);
+        route_with(t, d, dst, &o)
+    }
+
+    /// OSPF's view of the lab (neighbours, router ids, routes).
+    pub fn ospf_state(&mut self, t: &Topology) -> ospf::OspfState {
+        let f = ospf::fingerprint(t);
+        if self.ospf.is_none() || self.ospf_for != f {
+            self.ospf_for = f;
+            self.ospf = Some(ospf::compute(t));
+        }
+        self.ospf.clone().unwrap_or_default()
+    }
+
+    // ---- port security ----
+
+    /// Admits a source address on a secured port, or applies the violation mode.
+    fn port_security(&mut self, d: &Device, port: usize, src: MacAddr) -> Result<(), String> {
+        let Some(ps) = d.ports.get(port).and_then(|p| p.port_security.as_ref()) else { return Ok(()) };
+        if ps.macs.contains(&src) {
+            return Ok(());
+        }
+        let st = self.st(d.id);
+        let learned = st.secure.entry(port).or_default();
+        if learned.contains(&src) {
+            return Ok(());
+        }
+        if ps.macs.len() + learned.len() < usize::from(ps.max.max(1)) {
+            learned.push(src);
+            if ps.sticky {
+                self.events.push(PortEvent::Sticky { device: d.id, port, mac: src });
+            }
+            return Ok(());
+        }
+        match ps.violation {
+            packetcraft_model::Violation::Protect => Err(format!("port security: {src} is one address too many (dropped)")),
+            packetcraft_model::Violation::Restrict => {
+                *self.st(d.id).violations.entry(port).or_insert(0) += 1;
+                Err(format!("port security: {src} is one address too many (dropped and counted)"))
+            }
+            packetcraft_model::Violation::Shutdown => {
+                *self.st(d.id).violations.entry(port).or_insert(0) += 1;
+                if !self.events.contains(&PortEvent::ErrDisabled { device: d.id, port }) {
+                    self.events.push(PortEvent::ErrDisabled { device: d.id, port });
+                }
+                Err(format!("port security violation from {src}: the port is shut down (err-disabled)"))
+            }
+        }
+    }
+
+    /// Lab changes the simulation decided (err-disabled ports, sticky addresses).
+    pub fn take_events(&mut self) -> Vec<PortEvent> {
+        std::mem::take(&mut self.events)
+    }
+
+    /// Whether a violation already shut this port in this run (before the lab records it).
+    fn err_disabled_now(&self, d: DeviceId, port: usize) -> bool {
+        self.events.contains(&PortEvent::ErrDisabled { device: d, port })
+    }
+
+    // ---- spanning tree ----
+
+    fn refresh_stp(&mut self, t: &Topology) {
+        let f = stp::fingerprint(t);
+        if f != self.stp_for {
+            self.stp_for = f;
+            self.stp.clear();
+        }
+    }
+
+    /// The spanning tree of a VLAN for this topology.
+    pub fn spanning_tree(&mut self, t: &Topology, vlan: VlanId) -> &stp::VlanTree {
+        self.refresh_stp(t);
+        self.stp.entry(vlan.get()).or_insert_with(|| stp::compute(t, vlan))
+    }
+
+    fn stp_forwards(&mut self, t: &Topology, dev: DeviceId, port: usize, vlan: VlanId) -> bool {
+        self.stp.entry(vlan.get()).or_insert_with(|| stp::compute(t, vlan)).forwards(dev, port)
+    }
+
+    // ---- switching (IEEE 802.1D learning, 802.1Q tagging) ----
+
+    fn switch_in(&mut self, t: &Topology, d: &Device, in_port: usize, f: Frame, hops: u8) -> Result<(), String> {
+        if hops >= MAX_SWITCH_HOPS {
+            self.storm = true;
+            return Err(format!("switching loop: the frame crossed {MAX_SWITCH_HOPS} switches (no spanning tree)"));
+        }
+        let sp = &d.ports.get(in_port).ok_or("no port")?.switchport;
+        let vlan = match sp.mode {
+            SwitchportMode::Access => {
+                if f.vlan.is_some_and(|v| v != sp.access_vlan.get()) {
+                    return Err("tagged frame on an access port".into());
+                }
+                sp.access_vlan
+            }
+            SwitchportMode::Trunk => {
+                let v = match f.vlan {
+                    Some(v) => VlanId::new(v).ok_or("invalid VLAN tag")?,
+                    None => sp.native_vlan,
+                };
+                if !sp.allowed.contains(v) {
+                    return Err(format!("VLAN {v} not allowed on this trunk"));
+                }
+                v
+            }
+        };
+        if !d.vlans.contains_key(&vlan) {
+            return Err(format!("VLAN {vlan} does not exist on this switch"));
+        }
+        if !self.stp_forwards(t, d.id, in_port, vlan) {
+            return Err(format!("port blocked by spanning tree (VLAN {vlan})"));
+        }
+        self.port_security(d, in_port, f.src)?;
+        self.switch_forward(t, d, Some(in_port), vlan, f, hops)
+    }
+
+    /// Learns, delivers to the switch's own VLAN interface when addressed to it, and forwards
+    /// within `vlan`. `in_port` is `None` for frames the switch itself sends.
+    fn switch_forward(&mut self, t: &Topology, d: &Device, in_port: Option<usize>, vlan: VlanId, f: Frame, hops: u8) -> Result<(), String> {
+        let now = self.now;
+        let st = self.st(d.id);
+        if let Some(p) = in_port
+            && !f.src.is_group()
+            && (st.macs.len() < MAX_MAC_ENTRIES || st.macs.contains_key(&(vlan.get(), f.src)))
+        {
+            st.macs.insert((vlan.get(), f.src), MacEntry { port: p, learned_us: now });
+        }
+        let known = if f.dst.is_group() {
+            None
+        } else {
+            st.macs.get(&(vlan.get(), f.dst)).filter(|e| now.saturating_sub(e.learned_us) < MAC_AGING_US).map(|e| e.port)
+        };
+        // The switch's own VLAN interface.
+        if in_port.is_some()
+            && let Some(svi) = up_ifaces(t, d).into_iter().find(|i| i.vlan == Some(vlan.get()))
+        {
+            if f.dst == svi.mac {
+                return match f.ethertype {
+                    ETHERTYPE_ARP => self.arp_in(t, d, &svi, &f.payload),
+                    ETHERTYPE_IPV4 => self.ip_in(t, d, &svi, &f.payload),
+                    other => Err(format!("ethertype 0x{other:04x} not understood")),
+                };
+            }
+            if f.dst.is_broadcast() && f.ethertype == ETHERTYPE_ARP {
+                let _ = self.arp_in(t, d, &svi, &f.payload);
+            }
+        }
+        let outs: Vec<usize> = match known {
+            Some(p) if Some(p) == in_port => return Err("destination is on the arrival port (filtered)".into()),
+            Some(p) => vec![p],
+            None => (0..d.ports.len()).filter(|&p| Some(p) != in_port && carries(d, p, vlan)).collect(),
+        };
+        let outs: Vec<usize> = outs.into_iter().filter(|&p| self.stp_forwards(t, d.id, p, vlan)).collect();
+        let mut sent = 0;
+        for p in outs {
+            let Some(port) = d.ports.get(p) else { continue };
+            let tag = match port.switchport.mode {
+                SwitchportMode::Access => None,
+                SwitchportMode::Trunk if port.switchport.native_vlan == vlan => None,
+                SwitchportMode::Trunk => Some(vlan.get()),
+            };
+            if self.emit_hops(t, End { device: d.id, port: p }, f.retagged(tag).encode(), hops + 1) {
+                sent += 1;
+            }
+        }
+        if sent == 0 { Err(format!("no up port in VLAN {vlan} to forward to")) } else { Ok(()) }
+    }
+
+    /// Sends a frame out of a layer-3 interface: a port, or a switch's VLAN interface.
+    fn l3_emit(&mut self, t: &Topology, d: &Device, ifc: &L3If, frame: Frame) {
+        if ifc.port == SVI_PORT {
+            if let Some(v) = ifc.vlan.and_then(VlanId::new) {
+                let _ = self.switch_forward(t, d, None, v, frame.retagged(None), 0);
+            }
+        } else {
+            self.emit(t, End { device: d.id, port: ifc.port }, frame.encode());
+        }
+    }
+
+    // ---- hubs: physical-layer repeaters ----
+
+    fn hub_in(&mut self, t: &Topology, d: &Device, in_port: usize, bytes: &[u8], hops: u8) -> Result<(), String> {
+        if hops >= MAX_SWITCH_HOPS {
+            self.storm = true;
+            return Err(format!("loop: the frame crossed {MAX_SWITCH_HOPS} hubs or switches"));
+        }
+        let mut sent = 0;
+        for p in (0..d.ports.len()).filter(|&p| p != in_port) {
+            if self.emit_hops(t, End { device: d.id, port: p }, bytes.to_vec(), hops + 1) {
+                sent += 1;
+            }
+        }
+        if sent == 0 { Err("no other port is up".into()) } else { Ok(()) }
+    }
+
+    // ---- hosts and routers ----
+
+    fn l3_in(&mut self, t: &Topology, d: &Device, in_port: usize, f: Frame) -> Result<(), String> {
+        // A host waiting for DHCP takes answers before it has an address.
+        if d.kind.is_host()
+            && self.state.get(&d.id).is_some_and(|s| s.dhcp_xid.is_some())
+            && (f.dst.is_broadcast() || d.ports.get(in_port).is_some_and(|p| p.mac == f.dst))
+            && let Some(msg) = dhcp_in_frame(&f)
+        {
+            return self.dhcp_client_in(d, msg);
+        }
+        let ifc = l3_ifaces(d).into_iter().find(|i| i.port == in_port && i.vlan == f.vlan).ok_or_else(|| match f.vlan {
+            Some(v) => format!("no subinterface for VLAN {v}"),
+            None => "the interface has no IP address".to_string(),
+        })?;
+        if f.dst != ifc.mac && !f.dst.is_broadcast() {
+            return Err("not addressed to this device".into());
+        }
+        match f.ethertype {
+            ETHERTYPE_ARP => self.arp_in(t, d, &ifc, &f.payload),
+            ETHERTYPE_IPV4 => self.ip_in(t, d, &ifc, &f.payload),
+            other => Err(format!("ethertype 0x{other:04x} not understood")),
+        }
+    }
+
+    fn arp_in(&mut self, t: &Topology, d: &Device, ifc: &L3If, payload: &[u8]) -> Result<(), String> {
+        let a = Arp::decode(payload).map_err(|e| e.to_string())?;
+        // An off-subnet sender is only accepted as the answer to our own question (a proxy
+        // ARP reply for a route out of this interface).
+        let asked = a.op == ArpOp::Reply && self.state.get(&d.id).is_some_and(|st| st.arp_asked.contains_key(&a.sender_ip));
+        if !ifc.net.contains(a.sender_ip) && !asked {
+            return Err(format!("ARP from {} is not on {}", a.sender_ip, ifc.net.network()));
+        }
+        let for_me = a.target_ip == ifc.net.addr || (nat_side(d, ifc) == Some(packetcraft_model::NatSide::Outside) && Sim::nat_owns(d, a.target_ip));
+        let now = self.now;
+        let st = self.st(d.id);
+        if (for_me || st.arp.contains_key(&a.sender_ip)) && (st.arp.len() < MAX_ARP_ENTRIES || st.arp.contains_key(&a.sender_ip)) {
+            st.arp.insert(a.sender_ip, ArpEntry { mac: a.sender_mac, learned_us: now, iface: ifc.name.clone() });
+        }
+        // Packets that were waiting for this address can go now.
+        let ready: Vec<Pending> = {
+            let (ready, keep) = std::mem::take(&mut st.pending).into_iter().partition(|p| p.next_hop == a.sender_ip && p.iface.name == ifc.name);
+            st.pending = keep;
+            ready
+        };
+        for p in ready {
+            let frame = Frame { dst: a.sender_mac, src: p.iface.mac, vlan: p.iface.vlan, ethertype: ETHERTYPE_IPV4, payload: p.datagram };
+            self.l3_emit(t, d, &p.iface, frame);
+        }
+        if !for_me {
+            // Proxy ARP (RFC 1027, on by default on routers): answer for an address we route
+            // out of another interface.
+            let proxied = a.op == ArpOp::Request
+                && d.kind == DeviceKind::Router
+                && !ifc.net.contains(a.target_ip)
+                && self.route(t, d, a.target_ip).is_some_and(|(out, _)| out.name != ifc.name);
+            if !proxied {
+                return Err(format!("ARP for {}, not this device", a.target_ip));
+            }
+        }
+        if a.op == ArpOp::Request {
+            let reply = Arp { op: ArpOp::Reply, sender_mac: ifc.mac, sender_ip: a.target_ip, target_mac: a.sender_mac, target_ip: a.sender_ip };
+            let frame = Frame { dst: a.sender_mac, src: ifc.mac, vlan: ifc.vlan, ethertype: ETHERTYPE_ARP, payload: reply.encode() };
+            self.l3_emit(t, d, ifc, frame);
+        }
+        Ok(())
+    }
+
+    fn ip_in(&mut self, t: &Topology, d: &Device, ifc: &L3If, payload: &[u8]) -> Result<(), String> {
+        let mut ip = Ipv4::decode(payload).map_err(|e| e.to_string())?;
+        let mut from_outside = false;
+        if d.kind == DeviceKind::Router {
+            self.acl_check(t, d, ifc, &ip, payload, true)?;
+            // NAT, outside to inside: undo the translation before deciding where it goes.
+            if nat_side(d, ifc) == Some(packetcraft_model::NatSide::Outside)
+                && let Some(back) = self.nat_untranslate(d, &ip)
+            {
+                ip = back;
+                from_outside = true;
+            }
+        }
+        let mine = l3_ifaces(d).iter().any(|i| i.net.addr == ip.dst);
+        if mine || ip.dst == Ipv4Addr::BROADCAST || (ifc.net.prefix < 31 && ip.dst == ifc.net.broadcast()) {
+            return self.local_in(t, d, ifc, ip);
+        }
+        if d.kind != DeviceKind::Router {
+            return Err(format!("{} is not this device's address", ip.dst));
+        }
+        if ip.ttl <= 1 {
+            self.icmp_error(t, d, ifc, &ip, Icmp::TimeExceeded { original: Icmp::quote(payload) });
+            return Err("TTL expired in transit".into());
+        }
+        let fwd = Ipv4 { ttl: ip.ttl - 1, ..ip.clone() };
+        match self.route(t, d, ip.dst) {
+            Some((out, nh)) => {
+                self.acl_check(t, d, &out, &ip, payload, false)?;
+                let mut fwd = fwd;
+                if !from_outside
+                    && nat_side(d, ifc) == Some(packetcraft_model::NatSide::Inside)
+                    && nat_side(d, &out) == Some(packetcraft_model::NatSide::Outside)
+                    && let Some(tr) = self.nat_translate(d, &fwd)?
+                {
+                    fwd = tr;
+                }
+                self.transmit(t, d, &out, nh, fwd.encode())
+            }
+            None => {
+                self.icmp_error(t, d, ifc, &ip, Icmp::Unreachable { code: packetcraft_wire::UNREACH_NET, original: Icmp::quote(payload) });
+                Err(format!("no route to {}", ip.dst))
+            }
+        }
+    }
+
+    fn local_in(&mut self, t: &Topology, d: &Device, ifc: &L3If, ip: Ipv4) -> Result<(), String> {
+        if ip.protocol == PROTO_TCP {
+            return self.tcp_in(t, d, &ip);
+        }
+        if ip.protocol == PROTO_UDP {
+            let u = Udp::decode(&ip.payload, ip.src, ip.dst).map_err(|e| e.to_string())?;
+            return match (u.dst_port, d.kind) {
+                (dhcp::SERVER_PORT, DeviceKind::Router) => {
+                    let msg = Dhcp::decode(&u.payload).map_err(|e| e.to_string())?;
+                    match msg.kind {
+                        DhcpKind::Offer | DhcpKind::Ack | DhcpKind::Nak => self.dhcp_relay_down(t, d, msg),
+                        _ if msg.relay.is_unspecified() => {
+                            let helpers = helpers_of(d, ifc);
+                            let local_pool = d.dhcp_pools.iter().any(|p| p.network.is_some_and(|n| n.contains(ifc.net.addr)));
+                            if !helpers.is_empty() && !local_pool {
+                                self.dhcp_relay_up(t, d, ifc, msg, &helpers)
+                            } else {
+                                self.dhcp_server_in(t, d, ifc, msg)
+                            }
+                        }
+                        _ => self.dhcp_server_in(t, d, ifc, msg),
+                    }
+                }
+                (dhcp::SERVER_PORT, DeviceKind::Server) if d.services.dhcp.on => {
+                    let msg = Dhcp::decode(&u.payload).map_err(|e| e.to_string())?;
+                    match msg.kind {
+                        DhcpKind::Discover | DhcpKind::Request | DhcpKind::Release => self.dhcp_server_in(t, d, ifc, msg),
+                        _ => Err("not a client message".into()),
+                    }
+                }
+                (dns::PORT, DeviceKind::Server) if d.services.dns.on => {
+                    let q = dns::Dns::decode(&u.payload).map_err(|e| e.to_string())?;
+                    if q.response {
+                        return Err("a DNS answer sent to a server".into());
+                    }
+                    let found = d.services.dns.lookup(&q.name);
+                    let ans = dns::Dns {
+                        id: q.id,
+                        response: true,
+                        rcode: if found.is_some() { 0 } else { dns::NXDOMAIN },
+                        name: q.name,
+                        answers: found.into_iter().collect(),
+                    };
+                    let src = if ip.dst == Ipv4Addr::BROADCAST { ifc.net.addr } else { ip.dst };
+                    let reply = Udp { src_port: dns::PORT, dst_port: u.src_port, payload: ans.encode() };
+                    let out = Ipv4 {
+                        id: self.ip_id(),
+                        ttl: default_ttl(d.kind),
+                        protocol: PROTO_UDP,
+                        src,
+                        dst: ip.src,
+                        payload: reply.encode(src, ip.src),
+                    };
+                    self.send_ip(t, d, out)
+                }
+                (port, k) if k.is_host() && u.src_port == dns::PORT => {
+                    let ans = dns::Dns::decode(&u.payload).map_err(|e| e.to_string())?;
+                    let st = self.st(d.id);
+                    if st.dns_wait != Some((port, ans.id)) {
+                        return Err("DNS answer nobody asked for".into());
+                    }
+                    st.dns_answer = Some(ans);
+                    Ok(())
+                }
+                (dhcp::CLIENT_PORT, k) if k.is_host() => {
+                    let msg = Dhcp::decode(&u.payload).map_err(|e| e.to_string())?;
+                    self.dhcp_client_in(d, msg)
+                }
+                (port, _) => Err(format!("no service on UDP port {port}")),
+            };
+        }
+        if ip.protocol != PROTO_ICMP {
+            return Err(format!("no service for IP protocol {}", ip.protocol));
+        }
+        let icmp = Icmp::decode(&ip.payload).map_err(|e| e.to_string())?;
+        let now = self.now;
+        let mut note = |id: u16, seq: u16, kind: IcmpKind| {
+            let st = self.st(d.id);
+            if st.icmp.len() < 4_096 {
+                st.icmp.push(IcmpEvent { at: now, from: ip.src, id, seq, kind });
+            }
+        };
+        match icmp {
+            Icmp::EchoRequest { id, seq, data } => {
+                let src = if ip.dst == Ipv4Addr::BROADCAST || ip.dst == ifc.net.broadcast() { ifc.net.addr } else { ip.dst };
+                let reply = Ipv4 {
+                    id: self.ip_id(),
+                    ttl: default_ttl(d.kind),
+                    protocol: PROTO_ICMP,
+                    src,
+                    dst: ip.src,
+                    payload: Icmp::EchoReply { id, seq, data }.encode(),
+                };
+                self.send_ip(t, d, reply)
+            }
+            Icmp::EchoReply { id, seq, .. } => {
+                note(id, seq, IcmpKind::Reply);
+                Ok(())
+            }
+            Icmp::TimeExceeded { original } => {
+                if let Some((id, seq)) = Icmp::quoted_echo(&original) {
+                    note(id, seq, IcmpKind::TimeExceeded);
+                }
+                Ok(())
+            }
+            Icmp::Unreachable { code, original } => {
+                if let Some((id, seq)) = Icmp::quoted_echo(&original) {
+                    note(id, seq, IcmpKind::Unreachable(code));
+                }
+                Ok(())
+            }
+        }
+    }
+
+    /// Sends an ICMP error about `offending` back to its source. Never about another ICMP error.
+    fn icmp_error(&mut self, t: &Topology, d: &Device, ifc: &L3If, offending: &Ipv4, msg: Icmp) {
+        if offending.protocol == PROTO_ICMP && !matches!(Icmp::decode(&offending.payload), Ok(Icmp::EchoRequest { .. } | Icmp::EchoReply { .. })) {
+            return;
+        }
+        let err =
+            Ipv4 { id: self.ip_id(), ttl: default_ttl(d.kind), protocol: PROTO_ICMP, src: ifc.net.addr, dst: offending.src, payload: msg.encode() };
+        let _ = self.send_ip(t, d, err);
+    }
+
+    fn ip_id(&mut self) -> u16 {
+        self.next_ip_id = self.next_ip_id.wrapping_add(1);
+        self.next_ip_id
+    }
+
+    /// Routes and sends a datagram this device originates.
+    fn send_ip(&mut self, t: &Topology, d: &Device, ip: Ipv4) -> Result<(), String> {
+        let (out, nh) = self.route(t, d, ip.dst).ok_or_else(|| format!("no route to {}", ip.dst))?;
+        self.transmit(t, d, &out, nh, ip.encode())
+    }
+
+    /// Puts a datagram on the wire towards `nh`, resolving its MAC with ARP first.
+    fn transmit(&mut self, t: &Topology, d: &Device, out: &L3If, nh: Ipv4Addr, datagram: Vec<u8>) -> Result<(), String> {
+        if nh == Ipv4Addr::BROADCAST || (out.net.prefix < 31 && nh == out.net.broadcast()) {
+            let frame = Frame { dst: MacAddr::BROADCAST, src: out.mac, vlan: out.vlan, ethertype: ETHERTYPE_IPV4, payload: datagram };
+            self.l3_emit(t, d, out, frame);
+            return Ok(());
+        }
+        let now = self.now;
+        let known = self.st(d.id).arp.get(&nh).filter(|e| now.saturating_sub(e.learned_us) < ARP_AGING_US && e.iface == out.name).map(|e| e.mac);
+        if let Some(mac) = known {
+            let frame = Frame { dst: mac, src: out.mac, vlan: out.vlan, ethertype: ETHERTYPE_IPV4, payload: datagram };
+            self.l3_emit(t, d, out, frame);
+            return Ok(());
+        }
+        let host = d.kind != DeviceKind::Router;
+        let st = self.st(d.id);
+        st.pending.retain(|p| now.saturating_sub(p.since) < ARP_WAIT_US);
+        // Hosts hold the packet until ARP answers; routers drop it, as real routers do.
+        if host && st.pending.len() < MAX_PENDING {
+            st.pending.push(Pending { next_hop: nh, iface: out.clone(), datagram, since: now });
+        }
+        let ask = st.arp_asked.get(&nh).is_none_or(|at| now.saturating_sub(*at) >= ARP_RETRY_US);
+        if ask {
+            if st.arp_asked.len() > MAX_ARP_ENTRIES {
+                st.arp_asked.clear();
+            }
+            st.arp_asked.insert(nh, now);
+            let req = Arp { op: ArpOp::Request, sender_mac: out.mac, sender_ip: out.net.addr, target_mac: MacAddr::ZERO, target_ip: nh };
+            let frame = Frame { dst: MacAddr::BROADCAST, src: out.mac, vlan: out.vlan, ethertype: ETHERTYPE_ARP, payload: req.encode() };
+            self.l3_emit(t, d, out, frame);
+        }
+        if host { Ok(()) } else { Err(format!("waiting for ARP of {nh}; packet dropped")) }
+    }
+
+    // ---- DHCP ----
+
+    /// The address a pool gives `mac`: its current lease, else the address it already uses
+    /// (leases aren't saved with the lab), else the first free one. Like real servers, an
+    /// address some device already uses is never offered (conflict detection).
+    fn dhcp_pick(
+        &self,
+        t: &Topology,
+        d: &Device,
+        pool: &packetcraft_model::DhcpPool,
+        mac: MacAddr,
+        allowed: Option<&[Ipv4Addr]>,
+    ) -> Option<Ipv4Addr> {
+        let net = pool.network?.network();
+        let leases = self.state.get(&d.id).map(|s| &s.leases);
+        if let Some((ip, _)) = leases.and_then(|l| l.iter().find(|(ip, l)| l.mac == mac && net.contains(**ip))) {
+            return Some(*ip);
+        }
+        let in_use: Vec<(Ipv4Addr, MacAddr)> = t
+            .devices
+            .iter()
+            .flat_map(|x| {
+                x.ports
+                    .iter()
+                    .flat_map(|p| p.ip.map(|n| (n.addr, p.mac)).into_iter().chain(p.subifs.iter().filter_map(|s| s.ip.map(|n| (n.addr, p.mac)))))
+            })
+            .collect();
+        if let Some((ip, _)) =
+            in_use.iter().find(|(ip, m)| *m == mac && net.contains(*ip) && leases.is_none_or(|l| l.get(ip).is_none_or(|x| x.mac == mac)))
+        {
+            return Some(*ip);
+        }
+        let mut mine: Vec<Ipv4Addr> = l3_ifaces(d).iter().map(|i| i.net.addr).collect();
+        mine.extend(in_use.iter().map(|(ip, _)| *ip));
+        if let Some(list) = allowed {
+            return list.iter().copied().find(|ip| !mine.contains(ip) && leases.is_none_or(|l| !l.contains_key(ip)));
+        }
+        let first = u32::from(net.addr).saturating_add(1);
+        let last = u32::from(net.broadcast()).saturating_sub(1);
+        (first..=last).take(MAX_POOL_SCAN as usize).map(Ipv4Addr::from).find(|ip| {
+            !mine.contains(ip)
+                && !d.dhcp_excluded.iter().any(|(a, b)| (u32::from(*a)..=u32::from(*b)).contains(&u32::from(*ip)))
+                && leases.is_none_or(|l| !l.contains_key(ip))
+        })
+    }
+
+    fn dhcp_server_in(&mut self, t: &Topology, d: &Device, ifc: &L3If, msg: Dhcp) -> Result<(), String> {
+        let anchor = if msg.relay.is_unspecified() { ifc.net.addr } else { msg.relay };
+        // A server's pools are ranges (start address, count); a router's are whole networks.
+        let (pool, allowed): (packetcraft_model::DhcpPool, Option<Vec<Ipv4Addr>>) = if d.kind == DeviceKind::Server {
+            let sp = d
+                .services
+                .dhcp
+                .pools
+                .iter()
+                .find(|p| Ipv4Net::with_mask(p.start, p.mask).is_ok_and(|n| n.contains(anchor)))
+                .ok_or_else(|| format!("no DHCP pool for {}", ifc.net.network()))?;
+            let net = Ipv4Net::with_mask(sp.start, sp.mask).map_err(|e| e.to_string())?.network();
+            let nz = |a: Ipv4Addr| (!a.is_unspecified()).then_some(a);
+            (
+                packetcraft_model::DhcpPool { name: sp.name.clone(), network: Some(net), default_router: nz(sp.gateway), dns: nz(sp.dns) },
+                Some(sp.addresses().collect()),
+            )
+        } else {
+            let p = d
+                .dhcp_pools
+                .iter()
+                .find(|p| p.network.is_some_and(|n| n.contains(anchor)))
+                .ok_or_else(|| format!("no DHCP pool for {}", ifc.net.network()))?
+                .clone();
+            (p, None)
+        };
+        let net = pool.network.ok_or("pool without network")?;
+        let mut reply = Dhcp::new(DhcpKind::Offer, msg.xid, msg.client_mac);
+        reply.server_id = Some(ifc.net.addr);
+        reply.mask = Some(net.mask());
+        reply.router = pool.default_router;
+        reply.dns = pool.dns;
+        reply.lease_secs = Some(86_400);
+        match msg.kind {
+            DhcpKind::Discover => {
+                reply.your_ip = self
+                    .dhcp_pick(t, d, &pool, msg.client_mac, allowed.as_deref())
+                    .ok_or_else(|| format!("pool {} has no free address", pool.name))?;
+            }
+            DhcpKind::Request => {
+                if msg.server_id.is_some_and(|s| !l3_ifaces(d).iter().any(|i| i.net.addr == s)) {
+                    return Err("request for another DHCP server".into());
+                }
+                let wanted = msg.requested.unwrap_or(msg.client_ip);
+                let ok = self.dhcp_pick(t, d, &pool, msg.client_mac, allowed.as_deref()).is_some_and(|p| p == wanted)
+                    || self.state.get(&d.id).is_some_and(|s| s.leases.get(&wanted).is_some_and(|l| l.mac == msg.client_mac));
+                if ok {
+                    let now = self.now;
+                    self.st(d.id).leases.insert(wanted, Lease { mac: msg.client_mac, pool: pool.name.clone(), since_us: now });
+                    reply.kind = DhcpKind::Ack;
+                    reply.your_ip = wanted;
+                } else {
+                    reply = Dhcp::new(DhcpKind::Nak, msg.xid, msg.client_mac);
+                    reply.server_id = Some(ifc.net.addr);
+                }
+            }
+            DhcpKind::Release => {
+                let mac = msg.client_mac;
+                self.st(d.id).leases.retain(|_, l| l.mac != mac);
+                return Ok(());
+            }
+            _ => return Err("not a client message".into()),
+        }
+        if !msg.relay.is_unspecified() {
+            // Through a relay: answer the relay agent, which broadcasts on the client's segment.
+            reply.relay = msg.relay;
+            let udp = Udp { src_port: dhcp::SERVER_PORT, dst_port: dhcp::SERVER_PORT, payload: reply.encode() };
+            let ip = Ipv4 {
+                id: self.ip_id(),
+                ttl: 255,
+                protocol: PROTO_UDP,
+                src: ifc.net.addr,
+                dst: msg.relay,
+                payload: udp.encode(ifc.net.addr, msg.relay),
+            };
+            return self.send_ip(t, d, ip);
+        }
+        let udp = Udp { src_port: dhcp::SERVER_PORT, dst_port: dhcp::CLIENT_PORT, payload: reply.encode() };
+        let ip = Ipv4 {
+            id: self.ip_id(),
+            ttl: 255,
+            protocol: PROTO_UDP,
+            src: ifc.net.addr,
+            dst: Ipv4Addr::BROADCAST,
+            payload: udp.encode(ifc.net.addr, Ipv4Addr::BROADCAST),
+        };
+        self.transmit(t, d, ifc, Ipv4Addr::BROADCAST, ip.encode())
+    }
+
+    /// Relay agent, client side: forward a client's broadcast to the helper addresses.
+    fn dhcp_relay_up(&mut self, t: &Topology, d: &Device, ifc: &L3If, mut msg: Dhcp, helpers: &[Ipv4Addr]) -> Result<(), String> {
+        msg.relay = ifc.net.addr;
+        for h in helpers {
+            let udp = Udp { src_port: dhcp::SERVER_PORT, dst_port: dhcp::SERVER_PORT, payload: msg.encode() };
+            let ip = Ipv4 { id: self.ip_id(), ttl: 255, protocol: PROTO_UDP, src: ifc.net.addr, dst: *h, payload: udp.encode(ifc.net.addr, *h) };
+            self.send_ip(t, d, ip)?;
+        }
+        Ok(())
+    }
+
+    /// Relay agent, server side: broadcast the server's answer on the client's segment.
+    fn dhcp_relay_down(&mut self, t: &Topology, d: &Device, msg: Dhcp) -> Result<(), String> {
+        let ifc = l3_ifaces(d).into_iter().find(|i| i.net.addr == msg.relay).ok_or("DHCP answer for a relay address this router doesn't have")?;
+        let udp = Udp { src_port: dhcp::SERVER_PORT, dst_port: dhcp::CLIENT_PORT, payload: msg.encode() };
+        let ip = Ipv4 {
+            id: self.ip_id(),
+            ttl: 255,
+            protocol: PROTO_UDP,
+            src: ifc.net.addr,
+            dst: Ipv4Addr::BROADCAST,
+            payload: udp.encode(ifc.net.addr, Ipv4Addr::BROADCAST),
+        };
+        self.transmit(t, d, &ifc, Ipv4Addr::BROADCAST, ip.encode())
+    }
+
+    fn dhcp_client_in(&mut self, d: &Device, msg: Dhcp) -> Result<(), String> {
+        let st = self.st(d.id);
+        if st.dhcp_xid != Some(msg.xid) {
+            return Err("DHCP answer for another client".into());
+        }
+        if st.dhcp_inbox.len() < 16 {
+            st.dhcp_inbox.push(msg);
+        }
+        Ok(())
+    }
+
+    fn dhcp_send(&mut self, t: &Topology, d: &Device, msg: &Dhcp) {
+        let Some(port) = d.ports.first() else { return };
+        let src = Ipv4Addr::UNSPECIFIED;
+        let udp = Udp { src_port: dhcp::CLIENT_PORT, dst_port: dhcp::SERVER_PORT, payload: msg.encode() };
+        let ip =
+            Ipv4 { id: self.ip_id(), ttl: 128, protocol: PROTO_UDP, src, dst: Ipv4Addr::BROADCAST, payload: udp.encode(src, Ipv4Addr::BROADCAST) };
+        let frame = Frame { dst: MacAddr::BROADCAST, src: port.mac, vlan: None, ethertype: ETHERTYPE_IPV4, payload: ip.encode() };
+        self.emit(t, End { device: d.id, port: 0 }, frame.encode());
+    }
+
+    fn dhcp_wait(&mut self, t: &Topology, dev: DeviceId, kinds: &[DhcpKind]) -> Option<Dhcp> {
+        let deadline = self.now.saturating_add(2_000_000);
+        let has = |s: &Sim| s.state.get(&dev).is_some_and(|st| st.dhcp_inbox.iter().any(|m| kinds.contains(&m.kind)));
+        self.advance(t, deadline, has);
+        let st = self.st(dev);
+        let i = st.dhcp_inbox.iter().position(|m| kinds.contains(&m.kind))?;
+        Some(st.dhcp_inbox.remove(i))
+    }
+
+    /// Runs a DHCP exchange for a host (DISCOVER, OFFER, REQUEST, ACK). The caller applies the
+    /// result to the lab.
+    pub fn dhcp_acquire(&mut self, t: &Topology, dev: DeviceId) -> Result<DhcpResult, SimError> {
+        let d = t.device(dev).ok_or(SimError::NoDevice(dev))?;
+        if !d.kind.is_host() {
+            return Err(SimError::NoSource("only hosts ask for addresses with DHCP".into()));
+        }
+        if !port_up(t, End { device: dev, port: 0 }) {
+            return Err(SimError::NoSource("the network cable is not connected".into()));
+        }
+        let mac = d.ports.first().map(|p| p.mac).unwrap_or_default();
+        self.seq += 1;
+        let xid = (self.seq as u32) ^ (u32::from(mac.0[4]) << 8) ^ u32::from(mac.0[5]) << 16;
+        {
+            let st = self.st(dev);
+            st.dhcp_xid = Some(xid);
+            st.dhcp_inbox.clear();
+        }
+        let result = (|| {
+            self.dhcp_send(t, d, &Dhcp::new(DhcpKind::Discover, xid, mac));
+            let offer = self.dhcp_wait(t, dev, &[DhcpKind::Offer]).ok_or_else(|| SimError::NoSource("no DHCP server answered".into()))?;
+            let mut req = Dhcp::new(DhcpKind::Request, xid, mac);
+            req.requested = Some(offer.your_ip);
+            req.server_id = offer.server_id;
+            self.dhcp_send(t, d, &req);
+            let ack = self
+                .dhcp_wait(t, dev, &[DhcpKind::Ack, DhcpKind::Nak])
+                .ok_or_else(|| SimError::NoSource("the DHCP server stopped answering".into()))?;
+            if ack.kind == DhcpKind::Nak {
+                return Err(SimError::NoSource("the DHCP server refused the request".into()));
+            }
+            let mask = ack.mask.or(offer.mask).unwrap_or(Ipv4Addr::new(255, 255, 255, 0));
+            let address = Ipv4Net::with_mask(ack.your_ip, mask).map_err(|e| SimError::NoSource(e.to_string()))?;
+            Ok(DhcpResult { address, router: ack.router, dns: ack.dns, server: ack.server_id })
+        })();
+        let st = self.st(dev);
+        st.dhcp_xid = None;
+        st.dhcp_inbox.clear();
+        result
+    }
+
+    /// Forgets a DHCP server's leases (`clear ip dhcp binding *`).
+    pub fn clear_leases(&mut self, d: DeviceId) {
+        if let Some(st) = self.state.get_mut(&d) {
+            st.leases.clear();
+        }
+    }
+
+    // ---- TCP, HTTP and DNS ----
+
+    /// TCP arriving at this device: the web server (port 80 on servers with HTTP on), or a
+    /// segment for one of this host's client connections.
+    fn tcp_in(&mut self, t: &Topology, d: &Device, ip: &Ipv4) -> Result<(), String> {
+        let seg = Tcp::decode(&ip.payload, ip.src, ip.dst).map_err(|e| e.to_string())?;
+        if seg.dst_port == 80 && d.kind == DeviceKind::Server {
+            return self.http_server_in(t, d, ip, &seg);
+        }
+        if matches!(seg.dst_port, 22 | 23) && matches!(d.kind, DeviceKind::Router | DeviceKind::Switch) {
+            return self.login_server_in(t, d, ip, &seg);
+        }
+        let st = self.st(d.id);
+        if st.tcp_wait != Some((seg.dst_port, seg.src_port)) {
+            if seg.flags & tcp::RST == 0 {
+                let rst = Tcp {
+                    src_port: seg.dst_port,
+                    dst_port: seg.src_port,
+                    seq: seg.ack,
+                    ack: seg.seq.wrapping_add(1),
+                    flags: tcp::RST | tcp::ACK,
+                    window: 0,
+                    payload: Vec::new(),
+                };
+                let out = Ipv4 {
+                    id: self.ip_id(),
+                    ttl: default_ttl(d.kind),
+                    protocol: PROTO_TCP,
+                    src: ip.dst,
+                    dst: ip.src,
+                    payload: rst.encode(ip.dst, ip.src),
+                };
+                let _ = self.send_ip(t, d, out);
+            }
+            return Err(format!("no service on TCP port {}", seg.dst_port));
+        }
+        if st.tcp_inbox.len() < 64 {
+            st.tcp_inbox.push(seg);
+        }
+        Ok(())
+    }
+
+    fn tcp_send(&mut self, t: &Topology, d: &Device, src: Ipv4Addr, dst: Ipv4Addr, seg: &Tcp) -> Result<(), String> {
+        let out = Ipv4 { id: self.ip_id(), ttl: default_ttl(d.kind), protocol: PROTO_TCP, src, dst, payload: seg.encode(src, dst) };
+        self.send_ip(t, d, out)
+    }
+
+    /// A stateless little web server: SYN → SYN-ACK, request → page + FIN, FIN → ACK.
+    fn http_server_in(&mut self, t: &Topology, d: &Device, ip: &Ipv4, seg: &Tcp) -> Result<(), String> {
+        let reply =
+            |flags: u8, seq: u32, ack: u32, payload: Vec<u8>| Tcp { src_port: 80, dst_port: seg.src_port, seq, ack, flags, window: 65_535, payload };
+        let isn = 50_000u32;
+        if !d.services.http.on {
+            let rst = reply(tcp::RST | tcp::ACK, 0, seg.seq.wrapping_add(1), Vec::new());
+            self.tcp_send(t, d, ip.dst, ip.src, &rst)?;
+            return Err("the web service is off".into());
+        }
+        if seg.flags & tcp::SYN != 0 {
+            return self.tcp_send(t, d, ip.dst, ip.src, &reply(tcp::SYN | tcp::ACK, isn, seg.seq.wrapping_add(1), Vec::new()));
+        }
+        if !seg.payload.is_empty() {
+            let request = String::from_utf8_lossy(&seg.payload).to_string();
+            let path = request.lines().next().and_then(|l| l.split_whitespace().nth(1)).unwrap_or("/");
+            let name = path.trim_start_matches('/');
+            let name = if name.is_empty() { "index.html" } else { name };
+            let (status, body) = match d.services.http.files.iter().find(|f| f.name.eq_ignore_ascii_case(name)) {
+                Some(f) => ("200 OK", f.content.clone()),
+                None => ("404 Not Found", format!("<html><body><h1>Not found</h1><p>This server has no file named {name}.</p></body></html>")),
+            };
+            let response = format!(
+                "HTTP/1.1 {status}\r\nServer: PacketCraft\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let ack = seg.seq.wrapping_add(seg.payload.len() as u32);
+            let mut seq = isn.wrapping_add(1);
+            let bytes = response.into_bytes();
+            let chunks: Vec<&[u8]> = bytes.chunks(1460).collect();
+            let last = chunks.len().saturating_sub(1);
+            for (i, c) in chunks.into_iter().enumerate() {
+                let flags = if i == last { tcp::PSH | tcp::ACK | tcp::FIN } else { tcp::ACK };
+                self.tcp_send(t, d, ip.dst, ip.src, &reply(flags, seq, ack, c.to_vec()))?;
+                seq = seq.wrapping_add(c.len() as u32);
+            }
+            return Ok(());
+        }
+        if seg.flags & tcp::FIN != 0 {
+            return self.tcp_send(t, d, ip.dst, ip.src, &reply(tcp::ACK, seg.ack, seg.seq.wrapping_add(1), Vec::new()));
+        }
+        Ok(())
+    }
+
+    /// Remote logins: SYN-ACK when the vty lines accept the protocol, RST otherwise; data and
+    /// FINs are acknowledged (the session itself runs in the console layer).
+    fn login_server_in(&mut self, t: &Topology, d: &Device, ip: &Ipv4, seg: &Tcp) -> Result<(), String> {
+        let proto = if seg.dst_port == 22 { packetcraft_model::RemoteProto::Ssh } else { packetcraft_model::RemoteProto::Telnet };
+        let reply = |flags: u8, seq: u32, ack: u32| Tcp {
+            src_port: seg.dst_port,
+            dst_port: seg.src_port,
+            seq,
+            ack,
+            flags,
+            window: 4128,
+            payload: Vec::new(),
+        };
+        if seg.flags & tcp::SYN != 0 {
+            if d.access.accepts(proto) {
+                return self.tcp_send(t, d, ip.dst, ip.src, &reply(tcp::SYN | tcp::ACK, 7_000, seg.seq.wrapping_add(1)));
+            }
+            self.tcp_send(t, d, ip.dst, ip.src, &reply(tcp::RST | tcp::ACK, 0, seg.seq.wrapping_add(1)))?;
+            return Err(format!("{} logins are not accepted here", proto.name()));
+        }
+        if seg.flags & tcp::FIN != 0 || !seg.payload.is_empty() {
+            let len = (seg.payload.len() as u32).max(u32::from(seg.flags & tcp::FIN != 0));
+            return self.tcp_send(t, d, ip.dst, ip.src, &reply(tcp::ACK, seg.ack, seg.seq.wrapping_add(len)));
+        }
+        Ok(())
+    }
+
+    /// Opens a TCP connection (SYN, SYN-ACK, ACK) and closes it again; tells whether the far end
+    /// accepted. Used by Telnet and SSH, whose sessions then run in the console layer.
+    pub fn tcp_connect(&mut self, t: &Topology, dev: DeviceId, dst: Ipv4Addr, port: u16) -> Result<(), SimError> {
+        let d = t.device(dev).ok_or(SimError::NoDevice(dev))?;
+        // A connection to one of our own addresses never touches a cable.
+        if l3_ifaces(d).iter().any(|i| i.net.addr == dst) {
+            let proto = if port == 22 { packetcraft_model::RemoteProto::Ssh } else { packetcraft_model::RemoteProto::Telnet };
+            let open = matches!(port, 22 | 23) && matches!(d.kind, DeviceKind::Router | DeviceKind::Switch) && d.access.accepts(proto);
+            return if open { Ok(()) } else { Err(SimError::NoSource(format!("{dst} refused the connection"))) };
+        }
+        let src = self.source_for(t, d, dst)?;
+        let local = self.next_port();
+        let seg = |flags: u8, seq: u32, ack: u32| Tcp { src_port: local, dst_port: port, seq, ack, flags, window: 65_535, payload: Vec::new() };
+        {
+            let st = self.st(dev);
+            st.tcp_wait = Some((local, port));
+            st.tcp_inbox.clear();
+        }
+        let result = (|| {
+            let mut answer = None;
+            for _ in 0..2 {
+                let _ = self.tcp_send(t, d, src, dst, &seg(tcp::SYN, 3_000, 0));
+                answer = self.tcp_wait(t, dev, |s| s.flags & (tcp::SYN | tcp::RST) != 0);
+                if answer.is_some() {
+                    break;
+                }
+            }
+            let a = answer.ok_or_else(|| SimError::NoSource(format!("{dst} did not answer (connection timed out)")))?;
+            if a.flags & tcp::RST != 0 {
+                return Err(SimError::NoSource(format!("{dst} refused the connection")));
+            }
+            let _ = self.tcp_send(t, d, src, dst, &seg(tcp::ACK, 3_001, a.seq.wrapping_add(1)));
+            Ok(())
+        })();
+        let st = self.st(dev);
+        st.tcp_wait = None;
+        st.tcp_inbox.clear();
+        result
+    }
+
+    fn next_port(&mut self) -> u16 {
+        self.seq += 1;
+        49_152 + (self.seq % 16_000) as u16
+    }
+
+    /// Resolves a name with the host's DNS server (an address resolves to itself).
+    pub fn dns_resolve(&mut self, t: &Topology, dev: DeviceId, name: &str) -> Result<Ipv4Addr, SimError> {
+        if let Ok(a) = name.parse::<Ipv4Addr>() {
+            return Ok(a);
+        }
+        let d = t.device(dev).ok_or(SimError::NoDevice(dev))?;
+        let server = d.dns.ok_or_else(|| SimError::NoSource(format!("{name}: this host has no DNS server configured")))?;
+        let src = self.source_for(t, d, server)?;
+        for _ in 0..2 {
+            let port = self.next_port();
+            let id = self.ip_id();
+            {
+                let st = self.st(dev);
+                st.dns_wait = Some((port, id));
+                st.dns_answer = None;
+            }
+            let q = Udp { src_port: port, dst_port: dns::PORT, payload: dns::Dns::query(id, name).encode() };
+            let ip = Ipv4 { id: self.ip_id(), ttl: default_ttl(d.kind), protocol: PROTO_UDP, src, dst: server, payload: q.encode(src, server) };
+            let _ = self.send_ip(t, d, ip);
+            let deadline = self.now.saturating_add(2_000_000);
+            self.advance(t, deadline, |s| s.state.get(&dev).is_some_and(|st| st.dns_answer.is_some()));
+            let st = self.st(dev);
+            st.dns_wait = None;
+            if let Some(a) = st.dns_answer.take() {
+                return a.answers.first().copied().ok_or_else(|| SimError::NoSource(format!("{name}: the DNS server doesn't know this name")));
+            }
+        }
+        Err(SimError::NoSource(format!("{name}: the DNS server {server} didn't answer")))
+    }
+
+    fn tcp_wait(&mut self, t: &Topology, dev: DeviceId, want: impl Fn(&Tcp) -> bool) -> Option<Tcp> {
+        let deadline = self.now.saturating_add(2_000_000);
+        let have = |s: &Sim| s.state.get(&dev).is_some_and(|st| st.tcp_inbox.iter().any(&want));
+        self.advance(t, deadline, have);
+        let st = self.st(dev);
+        let i = st.tcp_inbox.iter().position(&want)?;
+        Some(st.tcp_inbox.remove(i))
+    }
+
+    /// Fetches `path` from the web server at `server` over TCP port 80. Returns the status line
+    /// and the body.
+    pub fn http_get(&mut self, t: &Topology, dev: DeviceId, server: Ipv4Addr, host: &str, path: &str) -> Result<(String, String), SimError> {
+        let d = t.device(dev).ok_or(SimError::NoDevice(dev))?;
+        let src = self.source_for(t, d, server)?;
+        let port = self.next_port();
+        let isn = 1_000u32;
+        let seg = |flags: u8, seq: u32, ack: u32, payload: Vec<u8>| Tcp { src_port: port, dst_port: 80, seq, ack, flags, window: 65_535, payload };
+        {
+            let st = self.st(dev);
+            st.tcp_wait = Some((port, 80));
+            st.tcp_inbox.clear();
+        }
+        let result = (|| {
+            // The handshake (tried twice: the first SYN can be lost while routers resolve ARP).
+            let mut synack = None;
+            for _ in 0..2 {
+                let _ = self.tcp_send(t, d, src, server, &seg(tcp::SYN, isn, 0, Vec::new()));
+                synack = self.tcp_wait(t, dev, |s| s.flags & (tcp::SYN | tcp::RST) != 0);
+                if synack.is_some() {
+                    break;
+                }
+            }
+            let synack = synack.ok_or_else(|| SimError::NoSource(format!("{server} did not answer (request timed out)")))?;
+            if synack.flags & tcp::RST != 0 {
+                return Err(SimError::NoSource(format!("{server} refused the connection (no web service)")));
+            }
+            let srv_seq = synack.seq.wrapping_add(1);
+            let _ = self.tcp_send(t, d, src, server, &seg(tcp::ACK, isn + 1, srv_seq, Vec::new()));
+            let request = format!("GET {path} HTTP/1.1\r\nHost: {host}\r\nUser-Agent: PacketCraft\r\nConnection: close\r\n\r\n").into_bytes();
+            let req_len = request.len() as u32;
+            let _ = self.tcp_send(t, d, src, server, &seg(tcp::PSH | tcp::ACK, isn + 1, srv_seq, request));
+            let mut body = Vec::new();
+            let mut last_seq;
+            loop {
+                let Some(s) = self.tcp_wait(t, dev, |s| !s.payload.is_empty() || s.flags & tcp::FIN != 0) else {
+                    return Err(SimError::NoSource("the server stopped answering".into()));
+                };
+                last_seq = s.seq.wrapping_add(s.payload.len() as u32);
+                body.extend_from_slice(&s.payload);
+                if s.flags & tcp::FIN != 0 || body.len() > 200_000 {
+                    break;
+                }
+            }
+            let _ = self.tcp_send(t, d, src, server, &seg(tcp::FIN | tcp::ACK, isn + 1 + req_len, last_seq.wrapping_add(1), Vec::new()));
+            let text = String::from_utf8_lossy(&body).to_string();
+            let (head, content) = text.split_once("\r\n\r\n").unwrap_or((text.as_str(), ""));
+            let status = head.lines().next().unwrap_or("").split_once(' ').map_or("", |x| x.1).to_string();
+            Ok((status, content.to_string()))
+        })();
+        let st = self.st(dev);
+        st.tcp_wait = None;
+        st.tcp_inbox.clear();
+        result
+    }
+
+    // ---- ping and traceroute ----
+
+    /// The address a device sources its own traffic to `dst` from.
+    pub fn source_for(&mut self, t: &Topology, d: &Device, dst: Ipv4Addr) -> Result<Ipv4Addr, SimError> {
+        let ifs = l3_ifaces(d);
+        let Some(first) = ifs.first() else {
+            return Err(SimError::NoSource(format!("{} has no IP address configured", d.name)));
+        };
+        // A host always sources from its one address; with its cable out the echo just times out.
+        if d.kind.is_host() && (first.net.contains(dst) || d.gateway.is_some_and(|g| first.net.contains(g))) {
+            return Ok(first.net.addr);
+        }
+        self.route(t, d, dst).map(|(i, _)| i.net.addr).ok_or_else(|| SimError::NoSource(format!("{} has no route to {dst}", d.name)))
+    }
+
+    fn probe(&mut self, t: &Topology, dev: DeviceId, dst: Ipv4Addr, ttl: u8, seq: u16, size: usize, timeout: u64) -> Result<Probe, SimError> {
+        let d = t.device(dev).ok_or(SimError::NoDevice(dev))?;
+        let src = self.source_for(t, d, dst)?;
+        self.next_echo_id = self.next_echo_id.wrapping_add(1);
+        let id = self.next_echo_id;
+        let ip = Ipv4 {
+            id: self.ip_id(),
+            ttl,
+            protocol: PROTO_ICMP,
+            src,
+            dst,
+            payload: Icmp::EchoRequest { id, seq, data: vec![0xab; size.min(1_472)] }.encode(),
+        };
+        // An echo to ourselves never touches a cable.
+        if l3_ifaces(d).iter().any(|i| i.net.addr == dst) {
+            return Ok(Probe::Reply { from: dst, rtt_us: 0 });
+        }
+        let sent = self.now;
+        if self.send_ip(t, d, ip).is_err() && d.kind != DeviceKind::Router {
+            return Ok(Probe::Timeout);
+        }
+        let matches = |s: &Sim| s.state.get(&dev).is_some_and(|st| st.icmp.iter().any(|e| e.id == id && e.seq == seq));
+        self.advance(t, sent.saturating_add(timeout), matches);
+        let st = self.st(dev);
+        let found = st.icmp.iter().position(|e| e.id == id && e.seq == seq);
+        let ev = found.map(|i| st.icmp.remove(i));
+        st.icmp.retain(|e| sent.saturating_sub(e.at) < 60_000_000);
+        Ok(match ev {
+            Some(IcmpEvent { kind: IcmpKind::Reply, from, at, .. }) => Probe::Reply { from, rtt_us: at.saturating_sub(sent) },
+            Some(IcmpEvent { kind: IcmpKind::TimeExceeded, from, at, .. }) => Probe::TtlExceeded { from, rtt_us: at.saturating_sub(sent) },
+            Some(IcmpEvent { kind: IcmpKind::Unreachable(code), from, .. }) => Probe::Unreachable { from, code },
+            None => Probe::Timeout,
+        })
+    }
+
+    /// Sends `count` echo requests one after another, each waiting for its answer or timeout.
+    pub fn ping(&mut self, t: &Topology, dev: DeviceId, dst: Ipv4Addr, opts: PingOptions) -> Result<Vec<Probe>, SimError> {
+        let count = opts.count.clamp(1, 1_000);
+        let kind = t.device(dev).ok_or(SimError::NoDevice(dev))?.kind;
+        let ttl = opts.ttl.unwrap_or(default_ttl(kind)).max(1);
+        let mut out = Vec::with_capacity(usize::from(count));
+        for seq in 1..=count {
+            out.push(self.probe(t, dev, dst, ttl, seq, opts.size, opts.timeout_us)?);
+        }
+        Ok(out)
+    }
+
+    /// Probes with increasing TTL until the destination answers (or `max_hops`).
+    pub fn traceroute(&mut self, t: &Topology, dev: DeviceId, dst: Ipv4Addr, max_hops: u8, timeout_us: u64) -> Result<Vec<Hop>, SimError> {
+        let mut hops = Vec::new();
+        for ttl in 1..=max_hops.clamp(1, 64) {
+            let mut probes = Vec::new();
+            for seq in 1..=3 {
+                probes.push(self.probe(t, dev, dst, ttl, seq, 32, timeout_us)?);
+            }
+            let done = probes.iter().any(|p| matches!(p, Probe::Reply { .. } | Probe::Unreachable { .. }));
+            hops.push(Hop { ttl, probes });
+            if done {
+                break;
+            }
+        }
+        Ok(hops)
+    }
+}
+
+fn default_ttl(kind: DeviceKind) -> u8 {
+    if kind.is_host() { 128 } else { 255 }
+}
+
+/// Whether switch port `p` carries `vlan`.
+fn carries(d: &Device, p: usize, vlan: VlanId) -> bool {
+    d.ports.get(p).is_some_and(|port| match port.switchport.mode {
+        SwitchportMode::Access => port.switchport.access_vlan == vlan,
+        SwitchportMode::Trunk => port.switchport.allowed.contains(vlan),
+    })
+}
+
+/// The DHCP message inside a frame, if it is one for a client.
+fn dhcp_in_frame(f: &Frame) -> Option<Dhcp> {
+    if f.ethertype != ETHERTYPE_IPV4 {
+        return None;
+    }
+    let ip = Ipv4::decode(&f.payload).ok()?;
+    if ip.protocol != PROTO_UDP {
+        return None;
+    }
+    let u = Udp::decode(&ip.payload, ip.src, ip.dst).ok()?;
+    if u.dst_port != dhcp::CLIENT_PORT {
+        return None;
+    }
+    Dhcp::decode(&u.payload).ok()
+}
+
+/// The `ip helper-address` list of an interface.
+fn helpers_of(d: &Device, ifc: &L3If) -> Vec<Ipv4Addr> {
+    let Some(p) = d.ports.get(ifc.port) else { return Vec::new() };
+    match ifc.sub {
+        Some(n) => p.subif(n).map(|s| s.helpers.clone()).unwrap_or_default(),
+        None => p.helpers.clone(),
+    }
+}
+
+/// The NAT side of an interface.
+fn nat_side(d: &Device, ifc: &L3If) -> Option<packetcraft_model::NatSide> {
+    let p = d.ports.get(ifc.port)?;
+    match ifc.sub {
+        Some(n) => p.subif(n)?.nat,
+        None => p.nat,
+    }
+}
+
+/// The per-flow id NAT translates: the ICMP echo identifier, or the UDP source port (outbound)
+/// / destination port (inbound).
+fn flow_id(ip: &Ipv4, outbound: bool) -> Option<u16> {
+    match ip.protocol {
+        PROTO_ICMP => match Icmp::decode(&ip.payload).ok()? {
+            Icmp::EchoRequest { id, .. } | Icmp::EchoReply { id, .. } => Some(id),
+            _ => None,
+        },
+        PROTO_UDP => Udp::decode(&ip.payload, ip.src, ip.dst).ok().map(|u| if outbound { u.src_port } else { u.dst_port }),
+        PROTO_TCP => Tcp::decode(&ip.payload, ip.src, ip.dst).ok().map(|u| if outbound { u.src_port } else { u.dst_port }),
+        _ => None,
+    }
+}
+
+/// The packet with its source (outbound) or destination (inbound) address, and the flow id if
+/// given, replaced. Checksums are recomputed on encode.
+fn rewrite(ip: &Ipv4, outbound: bool, addr: Ipv4Addr, id: Option<u16>) -> Ipv4 {
+    let mut out = ip.clone();
+    if outbound {
+        out.src = addr;
+    } else {
+        out.dst = addr;
+    }
+    match ip.protocol {
+        PROTO_ICMP => {
+            if let (Some(new), Ok(icmp)) = (id, Icmp::decode(&ip.payload)) {
+                let icmp = match icmp {
+                    Icmp::EchoRequest { seq, data, .. } => Icmp::EchoRequest { id: new, seq, data },
+                    Icmp::EchoReply { seq, data, .. } => Icmp::EchoReply { id: new, seq, data },
+                    other => other,
+                };
+                out.payload = icmp.encode();
+            }
+        }
+        PROTO_UDP => {
+            if let Ok(mut u) = Udp::decode(&ip.payload, ip.src, ip.dst) {
+                if let Some(new) = id {
+                    if outbound {
+                        u.src_port = new;
+                    } else {
+                        u.dst_port = new;
+                    }
+                }
+                out.payload = u.encode(out.src, out.dst);
+            }
+        }
+        PROTO_TCP => {
+            if let Ok(mut u) = Tcp::decode(&ip.payload, ip.src, ip.dst) {
+                if let Some(new) = id {
+                    if outbound {
+                        u.src_port = new;
+                    } else {
+                        u.dst_port = new;
+                    }
+                }
+                out.payload = u.encode(out.src, out.dst);
+            }
+        }
+        _ => {}
+    }
+    out
+}

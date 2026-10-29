@@ -1,0 +1,264 @@
+//! `cargo xtask layers`: dependency layering rules (AGENTS.md "Layering", docs/architecture.md).
+//!
+//! The rule engine works on a small, metadata-independent model so it can be
+//! unit-tested; `from_metadata` builds that model from `cargo metadata`.
+
+use serde_json::Value;
+
+/// Where a workspace crate sits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Class {
+    /// Regular layered crate.
+    Layer(u8),
+    /// Binaries and build tooling: exempt from the rules.
+    Exempt,
+}
+
+impl Class {
+    fn layer(self) -> Option<u8> {
+        match self {
+            Class::Layer(l) => Some(l),
+            Class::Exempt => None,
+        }
+    }
+}
+
+/// The layering table (AGENTS.md "Layering", docs/architecture.md). Names are package names
+/// without the `packetcraft-` prefix.
+pub const TABLE: &[(&str, Class)] = &[
+    ("core", Class::Layer(0)),
+    ("wire", Class::Layer(1)),
+    ("model", Class::Layer(2)),
+    ("sim", Class::Layer(3)),
+    ("ios", Class::Layer(4)),
+    ("engine", Class::Layer(5)),
+    ("ui-egui", Class::Layer(6)),
+    ("mcp", Class::Layer(6)),
+    // L7 apps (exempt) and tooling (unchecked)
+    ("packetcraft", Class::Layer(7)),
+    ("cli", Class::Layer(7)),
+    ("web", Class::Layer(7)),
+    ("xtask", Class::Exempt),
+];
+
+/// Explicit orderings *within* a layer (earlier may be used by later). None yet.
+pub const INTRA_LAYER_ORDER: &[&[&str]] = &[];
+
+fn intra_layer_allowed(from: &str, to: &str) -> bool {
+    let (from, to) = (short_name(from), short_name(to));
+    INTRA_LAYER_ORDER.iter().any(|chain| match (chain.iter().position(|n| *n == from), chain.iter().position(|n| *n == to)) {
+        (Some(f), Some(t)) => t < f,
+        _ => false,
+    })
+}
+
+/// Format crates may only depend on these workspace crates (on top of the layer rule): the wire
+/// formats never pull in the lab model or the simulator.
+pub const FORMAT_ALLOWED: &[(&str, &[&str])] = &[("wire", &["core"])];
+
+/// External crates that constitute a UI toolkit / windowing dependency.
+/// Entries ending in `*` are prefixes.
+pub const UI_CRATES: &[&str] = &["egui*", "eframe", "winit", "rfd", "wgpu*"];
+
+/// First layer allowed to use UI crates.
+pub const UI_MIN_LAYER: u8 = 6;
+
+pub fn short_name(pkg: &str) -> &str {
+    pkg.strip_prefix("packetcraft-").unwrap_or(pkg)
+}
+
+pub fn classify(pkg: &str) -> Option<Class> {
+    let s = short_name(pkg);
+    TABLE.iter().find(|(n, _)| *n == s).map(|(_, c)| *c)
+}
+
+fn is_ui_crate(name: &str) -> bool {
+    UI_CRATES.iter().any(|p| match p.strip_suffix('*') {
+        Some(prefix) => name.starts_with(prefix),
+        None => name == *p,
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DepKind {
+    Normal,
+    Dev,
+    Build,
+}
+
+#[derive(Debug, Clone)]
+pub struct Dep {
+    pub name: String,
+    pub kind: DepKind,
+    /// `true` if the dependency is a workspace member.
+    pub workspace: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct Crate {
+    pub name: String,
+    pub deps: Vec<Dep>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Violation {
+    Unregistered { krate: String },
+    Upward { krate: String, dep: String, from: u8, to: u8, kind: DepKind },
+    FormatDep { krate: String, dep: String },
+    UiBelowL6 { krate: String, dep: String, layer: u8 },
+}
+
+impl std::fmt::Display for Violation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Violation::Unregistered { krate } => {
+                write!(f, "{krate}: unknown workspace crate; register it in xtask/src/layers.rs TABLE (see docs/architecture.md)")
+            }
+            Violation::Upward { krate, dep, from, to, kind } => {
+                write!(f, "{krate} (L{from}) -> {dep} (L{to}) [{kind:?}]: may only depend on strictly lower layers")
+            }
+            Violation::FormatDep { krate, dep } => {
+                write!(f, "{krate}: format crates may only depend on core, not {dep}")
+            }
+            Violation::UiBelowL6 { krate, dep, layer } => {
+                write!(f, "{krate} (L{layer}) depends on UI crate `{dep}`; UI toolkits are only allowed in L6+")
+            }
+        }
+    }
+}
+
+/// Check all rules. Returns violations sorted for stable output.
+pub fn check(crates: &[Crate]) -> Vec<Violation> {
+    let mut out = Vec::new();
+    for c in crates {
+        let Some(class) = classify(&c.name) else {
+            out.push(Violation::Unregistered { krate: c.name.clone() });
+            continue;
+        };
+        // Tooling and the L7 apps sit on top of everything.
+        let Some(layer) = class.layer().filter(|l| *l < 7) else {
+            continue;
+        };
+        let format_allowed = FORMAT_ALLOWED.iter().find(|(n, _)| *n == short_name(&c.name)).map(|(_, a)| *a);
+        for d in &c.deps {
+            // Self dev-dependencies (e.g. to enable features in tests) are fine.
+            if d.name == c.name {
+                continue;
+            }
+            if d.workspace {
+                if let Some(allowed) = format_allowed
+                    && d.kind != DepKind::Dev
+                    && !allowed.contains(&short_name(&d.name))
+                {
+                    out.push(Violation::FormatDep { krate: c.name.clone(), dep: d.name.clone() });
+                }
+                // Unregistered deps are reported on their own entry.
+                let Some(dc) = classify(&d.name) else { continue };
+                let to = dc.layer().unwrap_or(u8::MAX);
+                if to >= layer && !(to == layer && intra_layer_allowed(&c.name, &d.name)) {
+                    out.push(Violation::Upward {
+                        krate: c.name.clone(),
+                        dep: d.name.clone(),
+                        from: layer,
+                        to: if to == u8::MAX { 7 } else { to },
+                        kind: d.kind,
+                    });
+                }
+            } else if layer < UI_MIN_LAYER && is_ui_crate(&d.name) {
+                out.push(Violation::UiBelowL6 { krate: c.name.clone(), dep: d.name.clone(), layer });
+            }
+        }
+    }
+    out.sort_by_key(ToString::to_string);
+    out.dedup();
+    out
+}
+
+/// Build the model from `cargo metadata --format-version 1 --no-deps`.
+pub fn from_metadata(meta: &Value) -> Result<Vec<Crate>, String> {
+    let pkgs = meta["packages"].as_array().ok_or("metadata: no packages array")?;
+    let members: Vec<&str> = pkgs.iter().filter_map(|p| p["name"].as_str()).collect();
+    let mut out = Vec::new();
+    for p in pkgs {
+        let name = p["name"].as_str().ok_or("package without name")?.to_owned();
+        let mut deps = Vec::new();
+        for d in p["dependencies"].as_array().into_iter().flatten() {
+            let dname = d["name"].as_str().unwrap_or_default().to_owned();
+            let kind = match d["kind"].as_str() {
+                Some("dev") => DepKind::Dev,
+                Some("build") => DepKind::Build,
+                _ => DepKind::Normal,
+            };
+            let workspace = members.contains(&dname.as_str()) || d["path"].is_string();
+            deps.push(Dep { name: dname, kind, workspace });
+        }
+        out.push(Crate { name, deps });
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(out)
+}
+
+pub fn describe(class: Option<Class>) -> String {
+    match class {
+        Some(Class::Layer(7)) => "L7 app".into(),
+        Some(Class::Layer(l)) => format!("L{l}"),
+        Some(Class::Exempt) => "unchecked".into(),
+        None => "UNREGISTERED".into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn c(name: &str, deps: &[(&str, DepKind, bool)]) -> Crate {
+        Crate { name: name.into(), deps: deps.iter().map(|(n, k, w)| Dep { name: (*n).into(), kind: *k, workspace: *w }).collect() }
+    }
+    use DepKind::*;
+
+    #[test]
+    fn clean_downward_graph_passes() {
+        let g = [
+            c("packetcraft-core", &[("serde", Normal, false)]),
+            c("packetcraft-wire", &[("packetcraft-core", Normal, true)]),
+            c("packetcraft-model", &[("packetcraft-core", Normal, true)]),
+            c("packetcraft-sim", &[("packetcraft-model", Normal, true), ("packetcraft-wire", Normal, true)]),
+            c("packetcraft-ios", &[("packetcraft-sim", Normal, true)]),
+            c("packetcraft-engine", &[("packetcraft-ios", Normal, true)]),
+            c("packetcraft-ui-egui", &[("packetcraft-engine", Normal, true), ("egui", Normal, false)]),
+            c("packetcraft-cli", &[("packetcraft-mcp", Normal, true)]),
+        ];
+        assert!(check(&g).is_empty(), "{:?}", check(&g));
+    }
+
+    #[test]
+    fn upward_and_sideways_dependencies_flagged() {
+        let v = check(&[c("packetcraft-model", &[("packetcraft-sim", Normal, true)])]);
+        assert!(matches!(v[..], [Violation::Upward { from: 2, to: 3, .. }]));
+        let v = check(&[c("packetcraft-ui-egui", &[("packetcraft-mcp", Normal, true)])]);
+        assert!(matches!(v[..], [Violation::Upward { from: 6, to: 6, .. }]));
+    }
+
+    #[test]
+    fn wire_formats_depend_on_core_only() {
+        let v = check(&[c("packetcraft-wire", &[("packetcraft-model", Normal, true)])]);
+        assert!(v.iter().any(|x| matches!(x, Violation::FormatDep { .. })), "{v:?}");
+    }
+
+    #[test]
+    fn ui_crates_below_l6_flagged() {
+        for dep in ["egui", "eframe", "winit", "rfd", "wgpu"] {
+            let v = check(&[c("packetcraft-engine", &[(dep, Normal, false)])]);
+            assert!(matches!(v[..], [Violation::UiBelowL6 { layer: 5, .. }]), "{dep}");
+        }
+        assert!(check(&[c("packetcraft-mcp", &[("serde_json", Normal, false)])]).is_empty());
+    }
+
+    #[test]
+    fn unregistered_crate_is_error_and_apps_are_exempt() {
+        assert!(matches!(&check(&[c("packetcraft-mystery", &[])])[..], [Violation::Unregistered { .. }]));
+        for app in ["packetcraft", "packetcraft-cli", "packetcraft-web", "xtask"] {
+            assert!(check(&[c(app, &[("egui", Normal, false), ("packetcraft-ui-egui", Normal, true)])]).is_empty());
+        }
+    }
+}

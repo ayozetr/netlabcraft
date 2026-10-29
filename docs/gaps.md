@@ -1,0 +1,19 @@
+# Gaps (ranked work list)
+
+_Updated 2026-10-29. Pick from the top; each item lands with tests and doc updates._
+
+1. ~~DHCP~~ — done 2026-10-29 (router pools, exclusions, bindings, conflict detection, relay with `ip helper-address`, host `/renew`). Still to do: DHCP service on Server devices.
+2. ~~Spanning tree~~ — done 2026-10-29 (PVST-style per-VLAN trees, roles and blocking, priorities, `root primary/secondary`, portfast, `show spanning-tree`, amber lights). Still to do: BPDUs in the event list, convergence timers, RSTP proposal/agreement.
+3. ~~Switch VLAN interfaces~~ — done 2026-10-29 (`interface vlan N`, `ip default-gateway`). Still to do: layer-3 switching (`ip routing` on multilayer switches).
+4. ~~OSPF single area~~ — done 2026-10-29 (computed convergence: neighbours, SPF, passive interfaces, router id, default-information originate, `show ip ospf neighbor`, `show ip protocols`). Still to do: hello/LSA packets in the event list, multi-area (IA routes), `ip ospf cost`, RIP.
+5. **Unsaved-changes prompt in the web build**, and recent files on desktop.
+6. ~~ACLs and NAT~~ — done 2026-10-29 (numbered and named standard/extended ACLs with counters; static NAT, pools, PAT with interface overload). Still to do: `access-class` on vty lines, NAT for ICMP errors (traceroute through NAT).
+7. **Remote access**: passwords are done (`enable secret/password`, console and vty `password`/`login`, `banner motd`, `service password-encryption`); still to do: `username`/`login local`, Telnet/SSH between devices.
+8. **Activity checks**: a lab can carry expected results (pings that must succeed, config lines that must exist) and a score.
+9. **Serial WAN links** (PPP/HDLC, clock rate) and more device models (modular slots).
+10. **IPv6** (addressing, ND, static routes, OSPFv3).
+11. **Translations** through `craft-i18n`.
+12. **Packaging**: desktop icons, installers, release workflow like the other Craft apps.
+13. ~~Services on Server devices~~ — done 2026-10-29 (HTTP over simulated TCP with a file manager, DNS A records, DHCP pools on servers; Web Browser on the PC Desktop; `nslookup`, names in `ping`/`tracert`). Still to do: HTTPS, Email, FTP, TFTP, NTP, Syslog, AAA.
+14. ~~Telnet/SSH between devices~~ — done 2026-10-29 (`telnet`/`ssh -l` from hosts and devices, `username`, `login local`, `transport input`, `crypto key generate rsa`, `ip ssh version`).
+15. **EtherChannel, VTP.** Port security done 2026-10-29 (`maximum`, `violation shutdown|restrict|protect`, sticky and static addresses, err-disabled ports recovered with `shutdown`/`no shutdown`, `show port-security`).

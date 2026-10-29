@@ -1,0 +1,529 @@
+//! Command implementations.
+
+use packetcraft_core::{DeviceId, parse_ip};
+use packetcraft_model::{DeviceKind, End, file, models};
+use packetcraft_sim::{PingOptions, Probe};
+use serde_json::{Value, json};
+
+use crate::{EngineError, Result, Session, catalog, sample};
+
+fn bad(msg: impl Into<String>) -> EngineError {
+    EngineError::BadParams(msg.into())
+}
+
+fn str_param<'a>(p: &'a Value, key: &str) -> Result<&'a str> {
+    p.get(key).and_then(Value::as_str).ok_or_else(|| bad(format!("`{key}` (text) is required")))
+}
+
+fn opt_str<'a>(p: &'a Value, key: &str) -> Option<&'a str> {
+    p.get(key).and_then(Value::as_str)
+}
+
+fn f32_param(p: &Value, key: &str) -> Option<f32> {
+    p.get(key).and_then(Value::as_f64).filter(|v| v.is_finite()).map(|v| v.clamp(-1.0e6, 1.0e6) as f32)
+}
+
+/// A device given by name (`"R1"`), `"#id"` or numeric id.
+fn device_param(s: &Session, p: &Value, key: &str) -> Result<DeviceId> {
+    match p.get(key) {
+        Some(Value::Number(n)) => {
+            let id = n.as_u64().and_then(|v| u32::try_from(v).ok()).ok_or_else(|| bad(format!("`{key}` is not a device id")))?;
+            s.topology.device(DeviceId(id)).map(|d| d.id).ok_or_else(|| EngineError::Failed(format!("no device #{id}")))
+        }
+        Some(Value::String(name)) => Ok(s.topology.resolve(name)?),
+        _ => Err(bad(format!("`{key}` (device name or id) is required"))),
+    }
+}
+
+fn port_param(s: &Session, dev: DeviceId, name: &str) -> Result<usize> {
+    let d = s.topology.device(dev).ok_or_else(|| EngineError::Failed("no such device".into()))?;
+    d.port_index(name).ok_or_else(|| EngineError::Failed(format!("{} has no port {name}", d.name)))
+}
+
+pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
+    let info = catalog::find(id).ok_or_else(|| EngineError::UnknownCommand(id.to_string()))?;
+    let _ = info;
+    let cmd = id;
+    match id {
+        "file.new" => {
+            let t = match opt_str(p, "sample") {
+                Some(name) => sample::build(name)?,
+                None => packetcraft_model::Topology::new(),
+            };
+            s.replace(t, None);
+            Ok(json!({"devices": s.topology.devices.len()}))
+        }
+        "file.open" => {
+            let (text, path) = match (opt_str(p, "json"), opt_str(p, "path")) {
+                (Some(j), _) => (j.to_string(), opt_str(p, "path").map(str::to_string)),
+                (None, Some(path)) => (read_file(path)?, Some(path.to_string())),
+                (None, None) => return Err(bad("give `json` (the file's contents) or `path`")),
+            };
+            let t = file::from_json(&text)?;
+            s.replace(t, path);
+            Ok(json!({"devices": s.topology.devices.len(), "links": s.topology.links.len()}))
+        }
+        "file.save" => {
+            let text = file::to_json(&s.topology)?;
+            if let Some(path) = opt_str(p, "path") {
+                write_file(path, text.as_bytes())?;
+                s.path = Some(path.to_string());
+            }
+            s.dirty = false;
+            Ok(json!({"json": text}))
+        }
+        "file.export_pcap" => {
+            let bytes = s.pcap();
+            if let Some(path) = opt_str(p, "path") {
+                write_file(path, &bytes)?;
+            }
+            Ok(json!({"frames": s.sim.trace().len(), "bytes": bytes.len()}))
+        }
+        "edit.undo" => Ok(json!({"undone": s.undo()})),
+        "edit.redo" => Ok(json!({"redone": s.redo()})),
+        "edit.checkpoint" => {
+            s.checkpoint();
+            Ok(Value::Null)
+        }
+        "lab.notes" => {
+            let text: String = str_param(p, "text")?.chars().take(100_000).collect();
+            s.checkpoint();
+            s.topology.notes = text;
+            s.changed();
+            Ok(Value::Null)
+        }
+        "device.add" => {
+            let model = match (opt_str(p, "model"), opt_str(p, "kind")) {
+                (Some(m), _) => models::find(m).ok_or_else(|| bad(format!("unknown model `{m}` (see device.models)")))?,
+                (None, Some(k)) => models::default_for(DeviceKind::from_id(k).ok_or_else(|| bad(format!("unknown device kind `{k}` (router, switch, hub, pc, laptop, server, printer)")))?),
+                (None, None) => return Err(bad("`kind` or `model` is required")),
+            };
+            let (x, y) = (f32_param(p, "x").unwrap_or(0.0), f32_param(p, "y").unwrap_or(0.0));
+            let mut t = s.topology.clone();
+            let id = t.add_model(model, opt_str(p, "name"), x, y)?;
+            s.checkpoint();
+            s.topology = t;
+            s.changed();
+            let name = s.topology.device(id).map(|d| d.name.clone()).unwrap_or_default();
+            Ok(json!({"id": id.0, "name": name}))
+        }
+        "device.duplicate" => {
+            let d = device_param(s, p, "device")?;
+            let src = s.topology.device(d).cloned().ok_or_else(|| EngineError::Failed("no such device".into()))?;
+            let (x, y) = (f32_param(p, "x").unwrap_or(src.x + 60.0), f32_param(p, "y").unwrap_or(src.y + 60.0));
+            let mut t = s.topology.clone();
+            let id = t.add_model(src.catalogue_model(), None, x, y)?;
+            if let Some(copy) = t.device_mut(id) {
+                // Same configuration, fresh identity: new name and MAC addresses.
+                for (dst, from) in copy.ports.iter_mut().zip(&src.ports) {
+                    *dst = packetcraft_model::Port { name: dst.name.clone(), mac: dst.mac, ..from.clone() };
+                }
+                copy.gateway = src.gateway;
+                copy.routes = src.routes.clone();
+                copy.vlans = src.vlans.clone();
+            }
+            s.checkpoint();
+            s.topology = t;
+            s.changed();
+            let name = s.topology.device(id).map(|d| d.name.clone()).unwrap_or_default();
+            Ok(json!({"id": id.0, "name": name}))
+        }
+                                "server.services" => {
+            use packetcraft_model::services::{MAX_FILE, MAX_ITEMS, Services};
+            let d = device_param(s, p, "device")?;
+            if s.topology.device(d).is_none_or(|x| x.kind != DeviceKind::Server) {
+                return Err(bad("services run on Server devices"));
+            }
+            let mut sv: Services = serde_json::from_value(p.get("services").cloned().unwrap_or(Value::Null)).map_err(|e| bad(format!("`services`: {e}")))?;
+            sv.http.files.truncate(MAX_ITEMS);
+            for f in &mut sv.http.files {
+                f.name = f.name.trim().chars().filter(|c| !c.is_whitespace() && *c != '/').take(64).collect();
+                f.content = f.content.chars().take(MAX_FILE).collect();
+            }
+            sv.http.files.retain(|f| !f.name.is_empty());
+            sv.dns.records.truncate(MAX_ITEMS);
+            sv.dhcp.pools.truncate(MAX_ITEMS);
+            for pool in &mut sv.dhcp.pools {
+                pool.max_users = pool.max_users.min(65_536);
+                if packetcraft_core::mask_to_prefix(pool.mask).is_none() {
+                    return Err(bad(format!("pool {}: {} is not a subnet mask", pool.name, pool.mask)));
+                }
+            }
+            s.checkpoint();
+            if let Some(dev) = s.topology.device_mut(d) {
+                dev.services = sv;
+            }
+            s.changed();
+            Ok(Value::Null)
+        }
+        "browser.get" => {
+            let d = device_param(s, p, "device")?;
+            if s.topology.device(d).is_none_or(|x| !x.kind.is_host()) {
+                return Err(bad("web pages are opened from PCs, laptops and servers"));
+            }
+            let url = str_param(p, "url")?.trim().to_string();
+            let rest = url.strip_prefix("http://").or_else(|| url.strip_prefix("HTTP://")).unwrap_or(&url);
+            if url.to_ascii_lowercase().starts_with("https://") {
+                return Err(EngineError::Failed("https is not simulated yet; use http://".into()));
+            }
+            let (host, path) = match rest.split_once('/') {
+                Some((h, p)) => (h.to_string(), format!("/{p}")),
+                None => (rest.to_string(), "/".to_string()),
+            };
+            if host.is_empty() {
+                return Err(bad("give an address or a name, such as http://192.168.1.10"));
+            }
+            let server = s.sim.dns_resolve(&s.topology, d, &host).map_err(|e| EngineError::Failed(e.to_string()))?;
+            let (status, body) = s.sim.http_get(&s.topology, d, server, &host, &path).map_err(|e| EngineError::Failed(e.to_string()))?;
+            s.revision += 1;
+            Ok(json!({"status": status, "body": body, "url": format!("http://{host}{path}")}))
+        }
+        "device.startup" => {
+            let d = device_param(s, p, "device")?;
+            let dev = s.topology.device(d).ok_or_else(|| EngineError::Failed("no such device".into()))?;
+            if dev.kind.is_host() || dev.kind == DeviceKind::Hub {
+                return Err(bad("only routers and switches keep a startup configuration"));
+            }
+            let new = match str_param(p, "action")? {
+                "save" => Some(packetcraft_ios::running_config(dev)),
+                "erase" => None,
+                "load" => Some(str_param(p, "text")?.chars().take(1_000_000).collect()),
+                other => return Err(bad(format!("unknown action `{other}` (save, erase, load)"))),
+            };
+            s.checkpoint();
+            if let Some(dev) = s.topology.device_mut(d) {
+                dev.startup = new;
+            }
+            s.changed();
+            Ok(Value::Null)
+        }
+        "device.label" => {
+            let d = device_param(s, p, "device")?;
+            let label: String = str_param(p, "label")?.trim().chars().take(packetcraft_model::MAX_NAME).collect();
+            s.checkpoint();
+            if let Some(dev) = s.topology.device_mut(d) {
+                dev.label = if label.is_empty() { None } else { Some(label) };
+            }
+            s.changed();
+            Ok(Value::Null)
+        }
+        "device.models" => Ok(Value::Array(
+            models::MODELS.iter().map(|m| json!({"id": m.id, "kind": m.kind.id(), "label": m.label, "description": m.description, "ports": m.port_names()})).collect(),
+        )),
+        "note.add" => {
+            let (x, y) = (f32_param(p, "x").unwrap_or(0.0), f32_param(p, "y").unwrap_or(0.0));
+                        let shape = match opt_str(p, "shape") {
+                Some(sh) => packetcraft_model::Shape::from_id(sh).ok_or_else(|| bad(format!("unknown shape `{sh}` (text, rectangle, ellipse, line)")))?,
+                None => packetcraft_model::Shape::Text,
+            };
+            let mut t = s.topology.clone();
+            let id = if shape == packetcraft_model::Shape::Text {
+                t.add_annotation(x, y, opt_str(p, "text").unwrap_or("Note"))?
+            } else {
+                t.add_drawing(shape, x, y, f32_param(p, "w").unwrap_or(80.0), f32_param(p, "h").unwrap_or(60.0), opt_str(p, "color"))?
+            };
+            s.checkpoint();
+            s.topology = t;
+            s.changed();
+            Ok(json!({"id": id}))
+        }
+        "note.edit" | "note.move" | "note.remove" => {
+            let id = p.get("id").and_then(Value::as_u64).and_then(|v| u32::try_from(v).ok()).ok_or_else(|| bad("`id` (note number) is required"))?;
+            let mut t = s.topology.clone();
+            t.annotation_mut(id)?;
+            let mut transient = false;
+            match cmd {
+                "note.edit" => t.annotation_mut(id)?.text = str_param(p, "text")?.chars().take(packetcraft_model::MAX_ANNOTATION_TEXT).collect(),
+                "note.move" => {
+                    let (x, y) = (f32_param(p, "x").ok_or_else(|| bad("`x` is required"))?, f32_param(p, "y").ok_or_else(|| bad("`y` is required"))?);
+                    let a = t.annotation_mut(id)?;
+                    a.x = x;
+                    a.y = y;
+                    transient = p.get("transient").and_then(Value::as_bool).unwrap_or(false);
+                }
+                _ => t.annotations.retain(|a| a.id != id),
+            }
+            if !transient {
+                s.checkpoint();
+            }
+            s.topology = t;
+            s.dirty = true;
+            s.revision += 1;
+            Ok(Value::Null)
+        }
+        "device.remove" => {
+            let d = device_param(s, p, "device")?;
+            s.checkpoint();
+            s.topology.remove_device(d)?;
+            s.consoles.remove(&d);
+            s.changed();
+            Ok(Value::Null)
+        }
+        "device.move" => {
+            let d = device_param(s, p, "device")?;
+            let (x, y) = (f32_param(p, "x").ok_or_else(|| bad("`x` is required"))?, f32_param(p, "y").ok_or_else(|| bad("`y` is required"))?);
+            if !p.get("transient").and_then(Value::as_bool).unwrap_or(false) {
+                s.checkpoint();
+            }
+            if let Some(dev) = s.topology.device_mut(d) {
+                dev.x = x;
+                dev.y = y;
+            }
+            s.dirty = true;
+            s.revision += 1;
+            Ok(Value::Null)
+        }
+        "device.rename" => {
+            let d = device_param(s, p, "device")?;
+            let name = str_param(p, "name")?;
+            let mut t = s.topology.clone();
+            t.rename(d, name)?;
+            s.checkpoint();
+            s.topology = t;
+            s.changed();
+            Ok(Value::Null)
+        }
+        "device.list" => Ok(Value::Array(
+            s.topology
+                .devices
+                .iter()
+                .map(|d| {
+                    let ports: Vec<Value> = d
+                        .ports
+                        .iter()
+                        .enumerate()
+                        .map(|(i, port)| {
+                            let end = End { device: d.id, port: i };
+                            json!({
+                                "name": port.name,
+                                "ip": port.ip.map(|ip| ip.to_string()),
+                                "shutdown": port.shutdown,
+                                "up": packetcraft_sim::port_up(&s.topology, end),
+                                "peer": s.topology.peer(end).map(|e| s.topology.end_label(e)),
+                            })
+                        })
+                        .collect();
+                    json!({"id": d.id.0, "name": d.name, "kind": d.kind.id(), "x": d.x, "y": d.y, "gateway": d.gateway.map(|g| g.to_string()), "ports": ports})
+                })
+                .collect(),
+        )),
+        "link.add" => {
+            let a = device_param(s, p, "a")?;
+            let b = device_param(s, p, "b")?;
+            let pa = match opt_str(p, "a_port") {
+                Some(n) => port_param(s, a, n)?,
+                None => s.topology.free_port(a).ok_or_else(|| EngineError::Failed(format!("{} has no free port", s.topology.end_label(End { device: a, port: 0 }))))?,
+            };
+            let pb = match opt_str(p, "b_port") {
+                Some(n) => port_param(s, b, n)?,
+                None => s.topology.free_port(b).ok_or_else(|| EngineError::Failed("the second device has no free port".into()))?,
+            };
+            let mut t = s.topology.clone();
+            let (ea, eb) = (End { device: a, port: pa }, End { device: b, port: pb });
+            t.connect(ea, eb)?;
+            s.checkpoint();
+            s.topology = t;
+            s.changed();
+            Ok(json!({"a": s.topology.end_label(ea), "b": s.topology.end_label(eb)}))
+        }
+        "link.remove" => {
+            let d = device_param(s, p, "device")?;
+            let port = port_param(s, d, str_param(p, "port")?)?;
+            let end = End { device: d, port };
+            if s.topology.link_at(end).is_none() {
+                return Err(EngineError::Failed(format!("{} has no cable", s.topology.end_label(end))));
+            }
+            s.checkpoint();
+            s.topology.disconnect(end);
+            s.changed();
+            Ok(Value::Null)
+        }
+        "cli.exec" => {
+            let d = device_param(s, p, "device")?;
+            let line = str_param(p, "line")?;
+            Ok(cli_line(s, d, line))
+        }
+        "cli.script" => {
+            let d = device_param(s, p, "device")?;
+            let lines: Vec<String> = match p.get("lines") {
+                Some(Value::Array(a)) => a.iter().filter_map(Value::as_str).map(str::to_string).collect(),
+                Some(Value::String(t)) => t.lines().map(str::to_string).collect(),
+                _ => return Err(bad("`lines` (array of text, or text) is required")),
+            };
+            if lines.len() > 10_000 {
+                return Err(bad("at most 10000 lines per script"));
+            }
+            let outputs: Vec<Value> = lines.iter().map(|l| cli_line(s, d, l)).map(|v| v.get("output").cloned().unwrap_or(Value::Null)).collect();
+            Ok(json!({"outputs": outputs, "prompt": prompt_of(s, d)}))
+        }
+        "cli.help" => {
+            let d = device_param(s, p, "device")?;
+            let line = opt_str(p, "line").unwrap_or("");
+            let cli = s.console(d).cli.clone();
+            Ok(json!({"help": packetcraft_ios::help_line(&s.topology, d, &cli, line)}))
+        }
+        "cli.complete" => {
+            let d = device_param(s, p, "device")?;
+            let line = str_param(p, "line")?;
+            let cli = s.console(d).cli.clone();
+            Ok(json!({"line": packetcraft_ios::complete_line(&s.topology, d, &cli, line)}))
+        }
+        "cli.prompt" => {
+            let d = device_param(s, p, "device")?;
+            Ok(json!({"prompt": prompt_of(s, d)}))
+        }
+        "net.ping" => {
+            let d = device_param(s, p, "from")?;
+            let dst = parse_ip(str_param(p, "to")?).map_err(|e| bad(e.to_string()))?;
+            let count = p.get("count").and_then(Value::as_u64).map_or(4, |c| c.clamp(1, 1_000) as u16);
+            let opts = PingOptions { count, ..PingOptions::default() };
+            let probes = s.sim.ping(&s.topology, d, dst, opts).map_err(|e| EngineError::Failed(e.to_string()))?;
+            s.revision += 1;
+            let marks: String = probes.iter().map(|p| p.mark()).collect();
+            let replies = probes.iter().filter(|p| matches!(p, Probe::Reply { .. })).count();
+            Ok(json!({"marks": marks, "sent": probes.len(), "replies": replies, "probes": probes.iter().map(probe_json).collect::<Vec<_>>()}))
+        }
+        "net.traceroute" => {
+            let d = device_param(s, p, "from")?;
+            let dst = parse_ip(str_param(p, "to")?).map_err(|e| bad(e.to_string()))?;
+            let hops = s.sim.traceroute(&s.topology, d, dst, 30, 2_000_000).map_err(|e| EngineError::Failed(e.to_string()))?;
+            s.revision += 1;
+            Ok(json!({"hops": hops.iter().map(|h| json!({"ttl": h.ttl, "probes": h.probes.iter().map(probe_json).collect::<Vec<_>>()})).collect::<Vec<_>>()}))
+        }
+        "device.configure" => {
+            let d = device_param(s, p, "device")?;
+            let text = match p.get("lines") {
+                Some(Value::Array(a)) => a.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("\n"),
+                Some(Value::String(t)) => t.clone(),
+                _ => return Err(bad("`lines` (array of text, or text) is required")),
+            };
+            if text.len() > 1_000_000 {
+                return Err(bad("configuration too long"));
+            }
+            if s.topology.device(d).is_some_and(|x| x.kind.is_host()) {
+                return Err(bad("hosts are configured with `ipconfig` through cli.exec"));
+            }
+            let before = s.topology.clone();
+            let errors = packetcraft_ios::apply_config(&mut s.topology, &mut s.sim, d, &text);
+            if s.topology != before {
+                let after = std::mem::replace(&mut s.topology, before);
+                s.checkpoint();
+                s.topology = after;
+                s.changed();
+            }
+            Ok(json!({"applied": text.lines().filter(|l| !l.trim().is_empty()).count(), "errors": errors}))
+        }
+        "sim.advance" => {
+            let secs = p.get("seconds").and_then(Value::as_f64).filter(|v| v.is_finite()).unwrap_or(30.0).clamp(0.0, 86_400.0);
+            s.sim.run_for(&s.topology, (secs * 1_000_000.0) as u64);
+            s.revision += 1;
+            Ok(json!({"time_us": s.sim.now_us()}))
+        }
+        "sim.reset" => {
+            s.sim.reset();
+            s.revision += 1;
+            Ok(Value::Null)
+        }
+        "sim.clear_events" => {
+            s.sim.clear_trace();
+            s.revision += 1;
+            Ok(Value::Null)
+        }
+        "sim.events" => {
+            let since = p.get("since").and_then(Value::as_u64).unwrap_or(0);
+            let limit = p.get("limit").and_then(Value::as_u64).map_or(200, |l| l.clamp(1, 10_000)) as usize;
+            let t = &s.topology;
+            let evs: Vec<Value> = s
+                .sim
+                .trace()
+                .iter()
+                .filter(|e| e.id > since)
+                .take(limit)
+                .map(|e| json!({"id": e.id, "at_us": e.at_us, "from": t.end_label(e.from), "to": t.end_label(e.to), "protocol": e.protocol.name(), "summary": e.summary, "dropped": e.dropped}))
+                .collect();
+            Ok(Value::Array(evs))
+        }
+        "sim.status" => Ok(json!({"time_us": s.sim.now_us(), "events": s.sim.trace().len(), "storm": s.sim.storm_detected()})),
+        "topology.get" => serde_json::to_value(&s.topology).map_err(|e| EngineError::Failed(e.to_string())),
+        "sample.list" => Ok(Value::Array(sample::SAMPLES.iter().map(|x| json!({"id": x.id, "title": x.title, "description": x.description})).collect())),
+        other => Err(EngineError::UnknownCommand(other.to_string())),
+    }
+}
+
+fn probe_json(p: &Probe) -> Value {
+    match p {
+        Probe::Reply { from, rtt_us } => json!({"result": "reply", "from": from.to_string(), "rtt_us": rtt_us}),
+        Probe::TtlExceeded { from, rtt_us } => json!({"result": "ttl-exceeded", "from": from.to_string(), "rtt_us": rtt_us}),
+        Probe::Unreachable { from, code } => json!({"result": "unreachable", "from": from.to_string(), "code": code}),
+        Probe::Timeout => json!({"result": "timeout"}),
+    }
+}
+
+fn prompt_of(s: &mut Session, d: DeviceId) -> String {
+    let cli = s.console(d).cli.clone();
+    packetcraft_ios::prompt(&s.topology, d, &cli)
+}
+
+/// Runs a console line, echoing it and its output into the device's scrollback.
+pub fn cli_line(s: &mut Session, d: DeviceId, line: &str) -> Value {
+    let line: String = line.chars().take(4_096).filter(|c| *c != '\r').collect();
+    let before = s.topology.clone();
+    let mut cli = std::mem::take(&mut s.console(d).cli);
+    // What is typed at a password prompt is never echoed.
+    let secret = packetcraft_ios::prompt(&s.topology, d, &cli) == packetcraft_ios::PASSWORD_PROMPT;
+    let out = packetcraft_ios::execute(&mut s.topology, &mut s.sim, d, &mut cli, &line);
+    if out.changed {
+        let after = std::mem::replace(&mut s.topology, before);
+        s.checkpoint();
+        s.topology = after;
+        s.changed();
+    } else {
+        s.revision += 1;
+    }
+    let prompt = packetcraft_ios::prompt(&s.topology, d, &cli);
+    let console = s.console(d);
+    console.cli = cli;
+    if out.clear {
+        console.log.clear();
+    } else {
+        console.append(&if secret { "\n".to_string() } else { format!("{line}\n") });
+        if !out.output.is_empty() {
+            console.append(&out.output);
+            console.append("\n");
+        }
+    }
+    console.append(&prompt);
+    json!({"output": out.output, "prompt": prompt, "clear": out.clear})
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn read_file(path: &str) -> Result<String> {
+    let meta = std::fs::metadata(path).map_err(|e| EngineError::Failed(format!("{path}: {e}")))?;
+    if meta.len() > file::MAX_BYTES as u64 {
+        return Err(EngineError::Failed(format!("{path}: too large to be a lab")));
+    }
+    std::fs::read_to_string(path).map_err(|e| EngineError::Failed(format!("{path}: {e}")))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn read_file(_: &str) -> Result<String> {
+    Err(EngineError::Failed("the browser build opens files through the file picker".into()))
+}
+
+/// Writes through a temporary file and a rename, so a failed save never truncates the old file.
+#[cfg(not(target_arch = "wasm32"))]
+fn write_file(path: &str, bytes: &[u8]) -> Result<()> {
+    let target = std::path::Path::new(path);
+    let name = target.file_name().and_then(|n| n.to_str()).ok_or_else(|| EngineError::Failed(format!("{path}: not a file path")))?;
+    let tmp = target.with_file_name(format!(".{name}.part"));
+    std::fs::write(&tmp, bytes).map_err(|e| EngineError::Failed(format!("{path}: {e}")))?;
+    std::fs::rename(&tmp, target).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        EngineError::Failed(format!("{path}: {e}"))
+    })
+}
+
+#[cfg(target_arch = "wasm32")]
+fn write_file(_: &str, _: &[u8]) -> Result<()> {
+    Err(EngineError::Failed("the browser build saves through downloads".into()))
+}

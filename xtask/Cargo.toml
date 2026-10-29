@@ -1,0 +1,21 @@
+[package]
+name = "xtask"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "PacketCraft workspace tooling: cargo xtask ci | test | layers | assets | wasm | parity | version"
+
+[lints]
+workspace = true
+
+[features]
+# `cargo xtask parity` reads the command catalogs. Steps that only need the layer/asset checks
+# can run with --no-default-features and skip compiling them.
+default = ["engine"]
+engine = ["dep:packetcraft-engine", "dep:packetcraft-ios"]
+
+[dependencies]
+serde_json = { workspace = true }
+packetcraft-engine = { workspace = true, optional = true }
+packetcraft-ios = { workspace = true, optional = true }
