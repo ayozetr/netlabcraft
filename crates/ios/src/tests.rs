@@ -996,3 +996,52 @@ fn rip_by_typing() {
     lab.run(r1, "conf t\nno router rip\nend");
     assert!(lab.run(r1, "show ip protocols").contains("No routing protocol"));
 }
+
+#[test]
+fn serial_link_by_typing() {
+    let mut lab = Lab::new();
+    let wan = packetcraft_model::models::find("Router-WAN").unwrap();
+    let r1 = lab.t.add_model(wan, None, 0.0, 0.0).unwrap();
+    let r2 = lab.t.add_model(wan, None, 0.0, 0.0).unwrap();
+    let a = lab.add(DeviceKind::Pc);
+    let b = lab.add(DeviceKind::Pc);
+    // R1 is cabled first: its end is the DCE.
+    lab.cable(r1, "s0/0/0", r2, "s0/0/0");
+    lab.cable(a, "fa0", r1, "g0/0");
+    lab.cable(b, "fa0", r2, "g0/0");
+    assert!(lab.t.connect(End { device: r1, port: 1 }, End { device: r2, port: 3 }).is_err(), "Ethernet to serial");
+    lab.run(a, "ipconfig 192.168.1.10 255.255.255.0 192.168.1.1");
+    lab.run(b, "ipconfig 192.168.2.10 255.255.255.0 192.168.2.1");
+    lab.run(r1, "en\nconf t\nint g0/0\nip address 192.168.1.1 255.255.255.0\nno shut\nint s0/0/0\nip address 10.0.0.1 255.255.255.252\nno shut\nexit\nip route 192.168.2.0 255.255.255.0 10.0.0.2\nend");
+    lab.run(r2, "en\nconf t\nint g0/0\nip address 192.168.2.1 255.255.255.0\nno shut\nint s0/0/0\nip address 10.0.0.2 255.255.255.252\nno shut\nexit\nip route 192.168.1.0 255.255.255.0 10.0.0.1\nend");
+    // No clock on the DCE end: the line protocol stays down.
+    let si = lab.run(r1, "show interfaces s0/0/0");
+    assert!(si.contains("line protocol down (no clock rate on the DCE end)"), "{si}");
+    assert!(lab.run(r1, "show controllers s0/0/0").contains("DCE end"));
+    assert!(lab.run(r2, "show controllers serial 0/0/0").contains("DTE end"));
+    lab.run(r2, "conf t\nint s0/0/0");
+    assert!(lab.try_run(r2, "clock rate 64000").contains("DTE"));
+    lab.run(r2, "no clock rate\nend");
+    lab.run(r1, "conf t\nint s0/0/0\nclock rate 64000\nend");
+    assert!(lab.run(a, "ping 192.168.2.10").contains("answered"));
+    assert!(lab.run(a, "ping 192.168.2.10").contains("4 answered"));
+    // PPP on one end only: down again; on both: up.
+    lab.run(r1, "conf t\nint s0/0/0\nencapsulation ppp\nend");
+    assert!(lab.run(r1, "show interfaces s0/0/0").contains("different encapsulations"));
+    assert!(lab.run(a, "ping 192.168.2.10").contains(" 0 answered"));
+    lab.run(r2, "conf t\nint s0/0/0\nencapsulation ppp\nend");
+    assert!(lab.run(a, "ping 192.168.2.10").contains("4 answered"));
+    assert!(lab.sim.trace().iter().any(|e| e.summary.contains("[serial, PPP]")));
+    let run = lab.run(r1, "show running-config");
+    assert!(run.contains("interface Serial0/0/0\n ip address 10.0.0.1 255.255.255.252\n encapsulation ppp\n clock rate 64000"), "{run}");
+    lab.run(r1, "conf t");
+    lab.run(r1, "int g0/1");
+    assert!(lab.try_run(r1, "clock rate 64000").contains("not a serial"));
+    assert!(lab.try_run(r1, "exit").is_empty());
+    lab.run(r1, "int s0/0/0");
+    assert!(lab.try_run(r1, "clock rate 12345").contains("Unsupported"));
+    // IPv6 crosses the serial link too, with no neighbour discovery.
+    lab.run(r1, "exit\nipv6 unicast-routing\nint s0/0/0\nipv6 address 2001:db8:12::1/64\nend");
+    lab.run(r2, "conf t\nint s0/0/0\nipv6 address 2001:db8:12::2/64\nend");
+    assert!(lab.run(r1, "ping 2001:db8:12::2").contains("!!!!!"));
+}

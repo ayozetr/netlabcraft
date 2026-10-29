@@ -10,7 +10,7 @@ _Updated 2026-10-29. Pick from the top; each item lands with tests and doc updat
 6. ~~ACLs and NAT~~ — done 2026-10-29 (numbered and named standard/extended ACLs with counters; static NAT, pools, PAT with interface overload). Still to do: `access-class` on vty lines, NAT for ICMP errors (traceroute through NAT).
 7. ~~Remote access~~ — done 2026-10-29 (passwords, banner, password encryption, local users, Telnet and SSH; see 14). Still to do: `access-class` on vty lines.
 8. **Activity checks**: a lab can carry expected results (pings that must succeed, config lines that must exist) and a score.
-9. **Serial WAN links** (PPP/HDLC, clock rate) and more device models (modular slots).
+9. ~~Serial WAN links~~ — done 2026-10-29 (Router-WAN model with Serial0/0/0-1, serial cables with a DCE end, `clock rate`, `encapsulation hdlc|ppp`, line protocol down without clock or with mismatched framing, `show controllers`, HDLC/PPP frames on the wire, serial-wan sample lab). Still to do: PPP authentication (PAP/CHAP), Frame Relay, modular slots.
 10. ~~IPv6~~ — done 2026-10-29 (global, EUI-64 and link-local addresses, neighbour discovery, router solicitations/advertisements and host autoconfiguration, static routes with link-local next hops, `ipv6 unicast-routing`, ICMPv6 echo/errors, ping and traceroute, `show ipv6 interface brief|route|neighbors`, PC IPv6 configuration, ipv6 sample lab). Still to do: OSPFv3, DHCPv6, IPv6 on subinterfaces and switch VLAN interfaces, IPv6 ACLs.
 11. **Translations** through `craft-i18n`.
 12. **Packaging**: desktop icons, installers, release workflow like the other Craft apps.

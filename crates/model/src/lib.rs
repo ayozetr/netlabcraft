@@ -289,6 +289,45 @@ impl ChannelMode {
     }
 }
 
+/// Layer-2 framing on a serial link.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Encapsulation {
+    /// Cisco-style HDLC, the default.
+    #[default]
+    Hdlc,
+    /// PPP (RFC 1661).
+    Ppp,
+}
+
+impl Encapsulation {
+    pub fn name(self) -> &'static str {
+        match self {
+            Encapsulation::Hdlc => "HDLC",
+            Encapsulation::Ppp => "PPP",
+        }
+    }
+}
+
+/// A serial port's settings.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SerialConf {
+    #[serde(default)]
+    pub encapsulation: Encapsulation,
+    /// `clock rate N` (bit/s): needed on the DCE end of the cable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clock_rate: Option<u32>,
+}
+
+impl SerialConf {
+    pub fn is_default(&self) -> bool {
+        *self == SerialConf::default()
+    }
+}
+
+/// Clock rates a DCE accepts (bit/s).
+pub const CLOCK_RATES: [u32; 13] = [1_200, 2_400, 4_800, 9_600, 19_200, 38_400, 56_000, 64_000, 72_000, 125_000, 128_000, 148_000, 2_000_000];
+
 /// What a port does when one address too many shows up.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -360,6 +399,9 @@ pub struct Port {
     pub port_security: Option<PortSecurity>,
     #[serde(default, skip_serializing_if = "Ipv6Conf::is_default")]
     pub ipv6: Ipv6Conf,
+    /// Serial ports: encapsulation and clock rate.
+    #[serde(default, skip_serializing_if = "SerialConf::is_default")]
+    pub serial: SerialConf,
     /// Multilayer switches: `no switchport` made this a routed port (it takes `ip address`).
     #[serde(default)]
     pub routed: bool,
@@ -893,6 +935,7 @@ impl Device {
                 port_security: None,
                 ipv6: Ipv6Conf::default(),
                 channel: None,
+                serial: SerialConf::default(),
                 routed: false,
                 err_disabled: false,
                 helpers: Vec::new(),
@@ -1219,6 +1262,24 @@ impl Topology {
         (0..d.ports.len()).find(|&p| self.link_at(End { device: id, port: p }).is_none())
     }
 
+    /// The first free port of a device that a cable from a serial (or Ethernet) port fits.
+    pub fn free_port_for(&self, id: DeviceId, serial: bool) -> Option<usize> {
+        let d = self.device(id)?;
+        (0..d.ports.len())
+            .find(|&p| self.link_at(End { device: id, port: p }).is_none() && d.ports.get(p).is_some_and(|x| ifname::is_serial(&x.name) == serial))
+    }
+
+    /// Whether a port is serial.
+    pub fn is_serial(&self, end: End) -> bool {
+        self.device(end.device).and_then(|d| d.ports.get(end.port)).is_some_and(|p| ifname::is_serial(&p.name))
+    }
+
+    /// On a serial cable, the DCE end (the one cabled first, which provides the clock).
+    pub fn dce_of(&self, end: End) -> Option<End> {
+        let l = self.link_at(end)?;
+        self.is_serial(l.a).then_some(l.a)
+    }
+
     fn check_end(&self, end: End) -> Result<()> {
         let d = self.device(end.device).ok_or_else(|| ModelError::NoDevice(end.device.to_string()))?;
         let p = d.ports.get(end.port).ok_or_else(|| ModelError::NoPort(d.name.clone(), format!("#{}", end.port)))?;
@@ -1235,6 +1296,14 @@ impl Topology {
         }
         self.check_end(a)?;
         self.check_end(b)?;
+        if self.is_serial(a) != self.is_serial(b) {
+            return Err(ModelError::Invalid(format!(
+                "{} and {} don't fit one cable: serial ports take a serial cable, Ethernet ports a copper one",
+                self.end_label(a),
+                self.end_label(b)
+            )));
+        }
+        // On a serial cable the first end is the DCE.
         self.links.push(Link { a, b });
         Ok(())
     }

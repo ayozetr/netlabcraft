@@ -16,6 +16,7 @@ pub mod dhcp;
 pub mod dns;
 pub mod ipv6;
 pub mod pcap;
+pub mod serial;
 pub mod tcp;
 
 /// Why bytes didn't decode.

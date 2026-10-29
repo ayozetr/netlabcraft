@@ -314,9 +314,12 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                 Some(n) => port_param(s, a, n)?,
                 None => s.topology.free_port(a).ok_or_else(|| EngineError::Failed(format!("{} has no free port", s.topology.end_label(End { device: a, port: 0 }))))?,
             };
-            let pb = match opt_str(p, "b_port") {
+                        let pb = match opt_str(p, "b_port") {
                 Some(n) => port_param(s, b, n)?,
-                None => s.topology.free_port(b).ok_or_else(|| EngineError::Failed("the second device has no free port".into()))?,
+                None => {
+                    let serial = s.topology.is_serial(End { device: a, port: pa });
+                    s.topology.free_port_for(b, serial).ok_or_else(|| EngineError::Failed("the second device has no free port of the same type".into()))?
+                }
             };
             let mut t = s.topology.clone();
             let (ea, eb) = (End { device: a, port: pa }, End { device: b, port: pb });

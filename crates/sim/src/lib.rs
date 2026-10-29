@@ -120,11 +120,37 @@ pub fn l3_ifaces(d: &Device) -> Vec<L3If> {
     out
 }
 
-/// Whether a port can pass traffic: not shut down, cabled, and the far port not shut down.
+/// Whether a port can pass traffic: not shut down, cabled, and the far port not shut down;
+/// on a serial cable also clocked by its DCE end and framed alike at both ends.
 pub fn port_up(t: &Topology, end: End) -> bool {
     let ok = |p: &packetcraft_model::Port| !p.shutdown && !p.err_disabled;
     let own = t.device(end.device).and_then(|d| d.ports.get(end.port)).is_some_and(ok);
-    own && t.peer(end).and_then(|p| t.device(p.device).and_then(|d| d.ports.get(p.port))).is_some_and(ok)
+    own && t.peer(end).and_then(|p| t.device(p.device).and_then(|d| d.ports.get(p.port))).is_some_and(ok) && serial_problem(t, end).is_none()
+}
+
+/// Why a cabled serial link can't carry traffic (its line protocol stays down), if it can't.
+pub fn serial_problem(t: &Topology, end: End) -> Option<&'static str> {
+    if !t.is_serial(end) {
+        return None;
+    }
+    let port = |e: End| t.device(e.device).and_then(|d| d.ports.get(e.port));
+    let peer = t.peer(end)?;
+    let dce = t.dce_of(end)?;
+    if port(dce).is_none_or(|p| p.serial.clock_rate.is_none()) {
+        return Some("no clock rate on the DCE end");
+    }
+    if port(end).map(|p| p.serial.encapsulation) != port(peer).map(|p| p.serial.encapsulation) {
+        return Some("the two ends use different encapsulations");
+    }
+    None
+}
+
+/// The framing a serial port sends.
+fn framing(p: &packetcraft_model::Port) -> packetcraft_wire::serial::Framing {
+    match p.serial.encapsulation {
+        packetcraft_model::Encapsulation::Hdlc => packetcraft_wire::serial::Framing::Hdlc,
+        packetcraft_model::Encapsulation::Ppp => packetcraft_wire::serial::Framing::Ppp,
+    }
 }
 
 /// Something the simulator decided that changes the lab: the engine applies it.
@@ -684,21 +710,23 @@ impl Sim {
     }
 
     fn deliver(&mut self, t: &Topology, q: Queued) {
-        let (protocol, summary) = packetcraft_wire::summarize(&q.frame);
+        // Serial frames are listed (and captured) as the equivalent Ethernet II frame, since a
+        // capture file has one link type; the summary says which framing the cable carried.
+        let serial = t.is_serial(q.to).then(|| packetcraft_wire::serial::decode(&q.frame).ok()).flatten();
+        let mac = |e: End| t.device(e.device).and_then(|d| d.ports.get(e.port)).map_or(MacAddr::ZERO, |p| p.mac);
+        let shown = match &serial {
+            Some((_, et, payload)) => Frame { dst: mac(q.to), src: mac(q.from), vlan: None, ethertype: *et, payload: payload.clone() }.encode(),
+            None => q.frame.clone(),
+        };
+        let (protocol, mut summary) = packetcraft_wire::summarize(&shown);
+        if let Some((f, ..)) = &serial {
+            summary.push_str(if *f == packetcraft_wire::serial::Framing::Ppp { " [serial, PPP]" } else { " [serial, HDLC]" });
+        }
         self.next_event += 1;
         if self.trace.len() >= TRACE_CAP {
             self.trace.pop_front();
         }
-        self.trace.push_back(TraceEvent {
-            id: self.next_event,
-            at_us: q.at,
-            from: q.from,
-            to: q.to,
-            frame: q.frame.clone(),
-            protocol,
-            summary,
-            dropped: None,
-        });
+        self.trace.push_back(TraceEvent { id: self.next_event, at_us: q.at, from: q.from, to: q.to, frame: shown, protocol, summary, dropped: None });
         let dropped = self.receive(t, q.to, &q.frame, q.hops).err();
         if let (Some(reason), Some(ev)) = (dropped, self.trace.back_mut()) {
             ev.dropped = Some(reason);
@@ -710,6 +738,18 @@ impl Sim {
         let port = d.ports.get(at.port).ok_or("port removed")?;
         if port.shutdown {
             return Err("port is shut down".into());
+        }
+        if ifname::is_serial(&port.name) {
+            let (got, ethertype, payload) = packetcraft_wire::serial::decode(bytes).map_err(|e| e.to_string())?;
+            if got != framing(port) {
+                return Err(format!(
+                    "{} framing on a {} port",
+                    if got == packetcraft_wire::serial::Framing::Ppp { "PPP" } else { "HDLC" },
+                    port.serial.encapsulation.name()
+                ));
+            }
+            let f = Frame { dst: port.mac, src: MacAddr::ZERO, vlan: None, ethertype, payload };
+            return self.l3_in(t, d, at.port, f);
         }
         let f = Frame::decode(bytes).map_err(|e| e.to_string())?;
         match d.kind {
@@ -1084,7 +1124,22 @@ impl Sim {
                 let _ = self.switch_forward(t, d, None, v, frame.retagged(None), 0);
             }
         } else {
-            self.emit(t, End { device: d.id, port: ifc.port }, frame.encode());
+            self.emit_frame(t, d, ifc.port, &frame);
+        }
+    }
+
+    /// Sends a frame out of a port: as is on Ethernet, re-framed (HDLC or PPP) on serial.
+    pub(crate) fn emit_frame(&mut self, t: &Topology, d: &Device, port: usize, frame: &Frame) {
+        let end = End { device: d.id, port };
+        match d.ports.get(port).filter(|p| ifname::is_serial(&p.name)) {
+            Some(p) => {
+                if let Ok(bytes) = packetcraft_wire::serial::encode(framing(p), frame.ethertype, &frame.payload) {
+                    self.emit(t, end, bytes);
+                }
+            }
+            None => {
+                self.emit(t, end, frame.encode());
+            }
         }
     }
 
@@ -1357,6 +1412,12 @@ impl Sim {
 
     /// Puts a datagram on the wire towards `nh`, resolving its MAC with ARP first.
     fn transmit(&mut self, t: &Topology, d: &Device, out: &L3If, nh: Ipv4Addr, datagram: Vec<u8>) -> Result<(), String> {
+        // A serial link is point to point: no address to resolve.
+        if out.port != SVI_PORT && t.is_serial(End { device: d.id, port: out.port }) {
+            let frame = Frame { dst: MacAddr::BROADCAST, src: out.mac, vlan: None, ethertype: ETHERTYPE_IPV4, payload: datagram };
+            self.l3_emit(t, d, out, frame);
+            return Ok(());
+        }
         if nh == Ipv4Addr::BROADCAST || (out.net.prefix < 31 && nh == out.net.broadcast()) {
             let frame = Frame { dst: MacAddr::BROADCAST, src: out.mac, vlan: out.vlan, ethertype: ETHERTYPE_IPV4, payload: datagram };
             self.l3_emit(t, d, out, frame);

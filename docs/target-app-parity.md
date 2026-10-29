@@ -7,7 +7,7 @@ _Updated 2026-10-29. Authoritative assessment against Cisco Packet Tracer as a C
 | Logical workspace (place, move, cable devices) | yes | yes | Port chooser per cable; link lights; zoom/pan; grid snap. |
 | Physical workspace (buildings, racks) | yes | no | Low priority. |
 | Device catalogue | many models | 12 generic models (routers, switches incl. multilayer, hub, hosts) | Generic on purpose; modular slots later. |
-| Cable types (straight, cross, fibre, serial, console) | yes | one Ethernet cable, auto-MDIX | Serial (PPP/HDLC) planned with WAN work. |
+| Cable types (straight, cross, fibre, serial, console) | yes | copper (auto-MDIX) and serial (DCE/DTE) | HDLC and PPP framing; no PAP/CHAP, fibre or console cable yet. |
 | Switch MAC learning, VLANs, trunks | yes | yes | |
 | STP / RSTP | yes | per-VLAN tree, computed instantly | No BPDU frames or timers yet. |
 | Port security | yes | yes | sticky, static, three violation modes, err-disabled |

@@ -126,6 +126,10 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip nat pool WORD` | config | router | Delete a NAT pool |
 | `show ip nat translations` | user, privileged | router | Translations in use |
 | `clear ip nat translation *` | privileged | router | Forget dynamic translations |
+| `encapsulation {hdlc\|ppp}` | interface | router | Framing on a serial link |
+| `clock rate <1200-2000000>` | interface | router | Clock a serial link from its DCE end |
+| `no clock rate` | interface | router | Remove the clock rate |
+| `show controllers <interface>` | user, privileged | router | Cable type at an interface (DCE or DTE) |
 | `router rip` | config | router | Start or configure RIP |
 | `no router rip` | config | router | Stop RIP |
 | `version {1\|2}` |  | router | RIP version |

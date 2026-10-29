@@ -2,7 +2,7 @@
 //! `Fa0/1.10`. A name is a type word followed by slot/port numbers and an optional `.sub`.
 
 /// The interface types PacketCraft devices have, with their full spelling.
-pub const TYPES: [&str; 3] = ["GigabitEthernet", "FastEthernet", "Ethernet"];
+pub const TYPES: [&str; 4] = ["GigabitEthernet", "FastEthernet", "Ethernet", "Serial"];
 
 /// A parsed interface name.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -67,6 +67,11 @@ pub fn parse(input: &str) -> Option<IfName> {
     Some(IfName { kind, numbers, sub })
 }
 
+/// Whether a port name is a serial interface.
+pub fn is_serial(full: &str) -> bool {
+    full.starts_with("Serial")
+}
+
 /// The short form shown in tables (`Gi0/1`, `Fa0/3.10`).
 pub fn short(full: &str) -> String {
     match parse(full) {
@@ -74,6 +79,7 @@ pub fn short(full: &str) -> String {
             let abbr = match n.kind {
                 "GigabitEthernet" => "Gi",
                 "FastEthernet" => "Fa",
+                "Serial" => "Se",
                 _ => "Et",
             };
             let mut s = format!("{abbr}{}", n.numbers.iter().map(u32::to_string).collect::<Vec<_>>().join("/"));

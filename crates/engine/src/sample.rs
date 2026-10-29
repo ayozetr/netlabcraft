@@ -61,6 +61,11 @@ pub static SAMPLES: &[Sample] = &[
         description: "Three routers in a line learn each other's networks with RIPv2; R3 hands out a default route.",
     },
     Sample {
+        id: "serial-wan",
+        title: "Two sites over a serial WAN link",
+        description: "Two routers joined by a serial cable with PPP; R1 holds the DCE end and sets the clock rate. OSPF carries the routes.",
+    },
+    Sample {
         id: "ospf",
         title: "OSPF on three routers",
         description: "Three routers in a triangle learn each other's networks with OSPF; cut a link and the routes move.",
@@ -429,6 +434,27 @@ pub fn build(id: &str) -> Result<Topology> {
                 b.type_in(r, &lines)?;
             }
             b.t.notes = "Every router runs RIPv2. Compare `show ip route` (R routes, hop counts in `show ip rip database`) on R1 and R3, then shut R2's g0/1 and watch the routes go.".into();
+        }
+        "serial-wan" => {
+            b.add_model("Router-WAN", "R1", 160.0, 100.0)?;
+            b.add_model("Router-WAN", "R2", 560.0, 100.0)?;
+            // Cabled from R1 first: R1's end is the DCE.
+            b.cable("R1", "s0/0/0", "R2", "s0/0/0")?;
+            b.add(DeviceKind::Pc, "PC1", 160.0, 320.0)?;
+            b.add(DeviceKind::Pc, "PC2", 560.0, 320.0)?;
+            b.cable("PC1", "fa0", "R1", "g0/0")?;
+            b.cable("PC2", "fa0", "R2", "g0/0")?;
+            b.type_in("PC1", "ipconfig 192.168.10.10 255.255.255.0 192.168.10.1")?;
+            b.type_in("PC2", "ipconfig 192.168.20.10 255.255.255.0 192.168.20.1")?;
+            for (r, lan, wan, clock) in [("R1", "192.168.10.1", "10.0.0.1", "clock rate 64000\n"), ("R2", "192.168.20.1", "10.0.0.2", "")] {
+                b.type_in(
+                    r,
+                    &format!(
+                        "enable\nconfigure terminal\ninterface g0/0\nip address {lan} 255.255.255.0\nno shutdown\ninterface s0/0/0\nip address {wan} 255.255.255.252\nencapsulation ppp\n{clock}no shutdown\nexit\nrouter ospf 1\nnetwork 0.0.0.0 255.255.255.255 area 0\nend"
+                    ),
+                )?;
+            }
+            b.t.notes = "The red cable is serial; the clock marks R1's DCE end (`show controllers s0/0/0`). Remove the clock rate on R1, or change one end to `encapsulation hdlc`, and the link goes down.".into();
         }
         "ospf" => {
             for (name, x, y) in [("R1", 120.0, 80.0), ("R2", 600.0, 80.0), ("R3", 360.0, 260.0)] {

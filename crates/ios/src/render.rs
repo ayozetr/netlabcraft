@@ -149,6 +149,14 @@ pub fn running_config(d: &Device) -> String {
             None => {}
         }
         if d.kind == DeviceKind::Router {
+            if packetcraft_model::ifname::is_serial(&p.name) {
+                if p.serial.encapsulation == packetcraft_model::Encapsulation::Ppp {
+                    let _ = writeln!(s, " encapsulation ppp");
+                }
+                if let Some(r) = p.serial.clock_rate {
+                    let _ = writeln!(s, " clock rate {r}");
+                }
+            }
             if let Some(ll) = p.ipv6.link_local {
                 let _ = writeln!(s, " ipv6 address {ll} link-local");
             }
@@ -408,12 +416,18 @@ pub fn interfaces(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
             "up".to_string()
         } else if t.peer(end).is_none() {
             "down (no cable)".to_string()
+        } else if let Some(why) = packetcraft_sim::serial_problem(t, end) {
+            format!("up, line protocol down ({why})")
         } else {
             "down (far end shut down)".to_string()
         };
         if only.is_none_or(|r| r.sub.is_none()) {
             let _ = writeln!(s, "{} is {link}", p.name);
-            let _ = writeln!(s, "  Hardware address {}", p.mac);
+            if packetcraft_model::ifname::is_serial(&p.name) {
+                let _ = writeln!(s, "  Encapsulation {}, serial", p.serial.encapsulation.name());
+            } else {
+                let _ = writeln!(s, "  Hardware address {}", p.mac);
+            }
             if !p.description.is_empty() {
                 let _ = writeln!(s, "  Description: {}", p.description);
             }

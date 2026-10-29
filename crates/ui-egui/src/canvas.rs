@@ -365,8 +365,25 @@ fn draw_links(app: &mut PacketApp, painter: &egui::Painter, view: &View, tk: &To
             (Some(a), Some(b)) => ((pa - view.screen(a.x, a.y)) + (pb - view.screen(b.x, b.y))) * 0.5,
             _ => Vec2::ZERO,
         };
-        painter.line_segment([pa, pb], Stroke::new((2.2 * view.zoom).max(1.0), tk.cable));
         let len = (pb - pa).length();
+        if t.is_serial(l.a) && len >= 1.0 {
+            // A serial cable: red, with a zigzag in the middle; a clock by the DCE end.
+            let red = Stroke::new((2.2 * view.zoom).max(1.0), egui::Color32::from_rgb(0xc8, 0x3a, 0x2e));
+            let d = (pb - pa) / len;
+            let n = vec2(-d.y, d.x);
+            let mid = pa + (pb - pa) * 0.5;
+            let z = 9.0 * view.zoom;
+            painter.add(egui::Shape::line(vec![pa, mid - d * z, mid + n * z * 0.9, mid - n * z * 0.9, mid + d * z, pb], red));
+            // Opposite the port labels, which sit above a lone cable.
+            let below = if n.y > 0.0 { n } else { -n };
+            let clock = pa + d * (ICON * 0.5 + 34.0) * view.zoom + below * 13.0 * view.zoom;
+            let r = 6.0 * view.zoom.clamp(0.6, 1.4);
+            painter.circle(clock, r, tk.chrome, Stroke::new(1.2, red.color));
+            painter.line_segment([clock, clock - vec2(0.0, r * 0.7)], Stroke::new(1.2, red.color));
+            painter.line_segment([clock, clock + vec2(r * 0.55, 0.0)], Stroke::new(1.2, red.color));
+        } else {
+            painter.line_segment([pa, pb], Stroke::new((2.2 * view.zoom).max(1.0), tk.cable));
+        }
         if len < 1.0 {
             continue;
         }
@@ -824,6 +841,11 @@ fn port_menu(app: &mut PacketApp, ui: &Ui) {
     };
     let mut chosen = None;
     let mut close = false;
+    // The second end of a cable must be the same type as the first (serial or Ethernet).
+    let want_serial = match app.ui.canvas.pending {
+        Some(Pending::CableFrom(a)) if a.device != d => Some(app.session.topology.is_serial(a)),
+        _ => None,
+    };
     egui::Area::new(Id::unique("port_menu")).fixed_pos(at + vec2(8.0, 8.0)).order(egui::Order::Foreground).show(ui.ctx(), |ui| {
         egui::Frame::popup(ui.style()).show(ui, |ui| {
             ui.label(egui::RichText::new(format!("{}: choose a port", dev.name)).strong());
@@ -833,6 +855,9 @@ fn port_menu(app: &mut PacketApp, ui: &Ui) {
                     match app.session.topology.peer(end) {
                         Some(peer) => {
                             ui.add_enabled(false, egui::Button::new(format!("{}  (to {})", p.name, app.session.topology.end_label(peer))));
+                        }
+                        None if want_serial.is_some_and(|s| s != packetcraft_model::ifname::is_serial(&p.name)) => {
+                            ui.add_enabled(false, egui::Button::new(format!("{}  (other cable type)", p.name)));
                         }
                         None => {
                             if ui.button(&p.name).clicked() {

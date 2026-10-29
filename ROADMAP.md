@@ -13,7 +13,7 @@ _Updated 2026-10-29._
 | Console commands | 58 grammar entries, 6 modes |
 | Device models | 11 (routers with 2/3/4 ports, switches with 8/24/48 ports, hub, PC, laptop, server, printer) |
 | Sample labs | 9 |
-| Tests | 109 (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Tests | 111 (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 
 ## Dimensions (rough parity with the reference app, for a CCNA-level lab)
 
@@ -31,6 +31,9 @@ _Updated 2026-10-29._
 | Agent control | MCP server and CLI over the full command catalog |
 
 ## Progress log
+
+- **2026-10-29 — Serial WAN links.** A Router-WAN model with serial ports; serial cables whose first end is the DCE; `clock rate`, `encapsulation hdlc|ppp`, line protocol down without a clock or with mismatched framing; `show controllers`; HDLC/PPP frames on the wire (listed and captured as Ethernet II); red serial cables with a clock at the DCE end; serial-wan sample lab.
+
 
 - **2026-10-29 — RIP.** `router rip` with version, classful networks, passive interfaces, split horizon, 15-hop limit and default-route origination, computed like OSPF; R routes in `show ip route`, `show ip rip database`, RIP in `show ip protocols`; rip sample lab.
 

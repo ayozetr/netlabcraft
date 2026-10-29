@@ -46,7 +46,13 @@ pub struct OspfState {
 }
 
 pub fn iface_cost(name: &str) -> u32 {
-    if name.starts_with("GigabitEthernet") || name.starts_with("FastEthernet") { 1 } else { 10 }
+    if name.starts_with("GigabitEthernet") || name.starts_with("FastEthernet") {
+        1
+    } else if name.starts_with("Serial") {
+        64
+    } else {
+        10
+    }
 }
 
 /// The interfaces of a router OSPF runs on.

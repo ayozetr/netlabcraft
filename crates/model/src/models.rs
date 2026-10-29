@@ -55,6 +55,13 @@ pub static MODELS: &[Model] = &[
         ports: &[run("GigabitEthernet0/", 0, 3)],
     },
     Model {
+        id: "Router-WAN",
+        kind: DeviceKind::Router,
+        label: "Router-WAN",
+        description: "Router with 2 Gigabit Ethernet ports and 2 serial WAN ports",
+        ports: &[run("GigabitEthernet0/", 0, 1), run("Serial0/0/", 0, 1)],
+    },
+    Model {
         id: "Switch-8",
         kind: DeviceKind::Switch,
         label: "Switch-8",

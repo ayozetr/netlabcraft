@@ -73,7 +73,7 @@ fn tiles() -> Vec<Tile> {
         tool: Tool::Cable,
         short: "Copper",
         multilayer: false,
-        long: "Copper Ethernet cable (every port is auto-MDIX: one cable fits all)",
+        long: "Cable: copper between Ethernet ports (auto-MDIX), serial between serial ports (the end you click first is the DCE)",
     });
     t
 }

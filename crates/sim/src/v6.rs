@@ -327,7 +327,7 @@ impl Sim {
 
     fn emit6(&mut self, t: &Topology, d: &Device, ifc: &L3If6, to: MacAddr, packet: Vec<u8>) {
         let frame = Frame { dst: to, src: ifc.mac, vlan: None, ethertype: ETHERTYPE_IPV6, payload: packet };
-        self.emit(t, End { device: d.id, port: ifc.port }, frame.encode());
+        self.emit_frame(t, d, ifc.port, &frame);
     }
 
     /// Routes and sends a packet this device originates.
@@ -338,7 +338,8 @@ impl Sim {
 
     /// Puts a packet on the wire towards `nh`, finding its MAC with neighbour discovery first.
     fn transmit6(&mut self, t: &Topology, d: &Device, out: &L3If6, nh: Ipv6Addr, packet: Vec<u8>) -> Result<(), String> {
-        if nh.is_multicast() {
+        // Multicast, and anything on a point-to-point serial link, needs no neighbour lookup.
+        if nh.is_multicast() || t.is_serial(End { device: d.id, port: out.port }) {
             self.emit6(t, d, out, multicast_mac(nh), packet);
             return Ok(());
         }

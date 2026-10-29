@@ -1219,6 +1219,68 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             c.sim.clear_nat(c.dev);
             Ok(String::new())
         }
+        Id::EncapSerial => {
+            let enc = match arg(0).to_ascii_lowercase().as_str() {
+                "hdlc" => packetcraft_model::Encapsulation::Hdlc,
+                "ppp" => packetcraft_model::Encapsulation::Ppp,
+                "dot1q" => return Err("% dot1Q is for subinterfaces: `interface g0/0.10` first".into()),
+                _ => return Err("% hdlc or ppp".into()),
+            };
+            c.each_if(|p, _| {
+                if !packetcraft_model::ifname::is_serial(&p.name) {
+                    return Err(format!("% {} is not a serial interface", p.name));
+                }
+                p.serial.encapsulation = enc;
+                Ok(())
+            })
+        }
+        Id::ClockRate | Id::NoClockRate => {
+            let rate = if spec.id == Id::ClockRate {
+                let r: u32 = arg(0).parse().map_err(|_| "% The clock rate is a number of bit/s")?;
+                if !packetcraft_model::CLOCK_RATES.contains(&r) {
+                    let list: Vec<String> = packetcraft_model::CLOCK_RATES.iter().map(u32::to_string).collect();
+                    return Err(format!("% Unsupported clock rate; use one of {}", list.join(", ")));
+                }
+                Some(r)
+            } else {
+                None
+            };
+            c.each_if(|p, _| {
+                if !packetcraft_model::ifname::is_serial(&p.name) {
+                    return Err(format!("% {} is not a serial interface", p.name));
+                }
+                p.serial.clock_rate = rate;
+                Ok(())
+            })?;
+            // On the DTE end the setting is kept but has no effect; say so.
+            let dte = match &c.cli.mode {
+                Mode::Iface(ifs) => ifs.iter().any(|r| {
+                    let e = packetcraft_model::End { device: c.dev, port: r.port };
+                    c.t.dce_of(e).is_some_and(|dce| dce != e)
+                }),
+                _ => false,
+            };
+            Ok(if rate.is_some() && dte { "This end of the cable is DTE: the clock comes from the other (DCE) end.".into() } else { String::new() })
+        }
+        Id::ShowControllers => {
+            let r = c.iface_ref(arg(0))?;
+            let d = c.d()?;
+            let p = d.ports.get(r.port).ok_or("% No such port")?;
+            let e = packetcraft_model::End { device: d.id, port: r.port };
+            Ok(if !packetcraft_model::ifname::is_serial(&p.name) {
+                format!("{}: Ethernet, no clocking", p.name)
+            } else {
+                match c.t.dce_of(e) {
+                    None => format!("{}: no cable attached", p.name),
+                    Some(dce) if dce == e => format!(
+                        "{}: DCE end of a serial cable, clock rate {}",
+                        p.name,
+                        p.serial.clock_rate.map_or("not set (the link stays down)".to_string(), |r| r.to_string())
+                    ),
+                    Some(_) => format!("{}: DTE end of a serial cable (clocked by the other end)", p.name),
+                }
+            })
+        }
         Id::RouterRip => {
             let d = c.dm()?;
             if d.rip.is_none() {
