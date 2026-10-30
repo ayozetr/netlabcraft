@@ -1,7 +1,7 @@
 //! Command implementations.
 
 use packetcraft_core::{DeviceId, parse_ip};
-use packetcraft_model::{DeviceKind, End, file, models};
+use packetcraft_model::{DeviceKind, End, Shape, file, models};
 use packetcraft_sim::{PingOptions, Probe};
 use serde_json::{Value, json};
 
@@ -102,6 +102,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             let mut t = s.topology.clone();
                         let id = t.add_model(model, opt_str(p, "name"), x, y)?;
             crate::home::factory(&mut t, id);
+            join_view(s, &mut t, id);
             s.checkpoint();
             s.topology = t;
             s.changed();
@@ -123,6 +124,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                 copy.routes = src.routes.clone();
                 copy.vlans = src.vlans.clone();
             }
+            join_view(s, &mut t, id);
             s.checkpoint();
             s.topology = t;
             s.changed();
@@ -487,21 +489,22 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         "note.add" => {
             let (x, y) = (f32_param(p, "x").unwrap_or(0.0), f32_param(p, "y").unwrap_or(0.0));
                         let shape = match opt_str(p, "shape") {
-                Some(sh) => packetcraft_model::Shape::from_id(sh).ok_or_else(|| bad(format!("unknown shape `{sh}` (text, rectangle, ellipse, line)")))?,
+                Some(sh) => packetcraft_model::Shape::from_id(sh).ok_or_else(|| bad(format!("unknown shape `{sh}` (text, rectangle, ellipse, line, freehand, polygon)")))?,
                 None => packetcraft_model::Shape::Text,
             };
             let mut t = s.topology.clone();
-            let id = if shape == packetcraft_model::Shape::Text {
-                t.add_annotation(x, y, opt_str(p, "text").unwrap_or("Note"))?
-            } else {
-                t.add_drawing(shape, x, y, f32_param(p, "w").unwrap_or(80.0), f32_param(p, "h").unwrap_or(60.0), opt_str(p, "color"))?
+            let id = match shape {
+                Shape::Text => t.add_annotation(x, y, opt_str(p, "text").unwrap_or("Note"))?,
+                Shape::Freehand | Shape::Polygon => t.add_path(shape, &points_param(p)?, opt_str(p, "color"), s.view)?,
+                _ => t.add_drawing(shape, x, y, f32_param(p, "w").unwrap_or(80.0), f32_param(p, "h").unwrap_or(60.0), opt_str(p, "color"))?,
             };
+            t.annotation_mut(id)?.cluster = s.view;
             s.checkpoint();
             s.topology = t;
             s.changed();
             Ok(json!({"id": id}))
         }
-        "note.edit" | "note.move" | "note.remove" => {
+        "note.edit" | "note.move" | "note.remove" | "note.color" => {
             let id = p.get("id").and_then(Value::as_u64).and_then(|v| u32::try_from(v).ok()).ok_or_else(|| bad("`id` (note number) is required"))?;
             let mut t = s.topology.clone();
             t.annotation_mut(id)?;
@@ -515,6 +518,11 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                     a.y = y;
                     transient = p.get("transient").and_then(Value::as_bool).unwrap_or(false);
                 }
+                "note.color" => {
+                    let c = str_param(p, "color")?;
+                    packetcraft_model::parse_color(c).ok_or_else(|| bad(format!("`{c}` is not a #rrggbb colour")))?;
+                    t.annotation_mut(id)?.color = Some(c.to_string());
+                }
                 _ => t.annotations.retain(|a| a.id != id),
             }
             if !transient {
@@ -524,6 +532,64 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             s.dirty = true;
             s.revision += 1;
             Ok(Value::Null)
+        }
+        "cluster.create" => {
+            let mut devices = Vec::new();
+            for v in list_param(p, "devices")? {
+                devices.push(device_param(s, &json!({"d": v}), "d")?);
+            }
+            let clusters: Vec<u32> = match p.get("clusters") {
+                None | Some(Value::Null) => Vec::new(),
+                Some(_) => list_param(p, "clusters")?.iter().map(|v| id_value(v, "clusters")).collect::<Result<_>>()?,
+            };
+            let mut t = s.topology.clone();
+            let id = t.create_cluster(&devices, &clusters, opt_str(p, "name"))?;
+            s.checkpoint();
+            s.topology = t;
+            s.changed();
+            let name = s.topology.cluster(id).map(|c| c.name.clone()).unwrap_or_default();
+            Ok(json!({"id": id, "name": name}))
+        }
+        "cluster.rename" | "cluster.move" | "cluster.dissolve" => {
+            let id = cluster_param(s, p)?;
+            let mut t = s.topology.clone();
+            let mut transient = false;
+            match cmd {
+                "cluster.rename" => t.rename_cluster(id, str_param(p, "name")?)?,
+                "cluster.move" => {
+                    let (x, y) = (f32_param(p, "x").ok_or_else(|| bad("`x` is required"))?, f32_param(p, "y").ok_or_else(|| bad("`y` is required"))?);
+                    let c = t.cluster_mut(id)?;
+                    c.x = x;
+                    c.y = y;
+                    transient = p.get("transient").and_then(Value::as_bool).unwrap_or(false);
+                }
+                _ => {
+                    let c = t.dissolve_cluster(id)?;
+                    if s.view == Some(id) {
+                        s.view = c.parent;
+                    }
+                }
+            }
+            if !transient {
+                s.checkpoint();
+            }
+            s.topology = t;
+            s.dirty = true;
+            s.revision += 1;
+            if s.view.is_some_and(|c| s.topology.cluster(c).is_none()) {
+                s.view = None;
+            }
+            Ok(Value::Null)
+        }
+        "view.enter_cluster" => {
+            s.view = Some(cluster_param(s, p)?);
+            s.revision += 1;
+            Ok(view_json(s))
+        }
+        "view.up" | "view.root" => {
+            s.view = if cmd == "view.up" { s.view.and_then(|c| s.topology.cluster(c)).and_then(|c| c.parent) } else { None };
+            s.revision += 1;
+            Ok(view_json(s))
         }
         "device.remove" => {
             let d = device_param(s, p, "device")?;
@@ -577,7 +643,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                             })
                         })
                         .collect();
-                    json!({"id": d.id.0, "name": d.name, "kind": d.kind.id(), "x": d.x, "y": d.y, "gateway": d.gateway.map(|g| g.to_string()), "ports": ports})
+                    json!({"id": d.id.0, "name": d.name, "kind": d.kind.id(), "x": d.x, "y": d.y, "cluster": s.topology.cluster_of(d.id), "gateway": d.gateway.map(|g| g.to_string()), "ports": ports})
                 })
                 .collect(),
         )),
@@ -733,6 +799,50 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         "sample.list" => Ok(Value::Array(sample::SAMPLES.iter().map(|x| json!({"id": x.id, "title": x.title, "description": x.description})).collect())),
         other => Err(EngineError::UnknownCommand(other.to_string())),
     }
+}
+
+/// A device made while looking inside a cluster goes into it.
+fn join_view(s: &Session, t: &mut packetcraft_model::Topology, dev: DeviceId) {
+    if let Some(c) = s.view
+        && let Ok(c) = t.cluster_mut(c)
+    {
+        c.devices.push(dev);
+    }
+}
+
+fn list_param<'a>(p: &'a Value, key: &str) -> Result<&'a Vec<Value>> {
+    p.get(key).and_then(Value::as_array).ok_or_else(|| bad(format!("`{key}` (a list) is required")))
+}
+
+fn id_value(v: &Value, key: &str) -> Result<u32> {
+    v.as_u64().and_then(|v| u32::try_from(v).ok()).ok_or_else(|| bad(format!("`{key}` holds cluster numbers")))
+}
+
+fn cluster_param(s: &Session, p: &Value) -> Result<u32> {
+    let id = p.get("id").ok_or_else(|| bad("`id` (cluster number) is required")).and_then(|v| id_value(v, "id"))?;
+    s.topology.cluster(id).map(|c| c.id).ok_or_else(|| EngineError::Failed(format!("no cluster {id}")))
+}
+
+/// Points as `[[x, y], …]` or `[{"x", "y"}, …]` (only the first `MAX_RAW_POINTS` are read).
+fn points_param(p: &Value) -> Result<Vec<[f32; 2]>> {
+    let num = |v: Option<&Value>| v.and_then(Value::as_f64).filter(|v| v.is_finite()).map(|v| v.clamp(-1.0e6, 1.0e6) as f32);
+    list_param(p, "points")?
+        .iter()
+        .take(packetcraft_model::drawing::MAX_RAW_POINTS)
+        .map(|v| match v {
+            Value::Array(a) => num(a.first()).zip(num(a.get(1))),
+            Value::Object(_) => num(v.get("x")).zip(num(v.get("y"))),
+            _ => None,
+        })
+        .map(|pt| pt.map(|(x, y)| [x, y]).ok_or_else(|| bad(r#"each point is [x, y] or {"x", "y"}"#)))
+        .collect()
+}
+
+/// Where the workspace looks: the cluster (or null) and the path from the top.
+fn view_json(s: &Session) -> Value {
+    let t = &s.topology;
+    let path: Vec<Value> = t.cluster_path(s.view).iter().filter_map(|c| t.cluster(*c)).map(|c| json!({"id": c.id, "name": c.name})).collect();
+    json!({"cluster": s.view, "path": path})
 }
 
 fn probe_json(p: &Probe) -> Value {

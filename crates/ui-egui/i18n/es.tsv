@@ -377,3 +377,28 @@ Wireless	Inalámbrica
 SSID	SSID
 WPA2 passphrase (empty: open)	Clave WPA2 (vacía: abierta)
 Save Wireless	Guardar Wi-Fi
+Several picked: drag one to move them all · Ctrl+G groups them into a cluster	Varios elegidos: arrastra uno para moverlos todos · Ctrl+G los agrupa en un clúster
+Click a device to configure it · drag to move · Shift+drag or Shift+click to pick several · scroll to pan	Haz clic en un equipo para configurarlo · arrastra para moverlo · Mayús+arrastrar o Mayús+clic para elegir varios · rueda para desplazarte
+Drag on the workspace to draw freehand.	Arrastra en el espacio de trabajo para dibujar a mano alzada.
+Click the corners of the polygon; double-click or Enter to finish, Esc to cancel.	Haz clic en las esquinas del polígono; doble clic o Intro para terminar, Esc para cancelar.
+A polygon needs at least three corners.	Un polígono necesita al menos tres esquinas.
+Open Cluster	Abrir clúster
+Rename Cluster…	Renombrar clúster…
+Rename Cluster	Renombrar clúster
+Cluster name:	Nombre del clúster:
+Uncluster	Deshacer clúster
+Group into Cluster	Agrupar en clúster
+Group into Cluster (Ctrl+G): the picked devices	Agrupar en clúster (Ctrl+G): los equipos elegidos
+Pick devices first: Shift+click them or Shift+drag a box around them.	Elige antes los equipos: Mayús+clic sobre ellos o Mayús+arrastrar un recuadro alrededor.
+Grouped into {}: double-click it to open it.	Agrupados en {}: haz doble clic para abrirlo.
+Draw Freehand (drag on the workspace)	Dibujar a mano alzada (arrastra en el espacio de trabajo)
+Draw Polygon (click the corners)	Dibujar polígono (haz clic en las esquinas)
+Back to the top level	Volver al nivel superior
+Root	Raíz
+Colour	Color
+Blue	Azul
+Green	Verde
+Yellow	Amarillo
+Red	Rojo
+Purple	Morado
+Grey	Gris

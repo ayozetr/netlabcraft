@@ -35,14 +35,22 @@ Every front end (UI, `packetcraft-cli run`, MCP `packetcraft_run`) runs these.
 | `device.startup` | Startup configuration (NVRAM) |  |  | `{"device", "action": "save\|erase\|load", "text"?: "configuration lines (load)"}` |
 | `device.label` | Set display name |  |  | `{"device", "label": "workspace label (empty: the hostname)"}` |
 | `device.models` | Device catalogue |  |  | `{} → [{id, kind, label, description, ports}]` |
-| `note.add` | Place note or drawing | Insert |  | `{"x", "y", "text"?, "shape"?: "text\|rectangle\|ellipse\|line", "w"?, "h"?, "color"?: "#rrggbb"} → {"id"}` |
+| `note.add` | Place note or drawing | Insert |  | `{"x", "y", "text"?, "shape"?: "text\|rectangle\|ellipse\|line\|freehand\|polygon", "w"?, "h"?, "points": [[x, y], …] (freehand: simplified, at most 512 kept; polygon: 3-64 corners), "color"?: "#rrggbb"} → {"id"} (placed in the cluster being viewed)` |
 | `note.edit` | Edit note |  |  | `{"id", "text"}` |
 | `note.move` | Move note |  |  | `{"id", "x", "y", "transient"?: false}` |
 | `note.remove` | Delete note |  |  | `{"id"}` |
+| `note.color` | Drawing colour |  |  | `{"id", "color": "#rrggbb"}` |
+| `cluster.create` | Group into a cluster | Edit | Ctrl+G | `{"devices": ["name or id", …], "clusters"?: [cluster ids to nest], "name"?} → {"id", "name"} (all from the same view; the network is unchanged)` |
+| `cluster.rename` | Rename cluster |  |  | `{"id", "name"}` |
+| `cluster.move` | Move cluster |  |  | `{"id", "x", "y", "transient"?: false}` |
+| `cluster.dissolve` | Uncluster | Edit |  | `{"id"}: its devices go back to the view it sat in` |
+| `view.enter_cluster` | Open cluster |  |  | `{"id"} → {"cluster", "path": [{"id", "name"}]}` |
+| `view.up` | Back to the parent cluster |  |  | `{} → {"cluster", "path"}` |
+| `view.root` | Back to the top level |  |  | `{} → {"cluster": null, "path": []}` |
 | `device.remove` | Delete device | Edit | Delete | `{"device": "name or id"}` |
 | `device.move` | Move device |  |  | `{"device", "x", "y", "transient"?: false}` |
 | `device.rename` | Rename device |  |  | `{"device", "name"}` |
-| `device.list` | List devices |  |  | `{} → [{id, name, kind, x, y, ports}]` |
+| `device.list` | List devices |  |  | `{} → [{id, name, kind, x, y, cluster, ports}]` |
 | `link.add` | Connect with a cable | Insert |  | `{"a": "device", "a_port"?: "interface", "b": "device", "b_port"?: "interface"}` |
 | `link.remove` | Remove cable | Edit |  | `{"device", "port": "interface"}` |
 | `cli.exec` | Type a command |  |  | `{"device", "line"} → {"output", "prompt", "clear"}` |

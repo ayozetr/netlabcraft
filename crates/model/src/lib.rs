@@ -13,10 +13,13 @@ use serde::{Deserialize, Serialize};
 
 pub mod acl;
 pub mod activity;
+pub mod drawing;
 pub mod file;
 pub mod ifname;
 pub mod models;
 pub mod services;
+
+pub use drawing::{Cluster, MAX_CLUSTERS, MAX_FREEHAND_POINTS, MAX_POLYGON_POINTS, Shown};
 
 /// Most devices a lab may hold (hostile files and scripts).
 pub const MAX_DEVICES: usize = 2_000;
@@ -1402,6 +1405,9 @@ pub struct Topology {
     /// Notes placed on the workspace.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub annotations: Vec<Annotation>,
+    /// Groups of devices shown as one icon (a view aid: the simulation ignores them).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub clusters: Vec<Cluster>,
     /// A graded activity: instructions and the results to reach.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub activity: Option<activity::Activity>,
@@ -1425,6 +1431,12 @@ pub struct Annotation {
     /// Fill or stroke colour, `#rrggbb`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
+    /// The corners of a polygon or the path of a freehand stroke, relative to `x`, `y`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub points: Vec<[f32; 2]>,
+    /// The cluster whose view shows it (none: the top level).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cluster: Option<u32>,
 }
 
 /// What an annotation draws.
@@ -1436,6 +1448,10 @@ pub enum Shape {
     Rectangle,
     Ellipse,
     Line,
+    /// A path drawn by hand (`points`).
+    Freehand,
+    /// A closed, filled shape through `points`.
+    Polygon,
 }
 
 impl Shape {
@@ -1445,6 +1461,8 @@ impl Shape {
             "rectangle" | "rect" => Shape::Rectangle,
             "ellipse" => Shape::Ellipse,
             "line" => Shape::Line,
+            "freehand" | "pencil" => Shape::Freehand,
+            "polygon" => Shape::Polygon,
             _ => return None,
         })
     }
@@ -1466,7 +1484,15 @@ pub const MAX_ANNOTATION_TEXT: usize = 4_000;
 
 impl Topology {
     pub fn new() -> Topology {
-        Topology { devices: Vec::new(), links: Vec::new(), next_id: 1, notes: String::new(), annotations: Vec::new(), activity: None }
+        Topology {
+            devices: Vec::new(),
+            links: Vec::new(),
+            next_id: 1,
+            notes: String::new(),
+            annotations: Vec::new(),
+            clusters: Vec::new(),
+            activity: None,
+        }
     }
 
     pub fn device(&self, id: DeviceId) -> Option<&Device> {
@@ -1531,6 +1557,9 @@ impl Topology {
     pub fn remove_device(&mut self, id: DeviceId) -> Result<Device> {
         let i = self.devices.iter().position(|d| d.id == id).ok_or_else(|| ModelError::NoDevice(id.to_string()))?;
         self.links.retain(|l| l.a.device != id && l.b.device != id);
+        for c in &mut self.clusters {
+            c.devices.retain(|d| *d != id);
+        }
         Ok(self.devices.remove(i))
     }
 
@@ -1559,6 +1588,8 @@ impl Topology {
             w: 0.0,
             h: 0.0,
             color: None,
+            points: Vec::new(),
+            cluster: None,
         });
         Ok(id)
     }
@@ -1772,6 +1803,7 @@ impl Topology {
             }
             a.text = a.text.chars().take(MAX_ANNOTATION_TEXT).collect();
         }
+        self.sanitize_workspace();
         let mut used = std::collections::BTreeSet::new();
         let devices = &self.devices;
         let valid = |e: End| devices.iter().any(|d| d.id == e.device && e.port < d.ports.len());
@@ -1779,7 +1811,7 @@ impl Topology {
     }
 }
 
-fn finite(v: f32) -> f32 {
+pub(crate) fn finite(v: f32) -> f32 {
     if v.is_finite() { v.clamp(-1.0e6, 1.0e6) } else { 0.0 }
 }
 
