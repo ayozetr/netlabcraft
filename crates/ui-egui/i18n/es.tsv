@@ -947,9 +947,6 @@ the port is down	el puerto está caído
 that port has no IP address	ese puerto no tiene dirección IP
 the PDU needs a destination address	la PDU necesita una dirección de destino
 an ARP request needs the address to ask for	una solicitud ARP necesita la dirección por la que preguntar
-Delete every PDU in the list	Eliminar todas las PDU de la lista
-Scenario 0	Escenario 0
-Start an empty PDU list	Empezar una lista de PDU vacía
 # Simulation mode: the OSI view of PDU details.
 OSI Model	Modelo OSI
 Inbound PDU Details	Detalles de la PDU entrante
@@ -1000,3 +997,7 @@ ARP request: who has {}? (asked by {})	Solicitud ARP: ¿quién tiene {}? (pregun
 ARP reply: {} is at {}.	Respuesta ARP: {} está en {}.
 IP packet from {} to {}, TTL {}.	Paquete IP de {} a {}, TTL {}.
 Copies leave on {} ports: {}.	Salen copias por {} puertos: {}.
+Scenario {}	Escenario {}
+Scenario	Escenario
+Start a new scenario with an empty PDU list	Empezar un escenario nuevo con la lista de PDU vacía
+Delete this scenario and its PDUs	Borrar este escenario y sus PDU

@@ -1118,3 +1118,29 @@ fn the_pdu_window_shows_the_osi_model_and_both_pdus() {
         assert_ne!(i18n::tr(name), name);
     }
 }
+
+/// Scenarios from the bottom box: New starts an empty list, the menu switches back, Delete
+/// removes the one in use.
+#[test]
+fn scenarios_switch_from_the_bottom_box() {
+    let mut h = harness(Some("lan"));
+    h.state_mut().ui.show_notes = false;
+    h.run_steps(2);
+    let (a, b) = {
+        let t = &h.state().session.topology;
+        (t.resolve("PC1").unwrap(), t.resolve("PC2").unwrap())
+    };
+    canvas::simple_pdu_for_tests(h.state_mut(), a, b);
+    h.get_by_label("New").click();
+    h.run_steps(2);
+    assert_eq!(h.state().session.topology.scenarios.current, 1);
+    assert!(h.query_by_label("Fire PDU 1").is_none());
+    h.state_mut().run("scenario.select", json!({"index": 0}));
+    h.run_steps(2);
+    assert!(h.query_by_label("Fire PDU 1").is_some());
+    assert!(h.query_by_label("Scenario").is_some());
+    h.get_by_role_and_label(egui::accesskit::Role::Button, "Delete").click();
+    h.run_steps(2);
+    assert_eq!(h.state().session.topology.scenarios.count(), 1);
+    assert!(h.query_by_label("Fire PDU 1").is_none());
+}

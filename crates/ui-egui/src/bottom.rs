@@ -255,34 +255,35 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                 ui.painter().circle_filled(r.center(), 15.0, tk.bar);
                 ui.painter().circle_filled(r.center(), 10.0, egui::Color32::WHITE);
                 ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, "i", egui::FontId::proportional(15.0), tk.bar);
-                egui::Frame::new()
-                    .stroke(egui::Stroke::new(1.0, tk.chrome_line))
-                    .inner_margin(egui::Margin::symmetric(8, 4))
-                    .corner_radius(3.0)
-                    .show(ui, |ui| {
-                        ui.set_min_width(130.0);
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new(tl("Scenario 0")).size(16.0));
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                let (r, _) = ui.allocate_exact_size(vec2(12.0, 12.0), Sense::hover());
-                                ui.painter().add(egui::Shape::convex_polygon(
-                                    vec![r.left_top() + vec2(1.0, 3.0), r.right_top() + vec2(-1.0, 3.0), r.center_bottom() - vec2(0.0, 2.0)],
-                                    tk.glyph,
-                                    egui::Stroke::NONE,
-                                ));
-                            });
-                        });
-                    });
+                // The scenario in use; the menu switches to another.
+                let sc = &app.session.topology.scenarios;
+                let (current, count) = (sc.current, sc.count());
+                let mut pick = None;
+                egui::ComboBox::from_id_salt("scenario")
+                    .width(130.0)
+                    .selected_text(RichText::new(crate::i18n::trf("Scenario {}", &[&current])).size(16.0))
+                    .show_ui(ui, |ui| {
+                        for i in 0..count {
+                            if ui.selectable_label(i == current, crate::i18n::trf("Scenario {}", &[&i])).clicked() {
+                                pick = Some(i);
+                            }
+                        }
+                    })
+                    .response
+                    .widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::ComboBox, true, tl("Scenario")));
+                if let Some(i) = pick.filter(|i| *i != current) {
+                    app.run("scenario.select", serde_json::json!({"index": i}));
+                }
             });
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 ui.add_space(18.0);
-                if crate::navy_button(ui, "New").on_hover_text(tl("Start an empty PDU list")).clicked() {
-                    app.run("pdu.delete", serde_json::json!({"all": true}));
+                if crate::navy_button(ui, "New").on_hover_text(tl("Start a new scenario with an empty PDU list")).clicked() {
+                    app.run("scenario.new", serde_json::json!({}));
                 }
                 ui.add_space(18.0);
-                if crate::navy_button(ui, "Delete").on_hover_text(tl("Delete every PDU in the list")).clicked() {
-                    app.run("pdu.delete", serde_json::json!({"all": true}));
+                if crate::navy_button(ui, "Delete").on_hover_text(tl("Delete this scenario and its PDUs")).clicked() {
+                    app.run("scenario.delete", serde_json::json!({}));
                 }
             });
             ui.add_space(6.0);
