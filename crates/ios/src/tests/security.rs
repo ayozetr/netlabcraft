@@ -402,6 +402,7 @@ fn ikev2_site_to_site_by_typing() {
     assert!(sa.contains("Peer 198.51.100.1 (local 203.0.113.1), this router started it, established"), "{sa}");
     assert!(sa.contains("AES-CBC-256") && sa.contains("PRF HMAC-SHA256") && sa.contains("DH group 14") && sa.contains("Profile: PROF"), "{sa}");
     assert!(lab.run(r2, "show crypto ikev2 sa").contains("the peer started it, established"));
+    assert!(sa.contains("ESP: AES-128-CBC with HMAC-SHA1-96 (real ciphers)"), "{sa}");
     let ipsec = lab.run(r1, "show crypto ipsec sa");
     assert!(ipsec.contains("Outbound ESP SPI 0x") && count_after(&ipsec, "decapsulated ") >= 3, "{ipsec}");
     assert!(lab.run(r1, "show logging").contains("IKEv2 with 198.51.100.1: IKE_SA_INIT and IKE_AUTH complete"));
@@ -455,6 +456,17 @@ fn ikev2_mismatches_are_refused_on_the_wire() {
     assert!(ping_settled(&mut lab, a, "192.168.2.10").contains(" 0 answered"));
     assert!(lab.run(r1, "show crypto ikev2 sa").contains("TS_UNACCEPTABLE"));
     let _ = r2;
+    // Transforms without a real implementation fall back to the stand-in cipher, both ends alike.
+    let (mut lab2, s1, _isp, s2, pc) = super::two_sites();
+    for (r, cfg) in [
+        (s1, ikev2_config("192.168.1.0 0.0.0.255 192.168.2.0 0.0.0.255", "198.51.100.1", "k")),
+        (s2, ikev2_config("192.168.2.0 0.0.0.255 192.168.1.0 0.0.0.255", "203.0.113.1", "k")),
+    ] {
+        lab2.run(r, &cfg);
+        lab2.run(r, "conf t\ncrypto ipsec transform-set TS esp-3des esp-md5-hmac\nend");
+    }
+    assert!(ping_settled(&mut lab2, pc, "192.168.2.10").contains("4 answered"));
+    assert!(lab2.run(s1, "show crypto ikev2 sa").contains("stand-in cipher"));
     // Configuration mistakes explain themselves.
     lab.run(r1, "conf t\ncrypto ikev2 proposal P2");
     assert!(lab.try_run(r1, "encryption rot13").contains("not a cipher"));

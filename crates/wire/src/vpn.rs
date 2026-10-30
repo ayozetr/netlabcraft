@@ -1,7 +1,9 @@
 //! Site-to-site VPN encapsulations: GRE (RFC 2784) and IPsec ESP (RFC 4303).
 //!
 //! GRE is the real wire format. ESP has the real header and trailer layout (SPI, sequence
-//! number, padding, pad length, next header, integrity check value), but the "cipher" is
+//! number, padding, pad length, next header, integrity check value). Associations IKEv2 set
+//! up with `esp-aes esp-sha-hmac` use the real transforms: AES-128-CBC with an explicit IV
+//! (RFC 3602) and HMAC-SHA1-96 (RFC 2404), see [`Esp::seal_aes`]. Otherwise the "cipher" is
 //! **not real encryption**: the payload is XORed with a keystream made from MD5 over the
 //! pre-shared key, the SPI, the sequence number and a block counter, and the integrity value
 //! is a truncated MD5 over the key and the packet. That is enough for a teaching simulator to
@@ -139,6 +141,70 @@ impl Esp {
     }
 }
 
+/// The keys of one direction of a real ESP association: AES-128 and HMAC-SHA1.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EspKeys {
+    pub enc: [u8; 16],
+    pub auth: [u8; 20],
+}
+
+impl EspKeys {
+    /// The keys from 36 bytes of keying material (encryption key first, RFC 7296 §2.17).
+    pub fn from_keymat(m: &[u8]) -> Option<EspKeys> {
+        Some(EspKeys { enc: m.get(..16)?.try_into().ok()?, auth: m.get(16..36)?.try_into().ok()? })
+    }
+}
+
+impl Esp {
+    /// ESP with AES-128-CBC (RFC 3602: a 16-byte IV before the ciphertext) and HMAC-SHA1-96
+    /// (RFC 2404) over SPI, sequence number, IV and ciphertext. The IV must be unpredictable;
+    /// the caller gives it.
+    pub fn seal_aes(keys: &EspKeys, spi: u32, seq: u32, next: u8, inner: &[u8], iv: [u8; 16]) -> Esp {
+        let mut body = inner.to_vec();
+        let pad = (16 - (body.len() + 2) % 16) % 16;
+        body.extend((1..=pad).map(|i| u8::try_from(i).unwrap_or(0)));
+        body.push(u8::try_from(pad).unwrap_or(0));
+        body.push(next);
+        let cipher = crate::aes::cbc_encrypt(&crate::aes::Aes128::new(&keys.enc), &iv, &body);
+        let mut data = iv.to_vec();
+        data.extend(cipher);
+        let mut signed = spi.to_be_bytes().to_vec();
+        signed.extend_from_slice(&seq.to_be_bytes());
+        signed.extend_from_slice(&data);
+        let mac = crate::sha1::hmac_sha1(&keys.auth, &signed);
+        data.extend_from_slice(mac.get(..ICV_LEN).unwrap_or_default());
+        Esp { spi, seq, data }
+    }
+
+    /// Checks HMAC-SHA1-96 and decrypts AES-128-CBC: the next header and the inner packet.
+    pub fn open_aes(&self, keys: &EspKeys) -> Result<(u8, Vec<u8>)> {
+        let t = || WireError::Truncated("esp");
+        let split = self.data.len().checked_sub(ICV_LEN).ok_or_else(t)?;
+        let (body, got) = self.data.split_at(split);
+        let mut signed = self.spi.to_be_bytes().to_vec();
+        signed.extend_from_slice(&self.seq.to_be_bytes());
+        signed.extend_from_slice(body);
+        if crate::sha1::hmac_sha1(&keys.auth, &signed).get(..ICV_LEN) != Some(got) {
+            return Err(WireError::Checksum("esp integrity"));
+        }
+        let iv: [u8; 16] = body.get(..16).and_then(|s| s.try_into().ok()).ok_or_else(t)?;
+        let cipher = body.get(16..).ok_or_else(t)?;
+        if cipher.is_empty() || cipher.len() % 16 != 0 {
+            return Err(t());
+        }
+        let mut plain = crate::aes::cbc_decrypt(&crate::aes::Aes128::new(&keys.enc), &iv, cipher);
+        let next = plain.pop().ok_or_else(t)?;
+        let pad = usize::from(plain.pop().ok_or_else(t)?);
+        let keep = plain.len().checked_sub(pad).ok_or_else(t)?;
+        // RFC 4303 §2.4: the padding counts 1, 2, 3…
+        if plain.get(keep..).is_none_or(|p| p.iter().zip(1u8..).any(|(b, i)| *b != i)) {
+            return Err(WireError::Unsupported("esp", "bad padding".into()));
+        }
+        plain.truncate(keep);
+        Ok((next, plain))
+    }
+}
+
 /// XORs `data` with a keystream: MD5(key ‖ SPI ‖ sequence ‖ block counter), 16 bytes a block.
 /// NOT real encryption.
 fn xor_stream(key: &[u8], spi: u32, seq: u32, data: &mut [u8]) {
@@ -199,6 +265,37 @@ mod tests {
             *x ^= 0xff;
         }
         assert_eq!(Gre::decode(&b), Err(WireError::Checksum("gre")));
+    }
+
+    #[test]
+    fn real_esp_seals_with_aes_cbc_and_hmac_sha1_96() {
+        let keys = EspKeys::from_keymat(&(0u8..36).collect::<Vec<u8>>()).unwrap();
+        let inner: Vec<u8> = (0..61).collect();
+        let e = Esp::seal_aes(&keys, 0x1234, 7, NEXT_IPV4, &inner, [9; 16]);
+        // IV, then whole blocks of ciphertext, then 12 bytes of ICV.
+        assert_eq!((e.data.len() - 16 - ICV_LEN) % 16, 0);
+        assert_eq!(&e.data[..16], &[9; 16]);
+        assert!(!e.data.windows(8).any(|w| w == &inner[..8]));
+        // The ciphertext is AES-CBC of the payload, its padding (1), pad length 1 and next
+        // header (64 bytes).
+        let mut padded = inner.clone();
+        padded.extend([1, 1, NEXT_IPV4]);
+        let aes = crate::aes::Aes128::new(&keys.enc);
+        assert_eq!(&e.data[16..e.data.len() - ICV_LEN], crate::aes::cbc_encrypt(&aes, &[9; 16], &padded).as_slice());
+        let back = Esp::decode(&e.encode()).unwrap();
+        assert_eq!(back.open_aes(&keys).unwrap(), (NEXT_IPV4, inner.clone()));
+        // A flipped bit, another key, or the stand-in cipher: refused.
+        let mut bad = back.clone();
+        bad.data[20] ^= 1;
+        assert_eq!(bad.open_aes(&keys), Err(WireError::Checksum("esp integrity")));
+        let other = EspKeys { enc: [1; 16], auth: [2; 20] };
+        assert!(back.open_aes(&other).is_err());
+        assert!(back.open(&[0; 16]).is_err());
+        for n in 0..e.data.len() {
+            let cut = Esp { data: e.data[..n].to_vec(), ..e.clone() };
+            let _ = cut.open_aes(&keys);
+        }
+        assert!(EspKeys::from_keymat(&[0; 35]).is_none());
     }
 
     #[test]

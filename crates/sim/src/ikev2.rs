@@ -11,7 +11,9 @@
 //! value with the key its keyring holds for the peer (AUTHENTICATION_FAILED otherwise), the ESP
 //! proposal against its own transform set (NO_PROPOSAL_CHOSEN) and the selectors against its
 //! own access list (TS_UNACCEPTABLE), then answers with its own identity and AUTH value, which
-//! the initiator checks the same way. ESP keys come from SK_d (§2.17).
+//! the initiator checks the same way. ESP keys come from SK_d (§2.17); a transform set of
+//! `esp-aes` (128-bit) with `esp-sha-hmac` then runs real AES-128-CBC and HMAC-SHA1-96, other
+//! transforms keep the stand-in cipher of `netlabcraft_wire::vpn`.
 
 use std::net::Ipv4Addr;
 
@@ -47,6 +49,16 @@ pub struct V2State {
     /// ESP keys: what this router sends with and what it receives with.
     pub esp_out: Vec<u8>,
     pub esp_in: Vec<u8>,
+    /// The association runs real AES-128-CBC and HMAC-SHA1-96 (`esp-aes esp-sha-hmac`).
+    pub real_cipher: bool,
+}
+
+/// Whether a transform set asks for exactly the transforms implemented for real: AES with a
+/// 128-bit key and HMAC-SHA1-96.
+fn real_transforms(d: &Device, e: &CryptoMapEntry) -> bool {
+    let Some(ts) = e.transform_set.as_deref().and_then(|n| d.crypto.transform_set(n)) else { return false };
+    let aes128 = ts.transforms.iter().any(|t| t == "esp-aes" || t == "esp-aes 128");
+    aes128 && ts.transforms.iter().any(|t| t == "esp-sha-hmac")
 }
 
 fn cipher_transform(name: &str) -> Transform {
@@ -243,8 +255,15 @@ impl Sim {
             sa.encaps = sa.encaps.saturating_add(1);
             let seq = u32::try_from(sa.encaps).unwrap_or(u32::MAX);
             let key = sa.v2.as_ref().map(|v| v.esp_out.clone()).unwrap_or_default();
+            let real = sa.v2.as_ref().is_some_and(|v| v.real_cipher);
             let spi = sa.spi_out;
-            let esp = netlabcraft_wire::vpn::Esp::seal(&key, spi, seq, netlabcraft_wire::vpn::NEXT_IPV4, datagram);
+            let esp = match netlabcraft_wire::vpn::EspKeys::from_keymat(&key).filter(|_| real) {
+                Some(k) => {
+                    let iv = iv_for(&[&key[..], &seq.to_be_bytes()[..], &spi.to_be_bytes()[..]].concat());
+                    netlabcraft_wire::vpn::Esp::seal_aes(&k, spi, seq, netlabcraft_wire::vpn::NEXT_IPV4, datagram, iv)
+                }
+                None => netlabcraft_wire::vpn::Esp::seal(&key, spi, seq, netlabcraft_wire::vpn::NEXT_IPV4, datagram),
+            };
             let id = self.ip_id();
             let mut outer = Ipv4 { id, ttl: 255, protocol: netlabcraft_wire::vpn::PROTO_ESP, src: local, dst: peer, payload: esp.encode() }.encode();
             crate::qos::copy_ds(datagram, &mut outer);
@@ -594,6 +613,7 @@ impl Sim {
         v2.esp_out = k_ri;
         v2.esp_in = k_ir;
         v2.profile = Some(profile.name.clone());
+        v2.real_cipher = entry.as_ref().is_some_and(|e| real_transforms(d, e));
         let spi_out = offer.as_ref().map_or(0, |o| spi_u32(&o.spi));
         let sa = self.st(d.id).ipsec.entry(peer).or_default();
         sa.phase = IkePhase::Established;
@@ -645,6 +665,7 @@ impl Sim {
         let (k_ir, k_ri) = esp_keys(&keys, &v2.ni, &v2.nr);
         v2.esp_out = k_ir;
         v2.esp_in = k_ri;
+        v2.real_cipher = entry_for(d, local, peer).is_some_and(|e| real_transforms(d, &e));
         let sa = self.st(d.id).ipsec.entry(peer).or_default();
         sa.phase = IkePhase::Established;
         sa.failed = None;
@@ -672,7 +693,12 @@ impl Sim {
         let opened = if esp.spi != sa.spi_in {
             Err(format!("ESP SPI 0x{:08x} from {} matches no security association", esp.spi, ip.src))
         } else {
-            match esp.open(&v2.esp_in) {
+            let real = netlabcraft_wire::vpn::EspKeys::from_keymat(&v2.esp_in).filter(|_| v2.real_cipher);
+            let opened = match real {
+                Some(k) => esp.open_aes(&k),
+                None => esp.open(&v2.esp_in),
+            };
+            match opened {
                 Ok((netlabcraft_wire::vpn::NEXT_IPV4, inner)) => Ok(inner),
                 Ok((next, _)) => Err(format!("ESP carrying next header {next} is not understood")),
                 Err(_) => Err(format!("ESP from {} failed its integrity check", ip.src)),
