@@ -774,6 +774,19 @@ pub enum Id {
     ShowEphone,
     ShowEphoneDn,
     ShowTelephony,
+    // Automation (RESTCONF, NETCONF).
+    IpHttpServer,
+    NoIpHttpServer,
+    IpHttpSecureServer,
+    NoIpHttpSecureServer,
+    IpHttpAuthLocal,
+    NoIpHttpAuthLocal,
+    Restconf,
+    NoRestconf,
+    NetconfYang,
+    NoNetconfYang,
+    ShowIpHttpServerStatus,
+    ShowNetconfYang,
 }
 
 use Tok::{Arg, K, Rest};
@@ -2787,6 +2800,31 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowEphone, EXECS, Modes::ROUTER, [K("show"), K("ephone")], "Phones: configured and registered"),
     spec!(ShowEphoneDn, EXECS, Modes::ROUTER, [K("show"), K("ephone-dn")], "Directory numbers and their state"),
     spec!(ShowTelephony, EXECS, Modes::ROUTER, [K("show"), K("telephony-service")], "Call control settings and counts"),
+    // Automation (RESTCONF, NETCONF).
+    spec!(IpHttpServer, Modes::CONFIG, Modes::ROUTER, [K("ip"), K("http"), K("server")], "Run the web server on port 80"),
+    spec!(NoIpHttpServer, Modes::CONFIG, Modes::ROUTER, [K("no"), K("ip"), K("http"), K("server")], "Stop the web server on port 80"),
+    spec!(IpHttpSecureServer, Modes::CONFIG, Modes::ROUTER, [K("ip"), K("http"), K("secure-server")], "Run the web server on port 443 (HTTPS)"),
+    spec!(NoIpHttpSecureServer, Modes::CONFIG, Modes::ROUTER, [K("no"), K("ip"), K("http"), K("secure-server")], "Stop the web server on port 443"),
+    spec!(
+        IpHttpAuthLocal,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("ip"), K("http"), K("authentication"), K("local")],
+        "Web requests log in with the local usernames"
+    ),
+    spec!(NoIpHttpAuthLocal, Modes::CONFIG, Modes::ROUTER, [K("no"), K("ip"), K("http"), K("authentication")], "Default web authentication"),
+    spec!(Restconf, Modes::CONFIG, Modes::ROUTER, [K("restconf")], "Answer RESTCONF requests (RFC 8040) on the web server"),
+    spec!(NoRestconf, Modes::CONFIG, Modes::ROUTER, [K("no"), K("restconf")], "Stop answering RESTCONF requests"),
+    spec!(NetconfYang, Modes::CONFIG, Modes::ROUTER, [K("netconf-yang")], "Answer NETCONF sessions (RFC 6241) on port 830"),
+    spec!(NoNetconfYang, Modes::CONFIG, Modes::ROUTER, [K("no"), K("netconf-yang")], "Stop answering NETCONF sessions"),
+    spec!(
+        ShowIpHttpServerStatus,
+        EXECS,
+        Modes::ROUTER,
+        [K("show"), K("ip"), K("http"), K("server"), K("status")],
+        "Web server, RESTCONF and NETCONF settings"
+    ),
+    spec!(ShowNetconfYang, EXECS, Modes::ROUTER, [K("show"), K("netconf-yang"), K("sessions")], "NETCONF sessions served"),
 ];
 
 /// Why a line didn't parse. Positions are word indexes.

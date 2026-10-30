@@ -19,6 +19,7 @@ pub mod dhcp;
 pub mod dhcp6;
 pub mod dns;
 pub mod eigrp;
+pub mod http;
 pub mod ike;
 pub mod ipv6;
 pub mod lacp;
@@ -26,6 +27,7 @@ pub mod lldp;
 pub mod md5;
 
 pub mod mgmt;
+pub mod netconf;
 pub mod ospf6;
 pub mod ospfdb;
 
@@ -40,6 +42,7 @@ pub mod snmp;
 pub mod tcp;
 pub mod vpn;
 pub mod wlan;
+pub mod xml;
 
 /// Why bytes didn't decode.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -761,6 +764,13 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                         Ok(s) if !s.payload.is_empty() && (s.dst_port == 80 || s.src_port == 80) => {
                             let first = String::from_utf8_lossy(&s.payload).lines().next().unwrap_or("").chars().take(60).collect::<String>();
                             (Protocol::Http, format!("HTTP {first} {route}{tag}"))
+                        }
+                        Ok(s) if !s.payload.is_empty() && (s.dst_port == http::TLS_PORT || s.src_port == http::TLS_PORT) => {
+                            let first = String::from_utf8_lossy(&s.payload).lines().next().unwrap_or("").chars().take(60).collect::<String>();
+                            (Protocol::Http, format!("HTTPS (TLS not simulated) {first} {route}{tag}"))
+                        }
+                        Ok(s) if !s.payload.is_empty() && (s.dst_port == netconf::PORT || s.src_port == netconf::PORT) => {
+                            (Protocol::Tcp, format!("NETCONF {} {route}{tag}", netconf::describe(&s.payload)))
                         }
                         Ok(s) if !s.payload.is_empty() && (s.dst_port == tacacs::TACACS_PORT || s.src_port == tacacs::TACACS_PORT) => {
                             let what = if s.dst_port == tacacs::TACACS_PORT { "authentication START" } else { "authentication REPLY" };

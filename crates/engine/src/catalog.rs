@@ -456,6 +456,46 @@ pub static CATALOG: &[CommandInfo] = &[
         r#"{"id": event} → {id, at_us, from, to, protocol, summary, dropped, cause, "explain": [what the receiver decided], "osi": {"in": [{layer, lines}], "out": [...]}, "sent": [events it caused]}"#,
         false
     ),
+    c!(
+        "pc.http_request",
+        "HTTP request (Programming)",
+        "",
+        None,
+        r#"{"pc": "PC, laptop or server", "method"?: "GET"|"PUT"|"PATCH"|"POST"|"DELETE"|…, "url": "https://10.0.0.1/restconf/data/ietf-interfaces:interfaces", "headers"?: {"Accept": "application/yang-data+json"} or [["Name", "value"]], "body"?: text or JSON, "user"?, "password"?: Basic login} → {"status", "reason", "headers", "body", "json", "applied": [{"device", "lines", "failed"}]}: over TCP through the lab (port 443 carries no TLS)"#,
+        true
+    ),
+    c!(
+        "netconf.session",
+        "NETCONF session",
+        "",
+        None,
+        r#"{"pc": "PC, laptop or server", "target": "router address or name", "user", "password", "framing"?: "1.1"|"1.0", "rpcs"?: ["<get-config><source><running/></source></get-config>", …] (bare operations are wrapped in <rpc message-id=…>)} → {"connected", "error"?, "framing", "hello", "replies": [XML], "applied": [{"device", "lines", "failed"}]}: TCP port 830 with RFC 6242 framing; a <close-session> ends it"#,
+        true
+    ),
+    c!(
+        "controller.devices",
+        "Controller: managed routers",
+        "",
+        None,
+        r#"{"host": "the controller (PC, laptop or server)", "add"?: {"address", "user", "password"}, "remove"?: address, "refresh"?: true (read each router's hostname and interfaces over RESTCONF)} → {"devices": [{"address", "user", "reachable"?, "hostname"?, "interfaces"?, "up"?, "error"?}]}"#,
+        true
+    ),
+    c!(
+        "controller.push",
+        "Controller: push a template",
+        "",
+        None,
+        r#"{"host", "path": "/restconf/data/…", "method"?: "PATCH"|"PUT"|"POST"|"DELETE", "body": JSON template, "devices"?: [addresses] (all managed routers when left out)} → {"results": [{"address", "status", "error"?, "applied"}]}"#,
+        true
+    ),
+    c!(
+        "pc.http_saved",
+        "Saved HTTP requests",
+        "",
+        None,
+        r#"{"pc", "save"?: {"name", "method", "url", "headers"?, "body"?}, "remove"?: "name"} → {"saved": [{"name", "method", "url", "headers", "body"}]}"#,
+        true
+    ),
 ];
 
 pub fn find(id: &str) -> Option<&'static CommandInfo> {

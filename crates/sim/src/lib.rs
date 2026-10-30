@@ -22,6 +22,7 @@ use netlabcraft_wire::dhcp::{self, Dhcp, DhcpKind};
 use netlabcraft_wire::tcp::{self, Tcp};
 use netlabcraft_wire::{Arp, ArpOp, ETHERTYPE_ARP, ETHERTYPE_IPV4, Frame, Icmp, Ipv4, PROTO_ICMP, PROTO_TCP, PROTO_UDP, Protocol, Udp, dns};
 
+pub mod automation;
 pub mod cdp;
 pub mod email;
 pub mod explain;
@@ -1019,6 +1020,8 @@ pub struct Sim {
     explaining: Option<Vec<explain::Step>>,
     /// The event being handled now: frames sent meanwhile were caused by it.
     cause: Option<u64>,
+    /// Routers' web and NETCONF servers: connections, handlers, accepted edits.
+    auto: automation::AutoState,
 }
 
 impl Sim {
@@ -2902,6 +2905,9 @@ impl Sim {
             return r;
         }
         if let Some(r) = self.tacacs_server_in(t, d, ip, &seg) {
+            return r;
+        }
+        if let Some(r) = self.automation_server_in(t, d, ip, &seg) {
             return r;
         }
         if seg.dst_port == 80 && d.kind == DeviceKind::Server {

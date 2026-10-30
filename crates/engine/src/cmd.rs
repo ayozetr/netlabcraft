@@ -870,6 +870,10 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         "iot.sync" | "iot.configure" | "iot.server" | "iot.switch" => crate::iot::run(s, cmd, p),
         "pdu.simple" | "pdu.complex" | "pdu.fire" | "pdu.fire_all" | "pdu.delete" | "pdu.list" | "scenario.list" | "scenario.new" | "scenario.delete"
         | "scenario.select" | "sim.event" => crate::pdu::run(s, cmd, p),
+        "pc.http_request" => crate::automation::http_request(s, p),
+        "pc.http_saved" => crate::automation::http_saved(s, p),
+        "netconf.session" => crate::netconf::session(s, p),
+        "controller.devices" | "controller.push" => crate::controller::run(s, cmd, p),
         "view.enter_cluster" => {
             s.view = Some(cluster_param(s, p)?);
             s.revision += 1;

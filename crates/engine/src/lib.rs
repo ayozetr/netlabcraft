@@ -17,11 +17,14 @@ use netlabcraft_sim::Sim;
 use serde_json::Value;
 
 pub mod activity;
+pub mod automation;
 pub mod catalog;
 mod cmd;
+mod controller;
 mod hardware;
 pub mod home;
 mod iot;
+mod netconf;
 mod pdu;
 mod voice;
 
@@ -111,6 +114,8 @@ impl Session {
     /// simulator restarts, and the command fails with [`EngineError::Panic`].
     pub fn execute(&mut self, id: &str, params: Value) -> Result<Value> {
         let before = self.topology.clone();
+        self.sim.set_restconf(automation::restconf);
+        self.sim.set_netconf(netconf::serve);
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| cmd::run(self, id, &params)));
         self.apply_sim_events();
         // A new cable or trunk can join switches into a VTP domain.

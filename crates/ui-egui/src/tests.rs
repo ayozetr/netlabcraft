@@ -698,7 +698,7 @@ fn the_time_bar_never_overlaps() {
 fn spanish_shows_no_text_that_has_a_translation_in_english() {
     let _es = InSpanish::new();
     let mut seen = std::collections::BTreeSet::new();
-    for sample in ["services", "vlans", "wlc", "iot", "ip-phones", "wifi", "dhcp", "serial-wan", "firewall", "modular"] {
+    for sample in ["services", "vlans", "wlc", "iot", "ip-phones", "wifi", "dhcp", "serial-wan", "firewall", "modular", "automation"] {
         let mut h = harness(Some(sample));
         h.state_mut().ui.show_notes = true;
         h.run_steps(2);
@@ -759,7 +759,7 @@ fn spanish_shows_no_text_that_has_a_translation_in_english() {
                 }
             }
             if kind.is_host() {
-                for which in ["home", "ip", "prompt", "email", "mib", "terminal", "browser"] {
+                for which in ["home", "ip", "prompt", "email", "mib", "terminal", "browser", "programming"] {
                     if which == "browser" {
                         open_browser(h.state_mut(), d, "www.netlabcraft.lab");
                     } else {
@@ -1143,4 +1143,60 @@ fn scenarios_switch_from_the_bottom_box() {
     h.run_steps(2);
     assert_eq!(h.state().session.topology.scenarios.count(), 1);
     assert!(h.query_by_label("Fire PDU 1").is_none());
+}
+
+/// The Programming app sends RESTCONF requests (a login refused, then the interfaces as a JSON
+/// tree) and runs a NETCONF session.
+#[test]
+fn the_programming_app_sends_restconf_and_netconf() {
+    use egui::accesskit::Role;
+    let mut h = harness(Some("automation"));
+    h.state_mut().ui.show_notes = false;
+    let pc = h.state().session.topology.resolve("PC1").unwrap();
+    open_desktop_app(h.state_mut(), pc, "programming");
+    h.run_steps(3);
+    assert!(h.query_all_by_label("Saved requests").next().is_some());
+    h.get_by_role_and_label(Role::Button, "Send").click();
+    h.run_steps(3);
+    assert!(h.query_all_by_label_contains("401 Unauthorized").next().is_some());
+    for (field, text) in [("User", "admin"), ("Password", "NetLab2026")] {
+        let node = h.query_by_role_and_label(Role::TextInput, field).or_else(|| h.query_by_role_and_label(Role::PasswordInput, field)).unwrap();
+        node.click();
+        h.run_steps(1);
+        h.input_mut().events.push(egui::Event::Text(text.into()));
+        h.run_steps(1);
+    }
+    h.get_by_role_and_label(Role::Button, "Send").click();
+    h.run_steps(3);
+    assert!(h.query_all_by_label_contains("200 OK").next().is_some());
+    assert!(h.query_all_by_label_contains("GigabitEthernet0/0").next().is_some());
+    assert!(h.state().session.sim.trace().iter().any(|e| e.summary.contains("GET /restconf/data/ietf-interfaces:interfaces")));
+    h.get_by_label("NETCONF").click();
+    h.run_steps(2);
+    h.get_by_role_and_label(Role::Button, "Run session").click();
+    h.run_steps(3);
+    assert!(h.query_all_by_label_contains("Reply 1").next().is_some());
+    assert!(h.query_all_by_label_contains("rpc-reply").next().is_some());
+}
+
+/// The controller mode lists the managed routers and pushes a template to them.
+#[test]
+fn the_controller_reads_the_inventory_and_pushes() {
+    use egui::accesskit::Role;
+    let mut h = harness(Some("automation"));
+    h.state_mut().ui.show_notes = false;
+    let pc = h.state().session.topology.resolve("PC2").unwrap();
+    h.state_mut().run("controller.devices", json!({"host": "PC2", "add": {"address": "192.168.1.1", "user": "admin", "password": "NetLab2026"}}));
+    open_desktop_app(h.state_mut(), pc, "programming");
+    h.run_steps(3);
+    h.get_by_label("Controller").click();
+    h.run_steps(2);
+    h.get_by_role_and_label(Role::Button, "Read the inventory").click();
+    h.run_steps(3);
+    assert!(h.query_all_by_label("R1").next().is_some());
+    h.get_by_role_and_label(Role::Button, "Push").click();
+    h.run_steps(3);
+    assert!(h.query_all_by_label_contains("192.168.1.1: 204").next().is_some());
+    let r1 = h.state().session.topology.resolve("R1").unwrap();
+    assert!(h.state().session.topology.device(r1).unwrap().loopbacks.iter().any(|l| l.number == 100));
 }

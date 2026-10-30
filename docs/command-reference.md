@@ -113,6 +113,11 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `scenario.delete` | Delete scenario |  |  | `{"index"?: the one in use} → the scenarios (the last one is only emptied)` |
 | `scenario.select` | Switch scenario |  |  | `{"index"} → its PDU list` |
 | `sim.event` | PDU details |  |  | `{"id": event} → {id, at_us, from, to, protocol, summary, dropped, cause, "explain": [what the receiver decided], "osi": {"in": [{layer, lines}], "out": [...]}, "sent": [events it caused]}` |
+| `pc.http_request` | HTTP request (Programming) |  |  | `{"pc": "PC, laptop or server", "method"?: "GET"\|"PUT"\|"PATCH"\|"POST"\|"DELETE"\|…, "url": "https://10.0.0.1/restconf/data/ietf-interfaces:interfaces", "headers"?: {"Accept": "application/yang-data+json"} or [["Name", "value"]], "body"?: text or JSON, "user"?, "password"?: Basic login} → {"status", "reason", "headers", "body", "json", "applied": [{"device", "lines", "failed"}]}: over TCP through the lab (port 443 carries no TLS)` |
+| `netconf.session` | NETCONF session |  |  | `{"pc": "PC, laptop or server", "target": "router address or name", "user", "password", "framing"?: "1.1"\|"1.0", "rpcs"?: ["<get-config><source><running/></source></get-config>", …] (bare operations are wrapped in <rpc message-id=…>)} → {"connected", "error"?, "framing", "hello", "replies": [XML], "applied": [{"device", "lines", "failed"}]}: TCP port 830 with RFC 6242 framing; a <close-session> ends it` |
+| `controller.devices` | Controller: managed routers |  |  | `{"host": "the controller (PC, laptop or server)", "add"?: {"address", "user", "password"}, "remove"?: address, "refresh"?: true (read each router's hostname and interfaces over RESTCONF)} → {"devices": [{"address", "user", "reachable"?, "hostname"?, "interfaces"?, "up"?, "error"?}]}` |
+| `controller.push` | Controller: push a template |  |  | `{"host", "path": "/restconf/data/…", "method"?: "PATCH"\|"PUT"\|"POST"\|"DELETE", "body": JSON template, "devices"?: [addresses] (all managed routers when left out)} → {"results": [{"address", "status", "error"?, "applied"}]}` |
+| `pc.http_saved` | Saved HTTP requests |  |  | `{"pc", "save"?: {"name", "method", "url", "headers"?, "body"?}, "remove"?: "name"} → {"saved": [{"name", "method", "url", "headers", "body"}]}` |
 
 ## Device console (routers, switches and the firewall)
 
@@ -922,6 +927,18 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ephone` | user, privileged | router | Phones: configured and registered |
 | `show ephone-dn` | user, privileged | router | Directory numbers and their state |
 | `show telephony-service` | user, privileged | router | Call control settings and counts |
+| `ip http server` | config | router | Run the web server on port 80 |
+| `no ip http server` | config | router | Stop the web server on port 80 |
+| `ip http secure-server` | config | router | Run the web server on port 443 (HTTPS) |
+| `no ip http secure-server` | config | router | Stop the web server on port 443 |
+| `ip http authentication local` | config | router | Web requests log in with the local usernames |
+| `no ip http authentication` | config | router | Default web authentication |
+| `restconf` | config | router | Answer RESTCONF requests (RFC 8040) on the web server |
+| `no restconf` | config | router | Stop answering RESTCONF requests |
+| `netconf-yang` | config | router | Answer NETCONF sessions (RFC 6241) on port 830 |
+| `no netconf-yang` | config | router | Stop answering NETCONF sessions |
+| `show ip http server status` | user, privileged | router | Web server, RESTCONF and NETCONF settings |
+| `show netconf-yang sessions` | user, privileged | router | NETCONF sessions served |
 
 ## Host shell (PCs and servers)
 

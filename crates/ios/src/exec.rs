@@ -13,6 +13,7 @@ use netlabcraft_sim::{DebugKind, PingOptions, Sim, port_up};
 use crate::grammar::{self, Id, Modes, ParseError};
 use crate::{host, render};
 
+pub(crate) mod automation;
 pub(crate) mod firewall;
 pub(crate) mod l2sec;
 pub(crate) mod mgmt;
@@ -1914,6 +1915,18 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ShowEphone
         | Id::ShowEphoneDn
         | Id::ShowTelephony => voice::command(&mut c, spec.id, &args),
+        Id::IpHttpServer
+        | Id::NoIpHttpServer
+        | Id::IpHttpSecureServer
+        | Id::NoIpHttpSecureServer
+        | Id::IpHttpAuthLocal
+        | Id::NoIpHttpAuthLocal
+        | Id::Restconf
+        | Id::NoRestconf
+        | Id::NetconfYang
+        | Id::NoNetconfYang
+        | Id::ShowIpHttpServerStatus
+        | Id::ShowNetconfYang => automation::command(&mut c, spec.id, &args),
         Id::WlanAdd | Id::NoWlan | Id::CapwapController | Id::NoCapwapController | Id::ShowWlan | Id::ShowCapwap => {
             wlan::command(&mut c, spec.id, &args)
         }
