@@ -78,6 +78,8 @@ pub struct PortInfo {
 pub struct VlanTree {
     pub bridges: BTreeMap<DeviceId, Bridge>,
     pub ports: BTreeMap<(DeviceId, usize), PortInfo>,
+    /// Root-guard ports that heard a better root: blocked (root-inconsistent) until it goes.
+    pub inconsistent: BTreeSet<(DeviceId, usize)>,
 }
 
 impl VlanTree {
@@ -102,6 +104,40 @@ pub fn port_id(port: usize) -> u32 {
     128 * 1000 + u32::try_from(port + 1).unwrap_or(u32::MAX - 128_000)
 }
 
+/// The port id with the port's configured priority (`spanning-tree [vlan N] port-priority`):
+/// priority × 1000 + port number, so a lower priority wins first.
+pub fn port_id_in(d: Option<&Device>, port: usize, vlan: VlanId) -> u32 {
+    let pri = d.and_then(|d| d.ports.get(port)).map_or(128, |p| p.l2.priority(vlan)).min(240);
+    pri * 1000 + u32::try_from(port + 1).unwrap_or(999).min(999)
+}
+
+/// Most rounds of root-guard re-election (each round blocks at least one more port).
+const MAX_GUARD_ROUNDS: usize = 16;
+
+/// Computes one VLAN's tree; root-guard ports that would hear a better root (they come out
+/// root or alternate) are blocked as root-inconsistent and the tree is elected again without
+/// them.
+pub fn compute(t: &Topology, vlan: VlanId) -> VlanTree {
+    let mut excluded: BTreeSet<(DeviceId, usize)> = BTreeSet::new();
+    let guarded = |k: &(DeviceId, usize)| t.device(k.0).and_then(|d| d.ports.get(k.1)).is_some_and(|p| p.l2.root_guard);
+    let mut tree = compute_with(t, vlan, &excluded);
+    for _ in 0..MAX_GUARD_ROUNDS {
+        let bad: Vec<(DeviceId, usize)> = tree
+            .ports
+            .iter()
+            .filter(|(k, i)| matches!(i.role, Role::Root | Role::Alternate) && guarded(k) && !excluded.contains(*k))
+            .map(|(k, _)| *k)
+            .collect();
+        if bad.is_empty() {
+            break;
+        }
+        excluded.extend(bad);
+        tree = compute_with(t, vlan, &excluded);
+    }
+    tree.inconsistent = excluded;
+    tree
+}
+
 pub fn bridge_id(d: &Device, vlan: VlanId) -> BridgeId {
     let pri = u32::from(d.stp_priority.get(&vlan).copied().unwrap_or(STP_DEFAULT_PRIORITY));
     BridgeId { priority: pri + u32::from(vlan.get()), mac: d.ports.first().map(|p| p.mac).unwrap_or_default() }
@@ -116,8 +152,7 @@ pub fn carries(t: &Topology, d: &Device, port: usize, vlan: VlanId) -> bool {
         }) || t.radio_carries(d, port, vlan))
 }
 
-/// Computes one VLAN's tree.
-pub fn compute(t: &Topology, vlan: VlanId) -> VlanTree {
+fn compute_with(t: &Topology, vlan: VlanId, excluded: &BTreeSet<(DeviceId, usize)>) -> VlanTree {
     let mut tree = VlanTree::default();
     let switches: Vec<&Device> = t.devices.iter().filter(|d| d.kind == DeviceKind::Switch && t.switch_has_vlan(d, vlan)).collect();
     // An EtherChannel takes part as one port: its lead member, costed by the bundle's speed.
@@ -126,10 +161,14 @@ pub fn compute(t: &Topology, vlan: VlanId) -> VlanTree {
     let blocked = |dev: DeviceId, p: usize| maps.get(&dev).is_some_and(|m| m.suspended(p));
     let cost_of = |dev: DeviceId, port: usize| {
         let Some(d) = t.device(dev) else { return 100 };
+        if let Some(c) = d.ports.get(port).and_then(|p| p.l2.cost(vlan)) {
+            return c;
+        }
         let members = maps.get(&dev).map_or_else(|| vec![port], |m| m.members(port));
         let mbps: u32 = members.iter().filter_map(|p| d.ports.get(*p)).map(|p| speed_mbps(&p.name)).sum();
         cost_for_speed(mbps)
     };
+    let pid = |dev: DeviceId, p: usize| port_id_in(t.device(dev), p, vlan);
     let mut linkset: BTreeSet<(DeviceId, usize, DeviceId, usize)> = BTreeSet::new();
     let ids: BTreeMap<DeviceId, BridgeId> = switches.iter().map(|d| (d.id, bridge_id(d, vlan))).collect();
     // Switch-to-switch links carrying the VLAN: (a, port a, b, port b).
@@ -143,19 +182,28 @@ pub fn compute(t: &Topology, vlan: VlanId) -> VlanTree {
             let lp = logical(d.id, p);
             if !port_up(t, end) || blocked(d.id, p) {
                 if lp == p {
-                    tree.ports.insert((d.id, p), PortInfo { role: Role::Disabled, cost: cost_of(d.id, p), port_id: port_id(p) });
+                    tree.ports.insert((d.id, p), PortInfo { role: Role::Disabled, cost: cost_of(d.id, p), port_id: pid(d.id, p) });
+                }
+                continue;
+            }
+            // A root-inconsistent port blocks; the far end sees nothing from it.
+            if excluded.contains(&(d.id, lp)) {
+                if lp == p {
+                    tree.ports.insert((d.id, p), PortInfo { role: Role::Alternate, cost: cost_of(d.id, p), port_id: pid(d.id, p) });
                 }
                 continue;
             }
             match t.peer(end).and_then(|q| t.device(q.device).map(|pd| (q, pd))) {
-                Some((q, pd)) if carries(t, pd, q.port, vlan) && !blocked(q.device, q.port) => {
+                Some((q, pd))
+                    if carries(t, pd, q.port, vlan) && !blocked(q.device, q.port) && !excluded.contains(&(q.device, logical(q.device, q.port))) =>
+                {
                     let (a, b) = ((d.id, lp), (q.device, logical(q.device, q.port)));
                     let (a, b) = if a < b { (a, b) } else { (b, a) };
                     linkset.insert((a.0, a.1, b.0, b.1));
                 }
                 _ if lp == p => {
                     // Faces a host, router or hub: an edge, always designated.
-                    tree.ports.insert((d.id, p), PortInfo { role: Role::Designated, cost: cost_of(d.id, p), port_id: port_id(p) });
+                    tree.ports.insert((d.id, p), PortInfo { role: Role::Designated, cost: cost_of(d.id, p), port_id: pid(d.id, p) });
                 }
                 _ => {}
             }
@@ -224,7 +272,7 @@ pub fn compute(t: &Topology, vlan: VlanId) -> VlanTree {
                     continue;
                 };
                 let (Some(du), Some(bu)) = (dist.get(&u), ids.get(&u)) else { continue };
-                let key = (du.saturating_add(cost_of(v, pv)), *bu, port_id(pu), port_id(pv));
+                let key = (du.saturating_add(cost_of(v, pv)), *bu, pid(u, pu), pid(v, pv));
                 if best.is_none_or(|(k, _)| key < k) {
                     best = Some((key, pv));
                 }
@@ -240,11 +288,11 @@ pub fn compute(t: &Topology, vlan: VlanId) -> VlanTree {
         }
         // Designated and alternate ports on each link of the component.
         for &(a, pa, b, pb) in links.iter().filter(|(a, ..)| comp.contains(a)) {
-            let key = |d: DeviceId, p: usize| (dist.get(&d).copied().unwrap_or(u32::MAX), ids.get(&d).copied(), port_id(p));
+            let key = |d: DeviceId, p: usize| (dist.get(&d).copied().unwrap_or(u32::MAX), ids.get(&d).copied(), pid(d, p));
             let (des, other) = if key(a, pa) <= key(b, pb) { ((a, pa), (b, pb)) } else { ((b, pb), (a, pa)) };
-            tree.ports.insert(des, PortInfo { role: Role::Designated, cost: cost_of(des.0, des.1), port_id: port_id(des.1) });
+            tree.ports.insert(des, PortInfo { role: Role::Designated, cost: cost_of(des.0, des.1), port_id: pid(des.0, des.1) });
             let role = if root_port.get(&other.0) == Some(&other.1) { Role::Root } else { Role::Alternate };
-            tree.ports.insert(other, PortInfo { role, cost: cost_of(other.0, other.1), port_id: port_id(other.1) });
+            tree.ports.insert(other, PortInfo { role, cost: cost_of(other.0, other.1), port_id: pid(other.0, other.1) });
         }
     }
     tree
@@ -287,6 +335,7 @@ pub fn fingerprint(t: &Topology) -> u64 {
         d.id.hash(&mut h);
         for p in &d.ports {
             (p.shutdown, p.err_disabled, p.channel, p.routed).hash(&mut h);
+            (&p.l2.stp_cost, &p.l2.stp_priority, p.l2.root_guard).hash(&mut h);
             if d.kind == DeviceKind::Switch {
                 format!("{:?}", p.switchport).hash(&mut h);
             }

@@ -183,6 +183,7 @@ pub fn running_config(d: &Device) -> String {
     if !d.stp_priority.is_empty() {
         let _ = writeln!(s, "!");
     }
+    crate::exec::l2sec::global_lines(&mut s, d);
     // VLANs live in the VLAN database (vlan.dat), not in the configuration: only a VTP
     // transparent switch writes them there.
     if d.kind == DeviceKind::Switch && d.vtp.mode == netlabcraft_model::VtpMode::Transparent {
@@ -274,6 +275,7 @@ pub fn running_config(d: &Device) -> String {
             if p.portfast {
                 let _ = writeln!(s, " spanning-tree portfast");
             }
+            crate::exec::l2sec::port_lines(&mut s, p);
         }
         match p.ip {
             // The leased address isn't configuration; how it is obtained is.
@@ -667,7 +669,7 @@ pub fn interfaces(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
         }
         let end = End { device: d.id, port: i };
         let link = if p.err_disabled {
-            "down (err-disabled by port security)".to_string()
+            format!("down (err-disabled by {})", crate::exec::l2sec::cause_words(p.l2.err_cause))
         } else if p.shutdown {
             "administratively down".to_string()
         } else if port_up(t, end) {
@@ -964,8 +966,12 @@ pub fn spanning_tree(t: &Topology, sim: &Sim, d: &Device, vlan: VlanId, tree: &n
     let _ = writeln!(s, "{:<10} {:<4} {:<5} {:<6} {:<8} Type", "Interface", "Role", "State", "Cost", "Port ID");
     for ((dev, p), info) in tree.ports.iter().filter(|((dev, _), i)| *dev == d.id && i.role != netlabcraft_sim::stp::Role::Disabled) {
         let _ = dev;
-        let Some(port) = d.ports.get(*p) else { continue };
-        let kind = if port.portfast {
+        if d.ports.get(*p).is_none() {
+            continue;
+        }
+        let kind = if tree.inconsistent.contains(&(d.id, *p)) {
+            "Root-inconsistent"
+        } else if netlabcraft_sim::l2sec::edge_port(t, d, *p) {
             "Edge"
         } else if t.peer(End { device: d.id, port: *p }).and_then(|q| t.device(q.device)).is_some_and(|x| x.kind == DeviceKind::Switch) {
             "P2p"
@@ -979,7 +985,7 @@ pub fn spanning_tree(t: &Topology, sim: &Sim, d: &Device, vlan: VlanId, tree: &n
             info.role.short(),
             sim.stp_transition(d.id, *p, vlan).unwrap_or(info.role.state()),
             info.cost,
-            format!("128.{}", p + 1)
+            format!("{}.{}", info.port_id / 1000, info.port_id % 1000)
         );
     }
     s.trim_end().to_string()

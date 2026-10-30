@@ -20,6 +20,7 @@ pub mod firewall;
 pub mod hardware;
 pub mod ifname;
 pub mod iot;
+pub mod l2sec;
 pub mod models;
 pub mod physical;
 pub mod qos;
@@ -235,11 +236,28 @@ pub struct PortSecurity {
     /// Configured and sticky addresses.
     #[serde(default)]
     pub macs: Vec<MacAddr>,
+    /// `switchport port-security aging time N` (minutes; 0: learned addresses never age).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub aging_time: u32,
+    /// `switchport port-security aging type …`.
+    #[serde(default)]
+    pub aging_type: l2sec::AgingType,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 impl Default for PortSecurity {
     fn default() -> Self {
-        PortSecurity { max: 1, violation: Violation::Shutdown, sticky: false, macs: Vec::new() }
+        PortSecurity {
+            max: 1,
+            violation: Violation::Shutdown,
+            sticky: false,
+            macs: Vec::new(),
+            aging_time: 0,
+            aging_type: l2sec::AgingType::Absolute,
+        }
     }
 }
 
@@ -599,6 +617,9 @@ pub struct Port {
     /// when not set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub delay: Option<u32>,
+    /// Switches: DHCP snooping, ARP inspection and spanning-tree port settings.
+    #[serde(default, skip_serializing_if = "l2sec::PortL2::is_default")]
+    pub l2: l2sec::PortL2,
 }
 
 impl Port {
@@ -913,6 +934,10 @@ pub struct Device {
     /// Smart things: their IoT server and reading; servers: the IoT service and its rules.
     #[serde(default, skip_serializing_if = "iot::Iot::is_default")]
     pub iot: iot::Iot,
+    /// Switches: DHCP snooping, ARP inspection, edge protection, errdisable recovery,
+    /// EtherChannel load balancing and the SDM template.
+    #[serde(default, skip_serializing_if = "l2sec::SwitchL2::is_default")]
+    pub l2: l2sec::SwitchL2,
 }
 
 /// Which side of NAT an interface is on.
@@ -1606,6 +1631,7 @@ impl Device {
                 helpers: Vec::new(),
                 access: AccessGroups::default(),
                 nat: None,
+                l2: l2sec::PortL2::default(),
             })
             .collect();
         let mut d = Device {
@@ -1666,6 +1692,7 @@ impl Device {
             powered_off: false,
             voice: voice::Voice::default(),
             iot: iot::Iot::default(),
+            l2: l2sec::SwitchL2::default(),
         };
         d.ensure_default_vlan();
         d
@@ -1722,6 +1749,7 @@ impl Device {
         self.firewall = firewall::Firewall::default();
         self.voice = voice::Voice { tftp: self.voice.tftp, ..voice::Voice::default() };
         self.services = fresh.services;
+        self.l2.reload();
     }
 
     /// What the workspace shows under the icon.

@@ -14,6 +14,7 @@ use crate::grammar::{self, Id, Modes, ParseError};
 use crate::{host, render};
 
 pub(crate) mod firewall;
+pub(crate) mod l2sec;
 pub(crate) mod qos;
 pub(crate) mod routing;
 pub(crate) mod voice;
@@ -1625,6 +1626,74 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ShowClassMap
         | Id::ShowPolicyMap
         | Id::ShowPolicyMapInterface => qos::command(&mut c, spec.id, &args),
+        Id::L2Snooping
+        | Id::L2NoSnooping
+        | Id::L2SnoopingVlan
+        | Id::L2NoSnoopingVlan
+        | Id::L2SnoopingOpt82
+        | Id::L2NoSnoopingOpt82
+        | Id::L2SnoopingTrust
+        | Id::L2NoSnoopingTrust
+        | Id::L2SnoopingRate
+        | Id::L2NoSnoopingRate
+        | Id::L2ShowSnooping
+        | Id::L2ShowSnoopingBinding
+        | Id::L2ClearSnoopingBinding
+        | Id::L2DaiVlan
+        | Id::L2NoDaiVlan
+        | Id::L2DaiValidate
+        | Id::L2NoDaiValidate
+        | Id::L2DaiTrust
+        | Id::L2NoDaiTrust
+        | Id::L2DaiRate
+        | Id::L2NoDaiRate
+        | Id::L2ShowDai
+        | Id::L2PortfastDefault
+        | Id::L2NoPortfastDefault
+        | Id::L2BpduguardDefault
+        | Id::L2NoBpduguardDefault
+        | Id::L2Bpduguard
+        | Id::L2NoBpduguard
+        | Id::L2Guard
+        | Id::L2NoGuard
+        | Id::L2LinkType
+        | Id::L2NoLinkType
+        | Id::L2RecoveryCause
+        | Id::L2NoRecoveryCause
+        | Id::L2RecoveryInterval
+        | Id::L2NoRecoveryInterval
+        | Id::L2ShowErrDisabled
+        | Id::L2ShowRecovery
+        | Id::L2PsecAgingTime
+        | Id::L2NoPsecAgingTime
+        | Id::L2PsecAgingType
+        | Id::L2NoPsecAgingType
+        | Id::L2StpCost
+        | Id::L2NoStpCost
+        | Id::L2StpVlanCost
+        | Id::L2NoStpVlanCost
+        | Id::L2StpPortPriority
+        | Id::L2NoStpPortPriority
+        | Id::L2StpVlanPortPriority
+        | Id::L2NoStpVlanPortPriority
+        | Id::L2ShowStpSummary
+        | Id::L2ShowStpDetail
+        | Id::L2LoadBalance
+        | Id::L2NoLoadBalance
+        | Id::L2ShowLoadBalance
+        | Id::L2ShowPortChannel
+        | Id::L2LacpPriority
+        | Id::L2NoLacpPriority
+        | Id::L2ShowLacpNeighbor
+        | Id::L2ShowVlanId
+        | Id::L2ShowVlanSummary
+        | Id::L2ShowDtp
+        | Id::L2ShowCounters
+        | Id::L2TrunkEncap
+        | Id::L2NoTrunkEncap
+        | Id::L2SdmPrefer
+        | Id::L2NoSdmPrefer
+        | Id::L2ShowSdm => l2sec::command(&mut c, spec.id, &args),
         Id::FwNameif
         | Id::FwNoNameif
         | Id::FwSecurityLevel
@@ -2371,6 +2440,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 if id == Id::NoPortSecurity {
                     p.port_security = None;
                     p.err_disabled = false;
+                    p.l2.err_cause = None;
                     return Ok(());
                 }
                 if p.switchport.mode != SwitchportMode::Access {
@@ -3175,6 +3245,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                         p.shutdown = down;
                         // shutdown / no shutdown is how an err-disabled port comes back.
                         p.err_disabled = false;
+                        p.l2.err_cause = None;
                     }
                 }
                 Ok(())

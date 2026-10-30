@@ -201,6 +201,75 @@ pub enum Id {
     StpRoot,
     Portfast,
     NoPortfast,
+    // ---- switch edge protection and tuning (exec/l2sec.rs) ----
+    L2Snooping,
+    L2NoSnooping,
+    L2SnoopingVlan,
+    L2NoSnoopingVlan,
+    L2SnoopingOpt82,
+    L2NoSnoopingOpt82,
+    L2SnoopingTrust,
+    L2NoSnoopingTrust,
+    L2SnoopingRate,
+    L2NoSnoopingRate,
+    L2ShowSnooping,
+    L2ShowSnoopingBinding,
+    L2ClearSnoopingBinding,
+    L2DaiVlan,
+    L2NoDaiVlan,
+    L2DaiValidate,
+    L2NoDaiValidate,
+    L2DaiTrust,
+    L2NoDaiTrust,
+    L2DaiRate,
+    L2NoDaiRate,
+    L2ShowDai,
+    L2PortfastDefault,
+    L2NoPortfastDefault,
+    L2BpduguardDefault,
+    L2NoBpduguardDefault,
+    L2Bpduguard,
+    L2NoBpduguard,
+    L2Guard,
+    L2NoGuard,
+    L2LinkType,
+    L2NoLinkType,
+    L2RecoveryCause,
+    L2NoRecoveryCause,
+    L2RecoveryInterval,
+    L2NoRecoveryInterval,
+    L2ShowErrDisabled,
+    L2ShowRecovery,
+    L2PsecAgingTime,
+    L2NoPsecAgingTime,
+    L2PsecAgingType,
+    L2NoPsecAgingType,
+    L2StpCost,
+    L2NoStpCost,
+    L2StpVlanCost,
+    L2NoStpVlanCost,
+    L2StpPortPriority,
+    L2NoStpPortPriority,
+    L2StpVlanPortPriority,
+    L2NoStpVlanPortPriority,
+    L2ShowStpSummary,
+    L2ShowStpDetail,
+    L2LoadBalance,
+    L2NoLoadBalance,
+    L2ShowLoadBalance,
+    L2ShowPortChannel,
+    L2LacpPriority,
+    L2NoLacpPriority,
+    L2ShowLacpNeighbor,
+    L2ShowVlanId,
+    L2ShowVlanSummary,
+    L2ShowDtp,
+    L2ShowCounters,
+    L2TrunkEncap,
+    L2NoTrunkEncap,
+    L2SdmPrefer,
+    L2NoSdmPrefer,
+    L2ShowSdm,
     ShowStp,
     ShowStpVlan,
     NoInterfaceVlan,
@@ -1918,6 +1987,285 @@ pub static SPECS: &[Spec] = &[
     ),
     spec!(Portfast, Modes::IF, Modes::SWITCH, [K("spanning-tree"), K("portfast")], "An edge port: forward at once"),
     spec!(NoPortfast, Modes::IF, Modes::SWITCH, [K("no"), K("spanning-tree"), K("portfast")], "Not an edge port"),
+    // ---- switch edge protection and tuning (exec/l2sec.rs) ----
+    spec!(L2Snooping, Modes::CONFIG, Modes::SWITCH, [K("ip"), K("dhcp"), K("snooping")], "Turn DHCP snooping on (then name its VLANs)"),
+    spec!(L2NoSnooping, Modes::CONFIG, Modes::SWITCH, [K("no"), K("ip"), K("dhcp"), K("snooping")], "Turn DHCP snooping off"),
+    spec!(
+        L2SnoopingVlan,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("ip"), K("dhcp"), K("snooping"), K("vlan"), Arg("<1-4094>[,-]")],
+        "VLANs DHCP snooping watches"
+    ),
+    spec!(
+        L2NoSnoopingVlan,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("ip"), K("dhcp"), K("snooping"), K("vlan"), Arg("<1-4094>[,-]")],
+        "Stop watching these VLANs"
+    ),
+    spec!(
+        L2SnoopingOpt82,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("ip"), K("dhcp"), K("snooping"), K("information"), K("option")],
+        "Add relay information (option 82) to client requests"
+    ),
+    spec!(
+        L2NoSnoopingOpt82,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("ip"), K("dhcp"), K("snooping"), K("information"), K("option")],
+        "Leave client requests as they are (no option 82)"
+    ),
+    spec!(L2SnoopingTrust, Modes::IF, Modes::SWITCH, [K("ip"), K("dhcp"), K("snooping"), K("trust")], "DHCP servers may answer through this port"),
+    spec!(
+        L2NoSnoopingTrust,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("no"), K("ip"), K("dhcp"), K("snooping"), K("trust")],
+        "Untrusted: server answers arriving here are dropped"
+    ),
+    spec!(
+        L2SnoopingRate,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("ip"), K("dhcp"), K("snooping"), K("limit"), K("rate"), Arg("<1-2048>")],
+        "Most DHCP messages a second; more err-disables the port"
+    ),
+    spec!(
+        L2NoSnoopingRate,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("no"), K("ip"), K("dhcp"), K("snooping"), K("limit"), K("rate")],
+        "No DHCP rate limit on this port"
+    ),
+    spec!(L2ShowSnooping, EXECS, Modes::SWITCH, [K("show"), K("ip"), K("dhcp"), K("snooping")], "DHCP snooping settings and trusted ports"),
+    spec!(
+        L2ShowSnoopingBinding,
+        EXECS,
+        Modes::SWITCH,
+        [K("show"), K("ip"), K("dhcp"), K("snooping"), K("binding")],
+        "Clients, their addresses and ports"
+    ),
+    spec!(
+        L2ClearSnoopingBinding,
+        Modes::EXEC,
+        Modes::SWITCH,
+        [K("clear"), K("ip"), K("dhcp"), K("snooping"), K("binding")],
+        "Forget the snooping bindings"
+    ),
+    spec!(
+        L2DaiVlan,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("ip"), K("arp"), K("inspection"), K("vlan"), Arg("<1-4094>[,-]")],
+        "Check ARP in these VLANs against the snooping bindings"
+    ),
+    spec!(
+        L2NoDaiVlan,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("ip"), K("arp"), K("inspection"), K("vlan"), Arg("<1-4094>[,-]")],
+        "Stop checking ARP in these VLANs"
+    ),
+    spec!(
+        L2DaiValidate,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("ip"), K("arp"), K("inspection"), K("validate"), Rest("{src-mac|dst-mac|ip}…")],
+        "Extra checks on ARP messages"
+    ),
+    spec!(L2NoDaiValidate, Modes::CONFIG, Modes::SWITCH, [K("no"), K("ip"), K("arp"), K("inspection"), K("validate")], "No extra ARP checks"),
+    spec!(L2DaiTrust, Modes::IF, Modes::SWITCH, [K("ip"), K("arp"), K("inspection"), K("trust")], "ARP through this port is not checked"),
+    spec!(L2NoDaiTrust, Modes::IF, Modes::SWITCH, [K("no"), K("ip"), K("arp"), K("inspection"), K("trust")], "Check ARP arriving on this port"),
+    spec!(
+        L2DaiRate,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("ip"), K("arp"), K("inspection"), K("limit"), K("rate"), Arg("<1-2048>")],
+        "Most ARP messages a second; more err-disables the port"
+    ),
+    spec!(
+        L2NoDaiRate,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("no"), K("ip"), K("arp"), K("inspection"), K("limit"), K("rate")],
+        "No ARP rate limit on this port"
+    ),
+    spec!(L2ShowDai, EXECS, Modes::SWITCH, [K("show"), K("ip"), K("arp"), K("inspection")], "ARP inspection settings and counts"),
+    spec!(L2PortfastDefault, Modes::CONFIG, Modes::SWITCH, [K("spanning-tree"), K("portfast"), K("default")], "Every access port is an edge port"),
+    spec!(L2NoPortfastDefault, Modes::CONFIG, Modes::SWITCH, [K("no"), K("spanning-tree"), K("portfast"), K("default")], "Edge ports only where set"),
+    spec!(
+        L2BpduguardDefault,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("spanning-tree"), K("portfast"), K("bpduguard"), K("default")],
+        "BPDU guard on every edge port"
+    ),
+    spec!(
+        L2NoBpduguardDefault,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("spanning-tree"), K("portfast"), K("bpduguard"), K("default")],
+        "No BPDU guard unless set on the port"
+    ),
+    spec!(
+        L2Bpduguard,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("spanning-tree"), K("bpduguard"), Arg("{enable|disable}")],
+        "Err-disable the port when a BPDU arrives"
+    ),
+    spec!(L2NoBpduguard, Modes::IF, Modes::SWITCH, [K("no"), K("spanning-tree"), K("bpduguard")], "BPDU guard as the switch default says"),
+    spec!(
+        L2Guard,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("spanning-tree"), K("guard"), Arg("{root|none}")],
+        "Root guard: never let a better root in through this port"
+    ),
+    spec!(L2NoGuard, Modes::IF, Modes::SWITCH, [K("no"), K("spanning-tree"), K("guard")], "No root guard"),
+    spec!(L2LinkType, Modes::IF, Modes::SWITCH, [K("spanning-tree"), K("link-type"), Arg("{point-to-point|shared}")], "What the port is cabled to"),
+    spec!(L2NoLinkType, Modes::IF, Modes::SWITCH, [K("no"), K("spanning-tree"), K("link-type")], "Link type from the duplex"),
+    spec!(L2StpCost, Modes::IF, Modes::SWITCH, [K("spanning-tree"), K("cost"), Arg("<1-200000000>")], "Path cost of this port in every VLAN"),
+    spec!(L2NoStpCost, Modes::IF, Modes::SWITCH, [K("no"), K("spanning-tree"), K("cost")], "Path cost from the port speed"),
+    spec!(
+        L2StpVlanCost,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("spanning-tree"), K("vlan"), Arg("<1-4094>[,-]"), K("cost"), Arg("<1-200000000>")],
+        "Path cost in these VLANs"
+    ),
+    spec!(
+        L2NoStpVlanCost,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("no"), K("spanning-tree"), K("vlan"), Arg("<1-4094>[,-]"), K("cost")],
+        "Path cost from the speed in these VLANs"
+    ),
+    spec!(
+        L2StpPortPriority,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("spanning-tree"), K("port-priority"), Arg("<0-240>")],
+        "Port priority (multiple of 16) in every VLAN"
+    ),
+    spec!(L2NoStpPortPriority, Modes::IF, Modes::SWITCH, [K("no"), K("spanning-tree"), K("port-priority")], "Port priority back to 128"),
+    spec!(
+        L2StpVlanPortPriority,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("spanning-tree"), K("vlan"), Arg("<1-4094>[,-]"), K("port-priority"), Arg("<0-240>")],
+        "Port priority in these VLANs"
+    ),
+    spec!(
+        L2NoStpVlanPortPriority,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("no"), K("spanning-tree"), K("vlan"), Arg("<1-4094>[,-]"), K("port-priority")],
+        "Port priority back to 128 in these VLANs"
+    ),
+    spec!(L2ShowStpSummary, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree"), K("summary")], "Spanning-tree settings and port states per VLAN"),
+    spec!(
+        L2ShowStpDetail,
+        EXECS,
+        Modes::SWITCH,
+        [K("show"), K("spanning-tree"), K("vlan"), Arg("<1-4094>"), K("detail")],
+        "One VLAN's tree, port by port"
+    ),
+    spec!(
+        L2RecoveryCause,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("errdisable"), K("recovery"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|all}")],
+        "Bring ports shut for this reason back by themselves"
+    ),
+    spec!(
+        L2NoRecoveryCause,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("errdisable"), K("recovery"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|all}")],
+        "Ports shut for this reason wait for shutdown / no shutdown"
+    ),
+    spec!(
+        L2RecoveryInterval,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("errdisable"), K("recovery"), K("interval"), Arg("<30-86400>")],
+        "Seconds before an err-disabled port comes back"
+    ),
+    spec!(L2NoRecoveryInterval, Modes::CONFIG, Modes::SWITCH, [K("no"), K("errdisable"), K("recovery"), K("interval")], "Back to 300 seconds"),
+    spec!(L2ShowErrDisabled, EXECS, Modes::SWITCH, [K("show"), K("interfaces"), K("status"), K("err-disabled")], "Err-disabled ports and why"),
+    spec!(L2ShowRecovery, EXECS, Modes::SWITCH, [K("show"), K("errdisable"), K("recovery")], "Which causes recover by themselves, and when"),
+    spec!(
+        L2PsecAgingTime,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("switchport"), K("port-security"), K("aging"), K("time"), Arg("<0-1440>")],
+        "Minutes before a learned address is forgotten"
+    ),
+    spec!(
+        L2NoPsecAgingTime,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("no"), K("switchport"), K("port-security"), K("aging"), K("time")],
+        "Learned addresses never age"
+    ),
+    spec!(
+        L2PsecAgingType,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("switchport"), K("port-security"), K("aging"), K("type"), Arg("{absolute|inactivity}")],
+        "Age from learning, or from the last frame"
+    ),
+    spec!(
+        L2NoPsecAgingType,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("no"), K("switchport"), K("port-security"), K("aging"), K("type")],
+        "Age from learning (absolute)"
+    ),
+    spec!(
+        L2LoadBalance,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("port-channel"), K("load-balance"), Arg("{src-mac|dst-mac|src-dst-mac|src-ip|dst-ip|src-dst-ip}")],
+        "What picks an EtherChannel member for a frame"
+    ),
+    spec!(L2NoLoadBalance, Modes::CONFIG, Modes::SWITCH, [K("no"), K("port-channel"), K("load-balance")], "Back to src-mac"),
+    spec!(L2ShowLoadBalance, EXECS, Modes::SWITCH, [K("show"), K("etherchannel"), K("load-balance")], "How EtherChannels spread traffic"),
+    spec!(L2ShowPortChannel, EXECS, Modes::SWITCH, [K("show"), K("etherchannel"), K("port-channel")], "Each port channel and its members"),
+    spec!(
+        L2LacpPriority,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("lacp"), K("port-priority"), Arg("<1-65535>")],
+        "LACP priority of this port (lower is preferred)"
+    ),
+    spec!(L2NoLacpPriority, Modes::IF, Modes::SWITCH, [K("no"), K("lacp"), K("port-priority")], "LACP priority back to 32768"),
+    spec!(L2ShowLacpNeighbor, EXECS, Modes::SWITCH, [K("show"), K("lacp"), K("neighbor")], "What LACP hears from the other end"),
+    spec!(L2ShowVlanId, EXECS, Modes::SWITCH, [K("show"), K("vlan"), K("id"), Arg("<1-4094>")], "One VLAN and its ports"),
+    spec!(L2ShowVlanSummary, EXECS, Modes::SWITCH, [K("show"), K("vlan"), K("summary")], "How many VLANs exist"),
+    spec!(L2ShowDtp, EXECS, Modes::SWITCH, [K("show"), K("dtp")], "Trunk negotiation on each port"),
+    spec!(L2ShowCounters, EXECS, Modes::SWITCH, [K("show"), K("interfaces"), K("counters")], "Frames and bytes in and out of each port"),
+    spec!(
+        L2TrunkEncap,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("switchport"), K("trunk"), K("encapsulation"), Arg("{dot1q|isl|negotiate}")],
+        "Trunk tagging (multilayer switches)"
+    ),
+    spec!(L2NoTrunkEncap, Modes::IF, Modes::SWITCH, [K("no"), K("switchport"), K("trunk"), K("encapsulation")], "Trunk tagging back to the default"),
+    spec!(
+        L2SdmPrefer,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("sdm"), K("prefer"), Rest("{default|dual-ipv4-and-ipv6 default|lanbase-routing|vlan|advanced}")],
+        "Memory template, used from the next reload"
+    ),
+    spec!(L2NoSdmPrefer, Modes::CONFIG, Modes::SWITCH, [K("no"), K("sdm"), K("prefer")], "Default template from the next reload"),
+    spec!(L2ShowSdm, EXECS, Modes::SWITCH, [K("show"), K("sdm"), K("prefer")], "Memory template now and after reload"),
     spec!(ShowStp, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree")], "Spanning trees of every VLAN"),
     spec!(ShowStpVlan, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree"), K("vlan"), Arg("<1-4094>")], "One VLAN's spanning tree"),
     // ---- the firewall appliance ----

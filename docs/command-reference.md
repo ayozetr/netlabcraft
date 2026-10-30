@@ -670,6 +670,74 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `spanning-tree mode {pvst\|rapid-pvst}` | config | switch | Classic (30 s to forward) or rapid spanning tree |
 | `spanning-tree portfast` | interface | switch | An edge port: forward at once |
 | `no spanning-tree portfast` | interface | switch | Not an edge port |
+| `ip dhcp snooping` | config | switch | Turn DHCP snooping on (then name its VLANs) |
+| `no ip dhcp snooping` | config | switch | Turn DHCP snooping off |
+| `ip dhcp snooping vlan <1-4094>[,-]` | config | switch | VLANs DHCP snooping watches |
+| `no ip dhcp snooping vlan <1-4094>[,-]` | config | switch | Stop watching these VLANs |
+| `ip dhcp snooping information option` | config | switch | Add relay information (option 82) to client requests |
+| `no ip dhcp snooping information option` | config | switch | Leave client requests as they are (no option 82) |
+| `ip dhcp snooping trust` | interface | switch | DHCP servers may answer through this port |
+| `no ip dhcp snooping trust` | interface | switch | Untrusted: server answers arriving here are dropped |
+| `ip dhcp snooping limit rate <1-2048>` | interface | switch | Most DHCP messages a second; more err-disables the port |
+| `no ip dhcp snooping limit rate` | interface | switch | No DHCP rate limit on this port |
+| `show ip dhcp snooping` | user, privileged | switch | DHCP snooping settings and trusted ports |
+| `show ip dhcp snooping binding` | user, privileged | switch | Clients, their addresses and ports |
+| `clear ip dhcp snooping binding` | privileged | switch | Forget the snooping bindings |
+| `ip arp inspection vlan <1-4094>[,-]` | config | switch | Check ARP in these VLANs against the snooping bindings |
+| `no ip arp inspection vlan <1-4094>[,-]` | config | switch | Stop checking ARP in these VLANs |
+| `ip arp inspection validate {src-mac\|dst-mac\|ip}…` | config | switch | Extra checks on ARP messages |
+| `no ip arp inspection validate` | config | switch | No extra ARP checks |
+| `ip arp inspection trust` | interface | switch | ARP through this port is not checked |
+| `no ip arp inspection trust` | interface | switch | Check ARP arriving on this port |
+| `ip arp inspection limit rate <1-2048>` | interface | switch | Most ARP messages a second; more err-disables the port |
+| `no ip arp inspection limit rate` | interface | switch | No ARP rate limit on this port |
+| `show ip arp inspection` | user, privileged | switch | ARP inspection settings and counts |
+| `spanning-tree portfast default` | config | switch | Every access port is an edge port |
+| `no spanning-tree portfast default` | config | switch | Edge ports only where set |
+| `spanning-tree portfast bpduguard default` | config | switch | BPDU guard on every edge port |
+| `no spanning-tree portfast bpduguard default` | config | switch | No BPDU guard unless set on the port |
+| `spanning-tree bpduguard {enable\|disable}` | interface | switch | Err-disable the port when a BPDU arrives |
+| `no spanning-tree bpduguard` | interface | switch | BPDU guard as the switch default says |
+| `spanning-tree guard {root\|none}` | interface | switch | Root guard: never let a better root in through this port |
+| `no spanning-tree guard` | interface | switch | No root guard |
+| `spanning-tree link-type {point-to-point\|shared}` | interface | switch | What the port is cabled to |
+| `no spanning-tree link-type` | interface | switch | Link type from the duplex |
+| `spanning-tree cost <1-200000000>` | interface | switch | Path cost of this port in every VLAN |
+| `no spanning-tree cost` | interface | switch | Path cost from the port speed |
+| `spanning-tree vlan <1-4094>[,-] cost <1-200000000>` | interface | switch | Path cost in these VLANs |
+| `no spanning-tree vlan <1-4094>[,-] cost` | interface | switch | Path cost from the speed in these VLANs |
+| `spanning-tree port-priority <0-240>` | interface | switch | Port priority (multiple of 16) in every VLAN |
+| `no spanning-tree port-priority` | interface | switch | Port priority back to 128 |
+| `spanning-tree vlan <1-4094>[,-] port-priority <0-240>` | interface | switch | Port priority in these VLANs |
+| `no spanning-tree vlan <1-4094>[,-] port-priority` | interface | switch | Port priority back to 128 in these VLANs |
+| `show spanning-tree summary` | user, privileged | switch | Spanning-tree settings and port states per VLAN |
+| `show spanning-tree vlan <1-4094> detail` | user, privileged | switch | One VLAN's tree, port by port |
+| `errdisable recovery cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|all}` | config | switch | Bring ports shut for this reason back by themselves |
+| `no errdisable recovery cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|all}` | config | switch | Ports shut for this reason wait for shutdown / no shutdown |
+| `errdisable recovery interval <30-86400>` | config | switch | Seconds before an err-disabled port comes back |
+| `no errdisable recovery interval` | config | switch | Back to 300 seconds |
+| `show interfaces status err-disabled` | user, privileged | switch | Err-disabled ports and why |
+| `show errdisable recovery` | user, privileged | switch | Which causes recover by themselves, and when |
+| `switchport port-security aging time <0-1440>` | interface | switch | Minutes before a learned address is forgotten |
+| `no switchport port-security aging time` | interface | switch | Learned addresses never age |
+| `switchport port-security aging type {absolute\|inactivity}` | interface | switch | Age from learning, or from the last frame |
+| `no switchport port-security aging type` | interface | switch | Age from learning (absolute) |
+| `port-channel load-balance {src-mac\|dst-mac\|src-dst-mac\|src-ip\|dst-ip\|src-dst-ip}` | config | switch | What picks an EtherChannel member for a frame |
+| `no port-channel load-balance` | config | switch | Back to src-mac |
+| `show etherchannel load-balance` | user, privileged | switch | How EtherChannels spread traffic |
+| `show etherchannel port-channel` | user, privileged | switch | Each port channel and its members |
+| `lacp port-priority <1-65535>` | interface | switch | LACP priority of this port (lower is preferred) |
+| `no lacp port-priority` | interface | switch | LACP priority back to 32768 |
+| `show lacp neighbor` | user, privileged | switch | What LACP hears from the other end |
+| `show vlan id <1-4094>` | user, privileged | switch | One VLAN and its ports |
+| `show vlan summary` | user, privileged | switch | How many VLANs exist |
+| `show dtp` | user, privileged | switch | Trunk negotiation on each port |
+| `show interfaces counters` | user, privileged | switch | Frames and bytes in and out of each port |
+| `switchport trunk encapsulation {dot1q\|isl\|negotiate}` | interface | switch | Trunk tagging (multilayer switches) |
+| `no switchport trunk encapsulation` | interface | switch | Trunk tagging back to the default |
+| `sdm prefer {default\|dual-ipv4-and-ipv6 default\|lanbase-routing\|vlan\|advanced}` | config | switch | Memory template, used from the next reload |
+| `no sdm prefer` | config | switch | Default template from the next reload |
+| `show sdm prefer` | user, privileged | switch | Memory template now and after reload |
 | `show spanning-tree` | user, privileged | switch | Spanning trees of every VLAN |
 | `show spanning-tree vlan <1-4094>` | user, privileged | switch | One VLAN's spanning tree |
 | `nameif NAME` | interface, subinterface | firewall | Name the interface (rules, routes and NAT refer to it by this name) |

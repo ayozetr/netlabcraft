@@ -34,6 +34,7 @@ pub mod eigrp;
 pub mod firewall;
 pub mod hsrp;
 pub mod iot;
+pub mod l2sec;
 pub mod mgmt;
 pub mod ospf;
 pub mod ospf6;
@@ -280,6 +281,10 @@ pub enum PortEvent {
     ErrDisabled { device: DeviceId, port: usize },
     /// A sticky address was learned.
     Sticky { device: DeviceId, port: usize, mac: MacAddr },
+    /// BPDU guard, a DHCP or ARP rate limit (or another cause) shut the port down.
+    ErrDisabledBy { device: DeviceId, port: usize, cause: netlabcraft_model::l2sec::ErrCause },
+    /// Errdisable recovery brought the port back up.
+    Recovered { device: DeviceId, port: usize },
 }
 
 /// The layer-3 interfaces that are up (connected routes exist only for these).
@@ -972,6 +977,8 @@ pub struct Sim {
     voice: voice::VoiceState,
     /// Smart things and IoT servers.
     iot: iot::IotState,
+    /// DHCP snooping bindings, ARP inspection, rate limits, errdisable timers, port counters.
+    l2: l2sec::L2State,
 }
 
 impl Sim {
@@ -1142,6 +1149,7 @@ impl Sim {
     /// Forgets one device's dynamic state (it reloaded).
     pub fn reset_device(&mut self, d: DeviceId) {
         self.state.remove(&d);
+        self.l2.forget(d);
         self.voice.forget(d);
         self.iot.forget(d);
         // It starts again: a coldStart trap, when traps are on.
@@ -1251,6 +1259,7 @@ impl Sim {
     fn advance(&mut self, t: &Topology, deadline: u64, mut stop: impl FnMut(&Sim) -> bool) -> bool {
         self.storm = false;
         self.refresh_stp(t);
+        self.l2_tick(t);
         self.wlan_sync(t);
         self.flush_syslog(t);
         self.flush_traps(t);
@@ -1285,6 +1294,7 @@ impl Sim {
             }
         }
         self.now = self.now.max(deadline);
+        self.l2_tick(t);
         false
     }
 
@@ -1348,6 +1358,7 @@ impl Sim {
             dropped: None,
             air: air.then(|| q.frame.clone()),
         });
+        self.l2_count(q.from, q.to, &q.frame);
         let dropped = if air { self.air_in(t, q.from, q.to, &q.frame, q.hops).err() } else { self.receive(t, q.to, &q.frame, q.hops).err() };
         if let (Some(reason), Some(ev)) = (dropped, self.trace.back_mut()) {
             ev.dropped = Some(reason);
@@ -1757,7 +1768,10 @@ impl Sim {
 
     /// Whether a violation already shut this port in this run (before the lab records it).
     fn err_disabled_now(&self, d: DeviceId, port: usize) -> bool {
-        self.events.contains(&PortEvent::ErrDisabled { device: d, port })
+        self.events.iter().any(|e| match e {
+            PortEvent::ErrDisabled { device, port: p } | PortEvent::ErrDisabledBy { device, port: p, .. } => *device == d && *p == port,
+            _ => false,
+        })
     }
 
     // ---- spanning tree ----
@@ -1807,8 +1821,9 @@ impl Sim {
                         .unwrap_or_else(|| vec![*p]);
                     let was = members.iter().any(|m| prev.ports.get(&(*dev, *m)).is_some_and(|i| i.role.forwards()));
                     // Portfast, rapid spanning tree, and access-point radios forward at once.
-                    let immediate =
-                        t.device(*dev).is_some_and(|d| d.rapid_stp || d.ports.get(*p).is_some_and(|x| x.portfast || ifname::is_wireless(&x.name)));
+                    let immediate = t
+                        .device(*dev)
+                        .is_some_and(|d| d.rapid_stp || l2sec::edge_port(t, d, *p) || d.ports.get(*p).is_some_and(|x| ifname::is_wireless(&x.name)));
                     if !was && !immediate {
                         self.stp_since.insert(key, self.now);
                     }
@@ -1857,7 +1872,7 @@ impl Sim {
         }
         // Spanning tree takes its BPDUs (the tree itself is computed), LLDP its advertisements.
         if netlabcraft_wire::control::link_local(f.dst) {
-            return Ok(());
+            return self.l2_bpdu_in(t, d, in_port, &f);
         }
         let sp = &d.ports.get(in_port).ok_or("no port")?.switchport;
         let vlan = match if t.is_trunk(End { device: d.id, port: in_port }) { SwitchportMode::Trunk } else { SwitchportMode::Access } {
@@ -1897,6 +1912,8 @@ impl Sim {
             }
             return Err(format!("port blocked by spanning tree (VLAN {vlan})"));
         }
+        self.l2_switch_in(d, in_port, vlan, &f)?;
+        self.psec_age(d, in_port, f.src);
         self.port_security(d, in_port, f.src)?;
         self.switch_forward(t, d, Some(in_port), vlan, f, hops)
     }
@@ -1972,7 +1989,7 @@ impl Sim {
         let outs: Vec<usize> = outs.into_iter().filter(|&p| self.stp_forwards(t, d.id, p, vlan)).collect();
         let mut sent = 0;
         for p in outs {
-            let p = chm.pick(p, f.src, f.dst);
+            let p = chm.pick_frame(p, &f, d.l2.load_balance);
             let Some(port) = d.ports.get(p) else { continue };
             let end = End { device: d.id, port: p };
             let trunk = t.is_trunk(end);
