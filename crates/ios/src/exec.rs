@@ -15,6 +15,7 @@ use crate::{host, render};
 
 pub(crate) mod automation;
 pub(crate) mod eigrp6;
+pub(crate) mod families;
 pub(crate) mod fhrp;
 pub(crate) mod firewall;
 pub(crate) mod ikev2;
@@ -100,6 +101,12 @@ pub enum Mode {
     Telephony,
     /// `R1(config-ephone-dn)#`: the directory number's tag.
     EphoneDn(u16),
+    /// `R1(config-register-global)#`: SIP call control.
+    VoiceRegGlobal,
+    /// `R1(config-register-dn)#`.
+    VoiceRegDn(u16),
+    /// `R1(config-register-pool)#`.
+    VoiceRegPool(u16),
     /// `R1(config-ephone)#`: the phone's tag.
     Ephone(u16),
     /// `R1(config-sec-zone)#`: the zone's name.
@@ -152,8 +159,8 @@ impl Mode {
             Mode::PolicyMap(_) => Modes::POLICY_MAP,
             Mode::PolicyClass(..) => Modes::POLICY_CLASS,
             Mode::Object(_) | Mode::ObjectGroup(..) => Modes::OBJECT,
-            Mode::Telephony => Modes::TELEPHONY,
-            Mode::EphoneDn(_) | Mode::Ephone(_) => Modes::EPHONE,
+            Mode::Telephony | Mode::VoiceRegGlobal => Modes::TELEPHONY,
+            Mode::EphoneDn(_) | Mode::Ephone(_) | Mode::VoiceRegDn(_) | Mode::VoiceRegPool(_) => Modes::EPHONE,
             Mode::Zone(_) => Modes::ZONE,
             Mode::InspectClass(_) => Modes::INSPECT_CLASS,
             Mode::InspectPolicy(_) => Modes::INSPECT_POLICY,
@@ -416,11 +423,19 @@ pub struct Outcome {
     pub clear: bool,
 }
 
-fn device_bits(d: &Device) -> Modes {
+fn device_bits(d: &Device, mode: &Mode) -> Modes {
     if netlabcraft_model::firewall::is_firewall(d) {
         Modes::FIREWALL
     } else if d.kind == DeviceKind::Switch {
         Modes::SWITCH
+    } else if d.has_switch_card() {
+        // A router with a switch card: its switch ports, VLANs and VLAN interfaces take the
+        // switch's commands; elsewhere it is a router that also keeps a VLAN database.
+        match mode {
+            Mode::Iface(ifs) if !ifs.is_empty() && ifs.iter().all(|r| r.sub.is_none() && d.switch_card_port(r.port)) => Modes::SWITCH,
+            Mode::Svi(_) | Mode::Vlan(_) => Modes::SWITCH,
+            _ => Modes::ROUTER.or(Modes::CARD),
+        }
     } else {
         Modes::ROUTER
     }
@@ -494,6 +509,9 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::Ikev2Keyring(_) => format!("{n}(config-ikev2-keyring)#"),
         Mode::Ikev2Peer(..) => format!("{n}(config-ikev2-keyring-peer)#"),
         Mode::Ikev2Profile(_) => format!("{n}(config-ikev2-profile)#"),
+        Mode::VoiceRegGlobal => format!("{n}(config-register-global)#"),
+        Mode::VoiceRegDn(_) => format!("{n}(config-register-dn)#"),
+        Mode::VoiceRegPool(_) => format!("{n}(config-register-pool)#"),
     }
 }
 
@@ -645,7 +663,7 @@ pub fn help_line(t: &Topology, dev: DeviceId, cli: &Cli, line: &str) -> String {
     let ends_in_space = line.is_empty() || line.ends_with(char::is_whitespace);
     let mut words: Vec<&str> = line.split_whitespace().collect();
     let partial = if ends_in_space { "" } else { words.pop().unwrap_or("") };
-    let items = grammar::help(&words, partial, cli.mode.bits(), device_bits(d));
+    let items = grammar::help(&words, partial, cli.mode.bits(), device_bits(d, &cli.mode));
     if items.is_empty() {
         return "% No command matches".into();
     }
@@ -662,7 +680,7 @@ pub fn complete_line(t: &Topology, dev: DeviceId, cli: &Cli, line: &str) -> Opti
     }
     let mut words: Vec<&str> = line.split_whitespace().collect();
     let partial = words.pop()?;
-    let kw = grammar::complete(&words, partial, cli.mode.bits(), device_bits(d))?;
+    let kw = grammar::complete(&words, partial, cli.mode.bits(), device_bits(d, &cli.mode))?;
     let head = line.get(..line.len() - partial.len()).unwrap_or("");
     Some(format!("{head}{kw} "))
 }
@@ -709,7 +727,8 @@ fn caret(line: &str, word: usize) -> String {
 type R = Result<String, String>;
 
 fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line: &str) -> R {
-    let dbits = t.device(dev).map(device_bits).ok_or("% That device no longer exists")?;
+    let dbits = t.device(dev).map(|d| device_bits(d, &cli.mode)).ok_or("% That device no longer exists")?;
+    let config_bits = t.device(dev).map_or(dbits, |d| device_bits(d, &Mode::Config));
     let words: Vec<&str> = line.split_whitespace().collect();
     let mut resolved = grammar::resolve(&words, cli.mode.bits(), dbits);
     // An access-list line starts with a number or `permit`/`deny`; anything else is a global
@@ -774,8 +793,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Ikev2Keyring(_)
                 | Mode::Ikev2Peer(..)
                 | Mode::Ikev2Profile(_)
+                | Mode::VoiceRegGlobal
+                | Mode::VoiceRegDn(_)
+                | Mode::VoiceRegPool(_)
         )
-        && let Ok(r) = grammar::resolve(&words, Modes::CONFIG, dbits)
+        && let Ok(r) = grammar::resolve(&words, Modes::CONFIG, config_bits)
     {
         cli.mode = Mode::Config;
         resolved = Ok(r);
@@ -840,7 +862,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Ikev2Proposal(_)
                 | Mode::Ikev2Policy(_)
                 | Mode::Ikev2Keyring(_)
-                | Mode::Ikev2Profile(_) => Mode::Config,
+                | Mode::Ikev2Profile(_)
+                | Mode::VoiceRegGlobal
+                | Mode::VoiceRegDn(_)
+                | Mode::VoiceRegPool(_) => Mode::Config,
                 Mode::Ikev2Peer(ref k, _) => Mode::Ikev2Keyring(k.clone()),
                 // A class inside a policy map goes back to the policy map.
                 Mode::PolicyClass(ref p, _) => Mode::PolicyMap(p.clone()),
@@ -1174,8 +1199,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             }
             if let Some(v) = vlan_iface(arg(0)) {
                 let v = v?;
-                if c.d()?.kind != DeviceKind::Switch {
-                    return Err("% VLAN interfaces are for switches; routers use subinterfaces (`interface g0/0.10`)".into());
+                if !c.d()?.switches_frames() {
+                    return Err(
+                        "% VLAN interfaces are for switches (and routers with a switch card); routers use subinterfaces (`interface g0/0.10`)".into(),
+                    );
                 }
                 c.dm()?.svi_mut(v).ok_or("% Too many VLAN interfaces")?;
                 c.cli.mode = Mode::Svi(v);
@@ -2076,6 +2103,33 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::FwServicePolicy
         | Id::FwNoServicePolicy
         | Id::FwShowServicePolicy => firewall::command(&mut c, spec.id, &args, line),
+        Id::VoiceMaxEphones
+        | Id::VoiceMaxDn
+        | Id::VoiceSourceAddress
+        | Id::VoiceNoSourceAddress
+        | Id::VoiceAutoAssign
+        | Id::VoiceNoAutoAssign
+        | Id::VoiceNumber
+        | Id::VoiceNoNumber
+        | Id::VoiceMacAddress
+        | Id::VoiceButton
+        | Id::VoiceNoButton
+            if families::voice_register_mode(&c.cli.mode) =>
+        {
+            families::command(&mut c, spec.id, &args)
+        }
+        Id::VoiceRegGlobal
+        | Id::VoiceNoRegGlobal
+        | Id::VoiceRegDn
+        | Id::VoiceNoRegDn
+        | Id::VoiceRegPool
+        | Id::VoiceNoRegPool
+        | Id::VoiceRegMode
+        | Id::VoiceRegSource
+        | Id::VoiceRegMaxPool
+        | Id::VoiceRegIdMac
+        | Id::VoiceRegNumberDn
+        | Id::ShowVoiceRegister => families::command(&mut c, spec.id, &args),
         Id::VoiceTelephonyService
         | Id::VoiceNoTelephonyService
         | Id::VoiceMaxEphones
@@ -2112,6 +2166,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::NoNetconfYang
         | Id::ShowIpHttpServerStatus
         | Id::ShowNetconfYang => automation::command(&mut c, spec.id, &args),
+        Id::PowerInline | Id::ShowPowerInline => families::command(&mut c, spec.id, &args),
         Id::WlanAdd | Id::NoWlan | Id::CapwapController | Id::NoCapwapController | Id::ShowWlan | Id::ShowCapwap => {
             wlan::command(&mut c, spec.id, &args)
         }
@@ -3654,12 +3709,12 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(())
         }),
         Id::IpAddressDhcp => {
-            let switch = c.d()?.kind == DeviceKind::Switch;
+            let l2 = c.d()?.switchport_names();
             c.each_if(|p, sub| {
                 if sub.is_some() {
                     return Err("% `ip address dhcp` goes on the physical interface here".into());
                 }
-                if switch && !p.routed {
+                if l2.contains(&p.name) {
                     return Err(format!("% {} is a switch port: `no switchport` first", p.name));
                 }
                 p.dhcp = true;
@@ -4420,9 +4475,9 @@ impl Ctx<'_> {
             f(&mut lo.ipv6, mac, &format!("Loopback{n}"))?;
             return Ok(String::new());
         }
-        let switch = self.d()?.kind == DeviceKind::Switch;
+        let l2 = self.d()?.switchport_names();
         self.each_if(|p, sub| {
-            if switch && !p.routed {
+            if l2.contains(&p.name) {
                 return Err(format!("% {} is a switch port: IPv6 goes on a VLAN interface, or `no switchport` first", p.name));
             }
             match sub {
@@ -4490,7 +4545,7 @@ impl Ctx<'_> {
         let [r] = ifs.as_slice() else { return Err("% Set addresses one interface at a time".into()) };
         let r = *r;
         let d = self.d()?;
-        if d.kind == DeviceKind::Switch && d.ports.get(r.port).is_some_and(|p| !p.routed) {
+        if d.is_switchport(r.port) {
             return Err("% This is a switch port: `no switchport` first (multilayer switches), or address a VLAN interface".into());
         }
         if let Some(l) = d.loopbacks.iter().find(|l| l.ip.is_some_and(|ip| ip.overlaps(net))) {

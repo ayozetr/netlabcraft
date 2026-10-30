@@ -17,7 +17,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use netlabcraft_core::{DeviceId, MacAddr, VlanId};
-use netlabcraft_model::{Device, DeviceKind, End, STP_DEFAULT_PRIORITY, Topology};
+use netlabcraft_model::{Device, End, STP_DEFAULT_PRIORITY, Topology};
 
 use crate::channel::PortMap;
 use crate::port_up;
@@ -177,19 +177,14 @@ pub fn rapid_link(t: &Topology, dev: DeviceId, port: usize) -> bool {
     let end = End { device: dev, port };
     let Some(d) = t.device(dev) else { return false };
     let Some((q, pd)) = t.peer(end).and_then(|q| t.device(q.device).map(|pd| (q, pd))) else { return false };
-    d.rapid_stp
-        && pd.rapid_stp
-        && pd.kind == DeviceKind::Switch
-        && point_to_point(d, port)
-        && point_to_point(pd, q.port)
-        && !filtered_link(t, dev, port)
+    d.rapid_stp && pd.rapid_stp && pd.switches_frames() && point_to_point(d, port) && point_to_point(pd, q.port) && !filtered_link(t, dev, port)
 }
 
 /// Whether a port is cabled to a switch port (one that takes part in spanning tree).
 pub fn faces_switch(t: &Topology, dev: DeviceId, port: usize) -> bool {
     t.peer(End { device: dev, port })
         .and_then(|q| t.device(q.device).map(|pd| (q, pd)))
-        .is_some_and(|(q, pd)| pd.kind == DeviceKind::Switch && pd.ports.get(q.port).is_some_and(|x| !x.routed))
+        .is_some_and(|(q, pd)| pd.switches_frames() && pd.ports.get(q.port).is_some_and(|x| !x.routed))
 }
 
 /// Whether a port has `spanning-tree bpdufilter enable`.
@@ -210,8 +205,7 @@ pub fn loop_guard_on(t: &Topology, dev: DeviceId, port: usize) -> bool {
     let Some(d) = t.device(dev) else { return false };
     let Some(p) = d.ports.get(port) else { return false };
     p.l2.loop_guard
-        || (d.l2.loopguard_default
-            && t.peer(End { device: dev, port }).and_then(|q| t.device(q.device)).is_some_and(|x| x.kind == DeviceKind::Switch))
+        || (d.l2.loopguard_default && t.peer(End { device: dev, port }).and_then(|q| t.device(q.device)).is_some_and(|x| x.switches_frames()))
 }
 
 pub fn bridge_id(d: &Device, vlan: VlanId) -> BridgeId {
@@ -221,16 +215,16 @@ pub fn bridge_id(d: &Device, vlan: VlanId) -> BridgeId {
 
 /// Whether a switch port carries a VLAN.
 pub fn carries(t: &Topology, d: &Device, port: usize, vlan: VlanId) -> bool {
-    d.kind == DeviceKind::Switch
+    d.switches_frames()
         && t.switch_has_vlan(d, vlan)
-        && (d.ports.get(port).filter(|p| !p.routed).is_some_and(|p| {
+        && (d.ports.get(port).filter(|_| d.is_switchport(port)).is_some_and(|p| {
             if t.is_trunk(End { device: d.id, port }) { p.switchport.allowed.contains(vlan) } else { p.switchport.access_carries(vlan) }
         }) || t.radio_carries(d, port, vlan))
 }
 
 fn compute_with(t: &Topology, vlan: VlanId, excluded: &BTreeSet<(DeviceId, usize)>, looped: &BTreeSet<(DeviceId, usize)>, filters: bool) -> VlanTree {
     let mut tree = VlanTree::default();
-    let switches: Vec<&Device> = t.devices.iter().filter(|d| d.kind == DeviceKind::Switch && t.switch_has_vlan(d, vlan)).collect();
+    let switches: Vec<&Device> = t.devices.iter().filter(|d| d.switches_frames() && t.switch_has_vlan(d, vlan)).collect();
     // An EtherChannel takes part as one port: its lead member, costed by the bundle's speed.
     let maps: BTreeMap<DeviceId, PortMap> = switches.iter().map(|d| (d.id, PortMap::new(t, d))).collect();
     let logical = |dev: DeviceId, p: usize| maps.get(&dev).map_or(p, |m| m.logical(p));
@@ -416,11 +410,12 @@ pub fn fingerprint(t: &Topology) -> u64 {
         for p in &d.ports {
             (p.shutdown, p.err_disabled, p.channel, p.routed).hash(&mut h);
             (&p.l2.stp_cost, &p.l2.stp_priority, p.l2.root_guard, p.l2.loop_guard, p.l2.bpdufilter).hash(&mut h);
-            if d.kind == DeviceKind::Switch {
+            if d.switches_frames() {
                 format!("{:?}", p.switchport).hash(&mut h);
             }
         }
-        if d.kind == DeviceKind::Switch {
+        d.modules.hash(&mut h);
+        if d.switches_frames() {
             format!("{:?}{:?}", d.vlans.keys().collect::<Vec<_>>(), d.stp_priority).hash(&mut h);
             (d.l2.loopguard_default, d.rapid_stp).hash(&mut h);
             // An access point's radio is up while hosts are associated (a host moving in or

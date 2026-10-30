@@ -1,10 +1,11 @@
-//! The IoT tab: a smart thing's reading or state and its server; a server's IoT service, the
-//! things registered with it and its rules. Every change is an engine command (`iot.configure`,
-//! `iot.sync`, `iot.server`, `iot.switch`).
+//! The IoT tab: a smart thing's reading or state, its server and its report timer; an IoT
+//! service's page (a server's, or a home gateway's built-in one): the things registered with
+//! it, live, and its rules. Every change is an engine command (`iot.configure`, `iot.sync`,
+//! `iot.server`, `iot.switch`).
 
 use egui::{RichText, Sense, vec2};
 use netlabcraft_model::Device;
-use netlabcraft_model::iot::is_sensor;
+use netlabcraft_model::iot::{can_serve, is_sensor, thing};
 use serde_json::{Value, json};
 
 use crate::i18n::{tl, tr_any, trf};
@@ -14,14 +15,82 @@ use crate::{PacketApp, theme};
 #[derive(Debug, Clone, Default)]
 pub(crate) struct IotForm {
     server: String,
+    interval: String,
     filled: bool,
     rule_sensor: String,
+    rule_op: usize,
     rule_above: String,
+    /// A second condition (optional) and how it joins the first.
+    rule_or: bool,
+    rule_sensor2: String,
+    rule_op2: usize,
+    rule_value2: String,
+    rule_off: bool,
     rule_actuator: String,
 }
 
+const OPS: [&str; 3] = [">", "<", "="];
+
 pub(crate) fn tab(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut IotForm) {
-    if dev.kind == netlabcraft_model::DeviceKind::Server { server_page(app, ui, dev, form) } else { thing_page(app, ui, dev, form) }
+    if can_serve(dev) { server_page(app, ui, dev, form) } else { thing_page(app, ui, dev, form) }
+}
+
+/// The thing drawn in code: a lamp, a lock, a siren… lit while on.
+fn draw_state(ui: &mut egui::Ui, what: &str, on: bool, tk: &theme::Tokens) {
+    let (rect, _) = ui.allocate_exact_size(vec2(70.0, 70.0), Sense::hover());
+    let p = ui.painter_at(rect);
+    let c = rect.center();
+    let col = if on { tk.link_up } else { tk.chrome_line };
+    let s = egui::Stroke::new(2.0, tk.muted);
+    match what {
+        "fan" => {
+            p.circle_stroke(c, 30.0, s);
+            for k in 0..3 {
+                let a = k as f32 * std::f32::consts::TAU / 3.0;
+                let tip = c + vec2(a.cos(), a.sin()) * 26.0;
+                let side = c + vec2((a + 0.6).cos(), (a + 0.6).sin()) * 20.0;
+                p.add(egui::Shape::convex_polygon(vec![c, tip, side], col, egui::Stroke::NONE));
+            }
+            p.circle_filled(c, 5.0, tk.muted);
+        }
+        "light" => {
+            p.circle_filled(c - vec2(0.0, 6.0), 20.0, if on { egui::Color32::from_rgb(0xf6, 0xd3, 0x4a) } else { tk.chrome_line });
+            p.circle_stroke(c - vec2(0.0, 6.0), 20.0, s);
+            p.rect_filled(egui::Rect::from_center_size(c + vec2(0.0, 22.0), vec2(16.0, 10.0)), 2.0, tk.muted);
+        }
+        "door" => {
+            // A padlock: the shackle is open when unlocked.
+            let body = egui::Rect::from_center_size(c + vec2(0.0, 10.0), vec2(36.0, 28.0));
+            p.rect_filled(body, 4.0, col);
+            p.rect_stroke(body, 4.0, s, egui::StrokeKind::Inside);
+            let lift = if on { 10.0 } else { 0.0 };
+            let pts: Vec<egui::Pos2> = (0..=12)
+                .map(|i| {
+                    let a = std::f32::consts::PI + i as f32 * std::f32::consts::PI / 12.0;
+                    c + vec2(a.cos() * 12.0, a.sin() * 14.0 - 4.0 - lift)
+                })
+                .collect();
+            p.add(egui::Shape::line(pts, egui::Stroke::new(4.0, tk.muted)));
+        }
+        "siren" => {
+            p.add(egui::Shape::convex_polygon(
+                vec![c + vec2(-18.0, 20.0), c + vec2(18.0, 20.0), c + vec2(12.0, -14.0), c + vec2(-12.0, -14.0)],
+                col,
+                s,
+            ));
+            if on {
+                for r in [26.0f32, 32.0] {
+                    p.circle_stroke(c - vec2(0.0, 6.0), r, egui::Stroke::new(1.5, egui::Color32::from_rgb(0xd6, 0x45, 0x3a)));
+                }
+            }
+        }
+        _ => {
+            // A camera: body and lens.
+            p.rect_filled(egui::Rect::from_center_size(c, vec2(44.0, 30.0)), 5.0, col);
+            p.circle_filled(c, 10.0, tk.muted);
+            p.circle_filled(c, 5.0, if on { egui::Color32::from_rgb(0xd6, 0x45, 0x3a) } else { tk.chrome });
+        }
+    }
 }
 
 fn thing_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut IotForm) {
@@ -29,19 +98,27 @@ fn thing_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut I
     let d = dev.id;
     if !form.filled {
         form.server = dev.iot.server.map(|a| a.to_string()).unwrap_or_default();
+        form.interval = dev.iot.interval.to_string();
         form.filled = true;
     }
     let st = app.session.sim.iot_thing(d).cloned().unwrap_or_default();
+    let what = thing(dev);
     ui.horizontal(|ui| {
         let l = ui.label(tl("IoT server:"));
         ui.add(egui::TextEdit::singleline(&mut form.server).desired_width(140.0)).labelled_by(l.id);
+        let l = ui.label(tl("Report every (s):"));
+        ui.add(egui::TextEdit::singleline(&mut form.interval).desired_width(50.0)).labelled_by(l.id);
         if ui.button(tl("Apply")).clicked() {
-            app.run("iot.configure", json!({"device": d.0, "server": form.server.trim()}));
+            let interval = form.interval.trim().parse::<u64>().unwrap_or(0);
+            app.run("iot.configure", json!({"device": d.0, "server": form.server.trim(), "interval": interval}));
         }
     });
     if is_sensor(dev) {
         ui.horizontal(|ui| {
             ui.label(RichText::new(trf("Reading: {}", &[&dev.iot.value])).size(18.0).strong());
+            if let Some(t) = what {
+                ui.label(RichText::new(tl(t.unit)).color(tk.muted));
+            }
             for (label, step) in [("-5", -5), ("-1", -1), ("+1", 1), ("+5", 5)] {
                 if ui.button(label).on_hover_text(tl("Change the reading")).clicked() {
                     app.run("iot.configure", json!({"device": d.0, "value": dev.iot.value.saturating_add(step)}));
@@ -49,20 +126,13 @@ fn thing_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut I
             }
         });
     } else {
-        // The fan: its blades drawn in code, coloured while it runs.
-        let (rect, _) = ui.allocate_exact_size(vec2(70.0, 70.0), Sense::hover());
-        let p = ui.painter_at(rect);
-        let c = rect.center();
-        let col = if st.on { tk.link_up } else { tk.chrome_line };
-        p.circle_stroke(c, 30.0, egui::Stroke::new(2.0, tk.muted));
-        for k in 0..3 {
-            let a = k as f32 * std::f32::consts::TAU / 3.0;
-            let tip = c + vec2(a.cos(), a.sin()) * 26.0;
-            let side = c + vec2((a + 0.6).cos(), (a + 0.6).sin()) * 20.0;
-            p.add(egui::Shape::convex_polygon(vec![c, tip, side], col, egui::Stroke::NONE));
+        let w = what.map_or("fan", |t| t.what);
+        draw_state(ui, w, st.on, &tk);
+        let words = what.map_or(("Running (switched on by the server)", "Stopped"), |t| (t.on_word, t.off_word));
+        ui.label(RichText::new(tl(if st.on { words.0 } else { words.1 })).strong());
+        if let Some(img) = &st.image {
+            ui.label(RichText::new(tr_any(img)).monospace());
         }
-        p.circle_filled(c, 5.0, tk.muted);
-        ui.label(RichText::new(if st.on { tl("Running (switched on by the server)") } else { tl("Stopped") }).strong());
     }
     match (&st.registered, &st.message) {
         (Some(a), _) => ui.label(trf("Registered with {}", &[a])),
@@ -90,15 +160,20 @@ fn server_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut 
         ui.label(tl("None yet: smart things register when they report (Refresh)."));
     }
     let mut switch: Option<(String, bool)> = None;
-    egui::Grid::new(("iot-things", d.0)).striped(true).num_columns(4).show(ui, |ui| {
+    egui::Grid::new(("iot-things", d.0)).striped(true).num_columns(5).show(ui, |ui| {
         for t in &things {
             ui.label(&t.name);
+            ui.label(crate::i18n::tr(&t.what));
             ui.label(t.address.to_string());
             if t.kind == "sensor" {
                 ui.label(trf("reading {}", &[&t.value.map_or("-".to_string(), |v| v.to_string())]));
                 ui.label("");
             } else {
-                ui.label(if t.on { tl("on") } else { tl("off") });
+                let state = if t.on { tl("on") } else { tl("off") };
+                match &t.image {
+                    Some(img) => ui.label(format!("{state} · {}", tr_any(img))),
+                    None => ui.label(state),
+                };
                 if ui.button(if t.on { tl("Switch off") } else { tl("Switch on") }).clicked() {
                     switch = Some((t.name.clone(), !t.on));
                 }
@@ -111,11 +186,19 @@ fn server_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut 
     }
     ui.add_space(6.0);
     ui.label(RichText::new(tl("Rules")).strong());
-    let rules: Vec<Value> = dev.iot.rules.iter().map(|r| json!({"sensor": r.sensor, "above": r.above, "actuator": r.actuator})).collect();
+    let rules: Vec<Value> = dev
+        .iot
+        .rules
+        .iter()
+        .map(|r| {
+            let conds: Vec<Value> = r.all_conditions().iter().map(|c| json!({"sensor": c.sensor, "op": c.op.symbol(), "value": c.value})).collect();
+            json!({"conditions": conds, "join": if r.any { "or" } else { "and" }, "actuator": r.actuator, "on": r.on})
+        })
+        .collect();
     let mut remove = None;
     for (i, r) in dev.iot.rules.iter().enumerate() {
         ui.horizontal(|ui| {
-            ui.label(trf("If {} is above {}, switch {} on", &[&r.sensor, &r.above, &r.actuator]));
+            ui.label(rule_words(r));
             if ui.button(tl("Remove")).clicked() {
                 remove = Some(i);
             }
@@ -128,16 +211,47 @@ fn server_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut 
         }
         app.run("iot.server", json!({"device": d.0, "rules": left}));
     }
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         let l = ui.label(tl("If"));
-        ui.add(egui::TextEdit::singleline(&mut form.rule_sensor).desired_width(90.0).hint_text(tl("sensor"))).labelled_by(l.id);
-        let l = ui.label(tl("is above"));
-        ui.add(egui::TextEdit::singleline(&mut form.rule_above).desired_width(50.0).hint_text("30")).labelled_by(l.id);
-        let l = ui.label(tl("switch on"));
+        ui.add(egui::TextEdit::singleline(&mut form.rule_sensor).desired_width(80.0).hint_text(tl("sensor"))).labelled_by(l.id);
+        op_box(ui, ("op1", d.0), &mut form.rule_op);
+        let l = ui.label(tl("value"));
+        ui.add(egui::TextEdit::singleline(&mut form.rule_above).desired_width(40.0).hint_text("30")).labelled_by(l.id);
+        egui::ComboBox::from_id_salt(("join", d.0))
+            .selected_text(if form.rule_or { tl("or") } else { tl("and") })
+            .width(50.0)
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut form.rule_or, false, tl("and"));
+                ui.selectable_value(&mut form.rule_or, true, tl("or"));
+            })
+            .response
+            .widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::ComboBox, true, tl("Join the conditions with")));
+        let l = ui.label(tl("second sensor"));
+        ui.add(egui::TextEdit::singleline(&mut form.rule_sensor2).desired_width(80.0).hint_text(tl("optional"))).labelled_by(l.id);
+        op_box(ui, ("op2", d.0), &mut form.rule_op2);
+        let l = ui.label(tl("second value"));
+        ui.add(egui::TextEdit::singleline(&mut form.rule_value2).desired_width(40.0)).labelled_by(l.id);
+    });
+    ui.horizontal(|ui| {
+        egui::ComboBox::from_id_salt(("action", d.0))
+            .selected_text(if form.rule_off { tl("switch off") } else { tl("switch on") })
+            .width(90.0)
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut form.rule_off, false, tl("switch on"));
+                ui.selectable_value(&mut form.rule_off, true, tl("switch off"));
+            })
+            .response
+            .widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::ComboBox, true, tl("What the rule does")));
+        let l = ui.label(tl("device"));
         ui.add(egui::TextEdit::singleline(&mut form.rule_actuator).desired_width(90.0).hint_text(tl("device"))).labelled_by(l.id);
         if ui.button(tl("Add rule")).clicked() {
+            let num = |s: &str| s.trim().parse::<i64>().unwrap_or(0);
+            let mut conds = vec![json!({"sensor": form.rule_sensor.trim(), "op": OPS.get(form.rule_op).copied().unwrap_or(">"), "value": num(&form.rule_above)})];
+            if !form.rule_sensor2.trim().is_empty() {
+                conds.push(json!({"sensor": form.rule_sensor2.trim(), "op": OPS.get(form.rule_op2).copied().unwrap_or(">"), "value": num(&form.rule_value2)}));
+            }
             let mut all = rules.clone();
-            all.push(json!({"sensor": form.rule_sensor.trim(), "above": form.rule_above.trim().parse::<i64>().unwrap_or(0), "actuator": form.rule_actuator.trim()}));
+            all.push(json!({"conditions": conds, "join": if form.rule_or { "or" } else { "and" }, "actuator": form.rule_actuator.trim(), "on": !form.rule_off}));
             if app.run("iot.server", json!({"device": d.0, "rules": all})).is_some() {
                 *form = IotForm { filled: form.filled, ..IotForm::default() };
             }
@@ -145,6 +259,30 @@ fn server_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut 
     });
 }
 
+/// `>`, `<` or `=`.
+fn op_box(ui: &mut egui::Ui, id: (&str, u32), op: &mut usize) {
+    egui::ComboBox::from_id_salt(id)
+        .selected_text(OPS.get(*op).copied().unwrap_or(">"))
+        .width(36.0)
+        .show_ui(ui, |ui| {
+            for (i, o) in OPS.iter().enumerate() {
+                ui.selectable_value(op, i, *o);
+            }
+        })
+        .response
+        .widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::ComboBox, true, tl("Comparison")));
+}
+
+/// A rule in the interface language.
+fn rule_words(r: &netlabcraft_model::iot::IotRule) -> String {
+    let conds: Vec<String> = r.all_conditions().iter().map(|c| format!("{} {} {}", c.sensor, c.op.symbol(), c.value)).collect();
+    let join = format!(" {} ", if r.any { tl("or") } else { tl("and") });
+    if r.on {
+        trf("If {}, switch {} on", &[&conds.join(&join), &r.actuator])
+    } else {
+        trf("If {}, switch {} off", &[&conds.join(&join), &r.actuator])
+    }
+}
 #[cfg(test)]
 mod tests {
     use egui_kittest::Harness;
@@ -182,6 +320,6 @@ mod tests {
         h.get_by_label("Switch off").click();
         h.run_steps(2);
         assert_eq!(fan(&h), Some(false));
-        assert!(h.query_by_label("If Sensor1 is above 30, switch Fan1 on").is_some());
+        assert!(h.query_by_label("If Sensor1 > 30, switch Fan1 on").is_some());
     }
 }

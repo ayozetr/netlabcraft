@@ -191,6 +191,8 @@ pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
                             (Tab::Iot, "IoT"),
                             (Tab::Attributes, "Attributes"),
                         ]
+                    } else if netlabcraft_model::iot::can_serve(&dev) && dev.kind != DeviceKind::Server {
+                        &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Iot, "IoT"), (Tab::Cli, "CLI"), (Tab::Attributes, "Attributes")]
                     } else if dev.kind == DeviceKind::Iot {
                         &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Iot, "IoT"), (Tab::Attributes, "Attributes")]
                     } else if dev.kind == DeviceKind::Phone {
@@ -410,15 +412,25 @@ fn physical(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     );
     p.text(led_power + vec2(10.0, 0.0), egui::Align2::LEFT_CENTER, "PWR", egui::FontId::proportional(10.0), egui::Color32::WHITE);
     let mut hovered = None;
+    // PoE switches: a bar under each port that can give power, lit while it powers a device.
+    let poe = netlabcraft_model::poe::budget_mw(dev.catalogue_model()).map(|_| app.session.topology.power_inline(dev.id));
     for (i, port) in dev.ports.iter().enumerate() {
         let (row, col) = (i / per_row, i % per_row);
         let cell = egui::Rect::from_min_size(rect.left_top() + vec2(20.0 + col as f32 * 46.0, 36.0 + row as f32 * 56.0), vec2(38.0, 46.0));
         let socket = egui::Rect::from_min_size(cell.min + vec2(5.0, 12.0), vec2(28.0, 20.0));
         let end = End { device: dev.id, port: i };
         let (cabled, up) = (app.session.topology.peer(end).is_some(), port_up(&app.session.topology, end));
-        p.rect_filled(socket, 2.0, egui::Color32::from_rgb(0x1a, 0x1c, 0x20));
-        if cabled {
-            p.rect_filled(socket.shrink(4.0), 1.0, egui::Color32::from_rgb(0x4a, 0x90, 0xd0));
+        if port.name.starts_with("Coaxial") {
+            // A threaded F connector.
+            p.circle_filled(socket.center(), 9.0, egui::Color32::from_rgb(0xc8, 0xa2, 0x4a));
+            p.circle_filled(socket.center(), if cabled { 5.0 } else { 3.0 }, egui::Color32::from_rgb(0x1a, 0x1c, 0x20));
+        } else {
+            // An RJ-11 phone socket is narrower than an RJ-45.
+            let socket = if port.name.starts_with("Phone") { socket.shrink2(vec2(6.0, 2.0)) } else { socket };
+            p.rect_filled(socket, 2.0, egui::Color32::from_rgb(0x1a, 0x1c, 0x20));
+            if cabled {
+                p.rect_filled(socket.shrink(4.0), 1.0, egui::Color32::from_rgb(0x4a, 0x90, 0xd0));
+            }
         }
         let led = if up {
             tk.link_up
@@ -428,6 +440,13 @@ fn physical(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
             egui::Color32::from_rgb(0x2a, 0x2a, 0x2a)
         };
         p.circle_filled(socket.center_top() - vec2(0.0, 6.0), 3.5, led);
+        if let Some(rows) = &poe
+            && port.name.starts_with("FastEthernet")
+        {
+            let on = rows.iter().any(|r| r.port == i && r.device.is_some());
+            let bar = egui::Rect::from_min_size(socket.left_bottom() + vec2(4.0, 1.5), vec2(socket.width() - 8.0, 2.5));
+            p.rect_filled(bar, 1.0, if on { egui::Color32::from_rgb(0xf2, 0xc2, 0x3a) } else { egui::Color32::from_rgb(0x6a, 0x5a, 0x2a) });
+        }
         p.text(
             cell.center_bottom() - vec2(0.0, 6.0),
             egui::Align2::CENTER_CENTER,

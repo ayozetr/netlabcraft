@@ -35,7 +35,7 @@ impl Model {
     /// A home wireless router: a multilayer switch with an Internet port, four LAN ports and a
     /// radio, set up at the factory to route, translate and hand out addresses.
     pub fn home_router(&self) -> bool {
-        self.id == "Home-Router"
+        matches!(self.id, "Home-Router" | "Home-Gateway")
     }
 }
 
@@ -139,6 +139,20 @@ pub static MODELS: &[Model] = &[
         ports: &[run("FastEthernet0/", 1, 24), fiber("GigabitEthernet0/", 1, 2)],
     },
     Model {
+        id: "Switch-8-PoE",
+        kind: DeviceKind::Switch,
+        label: "Switch 8FE PoE",
+        description: "Switch with 8 Fast Ethernet ports that give power over Ethernet (65 W in all) + 1 Gigabit Ethernet uplink: powers IP phones and lightweight access points",
+        ports: &[run("FastEthernet0/", 1, 8), combo("GigabitEthernet0/", 1, 1)],
+    },
+    Model {
+        id: "Switch-24-PoE",
+        kind: DeviceKind::Switch,
+        label: "Switch 24FE PoE",
+        description: "Switch with 24 Fast Ethernet ports that give power over Ethernet (370 W in all) + 2 Gigabit Ethernet uplinks: powers IP phones and lightweight access points",
+        ports: &[run("FastEthernet0/", 1, 24), combo("GigabitEthernet0/", 1, 2)],
+    },
+    Model {
         id: "AccessPoint",
         kind: DeviceKind::Switch,
         label: "Access Point",
@@ -165,6 +179,34 @@ pub static MODELS: &[Model] = &[
         label: "Home Router",
         description: "Home wireless router: Internet port, 4 LAN ports and Wi-Fi, with DHCP and NAT set up",
         ports: &[run("Internet", 0, 0), run("Ethernet", 1, 4), run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Home-Gateway",
+        kind: DeviceKind::Switch,
+        label: "Home Gateway",
+        description: "Home IoT gateway: Internet port, 4 LAN ports and Wi-Fi with DHCP and NAT like a home router, plus a built-in IoT service that smart things register with",
+        ports: &[run("Internet", 0, 0), run("Ethernet", 1, 4), run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Cloud",
+        kind: DeviceKind::Hub,
+        label: "Cloud",
+        description: "A provider's network (WAN): 2 Ethernet, 2 coaxial and 2 phone (DSL) ports, each joined to the port it is mapped to (by default coaxial to phone: a cable modem reaches a DSL modem)",
+        ports: &[run("Ethernet", 0, 1), run("Coaxial", 0, 1), run("Phone", 0, 1)],
+    },
+    Model {
+        id: "DSL-Modem",
+        kind: DeviceKind::Hub,
+        label: "DSL Modem",
+        description: "DSL modem: bridges its phone line (Phone0, RJ-11) to its Ethernet port (Ethernet1)",
+        ports: &[run("Phone", 0, 0), run("Ethernet", 1, 1)],
+    },
+    Model {
+        id: "Cable-Modem",
+        kind: DeviceKind::Hub,
+        label: "Cable Modem",
+        description: "Cable modem: bridges its coaxial port (Coaxial0) to its Ethernet port (Ethernet1)",
+        ports: &[run("Coaxial", 0, 0), run("Ethernet", 1, 1)],
     },
     Model {
         id: "Hub-8",
@@ -217,6 +259,48 @@ pub static MODELS: &[Model] = &[
         ports: &[run("FastEthernet", 0, 0)],
     },
     Model {
+        id: "IoT-Motion",
+        kind: DeviceKind::Iot,
+        label: "Motion Detector",
+        description: "Smart motion detector with one Fast Ethernet port: reports 1 while something moves in front of it, else 0",
+        ports: &[run("FastEthernet", 0, 0)],
+    },
+    Model {
+        id: "IoT-Smoke",
+        kind: DeviceKind::Iot,
+        label: "Smoke Detector",
+        description: "Smart smoke detector with one Fast Ethernet port: reports how much smoke it senses (0-100 %)",
+        ports: &[run("FastEthernet", 0, 0)],
+    },
+    Model {
+        id: "IoT-Light",
+        kind: DeviceKind::Iot,
+        label: "Smart Light",
+        description: "Smart lamp with one Fast Ethernet port: the IoT server switches it on and off",
+        ports: &[run("FastEthernet", 0, 0)],
+    },
+    Model {
+        id: "IoT-Door",
+        kind: DeviceKind::Iot,
+        label: "Smart Door Lock",
+        description: "Smart door lock with one Fast Ethernet port: the IoT server unlocks it (on) and locks it (off)",
+        ports: &[run("FastEthernet", 0, 0)],
+    },
+    Model {
+        id: "IoT-Siren",
+        kind: DeviceKind::Iot,
+        label: "Siren",
+        description: "Smart siren with one Fast Ethernet port: sounds while the IoT server keeps it on",
+        ports: &[run("FastEthernet", 0, 0)],
+    },
+    Model {
+        id: "IoT-Webcam",
+        kind: DeviceKind::Iot,
+        label: "Webcam",
+        description: "Smart webcam with one Fast Ethernet port: while on, it takes a still image each time it reports and the IoT server keeps the latest",
+        ports: &[run("FastEthernet", 0, 0)],
+    },
+    Model {
         id: "IoT-Device",
         kind: DeviceKind::Iot,
         label: "Smart Device",
@@ -239,6 +323,9 @@ pub struct Module {
     pub port_count: u32,
     /// What the ports take; `None`: what their name says.
     pub medium: Option<Medium>,
+    /// Layer-2 switch ports (a switch card): VLAN members switched inside the router, routed
+    /// through its VLAN interfaces.
+    pub switched: bool,
 }
 
 /// The cards a modular router's bays take.
@@ -250,6 +337,7 @@ pub static MODULES: &[Module] = &[
         port_type: "Serial",
         port_count: 2,
         medium: None,
+        switched: false,
     },
     Module {
         id: "Card-4S",
@@ -258,6 +346,7 @@ pub static MODULES: &[Module] = &[
         port_type: "Serial",
         port_count: 4,
         medium: None,
+        switched: false,
     },
     Module {
         id: "Card-1GE",
@@ -266,6 +355,7 @@ pub static MODULES: &[Module] = &[
         port_type: "GigabitEthernet",
         port_count: 1,
         medium: None,
+        switched: false,
     },
     Module {
         id: "Card-2GE",
@@ -274,6 +364,7 @@ pub static MODULES: &[Module] = &[
         port_type: "GigabitEthernet",
         port_count: 2,
         medium: None,
+        switched: false,
     },
     Module {
         id: "Card-1FE",
@@ -282,6 +373,7 @@ pub static MODULES: &[Module] = &[
         port_type: "FastEthernet",
         port_count: 1,
         medium: None,
+        switched: false,
     },
     Module {
         id: "Card-1GF",
@@ -290,6 +382,16 @@ pub static MODULES: &[Module] = &[
         port_type: "GigabitEthernet",
         port_count: 1,
         medium: Some(Medium::Fiber),
+        switched: false,
+    },
+    Module {
+        id: "Card-4SW",
+        label: "4-port switch card",
+        description: "Four layer-2 switch ports inside the router: VLAN membership and trunks as on a switch, routed through the router's VLAN interfaces",
+        port_type: "FastEthernet",
+        port_count: 4,
+        medium: None,
+        switched: true,
     },
 ];
 
@@ -312,6 +414,28 @@ impl Model {
             "Router-M2" => &["0/0", "0/1"],
             "Router-M3" => &["0/0", "0/1", "0/2", "0/3"],
             _ => &[],
+        }
+    }
+}
+
+impl Model {
+    /// A provider cloud: frames go only between the ports mapped to each other.
+    pub fn cloud(&self) -> bool {
+        self.id == "Cloud"
+    }
+
+    /// A WAN device (the cloud and the modems), listed apart in the device list.
+    pub fn wan(&self) -> bool {
+        matches!(self.id, "Cloud" | "DSL-Modem" | "Cable-Modem")
+    }
+
+    /// The name new devices of this model get (`Cloud1`, `Modem1`), when not the kind's.
+    pub fn name_prefix(&self) -> Option<&'static str> {
+        match self.id {
+            "Cloud" => Some("Cloud"),
+            "DSL-Modem" | "Cable-Modem" => Some("Modem"),
+            "Home-Gateway" => Some("Gateway"),
+            _ => None,
         }
     }
 }
@@ -342,7 +466,11 @@ static FALLBACK: Model = Model { id: "PC", kind: DeviceKind::Pc, label: "PC", de
 
 /// What a port takes, by its name alone.
 pub fn medium_by_name(name: &str) -> Medium {
-    if crate::ifname::is_serial(name) {
+    if name.starts_with("Coaxial") {
+        Medium::Coaxial
+    } else if name.starts_with("Phone") {
+        Medium::Phone
+    } else if crate::ifname::is_serial(name) {
         Medium::Serial
     } else if crate::ifname::is_wireless(name) {
         Medium::Wireless

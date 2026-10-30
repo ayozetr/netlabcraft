@@ -194,7 +194,7 @@ fn policy_ifaces(c: &Ctx) -> Result<Vec<String>, String> {
             let mut out = Vec::new();
             for r in ifs {
                 let p = d.ports.get(r.port).ok_or("% No such port")?;
-                if switch && !p.routed {
+                if d.is_switchport(r.port) {
                     return Err(format!("% {} is a switch port: service policies need a routed port (`no switchport`) or a VLAN interface", p.name));
                 }
                 out.push(r.sub.map_or(p.name.clone(), |s| format!("{}.{s}", p.name)));

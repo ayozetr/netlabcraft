@@ -41,6 +41,7 @@ pub mod tacacs;
 
 pub mod serial;
 pub mod sha1;
+pub mod sip;
 pub mod snmp;
 pub mod tcp;
 pub mod vpn;
@@ -472,6 +473,8 @@ pub enum Protocol {
     Eapol,
     /// CAPWAP between lightweight access points and their controller.
     Capwap,
+    /// SIP call control between IP phones and their router (UDP 5060).
+    Sip,
     Other,
 }
 
@@ -511,6 +514,7 @@ impl Protocol {
             Protocol::Wlan => "802.11",
             Protocol::Eapol => "EAPOL",
             Protocol::Capwap => "CAPWAP",
+            Protocol::Sip => "SIP",
             Protocol::Other => "Other",
         }
     }
@@ -616,6 +620,10 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                         {
                             (Protocol::Udp, ikev2::summary(&u.payload).unwrap_or_else(|| "IKEv2 (unreadable)".into()))
                         }
+                        Ok(u) if u.dst_port == sip::PORT || u.src_port == sip::PORT => match sip::Message::decode(&u.payload) {
+                            Ok(m) => (Protocol::Sip, format!("{} {route}{tag}", m.summary())),
+                            Err(e) => (Protocol::Sip, format!("SIP ({e}) {route}{tag}")),
+                        },
                         Ok(u) if u.dst_port == ike::ISAKMP_PORT && u.src_port == ike::ISAKMP_PORT => match ike::Isakmp::decode(&u.payload) {
                             Ok(m) => {
                                 let exchange = match m.exchange {

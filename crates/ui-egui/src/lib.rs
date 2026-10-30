@@ -19,12 +19,14 @@ use serde_json::{Value, json};
 pub mod activity;
 mod bottom;
 mod canvas;
+mod cloud_page;
 mod console;
 mod credits;
 mod events;
 mod hardware;
 pub mod i18n;
 pub mod icons;
+pub mod icons_families;
 mod iot_page;
 mod mail;
 mod mib;
@@ -40,6 +42,7 @@ mod wlan_page;
 
 #[cfg(test)]
 mod tests;
+mod tests_families;
 
 use crate::i18n::tl;
 use icons::Glyph;

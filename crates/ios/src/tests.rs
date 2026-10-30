@@ -5,6 +5,7 @@ use netlabcraft_sim::Sim;
 use crate::grammar::{SPECS, Tok};
 use crate::*;
 
+mod families;
 mod leftovers;
 mod routing;
 mod security;

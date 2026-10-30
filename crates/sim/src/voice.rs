@@ -87,7 +87,9 @@ pub struct PhoneCall {
     pub peer_ip: Option<Ipv4Addr>,
     pub rtp_sent: u32,
     pub rtp_received: u32,
-    last_rtp_us: u64,
+    pub(crate) last_rtp_us: u64,
+    /// SIP phones: the call's `Call-ID`.
+    pub sip_id: Option<String>,
 }
 
 /// What a phone knows at run time.
@@ -97,12 +99,15 @@ pub struct PhoneState {
     pub agent: Option<Ipv4Addr>,
     pub number: Option<String>,
     /// The address it registered from (a new address means registering again).
-    reg_ip: Option<Ipv4Addr>,
+    pub(crate) reg_ip: Option<Ipv4Addr>,
     /// Why the router refused it, or why the last call ended.
     pub message: Option<String>,
-    last_try: Option<u64>,
+    pub(crate) last_try: Option<u64>,
     pub call: Option<PhoneCall>,
-    rtp_seq: u16,
+    pub(crate) rtp_seq: u16,
+    /// SIP phones: the INVITE that is ringing them (answered from its headers).
+    pub(crate) sip_invite: Option<netlabcraft_wire::sip::Message>,
+    pub(crate) sip_seq: u32,
 }
 
 /// A phone the router has registered.
@@ -111,8 +116,11 @@ pub struct Registration {
     pub mac: MacAddr,
     pub ip: Ipv4Addr,
     pub number: String,
-    /// The `ephone` entry (0: given a number by `auto assign`).
+    /// The `ephone` entry (0: given a number by `auto assign`); for SIP phones the
+    /// `voice register pool`.
     pub ephone: u16,
+    /// Registered with SIP (`voice register`).
+    pub sip: bool,
 }
 
 /// A call the router is connecting.
@@ -132,13 +140,15 @@ pub struct AgentState {
     pub registrations: Vec<Registration>,
     pub calls: Vec<AgentCall>,
     next_call: u32,
+    /// SIP calls (`voice register`).
+    pub sip_calls: Vec<crate::sip::SipCall>,
 }
 
 /// Every phone's and router's voice state.
 #[derive(Debug, Clone, Default)]
 pub struct VoiceState {
-    phones: BTreeMap<DeviceId, PhoneState>,
-    agents: BTreeMap<DeviceId, AgentState>,
+    pub(crate) phones: BTreeMap<DeviceId, PhoneState>,
+    pub(crate) agents: BTreeMap<DeviceId, AgentState>,
 }
 
 impl VoiceState {
@@ -151,8 +161,8 @@ impl VoiceState {
 /// The voice VLAN of the switch port a phone's network port is cabled to.
 pub fn voice_vlan(t: &Topology, phone: DeviceId) -> Option<u16> {
     let peer = t.peer(End { device: phone, port: NETWORK_PORT })?;
-    let sw = t.device(peer.device).filter(|d| d.kind == DeviceKind::Switch)?;
-    let p = sw.ports.get(peer.port).filter(|p| !p.routed)?;
+    let sw = t.device(peer.device).filter(|d| d.is_switchport(peer.port))?;
+    let p = sw.ports.get(peer.port)?;
     if t.is_trunk(peer) {
         return None;
     }
@@ -262,13 +272,23 @@ impl Sim {
         let agent_port = d.voice.service.as_ref().map(|s| s.port);
         match d.kind {
             DeviceKind::Router if agent_port == Some(u.dst_port) => Some(self.agent_in(t, d, ip, &u.payload)),
+            DeviceKind::Router if Sim::sip_agent_port(d) == Some(u.dst_port) => Some(self.sip_agent_in(t, d, ip, &u.payload)),
+            DeviceKind::Phone if u.dst_port == netlabcraft_model::voice::SIP_PORT && d.voice.sip => Some(self.sip_phone_in(t, d, ip, &u.payload)),
             DeviceKind::Phone if u.dst_port == SIGNAL_PORT => Some(self.phone_signal_in(t, d, ip, &u.payload)),
             DeviceKind::Phone if u.dst_port == RTP_PORT => Some(self.rtp_in(d, ip, &u.payload)),
             _ => None,
         }
     }
 
-    fn send_udp(&mut self, t: &Topology, d: &Device, src: Ipv4Addr, dst: Ipv4Addr, ports: (u16, u16), payload: Vec<u8>) -> Result<(), String> {
+    pub(crate) fn send_udp(
+        &mut self,
+        t: &Topology,
+        d: &Device,
+        src: Ipv4Addr,
+        dst: Ipv4Addr,
+        ports: (u16, u16),
+        payload: Vec<u8>,
+    ) -> Result<(), String> {
         let udp = Udp { src_port: ports.0, dst_port: ports.1, payload };
         let ip = Ipv4 { id: self.ip_id(), ttl: default_ttl(d.kind), protocol: PROTO_UDP, src, dst, payload: udp.encode(src, dst) };
         self.send_ip(t, d, ip)
@@ -295,7 +315,7 @@ impl Sim {
                     return Ok(());
                 }
                 let st = self.voice.agents.entry(d.id).or_default();
-                st.registrations.retain(|r| r.mac != mac && r.ip != ip.src);
+                st.registrations.retain(|r| r.sip || (r.mac != mac && r.ip != ip.src));
                 let taken: Vec<String> = st.registrations.iter().map(|r| r.number.clone()).collect();
                 let given = d.voice.number_for(mac).or_else(|| {
                     // `auto assign A to B`: the first number in the range nobody holds.
@@ -314,7 +334,7 @@ impl Sim {
                     None => refuse("no-ephone-or-free-number-for-this-phone"),
                     Some((_, ref n)) if taken.contains(n) => refuse("number-in-use"),
                     Some((ephone, number)) => {
-                        st.registrations.push(Registration { mac, ip: ip.src, number: number.clone(), ephone });
+                        st.registrations.push(Registration { mac, ip: ip.src, number: number.clone(), ephone, sip: false });
                         self.log(d.id, &format!("Phone {mac} registered from {} as {number}", ip.src));
                         message("REGISTERED", &[&number])
                     }
@@ -324,13 +344,13 @@ impl Sim {
             }
             "DIAL" => {
                 let st = self.voice.agents.entry(d.id).or_default();
-                let Some(caller) = st.registrations.iter().find(|r| r.ip == ip.src).cloned() else {
+                let Some(caller) = st.registrations.iter().find(|r| !r.sip && r.ip == ip.src).cloned() else {
                     let reply = message("RELEASE", &["0", "not-registered"]);
                     self.agent_send(t, d, me, ip.src, reply);
                     return Ok(());
                 };
                 let to = arg(0).to_string();
-                let callee = st.registrations.iter().find(|r| r.number == to).cloned();
+                let callee = st.registrations.iter().find(|r| !r.sip && r.number == to).cloned();
                 let busy = |a: Ipv4Addr| st.calls.iter().any(|c| c.caller == a || c.callee == a);
                 let outcome = match callee {
                     None => Err(format!("number-{to}-unknown")),
@@ -395,7 +415,8 @@ impl Sim {
         if st.agent.is_some_and(|a| a != ip.src) && verb != "REGISTERED" && verb != "REJECTED" {
             return Err(format!("call-control message from {}, not this phone's router", ip.src));
         }
-        let new_call = |state: CallState| PhoneCall { id, peer: arg(1), state, peer_ip: None, rtp_sent: 0, rtp_received: 0, last_rtp_us: 0 };
+        let new_call =
+            |state: CallState| PhoneCall { id, peer: arg(1), state, peer_ip: None, rtp_sent: 0, rtp_received: 0, last_rtp_us: 0, sip_id: None };
         match verb.as_str() {
             "REGISTERED" => {
                 st.agent = Some(ip.src);
@@ -446,7 +467,7 @@ impl Sim {
         Ok(())
     }
 
-    fn send_rtp(&mut self, t: &Topology, d: &Device) {
+    pub(crate) fn send_rtp(&mut self, t: &Topology, d: &Device) {
         let Some(src) = d.ports.get(NETWORK_PORT).and_then(|p| p.ip).map(|n| n.addr) else { return };
         let st = self.voice.phones.entry(d.id).or_default();
         let Some(c) = st.call.as_mut().filter(|c| c.state == CallState::Connected) else { return };
@@ -467,21 +488,32 @@ impl Sim {
     /// change of address or a refusal); phones in a call send their voice packet.
     pub(crate) fn voice_tick(&mut self, t: &Topology) {
         let now = self.now;
-        for d in t.devices.iter().filter(|d| d.kind == DeviceKind::Phone && !d.powered_off) {
+        // A phone that lost its power forgets its registration and its call.
+        for d in t.devices.iter().filter(|d| d.kind == DeviceKind::Phone && t.is_dark(d.id)) {
+            self.voice.phones.remove(&d.id);
+        }
+        for d in t.devices.iter().filter(|d| d.kind == DeviceKind::Phone && !t.is_dark(d.id)) {
             let ip = d.ports.get(NETWORK_PORT).and_then(|p| p.ip).map(|n| n.addr);
             let st = self.voice.phones.entry(d.id).or_default();
-            if st.number.is_some() && (st.reg_ip != ip || d.voice.tftp.is_none_or(|a| st.agent != Some(a))) {
+            // SIP phones register with their registrar (else the TFTP server); the others
+            // with the TFTP server DHCP option 150 named.
+            let server = if d.voice.sip { d.voice.sip_server.or(d.voice.tftp) } else { d.voice.tftp };
+            if st.number.is_some() && (st.reg_ip != ip || server.is_none_or(|a| st.agent != Some(a))) {
                 // New address, or another server: register again.
                 st.number = None;
                 st.agent = None;
                 st.call = None;
             }
             let due = st.last_try.is_none_or(|at| now.saturating_sub(at) >= REGISTER_RETRY_US);
-            if let (None, Some(_), Some(server), true) = (&st.number, ip, d.voice.tftp, due) {
+            if let (None, Some(_), Some(server), true) = (&st.number, ip, server, due) {
                 st.last_try = Some(now);
                 st.reg_ip = ip;
-                let mac = d.ports.get(NETWORK_PORT).map(|p| p.mac).unwrap_or_default();
-                let _ = self.phone_send(t, d, server, message("REGISTER", &[&mac.to_string()]));
+                if d.voice.sip {
+                    self.sip_register(t, d, server);
+                } else {
+                    let mac = d.ports.get(NETWORK_PORT).map(|p| p.mac).unwrap_or_default();
+                    let _ = self.phone_send(t, d, server, message("REGISTER", &[&mac.to_string()]));
+                }
             }
             let rtp_due = self
                 .voice
@@ -510,6 +542,9 @@ impl Sim {
         }
         if d.powered_off {
             return Err(SimError::NoSource(format!("{} is switched off", d.name)));
+        }
+        if let Some(why) = t.power_problem(dev) {
+            return Err(SimError::NoSource(format!("{} is dark: {why}", d.name)));
         }
         Ok(d)
     }
@@ -542,10 +577,15 @@ impl Sim {
                 rtp_sent: 0,
                 rtp_received: 0,
                 last_rtp_us: 0,
+                sip_id: None,
             });
             s.message = None;
         }
-        self.phone_send(t, d, agent, message("DIAL", &[number])).map_err(SimError::NoSource)?;
+        if d.voice.sip {
+            self.sip_dial(t, d, agent, number).map_err(SimError::NoSource)?;
+        } else {
+            self.phone_send(t, d, agent, message("DIAL", &[number])).map_err(SimError::NoSource)?;
+        }
         self.phone_wait(t, dev, |s| s.call.as_ref().is_none_or(|c| c.state != CallState::Dialing));
         if let Some(s) = self.voice.phones.get_mut(&dev)
             && s.call.as_ref().is_some_and(|c| c.state == CallState::Dialing)
@@ -565,6 +605,16 @@ impl Sim {
         };
         if !hangup && call.state != CallState::Ringing {
             return Err(SimError::NoSource("the phone is not ringing".into()));
+        }
+        if d.voice.sip {
+            let ringing_me = call.state == CallState::Ringing;
+            self.sip_answer(t, d, agent, &call, hangup).map_err(SimError::NoSource)?;
+            if hangup {
+                self.run_for(t, 100_000);
+            } else if ringing_me {
+                self.phone_wait(t, dev, |s| s.call.as_ref().is_none_or(|c| c.state == CallState::Connected));
+            }
+            return Ok(());
         }
         if hangup && call.id == 0 {
             if let Some(s) = self.voice.phones.get_mut(&dev) {

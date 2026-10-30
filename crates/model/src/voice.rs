@@ -62,6 +62,40 @@ pub struct Ephone {
     pub buttons: Vec<(u8, u16)>,
 }
 
+/// `voice register global`: SIP call control (RFC 3261) for SIP phones.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct VoiceRegister {
+    /// `mode cme`.
+    pub cme: bool,
+    /// `source-address A.B.C.D port P`: where phones register (none: any of the router's).
+    pub source: Option<Ipv4Addr>,
+    pub port: u16,
+    /// `max-dn N` and `max-pool N` (0: none until set).
+    pub max_dn: u16,
+    pub max_pool: u16,
+}
+
+impl Default for VoiceRegister {
+    fn default() -> Self {
+        VoiceRegister { cme: false, source: None, port: SIP_PORT, max_dn: 0, max_pool: 0 }
+    }
+}
+
+/// `voice register pool N`: a SIP phone, known by its MAC address (`id mac`), and the
+/// directory number on its first line (`number 1 dn N`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RegisterPool {
+    pub tag: u16,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mac: Option<MacAddr>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dn: Option<u16>,
+}
+
+/// The SIP port.
+pub const SIP_PORT: u16 = 5060;
+
 /// A device's voice settings.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -79,6 +113,21 @@ pub struct Voice {
     /// Phones: the TFTP server DHCP gave (where the phone registers).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tftp: Option<Ipv4Addr>,
+    /// Routers: `voice register global` (SIP call control).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub register: Option<VoiceRegister>,
+    /// Routers: `voice register dn N` with its `number`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub reg_dns: Vec<EphoneDn>,
+    /// Routers: `voice register pool N`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub pools: Vec<RegisterPool>,
+    /// Phones: signal with SIP instead of NetLabCraft's own call-control protocol.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub sip: bool,
+    /// Phones: the SIP registrar (none: the TFTP server DHCP option 150 gave).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sip_server: Option<Ipv4Addr>,
 }
 
 impl Voice {
@@ -97,8 +146,26 @@ impl Voice {
         self.dn(*dn).and_then(|d| d.number.clone()).map(|n| (e.tag, n))
     }
 
+    /// The SIP phone with this MAC address: its pool and the number on its first line.
+    pub fn sip_number_for(&self, mac: MacAddr) -> Option<(u16, Option<String>)> {
+        let pool = self.pools.iter().find(|p| p.mac == Some(mac))?;
+        let number = pool.dn.and_then(|t| self.reg_dns.iter().find(|d| d.tag == t)).and_then(|d| d.number.clone());
+        Some((pool.tag, number))
+    }
+
     /// Caps lists and drops repeats (hostile files).
     pub fn sanitize(&mut self) {
+        self.reg_dns.truncate(MAX_DNS);
+        self.reg_dns.sort_by_key(|d| d.tag);
+        self.reg_dns.dedup_by_key(|d| d.tag);
+        for d in &mut self.reg_dns {
+            if d.number.as_ref().is_some_and(|n| !valid_number(n)) {
+                d.number = None;
+            }
+        }
+        self.pools.truncate(MAX_EPHONES);
+        self.pools.sort_by_key(|p| p.tag);
+        self.pools.dedup_by_key(|p| p.tag);
         self.dns.truncate(MAX_DNS);
         self.dns.sort_by_key(|d| d.tag);
         self.dns.dedup_by_key(|d| d.tag);

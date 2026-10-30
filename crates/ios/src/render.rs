@@ -200,6 +200,7 @@ pub fn running_config(d: &Device) -> String {
         let _ = writeln!(s, "!");
     }
     crate::exec::voice::running_config(&mut s, d);
+    crate::exec::families::running_config(&mut s, d);
     if d.rapid_stp {
         let _ = writeln!(s, "spanning-tree mode rapid-pvst");
     }
@@ -260,10 +261,11 @@ pub fn running_config(d: &Device) -> String {
         if p.lldp_rx_off {
             let _ = writeln!(s, " no lldp receive");
         }
+        let l2 = d.ports.iter().position(|x| x.name == p.name).is_some_and(|i| d.is_switchport(i));
         if d.kind == DeviceKind::Switch && p.routed {
             let _ = writeln!(s, " no switchport");
         }
-        if d.kind == DeviceKind::Switch && !p.routed {
+        if l2 {
             let sp = &p.switchport;
             if sp.access_vlan != VlanId::DEFAULT {
                 let _ = writeln!(s, " switchport access vlan {}", sp.access_vlan);
@@ -305,6 +307,7 @@ pub fn running_config(d: &Device) -> String {
                 let _ = writeln!(s, " spanning-tree portfast");
             }
             crate::exec::l2sec::port_lines(&mut s, p);
+            crate::exec::families::port_lines(&mut s, p);
         }
         match p.ip {
             // The leased address isn't configuration; how it is obtained is.
@@ -314,7 +317,7 @@ pub fn running_config(d: &Device) -> String {
             Some(ip) => {
                 let _ = writeln!(s, " ip address {} {}", ip.addr, ip.mask());
             }
-            None if d.kind == DeviceKind::Router => {
+            None if d.kind == DeviceKind::Router && !l2 => {
                 let _ = writeln!(s, " no ip address");
             }
             None => {}
@@ -826,7 +829,7 @@ pub fn vlans(t: &Topology, d: &Device) -> String {
             .ports
             .iter()
             .enumerate()
-            .filter(|(i, p)| !p.routed && !t.is_trunk(End { device: d.id, port: *i }) && p.switchport.access_carries(*v))
+            .filter(|(i, p)| d.is_switchport(*i) && !t.is_trunk(End { device: d.id, port: *i }) && p.switchport.access_carries(*v))
             .map(|(_, p)| ifname::short(&p.name))
             .collect();
         let mut lines = ports.chunks(6).map(|c| c.join(", "));
@@ -840,7 +843,7 @@ pub fn vlans(t: &Topology, d: &Device) -> String {
         .ports
         .iter()
         .enumerate()
-        .filter(|(i, p)| !p.routed && !t.is_trunk(End { device: d.id, port: *i }) && !d.vlans.contains_key(&p.switchport.access_vlan))
+        .filter(|(i, p)| d.is_switchport(*i) && !t.is_trunk(End { device: d.id, port: *i }) && !d.vlans.contains_key(&p.switchport.access_vlan))
         .map(|(_, p)| format!("{} (VLAN {})", ifname::short(&p.name), p.switchport.access_vlan))
         .collect();
     if !orphans.is_empty() {
@@ -1578,7 +1581,7 @@ pub fn ipv6_brief(t: &Topology, d: &Device) -> String {
             "down"
         };
         // A switch's own ports carry no IPv6; only its routed ones are listed.
-        if d.kind != DeviceKind::Switch || p.routed {
+        if !d.is_switchport(i) {
             row(&mut s, &p.name, status);
         }
         for sub in &p.subifs {
@@ -1784,10 +1787,10 @@ pub fn interface_status(t: &Topology, d: &Device) -> String {
 /// `show interfaces X switchport`.
 pub fn switchport(t: &Topology, d: &Device, port: usize) -> Result<String, String> {
     let p = d.ports.get(port).ok_or("% No such port")?;
-    if d.kind != DeviceKind::Switch {
+    if !d.switches_frames() {
         return Err("% Only switch ports have switchport settings".into());
     }
-    if p.routed {
+    if !d.is_switchport(port) {
         return Ok(format!("{}: routed port (no switchport)", p.name));
     }
     let sp = &p.switchport;

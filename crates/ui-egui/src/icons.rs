@@ -91,6 +91,11 @@ pub fn model_marks(p: &Painter, rect: Rect, model_id: &str, multilayer: bool) {
         "Router-M2" | "Router-M3" => modular_mark(p, rect),
         "IoT-Sensor" => thermometer_mark(p, rect),
         "IoT-Device" => fan_mark(p, rect),
+        "IoT-Motion" | "IoT-Smoke" | "IoT-Light" | "IoT-Door" | "IoT-Siren" | "IoT-Webcam" => crate::icons_families::iot_mark(p, rect, model_id),
+        "Home-Gateway" => {
+            access_point_mark(p, rect);
+            crate::icons_families::gateway_mark(p, rect);
+        }
         _ => {}
     }
 }
@@ -819,6 +824,8 @@ pub fn cable(p: &Painter, rect: Rect, kind: netlabcraft_model::cable::Cable, tk:
         Cable::Straight | Cable::Auto => {
             p.line_segment([a, b], s);
         }
+        Cable::Coaxial => crate::icons_families::coax_line(p, a, b, width, tk),
+        Cable::Phone => crate::icons_families::phone_line(p, a, b, width, tk),
     }
     // Plugs: small squares at both ends.
     let plug = w * 0.13;

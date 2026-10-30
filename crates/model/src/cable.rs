@@ -16,6 +16,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Device, DeviceKind, End, Link, ModelError, Result, Topology, ifname, models};
 
+/// How far a coaxial cable and a phone line carry a signal here (metres).
+pub const COAX_MAX_M: u32 = 500;
+pub const PHONE_MAX_M: u32 = 5_000;
+
 /// The name of a router's or switch's console port.
 pub const CONSOLE_PORT: &str = "Console";
 /// The name of a PC's or laptop's serial port for a console cable.
@@ -43,10 +47,17 @@ pub enum Cable {
     /// A serial cable; the first end is the DTE, the far end the DCE.
     #[serde(rename = "serial-dte")]
     SerialDte,
+    /// A coaxial cable (cable modems and the cable provider's cloud).
+    #[serde(rename = "coaxial")]
+    Coaxial,
+    /// A phone line (RJ-11: DSL modems and the phone company's cloud).
+    #[serde(rename = "phone")]
+    Phone,
 }
 
 impl Cable {
-    pub const ALL: [Cable; 7] = [Cable::Auto, Cable::Console, Cable::Straight, Cable::Cross, Cable::Fiber, Cable::SerialDce, Cable::SerialDte];
+    pub const ALL: [Cable; 9] =
+        [Cable::Auto, Cable::Console, Cable::Straight, Cable::Cross, Cable::Fiber, Cable::SerialDce, Cable::SerialDte, Cable::Coaxial, Cable::Phone];
 
     pub fn is_auto(&self) -> bool {
         *self == Cable::Auto
@@ -62,6 +73,8 @@ impl Cable {
             Cable::Console => "console",
             Cable::SerialDce => "serial-dce",
             Cable::SerialDte => "serial-dte",
+            Cable::Coaxial => "coaxial",
+            Cable::Phone => "phone",
         }
     }
 
@@ -75,6 +88,8 @@ impl Cable {
             Cable::Console => "Console",
             Cable::SerialDce => "Serial DCE",
             Cable::SerialDte => "Serial DTE",
+            Cable::Coaxial => "Coaxial",
+            Cable::Phone => "Phone (RJ-11)",
         }
     }
 
@@ -88,6 +103,8 @@ impl Cable {
             Cable::Console => "Console (rollover): a PC's RS-232 port to a router's or switch's Console port, for the PC's Terminal",
             Cable::SerialDce => "Serial DCE: joins serial ports; the end you click first is the DCE and gives the clock",
             Cable::SerialDte => "Serial DTE: joins serial ports; the end you click first is the DTE, the other end gives the clock",
+            Cable::Coaxial => "Coaxial: joins coaxial ports (a cable modem to the cable provider's cloud); carries a signal up to 500 m here",
+            Cable::Phone => "Phone line (RJ-11): joins phone ports (a DSL modem to the phone company's cloud); carries a signal up to 5 km here",
         }
     }
 
@@ -102,6 +119,8 @@ impl Cable {
             "console" | "rollover" => Cable::Console,
             "serial" | "serialdce" | "dce" => Cable::SerialDce,
             "serialdte" | "dte" => Cable::SerialDte,
+            "coaxial" | "coax" => Cable::Coaxial,
+            "phone" | "rj11" | "phoneline" | "phonerj11" | "dsl" => Cable::Phone,
             _ => return None,
         })
     }
@@ -131,6 +150,10 @@ pub enum Medium {
     Rs232,
     /// A radio: takes no cable.
     Wireless,
+    /// A coaxial socket (F connector).
+    Coaxial,
+    /// A phone socket (RJ-11).
+    Phone,
 }
 
 impl Medium {
@@ -143,6 +166,8 @@ impl Medium {
             Medium::Console => "console",
             Medium::Rs232 => "rs-232",
             Medium::Wireless => "wireless",
+            Medium::Coaxial => "coaxial",
+            Medium::Phone => "phone",
         }
     }
 
@@ -156,6 +181,8 @@ impl Medium {
             Medium::Console => "a console port",
             Medium::Rs232 => "an RS-232 port",
             Medium::Wireless => "a radio",
+            Medium::Coaxial => "coaxial",
+            Medium::Phone => "a phone line (RJ-11)",
         }
     }
 
@@ -271,12 +298,20 @@ impl Topology {
             Cable::Straight | Cable::Cross => need(cable.label().trim_start_matches("Copper ").to_lowercase().as_str(), Medium::copper, "copper"),
             Cable::Fiber => need("fiber", Medium::fiber, "fiber"),
             Cable::SerialDce | Cable::SerialDte => need("serial", |m| m == Medium::Serial, "serial"),
+            Cable::Coaxial => need("coaxial", |m| m == Medium::Coaxial, "coaxial"),
+            Cable::Phone => need("phone", |m| m == Medium::Phone, "phone (RJ-11)"),
             Cable::Console => Some(format!(
                 "a console cable joins a PC's {RS232_PORT} port to a router's or switch's {CONSOLE_PORT} port, not {} and {}",
                 self.short_label(a),
                 self.short_label(b)
             )),
             Cable::Auto => {
+                let line = |m: Medium| matches!(m, Medium::Coaxial | Medium::Phone);
+                if line(ma) || line(mb) {
+                    return (ma != mb).then(|| {
+                        format!("{} is {} and {} is {}: no cable joins them", self.short_label(a), ma.words(), self.short_label(b), mb.words())
+                    });
+                }
                 if (ma == Medium::Serial) != (mb == Medium::Serial) {
                     Some(format!(
                         "{} and {} don't fit one cable: serial ports take a serial cable, Ethernet ports a copper or fiber one",
@@ -301,6 +336,8 @@ impl Topology {
         match (ma, mb) {
             (Some(Medium::Serial), _) | (_, Some(Medium::Serial)) => Cable::SerialDce,
             (Some(Medium::Fiber), _) | (_, Some(Medium::Fiber)) => Cable::Fiber,
+            (Some(Medium::Coaxial), _) | (_, Some(Medium::Coaxial)) => Cable::Coaxial,
+            (Some(Medium::Phone), _) | (_, Some(Medium::Phone)) => Cable::Phone,
             _ => copper_needed(self, l.a, l.b),
         }
     }
@@ -518,7 +555,8 @@ mod tests {
         }
         assert_eq!(Cable::parse("crossover"), Some(Cable::Cross));
         assert_eq!(Cable::parse("rollover"), Some(Cable::Console));
-        assert_eq!(Cable::parse("coax"), None);
+        assert_eq!(Cable::parse("coax"), Some(Cable::Coaxial));
+        assert_eq!(Cable::parse("rope"), None);
         assert!(is_console_port_name("RS-232") && is_console_port_name("Console") && !is_console_port_name("Fa0/1"));
     }
 }

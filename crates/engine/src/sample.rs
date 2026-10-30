@@ -130,6 +130,26 @@ pub static SAMPLES: &[Sample] = &[
         title: "Automation: RESTCONF from a PC",
         description: "R1 answers RESTCONF over HTTPS and NETCONF on port 830 for its admin user; PC1's Programming tab holds ready-made requests to read and change R1's interfaces and routes.",
     },
+    Sample {
+        id: "sip-phones",
+        title: "SIP phones on a PoE switch",
+        description: "Two SIP phones, powered by a PoE switch, register with R1's SIP call control (voice register) and call each other; dial 2002 from Phone1.",
+    },
+    Sample {
+        id: "smart-home",
+        title: "A smart home with an IoT gateway",
+        description: "Eight smart things report every few seconds to the home gateway's IoT service, whose rules light the hall when someone moves, sound the siren on smoke and unlock the door on smoke or heat.",
+    },
+    Sample {
+        id: "home-internet",
+        title: "Home Internet over cable and DSL",
+        description: "A home PC reaches an office web server: home router, cable modem, the provider's cloud (coaxial to phone line), DSL modem, office router.",
+    },
+    Sample {
+        id: "switch-card",
+        title: "A switch card in a router",
+        description: "R1 has a 4-port switch card: its ports are VLAN members (10 and 20) and a trunk to S1, and the router routes between its VLAN interfaces.",
+    },
 ];
 
 struct Builder {
@@ -618,7 +638,7 @@ pub fn build(id: &str) -> Result<Topology> {
         }
         "wlc" => {
             b.add_model("Router-2", "R1", 360.0, 30.0)?;
-            b.add_model("Switch-24", "S1", 360.0, 150.0)?;
+            b.add_model("Switch-8-PoE", "S1", 360.0, 150.0)?;
             b.add_model("WLC", "WLC1", 120.0, 90.0)?;
             b.add_model("Server", "RADIUS1", 600.0, 90.0)?;
             b.add_model("LAP", "LAP1", 200.0, 260.0)?;
@@ -977,6 +997,220 @@ pub fn build(id: &str) -> Result<Topology> {
             b.t.add_annotation(300.0, 20.0, "WAN 172.16.0.0/30 over the serial cards")?;
             b.t.notes = "HQ has a 2-port serial card in bay 0/1 and a Gigabit card in bay 0/0; Branch a serial card in bay 0/1 (see each router's Physical tab). To change a card, switch the router off there first: the cable on a card that comes out is unplugged. Both configurations are saved, so switching a router off and on keeps them (try it: `show ip interface brief` before and after).".into();
         }
+        "sip-phones" => {
+            b.add(DeviceKind::Router, "R1", 360.0, 40.0)?;
+            b.add_model("Switch-24-PoE", "S1", 360.0, 160.0)?;
+            b.cable("R1", "g0/0", "S1", "g0/1")?;
+            for (i, x) in [(1, 160.0), (2, 560.0)] {
+                let phone = format!("Phone{i}");
+                b.add_model("IP-Phone", &phone, x, 300.0)?;
+                b.cable(&phone, "fa0", "S1", &format!("fa0/{i}"))?;
+                let id = b.t.resolve(&phone)?;
+                if let Some(d) = b.t.device_mut(id) {
+                    d.voice.sip = true;
+                }
+            }
+            let mac = |b: &Builder, name: &str| -> Result<String> {
+                let id = b.t.resolve(name)?;
+                let m = b.t.device(id).and_then(|d| d.ports.first()).map(|p| p.mac.0).unwrap_or_default();
+                Ok(format!("{:02x}{:02x}.{:02x}{:02x}.{:02x}{:02x}", m[0], m[1], m[2], m[3], m[4], m[5]))
+            };
+            let (m1, m2) = (mac(&b, "Phone1")?, mac(&b, "Phone2")?);
+            b.type_in(
+                "R1",
+                &format!(
+                    "enable
+                    configure terminal
+                    interface g0/0
+                    ip address 192.168.50.1 255.255.255.0
+                    no shutdown
+                    exit
+                    ip dhcp excluded-address 192.168.50.1
+                    ip dhcp pool PHONES
+                    network 192.168.50.0 255.255.255.0
+                    default-router 192.168.50.1
+                    option 150 ip 192.168.50.1
+                    exit
+                    voice register global
+                    mode cme
+                    source-address 192.168.50.1 port 5060
+                    max-dn 4
+                    max-pool 4
+                    exit
+                    voice register dn 1
+                    number 2001
+                    voice register dn 2
+                    number 2002
+                    exit
+                    voice register pool 1
+                    id mac {m1}
+                    number 1 dn 1
+                    voice register pool 2
+                    id mac {m2}
+                    number 1 dn 2
+                    end
+                    copy running-config startup-config"
+                ),
+            )?;
+            for i in 1..=2 {
+                b.type_in(&format!("Phone{i}"), "ipconfig /renew")?;
+            }
+            b.t.notes = "The phones take their addresses by DHCP and register over SIP (UDP 5060) with R1, which knows them by MAC address (voice register pool). Open Phone1 > Phone, dial 2002 and press Call; on Phone2 press Pick up. In Simulation mode the event list shows REGISTER, INVITE, 180 Ringing, 200 OK, ACK and BYE. `show voice register all` on R1, `show power inline` on S1.".into();
+        }
+        "smart-home" => {
+            use netlabcraft_model::iot::{Condition, IotRule, Op};
+            b.add_model("Home-Gateway", "Home", 360.0, 40.0)?;
+            b.add(DeviceKind::Switch, "S1", 360.0, 160.0)?;
+            b.cable("Home", "Ethernet1", "S1", "g0/1")?;
+            b.add(DeviceKind::Pc, "PC1", 640.0, 40.0)?;
+            b.cable("PC1", "fa0", "Home", "Ethernet2")?;
+            b.type_in("PC1", "ipconfig /renew")?;
+            let things = [
+                ("Temp1", "IoT-Sensor", 22),
+                ("Motion1", "IoT-Motion", 0),
+                ("Smoke1", "IoT-Smoke", 0),
+                ("Fan1", "IoT-Device", 0),
+                ("Light1", "IoT-Light", 0),
+                ("Door1", "IoT-Door", 0),
+                ("Siren1", "IoT-Siren", 0),
+                ("Cam1", "IoT-Webcam", 0),
+            ];
+            for (i, (name, model, value)) in things.into_iter().enumerate() {
+                let x = 60.0 + 95.0 * i as f32;
+                b.add_model(model, name, x, if i % 2 == 0 { 300.0 } else { 360.0 })?;
+                b.cable(name, "fa0", "S1", &format!("fa0/{}", i + 1))?;
+                b.type_in(name, "ipconfig /renew")?;
+                let d = b.t.resolve(name)?;
+                if let Some(dev) = b.t.device_mut(d) {
+                    dev.iot.server = Some(Ipv4Addr::new(192, 168, 0, 1));
+                    dev.iot.value = value;
+                }
+            }
+            let cond = |sensor: &str, op: Op, value: i32| Condition { sensor: sensor.into(), op, value };
+            let rule = |conditions: Vec<Condition>, any: bool, actuator: &str| IotRule {
+                sensor: String::new(),
+                above: 0,
+                actuator: actuator.into(),
+                conditions,
+                any,
+                on: true,
+            };
+            let gw = b.t.resolve("Home")?;
+            if let Some(d) = b.t.device_mut(gw) {
+                d.iot.rules = vec![
+                    rule(vec![cond("Temp1", Op::Above, 28)], false, "Fan1"),
+                    rule(vec![cond("Motion1", Op::Equals, 1)], false, "Light1"),
+                    rule(vec![cond("Motion1", Op::Equals, 1), cond("Smoke1", Op::Below, 20)], false, "Cam1"),
+                    rule(vec![cond("Smoke1", Op::Above, 20)], false, "Siren1"),
+                    rule(vec![cond("Smoke1", Op::Above, 20), cond("Temp1", Op::Above, 60)], true, "Door1"),
+                ];
+            }
+            b.t.add_annotation(20.0, 150.0, "Smart things on S1 - Home gateway LAN 192.168.0.0/24")?;
+            b.t.notes = "Every smart thing reports to the Home gateway's IoT service (192.168.0.1) every 5 s of simulated time. Open Home > IoT to see them live and the rules. Set Motion1's reading to 1: Light1 and Cam1 switch on (Cam1 takes a still image). Raise Smoke1 above 20: Siren1 sounds and Door1 unlocks. Advance the time (or press Report now) to let the things report.".into();
+        }
+        "home-internet" => {
+            b.add(DeviceKind::Pc, "PC1", 40.0, 60.0)?;
+            b.add_model("Home-Router", "Home", 40.0, 200.0)?;
+            b.add_model("Cable-Modem", "CableModem", 200.0, 200.0)?;
+            b.add_model("Cloud", "ISP", 360.0, 120.0)?;
+            b.add_model("DSL-Modem", "DslModem", 520.0, 200.0)?;
+            b.add(DeviceKind::Router, "Office", 680.0, 200.0)?;
+            b.add(DeviceKind::Server, "Web", 680.0, 60.0)?;
+            b.cable("PC1", "fa0", "Home", "Ethernet1")?;
+            b.cable("Home", "Internet0", "CableModem", "Ethernet1")?;
+            b.cable("CableModem", "Coaxial0", "ISP", "Coaxial0")?;
+            b.cable("ISP", "Phone0", "DslModem", "Phone0")?;
+            b.cable("DslModem", "Ethernet1", "Office", "g0/0")?;
+            b.cable("Office", "g0/1", "Web", "g0")?;
+            b.type_in(
+                "Home",
+                "enable
+                configure terminal
+                interface Internet0
+                ip address 203.0.113.2 255.255.255.0
+                exit
+                ip route 0.0.0.0 0.0.0.0 203.0.113.1
+                end",
+            )?;
+            b.type_in(
+                "Office",
+                "enable
+                configure terminal
+                interface g0/0
+                description to the DSL modem
+                ip address 203.0.113.1 255.255.255.0
+                no shutdown
+                interface g0/1
+                ip address 10.0.0.1 255.255.255.0
+                no shutdown
+                end
+                copy running-config startup-config",
+            )?;
+            b.type_in("Web", "ipconfig 10.0.0.10 255.255.255.0 10.0.0.1")?;
+            b.type_in("PC1", "ipconfig /renew")?;
+            b.t.add_annotation(250.0, 20.0, "Provider cloud: Coaxial0 joined to Phone0")?;
+            b.t.notes = "PC1 gets its address from the Home router, which translates it to 203.0.113.2. Its packets cross the cable modem, the provider's cloud (coaxial joined to the phone line, see ISP's Physical tab) and the DSL modem to the Office router and the Web server (ping 10.0.0.10). Try another cable between the modems and the cloud: only coaxial fits a coaxial port.".into();
+        }
+        "switch-card" => {
+            b.add_model("Router-M2", "R1", 360.0, 60.0)?;
+            b.fit_card("R1", "0/1", "Card-4SW")?;
+            b.add(DeviceKind::Switch, "S1", 600.0, 220.0)?;
+            b.cable("R1", "fa0/1/3", "S1", "g0/1")?;
+            b.type_in(
+                "R1",
+                "enable
+                configure terminal
+                vlan 10
+                name STAFF
+                vlan 20
+                name GUESTS
+                exit
+                interface fa0/1/0
+                switchport access vlan 10
+                interface fa0/1/1
+                switchport access vlan 20
+                interface fa0/1/3
+                switchport mode trunk
+                interface vlan 10
+                ip address 192.168.10.1 255.255.255.0
+                no shutdown
+                interface vlan 20
+                ip address 192.168.20.1 255.255.255.0
+                no shutdown
+                end
+                copy running-config startup-config",
+            )?;
+            b.type_in(
+                "S1",
+                "enable
+                configure terminal
+                vlan 10
+                name STAFF
+                vlan 20
+                name GUESTS
+                exit
+                interface fa0/1
+                switchport access vlan 10
+                interface fa0/2
+                switchport access vlan 20
+                interface g0/1
+                switchport mode trunk
+                end
+                copy running-config startup-config",
+            )?;
+            for (pc, dev, port, x, y, ip, gw) in [
+                ("PC1", "R1", "fa0/1/0", 120.0, 220.0, "192.168.10.10", "192.168.10.1"),
+                ("PC2", "R1", "fa0/1/1", 300.0, 220.0, "192.168.20.10", "192.168.20.1"),
+                ("PC3", "S1", "fa0/1", 520.0, 380.0, "192.168.10.11", "192.168.10.1"),
+                ("PC4", "S1", "fa0/2", 680.0, 380.0, "192.168.20.11", "192.168.20.1"),
+            ] {
+                b.add(DeviceKind::Pc, pc, x, y)?;
+                b.cable(pc, "fa0", dev, port)?;
+                b.type_in(pc, &format!("ipconfig {ip} 255.255.255.0 {gw}"))?;
+            }
+            b.t.add_annotation(300.0, 0.0, "VLAN 10 STAFF 192.168.10.0/24 - VLAN 20 GUESTS 192.168.20.0/24")?;
+            b.t.notes = "R1's 4-port switch card (bay 0/1, see its Physical tab) switches like a switch: `show vlan brief` and `show interfaces trunk` on R1. PC1 and PC3 share VLAN 10 across the trunk; PC1 reaches PC2 and PC4 through R1's VLAN interfaces (`show ip route`).".into();
+        }
         "iot" => {
             b.add(DeviceKind::Switch, "S1", 360.0, 160.0)?;
             b.add(DeviceKind::Server, "IoT-Server", 360.0, 20.0)?;
@@ -986,7 +1220,7 @@ pub fn build(id: &str) -> Result<Topology> {
             if let Some(d) = b.t.device_mut(srv) {
                 d.services.http.on = true;
                 d.iot.service = true;
-                d.iot.rules = vec![netlabcraft_model::iot::IotRule { sensor: "Sensor1".into(), above: 30, actuator: "Fan1".into() }];
+                d.iot.rules = vec![netlabcraft_model::iot::IotRule::above("Sensor1", 30, "Fan1")];
             }
             for (i, (name, model, addr, x)) in
                 [("Sensor1", "IoT-Sensor", 10, 140.0), ("Fan1", "IoT-Device", 11, 360.0), ("PC1", "PC", 20, 580.0)].into_iter().enumerate()
@@ -1006,7 +1240,7 @@ pub fn build(id: &str) -> Result<Topology> {
         }
         "ip-phones" => {
             b.add(DeviceKind::Router, "R1", 360.0, 40.0)?;
-            b.add(DeviceKind::Switch, "S1", 360.0, 160.0)?;
+            b.add_model("Switch-24-PoE", "S1", 360.0, 160.0)?;
             b.cable("R1", "g0/0", "S1", "g0/1")?;
             b.type_in(
                 "S1",

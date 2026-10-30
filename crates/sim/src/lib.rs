@@ -51,6 +51,7 @@ pub mod pdu;
 pub mod qos;
 
 pub mod rip;
+pub mod sip;
 pub mod snmp;
 pub mod stp;
 #[cfg(test)]
@@ -138,8 +139,17 @@ pub fn l3_ifaces(d: &Device) -> Vec<L3If> {
         return Vec::new();
     }
     let mut out = Vec::new();
+    // A router's switch card: its VLAN interfaces.
+    if d.has_switch_card() {
+        let mac = svi_mac(d);
+        out.extend(
+            d.svis.iter().filter(|s| !s.shutdown).filter_map(|s| {
+                s.ip.map(|net| L3If { port: SVI_PORT, sub: None, vlan: Some(s.vlan.get()), net, mac, name: format!("Vlan{}", s.vlan) })
+            }),
+        );
+    }
     for (i, p) in d.ports.iter().enumerate() {
-        if p.shutdown {
+        if p.shutdown || d.switch_card_port(i) {
             continue;
         }
         if let Some(net) = p.ip {
@@ -164,7 +174,8 @@ pub fn l3_ifaces(d: &Device) -> Vec<L3If> {
 pub fn port_up(t: &Topology, end: End) -> bool {
     let ok = |p: &netlabcraft_model::Port| !p.shutdown && !p.err_disabled;
     // A switched-off device lights no port, at either end of its cables.
-    if t.device(end.device).is_some_and(|d| d.powered_off) || t.peer(end).and_then(|p| t.device(p.device)).is_some_and(|d| d.powered_off) {
+    // Nor does a powered device with no power (no adapter, no PoE).
+    if t.is_dark(end.device) || t.peer(end).is_some_and(|p| t.is_dark(p.device)) {
         return false;
     }
     let own = t.device(end.device).and_then(|d| d.ports.get(end.port)).is_some_and(ok);
@@ -190,6 +201,8 @@ pub fn cable_problem(t: &Topology, end: End) -> Option<String> {
     let (what, max) = match t.resolved_cable(l) {
         netlabcraft_model::cable::Cable::SerialDce | netlabcraft_model::cable::Cable::SerialDte => return None,
         netlabcraft_model::cable::Cable::Fiber => ("fiber", netlabcraft_model::physical::FIBER_MAX_M),
+        netlabcraft_model::cable::Cable::Coaxial => ("coaxial", netlabcraft_model::cable::COAX_MAX_M),
+        netlabcraft_model::cable::Cable::Phone => ("phone line", netlabcraft_model::cable::PHONE_MAX_M),
         _ if t.is_serial(end) => return None,
         _ => ("copper", netlabcraft_model::physical::COPPER_MAX_M),
     };
@@ -1402,7 +1415,8 @@ impl Sim {
     /// Runs the simulation for `us` microseconds.
     pub fn run_for(&mut self, t: &Topology, us: u64) {
         let deadline = self.now.saturating_add(us);
-        self.advance(t, deadline, |_| false);
+        // Smart things report as their timers run out on the way.
+        self.run_with_iot(t, deadline);
     }
 
     /// Runs until nothing is in flight (at most [`MAX_EVENTS_PER_RUN`] events).
@@ -1479,6 +1493,9 @@ impl Sim {
         if d.powered_off {
             return Err("the device is switched off".into());
         }
+        if let Some(why) = t.power_problem(d.id) {
+            return Err(why);
+        }
         if port.shutdown {
             return Err("port is shut down".into());
         }
@@ -1498,6 +1515,8 @@ impl Sim {
         match d.kind {
             DeviceKind::Switch if port.routed => self.l3_in(t, d, at.port, f),
             DeviceKind::Switch => self.switch_in(t, d, at.port, f, hops),
+            // A router's switch card switches like a switch.
+            DeviceKind::Router if d.is_switchport(at.port) => self.switch_in(t, d, at.port, f, hops),
             DeviceKind::Hub => self.hub_in(t, d, at.port, bytes, hops),
             DeviceKind::Phone => self.phone_in(t, d, at.port, f, hops),
             _ => self.l3_in(t, d, at.port, f),
@@ -2250,7 +2269,14 @@ impl Sim {
             return Err(format!("loop: the frame crossed {MAX_SWITCH_HOPS} hubs or switches"));
         }
         let mut sent = 0;
-        for p in (0..d.ports.len()).filter(|&p| p != in_port) {
+        // A provider cloud passes a frame only to the port its arrival port is joined to.
+        let cloud = d.catalogue_model().cloud();
+        let partner = d.cloud_partner(in_port);
+        if cloud && partner.is_none() {
+            let name = d.ports.get(in_port).map_or("?", |p| p.name.as_str());
+            return Err(format!("{name} is not joined to another port in the cloud"));
+        }
+        for p in (0..d.ports.len()).filter(|&p| p != in_port && (!cloud || Some(p) == partner)) {
             if self.emit_hops(t, End { device: d.id, port: p }, bytes.to_vec(), hops + 1) {
                 sent += 1;
             }
@@ -3117,7 +3143,7 @@ impl Sim {
         if let Some(r) = self.automation_server_in(t, d, ip, &seg) {
             return r;
         }
-        if seg.dst_port == 80 && d.kind == DeviceKind::Server {
+        if seg.dst_port == 80 && (d.kind == DeviceKind::Server || d.iot.service) {
             return self.http_server_in(t, d, ip, &seg);
         }
         if matches!(seg.dst_port, 22 | 23) && matches!(d.kind, DeviceKind::Router | DeviceKind::Switch) {
@@ -3501,7 +3527,7 @@ fn default_ttl(kind: DeviceKind) -> u8 {
 
 /// Whether switch port `p` carries `vlan` (a routed port carries none).
 fn carries(t: &Topology, d: &Device, p: usize, vlan: VlanId) -> bool {
-    d.ports.get(p).filter(|port| !port.routed).is_some_and(|port| {
+    d.ports.get(p).filter(|_| d.is_switchport(p)).is_some_and(|port| {
         if t.is_trunk(End { device: d.id, port: p }) { port.switchport.allowed.contains(vlan) } else { port.switchport.access_carries(vlan) }
     }) || t.radio_carries(d, p, vlan)
 }

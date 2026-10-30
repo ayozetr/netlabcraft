@@ -54,6 +54,10 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `phone.dial` | Dial a number |  |  | `{"device": IP phone, "number": "1002"} → the phone's status: the far phone rings` |
 | `phone.answer` | Answer the phone |  |  | `{"device": a ringing IP phone} → its status: the call connects and voice packets flow` |
 | `phone.hangup` | Hang up |  |  | `{"device": IP phone} → its status: the call ends at both phones` |
+| `device.adapter` | Power adapter |  |  | `{"device": IP phone or lightweight AP, "on": true\|false} → the power source: plugged in, the device runs without power over Ethernet; unplugged, it needs a PoE switch port` |
+| `phone.configure` | Phone settings |  |  | `{"device": IP phone, "protocol"?: "sip"\|"own", "server"?: "SIP registrar address (empty: the TFTP server DHCP gave)"} → the phone's status (it registers again)` |
+| `cloud.map` | Cloud port pairs |  |  | `{"device": cloud, "a"?: "Coaxial0", "b"?: "Phone0", "remove"?: true} → {"pairs": [[a, b]…], "ports"}: joins two ports (a frame in one leaves by the other), parts them, or lists the pairs` |
+| `device.power.source` | Power source |  |  | `{"device"} → {"powered_device", "adapter", "source": "mains"\|"adapter"\|"poe"\|"none"\|"off", "detail" (the PoE port, or why there is no power), "draw_w"}` |
 | `device.module.list` | Card catalogue |  |  | `{"device"?} → {"modules": [{id, label, description, ports, type}], "device": {"power", "slots": [{slot, module, label, ports}]}}` |
 | `note.add` | Place note or drawing | Insert |  | `{"x", "y", "text"?, "shape"?: "text\|rectangle\|ellipse\|line\|freehand\|polygon", "w"?, "h"?, "points": [[x, y], …] (freehand: simplified, at most 512 kept; polygon: 3-64 corners), "color"?: "#rrggbb"} → {"id"} (placed in the cluster being viewed)` |
 | `note.edit` | Edit note |  |  | `{"id", "text"}` |
@@ -1068,6 +1072,21 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show crypto ikev2 sa` | user, privileged | router | IKEv2 security associations |
 | `show crypto ikev2 proposal` | user, privileged | router | IKEv2 proposals |
 | `show crypto ikev2 profile` | user, privileged | router | IKEv2 profiles |
+| `power inline {auto\|never}` | interface | switch | Power over Ethernet on this port (PoE switches) |
+| `show power inline` | user, privileged | switch | Power over Ethernet: budget and what each port powers |
+| `voice register global` | config | router | SIP call control for SIP phones |
+| `no voice register global` | config | router | Turn SIP call control off |
+| `voice register dn <1-1000>` | config | router | Define or edit a SIP directory number |
+| `no voice register dn <1-1000>` | config | router | Delete a SIP directory number |
+| `voice register pool <1-1000>` | config | router | Define or edit a SIP phone |
+| `no voice register pool <1-1000>` | config | router | Delete a SIP phone |
+| `mode cme` |  | router | Run as the phones' call manager (under voice register global) |
+| `source-address A.B.C.D port <1-65535>` |  | router | Where SIP phones register (under voice register global) |
+| `source-address A.B.C.D` |  | router | Where SIP phones register (port 5060) |
+| `max-pool <1-256>` |  | router | How many SIP phones may register |
+| `id mac H.H.H` |  | router | The SIP phone's MAC address (under voice register pool) |
+| `number <1-8> dn <1-1000>` |  | router | Put a SIP directory number on a line (under voice register pool) |
+| `show voice register all` | user, privileged | router | SIP call control: numbers, phones, registrations and calls |
 
 ## Host shell (PCs and servers)
 

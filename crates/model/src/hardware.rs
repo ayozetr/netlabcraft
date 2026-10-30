@@ -24,6 +24,37 @@ impl Device {
         slots.iter().copied().find(|s| self.module_in(s).is_some_and(|m| m.port_names(s).iter().any(|n| n == port)))
     }
 
+    /// Whether a port sits on a switch card (layer-2 ports inside a router).
+    pub fn switch_card_port(&self, port: usize) -> bool {
+        self.ports.get(port).and_then(|p| self.port_slot(&p.name)).and_then(|s| self.module_in(s)).is_some_and(|m| m.switched)
+    }
+
+    /// Whether the device has a switch card fitted (a router that also switches).
+    pub fn has_switch_card(&self) -> bool {
+        self.kind == crate::DeviceKind::Router && self.modules.values().any(|id| models::module(id).is_some_and(|m| m.switched))
+    }
+
+    /// Whether a port is a layer-2 switch port: a switch's port that isn't routed, or a port on
+    /// a router's switch card.
+    pub fn is_switchport(&self, port: usize) -> bool {
+        match self.kind {
+            crate::DeviceKind::Switch => self.ports.get(port).is_some_and(|p| !p.routed),
+            crate::DeviceKind::Router => self.switch_card_port(port),
+            _ => false,
+        }
+    }
+
+    /// The names of the device's layer-2 switch ports.
+    pub fn switchport_names(&self) -> Vec<String> {
+        self.ports.iter().enumerate().filter(|(i, _)| self.is_switchport(*i)).map(|(_, p)| p.name.clone()).collect()
+    }
+
+    /// Whether the device switches frames between VLAN members (a switch, or a router with a
+    /// switch card) and so keeps a VLAN database.
+    pub fn switches_frames(&self) -> bool {
+        self.kind == crate::DeviceKind::Switch || self.has_switch_card()
+    }
+
     /// The ports this device has: the model's, then each card's in bay order.
     fn hardware_port_names(&self) -> Vec<String> {
         let model = self.catalogue_model();
@@ -133,11 +164,14 @@ impl Topology {
                     let (bay_path, n) = name.rsplit_once('/').unwrap_or((name.as_str(), "0"));
                     let bay_no = model.slots().iter().position(|s| bay_path.ends_with(s)).unwrap_or(0);
                     let mac = card_mac(id, bay_no, n.parse::<usize>().unwrap_or(0) % 16);
-                    ports.push(crate::Port { name, mac, ..b.clone() });
+                    // Switch ports come up without `no shutdown`, as on a switch.
+                    let up = card.is_some_and(|c| c.switched && c.port_names(bay).contains(&name));
+                    ports.push(crate::Port { name, mac, shutdown: b.shutdown && !up, ..b.clone() });
                 }
             }
         }
         nd.ports = ports;
+        nd.ensure_default_vlan();
         if let Some(slot) = self.device_mut(id) {
             *slot = nd;
         }
@@ -228,5 +262,27 @@ mod tests {
         back.devices[0].modules.insert("0/0".into(), "nope".into());
         back.sanitize();
         assert_eq!(back.devices[0].modules.len(), 1);
+    }
+
+    #[test]
+    fn a_switch_card_makes_switch_ports_that_come_up_and_keep_vlan_1() {
+        let mut t = Topology::new();
+        let r = t.add_model(models::find("Router-M2").unwrap(), None, 0.0, 0.0).unwrap();
+        assert!(!t.device(r).unwrap().has_switch_card() && !t.device(r).unwrap().switches_frames());
+        t.device_mut(r).unwrap().power_off();
+        assert_eq!(t.set_module(r, "0/1", Some("4-port switch card")).unwrap().len(), 4);
+        let d = t.device(r).unwrap();
+        assert!(d.has_switch_card() && d.switches_frames());
+        assert!(d.vlans.contains_key(&netlabcraft_core::VlanId::DEFAULT));
+        assert_eq!(d.switchport_names(), ["FastEthernet0/1/0", "FastEthernet0/1/1", "FastEthernet0/1/2", "FastEthernet0/1/3"]);
+        assert!(!d.is_switchport(0) && d.is_switchport(2) && !d.ports[2].shutdown && d.ports[0].shutdown);
+        // A reset keeps the card's ports up and the built-in ones shut.
+        let mut d = d.clone();
+        d.ports[2].shutdown = true;
+        d.reset_config();
+        assert!(!d.ports[2].shutdown && d.ports[0].shutdown);
+        // A file keeps the card.
+        let back = crate::file::from_json(&crate::file::to_json(&t).unwrap()).unwrap();
+        assert!(back.device(r).unwrap().has_switch_card());
     }
 }

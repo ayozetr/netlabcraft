@@ -754,10 +754,8 @@ off	apagado
 Switch off	Apagar
 Switch on	Encender
 Rules	Reglas
-If {} is above {}, switch {} on	Si {} supera {}, enciende {}
 If	Si
 sensor	sensor
-is above	supera
 switch on	enciende
 device	dispositivo
 Add rule	Añadir regla
@@ -1040,3 +1038,106 @@ Ask every managed router for its hostname and interfaces over RESTCONF	Pide a ca
 Push a template to every router	Enviar una plantilla a todos los routers
 Template (JSON)	Plantilla (JSON)
 Push	Enviar plantilla
+4-port switch card	Tarjeta de switch de 4 puertos
+Four layer-2 switch ports inside the router: VLAN membership and trunks as on a switch, routed through the router's VLAN interfaces	Cuatro puertos de switch de capa 2 dentro del router: pertenencia a VLAN y troncales como en un switch, enrutados por las interfaces VLAN del router
+A switch card in a router	Una tarjeta de switch en un router
+R1 has a 4-port switch card: its ports are VLAN members (10 and 20) and a trunk to S1, and the router routes between its VLAN interfaces.	R1 tiene una tarjeta de switch de 4 puertos: sus puertos son miembros de VLAN (10 y 20) y un troncal hacia S1, y el router enruta entre sus interfaces VLAN.
+R1's 4-port switch card (bay 0/1, see its Physical tab) switches like a switch: `show vlan brief` and `show interfaces trunk` on R1. PC1 and PC3 share VLAN 10 across the trunk; PC1 reaches PC2 and PC4 through R1's VLAN interfaces (`show ip route`).	La tarjeta de switch de 4 puertos de R1 (bahía 0/1, mira su pestaña Físico) conmuta como un switch: `show vlan brief` y `show interfaces trunk` en R1. PC1 y PC3 comparten la VLAN 10 a través del troncal; PC1 llega a PC2 y PC4 por las interfaces VLAN de R1 (`show ip route`).
+Switch 8FE PoE	Switch 8FE PoE
+Switch 24FE PoE	Switch 24FE PoE
+Switch with 8 Fast Ethernet ports that give power over Ethernet (65 W in all) + 1 Gigabit Ethernet uplink: powers IP phones and lightweight access points	Switch con 8 puertos Fast Ethernet que dan alimentación por Ethernet (65 W en total) + 1 enlace Gigabit Ethernet: alimenta teléfonos IP y puntos de acceso ligeros
+Switch with 24 Fast Ethernet ports that give power over Ethernet (370 W in all) + 2 Gigabit Ethernet uplinks: powers IP phones and lightweight access points	Switch con 24 puertos Fast Ethernet que dan alimentación por Ethernet (370 W en total) + 2 enlaces Gigabit Ethernet: alimenta teléfonos IP y puntos de acceso ligeros
+Power over Ethernet: {} W of {} W in use	Alimentación por Ethernet: {} W de {} W en uso
+Power adapter: plugged in (click to unplug)	Adaptador de corriente: enchufado (clic para desenchufar)
+Power adapter: unplugged (click to plug in)	Adaptador de corriente: desenchufado (clic para enchufar)
+Power adapter plugged in	Adaptador de corriente enchufado
+No power adapter	Sin adaptador de corriente
+Powered over Ethernet by {} ({} W)	Alimentado por Ethernet desde {} ({} W)
+Powered by its adapter	Alimentado por su adaptador
+no power: plug in its power adapter (Physical tab) or cable it to a PoE switch	sin alimentación: enchufa su adaptador (pestaña Físico) o conéctalo a un switch PoE
+no power: {} is a {}, which gives no power over Ethernet; use a PoE switch or plug in the power adapter	sin alimentación: {} es un {}, que no da alimentación por Ethernet; usa un switch PoE o enchufa el adaptador
+no power: {} is switched off	sin alimentación: {} está apagado
+no power: {} has `power inline never`	sin alimentación: {} tiene `power inline never`
+no power: {}'s power budget is used up	sin alimentación: el presupuesto de potencia de {} está agotado
+no power: {} is shut down	sin alimentación: {} está desactivado
+SIP phones on a PoE switch	Teléfonos SIP en un switch PoE
+Two SIP phones, powered by a PoE switch, register with R1's SIP call control (voice register) and call each other; dial 2002 from Phone1.	Dos teléfonos SIP, alimentados por un switch PoE, se registran en el control de llamadas SIP de R1 (voice register) y se llaman entre sí; marca 2002 desde Phone1.
+The phones take their addresses by DHCP and register over SIP (UDP 5060) with R1, which knows them by MAC address (voice register pool). Open Phone1 > Phone, dial 2002 and press Call; on Phone2 press Pick up. In Simulation mode the event list shows REGISTER, INVITE, 180 Ringing, 200 OK, ACK and BYE. `show voice register all` on R1, `show power inline` on S1.	Los teléfonos toman su dirección por DHCP y se registran por SIP (UDP 5060) en R1, que los conoce por su dirección MAC (voice register pool). Abre Phone1 > Teléfono, marca 2002 y pulsa Llamar; en Phone2 pulsa Descolgar. En el modo Simulación la lista de eventos muestra REGISTER, INVITE, 180 Ringing, 200 OK, ACK y BYE. `show voice register all` en R1, `show power inline` en S1.
+Signal with SIP	Señalizar con SIP
+Use SIP (UDP 5060) instead of NetLabCraft's own call-control protocol	Usar SIP (UDP 5060) en lugar del protocolo de control de llamadas propio de NetLabCraft
+Motion Detector	Detector de movimiento
+Smart motion detector with one Fast Ethernet port: reports 1 while something moves in front of it, else 0	Detector de movimiento inteligente con un puerto Fast Ethernet: informa 1 mientras algo se mueve delante de él, si no 0
+Smoke Detector	Detector de humo
+Smart smoke detector with one Fast Ethernet port: reports how much smoke it senses (0-100 %)	Detector de humo inteligente con un puerto Fast Ethernet: informa de cuánto humo detecta (0-100 %)
+Smart Light	Luz inteligente
+Smart lamp with one Fast Ethernet port: the IoT server switches it on and off	Lámpara inteligente con un puerto Fast Ethernet: el servidor IoT la enciende y la apaga
+Smart Door Lock	Cerradura inteligente
+Smart door lock with one Fast Ethernet port: the IoT server unlocks it (on) and locks it (off)	Cerradura inteligente con un puerto Fast Ethernet: el servidor IoT la abre (encendida) y la cierra (apagada)
+Siren	Sirena
+Smart siren with one Fast Ethernet port: sounds while the IoT server keeps it on	Sirena inteligente con un puerto Fast Ethernet: suena mientras el servidor IoT la mantiene encendida
+Webcam	Cámara web
+Smart webcam with one Fast Ethernet port: while on, it takes a still image each time it reports and the IoT server keeps the latest	Cámara web inteligente con un puerto Fast Ethernet: encendida, toma una imagen fija cada vez que informa y el servidor IoT guarda la última
+Home Gateway	Pasarela doméstica
+Home IoT gateway: Internet port, 4 LAN ports and Wi-Fi with DHCP and NAT like a home router, plus a built-in IoT service that smart things register with	Pasarela IoT doméstica: puerto de Internet, 4 puertos LAN y Wi-Fi con DHCP y NAT como un router doméstico, más un servicio IoT integrado en el que se registran los objetos inteligentes
+A smart home with an IoT gateway	Una casa inteligente con una pasarela IoT
+Eight smart things report every few seconds to the home gateway's IoT service, whose rules light the hall when someone moves, sound the siren on smoke and unlock the door on smoke or heat.	Ocho objetos inteligentes informan cada pocos segundos al servicio IoT de la pasarela doméstica, cuyas reglas encienden la luz del pasillo cuando alguien se mueve, hacen sonar la sirena si hay humo y abren la puerta si hay humo o calor.
+Every smart thing reports to the Home gateway's IoT service (192.168.0.1) every 5 s of simulated time. Open Home > IoT to see them live and the rules. Set Motion1's reading to 1: Light1 and Cam1 switch on (Cam1 takes a still image). Raise Smoke1 above 20: Siren1 sounds and Door1 unlocks. Advance the time (or press Report now) to let the things report.	Cada objeto inteligente informa al servicio IoT de la pasarela Home (192.168.0.1) cada 5 s de tiempo simulado. Abre Home > IoT para verlos en directo y ver las reglas. Pon la lectura de Motion1 a 1: Light1 y Cam1 se encienden (Cam1 toma una imagen fija). Sube Smoke1 por encima de 20: Siren1 suena y Door1 se abre. Avanza el tiempo (o pulsa Informar ahora) para que los objetos informen.
+Report every (s):	Informar cada (s):
+degrees	grados
+1 = movement	1 = movimiento
+% smoke	% de humo
+running	en marcha
+stopped	parado
+lit	encendida
+dark	apagada
+unlocked	abierta
+locked	cerrada
+sounding	sonando
+quiet	en silencio
+recording	grabando
+temperature	temperatura
+motion	movimiento
+smoke	humo
+fan	ventilador
+light	luz
+door	puerta
+siren	sirena
+webcam	cámara web
+value	valor
+and	y
+or	o
+ and 	 y
+ or 	 o
+second sensor	segundo sensor
+optional	opcional
+second value	segundo valor
+switch off	apaga
+Join the conditions with	Unir las condiciones con
+What the rule does	Qué hace la regla
+Comparison	Comparación
+If {}, switch {} on	Si {}, enciende {}
+If {}, switch {} off	Si {}, apaga {}
+still image {}: someone in view	imagen fija {}: alguien a la vista
+still image {}: nobody in view	imagen fija {}: nadie a la vista
+Cloud	Nube
+A provider's network (WAN): 2 Ethernet, 2 coaxial and 2 phone (DSL) ports, each joined to the port it is mapped to (by default coaxial to phone: a cable modem reaches a DSL modem)	La red de un proveedor (WAN): 2 puertos Ethernet, 2 coaxiales y 2 de teléfono (DSL), cada uno unido al puerto al que se asigna (por defecto coaxial con teléfono: un módem de cable llega a un módem DSL)
+DSL Modem	Módem DSL
+DSL modem: bridges its phone line (Phone0, RJ-11) to its Ethernet port (Ethernet1)	Módem DSL: une su línea telefónica (Phone0, RJ-11) con su puerto Ethernet (Ethernet1)
+Cable Modem	Módem de cable
+Cable modem: bridges its coaxial port (Coaxial0) to its Ethernet port (Ethernet1)	Módem de cable: une su puerto coaxial (Coaxial0) con su puerto Ethernet (Ethernet1)
+Coaxial	Coaxial
+Phone (RJ-11)	Teléfono (RJ-11)
+Coaxial: joins coaxial ports (a cable modem to the cable provider's cloud); carries a signal up to 500 m here	Coaxial: une puertos coaxiales (un módem de cable con la nube del proveedor de cable); lleva la señal hasta 500 m aquí
+Phone line (RJ-11): joins phone ports (a DSL modem to the phone company's cloud); carries a signal up to 5 km here	Línea telefónica (RJ-11): une puertos de teléfono (un módem DSL con la nube de la compañía telefónica); lleva la señal hasta 5 km aquí
+WAN Emulation	Emulación WAN
+Home Internet over cable and DSL	Internet doméstico por cable y DSL
+A home PC reaches an office web server: home router, cable modem, the provider's cloud (coaxial to phone line), DSL modem, office router.	Un PC de casa llega a un servidor web de oficina: router doméstico, módem de cable, la nube del proveedor (coaxial a línea telefónica), módem DSL y router de oficina.
+PC1 gets its address from the Home router, which translates it to 203.0.113.2. Its packets cross the cable modem, the provider's cloud (coaxial joined to the phone line, see ISP's Physical tab) and the DSL modem to the Office router and the Web server (ping 10.0.0.10). Try another cable between the modems and the cloud: only coaxial fits a coaxial port.	PC1 recibe su dirección del router Home, que la traduce a 203.0.113.2. Sus paquetes cruzan el módem de cable, la nube del proveedor (coaxial unido a la línea telefónica, mira la pestaña Físico de ISP) y el módem DSL hasta el router Office y el servidor Web (ping 10.0.0.10). Prueba otro cable entre los módems y la nube: en un puerto coaxial solo cabe un coaxial.
+Port pairs (a frame in one port leaves by the other):	Pares de puertos (una trama que entra por uno sale por el otro):
+{} joined to {}	{} unido a {}
+Part	Separar
+Part {} from {}	Separar {} de {}
+No port is joined: the cloud passes nothing.	Ningún puerto está unido: la nube no deja pasar nada.
+First port	Primer puerto
+Second port	Segundo puerto
+Join	Unir

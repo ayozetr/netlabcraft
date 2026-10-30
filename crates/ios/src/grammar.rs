@@ -122,6 +122,9 @@ impl Modes {
             | (1 << 49),
     );
     pub const BOTH: Modes = Modes(192);
+    /// A router with a switch card (a device flag): the VLAN database and the switching
+    /// views, on top of the router's commands.
+    pub const CARD: Modes = Modes(1 << 31);
 
     pub const fn or(self, o: Modes) -> Modes {
         Modes(self.0 | o.0)
@@ -933,6 +936,20 @@ pub enum Id {
     ShowCryptoIkev2Sa,
     ShowCryptoIkev2Proposal,
     ShowCryptoIkev2Profile,
+    PowerInline,
+    ShowPowerInline,
+    VoiceRegGlobal,
+    VoiceNoRegGlobal,
+    VoiceRegDn,
+    VoiceNoRegDn,
+    VoiceRegPool,
+    VoiceNoRegPool,
+    VoiceRegMode,
+    VoiceRegSource,
+    VoiceRegMaxPool,
+    VoiceRegIdMac,
+    VoiceRegNumberDn,
+    ShowVoiceRegister,
 }
 
 use Tok::{Arg, K, Rest};
@@ -1021,11 +1038,11 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowArp, EXECS, Modes::BOTH, [K("show"), K("ip"), K("arp")], "ARP cache"),
     spec!(ShowArp, EXECS, BOTH_FW, [K("show"), K("arp")], "ARP cache"),
     spec!(ShowInterfaces, EXECS, BOTH_FW, [K("show"), K("interfaces")], "Interface details"),
-    spec!(ShowIntTrunk, EXECS, Modes::SWITCH, [K("show"), K("interfaces"), K("trunk")], "Trunk ports"),
+    spec!(ShowIntTrunk, EXECS, Modes::SWITCH.or(Modes::CARD), [K("show"), K("interfaces"), K("trunk")], "Trunk ports"),
     spec!(ShowInterface, EXECS, BOTH_FW, [K("show"), K("interfaces"), Rest("<interface>")], "One interface's details"),
-    spec!(ShowVlan, EXECS, Modes::SWITCH, [K("show"), K("vlan")], "VLAN database"),
-    spec!(ShowVlanBrief, EXECS, Modes::SWITCH, [K("show"), K("vlan"), K("brief")], "VLAN database"),
-    spec!(ShowMac, EXECS, Modes::SWITCH, [K("show"), K("mac"), K("address-table")], "Learned MAC addresses"),
+    spec!(ShowVlan, EXECS, Modes::SWITCH.or(Modes::CARD), [K("show"), K("vlan")], "VLAN database"),
+    spec!(ShowVlanBrief, EXECS, Modes::SWITCH.or(Modes::CARD), [K("show"), K("vlan"), K("brief")], "VLAN database"),
+    spec!(ShowMac, EXECS, Modes::SWITCH.or(Modes::CARD), [K("show"), K("mac"), K("address-table")], "Learned MAC addresses"),
     spec!(ShowVersion, EXECS, BOTH_FW, [K("show"), K("version")], "Software and hardware"),
     spec!(ShowHistory, EXECS, BOTH_FW, [K("show"), K("history")], "Commands typed in this session"),
     spec!(CopyRunStart, Modes::EXEC, BOTH_FW, [K("copy"), K("running-config"), K("startup-config")], "Save the configuration"),
@@ -1033,7 +1050,7 @@ pub static SPECS: &[Spec] = &[
     spec!(WriteMemory, Modes::EXEC, BOTH_FW, [K("write")], "Save the configuration"),
     spec!(EraseStartup, Modes::EXEC, BOTH_FW, [K("erase"), K("startup-config")], "Delete the saved configuration"),
     spec!(Reload, Modes::EXEC, BOTH_FW, [K("reload")], "Restart with the saved configuration"),
-    spec!(ClearMac, Modes::EXEC, Modes::SWITCH, [K("clear"), K("mac"), K("address-table")], "Forget learned MAC addresses"),
+    spec!(ClearMac, Modes::EXEC, Modes::SWITCH.or(Modes::CARD), [K("clear"), K("mac"), K("address-table")], "Forget learned MAC addresses"),
     spec!(ClearArp, Modes::EXEC, Modes::ROUTER, [K("clear"), K("arp-cache")], "Forget ARP entries"),
     spec!(Hostname, Modes::CONFIG, BOTH_FW, [K("hostname"), Arg("WORD")], "Set the device name"),
     spec!(InterfaceRange, Modes::CONFIG, Modes::BOTH, [K("interface"), K("range"), Rest("<interfaces>")], "Configure several interfaces"),
@@ -1054,8 +1071,8 @@ pub static SPECS: &[Spec] = &[
         "Remove a static route"
     ),
     spec!(NoIpRoute, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("route"), Arg("A.B.C.D"), Arg("MASK")], "Remove static routes"),
-    spec!(Vlan, Modes::CONFIG, Modes::SWITCH, [K("vlan"), Arg("<1-4094>[,-]")], "Create or edit VLANs"),
-    spec!(NoVlan, Modes::CONFIG, Modes::SWITCH, [K("no"), K("vlan"), Arg("<1-4094>[,-]")], "Delete VLANs"),
+    spec!(Vlan, Modes::CONFIG, Modes::SWITCH.or(Modes::CARD), [K("vlan"), Arg("<1-4094>[,-]")], "Create or edit VLANs"),
+    spec!(NoVlan, Modes::CONFIG, Modes::SWITCH.or(Modes::CARD), [K("no"), K("vlan"), Arg("<1-4094>[,-]")], "Delete VLANs"),
     spec!(Do, Modes::CONFIG.or(SUBMODES), BOTH_FW, [K("do"), Rest("<command>")], "Run a privileged command"),
     spec!(IpAddress, IFS, Modes::ROUTER.or(Modes::FIREWALL), [K("ip"), K("address"), Arg("A.B.C.D"), Arg("MASK")], "Set the interface address"),
     spec!(NoIpAddress, IFS, Modes::ROUTER.or(Modes::FIREWALL), [K("no"), K("ip"), K("address")], "Remove the interface address"),
@@ -1603,7 +1620,7 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowMemory, EXECS, Modes::BOTH, [K("show"), K("memory"), K("statistics")], "Memory in use"),
     spec!(ShowIpInterface, EXECS, Modes::BOTH, [K("show"), K("ip"), K("interface")], "Layer-3 settings of every interface"),
     spec!(ShowIpInterface, EXECS, Modes::BOTH, [K("show"), K("ip"), K("interface"), Rest("<interface>")], "Layer-3 settings of an interface"),
-    spec!(ShowIntStatus, EXECS, Modes::SWITCH, [K("show"), K("interfaces"), K("status")], "Port state, VLAN and speed"),
+    spec!(ShowIntStatus, EXECS, Modes::SWITCH.or(Modes::CARD), [K("show"), K("interfaces"), K("status")], "Port state, VLAN and speed"),
     spec!(
         ShowRunInterface,
         Modes::EXEC,
@@ -2066,7 +2083,13 @@ pub static SPECS: &[Spec] = &[
     spec!(HelperAddress, Modes::SVI, Modes::SWITCH, [K("ip"), K("helper-address"), Arg("A.B.C.D")], "Relay DHCP requests to this server"),
     spec!(NoHelperAddress, Modes::SVI, Modes::SWITCH, [K("no"), K("ip"), K("helper-address"), Rest("[A.B.C.D]")], "Stop relaying (to one server)"),
     spec!(NoHelperAddress, Modes::SVI, Modes::SWITCH, [K("no"), K("ip"), K("helper-address")], "Stop relaying DHCP requests"),
-    spec!(NoInterfaceVlan, Modes::CONFIG, Modes::SWITCH, [K("no"), K("interface"), K("vlan"), Arg("<1-4094>")], "Delete a VLAN interface"),
+    spec!(
+        NoInterfaceVlan,
+        Modes::CONFIG,
+        Modes::SWITCH.or(Modes::CARD),
+        [K("no"), K("interface"), K("vlan"), Arg("<1-4094>")],
+        "Delete a VLAN interface"
+    ),
     spec!(DefaultGateway, Modes::CONFIG, Modes::SWITCH, [K("ip"), K("default-gateway"), Arg("A.B.C.D")], "Gateway for the switch's own traffic"),
     spec!(NoDefaultGateway, Modes::CONFIG, Modes::SWITCH, [K("no"), K("ip"), K("default-gateway")], "Remove the gateway"),
     spec!(NoSwitchport, Modes::IF, Modes::SWITCH, [K("no"), K("switchport")], "Make this a routed port (multilayer switches)"),
@@ -2384,8 +2407,14 @@ pub static SPECS: &[Spec] = &[
     spec!(ClearCounters, Modes::EXEC, Modes::BOTH, [K("clear"), K("counters")], "Reset interface counters"),
     spec!(ShowSessions, EXECS, Modes::BOTH, [K("show"), K("sessions")], "Telnet and SSH sessions opened from here"),
     spec!(ShowHosts, EXECS, Modes::BOTH, [K("show"), K("hosts")], "Name lookup settings"),
-    spec!(ShowMac, EXECS, Modes::SWITCH, [K("show"), K("mac"), K("address-table"), K("dynamic")], "Learned MAC addresses"),
-    spec!(ClearMac, Modes::EXEC, Modes::SWITCH, [K("clear"), K("mac"), K("address-table"), K("dynamic")], "Forget learned MAC addresses"),
+    spec!(ShowMac, EXECS, Modes::SWITCH.or(Modes::CARD), [K("show"), K("mac"), K("address-table"), K("dynamic")], "Learned MAC addresses"),
+    spec!(
+        ClearMac,
+        Modes::EXEC,
+        Modes::SWITCH.or(Modes::CARD),
+        [K("clear"), K("mac"), K("address-table"), K("dynamic")],
+        "Forget learned MAC addresses"
+    ),
     spec!(BannerMotd, Modes::CONFIG, Modes::BOTH, [K("banner"), K("motd"), Rest("#message#")], "Message shown before login"),
     spec!(NoBannerMotd, Modes::CONFIG, Modes::BOTH, [K("no"), K("banner"), K("motd")], "Remove the message"),
     spec!(ServicePasswordEncryption, Modes::CONFIG, Modes::BOTH, [K("service"), K("password-encryption")], "Write passwords obscured"),
@@ -2710,8 +2739,8 @@ pub static SPECS: &[Spec] = &[
     ),
     spec!(L2NoLacpPriority, Modes::IF, Modes::SWITCH, [K("no"), K("lacp"), K("port-priority")], "LACP priority back to 32768"),
     spec!(L2ShowLacpNeighbor, EXECS, Modes::SWITCH, [K("show"), K("lacp"), K("neighbor")], "What LACP hears from the other end"),
-    spec!(L2ShowVlanId, EXECS, Modes::SWITCH, [K("show"), K("vlan"), K("id"), Arg("<1-4094>")], "One VLAN and its ports"),
-    spec!(L2ShowVlanSummary, EXECS, Modes::SWITCH, [K("show"), K("vlan"), K("summary")], "How many VLANs exist"),
+    spec!(L2ShowVlanId, EXECS, Modes::SWITCH.or(Modes::CARD), [K("show"), K("vlan"), K("id"), Arg("<1-4094>")], "One VLAN and its ports"),
+    spec!(L2ShowVlanSummary, EXECS, Modes::SWITCH.or(Modes::CARD), [K("show"), K("vlan"), K("summary")], "How many VLANs exist"),
     spec!(L2ShowDtp, EXECS, Modes::SWITCH, [K("show"), K("dtp")], "Trunk negotiation on each port"),
     spec!(L2ShowCounters, EXECS, Modes::SWITCH, [K("show"), K("interfaces"), K("counters")], "Frames and bytes in and out of each port"),
     spec!(
@@ -3368,6 +3397,45 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowCryptoIkev2Sa, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("ikev2"), K("sa")], "IKEv2 security associations"),
     spec!(ShowCryptoIkev2Proposal, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("ikev2"), K("proposal")], "IKEv2 proposals"),
     spec!(ShowCryptoIkev2Profile, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("ikev2"), K("profile")], "IKEv2 profiles"),
+    spec!(PowerInline, Modes::IF, Modes::SWITCH, [K("power"), K("inline"), Arg("{auto|never}")], "Power over Ethernet on this port (PoE switches)"),
+    spec!(ShowPowerInline, EXECS, Modes::SWITCH, [K("show"), K("power"), K("inline")], "Power over Ethernet: budget and what each port powers"),
+    spec!(VoiceRegGlobal, Modes::CONFIG, Modes::ROUTER, [K("voice"), K("register"), K("global")], "SIP call control for SIP phones"),
+    spec!(VoiceNoRegGlobal, Modes::CONFIG, Modes::ROUTER, [K("no"), K("voice"), K("register"), K("global")], "Turn SIP call control off"),
+    spec!(VoiceRegDn, Modes::CONFIG, Modes::ROUTER, [K("voice"), K("register"), K("dn"), Arg("<1-1000>")], "Define or edit a SIP directory number"),
+    spec!(
+        VoiceNoRegDn,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("no"), K("voice"), K("register"), K("dn"), Arg("<1-1000>")],
+        "Delete a SIP directory number"
+    ),
+    spec!(VoiceRegPool, Modes::CONFIG, Modes::ROUTER, [K("voice"), K("register"), K("pool"), Arg("<1-1000>")], "Define or edit a SIP phone"),
+    spec!(VoiceNoRegPool, Modes::CONFIG, Modes::ROUTER, [K("no"), K("voice"), K("register"), K("pool"), Arg("<1-1000>")], "Delete a SIP phone"),
+    spec!(VoiceRegMode, Modes::TELEPHONY, Modes::ROUTER, [K("mode"), K("cme")], "Run as the phones' call manager (under voice register global)"),
+    spec!(
+        VoiceRegSource,
+        Modes::TELEPHONY,
+        Modes::ROUTER,
+        [K("source-address"), Arg("A.B.C.D"), K("port"), Arg("<1-65535>")],
+        "Where SIP phones register (under voice register global)"
+    ),
+    spec!(VoiceRegSource, Modes::TELEPHONY, Modes::ROUTER, [K("source-address"), Arg("A.B.C.D")], "Where SIP phones register (port 5060)"),
+    spec!(VoiceRegMaxPool, Modes::TELEPHONY, Modes::ROUTER, [K("max-pool"), Arg("<1-256>")], "How many SIP phones may register"),
+    spec!(VoiceRegIdMac, Modes::EPHONE, Modes::ROUTER, [K("id"), K("mac"), Arg("H.H.H")], "The SIP phone's MAC address (under voice register pool)"),
+    spec!(
+        VoiceRegNumberDn,
+        Modes::EPHONE,
+        Modes::ROUTER,
+        [K("number"), Arg("<1-8>"), K("dn"), Arg("<1-1000>")],
+        "Put a SIP directory number on a line (under voice register pool)"
+    ),
+    spec!(
+        ShowVoiceRegister,
+        EXECS,
+        Modes::ROUTER,
+        [K("show"), K("voice"), K("register"), K("all")],
+        "SIP call control: numbers, phones, registrations and calls"
+    ),
 ];
 
 /// Why a line didn't parse. Positions are word indexes.

@@ -21,6 +21,7 @@ pub mod automation;
 pub mod catalog;
 mod cmd;
 mod controller;
+mod families;
 mod hardware;
 pub mod home;
 mod iot;
@@ -32,6 +33,8 @@ pub mod sample;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_families;
 
 pub use catalog::{CATALOG, CommandInfo};
 pub use netlabcraft_core::DeviceId;
