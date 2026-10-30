@@ -1625,6 +1625,70 @@ fn ospfv3_by_typing() {
 }
 
 #[test]
+fn aaa_logins_through_radius_by_typing() {
+    use packetcraft_model::services::{AaaClient, AaaUser};
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let s = lab.add(DeviceKind::Switch);
+    let pc = lab.add(DeviceKind::Pc);
+    let srv = lab.add(DeviceKind::Server);
+    lab.cable(r, "g0/0", s, "g0/1");
+    lab.cable(pc, "fa0", s, "fa0/1");
+    lab.cable(srv, "g0", s, "fa0/2");
+    lab.run(pc, "ipconfig 192.168.1.10 255.255.255.0 192.168.1.1");
+    lab.run(srv, "ipconfig 192.168.1.5 255.255.255.0 192.168.1.1");
+    {
+        let aaa = &mut lab.t.device_mut(srv).unwrap().services.aaa;
+        aaa.on = true;
+        aaa.clients.push(AaaClient { name: "R1".into(), address: "192.168.1.1".parse().unwrap(), secret: "radkey".into() });
+        aaa.users.push(AaaUser { name: "teacher".into(), password: "pt-pass".into() });
+    }
+    lab.run(r, "en\nconf t\nint g0/0\nip add 192.168.1.1 255.255.255.0\nno shut\nexit\nusername backup secret local1");
+    assert!(lab.try_run(r, "aaa authentication login default group radius local").contains("aaa new-model"));
+    lab.run(r, "aaa new-model\naaa authentication login default group radius local\nradius-server host 192.168.1.5 key radkey\nline vty 0 4\nlogin authentication default\nend");
+    let run = lab.run(r, "show running-config");
+    assert!(run.contains("aaa new-model\naaa authentication login default group radius local\nradius-server host 192.168.1.5 key radkey"), "{run}");
+    // The server says yes to its user, no to anyone else.
+    assert!(lab.try_run(pc, "telnet 192.168.1.1").contains("Open"));
+    assert_eq!(lab.prompt(pc), "Username: ");
+    lab.try_run(pc, "teacher");
+    assert!(lab.try_run(pc, "wrong").contains("Login invalid"));
+    lab.try_run(pc, "teacher");
+    assert_eq!(lab.try_run(pc, "pt-pass"), "");
+    assert_eq!(lab.prompt(pc), "R1>");
+    lab.try_run(pc, "exit");
+    assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("RADIUS Access-Request") && e.summary.contains("(user teacher)")));
+    assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("RADIUS Access-Accept")));
+    assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("RADIUS Access-Reject")));
+    // A RADIUS "no" is final: the local user doesn't get in while the server answers.
+    lab.try_run(pc, "telnet 192.168.1.1");
+    lab.try_run(pc, "backup");
+    assert!(lab.try_run(pc, "local1").contains("Login invalid"));
+    for _ in 0..2 {
+        lab.try_run(pc, "x");
+        lab.try_run(pc, "x");
+    }
+    assert_eq!(lab.prompt(pc), "PC1> ", "three failures close the session");
+    // A wrong shared secret: the answers don't verify, so the local user is next.
+    lab.run(r, "conf t\nradius-server host 192.168.1.5 key other\nend");
+    lab.try_run(pc, "telnet 192.168.1.1");
+    lab.try_run(pc, "backup");
+    assert_eq!(lab.try_run(pc, "local1"), "");
+    assert_eq!(lab.prompt(pc), "R1>");
+    lab.try_run(pc, "exit");
+    // The server down: local again.
+    lab.run(r, "conf t\nradius-server host 192.168.1.5 key radkey\nend");
+    lab.t.device_mut(srv).unwrap().services.aaa.on = false;
+    lab.try_run(pc, "telnet 192.168.1.1");
+    lab.try_run(pc, "backup");
+    assert_eq!(lab.try_run(pc, "local1"), "");
+    assert_eq!(lab.prompt(pc), "R1>");
+    lab.try_run(pc, "exit");
+    lab.run(r, "conf t");
+    assert!(lab.try_run(r, "aaa authentication login default group tacacs+").contains("TACACS+"));
+}
+
+#[test]
 fn ntp_syslog_and_tftp_by_typing() {
     let mut lab = Lab::new();
     let r = lab.add(DeviceKind::Router);

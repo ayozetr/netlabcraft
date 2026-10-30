@@ -65,6 +65,23 @@ pub fn running_config(d: &Device) -> String {
     if let Some(v) = a.ssh_version {
         let _ = writeln!(s, "ip ssh version {v}");
     }
+    if a.aaa {
+        let _ = writeln!(s, "aaa new-model");
+        if !a.login_methods.is_empty() {
+            let m: Vec<&str> = a
+                .login_methods
+                .iter()
+                .map(|m| match m {
+                    packetcraft_model::LoginMethod::Radius => "group radius",
+                    packetcraft_model::LoginMethod::Local => "local",
+                })
+                .collect();
+            let _ = writeln!(s, "aaa authentication login default {}", m.join(" "));
+        }
+    }
+    for (h, k) in &a.radius_servers {
+        let _ = writeln!(s, "radius-server host {h} key {}", pw(k));
+    }
     if a.enable_secret.is_some() || a.enable_password.is_some() || a.no_domain_lookup || a.domain_name.is_some() || !a.users.is_empty() {
         let _ = writeln!(s, "!");
     }

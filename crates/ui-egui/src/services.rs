@@ -21,6 +21,7 @@ pub enum Page {
     Syslog,
     Ntp,
     Tftp,
+    Aaa,
 }
 
 /// Form state of the Services tab and the browser, per device window.
@@ -39,6 +40,11 @@ pub struct ServiceForms {
     dns_name: String,
     dns_addr: String,
     dns_sel: Option<usize>,
+    aaa_client: String,
+    aaa_client_ip: String,
+    aaa_secret: String,
+    aaa_user: String,
+    aaa_password: String,
     // Browser.
     pub url: String,
     /// Press Go on the next frame.
@@ -113,6 +119,7 @@ pub fn tab(app: &mut PacketApp, ui: &mut Ui, dev: &Device, forms: &mut ServiceFo
                     (Page::Syslog, "SYSLOG"),
                     (Page::Ntp, "NTP"),
                     (Page::Tftp, "TFTP"),
+                    (Page::Aaa, "AAA"),
                 ] {
                     if crate::console::list_item(ui, name, forms.page == p, false).clicked() {
                         forms.page = p;
@@ -130,6 +137,7 @@ pub fn tab(app: &mut PacketApp, ui: &mut Ui, dev: &Device, forms: &mut ServiceFo
                 Page::Syslog => syslog(app, ui, d, &dev.services),
                 Page::Ntp => ntp(app, ui, d, &dev.services),
                 Page::Tftp => tftp(app, ui, d, &dev.services),
+                Page::Aaa => aaa(app, ui, d, &dev.services, forms),
             });
         });
     });
@@ -662,6 +670,85 @@ fn syslog(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services) {
             }
         });
     });
+}
+
+fn aaa(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mut ServiceForms) {
+    use packetcraft_model::services::{AaaClient, AaaUser};
+    ui.vertical_centered(|ui| ui.label(RichText::new(tl("AAA")).size(16.0)));
+    ui.separator();
+    let mut new = sv.clone();
+    if on_off(ui, tl("AAA Service (RADIUS)"), &mut new.aaa.on) {
+        apply(app, d, &new);
+    }
+    ui.separator();
+    ui.label(RichText::new(tl("Clients")).strong());
+    field(ui, tl("Client name"), &mut forms.aaa_client);
+    field(ui, tl("Client address"), &mut forms.aaa_client_ip);
+    field(ui, tl("Secret"), &mut forms.aaa_secret);
+    if ui.button(tl("Add client")).clicked() {
+        match forms.aaa_client_ip.trim().parse::<Ipv4Addr>() {
+            Ok(address) if !forms.aaa_secret.trim().is_empty() => {
+                new.aaa.clients.retain(|c| c.address != address);
+                new.aaa.clients.push(AaaClient { name: forms.aaa_client.trim().to_string(), address, secret: forms.aaa_secret.trim().to_string() });
+                apply(app, d, &new);
+            }
+            Ok(_) => app.ui.status = Some(("Give the secret the router has in `radius-server host ... key`".into(), true)),
+            Err(_) => app.ui.status = Some((format!("`{}` is not an IPv4 address", forms.aaa_client_ip.trim()), true)),
+        }
+    }
+    let mut changed = false;
+    egui::Grid::new(("aaa_clients", d.0)).striped(true).show(ui, |ui| {
+        for h in ["Name", "Address", "Secret", ""] {
+            ui.strong(crate::i18n::tr(h));
+        }
+        ui.end_row();
+        let mut remove = None;
+        for (i, c) in new.aaa.clients.iter().enumerate() {
+            ui.label(&c.name);
+            ui.label(c.address.to_string());
+            ui.label(&c.secret);
+            if ui.small_button(tl("Remove")).clicked() {
+                remove = Some(i);
+            }
+            ui.end_row();
+        }
+        if let Some(i) = remove {
+            new.aaa.clients.remove(i);
+            changed = true;
+        }
+    });
+    ui.separator();
+    ui.label(RichText::new(tl("Users")).strong());
+    field(ui, tl("Username"), &mut forms.aaa_user);
+    field(ui, tl("Password"), &mut forms.aaa_password);
+    if ui.button(tl("Add user")).clicked() && !forms.aaa_user.trim().is_empty() {
+        let name = forms.aaa_user.trim().to_string();
+        new.aaa.users.retain(|u| u.name != name);
+        new.aaa.users.push(AaaUser { name, password: forms.aaa_password.clone() });
+        changed = true;
+    }
+    egui::Grid::new(("aaa_users", d.0)).striped(true).show(ui, |ui| {
+        for h in ["Username", "Password", ""] {
+            ui.strong(crate::i18n::tr(h));
+        }
+        ui.end_row();
+        let mut remove = None;
+        for (i, u) in new.aaa.users.iter().enumerate() {
+            ui.label(&u.name);
+            ui.label(&u.password);
+            if ui.small_button(tl("Remove")).clicked() {
+                remove = Some(i);
+            }
+            ui.end_row();
+        }
+        if let Some(i) = remove {
+            new.aaa.users.remove(i);
+            changed = true;
+        }
+    });
+    if changed {
+        apply(app, d, &new);
+    }
 }
 
 fn ntp(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services) {

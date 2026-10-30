@@ -526,6 +526,9 @@ pub struct DevState {
     /// TFTP client: the local port of the transfer in flight, and what came back.
     tftp_port: Option<u16>,
     tftp_inbox: Vec<packetcraft_wire::mgmt::Tftp>,
+    /// A RADIUS client waiting on this port, and the answers that came.
+    radius_port: Option<u16>,
+    radius_inbox: Vec<packetcraft_wire::radius::Radius>,
     /// TFTP server: files being read, by (client, port).
     tftp_tx: BTreeMap<(Ipv4Addr, u16), Vec<u8>>,
     /// Hosts: the last router advertisement heard (router's address, prefixes).

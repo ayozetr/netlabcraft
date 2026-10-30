@@ -25,6 +25,33 @@ pub struct Services {
     /// TFTP: files routers and switches copy configurations to and from.
     #[serde(default)]
     pub tftp: Tftp,
+    /// AAA: a RADIUS server that checks the logins of its client routers and switches.
+    #[serde(default)]
+    pub aaa: Aaa,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Aaa {
+    #[serde(default)]
+    pub on: bool,
+    /// Devices allowed to ask, with the secret each shares with the server.
+    #[serde(default)]
+    pub clients: Vec<AaaClient>,
+    #[serde(default)]
+    pub users: Vec<AaaUser>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AaaClient {
+    pub name: String,
+    pub address: Ipv4Addr,
+    pub secret: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AaaUser {
+    pub name: String,
+    pub password: String,
 }
 
 /// A service that is just on or off.
@@ -66,7 +93,8 @@ impl Services {
             dns: Dns::default(),
                         ntp: Switch { on: true },
             syslog: Switch { on: true },
-            tftp: Tftp { on: true, files: Vec::new() },
+                        tftp: Tftp { on: true, files: Vec::new() },
+            aaa: Aaa::default(),
             dhcp: ServerDhcp { on: false, pools: vec![ServerPool { name: "defaultPool".into(), gateway: Ipv4Addr::UNSPECIFIED, dns: Ipv4Addr::UNSPECIFIED, start: Ipv4Addr::new(192, 168, 0, 10), mask: Ipv4Addr::new(255, 255, 255, 0), max_users: 50 }] },
         }
     }

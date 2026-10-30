@@ -325,6 +325,13 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no access-class [list in]` |  | router, switch | Remove the login filter |
 | `transport input {ssh\|telnet\|all\|none}` |  | router, switch | Protocols remote logins may use |
 | `login local` |  | router, switch | Ask for a username and password (username lines) |
+| `aaa new-model` | config | router, switch | Check logins with AAA method lists |
+| `no aaa new-model` | config | router, switch | Back to line passwords and login local |
+| `aaa authentication login default {group radius\|local} ...` | config | router, switch | How logins are checked, in order |
+| `no aaa authentication login default` | config | router, switch | Local users only |
+| `radius-server host A.B.C.D key WORD` | config | router, switch | A RADIUS server and the secret shared with it |
+| `no radius-server host A.B.C.D` | config | router, switch | Forget a RADIUS server |
+| `login authentication default` |  | router, switch | Use the default AAA method list |
 | `username WORD {secret\|password} PASSWORD` | config | router, switch | Add a local user |
 | `no username WORD` | config | router, switch | Delete a local user |
 | `ip domain-name WORD` | config | router, switch | The domain name (SSH keys need one) |

@@ -249,3 +249,12 @@ While locked, Check Results doesn't say which checks passed	Mientras está bloqu
 Lock the activity	Bloquear la actividad
 Students can't change the activity or see its checks until it is unlocked	Los alumnos no pueden cambiar la actividad ni ver sus comprobaciones hasta que se desbloquee
 Hint when it fails	Pista si falla
+AAA Service (RADIUS)	Servicio AAA (RADIUS)
+Clients	Clientes
+Client name	Nombre del cliente
+Client address	Dirección del cliente
+Secret	Clave compartida
+Add client	Añadir cliente
+Users	Usuarios
+Add user	Añadir usuario
+Username	Nombre de usuario

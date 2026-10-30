@@ -19,12 +19,15 @@ pub mod dns;
 pub mod ipv6;
 pub mod lacp;
 pub mod lldp;
+pub mod md5;
 
 pub mod mgmt;
 pub mod ospf6;
 pub mod ospfdb;
 
 pub mod pcap;
+pub mod radius;
+
 pub mod serial;
 pub mod tcp;
 
@@ -419,6 +422,7 @@ pub enum Protocol {
     Ospf,
     Rip,
     Hsrp,
+    Radius,
     Lacp,
     Lldp,
     Ntp,
@@ -447,6 +451,7 @@ impl Protocol {
             Protocol::Rip => "RIP",
             Protocol::Hsrp => "HSRP",
             Protocol::Lacp => "LACP",
+            Protocol::Radius => "RADIUS",
             Protocol::Lldp => "LLDP",
             Protocol::Ntp => "NTP",
             Protocol::Syslog => "Syslog",
@@ -512,6 +517,19 @@ pub fn summarize(bytes: &[u8]) -> (Protocol, String) {
                         Err(e) => (Protocol::Ospf, format!("OSPF ({e}) {route}{tag}")),
                     },
                     PROTO_UDP => match Udp::decode(&ip.payload, ip.src, ip.dst) {
+                        Ok(u) if u.dst_port == radius::RADIUS_PORT || u.src_port == radius::RADIUS_PORT => match radius::Radius::decode(&u.payload) {
+                            Ok(r) => (
+                                Protocol::Radius,
+                                format!(
+                                    "RADIUS {} {} → {}{}{tag}",
+                                    r.name(),
+                                    ip.src,
+                                    ip.dst,
+                                    r.user().map(|u| format!(" (user {u})")).unwrap_or_default()
+                                ),
+                            ),
+                            Err(e) => (Protocol::Radius, format!("RADIUS ({e}){tag}")),
+                        },
                         Ok(u) if u.dst_port == mgmt::NTP_PORT || u.src_port == mgmt::NTP_PORT => match mgmt::Ntp::decode(&u.payload) {
                             Ok(n) if n.server => (Protocol::Ntp, format!("NTP time from {} (stratum {}){tag}", ip.src, n.stratum)),
                             Ok(_) => (Protocol::Ntp, format!("NTP time request {} → {}{tag}", ip.src, ip.dst)),

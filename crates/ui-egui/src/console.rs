@@ -74,7 +74,7 @@ pub struct DeviceWindow {
     /// The console lines the last form change ran (shown under the form).
     echo: String,
     /// Services tab and browser state.
-    svc: crate::services::ServiceForms,
+    pub(crate) svc: crate::services::ServiceForms,
 }
 
 impl DeviceWindow {

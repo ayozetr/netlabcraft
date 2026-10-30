@@ -1123,16 +1123,47 @@ pub struct Access {
     /// `ip ssh version 2`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ssh_version: Option<u8>,
+    /// `aaa new-model`: logins follow the AAA method list.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub aaa: bool,
+    /// `aaa authentication login default ...`, tried in order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub login_methods: Vec<LoginMethod>,
+    /// `radius-server host A.B.C.D key K`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub radius_servers: Vec<(Ipv4Addr, String)>,
 }
 
+/// A way to check a login, in an AAA method list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LoginMethod {
+    /// `group radius`: ask the RADIUS servers; if none answers, try the next method.
+    Radius,
+    /// `local`: the `username` lines.
+    Local,
+}
+
+/// Most RADIUS servers a device knows.
+pub const MAX_RADIUS_SERVERS: usize = 8;
+
 impl Access {
+    /// The login methods in force: the default list, else the local users.
+    pub fn methods(&self) -> Vec<LoginMethod> {
+        if self.login_methods.is_empty() { vec![LoginMethod::Local] } else { self.login_methods.clone() }
+    }
     /// Whether the vty lines accept a login over this protocol right now.
     pub fn accepts(&self, p: RemoteProto) -> bool {
         let v = &self.vty;
         let allowed = v.transport.as_ref().is_none_or(|t| t.contains(&p));
-        let auth = (v.login_local && !self.users.is_empty()) || (v.login && v.password.is_some());
-        let ssh_ready =
-            p == RemoteProto::Telnet || (self.domain_name.is_some() && self.rsa_bits.is_some() && v.login_local && !self.users.is_empty());
+        let aaa_ready = self.aaa
+            && self.methods().iter().any(|m| match m {
+                LoginMethod::Radius => !self.radius_servers.is_empty(),
+                LoginMethod::Local => !self.users.is_empty(),
+            });
+        let auth = aaa_ready || (v.login_local && !self.users.is_empty()) || (v.login && v.password.is_some());
+        let ssh_ready = p == RemoteProto::Telnet
+            || (self.domain_name.is_some() && self.rsa_bits.is_some() && ((v.login_local && !self.users.is_empty()) || aaa_ready));
         allowed && auth && ssh_ready
     }
 }

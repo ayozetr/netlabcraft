@@ -180,6 +180,25 @@ pub fn open_services_tab(app: &mut PacketApp, d: DeviceId) {
     }
 }
 
+/// Opens a server's Services tab on one page (`http`, `dhcp`, `dns`, `syslog`, `ntp`, `tftp`,
+/// `aaa`).
+pub fn open_services_page(app: &mut PacketApp, d: DeviceId, page: &str) {
+    use services::Page;
+    open_services_tab(app, d);
+    let p = match page {
+        "dhcp" => Page::Dhcp,
+        "dns" => Page::Dns,
+        "syslog" => Page::Syslog,
+        "ntp" => Page::Ntp,
+        "tftp" => Page::Tftp,
+        "aaa" => Page::Aaa,
+        _ => Page::Http,
+    };
+    if let Some(w) = app.ui.windows.get_mut(&d) {
+        w.svc.page = p;
+    }
+}
+
 /// Opens a host's Web Browser on a URL (typed in, not yet fetched).
 pub fn open_browser(app: &mut PacketApp, d: DeviceId, url: &str) {
     console::open(app, d);

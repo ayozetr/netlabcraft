@@ -1,11 +1,12 @@
-//! Network-management services on the wire: NTP clock sync, syslog to a server, and TFTP
-//! copies of configurations.
+//! Network-management services on the wire: NTP clock sync, syslog to a server, TFTP copies
+//! of configurations, and RADIUS logins.
 
 use std::net::Ipv4Addr;
 
 use packetcraft_core::DeviceId;
 use packetcraft_model::{Device, DeviceKind, Topology};
 use packetcraft_wire::mgmt::{NTP_PORT, Ntp, SYSLOG_PORT, TFTP_BLOCK, TFTP_PORT, Tftp, syslog_decode, syslog_encode};
+use packetcraft_wire::radius::{RADIUS_PORT, Radius, reveal_password};
 use packetcraft_wire::{Ipv4, PROTO_UDP, Udp};
 
 use crate::{L3If, Sim, SimError, default_ttl};
@@ -63,6 +64,33 @@ impl Sim {
                 Ok(())
             }
             (TFTP_PORT, _) if d.kind == DeviceKind::Server => self.tftp_server_in(t, d, ip, u),
+            (RADIUS_PORT, _) => {
+                if d.kind != DeviceKind::Server || !d.services.aaa.on {
+                    return Some(Err("no AAA service here".into()));
+                }
+                let req = match Radius::decode(&u.payload) {
+                    Ok(r) => r,
+                    Err(e) => return Some(Err(e.to_string())),
+                };
+                // Unknown clients are ignored, as RFC 2865 says.
+                let Some(client) = d.services.aaa.clients.iter().find(|c| c.address == ip.src) else {
+                    return Some(Err(format!("{} isn't one of this AAA server's clients", ip.src)));
+                };
+                let user = req.user().unwrap_or_default();
+                let password = req.hidden_password().map(|h| reveal_password(h, &client.secret, &req.authenticator)).unwrap_or_default();
+                let good = d.services.aaa.users.iter().any(|x| x.name == user && x.password == password);
+                let answer = Radius::answer(&req, good, if good { "Welcome" } else { "Login refused" }, &client.secret);
+                self.udp_out(t, d, me, ip.src, RADIUS_PORT, u.src_port, answer.encode())
+            }
+            (port, RADIUS_PORT) if self.state.get(&d.id).is_some_and(|s| s.radius_port == Some(port)) => {
+                if let Ok(r) = Radius::decode(&u.payload) {
+                    let st = self.st(d.id);
+                    if st.radius_inbox.len() < 16 {
+                        st.radius_inbox.push(r);
+                    }
+                }
+                Ok(())
+            }
             (port, TFTP_PORT) if self.state.get(&d.id).is_some_and(|s| s.tftp_port == Some(port)) => {
                 if let Ok(p) = Tftp::decode(&u.payload) {
                     let st = self.st(d.id);
@@ -197,6 +225,43 @@ impl Sim {
         self.advance(t, now.saturating_add(10_000), |_| false);
         self.st(dev).tftp_port = None;
         Ok(out)
+    }
+
+    /// Asks the device's RADIUS servers whether a login is good: `Some(accepted)` from the first
+    /// server that answers with the right secret, `None` when none answers.
+    pub fn radius_login(&mut self, t: &Topology, dev: DeviceId, user: &str, password: &str) -> Option<bool> {
+        let d = t.device(dev)?.clone();
+        for (server, key) in d.access.radius_servers.clone() {
+            let Ok(src) = self.source_for(t, &d, server) else { continue };
+            let port = self.next_port();
+            self.seq += 1;
+            let id = (self.seq % 256) as u8;
+            let auth = packetcraft_wire::md5::md5(format!("{}:{}:{user}", self.now, self.seq).as_bytes());
+            let st = self.st(dev);
+            st.radius_port = Some(port);
+            st.radius_inbox.clear();
+            let req = Radius::request(id, auth, user, password, &key, src);
+            // Sent up to three times, as real clients retransmit (the first may wait for ARP).
+            for _ in 0..3 {
+                let start = self.now;
+                if self.udp_out(t, &d, src, server, port, RADIUS_PORT, req.encode()).is_err() {
+                    self.advance(t, start.saturating_add(100_000), |_| false);
+                    continue;
+                }
+                self.advance(t, start.saturating_add(WAIT_US), |s| s.state.get(&dev).is_some_and(|st| st.radius_inbox.iter().any(|r| r.id == id)));
+                if self.state.get(&dev).is_some_and(|st| st.radius_inbox.iter().any(|r| r.id == id)) {
+                    break;
+                }
+            }
+            let st = self.st(dev);
+            st.radius_port = None;
+            let answer = st.radius_inbox.iter().find(|r| r.id == id).cloned();
+            // An answer signed with another secret doesn't count.
+            if let Some(a) = answer.filter(|a| a.verifies(&auth, &key)) {
+                return Some(a.code == packetcraft_wire::radius::ACCESS_ACCEPT);
+            }
+        }
+        None
     }
 
     /// Asks the device's NTP servers for the time; returns the server that answered.

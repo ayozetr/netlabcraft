@@ -134,7 +134,7 @@ pub fn connect(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, pr
     let Some(target) = t.devices.iter().find(|d| packetcraft_sim::l3_ifaces(d).iter().any(|i| i.net.addr == dst)).map(|d| d.id) else {
         return format!("% {dst} answered but isn't a device in this lab");
     };
-    let local = t.device(target).is_some_and(|d| d.access.vty.login_local);
+    let local = t.device(target).is_some_and(|d| d.access.vty.login_local || d.access.aaa);
     let stage = match (local, user) {
         (true, Some(u)) => LoginStage::Password(Some(u)),
         (true, None) => LoginStage::Username,
@@ -153,6 +153,22 @@ pub fn connect(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, pr
     out
 }
 
+/// A login checked through the device's AAA methods, in order: a RADIUS server's answer is
+/// final; when none answers, the next method is tried.
+fn aaa_login(t: &Topology, sim: &mut Sim, target: &packetcraft_model::Device, user: &str, password: &str) -> bool {
+    for m in target.access.methods() {
+        match m {
+            packetcraft_model::LoginMethod::Radius => {
+                if let Some(accepted) = sim.radius_login(t, target.id, user, password) {
+                    return accepted;
+                }
+            }
+            packetcraft_model::LoginMethod::Local => return target.access.users.iter().any(|x| x.name == user && x.matches(password)),
+        }
+    }
+    false
+}
+
 /// A line typed while a remote session is open.
 fn remote_line(t: &mut Topology, sim: &mut Sim, cli: &mut Cli, line: &str) -> Outcome {
     let Some(r) = cli.remote.as_mut() else { return Outcome::default() };
@@ -166,9 +182,13 @@ fn remote_line(t: &mut Topology, sim: &mut Sim, cli: &mut Cli, line: &str) -> Ou
             Outcome::default()
         }
         LoginStage::Password(user) => {
-            let ok = match (&user, target.access.vty.login_local) {
-                (Some(u), true) => target.access.users.iter().any(|x| &x.name == u && x.matches(line)),
-                (_, _) => target.access.vty.password.as_deref() == Some(line),
+            let ok = if target.access.aaa {
+                aaa_login(t, sim, &target, user.as_deref().unwrap_or(""), line)
+            } else {
+                match (&user, target.access.vty.login_local) {
+                    (Some(u), true) => target.access.users.iter().any(|x| &x.name == u && x.matches(line)),
+                    (_, _) => target.access.vty.password.as_deref() == Some(line),
+                }
             };
             if ok {
                 r.stage = LoginStage::Ready;
@@ -179,7 +199,7 @@ fn remote_line(t: &mut Topology, sim: &mut Sim, cli: &mut Cli, line: &str) -> Ou
                 cli.remote = None;
                 return Outcome { output: "% Login failed three times; connection closed".into(), ..Outcome::default() };
             }
-            r.stage = if target.access.vty.login_local { LoginStage::Username } else { LoginStage::Password(None) };
+            r.stage = if target.access.vty.login_local || target.access.aaa { LoginStage::Username } else { LoginStage::Password(None) };
             Outcome { output: "% Login invalid".into(), ..Outcome::default() }
         }
         LoginStage::Ready => {
@@ -1393,6 +1413,65 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             line.login_local = true;
             line.login = false;
             Ok(if d.access.users.is_empty() { "No local users yet: add one with `username <name> secret <password>`.".into() } else { String::new() })
+        }
+        Id::AaaNewModel | Id::NoAaaNewModel => {
+            c.dm()?.access.aaa = spec.id == Id::AaaNewModel;
+            Ok(String::new())
+        }
+        Id::AaaLogin => {
+            let mut methods = Vec::new();
+            let words: Vec<String> = arg(0).split_whitespace().map(str::to_ascii_lowercase).collect();
+            let mut i = 0;
+            while let Some(w) = words.get(i) {
+                match w.as_str() {
+                    "group" => match words.get(i + 1).map(String::as_str) {
+                        Some("radius") => {
+                            methods.push(packetcraft_model::LoginMethod::Radius);
+                            i += 2;
+                        }
+                        Some("tacacs+") => return Err("% TACACS+ is not simulated yet; use RADIUS (`group radius`)".into()),
+                        _ => return Err("% group radius".into()),
+                    },
+                    "local" => {
+                        methods.push(packetcraft_model::LoginMethod::Local);
+                        i += 1;
+                    }
+                    other => return Err(format!("% `{other}`: group radius or local")),
+                }
+            }
+            if methods.is_empty() {
+                return Err("% Give the methods: group radius, local".into());
+            }
+            methods.dedup();
+            let d = c.dm()?;
+            if !d.access.aaa {
+                return Err("% Turn AAA on first: aaa new-model".into());
+            }
+            d.access.login_methods = methods;
+            Ok(String::new())
+        }
+        Id::NoAaaLogin => {
+            c.dm()?.access.login_methods.clear();
+            Ok(String::new())
+        }
+        Id::RadiusHost | Id::NoRadiusHost => {
+            let a = parse_ip(arg(0)).map_err(|e| format!("% {e}"))?;
+            let key: String = arg(1).chars().take(63).collect();
+            let d = c.dm()?;
+            d.access.radius_servers.retain(|(x, _)| *x != a);
+            if spec.id == Id::RadiusHost {
+                if d.access.radius_servers.len() >= packetcraft_model::MAX_RADIUS_SERVERS {
+                    return Err("% Too many RADIUS servers".into());
+                }
+                d.access.radius_servers.push((a, key));
+            }
+            Ok(String::new())
+        }
+        Id::LoginAuthentication => {
+            if !c.d()?.access.aaa {
+                return Err("% Turn AAA on first: aaa new-model".into());
+            }
+            Ok(String::new())
         }
         Id::Ipv6DhcpPool => {
             let name: String = arg(0).chars().take(32).collect();

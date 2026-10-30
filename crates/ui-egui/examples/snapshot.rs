@@ -18,6 +18,7 @@ fn main() {
     let mut desktop: Option<String> = None;
     let mut config = false;
     let mut services = false;
+    let mut page: Option<String> = None;
     let mut url: Option<String> = None;
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -44,6 +45,7 @@ fn main() {
             "--desktop" => desktop = Some(it.next().expect("prompt|ip|home").clone()),
             "--config" => config = true,
             "--services" => services = true,
+            "--services-page" => page = Some(it.next().expect("page").clone()),
             "--url" => url = Some(it.next().expect("url").clone()),
             "--event" => event = Some(it.next().and_then(|s| s.parse().ok()).expect("event id")),
             other => out = other.to_string(),
@@ -68,6 +70,9 @@ fn main() {
                 }
                 if services {
                     packetcraft_ui_egui::open_services_tab(&mut app, id);
+                }
+                if let Some(p) = &page {
+                    packetcraft_ui_egui::open_services_page(&mut app, id, p);
                 }
                 if let Some(u) = &url {
                     packetcraft_ui_egui::open_browser(&mut app, id, u);

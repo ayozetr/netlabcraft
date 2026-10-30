@@ -143,6 +143,16 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             sv.http.files.retain(|f| !f.name.is_empty());
             sv.dns.records.truncate(MAX_ITEMS);
                         sv.dhcp.pools.truncate(MAX_ITEMS);
+                        sv.aaa.clients.truncate(MAX_ITEMS);
+            sv.aaa.users.truncate(MAX_ITEMS);
+            for c in &mut sv.aaa.clients {
+                c.name = c.name.chars().take(64).collect();
+                c.secret = c.secret.chars().take(63).collect();
+            }
+            for u in &mut sv.aaa.users {
+                u.name = u.name.chars().take(64).collect();
+                u.password = u.password.chars().take(64).collect();
+            }
             sv.tftp.files.truncate(MAX_ITEMS);
             for f in &mut sv.tftp.files {
                 f.content = f.content.chars().take(MAX_FILE).collect();
