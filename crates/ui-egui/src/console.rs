@@ -418,9 +418,17 @@ fn physical(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
         let socket = egui::Rect::from_min_size(cell.min + vec2(5.0, 12.0), vec2(28.0, 20.0));
         let end = End { device: dev.id, port: i };
         let (cabled, up) = (app.session.topology.peer(end).is_some(), port_up(&app.session.topology, end));
-        p.rect_filled(socket, 2.0, egui::Color32::from_rgb(0x1a, 0x1c, 0x20));
-        if cabled {
-            p.rect_filled(socket.shrink(4.0), 1.0, egui::Color32::from_rgb(0x4a, 0x90, 0xd0));
+        if port.name.starts_with("Coaxial") {
+            // A threaded F connector.
+            p.circle_filled(socket.center(), 9.0, egui::Color32::from_rgb(0xc8, 0xa2, 0x4a));
+            p.circle_filled(socket.center(), if cabled { 5.0 } else { 3.0 }, egui::Color32::from_rgb(0x1a, 0x1c, 0x20));
+        } else {
+            // An RJ-11 phone socket is narrower than an RJ-45.
+            let socket = if port.name.starts_with("Phone") { socket.shrink2(vec2(6.0, 2.0)) } else { socket };
+            p.rect_filled(socket, 2.0, egui::Color32::from_rgb(0x1a, 0x1c, 0x20));
+            if cabled {
+                p.rect_filled(socket.shrink(4.0), 1.0, egui::Color32::from_rgb(0x4a, 0x90, 0xd0));
+            }
         }
         let led = if up {
             tk.link_up

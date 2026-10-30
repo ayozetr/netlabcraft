@@ -2,7 +2,7 @@
 //! `Fa0/1.10`. A name is a type word followed by slot/port numbers and an optional `.sub`.
 
 /// The interface types NetLabCraft devices have, with their full spelling.
-pub const TYPES: [&str; 6] = ["GigabitEthernet", "FastEthernet", "Ethernet", "Serial", "Wireless", "Internet"];
+pub const TYPES: [&str; 8] = ["GigabitEthernet", "FastEthernet", "Ethernet", "Serial", "Wireless", "Internet", "Coaxial", "Phone"];
 
 /// A parsed interface name.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,6 +87,8 @@ pub fn short(full: &str) -> String {
                 "Serial" => "Se",
                 "Wireless" => "Wl",
                 "Internet" => "In",
+                "Coaxial" => "Co",
+                "Phone" => "Ph",
                 _ => "Et",
             };
             let mut s = format!("{abbr}{}", n.numbers.iter().map(u32::to_string).collect::<Vec<_>>().join("/"));

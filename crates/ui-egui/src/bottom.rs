@@ -23,6 +23,8 @@ pub enum Sub {
     Routers,
     Switches,
     Hubs,
+    /// The cloud and the modems.
+    Wan,
     Hosts,
     Cables,
 }
@@ -61,7 +63,7 @@ fn tiles() -> Vec<Tile> {
     let mut t: Vec<Tile> = models::MODELS
         .iter()
         .map(|m| Tile {
-            sub: sub_of(m.kind),
+            sub: if m.wan() { Sub::Wan } else { sub_of(m.kind) },
             kind: Some(m.kind),
             tool: Tool::Place(m.id),
             short: m.label,
@@ -133,7 +135,9 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
             ui.horizontal(|ui| {
                 let b = &mut app.ui.bottom;
                 let subs: &[(Sub, &str)] = match b.category {
-                    Category::NetworkDevices => &[(Sub::Routers, "Routers"), (Sub::Switches, "Switches"), (Sub::Hubs, "Hubs")],
+                    Category::NetworkDevices => {
+                        &[(Sub::Routers, "Routers"), (Sub::Switches, "Switches"), (Sub::Hubs, "Hubs"), (Sub::Wan, "WAN Emulation")]
+                    }
                     Category::EndDevices => &[(Sub::Hosts, "End Devices")],
                     Category::Connections => &[(Sub::Cables, "Connections")],
                 };
@@ -143,6 +147,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                         Sub::Routers => icons::device(p, r, DeviceKind::Router, &tk),
                         Sub::Switches => icons::device(p, r, DeviceKind::Switch, &tk),
                         Sub::Hubs => icons::device(p, r, DeviceKind::Hub, &tk),
+                        Sub::Wan => crate::icons_families::wan_icon(p, r, "Cloud", &tk),
                         Sub::Hosts => icons::device(p, r, DeviceKind::Pc, &tk),
                         Sub::Cables => icons::glyph(p, r, Glyph::Cable, tk.glyph),
                     };
@@ -203,12 +208,10 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                         );
                         let icon = egui::Rect::from_center_size(rect.center_top() + vec2(0.0, 17.0), vec2(28.0, 28.0));
                         match m.kind {
-                            Some(k) => {
-                                icons::device(&p, icon, k, &tk);
-                                if let Tool::Place(id) = tool {
-                                    icons::model_marks(&p, icon, id, m.multilayer);
-                                }
-                            }
+                            Some(k) => match tool {
+                                Tool::Place(id) => crate::icons_families::model_icon(&p, icon, k, id, m.multilayer, &tk),
+                                _ => icons::device(&p, icon, k, &tk),
+                            },
                             None => {
                                 if let Tool::Cable(c) = tool {
                                     icons::cable(&p, icon, c, &tk);

@@ -95,6 +95,30 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
             s.sim.phone_sync(&s.topology);
             Ok(crate::voice::status(s, d))
         }
+        "cloud.map" => {
+            let d = crate::cmd::device_param(s, p, "device")?;
+            if s.topology.device(d).is_none_or(|x| !x.catalogue_model().cloud()) {
+                return Err(bad("cloud.map is for clouds"));
+            }
+            let a = p.get("a").and_then(Value::as_str);
+            let b = p.get("b").and_then(Value::as_str);
+            match (a, b) {
+                (Some(a), Some(b)) => {
+                    let remove = p.get("remove").and_then(Value::as_bool).unwrap_or(false);
+                    let mut t = s.topology.clone();
+                    t.cloud_map(d, a, b, !remove)?;
+                    s.checkpoint();
+                    s.topology = t;
+                    s.changed();
+                }
+                (None, None) => {}
+                _ => return Err(bad("give both ports `a` and `b` (or neither, to list the pairs)")),
+            }
+            let dev = s.topology.device(d).ok_or_else(|| EngineError::Failed("no such device".into()))?;
+            let pairs: Vec<Value> = dev.bridges.iter().map(|(a, b)| json!([a, b])).collect();
+            let ports: Vec<&str> = dev.ports.iter().map(|p| p.name.as_str()).collect();
+            Ok(json!({"device": dev.name, "pairs": pairs, "ports": ports}))
+        }
         other => Err(EngineError::UnknownCommand(other.to_string())),
     }
 }

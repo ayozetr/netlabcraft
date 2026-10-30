@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 pub mod acl;
 pub mod activity;
 pub mod cable;
+pub mod cloud;
 pub mod drawing;
 pub mod file;
 pub mod firewall;
@@ -959,6 +960,9 @@ pub struct Device {
     /// plugged in). See [`poe`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub adapter: Option<bool>,
+    /// Clouds: the ports joined to each other (`("Coaxial0", "Phone0")`); see [`Topology::cloud_map`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bridges: Vec<(String, String)>,
     /// Routers: call control for IP phones; phones: where they register (see [`voice`]).
     #[serde(default, skip_serializing_if = "voice::Voice::is_default")]
     pub voice: voice::Voice,
@@ -1741,6 +1745,11 @@ impl Device {
             modules: BTreeMap::new(),
             powered_off: false,
             adapter: poe::needs_power(model).then_some(false),
+            bridges: if model.cloud() {
+                vec![("Coaxial0".into(), "Phone0".into()), ("Coaxial1".into(), "Phone1".into()), ("Ethernet0".into(), "Ethernet1".into())]
+            } else {
+                Vec::new()
+            },
             voice: voice::Voice::default(),
             iot: if kind == DeviceKind::Iot { iot::Iot { interval: iot::DEFAULT_INTERVAL, ..iot::Iot::default() } } else { iot::Iot::default() },
             l2: l2sec::SwitchL2::default(),
@@ -2022,7 +2031,10 @@ impl Topology {
                 }
                 n.to_string()
             }
-            None => self.next_name(kind),
+            None => match model.name_prefix() {
+                Some(prefix) => (1..).map(|n| format!("{prefix}{n}")).find(|n| self.name_free(n, None)).unwrap_or_default(),
+                None => self.next_name(kind),
+            },
         };
         let id = DeviceId(self.next_id.max(1));
         self.next_id = id.0.saturating_add(1);
@@ -2225,6 +2237,7 @@ impl Topology {
                 d.qos.sanitize();
                 d.firewall.sanitize();
                 d.sanitize_modules();
+                d.sanitize_bridges();
                 d.voice.sanitize();
                 d.iot.sanitize();
                 for p in &mut d.ports {

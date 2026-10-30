@@ -23,6 +23,9 @@ pub(crate) fn panel(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
         }
     });
     power_supply(app, ui, dev, &tk);
+    if dev.catalogue_model().cloud() {
+        crate::cloud_page::panel(app, ui, dev);
+    }
     let model = dev.catalogue_model();
     if model.slots().is_empty() {
         return;

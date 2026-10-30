@@ -132,3 +132,14 @@ pub fn phone_line(p: &Painter, a: Pos2, b: Pos2, width: f32, tk: &Tokens) {
         p.circle_filled(a + (b - a) * (i as f32 / n as f32), width * 0.8, tk.serial_cable);
     }
 }
+
+/// A device's icon: the cloud and the modems drawn whole, every other model as its kind with
+/// its marks.
+pub fn model_icon(p: &Painter, rect: Rect, kind: netlabcraft_model::DeviceKind, model_id: &str, multilayer: bool, tk: &Tokens) {
+    if is_wan(model_id) {
+        wan_icon(p, rect, model_id, tk);
+    } else {
+        crate::icons::device(p, rect, kind, tk);
+        crate::icons::model_marks(p, rect, model_id, multilayer);
+    }
+}

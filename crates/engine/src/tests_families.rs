@@ -203,3 +203,32 @@ fn a_smart_home_reports_on_a_timer_and_its_gateway_applies_and_or_rules() {
     assert!(s2.topology.find("Home").unwrap().iot.service);
     assert_eq!(s2.topology.find("Motion1").unwrap().iot.interval, 5);
 }
+
+#[test]
+fn home_internet_crosses_cable_and_dsl_modems_through_the_cloud() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "home-internet"})).unwrap();
+    assert_eq!(marks(&mut s, "PC1", "10.0.0.10"), "!!!", "home PC to the office server");
+    // The cloud's pairs: parting coaxial from phone cuts the path.
+    let r = s.execute("cloud.map", json!({"device": "ISP"})).unwrap();
+    assert!(r["pairs"].as_array().unwrap().iter().any(|p| p == &json!(["Coaxial0", "Phone0"])), "{r}");
+    s.execute("cloud.map", json!({"device": "ISP", "a": "Coaxial0", "b": "Phone0", "remove": true})).unwrap();
+    assert_ne!(marks(&mut s, "PC1", "10.0.0.10"), "!!!");
+    s.execute("cloud.map", json!({"device": "ISP", "a": "co0", "b": "ph0"})).unwrap();
+    assert_eq!(marks(&mut s, "PC1", "10.0.0.10"), "!!!");
+    assert!(s.execute("cloud.map", json!({"device": "ISP", "a": "co0"})).is_err());
+    assert!(s.execute("cloud.map", json!({"device": "Office", "a": "g0/0", "b": "g0/1"})).is_err());
+    // Coaxial and phone ports take only their own cable.
+    s.execute("device.add", json!({"model": "Cable Modem", "name": "CM2"})).unwrap();
+    s.execute("device.add", json!({"model": "DSL Modem", "name": "DM2"})).unwrap();
+    assert!(s.execute("link.add", json!({"a": "CM2", "a_port": "Coaxial0", "b": "DM2", "b_port": "Phone0"})).is_err());
+    assert!(s.execute("link.add", json!({"a": "CM2", "a_port": "Coaxial0", "b": "ISP", "b_port": "Coaxial1", "cable": "phone"})).is_err());
+    let r = s.execute("link.add", json!({"a": "CM2", "a_port": "Coaxial0", "b": "ISP", "b_port": "Coaxial1"})).unwrap();
+    assert_eq!(r["resolved"], "coaxial", "{r}");
+    let r = s.execute("link.add", json!({"a": "DM2", "a_port": "Phone0", "b": "ISP", "b_port": "Phone1", "cable": "phone"})).unwrap();
+    assert_eq!(r["resolved"], "phone", "{r}");
+    assert!(s.execute("link.add", json!({"a": "DM2", "a_port": "Ethernet1", "b": "PC1", "cable": "coaxial"})).is_err());
+    let s2 = round_trip(&mut s);
+    assert_eq!(s2.topology.find("ISP").unwrap().bridges.len(), 3);
+    assert!(s2.topology.links.iter().any(|l| l.cable == netlabcraft_model::cable::Cable::Phone));
+}

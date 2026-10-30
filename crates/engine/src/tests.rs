@@ -43,7 +43,7 @@ fn every_sample_builds_and_its_hosts_reach_each_other() {
                     continue;
                 }
                 // Behind NAT, inside hosts can't be reached from outside.
-                if sample.id == "nat-acl" && from == "Web" {
+                if (sample.id == "nat-acl" || sample.id == "home-internet") && from == "Web" {
                     continue;
                 }
                 // The firewall keeps lower security levels from starting connections to higher ones.
@@ -1239,7 +1239,7 @@ fn cables_have_kinds_that_fit_their_ports() {
     // A fiber cable needs fiber at both ends; the error says which port is not.
     let e = s.execute("link.add", json!({"a": "F1", "a_port": "g0/1", "b": "S1", "b_port": "fa0/1", "cable": "fiber"})).unwrap_err().to_string();
     assert!(e.contains("a fiber cable needs a fiber port on both ends: S1 Fa0/1 is copper"), "{e}");
-    let e = s.execute("link.add", json!({"a": "R2", "b": "S1", "cable": "coax"})).unwrap_err().to_string();
+    let e = s.execute("link.add", json!({"a": "R2", "b": "S1", "cable": "rope"})).unwrap_err().to_string();
     assert!(e.contains("`cable` must be one of"), "{e}");
     // With no port named, the first port the cable fits is taken (the combo uplink on S1).
     let v = s.execute("link.add", json!({"a": "F1", "b": "S1", "cable": "fiber"})).unwrap();

@@ -19,6 +19,7 @@ use serde_json::{Value, json};
 pub mod activity;
 mod bottom;
 mod canvas;
+mod cloud_page;
 mod console;
 mod credits;
 mod events;

@@ -136,6 +136,11 @@ pub static SAMPLES: &[Sample] = &[
         description: "Eight smart things report every few seconds to the home gateway's IoT service, whose rules light the hall when someone moves, sound the siren on smoke and unlock the door on smoke or heat.",
     },
     Sample {
+        id: "home-internet",
+        title: "Home Internet over cable and DSL",
+        description: "A home PC reaches an office web server: home router, cable modem, the provider's cloud (coaxial to phone line), DSL modem, office router.",
+    },
+    Sample {
         id: "switch-card",
         title: "A switch card in a router",
         description: "R1 has a 4-port switch card: its ports are VLAN members (10 and 20) and a trunk to S1, and the router routes between its VLAN interfaces.",
@@ -1097,6 +1102,49 @@ pub fn build(id: &str) -> Result<Topology> {
             }
             b.t.add_annotation(20.0, 150.0, "Smart things on S1 - Home gateway LAN 192.168.0.0/24")?;
             b.t.notes = "Every smart thing reports to the Home gateway's IoT service (192.168.0.1) every 5 s of simulated time. Open Home > IoT to see them live and the rules. Set Motion1's reading to 1: Light1 and Cam1 switch on (Cam1 takes a still image). Raise Smoke1 above 20: Siren1 sounds and Door1 unlocks. Advance the time (or press Report now) to let the things report.".into();
+        }
+        "home-internet" => {
+            b.add(DeviceKind::Pc, "PC1", 40.0, 60.0)?;
+            b.add_model("Home-Router", "Home", 40.0, 200.0)?;
+            b.add_model("Cable-Modem", "CableModem", 200.0, 200.0)?;
+            b.add_model("Cloud", "ISP", 360.0, 120.0)?;
+            b.add_model("DSL-Modem", "DslModem", 520.0, 200.0)?;
+            b.add(DeviceKind::Router, "Office", 680.0, 200.0)?;
+            b.add(DeviceKind::Server, "Web", 680.0, 60.0)?;
+            b.cable("PC1", "fa0", "Home", "Ethernet1")?;
+            b.cable("Home", "Internet0", "CableModem", "Ethernet1")?;
+            b.cable("CableModem", "Coaxial0", "ISP", "Coaxial0")?;
+            b.cable("ISP", "Phone0", "DslModem", "Phone0")?;
+            b.cable("DslModem", "Ethernet1", "Office", "g0/0")?;
+            b.cable("Office", "g0/1", "Web", "g0")?;
+            b.type_in(
+                "Home",
+                "enable
+                configure terminal
+                interface Internet0
+                ip address 203.0.113.2 255.255.255.0
+                exit
+                ip route 0.0.0.0 0.0.0.0 203.0.113.1
+                end",
+            )?;
+            b.type_in(
+                "Office",
+                "enable
+                configure terminal
+                interface g0/0
+                description to the DSL modem
+                ip address 203.0.113.1 255.255.255.0
+                no shutdown
+                interface g0/1
+                ip address 10.0.0.1 255.255.255.0
+                no shutdown
+                end
+                copy running-config startup-config",
+            )?;
+            b.type_in("Web", "ipconfig 10.0.0.10 255.255.255.0 10.0.0.1")?;
+            b.type_in("PC1", "ipconfig /renew")?;
+            b.t.add_annotation(250.0, 20.0, "Provider cloud: Coaxial0 joined to Phone0")?;
+            b.t.notes = "PC1 gets its address from the Home router, which translates it to 203.0.113.2. Its packets cross the cable modem, the provider's cloud (coaxial joined to the phone line, see ISP's Physical tab) and the DSL modem to the Office router and the Web server (ping 10.0.0.10). Try another cable between the modems and the cloud: only coaxial fits a coaxial port.".into();
         }
         "switch-card" => {
             b.add_model("Router-M2", "R1", 360.0, 60.0)?;

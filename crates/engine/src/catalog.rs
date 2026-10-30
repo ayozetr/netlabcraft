@@ -281,6 +281,14 @@ pub static CATALOG: &[CommandInfo] = &[
         true
     ),
     c!(
+        "cloud.map",
+        "Cloud port pairs",
+        "",
+        None,
+        r#"{"device": cloud, "a"?: "Coaxial0", "b"?: "Phone0", "remove"?: true} → {"pairs": [[a, b]…], "ports"}: joins two ports (a frame in one leaves by the other), parts them, or lists the pairs"#,
+        true
+    ),
+    c!(
         "device.power.source",
         "Power source",
         "",

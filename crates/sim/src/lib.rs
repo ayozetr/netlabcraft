@@ -193,6 +193,8 @@ pub fn cable_problem(t: &Topology, end: End) -> Option<String> {
     let (what, max) = match t.resolved_cable(l) {
         netlabcraft_model::cable::Cable::SerialDce | netlabcraft_model::cable::Cable::SerialDte => return None,
         netlabcraft_model::cable::Cable::Fiber => ("fiber", netlabcraft_model::physical::FIBER_MAX_M),
+        netlabcraft_model::cable::Cable::Coaxial => ("coaxial", netlabcraft_model::cable::COAX_MAX_M),
+        netlabcraft_model::cable::Cable::Phone => ("phone line", netlabcraft_model::cable::PHONE_MAX_M),
         _ if t.is_serial(end) => return None,
         _ => ("copper", netlabcraft_model::physical::COPPER_MAX_M),
     };
@@ -2121,7 +2123,14 @@ impl Sim {
             return Err(format!("loop: the frame crossed {MAX_SWITCH_HOPS} hubs or switches"));
         }
         let mut sent = 0;
-        for p in (0..d.ports.len()).filter(|&p| p != in_port) {
+        // A provider cloud passes a frame only to the port its arrival port is joined to.
+        let cloud = d.catalogue_model().cloud();
+        let partner = d.cloud_partner(in_port);
+        if cloud && partner.is_none() {
+            let name = d.ports.get(in_port).map_or("?", |p| p.name.as_str());
+            return Err(format!("{name} is not joined to another port in the cloud"));
+        }
+        for p in (0..d.ports.len()).filter(|&p| p != in_port && (!cloud || Some(p) == partner)) {
             if self.emit_hops(t, End { device: d.id, port: p }, bytes.to_vec(), hops + 1) {
                 sent += 1;
             }

@@ -824,6 +824,8 @@ pub fn cable(p: &Painter, rect: Rect, kind: netlabcraft_model::cable::Cable, tk:
         Cable::Straight | Cable::Auto => {
             p.line_segment([a, b], s);
         }
+        Cable::Coaxial => crate::icons_families::coax_line(p, a, b, width, tk),
+        Cable::Phone => crate::icons_families::phone_line(p, a, b, width, tk),
     }
     // Plugs: small squares at both ends.
     let plug = w * 0.13;

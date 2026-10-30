@@ -188,6 +188,27 @@ pub static MODELS: &[Model] = &[
         ports: &[run("Internet", 0, 0), run("Ethernet", 1, 4), run("Wireless", 0, 0)],
     },
     Model {
+        id: "Cloud",
+        kind: DeviceKind::Hub,
+        label: "Cloud",
+        description: "A provider's network (WAN): 2 Ethernet, 2 coaxial and 2 phone (DSL) ports, each joined to the port it is mapped to (by default coaxial to phone: a cable modem reaches a DSL modem)",
+        ports: &[run("Ethernet", 0, 1), run("Coaxial", 0, 1), run("Phone", 0, 1)],
+    },
+    Model {
+        id: "DSL-Modem",
+        kind: DeviceKind::Hub,
+        label: "DSL Modem",
+        description: "DSL modem: bridges its phone line (Phone0, RJ-11) to its Ethernet port (Ethernet1)",
+        ports: &[run("Phone", 0, 0), run("Ethernet", 1, 1)],
+    },
+    Model {
+        id: "Cable-Modem",
+        kind: DeviceKind::Hub,
+        label: "Cable Modem",
+        description: "Cable modem: bridges its coaxial port (Coaxial0) to its Ethernet port (Ethernet1)",
+        ports: &[run("Coaxial", 0, 0), run("Ethernet", 1, 1)],
+    },
+    Model {
         id: "Hub-8",
         kind: DeviceKind::Hub,
         label: "Hub 8",
@@ -397,6 +418,28 @@ impl Model {
     }
 }
 
+impl Model {
+    /// A provider cloud: frames go only between the ports mapped to each other.
+    pub fn cloud(&self) -> bool {
+        self.id == "Cloud"
+    }
+
+    /// A WAN device (the cloud and the modems), listed apart in the device list.
+    pub fn wan(&self) -> bool {
+        matches!(self.id, "Cloud" | "DSL-Modem" | "Cable-Modem")
+    }
+
+    /// The name new devices of this model get (`Cloud1`, `Modem1`), when not the kind's.
+    pub fn name_prefix(&self) -> Option<&'static str> {
+        match self.id {
+            "Cloud" => Some("Cloud"),
+            "DSL-Modem" | "Cable-Modem" => Some("Modem"),
+            "Home-Gateway" => Some("Gateway"),
+            _ => None,
+        }
+    }
+}
+
 /// A model by its id (`Router-3`, what lab files keep) or by the name the interface shows
 /// (`Router 3GE`).
 pub fn find(id: &str) -> Option<&'static Model> {
@@ -423,7 +466,11 @@ static FALLBACK: Model = Model { id: "PC", kind: DeviceKind::Pc, label: "PC", de
 
 /// What a port takes, by its name alone.
 pub fn medium_by_name(name: &str) -> Medium {
-    if crate::ifname::is_serial(name) {
+    if name.starts_with("Coaxial") {
+        Medium::Coaxial
+    } else if name.starts_with("Phone") {
+        Medium::Phone
+    } else if crate::ifname::is_serial(name) {
         Medium::Serial
     } else if crate::ifname::is_wireless(name) {
         Medium::Wireless

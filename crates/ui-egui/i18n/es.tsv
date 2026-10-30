@@ -965,3 +965,25 @@ If {}, switch {} on	Si {}, enciende {}
 If {}, switch {} off	Si {}, apaga {}
 still image {}: someone in view	imagen fija {}: alguien a la vista
 still image {}: nobody in view	imagen fija {}: nadie a la vista
+Cloud	Nube
+A provider's network (WAN): 2 Ethernet, 2 coaxial and 2 phone (DSL) ports, each joined to the port it is mapped to (by default coaxial to phone: a cable modem reaches a DSL modem)	La red de un proveedor (WAN): 2 puertos Ethernet, 2 coaxiales y 2 de teléfono (DSL), cada uno unido al puerto al que se asigna (por defecto coaxial con teléfono: un módem de cable llega a un módem DSL)
+DSL Modem	Módem DSL
+DSL modem: bridges its phone line (Phone0, RJ-11) to its Ethernet port (Ethernet1)	Módem DSL: une su línea telefónica (Phone0, RJ-11) con su puerto Ethernet (Ethernet1)
+Cable Modem	Módem de cable
+Cable modem: bridges its coaxial port (Coaxial0) to its Ethernet port (Ethernet1)	Módem de cable: une su puerto coaxial (Coaxial0) con su puerto Ethernet (Ethernet1)
+Coaxial	Coaxial
+Phone (RJ-11)	Teléfono (RJ-11)
+Coaxial: joins coaxial ports (a cable modem to the cable provider's cloud); carries a signal up to 500 m here	Coaxial: une puertos coaxiales (un módem de cable con la nube del proveedor de cable); lleva la señal hasta 500 m aquí
+Phone line (RJ-11): joins phone ports (a DSL modem to the phone company's cloud); carries a signal up to 5 km here	Línea telefónica (RJ-11): une puertos de teléfono (un módem DSL con la nube de la compañía telefónica); lleva la señal hasta 5 km aquí
+WAN Emulation	Emulación WAN
+Home Internet over cable and DSL	Internet doméstico por cable y DSL
+A home PC reaches an office web server: home router, cable modem, the provider's cloud (coaxial to phone line), DSL modem, office router.	Un PC de casa llega a un servidor web de oficina: router doméstico, módem de cable, la nube del proveedor (coaxial a línea telefónica), módem DSL y router de oficina.
+PC1 gets its address from the Home router, which translates it to 203.0.113.2. Its packets cross the cable modem, the provider's cloud (coaxial joined to the phone line, see ISP's Physical tab) and the DSL modem to the Office router and the Web server (ping 10.0.0.10). Try another cable between the modems and the cloud: only coaxial fits a coaxial port.	PC1 recibe su dirección del router Home, que la traduce a 203.0.113.2. Sus paquetes cruzan el módem de cable, la nube del proveedor (coaxial unido a la línea telefónica, mira la pestaña Físico de ISP) y el módem DSL hasta el router Office y el servidor Web (ping 10.0.0.10). Prueba otro cable entre los módems y la nube: en un puerto coaxial solo cabe un coaxial.
+Port pairs (a frame in one port leaves by the other):	Pares de puertos (una trama que entra por uno sale por el otro):
+{} joined to {}	{} unido a {}
+Part	Separar
+Part {} from {}	Separar {} de {}
+No port is joined: the cloud passes nothing.	Ningún puerto está unido: la nube no deja pasar nada.
+First port	Primer puerto
+Second port	Segundo puerto
+Join	Unir

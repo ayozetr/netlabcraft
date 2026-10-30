@@ -165,4 +165,33 @@ mod t {
         assert!(h.query_by_label("Report every (s):").is_some());
         assert!(h.query_by_label("recording").is_some());
     }
+
+    #[test]
+    fn the_wan_tiles_place_a_cloud_and_its_physical_tab_parts_and_joins_ports() {
+        let mut h = harness("home-internet");
+        h.state_mut().ui.show_notes = false;
+        h.run_steps(2);
+        h.get_by_label("WAN Emulation").click();
+        h.run_steps(2);
+        for tile in ["Cloud", "DSL Modem", "Cable Modem"] {
+            assert!(h.query_by_label(tile).is_some(), "{tile}");
+        }
+        h.get_by_label("Connections").click();
+        h.run_steps(2);
+        for c in ["Coaxial", "Phone (RJ-11)"] {
+            h.get_by_label(c).scroll_to_me();
+            h.run_steps(2);
+            assert!(h.query_by_label(c).is_some(), "{c}");
+        }
+        let isp = h.state().session.topology.resolve("ISP").unwrap();
+        crate::open_physical_tab(h.state_mut(), isp);
+        h.run_steps(3);
+        h.get_by_label("Part Coaxial0 from Phone0").click();
+        h.run_steps(2);
+        assert_eq!(h.state().session.topology.device(isp).unwrap().bridges.len(), 2);
+        h.get_by_label("Join").click();
+        h.run_steps(2);
+        // Ethernet0 and Ethernet1 (the pickers' first choices) are joined already: refused.
+        assert_eq!(h.state().session.topology.device(isp).unwrap().bridges.len(), 2);
+    }
 }

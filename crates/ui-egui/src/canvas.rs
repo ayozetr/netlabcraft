@@ -617,6 +617,8 @@ fn draw_links(app: &mut PacketApp, painter: &egui::Painter, view: &View, tk: &To
                 Cable::Fiber => {
                     painter.line_segment([pa, pb], Stroke::new(width, tk.fiber_cable));
                 }
+                Cable::Coaxial => crate::icons_families::coax_line(painter, pa, pb, width, tk),
+                Cable::Phone => crate::icons_families::phone_line(painter, pa, pb, width, tk),
                 _ => {
                     painter.line_segment([pa, pb], Stroke::new(width, tk.cable));
                 }
@@ -727,8 +729,7 @@ fn draw_devices(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Toke
         {
             painter.rect_stroke(r.expand(6.0), 8.0, Stroke::new(2.0, tk.selection), StrokeKind::Outside);
         }
-        icons::device(painter, r, d.kind, tk);
-        icons::model_marks(painter, r, d.catalogue_model().id, d.catalogue_model().multilayer());
+        crate::icons_families::model_icon(painter, r, d.kind, d.catalogue_model().id, d.catalogue_model().multilayer(), tk);
         if d.powered_off || app.session.topology.power_problem(d.id).is_some() {
             icons::powered_off_mark(painter, r);
         }
