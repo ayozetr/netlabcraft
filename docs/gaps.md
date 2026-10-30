@@ -1,6 +1,6 @@
 # Gaps
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** major (rewritten: only open shortfalls, ranked, with estimates; finished work moved to the revision history) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** major (re-ranked after the CCNA 2 and 3 depth round; packaging on hold; fibre removed, it was done) · **Target:** Cisco Packet Tracer 9.0
 
 Every known shortfall against the reference app, ranked: the work list. Pick from the top; each
 item lands with tests and doc updates. The weights behind the ranking are in
@@ -13,16 +13,36 @@ Hours are Opus 5.5 agent wall-clock estimates.
 
 | # | Gap | Who notices | Estimate |
 |---|---|---|---|
-| 1 | **More languages:** interface languages beyond English and Spanish (catalogs in the same format) | Non-English students | 3–6 h |
-| 2 | **Packaging and first release:** installers for Windows, macOS, FreeBSD and Flatpak, workflows ([releasing.md](releasing.md)); the app ID and the project's home are the owner's decision | Everyone who isn't a developer | 7–13 h |
-| 3 | **Routing and security depth:** QoS shaping and `mls qos trust`, route distance in path choice (floating static routes), EIGRP for IPv6, IKEv2 and real ciphers | CCNA 3 extras | 15–25 h |
-| 4 | **Wireless depth:** group keys, a real PEAP/TLS tunnel, wireless range by distance in the physical view | CCNA 2 extras | 6–10 h |
-| 5 | **Device families:** a switch card in routers (switching inside a router), power over Ethernet, SIP phones, IoT on a timer and more things, cloud and DSL/cable modems, fibre | Specialised labs | 30–50 h |
+| 1 | **A CCNA-style lab book** (beta gate 1): VLANs, inter-VLAN routing, DHCP, OSPF, ACLs, NAT, IPv6, WAN, switch security and HSRP labs written fresh and run end to end by hand and through MCP, fixing what they turn up | Every student; it is also how the readiness estimates get checked | 25–40 h |
+| 2 | **Automation (CCNA 3):** RESTCONF/NETCONF on routers, a Programming tab on PCs, a controller to query | CCNA 3 students | 15–25 h |
+| 3 | **Security depth:** zone-based firewall and `ip inspect`, `ip mtu` and `ip tcp adjust-mss` (tunnels), IKEv2 and real ciphers | CCNA 3 and security courses | 12–20 h |
+| 4 | **Simulation-mode depth:** complex PDUs, PDU details in the reference app's OSI layout | CCNA 1 students | 18–28 h |
+| 5 | **Switch and QoS leftovers:** `mls qos trust`, shaping that delays traffic, loop guard, option 82 inserted by snooping switches, the RSTP proposal/agreement handshake | CCNA 2 and 3 extras | 6–10 h |
+| 6 | **Routing leftovers:** EIGRP for IPv6, VRRP and GLBP beyond the concept, DHCPv6 /128 addresses for router clients | CCNA 2 and 3 extras | 8–12 h |
+| 7 | **Wireless depth:** group keys, a real PEAP/TLS tunnel, wireless range by distance in the physical view | CCNA 2 extras | 6–10 h |
+| 8 | **More languages:** interface languages beyond English and Spanish (catalogs in the same format) | Non-English students | 3–6 h each |
+| 9 | **Device families:** a switch card in routers (switching inside a router), power over Ethernet, SIP phones, IoT on a timer and more things, cloud and DSL/cable modems | Specialised labs | 30–50 h |
+| — | **Packaging and first release:** on hold by the owner's decision (no release for now; GitHub Actions is not available). Not planned or estimated until the hold is lifted; see [releasing.md](releasing.md) | Everyone who isn't a developer | on hold |
 
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | major | Re-ranked: the lab book first, then automation, security depth and Simulation-mode depth; packaging put on hold by the owner's decision; fibre removed from device families (it was done with the cable types). |
+| 2026-10-30 | minor | Done: console and PC prompt fixes (`^` marker, first-word help, `show ip traffic`, `show tcp brief`, extended ping, history size; `ipconfig /all`, `ipv6config /all`, `ping -l/-t`, `netstat`, `arp -d`). |
+| 2026-10-30 | minor | Done: HSRP version 2 and interface tracking. |
+| 2026-10-30 | minor | Done: network management (timestamps, logging levels, NTP master and authentication, TFTP image copies, `boot system`, password recovery, `show file systems`, `show ip nat statistics`). |
+| 2026-10-30 | minor | Done: DHCP server details (lease, domain name, statistics, conflicts, packet debug), helper addresses and ACLs on VLAN interfaces. |
+| 2026-10-30 | minor | Done: ACL editing (sequence numbers, resequence, `established`, ICMP types, remarks). |
+| 2026-10-30 | minor | Done: small switch commands (`show vlan id`, `show vlan summary`, `show dtp`, `show interfaces counters`, trunk encapsulation, `sdm prefer`). |
+| 2026-10-30 | minor | Done: STP cost and port priority, root guard, `show spanning-tree summary` and `detail`, EtherChannel load balancing and views. |
+| 2026-10-30 | minor | Done: PortFast and BPDU guard defaults, errdisable recovery, port-security aging. |
+| 2026-10-30 | minor | Done: DHCP snooping and dynamic ARP inspection (option 82 insertion stays open). |
+| 2026-10-30 | minor | Done: routers as IPv6 clients (`ipv6 address autoconfig`, `ipv6 address dhcp`). |
+| 2026-10-30 | minor | Routing depth narrowed: floating static routes (route distance in path choice). |
+| 2026-10-30 | minor | Done: OSPF as the courses teach it (interface areas, timers with mismatch, point-to-point, `passive-interface default`, `redistribute static`, database and neighbour detail). |
+| 2026-10-30 | minor | Done: loopback interfaces. |
+| 2026-10-30 | minor | Workspace narrowed: UI fixes from the audit (fit to view, time bar, Spanish coverage, window placement, labels, event list columns). |
 | 2026-10-30 | minor | Depth round: wireless (VLAN per WLAN, beacons, roaming, CCMP), routing and VPN (EIGRP depth, ECMP, tunnels over learned routes, IKE, QoS queuing), firewall depth, modular routers, IP phones and IoT; what remains of each re-ranked. |
 | 2026-10-30 | minor | Workspace done: the physical view. Device families narrowed: a stateful firewall. |
 | 2026-10-30 | minor | Wireless narrowed: WLC, LAPs, 802.11 frames, WPA2-Enterprise. QoS basics done (classification, marking, policing). |

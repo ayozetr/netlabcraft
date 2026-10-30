@@ -46,7 +46,7 @@ One click opens a device, as in the reference app (a double click was the first 
 
 ## Computed protocols
 
-Spanning tree, OSPF, RIP, EtherChannel negotiation and VTP are computed from the topology the way they converge, instead of exchanging timed hellos. Labs are correct at once and deterministic; the cost is that their frames are not in the event list yet ([gaps.md](gaps.md), gap 3).
+Spanning tree, OSPF, RIP, EtherChannel negotiation and VTP are computed from the topology the way they converge, instead of exchanging timed hellos. Labs are correct at once and deterministic. Their frames (BPDUs, hellos, updates, LACPDUs) are still sent at the usual intervals so Simulation mode and captures show them, but they report what the computation decided rather than drive it.
 
 ## Switches flush learned addresses on a topology change
 
@@ -90,4 +90,8 @@ Trees are still computed at once, but a port that starts forwarding waits 30 s (
 
 ## Documentation follows the shared Craft format
 
-: every page carries a review line and a revision history; parity is assessed with written weights and labelled estimates.
+Every page carries a review line and a revision history; parity is assessed with written weights and labelled estimates.
+
+## No release for now
+
+The owner has put releases on hold: no installers or published builds for now, and GitHub Actions is not available to run release workflows. The quality gates run locally with `cargo xtask ci`, Linux users can install from source with `packaging/linux/install.sh`, and the release plan in [releasing.md](releasing.md) waits until the hold is lifted. The alpha gate that asks for a packaged build waits with it.

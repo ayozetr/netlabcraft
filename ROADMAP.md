@@ -1,8 +1,8 @@
 # NetLabCraft roadmap
 
-**Stage: pre-alpha** · next: alpha, ~25–45 agent-hours away
+**Stage: pre-alpha** · next: alpha, ~5–10 agent-hours of checking away; the packaged-build gate is on hold by the owner's decision
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** major (rewritten in the shared roadmap format) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** major (numbers measured again, readiness re-estimated by course, gaps re-ranked, packaging on hold) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 NetLabCraft aims at Cisco Packet Tracer parity for teaching and lab work, and at being better
 in places: real frames you can open in any packet analyser, an open lab format, agent control
@@ -20,46 +20,60 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 | Number | Value | Kind |
 |---|---|---|
-| **Ready for real work** (weighted) | **~81%** | estimated from written weights (80.6); [target-app-parity.md](docs/target-app-parity.md) |
+| **Ready for real work** (weighted) | **~84%** | estimated from written weights (83.6); [target-app-parity.md](docs/target-app-parity.md) |
 | **CCNA 1 student** | **~86%** | estimated; [method](docs/target-app-parity.md#audiences) |
-| **CCNA 2 student** | **~92%** | estimated |
-| **CCNA 3 student** | **~91%** | estimated |
+| **CCNA 2 student** | **~85%** | estimated (was ~92%: the earlier figure counted topics as present without weighing their depth) |
+| **CCNA 3 student** | **~79%** | estimated (was ~91%, for the same reason; automation and QoS weigh it down) |
 | **Instructor** (graded activities) | **~78%** | estimated |
-| Engine commands | 94 | measured: `crates/engine/src/catalog.rs` |
-| Console grammar entries | 636 across 26 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
-| Device models · sample labs | 28 · 23 | measured |
-| Tests | 336 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
-| Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
-| Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
-| Remaining to **full parity** | **~550–880 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
+| Engine commands | 94 | measured: `c!(` entries in `crates/engine/src/catalog.rs` |
+| Console grammar entries | 802 across 26 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL` |
+| Device models · sample labs | 25 · 23 | measured: `MODELS` in `crates/model/src/models.rs` (the 6 router cards not counted), `SAMPLES` in `crates/engine/src/sample.rs` |
+| Tests | 336 | measured: sum of "passed" from `cargo test --workspace -q` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Remaining to **alpha** | **~5–10 Opus 5.5 agent-hours** | estimated; walking the CCNA 1 labs; the packaged-build gate is on hold ([roadmap.md](docs/roadmap.md#alpha-gates)) |
+| Remaining to **beta** | **~45–80 Opus 5.5 agent-hours** | estimated; the CCNA lab book and the fixes it turns up ([roadmap.md](docs/roadmap.md#beta-gates)) |
+| Remaining to **~95% everywhere** | **~150–250 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
 
 | Audience | Ready % | Opus 5.5 agent wall-clock hours to ~95% | Work that dominates |
 |---|---|---|---|
-| Full target | ~72% | ~250–420 | Depth everywhere, cloud and DSL/cable devices, fibre |
-| CCNA 1 student | ~86% | ~12–25 | PDU details, a few host apps |
-| CCNA 2 student | ~92% | ~10–20 | Console polish, wireless group keys and real PEAP |
-| CCNA 3 student | ~91% | ~20–40 | Automation, QoS shaping and trust, floating static routes |
+| Full target (the weighted total) | ~84% | ~150–250 (sum of the dimension rows) | Simulation-mode depth, device families, automation, security depth |
+| CCNA 1 student | ~86% | ~10–20 | PDU details in the OSI layout, complex PDUs, walking the labs |
+| CCNA 2 student | ~85% | ~20–35 | Wireless group keys and real PEAP, loop guard, the RSTP handshake, option 82, walking the labs |
+| CCNA 3 student | ~79% | ~35–55 | Automation (RESTCONF/NETCONF, a Programming tab), zone-based firewall, QoS trust and shaping, `ip mtu`/`adjust-mss` |
 | Instructor | ~78% | ~15–25 | Translated activity texts, an answer-network view |
 
 ## Dimensions
 
 | Dimension | Weight | Ready | Hours to ~95% | State |
 |---|---|---|---|---|
-| Device console | 20 | 74% | 35–55 | Modes, abbreviations, `?`, Tab, history, config round-trip; `show` coverage growing |
-| Layer 2 | 12 | 85% | 12–20 | VLANs, trunks, DTP, per-VLAN STP with BPDUs and timers, rapid-pvst, EtherChannel, VTP, port security |
-| Layer 3 | 15 | 90% | 10–18 | IPv4, IPv6 (NDP, SLAAC, subinterfaces, VLAN interfaces, DHCPv6 relay), static, RIP, multi-area OSPF with DR/BDR and equal-cost paths, OSPFv3, EIGRP with timers, queries and equal or unequal-cost load balancing, multilayer switching, HSRP |
-| Services | 8 | 92% | 3–5 | DHCPv4 and DHCPv6 (with relay), DNS, HTTP with browser, email with the Email app, Telnet/SSH, NTP, syslog, TFTP, FTP, AAA with RADIUS and TACACS+, SNMP v2c/v3 with traps and a MIB Browser, mail relay between domains |
-| Security | 8 | 85% | 10–18 | IPv4 and IPv6 ACLs, access-class, NAT/PAT, passwords and lines, PPP PAP/CHAP, GRE tunnels and IPsec with IKE on the wire, a stateful firewall with object groups, twice NAT and subinterfaces |
-| WAN, cabling, wireless | 6 | 85% | 10–18 | Copper (auto-MDIX, 100 m), serial (DCE/DTE, HDLC/PPP), serial cards in modular routers, Wi-Fi access points, home routers, WLC with lightweight APs, a VLAN per WLAN, beacons, roaming, WPA2-PSK and Enterprise with CCMP; no fibre |
-| Simulation mode | 8 | 70% | 18–28 | Event list, replay, decode, drop reasons, pcap; BPDUs, OSPF hellos and database exchange, RIP updates, HSRP hellos, LLDP, LACP; no complex PDUs |
-| Workspace and windows | 10 | 78% | 18–30 | Reference-app arrangement, device tabs, notes, shapes, freehand and polygon drawings, nested clusters, printing, the physical view with places and cable lengths |
-| Teaching | 8 | 80% | 15–25 | Activities with checks, points, sections, hints, hidden answers, values per student, a time limit, a password lock, a wizard and a side-by-side comparison with the answer; Spanish interface |
-| Device families | 5 | 60% | 30–50 | 27 models of our own: modular routers with cards and power, a stateful firewall, IP phones with call control, IoT sensors and devices |
+| Device console | 20 | 82% | 25–40 | Modes, abbreviations, `?` help with the `^` marker, Tab, history size, extended ping, config round-trip, timestamps, logging levels; broad `show` coverage |
+| Layer 2 | 12 | 90% | 6–10 | VLANs, trunks, DTP, per-VLAN STP with cost and port priority, PortFast and BPDU guard defaults, root guard, rapid-pvst, EtherChannel with load balancing, VTP, port security with aging, DHCP snooping, ARP inspection, errdisable recovery |
+| Layer 3 | 15 | 92% | 10–16 | IPv4, IPv6 (NDP, SLAAC, routers as SLAAC and DHCPv6 clients), loopbacks, static and floating static routes, RIP, OSPF as the courses teach it (interface areas, timers, point-to-point, database), OSPFv3, EIGRP, multilayer switching, HSRP versions 1 and 2 with tracking |
+| Services | 8 | 94% | 4–8 | DHCPv4 (leases, domain, statistics, conflicts) and DHCPv6 with relay, DNS, HTTP, email, Telnet/SSH, NTP with master and authentication, syslog by severity, TFTP with image copies, FTP, AAA with RADIUS and TACACS+, SNMP v2c/v3 |
+| Security | 8 | 86% | 15–25 | IPv4 and IPv6 ACLs with sequence numbers, `established` and ICMP types, access-class, NAT/PAT, passwords and password recovery, PPP PAP/CHAP, GRE and IPsec with IKE on the wire, a stateful firewall; no zone-based firewall |
+| WAN, cabling, wireless | 6 | 87% | 12–20 | Copper (auto-MDIX, 100 m), fibre, console, serial (DCE/DTE, HDLC/PPP), serial cards, Wi-Fi access points, home routers, WLC with lightweight APs, a VLAN per WLAN, roaming, WPA2-PSK and Enterprise with CCMP |
+| Simulation mode | 8 | 70% | 18–28 | Event list, replay, decode, drop reasons, pcap; BPDUs, OSPF, RIP, EIGRP, HSRP, LLDP and LACP frames; no complex PDUs or OSI-layer PDU view |
+| Workspace and windows | 10 | 80% | 15–25 | Reference-app arrangement, fit to view on open, device tabs, notes, drawings, nested clusters, printing, the physical view with places and cable lengths |
+| Teaching | 8 | 80% | 15–25 | Activities with checks, points, sections, hints, hidden answers, values per student, a time limit, a password lock, a wizard and a comparison with the answer; Spanish interface checked by tests |
+| Device families | 5 | 60% | 30–50 | 25 models of our own: modular routers with cards and power, a stateful firewall, IP phones with call control, IoT sensors and devices |
 | Files | — | — | — | Own open `.nlcraft` JSON; no `.pkt` (out of scope: [decisions.md](docs/decisions.md)) |
-| Platforms and agents | — | — | — | Linux, Windows, macOS, BSD, web; MCP server and CLI over the full command catalog |
+| Platforms and agents | — | — | — | Linux, Windows, macOS, BSD, web; MCP server and CLI over the full command catalog; no installers (on hold) |
 
 ## Progress log
 
+- **2026-10-30 — Console and PC prompt.** The `^` marker points at the right letter, `?` after a first word summarises it, `show ip traffic`, `show tcp brief`, extended `ping` (repeat, size, source, timeout) and `history size`; the PC prompt gains `ipconfig /all`, `ipv6config /all`, `ping -l` and `-t`, `netstat` and `arp -d`.
+- **2026-10-30 — HSRP version 2 and tracking.** `standby version 2` (its own virtual MAC and hello address) and `standby N track INTERFACE [decrement D]`: when the tracked link goes down the other router takes over, and `show standby` says why.
+- **2026-10-30 — Network management.** Log lines with date and time (`service timestamps`), `logging trap|console|buffered` by severity, `ntp master` and NTP authentication, image backups with `copy flash: tftp:` and back, `boot system`, password recovery with `config-register 0x2142`, `show file systems`, `dir`, `show ip nat statistics`.
+- **2026-10-30 — DHCP server details.** Lease times and domain names that clients show in `ipconfig /all`, `show ip dhcp conflict` and `server statistics`, `clear ip dhcp binding`, `debug ip dhcp server packet`; `ip helper-address` and access lists on multilayer-switch VLAN interfaces.
+- **2026-10-30 — Editing access lists.** Sequence numbers (`10 permit …`, `no 10`, `ip access-list resequence`), `established` on TCP lines, ICMP types (echo, echo-reply, unreachable, time-exceeded) and remarks.
+- **2026-10-30 — Small switch commands.** `show vlan id N` and `summary`, `show dtp`, `show interfaces counters`, `switchport trunk encapsulation dot1q` on multilayer switches, `sdm prefer` after a reload.
+- **2026-10-30 — Spanning-tree tuning and EtherChannel views.** `spanning-tree cost` and `port-priority` change the election, root guard, `show spanning-tree summary` and `detail`; `port-channel load-balance`, `show etherchannel load-balance|port-channel`, `show lacp neighbor`.
+- **2026-10-30 — Edge protection.** `spanning-tree portfast default`; BPDU guard (per port or by default) err-disables a port that hears a switch; `errdisable recovery` brings ports back on a timer; port-security aging.
+- **2026-10-30 — DHCP snooping and ARP inspection.** Untrusted ports drop DHCP server answers with a reason, trusted ones build the binding table, and ARP inspection checks ARP against it; rate limits err-disable a flooding port.
+- **2026-10-30 — Routers as IPv6 clients.** `ipv6 address autoconfig [default]` and `ipv6 address dhcp` on router interfaces, asked for again after `no shutdown` and reloads.
+- **2026-10-30 — Floating static routes.** A distance after a static route (IPv4 and IPv6) keeps it behind a dynamic route until that one disappears; `show ip route` shows `[distance/metric]`.
+- **2026-10-30 — OSPF as the courses teach it.** `ip ospf N area A` on interfaces, hello and dead intervals (a mismatch blocks the adjacency and says so), `ip ospf network point-to-point`, `passive-interface default`, `redistribute static`, `clear ip ospf process`, `show ip ospf database` and `neighbor detail`.
+- **2026-10-30 — Loopback interfaces.** `interface loopback N` with IPv4 and IPv6 addresses, always up, answering pings, advertised by OSPF, RIP and EIGRP, and the source of the router ID.
+- **2026-10-30 — Interface fixes.** A lab opens fitted to the window; the time bar never overlaps in either language; every window, tab and page reads in Spanish (checked by tests); dialogs open below the toolbars; device names and port labels keep clear of each other; the event list's columns fit.
 - **2026-10-30 — New name: NetLabCraft.** The project, its programs and its lab files (`.nlcraft`) take the new name.
 - **2026-10-30 — Cable types.** Connections offers automatic, straight-through, cross-over, fiber, console and serial DCE/DTE cables; a wrong copper cable leaves the link down and says why; fiber uplinks and a fiber card; a console cable and the PC's Terminal app open a device's CLI with no IP. The device box shows every model in wrapping rows with names on two lines.
 - **2026-10-30 — Modular routers, IP phones and IoT.** Modular routers take serial and Gigabit cards in their bays while switched off (a Physical tab with a power switch); IP phones on voice VLANs register with call control on a router and call each other; smart sensors and devices report to an IoT server that runs simple rules; three new sample labs.

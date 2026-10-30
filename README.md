@@ -26,7 +26,7 @@
 
 <p align="center">
   <img src="docs/images/hero-multilayer.png" alt="NetLabCraft's main window: a multilayer switch in the middle routes between four PCs in two VLANs and reaches a router and a server above it; menus and two toolbars on top, the device box, scenario list and PDU table at the bottom" width="100%">
-  <br><sub><b>Inter-VLAN routing on a multilayer switch</b>: one of the eighteen sample labs (<code>File → New → Sample</code>), built entirely from NetLabCraft commands.</sub>
+  <br><sub><b>Inter-VLAN routing on a multilayer switch</b>: one of the twenty-three sample labs (<code>File → New → Sample</code>), built entirely from NetLabCraft commands.</sub>
 </p>
 
 <p align="center">
@@ -63,9 +63,10 @@
 - **Familiar.** The window is arranged like the network simulator learners already know: menus and
   toolbars, the device box, Realtime and Simulation modes, device windows with Physical, Config,
   CLI, Desktop and Services tabs. Every picture and message is our own work.
-- **Real frames.** Devices exchange encoded Ethernet, ARP, IPv4, IPv6, ICMP, NDP, TCP, UDP, DHCP,
-  DNS, HTTP, FTP, RADIUS, STP, OSPF, RIP, HSRP, LLDP and LACP frames. Captures open in any packet
-  analyser, and a dropped frame says why.
+- **Real frames.** Devices exchange encoded Ethernet, 802.11, ARP, IPv4, IPv6, ICMP, NDP, TCP, UDP,
+  DHCP, DHCPv6, DNS, HTTP, FTP, SMTP, POP3, NTP, syslog, TFTP, SNMP, RADIUS, TACACS+, STP, OSPF,
+  RIP, EIGRP, HSRP, LLDP, LACP, GRE, IKE and ESP frames. Captures open in any packet analyser, and
+  a dropped frame says why.
 - **Open.** Labs are readable JSON ([`.nlcraft`](docs/file-format.md)); the code is MIT or Apache-2.0.
 - **Agent-native.** Every action is a command that agents can run through an **MCP server** or the
   CLI, including typing at any device's console.
@@ -77,31 +78,54 @@
 
 ## What it simulates
 
-- **Devices:** routers (also one with serial WAN ports), switches (also a multilayer one that
-  routes), a home wireless router, a Wi-Fi access point, a hub, PCs, laptops (also with Wi-Fi),
-  servers, a printer, a wireless LAN controller and lightweight APs: 18 models with our own
-  names; [docs/model-equivalents.md](docs/model-equivalents.md) says which one to place when a
-  course lab names a vendor model.
+- **Devices:** 25 models with our own names: fixed and modular routers (serial, Gigabit, Fast
+  Ethernet and fiber cards fitted while switched off), a stateful firewall, access switches (also
+  with fiber uplinks) and a multilayer switch, a home wireless router, a Wi-Fi access point, a
+  wireless LAN controller with lightweight APs, a hub, PCs, laptops (also with Wi-Fi), servers, a
+  printer, IP phones, and IoT sensors and devices.
+  [docs/model-equivalents.md](docs/model-equivalents.md) says which one to place when a course lab
+  names a vendor model.
+- **Cables:** automatic, straight-through and cross-over copper (a wrong one leaves the link down
+  and says why, unless auto-MDIX fixes it), fiber, console, and serial DCE/DTE; the physical view
+  has cities, buildings and closets, and copper longer than 100 m goes down.
 - **Switching:** MAC learning, VLANs, access and 802.1Q trunk ports, DTP, per-VLAN spanning tree
-  with its timers and rapid-pvst, EtherChannel (LACP, PAgP, static), VTP, port security, switch
-  VLAN interfaces, CDP and LLDP.
-- **Routing:** static routes, RIP, OSPF (several areas, DR/BDR, stub areas, ranges) and OSPFv3,
-  router-on-a-stick, multilayer switching, HSRP, ACLs, NAT and PAT, DHCP server and relay; serial
-  links with HDLC or PPP (PAP, CHAP).
+  with its timers, rapid-pvst, cost and port priority, PortFast and BPDU guard, root guard,
+  EtherChannel (LACP, PAgP, static) with load balancing, VTP, port security with aging, DHCP
+  snooping, dynamic ARP inspection, errdisable recovery, switch VLAN interfaces, CDP and LLDP.
+- **Routing:** static and floating static routes, loopbacks, RIP, OSPF as the courses teach it
+  (network statements or interface areas, timers, DR/BDR, point-to-point, several areas, stub
+  areas, the link-state database), EIGRP with equal and unequal-cost load balancing,
+  router-on-a-stick, multilayer switching, HSRP versions 1 and 2 with tracking; serial links with
+  HDLC or PPP (PAP, CHAP).
 - **IPv6:** global, EUI-64 and link-local addresses on ports, subinterfaces and VLAN interfaces,
-  neighbour discovery, router advertisements, SLAAC, DHCPv6 (stateless, stateful, relay), static
-  routes, OSPFv3, IPv6 ACLs.
-- **Services:** servers with HTTP (and a web browser on the PCs), DNS, DHCP, NTP, syslog, TFTP,
-  FTP and AAA (RADIUS); Telnet and SSH between devices, logins checked against local users or a
-  RADIUS server.
-- **Console:** every mode a CCNA course uses, `?` help, Tab completion, `do`, `interface range`,
-  `running-config` / `startup-config` / `write` / `reload`, `copy` to and from TFTP and FTP, debugs,
-  and 351 command forms ([`docs/command-reference.md`](docs/command-reference.md)).
-- **PC Command Prompt:** `ipconfig` (static or DHCP), `ipv6config` (static or automatic), `ping`,
-  `tracert`, `nslookup`, `telnet`, `ssh`, `ftp`, `dir`, `arp`.
+  neighbour discovery, router advertisements, SLAAC, DHCPv6 (stateless, stateful, relay), routers
+  as SLAAC and DHCPv6 clients, static routes, OSPFv3, IPv6 ACLs.
+- **Security:** standard, extended and named ACLs with sequence numbers, `established` and ICMP
+  types, IPv6 ACLs, `access-class`, NAT and PAT, passwords and password recovery, SSH, AAA with
+  RADIUS and TACACS+, GRE tunnels, site-to-site IPsec with IKE on the wire, and a stateful
+  firewall with object groups and twice NAT.
+- **QoS:** class maps, policy maps, DSCP marking, policing and output queues on congested links.
+- **Services:** servers with HTTP (and a web browser on the PCs), DNS, DHCP, email (SMTP and POP3,
+  with an Email app on the PCs), FTP, TFTP, NTP (with authentication), syslog, AAA and IoT; DHCP
+  servers on routers with leases, domain names and statistics; SNMP v2c and v3 agents with traps
+  and a MIB Browser on the PCs.
+- **Wireless:** home routers, access points and a controller with lightweight APs; WPA2-PSK and
+  WPA2-Enterprise (checked by RADIUS), a VLAN per WLAN, roaming, and real 802.11 frames in a
+  separate capture.
+- **Voice and IoT:** IP phones on voice VLANs that register with call control on a router and
+  call each other; smart sensors and devices that report to a server's IoT service, which runs
+  simple rules.
+- **Console:** every mode a CCNA course uses, `?` help with a `^` marker on errors, Tab completion,
+  history, `do`, `interface range`, output filters, `running-config` / `startup-config` / `write` /
+  `reload`, `copy` to and from TFTP and FTP (images too), timestamps, logging levels, debugs,
+  extended ping: 802 grammar entries in all ([`docs/command-reference.md`](docs/command-reference.md)).
+- **PC Command Prompt:** `ipconfig` (static or DHCP, `/all`), `ipv6config` (static or automatic,
+  `/all`), `ping` (`-n`, `-l`, `-t`), `tracert`, `nslookup`, `telnet`, `ssh`, `ftp`, `netstat`,
+  `dir`, `arp -a` and `-d`; also a Terminal app over a console cable.
 - **Activities:** a lab can carry instructions and checks worth points (configuration lines,
-  pings, addresses, command output), with hints, a time limit, a password lock, Check Results,
-  Reset Activity and an Activity Wizard that captures the answers from a finished lab.
+  pings, addresses, command output), with sections, hints, values per student, a time limit, a
+  password lock, Check Results, a comparison with the answer, Reset Activity and an Activity Wizard
+  that captures the answers from a finished lab.
 
 What it doesn't do yet is listed, ranked, in [`docs/gaps.md`](docs/gaps.md).
 
@@ -160,7 +184,7 @@ egui frontend is a separate crate, so the UI can be swapped without touching the
 | L0 | `core` (MAC and IP addresses, networks, VLAN ids) |
 | L1 | `wire` (frame formats, checksums, pcap) |
 | L2 | `model` (the lab: devices, ports, configuration, cables; the `.nlcraft` format) |
-| L3 | `sim` (discrete-event simulator: switching, routing, STP, OSPF, RIP, HSRP, IPv6, services) |
+| L3 | `sim` (discrete-event simulator: switching, switch security, routing, STP, OSPF, RIP, EIGRP, HSRP, IPv6, VPN, QoS, firewall, wireless, voice, IoT, services) |
 | L4 | `ios` (device consoles: grammar, configuration, `show` output, host shell) |
 | L5 | `engine` (session, command catalog, undo, sample labs, activities) |
 | L6 | `ui-egui` (the interface and its translations) · `mcp` (MCP server) |
@@ -169,24 +193,26 @@ egui frontend is a separate crate, so the UI can be swapped without touching the
 - **Contributor and agent rules** (clean room, asset policy, never-crash, quality gates): [`AGENTS.md`](AGENTS.md)
 - **How it is built:** [`docs/architecture.md`](docs/architecture.md); decisions in [`docs/decisions.md`](docs/decisions.md)
 - **Bundled assets:** each one is listed with its licence in [`ATTRIBUTION.md`](ATTRIBUTION.md)
-- **Releases:** not yet; the plan is in [`docs/releasing.md`](docs/releasing.md)
+- **Releases:** on hold; the plan is in [`docs/releasing.md`](docs/releasing.md)
 
 ## Roadmap
 
 NetLabCraft is **pre-alpha**: every core workflow works end to end (build a lab, configure it by
-typing, ping, watch the frames, grade an activity, save), but there are no installers yet beyond
-the Linux user install. Weighted by what CCNA labs rely on, we estimate it is about 68% ready for
-real work: about 80% for the first CCNA course, 84% for the second and 70% for the third. Next up:
-walking the CCNA 1 labs command by command, WLC and 802.11 frames, email and SNMP, and per-student
-variables in activities. Stage, numbers and estimates are in [ROADMAP.md](ROADMAP.md); the ranked
-work list is [`docs/gaps.md`](docs/gaps.md).
+typing, ping, watch the frames, grade an activity, save), and the console covers the commands of
+the first labs, but nobody has yet walked a full CCNA lab book through it. Weighted by what CCNA
+labs rely on, we estimate it is about 84% ready for real work: about 86% for the first CCNA
+course, 85% for the second and 79% for the third (estimated; the method is in
+[`docs/target-app-parity.md`](docs/target-app-parity.md#audiences)). Next up: a CCNA-style lab
+book run end to end, automation for the third course, a zone-based firewall and Simulation-mode
+depth. Stage, numbers and estimates are in [ROADMAP.md](ROADMAP.md); the ranked work list is
+[`docs/gaps.md`](docs/gaps.md).
 
 ## Downloads
 
-There is no release yet: build from source with the [Quick start](#quick-start), or install for
-your user on Linux with `packaging/linux/install.sh`. How releases will work (versions, installers
-for Linux, Windows, macOS, FreeBSD and the web, file names) is in
-[`docs/releasing.md`](docs/releasing.md).
+There is no release, and releases are on hold for now: build from source with the
+[Quick start](#quick-start), or install for your user on Linux with `packaging/linux/install.sh`.
+How releases would work (versions, installers for Linux, Windows, macOS, FreeBSD and the web,
+file names) is in [`docs/releasing.md`](docs/releasing.md).
 
 ## Clean room
 
