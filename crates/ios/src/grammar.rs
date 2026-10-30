@@ -193,6 +193,31 @@ pub enum Id {
     ShowDhcpBinding,
     ShowDhcpPool,
     ClearDhcpBinding,
+    ServiceTimestamps,
+    NoServiceTimestamps,
+    LoggingTrap,
+    NoLoggingTrap,
+    LoggingConsole,
+    NoLoggingConsole,
+    NtpMaster,
+    NoNtpMaster,
+    NtpAuthenticate,
+    NoNtpAuthenticate,
+    NtpAuthKey,
+    NoNtpAuthKey,
+    NtpTrustedKey,
+    NoNtpTrustedKey,
+    NtpServerKey,
+    NtpUpdateCalendar,
+    NoNtpUpdateCalendar,
+    ShowIpNatStatistics,
+    ShowFileSystems,
+    BootSystem,
+    NoBootSystem,
+    ConfigRegister,
+    CopyStartRun,
+    CopyFlashTftp,
+    CopyTftpFlash,
     DhcpLease,
     NoDhcpLease,
     DhcpDomain,
@@ -1074,6 +1099,107 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowFlash, EXECS, Modes::BOTH, [K("show"), K("flash:")], "Files in flash memory"),
     spec!(ShowFlash, EXECS, Modes::BOTH, [K("show"), K("flash")], "Files in flash memory"),
     spec!(ShowFlash, Modes::EXEC, Modes::BOTH, [K("dir"), K("flash:")], "Files in flash memory"),
+    spec!(
+        ServiceTimestamps,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("service"), K("timestamps"), Arg("{log|debug}"), K("datetime")],
+        "Stamp messages with date and time"
+    ),
+    spec!(
+        ServiceTimestamps,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("service"), K("timestamps"), Arg("{log|debug}"), K("datetime"), Rest("[msec]")],
+        "Stamp messages with date and time (msec: and milliseconds)"
+    ),
+    spec!(
+        NoServiceTimestamps,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("service"), K("timestamps"), Arg("{log|debug}")],
+        "Back to the time of day only"
+    ),
+    spec!(
+        LoggingTrap,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("logging"), K("trap"), Arg("<0-7>|LEVEL")],
+        "The most detailed severity sent to syslog servers"
+    ),
+    spec!(NoLoggingTrap, Modes::CONFIG, Modes::BOTH, [K("no"), K("logging"), K("trap")], "Syslog servers get informational and above"),
+    spec!(
+        LoggingConsole,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("logging"), K("console"), Arg("<0-7>|LEVEL")],
+        "The most detailed severity shown on the console"
+    ),
+    spec!(NoLoggingConsole, Modes::CONFIG, Modes::BOTH, [K("no"), K("logging"), K("console")], "The console shows every severity"),
+    spec!(NtpMaster, Modes::CONFIG, Modes::BOTH, [K("ntp"), K("master")], "Serve NTP from this device's own clock"),
+    spec!(NtpMaster, Modes::CONFIG, Modes::BOTH, [K("ntp"), K("master"), Arg("<1-15>")], "Serve NTP from this device's own clock, at this stratum"),
+    spec!(NoNtpMaster, Modes::CONFIG, Modes::BOTH, [K("no"), K("ntp"), K("master")], "Stop serving NTP"),
+    spec!(NtpAuthenticate, Modes::CONFIG, Modes::BOTH, [K("ntp"), K("authenticate")], "Only take the time from servers that sign with a trusted key"),
+    spec!(NoNtpAuthenticate, Modes::CONFIG, Modes::BOTH, [K("no"), K("ntp"), K("authenticate")], "Take unsigned NTP time"),
+    spec!(
+        NtpAuthKey,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ntp"), K("authentication-key"), Arg("<1-4294967295>"), K("md5"), Arg("KEY")],
+        "Define an NTP key"
+    ),
+    spec!(NoNtpAuthKey, Modes::CONFIG, Modes::BOTH, [K("no"), K("ntp"), K("authentication-key"), Arg("<1-4294967295>")], "Delete an NTP key"),
+    spec!(NtpTrustedKey, Modes::CONFIG, Modes::BOTH, [K("ntp"), K("trusted-key"), Arg("<1-4294967295>")], "Trust time signed with this key"),
+    spec!(NoNtpTrustedKey, Modes::CONFIG, Modes::BOTH, [K("no"), K("ntp"), K("trusted-key"), Arg("<1-4294967295>")], "Stop trusting a key"),
+    spec!(
+        NtpServerKey,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ntp"), K("server"), Arg("A.B.C.D"), K("key"), Arg("<1-4294967295>")],
+        "Take the time from an NTP server that signs with this key"
+    ),
+    spec!(NtpUpdateCalendar, Modes::CONFIG, Modes::BOTH, [K("ntp"), K("update-calendar")], "Let NTP set the hardware calendar too"),
+    spec!(NoNtpUpdateCalendar, Modes::CONFIG, Modes::BOTH, [K("no"), K("ntp"), K("update-calendar")], "Leave the hardware calendar alone"),
+    spec!(
+        ShowIpNatStatistics,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("nat"), K("statistics")],
+        "NAT translations counted, and where NAT applies"
+    ),
+    spec!(ShowFileSystems, EXECS, Modes::BOTH, [K("show"), K("file"), K("systems")], "Flash, NVRAM and network file systems"),
+    spec!(ShowFlash, Modes::EXEC, Modes::BOTH, [K("dir")], "Files in flash memory"),
+    spec!(BootSystem, Modes::CONFIG, Modes::BOTH, [K("boot"), K("system"), Arg("flash:NAME")], "The image to start from"),
+    spec!(NoBootSystem, Modes::CONFIG, Modes::BOTH, [K("no"), K("boot"), K("system")], "Start from the factory image"),
+    spec!(NoBootSystem, Modes::CONFIG, Modes::BOTH, [K("no"), K("boot"), K("system"), Arg("flash:NAME")], "Forget one boot image"),
+    spec!(
+        ConfigRegister,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("config-register"), Arg("0x0-0xFFFF")],
+        "How the device starts (0x2142 skips the startup-config)"
+    ),
+    spec!(
+        CopyStartRun,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("startup-config"), K("running-config")],
+        "Merge the saved configuration into the running one"
+    ),
+    spec!(
+        CopyFlashTftp,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("flash:"), K("tftp:"), Rest("<file> <address> [name on the server]")],
+        "Back up a flash file to a TFTP server"
+    ),
+    spec!(
+        CopyTftpFlash,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("tftp:"), K("flash:"), Rest("<address> <file> [name in flash]")],
+        "Copy a file from a TFTP server into flash"
+    ),
     spec!(ShowUsers, EXECS, Modes::BOTH, [K("show"), K("users")], "Who is logged in, and where"),
     spec!(
         TerminalLength,
@@ -1126,9 +1252,10 @@ pub static SPECS: &[Spec] = &[
         LoggingBuffered,
         Modes::CONFIG,
         Modes::BOTH,
-        [K("logging"), K("buffered"), Rest("[size]")],
-        "Keep messages in the logging buffer (always on here)"
+        [K("logging"), K("buffered"), Rest("[size] [level]")],
+        "Keep messages in the logging buffer, up to a severity"
     ),
+    spec!(LoggingBuffered, Modes::CONFIG, Modes::BOTH, [K("logging"), K("buffered")], "Keep every severity in the logging buffer"),
     spec!(DebugIpIcmp, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("icmp")], "Report echo requests and replies this device receives"),
     spec!(UndebugAll, Modes::EXEC, Modes::BOTH, [K("undebug"), K("all")], "Turn every debug off"),
     spec!(UndebugAll, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("all")], "Turn every debug off"),

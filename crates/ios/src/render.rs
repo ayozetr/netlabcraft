@@ -31,13 +31,16 @@ pub fn running_config(d: &Device) -> String {
     if d.lldp_on {
         let _ = writeln!(s, "lldp run\n!");
     }
-    for a in &d.ntp_servers {
+    // Servers with a key are written with it (`ntp server A key N`) among the NTP lines below.
+    for a in d.ntp_servers.iter().filter(|a| !d.mgmt.ntp_server_keys.iter().any(|(x, _)| x == *a)) {
         let _ = writeln!(s, "ntp server {a}");
     }
     for a in &d.log_hosts {
         let _ = writeln!(s, "logging host {a}");
     }
-    if !d.ntp_servers.is_empty() || !d.log_hosts.is_empty() {
+    let before = s.len();
+    crate::exec::mgmt::running_config(&mut s, d);
+    if !d.ntp_servers.is_empty() || !d.log_hosts.is_empty() || s.len() != before {
         let _ = writeln!(s, "!");
     }
     if d.ipv6_routing {
@@ -863,10 +866,11 @@ pub fn version(sim: &Sim, d: &Device) -> String {
         "NetLabCraft simulated {}, software {v}\n\
          Model {} ({})\n\
          {} has been up {} h {} min {} s (since the simulation started)\n\
-         System image flash:netlabcraft-{}-{v}.bin\n\
+         System image flash:{}\n\
          Ports: {}\n\
          Base hardware address {}\n\
-         Configuration {}",
+         Configuration {}\n\
+         Configuration register 0x{:04x}",
         d.kind.label().to_lowercase(),
         m.label,
         m.description,
@@ -874,10 +878,11 @@ pub fn version(sim: &Sim, d: &Device) -> String {
         up / 3_600,
         up / 60 % 60,
         up % 60,
-        d.kind.label().to_lowercase(),
+        crate::exec::mgmt::boot_image(d),
         ports.join(", "),
         d.ports.first().map_or("-".to_string(), |p| p.mac.to_string()),
         if d.startup.is_some() { "saved (startup-config present)" } else { "not saved" },
+        d.nvram.register(),
         v = env!("CARGO_PKG_VERSION"),
     )
 }
@@ -1726,11 +1731,7 @@ pub fn switchport(t: &Topology, d: &Device, port: usize) -> Result<String, Strin
 
 /// `show flash`: our own file listing.
 pub fn flash(d: &Device) -> String {
-    let kind = d.kind.label().to_lowercase();
-    let mut files = vec![(format!("netlabcraft-{kind}-{}.bin", env!("CARGO_PKG_VERSION")), 33_591_768u64)];
-    if d.kind == DeviceKind::Switch && d.vlans.len() > 1 && !d.vlan_dat_deleted {
-        files.push(("vlan.dat".into(), 616 + 32 * d.vlans.len() as u64));
-    }
+    let files = crate::exec::mgmt::flash_files(d);
     let mut s = format!("{:<4} {:>10}  {}\n", "#", "Bytes", "Name");
     for (i, (name, size)) in files.iter().enumerate() {
         let _ = writeln!(s, "{:<4} {:>10}  {name}", i + 1, size);

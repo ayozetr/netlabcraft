@@ -287,6 +287,35 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show flash:` | user, privileged | router, switch | Files in flash memory |
 | `show flash` | user, privileged | router, switch | Files in flash memory |
 | `dir flash:` | privileged | router, switch | Files in flash memory |
+| `service timestamps {log\|debug} datetime` | config | router, switch | Stamp messages with date and time |
+| `service timestamps {log\|debug} datetime [msec]` | config | router, switch | Stamp messages with date and time (msec: and milliseconds) |
+| `no service timestamps {log\|debug}` | config | router, switch | Back to the time of day only |
+| `logging trap <0-7>\|LEVEL` | config | router, switch | The most detailed severity sent to syslog servers |
+| `no logging trap` | config | router, switch | Syslog servers get informational and above |
+| `logging console <0-7>\|LEVEL` | config | router, switch | The most detailed severity shown on the console |
+| `no logging console` | config | router, switch | The console shows every severity |
+| `ntp master` | config | router, switch | Serve NTP from this device's own clock |
+| `ntp master <1-15>` | config | router, switch | Serve NTP from this device's own clock, at this stratum |
+| `no ntp master` | config | router, switch | Stop serving NTP |
+| `ntp authenticate` | config | router, switch | Only take the time from servers that sign with a trusted key |
+| `no ntp authenticate` | config | router, switch | Take unsigned NTP time |
+| `ntp authentication-key <1-4294967295> md5 KEY` | config | router, switch | Define an NTP key |
+| `no ntp authentication-key <1-4294967295>` | config | router, switch | Delete an NTP key |
+| `ntp trusted-key <1-4294967295>` | config | router, switch | Trust time signed with this key |
+| `no ntp trusted-key <1-4294967295>` | config | router, switch | Stop trusting a key |
+| `ntp server A.B.C.D key <1-4294967295>` | config | router, switch | Take the time from an NTP server that signs with this key |
+| `ntp update-calendar` | config | router, switch | Let NTP set the hardware calendar too |
+| `no ntp update-calendar` | config | router, switch | Leave the hardware calendar alone |
+| `show ip nat statistics` | user, privileged | router, switch | NAT translations counted, and where NAT applies |
+| `show file systems` | user, privileged | router, switch | Flash, NVRAM and network file systems |
+| `dir` | privileged | router, switch | Files in flash memory |
+| `boot system flash:NAME` | config | router, switch | The image to start from |
+| `no boot system` | config | router, switch | Start from the factory image |
+| `no boot system flash:NAME` | config | router, switch | Forget one boot image |
+| `config-register 0x0-0xFFFF` | config | router, switch | How the device starts (0x2142 skips the startup-config) |
+| `copy startup-config running-config` | privileged | router, switch | Merge the saved configuration into the running one |
+| `copy flash: tftp: <file> <address> [name on the server]` | privileged | router, switch | Back up a flash file to a TFTP server |
+| `copy tftp: flash: <address> <file> [name in flash]` | privileged | router, switch | Copy a file from a TFTP server into flash |
 | `show users` | user, privileged | router, switch | Who is logged in, and where |
 | `terminal length N \| width N \| monitor` | user, privileged | router, switch | Terminal settings (output here is never paged) |
 | `cdp run` | config | router, switch | Discover neighbouring routers and switches |
@@ -317,7 +346,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show running-config interface <interface>` | privileged | router, switch | One interface's configuration |
 | `show logging` | user, privileged | router, switch, firewall | The logging buffer |
 | `clear logging` | privileged | router, switch, firewall | Empty the logging buffer |
-| `logging buffered [size]` | config | router, switch | Keep messages in the logging buffer (always on here) |
+| `logging buffered [size] [level]` | config | router, switch | Keep messages in the logging buffer, up to a severity |
+| `logging buffered` | config | router, switch | Keep every severity in the logging buffer |
 | `debug ip icmp` | privileged | router, switch | Report echo requests and replies this device receives |
 | `undebug all` | privileged | router, switch | Turn every debug off |
 | `no debug all` | privileged | router, switch | Turn every debug off |

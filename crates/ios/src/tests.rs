@@ -2004,6 +2004,190 @@ fn ntp_syslog_and_tftp_by_typing() {
 }
 
 #[test]
+fn log_timestamps_and_severity_filters_by_typing() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let srv = lab.add(DeviceKind::Server);
+    lab.cable(srv, "g0", r, "g0/0");
+    lab.run(srv, "ipconfig 10.0.0.100 255.255.255.0 10.0.0.1");
+    lab.run(r, "en\nconf t\nint g0/0\nip address 10.0.0.1 255.255.255.0\nno shut\nend\nping 10.0.0.100\nclock set 10:20:30 30 Oct 2026");
+    lab.run(
+        r,
+        "conf t\nservice timestamps log datetime msec\nservice timestamps debug datetime\nlogging host 10.0.0.100\nlogging trap warnings\nend",
+    );
+    let log = lab.run(r, "show logging");
+    assert!(log.contains("[Oct 30 2026 10:20:3") && log.contains("] Configuration changed from the console"), "{log}");
+    assert!(log.contains("Levels: console debugging, buffer debugging, syslog servers warnings"), "{log}");
+    // The debug stamp has no milliseconds.
+    lab.run(r, "debug ip icmp");
+    lab.run(srv, "ping 10.0.0.1");
+    let log = lab.run(r, "show logging");
+    let debug_line = log.lines().find(|l| l.contains("ICMP debug")).unwrap_or_default().to_string();
+    assert!(debug_line.starts_with("[Oct 30 2026 ") && !debug_line.split(']').next().unwrap_or_default().contains('.'), "{log}");
+    lab.run(r, "undebug all");
+    // Notifications (5) stay off the syslog server at `warnings` (4); errors (3) go.
+    lab.run(r, "conf t\nint g0/1\nno shut\nend");
+    lab.run(r, "ping 10.0.0.100");
+    let got = lab.sim.state(srv).map(|s| s.syslog.iter().map(|x| x.2.clone()).collect::<Vec<_>>()).unwrap_or_default();
+    assert!(!got.iter().any(|m| m.contains("Configuration changed")), "{got:?}");
+    // `logging buffered errors` keeps notifications out of the buffer; `logging console`
+    // filters what the console prints.
+    lab.sim.take_console(r);
+    lab.run(r, "clear logging\nconf t\nlogging buffered 8192 errors\nlogging console 0\nend");
+    let log = lab.run(r, "show logging");
+    assert!(!log.contains("Configuration changed"), "{log}");
+    assert!(lab.sim.take_console(r).iter().all(|l| !l.contains("Configuration changed")));
+    let run = lab.run(r, "show run");
+    for l in [
+        "service timestamps log datetime msec",
+        "service timestamps debug datetime",
+        "logging buffered errors",
+        "logging console emergencies",
+        "logging trap warnings",
+    ] {
+        assert!(run.contains(l), "{l}\n{run}");
+    }
+    lab.run(r, "copy run start\nreload\nen");
+    assert_eq!(lab.run(r, "show run"), run);
+    lab.run(r, "conf t\nno service timestamps log\nno logging trap\nno logging console\nlogging buffered\nend");
+    let run = lab.run(r, "show run");
+    assert!(
+        !run.contains("timestamps log") && !run.contains("logging trap") && !run.contains("logging console") && !run.contains("logging buffered"),
+        "{run}"
+    );
+    lab.run(r, "conf t");
+    for bad in
+        ["logging trap 8", "logging trap loud", "logging console e", "service timestamps log datetime sometimes", "service timestamps trace datetime"]
+    {
+        assert!(lab.try_run(r, bad).starts_with('%'), "{bad}");
+    }
+}
+
+#[test]
+fn ntp_master_and_authentication_by_typing() {
+    let mut lab = Lab::new();
+    let r1 = lab.add(DeviceKind::Router);
+    let r2 = lab.add(DeviceKind::Router);
+    lab.cable(r1, "g0/0", r2, "g0/0");
+    lab.run(r1, "en\nconf t\nint g0/0\nip address 10.0.0.1 255.255.255.0\nno shut\nend\nclock set 09:00:00 15 Mar 2030");
+    lab.run(r2, "en\nconf t\nint g0/0\nip address 10.0.0.2 255.255.255.0\nno shut\nend\nping 10.0.0.1");
+    // R1 is the master: R2 follows its clock.
+    lab.run(r1, "conf t\nntp master 3\nntp authentication-key 1 md5 S3cret\nend");
+    assert!(lab.run(r1, "show ntp status").contains("stratum 3"));
+    lab.run(r2, "conf t");
+    assert!(lab.run(r2, "ntp server 10.0.0.1").contains("synchronised with 10.0.0.1"));
+    lab.run(r2, "end");
+    assert!(lab.run(r2, "show clock").contains("2030"));
+    lab.run(r2, "conf t\nno ntp server 10.0.0.1\nend\nclock set 09:00:00 1 Jan 2027");
+    // Authentication with the wrong key: R2 stays unsynchronised.
+    lab.run(r2, "conf t\nntp authenticate\nntp authentication-key 1 md5 wrong\nntp trusted-key 1");
+    let out = lab.run(r2, "ntp server 10.0.0.1 key 1");
+    assert!(out.contains("no time this device accepts"), "{out}");
+    lab.run(r2, "end");
+    assert!(lab.run(r2, "show ntp status").contains("Clock not synchronised"));
+    assert!(lab.run(r2, "show clock").contains("2027"));
+    // An untrusted key is refused too, even when it matches.
+    lab.run(r2, "conf t\nntp authentication-key 1 md5 S3cret\nno ntp trusted-key 1\nntp server 10.0.0.1 key 1\nend");
+    assert!(lab.run(r2, "show ntp status").contains("Clock not synchronised"));
+    // The right, trusted key: synchronised.
+    lab.run(r2, "conf t\nntp trusted-key 1");
+    assert!(lab.run(r2, "ntp server 10.0.0.1 key 1").contains("synchronised with 10.0.0.1"));
+    lab.run(r2, "ntp update-calendar\nend");
+    let st = lab.run(r2, "show ntp status");
+    assert!(st.contains("Clock synchronised with 10.0.0.1") && st.contains("Authentication on") && st.contains("server 10.0.0.1, key 1"), "{st}");
+    assert!(lab.run(r2, "show clock").contains("2030"));
+    let run = lab.run(r2, "show run");
+    for l in ["ntp authenticate", "ntp authentication-key 1 md5 S3cret", "ntp trusted-key 1", "ntp server 10.0.0.1 key 1", "ntp update-calendar"] {
+        assert!(run.contains(l), "{l}\n{run}");
+    }
+    assert!(!run.contains("ntp server 10.0.0.1\n"), "the keyed line replaces the plain one\n{run}");
+    lab.run(r2, "copy run start\nreload\nen");
+    assert_eq!(lab.run(r2, "show run"), run);
+    assert!(lab.run(r1, "show run").contains("ntp master 3"));
+    lab.run(r2, "conf t");
+    for bad in ["ntp master 16", "ntp authentication-key 0 md5 x", "ntp trusted-key abc", "ntp server 10.0.0.1 key 0"] {
+        assert!(lab.try_run(r2, bad).starts_with('%'), "{bad}");
+    }
+}
+
+#[test]
+fn flash_images_boot_and_password_recovery_by_typing() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let srv = lab.add(DeviceKind::Server);
+    lab.cable(srv, "g0", r, "g0/0");
+    lab.run(srv, "ipconfig 10.0.0.100 255.255.255.0 10.0.0.1");
+    lab.run(r, "en\nconf t\nint g0/0\nip address 10.0.0.1 255.255.255.0\nno shut\nend\nping 10.0.0.100");
+    let image = format!("netlabcraft-router-{}.bin", env!("CARGO_PKG_VERSION"));
+    assert!(lab.run(r, "dir").contains(&image));
+    assert!(lab.run(r, "show file systems").contains("flash:"));
+    // Back the image up, then restore it under another name and boot from it.
+    let up = lab.run(r, &format!("copy flash: tftp: {image} 10.0.0.100"));
+    assert!(up.contains("33591768 bytes") && up.contains(&format!("tftp://10.0.0.100/{image}")), "{up}");
+    assert!(lab.t.device(srv).unwrap().services.tftp.files.iter().any(|f| f.name == image));
+    let down = lab.run(r, &format!("copy tftp: flash: 10.0.0.100 {image} backup.bin"));
+    assert!(down.contains("flash:backup.bin (33591768 bytes)"), "{down}");
+    assert!(lab.run(r, "dir flash:").contains("backup.bin"));
+    assert!(lab.try_run(r, "copy tftp: flash: 10.0.0.100 missing.bin").contains("no such file"));
+    assert!(lab.try_run(r, "copy flash: tftp: nothing.bin 10.0.0.100").contains("no such file"));
+    lab.run(r, "conf t\nboot system flash:backup.bin\nend");
+    assert!(lab.run(r, "show boot").contains("Boot image: flash:backup.bin"));
+    assert!(lab.run(r, "show version").contains("System image flash:backup.bin"));
+    // Password recovery: the register skips the saved configuration at the next reload.
+    lab.run(r, "conf t\nenable secret Forgotten1\nend\ncopy run start");
+    lab.run(r, "conf t");
+    assert!(lab.run(r, "config-register 0x2142").contains("0x2142 at the next reload"));
+    lab.run(r, "end");
+    assert!(lab.run(r, "show version").contains("Configuration register 0x2142"));
+    let out = lab.run(r, "reload");
+    assert!(out.contains("0x2142"), "{out}");
+    assert!(lab.run(r, "en").is_empty(), "no secret asked: the saved configuration was skipped");
+    assert!(!lab.run(r, "show run").contains("enable secret"));
+    assert!(lab.run(r, "show startup-config").contains("enable secret"), "still in NVRAM");
+    lab.run(r, "copy startup-config running-config");
+    assert_eq!(lab.prompt(r), "R1#");
+    lab.run(r, "conf t\nenable secret Remembered2\nconfig-register 0x2102\nend\ncopy run start\nreload");
+    lab.run(r, "en");
+    assert_eq!(lab.prompt(r), "Password: ");
+    lab.run(r, "Remembered2");
+    assert_eq!(lab.prompt(r), "R1#");
+    let run = lab.run(r, "show run");
+    assert!(run.contains("boot system flash:backup.bin") && !run.contains("config-register"), "{run}");
+    lab.run(r, "conf t");
+    for bad in ["config-register 0xZZ", "config-register 0x12345", "boot system flash:", "boot system flash:../x"] {
+        assert!(lab.try_run(r, bad).starts_with('%'), "{bad}");
+    }
+}
+
+#[test]
+fn nat_statistics_by_typing() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let a = lab.add(DeviceKind::Pc);
+    let srv = lab.add(DeviceKind::Server);
+    lab.cable(a, "fa0", r, "g0/0");
+    lab.cable(srv, "g0", r, "g0/1");
+    lab.run(a, "ipconfig 192.168.1.10 255.255.255.0 192.168.1.1");
+    lab.run(srv, "ipconfig 203.0.113.10 255.255.255.0 203.0.113.1");
+    lab.run(
+        r,
+        "en\nconf t\nint g0/0\nip address 192.168.1.1 255.255.255.0\nip nat inside\nno shut\nint g0/1\nip address 203.0.113.1 255.255.255.0\nip nat outside\nno shut\nexit\n\
+         access-list 1 permit 192.168.1.0 0.0.0.255\nip nat inside source list 1 interface g0/1 overload\nip nat inside source static 192.168.1.20 203.0.113.20\nend",
+    );
+    lab.run(a, "ping 203.0.113.10");
+    let st = lab.run(r, "show ip nat statistics");
+    assert!(
+        st.contains("Inside interfaces:  GigabitEthernet0/0")
+            && st.contains("Outside interfaces: GigabitEthernet0/1")
+            && st.contains("1 static")
+            && st.contains("access list 1")
+            && st.contains("(overload)"),
+        "{st}"
+    );
+    assert!(!st.contains("0 dynamic"), "{st}");
+}
+
+#[test]
 fn spanning_tree_timers_by_typing() {
     let mut lab = Lab::new();
     let s1 = lab.add(DeviceKind::Switch);

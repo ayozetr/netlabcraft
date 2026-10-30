@@ -14,6 +14,7 @@ use crate::grammar::{self, Id, Modes, ParseError};
 use crate::{host, render};
 
 pub(crate) mod firewall;
+pub(crate) mod mgmt;
 pub(crate) mod qos;
 pub(crate) mod voice;
 mod vpn;
@@ -830,11 +831,16 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::ShowLogging => {
             let lines: Vec<String> = c.sim.state(c.dev).map(|s| s.log.iter().map(|(_, l)| l.clone()).collect()).unwrap_or_default();
+            let m = &c.d()?.mgmt;
+            let lv = |l: Option<u8>, def: u8| netlabcraft_model::mgmt::severity_name(l.unwrap_or(def));
             Ok(format!(
-                "Logging buffer: {} message{} (at most {})\n{}",
+                "Logging buffer: {} message{} (at most {})\nLevels: console {}, buffer {}, syslog servers {}\n{}",
                 lines.len(),
                 if lines.len() == 1 { "" } else { "s" },
                 netlabcraft_sim::MAX_LOG,
+                lv(m.logging_console, 7),
+                lv(m.logging_buffered, 7),
+                lv(m.logging_trap, 6),
                 lines.join("\n")
             )
             .trim_end()
@@ -844,7 +850,32 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             c.sim.clear_log(c.dev);
             Ok(String::new())
         }
-        Id::LoggingBuffered => Ok(String::new()),
+        Id::LoggingBuffered
+        | Id::ServiceTimestamps
+        | Id::NoServiceTimestamps
+        | Id::LoggingTrap
+        | Id::NoLoggingTrap
+        | Id::LoggingConsole
+        | Id::NoLoggingConsole
+        | Id::NtpMaster
+        | Id::NoNtpMaster
+        | Id::NtpAuthenticate
+        | Id::NoNtpAuthenticate
+        | Id::NtpAuthKey
+        | Id::NoNtpAuthKey
+        | Id::NtpTrustedKey
+        | Id::NoNtpTrustedKey
+        | Id::NtpServerKey
+        | Id::NtpUpdateCalendar
+        | Id::NoNtpUpdateCalendar
+        | Id::ShowIpNatStatistics
+        | Id::ShowFileSystems
+        | Id::BootSystem
+        | Id::NoBootSystem
+        | Id::ConfigRegister
+        | Id::CopyStartRun
+        | Id::CopyFlashTftp
+        | Id::CopyTftpFlash => mgmt::command(&mut c, spec.id, &args),
         Id::DebugIpIcmp => {
             c.sim.set_debug(c.dev, DebugKind::Icmp, true);
             Ok("ICMP debugging is on: echo messages this device receives are reported.".into())
@@ -1466,17 +1497,27 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::ShowNtp => {
             let d = c.d()?;
+            let master = d.mgmt.ntp_master.map(|n| format!("This device serves NTP from its own clock (stratum {n})\n")).unwrap_or_default();
             if d.ntp_servers.is_empty() {
+                if !master.is_empty() {
+                    let (now, _) = c.sim.clock(c.dev);
+                    return Ok(format!("{master}{}", crate::clock::show(now, true)));
+                }
                 return Ok("No NTP server is configured; the clock runs on its own.".into());
             }
             let synced = c.sim.state(c.dev).and_then(|s| s.ntp_synced);
             let (now, _) = c.sim.clock(c.dev);
-            let mut s = match synced {
+            let mut s = master;
+            s.push_str(&match synced {
                 Some(x) => format!("Clock synchronised with {x}\n"),
                 None => "Clock not synchronised\n".to_string(),
-            };
+            });
+            if d.mgmt.ntp_authenticate {
+                s.push_str("Authentication on: only signed time with a trusted key counts\n");
+            }
             for a in &d.ntp_servers {
-                s.push_str(&format!("  server {a}{}\n", if synced == Some(*a) { "  (in use)" } else { "" }));
+                let key = d.mgmt.ntp_server_keys.iter().find(|(x, _)| x == a).map(|(_, k)| format!(", key {k}")).unwrap_or_default();
+                s.push_str(&format!("  server {a}{key}{}\n", if synced == Some(*a) { "  (in use)" } else { "" }));
             }
             s.push_str(&crate::clock::show(now, true));
             Ok(s)
@@ -2537,11 +2578,18 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::ShowBoot => {
             let d = c.d()?;
+            let skip = d.nvram.register() == netlabcraft_model::mgmt::CONFREG_SKIP_STARTUP;
             Ok(format!(
-                "Boot image: flash:netlabcraft-{}-{}.bin\nConfiguration at start-up: {}",
-                d.kind.label().to_lowercase(),
-                env!("CARGO_PKG_VERSION"),
-                if d.startup.is_some() { "startup-config (saved)" } else { "none saved: factory settings" }
+                "Boot image: flash:{}\nConfiguration at start-up: {}\nConfiguration register: 0x{:04x}",
+                mgmt::boot_image(d),
+                if skip {
+                    "ignored at the next reload (register 0x2142)"
+                } else if d.startup.is_some() {
+                    "startup-config (saved)"
+                } else {
+                    "none saved: factory settings"
+                },
+                d.nvram.register()
             ))
         }
         Id::ShowEnv => Ok("Power supply: OK (simulated)\nFans: OK\nTemperature: normal".into()),
@@ -4128,19 +4176,7 @@ impl Ctx<'_> {
             let name = file.unwrap_or_else(|| format!("{}-confg", d.name.to_lowercase()));
             let text = if startup { d.startup.clone().ok_or("% No startup-config to copy")? } else { render::running_config(&d) };
             self.sim.tftp_put(self.t, self.dev, server, &name, text.as_bytes()).map_err(|e| format!("% {e}"))?;
-            // The server keeps the file.
-            if let Some(sd) =
-                self.t.devices.iter_mut().find(|x| x.kind == DeviceKind::Server && x.ports.iter().any(|p| p.ip.is_some_and(|n| n.addr == server)))
-            {
-                let files = &mut sd.services.tftp.files;
-                files.retain(|f| f.name != name);
-                if files.len() < netlabcraft_model::services::MAX_ITEMS {
-                    files.push(netlabcraft_model::services::WebFile {
-                        name: name.clone(),
-                        content: text.chars().take(netlabcraft_model::services::MAX_FILE).collect(),
-                    });
-                }
-            }
+            keep_on_tftp_server(self.t, server, &name, &text);
             Ok(format!("Copied {} bytes to tftp://{server}/{name}", text.len()))
         } else {
             let name = file.ok_or("% Give the file name to copy")?;
@@ -4211,7 +4247,10 @@ impl Ctx<'_> {
     }
 
     fn reload(&mut self) -> R {
-        let startup = self.d()?.startup.clone();
+        // Configuration register 0x2142 (password recovery): start without the saved
+        // configuration, which stays in NVRAM.
+        let skip = self.d()?.nvram.register() == netlabcraft_model::mgmt::CONFREG_SKIP_STARTUP;
+        let startup = if skip { None } else { self.d()?.startup.clone() };
         let d = self.dm()?;
         if d.vlan_dat_deleted {
             d.vlans.clear();
@@ -4232,10 +4271,28 @@ impl Ctx<'_> {
                 }
                 Ok(out)
             }
+            None if skip => {
+                self.sim.topology_changed(self.t);
+                Ok("Restarted without reading the saved configuration (configuration register 0x2142); it is still in NVRAM.".into())
+            }
             None => {
                 self.sim.topology_changed(self.t);
                 Ok("Restarted with factory settings (no saved configuration).".into())
             }
+        }
+    }
+}
+
+/// Stores a file a device sent with TFTP on the server that has that address.
+pub(crate) fn keep_on_tftp_server(t: &mut Topology, server: Ipv4Addr, name: &str, text: &str) {
+    if let Some(sd) = t.devices.iter_mut().find(|x| x.kind == DeviceKind::Server && x.ports.iter().any(|p| p.ip.is_some_and(|n| n.addr == server))) {
+        let files = &mut sd.services.tftp.files;
+        files.retain(|f| f.name != name);
+        if files.len() < netlabcraft_model::services::MAX_ITEMS {
+            files.push(netlabcraft_model::services::WebFile {
+                name: name.to_string(),
+                content: text.chars().take(netlabcraft_model::services::MAX_FILE).collect(),
+            });
         }
     }
 }

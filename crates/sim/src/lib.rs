@@ -34,6 +34,7 @@ pub mod eigrp;
 pub mod firewall;
 pub mod hsrp;
 pub mod iot;
+pub mod logcfg;
 pub mod mgmt;
 pub mod ospf;
 pub mod ospf6;
@@ -939,6 +940,8 @@ pub struct Sim {
     voice: voice::VoiceState,
     /// Smart things and IoT servers.
     iot: iot::IotState,
+    /// Log stamps and severity filters of devices that changed them.
+    log_cfg: BTreeMap<DeviceId, logcfg::LogCfg>,
 }
 
 impl Sim {
@@ -962,20 +965,25 @@ impl Sim {
     }
 
     /// Adds a message to a device's logging buffer and its console, stamped with its clock.
+    /// Each copy (buffer, console, syslog servers) takes the message only when its severity is
+    /// within that copy's `logging` level.
     pub fn log(&mut self, d: DeviceId, msg: &str) {
         let (unix, _) = self.clock(d);
-        let secs = unix.rem_euclid(86_400);
-        let line = format!("[{:02}:{:02}:{:02}] {msg}", secs / 3_600, secs / 60 % 60, secs % 60);
+        let cfg = self.log_cfg.get(&d).copied().unwrap_or_default();
+        let sev = logcfg::severity(msg);
+        let line = format!("{} {msg}", logcfg::stamp(unix, self.now, if sev == 7 { cfg.ts_debug } else { cfg.ts_log }));
         let now = self.now;
         let st = self.st(d);
-        if st.log.len() >= MAX_LOG {
-            st.log.pop_front();
+        if sev <= cfg.buffered {
+            if st.log.len() >= MAX_LOG {
+                st.log.pop_front();
+            }
+            st.log.push_back((now, line.clone()));
         }
-        st.log.push_back((now, line.clone()));
-        if st.syslog_out.len() < MAX_LOG {
+        if sev <= cfg.trap && st.syslog_out.len() < MAX_LOG {
             st.syslog_out.push(msg.to_string());
         }
-        if st.console.len() < MAX_LOG {
+        if sev <= cfg.console && st.console.len() < MAX_LOG {
             st.console.push(line);
         }
     }
@@ -1134,6 +1142,7 @@ impl Sim {
     /// down, and frames in flight on removed cables.
     pub fn topology_changed(&mut self, t: &Topology) {
         self.state.retain(|id, _| t.device(*id).is_some());
+        self.log_cfg = t.devices.iter().map(|d| (d.id, logcfg::LogCfg::of(d))).filter(|(_, c)| *c != logcfg::LogCfg::default()).collect();
         self.note_links(t);
         // Ports reset by `shutdown`/`no shutdown`, or no longer secured, forget what they learned.
         for (id, st) in &mut self.state {

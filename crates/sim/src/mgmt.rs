@@ -5,7 +5,9 @@ use std::net::Ipv4Addr;
 
 use netlabcraft_core::DeviceId;
 use netlabcraft_model::{Device, DeviceKind, Topology};
-use netlabcraft_wire::mgmt::{NTP_PORT, Ntp, SYSLOG_PORT, TFTP_BLOCK, TFTP_PORT, Tftp, syslog_decode, syslog_encode};
+use netlabcraft_wire::mgmt::{
+    NTP_PORT, Ntp, SYSLOG_PORT, TFTP_BLOCK, TFTP_PORT, Tftp, ntp_key_id, ntp_sign, ntp_verify, syslog_decode, syslog_encode,
+};
 use netlabcraft_wire::radius::{RADIUS_PORT, Radius, reveal_password};
 use netlabcraft_wire::snmp::{self, PduKind, SNMP_PORT, Snmp};
 use netlabcraft_wire::{Ipv4, PROTO_UDP, Udp};
@@ -42,13 +44,30 @@ impl Sim {
                     Err(e) => return Some(Err(e.to_string())),
                 };
                 if !n.server {
-                    if d.kind != DeviceKind::Server || !d.services.ntp.on {
+                    // A server's NTP service, or a router or switch with `ntp master`.
+                    let master = d.kind != DeviceKind::Server && d.mgmt.ntp_master.is_some();
+                    if !master && (d.kind != DeviceKind::Server || !d.services.ntp.on) {
                         return Some(Err("no NTP service here".into()));
                     }
                     let (now, _) = self.clock(d.id);
-                    let reply = Ntp { server: true, stratum: 1, time: now };
-                    self.udp_out(t, d, me, ip.src, NTP_PORT, u.src_port, reply.encode())
+                    let stratum = if master { d.mgmt.ntp_master.unwrap_or(8) } else { 1 };
+                    let reply = Ntp { server: true, stratum, time: now }.encode();
+                    // Signed with the key the request was signed with, when this device has it.
+                    let reply = match ntp_key_id(&u.payload).and_then(|id| d.mgmt.ntp_keys.iter().find(|k| k.id == id)) {
+                        Some(k) if ntp_verify(&u.payload, &k.key) => ntp_sign(&reply, k.id, &k.key),
+                        _ => reply,
+                    };
+                    self.udp_out(t, d, me, ip.src, NTP_PORT, u.src_port, reply)
                 } else if d.ntp_servers.contains(&ip.src) {
+                    // `ntp authenticate`: only answers signed with the server's trusted key count.
+                    if d.mgmt.ntp_authenticate {
+                        let ok = d.mgmt.ntp_key_for(ip.src).is_some_and(|k| {
+                            d.mgmt.ntp_trusted.contains(&k.id) && ntp_key_id(&u.payload) == Some(k.id) && ntp_verify(&u.payload, &k.key)
+                        });
+                        if !ok {
+                            return Some(Err(format!("NTP time from {} failed authentication: ignored", ip.src)));
+                        }
+                    }
                     let before = self.clock(d.id).0;
                     self.set_clock(d.id, n.time);
                     if (before - n.time).abs() > 1 {
@@ -491,7 +510,12 @@ impl Sim {
         for server in d.ntp_servers.clone() {
             let Ok(src) = self.source_for(t, &d, server) else { continue };
             self.st(dev).ntp_synced = None;
-            if self.udp_out(t, &d, src, server, NTP_PORT, NTP_PORT, Ntp { server: false, stratum: 0, time: self.clock(dev).0 }.encode()).is_err() {
+            let req = Ntp { server: false, stratum: 0, time: self.clock(dev).0 }.encode();
+            let req = match d.mgmt.ntp_key_for(server) {
+                Some(k) if d.mgmt.ntp_authenticate => ntp_sign(&req, k.id, &k.key),
+                _ => req,
+            };
+            if self.udp_out(t, &d, src, server, NTP_PORT, NTP_PORT, req).is_err() {
                 continue;
             }
             let start = self.now;

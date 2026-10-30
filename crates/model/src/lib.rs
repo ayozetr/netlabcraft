@@ -726,6 +726,10 @@ impl Ipv6Conf {
     }
 }
 
+fn is_default<T: Default + PartialEq>(v: &T) -> bool {
+    *v == T::default()
+}
+
 /// A device: identity, position on the canvas, ports, and its configuration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Device {
@@ -804,6 +808,13 @@ pub struct Device {
     /// Hosts: what DHCP gave beyond the address (domain, lease time, server).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dhcp_lease: Option<mgmt::HostLease>,
+    /// Routers and switches: timestamps, log filters, NTP master and keys, boot lines.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub mgmt: mgmt::Mgmt,
+    /// Routers and switches: the configuration register and files copied into flash (kept
+    /// across reloads).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub nvram: mgmt::Nvram,
     /// Routers and switches: access and management settings.
     #[serde(default)]
     pub access: Access,
@@ -1608,6 +1619,8 @@ impl Device {
             dhcp_client: false,
             dns: None,
             dhcp_lease: None,
+            mgmt: mgmt::Mgmt::default(),
+            nvram: mgmt::Nvram::default(),
             access: Access::default(),
             stp_priority: BTreeMap::new(),
             svis: Vec::new(),
@@ -1674,6 +1687,7 @@ impl Device {
         self.dhcp_client = false;
         self.dns = None;
         self.dhcp_lease = None;
+        self.mgmt = mgmt::Mgmt::default();
         self.access = Access::default();
         self.stp_priority.clear();
         self.svis.clear();
