@@ -17,6 +17,7 @@ use crate::{LINK_DELAY_US, Queued, Sim, l3_ifaces, port_up};
 pub const BPDU_EVERY_US: u64 = 2_000_000;
 pub const OSPF_HELLO_EVERY_US: u64 = 10_000_000;
 pub const RIP_UPDATE_EVERY_US: u64 = 30_000_000;
+pub const HSRP_HELLO_EVERY_US: u64 = 3_000_000;
 /// A long run only replays the last ten minutes of control traffic.
 const MAX_CATCH_UP_US: u64 = 600_000_000;
 
@@ -28,12 +29,13 @@ impl Sim {
             return;
         }
         self.ctl_until = deadline;
-        for (every, kind) in [(BPDU_EVERY_US, 0u8), (OSPF_HELLO_EVERY_US, 1), (RIP_UPDATE_EVERY_US, 2)] {
+        for (every, kind) in [(BPDU_EVERY_US, 0u8), (OSPF_HELLO_EVERY_US, 1), (RIP_UPDATE_EVERY_US, 2), (HSRP_HELLO_EVERY_US, 3)] {
             let mut at = (from / every + 1) * every;
             while at <= deadline {
                 match kind {
                     0 => self.send_bpdus(t, at),
                     1 => self.send_ospf_hellos(t, at),
+                    3 => self.send_hsrp_hellos(t, at),
                     _ => self.send_rip_updates(t, at),
                 }
                 at += every;
@@ -108,7 +110,7 @@ impl Sim {
                 };
                 let ip =
                     Ipv4 { id: 0, ttl: 1, protocol: control::PROTO_OSPF, src: ifc.net.addr, dst: control::OSPF_ALL_ROUTERS, payload: hello.encode() };
-                self.queue_l3(t, d, &ifc, control::ipv4_multicast_mac(control::OSPF_ALL_ROUTERS), ip.encode(), at);
+                self.queue_l3(t, d, &ifc, ifc.mac, control::ipv4_multicast_mac(control::OSPF_ALL_ROUTERS), ip.encode(), at);
             }
         }
     }
@@ -134,17 +136,45 @@ impl Sim {
                 for chunk in entries.chunks(control::RIP_MAX_ENTRIES) {
                     let udp = Udp { src_port: control::RIP_PORT, dst_port: control::RIP_PORT, payload: control::rip_encode(r.version, chunk) };
                     let ip = Ipv4 { id: 0, ttl: 1, protocol: PROTO_UDP, src: ifc.net.addr, dst, payload: udp.encode(ifc.net.addr, dst) };
-                    self.queue_l3(t, d, &ifc, mac, ip.encode(), at);
+                    self.queue_l3(t, d, &ifc, ifc.mac, mac, ip.encode(), at);
                 }
             }
         }
     }
 
+    fn send_hsrp_hellos(&mut self, t: &Topology, at: u64) {
+        let roles = self.hsrp_roles(t);
+        for (id, list) in roles {
+            let Some(d) = t.device(id) else { continue };
+            for r in list.iter().filter(|r| r.state != crate::hsrp::State::Listen) {
+                let Some(ifc) = l3_ifaces(d).into_iter().find(|i| i.name == r.iface) else { continue };
+                let active = r.state == crate::hsrp::State::Active;
+                let hello = control::HsrpHello { active, priority: r.priority, group: r.group, virtual_ip: r.virtual_ip };
+                let udp = Udp { src_port: control::HSRP_PORT, dst_port: control::HSRP_PORT, payload: hello.encode() };
+                let ip = Ipv4 {
+                    id: 0,
+                    ttl: 1,
+                    protocol: PROTO_UDP,
+                    src: ifc.net.addr,
+                    dst: control::ALL_ROUTERS,
+                    payload: udp.encode(ifc.net.addr, control::ALL_ROUTERS),
+                };
+                // The active router speaks with the virtual MAC, so switches learn where it is.
+                let src = if active { r.virtual_mac() } else { ifc.mac };
+                self.queue_l3(t, d, &ifc, src, control::ipv4_multicast_mac(control::ALL_ROUTERS), ip.encode(), at);
+            }
+        }
+    }
+
     /// Queues an IPv4 packet out of a layer-3 interface at a given time.
-    fn queue_l3(&mut self, t: &Topology, d: &packetcraft_model::Device, ifc: &crate::L3If, dst: MacAddr, packet: Vec<u8>, at: u64) {
-        let frame = Frame { dst, src: ifc.mac, vlan: ifc.vlan, ethertype: packetcraft_wire::ETHERTYPE_IPV4, payload: packet };
+    fn queue_l3(&mut self, t: &Topology, d: &packetcraft_model::Device, ifc: &crate::L3If, src: MacAddr, dst: MacAddr, packet: Vec<u8>, at: u64) {
+        let frame = Frame { dst, src, vlan: ifc.vlan, ethertype: packetcraft_wire::ETHERTYPE_IPV4, payload: packet };
         if ifc.port == crate::SVI_PORT {
-            return; // routing protocols on VLAN interfaces aren't simulated yet
+            // A VLAN interface sends through its own switch, at once (not at `at`).
+            if let Some(v) = ifc.vlan.and_then(VlanId::new) {
+                let _ = self.switch_forward(t, d, None, v, frame, 0);
+            }
+            return;
         }
         let end = End { device: d.id, port: ifc.port };
         let bytes = match d.ports.get(ifc.port).filter(|p| packetcraft_model::ifname::is_serial(&p.name)) {

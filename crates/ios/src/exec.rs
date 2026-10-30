@@ -896,6 +896,66 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Some(p) => format!("VTP password: {p}"),
             None => "No VTP password is set.".into(),
         }),
+        Id::StandbyIp | Id::StandbyIpGroup0 | Id::StandbyPriority | Id::StandbyPreempt | Id::NoStandby => {
+            let group: u8 = if spec.id == Id::StandbyIpGroup0 { 0 } else { arg(0).parse().map_err(|_| "% The group is 0-255")? };
+            let ip = match spec.id {
+                Id::StandbyIp => Some(parse_ip(arg(1)).map_err(|e| format!("% {e}"))?),
+                Id::StandbyIpGroup0 => Some(parse_ip(arg(0)).map_err(|e| format!("% {e}"))?),
+                _ => None,
+            };
+            let priority: Option<u8> =
+                if spec.id == Id::StandbyPriority { Some(arg(1).parse().map_err(|_| "% The priority is 0-255")?) } else { None };
+            let id = spec.id;
+            let apply = |list: &mut Vec<packetcraft_model::Standby>, net: Option<Ipv4Net>| -> Result<(), String> {
+                if id == Id::NoStandby {
+                    list.retain(|s| s.group != group);
+                    return Ok(());
+                }
+                if let (Some(v), Some(n)) = (ip, net)
+                    && !n.contains(v)
+                {
+                    return Err(format!("% {v} is not on {}", n.network()));
+                }
+                if !list.iter().any(|s| s.group == group) {
+                    if list.len() >= packetcraft_model::MAX_STANDBY {
+                        return Err("% Too many HSRP groups on this interface".into());
+                    }
+                    list.push(packetcraft_model::Standby::new(group));
+                }
+                if let Some(s) = list.iter_mut().find(|s| s.group == group) {
+                    if ip.is_some() {
+                        s.ip = ip;
+                    }
+                    if let Some(p) = priority {
+                        s.priority = p;
+                    }
+                    if id == Id::StandbyPreempt {
+                        s.preempt = true;
+                    }
+                }
+                Ok(())
+            };
+            if let Mode::Svi(v) = c.cli.mode {
+                let svi = c.dm()?.svi_mut(v).ok_or("% Too many VLAN interfaces")?;
+                let net = svi.ip;
+                apply(&mut svi.standby, net)?;
+                return Ok(String::new());
+            }
+            c.each_if(|p, sub| match sub {
+                Some(s) => {
+                    let net = s.ip;
+                    apply(&mut s.standby, net)
+                }
+                None => {
+                    let net = p.ip;
+                    apply(&mut p.standby, net)
+                }
+            })
+        }
+        Id::ShowStandby => {
+            let roles = c.sim.hsrp_roles(c.t);
+            Ok(render::standby(c.d()?, roles.get(&c.dev).map_or(&[][..], Vec::as_slice)))
+        }
         Id::Do => {
             let saved = std::mem::replace(&mut c.cli.mode, Mode::Exec);
             let r = dispatch(c.t, c.sim, c.dev, c.cli, arg(0));

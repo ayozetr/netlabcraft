@@ -268,6 +268,12 @@ pub enum Id {
     DebugIpIcmp,
     UndebugAll,
     ShowDebugging,
+    StandbyIp,
+    StandbyIpGroup0,
+    StandbyPriority,
+    StandbyPreempt,
+    NoStandby,
+    ShowStandby,
 }
 
 use Tok::{Arg, K, Rest};
@@ -460,6 +466,36 @@ pub static SPECS: &[Spec] = &[
     spec!(UndebugAll, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("all")], "Turn every debug off"),
     spec!(UndebugAll, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("icmp")], "Stop reporting echo messages"),
     spec!(ShowDebugging, EXECS, Modes::BOTH, [K("show"), K("debugging")], "Which debugs are on"),
+    spec!(StandbyIp, IFS, Modes::ROUTER, [K("standby"), Arg("<0-255>"), K("ip"), Arg("A.B.C.D")], "HSRP: the group's virtual gateway address"),
+    spec!(StandbyIpGroup0, IFS, Modes::ROUTER, [K("standby"), K("ip"), Arg("A.B.C.D")], "HSRP group 0's virtual gateway address"),
+    spec!(StandbyPriority, IFS, Modes::ROUTER, [K("standby"), Arg("<0-255>"), K("priority"), Arg("<0-255>")], "HSRP: higher priority becomes active"),
+    spec!(
+        StandbyPreempt,
+        IFS,
+        Modes::ROUTER,
+        [K("standby"), Arg("<0-255>"), K("preempt")],
+        "HSRP: take over when this router has the highest priority"
+    ),
+    spec!(NoStandby, IFS, Modes::ROUTER, [K("no"), K("standby"), Arg("<0-255>")], "Remove an HSRP group"),
+    spec!(StandbyIp, Modes::SVI, Modes::SWITCH, [K("standby"), Arg("<0-255>"), K("ip"), Arg("A.B.C.D")], "HSRP: the group's virtual gateway address"),
+    spec!(StandbyIpGroup0, Modes::SVI, Modes::SWITCH, [K("standby"), K("ip"), Arg("A.B.C.D")], "HSRP group 0's virtual gateway address"),
+    spec!(
+        StandbyPriority,
+        Modes::SVI,
+        Modes::SWITCH,
+        [K("standby"), Arg("<0-255>"), K("priority"), Arg("<0-255>")],
+        "HSRP: higher priority becomes active"
+    ),
+    spec!(
+        StandbyPreempt,
+        Modes::SVI,
+        Modes::SWITCH,
+        [K("standby"), Arg("<0-255>"), K("preempt")],
+        "HSRP: take over when this switch has the highest priority"
+    ),
+    spec!(NoStandby, Modes::SVI, Modes::SWITCH, [K("no"), K("standby"), Arg("<0-255>")], "Remove an HSRP group"),
+    spec!(ShowStandby, EXECS, Modes::BOTH, [K("show"), K("standby")], "HSRP groups and who is active"),
+    spec!(ShowStandby, EXECS, Modes::BOTH, [K("show"), K("standby"), K("brief")], "HSRP groups and who is active"),
     spec!(RouterRip, Modes::CONFIG, Modes::ROUTER, [K("router"), K("rip")], "Start or configure RIP"),
     spec!(NoRouterRip, Modes::CONFIG, Modes::ROUTER, [K("no"), K("router"), K("rip")], "Stop RIP"),
     spec!(RipVersion, Modes::RIP, Modes::ROUTER, [K("version"), Arg("{1|2}")], "RIP version"),

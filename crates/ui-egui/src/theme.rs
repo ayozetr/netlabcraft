@@ -113,6 +113,7 @@ pub fn protocol_color(p: Protocol) -> Color32 {
         Protocol::Stp => Color32::from_rgb(0x6f, 0x8a, 0x2c),
         Protocol::Ospf => Color32::from_rgb(0xb0, 0x5a, 0x2a),
         Protocol::Rip => Color32::from_rgb(0x7a, 0x5c, 0xa8),
+        Protocol::Hsrp => Color32::from_rgb(0x2a, 0x8a, 0xa8),
         Protocol::Icmpv6 => Color32::from_rgb(0xd9, 0x5f, 0x8e),
         Protocol::Ndp => Color32::from_rgb(0xc9, 0x8a, 0x2e),
         Protocol::Ipv6 => Color32::from_rgb(0x2f, 0x8f, 0x8a),

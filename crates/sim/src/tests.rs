@@ -156,6 +156,7 @@ fn router_on_a_stick_routes_between_vlans_over_a_trunk() {
                 helpers: Vec::new(),
                 access: Default::default(),
                 nat: None,
+                standby: Vec::new(),
             });
         }
     }

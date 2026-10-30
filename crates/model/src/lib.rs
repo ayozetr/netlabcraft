@@ -290,6 +290,28 @@ impl ChannelMode {
     }
 }
 
+/// An HSRP group on an interface (`standby N …`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Standby {
+    pub group: u8,
+    /// The virtual gateway address.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ip: Option<Ipv4Addr>,
+    /// 0-255, 100 by default; the highest is active.
+    pub priority: u8,
+    #[serde(default)]
+    pub preempt: bool,
+}
+
+impl Standby {
+    pub fn new(group: u8) -> Standby {
+        Standby { group, ip: None, priority: 100, preempt: false }
+    }
+}
+
+/// Most HSRP groups on one interface.
+pub const MAX_STANDBY: usize = 16;
+
 /// Layer-2 framing on a serial link.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -372,6 +394,9 @@ pub struct SubIf {
     /// `ip nat inside` / `ip nat outside`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nat: Option<NatSide>,
+    /// HSRP groups.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub standby: Vec<Standby>,
 }
 
 /// One physical port and its configuration.
@@ -400,6 +425,9 @@ pub struct Port {
     pub port_security: Option<PortSecurity>,
     #[serde(default, skip_serializing_if = "Ipv6Conf::is_default")]
     pub ipv6: Ipv6Conf,
+    /// HSRP groups (routers).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub standby: Vec<Standby>,
     /// Serial ports: encapsulation and clock rate.
     #[serde(default, skip_serializing_if = "SerialConf::is_default")]
     pub serial: SerialConf,
@@ -450,6 +478,7 @@ impl Port {
                 helpers: Vec::new(),
                 access: AccessGroups::default(),
                 nat: None,
+                standby: Vec::new(),
             },
         );
         self.subifs.get_mut(at)
@@ -749,6 +778,9 @@ pub struct Svi {
     pub vlan: VlanId,
     #[serde(default)]
     pub ip: Option<Ipv4Net>,
+    /// HSRP groups (multilayer switches).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub standby: Vec<Standby>,
     /// New VLAN interfaces start shut down, as on real switches.
     #[serde(default)]
     pub shutdown: bool,
@@ -763,7 +795,7 @@ impl Device {
             if self.svis.len() >= MAX_SUBIFS {
                 return None;
             }
-            self.svis.push(Svi { vlan, ip: None, shutdown: true, description: String::new() });
+            self.svis.push(Svi { vlan, ip: None, standby: Vec::new(), shutdown: true, description: String::new() });
             self.svis.sort_by_key(|s| s.vlan);
         }
         self.svis.iter_mut().find(|s| s.vlan == vlan)
@@ -943,6 +975,7 @@ impl Device {
                 ipv6: Ipv6Conf::default(),
                 channel: None,
                 serial: SerialConf::default(),
+                standby: Vec::new(),
                 cdp_off: false,
                 routed: false,
                 err_disabled: false,

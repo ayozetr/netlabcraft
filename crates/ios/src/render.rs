@@ -154,6 +154,7 @@ pub fn running_config(d: &Device) -> String {
             }
             None => {}
         }
+        standby_lines(&mut s, &p.standby);
         if d.kind == DeviceKind::Router {
             if packetcraft_model::ifname::is_serial(&p.name) {
                 if p.serial.encapsulation == packetcraft_model::Encapsulation::Ppp {
@@ -196,6 +197,7 @@ pub fn running_config(d: &Device) -> String {
             if let Some(ip) = sub.ip {
                 let _ = writeln!(s, " ip address {} {}", ip.addr, ip.mask());
             }
+            standby_lines(&mut s, &sub.standby);
             for h in &sub.helpers {
                 let _ = writeln!(s, " ip helper-address {h}");
             }
@@ -220,6 +222,7 @@ pub fn running_config(d: &Device) -> String {
                 let _ = writeln!(s, " no ip address");
             }
         }
+        standby_lines(&mut s, &svi.standby);
         let _ = writeln!(s, "{}", if svi.shutdown { " shutdown" } else { " no shutdown" });
         let _ = writeln!(s, "!");
     }
@@ -800,6 +803,20 @@ fn ospf_protocol(d: &Device, st: &packetcraft_sim::ospf::OspfState) -> String {
     s
 }
 
+fn standby_lines(s: &mut String, list: &[packetcraft_model::Standby]) {
+    for g in list {
+        if let Some(ip) = g.ip {
+            let _ = writeln!(s, " standby {} ip {ip}", g.group);
+        }
+        if g.priority != 100 {
+            let _ = writeln!(s, " standby {} priority {}", g.group, g.priority);
+        }
+        if g.preempt {
+            let _ = writeln!(s, " standby {} preempt", g.group);
+        }
+    }
+}
+
 fn nat_side(s: &mut String, side: Option<packetcraft_model::NatSide>) {
     match side {
         Some(packetcraft_model::NatSide::Inside) => s.push_str(" ip nat inside\n"),
@@ -1211,4 +1228,32 @@ pub fn cdp_neighbors(t: &Topology, sim: &Sim, d: &Device, detail: bool) -> Strin
     }
     let _ = write!(s, "{} neighbour{}", list.len(), if list.len() == 1 { "" } else { "s" });
     s
+}
+
+/// `show standby`.
+pub fn standby(d: &Device, roles: &[packetcraft_sim::hsrp::Role]) -> String {
+    let configured = d.ports.iter().any(|p| !p.standby.is_empty() || p.subifs.iter().any(|s| !s.standby.is_empty()))
+        || d.svis.iter().any(|s| !s.standby.is_empty());
+    if !configured {
+        return "No HSRP group is configured here.".into();
+    }
+    if roles.is_empty() {
+        return "HSRP groups are configured, but none is running (interface down, or no virtual address in the group).".into();
+    }
+    let mut s = String::new();
+    for r in roles {
+        let me = |a: Option<std::net::Ipv4Addr>, state| {
+            if r.state == state { "this router".to_string() } else { a.map_or("none".to_string(), |x| x.to_string()) }
+        };
+        let _ =
+            writeln!(s, "Group {} on {}: {} (priority {}{})", r.group, r.iface, r.state.name(), r.priority, if r.preempt { ", preempt" } else { "" });
+        let _ = writeln!(s, "  Virtual address {}, virtual MAC {}", r.virtual_ip, r.virtual_mac().dotted());
+        let _ = writeln!(
+            s,
+            "  Active: {}; standby: {}",
+            me(r.active, packetcraft_sim::hsrp::State::Active),
+            me(r.standby, packetcraft_sim::hsrp::State::Standby)
+        );
+    }
+    s.trim_end().to_string()
 }

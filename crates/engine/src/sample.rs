@@ -71,6 +71,11 @@ pub static SAMPLES: &[Sample] = &[
         description: "A graded activity: address the router's two interfaces, set its name and a secret, and make the two LANs reach each other. Check Results shows the score.",
     },
     Sample {
+        id: "hsrp",
+        title: "HSRP: a gateway that survives a router",
+        description: "Two routers share the virtual gateway 192.168.1.254; R1 is active. Shut R1 down and PC1 keeps reaching the server through R2.",
+    },
+    Sample {
         id: "ospf",
         title: "OSPF on three routers",
         description: "Three routers in a triangle learn each other's networks with OSPF; cut a link and the routes move.",
@@ -498,6 +503,31 @@ pub fn build(id: &str) -> Result<Topology> {
             }
             b.t.activity = Some(activity);
             b.t.notes = "A graded activity: follow the Instructions window and press Check Results.".into();
+        }
+        "hsrp" => {
+            b.add_model("Router-2", "R1", 240.0, 200.0)?;
+            b.add_model("Router-2", "R2", 480.0, 200.0)?;
+            b.add(DeviceKind::Switch, "S1", 360.0, 340.0)?;
+            b.add(DeviceKind::Switch, "S2", 360.0, 60.0)?;
+            b.cable("R1", "g0/0", "S1", "fa0/2")?;
+            b.cable("R2", "g0/0", "S1", "fa0/3")?;
+            b.cable("R1", "g0/1", "S2", "fa0/2")?;
+            b.cable("R2", "g0/1", "S2", "fa0/3")?;
+            b.add(DeviceKind::Pc, "PC1", 360.0, 480.0)?;
+            b.add(DeviceKind::Server, "SRV1", 620.0, 60.0)?;
+            b.cable("PC1", "fa0", "S1", "fa0/1")?;
+            b.cable("SRV1", "g0", "S2", "fa0/1")?;
+            b.type_in("PC1", "ipconfig 192.168.1.10 255.255.255.0 192.168.1.254")?;
+            b.type_in("SRV1", "ipconfig 10.0.0.10 255.255.255.0 10.0.0.254")?;
+            for (r, lan, wan, pri) in [("R1", "192.168.1.1", "10.0.0.1", 110), ("R2", "192.168.1.2", "10.0.0.2", 100)] {
+                b.type_in(
+                    r,
+                    &format!(
+                        "enable\nconfigure terminal\ninterface g0/0\nip address {lan} 255.255.255.0\nstandby 1 ip 192.168.1.254\nstandby 1 priority {pri}\nstandby 1 preempt\nno shutdown\ninterface g0/1\nip address {wan} 255.255.255.0\nstandby 2 ip 10.0.0.254\nstandby 2 priority {pri}\nstandby 2 preempt\nno shutdown\nend"
+                    ),
+                )?;
+            }
+            b.t.notes = "R1 is active for both virtual gateways (`show standby`). Watch the HSRP hellos in Simulation mode, then shut R1's interfaces and ping from PC1 again.".into();
         }
         "ospf" => {
             for (name, x, y) in [("R1", 120.0, 80.0), ("R2", 600.0, 80.0), ("R3", 360.0, 260.0)] {

@@ -410,6 +410,7 @@ pub enum Protocol {
     Stp,
     Ospf,
     Rip,
+    Hsrp,
     Icmpv6,
     /// IPv6 neighbour discovery (neighbour and router solicitations and advertisements).
     Ndp,
@@ -431,6 +432,7 @@ impl Protocol {
             Protocol::Stp => "STP",
             Protocol::Ospf => "OSPF",
             Protocol::Rip => "RIP",
+            Protocol::Hsrp => "HSRP",
             Protocol::Icmpv6 => "ICMPv6",
             Protocol::Ndp => "NDP",
             Protocol::Ipv6 => "IPv6",
@@ -476,6 +478,20 @@ pub fn summarize(bytes: &[u8]) -> (Protocol, String) {
                         Err(e) => (Protocol::Ospf, format!("OSPF ({e}) {route}{tag}")),
                     },
                     PROTO_UDP => match Udp::decode(&ip.payload, ip.src, ip.dst) {
+                        Ok(u) if u.dst_port == control::HSRP_PORT => match control::HsrpHello::decode(&u.payload) {
+                            Ok(h) => (
+                                Protocol::Hsrp,
+                                format!(
+                                    "HSRP hello, group {}: {} {} (priority {}), virtual address {}{tag}",
+                                    h.group,
+                                    ip.src,
+                                    if h.active { "active" } else { "standby" },
+                                    h.priority,
+                                    h.virtual_ip
+                                ),
+                            ),
+                            Err(e) => (Protocol::Hsrp, format!("HSRP ({e}){tag}")),
+                        },
                         Ok(u) if u.dst_port == control::RIP_PORT => match control::rip_decode(&u.payload) {
                             Ok((v, entries)) => (
                                 Protocol::Rip,

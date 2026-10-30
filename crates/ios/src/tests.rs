@@ -1109,3 +1109,52 @@ fn logging_and_debug_by_typing() {
     lab.run(r, "conf t\nint g0/0\nshutdown\nend");
     assert!(lab.run(r, "show logging").contains("GigabitEthernet0/0: link down"));
 }
+
+#[test]
+fn hsrp_by_typing() {
+    let mut lab = Lab::new();
+    let r1 = lab.add(DeviceKind::Router);
+    let r2 = lab.add(DeviceKind::Router);
+    let s1 = lab.add(DeviceKind::Switch);
+    let s2 = lab.add(DeviceKind::Switch);
+    let pc = lab.add(DeviceKind::Pc);
+    let srv = lab.add(DeviceKind::Server);
+    lab.cable(pc, "fa0", s1, "fa0/1");
+    lab.cable(r1, "g0/0", s1, "fa0/2");
+    lab.cable(r2, "g0/0", s1, "fa0/3");
+    lab.cable(r1, "g0/1", s2, "fa0/2");
+    lab.cable(r2, "g0/1", s2, "fa0/3");
+    lab.cable(srv, "g0", s2, "fa0/1");
+    lab.run(pc, "ipconfig 192.168.1.10 255.255.255.0 192.168.1.254");
+    lab.run(srv, "ipconfig 10.0.0.10 255.255.255.0 10.0.0.254");
+    for (r, a, b, pri) in [(r1, "192.168.1.1", "10.0.0.1", 110), (r2, "192.168.1.2", "10.0.0.2", 100)] {
+        lab.run(
+            r,
+            &format!(
+                "en\nconf t\nint g0/0\nip address {a} 255.255.255.0\nstandby 1 ip 192.168.1.254\nstandby 1 priority {pri}\nstandby 1 preempt\nno shut\nint g0/1\nip address {b} 255.255.255.0\nstandby ip 10.0.0.254\nstandby 0 priority {pri}\nno shut\nend"
+            ),
+        );
+    }
+    let sb = lab.run(r1, "show standby");
+    assert!(
+        sb.contains("Group 1 on GigabitEthernet0/0: active (priority 110, preempt)")
+            && sb.contains("virtual MAC 0000.0c07.ac01")
+            && sb.contains("standby: 192.168.1.2"),
+        "{sb}"
+    );
+    assert!(lab.run(r2, "show standby brief").contains("standby (priority 100, preempt)"));
+    lab.run(pc, "ping 10.0.0.10");
+    assert!(lab.run(pc, "ping 10.0.0.10").contains("4 answered"));
+    assert!(lab.run(pc, "ping 192.168.1.254").contains("4 answered"));
+    // The PC's gateway resolved to the virtual MAC.
+    assert!(lab.run(pc, "arp -a").contains("00:00:0c:07:ac:01"));
+    // R1 fails: R2 takes over without the PC changing anything.
+    lab.run(r1, "conf t\nint g0/0\nshutdown\nint g0/1\nshutdown\nend");
+    assert!(lab.run(r2, "show standby").contains("Group 1 on GigabitEthernet0/0: active"));
+    lab.run(pc, "ping 10.0.0.10");
+    assert!(lab.run(pc, "ping 10.0.0.10").contains("4 answered"));
+    let run = lab.run(r2, "show running-config interface g0/0");
+    assert!(run.contains(" standby 1 ip 192.168.1.254\n standby 1 preempt"), "{run}");
+    lab.run(r2, "conf t\nint g0/0");
+    assert!(lab.try_run(r2, "standby 2 ip 172.16.0.1").contains("not on"));
+}

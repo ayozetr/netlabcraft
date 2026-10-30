@@ -20,15 +20,15 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 | Number | Value | Kind |
 |---|---|---|
-| **Ready for real work** (weighted) | **~56%** | estimated from written weights (55.9); [target-app-parity.md](docs/target-app-parity.md) |
+| **Ready for real work** (weighted) | **~57%** | estimated from written weights (56.6); [target-app-parity.md](docs/target-app-parity.md) |
 | **CCNA 1 student** | **~74%** | estimated; [method](docs/target-app-parity.md#audiences) |
-| **CCNA 2 student** | **~58%** | estimated |
+| **CCNA 2 student** | **~62%** | estimated |
 | **CCNA 3 student** | **~45%** | estimated |
 | **Instructor** (graded activities) | **~45%** | estimated |
 | Engine commands | 40 | measured: `crates/engine/src/catalog.rs` |
 | Console grammar entries | 225 across 12 modes | measured: `crates/ios/src/grammar.rs` |
-| Device models · sample labs | 13 · 16 | measured |
-| Tests | 124 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Device models · sample labs | 13 · 17 | measured |
+| Tests | 125 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~600–950 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
@@ -37,7 +37,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 |---|---|---|---|
 | Full target | ~50% | ~600–950 | Activities and scoring, wireless, more device families, services, physical workspace, translations |
 | CCNA 1 student | ~74% | ~30–55 | Console coverage, protocol frames in Simulation mode, PDU details |
-| CCNA 2 student | ~58% | ~110–170 | Wireless LANs, HSRP, DTP and RSTP, DHCPv6 |
+| CCNA 2 student | ~62% | ~95–150 | Wireless LANs, DTP and RSTP, DHCPv6 |
 | CCNA 3 student | ~45% | ~180–280 | OSPF depth and OSPFv3, ACL depth, PPP authentication, VPN, network services |
 | Instructor | ~45% | ~50–90 | Timer, locking, variables, per-check feedback, translations |
 
@@ -47,7 +47,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 |---|---|---|---|---|
 | Device console | 20 | 65% | 50–80 | Modes, abbreviations, `?`, Tab, history, config round-trip; `show` coverage growing |
 | Layer 2 | 12 | 75% | 25–40 | VLANs, trunks, per-VLAN STP, EtherChannel, VTP, port security; no DTP or BPDU frames |
-| Layer 3 | 15 | 55% | 70–110 | IPv4, IPv6 (NDP, SLAAC), static, RIP, single-area OSPF, multilayer switching; no EIGRP, OSPFv3, HSRP |
+| Layer 3 | 15 | 60% | 60–95 | IPv4, IPv6 (NDP, SLAAC), static, RIP, single-area OSPF, multilayer switching, HSRP; no EIGRP or OSPFv3 |
 | Services | 8 | 40% | 40–60 | DHCP, DNS, HTTP with browser, Telnet/SSH; no FTP, email, NTP, syslog, AAA |
 | Security | 8 | 60% | 35–55 | ACLs, NAT/PAT, passwords and lines; no PPP authentication or IPv6 ACLs |
 | WAN, cabling, wireless | 6 | 35% | 60–90 | Copper (auto-MDIX) and serial (DCE/DTE, HDLC/PPP); no wireless or fibre |
@@ -60,6 +60,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-10-30 — HSRP.** `standby` groups with priority and preempt on router interfaces, subinterfaces and multilayer VLAN interfaces; the active router answers for the virtual address with the virtual MAC; hellos every 3 s in Simulation mode; `show standby`; hsrp sample lab.
 - **2026-10-30 — Activities.** A lab can carry an activity: instructions, checks (configuration lines, pings that must succeed or fail, host addresses, command output) worth points, answers stored as hashes when hidden; an Instructions window with Completion, Check Results and Reset Activity; an Activity Wizard that captures the answers from a finished lab; activity-first-router sample.
 - **2026-10-30 — Console messages and logging.** Devices report link up/down, port-security shutdowns and configuration changes in a logging buffer (`show logging`, `clear logging`) and on their console after the prompt; `debug ip icmp`, `undebug all`, `show debugging`.
 - **2026-10-30 — Protocol frames in Simulation mode.** Switches send spanning-tree BPDUs every 2 s (tagged per VLAN on trunks), OSPF routers hellos every 10 s with their neighbours, DR and BDR, RIP routers updates every 30 s with split horizon; new STP, OSPF and RIP filters and colours; captures include them.

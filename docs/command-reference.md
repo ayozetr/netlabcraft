@@ -165,6 +165,18 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no debug all` | privileged | router, switch | Turn every debug off |
 | `no debug ip icmp` | privileged | router, switch | Stop reporting echo messages |
 | `show debugging` | user, privileged | router, switch | Which debugs are on |
+| `standby <0-255> ip A.B.C.D` | interface, subinterface | router | HSRP: the group's virtual gateway address |
+| `standby ip A.B.C.D` | interface, subinterface | router | HSRP group 0's virtual gateway address |
+| `standby <0-255> priority <0-255>` | interface, subinterface | router | HSRP: higher priority becomes active |
+| `standby <0-255> preempt` | interface, subinterface | router | HSRP: take over when this router has the highest priority |
+| `no standby <0-255>` | interface, subinterface | router | Remove an HSRP group |
+| `standby <0-255> ip A.B.C.D` |  | switch | HSRP: the group's virtual gateway address |
+| `standby ip A.B.C.D` |  | switch | HSRP group 0's virtual gateway address |
+| `standby <0-255> priority <0-255>` |  | switch | HSRP: higher priority becomes active |
+| `standby <0-255> preempt` |  | switch | HSRP: take over when this switch has the highest priority |
+| `no standby <0-255>` |  | switch | Remove an HSRP group |
+| `show standby` | user, privileged | router, switch | HSRP groups and who is active |
+| `show standby brief` | user, privileged | router, switch | HSRP groups and who is active |
 | `router rip` | config | router | Start or configure RIP |
 | `no router rip` | config | router | Stop RIP |
 | `version {1\|2}` |  | router | RIP version |

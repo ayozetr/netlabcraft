@@ -25,6 +25,7 @@ use packetcraft_wire::{Arp, ArpOp, ETHERTYPE_ARP, ETHERTYPE_IPV4, Frame, Icmp, I
 pub mod cdp;
 pub mod channel;
 pub mod control;
+pub mod hsrp;
 pub mod ospf;
 pub mod rip;
 pub mod stp;
@@ -569,6 +570,8 @@ pub struct Sim {
     rip: Option<rip::RipState>,
     /// Control frames (BPDUs, hellos, updates) are queued up to this time.
     ctl_until: u64,
+    hsrp_for: u64,
+    hsrp: Option<BTreeMap<DeviceId, Vec<hsrp::Role>>>,
     /// Last known link state of every router and switch port, for link messages.
     links_seen: BTreeMap<(DeviceId, usize), bool>,
     /// Lab changes waiting for the engine.
@@ -1024,6 +1027,32 @@ impl Sim {
         self.rip_state(t).routes.get(&d.id).cloned().unwrap_or_default()
     }
 
+    /// Every device's HSRP roles (cached per topology).
+    pub fn hsrp_roles(&mut self, t: &Topology) -> BTreeMap<DeviceId, Vec<hsrp::Role>> {
+        let f = hsrp::fingerprint(t);
+        if self.hsrp.is_none() || self.hsrp_for != f {
+            self.hsrp_for = f;
+            self.hsrp = Some(hsrp::compute(t));
+        }
+        self.hsrp.clone().unwrap_or_default()
+    }
+
+    /// Groups this device is active for on an interface: (virtual address, virtual MAC).
+    fn hsrp_active(&mut self, t: &Topology, d: &Device, iface: Option<&str>) -> Vec<(Ipv4Addr, MacAddr)> {
+        if !d.ports.iter().any(|p| !p.standby.is_empty() || p.subifs.iter().any(|s| !s.standby.is_empty()))
+            && !d.svis.iter().any(|s| !s.standby.is_empty())
+        {
+            return Vec::new();
+        }
+        self.hsrp_roles(t)
+            .get(&d.id)
+            .into_iter()
+            .flatten()
+            .filter(|r| r.state == hsrp::State::Active && iface.is_none_or(|i| r.iface == i))
+            .map(|r| (r.virtual_ip, r.virtual_mac()))
+            .collect()
+    }
+
     /// RIP's view of the lab (neighbours, routes).
     pub fn rip_state(&mut self, t: &Topology) -> rip::RipState {
         let f = ospf::fingerprint(t);
@@ -1288,7 +1317,8 @@ impl Sim {
         })?;
         // Unicast to us, broadcast, or an IPv4 multicast group (the IP layer decides on those).
         let ipv4_group = f.dst.is_group() && f.dst.0[..3] == [0x01, 0x00, 0x5e] && f.ethertype == ETHERTYPE_IPV4;
-        if f.dst != ifc.mac && !f.dst.is_broadcast() && !ipv4_group {
+        let virtual_mac = !f.dst.is_group() && f.dst != ifc.mac && self.hsrp_active(t, d, Some(&ifc.name)).iter().any(|(_, m)| *m == f.dst);
+        if f.dst != ifc.mac && !f.dst.is_broadcast() && !ipv4_group && !virtual_mac {
             return Err("not addressed to this device".into());
         }
         match f.ethertype {
@@ -1306,7 +1336,11 @@ impl Sim {
         if !ifc.net.contains(a.sender_ip) && !asked {
             return Err(format!("ARP from {} is not on {}", a.sender_ip, ifc.net.network()));
         }
-        let for_me = a.target_ip == ifc.net.addr || (nat_side(d, ifc) == Some(packetcraft_model::NatSide::Outside) && Sim::nat_owns(d, a.target_ip));
+        // An HSRP virtual address this router is active for answers with the virtual MAC.
+        let virtual_mac = self.hsrp_active(t, d, Some(&ifc.name)).into_iter().find(|(ip, _)| *ip == a.target_ip).map(|(_, m)| m);
+        let for_me = a.target_ip == ifc.net.addr
+            || virtual_mac.is_some()
+            || (nat_side(d, ifc) == Some(packetcraft_model::NatSide::Outside) && Sim::nat_owns(d, a.target_ip));
         let now = self.now;
         let st = self.st(d.id);
         if (for_me || st.arp.contains_key(&a.sender_ip)) && (st.arp.len() < MAX_ARP_ENTRIES || st.arp.contains_key(&a.sender_ip)) {
@@ -1334,8 +1368,9 @@ impl Sim {
             }
         }
         if a.op == ArpOp::Request {
-            let reply = Arp { op: ArpOp::Reply, sender_mac: ifc.mac, sender_ip: a.target_ip, target_mac: a.sender_mac, target_ip: a.sender_ip };
-            let frame = Frame { dst: a.sender_mac, src: ifc.mac, vlan: ifc.vlan, ethertype: ETHERTYPE_ARP, payload: reply.encode() };
+            let mac = virtual_mac.unwrap_or(ifc.mac);
+            let reply = Arp { op: ArpOp::Reply, sender_mac: mac, sender_ip: a.target_ip, target_mac: a.sender_mac, target_ip: a.sender_ip };
+            let frame = Frame { dst: a.sender_mac, src: mac, vlan: ifc.vlan, ethertype: ETHERTYPE_ARP, payload: reply.encode() };
             self.l3_emit(t, d, ifc, frame);
         }
         Ok(())
@@ -1344,8 +1379,9 @@ impl Sim {
     fn ip_in(&mut self, t: &Topology, d: &Device, ifc: &L3If, payload: &[u8]) -> Result<(), String> {
         let mut ip = Ipv4::decode(payload).map_err(|e| e.to_string())?;
         // Routing-protocol messages to the link's routers (OSPF, RIP); hosts ignore them.
-        let rip =
-            ip.protocol == PROTO_UDP && Udp::decode(&ip.payload, ip.src, ip.dst).is_ok_and(|u| u.dst_port == packetcraft_wire::control::RIP_PORT);
+        let udp_port = if ip.protocol == PROTO_UDP { Udp::decode(&ip.payload, ip.src, ip.dst).ok().map(|u| u.dst_port) } else { None };
+        let rip = udp_port == Some(packetcraft_wire::control::RIP_PORT);
+        let hsrp = udp_port == Some(packetcraft_wire::control::HSRP_PORT);
         if (ip.dst.octets()[..3] == [224, 0, 0]) || (rip && ip.dst == Ipv4Addr::BROADCAST) {
             if d.kind.is_host() {
                 return Ok(());
@@ -1355,6 +1391,7 @@ impl Sim {
                 (packetcraft_wire::control::PROTO_OSPF, _) => Err("OSPF is not running here".into()),
                 (_, true) if d.rip.is_some() => Ok(()),
                 (_, true) => Err("RIP is not running here".into()),
+                _ if hsrp => Ok(()),
                 _ => Err(format!("not listening to {}", ip.dst)),
             };
         }
@@ -1369,7 +1406,7 @@ impl Sim {
                 from_outside = true;
             }
         }
-        let mine = l3_ifaces(d).iter().any(|i| i.net.addr == ip.dst);
+        let mine = l3_ifaces(d).iter().any(|i| i.net.addr == ip.dst) || self.hsrp_active(t, d, None).iter().any(|(v, _)| *v == ip.dst);
         if mine || ip.dst == Ipv4Addr::BROADCAST || (ifc.net.prefix < 31 && ip.dst == ifc.net.broadcast()) {
             return self.local_in(t, d, ifc, ip);
         }
