@@ -198,6 +198,29 @@ pub enum Id {
     StpRoot,
     Portfast,
     NoPortfast,
+    // ---- switch edge protection and tuning (exec/l2sec.rs) ----
+    L2Snooping,
+    L2NoSnooping,
+    L2SnoopingVlan,
+    L2NoSnoopingVlan,
+    L2SnoopingOpt82,
+    L2NoSnoopingOpt82,
+    L2SnoopingTrust,
+    L2NoSnoopingTrust,
+    L2SnoopingRate,
+    L2NoSnoopingRate,
+    L2ShowSnooping,
+    L2ShowSnoopingBinding,
+    L2ClearSnoopingBinding,
+    L2DaiVlan,
+    L2NoDaiVlan,
+    L2DaiValidate,
+    L2NoDaiValidate,
+    L2DaiTrust,
+    L2NoDaiTrust,
+    L2DaiRate,
+    L2NoDaiRate,
+    L2ShowDai,
     ShowStp,
     ShowStpVlan,
     NoInterfaceVlan,
@@ -1807,6 +1830,113 @@ pub static SPECS: &[Spec] = &[
     ),
     spec!(Portfast, Modes::IF, Modes::SWITCH, [K("spanning-tree"), K("portfast")], "An edge port: forward at once"),
     spec!(NoPortfast, Modes::IF, Modes::SWITCH, [K("no"), K("spanning-tree"), K("portfast")], "Not an edge port"),
+    // ---- switch edge protection and tuning (exec/l2sec.rs) ----
+    spec!(L2Snooping, Modes::CONFIG, Modes::SWITCH, [K("ip"), K("dhcp"), K("snooping")], "Turn DHCP snooping on (then name its VLANs)"),
+    spec!(L2NoSnooping, Modes::CONFIG, Modes::SWITCH, [K("no"), K("ip"), K("dhcp"), K("snooping")], "Turn DHCP snooping off"),
+    spec!(
+        L2SnoopingVlan,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("ip"), K("dhcp"), K("snooping"), K("vlan"), Arg("<1-4094>[,-]")],
+        "VLANs DHCP snooping watches"
+    ),
+    spec!(
+        L2NoSnoopingVlan,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("ip"), K("dhcp"), K("snooping"), K("vlan"), Arg("<1-4094>[,-]")],
+        "Stop watching these VLANs"
+    ),
+    spec!(
+        L2SnoopingOpt82,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("ip"), K("dhcp"), K("snooping"), K("information"), K("option")],
+        "Add relay information (option 82) to client requests"
+    ),
+    spec!(
+        L2NoSnoopingOpt82,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("ip"), K("dhcp"), K("snooping"), K("information"), K("option")],
+        "Leave client requests as they are (no option 82)"
+    ),
+    spec!(L2SnoopingTrust, Modes::IF, Modes::SWITCH, [K("ip"), K("dhcp"), K("snooping"), K("trust")], "DHCP servers may answer through this port"),
+    spec!(
+        L2NoSnoopingTrust,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("no"), K("ip"), K("dhcp"), K("snooping"), K("trust")],
+        "Untrusted: server answers arriving here are dropped"
+    ),
+    spec!(
+        L2SnoopingRate,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("ip"), K("dhcp"), K("snooping"), K("limit"), K("rate"), Arg("<1-2048>")],
+        "Most DHCP messages a second; more err-disables the port"
+    ),
+    spec!(
+        L2NoSnoopingRate,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("no"), K("ip"), K("dhcp"), K("snooping"), K("limit"), K("rate")],
+        "No DHCP rate limit on this port"
+    ),
+    spec!(L2ShowSnooping, EXECS, Modes::SWITCH, [K("show"), K("ip"), K("dhcp"), K("snooping")], "DHCP snooping settings and trusted ports"),
+    spec!(
+        L2ShowSnoopingBinding,
+        EXECS,
+        Modes::SWITCH,
+        [K("show"), K("ip"), K("dhcp"), K("snooping"), K("binding")],
+        "Clients, their addresses and ports"
+    ),
+    spec!(
+        L2ClearSnoopingBinding,
+        Modes::EXEC,
+        Modes::SWITCH,
+        [K("clear"), K("ip"), K("dhcp"), K("snooping"), K("binding")],
+        "Forget the snooping bindings"
+    ),
+    spec!(
+        L2DaiVlan,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("ip"), K("arp"), K("inspection"), K("vlan"), Arg("<1-4094>[,-]")],
+        "Check ARP in these VLANs against the snooping bindings"
+    ),
+    spec!(
+        L2NoDaiVlan,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("ip"), K("arp"), K("inspection"), K("vlan"), Arg("<1-4094>[,-]")],
+        "Stop checking ARP in these VLANs"
+    ),
+    spec!(
+        L2DaiValidate,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("ip"), K("arp"), K("inspection"), K("validate"), Rest("{src-mac|dst-mac|ip}…")],
+        "Extra checks on ARP messages"
+    ),
+    spec!(L2NoDaiValidate, Modes::CONFIG, Modes::SWITCH, [K("no"), K("ip"), K("arp"), K("inspection"), K("validate")], "No extra ARP checks"),
+    spec!(L2DaiTrust, Modes::IF, Modes::SWITCH, [K("ip"), K("arp"), K("inspection"), K("trust")], "ARP through this port is not checked"),
+    spec!(L2NoDaiTrust, Modes::IF, Modes::SWITCH, [K("no"), K("ip"), K("arp"), K("inspection"), K("trust")], "Check ARP arriving on this port"),
+    spec!(
+        L2DaiRate,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("ip"), K("arp"), K("inspection"), K("limit"), K("rate"), Arg("<1-2048>")],
+        "Most ARP messages a second; more err-disables the port"
+    ),
+    spec!(
+        L2NoDaiRate,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("no"), K("ip"), K("arp"), K("inspection"), K("limit"), K("rate")],
+        "No ARP rate limit on this port"
+    ),
+    spec!(L2ShowDai, EXECS, Modes::SWITCH, [K("show"), K("ip"), K("arp"), K("inspection")], "ARP inspection settings and counts"),
     spec!(ShowStp, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree")], "Spanning trees of every VLAN"),
     spec!(ShowStpVlan, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree"), K("vlan"), Arg("<1-4094>")], "One VLAN's spanning tree"),
     // ---- the firewall appliance ----

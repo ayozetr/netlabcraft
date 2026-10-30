@@ -183,6 +183,7 @@ pub fn running_config(d: &Device) -> String {
     if !d.stp_priority.is_empty() {
         let _ = writeln!(s, "!");
     }
+    crate::exec::l2sec::global_lines(&mut s, d);
     // VLANs live in the VLAN database (vlan.dat), not in the configuration: only a VTP
     // transparent switch writes them there.
     if d.kind == DeviceKind::Switch && d.vtp.mode == netlabcraft_model::VtpMode::Transparent {
@@ -273,6 +274,7 @@ pub fn running_config(d: &Device) -> String {
             if p.portfast {
                 let _ = writeln!(s, " spanning-tree portfast");
             }
+            crate::exec::l2sec::port_lines(&mut s, p);
         }
         match p.ip {
             // The leased address isn't configuration; how it is obtained is.
@@ -651,7 +653,7 @@ pub fn interfaces(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
         }
         let end = End { device: d.id, port: i };
         let link = if p.err_disabled {
-            "down (err-disabled by port security)".to_string()
+            format!("down (err-disabled by {})", crate::exec::l2sec::cause_words(p.l2.err_cause))
         } else if p.shutdown {
             "administratively down".to_string()
         } else if port_up(t, end) {

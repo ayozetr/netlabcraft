@@ -158,6 +158,18 @@ impl Session {
                         p.err_disabled = true;
                     }
                 }
+                netlabcraft_sim::PortEvent::ErrDisabledBy { device, port, cause } => {
+                    if let Some(p) = self.topology.device_mut(device).and_then(|d| d.ports.get_mut(port)) {
+                        p.err_disabled = true;
+                        p.l2.err_cause = Some(cause);
+                    }
+                }
+                netlabcraft_sim::PortEvent::Recovered { device, port } => {
+                    if let Some(p) = self.topology.device_mut(device).and_then(|d| d.ports.get_mut(port)) {
+                        p.err_disabled = false;
+                        p.l2.err_cause = None;
+                    }
+                }
                 netlabcraft_sim::PortEvent::Sticky { device, port, mac } => {
                     if let Some(ps) = self.topology.device_mut(device).and_then(|d| d.ports.get_mut(port)).and_then(|p| p.port_security.as_mut())
                         && !ps.macs.contains(&mac)

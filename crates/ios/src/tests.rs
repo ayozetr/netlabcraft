@@ -3770,3 +3770,106 @@ fn call_control_and_voice_vlans_survive_a_reload() {
     lab.try_run(s, "configure terminal");
     assert!(lab.try_run(s, "telephony-service").contains('%'));
 }
+
+// ---- switch edge protection and tuning (M5.40-M5.43) ----
+
+/// Writes what the simulator decided into the lab, as the engine does after every command.
+fn l2_apply(lab: &mut Lab) {
+    for e in lab.sim.take_events() {
+        match e {
+            netlabcraft_sim::PortEvent::ErrDisabled { device, port } => lab.t.device_mut(device).unwrap().ports[port].err_disabled = true,
+            netlabcraft_sim::PortEvent::ErrDisabledBy { device, port, cause } => {
+                let p = &mut lab.t.device_mut(device).unwrap().ports[port];
+                p.err_disabled = true;
+                p.l2.err_cause = Some(cause);
+            }
+            netlabcraft_sim::PortEvent::Recovered { device, port } => {
+                let p = &mut lab.t.device_mut(device).unwrap().ports[port];
+                p.err_disabled = false;
+                p.l2.err_cause = None;
+            }
+            netlabcraft_sim::PortEvent::Sticky { .. } => {}
+        }
+    }
+    lab.sim.topology_changed(&lab.t);
+}
+
+fn dropped_reasons(lab: &Lab) -> Vec<String> {
+    lab.sim.trace().iter().filter_map(|e| e.dropped.clone()).collect()
+}
+
+/// R1 serves DHCP behind Fa0/24; R2, a rogue server, sits on Fa0/23; PC1 and PC2 are clients.
+fn snooping_lab() -> (Lab, DeviceId, DeviceId, DeviceId, DeviceId) {
+    let mut lab = Lab::new();
+    let r1 = lab.add(DeviceKind::Router);
+    let r2 = lab.add(DeviceKind::Router);
+    let s = lab.add(DeviceKind::Switch);
+    let a = lab.add(DeviceKind::Pc);
+    let b = lab.add(DeviceKind::Pc);
+    lab.cable(r1, "g0/0", s, "fa0/24");
+    lab.cable(r2, "g0/0", s, "fa0/23");
+    lab.cable(a, "fa0", s, "fa0/1");
+    lab.cable(b, "fa0", s, "fa0/2");
+    lab.run(r1, "en\nconf t\nint g0/0\nip add 192.168.10.1 255.255.255.0\nno shut\nexit\nip dhcp excluded-address 192.168.10.1 192.168.10.9\nip dhcp pool LAN\nnetwork 192.168.10.0 255.255.255.0\ndefault-router 192.168.10.1\nend");
+    lab.run(r2, "en\nconf t\nint g0/0\nip add 10.66.0.1 255.255.255.0\nno shut\nexit\nip dhcp pool EVIL\nnetwork 10.66.0.0 255.255.255.0\ndefault-router 10.66.0.1\nend");
+    (lab, r1, s, a, b)
+}
+
+#[test]
+fn dhcp_snooping_blocks_a_rogue_server_and_builds_bindings() {
+    let (mut lab, _r1, s, a, b) = snooping_lab();
+    lab.run(
+        s,
+        "en\nconf t\nip dhcp snooping\nip dhcp snooping vlan 1\nno ip dhcp snooping information option\nint fa0/24\nip dhcp snooping trust\nend",
+    );
+    lab.sim.clear_trace();
+    let out = lab.run(a, "ipconfig /renew");
+    assert!(out.contains("192.168.10.10/24"), "{out}");
+    let drops = dropped_reasons(&lab);
+    assert!(drops.iter().any(|r| r.contains("DHCP snooping") && r.contains("OFFER") && r.contains("untrusted port Fa0/23")), "{drops:?}");
+    let bind = lab.run(s, "show ip dhcp snooping binding");
+    assert!(bind.contains("192.168.10.10") && bind.contains("Fa0/1") && bind.contains("1 binding"), "{bind}");
+    let show = lab.run(s, "show ip dhcp snooping");
+    assert!(show.contains("on") && show.contains("Fa0/24") && show.contains("Option 82 insertion:      off"), "{show}");
+    assert!(!show.contains("DHCP messages dropped:    0"), "{show}");
+    // Without snooping the switch passes whatever answers first.
+    lab.run(s, "conf t\nno ip dhcp snooping\nend");
+    lab.sim.clear_trace();
+    lab.run(b, "ipconfig /renew");
+    assert!(!dropped_reasons(&lab).iter().any(|r| r.contains("DHCP snooping")));
+    // A rate limit: a client's DISCOVER and REQUEST in one second exceed 1 a second.
+    lab.run(s, "conf t\nip dhcp snooping\nint fa0/2\nip dhcp snooping limit rate 1\nend");
+    lab.run(b, "ipconfig /release");
+    let _ = lab.try_run(b, "ipconfig /renew");
+    l2_apply(&mut lab);
+    assert_eq!(lab.t.device(s).unwrap().ports[1].l2.err_cause, Some(netlabcraft_model::l2sec::ErrCause::DhcpRateLimit));
+    assert!(lab.run(s, "show interfaces fa0/2").contains("err-disabled by the DHCP snooping rate limit"));
+    assert!(lab.run(s, "show logging").contains("more than 1 DHCP messages a second"));
+    lab.run(s, "clear ip dhcp snooping binding");
+    assert!(lab.run(s, "show ip dhcp snooping binding").contains("0 bindings"));
+}
+
+#[test]
+fn arp_inspection_drops_a_spoofed_arp() {
+    let (mut lab, _r1, s, a, b) = snooping_lab();
+    lab.run(s, "en\nconf t\nip dhcp snooping\nip dhcp snooping vlan 1\nip arp inspection vlan 1\nip arp inspection validate src-mac ip\nint fa0/24\nip dhcp snooping trust\nip arp inspection trust\nend");
+    assert!(lab.run(a, "ipconfig /renew").contains("192.168.10.10/24"));
+    // PC1's address is bound: its ARP passes.
+    assert!(lab.run(a, "ping 192.168.10.1").contains("4 answered"));
+    // PC2 claims PC1's address by hand: its ARP matches no binding.
+    lab.run(b, "ipconfig 192.168.10.10 255.255.255.0 192.168.10.1");
+    lab.sim.clear_trace();
+    let out = lab.run(b, "ping 192.168.10.1");
+    assert!(out.contains("0 answered"), "{out}");
+    let drops = dropped_reasons(&lab);
+    assert!(drops.iter().any(|r| r.contains("ARP inspection") && r.contains("192.168.10.10") && r.contains("no DHCP snooping binding")), "{drops:?}");
+    let show = lab.run(s, "show ip arp inspection");
+    assert!(show.contains("VLANs inspected:  1") && show.contains("src-mac, ip") && show.contains("Fa0/24"), "{show}");
+    assert!(lab.run(s, "show logging").contains("ARP inspection dropped"));
+    // Trusting the port lets it through again.
+    lab.run(s, "conf t\nint fa0/2\nip arp inspection trust\nend");
+    assert!(!lab.run(b, "ping 192.168.10.1").contains(" 0 answered"));
+    let run = lab.run(s, "show run");
+    assert!(run.contains("ip arp inspection vlan 1\nip arp inspection validate src-mac ip"), "{run}");
+    assert!(run.contains(" ip dhcp snooping trust\n ip arp inspection trust"), "{run}");
+}

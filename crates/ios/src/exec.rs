@@ -14,6 +14,7 @@ use crate::grammar::{self, Id, Modes, ParseError};
 use crate::{host, render};
 
 pub(crate) mod firewall;
+pub(crate) mod l2sec;
 pub(crate) mod qos;
 pub(crate) mod voice;
 mod vpn;
@@ -1585,6 +1586,28 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ShowClassMap
         | Id::ShowPolicyMap
         | Id::ShowPolicyMapInterface => qos::command(&mut c, spec.id, &args),
+        Id::L2Snooping
+        | Id::L2NoSnooping
+        | Id::L2SnoopingVlan
+        | Id::L2NoSnoopingVlan
+        | Id::L2SnoopingOpt82
+        | Id::L2NoSnoopingOpt82
+        | Id::L2SnoopingTrust
+        | Id::L2NoSnoopingTrust
+        | Id::L2SnoopingRate
+        | Id::L2NoSnoopingRate
+        | Id::L2ShowSnooping
+        | Id::L2ShowSnoopingBinding
+        | Id::L2ClearSnoopingBinding
+        | Id::L2DaiVlan
+        | Id::L2NoDaiVlan
+        | Id::L2DaiValidate
+        | Id::L2NoDaiValidate
+        | Id::L2DaiTrust
+        | Id::L2NoDaiTrust
+        | Id::L2DaiRate
+        | Id::L2NoDaiRate
+        | Id::L2ShowDai => l2sec::command(&mut c, spec.id, &args),
         Id::FwNameif
         | Id::FwNoNameif
         | Id::FwSecurityLevel
@@ -2331,6 +2354,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 if id == Id::NoPortSecurity {
                     p.port_security = None;
                     p.err_disabled = false;
+                    p.l2.err_cause = None;
                     return Ok(());
                 }
                 if p.switchport.mode != SwitchportMode::Access {
@@ -3133,6 +3157,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                         p.shutdown = down;
                         // shutdown / no shutdown is how an err-disabled port comes back.
                         p.err_disabled = false;
+                        p.l2.err_cause = None;
                     }
                 }
                 Ok(())

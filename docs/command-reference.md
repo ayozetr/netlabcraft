@@ -633,6 +633,28 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `spanning-tree mode {pvst\|rapid-pvst}` | config | switch | Classic (30 s to forward) or rapid spanning tree |
 | `spanning-tree portfast` | interface | switch | An edge port: forward at once |
 | `no spanning-tree portfast` | interface | switch | Not an edge port |
+| `ip dhcp snooping` | config | switch | Turn DHCP snooping on (then name its VLANs) |
+| `no ip dhcp snooping` | config | switch | Turn DHCP snooping off |
+| `ip dhcp snooping vlan <1-4094>[,-]` | config | switch | VLANs DHCP snooping watches |
+| `no ip dhcp snooping vlan <1-4094>[,-]` | config | switch | Stop watching these VLANs |
+| `ip dhcp snooping information option` | config | switch | Add relay information (option 82) to client requests |
+| `no ip dhcp snooping information option` | config | switch | Leave client requests as they are (no option 82) |
+| `ip dhcp snooping trust` | interface | switch | DHCP servers may answer through this port |
+| `no ip dhcp snooping trust` | interface | switch | Untrusted: server answers arriving here are dropped |
+| `ip dhcp snooping limit rate <1-2048>` | interface | switch | Most DHCP messages a second; more err-disables the port |
+| `no ip dhcp snooping limit rate` | interface | switch | No DHCP rate limit on this port |
+| `show ip dhcp snooping` | user, privileged | switch | DHCP snooping settings and trusted ports |
+| `show ip dhcp snooping binding` | user, privileged | switch | Clients, their addresses and ports |
+| `clear ip dhcp snooping binding` | privileged | switch | Forget the snooping bindings |
+| `ip arp inspection vlan <1-4094>[,-]` | config | switch | Check ARP in these VLANs against the snooping bindings |
+| `no ip arp inspection vlan <1-4094>[,-]` | config | switch | Stop checking ARP in these VLANs |
+| `ip arp inspection validate {src-mac\|dst-mac\|ip}…` | config | switch | Extra checks on ARP messages |
+| `no ip arp inspection validate` | config | switch | No extra ARP checks |
+| `ip arp inspection trust` | interface | switch | ARP through this port is not checked |
+| `no ip arp inspection trust` | interface | switch | Check ARP arriving on this port |
+| `ip arp inspection limit rate <1-2048>` | interface | switch | Most ARP messages a second; more err-disables the port |
+| `no ip arp inspection limit rate` | interface | switch | No ARP rate limit on this port |
+| `show ip arp inspection` | user, privileged | switch | ARP inspection settings and counts |
 | `show spanning-tree` | user, privileged | switch | Spanning trees of every VLAN |
 | `show spanning-tree vlan <1-4094>` | user, privileged | switch | One VLAN's spanning tree |
 | `nameif NAME` | interface, subinterface | firewall | Name the interface (rules, routes and NAT refer to it by this name) |
