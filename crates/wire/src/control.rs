@@ -104,12 +104,15 @@ impl Bpdu {
     }
 }
 
-/// An OSPFv2 hello (area and interval values as used here: hello 10 s, dead 40 s, no auth).
+/// An OSPFv2 hello (no authentication).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OspfHello {
     pub router_id: Ipv4Addr,
     pub area: u32,
     pub mask: Ipv4Addr,
+    /// HelloInterval and RouterDeadInterval, in seconds: neighbours must agree on both.
+    pub hello_secs: u16,
+    pub dead_secs: u32,
     pub priority: u8,
     pub dr: Ipv4Addr,
     pub bdr: Ipv4Addr,
@@ -120,10 +123,10 @@ impl OspfHello {
     pub fn encode(&self) -> Vec<u8> {
         let mut body = Vec::new();
         body.extend_from_slice(&self.mask.octets());
-        body.extend_from_slice(&10u16.to_be_bytes());
+        body.extend_from_slice(&self.hello_secs.to_be_bytes());
         body.push(0x02); // options: E bit
         body.push(self.priority);
-        body.extend_from_slice(&40u32.to_be_bytes());
+        body.extend_from_slice(&self.dead_secs.to_be_bytes());
         body.extend_from_slice(&self.dr.octets());
         body.extend_from_slice(&self.bdr.octets());
         for n in &self.neighbors {
@@ -160,6 +163,8 @@ impl OspfHello {
             router_id: ip_at(p, 4).ok_or_else(t)?,
             area: u32::from_be_bytes(p.get(8..12).ok_or_else(t)?.try_into().map_err(|_| t())?),
             mask: ip_at(p, 24).ok_or_else(t)?,
+            hello_secs: be16(p, 28).ok_or_else(t)?,
+            dead_secs: u32::from_be_bytes(p.get(32..36).ok_or_else(t)?.try_into().map_err(|_| t())?),
             priority: *p.get(31).ok_or_else(t)?,
             dr: ip_at(p, 36).ok_or_else(t)?,
             bdr: ip_at(p, 40).ok_or_else(t)?,
@@ -279,6 +284,8 @@ mod tests {
             router_id: Ipv4Addr::new(1, 1, 1, 1),
             area: 0,
             mask: Ipv4Addr::new(255, 255, 255, 252),
+            hello_secs: 5,
+            dead_secs: 20,
             priority: 1,
             dr: Ipv4Addr::new(10, 0, 0, 2),
             bdr: Ipv4Addr::new(10, 0, 0, 1),

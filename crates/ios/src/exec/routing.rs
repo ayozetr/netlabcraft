@@ -159,3 +159,228 @@ pub(super) fn loopback_interface(d: &netlabcraft_model::Device, n: u32) -> R {
     let l = d.loopbacks.iter().find(|x| x.number == n).ok_or_else(|| format!("% There is no interface Loopback{n}"))?;
     Ok(loopback_block(l).trim_end().to_string())
 }
+
+// ---- OSPF as the courses teach it ----
+
+/// The names of the interfaces an interface mode is configuring (ports, subinterfaces, VLAN
+/// interfaces, tunnels and loopbacks).
+pub(super) fn if_names(c: &Ctx) -> Result<Vec<String>, String> {
+    Ok(match &c.cli.mode {
+        Mode::Svi(v) => vec![format!("Vlan{v}")],
+        Mode::Tunnel(n) => vec![format!("Tunnel{n}")],
+        Mode::Loopback(n) => vec![format!("Loopback{n}")],
+        Mode::Iface(ifs) => {
+            let d = c.d()?;
+            ifs.iter().filter_map(|r| d.ports.get(r.port).map(|p| r.sub.map_or(p.name.clone(), |s| format!("{}.{s}", p.name)))).collect()
+        }
+        _ => return Err("% Not in interface mode".into()),
+    })
+}
+
+/// An OSPF area as typed: a number or dotted-decimal.
+fn area_number(text: &str) -> Result<u32, String> {
+    if let Ok(n) = text.parse::<u32>() {
+        return Ok(n);
+    }
+    text.parse::<std::net::Ipv4Addr>().map(u32::from).map_err(|_| "% The area is 0-4294967295 or A.B.C.D".to_string())
+}
+
+/// Changes the per-interface OSPF settings of every interface the mode is on.
+fn each_ospf_if(c: &mut Ctx, f: impl Fn(&mut netlabcraft_model::OspfIf)) -> R {
+    let names = if_names(c)?;
+    let d = c.dm()?;
+    for n in names {
+        let e = d.ospf_if.entry(n.clone()).or_default();
+        f(e);
+        if *e == netlabcraft_model::OspfIf::default() {
+            d.ospf_if.remove(&n);
+        }
+    }
+    Ok(String::new())
+}
+
+/// Interface-mode OSPF commands: `ip ospf N area A`, the hello and dead intervals and the
+/// network type.
+pub(super) fn ospf_if_command(c: &mut Ctx, id: Id, args: &[String]) -> R {
+    let arg = |i: usize| args.get(i).map(String::as_str).unwrap_or("").trim();
+    let secs = |text: &str| text.parse::<u16>().ok().filter(|s| *s >= 1).ok_or("% Seconds: 1-65535".to_string());
+    match id {
+        Id::IpOspfArea => {
+            let process: u16 = arg(0).parse().ok().filter(|n| *n >= 1).ok_or("% The process id is 1-65535")?;
+            let area = area_number(arg(1))?;
+            let d = c.dm()?;
+            if !d.routes_ip() {
+                return Err("% OSPF runs on routers and on switches with `ip routing`".into());
+            }
+            match &d.ospf {
+                Some(o) if o.process != process => {
+                    return Err(format!("% OSPF process {} runs here already: use `ip ospf {} area {area}`", o.process, o.process));
+                }
+                Some(_) => {}
+                None => d.ospf = Some(netlabcraft_model::Ospf { process, ..netlabcraft_model::Ospf::default() }),
+            }
+            each_ospf_if(c, |e| e.area = Some((process, area)))
+        }
+        Id::NoIpOspfArea => each_ospf_if(c, |e| e.area = None),
+        Id::IpOspfHello => {
+            let s = secs(arg(0))?;
+            each_ospf_if(c, |e| e.hello = Some(s))
+        }
+        Id::NoIpOspfHello => each_ospf_if(c, |e| e.hello = None),
+        Id::IpOspfDead => {
+            let s = secs(arg(0))?;
+            each_ospf_if(c, |e| e.dead = Some(s))
+        }
+        Id::NoIpOspfDead => each_ospf_if(c, |e| e.dead = None),
+        Id::IpOspfNetwork => {
+            let kind = arg(0).to_ascii_lowercase();
+            let p2p = if !kind.is_empty() && "point-to-point".starts_with(&kind) {
+                true
+            } else if !kind.is_empty() && "broadcast".starts_with(&kind) {
+                false
+            } else {
+                return Err("% Network type: point-to-point or broadcast".into());
+            };
+            each_ospf_if(c, |e| e.p2p = p2p)
+        }
+        _ => each_ospf_if(c, |e| e.p2p = false),
+    }
+}
+
+/// The name an interface is kept under in OSPF lists, from what was typed.
+fn ospf_if_name(c: &Ctx, text: &str) -> Result<String, String> {
+    if let Some(n) = loopback(text) {
+        return Ok(format!("Loopback{n}"));
+    }
+    if let Some(n) = netlabcraft_model::vpn::tunnel_number(text) {
+        return Ok(format!("Tunnel{n}"));
+    }
+    let r = c.iface_ref(text)?;
+    let d = c.d()?;
+    let port = d.ports.get(r.port).ok_or("% No such port")?;
+    Ok(r.sub.map_or(port.name.clone(), |s| format!("{}.{s}", port.name)))
+}
+
+/// `[no] passive-interface default|X` under `router ospf`.
+pub(super) fn ospf_passive(c: &mut Ctx, add: bool, text: &str) -> R {
+    let default = text.eq_ignore_ascii_case("default");
+    let name = if default { String::new() } else { ospf_if_name(c, text)? };
+    let o = c.dm()?.ospf.as_mut().ok_or("% Not in OSPF mode")?;
+    if default {
+        o.passive_default = add;
+        o.not_passive.clear();
+        o.passive.clear();
+        return Ok(String::new());
+    }
+    // With every interface passive by default, the list holds the exceptions.
+    let (on, off) = if o.passive_default { (&mut o.not_passive, add) } else { (&mut o.passive, !add) };
+    on.retain(|p| *p != name);
+    if !off {
+        if on.len() >= netlabcraft_model::MAX_NETWORKS {
+            return Err("% Too many passive-interface lines".into());
+        }
+        on.push(name);
+    }
+    Ok(String::new())
+}
+
+/// `[no] redistribute static [subnets]` under `router ospf`.
+pub(super) fn ospf_redistribute(c: &mut Ctx, on: bool, rest: &str) -> R {
+    let words: Vec<String> = rest.split_whitespace().map(str::to_ascii_lowercase).collect();
+    if words.iter().any(|w| !"subnets".starts_with(w.as_str())) {
+        return Err("% Only `redistribute static [subnets]` is simulated".into());
+    }
+    c.dm()?.ospf.as_mut().ok_or("% Not in OSPF mode")?.redistribute_static = on;
+    Ok(if on { "Static routes go to the other OSPF routers as external type-2 routes (metric 20).".into() } else { String::new() })
+}
+
+/// `clear ip ospf [N] process`.
+pub(super) fn clear_ospf(c: &mut Ctx, process: &str) -> R {
+    let o = c.d()?.ospf.as_ref().ok_or("% OSPF is not running here")?;
+    if !process.is_empty() && process != o.process.to_string() {
+        return Err(format!("% No OSPF process {process} here (it is {})", o.process));
+    }
+    let p = o.process;
+    c.sim.clear_ospf();
+    Ok(format!("OSPF process {p} restarted: neighbours form again and each segment elects its DR and BDR anew"))
+}
+
+/// `show ip ospf database`: the LSAs this router holds, by area and kind.
+pub(super) fn ospf_database(c: &mut Ctx) -> R {
+    use netlabcraft_sim::ospf_lsdb::LsaKind;
+    use std::fmt::Write as _;
+    let d = c.d()?.clone();
+    let Some(o) = &d.ospf else { return Ok("OSPF is not running here.".into()) };
+    let st = c.sim.ospf_state(c.t);
+    let rid = st.router_ids.get(&d.id).map_or("unset".to_string(), ToString::to_string);
+    let lsas = netlabcraft_sim::ospf_lsdb::database(c.t, &st, d.id);
+    let mut s = format!("OSPF link-state database of router {rid} (process {})\n", o.process);
+    if lsas.is_empty() {
+        s.push_str("\n(empty: no interface runs OSPF yet)");
+        return Ok(s);
+    }
+    let mut last: Option<(LsaKind, Option<u32>)> = None;
+    for l in &lsas {
+        if last != Some((l.kind, l.area)) {
+            let title = match l.kind {
+                LsaKind::Router => "Router LSAs (type 1)",
+                LsaKind::Network => "Network LSAs (type 2)",
+                LsaKind::Summary => "Summary network LSAs (type 3)",
+                LsaKind::External => "AS external LSAs (type 5)",
+            };
+            let area = l.area.map_or(String::new(), |a| format!(", area {a}"));
+            let last_col = if l.kind == LsaKind::Router { "Links" } else { "Prefix" };
+            let _ = write!(s, "\n{title}{area}\n{:<16} {:<16} {}\n", "Link ID", "Advertised by", last_col);
+            last = Some((l.kind, l.area));
+        }
+        let count = if l.kind == LsaKind::Router { l.count.to_string() } else { format!("/{}", l.count) };
+        let _ = writeln!(s, "{:<16} {:<16} {count}", l.id.to_string(), l.adv.to_string());
+    }
+    Ok(s.trim_end().to_string())
+}
+
+/// `show ip ospf neighbor detail`, and why routers on a shared link are not neighbours.
+pub(super) fn ospf_neighbor_detail(c: &mut Ctx) -> R {
+    use std::fmt::Write as _;
+    let d = c.d()?.clone();
+    if d.ospf.is_none() {
+        return Ok("OSPF is not running on this router.".into());
+    }
+    let st = c.sim.ospf_state(c.t);
+    let mut s = String::new();
+    for n in st.neighbors.get(&d.id).into_iter().flatten() {
+        let peer = c.t.device(n.device);
+        let name = peer.map_or("?".to_string(), |x| x.name.clone());
+        let seg = st.segments.get(&(d.id, n.iface.clone()));
+        let role = match seg {
+            Some(g) if g.dr.is_none() => "point-to-point (no DR)",
+            Some(g) if g.dr == Some(n.address) => "DR",
+            Some(g) if g.bdr == Some(n.address) => "BDR",
+            _ => "DROTHER",
+        };
+        let their_if = peer.and_then(|p| netlabcraft_sim::l3_ifaces(p).into_iter().find(|i| i.net.addr == n.address).map(|i| i.name));
+        let prio = peer.zip(their_if.as_ref()).and_then(|(p, i)| p.ospf_if.get(i).and_then(|x| x.priority)).unwrap_or(1);
+        let (hello, dead) = netlabcraft_sim::ospf::timers(&d, &n.iface);
+        let _ = writeln!(s, "Neighbour {} ({name}), interface address {}", n.router_id, n.address);
+        let _ = writeln!(s, "    On {}, area {}, state FULL, role {role}", n.iface, seg.map_or(0, |g| g.area));
+        let _ = writeln!(s, "    Priority {prio}; segment DR {}, BDR {}", show_addr(seg.and_then(|g| g.dr)), show_addr(seg.and_then(|g| g.bdr)));
+        let _ = writeln!(s, "    Hello every {hello} s, declared dead after {dead} s of silence");
+    }
+    mismatch_lines(&mut s, &st, d.id);
+    if s.is_empty() {
+        s.push_str("No OSPF neighbours (check the network statements or `ip ospf N area A`, passive interfaces and cables).");
+    }
+    Ok(s.trim_end().to_string())
+}
+
+fn show_addr(a: Option<std::net::Ipv4Addr>) -> String {
+    a.map_or("none".to_string(), |a| a.to_string())
+}
+
+/// Lines naming the routers that share a link with this one but are not its neighbours.
+pub(crate) fn mismatch_lines(s: &mut String, st: &netlabcraft_sim::ospf::OspfState, me: netlabcraft_core::DeviceId) {
+    use std::fmt::Write as _;
+    for m in st.mismatches.get(&me).into_iter().flatten() {
+        let _ = writeln!(s, "Not a neighbour: {} on {}: {}", m.address, m.iface, m.why);
+    }
+}

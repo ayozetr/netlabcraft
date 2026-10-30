@@ -83,3 +83,103 @@ fn loopbacks_by_typing() {
     lab.run(s, "en\nconf t\ninterface loopback 0\nip address 9.9.9.9 255.255.255.255\nend");
     assert!(lab.run(s, "show ip interface brief").contains("Loopback0"));
 }
+
+#[test]
+fn ospf_as_the_courses_teach_it() {
+    let (mut lab, r1, r2) = two_routers();
+    // `ip ospf N area A` on the interfaces, no network statements; it starts the process.
+    lab.run(r1, "conf t\nint lo0\nip address 1.1.1.1 255.255.255.0\nip ospf 1 area 0\nint g0/1\nip ospf 1 area 0\nend");
+    lab.run(r2, "conf t\nrouter ospf 1\nexit\nint g0/1\nip ospf 1 area 0.0.0.0\nend");
+    let nb = lab.run(r1, "show ip ospf neighbor");
+    assert!(nb.contains("FULL/"), "{nb}");
+    // A loopback is a host route unless it is set point to point.
+    assert!(lab.run(r2, "show ip route").contains("1.1.1.1/32"));
+    lab.run(r1, "conf t\nint lo0\nip ospf network point-to-point\nend");
+    assert!(lab.run(r2, "show ip route").contains("1.1.1.0/24"));
+    // Another process number on the same router is refused.
+    lab.run(r1, "conf t\nint g0/0");
+    assert!(lab.try_run(r1, "ip ospf 2 area 0").contains("process 1 runs here"));
+    lab.run(r1, "end");
+    // Hello and dead intervals must match: a mismatch keeps them apart and says why.
+    lab.run(r1, "conf t\nint g0/1\nip ospf hello-interval 5\nend");
+    let nb = lab.run(r1, "show ip ospf neighbor");
+    assert!(!nb.contains("FULL/") && nb.contains("hello/dead intervals differ (5/20 s here, 10/40 s there)"), "{nb}");
+    lab.run(r1, "debug ip ospf hello");
+    lab.sim.run_for(&lab.t, 11_000_000);
+    let log = lab.run(r1, "show logging");
+    assert!(log.contains("no adjacency with 10.0.0.2 on GigabitEthernet0/1: hello/dead intervals 10/40 s, here 5/20 s"), "{log}");
+    lab.run(r1, "no debug ip ospf");
+    lab.run(r2, "conf t\nint g0/1\nip ospf hello-interval 5\nip ospf dead-interval 20\nend");
+    let nb = lab.run(r1, "show ip ospf neighbor");
+    assert!(nb.contains("FULL/DR") || nb.contains("FULL/BDR"), "{nb}");
+    // Point to point: no DR or BDR on the link.
+    lab.run(r1, "conf t\nint g0/1\nip ospf network point-to-point\nend");
+    lab.run(r2, "conf t\nint g0/1\nip ospf network point-to-point\nend");
+    assert!(lab.run(r1, "show ip ospf neighbor").contains("FULL/P2P"));
+    let detail = lab.run(r1, "show ip ospf neighbor detail");
+    assert!(detail.contains("Neighbour 10.0.0.2 (R2)") && detail.contains("Hello every 5 s, declared dead after 20 s"), "{detail}");
+    // passive-interface default, then the exceptions.
+    lab.run(r2, "conf t\nrouter ospf 1\npassive-interface default\nend");
+    assert!(lab.run(r1, "show ip ospf neighbor").contains("No OSPF neighbours"));
+    lab.run(r2, "conf t\nrouter ospf 1\nno passive-interface g0/1\nend");
+    assert!(lab.run(r1, "show ip ospf neighbor").contains("FULL/P2P"));
+    // redistribute static: R2's static route reaches R1 as an external route.
+    lab.run(
+        r2,
+        "conf t\nint lo5\nip address 10.5.5.5 255.255.255.0\nexit\nip route 172.31.0.0 255.255.0.0 10.5.5.9\nrouter ospf 1\nredistribute static subnets\nend",
+    );
+    let rt = lab.run(r1, "show ip route");
+    assert!(rt.contains("O E2 172.31.0.0/16"), "{rt}");
+    // The database: router LSAs of both (R2's ID is now its loopback), the external LSA.
+    let db = lab.run(r1, "show ip ospf database");
+    assert!(
+        db.contains("Router LSAs (type 1), area 0") && db.contains("10.5.5.5         10.5.5.5         2") && db.contains("AS external LSAs"),
+        "{db}"
+    );
+    assert!(db.contains("172.31.0.0       10.5.5.5         /16"), "{db}");
+    // A loopback in area 1 makes R1 a border router: R2 hears of it in a summary LSA.
+    lab.run(r1, "conf t\nint lo0\nip ospf 1 area 1\nend");
+    let db = lab.run(r2, "show ip ospf database");
+    assert!(db.contains("Summary network LSAs (type 3), area 0") && db.contains("1.1.1.0          1.1.1.1          /24"), "{db}");
+    assert!(lab.run(r2, "show ip route").contains("O IA 1.1.1.0/24"));
+    let run1 = survives_reload(&mut lab, r1);
+    assert!(
+        run1.contains("interface GigabitEthernet0/1\n ip address 10.0.0.1 255.255.255.252\n ip ospf hello-interval 5\n ip ospf network point-to-point\n ip ospf 1 area 0"),
+        "{run1}"
+    );
+    let run2 = survives_reload(&mut lab, r2);
+    assert!(
+        run2.contains(" passive-interface default\n no passive-interface GigabitEthernet0/1") && run2.contains(" redistribute static subnets"),
+        "{run2}"
+    );
+    assert!(run2.contains(" ip ospf dead-interval 20"), "{run2}");
+}
+
+#[test]
+fn ospf_dr_election_waits_for_clear_ip_ospf_process() {
+    let mut lab = Lab::new();
+    let sw = lab.add(DeviceKind::Switch);
+    let mut rs = Vec::new();
+    for n in 1..=3u8 {
+        let r = lab.add(DeviceKind::Router);
+        lab.cable(r, "g0/0", sw, &format!("fa0/{n}"));
+        lab.run(r, &format!("en\nconf t\nint g0/0\nip address 10.0.0.{n} 255.255.255.0\nno shut\nip ospf 1 area 0\nexit\nrouter ospf 1\nrouter-id {n}.{n}.{n}.{n}\nend"));
+        rs.push(r);
+    }
+    let (r1, r2, r3) = (rs[0], rs[1], rs[2]);
+    let nb = lab.run(r1, "show ip ospf neighbor");
+    assert!(nb.contains("3.3.3.3          FULL/DR"), "{nb}");
+    // A higher priority doesn't take the DR role over at once...
+    lab.run(r1, "conf t\nint g0/0\nip ospf priority 255\nend");
+    assert!(lab.run(r1, "show ip ospf neighbor").contains("3.3.3.3          FULL/DR"));
+    // ...only once OSPF restarts.
+    let out = lab.run(r1, "clear ip ospf process");
+    assert!(out.contains("restarted"), "{out}");
+    let nb = lab.run(r3, "show ip ospf neighbor");
+    assert!(nb.contains("1.1.1.1          FULL/DR"), "{nb}");
+    // When the DR goes, the BDR takes over.
+    lab.run(r1, "conf t\nint g0/0\nshutdown\nend");
+    let nb = lab.run(r2, "show ip ospf neighbor");
+    assert!(nb.contains("3.3.3.3          FULL/DR"), "{nb}");
+    assert!(lab.try_run(r1, "clear ip ospf 9 process").contains("No OSPF process 9"));
+}

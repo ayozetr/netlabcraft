@@ -432,8 +432,17 @@ pub fn running_config(d: &Device) -> String {
         for p in &o.passive {
             let _ = writeln!(s, " passive-interface {p}");
         }
+        if o.passive_default {
+            s.push_str(" passive-interface default\n");
+            for p in &o.not_passive {
+                let _ = writeln!(s, " no passive-interface {p}");
+            }
+        }
         for n in &o.networks {
             let _ = writeln!(s, " network {} {} area {}", n.address, n.wildcard, n.area);
+        }
+        if o.redistribute_static {
+            s.push_str(" redistribute static subnets\n");
         }
         if o.default_originate {
             let _ = writeln!(s, " default-information originate");
@@ -602,7 +611,7 @@ pub fn ip_int_brief(t: &Topology, d: &Device) -> String {
 /// traffic).
 pub fn ip_route_table(d: &Device, table: &[netlabcraft_sim::RouteEntry]) -> String {
     let mut s = String::from(
-        "Codes: C connected, L local, S static, R RIP, D EIGRP, O OSPF, O IA OSPF other area, O*E2 OSPF external default, O*IA default into a stub area\n\n",
+        "Codes: C connected, L local, S static, R RIP, D EIGRP, O OSPF, O IA OSPF other area, O E2 OSPF external, O*E2 OSPF external default, O*IA default into a stub area\n\n",
     );
     if d.kind == DeviceKind::Switch && !d.ip_routing {
         let _ = writeln!(
@@ -634,7 +643,8 @@ pub fn ip_route_table(d: &Device, table: &[netlabcraft_sim::RouteEntry]) -> Stri
             _ => String::new(),
         };
         let code = match r.code {
-            'E' => "O*E2".to_string(),
+            'E' if r.net.prefix == 0 => "O*E2".to_string(),
+            'E' => "O E2".to_string(),
             'I' if r.net.prefix == 0 => "O*IA".to_string(),
             'I' => "O IA".to_string(),
             c => format!("{c}   "),
@@ -978,7 +988,9 @@ pub fn ospf_neighbors(t: &Topology, d: &Device, st: &netlabcraft_sim::ospf::Ospf
     }
     let list = st.neighbors.get(&d.id).cloned().unwrap_or_default();
     if list.is_empty() {
-        return "No OSPF neighbours (check the network statements, passive interfaces and cables).".into();
+        let mut why = String::new();
+        crate::exec::routing::mismatch_lines(&mut why, st, d.id);
+        return format!("No OSPF neighbours (check the network statements, passive interfaces and cables).\n{why}").trim_end().to_string();
     }
     let mut s = format!("{:<16} {:<10} {:<16} {:<22} Device\n", "Neighbour ID", "State", "Address", "Interface");
     for n in list {
@@ -991,6 +1003,7 @@ pub fn ospf_neighbors(t: &Topology, d: &Device, st: &netlabcraft_sim::ospf::Ospf
         };
         let _ = writeln!(s, "{:<16} {:<10} {:<16} {:<22} {name}", n.router_id.to_string(), state, n.address.to_string(), ifname::short(&n.iface));
     }
+    crate::exec::routing::mismatch_lines(&mut s, st, d.id);
     s.trim_end().to_string()
 }
 
@@ -1236,6 +1249,18 @@ pub(crate) fn ospf_if_lines(s: &mut String, d: &Device, name: &str) {
         }
         if let Some(p) = o.priority {
             let _ = writeln!(s, " ip ospf priority {p}");
+        }
+        if let Some(h) = o.hello {
+            let _ = writeln!(s, " ip ospf hello-interval {h}");
+        }
+        if let Some(h) = o.dead {
+            let _ = writeln!(s, " ip ospf dead-interval {h}");
+        }
+        if o.p2p {
+            s.push_str(" ip ospf network point-to-point\n");
+        }
+        if let Some((p, a)) = o.area {
+            let _ = writeln!(s, " ip ospf {p} area {a}");
         }
     }
 }

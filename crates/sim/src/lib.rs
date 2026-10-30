@@ -37,6 +37,7 @@ pub mod iot;
 pub mod mgmt;
 pub mod ospf;
 pub mod ospf6;
+pub mod ospf_lsdb;
 pub mod qos;
 
 pub mod rip;
@@ -412,6 +413,11 @@ fn routing_table_static(t: &Topology, d: &Device) -> Vec<RouteEntry> {
     }
     out.sort_by_key(|r| (r.net.addr, r.net.prefix, r.code));
     out
+}
+
+/// The networks of the static routes a device has in its routing table.
+pub(crate) fn installed_statics(t: &Topology, d: &Device) -> Vec<Ipv4Net> {
+    routing_table_static(t, d).into_iter().filter(|r| r.code == 'S').map(|r| r.net).collect()
 }
 
 fn find_iface<'a>(ifs: &'a [L3If], name: &str) -> Option<&'a L3If> {
@@ -1546,7 +1552,7 @@ impl Sim {
         let f = ospf::fingerprint(t);
         if self.ospf.is_none() || self.ospf_for != f {
             self.ospf_for = f;
-            self.ospf = Some(ospf::compute(t));
+            self.ospf = Some(self.ospf_compute(t));
         }
         self.ospf.as_ref().and_then(|s| s.routes.get(&d.id).cloned()).unwrap_or_default()
     }
@@ -1671,7 +1677,7 @@ impl Sim {
         let f = ospf::fingerprint(t);
         if self.ospf.is_none() || self.ospf_for != f {
             self.ospf_for = f;
-            self.ospf = Some(ospf::compute(t));
+            self.ospf = Some(self.ospf_compute(t));
         }
         self.ospf.clone().unwrap_or_default()
     }
@@ -2115,6 +2121,9 @@ impl Sim {
                     if h.neighbors.len() == 1 { "" } else { "s" }
                 );
                 self.log(d.id, &msg);
+                if let Some(why) = ospf::hello_problem(d, ifc, &h) {
+                    self.log(d.id, &format!("OSPF debug: no adjacency with {} on {}: {why}", ip.src, ifc.name));
+                }
             }
             if ip.protocol == netlabcraft_wire::eigrp::PROTO_EIGRP
                 && d.eigrp.is_some()

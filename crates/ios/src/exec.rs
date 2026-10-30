@@ -1540,6 +1540,21 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         {
             routing::loopback_iface(&mut c, spec.id, arg(0), arg(1))
         }
+        // ---- OSPF as the courses teach it (see exec/routing.rs) ----
+        Id::IpOspfArea
+        | Id::NoIpOspfArea
+        | Id::IpOspfHello
+        | Id::NoIpOspfHello
+        | Id::IpOspfDead
+        | Id::NoIpOspfDead
+        | Id::IpOspfNetwork
+        | Id::NoIpOspfNetwork => routing::ospf_if_command(&mut c, spec.id, &args),
+        Id::OspfRedistributeStatic | Id::NoOspfRedistributeStatic => {
+            routing::ospf_redistribute(&mut c, spec.id == Id::OspfRedistributeStatic, arg(0))
+        }
+        Id::ClearIpOspf => routing::clear_ospf(&mut c, arg(0)),
+        Id::ShowIpOspfDatabase => routing::ospf_database(&mut c),
+        Id::ShowOspfNeighborDetail => routing::ospf_neighbor_detail(&mut c),
         // ---- site-to-site VPN: GRE tunnels and IPsec (see exec/vpn.rs) ----
         Id::IpAddress | Id::NoIpAddress | Id::Shutdown | Id::NoShutdown | Id::Description | Id::NoDescription
             if matches!(c.cli.mode, Mode::Tunnel(_)) =>
@@ -3002,6 +3017,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             }
             Ok(String::new())
         }
+        Id::OspfPassive | Id::NoOspfPassive if c.cli.mode == Mode::Ospf => routing::ospf_passive(&mut c, spec.id == Id::OspfPassive, arg(0)),
         Id::OspfPassive | Id::NoOspfPassive => {
             let r = c.iface_ref(arg(0))?;
             let d = c.d()?;

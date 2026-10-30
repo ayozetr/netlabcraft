@@ -198,6 +198,22 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ipv6 ospf <1-65535> area <0-4294967295>` |  | router, switch | Stop advertising it in OSPFv3 |
 | `ip ospf cost <1-65535>` |  | router, switch | This loopback's OSPF cost |
 | `no ip ospf cost` |  | router, switch | Cost 1 again |
+| `ip ospf <1-65535> area <0-4294967295>\|A.B.C.D` | interface, subinterface | router, switch | Run OSPF on this interface, in this area |
+| `no ip ospf <1-65535> area [AREA]` | interface, subinterface | router, switch | Stop OSPF here |
+| `ip ospf hello-interval <1-65535>` | interface, subinterface | router, switch | Seconds between hellos (10) |
+| `no ip ospf hello-interval` | interface, subinterface | router, switch | Hellos every 10 seconds again |
+| `ip ospf dead-interval <1-65535>` | interface, subinterface | router, switch | Silence before a neighbour is dropped |
+| `no ip ospf dead-interval` | interface, subinterface | router, switch | Four hello intervals again |
+| `ip ospf network {point-to-point\|broadcast}` | interface, subinterface | router, switch | Link type: point-to-point elects no DR |
+| `no ip ospf network` | interface, subinterface | router, switch | The link type its medium has |
+| `redistribute static` |  | router, switch | Advertise static routes as external |
+| `redistribute static [subnets]` |  | router, switch | Advertise static routes as external |
+| `no redistribute static` |  | router, switch | Stop advertising static routes |
+| `no redistribute static [subnets]` |  | router, switch | Stop advertising static routes |
+| `clear ip ospf process` | privileged | router, switch | Restart OSPF: neighbours and DR elections anew |
+| `clear ip ospf <1-65535> process` | privileged | router, switch | Restart this OSPF process |
+| `show ip ospf database` | user, privileged | router, switch | OSPF link-state database |
+| `show ip ospf neighbor detail` | user, privileged | router, switch | OSPF neighbours in full |
 | `ip address A.B.C.D MASK` |  | router | Set the tunnel's address |
 | `no ip address` |  | router | Remove the tunnel's address |
 | `shutdown` |  | router | Disable the tunnel |

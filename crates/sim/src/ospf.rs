@@ -43,11 +43,66 @@ pub struct OspfState {
     pub router_ids: BTreeMap<DeviceId, Ipv4Addr>,
     pub neighbors: BTreeMap<DeviceId, Vec<Neighbor>>,
     pub routes: BTreeMap<DeviceId, Vec<OspfRoute>>,
+    /// This router's address on each OSPF interface.
+    pub addresses: BTreeMap<(DeviceId, String), Ipv4Addr>,
     /// Interfaces running OSPF, per router: (name, network, cost, passive).
     pub interfaces: BTreeMap<DeviceId, Vec<(String, Ipv4Net, u32, bool)>>,
     /// Per router and interface: its area, priority, and the segment's DR and BDR addresses
     /// (`None` on point-to-point links, which elect none).
     pub segments: BTreeMap<(DeviceId, String), Segment>,
+    /// Routers that share a link but are not neighbours, and why (timers or areas differ).
+    pub mismatches: BTreeMap<DeviceId, Vec<Mismatch>>,
+    /// Networks each router injects as external routes (`redistribute static`,
+    /// `default-information originate`).
+    pub externals: BTreeMap<DeviceId, Vec<Ipv4Net>>,
+}
+
+/// Why a router on the same link is not a neighbour.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Mismatch {
+    /// This router's interface.
+    pub iface: String,
+    /// The other router's address on the link.
+    pub address: Ipv4Addr,
+    pub why: String,
+}
+
+/// An interface's OSPF settings (defaults when none were typed).
+pub fn if_conf(d: &Device, name: &str) -> netlabcraft_model::OspfIf {
+    d.ospf_if.get(name).copied().unwrap_or_default()
+}
+
+/// An interface's hello and dead intervals, in seconds (10 and 40 unless configured; the dead
+/// interval follows the hello interval, four times it, when only that is set).
+pub fn timers(d: &Device, name: &str) -> (u16, u16) {
+    let c = if_conf(d, name);
+    let hello = c.hello.unwrap_or(10);
+    (hello, c.dead.unwrap_or(hello.saturating_mul(4)))
+}
+
+/// Whether an interface is point to point for OSPF: serial lines, tunnels, loopbacks, and any
+/// interface set with `ip ospf network point-to-point`. No DR or BDR is elected there.
+pub fn point_to_point(d: &Device, ifc: &L3If) -> bool {
+    ifc.name.starts_with("Serial") || ifc.name.starts_with("Tunnel") || crate::loopback::is_loopback(ifc.port) || if_conf(d, &ifc.name).p2p
+}
+
+/// Whether a name typed in a `passive-interface` line names this interface.
+fn names(typed: &str, name: &str) -> bool {
+    if let (Some(a), Some(b)) = (netlabcraft_model::routing::loopback_number(typed), netlabcraft_model::routing::loopback_number(name)) {
+        return a == b;
+    }
+    crate::vpn::same_name(typed, name)
+}
+
+/// Whether an interface is passive: listed, or every interface but the listed exceptions with
+/// `passive-interface default`.
+pub fn is_passive(o: &netlabcraft_model::Ospf, name: &str) -> bool {
+    if o.passive_default { !o.not_passive.iter().any(|p| names(p, name)) } else { o.passive.iter().any(|p| names(p, name)) }
+}
+
+/// This router's address on an interface, from the computed state.
+pub(crate) fn iface_addr(st: &OspfState, d: DeviceId, name: &str) -> Option<Ipv4Addr> {
+    st.addresses.get(&(d, name.to_string())).copied()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,10 +137,21 @@ pub fn cost(d: &Device, ifc: &L3If) -> u32 {
     u32::try_from((u64::from(reference) * 1_000 / kbps).max(1)).unwrap_or(u32::MAX)
 }
 
+/// Why a received hello can't make its sender a neighbour on `ifc`, if it can't: the timers
+/// or the area differ from this end's.
+pub fn hello_problem(d: &Device, ifc: &L3If, h: &netlabcraft_wire::control::OspfHello) -> Option<String> {
+    let (hello, dead) = timers(d, &ifc.name);
+    if (h.hello_secs, h.dead_secs) != (hello, u32::from(dead)) {
+        return Some(format!("hello/dead intervals {}/{} s, here {hello}/{dead} s", h.hello_secs, h.dead_secs));
+    }
+    let area = area_of(d, ifc);
+    (h.area != area).then(|| format!("area {} in the hello, here area {area}", h.area))
+}
+
 /// The network an interface puts in its router's LSA: a loopback stands for one host (a /32
 /// stub), every other interface for its subnet.
-pub fn advertised(_d: &Device, ifc: &L3If) -> Ipv4Net {
-    if crate::loopback::is_loopback(ifc.port) {
+pub fn advertised(d: &Device, ifc: &L3If) -> Ipv4Net {
+    if crate::loopback::is_loopback(ifc.port) && !if_conf(d, &ifc.name).p2p {
         return Ipv4Net::new(ifc.net.addr, 32);
     }
     ifc.net.network()
@@ -96,9 +162,9 @@ fn ospf_ifaces(t: &Topology, d: &Device) -> Vec<(L3If, bool)> {
     let Some(o) = &d.ospf else { return Vec::new() };
     up_ifaces(t, d)
         .into_iter()
-        .filter(|i| o.networks.iter().any(|n| n.matches(i.net.addr)))
+        .filter(|i| if_conf(d, &i.name).area.is_some_and(|(p, _)| p == o.process) || o.networks.iter().any(|n| n.matches(i.net.addr)))
         .map(|i| {
-            let passive = o.passive.iter().any(|p| netlabcraft_model::ifname::parse(p).is_some_and(|n| n.to_string() == i.name));
+            let passive = is_passive(o, &i.name);
             (i, passive)
         })
         .collect()
@@ -111,14 +177,21 @@ pub fn router_id(d: &Device) -> Option<Ipv4Addr> {
 }
 
 /// The area of the network statement an interface address falls under.
-fn area_of(d: &Device, a: Ipv4Addr) -> u32 {
+fn area_of(d: &Device, ifc: &L3If) -> u32 {
+    // `ip ospf N area A` on the interface wins over the network statements.
+    if let (Some(o), Some((p, a))) = (&d.ospf, if_conf(d, &ifc.name).area)
+        && p == o.process
+    {
+        return a;
+    }
+    let a = ifc.net.addr;
     d.ospf.as_ref().and_then(|o| o.networks.iter().find(|n| n.matches(a))).map_or(0, |n| n.area)
 }
 
 /// Whether an interface's area is a stub area on this router (both ends must agree, or they
 /// don't become neighbours: the hellos' E bit differs).
 fn stub_here(d: &Device, ifc: &L3If) -> bool {
-    d.ospf.as_ref().is_some_and(|o| o.area(area_of(d, ifc.net.addr)).stub)
+    d.ospf.as_ref().is_some_and(|o| o.area(area_of(d, ifc)).stub)
 }
 
 /// Ports reachable at layer 2 from an OSPF interface: from its port, or for a switch's VLAN
@@ -187,7 +260,10 @@ pub fn compute(t: &Topology) -> OspfState {
             st.router_ids.insert(d.id, id);
         }
         let list = ospf_ifaces(t, d);
-        st.interfaces.insert(d.id, list.iter().map(|(i, p)| (i.name.clone(), i.net.network(), cost(d, i), *p)).collect());
+        st.interfaces.insert(d.id, list.iter().map(|(i, p)| (i.name.clone(), advertised(d, i), cost(d, i), *p)).collect());
+        for (i, _) in &list {
+            st.addresses.insert((d.id, i.name.clone()), i.net.addr);
+        }
         ifs.insert(d.id, list);
     }
     // Adjacencies: (from, to, from's interface, to's address, cost).
@@ -205,7 +281,26 @@ pub fn compute(t: &Topology) -> OspfState {
                 for (ib, pb) in ifs.get(&b.id).into_iter().flatten() {
                     let same =
                         ib.net.network() == ia.net.network() && (ib.vlan == ia.vlan || ia.port == crate::SVI_PORT || ib.port == crate::SVI_PORT);
-                    if !*pb && same && stub_here(a, ia) == stub_here(b, ib) && reaches(t, &reach, b, ib) {
+                    if *pb || !same || !reaches(t, &reach, b, ib) {
+                        continue;
+                    }
+                    // Hellos must agree on the timers, the area and the stub flag (RFC 2328 §10.5).
+                    let (ha, da) = timers(a, &ia.name);
+                    let (hb, db) = timers(b, &ib.name);
+                    let why = if (ha, da) != (hb, db) {
+                        Some(format!("hello/dead intervals differ ({ha}/{da} s here, {hb}/{db} s there)"))
+                    } else if area_of(a, ia) != area_of(b, ib) {
+                        Some(format!("areas differ ({} here, {} there)", area_of(a, ia), area_of(b, ib)))
+                    } else if stub_here(a, ia) != stub_here(b, ib) {
+                        Some("one end is a stub area and the other is not".to_string())
+                    } else {
+                        None
+                    };
+                    if let Some(why) = why {
+                        st.mismatches.entry(a.id).or_default().push(Mismatch { iface: ia.name.clone(), address: ib.net.addr, why });
+                        continue;
+                    }
+                    {
                         adj.entry(a.id).or_default().push((b.id, ia.clone(), ib.net.addr, cost(a, ia)));
                         if let Some(rid) = st.router_ids.get(&b.id) {
                             st.neighbors.entry(a.id).or_default().push(Neighbor {
@@ -226,8 +321,8 @@ pub fn compute(t: &Topology) -> OspfState {
         let Some(rid) = st.router_ids.get(&d.id).copied() else { continue };
         for (ifc, _) in ifs.get(&d.id).into_iter().flatten() {
             let prio = |dev: &Device, name: &str| dev.ospf_if.get(name).and_then(|o| o.priority).unwrap_or(1);
-            let area = area_of(d, ifc.net.addr);
-            let p2p = ifc.name.starts_with("Serial") || ifc.name.starts_with("Tunnel");
+            let area = area_of(d, ifc);
+            let p2p = point_to_point(d, ifc);
             let mut seg: Vec<(u8, Ipv4Addr, Ipv4Addr)> = vec![(prio(d, &ifc.name), rid, ifc.net.addr)];
             for n in st.neighbors.get(&d.id).into_iter().flatten().filter(|n| n.iface == ifc.name) {
                 let their_if =
@@ -243,7 +338,7 @@ pub fn compute(t: &Topology) -> OspfState {
     // Networks each router advertises (cost of its own interface added), with their area.
     let stubs: BTreeMap<DeviceId, Vec<(Ipv4Net, u32, u32)>> = routers
         .iter()
-        .map(|d| (d.id, ifs.get(&d.id).into_iter().flatten().map(|(i, _)| (advertised(d, i), cost(d, i), area_of(d, i.net.addr))).collect()))
+        .map(|d| (d.id, ifs.get(&d.id).into_iter().flatten().map(|(i, _)| (advertised(d, i), cost(d, i), area_of(d, i))).collect()))
         .collect();
     let originators: Vec<DeviceId> = routers
         .iter()
@@ -253,8 +348,20 @@ pub fn compute(t: &Topology) -> OspfState {
         })
         .map(|d| d.id)
         .collect();
+    // Static routes redistributed into OSPF, per router (the ones in its routing table).
+    let redistributed: BTreeMap<DeviceId, Vec<Ipv4Net>> = routers
+        .iter()
+        .filter(|d| d.ospf.as_ref().is_some_and(|o| o.redistribute_static))
+        .map(|d| (d.id, crate::installed_statics(t, d).into_iter().filter(|n| n.prefix > 0).collect()))
+        .collect();
+    for (d, nets) in &redistributed {
+        st.externals.entry(*d).or_default().extend(nets.iter().copied());
+    }
+    for d in &originators {
+        st.externals.entry(*d).or_default().push(Ipv4Net::new(Ipv4Addr::UNSPECIFIED, 0));
+    }
     let areas_of: BTreeMap<DeviceId, BTreeSet<u32>> =
-        routers.iter().map(|d| (d.id, ifs.get(&d.id).into_iter().flatten().map(|(i, _)| area_of(d, i.net.addr)).collect())).collect();
+        routers.iter().map(|d| (d.id, ifs.get(&d.id).into_iter().flatten().map(|(i, _)| area_of(d, i)).collect())).collect();
     // Border routers of an area: in it and in another.
     let abrs = |area: u32| -> Vec<DeviceId> { areas_of.iter().filter(|(_, a)| a.len() > 1 && a.contains(&area)).map(|(d, _)| *d).collect() };
     let conf = |d: DeviceId, area: u32| t.device(d).and_then(|x| x.ospf.as_ref()).map(|o| o.area(area)).unwrap_or_default();
@@ -300,7 +407,7 @@ pub fn compute(t: &Topology) -> OspfState {
             }
         }
         let mine: Vec<Ipv4Net> = up_ifaces(t, r).iter().map(|i| i.net.network()).collect();
-        let my_areas: BTreeSet<u32> = ifs.get(&r.id).into_iter().flatten().map(|(i, _)| area_of(r, i.net.addr)).collect();
+        let my_areas: BTreeSet<u32> = ifs.get(&r.id).into_iter().flatten().map(|(i, _)| area_of(r, i)).collect();
         // A router wholly inside a stub area hears no external routes; with no-summary on its
         // border router, no routes from other areas either.
         let stub_area = my_areas.first().copied().filter(|a| my_areas.len() == 1 && conf(r.id, *a).stub);
@@ -342,6 +449,14 @@ pub fn compute(t: &Topology) -> OspfState {
                         continue;
                     }
                     let cand = OspfRoute { net: *net, via: *via, iface: ifc.name.clone(), cost: cx.saturating_add(*c), external: false, inter_area };
+                    add(&mut routes, cand);
+                }
+                for net in redistributed.get(x).into_iter().flatten().filter(|_| *x != r.id && stub_area.is_none()) {
+                    if mine.contains(net) {
+                        continue;
+                    }
+                    // Type-2 externals keep the metric they were given (20) whatever the path.
+                    let cand = OspfRoute { net: *net, via: *via, iface: ifc.name.clone(), cost: 20, external: true, inter_area: false };
                     add(&mut routes, cand);
                 }
                 if originators.contains(x) && *x != r.id && stub_area.is_none() {

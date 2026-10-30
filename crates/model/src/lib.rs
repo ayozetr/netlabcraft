@@ -987,6 +987,16 @@ pub struct Ospf {
     /// `maximum-paths N`: equal-cost paths installed per destination (4 when not set).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub maximum_paths: Option<u8>,
+    /// `passive-interface default`: every interface is passive except those in `not_passive`
+    /// (`no passive-interface X`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub passive_default: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub not_passive: Vec<String>,
+    /// `redistribute static`: this router's static routes go to the others as external type-2
+    /// routes.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub redistribute_static: bool,
 }
 
 /// The SNMP agent's settings.
@@ -1104,6 +1114,19 @@ pub struct OspfIf {
     pub cost: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub priority: Option<u8>,
+    /// `ip ospf hello-interval N` (seconds; 10 when not set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hello: Option<u16>,
+    /// `ip ospf dead-interval N` (seconds; four hello intervals when not set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dead: Option<u16>,
+    /// `ip ospf network point-to-point`: no DR or BDR on the link, and a loopback advertises
+    /// its subnet instead of a host route.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub p2p: bool,
+    /// `ip ospf PROCESS area AREA`: (process, area), alongside or instead of `network`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub area: Option<(u16, u32)>,
 }
 
 /// `router rip`.
