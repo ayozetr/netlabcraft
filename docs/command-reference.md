@@ -9,7 +9,8 @@ Every front end (UI, `packetcraft-cli run`, MCP `packetcraft_run`) runs these.
 | Id | Label | Menu | Shortcut | Parameters |
 |---|---|---|---|---|
 | `device.wireless` | Wi-Fi settings |  |  | `{"device", "port"?: "Wireless0", "ssid": "network name (empty: radio off)", "key"?: "WPA2-PSK passphrase, 8-63 characters (none: open)", "channel"?: 1-13}` |
-| `snmp.request` | SNMP request |  |  | `{"device": manager, "target": agent address, "community"?: "public", "operation"?: "get"\|"get-next"\|"set", "oid": "1.3.6.1.2.1.1.5.0", "value"?: for a set} → {"bindings": [{"oid", "value"}], "error"}` |
+| `snmp.request` | SNMP request |  |  | `{"device": manager, "target": agent address, "version"?: "2c"\|"3", "community"?: "public" (2c), "user"? (3), "auth"?: "none"\|"md5"\|"sha" (3), "password"? (3, 8+ characters), "operation"?: "get"\|"get-next"\|"set", "oid": "1.3.6.1.2.1.1.5.0", "value"?: for a set} → {"bindings": [{"oid", "value"}], "error"}` |
+| `snmp.traps` | SNMP traps received |  |  | `{"device": a host, "clear"?: true} → {"traps": [{"at_ms", "from", "community", "trap": "linkDown"\|"linkUp"\|"coldStart"\|OID, "bindings": [{"oid", "value"}]}]}` |
 | `mail.configure` | Email account |  |  | `{"device", "name"?, "address": "ana@lab.local", "incoming": "POP3 server address or name", "outgoing": "SMTP server", "user", "password"}` |
 | `mail.send` | Send email |  |  | `{"device", "to", "subject"?, "body"?} → {"answer"}: SMTP through the outgoing server` |
 | `mail.receive` | Receive email |  |  | `{"device"} → {"received": n}: POP3 from the incoming server; the messages move to the host` |
@@ -430,6 +431,20 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `snmp-server location TEXT` | config | router, switch | Where the device is (sysLocation) |
 | `snmp-server contact TEXT` | config | router, switch | Who looks after it (sysContact) |
 | `show snmp` | user, privileged | router, switch | SNMP agent settings |
+| `snmp-server host A.B.C.D [version 2c] COMMUNITY` | config | router, switch | Send SNMP traps to a manager |
+| `no snmp-server host A.B.C.D` | config | router, switch | Stop sending traps to a manager |
+| `no snmp-server host A.B.C.D ...` | config | router, switch | Stop sending traps to a manager |
+| `snmp-server enable traps` | config | router, switch | Send every supported trap |
+| `snmp-server enable traps [snmp] [linkdown] [linkup] [coldstart]` | config | router, switch | Send these traps |
+| `no snmp-server enable traps` | config | router, switch | Send no traps |
+| `no snmp-server enable traps [snmp] [linkdown] [linkup] [coldstart]` | config | router, switch | Stop sending these traps |
+| `snmp-server group WORD v3 {noauth\|auth} [read VIEW] [write VIEW]` | config | router, switch | An SNMPv3 group: the security level and whether its users may write |
+| `no snmp-server group WORD` | config | router, switch | Delete an SNMPv3 group |
+| `no snmp-server group WORD ...` | config | router, switch | Delete an SNMPv3 group |
+| `snmp-server user WORD GROUP v3` | config | router, switch | An SNMPv3 user without authentication |
+| `snmp-server user WORD GROUP v3 auth {md5\|sha} PASSWORD` | config | router, switch | An SNMPv3 user who authenticates with a password |
+| `no snmp-server user WORD` | config | router, switch | Delete an SNMPv3 user |
+| `no snmp-server user WORD ...` | config | router, switch | Delete an SNMPv3 user |
 | `no tacacs-server host A.B.C.D` | config | router, switch | Forget a TACACS+ server |
 | `login authentication default` |  | router, switch | Use the default AAA method list |
 | `username WORD {secret\|password} PASSWORD` | config | router, switch | Add a local user |

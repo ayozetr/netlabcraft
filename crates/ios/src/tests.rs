@@ -2384,3 +2384,58 @@ fn vpn_modes_survive_hostile_arguments() {
         }
     }
 }
+
+#[test]
+fn snmp_trap_hosts_traps_and_v3_users_are_configured() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    lab.run(r, "en\nconf t");
+    assert!(lab.run(r, "do show snmp").contains("agent is off"));
+    lab.run(r, "snmp-server host 10.0.0.10 version 2c avisos");
+    lab.run(r, "snmp-server host 10.0.0.11 publico");
+    lab.run(r, "snmp-server enable traps snmp linkdown linkup");
+    let show = lab.run(r, "do show snmp");
+    assert!(show.contains("Traps to UDP port 162 (SNMPv2c): linkdown, linkup"), "{show}");
+    assert!(show.contains("10.0.0.10, community avisos") && show.contains("10.0.0.11, community publico"), "{show}");
+    // Only version 2c, and a community is needed.
+    assert!(lab.try_run(r, "snmp-server host 10.0.0.12 version 1 x").contains("2c"));
+    assert!(lab.try_run(r, "snmp-server host 10.0.0.12 version 2c").starts_with('%'));
+    assert!(lab.try_run(r, "snmp-server enable traps snmp reboot").contains("Unknown trap"));
+    lab.run(r, "no snmp-server enable traps linkup");
+    lab.run(r, "snmp-server enable traps");
+    lab.run(r, "no snmp-server host 10.0.0.11 version 2c publico");
+    // SNMPv3: groups and users.
+    lab.run(r, "snmp-server group LECTORES v3 auth");
+    lab.run(r, "snmp-server group ADMINS v3 noauth write todo");
+    lab.run(r, "snmp-server user ana LECTORES v3 auth sha clave1234");
+    lab.run(r, "snmp-server user bea ADMINS v3");
+    assert!(lab.try_run(r, "snmp-server user eva LECTORES v3 auth sha corta").contains("8 characters"));
+    assert!(lab.try_run(r, "snmp-server user eva LECTORES v3 auth sha clave1234 priv aes clave5678").contains("Privacy"));
+    assert!(lab.try_run(r, "snmp-server group P v3 priv").contains("Privacy"));
+    let show = lab.run(r, "do show snmp");
+    assert!(show.starts_with("SNMP agent on"), "{show}");
+    assert!(show.contains("ana (group LECTORES: authNoPriv, read-only; auth SHA)"), "{show}");
+    assert!(show.contains("bea (group ADMINS: noAuthNoPriv, read-write; no authentication)"), "{show}");
+    let run = lab.run(r, "do show running-config");
+    for line in [
+        "snmp-server group LECTORES v3 auth\n",
+        "snmp-server group ADMINS v3 noauth write v1default\n",
+        "snmp-server user ana LECTORES v3 auth sha clave1234\n",
+        "snmp-server user bea ADMINS v3\n",
+        "snmp-server host 10.0.0.10 version 2c avisos\n",
+        "snmp-server enable traps snmp linkdown linkup coldstart\n",
+    ] {
+        assert!(run.contains(line), "{line}\n{run}");
+    }
+    assert!(!run.contains("10.0.0.11"));
+    // The running configuration reads back to the same settings.
+    let snmp = lab.t.device(r).unwrap().snmp.clone();
+    let mut lab2 = Lab::new();
+    let r2 = lab2.add(DeviceKind::Router);
+    let errors = apply_config(&mut lab2.t, &mut lab2.sim, r2, &run);
+    assert!(errors.is_empty(), "{errors:?}");
+    assert_eq!(lab2.t.device(r2).unwrap().snmp, snmp);
+    lab.run(r, "no snmp-server user ana\nno snmp-server group ADMINS v3 noauth\nno snmp-server enable traps");
+    let s = &lab.t.device(r).unwrap().snmp;
+    assert_eq!((s.users.len(), s.groups.len(), s.traps.len()), (1, 1, 0));
+}

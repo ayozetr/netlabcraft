@@ -257,7 +257,26 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             // Any id does: the manager waits for one answer at a time.
             let request_id = i32::try_from(s.sim.now_us() % 1_000_000).unwrap_or(0) + 1;
             let req = Snmp { community, kind, request_id, error_status: 0, error_index: 0, bindings: vec![(oid, value)] };
-            let r = s.sim.snmp_request(&s.topology, d, target, req).map_err(|e| EngineError::Failed(e.to_string()))?;
+            let r = match opt_str(p, "version").unwrap_or("2c") {
+                "2c" | "2" => s.sim.snmp_request(&s.topology, d, target, req),
+                "3" => {
+                    let user: String = str_param(p, "user")?.chars().take(32).collect();
+                    let auth = match opt_str(p, "auth").unwrap_or("none") {
+                        "none" | "" => None,
+                        h @ ("md5" | "sha") => {
+                            let pw: String = str_param(p, "password")?.chars().take(64).collect();
+                            if pw.chars().count() < 8 {
+                                return Err(bad("an SNMPv3 password has at least 8 characters"));
+                            }
+                            Some((if h == "md5" { packetcraft_wire::sha1::Hash::Md5 } else { packetcraft_wire::sha1::Hash::Sha1 }, pw))
+                        }
+                        other => return Err(bad(format!("unknown authentication `{other}` (none, md5, sha)"))),
+                    };
+                    s.sim.snmp_request_v3(&s.topology, d, target, req, &packetcraft_sim::snmp::V3Login { user, auth })
+                }
+                other => return Err(bad(format!("unknown SNMP version `{other}` (2c, 3)"))),
+            }
+            .map_err(|e| EngineError::Failed(e.to_string()))?;
             // Sets the agent accepted change the lab.
             for (dev, what, v) in s.sim.take_snmp_changes() {
                 match what {
@@ -281,12 +300,35 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                 packetcraft_wire::snmp::NO_ACCESS => json!("no access (a read-only community)"),
                 packetcraft_wire::snmp::NOT_WRITABLE => json!("not writable"),
                 packetcraft_wire::snmp::WRONG_TYPE => json!("wrong type"),
+                16 => json!("not authorized (the user is in no group)"),
                 n => json!(format!("error {n}")),
             };
             Ok(json!({
                 "bindings": r.bindings.iter().map(|(o, v)| json!({"oid": packetcraft_wire::snmp::oid_text(o), "value": v.show()})).collect::<Vec<_>>(),
                 "error": error,
             }))
+        }
+        "snmp.traps" => {
+            let d = device_param(s, p, "device")?;
+            if p.get("clear").and_then(Value::as_bool) == Some(true) {
+                s.sim.clear_traps(d);
+                return Ok(json!({"traps": []}));
+            }
+            let traps: Vec<Value> = s
+                .sim
+                .traps(d)
+                .iter()
+                .map(|x| {
+                    json!({
+                        "at_ms": x.at_us / 1_000,
+                        "from": x.from.to_string(),
+                        "community": x.community,
+                        "trap": x.name,
+                        "bindings": x.bindings.iter().map(|(o, v)| json!({"oid": o, "value": v})).collect::<Vec<_>>(),
+                    })
+                })
+                .collect();
+            Ok(json!({"traps": traps}))
         }
         "mail.configure" => {
             let d = device_param(s, p, "device")?;
@@ -324,9 +366,21 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             };
             let server = s.sim.dns_resolve(&s.topology, d, &account.outgoing).map_err(|e| EngineError::Failed(e.to_string()))?;
             let r = s.sim.smtp_send(&s.topology, d, server, &mail);
+            // Messages for other domains go on to their servers.
+            let relayed = s.sim.relay_mail(&s.topology);
             apply_mail_changes(s);
             let done = r.map_err(|e| EngineError::Failed(e.to_string()))?;
-            Ok(json!({"answer": done}))
+            let relayed: Vec<Value> = relayed
+                .iter()
+                .map(|x| {
+                    let server = s.topology.device(x.server).map(|d| d.name.clone()).unwrap_or_default();
+                    match &x.result {
+                        Ok(a) => json!({"server": server, "to": x.to, "answer": a}),
+                        Err(e) => json!({"server": server, "to": x.to, "error": e}),
+                    }
+                })
+                .collect();
+            Ok(json!({"answer": done, "relayed": relayed}))
         }
         "mail.receive" => {
             let d = device_param(s, p, "device")?;

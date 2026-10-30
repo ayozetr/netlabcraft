@@ -527,13 +527,15 @@ fn email_goes_from_one_pc_to_another_through_the_server() {
     let srv = s.topology.resolve(&srv_name).unwrap();
     assert_eq!(s.topology.device(srv).unwrap().services.email.mailboxes.len(), 1);
     assert!(s.execute("mail.send", json!({"device": "PC1", "to": "nadie@lab.local"})).unwrap_err().to_string().contains("550"));
-    assert!(s.execute("mail.send", json!({"device": "PC1", "to": "x@otro.com"})).unwrap_err().to_string().contains("550"));
+    // Another domain: taken for relaying (and bounced back, with no DNS to find it).
+    assert!(s.execute("mail.send", json!({"device": "PC1", "to": "x@otro.com"})).unwrap()["relayed"][0]["error"].is_string());
     let got = s.execute("mail.receive", json!({"device": "PC2"})).unwrap();
     assert_eq!(got["received"], 1);
     let pc2 = s.topology.resolve("PC2").unwrap();
     let m = &s.topology.device(pc2).unwrap().inbox[0];
     assert_eq!((m.from.as_str(), m.subject.as_str(), m.body.as_str()), ("ana@lab.local", "Hola", "Una línea\n.empieza con punto\nfin"));
-    assert!(s.topology.device(srv).unwrap().services.email.mailboxes.is_empty(), "fetched mail leaves the server");
+    // (Only the bounce for ana is left.)
+    assert!(s.topology.device(srv).unwrap().services.email.mailboxes.iter().all(|(u, _)| u == "ana"), "fetched mail leaves the server");
     assert_eq!(s.execute("mail.receive", json!({"device": "PC2"})).unwrap()["received"], 0);
     // Wrong password: refused.
     s.execute(
@@ -583,6 +585,176 @@ fn a_pc_reads_and_sets_a_router_over_snmp() {
     // A wrong community: no answer.
     assert!(get(&mut s, "adivina", "get", "1.3.6.1.2.1.1.5.0").unwrap_err().to_string().contains("did not answer"));
     assert!(s.sim.trace().iter().any(|e| e.summary.starts_with("SNMP response (lectura) 1.3.6.1.2.1.1.5.0 = R1")));
+}
+
+/// R1 between PC1 (10.0.0.10, the manager) and PC2 (10.1.0.10).
+fn snmp_lab(extra: &[&str]) -> Session {
+    let mut s = Session::new();
+    s.execute("device.add", json!({"kind": "router", "x": 0, "y": 0})).unwrap();
+    s.execute("device.add", json!({"kind": "pc", "x": 0, "y": 100})).unwrap();
+    s.execute("device.add", json!({"kind": "pc", "x": 100, "y": 100})).unwrap();
+    s.execute("link.add", json!({"a": "R1", "a_port": "g0/0", "b": "PC1", "b_port": "fa0"})).unwrap();
+    s.execute("link.add", json!({"a": "R1", "a_port": "g0/1", "b": "PC2", "b_port": "fa0"})).unwrap();
+    let mut lines = vec![
+        "interface g0/0",
+        "ip address 10.0.0.1 255.255.255.0",
+        "no shutdown",
+        "interface g0/1",
+        "ip address 10.1.0.1 255.255.255.0",
+        "no shutdown",
+        "exit",
+    ];
+    lines.extend_from_slice(extra);
+    s.execute("device.configure", json!({"device": "R1", "lines": lines})).unwrap();
+    s.execute("cli.exec", json!({"device": "PC1", "line": "ipconfig 10.0.0.10 255.255.255.0 10.0.0.1"})).unwrap();
+    s.execute("cli.exec", json!({"device": "PC2", "line": "ipconfig 10.1.0.10 255.255.255.0 10.1.0.1"})).unwrap();
+    s.sim.run_for(&s.topology, 1_000_000);
+    s
+}
+
+#[test]
+fn routers_send_link_and_cold_start_traps_to_a_pc() {
+    let mut s = snmp_lab(&[
+        "snmp-server community public ro",
+        "snmp-server host 10.0.0.10 version 2c avisos",
+        "snmp-server enable traps snmp linkdown linkup coldstart",
+    ]);
+    let traps = |s: &mut Session| s.execute("snmp.traps", json!({"device": "PC1"})).unwrap()["traps"].as_array().unwrap().clone();
+    // The ports coming up when the lab was built were reported too.
+    assert!(traps(&mut s).iter().all(|x| x["trap"] == "linkUp"));
+    s.execute("snmp.traps", json!({"device": "PC1", "clear": true})).unwrap();
+    s.execute("device.configure", json!({"device": "R1", "lines": ["interface g0/1", "shutdown"]})).unwrap();
+    s.sim.run_for(&s.topology, 2_000_000);
+    let got = traps(&mut s);
+    assert_eq!(got.len(), 1, "{got:?}");
+    assert_eq!(got[0]["trap"], "linkDown");
+    assert_eq!(got[0]["from"], "10.0.0.1");
+    assert_eq!(got[0]["community"], "avisos");
+    let b = got[0]["bindings"].as_array().unwrap();
+    assert!(b.iter().any(|x| x["oid"] == "1.3.6.1.2.1.2.2.1.2.2" && x["value"] == "GigabitEthernet0/1"), "{b:?}");
+    assert!(b.iter().any(|x| x["oid"] == "1.3.6.1.2.1.2.2.1.7.2" && x["value"] == "2"), "admin down: {b:?}");
+    s.execute("device.configure", json!({"device": "R1", "lines": ["interface g0/1", "no shutdown"]})).unwrap();
+    s.sim.run_for(&s.topology, 2_000_000);
+    assert_eq!(traps(&mut s).last().unwrap()["trap"], "linkUp");
+    assert!(s.sim.trace().iter().any(|e| e.summary.starts_with("SNMP trap (avisos) linkDown")), "the capture names the trap");
+    let show = s.execute("cli.exec", json!({"device": "R1", "line": "show snmp"})).unwrap()["output"].as_str().unwrap().to_string();
+    assert!(show.contains("4 trap(s) sent"), "two at the start, then down and up: {show}");
+    // A reload with the saved configuration: coldStart.
+    let out = s.execute("cli.script", json!({"device": "R1", "lines": ["enable", "copy running-config startup-config", "reload"]})).unwrap();
+    assert!(out["outputs"][2].as_str().unwrap().contains("saved configuration"), "{out}");
+    s.sim.run_for(&s.topology, 3_000_000);
+    assert_eq!(traps(&mut s).last().unwrap()["trap"], "coldStart");
+    // Only the traps turned on go out.
+    s.execute("device.configure", json!({"device": "R1", "lines": ["no snmp-server enable traps linkdown"]})).unwrap();
+    let before = traps(&mut s).len();
+    s.execute("device.configure", json!({"device": "R1", "lines": ["interface g0/1", "shutdown"]})).unwrap();
+    s.sim.run_for(&s.topology, 2_000_000);
+    assert_eq!(traps(&mut s).len(), before);
+    assert_eq!(s.execute("snmp.traps", json!({"device": "PC1", "clear": true})).unwrap()["traps"], json!([]));
+    assert!(traps(&mut s).is_empty());
+}
+
+#[test]
+fn snmpv3_users_authenticate_with_md5_or_sha() {
+    let mut s = snmp_lab(&[
+        "snmp-server group LECTORES v3 auth",
+        "snmp-server group ADMINS v3 noauth write todo",
+        "snmp-server user ana LECTORES v3 auth sha clave1234",
+        "snmp-server user leo LECTORES v3 auth md5 otraclave",
+        "snmp-server user bea ADMINS v3",
+    ]);
+    let v3 = |s: &mut Session, user: &str, auth: &str, pw: &str, op: &str, value: Option<&str>| {
+        let mut p = json!({"device": "PC1", "target": "10.0.0.1", "version": "3", "user": user, "auth": auth, "password": pw, "operation": op, "oid": "1.3.6.1.2.1.1.6.0"});
+        if let Some(v) = value {
+            p["value"] = json!(v);
+        }
+        s.execute("snmp.request", p)
+    };
+    s.execute("device.configure", json!({"device": "R1", "lines": ["snmp-server location Aula 3"]})).unwrap();
+    let r = v3(&mut s, "ana", "sha", "clave1234", "get", None).unwrap();
+    assert_eq!(r["bindings"][0]["value"], "Aula 3", "{r}");
+    assert_eq!(v3(&mut s, "leo", "md5", "otraclave", "get", None).unwrap()["bindings"][0]["value"], "Aula 3");
+    let err = |r: Result<serde_json::Value>| r.unwrap_err().to_string();
+    assert!(err(v3(&mut s, "ana", "sha", "equivocada", "get", None)).contains("authentication failed"));
+    assert!(err(v3(&mut s, "ana", "md5", "clave1234", "get", None)).contains("authentication failed"));
+    assert!(err(v3(&mut s, "ana", "none", "", "get", None)).contains("security level"));
+    assert!(err(v3(&mut s, "nadie", "none", "", "get", None)).contains("unknown user"));
+    // Read-only group: no sets; a group with a write view: sets apply.
+    assert!(v3(&mut s, "ana", "sha", "clave1234", "set", Some("Sala")).unwrap()["error"].as_str().unwrap().contains("no access"));
+    assert!(v3(&mut s, "bea", "none", "", "set", Some("Sala 2")).unwrap()["error"].is_null());
+    let r1 = s.topology.resolve("R1").unwrap();
+    assert_eq!(s.topology.device(r1).unwrap().snmp.location, "Sala 2");
+    assert!(s.execute("snmp.request", json!({"device": "PC1", "target": "10.0.0.1", "version": "3", "user": "ana", "auth": "sha", "password": "corta", "oid": "1.3.6.1.2.1.1.5.0"})).is_err());
+    assert!(s.execute("snmp.request", json!({"device": "PC1", "target": "10.0.0.1", "version": "1", "oid": "1.3.6.1.2.1.1.5.0"})).is_err());
+    assert!(s.sim.trace().iter().any(|e| e.summary.starts_with("SNMPv3 response (user ana, authenticated)")), "the capture reads v3");
+    assert!(s.sim.trace().iter().any(|e| e.summary.starts_with("SNMPv3 report")));
+}
+
+#[test]
+fn mail_for_another_domain_is_relayed_to_its_server() {
+    use packetcraft_model::services::{AaaUser, DnsRecord};
+    let mut s = Session::new();
+    let mut names = Vec::new();
+    for (k, x) in [("switch", 0), ("pc", 100), ("pc", 200), ("server", 300), ("server", 400), ("server", 500)] {
+        names.push(s.execute("device.add", json!({"kind": k, "x": x, "y": 0})).unwrap()["name"].as_str().unwrap().to_string());
+    }
+    let sw = names[0].clone();
+    let (a, b, dns) = (names[3].clone(), names[4].clone(), names[5].clone());
+    for (i, dev) in names.iter().skip(1).enumerate() {
+        let port = if dev.starts_with("PC") { "fa0" } else { "g0" };
+        s.execute("link.add", json!({"a": dev, "a_port": port, "b": sw, "b_port": format!("fa0/{}", i + 1)})).unwrap();
+    }
+    for (dev, ip) in [("PC1", "10.0.0.11"), ("PC2", "10.0.0.12"), (a.as_str(), "10.0.0.5"), (b.as_str(), "10.0.0.6"), (dns.as_str(), "10.0.0.53")] {
+        s.execute("cli.exec", json!({"device": dev, "line": format!("ipconfig {ip} 255.255.255.0 10.0.0.1 10.0.0.53")})).unwrap();
+    }
+    let set_mail = |s: &mut Session, srv: &str, domain: &str, user: &str, pw: &str| {
+        let mut sv = s.topology.device(s.topology.resolve(srv).unwrap()).unwrap().services.clone();
+        sv.email.domain = domain.into();
+        sv.email.users = vec![AaaUser { name: user.into(), password: pw.into() }];
+        s.execute("server.services", json!({"device": srv, "services": sv})).unwrap();
+    };
+    set_mail(&mut s, &a, "a.lab", "ana", "a1");
+    set_mail(&mut s, &b, "b.lab", "bea", "b2");
+    let mut sv = s.topology.device(s.topology.resolve(&dns).unwrap()).unwrap().services.clone();
+    sv.dns.on = true;
+    sv.dns.records = vec![
+        DnsRecord { name: "a.lab".into(), address: "10.0.0.5".parse().unwrap() },
+        DnsRecord { name: "b.lab".into(), address: "10.0.0.6".parse().unwrap() },
+    ];
+    s.execute("server.services", json!({"device": dns, "services": sv})).unwrap();
+    for (dev, user, pw, srv) in [("PC1", "ana", "a1", "10.0.0.5"), ("PC2", "bea", "b2", "10.0.0.6")] {
+        s.execute(
+            "mail.configure",
+            json!({"device": dev, "address": format!("{user}@{}", if user == "ana" { "a.lab" } else { "b.lab" }), "incoming": srv, "outgoing": srv, "user": user, "password": pw}),
+        )
+        .unwrap();
+    }
+    s.sim.run_for(&s.topology, 31_000_000);
+    let r = s.execute("mail.send", json!({"device": "PC1", "to": "bea@b.lab", "subject": "Entre dominios", "body": "Hola Bea"})).unwrap();
+    assert!(r["answer"].as_str().unwrap().starts_with("250"), "{r}");
+    assert_eq!(r["relayed"][0]["server"], a.as_str(), "{r}");
+    assert!(r["relayed"][0]["answer"].as_str().unwrap().starts_with("250"), "{r}");
+    assert_eq!(s.execute("mail.receive", json!({"device": "PC2"})).unwrap()["received"], 1);
+    let pc2 = s.topology.resolve("PC2").unwrap();
+    let m = &s.topology.device(pc2).unwrap().inbox[0];
+    assert_eq!((m.from.as_str(), m.subject.as_str(), m.body.as_str()), ("ana@a.lab", "Entre dominios", "Hola Bea"));
+    // No such user on the other server: the message comes back to the sender.
+    let r = s.execute("mail.send", json!({"device": "PC1", "to": "nadie@b.lab", "subject": "Perdido"})).unwrap();
+    assert!(r["relayed"][0]["error"].as_str().unwrap().contains("550"), "{r}");
+    // A domain nobody knows: the same.
+    let r = s.execute("mail.send", json!({"device": "PC1", "to": "x@otro.com"})).unwrap();
+    assert!(r["relayed"][0]["error"].as_str().unwrap().contains("doesn't know"), "{r}");
+    assert_eq!(s.execute("mail.receive", json!({"device": "PC1"})).unwrap()["received"], 2);
+    let pc1 = s.topology.resolve("PC1").unwrap();
+    let inbox = &s.topology.device(pc1).unwrap().inbox;
+    assert!(inbox.iter().all(|m| m.from == "postmaster@a.lab" && m.subject.starts_with("Undelivered")), "{inbox:?}");
+    // Server B won't relay for someone outside its domain.
+    s.execute(
+        "mail.configure",
+        json!({"device": "PC1", "address": "ana@a.lab", "incoming": "10.0.0.5", "outgoing": "10.0.0.6", "user": "ana", "password": "a1"}),
+    )
+    .unwrap();
+    assert!(s.execute("mail.send", json!({"device": "PC1", "to": "x@a.lab"})).unwrap_err().to_string().contains("relaying denied"));
 }
 
 #[test]

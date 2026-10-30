@@ -61,6 +61,26 @@ pub fn from_text(text: &str) -> Mail {
     Mail { from: field("From"), to: field("To"), subject: field("Subject"), body: body.join("\n") }
 }
 
+/// Most messages waiting to be relayed.
+const MAX_RELAY: usize = 64;
+
+/// What happened to a message a server relayed to another domain's server.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Relayed {
+    /// The server that relayed it.
+    pub server: DeviceId,
+    pub to: String,
+    /// The other server's answer, or why it couldn't be delivered.
+    pub result: Result<String, String>,
+}
+
+/// The domain of an address (`lab.local` in `<ana@lab.local>`).
+fn domain_of(address: &str) -> Option<String> {
+    let a = address.trim().trim_start_matches('<').trim_end_matches('>');
+    let (user, dom) = a.rsplit_once('@')?;
+    (!user.is_empty() && !dom.is_empty() && dom.len() <= 128).then(|| dom.to_ascii_lowercase())
+}
+
 /// The user part of an address, if the address is for `domain`.
 fn local_user(address: &str, domain: &str) -> Option<String> {
     let a = address.trim().trim_start_matches('<').trim_end_matches('>');
@@ -186,8 +206,12 @@ impl Sim {
                 mail.from.clone_from(&s.from);
             }
             for to in &s.to {
-                if let Some(user) = local_user(to, &email.domain) {
-                    self.mail_changes.push((d.id, MailChange::Deliver(user, Mail { to: to.clone(), ..mail.clone() })));
+                let one = Mail { to: to.clone(), ..mail.clone() };
+                match local_user(to, &email.domain) {
+                    Some(user) => self.mail_changes.push((d.id, MailChange::Deliver(user, one))),
+                    // For another domain: relayed to that domain's server afterwards.
+                    None if self.mail_relay.len() < MAX_RELAY => self.mail_relay.push((d.id, one)),
+                    None => {}
                 }
             }
             s.data = None;
@@ -210,7 +234,13 @@ impl Sim {
                     "250 OK".into()
                 }
                 Some(_) => format!("550 {to}: no such user here"),
-                None => format!("550 {to}: this server only takes mail for {}", email.domain),
+                // Our own users may send to other domains; nobody else may relay through us.
+                None if local_user(&s.from, &email.domain).is_some() && domain_of(&to).is_some() => {
+                    let reply = format!("250 OK, relaying to {}", domain_of(&to).unwrap_or_default());
+                    s.to.push(to);
+                    reply
+                }
+                None => format!("550 {to}: relaying denied (this server only takes mail for {})", email.domain),
             }
         } else if upper == "DATA" {
             if s.to.is_empty() {
@@ -331,6 +361,48 @@ impl Sim {
         let _ = self.mail_cmd(t, &mut c, "QUIT");
         self.conn_close(t, &mut c);
         result
+    }
+
+    /// Relays the messages servers took for other domains (RFC 5321 §5.1): each server looks
+    /// the domain up with its DNS server (the domain's address record) and hands the message to
+    /// that server over SMTP. A message that can't be delivered comes back to its sender, when
+    /// the sender is one of the relaying server's users.
+    pub fn relay_mail(&mut self, t: &Topology) -> Vec<Relayed> {
+        let mut out = Vec::new();
+        // A relayed message can be relayed again; a few rounds end any loop.
+        for _ in 0..4 {
+            let batch = std::mem::take(&mut self.mail_relay);
+            if batch.is_empty() {
+                break;
+            }
+            for (srv, mail) in batch.into_iter().take(MAX_RELAY) {
+                let Some(d) = t.device(srv) else { continue };
+                let domain = domain_of(&mail.to).unwrap_or_default();
+                let own: Vec<Ipv4Addr> = crate::l3_ifaces(d).iter().map(|i| i.net.addr).collect();
+                let result = self
+                    .dns_resolve(t, srv, &domain)
+                    .and_then(|ip| {
+                        if own.contains(&ip) {
+                            return Err(SimError::NoSource(format!("{domain} is this server's own address, but not its mail domain")));
+                        }
+                        self.smtp_send(t, srv, ip, &mail)
+                    })
+                    .map_err(|e| e.to_string());
+                if let Err(why) = &result
+                    && let Some(user) = local_user(&mail.from, &d.services.email.domain)
+                {
+                    let bounce = Mail {
+                        from: format!("postmaster@{}", d.services.email.domain),
+                        to: mail.from.clone(),
+                        subject: format!("Undelivered: {}", mail.subject),
+                        body: format!("The message to {} could not be delivered: {why}", mail.to),
+                    };
+                    self.mail_changes.push((srv, MailChange::Deliver(user, bounce)));
+                }
+                out.push(Relayed { server: srv, to: mail.to.clone(), result });
+            }
+        }
+        out
     }
 
     /// Fetches a user's messages over POP3 and deletes them from the server.

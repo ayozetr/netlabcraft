@@ -31,6 +31,7 @@ pub mod radius;
 pub mod tacacs;
 
 pub mod serial;
+pub mod sha1;
 pub mod snmp;
 pub mod tcp;
 pub mod vpn;
@@ -559,6 +560,33 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                         Err(e) => (Protocol::Eigrp, format!("EIGRP ({e}) {route}{tag}")),
                     },
                     PROTO_UDP => match Udp::decode(&ip.payload, ip.src, ip.dst) {
+                        Ok(u) if [u.dst_port, u.src_port].contains(&snmp::SNMP_PORT) && snmp::version(&u.payload) == Some(3) => {
+                            match snmp::V3::decode(&u.payload) {
+                                Ok((m, _)) => (
+                                    Protocol::Snmp,
+                                    format!(
+                                        "SNMPv3 {} (user {}{}) {}{tag}",
+                                        m.pdu.kind.name(),
+                                        if m.user.is_empty() { "-" } else { m.user.as_str() },
+                                        if m.flags & snmp::FLAG_AUTH != 0 { ", authenticated" } else { "" },
+                                        m.pdu.bindings.first().map(|(o, _)| snmp::oid_text(o)).unwrap_or_default(),
+                                    ),
+                                ),
+                                Err(e) => (Protocol::Snmp, format!("SNMPv3 ({e}){tag}")),
+                            }
+                        }
+                        Ok(u) if u.dst_port == snmp::SNMP_TRAP_PORT => match snmp::Snmp::decode(&u.payload) {
+                            Ok(m) => {
+                                let what = m.bindings.iter().find_map(|(o, v)| match v {
+                                    snmp::Value::Oid(t) if o.as_slice() == snmp::oids::SNMP_TRAP_OID => {
+                                        Some(snmp::oids::trap_name(t).map_or_else(|| snmp::oid_text(t), str::to_string))
+                                    }
+                                    _ => None,
+                                });
+                                (Protocol::Snmp, format!("SNMP {} ({}) {}{tag}", m.kind.name(), m.community, what.unwrap_or_default()))
+                            }
+                            Err(e) => (Protocol::Snmp, format!("SNMP ({e}){tag}")),
+                        },
                         Ok(u) if u.dst_port == snmp::SNMP_PORT || u.src_port == snmp::SNMP_PORT => match snmp::Snmp::decode(&u.payload) {
                             Ok(m) => (
                                 Protocol::Snmp,

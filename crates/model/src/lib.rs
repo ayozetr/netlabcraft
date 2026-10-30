@@ -925,12 +925,56 @@ pub struct SnmpConf {
     pub location: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub contact: String,
+    /// `snmp-server host A.B.C.D [version 2c] COMMUNITY`: managers that get traps.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub trap_hosts: Vec<(Ipv4Addr, String)>,
+    /// `snmp-server enable traps …`: the notifications sent, of [`SNMP_TRAPS`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub traps: Vec<String>,
+    /// `snmp-server group NAME v3 …`: SNMPv3 security levels and rights.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<SnmpGroup>,
+    /// `snmp-server user NAME GROUP v3 …`: SNMPv3 users.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub users: Vec<SnmpUser>,
 }
+
+/// The notifications `snmp-server enable traps` turns on, in configuration order.
+pub const SNMP_TRAPS: [&str; 3] = ["linkdown", "linkup", "coldstart"];
+/// Most trap hosts, groups and users an agent keeps.
+pub const MAX_SNMP_ITEMS: usize = 16;
 
 impl SnmpConf {
     pub fn is_default(&self) -> bool {
         *self == SnmpConf::default()
     }
+
+    /// Whether the agent answers at all (some community or SNMPv3 user).
+    pub fn agent_on(&self) -> bool {
+        !self.communities.is_empty() || !self.users.is_empty()
+    }
+}
+
+/// An SNMPv3 group: the security level its users need, and whether they may write.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SnmpGroup {
+    pub name: String,
+    /// `auth`: messages must be authenticated; `noauth`: any message from a known user.
+    #[serde(default)]
+    pub auth: bool,
+    /// `write VIEW` was given: sets are allowed.
+    #[serde(default)]
+    pub write: bool,
+}
+
+/// An SNMPv3 user.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SnmpUser {
+    pub name: String,
+    pub group: String,
+    /// `auth md5|sha PASSWORD`: (`md5` or `sha`, the password).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth: Option<(String, String)>,
 }
 
 /// A router's OSPFv3 process (RFC 5340): interfaces join it with `ipv6 ospf N area A`.

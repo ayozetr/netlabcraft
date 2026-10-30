@@ -262,6 +262,14 @@ pub enum Id {
     SnmpLocation,
     SnmpContact,
     ShowSnmp,
+    SnmpHost,
+    NoSnmpHost,
+    SnmpTraps,
+    NoSnmpTraps,
+    SnmpGroup,
+    NoSnmpGroup,
+    SnmpUser,
+    NoSnmpUser,
     LoginAuthentication,
     TransportInput,
     Telnet,
@@ -1204,6 +1212,62 @@ pub static SPECS: &[Spec] = &[
     spec!(SnmpLocation, Modes::CONFIG, Modes::BOTH, [K("snmp-server"), K("location"), Rest("TEXT")], "Where the device is (sysLocation)"),
     spec!(SnmpContact, Modes::CONFIG, Modes::BOTH, [K("snmp-server"), K("contact"), Rest("TEXT")], "Who looks after it (sysContact)"),
     spec!(ShowSnmp, EXECS, Modes::BOTH, [K("show"), K("snmp")], "SNMP agent settings"),
+    spec!(
+        SnmpHost,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("snmp-server"), K("host"), Arg("A.B.C.D"), Rest("[version 2c] COMMUNITY")],
+        "Send SNMP traps to a manager"
+    ),
+    spec!(NoSnmpHost, Modes::CONFIG, Modes::BOTH, [K("no"), K("snmp-server"), K("host"), Arg("A.B.C.D")], "Stop sending traps to a manager"),
+    spec!(
+        NoSnmpHost,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("snmp-server"), K("host"), Arg("A.B.C.D"), Rest("...")],
+        "Stop sending traps to a manager"
+    ),
+    spec!(SnmpTraps, Modes::CONFIG, Modes::BOTH, [K("snmp-server"), K("enable"), K("traps")], "Send every supported trap"),
+    spec!(
+        SnmpTraps,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("snmp-server"), K("enable"), K("traps"), Rest("[snmp] [linkdown] [linkup] [coldstart]")],
+        "Send these traps"
+    ),
+    spec!(NoSnmpTraps, Modes::CONFIG, Modes::BOTH, [K("no"), K("snmp-server"), K("enable"), K("traps")], "Send no traps"),
+    spec!(
+        NoSnmpTraps,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("snmp-server"), K("enable"), K("traps"), Rest("[snmp] [linkdown] [linkup] [coldstart]")],
+        "Stop sending these traps"
+    ),
+    spec!(
+        SnmpGroup,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("snmp-server"), K("group"), Arg("WORD"), K("v3"), Rest("{noauth|auth} [read VIEW] [write VIEW]")],
+        "An SNMPv3 group: the security level and whether its users may write"
+    ),
+    spec!(NoSnmpGroup, Modes::CONFIG, Modes::BOTH, [K("no"), K("snmp-server"), K("group"), Arg("WORD")], "Delete an SNMPv3 group"),
+    spec!(NoSnmpGroup, Modes::CONFIG, Modes::BOTH, [K("no"), K("snmp-server"), K("group"), Arg("WORD"), Rest("...")], "Delete an SNMPv3 group"),
+    spec!(
+        SnmpUser,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("snmp-server"), K("user"), Arg("WORD"), Arg("GROUP"), K("v3")],
+        "An SNMPv3 user without authentication"
+    ),
+    spec!(
+        SnmpUser,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("snmp-server"), K("user"), Arg("WORD"), Arg("GROUP"), K("v3"), Rest("auth {md5|sha} PASSWORD")],
+        "An SNMPv3 user who authenticates with a password"
+    ),
+    spec!(NoSnmpUser, Modes::CONFIG, Modes::BOTH, [K("no"), K("snmp-server"), K("user"), Arg("WORD")], "Delete an SNMPv3 user"),
+    spec!(NoSnmpUser, Modes::CONFIG, Modes::BOTH, [K("no"), K("snmp-server"), K("user"), Arg("WORD"), Rest("...")], "Delete an SNMPv3 user"),
     spec!(NoTacacsHost, Modes::CONFIG, Modes::BOTH, [K("no"), K("tacacs-server"), K("host"), Arg("A.B.C.D")], "Forget a TACACS+ server"),
     spec!(LoginAuthentication, Modes::LINE, Modes::BOTH, [K("login"), K("authentication"), Arg("default")], "Use the default AAA method list"),
     spec!(Username, Modes::CONFIG, Modes::BOTH, [K("username"), Arg("WORD"), Rest("{secret|password} PASSWORD")], "Add a local user"),
