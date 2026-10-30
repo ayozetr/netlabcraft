@@ -426,6 +426,14 @@ pub static CATALOG: &[CommandInfo] = &[
         true
     ),
     c!(
+        "netconf.session",
+        "NETCONF session",
+        "",
+        None,
+        r#"{"pc": "PC, laptop or server", "target": "router address or name", "user", "password", "framing"?: "1.1"|"1.0", "rpcs"?: ["<get-config><source><running/></source></get-config>", …] (bare operations are wrapped in <rpc message-id=…>)} → {"connected", "error"?, "framing", "hello", "replies": [XML], "applied": [{"device", "lines", "failed"}]}: TCP port 830 with RFC 6242 framing; a <close-session> ends it"#,
+        true
+    ),
+    c!(
         "pc.http_saved",
         "Saved HTTP requests",
         "",

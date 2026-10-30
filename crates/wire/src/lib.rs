@@ -42,6 +42,7 @@ pub mod snmp;
 pub mod tcp;
 pub mod vpn;
 pub mod wlan;
+pub mod xml;
 
 /// Why bytes didn't decode.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

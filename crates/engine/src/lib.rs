@@ -23,6 +23,7 @@ mod cmd;
 mod hardware;
 pub mod home;
 mod iot;
+mod netconf;
 mod voice;
 
 pub mod sample;
@@ -112,6 +113,7 @@ impl Session {
     pub fn execute(&mut self, id: &str, params: Value) -> Result<Value> {
         let before = self.topology.clone();
         self.sim.set_restconf(automation::restconf);
+        self.sim.set_netconf(netconf::serve);
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| cmd::run(self, id, &params)));
         self.apply_sim_events();
         // A new cable or trunk can join switches into a VTP domain.

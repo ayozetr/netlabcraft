@@ -103,6 +103,7 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `topology.get` | The whole lab |  |  | `{} → the lab document` |
 | `sample.list` | Sample labs |  |  | `{} → [{id, title, description}]` |
 | `pc.http_request` | HTTP request (Programming) |  |  | `{"pc": "PC, laptop or server", "method"?: "GET"\|"PUT"\|"PATCH"\|"POST"\|"DELETE"\|…, "url": "https://10.0.0.1/restconf/data/ietf-interfaces:interfaces", "headers"?: {"Accept": "application/yang-data+json"} or [["Name", "value"]], "body"?: text or JSON, "user"?, "password"?: Basic login} → {"status", "reason", "headers", "body", "json", "applied": [{"device", "lines", "failed"}]}: over TCP through the lab (port 443 carries no TLS)` |
+| `netconf.session` | NETCONF session |  |  | `{"pc": "PC, laptop or server", "target": "router address or name", "user", "password", "framing"?: "1.1"\|"1.0", "rpcs"?: ["<get-config><source><running/></source></get-config>", …] (bare operations are wrapped in <rpc message-id=…>)} → {"connected", "error"?, "framing", "hello", "replies": [XML], "applied": [{"device", "lines", "failed"}]}: TCP port 830 with RFC 6242 framing; a <close-session> ends it` |
 | `pc.http_saved` | Saved HTTP requests |  |  | `{"pc", "save"?: {"name", "method", "url", "headers"?, "body"?}, "remove"?: "name"} → {"saved": [{"name", "method", "url", "headers", "body"}]}` |
 
 ## Device console (routers, switches and the firewall)
