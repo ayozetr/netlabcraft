@@ -372,7 +372,7 @@ impl PacketApp {
     }
 
     fn error(&mut self, e: &EngineError) {
-        self.ui.status = Some((e.to_string(), true));
+        self.ui.status = Some((crate::i18n::tr_any(&e.to_string()), true));
     }
 
     pub fn info(&mut self, msg: impl Into<String>) {

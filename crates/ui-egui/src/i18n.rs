@@ -107,6 +107,58 @@ pub fn trf(template: &'static str, args: &[&dyn std::fmt::Display]) -> String {
     out
 }
 
+/// A message from the engine or the simulator, whole or built from parts: an exact row, else a
+/// row whose `{}` stand for the parts (`no route to {}` matches `no route to 10.0.0.1`). The
+/// parts are kept as they are; English when nothing matches.
+pub fn tr_any(message: &str) -> String {
+    if lang() == Lang::English {
+        return message.to_string();
+    }
+    if let Some(t) = spanish().get(message) {
+        return (*t).to_string();
+    }
+    for (key, value) in spanish().iter().filter(|(k, _)| k.contains("{}")) {
+        if let Some(parts) = match_template(key, message) {
+            let mut out = String::new();
+            let mut rest: &str = value;
+            let mut it = parts.iter();
+            while let Some(at) = rest.find("{}") {
+                out.push_str(rest.get(..at).unwrap_or_default());
+                out.push_str(it.next().map_or("", |s| s.as_str()));
+                rest = rest.get(at + 2..).unwrap_or_default();
+            }
+            out.push_str(rest);
+            return out;
+        }
+    }
+    message.to_string()
+}
+
+/// The parts of `message` that fill the `{}` of `template`, if it fits.
+fn match_template(template: &str, message: &str) -> Option<Vec<String>> {
+    let pieces: Vec<&str> = template.split("{}").collect();
+    let first = pieces.first()?;
+    let mut rest = message.strip_prefix(first)?;
+    let mut parts = Vec::new();
+    for (i, lit) in pieces.iter().enumerate().skip(1) {
+        let last = i == pieces.len() - 1;
+        let at = if last {
+            if lit.is_empty() { Some(rest.len()) } else { rest.ends_with(lit).then(|| rest.len() - lit.len()) }
+        } else if lit.is_empty() {
+            return None;
+        } else {
+            rest.find(lit)
+        }?;
+        let part = rest.get(..at)?;
+        if part.is_empty() {
+            return None;
+        }
+        parts.push(part.to_string());
+        rest = rest.get(at + lit.len()..)?;
+    }
+    rest.is_empty().then_some(parts)
+}
+
 /// How many catalog rows a language has (for the localization report).
 pub fn catalog_size(l: Lang) -> usize {
     match l {
@@ -151,6 +203,10 @@ mod tests {
         // Templates keep their parts, in order, and a translation keeps their number.
         assert_eq!(trf("Opened {}", &[&"lab.pcraft"]), "Opened lab.pcraft");
         assert_eq!(trf("{} of {}", &[&1, &2]), "1 of 2");
+        assert_eq!(match_template("no route to {}", "no route to 10.0.0.1"), Some(vec!["10.0.0.1".to_string()]));
+        assert_eq!(match_template("denied by access list {} ({})", "denied by access list 10 (in)"), Some(vec!["10".into(), "in".into()]));
+        assert_eq!(match_template("no route to {}", "no route"), None);
+        assert_eq!(match_template("ARP for {}, not this device", "ARP for 1.2.3.4, not this device!"), None);
         for (k, v) in spanish() {
             assert_eq!(k.matches("{}").count(), v.matches("{}").count(), "placeholders differ in {k}");
         }

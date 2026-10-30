@@ -60,6 +60,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-10-30 — Errors in Spanish.** With the Spanish interface, the status bar's errors and the reasons a frame was dropped read in Spanish too.
 - **2026-10-30 — Workspace image.** File ▸ Export Workspace Image (PNG) saves the lab as a picture, on the desktop and on the web.
 - **2026-10-30 — `ip address dhcp`.** Router interfaces, routed ports and the home router's Internet port can lease their address (and a default route) from a provider's DHCP server.
 - **2026-10-30 — Email.** Servers have an EMAIL service (domain, users) and PCs an Email app: set up the account, write, send and receive; Simulation mode shows the SMTP and POP3 sessions.

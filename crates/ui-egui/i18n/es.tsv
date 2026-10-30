@@ -408,3 +408,75 @@ Obtain the address from the provider (DHCP)	Obtener la dirección del proveedor 
 Leased: {}	Concedida: {}
 Export Workspace Image (PNG)...	Exportar imagen del espacio de trabajo (PNG)...
 The workspace as a picture, for a report	El espacio de trabajo como imagen, para una memoria
+# Engine and simulator messages (errors in the status bar, why a frame was dropped).
+unknown command `{}`	orden desconocida `{}`
+ARP for {}, not this device	ARP para {}, no es este equipo
+ARP from {} is not on {}	el ARP de {} no pertenece a {}
+DHCP answer for another client	respuesta DHCP para otro cliente
+DNS answer nobody asked for	respuesta DNS que nadie pidió
+IPv6 next header {} not understood	cabecera IPv6 siguiente {} no reconocida
+OSPF is not running here	OSPF no se ejecuta aquí
+RIP is not running here	RIP no se ejecuta aquí
+TTL expired in transit	el TTL caducó por el camino
+UDP port {} not open here	el puerto UDP {} no está abierto aquí
+VLAN {} does not exist on this switch	la VLAN {} no existe en este switch
+VLAN {} not allowed on this trunk	la VLAN {} no está permitida en este troncal
+denied by IPv6 access list {} ({})	denegado por la lista de acceso IPv6 {} ({})
+denied by access list {} ({})	denegado por la lista de acceso {} ({})
+destination is on the arrival port (filtered)	el destino está en el puerto de llegada (filtrado)
+hop limit expired in transit	el límite de saltos caducó por el camino
+link-local packets never leave their link	los paquetes link-local no salen de su enlace
+login from {} refused by access-class {}	login desde {} rechazado por access-class {}
+loop: the frame crossed {} hubs or switches	bucle: la trama cruzó {} hubs o switches
+switching loop: the frame crossed {} switches (no spanning tree)	bucle de conmutación: la trama cruzó {} switches (sin spanning tree)
+no IPv6 route to {}	no hay ruta IPv6 a {}
+no route to {}	no hay ruta a {}
+no other port is up	no hay otro puerto activo
+no service for IP protocol {}	ningún servicio para el protocolo IP {}
+no service on TCP port {}	ningún servicio en el puerto TCP {}
+no service on UDP port {}	ningún servicio en el puerto UDP {}
+no up port in VLAN {} to forward to	ningún puerto activo en la VLAN {} por el que reenviar
+not addressed to this device	no va dirigido a este equipo
+not an IPv6 router (no `ipv6 unicast-routing`)	no es un router IPv6 (falta `ipv6 unicast-routing`)
+not listening to {}	no escucha a {}
+port blocked by spanning tree (VLAN {})	puerto bloqueado por spanning tree (VLAN {})
+port is shut down	el puerto está apagado
+port security violation from {}: the port is shut down (err-disabled)	violación de seguridad de puerto desde {}: el puerto se apaga (err-disabled)
+port security: {} is one address too many (dropped and counted)	seguridad de puerto: {} es una dirección de más (descartada y contada)
+port security: {} is one address too many (dropped)	seguridad de puerto: {} es una dirección de más (descartada)
+port still {} (spanning tree, VLAN {}): it forwards 30 s after coming up	puerto todavía en {} (spanning tree, VLAN {}): reenvía 30 s después de activarse
+port suspended: it can't join its EtherChannel	puerto suspendido: no puede unirse a su EtherChannel
+tagged frame on an access port	trama etiquetada en un puerto de acceso
+the web service is off	el servicio web está apagado
+waiting for ARP of {}; packet dropped	esperando el ARP de {}; paquete descartado
+{} is not this device's address	{} no es una dirección de este equipo
+{} logins are not accepted here	aquí no se aceptan logins por {}
+no such device	no existe ese equipo
+no device {}	no existe el equipo {}
+the network cable is not connected	el cable de red no está conectado
+no DHCP server answered	ningún servidor DHCP respondió
+{} did not answer (connection timed out)	{} no respondió (se agotó el tiempo de conexión)
+{} refused the connection (is its FTP service on?)	{} rechazó la conexión (¿está activo su servicio FTP?)
+{} has no route to {}	{} no tiene ruta a {}
+{} has no IP address configured	{} no tiene dirección IP configurada
+{}: this host has no DNS server configured	{}: este equipo no tiene servidor DNS configurado
+{}: the DNS server doesn't know this name	{}: el servidor DNS no conoce ese nombre
+`{}` (device name or id) is required	falta `{}` (nombre o id del equipo)
+`{}` (text) is required	falta `{}` (texto)
+`{}` is not an address	`{}` no es una dirección
+a WPA2 passphrase has 8-63 characters	una clave WPA2 tiene de 8 a 63 caracteres
+give the student's name	escribe el nombre del alumno
+the password can't be empty	la contraseña no puede estar vacía
+this lab has no activity	este laboratorio no tiene actividad
+this activity was already started	esta actividad ya se empezó
+start the activity first: `activity.start` with the student's name	empieza primero la actividad con el nombre del alumno
+the activity is locked: `activity.unlock` with the instructor's password first	la actividad está bloqueada: desbloquéala primero con la contraseña del profesor
+wrong password	contraseña incorrecta
+set up the Email app first (mail.configure)	configura primero la aplicación Email
+the Email app runs on PCs, laptops and servers	la aplicación Email funciona en PC, portátiles y servidores
+the email address needs an @ (ana@lab.local)	la dirección de correo necesita una @ (ana@lab.local)
+services run on Server devices	los servicios funcionan en los equipos Server
+that port is not a radio	ese puerto no es una radio
+{} has no radio	{} no tiene radio
+the router refused a setting: {}	el router rechazó un ajuste: {}
+too many checks	demasiadas comprobaciones
