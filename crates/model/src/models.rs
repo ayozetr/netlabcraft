@@ -182,6 +182,13 @@ pub static MODELS: &[Model] = &[
         description: "Network printer with one Fast Ethernet port",
         ports: &[run("FastEthernet", 0, 0)],
     },
+    Model {
+        id: "IP-Phone",
+        kind: DeviceKind::Phone,
+        label: "IP Phone",
+        description: "IP phone with a built-in switch: FastEthernet0 goes to the network, FastEthernet1 to a computer behind it; takes its address and its call server by DHCP",
+        ports: &[run("FastEthernet", 0, 1)],
+    },
 ];
 
 /// A plug-in card for a modular router's bay: its ports are named after the bay
@@ -264,6 +271,7 @@ pub fn default_for(kind: DeviceKind) -> &'static Model {
         DeviceKind::Laptop => "Laptop",
         DeviceKind::Server => "Server",
         DeviceKind::Printer => "Printer",
+        DeviceKind::Phone => "IP-Phone",
     };
     MODELS.iter().find(|m| m.id == id).unwrap_or(&FALLBACK)
 }

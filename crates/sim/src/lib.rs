@@ -43,6 +43,7 @@ pub mod stp;
 #[cfg(test)]
 mod tests;
 pub mod v6;
+pub mod voice;
 pub mod vpn;
 pub mod vtp;
 pub mod wlan;
@@ -571,6 +572,8 @@ pub struct DhcpResult {
     pub router: Option<Ipv4Addr>,
     pub dns: Option<Ipv4Addr>,
     pub server: Option<Ipv4Addr>,
+    /// Option 150: where an IP phone registers.
+    pub tftp: Option<Ipv4Addr>,
 }
 
 /// One NAT translation.
@@ -845,6 +848,8 @@ pub struct Sim {
     pmks: BTreeMap<(String, String), [u8; 32]>,
     air_seq: u16,
     capwap_seq: u8,
+    /// IP phones and call control (registrations, calls).
+    voice: voice::VoiceState,
 }
 
 impl Sim {
@@ -1015,6 +1020,7 @@ impl Sim {
     /// Forgets one device's dynamic state (it reloaded).
     pub fn reset_device(&mut self, d: DeviceId) {
         self.state.remove(&d);
+        self.voice.forget(d);
         // It starts again: a coldStart trap, when traps are on.
         self.queue_trap(d, snmp::TrapEvent::ColdStart);
     }
@@ -1081,6 +1087,7 @@ impl Sim {
         if !port_up(t, from) || self.err_disabled_now(from.device, from.port) {
             return false;
         }
+        let frame = self.phone_tag(t, from, frame);
         // Over the air an access point reaches every associated host; each keeps what is its own.
         if is_ap_radio(t, from) {
             // Not back to the host that sent it; a frame for one host goes to that host only.
@@ -1113,6 +1120,7 @@ impl Sim {
         self.wlan_sync(t);
         self.flush_syslog(t);
         self.flush_traps(t);
+        self.voice_tick(t);
         self.schedule_control(t, deadline);
         let mut count = 0usize;
         while let Some(Reverse(top)) = self.queue.peek() {
@@ -1230,6 +1238,7 @@ impl Sim {
             DeviceKind::Switch if port.routed => self.l3_in(t, d, at.port, f),
             DeviceKind::Switch => self.switch_in(t, d, at.port, f, hops),
             DeviceKind::Hub => self.hub_in(t, d, at.port, bytes, hops),
+            DeviceKind::Phone => self.phone_in(t, d, at.port, f, hops),
             _ => self.l3_in(t, d, at.port, f),
         }
     }
@@ -1704,10 +1713,14 @@ impl Sim {
         let sp = &d.ports.get(in_port).ok_or("no port")?.switchport;
         let vlan = match if t.is_trunk(End { device: d.id, port: in_port }) { SwitchportMode::Trunk } else { SwitchportMode::Access } {
             SwitchportMode::Access | SwitchportMode::DynamicAuto | SwitchportMode::DynamicDesirable => {
-                if f.vlan.is_some_and(|v| v != sp.access_vlan.get()) {
+                // A phone tags its own traffic in the port's voice VLAN.
+                if let Some(v) = sp.voice_vlan.filter(|v| f.vlan == Some(v.get())) {
+                    v
+                } else if f.vlan.is_some_and(|v| v != sp.access_vlan.get()) {
                     return Err("tagged frame on an access port".into());
+                } else {
+                    sp.access_vlan
                 }
-                sp.access_vlan
             }
             SwitchportMode::Trunk => {
                 let v = match f.vlan {
@@ -1811,7 +1824,13 @@ impl Sim {
         for p in outs {
             let p = chm.pick(p, f.src, f.dst);
             let Some(port) = d.ports.get(p) else { continue };
-            let tag = if !t.is_trunk(End { device: d.id, port: p }) || port.switchport.native_vlan == vlan { None } else { Some(vlan.get()) };
+            let trunk = t.is_trunk(End { device: d.id, port: p });
+            // An access port tags its voice VLAN for the phone on it.
+            let tag = if trunk {
+                (port.switchport.native_vlan != vlan).then_some(vlan.get())
+            } else {
+                (port.switchport.voice_vlan == Some(vlan)).then_some(vlan.get())
+            };
             if self.emit_hops(t, End { device: d.id, port: p }, f.retagged(tag).encode(), hops + 1) {
                 sent += 1;
             }
@@ -2082,6 +2101,9 @@ impl Sim {
         }
         if ip.protocol == PROTO_UDP {
             let u = Udp::decode(&ip.payload, ip.src, ip.dst).map_err(|e| e.to_string())?;
+            if let Some(r) = self.voice_udp_in(t, d, &ip, &u) {
+                return r;
+            }
             if let Some(r) = self.wlan_udp_in(t, d, &ip, &u) {
                 return r;
             }
@@ -2360,6 +2382,7 @@ impl Sim {
         reply.router = pool.default_router;
         reply.dns = pool.dns;
         reply.lease_secs = Some(86_400);
+        reply.tftp = d.voice.option150.get(&pool.name).copied();
         match msg.kind {
             DhcpKind::Discover => {
                 reply.your_ip = self
@@ -2519,7 +2542,7 @@ impl Sim {
             }
             let mask = ack.mask.or(offer.mask).unwrap_or(Ipv4Addr::new(255, 255, 255, 0));
             let address = Ipv4Net::with_mask(ack.your_ip, mask).map_err(|e| SimError::NoSource(e.to_string()))?;
-            Ok(DhcpResult { address, router: ack.router, dns: ack.dns, server: ack.server_id })
+            Ok(DhcpResult { address, router: ack.router, dns: ack.dns, server: ack.server_id, tftp: ack.tftp.or(offer.tftp) })
         })();
         let st = self.st(dev);
         st.dhcp_xid = None;
@@ -2907,7 +2930,7 @@ fn default_ttl(kind: DeviceKind) -> u8 {
 /// Whether switch port `p` carries `vlan` (a routed port carries none).
 fn carries(t: &Topology, d: &Device, p: usize, vlan: VlanId) -> bool {
     d.ports.get(p).filter(|port| !port.routed).is_some_and(|port| {
-        if t.is_trunk(End { device: d.id, port: p }) { port.switchport.allowed.contains(vlan) } else { port.switchport.access_vlan == vlan }
+        if t.is_trunk(End { device: d.id, port: p }) { port.switchport.allowed.contains(vlan) } else { port.switchport.access_carries(vlan) }
     })
 }
 

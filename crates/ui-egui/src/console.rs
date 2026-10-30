@@ -19,6 +19,8 @@ pub enum Tab {
     Cli,
     Services,
     Desktop,
+    /// An IP phone's screen and dial pad.
+    Phone,
     Attributes,
 }
 
@@ -86,6 +88,8 @@ pub struct DeviceWindow {
     pub(crate) svc: crate::services::ServiceForms,
     /// The card picked in the Physical tab's list, to fit in the next bay clicked.
     pub(crate) card: Option<&'static str>,
+    /// The digits typed on an IP phone's dial pad.
+    pub(crate) dialled: String,
 }
 
 impl DeviceWindow {
@@ -120,7 +124,7 @@ pub fn open(app: &mut PacketApp, d: DeviceId) {
     w.name = dev.name.clone();
     w.label = dev.display_name().to_string();
     if dev.kind.is_host() && w.tab == Tab::Cli {
-        w.tab = Tab::Desktop;
+        w.tab = if dev.kind == DeviceKind::Phone { Tab::Phone } else { Tab::Desktop };
     }
     if dev.kind == DeviceKind::Hub {
         w.tab = Tab::Physical;
@@ -174,6 +178,8 @@ pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
                             (Tab::Desktop, "Desktop"),
                             (Tab::Attributes, "Attributes"),
                         ]
+                    } else if dev.kind == DeviceKind::Phone {
+                        &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Phone, "Phone"), (Tab::Attributes, "Attributes")]
                     } else if dev.kind.is_host() {
                         &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Desktop, "Desktop"), (Tab::Attributes, "Attributes")]
                     } else {
@@ -196,6 +202,7 @@ pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
                         console(app, ui, d, false);
                     }
                     Tab::Desktop => desktop(app, ui, &dev),
+                    Tab::Phone => crate::phone::tab(app, ui, &dev),
                     Tab::Services => {
                         let mut forms = app.ui.windows.get_mut(&d).map(|w| std::mem::take(&mut w.svc)).unwrap_or_default();
                         crate::services::tab(app, ui, &dev, &mut forms);
@@ -890,7 +897,7 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
         DeviceKind::Hub => {
             ui.label(tl("Hub ports have nothing to configure: every frame is repeated out of every other port."));
         }
-        DeviceKind::Pc | DeviceKind::Laptop | DeviceKind::Server | DeviceKind::Printer => {
+        DeviceKind::Pc | DeviceKind::Laptop | DeviceKind::Server | DeviceKind::Printer | DeviceKind::Phone => {
             field(ui, tl("IPv4 Address"), &mut w.ip);
             field(ui, tl("Subnet Mask"), &mut w.mask);
             if ui.button(tl("Apply")).clicked() {

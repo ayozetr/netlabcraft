@@ -321,6 +321,8 @@ fn every_command_survives_hostile_arguments() {
                     "en\nconf t\nint fa0/1",
                     "en\nconf t\nvlan 5",
                     "en\nconf t\nrouter eigrp 1",
+                    "en\nconf t\ntelephony-service\nmax-dn 4\nmax-ephones 4\nexit\nephone-dn 1",
+                    "en\nconf t\ntelephony-service\nmax-ephones 4\nexit\nephone 1",
                 ] {
                     for l in setup.lines() {
                         lab.try_run(d, l);
@@ -3057,4 +3059,67 @@ fn every_firewall_command_survives_hostile_arguments() {
             }
         }
     }
+}
+
+#[test]
+fn call_control_and_voice_vlans_survive_a_reload() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let s = lab.add(DeviceKind::Switch);
+    lab.run(
+        r,
+        "enable
+        configure terminal
+        ip dhcp pool VOICE
+        network 10.9.0.0 255.255.255.0
+        option 150 ip 10.9.0.1
+        exit
+        telephony-service
+        max-ephones 2
+        max-dn 2
+        ip source-address 10.9.0.1 port 2000
+        auto assign 1 to 2
+        exit
+        ephone-dn 1
+        number 2001
+        ephone-dn 2
+        number 2002
+        exit
+        ephone 1
+        mac-address 0200.0000.0042
+        button 1:2
+        end",
+    );
+    assert_eq!(lab.prompt(r), "R1#");
+    // Limits and checks.
+    let err = lab.try_run(r, "configure terminal");
+    assert!(!err.starts_with('%'));
+    assert!(lab.try_run(r, "ephone-dn 3").starts_with("% max-dn is 2"));
+    lab.try_run(r, "ephone-dn 1");
+    assert_eq!(lab.prompt(r), "R1(config-ephone-dn)#");
+    assert!(lab.try_run(r, "number 2002").contains("already"));
+    assert!(lab.try_run(r, "number 12x").starts_with('%'));
+    assert!(lab.try_run(r, "mac-address 0200.0000.0042").starts_with('%'), "mac-address belongs under ephone");
+    lab.try_run(r, "ephone 1");
+    assert!(lab.try_run(r, "button 1:9").contains("no ephone-dn 9"));
+    lab.run(r, "end\ncopy running-config startup-config\nreload");
+    let run = lab.run(r, "enable\nshow running-config");
+    for l in [
+        " option 150 ip 10.9.0.1",
+        "telephony-service",
+        " ip source-address 10.9.0.1 port 2000",
+        " number 2002",
+        " mac-address 0200.0000.0042",
+        " button 1:2",
+    ] {
+        assert!(run.contains(l), "{l}\n{run}");
+    }
+    assert!(lab.run(r, "show ephone").contains("02:00:00:00:00:42"));
+    assert!(lab.run(r, "show telephony-service").contains("Phones allowed:       2"));
+    lab.run(s, "enable\nconfigure terminal\ninterface fa0/3\nswitchport voice vlan 150\nend");
+    assert!(lab.run(s, "show running-config").contains(" switchport voice vlan 150"));
+    assert!(lab.run(s, "show vlan brief").contains("Fa0/3"));
+    // Not on switches.
+    lab.try_run(s, "configure terminal");
+    assert!(lab.try_run(s, "telephony-service").contains('%'));
 }

@@ -707,3 +707,35 @@ Modular routers: serial cards for a WAN link	Routers modulares: tarjetas serie p
 Two modular routers got a 2-port serial card each (fitted while switched off) and are joined over Serial0/1/0; their configurations are saved, so a power cycle keeps them.	Dos routers modulares llevan cada uno una tarjeta serie de 2 puertos (montada con el equipo apagado) y se unen por Serial0/1/0; sus configuraciones están guardadas, así que sobreviven a un apagado.
 WAN 172.16.0.0/30 over the serial cards	WAN 172.16.0.0/30 por las tarjetas serie
 HQ has a 2-port serial card in bay 0/1 and a Gigabit card in bay 0/0; Branch a serial card in bay 0/1 (see each router's Physical tab). To change a card, switch the router off there first: the cable on a card that comes out is unplugged. Both configurations are saved, so switching a router off and on keeps them (try it: `show ip interface brief` before and after).	HQ tiene una tarjeta serie de 2 puertos en la bahía 0/1 y una tarjeta Gigabit en la bahía 0/0; Branch, una tarjeta serie en la bahía 0/1 (mira la pestaña Física de cada router). Para cambiar una tarjeta, apaga antes el router ahí: el cable de una tarjeta que se quita queda desconectado. Las dos configuraciones están guardadas, así que apagar y encender un router las conserva (pruébalo: `show ip interface brief` antes y después).
+unknown card `{}` (cards: {})	tarjeta desconocida `{}` (tarjetas: {})
+IP Phone	Teléfono IP
+IP phone with a built-in switch: FastEthernet0 goes to the network, FastEthernet1 to a computer behind it; takes its address and its call server by DHCP	Teléfono IP con switch integrado: FastEthernet0 va a la red y FastEthernet1 a un ordenador detrás; toma su dirección y su servidor de llamadas por DHCP
+Phone	Teléfono
+Line {} (registered with {})	Línea {} (registrado en {})
+No address: take one by DHCP (Config tab)	Sin dirección: tómala por DHCP (pestaña Config)
+No call server: DHCP gave no TFTP server (option 150)	Sin servidor de llamadas: DHCP no dio servidor TFTP (opción 150)
+Not registered	No registrado
+Dialing {}	Marcando {}
+Ringing {}	Sonando en {}
+Incoming call from {}	Llamada entrante de {}
+Talking to {} (voice packets sent {}, received {})	Hablando con {} (paquetes de voz enviados {}, recibidos {})
+Key {}	Tecla {}
+Pick up	Descolgar
+Decline	Rechazar
+Hang up	Colgar
+Call	Llamar
+Refresh	Actualizar
+Let the phone register and update its screen	Deja que el teléfono se registre y actualiza su pantalla
+registration refused: {}	registro rechazado: {}
+call ended: {}	llamada terminada: {}
+the call server did not answer	el servidor de llamadas no respondió
+the phone is not registered with a call server	el teléfono no está registrado en un servidor de llamadas
+the phone is already in a call: hang up first	el teléfono ya está en una llamada: cuelga primero
+the phone is not ringing	el teléfono no está sonando
+no call to hang up	no hay llamada que colgar
+phone commands run on IP phones	los comandos de teléfono funcionan en teléfonos IP
+`{}` is not a directory number (digits only)	`{}` no es un número de directorio (solo dígitos)
+IP phones with a voice VLAN	Teléfonos IP con una VLAN de voz
+Two IP phones, each with a PC plugged into it, share switch ports: the phones talk in voice VLAN 100, the PCs in data VLAN 10. R1 hands out addresses and registers the phones; dial 1002 from Phone1.	Dos teléfonos IP, cada uno con un PC conectado, comparten puertos del switch: los teléfonos hablan en la VLAN de voz 100 y los PC en la VLAN de datos 10. R1 reparte las direcciones y registra los teléfonos; marca 1002 desde Phone1.
+Data VLAN 10 untagged, voice VLAN 100 tagged	VLAN de datos 10 sin etiquetar, VLAN de voz 100 etiquetada
+Each phone takes an address in voice VLAN 100 and learns from DHCP option 150 where to register (R1); its PC, plugged into the phone, gets an address in data VLAN 10. Open Phone1 > Phone, dial 1002 and press Call; on Phone2 press Pick up. `show ephone` and `show ephone-dn` on R1 show the registrations and the call.	Cada teléfono toma una dirección en la VLAN de voz 100 y aprende por la opción 150 de DHCP dónde registrarse (R1); su PC, conectado al teléfono, recibe una dirección en la VLAN de datos 10. Abre Phone1 > Teléfono, marca 1002 y pulsa Llamar; en Phone2 pulsa Descolgar. `show ephone` y `show ephone-dn` en R1 muestran los registros y la llamada.

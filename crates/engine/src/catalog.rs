@@ -222,6 +222,24 @@ pub static CATALOG: &[CommandInfo] = &[
         true
     ),
     c!(
+        "phone.status",
+        "Phone screen",
+        "",
+        None,
+        r#"{"device": IP phone} → {"address", "tftp", "voice_vlan", "registered", "number", "server", "message", "call": {"state": "dialing"|"ringback"|"ringing"|"connected", "peer", "peer_address", "rtp_sent", "rtp_received"}} (lets the phone register first)"#,
+        false
+    ),
+    c!("phone.dial", "Dial a number", "", None, r#"{"device": IP phone, "number": "1002"} → the phone's status: the far phone rings"#, false),
+    c!(
+        "phone.answer",
+        "Answer the phone",
+        "",
+        None,
+        r#"{"device": a ringing IP phone} → its status: the call connects and voice packets flow"#,
+        false
+    ),
+    c!("phone.hangup", "Hang up", "", None, r#"{"device": IP phone} → its status: the call ends at both phones"#, false),
+    c!(
         "device.module.list",
         "Card catalogue",
         "",

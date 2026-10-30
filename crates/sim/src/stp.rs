@@ -112,7 +112,7 @@ pub fn carries(t: &Topology, d: &Device, port: usize, vlan: VlanId) -> bool {
     d.kind == DeviceKind::Switch
         && d.vlans.contains_key(&vlan)
         && d.ports.get(port).filter(|p| !p.routed).is_some_and(|p| {
-            if t.is_trunk(End { device: d.id, port }) { p.switchport.allowed.contains(vlan) } else { p.switchport.access_vlan == vlan }
+            if t.is_trunk(End { device: d.id, port }) { p.switchport.allowed.contains(vlan) } else { p.switchport.access_carries(vlan) }
         })
 }
 

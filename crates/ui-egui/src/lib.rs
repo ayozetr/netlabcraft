@@ -28,6 +28,7 @@ pub mod icons;
 mod mail;
 mod mib;
 pub mod pdf;
+mod phone;
 mod physical;
 pub mod png;
 mod services;

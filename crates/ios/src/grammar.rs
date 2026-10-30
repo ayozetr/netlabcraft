@@ -43,6 +43,10 @@ impl Modes {
     pub const OSPF6: Modes = Modes(65536);
     /// `router eigrp`.
     pub const EIGRP: Modes = Modes(131072);
+    /// `telephony-service` (bits 18 and 19 were free; `Modes` is a u32).
+    pub const TELEPHONY: Modes = Modes(1 << 18);
+    /// `ephone-dn N` and `ephone N` (one bit for both; the command checks which).
+    pub const EPHONE: Modes = Modes(1 << 19);
     /// `interface Tunnel N`.
     pub const TUNNEL: Modes = Modes(1 << 20);
     /// `crypto isakmp policy N`.
@@ -73,6 +77,8 @@ impl Modes {
             | 32768
             | 65536
             | 131072
+            | (1 << 18)
+            | (1 << 19)
             | (1 << 20)
             | (1 << 21)
             | (1 << 22)
@@ -573,6 +579,30 @@ pub enum Id {
     IpFtpPassword,
     NoIpFtpLogin,
     StpMode,
+    VoiceTelephonyService,
+    VoiceNoTelephonyService,
+    VoiceMaxEphones,
+    VoiceMaxDn,
+    VoiceSourceAddress,
+    VoiceNoSourceAddress,
+    VoiceAutoAssign,
+    VoiceNoAutoAssign,
+    VoiceEphoneDn,
+    VoiceNoEphoneDn,
+    VoiceNumber,
+    VoiceNoNumber,
+    VoiceEphone,
+    VoiceNoEphone,
+    VoiceMacAddress,
+    VoiceButton,
+    VoiceNoButton,
+    VoiceDhcpOption150,
+    VoiceNoDhcpOption150,
+    SwVoiceVlan,
+    NoSwVoiceVlan,
+    ShowEphone,
+    ShowEphoneDn,
+    ShowTelephony,
 }
 
 use Tok::{Arg, K, Rest};
@@ -593,7 +623,9 @@ const SUBMODES: Modes = Modes::IF
     .or(Modes::EIGRP)
     .or(VPN_MODES)
     .or(QOS_MODES)
-    .or(Modes::OBJECT);
+    .or(Modes::OBJECT)
+    .or(Modes::TELEPHONY)
+    .or(Modes::EPHONE);
 /// Routers, switches and the firewall.
 const BOTH_FW: Modes = Modes::BOTH.or(Modes::FIREWALL);
 const FW: Modes = Modes::FIREWALL;
@@ -1817,6 +1849,56 @@ pub static SPECS: &[Spec] = &[
     spec!(FwClearConn, Modes::EXEC, FW, [K("clear"), K("conn")], "Forget every tracked connection"),
     spec!(FwClearXlate, Modes::EXEC, FW, [K("clear"), K("xlate")], "Forget the dynamic translations"),
     spec!(FwClearAclCounters, Modes::EXEC, FW, [K("clear"), K("access-list"), K("counters")], "Reset access-list hit counts"),
+    // Voice: call control on routers, voice VLANs on switch ports.
+    spec!(VoiceTelephonyService, Modes::CONFIG, Modes::ROUTER, [K("telephony-service")], "Set up call control for IP phones"),
+    spec!(VoiceNoTelephonyService, Modes::CONFIG, Modes::ROUTER, [K("no"), K("telephony-service")], "Turn call control off"),
+    spec!(VoiceMaxEphones, Modes::TELEPHONY, Modes::ROUTER, [K("max-ephones"), Arg("<1-256>")], "How many phones may register"),
+    spec!(VoiceMaxDn, Modes::TELEPHONY, Modes::ROUTER, [K("max-dn"), Arg("<1-256>")], "How many directory numbers may be defined"),
+    spec!(VoiceSourceAddress, Modes::TELEPHONY, Modes::ROUTER, [K("ip"), K("source-address"), Arg("A.B.C.D")], "The address phones register at"),
+    spec!(
+        VoiceSourceAddress,
+        Modes::TELEPHONY,
+        Modes::ROUTER,
+        [K("ip"), K("source-address"), Arg("A.B.C.D"), K("port"), Arg("<1-65535>")],
+        "The address and UDP port phones register at"
+    ),
+    spec!(VoiceNoSourceAddress, Modes::TELEPHONY, Modes::ROUTER, [K("no"), K("ip"), K("source-address")], "Phones register at any address"),
+    spec!(
+        VoiceAutoAssign,
+        Modes::TELEPHONY,
+        Modes::ROUTER,
+        [K("auto"), K("assign"), Arg("<1-1000>"), K("to"), Arg("<1-1000>")],
+        "Hand these directory numbers to phones with no ephone entry"
+    ),
+    spec!(VoiceNoAutoAssign, Modes::TELEPHONY, Modes::ROUTER, [K("no"), K("auto"), K("assign")], "Stop handing out numbers"),
+    spec!(VoiceEphoneDn, Modes::CONFIG, Modes::ROUTER, [K("ephone-dn"), Arg("<1-1000>")], "Define or edit a directory number"),
+    spec!(VoiceNoEphoneDn, Modes::CONFIG, Modes::ROUTER, [K("no"), K("ephone-dn"), Arg("<1-1000>")], "Delete a directory number"),
+    spec!(VoiceNumber, Modes::EPHONE, Modes::ROUTER, [K("number"), Arg("DIGITS")], "The number (under ephone-dn)"),
+    spec!(VoiceNoNumber, Modes::EPHONE, Modes::ROUTER, [K("no"), K("number")], "Remove the number (under ephone-dn)"),
+    spec!(VoiceEphone, Modes::CONFIG, Modes::ROUTER, [K("ephone"), Arg("<1-1000>")], "Define or edit a phone"),
+    spec!(VoiceNoEphone, Modes::CONFIG, Modes::ROUTER, [K("no"), K("ephone"), Arg("<1-1000>")], "Delete a phone"),
+    spec!(VoiceMacAddress, Modes::EPHONE, Modes::ROUTER, [K("mac-address"), Arg("H.H.H")], "The phone's MAC address (under ephone)"),
+    spec!(VoiceButton, Modes::EPHONE, Modes::ROUTER, [K("button"), Arg("BUTTON:DN")], "Put a directory number on a line button (under ephone)"),
+    spec!(VoiceNoButton, Modes::EPHONE, Modes::ROUTER, [K("no"), K("button")], "Clear the line buttons (under ephone)"),
+    spec!(
+        VoiceDhcpOption150,
+        Modes::DHCP,
+        Modes::ROUTER,
+        [K("option"), K("150"), K("ip"), Arg("A.B.C.D")],
+        "Tell IP phones the TFTP server (where they register)"
+    ),
+    spec!(VoiceNoDhcpOption150, Modes::DHCP, Modes::ROUTER, [K("no"), K("option"), K("150")], "Stop telling phones a TFTP server"),
+    spec!(
+        SwVoiceVlan,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("switchport"), K("voice"), K("vlan"), Arg("<1-4094>")],
+        "Phones on this access port send their traffic tagged in this VLAN"
+    ),
+    spec!(NoSwVoiceVlan, Modes::IF, Modes::SWITCH, [K("no"), K("switchport"), K("voice"), K("vlan")], "No voice VLAN on this port"),
+    spec!(ShowEphone, EXECS, Modes::ROUTER, [K("show"), K("ephone")], "Phones: configured and registered"),
+    spec!(ShowEphoneDn, EXECS, Modes::ROUTER, [K("show"), K("ephone-dn")], "Directory numbers and their state"),
+    spec!(ShowTelephony, EXECS, Modes::ROUTER, [K("show"), K("telephony-service")], "Call control settings and counts"),
 ];
 
 /// Why a line didn't parse. Positions are word indexes.
@@ -2056,6 +2138,8 @@ mod tests {
                 Modes::POLICY_MAP,
                 Modes::POLICY_CLASS,
                 Modes::OBJECT,
+                Modes::TELEPHONY,
+                Modes::EPHONE,
             ]
             .into_iter()
             .find(|m| s.modes.has(*m))

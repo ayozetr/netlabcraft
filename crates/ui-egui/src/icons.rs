@@ -271,6 +271,28 @@ pub fn device(p: &Painter, rect: Rect, kind: DeviceKind, _tk: &Tokens) {
             p.rect_stroke(out, 1.0, Stroke::new(1.0, dark), StrokeKind::Inside);
             p.circle_filled(pos2(body.right() - w * 0.1, body.center().y), w * 0.03, Color32::from_rgb(0x8f, 0xf0, 0x8f));
         }
+        DeviceKind::Phone => {
+            // A desk phone: a sloped body with a small screen and a 3x4 key grid, the handset
+            // lying across its left side.
+            let body = vec![
+                pos2(rect.left() + w * 0.12, rect.top() + w * 0.3),
+                pos2(rect.right() - w * 0.08, rect.top() + w * 0.22),
+                pos2(rect.right() - w * 0.02, rect.bottom() - w * 0.12),
+                pos2(rect.left() + w * 0.04, rect.bottom() - w * 0.12),
+            ];
+            p.add(Shape::convex_polygon(body, c, Stroke::new(1.0, dark)));
+            let screen = Rect::from_min_size(pos2(rect.left() + w * 0.42, rect.top() + w * 0.32), vec2(w * 0.4, w * 0.16));
+            p.rect_filled(screen, w * 0.02, Color32::from_rgb(0xd8, 0xf0, 0xe0));
+            for r in 0..4 {
+                for k in 0..3 {
+                    let at = pos2(rect.left() + w * (0.5 + k as f32 * 0.12), rect.top() + w * (0.56 + r as f32 * 0.07));
+                    p.circle_filled(at, w * 0.025, light);
+                }
+            }
+            let handset = Rect::from_min_size(pos2(rect.left() + w * 0.1, rect.top() + w * 0.2), vec2(w * 0.22, w * 0.62));
+            p.rect_filled(handset, w * 0.1, dark);
+            p.rect_filled(handset.shrink(w * 0.04), w * 0.08, shade(c, 0.85));
+        }
         DeviceKind::Hub => {
             // A small flat box with arrows pointing outwards both ways.
             let body = Rect::from_center_size(rect.center(), vec2(w * 0.92, w * 0.36));

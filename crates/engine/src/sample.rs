@@ -111,6 +111,11 @@ pub static SAMPLES: &[Sample] = &[
         description: "A router hands out addresses with DHCP; console, vty and enable are password protected (console: cisco, enable: class).",
     },
     Sample {
+        id: "ip-phones",
+        title: "IP phones with a voice VLAN",
+        description: "Two IP phones, each with a PC plugged into it, share switch ports: the phones talk in voice VLAN 100, the PCs in data VLAN 10. R1 hands out addresses and registers the phones; dial 1002 from Phone1.",
+    },
+    Sample {
         id: "modular",
         title: "Modular routers: serial cards for a WAN link",
         description: "Two modular routers got a 2-port serial card each (fitted while switched off) and are joined over Serial0/1/0; their configurations are saved, so a power cycle keeps them.",
@@ -163,10 +168,13 @@ impl Builder {
         for l in lines.lines().map(str::trim).filter(|l| !l.is_empty()) {
             // Samples start converged: no port spends its 30 s listening and learning.
             self.sim.topology_changed(&self.t);
-            let _ = self.sim.spanning_tree(&self.t, packetcraft_core::VlanId::DEFAULT);
+            let vlans: std::collections::BTreeSet<packetcraft_core::VlanId> = self.t.devices.iter().flat_map(|d| d.vlans.keys().copied()).collect();
+            for v in vlans {
+                let _ = self.sim.spanning_tree(&self.t, v);
+            }
             self.sim.converge_stp();
             let o = packetcraft_ios::execute(&mut self.t, &mut self.sim, d, &mut cli, l);
-            if o.output.starts_with("% ") || o.output.contains("\n% ") {
+            if o.output.starts_with("% ") || o.output.contains("\n% ") || o.output.starts_with("DHCP failed") {
                 return Err(EngineError::Failed(format!("sample: {dev}: `{l}`: {}", o.output)));
             }
         }
@@ -936,6 +944,74 @@ pub fn build(id: &str) -> Result<Topology> {
             )?;
             b.t.add_annotation(300.0, 20.0, "WAN 172.16.0.0/30 over the serial cards")?;
             b.t.notes = "HQ has a 2-port serial card in bay 0/1 and a Gigabit card in bay 0/0; Branch a serial card in bay 0/1 (see each router's Physical tab). To change a card, switch the router off there first: the cable on a card that comes out is unplugged. Both configurations are saved, so switching a router off and on keeps them (try it: `show ip interface brief` before and after).".into();
+        }
+        "ip-phones" => {
+            b.add(DeviceKind::Router, "R1", 360.0, 40.0)?;
+            b.add(DeviceKind::Switch, "S1", 360.0, 160.0)?;
+            b.cable("R1", "g0/0", "S1", "g0/1")?;
+            b.type_in(
+                "S1",
+                "enable
+                configure terminal
+                vlan 10
+                name DATA
+                vlan 100
+                name VOICE
+                exit
+                interface range fa0/1 - 2
+                switchport mode access
+                switchport access vlan 10
+                switchport voice vlan 100
+                interface g0/1
+                switchport mode trunk
+                end",
+            )?;
+            b.type_in(
+                "R1",
+                "enable
+                configure terminal
+                interface g0/0
+                no shutdown
+                interface g0/0.10
+                encapsulation dot1Q 10
+                ip address 192.168.10.1 255.255.255.0
+                interface g0/0.100
+                encapsulation dot1Q 100
+                ip address 192.168.100.1 255.255.255.0
+                exit
+                ip dhcp excluded-address 192.168.10.1
+                ip dhcp excluded-address 192.168.100.1
+                ip dhcp pool DATA
+                network 192.168.10.0 255.255.255.0
+                default-router 192.168.10.1
+                ip dhcp pool VOICE
+                network 192.168.100.0 255.255.255.0
+                default-router 192.168.100.1
+                option 150 ip 192.168.100.1
+                exit
+                telephony-service
+                max-ephones 4
+                max-dn 4
+                ip source-address 192.168.100.1 port 2000
+                auto assign 1 to 4
+                exit
+                ephone-dn 1
+                number 1001
+                ephone-dn 2
+                number 1002
+                end",
+            )?;
+            for (i, x) in [(1, 160.0), (2, 560.0)] {
+                let (phone, pc) = (format!("Phone{i}"), format!("PC{i}"));
+                b.add_model("IP-Phone", &phone, x, 280.0)?;
+                b.cable(&phone, "fa0", "S1", &format!("fa0/{i}"))?;
+                b.add(DeviceKind::Pc, &pc, x, 400.0)?;
+                b.cable(&pc, "fa0", &phone, "fa1")?;
+                b.type_in(&phone, "ipconfig /renew")?;
+                b.type_in(&pc, "ipconfig /renew")?;
+            }
+            b.t.add_annotation(560.0, 140.0, "Data VLAN 10 untagged, voice VLAN 100 tagged")?;
+            b.t.notes = "Each phone takes an address in voice VLAN 100 and learns from DHCP option 150 where to register (R1); its PC, plugged into the phone, gets an address in data VLAN 10. Open Phone1 > Phone, dial 1002 and press Call; on Phone2 press Pick up. `show ephone` and `show ephone-dn` on R1 show the registrations and the call.".into();
         }
         other => return Err(EngineError::BadParams(format!("unknown sample `{other}`"))),
     }

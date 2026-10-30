@@ -76,6 +76,8 @@ pub struct Dhcp {
     pub lease_secs: Option<u32>,
     pub server_id: Option<Ipv4Addr>,
     pub requested: Option<Ipv4Addr>,
+    /// Option 150: TFTP servers IP phones fetch their settings from (the first one).
+    pub tftp: Option<Ipv4Addr>,
 }
 
 impl Dhcp {
@@ -94,6 +96,7 @@ impl Dhcp {
             lease_secs: None,
             server_id: None,
             requested: None,
+            tftp: None,
         }
     }
 
@@ -110,7 +113,7 @@ impl Dhcp {
         b[28..34].copy_from_slice(&self.client_mac.0);
         b.extend_from_slice(&MAGIC);
         b.extend_from_slice(&[53, 1, self.kind.code()]);
-        for (code, v) in [(1u8, self.mask), (3, self.router), (6, self.dns), (54, self.server_id), (50, self.requested)] {
+        for (code, v) in [(1u8, self.mask), (3, self.router), (6, self.dns), (54, self.server_id), (50, self.requested), (150, self.tftp)] {
             if let Some(a) = v {
                 b.push(code);
                 b.push(4);
@@ -163,6 +166,7 @@ impl Dhcp {
                 6 => d.dns = v.get(..4).map(|s| Ipv4Addr::new(s[0], s[1], s[2], s[3])),
                 54 => d.server_id = addr,
                 50 => d.requested = addr,
+                150 if len >= 4 => d.tftp = Some(Ipv4Addr::new(v[0], v[1], v[2], v[3])),
                 51 if len == 4 => d.lease_secs = Some(u32::from_be_bytes([v[0], v[1], v[2], v[3]])),
                 _ => {}
             }
@@ -186,6 +190,7 @@ mod tests {
         d.dns = Some(Ipv4Addr::new(8, 8, 8, 8));
         d.lease_secs = Some(86_400);
         d.server_id = Some(Ipv4Addr::new(192, 168, 1, 1));
+        d.tftp = Some(Ipv4Addr::new(192, 168, 100, 1));
         let b = d.encode();
         assert_eq!(Dhcp::decode(&b).unwrap(), d);
         for n in 0..b.len() {
