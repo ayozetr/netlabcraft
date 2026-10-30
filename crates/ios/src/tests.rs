@@ -2594,7 +2594,10 @@ fn qos_configuration_round_trip_and_modes() {
     let pm = lab.run(r1, "show policy-map WAN");
     assert!(pm.contains("  class VOICE\n    priority 512") && pm.contains("    shape average 2000000"), "{pm}");
     let out = lab.run(r1, "show policy-map interface g0/1");
-    assert!(out.contains("Output policy WAN") && out.contains("priority 512 kbit/s: configured; no congestion is simulated"), "{out}");
+    assert!(
+        out.contains("Output policy WAN") && out.contains("priority 512 kbit/s: queue 0 bytes now (most 0 bytes), 0 packets tail-dropped"),
+        "{out}"
+    );
     // Modes and prompts.
     lab.run(r1, "conf t\nclass-map WEB");
     assert_eq!(lab.prompt(r1), "R1(config-cmap)#");

@@ -744,6 +744,8 @@ pub struct DevState {
     pub ipsec: BTreeMap<Ipv4Addr, vpn::IpsecSa>,
     /// Routers and multilayer switches: QoS class counters and policer buckets.
     pub(crate) qos: qos::QosCounters,
+    /// Output queuing: when each interface's queues last drained (simulated µs).
+    pub(crate) qos_drained: BTreeMap<String, u64>,
     /// The firewall appliance: connections and translations.
     pub fw: firewall::FwState,
 }
@@ -907,6 +909,8 @@ pub struct Sim {
     pmks: BTreeMap<(String, String), [u8; 32]>,
     air_seq: u16,
     capwap_seq: u8,
+    /// Queuing delay for the frame being sent now (output QoS queues), taken by the next emit.
+    tx_delay: u64,
 }
 
 impl Sim {
@@ -1166,7 +1170,8 @@ impl Sim {
         if self.err_disabled_now(to.device, to.port) {
             return false;
         }
-        self.push_hop(t, self.now + LINK_DELAY_US, from, to, frame, hops);
+        let wait = std::mem::take(&mut self.tx_delay);
+        self.push_hop(t, self.now + LINK_DELAY_US + wait, from, to, frame, hops);
         true
     }
 
@@ -2333,6 +2338,7 @@ impl Sim {
             return self.transmit(t, d, &o2, nh2, esp);
         }
         // An output service policy, on the packet as it goes on the wire.
+        self.tx_delay = 0;
         let datagram = if d.qos.applied.is_empty() { datagram } else { self.qos_apply(d, &out.name, false, datagram)? };
         // A serial link is point to point: no address to resolve.
         if out.port != SVI_PORT && t.is_serial(End { device: d.id, port: out.port }) {

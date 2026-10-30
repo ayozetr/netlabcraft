@@ -450,7 +450,7 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             } else {
                 pc.bandwidth = Some(rate);
             }
-            Ok("Note: kept and counted; links here never congest, so no queue forms and no queuing delay is simulated".into())
+            Ok("Note: queued in an output policy when the interface is congested (it sends at its clock rate, bandwidth or speed)".into())
         }
         Id::NoQosPriority => {
             current(c)?.priority = None;
@@ -580,6 +580,9 @@ fn plural(n: u64, what: &str) -> String {
 /// One policy's per-class report on one interface and direction.
 fn policy_report(s: &mut String, sim: &Sim, d: &Device, iface: &str, input: bool, name: &str) {
     let _ = writeln!(s, "  {} policy {name}", if input { "Input" } else { "Output" });
+    if !input {
+        let _ = writeln!(s, "    Link rate {} kbit/s", packetcraft_sim::qos::link_rate_bps(d, iface) / 1_000);
+    }
     let Some(pm) = d.qos.policy_map(name) else {
         let _ = writeln!(s, "    (the policy map does not exist: nothing is done)");
         return;
@@ -631,11 +634,21 @@ fn policy_report(s: &mut String, sim: &Sim, d: &Device, iface: &str, input: bool
                     Rate::Kbps(k) => format!("{k} kbit/s"),
                     Rate::Percent(p) => format!("{p}% of the link"),
                 };
-                let _ = writeln!(s, "      {what} {amount}: configured; no congestion is simulated, so no queue forms");
+                if input {
+                    let _ = writeln!(s, "      {what} {amount}: only output policies queue");
+                } else {
+                    let _ = writeln!(
+                        s,
+                        "      {what} {amount}: queue {} now (most {}), {} tail-dropped",
+                        plural(st.queued_bytes(), "byte"),
+                        plural(st.max_queued, "byte"),
+                        plural(st.tail_drops, "packet")
+                    );
+                }
             }
         }
         if let Some(b) = pc.shape {
-            let _ = writeln!(s, "      shape average {b} bit/s: configured; no congestion is simulated, so nothing is delayed");
+            let _ = writeln!(s, "      shape average {b} bit/s: configured, not simulated (nothing is delayed by it)");
         }
     }
 }
