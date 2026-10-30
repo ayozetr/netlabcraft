@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d4479"/>
+      <stop offset="1" stop-color="#0d2547"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <g stroke="#9fc3ea" stroke-width="18" stroke-linecap="round">
+    <line x1="256" y1="132" x2="140" y2="352"/>
+    <line x1="140" y1="352" x2="372" y2="352"/>
+  </g>
+  <line x1="256" y1="132" x2="372" y2="352" stroke="#ffffff" stroke-width="22" stroke-linecap="round"/>
+  <g fill="#ffffff" stroke="#0d2547" stroke-width="10">
+    <circle cx="256" cy="132" r="54"/>
+    <circle cx="140" cy="352" r="54"/>
+    <circle cx="372" cy="352" r="54"/>
+  </g>
+  <g fill="#1d4479">
+    <rect x="230" y="116" width="52" height="10" rx="5"/>
+    <rect x="230" y="138" width="52" height="10" rx="5"/>
+    <rect x="114" y="336" width="52" height="10" rx="5"/>
+    <rect x="114" y="358" width="52" height="10" rx="5"/>
+    <rect x="346" y="336" width="52" height="10" rx="5"/>
+    <rect x="346" y="358" width="52" height="10" rx="5"/>
+  </g>
+  <g transform="translate(314 242) rotate(62)">
+    <rect x="-40" y="-28" width="80" height="56" rx="10" fill="#f2a92b" stroke="#0d2547" stroke-width="8"/>
+    <path d="M -32 -18 L 0 6 L 32 -18" fill="none" stroke="#0d2547" stroke-width="8" stroke-linejoin="round"/>
+  </g>
+</svg>

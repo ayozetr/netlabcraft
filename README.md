@@ -99,6 +99,13 @@ cargo xtask ci                                                # fmt, clippy, tes
 
 Click a device to open its window; drag to move it; scroll to pan and Ctrl+scroll to zoom.
 
+### Install on Linux (your user only)
+
+```sh
+packaging/linux/install.sh            # builds, then installs to ~/.local: menu entry, icon, .pcraft files
+packaging/linux/install.sh --remove   # uninstalls
+```
+
 ### Web
 
 ```sh
@@ -166,7 +173,8 @@ same reason it does not open `.pkt` files; see [`docs/decisions.md`](docs/decisi
 PacketCraft is dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your
 option. Copyright (c) 2026 the PacketCraft contributors. Required notices are in [NOTICE](NOTICE).
 
-Every icon and device picture is drawn in code and is original; the sample labs and every
+The app icon (`assets/app-icon/`) is original artwork; every other icon and device picture is
+drawn in code and is original; the sample labs and every
 screenshot in this README were made with PacketCraft itself. Assets and their licences are listed
 in [ATTRIBUTION.md](ATTRIBUTION.md). Contributors: [`docs/contributors.md`](docs/contributors.md).
 

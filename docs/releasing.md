@@ -1,6 +1,6 @@
 # Releasing PacketCraft
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** major (created)
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (app icon, Linux desktop integration)
 
 PacketCraft has **no release yet**. This page records how releases will work, following the
 shared craftrules release playbook (`release/playbook.md`) that the other Craft apps implement,
@@ -24,8 +24,8 @@ and what is missing before the first one.
 
 | Step | State | Estimate |
 |---|---|---|
-| App icon (original artwork) and `assets/app-icon/` with its row in `ATTRIBUTION.md` | ❌ | 2–4 h |
-| `packaging/` (macOS bundle, Windows MSI, Linux `.desktop`/metainfo/Flatpak, FreeBSD, web) copied from a sibling app and renamed | ❌ | 6–10 h |
+| App icon (original artwork) and `assets/app-icon/` with its row in `ATTRIBUTION.md` | ✅ `packetcraft.svg` and its renderings (`packaging/icons.sh`); the window icon and the web favicon use it | — |
+| `packaging/` (macOS bundle, Windows MSI, Linux `.desktop`/metainfo/Flatpak, FreeBSD, web) | 🟡 Linux: `.desktop`, the `.pcraft` MIME type and a per-user `install.sh`. The rest waits for the app ID (reverse-DNS name), which depends on where the project will live; the siblings' packaging carries their own IDs and brand, so it is adapted, not copied as is | 5–8 h |
 | `.github/workflows/` (ci, release, packaging lint) | ❌ | 3–5 h |
 | About window with version, licences and contributors ([`contributors.md`](contributors.md)) | ❌ | 3–5 h |
 | A public repository and a home for the project | ❌ | owner's decision |
@@ -34,4 +34,5 @@ and what is missing before the first one.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | App icon, window icon and favicon; Linux desktop entry, MIME type and per-user installer. |
 | 2026-10-30 | major | Created: release plan and what the first release still needs. |

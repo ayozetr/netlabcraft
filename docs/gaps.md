@@ -18,7 +18,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 | 3 | **Wireless depth:** wireless routers (home gateway with DHCP and NAT), WLC with lightweight APs, 802.1X/RADIUS, 802.11 frames in Simulation mode | CCNA 2 | 25–40 h |
 | 4 | **Services:** email (SMTP/POP3 with the PC Email app), SNMP, TACACS+ | CCNA 3, network management labs | 22–35 h |
 | 5 | **More languages and full coverage:** messages built from parts, sample notes and activities in Spanish; more interface languages | Non-English students | 8–14 h |
-| 6 | **Packaging and first release:** icon, installers, workflows, About window ([releasing.md](releasing.md)) | Everyone who isn't a developer | 14–24 h |
+| 6 | **Packaging and first release:** installers for Windows, macOS, FreeBSD and Flatpak, workflows, contributors in the About window ([releasing.md](releasing.md)); the app ID and the project's home are the owner's decision | Everyone who isn't a developer | 10–18 h |
 | 7 | **Workspace:** drawing freeform, clusters, physical view, print/export the workspace | Everyone, occasionally | 50–75 h |
 | 8 | **Device families:** modular routers, ASA, IoT, phones | Specialised labs | 80–120 h |
 | 9 | **EIGRP, VPN (GRE/IPsec), QoS** | CCNA 3 extras | 40–60 h |
@@ -27,6 +27,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Packaging narrowed: app icon, Linux desktop entry and installer. |
 | 2026-10-30 | minor | Console narrowed: `debug ip packet`, `debug ip nat`, `debug ip dhcp server events`. |
 | 2026-10-30 | minor | Services narrowed: FTP. |
 | 2026-10-30 | minor | Services narrowed: AAA with RADIUS. |

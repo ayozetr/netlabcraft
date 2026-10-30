@@ -190,6 +190,18 @@ impl eframe::App for App {
     }
 }
 
+/// The window icon (the hicolor 256 px rendering of `assets/app-icon/packetcraft.svg`).
+fn icon() -> egui::IconData {
+    let bytes = include_bytes!("../../../assets/app-icon/hicolor/256x256/apps/packetcraft.png");
+    match image::load_from_memory_with_format(bytes, image::ImageFormat::Png) {
+        Ok(img) => {
+            let img = img.to_rgba8();
+            egui::IconData { width: img.width(), height: img.height(), rgba: img.into_raw() }
+        }
+        Err(_) => egui::IconData::default(),
+    }
+}
+
 fn main() -> eframe::Result {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut session = Session::new();
@@ -222,7 +234,8 @@ fn main() -> eframe::Result {
             .with_title(title.clone())
             .with_inner_size([1280.0, 820.0])
             .with_min_inner_size([720.0, 480.0])
-            .with_app_id("packetcraft"),
+            .with_app_id("packetcraft")
+            .with_icon(icon()),
         ..Default::default()
     };
     eframe::run_native(
