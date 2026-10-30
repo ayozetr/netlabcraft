@@ -308,6 +308,8 @@ pub enum Id {
     NoAcl6EntryLine,
     TrafficFilter,
     NoTrafficFilter,
+    Ipv6DhcpRelay,
+    NoIpv6DhcpRelay,
     ShowIpv6AccessList,
     IpOspfCost,
     NoIpOspfCost,
@@ -854,6 +856,20 @@ pub static SPECS: &[Spec] = &[
         "Filter IPv6 packets with an access list"
     ),
     spec!(NoTrafficFilter, ANY_IF, Modes::BOTH, [K("no"), K("ipv6"), K("traffic-filter"), Arg("WORD"), Arg("{in|out}")], "Stop filtering"),
+    spec!(
+        Ipv6DhcpRelay,
+        ANY_IF,
+        Modes::BOTH,
+        [K("ipv6"), K("dhcp"), K("relay"), K("destination"), Arg("X:X::X")],
+        "Pass this interface's DHCPv6 clients on to a server"
+    ),
+    spec!(
+        NoIpv6DhcpRelay,
+        ANY_IF,
+        Modes::BOTH,
+        [K("no"), K("ipv6"), K("dhcp"), K("relay"), K("destination"), Arg("X:X::X")],
+        "Stop relaying to that server"
+    ),
     spec!(ShowIpv6AccessList, EXECS, Modes::BOTH, [K("show"), K("ipv6"), K("access-list")], "IPv6 access lists and their matches"),
     spec!(AccessClass, Modes::LINE, Modes::BOTH, [K("access-class"), Arg("<1-99>|WORD"), K("in")], "Only logins this list permits (vty lines)"),
     spec!(NoAccessClass, Modes::LINE, Modes::BOTH, [K("no"), K("access-class"), Rest("[list in]")], "Remove the login filter"),

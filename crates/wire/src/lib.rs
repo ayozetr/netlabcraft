@@ -592,6 +592,24 @@ pub fn summarize(bytes: &[u8]) -> (Protocol, String) {
         },
         ipv6::ETHERTYPE_IPV6 => match ipv6::Ipv6::decode(&f.payload) {
             Ok(ip) if ip.next_header == PROTO_UDP => match dhcp6::udp6_decode(ip.src, ip.dst, &ip.payload) {
+                Ok((_, dp, body))
+                    if [dhcp6::CLIENT_PORT, dhcp6::SERVER_PORT].contains(&dp)
+                        && let Some(r) = dhcp6::Relay::decode(&body) =>
+                {
+                    match r {
+                        Ok(r) => (
+                            Protocol::Dhcp,
+                            format!(
+                                "DHCPv6 {} ({}) {} → {}{tag}",
+                                if r.reply { "Relay-reply" } else { "Relay-forward" },
+                                dhcp6::Dhcp6::decode(&r.message).map_or("?", |m| m.kind.name()),
+                                ip.src,
+                                ip.dst
+                            ),
+                        ),
+                        Err(e) => (Protocol::Dhcp, format!("DHCPv6 relay ({e}){tag}")),
+                    }
+                }
                 Ok((_, dp, body)) if [dhcp6::CLIENT_PORT, dhcp6::SERVER_PORT].contains(&dp) => match dhcp6::Dhcp6::decode(&body) {
                     Ok(m) => (
                         Protocol::Dhcp,

@@ -627,6 +627,10 @@ pub struct Ipv6Conf {
     /// Routers: `ipv6 dhcp server POOL` on this interface.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dhcp_server: Option<String>,
+    /// Routers: `ipv6 dhcp relay destination X`: DHCPv6 servers this interface's clients are
+    /// relayed to.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dhcp_relay: Vec<Ipv6Addr>,
     /// Routers: `ipv6 nd managed-config-flag` (hosts take addresses from DHCPv6).
     #[serde(default)]
     pub nd_managed: bool,

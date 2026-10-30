@@ -312,6 +312,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no {permit\|deny} ...` |  | router | Remove a line |
 | `ipv6 traffic-filter WORD {in\|out}` | interface, subinterface | router, switch | Filter IPv6 packets with an access list |
 | `no ipv6 traffic-filter WORD {in\|out}` | interface, subinterface | router, switch | Stop filtering |
+| `ipv6 dhcp relay destination X:X::X` | interface, subinterface | router, switch | Pass this interface's DHCPv6 clients on to a server |
+| `no ipv6 dhcp relay destination X:X::X` | interface, subinterface | router, switch | Stop relaying to that server |
 | `show ipv6 access-list` | user, privileged | router, switch | IPv6 access lists and their matches |
 | `access-class <1-99>\|WORD in` |  | router, switch | Only logins this list permits (vty lines) |
 | `no access-class [list in]` |  | router, switch | Remove the login filter |

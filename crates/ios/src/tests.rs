@@ -1546,6 +1546,34 @@ fn dhcpv6_by_typing() {
 }
 
 #[test]
+fn dhcpv6_relay_by_typing() {
+    // The client's router relays to a DHCPv6 server one link away.
+    let mut lab = Lab::new();
+    let server = lab.add(DeviceKind::Router);
+    let relay = lab.add(DeviceKind::Router);
+    let pc = lab.add(DeviceKind::Pc);
+    lab.cable(server, "g0/0", relay, "g0/0");
+    lab.cable(pc, "fa0", relay, "g0/1");
+    lab.run(
+        server,
+        "en\nconf t\nipv6 unicast-routing\nipv6 dhcp pool FAR\naddress prefix 2001:db8:2::/64\ndns-server 2001:db8::53\nexit\nint g0/0\nipv6 address 2001:db8:12::1/64\nipv6 dhcp server FAR\nno shut\nexit\nipv6 route 2001:db8:2::/64 2001:db8:12::2\nend",
+    );
+    lab.run(
+        relay,
+        "en\nconf t\nipv6 unicast-routing\nint g0/0\nipv6 address 2001:db8:12::2/64\nno shut\nint g0/1\nipv6 address 2001:db8:2::1/64\nipv6 nd managed-config-flag\nipv6 dhcp relay destination 2001:db8:12::1\nno shut\nend",
+    );
+    let got = lab.run(pc, "ipv6config auto");
+    assert!(got.contains("2001:db8:2::10/64") && got.contains("stateful DHCPv6") && got.contains("2001:db8::53"), "{got}");
+    assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("DHCPv6 Relay-forward (Solicit)")));
+    assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("DHCPv6 Relay-reply (Reply)")));
+    assert!(lab.run(server, "show ipv6 dhcp binding").contains("2001:db8:2::10"));
+    assert!(lab.run(relay, "show running-config").contains(" ipv6 dhcp relay destination 2001:db8:12::1"));
+    assert!(lab.run(pc, "ping 2001:db8:12::1").contains("4 answered"));
+    lab.run(relay, "conf t\nint g0/1");
+    assert!(lab.try_run(relay, "ipv6 dhcp relay destination fe80::1").contains("global"));
+}
+
+#[test]
 fn ntp_syslog_and_tftp_by_typing() {
     let mut lab = Lab::new();
     let r = lab.add(DeviceKind::Router);

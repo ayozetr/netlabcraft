@@ -16,7 +16,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 | 1 | **Activity depth:** variable values per student (addresses that differ per file), an answer network to compare against, percentages per section | Instructors | 20–35 h |
 | 2 | **Console coverage:** `debug ip packet`, NAT and DHCP debugs; going through the CCNA 1 labs command by command | CCNA 1 from the first lab | 4–8 h |
 | 3 | **Wireless depth:** wireless routers (home gateway with DHCP and NAT), WLC with lightweight APs, 802.1X/RADIUS, 802.11 frames in Simulation mode | CCNA 2 | 25–40 h |
-| 4 | **IPv6 depth:** OSPFv3, DHCPv6 relay | CCNA 2–3 | 18–28 h |
+| 4 | **IPv6 depth:** OSPFv3 | CCNA 2–3 | 12–18 h |
 | 5 | **Services:** FTP, email (SMTP/POP3 with the PC Email app), SNMP, AAA (RADIUS/TACACS+) | CCNA 3, network management labs | 40–60 h |
 | 6 | **More languages and full coverage:** messages built from parts, sample notes and activities in Spanish; more interface languages | Non-English students | 8–14 h |
 | 7 | **Packaging and first release:** icon, installers, workflows, About window ([releasing.md](releasing.md)) | Everyone who isn't a developer | 14–24 h |
@@ -28,6 +28,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | IPv6 depth narrowed: DHCPv6 relay. |
 | 2026-10-30 | minor | IPv6 depth narrowed: IPv6 on subinterfaces, VLAN interfaces and multilayer switches. |
 | 2026-10-30 | minor | Done: OSPF stub and totally stubby areas, `area range`, RIP on multilayer switches (NSSA left out: beyond CCNA). |
 | 2026-10-30 | minor | Done: protocol frames in Simulation mode (OSPF database exchange added; CDP, DTP and PAgP formats aren't public). |

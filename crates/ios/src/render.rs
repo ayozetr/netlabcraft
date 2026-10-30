@@ -1036,6 +1036,9 @@ fn ipv6_lines(s: &mut String, c: &packetcraft_model::Ipv6Conf) {
     if let Some(pool) = &c.dhcp_server {
         let _ = writeln!(s, " ipv6 dhcp server {pool}");
     }
+    for a in &c.dhcp_relay {
+        let _ = writeln!(s, " ipv6 dhcp relay destination {a}");
+    }
     if c.nd_managed {
         let _ = writeln!(s, " ipv6 nd managed-config-flag");
     }

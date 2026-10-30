@@ -2,7 +2,8 @@
 //!
 //! Messages: Solicit, Advertise, Request, Reply, Information-request. Options: client and
 //! server identifiers (DUID-LL), IA_NA with one IA Address, DNS servers (RFC 3646) and the
-//! domain search list.
+//! domain search list. Relay agents wrap client messages in Relay-forward and unwrap the
+//! server's Relay-reply (§9).
 
 use std::net::Ipv6Addr;
 
@@ -67,6 +68,50 @@ const OPT_IA_NA: u16 = 3;
 const OPT_IAADDR: u16 = 5;
 const OPT_DNS: u16 = 23;
 const OPT_DOMAINS: u16 = 24;
+
+const OPT_RELAY_MSG: u16 = 9;
+
+/// A Relay-forward (relay agent to server) or Relay-reply (server to relay agent).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Relay {
+    pub reply: bool,
+    pub hops: u8,
+    /// An address of the relay's interface towards the client: it picks the client's link.
+    pub link: Ipv6Addr,
+    /// The client's address (its link-local one).
+    pub peer: Ipv6Addr,
+    /// The message relayed, encoded.
+    pub message: Vec<u8>,
+}
+
+impl Relay {
+    pub fn encode(&self) -> Vec<u8> {
+        let mut v = vec![if self.reply { 13 } else { 12 }, self.hops];
+        v.extend_from_slice(&self.link.octets());
+        v.extend_from_slice(&self.peer.octets());
+        v.extend(option(OPT_RELAY_MSG, &self.message));
+        v
+    }
+
+    /// `None` when the message isn't a relay message at all.
+    pub fn decode(b: &[u8]) -> Option<Result<Relay>> {
+        let reply = match b.first()? {
+            12 => false,
+            13 => true,
+            _ => return None,
+        };
+        Some(Relay::fields(b, reply))
+    }
+
+    fn fields(b: &[u8], reply: bool) -> Result<Relay> {
+        let t = || WireError::Truncated("dhcpv6 relay");
+        let addr = |at: usize| b.get(at..at + 16).and_then(|o| <[u8; 16]>::try_from(o).ok()).map(Ipv6Addr::from).ok_or_else(t);
+        let (link, peer) = (addr(2)?, addr(18)?);
+        let message =
+            options(b.get(34..).unwrap_or_default()).into_iter().find(|(c, _)| *c == OPT_RELAY_MSG).map(|(_, m)| m.to_vec()).ok_or_else(t)?;
+        Ok(Relay { reply, hops: *b.get(1).ok_or_else(t)?, link, peer, message })
+    }
+}
 
 fn option(code: u16, body: &[u8]) -> Vec<u8> {
     let len = u16::try_from(body.len()).unwrap_or(u16::MAX);
@@ -200,6 +245,13 @@ mod tests {
             let _ = Dhcp6::decode(&b[..n]);
         }
         assert!(Dhcp6::decode(&[99, 0, 0, 0]).is_err());
+        let r = Relay { reply: false, hops: 0, link: "2001:db8:1::1".parse().unwrap(), peer: "fe80::1".parse().unwrap(), message: b.clone() };
+        let rb = r.encode();
+        assert_eq!(Relay::decode(&rb).unwrap().unwrap(), r);
+        assert!(Relay::decode(&b).is_none());
+        for n in 0..rb.len() {
+            let _ = Relay::decode(&rb[..n]);
+        }
     }
 }
 

@@ -1498,6 +1498,23 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let exists = c.d()?.acls6.iter().any(|a| a.name == name);
             Ok(if add && !exists { format!("IPv6 access list {name} doesn't exist yet: until it does, everything passes.") } else { String::new() })
         }
+        Id::Ipv6DhcpRelay | Id::NoIpv6DhcpRelay => {
+            let a: std::net::Ipv6Addr = arg(0).parse().map_err(|_| format!("% `{}` is not an IPv6 address", arg(0)))?;
+            if a.is_multicast() || a.is_unspecified() || packetcraft_core::Ipv6Net::is_link_local(a) {
+                return Err("% The server's global address".into());
+            }
+            let add = spec.id == Id::Ipv6DhcpRelay;
+            c.each_v6(|v6, _, name| {
+                v6.dhcp_relay.retain(|x| *x != a);
+                if add {
+                    if v6.dhcp_relay.len() >= 8 {
+                        return Err(format!("% {name} relays to 8 servers already"));
+                    }
+                    v6.dhcp_relay.push(a);
+                }
+                Ok(())
+            })
+        }
         Id::ShowIpv6AccessList => Ok(render::ipv6_access_lists(c.sim, c.d()?)),
         Id::AccessClass | Id::NoAccessClass => {
             let Mode::Line(vty) = c.cli.mode else { return Err("% Not in line mode".into()) };

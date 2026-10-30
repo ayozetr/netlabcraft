@@ -244,7 +244,7 @@ impl Sim {
         }
         let router = routes6(d);
         let all = l3_ifaces6(d);
-        let serves = conf6(d, &ifc).is_some_and(|c| c.dhcp_server.is_some());
+        let serves = conf6(d, &ifc).is_some_and(|c| c.dhcp_server.is_some() || !c.dhcp_relay.is_empty());
         let joined = |g: Ipv6Addr| {
             g == ALL_NODES
                 || (router && g == ALL_ROUTERS)
@@ -580,7 +580,23 @@ impl Sim {
     /// DHCPv6 messages: a server's answers to clients on this interface, or a client's replies.
     fn udp6_in(&mut self, t: &Topology, d: &Device, ifc: &L3If6, ip: Ipv6) -> Result<(), String> {
         let (_, dst_port, body) = dhcp6::udp6_decode(ip.src, ip.dst, &ip.payload).map_err(|e| e.to_string())?;
+        if dst_port == dhcp6::SERVER_PORT
+            && let Some(r) = dhcp6::Relay::decode(&body)
+        {
+            let r = r.map_err(|e| e.to_string())?;
+            return if r.reply { self.dhcp6_relay_back(t, d, r) } else { self.dhcp6_serve_relayed(t, d, ifc, &ip, r) };
+        }
         let msg = Dhcp6::decode(&body).map_err(|e| e.to_string())?;
+        let conf = conf6(d, ifc).cloned().unwrap_or_default();
+        // A relay agent passes clients' messages on to its servers.
+        if dst_port == dhcp6::SERVER_PORT && conf.dhcp_server.is_none() && !conf.dhcp_relay.is_empty() {
+            let link = ifc.addresses.first().map_or(Ipv6Addr::UNSPECIFIED, |n| n.addr);
+            let fwd = dhcp6::Relay { reply: false, hops: 0, link, peer: ip.src, message: body };
+            for server in conf.dhcp_relay {
+                self.udp6_send(t, d, server, dhcp6::SERVER_PORT, dhcp6::SERVER_PORT, &fwd.encode())?;
+            }
+            return Ok(());
+        }
         match dst_port {
             dhcp6::CLIENT_PORT if d.kind.is_host() => {
                 let st = self.st(d.id);
@@ -590,20 +606,7 @@ impl Sim {
                 Ok(())
             }
             dhcp6::SERVER_PORT => {
-                let pool_name = conf6(d, ifc).and_then(|c| c.dhcp_server.clone()).ok_or("no DHCPv6 server on this interface")?;
-                let pool =
-                    d.dhcp6_pools.iter().find(|p| p.name == pool_name).cloned().ok_or_else(|| format!("DHCPv6 pool {pool_name} doesn't exist"))?;
-                let client = msg.client.ok_or("DHCPv6 message without a client id")?;
-                let ia = match (msg.kind, msg.ia, pool.prefix) {
-                    (dhcp6::Kind::Solicit | dhcp6::Kind::Request, Some((iaid, _)), Some(prefix)) => {
-                        let addr = self.dhcp6_address(d, client, prefix, &pool.name, msg.kind == dhcp6::Kind::Request)?;
-                        Some((iaid, Some(addr)))
-                    }
-                    _ => None,
-                };
-                let kind = if msg.kind == dhcp6::Kind::Solicit { dhcp6::Kind::Advertise } else { dhcp6::Kind::Reply };
-                let reply =
-                    Dhcp6 { kind, xid: msg.xid, client: Some(client), server: Some(ifc.mac), ia, dns: pool.dns.clone(), domain: pool.domain.clone() };
+                let reply = self.dhcp6_serve(d, ifc, &msg, None)?;
                 let src = ifc.link_local;
                 let udp = dhcp6::udp6_encode(src, ip.src, dhcp6::SERVER_PORT, dhcp6::CLIENT_PORT, &reply.encode());
                 let packet = Ipv6 { hop_limit: 64, next_header: packetcraft_wire::PROTO_UDP, src, dst: ip.src, payload: udp };
@@ -611,6 +614,59 @@ impl Sim {
             }
             p => Err(format!("UDP port {p} not open here")),
         }
+    }
+
+    /// A server's answer to a client message: from the pool whose prefix holds `link` (a
+    /// relayed message), else the interface's `ipv6 dhcp server` pool.
+    fn dhcp6_serve(&mut self, d: &Device, ifc: &L3If6, msg: &Dhcp6, link: Option<Ipv6Addr>) -> Result<Dhcp6, String> {
+        let by_link = link.and_then(|l| d.dhcp6_pools.iter().find(|p| p.prefix.is_some_and(|n| n.contains(l))));
+        let pool = match by_link {
+            Some(p) => p.clone(),
+            None => {
+                let name = conf6(d, ifc).and_then(|c| c.dhcp_server.clone()).ok_or("no DHCPv6 server on this interface")?;
+                d.dhcp6_pools.iter().find(|p| p.name == name).cloned().ok_or_else(|| format!("DHCPv6 pool {name} doesn't exist"))?
+            }
+        };
+        let client = msg.client.ok_or("DHCPv6 message without a client id")?;
+        let ia = match (msg.kind, msg.ia, pool.prefix) {
+            (dhcp6::Kind::Solicit | dhcp6::Kind::Request, Some((iaid, _)), Some(prefix)) => {
+                let addr = self.dhcp6_address(d, client, prefix, &pool.name, msg.kind == dhcp6::Kind::Request)?;
+                Some((iaid, Some(addr)))
+            }
+            _ => None,
+        };
+        let kind = if msg.kind == dhcp6::Kind::Solicit { dhcp6::Kind::Advertise } else { dhcp6::Kind::Reply };
+        Ok(Dhcp6 { kind, xid: msg.xid, client: Some(client), server: Some(ifc.mac), ia, dns: pool.dns.clone(), domain: pool.domain.clone() })
+    }
+
+    /// Sends a UDP datagram this device originates, from the address of the interface it leaves by.
+    fn udp6_send(&mut self, t: &Topology, d: &Device, dst: Ipv6Addr, sport: u16, dport: u16, payload: &[u8]) -> Result<(), String> {
+        let (out, _) = route6(t, d, dst, None).ok_or_else(|| format!("no IPv6 route to {dst}"))?;
+        let src = out.source_for(dst);
+        let udp = dhcp6::udp6_encode(src, dst, sport, dport, payload);
+        self.send_ip6(t, d, Ipv6 { hop_limit: 64, next_header: packetcraft_wire::PROTO_UDP, src, dst, payload: udp }, None)
+    }
+
+    /// A server answering a relayed message: the answer goes back to the relay, wrapped.
+    fn dhcp6_serve_relayed(&mut self, t: &Topology, d: &Device, ifc: &L3If6, ip: &Ipv6, r: dhcp6::Relay) -> Result<(), String> {
+        let inner = Dhcp6::decode(&r.message).map_err(|e| e.to_string())?;
+        let answer = self.dhcp6_serve(d, ifc, &inner, Some(r.link))?;
+        let back = dhcp6::Relay { reply: true, hops: r.hops, link: r.link, peer: r.peer, message: answer.encode() };
+        self.udp6_send(t, d, ip.src, dhcp6::SERVER_PORT, dhcp6::SERVER_PORT, &back.encode())
+    }
+
+    /// A relay agent passing the server's answer to the client it came for.
+    fn dhcp6_relay_back(&mut self, t: &Topology, d: &Device, r: dhcp6::Relay) -> Result<(), String> {
+        let ifs = up_ifaces6(t, d);
+        let out = ifs
+            .iter()
+            .find(|i| i.addresses.iter().any(|a| a.addr == r.link))
+            .or_else(|| ifs.iter().find(|i| conf6(d, i).is_some_and(|c| !c.dhcp_relay.is_empty())))
+            .cloned()
+            .ok_or("no interface for this relayed answer")?;
+        let src = out.link_local;
+        let udp = dhcp6::udp6_encode(src, r.peer, dhcp6::SERVER_PORT, dhcp6::CLIENT_PORT, &r.message);
+        self.send_ip6(t, d, Ipv6 { hop_limit: 64, next_header: packetcraft_wire::PROTO_UDP, src, dst: r.peer, payload: udp }, Some(&out))
     }
 
     /// The address a client gets from a pool: the one it already has, else the first free
