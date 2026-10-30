@@ -1,5 +1,6 @@
 //! The browser shell: file picker, downloads and the eframe web runner.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use packetcraft_engine::Session;
@@ -24,6 +25,23 @@ enum Target {
 struct WebShell {
     app: PacketApp,
     inbox: Inbox,
+    /// Unsaved changes, read by the page's `beforeunload` handler.
+    dirty: Arc<AtomicBool>,
+}
+
+/// Makes the browser ask before closing or reloading the tab while the lab has unsaved
+/// changes (browsers show their own wording; the text is only a hint).
+fn guard_unsaved_changes(dirty: Arc<AtomicBool>) {
+    let Some(window) = web_sys::window() else { return };
+    let handler = wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::BeforeUnloadEvent)>::new(move |e: web_sys::BeforeUnloadEvent| {
+        if dirty.load(Ordering::Relaxed) {
+            e.prevent_default();
+            e.set_return_value("The lab has unsaved changes.");
+        }
+    });
+    window.set_onbeforeunload(Some(handler.as_ref().unchecked_ref()));
+    // The page lives as long as the tab: the handler is never dropped.
+    handler.forget();
 }
 
 fn query() -> String {
@@ -58,6 +76,7 @@ impl eframe::App for WebShell {
             }
         }
         self.app.ui(ui);
+        self.dirty.store(self.app.session.dirty, Ordering::Relaxed);
         for r in self.app.take_requests() {
             match r {
                 UiRequest::Open => {
@@ -141,7 +160,9 @@ pub fn start() {
                     let _ = session.execute("file.new", serde_json::json!({"sample": sample}));
                     let app = PacketApp::new(session);
                     app.apply_theme(&cc.egui_ctx);
-                    Ok(Box::new(WebShell { app, inbox: Inbox::default() }))
+                    let dirty = Arc::new(AtomicBool::new(false));
+                    guard_unsaved_changes(dirty.clone());
+                    Ok(Box::new(WebShell { app, inbox: Inbox::default(), dirty }))
                 }),
             )
             .await;

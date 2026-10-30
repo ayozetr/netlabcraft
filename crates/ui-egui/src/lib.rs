@@ -113,6 +113,8 @@ pub struct UiState {
     pub clipboard: Option<DeviceId>,
     /// The workspace note being edited, and its text.
     pub editing_note: Option<(u32, String)>,
+    /// Labs opened or saved recently, newest first (the desktop shell fills it).
+    pub recent: Vec<String>,
     /// Activity instructions and wizard.
     pub activity: activity::ActivityView,
     canvas: canvas::CanvasState,
@@ -140,6 +142,7 @@ impl Default for UiState {
             pointer: None,
             clipboard: None,
             editing_note: None,
+            recent: Vec::new(),
             activity: activity::ActivityView::default(),
             canvas: canvas::CanvasState::default(),
         }
@@ -555,6 +558,17 @@ impl PacketApp {
                 });
                 if ui.button("Open...").clicked() {
                     self.requests.push(UiRequest::Open);
+                }
+                if !self.ui.recent.is_empty() {
+                    ui.menu_button("Open Recent", |ui| {
+                        for p in self.ui.recent.clone() {
+                            let name = std::path::Path::new(&p).file_name().map_or(p.clone(), |n| n.to_string_lossy().to_string());
+                            if ui.button(name).on_hover_text(&p).clicked() {
+                                self.open_path(&p);
+                                ui.close();
+                            }
+                        }
+                    });
                 }
                 ui.separator();
                 if ui.button("Save").clicked() {

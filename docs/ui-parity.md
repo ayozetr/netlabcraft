@@ -9,7 +9,7 @@ The window, element by element, against the reference app. Part of
 
 | Element | Reference app | PacketCraft |
 |---|---|---|
-| Menu bar | File, Edit, Options, View, Tools, Extensions, Window, Help | same menus, our items |
+| Menu bar | File, Edit, Options, View, Tools, Extensions, Window, Help | same menus, our items; File ▸ Open Recent on the desktop; the web build asks before closing a tab with unsaved changes |
 | Main toolbar | file, print, info, copy/paste, undo/redo, zoom, palette… ; help at right | new, open, save, network information, copy/paste devices, undo, redo, zoom in/reset/out, capture export; help at right |
 | Second toolbar | select, inspect, delete, resize, note, drawing, simple/complex PDU | select, inspect, delete, place note, line, rectangle, ellipse, simple PDU; resize, freeform and complex PDU shown but not available yet |
 | Workspace bar | Logical / Physical, coordinates, Root, navigation, clock | Logical / Physical (physical not available yet), coordinates, Root, clock |
@@ -30,5 +30,6 @@ The window, element by element, against the reference app. Part of
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Open Recent; unsaved-changes guard on the web; Activities row. |
 | 2026-10-30 | minor | Shared format; serial cables, EtherChannel rings, multilayer and WAN models, IPv6 in the PC IP Configuration and router port pages, drawings. |
 | 2026-10-29 | major | Created from black-box screenshots of the main window, Simulation mode, the PC Desktop and Web Browser, the router Config tab and the server Services pages. |

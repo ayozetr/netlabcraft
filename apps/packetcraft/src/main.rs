@@ -18,6 +18,36 @@ struct App {
     app: PacketApp,
     title: String,
     closing: Closing,
+    /// The lab's path last frame, to notice opens and saves for the recent list.
+    last_path: Option<String>,
+}
+
+/// Where the recent-files list lives: the platform's configuration folder.
+fn recent_file() -> Option<std::path::PathBuf> {
+    let base = if cfg!(windows) {
+        std::env::var_os("APPDATA").map(std::path::PathBuf::from)
+    } else if cfg!(target_os = "macos") {
+        std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join("Library/Application Support"))
+    } else {
+        std::env::var_os("XDG_CONFIG_HOME")
+            .map(std::path::PathBuf::from)
+            .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config")))
+    }?;
+    Some(base.join("packetcraft").join("recent.txt"))
+}
+
+fn load_recent() -> Vec<String> {
+    let Some(f) = recent_file() else { return Vec::new() };
+    std::fs::read_to_string(f).map(|s| s.lines().filter(|l| !l.trim().is_empty()).take(8).map(str::to_string).collect()).unwrap_or_default()
+}
+
+fn save_recent(list: &[String]) {
+    let Some(f) = recent_file() else { return };
+    if let Some(dir) = f.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    // A lost list only costs convenience, never the lab: errors are ignored.
+    let _ = std::fs::write(f, list.join("\n"));
 }
 
 impl App {
@@ -122,6 +152,16 @@ impl eframe::App for App {
             self.closing = Closing::Asking;
         }
         self.app.ui(ui);
+        if self.app.session.path != self.last_path {
+            self.last_path = self.app.session.path.clone();
+            if let Some(p) = &self.last_path {
+                let list = &mut self.app.ui.recent;
+                list.retain(|x| x != p);
+                list.insert(0, p.clone());
+                list.truncate(8);
+                save_recent(list);
+            }
+        }
         self.unsaved_dialog(&ctx);
         self.serve(&ctx);
         let title = self.app.title();
@@ -153,7 +193,10 @@ fn main() -> eframe::Result {
         }
         i += 1;
     }
-    let app = PacketApp::new(session);
+    let mut app = PacketApp::new(session);
+    app.ui.recent = load_recent();
+    // None: a lab opened from the command line goes on the recent list too.
+    let last_path = None;
     let title = app.title();
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -168,7 +211,7 @@ fn main() -> eframe::Result {
         options,
         Box::new(move |cc| {
             app.apply_theme(&cc.egui_ctx);
-            Ok(Box::new(App { app, title, closing: Closing::No }))
+            Ok(Box::new(App { app, title, closing: Closing::No, last_path }))
         }),
     )
 }

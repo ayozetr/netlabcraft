@@ -25,13 +25,13 @@ Hours are Opus 5.5 agent wall-clock estimates.
 | 10 | **Packaging and first release:** icon, installers, workflows, About window ([releasing.md](releasing.md)) | Everyone who isn't a developer | 14–24 h |
 | 11 | **Workspace:** drawing freeform, clusters, physical view, print/export the workspace | Everyone, occasionally | 50–75 h |
 | 12 | **Device families:** modular routers, ASA, IoT, phones | Specialised labs | 80–120 h |
-| 13 | **Unsaved-changes prompt in the web build**, recent files on desktop | Everyone | 3–5 h |
-| 14 | **EIGRP, VPN (GRE/IPsec), QoS** | CCNA 3 extras | 40–60 h |
+| 13 | **EIGRP, VPN (GRE/IPsec), QoS** | CCNA 3 extras | 40–60 h |
 
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Done: the web build asks before closing a tab with unsaved changes; File ▸ Open Recent on the desktop. |
 | 2026-10-30 | minor | Done: NTP, syslog and TFTP (server services and router commands). |
 | 2026-10-30 | minor | Done: DHCPv6 (stateless and stateful) and router advertisement M/O flags. |
 | 2026-10-30 | minor | Done: OSPF cost, priority and DR/BDR, reference bandwidth, inter-area routes, `show ip ospf [interface]`, OSPF on multilayer switches. |

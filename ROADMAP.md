@@ -60,6 +60,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-10-30 — Safer files.** The web build asks before a tab with unsaved changes closes; the desktop keeps a File ▸ Open Recent list.
 - **2026-10-30 — NTP, syslog and TFTP.** Server NTP, SYSLOG and TFTP services with their pages in the Services tab; `ntp server`, `show ntp status`, `logging host`, `copy running-config tftp:` and `copy tftp: startup-config`, all on the wire in their standard formats.
 - **2026-10-30 — DHCPv6.** `ipv6 dhcp pool`, `ipv6 dhcp server` and the M/O flags in router advertisements; hosts follow them with SLAAC, stateless DHCPv6 or stateful DHCPv6, with the exchange in Simulation mode; `show ipv6 dhcp pool/binding`.
 - **2026-10-30 — OSPF depth.** `ip ospf cost` and `ip ospf priority` with a real DR/BDR election, `auto-cost reference-bandwidth`, several areas with inter-area routes (`O IA`), `show ip ospf` and `show ip ospf interface [brief]`, DR/BDR in `show ip ospf neighbor`, OSPF on multilayer switches.
