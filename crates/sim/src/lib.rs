@@ -1005,6 +1005,8 @@ pub struct Sim {
     events: Vec<PortEvent>,
     /// Wi-Fi associations as the air has shown them, by host radio.
     assoc: BTreeMap<End, wlan::Assoc>,
+    /// Access point radios: the packet number of the last group-addressed frame protected.
+    group_pn: BTreeMap<End, u64>,
     /// Lightweight APs' joins as CAPWAP has shown them.
     joined: BTreeMap<DeviceId, wlan::Joined>,
     /// 802.1X logins waiting for a RADIUS answer, by the controller's source port.

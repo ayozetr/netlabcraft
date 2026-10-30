@@ -752,6 +752,50 @@ pub const KEY_INSTALL: u16 = 0x0040;
 pub const KEY_ACK: u16 = 0x0080;
 pub const KEY_MIC: u16 = 0x0100;
 pub const KEY_SECURE: u16 = 0x0200;
+/// The key data field is wrapped with the KEK (message 3 carrying the group key).
+pub const KEY_ENCRYPTED_DATA: u16 = 0x1000;
+
+/// The GTK key data encapsulation (IEEE 802.11-2020 §12.7.2): vendor element 0xdd, the
+/// 00-0F-AC OUI, data type 1, then the key id (bits 0-1) and Tx bit, a reserved byte and the key.
+pub fn gtk_kde(key_id: u8, gtk: &[u8; 16]) -> Vec<u8> {
+    let mut v = vec![0xdd, 22, 0x00, 0x0f, 0xac, 0x01, key_id & 0x03, 0];
+    v.extend_from_slice(gtk);
+    v
+}
+
+/// The group key (and its key id) in decrypted key data, if a GTK KDE is there.
+pub fn find_gtk(data: &[u8]) -> Option<(u8, [u8; 16])> {
+    let mut at = 0;
+    for _ in 0..64 {
+        let kind = *data.get(at)?;
+        let len = usize::from(*data.get(at + 1)?);
+        let body = data.get(at + 2..at + 2 + len)?;
+        if kind == 0xdd && body.get(..4) == Some(&[0x00, 0x0f, 0xac, 0x01][..]) {
+            let key: [u8; 16] = body.get(6..22)?.try_into().ok()?;
+            return Some((body.get(4)? & 0x03, key));
+        }
+        at += 2 + len;
+    }
+    None
+}
+
+/// Key data wrapped for message 3: padded (0xdd, then zeros, to a multiple of 8 bytes and at
+/// least 16, §12.7.2) and AES key wrapped (RFC 3394) with the KEK.
+pub fn wrap_key_data(kek: &[u8; 16], data: &[u8]) -> Option<Vec<u8>> {
+    let mut v = data.to_vec();
+    if !v.len().is_multiple_of(8) || v.len() < 16 {
+        v.push(0xdd);
+        while !v.len().is_multiple_of(8) || v.len() < 16 {
+            v.push(0);
+        }
+    }
+    crate::aes::key_wrap(kek, &v)
+}
+
+/// The key data of message 3, unwrapped (padding left in; [`find_gtk`] stops at it).
+pub fn unwrap_key_data(kek: &[u8; 16], wrapped: &[u8]) -> Option<Vec<u8>> {
+    crate::aes::key_unwrap(kek, wrapped)
+}
 
 impl EapolKey {
     /// Which message of the 4-way handshake this is (1-4), from its flags.
@@ -850,6 +894,9 @@ impl Eapol {
                 (EAP_FAILURE, _) => "EAP failure".into(),
                 (c, k) => format!("EAP code {c} type {}", k.unwrap_or(0)),
             },
+            Eapol::Key(k) if k.info & KEY_ENCRYPTED_DATA != 0 => {
+                format!("EAPOL-Key, 4-way handshake message {} of 4 (group key wrapped in its key data)", k.message())
+            }
             Eapol::Key(k) => format!("EAPOL-Key, 4-way handshake message {} of 4", k.message()),
         }
     }
@@ -1017,6 +1064,33 @@ mod tests {
         }
         let probe = Dot11::mgmt(MacAddr::BROADCAST, mac(1), MacAddr::BROADCAST, 0, Body::ProbeRequest { ssid: String::new() }).encode();
         assert!(ccmp_encrypt(&tk, &probe, 1, 0).is_err());
+    }
+
+    #[test]
+    fn the_group_key_travels_wrapped_in_its_kde() {
+        let gtk: [u8; 16] = core::array::from_fn(|i| i as u8 + 0x40);
+        let kde = gtk_kde(1, &gtk);
+        // 0xdd, length 22, OUI 00-0F-AC, type 1, key id 1, reserved, then the key.
+        assert_eq!(&kde[..8], &[0xdd, 22, 0x00, 0x0f, 0xac, 0x01, 0x01, 0x00]);
+        let mut data = rsn_ie(Akm::Psk);
+        data.extend_from_slice(&kde);
+        assert_eq!(find_gtk(&data), Some((1, gtk)));
+        let kek = [7u8; 16];
+        let wrapped = wrap_key_data(&kek, &data).unwrap();
+        // Padded to a multiple of 8 (0xdd then zeros), plus the 8-byte integrity block.
+        assert_eq!(wrapped.len(), data.len().div_ceil(8) * 8 + 8);
+        let plain = unwrap_key_data(&kek, &wrapped).unwrap();
+        assert_eq!(plain.get(data.len()), Some(&0xdd));
+        assert_eq!(find_gtk(&plain), Some((1, gtk)));
+        assert!(unwrap_key_data(&[8; 16], &wrapped).is_none());
+        // Short key data is padded up to 16 bytes before wrapping.
+        assert_eq!(wrap_key_data(&kek, &[1, 2, 3]).unwrap().len(), 24);
+        // Hostile key data: every truncation and stray bytes are survived.
+        for n in 0..data.len() {
+            let _ = find_gtk(&data[..n]);
+        }
+        assert_eq!(find_gtk(&[0xdd, 200, 0, 0x0f]), None);
+        assert_eq!(find_gtk(&[]), None);
     }
 
     #[test]

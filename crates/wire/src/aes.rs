@@ -1,7 +1,9 @@
-//! AES-128 (FIPS 197, encryption direction only) and the CCM mode built on it (RFC 3610, as
-//! IEEE 802.11 CCMP and other protocols use it: counter-mode encryption with a CBC-MAC).
+//! AES-128 (FIPS 197), the CCM mode built on it (RFC 3610, as IEEE 802.11 CCMP and other
+//! protocols use it: counter-mode encryption with a CBC-MAC), and the AES key wrap (RFC 3394)
+//! that IEEE 802.11 uses to carry the group key to a station inside the 4-way handshake.
 //!
-//! Only the forward cipher is needed: CCM decrypts by running the same counter keystream.
+//! CCM decrypts by running the same counter keystream; only key unwrapping needs the inverse
+//! cipher.
 //! Written from the published specifications; checked against their test vectors.
 
 /// The AES S-box, generated from its definition (the multiplicative inverse in GF(2^8)
@@ -29,6 +31,32 @@ const fn make_sbox() -> [u8; 256] {
     }
     s[0] = 0x63;
     s
+}
+
+/// The inverse S-box, worked out from the S-box.
+const INV_SBOX: [u8; 256] = make_inv_sbox();
+
+const fn make_inv_sbox() -> [u8; 256] {
+    let mut inv = [0u8; 256];
+    let mut i = 0;
+    while i < 256 {
+        inv[SBOX[i] as usize] = i as u8;
+        i += 1;
+    }
+    inv
+}
+
+/// Multiplication in GF(2^8) by a small constant (the inverse MixColumns uses 9, 11, 13, 14).
+fn gmul(mut a: u8, mut b: u8) -> u8 {
+    let mut p = 0;
+    while b != 0 {
+        if b & 1 != 0 {
+            p ^= a;
+        }
+        a = xtime(a);
+        b >>= 1;
+    }
+    p
 }
 
 fn xtime(b: u8) -> u8 {
@@ -102,6 +130,98 @@ impl Aes128 {
         }
         s
     }
+
+    /// Decrypts one 16-byte block (the inverse cipher, FIPS 197 §5.3).
+    pub fn decrypt(&self, block: &[u8; 16]) -> [u8; 16] {
+        let mut s = *block;
+        add(&mut s, &self.rk[10]);
+        for round in (0..10).rev() {
+            // InvShiftRows: row r turns right by r.
+            let o = s;
+            for c in 0..4 {
+                for r in 0..4 {
+                    s[r + 4 * ((c + r) % 4)] = o[r + 4 * c];
+                }
+            }
+            for b in s.iter_mut() {
+                *b = INV_SBOX[*b as usize];
+            }
+            add(&mut s, &self.rk[round]);
+            if round != 0 {
+                for c in 0..4 {
+                    let a = [s[4 * c], s[4 * c + 1], s[4 * c + 2], s[4 * c + 3]];
+                    for r in 0..4 {
+                        s[4 * c + r] = gmul(a[r], 14) ^ gmul(a[(r + 1) % 4], 11) ^ gmul(a[(r + 2) % 4], 13) ^ gmul(a[(r + 3) % 4], 9);
+                    }
+                }
+            }
+        }
+        s
+    }
+}
+
+/// The key wrap's initial value (RFC 3394 §2.2.3.1).
+const WRAP_IV: [u8; 8] = [0xa6; 8];
+/// Longest key data wrapped or unwrapped (hostile input).
+pub const MAX_WRAP: usize = 4096;
+
+/// AES key wrap (RFC 3394 §2.2.1): `plain` (a multiple of 8 bytes, at least 16) under `kek`;
+/// 8 bytes longer than it went in. `None` for a length the wrap can't take.
+pub fn key_wrap(kek: &[u8; 16], plain: &[u8]) -> Option<Vec<u8>> {
+    if plain.len() < 16 || !plain.len().is_multiple_of(8) || plain.len() > MAX_WRAP {
+        return None;
+    }
+    let aes = Aes128::new(kek);
+    let n = plain.len() / 8;
+    let mut a = WRAP_IV;
+    let mut r: Vec<[u8; 8]> = plain.chunks(8).filter_map(|c| <[u8; 8]>::try_from(c).ok()).collect();
+    for j in 0..6u64 {
+        for (i, ri) in r.iter_mut().enumerate() {
+            let mut b = [0u8; 16];
+            b[..8].copy_from_slice(&a);
+            b[8..].copy_from_slice(ri);
+            let b = aes.encrypt(&b);
+            let t = (n as u64) * j + (i as u64) + 1;
+            for (x, (y, z)) in a.iter_mut().zip(b[..8].iter().zip(t.to_be_bytes())) {
+                *x = y ^ z;
+            }
+            ri.copy_from_slice(&b[8..]);
+        }
+    }
+    let mut out = a.to_vec();
+    for ri in &r {
+        out.extend_from_slice(ri);
+    }
+    Some(out)
+}
+
+/// AES key unwrap (RFC 3394 §2.2.2): the key data, or `None` when the integrity check fails
+/// (a wrong key or changed bytes) or the length is wrong.
+pub fn key_unwrap(kek: &[u8; 16], wrapped: &[u8]) -> Option<Vec<u8>> {
+    if wrapped.len() < 24 || !wrapped.len().is_multiple_of(8) || wrapped.len() > MAX_WRAP + 8 {
+        return None;
+    }
+    let aes = Aes128::new(kek);
+    let n = wrapped.len() / 8 - 1;
+    let mut a: [u8; 8] = wrapped.get(..8)?.try_into().ok()?;
+    let mut r: Vec<[u8; 8]> = wrapped.get(8..)?.chunks(8).filter_map(|c| <[u8; 8]>::try_from(c).ok()).collect();
+    for j in (0..6u64).rev() {
+        for i in (0..n).rev() {
+            let t = (n as u64) * j + (i as u64) + 1;
+            let mut b = [0u8; 16];
+            for (x, (y, z)) in b[..8].iter_mut().zip(a.iter().zip(t.to_be_bytes())) {
+                *x = y ^ z;
+            }
+            b[8..].copy_from_slice(r.get(i)?);
+            let b = aes.decrypt(&b);
+            a.copy_from_slice(&b[..8]);
+            r.get_mut(i)?.copy_from_slice(&b[8..]);
+        }
+    }
+    if a != WRAP_IV {
+        return None;
+    }
+    Some(r.concat())
 }
 
 fn add(s: &mut [u8; 16], k: &[u8; 16]) {
@@ -231,6 +351,40 @@ mod tests {
         let key: [u8; 16] = hex("000102030405060708090a0b0c0d0e0f").try_into().unwrap();
         let pt: [u8; 16] = hex("00112233445566778899aabbccddeeff").try_into().unwrap();
         assert_eq!(Aes128::new(&key).encrypt(&pt).to_vec(), hex("69c4e0d86a7b0430d8cdb78070b4c55a"));
+    }
+
+    #[test]
+    fn fips_197_inverse_cipher() {
+        let key: [u8; 16] = hex("000102030405060708090a0b0c0d0e0f").try_into().unwrap();
+        let ct: [u8; 16] = hex("69c4e0d86a7b0430d8cdb78070b4c55a").try_into().unwrap();
+        assert_eq!(Aes128::new(&key).decrypt(&ct).to_vec(), hex("00112233445566778899aabbccddeeff"));
+        let key: [u8; 16] = hex("2b7e151628aed2a6abf7158809cf4f3c").try_into().unwrap();
+        let ct: [u8; 16] = hex("3925841d02dc09fbdc118597196a0b32").try_into().unwrap();
+        assert_eq!(Aes128::new(&key).decrypt(&ct).to_vec(), hex("3243f6a8885a308d313198a2e0370734"));
+        for b in 0..=255u8 {
+            assert_eq!(INV_SBOX[SBOX[b as usize] as usize], b);
+        }
+    }
+
+    #[test]
+    fn rfc_3394_key_wrap_vector_4_1() {
+        let kek: [u8; 16] = hex("000102030405060708090a0b0c0d0e0f").try_into().unwrap();
+        let data = hex("00112233445566778899aabbccddeeff");
+        let wrapped = key_wrap(&kek, &data).unwrap();
+        assert_eq!(wrapped, hex("1fa68b0a8112b447aef34bd8fb5a7b829d3e862371d2cfe5"));
+        assert_eq!(key_unwrap(&kek, &wrapped).unwrap(), data);
+        // A changed byte or another key fails the integrity check.
+        let mut bad = wrapped.clone();
+        bad[10] ^= 1;
+        assert!(key_unwrap(&kek, &bad).is_none());
+        assert!(key_unwrap(&[0; 16], &wrapped).is_none());
+        // Longer data round-trips; lengths the wrap can't take are refused, never panic.
+        let long: Vec<u8> = (0..48u8).collect();
+        assert_eq!(key_unwrap(&kek, &key_wrap(&kek, &long).unwrap()).unwrap(), long);
+        for n in 0..wrapped.len() {
+            assert!(key_unwrap(&kek, &wrapped[..n]).is_none(), "{n}");
+        }
+        assert!(key_wrap(&kek, &[0; 8]).is_none() && key_wrap(&kek, &[0; 17]).is_none());
     }
 
     #[test]

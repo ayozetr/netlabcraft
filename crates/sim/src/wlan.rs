@@ -10,8 +10,12 @@
 //! After the handshake, data frames on an RSN network are protected with CCMP (AES-CCM) under
 //! the temporal key the handshake derived, with per-direction packet numbers checked against
 //! replays. The event list and the Ethernet capture show their plaintext equivalents; the
-//! 802.11 capture shows them protected. Group-addressed frames are sent to each host under its
-//! own pairwise key (group keys are not modelled). On WPA2-Enterprise WLANs the controller runs
+//! 802.11 capture shows them protected. Each access point radio holds a group temporal key (GTK,
+//! derived from a group master key as IEEE 802.11 §12.7.1.4 has it) and hands it to every host
+//! in message 3 of the handshake, inside the key data wrapped with the KEK (AES key wrap, RFC
+//! 3394). Group-addressed frames from the access point (broadcasts, multicasts) are protected
+//! with the GTK (key id 1) and a group packet number each host checks for replays; frames from
+//! a host stay under its pairwise key. On WPA2-Enterprise WLANs the controller runs
 //! PEAP after the identity: its TLS tunnel is shown as one opaque round trip (no real TLS
 //! handshake or records), the login inside it is checked with RADIUS, and the master key the
 //! tunnel would export is stood in by one derived from the host's login.
@@ -79,6 +83,9 @@ pub struct Assoc {
     identity: String,
     /// The CCMP temporal key, once the 4-way handshake installed it.
     tk: Option<[u8; 16]>,
+    /// The group key message 3 delivered, and the last group packet number accepted.
+    gtk: Option<[u8; 16]>,
+    rx_group: u64,
     /// Packet numbers sent by the host and by the AP, and the last each accepted.
     pn_up: u64,
     pn_down: u64,
@@ -148,6 +155,25 @@ pub(crate) fn radio_vlan(t: &Topology, ap: End, src: MacAddr) -> Option<VlanId> 
     t.wifi_vlan(client)
 }
 
+/// The key id group frames are sent under.
+const GTK_KEY_ID: u8 = 1;
+
+/// An access point radio's group key: PRF-128 of a group master key over its address and a
+/// group nonce (IEEE 802.11 §12.7.1.4), both made up from the radio's address.
+fn group_key(t: &Topology, ap: End) -> [u8; 16] {
+    let aa = port_mac(t, ap).0;
+    let gmk = netlabcraft_wire::sha1::sha1(&[b"group master key".as_slice(), &aa].concat());
+    let gnonce = nonce(&format!("gnonce{:?}", aa));
+    let mut data = aa.to_vec();
+    data.extend_from_slice(&gnonce);
+    let k = netlabcraft_wire::sha1::prf(&gmk, "Group key expansion", &data, 16);
+    let mut out = [0u8; 16];
+    for (o, b) in out.iter_mut().zip(k) {
+        *o = b;
+    }
+    out
+}
+
 fn nonce(seed: &str) -> [u8; 32] {
     let a = netlabcraft_wire::sha1::sha1(seed.as_bytes());
     let b = netlabcraft_wire::sha1::sha1(&a);
@@ -205,8 +231,18 @@ impl Sim {
                 return;
             }
         }
-        let air = self.seal(client, client == from, air);
+        let air = if client != from && eth.dst.is_group() { self.seal_group(client, from, air) } else { self.seal(client, client == from, air) };
         self.enqueue(at, from, to, air, hops);
+    }
+
+    /// Protects a group-addressed frame from an access point with its group key, under the
+    /// radio's group packet number, when the host's handshake gave it that key.
+    fn seal_group(&mut self, client: End, ap: End, air: Vec<u8>) -> Vec<u8> {
+        // The host's copy is the radio's group key (message 3 delivered it).
+        let Some(gtk) = self.assoc.get(&client).and_then(|a| a.gtk) else { return air };
+        let pn = self.group_pn.entry(ap).or_insert(0);
+        *pn = pn.saturating_add(1).min(wlan::MAX_PN);
+        wlan::ccmp_encrypt(&gtk, &air, *pn, GTK_KEY_ID).unwrap_or(air)
     }
 
     /// Protects a data frame with CCMP when the host's handshake installed a key.
@@ -225,8 +261,9 @@ impl Sim {
             return Some(f);
         }
         let client = if is_host(t, from) { from } else { to };
-        let tk = self.assoc.get(&client)?.tk?;
-        let (plain, _) = wlan::ccmp_decrypt(&tk, bytes).ok()?;
+        let a = self.assoc.get(&client)?;
+        let key = if !is_host(t, from) && f.addr1.0[0] & 1 == 1 { a.gtk? } else { a.tk? };
+        let (plain, _) = wlan::ccmp_decrypt(&key, bytes).ok()?;
         Dot11::decode(&plain).ok()
     }
 
@@ -235,7 +272,17 @@ impl Sim {
     fn unprotect(&mut self, t: &Topology, from: End, at: End, bytes: &[u8]) -> Result<Dot11, String> {
         let up = !is_host(t, at);
         let client = if up { from } else { at };
+        let group = !up && Dot11::decode(bytes).is_ok_and(|f| f.addr1.0[0] & 1 == 1);
         let a = self.assoc.get_mut(&client).ok_or("protected frame from a host that is not associated")?;
+        if group {
+            let gtk = a.gtk.ok_or("group-addressed frame, but no group key installed")?;
+            let (plain, pn) = wlan::ccmp_decrypt(&gtk, bytes).map_err(|e| format!("group key: {e}"))?;
+            if pn <= a.rx_group {
+                return Err(format!("CCMP replay: group packet number {pn} is not above the last one ({})", a.rx_group));
+            }
+            a.rx_group = pn;
+            return Dot11::decode(&plain).map_err(|e| e.to_string());
+        }
         let tk = a.tk.ok_or("protected frame, but no key installed")?;
         let (plain, pn) = wlan::ccmp_decrypt(&tk, bytes).map_err(|e| e.to_string())?;
         let last = if up { &mut a.rx_up } else { &mut a.rx_down };
@@ -254,7 +301,7 @@ impl Sim {
             return;
         }
         self.beacon_until = deadline;
-        let hosts: Vec<(End, f32, f32)> = t
+        let hosts: Vec<End> = t
             .devices
             .iter()
             .filter(|d| d.kind.is_host())
@@ -263,7 +310,7 @@ impl Sim {
                     .iter()
                     .enumerate()
                     .filter(|(_, p)| ifname::is_wireless(&p.name) && !p.shutdown)
-                    .map(move |(i, _)| (End { device: d.id, port: i }, d.x, d.y))
+                    .map(move |(i, _)| End { device: d.id, port: i })
             })
             .collect();
         if hosts.is_empty() {
@@ -274,8 +321,8 @@ impl Sim {
             for p in (0..d.ports.len()).filter(|p| is_ap_radio(t, End { device: d.id, port: *p })) {
                 let ap = End { device: d.id, port: p };
                 let offers = t.offers(ap);
-                for (h, x, y) in &hosts {
-                    if ((d.x - x).powi(2) + (d.y - y).powi(2)).sqrt() > netlabcraft_model::WIFI_RANGE {
+                for h in &hosts {
+                    if t.device(h.device).is_none_or(|hd| !t.wifi_in_range(hd, d)) {
                         continue;
                     }
                     for o in &offers {
@@ -387,7 +434,8 @@ impl Sim {
             None => return,
         };
         for (from, to, frame, hops) in held {
-            let frame = self.seal(client, client == from, frame);
+            let group = client != from && Dot11::decode(&frame).is_ok_and(|f| f.addr1.0[0] & 1 == 1);
+            let frame = if group { self.seal_group(client, from, frame) } else { self.seal(client, client == from, frame) };
             self.enqueue(now + LINK_DELAY_US, from, to, frame, hops);
         }
     }
@@ -612,6 +660,17 @@ impl Sim {
                 if wlan::key_mic(kck, &k) != k.mic {
                     return Err("handshake message 3 has a bad MIC".into());
                 }
+                let kek: [u8; 16] = ptk.get(16..32).and_then(|x| x.try_into().ok()).ok_or("no KEK")?;
+                let gtk = if k.info & wlan::KEY_ENCRYPTED_DATA != 0 {
+                    let data = wlan::unwrap_key_data(&kek, &k.data).ok_or("handshake message 3: the key data doesn't unwrap with the KEK")?;
+                    Some(wlan::find_gtk(&data).ok_or("handshake message 3 carries no group key")?.1)
+                } else {
+                    None
+                };
+                if let Some(st) = self.assoc.get_mut(&client) {
+                    st.gtk = gtk;
+                    st.rx_group = 0;
+                }
                 let mut reply = EapolKey {
                     info: KEY_VERSION_2 | KEY_PAIRWISE | KEY_MIC | KEY_SECURE,
                     key_len: 0,
@@ -663,13 +722,19 @@ impl Sim {
                     return Err("handshake message 2 has a bad MIC (wrong passphrase)".into());
                 }
                 let replay = k.replay.saturating_add(1);
+                // The key data: the RSN element and the group key, wrapped with the KEK.
+                let ptk = self.ptk(t, &pmk, ap, client, &anonce, &k.nonce);
+                let kek: [u8; 16] = ptk.get(16..32).and_then(|x| x.try_into().ok()).ok_or("no KEK")?;
+                let mut plain = wlan::rsn_ie(akm(&a.offer.security).unwrap_or(Akm::Psk));
+                plain.extend_from_slice(&wlan::gtk_kde(GTK_KEY_ID, &group_key(t, ap)));
+                let data = wlan::wrap_key_data(&kek, &plain).ok_or("key data too long to wrap")?;
                 let mut m3 = EapolKey {
-                    info: KEY_VERSION_2 | KEY_PAIRWISE | KEY_INSTALL | KEY_ACK | KEY_MIC | KEY_SECURE,
+                    info: KEY_VERSION_2 | KEY_PAIRWISE | KEY_INSTALL | KEY_ACK | KEY_MIC | KEY_SECURE | wlan::KEY_ENCRYPTED_DATA,
                     key_len: 16,
                     replay,
                     nonce: anonce,
                     mic: [0; 16],
-                    data: wlan::rsn_ie(akm(&a.offer.security).unwrap_or(Akm::Psk)),
+                    data,
                 };
                 m3.mic = wlan::key_mic(&kck, &m3);
                 self.send_eapol(t, ap, client, Eapol::Key(m3));
@@ -1021,6 +1086,86 @@ mod tests {
         sim.ping(&t, lt, "10.0.0.1".parse().unwrap(), PingOptions { count: 1, ..PingOptions::default() }).unwrap();
         let up = air_data(&sim, End { device: lt, port: 0 });
         assert!(!up.is_empty() && up.iter().all(|(a, _)| !Dot11::decode(a).unwrap().is_protected()));
+    }
+
+    #[test]
+    fn message_3_carries_the_group_key_and_broadcasts_use_it() {
+        let (t, pc, lt) = lab(Some("secreto123"), Some("secreto123"));
+        let client = End { device: lt, port: 0 };
+        let ap = End { device: t.resolve("AP1").unwrap(), port: 1 };
+        let mut sim = Sim::new();
+        sim.topology_changed(&t);
+        // The PC's ARP request is a broadcast: the access point sends it over the air under
+        // the group key.
+        let r = sim.ping(&t, pc, "10.0.0.2".parse().unwrap(), PingOptions::default()).unwrap();
+        assert!(r.iter().all(|p| matches!(p, Probe::Reply { .. })), "{r:?}");
+        let a = sim.association(client).unwrap().clone();
+        let gtk = a.gtk.expect("message 3 delivered a group key");
+        assert_eq!(gtk, group_key(&t, ap));
+        assert_ne!(Some(gtk), a.tk);
+        // Message 3 on the air: encrypted key data, and the group key nowhere in the clear.
+        let m3 = sim.trace().iter().find(|e| e.summary.contains("message 3 of 4")).unwrap();
+        assert!(m3.summary.contains("group key wrapped"), "{}", m3.summary);
+        let raw = m3.air.clone().unwrap();
+        assert!(!raw.windows(16).any(|w| w == gtk));
+        let Body::Data { payload, .. } = Dot11::decode(&raw).unwrap().body else { panic!() };
+        let Eapol::Key(k) = Eapol::decode(&payload).unwrap() else { panic!() };
+        assert!(k.info & wlan::KEY_ENCRYPTED_DATA != 0 && k.data.len().is_multiple_of(8));
+        // Unwrapped with the KEK (from the same key hierarchy) it holds the GTK KDE.
+        let (anonce, snonce) = (a.anonce, a.snonce);
+        let pmk = sim.pmk("secreto123", "Lab");
+        let ptk = sim.ptk(&t, &pmk, ap, client, &anonce, &snonce);
+        let kek: [u8; 16] = ptk[16..32].try_into().unwrap();
+        let plain = wlan::unwrap_key_data(&kek, &k.data).unwrap();
+        assert_eq!(wlan::find_gtk(&plain), Some((1, gtk)));
+        assert!(wlan::unwrap_key_data(&[0; 16], &k.data).is_none());
+        // Group frames down: protected under the GTK with key id 1; unicast under the pairwise key.
+        let down: Vec<Vec<u8>> =
+            sim.trace().iter().filter(|e| e.from == ap && e.to == client && e.protocol != Protocol::Eapol).filter_map(|e| e.air.clone()).collect();
+        let group: Vec<&Vec<u8>> = down.iter().filter(|b| Dot11::decode(b).is_ok_and(|f| f.is_protected() && f.addr1.0[0] & 1 == 1)).collect();
+        assert!(!group.is_empty(), "no group-addressed frame went down");
+        for g in &group {
+            let (plain, _) = wlan::ccmp_decrypt(&gtk, g).unwrap();
+            assert!(Dot11::decode(&plain).unwrap().ethernet().unwrap().dst.is_group());
+            // The CCMP header's key id byte: bits 6-7 (24-byte header, then PN0 PN1 rsvd keyid).
+            assert_eq!(g[24 + 3] >> 6, 1);
+            assert!(wlan::ccmp_decrypt(&a.tk.unwrap(), g).is_err());
+        }
+        assert!(sim.trace().iter().all(|e| e.dropped.as_deref().is_none_or(|d| !d.contains("group"))));
+        // A group frame played again is a replay.
+        let before = sim.trace().len();
+        sim.enqueue(sim.now + 1, ap, client, group[0].clone(), 0);
+        sim.run_for(&t, 10_000);
+        let drops: Vec<String> = sim.trace().iter().skip(before).filter_map(|e| e.dropped.clone()).collect();
+        assert!(drops.iter().any(|d| d.contains("group packet number")), "{drops:?}");
+    }
+
+    #[test]
+    fn walls_decide_wifi_range_once_the_lab_has_a_physical_layout() {
+        let (mut t, pc, lt) = lab(Some("secreto123"), Some("secreto123"));
+        let client = End { device: lt, port: 0 };
+        // No layout yet: the logical distance decides (the laptop is near).
+        assert!(t.wifi_ap_of(client).is_some());
+        // A second building: the laptop moves there, out of reach of the AP in the first.
+        let annex = t.add_place(netlabcraft_model::physical::PlaceKind::Building, Some("Annex"), Some(1), 600.0, 220.0).unwrap();
+        t.set_home(lt, annex, 10.0, 10.0).unwrap();
+        assert!(t.wifi_ap_of(client).is_none());
+        let mut sim = Sim::new();
+        sim.topology_changed(&t);
+        sim.run_for(&t, 3 * BEACON_EVERY_US);
+        assert!(!sim.trace().iter().any(|e| e.summary.starts_with("802.11 beacon")));
+        let r = sim.ping(&t, pc, "10.0.0.2".parse().unwrap(), PingOptions { count: 1, ..PingOptions::default() }).unwrap();
+        assert!(!matches!(r.first(), Some(Probe::Reply { .. })));
+        // An access point in the annex's wiring closet reaches it, however far on the map.
+        let closet = t.add_place(netlabcraft_model::physical::PlaceKind::Closet, Some("Annex closet"), Some(annex), 0.0, 0.0).unwrap();
+        let ap2 = t.add_model(models::find("AccessPoint").unwrap(), Some("AP2"), 9000.0, 9000.0).unwrap();
+        t.device_mut(ap2).unwrap().ports[1].wifi = Some(Wifi { ssid: "Lab".into(), key: Some("secreto123".into()), channel: 11, login: None });
+        t.set_home(ap2, closet, 5.0, 5.0).unwrap();
+        assert_eq!(t.wifi_ap_of(client), Some(End { device: ap2, port: 1 }));
+        // Back in the main building (whatever the logical distance), AP1 again.
+        t.device_mut(lt).unwrap().x = 5000.0;
+        t.set_home(lt, 2, 0.0, 0.0).unwrap();
+        assert_eq!(t.wifi_ap_of(client).map(|e| e.device), t.resolve("AP1").ok());
     }
 
     #[test]
