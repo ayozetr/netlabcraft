@@ -73,11 +73,19 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             Ok(json!({"json": text}))
         }
         "file.export_pcap" => {
-            let bytes = s.pcap();
+            // A pcap file has one link type: Ethernet (every wired hop, and what each air hop
+            // carries), or 802.11 (the air hops only, as they crossed the air).
+            let air = match opt_str(p, "link").unwrap_or("ethernet") {
+                "ethernet" => false,
+                "802.11" | "wlan" => true,
+                other => return Err(bad(format!("link `{other}`: ethernet or 802.11"))),
+            };
+            let bytes = if air { s.sim.pcap_wlan() } else { s.pcap() };
             if let Some(path) = opt_str(p, "path") {
                 write_file(path, &bytes)?;
             }
-            Ok(json!({"frames": s.sim.trace().len(), "bytes": bytes.len()}))
+            let frames = s.sim.trace().iter().filter(|e| if air { e.air.is_some() } else { !e.frame.is_empty() }).count();
+            Ok(json!({"frames": frames, "bytes": bytes.len()}))
         }
         "edit.undo" => Ok(json!({"undone": s.undo()})),
         "edit.redo" => Ok(json!({"redone": s.redo()})),
@@ -346,6 +354,42 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             }
             Ok(json!({"received": n}))
         }
+        "wlc.wlan" | "lap.controller" => {
+            let d = device_param(s, p, "device")?;
+            let line = if id == "wlc.wlan" {
+                let n = p.get("id").and_then(Value::as_u64).ok_or_else(|| bad("give the WLAN's id (1-16)"))?;
+                if p.get("remove").and_then(Value::as_bool).unwrap_or(false) {
+                    format!("no wlan {n}")
+                } else {
+                    let ssid = str_param(p, "ssid")?.trim().to_string();
+                    let sec = match opt_str(p, "security").unwrap_or("open") {
+                        "open" => "open".to_string(),
+                        "psk" => format!("psk {}", str_param(p, "key")?.trim()),
+                        "enterprise" => "enterprise".to_string(),
+                        other => return Err(bad(format!("security `{other}`: open, psk or enterprise"))),
+                    };
+                    if ssid.contains(char::is_whitespace) {
+                        return Err(bad("an SSID here has no spaces"));
+                    }
+                    format!("wlan {n} {ssid} {sec}")
+                }
+            } else {
+                match opt_str(p, "address").map(str::trim).filter(|a| !a.is_empty()) {
+                    Some(a) => format!("capwap controller {a}"),
+                    None => "no capwap controller".to_string(),
+                }
+            };
+            let mut t = s.topology.clone();
+            let failed = packetcraft_ios::apply_config(&mut t, &mut s.sim, d, &line);
+            if let Some(f) = failed.first() {
+                return Err(bad(f.clone()));
+            }
+            s.checkpoint();
+            s.topology = t;
+            s.changed();
+            let joined = s.topology.lap_controller(d).and_then(|w| s.topology.device(w)).map(|w| w.name.clone());
+            Ok(json!({"config": line, "joined": joined}))
+        }
         "home.settings" => {
             let d = device_param(s, p, "device")?;
             let pair = |a: &str, b: &str| -> Option<(String, String)> { Some((opt_str(p, a)?.to_string(), opt_str(p, b)?.to_string())) };
@@ -385,14 +429,23 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                 return Err(bad("a WPA2 passphrase has 8-63 characters"));
             }
             let channel = p.get("channel").and_then(Value::as_u64).map_or(6, |c| c.clamp(1, 13) as u8);
-            let wifi = (!ssid.is_empty()).then_some(packetcraft_model::Wifi { ssid, key, channel });
+            // WPA2-Enterprise login (hosts).
+            let user: String = opt_str(p, "user").unwrap_or("").trim().chars().take(64).collect();
+            let password: String = opt_str(p, "password").unwrap_or("").chars().take(64).collect();
+            if !user.is_empty() && !dev.kind.is_host() {
+                return Err(bad("only hosts log in to a WPA2-Enterprise network; set WLANs on the controller (device.wlan)"));
+            }
+            let login = (!user.is_empty()).then_some(packetcraft_model::wlan::WifiLogin { user, password });
+            let wifi = (!ssid.is_empty()).then_some(packetcraft_model::Wifi { ssid, key, channel, login });
             s.checkpoint();
             if let Some(x) = s.topology.device_mut(d).and_then(|x| x.ports.get_mut(port)) {
                 x.wifi = wifi;
             }
             s.changed();
-            let ap = s.topology.wifi_ap_of(packetcraft_model::End { device: d, port });
-            Ok(json!({"associated_with": ap.map(|e| s.topology.end_label(e))}))
+            let end = packetcraft_model::End { device: d, port };
+            let ap = s.topology.wifi_ap_of(end);
+            let problem = s.topology.wifi_attempt(end).and_then(|a| a.outcome.err());
+            Ok(json!({"associated_with": ap.map(|e| s.topology.end_label(e)), "problem": problem}))
         }
                 "activity.show" => {
             let mut a = s.topology.activity.clone();

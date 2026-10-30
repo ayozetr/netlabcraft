@@ -46,7 +46,7 @@ pub fn factory(t: &mut Topology, id: DeviceId) {
     let mut scratch = Sim::new();
     let _ = packetcraft_ios::apply_config(t, &mut scratch, id, FACTORY_CONFIG);
     if let Some(radio) = t.device_mut(id).and_then(|d| d.ports.iter_mut().find(|p| packetcraft_model::ifname::is_wireless(&p.name))) {
-        radio.wifi = Some(Wifi { ssid: "HomeNetwork".into(), key: None, channel: 6 });
+        radio.wifi = Some(Wifi { ssid: "HomeNetwork".into(), key: None, channel: 6, login: None });
     }
 }
 

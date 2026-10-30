@@ -12,6 +12,7 @@ use std::net::Ipv4Addr;
 
 use packetcraft_core::MacAddr;
 
+pub mod capwap;
 pub mod control;
 pub mod dhcp;
 pub mod dhcp6;
@@ -31,9 +32,11 @@ pub mod radius;
 pub mod tacacs;
 
 pub mod serial;
+pub mod sha1;
 pub mod snmp;
 pub mod tcp;
 pub mod vpn;
+pub mod wlan;
 
 /// Why bytes didn't decode.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -452,6 +455,12 @@ pub enum Protocol {
     Gre,
     /// IPsec Encapsulating Security Payload.
     Esp,
+    /// IEEE 802.11 management frames over the air (probe, authentication, association).
+    Wlan,
+    /// IEEE 802.1X EAPOL: EAP logins and the WPA2 4-way handshake.
+    Eapol,
+    /// CAPWAP between lightweight access points and their controller.
+    Capwap,
     Other,
 }
 
@@ -487,6 +496,9 @@ impl Protocol {
             Protocol::Ipv6 => "IPv6",
             Protocol::Gre => "GRE",
             Protocol::Esp => "ESP",
+            Protocol::Wlan => "802.11",
+            Protocol::Eapol => "EAPOL",
+            Protocol::Capwap => "CAPWAP",
             Protocol::Other => "Other",
         }
     }
@@ -644,6 +656,10 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                             ),
                             Err(e) => (Protocol::Dhcp, format!("DHCP ({e}){tag}")),
                         },
+                        Ok(u) if [u.dst_port, u.src_port].iter().any(|p| [capwap::CONTROL_PORT, capwap::DATA_PORT].contains(p)) => {
+                            let port = if [capwap::CONTROL_PORT, capwap::DATA_PORT].contains(&u.dst_port) { u.dst_port } else { u.src_port };
+                            (Protocol::Capwap, format!("{} {route}{tag}", capwap::describe(port, &u.payload)))
+                        }
                         Ok(u) if u.dst_port == dns::PORT || u.src_port == dns::PORT => match dns::Dns::decode(&u.payload) {
                             Ok(d) if d.response => (
                                 Protocol::Dns,
@@ -785,6 +801,10 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                 format!("LLDP {} on {}, keep {} s{tag}", if l.system_name.is_empty() { l.chassis.to_string() } else { l.system_name }, l.port, l.ttl),
             ),
             Err(e) => (Protocol::Lldp, format!("LLDP ({e}){tag}")),
+        },
+        wlan::ETHERTYPE_EAPOL => match wlan::Eapol::decode(&f.payload) {
+            Ok(e) => (Protocol::Eapol, format!("{}{tag}", e.describe())),
+            Err(e) => (Protocol::Eapol, format!("EAPOL ({e}){tag}")),
         },
         len if len <= 1_500 && f.payload.starts_with(&[0x42, 0x42, 0x03]) => match control::Bpdu::decode(&f.payload) {
             Ok(b) => (Protocol::Stp, format!("STP BPDU from {}: root {}, cost {}{tag}", b.bridge, b.root, b.root_cost)),

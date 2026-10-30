@@ -45,6 +45,52 @@ pub fn access_point_mark(p: &Painter, rect: Rect) {
     }
 }
 
+/// The mark a wireless LAN controller carries: a small panel with a hub dot fanning out to
+/// three access-point dots (it runs the radios it is linked to).
+pub fn wlc_mark(p: &Painter, rect: Rect) {
+    let w = rect.width();
+    let dark = Color32::from_rgb(0x2a, 0x33, 0x40);
+    let green = Color32::from_rgb(0x2e, 0x8b, 0x57);
+    let panel = Rect::from_center_size(pos2(rect.center().x, rect.center().y - w * 0.36), vec2(w * 0.62, w * 0.3));
+    p.rect_filled(panel, w * 0.05, Color32::from_rgb(0xf4, 0xf6, 0xf9));
+    p.rect_stroke(panel, w * 0.05, Stroke::new((w / 30.0).max(1.0), dark), StrokeKind::Inside);
+    let hub = pos2(panel.center().x, panel.bottom() - w * 0.07);
+    let s = Stroke::new((w / 34.0).max(1.0), dark);
+    for dx in [-0.2, 0.0, 0.2] {
+        let tip = pos2(panel.center().x + w * dx, panel.top() + w * 0.08);
+        p.line_segment([hub, tip], s);
+        p.circle_filled(tip, w * 0.035, green);
+    }
+    p.circle_filled(hub, w * 0.045, dark);
+}
+
+/// The mark a lightweight access point adds to the access-point mark: a small link to its
+/// controller (a tether ending in a square).
+pub fn lap_mark(p: &Painter, rect: Rect) {
+    let w = rect.width();
+    let c = Color32::from_rgb(0x5a, 0x6e, 0xc4);
+    let from = pos2(rect.right() - w * 0.22, rect.center().y - w * 0.05);
+    let to = pos2(rect.right() - w * 0.04, rect.center().y - w * 0.28);
+    p.line_segment([from, to], Stroke::new((w / 26.0).max(1.0), c));
+    p.rect_filled(Rect::from_center_size(to, vec2(w * 0.13, w * 0.13)), w * 0.02, c);
+}
+
+/// The marks a catalogue model wears over its kind's icon.
+pub fn model_marks(p: &Painter, rect: Rect, model_id: &str, multilayer: bool) {
+    if multilayer {
+        multilayer_mark(p, rect);
+    }
+    match model_id {
+        "AccessPoint" | "Home-Router" => access_point_mark(p, rect),
+        "LAP" => {
+            access_point_mark(p, rect);
+            lap_mark(p, rect);
+        }
+        "WLC" => wlc_mark(p, rect),
+        _ => {}
+    }
+}
+
 /// Draws a device icon filling `rect`.
 pub fn device(p: &Painter, rect: Rect, kind: DeviceKind, _tk: &Tokens) {
     let c = device_color(kind);

@@ -166,6 +166,7 @@ pub fn running_config(d: &Device) -> String {
         }
     }
     vpn_config(&mut s, d);
+    wlan_config(&mut s, d);
     for p in &d.ports {
         let _ = writeln!(s, "interface {}", p.name);
         if !p.description.is_empty() {
@@ -2299,4 +2300,23 @@ pub fn crypto_maps(d: &Device) -> String {
         let _ = writeln!(s, "  Applied to: {}", if on.is_empty() { "no interface".to_string() } else { on.join(", ") });
     }
     s.trim_end().to_string()
+}
+
+/// Wireless-controller lines: a controller's WLANs, an access point's controller.
+fn wlan_config(s: &mut String, d: &Device) {
+    use packetcraft_model::wlan::WlanSecurity;
+    for w in &d.wlan.wlans {
+        let sec = match &w.security {
+            WlanSecurity::Open => "open".to_string(),
+            WlanSecurity::Psk(k) => format!("psk {k}"),
+            WlanSecurity::Enterprise => "enterprise".to_string(),
+        };
+        let _ = writeln!(s, "wlan {} {} {sec}", w.id, w.ssid);
+    }
+    if let Some(a) = d.wlan.controller {
+        let _ = writeln!(s, "capwap controller {a}");
+    }
+    if !d.wlan.is_default() {
+        let _ = writeln!(s, "!");
+    }
 }

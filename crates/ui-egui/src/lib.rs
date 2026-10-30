@@ -29,6 +29,7 @@ mod mib;
 pub mod png;
 mod services;
 pub mod theme;
+mod wlan_page;
 
 #[cfg(test)]
 mod tests;

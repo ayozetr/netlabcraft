@@ -88,6 +88,22 @@ fn frame_details_decode_every_layer() {
 }
 
 #[test]
+fn air_hops_show_their_802_11_layer_first() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "wlc"})).unwrap();
+    s.execute("sim.reset", json!({})).unwrap();
+    s.execute("net.ping", json!({"from": "Laptop2", "to": "192.168.20.1", "count": 1})).unwrap();
+    let probe = s.sim.trace().iter().find(|e| e.summary.contains("probe request: \"Guest\"")).unwrap();
+    let layers = events::decode_event(&probe.frame, probe.air.as_deref());
+    assert_eq!(layers.len(), 1);
+    assert!(layers[0].1.iter().any(|(k, v)| k == "SSID" && v == "Guest"));
+    let key = s.sim.trace().iter().find(|e| e.summary.contains("message 2 of 4")).unwrap();
+    let names: Vec<String> = events::decode_event(&key.frame, key.air.as_deref()).into_iter().map(|(l, _)| l).collect();
+    assert_eq!(names, ["IEEE 802.11", "Ethernet II (equivalent)", "IEEE 802.1X (EAPOL)"]);
+    assert!(events::decode_event(&[], Some(&[1, 2])).first().is_some_and(|l| l.1.iter().any(|(k, _)| k == "Error")));
+}
+
+#[test]
 fn a_simple_pdu_lands_in_the_pdu_list() {
     let mut h = harness(Some("lan"));
     h.state_mut().ui.show_notes = false;

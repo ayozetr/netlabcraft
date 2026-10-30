@@ -13,7 +13,7 @@ use packetcraft_wire::control::{self, Bpdu, BridgeId, OspfHello, RipEntry};
 use packetcraft_wire::ospfdb::{DBD_INIT, DBD_MASTER, DBD_MORE, OspfDb, RouterLink, RouterLsa};
 use packetcraft_wire::{Frame, Ipv4, PROTO_UDP, Udp};
 
-use crate::{LINK_DELAY_US, Queued, Sim, l3_ifaces, port_up};
+use crate::{LINK_DELAY_US, Sim, l3_ifaces, port_up};
 
 /// Hello time of spanning tree.
 pub const BPDU_EVERY_US: u64 = 2_000_000;
@@ -68,8 +68,7 @@ impl Sim {
             return;
         }
         let Some(to) = t.peer(from) else { return };
-        self.seq += 1;
-        self.queue.push(std::cmp::Reverse(Queued { at: at + LINK_DELAY_US, seq: self.seq, from, to, frame, hops: 0 }));
+        self.push_hop(t, at + LINK_DELAY_US, from, to, frame, 0);
     }
 
     fn send_lldp(&mut self, t: &Topology, at: u64) {

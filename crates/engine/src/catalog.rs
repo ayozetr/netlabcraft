@@ -27,7 +27,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Wi-Fi settings",
         "",
         None,
-        r#"{"device", "port"?: "Wireless0", "ssid": "network name (empty: radio off)", "key"?: "WPA2-PSK passphrase, 8-63 characters (none: open)", "channel"?: 1-13}"#,
+        r#"{"device", "port"?: "Wireless0", "ssid": "network name (empty: radio off)", "key"?: "WPA2-PSK passphrase, 8-63 characters (none: open)", "channel"?: 1-13, "user"?: "WPA2-Enterprise username (hosts)", "password"?} → {associated_with, problem}"#,
         true
     ),
     c!(
@@ -53,6 +53,22 @@ pub static CATALOG: &[CommandInfo] = &[
         "",
         None,
         r#"{"device"} → {"received": n}: POP3 from the incoming server; the messages move to the host"#,
+        true
+    ),
+    c!(
+        "wlc.wlan",
+        "Controller WLAN",
+        "",
+        None,
+        r#"{"device": controller, "id": 1-16, "ssid"?: "network name", "security"?: "open"|"psk"|"enterprise", "key"?: "WPA2-PSK passphrase", "remove"?: true} → {"config": the line applied}"#,
+        true
+    ),
+    c!(
+        "lap.controller",
+        "Access point's controller",
+        "",
+        None,
+        r#"{"device": lightweight AP, "address"?: "controller address (none: any in the AP's subnet)"} → {"config", "joined": controller name or null}"#,
         true
     ),
     c!(
@@ -119,7 +135,14 @@ pub static CATALOG: &[CommandInfo] = &[
     c!("file.new", "New lab", "File", Some("Ctrl+N"), r#"{"sample"?: "sample id (see sample.list)"}"#, false),
     c!("file.open", "Open lab…", "File", Some("Ctrl+O"), r#"{"json": "lab file contents"} or {"path": "file (desktop/CLI)"}"#, false),
     c!("file.save", "Save lab", "File", Some("Ctrl+S"), r#"{"path"?: "file to write (desktop/CLI)"} → {"json"}"#, false),
-    c!("file.export_pcap", "Export capture (pcap)…", "File", None, r#"{"path"?: "file to write"} → {"frames", "bytes"}"#, false),
+    c!(
+        "file.export_pcap",
+        "Export capture (pcap)…",
+        "File",
+        None,
+        r#"{"path"?: "file to write", "link"?: "ethernet" (default) | "802.11" (the Wi-Fi hops as they crossed the air)} → {"frames", "bytes"}"#,
+        false
+    ),
     c!("edit.undo", "Undo", "Edit", Some("Ctrl+Z"), "{}", false),
     c!("edit.redo", "Redo", "Edit", Some("Ctrl+Y"), "{}", false),
     c!("edit.checkpoint", "Start an undo step", "", None, "{} (before a series of transient moves)", false),

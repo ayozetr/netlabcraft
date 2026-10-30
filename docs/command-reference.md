@@ -8,11 +8,13 @@ Every front end (UI, `packetcraft-cli run`, MCP `packetcraft_run`) runs these.
 
 | Id | Label | Menu | Shortcut | Parameters |
 |---|---|---|---|---|
-| `device.wireless` | Wi-Fi settings |  |  | `{"device", "port"?: "Wireless0", "ssid": "network name (empty: radio off)", "key"?: "WPA2-PSK passphrase, 8-63 characters (none: open)", "channel"?: 1-13}` |
+| `device.wireless` | Wi-Fi settings |  |  | `{"device", "port"?: "Wireless0", "ssid": "network name (empty: radio off)", "key"?: "WPA2-PSK passphrase, 8-63 characters (none: open)", "channel"?: 1-13, "user"?: "WPA2-Enterprise username (hosts)", "password"?} → {associated_with, problem}` |
 | `snmp.request` | SNMP request |  |  | `{"device": manager, "target": agent address, "community"?: "public", "operation"?: "get"\|"get-next"\|"set", "oid": "1.3.6.1.2.1.1.5.0", "value"?: for a set} → {"bindings": [{"oid", "value"}], "error"}` |
 | `mail.configure` | Email account |  |  | `{"device", "name"?, "address": "ana@lab.local", "incoming": "POP3 server address or name", "outgoing": "SMTP server", "user", "password"}` |
 | `mail.send` | Send email |  |  | `{"device", "to", "subject"?, "body"?} → {"answer"}: SMTP through the outgoing server` |
 | `mail.receive` | Receive email |  |  | `{"device"} → {"received": n}: POP3 from the incoming server; the messages move to the host` |
+| `wlc.wlan` | Controller WLAN |  |  | `{"device": controller, "id": 1-16, "ssid"?: "network name", "security"?: "open"\|"psk"\|"enterprise", "key"?: "WPA2-PSK passphrase", "remove"?: true} → {"config": the line applied}` |
+| `lap.controller` | Access point's controller |  |  | `{"device": lightweight AP, "address"?: "controller address (none: any in the AP's subnet)"} → {"config", "joined": controller name or null}` |
 | `home.settings` | Home router settings |  |  | `{"device", "lan"?+"lan_mask"?, "dhcp"?: true\|false, "dhcp_start"?, "internet"?+"internet_mask"?+"gateway"?} → {"config": the lines applied}` |
 | `activity.show` | Activity |  |  | `{} → {"activity" (or null; a locked one without its checks), "total_points", "checks", "locked"}` |
 | `activity.set` | Activity Wizard… | Extensions |  | `{"title"?, "instructions"?, "hidden"?: true to store configuration answers as hashes, "time_limit"?: minutes (0: none), "score_only"?: while locked, Check Results shows the score only, "variables"?: {"name": ["value", …]} picked per student, used as {name}}` |
@@ -28,7 +30,7 @@ Every front end (UI, `packetcraft-cli run`, MCP `packetcraft_run`) runs these.
 | `file.new` | New lab | File | Ctrl+N | `{"sample"?: "sample id (see sample.list)"}` |
 | `file.open` | Open lab… | File | Ctrl+O | `{"json": "lab file contents"} or {"path": "file (desktop/CLI)"}` |
 | `file.save` | Save lab | File | Ctrl+S | `{"path"?: "file to write (desktop/CLI)"} → {"json"}` |
-| `file.export_pcap` | Export capture (pcap)… | File |  | `{"path"?: "file to write"} → {"frames", "bytes"}` |
+| `file.export_pcap` | Export capture (pcap)… | File |  | `{"path"?: "file to write", "link"?: "ethernet" (default) \| "802.11" (the Wi-Fi hops as they crossed the air)} → {"frames", "bytes"}` |
 | `edit.undo` | Undo | Edit | Ctrl+Z | `{}` |
 | `edit.redo` | Redo | Edit | Ctrl+Y | `{}` |
 | `edit.checkpoint` | Start an undo step |  |  | `{} (before a series of transient moves)` |
@@ -195,6 +197,12 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show crypto isakmp policy` | user, privileged | router | IKE policies |
 | `show crypto ipsec sa` | user, privileged | router | IPsec associations and packet counts |
 | `show crypto map` | user, privileged | router | Crypto maps and where they apply |
+| `wlan <1-16> SSID {open \| psk PASSPHRASE \| enterprise}` | config | switch | A WLAN this controller offers through its access points |
+| `no wlan <1-16>` | config | switch | Stop offering a WLAN |
+| `capwap controller A.B.C.D` | config | switch | The wireless LAN controller this access point joins |
+| `no capwap controller` | config | switch | Join a controller in this subnet |
+| `show wlan` | user, privileged | switch | WLANs and the hosts on them |
+| `show capwap` | user, privileged | switch | Access points joined to this controller, or this AP's controller |
 | `clear crypto sa` | privileged | router | Forget IPsec associations and counters |
 | `encapsulation {hdlc\|ppp}` | interface | router | Framing on a serial link |
 | `clock rate <1200-2000000>` | interface | router | Clock a serial link from its DCE end |

@@ -42,6 +42,7 @@ mod tests;
 pub mod v6;
 pub mod vpn;
 pub mod vtp;
+pub mod wlan;
 
 /// One cable hop (serialisation + propagation), in microseconds.
 pub const LINK_DELAY_US: u64 = 250;
@@ -672,6 +673,11 @@ pub struct TraceEvent {
     pub summary: String,
     /// Why the receiver discarded it, if it did.
     pub dropped: Option<String>,
+    /// The IEEE 802.11 frame, when this hop crossed the air. `frame` then holds the Ethernet II
+    /// frame it stands for (data, EAPOL), or nothing for management frames, which have none:
+    /// a pcap file has one link type, so the Ethernet capture keeps every data hop and
+    /// [`Sim::pcap_wlan`] gives the air hops as 802.11.
+    pub air: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -794,6 +800,16 @@ pub struct Sim {
     links_seen: BTreeMap<(DeviceId, usize), bool>,
     /// Lab changes waiting for the engine.
     events: Vec<PortEvent>,
+    /// Wi-Fi associations as the air has shown them, by host radio.
+    assoc: BTreeMap<End, wlan::Assoc>,
+    /// Lightweight APs' joins as CAPWAP has shown them.
+    joined: BTreeMap<DeviceId, wlan::Joined>,
+    /// 802.1X logins waiting for a RADIUS answer, by the controller's source port.
+    dot1x: BTreeMap<u16, wlan::Dot1xWait>,
+    /// WPA2-Personal master keys by (passphrase, SSID).
+    pmks: BTreeMap<(String, String), [u8; 32]>,
+    air_seq: u16,
+    capwap_seq: u8,
 }
 
 impl Sim {
@@ -1002,12 +1018,17 @@ impl Sim {
             st.pending6.retain(|p| ifs6.iter().any(|i| i.name == p.iface()));
         }
         let queue = std::mem::take(&mut self.queue);
-        self.queue = queue.into_iter().filter(|Reverse(q)| t.peer(q.from) == Some(q.to)).collect();
+        let joining = |e: End, ap: End| t.wifi_attempt(e).is_some_and(|a| a.ap == ap);
+        self.queue = queue
+            .into_iter()
+            .filter(|Reverse(q)| t.peer(q.from) == Some(q.to) || (wlan::air_hop(t, q.from, q.to) && (joining(q.from, q.to) || joining(q.to, q.from))))
+            .collect();
+        self.wlan_sync(t);
     }
 
     /// A capture of the event list, in pcap format.
     pub fn pcap(&self) -> Vec<u8> {
-        packetcraft_wire::pcap::write(self.trace.iter().map(|e| (e.at_us, e.frame.as_slice())))
+        packetcraft_wire::pcap::write(self.trace.iter().filter(|e| !e.frame.is_empty()).map(|e| (e.at_us, e.frame.as_slice())))
     }
 
     fn st(&mut self, d: DeviceId) -> &mut DevState {
@@ -1024,14 +1045,17 @@ impl Sim {
         }
         // Over the air an access point reaches every associated host; each keeps what is its own.
         if is_ap_radio(t, from) {
-            // Not back to the host that sent it.
+            // Not back to the host that sent it; a frame for one host goes to that host only.
             let src = frame.get(6..12).map(<[u8]>::to_vec).unwrap_or_default();
-            for to in t.wifi_clients(from) {
-                if t.device(to.device).and_then(|d| d.ports.get(to.port)).is_some_and(|p| p.mac.0[..] == src[..]) {
+            let dst = frame.get(0..6).map(<[u8]>::to_vec).unwrap_or_default();
+            let clients = t.wifi_clients(from);
+            let mac = |e: &End| t.device(e.device).and_then(|d| d.ports.get(e.port)).map(|p| p.mac.0.to_vec()).unwrap_or_default();
+            let unicast: Vec<End> = clients.iter().filter(|c| mac(c) == dst).copied().collect();
+            for to in if unicast.is_empty() { clients } else { unicast } {
+                if mac(&to) == src {
                     continue;
                 }
-                self.seq += 1;
-                self.queue.push(Reverse(Queued { at: self.now + LINK_DELAY_US, seq: self.seq, from, to, frame: frame.clone(), hops }));
+                self.push_hop(t, self.now + LINK_DELAY_US, from, to, frame.clone(), hops);
             }
             return true;
         }
@@ -1039,8 +1063,7 @@ impl Sim {
         if self.err_disabled_now(to.device, to.port) {
             return false;
         }
-        self.seq += 1;
-        self.queue.push(Reverse(Queued { at: self.now + LINK_DELAY_US, seq: self.seq, from, to, frame, hops }));
+        self.push_hop(t, self.now + LINK_DELAY_US, from, to, frame, hops);
         true
     }
 
@@ -1049,6 +1072,7 @@ impl Sim {
     fn advance(&mut self, t: &Topology, deadline: u64, mut stop: impl FnMut(&Sim) -> bool) -> bool {
         self.storm = false;
         self.refresh_stp(t);
+        self.wlan_sync(t);
         self.flush_syslog(t);
         self.schedule_control(t, deadline);
         let mut count = 0usize;
@@ -1105,16 +1129,37 @@ impl Sim {
             Some((_, et, payload)) => Frame { dst: mac(q.to), src: mac(q.from), vlan: None, ethertype: *et, payload: payload.clone() }.encode(),
             None => q.frame.clone(),
         };
-        let (protocol, mut summary) = packetcraft_wire::summarize(&shown);
+        let air = wlan::air_hop(t, q.from, q.to);
+        // Over the air: listed by what the 802.11 frame carries (its Ethernet equivalent).
+        let shown = if air {
+            packetcraft_wire::wlan::Dot11::decode(&q.frame).ok().and_then(|d| d.ethernet()).map(|e| e.encode()).unwrap_or_default()
+        } else {
+            shown
+        };
+        let (protocol, mut summary) =
+            if air && shown.is_empty() { (Protocol::Wlan, packetcraft_wire::wlan::summarize(&q.frame)) } else { packetcraft_wire::summarize(&shown) };
         if let Some((f, ..)) = &serial {
             summary.push_str(if *f == packetcraft_wire::serial::Framing::Ppp { " [serial, PPP]" } else { " [serial, HDLC]" });
+        }
+        if air && !shown.is_empty() {
+            summary.push_str(" [802.11]");
         }
         self.next_event += 1;
         if self.trace.len() >= TRACE_CAP {
             self.trace.pop_front();
         }
-        self.trace.push_back(TraceEvent { id: self.next_event, at_us: q.at, from: q.from, to: q.to, frame: shown, protocol, summary, dropped: None });
-        let dropped = self.receive(t, q.to, &q.frame, q.hops).err();
+        self.trace.push_back(TraceEvent {
+            id: self.next_event,
+            at_us: q.at,
+            from: q.from,
+            to: q.to,
+            frame: shown,
+            protocol,
+            summary,
+            dropped: None,
+            air: air.then(|| q.frame.clone()),
+        });
+        let dropped = if air { self.air_in(t, q.from, q.to, &q.frame, q.hops).err() } else { self.receive(t, q.to, &q.frame, q.hops).err() };
         if let (Some(reason), Some(ev)) = (dropped, self.trace.back_mut()) {
             ev.dropped = Some(reason);
         }
@@ -1984,6 +2029,9 @@ impl Sim {
         }
         if ip.protocol == PROTO_UDP {
             let u = Udp::decode(&ip.payload, ip.src, ip.dst).map_err(|e| e.to_string())?;
+            if let Some(r) = self.wlan_udp_in(t, d, &ip, &u) {
+                return r;
+            }
             if let Some(r) = self.mgmt_udp_in(t, d, ifc, &ip, &u) {
                 return r;
             }

@@ -731,3 +731,105 @@ fn cluster_commands_refuse_hostile_params() {
     assert_eq!(t.shown_as(d, inner), Some(packetcraft_model::Shown::Device));
     assert_eq!(t.cluster_path(inner).len(), packetcraft_model::MAX_CLUSTERS);
 }
+
+fn trace_text(s: &Session) -> String {
+    s.sim
+        .trace()
+        .iter()
+        .map(|e| format!("{} {}{}\n", e.protocol.name(), e.summary, e.dropped.as_ref().map(|d| format!(" DROPPED: {d}")).unwrap_or_default()))
+        .collect()
+}
+
+#[test]
+fn a_controller_pushes_wlans_to_its_access_points_and_checks_logins_with_radius() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "wlc"})).unwrap();
+    let end = |s: &Session, n: &str| packetcraft_model::End { device: s.topology.resolve(n).unwrap(), port: 0 };
+    // Both laptops got addresses through their access points.
+    for l in ["Laptop1", "Laptop2"] {
+        assert!(s.topology.find(l).unwrap().ports[0].ip.is_some(), "{l} has no address");
+    }
+    s.execute("cli.exec", json!({"device": "WLC1", "line": "enable"})).unwrap();
+    let wlan = s.execute("cli.exec", json!({"device": "WLC1", "line": "show wlan"})).unwrap()["output"].as_str().unwrap().to_string();
+    assert!(wlan.contains("Staff") && wlan.contains("WPA2-Enterprise") && wlan.contains("Laptop1") && wlan.contains("LAP2"), "{wlan}");
+    let capwap = s.execute("cli.exec", json!({"device": "WLC1", "line": "show capwap"})).unwrap()["output"].as_str().unwrap().to_string();
+    assert!(capwap.contains("Access points joined: 2"), "{capwap}");
+    let run = s.execute("cli.exec", json!({"device": "WLC1", "line": "show running-config"})).unwrap()["output"].as_str().unwrap().to_string();
+    assert!(run.contains("wlan 1 Staff enterprise\nwlan 2 Guest psk invitado123"), "{run}");
+
+    // Simulation: the association, the 802.1X login and the RADIUS exchange.
+    s.execute("sim.reset", json!({})).unwrap();
+    assert_eq!(s.execute("net.ping", json!({"from": "Laptop1", "to": "192.168.20.1", "count": 3})).unwrap()["marks"], "!!!");
+    let tr = trace_text(&s);
+    for want in [
+        "802.11 probe request: \"Staff\"?",
+        "802.11 probe response: \"Staff\"",
+        "802.11 authentication response: success",
+        "802.11 association response: success",
+        "EAP request: identity?",
+        "EAP response: identity \"ana\"",
+        "CAPWAP data carrying",
+        "RADIUS",
+        "EAP success",
+        "[802.11]",
+    ] {
+        assert!(tr.contains(want), "missing {want}:\n{tr}");
+    }
+    assert!(s.sim.trace().iter().any(|e| e.protocol == packetcraft_wire::Protocol::Wlan && e.air.is_some() && e.frame.is_empty()));
+    // The Ethernet capture skips management frames; the 802.11 capture has every air hop.
+    let wl = s.sim.pcap_wlan();
+    assert_eq!(&wl[20..24], &105u32.to_le_bytes());
+    assert!(s.sim.pcap().len() > 24 && wl.len() > 24);
+    let r = s.execute("file.export_pcap", json!({"link": "802.11"})).unwrap();
+    assert_eq!(r["bytes"].as_u64(), Some(wl.len() as u64));
+    assert!(r["frames"].as_u64().unwrap() > 10);
+    assert!(s.execute("file.export_pcap", json!({"link": "token-ring"})).is_err());
+
+    // WPA2-Personal: the 4-way handshake, signed with the passphrase.
+    s.execute("sim.reset", json!({})).unwrap();
+    assert_eq!(s.execute("net.ping", json!({"from": "Laptop2", "to": "192.168.20.1", "count": 2})).unwrap()["marks"], "!!");
+    let tr = trace_text(&s);
+    assert!(tr.contains("4-way handshake message 4 of 4") && !tr.contains("bad MIC"), "{tr}");
+
+    // A wrong password: RADIUS refuses, the host is turned away.
+    let r = s.execute("device.wireless", json!({"device": "Laptop1", "ssid": "Staff", "user": "ana", "password": "nope"})).unwrap();
+    assert!(r["associated_with"].is_null() && r["problem"].as_str().unwrap().contains("refused"), "{r}");
+    s.execute("sim.advance", json!({"seconds": 1})).unwrap();
+    let tr = trace_text(&s);
+    assert!(tr.contains("EAP failure") && tr.contains("IEEE 802.1X authentication failed"), "{tr}");
+    // A wrong passphrase fails the handshake's MIC.
+    s.execute("device.wireless", json!({"device": "Laptop2", "ssid": "Guest", "key": "otraclave1"})).unwrap();
+    s.execute("sim.advance", json!({"seconds": 1})).unwrap();
+    assert!(trace_text(&s).contains("bad MIC (wrong passphrase)"), "{}", trace_text(&s));
+
+    // WLANs through commands: removing Guest drops it from the APs.
+    s.execute("device.wireless", json!({"device": "Laptop2", "ssid": "Guest", "key": "invitado123"})).unwrap();
+    assert!(s.topology.wifi_ap_of(end(&s, "Laptop2")).is_some());
+    s.execute("wlc.wlan", json!({"device": "WLC1", "id": 2, "remove": true})).unwrap();
+    assert!(s.topology.wifi_ap_of(end(&s, "Laptop2")).is_none());
+    s.execute("sim.advance", json!({"seconds": 1})).unwrap();
+    assert!(trace_text(&s).contains("delete 1 WLAN(s)"), "{}", trace_text(&s));
+    s.execute("wlc.wlan", json!({"device": "WLC1", "id": 3, "ssid": "Guest", "security": "open"})).unwrap();
+    s.execute("device.wireless", json!({"device": "Laptop2", "ssid": "Guest"})).unwrap();
+    assert!(s.topology.wifi_ap_of(end(&s, "Laptop2")).is_some());
+    assert!(s.execute("wlc.wlan", json!({"device": "WLC1", "id": 4, "ssid": "X", "security": "psk", "key": "short"})).is_err());
+    assert!(s.execute("wlc.wlan", json!({"device": "LAP1", "id": 4, "ssid": "X"})).is_err());
+
+    // An access point pointed at an address with no controller leaves it.
+    s.execute("device.wireless", json!({"device": "Laptop1", "ssid": "Staff", "user": "ana", "password": "ana12345"})).unwrap();
+    assert!(s.topology.wifi_ap_of(end(&s, "Laptop1")).is_some());
+    let r = s.execute("lap.controller", json!({"device": "LAP1", "address": "192.168.20.99"})).unwrap();
+    assert!(r["joined"].is_null(), "{r}");
+    assert!(s.topology.wifi_ap_of(end(&s, "Laptop1")).is_none());
+    let r = s.execute("lap.controller", json!({"device": "LAP1", "address": "192.168.20.2"})).unwrap();
+    assert_eq!(r["joined"], "WLC1");
+    s.execute("sim.reset", json!({})).unwrap();
+    s.execute("sim.advance", json!({"seconds": 1})).unwrap();
+    let tr = trace_text(&s);
+    for want in
+        ["CAPWAP discovery request from AP \"LAP1\"", "CAPWAP join response from controller \"WLC1\": success", "802.11 WLAN configuration request"]
+    {
+        assert!(tr.contains(want), "missing {want}:\n{tr}");
+    }
+    assert!(s.execute("lap.controller", json!({"device": "WLC1", "address": "1.2.3.4"})).is_err());
+}

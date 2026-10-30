@@ -3,6 +3,16 @@
 
 /// Writes a capture of `(time in microseconds, frame bytes)` records.
 pub fn write<'a>(records: impl IntoIterator<Item = (u64, &'a [u8])>) -> Vec<u8> {
+    write_link(LINKTYPE_ETHERNET, records)
+}
+
+/// Ethernet II frames.
+pub const LINKTYPE_ETHERNET: u32 = 1;
+/// IEEE 802.11 frames without a radio header or FCS.
+pub const LINKTYPE_IEEE802_11: u32 = 105;
+
+/// A capture whose records all have the link type `link` (a pcap file has exactly one).
+pub fn write_link<'a>(link: u32, records: impl IntoIterator<Item = (u64, &'a [u8])>) -> Vec<u8> {
     let mut out = Vec::new();
     out.extend_from_slice(&0xa1b2_c3d4u32.to_le_bytes());
     out.extend_from_slice(&2u16.to_le_bytes());
@@ -10,7 +20,7 @@ pub fn write<'a>(records: impl IntoIterator<Item = (u64, &'a [u8])>) -> Vec<u8> 
     out.extend_from_slice(&0i32.to_le_bytes()); // thiszone
     out.extend_from_slice(&0u32.to_le_bytes()); // sigfigs
     out.extend_from_slice(&65_535u32.to_le_bytes()); // snaplen
-    out.extend_from_slice(&1u32.to_le_bytes()); // LINKTYPE_ETHERNET
+    out.extend_from_slice(&link.to_le_bytes());
     for (micros, frame) in records {
         let len = u32::try_from(frame.len()).unwrap_or(u32::MAX);
         let secs = u32::try_from(micros / 1_000_000).unwrap_or(u32::MAX);
