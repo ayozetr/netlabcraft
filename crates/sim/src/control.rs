@@ -1,5 +1,5 @@
 //! Control-plane traffic on the wire: spanning-tree BPDUs, OSPF hellos, RIP updates, HSRP
-//! hellos, NTP polls and LLDP advertisements.
+//! hellos, NTP polls, LLDP advertisements and LACPDUs.
 //!
 //! The protocols themselves are computed from the topology (`stp`, `ospf`, `rip`); these frames
 //! show what they would say, at their usual intervals, so Simulation mode and captures have them.
@@ -39,6 +39,7 @@ impl Sim {
             (HSRP_HELLO_EVERY_US, 3),
             (NTP_POLL_EVERY_US, 4),
             (crate::lldp::LLDP_EVERY_US, 5),
+            (crate::channel::LACP_EVERY_US, 6),
         ] {
             let mut at = (from / every + 1) * every;
             while at <= deadline {
@@ -48,6 +49,7 @@ impl Sim {
                     3 => self.send_hsrp_hellos(t, at),
                     4 => self.send_ntp_polls(t, at),
                     5 => self.send_lldp(t, at),
+                    6 => self.send_lacp(t, at),
                     _ => self.send_rip_updates(t, at),
                 }
                 at += every;
@@ -75,6 +77,27 @@ impl Sim {
                         vlan: None,
                         ethertype: packetcraft_wire::lldp::ETHERTYPE_LLDP,
                         payload: l.encode(),
+                    };
+                    frames.push((End { device: d.id, port: i }, f.encode()));
+                }
+            }
+        }
+        for (from, f) in frames {
+            self.queue_at(t, from, f, at);
+        }
+    }
+
+    fn send_lacp(&mut self, t: &Topology, at: u64) {
+        let mut frames = Vec::new();
+        for d in t.devices.iter().filter(|d| d.kind == DeviceKind::Switch) {
+            for (i, p) in d.ports.iter().enumerate().filter(|(_, p)| p.channel.is_some()) {
+                if let Some(pdu) = crate::channel::lacpdu(t, d, i) {
+                    let f = Frame {
+                        dst: packetcraft_wire::lacp::SLOW_GROUP,
+                        src: p.mac,
+                        vlan: None,
+                        ethertype: packetcraft_wire::lacp::ETHERTYPE_SLOW,
+                        payload: pdu.encode(),
                     };
                     frames.push((End { device: d.id, port: i }, f.encode()));
                 }

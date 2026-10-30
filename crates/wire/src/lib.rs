@@ -17,6 +17,7 @@ pub mod dhcp;
 pub mod dhcp6;
 pub mod dns;
 pub mod ipv6;
+pub mod lacp;
 pub mod lldp;
 
 pub mod mgmt;
@@ -415,6 +416,7 @@ pub enum Protocol {
     Ospf,
     Rip,
     Hsrp,
+    Lacp,
     Lldp,
     Ntp,
     Syslog,
@@ -441,6 +443,7 @@ impl Protocol {
             Protocol::Ospf => "OSPF",
             Protocol::Rip => "RIP",
             Protocol::Hsrp => "HSRP",
+            Protocol::Lacp => "LACP",
             Protocol::Lldp => "LLDP",
             Protocol::Ntp => "NTP",
             Protocol::Syslog => "Syslog",
@@ -599,6 +602,22 @@ pub fn summarize(bytes: &[u8]) -> (Protocol, String) {
                 (proto, format!("{text}{tag}"))
             }
             Err(e) => (Protocol::Ipv6, format!("IPv6 ({e}){tag}")),
+        },
+        lacp::ETHERTYPE_SLOW => match lacp::Lacpdu::decode(&f.payload) {
+            Ok(p) => {
+                let state = |s: u8| {
+                    let mut v = vec![if s & lacp::ACTIVITY != 0 { "active" } else { "passive" }];
+                    if s & lacp::SYNC != 0 {
+                        v.push("in sync");
+                    }
+                    if s & lacp::DEFAULTED != 0 {
+                        v.push("no partner yet");
+                    }
+                    v.join(", ")
+                };
+                (Protocol::Lacp, format!("LACP port {} key {} ({}){tag}", p.actor.port, p.actor.key, state(p.actor.state)))
+            }
+            Err(e) => (Protocol::Lacp, format!("LACP ({e}){tag}")),
         },
         lldp::ETHERTYPE_LLDP => match lldp::Lldp::decode(&f.payload) {
             Ok(l) => (

@@ -8,7 +8,7 @@ use serde_json::json;
 use crate::i18n::tl;
 use crate::{PacketApp, theme};
 
-const FILTERS: [Protocol; 20] = [
+const FILTERS: [Protocol; 21] = [
     Protocol::Arp,
     Protocol::Icmp,
     Protocol::Dhcp,
@@ -21,6 +21,7 @@ const FILTERS: [Protocol; 20] = [
     Protocol::Ospf,
     Protocol::Rip,
     Protocol::Hsrp,
+    Protocol::Lacp,
     Protocol::Lldp,
     Protocol::Ntp,
     Protocol::Syslog,

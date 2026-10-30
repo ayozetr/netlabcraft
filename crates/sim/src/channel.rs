@@ -10,6 +10,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use packetcraft_core::MacAddr;
 use packetcraft_model::{ChannelGroup, Device, DeviceKind, End, Topology};
 
+use packetcraft_wire::lacp::{self, LacpInfo, Lacpdu};
+
 use crate::port_up;
 
 /// A member port's state in its channel.
@@ -121,6 +123,45 @@ fn member_status<'a>(
             }
         }
     }
+}
+
+/// LACP every 30 s (the slow rate).
+pub const LACP_EVERY_US: u64 = 30_000_000;
+
+/// What an LACP port says about itself, and its state bits.
+fn lacp_actor(t: &Topology, d: &Device, p: usize) -> Option<LacpInfo> {
+    use packetcraft_model::ChannelMode;
+    let g = d.ports.get(p)?.channel?;
+    if !matches!(g.mode, ChannelMode::Active | ChannelMode::Passive) {
+        return None;
+    }
+    let bundled = channels(t, d).iter().flat_map(|c| c.members.clone()).any(|(q, s)| q == p && s == Status::Bundled);
+    let mut state = lacp::AGGREGATION;
+    if g.mode == ChannelMode::Active {
+        state |= lacp::ACTIVITY;
+    }
+    if bundled {
+        state |= lacp::SYNC | lacp::COLLECTING | lacp::DISTRIBUTING;
+    }
+    Some(LacpInfo {
+        system_priority: 32_768,
+        system: d.ports.first().map_or(MacAddr([0; 6]), |f| f.mac),
+        key: g.number,
+        port_priority: 32_768,
+        port: u16::try_from(p + 1).unwrap_or(u16::MAX),
+        state,
+    })
+}
+
+/// The LACPDU a port sends, if it sends one: active ports always, passive ports once they hear
+/// an active neighbour.
+pub fn lacpdu(t: &Topology, d: &Device, p: usize) -> Option<Lacpdu> {
+    let actor = lacp_actor(t, d, p)?;
+    let partner = t.peer(End { device: d.id, port: p }).and_then(|q| t.device(q.device).and_then(|pd| lacp_actor(t, pd, q.port)));
+    if actor.state & lacp::ACTIVITY == 0 && partner.is_none_or(|x| x.state & lacp::ACTIVITY == 0) {
+        return None;
+    }
+    Some(Lacpdu { actor, partner: partner.unwrap_or(LacpInfo { state: lacp::DEFAULTED, ..LacpInfo::default() }) })
 }
 
 /// How a switch's ports map onto logical ports.

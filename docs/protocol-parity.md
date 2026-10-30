@@ -1,6 +1,6 @@
 # Protocol and command parity
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (`debug ip rip`, `debug ip ospf`) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (LACPDUs on the wire) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 What the simulated devices do, protocol by protocol, against the reference app. Part of
 [target-app-parity.md](target-app-parity.md). Behaviour comes from the standards named in each
@@ -19,7 +19,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | MAC learning and aging | IEEE 802.1D | ✅ | Per (VLAN, MAC); flushed when the topology changes. `show mac address-table`, `clear mac address-table`. |
 | VLANs, access and trunk ports | IEEE 802.1Q | ✅ | Native VLAN, allowed lists, `show vlan brief`, `show interfaces trunk`. |
 | Spanning tree (per VLAN) | IEEE 802.1D | 🟡 | Roles, priorities, `root primary/secondary`, portfast, amber lights; computed at once; configuration BPDUs (IEEE format, tagged per VLAN on trunks) every 2 s from designated ports; a port that starts forwarding listens 15 s and learns 15 s (LIS/LRN in `show spanning-tree`, amber light) unless portfast or `spanning-tree mode rapid-pvst`. No max-age wait or RSTP proposal/agreement frames: 4–6 h. |
-| EtherChannel | IEEE 802.1AX (LACP); PAgP | ✅ | `on`, `active/passive`, `desirable/auto`; suspended members; one STP port per bundle; traffic spread by address; `interface port-channel`, `show etherchannel summary`. No LACP frames. |
+| EtherChannel | IEEE 802.1AX (LACP); PAgP | ✅ | `on`, `active/passive`, `desirable/auto`; suspended members; one STP port per bundle; traffic spread by address; `interface port-channel`, `show etherchannel summary`; LACPDUs every 30 s (actor and partner, sync state) in Simulation mode and captures. PAgP has no frames: its format isn't public. |
 | VTP | — | 🟡 | Server/client/transparent, domain, password, versions 1/2, revisions. No pruning, version 3 or advertisement frames: 4–6 h. |
 | DTP | — | ✅ | `switchport mode dynamic auto/desirable`, `switchport nonegotiate`; the working mode is negotiated from both ends and shown in `show interfaces X switchport`, `show interfaces trunk`, `show vlan brief`. Ports default to access (real access switches default to dynamic auto). No DTP frames. |
 | Port security | — | ✅ | Maximum, violation shutdown/restrict/protect, sticky and static addresses, err-disabled recovery, `show port-security`. No `errdisable recovery` timer. |
@@ -120,6 +120,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | 2026-10-30 | minor | HSRP. |
 | 2026-10-30 | minor | Logging buffer and console messages; `debug ip icmp`. |
 | 2026-10-30 | minor | BPDUs, OSPF hellos and RIP updates on the wire, so Simulation mode and captures show them. |
+| 2026-10-30 | minor | LACPDUs on the wire. |
 | 2026-10-30 | minor | `debug ip rip`, `debug ip ospf`. |
 | 2026-10-30 | minor | LLDP with frames on the wire, `show processes`, `show memory`. |
 | 2026-10-30 | minor | Console: CDP, clock, flash, users, terminal, show ip interface, show interfaces status and switchport, show running-config interface, richer show version. |

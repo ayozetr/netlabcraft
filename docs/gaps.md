@@ -15,7 +15,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 |---|---|---|---|
 | 1 | **Activity depth:** variable values per student (addresses that differ per file), an answer network to compare against, percentages per section | Instructors | 20–35 h |
 | 2 | **Console coverage:** `debug ip packet`, NAT and DHCP debugs; going through the CCNA 1 labs command by command | CCNA 1 from the first lab | 4–8 h |
-| 3 | **More protocol frames in Simulation mode:** OSPF database exchange (DBD/LSR/LSU), LACP, DTP; BPDUs, OSPF and HSRP hellos, RIP updates and LLDP are done | CCNA 2–3 students watching Simulation mode | 8–14 h |
+| 3 | **More protocol frames in Simulation mode:** OSPF database exchange (DBD/LSR/LSU) when neighbours meet; BPDUs, OSPF and HSRP hellos, RIP updates, LLDP and LACP are done (CDP, DTP and PAgP formats aren't public) | CCNA 2–3 students watching Simulation mode | 8–14 h |
 | 4 | **Wireless depth:** wireless routers (home gateway with DHCP and NAT), WLC with lightweight APs, 802.1X/RADIUS, 802.11 frames in Simulation mode | CCNA 2 | 25–40 h |
 | 5 | **OSPF database on the wire and area types:** DBD/LSR/LSU/LSAck exchange in Simulation mode, stub/NSSA areas, summarisation; RIP on multilayer switches | CCNA 3 | 14–21 h |
 | 6 | **IPv6 depth:** OSPFv3, DHCPv6 relay, IPv6 on subinterfaces and VLAN interfaces | CCNA 2–3 | 28–40 h |
@@ -30,6 +30,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Gap 3 narrowed: LACPDUs. |
 | 2026-10-30 | minor | Gap 2 narrowed: `debug ip rip`, `debug ip ospf`. |
 | 2026-10-30 | minor | Gaps 2 and 3 narrowed: LLDP with frames, `show processes`, `show memory`. |
 | 2026-10-30 | minor | Gap 1 narrowed: time limit, hints per check, password lock, score-only results. |

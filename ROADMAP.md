@@ -28,7 +28,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Engine commands | 40 | measured: `crates/engine/src/catalog.rs` |
 | Console grammar entries | 309 across 12 modes | measured: `crates/ios/src/grammar.rs` |
 | Device models · sample labs | 15 · 18 | measured |
-| Tests | 141 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Tests | 142 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~600–950 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
@@ -51,7 +51,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Services | 8 | 58% | 26–42 | DHCPv4 and DHCPv6, DNS, HTTP with browser, Telnet/SSH, NTP, syslog, TFTP; no FTP, email, SNMP, AAA |
 | Security | 8 | 72% | 24–40 | IPv4 and IPv6 ACLs, access-class, NAT/PAT, passwords and lines, PPP PAP/CHAP; no firewalls or VPN |
 | WAN, cabling, wireless | 6 | 55% | 35–55 | Copper (auto-MDIX), serial (DCE/DTE, HDLC/PPP), Wi-Fi access points and clients; no wireless routers, WLC or fibre |
-| Simulation mode | 8 | 67% | 20–32 | Event list, replay, decode, drop reasons, pcap; BPDUs, OSPF hellos, RIP updates, HSRP hellos, LLDP; no complex PDUs |
+| Simulation mode | 8 | 67% | 20–32 | Event list, replay, decode, drop reasons, pcap; BPDUs, OSPF hellos, RIP updates, HSRP hellos, LLDP, LACP; no complex PDUs |
 | Workspace and windows | 10 | 55% | 60–90 | Reference-app arrangement, device tabs, notes and drawings; no physical view or clusters |
 | Teaching | 8 | 65% | 35–60 | Activities with checks, points, hints, hidden answers, a time limit, a password lock and a wizard; Spanish interface; no variables per student |
 | Device families | 5 | 25% | 80–120 | 15 generic models; no modules, ASA, IoT |
@@ -60,6 +60,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-10-30 — LACP frames.** EtherChannel ports in LACP mode exchange LACPDUs every 30 s (the passive end answers an active one), visible in Simulation mode and captures with their sync state.
 - **2026-10-30 — Routing debugs.** `debug ip rip` reports each RIP update a router hears with its routes; `debug ip ospf hello` (or `adj`, `events`) the OSPF hellos; `show debugging` lists what is on.
 - **2026-10-30 — LLDP.** Standard neighbour discovery (IEEE 802.1AB): `lldp run`, `lldp transmit`/`receive` per port, `show lldp neighbors [detail]`, with real LLDP frames every 30 s in Simulation mode and captures; also `show processes` and `show memory`.
 - **2026-10-30 — Activity time limit and lock.** An activity can have a time limit (a countdown in the Instructions window; the results are taken when it runs out), a hint per check shown when it fails, and an instructor password that locks it: students can't change it or see its checks, and with "score only" Check Results shows just the score.

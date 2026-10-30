@@ -786,6 +786,12 @@ fn etherchannel_by_typing() {
     lab.run(s1, "conf t\nint fa0/23\nno shutdown\nend");
     let run = lab.run(s1, "show run");
     assert!(run.contains(" channel-group 1 mode active"), "{run}");
+    // LACPDUs on the wire: both ends (the passive one answers), in sync, never forwarded.
+    lab.sim.clear_trace();
+    lab.sim.run_for(&lab.t, 31_000_000);
+    let lacp: Vec<String> = lab.sim.trace().iter().filter(|e| e.protocol.name() == "LACP").map(|e| e.summary.clone()).collect();
+    assert_eq!(lacp.len(), 4, "{lacp:?}");
+    assert!(lacp.iter().any(|x| x.contains("(active, in sync)")) && lacp.iter().any(|x| x.contains("(passive, in sync)")), "{lacp:?}");
     // passive with passive: no bundle; the ports work alone and spanning tree blocks one.
     lab.run(s1, "conf t\ninterface range fa0/23 - 24\nno channel-group\nchannel-group 1 mode passive\nend");
     let ec = lab.run(s1, "show etherchannel");
