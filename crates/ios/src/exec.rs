@@ -1085,6 +1085,50 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             c.dm()?.ospf.as_mut().ok_or("% Not in OSPF mode")?.reference_bw = Some(mbps);
             Ok("Make the reference bandwidth the same on every router.".into())
         }
+        Id::AreaStub | Id::NoAreaStub => {
+            let area: u32 = arg(0).parse().map_err(|_| "% Area number 1-4294967295")?;
+            if area == 0 {
+                return Err("% The backbone (area 0) can't be a stub area".into());
+            }
+            let no_summary = words.last().is_some_and(|w| w.starts_with("no-") && "no-summary".starts_with(*w));
+            let o = c.dm()?.ospf.as_mut().ok_or("% Not in OSPF mode")?;
+            let a = o.areas.entry(area).or_default();
+            match (spec.id == Id::AreaStub, no_summary) {
+                (true, ns) => {
+                    a.stub = true;
+                    a.no_summary = ns;
+                }
+                // `no area N stub no-summary` keeps the stub area, with summaries.
+                (false, true) => a.no_summary = false,
+                (false, false) => {
+                    a.stub = false;
+                    a.no_summary = false;
+                }
+            }
+            if a.is_default() {
+                o.areas.remove(&area);
+            }
+            Ok(String::new())
+        }
+        Id::AreaRange | Id::NoAreaRange => {
+            let area: u32 = arg(0).parse().map_err(|_| "% Area number 0-4294967295")?;
+            let ip = |s: &str| parse_ip(s).map_err(|e| format!("% {e}"));
+            let (addr, mask) = (ip(arg(1))?, ip(arg(2))?);
+            let net = Ipv4Net::with_mask(addr, mask).map_err(|e| format!("% {e}"))?.network();
+            let o = c.dm()?.ospf.as_mut().ok_or("% Not in OSPF mode")?;
+            let a = o.areas.entry(area).or_default();
+            a.ranges.retain(|r| *r != net);
+            if spec.id == Id::AreaRange {
+                if a.ranges.len() >= packetcraft_model::MAX_AREA_RANGES {
+                    return Err("% Too many ranges in this area".into());
+                }
+                a.ranges.push(net);
+            }
+            if a.is_default() {
+                o.areas.remove(&area);
+            }
+            Ok(String::new())
+        }
         Id::ShowIpOspf => {
             let st = c.sim.ospf_state(c.t);
             Ok(render::ospf_summary(c.d()?, &st))
@@ -1764,6 +1808,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 }
             })
         }
+        Id::RouterRip if c.d()?.kind == DeviceKind::Switch && !c.d()?.ip_routing => Err("% RIP needs `ip routing` (multilayer switches)".into()),
         Id::RouterRip => {
             let d = c.dm()?;
             if d.rip.is_none() {

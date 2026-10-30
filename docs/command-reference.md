@@ -181,8 +181,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `undebug all` | privileged | router, switch | Turn every debug off |
 | `no debug all` | privileged | router, switch | Turn every debug off |
 | `no debug ip icmp` | privileged | router, switch | Stop reporting echo messages |
-| `debug ip rip` | privileged | router | Report the RIP updates this router hears |
-| `no debug ip rip` | privileged | router | Stop reporting RIP updates |
+| `debug ip rip` | privileged | router, switch | Report the RIP updates this router hears |
+| `no debug ip rip` | privileged | router, switch | Stop reporting RIP updates |
 | `debug ip ospf adj\|events\|hello` | privileged | router | Report the OSPF hellos this router hears |
 | `no debug ip ospf adj\|events\|hello` | privileged | router | Stop reporting OSPF hellos |
 | `no debug ip ospf` | privileged | router | Stop reporting OSPF hellos |
@@ -211,6 +211,12 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `ip ospf priority <0-255>` | interface | switch | DR election priority (0: never DR) |
 | `no ip ospf priority` | interface | switch | Priority 1 again |
 | `auto-cost reference-bandwidth <1-4294967>` |  | router, switch | Mbit/s that cost 1 |
+| `area <0-4294967295> stub` |  | router, switch | No external routes in this area: a default route instead |
+| `area <0-4294967295> stub no-summary` |  | router, switch | Border router: routes from other areas stay out of this stub area too |
+| `no area <0-4294967295> stub` |  | router, switch | A normal area again |
+| `no area <0-4294967295> stub no-summary` |  | router, switch | Let routes from other areas in again |
+| `area <0-4294967295> range A.B.C.D A.B.C.D` |  | router, switch | Border router: advertise one summary for the area's networks inside it |
+| `no area <0-4294967295> range A.B.C.D A.B.C.D` |  | router, switch | Stop summarising |
 | `show ip ospf` | user, privileged | router, switch | OSPF process summary |
 | `show ip ospf interface` | user, privileged | router, switch | OSPF interfaces: area, cost, state |
 | `show ip ospf interface brief` | user, privileged | router, switch | OSPF interfaces: area, cost, state |
@@ -238,18 +244,18 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `copy startup-config tftp: <address> [file]` | privileged | router, switch | Save the startup configuration on a TFTP server |
 | `copy tftp: running-config <address> <file>` | privileged | router, switch | Merge a configuration from a TFTP server |
 | `copy tftp: startup-config <address> <file>` | privileged | router, switch | Make a TFTP file the startup configuration |
-| `router rip` | config | router | Start or configure RIP |
-| `no router rip` | config | router | Stop RIP |
-| `version {1\|2}` |  | router | RIP version |
-| `network A.B.C.D` |  | router | Run RIP on this classful network's interfaces |
-| `no network A.B.C.D` |  | router | Stop RIP on these interfaces |
-| `passive-interface <interface>` |  | router | Advertise but send no updates there |
-| `no passive-interface <interface>` |  | router | Send updates there again |
-| `default-information originate` |  | router | Advertise this router's default route |
-| `no default-information originate` |  | router | Stop advertising the default route |
-| `auto-summary` |  | router | Summarise at classful boundaries (kept, not simulated) |
-| `no auto-summary` |  | router | Advertise subnets as they are |
-| `show ip rip database` | user, privileged | router | Routes RIP knows |
+| `router rip` | config | router, switch | Start or configure RIP |
+| `no router rip` | config | router, switch | Stop RIP |
+| `version {1\|2}` |  | router, switch | RIP version |
+| `network A.B.C.D` |  | router, switch | Run RIP on this classful network's interfaces |
+| `no network A.B.C.D` |  | router, switch | Stop RIP on these interfaces |
+| `passive-interface <interface>` |  | router, switch | Advertise but send no updates there |
+| `no passive-interface <interface>` |  | router, switch | Send updates there again |
+| `default-information originate` |  | router, switch | Advertise this router's default route |
+| `no default-information originate` |  | router, switch | Stop advertising the default route |
+| `auto-summary` |  | router, switch | Summarise at classful boundaries (kept, not simulated) |
+| `no auto-summary` |  | router, switch | Advertise subnets as they are |
+| `show ip rip database` | user, privileged | router, switch | Routes RIP knows |
 | `router ospf <1-65535>` | config | router, switch | Start or configure OSPF |
 | `no router ospf <1-65535>` | config | router, switch | Stop OSPF |
 | `network A.B.C.D WILDCARD area <0-4294967295>` |  | router, switch | Run OSPF on matching interfaces |

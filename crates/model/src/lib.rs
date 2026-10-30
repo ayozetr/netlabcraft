@@ -845,6 +845,40 @@ pub struct Ospf {
     /// `auto-cost reference-bandwidth N` (Mbit/s; 100 when not set).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reference_bw: Option<u32>,
+    /// Area settings (`area N stub`, `area N range`), by area number.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub areas: BTreeMap<u32, OspfArea>,
+}
+
+/// Most `area range` lines per area.
+pub const MAX_AREA_RANGES: usize = 64;
+
+/// One area's settings on a router.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct OspfArea {
+    /// `area N stub`: no external routes come in; the border router sends a default instead.
+    #[serde(default)]
+    pub stub: bool,
+    /// `area N stub no-summary` (on the border router): routes from other areas stay out too.
+    #[serde(default)]
+    pub no_summary: bool,
+    /// `area N range`: the border router advertises these instead of the area's networks
+    /// inside them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ranges: Vec<Ipv4Net>,
+}
+
+impl OspfArea {
+    pub fn is_default(&self) -> bool {
+        *self == OspfArea::default()
+    }
+}
+
+impl Ospf {
+    /// An area's settings (defaults when none were typed).
+    pub fn area(&self, n: u32) -> OspfArea {
+        self.areas.get(&n).cloned().unwrap_or_default()
+    }
 }
 
 /// OSPF settings of one interface (`ip ospf cost`, `ip ospf priority`), kept apart from the

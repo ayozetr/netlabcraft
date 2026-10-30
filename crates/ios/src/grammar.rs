@@ -314,6 +314,10 @@ pub enum Id {
     IpOspfPriority,
     NoIpOspfPriority,
     AutoCost,
+    AreaStub,
+    NoAreaStub,
+    AreaRange,
+    NoAreaRange,
     ShowIpOspf,
     ShowIpOspfInterface,
     Ipv6DhcpPool,
@@ -557,8 +561,8 @@ pub static SPECS: &[Spec] = &[
     spec!(UndebugAll, Modes::EXEC, Modes::BOTH, [K("undebug"), K("all")], "Turn every debug off"),
     spec!(UndebugAll, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("all")], "Turn every debug off"),
     spec!(UndebugAll, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("icmp")], "Stop reporting echo messages"),
-    spec!(DebugIpRip, Modes::EXEC, Modes::ROUTER, [K("debug"), K("ip"), K("rip")], "Report the RIP updates this router hears"),
-    spec!(NoDebugIpRip, Modes::EXEC, Modes::ROUTER, [K("no"), K("debug"), K("ip"), K("rip")], "Stop reporting RIP updates"),
+    spec!(DebugIpRip, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("rip")], "Report the RIP updates this router hears"),
+    spec!(NoDebugIpRip, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("rip")], "Stop reporting RIP updates"),
     spec!(
         DebugIpOspf,
         Modes::EXEC,
@@ -635,6 +639,42 @@ pub static SPECS: &[Spec] = &[
     ),
     spec!(NoIpOspfPriority, Modes::SVI.or(Modes::IF), Modes::SWITCH, [K("no"), K("ip"), K("ospf"), K("priority")], "Priority 1 again"),
     spec!(AutoCost, Modes::OSPF, Modes::BOTH, [K("auto-cost"), K("reference-bandwidth"), Arg("<1-4294967>")], "Mbit/s that cost 1"),
+    spec!(
+        AreaStub,
+        Modes::OSPF,
+        Modes::BOTH,
+        [K("area"), Arg("<0-4294967295>"), K("stub")],
+        "No external routes in this area: a default route instead"
+    ),
+    spec!(
+        AreaStub,
+        Modes::OSPF,
+        Modes::BOTH,
+        [K("area"), Arg("<0-4294967295>"), K("stub"), K("no-summary")],
+        "Border router: routes from other areas stay out of this stub area too"
+    ),
+    spec!(NoAreaStub, Modes::OSPF, Modes::BOTH, [K("no"), K("area"), Arg("<0-4294967295>"), K("stub")], "A normal area again"),
+    spec!(
+        NoAreaStub,
+        Modes::OSPF,
+        Modes::BOTH,
+        [K("no"), K("area"), Arg("<0-4294967295>"), K("stub"), K("no-summary")],
+        "Let routes from other areas in again"
+    ),
+    spec!(
+        AreaRange,
+        Modes::OSPF,
+        Modes::BOTH,
+        [K("area"), Arg("<0-4294967295>"), K("range"), Arg("A.B.C.D"), Arg("A.B.C.D")],
+        "Border router: advertise one summary for the area's networks inside it"
+    ),
+    spec!(
+        NoAreaRange,
+        Modes::OSPF,
+        Modes::BOTH,
+        [K("no"), K("area"), Arg("<0-4294967295>"), K("range"), Arg("A.B.C.D"), Arg("A.B.C.D")],
+        "Stop summarising"
+    ),
     spec!(ShowIpOspf, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf")], "OSPF process summary"),
     spec!(ShowIpOspfInterface, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf"), K("interface")], "OSPF interfaces: area, cost, state"),
     spec!(ShowIpOspfInterface, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf"), K("interface"), K("brief")], "OSPF interfaces: area, cost, state"),
@@ -686,24 +726,18 @@ pub static SPECS: &[Spec] = &[
         [K("copy"), K("tftp:"), K("startup-config"), Rest("<address> <file>")],
         "Make a TFTP file the startup configuration"
     ),
-    spec!(RouterRip, Modes::CONFIG, Modes::ROUTER, [K("router"), K("rip")], "Start or configure RIP"),
-    spec!(NoRouterRip, Modes::CONFIG, Modes::ROUTER, [K("no"), K("router"), K("rip")], "Stop RIP"),
-    spec!(RipVersion, Modes::RIP, Modes::ROUTER, [K("version"), Arg("{1|2}")], "RIP version"),
-    spec!(RipNetwork, Modes::RIP, Modes::ROUTER, [K("network"), Arg("A.B.C.D")], "Run RIP on this classful network's interfaces"),
-    spec!(NoRipNetwork, Modes::RIP, Modes::ROUTER, [K("no"), K("network"), Arg("A.B.C.D")], "Stop RIP on these interfaces"),
-    spec!(RipPassive, Modes::RIP, Modes::ROUTER, [K("passive-interface"), Rest("<interface>")], "Advertise but send no updates there"),
-    spec!(NoRipPassive, Modes::RIP, Modes::ROUTER, [K("no"), K("passive-interface"), Rest("<interface>")], "Send updates there again"),
-    spec!(RipDefaultOriginate, Modes::RIP, Modes::ROUTER, [K("default-information"), K("originate")], "Advertise this router's default route"),
-    spec!(
-        NoRipDefaultOriginate,
-        Modes::RIP,
-        Modes::ROUTER,
-        [K("no"), K("default-information"), K("originate")],
-        "Stop advertising the default route"
-    ),
-    spec!(RipAutoSummary, Modes::RIP, Modes::ROUTER, [K("auto-summary")], "Summarise at classful boundaries (kept, not simulated)"),
-    spec!(NoRipAutoSummary, Modes::RIP, Modes::ROUTER, [K("no"), K("auto-summary")], "Advertise subnets as they are"),
-    spec!(ShowIpRipDatabase, EXECS, Modes::ROUTER, [K("show"), K("ip"), K("rip"), K("database")], "Routes RIP knows"),
+    spec!(RouterRip, Modes::CONFIG, Modes::BOTH, [K("router"), K("rip")], "Start or configure RIP"),
+    spec!(NoRouterRip, Modes::CONFIG, Modes::BOTH, [K("no"), K("router"), K("rip")], "Stop RIP"),
+    spec!(RipVersion, Modes::RIP, Modes::BOTH, [K("version"), Arg("{1|2}")], "RIP version"),
+    spec!(RipNetwork, Modes::RIP, Modes::BOTH, [K("network"), Arg("A.B.C.D")], "Run RIP on this classful network's interfaces"),
+    spec!(NoRipNetwork, Modes::RIP, Modes::BOTH, [K("no"), K("network"), Arg("A.B.C.D")], "Stop RIP on these interfaces"),
+    spec!(RipPassive, Modes::RIP, Modes::BOTH, [K("passive-interface"), Rest("<interface>")], "Advertise but send no updates there"),
+    spec!(NoRipPassive, Modes::RIP, Modes::BOTH, [K("no"), K("passive-interface"), Rest("<interface>")], "Send updates there again"),
+    spec!(RipDefaultOriginate, Modes::RIP, Modes::BOTH, [K("default-information"), K("originate")], "Advertise this router's default route"),
+    spec!(NoRipDefaultOriginate, Modes::RIP, Modes::BOTH, [K("no"), K("default-information"), K("originate")], "Stop advertising the default route"),
+    spec!(RipAutoSummary, Modes::RIP, Modes::BOTH, [K("auto-summary")], "Summarise at classful boundaries (kept, not simulated)"),
+    spec!(NoRipAutoSummary, Modes::RIP, Modes::BOTH, [K("no"), K("auto-summary")], "Advertise subnets as they are"),
+    spec!(ShowIpRipDatabase, EXECS, Modes::BOTH, [K("show"), K("ip"), K("rip"), K("database")], "Routes RIP knows"),
     spec!(RouterOspf, Modes::CONFIG, Modes::BOTH, [K("router"), K("ospf"), Arg("<1-65535>")], "Start or configure OSPF"),
     spec!(NoRouterOspf, Modes::CONFIG, Modes::BOTH, [K("no"), K("router"), K("ospf"), Arg("<1-65535>")], "Stop OSPF"),
     spec!(
@@ -1162,7 +1196,7 @@ mod tests {
         // Mode and device gate commands.
         assert!(resolve(&["configure", "terminal"], Modes::USER, R).is_err());
         assert!(resolve(&["vlan", "10"], Modes::CONFIG, R).is_err());
-        assert!(resolve(&["router", "rip"], Modes::CONFIG, S).is_err());
+        assert!(resolve(&["no", "ip", "nat", "pool", "p"], Modes::CONFIG, S).is_err());
     }
 
     #[test]

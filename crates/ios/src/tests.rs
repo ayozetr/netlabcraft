@@ -1379,6 +1379,50 @@ fn ospf_depth_by_typing() {
 }
 
 #[test]
+fn ospf_stub_areas_and_ranges_by_typing() {
+    let mut lab = Lab::new();
+    let r1 = lab.add(DeviceKind::Router);
+    let r2 = lab.add(DeviceKind::Router);
+    let r3 = lab.add(DeviceKind::Router);
+    lab.cable(r1, "g0/1", r2, "g0/0");
+    lab.cable(r2, "g0/1", r3, "g0/0");
+    for (r, port) in [(r1, "g0/0"), (r3, "g0/1"), (r3, "g0/2")] {
+        let pc = lab.add(DeviceKind::Pc);
+        lab.cable(pc, "fa0", r, port);
+    }
+    // R1 in area 0 with the way out; R2 the border router; R3 inside area 1 with two LANs.
+    lab.run(r1, "en\nconf t\nint g0/0\nip add 192.168.0.1 255.255.255.0\nno shut\nint g0/1\nip add 10.0.12.1 255.255.255.252\nno shut\nexit\nip route 0.0.0.0 0.0.0.0 192.168.0.254\nrouter ospf 1\nnetwork 10.0.12.0 0.0.0.3 area 0\nnetwork 192.168.0.0 0.0.0.255 area 0\ndefault-information originate\nend");
+    lab.run(r2, "en\nconf t\nint g0/0\nip add 10.0.12.2 255.255.255.252\nno shut\nint g0/1\nip add 10.0.23.1 255.255.255.252\nno shut\nexit\nrouter ospf 1\nnetwork 10.0.12.0 0.0.0.3 area 0\nnetwork 10.0.23.0 0.0.0.3 area 1\nend");
+    lab.run(r3, "en\nconf t\nint g0/0\nip add 10.0.23.2 255.255.255.252\nno shut\nint g0/1\nip add 172.16.0.1 255.255.255.0\nno shut\nint g0/2\nip add 172.16.1.1 255.255.255.0\nno shut\nexit\nrouter ospf 1\nnetwork 0.0.0.0 255.255.255.255 area 1\nend");
+    let rt = lab.run(r3, "show ip route");
+    assert!(rt.contains("O IA 192.168.0.0/24") && rt.contains("O*E2 0.0.0.0/0"), "{rt}");
+    // Stub on one end only: the hellos disagree, no neighbours.
+    lab.run(r2, "conf t\nrouter ospf 1\narea 1 stub\nend");
+    assert!(lab.run(r3, "show ip ospf neighbor").contains("No OSPF neighbours"));
+    lab.run(r3, "conf t\nrouter ospf 1\narea 1 stub\nend");
+    let rt = lab.run(r3, "show ip route");
+    assert!(rt.contains("O IA 192.168.0.0/24") && rt.contains("O*IA 0.0.0.0/0") && !rt.contains("O*E2 0.0.0.0"), "{rt}");
+    // Totally stubby: only the default comes in.
+    lab.run(r2, "conf t\nrouter ospf 1\narea 1 stub no-summary\nend");
+    let rt = lab.run(r3, "show ip route");
+    assert!(!rt.contains("192.168.0.0") && !rt.contains("10.0.12.0") && rt.contains("O*IA 0.0.0.0/0"), "{rt}");
+    assert!(lab.run(r2, "show running-config").contains(" area 1 stub no-summary"));
+    lab.run(r2, "conf t\nrouter ospf 1");
+    assert!(lab.try_run(r2, "area 0 stub").contains("backbone"));
+    lab.run(r2, "end");
+    // A range on the border router: area 0 sees one summary for R3's LANs.
+    let rt = lab.run(r1, "show ip route");
+    assert!(rt.contains("O IA 172.16.0.0/24") && rt.contains("O IA 172.16.1.0/24"), "{rt}");
+    lab.run(r2, "conf t\nrouter ospf 1\narea 1 range 172.16.0.0 255.255.254.0\nend");
+    let rt = lab.run(r1, "show ip route");
+    assert!(rt.contains("O IA 172.16.0.0/23") && !rt.contains("172.16.1.0/24"), "{rt}");
+    assert!(lab.run(r2, "show running-config").contains(" area 1 range 172.16.0.0 255.255.254.0"));
+    lab.run(r2, "conf t\nrouter ospf 1\nno area 1 range 172.16.0.0 255.255.254.0\nno area 1 stub\nend");
+    lab.run(r3, "conf t\nrouter ospf 1\nno area 1 stub\nend");
+    assert!(lab.run(r3, "show ip route").contains("O*E2 0.0.0.0/0"));
+}
+
+#[test]
 fn ospf_on_a_multilayer_switch_by_typing() {
     let mut lab = Lab::new();
     let ml = lab.t.add_model(packetcraft_model::models::find("Switch-ML-24").unwrap(), None, 0.0, 0.0).unwrap();
@@ -1399,6 +1443,16 @@ fn ospf_on_a_multilayer_switch_by_typing() {
     assert!(lab.run(r, "show ip route").contains("192.168.10.0/24"));
     lab.run(pc, "ping 172.16.0.10");
     assert!(lab.run(pc, "ping 172.16.0.10").contains("4 answered"));
+    // The same with RIP, its updates leaving through the VLAN interface.
+    lab.run(ml, "conf t\nno router ospf 1\nrouter rip\nversion 2\nnetwork 192.168.10.0\nnetwork 10.0.0.0\nend");
+    lab.run(r, "conf t\nno router ospf 1\nrouter rip\nversion 2\nnetwork 10.0.0.0\nnetwork 172.16.0.0\nend");
+    let rt = lab.run(r, "show ip route");
+    assert!(rt.contains("R    192.168.10.0/24") && rt.contains("via 10.0.99.2"), "{rt}");
+    assert!(lab.run(ml, "show ip rip database").contains("172.16.0.0/24"));
+    assert!(lab.run(pc, "ping 172.16.0.10").contains("4 answered"));
+    lab.sim.clear_trace();
+    lab.sim.run_for(&lab.t, 31_000_000);
+    assert!(lab.sim.trace().iter().any(|e| e.protocol.name() == "RIP" && e.from.device == ml && e.dropped.is_none()));
 }
 
 #[test]

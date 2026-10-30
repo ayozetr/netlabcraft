@@ -1,6 +1,6 @@
 # Protocol and command parity
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (OSPF database exchange on the wire) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (OSPF stub areas and ranges, RIP on multilayer switches) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 What the simulated devices do, protocol by protocol, against the reference app. Part of
 [target-app-parity.md](target-app-parity.md). Behaviour comes from the standards named in each
@@ -36,8 +36,8 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | Static routes | — | ✅ | Next hop or exit interface, default route, longest prefix match. |
 | Router-on-a-stick | IEEE 802.1Q | ✅ | Subinterfaces with `encapsulation dot1Q`. |
 | Multilayer switching | — | ✅ | `ip routing`, VLAN interfaces, routed ports (`no switchport`), static routes, OSPF. No RIP on switches: 2–3 h. |
-| RIP | RFC 1058, RFC 2453 | 🟡 | Versions 1/2 (both classless here), classful `network`, passive interfaces, split horizon, 15 hops, default origination. RIP responses every 30 s (multicast for v2, broadcast for v1) with split horizon. No triggered updates or auto-summary: 4–6 h. |
-| OSPFv2 | RFC 2328 | 🟡 | Single area: neighbours, SPF, router id, passive interfaces, default origination, cost 1 on Ethernet and 64 on serial. Hellos every 10 s; `ip ospf cost`, `ip ospf priority` with DR/BDR election (priority 0 never DR, none on serial links), `auto-cost reference-bandwidth`, several areas with inter-area routes shown as `O IA`, `show ip ospf`, `show ip ospf interface [brief]`, DR/BDR in `show ip ospf neighbor`; also on multilayer switches. When neighbours meet, each sends its database description, a link-state request, a link-state update with its router-LSA (with a valid Fletcher checksum) and an acknowledgement, visible in Simulation mode and captures. No area types (stub, NSSA), summarisation, or network/summary LSAs on the wire: 8–12 h. |
+| RIP | RFC 1058, RFC 2453 | 🟡 | Versions 1/2 (both classless here), classful `network`, passive interfaces, split horizon, 15 hops, default origination. RIP responses every 30 s (multicast for v2, broadcast for v1) with split horizon; also on multilayer switches. No triggered updates or auto-summary: 4–6 h. |
+| OSPFv2 | RFC 2328 | 🟡 | Single area: neighbours, SPF, router id, passive interfaces, default origination, cost 1 on Ethernet and 64 on serial. Hellos every 10 s; `ip ospf cost`, `ip ospf priority` with DR/BDR election (priority 0 never DR, none on serial links), `auto-cost reference-bandwidth`, several areas with inter-area routes shown as `O IA`, `show ip ospf`, `show ip ospf interface [brief]`, DR/BDR in `show ip ospf neighbor`; also on multilayer switches. When neighbours meet, each sends its database description, a link-state request, a link-state update with its router-LSA (with a valid Fletcher checksum) and an acknowledgement, visible in Simulation mode and captures. `area N stub` (both ends must agree, or no neighbours; the border router sends `O*IA` default routes in place of external ones), `area N stub no-summary`, `area N range` on border routers. No NSSA (beyond CCNA), virtual links, or network/summary LSAs on the wire: 6–10 h. |
 | EIGRP | RFC 7868 | ❌ | 15–25 h. |
 | IPv6 addressing | RFC 8200, RFC 4291 | ✅ | Global, EUI-64 and link-local addresses, `ipv6 enable`. |
 | NDP and SLAAC | RFC 4861, RFC 4862 | ✅ | Neighbour solicitation/advertisement, router solicitation/advertisement, host autoconfiguration. No DAD or RA flags (M/O). |
@@ -120,6 +120,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | 2026-10-30 | minor | HSRP. |
 | 2026-10-30 | minor | Logging buffer and console messages; `debug ip icmp`. |
 | 2026-10-30 | minor | BPDUs, OSPF hellos and RIP updates on the wire, so Simulation mode and captures show them. |
+| 2026-10-30 | minor | OSPF stub and totally stubby areas, `area range`; RIP on multilayer switches. |
 | 2026-10-30 | minor | OSPF database exchange (DBD, LSR, LSU, LSAck) on the wire. |
 | 2026-10-30 | minor | LACPDUs on the wire. |
 | 2026-10-30 | minor | `debug ip rip`, `debug ip ospf`. |

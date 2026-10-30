@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 use std::net::Ipv4Addr;
 
 use packetcraft_core::{DeviceId, Ipv4Net};
-use packetcraft_model::{Device, DeviceKind, End, Topology};
+use packetcraft_model::{Device, Topology};
 
 use crate::{L3If, up_ifaces};
 
@@ -55,7 +55,7 @@ type Entry = (u8, Option<(L3If, Ipv4Addr, DeviceId)>);
 
 pub fn compute(t: &Topology) -> RipState {
     let mut st = RipState::default();
-    let routers: Vec<&Device> = t.devices.iter().filter(|d| d.routes_ip() && d.kind == DeviceKind::Router && d.rip.is_some()).collect();
+    let routers: Vec<&Device> = t.devices.iter().filter(|d| d.routes_ip() && d.rip.is_some()).collect();
     let mut ifs: BTreeMap<DeviceId, Vec<(L3If, bool)>> = BTreeMap::new();
     for d in &routers {
         let list = rip_ifaces(t, d);
@@ -69,7 +69,7 @@ pub fn compute(t: &Topology) -> RipState {
             if *pa {
                 continue;
             }
-            let reach = crate::ospf::l2_reach(t, End { device: a.id, port: ia.port });
+            let reach = crate::ospf::iface_reach(t, a, ia);
             for b in &routers {
                 if b.id == a.id {
                     continue;
@@ -78,7 +78,7 @@ pub fn compute(t: &Topology) -> RipState {
                     if !*pb
                         && ib.net.network() == ia.net.network()
                         && (ib.vlan == ia.vlan || ia.port == crate::SVI_PORT || ib.port == crate::SVI_PORT)
-                        && reach.contains(&End { device: b.id, port: ib.port })
+                        && crate::ospf::reaches(t, &reach, b, ib)
                     {
                         adj.entry(a.id).or_default().push((ia.clone(), ib.net.addr, b.id));
                         st.neighbors.entry(a.id).or_default().push((b.id, ib.net.addr, ia.name.clone()));

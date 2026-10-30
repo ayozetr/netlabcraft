@@ -340,6 +340,14 @@ pub fn running_config(d: &Device) -> String {
         if let Some(r) = o.reference_bw {
             let _ = writeln!(s, " auto-cost reference-bandwidth {r}");
         }
+        for (n, a) in &o.areas {
+            if a.stub {
+                let _ = writeln!(s, " area {n} stub{}", if a.no_summary { " no-summary" } else { "" });
+            }
+            for r in &a.ranges {
+                let _ = writeln!(s, " area {n} range {} {}", r.addr, r.mask());
+            }
+        }
         let _ = writeln!(s, "!");
     }
     if let Some(r) = &d.rip {
@@ -445,7 +453,9 @@ pub fn ip_int_brief(t: &Topology, d: &Device) -> String {
 /// The routing table.
 pub fn ip_route(t: &Topology, d: &Device) -> String {
     let table = routing_table(t, d);
-    let mut s = String::from("Codes: C connected, L local, S static, R RIP, O OSPF, O*E2 OSPF external default\n\n");
+    let mut s = String::from(
+        "Codes: C connected, L local, S static, R RIP, O OSPF, O IA OSPF other area, O*E2 OSPF external default, O*IA default into a stub area\n\n",
+    );
     if d.kind == DeviceKind::Switch && !d.ip_routing {
         let _ = writeln!(
             s,
@@ -476,6 +486,7 @@ pub fn ip_route(t: &Topology, d: &Device) -> String {
         };
         let code = match r.code {
             'E' => "O*E2".to_string(),
+            'I' if r.net.prefix == 0 => "O*IA".to_string(),
             'I' => "O IA".to_string(),
             c => format!("{c}   "),
         };

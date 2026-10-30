@@ -100,9 +100,15 @@ fn area_of(d: &Device, a: Ipv4Addr) -> u32 {
     d.ospf.as_ref().and_then(|o| o.networks.iter().find(|n| n.matches(a))).map_or(0, |n| n.area)
 }
 
+/// Whether an interface's area is a stub area on this router (both ends must agree, or they
+/// don't become neighbours: the hellos' E bit differs).
+fn stub_here(d: &Device, ifc: &L3If) -> bool {
+    d.ospf.as_ref().is_some_and(|o| o.area(area_of(d, ifc.net.addr)).stub)
+}
+
 /// Ports reachable at layer 2 from an OSPF interface: from its port, or for a switch's VLAN
 /// interface from every port of that VLAN.
-fn iface_reach(t: &Topology, d: &Device, ifc: &L3If) -> BTreeSet<End> {
+pub(crate) fn iface_reach(t: &Topology, d: &Device, ifc: &L3If) -> BTreeSet<End> {
     if ifc.port != crate::SVI_PORT {
         return l2_reach(t, End { device: d.id, port: ifc.port });
     }
@@ -116,7 +122,7 @@ fn iface_reach(t: &Topology, d: &Device, ifc: &L3If) -> BTreeSet<End> {
 
 /// Whether a reach set gets to another router's interface (a switch's VLAN interface counts
 /// when any port of its VLAN is reached).
-fn reaches(t: &Topology, reach: &BTreeSet<End>, b: &Device, ib: &L3If) -> bool {
+pub(crate) fn reaches(t: &Topology, reach: &BTreeSet<End>, b: &Device, ib: &L3If) -> bool {
     if ib.port != crate::SVI_PORT {
         return reach.contains(&End { device: b.id, port: ib.port });
     }
@@ -180,7 +186,7 @@ pub fn compute(t: &Topology) -> OspfState {
                 for (ib, pb) in ifs.get(&b.id).into_iter().flatten() {
                     let same =
                         ib.net.network() == ia.net.network() && (ib.vlan == ia.vlan || ia.port == crate::SVI_PORT || ib.port == crate::SVI_PORT);
-                    if !*pb && same && reaches(t, &reach, b, ib) {
+                    if !*pb && same && stub_here(a, ia) == stub_here(b, ib) && reaches(t, &reach, b, ib) {
                         adj.entry(a.id).or_default().push((b.id, ia.clone(), ib.net.addr, cost(a, ia)));
                         if let Some(rid) = st.router_ids.get(&b.id) {
                             st.neighbors.entry(a.id).or_default().push(Neighbor {
@@ -228,6 +234,11 @@ pub fn compute(t: &Topology) -> OspfState {
         })
         .map(|d| d.id)
         .collect();
+    let areas_of: BTreeMap<DeviceId, BTreeSet<u32>> =
+        routers.iter().map(|d| (d.id, ifs.get(&d.id).into_iter().flatten().map(|(i, _)| area_of(d, i.net.addr)).collect())).collect();
+    // Border routers of an area: in it and in another.
+    let abrs = |area: u32| -> Vec<DeviceId> { areas_of.iter().filter(|(_, a)| a.len() > 1 && a.contains(&area)).map(|(d, _)| *d).collect() };
+    let conf = |d: DeviceId, area: u32| t.device(d).and_then(|x| x.ospf.as_ref()).map(|o| o.area(area)).unwrap_or_default();
     for r in &routers {
         // Dijkstra: (cost, first hop interface, first hop address) per router.
         let mut best: BTreeMap<DeviceId, (u32, Option<(L3If, Ipv4Addr)>)> = BTreeMap::new();
@@ -252,6 +263,10 @@ pub fn compute(t: &Topology) -> OspfState {
         }
         let mine: Vec<Ipv4Net> = up_ifaces(t, r).iter().map(|i| i.net.network()).collect();
         let my_areas: BTreeSet<u32> = ifs.get(&r.id).into_iter().flatten().map(|(i, _)| area_of(r, i.net.addr)).collect();
+        // A router wholly inside a stub area hears no external routes; with no-summary on its
+        // border router, no routes from other areas either.
+        let stub_area = my_areas.first().copied().filter(|a| my_areas.len() == 1 && conf(r.id, *a).stub);
+        let totally = stub_area.is_some_and(|a| abrs(a).iter().any(|b| conf(*b, a).no_summary));
         let mut routes: BTreeMap<Ipv4Net, OspfRoute> = BTreeMap::new();
         for (x, (cx, hop)) in &best {
             let Some((ifc, via)) = hop else { continue };
@@ -259,23 +274,43 @@ pub fn compute(t: &Topology) -> OspfState {
                 if mine.contains(net) {
                     continue;
                 }
-                let cand = OspfRoute {
-                    net: *net,
-                    via: *via,
-                    iface: ifc.name.clone(),
-                    cost: cx.saturating_add(*c),
-                    external: false,
-                    inter_area: !my_areas.contains(area),
+                let inter_area = !my_areas.contains(area);
+                if inter_area && totally {
+                    continue;
+                }
+                // A border router of the network's area may summarise it.
+                let summary = if inter_area {
+                    abrs(*area).iter().flat_map(|b| conf(*b, *area).ranges).find(|g| g.prefix <= net.prefix && g.contains(net.addr))
+                } else {
+                    None
                 };
+                let net = &summary.unwrap_or(*net);
+                if mine.contains(net) {
+                    continue;
+                }
+                let cand = OspfRoute { net: *net, via: *via, iface: ifc.name.clone(), cost: cx.saturating_add(*c), external: false, inter_area };
                 if routes.get(net).is_none_or(|old| (cand.cost, cand.via) < (old.cost, old.via)) {
                     routes.insert(*net, cand);
                 }
             }
-            if originators.contains(x) && *x != r.id {
+            if originators.contains(x) && *x != r.id && stub_area.is_none() {
                 let def = Ipv4Net::new(Ipv4Addr::UNSPECIFIED, 0);
                 let cand = OspfRoute { net: def, via: *via, iface: ifc.name.clone(), cost: 1, external: true, inter_area: false };
                 if routes.get(&def).is_none_or(|old| (*cx, cand.via) < (old.cost.saturating_add(*cx), old.via)) {
                     routes.insert(def, cand);
+                }
+            }
+        }
+        // The stub area's border routers send a default route in its place.
+        if let Some(a) = stub_area {
+            let def = Ipv4Net::new(Ipv4Addr::UNSPECIFIED, 0);
+            for b in abrs(a) {
+                if let Some((cx, Some((ifc, via)))) = best.get(&b) {
+                    let cand =
+                        OspfRoute { net: def, via: *via, iface: ifc.name.clone(), cost: cx.saturating_add(1), external: false, inter_area: true };
+                    if routes.get(&def).is_none_or(|old| (cand.cost, cand.via) < (old.cost, old.via)) {
+                        routes.insert(def, cand);
+                    }
                 }
             }
         }
