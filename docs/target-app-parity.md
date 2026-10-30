@@ -1,6 +1,6 @@
 # Target-app parity: PacketCraft vs Cisco Packet Tracer
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** major (rewritten in the shared parity format: method, weights, audiences, estimates) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (EIGRP, GRE/IPsec, drawings and clusters; measured numbers recounted) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summarizes it,
 [`gaps.md`](gaps.md) lists every shortfall, and the area checklists hold the detail:
@@ -12,28 +12,28 @@ This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summa
 
 | Number | Value | Kind |
 |---|---|---|
-| Engine commands | **40** | measured: `crates/engine/src/catalog.rs` |
-| Console grammar entries | **309** across 12 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
-| Device models | **15** | measured: `crates/model/src/models.rs` |
+| Engine commands | **65** | measured: `crates/engine/src/catalog.rs` |
+| Console grammar entries | **453** across 18 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
+| Device models | **16** | measured: `crates/model/src/models.rs` |
 | Sample labs | **18** | measured: `crates/engine/src/sample.rs` |
-| Tests | **172** | measured: `cargo test --workspace` |
-| **Ready for real work** (weighted) | **~50%** | estimated; written weights below (71.4 computed) |
+| Tests | **196** | measured: `cargo test --workspace` |
+| **Ready for real work** (weighted) | **~73%** | estimated; written weights below (73.4 computed) |
 | **CCNA 1 student** (Introduction to Networks) | **~86%** | estimated; [method](#audiences) |
 | **CCNA 2 student** (Switching, Routing and Wireless Essentials) | **~84%** | estimated; [method](#audiences) |
-| **CCNA 3 student** (Enterprise Networking, Security and Automation) | **~74%** | estimated; [method](#audiences) |
+| **CCNA 3 student** (Enterprise Networking, Security and Automation) | **~80%** | estimated; [method](#audiences) |
 | **Instructor** (builds graded activities) | **~72%** | estimated; activities with checks, points, sections, hints, hidden answers, values per student, a time limit, a password lock and a wizard |
 | Stage | **pre-alpha** | see [Stage](#stage) |
 | Remaining to alpha | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](roadmap.md#alpha-gates) |
-| Remaining to full parity | **~600–950 Opus 5.5 agent-hours** | estimated; sum of the rows below |
+| Remaining to full parity | **~550–880 Opus 5.5 agent-hours** | estimated; sum of the rows below |
 
 ### Readiness by audience
 
 | Audience | Ready % | Opus 5.5 agent wall-clock hours to ~95% | Work that dominates |
 |---|---|---|---|
-| Full target (ready for real work) | ~58% | ~480–780 | More device families (ASA, IoT, modules), physical workspace, email and SNMP, EIGRP/VPN/QoS, WLC |
+| Full target (ready for real work) | ~61% | ~430–700 | More device families (ASA, IoT, modules), physical workspace, QoS, WLC |
 | CCNA 1 student | ~86% | ~12–25 | PDU details layout and a few host apps (text editor, terminal) |
 | CCNA 2 student | ~84% | ~30–55 | WLC with lightweight APs and 802.11 frames (15–25 h), console polish |
-| CCNA 3 student | ~74% | ~65–110 | VPN/GRE (15–25 h), QoS basics, automation APIs |
+| CCNA 3 student | ~80% | ~40–70 | QoS basics (10–15 h), automation APIs, the IKE exchange on the wire |
 | Instructor | ~72% | ~20–35 | A side-by-side answer view (5–8 h), translated activity texts |
 
 Each student tier is mostly a superset of the one before. Hours are wall-clock for one agent;
@@ -62,15 +62,15 @@ Weights reflect how much of a typical CCNA lab session each area carries.
 |---|---|---|---|---|---|
 | Device console (modes, commands, `show` output, help, completion) | 20 | 74% | 14.8 | [protocol-parity.md](protocol-parity.md#console) | 60–90 |
 | Layer 2 (VLANs, trunks, STP, EtherChannel, VTP, port security, DTP) | 12 | 85% | 10.2 | [protocol-parity.md](protocol-parity.md#layer-2) | 25–40 |
-| Layer 3 (static, RIP, OSPF, EIGRP, IPv6, multilayer switching) | 15 | 78% | 11.7 | [protocol-parity.md](protocol-parity.md#layer-3) | 70–110 |
+| Layer 3 (static, RIP, OSPF, EIGRP, IPv6, multilayer switching) | 15 | 83% | 12.5 | [protocol-parity.md](protocol-parity.md#layer-3) | 55–90 |
 | Services (DHCP, DNS, HTTP, FTP, email, NTP, syslog, AAA) | 8 | 86% | 6.9 | [protocol-parity.md](protocol-parity.md#services) | 40–60 |
-| Security (ACLs, NAT, SSH, passwords, AAA, PPP authentication) | 8 | 72% | 5.8 | [protocol-parity.md](protocol-parity.md#security) | 35–55 |
+| Security (ACLs, NAT, SSH, passwords, AAA, PPP authentication) | 8 | 78% | 6.2 | [protocol-parity.md](protocol-parity.md#security) | 25–40 |
 | WAN, cabling and wireless | 6 | 62% | 3.7 | [hardware-parity.md](hardware-parity.md) | 60–90 |
 | Simulation mode (event list, PDU details, filters, complex PDUs) | 8 | 70% | 5.6 | [ui-parity.md](ui-parity.md) | 22–35 |
-| Workspace and windows (canvas, device tabs, physical view, drawing) | 10 | 55% | 5.5 | [ui-parity.md](ui-parity.md) | 60–90 |
+| Workspace and windows (canvas, device tabs, physical view, drawing) | 10 | 63% | 6.3 | [ui-parity.md](ui-parity.md) | 40–60 |
 | Teaching (activities, scoring, instructions, languages) | 8 | 75% | 6.0 | [gaps.md](gaps.md) | 35–60 |
 | Device families and hardware (models, modules, ASA, IoT) | 5 | 25% | 1.3 | [hardware-parity.md](hardware-parity.md) | 80–120 |
-| **Total** | **100** | | **71.4** | | **~600–950** |
+| **Total** | **100** | | **73.4** | | **~550–880** |
 
 ## Audiences
 
@@ -82,7 +82,7 @@ Weights reflect how much of a typical CCNA lab session each area carries.
   EtherChannel, DHCPv4, SLAAC, FHRP, port security, wireless LANs, static routing. Wireless and
   HSRP are the large missing pieces.
 - **CCNA 3 (ENSA):** single-area OSPF, ACLs, NAT, WAN concepts, VPN, QoS, network management,
-  automation. OSPF, ACLs and NAT work; VPN, QoS, SNMP/syslog/NTP and the automation topics do not.
+  automation. OSPF, ACLs, NAT, GRE/IPsec VPNs, SNMP, syslog and NTP work; QoS and the automation topics do not.
 - **Instructor:** builds activities with an answer network and a score. Not started.
 
 ## Stage
@@ -105,6 +105,7 @@ misses commands students meet in the first labs. Alpha gates are in
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | EIGRP: layer 3 78% → 83%; GRE/IPsec: security 72% → 78%; drawings and clusters: workspace 55% → 63%; total 71.4 → 73.4, CCNA 3 ~74% → ~80%; engine commands, grammar entries and models recounted (65, 453 across 18 modes, 16); the headline row said ~50% by mistake. |
 | 2026-10-30 | minor | SNMP: services 80% → 86%, CCNA 3 ~70% → ~74%. |
 | 2026-10-30 | minor | TACACS+: services 77% → 80%. |
 | 2026-10-30 | minor | Email: services 70% → 77%, CCNA 1 ~84% → ~86%. |

@@ -1,18 +1,18 @@
 # UI parity
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (workspace image export, Email app) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (freehand and polygon drawings, clusters, About ▸ Contributors) · **Target:** Cisco Packet Tracer 9.0
 
 The window, element by element, against the reference app. Part of
 [target-app-parity.md](target-app-parity.md). The arrangement was observed black-box (local
 `plan/packet-tracer/observed-ui.md`); artwork and wording are ours. **Workspace and windows:
-~55% ready, 60–90 h; Simulation mode: ~55% ready, 30–45 h** (estimated).
+~63% ready, 40–60 h; Simulation mode: ~55% ready, 30–45 h** (estimated).
 
 | Element | Reference app | PacketCraft |
 |---|---|---|
 | Menu bar | File, Edit, Options, View, Tools, Extensions, Window, Help | same menus, our items; File ▸ Open Recent on the desktop; the web build asks before closing a tab with unsaved changes |
 | Main toolbar | file, print, info, copy/paste, undo/redo, zoom, palette… ; help at right | new, open, save, network information, copy/paste devices, undo, redo, zoom in/reset/out, capture export; help at right |
-| Second toolbar | select, inspect, delete, resize, note, drawing, simple/complex PDU | select, inspect, delete, place note, line, rectangle, ellipse, simple PDU; resize, freeform and complex PDU shown but not available yet |
-| Workspace bar | Logical / Physical, coordinates, Root, navigation, clock | Logical / Physical (physical not available yet), coordinates, Root, clock |
+| Second toolbar | select, inspect, delete, resize, note, drawing, simple/complex PDU | select, inspect, delete, place note, line, rectangle, ellipse, freehand, polygon, simple PDU, group into a cluster; resize and complex PDU shown but not available yet |
+| Workspace bar | Logical / Physical, coordinates, Root, navigation, clock | Logical / Physical (physical not available yet), coordinates, a clickable Root › cluster › … path with back, clock |
 | Workspace | white, icons with model + name, port labels, link triangles; red serial cables with a clock at the DCE; EtherChannel marks | same arrangement, icons drawn in code; parallel cables side by side, a ring around each EtherChannel, red zigzag serial cables with a clock at the DCE end, a router mark on multilayer switches |
 | Time bar | time, power cycle, fast forward; Realtime / Simulation | same |
 | Device box | categories, search, subcategories, model tiles, model name box | same; 16 generic models (routers incl. Router-WAN with serial ports, switches incl. multilayer Switch-ML-24, Home-Router, AccessPoint, hub, PC, laptops incl. Wi-Fi, server, printer) + one cable that is copper or serial by the ports; the port menu greys out ports of the other cable type |
@@ -24,12 +24,14 @@ The window, element by element, against the reference app. Part of
 | Server window | Physical, Config, Services (HTTP, DHCP, DHCPv6, TFTP, DNS, SYSLOG, AAA, NTP, EMAIL, FTP, IoT…), Desktop, Programming, Attributes | Physical, Config, Services (HTTP with file manager, DHCP pools, DNS records, SYSLOG messages, NTP, TFTP files), Desktop, Attributes |
 | Web Browser | URL bar with back/forward, Go, Stop; page view | same; renders headings, paragraphs, bold, lists and links |
 | Activities | Instructions window with timer and score, Check Results tree, Reset Activity; Activity Wizard with answer network | Instructions window with Completion, Check Results list and Reset Activity; Activity Wizard (title, instructions, capture answers, ping/config/command checks, hidden answers); no timer, answer-network tree or locking |
-| Not yet | — | physical workspace, freeform drawing, clusters, complex PDUs, Programming tab, protocol frames (BPDU, hellos) in the event list |
+| Clusters | grouped devices shown as one cloud; open, rename, uncluster | same: pick with Shift+drag or Shift+click, Ctrl+G groups, a code-drawn cloud with the device count, double-click to open, nesting, cables to the cloud at the parent level |
+| Not yet | — | physical workspace, complex PDUs, Programming tab, protocol frames (BPDU, hellos) in the event list |
 
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Freehand and polygon drawings; multi-selection and nested clusters; About ▸ Contributors. |
 | 2026-10-30 | minor | File ▸ Export Workspace Image (PNG); the PC Email app; the model count. |
 | 2026-10-30 | minor | Open Recent; unsaved-changes guard on the web; Activities row. |
 | 2026-10-30 | minor | Shared format; serial cables, EtherChannel rings, multilayer and WAN models, IPv6 in the PC IP Configuration and router port pages, drawings. |

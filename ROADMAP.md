@@ -20,25 +20,25 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 | Number | Value | Kind |
 |---|---|---|
-| **Ready for real work** (weighted) | **~71%** | estimated from written weights (71.4); [target-app-parity.md](docs/target-app-parity.md) |
+| **Ready for real work** (weighted) | **~73%** | estimated from written weights (73.4); [target-app-parity.md](docs/target-app-parity.md) |
 | **CCNA 1 student** | **~86%** | estimated; [method](docs/target-app-parity.md#audiences) |
 | **CCNA 2 student** | **~84%** | estimated |
-| **CCNA 3 student** | **~74%** | estimated |
+| **CCNA 3 student** | **~80%** | estimated |
 | **Instructor** (graded activities) | **~72%** | estimated |
-| Engine commands | 52 | measured: `crates/engine/src/catalog.rs` |
-| Console grammar entries | 351 across 13 modes | measured: `crates/ios/src/grammar.rs` |
+| Engine commands | 65 | measured: `crates/engine/src/catalog.rs` |
+| Console grammar entries | 453 across 18 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
 | Device models · sample labs | 16 · 18 | measured |
-| Tests | 172 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Tests | 196 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
-| Remaining to **full parity** | **~600–950 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
+| Remaining to **full parity** | **~550–880 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
 
 | Audience | Ready % | Opus 5.5 agent wall-clock hours to ~95% | Work that dominates |
 |---|---|---|---|
-| Full target | ~58% | ~480–780 | More device families, physical workspace, email and SNMP, EIGRP/VPN/QoS, WLC |
+| Full target | ~61% | ~430–700 | More device families, physical workspace, QoS, WLC |
 | CCNA 1 student | ~86% | ~12–25 | PDU details, a few host apps |
 | CCNA 2 student | ~84% | ~30–55 | WLC and 802.11 frames, console polish |
-| CCNA 3 student | ~74% | ~65–110 | VPN/GRE, QoS, automation |
+| CCNA 3 student | ~80% | ~40–70 | QoS, automation, IKE on the wire |
 | Instructor | ~72% | ~20–35 | A side-by-side answer view, translated activity texts |
 
 ## Dimensions
@@ -47,12 +47,12 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 |---|---|---|---|---|
 | Device console | 20 | 74% | 35–55 | Modes, abbreviations, `?`, Tab, history, config round-trip; `show` coverage growing |
 | Layer 2 | 12 | 85% | 12–20 | VLANs, trunks, DTP, per-VLAN STP with BPDUs and timers, rapid-pvst, EtherChannel, VTP, port security |
-| Layer 3 | 15 | 78% | 30–50 | IPv4, IPv6 (NDP, SLAAC, subinterfaces, VLAN interfaces, DHCPv6 relay), static, RIP, multi-area OSPF with DR/BDR, stub areas and ranges, OSPFv3, multilayer switching with OSPF and RIP, HSRP; no EIGRP |
+| Layer 3 | 15 | 83% | 20–35 | IPv4, IPv6 (NDP, SLAAC, subinterfaces, VLAN interfaces, DHCPv6 relay), static, RIP, multi-area OSPF with DR/BDR, stub areas and ranges, OSPFv3, EIGRP with feasible successors, multilayer switching with OSPF and RIP, HSRP |
 | Services | 8 | 86% | 6–10 | DHCPv4 and DHCPv6 (with relay), DNS, HTTP with browser, email with the Email app, Telnet/SSH, NTP, syslog, TFTP, FTP, AAA with RADIUS and TACACS+, SNMP with a MIB Browser |
-| Security | 8 | 72% | 24–40 | IPv4 and IPv6 ACLs, access-class, NAT/PAT, passwords and lines, PPP PAP/CHAP; no firewalls or VPN |
+| Security | 8 | 78% | 16–28 | IPv4 and IPv6 ACLs, access-class, NAT/PAT, passwords and lines, PPP PAP/CHAP, GRE tunnels and IPsec site-to-site; no firewalls |
 | WAN, cabling, wireless | 6 | 62% | 28–45 | Copper (auto-MDIX), serial (DCE/DTE, HDLC/PPP), Wi-Fi access points, home wireless routers and clients; no WLC or fibre |
 | Simulation mode | 8 | 70% | 18–28 | Event list, replay, decode, drop reasons, pcap; BPDUs, OSPF hellos and database exchange, RIP updates, HSRP hellos, LLDP, LACP; no complex PDUs |
-| Workspace and windows | 10 | 55% | 60–90 | Reference-app arrangement, device tabs, notes and drawings; no physical view or clusters |
+| Workspace and windows | 10 | 63% | 40–60 | Reference-app arrangement, device tabs, notes, shapes, freehand and polygon drawings, nested clusters; no physical view |
 | Teaching | 8 | 75% | 20–35 | Activities with checks, points, sections, hints, hidden answers, values per student, a time limit, a password lock and a wizard; Spanish interface |
 | Device families | 5 | 25% | 80–120 | 16 generic models; no modules, ASA, IoT |
 | Files | — | — | — | Own open `.pcraft` JSON; no `.pkt` (out of scope: [decisions.md](docs/decisions.md)) |
@@ -60,6 +60,9 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-10-30 — Drawings and clusters.** Draw freehand strokes and polygons on the workspace; pick several devices (Shift+drag or Shift+click), group them into a cluster with Ctrl+G, open it with a double click and come back through the Root › … path; clusters nest and the simulation ignores them.
+- **2026-10-30 — GRE tunnels and IPsec.** `interface tunnel` with GRE (OSPF runs over it) and site-to-site IPsec with ISAKMP policies, pre-shared keys, transform sets and crypto maps; ESP on the wire, `show crypto` views, and a stated reason when the two ends don't agree.
+- **2026-10-30 — EIGRP.** `router eigrp` with networks, passive interfaces and router IDs; DUAL successors and feasible successors from bandwidth and delay; hellos on the wire; `show ip eigrp neighbors|topology|interfaces`; administrative distances decide between EIGRP, OSPF and RIP.
 - **2026-10-30 — Contributors in About.** Help ▸ About has a Contributors tab, as in the other Craft apps: everyone who contributed, by username or by the name they chose in `contributors/people.toml`, sortable and as a list or a table.
 - **2026-10-30 — SNMP.** Routers and switches run an SNMP agent (`snmp-server community`), and PCs have a MIB Browser to get, walk and set its objects.
 - **2026-10-30 — TACACS+.** Logins can be checked by a TACACS+ server too (`tacacs-server host`, `group tacacs+`), with the encrypted exchange on the wire.

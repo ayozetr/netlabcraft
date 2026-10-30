@@ -1,6 +1,6 @@
 # Roadmap
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** major (rewritten: milestones as built, current focus, alpha and beta gates) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (milestone states brought up to date) · **Target:** Cisco Packet Tracer 9.0
 
 Milestones, the current focus and what comes next. The summary is in
 [`ROADMAP.md`](../ROADMAP.md); the ranked work list is [gaps.md](gaps.md).
@@ -18,11 +18,11 @@ simulator into a teaching tool.
 | **M0 — Foundations** | ✅ 2026-10-29 | Workspace and gates, wire formats, lab model and file format, discrete-event simulator, console, engine with undo and panic guard, egui app in the reference app's arrangement, CLI, MCP, web build. |
 | **M1 — Services and security** | ✅ 2026-10-29 (in the first commit, with M0) | DHCP (server, relay, client), STP, switch VLAN interfaces, OSPF, ACLs, NAT/PAT, passwords and lines, Telnet/SSH, server HTTP/DNS/DHCP and the PC web browser, port security. |
 | **M2 — Layer 2 depth, IPv6 and WAN** | ✅ 2026-10-29 | M2.1 EtherChannel and VTP · M2.2 IPv6 · M2.3 multilayer switch · M2.4 RIP · M2.5 serial WAN links. |
-| **M3 — CCNA 1 complete** | next | Console coverage, CDP, protocol frames in Simulation mode, PDU details layout. |
-| **M4 — Teaching** | planned | Activities with expected results and a score, instructions panel, translations (Spanish first). |
-| **M5 — CCNA 2 complete** | planned | Wireless LANs, HSRP, DTP, RSTP timers, DHCPv6. |
-| **M6 — CCNA 3 complete** | planned | OSPF depth, PPP authentication, ACL depth, network services, VPN basics. |
-| **M7 — First release** | planned | Icon, installers, workflows, About window ([releasing.md](releasing.md)). |
+| **M3 — CCNA 1 complete** | in progress (console coverage, CDP, protocol frames landed) | Console coverage, CDP, protocol frames in Simulation mode, PDU details layout. |
+| **M4 — Teaching** | in progress (activities, wizard, variables, Spanish landed; side-by-side answer view left) | Activities with expected results and a score, instructions panel, translations (Spanish first). |
+| **M5 — CCNA 2 complete** | in progress (all listed items landed; WLC and 802.11 frames left) | Wireless LANs, HSRP, DTP, RSTP timers, DHCPv6. |
+| **M6 — CCNA 3 complete** | in progress (all listed items landed, plus EIGRP; QoS left) | OSPF depth, PPP authentication, ACL depth, network services, VPN basics. |
+| **M7 — First release** | in progress (icon and About window done; installers wait for the app ID) | Icon, installers, workflows, About window ([releasing.md](releasing.md)). |
 
 ## Alpha gates
 
@@ -49,5 +49,6 @@ the reference app:
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Milestone states brought up to date: M3–M7 in progress, with what is left in each. |
 | 2026-10-30 | major | Rewritten: milestones as they were built (M0–M2), next milestones by CCNA course, alpha and beta gates with estimates. |
 | 2026-10-29 | major | Created. |

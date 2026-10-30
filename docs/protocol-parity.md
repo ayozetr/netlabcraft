@@ -1,6 +1,6 @@
 # Protocol and command parity
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (SNMP) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (EIGRP, GRE tunnels, IPsec site-to-site) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 What the simulated devices do, protocol by protocol, against the reference app. Part of
 [target-app-parity.md](target-app-parity.md). Behaviour comes from the standards named in each
@@ -38,7 +38,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | Multilayer switching | — | ✅ | `ip routing`, VLAN interfaces, routed ports (`no switchport`), static routes, OSPF. No RIP on switches: 2–3 h. |
 | RIP | RFC 1058, RFC 2453 | 🟡 | Versions 1/2 (both classless here), classful `network`, passive interfaces, split horizon, 15 hops, default origination. RIP responses every 30 s (multicast for v2, broadcast for v1) with split horizon; also on multilayer switches. No triggered updates or auto-summary: 4–6 h. |
 | OSPFv2 | RFC 2328 | 🟡 | Single area: neighbours, SPF, router id, passive interfaces, default origination, cost 1 on Ethernet and 64 on serial. Hellos every 10 s; `ip ospf cost`, `ip ospf priority` with DR/BDR election (priority 0 never DR, none on serial links), `auto-cost reference-bandwidth`, several areas with inter-area routes shown as `O IA`, `show ip ospf`, `show ip ospf interface [brief]`, DR/BDR in `show ip ospf neighbor`; also on multilayer switches. When neighbours meet, each sends its database description, a link-state request, a link-state update with its router-LSA (with a valid Fletcher checksum) and an acknowledgement, visible in Simulation mode and captures. `area N stub` (both ends must agree, or no neighbours; the border router sends `O*IA` default routes in place of external ones), `area N stub no-summary`, `area N range` on border routers. No NSSA (beyond CCNA), virtual links, or network/summary LSAs on the wire: 6–10 h. |
-| EIGRP | RFC 7868 | ❌ | 15–25 h. |
+| EIGRP | RFC 7868 | 🟡 | `router eigrp N` (one AS per router), `network` with or without wildcard, `passive-interface`, `eigrp router-id`, `bandwidth` and `delay` on interfaces; neighbours in the same AS; composite metric from the slowest bandwidth and total delay; DUAL successors and feasible successors (`show ip eigrp topology`), `show ip eigrp neighbors|interfaces`, `D` routes with distance 90 beating OSPF and RIP; hellos to 224.0.0.10 every 5 s; `debug eigrp packets`. No queries/replies, hold timers, update packets on the wire, auto-summary, unequal-cost paths or EIGRP for IPv6: 8–12 h. |
 | IPv6 addressing | RFC 8200, RFC 4291 | ✅ | Global, EUI-64 and link-local addresses, `ipv6 enable`. |
 | NDP and SLAAC | RFC 4861, RFC 4862 | ✅ | Neighbour solicitation/advertisement, router solicitation/advertisement, host autoconfiguration. No DAD or RA flags (M/O). |
 | ICMPv6 | RFC 4443 | ✅ | Echo, time exceeded, unreachable; ping and traceroute. |
@@ -82,7 +82,9 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | NAT: static, pool, PAT (overload) | ✅ | ICMP, UDP and TCP; `show ip nat translations`. ICMP errors about translated packets are translated back (traceroute works through PAT). |
 | Passwords and lines | ✅ | `enable secret/password`, console and vty passwords with real prompts, `banner motd`, `service password-encryption`, `security passwords min-length`, `login block-for … attempts … within …` (`show login`), `username … privilege 15` (logs in to privileged mode), `ip ssh time-out` and `authentication-retries`. |
 | PPP authentication (PAP/CHAP) | ✅ | `ppp authentication chap|pap` (one or both, in order), `ppp pap sent-username`, checked against `username` entries (CHAP: both routers name each other with the same secret); failure keeps the line protocol down and `show interfaces` says why. No LCP/CHAP frames on the wire. |
-| ASA firewall, zone-based firewall, VPN (GRE/IPsec) | ❌ | 40–60 h. |
+| GRE tunnels | 🟡 | `interface tunnel N` with `tunnel source|destination`, `tunnel mode gre ip`; RFC 2784 headers on the wire; line protocol follows the source and a route to the destination (connected or static only); static routes and OSPF (point-to-point, cost 1000) over the tunnel; recursive routing is refused. No keepalives, `ip mtu`, ACLs or NAT on tunnels, or IPv6: 4–6 h. |
+| IPsec site-to-site | 🟡 | `crypto isakmp policy` and `key`, `crypto ipsec transform-set`, `crypto map … ipsec-isakmp` (`set peer`, `set transform-set`, `match address`) applied to an interface; matching traffic leaves as ESP (RFC 4303 layout; the cipher is a stand-in, not real encryption); the security association comes from comparing both routers' settings, and a mismatch drops traffic with the reason; `show crypto isakmp sa|policy`, `show crypto ipsec sa`, `show crypto map`, `clear crypto sa`. No IKE exchange on the wire or transport mode: 6–10 h. |
+| ASA firewall, zone-based firewall | ❌ | 30–45 h. |
 
 ## WAN
 
@@ -112,6 +114,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | EIGRP; GRE tunnels; IPsec site-to-site. |
 | 2026-10-30 | minor | Spanning-tree listening/learning timers and `spanning-tree mode rapid-pvst`. |
 | 2026-10-30 | minor | NTP, syslog and TFTP. |
 | 2026-10-30 | minor | DHCPv6 and router advertisement flags. |
