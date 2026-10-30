@@ -1,0 +1,285 @@
+//! Typed console tests for the switch and QoS leftovers: `mls qos` trust, shaping, loop guard
+//! and BPDU filter, the rapid spanning-tree handshake, option 82 with snooping, and HSRP
+//! preemption.
+
+use netlabcraft_core::DeviceId;
+use netlabcraft_model::DeviceKind;
+
+use super::Lab;
+
+/// The DS byte of an untagged IPv4 frame.
+fn ds_of(frame: &[u8]) -> Option<u8> {
+    (frame.get(12..14) == Some(&[0x08, 0x00][..])).then(|| frame.get(15).copied()).flatten()
+}
+
+/// PC1 — R1 — S1 — R2: R1 marks everything it sends S1 as EF.
+fn marking_lab() -> (Lab, DeviceId, DeviceId, DeviceId, DeviceId) {
+    let mut lab = Lab::new();
+    let pc = lab.add(DeviceKind::Pc);
+    let r1 = lab.add(DeviceKind::Router);
+    let s1 = lab.add(DeviceKind::Switch);
+    let r2 = lab.add(DeviceKind::Router);
+    lab.cable(pc, "fa0", r1, "g0/0");
+    lab.cable(r1, "g0/1", s1, "fa0/1");
+    lab.cable(r2, "g0/1", s1, "fa0/2");
+    lab.run(pc, "ipconfig 192.168.1.10 255.255.255.0 192.168.1.1");
+    lab.run(
+        r1,
+        "en\nconf t\nint g0/0\nip add 192.168.1.1 255.255.255.0\nno shut\nint g0/1\nip add 10.0.0.1 255.255.255.0\nno shut\nexit\n\
+         policy-map MARK\nclass class-default\nset dscp ef\nexit\nexit\nint g0/1\nservice-policy output MARK\nend",
+    );
+    lab.run(r2, "en\nconf t\nint g0/1\nip add 10.0.0.2 255.255.255.0\nno shut\nexit\nip route 192.168.1.0 255.255.255.0 10.0.0.1\nend");
+    lab.run(s1, "en");
+    (lab, pc, r1, s1, r2)
+}
+
+/// The DS bytes of the echo requests S1 handed R2.
+fn marks_reaching(lab: &Lab, s1: DeviceId, r2: DeviceId) -> Vec<u8> {
+    lab.sim
+        .trace()
+        .iter()
+        .filter(|e| e.from.device == s1 && e.to.device == r2 && e.summary.starts_with("ICMP echo request"))
+        .filter_map(|e| ds_of(&e.frame))
+        .collect()
+}
+
+#[test]
+fn mls_qos_rewrites_untrusted_markings_and_trust_keeps_them() {
+    let (mut lab, pc, _r1, s1, r2) = marking_lab();
+    lab.run(pc, "ping 10.0.0.2");
+    lab.sim.clear_trace();
+    assert!(lab.run(pc, "ping 10.0.0.2").contains("4 answered"));
+    // QoS off: the switch passes EF (DSCP 46, DS byte 0xb8) as it came.
+    let marks = marks_reaching(&lab, s1, r2);
+    assert!(!marks.is_empty() && marks.iter().all(|b| *b == 0xb8), "{marks:?}");
+    assert!(lab.run(s1, "show mls qos").contains("disabled"));
+    // QoS on, port untrusted: rewritten to 0.
+    let note = lab.run(s1, "conf t\nmls qos");
+    assert!(note.contains("rewrite"), "{note}");
+    lab.run(s1, "end");
+    lab.sim.clear_trace();
+    assert!(lab.run(pc, "ping 10.0.0.2").contains("4 answered"));
+    let marks = marks_reaching(&lab, s1, r2);
+    assert!(!marks.is_empty() && marks.iter().all(|b| *b == 0), "{marks:?}");
+    let show = lab.run(s1, "show mls qos interface fa0/1");
+    assert!(show.contains("QoS enabled") && show.contains("Fa0/1      none") && show.contains(" 4"), "{show}");
+    // Trust DSCP: kept.
+    lab.run(s1, "conf t\nint fa0/1\nmls qos trust dscp\nend");
+    lab.sim.clear_trace();
+    assert!(lab.run(pc, "ping 10.0.0.2").contains("4 answered"));
+    let marks = marks_reaching(&lab, s1, r2);
+    assert!(!marks.is_empty() && marks.iter().all(|b| *b == 0xb8), "{marks:?}");
+    assert!(lab.run(s1, "show mls qos interface fa0/1").contains("Fa0/1      dscp"));
+    // Trust CoS: the frames carry priority 0, so DSCP 0.
+    lab.run(s1, "conf t\nint fa0/1\nmls qos trust cos\nend");
+    lab.sim.clear_trace();
+    assert!(lab.run(pc, "ping 10.0.0.2").contains("4 answered"));
+    assert!(marks_reaching(&lab, s1, r2).iter().all(|b| *b == 0));
+    let run = lab.run(s1, "show running-config");
+    assert!(run.contains("\nmls qos\n") && run.contains(" mls qos trust cos"), "{run}");
+    // Round trip, then the `no` forms.
+    lab.run(s1, "copy run start\nreload\nen");
+    assert_eq!(lab.run(s1, "show running-config"), run);
+    lab.run(s1, "conf t\nint fa0/1\nno mls qos trust\nexit\nno mls qos\nend");
+    let run = lab.run(s1, "show running-config");
+    assert!(!run.contains("mls qos"), "{run}");
+    lab.run(s1, "conf t\nint fa0/1");
+    assert!(lab.try_run(s1, "mls qos trust ip-precedence").contains("`dscp` or `cos`"));
+}
+
+#[test]
+fn shaping_delays_pings_and_shows_its_counters() {
+    let (mut lab, pc, r1, _s1, _r2) = marking_lab();
+    lab.run(r1, "conf t\npolicy-map SHAPE\nclass class-default\nshape average 8000\nexit\nexit\nint g0/1\nservice-policy output SHAPE\nend");
+    lab.run(pc, "ping 10.0.0.2");
+    // 1428-byte echo requests a second apart at 8 kbit/s (1000 bytes a second): the bucket
+    // takes the first, then each waits longer.
+    let out = lab.run(pc, "ping -l 1400 -n 4 10.0.0.2");
+    assert!(out.contains("4 answered") || out.contains("answered"), "{out}");
+    let show = lab.run(r1, "show policy-map interface g0/1");
+    assert!(show.contains("shape average 8000 bit/s, bucket 1500 bytes:"), "{show}");
+    assert!(!show.contains(" 0 packets delayed"), "{show}");
+    // Each shaped echo request reached S1 later than the one before it would have unshaped.
+    let sent: Vec<u64> = lab
+        .sim
+        .trace()
+        .iter()
+        .filter(|e| e.from.device == r1 && e.summary.starts_with("ICMP echo request") && e.frame.len() > 1400)
+        .map(|e| e.at_us)
+        .collect();
+    assert!(sent.len() >= 3, "{sent:?}");
+    let gaps: Vec<u64> = sent.windows(2).map(|w| w[1] - w[0]).collect();
+    assert!(gaps.iter().any(|g| *g > 1_100_000), "shaping should stretch the 1 s spacing: {gaps:?}");
+    let pm = lab.run(r1, "show running-config");
+    assert!(pm.contains("policy-map SHAPE\n class class-default\n  shape average 8000"), "{pm}");
+}
+
+/// S1 (root), S2 and S3 in a triangle; S2 beats S3, so S3's port to S2 is the blocked one.
+fn triangle() -> (Lab, DeviceId, DeviceId, DeviceId) {
+    let mut lab = Lab::new();
+    let s1 = lab.add(DeviceKind::Switch);
+    let s2 = lab.add(DeviceKind::Switch);
+    let s3 = lab.add(DeviceKind::Switch);
+    lab.cable(s1, "fa0/1", s2, "fa0/1");
+    lab.cable(s1, "fa0/2", s3, "fa0/1");
+    lab.cable(s2, "fa0/2", s3, "fa0/2");
+    lab.run(s1, "en\nconf t\nspanning-tree vlan 1 priority 4096\nend");
+    lab.run(s2, "en\nconf t\nspanning-tree vlan 1 priority 8192\nend");
+    lab.run(s3, "en");
+    (lab, s1, s2, s3)
+}
+
+#[test]
+fn loop_guard_blocks_a_port_whose_bpdus_stop() {
+    let (mut lab, _s1, s2, s3) = triangle();
+    let st = lab.run(s3, "show spanning-tree vlan 1");
+    assert!(st.contains("Fa0/2      Altn BLK"), "{st}");
+    // S2 stops sending BPDUs on its port to S3: S3 hears nothing and, unguarded, forwards —
+    // a loop.
+    let note = lab.run(s2, "conf t\nint fa0/2\nspanning-tree bpdufilter enable");
+    assert!(note.contains("loop guard"), "{note}");
+    lab.run(s2, "end");
+    lab.sim.run_for(&lab.t, 31_000_000);
+    let st = lab.run(s3, "show spanning-tree vlan 1");
+    assert!(st.contains("Fa0/2      Desg FWD"), "{st}");
+    // Loop guard on S3's port: loop-inconsistent instead.
+    lab.run(s3, "conf t\nint fa0/2\nspanning-tree guard loop\nend");
+    let st = lab.run(s3, "show spanning-tree vlan 1");
+    assert!(st.contains("Fa0/2      Altn BLK") && st.contains("Loop-inconsistent"), "{st}");
+    let inc = lab.run(s3, "show spanning-tree inconsistentports");
+    assert!(inc.contains("VLAN0001   Fa0/2        Loop inconsistent") && inc.contains("1 inconsistent port"), "{inc}");
+    assert!(lab.run(s3, "show spanning-tree vlan 1 detail").contains("loop-inconsistent"));
+    // BPDUs flow again: the port goes back to plain alternate.
+    lab.run(s2, "conf t\nint fa0/2\nno spanning-tree bpdufilter\nend");
+    let st = lab.run(s3, "show spanning-tree vlan 1");
+    assert!(st.contains("Fa0/2      Altn BLK") && !st.contains("Loop-inconsistent"), "{st}");
+    // Loop guard on a port that should be designated changes nothing (it sends, not hears).
+    lab.run(s2, "conf t\nint fa0/2\nspanning-tree guard loop\nspanning-tree bpdufilter enable\nend");
+    assert!(lab.run(s2, "show spanning-tree vlan 1").contains("Fa0/2      Desg FWD"));
+    lab.run(s2, "conf t\nint fa0/2\nno spanning-tree guard\nno spanning-tree bpdufilter\nend");
+    // The global default covers every switch-to-switch port.
+    lab.run(s3, "conf t\nint fa0/2\nno spanning-tree guard\nexit\nspanning-tree loopguard default\nend");
+    lab.run(s2, "conf t\nint fa0/2\nspanning-tree bpdufilter enable\nend");
+    assert!(lab.run(s3, "show spanning-tree vlan 1").contains("Loop-inconsistent"));
+    assert!(lab.run(s3, "show spanning-tree summary").contains("Loop guard default:   on"));
+    let run = lab.run(s3, "show running-config");
+    assert!(run.contains("spanning-tree loopguard default"), "{run}");
+    let run2 = lab.run(s2, "show running-config interface fa0/2");
+    assert!(run2.contains(" spanning-tree bpdufilter enable"), "{run2}");
+    lab.run(s3, "copy run start\nreload\nen");
+    assert_eq!(lab.run(s3, "show running-config"), run);
+    lab.run(s3, "conf t\nint fa0/2");
+    assert!(lab.try_run(s3, "spanning-tree guard maybe").contains("`root`, `loop` or `none`"));
+    assert!(lab.try_run(s3, "spanning-tree bpdufilter perhaps").contains("`enable` or `disable`"));
+}
+
+#[test]
+fn rapid_spanning_tree_handshakes_and_forwards_at_once() {
+    let mut lab = Lab::new();
+    let s1 = lab.add(DeviceKind::Switch);
+    let s2 = lab.add(DeviceKind::Switch);
+    lab.cable(s1, "fa0/1", s2, "fa0/1");
+    for s in [s1, s2] {
+        lab.run(s, "en\nconf t\nspanning-tree mode rapid-pvst\nend");
+    }
+    lab.run(s1, "conf t\nspanning-tree vlan 1 priority 4096\nend");
+    // Let the tree settle, then add a second link: the new ports come up.
+    lab.sim.run_for(&lab.t, 3_000_000);
+    lab.run(s1, "show spanning-tree vlan 1");
+    lab.sim.clear_trace();
+    lab.cable(s1, "fa0/2", s2, "fa0/2");
+    lab.sim.run_for(&lab.t, 1_000_000);
+    // Point-to-point, both rapid: the designated port proposes, the other side agrees, and
+    // nothing waits for the timers.
+    let st = lab.run(s1, "show spanning-tree vlan 1");
+    assert!(st.contains("Fa0/2      Desg FWD"), "{st}");
+    let rstp: Vec<String> = lab.sim.trace().iter().filter(|e| e.summary.starts_with("RSTP BPDU")).map(|e| e.summary.clone()).collect();
+    assert!(rstp.iter().any(|s| s.contains("[designated, proposal]")), "{rstp:?}");
+    assert!(rstp.iter().any(|s| s.contains("agreement")), "{rstp:?}");
+    // The periodic BPDUs are RST BPDUs too, flagged learning and forwarding.
+    lab.sim.run_for(&lab.t, 3_000_000);
+    assert!(lab.sim.trace().iter().any(|e| e.summary.contains("RSTP BPDU") && e.summary.contains("designated, learning, forwarding")));
+    // A shared link (half duplex, or set so) gets no handshake: it waits out the timers.
+    lab.cable(s1, "fa0/3", s2, "fa0/3");
+    lab.run(s1, "conf t\nint fa0/3\nspanning-tree link-type shared\nend");
+    lab.sim.run_for(&lab.t, 3_000_000);
+    lab.run(s1, "conf t\nint fa0/4\nspanning-tree link-type shared\nend");
+    lab.cable(s1, "fa0/4", s2, "fa0/4");
+    lab.sim.run_for(&lab.t, 1_000_000);
+    let st = lab.run(s1, "show spanning-tree vlan 1");
+    assert!(st.contains("Fa0/4      Desg LIS"), "{st}");
+}
+
+#[test]
+fn option_82_from_snooping_needs_the_router_to_trust_it() {
+    let (mut lab, r1, s, a, _b) = super::snooping_lab();
+    // Insertion is on by default once snooping runs.
+    lab.run(s, "en\nconf t\nip dhcp snooping\nip dhcp snooping vlan 1\nint fa0/24\nip dhcp snooping trust\nend");
+    assert!(lab.run(s, "show ip dhcp snooping").contains("Option 82 insertion:      on"));
+    lab.sim.clear_trace();
+    let out = lab.try_run(a, "ipconfig /renew");
+    assert!(!out.contains("192.168.10."), "{out}");
+    let drops = super::dropped_reasons(&lab);
+    assert!(drops.iter().any(|r| r.contains("option 82") && r.contains("untrusted GigabitEthernet0/0")), "{drops:?}");
+    // What the switch handed R1 carried the option: VLAN 1, port 1, the switch's MAC.
+    let tagged: Vec<String> = lab
+        .sim
+        .trace()
+        .iter()
+        .filter(|e| e.from.device == s && e.to.device == r1 && e.summary.contains("option 82"))
+        .map(|e| e.summary.clone())
+        .collect();
+    assert!(tagged.iter().any(|t| t.contains("DISCOVER") && t.contains("circuit VLAN 1 port 1")), "{tagged:?}");
+    // The router trusts it: the client gets its address, and never sees the option.
+    lab.run(r1, "conf t\nip dhcp relay information trust-all\nend");
+    lab.sim.clear_trace();
+    let out = lab.run(a, "ipconfig /renew");
+    assert!(out.contains("192.168.10.10/24"), "{out}");
+    let to_client: Vec<String> =
+        lab.sim.trace().iter().filter(|e| e.to.device == a && e.summary.starts_with("DHCP")).map(|e| e.summary.clone()).collect();
+    assert!(!to_client.is_empty() && to_client.iter().all(|t| !t.contains("option 82")), "{to_client:?}");
+    assert!(lab.sim.trace().iter().any(|e| e.from.device == r1 && e.summary.contains("OFFER") && e.summary.contains("option 82")));
+    assert!(lab.run(s, "show ip dhcp snooping binding").contains("192.168.10.10"));
+    let run = lab.run(r1, "show running-config");
+    assert!(run.contains("ip dhcp relay information trust-all"), "{run}");
+    // Per interface instead of everywhere.
+    lab.run(r1, "conf t\nno ip dhcp relay information trust-all\nint g0/0\nip dhcp relay information trusted\nend");
+    assert!(lab.run(r1, "show running-config interface g0/0").contains(" ip dhcp relay information trusted"));
+    lab.run(a, "ipconfig /release");
+    assert!(lab.run(a, "ipconfig /renew").contains("192.168.10."));
+    lab.run(r1, "copy run start\nreload\nen");
+    assert!(lab.run(r1, "show running-config").contains(" ip dhcp relay information trusted"));
+    // Or the switch stops inserting it.
+    lab.run(r1, "conf t\nint g0/0\nno ip dhcp relay information trusted\nend");
+    lab.run(s, "conf t\nno ip dhcp snooping information option\nend");
+    lab.run(a, "ipconfig /release");
+    assert!(lab.run(a, "ipconfig /renew").contains("192.168.10."));
+}
+
+#[test]
+fn hsrp_preempt_decides_whether_a_better_router_takes_over() {
+    let mut lab = Lab::new();
+    let r1 = lab.add(DeviceKind::Router);
+    let r2 = lab.add(DeviceKind::Router);
+    let s1 = lab.add(DeviceKind::Switch);
+    lab.cable(r1, "g0/0", s1, "fa0/1");
+    lab.cable(r2, "g0/0", s1, "fa0/2");
+    lab.run(r1, "en\nconf t\nint g0/0\nip address 192.168.1.1 255.255.255.0\nstandby 1 ip 192.168.1.254\nstandby 1 priority 110\nno shut\nend");
+    lab.run(r2, "en\nconf t\nint g0/0\nip address 192.168.1.2 255.255.255.0\nstandby 1 ip 192.168.1.254\nno shut\nend");
+    assert!(lab.run(r1, "show standby").contains("Group 1 on GigabitEthernet0/0: active (priority 110)"));
+    // R1 goes away: R2 takes over.
+    lab.run(r1, "conf t\nint g0/0\nshutdown\nend");
+    lab.sim.run_for(&lab.t, 4_000_000);
+    assert!(lab.run(r2, "show standby").contains(": active"));
+    // R1 comes back with the better priority but no preempt: R2 stays active.
+    lab.run(r1, "conf t\nint g0/0\nno shutdown\nend");
+    lab.sim.run_for(&lab.t, 4_000_000);
+    let sb = lab.run(r1, "show standby");
+    assert!(sb.contains("Group 1 on GigabitEthernet0/0: standby (priority 110)"), "{sb}");
+    assert!(lab.run(r2, "show standby").contains(": active"));
+    // With preempt it takes the role back.
+    lab.run(r1, "conf t\nint g0/0\nstandby 1 preempt\nend");
+    lab.sim.run_for(&lab.t, 4_000_000);
+    assert!(lab.run(r1, "show standby").contains("active (priority 110, preempt)"));
+    assert!(lab.run(r2, "show standby").contains(": standby"));
+}

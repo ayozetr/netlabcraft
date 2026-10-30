@@ -812,6 +812,8 @@ pub struct DevState {
     pub(crate) qos: qos::QosCounters,
     /// Output queuing: when each interface's queues last drained (simulated µs).
     pub(crate) qos_drained: BTreeMap<String, u64>,
+    /// Switches with `mls qos`: frames per port whose DS field was kept or rewritten.
+    pub mls_qos: BTreeMap<usize, qos::MlsCounts>,
     /// The firewall appliance: connections and translations.
     pub fw: firewall::FwState,
     /// Routers: DHCP server message counts and address conflicts.
@@ -943,6 +945,10 @@ pub struct Sim {
     stp_prev: BTreeMap<u16, stp::VlanTree>,
     /// Ports that started forwarding at this time (µs) and spend 30 s listening and learning.
     stp_since: BTreeMap<(u16, DeviceId, usize), u64>,
+    /// Rapid spanning tree: designated ports that just came up on a point-to-point link to
+    /// another rapid switch, (VLAN, switch, port), whose proposal and agreement are still to go
+    /// on the wire.
+    rstp_handshakes: Vec<(u16, DeviceId, usize)>,
     /// EtherChannel bundles per switch, for the same topology as `stp`.
     chmaps: BTreeMap<DeviceId, channel::PortMap>,
     /// OSPF's routes, for the topology with this fingerprint.
@@ -981,6 +987,8 @@ pub struct Sim {
     hold_for_arp: bool,
     hsrp_for: u64,
     hsrp: Option<BTreeMap<DeviceId, Vec<hsrp::Role>>>,
+    /// Who was active in each HSRP group at the last election (for preemption).
+    hsrp_actives: hsrp::Actives,
     /// Last known link state of every router and switch port, for link messages.
     links_seen: BTreeMap<(DeviceId, usize), bool>,
     /// Lab changes waiting for the engine.
@@ -1314,6 +1322,7 @@ impl Sim {
     fn advance(&mut self, t: &Topology, deadline: u64, mut stop: impl FnMut(&Sim) -> bool) -> bool {
         self.storm = false;
         self.refresh_stp(t);
+        self.send_rstp_handshakes(t);
         self.l2_tick(t);
         self.wlan_sync(t);
         self.flush_syslog(t);
@@ -1700,7 +1709,9 @@ impl Sim {
         let f = hsrp::fingerprint(t);
         if self.hsrp.is_none() || self.hsrp_for != f {
             self.hsrp_for = f;
-            self.hsrp = Some(hsrp::compute(t));
+            let (roles, actives) = hsrp::compute_with(t, &self.hsrp_actives);
+            self.hsrp = Some(roles);
+            self.hsrp_actives = actives;
         }
         self.hsrp.clone().unwrap_or_default()
     }
@@ -1874,12 +1885,22 @@ impl Sim {
                         })
                         .unwrap_or_else(|| vec![*p]);
                     let was = members.iter().any(|m| prev.ports.get(&(*dev, *m)).is_some_and(|i| i.role.forwards()));
-                    // Portfast, rapid spanning tree, and access-point radios forward at once.
-                    let immediate = t
-                        .device(*dev)
-                        .is_some_and(|d| d.rapid_stp || l2sec::edge_port(t, d, *p) || d.ports.get(*p).is_some_and(|x| ifname::is_wireless(&x.name)));
-                    if !was && !immediate {
+                    // Portfast ports and access-point radios forward at once; so do rapid ports
+                    // on a point-to-point link to another rapid switch, after the proposal and
+                    // agreement handshake (802.1w), and rapid ports facing a host or router,
+                    // which hear no BPDU and become edge ports by themselves (802.1D-2004
+                    // AutoEdge). Anything else listens and learns.
+                    let edge = t.device(*dev).is_some_and(|d| {
+                        l2sec::edge_port(t, d, *p)
+                            || d.ports.get(*p).is_some_and(|x| ifname::is_wireless(&x.name))
+                            || (d.rapid_stp && !stp::faces_switch(t, *dev, *p))
+                    });
+                    let rapid = stp::rapid_link(t, *dev, *p);
+                    if !was && !edge && !rapid {
                         self.stp_since.insert(key, self.now);
+                    }
+                    if !was && !edge && rapid && info.role == stp::Role::Designated && self.rstp_handshakes.len() < 4_096 {
+                        self.rstp_handshakes.push(key);
                     }
                 }
             }
@@ -1967,6 +1988,8 @@ impl Sim {
             return Err(format!("port blocked by spanning tree (VLAN {vlan})"));
         }
         self.l2_switch_in(d, in_port, vlan, &f)?;
+        let f = self.snoop_option82(d, in_port, vlan, f)?;
+        let f = self.mls_qos_in(d, in_port, f);
         self.psec_age(d, in_port, f.src);
         self.port_security(d, in_port, f.src)?;
         self.switch_forward(t, d, Some(in_port), vlan, f, hops)
@@ -2375,6 +2398,17 @@ impl Sim {
             return match (u.dst_port, d.kind) {
                 (dhcp::SERVER_PORT, k) if k == DeviceKind::Router || (k == DeviceKind::Switch && d.routes_ip()) => {
                     let msg = Dhcp::decode(&u.payload).map_err(|e| e.to_string())?;
+                    // RFC 3046 §2.1.1 and §2.2: relay information with no relay address came
+                    // from a switch on the client's segment; only a trusted interface takes it.
+                    let client = matches!(msg.kind, DhcpKind::Discover | DhcpKind::Request | DhcpKind::Release);
+                    let trusted = d.l2.relay_trust_all || d.ports.get(ifc.port).is_some_and(|p| p.l2.relay_trusted);
+                    if client && msg.relay.is_unspecified() && msg.relay_info.is_some() && !trusted {
+                        return Err(format!(
+                            "DHCP {}: relay information (option 82) with relay address 0.0.0.0 on untrusted {}; dropped (`ip dhcp relay information trusted` takes it)",
+                            msg.kind.name(),
+                            ifc.name
+                        ));
+                    }
                     match msg.kind {
                         DhcpKind::Offer | DhcpKind::Ack | DhcpKind::Nak => self.dhcp_relay_down(t, d, msg),
                         _ if msg.relay.is_unspecified() => {
@@ -2660,6 +2694,8 @@ impl Sim {
         reply.lease_secs = Some(pool.lease_secs.unwrap_or(86_400));
         reply.domain = pool.domain.clone();
         reply.tftp = d.voice.option150.get(&pool.name).copied();
+        // Relay agent information comes back as it came (RFC 3046 §2.2).
+        reply.relay_info = msg.relay_info.clone();
         match msg.kind {
             DhcpKind::Discover => {
                 reply.your_ip = self
@@ -2687,6 +2723,7 @@ impl Sim {
                 } else {
                     reply = Dhcp::new(DhcpKind::Nak, msg.xid, msg.client_mac);
                     reply.server_id = Some(ifc.net.addr);
+                    reply.relay_info = msg.relay_info.clone();
                 }
             }
             DhcpKind::Release => {

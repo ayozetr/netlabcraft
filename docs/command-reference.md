@@ -759,7 +759,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no spanning-tree portfast bpduguard default` | config | switch | No BPDU guard unless set on the port |
 | `spanning-tree bpduguard {enable\|disable}` | interface | switch | Err-disable the port when a BPDU arrives |
 | `no spanning-tree bpduguard` | interface | switch | BPDU guard as the switch default says |
-| `spanning-tree guard {root\|none}` | interface | switch | Root guard: never let a better root in through this port |
+| `spanning-tree guard {root\|loop\|none}` | interface | switch | Root guard (no better root in through this port) or loop guard (block if BPDUs stop) |
 | `no spanning-tree guard` | interface | switch | No root guard |
 | `spanning-tree link-type {point-to-point\|shared}` | interface | switch | What the port is cabled to |
 | `no spanning-tree link-type` | interface | switch | Link type from the duplex |
@@ -799,6 +799,23 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `sdm prefer {default\|dual-ipv4-and-ipv6 default\|lanbase-routing\|vlan\|advanced}` | config | switch | Memory template, used from the next reload |
 | `no sdm prefer` | config | switch | Default template from the next reload |
 | `show sdm prefer` | user, privileged | switch | Memory template now and after reload |
+| `mls qos` | config | switch | Classify on arrival: untrusted ports lose their markings |
+| `no mls qos` | config | switch | Pass every marking through untouched |
+| `mls qos trust {dscp\|cos}` | interface | switch | Keep the marking that arrives on this port |
+| `no mls qos trust` | interface | switch | Rewrite markings arriving here to 0 |
+| `no mls qos trust ...` | interface | switch | Rewrite markings arriving here to 0 |
+| `show mls qos` | user, privileged | switch | Whether the switch classifies on arrival |
+| `show mls qos interface` | user, privileged | switch | Trust and markings per port |
+| `show mls qos interface INTERFACE` | user, privileged | switch | Trust and markings of one port |
+| `spanning-tree loopguard default` | config | switch | Loop guard on every switch-to-switch port |
+| `no spanning-tree loopguard default` | config | switch | Loop guard only where set on the port |
+| `spanning-tree bpdufilter {enable\|disable}` | interface | switch | Send and take no BPDUs on this port |
+| `no spanning-tree bpdufilter` | interface | switch | BPDUs as usual on this port |
+| `show spanning-tree inconsistentports` | user, privileged | switch | Ports blocked by root guard or loop guard |
+| `ip dhcp relay information trust-all` | config | router, switch | Take DHCP requests with relay information but no relay address on every interface |
+| `no ip dhcp relay information trust-all` | config | router, switch | Drop DHCP requests with relay information but no relay address |
+| `ip dhcp relay information trusted` | interface, subinterface | router, switch | Take DHCP requests with relay information but no relay address here |
+| `no ip dhcp relay information trusted` | interface, subinterface | router, switch | Drop DHCP requests with relay information but no relay address here |
 | `show spanning-tree` | user, privileged | switch | Spanning trees of every VLAN |
 | `show spanning-tree vlan <1-4094>` | user, privileged | switch | One VLAN's spanning tree |
 | `nameif NAME` | interface, subinterface | firewall | Name the interface (rules, routes and NAT refer to it by this name) |

@@ -733,11 +733,12 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                             Ok(d) => (
                                 Protocol::Dhcp,
                                 format!(
-                                    "DHCP {} {} → {}{}{tag}",
+                                    "DHCP {} {} → {}{}{}{tag}",
                                     d.kind.name(),
                                     ip.src,
                                     ip.dst,
-                                    if d.your_ip.is_unspecified() { String::new() } else { format!(" (address {})", d.your_ip) }
+                                    if d.your_ip.is_unspecified() { String::new() } else { format!(" (address {})", d.your_ip) },
+                                    d.relay_info.as_ref().map(|r| format!(" [option 82: {}]", r.describe())).unwrap_or_default()
                                 ),
                             ),
                             Err(e) => (Protocol::Dhcp, format!("DHCP ({e}){tag}")),
@@ -893,7 +894,13 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
             Err(e) => (Protocol::Eapol, format!("EAPOL ({e}){tag}")),
         },
         len if len <= 1_500 && f.payload.starts_with(&[0x42, 0x42, 0x03]) => match control::Bpdu::decode(&f.payload) {
-            Ok(b) => (Protocol::Stp, format!("STP BPDU from {}: root {}, cost {}{tag}", b.bridge, b.root, b.root_cost)),
+            Ok(b) => match b.rstp {
+                Some(flags) => (
+                    Protocol::Stp,
+                    format!("RSTP BPDU from {}: root {}, cost {} [{}]{tag}", b.bridge, b.root, b.root_cost, control::rstp_flags_text(flags)),
+                ),
+                None => (Protocol::Stp, format!("STP BPDU from {}: root {}, cost {}{tag}", b.bridge, b.root, b.root_cost)),
+            },
             Err(e) => (Protocol::Stp, format!("STP ({e}){tag}")),
         },
         other => (Protocol::Other, format!("ethertype 0x{other:04x}{tag}")),

@@ -135,6 +135,17 @@ pub struct SwitchL2 {
     /// The template running now (`None`: default).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sdm_active: Option<String>,
+    /// `mls qos`: the switch classifies frames on arrival; ports not trusted have their
+    /// markings rewritten to 0.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub mls_qos: bool,
+    /// `spanning-tree loopguard default`: loop guard on every switch-to-switch port.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub loopguard_default: bool,
+    /// `ip dhcp relay information trust-all` (routers): accept requests that carry relay
+    /// information (option 82) with no relay address, from any interface.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub relay_trust_all: bool,
 }
 
 impl Default for SwitchL2 {
@@ -152,6 +163,9 @@ impl Default for SwitchL2 {
             load_balance: LoadBalance::default(),
             sdm_next: None,
             sdm_active: None,
+            mls_qos: false,
+            loopguard_default: false,
+            relay_trust_all: false,
         }
     }
 }
@@ -204,6 +218,26 @@ impl LinkType {
     }
 }
 
+/// `mls qos trust …`: which marking a port keeps when `mls qos` is on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum QosTrust {
+    /// The IPv4 DS field is kept.
+    Dscp,
+    /// The 802.1p priority of a tagged frame is kept, and the DS field follows it (CoS × 8);
+    /// untagged frames count as CoS 0.
+    Cos,
+}
+
+impl QosTrust {
+    pub fn name(self) -> &'static str {
+        match self {
+            QosTrust::Dscp => "dscp",
+            QosTrust::Cos => "cos",
+        }
+    }
+}
+
 /// Spanning-tree port settings that may be per VLAN: key 0 is "every VLAN".
 pub type PerVlan = BTreeMap<u16, u32>;
 
@@ -239,6 +273,20 @@ pub struct PortL2 {
     pub lacp_priority: Option<u16>,
     /// Multilayer switches: `switchport trunk encapsulation dot1q`.
     pub encap_dot1q: bool,
+    /// `mls qos trust dscp|cos`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub qos_trust: Option<QosTrust>,
+    /// `spanning-tree guard loop`.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub loop_guard: bool,
+    /// `spanning-tree bpdufilter enable` (true) / `disable` (false): the port neither sends
+    /// nor takes BPDUs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bpdufilter: Option<bool>,
+    /// `ip dhcp relay information trusted` (router interfaces): requests with relay
+    /// information and no relay address are taken here.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub relay_trusted: bool,
     /// Why the port is err-disabled (`None` with `err_disabled` set: port security).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub err_cause: Option<ErrCause>,

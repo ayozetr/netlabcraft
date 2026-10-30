@@ -305,6 +305,21 @@ pub enum Id {
     L2SdmPrefer,
     L2NoSdmPrefer,
     L2ShowSdm,
+    L2MlsQos,
+    L2NoMlsQos,
+    L2MlsTrust,
+    L2NoMlsTrust,
+    L2ShowMlsQos,
+    L2ShowMlsQosIf,
+    L2LoopguardDefault,
+    L2NoLoopguardDefault,
+    L2Bpdufilter,
+    L2NoBpdufilter,
+    L2ShowStpInconsistent,
+    L2RelayTrustAll,
+    L2NoRelayTrustAll,
+    L2RelayTrusted,
+    L2NoRelayTrusted,
     ShowStp,
     ShowStpVlan,
     NoInterfaceVlan,
@@ -2368,8 +2383,8 @@ pub static SPECS: &[Spec] = &[
         L2Guard,
         Modes::IF,
         Modes::SWITCH,
-        [K("spanning-tree"), K("guard"), Arg("{root|none}")],
-        "Root guard: never let a better root in through this port"
+        [K("spanning-tree"), K("guard"), Arg("{root|loop|none}")],
+        "Root guard (no better root in through this port) or loop guard (block if BPDUs stop)"
     ),
     spec!(L2NoGuard, Modes::IF, Modes::SWITCH, [K("no"), K("spanning-tree"), K("guard")], "No root guard"),
     spec!(L2LinkType, Modes::IF, Modes::SWITCH, [K("spanning-tree"), K("link-type"), Arg("{point-to-point|shared}")], "What the port is cabled to"),
@@ -2512,6 +2527,71 @@ pub static SPECS: &[Spec] = &[
     ),
     spec!(L2NoSdmPrefer, Modes::CONFIG, Modes::SWITCH, [K("no"), K("sdm"), K("prefer")], "Default template from the next reload"),
     spec!(L2ShowSdm, EXECS, Modes::SWITCH, [K("show"), K("sdm"), K("prefer")], "Memory template now and after reload"),
+    spec!(L2MlsQos, Modes::CONFIG, Modes::SWITCH, [K("mls"), K("qos")], "Classify on arrival: untrusted ports lose their markings"),
+    spec!(L2NoMlsQos, Modes::CONFIG, Modes::SWITCH, [K("no"), K("mls"), K("qos")], "Pass every marking through untouched"),
+    spec!(L2MlsTrust, Modes::IF, Modes::SWITCH, [K("mls"), K("qos"), K("trust"), Arg("{dscp|cos}")], "Keep the marking that arrives on this port"),
+    spec!(L2NoMlsTrust, Modes::IF, Modes::SWITCH, [K("no"), K("mls"), K("qos"), K("trust")], "Rewrite markings arriving here to 0"),
+    spec!(L2NoMlsTrust, Modes::IF, Modes::SWITCH, [K("no"), K("mls"), K("qos"), K("trust"), Rest("...")], "Rewrite markings arriving here to 0"),
+    spec!(L2ShowMlsQos, EXECS, Modes::SWITCH, [K("show"), K("mls"), K("qos")], "Whether the switch classifies on arrival"),
+    spec!(L2ShowMlsQosIf, EXECS, Modes::SWITCH, [K("show"), K("mls"), K("qos"), K("interface")], "Trust and markings per port"),
+    spec!(L2ShowMlsQosIf, EXECS, Modes::SWITCH, [K("show"), K("mls"), K("qos"), K("interface"), Rest("INTERFACE")], "Trust and markings of one port"),
+    spec!(
+        L2LoopguardDefault,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("spanning-tree"), K("loopguard"), K("default")],
+        "Loop guard on every switch-to-switch port"
+    ),
+    spec!(
+        L2NoLoopguardDefault,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("spanning-tree"), K("loopguard"), K("default")],
+        "Loop guard only where set on the port"
+    ),
+    spec!(
+        L2Bpdufilter,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("spanning-tree"), K("bpdufilter"), Arg("{enable|disable}")],
+        "Send and take no BPDUs on this port"
+    ),
+    spec!(L2NoBpdufilter, Modes::IF, Modes::SWITCH, [K("no"), K("spanning-tree"), K("bpdufilter")], "BPDUs as usual on this port"),
+    spec!(
+        L2ShowStpInconsistent,
+        EXECS,
+        Modes::SWITCH,
+        [K("show"), K("spanning-tree"), K("inconsistentports")],
+        "Ports blocked by root guard or loop guard"
+    ),
+    spec!(
+        L2RelayTrustAll,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ip"), K("dhcp"), K("relay"), K("information"), K("trust-all")],
+        "Take DHCP requests with relay information but no relay address on every interface"
+    ),
+    spec!(
+        L2NoRelayTrustAll,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("dhcp"), K("relay"), K("information"), K("trust-all")],
+        "Drop DHCP requests with relay information but no relay address"
+    ),
+    spec!(
+        L2RelayTrusted,
+        Modes::IF.or(Modes::SUBIF),
+        Modes::BOTH,
+        [K("ip"), K("dhcp"), K("relay"), K("information"), K("trusted")],
+        "Take DHCP requests with relay information but no relay address here"
+    ),
+    spec!(
+        L2NoRelayTrusted,
+        Modes::IF.or(Modes::SUBIF),
+        Modes::BOTH,
+        [K("no"), K("ip"), K("dhcp"), K("relay"), K("information"), K("trusted")],
+        "Drop DHCP requests with relay information but no relay address here"
+    ),
     spec!(ShowStp, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree")], "Spanning trees of every VLAN"),
     spec!(ShowStpVlan, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree"), K("vlan"), Arg("<1-4094>")], "One VLAN's spanning tree"),
     // ---- the firewall appliance ----

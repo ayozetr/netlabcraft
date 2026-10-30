@@ -1826,7 +1826,22 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::L2NoTrunkEncap
         | Id::L2SdmPrefer
         | Id::L2NoSdmPrefer
-        | Id::L2ShowSdm => l2sec::command(&mut c, spec.id, &args),
+        | Id::L2ShowSdm
+        | Id::L2MlsQos
+        | Id::L2NoMlsQos
+        | Id::L2MlsTrust
+        | Id::L2NoMlsTrust
+        | Id::L2ShowMlsQos
+        | Id::L2ShowMlsQosIf
+        | Id::L2LoopguardDefault
+        | Id::L2NoLoopguardDefault
+        | Id::L2Bpdufilter
+        | Id::L2NoBpdufilter
+        | Id::L2ShowStpInconsistent
+        | Id::L2RelayTrustAll
+        | Id::L2NoRelayTrustAll
+        | Id::L2RelayTrusted
+        | Id::L2NoRelayTrusted => l2sec::command(&mut c, spec.id, &args),
         Id::FwNameif
         | Id::FwNoNameif
         | Id::FwSecurityLevel

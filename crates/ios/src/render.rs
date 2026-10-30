@@ -210,6 +210,7 @@ pub fn running_config(d: &Device) -> String {
         let _ = writeln!(s, "!");
     }
     crate::exec::l2sec::global_lines(&mut s, d);
+    crate::exec::l2sec::relay_global_lines(&mut s, d);
     // VLANs live in the VLAN database (vlan.dat), not in the configuration: only a VTP
     // transparent switch writes them there.
     if d.kind == DeviceKind::Switch && d.vtp.mode == netlabcraft_model::VtpMode::Transparent {
@@ -338,6 +339,7 @@ pub fn running_config(d: &Device) -> String {
         for h in &p.helpers {
             let _ = writeln!(s, " ip helper-address {h}");
         }
+        crate::exec::l2sec::relay_port_lines(&mut s, p);
         access_groups(&mut s, &p.access);
         nat_side(&mut s, p.nat);
         if let Some(b) = p.bandwidth {
@@ -1044,6 +1046,8 @@ pub fn spanning_tree(t: &Topology, sim: &Sim, d: &Device, vlan: VlanId, tree: &n
         }
         let kind = if tree.inconsistent.contains(&(d.id, *p)) {
             "Root-inconsistent"
+        } else if tree.loop_inconsistent.contains(&(d.id, *p)) {
+            "Loop-inconsistent"
         } else if netlabcraft_sim::l2sec::edge_port(t, d, *p) {
             "Edge"
         } else if t.peer(End { device: d.id, port: *p }).and_then(|q| t.device(q.device)).is_some_and(|x| x.kind == DeviceKind::Switch) {

@@ -1,7 +1,8 @@
 //! DHCP messages (RFC 2131 over the BOOTP layout, options from RFC 2132).
 //!
 //! Only what an IPv4 lab needs: DISCOVER, OFFER, REQUEST, ACK, NAK, RELEASE with the subnet
-//! mask, router, DNS server, lease time, server id and requested address options.
+//! mask, router, DNS server, lease time, server id and requested address options; and the
+//! relay agent information option (82, RFC 3046) with its circuit-id and remote-id sub-options.
 
 use std::net::Ipv4Addr;
 
@@ -59,6 +60,67 @@ impl DhcpKind {
     }
 }
 
+/// Option 82, relay agent information (RFC 3046 §2.0): sub-option 1 (agent circuit id) and
+/// sub-option 2 (agent remote id). Servers echo it back unchanged (§2.2).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RelayInfo {
+    pub circuit_id: Vec<u8>,
+    pub remote_id: Vec<u8>,
+}
+
+/// The option code of relay agent information.
+pub const OPT_RELAY_INFO: u8 = 82;
+
+impl RelayInfo {
+    /// The circuit id a switch puts in: the VLAN (2 bytes), module 0 and the port number.
+    pub fn switch_circuit(vlan: u16, port: u8) -> Vec<u8> {
+        let v = vlan.to_be_bytes();
+        vec![v[0], v[1], 0, port]
+    }
+
+    /// The option's value: each sub-option as code, length, bytes (the whole at most 255).
+    fn encode(&self) -> Vec<u8> {
+        let mut v = Vec::new();
+        for (code, data) in [(1u8, &self.circuit_id), (2, &self.remote_id)] {
+            if data.is_empty() {
+                continue;
+            }
+            let n = data.len().min(120);
+            v.push(code);
+            v.push(u8::try_from(n).unwrap_or(120));
+            v.extend_from_slice(data.get(..n).unwrap_or_default());
+        }
+        v
+    }
+
+    fn decode(b: &[u8]) -> Option<RelayInfo> {
+        let mut r = RelayInfo::default();
+        let mut at = 0;
+        while at < b.len() {
+            let code = *b.get(at)?;
+            let len = usize::from(*b.get(at + 1)?);
+            let data = b.get(at + 2..at + 2 + len)?.to_vec();
+            match code {
+                1 => r.circuit_id = data,
+                2 => r.remote_id = data,
+                _ => {}
+            }
+            at += 2 + len;
+        }
+        Some(r)
+    }
+
+    /// Words for the event list: the VLAN and port of a switch circuit id, the remote id as hex.
+    pub fn describe(&self) -> String {
+        let circuit = match self.circuit_id.as_slice() {
+            [a, b, _, p] => format!("VLAN {} port {p}", u16::from_be_bytes([*a, *b])),
+            other => other.iter().map(|x| format!("{x:02x}")).collect::<String>(),
+        };
+        let remote: String = self.remote_id.iter().map(|x| format!("{x:02x}")).collect();
+        format!("circuit {circuit}, remote {remote}")
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Dhcp {
     pub kind: DhcpKind,
@@ -80,6 +142,8 @@ pub struct Dhcp {
     pub tftp: Option<Ipv4Addr>,
     /// Option 15: the domain name clients use.
     pub domain: Option<String>,
+    /// Option 82: put in by a relay agent (a snooping switch), echoed by the server.
+    pub relay_info: Option<RelayInfo>,
 }
 
 impl Dhcp {
@@ -100,6 +164,7 @@ impl Dhcp {
             requested: None,
             tftp: None,
             domain: None,
+            relay_info: None,
         }
     }
 
@@ -133,6 +198,13 @@ impl Dhcp {
             b.push(15);
             b.push(u8::try_from(bytes.len()).unwrap_or(255));
             b.extend_from_slice(&bytes);
+        }
+        // The relay agent's option goes last (RFC 3046 §2.1).
+        if let Some(r) = &self.relay_info {
+            let v = r.encode();
+            b.push(OPT_RELAY_INFO);
+            b.push(u8::try_from(v.len()).unwrap_or(255));
+            b.extend_from_slice(&v);
         }
         b.push(255);
         b
@@ -178,6 +250,7 @@ impl Dhcp {
                 150 if len >= 4 => d.tftp = Some(Ipv4Addr::new(v[0], v[1], v[2], v[3])),
                 51 if len == 4 => d.lease_secs = Some(u32::from_be_bytes([v[0], v[1], v[2], v[3]])),
                 15 if len > 0 => d.domain = Some(String::from_utf8_lossy(v).trim_end_matches('\0').to_string()),
+                OPT_RELAY_INFO => d.relay_info = Some(RelayInfo::decode(v).ok_or_else(t)?),
                 _ => {}
             }
             at += 2 + len;
@@ -209,6 +282,27 @@ mod tests {
         }
         let mut bad = b.clone();
         bad[236] = 0;
+        assert!(Dhcp::decode(&bad).is_err());
+    }
+
+    #[test]
+    fn relay_information_goes_last_and_round_trips() {
+        let mut d = Dhcp::new(DhcpKind::Discover, 7, MacAddr([2, 0, 0, 0, 0, 1]));
+        d.relay_info = Some(RelayInfo { circuit_id: RelayInfo::switch_circuit(10, 3), remote_id: vec![2, 0, 0, 0, 0, 0x55] });
+        let b = d.encode();
+        // ... 82, 14, [1, 4, 0, 10, 0, 3], [2, 6, mac], then the end option.
+        let tail = &b[b.len() - 17..];
+        assert_eq!(tail, &[82, 14, 1, 4, 0, 10, 0, 3, 2, 6, 2, 0, 0, 0, 0, 0x55, 255]);
+        let back = Dhcp::decode(&b).unwrap();
+        assert_eq!(back, d);
+        assert_eq!(back.relay_info.unwrap().describe(), "circuit VLAN 10 port 3, remote 020000000055");
+        for n in 0..b.len() {
+            let _ = Dhcp::decode(&b[..n]);
+        }
+        // A sub-option longer than the option: refused, not read past.
+        let mut bad = b.clone();
+        let at = b.len() - 15;
+        bad[at + 1] = 200;
         assert!(Dhcp::decode(&bad).is_err());
     }
 }

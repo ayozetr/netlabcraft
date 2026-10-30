@@ -27,6 +27,12 @@ pub const NTP_POLL_EVERY_US: u64 = 64_000_000;
 /// A long run only replays the last ten minutes of control traffic.
 const MAX_CATCH_UP_US: u64 = 600_000_000;
 
+/// A port id on the wire: the port's priority in the top four bits (IEEE 802.1D-2004 9.2.7)
+/// and its number below.
+fn wire_port_id(port_id: u32, port: usize) -> u16 {
+    (u16::try_from(port_id / 1000).unwrap_or(128).min(240) << 8) | (u16::try_from(port + 1).unwrap_or(0xff) & 0x0fff)
+}
+
 impl Sim {
     /// Queues the control frames due in `(self.ctl_until, deadline]`.
     pub(crate) fn schedule_control(&mut self, t: &Topology, deadline: u64) {
@@ -125,19 +131,86 @@ impl Sim {
                 let wire = |b: crate::stp::BridgeId| BridgeId { priority: u16::try_from(b.priority).unwrap_or(u16::MAX), mac: b.mac };
                 for ((dev, p), info) in tree.ports.iter().filter(|((dev, _), i)| *dev == id && i.role == crate::stp::Role::Designated) {
                     let Some(port) = d.ports.get(*p) else { continue };
+                    if crate::stp::bpdufilter_on(d, *p) {
+                        continue;
+                    }
                     let tag = (t.is_trunk(End { device: *dev, port: *p }) && port.switchport.native_vlan != v).then(|| v.get());
+                    // Rapid spanning tree sends RST BPDUs: a designated port, learning and
+                    // forwarding as its state says.
+                    let rstp = d.rapid_stp.then(|| {
+                        let state = match self.stp_transition(id, *p, v) {
+                            Some("LIS") => 0,
+                            Some(_) => control::FLAG_LEARNING,
+                            None => control::FLAG_LEARNING | control::FLAG_FORWARDING,
+                        };
+                        (control::ROLE_DESIGNATED << control::ROLE_SHIFT) | state
+                    });
                     let bpdu = Bpdu {
                         root: wire(me.root),
                         root_cost: me.root_cost,
                         bridge: wire(me.id),
-                        // The port's priority in the top four bits (IEEE 802.1D-2004 9.2.7).
-                        port_id: (u16::try_from(info.port_id / 1000).unwrap_or(128).min(240) << 8) | (u16::try_from(p + 1).unwrap_or(0xff) & 0x0fff),
+                        port_id: wire_port_id(info.port_id, *p),
                         message_age: u16::from(me.root != me.id),
+                        rstp,
                     };
-                    let frame = Frame { dst: control::STP_GROUP, src: port.mac, vlan: tag, ethertype: Bpdu::frame_length(), payload: bpdu.encode() };
+                    let frame = Frame { dst: control::STP_GROUP, src: port.mac, vlan: tag, ethertype: bpdu.length(), payload: bpdu.encode() };
                     self.queue_at(t, End { device: *dev, port: *p }, frame.encode(), at);
                 }
             }
+        }
+    }
+
+    /// Rapid spanning tree (802.1w): a designated port that just came up on a point-to-point
+    /// link proposes (an RST BPDU with the proposal flag, discarding), and the switch at the
+    /// far end, having put its other ports in sync, agrees from its root (or alternate) port.
+    /// Both ports then forward at once instead of waiting out the timers.
+    pub(crate) fn send_rstp_handshakes(&mut self, t: &Topology) {
+        if !t.devices.iter().any(|d| d.rapid_stp) {
+            self.rstp_handshakes.clear();
+            return;
+        }
+        // Work out every rapid switch's trees so the ports that just changed are known.
+        let vlans: std::collections::BTreeSet<VlanId> =
+            t.devices.iter().filter(|d| d.kind == DeviceKind::Switch && d.rapid_stp).flat_map(|d| d.vlans.keys().copied()).collect();
+        for v in &vlans {
+            let _ = self.spanning_tree(t, *v);
+        }
+        let now = self.now;
+        for (v, dev, p) in std::mem::take(&mut self.rstp_handshakes) {
+            let Some(vlan) = VlanId::new(v) else { continue };
+            let tree = self.spanning_tree(t, vlan).clone();
+            let (Some(d), Some(me)) = (t.device(dev), tree.bridges.get(&dev)) else { continue };
+            let Some(info) = tree.ports.get(&(dev, p)) else { continue };
+            let Some(port) = d.ports.get(p) else { continue };
+            let end = End { device: dev, port: p };
+            let Some(far) = t.peer(end) else { continue };
+            let Some(fd) = t.device(far.device) else { continue };
+            let Some(fport) = fd.ports.get(far.port) else { continue };
+            let wire = |b: crate::stp::BridgeId| BridgeId { priority: u16::try_from(b.priority).unwrap_or(u16::MAX), mac: b.mac };
+            let tag_at = |dd: &netlabcraft_model::Device, e: End| {
+                let native = dd.ports.get(e.port).map(|x| x.switchport.native_vlan);
+                (t.is_trunk(e) && native != Some(vlan)).then_some(v)
+            };
+            let proposal = Bpdu {
+                root: wire(me.root),
+                root_cost: me.root_cost,
+                bridge: wire(me.id),
+                port_id: wire_port_id(info.port_id, p),
+                message_age: u16::from(me.root != me.id),
+                rstp: Some((control::ROLE_DESIGNATED << control::ROLE_SHIFT) | control::FLAG_PROPOSAL),
+            };
+            let f = Frame { dst: control::STP_GROUP, src: port.mac, vlan: tag_at(d, end), ethertype: proposal.length(), payload: proposal.encode() };
+            self.queue_at(t, end, f.encode(), now);
+            // The agreement echoes the proposal's priority vector, from the far port's role.
+            let frole = tree.ports.get(&(far.device, far.port)).map_or(crate::stp::Role::Root, |i| i.role);
+            let role_bits = match frole {
+                crate::stp::Role::Root => (control::ROLE_ROOT << control::ROLE_SHIFT) | control::FLAG_LEARNING | control::FLAG_FORWARDING,
+                _ => control::ROLE_ALTERNATE << control::ROLE_SHIFT,
+            };
+            let agreement = Bpdu { rstp: Some(role_bits | control::FLAG_AGREEMENT), ..proposal };
+            let f =
+                Frame { dst: control::STP_GROUP, src: fport.mac, vlan: tag_at(fd, far), ethertype: agreement.length(), payload: agreement.encode() };
+            self.queue_at(t, far, f.encode(), now + LINK_DELAY_US);
         }
     }
 
