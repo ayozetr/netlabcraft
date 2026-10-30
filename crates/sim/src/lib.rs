@@ -647,6 +647,9 @@ pub struct Sim {
     last_ra_flags: u8,
     /// Control frames (BPDUs, hellos, updates) are queued up to this time.
     ctl_until: u64,
+    /// OSPF adjacencies already announced on the wire: (router, interface, neighbour's router
+    /// ID). A new one gets its database exchange.
+    ospf_adjacent: std::collections::BTreeSet<(DeviceId, String, Ipv4Addr)>,
     hsrp_for: u64,
     hsrp: Option<BTreeMap<DeviceId, Vec<hsrp::Role>>>,
     /// Last known link state of every router and switch port, for link messages.

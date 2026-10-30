@@ -15,21 +15,21 @@ Hours are Opus 5.5 agent wall-clock estimates.
 |---|---|---|---|
 | 1 | **Activity depth:** variable values per student (addresses that differ per file), an answer network to compare against, percentages per section | Instructors | 20–35 h |
 | 2 | **Console coverage:** `debug ip packet`, NAT and DHCP debugs; going through the CCNA 1 labs command by command | CCNA 1 from the first lab | 4–8 h |
-| 3 | **More protocol frames in Simulation mode:** OSPF database exchange (DBD/LSR/LSU) when neighbours meet; BPDUs, OSPF and HSRP hellos, RIP updates, LLDP and LACP are done (CDP, DTP and PAgP formats aren't public) | CCNA 2–3 students watching Simulation mode | 8–14 h |
-| 4 | **Wireless depth:** wireless routers (home gateway with DHCP and NAT), WLC with lightweight APs, 802.1X/RADIUS, 802.11 frames in Simulation mode | CCNA 2 | 25–40 h |
-| 5 | **OSPF database on the wire and area types:** DBD/LSR/LSU/LSAck exchange in Simulation mode, stub/NSSA areas, summarisation; RIP on multilayer switches | CCNA 3 | 14–21 h |
-| 6 | **IPv6 depth:** OSPFv3, DHCPv6 relay, IPv6 on subinterfaces and VLAN interfaces | CCNA 2–3 | 28–40 h |
-| 7 | **Services:** FTP, email (SMTP/POP3 with the PC Email app), SNMP, AAA (RADIUS/TACACS+) | CCNA 3, network management labs | 40–60 h |
-| 8 | **More languages and full coverage:** messages built from parts, sample notes and activities in Spanish; more interface languages | Non-English students | 8–14 h |
-| 9 | **Packaging and first release:** icon, installers, workflows, About window ([releasing.md](releasing.md)) | Everyone who isn't a developer | 14–24 h |
-| 10 | **Workspace:** drawing freeform, clusters, physical view, print/export the workspace | Everyone, occasionally | 50–75 h |
-| 11 | **Device families:** modular routers, ASA, IoT, phones | Specialised labs | 80–120 h |
-| 12 | **EIGRP, VPN (GRE/IPsec), QoS** | CCNA 3 extras | 40–60 h |
+| 3 | **Wireless depth:** wireless routers (home gateway with DHCP and NAT), WLC with lightweight APs, 802.1X/RADIUS, 802.11 frames in Simulation mode | CCNA 2 | 25–40 h |
+| 4 | **OSPF area types:** stub/NSSA areas, summarisation, network and summary LSAs on the wire; RIP on multilayer switches | CCNA 3 | 10–15 h |
+| 5 | **IPv6 depth:** OSPFv3, DHCPv6 relay, IPv6 on subinterfaces and VLAN interfaces | CCNA 2–3 | 28–40 h |
+| 6 | **Services:** FTP, email (SMTP/POP3 with the PC Email app), SNMP, AAA (RADIUS/TACACS+) | CCNA 3, network management labs | 40–60 h |
+| 7 | **More languages and full coverage:** messages built from parts, sample notes and activities in Spanish; more interface languages | Non-English students | 8–14 h |
+| 8 | **Packaging and first release:** icon, installers, workflows, About window ([releasing.md](releasing.md)) | Everyone who isn't a developer | 14–24 h |
+| 9 | **Workspace:** drawing freeform, clusters, physical view, print/export the workspace | Everyone, occasionally | 50–75 h |
+| 10 | **Device families:** modular routers, ASA, IoT, phones | Specialised labs | 80–120 h |
+| 11 | **EIGRP, VPN (GRE/IPsec), QoS** | CCNA 3 extras | 40–60 h |
 
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Done: protocol frames in Simulation mode (OSPF database exchange added; CDP, DTP and PAgP formats aren't public). |
 | 2026-10-30 | minor | Gap 3 narrowed: LACPDUs. |
 | 2026-10-30 | minor | Gap 2 narrowed: `debug ip rip`, `debug ip ospf`. |
 | 2026-10-30 | minor | Gaps 2 and 3 narrowed: LLDP with frames, `show processes`, `show memory`. |

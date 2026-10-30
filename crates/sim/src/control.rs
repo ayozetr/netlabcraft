@@ -7,9 +7,10 @@
 
 use std::net::Ipv4Addr;
 
-use packetcraft_core::{MacAddr, VlanId};
+use packetcraft_core::{DeviceId, MacAddr, VlanId};
 use packetcraft_model::{DeviceKind, End, Topology};
 use packetcraft_wire::control::{self, Bpdu, BridgeId, OspfHello, RipEntry};
+use packetcraft_wire::ospfdb::{DBD_INIT, DBD_MASTER, DBD_MORE, OspfDb, RouterLink, RouterLsa};
 use packetcraft_wire::{Frame, Ipv4, PROTO_UDP, Udp};
 
 use crate::{LINK_DELAY_US, Queued, Sim, l3_ifaces, port_up};
@@ -161,6 +162,69 @@ impl Sim {
                 let ip =
                     Ipv4 { id: 0, ttl: 1, protocol: control::PROTO_OSPF, src: ifc.net.addr, dst: control::OSPF_ALL_ROUTERS, payload: hello.encode() };
                 self.queue_l3(t, d, &ifc, ifc.mac, control::ipv4_multicast_mac(control::OSPF_ALL_ROUTERS), ip.encode(), at);
+            }
+        }
+        self.ospf_exchanges(t, &st, at);
+    }
+
+    /// A router-LSA as the computed state describes the router in one area: a stub link per
+    /// OSPF network, a point-to-point link per neighbour.
+    fn router_lsa(st: &crate::ospf::OspfState, id: DeviceId, area: u32) -> Option<RouterLsa> {
+        let rid = *st.router_ids.get(&id)?;
+        let mut links = Vec::new();
+        for (name, net, cost, _) in st.interfaces.get(&id).into_iter().flatten() {
+            if st.segments.get(&(id, name.clone())).is_some_and(|s| s.area != area) {
+                continue;
+            }
+            let metric = u16::try_from(*cost).unwrap_or(u16::MAX);
+            for n in st.neighbors.get(&id).into_iter().flatten().filter(|n| n.iface == *name) {
+                links.push(RouterLink { kind: 1, id: n.router_id, data: net.addr, metric });
+            }
+            links.push(RouterLink { kind: 3, id: net.network().addr, data: net.mask(), metric });
+        }
+        Some(RouterLsa { router_id: rid, seq: 0x8000_0001, links })
+    }
+
+    /// Database exchange for adjacencies that weren't there at the last hello: each side sends
+    /// its first description, its LSA headers, a request for the neighbour's router-LSA, an
+    /// update with its own, and an acknowledgement.
+    fn ospf_exchanges(&mut self, t: &Topology, st: &crate::ospf::OspfState, at: u64) {
+        let now: std::collections::BTreeSet<(DeviceId, String, Ipv4Addr)> =
+            st.neighbors.iter().flat_map(|(id, ns)| ns.iter().map(|n| (*id, n.iface.clone(), n.router_id))).collect();
+        let fresh: Vec<_> = now.difference(&self.ospf_adjacent).cloned().collect();
+        self.ospf_adjacent = now;
+        for (id, iface, nbr) in fresh {
+            let (Some(d), Some(rid)) = (t.device(id), st.router_ids.get(&id).copied()) else { continue };
+            let Some(ifc) = l3_ifaces(d).into_iter().find(|i| i.name == iface) else { continue };
+            let area = st.segments.get(&(id, iface.clone())).map_or(0, |s| s.area);
+            let in_area: Vec<DeviceId> =
+                st.router_ids.keys().copied().filter(|r| st.segments.iter().any(|((dev, _), s)| dev == r && s.area == area)).collect();
+            let headers: Vec<_> = in_area.iter().filter_map(|r| Self::router_lsa(st, *r, area)).map(|l| l.header()).collect();
+            let theirs = st.router_ids.iter().find(|(_, r)| **r == nbr).and_then(|(dev, _)| Self::router_lsa(st, *dev, area));
+            let master = if rid > nbr { DBD_MASTER } else { 0 };
+            let seq = u32::from(rid) & 0xffff;
+            let mut packets = vec![
+                OspfDb::Dbd { flags: DBD_INIT | DBD_MORE | DBD_MASTER, seq, headers: Vec::new() },
+                OspfDb::Dbd { flags: master, seq: seq + 1, headers },
+                OspfDb::Request(vec![(1, nbr, nbr)]),
+            ];
+            if let Some(mine) = Self::router_lsa(st, id, area) {
+                packets.push(OspfDb::Update(vec![mine]));
+            }
+            if let Some(l) = theirs {
+                packets.push(OspfDb::Ack(vec![l.header()]));
+            }
+            for (k, p) in (1u64..).zip(packets) {
+                let ip = Ipv4 {
+                    id: 0,
+                    ttl: 1,
+                    protocol: control::PROTO_OSPF,
+                    src: ifc.net.addr,
+                    dst: control::OSPF_ALL_ROUTERS,
+                    payload: p.encode(rid, area),
+                };
+                // A millisecond apart, so the event list shows them in order.
+                self.queue_l3(t, d, &ifc, ifc.mac, control::ipv4_multicast_mac(control::OSPF_ALL_ROUTERS), ip.encode(), at + k * 1_000);
             }
         }
     }

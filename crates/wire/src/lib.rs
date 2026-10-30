@@ -21,6 +21,8 @@ pub mod lacp;
 pub mod lldp;
 
 pub mod mgmt;
+pub mod ospfdb;
+
 pub mod pcap;
 pub mod serial;
 pub mod tcp;
@@ -490,6 +492,22 @@ pub fn summarize(bytes: &[u8]) -> (Protocol, String) {
                                 if h.neighbors.len() == 1 { "" } else { "s" }
                             ),
                         ),
+                        Err(_) if ip.payload.get(1).is_some_and(|k| (2..=5).contains(k)) => match ospfdb::OspfDb::decode(&ip.payload) {
+                            Ok((r, db)) => {
+                                let n = |k: usize, what: &str| format!("{k} {what}{}", if k == 1 { "" } else { "s" });
+                                let text = match db {
+                                    ospfdb::OspfDb::Dbd { flags, .. } if flags & ospfdb::DBD_INIT != 0 => {
+                                        format!("database description, first{}", if flags & ospfdb::DBD_MASTER != 0 { " (master)" } else { "" })
+                                    }
+                                    ospfdb::OspfDb::Dbd { headers, .. } => format!("database description, {}", n(headers.len(), "LSA header")),
+                                    ospfdb::OspfDb::Request(l) => format!("link-state request, {}", n(l.len(), "LSA")),
+                                    ospfdb::OspfDb::Update(l) => format!("link-state update, {}", n(l.len(), "LSA")),
+                                    ospfdb::OspfDb::Ack(l) => format!("link-state acknowledgement, {}", n(l.len(), "LSA")),
+                                };
+                                (Protocol::Ospf, format!("OSPF {text} from router {r} {route}{tag}"))
+                            }
+                            Err(e) => (Protocol::Ospf, format!("OSPF ({e}) {route}{tag}")),
+                        },
                         Err(e) => (Protocol::Ospf, format!("OSPF ({e}) {route}{tag}")),
                     },
                     PROTO_UDP => match Udp::decode(&ip.payload, ip.src, ip.dst) {

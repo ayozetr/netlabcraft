@@ -16,8 +16,8 @@ This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summa
 | Console grammar entries | **309** across 12 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
 | Device models | **15** | measured: `crates/model/src/models.rs` |
 | Sample labs | **18** | measured: `crates/engine/src/sample.rs` |
-| Tests | **142** | measured: `cargo test --workspace` |
-| **Ready for real work** (weighted) | **~50%** | estimated; written weights below (64.7 computed) |
+| Tests | **143** | measured: `cargo test --workspace` |
+| **Ready for real work** (weighted) | **~50%** | estimated; written weights below (64.9 computed) |
 | **CCNA 1 student** (Introduction to Networks) | **~74%** | estimated; [method](#audiences) |
 | **CCNA 2 student** (Switching, Routing and Wireless Essentials) | **~78%** | estimated; [method](#audiences) |
 | **CCNA 3 student** (Enterprise Networking, Security and Automation) | **~62%** | estimated; [method](#audiences) |
@@ -66,11 +66,11 @@ Weights reflect how much of a typical CCNA lab session each area carries.
 | Services (DHCP, DNS, HTTP, FTP, email, NTP, syslog, AAA) | 8 | 58% | 4.6 | [protocol-parity.md](protocol-parity.md#services) | 40–60 |
 | Security (ACLs, NAT, SSH, passwords, AAA, PPP authentication) | 8 | 72% | 5.8 | [protocol-parity.md](protocol-parity.md#security) | 35–55 |
 | WAN, cabling and wireless | 6 | 55% | 3.3 | [hardware-parity.md](hardware-parity.md) | 60–90 |
-| Simulation mode (event list, PDU details, filters, complex PDUs) | 8 | 67% | 5.4 | [ui-parity.md](ui-parity.md) | 22–35 |
+| Simulation mode (event list, PDU details, filters, complex PDUs) | 8 | 70% | 5.6 | [ui-parity.md](ui-parity.md) | 22–35 |
 | Workspace and windows (canvas, device tabs, physical view, drawing) | 10 | 55% | 5.5 | [ui-parity.md](ui-parity.md) | 60–90 |
 | Teaching (activities, scoring, instructions, languages) | 8 | 65% | 5.2 | [gaps.md](gaps.md) | 35–60 |
 | Device families and hardware (models, modules, ASA, IoT) | 5 | 25% | 1.3 | [hardware-parity.md](hardware-parity.md) | 80–120 |
-| **Total** | **100** | | **64.7** | | **~600–950** |
+| **Total** | **100** | | **64.9** | | **~600–950** |
 
 ## Audiences
 
@@ -105,6 +105,7 @@ misses commands students meet in the first labs. Alpha gates are in
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | LACP and OSPF database exchange on the wire: Simulation mode 67% → 70%. |
 | 2026-10-30 | minor | LLDP with frames, `show processes`, `show memory`: console 65% → 68%, Simulation mode 65% → 67%; grammar entries recounted (309). |
 | 2026-10-30 | minor | Activity time limit, hints and password lock: teaching 55% → 65%, instructor ~45% → ~60%. |
 | 2026-10-30 | minor | Spanish interface: teaching 45% → 55%. |
