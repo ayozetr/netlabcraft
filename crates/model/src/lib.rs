@@ -17,6 +17,7 @@ pub mod file;
 pub mod ifname;
 pub mod models;
 pub mod services;
+pub mod vpn;
 
 /// Most devices a lab may hold (hostile files and scripts).
 pub const MAX_DEVICES: usize = 2_000;
@@ -775,6 +776,12 @@ pub struct Device {
     /// Routers and switches: `ip ftp username` and `ip ftp password`, for `copy … ftp:`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ftp_login: Option<(String, String)>,
+    /// Routers: GRE tunnel interfaces (`interface Tunnel N`), sorted by number.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tunnels: Vec<vpn::Tunnel>,
+    /// Routers: IPsec (`crypto isakmp`, `crypto ipsec`, `crypto map`).
+    #[serde(default, skip_serializing_if = "vpn::Crypto::is_empty")]
+    pub crypto: vpn::Crypto,
 }
 
 /// Which side of NAT an interface is on.
@@ -1003,6 +1010,19 @@ pub struct Svi {
 }
 
 impl Device {
+    /// The tunnel interface, created (up, unconfigured) if missing. `None` past
+    /// [`vpn::MAX_TUNNELS`].
+    pub fn tunnel_mut(&mut self, number: u32) -> Option<&mut vpn::Tunnel> {
+        if !self.tunnels.iter().any(|t| t.number == number) {
+            if self.tunnels.len() >= vpn::MAX_TUNNELS {
+                return None;
+            }
+            self.tunnels.push(vpn::Tunnel { number, ip: None, shutdown: false, description: String::new(), source: None, destination: None });
+            self.tunnels.sort_by_key(|t| t.number);
+        }
+        self.tunnels.iter_mut().find(|t| t.number == number)
+    }
+
     /// The VLAN interface, created (shut down, no address) if missing.
     pub fn svi_mut(&mut self, vlan: VlanId) -> Option<&mut Svi> {
         if !self.svis.iter().any(|s| s.vlan == vlan) {
@@ -1294,6 +1314,8 @@ impl Device {
             services: if kind == DeviceKind::Server { services::Services::server_defaults() } else { services::Services::default() },
             files: Vec::new(),
             ftp_login: None,
+            tunnels: Vec::new(),
+            crypto: vpn::Crypto::default(),
         };
         d.ensure_default_vlan();
         d
@@ -1334,6 +1356,8 @@ impl Device {
         self.dns6 = None;
         self.acls.clear();
         self.nat = Nat::default();
+        self.tunnels.clear();
+        self.crypto = vpn::Crypto::default();
         self.services = fresh.services;
     }
 
@@ -1751,6 +1775,10 @@ impl Topology {
                 d.routes.truncate(MAX_ROUTES);
                 d.dhcp_pools.truncate(MAX_DHCP_POOLS);
                 d.dhcp_excluded.truncate(MAX_DHCP_POOLS);
+                d.tunnels.truncate(vpn::MAX_TUNNELS);
+                d.tunnels.sort_by_key(|t| t.number);
+                d.tunnels.dedup_by_key(|t| t.number);
+                d.crypto.sanitize();
                 for p in &mut d.ports {
                     p.subifs.truncate(MAX_SUBIFS);
                     p.subifs.sort_by_key(|s| s.number);

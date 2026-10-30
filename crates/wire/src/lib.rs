@@ -30,6 +30,7 @@ pub mod radius;
 
 pub mod serial;
 pub mod tcp;
+pub mod vpn;
 
 /// Why bytes didn't decode.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -436,6 +437,10 @@ pub enum Protocol {
     /// IPv6 neighbour discovery (neighbour and router solicitations and advertisements).
     Ndp,
     Ipv6,
+    /// Generic Routing Encapsulation (tunnels).
+    Gre,
+    /// IPsec Encapsulating Security Payload.
+    Esp,
     Other,
 }
 
@@ -464,6 +469,8 @@ impl Protocol {
             Protocol::Icmpv6 => "ICMPv6",
             Protocol::Ndp => "NDP",
             Protocol::Ipv6 => "IPv6",
+            Protocol::Gre => "GRE",
+            Protocol::Esp => "ESP",
             Protocol::Other => "Other",
         }
     }
@@ -471,6 +478,12 @@ impl Protocol {
 
 /// A one-line, human description of a frame plus its protocol family, as the event list shows.
 pub fn summarize(bytes: &[u8]) -> (Protocol, String) {
+    summarize_depth(bytes, 0)
+}
+
+/// [`summarize`], `depth` encapsulations deep (a tunnel inside a tunnel is described a few
+/// levels down, never without end).
+fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
     let Ok(f) = Frame::decode(bytes) else { return (Protocol::Other, "malformed frame".into()) };
     let tag = f.vlan.map(|v| format!(" [VLAN {v}]")).unwrap_or_default();
     match f.ethertype {
@@ -617,6 +630,19 @@ pub fn summarize(bytes: &[u8]) -> (Protocol, String) {
                         }
                         Ok(s) => (Protocol::Tcp, format!("TCP [{}] {}:{} → {}:{}{tag}", s.flag_names(), ip.src, s.src_port, ip.dst, s.dst_port)),
                         Err(e) => (Protocol::Tcp, format!("TCP ({e}) {route}{tag}")),
+                    },
+                    vpn::PROTO_GRE => match vpn::Gre::decode(&ip.payload) {
+                        Ok(g) if g.protocol == ETHERTYPE_IPV4 && depth < 4 => {
+                            let inner = Frame { dst: f.dst, src: f.src, vlan: None, ethertype: ETHERTYPE_IPV4, payload: g.payload }.encode();
+                            let (_, what) = summarize_depth(&inner, depth + 1);
+                            (Protocol::Gre, format!("GRE {route} carrying {what}{tag}"))
+                        }
+                        Ok(g) => (Protocol::Gre, format!("GRE {route} carrying protocol type 0x{:04x}{tag}", g.protocol)),
+                        Err(e) => (Protocol::Gre, format!("GRE ({e}) {route}{tag}")),
+                    },
+                    vpn::PROTO_ESP => match vpn::Esp::decode(&ip.payload) {
+                        Ok(e) => (Protocol::Esp, format!("ESP SPI 0x{:08x} seq {} {route}, {} bytes protected{tag}", e.spi, e.seq, e.data.len())),
+                        Err(e) => (Protocol::Esp, format!("ESP ({e}) {route}{tag}")),
                     },
                     p => (Protocol::Ipv4, format!("IPv4 protocol {p} {route}{tag}")),
                 }

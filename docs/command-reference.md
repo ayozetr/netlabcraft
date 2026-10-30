@@ -139,6 +139,49 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip nat pool WORD` | config | router, switch | Delete a NAT pool |
 | `show ip nat translations` | user, privileged | router, switch | Translations in use |
 | `clear ip nat translation *` | privileged | router, switch | Forget dynamic translations |
+| `ip address A.B.C.D MASK` |  | router | Set the tunnel's address |
+| `no ip address` |  | router | Remove the tunnel's address |
+| `shutdown` |  | router | Disable the tunnel |
+| `no shutdown` |  | router | Enable the tunnel |
+| `description LINE` |  | router | Describe the tunnel |
+| `no description` |  | router | Remove the description |
+| `ip ospf cost <1-65535>` |  | router | This tunnel's OSPF cost |
+| `no ip ospf cost` |  | router | Cost from the bandwidth again |
+| `tunnel source <interface>\|A.B.C.D` |  | router | Where the tunnel starts |
+| `no tunnel source` |  | router | Clear the tunnel's source |
+| `tunnel destination A.B.C.D` |  | router | Where the tunnel ends |
+| `no tunnel destination` |  | router | Clear the tunnel's destination |
+| `tunnel mode gre ip` |  | router | Encapsulation: GRE over IPv4 (the default) |
+| `crypto isakmp policy <1-10000>` | config | router | Define an IKE phase-1 policy |
+| `no crypto isakmp policy <1-10000>` | config | router | Delete an IKE policy |
+| `encryption {des\|3des\|aes [128\|192\|256]}` |  | router | Cipher the policy proposes |
+| `hash {sha\|sha256\|md5}` |  | router | Hash the policy proposes |
+| `authentication {pre-share\|rsa-sig}` |  | router | How peers prove who they are |
+| `group {1\|2\|5\|14\|15\|16\|19\|20\|24}` |  | router | Diffie-Hellman group |
+| `lifetime <60-86400>` |  | router | Seconds before the keys are renewed |
+| `crypto isakmp key [0] KEY address A.B.C.D` | config | router | Pre-shared key for a peer |
+| `no crypto isakmp key [0] KEY address A.B.C.D` | config | router | Delete a pre-shared key |
+| `crypto ipsec transform-set WORD TRANSFORM [TRANSFORM]` | config | router | Define how protected traffic is wrapped |
+| `no crypto ipsec transform-set WORD` | config | router | Delete a transform set |
+| `mode {tunnel\|transport}` |  | router | Protect whole packets or only their payload |
+| `crypto map WORD <1-65535> ipsec-isakmp` | config | router | Define or edit a crypto map entry |
+| `no crypto map WORD [<1-65535>]` | config | router | Delete one crypto map entry |
+| `no crypto map WORD` | config | router | Delete a whole crypto map |
+| `set peer A.B.C.D` |  | router | The far end of the IPsec tunnel |
+| `no set peer` |  | router | Clear the peer |
+| `no set peer A.B.C.D` |  | router | Clear the peer |
+| `set transform-set WORD` |  | router | The transform set to use |
+| `no set transform-set` |  | router | Clear the transform set |
+| `match address ACL` |  | router | The access list choosing what to protect |
+| `no match address` |  | router | Protect nothing |
+| `crypto map WORD` | interface, subinterface | router | Protect traffic leaving this interface |
+| `no crypto map` | interface, subinterface | router | Stop protecting traffic here |
+| `no crypto map WORD` | interface, subinterface | router | Stop protecting traffic here |
+| `show crypto isakmp sa` | user, privileged | router | IKE peers and their state |
+| `show crypto isakmp policy` | user, privileged | router | IKE policies |
+| `show crypto ipsec sa` | user, privileged | router | IPsec associations and packet counts |
+| `show crypto map` | user, privileged | router | Crypto maps and where they apply |
+| `clear crypto sa` | privileged | router | Forget IPsec associations and counters |
 | `encapsulation {hdlc\|ppp}` | interface | router | Framing on a serial link |
 | `clock rate <1200-2000000>` | interface | router | Clock a serial link from its DCE end |
 | `no clock rate` | interface | router | Remove the clock rate |

@@ -13,6 +13,8 @@ use packetcraft_sim::{DebugKind, PingOptions, Sim, port_up};
 use crate::grammar::{self, Id, Modes, ParseError};
 use crate::{host, render};
 
+mod vpn;
+
 /// Lines of history kept per session.
 const MAX_HISTORY: usize = 256;
 /// Interfaces one `interface range` may select.
@@ -57,6 +59,14 @@ pub enum Mode {
     Dhcp6(String),
     /// `R1(config-std-nacl)#` / `R1(config-ext-nacl)#`: the list's name.
     Acl(String),
+    /// `R1(config-if)#` on `interface Tunnel N`.
+    Tunnel(u32),
+    /// `R1(config-isakmp)#`: the policy's priority.
+    Isakmp(u16),
+    /// `R1(cfg-crypto-trans)#`: the transform set's name.
+    Transform(String),
+    /// `R1(config-crypto-map)#`: the map's name and sequence number.
+    CryptoMap(String, u32),
 }
 
 impl Mode {
@@ -77,6 +87,10 @@ impl Mode {
             Mode::Acl6(_) => Modes::ACL6,
             Mode::Dhcp6(_) => Modes::DHCP6,
             Mode::Acl(_) => Modes::ACL,
+            Mode::Tunnel(_) => Modes::TUNNEL,
+            Mode::Isakmp(_) => Modes::ISAKMP,
+            Mode::Transform(_) => Modes::TRANSFORM,
+            Mode::CryptoMap(..) => Modes::CRYPTO_MAP,
         }
     }
 }
@@ -319,6 +333,10 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
             let ext = d.acls.iter().find(|a| &a.name == name).is_some_and(|a| a.extended);
             format!("{n}(config-{}-nacl)#", if ext { "ext" } else { "std" })
         }
+        Mode::Tunnel(_) => format!("{n}(config-if)#"),
+        Mode::Isakmp(_) => format!("{n}(config-isakmp)#"),
+        Mode::Transform(_) => format!("{n}(cfg-crypto-trans)#"),
+        Mode::CryptoMap(..) => format!("{n}(config-crypto-map)#"),
     }
 }
 
@@ -502,6 +520,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Acl(_)
                 | Mode::Acl6(_)
                 | Mode::Dhcp6(_)
+                | Mode::Tunnel(_)
+                | Mode::Isakmp(_)
+                | Mode::Transform(_)
+                | Mode::CryptoMap(..)
         )
         && let Ok(r) = grammar::resolve(&words, Modes::CONFIG, dbits)
     {
@@ -546,7 +568,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Rip
                 | Mode::Acl(_)
                 | Mode::Acl6(_)
-                | Mode::Dhcp6(_) => Mode::Config,
+                | Mode::Dhcp6(_)
+                | Mode::Tunnel(_)
+                | Mode::Isakmp(_)
+                | Mode::Transform(_)
+                | Mode::CryptoMap(..) => Mode::Config,
             };
             c.set_mode(next)
         }
@@ -595,6 +621,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 let r = c.iface_ref(name.trim())?;
                 return render::switchport(c.t, c.d()?, r.port);
             }
+            if let Some(n) = packetcraft_model::vpn::tunnel_number(arg(0)) {
+                return render::tunnel_interface(c.t, c.d()?, n);
+            }
             let d = c.d()?;
             let r = c.iface_ref(arg(0))?;
             Ok(render::interfaces(c.t, d, Some(r)))
@@ -608,6 +637,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(render::ip_interface(c.t, c.d()?, only))
         }
         Id::ShowRunInterface => {
+            if let Some(n) = packetcraft_model::vpn::tunnel_number(arg(0)) {
+                return Ok(render::running_config_interface(c.d()?, &format!("Tunnel{n}")));
+            }
             let r = c.iface_ref(arg(0))?;
             let d = c.d()?;
             let p = d.ports.get(r.port).ok_or("% No such port")?;
@@ -777,6 +809,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 c.cli.mode = Mode::Iface(members);
                 return Ok(String::new());
             }
+            if let Some(n) = packetcraft_model::vpn::tunnel_number(arg(0)) {
+                return vpn::enter_tunnel(&mut c, n);
+            }
             if let Some(v) = vlan_iface(arg(0)) {
                 let v = v?;
                 if c.d()?.kind != DeviceKind::Switch {
@@ -799,6 +834,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(String::new())
         }
         Id::NoInterface => {
+            if let Some(n) = packetcraft_model::vpn::tunnel_number(arg(0)) {
+                return vpn::delete_tunnel(&mut c, n);
+            }
             let r = c.iface_ref(arg(0))?;
             let n = r.sub.ok_or("% Only subinterfaces can be deleted")?;
             let p = c.dm()?.ports.get_mut(r.port).ok_or("% No such port")?;
@@ -1122,6 +1160,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             };
             let names: Vec<String> = match &c.cli.mode {
                 Mode::Svi(v) => vec![format!("Vlan{v}")],
+                Mode::Tunnel(n) => vec![format!("Tunnel{n}")],
                 Mode::Iface(ifs) => {
                     let d = c.d()?;
                     ifs.iter().filter_map(|r| d.ports.get(r.port).map(|p| r.sub.map_or(p.name.clone(), |s| format!("{}.{s}", p.name)))).collect()
@@ -1285,6 +1324,44 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             c.cli.mode = saved;
             r
         }
+        // ---- site-to-site VPN: GRE tunnels and IPsec (see exec/vpn.rs) ----
+        Id::IpAddress | Id::NoIpAddress | Id::Shutdown | Id::NoShutdown | Id::Description | Id::NoDescription
+            if matches!(c.cli.mode, Mode::Tunnel(_)) =>
+        {
+            vpn::tunnel_iface(&mut c, spec.id, arg(0), arg(1))
+        }
+        Id::TunnelSource
+        | Id::NoTunnelSource
+        | Id::TunnelDestination
+        | Id::NoTunnelDestination
+        | Id::TunnelMode
+        | Id::IsakmpPolicy
+        | Id::NoIsakmpPolicy
+        | Id::IsakmpEncryption
+        | Id::IsakmpHash
+        | Id::IsakmpAuthentication
+        | Id::IsakmpGroup
+        | Id::IsakmpLifetime
+        | Id::IsakmpKey
+        | Id::NoIsakmpKey
+        | Id::TransformSet
+        | Id::NoTransformSet
+        | Id::TransformMode
+        | Id::CryptoMap
+        | Id::NoCryptoMap
+        | Id::CryptoSetPeer
+        | Id::NoCryptoSetPeer
+        | Id::CryptoSetTransformSet
+        | Id::NoCryptoSetTransformSet
+        | Id::CryptoMatchAddress
+        | Id::NoCryptoMatchAddress
+        | Id::CryptoMapIf
+        | Id::NoCryptoMapIf
+        | Id::ShowCryptoIsakmpSa
+        | Id::ShowCryptoIpsecSa
+        | Id::ShowCryptoIsakmpPolicy
+        | Id::ShowCryptoMap
+        | Id::ClearCryptoSa => vpn::command(&mut c, spec.id, &args),
         Id::IpAddress | Id::NoIpAddress | Id::Shutdown | Id::NoShutdown | Id::Description | Id::NoDescription
             if matches!(c.cli.mode, Mode::Svi(_)) =>
         {
@@ -2923,6 +3000,13 @@ impl Ctx<'_> {
             None => None,
             Some(t) => Some(match t.parse::<Ipv4Addr>() {
                 Ok(a) => NextHop::Address(a),
+                Err(_) if packetcraft_model::vpn::tunnel_number(t).is_some() => {
+                    let n = packetcraft_model::vpn::tunnel_number(t).unwrap_or(0);
+                    if self.d()?.kind != DeviceKind::Router {
+                        return Err("% Tunnel interfaces exist only on routers".into());
+                    }
+                    NextHop::Interface(format!("Tunnel{n}"))
+                }
                 Err(_) => {
                     let r = self.iface_ref(t)?;
                     let d = self.d()?;
