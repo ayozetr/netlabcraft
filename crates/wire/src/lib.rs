@@ -18,6 +18,7 @@ pub mod dhcp;
 pub mod dhcp6;
 pub mod dns;
 pub mod eigrp;
+pub mod ike;
 pub mod ipv6;
 pub mod lacp;
 pub mod lldp;
@@ -456,6 +457,8 @@ pub enum Protocol {
     Gre,
     /// IPsec Encapsulating Security Payload.
     Esp,
+    /// ISAKMP / IKEv1 key exchange (UDP 500).
+    Isakmp,
     /// IEEE 802.11 management frames over the air (probe, authentication, association).
     Wlan,
     /// IEEE 802.1X EAPOL: EAP logins and the WPA2 4-way handshake.
@@ -497,6 +500,7 @@ impl Protocol {
             Protocol::Ipv6 => "IPv6",
             Protocol::Gre => "GRE",
             Protocol::Esp => "ESP",
+            Protocol::Isakmp => "ISAKMP",
             Protocol::Wlan => "802.11",
             Protocol::Eapol => "EAPOL",
             Protocol::Capwap => "CAPWAP",
@@ -596,6 +600,35 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                         Err(e) => (Protocol::Eigrp, format!("EIGRP ({e}) {route}{tag}")),
                     },
                     PROTO_UDP => match Udp::decode(&ip.payload, ip.src, ip.dst) {
+                        Ok(u) if u.dst_port == ike::ISAKMP_PORT && u.src_port == ike::ISAKMP_PORT => match ike::Isakmp::decode(&u.payload) {
+                            Ok(m) => {
+                                let exchange = match m.exchange {
+                                    ike::EXCH_MAIN => "main mode",
+                                    ike::EXCH_QUICK => "quick mode",
+                                    ike::EXCH_INFO => "informational",
+                                    _ => "exchange",
+                                };
+                                let what = if m.flags & ike::FLAG_ENCRYPTED != 0 {
+                                    "(encrypted)".to_string()
+                                } else {
+                                    let names: Vec<String> = m
+                                        .payloads
+                                        .iter()
+                                        .map(|p| match p {
+                                            ike::Payload::Notify { kind, .. } => format!("NOTIFY {}", ike::notify_name(*kind)),
+                                            ike::Payload::Sa(list) => {
+                                                let n = list.iter().map(|x| x.transforms.len()).sum::<usize>();
+                                                format!("SA, {n} transform{}", if n == 1 { "" } else { "s" })
+                                            }
+                                            p => p.name().to_string(),
+                                        })
+                                        .collect();
+                                    format!("[{}]", names.join(", "))
+                                };
+                                (Protocol::Isakmp, format!("ISAKMP {exchange} {what} {route}{tag}"))
+                            }
+                            Err(e) => (Protocol::Isakmp, format!("ISAKMP ({e}) {route}{tag}")),
+                        },
                         Ok(u) if [u.dst_port, u.src_port].contains(&snmp::SNMP_PORT) && snmp::version(&u.payload) == Some(3) => {
                             match snmp::V3::decode(&u.payload) {
                                 Ok((m, _)) => (

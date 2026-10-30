@@ -2293,9 +2293,10 @@ pub fn crypto_isakmp_sa(sim: &Sim, d: &Device) -> String {
     }
     let mut s = format!("{:<16} {:<16} {}\n", "Peer", "Local", "State");
     for sa in &sas {
-        let state = match &sa.failed {
-            None => "established (pre-shared key)".to_string(),
-            Some(why) => format!("failed: {why}"),
+        let state = match (&sa.failed, sa.phase) {
+            (_, packetcraft_sim::vpn::IkePhase::Established) => "established (pre-shared key)".to_string(),
+            (Some(why), _) => format!("failed: {why}"),
+            (None, phase) => format!("negotiating: {}", phase.describe()),
         };
         let _ = writeln!(s, "{:<16} {:<16} {state}", sa.peer, sa.local);
     }

@@ -3263,3 +3263,64 @@ fn a_gre_tunnel_rides_on_learned_routes_but_not_on_itself() {
     assert!(lab.run(r1, "show interfaces tunnel 0").contains("line protocol up"));
     assert!(ping_settled(&mut lab, a, "192.168.2.10").contains("4 answered"));
 }
+
+#[test]
+fn ike_main_mode_and_quick_mode_go_on_the_wire_before_esp() {
+    let (mut lab, r1, isp, r2, a) = two_sites();
+    lab.run(r1, IPSEC_R1);
+    lab.run(r2, IPSEC_R2);
+    // Warm up ARP along the way with traffic the crypto maps don't protect.
+    ping_settled(&mut lab, r1, "198.51.100.1");
+    lab.sim.clear_trace();
+    // The first protected packet starts IKE and is dropped; the association comes up when quick
+    // mode completes, and the rest goes as ESP.
+    let ping = lab.run(a, "ping 192.168.2.10");
+    assert!(ping.contains("seq 1: no answer") && !ping.contains(" 0 answered"), "{ping}");
+    let trace: Vec<String> = lab.sim.trace().iter().filter(|e| e.to.device == isp).map(|e| e.summary.clone()).collect();
+    let pos = |what: &str| trace.iter().position(|s| s.starts_with(what)).unwrap_or_else(|| panic!("no {what}: {trace:#?}"));
+    let mm1 = pos("ISAKMP main mode [SA, 1 transform] 203.0.113.1 → 198.51.100.1");
+    let mm2 = pos("ISAKMP main mode [SA, 1 transform] 198.51.100.1 → 203.0.113.1");
+    let mm3 = pos("ISAKMP main mode [KE, NONCE] 203.0.113.1");
+    let mm4 = pos("ISAKMP main mode [KE, NONCE] 198.51.100.1");
+    let mm5 = pos("ISAKMP main mode (encrypted) 203.0.113.1");
+    let mm6 = pos("ISAKMP main mode (encrypted) 198.51.100.1");
+    let qm1 = pos("ISAKMP quick mode (encrypted) 203.0.113.1");
+    let qm2 = pos("ISAKMP quick mode (encrypted) 198.51.100.1");
+    let esp = pos("ESP SPI");
+    assert!(mm1 < mm2 && mm2 < mm3 && mm3 < mm4 && mm4 < mm5 && mm5 < mm6 && mm6 < qm1 && qm1 < qm2 && qm2 < esp, "{trace:#?}");
+    assert_eq!(trace.iter().filter(|s| s.starts_with("ISAKMP")).count(), 9, "{trace:#?}");
+    assert!(lab.run(r1, "show crypto isakmp sa").contains("established"));
+    assert!(lab.run(r2, "show crypto isakmp sa").contains("established"));
+    assert!(lab.run(r1, "show logging").contains("IKE with 198.51.100.1: main mode and quick mode complete"));
+
+    // Policies that don't agree: refused at main mode message 2.
+    let retry = |lab: &mut Lab| {
+        lab.run(r1, "clear crypto sa");
+        lab.run(r2, "clear crypto sa");
+        lab.sim.clear_trace();
+        ping_settled(lab, a, "192.168.2.10")
+    };
+    lab.run(r2, "conf t\ncrypto isakmp policy 10\nencryption 3des\nend");
+    assert!(retry(&mut lab).contains(" 0 answered"));
+    let sum = |lab: &Lab| lab.sim.trace().iter().map(|e| e.summary.clone()).collect::<Vec<_>>().join("\n");
+    assert!(sum(&lab).contains("ISAKMP informational [NOTIFY NO-PROPOSAL-CHOSEN] 198.51.100.1 → 203.0.113.1"), "{}", sum(&lab));
+    assert!(!sum(&lab).contains("[KE, NONCE]"));
+    let sa = lab.run(r1, "show crypto isakmp sa");
+    assert!(sa.contains("failed: no ISAKMP policy matches the peer's") && sa.contains("main mode message 2"), "{sa}");
+    lab.run(r2, "conf t\ncrypto isakmp policy 10\nencryption aes 256\nend");
+    // Keys that differ: authentication fails at main mode message 5.
+    lab.run(r2, "conf t\ncrypto isakmp key other address 203.0.113.1\nend");
+    assert!(retry(&mut lab).contains(" 0 answered"));
+    assert!(sum(&lab).contains("[NOTIFY AUTHENTICATION-FAILED]"), "{}", sum(&lab));
+    assert!(lab.run(r2, "show logging").contains("main mode message 5 failed authentication"));
+    assert!(lab.run(r1, "show crypto isakmp sa").contains("failed: the pre-shared keys differ"));
+    lab.run(r2, "conf t\ncrypto isakmp key vpnsecret address 203.0.113.1\nend");
+    // Transform sets that differ: refused in quick mode.
+    lab.run(r2, "conf t\ncrypto ipsec transform-set TS esp-3des esp-md5-hmac\nend");
+    assert!(retry(&mut lab).contains(" 0 answered"));
+    assert!(sum(&lab).contains("ISAKMP quick mode (encrypted)") && sum(&lab).contains("[NOTIFY NO-PROPOSAL-CHOSEN]"));
+    let sa = lab.run(r1, "show crypto isakmp sa");
+    assert!(sa.contains("transform sets differ") && sa.contains("quick mode message 2"), "{sa}");
+    lab.run(r2, "conf t\ncrypto ipsec transform-set TS esp-aes esp-sha-hmac\nend");
+    assert!(retry(&mut lab).contains("4 answered"));
+}

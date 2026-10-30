@@ -2174,6 +2174,9 @@ impl Sim {
         }
         if ip.protocol == PROTO_UDP {
             let u = Udp::decode(&ip.payload, ip.src, ip.dst).map_err(|e| e.to_string())?;
+            if d.kind == DeviceKind::Router && u.dst_port == packetcraft_wire::ike::ISAKMP_PORT && u.src_port == packetcraft_wire::ike::ISAKMP_PORT {
+                return self.ike_in(t, d, &ip, &u.payload);
+            }
             if let Some(r) = self.wlan_udp_in(t, d, &ip, &u) {
                 return r;
             }
