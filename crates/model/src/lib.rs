@@ -17,6 +17,7 @@ pub mod drawing;
 pub mod file;
 pub mod ifname;
 pub mod models;
+pub mod physical;
 pub mod qos;
 pub mod services;
 pub mod vpn;
@@ -1645,6 +1646,9 @@ pub struct Topology {
     /// A graded activity: instructions and the results to reach.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub activity: Option<activity::Activity>,
+    /// Where the equipment stands (cities, buildings, wiring closets) and hand-set cable lengths.
+    #[serde(default, skip_serializing_if = "physical::Physical::is_default")]
+    pub physical: physical::Physical,
 }
 
 /// A note or drawing placed on the workspace.
@@ -1726,6 +1730,7 @@ impl Topology {
             annotations: Vec::new(),
             clusters: Vec::new(),
             activity: None,
+            physical: physical::Physical::default(),
         }
     }
 
@@ -1794,7 +1799,9 @@ impl Topology {
         for c in &mut self.clusters {
             c.devices.retain(|d| *d != id);
         }
-        Ok(self.devices.remove(i))
+        let d = self.devices.remove(i);
+        self.prune_physical();
+        Ok(d)
     }
 
     pub fn rename(&mut self, id: DeviceId, name: &str) -> Result<()> {
@@ -1935,7 +1942,9 @@ impl Topology {
     /// Unplugs the cable at a port; returns it.
     pub fn disconnect(&mut self, end: End) -> Option<Link> {
         let i = self.links.iter().position(|l| l.a == end || l.b == end)?;
-        Some(self.links.remove(i))
+        let l = self.links.remove(i);
+        self.prune_physical();
+        Some(l)
     }
 
     /// `Device Port` for messages.
@@ -2013,6 +2022,7 @@ impl Topology {
         let devices = &self.devices;
         let valid = |e: End| devices.iter().any(|d| d.id == e.device && e.port < d.ports.len());
         self.links.retain(|l| l.a != l.b && valid(l.a) && valid(l.b) && used.insert((l.a.device, l.a.port)) && used.insert((l.b.device, l.b.port)));
+        self.sanitize_physical();
     }
 }
 

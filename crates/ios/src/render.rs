@@ -643,6 +643,8 @@ pub fn interfaces(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
             "down (no cable)".to_string()
         } else if let Some(why) = packetcraft_sim::serial_problem(t, end) {
             format!("up, line protocol down ({why})")
+        } else if let Some(why) = packetcraft_sim::cable_problem(t, end) {
+            format!("down ({why})")
         } else if packetcraft_sim::speed_mismatch(t, end) {
             "down (speed mismatch with the far end)".to_string()
         } else {

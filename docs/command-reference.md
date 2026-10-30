@@ -52,13 +52,25 @@ Every front end (UI, `packetcraft-cli run`, MCP `packetcraft_run`) runs these.
 | `cluster.rename` | Rename cluster |  |  | `{"id", "name"}` |
 | `cluster.move` | Move cluster |  |  | `{"id", "x", "y", "transient"?: false}` |
 | `cluster.dissolve` | Uncluster | Edit |  | `{"id"}: its devices go back to the view it sat in` |
+| `view.physical` | Physical workspace | View |  | `{} → {"physical": true, "place", "kind", "path": [{"id", "name", "kind"}]} (cities, buildings and wiring closets)` |
+| `view.logical` | Logical workspace | View |  | `{} → {"physical": false, …}` |
+| `view.enter_place` | Open place |  |  | `{"id": place number} → {"physical", "place", "kind", "path"} (switches to the physical view)` |
+| `view.place_up` | Back to the enclosing place |  |  | `{} → {"physical", "place", "kind", "path"}` |
+| `view.intercity` | Back to the Intercity map |  |  | `{} → {"physical", "place": null, "path": []}` |
+| `place.add` | New place |  |  | `{"kind": "city"\|"building"\|"closet", "name"?, "parent"?: place number (a building goes in a city, a closet in a building; default: the place being viewed), "x"?, "y"?} → {"id", "name", "parent"}` |
+| `place.rename` | Rename place |  |  | `{"id", "name"}` |
+| `place.move` | Move place |  |  | `{"id", "x", "y", "transient"?: false}: its icon on the map it sits in` |
+| `place.remove` | Remove place |  |  | `{"id"}: with the places inside it; their devices go to the building above, else the default closet (the last city stays)` |
+| `place.list` | List places |  |  | `{} → {"implicit": true while the default layout is shown, "places": [{"id", "kind", "name", "x", "y", "parent", "devices": [names]}], "cables": [{"a", "b", "meters", "manual", "problem"}]}` |
+| `device.place` | Move to place |  |  | `{"device" \| "devices": [names or ids], "place": place number, "x"?, "y"?, "transient"?: false}: network devices go in wiring closets, hosts in a closet or a building` |
+| `link.length` | Cable length |  |  | `{"device", "port": "interface", "meters": 1-20000000 \| null (the length the places give)} → {"meters", "manual", "problem"} (copper over 100 m carries nothing)` |
 | `view.enter_cluster` | Open cluster |  |  | `{"id"} → {"cluster", "path": [{"id", "name"}]}` |
 | `view.up` | Back to the parent cluster |  |  | `{} → {"cluster", "path"}` |
 | `view.root` | Back to the top level |  |  | `{} → {"cluster": null, "path": []}` |
 | `device.remove` | Delete device | Edit | Delete | `{"device": "name or id"}` |
 | `device.move` | Move device |  |  | `{"device", "x", "y", "transient"?: false}` |
 | `device.rename` | Rename device |  |  | `{"device", "name"}` |
-| `device.list` | List devices |  |  | `{} → [{id, name, kind, x, y, cluster, ports}]` |
+| `device.list` | List devices |  |  | `{} → [{id, name, kind, x, y, cluster, place, ports: [{name, ip, shutdown, up, problem, peer}]}]` |
 | `link.add` | Connect with a cable | Insert |  | `{"a": "device", "a_port"?: "interface", "b": "device", "b_port"?: "interface"}` |
 | `link.remove` | Remove cable | Edit |  | `{"device", "port": "interface"}` |
 | `cli.exec` | Type a command |  |  | `{"device", "line"} → {"output", "prompt", "clear"}` |

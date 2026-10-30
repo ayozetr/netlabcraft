@@ -858,6 +858,8 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             }
             Ok(Value::Null)
         }
+        "view.physical" | "view.logical" | "view.enter_place" | "view.place_up" | "view.intercity" | "place.add" | "place.rename" | "place.move"
+        | "place.remove" | "place.list" | "device.place" | "link.length" => physical(s, cmd, p),
         "view.enter_cluster" => {
             s.view = Some(cluster_param(s, p)?);
             s.revision += 1;
@@ -916,11 +918,12 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                                 "ip": port.ip.map(|ip| ip.to_string()),
                                 "shutdown": port.shutdown,
                                 "up": packetcraft_sim::port_up(&s.topology, end),
+                                "problem": packetcraft_sim::cable_problem(&s.topology, end),
                                 "peer": s.topology.peer(end).map(|e| s.topology.end_label(e)),
                             })
                         })
                         .collect();
-                    json!({"id": d.id.0, "name": d.name, "kind": d.kind.id(), "x": d.x, "y": d.y, "cluster": s.topology.cluster_of(d.id), "gateway": d.gateway.map(|g| g.to_string()), "ports": ports})
+                    json!({"id": d.id.0, "name": d.name, "kind": d.kind.id(), "x": d.x, "y": d.y, "cluster": s.topology.cluster_of(d.id), "place": s.topology.home_of(d.id).map(|h| h.place), "gateway": d.gateway.map(|g| g.to_string()), "ports": ports})
                 })
                 .collect(),
         )),
@@ -1078,12 +1081,207 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
     }
 }
 
-/// A device made while looking inside a cluster goes into it.
+/// A device made while looking inside a cluster goes into it; one made while looking at a
+/// closet or building in the physical view stands there.
 fn join_view(s: &Session, t: &mut packetcraft_model::Topology, dev: DeviceId) {
     if let Some(c) = s.view
         && let Ok(c) = t.cluster_mut(c)
     {
         c.devices.push(dev);
+    }
+    if s.physical
+        && let Some(place) = s.place_view
+        && let Some((x, y)) = t.device(dev).map(|d| (d.x, d.y))
+    {
+        // A switch made while looking at a building's rooms stays in the default closet.
+        let _ = t.set_home(dev, place, x, y);
+    }
+}
+
+fn place_id(s: &Session, p: &Value, key: &str) -> Result<u32> {
+    let id =
+        p.get(key).and_then(Value::as_u64).and_then(|v| u32::try_from(v).ok()).ok_or_else(|| bad(format!("`{key}` (place number) is required")))?;
+    s.topology.place(id).map(|x| x.id).ok_or_else(|| EngineError::Failed(format!("no place {id}")))
+}
+
+/// Where the physical view looks: the place (or null for the Intercity map) and the path to it.
+fn place_view_json(s: &Session) -> Value {
+    let t = &s.topology;
+    let path: Vec<Value> = t.place_path(s.place_view).iter().map(|x| json!({"id": x.id, "name": x.name, "kind": x.kind.id()})).collect();
+    let kind = s.place_view.and_then(|x| t.place(x)).map(|x| x.kind.id());
+    json!({"physical": s.physical, "place": s.place_view, "kind": kind, "path": path})
+}
+
+/// A free spot for a new icon on the map of `place` (none: the Intercity map): the first point
+/// of a loose grid clear of the places and devices already there.
+fn spot(t: &packetcraft_model::Topology, place: Option<u32>) -> (f32, f32) {
+    let taken: Vec<(f32, f32)> =
+        t.places_in(place).iter().map(|x| (x.x, x.y)).chain(t.homes().iter().filter(|h| place == Some(h.place)).map(|h| (h.x, h.y))).collect();
+    let grid = (0..40u16).map(|n| (160.0 + 180.0 * f32::from(n % 5), 140.0 + 170.0 * f32::from(n / 5)));
+    let mut last = (160.0, 140.0);
+    for (x, y) in grid {
+        last = (x, y);
+        if taken.iter().all(|(a, b)| (a - x).powi(2) + (b - y).powi(2) > 130.0f32.powi(2)) {
+            break;
+        }
+    }
+    last
+}
+
+/// The physical view: places, where devices stand, cable lengths.
+fn physical(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
+    use packetcraft_model::physical::PlaceKind;
+    match cmd {
+        "view.physical" | "view.logical" => {
+            s.physical = cmd == "view.physical";
+            s.revision += 1;
+            Ok(place_view_json(s))
+        }
+        "view.enter_place" => {
+            s.place_view = Some(place_id(s, p, "id")?);
+            s.physical = true;
+            s.revision += 1;
+            Ok(place_view_json(s))
+        }
+        "view.place_up" | "view.intercity" => {
+            s.place_view = if cmd == "view.place_up" { s.place_view.and_then(|x| s.topology.place(x)).and_then(|x| x.parent) } else { None };
+            s.physical = true;
+            s.revision += 1;
+            Ok(place_view_json(s))
+        }
+        "place.add" => {
+            let kind = str_param(p, "kind")?;
+            let kind = PlaceKind::from_id(kind).ok_or_else(|| bad(format!("unknown place kind `{kind}` (city, building, closet)")))?;
+            let parent = match p.get("parent") {
+                None | Some(Value::Null) => {
+                    // The place being looked at, when it is the right kind.
+                    let viewed = s.place_view.and_then(|x| s.topology.place(x)).filter(|x| Some(x.kind) == kind.parent_kind()).map(|x| x.id);
+                    // Else the only place of the right kind, if there is just one.
+                    viewed.or_else(|| {
+                        kind.parent_kind().and_then(|pk| {
+                            let places = s.topology.places();
+                            let mut it = places.iter().filter(|x| x.kind == pk);
+                            match (it.next(), it.next()) {
+                                (Some(only), None) => Some(only.id),
+                                _ => None,
+                            }
+                        })
+                    })
+                }
+                Some(_) => Some(place_id(s, p, "parent")?),
+            };
+            let (dx, dy) = spot(&s.topology, parent);
+            let (x, y) = (f32_param(p, "x").unwrap_or(dx), f32_param(p, "y").unwrap_or(dy));
+            let mut t = s.topology.clone();
+            let id = t.add_place(kind, opt_str(p, "name"), parent, x, y)?;
+            s.checkpoint();
+            s.topology = t;
+            s.changed();
+            let name = s.topology.place(id).map(|x| x.name).unwrap_or_default();
+            Ok(json!({"id": id, "name": name, "parent": parent}))
+        }
+        "place.rename" | "place.move" | "place.remove" => {
+            let id = place_id(s, p, "id")?;
+            let mut t = s.topology.clone();
+            let mut transient = false;
+            match cmd {
+                "place.rename" => t.rename_place(id, str_param(p, "name")?)?,
+                "place.move" => {
+                    let (x, y) = (f32_param(p, "x").ok_or_else(|| bad("`x` is required"))?, f32_param(p, "y").ok_or_else(|| bad("`y` is required"))?);
+                    t.move_place(id, x, y)?;
+                    transient = p.get("transient").and_then(Value::as_bool).unwrap_or(false);
+                }
+                _ => {
+                    let gone = t.place_subtree(id);
+                    let removed = t.remove_place(id)?;
+                    if s.place_view.is_some_and(|v| gone.contains(&v)) {
+                        s.place_view = removed.parent;
+                    }
+                }
+            }
+            if !transient {
+                s.checkpoint();
+            }
+            s.topology = t;
+            s.changed();
+            Ok(Value::Null)
+        }
+        "place.list" => {
+            let t = &s.topology;
+            let homes = t.homes();
+            let name = |d: DeviceId| t.device(d).map(|x| x.name.clone()).unwrap_or_default();
+            let places: Vec<Value> = t
+                .places()
+                .iter()
+                .map(|x| {
+                    let devices: Vec<String> = homes.iter().filter(|h| h.place == x.id).map(|h| name(h.device)).collect();
+                    json!({"id": x.id, "kind": x.kind.id(), "name": x.name, "x": x.x, "y": x.y, "parent": x.parent, "devices": devices})
+                })
+                .collect();
+            let cables: Vec<Value> = t
+                .links
+                .iter()
+                .map(|l| {
+                    let len = t.cable_length(l);
+                    json!({"a": t.end_label(l.a), "b": t.end_label(l.b), "meters": len.meters, "manual": len.manual, "problem": packetcraft_sim::cable_problem(t, l.a)})
+                })
+                .collect();
+            Ok(json!({"implicit": t.implicit_layout(), "places": places, "cables": cables}))
+        }
+        "device.place" => {
+            let mut devices = Vec::new();
+            match p.get("devices") {
+                Some(Value::Array(a)) => {
+                    for v in a.iter().take(packetcraft_model::MAX_DEVICES) {
+                        devices.push(device_param(s, &json!({"d": v}), "d")?);
+                    }
+                }
+                _ => devices.push(device_param(s, p, "device")?),
+            }
+            if devices.is_empty() {
+                return Err(bad("`devices` names no device"));
+            }
+            let place = place_id(s, p, "place")?;
+            let mut t = s.topology.clone();
+            for (i, d) in devices.iter().enumerate() {
+                let (dx, dy) = match t.home_of(*d) {
+                    Some(h) if h.place == place => (h.x, h.y),
+                    _ => spot(&t, Some(place)),
+                };
+                let x = f32_param(p, "x").map_or(dx, |x| x + 90.0 * i as f32);
+                let y = f32_param(p, "y").unwrap_or(dy);
+                t.set_home(*d, place, x, y)?;
+            }
+            if !p.get("transient").and_then(Value::as_bool).unwrap_or(false) {
+                s.checkpoint();
+            }
+            s.topology = t;
+            s.changed();
+            Ok(Value::Null)
+        }
+        _ => {
+            // link.length
+            let d = device_param(s, p, "device")?;
+            let port = port_param(s, d, str_param(p, "port")?)?;
+            let max = packetcraft_model::physical::MAX_CABLE_M;
+            let meters = match p.get("meters") {
+                Some(Value::Null) => None,
+                Some(v) => Some(
+                    v.as_f64()
+                        .filter(|m| m.is_finite() && *m >= 1.0 && *m <= f64::from(max))
+                        .map(|m| m.round() as u32)
+                        .ok_or_else(|| bad(format!("`meters` is 1 to {max}")))?,
+                ),
+                None => return Err(bad("`meters` (a number of metres, or null for the length the places give) is required")),
+            };
+            let end = End { device: d, port };
+            let mut t = s.topology.clone();
+            let len = t.set_cable_length(end, meters)?;
+            s.checkpoint();
+            s.topology = t;
+            s.changed();
+            Ok(json!({"meters": len.meters, "manual": len.manual, "problem": packetcraft_sim::cable_problem(&s.topology, end)}))
+        }
     }
 }
 

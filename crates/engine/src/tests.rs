@@ -1017,3 +1017,98 @@ fn a_controller_pushes_wlans_to_its_access_points_and_checks_logins_with_radius(
     }
     assert!(s.execute("lap.controller", json!({"device": "WLC1", "address": "1.2.3.4"})).is_err());
 }
+
+#[test]
+fn the_physical_view_places_devices_and_long_copper_goes_down() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "lan"})).unwrap();
+    // An old lab shows the implicit layout, every device in one closet, short cables.
+    let list = s.execute("place.list", json!({})).unwrap();
+    assert_eq!(list["implicit"], true);
+    assert_eq!(list["places"].as_array().unwrap().len(), 3);
+    assert_eq!(list["places"][2]["devices"].as_array().unwrap().len(), s.topology.devices.len());
+    assert!(list["cables"].as_array().unwrap().iter().all(|c| c["meters"] == 3 && c["problem"].is_null()));
+    // Into the view, a building, back up.
+    let v = s.execute("view.physical", json!({})).unwrap();
+    assert_eq!((v["physical"].as_bool(), v["place"].is_null()), (Some(true), true));
+    let v = s.execute("view.enter_place", json!({"id": 2})).unwrap();
+    assert_eq!(v["path"].as_array().unwrap().len(), 2);
+    assert_eq!(v["kind"], "building");
+    assert_eq!(s.execute("view.place_up", json!({})).unwrap()["place"], 1);
+    assert!(s.execute("view.intercity", json!({})).unwrap()["path"].as_array().unwrap().is_empty());
+    assert!(s.execute("view.enter_place", json!({"id": 99})).is_err());
+    // A second building 200 m away (the parent is the only city), and PC3 moves there.
+    let b = s.execute("place.add", json!({"kind": "building", "name": "Workshop", "x": 500, "y": 220})).unwrap();
+    assert_eq!(b["parent"], 1);
+    let b = b["id"].as_u64().unwrap();
+    assert!(s.execute("place.add", json!({"kind": "closet", "parent": 1})).is_err());
+    assert!(s.execute("device.place", json!({"device": "S1", "place": b})).is_err());
+    s.execute("device.place", json!({"device": "PC3", "place": b, "x": 40, "y": 50})).unwrap();
+    let pc3 = s.topology.resolve("PC3").unwrap();
+    assert_eq!(s.topology.home_of(pc3).map(|h| (h.place, h.x)), Some((b as u32, 40.0)));
+    let list = s.execute("place.list", json!({})).unwrap();
+    let long = list["cables"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["a"].as_str().unwrap().starts_with("PC3") || c["b"].as_str().unwrap().starts_with("PC3"))
+        .unwrap()
+        .clone();
+    assert_eq!(long["meters"], 230);
+    assert_eq!(long["problem"], "cable too long: 230 m copper, max 100 m");
+    // The link is down, says why, and carries nothing.
+    let out = s.execute("cli.exec", json!({"device": "S1", "line": "show interfaces"})).unwrap()["output"].as_str().unwrap().to_string();
+    assert!(out.contains("is down (cable too long: 230 m copper, max 100 m)"), "{out}");
+    let devs = s.execute("device.list", json!({})).unwrap();
+    let pc3_port = &devs.as_array().unwrap().iter().find(|d| d["name"] == "PC3").unwrap()["ports"][0];
+    assert_eq!((pc3_port["up"].as_bool(), pc3_port["problem"].as_str().is_some()), (Some(false), true));
+    let pc3_ip = s.topology.find("PC3").unwrap().ports[0].ip.unwrap().addr.to_string();
+    let ping = s.execute("net.ping", json!({"from": "PC1", "to": pc3_ip})).unwrap();
+    assert_eq!(ping["replies"], 0, "{ping}");
+    // A hand-set 90 m run brings it back; undo takes it away again.
+    let port = s.topology.find("PC3").unwrap().ports[0].name.clone();
+    let r = s.execute("link.length", json!({"device": "PC3", "port": port, "meters": 90})).unwrap();
+    assert_eq!((r["meters"].as_u64(), r["manual"].as_bool(), r["problem"].is_null()), (Some(90), Some(true), true));
+    assert!(s.execute("link.length", json!({"device": "PC3", "port": port})).is_err());
+    assert!(s.execute("link.length", json!({"device": "PC3", "port": port, "meters": -4})).is_err());
+    // (The switch port comes up through the spanning-tree states first.)
+    s.execute("sim.advance", json!({"seconds": 60})).unwrap();
+    let ping = s.execute("net.ping", json!({"from": "PC1", "to": pc3_ip})).unwrap();
+    assert!(ping["replies"].as_u64().unwrap() > 0, "{ping}");
+    s.execute("edit.undo", json!({})).unwrap();
+    assert!(!packetcraft_sim::port_up(&s.topology, packetcraft_model::End { device: pc3, port: 0 }));
+    s.execute("edit.redo", json!({})).unwrap();
+    // Rename, move, save and load.
+    s.execute("place.rename", json!({"id": b, "name": "Shop"})).unwrap();
+    s.execute("place.move", json!({"id": b, "x": 480, "y": 200, "transient": true})).unwrap();
+    let saved = s.execute("file.save", json!({})).unwrap();
+    let mut s2 = Session::new();
+    s2.execute("file.open", json!({"json": saved["json"]})).unwrap();
+    assert_eq!(s2.topology, s.topology);
+    assert_eq!(s2.topology.place(b as u32).unwrap().name, "Shop");
+    // Removing the building sends PC3 back to the default closet; undo restores it.
+    s.execute("view.enter_place", json!({"id": b})).unwrap();
+    s.execute("place.remove", json!({"id": b})).unwrap();
+    assert_eq!(s.place_view, Some(1));
+    assert_eq!(s.topology.home_of(pc3).unwrap().place, 3);
+    assert!(s.execute("place.remove", json!({"id": 1})).is_err());
+    s.execute("edit.undo", json!({})).unwrap();
+    assert_eq!(s.topology.home_of(pc3).unwrap().place, b as u32);
+    // Undoing back past the first change returns to the implicit layout.
+    for _ in 0..10 {
+        let _ = s.execute("edit.undo", json!({}));
+    }
+    assert!(s.topology.implicit_layout());
+    s.execute("view.logical", json!({})).unwrap();
+    assert!(!s.physical);
+}
+
+#[test]
+fn a_device_made_in_a_closet_stands_there() {
+    let mut s = Session::new();
+    let c = s.execute("place.add", json!({"kind": "closet", "name": "Rack B"})).unwrap()["id"].as_u64().unwrap();
+    s.execute("view.enter_place", json!({"id": c})).unwrap();
+    s.execute("device.add", json!({"kind": "switch", "x": 50, "y": 60})).unwrap();
+    let sw = s.topology.resolve("S1").unwrap();
+    assert_eq!(s.topology.home_of(sw).map(|h| (h.place, h.x, h.y)), Some((c as u32, 50.0, 60.0)));
+}

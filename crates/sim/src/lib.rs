@@ -153,6 +153,19 @@ pub fn port_up(t: &Topology, end: End) -> bool {
     own && t.peer(end).and_then(|p| t.device(p.device).and_then(|d| d.ports.get(p.port))).is_some_and(ok)
         && serial_problem(t, end).is_none()
         && !speed_mismatch(t, end)
+        && cable_problem(t, end).is_none()
+}
+
+/// Why the copper cable at a port carries nothing, if it doesn't: longer than Ethernet over
+/// twisted pair reaches. Serial cables stand for leased lines and have no limit here.
+pub fn cable_problem(t: &Topology, end: End) -> Option<String> {
+    if t.is_serial(end) {
+        return None;
+    }
+    let l = t.link_at(end)?;
+    let len = t.cable_length(l);
+    let max = packetcraft_model::physical::COPPER_MAX_M;
+    (len.meters > max).then(|| format!("cable too long: {} m copper, max {max} m", len.meters))
 }
 
 /// The fastest an Ethernet port goes, in Mbit/s, from its type (`None`: not Ethernet).

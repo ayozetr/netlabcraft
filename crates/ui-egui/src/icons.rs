@@ -285,6 +285,75 @@ pub fn cloud(p: &Painter, rect: Rect, fill: Color32, edge: Color32) {
     p.circle_filled(at(0.38, 0.32), h * 0.12, shade(fill, 1.12));
 }
 
+/// A city on the Intercity map: three towers of different heights on a ground line, with rows
+/// of windows (original drawing).
+pub fn city(p: &Painter, rect: Rect, fill: Color32, edge: Color32) {
+    let (w, h) = (rect.width(), rect.height());
+    let line = Stroke::new((h / 28.0).max(1.0), edge);
+    let at = |x: f32, y: f32| pos2(rect.left() + w * x, rect.top() + h * y);
+    // (left, top, right) as fractions; every tower stands on the ground at 0.92.
+    let towers = [(0.06, 0.40, 0.34), (0.36, 0.08, 0.64), (0.66, 0.28, 0.94)];
+    for (i, (l, t, r)) in towers.into_iter().enumerate() {
+        let body = Rect::from_min_max(at(l, t), at(r, 0.92));
+        let tone = if i == 1 { fill } else { shade(fill, 0.88) };
+        p.rect_filled(body, 1.5, tone);
+        p.rect_stroke(body, 1.5, line, StrokeKind::Inside);
+        let rows = ((0.86 - t) / 0.12).floor().max(1.0) as usize;
+        for row in 0..rows {
+            let y = t + 0.06 + row as f32 * 0.12;
+            for col in 0..2 {
+                let x = l + (r - l) * (0.22 + 0.36 * col as f32);
+                p.rect_filled(Rect::from_min_size(at(x, y), vec2(w * (r - l) * 0.2, h * 0.05)), 0.0, edge.gamma_multiply(0.7));
+            }
+        }
+    }
+    p.line_segment([at(0.0, 0.92), at(1.0, 0.92)], Stroke::new(line.width * 1.5, edge));
+}
+
+/// A building in a city: a block under a flat roof edge, a grid of windows and a door
+/// (original drawing).
+pub fn building(p: &Painter, rect: Rect, fill: Color32, edge: Color32) {
+    let (w, h) = (rect.width(), rect.height());
+    let line = Stroke::new((h / 28.0).max(1.0), edge);
+    let at = |x: f32, y: f32| pos2(rect.left() + w * x, rect.top() + h * y);
+    let body = Rect::from_min_max(at(0.14, 0.16), at(0.86, 0.94));
+    p.rect_filled(body, 1.0, fill);
+    p.rect_stroke(body, 1.0, line, StrokeKind::Inside);
+    p.rect_filled(Rect::from_min_max(at(0.08, 0.08), at(0.92, 0.17)), 1.0, edge);
+    for row in 0..3 {
+        for col in 0..3 {
+            let r = Rect::from_min_size(at(0.22 + 0.21 * col as f32, 0.25 + 0.17 * row as f32), vec2(w * 0.13, h * 0.1));
+            p.rect_filled(r, 0.0, shade(fill, 0.75));
+            p.rect_stroke(r, 0.0, Stroke::new(line.width * 0.6, edge), StrokeKind::Inside);
+        }
+    }
+    let door = Rect::from_min_max(at(0.42, 0.76), at(0.58, 0.94));
+    p.rect_filled(door, 0.0, edge.gamma_multiply(0.85));
+}
+
+/// A wiring closet: a rack cabinet with mounted units and their port lights (original drawing).
+pub fn closet(p: &Painter, rect: Rect, fill: Color32, edge: Color32) {
+    let (w, h) = (rect.width(), rect.height());
+    let line = Stroke::new((h / 28.0).max(1.0), edge);
+    let at = |x: f32, y: f32| pos2(rect.left() + w * x, rect.top() + h * y);
+    let cab = Rect::from_min_max(at(0.24, 0.06), at(0.76, 0.94));
+    p.rect_filled(cab, 2.0, shade(fill, 0.8));
+    p.rect_stroke(cab, 2.0, line, StrokeKind::Inside);
+    // Feet.
+    p.rect_filled(Rect::from_min_max(at(0.26, 0.94), at(0.32, 0.98)), 0.0, edge);
+    p.rect_filled(Rect::from_min_max(at(0.68, 0.94), at(0.74, 0.98)), 0.0, edge);
+    for i in 0..5 {
+        let unit = Rect::from_min_max(at(0.3, 0.13 + 0.15 * i as f32), at(0.7, 0.23 + 0.15 * i as f32));
+        p.rect_filled(unit, 1.0, fill);
+        p.rect_stroke(unit, 1.0, Stroke::new(line.width * 0.6, edge), StrokeKind::Inside);
+        for j in 0..3 {
+            let c = unit.left_center() + vec2(unit.width() * (0.18 + 0.14 * j as f32), 0.0);
+            let lit = if (i + j) % 3 == 0 { Color32::from_rgb(0xf0, 0xa0, 0x1a) } else { Color32::from_rgb(0x3c, 0xc8, 0x2c) };
+            p.circle_filled(c, (h * 0.018).max(1.0), lit);
+        }
+    }
+}
+
 /// Toolbar and bar glyphs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Glyph {
