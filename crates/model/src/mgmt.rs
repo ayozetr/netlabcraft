@@ -88,6 +88,10 @@ pub struct Mgmt {
     /// `history size N` on the console and vty lines.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub history_size: Option<u16>,
+    /// Interfaces with `standby version 2` (by name: `GigabitEthernet0/0`, `…0/0.10`,
+    /// `Vlan10`).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub hsrp_v2: Vec<String>,
 }
 
 impl Mgmt {

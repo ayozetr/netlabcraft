@@ -358,7 +358,7 @@ impl ChannelMode {
 }
 
 /// An HSRP group on an interface (`standby N …`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Standby {
     pub group: u8,
     /// The virtual gateway address.
@@ -368,11 +368,18 @@ pub struct Standby {
     pub priority: u8,
     #[serde(default)]
     pub preempt: bool,
+    /// `standby N track INTERFACE [decrement D]`: while that interface is down, the priority
+    /// drops by D (10 by default).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub track: Vec<(String, u8)>,
 }
+
+/// Most tracked interfaces per HSRP group.
+pub const MAX_TRACK: usize = 8;
 
 impl Standby {
     pub fn new(group: u8) -> Standby {
-        Standby { group, ip: None, priority: 100, preempt: false }
+        Standby { group, ip: None, priority: 100, preempt: false, track: Vec::new() }
     }
 }
 

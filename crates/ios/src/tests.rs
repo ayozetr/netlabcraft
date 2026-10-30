@@ -1408,6 +1408,66 @@ fn hsrp_by_typing() {
 }
 
 #[test]
+fn hsrp_version_2_and_interface_tracking_by_typing() {
+    let mut lab = Lab::new();
+    let r1 = lab.add(DeviceKind::Router);
+    let r2 = lab.add(DeviceKind::Router);
+    let s1 = lab.add(DeviceKind::Switch);
+    let s2 = lab.add(DeviceKind::Switch);
+    let pc = lab.add(DeviceKind::Pc);
+    let srv = lab.add(DeviceKind::Server);
+    lab.cable(pc, "fa0", s1, "fa0/1");
+    lab.cable(r1, "g0/0", s1, "fa0/2");
+    lab.cable(r2, "g0/0", s1, "fa0/3");
+    lab.cable(r1, "g0/1", s2, "fa0/2");
+    lab.cable(r2, "g0/1", s2, "fa0/3");
+    lab.cable(srv, "g0", s2, "fa0/1");
+    lab.run(pc, "ipconfig 192.168.1.10 255.255.255.0 192.168.1.254");
+    lab.run(srv, "ipconfig 10.0.0.10 255.255.255.0 10.0.0.254");
+    lab.run(
+        r1,
+        "en\nconf t\nint g0/0\nip address 192.168.1.1 255.255.255.0\nstandby version 2\nstandby 1 ip 192.168.1.254\nstandby 1 priority 110\n\
+         standby 1 preempt\nstandby 1 track g0/1 decrement 20\nno shut\nint g0/1\nip address 10.0.0.1 255.255.255.0\nstandby ip 10.0.0.254\nno shut\nend",
+    );
+    lab.run(
+        r2,
+        "en\nconf t\nint g0/0\nip address 192.168.1.2 255.255.255.0\nstandby version 2\nstandby 1 ip 192.168.1.254\nstandby 1 preempt\nno shut\n\
+         int g0/1\nip address 10.0.0.2 255.255.255.0\nstandby ip 10.0.0.254\nno shut\nend",
+    );
+    let sb = lab.run(r1, "show standby");
+    assert!(
+        sb.contains("Group 1 on GigabitEthernet0/0: active (priority 110, preempt)") && sb.contains("Version 2") && sb.contains("0000.0c9f.f001"),
+        "{sb}"
+    );
+    lab.run(pc, "ping 10.0.0.10");
+    assert!(lab.run(pc, "arp -a").contains("00:00:0c:9f:f0:01"));
+    // R1's uplink fails: its priority drops to 90 and R2 (100, preempt) takes over.
+    lab.run(r1, "conf t\nint g0/1\nshutdown\nend");
+    let sb = lab.run(r1, "show standby");
+    assert!(
+        sb.contains("Group 1 on GigabitEthernet0/0: standby (priority 90") && sb.contains("lowered from 110") && sb.contains("GigabitEthernet0/1"),
+        "{sb}"
+    );
+    assert!(lab.run(r2, "show standby").contains("Group 1 on GigabitEthernet0/0: active"));
+    lab.run(pc, "ping 10.0.0.10");
+    assert!(lab.run(pc, "ping 10.0.0.10").contains("4 answered"));
+    // The uplink comes back: R1 is active again.
+    lab.run(r1, "conf t\nint g0/1\nno shutdown\nend");
+    assert!(lab.run(r1, "show standby").contains("Group 1 on GigabitEthernet0/0: active (priority 110"));
+    let run = lab.run(r1, "show running-config interface g0/0");
+    assert!(run.contains(" standby version 2\n standby 1 ip 192.168.1.254\n standby 1 priority 110\n standby 1 preempt\n standby 1 track GigabitEthernet0/1 decrement 20"), "{run}");
+    let all = lab.run(r1, "show run");
+    lab.run(r1, "copy run start\nreload\nen");
+    assert_eq!(lab.run(r1, "show run"), all);
+    lab.run(r1, "conf t\nint g0/0\nno standby 1 track g0/1\nno standby version");
+    let run = lab.run(r1, "do show running-config interface g0/0");
+    assert!(!run.contains("track") && !run.contains("version"), "{run}");
+    for bad in ["standby version 3", "standby 1 track g9/9", "standby 1 track g0/1 decrement 0", "no standby 7 track g0/1"] {
+        assert!(lab.try_run(r1, bad).starts_with('%'), "{bad}");
+    }
+}
+
+#[test]
 fn dtp_by_typing() {
     let mut lab = Lab::new();
     let s1 = lab.add(DeviceKind::Switch);

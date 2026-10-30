@@ -371,6 +371,16 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `standby <0-255> priority <0-255>` | interface, subinterface | router | HSRP: higher priority becomes active |
 | `standby <0-255> preempt` | interface, subinterface | router | HSRP: take over when this router has the highest priority |
 | `no standby <0-255>` | interface, subinterface | router | Remove an HSRP group |
+| `standby version {1\|2}` | interface, subinterface | router | HSRP version on this interface |
+| `no standby version` | interface, subinterface | router | Back to HSRP version 1 |
+| `standby <0-255> track INTERFACE` | interface, subinterface | router | Lower the priority by 10 while an interface is down |
+| `standby <0-255> track INTERFACE decrement <1-255>` | interface, subinterface | router | Lower the priority by this much while an interface is down |
+| `no standby <0-255> track INTERFACE` | interface, subinterface | router | Stop tracking an interface |
+| `standby version {1\|2}` |  | switch | HSRP version on this interface |
+| `no standby version` |  | switch | Back to HSRP version 1 |
+| `standby <0-255> track INTERFACE` |  | switch | Lower the priority by 10 while an interface is down |
+| `standby <0-255> track INTERFACE decrement <1-255>` |  | switch | Lower the priority by this much while an interface is down |
+| `no standby <0-255> track INTERFACE` |  | switch | Stop tracking an interface |
 | `standby <0-255> ip A.B.C.D` |  | switch | HSRP: the group's virtual gateway address |
 | `standby ip A.B.C.D` |  | switch | HSRP group 0's virtual gateway address |
 | `standby <0-255> priority <0-255>` |  | switch | HSRP: higher priority becomes active |

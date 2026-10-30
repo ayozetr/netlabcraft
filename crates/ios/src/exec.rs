@@ -1297,6 +1297,59 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Some(p) => format!("VTP password: {p}"),
             None => "No VTP password is set.".into(),
         }),
+        Id::StandbyVersion | Id::NoStandbyVersion => {
+            let v2 = match (spec.id, arg(0)) {
+                (Id::NoStandbyVersion, _) | (_, "1") => false,
+                (_, "2") => true,
+                _ => return Err("% HSRP version 1 or 2".into()),
+            };
+            let names = c.mode_iface_names()?;
+            let m = &mut c.dm()?.mgmt;
+            m.hsrp_v2.retain(|n| !names.contains(n));
+            if v2 {
+                m.hsrp_v2.extend(names.into_iter().take(64));
+            }
+            Ok(String::new())
+        }
+        Id::StandbyTrack | Id::NoStandbyTrack => {
+            let group: u8 = arg(0).parse().map_err(|_| "% The group is 0-255")?;
+            let d = c.d()?;
+            let idx = d.port_index(arg(1));
+            let name = match idx.and_then(|i| d.ports.get(i)) {
+                Some(p) => p.name.clone(),
+                None if arg(1).to_ascii_lowercase().starts_with("vlan") && arg(1).get(4..).is_some_and(|n| n.parse::<u16>().is_ok()) => {
+                    format!("Vlan{}", arg(1).get(4..).unwrap_or(""))
+                }
+                None => return Err(format!("% No interface {}", arg(1))),
+            };
+            let dec: u8 = if args.len() > 2 { arg(2).parse().ok().filter(|n| *n > 0).ok_or("% The decrement is 1-255")? } else { 10 };
+            let add = spec.id == Id::StandbyTrack;
+            let apply = |list: &mut Vec<netlabcraft_model::Standby>| -> Result<(), String> {
+                if add && !list.iter().any(|s| s.group == group) {
+                    if list.len() >= netlabcraft_model::MAX_STANDBY {
+                        return Err("% Too many HSRP groups on this interface".into());
+                    }
+                    list.push(netlabcraft_model::Standby::new(group));
+                }
+                let Some(s) = list.iter_mut().find(|s| s.group == group) else { return Err(format!("% No HSRP group {group} here")) };
+                s.track.retain(|(n, _)| *n != name);
+                if add {
+                    if s.track.len() >= netlabcraft_model::MAX_TRACK {
+                        return Err(format!("% At most {} tracked interfaces", netlabcraft_model::MAX_TRACK));
+                    }
+                    s.track.push((name.clone(), dec));
+                }
+                Ok(())
+            };
+            if let Mode::Svi(v) = c.cli.mode {
+                apply(&mut c.dm()?.svi_mut(v).ok_or("% Too many VLAN interfaces")?.standby)?;
+                return Ok(String::new());
+            }
+            c.each_if(|p, sub| match sub {
+                Some(s) => apply(&mut s.standby),
+                None => apply(&mut p.standby),
+            })
+        }
         Id::StandbyIp | Id::StandbyIpGroup0 | Id::StandbyPriority | Id::StandbyPreempt | Id::NoStandby => {
             let group: u8 = if spec.id == Id::StandbyIpGroup0 { 0 } else { arg(0).parse().map_err(|_| "% The group is 0-255")? };
             let ip = match spec.id {
@@ -3944,6 +3997,17 @@ impl Ctx<'_> {
             }
         }
         Ok(String::new())
+    }
+
+    /// The names of the interfaces the mode configures (`GigabitEthernet0/0`, `…0/0.10`,
+    /// `Vlan10`).
+    fn mode_iface_names(&self) -> Result<Vec<String>, String> {
+        if let Mode::Svi(v) = &self.cli.mode {
+            return Ok(vec![format!("Vlan{v}")]);
+        }
+        let Mode::Iface(ifs) = &self.cli.mode else { return Err("% Not in interface mode".into()) };
+        let d = self.d()?;
+        Ok(ifs.iter().filter_map(|r| d.ports.get(r.port).map(|p| r.sub.map_or(p.name.clone(), |s| format!("{}.{s}", p.name)))).collect())
     }
 
     /// `security passwords min-length`: a new password must be at least that long.

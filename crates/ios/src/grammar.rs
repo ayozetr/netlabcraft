@@ -598,6 +598,10 @@ pub enum Id {
     StandbyPriority,
     StandbyPreempt,
     NoStandby,
+    StandbyVersion,
+    NoStandbyVersion,
+    StandbyTrack,
+    NoStandbyTrack,
     ShowStandby,
     SwModeDynAuto,
     SwModeDynDesirable,
@@ -1315,6 +1319,46 @@ pub static SPECS: &[Spec] = &[
         "HSRP: take over when this router has the highest priority"
     ),
     spec!(NoStandby, IFS, Modes::ROUTER, [K("no"), K("standby"), Arg("<0-255>")], "Remove an HSRP group"),
+    spec!(StandbyVersion, IFS, Modes::ROUTER, [K("standby"), K("version"), Arg("{1|2}")], "HSRP version on this interface"),
+    spec!(NoStandbyVersion, IFS, Modes::ROUTER, [K("no"), K("standby"), K("version")], "Back to HSRP version 1"),
+    spec!(
+        StandbyTrack,
+        IFS,
+        Modes::ROUTER,
+        [K("standby"), Arg("<0-255>"), K("track"), Arg("INTERFACE")],
+        "Lower the priority by 10 while an interface is down"
+    ),
+    spec!(
+        StandbyTrack,
+        IFS,
+        Modes::ROUTER,
+        [K("standby"), Arg("<0-255>"), K("track"), Arg("INTERFACE"), K("decrement"), Arg("<1-255>")],
+        "Lower the priority by this much while an interface is down"
+    ),
+    spec!(NoStandbyTrack, IFS, Modes::ROUTER, [K("no"), K("standby"), Arg("<0-255>"), K("track"), Arg("INTERFACE")], "Stop tracking an interface"),
+    spec!(StandbyVersion, Modes::SVI, Modes::SWITCH, [K("standby"), K("version"), Arg("{1|2}")], "HSRP version on this interface"),
+    spec!(NoStandbyVersion, Modes::SVI, Modes::SWITCH, [K("no"), K("standby"), K("version")], "Back to HSRP version 1"),
+    spec!(
+        StandbyTrack,
+        Modes::SVI,
+        Modes::SWITCH,
+        [K("standby"), Arg("<0-255>"), K("track"), Arg("INTERFACE")],
+        "Lower the priority by 10 while an interface is down"
+    ),
+    spec!(
+        StandbyTrack,
+        Modes::SVI,
+        Modes::SWITCH,
+        [K("standby"), Arg("<0-255>"), K("track"), Arg("INTERFACE"), K("decrement"), Arg("<1-255>")],
+        "Lower the priority by this much while an interface is down"
+    ),
+    spec!(
+        NoStandbyTrack,
+        Modes::SVI,
+        Modes::SWITCH,
+        [K("no"), K("standby"), Arg("<0-255>"), K("track"), Arg("INTERFACE")],
+        "Stop tracking an interface"
+    ),
     spec!(StandbyIp, Modes::SVI, Modes::SWITCH, [K("standby"), Arg("<0-255>"), K("ip"), Arg("A.B.C.D")], "HSRP: the group's virtual gateway address"),
     spec!(StandbyIpGroup0, Modes::SVI, Modes::SWITCH, [K("standby"), K("ip"), Arg("A.B.C.D")], "HSRP group 0's virtual gateway address"),
     spec!(

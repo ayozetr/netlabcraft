@@ -313,7 +313,7 @@ pub fn running_config(d: &Device) -> String {
             }
             None => {}
         }
-        standby_lines(&mut s, &p.standby);
+        standby_lines(&mut s, d, &p.name, &p.standby);
         ospf_if_lines(&mut s, d, &p.name);
         if d.kind == DeviceKind::Router {
             if netlabcraft_model::ifname::is_serial(&p.name) {
@@ -364,7 +364,7 @@ pub fn running_config(d: &Device) -> String {
                 let _ = writeln!(s, " ip address {} {}", ip.addr, ip.mask());
             }
             ipv6_lines(&mut s, &sub.ipv6);
-            standby_lines(&mut s, &sub.standby);
+            standby_lines(&mut s, d, &format!("{}.{}", p.name, sub.number), &sub.standby);
             ospf_if_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
             for h in &sub.helpers {
                 let _ = writeln!(s, " ip helper-address {h}");
@@ -398,7 +398,7 @@ pub fn running_config(d: &Device) -> String {
         }
         access_groups(&mut s, &svi.access);
         nat_side(&mut s, svi.nat);
-        standby_lines(&mut s, &svi.standby);
+        standby_lines(&mut s, d, &format!("Vlan{}", svi.vlan), &svi.standby);
         ospf_if_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
         crate::exec::qos::service_policy_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
         let _ = writeln!(s, "{}", if svi.shutdown { " shutdown" } else { " no shutdown" });
@@ -1307,7 +1307,10 @@ fn ospf_if_lines(s: &mut String, d: &Device, name: &str) {
     }
 }
 
-fn standby_lines(s: &mut String, list: &[netlabcraft_model::Standby]) {
+fn standby_lines(s: &mut String, d: &Device, name: &str, list: &[netlabcraft_model::Standby]) {
+    if d.mgmt.hsrp_v2.iter().any(|n| n == name) {
+        let _ = writeln!(s, " standby version 2");
+    }
     for g in list {
         if let Some(ip) = g.ip {
             let _ = writeln!(s, " standby {} ip {ip}", g.group);
@@ -1317,6 +1320,9 @@ fn standby_lines(s: &mut String, list: &[netlabcraft_model::Standby]) {
         }
         if g.preempt {
             let _ = writeln!(s, " standby {} preempt", g.group);
+        }
+        for (i, dec) in &g.track {
+            let _ = writeln!(s, " standby {} track {i}{}", g.group, if *dec == 10 { String::new() } else { format!(" decrement {dec}") });
         }
     }
 }
@@ -2117,7 +2123,10 @@ pub fn standby(d: &Device, roles: &[netlabcraft_sim::hsrp::Role]) -> String {
         };
         let _ =
             writeln!(s, "Group {} on {}: {} (priority {}{})", r.group, r.iface, r.state.name(), r.priority, if r.preempt { ", preempt" } else { "" });
-        let _ = writeln!(s, "  Virtual address {}, virtual MAC {}", r.virtual_ip, r.virtual_mac().dotted());
+        let _ = writeln!(s, "  Version {}, virtual address {}, virtual MAC {}", r.version, r.virtual_ip, r.virtual_mac().dotted());
+        if !r.tracked_down.is_empty() {
+            let _ = writeln!(s, "  Priority lowered from {}: tracked interface down ({})", r.configured_priority, r.tracked_down.join(", "));
+        }
         let _ = writeln!(
             s,
             "  Active: {}; standby: {}",
