@@ -20,7 +20,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 | Number | Value | Kind |
 |---|---|---|
-| **Ready for real work** (weighted) | **~74%** | estimated from written weights (74.0); [target-app-parity.md](docs/target-app-parity.md) |
+| **Ready for real work** (weighted) | **~75%** | estimated from written weights (74.5); [target-app-parity.md](docs/target-app-parity.md) |
 | **CCNA 1 student** | **~86%** | estimated; [method](docs/target-app-parity.md#audiences) |
 | **CCNA 2 student** | **~84%** | estimated |
 | **CCNA 3 student** | **~80%** | estimated |
@@ -28,7 +28,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Engine commands | 65 | measured: `crates/engine/src/catalog.rs` |
 | Console grammar entries | 453 across 18 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
 | Device models · sample labs | 16 · 18 | measured |
-| Tests | 199 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Tests | 207 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~550–880 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
@@ -48,7 +48,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Device console | 20 | 74% | 35–55 | Modes, abbreviations, `?`, Tab, history, config round-trip; `show` coverage growing |
 | Layer 2 | 12 | 85% | 12–20 | VLANs, trunks, DTP, per-VLAN STP with BPDUs and timers, rapid-pvst, EtherChannel, VTP, port security |
 | Layer 3 | 15 | 83% | 20–35 | IPv4, IPv6 (NDP, SLAAC, subinterfaces, VLAN interfaces, DHCPv6 relay), static, RIP, multi-area OSPF with DR/BDR, stub areas and ranges, OSPFv3, EIGRP with feasible successors, multilayer switching with OSPF and RIP, HSRP |
-| Services | 8 | 86% | 6–10 | DHCPv4 and DHCPv6 (with relay), DNS, HTTP with browser, email with the Email app, Telnet/SSH, NTP, syslog, TFTP, FTP, AAA with RADIUS and TACACS+, SNMP with a MIB Browser |
+| Services | 8 | 92% | 3–5 | DHCPv4 and DHCPv6 (with relay), DNS, HTTP with browser, email with the Email app, Telnet/SSH, NTP, syslog, TFTP, FTP, AAA with RADIUS and TACACS+, SNMP v2c/v3 with traps and a MIB Browser, mail relay between domains |
 | Security | 8 | 78% | 16–28 | IPv4 and IPv6 ACLs, access-class, NAT/PAT, passwords and lines, PPP PAP/CHAP, GRE tunnels and IPsec site-to-site; no firewalls |
 | WAN, cabling, wireless | 6 | 62% | 28–45 | Copper (auto-MDIX), serial (DCE/DTE, HDLC/PPP), Wi-Fi access points, home wireless routers and clients; no WLC or fibre |
 | Simulation mode | 8 | 70% | 18–28 | Event list, replay, decode, drop reasons, pcap; BPDUs, OSPF hellos and database exchange, RIP updates, HSRP hellos, LLDP, LACP; no complex PDUs |
@@ -60,6 +60,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-10-30 — SNMP traps, SNMPv3 and mail relay.** Routers and switches send link-down, link-up and cold-start traps that PCs and servers list in the MIB Browser; SNMPv3 users with MD5 or SHA authentication; mail servers hand mail for other domains to the right server and bounce what can't be delivered.
 - **2026-10-30 — Printing.** File ▸ Print puts the workspace on an A4 page with the lab's name and opens it in the system's PDF viewer to print; the web build downloads the PDF.
 - **2026-10-30 — Events in Spanish.** With the Spanish interface, the event list's summaries and the PDU details read in Spanish too; addresses, names and protocol names stay as they are.
 - **2026-10-30 — Compare with the answer.** After Check Results, the Instructions window's Compare button lists each check's answer next to what the student's lab has (the lab's side only when the answers are hidden).

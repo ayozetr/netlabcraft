@@ -1,6 +1,6 @@
 # Protocol and command parity
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (EIGRP, GRE tunnels, IPsec site-to-site) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (SNMP traps and v3, mail relay) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 What the simulated devices do, protocol by protocol, against the reference app. Part of
 [target-app-parity.md](target-app-parity.md). Behaviour comes from the standards named in each
@@ -63,12 +63,12 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | Telnet and SSH | RFC 854, RFC 4253 | ✅ | Local users, `login local`, `transport input`, RSA keys, `ip ssh version`. The SSH session is simulated, not encrypted. |
 | TFTP | RFC 1350 | ✅ | Server TFTP service with a file list; `copy running-config|startup-config tftp: <address> [file]`, `copy tftp: running-config|startup-config <address> <file>`; 512-byte blocks and acknowledgements on the wire (the server answers from port 69). |
 | FTP | RFC 959 | ✅ | Server FTP service with accounts (read, write, delete, list) and files; the PC `ftp` client (`put`, `get`, `dir`, `delete`, `quit`) and `dir` for the PC's own files; `copy running-config|startup-config ftp:` and back with `ip ftp username/password`. Control and passive data connections over TCP on the wire (each command is its own session); the password is never shown in the event list. No active mode or `rename`. |
-| Email (SMTP/POP3) | RFC 5321, RFC 1939 | ✅ | The server's EMAIL service (domain, users, mailboxes saved with the lab); the PC Desktop Email app (account, inbox, compose, receive); SMTP and POP3 sessions over TCP on the wire (the password masked); fetched mail leaves the server. One server per domain: no relaying between mail servers. |
+| Email (SMTP/POP3) | RFC 5321, RFC 1939 | ✅ | The server's EMAIL service (domain, users, mailboxes saved with the lab); the PC Desktop Email app (account, inbox, compose, receive); SMTP and POP3 sessions over TCP on the wire (the password masked); fetched mail leaves the server. A server relays mail for its own users to another domain's server, found through its DNS server's A record for the domain (no MX records); failed deliveries come back as a bounce; it refuses to relay for anyone else. |
 | NTP | RFC 5905 | ✅ | Server NTP service; `ntp server` syncs at once and every 64 s; `show ntp status/associations`. No authentication or stratum chains. |
 | Syslog | RFC 5424 | ✅ | `logging host` sends every log message to the server, whose SYSLOG page lists them. No severity filtering (`logging trap`). |
 | AAA with RADIUS | RFC 2865 | ✅ | `aaa new-model`, `aaa authentication login default group radius local`, `radius-server host X key K`, `login authentication default`; vty logins (Telnet, SSH) ask the server; Access-Request with the password hidden and signed answers on the wire (MD5, RFC 1321), retransmitted; a wrong secret or no answer falls back to the next method; the Server's AAA service holds clients and users. Console logins keep their line settings. |
 | TACACS+ | RFC 8907 | ✅ | `tacacs-server host X key K`, `group tacacs+` in the login method list; the Server's AAA service answers on TCP 49 with the same clients and users; a PAP login per exchange with the body encrypted by the key's MD5 pad; an answer that doesn't read with the key falls back to the next method. |
-| SNMP | RFC 3416 | ✅ | SNMPv2c agents on routers and switches (`snmp-server community NAME ro|rw`, `location`, `contact`, `show snmp`): get, get-next and set on the system group and the interfaces table; a set of sysName, sysContact or sysLocation with a read-write community changes the device; a wrong community gets no answer. The PC's MIB Browser (get, get-next, set, walk). No traps or SNMPv3: 4–6 h. |
+| SNMP | RFC 3416 | ✅ | SNMPv2c agents on routers and switches (`snmp-server community NAME ro|rw`, `location`, `contact`, `show snmp`): get, get-next and set on the system group and the interfaces table; a set of sysName, sysContact or sysLocation with a read-write community changes the device; a wrong community gets no answer. The PC's MIB Browser (get, get-next, set, walk, v2c or v3). v2c traps (`snmp-server host`, `snmp-server enable traps` linkdown, linkup, coldstart) received and listed by PCs and servers (MIB Browser ▸ Traps, `snmp.traps`). SNMPv3 with users and groups, noAuthNoPriv and authNoPriv (HMAC-MD5/SHA-96, engine discovery, Report PDUs). No v3 privacy, v3 or v1 traps, informs: 3–5 h. |
 
 ## Security
 
@@ -114,6 +114,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | SNMP traps and SNMPv3 (no privacy); mail relay between domains with bounces. |
 | 2026-10-30 | minor | EIGRP; GRE tunnels; IPsec site-to-site. |
 | 2026-10-30 | minor | Spanning-tree listening/learning timers and `spanning-tree mode rapid-pvst`. |
 | 2026-10-30 | minor | NTP, syslog and TFTP. |

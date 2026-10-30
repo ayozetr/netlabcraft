@@ -16,8 +16,8 @@ This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summa
 | Console grammar entries | **453** across 18 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
 | Device models | **16** | measured: `crates/model/src/models.rs` |
 | Sample labs | **18** | measured: `crates/engine/src/sample.rs` |
-| Tests | **199** | measured: `cargo test --workspace` |
-| **Ready for real work** (weighted) | **~74%** | estimated; written weights below (74.0 computed) |
+| Tests | **207** | measured: `cargo test --workspace` |
+| **Ready for real work** (weighted) | **~75%** | estimated; written weights below (74.5 computed) |
 | **CCNA 1 student** (Introduction to Networks) | **~86%** | estimated; [method](#audiences) |
 | **CCNA 2 student** (Switching, Routing and Wireless Essentials) | **~84%** | estimated; [method](#audiences) |
 | **CCNA 3 student** (Enterprise Networking, Security and Automation) | **~80%** | estimated; [method](#audiences) |
@@ -63,14 +63,14 @@ Weights reflect how much of a typical CCNA lab session each area carries.
 | Device console (modes, commands, `show` output, help, completion) | 20 | 74% | 14.8 | [protocol-parity.md](protocol-parity.md#console) | 60–90 |
 | Layer 2 (VLANs, trunks, STP, EtherChannel, VTP, port security, DTP) | 12 | 85% | 10.2 | [protocol-parity.md](protocol-parity.md#layer-2) | 25–40 |
 | Layer 3 (static, RIP, OSPF, EIGRP, IPv6, multilayer switching) | 15 | 83% | 12.5 | [protocol-parity.md](protocol-parity.md#layer-3) | 55–90 |
-| Services (DHCP, DNS, HTTP, FTP, email, NTP, syslog, AAA) | 8 | 86% | 6.9 | [protocol-parity.md](protocol-parity.md#services) | 40–60 |
+| Services (DHCP, DNS, HTTP, FTP, email, NTP, syslog, AAA) | 8 | 92% | 7.4 | [protocol-parity.md](protocol-parity.md#services) | 30–45 |
 | Security (ACLs, NAT, SSH, passwords, AAA, PPP authentication) | 8 | 78% | 6.2 | [protocol-parity.md](protocol-parity.md#security) | 25–40 |
 | WAN, cabling and wireless | 6 | 62% | 3.7 | [hardware-parity.md](hardware-parity.md) | 60–90 |
 | Simulation mode (event list, PDU details, filters, complex PDUs) | 8 | 70% | 5.6 | [ui-parity.md](ui-parity.md) | 22–35 |
 | Workspace and windows (canvas, device tabs, physical view, drawing) | 10 | 65% | 6.5 | [ui-parity.md](ui-parity.md) | 38–56 |
 | Teaching (activities, scoring, instructions, languages) | 8 | 80% | 6.4 | [gaps.md](gaps.md) | 30–50 |
 | Device families and hardware (models, modules, ASA, IoT) | 5 | 25% | 1.3 | [hardware-parity.md](hardware-parity.md) | 80–120 |
-| **Total** | **100** | | **74.0** | | **~550–880** |
+| **Total** | **100** | | **74.5** | | **~550–880** |
 
 ## Audiences
 
@@ -105,6 +105,7 @@ misses commands students meet in the first labs. Alpha gates are in
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | SNMP traps and v3, mail relay: services 86% → 92%, total 74.0 → 74.5. |
 | 2026-10-30 | minor | File ▸ Print: workspace 63% → 65%, total 73.8 → 74.0. |
 | 2026-10-30 | minor | Compare with the Answer: teaching 75% → 80%, instructor ~72% → ~78%, total 73.4 → 73.8. |
 | 2026-10-30 | minor | EIGRP: layer 3 78% → 83%; GRE/IPsec: security 72% → 78%; drawings and clusters: workspace 55% → 63%; total 71.4 → 73.4, CCNA 3 ~74% → ~80%; engine commands, grammar entries and models recounted (65, 453 across 18 modes, 16); the headline row said ~50% by mistake. |
