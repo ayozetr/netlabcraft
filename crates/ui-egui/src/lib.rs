@@ -103,6 +103,11 @@ pub struct UiState {
     pub tool: Tool,
     pub mode: Mode,
     pub selected: Option<DeviceId>,
+    /// Devices and clusters picked together (Shift+click, Shift+drag), for grouping or moving.
+    pub picked: std::collections::BTreeSet<DeviceId>,
+    pub picked_clusters: std::collections::BTreeSet<u32>,
+    /// The cluster being renamed, and the name typed so far.
+    pub renaming_cluster: Option<(u32, String)>,
     pub pan: egui::Vec2,
     pub zoom: f32,
     pub windows: BTreeMap<DeviceId, console::DeviceWindow>,
@@ -145,6 +150,9 @@ impl Default for UiState {
             tool: Tool::Select,
             mode: Mode::Realtime,
             selected: None,
+            picked: Default::default(),
+            picked_clusters: Default::default(),
+            renaming_cluster: None,
             pan: egui::Vec2::ZERO,
             zoom: 1.0,
             windows: BTreeMap::new(),
@@ -449,6 +457,7 @@ impl PacketApp {
     fn after_replace(&mut self) {
         self.ui.windows.clear();
         self.ui.selected = None;
+        self.clear_picks();
         self.ui.inspect = None;
         self.ui.pdus.clear();
         self.ui.events = events::EventView::default();
@@ -504,6 +513,68 @@ impl PacketApp {
         }
     }
 
+    fn clear_picks(&mut self) {
+        self.ui.picked.clear();
+        self.ui.picked_clusters.clear();
+        self.ui.renaming_cluster = None;
+        self.ui.canvas.cancel();
+    }
+
+    /// Something to group: picked devices or clusters, or the selected device.
+    pub fn can_group(&self) -> bool {
+        !self.ui.picked.is_empty() || !self.ui.picked_clusters.is_empty() || self.ui.selected.is_some()
+    }
+
+    /// Groups the picked devices and clusters (or the selected device) into a new cluster.
+    pub fn group_selection(&mut self) {
+        let mut devices: Vec<u32> = self.ui.picked.iter().map(|d| d.0).collect();
+        if let Some(d) = self.ui.selected
+            && !self.ui.picked.contains(&d)
+        {
+            devices.push(d.0);
+        }
+        let clusters: Vec<u32> = self.ui.picked_clusters.iter().copied().collect();
+        if devices.is_empty() && clusters.is_empty() {
+            self.info(tl("Pick devices first: Shift+click them or Shift+drag a box around them."));
+            return;
+        }
+        if let Some(v) = self.run("cluster.create", json!({"devices": devices, "clusters": clusters})) {
+            let name = v.get("name").and_then(Value::as_str).unwrap_or_default().to_string();
+            self.ui.selected = None;
+            self.ui.picked.clear();
+            self.ui.picked_clusters.clear();
+            if let Some(id) = v.get("id").and_then(Value::as_u64).and_then(|i| u32::try_from(i).ok()) {
+                self.ui.picked_clusters.insert(id);
+            }
+            self.info(crate::i18n::trf("Grouped into {}: double-click it to open it.", &[&name]));
+        }
+    }
+
+    /// Dissolves the picked clusters.
+    pub fn ungroup_selection(&mut self) {
+        for c in std::mem::take(&mut self.ui.picked_clusters) {
+            self.run("cluster.dissolve", json!({"id": c}));
+        }
+    }
+
+    /// Shows a cluster's inside on the workspace.
+    pub fn enter_cluster(&mut self, c: u32) {
+        if self.run("view.enter_cluster", json!({"id": c})).is_some() {
+            self.ui.selected = None;
+            self.clear_picks();
+            canvas::fit_view(self);
+        }
+    }
+
+    /// Back up one cluster (`root`: to the top level).
+    pub fn leave_cluster(&mut self, root: bool) {
+        if self.run(if root { "view.root" } else { "view.up" }, json!({})).is_some() {
+            self.ui.selected = None;
+            self.clear_picks();
+            canvas::fit_view(self);
+        }
+    }
+
     pub fn set_tool(&mut self, t: Tool) {
         self.ui.tool = t;
         self.ui.canvas.cancel();
@@ -547,7 +618,15 @@ impl PacketApp {
             self.run("device.remove", json!({"device": d.0}));
         }
         if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
-            self.set_tool(Tool::Select);
+            // Esc first drops a polygon being placed, then the tool.
+            if self.ui.canvas.poly.is_empty() {
+                self.set_tool(Tool::Select);
+            } else {
+                self.ui.canvas.poly.clear();
+            }
+        }
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::G))) {
+            self.group_selection();
         }
         if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::C))) {
             self.copy();
@@ -586,6 +665,7 @@ impl PacketApp {
         console::windows(self, &ctx);
         canvas::inspect_window(self, &ctx);
         canvas::note_editor(self, &ctx);
+        canvas::cluster_rename_window(self, &ctx);
         events::pdu_window(self, &ctx);
         self.notes_window(&ctx);
         activity::windows(self, &ctx);
@@ -657,6 +737,13 @@ impl PacketApp {
                     && let Some(d) = self.ui.selected.take()
                 {
                     self.run("device.remove", json!({"device": d.0}));
+                }
+                ui.separator();
+                if ui.add_enabled(self.can_group(), egui::Button::new(tl("Group into Cluster")).shortcut_text("Ctrl+G")).clicked() {
+                    self.group_selection();
+                }
+                if ui.add_enabled(!self.ui.picked_clusters.is_empty(), egui::Button::new(tl("Uncluster"))).clicked() {
+                    self.ungroup_selection();
                 }
             });
             ui.menu_button(tl("Options"), |ui| {
@@ -795,6 +882,9 @@ impl PacketApp {
                 }
             }
             tool_button(ui, Glyph::Resize, "Resize Shape (not available yet)", false, false);
+            if tool_button(ui, Glyph::Cluster, "Group into Cluster (Ctrl+G): the picked devices", false, self.can_group()).clicked() {
+                self.group_selection();
+            }
             ui.add_space(8.0);
             if tool_button(ui, Glyph::Note, "Place Note (N)", t == Tool::Note, true).clicked() {
                 self.set_tool(Tool::Note);
@@ -810,7 +900,15 @@ impl PacketApp {
                     self.set_tool(Tool::Draw(shape));
                 }
             }
-            tool_button(ui, Glyph::Freeform, "Draw Freeform (not available yet)", false, false);
+            if tool_button(ui, Glyph::Freeform, "Draw Freehand (drag on the workspace)", t == Tool::Draw(packetcraft_model::Shape::Freehand), true)
+                .clicked()
+            {
+                self.set_tool(Tool::Draw(packetcraft_model::Shape::Freehand));
+            }
+            if tool_button(ui, Glyph::Polygon, "Draw Polygon (click the corners)", t == Tool::Draw(packetcraft_model::Shape::Polygon), true).clicked()
+            {
+                self.set_tool(Tool::Draw(packetcraft_model::Shape::Polygon));
+            }
             ui.add_space(8.0);
             if tool_button(ui, Glyph::SimplePdu, "Add Simple PDU (P)", t == Tool::Ping, true).clicked() {
                 self.set_tool(Tool::Ping);
@@ -859,8 +957,33 @@ impl PacketApp {
                         self.ui.pan = egui::Vec2::ZERO;
                         self.ui.zoom = 1.0;
                     }
+                    if resp.clicked() && g == Glyph::Undo {
+                        self.leave_cluster(false);
+                    }
                 }
-                ui.label(RichText::new(tl("Root")).color(tk.bar_text).size(17.0));
+                // Where the workspace is: Root › Cluster › … (right to left here); each opens.
+                let t = &self.session.topology;
+                let path: Vec<(u32, String)> =
+                    t.cluster_path(self.session.view).iter().filter_map(|c| t.cluster(*c)).map(|c| (c.id, c.name.clone())).collect();
+                let mut go: Option<Option<u32>> = None;
+                for (i, (id, name)) in path.iter().enumerate().rev() {
+                    let last = i + 1 == path.len();
+                    let text = RichText::new(name).color(tk.bar_text).size(17.0);
+                    let r = ui.add(egui::Label::new(if last { text.strong() } else { text }).sense(Sense::click()));
+                    if r.clicked() && !last {
+                        go = Some(Some(*id));
+                    }
+                    ui.label(RichText::new("›").color(tk.bar_text).size(17.0));
+                }
+                let root = ui.add(egui::Label::new(RichText::new(tl("Root")).color(tk.bar_text).size(17.0)).sense(Sense::click()));
+                if root.on_hover_text(tl("Back to the top level")).clicked() && self.session.view.is_some() {
+                    go = Some(None);
+                }
+                match go {
+                    Some(Some(c)) => self.enter_cluster(c),
+                    Some(None) => self.leave_cluster(true),
+                    None => {}
+                }
             });
         });
     }

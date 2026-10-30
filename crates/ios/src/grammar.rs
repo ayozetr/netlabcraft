@@ -506,7 +506,13 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowStartup, Modes::EXEC, Modes::BOTH, [K("show"), K("startup-config")], "Saved configuration"),
     spec!(ShowIpIntBrief, EXECS, Modes::BOTH, [K("show"), K("ip"), K("interface"), K("brief")], "Interface addresses and status"),
     spec!(ShowIpRoute, EXECS, Modes::BOTH, [K("show"), K("ip"), K("route")], "Routing table"),
-    spec!(ShowIpRoute, EXECS, Modes::BOTH, [K("show"), K("ip"), K("route"), Arg("{connected|static|eigrp|ospf|rip}")], "Only the routes one source gave"),
+    spec!(
+        ShowIpRoute,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("route"), Arg("{connected|static|eigrp|ospf|rip}")],
+        "Only the routes one source gave"
+    ),
     spec!(ShowArp, EXECS, Modes::BOTH, [K("show"), K("ip"), K("arp")], "ARP cache"),
     spec!(ShowArp, EXECS, Modes::BOTH, [K("show"), K("arp")], "ARP cache"),
     spec!(ShowInterfaces, EXECS, Modes::BOTH, [K("show"), K("interfaces")], "Interface details"),

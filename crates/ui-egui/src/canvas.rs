@@ -2,7 +2,7 @@
 
 use egui::{Align2, FontId, Id, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2, pos2, vec2};
 use packetcraft_core::DeviceId;
-use packetcraft_model::{Device, End, ifname};
+use packetcraft_model::{Cluster, Device, End, Shape, Shown, ifname};
 use packetcraft_sim::port_up;
 use serde_json::{Value, json};
 
@@ -37,14 +37,33 @@ pub struct CanvasState {
     stp_for: u64,
     stp: std::collections::BTreeMap<u16, packetcraft_sim::stp::VlanTree>,
     context: Option<DeviceId>,
+    /// A cluster or drawing right-clicked (its menu is open).
+    context_cluster: Option<u32>,
+    context_note: Option<u32>,
+    drag_cluster: Option<u32>,
+    /// Dragging every picked device together.
+    drag_group: bool,
+    /// A freehand stroke being drawn, and the corners of a polygon being placed (workspace units).
+    stroke: Vec<(f32, f32)>,
+    pub(crate) poly: Vec<(f32, f32)>,
+    /// Where a selection rectangle started (screen).
+    band: Option<Pos2>,
+    /// The workspace's size on screen (last frame).
+    pub(crate) size: Vec2,
 }
 
 impl CanvasState {
     pub fn cancel(&mut self) {
         self.pending = None;
         self.port_menu = None;
+        self.stroke.clear();
+        self.poly.clear();
+        self.band = None;
     }
 }
+
+/// Most points a freehand stroke records while dragging (the engine simplifies it further).
+const MAX_STROKE: usize = 4_000;
 
 /// The status-bar hint for the current tool.
 pub fn hint(app: &PacketApp) -> String {
@@ -52,8 +71,17 @@ pub fn hint(app: &PacketApp) -> String {
         (Tool::Select, _) if app.session.topology.devices.is_empty() => {
             crate::i18n::tl("Pick a device in the palette and click the canvas to place it, or open a sample from File.").into()
         }
-        (Tool::Select, _) => crate::i18n::tl("Click a device to configure it · drag to move · scroll to pan, Ctrl+scroll to zoom").into(),
+        (Tool::Select, _) if !app.ui.picked.is_empty() || !app.ui.picked_clusters.is_empty() => {
+            crate::i18n::tl("Several picked: drag one to move them all · Ctrl+G groups them into a cluster").into()
+        }
+        (Tool::Select, _) => {
+            crate::i18n::tl("Click a device to configure it · drag to move · Shift+drag or Shift+click to pick several · scroll to pan").into()
+        }
         (Tool::Place(m), _) => crate::i18n::trf("Click the workspace to place a {}. Esc to stop.", &[&m]),
+        (Tool::Draw(packetcraft_model::Shape::Freehand), _) => crate::i18n::tl("Drag on the workspace to draw freehand.").into(),
+        (Tool::Draw(packetcraft_model::Shape::Polygon), _) => {
+            crate::i18n::tl("Click the corners of the polygon; double-click or Enter to finish, Esc to cancel.").into()
+        }
         (Tool::Draw(_), _) => crate::i18n::tl("Drag on the workspace to draw. Drawings sit behind devices; move them with Select.").into(),
         (Tool::Note, _) => crate::i18n::tl("Click the workspace to place a note. Drag notes to move them; double-click to edit.").into(),
         (Tool::Cable, None) => crate::i18n::tl("Click the first device and pick a port.").into(),
@@ -71,6 +99,9 @@ pub fn hint(app: &PacketApp) -> String {
 struct View {
     origin: Vec2,
     zoom: f32,
+    /// The cluster shown (none: the top level), and how each device appears in it.
+    level: Option<u32>,
+    shown: std::collections::BTreeMap<DeviceId, Shown>,
 }
 
 impl View {
@@ -86,10 +117,32 @@ impl View {
     fn device_rect(&self, d: &Device) -> Rect {
         Rect::from_center_size(self.screen(d.x, d.y), Vec2::splat(ICON * self.zoom))
     }
+
+    fn cluster_rect(&self, c: &Cluster) -> Rect {
+        Rect::from_center_size(self.screen(c.x, c.y), vec2(ICON * 1.6, ICON * 1.1) * self.zoom)
+    }
+
+    /// The device is drawn as itself in this view.
+    fn visible(&self, d: DeviceId) -> bool {
+        self.shown.get(&d) == Some(&Shown::Device)
+    }
+
+    /// Where a device appears in this view: itself, or the cluster icon holding it.
+    fn stand_in(&self, t: &packetcraft_model::Topology, d: DeviceId) -> Option<(Shown, Pos2)> {
+        match *self.shown.get(&d)? {
+            Shown::Device => t.device(d).map(|x| (Shown::Device, self.screen(x.x, x.y))),
+            Shown::Cluster(c) => t.cluster(c).map(|x| (Shown::Cluster(c), self.screen(x.x, x.y))),
+        }
+    }
 }
 
 fn hit_device(app: &PacketApp, view: &View, p: Pos2) -> Option<DeviceId> {
-    app.session.topology.devices.iter().rev().find(|d| view.device_rect(d).expand(6.0).contains(p)).map(|d| d.id)
+    app.session.topology.devices.iter().rev().filter(|d| view.visible(d.id)).find(|d| view.device_rect(d).expand(6.0).contains(p)).map(|d| d.id)
+}
+
+fn hit_cluster(app: &PacketApp, view: &View, p: Pos2) -> Option<u32> {
+    let t = &app.session.topology;
+    t.clusters_in(view.level).collect::<Vec<_>>().into_iter().rev().find(|c| view.cluster_rect(c).expand(4.0).contains(p)).map(|c| c.id)
 }
 
 /// The screen rectangle of a workspace note.
@@ -101,13 +154,13 @@ fn note_rect(ctx: &egui::Context, view: &View, a: &packetcraft_model::Annotation
 
 fn hit_note(app: &PacketApp, view: &View, p: Pos2) -> Option<u32> {
     let ctx = app.ui.canvas.ctx.as_ref()?;
-    let notes = &app.session.topology.annotations;
+    let notes: Vec<&packetcraft_model::Annotation> = app.session.topology.annotations.iter().filter(|a| a.cluster == view.level).collect();
     // Text notes sit on top of drawings.
     notes
         .iter()
         .rev()
-        .find(|a| a.shape == packetcraft_model::Shape::Text && note_rect(ctx, view, a).contains(p))
-        .or_else(|| notes.iter().rev().find(|a| a.shape != packetcraft_model::Shape::Text && shape_hit(view, a, p)))
+        .find(|a| a.shape == Shape::Text && note_rect(ctx, view, a).contains(p))
+        .or_else(|| notes.iter().rev().find(|a| a.shape != Shape::Text && shape_hit(view, a, p)))
         .map(|a| a.id)
 }
 
@@ -116,11 +169,79 @@ fn shape_rect(view: &View, a: &packetcraft_model::Annotation) -> Rect {
     Rect::from_two_pos(view.screen(a.x, a.y), view.screen(a.x + a.w, a.y + a.h))
 }
 
+/// A freehand stroke's or polygon's points on screen.
+fn path_points(view: &View, a: &packetcraft_model::Annotation) -> Vec<Pos2> {
+    a.points.iter().map(|p| view.screen(a.x + p[0], a.y + p[1])).collect()
+}
+
+fn near_path(pts: &[Pos2], p: Pos2, closed: bool) -> bool {
+    let close = closed.then(|| pts.last().zip(pts.first())).flatten();
+    pts.windows(2).filter_map(|w| Some((*w.first()?, *w.get(1)?))).chain(close.map(|(a, b)| (*a, *b))).any(|(a, b)| segment_distance(p, a, b) < 6.0)
+}
+
+/// Whether `p` is inside a polygon (even-odd rule).
+fn inside_polygon(pts: &[Pos2], p: Pos2) -> bool {
+    let mut inside = false;
+    let n = pts.len();
+    for i in 0..n {
+        let (Some(a), Some(b)) = (pts.get(i), pts.get((i + n - 1) % n)) else { continue };
+        if (a.y > p.y) != (b.y > p.y) && p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x {
+            inside = !inside;
+        }
+    }
+    inside
+}
+
 fn shape_hit(view: &View, a: &packetcraft_model::Annotation, p: Pos2) -> bool {
     match a.shape {
-        packetcraft_model::Shape::Line => segment_distance(p, view.screen(a.x, a.y), view.screen(a.x + a.w, a.y + a.h)) < 6.0,
+        Shape::Line => segment_distance(p, view.screen(a.x, a.y), view.screen(a.x + a.w, a.y + a.h)) < 6.0,
+        Shape::Freehand => near_path(&path_points(view, a), p, false),
+        Shape::Polygon => {
+            let pts = path_points(view, a);
+            inside_polygon(&pts, p) || near_path(&pts, p, true)
+        }
         _ => shape_rect(view, a).contains(p),
     }
+}
+
+fn cross(a: Pos2, b: Pos2, c: Pos2) -> f32 {
+    (b - a).x * (c - a).y - (b - a).y * (c - a).x
+}
+
+/// Splits a simple polygon (convex or not) into triangles by ear clipping. A self-crossing
+/// polygon gets as many triangles as can be found; the outline is drawn anyway.
+fn triangulate(pts: &[Pos2]) -> Vec<[u32; 3]> {
+    let n = pts.len();
+    let mut out = Vec::new();
+    if n < 3 {
+        return out;
+    }
+    let area: f32 = (0..n).filter_map(|i| Some(cross(Pos2::ZERO, *pts.get(i)?, *pts.get((i + 1) % n)?))).sum();
+    let sign = if area >= 0.0 { 1.0 } else { -1.0 };
+    let mut idx: Vec<usize> = (0..n).collect();
+    let at = |i: usize| pts.get(i).copied().unwrap_or(Pos2::ZERO);
+    while idx.len() > 3 {
+        let m = idx.len();
+        let ear = (0..m).find_map(|i| {
+            let (a, b, c) = (*idx.get((i + m - 1) % m)?, *idx.get(i)?, *idx.get((i + 1) % m)?);
+            let (pa, pb, pc) = (at(a), at(b), at(c));
+            if cross(pa, pb, pc) * sign <= 0.0 {
+                return None;
+            }
+            let blocked = idx.iter().filter(|j| ![a, b, c].contains(j)).any(|j| {
+                let q = at(*j);
+                cross(pa, pb, q) * sign >= 0.0 && cross(pb, pc, q) * sign >= 0.0 && cross(pc, pa, q) * sign >= 0.0
+            });
+            (!blocked).then_some((i, [a, b, c]))
+        });
+        let Some((i, tri)) = ear else { break };
+        out.push(tri.map(|v| v as u32));
+        idx.remove(i);
+    }
+    if let [a, b, c] = idx.as_slice() {
+        out.push([*a as u32, *b as u32, *c as u32]);
+    }
+    out
 }
 
 const DRAW_COLORS: [&str; 5] = ["#bcd9f2", "#c8ecc0", "#fde9a8", "#f6c6c6", "#d9cff2"];
@@ -154,18 +275,53 @@ fn paint_shape(painter: &egui::Painter, view: &View, a: &packetcraft_model::Anno
                 Stroke::new((3.0 * view.zoom).max(1.5), crate::theme::shade(fill, 0.6)),
             );
         }
+        Shape::Freehand => {
+            let stroke = Stroke::new((3.0 * view.zoom).max(1.5), crate::theme::shade(fill, 0.6));
+            painter.add(egui::Shape::line(path_points(view, a), stroke));
+        }
+        Shape::Polygon => {
+            let pts = path_points(view, a);
+            let mut mesh = egui::Mesh::default();
+            for p in &pts {
+                mesh.colored_vertex(*p, fill);
+            }
+            for [i, j, k] in triangulate(&pts) {
+                mesh.add_triangle(i, j, k);
+            }
+            painter.add(mesh);
+            painter.add(egui::Shape::closed_line(pts, edge));
+        }
         packetcraft_model::Shape::Text => {}
     }
 }
 
 fn draw_shapes(app: &PacketApp, painter: &egui::Painter, view: &View) {
-    for a in app.session.topology.annotations.iter().filter(|a| a.shape != packetcraft_model::Shape::Text) {
+    for a in app.session.topology.annotations.iter().filter(|a| a.shape != packetcraft_model::Shape::Text && a.cluster == view.level) {
         paint_shape(painter, view, a);
     }
 }
 
+/// A drawing in progress: the freehand stroke so far, or the polygon's corners and the pointer.
+fn draw_in_progress(app: &PacketApp, painter: &egui::Painter, view: &View, pointer: Option<Pos2>) {
+    let c = &app.ui.canvas;
+    let [r, g, b] = packetcraft_model::parse_color(next_color(app)).unwrap_or([0xbc, 0xd9, 0xf2]);
+    let color = crate::theme::shade(egui::Color32::from_rgb(r, g, b), 0.6);
+    let stroke = Stroke::new((3.0 * view.zoom).max(1.5), color);
+    if c.stroke.len() > 1 {
+        painter.add(egui::Shape::line(c.stroke.iter().map(|(x, y)| view.screen(*x, *y)).collect(), stroke));
+    }
+    if !c.poly.is_empty() {
+        let mut pts: Vec<Pos2> = c.poly.iter().map(|(x, y)| view.screen(*x, *y)).collect();
+        for p in &pts {
+            painter.circle_filled(*p, 3.5, color);
+        }
+        pts.extend(pointer);
+        painter.add(egui::Shape::line(pts, Stroke::new(1.5, color)));
+    }
+}
+
 fn draw_notes(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Tokens) {
-    for a in app.session.topology.annotations.iter().filter(|a| a.shape == packetcraft_model::Shape::Text) {
+    for a in app.session.topology.annotations.iter().filter(|a| a.shape == packetcraft_model::Shape::Text && a.cluster == view.level) {
         let r = note_rect(painter.ctx(), view, a);
         painter.rect_filled(r, 2.0, if app.ui.dark { tk.chrome } else { egui::Color32::from_rgb(0xf3, 0xf4, 0xf6) });
         let font = FontId::proportional((15.0 * view.zoom).clamp(8.0, 24.0));
@@ -211,7 +367,7 @@ pub fn note_editor(app: &mut PacketApp, ctx: &egui::Context) {
 
 fn hit_link(app: &PacketApp, view: &View, p: Pos2) -> Option<End> {
     let t = &app.session.topology;
-    t.links.iter().find_map(|l| {
+    t.links.iter().filter(|l| view.visible(l.a.device) && view.visible(l.b.device)).find_map(|l| {
         let (pa, pb) = cable_ends(t, view, l)?;
         (segment_distance(p, pa, pb) < 6.0).then_some(l.a)
     })
@@ -258,6 +414,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
     app.ui.canvas.ctx = Some(ui.ctx().clone());
     let rect = ui.max_rect();
     app.ui.canvas_rect = Some(rect);
+    app.ui.canvas.size = rect.size();
     let resp = ui.allocate_rect(rect, Sense::click_and_drag());
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 0.0, tk.canvas);
@@ -277,7 +434,8 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
             app.ui.pan += scroll;
         }
     }
-    let view = View { origin: rect.min.to_vec2() + app.ui.pan, zoom: app.ui.zoom };
+    let level = app.session.view;
+    let view = View { origin: rect.min.to_vec2() + app.ui.pan, zoom: app.ui.zoom, level, shown: app.session.topology.shown_map(level) };
     app.ui.pointer = resp.hover_pos().map(|p| view.world(p));
 
     // Grid (Options ▸ Show grid).
@@ -310,11 +468,20 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
             w: x1 - x0,
             h: y1 - y0,
             color: Some(next_color(app).to_string()),
+            points: Vec::new(),
+            cluster: None,
         };
         paint_shape(&painter, &view, &preview);
     }
+    draw_in_progress(app, &painter, &view, ui.input(|i| i.pointer.hover_pos()));
     draw_packet(app, ui, &painter, &view, &tk);
+    draw_clusters(app, &painter, &view, &tk);
     draw_devices(app, &painter, &view, &tk);
+    if let (Some(a), Some(b)) = (app.ui.canvas.band, ui.input(|i| i.pointer.hover_pos())) {
+        let r = Rect::from_two_pos(a, b);
+        painter.rect_filled(r, 0.0, tk.selection.gamma_multiply(0.08));
+        painter.rect_stroke(r, 0.0, Stroke::new(1.0, tk.selection), StrokeKind::Inside);
+    }
 
     // A cable being drawn follows the pointer.
     if let (Some(Pending::CableFrom(e)), Some(p)) = (app.ui.canvas.pending, ui.input(|i| i.pointer.hover_pos()))
@@ -361,7 +528,23 @@ fn draw_links(app: &mut PacketApp, painter: &egui::Painter, view: &View, tk: &To
     let blocked: Vec<End> = ends.into_iter().filter(|e| stp_blocked(app, *e)).collect();
     let t = &app.session.topology;
     let mut lights: Vec<(End, Pos2)> = Vec::new();
+    // Cables that leave a cluster run to its icon; one line per pair of icons.
+    let mut outside = std::collections::BTreeSet::new();
     for l in &t.links {
+        let (Some((sa, pa)), Some((sb, pb))) = (view.stand_in(t, l.a.device), view.stand_in(t, l.b.device)) else { continue };
+        if (sa == Shown::Device && sb == Shown::Device) || sa == sb {
+            continue;
+        }
+        let key = |s: Shown, d: DeviceId| match s {
+            Shown::Device => (0, d.0),
+            Shown::Cluster(c) => (1, c),
+        };
+        let (ka, kb) = (key(sa, l.a.device), key(sb, l.b.device));
+        if outside.insert((ka.min(kb), ka.max(kb))) {
+            painter.line_segment([pa, pb], Stroke::new((2.2 * view.zoom).max(1.0), tk.cable));
+        }
+    }
+    for l in t.links.iter().filter(|l| view.visible(l.a.device) && view.visible(l.b.device)) {
         let Some((pa, pb)) = cable_ends(t, view, l) else { continue };
         // How far this cable sits from the straight line between its devices (side-by-side cables).
         let spread = match (t.device(l.a.device), t.device(l.b.device)) {
@@ -428,20 +611,20 @@ fn draw_links(app: &mut PacketApp, painter: &egui::Painter, view: &View, tk: &To
         }
     }
     // Wi-Fi associations: a dashed line from each host to its access point.
-    for d in t.devices.iter().filter(|d| d.kind.is_host()) {
+    for d in t.devices.iter().filter(|d| d.kind.is_host() && view.visible(d.id)) {
         for p in 0..d.ports.len() {
             let end = End { device: d.id, port: p };
             if t.link_at(end).is_some() {
                 continue;
             }
-            let Some(ap) = t.wifi_ap_of(end).and_then(|e| t.device(e.device)) else { continue };
+            let Some(ap) = t.wifi_ap_of(end).and_then(|e| t.device(e.device)).filter(|ap| view.visible(ap.id)) else { continue };
             let (a, b) = (view.screen(d.x, d.y), view.screen(ap.x, ap.y));
             let stroke = Stroke::new((1.6 * view.zoom).max(1.0), tk.link_up);
             painter.add(egui::Shape::dashed_line(&[a, b], stroke, 8.0 * view.zoom, 6.0 * view.zoom));
         }
     }
     // An EtherChannel: a ring around its bundled cables, next to each switch.
-    for d in t.devices.iter().filter(|d| d.kind == packetcraft_model::DeviceKind::Switch) {
+    for d in t.devices.iter().filter(|d| d.kind == packetcraft_model::DeviceKind::Switch && view.visible(d.id)) {
         for c in packetcraft_sim::channel::channels(t, d) {
             let pts: Vec<Pos2> =
                 c.bundled().iter().filter_map(|p| lights.iter().find(|(e, _)| e.device == d.id && e.port == *p).map(|(_, at)| *at)).collect();
@@ -456,9 +639,9 @@ fn draw_links(app: &mut PacketApp, painter: &egui::Painter, view: &View, tk: &To
 }
 
 fn draw_devices(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Tokens) {
-    for d in &app.session.topology.devices {
+    for d in app.session.topology.devices.iter().filter(|d| view.visible(d.id)) {
         let r = view.device_rect(d);
-        if app.ui.selected == Some(d.id) {
+        if app.ui.selected == Some(d.id) || app.ui.picked.contains(&d.id) {
             painter.rect_filled(r.expand(6.0), 8.0, tk.selection.gamma_multiply(0.15));
             painter.rect_stroke(r.expand(6.0), 8.0, Stroke::new(1.5, tk.selection), StrokeKind::Outside);
         }
@@ -490,13 +673,17 @@ fn draw_packet(app: &PacketApp, ui: &Ui, painter: &egui::Painter, view: &View, t
     let Some(sel) = app.ui.events.selected else { return };
     let t = &app.session.topology;
     let Some(ev) = app.session.sim.trace().iter().find(|e| e.id == sel) else { return };
-    let (Some(a), Some(b)) = (t.device(ev.from.device), t.device(ev.to.device)) else { return };
-    let cable = t.links.iter().find(|l| l.a == ev.from || l.b == ev.from).and_then(|l| cable_ends(t, view, l));
-    let (pa, pb) = match cable {
+    let (Some((sa, a)), Some((sb, b))) = (view.stand_in(t, ev.from.device), view.stand_in(t, ev.to.device)) else { return };
+    if sa != Shown::Device && sa == sb {
+        // Inside one closed cluster: nothing to show here.
+        return;
+    }
+    let cable = t.links.iter().find(|l| l.a == ev.from || l.b == ev.from).filter(|_| sa == Shown::Device && sb == Shown::Device);
+    let (pa, pb) = match cable.and_then(|l| cable_ends(t, view, l)) {
         // Along the cable it took, from the sender's end.
         Some((x, y)) if t.links.iter().any(|l| l.a == ev.from) => (x, y),
         Some((x, y)) => (y, x),
-        None => (view.screen(a.x, a.y), view.screen(b.x, b.y)),
+        None => (a, b),
     };
     let progress = app.ui.events.progress(ui.input(|i| i.time));
     let at = pa + (pb - pa) * progress;
@@ -510,12 +697,133 @@ fn draw_packet(app: &PacketApp, ui: &Ui, painter: &egui::Painter, view: &View, t
     }
 }
 
+/// Cluster icons in this view: a cloud with the number of devices inside, and the name under it.
+fn draw_clusters(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Tokens) {
+    let t = &app.session.topology;
+    for c in t.clusters_in(view.level) {
+        let r = view.cluster_rect(c);
+        if app.ui.picked_clusters.contains(&c.id) {
+            painter.rect_filled(r.expand(6.0), 8.0, tk.selection.gamma_multiply(0.15));
+            painter.rect_stroke(r.expand(6.0), 8.0, Stroke::new(1.5, tk.selection), StrokeKind::Outside);
+        }
+        icons::cloud(painter, r, tk.cluster, theme::shade(tk.cluster, 0.55));
+        let inside = view.shown.values().filter(|s| **s == Shown::Cluster(c.id)).count();
+        let font = FontId::proportional((15.0 * view.zoom).clamp(8.0, 24.0));
+        painter.text(r.center() + vec2(0.0, r.height() * 0.08), Align2::CENTER_CENTER, inside.to_string(), font.clone(), tk.text);
+        let galley = painter.layout_no_wrap(c.name.clone(), FontId::proportional((16.0 * view.zoom).clamp(8.0, 24.0)), tk.text);
+        let label = Align2::CENTER_TOP.anchor_size(pos2(r.center().x, r.bottom() + 2.0), galley.size());
+        painter.galley(label.min, galley, tk.text);
+    }
+}
+
+/// A rectangle dragged out with Shift picks the devices and clusters inside it.
+fn finish_band(app: &mut PacketApp, view: &View, a: Pos2, b: Pos2) {
+    let r = Rect::from_two_pos(a, b);
+    let t = &app.session.topology;
+    let devs: Vec<DeviceId> = t.devices.iter().filter(|d| view.visible(d.id) && r.contains(view.screen(d.x, d.y))).map(|d| d.id).collect();
+    let cls: Vec<u32> = t.clusters_in(view.level).filter(|c| r.contains(view.screen(c.x, c.y))).map(|c| c.id).collect();
+    if let Some(s) = app.ui.selected.take() {
+        app.ui.picked.insert(s);
+    }
+    app.ui.picked.extend(devs);
+    app.ui.picked_clusters.extend(cls);
+}
+
+/// Pans so what the current view shows (devices and cluster icons) sits in the middle.
+pub(crate) fn fit_view(app: &mut PacketApp) {
+    let t = &app.session.topology;
+    let level = app.session.view;
+    let shown = t.shown_map(level);
+    let pts: Vec<(f32, f32)> = t
+        .devices
+        .iter()
+        .filter(|d| shown.get(&d.id) == Some(&Shown::Device))
+        .map(|d| (d.x, d.y))
+        .chain(t.clusters_in(level).map(|c| (c.x, c.y)))
+        .collect();
+    if pts.is_empty() || app.ui.canvas.size.x < 1.0 {
+        return;
+    }
+    let (x0, x1) = pts.iter().fold((f32::MAX, f32::MIN), |(a, b), p| (a.min(p.0), b.max(p.0)));
+    let (y0, y1) = pts.iter().fold((f32::MAX, f32::MIN), |(a, b), p| (a.min(p.1), b.max(p.1)));
+    let center = vec2((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+    app.ui.pan = app.ui.canvas.size / 2.0 - center * app.ui.zoom;
+}
+
+/// Closes the polygon being placed into a drawing.
+pub(crate) fn finish_polygon(app: &mut PacketApp) {
+    let pts: Vec<[f32; 2]> = std::mem::take(&mut app.ui.canvas.poly).into_iter().map(|(x, y)| [x, y]).collect();
+    if pts.len() < 3 {
+        app.info(tl("A polygon needs at least three corners."));
+        return;
+    }
+    let color = next_color(app);
+    app.run("note.add", json!({"shape": "polygon", "points": pts, "color": color}));
+}
+
+/// Shapes dragged out from corner to corner.
+fn box_shape(t: Tool) -> Option<Shape> {
+    match t {
+        Tool::Draw(s @ (Shape::Rectangle | Shape::Ellipse | Shape::Line)) => Some(s),
+        _ => None,
+    }
+}
+
 fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
     let pointer = resp.interact_pointer_pos().or_else(|| resp.hover_pos());
     let middle = ui.input(|i| i.pointer.middle_down());
+    let shift = ui.input(|i| i.modifiers.shift);
+
+    // Freehand: the path is recorded while dragging.
+    if app.ui.tool == Tool::Draw(Shape::Freehand) && !middle {
+        if resp.drag_started()
+            && let Some(p) = pointer
+        {
+            app.ui.canvas.stroke = vec![view.world(p)];
+            return;
+        }
+        if resp.drag_stopped() && !app.ui.canvas.stroke.is_empty() {
+            let pts: Vec<[f32; 2]> = std::mem::take(&mut app.ui.canvas.stroke).into_iter().map(|(x, y)| [x, y]).collect();
+            if pts.len() >= 2 {
+                let color = next_color(app);
+                app.run("note.add", json!({"shape": "freehand", "points": pts, "color": color}));
+            }
+            return;
+        }
+        if resp.dragged() && !app.ui.canvas.stroke.is_empty() {
+            if let Some(p) = pointer {
+                let (x, y) = view.world(p);
+                let c = &mut app.ui.canvas;
+                let far = c.stroke.last().is_none_or(|(lx, ly)| (x - lx).hypot(y - ly) * view.zoom >= 2.0);
+                if far && c.stroke.len() < MAX_STROKE {
+                    c.stroke.push((x, y));
+                }
+            }
+            return;
+        }
+    }
+    // Polygon: clicks place corners; double-click or Enter closes it.
+    if app.ui.tool == Tool::Draw(Shape::Polygon) {
+        let enter = !ui.ctx().egui_wants_keyboard_input() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        if resp.double_clicked() || (enter && !app.ui.canvas.poly.is_empty()) {
+            finish_polygon(app);
+            return;
+        }
+        if resp.clicked()
+            && let Some(p) = pointer
+        {
+            let (x, y) = view.world(p);
+            let c = &mut app.ui.canvas;
+            let far = c.poly.last().is_none_or(|(lx, ly)| (x - lx).hypot(y - ly) * view.zoom >= 3.0);
+            if far && c.poly.len() < packetcraft_model::MAX_POLYGON_POINTS {
+                c.poly.push((x, y));
+            }
+            return;
+        }
+    }
 
     if resp.drag_started()
-        && let Tool::Draw(_) = app.ui.tool
+        && box_shape(app.ui.tool).is_some()
         && !middle
         && let Some(p) = pointer
     {
@@ -523,14 +831,14 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
         return;
     }
     if resp.drag_stopped()
-        && let (Some((x0, y0)), Tool::Draw(shape), Some(p)) = (app.ui.canvas.draw_from.take(), app.ui.tool, pointer)
+        && let (Some((x0, y0)), Some(shape), Some(p)) = (app.ui.canvas.draw_from.take(), box_shape(app.ui.tool), pointer)
     {
         let (x1, y1) = view.world(p);
         let (w, h) = (x1 - x0, y1 - y0);
         if w.abs() + h.abs() > 6.0 {
             let id = match shape {
-                packetcraft_model::Shape::Rectangle => "rectangle",
-                packetcraft_model::Shape::Ellipse => "ellipse",
+                Shape::Rectangle => "rectangle",
+                Shape::Ellipse => "ellipse",
                 _ => "line",
             };
             let color = next_color(app);
@@ -543,14 +851,24 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
     }
     if resp.drag_started() {
         app.ui.canvas.panning = true;
-        if !middle
-            && app.ui.tool == Tool::Select
-            && let Some(d) = pointer.and_then(|p| hit_device(app, view, p))
-        {
+        let select = !middle && app.ui.tool == Tool::Select;
+        if select && let Some(d) = pointer.and_then(|p| hit_device(app, view, p)) {
             app.run("edit.checkpoint", json!({}));
             app.ui.canvas.drag = Some(d);
             app.ui.canvas.panning = false;
-            app.ui.selected = Some(d);
+            if app.ui.picked.contains(&d) && app.ui.picked.len() + app.ui.picked_clusters.len() > 1 {
+                app.ui.canvas.drag_group = true;
+            } else {
+                app.ui.selected = Some(d);
+            }
+        } else if select && let Some(c) = pointer.and_then(|p| hit_cluster(app, view, p)) {
+            app.run("edit.checkpoint", json!({}));
+            app.ui.canvas.panning = false;
+            if app.ui.picked_clusters.contains(&c) && app.ui.picked.len() + app.ui.picked_clusters.len() > 1 {
+                app.ui.canvas.drag_group = true;
+            } else {
+                app.ui.canvas.drag_cluster = Some(c);
+            }
         } else if !middle
             && matches!(app.ui.tool, Tool::Select | Tool::Note)
             && let Some(n) = pointer.and_then(|p| hit_note(app, view, p))
@@ -558,40 +876,64 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
             app.run("edit.checkpoint", json!({}));
             app.ui.canvas.drag_note = Some(n);
             app.ui.canvas.panning = false;
+        } else if select && shift {
+            app.ui.canvas.band = pointer;
+            app.ui.canvas.panning = false;
         }
     }
     if resp.dragged() {
-        let delta = resp.drag_delta();
-        match app.ui.canvas.drag {
-            Some(d) => {
-                if let Some(dev) = app.session.topology.device(d) {
-                    let (x, y) = (dev.x + delta.x / view.zoom, dev.y + delta.y / view.zoom);
-                    app.run("device.move", json!({"device": d.0, "x": x, "y": y, "transient": true}));
-                }
+        let delta = resp.drag_delta() / view.zoom;
+        if app.ui.canvas.drag_group {
+            let t = &app.session.topology;
+            let devs: Vec<(DeviceId, f32, f32)> =
+                app.ui.picked.iter().filter_map(|d| t.device(*d)).map(|d| (d.id, d.x + delta.x, d.y + delta.y)).collect();
+            let cls: Vec<(u32, f32, f32)> =
+                app.ui.picked_clusters.iter().filter_map(|c| t.cluster(*c)).map(|c| (c.id, c.x + delta.x, c.y + delta.y)).collect();
+            for (d, x, y) in devs {
+                app.run("device.move", json!({"device": d.0, "x": x, "y": y, "transient": true}));
             }
-            None if app.ui.canvas.drag_note.is_some() => {
-                if let Some(n) = app.ui.canvas.drag_note
-                    && let Some(a) = app.session.topology.annotations.iter().find(|a| a.id == n)
-                {
-                    let (x, y) = (a.x + delta.x / view.zoom, a.y + delta.y / view.zoom);
-                    app.run("note.move", json!({"id": n, "x": x, "y": y, "transient": true}));
-                }
+            for (c, x, y) in cls {
+                app.run("cluster.move", json!({"id": c, "x": x, "y": y, "transient": true}));
             }
-            None if app.ui.canvas.panning => app.ui.pan += delta,
-            None => {}
+        } else if let Some(d) = app.ui.canvas.drag {
+            if let Some(dev) = app.session.topology.device(d) {
+                let (x, y) = (dev.x + delta.x, dev.y + delta.y);
+                app.run("device.move", json!({"device": d.0, "x": x, "y": y, "transient": true}));
+            }
+        } else if let Some(c) = app.ui.canvas.drag_cluster {
+            if let Some(cl) = app.session.topology.cluster(c) {
+                let (x, y) = (cl.x + delta.x, cl.y + delta.y);
+                app.run("cluster.move", json!({"id": c, "x": x, "y": y, "transient": true}));
+            }
+        } else if let Some(n) = app.ui.canvas.drag_note {
+            if let Some(a) = app.session.topology.annotations.iter().find(|a| a.id == n) {
+                let (x, y) = (a.x + delta.x, a.y + delta.y);
+                app.run("note.move", json!({"id": n, "x": x, "y": y, "transient": true}));
+            }
+        } else if app.ui.canvas.panning {
+            app.ui.pan += resp.drag_delta();
         }
     }
     if resp.drag_stopped() {
         // Snap to half the grid so labs stay tidy.
-        if let Some(d) = app.ui.canvas.drag.take()
-            && let Some(dev) = app.session.topology.device(d)
-        {
-            let snap = |v: f32| (v / (GRID / 2.0)).round() * (GRID / 2.0);
-            let (x, y) = (snap(dev.x), snap(dev.y));
-            app.run("device.move", json!({"device": d.0, "x": x, "y": y, "transient": true}));
+        let snap = |v: f32| (v / (GRID / 2.0)).round() * (GRID / 2.0);
+        let moved: Vec<DeviceId> =
+            if app.ui.canvas.drag_group { app.ui.picked.iter().copied().collect() } else { app.ui.canvas.drag.into_iter().collect() };
+        for d in moved {
+            if let Some(dev) = app.session.topology.device(d) {
+                let (x, y) = (snap(dev.x), snap(dev.y));
+                app.run("device.move", json!({"device": d.0, "x": x, "y": y, "transient": true}));
+            }
         }
-        app.ui.canvas.drag_note = None;
-        app.ui.canvas.panning = false;
+        let c = &mut app.ui.canvas;
+        c.drag = None;
+        c.drag_note = None;
+        c.drag_cluster = None;
+        c.drag_group = false;
+        c.panning = false;
+        if let (Some(a), Some(b)) = (c.band.take(), pointer) {
+            finish_band(app, view, a, b);
+        }
     }
 
     if resp.double_clicked()
@@ -601,8 +943,14 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
         return;
     }
     if resp.double_clicked()
+        && let Some(c) = pointer.and_then(|p| hit_cluster(app, view, p))
+    {
+        app.enter_cluster(c);
+        return;
+    }
+    if resp.double_clicked()
         && let Some(n) = pointer.and_then(|p| hit_note(app, view, p))
-        && app.session.topology.annotations.iter().any(|a| a.id == n && a.shape == packetcraft_model::Shape::Text)
+        && app.session.topology.annotations.iter().any(|a| a.id == n && a.shape == Shape::Text)
     {
         let text = app.session.topology.annotations.iter().find(|a| a.id == n).map(|a| a.text.clone()).unwrap_or_default();
         app.ui.editing_note = Some((n, text));
@@ -610,11 +958,29 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
     }
 
     if resp.secondary_clicked() {
-        app.ui.canvas.context = pointer.and_then(|p| hit_device(app, view, p));
-        app.ui.selected = app.ui.canvas.context;
+        let c = &mut app.ui.canvas;
+        (c.context, c.context_cluster, c.context_note) = (None, None, None);
+        if let Some(p) = pointer {
+            if let Some(d) = hit_device(app, view, p) {
+                app.ui.canvas.context = Some(d);
+                if !app.ui.picked.contains(&d) {
+                    app.ui.picked.clear();
+                    app.ui.picked_clusters.clear();
+                    app.ui.selected = Some(d);
+                }
+            } else if let Some(cl) = hit_cluster(app, view, p) {
+                app.ui.canvas.context_cluster = Some(cl);
+            } else {
+                app.ui.canvas.context_note = hit_note(app, view, p);
+            }
+        }
     }
     if let Some(d) = app.ui.canvas.context {
         resp.context_menu(|ui| context_menu(app, ui, d));
+    } else if let Some(c) = app.ui.canvas.context_cluster {
+        resp.context_menu(|ui| cluster_menu(app, ui, c));
+    } else if let Some(n) = app.ui.canvas.context_note {
+        resp.context_menu(|ui| note_menu(app, ui, n));
     }
 
     if !resp.clicked() {
@@ -624,11 +990,30 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
     app.ui.canvas.port_menu = None;
     let hit = hit_device(app, view, p);
     match app.ui.tool {
+        Tool::Select if shift => {
+            // Shift+click adds to (or takes from) the picked devices and clusters.
+            if let Some(s) = app.ui.selected.take() {
+                app.ui.picked.insert(s);
+            }
+            if let Some(d) = hit {
+                if !app.ui.picked.remove(&d) {
+                    app.ui.picked.insert(d);
+                }
+            } else if let Some(c) = hit_cluster(app, view, p)
+                && !app.ui.picked_clusters.remove(&c)
+            {
+                app.ui.picked_clusters.insert(c);
+            }
+        }
         Tool::Select => {
             // One click opens the device, as learners expect; dragging moves it instead.
+            app.ui.picked.clear();
+            app.ui.picked_clusters.clear();
             app.ui.selected = hit;
             if let Some(d) = hit {
                 console::open(app, d);
+            } else if let Some(c) = hit_cluster(app, view, p) {
+                app.ui.picked_clusters.insert(c);
             }
         }
         Tool::Draw(_) => {}
@@ -677,6 +1062,11 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
                 if app.ui.selected == Some(d) {
                     app.ui.selected = None;
                 }
+                app.ui.picked.remove(&d);
+            } else if let Some(c) = hit_cluster(app, view, p) {
+                // Deleting a cluster ungroups it; its devices stay.
+                app.run("cluster.dissolve", json!({"id": c}));
+                app.ui.picked_clusters.remove(&c);
             } else if let Some(n) = hit_note(app, view, p) {
                 app.run("note.remove", json!({"id": n}));
             } else if let Some(end) = hit_link(app, view, p) {
@@ -684,6 +1074,87 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
                 app.run("link.remove", json!({"device": end.device.0, "port": port}));
             }
         }
+    }
+}
+
+/// A cluster's right-click menu.
+fn cluster_menu(app: &mut PacketApp, ui: &mut Ui, c: u32) {
+    let Some(name) = app.session.topology.cluster(c).map(|x| x.name.clone()) else {
+        ui.close();
+        return;
+    };
+    ui.label(egui::RichText::new(&name).strong());
+    if ui.button(tl("Open Cluster")).clicked() {
+        app.enter_cluster(c);
+        ui.close();
+    }
+    if ui.button(tl("Rename Cluster…")).clicked() {
+        app.ui.renaming_cluster = Some((c, name));
+        ui.close();
+    }
+    if ui.button(tl("Uncluster")).clicked() {
+        app.run("cluster.dissolve", json!({"id": c}));
+        app.ui.picked_clusters.remove(&c);
+        ui.close();
+    }
+}
+
+/// Colours offered for drawings: name and `#rrggbb`.
+const NAMED_COLORS: [(&str, &str); 6] =
+    [("Blue", "#bcd9f2"), ("Green", "#c8ecc0"), ("Yellow", "#fde9a8"), ("Red", "#f6c6c6"), ("Purple", "#d9cff2"), ("Grey", "#d5d8dc")];
+
+/// A note's or drawing's right-click menu.
+fn note_menu(app: &mut PacketApp, ui: &mut Ui, n: u32) {
+    let Some(shape) = app.session.topology.annotations.iter().find(|a| a.id == n).map(|a| a.shape) else {
+        ui.close();
+        return;
+    };
+    if shape != Shape::Text {
+        ui.label(tl("Colour"));
+        ui.horizontal(|ui| {
+            for (name, hex) in NAMED_COLORS {
+                let [r, g, b] = packetcraft_model::parse_color(hex).unwrap_or([0xbc, 0xd9, 0xf2]);
+                if ui
+                    .add(egui::Button::new(egui::RichText::new(tl(name)).color(egui::Color32::BLACK)).fill(egui::Color32::from_rgb(r, g, b)))
+                    .clicked()
+                {
+                    app.run("note.color", json!({"id": n, "color": hex}));
+                    ui.close();
+                }
+            }
+        });
+    }
+    if ui.button(tl("Delete")).clicked() {
+        app.run("note.remove", json!({"id": n}));
+        ui.close();
+    }
+}
+
+/// The Rename Cluster dialog.
+pub fn cluster_rename_window(app: &mut PacketApp, ctx: &egui::Context) {
+    let Some((id, mut name)) = app.ui.renaming_cluster.clone() else { return };
+    let mut open = true;
+    let mut ok = false;
+    egui::Window::new(tl("Rename Cluster")).id(egui::Id::unique("cluster_rename")).open(&mut open).collapsible(false).resizable(false).show(
+        ctx,
+        |ui| {
+            let l = ui.label(tl("Cluster name:"));
+            let r = ui.add(egui::TextEdit::singleline(&mut name)).labelled_by(l.id);
+            if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                ok = true;
+            }
+            if ui.button(tl("OK")).clicked() {
+                ok = true;
+            }
+        },
+    );
+    if ok {
+        app.run("cluster.rename", json!({"id": id, "name": name}));
+        app.ui.renaming_cluster = None;
+    } else if open {
+        app.ui.renaming_cluster = Some((id, name));
+    } else {
+        app.ui.renaming_cluster = None;
     }
 }
 
@@ -845,6 +1316,11 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, d: DeviceId) {
             }
         });
     }
+    if ui.button(tl("Group into Cluster")).clicked() {
+        app.ui.picked.insert(d);
+        app.group_selection();
+        ui.close();
+    }
     if ui.button(tl("Delete")).clicked() {
         app.run("device.remove", json!({"device": d.0}));
         app.ui.selected = None;
@@ -909,4 +1385,9 @@ fn port_menu(app: &mut PacketApp, ui: &Ui) {
         }
         _ => app.ui.canvas.pending = Some(Pending::CableFrom(end)),
     }
+}
+
+#[cfg(test)]
+pub fn triangulate_for_tests(pts: &[Pos2]) -> Vec<[u32; 3]> {
+    triangulate(pts)
 }

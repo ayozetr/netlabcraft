@@ -584,3 +584,150 @@ fn a_pc_reads_and_sets_a_router_over_snmp() {
     assert!(get(&mut s, "adivina", "get", "1.3.6.1.2.1.1.5.0").unwrap_err().to_string().contains("did not answer"));
     assert!(s.sim.trace().iter().any(|e| e.summary.starts_with("SNMP response (lectura) 1.3.6.1.2.1.1.5.0 = R1")));
 }
+
+#[test]
+fn freehand_and_polygon_drawings_are_simplified_moved_and_undone() {
+    let mut s = Session::new();
+    // A slightly wobbly straight stroke, as a hand draws it: simplified to a few points.
+    let stroke: Vec<serde_json::Value> = (0..400).map(|i| json!([i as f32, if i % 2 == 0 { 0.0 } else { 0.3 }])).collect();
+    let r = s.execute("note.add", json!({"shape": "freehand", "points": stroke, "color": "#336699"})).unwrap();
+    let id = r["id"].as_u64().unwrap() as u32;
+    let a = s.topology.annotations.iter().find(|a| a.id == id).unwrap();
+    assert_eq!(a.shape, packetcraft_model::Shape::Freehand);
+    assert!(a.points.len() <= 4, "{:?}", a.points);
+    assert_eq!(a.color.as_deref(), Some("#336699"));
+    let r = s.execute("note.add", json!({"shape": "polygon", "points": [{"x": 10, "y": 10}, {"x": 60, "y": 10}, {"x": 35, "y": 50}]})).unwrap();
+    let poly = r["id"].as_u64().unwrap() as u32;
+    s.execute("note.move", json!({"id": poly, "x": 100, "y": 100})).unwrap();
+    s.execute("note.color", json!({"id": poly, "color": "#aabbcc"})).unwrap();
+    let a = s.topology.annotations.iter().find(|a| a.id == poly).unwrap();
+    assert_eq!((a.x, a.y, a.points.len()), (100.0, 100.0, 3));
+    assert!(s.execute("note.color", json!({"id": poly, "color": "red"})).is_err());
+    s.execute("edit.undo", json!({})).unwrap();
+    s.execute("edit.undo", json!({})).unwrap();
+    assert_eq!(s.topology.annotations.iter().find(|a| a.id == poly).unwrap().x, 10.0);
+    s.execute("note.remove", json!({"id": id})).unwrap();
+    assert_eq!(s.topology.annotations.len(), 1);
+    // Saved and read back.
+    let json = s.execute("file.save", json!({})).unwrap()["json"].as_str().unwrap().to_string();
+    let mut b = Session::new();
+    b.execute("file.open", json!({"json": json})).unwrap();
+    assert_eq!(b.topology.annotations, s.topology.annotations);
+    // Hostile points.
+    let huge: Vec<serde_json::Value> = (0..100_000).map(|i| json!([i, -i])).collect();
+    assert!(s.execute("note.add", json!({"shape": "freehand", "points": huge})).unwrap()["id"].is_number());
+    for bad in [
+        json!({"shape": "polygon", "points": [[0, 0], [1, 1]]}),
+        json!({"shape": "polygon", "points": (0..65).map(|i| json!([i, i * i])).collect::<Vec<_>>()}),
+        json!({"shape": "polygon"}),
+        json!({"shape": "freehand", "points": "x"}),
+        json!({"shape": "freehand", "points": [["a", 0], [0, 0]]}),
+        json!({"shape": "freehand", "points": [[0, 0], [0, 0]]}),
+        json!({"shape": "polygon", "points": [null, 1, {}]}),
+    ] {
+        assert!(s.execute("note.add", bad.clone()).is_err(), "{bad}");
+    }
+    // Out-of-range numbers are clamped, never infinite.
+    s.execute("note.add", json!({"shape": "freehand", "points": [[1e308, 0], [0, -1e308]]})).unwrap();
+    assert!(s.topology.annotations.iter().all(|a| a.x.is_finite() && a.points.iter().all(|p| p[0].is_finite() && p[1].is_finite())));
+}
+
+#[test]
+fn clusters_group_devices_for_the_view_only() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "vlans"})).unwrap();
+    s.execute("net.ping", json!({"from": "PC1", "to": "192.168.20.10", "count": 6})).unwrap();
+    let before = s.execute("net.ping", json!({"from": "PC1", "to": "192.168.20.10", "count": 2})).unwrap()["marks"].clone();
+    assert_eq!(before, "!!");
+    let r = s.execute("cluster.create", json!({"devices": ["PC1", "PC2"], "name": "Hosts"})).unwrap();
+    let id = r["id"].as_u64().unwrap() as u32;
+    assert_eq!(r["name"], "Hosts");
+    let pc1 = s.topology.resolve("PC1").unwrap();
+    assert_eq!(s.topology.cluster_of(pc1), Some(id));
+    // The network doesn't notice.
+    assert_eq!(s.execute("net.ping", json!({"from": "PC1", "to": "192.168.20.10", "count": 2})).unwrap()["marks"], before);
+    s.execute("cluster.rename", json!({"id": id, "name": "Classroom"})).unwrap();
+    s.execute("cluster.move", json!({"id": id, "x": 400, "y": 300})).unwrap();
+    assert_eq!(s.topology.cluster(id).unwrap().name, "Classroom");
+    // Inside the cluster, new devices and drawings join it.
+    let v = s.execute("view.enter_cluster", json!({"id": id})).unwrap();
+    assert_eq!(v["path"][0]["name"], "Classroom");
+    let pc = s.execute("device.add", json!({"kind": "pc", "x": 5, "y": 5})).unwrap();
+    let pc = DeviceId(pc["id"].as_u64().unwrap() as u32);
+    assert_eq!(s.topology.cluster_of(pc), Some(id));
+    let n = s.execute("note.add", json!({"shape": "rectangle", "x": 0, "y": 0})).unwrap();
+    assert_eq!(s.topology.annotations.iter().find(|a| Some(a.id as u64) == n["id"].as_u64()).unwrap().cluster, Some(id));
+    // A nested cluster, then back up.
+    let inner = s.execute("cluster.create", json!({"devices": [pc.0]})).unwrap()["id"].as_u64().unwrap() as u32;
+    assert_eq!(s.topology.cluster(inner).unwrap().parent, Some(id));
+    s.execute("view.enter_cluster", json!({"id": inner})).unwrap();
+    assert_eq!(s.execute("view.up", json!({})).unwrap()["cluster"], id);
+    assert_eq!(s.execute("view.root", json!({})).unwrap()["cluster"], serde_json::Value::Null);
+    // Dissolving puts the devices back; undo brings the cluster back.
+    s.execute("view.enter_cluster", json!({"id": id})).unwrap();
+    s.execute("cluster.dissolve", json!({"id": id})).unwrap();
+    assert_eq!(s.view, None);
+    assert_eq!(s.topology.cluster_of(pc1), None);
+    assert_eq!(s.topology.cluster(inner).unwrap().parent, None);
+    s.execute("edit.undo", json!({})).unwrap();
+    assert_eq!(s.topology.cluster_of(pc1), Some(id));
+    // Undo past the cluster's creation while looking inside it: the view falls back to the top.
+    s.execute("view.enter_cluster", json!({"id": id})).unwrap();
+    for _ in 0..10 {
+        s.execute("edit.undo", json!({})).unwrap();
+    }
+    assert!(s.topology.clusters.is_empty());
+    assert_eq!(s.view, None);
+    // Saved and read back.
+    s.execute("edit.redo", json!({})).unwrap();
+    let json = s.execute("file.save", json!({})).unwrap()["json"].as_str().unwrap().to_string();
+    let mut b = Session::new();
+    b.execute("file.open", json!({"json": json})).unwrap();
+    assert_eq!(b.topology.clusters, s.topology.clusters);
+    assert!(!b.topology.clusters.is_empty());
+}
+
+#[test]
+fn cluster_commands_refuse_hostile_params() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "vlans"})).unwrap();
+    for p in [
+        json!({"devices": []}),
+        json!({"devices": "PC1"}),
+        json!({"devices": [null, {}, -1]}),
+        json!({"devices": ["PC1"], "clusters": [99]}),
+        json!({"devices": ["PC1"], "clusters": "x"}),
+        json!({"devices": ["PC1"], "clusters": [-5, 1.5]}),
+        json!({"devices": [4_294_967_296u64]}),
+    ] {
+        assert!(s.execute("cluster.create", p.clone()).is_err(), "{p}");
+    }
+    assert!(s.topology.clusters.is_empty());
+    let id = s.execute("cluster.create", json!({"devices": ["PC1"], "name": "\u{0}\u{7}x".repeat(100)})).unwrap()["id"].as_u64().unwrap();
+    assert!(s.topology.clusters[0].name.chars().count() <= packetcraft_model::MAX_NAME);
+    assert!(s.topology.clusters[0].name.chars().all(|c| !c.is_control()));
+    for (cmd, p) in [
+        ("cluster.rename", json!({"id": id, "name": "   "})),
+        ("cluster.rename", json!({"id": 77, "name": "x"})),
+        ("cluster.move", json!({"id": id, "x": "a", "y": 1})),
+        ("cluster.dissolve", json!({"id": "1"})),
+        ("view.enter_cluster", json!({"id": 4_294_967_296u64})),
+        ("view.enter_cluster", json!({})),
+    ] {
+        assert!(s.execute(cmd, p.clone()).is_err(), "{cmd} {p}");
+    }
+    s.execute("cluster.move", json!({"id": id, "x": 1e300, "y": -1e300})).unwrap();
+    let c = &s.topology.clusters[0];
+    assert!(c.x.is_finite() && c.y.is_finite());
+    // Up to the cap, each new cluster nesting the last one.
+    let mut t = packetcraft_model::Topology::new();
+    let d = t.add_device(packetcraft_model::DeviceKind::Pc, None, 0.0, 0.0).unwrap();
+    for _ in 0..packetcraft_model::MAX_CLUSTERS {
+        t.create_cluster(&[d], &[], None).unwrap();
+    }
+    assert!(t.create_cluster(&[d], &[], None).is_err());
+    let inner = t.clusters.last().map(|c| c.id);
+    assert_eq!(t.shown_as(d, None), Some(packetcraft_model::Shown::Cluster(1)));
+    assert_eq!(t.shown_as(d, inner), Some(packetcraft_model::Shown::Device));
+    assert_eq!(t.cluster_path(inner).len(), packetcraft_model::MAX_CLUSTERS);
+}

@@ -221,6 +221,24 @@ pub fn envelope(p: &Painter, center: Pos2, size: f32, fill: Color32, stroke: Col
     p.line_segment([r.right_top(), r.center()], Stroke::new(1.0, stroke));
 }
 
+/// A cluster's picture: a cloud of round lobes on a flat base, filled with `fill` and
+/// outlined with `edge` (original drawing).
+pub fn cloud(p: &Painter, rect: Rect, fill: Color32, edge: Color32) {
+    let (w, h) = (rect.width(), rect.height());
+    let at = |x: f32, y: f32| pos2(rect.left() + w * x, rect.top() + h * y);
+    // (x, y) as fractions of the box, radius as a fraction of its height.
+    let lobes = [(0.22, 0.64, 0.30), (0.42, 0.42, 0.38), (0.66, 0.44, 0.33), (0.80, 0.65, 0.26), (0.50, 0.68, 0.30)];
+    let line = (h / 22.0).max(1.0);
+    for (x, y, r) in lobes {
+        p.circle_filled(at(x, y), h * r + line, edge);
+    }
+    for (x, y, r) in lobes {
+        p.circle_filled(at(x, y), h * r, fill);
+    }
+    // A soft highlight on the top lobe.
+    p.circle_filled(at(0.38, 0.32), h * 0.12, shade(fill, 1.12));
+}
+
 /// Toolbar and bar glyphs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Glyph {
@@ -259,6 +277,8 @@ pub enum Glyph {
     Rectangle,
     Ellipse,
     Freeform,
+    Polygon,
+    Cluster,
 }
 
 /// Draws a glyph in `rect` with colour `c`.
@@ -462,6 +482,20 @@ pub fn glyph(p: &Painter, rect: Rect, g: Glyph, c: Color32) {
             let pts: Vec<Pos2> =
                 (0..=12).map(|i| i as f32 / 12.0).map(|t| pos2(r.left() + w * t, r.center().y + (t * 9.0).sin() * h * 0.3)).collect();
             p.add(Shape::line(pts, Stroke::new(2.2, c)));
+        }
+        Glyph::Polygon => {
+            let pts = vec![
+                pos2(r.left(), r.top() + h * 0.35),
+                pos2(r.left() + w * 0.45, r.top()),
+                pos2(r.right(), r.top() + h * 0.3),
+                pos2(r.left() + w * 0.75, r.bottom()),
+                pos2(r.left() + w * 0.3, r.top() + h * 0.7),
+            ];
+            p.add(Shape::convex_polygon(pts.clone(), c.gamma_multiply(0.35), Stroke::NONE));
+            p.add(Shape::closed_line(pts, Stroke::new(1.8, c)));
+        }
+        Glyph::Cluster => {
+            cloud(p, Rect::from_center_size(r.center(), vec2(w, w * 0.7)), c, c);
         }
         Glyph::Connections | Glyph::Cable => {
             let s = Stroke::new(2.0, c);

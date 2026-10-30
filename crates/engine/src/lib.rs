@@ -90,6 +90,8 @@ pub struct Session {
     pub revision: u64,
     /// The lab as an activity started (when it was opened), for Reset Activity.
     pub activity_start: Option<Topology>,
+    /// The cluster the workspace shows (none: the top level). A view, not part of the lab.
+    pub view: Option<u32>,
 }
 
 impl Session {
@@ -177,6 +179,10 @@ impl Session {
         self.sim.topology_changed(&self.topology);
         let ids: Vec<DeviceId> = self.topology.devices.iter().map(|d| d.id).collect();
         self.consoles.retain(|id, _| ids.contains(id));
+        // Undo or a dissolve can take away the cluster being looked at.
+        if self.view.is_some_and(|c| self.topology.cluster(c).is_none()) {
+            self.view = None;
+        }
     }
 
     pub fn can_undo(&self) -> bool {
