@@ -8,7 +8,7 @@ use packetcraft_model::{
     unobscure,
 };
 use packetcraft_model::{NatPool, NatRule, NatSide, NatTarget, Ospf, OspfNetwork, RemoteProto, acl};
-use packetcraft_sim::{PingOptions, Sim, port_up};
+use packetcraft_sim::{DebugKind, PingOptions, Sim, port_up};
 
 use crate::grammar::{self, Id, Modes, ParseError};
 use crate::{host, render};
@@ -580,15 +580,32 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::LoggingBuffered => Ok(String::new()),
         Id::DebugIpIcmp => {
-            c.sim.set_debug_icmp(c.dev, true);
+            c.sim.set_debug(c.dev, DebugKind::Icmp, true);
             Ok("ICMP debugging is on: echo messages this device receives are reported.".into())
         }
+        Id::DebugIpRip | Id::NoDebugIpRip => {
+            let on = spec.id == Id::DebugIpRip;
+            c.sim.set_debug(c.dev, DebugKind::Rip, on);
+            Ok(if on { "RIP debugging is on: the updates this router hears are reported." } else { "RIP debugging is off." }.into())
+        }
+        Id::DebugIpOspf | Id::NoDebugIpOspf => {
+            let what = arg(0).trim();
+            if !what.is_empty() && !["adj", "events", "hello"].iter().any(|w| w.starts_with(what)) {
+                return Err("% debug ip ospf adj, events or hello".into());
+            }
+            let on = spec.id == Id::DebugIpOspf;
+            c.sim.set_debug(c.dev, DebugKind::Ospf, on);
+            Ok(if on { "OSPF debugging is on: the hellos this router hears are reported." } else { "OSPF debugging is off." }.into())
+        }
         Id::UndebugAll => {
-            c.sim.set_debug_icmp(c.dev, false);
+            for k in [DebugKind::Icmp, DebugKind::Rip, DebugKind::Ospf] {
+                c.sim.set_debug(c.dev, k, false);
+            }
             Ok("All debugging is off.".into())
         }
         Id::ShowDebugging => {
-            Ok(if c.sim.state(c.dev).is_some_and(|s| s.debug_icmp) { "ICMP debugging is on.".into() } else { "No debugging is on.".into() })
+            let on = c.sim.debugs(c.dev);
+            Ok(if on.is_empty() { "No debugging is on.".into() } else { format!("Debugging is on for: {}.", on.join(", ")) })
         }
         Id::ShowClock => {
             let (now, set) = c.sim.clock(c.dev);

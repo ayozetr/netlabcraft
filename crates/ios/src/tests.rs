@@ -524,6 +524,13 @@ fn ospf_by_typing() {
     let run = lab.run(r1, "show run");
     assert!(run.contains("router ospf 1\n router-id 1.1.1.1\n passive-interface GigabitEthernet0/0\n network 172.16.1.0 0.0.0.255 area 0"), "{run}");
     assert!(lab.run(r1, "show ip protocols").contains("Router id: 1.1.1.1"));
+    lab.run(r1, "debug ip ospf hello");
+    lab.sim.run_for(&lab.t, 11_000_000);
+    let log = lab.run(r1, "show logging");
+    assert!(log.contains("OSPF debug: hello from 10.0.0.2 (router ID 172.16.2.1, area 0) on GigabitEthernet0/1, 1 neighbour listed"), "{log}");
+    assert!(lab.try_run(r1, "debug ip ospf bogus").contains("adj, events or hello"));
+    lab.run(r1, "no debug ip ospf");
+    assert!(lab.run(r1, "show debugging").contains("No debugging"));
     lab.try_run(r1, "conf t");
     lab.try_run(r1, "router ospf 1");
     assert!(lab.try_run(r1, "network 10.0.0.0 0.255.0.255 area 0").contains("not a wildcard"));
@@ -988,6 +995,13 @@ fn rip_by_typing() {
     assert!(lab.run(a, "ping 192.168.3.10").contains("4 answered"));
     let pr = lab.run(r2, "show ip protocols");
     assert!(pr.contains("RIP version 2") && pr.contains("10.0.12.1 on Gi0/0") && pr.contains("distance 120"), "{pr}");
+    // `debug ip rip` reports the updates as they arrive.
+    lab.run(r1, "debug ip rip");
+    lab.sim.run_for(&lab.t, 31_000_000);
+    let log = lab.run(r1, "show logging");
+    assert!(log.contains("RIP debug: version 2 update from 10.0.12.2 on GigabitEthernet0/1: ") && log.contains("192.168.3.0/24 metric 2"), "{log}");
+    assert!(lab.run(r1, "show debugging").contains("RIP"));
+    lab.run(r1, "undebug all");
     let run = lab.run(r1, "show running-config");
     assert!(
         run.contains("router rip\n version 2\n passive-interface GigabitEthernet0/0\n network 10.0.0.0\n network 192.168.1.0\n no auto-summary"),
@@ -1124,7 +1138,7 @@ fn logging_and_debug_by_typing() {
     let log = lab.run(r, "show logging");
     assert!(log.contains("GigabitEthernet0/0: link up") && log.contains("Configuration changed from the console"), "{log}");
     lab.run(r, "debug ip icmp");
-    assert!(lab.run(r, "show debugging").contains("ICMP debugging is on"));
+    assert!(lab.run(r, "show debugging").contains("Debugging is on for: ICMP"));
     lab.run(a, "ping 10.0.0.1");
     assert!(lab.run(r, "show logging").contains("ICMP debug: echo request from 10.0.0.2 to 10.0.0.1"));
     lab.run(r, "undebug all\nclear logging");

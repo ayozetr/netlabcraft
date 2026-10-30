@@ -410,6 +410,14 @@ struct Pending {
     since: u64,
 }
 
+/// What a `debug` command reports.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DebugKind {
+    Icmp,
+    Rip,
+    Ospf,
+}
+
 /// What came back for one of our echo requests.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IcmpKind {
@@ -503,6 +511,10 @@ pub struct DevState {
     console: Vec<String>,
     /// `debug ip icmp`.
     pub debug_icmp: bool,
+    /// `debug ip rip`.
+    pub debug_rip: bool,
+    /// `debug ip ospf adj|events|hello`.
+    pub debug_ospf: bool,
     /// Log lines waiting to go to syslog servers.
     syslog_out: Vec<String>,
     /// Syslog servers: messages received (µs, sender, text).
@@ -698,8 +710,19 @@ impl Sim {
         }
     }
 
-    pub fn set_debug_icmp(&mut self, d: DeviceId, on: bool) {
-        self.st(d).debug_icmp = on;
+    pub fn set_debug(&mut self, d: DeviceId, what: DebugKind, on: bool) {
+        let st = self.st(d);
+        match what {
+            DebugKind::Icmp => st.debug_icmp = on,
+            DebugKind::Rip => st.debug_rip = on,
+            DebugKind::Ospf => st.debug_ospf = on,
+        }
+    }
+
+    /// The debugs that are on, by name.
+    pub fn debugs(&self, d: DeviceId) -> Vec<&'static str> {
+        let Some(s) = self.state.get(&d) else { return Vec::new() };
+        [(s.debug_icmp, "ICMP"), (s.debug_rip, "RIP"), (s.debug_ospf, "OSPF")].into_iter().filter(|x| x.0).map(|x| x.1).collect()
     }
 
     /// Logs link changes on routers and switches since the last look.
@@ -1582,6 +1605,35 @@ impl Sim {
         if (ip.dst.octets()[..3] == [224, 0, 0]) || (rip && ip.dst == Ipv4Addr::BROADCAST) {
             if d.kind.is_host() {
                 return Ok(());
+            }
+            let debug = self.state.get(&d.id).map_or((false, false), |s| (s.debug_rip, s.debug_ospf));
+            if debug.1
+                && ip.protocol == packetcraft_wire::control::PROTO_OSPF
+                && d.ospf.is_some()
+                && let Ok(h) = packetcraft_wire::control::OspfHello::decode(&ip.payload)
+            {
+                let msg = format!(
+                    "OSPF debug: hello from {} (router ID {}, area {}) on {}, {} neighbour{} listed",
+                    ip.src,
+                    h.router_id,
+                    h.area,
+                    ifc.name,
+                    h.neighbors.len(),
+                    if h.neighbors.len() == 1 { "" } else { "s" }
+                );
+                self.log(d.id, &msg);
+            }
+            if debug.0 && rip && d.rip.is_some() {
+                let entries = Udp::decode(&ip.payload, ip.src, ip.dst).ok().and_then(|u| packetcraft_wire::control::rip_decode(&u.payload).ok());
+                if let Some((v, routes)) = entries {
+                    let listed: Vec<String> = routes
+                        .iter()
+                        .take(8)
+                        .map(|r| format!("{}/{} metric {}", r.net, packetcraft_core::mask_to_prefix(r.mask).unwrap_or(0), r.metric))
+                        .collect();
+                    let more = if routes.len() > 8 { format!(" and {} more", routes.len() - 8) } else { String::new() };
+                    self.log(d.id, &format!("RIP debug: version {v} update from {} on {}: {}{more}", ip.src, ifc.name, listed.join(", ")));
+                }
             }
             return match (ip.protocol, rip) {
                 (packetcraft_wire::control::PROTO_OSPF, _) if d.ospf.is_some() => Ok(()),

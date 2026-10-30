@@ -60,6 +60,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-10-30 — Routing debugs.** `debug ip rip` reports each RIP update a router hears with its routes; `debug ip ospf hello` (or `adj`, `events`) the OSPF hellos; `show debugging` lists what is on.
 - **2026-10-30 — LLDP.** Standard neighbour discovery (IEEE 802.1AB): `lldp run`, `lldp transmit`/`receive` per port, `show lldp neighbors [detail]`, with real LLDP frames every 30 s in Simulation mode and captures; also `show processes` and `show memory`.
 - **2026-10-30 — Activity time limit and lock.** An activity can have a time limit (a countdown in the Instructions window; the results are taken when it runs out), a hint per check shown when it fails, and an instructor password that locks it: students can't change it or see its checks, and with "score only" Check Results shows just the score.
 - **2026-10-30 — Spanish interface.** Menus, toolbars, panels and device windows in Spanish (Options ▸ Language; the system or browser language by default); the device consoles stay in English, as on real equipment.

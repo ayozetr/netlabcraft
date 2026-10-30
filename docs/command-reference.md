@@ -181,6 +181,11 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `undebug all` | privileged | router, switch | Turn every debug off |
 | `no debug all` | privileged | router, switch | Turn every debug off |
 | `no debug ip icmp` | privileged | router, switch | Stop reporting echo messages |
+| `debug ip rip` | privileged | router | Report the RIP updates this router hears |
+| `no debug ip rip` | privileged | router | Stop reporting RIP updates |
+| `debug ip ospf adj\|events\|hello` | privileged | router | Report the OSPF hellos this router hears |
+| `no debug ip ospf adj\|events\|hello` | privileged | router | Stop reporting OSPF hellos |
+| `no debug ip ospf` | privileged | router | Stop reporting OSPF hellos |
 | `show debugging` | user, privileged | router, switch | Which debugs are on |
 | `standby <0-255> ip A.B.C.D` | interface, subinterface | router | HSRP: the group's virtual gateway address |
 | `standby ip A.B.C.D` | interface, subinterface | router | HSRP group 0's virtual gateway address |
