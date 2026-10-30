@@ -32,6 +32,7 @@ pub mod pdf;
 mod phone;
 mod physical;
 pub mod png;
+mod programming;
 mod services;
 pub mod theme;
 mod wlan_page;
@@ -200,7 +201,8 @@ pub fn open_console(app: &mut PacketApp, d: DeviceId) {
     console::open(app, d);
 }
 
-/// Opens a host's Desktop: `"prompt"`, `"ip"` (IP Configuration) or the tiles (anything else).
+/// Opens a host's Desktop: `"prompt"`, `"ip"` (IP Configuration), `"email"`, `"mib"`, `"terminal"`,
+/// `"programming"` or the tiles (anything else).
 pub fn open_desktop_app(app: &mut PacketApp, d: DeviceId, which: &str) {
     console::open(app, d);
     if let Some(w) = app.ui.windows.get_mut(&d) {
@@ -211,6 +213,7 @@ pub fn open_desktop_app(app: &mut PacketApp, d: DeviceId, which: &str) {
             "email" => Some(console::DesktopApp::Email),
             "mib" => Some(console::DesktopApp::MibBrowser),
             "terminal" => Some(console::DesktopApp::Terminal),
+            "programming" => Some(console::DesktopApp::Programming),
             _ => None,
         };
     }

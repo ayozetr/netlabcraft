@@ -50,6 +50,8 @@ pub enum DesktopApp {
     MibBrowser,
     /// The console of the router or switch a console cable leads to.
     Terminal,
+    /// RESTCONF requests and NETCONF sessions, with a JSON viewer.
+    Programming,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1057,6 +1059,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                         (DesktopApp::Browser, "Web Browser"),
                         (DesktopApp::Email, "Email"),
                         (DesktopApp::MibBrowser, "MIB Browser"),
+                        (DesktopApp::Programming, "Programming"),
                     ]
                     .into_iter()
                     .chain(terminal)
@@ -1097,6 +1100,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 DesktopApp::Email => "Email",
                 DesktopApp::MibBrowser => "MIB Browser",
                 DesktopApp::Terminal => "Terminal",
+                DesktopApp::Programming => "Programming",
             };
             let mut close = false;
             egui::Frame::new().fill(tk.bar).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
@@ -1235,6 +1239,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 },
                 DesktopApp::Email => crate::mail::app(app, ui, dev),
                 DesktopApp::MibBrowser => crate::mib::app(app, ui, dev),
+                DesktopApp::Programming => crate::programming::app(app, ui, dev),
                 DesktopApp::Browser => {
                     let mut forms = app.ui.windows.get_mut(&d).map(|w| std::mem::take(&mut w.svc)).unwrap_or_default();
                     crate::services::browser(app, ui, d, &mut forms);
@@ -1252,6 +1257,27 @@ fn draw_app_icon(p: &egui::Painter, r: egui::Rect, app: DesktopApp) {
     let dark = egui::Color32::from_rgb(0x2a, 0x33, 0x40);
     let light = egui::Color32::from_rgb(0xf4, 0xf1, 0xe6);
     match app {
+        DesktopApp::Programming => {
+            // A sheet of code: braces and three lines of text.
+            let sheet = egui::Rect::from_center_size(r.center(), vec2(r.width() * 0.8, r.height()));
+            p.rect_filled(sheet, 3.0, light);
+            p.rect_stroke(sheet, 3.0, egui::Stroke::new(2.0, dark), egui::StrokeKind::Inside);
+            p.text(
+                sheet.center_top() + vec2(0.0, r.height() * 0.06),
+                egui::Align2::CENTER_TOP,
+                "{ }",
+                egui::FontId::monospace(r.height() * 0.3),
+                dark,
+            );
+            for (i, w) in [0.5_f32, 0.38, 0.44].into_iter().enumerate() {
+                let y = sheet.top() + r.height() * (0.52 + 0.14 * i as f32);
+                let x = sheet.left() + r.width() * 0.12;
+                p.line_segment(
+                    [egui::pos2(x, y), egui::pos2(x + r.width() * w, y)],
+                    egui::Stroke::new(3.0, egui::Color32::from_rgb(0x2f, 0x7d, 0xc8)),
+                );
+            }
+        }
         DesktopApp::IpConfig => {
             // A network card: a board with a port and the letters IP.
             let board = egui::Rect::from_min_size(r.min + vec2(0.0, r.height() * 0.2), vec2(r.width(), r.height() * 0.6));
