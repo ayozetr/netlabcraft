@@ -125,6 +125,11 @@ pub static SAMPLES: &[Sample] = &[
         title: "Modular routers: serial cards for a WAN link",
         description: "Two modular routers got a 2-port serial card each (fitted while switched off) and are joined over Serial0/1/0; their configurations are saved, so a power cycle keeps them.",
     },
+    Sample {
+        id: "automation",
+        title: "Automation: RESTCONF from a PC",
+        description: "R1 answers RESTCONF over HTTPS and NETCONF on port 830 for its admin user; PC1's Programming tab holds ready-made requests to read and change R1's interfaces and routes.",
+    },
 ];
 
 struct Builder {
@@ -1066,6 +1071,74 @@ pub fn build(id: &str) -> Result<Topology> {
             }
             b.t.add_annotation(560.0, 140.0, "Data VLAN 10 untagged, voice VLAN 100 tagged")?;
             b.t.notes = "Each phone takes an address in voice VLAN 100 and learns from DHCP option 150 where to register (R1); its PC, plugged into the phone, gets an address in data VLAN 10. Open Phone1 > Phone, dial 1002 and press Call; on Phone2 press Pick up. `show ephone` and `show ephone-dn` on R1 show the registrations and the call.".into();
+        }
+        "automation" => {
+            b.add(DeviceKind::Router, "R1", 360.0, 80.0)?;
+            b.add(DeviceKind::Switch, "S1", 360.0, 220.0)?;
+            b.cable("R1", "g0/0", "S1", "g0/1")?;
+            for (pc, port, x, host) in [("PC1", "fa0/1", 240.0, 10), ("PC2", "fa0/2", 480.0, 11)] {
+                b.add(DeviceKind::Pc, pc, x, 380.0)?;
+                b.cable(pc, "fa0", "S1", port)?;
+                b.type_in(pc, &format!("ipconfig 192.168.1.{host} 255.255.255.0 192.168.1.1"))?;
+            }
+            b.type_in(
+                "R1",
+                "enable
+                configure terminal
+                username admin privilege 15 secret NetLab2026
+                interface g0/0
+                description LAN
+                ip address 192.168.1.1 255.255.255.0
+                no shutdown
+                interface loopback 0
+                description Management
+                ip address 10.255.0.1 255.255.255.255
+                exit
+                ip http secure-server
+                ip http authentication local
+                restconf
+                netconf-yang
+                end
+                copy running-config startup-config",
+            )?;
+            let base = "https://192.168.1.1/restconf/data";
+            let saved = [
+                ("Interfaces", "GET", format!("{base}/ietf-interfaces:interfaces"), ""),
+                ("Hostname", "GET", format!("{base}/ietf-system:system"), ""),
+                (
+                    "Describe G0/1",
+                    "PATCH",
+                    format!("{base}/ietf-interfaces:interfaces/interface=GigabitEthernet0%2F1"),
+                    "{\"ietf-interfaces:interface\": {\"name\": \"GigabitEthernet0/1\", \"description\": \"Set over RESTCONF\"}}",
+                ),
+                (
+                    "Add Loopback1",
+                    "POST",
+                    format!("{base}/ietf-interfaces:interfaces"),
+                    "{\"ietf-interfaces:interface\": {\"name\": \"Loopback1\", \"type\": \"iana-if-type:softwareLoopback\", \"enabled\": true, \"ietf-ip:ipv4\": {\"address\": [{\"ip\": \"10.1.1.1\", \"netmask\": \"255.255.255.255\"}]}}}",
+                ),
+                (
+                    "Add a route",
+                    "POST",
+                    format!("{base}/netlabcraft-routing:static-routes"),
+                    "{\"netlabcraft-routing:route\": {\"prefix\": \"172.16.0.0/16\", \"next-hop\": [{\"address\": \"192.168.1.254\"}]}}",
+                ),
+                ("Delete Loopback1", "DELETE", format!("{base}/ietf-interfaces:interfaces/interface=Loopback1"), ""),
+            ];
+            let pc1 = b.t.resolve("PC1")?;
+            if let Some(d) = b.t.device_mut(pc1) {
+                d.automation.saved = saved
+                    .into_iter()
+                    .map(|(name, method, url, body)| netlabcraft_model::automation::SavedRequest {
+                        name: name.into(),
+                        method: method.into(),
+                        url,
+                        headers: vec![("Accept".into(), "application/yang-data+json".into())],
+                        body: body.into(),
+                    })
+                    .collect();
+            }
+            b.t.notes = "R1's user admin (password NetLab2026) may use RESTCONF over HTTPS and NETCONF on port 830. On PC1 open Desktop > Programming, pick a saved request, give the user and password and press Send; then look at `show running-config` on R1.".into();
         }
         other => return Err(EngineError::BadParams(format!("unknown sample `{other}`"))),
     }

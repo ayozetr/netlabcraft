@@ -886,3 +886,6 @@ L3 Switch 24	Switch L3 24
 Home City	Ciudad principal
 Main Building	Edificio principal
 Main Wiring Closet	Armario de cableado principal
+Automation: RESTCONF from a PC	Automatización: RESTCONF desde un PC
+R1 answers RESTCONF over HTTPS and NETCONF on port 830 for its admin user; PC1's Programming tab holds ready-made requests to read and change R1's interfaces and routes.	R1 responde a RESTCONF por HTTPS y a NETCONF en el puerto 830 para su usuario admin; la pestaña Programación de PC1 guarda peticiones listas para leer y cambiar las interfaces y rutas de R1.
+R1's user admin (password NetLab2026) may use RESTCONF over HTTPS and NETCONF on port 830. On PC1 open Desktop > Programming, pick a saved request, give the user and password and press Send; then look at `show running-config` on R1.	El usuario admin de R1 (contraseña NetLab2026) puede usar RESTCONF por HTTPS y NETCONF en el puerto 830. En PC1 abre Escritorio > Programación, elige una petición guardada, escribe el usuario y la contraseña y pulsa Enviar; después mira `show running-config` en R1.

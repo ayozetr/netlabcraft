@@ -417,6 +417,22 @@ pub static CATALOG: &[CommandInfo] = &[
     c!("sim.status", "Simulation status", "", None, "{} → {time_us, events, storm}", false),
     c!("topology.get", "The whole lab", "", None, "{} → the lab document", false),
     c!("sample.list", "Sample labs", "", None, "{} → [{id, title, description}]", false),
+    c!(
+        "pc.http_request",
+        "HTTP request (Programming)",
+        "",
+        None,
+        r#"{"pc": "PC, laptop or server", "method"?: "GET"|"PUT"|"PATCH"|"POST"|"DELETE"|…, "url": "https://10.0.0.1/restconf/data/ietf-interfaces:interfaces", "headers"?: {"Accept": "application/yang-data+json"} or [["Name", "value"]], "body"?: text or JSON, "user"?, "password"?: Basic login} → {"status", "reason", "headers", "body", "json", "applied": [{"device", "lines", "failed"}]}: over TCP through the lab (port 443 carries no TLS)"#,
+        true
+    ),
+    c!(
+        "pc.http_saved",
+        "Saved HTTP requests",
+        "",
+        None,
+        r#"{"pc", "save"?: {"name", "method", "url", "headers"?, "body"?}, "remove"?: "name"} → {"saved": [{"name", "method", "url", "headers", "body"}]}"#,
+        true
+    ),
 ];
 
 pub fn find(id: &str) -> Option<&'static CommandInfo> {

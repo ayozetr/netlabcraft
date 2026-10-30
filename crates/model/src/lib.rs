@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod acl;
 pub mod activity;
+pub mod automation;
 pub mod cable;
 pub mod drawing;
 pub mod file;
@@ -960,6 +961,9 @@ pub struct Device {
     /// EtherChannel load balancing and the SDM template.
     #[serde(default, skip_serializing_if = "l2sec::SwitchL2::is_default")]
     pub l2: l2sec::SwitchL2,
+    /// Routers: the web server, RESTCONF and NETCONF; hosts: the Programming app's requests.
+    #[serde(default, skip_serializing_if = "automation::Automation::is_default")]
+    pub automation: automation::Automation,
 }
 
 /// Which side of NAT an interface is on.
@@ -1733,6 +1737,7 @@ impl Device {
             voice: voice::Voice::default(),
             iot: iot::Iot::default(),
             l2: l2sec::SwitchL2::default(),
+            automation: automation::Automation::default(),
         };
         d.ensure_default_vlan();
         d
@@ -1792,6 +1797,7 @@ impl Device {
         self.voice = voice::Voice { tftp: self.voice.tftp, ..voice::Voice::default() };
         self.services = fresh.services;
         self.l2.reload();
+        self.automation = automation::Automation { saved: std::mem::take(&mut self.automation.saved), ..automation::Automation::default() };
     }
 
     /// What the workspace shows under the icon.
