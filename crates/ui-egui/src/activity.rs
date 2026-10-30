@@ -106,7 +106,7 @@ fn instructions(app: &mut PacketApp, ctx: &egui::Context) {
         ctx.request_repaint_after(std::time::Duration::from_millis(500));
     }
     let time_up = app.ui.activity.time_up;
-    egui::Window::new(tl("Instructions")).open(&mut open).default_size([380.0, 320.0]).anchor(egui::Align2::LEFT_TOP, [12.0, 190.0]).show(
+    egui::Window::new(tl("Instructions")).open(&mut open).default_size([380.0, 400.0]).anchor(egui::Align2::LEFT_TOP, [12.0, 178.0]).show(
         ctx,
         |ui| {
             ui.heading(a.resolve(crate::i18n::tr(&a.title)));
@@ -152,7 +152,8 @@ fn instructions(app: &mut PacketApp, ctx: &egui::Context) {
                 }
             });
             if let Some(r) = &app.ui.activity.results {
-                egui::ScrollArea::vertical().max_height(180.0).id_salt("activity_results").show(ui, |ui| {
+                // At least a few rows tall, whatever room the window has left.
+                egui::ScrollArea::vertical().min_scrolled_height(120.0).max_height(170.0).id_salt("activity_results").show(ui, |ui| {
                     if r["detail"] == false {
                         ui.label(RichText::new(tl("The instructor shows the score only.")).italics());
                     }
@@ -177,7 +178,7 @@ fn instructions(app: &mut PacketApp, ctx: &egui::Context) {
                         let (mark, color) =
                             if passed { ("done", Color32::from_rgb(0x2e, 0x8b, 0x3e)) } else { ("missing", Color32::from_rgb(0xc8, 0x3a, 0x2e)) };
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new(mark).color(color).strong());
+                            ui.label(RichText::new(tl(mark)).color(color).strong());
                             ui.label(crate::i18n::tr_any(item["label"].as_str().unwrap_or("")));
                         });
                         if let Some(hint) = item["feedback"].as_str().filter(|h| !passed && !h.is_empty()) {
@@ -217,7 +218,7 @@ fn compare(app: &mut PacketApp, ctx: &egui::Context) {
     }
     let mut open = true;
     let items = r["results"].as_array().cloned().unwrap_or_default();
-    egui::Window::new(tl("Compare with the Answer")).open(&mut open).default_size([720.0, 420.0]).show(ctx, |ui| {
+    egui::Window::new(tl("Compare with the Answer")).open(&mut open).default_size([720.0, 420.0]).default_pos([410.0, 180.0]).show(ctx, |ui| {
         let failed = items.iter().filter(|i| i["passed"] != true).count();
         ui.label(crate::i18n::trf("{} of {} checks differ from the answer", &[&failed, &items.len()]));
         ui.separator();
@@ -281,7 +282,7 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
     let mut run: Vec<(&'static str, Value)> = Vec::new();
     let v = &mut app.ui.activity;
     if activity.as_ref().is_some_and(netlabcraft_model::activity::Activity::locked) {
-        egui::Window::new(tl("Activity Wizard")).open(&mut open).default_size([360.0, 120.0]).show(ctx, |ui| {
+        egui::Window::new(tl("Activity Wizard")).open(&mut open).default_size([360.0, 120.0]).default_pos(crate::BELOW_TOOLBARS).show(ctx, |ui| {
             ui.label(tl("This activity is locked. The instructor's password unlocks it."));
             ui.horizontal(|ui| {
                 let l = ui.label(tl("Password"));
@@ -298,7 +299,7 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
         }
         return;
     }
-    egui::Window::new(tl("Activity Wizard")).open(&mut open).default_size([520.0, 520.0]).show(ctx, |ui| {
+    egui::Window::new(tl("Activity Wizard")).open(&mut open).default_size([520.0, 520.0]).default_pos(crate::BELOW_TOOLBARS).show(ctx, |ui| {
         ui.label(tl(
             "Build the finished network, capture its configuration as the answers, then put the lab back in its starting state and save it.",
         ));

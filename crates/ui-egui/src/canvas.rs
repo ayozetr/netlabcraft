@@ -53,6 +53,8 @@ pub struct CanvasState {
     band: Option<Pos2>,
     /// The workspace's size on screen (last frame).
     pub(crate) size: Vec2,
+    /// A lab was opened or created: fit it to the workspace once its size is known.
+    pub(crate) fit_pending: bool,
 }
 
 impl CanvasState {
@@ -435,6 +437,9 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
     let rect = ui.max_rect();
     app.ui.canvas_rect = Some(rect);
     app.ui.canvas.size = rect.size();
+    if std::mem::take(&mut app.ui.canvas.fit_pending) && !app.session.physical {
+        fit_view(app);
+    }
     let resp = ui.allocate_rect(rect, Sense::click_and_drag());
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 0.0, tk.canvas);
@@ -555,6 +560,9 @@ fn draw_links(app: &mut PacketApp, painter: &egui::Painter, view: &View, tk: &To
     let blocked: Vec<End> = ends.into_iter().filter(|e| stp_blocked(app, *e)).collect();
     let t = &app.session.topology;
     let mut lights: Vec<(End, Pos2)> = Vec::new();
+    // Name blocks under the icons, then each port label placed: later labels keep clear of them.
+    let mut blocks: Vec<Rect> =
+        t.devices.iter().filter(|d| view.visible(d.id)).map(|d| name_block(painter, view, d).expand2(vec2(8.0, 1.0))).collect();
     // Cables that leave a cluster run to its icon; one line per pair of icons.
     let mut outside = std::collections::BTreeSet::new();
     for l in &t.links {
@@ -649,7 +657,21 @@ fn draw_links(app: &mut PacketApp, painter: &egui::Painter, view: &View, tk: &To
                 } else {
                     n
                 };
-                painter.text(light + side * 14.0 + d * 8.0, Align2::CENTER_CENTER, name, FontId::proportional(16.0 * view.zoom.min(1.3)), tk.text);
+                let galley = painter.layout_no_wrap(name, FontId::proportional(16.0 * view.zoom.min(1.3)), tk.text);
+                // Clear of the devices' name blocks and the labels placed so far: slide further
+                // along the cable, flip to its other side, or step further out from it.
+                let size = galley.size();
+                let at = (0..8)
+                    .flat_map(|k| {
+                        [(side, 14.0), (-side, 14.0), (side, 30.0), (-side, 30.0)].map(|(s, off)| light + s * off + d * (8.0 + 7.0 * k as f32))
+                    })
+                    .find(|c| {
+                        let r = Rect::from_center_size(*c, size);
+                        !blocks.iter().any(|b| b.intersects(r))
+                    })
+                    .unwrap_or(light + side * 14.0 + d * 8.0);
+                blocks.push(Rect::from_center_size(at, size).expand2(vec2(4.0, 1.0)));
+                painter.galley(Align2::CENTER_CENTER.anchor_size(at, size).min, galley, tk.text);
             }
         }
     }
@@ -706,8 +728,11 @@ fn draw_devices(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Toke
         if d.powered_off {
             icons::powered_off_mark(painter, r);
         }
-        // Two centred lines under the icon: model, then name.
-        let font = FontId::proportional((16.0 * view.zoom).clamp(8.0, 24.0));
+        // Two centred lines under the icon: model, then name, on a soft plate of the workspace
+        // colour so cables running under them don't cross the letters.
+        let block = name_block(painter, view, d);
+        painter.rect_filled(block.expand2(vec2(3.0, 0.0)), 4.0, tk.canvas.gamma_multiply(0.82));
+        let font = name_font(view);
         let mut y = r.bottom() + 2.0;
         for line in [d.catalogue_model().label, d.display_name()] {
             let galley = painter.layout_no_wrap(line.to_string(), font.clone(), tk.text);
@@ -716,6 +741,21 @@ fn draw_devices(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Toke
             painter.galley(label.min, galley, tk.text);
         }
     }
+}
+
+fn name_font(view: &View) -> FontId {
+    FontId::proportional((16.0 * view.zoom).clamp(8.0, 24.0))
+}
+
+/// Where a device's two name lines sit on screen.
+fn name_block(painter: &egui::Painter, view: &View, d: &Device) -> Rect {
+    let r = view.device_rect(d);
+    let font = name_font(view);
+    let (w, h) = [d.catalogue_model().label, d.display_name()].iter().fold((0.0f32, 0.0f32), |(w, h), line| {
+        let s = painter.layout_no_wrap(line.to_string(), font.clone(), egui::Color32::WHITE).size();
+        (w.max(s.x), h + s.y)
+    });
+    Rect::from_min_size(pos2(r.center().x - w / 2.0, r.bottom() + 2.0), vec2(w, h))
 }
 
 /// The event selected in the event list, as an envelope travelling along its cable.
@@ -779,25 +819,46 @@ fn finish_band(app: &mut PacketApp, view: &View, a: Pos2, b: Pos2) {
     app.ui.picked_clusters.extend(cls);
 }
 
-/// Pans so what the current view shows (devices and cluster icons) sits in the middle.
+/// Fits what the current view shows (devices, cluster icons and drawings) to the workspace:
+/// centred, zoomed out when it doesn't fit (never zoomed in past 1:1), with room for the labels.
 pub(crate) fn fit_view(app: &mut PacketApp) {
     let t = &app.session.topology;
     let level = app.session.view;
     let shown = t.shown_map(level);
-    let pts: Vec<(f32, f32)> = t
+    // Each icon with room for its name block below and its port labels around it (workspace units).
+    let (side, top, bottom) = (ICON + 34.0, ICON * 0.5 + 26.0, ICON * 0.5 + 58.0);
+    let mut boxes: Vec<Rect> = t
         .devices
         .iter()
         .filter(|d| shown.get(&d.id) == Some(&Shown::Device))
         .map(|d| (d.x, d.y))
         .chain(t.clusters_in(level).map(|c| (c.x, c.y)))
+        .map(|(x, y)| Rect::from_min_max(pos2(x - side, y - top), pos2(x + side, y + bottom)))
         .collect();
-    if pts.is_empty() || app.ui.canvas.size.x < 1.0 {
+    if boxes.is_empty() {
         return;
     }
-    let (x0, x1) = pts.iter().fold((f32::MAX, f32::MIN), |(a, b), p| (a.min(p.0), b.max(p.0)));
-    let (y0, y1) = pts.iter().fold((f32::MAX, f32::MIN), |(a, b), p| (a.min(p.1), b.max(p.1)));
-    let center = vec2((x0 + x1) / 2.0, (y0 + y1) / 2.0);
-    app.ui.pan = app.ui.canvas.size / 2.0 - center * app.ui.zoom;
+    for a in t.annotations.iter().filter(|a| a.cluster == level) {
+        let r = match a.shape {
+            // About 8 units a character at the note font.
+            Shape::Text => Rect::from_min_size(pos2(a.x, a.y), vec2(8.0 * a.text.chars().count().min(200) as f32 + 12.0, 26.0)),
+            _ if !a.points.is_empty() => {
+                a.points.iter().fold(Rect::NOTHING, |r, p| r.union(Rect::from_min_size(pos2(a.x + p[0], a.y + p[1]), Vec2::ZERO)))
+            }
+            _ => Rect::from_two_pos(pos2(a.x, a.y), pos2(a.x + a.w, a.y + a.h)),
+        };
+        if r.is_finite() {
+            boxes.push(r.expand(6.0));
+        }
+    }
+    let size = app.ui.canvas.size;
+    let all = boxes.into_iter().fold(Rect::NOTHING, Rect::union);
+    if size.x < 1.0 || size.y < 1.0 || !all.is_finite() {
+        return;
+    }
+    let zoom = (size.x / all.width().max(1.0)).min(size.y / all.height().max(1.0));
+    app.ui.zoom = if zoom.is_finite() { zoom.clamp(0.25, 1.0) } else { 1.0 };
+    app.ui.pan = size / 2.0 - all.center().to_vec2() * app.ui.zoom;
 }
 
 /// Closes the polygon being placed into a drawing.

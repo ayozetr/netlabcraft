@@ -153,6 +153,20 @@ pub fn play_controls(app: &mut PacketApp, ui: &mut Ui, size: f32) {
     }
 }
 
+/// The event list's columns and their widths: each as wide as its heading, the two device
+/// columns sharing what is left of `width` (the list scrolls sideways only when even their
+/// least doesn't fit).
+fn columns(ui: &Ui, width: f32) -> [(&'static str, f32); 6] {
+    let text = |s: &str| ui.painter().layout_no_wrap(crate::i18n::tr(s).to_string(), egui::FontId::proportional(15.0), egui::Color32::WHITE).size().x;
+    let fit = |s: &str, least: f32| (text(s) + 14.0).max(least);
+    let vis = fit("Vis.", text("Visible") + 14.0);
+    let time = fit("Time(sec)", 64.0);
+    let kind = fit("Type", text("ICMPv6") + 14.0);
+    let info = fit("Info", 36.0);
+    let device = ((width - vis - time - kind - info) / 2.0).max(fit("Last Device", 0.0).min(fit("At Device", 0.0)).min(90.0));
+    [("Vis.", vis), ("Time(sec)", time), ("Last Device", device), ("At Device", device), ("Type", kind), ("Info", info)]
+}
+
 pub fn panel(app: &mut PacketApp, ui: &mut Ui) {
     let now = ui.input(|i| i.time);
     advance(app, now);
@@ -167,7 +181,7 @@ pub fn panel(app: &mut PacketApp, ui: &mut Ui) {
     let rows: Vec<usize> = app.session.sim.trace().iter().enumerate().filter(|(_, e)| app.ui.events.visible(e.protocol)).map(|(i, _)| i).collect();
     let list_h = (ui.available_height() - 250.0).max(140.0);
     let row_h = 26.0;
-    let cols = [("Vis.", 70.0), ("Time(sec)", 80.0), ("Last Device", 105.0), ("At Device", 105.0), ("Type", 55.0), ("Info", 40.0)];
+    let cols = columns(ui, ui.available_width() - 2.0);
     egui::Frame::new().stroke(egui::Stroke::new(1.0, tk.chrome_line)).fill(tk.canvas).show(ui, |ui| {
         ui.set_min_height(list_h);
         ui.set_max_height(list_h);
@@ -179,7 +193,7 @@ pub fn panel(app: &mut PacketApp, ui: &mut Ui) {
                     for (h, w) in cols {
                         let (r, _) = ui.allocate_exact_size(egui::vec2(w, row_h), egui::Sense::hover());
                         ui.painter().rect_stroke(r, 0.0, egui::Stroke::new(1.0, tk.chrome_line), egui::StrokeKind::Inside);
-                        ui.painter().text(
+                        ui.painter().with_clip_rect(r.shrink(1.0)).text(
                             r.left_center() + egui::vec2(6.0, 0.0),
                             egui::Align2::LEFT_CENTER,
                             crate::i18n::tr(h),
@@ -209,7 +223,7 @@ pub fn panel(app: &mut PacketApp, ui: &mut Ui) {
                         let last = t.device(e.from.device).map_or("--".to_string(), |d| d.display_name().to_string());
                         let at = t.device(e.to.device).map_or("--".to_string(), |d| d.display_name().to_string());
                         let cells = [
-                            if shown { "Visible".to_string() } else { String::new() },
+                            if shown { tl("Visible").to_string() } else { String::new() },
                             format!("{:.3}", e.at_us as f64 / 1e6),
                             last,
                             at,
@@ -232,15 +246,17 @@ pub fn panel(app: &mut PacketApp, ui: &mut Ui) {
                         };
                         p.rect_filled(rect, 0.0, fill);
                         let mut x = rect.left();
-                        for (c, (_, w)) in cells.iter().zip(cols.iter()) {
-                            let align =
-                                if c.parse::<f64>().is_ok() || c == "Visible" { egui::Align2::RIGHT_CENTER } else { egui::Align2::LEFT_CENTER };
+                        for (k, (c, (_, w))) in cells.iter().zip(cols.iter()).enumerate() {
+                            // Visible and the time sit right, the names and the type left; each
+                            // clipped to its column.
+                            let align = if k < 2 { egui::Align2::RIGHT_CENTER } else { egui::Align2::LEFT_CENTER };
                             let pos = if align == egui::Align2::RIGHT_CENTER {
                                 egui::pos2(x + w - 6.0, rect.center().y)
                             } else {
                                 egui::pos2(x + 6.0, rect.center().y)
                             };
-                            p.text(pos, align, c, egui::FontId::proportional(15.0), text);
+                            let cell = egui::Rect::from_min_size(egui::pos2(x, rect.top()), egui::vec2(*w, row_h)).shrink2(egui::vec2(2.0, 0.0));
+                            p.with_clip_rect(cell.intersect(rect)).text(pos, align, c, egui::FontId::proportional(15.0), text);
                             x += w;
                         }
                         let info = egui::Rect::from_center_size(egui::pos2(x + 20.0, rect.center().y), egui::vec2(18.0, 14.0));
@@ -332,9 +348,12 @@ pub fn pdu_window(app: &mut PacketApp, ctx: &egui::Context) {
     let at = t.device(e.to.device).map_or("?".to_string(), |d| d.name.clone());
     let tk = theme::tokens(app.ui.dark);
     let mut open = true;
-    egui::Window::new(format!("PDU Information at Device: {at}")).id(egui::Id::unique("pdu_info")).open(&mut open).default_size([460.0, 420.0]).show(
-        ctx,
-        |ui| {
+    egui::Window::new(crate::i18n::trf("PDU Information at Device: {}", &[&at]))
+        .id(egui::Id::unique("pdu_info"))
+        .open(&mut open)
+        .default_size([460.0, 420.0])
+        .default_pos(crate::BELOW_TOOLBARS)
+        .show(ctx, |ui| {
             ui.label(crate::i18n::trf(
                 "Event {} at {} s, from {} to {}",
                 &[&e.id, &format!("{:.6}", e.at_us as f64 / 1e6), &t.end_label(e.from), &t.end_label(e.to)],
@@ -363,8 +382,7 @@ pub fn pdu_window(app: &mut PacketApp, ctx: &egui::Context) {
                     ui.monospace(hex_dump(e.air.as_deref().unwrap_or(&e.frame)));
                 });
             });
-        },
-    );
+        });
     if !open {
         app.ui.events.info = None;
     }

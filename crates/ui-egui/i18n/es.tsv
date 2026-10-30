@@ -52,7 +52,6 @@ Device	Equipo
 Disconnect	Desconectar
 Display Name	Nombre visible
 Draw Ellipse	Dibujar elipse
-Draw Freeform (not available yet)	Dibujo libre (todavía no disponible)
 Draw Line	Dibujar línea
 Draw Rectangle	Dibujar rectángulo
 Edit	Edición
@@ -220,7 +219,6 @@ Completion	Completado
 of	de
 points	puntos
 Pick a device in the palette and click the canvas to place it, or open a sample from File.	Elige un equipo en la paleta y haz clic en el espacio de trabajo para colocarlo, o abre un ejemplo desde Archivo.
-Click a device to configure it · drag to move · scroll to pan, Ctrl+scroll to zoom	Haz clic en un equipo para configurarlo · arrastra para moverlo · rueda para desplazarte, Ctrl+rueda para acercar
 Drag on the workspace to draw. Drawings sit behind devices; move them with Select.	Arrastra en el espacio de trabajo para dibujar. Los dibujos quedan detrás de los equipos; muévelos con Seleccionar.
 Click the workspace to place a note. Drag notes to move them; double-click to edit.	Haz clic en el espacio de trabajo para colocar una nota. Arrastra las notas para moverlas; doble clic para editarlas.
 Click the first device and pick a port.	Haz clic en el primer equipo y elige un puerto.
@@ -229,8 +227,8 @@ Simple PDU: now click the destination device.	PDU simple: ahora haz clic en el e
 Inspect: click a device to see its ARP, MAC and routing tables.	Inspeccionar: haz clic en un equipo para ver sus tablas ARP, MAC y de rutas.
 Click a device or a cable to delete it.	Haz clic en un equipo o un cable para eliminarlo.
 Vis.	Vis.
-Last Device	Último equipo
-At Device	En el equipo
+Last Device	Desde
+At Device	Hasta
 Info	Info
 Playing...	Reproduciendo...
 events	eventos
@@ -273,7 +271,6 @@ Copied {}	Copiado {}
 Version {}	Versión {}
 Startup configuration loaded: `reload` the device to use it.	Configuración de arranque cargada: usa `reload` en el equipo para aplicarla.
 This lab has notes: open them with the notes button.	Este laboratorio tiene notas: ábrelas con el botón de notas.
-The physical workspace (buildings, closets, racks) is not available yet.	El espacio de trabajo físico (edificios, armarios, racks) aún no está disponible.
 Devices power-cycled: dynamic tables cleared.	Equipos reiniciados: tablas dinámicas borradas.
 {} (drag on the workspace)	{} (arrastra en el espacio de trabajo)
 Click the workspace to place a {}. Esc to stop.	Haz clic en el espacio de trabajo para colocar un {}. Esc para terminar.
@@ -355,7 +352,7 @@ Every router runs RIPv2. Compare `show ip route` (R routes, hop counts in `show 
 The red cable is serial; the clock marks R1's DCE end (`show controllers s0/0/0`). Remove the clock rate on R1, or change one end to `encapsulation hdlc`, and the link goes down.	El cable rojo es serie; el reloj marca el extremo DCE de R1 (`show controllers s0/0/0`). Quita el clock rate en R1, o cambia un extremo a `encapsulation hdlc`, y el enlace se cae.
 A graded activity: follow the Instructions window and press Check Results.	Una actividad evaluada: sigue la ventana de Instrucciones y pulsa Comprobar resultados.
 R1 is active for both virtual gateways (`show standby`). Watch the HSRP hellos in Simulation mode, then shut R1's interfaces and ping from PC1 again.	R1 es el activo de las dos puertas de enlace virtuales (`show standby`). Observa los hellos HSRP en el modo Simulación, luego apaga las interfaces de R1 y vuelve a hacer ping desde PC1.
-AP1 offers Aula (WPA2, passphrase clase1234). Open a laptop's Config ▸ Wireless0 to change its network, or move it far from AP1 and watch it drop.	AP1 ofrece la red Aula (WPA2, clave clase1234). Abre Config ▸ Wireless0 de un portátil para cambiar de red, o aléjalo de AP1 y verás cómo se desconecta.
+AP1 offers Aula (WPA2, passphrase clase1234). Open a laptop's Config ▸ Wireless0 to change its network, or move it far from AP1 and watch it drop.	AP1 ofrece la red Aula (WPA2, clave clase1234). Abre Config › Wireless0 de un portátil para cambiar de red, o aléjalo de AP1 y verás cómo se desconecta.
 No static routes: OSPF finds every network. Try `show ip ospf neighbor` and `show ip route` on R1, then shut down R1 g0/2 and watch the route to 192.168.3.0 move to R2.	Sin rutas estáticas: OSPF encuentra todas las redes. Prueba `show ip ospf neighbor` y `show ip route` en R1, luego apaga g0/2 de R1 y verás cómo la ruta a 192.168.3.0 pasa por R2.
 PC1 pings the Web server through PAT (`show ip nat translations` on Office). PC2 is blocked by the GUESTS access list (`show access-lists`). The ISP has no route to 192.168.0.0/24: only NAT makes the replies come back.	PC1 hace ping al servidor Web a través de PAT (`show ip nat translations` en Office). La lista de acceso GUESTS bloquea a PC2 (`show access-lists`). El ISP no tiene ruta a 192.168.0.0/24: solo NAT hace que vuelvan las respuestas.
 Open PC1 > Desktop > Web Browser and go to www.netlabcraft.lab. Edit the pages in Server0 > Services > HTTP. Try `ping www.netlabcraft.lab` and `nslookup www.netlabcraft.lab` in a Command Prompt.	Abre PC1 > Desktop > Web Browser y ve a www.netlabcraft.lab. Edita las páginas en Server0 > Services > HTTP. Prueba `ping www.netlabcraft.lab` y `nslookup www.netlabcraft.lab` en el Command Prompt.
@@ -371,7 +368,6 @@ Router address	Dirección del router
 Hand out addresses (DHCP)	Repartir direcciones (DHCP)
 First address	Primera dirección
 Save LAN	Guardar LAN
-Internet (static)	Internet (estática)
 Save Internet	Guardar Internet
 Wireless	Inalámbrica
 SSID	SSID
@@ -806,3 +802,54 @@ a {} cable needs a {} port on both ends: {} is {}	un cable {} necesita un puerto
 wrong cable: {} and {} need a {} cable, a {} one is plugged in and neither end has auto-MDIX	cable equivocado: {} y {} necesitan un cable {}, hay uno {} conectado y ningún extremo tiene auto-MDIX
 {} has no console cable: join its RS-232 port to a router's or switch's Console port (link.add with "cable": "console")	{} no tiene cable de consola: une su puerto RS-232 al puerto Console de un router o switch (link.add con "cable": "console")
 a console cable joins a PC's RS-232 port to a router's or switch's Console port: {} and {}	un cable de consola une el puerto RS-232 de un PC al puerto Console de un router o switch: {} y {}
+(IPv6 off)	(IPv6 desactivado)
+(delete)	(eliminar)
+(edit)	(editar)
+Base MAC address	Dirección MAC base
+Cabled ports	Puertos cableados
+Command Line Interface	Interfaz de línea de comandos
+Detail	Detalle
+Erase	Borrar
+Export...	Exportar...
+Failed	Fallido
+Load...	Cargar...
+Max User	Máx. usuarios
+Merge...	Combinar...
+Model	Modelo
+No.	N.º
+Open (no passphrase)	Abierta (sin clave)
+open	abierta
+Ports	Puertos
+Position	Posición
+Running Config	Configuración en ejecución
+Saved configuration	Configuración guardada
+Scenario information	Información del escenario
+Start IP Address	IP inicial
+Start IP Address:	IP inicial:
+Startup Config	Configuración de arranque
+Subnet Mask:	Máscara de subred:
+Successful	Correcto
+In Progress	En curso
+missing	falta
+done	hecho
+yes	sí
+MAC Address: {}	Dirección MAC: {}
+Link Local Address: {}	Dirección link-local: {}
+Native VLAN {} · allowed {}	VLAN nativa {} · permitidas {}
+Host ports are always on.	Los puertos de los equipos finales siempre están encendidos.
+Wi-Fi settings applied	Ajustes Wi-Fi aplicados
+Not associated: check the SSID, the passphrase and the distance	Sin asociar: comprueba el SSID, la clave y la distancia
+Fire PDU {}	Lanzar PDU {}
+PDU Information at Device: {}	Información de la PDU en el equipo: {}
+Stopped.	Detenido.
+Request timed out.	La petición caducó.
+{}: `{}` is not an address	{}: `{}` no es una dirección
+Give the pool a name	Pon un nombre al pool
+Start IP Address: four numbers 0-255	IP inicial: cuatro números de 0 a 255
+Subnet Mask: four numbers 0-255	Máscara de subred: cuatro números de 0 a 255
+Maximum Number of Users: a number	Número máximo de usuarios: un número
+This server's time: {} UTC (day {} of the Unix era)	Hora de este servidor: {} UTC (día {} de la era Unix)
+Key information	Información de la clave
+Replay counter	Contador de repetición
+Fire All	Lanzar todas
+Visible	Visible

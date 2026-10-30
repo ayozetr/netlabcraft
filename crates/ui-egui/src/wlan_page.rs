@@ -25,7 +25,7 @@ struct Form {
     controller: String,
 }
 
-const SECURITY: [&str; 3] = ["Open", "WPA2-PSK", "WPA2-Enterprise"];
+const SECURITY: [&str; 3] = ["Open (no passphrase)", "WPA2-PSK", "WPA2-Enterprise"];
 
 pub fn show(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     let d = dev.id;
@@ -56,7 +56,7 @@ pub fn show(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
             for w in &dev.wlan.wlans {
                 ui.label(w.id.to_string());
                 ui.label(&w.ssid);
-                ui.label(w.security.name());
+                ui.label(crate::i18n::tr(w.security.name()));
                 ui.label(w.vlan.map_or("-".to_string(), |v| v.to_string()));
                 if ui.small_button(tl("Remove")).clicked() {
                     done |= app.run("wlc.wlan", json!({"device": d.0, "id": w.id, "remove": true})).is_some();
@@ -71,10 +71,10 @@ pub fn show(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
         ui.horizontal(|ui| {
             let l = ui.add_sized([130.0, 22.0], egui::Label::new(tl("Security")));
             egui::ComboBox::from_id_salt(("wlan_sec", d.0))
-                .selected_text(SECURITY.get(f.security).copied().unwrap_or("Open"))
+                .selected_text(tl(SECURITY.get(f.security).copied().unwrap_or("Open (no passphrase)")))
                 .show_ui(ui, |ui| {
                     for (i, s) in SECURITY.iter().enumerate() {
-                        ui.selectable_value(&mut f.security, i, *s);
+                        ui.selectable_value(&mut f.security, i, tl(s));
                     }
                 })
                 .response
