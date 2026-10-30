@@ -35,7 +35,7 @@ enum View {
 
 fn field(ui: &mut egui::Ui, label: &str, value: &mut String, password: bool) {
     ui.horizontal(|ui| {
-        let l = ui.add_sized([150.0, 22.0], egui::Label::new(label));
+        let l = crate::console::form_label(ui, label, crate::console::LABEL_W);
         ui.add(egui::TextEdit::singleline(value).password(password).desired_width(260.0)).labelled_by(l.id);
     });
 }

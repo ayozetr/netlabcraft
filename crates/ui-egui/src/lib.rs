@@ -274,6 +274,47 @@ pub fn open_config_tab(app: &mut PacketApp, d: DeviceId) {
     }
 }
 
+/// Opens a device window on a tab by name: `physical`, `config`, `cli`, `services`, `desktop`,
+/// `phone`, `iot` or `attributes` (anything else keeps the default).
+pub fn open_tab(app: &mut PacketApp, d: DeviceId, name: &str) {
+    use console::Tab;
+    console::open(app, d);
+    let tab = match name {
+        "physical" => Tab::Physical,
+        "config" => Tab::Config,
+        "cli" => Tab::Cli,
+        "services" => Tab::Services,
+        "desktop" => Tab::Desktop,
+        "phone" => Tab::Phone,
+        "iot" => Tab::Iot,
+        "attributes" => Tab::Attributes,
+        _ => return,
+    };
+    if let Some(w) = app.ui.windows.get_mut(&d) {
+        w.tab = tab;
+    }
+}
+
+/// Opens a device's Config tab on one page: `settings`, `home`, `vlans`, `routes`, `wireless`
+/// or `port:N` (the N-th port, from 0).
+pub fn open_config_page(app: &mut PacketApp, d: DeviceId, page: &str) {
+    use console::ConfigPage;
+    open_config_tab(app, d);
+    let p = match page {
+        "home" => ConfigPage::Home,
+        "vlans" => ConfigPage::Vlans,
+        "routes" => ConfigPage::Routes,
+        "wireless" => ConfigPage::Wireless,
+        other => match other.strip_prefix("port:").and_then(|n| n.parse().ok()) {
+            Some(n) => ConfigPage::Port(n),
+            None => ConfigPage::Settings,
+        },
+    };
+    if let Some(w) = app.ui.windows.get_mut(&d) {
+        w.page = p;
+    }
+}
+
 /// Opens a device's Physical tab (power switch, and the bays of a modular router).
 pub fn open_physical_tab(app: &mut PacketApp, d: DeviceId) {
     console::open(app, d);
@@ -285,6 +326,10 @@ pub fn open_physical_tab(app: &mut PacketApp, d: DeviceId) {
 /// Where windows without a place of their own open: below the menu and the toolbars, so they
 /// never start over them.
 pub(crate) const BELOW_TOOLBARS: [f32; 2] = [300.0, 180.0];
+
+/// The top of the workspace: below the menu, the two toolbars and the Logical/Physical bar, where
+/// device windows start so they never cover the view's controls.
+pub(crate) const BELOW_VIEW_BAR: f32 = 170.0;
 
 /// The application.
 pub struct PacketApp {

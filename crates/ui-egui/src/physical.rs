@@ -379,6 +379,8 @@ fn draw_devices(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Toke
         icons::model_marks(painter, r, d.catalogue_model().id, d.catalogue_model().multilayer());
         let galley = painter.layout_no_wrap(d.display_name().to_string(), FontId::proportional((16.0 * view.zoom).clamp(8.0, 24.0)), tk.text);
         let at = Align2::CENTER_TOP.anchor_size(pos2(r.center().x, r.bottom() + 2.0), galley.size());
+        // On a soft plate of the ground colour, so the cables under it don't cross the letters.
+        painter.rect_filled(at.expand2(vec2(3.0, 0.0)), 4.0, tk.ground.gamma_multiply(0.82));
         painter.galley(at.min, galley, tk.text);
     }
 }

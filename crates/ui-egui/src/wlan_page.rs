@@ -69,7 +69,7 @@ pub fn show(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
         field(ui, tl("WLAN number"), &mut f.id);
         field(ui, tl("SSID"), &mut f.ssid);
         ui.horizontal(|ui| {
-            let l = ui.add_sized([130.0, 22.0], egui::Label::new(tl("Security")));
+            let l = crate::console::form_label(ui, tl("Security"), crate::console::LABEL_W);
             egui::ComboBox::from_id_salt(("wlan_sec", d.0))
                 .selected_text(tl(SECURITY.get(f.security).copied().unwrap_or("Open (no passphrase)")))
                 .show_ui(ui, |ui| {

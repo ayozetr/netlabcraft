@@ -167,6 +167,9 @@ fn columns(ui: &Ui, width: f32) -> [(&'static str, f32); 6] {
     [("Vis.", vis), ("Time(sec)", time), ("Last Device", device), ("At Device", device), ("Type", kind), ("Info", info)]
 }
 
+/// The height the simulation panel keeps under the event list for its controls and filters.
+const BELOW_LIST: f32 = 260.0;
+
 pub fn panel(app: &mut PacketApp, ui: &mut Ui) {
     let now = ui.input(|i| i.time);
     advance(app, now);
@@ -179,7 +182,7 @@ pub fn panel(app: &mut PacketApp, ui: &mut Ui) {
     ui.separator();
     ui.label(RichText::new(tl("Event List")).size(16.0));
     let rows: Vec<usize> = app.session.sim.trace().iter().enumerate().filter(|(_, e)| app.ui.events.visible(e.protocol)).map(|(i, _)| i).collect();
-    let list_h = (ui.available_height() - 250.0).max(140.0);
+    let list_h = (ui.available_height() - BELOW_LIST).max(120.0);
     let row_h = 26.0;
     let cols = columns(ui, ui.available_width() - 2.0);
     egui::Frame::new().stroke(egui::Stroke::new(1.0, tk.chrome_line)).fill(tk.canvas).show(ui, |ui| {
@@ -279,61 +282,70 @@ pub fn panel(app: &mut PacketApp, ui: &mut Ui) {
             });
         });
     });
-    ui.add_space(4.0);
-    ui.horizontal(|ui| {
-        if crate::navy_button(ui, "Reset Simulation").on_hover_text(tl("Clear the event list")).clicked() {
-            app.run("sim.clear_events", json!({}));
-            app.ui.events.selected = None;
-            app.ui.events.playing = false;
-        }
-        let state = if app.ui.events.playing {
-            crate::i18n::tl("Playing...").to_string()
-        } else {
-            format!("{} {}", app.session.sim.trace().len(), crate::i18n::tl("events"))
-        };
-        ui.label(RichText::new(state).color(tk.muted));
-    });
-    ui.separator();
-    ui.label(RichText::new(tl("Play Controls")).size(16.0));
-    ui.vertical_centered(|ui| {
+    egui::ScrollArea::vertical().id_salt("sim_controls").auto_shrink([false, true]).show(ui, |ui| {
+        ui.add_space(4.0);
         ui.horizontal(|ui| {
-            let w = 3.0 * 44.0;
-            ui.add_space(((ui.available_width() - w) / 2.0).max(0.0));
-            play_controls(app, ui, 38.0);
+            if crate::navy_button(ui, "Reset Simulation").on_hover_text(tl("Clear the event list")).clicked() {
+                app.run("sim.clear_events", json!({}));
+                app.ui.events.selected = None;
+                app.ui.events.playing = false;
+            }
+            let state = if app.ui.events.playing {
+                crate::i18n::tl("Playing...").to_string()
+            } else {
+                format!("{} {}", app.session.sim.trace().len(), crate::i18n::tl("events"))
+            };
+            ui.label(RichText::new(state).color(tk.muted));
         });
-    });
-    // Slow on the left, fast on the right, as a speed slider reads.
-    let mut speed = 2.1 - app.ui.events.step_seconds;
-    ui.spacing_mut().slider_width = ui.available_width() - 10.0;
-    if ui.add(egui::Slider::new(&mut speed, 0.1..=2.0).show_value(false)).on_hover_text(tl("Play speed")).changed() {
-        app.ui.events.step_seconds = 2.1 - speed;
-    }
-    ui.separator();
-    ui.label(RichText::new(tl("Event List Filters - Visible Events")).size(16.0));
-    let visible: Vec<&str> =
-        FILTERS.iter().enumerate().filter(|(i, _)| app.ui.events.filter.get(*i).copied().unwrap_or(true)).map(|(_, p)| p.name()).collect();
-    ui.label(if visible.is_empty() { "(none)".to_string() } else { visible.join(", ") });
-    if app.ui.events.show_filters {
-        ui.horizontal_wrapped(|ui| {
-            for (i, p) in FILTERS.iter().enumerate() {
-                if let Some(f) = app.ui.events.filter.get_mut(i) {
-                    ui.checkbox(f, RichText::new(p.name()).color(theme::protocol_color(*p)));
+        ui.separator();
+        ui.label(RichText::new(tl("Play Controls")).size(16.0));
+        ui.vertical_centered(|ui| {
+            ui.horizontal(|ui| {
+                let w = 3.0 * 44.0;
+                ui.add_space(((ui.available_width() - w) / 2.0).max(0.0));
+                play_controls(app, ui, 38.0);
+            });
+        });
+        // Slow on the left, fast on the right, as a speed slider reads.
+        let mut speed = 2.1 - app.ui.events.step_seconds;
+        ui.spacing_mut().slider_width = ui.available_width() - 10.0;
+        if ui.add(egui::Slider::new(&mut speed, 0.1..=2.0).show_value(false)).on_hover_text(tl("Play speed")).changed() {
+            app.ui.events.step_seconds = 2.1 - speed;
+        }
+        ui.separator();
+        ui.label(RichText::new(tl("Event List Filters - Visible Events")).size(16.0));
+        let visible: Vec<&str> =
+            FILTERS.iter().enumerate().filter(|(i, _)| app.ui.events.filter.get(*i).copied().unwrap_or(true)).map(|(_, p)| p.name()).collect();
+        // Every protocol on is the usual case: one line rather than the whole list.
+        ui.label(if visible.is_empty() {
+            tl("(none)").to_string()
+        } else if visible.len() == FILTERS.len() {
+            tl("All protocols").to_string()
+        } else {
+            visible.join(", ")
+        });
+        if app.ui.events.show_filters {
+            ui.horizontal_wrapped(|ui| {
+                for (i, p) in FILTERS.iter().enumerate() {
+                    if let Some(f) = app.ui.events.filter.get_mut(i) {
+                        ui.checkbox(f, RichText::new(p.name()).color(theme::protocol_color(*p)));
+                    }
                 }
+            });
+        }
+        ui.columns(2, |cols| {
+            if let Some(c) = cols.get_mut(0)
+                && crate::navy_button_wide(c, "Edit Filters").clicked()
+            {
+                app.ui.events.show_filters = !app.ui.events.show_filters;
+            }
+            if let Some(c) = cols.get_mut(1)
+                && crate::navy_button_wide(c, "Show All/None").clicked()
+            {
+                let all = app.ui.events.filter.iter().all(|f| *f);
+                app.ui.events.filter = [!all; FILTERS.len()];
             }
         });
-    }
-    ui.columns(2, |cols| {
-        if let Some(c) = cols.get_mut(0)
-            && crate::navy_button_wide(c, "Edit Filters").clicked()
-        {
-            app.ui.events.show_filters = !app.ui.events.show_filters;
-        }
-        if let Some(c) = cols.get_mut(1)
-            && crate::navy_button_wide(c, "Show All/None").clicked()
-        {
-            let all = app.ui.events.filter.iter().all(|f| *f);
-            app.ui.events.filter = [!all; FILTERS.len()];
-        }
     });
 }
 

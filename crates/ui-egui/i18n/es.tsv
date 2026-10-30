@@ -98,7 +98,6 @@ Line	Línea
 Link Local Address	Dirección link-local
 Logical	Lógico
 Mask	Máscara
-Maximum Number of Users:	Número máximo de usuarios:
 Message	Mensaje
 Mode	Modo
 Must fail (an access list should block it)	Debe fallar (una lista de acceso debería bloquearlo)
@@ -825,9 +824,7 @@ Running Config	Configuración en ejecución
 Saved configuration	Configuración guardada
 Scenario information	Información del escenario
 Start IP Address	IP inicial
-Start IP Address:	IP inicial:
 Startup Config	Configuración de arranque
-Subnet Mask:	Máscara de subred:
 Successful	Correcto
 In Progress	En curso
 missing	falta
@@ -853,3 +850,25 @@ Key information	Información de la clave
 Replay counter	Contador de repetición
 Fire All	Lanzar todas
 Visible	Visible
+Maximum Number of Users	Número máximo de usuarios
+Router with 2 Gigabit Ethernet ports	Router con 2 puertos Gigabit Ethernet
+Router with 3 Gigabit Ethernet ports	Router con 3 puertos Gigabit Ethernet
+Router with 4 Gigabit Ethernet ports	Router con 4 puertos Gigabit Ethernet
+Router with 2 Gigabit Ethernet ports and 2 serial WAN ports	Router con 2 puertos Gigabit Ethernet y 2 puertos WAN serie
+Switch with 8 Fast Ethernet + 1 Gigabit Ethernet ports (the Gigabit uplink takes copper or fiber)	Switch con 8 puertos Fast Ethernet + 1 Gigabit Ethernet (el enlace Gigabit admite cobre o fibra)
+Switch with 24 Fast Ethernet + 2 Gigabit Ethernet ports (the Gigabit uplinks take copper or fiber)	Switch con 24 puertos Fast Ethernet + 2 Gigabit Ethernet (los enlaces Gigabit admiten cobre o fibra)
+Multilayer switch with 24 Fast Ethernet + 2 Gigabit Ethernet ports (copper or fiber): switches, and routes with `ip routing`	Switch multicapa con 24 puertos Fast Ethernet + 2 Gigabit Ethernet (cobre o fibra): conmuta, y enruta con `ip routing`
+Switch with 48 Fast Ethernet + 2 Gigabit Ethernet ports (the Gigabit uplinks take copper or fiber)	Switch con 48 puertos Fast Ethernet + 2 Gigabit Ethernet (los enlaces Gigabit admiten cobre o fibra)
+Switch with 24 Fast Ethernet ports and 2 Gigabit fiber (SFP) uplinks	Switch con 24 puertos Fast Ethernet y 2 enlaces Gigabit de fibra (SFP)
+Wi-Fi access point: bridges its radio and its Ethernet port (SSID, WPA2-PSK)	Punto de acceso Wi-Fi: une su radio y su puerto Ethernet (SSID, WPA2-PSK)
+Wireless LAN controller: holds the WLANs (SSID, WPA2-PSK or WPA2-Enterprise) and pushes them to the lightweight APs that join it	Controlador de LAN inalámbrica: guarda las WLAN (SSID, WPA2-PSK o WPA2-Enterprise) y las pasa a los AP ligeros que se le unen
+Lightweight access point: joins a wireless LAN controller over its Ethernet port and offers the controller's WLANs	Punto de acceso ligero: se une a un controlador de LAN inalámbrica por su puerto Ethernet y ofrece las WLAN del controlador
+Home wireless router: Internet port, 4 LAN ports and Wi-Fi, with DHCP and NAT set up	Router inalámbrico doméstico: puerto de Internet, 4 puertos LAN y Wi-Fi, con DHCP y NAT ya configurados
+Hub: repeats every frame out of its other 8 ports	Hub: repite cada trama por sus otros 8 puertos
+Desktop PC with one Fast Ethernet port	PC de sobremesa con un puerto Fast Ethernet
+Laptop with one Fast Ethernet port	Portátil con un puerto Fast Ethernet
+Laptop with a Wi-Fi card instead of an Ethernet port	Portátil con una tarjeta Wi-Fi en lugar de puerto Ethernet
+Server with one Gigabit Ethernet port	Servidor con un puerto Gigabit Ethernet
+Network printer with one Fast Ethernet port	Impresora de red con un puerto Fast Ethernet
+(none)	(ninguno)
+All protocols	Todos los protocolos

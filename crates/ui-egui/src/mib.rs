@@ -58,27 +58,27 @@ pub fn app(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     let mut f: Form = ui.data_mut(|m| m.get_temp(id)).unwrap_or_default();
     let row = |ui: &mut egui::Ui, label: &str, v: &mut String| {
         ui.horizontal(|ui| {
-            let l = ui.add_sized([120.0, 22.0], egui::Label::new(label));
+            let l = crate::console::form_label(ui, label, crate::console::LABEL_W);
             ui.add(egui::TextEdit::singleline(v).desired_width(240.0)).labelled_by(l.id);
         });
     };
     row(ui, tl("Agent address"), &mut f.agent);
     ui.horizontal(|ui| {
-        ui.add_sized([120.0, 22.0], egui::Label::new(tl("Version")));
+        crate::console::form_label(ui, tl("Version"), crate::console::LABEL_W);
         ui.radio_value(&mut f.version, "2c", "SNMPv2c");
         ui.radio_value(&mut f.version, "3", "SNMPv3");
     });
     if f.version == "3" {
         row(ui, tl("User"), &mut f.user);
         ui.horizontal(|ui| {
-            ui.add_sized([120.0, 22.0], egui::Label::new(tl("Authentication")));
+            crate::console::form_label(ui, tl("Authentication"), crate::console::LABEL_W);
             ui.radio_value(&mut f.auth, "none", tl("None"));
             ui.radio_value(&mut f.auth, "md5", "MD5");
             ui.radio_value(&mut f.auth, "sha", "SHA");
         });
         if f.auth != "none" {
             ui.horizontal(|ui| {
-                let l = ui.add_sized([120.0, 22.0], egui::Label::new(tl("Password")));
+                let l = crate::console::form_label(ui, tl("Password"), crate::console::LABEL_W);
                 ui.add(egui::TextEdit::singleline(&mut f.password).password(true).desired_width(240.0)).labelled_by(l.id);
             });
         }
@@ -98,7 +98,7 @@ pub fn app(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
         p
     };
     ui.horizontal(|ui| {
-        let l = ui.add_sized([120.0, 22.0], egui::Label::new(tl("OID")));
+        let l = crate::console::form_label(ui, tl("OID"), crate::console::LABEL_W);
         ui.add(egui::TextEdit::singleline(&mut f.oid).desired_width(200.0)).labelled_by(l.id);
         ui.menu_button(tl("Objects"), |ui| {
             for (name, oid) in NAMED {

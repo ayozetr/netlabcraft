@@ -182,8 +182,9 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                         let selected = app.ui.tool == tool;
                         // Room for a name on two lines (`Modular Router 3GE`).
                         let (rect, resp) = ui.allocate_exact_size(vec2(76.0, 56.0), Sense::click());
-                        // Cable names and descriptions are interface text; model names stay as they are.
-                        let (short, long) = if m.kind.is_none() { (crate::i18n::tl(m.short), crate::i18n::tl(m.long)) } else { (m.short, m.long) };
+                        // Cable names and every description are interface text; model names stay as they are.
+                        let (short, long) =
+                            if m.kind.is_none() { (crate::i18n::tl(m.short), crate::i18n::tl(m.long)) } else { (m.short, crate::i18n::tl(m.long)) };
                         let resp = resp.on_hover_text(long);
                         resp.widget_info(|| egui::WidgetInfo::selected(egui::accesskit::Role::Button, true, selected, m.short));
                         let p = ui.painter_at(rect);
@@ -237,10 +238,10 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                     }
                 });
             });
-            let current = all.iter().find(|m| m.tool == app.ui.tool).map_or("", |m| if m.kind.is_none() { crate::i18n::tl(m.long) } else { m.long });
+            let current = all.iter().find(|m| m.tool == app.ui.tool).map_or("", |m| crate::i18n::tl(m.long));
             egui::Frame::new().stroke(egui::Stroke::new(1.0, tk.chrome_line)).fill(tk.canvas).inner_margin(4.0).show(ui, |ui| {
                 ui.set_min_width(ui.available_width());
-                ui.vertical_centered(|ui| ui.label(RichText::new(current).small()));
+                ui.vertical_centered(|ui| ui.add(egui::Label::new(RichText::new(current).small()).truncate()));
             });
         });
         ui.separator();

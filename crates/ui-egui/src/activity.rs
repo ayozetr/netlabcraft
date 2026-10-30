@@ -64,7 +64,7 @@ pub fn clock(seconds: u64) -> String {
 
 fn field(ui: &mut egui::Ui, label: &str, value: &mut String, width: f32) {
     ui.horizontal(|ui| {
-        let l = ui.add_sized([110.0, 20.0], egui::Label::new(label));
+        let l = crate::console::form_label(ui, label, 130.0);
         ui.add(egui::TextEdit::singleline(value).desired_width(width)).labelled_by(l.id);
     });
 }
@@ -299,7 +299,7 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
         }
         return;
     }
-    egui::Window::new(tl("Activity Wizard")).open(&mut open).default_size([520.0, 520.0]).default_pos(crate::BELOW_TOOLBARS).show(ctx, |ui| {
+    egui::Window::new(tl("Activity Wizard")).open(&mut open).default_size([520.0, 520.0]).default_pos(crate::BELOW_TOOLBARS).vscroll(true).show(ctx, |ui| {
         ui.label(tl(
             "Build the finished network, capture its configuration as the answers, then put the lab back in its starting state and save it.",
         ));
@@ -410,7 +410,7 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
                     if ui.small_button(tl("Remove")).clicked() {
                         run.push(("activity.remove_check", json!({"index": i})));
                     }
-                    ui.label(format!("{} pt  {}", c.points, c.label));
+                    ui.label(format!("{} pt  {}", c.points, crate::i18n::tr_any(&c.label)));
                 });
             }
         });

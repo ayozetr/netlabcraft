@@ -264,9 +264,9 @@ fn next_color(app: &PacketApp) -> &'static str {
     DRAW_COLORS.get(n % DRAW_COLORS.len()).copied().unwrap_or("#bcd9f2")
 }
 
-fn paint_shape(painter: &egui::Painter, view: &View, a: &netlabcraft_model::Annotation) {
+fn paint_shape(painter: &egui::Painter, view: &View, a: &netlabcraft_model::Annotation, tk: &Tokens) {
     let [r, g, b] = a.color.as_deref().and_then(netlabcraft_model::parse_color).unwrap_or([0xbc, 0xd9, 0xf2]);
-    let fill = egui::Color32::from_rgb(r, g, b);
+    let fill = crate::theme::drawing_fill(egui::Color32::from_rgb(r, g, b), tk);
     let edge = Stroke::new(1.0, crate::theme::shade(fill, 0.7));
     match a.shape {
         netlabcraft_model::Shape::Rectangle => {
@@ -308,9 +308,9 @@ fn paint_shape(painter: &egui::Painter, view: &View, a: &netlabcraft_model::Anno
     }
 }
 
-fn draw_shapes(app: &PacketApp, painter: &egui::Painter, view: &View) {
+fn draw_shapes(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Tokens) {
     for a in app.session.topology.annotations.iter().filter(|a| a.shape != netlabcraft_model::Shape::Text && a.cluster == view.level) {
-        paint_shape(painter, view, a);
+        paint_shape(painter, view, a, tk);
     }
 }
 
@@ -479,7 +479,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
         }
     }
 
-    draw_shapes(app, &painter, &view);
+    draw_shapes(app, &painter, &view, &tk);
     // The drawing being dragged out sits with the other drawings, under the cables and their
     // port labels, as it will once placed.
     if let (Some((x0, y0)), Some(p), Tool::Draw(shape)) = (app.ui.canvas.draw_from, ui.input(|i| i.pointer.hover_pos()), app.ui.tool) {
@@ -496,7 +496,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
             points: Vec::new(),
             cluster: None,
         };
-        paint_shape(&painter, &view, &preview);
+        paint_shape(&painter, &view, &preview, &tk);
     }
     draw_links(app, &painter, &view, &tk);
     draw_notes(app, &painter, &view, &tk);
@@ -671,6 +671,9 @@ fn draw_links(app: &mut PacketApp, painter: &egui::Painter, view: &View, tk: &To
                     })
                     .unwrap_or(light + side * 14.0 + d * 8.0);
                 blocks.push(Rect::from_center_size(at, size).expand2(vec2(4.0, 1.0)));
+                // On a soft plate of the workspace colour, so the cable it sits by (or a drawing
+                // under it) doesn't cross the letters.
+                painter.rect_filled(Rect::from_center_size(at, size).expand2(vec2(2.0, 0.0)), 3.0, tk.canvas.gamma_multiply(0.82));
                 painter.galley(Align2::CENTER_CENTER.anchor_size(at, size).min, galley, tk.text);
             }
         }
