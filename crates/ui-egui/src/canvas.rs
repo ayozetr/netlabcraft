@@ -161,7 +161,7 @@ fn hit_cluster(app: &PacketApp, view: &View, p: Pos2) -> Option<u32> {
 /// The screen rectangle of a workspace note.
 fn note_rect(ctx: &egui::Context, view: &View, a: &netlabcraft_model::Annotation) -> Rect {
     let font = FontId::proportional((15.0 * view.zoom).clamp(8.0, 24.0));
-    let galley = ctx.fonts_mut(|f| f.layout_no_wrap(a.text.clone(), font, egui::Color32::BLACK));
+    let galley = ctx.fonts_mut(|f| f.layout_no_wrap(crate::i18n::tr(&a.text).to_string(), font, egui::Color32::BLACK));
     Rect::from_min_size(view.screen(a.x, a.y), galley.size()).expand2(vec2(6.0, 3.0))
 }
 
@@ -338,7 +338,8 @@ fn draw_notes(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Tokens
         let r = note_rect(painter.ctx(), view, a);
         painter.rect_filled(r, 2.0, if app.ui.dark { tk.chrome } else { egui::Color32::from_rgb(0xf3, 0xf4, 0xf6) });
         let font = FontId::proportional((15.0 * view.zoom).clamp(8.0, 24.0));
-        painter.text(r.min + vec2(6.0, 3.0), Align2::LEFT_TOP, &a.text, font, tk.text);
+        // A sample's note reads in the interface language; text people type shows as typed.
+        painter.text(r.min + vec2(6.0, 3.0), Align2::LEFT_TOP, crate::i18n::tr(&a.text), font, tk.text);
     }
 }
 
@@ -737,7 +738,7 @@ fn draw_devices(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Toke
         painter.rect_filled(block.expand2(vec2(3.0, 0.0)), 4.0, tk.canvas.gamma_multiply(0.82));
         let font = name_font(view);
         let mut y = r.bottom() + 2.0;
-        for line in [d.catalogue_model().label, d.display_name()] {
+        for line in [crate::i18n::tl(d.catalogue_model().label), d.display_name()] {
             let galley = painter.layout_no_wrap(line.to_string(), font.clone(), tk.text);
             let label = Align2::CENTER_TOP.anchor_size(pos2(r.center().x, y), galley.size());
             y = label.bottom();
@@ -754,7 +755,7 @@ fn name_font(view: &View) -> FontId {
 fn name_block(painter: &egui::Painter, view: &View, d: &Device) -> Rect {
     let r = view.device_rect(d);
     let font = name_font(view);
-    let (w, h) = [d.catalogue_model().label, d.display_name()].iter().fold((0.0f32, 0.0f32), |(w, h), line| {
+    let (w, h) = [crate::i18n::tl(d.catalogue_model().label), d.display_name()].iter().fold((0.0f32, 0.0f32), |(w, h), line| {
         let s = painter.layout_no_wrap(line.to_string(), font.clone(), egui::Color32::WHITE).size();
         (w.max(s.x), h + s.y)
     });

@@ -182,11 +182,10 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                         let selected = app.ui.tool == tool;
                         // Room for a name on two lines (`Modular Router 3GE`).
                         let (rect, resp) = ui.allocate_exact_size(vec2(76.0, 56.0), Sense::click());
-                        // Cable names and every description are interface text; model names stay as they are.
-                        let (short, long) =
-                            if m.kind.is_none() { (crate::i18n::tl(m.short), crate::i18n::tl(m.long)) } else { (m.short, crate::i18n::tl(m.long)) };
+                        // Cable names, model names and every description are interface text.
+                        let (short, long) = (crate::i18n::tl(m.short), crate::i18n::tl(m.long));
                         let resp = resp.on_hover_text(long);
-                        resp.widget_info(|| egui::WidgetInfo::selected(egui::accesskit::Role::Button, true, selected, m.short));
+                        resp.widget_info(|| egui::WidgetInfo::selected(egui::accesskit::Role::Button, true, selected, short));
                         let p = ui.painter_at(rect);
                         let fill = if selected {
                             tk.pill.gamma_multiply(0.18)

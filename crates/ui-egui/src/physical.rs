@@ -146,7 +146,7 @@ fn runs(app: &PacketApp, view: &View) -> Vec<Run> {
             (Some(n), None) | (None, Some(n)) => {
                 let far = if view.shown.contains_key(&l.a.device) { l.b.device } else { l.a.device };
                 let name = t.device(far).map(|d| d.name.clone()).unwrap_or_default();
-                let place = t.home_of(far).and_then(|h| t.place(h.place)).map(|p| p.name).unwrap_or_default();
+                let place = t.home_of(far).and_then(|h| t.place(h.place)).map(|p| crate::i18n::tr(&p.name).to_string()).unwrap_or_default();
                 exits.push((*n, format!("{name} ({place})"), cable));
             }
             _ => {}
@@ -250,7 +250,7 @@ pub fn fit(app: &mut PacketApp) {
 fn caption(app: &PacketApp) -> String {
     match app.session.place_view.and_then(|p| app.session.topology.place(p)) {
         None => tl("Intercity: the cities of the lab").to_string(),
-        Some(p) => format!("{}: {}", tr(p.kind.label()), p.name),
+        Some(p) => format!("{}: {}", tr(p.kind.label()), tr(&p.name)),
     }
 }
 
@@ -357,7 +357,7 @@ fn draw_places(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Token
         let font = FontId::proportional((16.0 * view.zoom).clamp(9.0, 24.0));
         let mut y = r.bottom() + 2.0;
         let count = if inside == 1 { tl("1 device").to_string() } else { trf("{} devices", &[&inside]) };
-        for (line, color) in [(p.name.clone(), tk.text), (count, tk.muted)] {
+        for (line, color) in [(tr(&p.name).to_string(), tk.text), (count, tk.muted)] {
             let galley = painter.layout_no_wrap(line, font.clone(), color);
             let at = Align2::CENTER_TOP.anchor_size(pos2(r.center().x, y), galley.size());
             y = at.bottom();
@@ -476,7 +476,7 @@ fn destinations(app: &PacketApp, host: bool) -> Vec<(u32, String)> {
     t.places()
         .iter()
         .filter(|p| p.kind == PlaceKind::Closet || (host && p.kind == PlaceKind::Building))
-        .map(|p| (p.id, t.place_path(Some(p.id)).iter().map(|x| x.name.as_str()).collect::<Vec<_>>().join(" › ")))
+        .map(|p| (p.id, t.place_path(Some(p.id)).iter().map(|x| tr(&x.name)).collect::<Vec<_>>().join(" › ")))
         .collect()
 }
 
@@ -488,7 +488,7 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target) {
                 ui.close();
                 return;
             };
-            ui.label(egui::RichText::new(format!("{} ({})", p.name, tr(p.kind.label()))).strong());
+            ui.label(egui::RichText::new(format!("{} ({})", tr(&p.name), tr(p.kind.label()))).strong());
             if ui.button(tl("Open")).clicked() {
                 enter(app, id);
                 ui.close();

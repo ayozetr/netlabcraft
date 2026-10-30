@@ -392,7 +392,7 @@ fn console_in(app: &mut PacketApp, ui: &mut egui::Ui, win: DeviceId, d: DeviceId
 fn physical(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     let tk = theme::tokens(app.ui.dark);
     crate::hardware::panel(app, ui, dev);
-    ui.label(RichText::new(crate::i18n::trf("{}: {} ports", &[&dev.catalogue_model().label, &dev.ports.len()])).strong());
+    ui.label(RichText::new(crate::i18n::trf("{}: {} ports", &[&crate::i18n::tl(dev.catalogue_model().label), &dev.ports.len()])).strong());
     let per_row = 13usize;
     let rows = dev.ports.len().div_ceil(per_row).max(1);
     let size = vec2(ui.available_width().min(640.0), 40.0 + rows as f32 * 56.0);

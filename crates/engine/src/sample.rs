@@ -916,8 +916,10 @@ pub fn build(id: &str) -> Result<Topology> {
                 b.cable(name, "fa0", "S1", &format!("fa0/{}", i + 1))?;
                 b.type_in(name, "ipconfig /renew")?;
             }
-            b.t.add_drawing(netlabcraft_model::Shape::Rectangle, 120.0, 240.0, 760.0, 210.0, Some("#e3eefa"))?;
-            b.t.add_annotation(130.0, 250.0, "Office LAN - addresses from DHCP (192.168.50.21 onwards)")?;
+            // The LAN box starts under S1's name and reaches past the hosts' names; its label sits
+            // at the bottom, clear of the switch.
+            b.t.add_drawing(netlabcraft_model::Shape::Rectangle, 120.0, 265.0, 760.0, 240.0, Some("#e3eefa"))?;
+            b.t.add_annotation(130.0, 472.0, "Office LAN - addresses from DHCP (192.168.50.21 onwards)")?;
             b.t.notes = "PCs get their addresses from R1 by DHCP (Desktop > IP Configuration > DHCP, or `ipconfig /renew`). R1's console asks for `cisco`; `enable` asks for `class`. Try `show ip dhcp binding` on R1.".into();
         }
         "modular" => {
