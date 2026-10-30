@@ -86,9 +86,9 @@ fn instructions(app: &mut PacketApp, ctx: &egui::Context) {
     egui::Window::new(tl("Instructions")).open(&mut open).default_size([380.0, 320.0]).anchor(egui::Align2::LEFT_TOP, [12.0, 190.0]).show(
         ctx,
         |ui| {
-            ui.heading(&a.title);
+            ui.heading(crate::i18n::tr(&a.title));
             egui::ScrollArea::vertical().max_height(160.0).id_salt("activity_text").show(ui, |ui| {
-                ui.label(if a.instructions.is_empty() { "(no instructions)" } else { a.instructions.as_str() });
+                ui.label(if a.instructions.is_empty() { tl("(no instructions)") } else { crate::i18n::tr(&a.instructions) });
             });
             ui.separator();
             let (score, total, percent) = match &app.ui.activity.results {
@@ -116,10 +116,10 @@ fn instructions(app: &mut PacketApp, ctx: &egui::Context) {
                             if passed { ("done", Color32::from_rgb(0x2e, 0x8b, 0x3e)) } else { ("missing", Color32::from_rgb(0xc8, 0x3a, 0x2e)) };
                         ui.horizontal(|ui| {
                             ui.label(RichText::new(mark).color(color).strong());
-                            ui.label(item["label"].as_str().unwrap_or(""));
+                            ui.label(crate::i18n::tr(item["label"].as_str().unwrap_or("")));
                         });
                         if let Some(hint) = item["feedback"].as_str().filter(|h| !passed && !h.is_empty()) {
-                            ui.label(RichText::new(format!("    {hint}")).italics().small());
+                            ui.label(RichText::new(format!("    {}", crate::i18n::tr(hint))).italics().small());
                         }
                     }
                 });
@@ -134,7 +134,7 @@ fn instructions(app: &mut PacketApp, ctx: &egui::Context) {
         app.ui.activity.results = None;
         app.ui.activity.started = now;
         app.ui.activity.time_up = false;
-        app.info("Activity reset to how it was opened.");
+        app.info(tl("Activity reset to how it was opened."));
     }
 }
 
@@ -267,10 +267,9 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
         ui.separator();
         let checks = activity.as_ref().map(|a| a.checks.clone()).unwrap_or_default();
         ui.label(
-            RichText::new(format!(
+            RichText::new(crate::i18n::trf(
                 "{} checks, {} points",
-                checks.len(),
-                activity.as_ref().map_or(0, packetcraft_model::activity::Activity::total_points)
+                &[&checks.len(), &activity.as_ref().map_or(0, packetcraft_model::activity::Activity::total_points)],
             ))
             .strong(),
         );
@@ -291,7 +290,7 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
             && id == "activity.capture"
         {
             let n = r["checks"].as_u64().unwrap_or(0);
-            app.info(format!("{n} checks captured. Now put the lab in its starting state and save it."));
+            app.info(crate::i18n::trf("{} checks captured. Now put the lab in its starting state and save it.", &[&n]));
         }
     }
 }

@@ -374,7 +374,7 @@ impl PacketApp {
     pub fn open_path(&mut self, path: &str) {
         if self.run("file.open", json!({"path": path})).is_some() {
             self.after_replace();
-            self.info(format!("Opened {path}"));
+            self.info(crate::i18n::trf("Opened {}", &[&path]));
         }
     }
 
@@ -394,11 +394,11 @@ impl PacketApp {
                 self.info(if errors == 0 {
                     "Configuration merged.".to_string()
                 } else {
-                    format!("Configuration merged; {errors} line(s) were not understood.")
+                    crate::i18n::trf("Configuration merged; {} line(s) were not understood.", &[&errors])
                 });
             }
         } else if self.run("device.startup", json!({"device": device.0, "action": "load", "text": text})).is_some() {
-            self.info("Startup configuration loaded: `reload` the device to use it.");
+            self.info(tl("Startup configuration loaded: `reload` the device to use it."));
         }
     }
 
@@ -415,7 +415,7 @@ impl PacketApp {
         if let Ok(v) = serde_json::to_value(&sv)
             && self.run("server.services", json!({"device": device.0, "services": v})).is_some()
         {
-            self.info(format!("Added {name} to the web site."));
+            self.info(crate::i18n::trf("Added {} to the web site.", &[&name]));
         }
     }
 
@@ -423,7 +423,7 @@ impl PacketApp {
     pub fn saved_to(&mut self, path: &str) {
         self.session.path = Some(path.to_string());
         self.session.dirty = false;
-        self.info(format!("Saved {path}"));
+        self.info(crate::i18n::trf("Saved {}", &[&path]));
     }
 
     fn after_replace(&mut self) {
@@ -433,7 +433,7 @@ impl PacketApp {
         self.ui.pdus.clear();
         self.ui.events = events::EventView::default();
         if !self.session.topology.notes.is_empty() {
-            self.info("This lab has notes: open them with the notes button.");
+            self.info(tl("This lab has notes: open them with the notes button."));
         }
     }
 
@@ -473,7 +473,7 @@ impl PacketApp {
         if let Some(d) = self.ui.selected {
             self.ui.clipboard = Some(d);
             let name = self.session.topology.device(d).map(|x| x.name.clone()).unwrap_or_default();
-            self.info(format!("Copied {name}"));
+            self.info(crate::i18n::trf("Copied {}", &[&name]));
         }
     }
 
@@ -579,7 +579,7 @@ impl PacketApp {
                 }
                 ui.menu_button(tl("New from sample"), |ui| {
                     for s in sample::SAMPLES {
-                        if ui.button(s.title).on_hover_text(s.description).clicked() {
+                        if ui.button(crate::i18n::tr(s.title)).on_hover_text(crate::i18n::tr(s.description)).clicked() {
                             self.new_lab(Some(s.id));
                         }
                     }
@@ -772,7 +772,9 @@ impl PacketApp {
                 (Glyph::Rectangle, "Draw Rectangle", packetcraft_model::Shape::Rectangle),
                 (Glyph::Ellipse, "Draw Ellipse", packetcraft_model::Shape::Ellipse),
             ] {
-                if tool_button(ui, g, &format!("{label} (drag on the workspace)"), t == Tool::Draw(shape), true).clicked() {
+                if tool_button(ui, g, &crate::i18n::trf("{} (drag on the workspace)", &[&crate::i18n::tr(label)]), t == Tool::Draw(shape), true)
+                    .clicked()
+                {
                     self.set_tool(Tool::Draw(shape));
                 }
             }
@@ -790,7 +792,7 @@ impl PacketApp {
         ui.horizontal(|ui| {
             pill(ui, Glyph::Logical, "Logical", true);
             if pill(ui, Glyph::Physical, "Physical", false).clicked() {
-                self.info("The physical workspace (buildings, closets, racks) is not available yet.");
+                self.info(tl("The physical workspace (buildings, closets, racks) is not available yet."));
             }
             let coords = self.ui.pointer.map_or(String::new(), |(x, y)| format!("x: {}, y: {}", x.round() as i64, y.round() as i64));
             ui.label(RichText::new(coords).color(tk.bar_text).size(15.0));
@@ -855,7 +857,7 @@ impl PacketApp {
             };
             if white(ui, Glyph::PowerCycle, "Power Cycle Devices (forget ARP and MAC tables)").clicked() {
                 self.run("sim.reset", json!({}));
-                self.info("Devices power-cycled: dynamic tables cleared.");
+                self.info(tl("Devices power-cycled: dynamic tables cleared."));
             }
             if self.ui.mode == Mode::Simulation {
                 ui.label(RichText::new(tl("PLAY CONTROLS:")).color(tk.bar_text).size(16.0));
@@ -894,7 +896,9 @@ impl PacketApp {
             return;
         }
         let mut open = true;
-        let mut text = self.session.topology.notes.clone();
+        // Sample notes show in the interface's language; an edit saves what was edited.
+        let shown = crate::i18n::tr(&self.session.topology.notes).to_string();
+        let mut text = shown.clone();
         let right = if self.ui.mode == Mode::Simulation { -440.0 } else { -12.0 };
         egui::Window::new(tl("Lab Notes")).open(&mut open).default_size([320.0, 160.0]).anchor(egui::Align2::RIGHT_TOP, [right, 190.0]).show(
             ctx,
@@ -903,7 +907,7 @@ impl PacketApp {
                 let r = ui
                     .add(egui::TextEdit::multiline(&mut text).desired_width(f32::INFINITY).hint_text(tl("Instructions or notes")))
                     .labelled_by(l.id);
-                if r.lost_focus() && text != self.session.topology.notes {
+                if r.lost_focus() && text != shown {
                     self.run("lab.notes", json!({"text": text}));
                 }
             },
@@ -918,7 +922,7 @@ impl PacketApp {
         let mut open = true;
         egui::Window::new(tl("About PacketCraft")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
             ui.heading(tl("PacketCraft"));
-            ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
+            ui.label(crate::i18n::trf("Version {}", &[&env!("CARGO_PKG_VERSION")]));
             ui.label(tl("An open-source network simulator: build labs, configure routers and switches, and watch every frame."));
             ui.label(tl("Licensed under MIT or Apache-2.0."));
             ui.separator();

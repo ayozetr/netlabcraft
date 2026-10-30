@@ -16,7 +16,7 @@ This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summa
 | Console grammar entries | **309** across 12 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
 | Device models | **15** | measured: `crates/model/src/models.rs` |
 | Sample labs | **18** | measured: `crates/engine/src/sample.rs` |
-| Tests | **152** | measured: `cargo test --workspace` |
+| Tests | **153** | measured: `cargo test --workspace` |
 | **Ready for real work** (weighted) | **~50%** | estimated; written weights below (67.7 computed) |
 | **CCNA 1 student** (Introduction to Networks) | **~74%** | estimated; [method](#audiences) |
 | **CCNA 2 student** (Switching, Routing and Wireless Essentials) | **~78%** | estimated; [method](#audiences) |

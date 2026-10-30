@@ -337,7 +337,7 @@ fn console(app: &mut PacketApp, ui: &mut egui::Ui, d: DeviceId, dark: bool) {
 /// The front panel: one socket per port, its link light, and what is plugged in.
 fn physical(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     let tk = theme::tokens(app.ui.dark);
-    ui.label(RichText::new(format!("{}: {} ports", dev.catalogue_model().label, dev.ports.len())).strong());
+    ui.label(RichText::new(crate::i18n::trf("{}: {} ports", &[&dev.catalogue_model().label, &dev.ports.len()])).strong());
     let per_row = 13usize;
     let rows = dev.ports.len().div_ceil(per_row).max(1);
     let size = vec2(ui.available_width().min(640.0), 40.0 + rows as f32 * 56.0);
@@ -383,7 +383,10 @@ fn physical(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     {
         let end = End { device: dev.id, port: i };
         let peer = app.session.topology.peer(end).map_or("nothing".to_string(), |e| app.session.topology.end_label(e));
-        ui.label(format!("{}: {} · cabled to {peer}", port.name, if port_up(&app.session.topology, end) { "link up" } else { "link down" }));
+        ui.label(crate::i18n::trf(
+            "{}: {} · cabled to {}",
+            &[&port.name, &crate::i18n::tl(if port_up(&app.session.topology, end) { "link up" } else { "link down" }), &peer],
+        ));
     } else {
         ui.label(RichText::new(tl("Point at a port to see what is plugged in. Cables are made with the Connections tool.")).color(tk.muted));
     }
@@ -612,7 +615,7 @@ fn settings_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
         if export_start {
             match &dev.startup {
                 Some(cfg) => requests.push(crate::UiRequest::SaveText { name: format!("{}_startup-config.txt", dev.name), text: cfg.clone() }),
-                None => app.ui.status = Some(("There is no startup configuration to export yet (Save first).".into(), true)),
+                None => app.ui.status = Some((crate::i18n::tl("There is no startup configuration to export yet (Save first).").into(), true)),
             }
         }
         let (export_run, merge) = row(ui, "Running Config", "Export...", "Merge...");
@@ -783,19 +786,21 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
         }
         let (ssid, key, chan) = (w.wifi_ssid.trim().to_string(), w.wifi_key.trim().to_string(), w.wifi_channel.trim().parse::<u64>().unwrap_or(6));
         let assoc = if ap {
-            format!("{} host(s) associated", app.session.topology.wifi_clients(packetcraft_model::End { device: d, port: i }).len())
+            crate::i18n::trf("{} host(s) associated", &[&app.session.topology.wifi_clients(packetcraft_model::End { device: d, port: i }).len()])
         } else {
             app.session
                 .topology
                 .wifi_ap_of(packetcraft_model::End { device: d, port: i })
-                .map_or("Not associated".to_string(), |e| format!("Associated with {}", app.session.topology.end_label(e)))
+                .map_or(crate::i18n::tl("Not associated").to_string(), |e| {
+                    crate::i18n::trf("Associated with {}", &[&app.session.topology.end_label(e)])
+                })
         };
         ui.label(assoc);
         if ui.button(tl("Apply Wi-Fi")).clicked()
             && let Some(v) = app.run("device.wireless", json!({"device": d.0, "port": port.name, "ssid": ssid, "key": key, "channel": chan}))
         {
             let msg = match v["associated_with"].as_str() {
-                Some(a) => format!("Associated with {a}"),
+                Some(a) => crate::i18n::trf("Associated with {}", &[&a]),
                 None if ap => "Wi-Fi settings applied".to_string(),
                 None => "Not associated: check the SSID, the passphrase and the distance".to_string(),
             };
@@ -870,7 +875,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 DesktopApp::IpConfig => {
                     ui.add_space(6.0);
                     let port = dev.ports.first().map_or("FastEthernet0".to_string(), |p| p.name.clone());
-                    ui.label(RichText::new(format!("Interface {port}")).strong());
+                    ui.label(RichText::new(crate::i18n::trf("Interface {}", &[&port])).strong());
                     let mut dhcp = dev.dhcp_client;
                     ui.horizontal(|ui| {
                         ui.label(tl("IP Configuration"));

@@ -403,7 +403,7 @@ fn dns(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mut
                 forms.dns_sel = None;
                 apply(app, d, &new);
             }
-            (_, Some(r), _) if r.name.is_empty() => app.ui.status = Some(("Give the record a name, such as www.example.lab".into(), true)),
+            (_, Some(r), _) if r.name.is_empty() => app.ui.status = Some((tl("Give the record a name, such as www.example.lab").into(), true)),
             (1, Some(r), Some(i)) => {
                 if let Some(slot) = new.dns.records.get_mut(i) {
                     *slot = r;
@@ -415,7 +415,7 @@ fn dns(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mut
                 new.dns.records.push(r);
                 apply(app, d, &new);
             }
-            (_, None, _) => app.ui.status = Some((format!("`{}` is not an IPv4 address", forms.dns_addr.trim()), true)),
+            (_, None, _) => app.ui.status = Some((crate::i18n::trf("`{}` is not an IPv4 address", &[&forms.dns_addr.trim()]), true)),
         }
     }
     egui::Frame::new().stroke(egui::Stroke::new(1.0, tk.chrome_line)).fill(tk.canvas).inner_margin(4.0).show(ui, |ui| {
@@ -487,7 +487,7 @@ pub fn browser(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, forms: &mut Servic
             }
             Err(e) => {
                 forms.page_body = None;
-                forms.error = Some(format!("Request timed out or failed: {e}"));
+                forms.error = Some(crate::i18n::trf("Request timed out or failed: {}", &[&e]));
             }
         }
     }
@@ -661,7 +661,7 @@ fn syslog(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services) {
     }
     ui.separator();
     let msgs = app.session.sim.state(d).map(|s| s.syslog.clone()).unwrap_or_default();
-    ui.label(format!("{} message{} received", msgs.len(), if msgs.len() == 1 { "" } else { "s" }));
+    ui.label(crate::i18n::trf("Messages received: {}", &[&msgs.len()]));
     egui::ScrollArea::vertical().max_height(260.0).id_salt("syslog_list").show(ui, |ui| {
         egui::Grid::new("syslog_grid").striped(true).show(ui, |ui| {
             ui.label(RichText::new(tl("Time (s)")).strong());
@@ -698,8 +698,8 @@ fn aaa(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mut
                 new.aaa.clients.push(AaaClient { name: forms.aaa_client.trim().to_string(), address, secret: forms.aaa_secret.trim().to_string() });
                 apply(app, d, &new);
             }
-            Ok(_) => app.ui.status = Some(("Give the secret the router has in `radius-server host ... key`".into(), true)),
-            Err(_) => app.ui.status = Some((format!("`{}` is not an IPv4 address", forms.aaa_client_ip.trim()), true)),
+            Ok(_) => app.ui.status = Some((tl("Give the secret the router has in `radius-server host ... key`").into(), true)),
+            Err(_) => app.ui.status = Some((crate::i18n::trf("`{}` is not an IPv4 address", &[&forms.aaa_client_ip.trim()]), true)),
         }
     }
     let mut changed = false;

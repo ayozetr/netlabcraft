@@ -28,7 +28,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Engine commands | 40 | measured: `crates/engine/src/catalog.rs` |
 | Console grammar entries | 309 across 12 modes | measured: `crates/ios/src/grammar.rs` |
 | Device models · sample labs | 15 · 18 | measured |
-| Tests | 152 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Tests | 153 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~600–950 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
@@ -60,6 +60,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-10-30 — Sample labs in Spanish.** The sample labs' titles, descriptions and notes, the sample activity and the status messages built from parts read in Spanish too.
 - **2026-10-30 — App icon and Linux install.** PacketCraft has its own icon (window, menu, web tab) and `packaging/linux/install.sh` puts it in the desktop menu with `.pcraft` files opening in it.
 - **2026-10-30 — More debugs.** `debug ip packet`, `debug ip nat` and `debug ip dhcp server events` report what the router routes, translates and hands out.
 - **2026-10-30 — FTP.** Servers have an FTP service with accounts and permissions; PCs have an `ftp` client (`put`, `get`, `dir`, `delete`) and `dir` for their own files; routers copy configurations with `copy running-config ftp:`. Simulation mode shows the control and data connections.

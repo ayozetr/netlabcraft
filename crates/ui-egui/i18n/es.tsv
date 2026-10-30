@@ -264,3 +264,104 @@ List	Listar
 Permissions	Permisos
 Files	Ficheros
 FTP Service	Servicio FTP
+# Messages with parts: {} stands for each part, in order.
+Opened {}	Abierto {}
+Configuration merged; {} line(s) were not understood.	Configuración combinada; {} línea(s) no se entendieron.
+Added {} to the web site.	{} añadido al sitio web.
+Saved {}	Guardado {}
+Copied {}	Copiado {}
+Version {}	Versión {}
+Startup configuration loaded: `reload` the device to use it.	Configuración de arranque cargada: usa `reload` en el equipo para aplicarla.
+This lab has notes: open them with the notes button.	Este laboratorio tiene notas: ábrelas con el botón de notas.
+The physical workspace (buildings, closets, racks) is not available yet.	El espacio de trabajo físico (edificios, armarios, racks) aún no está disponible.
+Devices power-cycled: dynamic tables cleared.	Equipos reiniciados: tablas dinámicas borradas.
+{} (drag on the workspace)	{} (arrastra en el espacio de trabajo)
+Click the workspace to place a {}. Esc to stop.	Haz clic en el espacio de trabajo para colocar un {}. Esc para terminar.
+From {}: click the second device and pick a port. Esc cancels.	Desde {}: haz clic en el segundo equipo y elige un puerto. Esc cancela.
+Inspect {}	Inspeccionar {}
+{} has no IP address to send a PDU to	{} no tiene dirección IP a la que enviar una PDU
+{} to {} ({}): successful	{} a {} ({}): correcto
+{} to {} ({}): failed, destination unreachable	{} a {} ({}): fallido, destino inalcanzable
+{} to {} ({}): failed, TTL ran out	{} a {} ({}): fallido, se agotó el TTL
+{} to {} ({}): failed, no answer	{} a {} ({}): fallido, sin respuesta
+{}: choose a port	{}: elige un puerto
+Event {} at {} s, from {} to {}	Evento {} a los {} s, de {} a {}
+The device dropped it: {}	El equipo lo descartó: {}
+Dropped: {}	Descartado: {}
+Not associated	Sin asociar
+Associated with {}	Asociado con {}
+Interface {}	Interfaz {}
+{} host(s) associated	{} equipo(s) asociado(s)
+{}: {} ports	{}: {} puertos
+{}: {} · cabled to {}	{}: {} · conectado a {}
+link up	enlace activo
+link down	enlace caído
+There is no startup configuration to export yet (Save first).	Aún no hay configuración de arranque que exportar (guarda primero).
+Messages received: {}	Mensajes recibidos: {}
+`{}` is not an IPv4 address	`{}` no es una dirección IPv4
+Give the record a name, such as www.example.lab	Dale un nombre al registro, como www.example.lab
+Give the secret the router has in `radius-server host ... key`	Escribe la clave que tiene el router en `radius-server host ... key`
+Request timed out or failed: {}	La petición caducó o falló: {}
+{} checks captured. Now put the lab in its starting state and save it.	{} comprobaciones capturadas. Ahora deja el laboratorio en su estado inicial y guárdalo.
+Activity reset to how it was opened.	Actividad restablecida a como se abrió.
+{} checks, {} points	{} comprobaciones, {} puntos
+# Sample labs: titles, descriptions, notes and the sample activity.
+One switch, three PCs	Un switch y tres PC
+A flat LAN: ping between the PCs and watch the switch learn their addresses.	Una LAN plana: haz ping entre los PC y observa cómo el switch aprende sus direcciones.
+Two subnets and a router	Dos subredes y un router
+Each subnet on its own switch; the router joins them. Try ping and tracert across.	Cada subred en su propio switch; el router las une. Prueba ping y tracert de una a otra.
+VLANs and router-on-a-stick	VLAN y router-on-a-stick
+One switch split into VLAN 10 and 20, routed by subinterfaces over an 802.1Q trunk.	Un switch dividido en las VLAN 10 y 20, enrutadas con subinterfaces sobre un troncal 802.1Q.
+Three routers, static routes	Tres routers con rutas estáticas
+A chain of routers with static and default routes between two LANs.	Una cadena de routers con rutas estáticas y por defecto entre dos LAN.
+Spanning tree on a switch triangle	Spanning tree en un triángulo de switches
+Three switches wired in a loop: spanning tree blocks one port (amber light) and traffic still flows.	Tres switches cableados en bucle: spanning tree bloquea un puerto (luz ámbar) y el tráfico sigue pasando.
+EtherChannel between two switches	EtherChannel entre dos switches
+Two cables bundled with LACP into one logical link: spanning tree blocks nothing, and one cable can fail without a break.	Dos cables agrupados con LACP en un solo enlace lógico: spanning tree no bloquea nada y un cable puede fallar sin cortar la conexión.
+VTP: VLANs from one server	VTP: VLAN desde un servidor
+S1 is the VTP server of domain LAB; S2 and S3 are clients and learn its VLANs over the trunks.	S1 es el servidor VTP del dominio LAB; S2 y S3 son clientes y aprenden sus VLAN por los troncales.
+IPv6 with two routers	IPv6 con dos routers
+PC1 and PC2 take their IPv6 addresses from R1 (autoconfiguration); PC3 is set by hand behind R2; static routes join the two.	PC1 y PC2 toman su dirección IPv6 de R1 (autoconfiguración); PC3 se configura a mano detrás de R2; las rutas estáticas unen ambos lados.
+Inter-VLAN routing on a multilayer switch	Enrutamiento entre VLAN en un switch multicapa
+A multilayer switch routes between VLAN 10 and 20 with its VLAN interfaces, and reaches a router through a routed port.	Un switch multicapa enruta entre las VLAN 10 y 20 con sus interfaces VLAN y llega a un router por un puerto enrutado.
+RIP version 2 on three routers	RIP versión 2 en tres routers
+Three routers in a line learn each other's networks with RIPv2; R3 hands out a default route.	Tres routers en línea aprenden las redes de los demás con RIPv2; R3 reparte una ruta por defecto.
+Two sites over a serial WAN link	Dos sedes unidas por un enlace WAN serie
+Two routers joined by a serial cable with PPP; R1 holds the DCE end and sets the clock rate. OSPF carries the routes.	Dos routers unidos por un cable serie con PPP; R1 tiene el extremo DCE y marca la velocidad de reloj. OSPF reparte las rutas.
+Activity: your first router	Actividad: tu primer router
+A graded activity: address the router's two interfaces, set its name and a secret, and make the two LANs reach each other. Check Results shows the score.	Una actividad evaluada: direcciona las dos interfaces del router, ponle nombre y una contraseña secret, y haz que las dos LAN se comuniquen. Comprobar resultados muestra la nota.
+HSRP: a gateway that survives a router	HSRP: una puerta de enlace que sobrevive a un router
+Two routers share the virtual gateway 192.168.1.254; R1 is active. Shut R1 down and PC1 keeps reaching the server through R2.	Dos routers comparten la puerta de enlace virtual 192.168.1.254; R1 es el activo. Apaga R1 y PC1 sigue llegando al servidor a través de R2.
+Wi-Fi: laptops on an access point	Wi-Fi: portátiles en un punto de acceso
+An access point offers the network Aula with WPA2; two Wi-Fi laptops join it and get addresses from the router's DHCP pool.	Un punto de acceso ofrece la red Aula con WPA2; dos portátiles Wi-Fi se conectan y reciben dirección del pool DHCP del router.
+OSPF on three routers	OSPF en tres routers
+Three routers in a triangle learn each other's networks with OSPF; cut a link and the routes move.	Tres routers en triángulo aprenden las redes de los demás con OSPF; corta un enlace y las rutas cambian.
+NAT to the Internet, with an access list	NAT hacia Internet, con una lista de acceso
+An office reaches an Internet server through PAT on its router; an access list keeps one PC from pinging the server.	Una oficina llega a un servidor de Internet mediante PAT en su router; una lista de acceso impide que un PC haga ping al servidor.
+A server with DHCP, DNS and a web site	Un servidor con DHCP, DNS y un sitio web
+PCs get their addresses from the server, resolve www.packetcraft.lab with its DNS service and open its web pages.	Los PC reciben su dirección del servidor, resuelven www.packetcraft.lab con su servicio DNS y abren sus páginas web.
+DHCP and basic device security	DHCP y seguridad básica del equipo
+A router hands out addresses with DHCP; console, vty and enable are password protected (console: cisco, enable: class).	Un router reparte direcciones con DHCP; la consola, las líneas vty y enable tienen contraseña (consola: cisco, enable: class).
+Ping PC3 from PC1 (`ping 192.168.1.13`), then look at `show mac address-table` on S1.	Haz ping a PC3 desde PC1 (`ping 192.168.1.13`) y luego mira `show mac address-table` en S1.
+From PC1: `ping 10.0.2.10` (the first request times out while R1 resolves PC3), then `tracert 10.0.2.10`.	Desde PC1: `ping 10.0.2.10` (la primera petición caduca mientras R1 resuelve PC3) y luego `tracert 10.0.2.10`.
+PC1 and PC2 share VLAN 10; PC3 and PC4 VLAN 20. Ping across VLANs and watch the 802.1Q tags in the event list.	PC1 y PC2 están en la VLAN 10; PC3 y PC4 en la VLAN 20. Haz ping entre VLAN y observa las etiquetas 802.1Q en la lista de eventos.
+PC1 reaches SRV1 through three routers. Remove a static route on R2 and watch `tracert` stop there.	PC1 llega a SRV1 a través de tres routers. Quita una ruta estática en R2 y verás cómo `tracert` se detiene ahí.
+S1 is the root bridge. One port on the S2-S3 link blocks (amber). Compare `show spanning-tree` on each switch, then unplug S1-S3 and watch the blocked port start forwarding.	S1 es el puente raíz. Un puerto del enlace S2-S3 queda bloqueado (ámbar). Compara `show spanning-tree` en cada switch y luego desconecta S1-S3: el puerto bloqueado empezará a reenviar.
+Fa0/23 and Fa0/24 form Port-channel1 (LACP: S1 active, S2 passive). Try `show etherchannel summary` and `show spanning-tree`, then shut one member down and ping again.	Fa0/23 y Fa0/24 forman Port-channel1 (LACP: S1 activo, S2 pasivo). Prueba `show etherchannel summary` y `show spanning-tree`, luego apaga un miembro y vuelve a hacer ping.
+S1 creates VLANs 10 and 20; the clients S2 and S3 learn them (`show vtp status`, `show vlan brief`). Add `vlan 30` on S1 and look again on a client. PC1 reaches PC3 (VLAN 10), PC2 reaches PC4 (VLAN 20).	S1 crea las VLAN 10 y 20; los clientes S2 y S3 las aprenden (`show vtp status`, `show vlan brief`). Añade `vlan 30` en S1 y vuelve a mirar en un cliente. PC1 llega a PC3 (VLAN 10) y PC2 a PC4 (VLAN 20).
+PC1 and PC2 autoconfigure from R1's router advertisements (ipv6config). Try `ping 2001:db8:2::10` from PC1, `show ipv6 route` and `show ipv6 neighbors` on the routers, and watch NDP in Simulation mode.	PC1 y PC2 se autoconfiguran con los anuncios de router de R1 (ipv6config). Prueba `ping 2001:db8:2::10` desde PC1, `show ipv6 route` y `show ipv6 neighbors` en los routers, y observa NDP en el modo Simulación.
+MLS1 routes between VLAN 10 and VLAN 20 (`ip routing`, interfaces Vlan10 and Vlan20) and sends everything else to R1 over a routed port (`no switchport`). Try `show ip route` on MLS1 and a ping from PC1 to PC4 or to SRV1.	MLS1 enruta entre la VLAN 10 y la VLAN 20 (`ip routing`, interfaces Vlan10 y Vlan20) y manda todo lo demás a R1 por un puerto enrutado (`no switchport`). Prueba `show ip route` en MLS1 y un ping de PC1 a PC4 o a SRV1.
+Every router runs RIPv2. Compare `show ip route` (R routes, hop counts in `show ip rip database`) on R1 and R3, then shut R2's g0/1 and watch the routes go.	Todos los routers ejecutan RIPv2. Compara `show ip route` (rutas R; los saltos en `show ip rip database`) en R1 y R3, luego apaga g0/1 de R2 y verás desaparecer las rutas.
+The red cable is serial; the clock marks R1's DCE end (`show controllers s0/0/0`). Remove the clock rate on R1, or change one end to `encapsulation hdlc`, and the link goes down.	El cable rojo es serie; el reloj marca el extremo DCE de R1 (`show controllers s0/0/0`). Quita el clock rate en R1, o cambia un extremo a `encapsulation hdlc`, y el enlace se cae.
+A graded activity: follow the Instructions window and press Check Results.	Una actividad evaluada: sigue la ventana de Instrucciones y pulsa Comprobar resultados.
+R1 is active for both virtual gateways (`show standby`). Watch the HSRP hellos in Simulation mode, then shut R1's interfaces and ping from PC1 again.	R1 es el activo de las dos puertas de enlace virtuales (`show standby`). Observa los hellos HSRP en el modo Simulación, luego apaga las interfaces de R1 y vuelve a hacer ping desde PC1.
+AP1 offers Aula (WPA2, passphrase clase1234). Open a laptop's Config ▸ Wireless0 to change its network, or move it far from AP1 and watch it drop.	AP1 ofrece la red Aula (WPA2, clave clase1234). Abre Config ▸ Wireless0 de un portátil para cambiar de red, o aléjalo de AP1 y verás cómo se desconecta.
+No static routes: OSPF finds every network. Try `show ip ospf neighbor` and `show ip route` on R1, then shut down R1 g0/2 and watch the route to 192.168.3.0 move to R2.	Sin rutas estáticas: OSPF encuentra todas las redes. Prueba `show ip ospf neighbor` y `show ip route` en R1, luego apaga g0/2 de R1 y verás cómo la ruta a 192.168.3.0 pasa por R2.
+PC1 pings the Web server through PAT (`show ip nat translations` on Office). PC2 is blocked by the GUESTS access list (`show access-lists`). The ISP has no route to 192.168.0.0/24: only NAT makes the replies come back.	PC1 hace ping al servidor Web a través de PAT (`show ip nat translations` en Office). La lista de acceso GUESTS bloquea a PC2 (`show access-lists`). El ISP no tiene ruta a 192.168.0.0/24: solo NAT hace que vuelvan las respuestas.
+Open PC1 > Desktop > Web Browser and go to www.packetcraft.lab. Edit the pages in Server0 > Services > HTTP. Try `ping www.packetcraft.lab` and `nslookup www.packetcraft.lab` in a Command Prompt.	Abre PC1 > Desktop > Web Browser y ve a www.packetcraft.lab. Edita las páginas en Server0 > Services > HTTP. Prueba `ping www.packetcraft.lab` y `nslookup www.packetcraft.lab` en el Command Prompt.
+PCs get their addresses from R1 by DHCP (Desktop > IP Configuration > DHCP, or `ipconfig /renew`). R1's console asks for `cisco`; `enable` asks for `class`. Try `show ip dhcp binding` on R1.	Los PC reciben su dirección de R1 por DHCP (Desktop > IP Configuration > DHCP, o `ipconfig /renew`). La consola de R1 pide `cisco`; `enable` pide `class`. Prueba `show ip dhcp binding` en R1.
+Your first router	Tu primer router
+R1 joins two LANs.\n\n1. Name the router R1.\n2. Protect privileged mode with the secret class.\n3. Give GigabitEthernet0/0 the address 192.168.10.1/24 and GigabitEthernet0/1 192.168.20.1/24, and turn both on.\n4. Check that PC1 reaches PC2.\n\nPress Check Results at any time.	R1 une dos LAN.\n\n1. Llama R1 al router.\n2. Protege el modo privilegiado con la contraseña secret class.\n3. Da a GigabitEthernet0/0 la dirección 192.168.10.1/24 y a GigabitEthernet0/1 la 192.168.20.1/24, y actívalas.\n4. Comprueba que PC1 llega a PC2.\n\nPulsa Comprobar resultados cuando quieras.
+PC1 reaches PC2	PC1 llega a PC2
+Both router interfaces need their address and `no shutdown`.	Las dos interfaces del router necesitan su dirección y `no shutdown`.
+(no instructions)	(sin instrucciones)

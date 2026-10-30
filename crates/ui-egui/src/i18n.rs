@@ -1,6 +1,7 @@
 //! Interface translations.
 //!
-//! Catalogs use the craft-i18n row format: one `English<TAB>translation` per line, `#` comments.
+//! Catalogs use the craft-i18n row format: one `English<TAB>translation` per line, `#` comments;
+//! `\n` in a row stands for a line break (for texts of several lines).
 //! The English text is the key, so a string with no translation simply shows in English. The
 //! device consoles stay in English on purpose: commands and their output are what students
 //! meet on real equipment.
@@ -52,11 +53,18 @@ pub fn lang() -> Lang {
 
 const ES: &str = include_str!("../i18n/es.tsv");
 
+/// A row's text with its `\n` escapes turned into line breaks (kept for the program's life: the
+/// catalog is built once).
+fn unescape(s: &'static str) -> &'static str {
+    if s.contains("\\n") { Box::leak(s.replace("\\n", "\n").into_boxed_str()) } else { s }
+}
+
 fn parse(text: &'static str) -> HashMap<&'static str, &'static str> {
     text.lines()
         .filter(|l| !l.trim_start().starts_with('#') && !l.trim().is_empty())
         .filter_map(|l| l.split_once('\t'))
         .filter(|(_, v)| !v.trim().is_empty())
+        .map(|(k, v)| (unescape(k), unescape(v)))
         .collect()
 }
 
@@ -81,6 +89,24 @@ pub fn tr(english: &str) -> &str {
     }
 }
 
+/// A message with parts: the catalog key is the English template with `{}` for each part, and
+/// the translation puts the same number of `{}` where its language wants them.
+pub fn trf(template: &'static str, args: &[&dyn std::fmt::Display]) -> String {
+    let t = tl(template);
+    let mut out = String::with_capacity(t.len() + 16);
+    let mut parts = args.iter();
+    let mut rest = t;
+    while let Some(at) = rest.find("{}") {
+        out.push_str(rest.get(..at).unwrap_or_default());
+        if let Some(a) = parts.next() {
+            out.push_str(&a.to_string());
+        }
+        rest = rest.get(at + 2..).unwrap_or_default();
+    }
+    out.push_str(rest);
+    out
+}
+
 /// How many catalog rows a language has (for the localization report).
 pub fn catalog_size(l: Lang) -> usize {
     match l {
@@ -92,6 +118,21 @@ pub fn catalog_size(l: Lang) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_sample_lab_reads_in_spanish() {
+        for s in packetcraft_engine::sample::SAMPLES {
+            assert!(spanish().contains_key(s.title), "title of {}", s.id);
+            assert!(spanish().contains_key(s.description), "description of {}", s.id);
+            let mut session = packetcraft_engine::Session::new();
+            session.execute("file.new", serde_json::json!({"sample": s.id})).unwrap();
+            let t = &session.topology;
+            assert!(t.notes.is_empty() || spanish().contains_key(t.notes.as_str()), "notes of {}", s.id);
+            if let Some(a) = &t.activity {
+                assert!(spanish().contains_key(a.title.as_str()) && spanish().contains_key(a.instructions.as_str()), "activity of {}", s.id);
+            }
+        }
+    }
 
     #[test]
     fn lookup_falls_back_to_english() {
@@ -106,5 +147,12 @@ mod tests {
         }
         assert!(catalog_size(Lang::Spanish) > 100);
         assert_eq!(parse("a\tb\n# c\td\nx\t\n").get("a"), Some(&"b"));
+        assert_eq!(parse("one\\ntwo\tuno\\ndos\n").get("one\ntwo"), Some(&"uno\ndos"));
+        // Templates keep their parts, in order, and a translation keeps their number.
+        assert_eq!(trf("Opened {}", &[&"lab.pcraft"]), "Opened lab.pcraft");
+        assert_eq!(trf("{} of {}", &[&1, &2]), "1 of 2");
+        for (k, v) in spanish() {
+            assert_eq!(k.matches("{}").count(), v.matches("{}").count(), "placeholders differ in {k}");
+        }
     }
 }

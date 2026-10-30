@@ -207,7 +207,7 @@ pub fn panel(app: &mut PacketApp, ui: &mut Ui) {
                         let width: f32 = cols.iter().map(|c| c.1).sum();
                         let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, row_h), egui::Sense::click());
                         let resp = resp.on_hover_text(match &dropped {
-                            Some(why) => format!("{summary}\nDropped: {why}"),
+                            Some(why) => format!("{summary}\n{}", crate::i18n::trf("Dropped: {}", &[&why])),
                             None => summary,
                         });
                         resp.widget_info(|| egui::WidgetInfo::selected(egui::accesskit::Role::Row, true, selected, format!("Event {id}")));
@@ -324,9 +324,12 @@ pub fn pdu_window(app: &mut PacketApp, ctx: &egui::Context) {
     egui::Window::new(format!("PDU Information at Device: {at}")).id(egui::Id::unique("pdu_info")).open(&mut open).default_size([460.0, 420.0]).show(
         ctx,
         |ui| {
-            ui.label(format!("Event {} at {:.6} s, from {} to {}", e.id, e.at_us as f64 / 1e6, t.end_label(e.from), t.end_label(e.to)));
+            ui.label(crate::i18n::trf(
+                "Event {} at {} s, from {} to {}",
+                &[&e.id, &format!("{:.6}", e.at_us as f64 / 1e6), &t.end_label(e.from), &t.end_label(e.to)],
+            ));
             match &e.dropped {
-                Some(why) => ui.label(RichText::new(format!("The device dropped it: {why}")).color(tk.error)),
+                Some(why) => ui.label(RichText::new(crate::i18n::trf("The device dropped it: {}", &[&why])).color(tk.error)),
                 None => ui.label(RichText::new(tl("The device accepted it.")).color(tk.ok)),
             };
             ui.separator();

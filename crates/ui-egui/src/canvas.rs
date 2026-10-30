@@ -53,12 +53,12 @@ pub fn hint(app: &PacketApp) -> String {
             crate::i18n::tl("Pick a device in the palette and click the canvas to place it, or open a sample from File.").into()
         }
         (Tool::Select, _) => crate::i18n::tl("Click a device to configure it · drag to move · scroll to pan, Ctrl+scroll to zoom").into(),
-        (Tool::Place(m), _) => format!("Click the workspace to place a {m}. Esc to stop."),
+        (Tool::Place(m), _) => crate::i18n::trf("Click the workspace to place a {}. Esc to stop.", &[&m]),
         (Tool::Draw(_), _) => crate::i18n::tl("Drag on the workspace to draw. Drawings sit behind devices; move them with Select.").into(),
         (Tool::Note, _) => crate::i18n::tl("Click the workspace to place a note. Drag notes to move them; double-click to edit.").into(),
         (Tool::Cable, None) => crate::i18n::tl("Click the first device and pick a port.").into(),
         (Tool::Cable, Some(Pending::CableFrom(e))) => {
-            format!("From {}: click the second device and pick a port. Esc cancels.", app.session.topology.end_label(e))
+            crate::i18n::trf("From {}: click the second device and pick a port. Esc cancels.", &[&app.session.topology.end_label(e)])
         }
         (Tool::Ping, None) => crate::i18n::tl("Simple PDU: click the source device.").into(),
         (Tool::Ping, Some(_)) => crate::i18n::tl("Simple PDU: now click the destination device.").into(),
@@ -702,7 +702,7 @@ fn simple_pdu(app: &mut PacketApp, src: DeviceId, dst: DeviceId, row: Option<usi
     let (Some(s), Some(d)) = (t.device(src), t.device(dst)) else { return };
     let (sname, dname) = (s.name.clone(), d.name.clone());
     let Some(addr) = first_address(d) else {
-        app.ui.status = Some((format!("{dname} has no IP address to send a PDU to"), true));
+        app.ui.status = Some((crate::i18n::trf("{} has no IP address to send a PDU to", &[&dname]), true));
         return;
     };
     let first_event = app.session.sim.trace().back().map_or(0, |e| e.id);
@@ -711,10 +711,10 @@ fn simple_pdu(app: &mut PacketApp, src: DeviceId, dst: DeviceId, row: Option<usi
     let result = v.pointer("/probes/0/result").and_then(Value::as_str).unwrap_or("timeout").to_string();
     let ok = result == "reply";
     let msg = match result.as_str() {
-        "reply" => format!("{sname} to {dname} ({addr}): successful"),
-        "unreachable" => format!("{sname} to {dname} ({addr}): failed, destination unreachable"),
-        "ttl-exceeded" => format!("{sname} to {dname} ({addr}): failed, TTL ran out"),
-        _ => format!("{sname} to {dname} ({addr}): failed, no answer"),
+        "reply" => crate::i18n::trf("{} to {} ({}): successful", &[&sname, &dname, &addr]),
+        "unreachable" => crate::i18n::trf("{} to {} ({}): failed, destination unreachable", &[&sname, &dname, &addr]),
+        "ttl-exceeded" => crate::i18n::trf("{} to {} ({}): failed, TTL ran out", &[&sname, &dname, &addr]),
+        _ => crate::i18n::trf("{} to {} ({}): failed, no answer", &[&sname, &dname, &addr]),
     };
     app.ui.status = Some((msg, !ok));
     match row.and_then(|i| app.ui.pdus.get_mut(i)) {
@@ -757,9 +757,11 @@ pub fn inspect_window(app: &mut PacketApp, ctx: &egui::Context) {
     let mut open = true;
     let t = &app.session.topology;
     let st = app.session.sim.state(d);
-    egui::Window::new(format!("Inspect {}", dev.name)).id(egui::Id::unique(("inspect", d.0))).open(&mut open).default_size([460.0, 300.0]).show(
-        ctx,
-        |ui| {
+    egui::Window::new(crate::i18n::trf("Inspect {}", &[&dev.name]))
+        .id(egui::Id::unique(("inspect", d.0)))
+        .open(&mut open)
+        .default_size([460.0, 300.0])
+        .show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 if dev.kind == packetcraft_model::DeviceKind::Switch {
                     ui.strong("MAC Table");
@@ -810,8 +812,7 @@ pub fn inspect_window(app: &mut PacketApp, ctx: &egui::Context) {
                     });
                 }
             });
-        },
-    );
+        });
     if !open {
         app.ui.inspect = None;
     }
@@ -866,7 +867,7 @@ fn port_menu(app: &mut PacketApp, ui: &Ui) {
     };
     egui::Area::new(Id::unique("port_menu")).fixed_pos(at + vec2(8.0, 8.0)).order(egui::Order::Foreground).show(ui.ctx(), |ui| {
         egui::Frame::popup(ui.style()).show(ui, |ui| {
-            ui.label(egui::RichText::new(format!("{}: choose a port", dev.name)).strong());
+            ui.label(egui::RichText::new(crate::i18n::trf("{}: choose a port", &[&dev.name])).strong());
             egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
                 for (i, p) in dev.ports.iter().enumerate() {
                     let end = End { device: d, port: i };
