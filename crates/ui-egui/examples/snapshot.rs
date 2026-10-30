@@ -18,6 +18,7 @@ fn main() {
     let mut desktop: Option<String> = None;
     let mut config = false;
     let mut services = false;
+    let mut about: Option<bool> = None;
     let mut page: Option<String> = None;
     let mut url: Option<String> = None;
     let mut it = args.iter();
@@ -45,6 +46,8 @@ fn main() {
             "--desktop" => desktop = Some(it.next().expect("prompt|ip|home").clone()),
             "--config" => config = true,
             "--services" => services = true,
+            "--about" => about = Some(false),
+            "--credits" => about = Some(true),
             "--services-page" => page = Some(it.next().expect("page").clone()),
             "--url" => url = Some(it.next().expect("url").clone()),
             "--event" => event = Some(it.next().and_then(|s| s.parse().ok()).expect("event id")),
@@ -59,6 +62,10 @@ fn main() {
         {
             let mut app = PacketApp::new(session);
             app.ui.dark = dark;
+            if let Some(credits) = about {
+                app.ui.show_about = true;
+                app.ui.about_credits = credits;
+            }
             for c in &consoles {
                 let id = app.session.topology.resolve(c).expect("device");
                 packetcraft_ui_egui::open_console(&mut app, id);

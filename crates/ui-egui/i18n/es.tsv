@@ -490,3 +490,34 @@ Walk	Recorrer
 get-next from the OID until its branch ends	get-next desde el OID hasta que termine su rama
 Clear	Borrar
 OID	OID
+Contributors	Colaboradores
+Show	Mostrar
+Display name	Nombre visible
+Real name	Nombre real
+Name (A–Z)	Nombre (A–Z)
+Merged PRs	PR fusionadas
+PRs	PR
+Commits	Commits
+Lines added	Líneas añadidas
++LOC	+LOC
+Lines deleted	Líneas borradas
+−LOC	−LOC
+Line delta	Diferencia de líneas
+ΔLOC	ΔLOC
+Binary assets added	Recursos binarios añadidos
++Bin	+Bin
+Binary assets removed	Recursos binarios quitados
+−Bin	−Bin
+First commit	Primer commit
+First	Primero
+Last commit	Último commit
+Last	Último
+Sort: {}	Orden: {}
+Reverse the order	Invertir el orden
+Grab bag	Mezcla
+Table	Tabla
+{} contributors · {} commits	{} colaboradores · {} commits
+No contributor data was built into this copy.	Esta copia se compiló sin datos de colaboradores.
+{} PRs, {} commits, +{} / −{} lines (Δ {}), +{} / −{} binary assets, {} – {}	{} PR, {} commits, +{} / −{} líneas (Δ {}), +{} / −{} recursos binarios, {} – {}
+Ascending	Ascendente
+Descending	Descendente

@@ -28,7 +28,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Engine commands | 52 | measured: `crates/engine/src/catalog.rs` |
 | Console grammar entries | 351 across 13 modes | measured: `crates/ios/src/grammar.rs` |
 | Device models · sample labs | 16 · 18 | measured |
-| Tests | 165 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Tests | 172 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~600–950 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
@@ -60,6 +60,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-10-30 — Contributors in About.** Help ▸ About has a Contributors tab, as in the other Craft apps: everyone who contributed, by username or by the name they chose in `contributors/people.toml`, sortable and as a list or a table.
 - **2026-10-30 — SNMP.** Routers and switches run an SNMP agent (`snmp-server community`), and PCs have a MIB Browser to get, walk and set its objects.
 - **2026-10-30 — TACACS+.** Logins can be checked by a TACACS+ server too (`tacacs-server host`, `group tacacs+`), with the encrypted exchange on the wire.
 - **2026-10-30 — Errors in Spanish.** With the Spanish interface, the status bar's errors and the reasons a frame was dropped read in Spanish too.

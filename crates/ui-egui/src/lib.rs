@@ -20,6 +20,7 @@ pub mod activity;
 mod bottom;
 mod canvas;
 mod console;
+mod credits;
 mod events;
 pub mod i18n;
 pub mod icons;
@@ -110,6 +111,8 @@ pub struct UiState {
     /// The Simulation Panel is shown in simulation mode ("Event List" toggle).
     pub show_event_list: bool,
     pub show_about: bool,
+    /// About window tab: false = the app, true = its contributors.
+    pub about_credits: bool,
     pub status: Option<(String, bool)>,
     pub events: events::EventView,
     pub pdus: Vec<Pdu>,
@@ -149,6 +152,7 @@ impl Default for UiState {
             show_notes: false,
             show_event_list: true,
             show_about: false,
+            about_credits: false,
             status: None,
             events: events::EventView::default(),
             pdus: Vec::new(),
@@ -975,7 +979,23 @@ impl PacketApp {
             return;
         }
         let mut open = true;
+        let credits = &mut self.ui.about_credits;
         egui::Window::new(tl("About PacketCraft")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                if ui.selectable_label(!*credits, tl("About")).clicked() {
+                    *credits = false;
+                }
+                if ui.selectable_label(*credits, tl("Contributors")).clicked() {
+                    *credits = true;
+                }
+            });
+            ui.separator();
+            if *credits {
+                // Room for every column of the table view.
+                ui.set_min_width(640.0);
+                credits::contributors_ui(ui);
+                return;
+            }
             ui.heading(tl("PacketCraft"));
             ui.label(crate::i18n::trf("Version {}", &[&env!("CARGO_PKG_VERSION")]));
             ui.label(tl("An open-source network simulator: build labs, configure routers and switches, and watch every frame."));

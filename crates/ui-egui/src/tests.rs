@@ -211,3 +211,19 @@ fn exporting_the_workspace_crops_the_screenshot_to_a_png() {
     assert_eq!((w, hgt), (area.width().round() as u32, area.height().round() as u32));
     assert!(!h.state().ui.image_pending);
 }
+
+#[test]
+fn about_lists_the_contributors_as_a_bag_and_a_table() {
+    let mut h = harness(None);
+    h.state_mut().ui.show_about = true;
+    h.run_steps(2);
+    h.get_by_label("Contributors").click();
+    h.run_steps(2);
+    assert!(h.state().ui.about_credits);
+    h.get_by_label("Table").click();
+    h.run_steps(2);
+    h.get_by_label("Real name").click();
+    h.get_by_label("Ascending").click();
+    h.run_steps(2);
+    assert!(h.query_by_label("Descending").is_some());
+}

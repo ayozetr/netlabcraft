@@ -6,6 +6,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
 mod assets;
+mod contributors;
 mod layers;
 mod parity;
 mod version;
@@ -25,6 +26,8 @@ commands:
   wasm            cargo check --target wasm32-unknown-unknown for the L0-L5 crates (+ packetcraft-web), one call
   parity [--check] [--out PATH]
                   write docs/command-reference.md from the engine catalog and the console grammar
+  contributors [--check]
+                  regenerate contributors/contributors.json (About ▸ Contributors) from git history
   version [set X.Y.Z[-pre]]
                   print or set the workspace version ([workspace.package] in Cargo.toml)
 ";
@@ -39,6 +42,7 @@ fn main() -> ExitCode {
         Some("test") => cmd_test().and_then(|()| cmd_doctest()),
         Some("ci") => cmd_ci(),
         Some("parity") => parity::run(&root(), &rest),
+        Some("contributors") => contributors::run(&root(), &rest),
         Some("version") => version::run(&root(), &rest),
         Some("-h" | "--help" | "help") | None => {
             print!("{USAGE}");

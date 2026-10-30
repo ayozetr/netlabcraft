@@ -17,7 +17,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 | 2 | **Wireless depth:** WLC with lightweight APs, 802.1X/RADIUS, 802.11 frames in Simulation mode | CCNA 2 | 16–26 h |
 | 3 | **Services:** SNMP traps and v3, relaying mail between servers | Network management labs | 6–10 h |
 | 4 | **More languages and full coverage:** event summaries in Spanish; more interface languages | Non-English students | 6–10 h |
-| 5 | **Packaging and first release:** installers for Windows, macOS, FreeBSD and Flatpak, workflows, contributors in the About window ([releasing.md](releasing.md)); the app ID and the project's home are the owner's decision | Everyone who isn't a developer | 10–18 h |
+| 5 | **Packaging and first release:** installers for Windows, macOS, FreeBSD and Flatpak, workflows ([releasing.md](releasing.md)); the app ID and the project's home are the owner's decision | Everyone who isn't a developer | 7–13 h |
 | 6 | **Workspace:** drawing freeform, clusters, physical view, direct printing | Everyone, occasionally | 45–70 h |
 | 7 | **Device families:** modular routers, ASA, IoT, phones | Specialised labs | 80–120 h |
 | 8 | **EIGRP, VPN (GRE/IPsec), QoS** | CCNA 3 extras | 40–60 h |
@@ -26,6 +26,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Packaging narrowed: the About window lists contributors. |
 | 2026-10-30 | minor | Services narrowed: SNMP and the MIB Browser. |
 | 2026-10-30 | minor | Services narrowed: TACACS+. |
 | 2026-10-30 | minor | Languages narrowed: engine errors and drop reasons in Spanish. |
