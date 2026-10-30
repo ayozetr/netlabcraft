@@ -13,7 +13,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 
 | # | Gap | Who notices | Estimate |
 |---|---|---|---|
-| 1 | **Activity depth:** a timer, locked fields (students can't open the wizard or see answers in the UI), variable values per student, feedback text per check, an answer network to compare against | Instructors | 30–50 h |
+| 1 | **Activity depth:** variable values per student (addresses that differ per file), an answer network to compare against, percentages per section | Instructors | 20–35 h |
 | 2 | **Console coverage:** more debugs, `show processes/memory`, LLDP, `show ip ospf interface`; going through the CCNA 1 labs command by command | CCNA 1 from the first lab | 6–14 h |
 | 3 | **More protocol frames in Simulation mode:** OSPF database exchange (DBD/LSR/LSU), LACP, LLDP; BPDUs, OSPF hellos and RIP updates are done | CCNA 2–3 students watching Simulation mode | 8–14 h |
 | 4 | **Wireless depth:** wireless routers (home gateway with DHCP and NAT), WLC with lightweight APs, 802.1X/RADIUS, 802.11 frames in Simulation mode | CCNA 2 | 25–40 h |
@@ -30,6 +30,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Gap 1 narrowed: time limit, hints per check, password lock, score-only results. |
 | 2026-10-30 | minor | Done: Spanish interface (catalog, Options ▸ Language). |
 | 2026-10-30 | minor | Done: Wi-Fi access points and laptops (SSID, WPA2-PSK, range, relay between clients), wifi sample lab. |
 | 2026-10-30 | minor | Done: spanning-tree listening/learning timers, rapid-pvst. |

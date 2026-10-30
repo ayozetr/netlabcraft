@@ -20,15 +20,15 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 | Number | Value | Kind |
 |---|---|---|
-| **Ready for real work** (weighted) | **~63%** | estimated from written weights (63.1); [target-app-parity.md](docs/target-app-parity.md) |
+| **Ready for real work** (weighted) | **~64%** | estimated from written weights (63.9); [target-app-parity.md](docs/target-app-parity.md) |
 | **CCNA 1 student** | **~74%** | estimated; [method](docs/target-app-parity.md#audiences) |
 | **CCNA 2 student** | **~78%** | estimated |
 | **CCNA 3 student** | **~62%** | estimated |
-| **Instructor** (graded activities) | **~45%** | estimated |
+| **Instructor** (graded activities) | **~60%** | estimated |
 | Engine commands | 40 | measured: `crates/engine/src/catalog.rs` |
 | Console grammar entries | 225 across 12 modes | measured: `crates/ios/src/grammar.rs` |
 | Device models · sample labs | 15 · 18 | measured |
-| Tests | 139 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Tests | 140 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~600–950 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
@@ -39,7 +39,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | CCNA 1 student | ~74% | ~30–55 | Console coverage, protocol frames in Simulation mode, PDU details |
 | CCNA 2 student | ~78% | ~45–80 | Wireless routers and WLC, console polish |
 | CCNA 3 student | ~62% | ~110–180 | OSPFv3, VPN, SNMP and AAA, QoS |
-| Instructor | ~45% | ~50–90 | Timer, locking, variables, per-check feedback, translations |
+| Instructor | ~60% | ~35–60 | Variables per student, an answer network to compare against, translated activity texts |
 
 ## Dimensions
 
@@ -53,13 +53,14 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | WAN, cabling, wireless | 6 | 55% | 35–55 | Copper (auto-MDIX), serial (DCE/DTE, HDLC/PPP), Wi-Fi access points and clients; no wireless routers, WLC or fibre |
 | Simulation mode | 8 | 65% | 22–35 | Event list, replay, decode, drop reasons, pcap; BPDUs, OSPF hellos, RIP updates; no complex PDUs |
 | Workspace and windows | 10 | 55% | 60–90 | Reference-app arrangement, device tabs, notes and drawings; no physical view or clusters |
-| Teaching | 8 | 55% | 45–75 | Activities with checks, points, hidden answers and a wizard; Spanish interface; no timer or locking |
+| Teaching | 8 | 65% | 35–60 | Activities with checks, points, hints, hidden answers, a time limit, a password lock and a wizard; Spanish interface; no variables per student |
 | Device families | 5 | 25% | 80–120 | 13 generic models; no modules, ASA, IoT |
 | Files | — | — | — | Own open `.pcraft` JSON; no `.pkt` (out of scope: [decisions.md](docs/decisions.md)) |
 | Platforms and agents | — | — | — | Linux, Windows, macOS, BSD, web; MCP server and CLI over the full command catalog |
 
 ## Progress log
 
+- **2026-10-30 — Activity time limit and lock.** An activity can have a time limit (a countdown in the Instructions window; the results are taken when it runs out), a hint per check shown when it fails, and an instructor password that locks it: students can't change it or see its checks, and with "score only" Check Results shows just the score.
 - **2026-10-30 — Spanish interface.** Menus, toolbars, panels and device windows in Spanish (Options ▸ Language; the system or browser language by default); the device consoles stay in English, as on real equipment.
 - **2026-10-30 — Wi-Fi.** An AccessPoint model and a Laptop-WiFi model: SSID, open or WPA2-PSK, channel; hosts join the nearest access point in range with the same network and key, drawn as a dashed line; the access point relays between its hosts; Wi-Fi settings in the port pages and the `device.wireless` command; wifi sample lab.
 - **2026-10-30 — Spanning-tree timers.** A port that starts forwarding listens 15 s and learns 15 s first (amber light, LIS/LRN in `show spanning-tree`), as on real switches; portfast and `spanning-tree mode rapid-pvst` skip the wait; sample labs start converged.

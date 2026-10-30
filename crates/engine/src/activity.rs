@@ -13,6 +13,8 @@ pub struct CheckResult {
     pub label: String,
     pub points: u32,
     pub passed: bool,
+    /// The check's hint, when it failed.
+    pub feedback: String,
 }
 
 /// The configuration lines a device has beyond a factory-fresh device of the same model.
@@ -46,7 +48,7 @@ pub fn capture(t: &Topology, hidden: bool, salt: &str) -> Vec<Check> {
                     } else {
                         (format!("{}: {line}", d.name), CheckKind::Config { device: d.id, line })
                     };
-                    out.push(Check { label, points: 1, kind });
+                    out.push(Check { label, points: 1, feedback: String::new(), kind });
                 }
             }
             k if k.is_host() => {
@@ -55,6 +57,7 @@ pub fn capture(t: &Topology, hidden: bool, salt: &str) -> Vec<Check> {
                     out.push(Check {
                         label,
                         points: 1,
+                        feedback: String::new(),
                         kind: CheckKind::HostAddress { device: d.id, address: ip.to_string(), gateway: d.gateway.map(|g| g.to_string()) },
                     });
                 }
@@ -102,7 +105,7 @@ pub fn evaluate(t: &Topology, sim: &Sim, checks: &[Check], salt: &str) -> Vec<Ch
                     out.to_lowercase().contains(&contains.to_lowercase())
                 }
             };
-            CheckResult { label: c.label.clone(), points: c.points, passed }
+            CheckResult { label: c.label.clone(), points: c.points, passed, feedback: if passed { String::new() } else { c.feedback.clone() } }
         })
         .collect()
 }

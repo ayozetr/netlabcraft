@@ -27,6 +27,18 @@ pub struct ActivityView {
     out_contains: String,
     /// The wizard's text fields were filled from the lab.
     loaded: bool,
+    /// When the activity was opened (egui time, seconds), for the time limit.
+    started: f64,
+    /// The time ran out: the results were taken then and Check Results is off.
+    time_up: bool,
+    feedback: String,
+    password: String,
+}
+
+/// The time left as `m:ss` (or `h:mm:ss`).
+pub fn clock(seconds: u64) -> String {
+    let (h, m, s) = (seconds / 3600, seconds / 60 % 60, seconds % 60);
+    if h > 0 { format!("{h}:{m:02}:{s:02}") } else { format!("{m}:{s:02}") }
 }
 
 fn field(ui: &mut egui::Ui, label: &str, value: &mut String, width: f32) {
@@ -41,6 +53,8 @@ pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
     if has && !app.ui.activity.had {
         app.ui.activity.show_instructions = true;
         app.ui.activity.results = None;
+        app.ui.activity.started = ctx.input(|i| i.time);
+        app.ui.activity.time_up = false;
     }
     app.ui.activity.had = has;
     instructions(app, ctx);
@@ -55,6 +69,20 @@ fn instructions(app: &mut PacketApp, ctx: &egui::Context) {
     let mut open = true;
     let mut check = false;
     let mut reset = false;
+    let now = ctx.input(|i| i.time);
+    let left = (a.time_limit > 0).then(|| {
+        let elapsed = (now - app.ui.activity.started).max(0.0) as u64;
+        u64::from(a.time_limit).saturating_mul(60).saturating_sub(elapsed)
+    });
+    if left == Some(0) && !app.ui.activity.time_up {
+        app.ui.activity.time_up = true;
+        app.ui.activity.results = app.run("activity.check", json!({}));
+        app.info(tl("Time is up: these are your results."));
+    }
+    if left.is_some_and(|l| l > 0) {
+        ctx.request_repaint_after(std::time::Duration::from_millis(500));
+    }
+    let time_up = app.ui.activity.time_up;
     egui::Window::new(tl("Instructions")).open(&mut open).default_size([380.0, 320.0]).anchor(egui::Align2::LEFT_TOP, [12.0, 190.0]).show(
         ctx,
         |ui| {
@@ -68,12 +96,20 @@ fn instructions(app: &mut PacketApp, ctx: &egui::Context) {
                 None => (0, u64::from(a.total_points()), 0),
             };
             ui.label(RichText::new(format!("{}: {percent}%  ({score} {} {total} {})", tl("Completion"), tl("of"), tl("points"))).strong());
+            if let Some(l) = left {
+                let text = if l == 0 { tl("Time is up").to_string() } else { format!("{}: {}", tl("Time left"), clock(l)) };
+                let color = if l < 60 { Color32::from_rgb(0xc8, 0x3a, 0x2e) } else { ui.visuals().text_color() };
+                ui.label(RichText::new(text).color(color).strong());
+            }
             ui.horizontal(|ui| {
-                check = ui.button(tl("Check Results")).clicked();
+                check = ui.add_enabled(!time_up, egui::Button::new(tl("Check Results"))).clicked();
                 reset = ui.add_enabled(app.session.activity_start.is_some(), egui::Button::new(tl("Reset Activity"))).clicked();
             });
             if let Some(r) = &app.ui.activity.results {
                 egui::ScrollArea::vertical().max_height(180.0).id_salt("activity_results").show(ui, |ui| {
+                    if r["detail"] == false {
+                        ui.label(RichText::new(tl("The instructor shows the score only.")).italics());
+                    }
                     for item in r["results"].as_array().into_iter().flatten() {
                         let passed = item["passed"].as_bool().unwrap_or(false);
                         let (mark, color) =
@@ -82,6 +118,9 @@ fn instructions(app: &mut PacketApp, ctx: &egui::Context) {
                             ui.label(RichText::new(mark).color(color).strong());
                             ui.label(item["label"].as_str().unwrap_or(""));
                         });
+                        if let Some(hint) = item["feedback"].as_str().filter(|h| !passed && !h.is_empty()) {
+                            ui.label(RichText::new(format!("    {hint}")).italics().small());
+                        }
                     }
                 });
             }
@@ -93,6 +132,8 @@ fn instructions(app: &mut PacketApp, ctx: &egui::Context) {
     }
     if reset && app.run("activity.reset", json!({})).is_some() {
         app.ui.activity.results = None;
+        app.ui.activity.started = now;
+        app.ui.activity.time_up = false;
         app.info("Activity reset to how it was opened.");
     }
 }
@@ -112,6 +153,24 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
     let mut open = true;
     let mut run: Vec<(&'static str, Value)> = Vec::new();
     let v = &mut app.ui.activity;
+    if activity.as_ref().is_some_and(packetcraft_model::activity::Activity::locked) {
+        egui::Window::new(tl("Activity Wizard")).open(&mut open).default_size([360.0, 120.0]).show(ctx, |ui| {
+            ui.label(tl("This activity is locked. The instructor's password unlocks it."));
+            ui.horizontal(|ui| {
+                let l = ui.label(tl("Password"));
+                ui.add(egui::TextEdit::singleline(&mut v.password).password(true).desired_width(160.0)).labelled_by(l.id);
+                if ui.button(tl("Unlock")).clicked() {
+                    run.push(("activity.unlock", json!({"password": v.password})));
+                    v.password.clear();
+                }
+            });
+        });
+        app.ui.activity.show_wizard = open;
+        for (id, params) in run {
+            app.run(id, params);
+        }
+        return;
+    }
     egui::Window::new(tl("Activity Wizard")).open(&mut open).default_size([520.0, 520.0]).show(ctx, |ui| {
         ui.label(tl(
             "Build the finished network, capture its configuration as the answers, then put the lab back in its starting state and save it.",
@@ -125,10 +184,39 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
             if ui.button(tl("Save title and instructions")).clicked() {
                 run.push(("activity.set", json!({"title": v.title, "instructions": v.instructions})));
             }
-            if ui.checkbox(&mut hidden, tl("Hide answers in the file")).changed() {
+                        if ui.checkbox(&mut hidden, tl("Hide answers in the file")).changed() {
                 run.push(("activity.set", json!({"hidden": hidden})));
             }
         });
+        if let Some(a) = &activity {
+            ui.horizontal(|ui| {
+                let mut minutes = a.time_limit;
+                let l = ui.label(tl("Time limit (minutes, 0: none)"));
+                if ui.add(egui::DragValue::new(&mut minutes).range(0..=packetcraft_model::activity::MAX_TIME_LIMIT)).labelled_by(l.id).changed() {
+                    run.push(("activity.set", json!({"time_limit": minutes})));
+                }
+                let mut score_only = a.score_only;
+                if ui
+                    .checkbox(&mut score_only, tl("Students see the score only"))
+                    .on_hover_text(tl("While locked, Check Results doesn't say which checks passed"))
+                    .changed()
+                {
+                    run.push(("activity.set", json!({"score_only": score_only})));
+                }
+            });
+            ui.horizontal(|ui| {
+                let l = ui.label(tl("Password"));
+                ui.add(egui::TextEdit::singleline(&mut v.password).password(true).desired_width(140.0)).labelled_by(l.id);
+                if ui
+                    .add_enabled(!v.password.is_empty(), egui::Button::new(tl("Lock the activity")))
+                    .on_hover_text(tl("Students can't change the activity or see its checks until it is unlocked"))
+                    .clicked()
+                {
+                    run.push(("activity.lock", json!({"password": v.password})));
+                    v.password.clear();
+                }
+            });
+        }
         ui.separator();
         ui.horizontal(|ui| {
             if ui
@@ -145,6 +233,7 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
                 run.push(("activity.clear", json!({})));
             }
         });
+                field(ui, tl("Hint when it fails"), &mut v.feedback, 300.0);
         ui.collapsing(tl("Add a ping check"), |ui| {
             field(ui, tl("From device"), &mut v.ping_from, 140.0);
             field(ui, tl("To address"), &mut v.ping_to, 140.0);
@@ -152,7 +241,7 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
             if ui.button(tl("Add")).clicked() {
                 run.push((
                     "activity.add_check",
-                    json!({"type": "ping", "from": v.ping_from.trim(), "to": v.ping_to.trim(), "succeed": !v.ping_fail}),
+                    json!({"type": "ping", "from": v.ping_from.trim(), "to": v.ping_to.trim(), "succeed": !v.ping_fail, "feedback": v.feedback.trim()}),
                 ));
             }
         });
@@ -161,7 +250,7 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
             field(ui, tl("Line"), &mut v.cfg_line, 300.0);
             ui.label(RichText::new(tl("Inside a block: interface g0/0 | ip address 10.0.0.1 255.255.255.0")).small());
             if ui.button(tl("Add")).clicked() {
-                run.push(("activity.add_check", json!({"type": "config", "device": v.cfg_device.trim(), "line": v.cfg_line.trim()})));
+                run.push(("activity.add_check", json!({"type": "config", "device": v.cfg_device.trim(), "line": v.cfg_line.trim(), "feedback": v.feedback.trim()})));
             }
         });
         ui.collapsing(tl("Add a command check"), |ui| {
@@ -171,7 +260,7 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
             if ui.button(tl("Add")).clicked() {
                 run.push((
                     "activity.add_check",
-                    json!({"type": "output", "device": v.out_device.trim(), "command": v.out_command.trim(), "contains": v.out_contains.trim()}),
+                    json!({"type": "output", "device": v.out_device.trim(), "command": v.out_command.trim(), "contains": v.out_contains.trim(), "feedback": v.feedback.trim()}),
                 ));
             }
         });

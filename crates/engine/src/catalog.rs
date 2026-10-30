@@ -30,13 +30,20 @@ pub static CATALOG: &[CommandInfo] = &[
         r#"{"device", "port"?: "Wireless0", "ssid": "network name (empty: radio off)", "key"?: "WPA2-PSK passphrase, 8-63 characters (none: open)", "channel"?: 1-13}"#,
         true
     ),
-    c!("activity.show", "Activity", "", None, r#"{} → {"activity" (or null), "total_points"}"#, false),
+    c!(
+        "activity.show",
+        "Activity",
+        "",
+        None,
+        r#"{} → {"activity" (or null; a locked one without its checks), "total_points", "checks", "locked"}"#,
+        false
+    ),
     c!(
         "activity.set",
         "Activity Wizard…",
         "Extensions",
         None,
-        r#"{"title"?, "instructions"?, "hidden"?: true to store configuration answers as hashes}"#,
+        r#"{"title"?, "instructions"?, "hidden"?: true to store configuration answers as hashes, "time_limit"?: minutes (0: none), "score_only"?: while locked, Check Results shows the score only}"#,
         true
     ),
     c!(
@@ -52,17 +59,19 @@ pub static CATALOG: &[CommandInfo] = &[
         "Add check",
         "",
         None,
-        r#"{"type": "config"|"ping"|"host-address"|"output", "device" (or "from"), "line" | "to"+"succeed"? | "address"+"gateway"? | "command"+"contains", "points"?: 1, "label"?}"#,
+        r#"{"type": "config"|"ping"|"host-address"|"output", "device" (or "from"), "line" | "to"+"succeed"? | "address"+"gateway"? | "command"+"contains", "points"?: 1, "label"?, "feedback"?: hint shown when it fails}"#,
         true
     ),
     c!("activity.remove_check", "Remove check", "", None, r#"{"index": n}"#, true),
     c!("activity.clear", "Remove the activity", "", None, "{}", true),
+    c!("activity.lock", "Lock the activity", "", None, r#"{"password"}: the activity can't be changed or its checks seen until unlocked"#, true),
+    c!("activity.unlock", "Unlock the activity", "", None, r#"{"password"}"#, true),
     c!(
         "activity.check",
         "Check Results",
         "Extensions",
         None,
-        r#"{} → {"results": [{"label", "points", "passed"}], "score", "total", "percent"}"#,
+        r#"{} → {"results": [{"label", "points", "passed", "feedback"}] (empty when locked with score_only), "score", "total", "percent", "detail"}"#,
         false
     ),
     c!("activity.reset", "Reset Activity", "Extensions", None, "{}: back to the lab as the activity was opened", false),

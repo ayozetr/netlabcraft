@@ -27,7 +27,23 @@ pub struct Activity {
     /// Salt for the hashes, fixed when the activity is created.
     #[serde(default)]
     pub salt: String,
+    /// Minutes the student has (0: no limit). The time counts from when the lab is opened.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub time_limit: u32,
+    /// The hash of the instructor's password; while set, the activity can't be changed.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub lock: String,
+    /// While locked, Check Results shows the score only, not which checks passed.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub score_only: bool,
 }
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+/// Longest time limit, in minutes.
+pub const MAX_TIME_LIMIT: u32 = 24 * 60;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Check {
@@ -35,6 +51,9 @@ pub struct Check {
     pub label: String,
     #[serde(default = "one")]
     pub points: u32,
+    /// What the student reads when the check fails (a hint, not the answer).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub feedback: String,
     #[serde(flatten)]
     pub kind: CheckKind,
 }
@@ -123,7 +142,9 @@ impl Activity {
     /// Caps sizes from hostile files.
     pub fn sanitize(&mut self) {
         self.checks.truncate(MAX_CHECKS);
-        for s in [&mut self.title, &mut self.instructions, &mut self.salt] {
+        self.time_limit = self.time_limit.min(MAX_TIME_LIMIT);
+        let texts = [&mut self.title, &mut self.instructions, &mut self.salt, &mut self.lock];
+        for s in texts.into_iter().chain(self.checks.iter_mut().map(|c| &mut c.feedback)) {
             if s.len() > MAX_TEXT {
                 let cut = (0..=MAX_TEXT).rev().find(|i| s.is_char_boundary(*i)).unwrap_or(0);
                 s.truncate(cut);
@@ -132,6 +153,15 @@ impl Activity {
         for c in &mut self.checks {
             c.points = c.points.min(1_000);
         }
+    }
+
+    pub fn locked(&self) -> bool {
+        !self.lock.is_empty()
+    }
+
+    /// The hash a password is stored as.
+    pub fn password_hash(&self, password: &str) -> String {
+        line_hash(&self.salt, DeviceId(0), &format!("lock:{password}"))
     }
 
     pub fn total_points(&self) -> u32 {
@@ -166,11 +196,24 @@ mod tests {
             title: "t".into(),
             instructions: "i".into(),
             checks: vec![
-                Check { label: "l".into(), points: 2, kind: CheckKind::Ping { from: DeviceId(1), to: "10.0.0.1".into(), succeed: true } },
-                Check { label: "m".into(), points: 1, kind: CheckKind::ConfigHashed { device: DeviceId(2), hash: "ab".into() } },
+                Check {
+                    label: "l".into(),
+                    points: 2,
+                    feedback: "look at R1".into(),
+                    kind: CheckKind::Ping { from: DeviceId(1), to: "10.0.0.1".into(), succeed: true },
+                },
+                Check {
+                    label: "m".into(),
+                    points: 1,
+                    feedback: String::new(),
+                    kind: CheckKind::ConfigHashed { device: DeviceId(2), hash: "ab".into() },
+                },
             ],
             hidden: true,
             salt: "s".into(),
+            time_limit: 30,
+            lock: String::new(),
+            score_only: true,
         };
         let j = serde_json::to_string(&a).unwrap();
         assert!(j.contains(r#""type":"ping""#));

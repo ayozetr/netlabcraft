@@ -16,12 +16,12 @@ This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summa
 | Console grammar entries | **225** across 12 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
 | Device models | **15** | measured: `crates/model/src/models.rs` |
 | Sample labs | **18** | measured: `crates/engine/src/sample.rs` |
-| Tests | **139** | measured: `cargo test --workspace` |
-| **Ready for real work** (weighted) | **~50%** | estimated; written weights below (63.1 computed) |
+| Tests | **140** | measured: `cargo test --workspace` |
+| **Ready for real work** (weighted) | **~50%** | estimated; written weights below (63.9 computed) |
 | **CCNA 1 student** (Introduction to Networks) | **~74%** | estimated; [method](#audiences) |
 | **CCNA 2 student** (Switching, Routing and Wireless Essentials) | **~78%** | estimated; [method](#audiences) |
 | **CCNA 3 student** (Enterprise Networking, Security and Automation) | **~62%** | estimated; [method](#audiences) |
-| **Instructor** (builds graded activities) | **~45%** | estimated; activities with checks, points, hidden answers and a wizard; no timer, locking or variables |
+| **Instructor** (builds graded activities) | **~60%** | estimated; activities with checks, points, hints, hidden answers, a time limit, a password lock and a wizard; no variables or answer network |
 | Stage | **pre-alpha** | see [Stage](#stage) |
 | Remaining to alpha | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](roadmap.md#alpha-gates) |
 | Remaining to full parity | **~600–950 Opus 5.5 agent-hours** | estimated; sum of the rows below |
@@ -34,7 +34,7 @@ This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summa
 | CCNA 1 student | ~70% | ~40–70 | Protocol frames in Simulation mode (BPDU, hellos), console polish (`show` coverage), PDU details layout, a few host apps (text editor, terminal) |
 | CCNA 2 student | ~58% | ~110–170 | Wireless LANs (40–60 h), DTP and RSTP timers (10–16 h), DHCPv6 and SLAAC flags (8–12 h), HSRP (12–18 h), console polish |
 | CCNA 3 student | ~45% | ~180–280 | OSPF multi-area and OSPFv3 (20–30 h), ACL depth and IPv6 ACLs (10–16 h), PPP authentication (6–10 h), VPN/GRE (15–25 h), QoS basics, SNMP/syslog/NTP, automation APIs |
-| Instructor | ~45% | ~50–90 | Activity depth: timer, locking, variables, per-check feedback (30–50 h), translations |
+| Instructor | ~60% | ~35–60 | Activity depth: variables per student, an answer network (20–35 h), translated activity texts |
 
 Each student tier is mostly a superset of the one before. Hours are wall-clock for one agent;
 the protocol work splits well across 3–4 agents by crate (`sim`, `ios`, `ui-egui`).
@@ -68,9 +68,9 @@ Weights reflect how much of a typical CCNA lab session each area carries.
 | WAN, cabling and wireless | 6 | 55% | 3.3 | [hardware-parity.md](hardware-parity.md) | 60–90 |
 | Simulation mode (event list, PDU details, filters, complex PDUs) | 8 | 65% | 5.2 | [ui-parity.md](ui-parity.md) | 22–35 |
 | Workspace and windows (canvas, device tabs, physical view, drawing) | 10 | 55% | 5.5 | [ui-parity.md](ui-parity.md) | 60–90 |
-| Teaching (activities, scoring, instructions, languages) | 8 | 55% | 4.4 | [gaps.md](gaps.md) | 55–90 |
+| Teaching (activities, scoring, instructions, languages) | 8 | 65% | 5.2 | [gaps.md](gaps.md) | 35–60 |
 | Device families and hardware (models, modules, ASA, IoT) | 5 | 25% | 1.3 | [hardware-parity.md](hardware-parity.md) | 80–120 |
-| **Total** | **100** | | **63.1** | | **~600–950** |
+| **Total** | **100** | | **63.9** | | **~600–950** |
 
 ## Audiences
 
@@ -105,6 +105,7 @@ misses commands students meet in the first labs. Alpha gates are in
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Activity time limit, hints and password lock: teaching 55% → 65%, instructor ~45% → ~60%. |
 | 2026-10-30 | minor | Spanish interface: teaching 45% → 55%. |
 | 2026-10-30 | minor | Wi-Fi access points and clients: WAN/cabling/wireless 35% → 55%, CCNA 2 ~71% → ~78%. |
 | 2026-10-30 | minor | STP timers and rapid-pvst: layer 2 80% → 85%, CCNA 2 ~68% → ~71%. |

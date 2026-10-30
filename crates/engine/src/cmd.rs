@@ -241,10 +241,54 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             let ap = s.topology.wifi_ap_of(packetcraft_model::End { device: d, port });
             Ok(json!({"associated_with": ap.map(|e| s.topology.end_label(e))}))
         }
-        "activity.show" => Ok(json!({
-            "activity": s.topology.activity,
-            "total_points": s.topology.activity.as_ref().map_or(0, packetcraft_model::activity::Activity::total_points),
-        })),
+                "activity.show" => {
+            let mut a = s.topology.activity.clone();
+            // A locked activity doesn't show its checks: their labels may give the answers away.
+            if let Some(x) = a.as_mut().filter(|x| x.locked()) {
+                x.checks.clear();
+                x.lock = "set".into();
+            }
+            Ok(json!({
+                "activity": a,
+                "total_points": s.topology.activity.as_ref().map_or(0, packetcraft_model::activity::Activity::total_points),
+                "checks": s.topology.activity.as_ref().map_or(0, |x| x.checks.len()),
+                "locked": s.topology.activity.as_ref().is_some_and(packetcraft_model::activity::Activity::locked),
+            }))
+        }
+        "activity.set" | "activity.capture" | "activity.add_check" | "activity.remove_check" | "activity.clear" | "activity.lock"
+            if s.topology.activity.as_ref().is_some_and(packetcraft_model::activity::Activity::locked) =>
+        {
+            Err(bad("the activity is locked: `activity.unlock` with the instructor's password first"))
+        }
+        "activity.lock" => {
+            let password = str_param(p, "password")?;
+            if password.is_empty() {
+                return Err(bad("the password can't be empty"));
+            }
+            let mut t = s.topology.clone();
+            let a = t.activity.as_mut().ok_or_else(|| bad("this lab has no activity"))?;
+            a.lock = a.password_hash(password);
+            s.checkpoint();
+            s.topology = t;
+            s.changed();
+            Ok(json!({"locked": true}))
+        }
+        "activity.unlock" => {
+            let password = str_param(p, "password")?;
+            let mut t = s.topology.clone();
+            let a = t.activity.as_mut().ok_or_else(|| bad("this lab has no activity"))?;
+            if !a.locked() {
+                return Ok(json!({"locked": false}));
+            }
+            if a.password_hash(password) != a.lock {
+                return Err(bad("wrong password"));
+            }
+            a.lock.clear();
+            s.checkpoint();
+            s.topology = t;
+            s.changed();
+            Ok(json!({"locked": false}))
+        }
         "activity.set" => {
             let mut t = s.topology.clone();
             let salt_title = opt_str(p, "title").unwrap_or("Activity").to_string();
@@ -255,6 +299,12 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             }
             if let Some(text) = opt_str(p, "instructions") {
                 a.instructions = text.chars().take(packetcraft_model::activity::MAX_TEXT).collect();
+            }
+                        if let Some(m) = p.get("time_limit").and_then(Value::as_u64) {
+                a.time_limit = u32::try_from(m).unwrap_or(u32::MAX).min(packetcraft_model::activity::MAX_TIME_LIMIT);
+            }
+            if let Some(b) = p.get("score_only").and_then(Value::as_bool) {
+                a.score_only = b;
             }
             if let Some(h) = p.get("hidden").and_then(Value::as_bool) {
                 if !h && a.hidden && a.checks.iter().any(|c| matches!(c.kind, packetcraft_model::activity::CheckKind::ConfigHashed { .. })) {
@@ -340,14 +390,15 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                 other => return Err(bad(format!("unknown check type `{other}` (config, ping, host-address, output)"))),
             };
             let label = opt_str(p, "label").map_or(label, |l| l.chars().take(300).collect());
-            let points = p.get("points").and_then(Value::as_u64).map_or(1, |n| n.clamp(1, 1_000) as u32);
+                        let points = p.get("points").and_then(Value::as_u64).map_or(1, |n| n.clamp(1, 1_000) as u32);
+            let feedback = opt_str(p, "feedback").map_or(String::new(), |f| f.chars().take(1_000).collect());
             let mut t = s.topology.clone();
             let fresh_salt = crate::activity::new_salt(&t, "Activity");
             let a = t.activity.get_or_insert_with(|| packetcraft_model::activity::Activity { title: "Activity".into(), salt: fresh_salt, ..Default::default() });
             if a.checks.len() >= packetcraft_model::activity::MAX_CHECKS {
                 return Err(bad("too many checks"));
             }
-            a.checks.push(Check { label, points, kind });
+            a.checks.push(Check { label, points, feedback, kind });
             let n = a.checks.len();
             s.checkpoint();
             s.topology = t;
@@ -380,11 +431,14 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             let results = crate::activity::evaluate(&s.topology, &s.sim, &a.checks, &a.salt);
             let total: u32 = results.iter().map(|r| r.points).sum();
             let score: u32 = results.iter().filter(|r| r.passed).map(|r| r.points).sum();
-            let percent = (score * 100).checked_div(total).unwrap_or(0);
-            Ok(json!({
-                "results": results.iter().map(|r| json!({"label": r.label, "points": r.points, "passed": r.passed})).collect::<Vec<_>>(),
-                "score": score, "total": total, "percent": percent,
-            }))
+                        let percent = (score * 100).checked_div(total).unwrap_or(0);
+            let detail = !(a.locked() && a.score_only);
+            let shown: Vec<Value> = if detail {
+                results.iter().map(|r| json!({"label": r.label, "points": r.points, "passed": r.passed, "feedback": r.feedback})).collect()
+            } else {
+                Vec::new()
+            };
+            Ok(json!({"results": shown, "score": score, "total": total, "percent": percent, "detail": detail}))
         }
         "activity.reset" => {
             let start = s.activity_start.clone().ok_or_else(|| bad("this lab wasn't opened as an activity"))?;

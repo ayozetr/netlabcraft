@@ -301,6 +301,7 @@ fn the_sample_activity_can_be_solved_by_typing() {
     s.execute("file.new", json!({"sample": "activity-first-router"})).unwrap();
     let start = s.execute("activity.check", json!({})).unwrap();
     assert_eq!(start["percent"], 0, "{start}");
+    assert!(start.to_string().contains("no shutdown"), "the failed ping carries its hint: {start}");
     s.execute(
         "cli.script",
         json!({"device": "Router0", "lines": "en\nconf t\nhostname R1\nenable secret class\nint g0/0\nip add 192.168.10.1 255.255.255.0\nno shut\nint g0/1\nip add 192.168.20.1 255.255.255.0\nno shut\nend"}),
@@ -312,6 +313,38 @@ fn the_sample_activity_can_be_solved_by_typing() {
     let file = s.execute("file.save", json!({})).unwrap()["json"].to_string();
     assert!(!file.contains("192.168.10.1 255.255.255.0") || file.contains("\"ip\":\"192.168.10.1/24\""));
     assert!(!file.contains("enable secret"));
+}
+
+#[test]
+fn a_locked_activity_keeps_its_checks_to_itself() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "activity-first-router"})).unwrap();
+    s.execute("activity.set", json!({"time_limit": 30, "score_only": true})).unwrap();
+    assert!(s.execute("activity.lock", json!({"password": ""})).is_err());
+    s.execute("activity.lock", json!({"password": "teacher"})).unwrap();
+    // Locked: no changes, no checks shown, the score only.
+    assert!(s.execute("activity.set", json!({"title": "x"})).is_err());
+    assert!(s.execute("activity.capture", json!({})).is_err());
+    assert!(s.execute("activity.clear", json!({})).is_err());
+    let shown = s.execute("activity.show", json!({})).unwrap();
+    assert_eq!(shown["locked"], true);
+    assert_eq!(shown["activity"]["checks"], json!([]), "{shown}");
+    assert_eq!(shown["activity"]["time_limit"], 30);
+    let r = s.execute("activity.check", json!({})).unwrap();
+    assert_eq!(r["results"], json!([]));
+    assert_eq!(r["detail"], false);
+    assert!(r["total"].as_u64().unwrap() > 0);
+    // The lock survives saving and opening.
+    let file = s.execute("file.save", json!({})).unwrap()["json"].as_str().unwrap().to_string();
+    assert!(!file.contains("teacher"));
+    let mut student = Session::new();
+    student.execute("file.open", json!({"json": file})).unwrap();
+    assert!(student.execute("activity.remove_check", json!({"index": 0})).is_err());
+    assert!(student.execute("activity.unlock", json!({"password": "guess"})).is_err());
+    student.execute("activity.unlock", json!({"password": "teacher"})).unwrap();
+    assert_eq!(student.execute("activity.check", json!({})).unwrap()["detail"], true);
+    student.execute("activity.set", json!({"time_limit": 99_999})).unwrap();
+    assert_eq!(student.execute("activity.show", json!({})).unwrap()["activity"]["time_limit"], 24 * 60);
 }
 
 #[test]
