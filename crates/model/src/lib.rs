@@ -15,6 +15,7 @@ pub mod acl;
 pub mod activity;
 pub mod cable;
 pub mod drawing;
+pub mod fhrp;
 pub mod file;
 pub mod firewall;
 pub mod hardware;
@@ -830,6 +831,9 @@ pub struct Device {
     /// `ipv6 router eigrp N`: EIGRP for IPv6.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub eigrp6: Option<Eigrp6>,
+    /// VRRP and GLBP groups, by interface.
+    #[serde(default, skip_serializing_if = "fhrp::Fhrp::is_empty")]
+    pub fhrp: fhrp::Fhrp,
     /// Routers: IPv6 static routes.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub routes6: Vec<StaticRoute6>,
@@ -1720,6 +1724,7 @@ impl Device {
             ipv6_routing: false,
             ospf6: None,
             eigrp6: None,
+            fhrp: fhrp::Fhrp::default(),
             routes6: Vec::new(),
             routes: Vec::new(),
             vlans: BTreeMap::new(),
@@ -1793,6 +1798,7 @@ impl Device {
         self.ipv6_routing = false;
         self.ospf6 = None;
         self.eigrp6 = None;
+        self.fhrp = fhrp::Fhrp::default();
         self.routes6.clear();
         self.routes.clear();
         // The VLAN database and VTP settings live apart from the configuration (as in a
@@ -2258,6 +2264,7 @@ impl Topology {
                 if let Some(e) = &mut d.eigrp6 {
                     e.passive.truncate(MAX_NETWORKS);
                 }
+                d.fhrp.sanitize();
                 d.ensure_default_vlan();
             }
         }

@@ -24,6 +24,7 @@ pub mod ipv6;
 pub mod lacp;
 pub mod lldp;
 pub mod md5;
+pub mod vrrp;
 
 pub mod mgmt;
 pub mod ospf6;
@@ -567,6 +568,10 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                             Err(e) => (Protocol::Ospf, format!("OSPF ({e}) {route}{tag}")),
                         },
                         Err(e) => (Protocol::Ospf, format!("OSPF ({e}) {route}{tag}")),
+                    },
+                    vrrp::PROTO_VRRP => match vrrp::Vrrp::decode(&ip.payload, ip.src, ip.dst) {
+                        Ok(v) => (Protocol::Hsrp, format!("{} {route}{tag}", v.describe())),
+                        Err(e) => (Protocol::Hsrp, format!("VRRP ({e}) {route}{tag}")),
                     },
                     eigrp::PROTO_EIGRP => match eigrp::EigrpHello::header(&ip.payload) {
                         Ok((eigrp::OPCODE_HELLO, _)) => match eigrp::EigrpHello::decode(&ip.payload) {

@@ -52,6 +52,9 @@ pub struct OspfState {
     pub segments: BTreeMap<(DeviceId, String), Segment>,
     /// Routers that share a link but are not neighbours, and why (timers or areas differ).
     pub mismatches: BTreeMap<DeviceId, Vec<Mismatch>>,
+    /// Neighbours met across a network-type mismatch, by router: (its interface, the
+    /// neighbour's address). They are adjacent, but SPF routes nothing over the link.
+    pub type_mismatch: BTreeMap<DeviceId, Vec<(String, Ipv4Addr)>>,
     /// Networks each router injects as external routes (`redistribute static`,
     /// `default-information originate`).
     pub externals: BTreeMap<DeviceId, Vec<Ipv4Net>>,
@@ -300,8 +303,18 @@ pub fn compute(t: &Topology) -> OspfState {
                         st.mismatches.entry(a.id).or_default().push(Mismatch { iface: ia.name.clone(), address: ib.net.addr, why });
                         continue;
                     }
+                    // A network-type mismatch (point-to-point at one end, broadcast at the
+                    // other) passes the hello checks (RFC 2328 §10.5), so the neighbours meet;
+                    // but their router-LSAs describe the link differently (a point-to-point
+                    // link, a transit network), the SPF two-way check (§16.1 (2b)) fails and
+                    // no route crosses it.
+                    if point_to_point(a, ia) != point_to_point(b, ib) {
+                        st.type_mismatch.entry(a.id).or_default().push((ia.name.clone(), ib.net.addr));
+                    }
                     {
-                        adj.entry(a.id).or_default().push((b.id, ia.clone(), ib.net.addr, cost(a, ia)));
+                        if point_to_point(a, ia) == point_to_point(b, ib) {
+                            adj.entry(a.id).or_default().push((b.id, ia.clone(), ib.net.addr, cost(a, ia)));
+                        }
                         if let Some(rid) = st.router_ids.get(&b.id) {
                             st.neighbors.entry(a.id).or_default().push(Neighbor {
                                 device: b.id,

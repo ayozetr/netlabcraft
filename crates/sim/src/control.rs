@@ -24,6 +24,8 @@ pub const EIGRP_HELLO_EVERY_US: u64 = 1_000_000;
 pub const HSRP_HELLO_EVERY_US: u64 = 3_000_000;
 /// EIGRP for IPv6 hellos, at the default hello interval.
 pub const EIGRP6_HELLO_EVERY_US: u64 = 5_000_000;
+/// VRRP masters advertise every second (RFC 5798's default).
+pub const VRRP_EVERY_US: u64 = 1_000_000;
 /// NTP clients poll every 64 s.
 pub const NTP_POLL_EVERY_US: u64 = 64_000_000;
 /// A long run only replays the last ten minutes of control traffic.
@@ -54,6 +56,7 @@ impl Sim {
             (OSPF_HELLO_EVERY_US, 7),
             (EIGRP_HELLO_EVERY_US, 8),
             (EIGRP6_HELLO_EVERY_US, 9),
+            (VRRP_EVERY_US, 10),
         ] {
             let mut at = (from / every + 1) * every;
             while at <= deadline {
@@ -67,6 +70,7 @@ impl Sim {
                     7 => self.send_ospf6_hellos(t, at),
                     8 => self.send_eigrp_hellos(t, at),
                     9 => self.send_eigrp6_hellos(t, at),
+                    10 => self.send_vrrp(t, at),
                     _ => self.send_rip_updates(t, at),
                 }
                 at += every;
@@ -462,6 +466,33 @@ impl Sim {
                 let frame =
                     Frame { dst: multicast_mac(ALL_SPF_ROUTERS6), src: ifc.mac, vlan: ifc.vlan, ethertype: ETHERTYPE_IPV6, payload: ip.encode() };
                 self.queue_frame(t, d, ifc.port, frame, at);
+            }
+        }
+    }
+
+    /// VRRP advertisements: each master, from its interface address and the group's virtual
+    /// MAC, to `224.0.0.18` (version 2, or 3 with `fhrp version vrrp v3`).
+    fn send_vrrp(&mut self, t: &Topology, at: u64) {
+        use netlabcraft_wire::vrrp::{PROTO_VRRP, VRRP_GROUP, Vrrp};
+        if !t.devices.iter().any(|d| !d.fhrp.vrrp.is_empty()) {
+            return;
+        }
+        let roles = self.fhrp_roles(t);
+        for (id, list) in roles.vrrp {
+            let Some(d) = t.device(id) else { continue };
+            for r in list.iter().filter(|r| r.state == crate::fhrp::VrrpState::Master) {
+                let Some(ifc) = l3_ifaces(d).into_iter().find(|i| i.name == r.iface) else { continue };
+                let v3 = d.fhrp.vrrp_v3;
+                let adv = Vrrp {
+                    version: if v3 { 3 } else { 2 },
+                    vrid: r.group,
+                    priority: r.priority,
+                    interval: if v3 { 100 } else { 1 },
+                    addresses: vec![r.virtual_ip],
+                };
+                let ip =
+                    Ipv4 { id: 0, ttl: 255, protocol: PROTO_VRRP, src: ifc.net.addr, dst: VRRP_GROUP, payload: adv.encode(ifc.net.addr, VRRP_GROUP) };
+                self.queue_l3(t, d, &ifc, r.virtual_mac(), control::ipv4_multicast_mac(VRRP_GROUP), ip.encode(), at);
             }
         }
     }

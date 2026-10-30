@@ -14,6 +14,7 @@ use crate::grammar::{self, Id, Modes, ParseError};
 use crate::{host, render};
 
 pub(crate) mod eigrp6;
+pub(crate) mod fhrp;
 pub(crate) mod firewall;
 pub(crate) mod l2sec;
 pub(crate) mod mgmt;
@@ -3080,6 +3081,23 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ShowIpv6EigrpNeighbors
         | Id::ShowIpv6EigrpTopology
         | Id::ShowIpv6EigrpInterfaces => eigrp6::command(&mut c, spec.id, &args),
+        Id::FhrpVrrpV3
+        | Id::NoFhrpVrrpV3
+        | Id::VrrpIp
+        | Id::VrrpPriority
+        | Id::NoVrrpPriority
+        | Id::VrrpPreempt
+        | Id::NoVrrpPreempt
+        | Id::NoVrrp
+        | Id::ShowVrrp
+        | Id::GlbpIp
+        | Id::GlbpPriority
+        | Id::NoGlbpPriority
+        | Id::GlbpPreempt
+        | Id::NoGlbpPreempt
+        | Id::GlbpBalancing
+        | Id::NoGlbp
+        | Id::ShowGlbp => fhrp::command(&mut c, spec.id, &args),
         Id::EigrpNetwork
         | Id::NoEigrpNetwork
         | Id::EigrpPassive

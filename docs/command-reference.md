@@ -550,6 +550,25 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ipv6 eigrp neighbors` | user, privileged | router, switch | EIGRP for IPv6 neighbours |
 | `show ipv6 eigrp topology` | user, privileged | router, switch | EIGRP for IPv6 successors and feasible successors |
 | `show ipv6 eigrp interfaces` | user, privileged | router, switch | Interfaces running EIGRP for IPv6 |
+| `fhrp version vrrp v3` | config | router, switch | Send VRRP version 3 advertisements (RFC 5798) |
+| `no fhrp version vrrp v3` | config | router, switch | Send VRRP version 2 advertisements |
+| `vrrp <1-255> ip A.B.C.D` | interface, subinterface | router, switch | Share this gateway address with VRRP |
+| `vrrp <1-255> priority <1-254>` | interface, subinterface | router, switch | This router's VRRP priority (highest is master) |
+| `no vrrp <1-255> priority` | interface, subinterface | router, switch | VRRP priority 100 again |
+| `vrrp <1-255> preempt` | interface, subinterface | router, switch | Take over as master when better (the default) |
+| `no vrrp <1-255> preempt` | interface, subinterface | router, switch | Leave a working master alone |
+| `no vrrp <1-255>` | interface, subinterface | router, switch | Remove the VRRP group |
+| `show vrrp` | user, privileged | router, switch | VRRP groups and who is master |
+| `show vrrp {brief}` | user, privileged | router, switch | VRRP groups, one line each |
+| `glbp <0-1023> ip A.B.C.D` | interface, subinterface | router, switch | Share this gateway address with GLBP |
+| `glbp <0-1023> priority <1-255>` | interface, subinterface | router, switch | This router's GLBP priority (highest is the gateway) |
+| `no glbp <0-1023> priority` | interface, subinterface | router, switch | GLBP priority 100 again |
+| `glbp <0-1023> preempt` | interface, subinterface | router, switch | Take over as active gateway when better |
+| `no glbp <0-1023> preempt` | interface, subinterface | router, switch | Leave a working gateway alone (the default) |
+| `glbp <0-1023> load-balancing {round-robin\|host-dependent}` | interface, subinterface | router, switch | How hosts are shared among the forwarders |
+| `no glbp <0-1023>` | interface, subinterface | router, switch | Remove the GLBP group |
+| `show glbp` | user, privileged | router, switch | GLBP groups, gateway and forwarders |
+| `show glbp {brief}` | user, privileged | router, switch | GLBP groups, one line each |
 | `show ipv6 ospf` | user, privileged | router, switch | OSPFv3 process |
 | `show ip protocols` | user, privileged | router, switch | Routing protocols running |
 | `ip helper-address A.B.C.D` | interface, subinterface | router | Relay DHCP requests to this server |

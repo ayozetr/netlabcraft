@@ -33,6 +33,7 @@ pub mod control;
 pub mod dhcpsrv;
 pub mod eigrp;
 pub mod eigrp6;
+pub mod fhrp;
 pub mod firewall;
 pub mod hsrp;
 pub mod iot;
@@ -992,6 +993,12 @@ pub struct Sim {
     hsrp: Option<BTreeMap<DeviceId, Vec<hsrp::Role>>>,
     /// Who was active in each HSRP group at the last election (for preemption).
     hsrp_actives: hsrp::Actives,
+    fhrp_for: u64,
+    fhrp: Option<fhrp::FhrpRoles>,
+    /// Who held each VRRP and GLBP role at the last election.
+    fhrp_held: fhrp::Held,
+    /// GLBP round-robin: the forwarder the next ARP answer names, by (gateway, group).
+    glbp_next: BTreeMap<(DeviceId, u16), usize>,
     /// Last known link state of every router and switch port, for link messages.
     links_seen: BTreeMap<(DeviceId, usize), bool>,
     /// Lab changes waiting for the engine.
@@ -1720,6 +1727,65 @@ impl Sim {
     }
 
     /// Groups this device is active for on an interface: (virtual address, virtual MAC).
+    /// VRRP and GLBP roles, recomputed when what they depend on changes.
+    pub fn fhrp_roles(&mut self, t: &Topology) -> fhrp::FhrpRoles {
+        let f = fhrp::fingerprint(t);
+        if self.fhrp.is_none() || self.fhrp_for != f {
+            self.fhrp_for = f;
+            let (roles, held) = fhrp::compute(t, &self.fhrp_held);
+            self.fhrp = Some(roles);
+            self.fhrp_held = held;
+        }
+        self.fhrp.clone().unwrap_or_default()
+    }
+
+    /// The virtual MACs this router takes frames for on an interface: a VRRP group it is
+    /// master of, and its own GLBP forwarders.
+    fn fhrp_macs(&mut self, t: &Topology, d: &Device, iface: &str) -> Vec<MacAddr> {
+        if d.fhrp.is_empty() {
+            return Vec::new();
+        }
+        let roles = self.fhrp_roles(t);
+        let vrrp =
+            roles.vrrp.get(&d.id).into_iter().flatten().filter(|r| r.iface == iface && r.state == fhrp::VrrpState::Master).map(|r| r.virtual_mac());
+        let glbp = roles
+            .glbp
+            .get(&d.id)
+            .into_iter()
+            .flatten()
+            .filter(|r| r.iface == iface)
+            .filter_map(|r| r.forwarder.and_then(|n| r.forwarders.iter().find(|f| f.0 == n)).map(|f| f.2));
+        vrrp.chain(glbp).collect()
+    }
+
+    /// The MAC this router answers an ARP request for `target` with, as VRRP master or GLBP
+    /// active gateway (the next forwarder in turn, or the asking host's own).
+    fn fhrp_arp(&mut self, t: &Topology, d: &Device, iface: &str, target: Ipv4Addr, asker: MacAddr, request: bool) -> Option<MacAddr> {
+        if d.fhrp.is_empty() {
+            return None;
+        }
+        let roles = self.fhrp_roles(t);
+        if let Some(r) =
+            roles.vrrp.get(&d.id).into_iter().flatten().find(|r| r.iface == iface && r.virtual_ip == target && r.state == fhrp::VrrpState::Master)
+        {
+            return Some(r.virtual_mac());
+        }
+        let r = roles.glbp.get(&d.id).into_iter().flatten().find(|r| r.iface == iface && r.virtual_ip == target && r.avg)?;
+        let n = r.forwarders.len().max(1);
+        let k = match r.balance {
+            netlabcraft_model::fhrp::GlbpBalance::HostDependent => usize::from(asker.0[5]) % n,
+            netlabcraft_model::fhrp::GlbpBalance::RoundRobin => {
+                let slot = self.glbp_next.entry((d.id, r.group)).or_insert(0);
+                let k = *slot % n;
+                if request {
+                    *slot = (k + 1) % n;
+                }
+                k
+            }
+        };
+        r.forwarders.get(k).map(|f| f.2)
+    }
+
     fn hsrp_active(&mut self, t: &Topology, d: &Device, iface: Option<&str>) -> Vec<(Ipv4Addr, MacAddr)> {
         if !d.ports.iter().any(|p| !p.standby.is_empty() || p.subifs.iter().any(|s| !s.standby.is_empty()))
             && !d.svis.iter().any(|s| !s.standby.is_empty())
@@ -2181,7 +2247,9 @@ impl Sim {
         })?;
         // Unicast to us, broadcast, or an IPv4 multicast group (the IP layer decides on those).
         let ipv4_group = f.dst.is_group() && f.dst.0[..3] == [0x01, 0x00, 0x5e] && f.ethertype == ETHERTYPE_IPV4;
-        let virtual_mac = !f.dst.is_group() && f.dst != ifc.mac && self.hsrp_active(t, d, Some(&ifc.name)).iter().any(|(_, m)| *m == f.dst);
+        let virtual_mac = !f.dst.is_group()
+            && f.dst != ifc.mac
+            && (self.hsrp_active(t, d, Some(&ifc.name)).iter().any(|(_, m)| *m == f.dst) || self.fhrp_macs(t, d, &ifc.name).contains(&f.dst));
         if f.dst != ifc.mac && !f.dst.is_broadcast() && !ipv4_group && !virtual_mac {
             return Err("not addressed to this device".into());
         }
@@ -2201,7 +2269,10 @@ impl Sim {
             return Err(format!("ARP from {} is not on {}", a.sender_ip, ifc.net.network()));
         }
         // An HSRP virtual address this router is active for answers with the virtual MAC.
-        let virtual_mac = self.hsrp_active(t, d, Some(&ifc.name)).into_iter().find(|(ip, _)| *ip == a.target_ip).map(|(_, m)| m);
+        let virtual_mac = match self.hsrp_active(t, d, Some(&ifc.name)).into_iter().find(|(ip, _)| *ip == a.target_ip).map(|(_, m)| m) {
+            Some(m) => Some(m),
+            None => self.fhrp_arp(t, d, &ifc.name, a.target_ip, a.sender_mac, a.op == ArpOp::Request),
+        };
         let for_me = a.target_ip == ifc.net.addr
             || virtual_mac.is_some()
             || (nat_side(d, ifc) == Some(netlabcraft_model::NatSide::Outside) && Sim::nat_owns(d, a.target_ip))
@@ -2235,7 +2306,10 @@ impl Sim {
         if a.op == ArpOp::Request {
             let mac = virtual_mac.unwrap_or(ifc.mac);
             let reply = Arp { op: ArpOp::Reply, sender_mac: mac, sender_ip: a.target_ip, target_mac: a.sender_mac, target_ip: a.sender_ip };
-            let frame = Frame { dst: a.sender_mac, src: mac, vlan: ifc.vlan, ethertype: ETHERTYPE_ARP, payload: reply.encode() };
+            // A GLBP gateway naming another router's forwarder sends from its own address, so
+            // switches keep learning that MAC where its forwarder is.
+            let src = if mac.0[..3] == [0x00, 0x07, 0xb4] && !self.fhrp_macs(t, d, &ifc.name).contains(&mac) { ifc.mac } else { mac };
+            let frame = Frame { dst: a.sender_mac, src, vlan: ifc.vlan, ethertype: ETHERTYPE_ARP, payload: reply.encode() };
             self.l3_emit(t, d, ifc, frame);
         }
         Ok(())
@@ -2312,6 +2386,8 @@ impl Sim {
                 (netlabcraft_wire::control::PROTO_OSPF, _) => Err("OSPF is not running here".into()),
                 (netlabcraft_wire::eigrp::PROTO_EIGRP, _) if d.eigrp.is_some() => Ok(()),
                 (netlabcraft_wire::eigrp::PROTO_EIGRP, _) => Err("EIGRP is not running here".into()),
+                (netlabcraft_wire::vrrp::PROTO_VRRP, _) if !d.fhrp.vrrp.is_empty() => Ok(()),
+                (netlabcraft_wire::vrrp::PROTO_VRRP, _) => Err("VRRP is not running here".into()),
                 (_, true) if d.rip.is_some() => Ok(()),
                 (_, true) => Err("RIP is not running here".into()),
                 _ if hsrp => Ok(()),
@@ -2342,6 +2418,11 @@ impl Sim {
         let mine = l3_ifaces(d).iter().any(|i| i.net.addr == ip.dst) || self.hsrp_active(t, d, None).iter().any(|(v, _)| *v == ip.dst);
         if mine || ip.dst == Ipv4Addr::BROADCAST || (ifc.net.prefix < 31 && ip.dst == ifc.net.broadcast()) {
             return self.local_in(t, d, ifc, ip);
+        }
+        // A VRRP master that doesn't own the virtual address takes no packets for it (accept
+        // mode off, RFC 5798 §6.4.3); it only forwards what is sent through it.
+        if !d.fhrp.vrrp.is_empty() && self.fhrp_roles(t).vrrp.get(&d.id).into_iter().flatten().any(|r| r.virtual_ip == ip.dst && !r.owner) {
+            return Err(format!("VRRP: {} is a virtual address this router doesn't own; it takes no packets for it (accept mode off)", ip.dst));
         }
         if !d.routes_ip() {
             return Err(format!("{} is not this device's address", ip.dst));

@@ -211,6 +211,7 @@ pub fn running_config(d: &Device) -> String {
     }
     crate::exec::l2sec::global_lines(&mut s, d);
     crate::exec::l2sec::relay_global_lines(&mut s, d);
+    crate::exec::fhrp::global_lines(&mut s, d);
     // VLANs live in the VLAN database (vlan.dat), not in the configuration: only a VTP
     // transparent switch writes them there.
     if d.kind == DeviceKind::Switch && d.vtp.mode == netlabcraft_model::VtpMode::Transparent {
@@ -318,6 +319,7 @@ pub fn running_config(d: &Device) -> String {
             None => {}
         }
         standby_lines(&mut s, d, &p.name, &p.standby);
+        crate::exec::fhrp::iface_lines(&mut s, d, &p.name);
         ospf_if_lines(&mut s, d, &p.name);
         if d.kind == DeviceKind::Router {
             if netlabcraft_model::ifname::is_serial(&p.name) {
@@ -370,6 +372,7 @@ pub fn running_config(d: &Device) -> String {
             }
             ipv6_lines(&mut s, &sub.ipv6);
             standby_lines(&mut s, d, &format!("{}.{}", p.name, sub.number), &sub.standby);
+            crate::exec::fhrp::iface_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
             ospf_if_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
             for h in &sub.helpers {
                 let _ = writeln!(s, " ip helper-address {h}");
@@ -404,6 +407,7 @@ pub fn running_config(d: &Device) -> String {
         access_groups(&mut s, &svi.access);
         nat_side(&mut s, svi.nat);
         standby_lines(&mut s, d, &format!("Vlan{}", svi.vlan), &svi.standby);
+        crate::exec::fhrp::iface_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
         ospf_if_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
         crate::exec::qos::service_policy_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
         let _ = writeln!(s, "{}", if svi.shutdown { " shutdown" } else { " no shutdown" });
@@ -1090,6 +1094,13 @@ pub fn ospf_neighbors(t: &Topology, d: &Device, st: &netlabcraft_sim::ospf::Ospf
             _ => "FULL/OTHER",
         };
         let _ = writeln!(s, "{:<16} {:<10} {:<16} {:<22} {name}", n.router_id.to_string(), state, n.address.to_string(), ifname::short(&n.iface));
+    }
+    for (iface, addr) in st.type_mismatch.get(&d.id).into_iter().flatten() {
+        let _ = writeln!(
+            s,
+            "Note: the network type differs from {addr}'s on {} (point-to-point at one end, broadcast at the other): adjacent, but no route crosses this link",
+            ifname::short(iface)
+        );
     }
     crate::exec::routing::mismatch_lines(&mut s, st, d.id);
     s.trim_end().to_string()

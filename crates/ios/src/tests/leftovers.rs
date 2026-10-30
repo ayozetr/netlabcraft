@@ -384,3 +384,151 @@ fn eigrp_for_ipv6_mistakes_are_explained() {
     lab.run(r, "conf t\nno ipv6 router eigrp 5\nend");
     assert!(lab.run(r, "show ipv6 eigrp neighbors").contains("not running"));
 }
+
+/// PC1 and PC2 on S1 with R1 (192.168.1.1) and R2 (192.168.1.2); a server behind both on S2.
+fn gateway_pair() -> (Lab, DeviceId, DeviceId, DeviceId, DeviceId) {
+    let mut lab = Lab::new();
+    let r1 = lab.add(DeviceKind::Router);
+    let r2 = lab.add(DeviceKind::Router);
+    let s1 = lab.add(DeviceKind::Switch);
+    let s2 = lab.add(DeviceKind::Switch);
+    let pc1 = lab.add(DeviceKind::Pc);
+    let pc2 = lab.add(DeviceKind::Pc);
+    let srv = lab.add(DeviceKind::Server);
+    lab.cable(pc1, "fa0", s1, "fa0/1");
+    lab.cable(pc2, "fa0", s1, "fa0/4");
+    lab.cable(r1, "g0/0", s1, "fa0/2");
+    lab.cable(r2, "g0/0", s1, "fa0/3");
+    lab.cable(r1, "g0/1", s2, "fa0/2");
+    lab.cable(r2, "g0/1", s2, "fa0/3");
+    lab.cable(srv, "g0", s2, "fa0/1");
+    lab.run(pc1, "ipconfig 192.168.1.10 255.255.255.0 192.168.1.254");
+    lab.run(pc2, "ipconfig 192.168.1.11 255.255.255.0 192.168.1.254");
+    lab.run(srv, "ipconfig 10.0.0.10 255.255.255.0 10.0.0.1");
+    lab.run(r1, "en\nconf t\nint g0/0\nip address 192.168.1.1 255.255.255.0\nno shut\nint g0/1\nip address 10.0.0.1 255.255.255.0\nno shut\nend");
+    lab.run(r2, "en\nconf t\nint g0/0\nip address 192.168.1.2 255.255.255.0\nno shut\nint g0/1\nip address 10.0.0.2 255.255.255.0\nno shut\nend");
+    (lab, r1, r2, pc1, pc2)
+}
+
+#[test]
+fn vrrp_by_typing() {
+    let (mut lab, r1, r2, pc1, _pc2) = gateway_pair();
+    lab.run(r1, "conf t\nint g0/0\nvrrp 1 ip 192.168.1.254\nvrrp 1 priority 110\nint g0/1\nvrrp 10 ip 10.0.0.254\nend");
+    lab.run(r2, "conf t\nint g0/0\nvrrp 1 ip 192.168.1.254\nint g0/1\nvrrp 10 ip 10.0.0.254\nend");
+    let srv = lab.t.devices.iter().find(|d| d.kind == DeviceKind::Server).unwrap().id;
+    lab.run(srv, "ipconfig 10.0.0.10 255.255.255.0 10.0.0.254");
+    let v = lab.run(r1, "show vrrp");
+    assert!(v.contains("Group 1 on GigabitEthernet0/0: master (priority 110, preempt)") && v.contains("virtual MAC 0000.5e00.0101"), "{v}");
+    assert!(v.contains("VRRP version 2"), "{v}");
+    assert!(lab.run(r2, "show vrrp brief").contains("backup  192.168.1.1"));
+    lab.run(pc1, "ping 10.0.0.10");
+    let p = lab.run(pc1, "ping 10.0.0.10");
+    assert!(p.contains("4 answered"), "{p}\n{:?}\n{}", super::dropped_reasons(&lab), lab.run(pc1, "arp -a"));
+    assert!(lab.run(pc1, "arp -a").contains("00:00:5e:00:01:01"));
+    // A backup acting as master doesn't take packets for an address it doesn't own (accept
+    // mode off, RFC 5798 §6.4.3).
+    assert!(lab.run(pc1, "ping 192.168.1.254").contains("0 answered"));
+    // The master advertises every second from the virtual MAC.
+    lab.sim.clear_trace();
+    lab.sim.run_for(&lab.t, 3_000_000);
+    let ads: Vec<String> = lab.sim.trace().iter().filter(|e| e.summary.starts_with("VRRPv2 advertisement")).map(|e| e.summary.clone()).collect();
+    assert!(ads.iter().any(|a| a.contains("group 1, priority 110, every 1 s, 192.168.1.254")), "{ads:?}");
+    assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("VRRPv2") && e.frame.get(6..12) == Some(&[0, 0, 0x5e, 0, 1, 1][..])));
+    // R1 fails: R2 takes over; R1 comes back and, preempting by default, is master again.
+    lab.run(r1, "conf t\nint g0/0\nshutdown\nend");
+    lab.sim.run_for(&lab.t, 2_000_000);
+    assert!(lab.run(r2, "show vrrp").contains(": master"));
+    lab.run(pc1, "ping 10.0.0.10");
+    assert!(lab.run(pc1, "ping 10.0.0.10").contains("4 answered"));
+    lab.run(r1, "conf t\nint g0/0\nno shutdown\nend");
+    lab.sim.run_for(&lab.t, 2_000_000);
+    assert!(lab.run(r1, "show vrrp").contains(": master"));
+    // Without preempt it waits for R2 to fail.
+    lab.run(r1, "conf t\nint g0/0\nno vrrp 1 preempt\nshutdown\nend");
+    lab.sim.run_for(&lab.t, 2_000_000);
+    lab.run(r1, "conf t\nint g0/0\nno shutdown\nend");
+    lab.sim.run_for(&lab.t, 2_000_000);
+    assert!(lab.run(r1, "show vrrp").contains(": backup (priority 110)"));
+    // The address owner (its own address is the virtual one) has priority 255 and always wins.
+    lab.run(r2, "conf t\nint g0/0\nvrrp 2 ip 192.168.1.2\nend");
+    lab.run(r1, "conf t\nint g0/0\nvrrp 2 ip 192.168.1.2\nvrrp 2 priority 254\nend");
+    assert!(lab.run(r2, "show vrrp").contains("Group 2 on GigabitEthernet0/0: master (priority 255, address owner"));
+    // Version 3 on the wire.
+    lab.run(r2, "conf t\nfhrp version vrrp v3\nend");
+    lab.sim.clear_trace();
+    lab.sim.run_for(&lab.t, 2_000_000);
+    assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("VRRPv3 advertisement") && e.summary.contains("every 100 cs")));
+    let run = lab.run(r2, "show running-config");
+    assert!(run.contains("fhrp version vrrp v3") && run.contains(" vrrp 1 ip 192.168.1.254\n vrrp 2 ip 192.168.1.2"), "{run}");
+    let run1 = lab.run(r1, "show running-config interface g0/0");
+    assert!(run1.contains(" vrrp 1 ip 192.168.1.254\n vrrp 1 priority 110\n no vrrp 1 preempt"), "{run1}");
+    lab.run(r1, "copy run start\nreload\nen");
+    assert!(lab.run(r1, "show running-config interface g0/0").contains(" no vrrp 1 preempt"));
+    // Mistakes and removal.
+    lab.run(r1, "conf t\nint g0/0");
+    assert!(lab.try_run(r1, "vrrp 3 ip 172.16.0.1").contains("not on"));
+    assert!(lab.try_run(r1, "vrrp 0 ip 192.168.1.250").contains("1-255"));
+    assert!(lab.try_run(r1, "vrrp 3 priority 255").contains("1-254"));
+    lab.run(r1, "no vrrp 1\nno vrrp 2\nint g0/1\nno vrrp 10\nend");
+    assert!(lab.run(r1, "show vrrp").contains("No VRRP group"));
+}
+
+#[test]
+fn glbp_shares_hosts_among_its_forwarders() {
+    let (mut lab, r1, r2, pc1, pc2) = gateway_pair();
+    lab.run(r1, "conf t\nint g0/0\nglbp 1 ip 192.168.1.254\nglbp 1 priority 110\nend");
+    lab.run(r2, "conf t\nint g0/0\nglbp 1 ip 192.168.1.254\nend");
+    let g = lab.run(r1, "show glbp");
+    assert!(g.contains("Group 1 on GigabitEthernet0/0: active gateway (priority 110)") && g.contains("load balancing round-robin"), "{g}");
+    assert!(
+        g.contains("Forwarder 1: 0007.b400.0101 on 192.168.1.1 (this router)") && g.contains("Forwarder 2: 0007.b400.0102 on 192.168.1.2"),
+        "{g}"
+    );
+    assert!(lab.run(r2, "show glbp brief").contains("standby   2"));
+    // The active gateway answers each host with the next forwarder: the hosts split.
+    lab.run(pc1, "ping 10.0.0.10");
+    lab.run(pc2, "ping 10.0.0.10");
+    let a1 = lab.run(pc1, "arp -a");
+    let a2 = lab.run(pc2, "arp -a");
+    assert!(a1.contains("00:07:b4:00:01:01"), "{a1}");
+    assert!(a2.contains("00:07:b4:00:01:02"), "{a2}");
+    lab.sim.clear_trace();
+    let p = lab.run(pc2, "ping 10.0.0.10");
+    let ev: Vec<String> = lab.sim.trace().iter().map(|e| format!("{:?}->{:?} {} {:?}", e.from.device, e.to.device, e.summary, e.dropped)).collect();
+    assert!(p.contains("4 answered"), "{p}\n{ev:#?}");
+    // PC2's requests went through R2, its forwarder.
+    assert!(lab.sim.trace().iter().any(|e| e.to.device == r2 && e.summary.starts_with("ICMP echo request") && e.dropped.is_none()));
+    assert!(lab.run(pc1, "ping 10.0.0.10").contains("4 answered"));
+    // Host-dependent: a host keeps its forwarder.
+    lab.run(r1, "conf t\nint g0/0\nglbp 1 load-balancing host-dependent\nglbp 1 preempt\nend");
+    let run = lab.run(r1, "show running-config interface g0/0");
+    assert!(run.contains(" glbp 1 ip 192.168.1.254\n glbp 1 priority 110\n glbp 1 preempt\n glbp 1 load-balancing host-dependent"), "{run}");
+    lab.run(r1, "conf t\nint g0/0");
+    assert!(lab.try_run(r1, "glbp 1 load-balancing weighted").contains("round-robin"));
+    assert!(lab.try_run(r1, "glbp 2000 ip 192.168.1.253").contains("0-1023"));
+    lab.run(r1, "no glbp 1\nend");
+    assert!(lab.run(r1, "show glbp").contains("No GLBP group"));
+}
+
+#[test]
+fn ospf_network_type_mismatch_forms_neighbours_but_routes_nothing() {
+    let mut lab = Lab::new();
+    let r1 = lab.add(DeviceKind::Router);
+    let r2 = lab.add(DeviceKind::Router);
+    lab.cable(r1, "g0/1", r2, "g0/1");
+    lab.run(r1, "en\nconf t\nint g0/1\nip add 10.0.0.1 255.255.255.0\nno shut\nint lo0\nip add 192.168.1.1 255.255.255.0\nexit\nrouter ospf 1\nnetwork 0.0.0.0 255.255.255.255 area 0\nend");
+    lab.run(r2, "en\nconf t\nint g0/1\nip add 10.0.0.2 255.255.255.0\nno shut\nint lo0\nip add 192.168.2.1 255.255.255.0\nexit\nrouter ospf 1\nnetwork 0.0.0.0 255.255.255.255 area 0\nend");
+    let rt = lab.run(r1, "show ip route");
+    assert!(rt.contains("192.168.2.1/32"), "{rt}\n{}", lab.run(r1, "show ip ospf neighbor"));
+    // Point-to-point at one end only: the hellos still agree (RFC 2328 §10.5), so they are
+    // neighbours, but the link is described two ways and SPF routes nothing across it.
+    lab.run(r1, "conf t\nint g0/1\nip ospf network point-to-point\nend");
+    let nb = lab.run(r1, "show ip ospf neighbor");
+    assert!(nb.contains("10.0.0.2") && nb.contains("network type differs"), "{nb}");
+    assert!(!lab.run(r1, "show ip route").contains("192.168.2.1/32"));
+    assert!(!lab.run(r2, "show ip route").contains("192.168.1.1/32"));
+    // Both ends alike again: routes come back.
+    lab.run(r2, "conf t\nint g0/1\nip ospf network point-to-point\nend");
+    assert!(lab.run(r1, "show ip route").contains("192.168.2.1/32"));
+    assert!(!lab.run(r1, "show ip ospf neighbor").contains("network type differs"));
+}
