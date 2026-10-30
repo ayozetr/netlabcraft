@@ -1,6 +1,6 @@
 # Decisions
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (renamed to NetLabCraft) 
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (renamed to NetLabCraft)
 
 Choices that shape NetLabCraft, newest last within each date, with the reason for each.
 
