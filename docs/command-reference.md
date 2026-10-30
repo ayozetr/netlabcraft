@@ -130,6 +130,25 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `clock rate <1200-2000000>` | interface | router | Clock a serial link from its DCE end |
 | `no clock rate` | interface | router | Remove the clock rate |
 | `show controllers <interface>` | user, privileged | router | Cable type at an interface (DCE or DTE) |
+| `show clock` | user, privileged | router, switch | The device's date and time |
+| `clock set hh:mm:ss <day> <month> <year>` | privileged | router, switch | Set the date and time |
+| `show flash:` | user, privileged | router, switch | Files in flash memory |
+| `show flash` | user, privileged | router, switch | Files in flash memory |
+| `dir flash:` | privileged | router, switch | Files in flash memory |
+| `show users` | user, privileged | router, switch | Who is logged in, and where |
+| `terminal length N \| width N \| monitor` | user, privileged | router, switch | Terminal settings (output here is never paged) |
+| `cdp run` | config | router, switch | Discover neighbouring routers and switches |
+| `no cdp run` | config | router, switch | Stop neighbour discovery on this device |
+| `cdp enable` | interface | router, switch | Discover neighbours on this port |
+| `no cdp enable` | interface | router, switch | Stop neighbour discovery on this port |
+| `show cdp` | user, privileged | router, switch | Neighbour discovery settings |
+| `show cdp neighbors` | user, privileged | router, switch | Neighbouring routers and switches |
+| `show cdp neighbors detail` | user, privileged | router, switch | Neighbours with their addresses |
+| `show cdp entry *` | user, privileged | router, switch | Neighbours with their addresses |
+| `show ip interface` | user, privileged | router, switch | Layer-3 settings of every interface |
+| `show ip interface <interface>` | user, privileged | router, switch | Layer-3 settings of an interface |
+| `show interfaces status` | user, privileged | switch | Port state, VLAN and speed |
+| `show running-config interface <interface>` | privileged | router, switch | One interface's configuration |
 | `router rip` | config | router | Start or configure RIP |
 | `no router rip` | config | router | Stop RIP |
 | `version {1\|2}` |  | router | RIP version |

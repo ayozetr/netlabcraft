@@ -508,15 +508,70 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::ShowIpRoute => Ok(render::ip_route(c.t, c.d()?)),
         Id::ShowInterfaces => Ok(render::interfaces(c.t, c.d()?, None)),
         Id::ShowInterface => {
+            // `show interfaces fa0/1 switchport`
+            if let Some(name) = arg(0).trim().strip_suffix("switchport").filter(|n| !n.trim().is_empty()) {
+                let r = c.iface_ref(name.trim())?;
+                return render::switchport(c.t, c.d()?, r.port);
+            }
             let d = c.d()?;
             let r = c.iface_ref(arg(0))?;
             Ok(render::interfaces(c.t, d, Some(r)))
         }
+        Id::ShowIntStatus => Ok(render::interface_status(c.t, c.d()?)),
+        Id::ShowIpInterface => {
+            let only = match args.first().map(|a| a.trim()).filter(|a| !a.is_empty()) {
+                Some(a) => Some(c.iface_ref(a)?),
+                None => None,
+            };
+            Ok(render::ip_interface(c.t, c.d()?, only))
+        }
+        Id::ShowRunInterface => {
+            let r = c.iface_ref(arg(0))?;
+            let d = c.d()?;
+            let p = d.ports.get(r.port).ok_or("% No such port")?;
+            let name = r.sub.map_or(p.name.clone(), |s| format!("{}.{s}", p.name));
+            Ok(render::running_config_interface(d, &name))
+        }
+        Id::ShowClock => {
+            let (now, set) = c.sim.clock(c.dev);
+            Ok(crate::clock::show(now, set))
+        }
+        Id::ClockSet => {
+            let t = crate::clock::parse_set(arg(0))?;
+            c.sim.set_clock(c.dev, t);
+            Ok(String::new())
+        }
+        Id::ShowFlash => Ok(render::flash(c.d()?)),
+        Id::ShowUsers => Ok(render::users(c.cli)),
+        Id::TerminalLength => {
+            let w: Vec<&str> = arg(0).split_whitespace().collect();
+            match w.as_slice() {
+                ["length" | "width", n] if n.parse::<u16>().is_ok() => Ok(String::new()),
+                ["monitor"] | ["no", "monitor"] => Ok(String::new()),
+                _ => Err("% terminal length N, terminal width N or terminal monitor".into()),
+            }
+        }
+        Id::CdpRun | Id::NoCdpRun => {
+            c.dm()?.cdp_off = spec.id == Id::NoCdpRun;
+            Ok(String::new())
+        }
+        Id::CdpEnable | Id::NoCdpEnable => {
+            let off = spec.id == Id::NoCdpEnable;
+            c.each_if(|p, sub| {
+                if sub.is_some() {
+                    return Err("% Neighbour discovery is set on the physical port".into());
+                }
+                p.cdp_off = off;
+                Ok(())
+            })
+        }
+        Id::ShowCdp => Ok(render::cdp(c.d()?)),
+        Id::ShowCdpNeighbors | Id::ShowCdpNeighborsDetail => Ok(render::cdp_neighbors(c.t, c.sim, c.d()?, spec.id == Id::ShowCdpNeighborsDetail)),
         Id::ShowIntTrunk => Ok(render::trunks(c.t, c.d()?)),
         Id::ShowVlan | Id::ShowVlanBrief => Ok(render::vlans(c.d()?)),
         Id::ShowMac => Ok(render::mac_table(c.t, c.sim, c.d()?)),
         Id::ShowArp => Ok(render::arp(c.t, c.sim, c.d()?)),
-        Id::ShowVersion => Ok(render::version(c.d()?)),
+        Id::ShowVersion => Ok(render::version(c.sim, c.d()?)),
         Id::ShowHistory => Ok(c.cli.history.iter().map(|h| format!("  {h}")).collect::<Vec<_>>().join("\n")),
         Id::CopyRunStart | Id::WriteMemory => {
             let cfg = render::running_config(c.d()?);

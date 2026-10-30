@@ -402,6 +402,9 @@ pub struct Port {
     /// Serial ports: encapsulation and clock rate.
     #[serde(default, skip_serializing_if = "SerialConf::is_default")]
     pub serial: SerialConf,
+    /// `no cdp enable`.
+    #[serde(default)]
+    pub cdp_off: bool,
     /// Multilayer switches: `no switchport` made this a routed port (it takes `ip address`).
     #[serde(default)]
     pub routed: bool,
@@ -536,6 +539,9 @@ pub struct Device {
     /// Multilayer switches: `ip routing`.
     #[serde(default)]
     pub ip_routing: bool,
+    /// Routers and switches: `no cdp run`.
+    #[serde(default)]
+    pub cdp_off: bool,
     /// Routers: `ipv6 unicast-routing` (forward IPv6 and send router advertisements).
     #[serde(default)]
     pub ipv6_routing: bool,
@@ -936,6 +942,7 @@ impl Device {
                 ipv6: Ipv6Conf::default(),
                 channel: None,
                 serial: SerialConf::default(),
+                cdp_off: false,
                 routed: false,
                 err_disabled: false,
                 helpers: Vec::new(),
@@ -955,6 +962,7 @@ impl Device {
             gateway: None,
             gateway6: None,
             ip_routing: false,
+            cdp_off: false,
             ipv6_routing: false,
             routes6: Vec::new(),
             routes: Vec::new(),
@@ -987,6 +995,7 @@ impl Device {
         self.gateway = None;
         self.gateway6 = None;
         self.ip_routing = false;
+        self.cdp_off = false;
         self.ipv6_routing = false;
         self.routes6.clear();
         self.routes.clear();

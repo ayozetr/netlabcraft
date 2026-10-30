@@ -1045,3 +1045,46 @@ fn serial_link_by_typing() {
     lab.run(r2, "conf t\nint s0/0/0\nipv6 address 2001:db8:12::2/64\nend");
     assert!(lab.run(r1, "ping 2001:db8:12::2").contains("!!!!!"));
 }
+
+#[test]
+fn everyday_show_commands_by_typing() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let s = lab.add(DeviceKind::Switch);
+    let a = lab.add(DeviceKind::Pc);
+    lab.cable(r, "g0/0", s, "g0/1");
+    lab.cable(a, "fa0", s, "fa0/2");
+    lab.run(r, "en\nconf t\nint g0/0\nip address 192.168.1.1 255.255.255.0\nip helper-address 10.0.0.9\nno shut\nexit\naccess-list 10 permit any\nint g0/0\nip access-group 10 in\nend");
+    lab.run(s, "en\nconf t\nvlan 10\nexit\nint fa0/2\nswitchport access vlan 10\ndescription aula\nend");
+    // CDP: each sees the other; the PC is not listed.
+    let n = lab.run(r, "show cdp neighbors");
+    assert!(n.contains("S1") && n.contains("Gi0/0") && n.contains("Gi0/1") && n.contains("1 neighbour"), "{n}");
+    let det = lab.run(s, "show cdp neighbors detail");
+    assert!(det.contains("Neighbour R1 (router") && det.contains("Address   192.168.1.1"), "{det}");
+    lab.run(s, "conf t\nint g0/1\nno cdp enable\nend");
+    assert!(lab.run(r, "show cdp neighbors").contains("0 neighbours"));
+    assert!(lab.run(s, "show running-config").contains(" no cdp enable"));
+    lab.run(r, "conf t\nno cdp run\nend");
+    assert!(lab.run(r, "show cdp").contains("off"));
+    // Clock.
+    assert!(lab.run(r, "show clock").contains("not set"));
+    assert!(lab.try_run(r, "clock set 25:00:00 1 Jan 2026").contains("time of day"));
+    lab.run(r, "clock set 10:30:00 30 Oct 2026");
+    assert!(lab.run(r, "show clock").starts_with("10:30:00 UTC Fri Oct 30 2026"));
+    // Interfaces.
+    let ipi = lab.run(r, "show ip interface g0/0");
+    assert!(ipi.contains("Access list in: 10") && ipi.contains("DHCP relay to: 10.0.0.9") && ipi.contains("broadcast 192.168.1.255"), "{ipi}");
+    assert!(lab.run(r, "show ip interface brief").contains("Admin"));
+    let st = lab.run(s, "show interfaces status");
+    assert!(st.contains("Fa0/2      aula               connected     10") && st.contains("Fa0/3") && st.contains("no link"), "{st}");
+    let sw = lab.run(s, "show interfaces fa0/2 switchport");
+    assert!(sw.contains("Mode: access") && sw.contains("Access VLAN: 10 (VLAN0010)"), "{sw}");
+    let block = lab.run(s, "show running-config interface fa0/2");
+    assert!(block.starts_with("interface FastEthernet0/2\n description aula\n switchport access vlan 10"), "{block}");
+    // Flash, users, terminal.
+    assert!(lab.run(s, "show flash").contains("vlan.dat"));
+    assert!(lab.run(r, "dir flash:").contains("packetcraft-router-"));
+    assert!(lab.run(r, "show users").contains("con 0"));
+    assert!(lab.try_run(r, "terminal length 0").is_empty());
+    assert!(lab.try_run(r, "terminal bogus").contains("terminal length"));
+}

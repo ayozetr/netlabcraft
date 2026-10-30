@@ -13,17 +13,17 @@ This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summa
 | Number | Value | Kind |
 |---|---|---|
 | Engine commands | **40** | measured: `crates/engine/src/catalog.rs` |
-| Console grammar entries | **206** across 12 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
+| Console grammar entries | **225** across 12 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
 | Device models | **13** | measured: `crates/model/src/models.rs` |
 | Sample labs | **15** | measured: `crates/engine/src/sample.rs` |
-| Tests | **111** | measured: `cargo test --workspace` |
-| **Ready for real work** (weighted) | **~50%** | estimated; written weights below (50.9 computed) |
-| **CCNA 1 student** (Introduction to Networks) | **~70%** | estimated; [method](#audiences) |
+| Tests | **113** | measured: `cargo test --workspace` |
+| **Ready for real work** (weighted) | **~50%** | estimated; written weights below (51.9 computed) |
+| **CCNA 1 student** (Introduction to Networks) | **~74%** | estimated; [method](#audiences) |
 | **CCNA 2 student** (Switching, Routing and Wireless Essentials) | **~58%** | estimated; [method](#audiences) |
 | **CCNA 3 student** (Enterprise Networking, Security and Automation) | **~45%** | estimated; [method](#audiences) |
 | **Instructor** (builds graded activities) | **~12%** | estimated; no activity checks or scoring yet |
 | Stage | **pre-alpha** | see [Stage](#stage) |
-| Remaining to alpha | **~40–70 Opus 5.5 agent-hours** | estimated; [roadmap.md](roadmap.md#alpha-gates) |
+| Remaining to alpha | **~30–55 Opus 5.5 agent-hours** | estimated; [roadmap.md](roadmap.md#alpha-gates) |
 | Remaining to full parity | **~600–950 Opus 5.5 agent-hours** | estimated; sum of the rows below |
 
 ### Readiness by audience
@@ -60,7 +60,7 @@ Weights reflect how much of a typical CCNA lab session each area carries.
 
 | Area | Weight | Ready | Points | Detail | Hours to ~95% |
 |---|---|---|---|---|---|
-| Device console (modes, commands, `show` output, help, completion) | 20 | 60% | 12.0 | [protocol-parity.md](protocol-parity.md#console) | 60–90 |
+| Device console (modes, commands, `show` output, help, completion) | 20 | 65% | 13.0 | [protocol-parity.md](protocol-parity.md#console) | 60–90 |
 | Layer 2 (VLANs, trunks, STP, EtherChannel, VTP, port security, DTP) | 12 | 75% | 9.0 | [protocol-parity.md](protocol-parity.md#layer-2) | 25–40 |
 | Layer 3 (static, RIP, OSPF, EIGRP, IPv6, multilayer switching) | 15 | 55% | 8.3 | [protocol-parity.md](protocol-parity.md#layer-3) | 70–110 |
 | Services (DHCP, DNS, HTTP, FTP, email, NTP, syslog, AAA) | 8 | 40% | 3.2 | [protocol-parity.md](protocol-parity.md#services) | 40–60 |
@@ -70,7 +70,7 @@ Weights reflect how much of a typical CCNA lab session each area carries.
 | Workspace and windows (canvas, device tabs, physical view, drawing) | 10 | 55% | 5.5 | [ui-parity.md](ui-parity.md) | 60–90 |
 | Teaching (activities, scoring, instructions, languages) | 8 | 5% | 0.4 | [gaps.md](gaps.md) | 120–200 |
 | Device families and hardware (models, modules, ASA, IoT) | 5 | 25% | 1.3 | [hardware-parity.md](hardware-parity.md) | 80–120 |
-| **Total** | **100** | | **50.9** | | **~600–950** |
+| **Total** | **100** | | **51.9** | | **~600–950** |
 
 ## Audiences
 
@@ -105,6 +105,7 @@ misses commands students meet in the first labs. Alpha gates are in
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Console coverage (CDP, clock, flash, users, interface views): console 60% → 65%, CCNA 1 ~70% → ~74%, alpha ~30–55 h. |
 | 2026-10-30 | major | Rewritten in the shared format: measured numbers, weights, audiences per CCNA course, estimates and stage. |
 | 2026-10-29 | minor | Serial WAN links, RIP, multilayer switch, IPv6, EtherChannel, VTP, port security, Telnet/SSH. |
 | 2026-10-29 | major | Created. |

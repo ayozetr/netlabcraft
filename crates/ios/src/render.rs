@@ -3,7 +3,7 @@
 use std::fmt::Write as _;
 use std::net::Ipv4Addr;
 
-use packetcraft_core::{VlanId, VlanSet};
+use packetcraft_core::{Ipv4Net, VlanId, VlanSet};
 use packetcraft_model::{Device, DeviceKind, End, NextHop, SwitchportMode, Topology, ifname, obscure};
 use packetcraft_sim::{Hop, PingOptions, Probe, Sim, port_up, routing_table};
 
@@ -21,6 +21,9 @@ pub fn running_config(d: &Device) -> String {
     let _ = writeln!(s, "!\nhostname {}\n!", d.name);
     if d.ip_routing {
         let _ = writeln!(s, "ip routing\n!");
+    }
+    if d.cdp_off {
+        let _ = writeln!(s, "no cdp run\n!");
     }
     if d.ipv6_routing {
         let _ = writeln!(s, "ipv6 unicast-routing\n!");
@@ -99,6 +102,9 @@ pub fn running_config(d: &Device) -> String {
         let _ = writeln!(s, "interface {}", p.name);
         if !p.description.is_empty() {
             let _ = writeln!(s, " description {}", p.description);
+        }
+        if p.cdp_off {
+            let _ = writeln!(s, " no cdp enable");
         }
         if d.kind == DeviceKind::Switch && p.routed {
             let _ = writeln!(s, " no switchport");
@@ -560,14 +566,38 @@ pub fn arp(t: &Topology, sim: &Sim, d: &Device) -> String {
     s.trim_end().to_string()
 }
 
-pub fn version(d: &Device) -> String {
+pub fn version(sim: &Sim, d: &Device) -> String {
+    let m = d.catalogue_model();
+    let up = sim.now_us() / 1_000_000;
+    let mut kinds: Vec<(String, usize)> = Vec::new();
+    for p in &d.ports {
+        let k = ifname::parse(&p.name).map_or("other", |n| n.kind).to_string();
+        match kinds.iter_mut().find(|(n, _)| *n == k) {
+            Some(e) => e.1 += 1,
+            None => kinds.push((k, 1)),
+        }
+    }
+    let ports: Vec<String> = kinds.iter().map(|(k, n)| format!("{n} {k}")).collect();
     format!(
-        "PacketCraft simulated {}, software {}\n{} ports, base hardware address {}\nConfiguration {}",
+        "PacketCraft simulated {}, software {v}\n\
+         Model {} ({})\n\
+         {} has been up {} h {} min {} s (since the simulation started)\n\
+         System image flash:packetcraft-{}-{v}.bin\n\
+         Ports: {}\n\
+         Base hardware address {}\n\
+         Configuration {}",
         d.kind.label().to_lowercase(),
-        env!("CARGO_PKG_VERSION"),
-        d.ports.len(),
+        m.label,
+        m.description,
+        d.name,
+        up / 3_600,
+        up / 60 % 60,
+        up % 60,
+        d.kind.label().to_lowercase(),
+        ports.join(", "),
         d.ports.first().map_or("-".to_string(), |p| p.mac.to_string()),
         if d.startup.is_some() { "saved (startup-config present)" } else { "not saved" },
+        v = env!("CARGO_PKG_VERSION"),
     )
 }
 
@@ -972,4 +1002,213 @@ pub fn rip_database(t: &Topology, d: &Device, st: &packetcraft_sim::rip::RipStat
     }
     let _ = t;
     s.trim_end().to_string()
+}
+
+/// `show running-config interface X`: that interface's block.
+pub fn running_config_interface(d: &Device, name: &str) -> String {
+    let run = running_config(d);
+    let head = format!("interface {name}");
+    let mut out = Vec::new();
+    let mut inside = false;
+    for line in run.lines() {
+        if line == head {
+            inside = true;
+        } else if inside && !line.starts_with(' ') {
+            break;
+        }
+        if inside {
+            out.push(line);
+        }
+    }
+    if out.is_empty() { format!("% {name} has no configuration block") } else { out.join("\n") }
+}
+
+/// `show ip interface [X]`.
+pub fn ip_interface(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
+    let mut blocks = Vec::new();
+    for (i, p) in d.ports.iter().enumerate() {
+        if only.is_some_and(|r| r.port != i) {
+            continue;
+        }
+        let end = End { device: d.id, port: i };
+        let mut rows: Vec<(
+            String,
+            Option<Ipv4Net>,
+            &packetcraft_model::AccessGroups,
+            &[std::net::Ipv4Addr],
+            Option<packetcraft_model::NatSide>,
+            bool,
+        )> = Vec::new();
+        if only.is_none_or(|r| r.sub.is_none()) {
+            rows.push((p.name.clone(), p.ip, &p.access, &p.helpers, p.nat, p.shutdown));
+        }
+        for s in &p.subifs {
+            if only.is_none_or(|r| r.sub == Some(s.number)) {
+                rows.push((format!("{}.{}", p.name, s.number), s.ip, &s.access, &s.helpers, s.nat, s.shutdown || p.shutdown));
+            }
+        }
+        for (name, ip, acl, helpers, nat, down) in rows {
+            let state = if down {
+                "administratively down"
+            } else if port_up(t, end) {
+                "up"
+            } else {
+                "down"
+            };
+            let mut s = format!("{name} is {state}\n");
+            match ip {
+                Some(ip) => {
+                    let _ = writeln!(s, "  Address {ip}, broadcast {}", ip.broadcast());
+                }
+                None => s.push_str("  No IPv4 address\n"),
+            }
+            let _ = writeln!(s, "  Access list in: {}", acl.inbound.as_deref().unwrap_or("none"));
+            let _ = writeln!(s, "  Access list out: {}", acl.outbound.as_deref().unwrap_or("none"));
+            if !helpers.is_empty() {
+                let _ = writeln!(s, "  DHCP relay to: {}", helpers.iter().map(ToString::to_string).collect::<Vec<_>>().join(", "));
+            }
+            match nat {
+                Some(packetcraft_model::NatSide::Inside) => s.push_str("  NAT: inside\n"),
+                Some(packetcraft_model::NatSide::Outside) => s.push_str("  NAT: outside\n"),
+                None => {}
+            }
+            if d.kind == DeviceKind::Router {
+                s.push_str("  Proxy ARP: on\n");
+            }
+            blocks.push(s.trim_end().to_string());
+        }
+    }
+    for svi in d.svis.iter().filter(|_| only.is_none()) {
+        let mut s = format!("Vlan{} is {}\n", svi.vlan, if svi.shutdown { "administratively down" } else { "up" });
+        match svi.ip {
+            Some(ip) => {
+                let _ = write!(s, "  Address {ip}, broadcast {}", ip.broadcast());
+            }
+            None => s.push_str("  No IPv4 address"),
+        }
+        blocks.push(s);
+    }
+    blocks.join("\n")
+}
+
+/// `show interfaces status` (switches).
+pub fn interface_status(t: &Topology, d: &Device) -> String {
+    let mut s = format!("{:<10} {:<18} {:<13} {:<8} {}\n", "Port", "Description", "State", "VLAN", "Speed");
+    for (i, p) in d.ports.iter().enumerate() {
+        let end = End { device: d.id, port: i };
+        let state = if p.err_disabled {
+            "err-disabled"
+        } else if p.shutdown {
+            "disabled"
+        } else if port_up(t, end) {
+            "connected"
+        } else {
+            "no link"
+        };
+        let vlan = if p.routed {
+            "routed".to_string()
+        } else if p.switchport.mode == SwitchportMode::Trunk {
+            "trunk".to_string()
+        } else {
+            p.switchport.access_vlan.to_string()
+        };
+        let speed = if p.name.starts_with("GigabitEthernet") { "1000" } else { "100" };
+        let desc: String = p.description.chars().take(18).collect();
+        let _ = writeln!(s, "{:<10} {:<18} {:<13} {:<8} {speed}", ifname::short(&p.name), desc, state, vlan);
+    }
+    s.trim_end().to_string()
+}
+
+/// `show interfaces X switchport`.
+pub fn switchport(t: &Topology, d: &Device, port: usize) -> Result<String, String> {
+    let p = d.ports.get(port).ok_or("% No such port")?;
+    if d.kind != DeviceKind::Switch {
+        return Err("% Only switch ports have switchport settings".into());
+    }
+    if p.routed {
+        return Ok(format!("{}: routed port (no switchport)", p.name));
+    }
+    let sp = &p.switchport;
+    let vname = |v: VlanId| d.vlans.get(&v).map_or("not in the VLAN database".to_string(), Clone::clone);
+    let mode = if sp.mode == SwitchportMode::Trunk { "trunk" } else { "access" };
+    let mut s = format!("{}\n", p.name);
+    let _ = writeln!(s, "  Mode: {mode}");
+    let _ = writeln!(s, "  Access VLAN: {} ({})", sp.access_vlan, vname(sp.access_vlan));
+    let _ = writeln!(s, "  Trunk native VLAN: {} ({})", sp.native_vlan, vname(sp.native_vlan));
+    let _ = writeln!(s, "  Trunk allowed VLANs: {}", if sp.allowed.is_all() { "all".to_string() } else { sp.allowed.to_string() });
+    let _ = writeln!(s, "  Port security: {}", if p.port_security.is_some() { "on" } else { "off" });
+    let ch = packetcraft_sim::channel::port_label(t, d, port, false);
+    let _ = write!(s, "  EtherChannel: {}", if ch == p.name { "none".to_string() } else { ch });
+    Ok(s)
+}
+
+/// `show flash`: our own file listing.
+pub fn flash(d: &Device) -> String {
+    let kind = d.kind.label().to_lowercase();
+    let mut files = vec![(format!("packetcraft-{kind}-{}.bin", env!("CARGO_PKG_VERSION")), 33_591_768u64)];
+    if d.kind == DeviceKind::Switch && d.vlans.len() > 1 {
+        files.push(("vlan.dat".into(), 616 + 32 * d.vlans.len() as u64));
+    }
+    let mut s = format!("{:<4} {:>10}  {}\n", "#", "Bytes", "Name");
+    for (i, (name, size)) in files.iter().enumerate() {
+        let _ = writeln!(s, "{:<4} {:>10}  {name}", i + 1, size);
+    }
+    let used: u64 = files.iter().map(|f| f.1).sum();
+    let _ = write!(s, "{} bytes free of 268435456", 268_435_456u64.saturating_sub(used));
+    s
+}
+
+/// `show users`.
+pub fn users(cli: &crate::Cli) -> String {
+    let line = if cli.vty { "vty 0 (remote)" } else { "con 0" };
+    format!("{:<3}{:<18} {}\n*  {:<18} {}", "", "Line", "State", line, "active (this session)")
+}
+
+/// `show cdp`.
+pub fn cdp(d: &Device) -> String {
+    if d.cdp_off {
+        return "Neighbour discovery is off on this device (`cdp run` turns it on).".into();
+    }
+    let off: Vec<String> = d.ports.iter().filter(|p| p.cdp_off).map(|p| ifname::short(&p.name)).collect();
+    let mut s = String::from("Neighbour discovery is on: advertisements every 60 s, kept for 180 s.");
+    if !off.is_empty() {
+        let _ = write!(s, "\nOff on: {}", off.join(", "));
+    }
+    s
+}
+
+/// `show cdp neighbors [detail]`.
+pub fn cdp_neighbors(t: &Topology, sim: &Sim, d: &Device, detail: bool) -> String {
+    if d.cdp_off {
+        return "Neighbour discovery is off on this device.".into();
+    }
+    let list = packetcraft_sim::cdp::neighbors(t, d);
+    // Time left before an entry would expire, counting down between advertisements.
+    let hold = 180 - (sim.now_us() / 1_000_000 % 60);
+    let kind = |k: DeviceKind| if k == DeviceKind::Router { "router" } else { "switch" };
+    let mut s = String::new();
+    if detail {
+        for n in &list {
+            let _ = writeln!(s, "Neighbour {} ({}, {})", n.name, kind(n.kind), n.platform);
+            let _ = writeln!(s, "  Seen on   {}, its port {}", n.local, n.remote);
+            let _ = writeln!(s, "  Address   {}", n.address.map_or("none".to_string(), |a| a.addr.to_string()));
+            let _ = writeln!(s, "  Software  PacketCraft {}", env!("CARGO_PKG_VERSION"));
+            let _ = writeln!(s, "  Expires   in {hold} s\n");
+        }
+    } else {
+        let _ = writeln!(s, "{:<14} {:<14} {:<7} {:<9} {:<9} Expires", "Neighbour", "Platform", "Type", "Here", "There");
+        for n in &list {
+            let _ = writeln!(
+                s,
+                "{:<14} {:<14} {:<7} {:<9} {:<9} {hold} s",
+                n.name,
+                n.platform,
+                kind(n.kind),
+                ifname::short(&n.local),
+                ifname::short(&n.remote)
+            );
+        }
+    }
+    let _ = write!(s, "{} neighbour{}", list.len(), if list.len() == 1 { "" } else { "s" });
+    s
 }

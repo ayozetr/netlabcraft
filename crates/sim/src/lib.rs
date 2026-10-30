@@ -22,6 +22,7 @@ use packetcraft_wire::dhcp::{self, Dhcp, DhcpKind};
 use packetcraft_wire::tcp::{self, Tcp};
 use packetcraft_wire::{Arp, ArpOp, ETHERTYPE_ARP, ETHERTYPE_IPV4, Frame, Icmp, Ipv4, PROTO_ICMP, PROTO_TCP, PROTO_UDP, Protocol, Udp, dns};
 
+pub mod cdp;
 pub mod channel;
 pub mod ospf;
 pub mod rip;
@@ -42,6 +43,8 @@ pub const MAX_EVENTS_PER_RUN: usize = 200_000;
 pub const MAX_SWITCH_HOPS: u8 = 64;
 /// Event-list length; older events are forgotten.
 pub const TRACE_CAP: usize = 20_000;
+/// Where an unset device clock starts: 2026-01-01 00:00:00 UTC.
+pub const DEFAULT_CLOCK: i64 = 1_767_225_600;
 pub const MAC_AGING_US: u64 = 300 * 1_000_000;
 pub const ARP_AGING_US: u64 = 4 * 3_600 * 1_000_000;
 /// How long a host keeps a packet waiting for an ARP reply, and how often it re-asks.
@@ -444,6 +447,8 @@ pub struct DevState {
     nd_asked: BTreeMap<std::net::Ipv6Addr, u64>,
     pending6: Vec<v6::Pending6>,
     icmp6: Vec<v6::Icmp6Event>,
+    /// `clock set`: Unix seconds at simulated time zero, when someone set the clock.
+    clock_base: Option<i64>,
     /// Hosts: the last router advertisement heard (router's address, prefixes).
     ra: Option<(std::net::Ipv6Addr, Vec<packetcraft_wire::ipv6::PrefixInfo>)>,
 }
@@ -565,6 +570,22 @@ impl Sim {
     /// Simulated time, in microseconds.
     pub fn now_us(&self) -> u64 {
         self.now
+    }
+
+    /// A device's clock: Unix seconds now, and whether someone set it (`clock set`). An unset
+    /// clock starts at 2026-01-01 00:00:00 UTC when the simulation starts.
+    pub fn clock(&self, d: DeviceId) -> (i64, bool) {
+        let now = i64::try_from(self.now / 1_000_000).unwrap_or(i64::MAX);
+        match self.state.get(&d).and_then(|s| s.clock_base) {
+            Some(base) => (base.saturating_add(now), true),
+            None => (DEFAULT_CLOCK.saturating_add(now), false),
+        }
+    }
+
+    /// `clock set`: the device's clock reads `unix` now.
+    pub fn set_clock(&mut self, d: DeviceId, unix: i64) {
+        let now = i64::try_from(self.now / 1_000_000).unwrap_or(i64::MAX);
+        self.st(d).clock_base = Some(unix.saturating_sub(now));
     }
 
     pub fn state(&self, d: DeviceId) -> Option<&DevState> {

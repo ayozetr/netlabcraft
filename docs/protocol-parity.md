@@ -1,6 +1,6 @@
 # Protocol and command parity
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** major (created) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (CDP, clock, flash, users, terminal, show ip interface, show interfaces status/switchport, show running-config interface) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 What the simulated devices do, protocol by protocol, against the reference app. Part of
 [target-app-parity.md](target-app-parity.md). Behaviour comes from the standards named in each
@@ -95,13 +95,14 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | Modes: user, privileged, global, interface, subinterface, range, VLAN, line, DHCP pool, router OSPF/RIP, ACL, VLAN interface | ✅ | Prompts follow the usual `name>`, `name#`, `name(config)#` convention. |
 | Abbreviations, `?` help, Tab completion, history, `do` | ✅ | Ambiguity and unknown-word errors point at the word. |
 | Running/startup config, `write`, `copy`, `erase`, `reload` | ✅ | Configuration round-trips through the same dispatcher (tested). |
-| `show` coverage | 🟡 | Interfaces, IP/IPv6 brief and routes, ARP, MAC table, VLANs, trunks, STP, EtherChannel, VTP, port security, OSPF, RIP, DHCP, NAT, ACLs, SSH, controllers. Missing: `show version`, `show cdp neighbors`, `show flash`, `show clock`, `show users` and more: 15–25 h. |
-| CDP / LLDP | ❌ | Discovery protocol and `show cdp neighbors`: 6–10 h. |
-| `terminal`, `debug`, `clock set` | ❌ | 6–10 h. |
+| `show` coverage | 🟡 | Interfaces (also `status`, `X switchport`), IP/IPv6 interface and routes, ARP, MAC table, VLANs, trunks, STP, EtherChannel, VTP, port security, OSPF, RIP, DHCP, NAT, ACLs, SSH, controllers, CDP, version, flash, clock, users, history, `running-config interface X`. Missing: `show processes`, `show memory`, `show logging`, `show ip ospf interface`, `show standby`: 6–10 h. |
+| CDP | 🟡 | `cdp run`, `cdp enable`, `show cdp`, `show cdp neighbors [detail]`; computed, no advertisement frames yet. No LLDP: 3–5 h. |
+| `clock set`, `terminal`, `debug` | 🟡 | `clock set` and `show clock` (per device, advances with simulated time, lost on reload); `terminal length/width/monitor` accepted (output is never paged). No `debug`: 4–6 h. |
 | Host shell (PC Command Prompt) | 🟡 | `ipconfig`, `ipv6config`, `ping`, `tracert`, `nslookup`, `telnet`, `ssh`, `arp`. No `netstat`, `ftp`. |
 
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Console: CDP, clock, flash, users, terminal, show ip interface, show interfaces status and switchport, show running-config interface, richer show version. |
 | 2026-10-30 | major | Created: every protocol and console area with its standard, status and estimate. |

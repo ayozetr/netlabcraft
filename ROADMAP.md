@@ -1,6 +1,6 @@
 # PacketCraft roadmap
 
-**Stage: pre-alpha** · next: alpha, ~40–70 agent-hours away
+**Stage: pre-alpha** · next: alpha, ~30–55 agent-hours away
 
 > **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** major (rewritten in the shared roadmap format) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
@@ -20,23 +20,23 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 | Number | Value | Kind |
 |---|---|---|
-| **Ready for real work** (weighted) | **~50%** | estimated from written weights (50.9); [target-app-parity.md](docs/target-app-parity.md) |
-| **CCNA 1 student** | **~70%** | estimated; [method](docs/target-app-parity.md#audiences) |
+| **Ready for real work** (weighted) | **~52%** | estimated from written weights (51.9); [target-app-parity.md](docs/target-app-parity.md) |
+| **CCNA 1 student** | **~74%** | estimated; [method](docs/target-app-parity.md#audiences) |
 | **CCNA 2 student** | **~58%** | estimated |
 | **CCNA 3 student** | **~45%** | estimated |
 | **Instructor** (graded activities) | **~12%** | estimated |
 | Engine commands | 40 | measured: `crates/engine/src/catalog.rs` |
-| Console grammar entries | 206 across 12 modes | measured: `crates/ios/src/grammar.rs` |
+| Console grammar entries | 225 across 12 modes | measured: `crates/ios/src/grammar.rs` |
 | Device models · sample labs | 13 · 15 | measured |
-| Tests | 111 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
-| Remaining to **alpha** | **~40–70 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
+| Tests | 113 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Remaining to **alpha** | **~30–55 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~600–950 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
 
 | Audience | Ready % | Opus 5.5 agent wall-clock hours to ~95% | Work that dominates |
 |---|---|---|---|
 | Full target | ~50% | ~600–950 | Activities and scoring, wireless, more device families, services, physical workspace, translations |
-| CCNA 1 student | ~70% | ~40–70 | Console coverage, protocol frames in Simulation mode, PDU details |
+| CCNA 1 student | ~74% | ~30–55 | Console coverage, protocol frames in Simulation mode, PDU details |
 | CCNA 2 student | ~58% | ~110–170 | Wireless LANs, HSRP, DTP and RSTP, DHCPv6 |
 | CCNA 3 student | ~45% | ~180–280 | OSPF depth and OSPFv3, ACL depth, PPP authentication, VPN, network services |
 | Instructor | ~12% | ~120–200 | Activity wizard with answer network and scoring, instructions, translations |
@@ -45,7 +45,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 | Dimension | Weight | Ready | Hours to ~95% | State |
 |---|---|---|---|---|
-| Device console | 20 | 60% | 60–90 | Modes, abbreviations, `?`, Tab, history, config round-trip; `show` coverage growing |
+| Device console | 20 | 65% | 50–80 | Modes, abbreviations, `?`, Tab, history, config round-trip; `show` coverage growing |
 | Layer 2 | 12 | 75% | 25–40 | VLANs, trunks, per-VLAN STP, EtherChannel, VTP, port security; no DTP or BPDU frames |
 | Layer 3 | 15 | 55% | 70–110 | IPv4, IPv6 (NDP, SLAAC), static, RIP, single-area OSPF, multilayer switching; no EIGRP, OSPFv3, HSRP |
 | Services | 8 | 40% | 40–60 | DHCP, DNS, HTTP with browser, Telnet/SSH; no FTP, email, NTP, syslog, AAA |
@@ -60,6 +60,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-10-30 — Everyday console commands.** Neighbour discovery (`cdp run`, `cdp enable`, `show cdp neighbors [detail]`); `clock set` and `show clock`; `show flash`/`dir flash:`, `show users`, `terminal length`; `show ip interface`, `show interfaces status`, `show interfaces X switchport`, `show running-config interface X`; a fuller `show version`.
 - **2026-10-30 — Documentation in the shared Craft format.** README with screenshots; parity assessment with written weights, audiences per CCNA course and labelled estimates; ranked gaps with hours; milestones with alpha and beta gates; new protocol, hardware and localization checklists; contributors and releasing pages; a review line and revision history on every page.
 - **2026-10-29 — Serial WAN links.** A Router-WAN model with serial ports; serial cables whose first end is the DCE; `clock rate`, `encapsulation hdlc|ppp`, line protocol down without a clock or with mismatched framing; `show controllers`; HDLC/PPP frames on the wire (listed and captured as Ethernet II); red serial cables with a clock at the DCE end; serial-wan sample lab.
 - **2026-10-29 — RIP.** `router rip` with version, classful networks, passive interfaces, split horizon, 15-hop limit and default-route origination, computed like OSPF; R routes in `show ip route`, `show ip rip database`, RIP in `show ip protocols`; rip sample lab.

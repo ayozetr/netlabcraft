@@ -9,6 +9,7 @@
 //! and are used as feature names; every message, table layout and help text is our own wording.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+mod clock;
 mod exec;
 pub mod grammar;
 pub mod host;
