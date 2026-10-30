@@ -104,6 +104,9 @@ pub struct CryptoMapEntry {
     /// `match address ACL`: the traffic to protect.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub acl: Option<String>,
+    /// `set ikev2-profile NAME`: negotiate with IKEv2 instead of IKEv1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ikev2_profile: Option<String>,
 }
 
 /// A router's IPsec configuration.
@@ -122,6 +125,165 @@ pub struct Crypto {
     /// `crypto map NAME` on an interface: interface name → map name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub applied: BTreeMap<String, String>,
+    /// IKEv2 proposals, policies, keyrings and profiles.
+    #[serde(default, skip_serializing_if = "Ikev2::is_empty")]
+    pub ikev2: Ikev2,
+}
+
+/// `crypto ikev2 proposal NAME`: the IKE SA algorithms offered (RFC 7296 §3.3).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Ikev2Proposal {
+    pub name: String,
+    /// `encryption aes-cbc-128 …`
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub encryption: Vec<String>,
+    /// `integrity sha1 …`
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub integrity: Vec<String>,
+    /// `group 14 …`
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub group: Vec<u8>,
+}
+
+impl Ikev2Proposal {
+    /// Complete enough to offer: a cipher, an integrity algorithm and a group.
+    pub fn complete(&self) -> bool {
+        !self.encryption.is_empty() && !self.integrity.is_empty() && !self.group.is_empty()
+    }
+}
+
+/// `crypto ikev2 policy NAME`: which proposals to use (for which local address).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Ikev2Policy {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub proposals: Vec<String>,
+    /// `match address local A.B.C.D`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local: Option<Ipv4Addr>,
+}
+
+/// `peer NAME` in a keyring.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Ikev2Peer {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub address: Option<Ipv4Addr>,
+    /// `pre-shared-key KEY` (both directions) or `pre-shared-key local KEY`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_key: Option<String>,
+    /// `pre-shared-key KEY` (both directions) or `pre-shared-key remote KEY`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_key: Option<String>,
+}
+
+/// `crypto ikev2 keyring NAME`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Ikev2Keyring {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub peers: Vec<Ikev2Peer>,
+}
+
+/// `crypto ikev2 profile NAME`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Ikev2Profile {
+    pub name: String,
+    /// `match identity remote address A.B.C.D [MASK]`: (address, mask).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub remote: Vec<(Ipv4Addr, Ipv4Addr)>,
+    /// `identity local address A.B.C.D` (the local interface's address otherwise).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_id: Option<Ipv4Addr>,
+    /// `authentication local pre-share` / `authentication remote pre-share`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth_local: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth_remote: Option<String>,
+    /// `keyring local NAME`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keyring: Option<String>,
+}
+
+impl Ikev2Profile {
+    /// Whether a peer's identity (its address) matches this profile.
+    pub fn matches(&self, peer: Ipv4Addr) -> bool {
+        self.remote.iter().any(|(a, m)| u32::from(*a) & u32::from(*m) == u32::from(peer) & u32::from(*m))
+    }
+}
+
+/// A router's IKEv2 configuration.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Ikev2 {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub proposals: Vec<Ikev2Proposal>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub policies: Vec<Ikev2Policy>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub keyrings: Vec<Ikev2Keyring>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub profiles: Vec<Ikev2Profile>,
+}
+
+impl Ikev2 {
+    pub fn is_empty(&self) -> bool {
+        *self == Ikev2::default()
+    }
+
+    pub fn profile(&self, name: &str) -> Option<&Ikev2Profile> {
+        self.profiles.iter().find(|p| p.name == name)
+    }
+
+    pub fn proposal(&self, name: &str) -> Option<&Ikev2Proposal> {
+        self.proposals.iter().find(|p| p.name == name)
+    }
+
+    /// The proposals offered from `local`: those of the policies matching the address (or
+    /// with no address), in order. Without policies or proposals: none.
+    pub fn offered(&self, local: Ipv4Addr) -> Vec<&Ikev2Proposal> {
+        let mut out: Vec<&Ikev2Proposal> = Vec::new();
+        let specific = self.policies.iter().any(|p| p.local == Some(local));
+        for pol in self.policies.iter().filter(|p| if specific { p.local == Some(local) } else { p.local.is_none() }) {
+            for n in &pol.proposals {
+                if let Some(p) = self.proposal(n).filter(|p| p.complete())
+                    && !out.iter().any(|o| o.name == p.name)
+                {
+                    out.push(p);
+                }
+            }
+        }
+        out
+    }
+
+    /// The pre-shared key a profile's keyring holds for a peer: (to sign with, to check with).
+    pub fn keys_for(&self, profile: &Ikev2Profile, peer: Ipv4Addr) -> Option<(String, String)> {
+        let ring = self.keyrings.iter().find(|k| Some(&k.name) == profile.keyring.as_ref())?;
+        let p =
+            ring.peers.iter().find(|p| p.address == Some(peer)).or_else(|| ring.peers.iter().find(|p| p.address == Some(Ipv4Addr::UNSPECIFIED)))?;
+        Some((p.local_key.clone()?, p.remote_key.clone()?))
+    }
+
+    /// Caps every list (hostile files).
+    pub fn sanitize(&mut self) {
+        self.proposals.truncate(MAX_CRYPTO);
+        self.policies.truncate(MAX_CRYPTO);
+        self.keyrings.truncate(MAX_CRYPTO);
+        self.profiles.truncate(MAX_CRYPTO);
+        for p in &mut self.proposals {
+            p.encryption.truncate(8);
+            p.integrity.truncate(8);
+            p.group.truncate(8);
+        }
+        for p in &mut self.policies {
+            p.proposals.truncate(MAX_CRYPTO);
+        }
+        for k in &mut self.keyrings {
+            k.peers.truncate(MAX_CRYPTO);
+        }
+        for p in &mut self.profiles {
+            p.remote.truncate(MAX_CRYPTO);
+        }
+    }
 }
 
 impl Crypto {
@@ -152,6 +314,7 @@ impl Crypto {
         while self.applied.len() > MAX_CRYPTO {
             self.applied.pop_last();
         }
+        self.ikev2.sanitize();
     }
 }
 

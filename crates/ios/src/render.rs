@@ -226,6 +226,7 @@ pub fn running_config(d: &Device) -> String {
     }
     crate::exec::qos::running_config(&mut s, d);
     vpn_config(&mut s, d);
+    crate::exec::security::running_config(&mut s, d);
     wlan_config(&mut s, d);
     crate::exec::routing::loopback_config(&mut s, d);
     for p in &d.ports {
@@ -348,6 +349,7 @@ pub fn running_config(d: &Device) -> String {
         }
         crypto_map_line(&mut s, d, &p.name);
         crate::exec::qos::service_policy_lines(&mut s, d, &p.name);
+        crate::exec::security::iface_lines(&mut s, d, &p.name);
         // Routers write both states: their ports start shut, so a replay must say which are up.
         if p.shutdown {
             let _ = writeln!(s, " shutdown");
@@ -376,6 +378,7 @@ pub fn running_config(d: &Device) -> String {
             nat_side(&mut s, sub.nat);
             crypto_map_line(&mut s, d, &format!("{}.{}", p.name, sub.number));
             crate::exec::qos::service_policy_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
+            crate::exec::security::iface_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
             if sub.shutdown {
                 let _ = writeln!(s, " shutdown");
             }
@@ -2378,6 +2381,7 @@ fn vpn_config(s: &mut String, d: &Device) {
     if !c.transform_sets.is_empty() {
         let _ = writeln!(s, "!");
     }
+    crate::exec::ikev2::running_config(s, d);
     for e in &c.maps {
         let _ = writeln!(s, "crypto map {} {} ipsec-isakmp", e.map, e.seq);
         if let Some(p) = e.peer {
@@ -2388,6 +2392,9 @@ fn vpn_config(s: &mut String, d: &Device) {
         }
         if let Some(a) = &e.acl {
             let _ = writeln!(s, " match address {a}");
+        }
+        if let Some(p) = &e.ikev2_profile {
+            let _ = writeln!(s, " set ikev2-profile {p}");
         }
         let _ = writeln!(s, "!");
     }
@@ -2418,6 +2425,7 @@ fn vpn_config(s: &mut String, d: &Device) {
             let _ = writeln!(s, " tunnel destination {a}");
         }
         crate::exec::qos::service_policy_lines(s, d, &t.name());
+        crate::exec::security::iface_lines(s, d, &t.name());
         if t.shutdown {
             let _ = writeln!(s, " shutdown");
         }

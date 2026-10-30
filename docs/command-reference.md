@@ -939,6 +939,90 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no netconf-yang` | config | router | Stop answering NETCONF sessions |
 | `show ip http server status` | user, privileged | router | Web server, RESTCONF and NETCONF settings |
 | `show netconf-yang sessions` | user, privileged | router | NETCONF sessions served |
+| `zone security NAME` | config | router | Create or edit a security zone |
+| `no zone security NAME` | config | router | Delete a security zone |
+| `description LINE` |  | router | A note about this zone or zone pair |
+| `no description` |  | router | Remove the note |
+| `class-map type inspect [match-any\|match-all] NAME` | config | router | Create or edit a class of traffic for the zone firewall |
+| `no class-map type inspect [match-any\|match-all] NAME` | config | router | Delete an inspect class |
+| `match protocol {tcp\|udp\|icmp\|http\|https\|dns\|ftp\|…}` |  | router | Traffic of this protocol |
+| `match access-group <1-2699>` |  | router | Traffic a numbered access list permits |
+| `match access-group name NAME` |  | router | Traffic a named access list permits |
+| `match class-map NAME` |  | router | Traffic another inspect class takes |
+| `no match CRITERION` |  | router | Remove a match line |
+| `policy-map type inspect NAME` | config | router | Create or edit what the zone firewall does with each class |
+| `no policy-map type inspect NAME` | config | router | Delete an inspect policy |
+| `class type inspect NAME` |  | router | Say what to do with an inspect class |
+| `class class-default` |  | router | Say what to do with everything else |
+| `no class type inspect NAME` |  | router | Remove a class from the policy |
+| `no class class-default` |  | router | Back to dropping everything else |
+| `inspect` |  | router | Let it through and let its replies back |
+| `pass` |  | router | Let it through, this way only |
+| `pass log` |  | router | Let it through, this way only, and log each packet |
+| `drop` |  | router | Throw it away |
+| `drop log` |  | router | Throw it away and log each packet |
+| `no inspect` |  | router | Remove the action (the class drops) |
+| `no pass [log]` |  | router | Remove the action (the class drops) |
+| `no pass` |  | router | Remove the action (the class drops) |
+| `no drop [log]` |  | router | Remove the action (the class drops) |
+| `no drop` |  | router | Remove the action (the class drops) |
+| `zone-pair security NAME source ZONE destination ZONE` | config | router | Create a zone pair: traffic from one zone to another |
+| `no zone-pair security NAME` | config | router | Delete a zone pair |
+| `service-policy type inspect NAME` |  | router | The inspect policy for this zone pair |
+| `no service-policy type inspect` |  | router | Remove the policy |
+| `no service-policy type inspect NAME` |  | router | Remove the policy |
+| `zone-member security NAME` | interface, subinterface | router | Put this interface in a security zone |
+| `no zone-member security` | interface, subinterface | router | Take this interface out of its zone |
+| `no zone-member security NAME` | interface, subinterface | router | Take this interface out of its zone |
+| `show zone security` | user, privileged | router | Security zones and their interfaces |
+| `show zone security NAME` | user, privileged | router | One security zone |
+| `show zone-pair security` | user, privileged | router | Zone pairs and their policies |
+| `show policy-map type inspect zone-pair sessions` | user, privileged | router | Sessions the zone firewall inspected |
+| `show policy-map type inspect zone-pair` | user, privileged | router | Each zone pair's classes, packet counts and sessions |
+| `show policy-map type inspect` | user, privileged | router | Inspect policies |
+| `show class-map type inspect` | user, privileged | router | Inspect classes |
+| `clear zone-pair inspect sessions` | privileged | router | Forget the zone firewall's sessions |
+| `ip inspect name NAME {tcp\|udp\|icmp\|http\|…}` | config | router | Add a protocol to an inspection rule |
+| `no ip inspect name NAME PROTOCOL` | config | router | Remove a protocol from an inspection rule |
+| `no ip inspect name NAME` | config | router | Remove the whole inspection rule |
+| `ip inspect NAME {in\|out}` | interface, subinterface | router | Inspect sessions crossing this interface |
+| `no ip inspect NAME {in\|out}` | interface, subinterface | router | Stop inspecting here |
+| `show ip inspect sessions` | user, privileged | router | Sessions classic inspection opened |
+| `show ip inspect all` | user, privileged | router | Inspection rules, where they apply, and sessions |
+| `clear ip inspect sessions` | privileged | router | Forget classic inspection's sessions |
+| `ip mtu <68-9216>` | interface, subinterface | router | Largest IPv4 packet sent here (larger ones are fragmented) |
+| `no ip mtu` | interface, subinterface | router | No IP MTU limit of its own |
+| `no ip mtu <68-9216>` | interface, subinterface | router | No IP MTU limit of its own |
+| `ip tcp adjust-mss <500-1460>` | interface, subinterface | router | Lower the MSS TCP SYNs crossing this interface announce |
+| `no ip tcp adjust-mss` | interface, subinterface | router | Leave TCP SYNs alone |
+| `no ip tcp adjust-mss <500-1460>` | interface, subinterface | router | Leave TCP SYNs alone |
+| `crypto ikev2 proposal NAME` | config | router | Define or edit an IKEv2 proposal |
+| `no crypto ikev2 proposal NAME` | config | router | Delete an IKEv2 proposal |
+| `crypto ikev2 policy NAME` | config | router | Define or edit an IKEv2 policy |
+| `no crypto ikev2 policy NAME` | config | router | Delete an IKEv2 policy |
+| `crypto ikev2 keyring NAME` | config | router | Define or edit an IKEv2 keyring |
+| `no crypto ikev2 keyring NAME` | config | router | Delete an IKEv2 keyring |
+| `crypto ikev2 profile NAME` | config | router | Define or edit an IKEv2 profile |
+| `no crypto ikev2 profile NAME` | config | router | Delete an IKEv2 profile |
+| `encryption {aes-cbc-128\|aes-cbc-192\|aes-cbc-256\|3des} …` |  | router | Ciphers the proposal offers |
+| `integrity {sha1\|sha256\|md5} …` |  | router | Integrity algorithms the proposal offers |
+| `group {2\|5\|14\|15\|16\|19\|20} …` |  | router | Diffie-Hellman groups the proposal offers |
+| `proposal NAME` |  | router | Offer this proposal |
+| `match address local A.B.C.D` |  | router | Use the policy for this local address only |
+| `peer NAME` |  | router | Define or edit a peer's key |
+| `no peer NAME` |  | router | Delete a peer from the keyring |
+| `address A.B.C.D` |  | router | The peer's address |
+| `pre-shared-key [local\|remote] KEY` |  | router | The key shared with the peer |
+| `match identity remote address A.B.C.D [MASK]` |  | router | Peers this profile is for |
+| `identity local address A.B.C.D` |  | router | The identity this router presents |
+| `authentication local pre-share` |  | router | How this router proves who it is |
+| `authentication remote pre-share` |  | router | How the peer proves who it is |
+| `keyring local NAME` |  | router | The keyring holding the keys |
+| `set ikev2-profile NAME` |  | router | Negotiate this entry with IKEv2 |
+| `no set ikev2-profile` |  | router | Back to IKEv1 |
+| `show crypto ikev2 sa` | user, privileged | router | IKEv2 security associations |
+| `show crypto ikev2 proposal` | user, privileged | router | IKEv2 proposals |
+| `show crypto ikev2 profile` | user, privileged | router | IKEv2 profiles |
 
 ## Host shell (PCs and servers)
 

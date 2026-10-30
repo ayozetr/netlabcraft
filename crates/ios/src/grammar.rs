@@ -14,7 +14,7 @@ pub enum Tok {
 
 /// Where a command is available.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Modes(pub u32);
+pub struct Modes(pub u64);
 
 impl Modes {
     pub const USER: Modes = Modes(1);
@@ -67,6 +67,26 @@ impl Modes {
     pub const FIREWALL: Modes = Modes(1 << 29);
     /// `object network NAME` on the firewall.
     pub const OBJECT: Modes = Modes(1 << 30);
+    /// `zone security NAME` (bits 31-39 are left for others; `Modes` is a u64).
+    pub const ZONE: Modes = Modes(1 << 40);
+    /// `class-map type inspect NAME`.
+    pub const INSPECT_CLASS: Modes = Modes(1 << 41);
+    /// `policy-map type inspect NAME`.
+    pub const INSPECT_POLICY: Modes = Modes(1 << 42);
+    /// `class type inspect NAME` inside an inspect policy map.
+    pub const INSPECT_PCLASS: Modes = Modes(1 << 43);
+    /// `zone-pair security NAME …`.
+    pub const ZONE_PAIR: Modes = Modes(1 << 44);
+    /// `crypto ikev2 proposal NAME`.
+    pub const IKEV2_PROPOSAL: Modes = Modes(1 << 45);
+    /// `crypto ikev2 policy NAME`.
+    pub const IKEV2_POLICY: Modes = Modes(1 << 46);
+    /// `crypto ikev2 keyring NAME`.
+    pub const IKEV2_KEYRING: Modes = Modes(1 << 47);
+    /// `peer NAME` in a keyring.
+    pub const IKEV2_PEER: Modes = Modes(1 << 48);
+    /// `crypto ikev2 profile NAME`.
+    pub const IKEV2_PROFILE: Modes = Modes(1 << 49);
     /// Every command mode, either device.
     pub const ANY_MODE: Modes = Modes(
         63 | 256
@@ -89,7 +109,17 @@ impl Modes {
             | (1 << 26)
             | (1 << 27)
             | (1 << 28)
-            | (1 << 30),
+            | (1 << 30)
+            | (1 << 40)
+            | (1 << 41)
+            | (1 << 42)
+            | (1 << 43)
+            | (1 << 44)
+            | (1 << 45)
+            | (1 << 46)
+            | (1 << 47)
+            | (1 << 48)
+            | (1 << 49),
     );
     pub const BOTH: Modes = Modes(192);
 
@@ -787,6 +817,79 @@ pub enum Id {
     NoNetconfYang,
     ShowIpHttpServerStatus,
     ShowNetconfYang,
+    // Zone-based firewall and classic inspection.
+    ZoneSecurity,
+    NoZoneSecurity,
+    ZoneDescription,
+    NoZoneDescription,
+    InspectClassMap,
+    NoInspectClassMap,
+    InspectMatchProtocol,
+    InspectMatchAcl,
+    InspectMatchClass,
+    NoInspectMatch,
+    InspectPolicyMap,
+    NoInspectPolicyMap,
+    InspectPolicyClass,
+    NoInspectPolicyClass,
+    InspectActionInspect,
+    InspectActionPass,
+    InspectActionPassLog,
+    InspectActionDrop,
+    InspectActionDropLog,
+    NoInspectAction,
+    ZonePairSecurity,
+    NoZonePairSecurity,
+    ZonePairServicePolicy,
+    NoZonePairServicePolicy,
+    ZoneMember,
+    NoZoneMember,
+    ShowZoneSecurity,
+    ShowZonePairSecurity,
+    ShowInspectSessions,
+    ShowInspectZonePair,
+    ShowInspectClassMaps,
+    ShowInspectPolicyMaps,
+    ClearInspectSessions,
+    IpInspectName,
+    NoIpInspectName,
+    IpInspectIf,
+    NoIpInspectIf,
+    ShowIpInspectSessions,
+    ShowIpInspectAll,
+    // IP MTU and TCP MSS clamping.
+    IpMtu,
+    NoIpMtu,
+    TcpAdjustMss,
+    NoTcpAdjustMss,
+    // IKEv2.
+    Ikev2Proposal,
+    NoIkev2Proposal,
+    Ikev2Policy,
+    NoIkev2Policy,
+    Ikev2Keyring,
+    NoIkev2Keyring,
+    Ikev2Profile,
+    NoIkev2Profile,
+    Ikev2Encryption,
+    Ikev2Integrity,
+    Ikev2Group,
+    Ikev2PolicyProposal,
+    Ikev2PolicyMatchLocal,
+    Ikev2Peer,
+    NoIkev2Peer,
+    Ikev2PeerAddress,
+    Ikev2PeerKey,
+    Ikev2MatchRemote,
+    Ikev2IdentityLocal,
+    Ikev2AuthLocal,
+    Ikev2AuthRemote,
+    Ikev2ProfileKeyring,
+    CryptoSetIkev2Profile,
+    NoCryptoSetIkev2Profile,
+    ShowCryptoIkev2Sa,
+    ShowCryptoIkev2Proposal,
+    ShowCryptoIkev2Profile,
 }
 
 use Tok::{Arg, K, Rest};
@@ -810,7 +913,15 @@ const SUBMODES: Modes = Modes::IF
     .or(Modes::OBJECT)
     .or(Modes::TELEPHONY)
     .or(Modes::EPHONE)
-    .or(Modes::LOOPBACK);
+    .or(Modes::LOOPBACK)
+    .or(SEC_MODES);
+/// The zone firewall's sub-modes.
+const SEC_MODES: Modes =
+    Modes::ZONE.or(Modes::INSPECT_CLASS).or(Modes::INSPECT_POLICY).or(Modes::INSPECT_PCLASS).or(Modes::ZONE_PAIR).or(IKEV2_MODES);
+/// The IKEv2 sub-modes.
+const IKEV2_MODES: Modes = Modes::IKEV2_PROPOSAL.or(Modes::IKEV2_POLICY).or(Modes::IKEV2_KEYRING).or(Modes::IKEV2_PEER).or(Modes::IKEV2_PROFILE);
+/// Where zones, inspection, IP MTU and MSS clamping are set: routed ports, subinterfaces, tunnels.
+const SEC_IFS: Modes = IFS.or(Modes::TUNNEL);
 /// Routers, switches and the firewall.
 const BOTH_FW: Modes = Modes::BOTH.or(Modes::FIREWALL);
 const FW: Modes = Modes::FIREWALL;
@@ -2825,6 +2936,278 @@ pub static SPECS: &[Spec] = &[
         "Web server, RESTCONF and NETCONF settings"
     ),
     spec!(ShowNetconfYang, EXECS, Modes::ROUTER, [K("show"), K("netconf-yang"), K("sessions")], "NETCONF sessions served"),
+    // Zone-based policy firewall and classic inspection (routers).
+    spec!(ZoneSecurity, Modes::CONFIG, Modes::ROUTER, [K("zone"), K("security"), Arg("NAME")], "Create or edit a security zone"),
+    spec!(NoZoneSecurity, Modes::CONFIG, Modes::ROUTER, [K("no"), K("zone"), K("security"), Arg("NAME")], "Delete a security zone"),
+    spec!(ZoneDescription, Modes::ZONE.or(Modes::ZONE_PAIR), Modes::ROUTER, [K("description"), Rest("LINE")], "A note about this zone or zone pair"),
+    spec!(NoZoneDescription, Modes::ZONE.or(Modes::ZONE_PAIR), Modes::ROUTER, [K("no"), K("description")], "Remove the note"),
+    spec!(
+        InspectClassMap,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("class-map"), K("type"), K("inspect"), Rest("[match-any|match-all] NAME")],
+        "Create or edit a class of traffic for the zone firewall"
+    ),
+    spec!(
+        NoInspectClassMap,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("no"), K("class-map"), K("type"), K("inspect"), Rest("[match-any|match-all] NAME")],
+        "Delete an inspect class"
+    ),
+    spec!(
+        InspectMatchProtocol,
+        Modes::INSPECT_CLASS,
+        Modes::ROUTER,
+        [K("match"), K("protocol"), Arg("{tcp|udp|icmp|http|https|dns|ftp|…}")],
+        "Traffic of this protocol"
+    ),
+    spec!(
+        InspectMatchAcl,
+        Modes::INSPECT_CLASS,
+        Modes::ROUTER,
+        [K("match"), K("access-group"), Arg("<1-2699>")],
+        "Traffic a numbered access list permits"
+    ),
+    spec!(
+        InspectMatchAcl,
+        Modes::INSPECT_CLASS,
+        Modes::ROUTER,
+        [K("match"), K("access-group"), K("name"), Arg("NAME")],
+        "Traffic a named access list permits"
+    ),
+    spec!(InspectMatchClass, Modes::INSPECT_CLASS, Modes::ROUTER, [K("match"), K("class-map"), Arg("NAME")], "Traffic another inspect class takes"),
+    spec!(NoInspectMatch, Modes::INSPECT_CLASS, Modes::ROUTER, [K("no"), K("match"), Rest("CRITERION")], "Remove a match line"),
+    spec!(
+        InspectPolicyMap,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("policy-map"), K("type"), K("inspect"), Arg("NAME")],
+        "Create or edit what the zone firewall does with each class"
+    ),
+    spec!(
+        NoInspectPolicyMap,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("no"), K("policy-map"), K("type"), K("inspect"), Arg("NAME")],
+        "Delete an inspect policy"
+    ),
+    spec!(
+        InspectPolicyClass,
+        Modes::INSPECT_POLICY.or(Modes::INSPECT_PCLASS),
+        Modes::ROUTER,
+        [K("class"), K("type"), K("inspect"), Arg("NAME")],
+        "Say what to do with an inspect class"
+    ),
+    spec!(
+        InspectPolicyClass,
+        Modes::INSPECT_POLICY.or(Modes::INSPECT_PCLASS),
+        Modes::ROUTER,
+        [K("class"), K("class-default")],
+        "Say what to do with everything else"
+    ),
+    spec!(
+        NoInspectPolicyClass,
+        Modes::INSPECT_POLICY.or(Modes::INSPECT_PCLASS),
+        Modes::ROUTER,
+        [K("no"), K("class"), K("type"), K("inspect"), Arg("NAME")],
+        "Remove a class from the policy"
+    ),
+    spec!(
+        NoInspectPolicyClass,
+        Modes::INSPECT_POLICY.or(Modes::INSPECT_PCLASS),
+        Modes::ROUTER,
+        [K("no"), K("class"), K("class-default")],
+        "Back to dropping everything else"
+    ),
+    spec!(InspectActionInspect, Modes::INSPECT_PCLASS, Modes::ROUTER, [K("inspect")], "Let it through and let its replies back"),
+    spec!(InspectActionPass, Modes::INSPECT_PCLASS, Modes::ROUTER, [K("pass")], "Let it through, this way only"),
+    spec!(InspectActionPassLog, Modes::INSPECT_PCLASS, Modes::ROUTER, [K("pass"), K("log")], "Let it through, this way only, and log each packet"),
+    spec!(InspectActionDrop, Modes::INSPECT_PCLASS, Modes::ROUTER, [K("drop")], "Throw it away"),
+    spec!(InspectActionDropLog, Modes::INSPECT_PCLASS, Modes::ROUTER, [K("drop"), K("log")], "Throw it away and log each packet"),
+    spec!(NoInspectAction, Modes::INSPECT_PCLASS, Modes::ROUTER, [K("no"), K("inspect")], "Remove the action (the class drops)"),
+    spec!(NoInspectAction, Modes::INSPECT_PCLASS, Modes::ROUTER, [K("no"), K("pass"), Rest("[log]")], "Remove the action (the class drops)"),
+    spec!(NoInspectAction, Modes::INSPECT_PCLASS, Modes::ROUTER, [K("no"), K("pass")], "Remove the action (the class drops)"),
+    spec!(NoInspectAction, Modes::INSPECT_PCLASS, Modes::ROUTER, [K("no"), K("drop"), Rest("[log]")], "Remove the action (the class drops)"),
+    spec!(NoInspectAction, Modes::INSPECT_PCLASS, Modes::ROUTER, [K("no"), K("drop")], "Remove the action (the class drops)"),
+    spec!(
+        ZonePairSecurity,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("zone-pair"), K("security"), Arg("NAME"), K("source"), Arg("ZONE"), K("destination"), Arg("ZONE")],
+        "Create a zone pair: traffic from one zone to another"
+    ),
+    spec!(NoZonePairSecurity, Modes::CONFIG, Modes::ROUTER, [K("no"), K("zone-pair"), K("security"), Arg("NAME")], "Delete a zone pair"),
+    spec!(
+        ZonePairServicePolicy,
+        Modes::ZONE_PAIR,
+        Modes::ROUTER,
+        [K("service-policy"), K("type"), K("inspect"), Arg("NAME")],
+        "The inspect policy for this zone pair"
+    ),
+    spec!(NoZonePairServicePolicy, Modes::ZONE_PAIR, Modes::ROUTER, [K("no"), K("service-policy"), K("type"), K("inspect")], "Remove the policy"),
+    spec!(
+        NoZonePairServicePolicy,
+        Modes::ZONE_PAIR,
+        Modes::ROUTER,
+        [K("no"), K("service-policy"), K("type"), K("inspect"), Arg("NAME")],
+        "Remove the policy"
+    ),
+    spec!(ZoneMember, SEC_IFS, Modes::ROUTER, [K("zone-member"), K("security"), Arg("NAME")], "Put this interface in a security zone"),
+    spec!(NoZoneMember, SEC_IFS, Modes::ROUTER, [K("no"), K("zone-member"), K("security")], "Take this interface out of its zone"),
+    spec!(NoZoneMember, SEC_IFS, Modes::ROUTER, [K("no"), K("zone-member"), K("security"), Arg("NAME")], "Take this interface out of its zone"),
+    spec!(ShowZoneSecurity, EXECS, Modes::ROUTER, [K("show"), K("zone"), K("security")], "Security zones and their interfaces"),
+    spec!(ShowZoneSecurity, EXECS, Modes::ROUTER, [K("show"), K("zone"), K("security"), Arg("NAME")], "One security zone"),
+    spec!(ShowZonePairSecurity, EXECS, Modes::ROUTER, [K("show"), K("zone-pair"), K("security")], "Zone pairs and their policies"),
+    spec!(
+        ShowInspectSessions,
+        EXECS,
+        Modes::ROUTER,
+        [K("show"), K("policy-map"), K("type"), K("inspect"), K("zone-pair"), K("sessions")],
+        "Sessions the zone firewall inspected"
+    ),
+    spec!(
+        ShowInspectZonePair,
+        EXECS,
+        Modes::ROUTER,
+        [K("show"), K("policy-map"), K("type"), K("inspect"), K("zone-pair")],
+        "Each zone pair's classes, packet counts and sessions"
+    ),
+    spec!(ShowInspectPolicyMaps, EXECS, Modes::ROUTER, [K("show"), K("policy-map"), K("type"), K("inspect")], "Inspect policies"),
+    spec!(ShowInspectClassMaps, EXECS, Modes::ROUTER, [K("show"), K("class-map"), K("type"), K("inspect")], "Inspect classes"),
+    spec!(
+        ClearInspectSessions,
+        Modes::EXEC,
+        Modes::ROUTER,
+        [K("clear"), K("zone-pair"), K("inspect"), K("sessions")],
+        "Forget the zone firewall's sessions"
+    ),
+    spec!(
+        IpInspectName,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("ip"), K("inspect"), K("name"), Arg("NAME"), Arg("{tcp|udp|icmp|http|…}")],
+        "Add a protocol to an inspection rule"
+    ),
+    spec!(
+        NoIpInspectName,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("no"), K("ip"), K("inspect"), K("name"), Arg("NAME"), Arg("PROTOCOL")],
+        "Remove a protocol from an inspection rule"
+    ),
+    spec!(
+        NoIpInspectName,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("no"), K("ip"), K("inspect"), K("name"), Arg("NAME")],
+        "Remove the whole inspection rule"
+    ),
+    spec!(IpInspectIf, SEC_IFS, Modes::ROUTER, [K("ip"), K("inspect"), Arg("NAME"), Arg("{in|out}")], "Inspect sessions crossing this interface"),
+    spec!(NoIpInspectIf, SEC_IFS, Modes::ROUTER, [K("no"), K("ip"), K("inspect"), Arg("NAME"), Arg("{in|out}")], "Stop inspecting here"),
+    spec!(ShowIpInspectSessions, EXECS, Modes::ROUTER, [K("show"), K("ip"), K("inspect"), K("sessions")], "Sessions classic inspection opened"),
+    spec!(ShowIpInspectAll, EXECS, Modes::ROUTER, [K("show"), K("ip"), K("inspect"), K("all")], "Inspection rules, where they apply, and sessions"),
+    spec!(
+        ClearInspectSessions,
+        Modes::EXEC,
+        Modes::ROUTER,
+        [K("clear"), K("ip"), K("inspect"), K("sessions")],
+        "Forget classic inspection's sessions"
+    ),
+    spec!(IpMtu, SEC_IFS, Modes::ROUTER, [K("ip"), K("mtu"), Arg("<68-9216>")], "Largest IPv4 packet sent here (larger ones are fragmented)"),
+    spec!(NoIpMtu, SEC_IFS, Modes::ROUTER, [K("no"), K("ip"), K("mtu")], "No IP MTU limit of its own"),
+    spec!(NoIpMtu, SEC_IFS, Modes::ROUTER, [K("no"), K("ip"), K("mtu"), Arg("<68-9216>")], "No IP MTU limit of its own"),
+    spec!(
+        TcpAdjustMss,
+        SEC_IFS,
+        Modes::ROUTER,
+        [K("ip"), K("tcp"), K("adjust-mss"), Arg("<500-1460>")],
+        "Lower the MSS TCP SYNs crossing this interface announce"
+    ),
+    spec!(NoTcpAdjustMss, SEC_IFS, Modes::ROUTER, [K("no"), K("ip"), K("tcp"), K("adjust-mss")], "Leave TCP SYNs alone"),
+    spec!(NoTcpAdjustMss, SEC_IFS, Modes::ROUTER, [K("no"), K("ip"), K("tcp"), K("adjust-mss"), Arg("<500-1460>")], "Leave TCP SYNs alone"),
+    // IKEv2.
+    spec!(Ikev2Proposal, Modes::CONFIG, Modes::ROUTER, [K("crypto"), K("ikev2"), K("proposal"), Arg("NAME")], "Define or edit an IKEv2 proposal"),
+    spec!(NoIkev2Proposal, Modes::CONFIG, Modes::ROUTER, [K("no"), K("crypto"), K("ikev2"), K("proposal"), Arg("NAME")], "Delete an IKEv2 proposal"),
+    spec!(Ikev2Policy, Modes::CONFIG, Modes::ROUTER, [K("crypto"), K("ikev2"), K("policy"), Arg("NAME")], "Define or edit an IKEv2 policy"),
+    spec!(NoIkev2Policy, Modes::CONFIG, Modes::ROUTER, [K("no"), K("crypto"), K("ikev2"), K("policy"), Arg("NAME")], "Delete an IKEv2 policy"),
+    spec!(Ikev2Keyring, Modes::CONFIG, Modes::ROUTER, [K("crypto"), K("ikev2"), K("keyring"), Arg("NAME")], "Define or edit an IKEv2 keyring"),
+    spec!(NoIkev2Keyring, Modes::CONFIG, Modes::ROUTER, [K("no"), K("crypto"), K("ikev2"), K("keyring"), Arg("NAME")], "Delete an IKEv2 keyring"),
+    spec!(Ikev2Profile, Modes::CONFIG, Modes::ROUTER, [K("crypto"), K("ikev2"), K("profile"), Arg("NAME")], "Define or edit an IKEv2 profile"),
+    spec!(NoIkev2Profile, Modes::CONFIG, Modes::ROUTER, [K("no"), K("crypto"), K("ikev2"), K("profile"), Arg("NAME")], "Delete an IKEv2 profile"),
+    spec!(
+        Ikev2Encryption,
+        Modes::IKEV2_PROPOSAL,
+        Modes::ROUTER,
+        [K("encryption"), Rest("{aes-cbc-128|aes-cbc-192|aes-cbc-256|3des} …")],
+        "Ciphers the proposal offers"
+    ),
+    spec!(
+        Ikev2Integrity,
+        Modes::IKEV2_PROPOSAL,
+        Modes::ROUTER,
+        [K("integrity"), Rest("{sha1|sha256|md5} …")],
+        "Integrity algorithms the proposal offers"
+    ),
+    spec!(
+        Ikev2Group,
+        Modes::IKEV2_PROPOSAL,
+        Modes::ROUTER,
+        [K("group"), Rest("{2|5|14|15|16|19|20} …")],
+        "Diffie-Hellman groups the proposal offers"
+    ),
+    spec!(Ikev2PolicyProposal, Modes::IKEV2_POLICY, Modes::ROUTER, [K("proposal"), Arg("NAME")], "Offer this proposal"),
+    spec!(
+        Ikev2PolicyMatchLocal,
+        Modes::IKEV2_POLICY,
+        Modes::ROUTER,
+        [K("match"), K("address"), K("local"), Arg("A.B.C.D")],
+        "Use the policy for this local address only"
+    ),
+    spec!(Ikev2Peer, Modes::IKEV2_KEYRING.or(Modes::IKEV2_PEER), Modes::ROUTER, [K("peer"), Arg("NAME")], "Define or edit a peer's key"),
+    spec!(
+        NoIkev2Peer,
+        Modes::IKEV2_KEYRING.or(Modes::IKEV2_PEER),
+        Modes::ROUTER,
+        [K("no"), K("peer"), Arg("NAME")],
+        "Delete a peer from the keyring"
+    ),
+    spec!(Ikev2PeerAddress, Modes::IKEV2_PEER, Modes::ROUTER, [K("address"), Arg("A.B.C.D")], "The peer's address"),
+    spec!(Ikev2PeerKey, Modes::IKEV2_PEER, Modes::ROUTER, [K("pre-shared-key"), Rest("[local|remote] KEY")], "The key shared with the peer"),
+    spec!(
+        Ikev2MatchRemote,
+        Modes::IKEV2_PROFILE,
+        Modes::ROUTER,
+        [K("match"), K("identity"), K("remote"), K("address"), Rest("A.B.C.D [MASK]")],
+        "Peers this profile is for"
+    ),
+    spec!(
+        Ikev2IdentityLocal,
+        Modes::IKEV2_PROFILE,
+        Modes::ROUTER,
+        [K("identity"), K("local"), K("address"), Arg("A.B.C.D")],
+        "The identity this router presents"
+    ),
+    spec!(
+        Ikev2AuthLocal,
+        Modes::IKEV2_PROFILE,
+        Modes::ROUTER,
+        [K("authentication"), K("local"), Arg("pre-share")],
+        "How this router proves who it is"
+    ),
+    spec!(
+        Ikev2AuthRemote,
+        Modes::IKEV2_PROFILE,
+        Modes::ROUTER,
+        [K("authentication"), K("remote"), Arg("pre-share")],
+        "How the peer proves who it is"
+    ),
+    spec!(Ikev2ProfileKeyring, Modes::IKEV2_PROFILE, Modes::ROUTER, [K("keyring"), K("local"), Arg("NAME")], "The keyring holding the keys"),
+    spec!(CryptoSetIkev2Profile, Modes::CRYPTO_MAP, Modes::ROUTER, [K("set"), K("ikev2-profile"), Arg("NAME")], "Negotiate this entry with IKEv2"),
+    spec!(NoCryptoSetIkev2Profile, Modes::CRYPTO_MAP, Modes::ROUTER, [K("no"), K("set"), K("ikev2-profile")], "Back to IKEv1"),
+    spec!(ShowCryptoIkev2Sa, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("ikev2"), K("sa")], "IKEv2 security associations"),
+    spec!(ShowCryptoIkev2Proposal, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("ikev2"), K("proposal")], "IKEv2 proposals"),
+    spec!(ShowCryptoIkev2Profile, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("ikev2"), K("profile")], "IKEv2 profiles"),
 ];
 
 /// Why a line didn't parse. Positions are word indexes.
@@ -3108,6 +3491,16 @@ mod tests {
                 Modes::OBJECT,
                 Modes::TELEPHONY,
                 Modes::EPHONE,
+                Modes::ZONE,
+                Modes::INSPECT_CLASS,
+                Modes::INSPECT_POLICY,
+                Modes::INSPECT_PCLASS,
+                Modes::ZONE_PAIR,
+                Modes::IKEV2_PROPOSAL,
+                Modes::IKEV2_POLICY,
+                Modes::IKEV2_KEYRING,
+                Modes::IKEV2_PEER,
+                Modes::IKEV2_PROFILE,
             ]
             .into_iter()
             .find(|m| s.modes.has(*m))

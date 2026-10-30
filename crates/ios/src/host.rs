@@ -387,6 +387,7 @@ fn host_ping(t: &Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Strin
     let mut count: u16 = 4;
     let mut size: usize = 32;
     let mut forever = false;
+    let mut df = false;
     let mut target = None;
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -402,8 +403,10 @@ fn host_ping(t: &Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Strin
             }
         } else if a.eq_ignore_ascii_case("-t") {
             forever = true;
+        } else if a.eq_ignore_ascii_case("-f") {
+            df = true;
         } else if a.starts_with('-') {
-            return format!("`{a}` is not a ping option (-n, -l, -t).");
+            return format!("`{a}` is not a ping option (-n, -l, -t, -f).");
         } else {
             target = Some(*a);
         }
@@ -412,7 +415,7 @@ fn host_ping(t: &Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Strin
     if forever {
         count = PING_T_CAP;
     }
-    let opts = PingOptions { count, size, ..PingOptions::default() };
+    let opts = PingOptions { count, size, df, ..PingOptions::default() };
     let (dst, probes): (std::net::IpAddr, _) = if let Ok(dst6) = target.parse::<std::net::Ipv6Addr>() {
         (dst6.into(), sim.ping6(t, dev, dst6, opts))
     } else {
@@ -436,6 +439,9 @@ fn host_ping(t: &Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Strin
         let _ = match p {
             Probe::Reply { from, rtt_us } => writeln!(s, "  seq {seq}: reply from {from}, {} ms", ms(*rtt_us)),
             Probe::TtlExceeded { from, .. } => writeln!(s, "  seq {seq}: {from} says the TTL ran out in transit"),
+            Probe::Unreachable { from, code: 4 } => {
+                writeln!(s, "  seq {seq}: {from} says the packet needs fragmenting but \"don't fragment\" is set")
+            }
             Probe::Unreachable { from, .. } => writeln!(s, "  seq {seq}: {from} says the destination is unreachable"),
             Probe::Timeout => writeln!(s, "  seq {seq}: no answer (timed out)"),
         };

@@ -117,15 +117,15 @@ pub struct FwState {
 
 /// A packet's flow: protocol, addresses and ports (the echo id for ICMP).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Flow {
-    protocol: u8,
-    src: Ipv4Addr,
-    src_port: u16,
-    dst: Ipv4Addr,
-    dst_port: u16,
+pub(crate) struct Flow {
+    pub(crate) protocol: u8,
+    pub(crate) src: Ipv4Addr,
+    pub(crate) src_port: u16,
+    pub(crate) dst: Ipv4Addr,
+    pub(crate) dst_port: u16,
 }
 
-fn flow_of(ip: &Ipv4) -> Flow {
+pub(crate) fn flow_of(ip: &Ipv4) -> Flow {
     let (src_port, dst_port) = match ip.protocol {
         PROTO_TCP => Tcp::decode(&ip.payload, ip.src, ip.dst).map_or((0, 0), |s| (s.src_port, s.dst_port)),
         PROTO_UDP => Udp::decode(&ip.payload, ip.src, ip.dst).map_or((0, 0), |u| (u.src_port, u.dst_port)),
@@ -144,7 +144,7 @@ fn icmp_type(ip: &Ipv4) -> Option<u8> {
 }
 
 /// An ICMP error's parts: whether it is a time-exceeded, its code and the quoted packet.
-fn icmp_error(ip: &Ipv4) -> Option<(bool, u8, Vec<u8>)> {
+pub(crate) fn icmp_error(ip: &Ipv4) -> Option<(bool, u8, Vec<u8>)> {
     if ip.protocol != PROTO_ICMP {
         return None;
     }
@@ -171,7 +171,7 @@ fn u16_at(b: &[u8], at: usize) -> Option<u16> {
 }
 
 /// The flow of the packet an ICMP error quotes.
-fn quoted_flow(original: &[u8]) -> Option<Flow> {
+pub(crate) fn quoted_flow(original: &[u8]) -> Option<Flow> {
     let (ihl, _, proto) = quoted_id_at(original)?;
     let src = addr_at(original, 12)?;
     let dst = addr_at(original, 16)?;

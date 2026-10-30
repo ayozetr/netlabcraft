@@ -293,6 +293,8 @@ pub struct IpsecSa {
     pub started_us: u64,
     /// Quick mode's message ID.
     pub qm_id: u32,
+    /// An IKEv2 exchange's state (`None` for IKEv1).
+    pub v2: Option<Box<crate::ikev2::V2State>>,
 }
 
 /// Where an IKE exchange with a peer stands.
@@ -307,6 +309,10 @@ pub enum IkePhase {
     Quick(u8),
     Established,
     Failed,
+    /// IKEv2: IKE_SA_INIT sent or answered.
+    V2Init,
+    /// IKEv2: IKE_AUTH sent.
+    V2Auth,
 }
 
 impl IkePhase {
@@ -317,6 +323,8 @@ impl IkePhase {
             IkePhase::Quick(n) => format!("quick mode, message {n}"),
             IkePhase::Established => "established".into(),
             IkePhase::Failed => "failed".into(),
+            IkePhase::V2Init => "IKEv2 IKE_SA_INIT".into(),
+            IkePhase::V2Auth => "IKEv2 IKE_AUTH".into(),
         }
     }
 }
@@ -341,6 +349,7 @@ impl Default for IpsecSa {
             rcookie: [0; 8],
             started_us: 0,
             qm_id: 0,
+            v2: None,
         }
     }
 }
@@ -509,6 +518,9 @@ impl Sim {
         let gre = Gre { protocol: ETHERTYPE_IPV4, checksum: false, payload: datagram };
         let mut outer = Ipv4 { id: self.ip_id(), ttl: 255, protocol: PROTO_GRE, src, dst, payload: gre.encode() }.encode();
         crate::qos::copy_ds(&gre.payload, &mut outer);
+        // The outer header copies the inner packet's "don't fragment" (so `ip mtu` on the way can
+        // fragment GRE carrying packets that may be fragmented).
+        netlabcraft_wire::ipfrag::set_dont_fragment(&mut outer, netlabcraft_wire::ipfrag::dont_fragment(&gre.payload));
         if self.state.get(&d.id).is_some_and(|s| s.debug_packet) {
             self.log(d.id, &format!("IP debug: {} encapsulated in GRE {src} → {dst}, out {}", tun.name(), out.name));
         }
@@ -543,6 +555,9 @@ impl Sim {
             return Ok(None);
         }
         let Some(entry) = d.crypto.map(&map).find(|e| e.acl.as_deref().is_some_and(|a| acl_permits(d, a, &ip))).cloned() else { return Ok(None) };
+        if entry.ikev2_profile.is_some() {
+            return self.crypto_out_v2(t, d, out, datagram, &entry);
+        }
         let peer = entry.peer.unwrap_or(Ipv4Addr::UNSPECIFIED);
         let local = out.net.addr;
         let now = self.now;
@@ -646,6 +661,9 @@ impl Sim {
 
     /// An ISAKMP message to this router: the next step of the exchange it belongs to.
     pub(crate) fn ike_in(&mut self, t: &Topology, d: &Device, ip: &Ipv4, payload: &[u8]) -> Result<(), String> {
+        if payload.get(17).is_some_and(|v| v >> 4 == 2) {
+            return self.ike2_in(t, d, ip, payload);
+        }
         let m = Isakmp::decode(payload).map_err(|e| e.to_string())?;
         let (peer, local) = (ip.src, ip.dst);
         if d.crypto.applied.is_empty() && d.crypto.key_for(peer).is_none() {
@@ -851,6 +869,9 @@ impl Sim {
     /// if it had arrived on `ifc`.
     pub(crate) fn esp_in(&mut self, t: &Topology, d: &Device, ifc: &L3If, ip: &Ipv4) -> Result<(), String> {
         let esp = Esp::decode(&ip.payload).map_err(|e| e.to_string())?;
+        if let Some(r) = self.esp_in_v2(t, d, ifc, ip, &esp) {
+            return r;
+        }
         let expects = d.crypto.applied.values().any(|m| d.crypto.map(m).any(|e| e.peer == Some(ip.src)));
         if expects && !self.state.get(&d.id).and_then(|s| s.ipsec.get(&ip.src)).is_some_and(|sa| sa.phase == IkePhase::Established) {
             if let Some(sa) = self.st(d.id).ipsec.get_mut(&ip.src) {

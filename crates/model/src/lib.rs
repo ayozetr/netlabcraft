@@ -28,6 +28,7 @@ pub mod physical;
 pub mod qos;
 pub mod routing;
 pub mod scenario;
+pub mod security;
 pub mod services;
 pub mod voice;
 pub mod vpn;
@@ -965,6 +966,9 @@ pub struct Device {
     /// Routers: the web server, RESTCONF and NETCONF; hosts: the Programming app's requests.
     #[serde(default, skip_serializing_if = "automation::Automation::is_default")]
     pub automation: automation::Automation,
+    /// Routers: zone-based firewall, classic inspection, IP MTU and TCP MSS clamping.
+    #[serde(default, skip_serializing_if = "security::RouterSecurity::is_default")]
+    pub security: security::RouterSecurity,
 }
 
 /// Which side of NAT an interface is on.
@@ -1739,6 +1743,7 @@ impl Device {
             iot: iot::Iot::default(),
             l2: l2sec::SwitchL2::default(),
             automation: automation::Automation::default(),
+            security: security::RouterSecurity::default(),
         };
         d.ensure_default_vlan();
         d
@@ -1803,6 +1808,7 @@ impl Device {
             managed: std::mem::take(&mut self.automation.managed),
             ..automation::Automation::default()
         };
+        self.security = security::RouterSecurity::default();
     }
 
     /// What the workspace shows under the icon.
@@ -2224,6 +2230,7 @@ impl Topology {
                 d.loopbacks.dedup_by_key(|l| l.number);
                 d.crypto.sanitize();
                 d.qos.sanitize();
+                d.security.sanitize();
                 d.firewall.sanitize();
                 d.sanitize_modules();
                 d.voice.sanitize();

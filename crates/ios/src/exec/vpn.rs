@@ -293,7 +293,7 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
                 if crypto.maps.len() >= MAX_CRYPTO {
                     return Err(format!("% At most {MAX_CRYPTO} crypto map entries"));
                 }
-                crypto.maps.push(CryptoMapEntry { map: name.clone(), seq, peer: None, transform_set: None, acl: None });
+                crypto.maps.push(CryptoMapEntry { map: name.clone(), seq, peer: None, transform_set: None, acl: None, ikev2_profile: None });
                 crypto.maps.sort_by(|a, b| (&a.map, a.seq).cmp(&(&b.map, b.seq)));
             }
             c.cli.mode = Mode::CryptoMap(name, seq);
