@@ -1139,7 +1139,19 @@ fn the_firewall_sample_publishes_its_web_server_and_keeps_the_office_private() {
     s.execute("net.ping", json!({"from": "Home", "to": "203.0.113.10", "count": 4})).unwrap();
     assert_eq!(s.execute("net.ping", json!({"from": "Home", "to": "203.0.113.10", "count": 2})).unwrap()["marks"], "!!");
     let acl = cli(&mut s, "FW1", "show access-list");
-    assert!(acl.contains("permit tcp any object WEB eq 80  (hits 1)"), "{acl}");
+    assert!(acl.contains("-- Publish the web server, and let it be pinged"), "{acl}");
+    assert!(acl.contains("permit tcp any object WEB object-group WEB_PORTS  (hits 1)"), "{acl}");
+    // FW1 is not a hop: PC1's traceroute starts at the ISP, whose answers find their way back
+    // through the shared address.
+    let tr = cli(&mut s, "PC1", "tracert 198.51.100.10");
+    assert!(tr.contains("1  203.0.113.1") && tr.contains("2  198.51.100.10") && !tr.contains("192.168.10.1 "), "{tr}");
+    let sp = cli(&mut s, "FW1", "show service-policy");
+    assert!(sp.contains("inspect icmp:") && !sp.contains("inspect icmp: 0 "), "{sp}");
+    assert!(cli(&mut s, "FW1", "show nat detail").contains("Section 2, object NAT"));
+    // FW1 doesn't answer pings on its outside address.
+    s.execute("sim.reset", json!({})).unwrap();
+    assert_eq!(s.execute("net.ping", json!({"from": "Home", "to": "203.0.113.2", "count": 2})).unwrap()["marks"], "..");
+    assert!(trace_text(&s).contains("DROPPED: denied by icmp rule 1 on outside"), "{}", trace_text(&s));
     // But not the office, even with a route to it: the drop says why.
     cli(&mut s, "ISP", "enable");
     cli(&mut s, "ISP", "configure terminal");

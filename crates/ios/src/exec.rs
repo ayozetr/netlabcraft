@@ -80,6 +80,9 @@ pub enum Mode {
     PolicyClass(String, String),
     /// `FW1(config-network-object)#`: the firewall's network object.
     Object(String),
+    /// `FW1(config-network-object-group)#` / `(config-service-object-group)#`: an object group
+    /// (its name, and whether it is a service group).
+    ObjectGroup(String, bool),
 }
 
 impl Mode {
@@ -108,7 +111,7 @@ impl Mode {
             Mode::ClassMap(_) => Modes::CLASS_MAP,
             Mode::PolicyMap(_) => Modes::POLICY_MAP,
             Mode::PolicyClass(..) => Modes::POLICY_CLASS,
-            Mode::Object(_) => Modes::OBJECT,
+            Mode::Object(_) | Mode::ObjectGroup(..) => Modes::OBJECT,
         }
     }
 }
@@ -422,6 +425,8 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::PolicyMap(_) => format!("{n}(config-pmap)#"),
         Mode::PolicyClass(..) => format!("{n}(config-pmap-c)#"),
         Mode::Object(_) => format!("{n}(config-network-object)#"),
+        Mode::ObjectGroup(_, false) => format!("{n}(config-network-object-group)#"),
+        Mode::ObjectGroup(_, true) => format!("{n}(config-service-object-group)#"),
     }
 }
 
@@ -627,6 +632,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::PolicyMap(_)
                 | Mode::PolicyClass(..)
                 | Mode::Object(_)
+                | Mode::ObjectGroup(..)
         )
         && let Ok(r) = grammar::resolve(&words, Modes::CONFIG, dbits)
     {
@@ -679,7 +685,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::CryptoMap(..)
                 | Mode::ClassMap(_)
                 | Mode::PolicyMap(_)
-                | Mode::Object(_) => Mode::Config,
+                | Mode::Object(_)
+                | Mode::ObjectGroup(..) => Mode::Config,
                 // A class inside a policy map goes back to the policy map.
                 Mode::PolicyClass(ref p, _) => Mode::PolicyMap(p.clone()),
             };
@@ -989,7 +996,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let p = c.dm()?.ports.get_mut(r.port).ok_or("% No such port")?;
             let before = p.subifs.len();
             p.subifs.retain(|s| s.number != n);
-            if p.subifs.len() == before { Err("% No such subinterface".into()) } else { Ok(String::new()) }
+            if p.subifs.len() == before {
+                return Err("% No such subinterface".into());
+            }
+            firewall::forget_subif(c.dm()?, r.port, n);
+            Ok(String::new())
         }
         Id::IpRoute => c.ip_route(arg(0), arg(1), Some(arg(2)), true),
         Id::NoIpRoute => c.ip_route(arg(0), arg(1), args.get(2).map(String::as_str), false),
@@ -1591,7 +1602,32 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::FwShowObjects
         | Id::FwClearConn
         | Id::FwClearXlate
-        | Id::FwClearAclCounters => firewall::command(&mut c, spec.id, &args, line),
+        | Id::FwClearAclCounters
+        | Id::FwObjectGroup
+        | Id::FwNoObjectGroup
+        | Id::FwGrpMember
+        | Id::FwGrpNoMember
+        | Id::FwAclRemark
+        | Id::FwNoAclRemark
+        | Id::FwIcmp
+        | Id::FwNoIcmp
+        | Id::FwTwiceNat
+        | Id::FwNoTwiceNat
+        | Id::FwShowNatDetail
+        | Id::FwShowObjectGroup
+        | Id::FwClassMap
+        | Id::FwNoClassMap
+        | Id::FwClassMatch
+        | Id::FwNoClassMatch
+        | Id::FwPolicyMap
+        | Id::FwNoPolicyMap
+        | Id::FwPolicyClass
+        | Id::FwNoPolicyClass
+        | Id::FwPolicyAction
+        | Id::FwNoPolicyAction
+        | Id::FwServicePolicy
+        | Id::FwNoServicePolicy
+        | Id::FwShowServicePolicy => firewall::command(&mut c, spec.id, &args, line),
         Id::WlanAdd | Id::NoWlan | Id::CapwapController | Id::NoCapwapController | Id::ShowWlan | Id::ShowCapwap => {
             wlan::command(&mut c, spec.id, &args)
         }
@@ -3523,9 +3559,6 @@ impl Ctx<'_> {
         if parsed.sub.is_some() && d.kind != DeviceKind::Router {
             return Err("% Subinterfaces exist only on routers".into());
         }
-        if parsed.sub.is_some() && packetcraft_model::firewall::is_firewall(d) {
-            return Err("% The firewall's interfaces have no subinterfaces".into());
-        }
         Ok(IfRef { port, sub: parsed.sub })
     }
 
@@ -3693,7 +3726,7 @@ impl Ctx<'_> {
         if let Some(n) = r.sub
             && d.ports.get(r.port).and_then(|p| p.subif(n)).is_none_or(|s| s.vlan.is_none())
         {
-            return Err("% Set `encapsulation dot1Q <vlan>` on the subinterface first".into());
+            return Err("% Set `encapsulation dot1Q <vlan>` (on the firewall: `vlan <vlan>`) on the subinterface first".into());
         }
         self.each_if(|p, sub| {
             match sub {

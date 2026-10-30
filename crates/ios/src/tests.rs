@@ -2782,6 +2782,14 @@ fn firewall_lab() -> FwLab {
         object network WEB
         host 172.16.1.10
         nat (dmz,outside) static 203.0.113.10
+        class-map inspection_default
+        match default-inspection-traffic
+        policy-map global_policy
+        class inspection_default
+        inspect icmp
+        exit
+        exit
+        service-policy global_policy global
         end",
     );
     lab.run(
@@ -2979,7 +2987,28 @@ fn firewall_mistakes_are_refused() {
         ("no object network NOPE", "No network object NOPE"),
         ("ip route 0.0.0.0 0.0.0.0 1.2.3.4", "Not understood"),
         ("vlan 10", "Not understood"),
-        ("interface g1/1.10", "no subinterfaces"),
+        ("icmp permit any nowhere", "No interface is named nowhere"),
+        ("icmp allow any inside", "permit or deny"),
+        ("icmp permit 10.0.0.0 0.0.0.255 inside", "masks, not wildcards"),
+        ("access-list A remark", "Incomplete command"),
+        ("access-list A extended permit icmp any any bogus", "not an ICMP type"),
+        ("access-list A extended permit tcp object-group NOPE any", "no network object group NOPE"),
+        ("access-list A extended permit object-group NOPE any any", "no service object group NOPE"),
+        ("nat (inside,outside) source static NOPE WEB", "not a network object or group"),
+        ("nat (inside,outside) source static WEB interface", "for dynamic rules"),
+        ("nat (inside,outside) source dynamic WEB NOPE", "not a network object with an address"),
+        ("nat (inside,outside) source static WEB WEB destination static NOPE WEB", "NOPE is not a network object"),
+        ("nat (inside,outside) source static WEB WEB destination", "destination static"),
+        ("no nat (inside,outside) source static WEB WEB", "No such NAT rule"),
+        ("object-group service S bogus", "tcp, udp or tcp-udp"),
+        ("object-group network WEB", "another kind"),
+        ("no object-group network NOPE", "No network object group NOPE"),
+        ("class-map class-default", "can't name a class map"),
+        ("service-policy NOPE global", "No policy map NOPE"),
+        ("no service-policy NOPE global", "not the global policy"),
+        ("no class-map inspection_default", "Policy map global_policy uses inspection_default"),
+        ("no policy-map global_policy", "is the global policy"),
+        ("route outside 10.0.0.0 255.0.0.0 203.0.113.1 0", "1-255"),
     ] {
         let out = lab.try_run(fw, line);
         assert!(out.contains(why), "`{line}`: {out}");
@@ -3007,7 +3036,7 @@ fn firewall_mistakes_are_refused() {
     // A global command leaves the object; an object used by a rule can't be deleted.
     lab.run(fw, "access-list A extended permit ip any object EMPTY");
     assert_eq!(lab.prompt(fw), "FW1(config)#");
-    assert!(lab.try_run(fw, "no object network EMPTY").contains("Access list A uses EMPTY"));
+    assert!(lab.try_run(fw, "no object network EMPTY").contains("EMPTY is used by access list A"));
     lab.run(fw, "no access-list A extended permit ip any object EMPTY\nno object network EMPTY");
     assert!(lab.run(fw, "do show object").contains("WEB"));
     // Renaming an interface carries its rules along.
@@ -3021,9 +3050,347 @@ fn firewall_mistakes_are_refused() {
 }
 
 #[test]
+fn traceroute_from_inside_crosses_the_firewall_and_its_nat() {
+    let FwLab { mut lab, fw, pc1, .. } = firewall_lab();
+    // The firewall is not a hop: the ISP router answers the first probe, and its "time
+    // exceeded" (sent to the shared outside address) is translated back to PC1.
+    let tr = lab.run(pc1, "tracert 198.51.100.10");
+    assert!(tr.contains("1  203.0.113.1") && tr.contains("2  198.51.100.10"), "{tr}");
+    assert!(!tr.contains("192.168.1.1 "), "{tr}");
+    let sp = lab.run(fw, "show service-policy");
+    assert!(sp.contains("Global policy: global_policy") && sp.contains("inspect icmp:"), "{sp}");
+    // Counted as a hop when the policy says so.
+    lab.run(fw, "conf t\npolicy-map global_policy\nclass inspection_default\nset connection decrement-ttl\nend");
+    let tr = lab.run(pc1, "tracert 198.51.100.10");
+    assert!(tr.contains("1  192.168.1.1") && tr.contains("2  203.0.113.1") && tr.contains("3  198.51.100.10"), "{tr}");
+    assert!(lab.run(fw, "show service-policy").contains("set connection decrement-ttl"));
+    assert!(
+        lab.run(fw, "show running-config")
+            .contains("policy-map global_policy\n class inspection_default\n  inspect icmp\n  set connection decrement-ttl")
+    );
+    lab.run(fw, "conf t\npolicy-map global_policy\nclass inspection_default\nno set connection decrement-ttl\nend");
+
+    // Without `inspect icmp`, ICMP is not tracked: replies and errors are new packets from
+    // level 0 to level 100, and need a rule.
+    lab.run(fw, "conf t\npolicy-map global_policy\nclass inspection_default\nno inspect icmp\nend");
+    lab.run(fw, "clear conn");
+    let out = lab.run(pc1, "ping 198.51.100.10");
+    assert!(out.contains("0 answered"), "{out}");
+    assert!(lab.run(fw, "show logging").contains("denied: from security level 0 to 100 without an access rule"));
+    assert!(lab.run(fw, "show conn").starts_with("0 connections"));
+    let tr = lab.run(pc1, "tracert 198.51.100.10");
+    assert!(!tr.contains("203.0.113.1"), "{tr}");
+    lab.run(
+        fw,
+        "conf t
+        access-list OUTSIDE_IN extended permit icmp any any echo-reply
+        access-list OUTSIDE_IN extended permit icmp any any time-exceeded
+        access-group OUTSIDE_IN in interface outside
+        end",
+    );
+    let out = lab.run(pc1, "ping 198.51.100.10");
+    assert!(out.contains("4 answered"), "{out}");
+    assert!(lab.run(fw, "show conn").starts_with("0 connections"), "nothing tracked");
+    let tr = lab.run(pc1, "tracert 198.51.100.10");
+    assert!(tr.contains("1  203.0.113.1") && tr.contains("2  198.51.100.10"), "{tr}");
+    let acl = lab.run(fw, "show access-list OUTSIDE_IN");
+    assert!(acl.contains("1. permit icmp any any echo-reply  (hits ") && acl.contains("2. permit icmp any any time-exceeded  (hits "), "{acl}");
+    assert!(!acl.contains("time-exceeded  (hits 0)"), "{acl}");
+}
+
+#[test]
+fn the_firewall_answers_icmp_per_its_icmp_rules() {
+    let FwLab { mut lab, fw, isp, pc1, pc3, .. } = firewall_lab();
+    lab.run(pc3, "ipconfig 192.168.1.11 255.255.255.0 192.168.1.1");
+    lab.run(pc3, "ping 192.168.1.1");
+    // No rules: every interface answers pings to its own address (and only to it).
+    assert!(lab.run(pc1, "ping 192.168.1.1").contains("4 answered"));
+    assert!(lab.run(pc1, "ping 203.0.113.2").contains("0 answered"));
+    assert!(lab.run(isp, "ping 203.0.113.2").contains("!!!!!"));
+    // The first matching rule of the interface decides; with rules, the rest is denied.
+    lab.run(fw, "conf t\nicmp deny any inside\nicmp permit host 192.168.1.10 echo inside\nend");
+    assert!(lab.run(pc1, "ping 192.168.1.1").contains("0 answered"));
+    assert!(lab.run(fw, "show logging").contains("denied by icmp rule 1 on inside"));
+    lab.run(fw, "conf t\nno icmp deny any inside\nend");
+    assert!(lab.run(pc1, "ping 192.168.1.1").contains("4 answered"));
+    assert!(lab.run(pc3, "ping 192.168.1.1").contains("0 answered"));
+    assert!(lab.run(fw, "show logging").contains("denied: no icmp rule on inside permits it"));
+    // Outside: the firewall's own pings need their replies let in.
+    lab.run(fw, "conf t\nicmp permit any echo-reply outside\nicmp deny any outside\nend");
+    assert!(!lab.run(isp, "ping 203.0.113.2").contains("!!!!!"));
+    assert!(lab.run(fw, "ping 198.51.100.10").contains("!!!!!"));
+    let run = lab.run(fw, "show running-config");
+    for want in ["icmp permit host 192.168.1.10 echo inside", "icmp permit any echo-reply outside", "icmp deny any outside"] {
+        assert!(run.contains(want), "missing {want}:\n{run}");
+    }
+    // Rules leave with their interface's name, and follow a rename.
+    lab.run(fw, "conf t\ninterface g1/2\nnameif internet\nend");
+    assert!(lab.run(fw, "show running-config").contains("icmp deny any internet"));
+}
+
+#[test]
+fn firewall_subinterfaces_carry_named_vlans_over_a_trunk() {
+    let FwLab { mut lab, fw, .. } = firewall_lab();
+    let sw = lab.add(DeviceKind::Switch);
+    let staff = lab.add(DeviceKind::Pc);
+    let guest = lab.add(DeviceKind::Pc);
+    lab.cable(fw, "g1/4", sw, "g0/1");
+    lab.cable(staff, "fa0", sw, "fa0/1");
+    lab.cable(guest, "fa0", sw, "fa0/2");
+    lab.run(sw, "en\nconf t\nvlan 10\nvlan 20\nint fa0/1\nsw acc vlan 10\nint fa0/2\nsw acc vlan 20\nint g0/1\nsw mode trunk\nend");
+    lab.run(
+        fw,
+        "conf t
+        interface g1/4
+        no shutdown
+        interface g1/4.10
+        vlan 10
+        nameif staff
+        security-level 80
+        ip address 10.10.0.1 255.255.255.0
+        interface g1/4.20
+        vlan 20
+        nameif guest
+        security-level 20
+        ip address 10.20.0.1 255.255.255.0
+        end",
+    );
+    assert_eq!(lab.prompt(fw), "FW1#");
+    lab.run(staff, "ipconfig 10.10.0.5 255.255.255.0 10.10.0.1");
+    lab.run(guest, "ipconfig 10.20.0.5 255.255.255.0 10.20.0.1");
+    lab.run(staff, "ping 10.20.0.5");
+    lab.run(guest, "ping 10.20.0.1");
+    // Staff (80) reaches guests (20); guests don't start anything towards staff.
+    assert!(lab.run(staff, "ping 10.20.0.5").contains("4 answered"));
+    assert!(lab.run(guest, "ping 10.10.0.5").contains("0 answered"));
+    assert!(lab.run(fw, "show logging").contains("from security level 20 to 80 without an access rule"));
+    // Both reach the outside through the firewall's address.
+    assert!(lab.run(staff, "ping 198.51.100.10").contains("0 answered"), "no NAT rule covers 10.10.0.0/24 yet");
+    lab.run(fw, "conf t\nobject network STAFF\nsubnet 10.10.0.0 255.255.255.0\nnat (staff,outside) dynamic interface\nend");
+    assert!(lab.run(staff, "ping 198.51.100.10").contains("4 answered"));
+    let names = lab.run(fw, "show nameif");
+    assert!(names.contains(&format!("{:<22} {:<14} {:<15} {}", "GigabitEthernet1/4.10", "staff", "80", "10")), "{names}");
+    assert!(names.contains(&format!("{:<22} {:<14} {:<15} {}", "GigabitEthernet1/4.20", "guest", "20", "20")), "{names}");
+    assert!(lab.run(fw, "show interface ip brief").contains("GigabitEthernet1/4.10  staff        10.10.0.1/24       up     up"));
+    let run = lab.run(fw, "show running-config");
+    assert!(
+        run.contains(
+            "interface GigabitEthernet1/4.10\n vlan 10\n nameif staff\n security-level 80\n ip address 10.10.0.1 255.255.255.0\n no shutdown"
+        ),
+        "{run}"
+    );
+    let other = add_firewall(&mut lab);
+    let failed = apply_config(&mut lab.t, &mut lab.sim, other, &run.replace("hostname FW1", "hostname FW2"));
+    assert!(failed.is_empty(), "{failed:?}");
+    assert_eq!(running_config(lab.t.device(other).unwrap()), run.replace("FW1", "FW2"));
+    // A deleted subinterface takes its name (and what used it) along.
+    lab.run(fw, "conf t\naccess-list G extended permit ip any any\naccess-group G in interface guest\nno interface g1/4.20\nend");
+    assert!(!lab.run(fw, "show nameif").contains("guest"));
+    assert!(!lab.run(fw, "show running-config").contains("access-group G"));
+    lab.try_run(fw, "conf t");
+    assert!(lab.try_run(fw, "route guest 0.0.0.0 0.0.0.0 10.20.0.9").contains("No interface is named guest"));
+}
+
+#[test]
+fn object_groups_remarks_outbound_lists_and_hairpins() {
+    let FwLab { mut lab, fw, pc1, pc2, pc3, web, .. } = firewall_lab();
+    lab.run(
+        fw,
+        "conf t
+        object-group network HOME_PCS
+        network-object host 198.51.100.10
+        network-object 198.51.100.128 255.255.255.128
+        object-group network ANYONE_HOME
+        group-object HOME_PCS
+        object-group service WEB_PORTS tcp
+        port-object eq www
+        port-object eq https
+        object-group service PINGS
+        service-object icmp
+        access-list OUTSIDE_IN remark Home may browse the DMZ server
+        access-list OUTSIDE_IN extended permit tcp object-group ANYONE_HOME object WEB object-group WEB_PORTS
+        access-list OUTSIDE_IN remark and ping it
+        access-list OUTSIDE_IN extended permit object-group PINGS object-group HOME_PCS object WEB
+        access-group OUTSIDE_IN in interface outside
+        end",
+    );
+    assert_eq!(lab.prompt(fw), "FW1#");
+    let target: std::net::Ipv4Addr = "203.0.113.10".parse().unwrap();
+    let (status, _) = lab.sim.http_get(&lab.t, pc2, target, "203.0.113.10", "/").unwrap();
+    assert!(status.starts_with("200"), "{status}");
+    assert!(lab.run(pc2, "ping 203.0.113.10").contains("4 answered"));
+    let acl = lab.run(fw, "show access-list");
+    assert!(
+        acl.contains("-- Home may browse the DMZ server\n    1. permit tcp object-group ANYONE_HOME object WEB object-group WEB_PORTS  (hits 1)"),
+        "{acl}"
+    );
+    assert!(acl.contains("-- and ping it\n    2. permit object-group PINGS object-group HOME_PCS object WEB  (hits 4)"), "{acl}");
+    let groups = lab.run(fw, "show object-group");
+    assert!(groups.contains("object-group network ANYONE_HOME (1 member)\n  group-object HOME_PCS"), "{groups}");
+    assert!(groups.contains("object-group service WEB_PORTS (tcp ports, 2 members)\n  port-object eq 80\n  port-object eq 443"), "{groups}");
+    // In use, a group can't go; nesting can't loop.
+    lab.try_run(fw, "conf t");
+    assert!(lab.try_run(fw, "no object-group network HOME_PCS").contains("HOME_PCS is used by"));
+    lab.run(fw, "object-group network HOME_PCS");
+    assert_eq!(lab.prompt(fw), "FW1(config-network-object-group)#");
+    assert!(lab.try_run(fw, "group-object ANYONE_HOME").contains("groups can't hold each other"));
+    assert!(lab.try_run(fw, "port-object eq 80").contains("network group holds"));
+    lab.run(fw, "object-group service PINGS");
+    assert_eq!(lab.prompt(fw), "FW1(config-service-object-group)#");
+    assert!(lab.try_run(fw, "port-object eq 80").contains("groups of ports"));
+    lab.run(fw, "end");
+
+    // An outbound list: checked on the way out of the DMZ, whoever sends.
+    lab.run(fw, "conf t\naccess-list TO_DMZ extended deny icmp any any\naccess-list TO_DMZ extended permit ip any any\naccess-group TO_DMZ out interface dmz\nend");
+    assert!(lab.run(pc1, "ping 172.16.1.10").contains("0 answered"));
+    assert!(lab.run(fw, "show logging").contains("denied by access-group TO_DMZ out on dmz (rule 1)"));
+    assert!(lab.run(fw, "show access-list TO_DMZ").contains("checks traffic out on dmz"));
+    assert!(lab.run(web, "ping 192.168.1.10").contains("0 answered"), "the DMZ still can't reach the inside");
+
+    // Hairpin: a route back out of the inside needs intra-interface.
+    lab.run(pc3, "ipconfig 192.168.1.20 255.255.255.0 192.168.1.1");
+    lab.run(fw, "conf t\nroute inside 10.99.0.0 255.255.0.0 192.168.1.20\nend");
+    lab.run(pc1, "ping 10.99.0.5");
+    assert!(lab.run(fw, "show logging").contains("same-security-traffic permit intra-interface allows that"));
+    lab.run(fw, "conf t\nsame-security-traffic permit intra-interface\nend");
+    lab.run(fw, "clear conn");
+    lab.run(pc1, "ping 10.99.0.5");
+    let conn = lab.run(fw, "show conn");
+    assert!(conn.contains("icmp inside 192.168.1.10:") && conn.contains("→ inside 10.99.0.5:"), "{conn}");
+
+    let run = lab.run(fw, "show running-config");
+    for want in [
+        "object-group network HOME_PCS\n network-object host 198.51.100.10\n network-object 198.51.100.128 255.255.255.128",
+        "object-group network ANYONE_HOME\n group-object HOME_PCS",
+        "object-group service WEB_PORTS tcp\n port-object eq 80\n port-object eq 443",
+        "object-group service PINGS\n service-object icmp",
+        "access-list OUTSIDE_IN remark Home may browse the DMZ server\naccess-list OUTSIDE_IN extended permit tcp object-group ANYONE_HOME object WEB object-group WEB_PORTS\naccess-list OUTSIDE_IN remark and ping it",
+        "access-group TO_DMZ out interface dmz",
+        "same-security-traffic permit intra-interface",
+    ] {
+        assert!(run.contains(want), "missing {want}:\n{run}");
+    }
+    let other = add_firewall(&mut lab);
+    let failed = apply_config(&mut lab.t, &mut lab.sim, other, &run.replace("hostname FW1", "hostname FW2"));
+    assert!(failed.is_empty(), "{failed:?}");
+    assert_eq!(running_config(lab.t.device(other).unwrap()), run.replace("FW1", "FW2"));
+    // Removing a rule keeps the remarks in their place.
+    lab.run(fw, "conf t\nno access-list OUTSIDE_IN extended permit tcp object-group ANYONE_HOME object WEB object-group WEB_PORTS\nno access-list OUTSIDE_IN remark and ping it\nend");
+    let acl = lab.run(fw, "show access-list OUTSIDE_IN");
+    assert!(acl.contains("-- Home may browse the DMZ server\n    1. permit object-group PINGS"), "{acl}");
+}
+
+#[test]
+fn twice_nat_translates_sources_and_destinations_by_rule() {
+    let FwLab { mut lab, fw, pc1, pc2, .. } = firewall_lab();
+    lab.run(
+        fw,
+        "conf t
+        object network PC1_REAL
+        host 192.168.1.10
+        object network PC1_MAPPED
+        host 203.0.113.50
+        object network PC2_ALIAS
+        host 10.200.0.10
+        object network PC2_REAL
+        host 198.51.100.10
+        nat (inside,outside) source static PC1_REAL PC1_MAPPED
+        end",
+    );
+    // The ISP learns where 203.0.113.50 is first (the firewall answers ARP for it).
+    lab.run(pc1, "ping 198.51.100.10");
+    // Twice NAT comes before object NAT: PC1 leaves as 203.0.113.50, not the shared address.
+    assert!(lab.run(pc1, "ping 198.51.100.10").contains("4 answered"));
+    let xlate = lab.run(fw, "show xlate");
+    assert!(xlate.contains("static   inside 192.168.1.10 ↔ outside 203.0.113.50  (twice 1)") && xlate.contains("0 dynamic"), "{xlate}");
+    let detail = lab.run(fw, "show nat detail");
+    assert!(detail.contains("Section 1, twice NAT"), "{detail}");
+    assert!(detail.contains("1. nat (inside,outside) source static PC1_REAL PC1_MAPPED"), "{detail}");
+    assert!(detail.contains("source 192.168.1.10 → 203.0.113.50 (one to one, both directions)"), "{detail}");
+    assert!(detail.contains("translated 8 times, undone 7 times") || detail.contains("translated 8 times, undone 8 times"), "{detail}");
+    assert!(detail.contains("Section 2, object NAT") && detail.contains("object WEB: nat (dmz,outside) static 203.0.113.10"), "{detail}");
+    // Static both ways: the outside can open connections to the mapped address, with a rule.
+    lab.run(fw, "conf t\naccess-list OUTSIDE_IN extended permit icmp any object PC1_REAL\naccess-group OUTSIDE_IN in interface outside\nend");
+    assert!(lab.run(pc2, "ping 203.0.113.50").contains("4 answered"));
+
+    // With a destination: PC1 reaches PC2 by an alias, and sees answers from the alias.
+    lab.run(
+        fw,
+        "conf t
+        no nat (inside,outside) source static PC1_REAL PC1_MAPPED
+        nat (inside,outside) source static PC1_REAL PC1_MAPPED destination static PC2_ALIAS PC2_REAL
+        end",
+    );
+    let out = lab.run(pc1, "ping 10.200.0.10");
+    assert!(out.contains("reply from 10.200.0.10") && out.contains("4 answered"), "{out}");
+    assert!(lab.run(fw, "show nat detail").contains("destination 10.200.0.10 → 198.51.100.10"));
+    // Elsewhere, PC1 still leaves by the shared address.
+    lab.run(pc1, "ping 198.51.100.1");
+    assert!(lab.run(fw, "show xlate").contains("dynamic  icmp inside 192.168.1.10:"));
+
+    // Dynamic, to the interface.
+    lab.run(
+        fw,
+        "conf t
+        no nat (inside,outside) source static PC1_REAL PC1_MAPPED destination static PC2_ALIAS PC2_REAL
+        object-group network LAN
+        network-object 192.168.1.0 255.255.255.0
+        nat (inside,outside) source dynamic LAN interface
+        end",
+    );
+    lab.run(fw, "clear xlate");
+    assert!(lab.run(pc1, "ping 198.51.100.10").contains("4 answered"));
+    let xlate = lab.run(fw, "show xlate");
+    assert!(xlate.contains("→ outside 203.0.113.2:") && xlate.contains("(twice 1)"), "{xlate}");
+    let run = lab.run(fw, "show running-config");
+    assert!(run.contains("nat (inside,outside) source dynamic LAN interface"), "{run}");
+    lab.try_run(fw, "conf t");
+    assert!(lab.try_run(fw, "no object-group network LAN").contains("used by a twice NAT rule"));
+    let other = add_firewall(&mut lab);
+    let failed = apply_config(&mut lab.t, &mut lab.sim, other, &run.replace("hostname FW1", "hostname FW2"));
+    assert!(failed.is_empty(), "{failed:?}");
+    assert_eq!(running_config(lab.t.device(other).unwrap()), run.replace("FW1", "FW2"));
+}
+
+#[test]
+fn firewall_routes_keep_their_distance() {
+    let FwLab { mut lab, fw, .. } = firewall_lab();
+    lab.run(fw, "conf t\nroute outside 10.0.0.0 255.0.0.0 203.0.113.1 5\nend");
+    let routes = lab.run(fw, "show route");
+    assert!(routes.contains("Gateway of last resort: 203.0.113.1 on outside"), "{routes}");
+    assert!(routes.contains("[5/0] via 203.0.113.1, outside") && routes.contains("[1/0] via 203.0.113.1, outside"), "{routes}");
+    assert!(routes.contains("connected, inside"), "{routes}");
+    let run = lab.run(fw, "show running-config");
+    assert!(run.contains("route outside 10.0.0.0 255.0.0.0 203.0.113.1 5") && run.contains("route outside 0.0.0.0 0.0.0.0 203.0.113.1 1"), "{run}");
+    // Typed again without one, it is back to 1; removed, its distance goes too.
+    lab.run(fw, "conf t\nroute outside 10.0.0.0 255.0.0.0 203.0.113.1\nend");
+    assert!(lab.run(fw, "show running-config").contains("route outside 10.0.0.0 255.0.0.0 203.0.113.1 1"));
+    lab.run(fw, "conf t\nroute outside 10.0.0.0 255.0.0.0 203.0.113.1 7\nno route outside 10.0.0.0 255.0.0.0 203.0.113.1\nend");
+    assert!(!lab.run(fw, "show route").contains("10.0.0.0"));
+    assert!(lab.t.device(fw).unwrap().firewall.route_distances.is_empty());
+}
+
+#[test]
 fn every_firewall_command_survives_hostile_arguments() {
-    let hostile =
-        ["", "0", "-1", "99999999999999999999", "1.2.3.4", "255.255.255.255", "(a,b)", "(inside,outside)", "1.1.1.1-1.1.1.0", "ä€😀", "%s%n"];
+    let hostile = [
+        "",
+        "0",
+        "-1",
+        "99999999999999999999",
+        "1.2.3.4",
+        "255.255.255.255",
+        "(a,b)",
+        "(inside,outside)",
+        "1.1.1.1-1.1.1.0",
+        "ä€😀",
+        "%s%n",
+        "host 1.2.3.4 echo inside",
+        "static WEB WEB destination static WEB WEB",
+        "dynamic G interface",
+        "range 9 1",
+        "icmp destination eq 1",
+        "object-group G",
+    ];
     let huge = "x".repeat(10_000);
     let base = firewall_lab();
     let fw = base.fw;
@@ -3045,6 +3412,13 @@ fn every_firewall_command_survives_hostile_arguments() {
                 "en\nconf t\nint g1/5",
                 "en\nconf t\nobject network X",
                 "en\nconf t\nobject network WEB",
+                "en\nconf t\nobject-group network G",
+                "en\nconf t\nobject-group service S tcp",
+                "en\nconf t\nobject-group service T",
+                "en\nconf t\nclass-map inspection_default",
+                "en\nconf t\npolicy-map global_policy\nclass inspection_default",
+                "en\nconf t\npolicy-map P",
+                "en\nconf t\nint g1/5.7",
             ] {
                 let mut lab = Lab { t: base.lab.t.clone(), sim: base.lab.sim.clone(), clis: Default::default() };
                 for l in setup.lines() {
@@ -3054,6 +3428,10 @@ fn every_firewall_command_survives_hostile_arguments() {
                 let _ = lab.try_run(fw, &format!("{} ?", line.join(" ")));
                 let _ = lab.try_run(fw, "do show run");
                 let _ = lab.try_run(fw, "do show xlate");
+                let _ = lab.try_run(fw, "do show nat detail");
+                let _ = lab.try_run(fw, "do show service-policy");
+                let _ = lab.try_run(fw, "do show object-group");
+                let _ = lab.try_run(fw, "do show route");
             }
         }
     }

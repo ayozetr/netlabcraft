@@ -611,10 +611,12 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no spanning-tree portfast` | interface | switch | Not an edge port |
 | `show spanning-tree` | user, privileged | switch | Spanning trees of every VLAN |
 | `show spanning-tree vlan <1-4094>` | user, privileged | switch | One VLAN's spanning tree |
-| `nameif NAME` | interface | firewall | Name the interface (rules, routes and NAT refer to it by this name) |
-| `no nameif` | interface | firewall | Take the name away: the interface stops passing traffic |
-| `security-level <0-100>` | interface | firewall | How trusted the interface is (100 most, 0 least) |
-| `no security-level` | interface | firewall | Back to level 0 |
+| `nameif NAME` | interface, subinterface | firewall | Name the interface (rules, routes and NAT refer to it by this name) |
+| `no nameif` | interface, subinterface | firewall | Take the name away: the interface stops passing traffic |
+| `security-level <0-100>` | interface, subinterface | firewall | How trusted the interface is (100 most, 0 least) |
+| `no security-level` | interface, subinterface | firewall | Back to level 0 |
+| `vlan <1-4094>` | subinterface | firewall | The 802.1Q VLAN the subinterface sends and accepts |
+| `no interface <subinterface>` | config | firewall | Delete a subinterface |
 | `route IFNAME A.B.C.D MASK GATEWAY` | config | firewall | A static route out of a named interface |
 | `route IFNAME A.B.C.D MASK GATEWAY <1-255>` | config | firewall | A static route out of a named interface, with a distance |
 | `no route IFNAME A.B.C.D MASK GATEWAY` | config | firewall | Remove a static route |
@@ -653,6 +655,47 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `clear conn` | privileged | firewall | Forget every tracked connection |
 | `clear xlate` | privileged | firewall | Forget the dynamic translations |
 | `clear access-list counters` | privileged | firewall | Reset access-list hit counts |
+| `same-security-traffic permit intra-interface` | config | firewall | Let traffic leave by the interface it came in on (hairpin) |
+| `no same-security-traffic permit intra-interface` | config | firewall | Traffic never leaves by the interface it came in on |
+| `access-group ACL out interface IFNAME` | config | firewall | Check traffic leaving by an interface against an access list |
+| `no access-group ACL out interface IFNAME` | config | firewall | Stop checking traffic leaving by the interface |
+| `access-list NAME remark TEXT` | config | firewall | A note shown before the list's next rule |
+| `no access-list NAME remark TEXT` | config | firewall | Delete a note from an access list |
+| `object-group network NAME` | config | firewall | Create or edit a group of addresses |
+| `object-group service NAME` | config | firewall | Create or edit a group of services |
+| `object-group service NAME {tcp\|udp\|tcp-udp}` | config | firewall | Create or edit a group of ports for TCP, UDP or both |
+| `no object-group network NAME` | config | firewall | Delete a group of addresses |
+| `no object-group service NAME` | config | firewall | Delete a group of services |
+| `network-object {host A.B.C.D\|A.B.C.D MASK\|object NAME}` | object | firewall | Add addresses to the network group |
+| `group-object NAME` | object | firewall | Add another group of the same kind |
+| `port-object {eq PORT\|range PORT PORT}` | object | firewall | Add ports to the service group |
+| `service-object {ip\|icmp\|tcp\|udp} [destination {eq PORT\|range PORT PORT}]` | object | firewall | Add a service to the service group |
+| `no network-object …` | object | firewall | Remove addresses from the group |
+| `no group-object NAME` | object | firewall | Remove a nested group |
+| `no port-object …` | object | firewall | Remove ports from the group |
+| `no service-object …` | object | firewall | Remove a service from the group |
+| `icmp {permit\|deny} {any\|host A.B.C.D\|A.B.C.D MASK} [TYPE] IFNAME` | config | firewall | Which ICMP the firewall answers on an interface (to its own address) |
+| `no icmp {permit\|deny} SOURCE [TYPE] IFNAME` | config | firewall | Remove an icmp rule |
+| `nat (REAL,MAPPED) source {static\|dynamic} REAL-OBJ {MAPPED-OBJ\|interface} [destination static MAPPED-OBJ REAL-OBJ]` | config | firewall | Twice NAT: translate the source, and the destination too, by rule |
+| `no nat (REAL,MAPPED) source …` | config | firewall | Remove a twice NAT rule |
+| `show nat detail` | user, privileged | firewall | NAT rules in order, with what each translates and its counters |
+| `show object-group` | user, privileged | firewall | Network and service object groups |
+| `class-map NAME` | config | firewall | Create or edit a traffic class for the global policy |
+| `no class-map NAME` | config | firewall | Delete a traffic class |
+| `match default-inspection-traffic` |  | firewall | The traffic the inspections usually look at |
+| `match any` |  | firewall | Every packet |
+| `no match CRITERION` |  | firewall | Remove the match line |
+| `policy-map NAME` | config | firewall | Create or edit a policy (what to do with each class) |
+| `no policy-map NAME` | config | firewall | Delete a policy |
+| `class NAME` |  | firewall | Say what to do with a class (or class-default) |
+| `no class NAME` |  | firewall | Remove a class from the policy |
+| `inspect icmp [error]` |  | firewall | Track ICMP like a connection (echo replies come back by themselves) |
+| `set connection decrement-ttl` |  | firewall | Count the firewall as a hop (lower TTL, answer traceroute) |
+| `no inspect icmp [error]` |  | firewall | Stop the inspection |
+| `no set connection decrement-ttl` |  | firewall | Leave TTL alone again |
+| `service-policy NAME global` | config | firewall | Apply a policy to every interface |
+| `no service-policy NAME global` | config | firewall | Stop applying the global policy |
+| `show service-policy` | user, privileged | firewall | The global policy and what its inspections saw |
 
 ## Host shell (PCs and servers)
 
