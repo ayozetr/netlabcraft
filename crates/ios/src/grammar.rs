@@ -473,7 +473,10 @@ pub enum Id {
     DeleteVlanDat,
     ShowIpv6Interface,
     ClearCounters,
-    PingSize,
+    ShowIpTraffic,
+    ShowTcpBrief,
+    HistorySize,
+    NoHistorySize,
     ShowSessions,
     ShowHosts,
     PortSecurity,
@@ -732,7 +735,18 @@ pub static SPECS: &[Spec] = &[
     spec!(End, Modes::CONFIG.or(SUBMODES), BOTH_FW, [K("end")], "Return to privileged mode"),
     spec!(ConfigureTerminal, Modes::EXEC, BOTH_FW, [K("configure"), K("terminal")], "Configure from the terminal"),
     spec!(Ping, EXECS, BOTH_FW, [K("ping"), Arg("A.B.C.D|X:X::X")], "Send echo requests"),
-    spec!(PingRepeat, EXECS, BOTH_FW, [K("ping"), Arg("A.B.C.D"), K("repeat"), Arg("<1-1000>")], "Send echo requests"),
+    spec!(
+        PingRepeat,
+        EXECS,
+        BOTH_FW,
+        [K("ping"), Arg("A.B.C.D|X:X::X"), Rest("[repeat <1-1000>] [size <36-18024>] [source A.B.C.D|INTERFACE] [timeout <0-3600>]")],
+        "Send echo requests with options"
+    ),
+    spec!(ShowIpTraffic, EXECS, Modes::BOTH, [K("show"), K("ip"), K("traffic")], "IPv4 packets counted by what happened to them"),
+    spec!(ShowTcpBrief, EXECS, Modes::BOTH, [K("show"), K("tcp"), K("brief")], "TCP connections to and from this device"),
+    spec!(ShowTcpBrief, EXECS, Modes::BOTH, [K("show"), K("tcp")], "TCP connections to and from this device"),
+    spec!(HistorySize, Modes::LINE, Modes::BOTH, [K("history"), K("size"), Arg("<0-256>")], "How many commands a session remembers"),
+    spec!(NoHistorySize, Modes::LINE, Modes::BOTH, [K("no"), K("history"), K("size")], "Remember the default number of commands"),
     spec!(Traceroute, EXECS, BOTH_FW, [K("traceroute"), Arg("A.B.C.D|X:X::X")], "Trace the route to a destination"),
     spec!(ShowRun, Modes::EXEC, BOTH_FW, [K("show"), K("running-config")], "Current configuration"),
     spec!(ShowStartup, Modes::EXEC, BOTH_FW, [K("show"), K("startup-config")], "Saved configuration"),
@@ -1969,7 +1983,6 @@ pub static SPECS: &[Spec] = &[
         "Only the IPv6 routes one source gave"
     ),
     spec!(ClearCounters, Modes::EXEC, Modes::BOTH, [K("clear"), K("counters")], "Reset interface counters"),
-    spec!(PingSize, EXECS, Modes::BOTH, [K("ping"), Arg("A.B.C.D|X:X::X"), K("size"), Arg("<36-18024>")], "Send echo requests of a given size"),
     spec!(ShowSessions, EXECS, Modes::BOTH, [K("show"), K("sessions")], "Telnet and SSH sessions opened from here"),
     spec!(ShowHosts, EXECS, Modes::BOTH, [K("show"), K("hosts")], "Name lookup settings"),
     spec!(ShowMac, EXECS, Modes::SWITCH, [K("show"), K("mac"), K("address-table"), K("dynamic")], "Learned MAC addresses"),
@@ -2411,9 +2424,11 @@ fn resolve_prefix(words: &[&str], mode: Modes, device: Modes) -> PrefixState {
         {
             return PrefixState::Alive(cands.into_iter().filter(|s| matches!(s.path.get(i), Some(Rest(_)))).collect());
         }
+        let exact = cands.iter().any(|s| matches!(s.path.get(i), Some(K(k)) if k.eq_ignore_ascii_case(&lw)));
         cands.retain(|s| match s.path.get(i) {
+            Some(K(k)) if exact => k.eq_ignore_ascii_case(&lw),
             Some(K(k)) => k.to_ascii_lowercase().starts_with(&lw),
-            Some(Arg(_)) | Some(Rest(_)) => true,
+            Some(Arg(_)) | Some(Rest(_)) => !exact,
             None => false,
         });
         if cands.is_empty() {
@@ -2430,9 +2445,10 @@ pub fn help(words: &[&str], partial: &str, mode: Modes, device: Modes) -> Vec<(S
     let i = words.len();
     let lp = partial.to_ascii_lowercase();
     let mut out: Vec<(String, &'static str)> = Vec::new();
-    for s in cands {
+    for s in &cands {
+        let s = *s;
         let item = match s.path.get(i) {
-            Some(K(k)) if k.starts_with(&lp) => Some((k.to_string(), s.help)),
+            Some(K(k)) if k.starts_with(&lp) => Some((k.to_string(), keyword_help(&cands, i, k, s))),
             Some(Arg(a)) | Some(Rest(a)) if partial.is_empty() => Some((a.to_string(), s.help)),
             None if partial.is_empty() && s.path.len() == i => Some(("<cr>".to_string(), "")),
             _ => None,
@@ -2444,6 +2460,44 @@ pub fn help(words: &[&str], partial: &str, mode: Modes, device: Modes) -> Vec<(S
         }
     }
     out
+}
+
+/// The help for keyword `k` at position `i`: the command's own text when `k` ends it or every
+/// command under `k` says the same; otherwise a summary of what the word leads to.
+fn keyword_help(cands: &[&'static Spec], i: usize, k: &str, first: &'static Spec) -> &'static str {
+    let under: Vec<&'static Spec> = cands.iter().copied().filter(|s| matches!(s.path.get(i), Some(K(x)) if *x == k)).collect();
+    if let Some(s) = under.iter().find(|s| s.path.len() == i + 1) {
+        return s.help;
+    }
+    // Past the first word the first command's text describes the word well enough.
+    if i > 0 || under.iter().all(|s| s.help == first.help) {
+        return first.help;
+    }
+    match k {
+        "show" => "Look at the device's state and configuration",
+        "ip" => "IPv4 settings",
+        "ipv6" => "IPv6 settings",
+        "no" => "Undo a setting (or put back its default)",
+        "clear" => "Empty tables and reset counters",
+        "debug" => "Report events as they happen",
+        "undebug" => "Stop reporting events",
+        "copy" => "Copy configurations and files",
+        "interface" => "Configure interfaces",
+        "router" => "Configure a routing protocol",
+        "spanning-tree" => "Spanning-tree settings",
+        "switchport" => "How this switch port carries VLANs",
+        "service" => "Device-wide services",
+        "logging" => "Where log messages go",
+        "ntp" => "Time from NTP servers",
+        "standby" => "HSRP gateway redundancy",
+        "crypto" => "Keys and VPN protection",
+        "access-list" => "Numbered access lists",
+        "line" => "Console and remote-access lines",
+        "ping" => "Send echo requests",
+        "terminal" => "Settings of this session",
+        "write" => "Save the configuration",
+        _ => "Several commands start here (type the word and ? for them)",
+    }
 }
 
 /// Tab completion of the last word: the keyword it uniquely starts, if any.
@@ -2491,7 +2545,7 @@ mod tests {
         let (s, _) = resolve(&["wr"], Modes::EXEC, R).unwrap();
         assert_eq!(s.id, Id::WriteMemory);
         let (s, a) = resolve(&["ping", "1.2.3.4", "rep", "3"], Modes::USER, R).unwrap();
-        assert_eq!((s.id, a), (Id::PingRepeat, vec!["1.2.3.4".to_string(), "3".to_string()]));
+        assert_eq!((s.id, a), (Id::PingRepeat, vec!["1.2.3.4".to_string(), "rep 3".to_string()]));
     }
 
     #[test]

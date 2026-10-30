@@ -573,6 +573,9 @@ pub fn running_config(d: &Device) -> String {
     // The line blocks are always written, configured or not, as on real devices.
     for (name, line) in [("line con 0", &a.console), ("line vty 0 4", &a.vty)] {
         let _ = writeln!(s, "{name}");
+        if let Some(n) = d.mgmt.history_size {
+            let _ = writeln!(s, " history size {n}");
+        }
         if let Some(p) = &line.password {
             let _ = writeln!(s, " password {}", pw(p));
         }
@@ -1903,8 +1906,14 @@ pub fn ipv6_interface(t: &Topology, d: &Device, r: IfRef) -> Result<String, Stri
     if netlabcraft_sim::v6::routes6(d) {
         let _ = writeln!(s, "    FF02::2");
     }
+    // Addresses sharing their last 24 bits share one group, listed once.
+    let mut groups: Vec<String> = Vec::new();
     for a in ifc.addresses.iter().map(|n| n.addr).chain([ifc.link_local]) {
-        let _ = writeln!(s, "    {}", netlabcraft_wire_solicited(a));
+        let g = netlabcraft_wire_solicited(a);
+        if !groups.contains(&g) {
+            let _ = writeln!(s, "    {g}");
+            groups.push(g);
+        }
     }
     if netlabcraft_sim::v6::routes6(d) {
         let _ = write!(s, "  Router advertisements are sent; hosts use them to autoconfigure");
@@ -1918,6 +1927,45 @@ pub fn ipv6_interface(t: &Topology, d: &Device, r: IfRef) -> Result<String, Stri
 fn netlabcraft_wire_solicited(a: std::net::Ipv6Addr) -> String {
     let o = a.octets();
     format!("FF02::1:FF{:02X}:{:X}", o[13], u16::from_be_bytes([o[14], o[15]]))
+}
+
+/// `show ip traffic`.
+pub fn ip_traffic(sim: &Sim, dev: netlabcraft_core::DeviceId) -> String {
+    let c = sim.state(dev).map(|st| st.ip_traffic.clone()).unwrap_or_default();
+    let n = |k: &str| c.get(k).copied().unwrap_or(0);
+    let delivered: u64 = c.iter().filter(|(k, _)| k.starts_with("delivered")).map(|(_, v)| *v).sum();
+    let mut s = String::from("IPv4 packets\n");
+    let _ = writeln!(s, "  Received       {}", n("received"));
+    let _ = writeln!(s, "  For this device {delivered}");
+    let _ = writeln!(s, "  Forwarded      {}", n("forwarded"));
+    let _ = writeln!(s, "  Sent (own)     {}", n("sent"));
+    let _ = writeln!(s, "  Dropped: no route {}, TTL expired {}", n("no route"), n("TTL expired"));
+    s.push_str("Delivered by protocol\n");
+    for (k, label) in [
+        ("delivered: ICMP echo request", "ICMP echo requests"),
+        ("delivered: ICMP echo reply", "ICMP echo replies"),
+        ("delivered: ICMP other", "ICMP other"),
+        ("delivered: TCP", "TCP"),
+        ("delivered: UDP", "UDP"),
+        ("delivered: other", "Other"),
+    ] {
+        let _ = writeln!(s, "  {label:<19} {}", n(k));
+    }
+    s.trim_end().to_string()
+}
+
+/// `show tcp brief`: connections set up to or from this device.
+pub fn tcp_brief(sim: &Sim, dev: netlabcraft_core::DeviceId) -> String {
+    let list = sim.state(dev).map(|st| st.tcp_recent.clone()).unwrap_or_default();
+    if list.is_empty() {
+        return "No TCP connections.".into();
+    }
+    let mut s = format!("{:<22} {:<22} {}\n", "Local address", "Remote address", "Opened (s)");
+    for r in &list {
+        let _ =
+            writeln!(s, "{:<22} {:<22} {}", format!("{}:{}", r.local.0, r.local.1), format!("{}:{}", r.remote.0, r.remote.1), r.since_us / 1_000_000);
+    }
+    s.trim_end().to_string()
 }
 
 /// `show users`.

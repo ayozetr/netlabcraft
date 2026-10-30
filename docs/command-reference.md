@@ -116,7 +116,12 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `end` | config, interface, subinterface, vlan, object | router, switch, firewall | Return to privileged mode |
 | `configure terminal` | privileged | router, switch, firewall | Configure from the terminal |
 | `ping A.B.C.D\|X:X::X` | user, privileged | router, switch, firewall | Send echo requests |
-| `ping A.B.C.D repeat <1-1000>` | user, privileged | router, switch, firewall | Send echo requests |
+| `ping A.B.C.D\|X:X::X [repeat <1-1000>] [size <36-18024>] [source A.B.C.D\|INTERFACE] [timeout <0-3600>]` | user, privileged | router, switch, firewall | Send echo requests with options |
+| `show ip traffic` | user, privileged | router, switch | IPv4 packets counted by what happened to them |
+| `show tcp brief` | user, privileged | router, switch | TCP connections to and from this device |
+| `show tcp` | user, privileged | router, switch | TCP connections to and from this device |
+| `history size <0-256>` |  | router, switch | How many commands a session remembers |
+| `no history size` |  | router, switch | Remember the default number of commands |
 | `traceroute A.B.C.D\|X:X::X` | user, privileged | router, switch, firewall | Trace the route to a destination |
 | `show running-config` | privileged | router, switch, firewall | Current configuration |
 | `show startup-config` | privileged | router, switch, firewall | Saved configuration |
@@ -655,7 +660,6 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ipv6 interface <interface>` | user, privileged | router, switch | One interface's IPv6 settings |
 | `show ipv6 route {connected\|static\|ospf}` | user, privileged | router, switch | Only the IPv6 routes one source gave |
 | `clear counters` | privileged | router, switch | Reset interface counters |
-| `ping A.B.C.D\|X:X::X size <36-18024>` | user, privileged | router, switch | Send echo requests of a given size |
 | `show sessions` | user, privileged | router, switch | Telnet and SSH sessions opened from here |
 | `show hosts` | user, privileged | router, switch | Name lookup settings |
 | `show mac address-table dynamic` | user, privileged | switch | Learned MAC addresses |
@@ -807,23 +811,25 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 
 ```text
 Commands:
-  ipconfig                         show this host's address
-    ipconfig <address> <mask> [gw] [dns]  set the address (gateway, DNS server)
-    ipconfig /renew                  ask a DHCP server for an address
-    ipconfig /release                remove the address
-  ipv6config                       show the IPv6 settings
-    ipv6config <address/len> [gw]    set an IPv6 address (and gateway)
-    ipv6config auto                  take an address from the router (SLAAC)
-    ipv6config off                   turn IPv6 off
-    ping [-n count] <address|name>   send echo requests
-  tracert <address|name>           trace the route (also: traceroute)
-  nslookup <name>                  ask the DNS server for a name
-  telnet <address>                 log in to a router or switch
-  ssh -l <user> <address>          log in securely
-    ftp <address>                    send and fetch files on an FTP server
-  dir                              list this host's files
-  arp -a                           show the ARP cache
-  arp -d                           empty the ARP cache
-  hostname                         show this host's name
-  cls                              clear the screen
+  ipconfig                               show this host's address
+  ipconfig /all                          also the DHCP lease, domain and server
+  ipconfig <address> <mask> [gw] [dns]   set the address (gateway, DNS server)
+  ipconfig /renew                        ask a DHCP server for an address
+  ipconfig /release                      remove the address
+  ipv6config                             show the IPv6 settings
+  ipv6config <address/len> [gw]          set an IPv6 address (and gateway)
+  ipv6config auto                        take an address from the router (SLAAC)
+  ipv6config off                         turn IPv6 off
+  ping [-n count] [-l size] [-t] <host>  send echo requests (-t: keep going, up to 100)
+  tracert <address|name>                 trace the route (also: traceroute)
+  nslookup <name>                        ask the DNS server for a name
+  telnet <address>                       log in to a router or switch
+  ssh -l <user> <address>                log in securely
+  ftp <address>                          send and fetch files on an FTP server
+  netstat                                TCP connections this host set up
+  dir                                    list this host's files
+  arp -a                                 show the ARP cache
+  arp -d [address]                       empty the ARP cache (or forget one entry)
+  hostname                               show this host's name
+  cls                                    clear the screen
 ```

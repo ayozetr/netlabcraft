@@ -224,8 +224,10 @@ fn modes_prompts_and_errors() {
     assert!(e.contains("overlaps"), "{e}");
     assert!(lab.try_run(r, "ip address 10.1.0.0 255.255.255.0").contains("network or broadcast"));
     assert!(lab.try_run(r, "ip address 10.1.0.1 255.0.255.0").contains("contiguous"));
+    // The marker is under `adress`: past the prompt and `ip `.
+    let indent = lab.prompt(r).len() + 3;
     let e = lab.try_run(r, "ip adress 1.1.1.1 255.0.0.0");
-    assert!(e.starts_with("   ^"), "{e:?}");
+    assert!(e.starts_with(&format!("{}^\n", " ".repeat(indent))), "{e:?}");
     let amb = lab.try_run(r, "d");
     assert!(amb.contains("Ambiguous: `d` could be delay, description, do"), "{amb}");
     assert!(lab.try_run(r, "ip").contains("Incomplete"));
@@ -275,6 +277,42 @@ fn host_shell() {
     assert!(execute(&mut lab.t, &mut lab.sim, a, cli, "cls").clear);
     lab.run(a, "ipconfig /release");
     assert!(lab.try_run(a, "ping 10.0.0.9").contains("no IP address"));
+}
+
+#[test]
+fn pc_prompt_options_by_typing() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let a = lab.add(DeviceKind::Pc);
+    lab.cable(a, "fa0", r, "g0/0");
+    lab.run(a, "ipconfig 10.0.0.5 255.255.255.0 10.0.0.1");
+    lab.run(r, "en\nconf t\nint g0/0\nip address 10.0.0.1 255.255.255.0\nno shut\nexit\nline vty 0 4\npassword cisco\nlogin\nend");
+    // Every line of the help is a command at the same indentation.
+    let help = lab.run(a, "help");
+    for l in help.lines().skip(1) {
+        assert!(l.starts_with("  ") && !l.starts_with("   "), "{l:?}");
+    }
+    assert!(lab.run(a, "ping -l 100 10.0.0.1").contains("of 100 bytes"));
+    let t = lab.run(a, "ping -t 10.0.0.1");
+    assert!(t.contains("100 sent, 100 answered") && t.contains("until stopped"), "{t}");
+    assert!(lab.try_run(a, "ping -l 9000 10.0.0.1").contains("0-1472"));
+    assert!(lab.try_run(a, "ping -x 10.0.0.1").contains("not a ping option"));
+    // ARP: one entry, then all.
+    assert!(lab.run(a, "arp -a").contains("10.0.0.1"));
+    assert!(lab.run(a, "arp -d 10.0.0.1").contains("removed"));
+    assert!(lab.run(a, "arp -d 10.0.0.1").contains("not in the ARP cache"));
+    assert!(lab.run(a, "arp -a").contains("(no entries)"));
+    // ipv6config /all shows the settings instead of failing.
+    let v6 = lab.run(a, "ipv6config /all");
+    assert!(v6.starts_with("Interface   FastEthernet0") && v6.contains("IPv6        off"), "{v6}");
+    // netstat lists the TCP connection a telnet set up; the router sees it too.
+    assert!(lab.run(a, "netstat").contains("No TCP connections"));
+    lab.run(a, "telnet 10.0.0.1");
+    lab.clis.remove(&a);
+    let ns = lab.run(a, "netstat");
+    assert!(ns.contains("10.0.0.5:") && ns.contains("10.0.0.1:23"), "{ns}");
+    let tcp = lab.run(r, "show tcp brief");
+    assert!(tcp.contains("10.0.0.1:23") && tcp.contains("10.0.0.5:"), "{tcp}");
 }
 
 /// Every command, in every mode it exists in, with empty, hostile and huge arguments: no panic.
@@ -1356,6 +1394,74 @@ fn logging_and_debug_by_typing() {
     assert!(lab.run(r, "show logging").contains("0 messages"));
     lab.run(r, "conf t\nint g0/0\nshutdown\nend");
     assert!(lab.run(r, "show logging").contains("GigabitEthernet0/0: link down"));
+}
+
+#[test]
+fn console_polish_by_typing() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let a = lab.add(DeviceKind::Pc);
+    lab.cable(a, "fa0", r, "g0/0");
+    lab.run(a, "ipconfig 10.0.0.5 255.255.255.0 10.0.0.1");
+    lab.run(r, "en");
+    // The marker sits under the word, past the prompt.
+    let e = lab.try_run(r, "show bogus");
+    assert!(e.starts_with("        ^\n"), "{e:?}");
+    let e = lab.try_run(r, "  show bogus");
+    assert!(e.starts_with("          ^\n"), "{e:?}");
+    // `ip ?` on an interface lists IPv4 commands only.
+    lab.run(r, "conf t\nint g0/0\nip address 10.0.0.1 255.255.255.0\nno shut");
+    let h = lab.try_run(r, "ip ?");
+    assert!(h.contains("address") && !h.lines().any(|l| l.trim_start().starts_with("traffic-filter") || l.trim_start().starts_with("nd ")), "{h}");
+    assert!(lab.try_run(r, "ipv6 ?").contains("traffic-filter"));
+    lab.run(r, "end");
+    // A first word's help summarises the word.
+    let h = lab.try_run(r, "?");
+    let show = h.lines().find(|l| l.trim_start().starts_with("show ")).unwrap_or_default().to_string();
+    assert!(show.contains("Look at the device's state"), "{h}");
+    let ping = h.lines().find(|l| l.trim_start().starts_with("ping ")).unwrap_or_default().to_string();
+    assert!(ping.contains("Send echo requests"), "{ping}");
+    // Extended ping.
+    let p = lab.run(r, "ping 10.0.0.5 repeat 3 size 200 source g0/0");
+    assert!(p.contains("Sending 3 ICMP echo requests") && p.contains(".!!"), "{p}");
+    let p = lab.run(r, "ping 10.0.0.5 rep 2 sou 10.0.0.1 time 1");
+    assert!(p.contains("!!"), "{p}");
+    for bad in [
+        "ping 10.0.0.5 repeat 0",
+        "ping 10.0.0.5 size 20",
+        "ping 10.0.0.5 source 9.9.9.9",
+        "ping 10.0.0.5 source g0/7",
+        "ping 10.0.0.5 colour red",
+        "ping 10.0.0.5 repeat",
+    ] {
+        assert!(lab.try_run(r, bad).starts_with('%'), "{bad}");
+    }
+    // Traffic counters.
+    let tr = lab.run(r, "show ip traffic");
+    assert!(tr.contains("ICMP echo replies") && !tr.contains("ICMP echo replies   0"), "{tr}");
+    assert!(lab.run(r, "show tcp brief").contains("No TCP connections"));
+    // History size: the line setting, saved with the configuration, and the session one.
+    lab.run(r, "conf t\nline con 0\nhistory size 2\nend");
+    lab.clis.remove(&r);
+    lab.run(r, "en\nshow version\nshow clock");
+    let hist = lab.run(r, "show history");
+    assert!(!hist.contains("show version") && hist.contains("show clock"), "{hist}");
+    assert!(lab.run(r, "show run").contains("history size 2"));
+    lab.run(r, "terminal history size 20\nshow ip route\nshow arp");
+    assert!(lab.run(r, "show history").contains("show ip route"));
+    lab.run(r, "conf t\nline con 0");
+    assert!(lab.try_run(r, "history size 300").starts_with('%'));
+    lab.run(r, "no history size\nend");
+    assert!(!lab.run(r, "show run").contains("history size"));
+}
+
+#[test]
+fn solicited_node_group_listed_once() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    lab.run(r, "en\nconf t\nipv6 unicast-routing\nint g0/0\nipv6 address 2001:db8::1/64\nipv6 address fe80::1 link-local\nno shut\nend");
+    let out = lab.run(r, "show ipv6 interface g0/0");
+    assert_eq!(out.matches("FF02::1:FF00:1").count(), 1, "{out}");
 }
 
 #[test]

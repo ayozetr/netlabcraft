@@ -143,6 +143,8 @@ pub struct Cli {
     pub remote: Option<Box<Remote>>,
     /// A host's `ftp` session.
     pub ftp: Option<crate::host::FtpClient>,
+    /// `terminal history size N` / `history size N`: commands this session remembers.
+    pub history_cap: Option<usize>,
 }
 
 /// A login to another device.
@@ -505,7 +507,14 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, li
     }
     // Changing the console password mid-session applies to the next login, not this one.
     cli.logged_in = true;
+    if cli.history_cap.is_none()
+        && let Some(n) = d.mgmt.history_size
+    {
+        cli.history_cap = Some(usize::from(n));
+    }
     remember(cli, trimmed);
+    // The `^` marker sits under the typed line, after the prompt.
+    let indent = prompt(t, dev, cli).chars().count() + line.chars().take_while(|ch| ch.is_whitespace()).count();
     let before = t.device(dev).cloned();
     // `show … | include …`: the command runs, then its output is filtered.
     let (command, filter) = match crate::pipe::split(trimmed) {
@@ -515,7 +524,10 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, li
     let output = match (dispatch(t, sim, dev, cli, command), filter) {
         (Ok(s), Some(f)) => crate::pipe::apply(&s, f).unwrap_or_else(|e| e),
         (Ok(s), None) => s,
-        (Err(e), _) => e,
+        (Err(e), _) => match e.split_once('\n') {
+            Some((first, rest)) if first.trim_start().starts_with('^') && first.trim() == "^" => format!("{}{first}\n{rest}", " ".repeat(indent)),
+            _ => e,
+        },
     };
     // `ip address dhcp` ports ask for their address when they are brought up.
     let mut output = output;
@@ -539,8 +551,12 @@ fn remember(cli: &mut Cli, line: &str) {
     if l.is_empty() || cli.history.last().is_some_and(|h| h == l) {
         return;
     }
-    if cli.history.len() >= MAX_HISTORY {
+    let cap = cli.history_cap.unwrap_or(MAX_HISTORY).min(MAX_HISTORY);
+    while cli.history.len() >= cap.max(1) && !cli.history.is_empty() {
         cli.history.remove(0);
+    }
+    if cap == 0 {
+        return;
     }
     cli.history.push(l.chars().take(1_024).collect());
 }
@@ -737,14 +753,18 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok("Configuring from the terminal, one command per line; `end` returns to privileged mode.".into())
         }
         Id::Ping => c.ping(arg(0), 5, None),
-        Id::PingRepeat => {
-            let n: u16 = arg(1).parse().ok().filter(|n| (1..=1000).contains(n)).ok_or("% Repeat count must be 1-1000")?;
-            c.ping(arg(0), n, None)
-        }
-        Id::PingSize => {
-            let n: usize = arg(1).parse().ok().filter(|n| (36..=18_024).contains(n)).ok_or("% Datagram size 36-18024")?;
-            // The size counts the IP and ICMP headers (28 bytes); the rest is data.
-            c.ping(arg(0), 5, Some(n - 28))
+        Id::PingRepeat => c.ping_extended(arg(0), arg(1)),
+        Id::ShowIpTraffic => Ok(render::ip_traffic(c.sim, c.dev)),
+        Id::ShowTcpBrief => Ok(render::tcp_brief(c.sim, c.dev)),
+        Id::HistorySize | Id::NoHistorySize => {
+            let n = if spec.id == Id::HistorySize {
+                Some(arg(0).parse::<u16>().ok().filter(|n| *n <= 256).ok_or("% The history size is 0-256")?)
+            } else {
+                None
+            };
+            c.dm()?.mgmt.history_size = n;
+            c.cli.history_cap = n.map(usize::from);
+            Ok(String::new())
         }
         Id::Traceroute => c.traceroute(arg(0)),
         Id::ShowRun => Ok(render::running_config(c.d()?)),
@@ -938,7 +958,12 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let w: Vec<&str> = arg(0).split_whitespace().collect();
             match w.as_slice() {
                 ["length" | "width", n] if n.parse::<u16>().is_ok() => Ok(String::new()),
-                ["history"] | ["history", "size", _] => Ok(String::new()),
+                ["history"] => Ok(String::new()),
+                ["history", "size", n] => {
+                    let n = n.parse::<usize>().ok().filter(|n| *n <= 256).ok_or("% The history size is 0-256")?;
+                    c.cli.history_cap = Some(n);
+                    Ok(String::new())
+                }
                 ["monitor"] | ["no", "monitor"] => Ok(String::new()),
                 _ => Err("% terminal length N, terminal width N or terminal monitor".into()),
             }
@@ -4284,6 +4309,50 @@ impl Ctx<'_> {
             return Err("% IPv6 on subinterfaces is not simulated yet".into());
         }
         self.d()?.ports.get(r.port).map(|p| p.name.clone()).ok_or_else(|| "% No such port".into())
+    }
+
+    /// `ping A [repeat N] [size S] [source IF|A.B.C.D] [timeout T]` (keywords may be shortened).
+    fn ping_extended(&mut self, target: &str, rest: &str) -> R {
+        let words: Vec<&str> = rest.split_whitespace().collect();
+        let mut opts = PingOptions::default();
+        let mut i = 0;
+        let usage = "% ping A.B.C.D [repeat N] [size S] [source INTERFACE|A.B.C.D] [timeout SECONDS]";
+        while let Some(w) = words.get(i) {
+            let lw = w.to_ascii_lowercase();
+            let key = ["repeat", "size", "source", "timeout"].into_iter().find(|k| !lw.is_empty() && k.starts_with(&lw)).ok_or(usage)?;
+            let v = *words.get(i + 1).ok_or(usage)?;
+            match key {
+                "repeat" => opts.count = v.parse().ok().filter(|n| (1..=1000).contains(n)).ok_or("% Repeat count must be 1-1000")?,
+                // The size counts the IP and ICMP headers (28 bytes); the rest is data.
+                "size" => opts.size = v.parse::<usize>().ok().filter(|n| (36..=18_024).contains(n)).ok_or("% Datagram size 36-18024")? - 28,
+                "timeout" => opts.timeout_us = v.parse::<u64>().ok().filter(|n| *n <= 3_600).ok_or("% Timeout 0-3600 seconds")?.max(1) * 1_000_000,
+                _ => {
+                    let d = self.d()?;
+                    let addrs = netlabcraft_sim::l3_ifaces(d);
+                    let src = match parse_ip(v) {
+                        Ok(a) => addrs.iter().find(|i| i.net.addr == a).map(|i| i.net.addr),
+                        Err(_) => {
+                            let r = self.iface_ref(v)?;
+                            let d = self.d()?;
+                            let name = d.ports.get(r.port).map(|p| r.sub.map_or(p.name.clone(), |s| format!("{}.{s}", p.name))).unwrap_or_default();
+                            addrs.iter().find(|i| i.name == name).map(|i| i.net.addr)
+                        }
+                    };
+                    opts.source = Some(src.ok_or_else(|| format!("% `{v}` is not an address of an interface that is up here"))?);
+                }
+            }
+            i += 2;
+        }
+        if let Ok(dst6) = target.parse::<std::net::Ipv6Addr>() {
+            if opts.source.is_some() {
+                return Err("% `source` is for IPv4 pings".into());
+            }
+            let probes = self.sim.ping6(self.t, self.dev, dst6, opts).map_err(|e| format!("% {e}"))?;
+            return Ok(render::ping(dst6.into(), &probes, opts));
+        }
+        let dst = parse_ip(target).map_err(|e| format!("% {e}"))?;
+        let probes = self.sim.ping(self.t, self.dev, dst, opts).map_err(|e| format!("% {e}"))?;
+        Ok(render::ping(dst.into(), &probes, opts))
     }
 
     fn ping(&mut self, target: &str, count: u16, data: Option<usize>) -> R {

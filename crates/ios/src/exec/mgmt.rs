@@ -71,9 +71,6 @@ pub fn running_config(s: &mut String, d: &Device) {
     if let Some(l) = m.logging_trap {
         let _ = writeln!(s, "logging trap {}", severity_name(l));
     }
-    if let Some(n) = m.history_size {
-        let _ = writeln!(s, "history size {n}");
-    }
     if m.ntp_authenticate {
         let _ = writeln!(s, "ntp authenticate");
     }

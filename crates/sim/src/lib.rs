@@ -771,6 +771,10 @@ pub struct DevState {
     pub fw: firewall::FwState,
     /// Routers: DHCP server message counts and address conflicts.
     pub dhcp_srv: dhcpsrv::ServerStats,
+    /// IPv4 packets counted by what happened to them (`show ip traffic`).
+    pub ip_traffic: BTreeMap<&'static str, u64>,
+    /// TCP connections set up to or from this device, newest last.
+    pub tcp_recent: VecDeque<TcpRecord>,
 }
 
 /// One frame delivered across a cable.
@@ -824,13 +828,27 @@ pub struct PingOptions {
     pub size: usize,
     /// `None`: the device's default (128 on hosts, 255 on routers).
     pub ttl: Option<u8>,
+    /// The source address (`ping … source`); `None`: the outgoing interface's.
+    pub source: Option<Ipv4Addr>,
 }
 
 impl Default for PingOptions {
     fn default() -> Self {
-        PingOptions { count: 5, timeout_us: 2_000_000, size: 72, ttl: None }
+        PingOptions { count: 5, timeout_us: 2_000_000, size: 72, ttl: None, source: None }
     }
 }
+
+/// A TCP connection this device took part in, for `netstat` and `show tcp brief`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TcpRecord {
+    pub local: (Ipv4Addr, u16),
+    pub remote: (Ipv4Addr, u16),
+    /// Simulated µs when it was set up.
+    pub since_us: u64,
+}
+
+/// Most TCP connections remembered per device.
+pub const MAX_TCP_RECORDS: usize = 32;
 
 /// The outcome of one echo request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1128,6 +1146,27 @@ impl Sim {
         if let Some(st) = self.state.get_mut(&d) {
             st.macs.clear();
         }
+    }
+
+    /// Counts a packet in `show ip traffic`.
+    fn bump(&mut self, d: DeviceId, what: &'static str) {
+        let c = self.st(d).ip_traffic.entry(what).or_insert(0);
+        *c = c.saturating_add(1);
+    }
+
+    /// Remembers a TCP connection for `netstat` and `show tcp brief`.
+    fn note_tcp(&mut self, d: DeviceId, local: (Ipv4Addr, u16), remote: (Ipv4Addr, u16)) {
+        let now = self.now;
+        let st = self.st(d);
+        if st.tcp_recent.len() >= MAX_TCP_RECORDS {
+            st.tcp_recent.pop_front();
+        }
+        st.tcp_recent.push_back(TcpRecord { local, remote, since_us: now });
+    }
+
+    /// Forgets one ARP entry; whether there was one.
+    pub fn forget_arp(&mut self, d: DeviceId, ip: Ipv4Addr) -> bool {
+        self.state.get_mut(&d).is_some_and(|st| st.arp.remove(&ip).is_some())
     }
 
     /// Empties a device's ARP cache.
@@ -2098,6 +2137,7 @@ impl Sim {
 
     fn ip_in(&mut self, t: &Topology, d: &Device, ifc: &L3If, payload: &[u8]) -> Result<(), String> {
         let mut ip = Ipv4::decode(payload).map_err(|e| e.to_string())?;
+        self.bump(d.id, "received");
         // Routing-protocol messages to the link's routers (OSPF, RIP); hosts ignore them.
         let udp_port = if ip.protocol == PROTO_UDP { Udp::decode(&ip.payload, ip.src, ip.dst).ok().map(|u| u.dst_port) } else { None };
         let rip = udp_port == Some(netlabcraft_wire::control::RIP_PORT);
@@ -2198,6 +2238,7 @@ impl Sim {
             return Err(format!("{} is not this device's address", ip.dst));
         }
         if ip.ttl <= 1 {
+            self.bump(d.id, "TTL expired");
             self.icmp_error(t, d, ifc, &ip, Icmp::TimeExceeded { original: Icmp::quote(payload) });
             return Err("TTL expired in transit".into());
         }
@@ -2218,9 +2259,11 @@ impl Sim {
                 {
                     fwd = tr;
                 }
+                self.bump(d.id, "forwarded");
                 self.transmit(t, d, &out, nh, qos::keep_ds(payload, fwd.encode()))
             }
             None => {
+                self.bump(d.id, "no route");
                 if debug {
                     self.log(d.id, &format!("IP debug: {} → {}, in {}, no route: dropped", ip.src, ip.dst, ifc.name));
                 }
@@ -2231,6 +2274,17 @@ impl Sim {
     }
 
     fn local_in(&mut self, t: &Topology, d: &Device, ifc: &L3If, ip: Ipv4) -> Result<(), String> {
+        self.bump(
+            d.id,
+            match (ip.protocol, ip.payload.first()) {
+                (PROTO_ICMP, Some(8)) => "delivered: ICMP echo request",
+                (PROTO_ICMP, Some(0)) => "delivered: ICMP echo reply",
+                (PROTO_ICMP, _) => "delivered: ICMP other",
+                (PROTO_TCP, _) => "delivered: TCP",
+                (PROTO_UDP, _) => "delivered: UDP",
+                _ => "delivered: other",
+            },
+        );
         if d.kind == DeviceKind::Router && ip.protocol == netlabcraft_wire::vpn::PROTO_GRE {
             return self.gre_in(t, d, &ip);
         }
@@ -2385,6 +2439,7 @@ impl Sim {
 
     /// Routes and sends a datagram this device originates.
     fn send_ip(&mut self, t: &Topology, d: &Device, ip: Ipv4) -> Result<(), String> {
+        self.bump(d.id, "sent");
         let (out, nh) = self.route_flow(t, d, ip.src, ip.dst).ok_or_else(|| format!("no route to {}", ip.dst))?;
         self.transmit(t, d, &out, nh, ip.encode())
     }
@@ -2869,6 +2924,7 @@ impl Sim {
                 }
             }
             if d.access.accepts(proto) {
+                self.note_tcp(d.id, (ip.dst, seg.dst_port), (ip.src, seg.src_port));
                 return self.tcp_send(t, d, ip.dst, ip.src, &reply(tcp::SYN | tcp::ACK, 7_000, seg.seq.wrapping_add(1)));
             }
             self.tcp_send(t, d, ip.dst, ip.src, &reply(tcp::RST | tcp::ACK, 0, seg.seq.wrapping_add(1)))?;
@@ -2917,6 +2973,9 @@ impl Sim {
         let st = self.st(dev);
         st.tcp_wait.retain(|w| *w != (local, port));
         st.tcp_inbox.retain(|s| s.dst_port != local);
+        if result.is_ok() {
+            self.note_tcp(dev, (src, local), (dst, port));
+        }
         result
     }
 
@@ -3034,9 +3093,23 @@ impl Sim {
         self.route(t, d, dst).map(|(i, _)| i.net.addr).ok_or_else(|| SimError::NoSource(format!("{} has no route to {dst}", d.name)))
     }
 
-    fn probe(&mut self, t: &Topology, dev: DeviceId, dst: Ipv4Addr, ttl: u8, seq: u16, size: usize, timeout: u64) -> Result<Probe, SimError> {
+    #[allow(clippy::too_many_arguments)]
+    fn probe(
+        &mut self,
+        t: &Topology,
+        dev: DeviceId,
+        dst: Ipv4Addr,
+        ttl: u8,
+        seq: u16,
+        size: usize,
+        timeout: u64,
+        source: Option<Ipv4Addr>,
+    ) -> Result<Probe, SimError> {
         let d = t.device(dev).ok_or(SimError::NoDevice(dev))?;
-        let src = self.source_for(t, d, dst)?;
+        let src = match source {
+            Some(s) => s,
+            None => self.source_for(t, d, dst)?,
+        };
         self.next_echo_id = self.next_echo_id.wrapping_add(1);
         let id = self.next_echo_id;
         let ip = Ipv4 {
@@ -3078,7 +3151,7 @@ impl Sim {
         let ttl = opts.ttl.unwrap_or(default_ttl(kind)).max(1);
         let mut out = Vec::with_capacity(usize::from(count));
         for seq in 1..=count {
-            out.push(self.probe(t, dev, dst, ttl, seq, opts.size, opts.timeout_us)?);
+            out.push(self.probe(t, dev, dst, ttl, seq, opts.size, opts.timeout_us, opts.source)?);
         }
         Ok(out)
     }
@@ -3089,7 +3162,7 @@ impl Sim {
         for ttl in 1..=max_hops.clamp(1, 64) {
             let mut probes = Vec::new();
             for seq in 1..=3 {
-                probes.push(self.probe(t, dev, dst, ttl, seq, 32, timeout_us)?);
+                probes.push(self.probe(t, dev, dst, ttl, seq, 32, timeout_us, None)?);
             }
             let done = probes.iter().any(|p| matches!(p, Probe::Reply { .. } | Probe::Unreachable { .. }));
             hops.push(Hop { ttl, probes });
