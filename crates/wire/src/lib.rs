@@ -21,6 +21,7 @@ pub mod lacp;
 pub mod lldp;
 
 pub mod mgmt;
+pub mod ospf6;
 pub mod ospfdb;
 
 pub mod pcap;
@@ -625,6 +626,20 @@ pub fn summarize(bytes: &[u8]) -> (Protocol, String) {
                 },
                 Ok((sp, dp, _)) => (Protocol::Ipv6, format!("UDP [{}]:{sp} → [{}]:{dp}{tag}", ip.src, ip.dst)),
                 Err(e) => (Protocol::Ipv6, format!("UDP ({e}){tag}")),
+            },
+            Ok(ip) if ip.next_header == ospf6::PROTO_OSPF => match ospf6::Hello6::decode(ip.src, ip.dst, &ip.payload) {
+                Ok(h) => (
+                    Protocol::Ospf,
+                    format!(
+                        "OSPFv3 hello from router {} ({} neighbour{}) {} → {}{tag}",
+                        h.router_id,
+                        h.neighbors.len(),
+                        if h.neighbors.len() == 1 { "" } else { "s" },
+                        ip.src,
+                        ip.dst
+                    ),
+                ),
+                Err(e) => (Protocol::Ospf, format!("OSPFv3 ({e}){tag}")),
             },
             Ok(ip) => {
                 let (ndp, text) = ipv6::describe(&ip);

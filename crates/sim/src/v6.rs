@@ -131,16 +131,16 @@ pub fn up_ifaces6(t: &Topology, d: &Device) -> Vec<L3If6> {
 /// One line of `show ipv6 route`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Route6Entry {
-    /// `C` connected, `L` local, `S` static.
+    /// `C` connected, `L` local, `S` static; OSPFv3: `O` intra-area, `I` inter-area, `E` external.
     pub code: char,
     pub net: Ipv6Net,
     pub iface: Option<String>,
     pub next_hop: Option<Ipv6Addr>,
 }
 
-/// A device's IPv6 routing table: connected and local routes of its up interfaces, then the
-/// static routes that can be used.
-pub fn routing_table6(t: &Topology, d: &Device) -> Vec<Route6Entry> {
+/// A device's IPv6 routing table: connected and local routes of its up interfaces, the static
+/// routes that can be used, then `dynamic` ones (OSPFv3) for networks not already there.
+pub fn routing_table6(t: &Topology, d: &Device, dynamic: &[Route6Entry]) -> Vec<Route6Entry> {
     let ifs = up_ifaces6(t, d);
     let mut out = Vec::new();
     for i in &ifs {
@@ -160,12 +160,18 @@ pub fn routing_table6(t: &Topology, d: &Device) -> Vec<Route6Entry> {
             out.push(Route6Entry { code: 'S', net: r.net, iface: r.iface.clone(), next_hop: r.next_hop });
         }
     }
+    // Connected and static routes win over OSPF for the same network (administrative distance).
+    for r in dynamic {
+        if !out.iter().any(|x| x.net == r.net && x.code != 'L') {
+            out.push(r.clone());
+        }
+    }
     out
 }
 
 /// Where a packet to `dst` leaves, and the neighbour it is handed to. `via` pins the interface
 /// for link-local and multicast destinations (the one a request came in on).
-pub fn route6(t: &Topology, d: &Device, dst: Ipv6Addr, via: Option<&L3If6>) -> Option<(L3If6, Ipv6Addr)> {
+pub fn route6(t: &Topology, d: &Device, dst: Ipv6Addr, via: Option<&L3If6>, dynamic: &[Route6Entry]) -> Option<(L3If6, Ipv6Addr)> {
     let ifs = up_ifaces6(t, d);
     if Ipv6Net::is_link_local(dst) || dst.is_multicast() {
         let out = via.cloned().or_else(|| ifs.first().cloned())?;
@@ -179,7 +185,7 @@ pub fn route6(t: &Topology, d: &Device, dst: Ipv6Addr, via: Option<&L3If6>) -> O
         let out = ifs.iter().find(|i| Ipv6Net::is_link_local(gw) || i.addresses.iter().any(|a| a.contains(gw)))?;
         return Some((out.clone(), gw));
     }
-    let table = routing_table6(t, d);
+    let table = routing_table6(t, d, dynamic);
     let best = table.iter().filter(|r| r.code != 'L' && r.net.contains(dst)).max_by_key(|r| (r.net.prefix, r.code == 'C'))?;
     match (best.code, &best.iface, best.next_hop) {
         ('C', Some(name), _) => ifs.iter().find(|i| i.name == *name).map(|i| (i.clone(), dst)),
@@ -245,9 +251,11 @@ impl Sim {
         let router = routes6(d);
         let all = l3_ifaces6(d);
         let serves = conf6(d, &ifc).is_some_and(|c| c.dhcp_server.is_some() || !c.dhcp_relay.is_empty());
+        let ospf6 = d.ospf6.is_some();
         let joined = |g: Ipv6Addr| {
             g == ALL_NODES
                 || (router && g == ALL_ROUTERS)
+                || (ospf6 && g == packetcraft_wire::ospf6::ALL_SPF_ROUTERS6)
                 || (serves && g == dhcp6::ALL_SERVERS)
                 || all.iter().any(|i| i.addresses.iter().map(|n| n.addr).chain([i.link_local]).any(|a| solicited_node(a) == g))
         };
@@ -269,7 +277,8 @@ impl Sim {
             self.icmp6_error(t, d, &ifc, &ip, Icmp6::TimeExceeded { original: Icmp6::quote(&raw) });
             return Err("hop limit expired in transit".into());
         }
-        match route6(t, d, ip.dst, None) {
+        let dynamic = self.dynamic_routes6(t, d);
+        match route6(t, d, ip.dst, None, &dynamic) {
             Some((out, nh)) => {
                 if let Err(e) = self.acl6_check(d, &out, &ip, false) {
                     self.acl6_refuse(t, d, &ifc, &ip);
@@ -295,6 +304,10 @@ impl Sim {
     fn local6_in(&mut self, t: &Topology, d: &Device, ifc: &L3If6, src_mac: MacAddr, ip: Ipv6) -> Result<(), String> {
         if ip.next_header == packetcraft_wire::PROTO_UDP {
             return self.udp6_in(t, d, ifc, ip);
+        }
+        // OSPFv3 is computed; its hellos are taken in quietly.
+        if ip.next_header == packetcraft_wire::ospf6::PROTO_OSPF && d.ospf6.is_some() {
+            return Ok(());
         }
         if ip.next_header != PROTO_ICMPV6 {
             return Err(format!("IPv6 next header {} not understood", ip.next_header));
@@ -445,7 +458,8 @@ impl Sim {
 
     /// Routes and sends a packet this device originates.
     fn send_ip6(&mut self, t: &Topology, d: &Device, ip: Ipv6, via: Option<&L3If6>) -> Result<(), String> {
-        let (out, nh) = route6(t, d, ip.dst, via).ok_or_else(|| format!("no IPv6 route to {}", ip.dst))?;
+        let dynamic = self.dynamic_routes6(t, d);
+        let (out, nh) = route6(t, d, ip.dst, via, &dynamic).ok_or_else(|| format!("no IPv6 route to {}", ip.dst))?;
         self.transmit6(t, d, &out, nh, ip.encode())
     }
 
@@ -514,7 +528,8 @@ impl Sim {
         if l3_ifaces6(d).iter().any(|i| i.owns(dst)) {
             return Ok(Probe::Reply { from: dst.into(), rtt_us: 0 });
         }
-        let Some((out, _)) = route6(t, d, dst, None) else {
+        let dynamic = self.dynamic_routes6(t, d);
+        let Some((out, _)) = route6(t, d, dst, None, &dynamic) else {
             if ifs.is_empty() {
                 return Ok(Probe::Timeout);
             }
@@ -641,7 +656,8 @@ impl Sim {
 
     /// Sends a UDP datagram this device originates, from the address of the interface it leaves by.
     fn udp6_send(&mut self, t: &Topology, d: &Device, dst: Ipv6Addr, sport: u16, dport: u16, payload: &[u8]) -> Result<(), String> {
-        let (out, _) = route6(t, d, dst, None).ok_or_else(|| format!("no IPv6 route to {dst}"))?;
+        let dynamic = self.dynamic_routes6(t, d);
+        let (out, _) = route6(t, d, dst, None, &dynamic).ok_or_else(|| format!("no IPv6 route to {dst}"))?;
         let src = out.source_for(dst);
         let udp = dhcp6::udp6_encode(src, dst, sport, dport, payload);
         self.send_ip6(t, d, Ipv6 { hop_limit: 64, next_header: packetcraft_wire::PROTO_UDP, src, dst, payload: udp }, None)

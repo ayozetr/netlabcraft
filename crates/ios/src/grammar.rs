@@ -14,7 +14,7 @@ pub enum Tok {
 
 /// Where a command is available.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Modes(pub u16);
+pub struct Modes(pub u32);
 
 impl Modes {
     pub const USER: Modes = Modes(1);
@@ -39,8 +39,10 @@ impl Modes {
     pub const ACL6: Modes = Modes(16384);
     /// `ipv6 dhcp pool`.
     pub const DHCP6: Modes = Modes(32768);
+    /// `ipv6 router ospf`.
+    pub const OSPF6: Modes = Modes(65536);
     /// Every command mode, either device.
-    pub const ANY_MODE: Modes = Modes(63 | 256 | 512 | 1024 | 2048 | 4096 | 8192 | 16384 | 32768);
+    pub const ANY_MODE: Modes = Modes(63 | 256 | 512 | 1024 | 2048 | 4096 | 8192 | 16384 | 32768 | 65536);
     pub const BOTH: Modes = Modes(192);
 
     pub const fn or(self, o: Modes) -> Modes {
@@ -169,6 +171,12 @@ pub enum Id {
     OspfDefaultOriginate,
     NoOspfDefaultOriginate,
     ShowOspfNeighbor,
+    Ipv6RouterOspf,
+    NoIpv6RouterOspf,
+    Ipv6OspfArea,
+    NoIpv6OspfArea,
+    ShowIpv6OspfNeighbor,
+    ShowIpv6Ospf,
     ShowIpProtocols,
     AccessList,
     NoAccessList,
@@ -358,7 +366,8 @@ const SUBMODES: Modes = Modes::IF
     .or(Modes::ACL)
     .or(Modes::RIP)
     .or(Modes::ACL6)
-    .or(Modes::DHCP6);
+    .or(Modes::DHCP6)
+    .or(Modes::OSPF6);
 const IFS: Modes = Modes::IF.or(Modes::SUBIF);
 const ANY_IF: Modes = IFS.or(Modes::SVI);
 
@@ -756,19 +765,43 @@ pub static SPECS: &[Spec] = &[
         [K("no"), K("network"), Arg("A.B.C.D"), Arg("WILDCARD"), K("area"), Arg("<0-4294967295>")],
         "Stop OSPF on matching interfaces"
     ),
-    spec!(OspfRouterId, Modes::OSPF, Modes::BOTH, [K("router-id"), Arg("A.B.C.D")], "Set the router id"),
-    spec!(NoOspfRouterId, Modes::OSPF, Modes::BOTH, [K("no"), K("router-id")], "Use the highest interface address"),
-    spec!(OspfPassive, Modes::OSPF, Modes::BOTH, [K("passive-interface"), Rest("<interface>")], "Advertise but form no neighbours"),
-    spec!(NoOspfPassive, Modes::OSPF, Modes::BOTH, [K("no"), K("passive-interface"), Rest("<interface>")], "Form neighbours again"),
-    spec!(OspfDefaultOriginate, Modes::OSPF, Modes::BOTH, [K("default-information"), K("originate")], "Advertise this router's default route"),
+    spec!(OspfRouterId, Modes::OSPF.or(Modes::OSPF6), Modes::BOTH, [K("router-id"), Arg("A.B.C.D")], "Set the router id"),
+    spec!(NoOspfRouterId, Modes::OSPF.or(Modes::OSPF6), Modes::BOTH, [K("no"), K("router-id")], "Use the highest interface address"),
+    spec!(OspfPassive, Modes::OSPF.or(Modes::OSPF6), Modes::BOTH, [K("passive-interface"), Rest("<interface>")], "Advertise but form no neighbours"),
+    spec!(NoOspfPassive, Modes::OSPF.or(Modes::OSPF6), Modes::BOTH, [K("no"), K("passive-interface"), Rest("<interface>")], "Form neighbours again"),
+    spec!(
+        OspfDefaultOriginate,
+        Modes::OSPF.or(Modes::OSPF6),
+        Modes::BOTH,
+        [K("default-information"), K("originate")],
+        "Advertise this router's default route"
+    ),
     spec!(
         NoOspfDefaultOriginate,
-        Modes::OSPF,
+        Modes::OSPF.or(Modes::OSPF6),
         Modes::BOTH,
         [K("no"), K("default-information"), K("originate")],
         "Stop advertising the default route"
     ),
     spec!(ShowOspfNeighbor, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf"), K("neighbor")], "OSPF neighbours"),
+    spec!(Ipv6RouterOspf, Modes::CONFIG, Modes::BOTH, [K("ipv6"), K("router"), K("ospf"), Arg("<1-65535>")], "Start or configure OSPFv3"),
+    spec!(NoIpv6RouterOspf, Modes::CONFIG, Modes::BOTH, [K("no"), K("ipv6"), K("router"), K("ospf"), Arg("<1-65535>")], "Stop OSPFv3"),
+    spec!(
+        Ipv6OspfArea,
+        ANY_IF,
+        Modes::BOTH,
+        [K("ipv6"), K("ospf"), Arg("<1-65535>"), K("area"), Arg("<0-4294967295>")],
+        "Run OSPFv3 on this interface"
+    ),
+    spec!(
+        NoIpv6OspfArea,
+        ANY_IF,
+        Modes::BOTH,
+        [K("no"), K("ipv6"), K("ospf"), Arg("<1-65535>"), K("area"), Arg("<0-4294967295>")],
+        "Stop OSPFv3 on this interface"
+    ),
+    spec!(ShowIpv6OspfNeighbor, EXECS, Modes::BOTH, [K("show"), K("ipv6"), K("ospf"), K("neighbor")], "OSPFv3 neighbours"),
+    spec!(ShowIpv6Ospf, EXECS, Modes::BOTH, [K("show"), K("ipv6"), K("ospf")], "OSPFv3 process"),
     spec!(ShowIpProtocols, EXECS, Modes::BOTH, [K("show"), K("ip"), K("protocols")], "Routing protocols running"),
     spec!(HelperAddress, IFS, Modes::ROUTER, [K("ip"), K("helper-address"), Arg("A.B.C.D")], "Relay DHCP requests to this server"),
     spec!(NoHelperAddress, IFS, Modes::ROUTER, [K("no"), K("ip"), K("helper-address"), Rest("[A.B.C.D]")], "Stop relaying (to one server)"),

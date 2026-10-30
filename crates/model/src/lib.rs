@@ -631,6 +631,9 @@ pub struct Ipv6Conf {
     /// relayed to.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dhcp_relay: Vec<Ipv6Addr>,
+    /// `ipv6 ospf PROCESS area N`: (process, area).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ospf: Option<(u16, u32)>,
     /// Routers: `ipv6 nd managed-config-flag` (hosts take addresses from DHCPv6).
     #[serde(default)]
     pub nd_managed: bool,
@@ -695,6 +698,9 @@ pub struct Device {
     /// Routers: `ipv6 unicast-routing` (forward IPv6 and send router advertisements).
     #[serde(default)]
     pub ipv6_routing: bool,
+    /// `ipv6 router ospf N`: OSPFv3.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ospf6: Option<Ospf6>,
     /// Routers: IPv6 static routes.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub routes6: Vec<StaticRoute6>,
@@ -855,6 +861,20 @@ pub struct Ospf {
     /// Area settings (`area N stub`, `area N range`), by area number.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub areas: BTreeMap<u32, OspfArea>,
+}
+
+/// A router's OSPFv3 process (RFC 5340): interfaces join it with `ipv6 ospf N area A`.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Ospf6 {
+    pub process: u16,
+    /// A 32-bit router ID, as in OSPFv2; without one, the highest IPv4 interface address.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub router_id: Option<Ipv4Addr>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub passive: Vec<String>,
+    /// `default-information originate`: advertise this router's IPv6 default route.
+    #[serde(default)]
+    pub default_originate: bool,
 }
 
 /// Most `area range` lines per area.
@@ -1201,6 +1221,7 @@ impl Device {
             ntp_servers: Vec::new(),
             log_hosts: Vec::new(),
             ipv6_routing: false,
+            ospf6: None,
             routes6: Vec::new(),
             routes: Vec::new(),
             vlans: BTreeMap::new(),
@@ -1242,6 +1263,7 @@ impl Device {
         self.ntp_servers.clear();
         self.log_hosts.clear();
         self.ipv6_routing = false;
+        self.ospf6 = None;
         self.routes6.clear();
         self.routes.clear();
         // The VLAN database and VTP settings live apart from the configuration (as in a

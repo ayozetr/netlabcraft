@@ -30,6 +30,8 @@ pub mod control;
 pub mod hsrp;
 pub mod mgmt;
 pub mod ospf;
+pub mod ospf6;
+
 pub mod rip;
 pub mod stp;
 #[cfg(test)]
@@ -641,6 +643,8 @@ pub struct Sim {
     /// OSPF's routes, for the topology with this fingerprint.
     ospf_for: u64,
     ospf: Option<ospf::OspfState>,
+    ospf6_for: u64,
+    ospf6: Option<ospf6::Ospf6State>,
     rip_for: u64,
     rip: Option<rip::RipState>,
     /// The flags of the last router advertisement a host autoconfigured from.
@@ -1219,6 +1223,41 @@ impl Sim {
     }
 
     /// OSPF's view of the lab (neighbours, router ids, routes).
+    /// OSPFv3's view of the lab, recomputed when what it depends on changes.
+    pub fn ospf6_state(&mut self, t: &Topology) -> ospf6::Ospf6State {
+        let f = ospf6::fingerprint(t);
+        if self.ospf6.is_none() || self.ospf6_for != f {
+            self.ospf6_for = f;
+            self.ospf6 = Some(ospf6::compute(t));
+        }
+        self.ospf6.clone().unwrap_or_default()
+    }
+
+    /// A device's dynamic IPv6 routes (OSPFv3), as routing-table lines.
+    pub fn dynamic_routes6(&mut self, t: &Topology, d: &Device) -> Vec<v6::Route6Entry> {
+        if d.ospf6.is_none() {
+            return Vec::new();
+        }
+        let st = self.ospf6_state(t);
+        st.routes
+            .get(&d.id)
+            .into_iter()
+            .flatten()
+            .map(|r| v6::Route6Entry {
+                code: if r.external {
+                    'E'
+                } else if r.inter_area {
+                    'I'
+                } else {
+                    'O'
+                },
+                net: r.net,
+                iface: Some(r.iface.clone()),
+                next_hop: Some(r.via),
+            })
+            .collect()
+    }
+
     pub fn ospf_state(&mut self, t: &Topology) -> ospf::OspfState {
         let f = ospf::fingerprint(t);
         if self.ospf.is_none() || self.ospf_for != f {

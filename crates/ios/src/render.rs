@@ -357,6 +357,19 @@ pub fn running_config(d: &Device) -> String {
         let via = [r.iface.clone(), r.next_hop.map(|a| a.to_string())].into_iter().flatten().collect::<Vec<_>>().join(" ");
         let _ = writeln!(s, "ipv6 route {} {via}", r.net);
     }
+    if let Some(o) = &d.ospf6 {
+        let _ = writeln!(s, "ipv6 router ospf {}", o.process);
+        if let Some(id) = o.router_id {
+            let _ = writeln!(s, " router-id {id}");
+        }
+        for p in &o.passive {
+            let _ = writeln!(s, " passive-interface {p}");
+        }
+        if o.default_originate {
+            let _ = writeln!(s, " default-information originate");
+        }
+        let _ = writeln!(s, "!");
+    }
     for r in &d.routes {
         let via = match &r.via {
             NextHop::Address(a) => a.to_string(),
@@ -810,6 +823,39 @@ pub fn ospf_neighbors(t: &Topology, d: &Device, st: &packetcraft_sim::ospf::Ospf
     s.trim_end().to_string()
 }
 
+/// `show ipv6 ospf neighbor`.
+pub fn ospf6_neighbors(t: &Topology, d: &Device, st: &packetcraft_sim::ospf6::Ospf6State) -> String {
+    if d.ospf6.is_none() {
+        return "OSPFv3 is not running on this router.".into();
+    }
+    let list = st.neighbors.get(&d.id).cloned().unwrap_or_default();
+    if list.is_empty() {
+        return "No OSPFv3 neighbours (check `ipv6 ospf N area A` on the interfaces, `ipv6 unicast-routing`, the router ID and cables).".into();
+    }
+    let mut s = format!("{:<16} {:<10} {:<26} {:<12} Device\n", "Neighbour ID", "State", "Address", "Interface");
+    for n in list {
+        let name = t.device(n.device).map_or("?".to_string(), |x| x.name.clone());
+        let _ = writeln!(s, "{:<16} {:<10} {:<26} {:<12} {name}", n.router_id.to_string(), "FULL", n.address.to_string(), ifname::short(&n.iface));
+    }
+    s.trim_end().to_string()
+}
+
+/// `show ipv6 ospf`.
+pub fn ospf6_summary(d: &Device, st: &packetcraft_sim::ospf6::Ospf6State) -> String {
+    let Some(o) = &d.ospf6 else { return "OSPFv3 is not running here.".into() };
+    let mut s = format!("OSPFv3 process {}\n", o.process);
+    let _ = writeln!(s, "  Router id {}", st.router_ids.get(&d.id).map_or("none: set one with `router-id`".to_string(), |r| r.to_string()));
+    if !packetcraft_sim::v6::routes6(d) {
+        let _ = writeln!(s, "  Not running: IPv6 routing is off (`ipv6 unicast-routing`)");
+    }
+    for (name, area, cost, passive) in st.interfaces.get(&d.id).into_iter().flatten() {
+        let _ = writeln!(s, "  {:<22} area {area}, cost {cost}{}", name, if *passive { ", passive" } else { "" });
+    }
+    let n = st.neighbors.get(&d.id).map_or(0, Vec::len);
+    let _ = write!(s, "  {n} neighbour{}", if n == 1 { "" } else { "s" });
+    s
+}
+
 /// `show ip protocols`.
 pub fn ip_protocols(d: &Device, st: &packetcraft_sim::ospf::OspfState, rs: &packetcraft_sim::rip::RipState) -> String {
     let mut parts = Vec::new();
@@ -1039,6 +1085,9 @@ fn ipv6_lines(s: &mut String, c: &packetcraft_model::Ipv6Conf) {
     for a in &c.dhcp_relay {
         let _ = writeln!(s, " ipv6 dhcp relay destination {a}");
     }
+    if let Some((p, a)) = c.ospf {
+        let _ = writeln!(s, " ipv6 ospf {p} area {a}");
+    }
     if c.nd_managed {
         let _ = writeln!(s, " ipv6 nd managed-config-flag");
     }
@@ -1105,9 +1154,10 @@ pub fn ipv6_brief(t: &Topology, d: &Device) -> String {
 }
 
 /// `show ipv6 route`.
-pub fn ipv6_route(t: &Topology, d: &Device) -> String {
-    let table = packetcraft_sim::v6::routing_table6(t, d);
-    let mut s = String::from("Codes: C connected, L local, S static\n");
+pub fn ipv6_route(t: &Topology, sim: &mut Sim, d: &Device) -> String {
+    let dynamic = sim.dynamic_routes6(t, d);
+    let table = packetcraft_sim::v6::routing_table6(t, d, &dynamic);
+    let mut s = String::from("Codes: C connected, L local, S static, O OSPFv3, OI OSPFv3 other area, OE2 OSPFv3 external\n");
     if !d.ipv6_routing {
         s.push_str("IPv6 forwarding is off (no `ipv6 unicast-routing`)\n");
     }
@@ -1119,7 +1169,12 @@ pub fn ipv6_route(t: &Topology, d: &Device) -> String {
             (None, Some(i)) => format!("directly on {i}"),
             (None, None) => String::new(),
         };
-        let _ = writeln!(s, "{}  {:<28} {via}", r.code, r.net.to_string());
+        let code = match r.code {
+            'I' => "OI".to_string(),
+            'E' => "OE2".to_string(),
+            c => c.to_string(),
+        };
+        let _ = writeln!(s, "{code:<2} {:<28} {via}", r.net.to_string());
     }
     if table.is_empty() {
         s.push_str("(no IPv6 routes)");

@@ -41,6 +41,7 @@ impl Sim {
             (NTP_POLL_EVERY_US, 4),
             (crate::lldp::LLDP_EVERY_US, 5),
             (crate::channel::LACP_EVERY_US, 6),
+            (OSPF_HELLO_EVERY_US, 7),
         ] {
             let mut at = (from / every + 1) * every;
             while at <= deadline {
@@ -51,6 +52,7 @@ impl Sim {
                     4 => self.send_ntp_polls(t, at),
                     5 => self.send_lldp(t, at),
                     6 => self.send_lacp(t, at),
+                    7 => self.send_ospf6_hellos(t, at),
                     _ => self.send_rip_updates(t, at),
                 }
                 at += every;
@@ -300,15 +302,58 @@ impl Sim {
     /// Queues an IPv4 packet out of a layer-3 interface at a given time.
     fn queue_l3(&mut self, t: &Topology, d: &packetcraft_model::Device, ifc: &crate::L3If, src: MacAddr, dst: MacAddr, packet: Vec<u8>, at: u64) {
         let frame = Frame { dst, src, vlan: ifc.vlan, ethertype: packetcraft_wire::ETHERTYPE_IPV4, payload: packet };
-        if ifc.port == crate::SVI_PORT {
+        self.queue_frame(t, d, ifc.port, frame, at);
+    }
+
+    /// OSPFv3 hellos from every interface of every OSPFv3 router (passive ones excepted).
+    fn send_ospf6_hellos(&mut self, t: &Topology, at: u64) {
+        use packetcraft_wire::ipv6::{ETHERTYPE_IPV6, Ipv6, multicast_mac};
+        use packetcraft_wire::ospf6::{ALL_SPF_ROUTERS6, Hello6, PROTO_OSPF};
+        if !t.devices.iter().any(|d| d.ospf6.is_some()) {
+            return;
+        }
+        let st = self.ospf6_state(t);
+        for (id, ifs) in &st.interfaces {
+            let (Some(d), Some(rid)) = (t.device(*id), st.router_ids.get(id)) else { continue };
+            let up = crate::v6::up_ifaces6(t, d);
+            for (k, (name, area, _, _)) in ifs.iter().enumerate().filter(|(_, x)| !x.3) {
+                let Some(ifc) = up.iter().find(|i| i.name == *name) else { continue };
+                let heard: Vec<Ipv4Addr> = st.neighbors.get(id).into_iter().flatten().filter(|n| n.iface == *name).map(|n| n.router_id).collect();
+                let hello = Hello6 {
+                    router_id: *rid,
+                    area: *area,
+                    interface_id: u32::try_from(k + 1).unwrap_or(0),
+                    priority: 1,
+                    dr: Ipv4Addr::UNSPECIFIED,
+                    bdr: Ipv4Addr::UNSPECIFIED,
+                    neighbors: heard,
+                };
+                let ip = Ipv6 {
+                    hop_limit: 1,
+                    next_header: PROTO_OSPF,
+                    src: ifc.link_local,
+                    dst: ALL_SPF_ROUTERS6,
+                    payload: hello.encode(ifc.link_local, ALL_SPF_ROUTERS6),
+                };
+                let frame =
+                    Frame { dst: multicast_mac(ALL_SPF_ROUTERS6), src: ifc.mac, vlan: ifc.vlan, ethertype: ETHERTYPE_IPV6, payload: ip.encode() };
+                self.queue_frame(t, d, ifc.port, frame, at);
+            }
+        }
+    }
+
+    /// Queues a frame out of a port at a given time (re-framed on serial); a VLAN interface's
+    /// frame (`SVI_PORT`, its VLAN in the tag) goes through the switch at once.
+    fn queue_frame(&mut self, t: &Topology, d: &packetcraft_model::Device, port: usize, frame: Frame, at: u64) {
+        if port == crate::SVI_PORT {
             // A VLAN interface sends through its own switch, at once (not at `at`).
-            if let Some(v) = ifc.vlan.and_then(VlanId::new) {
-                let _ = self.switch_forward(t, d, None, v, frame, 0);
+            if let Some(v) = frame.vlan.and_then(VlanId::new) {
+                let _ = self.switch_forward(t, d, None, v, frame.retagged(None), 0);
             }
             return;
         }
-        let end = End { device: d.id, port: ifc.port };
-        let bytes = match d.ports.get(ifc.port).filter(|p| packetcraft_model::ifname::is_serial(&p.name)) {
+        let end = End { device: d.id, port };
+        let bytes = match d.ports.get(port).filter(|p| packetcraft_model::ifname::is_serial(&p.name)) {
             Some(p) => match packetcraft_wire::serial::encode(crate::framing(p), frame.ethertype, &frame.payload) {
                 Ok(b) => b,
                 Err(_) => return,

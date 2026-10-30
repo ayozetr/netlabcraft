@@ -267,6 +267,12 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `default-information originate` |  | router, switch | Advertise this router's default route |
 | `no default-information originate` |  | router, switch | Stop advertising the default route |
 | `show ip ospf neighbor` | user, privileged | router, switch | OSPF neighbours |
+| `ipv6 router ospf <1-65535>` | config | router, switch | Start or configure OSPFv3 |
+| `no ipv6 router ospf <1-65535>` | config | router, switch | Stop OSPFv3 |
+| `ipv6 ospf <1-65535> area <0-4294967295>` | interface, subinterface | router, switch | Run OSPFv3 on this interface |
+| `no ipv6 ospf <1-65535> area <0-4294967295>` | interface, subinterface | router, switch | Stop OSPFv3 on this interface |
+| `show ipv6 ospf neighbor` | user, privileged | router, switch | OSPFv3 neighbours |
+| `show ipv6 ospf` | user, privileged | router, switch | OSPFv3 process |
 | `show ip protocols` | user, privileged | router, switch | Routing protocols running |
 | `ip helper-address A.B.C.D` | interface, subinterface | router | Relay DHCP requests to this server |
 | `no ip helper-address [A.B.C.D]` | interface, subinterface | router | Stop relaying (to one server) |

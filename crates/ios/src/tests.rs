@@ -1574,6 +1574,57 @@ fn dhcpv6_relay_by_typing() {
 }
 
 #[test]
+fn ospfv3_by_typing() {
+    let mut lab = Lab::new();
+    let r1 = lab.add(DeviceKind::Router);
+    let r2 = lab.add(DeviceKind::Router);
+    let r3 = lab.add(DeviceKind::Router);
+    let a = lab.add(DeviceKind::Pc);
+    let b = lab.add(DeviceKind::Pc);
+    lab.cable(a, "fa0", r1, "g0/0");
+    lab.cable(r1, "g0/1", r2, "g0/0");
+    lab.cable(r2, "g0/1", r3, "g0/0");
+    lab.cable(b, "fa0", r3, "g0/1");
+    // IPv6 only: no IPv4 address to take a router ID from.
+    let out = lab.run(r1, "en\nconf t\nipv6 unicast-routing\nipv6 router ospf 1");
+    assert!(out.contains("router ID"), "{out}");
+    assert_eq!(lab.prompt(r1), "R1(config-rtr)#");
+    lab.run(r1, "router-id 1.1.1.1\npassive-interface g0/0\nexit\nint g0/0\nipv6 address 2001:db8:1::1/64\nipv6 ospf 1 area 0\nno shut\nint g0/1\nipv6 enable\nipv6 ospf 1 area 0\nno shut\nend");
+    lab.run(r2, "en\nconf t\nipv6 unicast-routing\nipv6 router ospf 1\nrouter-id 2.2.2.2\nexit\nint g0/0\nipv6 enable\nipv6 ospf 1 area 0\nno shut\nint g0/1\nipv6 enable\nipv6 ospf 1 area 1\nno shut\nend");
+    lab.run(r3, "en\nconf t\nipv6 unicast-routing\nipv6 router ospf 1\nrouter-id 3.3.3.3\nexit\nint g0/0\nipv6 enable\nipv6 ospf 1 area 1\nno shut\nint g0/1\nipv6 address 2001:db8:3::1/64\nipv6 ospf 1 area 1\nno shut\nend");
+    let nb = lab.run(r2, "show ipv6 ospf neighbor");
+    assert!(nb.contains("1.1.1.1") && nb.contains("3.3.3.3") && nb.contains("FULL") && nb.contains("fe80::"), "{nb}");
+    // Links with only link-local addresses carry the routes.
+    let rt = lab.run(r1, "show ipv6 route");
+    assert!(rt.contains("OI 2001:db8:3::/64") && rt.contains("via fe80::"), "{rt}");
+    lab.run(a, "ipv6config 2001:db8:1::10/64 2001:db8:1::1");
+    lab.run(b, "ipv6config 2001:db8:3::10/64 2001:db8:3::1");
+    lab.run(a, "ping 2001:db8:3::10");
+    let ping = lab.run(a, "ping 2001:db8:3::10");
+    assert!(ping.contains("4 answered"), "{ping}");
+    assert!(lab.run(r1, "show ipv6 ospf").contains("area 0, cost 1, passive"));
+    let run = lab.run(r1, "show running-config");
+    assert!(
+        run.contains(" ipv6 ospf 1 area 0") && run.contains("ipv6 router ospf 1\n router-id 1.1.1.1\n passive-interface GigabitEthernet0/0"),
+        "{run}"
+    );
+    // Hellos on the wire, from link-local addresses to ff02::5.
+    lab.sim.clear_trace();
+    lab.sim.run_for(&lab.t, 11_000_000);
+    assert!(
+        lab.sim
+            .trace()
+            .iter()
+            .any(|e| e.summary.starts_with("OSPFv3 hello from router 2.2.2.2") && e.summary.contains("ff02::5") && e.dropped.is_none())
+    );
+    // A default route from R3.
+    lab.run(r3, "conf t\nipv6 route ::/0 2001:db8:3::10\nipv6 router ospf 1\ndefault-information originate\nend");
+    assert!(lab.run(r1, "show ipv6 route").contains("OE2 ::/0"));
+    lab.run(r2, "conf t\nno ipv6 router ospf 1\nend");
+    assert!(lab.run(r1, "show ipv6 ospf neighbor").contains("No OSPFv3 neighbours"));
+}
+
+#[test]
 fn ntp_syslog_and_tftp_by_typing() {
     let mut lab = Lab::new();
     let r = lab.add(DeviceKind::Router);

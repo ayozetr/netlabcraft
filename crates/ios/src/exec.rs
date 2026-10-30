@@ -49,6 +49,8 @@ pub enum Mode {
     Ospf,
     /// `R1(config-router)#` under `router rip`.
     Rip,
+    /// `R1(config-rtr)#` under `ipv6 router ospf`.
+    Ospf6,
     /// `R1(config-ipv6-acl)#`: the list's name.
     Acl6(String),
     /// `R1(config-dhcpv6)#`: the pool's name.
@@ -71,6 +73,7 @@ impl Mode {
             Mode::Svi(_) => Modes::SVI,
             Mode::Ospf => Modes::OSPF,
             Mode::Rip => Modes::RIP,
+            Mode::Ospf6 => Modes::OSPF6,
             Mode::Acl6(_) => Modes::ACL6,
             Mode::Dhcp6(_) => Modes::DHCP6,
             Mode::Acl(_) => Modes::ACL,
@@ -284,6 +287,7 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::DhcpPool(_) => format!("{n}(dhcp-config)#"),
         Mode::Svi(_) => format!("{n}(config-if)#"),
         Mode::Ospf | Mode::Rip => format!("{n}(config-router)#"),
+        Mode::Ospf6 => format!("{n}(config-rtr)#"),
         Mode::Acl6(_) => format!("{n}(config-ipv6-acl)#"),
         Mode::Dhcp6(_) => format!("{n}(config-dhcpv6)#"),
         Mode::Acl(name) => {
@@ -464,6 +468,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::DhcpPool(_)
                 | Mode::Svi(_)
                 | Mode::Ospf
+                | Mode::Ospf6
                 | Mode::Rip
                 | Mode::Acl(_)
                 | Mode::Acl6(_)
@@ -508,6 +513,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::DhcpPool(_)
                 | Mode::Svi(_)
                 | Mode::Ospf
+                | Mode::Ospf6
                 | Mode::Rip
                 | Mode::Acl(_)
                 | Mode::Acl6(_)
@@ -884,7 +890,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             })
         }
         Id::ShowIpv6IntBrief => Ok(render::ipv6_brief(c.t, c.d()?)),
-        Id::ShowIpv6Route => Ok(render::ipv6_route(c.t, c.d()?)),
+        Id::ShowIpv6Route => {
+            let d = c.d()?.clone();
+            Ok(render::ipv6_route(c.t, c.sim, &d))
+        }
         Id::ShowIpv6Neighbors => Ok(render::ipv6_neighbors(c.sim, c.d()?)),
         Id::IpRouting | Id::NoIpRouting => {
             let d = c.dm()?;
@@ -1925,7 +1934,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::OspfRouterId | Id::NoOspfRouterId => {
             let id = if spec.id == Id::OspfRouterId { Some(parse_ip(arg(0)).map_err(|e| format!("% {e}"))?) } else { None };
-            c.dm()?.ospf.as_mut().ok_or("% Not in OSPF mode")?.router_id = id;
+            if c.cli.mode == Mode::Ospf6 {
+                c.dm()?.ospf6.as_mut().ok_or("% Not in OSPFv3 mode")?.router_id = id;
+            } else {
+                c.dm()?.ospf.as_mut().ok_or("% Not in OSPF mode")?.router_id = id;
+            }
             Ok(String::new())
         }
         Id::OspfPassive | Id::NoOspfPassive => {
@@ -1933,17 +1946,75 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let d = c.d()?;
             let port = d.ports.get(r.port).ok_or("% No such port")?;
             let name = r.sub.map_or(port.name.clone(), |s| format!("{}.{s}", port.name));
-            let o = c.dm()?.ospf.as_mut().ok_or("% Not in OSPF mode")?;
-            o.passive.retain(|p| *p != name);
-            if spec.id == Id::OspfPassive {
-                o.passive.push(name);
+            let add = spec.id == Id::OspfPassive;
+            let six = c.cli.mode == Mode::Ospf6;
+            let d = c.dm()?;
+            let list = if six {
+                &mut d.ospf6.as_mut().ok_or("% Not in OSPFv3 mode")?.passive
+            } else {
+                &mut d.ospf.as_mut().ok_or("% Not in OSPF mode")?.passive
+            };
+            list.retain(|p| *p != name);
+            if add {
+                list.push(name);
             }
             Ok(String::new())
         }
         Id::OspfDefaultOriginate | Id::NoOspfDefaultOriginate => {
             let on = spec.id == Id::OspfDefaultOriginate;
-            c.dm()?.ospf.as_mut().ok_or("% Not in OSPF mode")?.default_originate = on;
+            if c.cli.mode == Mode::Ospf6 {
+                c.dm()?.ospf6.as_mut().ok_or("% Not in OSPFv3 mode")?.default_originate = on;
+            } else {
+                c.dm()?.ospf.as_mut().ok_or("% Not in OSPF mode")?.default_originate = on;
+            }
             Ok(String::new())
+        }
+        Id::Ipv6RouterOspf => {
+            let n: u16 = arg(0).parse().ok().filter(|n| *n >= 1).ok_or("% The process id is 1-65535")?;
+            let d = c.dm()?;
+            match &d.ospf6 {
+                Some(o) if o.process != n => {
+                    return Err(format!("% OSPFv3 process {} already runs here; PacketCraft runs one process per router", o.process));
+                }
+                Some(_) => {}
+                None => d.ospf6 = Some(packetcraft_model::Ospf6 { process: n, ..Default::default() }),
+            }
+            let note = if packetcraft_sim::ospf6::router_id(d).is_none() {
+                "OSPFv3 needs a router ID: give one with `router-id A.B.C.D` (there's no IPv4 address to take it from)."
+            } else {
+                ""
+            };
+            c.cli.mode = Mode::Ospf6;
+            Ok(note.into())
+        }
+        Id::NoIpv6RouterOspf => {
+            let d = c.dm()?;
+            if d.ospf6.as_ref().is_none_or(|o| o.process.to_string() != arg(0)) {
+                return Err(format!("% No OSPFv3 process {}", arg(0)));
+            }
+            d.ospf6 = None;
+            Ok(String::new())
+        }
+        Id::Ipv6OspfArea | Id::NoIpv6OspfArea => {
+            let process: u16 = arg(0).parse().ok().filter(|n| *n >= 1).ok_or("% The process id is 1-65535")?;
+            let area: u32 = arg(1).parse().map_err(|_| "% Area number 0-4294967295")?;
+            let add = spec.id == Id::Ipv6OspfArea;
+            c.each_v6(|v6, _, _| {
+                if add {
+                    v6.ospf = Some((process, area));
+                } else if v6.ospf == Some((process, area)) {
+                    v6.ospf = None;
+                }
+                Ok(())
+            })
+        }
+        Id::ShowIpv6OspfNeighbor => {
+            let st = c.sim.ospf6_state(c.t);
+            Ok(render::ospf6_neighbors(c.t, c.d()?, &st))
+        }
+        Id::ShowIpv6Ospf => {
+            let st = c.sim.ospf6_state(c.t);
+            Ok(render::ospf6_summary(c.d()?, &st))
         }
         Id::ShowOspfNeighbor => {
             let st = c.sim.ospf_state(c.t);
