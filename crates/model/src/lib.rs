@@ -335,6 +335,26 @@ impl Standby {
 /// Most HSRP groups on one interface.
 pub const MAX_STANDBY: usize = 16;
 
+/// Wi-Fi settings of a radio port: on an access point the network it offers, on a host the
+/// network it joins.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Wifi {
+    pub ssid: String,
+    /// WPA2-PSK passphrase; `None` is an open network.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    /// 2.4 GHz channel (access points).
+    #[serde(default = "default_channel")]
+    pub channel: u8,
+}
+
+fn default_channel() -> u8 {
+    6
+}
+
+/// How far (workspace units) a radio reaches.
+pub const WIFI_RANGE: f32 = 450.0;
+
 /// Layer-2 framing on a serial link.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -476,6 +496,9 @@ pub struct Port {
     /// HSRP groups (routers).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub standby: Vec<Standby>,
+    /// Radio ports: the Wi-Fi network offered (access points) or joined (hosts).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wifi: Option<Wifi>,
     /// Serial ports: encapsulation and clock rate.
     #[serde(default, skip_serializing_if = "SerialConf::is_default")]
     pub serial: SerialConf,
@@ -1098,6 +1121,7 @@ impl Device {
                 channel: None,
                 serial: SerialConf::default(),
                 standby: Vec::new(),
+                wifi: None,
                 cdp_off: false,
                 routed: false,
                 err_disabled: false,
@@ -1433,8 +1457,48 @@ impl Topology {
     }
 
     /// The far end of the cable plugged into a port.
+    /// The port at the other end: of the cable, or for a Wi-Fi host the access point's radio.
     pub fn peer(&self, end: End) -> Option<End> {
-        self.link_at(end).map(|l| if l.a == end { l.b } else { l.a })
+        self.link_at(end).map(|l| if l.a == end { l.b } else { l.a }).or_else(|| self.wifi_ap_of(end))
+    }
+
+    fn radio(&self, end: End) -> Option<(&Device, &Port, &Wifi)> {
+        let d = self.device(end.device)?;
+        let p = d.ports.get(end.port).filter(|p| ifname::is_wireless(&p.name) && !p.shutdown)?;
+        Some((d, p, p.wifi.as_ref()?))
+    }
+
+    /// The access point a Wi-Fi host is associated with: the nearest one in range offering
+    /// the same SSID with the same key.
+    pub fn wifi_ap_of(&self, client: End) -> Option<End> {
+        let (cd, _, want) = self.radio(client)?;
+        if !cd.kind.is_host() {
+            return None;
+        }
+        self.devices
+            .iter()
+            .filter(|d| d.kind == DeviceKind::Switch)
+            .flat_map(|d| (0..d.ports.len()).map(move |p| End { device: d.id, port: p }))
+            .filter_map(|e| {
+                let (ad, _, offer) = self.radio(e)?;
+                let dist = ((ad.x - cd.x).powi(2) + (ad.y - cd.y).powi(2)).sqrt();
+                (offer.ssid == want.ssid && offer.key == want.key && !offer.ssid.is_empty() && dist <= WIFI_RANGE).then_some((dist, e))
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, e)| e)
+    }
+
+    /// The hosts associated with an access point's radio.
+    pub fn wifi_clients(&self, ap: End) -> Vec<End> {
+        if self.radio(ap).is_none_or(|(d, ..)| d.kind != DeviceKind::Switch) {
+            return Vec::new();
+        }
+        self.devices
+            .iter()
+            .filter(|d| d.kind.is_host())
+            .flat_map(|d| (0..d.ports.len()).map(move |p| End { device: d.id, port: p }))
+            .filter(|e| self.wifi_ap_of(*e) == Some(ap))
+            .collect()
     }
 
     /// The first port of a device with no cable.

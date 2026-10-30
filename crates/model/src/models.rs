@@ -90,6 +90,13 @@ pub static MODELS: &[Model] = &[
         ports: &[run("FastEthernet0/", 1, 48), run("GigabitEthernet0/", 1, 2)],
     },
     Model {
+        id: "AccessPoint",
+        kind: DeviceKind::Switch,
+        label: "AccessPoint",
+        description: "Wi-Fi access point: bridges its radio and its Ethernet port (SSID, WPA2-PSK)",
+        ports: &[run("GigabitEthernet", 0, 0), run("Wireless", 0, 0)],
+    },
+    Model {
         id: "Hub-8",
         kind: DeviceKind::Hub,
         label: "Hub-8",
@@ -103,6 +110,13 @@ pub static MODELS: &[Model] = &[
         label: "Laptop",
         description: "Laptop with one Fast Ethernet port",
         ports: &[run("FastEthernet", 0, 0)],
+    },
+    Model {
+        id: "Laptop-WiFi",
+        kind: DeviceKind::Laptop,
+        label: "Laptop-WiFi",
+        description: "Laptop with a Wi-Fi card instead of an Ethernet port",
+        ports: &[run("Wireless", 0, 0)],
     },
     Model {
         id: "Server",

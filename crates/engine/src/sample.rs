@@ -76,6 +76,11 @@ pub static SAMPLES: &[Sample] = &[
         description: "Two routers share the virtual gateway 192.168.1.254; R1 is active. Shut R1 down and PC1 keeps reaching the server through R2.",
     },
     Sample {
+        id: "wifi",
+        title: "Wi-Fi: laptops on an access point",
+        description: "An access point offers the network Aula with WPA2; two Wi-Fi laptops join it and get addresses from the router's DHCP pool.",
+    },
+    Sample {
         id: "ospf",
         title: "OSPF on three routers",
         description: "Three routers in a triangle learn each other's networks with OSPF; cut a link and the routes move.",
@@ -532,6 +537,34 @@ pub fn build(id: &str) -> Result<Topology> {
                 )?;
             }
             b.t.notes = "R1 is active for both virtual gateways (`show standby`). Watch the HSRP hellos in Simulation mode, then shut R1's interfaces and ping from PC1 again.".into();
+        }
+        "wifi" => {
+            b.add_model("Router-2", "R1", 360.0, 20.0)?;
+            b.add(DeviceKind::Switch, "S1", 360.0, 140.0)?;
+            b.add_model("AccessPoint", "AP1", 560.0, 200.0)?;
+            b.add(DeviceKind::Pc, "PC1", 160.0, 240.0)?;
+            b.cable("R1", "g0/0", "S1", "g0/1")?;
+            b.cable("AP1", "g0", "S1", "fa0/2")?;
+            b.cable("PC1", "fa0", "S1", "fa0/1")?;
+            b.type_in(
+                "R1",
+                "enable\nconfigure terminal\ninterface g0/0\nip address 192.168.10.1 255.255.255.0\nno shutdown\nexit\nip dhcp excluded-address 192.168.10.1 192.168.10.9\nip dhcp pool AULA\nnetwork 192.168.10.0 255.255.255.0\ndefault-router 192.168.10.1\nend",
+            )?;
+            b.type_in("PC1", "ipconfig 192.168.10.5 255.255.255.0 192.168.10.1")?;
+            let wifi = packetcraft_model::Wifi { ssid: "Aula".into(), key: Some("clase1234".into()), channel: 6 };
+            let ap = b.t.resolve("AP1").map_err(|e| EngineError::Failed(e.to_string()))?;
+            if let Some(p) = b.t.device_mut(ap).and_then(|d| d.ports.get_mut(1)) {
+                p.wifi = Some(wifi.clone());
+            }
+            for (name, x) in [("Laptop1", 460.0), ("Laptop2", 680.0)] {
+                b.add_model("Laptop-WiFi", name, x, 320.0)?;
+                let id = b.t.resolve(name).map_err(|e| EngineError::Failed(e.to_string()))?;
+                if let Some(p) = b.t.device_mut(id).and_then(|d| d.ports.get_mut(0)) {
+                    p.wifi = Some(wifi.clone());
+                }
+                b.type_in(name, "ipconfig /renew")?;
+            }
+            b.t.notes = "AP1 offers Aula (WPA2, passphrase clase1234). Open a laptop's Config ▸ Wireless0 to change its network, or move it far from AP1 and watch it drop.".into();
         }
         "ospf" => {
             for (name, x, y) in [("R1", 120.0, 80.0), ("R2", 600.0, 80.0), ("R3", 360.0, 260.0)] {

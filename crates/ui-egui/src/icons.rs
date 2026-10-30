@@ -22,6 +22,29 @@ pub fn multilayer_mark(p: &Painter, rect: Rect) {
     arrow(p, center + vec2(rx * 0.15, 0.0), center + vec2(rx * 0.8, 0.0), s);
 }
 
+/// The mark an access point carries over its box: two antennas with radio waves.
+pub fn access_point_mark(p: &Painter, rect: Rect) {
+    let w = rect.width();
+    let dark = Color32::from_rgb(0x2a, 0x33, 0x40);
+    let s = Stroke::new((w / 22.0).max(1.0), dark);
+    for x in [0.3, 0.7] {
+        let base = pos2(rect.left() + w * x, rect.center().y - w * 0.12);
+        p.line_segment([base, base - vec2(0.0, w * 0.32)], s);
+        p.circle_filled(base - vec2(0.0, w * 0.32), w * 0.04, dark);
+    }
+    let c = pos2(rect.center().x, rect.center().y - w * 0.42);
+    let wave = Stroke::new((w / 30.0).max(1.0), Color32::from_rgb(0x2e, 0x8b, 0x57));
+    for r in [0.12, 0.2] {
+        let pts: Vec<Pos2> = (0..=8)
+            .map(|i| {
+                let a = std::f32::consts::PI * (1.15 + 0.7 * i as f32 / 8.0);
+                c + vec2(a.cos(), a.sin()) * w * r
+            })
+            .collect();
+        p.add(Shape::line(pts, wave));
+    }
+}
+
 /// Draws a device icon filling `rect`.
 pub fn device(p: &Painter, rect: Rect, kind: DeviceKind, _tk: &Tokens) {
     let c = device_color(kind);

@@ -16,7 +16,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 | 1 | **Activity depth:** a timer, locked fields (students can't open the wizard or see answers in the UI), variable values per student, feedback text per check, an answer network to compare against | Instructors | 30–50 h |
 | 2 | **Console coverage:** more debugs, `show processes/memory`, LLDP, `show ip ospf interface`; going through the CCNA 1 labs command by command | CCNA 1 from the first lab | 6–14 h |
 | 3 | **More protocol frames in Simulation mode:** OSPF database exchange (DBD/LSR/LSU), LACP, LLDP; BPDUs, OSPF hellos and RIP updates are done | CCNA 2–3 students watching Simulation mode | 8–14 h |
-| 4 | **Wireless LANs:** access points, wireless routers, laptop wireless cards, SSID and WPA2, association | CCNA 2 | 40–60 h |
+| 4 | **Wireless depth:** wireless routers (home gateway with DHCP and NAT), WLC with lightweight APs, 802.1X/RADIUS, 802.11 frames in Simulation mode | CCNA 2 | 25–40 h |
 | 5 | **OSPF database on the wire and area types:** DBD/LSR/LSU/LSAck exchange in Simulation mode, stub/NSSA areas, summarisation; RIP on multilayer switches | CCNA 3 | 14–21 h |
 | 6 | **IPv6 depth:** OSPFv3, DHCPv6 relay, IPv6 on subinterfaces and VLAN interfaces | CCNA 2–3 | 28–40 h |
 | 7 | **Services:** FTP, email (SMTP/POP3 with the PC Email app), SNMP, AAA (RADIUS/TACACS+) | CCNA 3, network management labs | 40–60 h |
@@ -30,6 +30,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Done: Wi-Fi access points and laptops (SSID, WPA2-PSK, range, relay between clients), wifi sample lab. |
 | 2026-10-30 | minor | Done: spanning-tree listening/learning timers, rapid-pvst. |
 | 2026-10-30 | minor | Done: the web build asks before closing a tab with unsaved changes; File ▸ Open Recent on the desktop. |
 | 2026-10-30 | minor | Done: NTP, syslog and TFTP (server services and router commands). |

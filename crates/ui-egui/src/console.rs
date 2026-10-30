@@ -60,6 +60,10 @@ pub struct DeviceWindow {
     gw6: String,
     /// "Static" picked for IPv6, before an address is applied.
     v6_static: bool,
+    /// Wi-Fi form: SSID, WPA2 passphrase, channel.
+    wifi_ssid: String,
+    wifi_key: String,
+    wifi_channel: String,
     vlan_id: String,
     vlan_name: String,
     route_net: String,
@@ -755,6 +759,45 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
                 let off = l.last().is_some_and(|x| x == "shutdown");
                 app.info(if off { "Host ports are always on." } else { "" });
             }
+        }
+    }
+    if ifname::is_wireless(&port.name)
+        && let Some(w) = app.ui.windows.get_mut(&d)
+    {
+        ui.add_space(8.0);
+        ui.label(RichText::new("Wi-Fi").strong());
+        if w.wifi_ssid.is_empty()
+            && let Some(wf) = &port.wifi
+        {
+            w.wifi_ssid = wf.ssid.clone();
+            w.wifi_key = wf.key.clone().unwrap_or_default();
+            w.wifi_channel = wf.channel.to_string();
+        }
+        field(ui, "SSID", &mut w.wifi_ssid);
+        field(ui, "WPA2 passphrase", &mut w.wifi_key);
+        let ap = dev.kind == DeviceKind::Switch;
+        if ap {
+            field(ui, "Channel", &mut w.wifi_channel);
+        }
+        let (ssid, key, chan) = (w.wifi_ssid.trim().to_string(), w.wifi_key.trim().to_string(), w.wifi_channel.trim().parse::<u64>().unwrap_or(6));
+        let assoc = if ap {
+            format!("{} host(s) associated", app.session.topology.wifi_clients(packetcraft_model::End { device: d, port: i }).len())
+        } else {
+            app.session
+                .topology
+                .wifi_ap_of(packetcraft_model::End { device: d, port: i })
+                .map_or("Not associated".to_string(), |e| format!("Associated with {}", app.session.topology.end_label(e)))
+        };
+        ui.label(assoc);
+        if ui.button("Apply Wi-Fi").clicked()
+            && let Some(v) = app.run("device.wireless", json!({"device": d.0, "port": port.name, "ssid": ssid, "key": key, "channel": chan}))
+        {
+            let msg = match v["associated_with"].as_str() {
+                Some(a) => format!("Associated with {a}"),
+                None if ap => "Wi-Fi settings applied".to_string(),
+                None => "Not associated: check the SSID, the passphrase and the distance".to_string(),
+            };
+            app.info(msg);
         }
     }
     if let Some(l) = lines {

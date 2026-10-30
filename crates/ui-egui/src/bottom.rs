@@ -196,6 +196,9 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                                 if m.multilayer {
                                     icons::multilayer_mark(&p, icon);
                                 }
+                                if m.short == "AccessPoint" {
+                                    icons::access_point_mark(&p, icon);
+                                }
                             }
                             None => icons::glyph(&p, icon.shrink(4.0), Glyph::Cable, tk.cable),
                         }

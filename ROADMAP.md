@@ -20,15 +20,15 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 | Number | Value | Kind |
 |---|---|---|
-| **Ready for real work** (weighted) | **~61%** | estimated from written weights (61.1); [target-app-parity.md](docs/target-app-parity.md) |
+| **Ready for real work** (weighted) | **~62%** | estimated from written weights (62.3); [target-app-parity.md](docs/target-app-parity.md) |
 | **CCNA 1 student** | **~74%** | estimated; [method](docs/target-app-parity.md#audiences) |
-| **CCNA 2 student** | **~71%** | estimated |
+| **CCNA 2 student** | **~78%** | estimated |
 | **CCNA 3 student** | **~62%** | estimated |
 | **Instructor** (graded activities) | **~45%** | estimated |
 | Engine commands | 40 | measured: `crates/engine/src/catalog.rs` |
 | Console grammar entries | 225 across 12 modes | measured: `crates/ios/src/grammar.rs` |
-| Device models · sample labs | 13 · 17 | measured |
-| Tests | 137 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Device models · sample labs | 15 · 18 | measured |
+| Tests | 138 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~600–950 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
@@ -37,7 +37,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 |---|---|---|---|
 | Full target | ~50% | ~600–950 | Activities and scoring, wireless, more device families, services, physical workspace, translations |
 | CCNA 1 student | ~74% | ~30–55 | Console coverage, protocol frames in Simulation mode, PDU details |
-| CCNA 2 student | ~71% | ~70–115 | Wireless LANs |
+| CCNA 2 student | ~78% | ~45–80 | Wireless routers and WLC, console polish |
 | CCNA 3 student | ~62% | ~110–180 | OSPFv3, VPN, SNMP and AAA, QoS |
 | Instructor | ~45% | ~50–90 | Timer, locking, variables, per-check feedback, translations |
 
@@ -50,7 +50,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Layer 3 | 15 | 66% | 50–80 | IPv4, IPv6 (NDP, SLAAC), static, RIP, multi-area OSPF with DR/BDR, multilayer switching, HSRP; no EIGRP or OSPFv3 |
 | Services | 8 | 58% | 26–42 | DHCPv4 and DHCPv6, DNS, HTTP with browser, Telnet/SSH, NTP, syslog, TFTP; no FTP, email, SNMP, AAA |
 | Security | 8 | 72% | 24–40 | IPv4 and IPv6 ACLs, access-class, NAT/PAT, passwords and lines, PPP PAP/CHAP; no firewalls or VPN |
-| WAN, cabling, wireless | 6 | 35% | 60–90 | Copper (auto-MDIX) and serial (DCE/DTE, HDLC/PPP); no wireless or fibre |
+| WAN, cabling, wireless | 6 | 55% | 35–55 | Copper (auto-MDIX), serial (DCE/DTE, HDLC/PPP), Wi-Fi access points and clients; no wireless routers, WLC or fibre |
 | Simulation mode | 8 | 65% | 22–35 | Event list, replay, decode, drop reasons, pcap; BPDUs, OSPF hellos, RIP updates; no complex PDUs |
 | Workspace and windows | 10 | 55% | 60–90 | Reference-app arrangement, device tabs, notes and drawings; no physical view or clusters |
 | Teaching | 8 | 45% | 55–90 | Activities with checks, points, hidden answers and a wizard; no timer, locking or translations |
@@ -60,6 +60,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-10-30 — Wi-Fi.** An AccessPoint model and a Laptop-WiFi model: SSID, open or WPA2-PSK, channel; hosts join the nearest access point in range with the same network and key, drawn as a dashed line; the access point relays between its hosts; Wi-Fi settings in the port pages and the `device.wireless` command; wifi sample lab.
 - **2026-10-30 — Spanning-tree timers.** A port that starts forwarding listens 15 s and learns 15 s first (amber light, LIS/LRN in `show spanning-tree`), as on real switches; portfast and `spanning-tree mode rapid-pvst` skip the wait; sample labs start converged.
 - **2026-10-30 — Safer files.** The web build asks before a tab with unsaved changes closes; the desktop keeps a File ▸ Open Recent list.
 - **2026-10-30 — NTP, syslog and TFTP.** Server NTP, SYSLOG and TFTP services with their pages in the Services tab; `ntp server`, `show ntp status`, `logging host`, `copy running-config tftp:` and `copy tftp: startup-config`, all on the wire in their standard formats.

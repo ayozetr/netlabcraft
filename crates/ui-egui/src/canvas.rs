@@ -422,6 +422,19 @@ fn draw_links(app: &mut PacketApp, painter: &egui::Painter, view: &View, tk: &To
             }
         }
     }
+    // Wi-Fi associations: a dashed line from each host to its access point.
+    for d in t.devices.iter().filter(|d| d.kind.is_host()) {
+        for p in 0..d.ports.len() {
+            let end = End { device: d.id, port: p };
+            if t.link_at(end).is_some() {
+                continue;
+            }
+            let Some(ap) = t.wifi_ap_of(end).and_then(|e| t.device(e.device)) else { continue };
+            let (a, b) = (view.screen(d.x, d.y), view.screen(ap.x, ap.y));
+            let stroke = Stroke::new((1.6 * view.zoom).max(1.0), tk.link_up);
+            painter.add(egui::Shape::dashed_line(&[a, b], stroke, 8.0 * view.zoom, 6.0 * view.zoom));
+        }
+    }
     // An EtherChannel: a ring around its bundled cables, next to each switch.
     for d in t.devices.iter().filter(|d| d.kind == packetcraft_model::DeviceKind::Switch) {
         for c in packetcraft_sim::channel::channels(t, d) {
@@ -451,6 +464,9 @@ fn draw_devices(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Toke
         icons::device(painter, r, d.kind, tk);
         if d.catalogue_model().multilayer() {
             icons::multilayer_mark(painter, r);
+        }
+        if d.catalogue_model().id == "AccessPoint" {
+            icons::access_point_mark(painter, r);
         }
         // Two centred lines under the icon: model, then name.
         let font = FontId::proportional((16.0 * view.zoom).clamp(8.0, 24.0));

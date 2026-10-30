@@ -14,7 +14,7 @@ host hardware: ~70% ready, 10–16 h** (estimated).
 | Routers | Many models, modular slots (HWIC, NIM) | Router-2/3/4 (Gigabit Ethernet), Router-WAN (2 Gigabit Ethernet + 2 serial); generic names | Modules added in the Physical tab with the power off: 20–30 h |
 | Switches | Access and multilayer models | Switch-8/24/48, Switch-ML-24 (multilayer) | — for CCNA labs |
 | Hubs, PCs, laptops, servers, printers | yes | yes | — |
-| Wireless (access points, wireless routers, wireless clients) | yes | ❌ | 802.11 association, SSID/WPA2, WLC: 40–60 h |
+| Wireless (access points, wireless routers, wireless clients) | yes | 🟡 AccessPoint and Laptop-WiFi models: SSID, open or WPA2-PSK, channel, association by range (nearest access point), relay between clients; frames captured as Ethernet | Wireless routers, WLC and lightweight APs, 802.1X/RADIUS, 802.11 frames, roaming: 25–40 h |
 | Firewalls (ASA), IoT devices, phones, cloud/modems | yes | ❌ | 40–60 h; low priority for CCNA |
 | Copper cables | Straight-through and crossover (with mismatch errors) | One copper cable; every port is auto-MDIX | By design; a "strict cabling" option: 2–4 h |
 | Serial cables | DCE and DTE | ✅ the first end cabled is the DCE; red cable with a clock at the DCE end | — |
@@ -39,4 +39,5 @@ host hardware: ~70% ready, 10–16 h** (estimated).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Wi-Fi access point and laptop. |
 | 2026-10-30 | major | Created: simulated device families and cables, host hardware. |

@@ -133,7 +133,16 @@ pub fn l3_ifaces(d: &Device) -> Vec<L3If> {
 pub fn port_up(t: &Topology, end: End) -> bool {
     let ok = |p: &packetcraft_model::Port| !p.shutdown && !p.err_disabled;
     let own = t.device(end.device).and_then(|d| d.ports.get(end.port)).is_some_and(ok);
+    // An access point's radio is up while some host is associated with it.
+    if is_ap_radio(t, end) {
+        return own && !t.wifi_clients(end).is_empty();
+    }
     own && t.peer(end).and_then(|p| t.device(p.device).and_then(|d| d.ports.get(p.port))).is_some_and(ok) && serial_problem(t, end).is_none()
+}
+
+/// Whether a port is an access point's radio.
+pub fn is_ap_radio(t: &Topology, end: End) -> bool {
+    t.device(end.device).filter(|d| d.kind == DeviceKind::Switch).and_then(|d| d.ports.get(end.port)).is_some_and(|p| ifname::is_wireless(&p.name))
 }
 
 /// Why a cabled serial link can't carry traffic (its line protocol stays down), if it can't.
@@ -808,6 +817,19 @@ impl Sim {
         if !port_up(t, from) || self.err_disabled_now(from.device, from.port) {
             return false;
         }
+        // Over the air an access point reaches every associated host; each keeps what is its own.
+        if is_ap_radio(t, from) {
+            // Not back to the host that sent it.
+            let src = frame.get(6..12).map(<[u8]>::to_vec).unwrap_or_default();
+            for to in t.wifi_clients(from) {
+                if t.device(to.device).and_then(|d| d.ports.get(to.port)).is_some_and(|p| p.mac.0[..] == src[..]) {
+                    continue;
+                }
+                self.seq += 1;
+                self.queue.push(Reverse(Queued { at: self.now + LINK_DELAY_US, seq: self.seq, from, to, frame: frame.clone(), hops }));
+            }
+            return true;
+        }
         let Some(to) = t.peer(from) else { return false };
         if self.err_disabled_now(to.device, to.port) {
             return false;
@@ -1272,7 +1294,9 @@ impl Sim {
                         })
                         .unwrap_or_else(|| vec![*p]);
                     let was = members.iter().any(|m| prev.ports.get(&(*dev, *m)).is_some_and(|i| i.role.forwards()));
-                    let immediate = t.device(*dev).is_some_and(|d| d.rapid_stp || d.ports.get(*p).is_some_and(|x| x.portfast));
+                    // Portfast, rapid spanning tree, and access-point radios forward at once.
+                    let immediate =
+                        t.device(*dev).is_some_and(|d| d.rapid_stp || d.ports.get(*p).is_some_and(|x| x.portfast || ifname::is_wireless(&x.name)));
                     if !was && !immediate {
                         self.stp_since.insert(key, self.now);
                     }
@@ -1395,9 +1419,19 @@ impl Sim {
             }
         }
         let outs: Vec<usize> = match known {
-            Some(p) if Some(p) == in_port => return Err("destination is on the arrival port (filtered)".into()),
+            // An access point relays between hosts on its radio.
+            Some(p) if Some(p) == in_port && !is_ap_radio(t, End { device: d.id, port: p }) => {
+                return Err("destination is on the arrival port (filtered)".into());
+            }
             Some(p) => vec![p],
-            None => (0..d.ports.len()).filter(|&p| Some(p) != in_port && !chm.hidden(p) && !chm.suspended(p) && carries(t, d, p, vlan)).collect(),
+            None => (0..d.ports.len())
+                .filter(|&p| {
+                    (Some(p) != in_port || is_ap_radio(t, End { device: d.id, port: p }))
+                        && !chm.hidden(p)
+                        && !chm.suspended(p)
+                        && carries(t, d, p, vlan)
+                })
+                .collect(),
         };
         let outs: Vec<usize> = outs.into_iter().filter(|&p| self.stp_forwards(t, d.id, p, vlan)).collect();
         let mut sent = 0;

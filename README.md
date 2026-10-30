@@ -21,7 +21,7 @@
 
 <p align="center">
   <img src="docs/images/hero-multilayer.png" alt="PacketCraft's main window: a multilayer switch in the middle routes between four PCs in two VLANs and reaches a router and a server above it; menus and two toolbars on top, the device box, scenario list and PDU table at the bottom" width="100%">
-  <br><sub><b>Inter-VLAN routing on a multilayer switch</b>: one of the seventeen sample labs (<code>File → New → Sample</code>), built entirely from PacketCraft commands.</sub>
+  <br><sub><b>Inter-VLAN routing on a multilayer switch</b>: one of the eighteen sample labs (<code>File → New → Sample</code>), built entirely from PacketCraft commands.</sub>
 </p>
 
 <p align="center">

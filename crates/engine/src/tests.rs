@@ -313,3 +313,33 @@ fn the_sample_activity_can_be_solved_by_typing() {
     assert!(!file.contains("192.168.10.1 255.255.255.0") || file.contains("\"ip\":\"192.168.10.1/24\""));
     assert!(!file.contains("enable secret"));
 }
+
+#[test]
+fn wifi_hosts_join_an_access_point() {
+    let mut s = Session::new();
+    s.execute("device.add", json!({"kind": "router", "x": 0, "y": 0})).unwrap();
+    s.execute("device.add", json!({"model": "AccessPoint", "x": 200, "y": 0})).unwrap();
+    s.execute("device.add", json!({"model": "Laptop-WiFi", "x": 300, "y": 150})).unwrap();
+    s.execute("device.add", json!({"model": "Laptop-WiFi", "x": 2000, "y": 2000})).unwrap();
+    let ap = s.topology.devices[1].name.clone();
+    let (l1, l2) = (s.topology.devices[2].name.clone(), s.topology.devices[3].name.clone());
+    s.execute("link.add", json!({"a": "R1", "a_port": "g0/0", "b": ap, "b_port": "g0"})).unwrap();
+    s.execute("device.configure", json!({"device": "R1", "lines": ["interface g0/0", "ip address 192.168.1.1 255.255.255.0", "no shutdown"]}))
+        .unwrap();
+    s.execute("device.wireless", json!({"device": ap, "ssid": "Aula", "key": "clase1234"})).unwrap();
+    for (l, ip) in [(&l1, "192.168.1.10"), (&l2, "192.168.1.11")] {
+        s.execute("cli.exec", json!({"device": l, "line": format!("ipconfig {ip} 255.255.255.0 192.168.1.1")})).unwrap();
+    }
+    // Wrong key: not associated.
+    let r = s.execute("device.wireless", json!({"device": l1, "ssid": "Aula", "key": "otraclave"})).unwrap();
+    assert!(r["associated_with"].is_null());
+    let r = s.execute("device.wireless", json!({"device": l1, "ssid": "Aula", "key": "clase1234"})).unwrap();
+    assert!(r["associated_with"].as_str().unwrap().contains("Wireless0"), "{r}");
+    s.execute("net.ping", json!({"from": l1, "to": "192.168.1.1", "count": 2})).unwrap();
+    assert_eq!(s.execute("net.ping", json!({"from": l1, "to": "192.168.1.1", "count": 3})).unwrap()["marks"], "!!!");
+    // Too far away: out of range.
+    let r = s.execute("device.wireless", json!({"device": l2, "ssid": "Aula", "key": "clase1234"})).unwrap();
+    assert!(r["associated_with"].is_null());
+    assert!(s.execute("device.wireless", json!({"device": ap, "ssid": "x", "key": "short"})).is_err());
+    assert!(s.execute("device.wireless", json!({"device": "R1", "ssid": "x"})).is_err());
+}

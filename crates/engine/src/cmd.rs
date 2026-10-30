@@ -214,7 +214,34 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         "device.models" => Ok(Value::Array(
             models::MODELS.iter().map(|m| json!({"id": m.id, "kind": m.kind.id(), "label": m.label, "description": m.description, "ports": m.port_names()})).collect(),
         )),
-                "activity.show" => Ok(json!({
+                        "device.wireless" => {
+            let d = device_param(s, p, "device")?;
+            let dev = s.topology.device(d).ok_or_else(|| bad("no such device"))?;
+            let port = match opt_str(p, "port") {
+                Some(n) => port_param(s, d, n)?,
+                None => dev.ports.iter().position(|x| packetcraft_model::ifname::is_wireless(&x.name)).ok_or_else(|| bad(format!("{} has no radio", dev.name)))?,
+            };
+            if !dev.ports.get(port).is_some_and(|x| packetcraft_model::ifname::is_wireless(&x.name)) {
+                return Err(bad("that port is not a radio"));
+            }
+            let ssid: String = str_param(p, "ssid")?.trim().chars().take(32).collect();
+            let key = opt_str(p, "key").map(str::to_string).filter(|k| !k.is_empty());
+            if let Some(k) = &key
+                && !(8..=63).contains(&k.chars().count())
+            {
+                return Err(bad("a WPA2 passphrase has 8-63 characters"));
+            }
+            let channel = p.get("channel").and_then(Value::as_u64).map_or(6, |c| c.clamp(1, 13) as u8);
+            let wifi = (!ssid.is_empty()).then_some(packetcraft_model::Wifi { ssid, key, channel });
+            s.checkpoint();
+            if let Some(x) = s.topology.device_mut(d).and_then(|x| x.ports.get_mut(port)) {
+                x.wifi = wifi;
+            }
+            s.changed();
+            let ap = s.topology.wifi_ap_of(packetcraft_model::End { device: d, port });
+            Ok(json!({"associated_with": ap.map(|e| s.topology.end_label(e))}))
+        }
+        "activity.show" => Ok(json!({
             "activity": s.topology.activity,
             "total_points": s.topology.activity.as_ref().map_or(0, packetcraft_model::activity::Activity::total_points),
         })),

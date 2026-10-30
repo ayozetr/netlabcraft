@@ -22,6 +22,14 @@ macro_rules! c {
 }
 
 pub static CATALOG: &[CommandInfo] = &[
+    c!(
+        "device.wireless",
+        "Wi-Fi settings",
+        "",
+        None,
+        r#"{"device", "port"?: "Wireless0", "ssid": "network name (empty: radio off)", "key"?: "WPA2-PSK passphrase, 8-63 characters (none: open)", "channel"?: 1-13}"#,
+        true
+    ),
     c!("activity.show", "Activity", "", None, r#"{} → {"activity" (or null), "total_points"}"#, false),
     c!(
         "activity.set",

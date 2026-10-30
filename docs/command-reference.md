@@ -8,6 +8,7 @@ Every front end (UI, `packetcraft-cli run`, MCP `packetcraft_run`) runs these.
 
 | Id | Label | Menu | Shortcut | Parameters |
 |---|---|---|---|---|
+| `device.wireless` | Wi-Fi settings |  |  | `{"device", "port"?: "Wireless0", "ssid": "network name (empty: radio off)", "key"?: "WPA2-PSK passphrase, 8-63 characters (none: open)", "channel"?: 1-13}` |
 | `activity.show` | Activity |  |  | `{} → {"activity" (or null), "total_points"}` |
 | `activity.set` | Activity Wizard… | Extensions |  | `{"title"?, "instructions"?, "hidden"?: true to store configuration answers as hashes}` |
 | `activity.capture` | Capture answers from this lab |  |  | `{} → {"checks": n}: configuration lines and host addresses become checks (pings and command checks are kept)` |
