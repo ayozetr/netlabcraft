@@ -189,6 +189,8 @@ pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
                             (Tab::Iot, "IoT"),
                             (Tab::Attributes, "Attributes"),
                         ]
+                    } else if netlabcraft_model::iot::can_serve(&dev) && dev.kind != DeviceKind::Server {
+                        &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Iot, "IoT"), (Tab::Cli, "CLI"), (Tab::Attributes, "Attributes")]
                     } else if dev.kind == DeviceKind::Iot {
                         &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Iot, "IoT"), (Tab::Attributes, "Attributes")]
                     } else if dev.kind == DeviceKind::Phone {

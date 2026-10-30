@@ -1367,7 +1367,8 @@ impl Sim {
     /// Runs the simulation for `us` microseconds.
     pub fn run_for(&mut self, t: &Topology, us: u64) {
         let deadline = self.now.saturating_add(us);
-        self.advance(t, deadline, |_| false);
+        // Smart things report as their timers run out on the way.
+        self.run_with_iot(t, deadline);
     }
 
     /// Runs until nothing is in flight (at most [`MAX_EVENTS_PER_RUN`] events).
@@ -2887,7 +2888,7 @@ impl Sim {
         if let Some(r) = self.tacacs_server_in(t, d, ip, &seg) {
             return r;
         }
-        if seg.dst_port == 80 && d.kind == DeviceKind::Server {
+        if seg.dst_port == 80 && (d.kind == DeviceKind::Server || d.iot.service) {
             return self.http_server_in(t, d, ip, &seg);
         }
         if matches!(seg.dst_port, 22 | 23) && matches!(d.kind, DeviceKind::Router | DeviceKind::Switch) {

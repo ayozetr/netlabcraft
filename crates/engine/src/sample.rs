@@ -131,6 +131,11 @@ pub static SAMPLES: &[Sample] = &[
         description: "Two SIP phones, powered by a PoE switch, register with R1's SIP call control (voice register) and call each other; dial 2002 from Phone1.",
     },
     Sample {
+        id: "smart-home",
+        title: "A smart home with an IoT gateway",
+        description: "Eight smart things report every few seconds to the home gateway's IoT service, whose rules light the hall when someone moves, sound the siren on smoke and unlock the door on smoke or heat.",
+    },
+    Sample {
         id: "switch-card",
         title: "A switch card in a router",
         description: "R1 has a 4-port switch card: its ports are VLAN members (10 and 20) and a trunk to S1, and the router routes between its VLAN interfaces.",
@@ -1042,6 +1047,57 @@ pub fn build(id: &str) -> Result<Topology> {
             }
             b.t.notes = "The phones take their addresses by DHCP and register over SIP (UDP 5060) with R1, which knows them by MAC address (voice register pool). Open Phone1 > Phone, dial 2002 and press Call; on Phone2 press Pick up. In Simulation mode the event list shows REGISTER, INVITE, 180 Ringing, 200 OK, ACK and BYE. `show voice register all` on R1, `show power inline` on S1.".into();
         }
+        "smart-home" => {
+            use netlabcraft_model::iot::{Condition, IotRule, Op};
+            b.add_model("Home-Gateway", "Home", 360.0, 40.0)?;
+            b.add(DeviceKind::Switch, "S1", 360.0, 160.0)?;
+            b.cable("Home", "Ethernet1", "S1", "g0/1")?;
+            b.add(DeviceKind::Pc, "PC1", 640.0, 40.0)?;
+            b.cable("PC1", "fa0", "Home", "Ethernet2")?;
+            b.type_in("PC1", "ipconfig /renew")?;
+            let things = [
+                ("Temp1", "IoT-Sensor", 22),
+                ("Motion1", "IoT-Motion", 0),
+                ("Smoke1", "IoT-Smoke", 0),
+                ("Fan1", "IoT-Device", 0),
+                ("Light1", "IoT-Light", 0),
+                ("Door1", "IoT-Door", 0),
+                ("Siren1", "IoT-Siren", 0),
+                ("Cam1", "IoT-Webcam", 0),
+            ];
+            for (i, (name, model, value)) in things.into_iter().enumerate() {
+                let x = 60.0 + 95.0 * i as f32;
+                b.add_model(model, name, x, if i % 2 == 0 { 300.0 } else { 360.0 })?;
+                b.cable(name, "fa0", "S1", &format!("fa0/{}", i + 1))?;
+                b.type_in(name, "ipconfig /renew")?;
+                let d = b.t.resolve(name)?;
+                if let Some(dev) = b.t.device_mut(d) {
+                    dev.iot.server = Some(Ipv4Addr::new(192, 168, 0, 1));
+                    dev.iot.value = value;
+                }
+            }
+            let cond = |sensor: &str, op: Op, value: i32| Condition { sensor: sensor.into(), op, value };
+            let rule = |conditions: Vec<Condition>, any: bool, actuator: &str| IotRule {
+                sensor: String::new(),
+                above: 0,
+                actuator: actuator.into(),
+                conditions,
+                any,
+                on: true,
+            };
+            let gw = b.t.resolve("Home")?;
+            if let Some(d) = b.t.device_mut(gw) {
+                d.iot.rules = vec![
+                    rule(vec![cond("Temp1", Op::Above, 28)], false, "Fan1"),
+                    rule(vec![cond("Motion1", Op::Equals, 1)], false, "Light1"),
+                    rule(vec![cond("Motion1", Op::Equals, 1), cond("Smoke1", Op::Below, 20)], false, "Cam1"),
+                    rule(vec![cond("Smoke1", Op::Above, 20)], false, "Siren1"),
+                    rule(vec![cond("Smoke1", Op::Above, 20), cond("Temp1", Op::Above, 60)], true, "Door1"),
+                ];
+            }
+            b.t.add_annotation(20.0, 150.0, "Smart things on S1 - Home gateway LAN 192.168.0.0/24")?;
+            b.t.notes = "Every smart thing reports to the Home gateway's IoT service (192.168.0.1) every 5 s of simulated time. Open Home > IoT to see them live and the rules. Set Motion1's reading to 1: Light1 and Cam1 switch on (Cam1 takes a still image). Raise Smoke1 above 20: Siren1 sounds and Door1 unlocks. Advance the time (or press Report now) to let the things report.".into();
+        }
         "switch-card" => {
             b.add_model("Router-M2", "R1", 360.0, 60.0)?;
             b.fit_card("R1", "0/1", "Card-4SW")?;
@@ -1111,7 +1167,7 @@ pub fn build(id: &str) -> Result<Topology> {
             if let Some(d) = b.t.device_mut(srv) {
                 d.services.http.on = true;
                 d.iot.service = true;
-                d.iot.rules = vec![netlabcraft_model::iot::IotRule { sensor: "Sensor1".into(), above: 30, actuator: "Fan1".into() }];
+                d.iot.rules = vec![netlabcraft_model::iot::IotRule::above("Sensor1", 30, "Fan1")];
             }
             for (i, (name, model, addr, x)) in
                 [("Sensor1", "IoT-Sensor", 10, 140.0), ("Fan1", "IoT-Device", 11, 360.0), ("PC1", "PC", 20, 580.0)].into_iter().enumerate()

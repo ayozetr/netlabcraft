@@ -48,6 +48,11 @@ pub fn factory(t: &mut Topology, id: DeviceId) {
     if let Some(radio) = t.device_mut(id).and_then(|d| d.ports.iter_mut().find(|p| netlabcraft_model::ifname::is_wireless(&p.name))) {
         radio.wifi = Some(Wifi { ssid: "HomeNetwork".into(), key: None, channel: 6, login: None });
     }
+    // A home gateway also runs its IoT service, on its LAN address's web port.
+    if let Some(d) = t.device_mut(id).filter(|d| netlabcraft_model::iot::can_serve(d)) {
+        d.services.http.on = true;
+        d.iot.service = true;
+    }
 }
 
 /// What the settings page sets.

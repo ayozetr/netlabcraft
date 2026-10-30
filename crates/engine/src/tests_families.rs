@@ -138,3 +138,68 @@ fn sip_phones_register_ring_talk_and_hang_up_and_captures_show_sip() {
     assert!(s2.topology.find("Phone2").unwrap().voice.sip);
     assert_eq!(s2.topology.find("R1").unwrap().voice.pools.len(), 2);
 }
+
+#[test]
+fn a_smart_home_reports_on_a_timer_and_its_gateway_applies_and_or_rules() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "smart-home"})).unwrap();
+    let page = |s: &mut Session| s.execute("iot.server", json!({"device": "Home"})).unwrap();
+    let thing = |p: &serde_json::Value, n: &str| p["things"].as_array().unwrap().iter().find(|t| t["name"] == n).cloned().unwrap_or_default();
+    let p = page(&mut s);
+    assert_eq!(p["things"].as_array().unwrap().len(), 8, "{p}");
+    assert_eq!(thing(&p, "Temp1")["what"], "temperature");
+    assert_eq!(thing(&p, "Light1")["on"], false);
+    // Someone moves: the hall light and the camera switch on; the camera takes a still image.
+    s.execute("iot.configure", json!({"device": "Motion1", "value": 1})).unwrap();
+    let p = page(&mut s);
+    assert_eq!((thing(&p, "Light1")["on"].clone(), thing(&p, "Cam1")["on"].clone()), (json!(true), json!(true)), "{p}");
+    let cam = s.execute("iot.configure", json!({"device": "Cam1"})).unwrap();
+    assert!(cam["image"].as_str().unwrap_or_default().contains("someone in view"), "{cam}");
+    // Smoke: the siren sounds, the door unlocks (OR), the camera stops (AND with smoke < 20).
+    s.execute("iot.configure", json!({"device": "Smoke1", "value": 40})).unwrap();
+    let p = page(&mut s);
+    for (n, on) in [("Siren1", true), ("Door1", true), ("Cam1", false)] {
+        assert_eq!(thing(&p, n)["on"], on, "{n}: {p}");
+    }
+    s.execute("iot.configure", json!({"device": "Smoke1", "value": 0})).unwrap();
+    s.execute("iot.configure", json!({"device": "Temp1", "value": 70})).unwrap();
+    let p = page(&mut s);
+    assert_eq!(
+        (thing(&p, "Door1")["on"].clone(), thing(&p, "Siren1")["on"].clone(), thing(&p, "Fan1")["on"].clone()),
+        (json!(true), json!(false), json!(true))
+    );
+    // The timer: a reading changed behind the server's back reaches it on the next report.
+    let id = s.topology.resolve("Temp1").unwrap();
+    s.topology.device_mut(id).unwrap().iot.value = 12;
+    s.execute("sim.advance", json!({"seconds": 6})).unwrap();
+    let p = s.execute("iot.sync", json!({})).unwrap();
+    assert!(p["things"].as_array().unwrap().iter().any(|t| t["device"] == "Temp1" && t["interval"] == 5));
+    assert_eq!(thing(&page(&mut s), "Temp1")["value"], 12);
+    // With no timer, only changes and asked-for reports reach it.
+    s.execute("iot.configure", json!({"device": "Temp1", "interval": 0})).unwrap();
+    s.topology.device_mut(id).unwrap().iot.value = 33;
+    s.execute("sim.advance", json!({"seconds": 20})).unwrap();
+    let reg = s.sim.iot_registry(s.topology.resolve("Home").unwrap()).iter().find(|e| e.name == "Temp1").and_then(|e| e.value);
+    assert_eq!(reg, Some(12));
+    // Rules in the new form, and hostile ones.
+    let r = s
+        .execute(
+            "iot.server",
+            json!({"device": "Home", "rules": [{"conditions": [{"sensor": "Temp1", "op": "<", "value": 15}, {"sensor": "Motion1", "op": "=", "value": 1}], "join": "and", "actuator": "Fan1", "on": false}]}),
+        )
+        .unwrap();
+    assert_eq!(r["rules"][0]["text"], "If Temp1 < 15 and Motion1 = 1, switch Fan1 off", "{r}");
+    for bad in [
+        json!([{"conditions": [{"sensor": "x", "op": "!", "value": 1}], "actuator": "y"}]),
+        json!([{"conditions": [{"sensor": "x", "value": 1}], "join": "xor", "actuator": "y"}]),
+        json!([{"conditions": [], "actuator": "y"}]),
+        json!([{"conditions": "x", "actuator": "y"}]),
+    ] {
+        assert!(s.execute("iot.server", json!({"device": "Home", "rules": bad})).is_err());
+    }
+    assert!(s.execute("iot.configure", json!({"device": "Light1", "value": 3})).is_err(), "a light has no reading");
+    assert!(s.execute("iot.configure", json!({"device": "Temp1", "interval": 99_999})).is_err());
+    let s2 = round_trip(&mut s);
+    assert!(s2.topology.find("Home").unwrap().iot.service);
+    assert_eq!(s2.topology.find("Motion1").unwrap().iot.interval, 5);
+}

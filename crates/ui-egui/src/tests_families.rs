@@ -117,4 +117,52 @@ mod t {
         h.run_steps(2);
         assert!(!h.state().session.topology.device(p1).unwrap().voice.sip);
     }
+
+    #[test]
+    fn the_gateways_iot_tab_lists_things_live_and_adds_an_and_rule() {
+        let mut h = harness("smart-home");
+        let (gw, motion, cam) = {
+            let t = &h.state().session.topology;
+            (t.resolve("Home").unwrap(), t.resolve("Motion1").unwrap(), t.resolve("Cam1").unwrap())
+        };
+        h.state_mut().ui.show_notes = false;
+        crate::open_console(h.state_mut(), gw);
+        if let Some(w) = h.state_mut().ui.windows.get_mut(&gw) {
+            w.tab = crate::console::Tab::Iot;
+        }
+        h.run_steps(3);
+        h.get_by_label("Refresh").click();
+        h.run_steps(2);
+        assert!(h.query_by_label("If Smoke1 > 20 or Temp1 > 60, switch Door1 on").is_some());
+        assert!(h.query_by_label("Motion1").is_some() && h.query_by_label("webcam").is_some());
+        // Movement: the camera's still image shows on the page.
+        h.state_mut().session.execute("iot.configure", serde_json::json!({"device": motion.0, "value": 1})).unwrap();
+        h.state_mut().session.execute("sim.advance", serde_json::json!({"seconds": 6})).unwrap();
+        h.run_steps(2);
+        assert!(h.query_by_label_contains("someone in view").is_some());
+        let rules = h.state().session.topology.device(gw).unwrap().iot.rules.len();
+        h.get_by_label("If").click();
+        h.run_steps(1);
+        h.input_mut().events.push(egui::Event::Text("Temp1".into()));
+        h.run_steps(1);
+        h.get_by_label("second sensor").click();
+        h.run_steps(1);
+        h.input_mut().events.push(egui::Event::Text("Motion1".into()));
+        h.run_steps(1);
+        h.get_by_label("device").click();
+        h.run_steps(1);
+        h.input_mut().events.push(egui::Event::Text("Light1".into()));
+        h.run_steps(1);
+        h.get_by_label("Add rule").click();
+        h.run_steps(2);
+        let d = h.state().session.topology.device(gw).unwrap();
+        assert_eq!(d.iot.rules.len(), rules + 1);
+        assert_eq!(d.iot.rules.last().unwrap().all_conditions().len(), 2);
+        // A thing's own tab: its timer and its state.
+        h.state_mut().ui.windows.clear();
+        crate::open_console(h.state_mut(), cam);
+        h.run_steps(3);
+        assert!(h.query_by_label("Report every (s):").is_some());
+        assert!(h.query_by_label("recording").is_some());
+    }
 }

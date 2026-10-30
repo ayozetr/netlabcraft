@@ -758,10 +758,8 @@ off	apagado
 Switch off	Apagar
 Switch on	Encender
 Rules	Reglas
-If {} is above {}, switch {} on	Si {} supera {}, enciende {}
 If	Si
 sensor	sensor
-is above	supera
 switch on	enciende
 device	dispositivo
 Add rule	Añadir regla
@@ -913,3 +911,57 @@ Two SIP phones, powered by a PoE switch, register with R1's SIP call control (vo
 The phones take their addresses by DHCP and register over SIP (UDP 5060) with R1, which knows them by MAC address (voice register pool). Open Phone1 > Phone, dial 2002 and press Call; on Phone2 press Pick up. In Simulation mode the event list shows REGISTER, INVITE, 180 Ringing, 200 OK, ACK and BYE. `show voice register all` on R1, `show power inline` on S1.	Los teléfonos toman su dirección por DHCP y se registran por SIP (UDP 5060) en R1, que los conoce por su dirección MAC (voice register pool). Abre Phone1 > Teléfono, marca 2002 y pulsa Llamar; en Phone2 pulsa Descolgar. En el modo Simulación la lista de eventos muestra REGISTER, INVITE, 180 Ringing, 200 OK, ACK y BYE. `show voice register all` en R1, `show power inline` en S1.
 Signal with SIP	Señalizar con SIP
 Use SIP (UDP 5060) instead of NetLabCraft's own call-control protocol	Usar SIP (UDP 5060) en lugar del protocolo de control de llamadas propio de NetLabCraft
+Motion Detector	Detector de movimiento
+Smart motion detector with one Fast Ethernet port: reports 1 while something moves in front of it, else 0	Detector de movimiento inteligente con un puerto Fast Ethernet: informa 1 mientras algo se mueve delante de él, si no 0
+Smoke Detector	Detector de humo
+Smart smoke detector with one Fast Ethernet port: reports how much smoke it senses (0-100 %)	Detector de humo inteligente con un puerto Fast Ethernet: informa de cuánto humo detecta (0-100 %)
+Smart Light	Luz inteligente
+Smart lamp with one Fast Ethernet port: the IoT server switches it on and off	Lámpara inteligente con un puerto Fast Ethernet: el servidor IoT la enciende y la apaga
+Smart Door Lock	Cerradura inteligente
+Smart door lock with one Fast Ethernet port: the IoT server unlocks it (on) and locks it (off)	Cerradura inteligente con un puerto Fast Ethernet: el servidor IoT la abre (encendida) y la cierra (apagada)
+Siren	Sirena
+Smart siren with one Fast Ethernet port: sounds while the IoT server keeps it on	Sirena inteligente con un puerto Fast Ethernet: suena mientras el servidor IoT la mantiene encendida
+Webcam	Cámara web
+Smart webcam with one Fast Ethernet port: while on, it takes a still image each time it reports and the IoT server keeps the latest	Cámara web inteligente con un puerto Fast Ethernet: encendida, toma una imagen fija cada vez que informa y el servidor IoT guarda la última
+Home Gateway	Pasarela doméstica
+Home IoT gateway: Internet port, 4 LAN ports and Wi-Fi with DHCP and NAT like a home router, plus a built-in IoT service that smart things register with	Pasarela IoT doméstica: puerto de Internet, 4 puertos LAN y Wi-Fi con DHCP y NAT como un router doméstico, más un servicio IoT integrado en el que se registran los objetos inteligentes
+A smart home with an IoT gateway	Una casa inteligente con una pasarela IoT
+Eight smart things report every few seconds to the home gateway's IoT service, whose rules light the hall when someone moves, sound the siren on smoke and unlock the door on smoke or heat.	Ocho objetos inteligentes informan cada pocos segundos al servicio IoT de la pasarela doméstica, cuyas reglas encienden la luz del pasillo cuando alguien se mueve, hacen sonar la sirena si hay humo y abren la puerta si hay humo o calor.
+Every smart thing reports to the Home gateway's IoT service (192.168.0.1) every 5 s of simulated time. Open Home > IoT to see them live and the rules. Set Motion1's reading to 1: Light1 and Cam1 switch on (Cam1 takes a still image). Raise Smoke1 above 20: Siren1 sounds and Door1 unlocks. Advance the time (or press Report now) to let the things report.	Cada objeto inteligente informa al servicio IoT de la pasarela Home (192.168.0.1) cada 5 s de tiempo simulado. Abre Home > IoT para verlos en directo y ver las reglas. Pon la lectura de Motion1 a 1: Light1 y Cam1 se encienden (Cam1 toma una imagen fija). Sube Smoke1 por encima de 20: Siren1 suena y Door1 se abre. Avanza el tiempo (o pulsa Informar ahora) para que los objetos informen.
+Report every (s):	Informar cada (s):
+degrees	grados
+1 = movement	1 = movimiento
+% smoke	% de humo
+running	en marcha
+stopped	parado
+lit	encendida
+dark	apagada
+unlocked	abierta
+locked	cerrada
+sounding	sonando
+quiet	en silencio
+recording	grabando
+temperature	temperatura
+motion	movimiento
+smoke	humo
+fan	ventilador
+light	luz
+door	puerta
+siren	sirena
+webcam	cámara web
+value	valor
+and	y
+or	o
+ and 	 y
+ or 	 o
+second sensor	segundo sensor
+optional	opcional
+second value	segundo valor
+switch off	apaga
+Join the conditions with	Unir las condiciones con
+What the rule does	Qué hace la regla
+Comparison	Comparación
+If {}, switch {} on	Si {}, enciende {}
+If {}, switch {} off	Si {}, apaga {}
+still image {}: someone in view	imagen fija {}: alguien a la vista
+still image {}: nobody in view	imagen fija {}: nadie a la vista

@@ -1742,7 +1742,7 @@ impl Device {
             powered_off: false,
             adapter: poe::needs_power(model).then_some(false),
             voice: voice::Voice::default(),
-            iot: iot::Iot::default(),
+            iot: if kind == DeviceKind::Iot { iot::Iot { interval: iot::DEFAULT_INTERVAL, ..iot::Iot::default() } } else { iot::Iot::default() },
             l2: l2sec::SwitchL2::default(),
         };
         d.ensure_default_vlan();

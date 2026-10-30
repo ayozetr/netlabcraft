@@ -35,7 +35,7 @@ impl Model {
     /// A home wireless router: a multilayer switch with an Internet port, four LAN ports and a
     /// radio, set up at the factory to route, translate and hand out addresses.
     pub fn home_router(&self) -> bool {
-        self.id == "Home-Router"
+        matches!(self.id, "Home-Router" | "Home-Gateway")
     }
 }
 
@@ -181,6 +181,13 @@ pub static MODELS: &[Model] = &[
         ports: &[run("Internet", 0, 0), run("Ethernet", 1, 4), run("Wireless", 0, 0)],
     },
     Model {
+        id: "Home-Gateway",
+        kind: DeviceKind::Switch,
+        label: "Home Gateway",
+        description: "Home IoT gateway: Internet port, 4 LAN ports and Wi-Fi with DHCP and NAT like a home router, plus a built-in IoT service that smart things register with",
+        ports: &[run("Internet", 0, 0), run("Ethernet", 1, 4), run("Wireless", 0, 0)],
+    },
+    Model {
         id: "Hub-8",
         kind: DeviceKind::Hub,
         label: "Hub 8",
@@ -228,6 +235,48 @@ pub static MODELS: &[Model] = &[
         kind: DeviceKind::Iot,
         label: "Smart Sensor",
         description: "Smart temperature sensor with one Fast Ethernet port: reports its reading to an IoT server",
+        ports: &[run("FastEthernet", 0, 0)],
+    },
+    Model {
+        id: "IoT-Motion",
+        kind: DeviceKind::Iot,
+        label: "Motion Detector",
+        description: "Smart motion detector with one Fast Ethernet port: reports 1 while something moves in front of it, else 0",
+        ports: &[run("FastEthernet", 0, 0)],
+    },
+    Model {
+        id: "IoT-Smoke",
+        kind: DeviceKind::Iot,
+        label: "Smoke Detector",
+        description: "Smart smoke detector with one Fast Ethernet port: reports how much smoke it senses (0-100 %)",
+        ports: &[run("FastEthernet", 0, 0)],
+    },
+    Model {
+        id: "IoT-Light",
+        kind: DeviceKind::Iot,
+        label: "Smart Light",
+        description: "Smart lamp with one Fast Ethernet port: the IoT server switches it on and off",
+        ports: &[run("FastEthernet", 0, 0)],
+    },
+    Model {
+        id: "IoT-Door",
+        kind: DeviceKind::Iot,
+        label: "Smart Door Lock",
+        description: "Smart door lock with one Fast Ethernet port: the IoT server unlocks it (on) and locks it (off)",
+        ports: &[run("FastEthernet", 0, 0)],
+    },
+    Model {
+        id: "IoT-Siren",
+        kind: DeviceKind::Iot,
+        label: "Siren",
+        description: "Smart siren with one Fast Ethernet port: sounds while the IoT server keeps it on",
+        ports: &[run("FastEthernet", 0, 0)],
+    },
+    Model {
+        id: "IoT-Webcam",
+        kind: DeviceKind::Iot,
+        label: "Webcam",
+        description: "Smart webcam with one Fast Ethernet port: while on, it takes a still image each time it reports and the IoT server keeps the latest",
         ports: &[run("FastEthernet", 0, 0)],
     },
     Model {
