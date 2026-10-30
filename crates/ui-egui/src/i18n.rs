@@ -134,6 +134,48 @@ pub fn tr_any(message: &str) -> String {
     message.to_string()
 }
 
+const ES_EVENTS: &str = include_str!("../i18n/es-events.tsv");
+
+/// The event-list phrases, longest first.
+fn event_phrases() -> &'static [(&'static str, &'static str)] {
+    static PHRASES: OnceLock<Vec<(&'static str, &'static str)>> = OnceLock::new();
+    PHRASES.get_or_init(|| {
+        let mut v: Vec<_> = parse(ES_EVENTS).into_iter().collect();
+        v.sort_by(|a, b| b.0.len().cmp(&a.0.len()).then(a.0.cmp(b.0)));
+        v
+    })
+}
+
+/// An event summary in the interface language: known phrases replaced where they stand as
+/// whole words, everything else (addresses, names, numbers, payload text) left as it is.
+pub fn tr_event(summary: &str) -> String {
+    if lang() == Lang::English { summary.to_string() } else { spanish_event(summary) }
+}
+
+fn spanish_event(summary: &str) -> String {
+    let word = |c: Option<char>| c.is_some_and(|c| c.is_alphanumeric() || c == '-' || c == '_');
+    let mut out = String::with_capacity(summary.len() + 16);
+    let mut i = 0;
+    while let Some(rest) = summary.get(i..) {
+        let Some(ch) = rest.chars().next() else { break };
+        let before = summary.get(..i).and_then(|b| b.chars().next_back());
+        let hit = (!word(before))
+            .then(|| event_phrases().iter().find(|(en, _)| rest.starts_with(en) && !word(rest.get(en.len()..).and_then(|r| r.chars().next()))))
+            .flatten();
+        match hit {
+            Some((en, es)) => {
+                out.push_str(es);
+                i += en.len();
+            }
+            None => {
+                out.push(ch);
+                i += ch.len_utf8();
+            }
+        }
+    }
+    out
+}
+
 /// The parts of `message` that fill the `{}` of `template`, if it fits.
 fn match_template(template: &str, message: &str) -> Option<Vec<String>> {
     let pieces: Vec<&str> = template.split("{}").collect();
@@ -183,6 +225,23 @@ mod tests {
             if let Some(a) = &t.activity {
                 assert!(spanish().contains_key(a.title.as_str()) && spanish().contains_key(a.instructions.as_str()), "activity of {}", s.id);
             }
+        }
+    }
+
+    #[test]
+    fn event_summaries_read_in_spanish() {
+        // (The language itself is global and other tests run alongside: this checks the
+        // Spanish path directly.)
+        assert_eq!(spanish_event("ARP who has 10.0.0.1? tell 10.0.0.2"), "ARP quién tiene 10.0.0.1? responde a 10.0.0.2");
+        assert_eq!(spanish_event("ICMP echo request seq 1 10.0.0.1 → 10.0.0.2 ttl 64"), "ICMP solicitud de eco sec 1 10.0.0.1 → 10.0.0.2 ttl 64");
+        // Only whole words: "Rootbridge" and "online" keep their letters.
+        assert_eq!(spanish_event("Rootbridge online from R1"), "Rootbridge online de R1");
+        assert_eq!(spanish_event(""), "");
+        assert_eq!(spanish_event("ñ on ñ"), "ñ en ñ");
+        let mut seen = std::collections::BTreeSet::new();
+        for l in ES_EVENTS.lines().filter(|l| !l.trim_start().starts_with('#') && !l.trim().is_empty()) {
+            let (k, v) = l.split_once('\t').unwrap_or_else(|| panic!("row without a tab: {l}"));
+            assert!(!v.trim().is_empty() && seen.insert(k), "{l}");
         }
     }
 

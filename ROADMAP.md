@@ -28,7 +28,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Engine commands | 65 | measured: `crates/engine/src/catalog.rs` |
 | Console grammar entries | 453 across 18 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
 | Device models · sample labs | 16 · 18 | measured |
-| Tests | 196 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Tests | 197 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~550–880 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
@@ -60,6 +60,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-10-30 — Events in Spanish.** With the Spanish interface, the event list's summaries read in Spanish too; addresses, names and protocol names stay as they are.
 - **2026-10-30 — Compare with the answer.** After Check Results, the Instructions window's Compare button lists each check's answer next to what the student's lab has (the lab's side only when the answers are hidden).
 - **2026-10-30 — Drawings and clusters.** Draw freehand strokes and polygons on the workspace; pick several devices (Shift+drag or Shift+click), group them into a cluster with Ctrl+G, open it with a double click and come back through the Root › … path; clusters nest and the simulation ignores them.
 - **2026-10-30 — GRE tunnels and IPsec.** `interface tunnel` with GRE (OSPF runs over it) and site-to-site IPsec with ISAKMP policies, pre-shared keys, transform sets and crypto maps; ESP on the wire, `show crypto` views, and a stated reason when the two ends don't agree.

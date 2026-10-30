@@ -201,7 +201,7 @@ pub fn panel(app: &mut PacketApp, ui: &mut Ui) {
                         let id = e.id;
                         let color = theme::protocol_color(e.protocol);
                         let dropped = e.dropped.clone();
-                        let summary = e.summary.clone();
+                        let summary = crate::i18n::tr_event(&e.summary);
                         let last = t.device(e.from.device).map_or("--".to_string(), |d| d.display_name().to_string());
                         let at = t.device(e.to.device).map_or("--".to_string(), |d| d.display_name().to_string());
                         let cells = [
