@@ -282,6 +282,10 @@ pub fn open_physical_tab(app: &mut PacketApp, d: DeviceId) {
     }
 }
 
+/// Where windows without a place of their own open: below the menu and the toolbars, so they
+/// never start over them.
+pub(crate) const BELOW_TOOLBARS: [f32; 2] = [300.0, 180.0];
+
 /// The application.
 pub struct PacketApp {
     pub session: Session,
@@ -293,7 +297,8 @@ pub struct PacketApp {
 fn tool_button(ui: &mut egui::Ui, g: Glyph, label: &str, selected: bool, enabled: bool) -> egui::Response {
     let tk = theme::tokens(ui.visuals().dark_mode);
     let (rect, resp) = ui.allocate_exact_size(vec2(38.0, 36.0), if enabled { Sense::click() } else { Sense::hover() });
-    let resp = resp.on_hover_text(crate::i18n::tr(label));
+    let label = crate::i18n::tr(label);
+    let resp = resp.on_hover_text(label);
     resp.widget_info(|| egui::WidgetInfo::selected(egui::accesskit::Role::Button, enabled, selected, label));
     let p = ui.painter_at(rect);
     if selected {
@@ -306,6 +311,15 @@ fn tool_button(ui: &mut egui::Ui, g: Glyph, label: &str, selected: bool, enabled
     let color = if matches!(g, Glyph::SimplePdu | Glyph::ComplexPdu) && enabled { Color32::from_rgb(0x3b, 0x3f, 0x46) } else { color };
     icons::glyph(&p, egui::Rect::from_center_size(rect.center(), vec2(30.0, 30.0)), g, color);
     resp
+}
+
+/// How wide [`pill`] draws a tab with this label.
+fn pill_width(ui: &egui::Ui, label: &str) -> f32 {
+    text_width(ui, crate::i18n::tr(label), egui::FontId::proportional(20.0)) + 38.0
+}
+
+fn text_width(ui: &egui::Ui, text: &str, font: egui::FontId) -> f32 {
+    ui.painter().layout_no_wrap(text.to_string(), font, Color32::WHITE).size().x
 }
 
 /// A rounded tab on a navy bar (Logical / Physical, Realtime / Simulation).
@@ -385,7 +399,8 @@ pub(crate) enum PlayGlyph {
 pub(crate) fn play_button(ui: &mut egui::Ui, g: PlayGlyph, label: &str, size: f32) -> egui::Response {
     let tk = theme::tokens(ui.visuals().dark_mode);
     let (rect, resp) = ui.allocate_exact_size(vec2(size, size), Sense::click());
-    let resp = resp.on_hover_text(crate::i18n::tr(label));
+    let label = crate::i18n::tr(label);
+    let resp = resp.on_hover_text(label);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, label));
     let p = ui.painter_at(rect);
     p.rect_filled(rect.shrink(1.0), 7.0, if resp.hovered() { tk.pill } else { tk.bar });
@@ -421,7 +436,9 @@ pub fn clock(us: u64) -> String {
 
 impl PacketApp {
     pub fn new(session: Session) -> PacketApp {
-        PacketApp { session, ui: UiState::default(), requests: Vec::new() }
+        let mut app = PacketApp { session, ui: UiState::default(), requests: Vec::new() };
+        app.ui.canvas.fit_pending = true;
+        app
     }
 
     /// Runs an engine command; failures go to the status line.
@@ -511,6 +528,9 @@ impl PacketApp {
         self.ui.inspect = None;
         self.ui.pdus.clear();
         self.ui.events = events::EventView::default();
+        self.ui.pan = egui::Vec2::ZERO;
+        self.ui.zoom = 1.0;
+        self.ui.canvas.fit_pending = true;
         if !self.session.topology.notes.is_empty() {
             self.info(tl("This lab has notes: open them with the notes button."));
         }
@@ -520,8 +540,6 @@ impl PacketApp {
         let params = sample.map_or_else(|| json!({}), |s| json!({"sample": s}));
         if self.run("file.new", params).is_some() {
             self.after_replace();
-            self.ui.pan = egui::Vec2::ZERO;
-            self.ui.zoom = 1.0;
         }
     }
 
@@ -1044,7 +1062,8 @@ impl PacketApp {
                     (Glyph::Undo, back),
                 ] {
                     let (r, resp) = ui.allocate_exact_size(vec2(32.0, 28.0), Sense::click());
-                    let resp = resp.on_hover_text(crate::i18n::tr(label));
+                    let label = crate::i18n::tr(label);
+                    let resp = resp.on_hover_text(label);
                     resp.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, label));
                     let p = ui.painter_at(r);
                     if resp.hovered() {
@@ -1129,7 +1148,8 @@ impl PacketApp {
             ui.label(RichText::new(time).color(tk.bar_text).size(18.0));
             let white = |ui: &mut egui::Ui, g: Glyph, label: &str| {
                 let (rect, resp) = ui.allocate_exact_size(vec2(32.0, 30.0), Sense::click());
-                let resp = resp.on_hover_text(crate::i18n::tr(label));
+                let label = crate::i18n::tr(label);
+                let resp = resp.on_hover_text(label);
                 resp.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, label));
                 let p = ui.painter_at(rect);
                 if resp.hovered() {
@@ -1143,8 +1163,24 @@ impl PacketApp {
                 self.run("sim.reset", json!({}));
                 self.info(tl("Devices power-cycled: dynamic tables cleared."));
             }
-            if self.ui.mode == Mode::Simulation {
-                ui.label(RichText::new(tl("PLAY CONTROLS:")).color(tk.bar_text).size(16.0));
+            // The right-hand tabs come first: the hint, then the "PLAY CONTROLS:" caption give way
+            // (shrink, then go) when the bar is short, so nothing ever overlaps.
+            let sim = self.ui.mode == Mode::Simulation;
+            let gap = ui.spacing().item_spacing.x;
+            let storm = self.session.sim.storm_detected();
+            let mut right = pill_width(ui, "Simulation") + pill_width(ui, "Realtime") + 2.0 * gap;
+            if sim {
+                right += pill_width(ui, "Event List") + gap;
+            }
+            if storm {
+                right += text_width(ui, tl("Switching loop detected"), egui::TextStyle::Body.resolve(ui.style())) + gap;
+            }
+            if sim {
+                let caption = tl("PLAY CONTROLS:");
+                let controls = 3.0 * (30.0 + gap) + 12.0;
+                if ui.available_width() - right - controls >= text_width(ui, caption, egui::FontId::proportional(16.0)) + gap {
+                    ui.label(RichText::new(caption).color(tk.bar_text).size(16.0));
+                }
                 events::play_controls(self, ui, 30.0);
             } else if white(ui, Glyph::FastForward, "Fast Forward Time (30 s)").clicked() {
                 self.run("sim.advance", json!({"seconds": 30}));
@@ -1153,9 +1189,16 @@ impl PacketApp {
             let (msg, color) = match &self.ui.status {
                 Some((m, true)) => (m.clone(), Color32::from_rgb(0xff, 0x9a, 0x9a)),
                 Some((m, false)) => (m.clone(), tk.bar_text),
-                None => (canvas::hint(self), tk.bar_text.gamma_multiply(0.55)),
+                None => (canvas::hint(self), tk.bar_text.gamma_multiply(0.75)),
             };
-            ui.label(RichText::new(msg).color(color).small());
+            let room = ui.available_width() - right - 2.0 * gap;
+            if room >= 60.0 && !msg.is_empty() {
+                let bar_h = ui.available_height();
+                ui.allocate_ui_with_layout(vec2(room, bar_h), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                    ui.set_max_width(room);
+                    ui.add(egui::Label::new(RichText::new(&msg).color(color).size(13.0)).truncate()).on_hover_text(&msg);
+                });
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if pill(ui, Glyph::Simulation, "Simulation", self.ui.mode == Mode::Simulation).clicked() {
                     self.ui.mode = Mode::Simulation;
@@ -1167,7 +1210,7 @@ impl PacketApp {
                 if self.ui.mode == Mode::Simulation && pill(ui, Glyph::Note, "Event List", self.ui.show_event_list).clicked() {
                     self.ui.show_event_list = !self.ui.show_event_list;
                 }
-                if self.session.sim.storm_detected() {
+                if storm {
                     ui.label(RichText::new(tl("Switching loop detected")).color(Color32::from_rgb(0xff, 0x9a, 0x9a)))
                         .on_hover_text(tl("A frame circled the network; there is no spanning tree yet, so avoid redundant switch links"));
                 }
@@ -1237,7 +1280,7 @@ impl PacketApp {
         }
         let mut open = true;
         let credits = &mut self.ui.about_credits;
-        egui::Window::new(tl("About NetLabCraft")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
+        egui::Window::new(tl("About NetLabCraft")).open(&mut open).collapsible(false).resizable(false).default_pos(BELOW_TOOLBARS).show(ctx, |ui| {
             ui.horizontal(|ui| {
                 if ui.selectable_label(!*credits, tl("About")).clicked() {
                     *credits = false;

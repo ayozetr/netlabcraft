@@ -211,7 +211,7 @@ pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
                     Tab::Physical => physical(app, ui, &dev),
                     Tab::Config => config(app, ui, &dev),
                     Tab::Cli => {
-                        ui.vertical_centered(|ui| ui.strong("Command Line Interface"));
+                        ui.vertical_centered(|ui| ui.strong(tl("Command Line Interface")));
                         console(app, ui, d, false);
                     }
                     Tab::Desktop => desktop(app, ui, &dev),
@@ -456,15 +456,15 @@ fn attributes(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
         let cabled = (0..dev.ports.len()).filter(|p| app.session.topology.peer(End { device: dev.id, port: *p }).is_some()).count();
         let rows = [
             ("Name", dev.name.clone()),
-            ("Model", dev.catalogue_model().label.to_string()),
+            ("Model", crate::i18n::tr(dev.catalogue_model().label).to_string()),
             ("Ports", dev.ports.len().to_string()),
             ("Cabled ports", cabled.to_string()),
             ("Base MAC address", dev.ports.first().map_or("-".into(), |p| p.mac.to_string())),
-            ("Saved configuration", if dev.startup.is_some() { "yes" } else { "no" }.into()),
+            ("Saved configuration", tl(if dev.startup.is_some() { "yes" } else { "no" }).into()),
             ("Position", format!("{:.0}, {:.0}", dev.x, dev.y)),
         ];
         for (k, v) in rows {
-            ui.strong(k);
+            ui.strong(tl(k));
             ui.label(v);
             ui.end_row();
         }
@@ -620,6 +620,18 @@ pub(crate) fn field(ui: &mut egui::Ui, label: &str, value: &mut String) {
     });
 }
 
+/// A two-column form: labels, then their fields, all lined up.
+pub(crate) fn form_grid(ui: &mut egui::Ui, id: impl egui::AsIdSalt, add: impl FnOnce(&mut egui::Ui)) {
+    egui::Grid::new(id).num_columns(2).spacing(vec2(12.0, 6.0)).min_col_width(170.0).show(ui, add);
+}
+
+/// A row of a [`form_grid`]: the label, then its text field (labelled by it).
+pub(crate) fn grid_field(ui: &mut egui::Ui, label: &str, value: &mut String) {
+    let l = ui.label(label);
+    ui.add(egui::TextEdit::singleline(value).desired_width(300.0)).labelled_by(l.id);
+    ui.end_row();
+}
+
 /// A centred title with a rule under it, as the Config pages have.
 pub(crate) fn page_title(ui: &mut egui::Ui, title: &str) {
     ui.vertical_centered(|ui| ui.label(RichText::new(crate::i18n::tr(title)).size(16.0)));
@@ -734,68 +746,73 @@ fn settings_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     let mut host = w.name.clone();
     let mut actions: Vec<(&str, serde_json::Value)> = Vec::new();
     let mut requests = Vec::new();
-    ui.horizontal(|ui| {
-        let l = ui.add_sized([130.0, 22.0], egui::Label::new(tl("Display Name")));
-        let r = ui.add(egui::TextEdit::singleline(&mut label).desired_width(ui.available_width().min(320.0))).labelled_by(l.id);
+    let host_kind = dev.kind.is_host();
+    // Pressed buttons: NVRAM erase/save, startup load/export, running export/merge, gateway.
+    let mut pressed = [false; 7];
+    form_grid(ui, ("settings", d.0), |ui| {
+        let l = ui.label(tl("Display Name"));
+        let r = ui.add(egui::TextEdit::singleline(&mut label).desired_width(320.0)).labelled_by(l.id);
         if r.lost_focus() && label.trim() != dev.display_name() {
             actions.push(("device.label", json!({"device": d.0, "label": label.trim()})));
         }
-    });
-    ui.horizontal(|ui| {
-        let l = ui.add_sized([130.0, 22.0], egui::Label::new(tl("Hostname")));
-        let r = ui.add(egui::TextEdit::singleline(&mut host).desired_width(ui.available_width().min(320.0))).labelled_by(l.id);
+        ui.end_row();
+        let l = ui.label(tl("Hostname"));
+        let r = ui.add(egui::TextEdit::singleline(&mut host).desired_width(320.0)).labelled_by(l.id);
         if r.lost_focus() && host.trim() != dev.name && !host.trim().is_empty() {
-            if dev.kind.is_host() {
+            if host_kind {
                 actions.push(("device.rename", json!({"device": d.0, "name": host.trim()})));
             } else {
                 actions.push(("device.configure", json!({"device": d.0, "lines": [format!("hostname {}", host.trim())]})));
             }
         }
+        ui.end_row();
+        if host_kind {
+            grid_field(ui, tl("Default Gateway"), &mut w.gateway);
+            ui.label("");
+            pressed[6] = ui.button(tl("Set Gateway")).clicked();
+            ui.end_row();
+        } else {
+            for (i, (label, a, b)) in
+                [("NVRAM", "Erase", "Save"), ("Startup Config", "Load...", "Export..."), ("Running Config", "Export...", "Merge...")]
+                    .into_iter()
+                    .enumerate()
+            {
+                ui.label(tl(label));
+                ui.horizontal(|ui| {
+                    pressed[2 * i] = ui.add_sized([150.0, 26.0], egui::Button::new(tl(a))).clicked();
+                    pressed[2 * i + 1] = ui.add_sized([150.0, 26.0], egui::Button::new(tl(b))).clicked();
+                });
+                ui.end_row();
+            }
+        }
     });
     w.label = label;
     w.name = host;
-    if dev.kind.is_host() {
-        ui.add_space(8.0);
-        field(ui, tl("Default Gateway"), &mut w.gateway);
-        if ui.button(tl("Set Gateway")).clicked() {
-            let line = format!("ipconfig {} {} {}", w.ip.trim(), w.mask.trim(), w.gateway.trim());
-            actions.push(("cli.exec", json!({"device": d.0, "line": line})));
+    let [erase, save, load, export_start, export_run, merge, gateway] = pressed;
+    if gateway {
+        let line = format!("ipconfig {} {} {}", w.ip.trim(), w.mask.trim(), w.gateway.trim());
+        actions.push(("cli.exec", json!({"device": d.0, "line": line})));
+    }
+    if erase {
+        actions.push(("device.startup", json!({"device": d.0, "action": "erase"})));
+    }
+    if save {
+        actions.push(("device.startup", json!({"device": d.0, "action": "save"})));
+    }
+    if load {
+        requests.push(crate::UiRequest::OpenText { device: d, merge: false });
+    }
+    if export_start {
+        match &dev.startup {
+            Some(cfg) => requests.push(crate::UiRequest::SaveText { name: format!("{}_startup-config.txt", dev.name), text: cfg.clone() }),
+            None => app.ui.status = Some((crate::i18n::tl("There is no startup configuration to export yet (Save first).").into(), true)),
         }
-    } else {
-        let row = |ui: &mut egui::Ui, label: &str, a: &str, b: &str| -> (bool, bool) {
-            ui.horizontal(|ui| {
-                ui.add_sized([130.0, 26.0], egui::Label::new(label));
-                let x = ui.add_sized([150.0, 26.0], egui::Button::new(a)).clicked();
-                let y = ui.add_sized([150.0, 26.0], egui::Button::new(b)).clicked();
-                (x, y)
-            })
-            .inner
-        };
-        let (erase, save) = row(ui, "NVRAM", "Erase", "Save");
-        if erase {
-            actions.push(("device.startup", json!({"device": d.0, "action": "erase"})));
-        }
-        if save {
-            actions.push(("device.startup", json!({"device": d.0, "action": "save"})));
-        }
-        let (load, export_start) = row(ui, "Startup Config", "Load...", "Export...");
-        if load {
-            requests.push(crate::UiRequest::OpenText { device: d, merge: false });
-        }
-        if export_start {
-            match &dev.startup {
-                Some(cfg) => requests.push(crate::UiRequest::SaveText { name: format!("{}_startup-config.txt", dev.name), text: cfg.clone() }),
-                None => app.ui.status = Some((crate::i18n::tl("There is no startup configuration to export yet (Save first).").into(), true)),
-            }
-        }
-        let (export_run, merge) = row(ui, "Running Config", "Export...", "Merge...");
-        if export_run {
-            requests
-                .push(crate::UiRequest::SaveText { name: format!("{}_running-config.txt", dev.name), text: netlabcraft_ios::running_config(dev) });
-        }
-        if merge {
-            requests.push(crate::UiRequest::OpenText { device: d, merge: true });
-        }
+    }
+    if export_run {
+        requests.push(crate::UiRequest::SaveText { name: format!("{}_running-config.txt", dev.name), text: netlabcraft_ios::running_config(dev) });
+    }
+    if merge {
+        requests.push(crate::UiRequest::OpenText { device: d, merge: true });
     }
     for (id, params) in actions {
         app.run(id, params);
@@ -852,7 +869,7 @@ fn routes_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 netlabcraft_model::NextHop::Address(a) => a.to_string(),
                 netlabcraft_model::NextHop::Interface(i) => i.clone(),
             };
-            ui.monospace(format!("{} via {via}", r.net));
+            ui.monospace(crate::i18n::trf("{} via {}", &[&r.net, &via]));
             if ui.small_button(tl("Remove")).clicked() {
                 lines = Some(vec![format!("no ip route {} {} {via}", r.net.addr, r.net.mask())]);
             }
@@ -876,7 +893,7 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
             lines = Some(vec![iface.clone(), if on { "no shutdown".into() } else { "shutdown".into() }]);
         }
     });
-    ui.label(format!("MAC Address: {}", port.mac));
+    ui.label(crate::i18n::trf("MAC Address: {}", &[&port.mac]));
     let Some(w) = app.ui.windows.get_mut(&d) else { return };
     match dev.kind {
         DeviceKind::Router => {
@@ -891,10 +908,11 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
             }
             ui.add_space(6.0);
             field(ui, tl("IPv6 Address"), &mut w.ip6);
-            ui.label(format!(
-                "Link Local Address: {}",
-                netlabcraft_sim::v6::l3_ifaces6(dev).iter().find(|x| x.port == i).map_or("(IPv6 off)".to_string(), |x| x.link_local.to_string())
-            ));
+            let ll = netlabcraft_sim::v6::l3_ifaces6(dev)
+                .iter()
+                .find(|x| x.port == i)
+                .map_or_else(|| tl("(IPv6 off)").to_string(), |x| x.link_local.to_string());
+            ui.label(crate::i18n::trf("Link Local Address: {}", &[&ll]));
             if ui.button(tl("Apply IPv6")).clicked() {
                 let mut l = vec![iface.clone(), "no ipv6 address".into()];
                 if !w.ip6.trim().is_empty() {
@@ -917,7 +935,7 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
                     lines = Some(vec![iface.clone(), format!("switchport access vlan {}", w.port_vlan.trim())]);
                 }
             } else {
-                ui.label(format!("Native VLAN {} · allowed {}", port.switchport.native_vlan, port.switchport.allowed));
+                ui.label(crate::i18n::trf("Native VLAN {} · allowed {}", &[&port.switchport.native_vlan, &port.switchport.allowed]));
             }
         }
         DeviceKind::Hub => {
@@ -932,7 +950,7 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
             }
             if let Some(l) = lines.take() {
                 let off = l.last().is_some_and(|x| x == "shutdown");
-                app.info(if off { "Host ports are always on." } else { "" });
+                app.info(if off { tl("Host ports are always on.") } else { "" });
             }
         }
     }
@@ -989,9 +1007,9 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
         {
             let msg = match (v["associated_with"].as_str(), v["problem"].as_str()) {
                 (Some(a), _) => crate::i18n::trf("Associated with {}", &[&a]),
-                (None, _) if ap => "Wi-Fi settings applied".to_string(),
+                (None, _) if ap => tl("Wi-Fi settings applied").to_string(),
                 (None, Some(why)) => crate::i18n::trf("Not associated: {}", &[&crate::i18n::tr_any(why)]),
-                (None, None) => "Not associated: check the SSID, the passphrase and the distance".to_string(),
+                (None, None) => tl("Not associated: check the SSID, the passphrase and the distance").to_string(),
             };
             app.info(msg);
         }
@@ -1025,19 +1043,22 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                     .chain(terminal)
                     {
                         let (rect, resp) = ui.allocate_exact_size(vec2(130.0, 150.0), Sense::click());
+                        let label = tl(label);
                         resp.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, label));
                         let p = ui.painter_at(rect);
                         let tile = egui::Rect::from_center_size(rect.center_top() + vec2(0.0, 52.0), vec2(100.0, 100.0));
                         let teal = egui::Color32::from_rgb(0x58, 0xbf, 0xd2);
                         p.rect_filled(tile, 0.0, if resp.hovered() { theme::shade(teal, 1.15) } else { teal });
                         draw_app_icon(&p, tile.shrink(14.0), app_id);
-                        p.text(
-                            rect.center_bottom() - vec2(0.0, 22.0),
-                            egui::Align2::CENTER_CENTER,
-                            label,
-                            egui::FontId::proportional(16.0),
-                            egui::Color32::WHITE,
-                        );
+                        // The name under the tile, smaller when it is long (it may overhang the tile).
+                        let room = rect.width() + 24.0;
+                        let galley = [16.0, 15.0, 14.0, 13.0]
+                            .into_iter()
+                            .map(|size| ui.painter().layout_no_wrap(label.to_string(), egui::FontId::proportional(size), egui::Color32::WHITE))
+                            .find(|g| g.size().x <= room)
+                            .unwrap_or_else(|| ui.painter().layout(label.to_string(), egui::FontId::proportional(13.0), egui::Color32::WHITE, room));
+                        let at = egui::Align2::CENTER_CENTER.anchor_size(rect.center_bottom() - vec2(0.0, 22.0), galley.size());
+                        ui.painter().galley(at.min, galley, egui::Color32::WHITE);
                         if resp.clicked() {
                             open = Some(app_id);
                         }
@@ -1061,7 +1082,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
             let mut close = false;
             egui::Frame::new().fill(tk.bar).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(title).color(tk.bar_text).strong());
+                    ui.label(RichText::new(tl(title)).color(tk.bar_text).strong());
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         close = ui.button("X").on_hover_text(tl("Close")).clicked();
                     });
@@ -1077,40 +1098,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                     let port = dev.ports.first().map_or("FastEthernet0".to_string(), |p| p.name.clone());
                     ui.label(RichText::new(crate::i18n::trf("Interface {}", &[&port])).strong());
                     let mut dhcp = dev.dhcp_client;
-                    ui.horizontal(|ui| {
-                        ui.label(tl("IP Configuration"));
-                        if ui.radio_value(&mut dhcp, true, tl("DHCP")).clicked()
-                            && let Some(v) = app.run("cli.exec", json!({"device": d.0, "line": "ipconfig /renew"}))
-                        {
-                            let out = v.get("output").and_then(Value::as_str).unwrap_or("").to_string();
-                            let failed = out.starts_with("DHCP failed");
-                            app.ui.status = Some((out, failed));
-                        }
-                        if ui.radio_value(&mut dhcp, false, tl("Static")).clicked() && dev.dhcp_client {
-                            app.run("cli.exec", json!({"device": d.0, "line": "ipconfig /release"}));
-                        }
-                    });
-                    if let Some(now) = app.session.topology.device(d).cloned()
-                        && let Some(w) = app.ui.windows.get_mut(&d)
-                        && now.dhcp_client
-                    {
-                        fill_host(w, &now);
-                    }
-                    let Some(w) = app.ui.windows.get_mut(&d) else { return };
-                    field(ui, tl("IPv4 Address"), &mut w.ip);
-                    field(ui, tl("Subnet Mask"), &mut w.mask);
-                    field(ui, tl("Default Gateway"), &mut w.gateway);
-                    field(ui, tl("DNS Server"), &mut w.dns);
-                    if ui.button(tl("Apply")).clicked() {
-                        let gw = if w.gateway.trim().is_empty() && !w.dns.trim().is_empty() { "" } else { w.gateway.trim() };
-                        let line = format!("ipconfig {} {} {} {}", w.ip.trim(), w.mask.trim(), gw, w.dns.trim());
-                        if let Some(v) = app.run("cli.exec", json!({"device": d.0, "line": line.trim()})) {
-                            let out = v.get("output").and_then(Value::as_str).unwrap_or("").to_string();
-                            app.info(out);
-                        }
-                    }
-                    ui.add_space(10.0);
-                    ui.label(RichText::new(tl("IPv6 Configuration")).strong());
+                    let (mut renew, mut release, mut apply, mut apply6) = (false, false, false, false);
                     let conf = dev.ports.first().map(|p| p.ipv6.clone()).unwrap_or_default();
                     #[derive(PartialEq, Clone, Copy)]
                     enum V6 {
@@ -1127,13 +1115,46 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                         V6::Off
                     };
                     let mut pick = now;
-                    let mut run: Option<String> = None;
-                    ui.horizontal(|ui| {
-                        ui.radio_value(&mut pick, V6::Off, tl("Off"));
-                        ui.radio_value(&mut pick, V6::Auto, tl("Automatic"));
-                        ui.radio_value(&mut pick, V6::Static, tl("Static"));
-                    });
+                    let ll = netlabcraft_sim::v6::l3_ifaces6(dev).first().map_or_else(|| tl("(IPv6 off)").to_string(), |x| x.link_local.to_string());
                     let Some(w) = app.ui.windows.get_mut(&d) else { return };
+                    if conf.autoconfig {
+                        fill_host(w, dev);
+                    }
+                    // One grid for the whole form, so every field lines up whatever the labels' length.
+                    form_grid(ui, ("ipconfig", d.0), |ui| {
+                        ui.label(tl("IP Configuration"));
+                        ui.horizontal(|ui| {
+                            renew = ui.radio_value(&mut dhcp, true, tl("DHCP")).clicked();
+                            release = ui.radio_value(&mut dhcp, false, tl("Static")).clicked() && dev.dhcp_client;
+                        });
+                        ui.end_row();
+                        grid_field(ui, tl("IPv4 Address"), &mut w.ip);
+                        grid_field(ui, tl("Subnet Mask"), &mut w.mask);
+                        grid_field(ui, tl("Default Gateway"), &mut w.gateway);
+                        grid_field(ui, tl("DNS Server"), &mut w.dns);
+                        ui.label("");
+                        apply = ui.button(tl("Apply")).clicked();
+                        ui.end_row();
+                        ui.end_row();
+                        ui.label(RichText::new(tl("IPv6 Configuration")).strong());
+                        ui.horizontal(|ui| {
+                            ui.radio_value(&mut pick, V6::Off, tl("Off"));
+                            ui.radio_value(&mut pick, V6::Auto, tl("Automatic"));
+                            ui.radio_value(&mut pick, V6::Static, tl("Static"));
+                        });
+                        ui.end_row();
+                        grid_field(ui, tl("IPv6 Address"), &mut w.ip6);
+                        ui.label(tl("Link Local Address"));
+                        ui.label(&ll);
+                        ui.end_row();
+                        grid_field(ui, tl("IPv6 Gateway"), &mut w.gw6);
+                        if pick == V6::Static {
+                            ui.label("");
+                            apply6 = ui.button(tl("Apply IPv6")).clicked();
+                            ui.end_row();
+                        }
+                    });
+                    let mut run: Option<String> = None;
                     if pick != now {
                         w.v6_static = pick == V6::Static;
                         match pick {
@@ -1142,28 +1163,38 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                             V6::Static => {}
                         }
                     }
-                    if conf.autoconfig {
-                        fill_host(w, dev);
-                    }
-                    field(ui, tl("IPv6 Address"), &mut w.ip6);
-                    let ll = netlabcraft_sim::v6::l3_ifaces6(dev).first().map_or("(IPv6 off)".to_string(), |x| x.link_local.to_string());
-                    ui.horizontal(|ui| {
-                        ui.add_sized([130.0, 22.0], egui::Label::new(tl("Link Local Address")));
-                        ui.label(ll);
-                    });
-                    field(ui, tl("IPv6 Gateway"), &mut w.gw6);
-                    if pick == V6::Static && ui.button(tl("Apply IPv6")).clicked() {
+                    if apply6 {
                         run = Some(format!("ipv6config {} {}", w.ip6.trim(), w.gw6.trim()));
                     }
+                    if apply {
+                        let gw = if w.gateway.trim().is_empty() && !w.dns.trim().is_empty() { "" } else { w.gateway.trim() };
+                        let line = format!("ipconfig {} {} {} {}", w.ip.trim(), w.mask.trim(), gw, w.dns.trim());
+                        if let Some(v) = app.run("cli.exec", json!({"device": d.0, "line": line.trim()})) {
+                            let out = v.get("output").and_then(Value::as_str).unwrap_or("").to_string();
+                            app.info(out);
+                        }
+                    }
+                    if renew && let Some(v) = app.run("cli.exec", json!({"device": d.0, "line": "ipconfig /renew"})) {
+                        let out = v.get("output").and_then(Value::as_str).unwrap_or("").to_string();
+                        let failed = out.starts_with("DHCP failed");
+                        app.ui.status = Some((out, failed));
+                    }
+                    if release {
+                        app.run("cli.exec", json!({"device": d.0, "line": "ipconfig /release"}));
+                    }
+                    let ran = run.is_some();
                     if let Some(line) = run
                         && let Some(v) = app.run("cli.exec", json!({"device": d.0, "line": line.trim()}))
                     {
                         let out = v.get("output").and_then(Value::as_str).unwrap_or("").to_string();
                         let failed = out.contains("failed") || out.starts_with("Usage") || out.contains("can't") || out.contains("not");
                         app.ui.status = Some((out, failed));
-                        if let (Some(now), Some(w)) = (app.session.topology.device(d).cloned(), app.ui.windows.get_mut(&d)) {
-                            fill_host(w, &now);
-                        }
+                    }
+                    // The fields follow what the device now has (a lease, an autoconfigured address).
+                    if let (Some(now), Some(w)) = (app.session.topology.device(d).cloned(), app.ui.windows.get_mut(&d))
+                        && (now.dhcp_client || renew || ran)
+                    {
+                        fill_host(w, &now);
                     }
                 }
                 DesktopApp::Prompt => console(app, ui, d, true),

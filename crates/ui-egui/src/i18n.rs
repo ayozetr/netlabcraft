@@ -48,7 +48,24 @@ pub fn set_lang(l: Lang) {
 }
 
 pub fn lang() -> Lang {
+    #[cfg(test)]
+    if let Some(l) = THREAD_LANG.with(std::cell::Cell::get) {
+        return l;
+    }
     if CURRENT.load(Ordering::Relaxed) == 1 { Lang::Spanish } else { Lang::English }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Tests run in parallel and the language is global: a test that renders in another
+    /// language sets it for its own thread only (the kittest harness draws on the test's thread).
+    static THREAD_LANG: std::cell::Cell<Option<Lang>> = const { std::cell::Cell::new(None) };
+}
+
+/// Renders this test thread in `l` (`None`: back to the global language).
+#[cfg(test)]
+pub(crate) fn set_thread_lang(l: Option<Lang>) {
+    THREAD_LANG.with(|c| c.set(l));
 }
 
 const ES: &str = include_str!("../i18n/es.tsv");
@@ -68,7 +85,7 @@ fn parse(text: &'static str) -> HashMap<&'static str, &'static str> {
         .collect()
 }
 
-fn spanish() -> &'static HashMap<&'static str, &'static str> {
+pub(crate) fn spanish() -> &'static HashMap<&'static str, &'static str> {
     static ES_MAP: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::new();
     ES_MAP.get_or_init(|| parse(ES))
 }
@@ -243,6 +260,57 @@ mod tests {
             let (k, v) = l.split_once('\t').unwrap_or_else(|| panic!("row without a tab: {l}"));
             assert!(!v.trim().is_empty() && seen.insert(k), "{l}");
         }
+    }
+
+    /// No row outlives its text: every key is still written somewhere in the workspace's code
+    /// (a template by the start of its longest fixed piece, since the code may fill constants in).
+    #[test]
+    fn every_row_is_still_used() {
+        fn rust_files(dir: &std::path::Path, into: &mut String) {
+            for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    rust_files(&p, into);
+                } else if p.extension().is_some_and(|x| x == "rs") {
+                    into.push_str(&std::fs::read_to_string(&p).unwrap_or_default().replace("\\\"", "\""));
+                }
+            }
+        }
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let mut code = String::new();
+        rust_files(&root.join("crates"), &mut code);
+        rust_files(&root.join("apps"), &mut code);
+        let mut stale = Vec::new();
+        for l in ES.lines().filter(|l| !l.trim_start().starts_with('#') && !l.trim().is_empty()) {
+            let Some((key, _)) = l.split_once('\t') else { continue };
+            if code.contains(key) || code.contains(unescape(key)) {
+                continue;
+            }
+            // `{} via {}` written as `{} via {via}`.
+            let pieces: Vec<&str> = key.split("{}").collect();
+            let named = |at: usize| {
+                let mut rest = code.get(at..).unwrap_or_default();
+                for (i, p) in pieces.iter().enumerate() {
+                    if i > 0 {
+                        let Some(close) = rest.strip_prefix('{').and_then(|r| r.find('}').filter(|c| *c < 24)) else { return false };
+                        rest = rest.get(close + 2..).unwrap_or_default();
+                    }
+                    let Some(r) = rest.strip_prefix(p) else { return false };
+                    rest = r;
+                }
+                true
+            };
+            if pieces.len() > 1 && code.match_indices('"').any(|(at, _)| named(at + 1)) {
+                continue;
+            }
+            let piece = key.split("{}").max_by_key(|p| p.len()).unwrap_or_default();
+            let start: String = piece.chars().take(24).collect();
+            if key.contains("{}") && start.chars().count() >= 8 && code.contains(&start) {
+                continue;
+            }
+            stale.push(key);
+        }
+        assert!(stale.is_empty(), "rows for text the code no longer has: {stale:#?}");
     }
 
     #[test]

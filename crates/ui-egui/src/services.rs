@@ -159,21 +159,21 @@ fn http(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mu
     ui.vertical_centered(|ui| ui.label(RichText::new(tl("HTTP")).size(16.0)));
     ui.separator();
     let mut new = sv.clone();
-    ui.horizontal(|ui| {
+    // Two boxes of one height, their text on one middle line.
+    let boxed = |ui: &mut Ui, add: &mut dyn FnMut(&mut Ui)| {
         egui::Frame::group(ui.style()).show(ui, |ui| {
             ui.set_width(230.0);
+            ui.allocate_ui_with_layout(vec2(230.0, 24.0), egui::Layout::left_to_right(egui::Align::Center), |ui| add(ui));
+        });
+    };
+    ui.horizontal(|ui| {
+        boxed(ui, &mut |ui| {
             ui.label(tl("HTTP"));
-            if ui
-                .horizontal(|ui| {
-                    ui.radio_value(&mut new.http.on, true, tl("On")).changed() | ui.radio_value(&mut new.http.on, false, tl("Off")).changed()
-                })
-                .inner
-            {
+            if ui.radio_value(&mut new.http.on, true, tl("On")).changed() | ui.radio_value(&mut new.http.on, false, tl("Off")).changed() {
                 apply(app, d, &new);
             }
         });
-        egui::Frame::group(ui.style()).show(ui, |ui| {
-            ui.set_width(230.0);
+        boxed(ui, &mut |ui| {
             ui.label(tl("HTTPS"));
             ui.label(RichText::new(tl("Not simulated yet")).color(tk.muted));
         });
@@ -213,16 +213,16 @@ fn http(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mu
         ui.set_width(ui.available_width());
         egui::Grid::new(("web_files", d.0)).striped(true).num_columns(4).min_col_width(40.0).show(ui, |ui| {
             for h in ["", "File Name", "Edit", "Delete"] {
-                ui.strong(h);
+                ui.strong(crate::i18n::tr(h));
             }
             ui.end_row();
             for (i, f) in sv.http.files.iter().enumerate() {
                 ui.label((i + 1).to_string());
                 ui.label(&f.name);
-                if ui.link("(edit)").clicked() {
+                if ui.link(tl("(edit)")).clicked() {
                     edit = Some(f.clone());
                 }
-                if ui.link("(delete)").clicked() {
+                if ui.link(tl("(delete)")).clicked() {
                     delete = Some(f.name.clone());
                 }
                 ui.end_row();
@@ -274,22 +274,24 @@ fn dhcp(app: &mut PacketApp, ui: &mut Ui, dev: &Device, forms: &mut ServiceForms
     field(ui, tl("Pool Name"), &mut forms.pool_name);
     field(ui, tl("Default Gateway"), &mut forms.pool_gw);
     field(ui, tl("DNS Server"), &mut forms.pool_dns);
-    octets(ui, "Start IP Address:", &mut forms.pool_start);
-    octets(ui, "Subnet Mask:", &mut forms.pool_mask);
+    octets(ui, tl("Start IP Address:"), &mut forms.pool_start);
+    octets(ui, tl("Subnet Mask:"), &mut forms.pool_mask);
     field(ui, tl("Maximum Number of Users:"), &mut forms.pool_max);
     let pool = || -> Result<ServerPool, String> {
-        let ip = |s: &str, what: &str| s.trim().parse::<Ipv4Addr>().map_err(|_| format!("{what}: `{s}` is not an address"));
+        let ip = |s: &str, what: &'static str| {
+            s.trim().parse::<Ipv4Addr>().map_err(|_| crate::i18n::trf("{}: `{}` is not an address", &[&tl(what), &s.trim()]))
+        };
         let name = forms.pool_name.trim();
         if name.is_empty() {
-            return Err("Give the pool a name".into());
+            return Err(tl("Give the pool a name").into());
         }
         Ok(ServerPool {
             name: name.into(),
             gateway: ip(&forms.pool_gw, "Default Gateway")?,
             dns: ip(&forms.pool_dns, "DNS Server")?,
-            start: join(&forms.pool_start).ok_or("Start IP Address: four numbers 0-255")?,
-            mask: join(&forms.pool_mask).ok_or("Subnet Mask: four numbers 0-255")?,
-            max_users: forms.pool_max.trim().parse().map_err(|_| "Maximum Number of Users: a number")?,
+            start: join(&forms.pool_start).ok_or(tl("Start IP Address: four numbers 0-255"))?,
+            mask: join(&forms.pool_mask).ok_or(tl("Subnet Mask: four numbers 0-255"))?,
+            max_users: forms.pool_max.trim().parse().map_err(|_| tl("Maximum Number of Users: a number"))?,
         })
     };
     let mut action = None;
@@ -344,7 +346,7 @@ fn dhcp(app: &mut PacketApp, ui: &mut Ui, dev: &Device, forms: &mut ServiceForms
         egui::ScrollArea::horizontal().id_salt("pools").show(ui, |ui| {
             egui::Grid::new(("pools", d.0)).striped(true).num_columns(6).show(ui, |ui| {
                 for h in ["Pool Name", "Default Gateway", "DNS Server", "Start IP Address", "Subnet Mask", "Max User"] {
-                    ui.strong(h);
+                    ui.strong(crate::i18n::tr(h));
                 }
                 ui.end_row();
                 for (i, p) in sv.dhcp.pools.iter().enumerate() {
@@ -391,7 +393,7 @@ fn dns(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mut
         for (i, label) in ["Add", "Save", "Remove"].into_iter().enumerate() {
             if let Some(col) = c.get_mut(i) {
                 let enabled = i == 0 || forms.dns_sel.is_some();
-                if col.add_enabled(enabled, egui::Button::new(label).min_size(vec2(col.available_width(), 26.0))).clicked() {
+                if col.add_enabled(enabled, egui::Button::new(tl(label)).min_size(vec2(col.available_width(), 26.0))).clicked() {
                     action = Some(i);
                 }
             }
@@ -428,7 +430,7 @@ fn dns(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mut
         ui.set_width(ui.available_width());
         egui::Grid::new(("dns_records", d.0)).striped(true).num_columns(4).min_col_width(60.0).show(ui, |ui| {
             for h in ["No.", "Name", "Type", "Detail"] {
-                ui.strong(h);
+                ui.strong(crate::i18n::tr(h));
             }
             ui.end_row();
             for (i, r) in sv.dns.records.iter().enumerate() {
@@ -473,7 +475,7 @@ pub fn browser(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, forms: &mut Servic
             }
         }
         if ui.button(tl("Stop")).clicked() {
-            forms.error = Some("Stopped.".into());
+            forms.error = Some(tl("Stopped.").into());
         }
     });
     if let Some(u) = go {
@@ -526,7 +528,7 @@ pub fn browser(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, forms: &mut Servic
                 v.get("body").and_then(Value::as_str).unwrap_or("").to_string(),
             ));
         } else {
-            forms.error = Some("Request timed out.".into());
+            forms.error = Some(tl("Request timed out.").into());
         }
     }
 }
@@ -888,13 +890,8 @@ fn ntp(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services) {
     ui.separator();
     let (now, _) = app.session.sim.clock(d);
     let secs = now.rem_euclid(86_400);
-    ui.label(format!(
-        "This server's time: {:02}:{:02}:{:02} UTC (day {} of the Unix era)",
-        secs / 3_600,
-        secs / 60 % 60,
-        secs % 60,
-        now.div_euclid(86_400)
-    ));
+    let clock = format!("{:02}:{:02}:{:02}", secs / 3_600, secs / 60 % 60, secs % 60);
+    ui.label(crate::i18n::trf("This server's time: {} UTC (day {} of the Unix era)", &[&clock, &now.div_euclid(86_400)]));
     ui.label(tl("Routers and switches with `ntp server <this address>` take this time."));
 }
 

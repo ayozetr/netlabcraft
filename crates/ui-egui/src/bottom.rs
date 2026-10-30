@@ -84,7 +84,8 @@ fn tiles() -> Vec<Tile> {
 fn kind_button(ui: &mut Ui, label: &str, selected: bool, draw: impl FnOnce(&egui::Painter, egui::Rect)) -> egui::Response {
     let tk = theme::tokens(ui.visuals().dark_mode);
     let (rect, resp) = ui.allocate_exact_size(vec2(40.0, 36.0), Sense::click());
-    let resp = resp.on_hover_text(crate::i18n::tr(label));
+    let label = crate::i18n::tr(label);
+    let resp = resp.on_hover_text(label);
     resp.widget_info(|| egui::WidgetInfo::selected(egui::accesskit::Role::Button, true, selected, label));
     let p = ui.painter_at(rect);
     if selected {
@@ -126,7 +127,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                             .frame(egui::Frame::NONE)
                             .desired_width(200.0),
                     )
-                    .widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::TextInput, true, "Search for device"));
+                    .widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::TextInput, true, tl("Search for device")));
                 });
             });
             ui.horizontal(|ui| {
@@ -245,12 +246,12 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
         ui.separator();
 
         // Scenario and PDU list.
-        ui.allocate_ui_with_layout(vec2(210.0, ui.available_height()), egui::Layout::top_down(egui::Align::Center), |ui| {
+        ui.allocate_ui_with_layout(vec2(196.0, ui.available_height()), egui::Layout::top_down(egui::Align::Center), |ui| {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 let (r, info) = ui.allocate_exact_size(vec2(32.0, 32.0), Sense::click());
                 let info = info.on_hover_text(tl("Scenarios hold the PDUs you send, so a lab can be re-tested"));
-                info.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, "Scenario information"));
+                info.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, tl("Scenario information")));
                 ui.painter().circle_filled(r.center(), 15.0, tk.bar);
                 ui.painter().circle_filled(r.center(), 10.0, egui::Color32::WHITE);
                 ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, "i", egui::FontId::proportional(15.0), tk.bar);
@@ -307,9 +308,11 @@ fn pdu_list(app: &mut PacketApp, ui: &mut Ui) {
     let mut fire = None;
     let mut delete = None;
     egui::ScrollArea::both().id_salt("pdu_list").auto_shrink([false, false]).show(ui, |ui| {
-        egui::Grid::new("pdu_grid").striped(true).num_columns(9).min_col_width(30.0).show(ui, |ui| {
+        // Tight columns so the header fits the box at the usual window width (it scrolls when not).
+        ui.spacing_mut().item_spacing.x = 4.0;
+        egui::Grid::new("pdu_grid").striped(true).num_columns(9).min_col_width(18.0).show(ui, |ui| {
             for h in ["Fire", "Last Status", "Source", "Destination", "Type", "Color", "Time(sec)", "Num", "Delete"] {
-                ui.strong(crate::i18n::tr(h));
+                ui.label(RichText::new(crate::i18n::tr(h)).size(12.0).strong());
             }
             ui.end_row();
             for (i, pdu) in app.ui.pdus.iter().enumerate() {
@@ -320,12 +323,12 @@ fn pdu_list(app: &mut PacketApp, ui: &mut Ui) {
                     None => ("In Progress", tk.muted),
                 };
                 let (r, resp) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::click());
-                resp.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, format!("Fire PDU {}", pdu.num)));
+                resp.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, crate::i18n::trf("Fire PDU {}", &[&pdu.num])));
                 ui.painter().circle_filled(r.center(), 6.0, color);
                 if resp.on_hover_text(tl("Fire again")).clicked() {
                     fire = Some(i);
                 }
-                ui.label(RichText::new(status).color(color));
+                ui.label(RichText::new(tl(status)).color(color));
                 ui.label(name(pdu.source));
                 ui.label(format!("{} ({})", name(pdu.destination), pdu.address));
                 ui.label(tl("ICMP"));
