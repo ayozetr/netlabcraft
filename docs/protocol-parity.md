@@ -1,6 +1,6 @@
 # Protocol and command parity
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (SNMP traps and v3, mail relay) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (QoS) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 What the simulated devices do, protocol by protocol, against the reference app. Part of
 [target-app-parity.md](target-app-parity.md). Behaviour comes from the standards named in each
@@ -84,6 +84,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | PPP authentication (PAP/CHAP) | ✅ | `ppp authentication chap|pap` (one or both, in order), `ppp pap sent-username`, checked against `username` entries (CHAP: both routers name each other with the same secret); failure keeps the line protocol down and `show interfaces` says why. No LCP/CHAP frames on the wire. |
 | GRE tunnels | 🟡 | `interface tunnel N` with `tunnel source|destination`, `tunnel mode gre ip`; RFC 2784 headers on the wire; line protocol follows the source and a route to the destination (connected or static only); static routes and OSPF (point-to-point, cost 1000) over the tunnel; recursive routing is refused. No keepalives, `ip mtu`, ACLs or NAT on tunnels, or IPv6: 4–6 h. |
 | IPsec site-to-site | 🟡 | `crypto isakmp policy` and `key`, `crypto ipsec transform-set`, `crypto map … ipsec-isakmp` (`set peer`, `set transform-set`, `match address`) applied to an interface; matching traffic leaves as ESP (RFC 4303 layout; the cipher is a stand-in, not real encryption); the security association comes from comparing both routers' settings, and a mismatch drops traffic with the reason; `show crypto isakmp sa|policy`, `show crypto ipsec sa`, `show crypto map`, `clear crypto sa`. No IKE exchange on the wire or transport mode: 6–10 h. |
+| QoS (MQC) | 🟡 | `class-map` (`match dscp|precedence|access-group|protocol|any`), `policy-map` with `class` (`set dscp|precedence`, `police` with conform/exceed actions, `priority`, `bandwidth`, `shape average`), `service-policy input|output` on routed ports, subinterfaces, VLAN interfaces and tunnels; marking rewrites the IPv4 DS field (kept along the path and copied to GRE/ESP outer headers); policing is a token bucket on simulated time and drops with a reason; `show class-map`, `show policy-map [interface]` with per-class counters. Priority, bandwidth and shaping are counted, not delayed (no congestion model); no `mls qos trust` or auto QoS: 6–10 h. |
 | ASA firewall, zone-based firewall | ❌ | 30–45 h. |
 
 ## WAN
@@ -114,6 +115,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | QoS: class maps, policy maps, DSCP marking, policing. |
 | 2026-10-30 | minor | SNMP traps and SNMPv3 (no privacy); mail relay between domains with bounces. |
 | 2026-10-30 | minor | EIGRP; GRE tunnels; IPsec site-to-site. |
 | 2026-10-30 | minor | Spanning-tree listening/learning timers and `spanning-tree mode rapid-pvst`. |

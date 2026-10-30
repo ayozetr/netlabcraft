@@ -12,15 +12,15 @@ This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summa
 
 | Number | Value | Kind |
 |---|---|---|
-| Engine commands | **65** | measured: `crates/engine/src/catalog.rs` |
-| Console grammar entries | **453** across 18 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
-| Device models | **16** | measured: `crates/model/src/models.rs` |
-| Sample labs | **18** | measured: `crates/engine/src/sample.rs` |
-| Tests | **207** | measured: `cargo test --workspace` |
-| **Ready for real work** (weighted) | **~75%** | estimated; written weights below (74.5 computed) |
+| Engine commands | **68** | measured: `crates/engine/src/catalog.rs` |
+| Console grammar entries | **516** across 21 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
+| Device models | **18** | measured: `crates/model/src/models.rs` |
+| Sample labs | **19** | measured: `crates/engine/src/sample.rs` |
+| Tests | **229** | measured: `cargo test --workspace` |
+| **Ready for real work** (weighted) | **~76%** | estimated; written weights below (75.8 computed) |
 | **CCNA 1 student** (Introduction to Networks) | **~86%** | estimated; [method](#audiences) |
-| **CCNA 2 student** (Switching, Routing and Wireless Essentials) | **~84%** | estimated; [method](#audiences) |
-| **CCNA 3 student** (Enterprise Networking, Security and Automation) | **~80%** | estimated; [method](#audiences) |
+| **CCNA 2 student** (Switching, Routing and Wireless Essentials) | **~90%** | estimated; [method](#audiences) |
+| **CCNA 3 student** (Enterprise Networking, Security and Automation) | **~85%** | estimated; [method](#audiences) |
 | **Instructor** (builds graded activities) | **~78%** | estimated; activities with checks, points, sections, hints, hidden answers, values per student, a time limit, a password lock, a wizard and a side-by-side comparison with the answer |
 | Stage | **pre-alpha** | see [Stage](#stage) |
 | Remaining to alpha | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](roadmap.md#alpha-gates) |
@@ -30,10 +30,10 @@ This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summa
 
 | Audience | Ready % | Opus 5.5 agent wall-clock hours to ~95% | Work that dominates |
 |---|---|---|---|
-| Full target (ready for real work) | ~61% | ~430–700 | More device families (ASA, IoT, modules), physical workspace, QoS, WLC |
+| Full target (ready for real work) | ~64% | ~380–620 | More device families (ASA, IoT, modules), physical workspace |
 | CCNA 1 student | ~86% | ~12–25 | PDU details layout and a few host apps (text editor, terminal) |
-| CCNA 2 student | ~84% | ~30–55 | WLC with lightweight APs and 802.11 frames (15–25 h), console polish |
-| CCNA 3 student | ~80% | ~40–70 | QoS basics (10–15 h), automation APIs, the IKE exchange on the wire |
+| CCNA 2 student | ~90% | ~15–30 | Console polish, CCMP and roaming (8–14 h) |
+| CCNA 3 student | ~85% | ~30–55 | Automation APIs, the IKE exchange on the wire, QoS queuing with congestion |
 | Instructor | ~78% | ~15–25 | Translated activity texts, an answer-network view |
 
 Each student tier is mostly a superset of the one before. Hours are wall-clock for one agent;
@@ -62,15 +62,15 @@ Weights reflect how much of a typical CCNA lab session each area carries.
 |---|---|---|---|---|---|
 | Device console (modes, commands, `show` output, help, completion) | 20 | 74% | 14.8 | [protocol-parity.md](protocol-parity.md#console) | 60–90 |
 | Layer 2 (VLANs, trunks, STP, EtherChannel, VTP, port security, DTP) | 12 | 85% | 10.2 | [protocol-parity.md](protocol-parity.md#layer-2) | 25–40 |
-| Layer 3 (static, RIP, OSPF, EIGRP, IPv6, multilayer switching) | 15 | 83% | 12.5 | [protocol-parity.md](protocol-parity.md#layer-3) | 55–90 |
+| Layer 3 (static, RIP, OSPF, EIGRP, IPv6, multilayer switching) | 15 | 85% | 12.8 | [protocol-parity.md](protocol-parity.md#layer-3) | 45–75 |
 | Services (DHCP, DNS, HTTP, FTP, email, NTP, syslog, AAA) | 8 | 92% | 7.4 | [protocol-parity.md](protocol-parity.md#services) | 30–45 |
 | Security (ACLs, NAT, SSH, passwords, AAA, PPP authentication) | 8 | 78% | 6.2 | [protocol-parity.md](protocol-parity.md#security) | 25–40 |
-| WAN, cabling and wireless | 6 | 62% | 3.7 | [hardware-parity.md](hardware-parity.md) | 60–90 |
+| WAN, cabling and wireless | 6 | 78% | 4.7 | [hardware-parity.md](hardware-parity.md) | 35–55 |
 | Simulation mode (event list, PDU details, filters, complex PDUs) | 8 | 70% | 5.6 | [ui-parity.md](ui-parity.md) | 22–35 |
 | Workspace and windows (canvas, device tabs, physical view, drawing) | 10 | 65% | 6.5 | [ui-parity.md](ui-parity.md) | 38–56 |
 | Teaching (activities, scoring, instructions, languages) | 8 | 80% | 6.4 | [gaps.md](gaps.md) | 30–50 |
 | Device families and hardware (models, modules, ASA, IoT) | 5 | 25% | 1.3 | [hardware-parity.md](hardware-parity.md) | 80–120 |
-| **Total** | **100** | | **74.5** | | **~550–880** |
+| **Total** | **100** | | **75.8** | | **~550–880** |
 
 ## Audiences
 
@@ -82,7 +82,7 @@ Weights reflect how much of a typical CCNA lab session each area carries.
   EtherChannel, DHCPv4, SLAAC, FHRP, port security, wireless LANs, static routing. Wireless and
   HSRP are the large missing pieces.
 - **CCNA 3 (ENSA):** single-area OSPF, ACLs, NAT, WAN concepts, VPN, QoS, network management,
-  automation. OSPF, ACLs, NAT, GRE/IPsec VPNs, SNMP, syslog and NTP work; QoS and the automation topics do not.
+  automation. OSPF, ACLs, NAT, GRE/IPsec VPNs, QoS classification/marking/policing, SNMP, syslog and NTP work; queuing under congestion and the automation topics do not.
 - **Instructor:** builds activities with checks, a score and a side-by-side comparison with the answer; no answer-network view.
 
 ## Stage
@@ -105,6 +105,7 @@ misses commands students meet in the first labs. Alpha gates are in
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | WLC and 802.11: WAN/cabling/wireless 62% → 78%, CCNA 2 ~84% → ~90%; QoS: layer 3 83% → 85%, CCNA 3 ~80% → ~85%; total 74.5 → 75.8; counts measured again (68 commands, 516 grammar entries across 21 modes, 18 models, 19 samples). |
 | 2026-10-30 | minor | SNMP traps and v3, mail relay: services 86% → 92%, total 74.0 → 74.5. |
 | 2026-10-30 | minor | File ▸ Print: workspace 63% → 65%, total 73.8 → 74.0. |
 | 2026-10-30 | minor | Compare with the Answer: teaching 75% → 80%, instructor ~72% → ~78%, total 73.4 → 73.8. |

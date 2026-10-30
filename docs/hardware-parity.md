@@ -1,6 +1,6 @@
 # Hardware parity
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (workspace image export) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (WLC, lightweight APs, 802.11 frames, WPA2-Enterprise) · **Target:** Cisco Packet Tracer 9.0
 
 Two kinds of hardware matter here: the **simulated** hardware (device models, ports, cables,
 modules) and the **real** hardware the app runs on. Part of
@@ -14,7 +14,7 @@ host hardware: ~70% ready, 10–16 h** (estimated).
 | Routers | Many models, modular slots (HWIC, NIM) | Router-2/3/4 (Gigabit Ethernet), Router-WAN (2 Gigabit Ethernet + 2 serial); generic names | Modules added in the Physical tab with the power off: 20–30 h |
 | Switches | Access and multilayer models | Switch-8/24/48, Switch-ML-24 (multilayer) | — for CCNA labs |
 | Hubs, PCs, laptops, servers, printers | yes | yes | — |
-| Wireless (access points, wireless routers, wireless clients) | yes | 🟡 Home-Router (Internet port, 4 LAN ports, Wi-Fi; DHCP and NAT set up at the factory; a Home Router settings page for LAN, DHCP, static Internet and Wi-Fi, all as configuration commands), AccessPoint and Laptop-WiFi models: SSID, open or WPA2-PSK, channel, association by range (nearest access point), relay between clients; frames captured as Ethernet | WLC and lightweight APs, 802.1X/RADIUS, 802.11 frames, roaming, a DHCP client on the Internet port: 18–30 h |
+| Wireless (access points, wireless routers, wireless clients) | yes | 🟡 Home-Router (Internet port, 4 LAN ports, Wi-Fi; DHCP and NAT set up at the factory; a Home Router settings page for LAN, DHCP, static Internet and Wi-Fi, all as configuration commands), AccessPoint and Laptop-WiFi models: SSID, open or WPA2-PSK, channel, association by range (nearest access point), relay between clients; real IEEE 802.11 frames on every air hop (probe, authentication, association, data with LLC/SNAP) and the WPA2-PSK 4-way handshake with real keys; WLC and LAP models: APs join their controller with a CAPWAP exchange (UDP 5246) and get its WLANs (`wlan N SSID open|psk|enterprise`, `capwap controller`, `show wlan`, `show capwap`, a WLC/LAP Config page); WPA2-Enterprise logins relayed to RADIUS by the WLC; the capture stays Ethernet and a separate 802.11 capture holds the air hops; wlc sample lab | CCMP encryption, beacons, roaming handover, VLAN per WLAN, central tunnelling, PEAP: 8–14 h |
 | Firewalls (ASA), IoT devices, phones, cloud/modems | yes | ❌ | 40–60 h; low priority for CCNA |
 | Copper cables | Straight-through and crossover (with mismatch errors) | One copper cable; every port is auto-MDIX | By design; a "strict cabling" option: 2–4 h |
 | Serial cables | DCE and DTE | ✅ the first end cabled is the DCE; red cable with a clock at the DCE end | — |
@@ -41,5 +41,6 @@ host hardware: ~70% ready, 10–16 h** (estimated).
 |---|---|---|
 | 2026-10-30 | minor | Workspace image export (PNG). |
 | 2026-10-30 | minor | Home wireless router. |
+| 2026-10-30 | minor | WLC and LAP models, 802.11 frames, WPA2 handshake, WPA2-Enterprise with RADIUS. |
 | 2026-10-30 | minor | Wi-Fi access point and laptop. |
 | 2026-10-30 | major | Created: simulated device families and cables, host hardware. |

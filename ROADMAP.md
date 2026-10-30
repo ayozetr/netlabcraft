@@ -20,25 +20,25 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 | Number | Value | Kind |
 |---|---|---|
-| **Ready for real work** (weighted) | **~75%** | estimated from written weights (74.5); [target-app-parity.md](docs/target-app-parity.md) |
+| **Ready for real work** (weighted) | **~76%** | estimated from written weights (75.8); [target-app-parity.md](docs/target-app-parity.md) |
 | **CCNA 1 student** | **~86%** | estimated; [method](docs/target-app-parity.md#audiences) |
-| **CCNA 2 student** | **~84%** | estimated |
-| **CCNA 3 student** | **~80%** | estimated |
+| **CCNA 2 student** | **~90%** | estimated |
+| **CCNA 3 student** | **~85%** | estimated |
 | **Instructor** (graded activities) | **~78%** | estimated |
-| Engine commands | 65 | measured: `crates/engine/src/catalog.rs` |
-| Console grammar entries | 453 across 18 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
-| Device models · sample labs | 16 · 18 | measured |
-| Tests | 207 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Engine commands | 68 | measured: `crates/engine/src/catalog.rs` |
+| Console grammar entries | 516 across 21 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
+| Device models · sample labs | 18 · 19 | measured |
+| Tests | 229 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~550–880 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
 
 | Audience | Ready % | Opus 5.5 agent wall-clock hours to ~95% | Work that dominates |
 |---|---|---|---|
-| Full target | ~61% | ~430–700 | More device families, physical workspace, QoS, WLC |
+| Full target | ~64% | ~380–620 | More device families, physical workspace |
 | CCNA 1 student | ~86% | ~12–25 | PDU details, a few host apps |
-| CCNA 2 student | ~84% | ~30–55 | WLC and 802.11 frames, console polish |
-| CCNA 3 student | ~80% | ~40–70 | QoS, automation, IKE on the wire |
+| CCNA 2 student | ~90% | ~15–30 | Console polish, wireless encryption and roaming |
+| CCNA 3 student | ~85% | ~30–55 | Automation, IKE on the wire, QoS queuing |
 | Instructor | ~78% | ~15–25 | Translated activity texts, an answer-network view |
 
 ## Dimensions
@@ -47,10 +47,10 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 |---|---|---|---|---|
 | Device console | 20 | 74% | 35–55 | Modes, abbreviations, `?`, Tab, history, config round-trip; `show` coverage growing |
 | Layer 2 | 12 | 85% | 12–20 | VLANs, trunks, DTP, per-VLAN STP with BPDUs and timers, rapid-pvst, EtherChannel, VTP, port security |
-| Layer 3 | 15 | 83% | 20–35 | IPv4, IPv6 (NDP, SLAAC, subinterfaces, VLAN interfaces, DHCPv6 relay), static, RIP, multi-area OSPF with DR/BDR, stub areas and ranges, OSPFv3, EIGRP with feasible successors, multilayer switching with OSPF and RIP, HSRP |
+| Layer 3 | 15 | 85% | 18–30 | IPv4, IPv6 (NDP, SLAAC, subinterfaces, VLAN interfaces, DHCPv6 relay), static, RIP, multi-area OSPF with DR/BDR, stub areas and ranges, OSPFv3, EIGRP with feasible successors, multilayer switching with OSPF and RIP, HSRP |
 | Services | 8 | 92% | 3–5 | DHCPv4 and DHCPv6 (with relay), DNS, HTTP with browser, email with the Email app, Telnet/SSH, NTP, syslog, TFTP, FTP, AAA with RADIUS and TACACS+, SNMP v2c/v3 with traps and a MIB Browser, mail relay between domains |
 | Security | 8 | 78% | 16–28 | IPv4 and IPv6 ACLs, access-class, NAT/PAT, passwords and lines, PPP PAP/CHAP, GRE tunnels and IPsec site-to-site; no firewalls |
-| WAN, cabling, wireless | 6 | 62% | 28–45 | Copper (auto-MDIX), serial (DCE/DTE, HDLC/PPP), Wi-Fi access points, home wireless routers and clients; no WLC or fibre |
+| WAN, cabling, wireless | 6 | 78% | 18–30 | Copper (auto-MDIX), serial (DCE/DTE, HDLC/PPP), Wi-Fi access points, home wireless routers and clients, WLC with lightweight APs, 802.11 frames, WPA2-PSK and Enterprise; no fibre or CCMP |
 | Simulation mode | 8 | 70% | 18–28 | Event list, replay, decode, drop reasons, pcap; BPDUs, OSPF hellos and database exchange, RIP updates, HSRP hellos, LLDP, LACP; no complex PDUs |
 | Workspace and windows | 10 | 65% | 38–56 | Reference-app arrangement, device tabs, notes, shapes, freehand and polygon drawings, nested clusters, printing; no physical view |
 | Teaching | 8 | 80% | 15–25 | Activities with checks, points, sections, hints, hidden answers, values per student, a time limit, a password lock, a wizard and a side-by-side comparison with the answer; Spanish interface |
@@ -60,6 +60,8 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-10-30 — Wireless controller and 802.11.** WLC and lightweight AP models: APs join their controller and get its WLANs; Wi-Fi hops carry real 802.11 frames with association and the WPA2 handshake; WPA2-Enterprise logins are checked by RADIUS; wlc sample lab; a separate 802.11 capture.
+- **2026-10-30 — QoS.** Class maps, policy maps and service policies: DSCP marking that shows in captures, policing that drops with a reason, and per-class counters in `show policy-map interface`.
 - **2026-10-30 — SNMP traps, SNMPv3 and mail relay.** Routers and switches send link-down, link-up and cold-start traps that PCs and servers list in the MIB Browser; SNMPv3 users with MD5 or SHA authentication; mail servers hand mail for other domains to the right server and bounce what can't be delivered.
 - **2026-10-30 — Printing.** File ▸ Print puts the workspace on an A4 page with the lab's name and opens it in the system's PDF viewer to print; the web build downloads the PDF.
 - **2026-10-30 — Events in Spanish.** With the Spanish interface, the event list's summaries and the PDU details read in Spanish too; addresses, names and protocol names stay as they are.
