@@ -75,7 +75,8 @@ pub enum Tool {
     Inspect,
     /// Place a device of a catalogue model (`models::MODELS` id).
     Place(&'static str),
-    Cable,
+    /// Cable two ports with a cable of this kind.
+    Cable(packetcraft_model::cable::Cable),
     /// Place a note on the workspace.
     Note,
     /// Drag out a rectangle, ellipse or line.
@@ -209,8 +210,20 @@ pub fn open_desktop_app(app: &mut PacketApp, d: DeviceId, which: &str) {
             "ip" => Some(console::DesktopApp::IpConfig),
             "email" => Some(console::DesktopApp::Email),
             "mib" => Some(console::DesktopApp::MibBrowser),
+            "terminal" => Some(console::DesktopApp::Terminal),
             _ => None,
         };
+    }
+}
+
+/// Shows the Connections group of the device box; with a cable id (`"fiber"`), picks that
+/// cable's tool.
+pub fn show_connections(app: &mut PacketApp, cable: Option<&str>) {
+    app.ui.bottom.category = bottom::Category::Connections;
+    app.ui.bottom.sub = bottom::Sub::Cables;
+    app.ui.bottom.search.clear();
+    if let Some(c) = cable.and_then(packetcraft_model::cable::Cable::parse) {
+        app.set_tool(Tool::Cable(c));
     }
 }
 

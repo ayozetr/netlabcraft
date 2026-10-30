@@ -770,3 +770,64 @@ fn a_server_answers_dns_http_and_dhcp() {
     assert!(sim.http_get(&t, far, ip_www, "www.lab.test", "/").is_err());
     assert!(sim.dns_resolve(&t, far, "www.lab.test").is_ok());
 }
+
+#[test]
+fn straight_and_cross_over_cables_need_auto_mdix_or_the_right_kind() {
+    use packetcraft_model::cable::Cable;
+    let wire = |t: &mut Topology, a: DeviceId, b: DeviceId, pb: usize, c: Cable| {
+        t.connect_with(End { device: a, port: 0 }, End { device: b, port: pb }, c).unwrap();
+    };
+    // Two PCs: no auto-MDIX on hosts, so only a cross-over works.
+    for (c, works) in [(Cable::Straight, false), (Cable::Cross, true), (Cable::Auto, true)] {
+        let mut t = Topology::new();
+        let a = host(&mut t, "10.0.0.1/24", None);
+        let b = host(&mut t, "10.0.0.2/24", None);
+        wire(&mut t, a, b, 0, c);
+        let end = End { device: a, port: 0 };
+        assert_eq!(port_up(&t, end), works, "{c:?}");
+        assert_eq!(cable_problem(&t, end).is_some_and(|w| w.contains("cross-over")), !works);
+        let r = Sim::new().ping(&t, a, ip("10.0.0.2"), PingOptions::default()).unwrap();
+        assert_eq!(marks(&r) == "!!!!!", works, "{c:?}");
+    }
+    // A PC on a switch with a cross-over: the switch's auto-MDIX fixes it, until it is off.
+    let mut t = Topology::new();
+    let s = add(&mut t, DeviceKind::Switch);
+    let a = host(&mut t, "10.0.0.1/24", None);
+    wire(&mut t, a, s, 0, Cable::Cross);
+    let end = End { device: a, port: 0 };
+    assert!(port_up(&t, end));
+    t.device_mut(s).unwrap().ports[0].mdix_off = true;
+    assert!(!port_up(&t, end));
+    assert!(cable_problem(&t, end).unwrap().contains("straight-through"));
+    // A straight-through between two routers is down only with auto-MDIX off at both ends.
+    let mut t = Topology::new();
+    let r1 = add(&mut t, DeviceKind::Router);
+    let r2 = add(&mut t, DeviceKind::Router);
+    router_if(&mut t, r1, 0, "10.0.0.1/30");
+    router_if(&mut t, r2, 0, "10.0.0.2/30");
+    wire(&mut t, r1, r2, 0, Cable::Straight);
+    let end = End { device: r1, port: 0 };
+    assert!(port_up(&t, end));
+    t.device_mut(r1).unwrap().ports[0].mdix_off = true;
+    assert!(port_up(&t, end));
+    t.device_mut(r2).unwrap().ports[0].mdix_off = true;
+    assert!(!port_up(&t, end));
+}
+
+#[test]
+fn fiber_reaches_two_kilometres_and_copper_a_hundred_metres() {
+    use packetcraft_model::cable::Cable;
+    let mut t = Topology::new();
+    let a = t.add_model(packetcraft_model::models::find("Switch-24-SFP").unwrap(), None, 0.0, 0.0).unwrap();
+    let b = add(&mut t, DeviceKind::Switch);
+    let (ea, eb) = (End { device: a, port: 24 }, End { device: b, port: 24 });
+    t.connect_with(ea, eb, Cable::Fiber).unwrap();
+    t.set_cable_length(ea, Some(1500)).unwrap();
+    assert!(port_up(&t, ea), "{:?}", cable_problem(&t, ea));
+    t.set_cable_length(ea, Some(2500)).unwrap();
+    assert!(cable_problem(&t, ea).unwrap().contains("fiber, max 2000 m"));
+    let (ca, cb) = (End { device: a, port: 0 }, End { device: b, port: 0 });
+    t.connect_with(ca, cb, Cable::Cross).unwrap();
+    t.set_cable_length(ca, Some(150)).unwrap();
+    assert!(cable_problem(&t, ca).unwrap().contains("copper, max 100 m"));
+}

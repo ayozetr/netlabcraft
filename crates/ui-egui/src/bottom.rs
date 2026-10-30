@@ -2,6 +2,7 @@
 //! scenario and its PDU list on the right.
 
 use egui::{RichText, Sense, Ui, vec2};
+use packetcraft_model::cable::Cable;
 use packetcraft_model::{DeviceKind, models};
 
 use crate::i18n::tl;
@@ -55,7 +56,7 @@ fn sub_of(kind: DeviceKind) -> Sub {
     }
 }
 
-/// Every model of the catalogue, plus the cable.
+/// Every model of the catalogue, plus one tile per cable kind.
 fn tiles() -> Vec<Tile> {
     let mut t: Vec<Tile> = models::MODELS
         .iter()
@@ -68,14 +69,14 @@ fn tiles() -> Vec<Tile> {
             multilayer: m.multilayer(),
         })
         .collect();
-    t.push(Tile {
+    t.extend(Cable::ALL.iter().map(|&c| Tile {
         sub: Sub::Cables,
         kind: None,
-        tool: Tool::Cable,
-        short: "Copper",
+        tool: Tool::Cable(c),
+        short: c.label(),
         multilayer: false,
-        long: "Cable: copper between Ethernet ports (auto-MDIX), serial between serial ports (the end you click first is the DCE)",
-    });
+        long: c.description(),
+    }));
     t
 }
 
@@ -161,7 +162,11 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
             let shown: Vec<&Tile> = all
                 .iter()
                 .filter(|m| {
-                    if q.is_empty() { m.sub == app.ui.bottom.sub } else { m.short.to_lowercase().contains(&q) || m.long.to_lowercase().contains(&q) }
+                    if q.is_empty() {
+                        m.sub == app.ui.bottom.sub
+                    } else {
+                        [m.short, m.long, crate::i18n::tl(m.short), crate::i18n::tl(m.long)].iter().any(|x| x.to_lowercase().contains(&q))
+                    }
                 })
                 .collect();
             // Rows of tiles that wrap, scrolled up and down, so every model of a group is in reach.
@@ -176,7 +181,9 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                         let selected = app.ui.tool == tool;
                         // Room for a name on two lines (`Modular Router 3GE`).
                         let (rect, resp) = ui.allocate_exact_size(vec2(76.0, 56.0), Sense::click());
-                        let resp = resp.on_hover_text(m.long);
+                        // Cable names and descriptions are interface text; model names stay as they are.
+                        let (short, long) = if m.kind.is_none() { (crate::i18n::tl(m.short), crate::i18n::tl(m.long)) } else { (m.short, m.long) };
+                        let resp = resp.on_hover_text(long);
                         resp.widget_info(|| egui::WidgetInfo::selected(egui::accesskit::Role::Button, true, selected, m.short));
                         let p = ui.painter_at(rect);
                         let fill = if selected {
@@ -201,11 +208,23 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                                     icons::model_marks(&p, icon, id, m.multilayer);
                                 }
                             }
-                            None => icons::glyph(&p, icon.shrink(4.0), Glyph::Cable, tk.cable),
+                            None => {
+                                if let Tool::Cable(c) = tool {
+                                    icons::cable(&p, icon, c, &tk);
+                                }
+                            }
                         }
                         // The name wraps onto a second line under the icon rather than being cut.
-                        let mut job =
-                            egui::text::LayoutJob::simple(m.short.to_string(), egui::FontId::proportional(10.0), tk.text, rect.width() - 6.0);
+                        // A long word (`Straight-Through`) gets a smaller size rather than an ellipsis.
+                        let longest = short.split_whitespace().max_by_key(|w| w.chars().count()).unwrap_or("").to_string();
+                        let size = [10.0, 9.0, 8.0]
+                            .into_iter()
+                            .find(|&s| {
+                                ui.fonts_mut(|f| f.layout_no_wrap(longest.clone(), egui::FontId::proportional(s), tk.text)).size().x
+                                    <= rect.width() - 8.0
+                            })
+                            .unwrap_or(8.0);
+                        let mut job = egui::text::LayoutJob::simple(short.to_string(), egui::FontId::proportional(size), tk.text, rect.width() - 6.0);
                         job.halign = egui::Align::Center;
                         job.wrap.max_rows = 2;
                         let galley = ui.fonts_mut(|f| f.layout_job(job));
@@ -217,7 +236,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                     }
                 });
             });
-            let current = all.iter().find(|m| m.tool == app.ui.tool).map_or("", |m| m.long);
+            let current = all.iter().find(|m| m.tool == app.ui.tool).map_or("", |m| if m.kind.is_none() { crate::i18n::tl(m.long) } else { m.long });
             egui::Frame::new().stroke(egui::Stroke::new(1.0, tk.chrome_line)).fill(tk.canvas).inner_margin(4.0).show(ui, |ui| {
                 ui.set_min_width(ui.available_width());
                 ui.vertical_centered(|ui| ui.label(RichText::new(current).small()));

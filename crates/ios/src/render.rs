@@ -685,7 +685,7 @@ pub fn interfaces(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
                 let _ = writeln!(s, "  {}-duplex, {speed} Mb/s", if half { "Half" } else { "Full" });
             }
             if let Some(peer) = t.peer(end) {
-                let _ = writeln!(s, "  Cabled to {}", t.end_label(peer));
+                let _ = writeln!(s, "  Cabled to {}{}", t.end_label(peer), cable_words(t, end));
             }
             if d.kind == DeviceKind::Switch {
                 let sp = &p.switchport;
@@ -1694,6 +1694,16 @@ pub fn svi_interface(t: &Topology, d: &Device, vlan: u16) -> Result<String, Stri
     Ok(s)
 }
 
+/// ` with a cross-over cable` (` with an automatic cable, working as straight-through`).
+pub fn cable_words(t: &Topology, end: End) -> String {
+    let Some(l) = t.link_at(end) else { return String::new() };
+    let kind = |c: packetcraft_model::cable::Cable| c.label().trim_start_matches("Copper ").to_lowercase();
+    match l.cable {
+        packetcraft_model::cable::Cable::Auto => format!(" with an automatic cable, working as {}", kind(t.resolved_cable(l))),
+        c => format!(" with a {} cable", kind(c)),
+    }
+}
+
 /// `show controllers` on an Ethernet port.
 pub fn ethernet_controller(t: &Topology, d: &Device, port: usize) -> String {
     let Some(p) = d.ports.get(port) else { return String::new() };
@@ -1703,8 +1713,10 @@ pub fn ethernet_controller(t: &Topology, d: &Device, port: usize) -> String {
         None => "no link".into(),
     };
     let set = |o: Option<String>| o.unwrap_or_else(|| "auto".into());
+    let medium = d.port_medium(port).map_or("copper", |m| m.words());
+    let cable = if t.link_at(end).is_some() { format!("\n  Cable:{}", cable_words(t, end).trim_start_matches(" with")) } else { String::new() };
     format!(
-        "{}: Ethernet, {link}\n  Speed set to {}, duplex set to {}\n  Auto-MDIX {}",
+        "{}: Ethernet ({medium}), {link}\n  Speed set to {}, duplex set to {}\n  Auto-MDIX {}{cable}",
         p.name,
         set(p.speed.map(|x| format!("{x} Mb/s"))),
         set(p.duplex.map(|x| if x == packetcraft_model::Duplex::Half { "half".into() } else { "full".into() })),

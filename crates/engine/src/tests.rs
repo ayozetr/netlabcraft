@@ -1229,3 +1229,119 @@ fn the_firewall_sample_publishes_its_web_server_and_keeps_the_office_private() {
     let run = cli(&mut s, "FW1", "show running-config");
     assert!(run.contains("nat (dmz,outside) static 203.0.113.10") && run.contains("dhcpd enable inside"), "{run}");
 }
+
+#[test]
+fn cables_have_kinds_that_fit_their_ports() {
+    let mut s = Session::new();
+    for (name, model) in [("R1", "Router-M2"), ("R2", "Router-3"), ("S1", "Switch-24"), ("F1", "Switch-24-SFP"), ("PC1", "PC"), ("PC2", "PC")] {
+        s.execute("device.add", json!({"model": model, "name": name})).unwrap();
+    }
+    // A fiber cable needs fiber at both ends; the error says which port is not.
+    let e = s.execute("link.add", json!({"a": "F1", "a_port": "g0/1", "b": "S1", "b_port": "fa0/1", "cable": "fiber"})).unwrap_err().to_string();
+    assert!(e.contains("a fiber cable needs a fiber port on both ends: S1 Fa0/1 is copper"), "{e}");
+    let e = s.execute("link.add", json!({"a": "R2", "b": "S1", "cable": "coax"})).unwrap_err().to_string();
+    assert!(e.contains("`cable` must be one of"), "{e}");
+    // With no port named, the first port the cable fits is taken (the combo uplink on S1).
+    let v = s.execute("link.add", json!({"a": "F1", "b": "S1", "cable": "fiber"})).unwrap();
+    assert_eq!(v["a"], "F1 GigabitEthernet0/1");
+    assert_eq!(v["b"], "S1 GigabitEthernet0/1");
+    assert_eq!(v["resolved"], "fiber");
+    let v = s.execute("link.add", json!({"a": "PC1", "b": "S1", "b_port": "fa0/2"})).unwrap();
+    assert_eq!((v["cable"].as_str(), v["resolved"].as_str()), (Some("auto"), Some("straight-through")));
+    // PC to PC with a straight-through: cabled, but down with the reason.
+    s.execute("link.add", json!({"a": "PC2", "b": "R2", "cable": "straight-through"})).unwrap();
+    s.execute("link.remove", json!({"device": "PC2", "port": "Fa0"})).unwrap();
+    s.execute("device.add", json!({"model": "PC", "name": "PC3"})).unwrap();
+    s.execute("link.add", json!({"a": "PC2", "b": "PC3", "cable": "straight-through"})).unwrap();
+    let list = s.execute("link.list", json!({})).unwrap();
+    let pcs = list.as_array().unwrap().iter().find(|l| l["a"] == "PC2 FastEthernet0").unwrap();
+    assert_eq!(pcs["up"], false);
+    assert!(pcs["problem"].as_str().unwrap().contains("cross-over"));
+    let out = s.execute("cli.exec", json!({"device": "S1", "line": "show interfaces fa0/2"})).unwrap();
+    assert!(out["output"].as_str().unwrap().contains("automatic cable, working as straight-through"), "{out}");
+    // A serial DTE cable: the far end is the DCE.
+    s.execute("device.power", json!({"device": "R1", "on": false})).unwrap();
+    s.execute("device.module.add", json!({"device": "R1", "slot": "0/0", "module": "Card-2S"})).unwrap();
+    s.execute("device.module.add", json!({"device": "R1", "slot": "0/1", "module": "Card-1GF"})).unwrap();
+    s.execute("device.power", json!({"device": "R1", "on": true})).unwrap();
+    let e =
+        s.execute("link.add", json!({"a": "R1", "a_port": "s0/0/0", "b": "R2", "b_port": "g0/1", "cable": "serial-dte"})).unwrap_err().to_string();
+    assert!(e.contains("serial port on both ends") && e.contains("R2 Gi0/1 is copper"), "{e}");
+    s.execute("link.add", json!({"a": "R1", "a_port": "s0/0/0", "b": "R1", "b_port": "s0/0/1", "cable": "serial-dte"})).unwrap();
+    let r1 = s.topology.find("R1").unwrap().id;
+    assert_eq!(s.topology.dce_of(packetcraft_model::End { device: r1, port: 2 }), Some(packetcraft_model::End { device: r1, port: 3 }));
+    // The fiber card's port takes fiber only.
+    let e = s
+        .execute("link.add", json!({"a": "R1", "a_port": "g0/1/0", "b": "S1", "b_port": "fa0/5", "cable": "straight-through"}))
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("R1 Gi0/1/0 is fiber"), "{e}");
+    s.execute("link.add", json!({"a": "R1", "a_port": "g0/1/0", "b": "S1", "b_port": "g0/2"})).unwrap();
+    let ports = s.execute("device.list", json!({})).unwrap();
+    let r1j = ports.as_array().unwrap().iter().find(|d| d["name"] == "R1").unwrap();
+    let card = r1j["ports"].as_array().unwrap().iter().find(|p| p["name"] == "GigabitEthernet0/1/0").unwrap();
+    assert_eq!((card["medium"].as_str(), card["cable"].as_str()), (Some("fiber"), Some("auto")));
+    assert_eq!(r1j["console"]["port"], "Console");
+}
+
+#[test]
+fn old_lab_files_load_with_automatic_cables_and_kinds_round_trip() {
+    // A lab saved before cable types: links are a pair of ends.
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "lan"})).unwrap();
+    let saved = s.execute("file.save", json!({})).unwrap()["json"].as_str().unwrap().to_string();
+    assert!(!saved.contains("\"cable\"") && !saved.contains("consoles"));
+    let mut old = Session::new();
+    old.execute("file.open", json!({"json": saved})).unwrap();
+    assert!(old.topology.links.iter().all(|l| l.cable == packetcraft_model::cable::Cable::Auto));
+    assert_eq!(old.topology.links, s.topology.links);
+    // Kinds and console cables are saved and read back.
+    s.execute("device.add", json!({"model": "Switch-24", "name": "S9"})).unwrap();
+    s.execute("device.add", json!({"model": "PC", "name": "PC9"})).unwrap();
+    s.execute("link.add", json!({"a": "PC9", "b": "S9", "cable": "cross-over"})).unwrap();
+    s.execute("link.add", json!({"a": "S9", "b": "PC9", "cable": "console"})).unwrap();
+    let saved = s.execute("file.save", json!({})).unwrap()["json"].as_str().unwrap().to_string();
+    assert!(saved.contains("\"cross-over\"") && saved.contains("consoles"));
+    let mut back = Session::new();
+    back.execute("file.open", json!({"json": saved})).unwrap();
+    assert_eq!(back.topology.links, s.topology.links);
+    assert_eq!(back.topology.consoles, s.topology.consoles);
+}
+
+#[test]
+fn a_pc_terminal_reaches_the_console_of_the_device_its_cable_leads_to() {
+    let mut s = Session::new();
+    s.execute("device.add", json!({"model": "Router-3", "name": "R1"})).unwrap();
+    s.execute("device.add", json!({"model": "Laptop", "name": "L1"})).unwrap();
+    s.execute("device.add", json!({"model": "PC", "name": "PC2"})).unwrap();
+    s.execute("device.add", json!({"model": "Server", "name": "Srv"})).unwrap();
+    let e = s.execute("pc.terminal", json!({"pc": "L1"})).unwrap_err().to_string();
+    assert!(e.contains("no console cable"), "{e}");
+    assert!(s.execute("pc.terminal", json!({"pc": "R1"})).is_err());
+    let e = s.execute("link.add", json!({"a": "Srv", "b": "R1", "cable": "console"})).unwrap_err().to_string();
+    assert!(e.contains("Srv has no console or RS-232 port"), "{e}");
+    let v = s.execute("link.add", json!({"a": "R1", "a_port": "Console", "b": "L1", "b_port": "RS-232"})).unwrap();
+    assert_eq!((v["a"].as_str(), v["b"].as_str()), (Some("L1 RS-232"), Some("R1 Console")));
+    // One console port, one terminal.
+    let e = s.execute("link.add", json!({"a": "PC2", "b": "R1", "cable": "console"})).unwrap_err().to_string();
+    assert!(e.contains("R1 Console is already cabled"), "{e}");
+    // No address needed: the terminal is the router's own console session.
+    let t = s.execute("pc.terminal", json!({"pc": "L1"})).unwrap();
+    assert_eq!(t["device"], "R1");
+    assert_eq!(t["prompt"], "R1>");
+    s.execute("cli.exec", json!({"device": t["device"], "line": "enable"})).unwrap();
+    s.execute("cli.exec", json!({"device": "R1", "line": "configure terminal"})).unwrap();
+    s.execute("cli.exec", json!({"device": "R1", "line": "hostname Core"})).unwrap();
+    let t = s.execute("pc.terminal", json!({"pc": "L1"})).unwrap();
+    assert_eq!(t["device"], "Core");
+    assert_eq!(t["prompt"], "Core(config)#");
+    // Not a network interface: not in the interface table, carries no frames.
+    let brief = s.execute("cli.exec", json!({"device": "Core", "line": "do show ip interface brief"})).unwrap();
+    assert!(!brief["output"].as_str().unwrap().contains("Console"));
+    let list = s.execute("link.list", json!({})).unwrap();
+    assert_eq!(list.as_array().unwrap().len(), 1);
+    assert_eq!(list[0]["cable"], "console");
+    s.execute("link.remove", json!({"device": "L1", "port": "RS-232"})).unwrap();
+    assert!(s.execute("pc.terminal", json!({"pc": "L1"})).is_err());
+    assert!(s.execute("link.remove", json!({"device": "L1", "port": "RS-232"})).is_err());
+}

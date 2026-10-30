@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod acl;
 pub mod activity;
+pub mod cable;
 pub mod drawing;
 pub mod file;
 pub mod firewall;
@@ -1717,12 +1718,14 @@ pub struct End {
     pub port: usize,
 }
 
-/// A cable between two ports. The simulator decides straight vs crossover itself (every port
-/// is auto-MDIX), so a cable is just a pair of ends.
+/// A cable between two ports, of a kind (see [`cable`]). Labs saved before cable types have
+/// automatic cables, which are always the right kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Link {
     pub a: End,
     pub b: End,
+    #[serde(default, skip_serializing_if = "cable::Cable::is_auto")]
+    pub cable: cable::Cable,
 }
 
 /// The lab.
@@ -1730,6 +1733,9 @@ pub struct Link {
 pub struct Topology {
     pub devices: Vec<Device>,
     pub links: Vec<Link>,
+    /// Console cables (a PC's RS-232 port to a device's Console port): not network links.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub consoles: Vec<cable::ConsoleCable>,
     /// The next device id (ids are never reused).
     pub next_id: u32,
     /// Free text shown with the lab (instructions, notes).
@@ -1823,6 +1829,7 @@ impl Topology {
         Topology {
             devices: Vec::new(),
             links: Vec::new(),
+            consoles: Vec::new(),
             next_id: 1,
             notes: String::new(),
             annotations: Vec::new(),
@@ -1894,6 +1901,7 @@ impl Topology {
     pub fn remove_device(&mut self, id: DeviceId) -> Result<Device> {
         let i = self.devices.iter().position(|d| d.id == id).ok_or_else(|| ModelError::NoDevice(id.to_string()))?;
         self.links.retain(|l| l.a.device != id && l.b.device != id);
+        self.consoles.retain(|c| c.pc != id && c.device != id);
         for c in &mut self.clusters {
             c.devices.retain(|d| *d != id);
         }
@@ -2003,13 +2011,15 @@ impl Topology {
         self.device(end.device).and_then(|d| d.ports.get(end.port)).is_some_and(|p| ifname::is_serial(&p.name))
     }
 
-    /// On a serial cable, the DCE end (the one cabled first, which provides the clock).
+    /// On a serial cable, the DCE end, which provides the clock: the end cabled first, or the
+    /// far one on a Serial DTE cable.
     pub fn dce_of(&self, end: End) -> Option<End> {
         let l = self.link_at(end)?;
-        self.is_serial(l.a).then_some(l.a)
+        let dce = if l.cable == cable::Cable::SerialDte { l.b } else { l.a };
+        self.is_serial(dce).then_some(dce)
     }
 
-    fn check_end(&self, end: End) -> Result<()> {
+    pub(crate) fn check_end(&self, end: End) -> Result<()> {
         let d = self.device(end.device).ok_or_else(|| ModelError::NoDevice(end.device.to_string()))?;
         let p = d.ports.get(end.port).ok_or_else(|| ModelError::NoPort(d.name.clone(), format!("#{}", end.port)))?;
         if self.link_at(end).is_some() {
@@ -2018,23 +2028,10 @@ impl Topology {
         Ok(())
     }
 
-    /// Cables two free ports.
+    /// Cables two free ports with an automatic cable (on a serial cable the first end is the
+    /// DCE).
     pub fn connect(&mut self, a: End, b: End) -> Result<()> {
-        if a == b {
-            return Err(ModelError::SamePort);
-        }
-        self.check_end(a)?;
-        self.check_end(b)?;
-        if self.is_serial(a) != self.is_serial(b) {
-            return Err(ModelError::Invalid(format!(
-                "{} and {} don't fit one cable: serial ports take a serial cable, Ethernet ports a copper one",
-                self.end_label(a),
-                self.end_label(b)
-            )));
-        }
-        // On a serial cable the first end is the DCE.
-        self.links.push(Link { a, b });
-        Ok(())
+        self.connect_with(a, b, cable::Cable::Auto)
     }
 
     /// Unplugs the cable at a port; returns it.
@@ -2123,7 +2120,15 @@ impl Topology {
         let mut used = std::collections::BTreeSet::new();
         let devices = &self.devices;
         let valid = |e: End| devices.iter().any(|d| d.id == e.device && e.port < d.ports.len());
-        self.links.retain(|l| l.a != l.b && valid(l.a) && valid(l.b) && used.insert((l.a.device, l.a.port)) && used.insert((l.b.device, l.b.port)));
+        self.links.retain(|l| {
+            l.a != l.b
+                && valid(l.a)
+                && valid(l.b)
+                && used.insert((l.a.device, l.a.port))
+                && used.insert((l.b.device, l.b.port))
+                && l.cable != cable::Cable::Console
+        });
+        self.sanitize_consoles();
         self.sanitize_physical();
     }
 }
@@ -2218,9 +2223,9 @@ mod tests {
         t.devices[1].name = "pc1".into();
         t.devices[0].x = f32::NAN;
         t.devices.push(t.devices[0].clone());
-        t.links.push(Link { a: End { device: a, port: 0 }, b: End { device: b, port: 0 } });
-        t.links.push(Link { a: End { device: a, port: 0 }, b: End { device: b, port: 0 } });
-        t.links.push(Link { a: End { device: a, port: 9 }, b: End { device: DeviceId(77), port: 0 } });
+        t.links.push(Link { a: End { device: a, port: 0 }, b: End { device: b, port: 0 }, cable: cable::Cable::Auto });
+        t.links.push(Link { a: End { device: a, port: 0 }, b: End { device: b, port: 0 }, cable: cable::Cable::Auto });
+        t.links.push(Link { a: End { device: a, port: 9 }, b: End { device: DeviceId(77), port: 0 }, cable: cable::Cable::Auto });
         t.next_id = 0;
         t.sanitize();
         assert_eq!(t.devices.len(), 2);

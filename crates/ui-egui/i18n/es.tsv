@@ -777,3 +777,32 @@ switched off	apagado
 IoT: a sensor, a fan and a rule	IoT: un sensor, un ventilador y una regla
 A smart sensor and a smart fan register with the IoT server over HTTP; the server's rule switches the fan on when the sensor reads above 30.	Un sensor y un ventilador inteligentes se registran en el servidor IoT por HTTP; la regla del servidor enciende el ventilador cuando el sensor marca más de 30.
 Sensor1 reads 25 degrees and Fan1 is off. Open Sensor1 > IoT and raise the reading above 30: the server's rule (IoT-Server > IoT) switches Fan1 on. Every report is an HTTP request to the server (see the events in Simulation mode).	Sensor1 marca 25 grados y Fan1 está apagado. Abre Sensor1 > IoT y sube la lectura por encima de 30: la regla del servidor (IoT-Server > IoT) enciende Fan1. Cada informe es una petición HTTP al servidor (mira los eventos en el modo Simulación).
+# Cable types (Connections) and the console Terminal.
+Copper Straight-Through	Cobre directo
+Copper Cross-Over	Cobre cruzado
+Fiber	Fibra
+Console	Consola
+Serial DCE	Serie DCE
+Serial DTE	Serie DTE
+Automatic: picks the right cable for the two ports you choose	Automático: elige el cable adecuado para los dos puertos que escojas
+Copper straight-through: joins unlike ports (a PC or router to a switch or hub)	Cobre directo: une puertos distintos (un PC o un router a un switch o un hub)
+Copper cross-over: joins like ports (switch to switch, router to router, PC to PC, router to PC)	Cobre cruzado: une puertos iguales (switch con switch, router con router, PC con PC, router con PC)
+Fiber: joins fiber ports (SFP uplinks and fiber cards); carries a signal up to 2 km here	Fibra: une puertos de fibra (enlaces SFP y tarjetas de fibra); aquí lleva la señal hasta 2 km
+Console (rollover): a PC's RS-232 port to a router's or switch's Console port, for the PC's Terminal	Consola (rollover): del puerto RS-232 de un PC al puerto Console de un router o switch, para el Terminal del PC
+Serial DCE: joins serial ports; the end you click first is the DCE and gives the clock	Serie DCE: une puertos serie; el extremo que pulsas primero es el DCE y da el reloj
+Serial DTE: joins serial ports; the end you click first is the DTE, the other end gives the clock	Serie DTE: une puertos serie; el extremo que pulsas primero es el DTE y el otro da el reloj
+Console cable: click a PC (RS-232) and a router or switch (Console).	Cable de consola: pulsa un PC (RS-232) y un router o switch (Console).
+From {}: click the second device. Esc cancels.	Desde {}: pulsa el segundo equipo. Esc cancela.
+{} has no Console or RS-232 port.	{} no tiene puerto Console ni RS-232.
+other cable type	otro tipo de cable
+Terminal	Terminal
+Console of {} over the console cable	Consola de {} por el cable de consola
+No console cable. Join this computer's RS-232 port to a router's or switch's Console port with the Console cable (Connections), then open the Terminal again.	No hay cable de consola. Une el puerto RS-232 de este equipo al puerto Console de un router o switch con el cable Consola (Conexiones) y vuelve a abrir el Terminal.
+1-port Gigabit fiber card	Tarjeta Gigabit de fibra de 1 puerto
+One routed Gigabit Ethernet fiber (SFP) port	Un puerto Gigabit Ethernet de fibra (SFP) enrutado
+a {} cable needs a {} port on both ends: {} is {}	un cable {} necesita un puerto {} en los dos extremos: {} es {}
+{} is a radio: it takes no cable	{} es una radio: no lleva cable
+{} is {} and {} is {}: no cable joins them	{} es {} y {} es {}: ningún cable los une
+wrong cable: {} and {} need a {} cable, a {} one is plugged in and neither end has auto-MDIX	cable equivocado: {} y {} necesitan un cable {}, hay uno {} conectado y ningún extremo tiene auto-MDIX
+{} has no console cable: join its RS-232 port to a router's or switch's Console port (link.add with "cable": "console")	{} no tiene cable de consola: une su puerto RS-232 al puerto Console de un router o switch (link.add con "cable": "console")
+a console cable joins a PC's RS-232 port to a router's or switch's Console port: {} and {}	un cable de consola une el puerto RS-232 de un PC al puerto Console de un router o switch: {} y {}

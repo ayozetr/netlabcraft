@@ -163,16 +163,23 @@ pub fn port_up(t: &Topology, end: End) -> bool {
         && cable_problem(t, end).is_none()
 }
 
-/// Why the copper cable at a port carries nothing, if it doesn't: longer than Ethernet over
-/// twisted pair reaches. Serial cables stand for leased lines and have no limit here.
+/// Why the cable at a port carries nothing, if it doesn't: the wrong kind of cable (a
+/// straight-through between like ports, or a cross-over between unlike ones, with no
+/// auto-MDIX at either end), or longer than its medium reaches (copper 100 m, fiber 2 km).
+/// Serial cables stand for leased lines and have no length limit here.
 pub fn cable_problem(t: &Topology, end: End) -> Option<String> {
-    if t.is_serial(end) {
-        return None;
+    if let Some(why) = t.cable_mismatch(end) {
+        return Some(why);
     }
     let l = t.link_at(end)?;
+    let (what, max) = match t.resolved_cable(l) {
+        packetcraft_model::cable::Cable::SerialDce | packetcraft_model::cable::Cable::SerialDte => return None,
+        packetcraft_model::cable::Cable::Fiber => ("fiber", packetcraft_model::physical::FIBER_MAX_M),
+        _ if t.is_serial(end) => return None,
+        _ => ("copper", packetcraft_model::physical::COPPER_MAX_M),
+    };
     let len = t.cable_length(l);
-    let max = packetcraft_model::physical::COPPER_MAX_M;
-    (len.meters > max).then(|| format!("cable too long: {} m copper, max {max} m", len.meters))
+    (len.meters > max).then(|| format!("cable too long: {} m {what}, max {max} m", len.meters))
 }
 
 /// The fastest an Ethernet port goes, in Mbit/s, from its type (`None`: not Ethernet).

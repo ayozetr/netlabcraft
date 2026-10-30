@@ -1,6 +1,7 @@
 //! The device catalogue: generic models (our own names), each a kind plus a port layout.
 
 use crate::DeviceKind;
+use crate::cable::Medium;
 
 /// A run of ports: `prefix` followed by numbers `first..=last` (`FastEthernet0/` 1–24).
 #[derive(Debug, Clone, Copy)]
@@ -8,6 +9,8 @@ pub struct PortRun {
     pub prefix: &'static str,
     pub first: u32,
     pub last: u32,
+    /// What the ports take; `None`: what their name says (serial, radio, else copper).
+    pub medium: Option<Medium>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -37,7 +40,17 @@ impl Model {
 }
 
 const fn run(prefix: &'static str, first: u32, last: u32) -> PortRun {
-    PortRun { prefix, first, last }
+    PortRun { prefix, first, last, medium: None }
+}
+
+/// Uplink ports with two sockets, copper and fiber (SFP): either cable fits.
+const fn combo(prefix: &'static str, first: u32, last: u32) -> PortRun {
+    PortRun { prefix, first, last, medium: Some(Medium::Combo) }
+}
+
+/// Fiber-only ports (an SFP cage with no copper socket).
+const fn fiber(prefix: &'static str, first: u32, last: u32) -> PortRun {
+    PortRun { prefix, first, last, medium: Some(Medium::Fiber) }
 }
 
 pub static MODELS: &[Model] = &[
@@ -94,29 +107,36 @@ pub static MODELS: &[Model] = &[
         id: "Switch-8",
         kind: DeviceKind::Switch,
         label: "Switch 8FE",
-        description: "Switch with 8 Fast Ethernet + 1 Gigabit Ethernet ports",
-        ports: &[run("FastEthernet0/", 1, 8), run("GigabitEthernet0/", 1, 1)],
+        description: "Switch with 8 Fast Ethernet + 1 Gigabit Ethernet ports (the Gigabit uplink takes copper or fiber)",
+        ports: &[run("FastEthernet0/", 1, 8), combo("GigabitEthernet0/", 1, 1)],
     },
     Model {
         id: "Switch-24",
         kind: DeviceKind::Switch,
         label: "Switch 24FE",
-        description: "Switch with 24 Fast Ethernet + 2 Gigabit Ethernet ports",
-        ports: &[run("FastEthernet0/", 1, 24), run("GigabitEthernet0/", 1, 2)],
+        description: "Switch with 24 Fast Ethernet + 2 Gigabit Ethernet ports (the Gigabit uplinks take copper or fiber)",
+        ports: &[run("FastEthernet0/", 1, 24), combo("GigabitEthernet0/", 1, 2)],
     },
     Model {
         id: "Switch-ML-24",
         kind: DeviceKind::Switch,
         label: "L3 Switch 24",
-        description: "Multilayer switch with 24 Fast Ethernet + 2 Gigabit Ethernet ports: switches, and routes with `ip routing`",
-        ports: &[run("FastEthernet0/", 1, 24), run("GigabitEthernet0/", 1, 2)],
+        description: "Multilayer switch with 24 Fast Ethernet + 2 Gigabit Ethernet ports (copper or fiber): switches, and routes with `ip routing`",
+        ports: &[run("FastEthernet0/", 1, 24), combo("GigabitEthernet0/", 1, 2)],
     },
     Model {
         id: "Switch-48",
         kind: DeviceKind::Switch,
         label: "Switch 48FE",
-        description: "Switch with 48 Fast Ethernet + 2 Gigabit Ethernet ports",
-        ports: &[run("FastEthernet0/", 1, 48), run("GigabitEthernet0/", 1, 2)],
+        description: "Switch with 48 Fast Ethernet + 2 Gigabit Ethernet ports (the Gigabit uplinks take copper or fiber)",
+        ports: &[run("FastEthernet0/", 1, 48), combo("GigabitEthernet0/", 1, 2)],
+    },
+    Model {
+        id: "Switch-24-SFP",
+        kind: DeviceKind::Switch,
+        label: "Switch 24FE+2SFP",
+        description: "Switch with 24 Fast Ethernet ports and 2 Gigabit fiber (SFP) uplinks",
+        ports: &[run("FastEthernet0/", 1, 24), fiber("GigabitEthernet0/", 1, 2)],
     },
     Model {
         id: "AccessPoint",
@@ -217,18 +237,35 @@ pub struct Module {
     /// The port type word (`Serial`, `GigabitEthernet`).
     pub port_type: &'static str,
     pub port_count: u32,
+    /// What the ports take; `None`: what their name says.
+    pub medium: Option<Medium>,
 }
 
 /// The cards a modular router's bays take.
 pub static MODULES: &[Module] = &[
-    Module { id: "Card-2S", label: "2-port Serial card", description: "Two synchronous serial WAN ports", port_type: "Serial", port_count: 2 },
-    Module { id: "Card-4S", label: "4-port Serial card", description: "Four synchronous serial WAN ports", port_type: "Serial", port_count: 4 },
+    Module {
+        id: "Card-2S",
+        label: "2-port Serial card",
+        description: "Two synchronous serial WAN ports",
+        port_type: "Serial",
+        port_count: 2,
+        medium: None,
+    },
+    Module {
+        id: "Card-4S",
+        label: "4-port Serial card",
+        description: "Four synchronous serial WAN ports",
+        port_type: "Serial",
+        port_count: 4,
+        medium: None,
+    },
     Module {
         id: "Card-1GE",
         label: "1-port Gigabit card",
         description: "One routed Gigabit Ethernet port",
         port_type: "GigabitEthernet",
         port_count: 1,
+        medium: None,
     },
     Module {
         id: "Card-2GE",
@@ -236,6 +273,7 @@ pub static MODULES: &[Module] = &[
         description: "Two routed Gigabit Ethernet ports",
         port_type: "GigabitEthernet",
         port_count: 2,
+        medium: None,
     },
     Module {
         id: "Card-1FE",
@@ -243,6 +281,15 @@ pub static MODULES: &[Module] = &[
         description: "One routed Fast Ethernet port",
         port_type: "FastEthernet",
         port_count: 1,
+        medium: None,
+    },
+    Module {
+        id: "Card-1GF",
+        label: "1-port Gigabit fiber card",
+        description: "One routed Gigabit Ethernet fiber (SFP) port",
+        port_type: "GigabitEthernet",
+        port_count: 1,
+        medium: Some(Medium::Fiber),
     },
 ];
 
@@ -292,6 +339,40 @@ pub fn default_for(kind: DeviceKind) -> &'static Model {
 }
 
 static FALLBACK: Model = Model { id: "PC", kind: DeviceKind::Pc, label: "PC", description: "", ports: &[run("FastEthernet", 0, 0)] };
+
+/// What a port takes, by its name alone.
+pub fn medium_by_name(name: &str) -> Medium {
+    if crate::ifname::is_serial(name) {
+        Medium::Serial
+    } else if crate::ifname::is_wireless(name) {
+        Medium::Wireless
+    } else {
+        Medium::Copper
+    }
+}
+
+impl Model {
+    /// What a built-in port of this model takes (`None`: not one of its ports).
+    pub fn port_medium(&self, name: &str) -> Option<Medium> {
+        let target = crate::ifname::parse(name)?;
+        self.ports.iter().find_map(|r| {
+            (r.first..=r.last)
+                .any(|n| crate::ifname::parse(&format!("{}{n}", r.prefix)).is_some_and(|x| x.same_port(&target)))
+                .then(|| r.medium.unwrap_or_else(|| medium_by_name(name)))
+        })
+    }
+
+    /// Whether the model has a console port (routers and switches with a command line; not a
+    /// home router, which is set up from its web pages here).
+    pub fn has_console(&self) -> bool {
+        matches!(self.kind, DeviceKind::Router | DeviceKind::Switch) && !self.home_router()
+    }
+
+    /// Whether the model has an RS-232 serial port for a console cable (PCs and laptops).
+    pub fn has_rs232(&self) -> bool {
+        matches!(self.kind, DeviceKind::Pc | DeviceKind::Laptop)
+    }
+}
 
 impl Model {
     /// Port names, in order.

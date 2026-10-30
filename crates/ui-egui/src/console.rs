@@ -48,6 +48,8 @@ pub enum DesktopApp {
     Browser,
     Email,
     MibBrowser,
+    /// The console of the router or switch a console cable leads to.
+    Terminal,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -240,10 +242,16 @@ pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
 /// The console: scrollback, prompt and input line. `dark`: the black command-prompt look of a
 /// host; otherwise the white device CLI.
 fn console(app: &mut PacketApp, ui: &mut egui::Ui, d: DeviceId, dark: bool) {
+    console_in(app, ui, d, d, dark);
+}
+
+/// A console session of device `d` shown in the window of device `win` (its own CLI tab, or a
+/// PC's Terminal over a console cable): the same session either way.
+fn console_in(app: &mut PacketApp, ui: &mut egui::Ui, win: DeviceId, d: DeviceId, dark: bool) {
     let tk = theme::tokens(app.ui.dark);
     let (bg, fg) =
         if dark { (egui::Color32::from_rgb(0x0c, 0x0c, 0x0c), egui::Color32::from_rgb(0xe8, 0xe8, 0xe8)) } else { (tk.console_bg, tk.console_text) };
-    let input_id = egui::Id::unique(("console_input", d.0));
+    let input_id = egui::Id::unique(("console_input", win.0, d.0));
     let prompt = {
         let cli = app.session.console(d).cli.clone();
         packetcraft_ios::prompt(&app.session.topology, d, &cli)
@@ -263,7 +271,7 @@ fn console(app: &mut PacketApp, ui: &mut egui::Ui, d: DeviceId, dark: bool) {
         (false, false, false, false)
     };
     let history = app.session.console(d).cli.history.clone();
-    let Some(w) = app.ui.windows.get_mut(&d) else { return };
+    let Some(w) = app.ui.windows.get_mut(&win) else { return };
     let mut move_cursor = false;
     if up && !history.is_empty() {
         let pos = w.history_pos.map_or(history.len().saturating_sub(1), |p| p.saturating_sub(1));
@@ -287,13 +295,13 @@ fn console(app: &mut PacketApp, ui: &mut egui::Ui, d: DeviceId, dark: bool) {
         let line = w.input.clone();
         if let Ok(v) = app.session.execute("cli.complete", json!({"device": d.0, "line": line}))
             && let Some(done) = v.get("line").and_then(Value::as_str)
-            && let Some(w) = app.ui.windows.get_mut(&d)
+            && let Some(w) = app.ui.windows.get_mut(&win)
         {
             w.input = done.to_string();
             move_cursor = true;
         }
     }
-    let Some(w) = app.ui.windows.get_mut(&d) else { return };
+    let Some(w) = app.ui.windows.get_mut(&win) else { return };
     if enter {
         run_line = Some(std::mem::take(&mut w.input));
         w.history_pos = None;
@@ -315,7 +323,7 @@ fn console(app: &mut PacketApp, ui: &mut egui::Ui, d: DeviceId, dark: bool) {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
             let label = ui.label(RichText::new(&prompt).monospace().color(fg));
-            let Some(w) = app.ui.windows.get_mut(&d) else { return };
+            let Some(w) = app.ui.windows.get_mut(&win) else { return };
             let resp = ui
                 .add(
                     egui::TextEdit::singleline(&mut w.input)
@@ -349,7 +357,7 @@ fn console(app: &mut PacketApp, ui: &mut egui::Ui, d: DeviceId, dark: bool) {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button(tl("Paste")).clicked() {
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::RequestPaste);
-                    if let Some(w) = app.ui.windows.get_mut(&d) {
+                    if let Some(w) = app.ui.windows.get_mut(&win) {
                         w.focus = true;
                     }
                 }
@@ -1005,13 +1013,17 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 ui.set_min_size(vec2(640.0, 380.0));
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing = vec2(28.0, 20.0);
+                    let terminal = dev.has_rs232().then_some((DesktopApp::Terminal, "Terminal"));
                     for (app_id, label) in [
                         (DesktopApp::IpConfig, "IP Configuration"),
                         (DesktopApp::Prompt, "Command Prompt"),
                         (DesktopApp::Browser, "Web Browser"),
                         (DesktopApp::Email, "Email"),
                         (DesktopApp::MibBrowser, "MIB Browser"),
-                    ] {
+                    ]
+                    .into_iter()
+                    .chain(terminal)
+                    {
                         let (rect, resp) = ui.allocate_exact_size(vec2(130.0, 150.0), Sense::click());
                         resp.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, label));
                         let p = ui.painter_at(rect);
@@ -1044,6 +1056,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 DesktopApp::Browser => "Web Browser",
                 DesktopApp::Email => "Email",
                 DesktopApp::MibBrowser => "MIB Browser",
+                DesktopApp::Terminal => "Terminal",
             };
             let mut close = false;
             egui::Frame::new().fill(tk.bar).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
@@ -1154,6 +1167,19 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                     }
                 }
                 DesktopApp::Prompt => console(app, ui, d, true),
+                DesktopApp::Terminal => match app.session.topology.console_peer(d) {
+                    Some(target) => {
+                        let name = app.session.topology.device(target).map_or(String::new(), |x| x.name.clone());
+                        ui.label(RichText::new(crate::i18n::trf("Console of {} over the console cable", &[&name])).color(tk.muted));
+                        console_in(app, ui, d, target, true);
+                    }
+                    None => {
+                        ui.add_space(10.0);
+                        ui.label(tl(
+                            "No console cable. Join this computer's RS-232 port to a router's or switch's Console port with the Console cable (Connections), then open the Terminal again.",
+                        ));
+                    }
+                },
                 DesktopApp::Email => crate::mail::app(app, ui, dev),
                 DesktopApp::MibBrowser => crate::mib::app(app, ui, dev),
                 DesktopApp::Browser => {
@@ -1237,6 +1263,28 @@ fn draw_app_icon(p: &egui::Painter, r: egui::Rect, app: DesktopApp) {
             let stroke = egui::Stroke::new(2.0, dark);
             p.line_segment([env.left_top(), env.center() + vec2(0.0, env.height() * 0.08)], stroke);
             p.line_segment([env.right_top(), env.center() + vec2(0.0, env.height() * 0.08)], stroke);
+        }
+        DesktopApp::Terminal => {
+            // A small screen with a device prompt and a light blue console cable hanging below.
+            let screen = egui::Rect::from_min_size(r.min + vec2(r.width() * 0.05, 0.0), vec2(r.width() * 0.9, r.height() * 0.6));
+            p.rect_filled(screen, 4.0, light);
+            p.rect_filled(screen.shrink(r.width() * 0.07), 2.0, egui::Color32::BLACK);
+            p.text(
+                screen.shrink(r.width() * 0.12).left_top(),
+                egui::Align2::LEFT_TOP,
+                "#_",
+                egui::FontId::monospace(r.height() * 0.26),
+                egui::Color32::from_rgb(0x7c, 0xf0, 0x7c),
+            );
+            let blue = egui::Color32::from_rgb(0x2c, 0x7c, 0xc0);
+            let start = screen.center_bottom();
+            let pts: Vec<egui::Pos2> = (0..=12)
+                .map(|i| i as f32 / 12.0)
+                .map(|t| start + vec2((t * std::f32::consts::TAU).sin() * r.width() * 0.12, t * r.height() * 0.32))
+                .collect();
+            p.add(egui::Shape::line(pts, egui::Stroke::new(3.0, blue)));
+            let plug = egui::Rect::from_center_size(egui::pos2(start.x, r.bottom() - r.height() * 0.04), vec2(r.width() * 0.2, r.height() * 0.12));
+            p.rect_filled(plug, 2.0, blue);
         }
         DesktopApp::Prompt => {
             // A monitor with a prompt on a black screen.

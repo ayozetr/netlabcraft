@@ -210,7 +210,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Fit a card",
         "",
         None,
-        r#"{"device", "slot": "0/1", "module": "Card-2S|Card-4S|Card-1GE|Card-2GE|Card-1FE"} → {"slots", "added": [port names]}: modular routers, switched off"#,
+        r#"{"device", "slot": "0/1", "module": "Card-2S|Card-4S|Card-1GE|Card-2GE|Card-1FE|Card-1GF"} → {"slots", "added": [port names]}: modular routers, switched off"#,
         true
     ),
     c!(
@@ -367,11 +367,34 @@ pub static CATALOG: &[CommandInfo] = &[
         "List devices",
         "",
         None,
-        "{} → [{id, name, kind, x, y, cluster, place, ports: [{name, ip, shutdown, up, problem, peer}]}]",
+        "{} → [{id, name, kind, x, y, cluster, place, ports: [{name, ip, shutdown, up, problem, peer, medium, cable}], console: {port, peer} | null}]",
         false
     ),
-    c!("link.add", "Connect with a cable", "Insert", None, r#"{"a": "device", "a_port"?: "interface", "b": "device", "b_port"?: "interface"}"#, true),
-    c!("link.remove", "Remove cable", "Edit", None, r#"{"device", "port": "interface"}"#, true),
+    c!(
+        "link.add",
+        "Connect with a cable",
+        "Insert",
+        None,
+        r#"{"a": "device", "a_port"?: "interface", "b": "device", "b_port"?: "interface", "cable"?: "auto" (default) | "straight-through" | "cross-over" | "fiber" | "console" | "serial-dce" | "serial-dte"} → {"a", "b", "cable", "resolved"}: a cable joins two ports of its medium; a console cable joins a PC's RS-232 port to a router's or switch's Console port"#,
+        true
+    ),
+    c!("link.remove", "Remove cable", "Edit", None, r#"{"device", "port": "interface", or "Console" / "RS-232" for a console cable}"#, true),
+    c!(
+        "link.list",
+        "List cables",
+        "",
+        None,
+        r#"{} → [{"a", "b", "cable", "resolved", "up", "problem"}] (console cables: cable "console", resolved "console")"#,
+        false
+    ),
+    c!(
+        "pc.terminal",
+        "Terminal (console cable)",
+        "",
+        None,
+        r#"{"pc": "PC or laptop"} → {"device", "prompt", "log"}: the router or switch its console cable leads to; type into it with cli.exec on that device (the same console its CLI tab shows)"#,
+        false
+    ),
     c!("cli.exec", "Type a command", "", None, r#"{"device", "line"} → {"output", "prompt", "clear"}"#, true),
     c!("cli.script", "Run commands", "", None, r#"{"device", "lines": ["…"] or "text"} → {"outputs"}"#, true),
     c!("cli.help", "Command help (?)", "", None, r#"{"device", "line"} → {"help"}"#, false),

@@ -1,6 +1,7 @@
 //! Command implementations.
 
 use packetcraft_core::{DeviceId, parse_ip};
+use packetcraft_model::cable::{CONSOLE_PORT, Cable, RS232_PORT, is_console_port_name};
 use packetcraft_model::{DeviceKind, End, Shape, file, models};
 use packetcraft_sim::{PingOptions, Probe};
 use serde_json::{Value, json};
@@ -927,37 +928,132 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                                 "up": packetcraft_sim::port_up(&s.topology, end),
                                 "problem": packetcraft_sim::cable_problem(&s.topology, end),
                                 "peer": s.topology.peer(end).map(|e| s.topology.end_label(e)),
+                                "medium": d.port_medium(i).map(|m| m.id()),
+                                "cable": s.topology.link_at(end).map(|l| l.cable.id()),
                             })
                         })
                         .collect();
-                    json!({"id": d.id.0, "name": d.name, "kind": d.kind.id(), "x": d.x, "y": d.y, "cluster": s.topology.cluster_of(d.id), "place": s.topology.home_of(d.id).map(|h| h.place), "gateway": d.gateway.map(|g| g.to_string()), "ports": ports})
+                    let console = d.console_port_name().map(|port| json!({"port": port, "peer": console_peer_label(&s.topology, d.id)}));
+                    json!({"id": d.id.0, "name": d.name, "kind": d.kind.id(), "x": d.x, "y": d.y, "cluster": s.topology.cluster_of(d.id), "place": s.topology.home_of(d.id).map(|h| h.place), "gateway": d.gateway.map(|g| g.to_string()), "ports": ports, "console": console})
                 })
                 .collect(),
         )),
         "link.add" => {
             let a = device_param(s, p, "a")?;
             let b = device_param(s, p, "b")?;
+            let cable = match opt_str(p, "cable") {
+                Some(c) => Cable::parse(c).ok_or_else(|| {
+                    bad(format!(
+                        "`cable` must be one of: {}",
+                        Cable::ALL.iter().map(|c| c.id()).collect::<Vec<_>>().join(", ")
+                    ))
+                })?,
+                None => Cable::Auto,
+            };
+            let console_named = [opt_str(p, "a_port"), opt_str(p, "b_port")].into_iter().flatten().any(is_console_port_name);
+            if cable == Cable::Console || console_named {
+                if a == b {
+                    return Err(EngineError::Failed("a cable needs two different devices".into()));
+                }
+                if !matches!(cable, Cable::Console | Cable::Auto) {
+                    return Err(EngineError::Failed(format!(
+                        "a {} cable doesn't fit a Console or RS-232 port: pick the console cable",
+                        cable.label().to_lowercase()
+                    )));
+                }
+                let mut t = s.topology.clone();
+                let c = t.connect_console(a, b)?;
+                s.checkpoint();
+                s.topology = t;
+                s.changed();
+                let name = |id| s.topology.device(id).map_or(String::new(), |d| d.name.clone());
+                return Ok(json!({
+                    "a": format!("{} {RS232_PORT}", name(c.pc)),
+                    "b": format!("{} {CONSOLE_PORT}", name(c.device)),
+                    "cable": "console",
+                    "resolved": "console",
+                }));
+            }
             let pa = match opt_str(p, "a_port") {
                 Some(n) => port_param(s, a, n)?,
-                None => s.topology.free_port(a).ok_or_else(|| EngineError::Failed(format!("{} has no free port", s.topology.end_label(End { device: a, port: 0 }))))?,
+                None => s.topology.free_port_for_cable(a, cable, None).ok_or_else(|| {
+                    EngineError::Failed(format!("{} has no free port for a {} cable", s.topology.end_label(End { device: a, port: 0 }), cable.label().to_lowercase()))
+                })?,
             };
-                        let pb = match opt_str(p, "b_port") {
+            let pb = match opt_str(p, "b_port") {
                 Some(n) => port_param(s, b, n)?,
-                None => {
-                    let serial = s.topology.is_serial(End { device: a, port: pa });
-                    s.topology.free_port_for(b, serial).ok_or_else(|| EngineError::Failed("the second device has no free port of the same type".into()))?
-                }
+                None => s
+                    .topology
+                    .free_port_for_cable(b, cable, Some(End { device: a, port: pa }))
+                    .ok_or_else(|| EngineError::Failed(format!("the second device has no free port this {} cable fits", cable.label().to_lowercase())))?,
             };
             let mut t = s.topology.clone();
             let (ea, eb) = (End { device: a, port: pa }, End { device: b, port: pb });
-            t.connect(ea, eb)?;
+            t.connect_with(ea, eb, cable)?;
             s.checkpoint();
             s.topology = t;
             s.changed();
-            Ok(json!({"a": s.topology.end_label(ea), "b": s.topology.end_label(eb)}))
+            let resolved = s.topology.link_at(ea).map_or(cable, |l| s.topology.resolved_cable(l));
+            Ok(json!({"a": s.topology.end_label(ea), "b": s.topology.end_label(eb), "cable": cable.id(), "resolved": resolved.id()}))
+        }
+        "link.list" => {
+            let t = &s.topology;
+            let mut out: Vec<Value> = t
+                .links
+                .iter()
+                .map(|l| {
+                    json!({
+                        "a": t.end_label(l.a),
+                        "b": t.end_label(l.b),
+                        "cable": l.cable.id(),
+                        "resolved": t.resolved_cable(l).id(),
+                        "up": packetcraft_sim::port_up(t, l.a) && packetcraft_sim::port_up(t, l.b),
+                        "problem": packetcraft_sim::cable_problem(t, l.a),
+                    })
+                })
+                .collect();
+            let name = |id| t.device(id).map_or(String::new(), |d| d.name.clone());
+            out.extend(t.consoles.iter().map(|c| {
+                let off = t.device(c.pc).is_some_and(|d| d.powered_off) || t.device(c.device).is_some_and(|d| d.powered_off);
+                json!({
+                    "a": format!("{} {RS232_PORT}", name(c.pc)),
+                    "b": format!("{} {CONSOLE_PORT}", name(c.device)),
+                    "cable": "console",
+                    "resolved": "console",
+                    "up": !off,
+                    "problem": Value::Null,
+                })
+            }));
+            Ok(Value::Array(out))
+        }
+        "pc.terminal" => {
+            let pc = device_param(s, p, "pc")?;
+            let dev = s.topology.device(pc).ok_or_else(|| EngineError::Failed("no such device".into()))?;
+            if !dev.has_rs232() {
+                return Err(EngineError::Failed(format!("{} has no {RS232_PORT} port: the Terminal runs on a PC or laptop", dev.name)));
+            }
+            let pc_name = dev.name.clone();
+            let target = s.topology.console_peer(pc).ok_or_else(|| {
+                EngineError::Failed(format!(
+                    "{pc_name} has no console cable: join its {RS232_PORT} port to a router's or switch's {CONSOLE_PORT} port (link.add with \"cable\": \"console\")"
+                ))
+            })?;
+            let target_name = s.topology.device(target).map_or(String::new(), |d| d.name.clone());
+            let prompt = prompt_of(s, target);
+            let log = s.console(target).log.clone();
+            Ok(json!({"device": target_name, "prompt": prompt, "log": log}))
         }
         "link.remove" => {
             let d = device_param(s, p, "device")?;
+            if is_console_port_name(str_param(p, "port")?) {
+                if s.topology.console_at(d).is_none() {
+                    return Err(EngineError::Failed(format!("{} has no console cable", s.topology.device(d).map_or("?", |x| x.name.as_str()))));
+                }
+                s.checkpoint();
+                s.topology.disconnect_console(d);
+                s.changed();
+                return Ok(Value::Null);
+            }
             let port = port_param(s, d, str_param(p, "port")?)?;
             let end = End { device: d, port };
             if s.topology.link_at(end).is_none() {
@@ -1334,6 +1430,13 @@ fn probe_json(p: &Probe) -> Value {
         Probe::Unreachable { from, code } => json!({"result": "unreachable", "from": from.to_string(), "code": code}),
         Probe::Timeout => json!({"result": "timeout"}),
     }
+}
+
+/// `PC1 RS-232` (or `R1 Console`): the far end of a device's console cable.
+fn console_peer_label(t: &packetcraft_model::Topology, id: DeviceId) -> Option<String> {
+    let c = t.console_at(id)?;
+    let (far, port) = if c.pc == id { (c.device, CONSOLE_PORT) } else { (c.pc, RS232_PORT) };
+    t.device(far).map(|d| format!("{} {port}", d.name))
 }
 
 fn prompt_of(s: &mut Session, d: DeviceId) -> String {

@@ -146,7 +146,7 @@ impl Topology {
         let mut links = Vec::new();
         for l in std::mem::take(&mut self.links) {
             if let (Some(a), Some(b)) = (remap(l.a), remap(l.b)) {
-                links.push(crate::Link { a, b });
+                links.push(crate::Link { a, b, cable: l.cable });
             }
         }
         self.links = links;

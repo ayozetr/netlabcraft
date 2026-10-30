@@ -44,7 +44,7 @@ Every front end (UI, `packetcraft-cli run`, MCP `packetcraft_run`) runs these.
 | `device.label` | Set display name |  |  | `{"device", "label": "workspace label (empty: the hostname)"}` |
 | `device.models` | Device catalogue |  |  | `{} → [{id, kind, label, description, ports, slots}]` |
 | `device.power` | Power switch |  |  | `{"device", "on": true\|false or "on"\|"off"} → {"power", "changed", "errors"}: switched off, no port carries anything and a router or switch loses its running configuration; switched on, it boots from the saved one` |
-| `device.module.add` | Fit a card |  |  | `{"device", "slot": "0/1", "module": "Card-2S\|Card-4S\|Card-1GE\|Card-2GE\|Card-1FE"} → {"slots", "added": [port names]}: modular routers, switched off` |
+| `device.module.add` | Fit a card |  |  | `{"device", "slot": "0/1", "module": "Card-2S\|Card-4S\|Card-1GE\|Card-2GE\|Card-1FE\|Card-1GF"} → {"slots", "added": [port names]}: modular routers, switched off` |
 | `device.module.remove` | Remove a card |  |  | `{"device", "slot": "0/1"} → {"slots", "removed": [port names]}: switched off; cables on the card's ports are unplugged` |
 | `iot.configure` | Smart thing settings |  |  | `{"device": smart sensor or device, "server"?: "IoT server address (empty: none)", "value"?: sensor reading -1000..1000} → {"kind", "server", "value", "registered", "on", "message"} (reports at once)` |
 | `iot.sync` | IoT reports |  |  | `{} → {"things": [...]}: every smart thing reports to its server over HTTP (sensors first)` |
@@ -82,9 +82,11 @@ Every front end (UI, `packetcraft-cli run`, MCP `packetcraft_run`) runs these.
 | `device.remove` | Delete device | Edit | Delete | `{"device": "name or id"}` |
 | `device.move` | Move device |  |  | `{"device", "x", "y", "transient"?: false}` |
 | `device.rename` | Rename device |  |  | `{"device", "name"}` |
-| `device.list` | List devices |  |  | `{} → [{id, name, kind, x, y, cluster, place, ports: [{name, ip, shutdown, up, problem, peer}]}]` |
-| `link.add` | Connect with a cable | Insert |  | `{"a": "device", "a_port"?: "interface", "b": "device", "b_port"?: "interface"}` |
-| `link.remove` | Remove cable | Edit |  | `{"device", "port": "interface"}` |
+| `device.list` | List devices |  |  | `{} → [{id, name, kind, x, y, cluster, place, ports: [{name, ip, shutdown, up, problem, peer, medium, cable}], console: {port, peer} \| null}]` |
+| `link.add` | Connect with a cable | Insert |  | `{"a": "device", "a_port"?: "interface", "b": "device", "b_port"?: "interface", "cable"?: "auto" (default) \| "straight-through" \| "cross-over" \| "fiber" \| "console" \| "serial-dce" \| "serial-dte"} → {"a", "b", "cable", "resolved"}: a cable joins two ports of its medium; a console cable joins a PC's RS-232 port to a router's or switch's Console port` |
+| `link.remove` | Remove cable | Edit |  | `{"device", "port": "interface", or "Console" / "RS-232" for a console cable}` |
+| `link.list` | List cables |  |  | `{} → [{"a", "b", "cable", "resolved", "up", "problem"}] (console cables: cable "console", resolved "console")` |
+| `pc.terminal` | Terminal (console cable) |  |  | `{"pc": "PC or laptop"} → {"device", "prompt", "log"}: the router or switch its console cable leads to; type into it with cli.exec on that device (the same console its CLI tab shows)` |
 | `cli.exec` | Type a command |  |  | `{"device", "line"} → {"output", "prompt", "clear"}` |
 | `cli.script` | Run commands |  |  | `{"device", "lines": ["…"] or "text"} → {"outputs"}` |
 | `cli.help` | Command help (?) |  |  | `{"device", "line"} → {"help"}` |
