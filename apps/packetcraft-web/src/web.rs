@@ -154,6 +154,9 @@ pub fn start() {
                 canvas,
                 options,
                 Box::new(|cc| {
+                    if let Some(l) = web_sys::window().and_then(|w| w.navigator().language()) {
+                        packetcraft_ui_egui::i18n::set_lang(packetcraft_ui_egui::i18n::Lang::from_locale(&l));
+                    }
                     let mut session = Session::new();
                     let q = query();
                     let sample = q.trim_start_matches('?').split('&').find_map(|kv| kv.strip_prefix("sample=")).unwrap_or("two-subnets").to_string();

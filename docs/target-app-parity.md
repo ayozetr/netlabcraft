@@ -16,8 +16,8 @@ This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summa
 | Console grammar entries | **225** across 12 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
 | Device models | **15** | measured: `crates/model/src/models.rs` |
 | Sample labs | **18** | measured: `crates/engine/src/sample.rs` |
-| Tests | **138** | measured: `cargo test --workspace` |
-| **Ready for real work** (weighted) | **~50%** | estimated; written weights below (62.3 computed) |
+| Tests | **139** | measured: `cargo test --workspace` |
+| **Ready for real work** (weighted) | **~50%** | estimated; written weights below (63.1 computed) |
 | **CCNA 1 student** (Introduction to Networks) | **~74%** | estimated; [method](#audiences) |
 | **CCNA 2 student** (Switching, Routing and Wireless Essentials) | **~78%** | estimated; [method](#audiences) |
 | **CCNA 3 student** (Enterprise Networking, Security and Automation) | **~62%** | estimated; [method](#audiences) |
@@ -68,9 +68,9 @@ Weights reflect how much of a typical CCNA lab session each area carries.
 | WAN, cabling and wireless | 6 | 55% | 3.3 | [hardware-parity.md](hardware-parity.md) | 60–90 |
 | Simulation mode (event list, PDU details, filters, complex PDUs) | 8 | 65% | 5.2 | [ui-parity.md](ui-parity.md) | 22–35 |
 | Workspace and windows (canvas, device tabs, physical view, drawing) | 10 | 55% | 5.5 | [ui-parity.md](ui-parity.md) | 60–90 |
-| Teaching (activities, scoring, instructions, languages) | 8 | 45% | 3.6 | [gaps.md](gaps.md) | 55–90 |
+| Teaching (activities, scoring, instructions, languages) | 8 | 55% | 4.4 | [gaps.md](gaps.md) | 55–90 |
 | Device families and hardware (models, modules, ASA, IoT) | 5 | 25% | 1.3 | [hardware-parity.md](hardware-parity.md) | 80–120 |
-| **Total** | **100** | | **62.3** | | **~600–950** |
+| **Total** | **100** | | **63.1** | | **~600–950** |
 
 ## Audiences
 
@@ -105,6 +105,7 @@ misses commands students meet in the first labs. Alpha gates are in
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Spanish interface: teaching 45% → 55%. |
 | 2026-10-30 | minor | Wi-Fi access points and clients: WAN/cabling/wireless 35% → 55%, CCNA 2 ~71% → ~78%. |
 | 2026-10-30 | minor | STP timers and rapid-pvst: layer 2 80% → 85%, CCNA 2 ~68% → ~71%. |
 | 2026-10-30 | minor | NTP, syslog, TFTP: services 45% → 58%, CCNA 3 ~57% → ~62%. |

@@ -5,6 +5,7 @@ use egui::{RichText, Ui};
 use packetcraft_wire::{Arp, ArpOp, ETHERTYPE_ARP, ETHERTYPE_IPV4, Frame, Icmp, Ipv4, PROTO_ICMP, PROTO_UDP, Protocol, Udp};
 use serde_json::json;
 
+use crate::i18n::tl;
 use crate::{PacketApp, theme};
 
 const FILTERS: [Protocol; 19] = [
@@ -145,9 +146,9 @@ pub fn panel(app: &mut PacketApp, ui: &mut Ui) {
     }
     let tk = theme::tokens(app.ui.dark);
     ui.add_space(2.0);
-    ui.label(RichText::new("Simulation Panel").size(16.0));
+    ui.label(RichText::new(tl("Simulation Panel")).size(16.0));
     ui.separator();
-    ui.label(RichText::new("Event List").size(16.0));
+    ui.label(RichText::new(tl("Event List")).size(16.0));
     let rows: Vec<usize> = app.session.sim.trace().iter().enumerate().filter(|(_, e)| app.ui.events.visible(e.protocol)).map(|(i, _)| i).collect();
     let list_h = (ui.available_height() - 250.0).max(140.0);
     let row_h = 26.0;
@@ -166,14 +167,14 @@ pub fn panel(app: &mut PacketApp, ui: &mut Ui) {
                         ui.painter().text(
                             r.left_center() + egui::vec2(6.0, 0.0),
                             egui::Align2::LEFT_CENTER,
-                            h,
+                            crate::i18n::tr(h),
                             egui::FontId::proportional(15.0),
                             tk.text,
                         );
                     }
                 });
                 if rows.is_empty() {
-                    ui.label(RichText::new("No events yet. Add a simple PDU (envelope tool) or ping from a console.").color(tk.muted));
+                    ui.label(RichText::new(tl("No events yet. Add a simple PDU (envelope tool) or ping from a console.")).color(tk.muted));
                     return;
                 }
                 let scroll_to = app.ui.events.scroll_to_selected;
@@ -249,16 +250,20 @@ pub fn panel(app: &mut PacketApp, ui: &mut Ui) {
     });
     ui.add_space(4.0);
     ui.horizontal(|ui| {
-        if crate::navy_button(ui, "Reset Simulation").on_hover_text("Clear the event list").clicked() {
+        if crate::navy_button(ui, "Reset Simulation").on_hover_text(tl("Clear the event list")).clicked() {
             app.run("sim.clear_events", json!({}));
             app.ui.events.selected = None;
             app.ui.events.playing = false;
         }
-        let state = if app.ui.events.playing { "Playing...".to_string() } else { format!("{} events", app.session.sim.trace().len()) };
+        let state = if app.ui.events.playing {
+            crate::i18n::tl("Playing...").to_string()
+        } else {
+            format!("{} {}", app.session.sim.trace().len(), crate::i18n::tl("events"))
+        };
         ui.label(RichText::new(state).color(tk.muted));
     });
     ui.separator();
-    ui.label(RichText::new("Play Controls").size(16.0));
+    ui.label(RichText::new(tl("Play Controls")).size(16.0));
     ui.vertical_centered(|ui| {
         ui.horizontal(|ui| {
             let w = 3.0 * 44.0;
@@ -269,11 +274,11 @@ pub fn panel(app: &mut PacketApp, ui: &mut Ui) {
     // Slow on the left, fast on the right, as a speed slider reads.
     let mut speed = 2.1 - app.ui.events.step_seconds;
     ui.spacing_mut().slider_width = ui.available_width() - 10.0;
-    if ui.add(egui::Slider::new(&mut speed, 0.1..=2.0).show_value(false)).on_hover_text("Play speed").changed() {
+    if ui.add(egui::Slider::new(&mut speed, 0.1..=2.0).show_value(false)).on_hover_text(tl("Play speed")).changed() {
         app.ui.events.step_seconds = 2.1 - speed;
     }
     ui.separator();
-    ui.label(RichText::new("Event List Filters - Visible Events").size(16.0));
+    ui.label(RichText::new(tl("Event List Filters - Visible Events")).size(16.0));
     let visible: Vec<&str> =
         FILTERS.iter().enumerate().filter(|(i, _)| app.ui.events.filter.get(*i).copied().unwrap_or(true)).map(|(_, p)| p.name()).collect();
     ui.label(if visible.is_empty() { "(none)".to_string() } else { visible.join(", ") });
@@ -318,7 +323,7 @@ pub fn pdu_window(app: &mut PacketApp, ctx: &egui::Context) {
             ui.label(format!("Event {} at {:.6} s, from {} to {}", e.id, e.at_us as f64 / 1e6, t.end_label(e.from), t.end_label(e.to)));
             match &e.dropped {
                 Some(why) => ui.label(RichText::new(format!("The device dropped it: {why}")).color(tk.error)),
-                None => ui.label(RichText::new("The device accepted it.").color(tk.ok)),
+                None => ui.label(RichText::new(tl("The device accepted it.")).color(tk.ok)),
             };
             ui.separator();
             egui::ScrollArea::vertical().show(ui, |ui| {

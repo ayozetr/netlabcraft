@@ -40,6 +40,7 @@ fn main() {
                 }
             }
             "--console" => consoles.push(it.next().expect("device").clone()),
+            "--lang" => packetcraft_ui_egui::i18n::set_lang(packetcraft_ui_egui::i18n::Lang::from_locale(it.next().map_or("en", String::as_str))),
             "--desktop" => desktop = Some(it.next().expect("prompt|ip|home").clone()),
             "--config" => config = true,
             "--services" => services = true,

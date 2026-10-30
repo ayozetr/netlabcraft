@@ -1,0 +1,238 @@
+# PacketCraft interface, Spanish. Format: English<TAB>Spanish (craft-i18n rows).
+A Record	Registro A
+A frame circled the network; there is no spanning tree yet, so avoid redundant switch links	Una trama dio vueltas por la red: evita enlaces redundantes entre switches sin spanning tree
+About	Acerca de
+About PacketCraft	Acerca de PacketCraft
+Access	Acceso
+Access VLAN	VLAN de acceso
+Activity Instructions	Instrucciones de la actividad
+Activity Wizard	Asistente de actividades
+Activity Wizard…	Asistente de actividades…
+Add	Añadir
+Add Simple PDU	Añadir PDU simple
+Add Simple PDU (P)	Añadir PDU simple (P)
+Add Complex PDU (not available yet)	Añadir PDU compleja (todavía no disponible)
+Add a command check	Añadir una comprobación de comando
+Add a configuration check	Añadir una comprobación de configuración
+Add a ping check	Añadir una comprobación de ping
+Add an .html file from your computer	Añadir un archivo .html de tu equipo
+Address	Dirección
+Agents and scripts drive PacketCraft through	Los agentes y scripts controlan PacketCraft con
+An open-source network simulator: build labs, configure routers and switches, and watch every frame.	Un simulador de redes de código abierto: monta laboratorios, configura routers y switches y observa cada trama.
+Apply	Aplicar
+Apply IPv6	Aplicar IPv6
+Apply Wi-Fi	Aplicar Wi-Fi
+Attributes	Atributos
+Automatic	Automática
+Back	Atrás
+Back to the parent cluster (Root is the top)	Volver al clúster superior (Root es el nivel más alto)
+Build the finished network, capture its configuration as the answers, then put the lab back in its starting state and save it.	Monta la red terminada, captura su configuración como respuestas y después deja el laboratorio en su estado inicial y guárdalo.
+Bytes	Bytes
+Cancel	Cancelar
+Capture answers from this lab	Capturar respuestas de este laboratorio
+Channel	Canal
+Check Results	Comprobar resultados
+Clear the event list	Vaciar la lista de eventos
+Close	Cerrar
+Command	Comando
+Command Prompt	Símbolo del sistema
+Config	Configuración
+Connections	Conexiones
+Copy	Copiar
+Copy (Ctrl+C): the selected device	Copiar (Ctrl+C): el equipo seleccionado
+DNS Server	Servidor DNS
+DNS Service	Servicio DNS
+Dark interface	Interfaz oscura
+Default Gateway	Puerta de enlace predeterminada
+Delete	Eliminar
+Delete Note	Eliminar nota
+Delete every PDU in the list	Eliminar todas las PDU de la lista
+Desktop	Escritorio
+Device	Equipo
+Disconnect	Desconectar
+Display Name	Nombre visible
+Draw Ellipse	Dibujar elipse
+Draw Freeform (not available yet)	Dibujo libre (todavía no disponible)
+Draw Line	Dibujar línea
+Draw Rectangle	Dibujar rectángulo
+Edit	Edición
+Edit file	Editar archivo
+End Devices	Dispositivos finales
+Equivalent console commands	Comandos de consola equivalentes
+Event List	Lista de eventos
+Event List Filters - Visible Events	Filtros de la lista de eventos - eventos visibles
+Every configuration line of the routers and switches, and every PC address, becomes a check	Cada línea de configuración de routers y switches, y cada dirección de PC, se convierte en una comprobación
+Exit	Salir
+Export Capture (pcap)	Exportar captura (pcap)
+Export Capture (pcap)...	Exportar captura (pcap)...
+Extensions	Extensiones
+Fast Forward Time (30 s)	Avanzar el tiempo (30 s)
+File	Archivo
+File Manager	Administrador de archivos
+File Name	Nombre de archivo
+Fire again	Volver a lanzar
+Forward	Adelante
+From	Desde
+From device	Desde el equipo
+GLOBAL	GLOBAL
+Go	Ir
+Help	Ayuda
+Hide answers in the file	Ocultar las respuestas en el archivo
+Hostname	Nombre de host
+Hub ports have nothing to configure: every frame is repeated out of every other port.	Los puertos de un hub no se configuran: cada trama se repite por todos los demás puertos.
+Hubs	Hubs
+IP Configuration	Configuración IP
+IPv4 Address	Dirección IPv4
+IPv6 Address	Dirección IPv6
+IPv6 Configuration	Configuración IPv6
+IPv6 Gateway	Puerta de enlace IPv6
+Import	Importar
+Independent clean-room project; not affiliated with any network equipment vendor.	Proyecto independiente de sala limpia; sin relación con ningún fabricante de equipos de red.
+Inside a block: interface g0/0 | ip address 10.0.0.1 255.255.255.0	Dentro de un bloque: interface g0/0 | ip address 10.0.0.1 255.255.255.0
+Inspect	Inspeccionar
+Instructions	Instrucciones
+Instructions or notes	Instrucciones o notas
+Interface	Interfaz
+Lab Notes	Notas del laboratorio
+Licensed under MIT or Apache-2.0.	Con licencia MIT o Apache-2.0.
+Line	Línea
+Link Local Address	Dirección link-local
+Logical	Lógico
+Mask	Máscara
+Maximum Number of Users:	Número máximo de usuarios:
+Message	Mensaje
+Mode	Modo
+Must fail (an access list should block it)	Debe fallar (una lista de acceso debería bloquearlo)
+NTP Service	Servicio NTP
+Name	Nombre
+Navigation: back to the start of the workspace	Navegación: volver al inicio del espacio de trabajo
+Network	Red
+Network Address	Dirección de red
+Network Devices	Dispositivos de red
+Network Information (the lab's notes)	Información de la red (las notas del laboratorio)
+New	Nuevo
+New (Ctrl+N)	Nuevo (Ctrl+N)
+New File	Archivo nuevo
+New from sample	Nuevo desde un ejemplo
+Next Hop	Siguiente salto
+No device matches.	Ningún equipo coincide.
+No events yet. Add a simple PDU (envelope tool) or ping from a console.	Todavía no hay eventos. Añade una PDU simple (herramienta del sobre) o haz ping desde una consola.
+No files yet: `copy running-config tftp: <this address>` on a router saves one here.	Todavía no hay archivos: `copy running-config tftp: <esta dirección>` en un router guarda uno aquí.
+Not simulated yet	Todavía no se simula
+Note	Nota
+Notes saved with the lab:	Notas guardadas con el laboratorio:
+OK	Aceptar
+Off	Desactivado
+On	Activado
+Open (Ctrl+O)	Abrir (Ctrl+O)
+Open Recent	Abrir reciente
+Open console	Abrir consola
+Open...	Abrir...
+Options	Opciones
+Output shows	La salida muestra
+PLAY CONTROLS:	CONTROLES DE REPRODUCCIÓN:
+Paste	Pegar
+Paste (Ctrl+V): a copy of the copied device	Pegar (Ctrl+V): una copia del equipo copiado
+Pause	Pausa
+Physical	Físico
+Place Note (N)	Colocar nota (N)
+Play Controls	Controles de reproducción
+Play speed	Velocidad de reproducción
+Play: replay the frames on the workspace	Reproducir: repite las tramas en el espacio de trabajo
+Point at a port to see what is plugged in. Cables are made with the Connections tool.	Señala un puerto para ver qué tiene conectado. Los cables se crean con la herramienta Conexiones.
+Pool Name	Nombre del pool
+Port Status	Estado del puerto
+Power Cycle Devices (forget ARP and MAC tables)	Reiniciar equipos (olvidan las tablas ARP y MAC)
+Realtime	Tiempo real
+Redo	Rehacer
+Redo (Ctrl+Y)	Rehacer (Ctrl+Y)
+Remove	Quitar
+Remove the activity	Quitar la actividad
+Reset Activity	Reiniciar actividad
+Reset Simulation	Reiniciar simulación
+Resize Shape (not available yet)	Redimensionar forma (todavía no disponible)
+Resource Records	Registros de recursos
+Routers	Routers
+Routers and switches with `ntp server <this address>` take this time.	Los routers y switches con `ntp server <esta dirección>` toman esta hora.
+SERVICES	SERVICIOS
+SWITCHING	CONMUTACIÓN
+Save	Guardar
+Save (Ctrl+S)	Guardar (Ctrl+S)
+Save As...	Guardar como...
+Save title and instructions	Guardar título e instrucciones
+Scenario 0	Escenario 0
+Scenarios hold the PDUs you send, so a lab can be re-tested	Los escenarios guardan las PDU que envías, para volver a probar un laboratorio
+Search for device	Buscar equipo
+Send every PDU in the list again	Volver a enviar todas las PDU de la lista
+Service	Servicio
+Services	Servicios
+Set Background (not available yet)	Fondo (todavía no disponible)
+Set Gateway	Fijar puerta de enlace
+Settings	Ajustes
+Show grid	Mostrar cuadrícula
+Simulation	Simulación
+Simulation Panel	Panel de simulación
+Start an empty PDU list	Empezar una lista de PDU vacía
+Static	Estática
+Static Routes	Rutas estáticas
+Stop	Detener
+Subnet Mask	Máscara de subred
+Switches	Switches
+Switching loop detected	Bucle de conmutación detectado
+Syslog Service	Servicio Syslog
+TFTP Service	Servicio TFTP
+Text shown on the workspace:	Texto que se muestra en el espacio de trabajo:
+The device accepted it.	El equipo lo ha aceptado.
+The event list as a capture any packet analyser opens	La lista de eventos como captura que abre cualquier analizador de paquetes
+Time (s)	Tiempo (s)
+Title	Título
+To address	A la dirección
+Tools	Herramientas
+Trunk	Trunk
+Type	Tipo
+Undo	Deshacer
+Undo (Ctrl+Z)	Deshacer (Ctrl+Z)
+VLAN Database	Base de datos de VLAN
+VLAN Name	Nombre de VLAN
+VLAN Number	Número de VLAN
+View	Ver
+WPA2 passphrase	Contraseña WPA2
+Web Browser	Navegador web
+Window	Ventana
+Zoom In	Acercar
+Zoom Out	Alejar
+Zoom Reset	Tamaño original
+delete	eliminar
+Language	Idioma
+INTERFACE	INTERFAZ
+ROUTING	ENRUTAMIENTO
+Global Settings	Ajustes generales
+Toggle PDU List Window	Mostrar u ocultar la lista de PDU
+Fire	Lanzar
+Last Status	Último estado
+Source	Origen
+Destination	Destino
+Color	Color
+Time(sec)	Tiempo (s)
+Num	Núm
+Time	Tiempo
+Completion	Completado
+of	de
+points	puntos
+Pick a device in the palette and click the canvas to place it, or open a sample from File.	Elige un equipo en la paleta y haz clic en el espacio de trabajo para colocarlo, o abre un ejemplo desde Archivo.
+Click a device to configure it · drag to move · scroll to pan, Ctrl+scroll to zoom	Haz clic en un equipo para configurarlo · arrastra para moverlo · rueda para desplazarte, Ctrl+rueda para acercar
+Drag on the workspace to draw. Drawings sit behind devices; move them with Select.	Arrastra en el espacio de trabajo para dibujar. Los dibujos quedan detrás de los equipos; muévelos con Seleccionar.
+Click the workspace to place a note. Drag notes to move them; double-click to edit.	Haz clic en el espacio de trabajo para colocar una nota. Arrastra las notas para moverlas; doble clic para editarlas.
+Click the first device and pick a port.	Haz clic en el primer equipo y elige un puerto.
+Simple PDU: click the source device.	PDU simple: haz clic en el equipo de origen.
+Simple PDU: now click the destination device.	PDU simple: ahora haz clic en el equipo de destino.
+Inspect: click a device to see its ARP, MAC and routing tables.	Inspeccionar: haz clic en un equipo para ver sus tablas ARP, MAC y de rutas.
+Click a device or a cable to delete it.	Haz clic en un equipo o un cable para eliminarlo.
+Vis.	Vis.
+Last Device	Último equipo
+At Device	En el equipo
+Info	Info
+Playing...	Reproduciendo...
+events	eventos
+Edit Filters	Editar filtros
+Show All/None	Mostrar todo/nada

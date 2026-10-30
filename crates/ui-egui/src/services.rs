@@ -9,6 +9,7 @@ use packetcraft_model::Device;
 use packetcraft_model::services::{DnsRecord, ServerPool, Services, WebFile};
 use serde_json::{Value, json};
 
+use crate::i18n::tl;
 use crate::{PacketApp, theme};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -58,9 +59,9 @@ fn on_off(ui: &mut Ui, label: &str, on: &mut bool) -> bool {
     let mut changed = false;
     ui.horizontal(|ui| {
         ui.add_sized([140.0, 22.0], egui::Label::new(label));
-        changed |= ui.radio_value(on, true, "On").changed();
+        changed |= ui.radio_value(on, true, tl("On")).changed();
         ui.add_space(60.0);
-        changed |= ui.radio_value(on, false, "Off").changed();
+        changed |= ui.radio_value(on, false, tl("Off")).changed();
     });
     changed
 }
@@ -104,7 +105,7 @@ pub fn tab(app: &mut PacketApp, ui: &mut Ui, dev: &Device, forms: &mut ServiceFo
             ui.set_height(400.0);
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
-                crate::console::list_item(ui, "SERVICES", false, true);
+                crate::console::list_item(ui, tl("SERVICES"), false, true);
                 for (p, name) in [
                     (Page::Http, "HTTP"),
                     (Page::Dhcp, "DHCP"),
@@ -136,15 +137,17 @@ pub fn tab(app: &mut PacketApp, ui: &mut Ui, dev: &Device, forms: &mut ServiceFo
 
 fn http(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mut ServiceForms) {
     let tk = theme::tokens(app.ui.dark);
-    ui.vertical_centered(|ui| ui.label(RichText::new("HTTP").size(16.0)));
+    ui.vertical_centered(|ui| ui.label(RichText::new(tl("HTTP")).size(16.0)));
     ui.separator();
     let mut new = sv.clone();
     ui.horizontal(|ui| {
         egui::Frame::group(ui.style()).show(ui, |ui| {
             ui.set_width(230.0);
-            ui.label("HTTP");
+            ui.label(tl("HTTP"));
             if ui
-                .horizontal(|ui| ui.radio_value(&mut new.http.on, true, "On").changed() | ui.radio_value(&mut new.http.on, false, "Off").changed())
+                .horizontal(|ui| {
+                    ui.radio_value(&mut new.http.on, true, tl("On")).changed() | ui.radio_value(&mut new.http.on, false, tl("Off")).changed()
+                })
                 .inner
             {
                 apply(app, d, &new);
@@ -152,22 +155,22 @@ fn http(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mu
         });
         egui::Frame::group(ui.style()).show(ui, |ui| {
             ui.set_width(230.0);
-            ui.label("HTTPS");
-            ui.label(RichText::new("Not simulated yet").color(tk.muted));
+            ui.label(tl("HTTPS"));
+            ui.label(RichText::new(tl("Not simulated yet")).color(tk.muted));
         });
     });
     if let Some((orig, name, content)) = &mut forms.editing {
-        ui.label(RichText::new("Edit file").strong());
-        field(ui, "File Name", name);
+        ui.label(RichText::new(tl("Edit file")).strong());
+        field(ui, tl("File Name"), name);
         egui::ScrollArea::vertical().id_salt("web_edit").max_height(230.0).show(ui, |ui| {
             ui.add(egui::TextEdit::multiline(content).code_editor().desired_width(f32::INFINITY).desired_rows(12));
         });
         let mut done = None;
         ui.horizontal(|ui| {
-            if ui.button("Save").clicked() {
+            if ui.button(tl("Save")).clicked() {
                 done = Some(true);
             }
-            if ui.button("Cancel").clicked() {
+            if ui.button(tl("Cancel")).clicked() {
                 done = Some(false);
             }
         });
@@ -183,7 +186,7 @@ fn http(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mu
         }
         return;
     }
-    ui.label("File Manager");
+    ui.label(tl("File Manager"));
     let mut edit = None;
     let mut delete = None;
     egui::Frame::new().stroke(egui::Stroke::new(1.0, tk.chrome_line)).fill(tk.canvas).inner_margin(4.0).show(ui, |ui| {
@@ -216,10 +219,10 @@ fn http(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mu
     }
     ui.horizontal(|ui| {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button("Import").on_hover_text("Add an .html file from your computer").clicked() {
+            if ui.button(tl("Import")).on_hover_text(tl("Add an .html file from your computer")).clicked() {
                 app.requests.push(crate::UiRequest::ImportWebFile { device: d });
             }
-            if ui.button("New File").clicked() {
+            if ui.button(tl("New File")).clicked() {
                 forms.editing = Some((None, "newpage.html".into(), "<html>\n<body>\n<h1>New page</h1>\n</body>\n</html>\n".into()));
             }
         });
@@ -230,15 +233,15 @@ fn dhcp(app: &mut PacketApp, ui: &mut Ui, dev: &Device, forms: &mut ServiceForms
     let tk = theme::tokens(app.ui.dark);
     let d = dev.id;
     let sv = &dev.services;
-    ui.vertical_centered(|ui| ui.label(RichText::new("DHCP").size(16.0)));
+    ui.vertical_centered(|ui| ui.label(RichText::new(tl("DHCP")).size(16.0)));
     ui.separator();
     let mut new = sv.clone();
     ui.horizontal(|ui| {
-        ui.add_sized([140.0, 22.0], egui::Label::new("Interface"));
+        ui.add_sized([140.0, 22.0], egui::Label::new(tl("Interface")));
         ui.label(dev.ports.first().map_or("-", |p| p.name.as_str()));
         ui.add_space(30.0);
-        ui.label("Service");
-        if ui.radio_value(&mut new.dhcp.on, true, "On").changed() | ui.radio_value(&mut new.dhcp.on, false, "Off").changed() {
+        ui.label(tl("Service"));
+        if ui.radio_value(&mut new.dhcp.on, true, tl("On")).changed() | ui.radio_value(&mut new.dhcp.on, false, tl("Off")).changed() {
             apply(app, d, &new);
         }
     });
@@ -249,12 +252,12 @@ fn dhcp(app: &mut PacketApp, ui: &mut Ui, dev: &Device, forms: &mut ServiceForms
         forms.pool_gw = "0.0.0.0".into();
         forms.pool_dns = "0.0.0.0".into();
     }
-    field(ui, "Pool Name", &mut forms.pool_name);
-    field(ui, "Default Gateway", &mut forms.pool_gw);
-    field(ui, "DNS Server", &mut forms.pool_dns);
+    field(ui, tl("Pool Name"), &mut forms.pool_name);
+    field(ui, tl("Default Gateway"), &mut forms.pool_gw);
+    field(ui, tl("DNS Server"), &mut forms.pool_dns);
     octets(ui, "Start IP Address:", &mut forms.pool_start);
     octets(ui, "Subnet Mask:", &mut forms.pool_mask);
-    field(ui, "Maximum Number of Users:", &mut forms.pool_max);
+    field(ui, tl("Maximum Number of Users:"), &mut forms.pool_max);
     let pool = || -> Result<ServerPool, String> {
         let ip = |s: &str, what: &str| s.trim().parse::<Ipv4Addr>().map_err(|_| format!("{what}: `{s}` is not an address"));
         let name = forms.pool_name.trim();
@@ -273,17 +276,17 @@ fn dhcp(app: &mut PacketApp, ui: &mut Ui, dev: &Device, forms: &mut ServiceForms
     let mut action = None;
     ui.columns(3, |c| {
         if let Some(c0) = c.get_mut(0)
-            && c0.add_sized([c0.available_width(), 26.0], egui::Button::new("Add")).clicked()
+            && c0.add_sized([c0.available_width(), 26.0], egui::Button::new(tl("Add"))).clicked()
         {
             action = Some(0);
         }
         if let Some(c1) = c.get_mut(1)
-            && c1.add_sized([c1.available_width(), 26.0], egui::Button::new("Save")).clicked()
+            && c1.add_sized([c1.available_width(), 26.0], egui::Button::new(tl("Save"))).clicked()
         {
             action = Some(1);
         }
         if let Some(c2) = c.get_mut(2)
-            && c2.add_enabled(forms.pool_sel.is_some(), egui::Button::new("Remove").min_size(vec2(c2.available_width(), 26.0))).clicked()
+            && c2.add_enabled(forms.pool_sel.is_some(), egui::Button::new(tl("Remove")).min_size(vec2(c2.available_width(), 26.0))).clicked()
         {
             action = Some(2);
         }
@@ -349,21 +352,21 @@ fn dhcp(app: &mut PacketApp, ui: &mut Ui, dev: &Device, forms: &mut ServiceForms
 
 fn dns(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mut ServiceForms) {
     let tk = theme::tokens(app.ui.dark);
-    ui.vertical_centered(|ui| ui.label(RichText::new("DNS").size(16.0)));
+    ui.vertical_centered(|ui| ui.label(RichText::new(tl("DNS")).size(16.0)));
     ui.separator();
     let mut new = sv.clone();
-    if on_off(ui, "DNS Service", &mut new.dns.on) {
+    if on_off(ui, tl("DNS Service"), &mut new.dns.on) {
         apply(app, d, &new);
     }
     ui.separator();
-    ui.label("Resource Records");
+    ui.label(tl("Resource Records"));
     ui.horizontal(|ui| {
-        let l = ui.add_sized([140.0, 22.0], egui::Label::new("Name"));
+        let l = ui.add_sized([140.0, 22.0], egui::Label::new(tl("Name")));
         ui.add(egui::TextEdit::singleline(&mut forms.dns_name).desired_width(170.0)).labelled_by(l.id);
-        ui.label("Type");
-        ui.label(RichText::new("A Record").strong());
+        ui.label(tl("Type"));
+        ui.label(RichText::new(tl("A Record")).strong());
     });
-    field(ui, "Address", &mut forms.dns_addr);
+    field(ui, tl("Address"), &mut forms.dns_addr);
     let mut action = None;
     ui.columns(3, |c| {
         for (i, label) in ["Add", "Save", "Remove"].into_iter().enumerate() {
@@ -416,7 +419,7 @@ fn dns(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mut
                     forms.dns_name = r.name.clone();
                     forms.dns_addr = r.address.to_string();
                 }
-                ui.label("A Record");
+                ui.label(tl("A Record"));
                 ui.label(r.address.to_string());
                 ui.end_row();
             }
@@ -429,19 +432,19 @@ pub fn browser(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, forms: &mut Servic
     let tk = theme::tokens(app.ui.dark);
     let mut go: Option<String> = None;
     ui.horizontal(|ui| {
-        if ui.add_enabled(forms.pos > 0, egui::Button::new("<")).on_hover_text("Back").clicked() {
+        if ui.add_enabled(forms.pos > 0, egui::Button::new("<")).on_hover_text(tl("Back")).clicked() {
             forms.pos -= 1;
             go = forms.history.get(forms.pos).cloned();
         }
-        if ui.add_enabled(forms.pos + 1 < forms.history.len(), egui::Button::new(">")).on_hover_text("Forward").clicked() {
+        if ui.add_enabled(forms.pos + 1 < forms.history.len(), egui::Button::new(">")).on_hover_text(tl("Forward")).clicked() {
             forms.pos += 1;
             go = forms.history.get(forms.pos).cloned();
         }
-        let l = ui.label("URL");
+        let l = ui.label(tl("URL"));
         let r = ui.add(egui::TextEdit::singleline(&mut forms.url).desired_width(ui.available_width() - 110.0)).labelled_by(l.id);
         let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
         let pending = std::mem::take(&mut forms.go_pending);
-        if ui.button("Go").clicked() || enter || pending {
+        if ui.button(tl("Go")).clicked() || enter || pending {
             let u = forms.url.trim().to_string();
             if !u.is_empty() {
                 forms.history.truncate(forms.pos + usize::from(!forms.history.is_empty()));
@@ -450,7 +453,7 @@ pub fn browser(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, forms: &mut Servic
                 go = Some(u);
             }
         }
-        if ui.button("Stop").clicked() {
+        if ui.button(tl("Stop")).clicked() {
             forms.error = Some("Stopped.".into());
         }
     });
@@ -636,10 +639,10 @@ fn render_html(ui: &mut Ui, html: &str) -> Option<String> {
 }
 
 fn syslog(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services) {
-    ui.vertical_centered(|ui| ui.label(RichText::new("Syslog").size(16.0)));
+    ui.vertical_centered(|ui| ui.label(RichText::new(tl("Syslog")).size(16.0)));
     ui.separator();
     let mut new = sv.clone();
-    if on_off(ui, "Syslog Service", &mut new.syslog.on) {
+    if on_off(ui, tl("Syslog Service"), &mut new.syslog.on) {
         apply(app, d, &new);
     }
     ui.separator();
@@ -647,9 +650,9 @@ fn syslog(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services) {
     ui.label(format!("{} message{} received", msgs.len(), if msgs.len() == 1 { "" } else { "s" }));
     egui::ScrollArea::vertical().max_height(260.0).id_salt("syslog_list").show(ui, |ui| {
         egui::Grid::new("syslog_grid").striped(true).show(ui, |ui| {
-            ui.label(RichText::new("Time (s)").strong());
-            ui.label(RichText::new("From").strong());
-            ui.label(RichText::new("Message").strong());
+            ui.label(RichText::new(tl("Time (s)")).strong());
+            ui.label(RichText::new(tl("From")).strong());
+            ui.label(RichText::new(tl("Message")).strong());
             ui.end_row();
             for (at, from, m) in msgs.iter().rev() {
                 ui.label(format!("{:.1}", *at as f64 / 1e6));
@@ -662,10 +665,10 @@ fn syslog(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services) {
 }
 
 fn ntp(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services) {
-    ui.vertical_centered(|ui| ui.label(RichText::new("NTP").size(16.0)));
+    ui.vertical_centered(|ui| ui.label(RichText::new(tl("NTP")).size(16.0)));
     ui.separator();
     let mut new = sv.clone();
-    if on_off(ui, "NTP Service", &mut new.ntp.on) {
+    if on_off(ui, tl("NTP Service"), &mut new.ntp.on) {
         apply(app, d, &new);
     }
     ui.separator();
@@ -678,28 +681,28 @@ fn ntp(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services) {
         secs % 60,
         now.div_euclid(86_400)
     ));
-    ui.label("Routers and switches with `ntp server <this address>` take this time.");
+    ui.label(tl("Routers and switches with `ntp server <this address>` take this time."));
 }
 
 fn tftp(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services) {
-    ui.vertical_centered(|ui| ui.label(RichText::new("TFTP").size(16.0)));
+    ui.vertical_centered(|ui| ui.label(RichText::new(tl("TFTP")).size(16.0)));
     ui.separator();
     let mut new = sv.clone();
-    if on_off(ui, "TFTP Service", &mut new.tftp.on) {
+    if on_off(ui, tl("TFTP Service"), &mut new.tftp.on) {
         apply(app, d, &new);
     }
     ui.separator();
     let mut remove = None;
     egui::ScrollArea::vertical().max_height(260.0).id_salt("tftp_files").show(ui, |ui| {
         egui::Grid::new("tftp_grid").striped(true).show(ui, |ui| {
-            ui.label(RichText::new("File").strong());
-            ui.label(RichText::new("Bytes").strong());
+            ui.label(RichText::new(tl("File")).strong());
+            ui.label(RichText::new(tl("Bytes")).strong());
             ui.label("");
             ui.end_row();
             for (i, f) in sv.tftp.files.iter().enumerate() {
                 ui.label(&f.name);
                 ui.label(f.content.len().to_string());
-                if ui.small_button("Remove").clicked() {
+                if ui.small_button(tl("Remove")).clicked() {
                     remove = Some(i);
                 }
                 ui.end_row();
@@ -707,7 +710,7 @@ fn tftp(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services) {
         });
     });
     if sv.tftp.files.is_empty() {
-        ui.label("No files yet: `copy running-config tftp: <this address>` on a router saves one here.");
+        ui.label(tl("No files yet: `copy running-config tftp: <this address>` on a router saves one here."));
     }
     if let Some(i) = remove {
         new.tftp.files.remove(i);

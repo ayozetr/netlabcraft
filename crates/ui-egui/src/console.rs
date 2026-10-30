@@ -8,6 +8,7 @@ use packetcraft_model::{Device, DeviceKind, End, SwitchportMode, ifname};
 use packetcraft_sim::port_up;
 use serde_json::{Value, json};
 
+use crate::i18n::tl;
 use crate::{PacketApp, theme};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -158,7 +159,7 @@ pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
                         &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Cli, "CLI"), (Tab::Attributes, "Attributes")]
                     };
                     for (t, label) in tabs {
-                        if ui.selectable_label(w.tab == *t, RichText::new(*label).size(15.0)).clicked() {
+                        if ui.selectable_label(w.tab == *t, RichText::new(crate::i18n::tr(label)).size(15.0)).clicked() {
                             w.tab = *t;
                             w.focus = true;
                         }
@@ -300,13 +301,13 @@ fn console(app: &mut PacketApp, ui: &mut egui::Ui, d: DeviceId, dark: bool) {
     if !dark {
         ui.horizontal(|ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("Paste").clicked() {
+                if ui.button(tl("Paste")).clicked() {
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::RequestPaste);
                     if let Some(w) = app.ui.windows.get_mut(&d) {
                         w.focus = true;
                     }
                 }
-                if ui.button("Copy").clicked() {
+                if ui.button(tl("Copy")).clicked() {
                     ui.ctx().copy_text(shown.clone());
                 }
             });
@@ -384,7 +385,7 @@ fn physical(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
         let peer = app.session.topology.peer(end).map_or("nothing".to_string(), |e| app.session.topology.end_label(e));
         ui.label(format!("{}: {} · cabled to {peer}", port.name, if port_up(&app.session.topology, end) { "link up" } else { "link down" }));
     } else {
-        ui.label(RichText::new("Point at a port to see what is plugged in. Cables are made with the Connections tool.").color(tk.muted));
+        ui.label(RichText::new(tl("Point at a port to see what is plugged in. Cables are made with the Connections tool.")).color(tk.muted));
     }
 }
 
@@ -425,6 +426,7 @@ fn configure(app: &mut PacketApp, d: DeviceId, lines: Vec<String>) {
 
 /// A full-width button of the Config tab's list; headers are bold and inert.
 pub(crate) fn list_item(ui: &mut egui::Ui, text: &str, selected: bool, header: bool) -> egui::Response {
+    let text = crate::i18n::tr(text);
     let tk = theme::tokens(ui.visuals().dark_mode);
     let w = ui.available_width();
     let (rect, resp) = ui.allocate_exact_size(vec2(w, 28.0), if header { Sense::hover() } else { Sense::click() });
@@ -465,26 +467,26 @@ fn config(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
             egui::ScrollArea::vertical().id_salt(("config_list", d.0)).show(ui, |ui| {
                 ui.vertical(|ui| {
                     ui.spacing_mut().item_spacing.y = 0.0;
-                    list_item(ui, "GLOBAL", false, true);
-                    if list_item(ui, "Settings", page == ConfigPage::Settings, false).clicked() {
+                    list_item(ui, tl("GLOBAL"), false, true);
+                    if list_item(ui, tl("Settings"), page == ConfigPage::Settings, false).clicked() {
                         page = ConfigPage::Settings;
                     }
                     match dev.kind {
                         DeviceKind::Switch => {
-                            list_item(ui, "SWITCHING", false, true);
-                            if list_item(ui, "VLAN Database", page == ConfigPage::Vlans, false).clicked() {
+                            list_item(ui, tl("SWITCHING"), false, true);
+                            if list_item(ui, tl("VLAN Database"), page == ConfigPage::Vlans, false).clicked() {
                                 page = ConfigPage::Vlans;
                             }
                         }
                         DeviceKind::Router => {
-                            list_item(ui, "ROUTING", false, true);
-                            if list_item(ui, "Static", page == ConfigPage::Routes, false).clicked() {
+                            list_item(ui, tl("ROUTING"), false, true);
+                            if list_item(ui, tl("Static"), page == ConfigPage::Routes, false).clicked() {
                                 page = ConfigPage::Routes;
                             }
                         }
                         _ => {}
                     }
-                    list_item(ui, "INTERFACE", false, true);
+                    list_item(ui, tl("INTERFACE"), false, true);
                     for (i, p) in dev.ports.iter().enumerate() {
                         if list_item(ui, &p.name, page == ConfigPage::Port(i), false).clicked() {
                             page = ConfigPage::Port(i);
@@ -520,7 +522,7 @@ fn config(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     if !dev.kind.is_host() {
         // The device's console output, as it scrolls by in the CLI tab.
         ui.add_space(6.0);
-        ui.label("Equivalent console commands");
+        ui.label(tl("Equivalent console commands"));
         let log = app.session.console(d).log.clone();
         egui::Frame::new().fill(tk.console_bg).stroke(egui::Stroke::new(1.5, tk.text)).inner_margin(4.0).show(ui, |ui| {
             ui.set_min_width(ui.available_width());
@@ -547,7 +549,7 @@ fn field(ui: &mut egui::Ui, label: &str, value: &mut String) {
 
 /// A centred title with a rule under it, as the Config pages have.
 fn page_title(ui: &mut egui::Ui, title: &str) {
-    ui.vertical_centered(|ui| ui.label(RichText::new(title).size(16.0)));
+    ui.vertical_centered(|ui| ui.label(RichText::new(crate::i18n::tr(title)).size(16.0)));
     ui.separator();
 }
 
@@ -560,14 +562,14 @@ fn settings_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     let mut actions: Vec<(&str, serde_json::Value)> = Vec::new();
     let mut requests = Vec::new();
     ui.horizontal(|ui| {
-        let l = ui.add_sized([130.0, 22.0], egui::Label::new("Display Name"));
+        let l = ui.add_sized([130.0, 22.0], egui::Label::new(tl("Display Name")));
         let r = ui.add(egui::TextEdit::singleline(&mut label).desired_width(ui.available_width().min(320.0))).labelled_by(l.id);
         if r.lost_focus() && label.trim() != dev.display_name() {
             actions.push(("device.label", json!({"device": d.0, "label": label.trim()})));
         }
     });
     ui.horizontal(|ui| {
-        let l = ui.add_sized([130.0, 22.0], egui::Label::new("Hostname"));
+        let l = ui.add_sized([130.0, 22.0], egui::Label::new(tl("Hostname")));
         let r = ui.add(egui::TextEdit::singleline(&mut host).desired_width(ui.available_width().min(320.0))).labelled_by(l.id);
         if r.lost_focus() && host.trim() != dev.name && !host.trim().is_empty() {
             if dev.kind.is_host() {
@@ -581,8 +583,8 @@ fn settings_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     w.name = host;
     if dev.kind.is_host() {
         ui.add_space(8.0);
-        field(ui, "Default Gateway", &mut w.gateway);
-        if ui.button("Set Gateway").clicked() {
+        field(ui, tl("Default Gateway"), &mut w.gateway);
+        if ui.button(tl("Set Gateway")).clicked() {
             let line = format!("ipconfig {} {} {}", w.ip.trim(), w.mask.trim(), w.gateway.trim());
             actions.push(("cli.exec", json!({"device": d.0, "line": line})));
         }
@@ -630,12 +632,12 @@ fn settings_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
 
 fn vlan_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     let d = dev.id;
-    ui.heading("VLAN Database");
+    ui.heading(tl("VLAN Database"));
     let mut lines = None;
     if let Some(w) = app.ui.windows.get_mut(&d) {
-        field(ui, "VLAN Number", &mut w.vlan_id);
-        field(ui, "VLAN Name", &mut w.vlan_name);
-        if ui.button("Add").clicked() {
+        field(ui, tl("VLAN Number"), &mut w.vlan_id);
+        field(ui, tl("VLAN Name"), &mut w.vlan_name);
+        if ui.button(tl("Add")).clicked() {
             let mut l = vec![format!("vlan {}", w.vlan_id.trim())];
             if !w.vlan_name.trim().is_empty() {
                 l.push(format!("name {}", w.vlan_name.trim()));
@@ -647,7 +649,7 @@ fn vlan_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
         for (v, name) in &dev.vlans {
             ui.label(v.to_string());
             ui.label(name);
-            if v.get() != 1 && ui.small_button("Remove").clicked() {
+            if v.get() != 1 && ui.small_button(tl("Remove")).clicked() {
                 lines = Some(vec![format!("no vlan {v}")]);
             }
             ui.end_row();
@@ -660,17 +662,17 @@ fn vlan_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
 
 fn routes_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     let d = dev.id;
-    ui.heading("Static Routes");
+    ui.heading(tl("Static Routes"));
     let mut lines = None;
     if let Some(w) = app.ui.windows.get_mut(&d) {
-        field(ui, "Network", &mut w.route_net);
-        field(ui, "Mask", &mut w.route_mask);
-        field(ui, "Next Hop", &mut w.route_hop);
-        if ui.button("Add").clicked() {
+        field(ui, tl("Network"), &mut w.route_net);
+        field(ui, tl("Mask"), &mut w.route_mask);
+        field(ui, tl("Next Hop"), &mut w.route_hop);
+        if ui.button(tl("Add")).clicked() {
             lines = Some(vec![format!("ip route {} {} {}", w.route_net.trim(), w.route_mask.trim(), w.route_hop.trim())]);
         }
     }
-    ui.label(RichText::new("Network Address").strong());
+    ui.label(RichText::new(tl("Network Address")).strong());
     for r in &dev.routes {
         ui.horizontal(|ui| {
             let via = match &r.via {
@@ -678,7 +680,7 @@ fn routes_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 packetcraft_model::NextHop::Interface(i) => i.clone(),
             };
             ui.monospace(format!("{} via {via}", r.net));
-            if ui.small_button("Remove").clicked() {
+            if ui.small_button(tl("Remove")).clicked() {
                 lines = Some(vec![format!("no ip route {} {} {via}", r.net.addr, r.net.mask())]);
             }
         });
@@ -696,8 +698,8 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
     let mut lines: Option<Vec<String>> = None;
     let iface = format!("interface {}", port.name);
     ui.horizontal(|ui| {
-        ui.label("Port Status");
-        if ui.checkbox(&mut on, "On").changed() {
+        ui.label(tl("Port Status"));
+        if ui.checkbox(&mut on, tl("On")).changed() {
             lines = Some(vec![iface.clone(), if on { "no shutdown".into() } else { "shutdown".into() }]);
         }
     });
@@ -705,9 +707,9 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
     let Some(w) = app.ui.windows.get_mut(&d) else { return };
     match dev.kind {
         DeviceKind::Router => {
-            field(ui, "IPv4 Address", &mut w.ip);
-            field(ui, "Subnet Mask", &mut w.mask);
-            if ui.button("Apply").clicked() {
+            field(ui, tl("IPv4 Address"), &mut w.ip);
+            field(ui, tl("Subnet Mask"), &mut w.mask);
+            if ui.button(tl("Apply")).clicked() {
                 lines = Some(if w.ip.trim().is_empty() {
                     vec![iface.clone(), "no ip address".into()]
                 } else {
@@ -715,12 +717,12 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
                 });
             }
             ui.add_space(6.0);
-            field(ui, "IPv6 Address", &mut w.ip6);
+            field(ui, tl("IPv6 Address"), &mut w.ip6);
             ui.label(format!(
                 "Link Local Address: {}",
                 packetcraft_sim::v6::l3_ifaces6(dev).iter().find(|x| x.port == i).map_or("(IPv6 off)".to_string(), |x| x.link_local.to_string())
             ));
-            if ui.button("Apply IPv6").clicked() {
+            if ui.button(tl("Apply IPv6")).clicked() {
                 let mut l = vec![iface.clone(), "no ipv6 address".into()];
                 if !w.ip6.trim().is_empty() {
                     l.push(format!("ipv6 address {}", w.ip6.trim()));
@@ -731,14 +733,14 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
         DeviceKind::Switch => {
             let mut trunk = port.switchport.mode != SwitchportMode::Access;
             ui.horizontal(|ui| {
-                ui.label("Mode");
-                if ui.radio_value(&mut trunk, false, "Access").changed() || ui.radio_value(&mut trunk, true, "Trunk").changed() {
+                ui.label(tl("Mode"));
+                if ui.radio_value(&mut trunk, false, tl("Access")).changed() || ui.radio_value(&mut trunk, true, tl("Trunk")).changed() {
                     lines = Some(vec![iface.clone(), format!("switchport mode {}", if trunk { "trunk" } else { "access" })]);
                 }
             });
             if !trunk {
-                field(ui, "Access VLAN", &mut w.port_vlan);
-                if ui.button("Apply").clicked() {
+                field(ui, tl("Access VLAN"), &mut w.port_vlan);
+                if ui.button(tl("Apply")).clicked() {
                     lines = Some(vec![iface.clone(), format!("switchport access vlan {}", w.port_vlan.trim())]);
                 }
             } else {
@@ -746,12 +748,12 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
             }
         }
         DeviceKind::Hub => {
-            ui.label("Hub ports have nothing to configure: every frame is repeated out of every other port.");
+            ui.label(tl("Hub ports have nothing to configure: every frame is repeated out of every other port."));
         }
         DeviceKind::Pc | DeviceKind::Laptop | DeviceKind::Server | DeviceKind::Printer => {
-            field(ui, "IPv4 Address", &mut w.ip);
-            field(ui, "Subnet Mask", &mut w.mask);
-            if ui.button("Apply").clicked() {
+            field(ui, tl("IPv4 Address"), &mut w.ip);
+            field(ui, tl("Subnet Mask"), &mut w.mask);
+            if ui.button(tl("Apply")).clicked() {
                 let line = format!("ipconfig {} {} {}", w.ip.trim(), w.mask.trim(), w.gateway.trim());
                 app.run("cli.exec", json!({"device": d.0, "line": line.trim()}));
             }
@@ -765,7 +767,7 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
         && let Some(w) = app.ui.windows.get_mut(&d)
     {
         ui.add_space(8.0);
-        ui.label(RichText::new("Wi-Fi").strong());
+        ui.label(RichText::new(tl("Wi-Fi")).strong());
         if w.wifi_ssid.is_empty()
             && let Some(wf) = &port.wifi
         {
@@ -773,11 +775,11 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
             w.wifi_key = wf.key.clone().unwrap_or_default();
             w.wifi_channel = wf.channel.to_string();
         }
-        field(ui, "SSID", &mut w.wifi_ssid);
-        field(ui, "WPA2 passphrase", &mut w.wifi_key);
+        field(ui, tl("SSID"), &mut w.wifi_ssid);
+        field(ui, tl("WPA2 passphrase"), &mut w.wifi_key);
         let ap = dev.kind == DeviceKind::Switch;
         if ap {
-            field(ui, "Channel", &mut w.wifi_channel);
+            field(ui, tl("Channel"), &mut w.wifi_channel);
         }
         let (ssid, key, chan) = (w.wifi_ssid.trim().to_string(), w.wifi_key.trim().to_string(), w.wifi_channel.trim().parse::<u64>().unwrap_or(6));
         let assoc = if ap {
@@ -789,7 +791,7 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
                 .map_or("Not associated".to_string(), |e| format!("Associated with {}", app.session.topology.end_label(e)))
         };
         ui.label(assoc);
-        if ui.button("Apply Wi-Fi").clicked()
+        if ui.button(tl("Apply Wi-Fi")).clicked()
             && let Some(v) = app.run("device.wireless", json!({"device": d.0, "port": port.name, "ssid": ssid, "key": key, "channel": chan}))
         {
             let msg = match v["associated_with"].as_str() {
@@ -856,7 +858,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(title).color(tk.bar_text).strong());
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        close = ui.button("X").on_hover_text("Close").clicked();
+                        close = ui.button("X").on_hover_text(tl("Close")).clicked();
                     });
                 });
             });
@@ -871,15 +873,15 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                     ui.label(RichText::new(format!("Interface {port}")).strong());
                     let mut dhcp = dev.dhcp_client;
                     ui.horizontal(|ui| {
-                        ui.label("IP Configuration");
-                        if ui.radio_value(&mut dhcp, true, "DHCP").clicked()
+                        ui.label(tl("IP Configuration"));
+                        if ui.radio_value(&mut dhcp, true, tl("DHCP")).clicked()
                             && let Some(v) = app.run("cli.exec", json!({"device": d.0, "line": "ipconfig /renew"}))
                         {
                             let out = v.get("output").and_then(Value::as_str).unwrap_or("").to_string();
                             let failed = out.starts_with("DHCP failed");
                             app.ui.status = Some((out, failed));
                         }
-                        if ui.radio_value(&mut dhcp, false, "Static").clicked() && dev.dhcp_client {
+                        if ui.radio_value(&mut dhcp, false, tl("Static")).clicked() && dev.dhcp_client {
                             app.run("cli.exec", json!({"device": d.0, "line": "ipconfig /release"}));
                         }
                     });
@@ -890,11 +892,11 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                         fill_host(w, &now);
                     }
                     let Some(w) = app.ui.windows.get_mut(&d) else { return };
-                    field(ui, "IPv4 Address", &mut w.ip);
-                    field(ui, "Subnet Mask", &mut w.mask);
-                    field(ui, "Default Gateway", &mut w.gateway);
-                    field(ui, "DNS Server", &mut w.dns);
-                    if ui.button("Apply").clicked() {
+                    field(ui, tl("IPv4 Address"), &mut w.ip);
+                    field(ui, tl("Subnet Mask"), &mut w.mask);
+                    field(ui, tl("Default Gateway"), &mut w.gateway);
+                    field(ui, tl("DNS Server"), &mut w.dns);
+                    if ui.button(tl("Apply")).clicked() {
                         let gw = if w.gateway.trim().is_empty() && !w.dns.trim().is_empty() { "" } else { w.gateway.trim() };
                         let line = format!("ipconfig {} {} {} {}", w.ip.trim(), w.mask.trim(), gw, w.dns.trim());
                         if let Some(v) = app.run("cli.exec", json!({"device": d.0, "line": line.trim()})) {
@@ -903,7 +905,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                         }
                     }
                     ui.add_space(10.0);
-                    ui.label(RichText::new("IPv6 Configuration").strong());
+                    ui.label(RichText::new(tl("IPv6 Configuration")).strong());
                     let conf = dev.ports.first().map(|p| p.ipv6.clone()).unwrap_or_default();
                     #[derive(PartialEq, Clone, Copy)]
                     enum V6 {
@@ -922,9 +924,9 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                     let mut pick = now;
                     let mut run: Option<String> = None;
                     ui.horizontal(|ui| {
-                        ui.radio_value(&mut pick, V6::Off, "Off");
-                        ui.radio_value(&mut pick, V6::Auto, "Automatic");
-                        ui.radio_value(&mut pick, V6::Static, "Static");
+                        ui.radio_value(&mut pick, V6::Off, tl("Off"));
+                        ui.radio_value(&mut pick, V6::Auto, tl("Automatic"));
+                        ui.radio_value(&mut pick, V6::Static, tl("Static"));
                     });
                     let Some(w) = app.ui.windows.get_mut(&d) else { return };
                     if pick != now {
@@ -938,14 +940,14 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                     if conf.autoconfig {
                         fill_host(w, dev);
                     }
-                    field(ui, "IPv6 Address", &mut w.ip6);
+                    field(ui, tl("IPv6 Address"), &mut w.ip6);
                     let ll = packetcraft_sim::v6::l3_ifaces6(dev).first().map_or("(IPv6 off)".to_string(), |x| x.link_local.to_string());
                     ui.horizontal(|ui| {
-                        ui.add_sized([130.0, 22.0], egui::Label::new("Link Local Address"));
+                        ui.add_sized([130.0, 22.0], egui::Label::new(tl("Link Local Address")));
                         ui.label(ll);
                     });
-                    field(ui, "IPv6 Gateway", &mut w.gw6);
-                    if pick == V6::Static && ui.button("Apply IPv6").clicked() {
+                    field(ui, tl("IPv6 Gateway"), &mut w.gw6);
+                    if pick == V6::Static && ui.button(tl("Apply IPv6")).clicked() {
                         run = Some(format!("ipv6config {} {}", w.ip6.trim(), w.gw6.trim()));
                     }
                     if let Some(line) = run

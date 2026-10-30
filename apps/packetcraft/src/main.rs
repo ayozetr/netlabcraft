@@ -36,6 +36,21 @@ fn recent_file() -> Option<std::path::PathBuf> {
     Some(base.join("packetcraft").join("recent.txt"))
 }
 
+/// The saved interface language, else the system's (`LC_ALL`, `LC_MESSAGES`, `LANG`).
+fn pick_language() {
+    let saved = recent_file().and_then(|f| std::fs::read_to_string(f.with_file_name("language")).ok());
+    let system = ["LC_ALL", "LC_MESSAGES", "LANG"].iter().find_map(|v| std::env::var(v).ok().filter(|s| !s.is_empty()));
+    if let Some(l) = saved.or(system) {
+        packetcraft_ui_egui::i18n::set_lang(packetcraft_ui_egui::i18n::Lang::from_locale(l.trim()));
+    }
+}
+
+fn save_language() {
+    if let Some(f) = recent_file() {
+        let _ = std::fs::write(f.with_file_name("language"), packetcraft_ui_egui::i18n::lang().code());
+    }
+}
+
 fn load_recent() -> Vec<String> {
     let Some(f) = recent_file() else { return Vec::new() };
     std::fs::read_to_string(f).map(|s| s.lines().filter(|l| !l.trim().is_empty()).take(8).map(str::to_string).collect()).unwrap_or_default()
@@ -152,6 +167,9 @@ impl eframe::App for App {
             self.closing = Closing::Asking;
         }
         self.app.ui(ui);
+        if std::mem::take(&mut self.app.ui.lang_changed) {
+            save_language();
+        }
         if self.app.session.path != self.last_path {
             self.last_path = self.app.session.path.clone();
             if let Some(p) = &self.last_path {
@@ -193,6 +211,7 @@ fn main() -> eframe::Result {
         }
         i += 1;
     }
+    pick_language();
     let mut app = PacketApp::new(session);
     app.ui.recent = load_recent();
     // None: a lab opened from the command line goes on the recent list too.

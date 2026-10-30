@@ -21,6 +21,7 @@ mod bottom;
 mod canvas;
 mod console;
 mod events;
+pub mod i18n;
 pub mod icons;
 mod services;
 pub mod theme;
@@ -28,6 +29,7 @@ pub mod theme;
 #[cfg(test)]
 mod tests;
 
+use crate::i18n::tl;
 use icons::Glyph;
 
 /// Work the shell does for the UI.
@@ -115,6 +117,8 @@ pub struct UiState {
     pub editing_note: Option<(u32, String)>,
     /// Labs opened or saved recently, newest first (the desktop shell fills it).
     pub recent: Vec<String>,
+    /// The person picked another interface language (the shell saves the choice).
+    pub lang_changed: bool,
     /// Activity instructions and wizard.
     pub activity: activity::ActivityView,
     canvas: canvas::CanvasState,
@@ -143,6 +147,7 @@ impl Default for UiState {
             clipboard: None,
             editing_note: None,
             recent: Vec::new(),
+            lang_changed: false,
             activity: activity::ActivityView::default(),
             canvas: canvas::CanvasState::default(),
         }
@@ -204,7 +209,7 @@ pub struct PacketApp {
 fn tool_button(ui: &mut egui::Ui, g: Glyph, label: &str, selected: bool, enabled: bool) -> egui::Response {
     let tk = theme::tokens(ui.visuals().dark_mode);
     let (rect, resp) = ui.allocate_exact_size(vec2(38.0, 36.0), if enabled { Sense::click() } else { Sense::hover() });
-    let resp = resp.on_hover_text(label);
+    let resp = resp.on_hover_text(crate::i18n::tr(label));
     resp.widget_info(|| egui::WidgetInfo::selected(egui::accesskit::Role::Button, enabled, selected, label));
     let p = ui.painter_at(rect);
     if selected {
@@ -223,6 +228,7 @@ fn tool_button(ui: &mut egui::Ui, g: Glyph, label: &str, selected: bool, enabled
 fn pill(ui: &mut egui::Ui, g: Glyph, label: &str, active: bool) -> egui::Response {
     let tk = theme::tokens(ui.visuals().dark_mode);
     let font = egui::FontId::proportional(20.0);
+    let label = crate::i18n::tr(label);
     let galley = ui.painter().layout_no_wrap(label.to_string(), font, tk.pill_text);
     let size = vec2(galley.size().x + 38.0, 30.0);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::click());
@@ -245,6 +251,7 @@ fn pill(ui: &mut egui::Ui, g: Glyph, label: &str, active: bool) -> egui::Respons
 
 /// A rounded navy button with white text (New, Delete, Reset Simulation…).
 pub(crate) fn navy_button(ui: &mut egui::Ui, label: &str) -> egui::Response {
+    let label = crate::i18n::tr(label);
     let galley = ui.painter().layout_no_wrap(label.to_string(), egui::FontId::proportional(16.0), Color32::WHITE);
     let (rect, resp) = ui.allocate_exact_size(galley.size() + vec2(16.0, 10.0), Sense::click());
     paint_navy(ui, rect, &resp, galley, label);
@@ -253,6 +260,7 @@ pub(crate) fn navy_button(ui: &mut egui::Ui, label: &str) -> egui::Response {
 
 /// [`navy_button`] filling the available width.
 pub(crate) fn navy_button_wide(ui: &mut egui::Ui, label: &str) -> egui::Response {
+    let label = crate::i18n::tr(label);
     let galley = ui.painter().layout_no_wrap(label.to_string(), egui::FontId::proportional(16.0), Color32::WHITE);
     let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), galley.size().y + 10.0), Sense::click());
     paint_navy(ui, rect, &resp, galley, label);
@@ -279,7 +287,7 @@ pub(crate) enum PlayGlyph {
 pub(crate) fn play_button(ui: &mut egui::Ui, g: PlayGlyph, label: &str, size: f32) -> egui::Response {
     let tk = theme::tokens(ui.visuals().dark_mode);
     let (rect, resp) = ui.allocate_exact_size(vec2(size, size), Sense::click());
-    let resp = resp.on_hover_text(label);
+    let resp = resp.on_hover_text(crate::i18n::tr(label));
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, label));
     let p = ui.painter_at(rect);
     p.rect_filled(rect.shrink(1.0), 7.0, if resp.hovered() { tk.pill } else { tk.bar });
@@ -545,22 +553,22 @@ impl PacketApp {
 
     fn menu_bar(&mut self, ui: &mut egui::Ui) {
         egui::MenuBar::new().ui(ui, |ui| {
-            ui.menu_button("File", |ui| {
-                if ui.button("New").clicked() {
+            ui.menu_button(tl("File"), |ui| {
+                if ui.button(tl("New")).clicked() {
                     self.new_lab(None);
                 }
-                ui.menu_button("New from sample", |ui| {
+                ui.menu_button(tl("New from sample"), |ui| {
                     for s in sample::SAMPLES {
                         if ui.button(s.title).on_hover_text(s.description).clicked() {
                             self.new_lab(Some(s.id));
                         }
                     }
                 });
-                if ui.button("Open...").clicked() {
+                if ui.button(tl("Open...")).clicked() {
                     self.requests.push(UiRequest::Open);
                 }
                 if !self.ui.recent.is_empty() {
-                    ui.menu_button("Open Recent", |ui| {
+                    ui.menu_button(tl("Open Recent"), |ui| {
                         for p in self.ui.recent.clone() {
                             let name = std::path::Path::new(&p).file_name().map_or(p.clone(), |n| n.to_string_lossy().to_string());
                             if ui.button(name).on_hover_text(&p).clicked() {
@@ -571,88 +579,97 @@ impl PacketApp {
                     });
                 }
                 ui.separator();
-                if ui.button("Save").clicked() {
+                if ui.button(tl("Save")).clicked() {
                     self.save(false);
                 }
-                if ui.button("Save As...").clicked() {
+                if ui.button(tl("Save As...")).clicked() {
                     self.save(true);
                 }
-                if ui.button("Export Capture (pcap)...").on_hover_text("The event list as a capture any packet analyser opens").clicked() {
+                if ui.button(tl("Export Capture (pcap)...")).on_hover_text(tl("The event list as a capture any packet analyser opens")).clicked() {
                     self.requests.push(UiRequest::ExportPcap(self.session.pcap()));
                 }
                 ui.separator();
-                if ui.button("Exit").clicked() {
+                if ui.button(tl("Exit")).clicked() {
                     self.requests.push(UiRequest::Quit);
                 }
             });
-            ui.menu_button("Edit", |ui| {
-                if ui.add_enabled(self.session.can_undo(), egui::Button::new("Undo")).clicked() {
+            ui.menu_button(tl("Edit"), |ui| {
+                if ui.add_enabled(self.session.can_undo(), egui::Button::new(tl("Undo"))).clicked() {
                     self.run("edit.undo", json!({}));
                 }
-                if ui.add_enabled(self.session.can_redo(), egui::Button::new("Redo")).clicked() {
+                if ui.add_enabled(self.session.can_redo(), egui::Button::new(tl("Redo"))).clicked() {
                     self.run("edit.redo", json!({}));
                 }
                 ui.separator();
-                if ui.add_enabled(self.ui.selected.is_some(), egui::Button::new("Delete")).clicked()
+                if ui.add_enabled(self.ui.selected.is_some(), egui::Button::new(tl("Delete"))).clicked()
                     && let Some(d) = self.ui.selected.take()
                 {
                     self.run("device.remove", json!({"device": d.0}));
                 }
             });
-            ui.menu_button("Options", |ui| {
-                if ui.checkbox(&mut self.ui.dark, "Dark interface").changed() {
+            ui.menu_button(tl("Options"), |ui| {
+                if ui.checkbox(&mut self.ui.dark, tl("Dark interface")).changed() {
                     self.apply_theme(ui.ctx());
                 }
-                ui.checkbox(&mut self.ui.show_grid, "Show grid");
+                ui.checkbox(&mut self.ui.show_grid, tl("Show grid"));
+                ui.menu_button(tl("Language"), |ui| {
+                    for l in i18n::Lang::ALL {
+                        if ui.radio(i18n::lang() == l, l.name()).clicked() {
+                            i18n::set_lang(l);
+                            self.ui.lang_changed = true;
+                            ui.close();
+                        }
+                    }
+                });
             });
-            ui.menu_button("View", |ui| {
-                if ui.button("Zoom In").clicked() {
+            ui.menu_button(tl("View"), |ui| {
+                if ui.button(tl("Zoom In")).clicked() {
                     self.zoom(Some(1.25));
                 }
-                if ui.button("Zoom Reset").clicked() {
+                if ui.button(tl("Zoom Reset")).clicked() {
                     self.zoom(None);
                     self.ui.pan = egui::Vec2::ZERO;
                 }
-                if ui.button("Zoom Out").clicked() {
+                if ui.button(tl("Zoom Out")).clicked() {
                     self.zoom(Some(0.8));
                 }
             });
-            ui.menu_button("Tools", |ui| {
-                if ui.button("Inspect").clicked() {
+            ui.menu_button(tl("Tools"), |ui| {
+                if ui.button(tl("Inspect")).clicked() {
                     self.set_tool(Tool::Inspect);
                     ui.close();
                 }
-                if ui.button("Add Simple PDU").clicked() {
+                if ui.button(tl("Add Simple PDU")).clicked() {
                     self.set_tool(Tool::Ping);
                     ui.close();
                 }
-                if ui.button("Reset Simulation").clicked() {
+                if ui.button(tl("Reset Simulation")).clicked() {
                     self.run("sim.reset", json!({}));
                 }
             });
-            ui.menu_button("Extensions", |ui| {
-                if ui.button("Activity Wizard…").clicked() {
+            ui.menu_button(tl("Extensions"), |ui| {
+                if ui.button(tl("Activity Wizard…")).clicked() {
                     self.ui.activity.show_wizard = true;
                     ui.close();
                 }
-                if ui.add_enabled(self.session.topology.activity.is_some(), egui::Button::new("Activity Instructions")).clicked() {
+                if ui.add_enabled(self.session.topology.activity.is_some(), egui::Button::new(tl("Activity Instructions"))).clicked() {
                     self.ui.activity.show_instructions = true;
                     ui.close();
                 }
                 ui.separator();
-                ui.label("Agents and scripts drive PacketCraft through");
+                ui.label(tl("Agents and scripts drive PacketCraft through"));
                 ui.monospace("packetcraft-cli mcp");
                 ui.monospace("packetcraft-cli run --cmd ...");
             });
-            ui.menu_button("Window", |ui| {
-                ui.checkbox(&mut self.ui.show_notes, "Lab Notes");
+            ui.menu_button(tl("Window"), |ui| {
+                ui.checkbox(&mut self.ui.show_notes, tl("Lab Notes"));
                 let mut sim = self.ui.mode == Mode::Simulation;
-                if ui.checkbox(&mut sim, "Simulation Panel").changed() {
+                if ui.checkbox(&mut sim, tl("Simulation Panel")).changed() {
                     self.ui.mode = if sim { Mode::Simulation } else { Mode::Realtime };
                 }
             });
-            ui.menu_button("Help", |ui| {
-                if ui.button("About").clicked() {
+            ui.menu_button(tl("Help"), |ui| {
+                if ui.button(tl("About")).clicked() {
                     self.ui.show_about = true;
                     ui.close();
                 }
@@ -776,7 +793,7 @@ impl PacketApp {
                     (Glyph::Undo, "Back to the parent cluster (Root is the top)"),
                 ] {
                     let (r, resp) = ui.allocate_exact_size(vec2(32.0, 28.0), Sense::click());
-                    let resp = resp.on_hover_text(label);
+                    let resp = resp.on_hover_text(crate::i18n::tr(label));
                     resp.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, label));
                     let p = ui.painter_at(r);
                     if resp.hovered() {
@@ -789,7 +806,7 @@ impl PacketApp {
                         self.ui.zoom = 1.0;
                     }
                 }
-                ui.label(RichText::new("Root").color(tk.bar_text).size(17.0));
+                ui.label(RichText::new(tl("Root")).color(tk.bar_text).size(17.0));
             });
         });
     }
@@ -799,14 +816,14 @@ impl PacketApp {
         ui.horizontal(|ui| {
             let now = self.session.sim.now_us();
             let time = if self.ui.mode == Mode::Simulation {
-                format!("Time: {}.{:03}", clock(now), (now / 1000) % 1000)
+                format!("{}: {}.{:03}", tl("Time"), clock(now), (now / 1000) % 1000)
             } else {
-                format!("Time: {}", clock(now))
+                format!("{}: {}", tl("Time"), clock(now))
             };
             ui.label(RichText::new(time).color(tk.bar_text).size(18.0));
             let white = |ui: &mut egui::Ui, g: Glyph, label: &str| {
                 let (rect, resp) = ui.allocate_exact_size(vec2(32.0, 30.0), Sense::click());
-                let resp = resp.on_hover_text(label);
+                let resp = resp.on_hover_text(crate::i18n::tr(label));
                 resp.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, label));
                 let p = ui.painter_at(rect);
                 if resp.hovered() {
@@ -821,7 +838,7 @@ impl PacketApp {
                 self.info("Devices power-cycled: dynamic tables cleared.");
             }
             if self.ui.mode == Mode::Simulation {
-                ui.label(RichText::new("PLAY CONTROLS:").color(tk.bar_text).size(16.0));
+                ui.label(RichText::new(tl("PLAY CONTROLS:")).color(tk.bar_text).size(16.0));
                 events::play_controls(self, ui, 30.0);
             } else if white(ui, Glyph::FastForward, "Fast Forward Time (30 s)").clicked() {
                 self.run("sim.advance", json!({"seconds": 30}));
@@ -845,8 +862,8 @@ impl PacketApp {
                     self.ui.show_event_list = !self.ui.show_event_list;
                 }
                 if self.session.sim.storm_detected() {
-                    ui.label(RichText::new("Switching loop detected").color(Color32::from_rgb(0xff, 0x9a, 0x9a)))
-                        .on_hover_text("A frame circled the network; there is no spanning tree yet, so avoid redundant switch links");
+                    ui.label(RichText::new(tl("Switching loop detected")).color(Color32::from_rgb(0xff, 0x9a, 0x9a)))
+                        .on_hover_text(tl("A frame circled the network; there is no spanning tree yet, so avoid redundant switch links"));
                 }
             });
         });
@@ -859,13 +876,18 @@ impl PacketApp {
         let mut open = true;
         let mut text = self.session.topology.notes.clone();
         let right = if self.ui.mode == Mode::Simulation { -440.0 } else { -12.0 };
-        egui::Window::new("Lab Notes").open(&mut open).default_size([320.0, 160.0]).anchor(egui::Align2::RIGHT_TOP, [right, 190.0]).show(ctx, |ui| {
-            let l = ui.label("Notes saved with the lab:");
-            let r = ui.add(egui::TextEdit::multiline(&mut text).desired_width(f32::INFINITY).hint_text("Instructions or notes")).labelled_by(l.id);
-            if r.lost_focus() && text != self.session.topology.notes {
-                self.run("lab.notes", json!({"text": text}));
-            }
-        });
+        egui::Window::new(tl("Lab Notes")).open(&mut open).default_size([320.0, 160.0]).anchor(egui::Align2::RIGHT_TOP, [right, 190.0]).show(
+            ctx,
+            |ui| {
+                let l = ui.label(tl("Notes saved with the lab:"));
+                let r = ui
+                    .add(egui::TextEdit::multiline(&mut text).desired_width(f32::INFINITY).hint_text(tl("Instructions or notes")))
+                    .labelled_by(l.id);
+                if r.lost_focus() && text != self.session.topology.notes {
+                    self.run("lab.notes", json!({"text": text}));
+                }
+            },
+        );
         self.ui.show_notes = open;
     }
 
@@ -874,13 +896,13 @@ impl PacketApp {
             return;
         }
         let mut open = true;
-        egui::Window::new("About PacketCraft").open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
-            ui.heading("PacketCraft");
+        egui::Window::new(tl("About PacketCraft")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
+            ui.heading(tl("PacketCraft"));
             ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
-            ui.label("An open-source network simulator: build labs, configure routers and switches, and watch every frame.");
-            ui.label("Licensed under MIT or Apache-2.0.");
+            ui.label(tl("An open-source network simulator: build labs, configure routers and switches, and watch every frame."));
+            ui.label(tl("Licensed under MIT or Apache-2.0."));
             ui.separator();
-            ui.label(RichText::new("Independent clean-room project; not affiliated with any network equipment vendor.").small());
+            ui.label(RichText::new(tl("Independent clean-room project; not affiliated with any network equipment vendor.")).small());
         });
         self.ui.show_about = open;
     }

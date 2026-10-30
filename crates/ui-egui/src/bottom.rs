@@ -4,6 +4,7 @@
 use egui::{RichText, Sense, Ui, vec2};
 use packetcraft_model::{DeviceKind, models};
 
+use crate::i18n::tl;
 use crate::icons::{self, Glyph};
 use crate::{PacketApp, Tool, canvas, theme};
 
@@ -82,7 +83,7 @@ fn tiles() -> Vec<Tile> {
 fn kind_button(ui: &mut Ui, label: &str, selected: bool, draw: impl FnOnce(&egui::Painter, egui::Rect)) -> egui::Response {
     let tk = theme::tokens(ui.visuals().dark_mode);
     let (rect, resp) = ui.allocate_exact_size(vec2(40.0, 36.0), Sense::click());
-    let resp = resp.on_hover_text(label);
+    let resp = resp.on_hover_text(crate::i18n::tr(label));
     resp.widget_info(|| egui::WidgetInfo::selected(egui::accesskit::Role::Button, true, selected, label));
     let p = ui.painter_at(rect);
     if selected {
@@ -120,7 +121,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                 egui::Frame::new().stroke(egui::Stroke::new(1.0, tk.chrome_line)).inner_margin(egui::Margin::symmetric(4, 2)).show(ui, |ui| {
                     ui.add(
                         egui::TextEdit::singleline(&mut app.ui.bottom.search)
-                            .hint_text("Search for device")
+                            .hint_text(tl("Search for device"))
                             .frame(egui::Frame::NONE)
                             .desired_width(200.0),
                     )
@@ -166,7 +167,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
             egui::ScrollArea::horizontal().id_salt("model_tiles").max_height(90.0).show(ui, |ui| {
                 ui.horizontal(|ui| {
                     if shown.is_empty() {
-                        ui.label(RichText::new("No device matches.").color(tk.muted));
+                        ui.label(RichText::new(tl("No device matches.")).color(tk.muted));
                     }
                     for m in &shown {
                         let tool = m.tool;
@@ -228,7 +229,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 let (r, info) = ui.allocate_exact_size(vec2(32.0, 32.0), Sense::click());
-                let info = info.on_hover_text("Scenarios hold the PDUs you send, so a lab can be re-tested");
+                let info = info.on_hover_text(tl("Scenarios hold the PDUs you send, so a lab can be re-tested"));
                 info.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, "Scenario information"));
                 ui.painter().circle_filled(r.center(), 15.0, tk.bar);
                 ui.painter().circle_filled(r.center(), 10.0, egui::Color32::WHITE);
@@ -240,7 +241,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                     .show(ui, |ui| {
                         ui.set_min_width(130.0);
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("Scenario 0").size(16.0));
+                            ui.label(RichText::new(tl("Scenario 0")).size(16.0));
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 let (r, _) = ui.allocate_exact_size(vec2(12.0, 12.0), Sense::hover());
                                 ui.painter().add(egui::Shape::convex_polygon(
@@ -255,11 +256,11 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 ui.add_space(18.0);
-                if crate::navy_button(ui, "New").on_hover_text("Start an empty PDU list").clicked() {
+                if crate::navy_button(ui, "New").on_hover_text(tl("Start an empty PDU list")).clicked() {
                     app.ui.pdus.clear();
                 }
                 ui.add_space(18.0);
-                if crate::navy_button(ui, "Delete").on_hover_text("Delete every PDU in the list").clicked() {
+                if crate::navy_button(ui, "Delete").on_hover_text(tl("Delete every PDU in the list")).clicked() {
                     app.ui.pdus.clear();
                 }
             });
@@ -270,7 +271,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
         });
         ui.separator();
         if app.ui.bottom.hide_pdus {
-            if crate::navy_button(ui, "Fire All").on_hover_text("Send every PDU in the list again").clicked() {
+            if crate::navy_button(ui, "Fire All").on_hover_text(tl("Send every PDU in the list again")).clicked() {
                 for i in 0..app.ui.pdus.len() {
                     canvas::fire(app, i);
                 }
@@ -288,7 +289,7 @@ fn pdu_list(app: &mut PacketApp, ui: &mut Ui) {
     egui::ScrollArea::both().id_salt("pdu_list").auto_shrink([false, false]).show(ui, |ui| {
         egui::Grid::new("pdu_grid").striped(true).num_columns(9).min_col_width(30.0).show(ui, |ui| {
             for h in ["Fire", "Last Status", "Source", "Destination", "Type", "Color", "Time(sec)", "Num", "Delete"] {
-                ui.strong(h);
+                ui.strong(crate::i18n::tr(h));
             }
             ui.end_row();
             for (i, pdu) in app.ui.pdus.iter().enumerate() {
@@ -301,18 +302,18 @@ fn pdu_list(app: &mut PacketApp, ui: &mut Ui) {
                 let (r, resp) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::click());
                 resp.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, format!("Fire PDU {}", pdu.num)));
                 ui.painter().circle_filled(r.center(), 6.0, color);
-                if resp.on_hover_text("Fire again").clicked() {
+                if resp.on_hover_text(tl("Fire again")).clicked() {
                     fire = Some(i);
                 }
                 ui.label(RichText::new(status).color(color));
                 ui.label(name(pdu.source));
                 ui.label(format!("{} ({})", name(pdu.destination), pdu.address));
-                ui.label("ICMP");
+                ui.label(tl("ICMP"));
                 let (r, _) = ui.allocate_exact_size(vec2(18.0, 14.0), Sense::hover());
                 ui.painter().rect_filled(r, 2.0, pdu.color);
                 ui.label(format!("{:.3}", pdu.time_s));
                 ui.label(pdu.num.to_string());
-                if ui.small_button("delete").clicked() {
+                if ui.small_button(tl("delete")).clicked() {
                     delete = Some(i);
                 }
                 ui.end_row();

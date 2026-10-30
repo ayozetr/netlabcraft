@@ -6,6 +6,7 @@ use packetcraft_model::{Device, End, ifname};
 use packetcraft_sim::port_up;
 use serde_json::{Value, json};
 
+use crate::i18n::tl;
 use crate::theme::{self, Tokens};
 use crate::{Mode, PacketApp, Pdu, Tool, console, icons};
 
@@ -49,20 +50,20 @@ impl CanvasState {
 pub fn hint(app: &PacketApp) -> String {
     match (app.ui.tool, app.ui.canvas.pending) {
         (Tool::Select, _) if app.session.topology.devices.is_empty() => {
-            "Pick a device in the palette and click the canvas to place it, or open a sample from File.".into()
+            crate::i18n::tl("Pick a device in the palette and click the canvas to place it, or open a sample from File.").into()
         }
-        (Tool::Select, _) => "Click a device to configure it · drag to move · scroll to pan, Ctrl+scroll to zoom".into(),
+        (Tool::Select, _) => crate::i18n::tl("Click a device to configure it · drag to move · scroll to pan, Ctrl+scroll to zoom").into(),
         (Tool::Place(m), _) => format!("Click the workspace to place a {m}. Esc to stop."),
-        (Tool::Draw(_), _) => "Drag on the workspace to draw. Drawings sit behind devices; move them with Select.".into(),
-        (Tool::Note, _) => "Click the workspace to place a note. Drag notes to move them; double-click to edit.".into(),
-        (Tool::Cable, None) => "Click the first device and pick a port.".into(),
+        (Tool::Draw(_), _) => crate::i18n::tl("Drag on the workspace to draw. Drawings sit behind devices; move them with Select.").into(),
+        (Tool::Note, _) => crate::i18n::tl("Click the workspace to place a note. Drag notes to move them; double-click to edit.").into(),
+        (Tool::Cable, None) => crate::i18n::tl("Click the first device and pick a port.").into(),
         (Tool::Cable, Some(Pending::CableFrom(e))) => {
             format!("From {}: click the second device and pick a port. Esc cancels.", app.session.topology.end_label(e))
         }
-        (Tool::Ping, None) => "Simple PDU: click the source device.".into(),
-        (Tool::Ping, Some(_)) => "Simple PDU: now click the destination device.".into(),
-        (Tool::Inspect, _) => "Inspect: click a device to see its ARP, MAC and routing tables.".into(),
-        (Tool::Delete, _) => "Click a device or a cable to delete it.".into(),
+        (Tool::Ping, None) => crate::i18n::tl("Simple PDU: click the source device.").into(),
+        (Tool::Ping, Some(_)) => crate::i18n::tl("Simple PDU: now click the destination device.").into(),
+        (Tool::Inspect, _) => crate::i18n::tl("Inspect: click a device to see its ARP, MAC and routing tables.").into(),
+        (Tool::Delete, _) => crate::i18n::tl("Click a device or a cable to delete it.").into(),
         _ => String::new(),
     }
 }
@@ -177,19 +178,22 @@ pub fn note_editor(app: &mut PacketApp, ctx: &egui::Context) {
     let Some((id, mut text)) = app.ui.editing_note.clone() else { return };
     let mut open = true;
     let mut action = None;
-    egui::Window::new("Note").id(egui::Id::unique("note_editor")).open(&mut open).collapsible(false).default_size([320.0, 140.0]).show(ctx, |ui| {
-        let l = ui.label("Text shown on the workspace:");
-        let r = ui.add(egui::TextEdit::multiline(&mut text).desired_width(f32::INFINITY).desired_rows(3)).labelled_by(l.id);
-        r.request_focus();
-        ui.horizontal(|ui| {
-            if ui.button("OK").clicked() {
-                action = Some(true);
-            }
-            if ui.button("Delete Note").clicked() {
-                action = Some(false);
-            }
-        });
-    });
+    egui::Window::new(tl("Note")).id(egui::Id::unique("note_editor")).open(&mut open).collapsible(false).default_size([320.0, 140.0]).show(
+        ctx,
+        |ui| {
+            let l = ui.label(tl("Text shown on the workspace:"));
+            let r = ui.add(egui::TextEdit::multiline(&mut text).desired_width(f32::INFINITY).desired_rows(3)).labelled_by(l.id);
+            r.request_focus();
+            ui.horizontal(|ui| {
+                if ui.button(tl("OK")).clicked() {
+                    action = Some(true);
+                }
+                if ui.button(tl("Delete Note")).clicked() {
+                    action = Some(false);
+                }
+            });
+        },
+    );
     match action {
         Some(true) => {
             let t = if text.trim().is_empty() { "Note".to_string() } else { text };
@@ -825,12 +829,12 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, d: DeviceId) {
         .filter_map(|(i, p)| app.session.topology.peer(End { device: d, port: i }).map(|peer| (p.name.clone(), app.session.topology.end_label(peer))))
         .collect();
     ui.label(egui::RichText::new(&dev.name).strong());
-    if ui.button("Open console").clicked() {
+    if ui.button(tl("Open console")).clicked() {
         console::open(app, d);
         ui.close();
     }
     if !cabled.is_empty() {
-        ui.menu_button("Disconnect", |ui| {
+        ui.menu_button(tl("Disconnect"), |ui| {
             for (port, peer) in &cabled {
                 if ui.button(format!("{port}  (to {peer})")).clicked() {
                     app.run("link.remove", json!({"device": d.0, "port": port}));
@@ -839,7 +843,7 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, d: DeviceId) {
             }
         });
     }
-    if ui.button("Delete").clicked() {
+    if ui.button(tl("Delete")).clicked() {
         app.run("device.remove", json!({"device": d.0}));
         app.ui.selected = None;
         ui.close();
@@ -881,7 +885,7 @@ fn port_menu(app: &mut PacketApp, ui: &Ui) {
                     }
                 }
             });
-            if ui.button("Cancel").clicked() {
+            if ui.button(tl("Cancel")).clicked() {
                 close = true;
             }
         });
