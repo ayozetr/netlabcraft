@@ -41,6 +41,7 @@ pub mod mgmt;
 pub mod ospf;
 pub mod ospf6;
 pub mod ospf_lsdb;
+pub mod pdu;
 pub mod qos;
 
 pub mod rip;

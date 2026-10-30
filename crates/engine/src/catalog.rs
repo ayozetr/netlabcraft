@@ -417,6 +417,37 @@ pub static CATALOG: &[CommandInfo] = &[
     c!("sim.status", "Simulation status", "", None, "{} → {time_us, events, storm}", false),
     c!("topology.get", "The whole lab", "", None, "{} → the lab document", false),
     c!("sample.list", "Sample labs", "", None, "{} → [{id, title, description}]", false),
+    c!(
+        "pdu.simple",
+        "Add Simple PDU",
+        "Simulation",
+        None,
+        r#"{"from": "device", "to": "address or device"} → the PDU {num, status, note, first_event…}: one echo request, added to the scenario's PDU list and sent now"#,
+        true
+    ),
+    c!(
+        "pdu.complex",
+        "Add Complex PDU",
+        "Simulation",
+        None,
+        r#"{"from": "device", "port"?: "source interface", "to"?: "address or device" (not for dhcp), "app"?: "ping"|"dns"|"http"|"telnet"|"ssh"|"ftp"|"smtp"|"pop3"|"dhcp"|"tftp"|"snmp"|"arp"|"udp"|"tcp", "src_port"?, "dst_port"?, "ttl"?: 1-255, "tos"?: 0-255 or "dscp"?: 0-63|"ef"|"af31"…, "seq"?, "size"?: bytes (0-1400), "text"?: DNS name, HTTP page, TFTP file or SNMP community, "period"?: seconds (periodic; none: one-shot), "start"?: seconds from now} → the PDU; sent now when "start" is 0, else by sim.advance"#,
+        true
+    ),
+    c!("pdu.fire", "Fire PDU", "", None, r#"{"num"} → the PDU with its new status and "first_event""#, false),
+    c!("pdu.fire_all", "Fire every PDU", "", None, r#"{} → {"pdus": [...]}"#, false),
+    c!("pdu.delete", "Delete PDU", "", None, r#"{"num"} or {"all": true} → the PDU list"#, true),
+    c!(
+        "pdu.list",
+        "PDU list",
+        "",
+        None,
+        r#"{} → {"scenario", "scenarios", "description", "pdus": [{num, source, destination, type, app, status, last, fired, note, period…}]}"#,
+        false
+    ),
+    c!("scenario.list", "Scenarios", "", None, r#"{} → {"current", "scenarios": [{index, description, pdus}]}"#, false),
+    c!("scenario.new", "New scenario", "", None, r#"{"description"?} → the scenarios (the new one in use)"#, true),
+    c!("scenario.delete", "Delete scenario", "", None, r#"{"index"?: the one in use} → the scenarios (the last one is only emptied)"#, true),
+    c!("scenario.select", "Switch scenario", "", None, r#"{"index"} → its PDU list"#, false),
 ];
 
 pub fn find(id: &str) -> Option<&'static CommandInfo> {

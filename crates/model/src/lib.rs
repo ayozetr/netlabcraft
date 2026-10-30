@@ -26,6 +26,7 @@ pub mod models;
 pub mod physical;
 pub mod qos;
 pub mod routing;
+pub mod scenario;
 pub mod services;
 pub mod voice;
 pub mod vpn;
@@ -1873,6 +1874,9 @@ pub struct Topology {
     /// Where the equipment stands (cities, buildings, wiring closets) and hand-set cable lengths.
     #[serde(default, skip_serializing_if = "physical::Physical::is_default")]
     pub physical: physical::Physical,
+    /// Simulation scenarios and their PDU lists.
+    #[serde(default, skip_serializing_if = "scenario::Scenarios::is_default")]
+    pub scenarios: scenario::Scenarios,
 }
 
 /// A note or drawing placed on the workspace.
@@ -1956,6 +1960,7 @@ impl Topology {
             clusters: Vec::new(),
             activity: None,
             physical: physical::Physical::default(),
+            scenarios: scenario::Scenarios::default(),
         }
     }
 
@@ -2253,6 +2258,8 @@ impl Topology {
         });
         self.sanitize_consoles();
         self.sanitize_physical();
+        let ids: Vec<DeviceId> = self.devices.iter().map(|d| d.id).collect();
+        self.scenarios.sanitize(&ids);
     }
 }
 

@@ -11,7 +11,6 @@ Activity Wizard…	Asistente de actividades…
 Add	Añadir
 Add Simple PDU	Añadir PDU simple
 Add Simple PDU (P)	Añadir PDU simple (P)
-Add Complex PDU (not available yet)	Añadir PDU compleja (todavía no disponible)
 Add a command check	Añadir una comprobación de comando
 Add a configuration check	Añadir una comprobación de configuración
 Add a ping check	Añadir una comprobación de ping
@@ -46,7 +45,6 @@ Dark interface	Interfaz oscura
 Default Gateway	Puerta de enlace predeterminada
 Delete	Eliminar
 Delete Note	Eliminar nota
-Delete every PDU in the list	Eliminar todas las PDU de la lista
 Desktop	Escritorio
 Device	Equipo
 Disconnect	Desconectar
@@ -158,7 +156,6 @@ Save	Guardar
 Save (Ctrl+S)	Guardar (Ctrl+S)
 Save As...	Guardar como...
 Save title and instructions	Guardar título e instrucciones
-Scenario 0	Escenario 0
 Scenarios hold the PDUs you send, so a lab can be re-tested	Los escenarios guardan las PDU que envías, para volver a probar un laboratorio
 Search for device	Buscar equipo
 Send every PDU in the list again	Volver a enviar todas las PDU de la lista
@@ -170,7 +167,6 @@ Settings	Ajustes
 Show grid	Mostrar cuadrícula
 Simulation	Simulación
 Simulation Panel	Panel de simulación
-Start an empty PDU list	Empezar una lista de PDU vacía
 Static	Estática
 Static Routes	Rutas estáticas
 Stop	Detener
@@ -826,7 +822,6 @@ Scenario information	Información del escenario
 Start IP Address	IP inicial
 Startup Config	Configuración de arranque
 Successful	Correcto
-In Progress	En curso
 missing	falta
 done	hecho
 yes	sí
@@ -886,3 +881,72 @@ L3 Switch 24	Switch L3 24
 Home City	Ciudad principal
 Main Building	Edificio principal
 Main Wiring Closet	Armario de cableado principal
+# Simulation mode: complex PDUs and scenarios.
+Add Complex PDU	Añadir PDU compleja
+Create Complex PDU	Crear PDU compleja
+Choose the source device	Elige el dispositivo de origen
+Type the destination address or device	Escribe la dirección o el dispositivo de destino
+{} is not a number	{} no es un número
+A periodic PDU needs its interval	Una PDU periódica necesita su intervalo
+(choose)	(elige)
+Outgoing port	Puerto de salida
+Auto (by route)	Automático (según la ruta)
+Packet	Paquete
+Application	Aplicación
+Ping (ICMP echo)	Ping (eco ICMP)
+DNS query	Consulta DNS
+HTTP GET	HTTP GET
+Telnet	Telnet
+SSH	SSH
+SMTP	SMTP
+POP3	POP3
+DHCP discover	DHCP discover
+TFTP read	Lectura TFTP
+SNMP get	SNMP get
+ARP request	Solicitud ARP
+Raw UDP packet	Paquete UDP simple
+Raw TCP connection	Conexión TCP simple
+address or device name	dirección o nombre del dispositivo
+Name to look up	Nombre que consultar
+Page	Página
+any	cualquiera
+TTL	TTL
+device default	el del dispositivo
+TOS	TOS
+Sequence number	Número de secuencia
+Size	Tamaño
+bytes	bytes
+When to send it	Cuándo enviarla
+Once	Una vez
+Periodically	Periódicamente
+Interval	Intervalo
+seconds	segundos
+Start time	Inicio
+seconds from now	segundos desde ahora
+Create PDU	Crear PDU
+Complex PDU {}: {}	PDU compleja {}: {}
+Waiting	En espera
+(broadcast)	(difusión)
+No	No
+Periodic	Periódica
+every {} s	cada {} s
+reply from {}	respuesta de {}
+no answer from {}	sin respuesta de {}
+{} says destination unreachable (code {})	{} dice destino inalcanzable (código {})
+TTL ran out at {}	el TTL se agotó en {}
+{} answered from UDP port {}	{} respondió desde el puerto UDP {}
+{} accepted the connection to TCP port {}	{} aceptó la conexión al puerto TCP {}
+{} refused the connection to TCP port {}	{} rechazó la conexión al puerto TCP {}
+{} did not answer on TCP port {}	{} no respondió en el puerto TCP {}
+the ARP reply says {} is at {}	la respuesta ARP dice que {} está en {}
+nobody answered for {}	nadie respondió por {}
+{} offered the address {}	{} ofreció la dirección {}
+{} answered with DHCP {}	{} respondió con DHCP {}
+{} is this device's own address	{} es la dirección del propio dispositivo
+the port is down	el puerto está caído
+that port has no IP address	ese puerto no tiene dirección IP
+the PDU needs a destination address	la PDU necesita una dirección de destino
+an ARP request needs the address to ask for	una solicitud ARP necesita la dirección por la que preguntar
+Delete every PDU in the list	Eliminar todas las PDU de la lista
+Scenario 0	Escenario 0
+Start an empty PDU list	Empezar una lista de PDU vacía

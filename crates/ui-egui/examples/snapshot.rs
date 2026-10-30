@@ -32,6 +32,7 @@ fn main() {
     let mut tab: Option<String> = None;
     let mut config_page: Option<String> = None;
     let (mut instructions, mut wizard) = (false, false);
+    let mut complex: Option<String> = None;
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -73,6 +74,7 @@ fn main() {
             "--cable" => connections = Some(Some(it.next().expect("cable id").clone())),
             "--info" => info = Some(it.next().and_then(|s| s.parse().ok()).expect("event id")),
             "--event" => event = Some(it.next().and_then(|s| s.parse().ok()).expect("event id")),
+            "--complex-pdu" => complex = Some(it.next().expect("source device").clone()),
             other => out = other.to_string(),
         }
     }
@@ -118,6 +120,10 @@ fn main() {
             }
             if let Some(c) = &connections {
                 netlabcraft_ui_egui::show_connections(&mut app, c.as_deref());
+            }
+            if let Some(c) = &complex {
+                let id = app.session.topology.resolve(c).expect("device");
+                netlabcraft_ui_egui::open_complex_pdu(&mut app, Some(id));
             }
             app.ui.events.selected = event;
             app.ui.events.info = info;

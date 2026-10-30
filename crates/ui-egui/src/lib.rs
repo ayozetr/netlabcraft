@@ -29,6 +29,7 @@ mod iot_page;
 mod mail;
 mod mib;
 pub mod pdf;
+pub mod pdu_dialog;
 mod phone;
 mod physical;
 pub mod png;
@@ -93,18 +94,6 @@ pub enum Mode {
     Simulation,
 }
 
-/// One row of the PDU list.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Pdu {
-    pub num: u32,
-    pub source: DeviceId,
-    pub destination: DeviceId,
-    pub address: String,
-    pub ok: Option<bool>,
-    pub color: Color32,
-    pub time_s: f64,
-}
-
 /// View state that isn't part of the lab.
 #[derive(Debug, Clone)]
 pub struct UiState {
@@ -130,7 +119,8 @@ pub struct UiState {
     pub about_credits: bool,
     pub status: Option<(String, bool)>,
     pub events: events::EventView,
-    pub pdus: Vec<Pdu>,
+    /// The Create Complex PDU window, while open.
+    pub complex: Option<pdu_dialog::Draft>,
     pub bottom: bottom::BoxState,
     /// The pointer over the workspace, in workspace units.
     pub pointer: Option<(f32, f32)>,
@@ -177,7 +167,7 @@ impl Default for UiState {
             about_credits: false,
             status: None,
             events: events::EventView::default(),
-            pdus: Vec::new(),
+            complex: None,
             bottom: bottom::BoxState::default(),
             pointer: None,
             clipboard: None,
@@ -193,6 +183,11 @@ impl Default for UiState {
             physical: physical::PhysState::default(),
         }
     }
+}
+
+/// Opens the Create Complex PDU window with `source` picked.
+pub fn open_complex_pdu(app: &mut PacketApp, source: Option<DeviceId>) {
+    pdu_dialog::open(app, source);
 }
 
 /// Opens (or raises) a device's window.
@@ -571,7 +566,7 @@ impl PacketApp {
         self.ui.selected = None;
         self.clear_picks();
         self.ui.inspect = None;
-        self.ui.pdus.clear();
+        self.ui.complex = None;
         self.ui.events = events::EventView::default();
         self.ui.pan = egui::Vec2::ZERO;
         self.ui.zoom = 1.0;
@@ -805,6 +800,7 @@ impl PacketApp {
         canvas::note_editor(self, &ctx);
         canvas::cluster_rename_window(self, &ctx);
         events::pdu_window(self, &ctx);
+        pdu_dialog::window(self, &ctx);
         self.notes_window(&ctx);
         activity::windows(self, &ctx);
         self.about_window(&ctx);
@@ -930,6 +926,11 @@ impl PacketApp {
                 }
                 if ui.button(tl("Add Simple PDU")).clicked() {
                     self.set_tool(Tool::Ping);
+                    ui.close();
+                }
+                if ui.button(tl("Add Complex PDU")).clicked() {
+                    let src = self.ui.selected;
+                    pdu_dialog::open(self, src);
                     ui.close();
                 }
                 if ui.button(tl("Reset Simulation")).clicked() {
@@ -1063,7 +1064,10 @@ impl PacketApp {
             if tool_button(ui, Glyph::SimplePdu, "Add Simple PDU (P)", t == Tool::Ping, true).clicked() {
                 self.set_tool(Tool::Ping);
             }
-            tool_button(ui, Glyph::ComplexPdu, "Add Complex PDU (not available yet)", false, false);
+            if tool_button(ui, Glyph::ComplexPdu, "Add Complex PDU", self.ui.complex.is_some(), true).clicked() {
+                let src = self.ui.selected;
+                pdu_dialog::open(self, src);
+            }
         });
     }
 
