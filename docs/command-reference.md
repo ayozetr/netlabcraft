@@ -541,6 +541,15 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `ipv6 ospf <1-65535> area <0-4294967295>` | interface, subinterface | router, switch | Run OSPFv3 on this interface |
 | `no ipv6 ospf <1-65535> area <0-4294967295>` | interface, subinterface | router, switch | Stop OSPFv3 on this interface |
 | `show ipv6 ospf neighbor` | user, privileged | router, switch | OSPFv3 neighbours |
+| `ipv6 router eigrp <1-65535>` | config | router, switch | Start or configure EIGRP for IPv6 |
+| `no ipv6 router eigrp <1-65535>` | config | router, switch | Stop EIGRP for IPv6 |
+| `ipv6 eigrp <1-65535>` | interface, subinterface | router, switch | Run EIGRP for IPv6 on this interface |
+| `no ipv6 eigrp <1-65535>` | interface, subinterface | router, switch | Stop EIGRP for IPv6 here |
+| `shutdown` |  | router, switch | Keep the process configured but stopped |
+| `no shutdown` |  | router, switch | Run the process |
+| `show ipv6 eigrp neighbors` | user, privileged | router, switch | EIGRP for IPv6 neighbours |
+| `show ipv6 eigrp topology` | user, privileged | router, switch | EIGRP for IPv6 successors and feasible successors |
+| `show ipv6 eigrp interfaces` | user, privileged | router, switch | Interfaces running EIGRP for IPv6 |
 | `show ipv6 ospf` | user, privileged | router, switch | OSPFv3 process |
 | `show ip protocols` | user, privileged | router, switch | Routing protocols running |
 | `ip helper-address A.B.C.D` | interface, subinterface | router | Relay DHCP requests to this server |
@@ -695,7 +704,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show inventory` | user, privileged | router, switch | Hardware |
 | `delete flash:vlan.dat` | privileged | switch | Delete the VLAN database (takes effect at reload) |
 | `show ipv6 interface <interface>` | user, privileged | router, switch | One interface's IPv6 settings |
-| `show ipv6 route {connected\|static\|ospf}` | user, privileged | router, switch | Only the IPv6 routes one source gave |
+| `show ipv6 route {connected\|static\|ospf\|eigrp}` | user, privileged | router, switch | Only the IPv6 routes one source gave |
 | `clear counters` | privileged | router, switch | Reset interface counters |
 | `show sessions` | user, privileged | router, switch | Telnet and SSH sessions opened from here |
 | `show hosts` | user, privileged | router, switch | Name lookup settings |

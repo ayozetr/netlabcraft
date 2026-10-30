@@ -739,6 +739,9 @@ pub struct Ipv6Conf {
     /// `ipv6 ospf PROCESS area N`: (process, area).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ospf: Option<(u16, u32)>,
+    /// `ipv6 eigrp AS`: the interface runs EIGRP for IPv6 in that autonomous system.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eigrp: Option<u16>,
     /// Routers: `ipv6 nd managed-config-flag` (hosts take addresses from DHCPv6).
     #[serde(default)]
     pub nd_managed: bool,
@@ -824,6 +827,9 @@ pub struct Device {
     /// `ipv6 router ospf N`: OSPFv3.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ospf6: Option<Ospf6>,
+    /// `ipv6 router eigrp N`: EIGRP for IPv6.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eigrp6: Option<Eigrp6>,
     /// Routers: IPv6 static routes.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub routes6: Vec<StaticRoute6>,
@@ -1127,6 +1133,30 @@ pub struct SnmpUser {
     /// `auth md5|sha PASSWORD`: (`md5` or `sha`, the password).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auth: Option<(String, String)>,
+}
+
+/// A router's EIGRP for IPv6 process (RFC 7868): interfaces join it with `ipv6 eigrp N`.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Eigrp6 {
+    pub asn: u16,
+    /// `eigrp router-id`: a 32-bit id, as for IPv4; without one, the highest IPv4 address.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub router_id: Option<Ipv4Addr>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub passive: Vec<String>,
+    /// `shutdown` in the process: configured but not running.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub shutdown: bool,
+    /// `maximum-paths N` (4 when not set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximum_paths: Option<u8>,
+}
+
+impl Eigrp6 {
+    /// Paths installed per destination at most.
+    pub fn max_paths(&self) -> usize {
+        usize::from(self.maximum_paths.unwrap_or(4).max(1))
+    }
 }
 
 /// A router's OSPFv3 process (RFC 5340): interfaces join it with `ipv6 ospf N area A`.
@@ -1689,6 +1719,7 @@ impl Device {
             log_hosts: Vec::new(),
             ipv6_routing: false,
             ospf6: None,
+            eigrp6: None,
             routes6: Vec::new(),
             routes: Vec::new(),
             vlans: BTreeMap::new(),
@@ -1761,6 +1792,7 @@ impl Device {
         self.log_hosts.clear();
         self.ipv6_routing = false;
         self.ospf6 = None;
+        self.eigrp6 = None;
         self.routes6.clear();
         self.routes.clear();
         // The VLAN database and VTP settings live apart from the configuration (as in a
@@ -2221,6 +2253,9 @@ impl Topology {
                 }
                 if let Some(e) = &mut d.eigrp {
                     e.networks.truncate(MAX_NETWORKS);
+                    e.passive.truncate(MAX_NETWORKS);
+                }
+                if let Some(e) = &mut d.eigrp6 {
                     e.passive.truncate(MAX_NETWORKS);
                 }
                 d.ensure_default_vlan();

@@ -2,10 +2,15 @@
 //! and software version (§6.6.4) — and the classic IPv4 internal route TLV that updates,
 //! queries and replies carry. Hellos, updates and queries go to `224.0.0.10` as IP protocol 88;
 //! replies and acknowledgements (hellos with no TLV and an acknowledgement number) are unicast.
+//!
+//! EIGRP for IPv6 uses the same header and hello TLVs over IPv6 (next header 88, multicast to
+//! `FF02::A` from the link-local address) and carries its routes in the classic IPv6 internal
+//! route TLV (type 0x0402): a 16-byte next hop, then the same metric fields as IPv4, then the
+//! prefix length and as many bytes of the prefix as it needs.
 
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 
-use netlabcraft_core::Ipv4Net;
+use netlabcraft_core::{Ipv4Net, Ipv6Net};
 
 use crate::{Result, WireError, be16, checksum};
 
@@ -26,6 +31,10 @@ const TLV_PARAMETERS: u16 = 0x0001;
 const TLV_SOFTWARE: u16 = 0x0004;
 /// Classic IPv4 internal route.
 const TLV_INTERNAL: u16 = 0x0102;
+/// Classic IPv6 internal route.
+const TLV_INTERNAL6: u16 = 0x0402;
+/// EIGRP's IPv6 routers group.
+pub const EIGRP_ROUTERS6: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 0xa);
 /// Header flags: init (first update to a new neighbour), conditional receive, restart, end of
 /// table.
 pub const FLAG_INIT: u32 = 0x1;
@@ -246,12 +255,104 @@ impl InternalRoute {
     }
 }
 
+/// An IPv6 internal route (classic metric): the IPv4 TLV's fields with a 16-byte next hop and
+/// an IPv6 prefix.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InternalRoute6 {
+    /// `::`: through the router that sent the packet.
+    pub next_hop: Ipv6Addr,
+    pub delay: u32,
+    pub bandwidth: u32,
+    pub mtu: u32,
+    pub hops: u8,
+    pub reliability: u8,
+    pub load: u8,
+    pub tag: u8,
+    pub flags: u8,
+    pub net: Ipv6Net,
+}
+
+impl InternalRoute6 {
+    /// A route with a path's slowest bandwidth (kbit/s) and total delay (tens of µs).
+    pub fn new(net: Ipv6Net, bw_kbit: u32, delay_tens_us: u64, hops: u8) -> InternalRoute6 {
+        let v4 = InternalRoute::new(Ipv4Net::new(Ipv4Addr::UNSPECIFIED, 0), bw_kbit, delay_tens_us, hops);
+        InternalRoute6 {
+            next_hop: Ipv6Addr::UNSPECIFIED,
+            delay: v4.delay,
+            bandwidth: v4.bandwidth,
+            mtu: v4.mtu,
+            hops,
+            reliability: 255,
+            load: 1,
+            tag: 0,
+            flags: 0,
+            net: net.network(),
+        }
+    }
+
+    /// The same destination announced as unreachable (infinite delay).
+    pub fn unreachable(net: Ipv6Net) -> InternalRoute6 {
+        InternalRoute6 { delay: DELAY_UNREACHABLE, bandwidth: 0, hops: 0, ..InternalRoute6::new(net, 1, 0, 0) }
+    }
+
+    pub fn is_unreachable(&self) -> bool {
+        self.delay == DELAY_UNREACHABLE
+    }
+
+    fn encode_into(&self, v: &mut Vec<u8>) {
+        let dest_len = usize::from(self.net.prefix.min(128).div_ceil(8));
+        let len = u16::try_from(37 + dest_len).unwrap_or(u16::MAX);
+        v.extend_from_slice(&TLV_INTERNAL6.to_be_bytes());
+        v.extend_from_slice(&len.to_be_bytes());
+        v.extend_from_slice(&self.next_hop.octets());
+        v.extend_from_slice(&self.delay.to_be_bytes());
+        v.extend_from_slice(&self.bandwidth.to_be_bytes());
+        let mtu = self.mtu.min(0x00ff_ffff).to_be_bytes();
+        v.extend_from_slice(mtu.get(1..).unwrap_or_default());
+        v.extend_from_slice(&[self.hops, self.reliability, self.load, self.tag, self.flags, self.net.prefix.min(128)]);
+        v.extend_from_slice(self.net.addr.octets().get(..dest_len.min(16)).unwrap_or_default());
+    }
+
+    fn decode(value: &[u8]) -> Result<InternalRoute6> {
+        let t = || WireError::Truncated("eigrp");
+        let u32_at = |at: usize| -> Result<u32> {
+            let s: [u8; 4] = value.get(at..at + 4).ok_or_else(t)?.try_into().map_err(|_| t())?;
+            Ok(u32::from_be_bytes(s))
+        };
+        let byte = |k: usize| value.get(k).copied().ok_or_else(t);
+        let hop: [u8; 16] = value.get(..16).ok_or_else(t)?.try_into().map_err(|_| t())?;
+        let prefix = byte(32)?;
+        if prefix > 128 {
+            return Err(WireError::Unsupported("eigrp", format!("IPv6 prefix length {prefix}")));
+        }
+        let dest_len = usize::from(prefix.div_ceil(8));
+        let dest = value.get(33..33 + dest_len).ok_or_else(t)?;
+        let mut octets = [0u8; 16];
+        for (o, b) in octets.iter_mut().zip(dest) {
+            *o = *b;
+        }
+        Ok(InternalRoute6 {
+            next_hop: Ipv6Addr::from(hop),
+            delay: u32_at(16)?,
+            bandwidth: u32_at(20)?,
+            mtu: u32::from_be_bytes([0, byte(24)?, byte(25)?, byte(26)?]),
+            hops: byte(27)?,
+            reliability: byte(28)?,
+            load: byte(29)?,
+            tag: byte(30)?,
+            flags: byte(31)?,
+            net: Ipv6Net::new(Ipv6Addr::from(octets), prefix).network(),
+        })
+    }
+}
+
 /// A TLV of an EIGRP packet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tlv {
     Parameters { k: [u8; 6], hold_secs: u16 },
     Software([u8; 4]),
     Internal(InternalRoute),
+    Internal6(InternalRoute6),
 }
 
 /// Any EIGRP packet: header fields and the TLVs understood (others are skipped).
@@ -275,6 +376,14 @@ impl EigrpPacket {
     pub fn routes(&self) -> impl Iterator<Item = &InternalRoute> {
         self.tlvs.iter().filter_map(|t| match t {
             Tlv::Internal(r) => Some(r),
+            _ => None,
+        })
+    }
+
+    /// The IPv6 routes the packet carries.
+    pub fn routes6(&self) -> impl Iterator<Item = &InternalRoute6> {
+        self.tlvs.iter().filter_map(|t| match t {
+            Tlv::Internal6(r) => Some(r),
             _ => None,
         })
     }
@@ -303,6 +412,7 @@ impl EigrpPacket {
                     v.extend_from_slice(sw);
                 }
                 Tlv::Internal(r) => r.encode_into(&mut v),
+                Tlv::Internal6(r) => r.encode_into(&mut v),
             }
         }
         let c = checksum(&[&v]);
@@ -338,6 +448,7 @@ impl EigrpPacket {
                 }
                 TLV_SOFTWARE => p.tlvs.push(Tlv::Software(value.get(..4).ok_or_else(t)?.try_into().map_err(|_| t())?)),
                 TLV_INTERNAL => p.tlvs.push(Tlv::Internal(InternalRoute::decode(value)?)),
+                TLV_INTERNAL6 => p.tlvs.push(Tlv::Internal6(InternalRoute6::decode(value)?)),
                 _ => {}
             }
             at += len;
@@ -411,6 +522,42 @@ mod tests {
         // A hostile prefix length is refused.
         let mut bad = EigrpPacket { tlvs: vec![Tlv::Internal(r)], ..p.clone() }.encode();
         bad[20 + 24] = 40;
+        bad[2] = 0;
+        bad[3] = 0;
+        let c = checksum(&[&bad]);
+        bad[2..4].copy_from_slice(&c.to_be_bytes());
+        assert!(EigrpPacket::decode(&bad).is_err());
+    }
+
+    #[test]
+    fn ipv6_routes_round_trip_with_their_layout_and_survive_truncation() {
+        let net = Ipv6Net::new("2001:db8:acad:3::".parse().unwrap(), 64);
+        let r = InternalRoute6::new(net, 100_000, 20, 1);
+        let down = InternalRoute6::unreachable(Ipv6Net::new("2001:db8::".parse().unwrap(), 33));
+        let p = EigrpPacket { opcode: OPCODE_UPDATE, flags: FLAG_EOT, seq: 3, ack: 0, asn: 1, tlvs: vec![Tlv::Internal6(r), Tlv::Internal6(down)] };
+        let v = p.encode();
+        // A /64 needs 8 bytes of prefix, a /33 five: 37 + 8 and 37 + 5.
+        assert_eq!(v.len(), 20 + 45 + 42);
+        // Type 0x0402, length 45, a zero next hop, delay 20 × 256, bandwidth 256 × 10⁷ / 10⁵.
+        assert_eq!(&v[20..24], &[0x04, 0x02, 0, 45]);
+        assert_eq!(&v[24..40], &[0u8; 16]);
+        assert_eq!(&v[40..44], &(20u32 * 256).to_be_bytes());
+        assert_eq!(&v[44..48], &25_600u32.to_be_bytes());
+        // MTU 1500 in three bytes, hops 1, reliability 255, load 1, tag, flags, prefix 64.
+        assert_eq!(&v[48..57], &[0, 0x05, 0xdc, 1, 255, 1, 0, 0, 64]);
+        assert_eq!(&v[57..65], &[0x20, 0x01, 0x0d, 0xb8, 0xac, 0xad, 0, 3]);
+        assert_eq!(checksum(&[&v]), 0);
+        let back = EigrpPacket::decode(&v).unwrap();
+        assert_eq!(back, p);
+        assert_eq!(back.routes6().count(), 2);
+        assert_eq!(back.routes().count(), 0);
+        assert!(back.routes6().nth(1).unwrap().is_unreachable());
+        for n in 0..v.len() {
+            assert!(EigrpPacket::decode(&v[..n]).is_err(), "{n} bytes");
+        }
+        // A prefix length past 128 is refused.
+        let mut bad = v.clone();
+        bad[56] = 129;
         bad[2] = 0;
         bad[3] = 0;
         let c = checksum(&[&bad]);

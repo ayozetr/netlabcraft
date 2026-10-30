@@ -13,6 +13,7 @@ use netlabcraft_sim::{DebugKind, PingOptions, Sim, port_up};
 use crate::grammar::{self, Id, Modes, ParseError};
 use crate::{host, render};
 
+pub(crate) mod eigrp6;
 pub(crate) mod firewall;
 pub(crate) mod l2sec;
 pub(crate) mod mgmt;
@@ -62,6 +63,8 @@ pub enum Mode {
     Ospf6,
     /// `R1(config-router)#` under `router eigrp N`.
     Eigrp,
+    /// `R1(config-rtr)#` under `ipv6 router eigrp N` (the EIGRP command bits, checked apart).
+    Eigrp6,
     /// `R1(config-ipv6-acl)#`: the list's name.
     Acl6(String),
     /// `R1(config-dhcpv6)#`: the pool's name.
@@ -112,7 +115,7 @@ impl Mode {
             Mode::Ospf => Modes::OSPF,
             Mode::Rip => Modes::RIP,
             Mode::Ospf6 => Modes::OSPF6,
-            Mode::Eigrp => Modes::EIGRP,
+            Mode::Eigrp | Mode::Eigrp6 => Modes::EIGRP,
             Mode::Acl6(_) => Modes::ACL6,
             Mode::Dhcp6(_) => Modes::DHCP6,
             Mode::Acl(_) => Modes::ACL,
@@ -427,7 +430,7 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::DhcpPool(_) => format!("{n}(dhcp-config)#"),
         Mode::Svi(_) => format!("{n}(config-if)#"),
         Mode::Ospf | Mode::Rip | Mode::Eigrp => format!("{n}(config-router)#"),
-        Mode::Ospf6 => format!("{n}(config-rtr)#"),
+        Mode::Ospf6 | Mode::Eigrp6 => format!("{n}(config-rtr)#"),
         Mode::Acl6(_) => format!("{n}(config-ipv6-acl)#"),
         Mode::Dhcp6(_) => format!("{n}(config-dhcpv6)#"),
         Mode::Acl(name) => {
@@ -669,6 +672,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Ospf6
                 | Mode::Rip
                 | Mode::Eigrp
+                | Mode::Eigrp6
                 | Mode::Acl(_)
                 | Mode::Acl6(_)
                 | Mode::Dhcp6(_)
@@ -728,6 +732,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Ospf6
                 | Mode::Rip
                 | Mode::Eigrp
+                | Mode::Eigrp6
                 | Mode::Acl(_)
                 | Mode::Acl6(_)
                 | Mode::Dhcp6(_)
@@ -1264,7 +1269,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 _ if "connected".starts_with(&which) => &["C ", "L "],
                 _ if "static".starts_with(&which) => &["S "],
                 _ if "ospf".starts_with(&which) => &["O ", "OI ", "OE2"],
-                _ => return Err("% connected, static or ospf".into()),
+                _ if "eigrp".starts_with(&which) => &["D "],
+                _ => return Err("% connected, static, ospf or eigrp".into()),
             };
             let mut lines = full.lines();
             let head: Vec<&str> = lines.by_ref().take_while(|l| l.starts_with("Codes") || l.starts_with("IPv6 forwarding")).collect();
@@ -3064,6 +3070,31 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::ShowIpRipDatabase => {
             let st = c.sim.rip_state(c.t);
             Ok(render::rip_database(c.t, c.d()?, &st))
+        }
+        Id::Ipv6RouterEigrp
+        | Id::NoIpv6RouterEigrp
+        | Id::Ipv6EigrpIf
+        | Id::NoIpv6EigrpIf
+        | Id::EigrpShutdown
+        | Id::NoEigrpShutdown
+        | Id::ShowIpv6EigrpNeighbors
+        | Id::ShowIpv6EigrpTopology
+        | Id::ShowIpv6EigrpInterfaces => eigrp6::command(&mut c, spec.id, &args),
+        Id::EigrpNetwork
+        | Id::NoEigrpNetwork
+        | Id::EigrpPassive
+        | Id::NoEigrpPassive
+        | Id::EigrpRouterId
+        | Id::NoEigrpRouterId
+        | Id::EigrpMaximumPaths
+        | Id::NoEigrpMaximumPaths
+        | Id::EigrpVariance
+        | Id::NoEigrpVariance
+        | Id::EigrpAutoSummary
+        | Id::NoEigrpAutoSummary
+            if c.cli.mode == Mode::Eigrp6 =>
+        {
+            eigrp6::command(&mut c, spec.id, &args)
         }
         Id::RouterEigrp if c.d()?.kind == DeviceKind::Switch && !c.d()?.ip_routing => Err("% EIGRP needs `ip routing` (multilayer switches)".into()),
         Id::RouterEigrp => {

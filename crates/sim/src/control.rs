@@ -22,6 +22,8 @@ pub const RIP_UPDATE_EVERY_US: u64 = 30_000_000;
 /// EIGRP hellos are considered every second; each interface sends at its own hello interval.
 pub const EIGRP_HELLO_EVERY_US: u64 = 1_000_000;
 pub const HSRP_HELLO_EVERY_US: u64 = 3_000_000;
+/// EIGRP for IPv6 hellos, at the default hello interval.
+pub const EIGRP6_HELLO_EVERY_US: u64 = 5_000_000;
 /// NTP clients poll every 64 s.
 pub const NTP_POLL_EVERY_US: u64 = 64_000_000;
 /// A long run only replays the last ten minutes of control traffic.
@@ -51,6 +53,7 @@ impl Sim {
             (crate::channel::LACP_EVERY_US, 6),
             (OSPF_HELLO_EVERY_US, 7),
             (EIGRP_HELLO_EVERY_US, 8),
+            (EIGRP6_HELLO_EVERY_US, 9),
         ] {
             let mut at = (from / every + 1) * every;
             while at <= deadline {
@@ -63,6 +66,7 @@ impl Sim {
                     6 => self.send_lacp(t, at),
                     7 => self.send_ospf6_hellos(t, at),
                     8 => self.send_eigrp_hellos(t, at),
+                    9 => self.send_eigrp6_hellos(t, at),
                     _ => self.send_rip_updates(t, at),
                 }
                 at += every;
@@ -457,6 +461,32 @@ impl Sim {
                 };
                 let frame =
                     Frame { dst: multicast_mac(ALL_SPF_ROUTERS6), src: ifc.mac, vlan: ifc.vlan, ethertype: ETHERTYPE_IPV6, payload: ip.encode() };
+                self.queue_frame(t, d, ifc.port, frame, at);
+            }
+        }
+    }
+
+    /// EIGRP for IPv6 hellos: from each interface's link-local address to `FF02::A`.
+    fn send_eigrp6_hellos(&mut self, t: &Topology, at: u64) {
+        use netlabcraft_wire::eigrp::{EIGRP_ROUTERS6, EigrpHello, PROTO_EIGRP};
+        use netlabcraft_wire::ipv6::{ETHERTYPE_IPV6, Ipv6, multicast_mac};
+        if !t.devices.iter().any(|d| d.eigrp6.is_some()) {
+            return;
+        }
+        let st = self.eigrp6_state(t);
+        for (id, ifs) in &st.interfaces {
+            let Some(d) = t.device(*id) else { continue };
+            let asn = d.eigrp6.as_ref().map_or(0, |e| e.asn);
+            let up = crate::v6::up_ifaces6(t, d);
+            for info in ifs.iter().filter(|x| !x.passive) {
+                let Some(ifc) = up.iter().find(|i| i.name == info.name) else { continue };
+                if crate::loopback::is_loopback(ifc.port) {
+                    continue;
+                }
+                let hello = EigrpHello::new(asn);
+                let ip = Ipv6 { hop_limit: 1, next_header: PROTO_EIGRP, src: ifc.link_local, dst: EIGRP_ROUTERS6, payload: hello.encode() };
+                let frame =
+                    Frame { dst: multicast_mac(EIGRP_ROUTERS6), src: ifc.mac, vlan: ifc.vlan, ethertype: ETHERTYPE_IPV6, payload: ip.encode() };
                 self.queue_frame(t, d, ifc.port, frame, at);
             }
         }

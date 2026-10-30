@@ -32,6 +32,7 @@ pub mod channel;
 pub mod control;
 pub mod dhcpsrv;
 pub mod eigrp;
+pub mod eigrp6;
 pub mod firewall;
 pub mod hsrp;
 pub mod iot;
@@ -956,6 +957,8 @@ pub struct Sim {
     ospf: Option<ospf::OspfState>,
     ospf6_for: u64,
     ospf6: Option<ospf6::Ospf6State>,
+    eigrp6_for: u64,
+    eigrp6: Option<eigrp6::Eigrp6State>,
     rip_for: u64,
     rip: Option<rip::RipState>,
     eigrp_for: u64,
@@ -1753,30 +1756,49 @@ impl Sim {
         self.ospf6.clone().unwrap_or_default()
     }
 
-    /// A device's dynamic IPv6 routes (OSPFv3), as routing-table lines.
-    pub fn dynamic_routes6(&mut self, t: &Topology, d: &Device) -> Vec<v6::Route6Entry> {
-        if d.ospf6.is_none() {
-            return Vec::new();
+    /// EIGRP for IPv6's view of the lab, recomputed when what it depends on changes.
+    pub fn eigrp6_state(&mut self, t: &Topology) -> eigrp6::Eigrp6State {
+        let f = eigrp6::fingerprint(t);
+        if self.eigrp6.is_none() || self.eigrp6_for != f {
+            self.eigrp6_for = f;
+            self.eigrp6 = Some(eigrp6::compute(t));
         }
-        let st = self.ospf6_state(t);
-        st.routes
-            .get(&d.id)
-            .into_iter()
-            .flatten()
-            .map(|r| v6::Route6Entry {
-                code: if r.external {
-                    'E'
-                } else if r.inter_area {
-                    'I'
-                } else {
-                    'O'
-                },
+        self.eigrp6.clone().unwrap_or_default()
+    }
+
+    /// A device's dynamic IPv6 routes (OSPFv3 and EIGRP for IPv6), as routing-table lines.
+    pub fn dynamic_routes6(&mut self, t: &Topology, d: &Device) -> Vec<v6::Route6Entry> {
+        let mut out = Vec::new();
+        if d.eigrp6.is_some() {
+            let st = self.eigrp6_state(t);
+            out.extend(st.routes.get(&d.id).into_iter().flatten().map(|r| v6::Route6Entry {
+                code: 'D',
                 net: r.net,
                 iface: Some(r.iface.clone()),
                 next_hop: Some(r.via),
-                distance: 110,
-            })
-            .collect()
+                distance: eigrp::DISTANCE,
+            }));
+        }
+        if d.ospf6.is_none() {
+            return out;
+        }
+        let st = self.ospf6_state(t);
+        // The lower administrative distance wins a prefix both protocols know.
+        let have: std::collections::BTreeSet<netlabcraft_core::Ipv6Net> = out.iter().map(|r| r.net).collect();
+        out.extend(st.routes.get(&d.id).into_iter().flatten().filter(|r| !have.contains(&r.net)).map(|r| v6::Route6Entry {
+            code: if r.external {
+                'E'
+            } else if r.inter_area {
+                'I'
+            } else {
+                'O'
+            },
+            net: r.net,
+            iface: Some(r.iface.clone()),
+            next_hop: Some(r.via),
+            distance: 110,
+        }));
+        out
     }
 
     pub fn ospf_state(&mut self, t: &Topology) -> ospf::OspfState {

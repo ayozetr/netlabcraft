@@ -283,3 +283,104 @@ fn hsrp_preempt_decides_whether_a_better_router_takes_over() {
     assert!(lab.run(r1, "show standby").contains("active (priority 110, preempt)"));
     assert!(lab.run(r2, "show standby").contains(": standby"));
 }
+
+/// R1, R2 and R3 in a triangle over IPv6 (Gigabit R1–R2 and R2–R3, a slow R1–R3 by its
+/// bandwidth), each with a LAN; EIGRP for IPv6 AS 10 everywhere, router ids by hand.
+fn eigrp6_triangle() -> (Lab, DeviceId, DeviceId, DeviceId, DeviceId) {
+    let mut lab = Lab::new();
+    let r1 = lab.add(DeviceKind::Router);
+    let r2 = lab.add(DeviceKind::Router);
+    let r3 = lab.add(DeviceKind::Router);
+    let pc = lab.add(DeviceKind::Pc);
+    lab.cable(r1, "g0/1", r2, "g0/1");
+    lab.cable(r2, "g0/2", r3, "g0/2");
+    lab.cable(r1, "g0/2", r3, "g0/1");
+    lab.cable(pc, "fa0", r3, "g0/0");
+    let cfg = |n: u8, links: &[(&str, &str, Option<u32>)]| {
+        let mut s = format!("en\nconf t\nipv6 unicast-routing\nipv6 router eigrp 10\neigrp router-id {n}.{n}.{n}.{n}\nexit\n");
+        s.push_str(&format!("int g0/0\nipv6 address 2001:db8:{n}::1/64\nipv6 eigrp 10\nno shut\n"));
+        for (ifc, addr, bw) in links {
+            s.push_str(&format!("int {ifc}\nipv6 address {addr}\nipv6 eigrp 10\nno shut\n"));
+            if let Some(b) = bw {
+                s.push_str(&format!("bandwidth {b}\n"));
+            }
+        }
+        s.push_str("end");
+        s
+    };
+    lab.run(r1, &cfg(1, &[("g0/1", "2001:db8:12::1/64", None), ("g0/2", "2001:db8:13::1/64", Some(10_000))]));
+    lab.run(r2, &cfg(2, &[("g0/1", "2001:db8:12::2/64", None), ("g0/2", "2001:db8:23::2/64", None)]));
+    lab.run(r3, &cfg(3, &[("g0/2", "2001:db8:23::3/64", None), ("g0/1", "2001:db8:13::3/64", Some(10_000))]));
+    lab.run(pc, "ipv6config 2001:db8:3::10/64 2001:db8:3::1");
+    (lab, r1, r2, r3, pc)
+}
+
+#[test]
+fn eigrp_for_ipv6_by_typing() {
+    let (mut lab, r1, _r2, r3, _pc) = eigrp6_triangle();
+    assert_eq!(lab.prompt(r1), "R1#");
+    // Neighbours over link-local addresses, one per link.
+    let nb = lab.run(r1, "show ipv6 eigrp neighbors");
+    assert!(nb.contains("EIGRP for IPv6 neighbours, AS 10") && nb.contains("fe80::") && nb.contains("Gi0/1") && nb.contains("Gi0/2"), "{nb}");
+    // R3's LAN: the fast way through R2 is the successor; the direct slow link reports a
+    // smaller distance than R1's feasible distance, so it is a feasible successor.
+    let topo = lab.run(r1, "show ipv6 eigrp topology");
+    assert!(topo.contains("router id 1.1.1.1") && topo.contains("2001:db8:3::/64  FD 3328, 1 successor"), "{topo}");
+    assert!(topo.contains("successor           via fe80::") && topo.contains("feasible successor  via fe80::"), "{topo}");
+    let route = lab.run(r1, "show ipv6 route eigrp");
+    assert!(route.contains("D  2001:db8:3::/64") && route.contains("GigabitEthernet0/1") && route.contains("[90]"), "{route}");
+    assert!(!route.contains("\nC  "), "{route}");
+    // Packets follow it: R1 reaches the PC's LAN.
+    let ping = lab.run(r1, "ping 2001:db8:3::10");
+    assert!(!ping.contains(" 0 answered") && !ping.contains("0/"), "{ping}");
+    let ifs = lab.run(r1, "show ipv6 eigrp interfaces");
+    assert!(ifs.contains("Gi0/2") && ifs.contains("10000 kbit/s"), "{ifs}");
+    // R2 goes away: the feasible successor takes over.
+    lab.run(r1, "conf t\nint g0/1\nshutdown\nend");
+    let route = lab.run(r1, "show ipv6 route eigrp");
+    assert!(route.contains("2001:db8:3::/64") && route.contains("GigabitEthernet0/2"), "{route}");
+    lab.run(r1, "conf t\nint g0/1\nno shutdown\nend");
+    // Hellos on the wire, to FF02::A from link-local addresses.
+    lab.sim.clear_trace();
+    lab.sim.run_for(&lab.t, 6_000_000);
+    assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("EIGRPv6 hello, AS 10 fe80::") && e.summary.contains("ff02::a")));
+    // Running configuration and its round trip.
+    let run = lab.run(r1, "show running-config");
+    assert!(run.contains("ipv6 router eigrp 10\n eigrp router-id 1.1.1.1\n!"), "{run}");
+    assert!(run.contains(" ipv6 address 2001:db8:13::1/64\n ipv6 eigrp 10"), "{run}");
+    lab.run(r1, "copy run start\nreload\nen");
+    assert_eq!(lab.run(r1, "show running-config"), run);
+    // Passive: R1 stops talking to R3 on that link but still advertises the link.
+    lab.run(r1, "conf t\nipv6 router eigrp 10\npassive-interface g0/2\nend");
+    assert!(!lab.run(r1, "show ipv6 eigrp neighbors").contains("Gi0/2"));
+    assert!(lab.run(r3, "show ipv6 eigrp neighbors").contains("Gi0/2"));
+    // Shutdown stops the process; `no shutdown` brings it back.
+    lab.run(r1, "conf t\nipv6 router eigrp 10\nshutdown\nend");
+    assert!(lab.run(r1, "show ipv6 eigrp neighbors").contains("shut down"));
+    assert!(lab.run(r1, "show ipv6 route eigrp").contains("(no such routes)"));
+    lab.run(r1, "conf t\nipv6 router eigrp 10\nno shutdown\nend");
+    assert!(lab.run(r1, "show ipv6 route eigrp").contains("2001:db8:3::/64"));
+}
+
+#[test]
+fn eigrp_for_ipv6_mistakes_are_explained() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    lab.run(r, "en\nconf t");
+    let note = lab.run(r, "ipv6 router eigrp 5");
+    assert!(note.contains("ipv6 unicast-routing") && note.contains("router id"), "{note}");
+    assert_eq!(lab.prompt(r), "R1(config-rtr)#");
+    assert!(lab.try_run(r, "network 10.0.0.0").contains("no network statements"));
+    assert!(lab.try_run(r, "variance 2").contains("IPv4 only"));
+    lab.run(r, "eigrp router-id 9.9.9.9\nmaximum-paths 2\nexit");
+    assert!(lab.try_run(r, "ipv6 router eigrp 6").contains("already runs here in AS 5"));
+    assert!(lab.try_run(r, "no ipv6 router eigrp 6").contains("No EIGRP for IPv6 process for AS 6"));
+    lab.run(r, "router eigrp 1");
+    assert!(lab.try_run(r, "shutdown").contains("applies to EIGRP for IPv6"));
+    lab.run(r, "exit\nint g0/0");
+    assert!(lab.run(r, "ipv6 eigrp 7").contains("Saved"));
+    lab.run(r, "end");
+    assert!(lab.run(r, "show ipv6 eigrp topology").contains("waits for `ipv6 unicast-routing`"));
+    lab.run(r, "conf t\nno ipv6 router eigrp 5\nend");
+    assert!(lab.run(r, "show ipv6 eigrp neighbors").contains("not running"));
+}

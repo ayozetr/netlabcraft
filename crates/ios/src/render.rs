@@ -559,6 +559,7 @@ pub fn running_config(d: &Device) -> String {
         let distance = r.distance.map_or(String::new(), |a| format!(" {a}"));
         let _ = writeln!(s, "ipv6 route {} {via}{distance}", r.net);
     }
+    crate::exec::eigrp6::running_config(&mut s, d);
     if let Some(o) = &d.ospf6 {
         let _ = writeln!(s, "ipv6 router ospf {}", o.process);
         if let Some(id) = o.router_id {
@@ -1514,6 +1515,9 @@ pub(crate) fn ipv6_lines(s: &mut String, c: &netlabcraft_model::Ipv6Conf) {
     for a in &c.dhcp_relay {
         let _ = writeln!(s, " ipv6 dhcp relay destination {a}");
     }
+    if let Some(asn) = c.eigrp {
+        let _ = writeln!(s, " ipv6 eigrp {asn}");
+    }
     if let Some((p, a)) = c.ospf {
         let _ = writeln!(s, " ipv6 ospf {p} area {a}");
     }
@@ -1590,7 +1594,7 @@ pub fn ipv6_route(t: &Topology, sim: &mut Sim, d: &Device) -> String {
     let dynamic = sim.dynamic_routes6(t, d);
     let table = netlabcraft_sim::v6::routing_table6(t, d, &dynamic);
     let mut s = String::from(
-        "Codes: C connected, L local, S static, O OSPFv3, OI OSPFv3 other area, OE2 OSPFv3 external, ND default from a router advertisement\n",
+        "Codes: C connected, L local, S static, O OSPFv3, OI OSPFv3 other area, OE2 OSPFv3 external, D EIGRP, ND default from a router advertisement\n",
     );
     if !d.ipv6_routing {
         s.push_str("IPv6 forwarding is off (no `ipv6 unicast-routing`)\n");

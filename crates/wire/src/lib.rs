@@ -839,6 +839,29 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                 Ok((sp, dp, _)) => (Protocol::Ipv6, format!("UDP [{}]:{sp} → [{}]:{dp}{tag}", ip.src, ip.dst)),
                 Err(e) => (Protocol::Ipv6, format!("UDP ({e}){tag}")),
             },
+            Ok(ip) if ip.next_header == eigrp::PROTO_EIGRP => match eigrp::EigrpPacket::decode(&ip.payload) {
+                Ok(p) if p.opcode == eigrp::OPCODE_HELLO && p.ack != 0 && p.tlvs.is_empty() => {
+                    (Protocol::Eigrp, format!("EIGRPv6 acknowledgement of {}, AS {} {} → {}{tag}", p.ack, p.asn, ip.src, ip.dst))
+                }
+                Ok(p) if p.opcode == eigrp::OPCODE_HELLO => (Protocol::Eigrp, format!("EIGRPv6 hello, AS {} {} → {}{tag}", p.asn, ip.src, ip.dst)),
+                Ok(p) => {
+                    let n = p.routes6().count();
+                    let first = p.routes6().next().map(|r| format!(": {}{}", r.net, if n > 1 { ", …" } else { "" })).unwrap_or_default();
+                    (
+                        Protocol::Eigrp,
+                        format!(
+                            "EIGRPv6 {} #{}, AS {}, {n} route{}{first} {} → {}{tag}",
+                            eigrp::opcode_name(p.opcode),
+                            p.seq,
+                            p.asn,
+                            if n == 1 { "" } else { "s" },
+                            ip.src,
+                            ip.dst
+                        ),
+                    )
+                }
+                Err(e) => (Protocol::Eigrp, format!("EIGRPv6 ({e}){tag}")),
+            },
             Ok(ip) if ip.next_header == ospf6::PROTO_OSPF => match ospf6::Hello6::decode(ip.src, ip.dst, &ip.payload) {
                 Ok(h) => (
                     Protocol::Ospf,
