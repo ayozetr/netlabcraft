@@ -22,6 +22,7 @@ pub(crate) fn panel(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
             ui.label(RichText::new(tl("Switching on boots from the saved configuration.")).color(tk.muted));
         }
     });
+    power_supply(app, ui, dev, &tk);
     let model = dev.catalogue_model();
     if model.slots().is_empty() {
         return;
@@ -59,6 +60,59 @@ pub(crate) fn panel(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
             }
         }
     });
+}
+
+/// A powered device's supply: its adapter (a plug drawn in code, clicked to plug in or
+/// unplug) and where its power comes from; a PoE switch's budget.
+fn power_supply(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, tk: &theme::Tokens) {
+    if let Some(budget) = netlabcraft_model::poe::budget_mw(dev.catalogue_model()) {
+        let used: u32 = app.session.topology.power_inline(dev.id).iter().filter_map(|r| r.device.map(|(_, mw)| mw)).sum();
+        let w = |mw: u32| format!("{}.{}", mw / 1000, (mw % 1000) / 100);
+        ui.label(trf("Power over Ethernet: {} W of {} W in use", &[&w(used), &w(budget)]));
+        return;
+    }
+    if netlabcraft_model::poe::draw_mw(dev).is_none() {
+        return;
+    }
+    let plugged = dev.adapter != Some(false);
+    ui.horizontal(|ui| {
+        let (rect, resp) = ui.allocate_exact_size(vec2(46.0, 24.0), Sense::click());
+        let label = if plugged { tl("Power adapter: plugged in (click to unplug)") } else { tl("Power adapter: unplugged (click to plug in)") };
+        resp.widget_info(|| egui::WidgetInfo::selected(egui::accesskit::Role::Button, true, plugged, label));
+        let resp = resp.on_hover_text(label);
+        let p = ui.painter_at(rect);
+        // A plug with two prongs; its cord reaches the socket when plugged in.
+        let body = egui::Rect::from_center_size(rect.center() + vec2(if plugged { 6.0 } else { -6.0 }, 0.0), vec2(14.0, 14.0));
+        p.rect_filled(body, 3.0, if plugged { tk.ok } else { tk.chrome_line });
+        p.rect_stroke(body, 3.0, egui::Stroke::new(1.0, tk.muted), egui::StrokeKind::Inside);
+        for dy in [-3.0, 3.0] {
+            p.line_segment([body.right_center() + vec2(0.0, dy), body.right_center() + vec2(5.0, dy)], egui::Stroke::new(1.5, tk.muted));
+        }
+        p.line_segment([rect.left_center(), body.left_center()], egui::Stroke::new(2.0, tk.muted));
+        p.rect_filled(egui::Rect::from_min_size(rect.right_top() + vec2(-4.0, 4.0), vec2(4.0, 16.0)), 1.0, tk.muted);
+        if resp.clicked() {
+            app.run("device.adapter", json!({"device": dev.id.0, "on": !plugged}));
+        }
+        ui.label(if plugged { tl("Power adapter plugged in") } else { tl("No power adapter") });
+    });
+    let src = power_line(&app.session.topology, dev);
+    let color = if src.1 { tk.text } else { tk.error };
+    ui.label(RichText::new(src.0).color(color));
+}
+
+/// What powers a powered device, in words, and whether it has power.
+fn power_line(t: &netlabcraft_model::Topology, dev: &Device) -> (String, bool) {
+    use netlabcraft_model::poe::Power;
+    match t.power(dev.id) {
+        Power::Inline { switch, port, mw } => {
+            let at = t.device(switch).map_or_else(String::new, |x| {
+                format!("{} {}", x.name, x.ports.get(port).map_or_else(String::new, |p| netlabcraft_model::ifname::short(&p.name)))
+            });
+            (trf("Powered over Ethernet by {} ({} W)", &[&at, &format!("{}.{}", mw / 1000, (mw % 1000) / 100)]), true)
+        }
+        Power::Adapter | Power::Mains => (tl("Powered by its adapter").to_string(), true),
+        Power::Dark(why) => (crate::i18n::tr_any(&why), false),
+    }
 }
 
 /// A rocker switch drawn in code: green when on.

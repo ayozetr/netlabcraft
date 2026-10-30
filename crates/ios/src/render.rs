@@ -200,6 +200,7 @@ pub fn running_config(d: &Device) -> String {
         let _ = writeln!(s, "!");
     }
     crate::exec::voice::running_config(&mut s, d);
+    crate::exec::families::running_config(&mut s, d);
     if d.rapid_stp {
         let _ = writeln!(s, "spanning-tree mode rapid-pvst");
     }
@@ -303,6 +304,7 @@ pub fn running_config(d: &Device) -> String {
                 let _ = writeln!(s, " spanning-tree portfast");
             }
             crate::exec::l2sec::port_lines(&mut s, p);
+            crate::exec::families::port_lines(&mut s, p);
         }
         match p.ip {
             // The leased address isn't configuration; how it is obtained is.

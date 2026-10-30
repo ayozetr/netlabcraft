@@ -24,6 +24,7 @@ pub mod l2sec;
 pub mod mgmt;
 pub mod models;
 pub mod physical;
+pub mod poe;
 pub mod qos;
 pub mod routing;
 pub mod services;
@@ -625,6 +626,9 @@ pub struct Port {
     /// when not set.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub delay: Option<u32>,
+    /// PoE switches: `power inline never` (the port powers nothing).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub poe_never: bool,
     /// Switches: DHCP snooping, ARP inspection and spanning-tree port settings.
     #[serde(default, skip_serializing_if = "l2sec::PortL2::is_default")]
     pub l2: l2sec::PortL2,
@@ -950,6 +954,11 @@ pub struct Device {
     /// configuration is gone until it boots from the saved one.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub powered_off: bool,
+    /// Powered devices (IP phones, lightweight APs): whether their power adapter is plugged in
+    /// (`None` for every other device, and for powered devices in older files, which count as
+    /// plugged in). See [`poe`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adapter: Option<bool>,
     /// Routers: call control for IP phones; phones: where they register (see [`voice`]).
     #[serde(default, skip_serializing_if = "voice::Voice::is_default")]
     pub voice: voice::Voice,
@@ -1663,6 +1672,7 @@ impl Device {
                 dhcp_router: None,
                 bandwidth: None,
                 delay: None,
+                poe_never: false,
                 routed: false,
                 err_disabled: false,
                 helpers: Vec::new(),
@@ -1730,6 +1740,7 @@ impl Device {
             firewall: firewall::Firewall::default(),
             modules: BTreeMap::new(),
             powered_off: false,
+            adapter: poe::needs_power(model).then_some(false),
             voice: voice::Voice::default(),
             iot: iot::Iot::default(),
             l2: l2sec::SwitchL2::default(),

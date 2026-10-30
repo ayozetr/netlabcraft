@@ -158,7 +158,7 @@ impl Sim {
             return Err(SimError::NoSource(format!("{} is not a smart sensor or device", d.name)));
         }
         let result = (|| {
-            if d.powered_off {
+            if t.is_dark(dev) {
                 return Err(SimError::NoSource("switched off".into()));
             }
             let server = d.iot.server.ok_or_else(|| SimError::NoSource("no IoT server set".into()))?;

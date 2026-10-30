@@ -408,6 +408,8 @@ fn physical(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     );
     p.text(led_power + vec2(10.0, 0.0), egui::Align2::LEFT_CENTER, "PWR", egui::FontId::proportional(10.0), egui::Color32::WHITE);
     let mut hovered = None;
+    // PoE switches: a bar under each port that can give power, lit while it powers a device.
+    let poe = netlabcraft_model::poe::budget_mw(dev.catalogue_model()).map(|_| app.session.topology.power_inline(dev.id));
     for (i, port) in dev.ports.iter().enumerate() {
         let (row, col) = (i / per_row, i % per_row);
         let cell = egui::Rect::from_min_size(rect.left_top() + vec2(20.0 + col as f32 * 46.0, 36.0 + row as f32 * 56.0), vec2(38.0, 46.0));
@@ -426,6 +428,13 @@ fn physical(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
             egui::Color32::from_rgb(0x2a, 0x2a, 0x2a)
         };
         p.circle_filled(socket.center_top() - vec2(0.0, 6.0), 3.5, led);
+        if let Some(rows) = &poe
+            && port.name.starts_with("FastEthernet")
+        {
+            let on = rows.iter().any(|r| r.port == i && r.device.is_some());
+            let bar = egui::Rect::from_min_size(socket.left_bottom() + vec2(4.0, 1.5), vec2(socket.width() - 8.0, 2.5));
+            p.rect_filled(bar, 1.0, if on { egui::Color32::from_rgb(0xf2, 0xc2, 0x3a) } else { egui::Color32::from_rgb(0x6a, 0x5a, 0x2a) });
+        }
         p.text(
             cell.center_bottom() - vec2(0.0, 6.0),
             egui::Align2::CENTER_CENTER,

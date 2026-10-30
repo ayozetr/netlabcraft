@@ -44,6 +44,7 @@ pub mod ospf_lsdb;
 pub mod qos;
 
 pub mod rip;
+pub mod sip;
 pub mod snmp;
 pub mod stp;
 #[cfg(test)]
@@ -165,7 +166,8 @@ pub fn l3_ifaces(d: &Device) -> Vec<L3If> {
 pub fn port_up(t: &Topology, end: End) -> bool {
     let ok = |p: &netlabcraft_model::Port| !p.shutdown && !p.err_disabled;
     // A switched-off device lights no port, at either end of its cables.
-    if t.device(end.device).is_some_and(|d| d.powered_off) || t.peer(end).and_then(|p| t.device(p.device)).is_some_and(|d| d.powered_off) {
+    // Nor does a powered device with no power (no adapter, no PoE).
+    if t.is_dark(end.device) || t.peer(end).is_some_and(|p| t.is_dark(p.device)) {
         return false;
     }
     let own = t.device(end.device).and_then(|d| d.ports.get(end.port)).is_some_and(ok);
@@ -1434,6 +1436,9 @@ impl Sim {
         let port = d.ports.get(at.port).ok_or("port removed")?;
         if d.powered_off {
             return Err("the device is switched off".into());
+        }
+        if let Some(why) = t.power_problem(d.id) {
+            return Err(why);
         }
         if port.shutdown {
             return Err("port is shut down".into());

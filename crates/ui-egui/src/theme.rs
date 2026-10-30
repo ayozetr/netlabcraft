@@ -158,6 +158,7 @@ pub fn protocol_color(p: Protocol) -> Color32 {
         Protocol::Wlan => Color32::from_rgb(0x2e, 0x8b, 0x57),
         Protocol::Eapol => Color32::from_rgb(0xb5, 0x8a, 0x1f),
         Protocol::Capwap => Color32::from_rgb(0x5a, 0x6e, 0xc4),
+        Protocol::Sip => Color32::from_rgb(0x2a, 0x9d, 0x8f),
         Protocol::Other => Color32::from_rgb(0x88, 0x88, 0x88),
     }
 }

@@ -891,3 +891,20 @@ Four layer-2 switch ports inside the router: VLAN membership and trunks as on a 
 A switch card in a router	Una tarjeta de switch en un router
 R1 has a 4-port switch card: its ports are VLAN members (10 and 20) and a trunk to S1, and the router routes between its VLAN interfaces.	R1 tiene una tarjeta de switch de 4 puertos: sus puertos son miembros de VLAN (10 y 20) y un troncal hacia S1, y el router enruta entre sus interfaces VLAN.
 R1's 4-port switch card (bay 0/1, see its Physical tab) switches like a switch: `show vlan brief` and `show interfaces trunk` on R1. PC1 and PC3 share VLAN 10 across the trunk; PC1 reaches PC2 and PC4 through R1's VLAN interfaces (`show ip route`).	La tarjeta de switch de 4 puertos de R1 (bahía 0/1, mira su pestaña Físico) conmuta como un switch: `show vlan brief` y `show interfaces trunk` en R1. PC1 y PC3 comparten la VLAN 10 a través del troncal; PC1 llega a PC2 y PC4 por las interfaces VLAN de R1 (`show ip route`).
+Switch 8FE PoE	Switch 8FE PoE
+Switch 24FE PoE	Switch 24FE PoE
+Switch with 8 Fast Ethernet ports that give power over Ethernet (65 W in all) + 1 Gigabit Ethernet uplink: powers IP phones and lightweight access points	Switch con 8 puertos Fast Ethernet que dan alimentación por Ethernet (65 W en total) + 1 enlace Gigabit Ethernet: alimenta teléfonos IP y puntos de acceso ligeros
+Switch with 24 Fast Ethernet ports that give power over Ethernet (370 W in all) + 2 Gigabit Ethernet uplinks: powers IP phones and lightweight access points	Switch con 24 puertos Fast Ethernet que dan alimentación por Ethernet (370 W en total) + 2 enlaces Gigabit Ethernet: alimenta teléfonos IP y puntos de acceso ligeros
+Power over Ethernet: {} W of {} W in use	Alimentación por Ethernet: {} W de {} W en uso
+Power adapter: plugged in (click to unplug)	Adaptador de corriente: enchufado (clic para desenchufar)
+Power adapter: unplugged (click to plug in)	Adaptador de corriente: desenchufado (clic para enchufar)
+Power adapter plugged in	Adaptador de corriente enchufado
+No power adapter	Sin adaptador de corriente
+Powered over Ethernet by {} ({} W)	Alimentado por Ethernet desde {} ({} W)
+Powered by its adapter	Alimentado por su adaptador
+no power: plug in its power adapter (Physical tab) or cable it to a PoE switch	sin alimentación: enchufa su adaptador (pestaña Físico) o conéctalo a un switch PoE
+no power: {} is a {}, which gives no power over Ethernet; use a PoE switch or plug in the power adapter	sin alimentación: {} es un {}, que no da alimentación por Ethernet; usa un switch PoE o enchufa el adaptador
+no power: {} is switched off	sin alimentación: {} está apagado
+no power: {} has `power inline never`	sin alimentación: {} tiene `power inline never`
+no power: {}'s power budget is used up	sin alimentación: el presupuesto de potencia de {} está agotado
+no power: {} is shut down	sin alimentación: {} está desactivado

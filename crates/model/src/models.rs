@@ -139,6 +139,20 @@ pub static MODELS: &[Model] = &[
         ports: &[run("FastEthernet0/", 1, 24), fiber("GigabitEthernet0/", 1, 2)],
     },
     Model {
+        id: "Switch-8-PoE",
+        kind: DeviceKind::Switch,
+        label: "Switch 8FE PoE",
+        description: "Switch with 8 Fast Ethernet ports that give power over Ethernet (65 W in all) + 1 Gigabit Ethernet uplink: powers IP phones and lightweight access points",
+        ports: &[run("FastEthernet0/", 1, 8), combo("GigabitEthernet0/", 1, 1)],
+    },
+    Model {
+        id: "Switch-24-PoE",
+        kind: DeviceKind::Switch,
+        label: "Switch 24FE PoE",
+        description: "Switch with 24 Fast Ethernet ports that give power over Ethernet (370 W in all) + 2 Gigabit Ethernet uplinks: powers IP phones and lightweight access points",
+        ports: &[run("FastEthernet0/", 1, 24), combo("GigabitEthernet0/", 1, 2)],
+    },
+    Model {
         id: "AccessPoint",
         kind: DeviceKind::Switch,
         label: "Access Point",

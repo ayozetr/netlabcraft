@@ -26,6 +26,7 @@ pub(crate) fn status(s: &Session, d: netlabcraft_core::DeviceId) -> Value {
         "number": st.number,
         "server": st.agent.map(|a| a.to_string()),
         "message": st.message,
+        "power": crate::families::power_source(s, d),
         "call": call,
     })
 }

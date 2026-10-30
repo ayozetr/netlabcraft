@@ -618,7 +618,7 @@ pub fn build(id: &str) -> Result<Topology> {
         }
         "wlc" => {
             b.add_model("Router-2", "R1", 360.0, 30.0)?;
-            b.add_model("Switch-24", "S1", 360.0, 150.0)?;
+            b.add_model("Switch-8-PoE", "S1", 360.0, 150.0)?;
             b.add_model("WLC", "WLC1", 120.0, 90.0)?;
             b.add_model("Server", "RADIUS1", 600.0, 90.0)?;
             b.add_model("LAP", "LAP1", 200.0, 260.0)?;
@@ -1066,7 +1066,7 @@ pub fn build(id: &str) -> Result<Topology> {
         }
         "ip-phones" => {
             b.add(DeviceKind::Router, "R1", 360.0, 40.0)?;
-            b.add(DeviceKind::Switch, "S1", 360.0, 160.0)?;
+            b.add_model("Switch-24-PoE", "S1", 360.0, 160.0)?;
             b.cable("R1", "g0/0", "S1", "g0/1")?;
             b.type_in(
                 "S1",

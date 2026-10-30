@@ -13,6 +13,7 @@ use netlabcraft_sim::{DebugKind, PingOptions, Sim, port_up};
 use crate::grammar::{self, Id, Modes, ParseError};
 use crate::{host, render};
 
+pub(crate) mod families;
 pub(crate) mod firewall;
 pub(crate) mod l2sec;
 pub(crate) mod mgmt;
@@ -93,6 +94,12 @@ pub enum Mode {
     Telephony,
     /// `R1(config-ephone-dn)#`: the directory number's tag.
     EphoneDn(u16),
+    /// `R1(config-register-global)#`: SIP call control.
+    VoiceRegGlobal,
+    /// `R1(config-register-dn)#`.
+    VoiceRegDn(u16),
+    /// `R1(config-register-pool)#`.
+    VoiceRegPool(u16),
     /// `R1(config-ephone)#`: the phone's tag.
     Ephone(u16),
 }
@@ -125,8 +132,8 @@ impl Mode {
             Mode::PolicyMap(_) => Modes::POLICY_MAP,
             Mode::PolicyClass(..) => Modes::POLICY_CLASS,
             Mode::Object(_) | Mode::ObjectGroup(..) => Modes::OBJECT,
-            Mode::Telephony => Modes::TELEPHONY,
-            Mode::EphoneDn(_) | Mode::Ephone(_) => Modes::EPHONE,
+            Mode::Telephony | Mode::VoiceRegGlobal => Modes::TELEPHONY,
+            Mode::EphoneDn(_) | Mode::Ephone(_) | Mode::VoiceRegDn(_) | Mode::VoiceRegPool(_) => Modes::EPHONE,
         }
     }
 }
@@ -455,6 +462,9 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::Telephony => format!("{n}(config-telephony)#"),
         Mode::EphoneDn(_) => format!("{n}(config-ephone-dn)#"),
         Mode::Ephone(_) => format!("{n}(config-ephone)#"),
+        Mode::VoiceRegGlobal => format!("{n}(config-register-global)#"),
+        Mode::VoiceRegDn(_) => format!("{n}(config-register-dn)#"),
+        Mode::VoiceRegPool(_) => format!("{n}(config-register-pool)#"),
     }
 }
 
@@ -694,6 +704,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Telephony
                 | Mode::EphoneDn(_)
                 | Mode::Ephone(_)
+                | Mode::VoiceRegGlobal
+                | Mode::VoiceRegDn(_)
+                | Mode::VoiceRegPool(_)
         )
         && let Ok(r) = grammar::resolve(&words, Modes::CONFIG, config_bits)
     {
@@ -751,7 +764,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::ObjectGroup(..)
                 | Mode::Telephony
                 | Mode::EphoneDn(_)
-                | Mode::Ephone(_) => Mode::Config,
+                | Mode::Ephone(_)
+                | Mode::VoiceRegGlobal
+                | Mode::VoiceRegDn(_)
+                | Mode::VoiceRegPool(_) => Mode::Config,
                 // A class inside a policy map goes back to the policy map.
                 Mode::PolicyClass(ref p, _) => Mode::PolicyMap(p.clone()),
             };
@@ -1901,6 +1917,33 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::FwServicePolicy
         | Id::FwNoServicePolicy
         | Id::FwShowServicePolicy => firewall::command(&mut c, spec.id, &args, line),
+        Id::VoiceMaxEphones
+        | Id::VoiceMaxDn
+        | Id::VoiceSourceAddress
+        | Id::VoiceNoSourceAddress
+        | Id::VoiceAutoAssign
+        | Id::VoiceNoAutoAssign
+        | Id::VoiceNumber
+        | Id::VoiceNoNumber
+        | Id::VoiceMacAddress
+        | Id::VoiceButton
+        | Id::VoiceNoButton
+            if families::voice_register_mode(&c.cli.mode) =>
+        {
+            families::command(&mut c, spec.id, &args)
+        }
+        Id::VoiceRegGlobal
+        | Id::VoiceNoRegGlobal
+        | Id::VoiceRegDn
+        | Id::VoiceNoRegDn
+        | Id::VoiceRegPool
+        | Id::VoiceNoRegPool
+        | Id::VoiceRegMode
+        | Id::VoiceRegSource
+        | Id::VoiceRegMaxPool
+        | Id::VoiceRegIdMac
+        | Id::VoiceRegNumberDn
+        | Id::ShowVoiceRegister => families::command(&mut c, spec.id, &args),
         Id::VoiceTelephonyService
         | Id::VoiceNoTelephonyService
         | Id::VoiceMaxEphones
@@ -1925,6 +1968,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ShowEphone
         | Id::ShowEphoneDn
         | Id::ShowTelephony => voice::command(&mut c, spec.id, &args),
+        Id::PowerInline | Id::ShowPowerInline => families::command(&mut c, spec.id, &args),
         Id::WlanAdd | Id::NoWlan | Id::CapwapController | Id::NoCapwapController | Id::ShowWlan | Id::ShowCapwap => {
             wlan::command(&mut c, spec.id, &args)
         }

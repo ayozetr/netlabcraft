@@ -777,6 +777,20 @@ pub enum Id {
     ShowEphone,
     ShowEphoneDn,
     ShowTelephony,
+    PowerInline,
+    ShowPowerInline,
+    VoiceRegGlobal,
+    VoiceNoRegGlobal,
+    VoiceRegDn,
+    VoiceNoRegDn,
+    VoiceRegPool,
+    VoiceNoRegPool,
+    VoiceRegMode,
+    VoiceRegSource,
+    VoiceRegMaxPool,
+    VoiceRegIdMac,
+    VoiceRegNumberDn,
+    ShowVoiceRegister,
 }
 
 use Tok::{Arg, K, Rest};
@@ -2802,6 +2816,45 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowEphone, EXECS, Modes::ROUTER, [K("show"), K("ephone")], "Phones: configured and registered"),
     spec!(ShowEphoneDn, EXECS, Modes::ROUTER, [K("show"), K("ephone-dn")], "Directory numbers and their state"),
     spec!(ShowTelephony, EXECS, Modes::ROUTER, [K("show"), K("telephony-service")], "Call control settings and counts"),
+    spec!(PowerInline, Modes::IF, Modes::SWITCH, [K("power"), K("inline"), Arg("{auto|never}")], "Power over Ethernet on this port (PoE switches)"),
+    spec!(ShowPowerInline, EXECS, Modes::SWITCH, [K("show"), K("power"), K("inline")], "Power over Ethernet: budget and what each port powers"),
+    spec!(VoiceRegGlobal, Modes::CONFIG, Modes::ROUTER, [K("voice"), K("register"), K("global")], "SIP call control for SIP phones"),
+    spec!(VoiceNoRegGlobal, Modes::CONFIG, Modes::ROUTER, [K("no"), K("voice"), K("register"), K("global")], "Turn SIP call control off"),
+    spec!(VoiceRegDn, Modes::CONFIG, Modes::ROUTER, [K("voice"), K("register"), K("dn"), Arg("<1-1000>")], "Define or edit a SIP directory number"),
+    spec!(
+        VoiceNoRegDn,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("no"), K("voice"), K("register"), K("dn"), Arg("<1-1000>")],
+        "Delete a SIP directory number"
+    ),
+    spec!(VoiceRegPool, Modes::CONFIG, Modes::ROUTER, [K("voice"), K("register"), K("pool"), Arg("<1-1000>")], "Define or edit a SIP phone"),
+    spec!(VoiceNoRegPool, Modes::CONFIG, Modes::ROUTER, [K("no"), K("voice"), K("register"), K("pool"), Arg("<1-1000>")], "Delete a SIP phone"),
+    spec!(VoiceRegMode, Modes::TELEPHONY, Modes::ROUTER, [K("mode"), K("cme")], "Run as the phones' call manager (under voice register global)"),
+    spec!(
+        VoiceRegSource,
+        Modes::TELEPHONY,
+        Modes::ROUTER,
+        [K("source-address"), Arg("A.B.C.D"), K("port"), Arg("<1-65535>")],
+        "Where SIP phones register (under voice register global)"
+    ),
+    spec!(VoiceRegSource, Modes::TELEPHONY, Modes::ROUTER, [K("source-address"), Arg("A.B.C.D")], "Where SIP phones register (port 5060)"),
+    spec!(VoiceRegMaxPool, Modes::TELEPHONY, Modes::ROUTER, [K("max-pool"), Arg("<1-256>")], "How many SIP phones may register"),
+    spec!(VoiceRegIdMac, Modes::EPHONE, Modes::ROUTER, [K("id"), K("mac"), Arg("H.H.H")], "The SIP phone's MAC address (under voice register pool)"),
+    spec!(
+        VoiceRegNumberDn,
+        Modes::EPHONE,
+        Modes::ROUTER,
+        [K("number"), Arg("<1-8>"), K("dn"), Arg("<1-1000>")],
+        "Put a SIP directory number on a line (under voice register pool)"
+    ),
+    spec!(
+        ShowVoiceRegister,
+        EXECS,
+        Modes::ROUTER,
+        [K("show"), K("voice"), K("register"), K("all")],
+        "SIP call control: numbers, phones, registrations and calls"
+    ),
 ];
 
 /// Why a line didn't parse. Positions are word indexes.

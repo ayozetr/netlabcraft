@@ -135,3 +135,32 @@ fn every_command_survives_hostile_arguments_on_a_router_with_a_switch_card() {
         }
     }
 }
+
+#[test]
+fn power_inline_by_typing() {
+    let mut lab = Lab::new();
+    let s = lab.t.add_model(models::find("Switch 24FE PoE").unwrap(), None, 0.0, 0.0).unwrap();
+    let ph = lab.t.add_model(models::find("IP-Phone").unwrap(), None, 0.0, 0.0).unwrap();
+    lab.cable(ph, "fa0", s, "fa0/3");
+    lab.run(s, "en");
+    let shown = lab.run(s, "show power inline");
+    assert!(shown.contains("Power budget 370.0 W, in use 6.3 W, left 363.7 W"), "{shown}");
+    assert!(shown.lines().any(|l| l.starts_with("Fa0/3") && l.contains("auto") && l.contains(" on ") && l.contains("6.3")), "{shown}");
+    lab.run(s, "conf t\nint fa0/3\npower inline never\nend");
+    assert!(lab.t.power_problem(ph).unwrap().contains("power inline never"));
+    assert!(lab.run(s, "show power inline").contains("in use 0.0 W"));
+    let run = lab.run(s, "show running-config");
+    assert!(run.contains("interface FastEthernet0/3\n power inline never"), "{run}");
+    lab.run(s, "copy run start\nreload");
+    lab.run(s, "en");
+    assert!(lab.run(s, "show running-config").contains(" power inline never"));
+    lab.run(s, "conf t\nint fa0/3\npower inline auto");
+    assert!(lab.t.power_problem(ph).is_none());
+    assert!(lab.try_run(s, "power inline sometimes").contains("% "));
+    // A plain switch has no power to give.
+    let plain = lab.add(DeviceKind::Switch);
+    lab.run(plain, "en");
+    assert!(lab.try_run(plain, "show power inline").contains("gives no power"));
+    lab.run(plain, "conf t\nint fa0/1");
+    assert!(lab.try_run(plain, "power inline never").contains("gives no power"));
+}

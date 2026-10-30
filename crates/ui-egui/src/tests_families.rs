@@ -72,4 +72,24 @@ mod t {
         assert!(h.query_by_label("Bay 0/1: 4-port switch card (click to take it out)").is_some());
         assert!(h.query_by_label("4-port switch card").is_some(), "the card list offers it");
     }
+
+    #[test]
+    fn the_physical_tab_plugs_a_phones_adapter_and_says_where_its_power_comes_from() {
+        let mut h = harness("ip-phones");
+        let ph = h.state().session.topology.resolve("Phone1").unwrap();
+        crate::open_physical_tab(h.state_mut(), ph);
+        h.state_mut().ui.show_notes = false;
+        h.run_steps(3);
+        assert!(h.query_by_label_contains("Powered over Ethernet by S1 Fa0/1").is_some());
+        h.get_by_label("Power adapter: unplugged (click to plug in)").click();
+        h.run_steps(2);
+        assert_eq!(h.state().session.topology.device(ph).unwrap().adapter, Some(true));
+        assert!(h.query_by_label("Powered by its adapter").is_some());
+        // The switch's tab shows its budget.
+        let s1 = h.state().session.topology.resolve("S1").unwrap();
+        h.state_mut().ui.windows.clear();
+        crate::open_physical_tab(h.state_mut(), s1);
+        h.run_steps(3);
+        assert!(h.query_by_label_contains("W of 370.0 W in use").is_some());
+    }
 }

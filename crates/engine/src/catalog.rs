@@ -265,6 +265,22 @@ pub static CATALOG: &[CommandInfo] = &[
     ),
     c!("phone.hangup", "Hang up", "", None, r#"{"device": IP phone} → its status: the call ends at both phones"#, false),
     c!(
+        "device.adapter",
+        "Power adapter",
+        "",
+        None,
+        r#"{"device": IP phone or lightweight AP, "on": true|false} → the power source: plugged in, the device runs without power over Ethernet; unplugged, it needs a PoE switch port"#,
+        true
+    ),
+    c!(
+        "device.power.source",
+        "Power source",
+        "",
+        None,
+        r#"{"device"} → {"powered_device", "adapter", "source": "mains"|"adapter"|"poe"|"none"|"off", "detail" (the PoE port, or why there is no power), "draw_w"}"#,
+        false
+    ),
+    c!(
         "device.module.list",
         "Card catalogue",
         "",
