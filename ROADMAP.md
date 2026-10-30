@@ -20,25 +20,25 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 | Number | Value | Kind |
 |---|---|---|
-| **Ready for real work** (weighted) | **~76%** | estimated from written weights (75.8); [target-app-parity.md](docs/target-app-parity.md) |
+| **Ready for real work** (weighted) | **~78%** | estimated from written weights (77.9); [target-app-parity.md](docs/target-app-parity.md) |
 | **CCNA 1 student** | **~86%** | estimated; [method](docs/target-app-parity.md#audiences) |
 | **CCNA 2 student** | **~90%** | estimated |
-| **CCNA 3 student** | **~85%** | estimated |
+| **CCNA 3 student** | **~87%** | estimated |
 | **Instructor** (graded activities) | **~78%** | estimated |
-| Engine commands | 68 | measured: `crates/engine/src/catalog.rs` |
-| Console grammar entries | 516 across 21 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
-| Device models · sample labs | 18 · 19 | measured |
-| Tests | 231 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Engine commands | 80 | measured: `crates/engine/src/catalog.rs` |
+| Console grammar entries | 558 across 22 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
+| Device models · sample labs | 19 · 20 | measured |
+| Tests | 246 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~550–880 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
 
 | Audience | Ready % | Opus 5.5 agent wall-clock hours to ~95% | Work that dominates |
 |---|---|---|---|
-| Full target | ~64% | ~380–620 | More device families, physical workspace |
+| Full target | ~68% | ~320–520 | More device families (modules, IoT, phones), depth everywhere |
 | CCNA 1 student | ~86% | ~12–25 | PDU details, a few host apps |
 | CCNA 2 student | ~90% | ~15–30 | Console polish, wireless encryption and roaming |
-| CCNA 3 student | ~85% | ~30–55 | Automation, IKE on the wire, QoS queuing |
+| CCNA 3 student | ~87% | ~30–55 | Automation, IKE on the wire, QoS queuing |
 | Instructor | ~78% | ~15–25 | Translated activity texts, an answer-network view |
 
 ## Dimensions
@@ -52,14 +52,16 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Security | 8 | 78% | 16–28 | IPv4 and IPv6 ACLs, access-class, NAT/PAT, passwords and lines, PPP PAP/CHAP, GRE tunnels and IPsec site-to-site; no firewalls |
 | WAN, cabling, wireless | 6 | 78% | 18–30 | Copper (auto-MDIX), serial (DCE/DTE, HDLC/PPP), Wi-Fi access points, home wireless routers and clients, WLC with lightweight APs, 802.11 frames, WPA2-PSK and Enterprise; no fibre or CCMP |
 | Simulation mode | 8 | 70% | 18–28 | Event list, replay, decode, drop reasons, pcap; BPDUs, OSPF hellos and database exchange, RIP updates, HSRP hellos, LLDP, LACP; no complex PDUs |
-| Workspace and windows | 10 | 65% | 38–56 | Reference-app arrangement, device tabs, notes, shapes, freehand and polygon drawings, nested clusters, printing; no physical view |
+| Workspace and windows | 10 | 78% | 18–30 | Reference-app arrangement, device tabs, notes, shapes, freehand and polygon drawings, nested clusters, printing, the physical view with places and cable lengths |
 | Teaching | 8 | 80% | 15–25 | Activities with checks, points, sections, hints, hidden answers, values per student, a time limit, a password lock, a wizard and a side-by-side comparison with the answer; Spanish interface |
-| Device families | 5 | 25% | 80–120 | 16 generic models; no modules, ASA, IoT |
+| Device families | 5 | 40% | 65–100 | 19 models of our own, a stateful firewall among them; no modules or IoT |
 | Files | — | — | — | Own open `.pcraft` JSON; no `.pkt` (out of scope: [decisions.md](docs/decisions.md)) |
 | Platforms and agents | — | — | — | Linux, Windows, macOS, BSD, web; MCP server and CLI over the full command catalog |
 
 ## Progress log
 
+- **2026-10-30 — Physical view.** The Physical tab works: an intercity map, cities, buildings and wiring closets; devices move between places, cables show their length, and copper longer than 100 m goes down and says why.
+- **2026-10-30 — Firewall.** A stateful firewall model with named interfaces and security levels, a connection table, access rules, object NAT and a DHCP server; firewall sample lab with inside, DMZ and outside.
 - **2026-10-30 — Model names and equivalents.** Models are named after their ports (Router 3GE, Switch 24FE, L3 Switch 24…), and a new page says which one to place when a course lab names a vendor model; old lab files open unchanged.
 - **2026-10-30 — Wireless controller and 802.11.** WLC and lightweight AP models: APs join their controller and get its WLANs; Wi-Fi hops carry real 802.11 frames with association and the WPA2 handshake; WPA2-Enterprise logins are checked by RADIUS; wlc sample lab; a separate 802.11 capture.
 - **2026-10-30 — QoS.** Class maps, policy maps and service policies: DSCP marking that shows in captures, policing that drops with a reason, and per-class counters in `show policy-map interface`.

@@ -15,7 +15,8 @@ host hardware: ~70% ready, 10–16 h** (estimated).
 | Switches | Access and multilayer models | Switch 8FE/24FE/48FE, L3 Switch 24 (multilayer) | — for CCNA labs |
 | Hubs, PCs, laptops, servers, printers | yes | yes | — |
 | Wireless (access points, wireless routers, wireless clients) | yes | 🟡 Home-Router (Internet port, 4 LAN ports, Wi-Fi; DHCP and NAT set up at the factory; a Home Router settings page for LAN, DHCP, static Internet and Wi-Fi, all as configuration commands), AccessPoint and Laptop-WiFi models: SSID, open or WPA2-PSK, channel, association by range (nearest access point), relay between clients; real IEEE 802.11 frames on every air hop (probe, authentication, association, data with LLC/SNAP) and the WPA2-PSK 4-way handshake with real keys; WLC and LAP models: APs join their controller with a CAPWAP exchange (UDP 5246) and get its WLANs (`wlan N SSID open|psk|enterprise`, `capwap controller`, `show wlan`, `show capwap`, a WLC/LAP Config page); WPA2-Enterprise logins relayed to RADIUS by the WLC; the capture stays Ethernet and a separate 802.11 capture holds the air hops; wlc sample lab | CCMP encryption, beacons, roaming handover, VLAN per WLAN, central tunnelling, PEAP: 8–14 h |
-| Firewalls (ASA), IoT devices, phones, cloud/modems | yes | ❌ | 40–60 h; low priority for CCNA |
+| Firewalls | yes | 🟡 Firewall 5GE: named interfaces with security levels, stateful connection table with timeouts, extended access lists bound to interfaces, object NAT (dynamic interface PAT, dynamic, static), static routes, a DHCP server, `show conn|xlate|nat|access-list|route`; firewall sample lab | ICMP errors through the firewall, subinterfaces, twice NAT, object groups, outbound access groups: 8–12 h |
+| IoT devices, phones, cloud/modems | yes | ❌ | 40–60 h; low priority for CCNA |
 | Copper cables | Straight-through and crossover (with mismatch errors) | One copper cable; every port is auto-MDIX | By design; a "strict cabling" option: 2–4 h |
 | Serial cables | DCE and DTE | ✅ the first end cabled is the DCE; red cable with a clock at the DCE end | — |
 | Fibre, console, coaxial, phone cables | yes | ❌ | Fibre ports and console sessions over a cable: 8–12 h |
@@ -41,6 +42,7 @@ host hardware: ~70% ready, 10–16 h** (estimated).
 |---|---|---|
 | 2026-10-30 | minor | Workspace image export (PNG). |
 | 2026-10-30 | minor | Home wireless router. |
+| 2026-10-30 | minor | Firewall 5GE: a stateful firewall appliance. |
 | 2026-10-30 | minor | Model names describe their ports; equivalents page. |
 | 2026-10-30 | minor | WLC and LAP models, 802.11 frames, WPA2 handshake, WPA2-Enterprise with RADIUS. |
 | 2026-10-30 | minor | Wi-Fi access point and laptop. |

@@ -12,15 +12,15 @@ This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summa
 
 | Number | Value | Kind |
 |---|---|---|
-| Engine commands | **68** | measured: `crates/engine/src/catalog.rs` |
-| Console grammar entries | **516** across 21 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
-| Device models | **18** | measured: `crates/model/src/models.rs` |
-| Sample labs | **19** | measured: `crates/engine/src/sample.rs` |
-| Tests | **231** | measured: `cargo test --workspace` |
-| **Ready for real work** (weighted) | **~76%** | estimated; written weights below (75.8 computed) |
+| Engine commands | **80** | measured: `crates/engine/src/catalog.rs` |
+| Console grammar entries | **558** across 22 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
+| Device models | **19** | measured: `crates/model/src/models.rs` |
+| Sample labs | **20** | measured: `crates/engine/src/sample.rs` |
+| Tests | **246** | measured: `cargo test --workspace` |
+| **Ready for real work** (weighted) | **~78%** | estimated; written weights below (77.9 computed) |
 | **CCNA 1 student** (Introduction to Networks) | **~86%** | estimated; [method](#audiences) |
 | **CCNA 2 student** (Switching, Routing and Wireless Essentials) | **~90%** | estimated; [method](#audiences) |
-| **CCNA 3 student** (Enterprise Networking, Security and Automation) | **~85%** | estimated; [method](#audiences) |
+| **CCNA 3 student** (Enterprise Networking, Security and Automation) | **~87%** | estimated; [method](#audiences) |
 | **Instructor** (builds graded activities) | **~78%** | estimated; activities with checks, points, sections, hints, hidden answers, values per student, a time limit, a password lock, a wizard and a side-by-side comparison with the answer |
 | Stage | **pre-alpha** | see [Stage](#stage) |
 | Remaining to alpha | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](roadmap.md#alpha-gates) |
@@ -30,10 +30,10 @@ This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summa
 
 | Audience | Ready % | Opus 5.5 agent wall-clock hours to ~95% | Work that dominates |
 |---|---|---|---|
-| Full target (ready for real work) | ~64% | ~380–620 | More device families (ASA, IoT, modules), physical workspace |
+| Full target (ready for real work) | ~68% | ~320–520 | More device families (modules, IoT, phones), depth everywhere |
 | CCNA 1 student | ~86% | ~12–25 | PDU details layout and a few host apps (text editor, terminal) |
 | CCNA 2 student | ~90% | ~15–30 | Console polish, CCMP and roaming (8–14 h) |
-| CCNA 3 student | ~85% | ~30–55 | Automation APIs, the IKE exchange on the wire, QoS queuing with congestion |
+| CCNA 3 student | ~87% | ~30–55 | Automation APIs, the IKE exchange on the wire, QoS queuing with congestion |
 | Instructor | ~78% | ~15–25 | Translated activity texts, an answer-network view |
 
 Each student tier is mostly a superset of the one before. Hours are wall-clock for one agent;
@@ -67,10 +67,10 @@ Weights reflect how much of a typical CCNA lab session each area carries.
 | Security (ACLs, NAT, SSH, passwords, AAA, PPP authentication) | 8 | 78% | 6.2 | [protocol-parity.md](protocol-parity.md#security) | 25–40 |
 | WAN, cabling and wireless | 6 | 78% | 4.7 | [hardware-parity.md](hardware-parity.md) | 35–55 |
 | Simulation mode (event list, PDU details, filters, complex PDUs) | 8 | 70% | 5.6 | [ui-parity.md](ui-parity.md) | 22–35 |
-| Workspace and windows (canvas, device tabs, physical view, drawing) | 10 | 65% | 6.5 | [ui-parity.md](ui-parity.md) | 38–56 |
+| Workspace and windows (canvas, device tabs, physical view, drawing) | 10 | 78% | 7.8 | [ui-parity.md](ui-parity.md) | 18–30 |
 | Teaching (activities, scoring, instructions, languages) | 8 | 80% | 6.4 | [gaps.md](gaps.md) | 30–50 |
-| Device families and hardware (models, modules, ASA, IoT) | 5 | 25% | 1.3 | [hardware-parity.md](hardware-parity.md) | 80–120 |
-| **Total** | **100** | | **75.8** | | **~550–880** |
+| Device families and hardware (models, modules, firewalls, IoT) | 5 | 40% | 2.0 | [hardware-parity.md](hardware-parity.md) | 65–100 |
+| **Total** | **100** | | **77.9** | | **~550–880** |
 
 ## Audiences
 
@@ -105,6 +105,7 @@ misses commands students meet in the first labs. Alpha gates are in
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Physical view: workspace 65% → 78%; firewall: device families 25% → 40%, CCNA 3 ~85% → ~87%; total 75.8 → 77.9; counts measured again (80 commands, 558 grammar entries across 22 modes, 19 models, 20 samples). |
 | 2026-10-30 | minor | WLC and 802.11: WAN/cabling/wireless 62% → 78%, CCNA 2 ~84% → ~90%; QoS: layer 3 83% → 85%, CCNA 3 ~80% → ~85%; total 74.5 → 75.8; counts measured again (68 commands, 516 grammar entries across 21 modes, 18 models, 19 samples). |
 | 2026-10-30 | minor | SNMP traps and v3, mail relay: services 86% → 92%, total 74.0 → 74.5. |
 | 2026-10-30 | minor | File ▸ Print: workspace 63% → 65%, total 73.8 → 74.0. |

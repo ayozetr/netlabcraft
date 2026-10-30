@@ -17,6 +17,7 @@ column). Commands accept either: `device.add {"model": "Router 3GE"}` or `{"mode
 | Router 2GE | `Router-2` | 1941, 2901, ISR 4321 | `GigabitEthernet0/0–0/1` | A 4321 names its ports `0/0/0–0/0/1`. |
 | Router 3GE | `Router-3` | 2911, ISR 4331 | `GigabitEthernet0/0–0/2` | The usual CCNA router. A 4331 names its ports `0/0/0–0/0/2`. |
 | Router 4GE | `Router-4` | Routers with four Gigabit ports | `GigabitEthernet0/0–0/3` | |
+| Firewall 5GE | `Firewall-5` | ASA 5506-X | `GigabitEthernet1/1–1/5` | Firewall commands (`nameif`, `security-level`, object NAT). A 5506-X has eight ports (`1/1–1/8`): use the first five. |
 | Router 2GE+2S | `Router-WAN` | 1941 or 2911 with a 2-port serial card (HWIC-2T), ISR 4321 with a serial NIM | `GigabitEthernet0/0–0/1`, `Serial0/0/0–0/0/1` | Serial ports are fitted from the start. |
 | Switch 8FE | `Switch-8` | Small 8-port access switches | `FastEthernet0/1–0/8`, `GigabitEthernet0/1` | |
 | Switch 24FE | `Switch-24` | 2960-24TT | `FastEthernet0/1–0/24`, `GigabitEthernet0/1–0/2` | The usual CCNA switch. |
@@ -43,4 +44,5 @@ independent project, not affiliated with or endorsed by Cisco.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Firewall 5GE. |
 | 2026-10-30 | major | Created: which PacketCraft model to place for each model course labs name. |

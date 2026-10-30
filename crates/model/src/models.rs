@@ -72,7 +72,7 @@ pub static MODELS: &[Model] = &[
     Model {
         id: "Firewall-5",
         kind: DeviceKind::Router,
-        label: "Firewall-5",
+        label: "Firewall 5GE",
         description: "Stateful firewall with 5 Gigabit Ethernet ports: named interfaces with security levels, access rules, object NAT and a DHCP server",
         ports: &[run("GigabitEthernet1/", 1, 5)],
     },
