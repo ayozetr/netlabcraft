@@ -342,3 +342,125 @@ fn ip_mtu_and_mss_on_a_tunnel_by_typing() {
     let run = lab.run(r1, "show running-config interface tunnel 0");
     assert!(run.contains(" ip mtu 1000") && run.contains(" ip tcp adjust-mss 960"), "{run}");
 }
+
+// ---- IKEv2 ----
+
+fn ikev2_config(acl: &str, peer: &str, key: &str) -> String {
+    format!(
+        "conf t
+access-list 110 permit ip {acl}
+crypto ikev2 proposal PROP
+encryption aes-cbc-256 aes-cbc-128
+integrity sha256 sha1
+group 14
+exit
+crypto ikev2 policy POL
+proposal PROP
+exit
+crypto ikev2 keyring KR
+peer SITE
+address {peer}
+pre-shared-key {key}
+exit
+exit
+crypto ikev2 profile PROF
+match identity remote address {peer} 255.255.255.255
+authentication remote pre-share
+authentication local pre-share
+keyring local KR
+exit
+crypto ipsec transform-set TS esp-aes esp-sha-hmac
+exit
+crypto map VPN 10 ipsec-isakmp
+set peer {peer}
+set transform-set TS
+set ikev2-profile PROF
+match address 110
+exit
+int g0/1
+crypto map VPN
+end"
+    )
+}
+
+#[test]
+fn ikev2_site_to_site_by_typing() {
+    let (mut lab, r1, isp, r2, a) = super::two_sites();
+    lab.run(r1, &ikev2_config("192.168.1.0 0.0.0.255 192.168.2.0 0.0.0.255", "198.51.100.1", "v2secret"));
+    lab.run(r2, &ikev2_config("192.168.2.0 0.0.0.255 192.168.1.0 0.0.0.255", "203.0.113.1", "v2secret"));
+    lab.sim.clear_trace();
+    let ping = ping_settled(&mut lab, a, "192.168.2.10");
+    assert!(ping.contains("4 answered"), "{ping}");
+    // On the wire: IKE_SA_INIT in the clear, IKE_AUTH inside an SK payload, then ESP.
+    let ike: Vec<String> = lab.sim.trace().iter().filter(|e| e.summary.contains("IKEv2")).map(|e| e.summary.clone()).collect();
+    assert!(ike.iter().any(|s| s.contains("IKEv2 IKE_SA_INIT request #0 [SA, KE, Nonce]")), "{ike:#?}");
+    assert!(ike.iter().any(|s| s.contains("IKEv2 IKE_SA_INIT response #0 [SA, KE, Nonce]")), "{ike:#?}");
+    assert!(ike.iter().any(|s| s.contains("IKEv2 IKE_AUTH request #1 [SK]")), "{ike:#?}");
+    assert!(ike.iter().any(|s| s.contains("IKEv2 IKE_AUTH response #1 [SK]")), "{ike:#?}");
+    assert!(lab.sim.trace().iter().filter(|e| e.to.device == isp).all(|e| !(e.summary.starts_with("ICMP") && e.summary.contains("192.168."))));
+    let sa = lab.run(r1, "show crypto ikev2 sa");
+    assert!(sa.contains("Peer 198.51.100.1 (local 203.0.113.1), this router started it, established"), "{sa}");
+    assert!(sa.contains("AES-CBC-256") && sa.contains("PRF HMAC-SHA256") && sa.contains("DH group 14") && sa.contains("Profile: PROF"), "{sa}");
+    assert!(lab.run(r2, "show crypto ikev2 sa").contains("the peer started it, established"));
+    let ipsec = lab.run(r1, "show crypto ipsec sa");
+    assert!(ipsec.contains("Outbound ESP SPI 0x") && count_after(&ipsec, "decapsulated ") >= 3, "{ipsec}");
+    assert!(lab.run(r1, "show logging").contains("IKEv2 with 198.51.100.1: IKE_SA_INIT and IKE_AUTH complete"));
+    // Reports and the configuration round trip.
+    assert!(
+        lab.run(r1, "show crypto ikev2 proposal").contains("Proposal PROP: encryption aes-cbc-256 aes-cbc-128; integrity sha256 sha1; DH groups 14")
+    );
+    assert!(lab.run(r1, "show crypto ikev2 profile").contains("Keyring: KR"));
+    let run = lab.run(r1, "show running-config");
+    assert!(run.contains("crypto ikev2 keyring KR\n peer SITE\n  address 198.51.100.1\n  pre-shared-key v2secret\n!"), "{run}");
+    assert!(
+        run.contains("crypto map VPN 10 ipsec-isakmp\n set peer 198.51.100.1\n set transform-set TS\n match address 110\n set ikev2-profile PROF\n!"),
+        "{run}"
+    );
+    let r3 = lab.add(DeviceKind::Router);
+    lab.run(r3, "en\nconf t");
+    for l in run.lines().filter(|l| !l.starts_with('!') && !l.starts_with("hostname")) {
+        lab.try_run(r3, l);
+    }
+    assert_eq!(lab.t.device(r3).unwrap().crypto, lab.t.device(r1).unwrap().crypto);
+}
+
+fn count_after(text: &str, what: &str) -> u64 {
+    text.split(what).nth(1).and_then(|t| t.trim().split(|c: char| !c.is_ascii_digit()).next()).and_then(|n| n.parse().ok()).unwrap_or(0)
+}
+
+#[test]
+fn ikev2_mismatches_are_refused_on_the_wire() {
+    // Different keys: the responder's AUTH check fails.
+    let (mut lab, r1, _isp, r2, a) = super::two_sites();
+    lab.run(r1, &ikev2_config("192.168.1.0 0.0.0.255 192.168.2.0 0.0.0.255", "198.51.100.1", "one"));
+    lab.run(r2, &ikev2_config("192.168.2.0 0.0.0.255 192.168.1.0 0.0.0.255", "203.0.113.1", "two"));
+    lab.sim.clear_trace();
+    assert!(ping_settled(&mut lab, a, "192.168.2.10").contains(" 0 answered"));
+    let sa = lab.run(r1, "show crypto ikev2 sa");
+    assert!(sa.contains("AUTHENTICATION_FAILED"), "{sa}");
+    assert!(lab.run(r2, "show crypto ikev2 sa").contains("does not match this router's pre-shared key"));
+    // No proposal in common: refused at IKE_SA_INIT.
+    let (mut lab, r1, _isp, r2, a) = super::two_sites();
+    lab.run(r1, &ikev2_config("192.168.1.0 0.0.0.255 192.168.2.0 0.0.0.255", "198.51.100.1", "k"));
+    lab.run(r2, &ikev2_config("192.168.2.0 0.0.0.255 192.168.1.0 0.0.0.255", "203.0.113.1", "k"));
+    lab.run(r2, "conf t\ncrypto ikev2 proposal PROP\ngroup 19\nend");
+    lab.sim.clear_trace();
+    assert!(ping_settled(&mut lab, a, "192.168.2.10").contains(" 0 answered"));
+    assert!(lab.sim.trace().iter().any(|e| e.summary.contains("IKEv2 IKE_SA_INIT response #0 [Notify]")));
+    assert!(lab.run(r1, "show crypto ikev2 sa").contains("NO_PROPOSAL_CHOSEN"));
+    // Traffic selectors the peer doesn't protect.
+    let (mut lab, r1, _isp, r2, a) = super::two_sites();
+    lab.run(r1, &ikev2_config("192.168.1.0 0.0.0.255 192.168.2.0 0.0.0.255", "198.51.100.1", "k"));
+    lab.run(r2, &ikev2_config("10.9.9.0 0.0.0.255 10.8.8.0 0.0.0.255", "203.0.113.1", "k"));
+    assert!(ping_settled(&mut lab, a, "192.168.2.10").contains(" 0 answered"));
+    assert!(lab.run(r1, "show crypto ikev2 sa").contains("TS_UNACCEPTABLE"));
+    let _ = r2;
+    // Configuration mistakes explain themselves.
+    lab.run(r1, "conf t\ncrypto ikev2 proposal P2");
+    assert!(lab.try_run(r1, "encryption rot13").contains("not a cipher"));
+    assert!(lab.try_run(r1, "group 99").contains("not a group"));
+    lab.run(r1, "exit\ncrypto ikev2 profile P2");
+    assert!(lab.try_run(r1, "authentication local rsa-sig").contains("pre-share"));
+    lab.run(r1, "end");
+    assert_eq!(lab.prompt(r1), "R1#");
+}

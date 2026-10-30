@@ -14,6 +14,7 @@ use crate::grammar::{self, Id, Modes, ParseError};
 use crate::{host, render};
 
 pub(crate) mod firewall;
+pub(crate) mod ikev2;
 pub(crate) mod l2sec;
 pub(crate) mod mgmt;
 pub(crate) mod qos;
@@ -106,6 +107,16 @@ pub enum Mode {
     InspectPolicyClass(String, String),
     /// `R1(config-sec-zone-pair)#`: the zone pair's name.
     ZonePair(String),
+    /// `R1(config-ikev2-proposal)#`
+    Ikev2Proposal(String),
+    /// `R1(config-ikev2-policy)#`
+    Ikev2Policy(String),
+    /// `R1(config-ikev2-keyring)#`
+    Ikev2Keyring(String),
+    /// `R1(config-ikev2-keyring-peer)#`: the keyring's and the peer's names.
+    Ikev2Peer(String, String),
+    /// `R1(config-ikev2-profile)#`
+    Ikev2Profile(String),
 }
 
 impl Mode {
@@ -143,6 +154,11 @@ impl Mode {
             Mode::InspectPolicy(_) => Modes::INSPECT_POLICY,
             Mode::InspectPolicyClass(..) => Modes::INSPECT_PCLASS,
             Mode::ZonePair(_) => Modes::ZONE_PAIR,
+            Mode::Ikev2Proposal(_) => Modes::IKEV2_PROPOSAL,
+            Mode::Ikev2Policy(_) => Modes::IKEV2_POLICY,
+            Mode::Ikev2Keyring(_) => Modes::IKEV2_KEYRING,
+            Mode::Ikev2Peer(..) => Modes::IKEV2_PEER,
+            Mode::Ikev2Profile(_) => Modes::IKEV2_PROFILE,
         }
     }
 }
@@ -468,6 +484,11 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::InspectPolicy(_) => format!("{n}(config-pmap)#"),
         Mode::InspectPolicyClass(..) => format!("{n}(config-pmap-c)#"),
         Mode::ZonePair(_) => format!("{n}(config-sec-zone-pair)#"),
+        Mode::Ikev2Proposal(_) => format!("{n}(config-ikev2-proposal)#"),
+        Mode::Ikev2Policy(_) => format!("{n}(config-ikev2-policy)#"),
+        Mode::Ikev2Keyring(_) => format!("{n}(config-ikev2-keyring)#"),
+        Mode::Ikev2Peer(..) => format!("{n}(config-ikev2-keyring-peer)#"),
+        Mode::Ikev2Profile(_) => format!("{n}(config-ikev2-profile)#"),
     }
 }
 
@@ -742,6 +763,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::InspectPolicy(_)
                 | Mode::InspectPolicyClass(..)
                 | Mode::ZonePair(_)
+                | Mode::Ikev2Proposal(_)
+                | Mode::Ikev2Policy(_)
+                | Mode::Ikev2Keyring(_)
+                | Mode::Ikev2Peer(..)
+                | Mode::Ikev2Profile(_)
         )
         && let Ok(r) = grammar::resolve(&words, Modes::CONFIG, dbits)
     {
@@ -803,7 +829,12 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Zone(_)
                 | Mode::InspectClass(_)
                 | Mode::InspectPolicy(_)
-                | Mode::ZonePair(_) => Mode::Config,
+                | Mode::ZonePair(_)
+                | Mode::Ikev2Proposal(_)
+                | Mode::Ikev2Policy(_)
+                | Mode::Ikev2Keyring(_)
+                | Mode::Ikev2Profile(_) => Mode::Config,
+                Mode::Ikev2Peer(ref k, _) => Mode::Ikev2Keyring(k.clone()),
                 // A class inside a policy map goes back to the policy map.
                 Mode::PolicyClass(ref p, _) => Mode::PolicyMap(p.clone()),
                 Mode::InspectPolicyClass(ref p, _) => Mode::InspectPolicy(p.clone()),
@@ -1833,6 +1864,33 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::NoIpMtu
         | Id::TcpAdjustMss
         | Id::NoTcpAdjustMss => security::command(&mut c, spec.id, &args),
+        Id::Ikev2Proposal
+        | Id::NoIkev2Proposal
+        | Id::Ikev2Policy
+        | Id::NoIkev2Policy
+        | Id::Ikev2Keyring
+        | Id::NoIkev2Keyring
+        | Id::Ikev2Profile
+        | Id::NoIkev2Profile
+        | Id::Ikev2Encryption
+        | Id::Ikev2Integrity
+        | Id::Ikev2Group
+        | Id::Ikev2PolicyProposal
+        | Id::Ikev2PolicyMatchLocal
+        | Id::Ikev2Peer
+        | Id::NoIkev2Peer
+        | Id::Ikev2PeerAddress
+        | Id::Ikev2PeerKey
+        | Id::Ikev2MatchRemote
+        | Id::Ikev2IdentityLocal
+        | Id::Ikev2AuthLocal
+        | Id::Ikev2AuthRemote
+        | Id::Ikev2ProfileKeyring
+        | Id::CryptoSetIkev2Profile
+        | Id::NoCryptoSetIkev2Profile
+        | Id::ShowCryptoIkev2Sa
+        | Id::ShowCryptoIkev2Proposal
+        | Id::ShowCryptoIkev2Profile => ikev2::command(&mut c, spec.id, &args),
         Id::ClassMap
         | Id::NoClassMap
         | Id::PolicyMap

@@ -77,6 +77,16 @@ impl Modes {
     pub const INSPECT_PCLASS: Modes = Modes(1 << 43);
     /// `zone-pair security NAME …`.
     pub const ZONE_PAIR: Modes = Modes(1 << 44);
+    /// `crypto ikev2 proposal NAME`.
+    pub const IKEV2_PROPOSAL: Modes = Modes(1 << 45);
+    /// `crypto ikev2 policy NAME`.
+    pub const IKEV2_POLICY: Modes = Modes(1 << 46);
+    /// `crypto ikev2 keyring NAME`.
+    pub const IKEV2_KEYRING: Modes = Modes(1 << 47);
+    /// `peer NAME` in a keyring.
+    pub const IKEV2_PEER: Modes = Modes(1 << 48);
+    /// `crypto ikev2 profile NAME`.
+    pub const IKEV2_PROFILE: Modes = Modes(1 << 49);
     /// Every command mode, either device.
     pub const ANY_MODE: Modes = Modes(
         63 | 256
@@ -104,7 +114,12 @@ impl Modes {
             | (1 << 41)
             | (1 << 42)
             | (1 << 43)
-            | (1 << 44),
+            | (1 << 44)
+            | (1 << 45)
+            | (1 << 46)
+            | (1 << 47)
+            | (1 << 48)
+            | (1 << 49),
     );
     pub const BOTH: Modes = Modes(192);
 
@@ -834,6 +849,34 @@ pub enum Id {
     NoIpMtu,
     TcpAdjustMss,
     NoTcpAdjustMss,
+    // IKEv2.
+    Ikev2Proposal,
+    NoIkev2Proposal,
+    Ikev2Policy,
+    NoIkev2Policy,
+    Ikev2Keyring,
+    NoIkev2Keyring,
+    Ikev2Profile,
+    NoIkev2Profile,
+    Ikev2Encryption,
+    Ikev2Integrity,
+    Ikev2Group,
+    Ikev2PolicyProposal,
+    Ikev2PolicyMatchLocal,
+    Ikev2Peer,
+    NoIkev2Peer,
+    Ikev2PeerAddress,
+    Ikev2PeerKey,
+    Ikev2MatchRemote,
+    Ikev2IdentityLocal,
+    Ikev2AuthLocal,
+    Ikev2AuthRemote,
+    Ikev2ProfileKeyring,
+    CryptoSetIkev2Profile,
+    NoCryptoSetIkev2Profile,
+    ShowCryptoIkev2Sa,
+    ShowCryptoIkev2Proposal,
+    ShowCryptoIkev2Profile,
 }
 
 use Tok::{Arg, K, Rest};
@@ -860,7 +903,10 @@ const SUBMODES: Modes = Modes::IF
     .or(Modes::LOOPBACK)
     .or(SEC_MODES);
 /// The zone firewall's sub-modes.
-const SEC_MODES: Modes = Modes::ZONE.or(Modes::INSPECT_CLASS).or(Modes::INSPECT_POLICY).or(Modes::INSPECT_PCLASS).or(Modes::ZONE_PAIR);
+const SEC_MODES: Modes =
+    Modes::ZONE.or(Modes::INSPECT_CLASS).or(Modes::INSPECT_POLICY).or(Modes::INSPECT_PCLASS).or(Modes::ZONE_PAIR).or(IKEV2_MODES);
+/// The IKEv2 sub-modes.
+const IKEV2_MODES: Modes = Modes::IKEV2_PROPOSAL.or(Modes::IKEV2_POLICY).or(Modes::IKEV2_KEYRING).or(Modes::IKEV2_PEER).or(Modes::IKEV2_PROFILE);
 /// Where zones, inspection, IP MTU and MSS clamping are set: routed ports, subinterfaces, tunnels.
 const SEC_IFS: Modes = IFS.or(Modes::TUNNEL);
 /// Routers, switches and the firewall.
@@ -3042,6 +3088,88 @@ pub static SPECS: &[Spec] = &[
     ),
     spec!(NoTcpAdjustMss, SEC_IFS, Modes::ROUTER, [K("no"), K("ip"), K("tcp"), K("adjust-mss")], "Leave TCP SYNs alone"),
     spec!(NoTcpAdjustMss, SEC_IFS, Modes::ROUTER, [K("no"), K("ip"), K("tcp"), K("adjust-mss"), Arg("<500-1460>")], "Leave TCP SYNs alone"),
+    // IKEv2.
+    spec!(Ikev2Proposal, Modes::CONFIG, Modes::ROUTER, [K("crypto"), K("ikev2"), K("proposal"), Arg("NAME")], "Define or edit an IKEv2 proposal"),
+    spec!(NoIkev2Proposal, Modes::CONFIG, Modes::ROUTER, [K("no"), K("crypto"), K("ikev2"), K("proposal"), Arg("NAME")], "Delete an IKEv2 proposal"),
+    spec!(Ikev2Policy, Modes::CONFIG, Modes::ROUTER, [K("crypto"), K("ikev2"), K("policy"), Arg("NAME")], "Define or edit an IKEv2 policy"),
+    spec!(NoIkev2Policy, Modes::CONFIG, Modes::ROUTER, [K("no"), K("crypto"), K("ikev2"), K("policy"), Arg("NAME")], "Delete an IKEv2 policy"),
+    spec!(Ikev2Keyring, Modes::CONFIG, Modes::ROUTER, [K("crypto"), K("ikev2"), K("keyring"), Arg("NAME")], "Define or edit an IKEv2 keyring"),
+    spec!(NoIkev2Keyring, Modes::CONFIG, Modes::ROUTER, [K("no"), K("crypto"), K("ikev2"), K("keyring"), Arg("NAME")], "Delete an IKEv2 keyring"),
+    spec!(Ikev2Profile, Modes::CONFIG, Modes::ROUTER, [K("crypto"), K("ikev2"), K("profile"), Arg("NAME")], "Define or edit an IKEv2 profile"),
+    spec!(NoIkev2Profile, Modes::CONFIG, Modes::ROUTER, [K("no"), K("crypto"), K("ikev2"), K("profile"), Arg("NAME")], "Delete an IKEv2 profile"),
+    spec!(
+        Ikev2Encryption,
+        Modes::IKEV2_PROPOSAL,
+        Modes::ROUTER,
+        [K("encryption"), Rest("{aes-cbc-128|aes-cbc-192|aes-cbc-256|3des} …")],
+        "Ciphers the proposal offers"
+    ),
+    spec!(
+        Ikev2Integrity,
+        Modes::IKEV2_PROPOSAL,
+        Modes::ROUTER,
+        [K("integrity"), Rest("{sha1|sha256|md5} …")],
+        "Integrity algorithms the proposal offers"
+    ),
+    spec!(
+        Ikev2Group,
+        Modes::IKEV2_PROPOSAL,
+        Modes::ROUTER,
+        [K("group"), Rest("{2|5|14|15|16|19|20} …")],
+        "Diffie-Hellman groups the proposal offers"
+    ),
+    spec!(Ikev2PolicyProposal, Modes::IKEV2_POLICY, Modes::ROUTER, [K("proposal"), Arg("NAME")], "Offer this proposal"),
+    spec!(
+        Ikev2PolicyMatchLocal,
+        Modes::IKEV2_POLICY,
+        Modes::ROUTER,
+        [K("match"), K("address"), K("local"), Arg("A.B.C.D")],
+        "Use the policy for this local address only"
+    ),
+    spec!(Ikev2Peer, Modes::IKEV2_KEYRING.or(Modes::IKEV2_PEER), Modes::ROUTER, [K("peer"), Arg("NAME")], "Define or edit a peer's key"),
+    spec!(
+        NoIkev2Peer,
+        Modes::IKEV2_KEYRING.or(Modes::IKEV2_PEER),
+        Modes::ROUTER,
+        [K("no"), K("peer"), Arg("NAME")],
+        "Delete a peer from the keyring"
+    ),
+    spec!(Ikev2PeerAddress, Modes::IKEV2_PEER, Modes::ROUTER, [K("address"), Arg("A.B.C.D")], "The peer's address"),
+    spec!(Ikev2PeerKey, Modes::IKEV2_PEER, Modes::ROUTER, [K("pre-shared-key"), Rest("[local|remote] KEY")], "The key shared with the peer"),
+    spec!(
+        Ikev2MatchRemote,
+        Modes::IKEV2_PROFILE,
+        Modes::ROUTER,
+        [K("match"), K("identity"), K("remote"), K("address"), Rest("A.B.C.D [MASK]")],
+        "Peers this profile is for"
+    ),
+    spec!(
+        Ikev2IdentityLocal,
+        Modes::IKEV2_PROFILE,
+        Modes::ROUTER,
+        [K("identity"), K("local"), K("address"), Arg("A.B.C.D")],
+        "The identity this router presents"
+    ),
+    spec!(
+        Ikev2AuthLocal,
+        Modes::IKEV2_PROFILE,
+        Modes::ROUTER,
+        [K("authentication"), K("local"), Arg("pre-share")],
+        "How this router proves who it is"
+    ),
+    spec!(
+        Ikev2AuthRemote,
+        Modes::IKEV2_PROFILE,
+        Modes::ROUTER,
+        [K("authentication"), K("remote"), Arg("pre-share")],
+        "How the peer proves who it is"
+    ),
+    spec!(Ikev2ProfileKeyring, Modes::IKEV2_PROFILE, Modes::ROUTER, [K("keyring"), K("local"), Arg("NAME")], "The keyring holding the keys"),
+    spec!(CryptoSetIkev2Profile, Modes::CRYPTO_MAP, Modes::ROUTER, [K("set"), K("ikev2-profile"), Arg("NAME")], "Negotiate this entry with IKEv2"),
+    spec!(NoCryptoSetIkev2Profile, Modes::CRYPTO_MAP, Modes::ROUTER, [K("no"), K("set"), K("ikev2-profile")], "Back to IKEv1"),
+    spec!(ShowCryptoIkev2Sa, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("ikev2"), K("sa")], "IKEv2 security associations"),
+    spec!(ShowCryptoIkev2Proposal, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("ikev2"), K("proposal")], "IKEv2 proposals"),
+    spec!(ShowCryptoIkev2Profile, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("ikev2"), K("profile")], "IKEv2 profiles"),
 ];
 
 /// Why a line didn't parse. Positions are word indexes.
@@ -3330,6 +3458,11 @@ mod tests {
                 Modes::INSPECT_POLICY,
                 Modes::INSPECT_PCLASS,
                 Modes::ZONE_PAIR,
+                Modes::IKEV2_PROPOSAL,
+                Modes::IKEV2_POLICY,
+                Modes::IKEV2_KEYRING,
+                Modes::IKEV2_PEER,
+                Modes::IKEV2_PROFILE,
             ]
             .into_iter()
             .find(|m| s.modes.has(*m))

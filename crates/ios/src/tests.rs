@@ -372,6 +372,9 @@ fn every_command_survives_hostile_arguments() {
                     "en\nconf t\nclass-map type inspect C",
                     "en\nconf t\npolicy-map type inspect P\nclass class-default",
                     "en\nconf t\nzone security Z\nexit\nzone-pair security ZP source Z destination self",
+                    "en\nconf t\ncrypto ikev2 proposal P",
+                    "en\nconf t\ncrypto ikev2 keyring K\npeer X",
+                    "en\nconf t\ncrypto ikev2 profile F",
                 ] {
                     for l in setup.lines() {
                         lab.try_run(d, l);

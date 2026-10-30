@@ -968,6 +968,33 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `ip tcp adjust-mss <500-1460>` | interface, subinterface | router | Lower the MSS TCP SYNs crossing this interface announce |
 | `no ip tcp adjust-mss` | interface, subinterface | router | Leave TCP SYNs alone |
 | `no ip tcp adjust-mss <500-1460>` | interface, subinterface | router | Leave TCP SYNs alone |
+| `crypto ikev2 proposal NAME` | config | router | Define or edit an IKEv2 proposal |
+| `no crypto ikev2 proposal NAME` | config | router | Delete an IKEv2 proposal |
+| `crypto ikev2 policy NAME` | config | router | Define or edit an IKEv2 policy |
+| `no crypto ikev2 policy NAME` | config | router | Delete an IKEv2 policy |
+| `crypto ikev2 keyring NAME` | config | router | Define or edit an IKEv2 keyring |
+| `no crypto ikev2 keyring NAME` | config | router | Delete an IKEv2 keyring |
+| `crypto ikev2 profile NAME` | config | router | Define or edit an IKEv2 profile |
+| `no crypto ikev2 profile NAME` | config | router | Delete an IKEv2 profile |
+| `encryption {aes-cbc-128\|aes-cbc-192\|aes-cbc-256\|3des} …` |  | router | Ciphers the proposal offers |
+| `integrity {sha1\|sha256\|md5} …` |  | router | Integrity algorithms the proposal offers |
+| `group {2\|5\|14\|15\|16\|19\|20} …` |  | router | Diffie-Hellman groups the proposal offers |
+| `proposal NAME` |  | router | Offer this proposal |
+| `match address local A.B.C.D` |  | router | Use the policy for this local address only |
+| `peer NAME` |  | router | Define or edit a peer's key |
+| `no peer NAME` |  | router | Delete a peer from the keyring |
+| `address A.B.C.D` |  | router | The peer's address |
+| `pre-shared-key [local\|remote] KEY` |  | router | The key shared with the peer |
+| `match identity remote address A.B.C.D [MASK]` |  | router | Peers this profile is for |
+| `identity local address A.B.C.D` |  | router | The identity this router presents |
+| `authentication local pre-share` |  | router | How this router proves who it is |
+| `authentication remote pre-share` |  | router | How the peer proves who it is |
+| `keyring local NAME` |  | router | The keyring holding the keys |
+| `set ikev2-profile NAME` |  | router | Negotiate this entry with IKEv2 |
+| `no set ikev2-profile` |  | router | Back to IKEv1 |
+| `show crypto ikev2 sa` | user, privileged | router | IKEv2 security associations |
+| `show crypto ikev2 proposal` | user, privileged | router | IKEv2 proposals |
+| `show crypto ikev2 profile` | user, privileged | router | IKEv2 profiles |
 
 ## Host shell (PCs and servers)
 

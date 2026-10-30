@@ -2380,6 +2380,7 @@ fn vpn_config(s: &mut String, d: &Device) {
     if !c.transform_sets.is_empty() {
         let _ = writeln!(s, "!");
     }
+    crate::exec::ikev2::running_config(s, d);
     for e in &c.maps {
         let _ = writeln!(s, "crypto map {} {} ipsec-isakmp", e.map, e.seq);
         if let Some(p) = e.peer {
@@ -2390,6 +2391,9 @@ fn vpn_config(s: &mut String, d: &Device) {
         }
         if let Some(a) = &e.acl {
             let _ = writeln!(s, " match address {a}");
+        }
+        if let Some(p) = &e.ikev2_profile {
+            let _ = writeln!(s, " set ikev2-profile {p}");
         }
         let _ = writeln!(s, "!");
     }

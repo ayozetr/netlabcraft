@@ -1,7 +1,6 @@
-//! AES-128 (FIPS 197, encryption direction only) and the CCM mode built on it (RFC 3610, as
-//! IEEE 802.11 CCMP and other protocols use it: counter-mode encryption with a CBC-MAC).
-//!
-//! Only the forward cipher is needed: CCM decrypts by running the same counter keystream.
+//! AES-128 (FIPS 197) with the CBC mode (NIST SP 800-38A, as IPsec's ESP and IKEv2 use it),
+//! and the CCM mode (RFC 3610, as IEEE 802.11 CCMP and other protocols use it: counter-mode
+//! encryption with a CBC-MAC; it decrypts by running the same counter keystream).
 //! Written from the published specifications; checked against their test vectors.
 
 /// The AES S-box, generated from its definition (the multiplicative inverse in GF(2^8)
@@ -108,6 +107,92 @@ fn add(s: &mut [u8; 16], k: &[u8; 16]) {
     for (a, b) in s.iter_mut().zip(k) {
         *a ^= b;
     }
+}
+
+/// The inverse S-box, worked out from the S-box.
+const INV_SBOX: [u8; 256] = invert(&SBOX);
+
+const fn invert(s: &[u8; 256]) -> [u8; 256] {
+    let mut inv = [0u8; 256];
+    let mut i = 0;
+    while i < 256 {
+        inv[s[i] as usize] = i as u8;
+        i += 1;
+    }
+    inv
+}
+
+/// Multiplication in GF(2^8) (for InvMixColumns).
+fn gmul(mut a: u8, mut b: u8) -> u8 {
+    let mut p = 0;
+    while b != 0 {
+        if b & 1 != 0 {
+            p ^= a;
+        }
+        a = xtime(a);
+        b >>= 1;
+    }
+    p
+}
+
+impl Aes128 {
+    /// Decrypts one 16-byte block (the inverse cipher of FIPS 197 §5.3).
+    pub fn decrypt(&self, block: &[u8; 16]) -> [u8; 16] {
+        let mut s = *block;
+        add(&mut s, &self.rk[10]);
+        for round in (0..10).rev() {
+            // InvShiftRows: row r turns right by r.
+            let o = s;
+            for c in 0..4 {
+                for r in 0..4 {
+                    s[r + 4 * ((c + r) % 4)] = o[r + 4 * c];
+                }
+            }
+            for b in s.iter_mut() {
+                *b = INV_SBOX[*b as usize];
+            }
+            add(&mut s, &self.rk[round]);
+            if round != 0 {
+                for c in 0..4 {
+                    let a = [s[4 * c], s[4 * c + 1], s[4 * c + 2], s[4 * c + 3]];
+                    for r in 0..4 {
+                        s[4 * c + r] = gmul(a[r], 14) ^ gmul(a[(r + 1) % 4], 11) ^ gmul(a[(r + 2) % 4], 13) ^ gmul(a[(r + 3) % 4], 9);
+                    }
+                }
+            }
+        }
+        s
+    }
+}
+
+/// CBC encryption (NIST SP 800-38A §6.2) of whole blocks; a ragged tail is left out.
+pub fn cbc_encrypt(aes: &Aes128, iv: &[u8; 16], data: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(data.len());
+    let mut prev = *iv;
+    for chunk in data.as_chunks::<16>().0 {
+        let mut b = [0u8; 16];
+        for (i, x) in b.iter_mut().enumerate() {
+            *x = chunk.get(i).copied().unwrap_or(0) ^ prev[i];
+        }
+        prev = aes.encrypt(&b);
+        out.extend_from_slice(&prev);
+    }
+    out
+}
+
+/// CBC decryption of whole blocks; a ragged tail is left out.
+pub fn cbc_decrypt(aes: &Aes128, iv: &[u8; 16], data: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(data.len());
+    let mut prev = *iv;
+    for chunk in data.as_chunks::<16>().0 {
+        let c: [u8; 16] = *chunk;
+        let p = aes.decrypt(&c);
+        for (i, x) in p.iter().enumerate() {
+            out.push(x ^ prev[i]);
+        }
+        prev = c;
+    }
+    out
 }
 
 /// CCM with a 13-byte nonce (so a 2-byte length field, L = 2) and an `M`-byte tag.
@@ -231,6 +316,28 @@ mod tests {
         let key: [u8; 16] = hex("000102030405060708090a0b0c0d0e0f").try_into().unwrap();
         let pt: [u8; 16] = hex("00112233445566778899aabbccddeeff").try_into().unwrap();
         assert_eq!(Aes128::new(&key).encrypt(&pt).to_vec(), hex("69c4e0d86a7b0430d8cdb78070b4c55a"));
+    }
+
+    #[test]
+    fn decryption_inverts_fips_197_vectors() {
+        let key: [u8; 16] = hex("000102030405060708090a0b0c0d0e0f").try_into().unwrap();
+        let ct: [u8; 16] = hex("69c4e0d86a7b0430d8cdb78070b4c55a").try_into().unwrap();
+        assert_eq!(Aes128::new(&key).decrypt(&ct).to_vec(), hex("00112233445566778899aabbccddeeff"));
+        assert_eq!((INV_SBOX[0x63], INV_SBOX[0x16]), (0x00, 0xff));
+    }
+
+    #[test]
+    fn sp_800_38a_cbc_aes128() {
+        let key: [u8; 16] = hex("2b7e151628aed2a6abf7158809cf4f3c").try_into().unwrap();
+        let iv: [u8; 16] = hex("000102030405060708090a0b0c0d0e0f").try_into().unwrap();
+        let pt = hex("6bc1bee22e409f96e93d7e117393172a ae2d8a571e03ac9c9eb76fac45af8e51
+             30c81c46a35ce411e5fbc1191a0a52ef f69f2445df4f9b17ad2b417be66c3710");
+        let ct = hex("7649abac8119b246cee98e9b12e9197d 5086cb9b507219ee95db113a917678b2
+             73bed6b8e3c1743b7116e69e22229516 3ff1caa1681fac09120eca307586e1a7");
+        let aes = Aes128::new(&key);
+        assert_eq!(cbc_encrypt(&aes, &iv, &pt), ct);
+        assert_eq!(cbc_decrypt(&aes, &iv, &ct), pt);
+        assert!(cbc_decrypt(&aes, &iv, &ct[..15]).is_empty());
     }
 
     #[test]

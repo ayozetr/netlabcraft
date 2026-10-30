@@ -20,6 +20,7 @@ pub mod dhcp6;
 pub mod dns;
 pub mod eigrp;
 pub mod ike;
+pub mod ikev2;
 pub mod ipfrag;
 pub mod ipv6;
 pub mod lacp;
@@ -602,6 +603,11 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                         Err(e) => (Protocol::Eigrp, format!("EIGRP ({e}) {route}{tag}")),
                     },
                     PROTO_UDP => match Udp::decode(&ip.payload, ip.src, ip.dst) {
+                        Ok(u)
+                            if u.dst_port == ike::ISAKMP_PORT && u.src_port == ike::ISAKMP_PORT && u.payload.get(17).is_some_and(|v| v >> 4 == 2) =>
+                        {
+                            (Protocol::Udp, ikev2::summary(&u.payload).unwrap_or_else(|| "IKEv2 (unreadable)".into()))
+                        }
                         Ok(u) if u.dst_port == ike::ISAKMP_PORT && u.src_port == ike::ISAKMP_PORT => match ike::Isakmp::decode(&u.payload) {
                             Ok(m) => {
                                 let exchange = match m.exchange {

@@ -35,6 +35,7 @@ pub mod dhcpsrv;
 pub mod eigrp;
 pub mod firewall;
 pub mod hsrp;
+pub mod ikev2;
 pub mod iot;
 pub mod l2sec;
 pub mod logcfg;
