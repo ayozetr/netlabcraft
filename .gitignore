@@ -6,3 +6,11 @@ plan/
 .DS_Store
 /.claude/
 /target-*/
+# Never commit: the reference app's labs (clean room, and coursework), captures exported while
+# testing, local environment files.
+*.pkt
+*.pka
+*.pcap
+*.pcapng
+.env
+.env.*
