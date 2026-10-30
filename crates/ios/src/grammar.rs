@@ -51,9 +51,32 @@ impl Modes {
     pub const CRYPTO_MAP: Modes = Modes(1 << 22);
     /// `crypto ipsec transform-set NAME …`.
     pub const TRANSFORM: Modes = Modes(1 << 23);
+    /// `class-map [match-all|match-any] NAME`.
+    pub const CLASS_MAP: Modes = Modes(1 << 26);
+    /// `policy-map NAME`.
+    pub const POLICY_MAP: Modes = Modes(1 << 27);
+    /// `class NAME` inside a policy map.
+    pub const POLICY_CLASS: Modes = Modes(1 << 28);
     /// Every command mode, either device.
-    pub const ANY_MODE: Modes =
-        Modes(63 | 256 | 512 | 1024 | 2048 | 4096 | 8192 | 16384 | 32768 | 65536 | 131072 | (1 << 20) | (1 << 21) | (1 << 22) | (1 << 23));
+    pub const ANY_MODE: Modes = Modes(
+        63 | 256
+            | 512
+            | 1024
+            | 2048
+            | 4096
+            | 8192
+            | 16384
+            | 32768
+            | 65536
+            | 131072
+            | (1 << 20)
+            | (1 << 21)
+            | (1 << 22)
+            | (1 << 23)
+            | (1 << 26)
+            | (1 << 27)
+            | (1 << 28),
+    );
     pub const BOTH: Modes = Modes(192);
 
     pub const fn or(self, o: Modes) -> Modes {
@@ -241,6 +264,38 @@ pub enum Id {
     ShowCryptoIsakmpPolicy,
     ShowCryptoMap,
     ClearCryptoSa,
+    // ---- QoS: class maps, policy maps, service policies ----
+    ClassMap,
+    NoClassMap,
+    PolicyMap,
+    NoPolicyMap,
+    QosMatchDscp,
+    QosMatchPrecedence,
+    QosMatchAccessGroup,
+    QosMatchAccessGroupName,
+    QosMatchProtocol,
+    QosMatchAny,
+    NoQosMatch,
+    PolicyClass,
+    NoPolicyClass,
+    QosSetDscp,
+    QosSetPrecedence,
+    NoQosSet,
+    QosPriority,
+    QosPriorityPercent,
+    NoQosPriority,
+    QosBandwidth,
+    QosBandwidthPercent,
+    NoQosBandwidth,
+    QosPolice,
+    NoQosPolice,
+    QosShape,
+    NoQosShape,
+    ServicePolicy,
+    NoServicePolicy,
+    ShowClassMap,
+    ShowPolicyMap,
+    ShowPolicyMapInterface,
     Username,
     NoUsername,
     DomainName,
@@ -479,9 +534,14 @@ const SUBMODES: Modes = Modes::IF
     .or(Modes::DHCP6)
     .or(Modes::OSPF6)
     .or(Modes::EIGRP)
-    .or(VPN_MODES);
+    .or(VPN_MODES)
+    .or(QOS_MODES);
 /// The site-to-site VPN sub-modes.
 const VPN_MODES: Modes = Modes::TUNNEL.or(Modes::ISAKMP).or(Modes::CRYPTO_MAP).or(Modes::TRANSFORM);
+/// The QoS sub-modes.
+const QOS_MODES: Modes = Modes::CLASS_MAP.or(Modes::POLICY_MAP).or(Modes::POLICY_CLASS);
+/// Where a service policy can be applied: routed interfaces, VLAN interfaces and tunnels.
+const QOS_IFS: Modes = IFS.or(Modes::SVI).or(Modes::TUNNEL);
 const IFS: Modes = Modes::IF.or(Modes::SUBIF);
 const ANY_IF: Modes = IFS.or(Modes::SVI);
 
@@ -698,6 +758,128 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowCryptoIsakmpSa, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("isakmp"), K("sa")], "IKE peers and their state"),
     spec!(ShowCryptoIsakmpPolicy, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("isakmp"), K("policy")], "IKE policies"),
     spec!(ShowCryptoIpsecSa, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("ipsec"), K("sa")], "IPsec associations and packet counts"),
+    // ---- QoS ----
+    spec!(ClassMap, Modes::CONFIG, Modes::BOTH, [K("class-map"), Rest("[match-all|match-any] NAME")], "Define or edit a traffic class"),
+    spec!(NoClassMap, Modes::CONFIG, Modes::BOTH, [K("no"), K("class-map"), Rest("[match-all|match-any] NAME")], "Delete a traffic class"),
+    spec!(PolicyMap, Modes::CONFIG, Modes::BOTH, [K("policy-map"), Arg("NAME")], "Define or edit what happens to each class"),
+    spec!(NoPolicyMap, Modes::CONFIG, Modes::BOTH, [K("no"), K("policy-map"), Arg("NAME")], "Delete a policy map"),
+    spec!(QosMatchDscp, Modes::CLASS_MAP, Modes::BOTH, [K("match"), K("dscp"), Rest("DSCP [DSCP...]")], "Packets carrying one of these DSCPs"),
+    spec!(
+        QosMatchDscp,
+        Modes::CLASS_MAP,
+        Modes::BOTH,
+        [K("match"), K("ip"), K("dscp"), Rest("DSCP [DSCP...]")],
+        "Packets carrying one of these DSCPs"
+    ),
+    spec!(
+        QosMatchPrecedence,
+        Modes::CLASS_MAP,
+        Modes::BOTH,
+        [K("match"), K("ip"), K("precedence"), Rest("<0-7> [<0-7>...]")],
+        "Packets with one of these IP precedences"
+    ),
+    spec!(
+        QosMatchPrecedence,
+        Modes::CLASS_MAP,
+        Modes::BOTH,
+        [K("match"), K("precedence"), Rest("<0-7> [<0-7>...]")],
+        "Packets with one of these IP precedences"
+    ),
+    spec!(
+        QosMatchAccessGroup,
+        Modes::CLASS_MAP,
+        Modes::BOTH,
+        [K("match"), K("access-group"), Arg("<1-2699>")],
+        "Packets a numbered access list permits"
+    ),
+    spec!(
+        QosMatchAccessGroupName,
+        Modes::CLASS_MAP,
+        Modes::BOTH,
+        [K("match"), K("access-group"), K("name"), Arg("NAME")],
+        "Packets a named access list permits"
+    ),
+    spec!(
+        QosMatchProtocol,
+        Modes::CLASS_MAP,
+        Modes::BOTH,
+        [K("match"), K("protocol"), Arg("{icmp|tcp|udp|http|https|dns|telnet|ssh|ftp|smtp|pop3|snmp|tftp|ntp}")],
+        "Packets of a protocol (applications by their well-known port)"
+    ),
+    spec!(QosMatchAny, Modes::CLASS_MAP, Modes::BOTH, [K("match"), K("any")], "Every packet"),
+    spec!(NoQosMatch, Modes::CLASS_MAP, Modes::BOTH, [K("no"), K("match"), Rest("CRITERION")], "Remove a match line"),
+    spec!(
+        PolicyClass,
+        Modes::POLICY_MAP.or(Modes::POLICY_CLASS),
+        Modes::BOTH,
+        [K("class"), Arg("{NAME|class-default}")],
+        "Set what happens to a class"
+    ),
+    spec!(
+        NoPolicyClass,
+        Modes::POLICY_MAP.or(Modes::POLICY_CLASS),
+        Modes::BOTH,
+        [K("no"), K("class"), Arg("{NAME|class-default}")],
+        "Remove a class from the policy"
+    ),
+    spec!(QosSetDscp, Modes::POLICY_CLASS, Modes::BOTH, [K("set"), K("dscp"), Arg("DSCP")], "Mark the class's packets with a DSCP"),
+    spec!(QosSetDscp, Modes::POLICY_CLASS, Modes::BOTH, [K("set"), K("ip"), K("dscp"), Arg("DSCP")], "Mark the class's packets with a DSCP"),
+    spec!(
+        QosSetPrecedence,
+        Modes::POLICY_CLASS,
+        Modes::BOTH,
+        [K("set"), K("ip"), K("precedence"), Arg("<0-7>")],
+        "Mark the class's packets with an IP precedence"
+    ),
+    spec!(
+        QosSetPrecedence,
+        Modes::POLICY_CLASS,
+        Modes::BOTH,
+        [K("set"), K("precedence"), Arg("<0-7>")],
+        "Mark the class's packets with an IP precedence"
+    ),
+    spec!(NoQosSet, Modes::POLICY_CLASS, Modes::BOTH, [K("no"), K("set"), Rest("{dscp|ip precedence} ...")], "Stop marking"),
+    spec!(QosPriority, Modes::POLICY_CLASS, Modes::BOTH, [K("priority"), Arg("<8-10000000> kbit/s")], "Strict-priority queue for the class"),
+    spec!(
+        QosPriorityPercent,
+        Modes::POLICY_CLASS,
+        Modes::BOTH,
+        [K("priority"), K("percent"), Arg("<1-100>")],
+        "Strict-priority queue, share of the link"
+    ),
+    spec!(NoQosPriority, Modes::POLICY_CLASS, Modes::BOTH, [K("no"), K("priority")], "Remove the priority queue"),
+    spec!(NoQosPriority, Modes::POLICY_CLASS, Modes::BOTH, [K("no"), K("priority"), Rest("...")], "Remove the priority queue"),
+    spec!(QosBandwidth, Modes::POLICY_CLASS, Modes::BOTH, [K("bandwidth"), Arg("<8-10000000> kbit/s")], "Guaranteed bandwidth for the class"),
+    spec!(QosBandwidthPercent, Modes::POLICY_CLASS, Modes::BOTH, [K("bandwidth"), K("percent"), Arg("<1-100>")], "Guaranteed share of the link"),
+    spec!(NoQosBandwidth, Modes::POLICY_CLASS, Modes::BOTH, [K("no"), K("bandwidth")], "Remove the bandwidth guarantee"),
+    spec!(NoQosBandwidth, Modes::POLICY_CLASS, Modes::BOTH, [K("no"), K("bandwidth"), Rest("...")], "Remove the bandwidth guarantee"),
+    spec!(
+        QosPolice,
+        Modes::POLICY_CLASS,
+        Modes::BOTH,
+        [K("police"), Rest("BPS [BURST] [conform-action ACTION] [exceed-action ACTION]")],
+        "Limit the class to a rate (token bucket)"
+    ),
+    spec!(NoQosPolice, Modes::POLICY_CLASS, Modes::BOTH, [K("no"), K("police")], "Stop policing"),
+    spec!(NoQosPolice, Modes::POLICY_CLASS, Modes::BOTH, [K("no"), K("police"), Rest("...")], "Stop policing"),
+    spec!(QosShape, Modes::POLICY_CLASS, Modes::BOTH, [K("shape"), K("average"), Arg("BPS")], "Shape the class to an average rate"),
+    spec!(NoQosShape, Modes::POLICY_CLASS, Modes::BOTH, [K("no"), K("shape")], "Stop shaping"),
+    spec!(NoQosShape, Modes::POLICY_CLASS, Modes::BOTH, [K("no"), K("shape"), Rest("...")], "Stop shaping"),
+    spec!(ServicePolicy, QOS_IFS, Modes::BOTH, [K("service-policy"), Arg("{input|output}"), Arg("NAME")], "Apply a policy map to this interface"),
+    spec!(NoServicePolicy, QOS_IFS, Modes::BOTH, [K("no"), K("service-policy"), Arg("{input|output}")], "Remove a service policy"),
+    spec!(NoServicePolicy, QOS_IFS, Modes::BOTH, [K("no"), K("service-policy"), Arg("{input|output}"), Arg("NAME")], "Remove a service policy"),
+    spec!(ShowClassMap, EXECS, Modes::BOTH, [K("show"), K("class-map")], "Traffic classes"),
+    spec!(ShowClassMap, EXECS, Modes::BOTH, [K("show"), K("class-map"), Arg("NAME")], "One traffic class"),
+    spec!(ShowPolicyMap, EXECS, Modes::BOTH, [K("show"), K("policy-map")], "Policy maps"),
+    spec!(ShowPolicyMap, EXECS, Modes::BOTH, [K("show"), K("policy-map"), Arg("NAME")], "One policy map"),
+    spec!(ShowPolicyMapInterface, EXECS, Modes::BOTH, [K("show"), K("policy-map"), K("interface")], "Service policies and their counters"),
+    spec!(
+        ShowPolicyMapInterface,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("policy-map"), K("interface"), Rest("<interface>")],
+        "One interface's service policies and counters"
+    ),
     spec!(ShowCryptoMap, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("map")], "Crypto maps and where they apply"),
     spec!(ClearCryptoSa, Modes::EXEC, Modes::ROUTER, [K("clear"), K("crypto"), K("sa")], "Forget IPsec associations and counters"),
     spec!(EncapSerial, Modes::IF, Modes::ROUTER, [K("encapsulation"), Arg("{hdlc|ppp}")], "Framing on a serial link"),
@@ -1632,6 +1814,9 @@ mod tests {
                 Modes::ISAKMP,
                 Modes::CRYPTO_MAP,
                 Modes::TRANSFORM,
+                Modes::CLASS_MAP,
+                Modes::POLICY_MAP,
+                Modes::POLICY_CLASS,
             ]
             .into_iter()
             .find(|m| s.modes.has(*m))

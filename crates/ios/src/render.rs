@@ -165,6 +165,7 @@ pub fn running_config(d: &Device) -> String {
             let _ = writeln!(s, "!");
         }
     }
+    crate::exec::qos::running_config(&mut s, d);
     vpn_config(&mut s, d);
     for p in &d.ports {
         let _ = writeln!(s, "interface {}", p.name);
@@ -281,6 +282,7 @@ pub fn running_config(d: &Device) -> String {
             let _ = writeln!(s, " delay {dl}");
         }
         crypto_map_line(&mut s, d, &p.name);
+        crate::exec::qos::service_policy_lines(&mut s, d, &p.name);
         // Routers write both states: their ports start shut, so a replay must say which are up.
         if p.shutdown {
             let _ = writeln!(s, " shutdown");
@@ -308,6 +310,7 @@ pub fn running_config(d: &Device) -> String {
             access_groups(&mut s, &sub.access);
             nat_side(&mut s, sub.nat);
             crypto_map_line(&mut s, d, &format!("{}.{}", p.name, sub.number));
+            crate::exec::qos::service_policy_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
             if sub.shutdown {
                 let _ = writeln!(s, " shutdown");
             }
@@ -331,6 +334,7 @@ pub fn running_config(d: &Device) -> String {
         nat_side(&mut s, svi.nat);
         standby_lines(&mut s, &svi.standby);
         ospf_if_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
+        crate::exec::qos::service_policy_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
         let _ = writeln!(s, "{}", if svi.shutdown { " shutdown" } else { " no shutdown" });
         let _ = writeln!(s, "!");
     }
@@ -2156,6 +2160,7 @@ fn vpn_config(s: &mut String, d: &Device) {
         if let Some(a) = t.destination {
             let _ = writeln!(s, " tunnel destination {a}");
         }
+        crate::exec::qos::service_policy_lines(s, d, &t.name());
         if t.shutdown {
             let _ = writeln!(s, " shutdown");
         }

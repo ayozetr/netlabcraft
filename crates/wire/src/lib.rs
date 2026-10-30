@@ -27,6 +27,7 @@ pub mod ospf6;
 pub mod ospfdb;
 
 pub mod pcap;
+pub mod qos;
 pub mod radius;
 pub mod tacacs;
 

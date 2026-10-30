@@ -237,7 +237,7 @@ fn negotiate(t: &Topology, d: &Device, local: Ipv4Addr, e: &CryptoMapEntry) -> R
 
 /// Whether an access list permits a packet (an explicit permit; a missing list permits
 /// nothing).
-fn acl_permits(d: &Device, name: &str, ip: &Ipv4) -> bool {
+pub(crate) fn acl_permits(d: &Device, name: &str, ip: &Ipv4) -> bool {
     let Some(acl) = d.acls.iter().find(|a| a.name == name) else { return false };
     let (src_port, dst_port) = match ip.protocol {
         PROTO_UDP => Udp::decode(&ip.payload, ip.src, ip.dst).map_or((None, None), |u| (Some(u.src_port), Some(u.dst_port))),
@@ -258,11 +258,12 @@ impl Sim {
             return Err(format!("{}: destination {dst} is routed through a tunnel (recursive routing); dropped", tun.name()));
         }
         let gre = Gre { protocol: ETHERTYPE_IPV4, checksum: false, payload: datagram };
-        let outer = Ipv4 { id: self.ip_id(), ttl: 255, protocol: PROTO_GRE, src, dst, payload: gre.encode() };
+        let mut outer = Ipv4 { id: self.ip_id(), ttl: 255, protocol: PROTO_GRE, src, dst, payload: gre.encode() }.encode();
+        crate::qos::copy_ds(&gre.payload, &mut outer);
         if self.state.get(&d.id).is_some_and(|s| s.debug_packet) {
             self.log(d.id, &format!("IP debug: {} encapsulated in GRE {src} → {dst}, out {}", tun.name(), out.name));
         }
-        self.transmit(t, d, &out, nh, outer.encode())
+        self.transmit(t, d, &out, nh, outer)
     }
 
     /// A GRE packet addressed to this router: the inner packet arrives on the matching tunnel.
@@ -319,8 +320,9 @@ impl Sim {
                 let seq = u32::try_from(sa.encaps).unwrap_or(u32::MAX);
                 let esp = Esp::seal(a.key.as_bytes(), a.spi_out, seq, NEXT_IPV4, datagram);
                 let id = self.ip_id();
-                let outer = Ipv4 { id, ttl: 255, protocol: PROTO_ESP, src: local, dst: peer, payload: esp.encode() };
-                Ok(Some((outer.encode(), peer)))
+                let mut outer = Ipv4 { id, ttl: 255, protocol: PROTO_ESP, src: local, dst: peer, payload: esp.encode() }.encode();
+                crate::qos::copy_ds(datagram, &mut outer);
+                Ok(Some((outer, peer)))
             }
         }
     }
