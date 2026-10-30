@@ -27,6 +27,7 @@ pub mod icons;
 mod mail;
 mod mib;
 pub mod pdf;
+mod physical;
 pub mod png;
 mod services;
 pub mod theme;
@@ -147,6 +148,8 @@ pub struct UiState {
     /// Activity instructions and wizard.
     pub activity: activity::ActivityView,
     canvas: canvas::CanvasState,
+    /// The physical workspace (drags, menus, dialogs).
+    pub physical: physical::PhysState,
 }
 
 impl Default for UiState {
@@ -183,6 +186,7 @@ impl Default for UiState {
             shot: Default::default(),
             activity: activity::ActivityView::default(),
             canvas: canvas::CanvasState::default(),
+            physical: physical::PhysState::default(),
         }
     }
 }
@@ -583,6 +587,26 @@ impl PacketApp {
         }
     }
 
+    /// Switches the workspace between the logical and the physical view.
+    pub fn set_physical(&mut self, on: bool) {
+        if self.run(if on { "view.physical" } else { "view.logical" }, json!({})).is_some() {
+            self.ui.selected = None;
+            self.clear_picks();
+            self.ui.canvas.cancel();
+            if on {
+                physical::fit(self);
+            } else {
+                canvas::fit_view(self);
+            }
+        }
+    }
+
+    /// Opens a city, building or wiring closet in the physical view.
+    pub fn enter_place(&mut self, id: u32) {
+        self.ui.selected = None;
+        physical::enter(self, id);
+    }
+
     pub fn set_tool(&mut self, t: Tool) {
         self.ui.tool = t;
         self.ui.canvas.cancel();
@@ -669,7 +693,12 @@ impl PacketApp {
         if self.ui.mode == Mode::Simulation && self.ui.show_event_list {
             egui::Panel::right("simulation_panel").resizable(true).default_size(420.0).show(ui, |ui| events::panel(self, ui));
         }
-        egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| canvas::show(self, ui));
+        if self.session.physical {
+            egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| physical::show(self, ui));
+        } else {
+            egui::CentralPanel::default().frame(egui::Frame::NONE).show(ui, |ui| canvas::show(self, ui));
+        }
+        physical::windows(self, &ctx);
         console::windows(self, &ctx);
         canvas::inspect_window(self, &ctx);
         canvas::note_editor(self, &ctx);
@@ -783,6 +812,14 @@ impl PacketApp {
                 }
                 if ui.button(tl("Zoom Out")).clicked() {
                     self.zoom(Some(0.8));
+                }
+                ui.separator();
+                let physical = self.session.physical;
+                if ui.add_enabled(physical, egui::Button::new(tl("Logical Workspace"))).clicked() {
+                    self.set_physical(false);
+                }
+                if ui.add_enabled(!physical, egui::Button::new(tl("Physical Workspace"))).clicked() {
+                    self.set_physical(true);
                 }
             });
             ui.menu_button(tl("Tools"), |ui| {
@@ -932,9 +969,19 @@ impl PacketApp {
     fn workspace_bar(&mut self, ui: &mut egui::Ui) {
         let tk = theme::tokens(self.ui.dark);
         ui.horizontal(|ui| {
-            pill(ui, Glyph::Logical, "Logical", true);
-            if pill(ui, Glyph::Physical, "Physical", false).clicked() {
-                self.info(tl("The physical workspace (buildings, closets, racks) is not available yet."));
+            let physical = self.session.physical;
+            if pill(ui, Glyph::Logical, "Logical", !physical).clicked() && physical {
+                self.set_physical(false);
+            }
+            if pill(ui, Glyph::Physical, "Physical", physical).clicked() && !physical {
+                self.set_physical(true);
+            }
+            if physical && let Some(kind) = physical::child_kind(self) {
+                let label = physical::new_label(kind);
+                let b = ui.add(egui::Button::new(RichText::new(tl(label)).color(tk.bar_text).size(15.0)).fill(tk.pill.gamma_multiply(0.5)));
+                if b.on_hover_text(tl("Adds a place to the map shown; drag it into position")).clicked() {
+                    physical::add_place(self, None);
+                }
             }
             let coords = self.ui.pointer.map_or(String::new(), |(x, y)| format!("x: {}, y: {}", x.round() as i64, y.round() as i64));
             ui.label(RichText::new(coords).color(tk.bar_text).size(15.0));
@@ -951,10 +998,12 @@ impl PacketApp {
                     egui::FontId::proportional(17.0),
                     tk.pill_text,
                 );
+                let back =
+                    if physical { "Back to the enclosing place (Intercity is the top)" } else { "Back to the parent cluster (Root is the top)" };
                 for (g, label) in [
                     (Glyph::Physical, "Set Background (not available yet)"),
                     (Glyph::ZoomReset, "Navigation: back to the start of the workspace"),
-                    (Glyph::Undo, "Back to the parent cluster (Root is the top)"),
+                    (Glyph::Undo, back),
                 ] {
                     let (r, resp) = ui.allocate_exact_size(vec2(32.0, 28.0), Sense::click());
                     let resp = resp.on_hover_text(crate::i18n::tr(label));
@@ -970,8 +1019,37 @@ impl PacketApp {
                         self.ui.zoom = 1.0;
                     }
                     if resp.clicked() && g == Glyph::Undo {
-                        self.leave_cluster(false);
+                        if physical {
+                            physical::leave(self, false);
+                        } else {
+                            self.leave_cluster(false);
+                        }
                     }
+                }
+                if physical {
+                    // Intercity › City › Building › Closet (right to left here); each opens.
+                    let path: Vec<(u32, String)> =
+                        self.session.topology.place_path(self.session.place_view).into_iter().map(|p| (p.id, p.name)).collect();
+                    let mut go: Option<Option<u32>> = None;
+                    for (i, (id, name)) in path.iter().enumerate().rev() {
+                        let last = i + 1 == path.len();
+                        let text = RichText::new(name).color(tk.bar_text).size(17.0);
+                        let r = ui.add(egui::Label::new(if last { text.strong() } else { text }).sense(Sense::click()));
+                        if r.clicked() && !last {
+                            go = Some(Some(*id));
+                        }
+                        ui.label(RichText::new("›").color(tk.bar_text).size(17.0));
+                    }
+                    let top = ui.add(egui::Label::new(RichText::new(tl("Intercity")).color(tk.bar_text).size(17.0)).sense(Sense::click()));
+                    if top.on_hover_text(tl("Back to the Intercity map")).clicked() && self.session.place_view.is_some() {
+                        go = Some(None);
+                    }
+                    match go {
+                        Some(Some(p)) => physical::enter(self, p),
+                        Some(None) => physical::leave(self, true),
+                        None => {}
+                    }
+                    return;
                 }
                 // Where the workspace is: Root › Cluster › … (right to left here); each opens.
                 let t = &self.session.topology;

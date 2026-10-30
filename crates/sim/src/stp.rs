@@ -280,6 +280,8 @@ pub fn fingerprint(t: &Topology) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     for l in &t.links {
         (l.a.device, l.a.port, l.b.device, l.b.port).hash(&mut h);
+        // A cable made too long (or short enough again) changes the tree as unplugging does.
+        crate::cable_problem(t, l.a).is_some().hash(&mut h);
     }
     for d in &t.devices {
         d.id.hash(&mut h);

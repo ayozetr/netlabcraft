@@ -92,6 +92,10 @@ pub struct Session {
     pub activity_start: Option<Topology>,
     /// The cluster the workspace shows (none: the top level). A view, not part of the lab.
     pub view: Option<u32>,
+    /// The workspace shows the physical view (places) instead of the logical one. A view.
+    pub physical: bool,
+    /// The place the physical view shows (none: the Intercity map). A view.
+    pub place_view: Option<u32>,
 }
 
 impl Session {
@@ -182,6 +186,10 @@ impl Session {
         // Undo or a dissolve can take away the cluster being looked at.
         if self.view.is_some_and(|c| self.topology.cluster(c).is_none()) {
             self.view = None;
+        }
+        // Likewise the place being looked at.
+        if self.place_view.is_some_and(|p| self.topology.place(p).is_none()) {
+            self.place_view = None;
         }
     }
 

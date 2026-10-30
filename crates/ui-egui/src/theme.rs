@@ -35,6 +35,9 @@ pub struct Tokens {
     pub ok: Color32,
     /// A cluster's cloud.
     pub cluster: Color32,
+    /// The physical view's ground, and the fill of its places (cities, buildings, closets).
+    pub ground: Color32,
+    pub place: Color32,
 }
 
 pub const LIGHT: Tokens = Tokens {
@@ -60,6 +63,8 @@ pub const LIGHT: Tokens = Tokens {
     glyph: Color32::from_rgb(0x1e, 0x20, 0x24),
     ok: Color32::from_rgb(0x2e, 0x9e, 0x3e),
     cluster: Color32::from_rgb(0xcf, 0xe2, 0xf6),
+    ground: Color32::from_rgb(0xf3, 0xf6, 0xee),
+    place: Color32::from_rgb(0xe6, 0xdc, 0xc8),
 };
 
 pub const DARK: Tokens = Tokens {
@@ -85,6 +90,8 @@ pub const DARK: Tokens = Tokens {
     glyph: Color32::from_rgb(0xdd, 0xe2, 0xe8),
     ok: Color32::from_rgb(0x4c, 0xc8, 0x5c),
     cluster: Color32::from_rgb(0x3a, 0x58, 0x78),
+    ground: Color32::from_rgb(0x1f, 0x25, 0x22),
+    place: Color32::from_rgb(0x6a, 0x63, 0x58),
 };
 
 pub fn tokens(dark: bool) -> Tokens {

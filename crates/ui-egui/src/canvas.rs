@@ -67,6 +67,9 @@ const MAX_STROKE: usize = 4_000;
 
 /// The status-bar hint for the current tool.
 pub fn hint(app: &PacketApp) -> String {
+    if app.session.physical && !matches!(app.ui.tool, Tool::Place(_)) {
+        return crate::i18n::tl("Double-click a place to open it · drag to arrange · right-click for more (move devices, cable lengths)").into();
+    }
     match (app.ui.tool, app.ui.canvas.pending) {
         (Tool::Select, _) if app.session.topology.devices.is_empty() => {
             crate::i18n::tl("Pick a device in the palette and click the canvas to place it, or open a sample from File.").into()

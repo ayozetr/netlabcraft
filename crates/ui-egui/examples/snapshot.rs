@@ -1,7 +1,7 @@
 //! Offscreen render of the app to a PNG, for looking at UI work without a window:
 //!
 //! `cargo run -p packetcraft-ui-egui --example snapshot -- --sample vlans [--dark] [--simulation] [--size 1280x820]
-//!  [--cmd 'id={json}']... [--console DEVICE]... [--event N] out.png`
+//!  [--cmd 'id={json}']... [--console DEVICE]... [--event N] [--physical [--place N]] out.png`
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use packetcraft_engine::Session;
@@ -22,6 +22,8 @@ fn main() {
     let mut compare = false;
     let mut page: Option<String> = None;
     let mut url: Option<String> = None;
+    let mut physical = false;
+    let mut place: Option<u32> = None;
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -30,6 +32,8 @@ fn main() {
             }
             "--dark" => dark = true,
             "--simulation" => simulation = true,
+            "--physical" => physical = true,
+            "--place" => place = Some(it.next().and_then(|s| s.parse().ok()).expect("place number")),
             "--size" => {
                 let (w, h) = it.next().and_then(|s| s.split_once('x')).expect("--size WxH");
                 size = (w.parse().expect("width"), h.parse().expect("height"));
@@ -95,6 +99,14 @@ fn main() {
         },
     );
     harness.run_steps(2);
+    if physical {
+        // After the first frames, so the view can centre on what it shows.
+        let app = harness.state_mut();
+        app.set_physical(true);
+        if let Some(p) = place {
+            app.enter_place(p);
+        }
+    }
     if compare {
         // After the first frames: opening an activity clears earlier results.
         let app = harness.state_mut();

@@ -629,3 +629,41 @@ data from a host that is not associated	datos de un equipo que no está asociado
 Wi-Fi with a controller: lightweight APs and WPA2-Enterprise	Wi-Fi con controlador: AP ligeros y WPA2-Enterprise
 Two lightweight access points join the controller WLC1, which offers Staff (WPA2-Enterprise, logins checked by a RADIUS server) and Guest (WPA2-PSK).	Dos puntos de acceso ligeros se unen al controlador WLC1, que ofrece Staff (WPA2-Enterprise, con los inicios de sesión comprobados por un servidor RADIUS) y Guest (WPA2-PSK).
 WLC1 holds two WLANs (`show wlan`, `show capwap`): Staff checks logins with RADIUS1 (users ana/ana12345 and luis/luis1234), Guest uses the passphrase invitado123. In Simulation mode, reset and ping from Laptop1 to watch the 802.11 association, the EAP login and the RADIUS exchange; give Laptop1 a wrong password and watch it refused.	WLC1 tiene dos WLAN (`show wlan`, `show capwap`): Staff comprueba los inicios de sesión con RADIUS1 (usuarios ana/ana12345 y luis/luis1234) y Guest usa la frase de paso invitado123. En modo Simulación, reinicia y haz ping desde Laptop1 para ver la asociación 802.11, el inicio de sesión EAP y el intercambio RADIUS; pon a Laptop1 una contraseña incorrecta y mira cómo la rechazan.
+Logical Workspace	Espacio de trabajo lógico
+Physical Workspace	Espacio de trabajo físico
+Physical workspace	Espacio de trabajo físico
+Adds a place to the map shown; drag it into position	Añade un lugar al mapa que se muestra; arrástralo a su sitio
+New City	Nueva ciudad
+New Building	Nuevo edificio
+New Wiring Closet	Nuevo armario de cableado
+Back to the enclosing place (Intercity is the top)	Volver al lugar que lo contiene (Interurbano es lo más alto)
+Intercity	Interurbano
+Back to the Intercity map	Volver al mapa interurbano
+Double-click a place to open it · drag to arrange · right-click for more (move devices, cable lengths)	Doble clic en un lugar para abrirlo · arrastra para colocar · clic derecho para más (mover dispositivos, longitud de cables)
+Added {}. Double-click it to open it.	Se ha añadido {}. Haz doble clic para abrirlo.
+Intercity: the cities of the lab	Interurbano: las ciudades del laboratorio
+City	Ciudad
+Building	Edificio
+Wiring closet	Armario de cableado
+{} cables, up to {}	{} cables, hasta {}
+to {}: {}	a {}: {}
+1 device	1 dispositivo
+{} devices	{} dispositivos
+Devices stand in wiring closets and buildings: open one first.	Los dispositivos están en armarios de cableado y edificios: abre uno primero.
+Open	Abrir
+Rename Place…	Renombrar lugar…
+Remove Place	Eliminar lugar
+Open Device	Abrir dispositivo
+Move to	Mover a
+Cable Length…	Longitud del cable…
+Right-click a device to move it to another place.	Haz clic derecho en un dispositivo para moverlo a otro lugar.
+Rename Place	Renombrar lugar
+Place name:	Nombre del lugar:
+Cable Length	Longitud del cable
+Copper Ethernet carries a signal up to 100 m.	El Ethernet de cobre lleva la señal hasta 100 m.
+Length (m):	Longitud (m):
+Length from the places	Longitud según los lugares
+cable too long: {} m copper, max 100 m	cable demasiado largo: {} m de cobre, máximo 100 m
+{} is network equipment: it goes in a wiring closet, not in a building's rooms	{} es equipo de red: va en un armario de cableado, no en las salas de un edificio
+a lab keeps at least one city	un laboratorio conserva al menos una ciudad
+a place needs a name	un lugar necesita un nombre

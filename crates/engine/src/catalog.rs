@@ -220,13 +220,81 @@ pub static CATALOG: &[CommandInfo] = &[
     c!("cluster.rename", "Rename cluster", "", None, r#"{"id", "name"}"#, true),
     c!("cluster.move", "Move cluster", "", None, r#"{"id", "x", "y", "transient"?: false}"#, true),
     c!("cluster.dissolve", "Uncluster", "Edit", None, r#"{"id"}: its devices go back to the view it sat in"#, true),
+    c!(
+        "view.physical",
+        "Physical workspace",
+        "View",
+        None,
+        r#"{} → {"physical": true, "place", "kind", "path": [{"id", "name", "kind"}]} (cities, buildings and wiring closets)"#,
+        false
+    ),
+    c!("view.logical", "Logical workspace", "View", None, r#"{} → {"physical": false, …}"#, false),
+    c!(
+        "view.enter_place",
+        "Open place",
+        "",
+        None,
+        r#"{"id": place number} → {"physical", "place", "kind", "path"} (switches to the physical view)"#,
+        false
+    ),
+    c!("view.place_up", "Back to the enclosing place", "", None, r#"{} → {"physical", "place", "kind", "path"}"#, false),
+    c!("view.intercity", "Back to the Intercity map", "", None, r#"{} → {"physical", "place": null, "path": []}"#, false),
+    c!(
+        "place.add",
+        "New place",
+        "",
+        None,
+        r#"{"kind": "city"|"building"|"closet", "name"?, "parent"?: place number (a building goes in a city, a closet in a building; default: the place being viewed), "x"?, "y"?} → {"id", "name", "parent"}"#,
+        true
+    ),
+    c!("place.rename", "Rename place", "", None, r#"{"id", "name"}"#, true),
+    c!("place.move", "Move place", "", None, r#"{"id", "x", "y", "transient"?: false}: its icon on the map it sits in"#, true),
+    c!(
+        "place.remove",
+        "Remove place",
+        "",
+        None,
+        r#"{"id"}: with the places inside it; their devices go to the building above, else the default closet (the last city stays)"#,
+        true
+    ),
+    c!(
+        "place.list",
+        "List places",
+        "",
+        None,
+        r#"{} → {"implicit": true while the default layout is shown, "places": [{"id", "kind", "name", "x", "y", "parent", "devices": [names]}], "cables": [{"a", "b", "meters", "manual", "problem"}]}"#,
+        false
+    ),
+    c!(
+        "device.place",
+        "Move to place",
+        "",
+        None,
+        r#"{"device" | "devices": [names or ids], "place": place number, "x"?, "y"?, "transient"?: false}: network devices go in wiring closets, hosts in a closet or a building"#,
+        true
+    ),
+    c!(
+        "link.length",
+        "Cable length",
+        "",
+        None,
+        r#"{"device", "port": "interface", "meters": 1-20000000 | null (the length the places give)} → {"meters", "manual", "problem"} (copper over 100 m carries nothing)"#,
+        true
+    ),
     c!("view.enter_cluster", "Open cluster", "", None, r#"{"id"} → {"cluster", "path": [{"id", "name"}]}"#, false),
     c!("view.up", "Back to the parent cluster", "", None, r#"{} → {"cluster", "path"}"#, false),
     c!("view.root", "Back to the top level", "", None, r#"{} → {"cluster": null, "path": []}"#, false),
     c!("device.remove", "Delete device", "Edit", Some("Delete"), r#"{"device": "name or id"}"#, true),
     c!("device.move", "Move device", "", None, r#"{"device", "x", "y", "transient"?: false}"#, true),
     c!("device.rename", "Rename device", "", None, r#"{"device", "name"}"#, true),
-    c!("device.list", "List devices", "", None, "{} → [{id, name, kind, x, y, cluster, ports}]", false),
+    c!(
+        "device.list",
+        "List devices",
+        "",
+        None,
+        "{} → [{id, name, kind, x, y, cluster, place, ports: [{name, ip, shutdown, up, problem, peer}]}]",
+        false
+    ),
     c!("link.add", "Connect with a cable", "Insert", None, r#"{"a": "device", "a_port"?: "interface", "b": "device", "b_port"?: "interface"}"#, true),
     c!("link.remove", "Remove cable", "Edit", None, r#"{"device", "port": "interface"}"#, true),
     c!("cli.exec", "Type a command", "", None, r#"{"device", "line"} → {"output", "prompt", "clear"}"#, true),

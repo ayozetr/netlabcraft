@@ -468,3 +468,66 @@ fn a_drawing_being_dragged_out_stays_under_the_cables() {
     h.run_steps(2);
     assert_eq!(h.state().session.topology.annotations.len(), 1);
 }
+
+/// Where a place's icon is on screen.
+fn place_on_screen(h: &Harness<'static, PacketApp>, id: u32) -> egui::Pos2 {
+    let app = h.state();
+    let p = app.session.topology.place(id).unwrap();
+    app.ui.canvas_rect.unwrap().min + app.ui.pan + egui::vec2(p.x, p.y) * app.ui.zoom
+}
+
+#[test]
+fn the_physical_view_opens_places_and_goes_back() {
+    for dark in [false, true] {
+        let mut h = harness(Some("lan"));
+        h.state_mut().ui.dark = dark;
+        h.run_steps(2);
+        // Toggle to Physical: the Intercity map with the lab's one city.
+        h.get_by_label("Physical").click();
+        h.run_steps(2);
+        assert!(h.state().session.physical);
+        assert_eq!(h.state().session.place_view, None);
+        assert!(h.query_by_label("Home City").is_some() || h.query_by_label("Intercity").is_some());
+        // Into the city (double-click its icon), then into its building.
+        for (id, kind) in [(1, "city"), (2, "building")] {
+            let at = place_on_screen(&h, id);
+            press(&mut h, at, true, egui::Modifiers::NONE);
+            press(&mut h, at, false, egui::Modifiers::NONE);
+            h.run_steps(1);
+            press(&mut h, at, true, egui::Modifiers::NONE);
+            press(&mut h, at, false, egui::Modifiers::NONE);
+            h.run_steps(2);
+            assert_eq!(h.state().session.place_view, Some(id), "into the {kind}");
+        }
+        assert!(h.query_by_label("Main Building").is_some());
+        // A new closet from the bar, renamed through the dialog.
+        h.get_by_label("New Wiring Closet").click();
+        h.run_steps(2);
+        let closet = h.state().session.topology.places().iter().map(|p| p.id).max().unwrap();
+        assert_eq!(h.state().session.topology.place(closet).unwrap().parent, Some(2));
+        h.state_mut().ui.physical.renaming = Some((closet, "Lab rack".into()));
+        h.run_steps(2);
+        h.get_by_label("OK").click();
+        h.run_steps(2);
+        assert_eq!(h.state().session.topology.place(closet).unwrap().name, "Lab rack");
+        // A cable length through its dialog.
+        let pc1 = h.state().session.topology.resolve("PC1").unwrap();
+        h.state_mut().ui.physical.length = Some((packetcraft_model::End { device: pc1, port: 0 }, "150".into()));
+        h.run_steps(2);
+        assert!(h.query_by_label("Length (m):").is_some());
+        h.get_by_label("OK").click();
+        h.run_steps(2);
+        let l = *h.state().session.topology.link_at(packetcraft_model::End { device: pc1, port: 0 }).unwrap();
+        assert_eq!(h.state().session.topology.cable_length(&l).meters, 150);
+        // Back up through the bar: one level, then the whole way.
+        h.get_by_label("Back to the enclosing place (Intercity is the top)").click();
+        h.run_steps(2);
+        assert_eq!(h.state().session.place_view, Some(1));
+        h.get_by_label("Intercity").click();
+        h.run_steps(2);
+        assert_eq!(h.state().session.place_view, None);
+        h.get_by_label("Logical").click();
+        h.run_steps(2);
+        assert!(!h.state().session.physical);
+    }
+}
