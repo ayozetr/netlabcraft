@@ -1645,6 +1645,41 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             c.dm()?.access.login_methods.clear();
             Ok(String::new())
         }
+        Id::SnmpCommunity | Id::NoSnmpCommunity => {
+            let name: String = arg(0).chars().take(32).collect();
+            let rw = match arg(1).to_ascii_lowercase().as_str() {
+                "rw" => true,
+                "ro" | "" => false,
+                _ => return Err("% ro or rw".into()),
+            };
+            let d = c.dm()?;
+            d.snmp.communities.retain(|(n, _)| *n != name);
+            if spec.id == Id::SnmpCommunity {
+                if d.snmp.communities.len() >= 16 {
+                    return Err("% Too many communities".into());
+                }
+                d.snmp.communities.push((name, rw));
+            }
+            Ok(String::new())
+        }
+        Id::SnmpLocation | Id::SnmpContact => {
+            let text: String = arg(0).trim().chars().take(255).collect();
+            let d = c.dm()?;
+            if spec.id == Id::SnmpLocation {
+                d.snmp.location = text;
+            } else {
+                d.snmp.contact = text;
+            }
+            Ok(String::new())
+        }
+        Id::ShowSnmp => {
+            let s = &c.d()?.snmp;
+            if s.communities.is_empty() {
+                return Ok("The SNMP agent is off (no `snmp-server community`).".into());
+            }
+            let list: Vec<String> = s.communities.iter().map(|(n, rw)| format!("{n} ({})", if *rw { "read-write" } else { "read-only" })).collect();
+            Ok(format!("SNMP agent on, UDP port 161\nCommunities: {}\nLocation: {}\nContact: {}", list.join(", "), s.location, s.contact))
+        }
         Id::TacacsHost | Id::NoTacacsHost => {
             let a = parse_ip(arg(0)).map_err(|e| format!("% {e}"))?;
             let key: String = arg(1).chars().take(63).collect();

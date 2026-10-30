@@ -9,6 +9,7 @@ Every front end (UI, `packetcraft-cli run`, MCP `packetcraft_run`) runs these.
 | Id | Label | Menu | Shortcut | Parameters |
 |---|---|---|---|---|
 | `device.wireless` | Wi-Fi settings |  |  | `{"device", "port"?: "Wireless0", "ssid": "network name (empty: radio off)", "key"?: "WPA2-PSK passphrase, 8-63 characters (none: open)", "channel"?: 1-13}` |
+| `snmp.request` | SNMP request |  |  | `{"device": manager, "target": agent address, "community"?: "public", "operation"?: "get"\|"get-next"\|"set", "oid": "1.3.6.1.2.1.1.5.0", "value"?: for a set} → {"bindings": [{"oid", "value"}], "error"}` |
 | `mail.configure` | Email account |  |  | `{"device", "name"?, "address": "ana@lab.local", "incoming": "POP3 server address or name", "outgoing": "SMTP server", "user", "password"}` |
 | `mail.send` | Send email |  |  | `{"device", "to", "subject"?, "body"?} → {"answer"}: SMTP through the outgoing server` |
 | `mail.receive` | Receive email |  |  | `{"device"} → {"received": n}: POP3 from the incoming server; the messages move to the host` |
@@ -352,6 +353,11 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `radius-server host A.B.C.D key WORD` | config | router, switch | A RADIUS server and the secret shared with it |
 | `no radius-server host A.B.C.D` | config | router, switch | Forget a RADIUS server |
 | `tacacs-server host A.B.C.D key WORD` | config | router, switch | A TACACS+ server and the key shared with it |
+| `snmp-server community WORD {ro\|rw}` | config | router, switch | Let SNMP managers read (ro) or change (rw) this device |
+| `no snmp-server community WORD` | config | router, switch | Forget an SNMP community |
+| `snmp-server location TEXT` | config | router, switch | Where the device is (sysLocation) |
+| `snmp-server contact TEXT` | config | router, switch | Who looks after it (sysContact) |
+| `show snmp` | user, privileged | router, switch | SNMP agent settings |
 | `no tacacs-server host A.B.C.D` | config | router, switch | Forget a TACACS+ server |
 | `login authentication default` |  | router, switch | Use the default AAA method list |
 | `username WORD {secret\|password} PASSWORD` | config | router, switch | Add a local user |

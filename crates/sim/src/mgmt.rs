@@ -7,6 +7,7 @@ use packetcraft_core::DeviceId;
 use packetcraft_model::{Device, DeviceKind, Topology};
 use packetcraft_wire::mgmt::{NTP_PORT, Ntp, SYSLOG_PORT, TFTP_BLOCK, TFTP_PORT, Tftp, syslog_decode, syslog_encode};
 use packetcraft_wire::radius::{RADIUS_PORT, Radius, reveal_password};
+use packetcraft_wire::snmp::{self, PduKind, SNMP_PORT, Snmp};
 use packetcraft_wire::{Ipv4, PROTO_UDP, Udp};
 
 use crate::{L3If, Sim, SimError, default_ttl};
@@ -81,6 +82,24 @@ impl Sim {
                 let good = d.services.aaa.users.iter().any(|x| x.name == user && x.password == password);
                 let answer = Radius::answer(&req, good, if good { "Welcome" } else { "Login refused" }, &client.secret);
                 self.udp_out(t, d, me, ip.src, RADIUS_PORT, u.src_port, answer.encode())
+            }
+            (SNMP_PORT, _) if matches!(d.kind, DeviceKind::Router | DeviceKind::Switch) => {
+                let Ok(req) = Snmp::decode(&u.payload) else { return Some(Err("not an SNMP message".into())) };
+                // A wrong community gets no answer at all, as on real agents.
+                let Some((_, rw)) = d.snmp.communities.iter().find(|(c, _)| *c == req.community) else {
+                    return Some(Err(format!("SNMP community `{}` not known here", req.community)));
+                };
+                let answer = self.snmp_answer(t, d, &req, *rw);
+                self.udp_out(t, d, me, ip.src, SNMP_PORT, u.src_port, answer.encode())
+            }
+            (port, SNMP_PORT) if self.state.get(&d.id).is_some_and(|s| s.snmp_port == Some(port)) => {
+                if let Ok(r) = Snmp::decode(&u.payload) {
+                    let st = self.st(d.id);
+                    if st.snmp_inbox.len() < 16 {
+                        st.snmp_inbox.push(r);
+                    }
+                }
+                Ok(())
             }
             (port, RADIUS_PORT) if self.state.get(&d.id).is_some_and(|s| s.radius_port == Some(port)) => {
                 if let Ok(r) = Radius::decode(&u.payload) {
@@ -335,6 +354,106 @@ impl Sim {
             }
         }
         None
+    }
+
+    /// The objects a device's agent serves, in MIB order: the system group and the interfaces
+    /// table (RFC 1213).
+    pub fn mib(&self, t: &Topology, d: &Device) -> Vec<(Vec<u32>, snmp::Value)> {
+        use snmp::Value;
+        let sys = |n: u32| vec![1, 3, 6, 1, 2, 1, 1, n, 0];
+        let mut out = vec![
+            (sys(1), Value::Text(format!("PacketCraft {} {}, simulated", d.catalogue_model().label, env!("CARGO_PKG_VERSION")))),
+            (sys(3), Value::TimeTicks(u32::try_from(self.now / 10_000).unwrap_or(u32::MAX))),
+            (sys(4), Value::Text(d.snmp.contact.clone())),
+            (sys(5), Value::Text(d.name.clone())),
+            (sys(6), Value::Text(d.snmp.location.clone())),
+            (vec![1, 3, 6, 1, 2, 1, 2, 1, 0], Value::Integer(d.ports.len() as i64)),
+        ];
+        for col in [1u32, 2, 5, 7, 8] {
+            for (i, p) in d.ports.iter().enumerate() {
+                let n = u32::try_from(i + 1).unwrap_or(0);
+                let up = crate::port_up(t, packetcraft_model::End { device: d.id, port: i });
+                let v = match col {
+                    1 => Value::Integer(i64::from(n)),
+                    2 => Value::Text(p.name.clone()),
+                    5 => Value::Integer(i64::from(crate::port_max_speed(&p.name).unwrap_or(2)) * 1_000_000),
+                    7 => Value::Integer(if p.shutdown { 2 } else { 1 }),
+                    _ => Value::Integer(if up { 1 } else { 2 }),
+                };
+                out.push((vec![1, 3, 6, 1, 2, 1, 2, 2, 1, col, n], v));
+            }
+        }
+        out
+    }
+
+    fn snmp_answer(&mut self, t: &Topology, d: &Device, req: &Snmp, rw: bool) -> Snmp {
+        use snmp::Value;
+        let mib = self.mib(t, d);
+        let mut answer = Snmp { kind: PduKind::Response, bindings: Vec::new(), error_status: snmp::NO_ERROR, error_index: 0, ..req.clone() };
+        for (i, (oid, value)) in req.bindings.iter().enumerate() {
+            let found = match req.kind {
+                PduKind::GetNext => mib.iter().find(|(o, _)| o > oid).cloned().unwrap_or((oid.clone(), Value::EndOfMib)),
+                _ => mib.iter().find(|(o, _)| o == oid).cloned().unwrap_or((oid.clone(), Value::NoSuchObject)),
+            };
+            if req.kind == PduKind::Set {
+                let which = match oid.as_slice() {
+                    [1, 3, 6, 1, 2, 1, 1, 4, 0] => Some("contact"),
+                    [1, 3, 6, 1, 2, 1, 1, 5, 0] => Some("name"),
+                    [1, 3, 6, 1, 2, 1, 1, 6, 0] => Some("location"),
+                    _ => None,
+                };
+                let status = match (rw, which, value) {
+                    (false, _, _) => Some(snmp::NO_ACCESS),
+                    (true, None, _) => Some(snmp::NOT_WRITABLE),
+                    (true, Some(_), v) if !matches!(v, Value::Text(_)) => Some(snmp::WRONG_TYPE),
+                    (true, Some(w), Value::Text(s)) => {
+                        self.snmp_changes.push((d.id, w, s.chars().take(255).collect()));
+                        None
+                    }
+                    _ => Some(snmp::NOT_WRITABLE),
+                };
+                if let Some(e) = status {
+                    answer.error_status = e;
+                    answer.error_index = u8::try_from(i + 1).unwrap_or(u8::MAX);
+                }
+                answer.bindings.push((oid.clone(), value.clone()));
+            } else {
+                answer.bindings.push(found);
+            }
+        }
+        answer
+    }
+
+    /// Sets agents accepted, for the lab to apply.
+    pub fn take_snmp_changes(&mut self) -> Vec<(DeviceId, &'static str, String)> {
+        std::mem::take(&mut self.snmp_changes)
+    }
+
+    /// An SNMP request from `dev` (a manager, such as a PC's MIB browser) to an agent.
+    pub fn snmp_request(&mut self, t: &Topology, dev: DeviceId, agent: Ipv4Addr, req: Snmp) -> Result<Snmp, SimError> {
+        let d = t.device(dev).ok_or(SimError::NoDevice(dev))?.clone();
+        let src = self.source_for(t, &d, agent)?;
+        let port = self.next_port();
+        let st = self.st(dev);
+        st.snmp_port = Some(port);
+        st.snmp_inbox.clear();
+        let id = req.request_id;
+        // Sent up to three times: the first may wait for ARP on the way.
+        for _ in 0..3 {
+            let start = self.now;
+            if self.udp_out(t, &d, src, agent, port, SNMP_PORT, req.encode()).is_err() {
+                self.advance(t, start.saturating_add(100_000), |_| false);
+                continue;
+            }
+            self.advance(t, start.saturating_add(WAIT_US), |s| s.state.get(&dev).is_some_and(|st| st.snmp_inbox.iter().any(|r| r.request_id == id)));
+            if self.state.get(&dev).is_some_and(|st| st.snmp_inbox.iter().any(|r| r.request_id == id)) {
+                break;
+            }
+        }
+        let st = self.st(dev);
+        st.snmp_port = None;
+        let got = st.snmp_inbox.iter().find(|r| r.request_id == id).cloned();
+        got.ok_or_else(|| SimError::NoSource(format!("{agent} did not answer (no SNMP agent, or a wrong community)")))
     }
 
     /// Asks the device's NTP servers for the time; returns the server that answered.

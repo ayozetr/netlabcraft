@@ -1,6 +1,6 @@
 # Protocol and command parity
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (TACACS+) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (SNMP) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 What the simulated devices do, protocol by protocol, against the reference app. Part of
 [target-app-parity.md](target-app-parity.md). Behaviour comes from the standards named in each
@@ -68,7 +68,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | Syslog | RFC 5424 | ✅ | `logging host` sends every log message to the server, whose SYSLOG page lists them. No severity filtering (`logging trap`). |
 | AAA with RADIUS | RFC 2865 | ✅ | `aaa new-model`, `aaa authentication login default group radius local`, `radius-server host X key K`, `login authentication default`; vty logins (Telnet, SSH) ask the server; Access-Request with the password hidden and signed answers on the wire (MD5, RFC 1321), retransmitted; a wrong secret or no answer falls back to the next method; the Server's AAA service holds clients and users. Console logins keep their line settings. |
 | TACACS+ | RFC 8907 | ✅ | `tacacs-server host X key K`, `group tacacs+` in the login method list; the Server's AAA service answers on TCP 49 with the same clients and users; a PAP login per exchange with the body encrypted by the key's MD5 pad; an answer that doesn't read with the key falls back to the next method. |
-| SNMP | RFC 3416 | ❌ | 8–12 h. |
+| SNMP | RFC 3416 | ✅ | SNMPv2c agents on routers and switches (`snmp-server community NAME ro|rw`, `location`, `contact`, `show snmp`): get, get-next and set on the system group and the interfaces table; a set of sysName, sysContact or sysLocation with a read-write community changes the device; a wrong community gets no answer. The PC's MIB Browser (get, get-next, set, walk). No traps or SNMPv3: 4–6 h. |
 
 ## Security
 
@@ -122,6 +122,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | 2026-10-30 | minor | HSRP. |
 | 2026-10-30 | minor | Logging buffer and console messages; `debug ip icmp`. |
 | 2026-10-30 | minor | BPDUs, OSPF hellos and RIP updates on the wire, so Simulation mode and captures show them. |
+| 2026-10-30 | minor | SNMP agent and the MIB Browser. |
 | 2026-10-30 | minor | TACACS+. |
 | 2026-10-30 | minor | `ip address dhcp` on routers, routed ports and the home router's Internet port. |
 | 2026-10-30 | minor | Email: SMTP, POP3, the server's EMAIL service and the PC Email app; TCP retries a SYN four times. |

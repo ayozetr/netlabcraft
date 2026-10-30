@@ -602,6 +602,9 @@ pub struct DevState {
     login_failures: Vec<u64>,
     login_blocked_until: u64,
     radius_inbox: Vec<packetcraft_wire::radius::Radius>,
+    /// An SNMP manager waiting on this port, and the answers that came.
+    snmp_port: Option<u16>,
+    snmp_inbox: Vec<packetcraft_wire::snmp::Snmp>,
     /// FTP server connections.
     pub(crate) ftp: ftp::ServerState,
     /// SMTP and POP3 server connections.
@@ -740,6 +743,8 @@ pub struct Sim {
     ftp_data_peer: BTreeMap<(DeviceId, u16), u16>,
     /// Mailbox changes mail servers made, for the lab to apply.
     mail_changes: Vec<(DeviceId, email::MailChange)>,
+    /// SNMP sets agents accepted: (device, object name, value), for the lab to apply.
+    snmp_changes: Vec<(DeviceId, &'static str, String)>,
     hsrp_for: u64,
     hsrp: Option<BTreeMap<DeviceId, Vec<hsrp::Role>>>,
     /// Last known link state of every router and switch port, for link messages.

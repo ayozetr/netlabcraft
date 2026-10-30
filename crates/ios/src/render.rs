@@ -99,6 +99,15 @@ pub fn running_config(d: &Device) -> String {
     for (h, k) in &a.tacacs_servers {
         let _ = writeln!(s, "tacacs-server host {h} key {}", pw(k));
     }
+    for (n, rw) in &d.snmp.communities {
+        let _ = writeln!(s, "snmp-server community {n} {}", if *rw { "RW" } else { "RO" });
+    }
+    if !d.snmp.location.is_empty() {
+        let _ = writeln!(s, "snmp-server location {}", d.snmp.location);
+    }
+    if !d.snmp.contact.is_empty() {
+        let _ = writeln!(s, "snmp-server contact {}", d.snmp.contact);
+    }
     if let Some((u, p)) = &d.ftp_login {
         if !u.is_empty() {
             let _ = writeln!(s, "ip ftp username {u}");

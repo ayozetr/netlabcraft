@@ -545,3 +545,42 @@ fn email_goes_from_one_pc_to_another_through_the_server() {
     let protos: std::collections::BTreeSet<&str> = s.sim.trace().iter().map(|e| e.protocol.name()).collect();
     assert!(protos.contains("SMTP") && protos.contains("POP3"), "{protos:?}");
 }
+
+#[test]
+fn a_pc_reads_and_sets_a_router_over_snmp() {
+    let mut s = Session::new();
+    s.execute("device.add", json!({"kind": "router", "x": 0, "y": 0})).unwrap();
+    s.execute("device.add", json!({"kind": "pc", "x": 0, "y": 100})).unwrap();
+    s.execute("link.add", json!({"a": "R1", "a_port": "g0/0", "b": "PC1", "b_port": "fa0"})).unwrap();
+    s.execute(
+        "device.configure",
+        json!({"device": "R1", "lines": ["interface g0/0", "ip address 10.0.0.1 255.255.255.0", "no shutdown", "exit", "snmp-server community lectura ro", "snmp-server community escritura rw", "snmp-server location Aula 3"]}),
+    )
+    .unwrap();
+    s.execute("cli.exec", json!({"device": "PC1", "line": "ipconfig 10.0.0.10 255.255.255.0 10.0.0.1"})).unwrap();
+    let get = |s: &mut Session, community: &str, op: &str, oid: &str| {
+        s.execute("snmp.request", json!({"device": "PC1", "target": "10.0.0.1", "community": community, "operation": op, "oid": oid}))
+    };
+    let r = get(&mut s, "lectura", "get", "1.3.6.1.2.1.1.5.0").unwrap();
+    assert_eq!(r["bindings"][0]["value"], "R1", "{r}");
+    assert_eq!(get(&mut s, "lectura", "get", "1.3.6.1.2.1.1.6.0").unwrap()["bindings"][0]["value"], "Aula 3");
+    // Walking: get-next from the system group's start, and past the end.
+    let r = get(&mut s, "lectura", "get-next", "1.3.6.1.2.1.1").unwrap();
+    assert_eq!(r["bindings"][0]["oid"], "1.3.6.1.2.1.1.1.0");
+    let r = get(&mut s, "lectura", "get-next", "1.3.6.1.2.1.2.2.1.2").unwrap();
+    assert_eq!(r["bindings"][0]["value"], "GigabitEthernet0/0");
+    assert_eq!(get(&mut s, "lectura", "get-next", "1.3.6.1.2.1.9").unwrap()["bindings"][0]["value"], "end of the MIB");
+    // Sets: refused with a read-only community, applied with a read-write one.
+    let set = |s: &mut Session, community: &str, v: &str| {
+        s.execute(
+            "snmp.request",
+            json!({"device": "PC1", "target": "10.0.0.1", "community": community, "operation": "set", "oid": "1.3.6.1.2.1.1.5.0", "value": v}),
+        )
+    };
+    assert!(set(&mut s, "lectura", "Core").unwrap()["error"].as_str().unwrap().contains("no access"));
+    assert!(set(&mut s, "escritura", "Core").unwrap()["error"].is_null());
+    assert!(s.topology.resolve("Core").is_ok(), "the hostname changed");
+    // A wrong community: no answer.
+    assert!(get(&mut s, "adivina", "get", "1.3.6.1.2.1.1.5.0").unwrap_err().to_string().contains("did not answer"));
+    assert!(s.sim.trace().iter().any(|e| e.summary.starts_with("SNMP response (lectura) 1.3.6.1.2.1.1.5.0 = R1")));
+}

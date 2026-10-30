@@ -30,6 +30,7 @@ pub mod radius;
 pub mod tacacs;
 
 pub mod serial;
+pub mod snmp;
 pub mod tcp;
 
 /// Why bytes didn't decode.
@@ -434,6 +435,7 @@ pub enum Protocol {
     Smtp,
     Pop3,
     Tacacs,
+    Snmp,
     Lacp,
     Lldp,
     Ntp,
@@ -467,6 +469,7 @@ impl Protocol {
             Protocol::Smtp => "SMTP",
             Protocol::Pop3 => "POP3",
             Protocol::Tacacs => "TACACS+",
+            Protocol::Snmp => "SNMP",
             Protocol::Lldp => "LLDP",
             Protocol::Ntp => "NTP",
             Protocol::Syslog => "Syslog",
@@ -532,6 +535,23 @@ pub fn summarize(bytes: &[u8]) -> (Protocol, String) {
                         Err(e) => (Protocol::Ospf, format!("OSPF ({e}) {route}{tag}")),
                     },
                     PROTO_UDP => match Udp::decode(&ip.payload, ip.src, ip.dst) {
+                        Ok(u) if u.dst_port == snmp::SNMP_PORT || u.src_port == snmp::SNMP_PORT => match snmp::Snmp::decode(&u.payload) {
+                            Ok(m) => (
+                                Protocol::Snmp,
+                                format!(
+                                    "SNMP {} ({}) {}{}{tag}",
+                                    m.kind.name(),
+                                    m.community,
+                                    m.bindings.first().map(|(o, _)| snmp::oid_text(o)).unwrap_or_default(),
+                                    m.bindings
+                                        .first()
+                                        .filter(|_| m.kind == snmp::PduKind::Response)
+                                        .map(|(_, v)| format!(" = {}", v.show()))
+                                        .unwrap_or_default()
+                                ),
+                            ),
+                            Err(e) => (Protocol::Snmp, format!("SNMP ({e}){tag}")),
+                        },
                         Ok(u) if u.dst_port == radius::RADIUS_PORT || u.src_port == radius::RADIUS_PORT => match radius::Radius::decode(&u.payload) {
                             Ok(r) => (
                                 Protocol::Radius,

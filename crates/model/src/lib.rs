@@ -795,6 +795,9 @@ pub struct Device {
     /// Routers and switches: `ip ftp username` and `ip ftp password`, for `copy … ftp:`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ftp_login: Option<(String, String)>,
+    /// Routers and switches: the SNMP agent (`snmp-server …`).
+    #[serde(default, skip_serializing_if = "SnmpConf::is_default")]
+    pub snmp: SnmpConf,
     /// Switches: `delete vlan.dat` ran; the VLAN database goes back to factory at the next reload.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub vlan_dat_deleted: bool,
@@ -890,6 +893,24 @@ pub struct Ospf {
     /// Area settings (`area N stub`, `area N range`), by area number.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub areas: BTreeMap<u32, OspfArea>,
+}
+
+/// The SNMP agent's settings.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct SnmpConf {
+    /// `snmp-server community NAME ro|rw`: (name, may write).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub communities: Vec<(String, bool)>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub location: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub contact: String,
+}
+
+impl SnmpConf {
+    pub fn is_default(&self) -> bool {
+        *self == SnmpConf::default()
+    }
 }
 
 /// A router's OSPFv3 process (RFC 5340): interfaces join it with `ipv6 ospf N area A`.
@@ -1361,6 +1382,7 @@ impl Device {
             mail: None,
             inbox: Vec::new(),
             ftp_login: None,
+            snmp: SnmpConf::default(),
             vlan_dat_deleted: false,
         };
         d.ensure_default_vlan();
@@ -1379,6 +1401,7 @@ impl Device {
         self.cdp_off = false;
         self.lldp_on = false;
         self.ftp_login = None;
+        self.snmp = SnmpConf::default();
         self.ntp_servers.clear();
         self.log_hosts.clear();
         self.ipv6_routing = false;

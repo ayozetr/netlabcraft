@@ -15,7 +15,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 |---|---|---|---|
 | 1 | **Activity depth:** a side-by-side view of the student's lab against the answer network | Instructors | 5–8 h |
 | 2 | **Wireless depth:** WLC with lightweight APs, 802.1X/RADIUS, 802.11 frames in Simulation mode | CCNA 2 | 16–26 h |
-| 3 | **Services:** SNMP, relaying mail between servers | CCNA 3, network management labs | 10–16 h |
+| 3 | **Services:** SNMP traps and v3, relaying mail between servers | Network management labs | 6–10 h |
 | 4 | **More languages and full coverage:** event summaries in Spanish; more interface languages | Non-English students | 6–10 h |
 | 5 | **Packaging and first release:** installers for Windows, macOS, FreeBSD and Flatpak, workflows, contributors in the About window ([releasing.md](releasing.md)); the app ID and the project's home are the owner's decision | Everyone who isn't a developer | 10–18 h |
 | 6 | **Workspace:** drawing freeform, clusters, physical view, direct printing | Everyone, occasionally | 45–70 h |
@@ -26,6 +26,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Services narrowed: SNMP and the MIB Browser. |
 | 2026-10-30 | minor | Services narrowed: TACACS+. |
 | 2026-10-30 | minor | Languages narrowed: engine errors and drop reasons in Spanish. |
 | 2026-10-30 | minor | Workspace narrowed: File ▸ Export Workspace Image (PNG). |

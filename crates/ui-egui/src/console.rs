@@ -41,6 +41,7 @@ pub enum DesktopApp {
     Prompt,
     Browser,
     Email,
+    MibBrowser,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -942,6 +943,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                         (DesktopApp::Prompt, "Command Prompt"),
                         (DesktopApp::Browser, "Web Browser"),
                         (DesktopApp::Email, "Email"),
+                        (DesktopApp::MibBrowser, "MIB Browser"),
                     ] {
                         let (rect, resp) = ui.allocate_exact_size(vec2(130.0, 150.0), Sense::click());
                         resp.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, label));
@@ -974,6 +976,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 DesktopApp::Prompt => "Command Prompt",
                 DesktopApp::Browser => "Web Browser",
                 DesktopApp::Email => "Email",
+                DesktopApp::MibBrowser => "MIB Browser",
             };
             let mut close = false;
             egui::Frame::new().fill(tk.bar).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
@@ -1085,6 +1088,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 }
                 DesktopApp::Prompt => console(app, ui, d, true),
                 DesktopApp::Email => crate::mail::app(app, ui, dev),
+                DesktopApp::MibBrowser => crate::mib::app(app, ui, dev),
                 DesktopApp::Browser => {
                     let mut forms = app.ui.windows.get_mut(&d).map(|w| std::mem::take(&mut w.svc)).unwrap_or_default();
                     crate::services::browser(app, ui, d, &mut forms);
@@ -1143,6 +1147,20 @@ fn draw_app_icon(p: &egui::Painter, r: egui::Rect, app: DesktopApp) {
             let tag = egui::Rect::from_center_size(c + vec2(0.0, r.height() * 0.02), vec2(r.width() * 0.8, r.height() * 0.28));
             p.rect_filled(tag, 3.0, light);
             p.text(tag.center(), egui::Align2::CENTER_CENTER, "http:", egui::FontId::proportional(r.height() * 0.2), dark);
+        }
+        DesktopApp::MibBrowser => {
+            // A tree of objects: a root and three branches.
+            let s = egui::Stroke::new(2.0, dark);
+            let root = r.center_top() + vec2(0.0, r.height() * 0.15);
+            p.circle_filled(root, r.width() * 0.1, light);
+            p.circle_stroke(root, r.width() * 0.1, s);
+            for k in [-0.32_f32, 0.0, 0.32] {
+                let leaf = egui::pos2(r.center().x + r.width() * k, r.bottom() - r.height() * 0.2);
+                p.line_segment([root, leaf], s);
+                let tile = egui::Rect::from_center_size(leaf, vec2(r.width() * 0.24, r.height() * 0.2));
+                p.rect_filled(tile, 2.0, light);
+                p.rect_stroke(tile, 2.0, s, egui::StrokeKind::Inside);
+            }
         }
         DesktopApp::Email => {
             // An envelope with its flap.

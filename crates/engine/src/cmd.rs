@@ -235,7 +235,58 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         "device.models" => Ok(Value::Array(
             models::MODELS.iter().map(|m| json!({"id": m.id, "kind": m.kind.id(), "label": m.label, "description": m.description, "ports": m.port_names()})).collect(),
         )),
-                                "mail.configure" => {
+                                "snmp.request" => {
+            use packetcraft_wire::snmp::{PduKind, Snmp, Value as SnmpValue, parse_oid};
+            let d = device_param(s, p, "device")?;
+            let target = parse_ip(str_param(p, "target")?).map_err(|e| bad(e.to_string()))?;
+            let community: String = opt_str(p, "community").unwrap_or("public").chars().take(32).collect();
+            let kind = match opt_str(p, "operation").unwrap_or("get") {
+                "get" => PduKind::Get,
+                "get-next" => PduKind::GetNext,
+                "set" => PduKind::Set,
+                other => return Err(bad(format!("unknown operation `{other}` (get, get-next, set)"))),
+            };
+            let oid = parse_oid(str_param(p, "oid")?).ok_or_else(|| bad("an OID is numbers and dots: 1.3.6.1.2.1.1.5.0"))?;
+            let value = match (kind, opt_str(p, "value")) {
+                (PduKind::Set, Some(v)) => v.parse::<i64>().map_or_else(|_| SnmpValue::Text(v.chars().take(255).collect()), SnmpValue::Integer),
+                (PduKind::Set, None) => return Err(bad("a set needs a value")),
+                _ => SnmpValue::Null,
+            };
+            // Any id does: the manager waits for one answer at a time.
+            let request_id = i32::try_from(s.sim.now_us() % 1_000_000).unwrap_or(0) + 1;
+            let req = Snmp { community, kind, request_id, error_status: 0, error_index: 0, bindings: vec![(oid, value)] };
+            let r = s.sim.snmp_request(&s.topology, d, target, req).map_err(|e| EngineError::Failed(e.to_string()))?;
+            // Sets the agent accepted change the lab.
+            for (dev, what, v) in s.sim.take_snmp_changes() {
+                match what {
+                    "name" => {
+                        let _ = s.topology.rename(dev, &v);
+                    }
+                    _ => {
+                        if let Some(x) = s.topology.device_mut(dev) {
+                            if what == "contact" {
+                                x.snmp.contact = v;
+                            } else {
+                                x.snmp.location = v;
+                            }
+                        }
+                    }
+                }
+                s.changed();
+            }
+            let error = match r.error_status {
+                0 => Value::Null,
+                packetcraft_wire::snmp::NO_ACCESS => json!("no access (a read-only community)"),
+                packetcraft_wire::snmp::NOT_WRITABLE => json!("not writable"),
+                packetcraft_wire::snmp::WRONG_TYPE => json!("wrong type"),
+                n => json!(format!("error {n}")),
+            };
+            Ok(json!({
+                "bindings": r.bindings.iter().map(|(o, v)| json!({"oid": packetcraft_wire::snmp::oid_text(o), "value": v.show()})).collect::<Vec<_>>(),
+                "error": error,
+            }))
+        }
+        "mail.configure" => {
             let d = device_param(s, p, "device")?;
             if !s.topology.device(d).is_some_and(|x| x.kind.is_host()) {
                 return Err(bad("the Email app runs on PCs, laptops and servers"));

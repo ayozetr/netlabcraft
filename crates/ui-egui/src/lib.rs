@@ -24,6 +24,7 @@ mod events;
 pub mod i18n;
 pub mod icons;
 mod mail;
+mod mib;
 pub mod png;
 mod services;
 pub mod theme;
@@ -180,6 +181,7 @@ pub fn open_desktop_app(app: &mut PacketApp, d: DeviceId, which: &str) {
             "prompt" => Some(console::DesktopApp::Prompt),
             "ip" => Some(console::DesktopApp::IpConfig),
             "email" => Some(console::DesktopApp::Email),
+            "mib" => Some(console::DesktopApp::MibBrowser),
             _ => None,
         };
     }

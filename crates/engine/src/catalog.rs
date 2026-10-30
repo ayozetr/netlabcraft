@@ -31,6 +31,14 @@ pub static CATALOG: &[CommandInfo] = &[
         true
     ),
     c!(
+        "snmp.request",
+        "SNMP request",
+        "",
+        None,
+        r#"{"device": manager, "target": agent address, "community"?: "public", "operation"?: "get"|"get-next"|"set", "oid": "1.3.6.1.2.1.1.5.0", "value"?: for a set} → {"bindings": [{"oid", "value"}], "error"}"#,
+        true
+    ),
+    c!(
         "mail.configure",
         "Email account",
         "",

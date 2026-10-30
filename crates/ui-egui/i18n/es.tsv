@@ -480,3 +480,13 @@ that port is not a radio	ese puerto no es una radio
 {} has no radio	{} no tiene radio
 the router refused a setting: {}	el router rechazó un ajuste: {}
 too many checks	demasiadas comprobaciones
+MIB Browser	Navegador MIB
+Agent address	Dirección del agente
+Community	Comunidad
+Objects	Objetos
+Operation	Operación
+Value	Valor
+Walk	Recorrer
+get-next from the OID until its branch ends	get-next desde el OID hasta que termine su rama
+Clear	Borrar
+OID	OID
