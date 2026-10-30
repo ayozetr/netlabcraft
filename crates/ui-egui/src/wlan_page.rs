@@ -18,6 +18,8 @@ struct Form {
     /// 0 open, 1 WPA2-PSK, 2 WPA2-Enterprise.
     security: usize,
     key: String,
+    /// The VLAN its hosts land in (empty: the access points' own).
+    vlan: String,
     radius: String,
     radius_key: String,
     controller: String,
@@ -46,8 +48,8 @@ pub fn show(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
             joined.iter().filter_map(|a| app.session.topology.device(*a)).map(|a| format!("{} (ch {})", a.name, lap_channel(a.id))).collect();
         ui.label(crate::i18n::trf("Access points joined: {}", &[&if names.is_empty() { "-".to_string() } else { names.join(", ") }]));
         ui.separator();
-        egui::Grid::new(("wlans", d.0)).striped(true).num_columns(4).show(ui, |ui| {
-            for h in ["WLAN", "SSID", "Security", ""] {
+        egui::Grid::new(("wlans", d.0)).striped(true).num_columns(5).show(ui, |ui| {
+            for h in ["WLAN", "SSID", "Security", "VLAN", ""] {
                 ui.label(RichText::new(crate::i18n::tr(h)).strong());
             }
             ui.end_row();
@@ -55,6 +57,7 @@ pub fn show(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 ui.label(w.id.to_string());
                 ui.label(&w.ssid);
                 ui.label(w.security.name());
+                ui.label(w.vlan.map_or("-".to_string(), |v| v.to_string()));
                 if ui.small_button(tl("Remove")).clicked() {
                     done |= app.run("wlc.wlan", json!({"device": d.0, "id": w.id, "remove": true})).is_some();
                 }
@@ -80,10 +83,15 @@ pub fn show(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
         if f.security == 1 {
             field(ui, tl("WPA2 passphrase"), &mut f.key);
         }
+        field(ui, tl("VLAN (optional)"), &mut f.vlan);
         if ui.button(tl("Save WLAN")).clicked() {
             let sec = ["open", "psk", "enterprise"].get(f.security).copied().unwrap_or("open");
             let id = f.id.trim().parse::<u64>().unwrap_or(0);
-            done |= app.run("wlc.wlan", json!({"device": d.0, "id": id, "ssid": f.ssid.trim(), "security": sec, "key": f.key.trim()})).is_some();
+            let mut p = json!({"device": d.0, "id": id, "ssid": f.ssid.trim(), "security": sec, "key": f.key.trim()});
+            if let Ok(v) = f.vlan.trim().parse::<u64>() {
+                p["vlan"] = json!(v);
+            }
+            done |= app.run("wlc.wlan", p).is_some();
         }
         ui.separator();
         ui.label(RichText::new(tl("RADIUS server (WPA2-Enterprise logins)")).strong());

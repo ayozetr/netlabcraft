@@ -592,9 +592,15 @@ pub fn build(id: &str) -> Result<Topology> {
             b.cable("LAP1", "g0", "S1", "fa0/2")?;
             b.cable("LAP2", "g0", "S1", "fa0/3")?;
             b.cable("RADIUS1", "g0", "S1", "fa0/4")?;
+            // Management in VLAN 1 (untagged); Staff hosts land in VLAN 10, Guest hosts in VLAN 30,
+            // each with its own subnet and DHCP pool on R1 (router on a stick).
             b.type_in(
                 "R1",
-                "enable\nconfigure terminal\ninterface g0/0\nip address 192.168.20.1 255.255.255.0\nno shutdown\nexit\nip dhcp excluded-address 192.168.20.1 192.168.20.20\nip dhcp pool WIFI\nnetwork 192.168.20.0 255.255.255.0\ndefault-router 192.168.20.1\nend",
+                "enable\nconfigure terminal\ninterface g0/0\nip address 192.168.20.1 255.255.255.0\nno shutdown\ninterface g0/0.10\nencapsulation dot1Q 10\nip address 192.168.10.1 255.255.255.0\ninterface g0/0.30\nencapsulation dot1Q 30\nip address 192.168.30.1 255.255.255.0\nexit\nip dhcp excluded-address 192.168.10.1 192.168.10.9\nip dhcp excluded-address 192.168.30.1 192.168.30.9\nip dhcp pool STAFF\nnetwork 192.168.10.0 255.255.255.0\ndefault-router 192.168.10.1\nip dhcp pool GUEST\nnetwork 192.168.30.0 255.255.255.0\ndefault-router 192.168.30.1\nend",
+            )?;
+            b.type_in(
+                "S1",
+                "enable\nconfigure terminal\nvlan 10\nname Staff\nvlan 30\nname Guest\nexit\ninterface g0/1\nswitchport mode trunk\ninterface range fa0/2 - 3\nswitchport mode trunk\nend",
             )?;
             b.type_in("RADIUS1", "ipconfig 192.168.20.5 255.255.255.0 192.168.20.1")?;
             let server = b.t.resolve("RADIUS1").map_err(|e| EngineError::Failed(e.to_string()))?;
@@ -612,12 +618,12 @@ pub fn build(id: &str) -> Result<Topology> {
             }
             b.type_in(
                 "WLC1",
-                "enable\nconfigure terminal\ninterface vlan 1\nip address 192.168.20.2 255.255.255.0\nno shutdown\nexit\nip default-gateway 192.168.20.1\nradius-server host 192.168.20.5 key wlcsecret\nwlan 1 Staff enterprise\nwlan 2 Guest psk invitado123\nend",
+                "enable\nconfigure terminal\ninterface vlan 1\nip address 192.168.20.2 255.255.255.0\nno shutdown\nexit\nip default-gateway 192.168.20.1\nradius-server host 192.168.20.5 key wlcsecret\nwlan 1 Staff enterprise vlan 10\nwlan 2 Guest psk invitado123 vlan 30\nend",
             )?;
             for (lap, a) in [("LAP1", 3), ("LAP2", 4)] {
                 b.type_in(
                     lap,
-                    &format!("enable\nconfigure terminal\ninterface vlan 1\nip address 192.168.20.{a} 255.255.255.0\nno shutdown\nexit\nip default-gateway 192.168.20.1\nend"),
+                    &format!("enable\nconfigure terminal\ninterface vlan 1\nip address 192.168.20.{a} 255.255.255.0\nno shutdown\nexit\nip default-gateway 192.168.20.1\ninterface g0\nswitchport mode trunk\nend"),
                 )?;
             }
             let staff = packetcraft_model::Wifi {
@@ -635,7 +641,7 @@ pub fn build(id: &str) -> Result<Topology> {
                 }
                 b.type_in(name, "ipconfig /renew")?;
             }
-            b.t.notes = "WLC1 holds two WLANs (`show wlan`, `show capwap`): Staff checks logins with RADIUS1 (users ana/ana12345 and luis/luis1234), Guest uses the passphrase invitado123. In Simulation mode, reset and ping from Laptop1 to watch the 802.11 association, the EAP login and the RADIUS exchange; give Laptop1 a wrong password and watch it refused.".into();
+            b.t.notes = "WLC1 holds two WLANs (`show wlan`, `show capwap`): Staff checks logins with RADIUS1 (users ana/ana12345 and luis/luis1234) and lands in VLAN 10 (192.168.10.0/24); Guest uses the passphrase invitado123 and lands in VLAN 30 (192.168.30.0/24). The access points tag each WLAN on their trunk to S1, and R1 routes and hands out addresses per VLAN. In Simulation mode, reset and ping from Laptop1 to watch the 802.11 association, the EAP login, the RADIUS exchange, the 4-way handshake and then CCMP-protected data; move Laptop1 next to LAP2 and watch it reassociate, keeping its address.".into();
         }
         "firewall" => {
             b.add_model("Firewall-5", "FW1", 360.0, 120.0)?;

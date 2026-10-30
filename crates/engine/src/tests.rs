@@ -943,11 +943,11 @@ fn a_controller_pushes_wlans_to_its_access_points_and_checks_logins_with_radius(
     let capwap = s.execute("cli.exec", json!({"device": "WLC1", "line": "show capwap"})).unwrap()["output"].as_str().unwrap().to_string();
     assert!(capwap.contains("Access points joined: 2"), "{capwap}");
     let run = s.execute("cli.exec", json!({"device": "WLC1", "line": "show running-config"})).unwrap()["output"].as_str().unwrap().to_string();
-    assert!(run.contains("wlan 1 Staff enterprise\nwlan 2 Guest psk invitado123"), "{run}");
+    assert!(run.contains("wlan 1 Staff enterprise vlan 10\nwlan 2 Guest psk invitado123 vlan 30"), "{run}");
 
     // Simulation: the association, the 802.1X login and the RADIUS exchange.
     s.execute("sim.reset", json!({})).unwrap();
-    assert_eq!(s.execute("net.ping", json!({"from": "Laptop1", "to": "192.168.20.1", "count": 3})).unwrap()["marks"], "!!!");
+    assert_eq!(s.execute("net.ping", json!({"from": "Laptop1", "to": "192.168.10.1", "count": 3})).unwrap()["marks"], "!!!");
     let tr = trace_text(&s);
     for want in [
         "802.11 probe request: \"Staff\"?",
@@ -956,10 +956,13 @@ fn a_controller_pushes_wlans_to_its_access_points_and_checks_logins_with_radius(
         "802.11 association response: success",
         "EAP request: identity?",
         "EAP response: identity \"ana\"",
+        "EAP request: PEAP start",
+        "EAP response: PEAP, 0 byte(s) of TLS tunnel (contents not modelled)",
         "CAPWAP data carrying",
         "RADIUS",
         "EAP success",
-        "[802.11]",
+        "4-way handshake message 4 of 4",
+        "[802.11, CCMP]",
     ] {
         assert!(tr.contains(want), "missing {want}:\n{tr}");
     }
@@ -975,7 +978,7 @@ fn a_controller_pushes_wlans_to_its_access_points_and_checks_logins_with_radius(
 
     // WPA2-Personal: the 4-way handshake, signed with the passphrase.
     s.execute("sim.reset", json!({})).unwrap();
-    assert_eq!(s.execute("net.ping", json!({"from": "Laptop2", "to": "192.168.20.1", "count": 2})).unwrap()["marks"], "!!");
+    assert_eq!(s.execute("net.ping", json!({"from": "Laptop2", "to": "192.168.30.1", "count": 2})).unwrap()["marks"], "!!");
     let tr = trace_text(&s);
     assert!(tr.contains("4-way handshake message 4 of 4") && !tr.contains("bad MIC"), "{tr}");
 
@@ -1020,6 +1023,60 @@ fn a_controller_pushes_wlans_to_its_access_points_and_checks_logins_with_radius(
         assert!(tr.contains(want), "missing {want}:\n{tr}");
     }
     assert!(s.execute("lap.controller", json!({"device": "WLC1", "address": "1.2.3.4"})).is_err());
+}
+
+#[test]
+fn each_wlan_lands_in_its_own_vlan_and_hosts_roam_between_access_points() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "wlc"})).unwrap();
+    let ip = |s: &Session, n: &str| s.topology.find(n).unwrap().ports[0].ip.unwrap();
+    // DHCP per VLAN: Staff in 192.168.10.0/24, Guest in 192.168.30.0/24.
+    let (staff, guest) = (ip(&s, "Laptop1"), ip(&s, "Laptop2"));
+    assert!(staff.to_string().starts_with("192.168.10."), "{staff}");
+    assert!(guest.to_string().starts_with("192.168.30."), "{guest}");
+    s.execute("cli.exec", json!({"device": "WLC1", "line": "enable"})).unwrap();
+    let wlan = s.execute("cli.exec", json!({"device": "WLC1", "line": "show wlan"})).unwrap()["output"].as_str().unwrap().to_string();
+    assert!(wlan.contains("VLAN") && wlan.contains(" 10 ") && wlan.contains(" 30 "), "{wlan}");
+    s.execute("cli.exec", json!({"device": "LAP1", "line": "enable"})).unwrap();
+    let capwap = s.execute("cli.exec", json!({"device": "LAP1", "line": "show capwap"})).unwrap()["output"].as_str().unwrap().to_string();
+    assert!(capwap.contains("WLAN VLANs 10,30: tagged on the trunk uplink"), "{capwap}");
+    // Between the WLANs, through R1: tagged 10 on LAP1's uplink, 30 on LAP2's.
+    s.execute("sim.reset", json!({})).unwrap();
+    let to = guest.addr.to_string();
+    // (The first may be lost while R1 resolves Laptop2's address, as on a real router.)
+    let marks = s.execute("net.ping", json!({"from": "Laptop1", "to": to, "count": 3})).unwrap()["marks"].as_str().unwrap().to_string();
+    assert!(marks.ends_with("!!"), "{marks}");
+    let tags: std::collections::BTreeSet<u16> =
+        s.sim.trace().iter().filter_map(|e| packetcraft_wire::Frame::decode(&e.frame).ok().and_then(|f| f.vlan)).collect();
+    assert!(tags.contains(&10) && tags.contains(&30), "{tags:?}");
+    // A Staff broadcast stays in VLAN 10: Laptop2 never hears Laptop1's ARP.
+    let l2 = packetcraft_model::End { device: s.topology.resolve("Laptop2").unwrap(), port: 0 };
+    let l1mac = s.topology.find("Laptop1").unwrap().ports[0].mac;
+    assert!(!s.sim.trace().iter().any(|e| e.to == l2 && packetcraft_wire::Frame::decode(&e.frame).is_ok_and(|f| f.src == l1mac)));
+    // Without the VLAN, Staff is back in the management subnet, where R1 has no pool for it.
+    s.execute("wlc.wlan", json!({"device": "WLC1", "id": 1, "ssid": "Staff", "security": "enterprise"})).unwrap();
+    let run = s.execute("cli.exec", json!({"device": "WLC1", "line": "show running-config"})).unwrap()["output"].as_str().unwrap().to_string();
+    assert!(run.contains("wlan 1 Staff enterprise\n"), "{run}");
+    s.execute("wlc.wlan", json!({"device": "WLC1", "id": 1, "ssid": "Staff", "security": "enterprise", "vlan": 10})).unwrap();
+    assert!(s.execute("wlc.wlan", json!({"device": "WLC1", "id": 1, "ssid": "Staff", "security": "enterprise", "vlan": 5000})).is_err());
+    assert!(s.execute("wlc.wlan", json!({"device": "WLC1", "id": 1, "ssid": "Staff", "security": "enterprise", "vlan": "x"})).is_err());
+
+    // Laptop1 walks over to LAP2: it reassociates, logs in again and keeps its address.
+    s.execute("sim.reset", json!({})).unwrap();
+    assert_eq!(s.execute("net.ping", json!({"from": "Laptop1", "to": "192.168.10.1", "count": 1})).unwrap()["marks"], "!");
+    s.execute("device.move", json!({"device": "Laptop1", "x": 540.0, "y": 400.0})).unwrap();
+    assert_eq!(s.execute("net.ping", json!({"from": "Laptop1", "to": "192.168.10.1", "count": 2})).unwrap()["marks"], "!!");
+    let tr = trace_text(&s);
+    assert!(tr.contains("802.11 reassociation request: \"Staff\"") && tr.contains("802.11 reassociation response: success"), "{tr}");
+    assert_eq!(ip(&s, "Laptop1"), staff);
+    let lap2 = s.topology.resolve("LAP2").unwrap();
+    assert_eq!(
+        s.topology.wifi_ap_of(packetcraft_model::End { device: s.topology.resolve("Laptop1").unwrap(), port: 0 }).map(|e| e.device),
+        Some(lap2)
+    );
+    // Beacons show up while time passes.
+    s.execute("sim.advance", json!({"seconds": 5})).unwrap();
+    assert!(trace_text(&s).contains("802.11 beacon: \"Staff\""));
 }
 
 #[test]

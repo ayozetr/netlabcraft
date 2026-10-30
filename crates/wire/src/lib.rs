@@ -12,6 +12,7 @@ use std::net::Ipv4Addr;
 
 use packetcraft_core::MacAddr;
 
+pub mod aes;
 pub mod capwap;
 pub mod control;
 pub mod dhcp;

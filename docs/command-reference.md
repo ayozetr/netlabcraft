@@ -14,7 +14,7 @@ Every front end (UI, `packetcraft-cli run`, MCP `packetcraft_run`) runs these.
 | `mail.configure` | Email account |  |  | `{"device", "name"?, "address": "ana@lab.local", "incoming": "POP3 server address or name", "outgoing": "SMTP server", "user", "password"}` |
 | `mail.send` | Send email |  |  | `{"device", "to", "subject"?, "body"?} → {"answer"}: SMTP through the outgoing server` |
 | `mail.receive` | Receive email |  |  | `{"device"} → {"received": n}: POP3 from the incoming server; the messages move to the host` |
-| `wlc.wlan` | Controller WLAN |  |  | `{"device": controller, "id": 1-16, "ssid"?: "network name", "security"?: "open"\|"psk"\|"enterprise", "key"?: "WPA2-PSK passphrase", "remove"?: true} → {"config": the line applied}` |
+| `wlc.wlan` | Controller WLAN |  |  | `{"device": controller, "id": 1-16, "ssid"?: "network name", "security"?: "open"\|"psk"\|"enterprise", "key"?: "WPA2-PSK passphrase", "vlan"?: 1-4094 (the VLAN its hosts land in, tagged on the APs' uplinks), "remove"?: true} → {"config": the line applied}` |
 | `lap.controller` | Access point's controller |  |  | `{"device": lightweight AP, "address"?: "controller address (none: any in the AP's subnet)"} → {"config", "joined": controller name or null}` |
 | `home.settings` | Home router settings |  |  | `{"device", "lan"?+"lan_mask"?, "dhcp"?: true\|false, "dhcp_start"?, "internet"?+"internet_mask"?+"gateway"?} → {"config": the lines applied}` |
 | `activity.show` | Activity |  |  | `{} → {"activity" (or null; a locked one without its checks), "total_points", "checks", "locked"}` |

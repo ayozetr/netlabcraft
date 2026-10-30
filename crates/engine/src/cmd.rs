@@ -425,7 +425,11 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                     if ssid.contains(char::is_whitespace) {
                         return Err(bad("an SSID here has no spaces"));
                     }
-                    format!("wlan {n} {ssid} {sec}")
+                    let vlan = match p.get("vlan").filter(|v| !v.is_null()) {
+                        Some(v) => format!(" vlan {}", v.as_u64().ok_or_else(|| bad("vlan is a number, 1-4094"))?),
+                        None => String::new(),
+                    };
+                    format!("wlan {n} {ssid} {sec}{vlan}")
                 }
             } else {
                 match opt_str(p, "address").map(str::trim).filter(|a| !a.is_empty()) {

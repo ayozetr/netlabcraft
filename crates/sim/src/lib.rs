@@ -841,6 +841,8 @@ pub struct Sim {
     pmks: BTreeMap<(String, String), [u8; 32]>,
     air_seq: u16,
     capwap_seq: u8,
+    /// Beacons are queued up to this time.
+    beacon_until: u64,
 }
 
 impl Sim {
@@ -1074,6 +1076,12 @@ impl Sim {
     }
 
     fn emit_hops(&mut self, t: &Topology, from: End, frame: Vec<u8>, hops: u8) -> bool {
+        self.emit_hops_in(t, from, frame, hops, None)
+    }
+
+    /// As [`Sim::emit_hops`]; out of an access point's radio, only to the hosts whose WLAN
+    /// maps to `vlan` (when given).
+    fn emit_hops_in(&mut self, t: &Topology, from: End, frame: Vec<u8>, hops: u8, vlan: Option<VlanId>) -> bool {
         if !port_up(t, from) || self.err_disabled_now(from.device, from.port) {
             return false;
         }
@@ -1082,9 +1090,10 @@ impl Sim {
             // Not back to the host that sent it; a frame for one host goes to that host only.
             let src = frame.get(6..12).map(<[u8]>::to_vec).unwrap_or_default();
             let dst = frame.get(0..6).map(<[u8]>::to_vec).unwrap_or_default();
-            let clients = t.wifi_clients(from);
+            let clients: Vec<End> = t.wifi_clients(from).into_iter().filter(|c| vlan.is_none_or(|v| t.wifi_vlan(*c) == Some(v))).collect();
             let mac = |e: &End| t.device(e.device).and_then(|d| d.ports.get(e.port)).map(|p| p.mac.0.to_vec()).unwrap_or_default();
             let unicast: Vec<End> = clients.iter().filter(|c| mac(c) == dst).copied().collect();
+            // (No host of that VLAN on the radio is fine: the radio is up, nobody wants it.)
             for to in if unicast.is_empty() { clients } else { unicast } {
                 if mac(&to) == src {
                     continue;
@@ -1110,6 +1119,7 @@ impl Sim {
         self.flush_syslog(t);
         self.flush_traps(t);
         self.schedule_control(t, deadline);
+        self.schedule_beacons(t, deadline);
         let mut count = 0usize;
         while let Some(Reverse(top)) = self.queue.peek() {
             if top.at > deadline {
@@ -1166,18 +1176,16 @@ impl Sim {
         };
         let air = wlan::air_hop(t, q.from, q.to);
         // Over the air: listed by what the 802.11 frame carries (its Ethernet equivalent).
-        let shown = if air {
-            packetcraft_wire::wlan::Dot11::decode(&q.frame).ok().and_then(|d| d.ethernet()).map(|e| e.encode()).unwrap_or_default()
-        } else {
-            shown
-        };
+        let plain = if air { self.air_plain(t, q.from, q.to, &q.frame) } else { None };
+        let ccmp = air && packetcraft_wire::wlan::Dot11::decode(&q.frame).is_ok_and(|d| d.is_protected());
+        let shown = if air { plain.and_then(|d| d.ethernet()).map(|e| e.encode()).unwrap_or_default() } else { shown };
         let (protocol, mut summary) =
             if air && shown.is_empty() { (Protocol::Wlan, packetcraft_wire::wlan::summarize(&q.frame)) } else { packetcraft_wire::summarize(&shown) };
         if let Some((f, ..)) = &serial {
             summary.push_str(if *f == packetcraft_wire::serial::Framing::Ppp { " [serial, PPP]" } else { " [serial, HDLC]" });
         }
         if air && !shown.is_empty() {
-            summary.push_str(" [802.11]");
+            summary.push_str(if ccmp { " [802.11, CCMP]" } else { " [802.11]" });
         }
         self.next_event += 1;
         if self.trace.len() >= TRACE_CAP {
@@ -1700,7 +1708,8 @@ impl Sim {
                 if f.vlan.is_some_and(|v| v != sp.access_vlan.get()) {
                     return Err("tagged frame on an access port".into());
                 }
-                sp.access_vlan
+                // Off an access point's radio: the VLAN of the sender's WLAN.
+                wlan::radio_vlan(t, End { device: d.id, port: in_port }, f.src).unwrap_or(sp.access_vlan)
             }
             SwitchportMode::Trunk => {
                 let v = match f.vlan {
@@ -1713,7 +1722,7 @@ impl Sim {
                 v
             }
         };
-        if !d.vlans.contains_key(&vlan) {
+        if !t.switch_has_vlan(d, vlan) {
             return Err(format!("VLAN {vlan} does not exist on this switch"));
         }
         let chm = self.chmap(t, d);
@@ -1805,7 +1814,9 @@ impl Sim {
             let p = chm.pick(p, f.src, f.dst);
             let Some(port) = d.ports.get(p) else { continue };
             let tag = if !t.is_trunk(End { device: d.id, port: p }) || port.switchport.native_vlan == vlan { None } else { Some(vlan.get()) };
-            if self.emit_hops(t, End { device: d.id, port: p }, f.retagged(tag).encode(), hops + 1) {
+            let end = End { device: d.id, port: p };
+            let only = is_ap_radio(t, end).then_some(vlan);
+            if self.emit_hops_in(t, end, f.retagged(tag).encode(), hops + 1, only) {
                 sent += 1;
             }
         }
@@ -2901,7 +2912,7 @@ fn default_ttl(kind: DeviceKind) -> u8 {
 fn carries(t: &Topology, d: &Device, p: usize, vlan: VlanId) -> bool {
     d.ports.get(p).filter(|port| !port.routed).is_some_and(|port| {
         if t.is_trunk(End { device: d.id, port: p }) { port.switchport.allowed.contains(vlan) } else { port.switchport.access_vlan == vlan }
-    })
+    }) || t.radio_carries(d, p, vlan)
 }
 
 /// The DHCP message inside a frame, if it is one for a client.
