@@ -1,6 +1,6 @@
 # Gaps
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** major (re-ranked after the CCNA 2 and 3 depth round; packaging on hold; fibre removed, it was done) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** major (automation, security, Simulation-mode depth, leftovers and device families closed; what is left re-ranked) · **Target:** Cisco Packet Tracer 9.0
 
 Every known shortfall against the reference app, ranked: the work list. Pick from the top; each
 item lands with tests and doc updates. The weights behind the ranking are in
@@ -13,21 +13,29 @@ Hours are Opus 5.5 agent wall-clock estimates.
 
 | # | Gap | Who notices | Estimate |
 |---|---|---|---|
-| 1 | **A CCNA-style lab book** (beta gate 1): VLANs, inter-VLAN routing, DHCP, OSPF, ACLs, NAT, IPv6, WAN, switch security and HSRP labs written fresh and run end to end by hand and through MCP, fixing what they turn up | Every student; it is also how the readiness estimates get checked | 25–40 h |
-| 2 | **Automation (CCNA 3):** RESTCONF/NETCONF on routers, a Programming tab on PCs, a controller to query | CCNA 3 students | 15–25 h |
-| 3 | **Security depth:** zone-based firewall and `ip inspect`, `ip mtu` and `ip tcp adjust-mss` (tunnels), IKEv2 and real ciphers | CCNA 3 and security courses | 12–20 h |
-| 4 | **Simulation-mode depth:** complex PDUs, PDU details in the reference app's OSI layout | CCNA 1 students | 18–28 h |
-| 5 | **Switch and QoS leftovers:** `mls qos trust`, shaping that delays traffic, loop guard, option 82 inserted by snooping switches, the RSTP proposal/agreement handshake | CCNA 2 and 3 extras | 6–10 h |
-| 6 | **Routing leftovers:** EIGRP for IPv6, VRRP and GLBP beyond the concept, DHCPv6 /128 addresses for router clients | CCNA 2 and 3 extras | 8–12 h |
-| 7 | **Wireless depth:** group keys, a real PEAP/TLS tunnel, wireless range by distance in the physical view | CCNA 2 extras | 6–10 h |
-| 8 | **More languages:** interface languages beyond English and Spanish (catalogs in the same format) | Non-English students | 3–6 h each |
-| 9 | **Device families:** a switch card in routers (switching inside a router), power over Ethernet, SIP phones, IoT on a timer and more things, cloud and DSL/cable modems | Specialised labs | 30–50 h |
+| 1 | **A CCNA-style lab book** (beta gate 1, **in progress**): VLANs, inter-VLAN routing, DHCP, OSPF, ACLs, NAT, IPv6, WAN, switch security and HSRP labs written fresh and run end to end by hand and through MCP, fixing what they turn up | Every student; it is also how the readiness estimates get checked | 25–40 h |
+| 2 | **Automation depth (CCNA 3):** TLS under RESTCONF (port 443 carries plain HTTP today) and SSH under NETCONF, XML bodies and IPv6 addresses in RESTCONF, a candidate datastore with commit in NETCONF, a controller closer to the course's (device inventory, topology, policies) | CCNA 3 students | 10–16 h |
+| 3 | **Security leftovers:** a real Diffie-Hellman exchange for IKE (a stand-in today), AES-256 and SHA-256 ESP, real ciphers for IKEv1 tunnels, rekeying, the default MTU of tunnels, more firewall inspections | CCNA 3 and security courses | 8–14 h |
+| 4 | **Instructor tools:** an answer-network view in the Activity Wizard, translated activity texts | Instructors | 6–10 h |
+| 5 | **Simulation-mode leftovers:** a Constant Delay option, capturing only the filtered events, the origin device's own decisions in the OSI view (only receivers record theirs), absolute start times for PDUs | CCNA 1 students | 4–8 h |
+| 6 | **Switching and routing leftovers:** CoS values (frames always carry 0, so `trust cos` keeps 0), VRRP advertisement and master-down timers, EIGRP for IPv6 updates on the wire, RIP triggered updates, VTP pruning | CCNA 2 and 3 extras | 6–10 h |
+| 7 | **Wireless leftovers:** a real PEAP/TLS tunnel (shown as an exchange today), central tunnelling through the controller | CCNA 2 extras | 4–8 h |
+| 8 | **Device families:** tablets, smartphones and other end devices, more IoT things and programmable boards, the phone's own setup screen, power supplies as parts | Specialised labs | 15–25 h |
+| 9 | **More languages:** interface languages beyond English and Spanish (catalogs in the same format) | Non-English students | 3–6 h each |
 | — | **Packaging and first release:** on hold by the owner's decision (no release for now; GitHub Actions is not available). Not planned or estimated until the hold is lifted; see [releasing.md](releasing.md) | Everyone who isn't a developer | on hold |
 
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | major | Re-ranked after the round below: the lab book stays first and is in progress; automation depth, security leftovers, instructor tools, Simulation-mode, switching/routing, wireless and device-family leftovers follow. |
+| 2026-10-30 | minor | Done: device families (old item 9): a 4-port switch card in routers, PoE switches with power budgets and powered devices that need PoE or their adapter, SIP phones, six more IoT things with timed reports and AND/OR rules, a Home Gateway, a Cloud with DSL and cable modems and coaxial and phone cables. What is left is the new item 8. |
+| 2026-10-30 | minor | Wireless depth (old item 7) narrowed: group keys (GTK by AES key wrap, group frames under it) and range by building in the physical view; a real PEAP tunnel is left (new item 7). |
+| 2026-10-30 | minor | Done: routing leftovers (old item 6): EIGRP for IPv6, VRRP v2/v3, GLBP basics, DHCPv6 /128 addresses for router clients, HSRP preempt honoured, the OSPF network-type mismatch. Timers and hellos left (new item 6). |
+| 2026-10-30 | minor | Done: switch and QoS leftovers (old item 5): `mls qos trust`, shaping that delays traffic, loop guard and BPDU filter, option 82 insertion with relay trust, the RSTP proposal/agreement handshake. CoS values left (new item 6). |
+| 2026-10-30 | minor | Done: Simulation-mode depth (old item 4): complex PDUs (14 applications, one-shot or periodic), the OSI Model view of PDU details with recorded decisions, scenarios saved in the lab. Leftovers are the new item 5. |
+| 2026-10-30 | minor | Done: security depth (old item 3): zone-based firewall, classic `ip inspect`, `ip mtu` with fragmentation and RFC 1191 errors, `ip tcp adjust-mss`, IKEv2, real AES-128/HMAC-SHA1-96 ESP for IKEv2. Leftovers are the new item 3. |
+| 2026-10-30 | minor | Done: automation (old item 2): RESTCONF, NETCONF, the Programming app, a controller. Depth left (new item 2). |
 | 2026-10-30 | major | Re-ranked: the lab book first, then automation, security depth and Simulation-mode depth; packaging put on hold by the owner's decision; fibre removed from device families (it was done with the cable types). |
 | 2026-10-30 | minor | Done: console and PC prompt fixes (`^` marker, first-word help, `show ip traffic`, `show tcp brief`, extended ping, history size; `ipconfig /all`, `ipv6config /all`, `ping -l/-t`, `netstat`, `arp -d`). |
 | 2026-10-30 | minor | Done: HSRP version 2 and interface tracking. |

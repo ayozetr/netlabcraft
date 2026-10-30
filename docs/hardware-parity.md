@@ -1,29 +1,31 @@
 # Hardware parity
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (power switch, printing and figures corrected) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (switch card, PoE, SIP phones, IoT things and gateway, cloud and modems, wireless group keys and range; figures aligned) · **Target:** Cisco Packet Tracer 9.0
 
 Two kinds of hardware matter here: the **simulated** hardware (device models, ports, cables,
 modules) and the **real** hardware the app runs on. Part of
 [target-app-parity.md](target-app-parity.md). **Simulated hardware:** the Device families row of
-[`ROADMAP.md`](../ROADMAP.md#dimensions) (~60% ready, 30–50 h) and the cabling part of its WAN,
-cabling and wireless row (~87%); **host hardware: ~80% ready, 8–14 h** (estimated).
+[`ROADMAP.md`](../ROADMAP.md#dimensions) (~70% ready, 15–25 h) and the cabling part of its WAN,
+cabling and wireless row (~90%); **host hardware: ~80% ready, 8–14 h** (estimated).
 
 ## Simulated devices and cables
 
 | Feature | Reference app | NetLabCraft | Gap and estimate |
 |---|---|---|---|
-| Routers | Many models, modular slots (HWIC, NIM) | Router 2GE/3GE/4GE, Router 2GE+2S, Modular Router 2GE (2 bays) and 3GE (4 bays) with serial (2 and 4 ports), Gigabit (1 and 2 ports) and Fast Ethernet cards fitted while switched off; power on and off (boots from the saved configuration); a Physical tab drawn in code; [model-equivalents.md](model-equivalents.md) | A switch card (switching inside a router), power supplies as parts: 6–10 h |
-| Switches | Access and multilayer models | Switch 8FE/24FE/48FE, L3 Switch 24 (multilayer) | — for CCNA labs |
+| Routers | Many models, modular slots (HWIC, NIM) | Router 2GE/3GE/4GE, Router 2GE+2S, Modular Router 2GE (2 bays) and 3GE (4 bays) with serial (2 and 4 ports), Gigabit (1 and 2 ports, copper or fiber), Fast Ethernet and 4-port switch cards fitted while switched off (the switch card gives the router layer-2 ports with VLANs and trunks); power on and off (boots from the saved configuration); a Physical tab drawn in code; [model-equivalents.md](model-equivalents.md) | Power supplies as parts, more router models: 3–5 h |
+| Switches | Access and multilayer models, PoE models | Switch 8FE/24FE/48FE, Switch 24FE+2SFP, L3 Switch 24 (multilayer), Switch 8FE PoE (65 W) and Switch 24FE PoE (370 W) with `power inline` and `show power inline` | — for CCNA labs |
 | Hubs, PCs, laptops, servers, printers | yes | yes | — |
-| Wireless (access points, wireless routers, wireless clients) | yes | 🟡 Home Router, Access Point and Wi-Fi Laptop; real IEEE 802.11 frames (probe, authentication, association, reassociation, beacons every 2048 TU, data); WPA2-PSK 4-way handshake and CCMP (AES-CCM) on data frames; WLC and LAP with a CAPWAP join, WLANs pushed to joined APs, a VLAN per WLAN tagged on the AP's trunk uplink; WPA2-Enterprise via RADIUS, PEAP shown as an exchange; roaming between APs of the same SSID; a separate 802.11 capture; wlc sample | Group keys, a real PEAP/TLS tunnel, range by distance, central tunnelling: 6–10 h |
-| Firewalls | yes | 🟡 Firewall 5GE: named interfaces and subinterfaces with security levels, a stateful connection table with timeouts, ICMP errors and traceroute through it, ICMP rules for the firewall itself, extended access lists with object groups and remarks bound in or out, object NAT and twice NAT, static routes with distances, a DHCP server, a global policy with `inspect icmp`; firewall sample | More inspections: 4–6 h; a zone-based firewall on routers is in [protocol-parity.md](protocol-parity.md#security) |
-| IP phones | yes | 🟡 IP Phone with a PC port; `switchport voice vlan`; DHCP option 150; call control on routers (`telephony-service`, `ephone-dn`, `ephone`, `auto assign`, `show ephone`); registration, ringing, answer, hang up over our own documented signalling, RTP packets while a call is up; a Phone tab with a dial pad; ip-phones sample | Power over Ethernet, SIP, the phone's own setup screen: 8–12 h |
-| IoT devices | yes | 🟡 Smart Sensor and Smart Device registering to a server's IoT service over HTTP; the server lists them and runs rules (if a reading passes a value, switch a device); an IoT tab; iot sample | Reports on a timer, more kinds of things, a home gateway: 8–12 h |
-| Cloud, DSL and cable modems | yes | ❌ | 8–12 h; low priority for CCNA |
+| Tablets, smartphones, TVs, a sniffer, other end devices | yes | ❌ | 5–8 h |
+| Wireless (access points, wireless routers, wireless clients) | yes | 🟡 Home Router, Access Point and Wi-Fi Laptop; real IEEE 802.11 frames (probe, authentication, association, reassociation, beacons every 2048 TU, data); WPA2-PSK 4-way handshake and CCMP (AES-CCM) on data frames; WLC and LAP with a CAPWAP join, WLANs pushed to joined APs, a VLAN per WLAN tagged on the AP's trunk uplink; WPA2-Enterprise via RADIUS, PEAP shown as an exchange; the group key (GTK) delivered in message 3 by AES key wrap (RFC 3394) and group-addressed frames protected by it, with replay checks; roaming between APs of the same SSID; once the lab has a physical layout, hosts reach the access points of their own building only; a separate 802.11 capture; wlc sample | A real PEAP/TLS tunnel, central tunnelling: 4–8 h |
+| Firewalls | yes | 🟡 Firewall 5GE: named interfaces and subinterfaces with security levels, a stateful connection table with timeouts, ICMP errors and traceroute through it, ICMP rules for the firewall itself, extended access lists with object groups and remarks bound in or out, object NAT and twice NAT, static routes with distances, a DHCP server, a global policy with `inspect icmp`; firewall sample | More inspections: 4–6 h; the zone-based firewall on routers is in [protocol-parity.md](protocol-parity.md#security) |
+| IP phones | yes | 🟡 IP Phone with a PC port; `switchport voice vlan`; DHCP option 150; call control on routers (`telephony-service`, `ephone-dn`, `ephone`, `auto assign`, `show ephone`) over our own documented signalling, or SIP with `voice register` (Signal with SIP in the Phone tab, `phone.configure`); ringing, answer, hang up, RTP packets while a call is up; a Phone tab with a dial pad; powered by a PoE switch port or the power adapter (`device.adapter`), dark and saying why otherwise; ip-phones and sip-phones samples | The phone's own setup screen: 2–4 h |
+| IoT devices | yes | 🟡 Eight things: temperature sensor, fan, motion and smoke detectors, smart light, door lock, siren and webcam (still images while on), drawn in code; they register with a server's IoT service or a Home Gateway's built-in one over HTTP and report on a timer in simulated time (an interval per thing; 0 reports only on change); rules with several conditions (`>`, `<`, `=`) joined with AND or OR switch a thing on or off; an IoT tab listing things live with rules in words; iot and smart-home samples | More kinds of things, programmable boards and scripts on things: 8–12 h |
+| Cloud, DSL and cable modems | yes | ✅ A Cloud with 2 Ethernet, 2 coaxial and 2 phone ports joined in pairs (`cloud.map`; coaxial to phone by default) and its pairs drawn in its Physical tab; a DSL Modem (phone line to Ethernet) and a Cable Modem (coaxial to Ethernet) that bridge; a WAN Emulation group in the device box; home-internet sample | No DSL or DOCSIS signalling (bridges only) |
 | Copper cables | Straight-through and crossover (with mismatch errors) | ✅ straight-through and cross-over, a wrong cable leaves the link down with the reason unless auto-MDIX (routers and switches) fixes it; automatic cable; solid and dashed lines | — |
 | Serial cables | DCE and DTE | ✅ the first end cabled is the DCE; red cable with a clock at the DCE end | — |
 | Fibre and console cables | yes | ✅ fiber between fiber or combo ports (switch Gigabit uplinks, Switch 24FE+2SFP, a fiber router card), orange, up to 2 km; console (rollover) from a PC's RS-232 port to a device's Console port, opened by the PC's Terminal app with no IP | — |
-| Coaxial and phone cables | yes | ❌ | Only with cable/DSL modems: 4–6 h |
+| Coaxial and phone cables | yes | ✅ coaxial (F connector, up to 500 m) and phone (RJ-11, up to 5 km) cables in Connections, joining only ports of their medium | — |
+| Power over Ethernet | yes | ✅ PoE switches with a budget per switch, `power inline auto\|never`, `show power inline`; IP phones and lightweight APs need a PoE port or their adapter; the Physical tab shows the adapter plug, the power source, the budget and the lit PoE ports (`device.power.source`) | No negotiation frames |
 | Physical workspace (cities, buildings, racks, cable lengths) | yes | ✅ see [ui-parity.md](ui-parity.md) | — |
 | Power switch and LEDs in the Physical tab | yes | ✅ Every device's Physical tab has a power switch (switched back on, a device boots from its saved configuration) and a front panel with one socket per port, its link light and what is plugged in; modular routers also show their chassis with bays and cards | — |
 
@@ -44,6 +46,7 @@ cabling and wireless row (~87%); **host hardware: ~80% ready, 8–14 h** (estima
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Switch card in routers, PoE switches and powered devices, SIP phones, six more IoT things with timed reports and AND/OR rules, the Home Gateway, the Cloud with DSL and cable modems, coaxial and phone cables; wireless group keys and range by building; a row for end devices still missing; figures aligned with ROADMAP.md. |
 | 2026-10-30 | minor | Power switch and module bays recorded (the row said they were missing); printing done with File ▸ Print; figures tied to ROADMAP.md's dimensions in place of the stale ~30%. |
 | 2026-10-30 | minor | Cable types, port media, fiber ports, console cable and the PC Terminal. |
 | 2026-10-30 | minor | Modular routers and cards, power, IP phones, IoT devices; wireless and firewall depth. |
