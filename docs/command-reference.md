@@ -85,7 +85,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show startup-config` | privileged | router, switch | Saved configuration |
 | `show ip interface brief` | user, privileged | router, switch | Interface addresses and status |
 | `show ip route` | user, privileged | router, switch | Routing table |
-| `show ip route {connected\|static\|ospf\|rip}` | user, privileged | router, switch | Only the routes one source gave |
+| `show ip route {connected\|static\|eigrp\|ospf\|rip}` | user, privileged | router, switch | Only the routes one source gave |
 | `show ip arp` | user, privileged | router, switch | ARP cache |
 | `show arp` | user, privileged | router, switch | ARP cache |
 | `show interfaces` | user, privileged | router, switch | Interface details |
@@ -277,6 +277,27 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `auto-summary` |  | router, switch | Summarise at classful boundaries (kept, not simulated) |
 | `no auto-summary` |  | router, switch | Advertise subnets as they are |
 | `show ip rip database` | user, privileged | router, switch | Routes RIP knows |
+| `router eigrp <1-65535>` | config | router, switch | Start or configure EIGRP in this autonomous system |
+| `no router eigrp <1-65535>` | config | router, switch | Stop EIGRP |
+| `network A.B.C.D` |  | router, switch | Run EIGRP on this classful network's interfaces |
+| `network A.B.C.D WILDCARD` |  | router, switch | Run EIGRP on matching interfaces |
+| `no network A.B.C.D` |  | router, switch | Stop EIGRP on these interfaces |
+| `no network A.B.C.D WILDCARD` |  | router, switch | Stop EIGRP on these interfaces |
+| `passive-interface <interface>` |  | router, switch | Advertise but send no hellos there |
+| `no passive-interface <interface>` |  | router, switch | Send hellos there again |
+| `eigrp router-id A.B.C.D` |  | router, switch | Set the router id |
+| `no eigrp router-id` |  | router, switch | Use the highest interface address |
+| `auto-summary` |  | router, switch | Summarise at classful boundaries (kept, not simulated) |
+| `no auto-summary` |  | router, switch | Advertise subnets as they are |
+| `show ip eigrp neighbors` | user, privileged | router, switch | EIGRP neighbours |
+| `show ip eigrp topology` | user, privileged | router, switch | Successors and feasible successors |
+| `show ip eigrp interfaces` | user, privileged | router, switch | Interfaces running EIGRP |
+| `debug eigrp packets` | privileged | router, switch | Report the EIGRP hellos this router hears |
+| `no debug eigrp packets` | privileged | router, switch | Stop reporting EIGRP hellos |
+| `bandwidth <1-10000000>` | interface | router, switch | The bandwidth EIGRP's metric uses (kbit/s) |
+| `no bandwidth` | interface | router, switch | Bandwidth from the port's speed again |
+| `delay <1-16777215>` | interface | router, switch | The delay EIGRP's metric adds (tens of microseconds) |
+| `no delay` | interface | router, switch | Delay from the port's type again |
 | `router ospf <1-65535>` | config | router, switch | Start or configure OSPF |
 | `no router ospf <1-65535>` | config | router, switch | Stop OSPF |
 | `network A.B.C.D WILDCARD area <0-4294967295>` |  | router, switch | Run OSPF on matching interfaces |

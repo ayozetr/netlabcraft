@@ -29,6 +29,7 @@ pub mod lldp;
 
 pub mod channel;
 pub mod control;
+pub mod eigrp;
 pub mod hsrp;
 pub mod mgmt;
 pub mod ospf;
@@ -272,36 +273,44 @@ pub struct RouteEntry {
 }
 
 /// The device's routing table: connected and local routes of up interfaces, static routes
-/// whose next hop resolves, and OSPF routes (code `O`; `E` for an external default).
+/// whose next hop resolves, then what the routing protocols learned. For a prefix several
+/// protocols know, the lowest administrative distance wins: EIGRP (`D`, 90), OSPF (`O`, 110;
+/// `I` inter-area, `E` external default), RIP (`R`, 120); connected and static routes beat them all.
 pub fn routing_table(t: &Topology, d: &Device) -> Vec<RouteEntry> {
     let mut out = routing_table_static(t, d);
+    let mut learned: Vec<(u8, RouteEntry)> = Vec::new();
+    if d.eigrp.is_some() {
+        let st = eigrp::compute(t);
+        for r in st.routes.get(&d.id).into_iter().flatten() {
+            learned.push((eigrp::DISTANCE, RouteEntry { code: 'D', net: r.net, via: Some(r.via), iface: Some(r.iface.clone()) }));
+        }
+    }
     if d.ospf.is_some() {
         let st = ospf::compute(t);
-        let have: Vec<Ipv4Net> = out.iter().map(|r| r.net).collect();
         for r in st.routes.get(&d.id).into_iter().flatten() {
-            if !have.contains(&r.net) {
-                let code = if r.external {
-                    'E'
-                } else if r.inter_area {
-                    'I'
-                } else {
-                    'O'
-                };
-                out.push(RouteEntry { code, net: r.net, via: Some(r.via), iface: Some(r.iface.clone()) });
-            }
+            let code = if r.external {
+                'E'
+            } else if r.inter_area {
+                'I'
+            } else {
+                'O'
+            };
+            learned.push((110, RouteEntry { code, net: r.net, via: Some(r.via), iface: Some(r.iface.clone()) }));
         }
-        out.sort_by_key(|r| (r.net.addr, r.net.prefix, r.code));
     }
     if d.rip.is_some() {
         let st = rip::compute(t);
-        let have: Vec<Ipv4Net> = out.iter().map(|r| r.net).collect();
         for r in st.routes.get(&d.id).into_iter().flatten() {
-            if !have.contains(&r.net) {
-                out.push(RouteEntry { code: 'R', net: r.net, via: Some(r.via), iface: Some(r.iface.clone()) });
-            }
+            learned.push((120, RouteEntry { code: 'R', net: r.net, via: Some(r.via), iface: Some(r.iface.clone()) }));
         }
-        out.sort_by_key(|r| (r.net.addr, r.net.prefix, r.code));
     }
+    let have: Vec<Ipv4Net> = out.iter().map(|r| r.net).collect();
+    for (ad, r) in &learned {
+        if !have.contains(&r.net) && !learned.iter().any(|(other, x)| x.net == r.net && other < ad) {
+            out.push(r.clone());
+        }
+    }
+    out.sort_by_key(|r| (r.net.addr, r.net.prefix, r.code));
     out
 }
 
@@ -352,21 +361,24 @@ fn find_iface<'a>(ifs: &'a [L3If], name: &str) -> Option<&'a L3If> {
 pub fn route(t: &Topology, d: &Device, dst: Ipv4Addr) -> Option<(L3If, Ipv4Addr)> {
     let st = if d.ospf.is_some() { Some(ospf::compute(t)) } else { None };
     let rp = if d.rip.is_some() { Some(rip::compute(t)) } else { None };
+    let ep = if d.eigrp.is_some() { Some(eigrp::compute(t)) } else { None };
     route_with(
         t,
         d,
         dst,
+        ep.as_ref().and_then(|s| s.routes.get(&d.id)).map_or(&[][..], Vec::as_slice),
         st.as_ref().and_then(|s| s.routes.get(&d.id)).map_or(&[][..], Vec::as_slice),
         rp.as_ref().and_then(|s| s.routes.get(&d.id)).map_or(&[][..], Vec::as_slice),
     )
 }
 
-/// [`route`] with OSPF's routes for this device given (connected beats static beats OSPF at
-/// equal prefix length, as their administrative distances say).
+/// [`route`] with the routing protocols' routes for this device given (at equal prefix length
+/// connected beats static beats EIGRP beats OSPF beats RIP, as their administrative distances say).
 pub fn route_with(
     t: &Topology,
     d: &Device,
     dst: Ipv4Addr,
+    eigrp_routes: &[eigrp::EigrpRoute],
     ospf_routes: &[ospf::OspfRoute],
     rip_routes: &[rip::RipRoute],
 ) -> Option<(L3If, Ipv4Addr)> {
@@ -417,6 +429,12 @@ pub fn route_with(
                     consider(r.net.prefix, i, dst);
                 }
             }
+        }
+    }
+    // EIGRP before OSPF: at equal prefix length the first one considered wins (distance 90).
+    for r in eigrp_routes.iter().filter(|r| r.net.contains(dst)) {
+        if let Some(i) = ifs.iter().find(|i| i.name == r.iface) {
+            consider(r.net.prefix, i, r.via);
         }
     }
     for r in ospf_routes.iter().filter(|r| r.net.contains(dst)) {
@@ -472,13 +490,15 @@ pub enum DebugKind {
     Icmp,
     Rip,
     Ospf,
+    Eigrp,
     Packet,
     Nat,
     Dhcp,
 }
 
 impl DebugKind {
-    pub const ALL: [DebugKind; 6] = [DebugKind::Icmp, DebugKind::Rip, DebugKind::Ospf, DebugKind::Packet, DebugKind::Nat, DebugKind::Dhcp];
+    pub const ALL: [DebugKind; 7] =
+        [DebugKind::Icmp, DebugKind::Rip, DebugKind::Ospf, DebugKind::Eigrp, DebugKind::Packet, DebugKind::Nat, DebugKind::Dhcp];
 }
 
 /// What came back for one of our echo requests.
@@ -581,6 +601,8 @@ pub struct DevState {
     pub debug_rip: bool,
     /// `debug ip ospf adj|events|hello`.
     pub debug_ospf: bool,
+    /// `debug eigrp packets`.
+    pub debug_eigrp: bool,
     /// `debug ip packet`.
     pub debug_packet: bool,
     /// `debug ip nat`.
@@ -730,6 +752,8 @@ pub struct Sim {
     ospf6: Option<ospf6::Ospf6State>,
     rip_for: u64,
     rip: Option<rip::RipState>,
+    eigrp_for: u64,
+    eigrp: Option<eigrp::EigrpState>,
     /// The flags of the last router advertisement a host autoconfigured from.
     last_ra_flags: u8,
     /// Control frames (BPDUs, hellos, updates) are queued up to this time.
@@ -837,6 +861,7 @@ impl Sim {
             DebugKind::Icmp => st.debug_icmp = on,
             DebugKind::Rip => st.debug_rip = on,
             DebugKind::Ospf => st.debug_ospf = on,
+            DebugKind::Eigrp => st.debug_eigrp = on,
             DebugKind::Packet => st.debug_packet = on,
             DebugKind::Nat => st.debug_nat = on,
             DebugKind::Dhcp => st.debug_dhcp = on,
@@ -850,6 +875,7 @@ impl Sim {
             (s.debug_icmp, "ICMP"),
             (s.debug_rip, "RIP"),
             (s.debug_ospf, "OSPF"),
+            (s.debug_eigrp, "EIGRP"),
             (s.debug_packet, "IP packets"),
             (s.debug_nat, "NAT"),
             (s.debug_dhcp, "DHCP server"),
@@ -1304,9 +1330,33 @@ impl Sim {
     }
 
     pub fn route(&mut self, t: &Topology, d: &Device, dst: Ipv4Addr) -> Option<(L3If, Ipv4Addr)> {
+        let e = self.eigrp_routes(t, d);
         let o = self.ospf_routes(t, d);
         let r = self.rip_routes(t, d);
-        route_with(t, d, dst, &o, &r)
+        route_with(t, d, dst, &e, &o, &r)
+    }
+
+    /// EIGRP's routes for a device (cached per topology).
+    fn eigrp_routes(&mut self, t: &Topology, d: &Device) -> Vec<eigrp::EigrpRoute> {
+        if d.eigrp.is_none() {
+            return Vec::new();
+        }
+        let f = ospf::fingerprint(t);
+        if self.eigrp.is_none() || self.eigrp_for != f {
+            self.eigrp_for = f;
+            self.eigrp = Some(eigrp::compute(t));
+        }
+        self.eigrp.as_ref().and_then(|s| s.routes.get(&d.id).cloned()).unwrap_or_default()
+    }
+
+    /// EIGRP's view of the lab (neighbours, topology tables, routes).
+    pub fn eigrp_state(&mut self, t: &Topology) -> eigrp::EigrpState {
+        let f = ospf::fingerprint(t);
+        if self.eigrp.is_none() || self.eigrp_for != f {
+            self.eigrp_for = f;
+            self.eigrp = Some(eigrp::compute(t));
+        }
+        self.eigrp.clone().unwrap_or_default()
     }
 
     /// RIP's routes for a device (cached per topology).
@@ -1815,6 +1865,14 @@ impl Sim {
                 );
                 self.log(d.id, &msg);
             }
+            if ip.protocol == packetcraft_wire::eigrp::PROTO_EIGRP
+                && d.eigrp.is_some()
+                && self.state.get(&d.id).is_some_and(|s| s.debug_eigrp)
+                && let Ok(h) = packetcraft_wire::eigrp::EigrpHello::decode(&ip.payload)
+            {
+                let msg = format!("EIGRP debug: hello from {} on {}, AS {}, hold time {} s", ip.src, ifc.name, h.asn, h.hold_secs);
+                self.log(d.id, &msg);
+            }
             if debug.0 && rip && d.rip.is_some() {
                 let entries = Udp::decode(&ip.payload, ip.src, ip.dst).ok().and_then(|u| packetcraft_wire::control::rip_decode(&u.payload).ok());
                 if let Some((v, routes)) = entries {
@@ -1830,6 +1888,8 @@ impl Sim {
             return match (ip.protocol, rip) {
                 (packetcraft_wire::control::PROTO_OSPF, _) if d.ospf.is_some() => Ok(()),
                 (packetcraft_wire::control::PROTO_OSPF, _) => Err("OSPF is not running here".into()),
+                (packetcraft_wire::eigrp::PROTO_EIGRP, _) if d.eigrp.is_some() => Ok(()),
+                (packetcraft_wire::eigrp::PROTO_EIGRP, _) => Err("EIGRP is not running here".into()),
                 (_, true) if d.rip.is_some() => Ok(()),
                 (_, true) => Err("RIP is not running here".into()),
                 _ if hsrp => Ok(()),

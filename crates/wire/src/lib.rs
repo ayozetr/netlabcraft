@@ -16,6 +16,7 @@ pub mod control;
 pub mod dhcp;
 pub mod dhcp6;
 pub mod dns;
+pub mod eigrp;
 pub mod ipv6;
 pub mod lacp;
 pub mod lldp;
@@ -429,6 +430,7 @@ pub enum Protocol {
     Stp,
     Ospf,
     Rip,
+    Eigrp,
     Hsrp,
     Radius,
     Ftp,
@@ -462,6 +464,7 @@ impl Protocol {
             Protocol::Stp => "STP",
             Protocol::Ospf => "OSPF",
             Protocol::Rip => "RIP",
+            Protocol::Eigrp => "EIGRP",
             Protocol::Hsrp => "HSRP",
             Protocol::Lacp => "LACP",
             Protocol::Radius => "RADIUS",
@@ -533,6 +536,14 @@ pub fn summarize(bytes: &[u8]) -> (Protocol, String) {
                             Err(e) => (Protocol::Ospf, format!("OSPF ({e}) {route}{tag}")),
                         },
                         Err(e) => (Protocol::Ospf, format!("OSPF ({e}) {route}{tag}")),
+                    },
+                    eigrp::PROTO_EIGRP => match eigrp::EigrpHello::header(&ip.payload) {
+                        Ok((eigrp::OPCODE_HELLO, _)) => match eigrp::EigrpHello::decode(&ip.payload) {
+                            Ok(h) => (Protocol::Eigrp, format!("EIGRP hello, AS {} (hold {} s) {route}{tag}", h.asn, h.hold_secs)),
+                            Err(e) => (Protocol::Eigrp, format!("EIGRP ({e}) {route}{tag}")),
+                        },
+                        Ok((op, asn)) => (Protocol::Eigrp, format!("EIGRP {}, AS {asn} {route}{tag}", eigrp::opcode_name(op))),
+                        Err(e) => (Protocol::Eigrp, format!("EIGRP ({e}) {route}{tag}")),
                     },
                     PROTO_UDP => match Udp::decode(&ip.payload, ip.src, ip.dst) {
                         Ok(u) if u.dst_port == snmp::SNMP_PORT || u.src_port == snmp::SNMP_PORT => match snmp::Snmp::decode(&u.payload) {
@@ -856,6 +867,32 @@ mod tests {
         let b = u.encode(s, d);
         assert_eq!(Udp::decode(&b, s, d).unwrap(), u);
         assert_eq!(Udp::decode(&b, s, Ipv4Addr::new(10, 0, 0, 254)), Err(WireError::Checksum("udp")));
+    }
+
+    #[test]
+    fn eigrp_hellos_are_summarized_and_survive_truncation() {
+        let ip = Ipv4 {
+            id: 0,
+            ttl: 1,
+            protocol: eigrp::PROTO_EIGRP,
+            src: Ipv4Addr::new(10, 0, 12, 1),
+            dst: eigrp::EIGRP_ROUTERS,
+            payload: eigrp::EigrpHello::new(7).encode(),
+        };
+        let frame = Frame {
+            dst: control::ipv4_multicast_mac(eigrp::EIGRP_ROUTERS),
+            src: mac(1),
+            vlan: None,
+            ethertype: ETHERTYPE_IPV4,
+            payload: ip.encode(),
+        }
+        .encode();
+        let (proto, text) = summarize(&frame);
+        assert_eq!(proto, Protocol::Eigrp);
+        assert_eq!(text, "EIGRP hello, AS 7 (hold 15 s) 10.0.12.1 → 224.0.0.10");
+        for n in 0..frame.len() {
+            let _ = summarize(&frame[..n]);
+        }
     }
 
     #[test]
