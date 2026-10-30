@@ -348,6 +348,29 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
             Ok(list_json(s))
         }
         "pdu.list" => Ok(list_json(s)),
+        "sim.event" => {
+            let id = p.get("id").and_then(Value::as_u64).ok_or_else(|| bad("`id` (event number) is required"))?;
+            let e = s.sim.trace().iter().find(|e| e.id == id).ok_or_else(|| EngineError::Failed(format!("no event {id} in the event list")))?;
+            let t = &s.topology;
+            let osi = netlabcraft_sim::explain::osi(t, &s.sim, e);
+            let (inbound, outbound) = netlabcraft_sim::explain::osi_lines(&osi);
+            let side = |l: &netlabcraft_sim::explain::Layers| -> Vec<Value> {
+                l.iter().enumerate().filter(|(_, x)| !x.is_empty()).map(|(i, x)| json!({"layer": i + 1, "lines": x})).collect()
+            };
+            Ok(json!({
+                "id": e.id,
+                "at_us": e.at_us,
+                "from": t.end_label(e.from),
+                "to": t.end_label(e.to),
+                "protocol": e.protocol.name(),
+                "summary": e.summary,
+                "dropped": e.dropped,
+                "cause": e.cause,
+                "explain": e.explain.iter().map(netlabcraft_sim::explain::Step::describe).collect::<Vec<_>>(),
+                "osi": {"in": side(&inbound), "out": side(&outbound)},
+                "sent": osi.sent,
+            }))
+        }
         "scenario.list" => Ok(scenario_json(s)),
         "scenario.new" => {
             let sc = &s.topology.scenarios;
@@ -594,5 +617,66 @@ mod tests {
         // Undo brings a deleted scenario back.
         assert!(s.undo());
         assert_eq!(s.topology.scenarios.pdus().len(), 2);
+    }
+
+    /// The details of the last event delivered to `at` whose summary has `what`.
+    fn details(s: &mut Session, at: &str, what: &str) -> serde_json::Value {
+        let d = s.topology.resolve(at).unwrap();
+        let id = s
+            .sim
+            .trace()
+            .iter()
+            .rev()
+            .find(|e| e.to.device == d && e.summary.contains(what))
+            .map(|e| e.id)
+            .unwrap_or_else(|| panic!("no {what} at {at}"));
+        s.execute("sim.event", json!({"id": id})).unwrap()
+    }
+
+    fn lines(v: &serde_json::Value) -> String {
+        v["explain"].as_array().unwrap().iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join("\n")
+    }
+
+    #[test]
+    fn events_explain_switching_routing_arp_nat_and_acl_drops() {
+        // Across a switch and a router.
+        let mut s = lab("two-subnets");
+        s.execute("pdu.simple", json!({"from": "PC1", "to": "PC3"})).unwrap();
+        s.execute("pdu.simple", json!({"from": "PC1", "to": "PC3"})).unwrap();
+        let sw = details(&mut s, "S1", "echo request");
+        let text = lines(&sw);
+        assert!(text.contains("The MAC table has") || text.contains("floods"), "{text}");
+        assert!(!sw["sent"].as_array().unwrap().is_empty());
+        let r = details(&mut s, "R1", "echo request");
+        let text = lines(&r);
+        assert!(text.contains("destination MAC is the MAC of GigabitEthernet0/0"), "{text}");
+        assert!(text.contains("looks up 10.0.2.10 in its routing table: directly connected, out GigabitEthernet0/1. TTL drops to 127"), "{text}");
+        assert!(text.contains("ARP table gives") || text.contains("is not in the ARP table"), "{text}");
+        let osi = &r["osi"];
+        assert_eq!(osi["in"][0]["layer"], 1);
+        assert!(osi["in"].as_array().unwrap().iter().any(|l| l["layer"] == 3), "{osi}");
+        assert!(osi["out"].as_array().unwrap().iter().any(|l| l["layer"] == 3 && l["lines"].to_string().contains("TTL 127")), "{osi}");
+        let host = details(&mut s, "PC3", "echo request");
+        assert!(lines(&host).contains("10.0.2.10 is this device's own address"), "{}", lines(&host));
+        // NAT on the way out, and its undoing on the way back.
+        let mut s = lab("nat-acl");
+        s.execute("pdu.simple", json!({"from": "PC1", "to": "Web"})).unwrap();
+        let office = details(&mut s, "Office", "echo request");
+        let text = lines(&office);
+        assert!(text.contains("NAT translates the inside source 192.168.0.10 to 203.0.113.1"), "{text}");
+        assert!(text.contains("Access list GUESTS on GigabitEthernet0/0 (in) permits the packet"), "{text}");
+        assert!(text.contains("next hop 203.0.113.2"), "{text}");
+        let back = details(&mut s, "Office", "echo reply");
+        assert!(lines(&back).contains("NAT translates the destination 203.0.113.1 back to the inside address 192.168.0.10"), "{}", lines(&back));
+        // An access list drop.
+        s.execute("pdu.simple", json!({"from": "PC2", "to": "Web"})).unwrap();
+        let d = s.topology.resolve("Office").unwrap();
+        let e = s.sim.trace().iter().rev().find(|e| e.to.device == d && e.dropped.is_some()).unwrap().id;
+        let v = s.execute("sim.event", json!({"id": e})).unwrap();
+        let osi = v["osi"]["in"].to_string();
+        assert!(osi.contains("The device drops the frame: denied by access list GUESTS (in)"), "{osi}");
+        assert!(s.execute("sim.event", json!({"id": 0})).is_err());
+        // The records stay small.
+        assert!(s.sim.trace().iter().all(|e| e.explain.len() <= netlabcraft_sim::explain::MAX_STEPS));
     }
 }

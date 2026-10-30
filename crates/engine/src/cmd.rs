@@ -869,7 +869,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         "phone.status" | "phone.dial" | "phone.answer" | "phone.hangup" => crate::voice::run(s, cmd, p),
         "iot.sync" | "iot.configure" | "iot.server" | "iot.switch" => crate::iot::run(s, cmd, p),
         "pdu.simple" | "pdu.complex" | "pdu.fire" | "pdu.fire_all" | "pdu.delete" | "pdu.list" | "scenario.list" | "scenario.new" | "scenario.delete"
-        | "scenario.select" => crate::pdu::run(s, cmd, p),
+        | "scenario.select" | "sim.event" => crate::pdu::run(s, cmd, p),
         "view.enter_cluster" => {
             s.view = Some(cluster_param(s, p)?);
             s.revision += 1;

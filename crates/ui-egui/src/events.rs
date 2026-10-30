@@ -57,7 +57,18 @@ pub struct EventView {
     scroll_to_selected: bool,
     /// The event whose PDU information window is open.
     pub info: Option<u64>,
+    /// Its view: the OSI model, the inbound PDU or the outbound one.
+    pub info_tab: InfoTab,
     show_filters: bool,
+}
+
+/// The views of the PDU information window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum InfoTab {
+    #[default]
+    Osi,
+    Inbound,
+    Outbound,
 }
 
 impl Default for EventView {
@@ -71,6 +82,7 @@ impl Default for EventView {
             start_at: None,
             scroll_to_selected: false,
             info: None,
+            info_tab: InfoTab::Osi,
             show_filters: false,
         }
     }
@@ -358,12 +370,15 @@ pub fn pdu_window(app: &mut PacketApp, ctx: &egui::Context) {
     };
     let t = &app.session.topology;
     let at = t.device(e.to.device).map_or("?".to_string(), |d| d.name.clone());
+    let osi = netlabcraft_sim::explain::osi(t, &app.session.sim, &e);
+    let out = osi.sent.first().and_then(|id| app.session.sim.trace().iter().find(|x| x.id == *id)).cloned();
     let tk = theme::tokens(app.ui.dark);
     let mut open = true;
+    let mut tab = app.ui.events.info_tab;
     egui::Window::new(crate::i18n::trf("PDU Information at Device: {}", &[&at]))
         .id(egui::Id::unique("pdu_info"))
         .open(&mut open)
-        .default_size([460.0, 420.0])
+        .default_size([640.0, 480.0])
         .default_pos(crate::BELOW_TOOLBARS)
         .show(ctx, |ui| {
             ui.label(crate::i18n::trf(
@@ -374,30 +389,91 @@ pub fn pdu_window(app: &mut PacketApp, ctx: &egui::Context) {
                 Some(why) => ui.label(RichText::new(crate::i18n::trf("The device dropped it: {}", &[&crate::i18n::tr_any(why)])).color(tk.error)),
                 None => ui.label(RichText::new(tl("The device accepted it.")).color(tk.ok)),
             };
-            ui.separator();
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                for (layer, fields) in decode_event(&e.frame, e.air.as_deref()) {
-                    egui::CollapsingHeader::new(RichText::new(crate::i18n::tr(&layer)).strong())
-                        .id_salt(("layer", id, layer))
-                        .default_open(true)
-                        .show(ui, |ui| {
-                            egui::Grid::new(("fields", id, fields.first().map(|f| f.0.clone()))).num_columns(2).striped(true).show(ui, |ui| {
-                                for (k, v) in fields {
-                                    ui.label(crate::i18n::tr(&k));
-                                    ui.monospace(crate::i18n::tr_event(&v));
-                                    ui.end_row();
-                                }
-                            });
-                        });
+            ui.horizontal(|ui| {
+                for (which, name) in
+                    [(InfoTab::Osi, "OSI Model"), (InfoTab::Inbound, "Inbound PDU Details"), (InfoTab::Outbound, "Outbound PDU Details")]
+                {
+                    if ui.selectable_label(tab == which, tl(name)).clicked() {
+                        tab = which;
+                    }
                 }
-                egui::CollapsingHeader::new(tl("Bytes")).id_salt(("hex", id)).default_open(false).show(ui, |ui| {
-                    ui.monospace(hex_dump(e.air.as_deref().unwrap_or(&e.frame)));
-                });
+            });
+            ui.separator();
+            egui::ScrollArea::vertical().show(ui, |ui| match tab {
+                InfoTab::Osi => osi_view(ui, &osi, &tk),
+                InfoTab::Inbound => layer_details(ui, id, &e.frame, e.air.as_deref()),
+                InfoTab::Outbound => match &out {
+                    Some(o) => {
+                        ui.label(crate::i18n::trf("Event {}, from {} to {}", &[&o.id, &t.end_label(o.from), &t.end_label(o.to)]));
+                        layer_details(ui, o.id, &o.frame, o.air.as_deref());
+                    }
+                    None => {
+                        ui.label(RichText::new(tl("The device sent nothing on because of this frame.")).color(tk.muted));
+                    }
+                },
             });
         });
+    app.ui.events.info_tab = tab;
     if !open {
         app.ui.events.info = None;
     }
+}
+
+/// The OSI model view: what the device did at each layer with the frame coming in and with
+/// what it sent on, layer 7 at the top.
+fn osi_view(ui: &mut Ui, osi: &netlabcraft_sim::explain::Osi, tk: &theme::Tokens) {
+    let w = ((ui.available_width() - 24.0) / 2.0).max(160.0);
+    egui::Grid::new("osi_grid").num_columns(2).striped(true).spacing(egui::vec2(12.0, 8.0)).show(ui, |ui| {
+        for h in ["In Layers", "Out Layers"] {
+            ui.label(RichText::new(tl(h)).strong());
+        }
+        ui.end_row();
+        for i in (0..7).rev() {
+            let name = netlabcraft_sim::explain::LAYER_NAMES.get(i).copied().unwrap_or_default();
+            for (side, inbound) in [(&osi.inbound, true), (&osi.outbound, false)] {
+                ui.vertical(|ui| {
+                    ui.set_width(w);
+                    let lines = side.get(i).map(Vec::as_slice).unwrap_or_default();
+                    let drop = osi.dropped.as_ref().filter(|(l, _)| inbound && *l == i);
+                    let muted = lines.is_empty() && drop.is_none();
+                    ui.label(RichText::new(tl(name)).strong().color(if muted { tk.muted } else { tk.text }));
+                    for l in lines {
+                        ui.add(egui::Label::new(crate::i18n::tr_any(l)).wrap());
+                    }
+                    if let Some((_, why)) = drop {
+                        ui.add(
+                            egui::Label::new(
+                                RichText::new(crate::i18n::trf("The device drops the frame: {}", &[&crate::i18n::tr_any(why)])).color(tk.error),
+                            )
+                            .wrap(),
+                        );
+                    }
+                });
+            }
+            ui.end_row();
+        }
+    });
+}
+
+/// A frame layer by layer, plus its bytes.
+fn layer_details(ui: &mut Ui, id: u64, frame: &[u8], air: Option<&[u8]>) {
+    for (layer, fields) in decode_event(frame, air) {
+        egui::CollapsingHeader::new(RichText::new(crate::i18n::tr(&layer)).strong()).id_salt(("layer", id, layer)).default_open(true).show(
+            ui,
+            |ui| {
+                egui::Grid::new(("fields", id, fields.first().map(|f| f.0.clone()))).num_columns(2).striped(true).show(ui, |ui| {
+                    for (k, v) in fields {
+                        ui.label(crate::i18n::tr(&k));
+                        ui.monospace(crate::i18n::tr_event(&v));
+                        ui.end_row();
+                    }
+                });
+            },
+        );
+    }
+    egui::CollapsingHeader::new(tl("Bytes")).id_salt(("hex", id)).default_open(false).show(ui, |ui| {
+        ui.monospace(hex_dump(air.unwrap_or(frame)));
+    });
 }
 
 /// Layers of an event: the 802.11 frame first when it crossed the air, then what it carries.

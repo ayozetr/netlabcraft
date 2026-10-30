@@ -112,6 +112,7 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `scenario.new` | New scenario |  |  | `{"description"?} → the scenarios (the new one in use)` |
 | `scenario.delete` | Delete scenario |  |  | `{"index"?: the one in use} → the scenarios (the last one is only emptied)` |
 | `scenario.select` | Switch scenario |  |  | `{"index"} → its PDU list` |
+| `sim.event` | PDU details |  |  | `{"id": event} → {id, at_us, from, to, protocol, summary, dropped, cause, "explain": [what the receiver decided], "osi": {"in": [{layer, lines}], "out": [...]}, "sent": [events it caused]}` |
 
 ## Device console (routers, switches and the firewall)
 

@@ -171,7 +171,7 @@ impl Sim {
     /// Puts bytes on the air (or a cable) as they are.
     fn enqueue(&mut self, at: u64, from: End, to: End, frame: Vec<u8>, hops: u8) {
         self.seq += 1;
-        self.queue.push(std::cmp::Reverse(Queued { at, seq: self.seq, from, to, frame, hops }));
+        self.queue.push(std::cmp::Reverse(Queued { at, seq: self.seq, from, to, frame, hops, cause: self.cause }));
     }
 
     fn send_air(&mut self, from: End, to: End, f: Dot11) {

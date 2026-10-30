@@ -24,6 +24,7 @@ use netlabcraft_wire::{Arp, ArpOp, ETHERTYPE_ARP, ETHERTYPE_IPV4, Frame, Icmp, I
 
 pub mod cdp;
 pub mod email;
+pub mod explain;
 pub mod ftp;
 pub mod lldp;
 pub mod loopback;
@@ -840,6 +841,10 @@ pub struct TraceEvent {
     /// a pcap file has one link type, so the Ethernet capture keeps every data hop and
     /// [`Sim::pcap_wlan`] gives the air hops as 802.11.
     pub air: Option<Vec<u8>>,
+    /// What the receiver decided about it (see [`explain`]), at most [`explain::MAX_STEPS`].
+    pub explain: Vec<explain::Step>,
+    /// The event whose handling sent this frame (none: the device raised it itself).
+    pub cause: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -851,6 +856,8 @@ struct Queued {
     frame: Vec<u8>,
     /// Switches crossed so far (simulator bookkeeping, not on the wire).
     hops: u8,
+    /// The event being handled when it was sent.
+    cause: Option<u64>,
 }
 
 impl Ord for Queued {
@@ -1008,6 +1015,10 @@ pub struct Sim {
     l2: l2sec::L2State,
     /// Log stamps and severity filters of devices that changed them.
     log_cfg: BTreeMap<DeviceId, logcfg::LogCfg>,
+    /// Decisions about the frame being received now (see [`explain`]).
+    explaining: Option<Vec<explain::Step>>,
+    /// The event being handled now: frames sent meanwhile were caused by it.
+    cause: Option<u64>,
 }
 
 impl Sim {
@@ -1413,11 +1424,18 @@ impl Sim {
             summary,
             dropped: None,
             air: air.then(|| q.frame.clone()),
+            explain: Vec::new(),
+            cause: q.cause,
         });
         self.l2_count(q.from, q.to, &q.frame);
+        self.explaining = Some(Vec::new());
+        self.cause = Some(self.next_event);
         let dropped = if air { self.air_in(t, q.from, q.to, &q.frame, q.hops).err() } else { self.receive(t, q.to, &q.frame, q.hops).err() };
-        if let (Some(reason), Some(ev)) = (dropped, self.trace.back_mut()) {
-            ev.dropped = Some(reason);
+        self.cause = None;
+        let steps = self.explaining.take().unwrap_or_default();
+        if let Some(ev) = self.trace.back_mut() {
+            ev.dropped = dropped;
+            ev.explain = steps;
         }
     }
 
@@ -2042,6 +2060,7 @@ impl Sim {
                 .collect(),
         };
         let outs: Vec<usize> = outs.into_iter().filter(|&p| self.stp_forwards(t, d.id, p, vlan)).collect();
+        self.note_switch(d, vlan, known, &outs, f.dst);
         let mut sent = 0;
         for p in outs {
             let p = chm.pick_frame(p, &f, d.l2.load_balance);
@@ -2141,6 +2160,11 @@ impl Sim {
         if f.dst != ifc.mac && !f.dst.is_broadcast() && !ipv4_group && !virtual_mac {
             return Err("not addressed to this device".into());
         }
+        self.note(if f.dst.is_group() {
+            explain::Step::Broadcast { iface: ifc.name.clone() }
+        } else {
+            explain::Step::ForMe { iface: ifc.name.clone() }
+        });
         match f.ethertype {
             ETHERTYPE_ARP => self.arp_in(t, d, &ifc, &f.payload),
             ETHERTYPE_IPV4 => self.ip_in(t, d, &ifc, &f.payload),
@@ -2282,6 +2306,7 @@ impl Sim {
         let mut payload = payload;
         if d.routes_ip() {
             self.acl_check(t, d, ifc, &ip, payload, true)?;
+            self.note_acl(d, ifc, true);
             // An input service policy: may re-mark the packet, or police it away.
             if !d.qos.applied.is_empty() {
                 marked = self.qos_apply(d, &ifc.name, true, payload.to_vec())?;
@@ -2291,12 +2316,14 @@ impl Sim {
             if nat_side(d, ifc) == Some(netlabcraft_model::NatSide::Outside)
                 && let Some(back) = self.nat_untranslate(d, &ip)
             {
+                self.note(explain::Step::NatIn { from: ip.dst, to: back.dst });
                 ip = back;
                 from_outside = true;
             }
         }
         let mine = l3_ifaces(d).iter().any(|i| i.net.addr == ip.dst) || self.hsrp_active(t, d, None).iter().any(|(v, _)| *v == ip.dst);
         if mine || ip.dst == Ipv4Addr::BROADCAST || (ifc.net.prefix < 31 && ip.dst == ifc.net.broadcast()) {
+            self.note(explain::Step::Delivered { dst: ip.dst });
             return self.local_in(t, d, ifc, ip);
         }
         if !d.routes_ip() {
@@ -2315,13 +2342,16 @@ impl Sim {
                     let via = if nh == ip.dst { String::new() } else { format!(" via {nh}") };
                     self.log(d.id, &format!("IP debug: {} → {}, in {}, routed out {}{via}", ip.src, ip.dst, ifc.name, out.name));
                 }
+                self.note(explain::Step::Routed { dst: ip.dst, out: out.name.clone(), via: (nh != ip.dst).then_some(nh), ttl: fwd.ttl });
                 self.acl_check(t, d, &out, &ip, payload, false)?;
+                self.note_acl(d, &out, false);
                 let mut fwd = fwd;
                 if !from_outside
                     && nat_side(d, ifc) == Some(netlabcraft_model::NatSide::Inside)
                     && nat_side(d, &out) == Some(netlabcraft_model::NatSide::Outside)
                     && let Some(tr) = self.nat_translate(d, &fwd)?
                 {
+                    self.note(explain::Step::NatOut { from: fwd.src, to: tr.src });
                     fwd = tr;
                 }
                 self.bump(d.id, "forwarded");
@@ -2544,12 +2574,14 @@ impl Sim {
         let now = self.now;
         let known = self.st(d.id).arp.get(&nh).filter(|e| now.saturating_sub(e.learned_us) < ARP_AGING_US && e.iface == out.name).map(|e| e.mac);
         if let Some(mac) = known {
+            self.note(explain::Step::ArpKnown { ip: nh, mac });
             let frame = Frame { dst: mac, src: out.mac, vlan: out.vlan, ethertype: ETHERTYPE_IPV4, payload: datagram };
             self.l3_emit(t, d, out, frame);
             return Ok(());
         }
         // A notification the device itself raises (a trap) waits too: it is sent only once.
         let host = !d.routes_ip() || self.hold_for_arp;
+        self.note(explain::Step::ArpAsk { ip: nh, iface: out.name.clone() });
         let st = self.st(d.id);
         st.pending.retain(|p| now.saturating_sub(p.since) < ARP_WAIT_US);
         // Hosts hold the packet until ARP answers; routers drop it, as real routers do.

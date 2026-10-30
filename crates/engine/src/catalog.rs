@@ -448,6 +448,14 @@ pub static CATALOG: &[CommandInfo] = &[
     c!("scenario.new", "New scenario", "", None, r#"{"description"?} → the scenarios (the new one in use)"#, true),
     c!("scenario.delete", "Delete scenario", "", None, r#"{"index"?: the one in use} → the scenarios (the last one is only emptied)"#, true),
     c!("scenario.select", "Switch scenario", "", None, r#"{"index"} → its PDU list"#, false),
+    c!(
+        "sim.event",
+        "PDU details",
+        "",
+        None,
+        r#"{"id": event} → {id, at_us, from, to, protocol, summary, dropped, cause, "explain": [what the receiver decided], "osi": {"in": [{layer, lines}], "out": [...]}, "sent": [events it caused]}"#,
+        false
+    ),
 ];
 
 pub fn find(id: &str) -> Option<&'static CommandInfo> {

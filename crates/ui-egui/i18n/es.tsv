@@ -950,3 +950,53 @@ an ARP request needs the address to ask for	una solicitud ARP necesita la direcc
 Delete every PDU in the list	Eliminar todas las PDU de la lista
 Scenario 0	Escenario 0
 Start an empty PDU list	Empezar una lista de PDU vacía
+# Simulation mode: the OSI view of PDU details.
+OSI Model	Modelo OSI
+Inbound PDU Details	Detalles de la PDU entrante
+Outbound PDU Details	Detalles de la PDU saliente
+In Layers	Capas de entrada
+Out Layers	Capas de salida
+Layer 1: Physical	Capa 1: física
+Layer 2: Data Link	Capa 2: enlace de datos
+Layer 3: Network	Capa 3: red
+Layer 4: Transport	Capa 4: transporte
+Layer 5: Session	Capa 5: sesión
+Layer 6: Presentation	Capa 6: presentación
+Layer 7: Application	Capa 7: aplicación
+Event {}, from {} to {}	Evento {}, de {} a {}
+The device sent nothing on because of this frame.	El dispositivo no envió nada a raíz de esta trama.
+The device drops the frame: {}	El dispositivo descarta la trama: {}
+The device drops the frame: {}.	El dispositivo descarta la trama: {}.
+The frame's destination MAC is the MAC of {}, so the device takes it.	La MAC de destino de la trama es la de {}, así que el dispositivo la acepta.
+The frame is a broadcast, so {} takes it.	La trama es de difusión, así que {} la acepta.
+The MAC table has {} in VLAN {} on {}: the frame goes out that port only.	La tabla MAC tiene {} en la VLAN {} en {}: la trama sale solo por ese puerto.
+A broadcast: the switch floods it out the other {} ports of VLAN {}.	Una difusión: el switch la envía por los otros {} puertos de la VLAN {}.
+The destination MAC is not in the MAC table: the switch floods the frame out the other {} ports of VLAN {}.	La MAC de destino no está en la tabla MAC: el switch inunda la trama por los otros {} puertos de la VLAN {}.
+Access list {} on {} (in) permits the packet.	La lista de acceso {} en {} (entrada) permite el paquete.
+Access list {} on {} (out) permits the packet.	La lista de acceso {} en {} (salida) permite el paquete.
+NAT translates the inside source {} to {}.	NAT traduce el origen interno {} a {}.
+NAT translates the destination {} back to the inside address {}.	NAT devuelve el destino {} a la dirección interna {}.
+The device looks up {} in its routing table: next hop {}, out {}. TTL drops to {}.	El dispositivo busca {} en su tabla de rutas: siguiente salto {}, sale por {}. El TTL baja a {}.
+The device looks up {} in its routing table: directly connected, out {}. TTL drops to {}.	El dispositivo busca {} en su tabla de rutas: red conectada, sale por {}. El TTL baja a {}.
+The ARP table gives {} for {}: the frame is addressed to it.	La tabla ARP da {} para {}: la trama va dirigida a esa MAC.
+{} is not in the ARP table: an ARP request for it goes out {} first.	{} no está en la tabla ARP: antes sale por {} una solicitud ARP.
+{} is this device's own address: the packet is for it.	{} es una dirección del propio dispositivo: el paquete es para él.
+ICMP echo request, sequence number {}.	Solicitud de eco ICMP, número de secuencia {}.
+ICMP echo reply, sequence number {}.	Respuesta de eco ICMP, número de secuencia {}.
+ICMP destination unreachable (code {}).	ICMP destino inalcanzable (código {}).
+ICMP time exceeded: a TTL ran out.	ICMP tiempo excedido: se agotó un TTL.
+An ICMP message.	Un mensaje ICMP.
+UDP from port {} to port {}, {} bytes of data.	UDP del puerto {} al puerto {}, {} bytes de datos.
+Application: {} message.	Aplicación: mensaje {}.
+TCP from port {} to port {}, flags {}, sequence number {}.	TCP del puerto {} al puerto {}, indicadores {}, número de secuencia {}.
+Application: {} connection (no data in this segment).	Aplicación: conexión {} (sin datos en este segmento).
+Application: {} data.	Aplicación: datos {}.
+IP protocol {}.	Protocolo IP {}.
+The frame arrives on {}.	La trama llega por {}.
+The frame leaves on {}.	La trama sale por {}.
+Ethernet frame from {} to {}.	Trama Ethernet de {} a {}.
+802.1Q tag: VLAN {}.	Etiqueta 802.1Q: VLAN {}.
+ARP request: who has {}? (asked by {})	Solicitud ARP: ¿quién tiene {}? (pregunta {})
+ARP reply: {} is at {}.	Respuesta ARP: {} está en {}.
+IP packet from {} to {}, TTL {}.	Paquete IP de {} a {}, TTL {}.
+Copies leave on {} ports: {}.	Salen copias por {} puertos: {}.

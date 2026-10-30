@@ -1075,3 +1075,46 @@ fn the_complex_pdu_window_builds_and_sends_a_pdu() {
     let p = pdu_dialog::params(&d).unwrap();
     assert_eq!((p["ttl"].as_u64(), p["tos"].as_u64(), p["size"].as_u64(), p["app"].as_str()), (Some(12), Some(184), Some(32), Some("ping")));
 }
+
+/// The PDU information window opens on the OSI model: In and Out layers with what the router
+/// decided, then the inbound and outbound PDUs layer by layer; every line reads in Spanish.
+#[test]
+fn the_pdu_window_shows_the_osi_model_and_both_pdus() {
+    let mut h = harness(Some("nat-acl"));
+    h.state_mut().ui.show_notes = false;
+    h.state_mut().ui.mode = Mode::Simulation;
+    h.run_steps(2);
+    h.state_mut().run("pdu.simple", json!({"from": "PC1", "to": "Web"}));
+    h.state_mut().run("pdu.simple", json!({"from": "PC1", "to": "Web"}));
+    let office = h.state().session.topology.resolve("Office").unwrap();
+    let id = h.state().session.sim.trace().iter().rev().find(|e| e.to.device == office && e.summary.contains("echo request")).unwrap().id;
+    h.state_mut().ui.events.info = Some(id);
+    h.run_steps(3);
+    for label in ["Layer 7: Application", "Layer 1: Physical"] {
+        assert_eq!(h.query_all_by_label(label).count(), 2, "{label}: one per column");
+    }
+    for label in ["OSI Model", "Inbound PDU Details", "Outbound PDU Details", "In Layers", "Out Layers"] {
+        assert!(h.query_by_label(label).is_some(), "{label}");
+    }
+    assert!(h.query_by_label_contains("NAT translates the inside source 192.168.0.10").is_some());
+    h.get_by_label("Outbound PDU Details").click();
+    h.run_steps(2);
+    assert_eq!(h.state().ui.events.info_tab, events::InfoTab::Outbound);
+    assert!(h.query_by_label("203.0.113.1").is_some(), "the outbound PDU carries the translated source");
+    // Every OSI line of the lab's events has a Spanish reading.
+    let _es = InSpanish::new();
+    let app = h.state();
+    let mut untranslated = std::collections::BTreeSet::new();
+    for e in app.session.sim.trace() {
+        let osi = netlabcraft_sim::explain::osi(&app.session.topology, &app.session.sim, e);
+        for l in osi.inbound.iter().chain(osi.outbound.iter()).flatten() {
+            if i18n::tr_any(l) == *l {
+                untranslated.insert(l.clone());
+            }
+        }
+    }
+    assert!(untranslated.is_empty(), "no Spanish for: {untranslated:#?}");
+    for name in netlabcraft_sim::explain::LAYER_NAMES {
+        assert_ne!(i18n::tr(name), name);
+    }
+}
