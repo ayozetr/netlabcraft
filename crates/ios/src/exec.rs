@@ -570,7 +570,24 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::ShowRun => Ok(render::running_config(c.d()?)),
         Id::ShowStartup => c.d()?.startup.clone().ok_or_else(|| "% No saved configuration (use `copy running-config startup-config`)".into()),
         Id::ShowIpIntBrief => Ok(render::ip_int_brief(c.t, c.d()?)),
-        Id::ShowIpRoute => Ok(render::ip_route(c.t, c.d()?)),
+        Id::ShowIpRoute => {
+            let full = render::ip_route(c.t, c.d()?);
+            let which = arg(0).to_ascii_lowercase();
+            if which.is_empty() {
+                return Ok(full);
+            }
+            // The codes each source shows; the header stays.
+            let codes: &[&str] = match () {
+                _ if "connected".starts_with(&which) => &["C ", "L "],
+                _ if "static".starts_with(&which) => &["S "],
+                _ if "ospf".starts_with(&which) => &["O "],
+                _ if "rip".starts_with(&which) => &["R "],
+                _ => return Err("% connected, static, ospf or rip".into()),
+            };
+            let (head, body) = full.split_once("\n\n").unwrap_or(("", full.as_str()));
+            let lines: Vec<&str> = body.lines().filter(|l| codes.iter().any(|c| l.starts_with(c) || (*c == "O " && l.starts_with("O*")))).collect();
+            Ok(format!("{head}\n\n{}", if lines.is_empty() { "(no such routes)".to_string() } else { lines.join("\n") }))
+        }
         Id::ShowInterfaces => Ok(render::interfaces(c.t, c.d()?, None)),
         Id::ShowInterface => {
             // `show interfaces fa0/1 switchport`

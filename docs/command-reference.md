@@ -80,6 +80,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show startup-config` | privileged | router, switch | Saved configuration |
 | `show ip interface brief` | user, privileged | router, switch | Interface addresses and status |
 | `show ip route` | user, privileged | router, switch | Routing table |
+| `show ip route {connected\|static\|ospf\|rip}` | user, privileged | router, switch | Only the routes one source gave |
 | `show ip arp` | user, privileged | router | ARP cache |
 | `show arp` | user, privileged | router | ARP cache |
 | `show interfaces` | user, privileged | router, switch | Interface details |

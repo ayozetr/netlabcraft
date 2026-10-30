@@ -190,7 +190,7 @@ impl eframe::App for App {
     }
 }
 
-/// The window icon (the hicolor 256 px rendering of `assets/app-icon/packetcraft.svg`).
+/// The window icon (the hicolor 256 px rendering of `assets/app-icon/packetcraft.png`).
 fn icon() -> egui::IconData {
     let bytes = include_bytes!("../../../assets/app-icon/hicolor/256x256/apps/packetcraft.png");
     match image::load_from_memory_with_format(bytes, image::ImageFormat::Png) {

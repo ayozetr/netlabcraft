@@ -18,9 +18,9 @@ This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summa
 | Sample labs | **18** | measured: `crates/engine/src/sample.rs` |
 | Tests | **155** | measured: `cargo test --workspace` |
 | **Ready for real work** (weighted) | **~50%** | estimated; written weights below (68.1 computed) |
-| **CCNA 1 student** (Introduction to Networks) | **~74%** | estimated; [method](#audiences) |
-| **CCNA 2 student** (Switching, Routing and Wireless Essentials) | **~78%** | estimated; [method](#audiences) |
-| **CCNA 3 student** (Enterprise Networking, Security and Automation) | **~62%** | estimated; [method](#audiences) |
+| **CCNA 1 student** (Introduction to Networks) | **~80%** | estimated; [method](#audiences) |
+| **CCNA 2 student** (Switching, Routing and Wireless Essentials) | **~84%** | estimated; [method](#audiences) |
+| **CCNA 3 student** (Enterprise Networking, Security and Automation) | **~70%** | estimated; [method](#audiences) |
 | **Instructor** (builds graded activities) | **~60%** | estimated; activities with checks, points, hints, hidden answers, a time limit, a password lock and a wizard; no variables or answer network |
 | Stage | **pre-alpha** | see [Stage](#stage) |
 | Remaining to alpha | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](roadmap.md#alpha-gates) |
@@ -30,10 +30,10 @@ This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summa
 
 | Audience | Ready % | Opus 5.5 agent wall-clock hours to ~95% | Work that dominates |
 |---|---|---|---|
-| Full target (ready for real work) | ~50% | ~600–950 | Activities and scoring, wireless, more device families (ASA, IoT, modules), services (FTP, email, AAA, syslog), physical workspace, translations |
-| CCNA 1 student | ~70% | ~40–70 | Protocol frames in Simulation mode (BPDU, hellos), console polish (`show` coverage), PDU details layout, a few host apps (text editor, terminal) |
-| CCNA 2 student | ~58% | ~110–170 | Wireless LANs (40–60 h), DTP and RSTP timers (10–16 h), DHCPv6 and SLAAC flags (8–12 h), HSRP (12–18 h), console polish |
-| CCNA 3 student | ~45% | ~180–280 | OSPF multi-area and OSPFv3 (20–30 h), ACL depth and IPv6 ACLs (10–16 h), PPP authentication (6–10 h), VPN/GRE (15–25 h), QoS basics, SNMP/syslog/NTP, automation APIs |
+| Full target (ready for real work) | ~58% | ~480–780 | More device families (ASA, IoT, modules), physical workspace, email and SNMP, EIGRP/VPN/QoS, WLC |
+| CCNA 1 student | ~80% | ~20–40 | Walking the CCNA 1 labs command by command, PDU details layout, email and a few host apps (text editor, terminal) |
+| CCNA 2 student | ~84% | ~30–55 | WLC with lightweight APs and 802.11 frames (15–25 h), console polish |
+| CCNA 3 student | ~70% | ~80–130 | VPN/GRE (15–25 h), QoS basics, SNMP and TACACS+, automation APIs |
 | Instructor | ~60% | ~35–60 | Activity depth: variables per student, an answer network (20–35 h), translated activity texts |
 
 Each student tier is mostly a superset of the one before. Hours are wall-clock for one agent;
@@ -105,6 +105,7 @@ misses commands students meet in the first labs. Alpha gates are in
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Audiences re-estimated after this round: CCNA 1 ~80%, CCNA 2 ~84%, CCNA 3 ~70%, full target ~58%. |
 | 2026-10-30 | minor | Home wireless router: WAN, cabling and wireless 55% → 62%. |
 | 2026-10-30 | minor | FTP: services 64% → 70%. |
 | 2026-10-30 | minor | AAA with RADIUS: services 58% → 64%. |

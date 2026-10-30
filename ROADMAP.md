@@ -21,13 +21,13 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Number | Value | Kind |
 |---|---|---|
 | **Ready for real work** (weighted) | **~68%** | estimated from written weights (68.1); [target-app-parity.md](docs/target-app-parity.md) |
-| **CCNA 1 student** | **~74%** | estimated; [method](docs/target-app-parity.md#audiences) |
-| **CCNA 2 student** | **~78%** | estimated |
-| **CCNA 3 student** | **~62%** | estimated |
+| **CCNA 1 student** | **~80%** | estimated; [method](docs/target-app-parity.md#audiences) |
+| **CCNA 2 student** | **~84%** | estimated |
+| **CCNA 3 student** | **~70%** | estimated |
 | **Instructor** (graded activities) | **~60%** | estimated |
-| Engine commands | 40 | measured: `crates/engine/src/catalog.rs` |
-| Console grammar entries | 309 across 12 modes | measured: `crates/ios/src/grammar.rs` |
-| Device models · sample labs | 15 · 18 | measured |
+| Engine commands | 52 | measured: `crates/engine/src/catalog.rs` |
+| Console grammar entries | 351 across 13 modes | measured: `crates/ios/src/grammar.rs` |
+| Device models · sample labs | 16 · 18 | measured |
 | Tests | 155 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
@@ -35,10 +35,10 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 | Audience | Ready % | Opus 5.5 agent wall-clock hours to ~95% | Work that dominates |
 |---|---|---|---|
-| Full target | ~50% | ~600–950 | Activities and scoring, wireless, more device families, services, physical workspace, translations |
-| CCNA 1 student | ~74% | ~30–55 | Console coverage, protocol frames in Simulation mode, PDU details |
-| CCNA 2 student | ~78% | ~45–80 | Wireless routers and WLC, console polish |
-| CCNA 3 student | ~62% | ~110–180 | OSPFv3, VPN, SNMP and AAA, QoS |
+| Full target | ~58% | ~480–780 | More device families, physical workspace, email and SNMP, EIGRP/VPN/QoS, WLC |
+| CCNA 1 student | ~80% | ~20–40 | Walking the CCNA 1 labs command by command, PDU details, email |
+| CCNA 2 student | ~84% | ~30–55 | WLC and 802.11 frames, console polish |
+| CCNA 3 student | ~70% | ~80–130 | VPN/GRE, QoS, SNMP, TACACS+, automation |
 | Instructor | ~60% | ~35–60 | Variables per student, an answer network to compare against, translated activity texts |
 
 ## Dimensions
