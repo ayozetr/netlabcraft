@@ -278,12 +278,14 @@ fn ipconfig(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Ou
                     d.gateway = lease.router;
                     d.dns = lease.dns;
                     d.dhcp_client = true;
+                    d.voice.tftp = lease.tftp;
                 }
                 Ok(format!(
-                    "DHCP gave this host {}{}{}.",
+                    "DHCP gave this host {}{}{}{}.",
                     lease.address,
                     lease.router.map(|g| format!(", gateway {g}")).unwrap_or_default(),
-                    lease.dns.map(|g| format!(", DNS {g}")).unwrap_or_default()
+                    lease.dns.map(|g| format!(", DNS {g}")).unwrap_or_default(),
+                    lease.tftp.map(|g| format!(", TFTP server {g}")).unwrap_or_default()
                 ))
             }
             Err(e) => Err(format!("DHCP failed: {e}.")),

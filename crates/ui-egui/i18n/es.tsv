@@ -673,3 +673,107 @@ FW1 has three named interfaces: inside (level 100), dmz (50) and outside (0). Th
 Stateful firewall with 5 Gigabit Ethernet ports: named interfaces with security levels, access rules, object NAT and a DHCP server	Cortafuegos con estado y 5 puertos Gigabit Ethernet: interfaces con nombre y nivel de seguridad, reglas de acceso, NAT por objetos y servidor DHCP
 VLAN	VLAN
 VLAN (optional)	VLAN (opcional)
+Modular router with 2 Gigabit Ethernet ports and 2 empty module bays (serial and Gigabit cards, fitted while powered off)	Router modular con 2 puertos Gigabit Ethernet y 2 bahías vacías (tarjetas serie y Gigabit, que se montan con el equipo apagado)
+Modular router with 3 Gigabit Ethernet ports and 4 empty module bays (serial and Gigabit cards, fitted while powered off)	Router modular con 3 puertos Gigabit Ethernet y 4 bahías vacías (tarjetas serie y Gigabit, que se montan con el equipo apagado)
+2-port Serial card	Tarjeta serie de 2 puertos
+4-port Serial card	Tarjeta serie de 4 puertos
+1-port Gigabit card	Tarjeta Gigabit de 1 puerto
+2-port Gigabit card	Tarjeta Gigabit de 2 puertos
+1-port Fast Ethernet card	Tarjeta Fast Ethernet de 1 puerto
+Two synchronous serial WAN ports	Dos puertos serie síncronos de WAN
+Four synchronous serial WAN ports	Cuatro puertos serie síncronos de WAN
+One routed Gigabit Ethernet port	Un puerto Gigabit Ethernet enrutado
+Two routed Gigabit Ethernet ports	Dos puertos Gigabit Ethernet enrutados
+One routed Fast Ethernet port	Un puerto Fast Ethernet enrutado
+Switched on	Encendido
+Switched off	Apagado
+Switching on boots from the saved configuration.	Al encenderlo arranca con la configuración guardada.
+Pick a card in the list first, then click an empty bay.	Elige primero una tarjeta de la lista y luego haz clic en una bahía vacía.
+Pick a card, then click an empty bay to fit it; click a fitted card to take it out.	Elige una tarjeta y haz clic en una bahía vacía para montarla; haz clic en una tarjeta montada para quitarla.
+Cards are fitted and removed with the device switched off.	Las tarjetas se montan y se quitan con el equipo apagado.
+Cards:	Tarjetas:
+Power: on (click to switch off)	Alimentación: encendido (clic para apagar)
+Power: off (click to switch on)	Alimentación: apagado (clic para encender)
+Bay {}: {} (click to take it out)	Bahía {}: {} (clic para quitarla)
+Bay {}: empty	Bahía {}: vacía
+empty: click to fit	vacía: clic para montar
+empty	vacía
+{} is switched on: switch it off before fitting or removing a card	{} está encendido: apágalo antes de montar o quitar una tarjeta
+bay {} of {} is empty	la bahía {} de {} está vacía
+bay {} of {} already holds a {}	la bahía {} de {} ya tiene una {}
+{} has no bay {} (bays: {})	{} no tiene la bahía {} (bahías: {})
+{} ({}) has no module bays	{} ({}) no tiene bahías para tarjetas
+% The device is switched off: switch it on in its Physical tab (device.power).	% El equipo está apagado: enciéndelo en su pestaña Física (device.power).
+the device is switched off	el equipo está apagado
+Modular routers: serial cards for a WAN link	Routers modulares: tarjetas serie para un enlace WAN
+Two modular routers got a 2-port serial card each (fitted while switched off) and are joined over Serial0/1/0; their configurations are saved, so a power cycle keeps them.	Dos routers modulares llevan cada uno una tarjeta serie de 2 puertos (montada con el equipo apagado) y se unen por Serial0/1/0; sus configuraciones están guardadas, así que sobreviven a un apagado.
+WAN 172.16.0.0/30 over the serial cards	WAN 172.16.0.0/30 por las tarjetas serie
+HQ has a 2-port serial card in bay 0/1 and a Gigabit card in bay 0/0; Branch a serial card in bay 0/1 (see each router's Physical tab). To change a card, switch the router off there first: the cable on a card that comes out is unplugged. Both configurations are saved, so switching a router off and on keeps them (try it: `show ip interface brief` before and after).	HQ tiene una tarjeta serie de 2 puertos en la bahía 0/1 y una tarjeta Gigabit en la bahía 0/0; Branch, una tarjeta serie en la bahía 0/1 (mira la pestaña Física de cada router). Para cambiar una tarjeta, apaga antes el router ahí: el cable de una tarjeta que se quita queda desconectado. Las dos configuraciones están guardadas, así que apagar y encender un router las conserva (pruébalo: `show ip interface brief` antes y después).
+unknown card `{}` (cards: {})	tarjeta desconocida `{}` (tarjetas: {})
+IP Phone	Teléfono IP
+IP phone with a built-in switch: FastEthernet0 goes to the network, FastEthernet1 to a computer behind it; takes its address and its call server by DHCP	Teléfono IP con switch integrado: FastEthernet0 va a la red y FastEthernet1 a un ordenador detrás; toma su dirección y su servidor de llamadas por DHCP
+Phone	Teléfono
+Line {} (registered with {})	Línea {} (registrado en {})
+No address: take one by DHCP (Config tab)	Sin dirección: tómala por DHCP (pestaña Config)
+No call server: DHCP gave no TFTP server (option 150)	Sin servidor de llamadas: DHCP no dio servidor TFTP (opción 150)
+Not registered	No registrado
+Dialing {}	Marcando {}
+Ringing {}	Sonando en {}
+Incoming call from {}	Llamada entrante de {}
+Talking to {} (voice packets sent {}, received {})	Hablando con {} (paquetes de voz enviados {}, recibidos {})
+Key {}	Tecla {}
+Pick up	Descolgar
+Decline	Rechazar
+Hang up	Colgar
+Call	Llamar
+Refresh	Actualizar
+Let the phone register and update its screen	Deja que el teléfono se registre y actualiza su pantalla
+registration refused: {}	registro rechazado: {}
+call ended: {}	llamada terminada: {}
+the call server did not answer	el servidor de llamadas no respondió
+the phone is not registered with a call server	el teléfono no está registrado en un servidor de llamadas
+the phone is already in a call: hang up first	el teléfono ya está en una llamada: cuelga primero
+the phone is not ringing	el teléfono no está sonando
+no call to hang up	no hay llamada que colgar
+phone commands run on IP phones	los comandos de teléfono funcionan en teléfonos IP
+`{}` is not a directory number (digits only)	`{}` no es un número de directorio (solo dígitos)
+IP phones with a voice VLAN	Teléfonos IP con una VLAN de voz
+Two IP phones, each with a PC plugged into it, share switch ports: the phones talk in voice VLAN 100, the PCs in data VLAN 10. R1 hands out addresses and registers the phones; dial 1002 from Phone1.	Dos teléfonos IP, cada uno con un PC conectado, comparten puertos del switch: los teléfonos hablan en la VLAN de voz 100 y los PC en la VLAN de datos 10. R1 reparte las direcciones y registra los teléfonos; marca 1002 desde Phone1.
+Data VLAN 10 untagged, voice VLAN 100 tagged	VLAN de datos 10 sin etiquetar, VLAN de voz 100 etiquetada
+Each phone takes an address in voice VLAN 100 and learns from DHCP option 150 where to register (R1); its PC, plugged into the phone, gets an address in data VLAN 10. Open Phone1 > Phone, dial 1002 and press Call; on Phone2 press Pick up. `show ephone` and `show ephone-dn` on R1 show the registrations and the call.	Cada teléfono toma una dirección en la VLAN de voz 100 y aprende por la opción 150 de DHCP dónde registrarse (R1); su PC, conectado al teléfono, recibe una dirección en la VLAN de datos 10. Abre Phone1 > Teléfono, marca 1002 y pulsa Llamar; en Phone2 pulsa Descolgar. `show ephone` y `show ephone-dn` en R1 muestran los registros y la llamada.
+Smart temperature sensor with one Fast Ethernet port: reports its reading to an IoT server	Sensor de temperatura inteligente con un puerto Fast Ethernet: envía su lectura a un servidor IoT
+Smart fan with one Fast Ethernet port: registers with an IoT server, which switches it on and off	Ventilador inteligente con un puerto Fast Ethernet: se registra en un servidor IoT, que lo enciende y lo apaga
+IoT	IoT
+IoT server:	Servidor IoT:
+Reading: {}	Lectura: {}
+Change the reading	Cambia la lectura
+Running (switched on by the server)	En marcha (encendido por el servidor)
+Stopped	Parado
+Registered with {}	Registrado en {}
+Not registered yet	Todavía sin registrar
+Report now	Informar ahora
+Every smart thing reports to its server over HTTP	Cada objeto inteligente informa a su servidor por HTTP
+IoT service	Servicio IoT
+Let the smart things report, then list them	Deja que los objetos inteligentes informen y luego los lista
+Registered things	Objetos registrados
+None yet: smart things register when they report (Refresh).	Ninguno todavía: los objetos inteligentes se registran al informar (Actualizar).
+reading {}	lectura {}
+on	encendido
+off	apagado
+Switch off	Apagar
+Switch on	Encender
+Rules	Reglas
+If {} is above {}, switch {} on	Si {} supera {}, enciende {}
+If	Si
+sensor	sensor
+is above	supera
+switch on	enciende
+device	dispositivo
+Add rule	Añadir regla
+no IoT server set	sin servidor IoT configurado
+the server answered {}	el servidor respondió {}
+{} is not a registered smart device	{} no es un dispositivo inteligente registrado
+switched off	apagado
+IoT: a sensor, a fan and a rule	IoT: un sensor, un ventilador y una regla
+A smart sensor and a smart fan register with the IoT server over HTTP; the server's rule switches the fan on when the sensor reads above 30.	Un sensor y un ventilador inteligentes se registran en el servidor IoT por HTTP; la regla del servidor enciende el ventilador cuando el sensor marca más de 30.
+Sensor1 reads 25 degrees and Fan1 is off. Open Sensor1 > IoT and raise the reading above 30: the server's rule (IoT-Server > IoT) switches Fan1 on. Every report is an HTTP request to the server (see the events in Simulation mode).	Sensor1 marca 25 grados y Fan1 está apagado. Abre Sensor1 > IoT y sube la lectura por encima de 30: la regla del servidor (IoT-Server > IoT) enciende Fan1. Cada informe es una petición HTTP al servidor (mira los eventos en el modo Simulación).

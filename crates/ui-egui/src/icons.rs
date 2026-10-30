@@ -88,8 +88,77 @@ pub fn model_marks(p: &Painter, rect: Rect, model_id: &str, multilayer: bool) {
         }
         "WLC" => wlc_mark(p, rect),
         "Firewall-5" => firewall_mark(p, rect),
+        "Router-M2" | "Router-M3" => modular_mark(p, rect),
+        "IoT-Sensor" => thermometer_mark(p, rect),
+        "IoT-Device" => fan_mark(p, rect),
         _ => {}
     }
+}
+
+/// A smart sensor: a thermometer on the puck.
+pub fn thermometer_mark(p: &Painter, rect: Rect) {
+    let w = rect.width();
+    let c = rect.center() + vec2(0.0, w * 0.12);
+    let red = Color32::from_rgb(0xd6, 0x45, 0x3a);
+    let tube = Rect::from_center_size(c - vec2(0.0, w * 0.06), vec2(w * 0.1, w * 0.3));
+    p.rect_filled(tube, w * 0.05, Color32::WHITE);
+    p.rect_filled(Rect::from_min_max(pos2(tube.left() + w * 0.025, tube.center().y), pos2(tube.right() - w * 0.025, tube.bottom())), 0.0, red);
+    p.circle_filled(pos2(c.x, tube.bottom()), w * 0.08, Color32::WHITE);
+    p.circle_filled(pos2(c.x, tube.bottom()), w * 0.055, red);
+}
+
+/// A smart device: a three-bladed fan on the puck.
+pub fn fan_mark(p: &Painter, rect: Rect) {
+    let w = rect.width();
+    let c = rect.center() + vec2(0.0, w * 0.12);
+    p.circle_filled(c, w * 0.21, Color32::WHITE);
+    let blade = Color32::from_rgb(0x2f, 0x5d, 0x7c);
+    for k in 0..3 {
+        let a = k as f32 * std::f32::consts::TAU / 3.0;
+        let tip = c + vec2(a.cos(), a.sin()) * w * 0.18;
+        let side = c + vec2((a + 0.7).cos(), (a + 0.7).sin()) * w * 0.13;
+        p.add(Shape::convex_polygon(vec![c, tip, side], blade, Stroke::NONE));
+    }
+    p.circle_filled(c, w * 0.035, blade);
+}
+
+/// A modular router: a row of card bays on the drum's side band, one holding a card (a lit
+/// plate with two sockets), the others blank.
+pub fn modular_mark(p: &Painter, rect: Rect) {
+    let w = rect.width();
+    let plate = Color32::from_rgb(0x2b, 0x31, 0x3a);
+    let card = Color32::from_rgb(0xd9, 0xb2, 0x4c);
+    let y = rect.center().y + w * 0.16;
+    let (bw, bh) = (w * 0.2, w * 0.11);
+    for k in 0..3 {
+        let x = rect.center().x + (k as f32 - 1.0) * (bw + w * 0.04);
+        let bay = Rect::from_center_size(pos2(x, y), vec2(bw, bh));
+        p.rect_filled(bay, w * 0.015, if k == 0 { card } else { plate });
+        if k == 0 {
+            for s in [-1.0, 1.0] {
+                p.rect_filled(Rect::from_center_size(pos2(x + s * bw * 0.22, y), vec2(bw * 0.28, bh * 0.45)), 0.0, plate);
+            }
+        }
+        p.rect_stroke(bay, w * 0.015, Stroke::new((w / 60.0).max(0.5), Color32::WHITE), StrokeKind::Inside);
+    }
+}
+
+/// A switched-off device: a dark veil and a small power symbol.
+pub fn powered_off_mark(p: &Painter, rect: Rect) {
+    let w = rect.width();
+    p.rect_filled(rect.expand(w * 0.04), w * 0.08, Color32::from_black_alpha(110));
+    let c = pos2(rect.right() - w * 0.1, rect.top() + w * 0.1);
+    p.circle_filled(c, w * 0.11, Color32::from_rgb(0x30, 0x30, 0x30));
+    let s = Stroke::new((w / 28.0).max(1.0), Color32::WHITE);
+    let r = w * 0.065;
+    let pts: Vec<Pos2> = (0..=12)
+        .map(|i| {
+            let a = -std::f32::consts::FRAC_PI_2 + 0.6 + i as f32 * (std::f32::consts::TAU - 1.2) / 12.0;
+            c + vec2(a.cos(), a.sin()) * r
+        })
+        .collect();
+    p.add(Shape::line(pts, s));
+    p.line_segment([c - vec2(0.0, r * 1.25), c - vec2(0.0, r * 0.2)], s);
 }
 
 /// The firewall appliance: a brick wall standing in front of the router drum (it routes, and
@@ -230,6 +299,46 @@ pub fn device(p: &Painter, rect: Rect, kind: DeviceKind, _tk: &Tokens) {
             p.rect_filled(out, 1.0, Color32::WHITE);
             p.rect_stroke(out, 1.0, Stroke::new(1.0, dark), StrokeKind::Inside);
             p.circle_filled(pos2(body.right() - w * 0.1, body.center().y), w * 0.03, Color32::from_rgb(0x8f, 0xf0, 0x8f));
+        }
+        DeviceKind::Iot => {
+            // A smart thing: a rounded puck with two signal arcs above it (the model mark
+            // says what it is).
+            let body = Rect::from_center_size(rect.center() + vec2(0.0, w * 0.12), vec2(w * 0.7, w * 0.56));
+            p.rect_filled(body.translate(vec2(0.0, w * 0.05)), w * 0.14, dark);
+            p.rect_filled(body, w * 0.14, c);
+            p.rect_stroke(body, w * 0.14, Stroke::new(1.0, dark), StrokeKind::Inside);
+            let top = pos2(body.center().x, body.top() - w * 0.04);
+            for (k, r) in [0.12f32, 0.22].into_iter().enumerate() {
+                let pts: Vec<Pos2> = (0..=8)
+                    .map(|i| {
+                        let a = -std::f32::consts::FRAC_PI_2 - 0.7 + i as f32 * 1.4 / 8.0;
+                        top + vec2(a.cos(), a.sin()) * w * r
+                    })
+                    .collect();
+                p.add(Shape::line(pts, Stroke::new((w / 24.0).max(1.0), if k == 0 { light } else { c })));
+            }
+        }
+        DeviceKind::Phone => {
+            // A desk phone: a sloped body with a small screen and a 3x4 key grid, the handset
+            // lying across its left side.
+            let body = vec![
+                pos2(rect.left() + w * 0.12, rect.top() + w * 0.3),
+                pos2(rect.right() - w * 0.08, rect.top() + w * 0.22),
+                pos2(rect.right() - w * 0.02, rect.bottom() - w * 0.12),
+                pos2(rect.left() + w * 0.04, rect.bottom() - w * 0.12),
+            ];
+            p.add(Shape::convex_polygon(body, c, Stroke::new(1.0, dark)));
+            let screen = Rect::from_min_size(pos2(rect.left() + w * 0.42, rect.top() + w * 0.32), vec2(w * 0.4, w * 0.16));
+            p.rect_filled(screen, w * 0.02, Color32::from_rgb(0xd8, 0xf0, 0xe0));
+            for r in 0..4 {
+                for k in 0..3 {
+                    let at = pos2(rect.left() + w * (0.5 + k as f32 * 0.12), rect.top() + w * (0.56 + r as f32 * 0.07));
+                    p.circle_filled(at, w * 0.025, light);
+                }
+            }
+            let handset = Rect::from_min_size(pos2(rect.left() + w * 0.1, rect.top() + w * 0.2), vec2(w * 0.22, w * 0.62));
+            p.rect_filled(handset, w * 0.1, dark);
+            p.rect_filled(handset.shrink(w * 0.04), w * 0.08, shade(c, 0.85));
         }
         DeviceKind::Hub => {
             // A small flat box with arrows pointing outwards both ways.

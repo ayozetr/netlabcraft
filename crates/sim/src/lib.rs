@@ -32,6 +32,7 @@ pub mod control;
 pub mod eigrp;
 pub mod firewall;
 pub mod hsrp;
+pub mod iot;
 pub mod mgmt;
 pub mod ospf;
 pub mod ospf6;
@@ -43,6 +44,7 @@ pub mod stp;
 #[cfg(test)]
 mod tests;
 pub mod v6;
+pub mod voice;
 pub mod vpn;
 pub mod vtp;
 pub mod wlan;
@@ -146,6 +148,10 @@ pub fn l3_ifaces(d: &Device) -> Vec<L3If> {
 /// on a serial cable also clocked by its DCE end and framed alike at both ends.
 pub fn port_up(t: &Topology, end: End) -> bool {
     let ok = |p: &packetcraft_model::Port| !p.shutdown && !p.err_disabled;
+    // A switched-off device lights no port, at either end of its cables.
+    if t.device(end.device).is_some_and(|d| d.powered_off) || t.peer(end).and_then(|p| t.device(p.device)).is_some_and(|d| d.powered_off) {
+        return false;
+    }
     let own = t.device(end.device).and_then(|d| d.ports.get(end.port)).is_some_and(ok);
     // An access point's radio is up while some host is associated with it.
     if is_ap_radio(t, end) {
@@ -629,6 +635,8 @@ pub struct DhcpResult {
     pub router: Option<Ipv4Addr>,
     pub dns: Option<Ipv4Addr>,
     pub server: Option<Ipv4Addr>,
+    /// Option 150: where an IP phone registers.
+    pub tftp: Option<Ipv4Addr>,
 }
 
 /// One NAT translation.
@@ -913,6 +921,10 @@ pub struct Sim {
     beacon_until: u64,
     /// Queuing delay for the frame being sent now (output QoS queues), taken by the next emit.
     tx_delay: u64,
+    /// IP phones and call control (registrations, calls).
+    voice: voice::VoiceState,
+    /// Smart things and IoT servers.
+    iot: iot::IotState,
 }
 
 impl Sim {
@@ -1083,6 +1095,8 @@ impl Sim {
     /// Forgets one device's dynamic state (it reloaded).
     pub fn reset_device(&mut self, d: DeviceId) {
         self.state.remove(&d);
+        self.voice.forget(d);
+        self.iot.forget(d);
         // It starts again: a coldStart trap, when traps are on.
         self.queue_trap(d, snmp::TrapEvent::ColdStart);
     }
@@ -1158,6 +1172,7 @@ impl Sim {
         if !port_up(t, from) || self.err_disabled_now(from.device, from.port) {
             return false;
         }
+        let frame = self.phone_tag(t, from, frame);
         // Over the air an access point reaches every associated host; each keeps what is its own.
         if is_ap_radio(t, from) {
             // Not back to the host that sent it; a frame for one host goes to that host only.
@@ -1192,6 +1207,7 @@ impl Sim {
         self.wlan_sync(t);
         self.flush_syslog(t);
         self.flush_traps(t);
+        self.voice_tick(t);
         self.schedule_control(t, deadline);
         self.schedule_beacons(t, deadline);
         let mut count = 0usize;
@@ -1294,6 +1310,9 @@ impl Sim {
     fn receive(&mut self, t: &Topology, at: End, bytes: &[u8], hops: u8) -> Result<(), String> {
         let d = t.device(at.device).ok_or("device removed")?;
         let port = d.ports.get(at.port).ok_or("port removed")?;
+        if d.powered_off {
+            return Err("the device is switched off".into());
+        }
         if port.shutdown {
             return Err("port is shut down".into());
         }
@@ -1314,6 +1333,7 @@ impl Sim {
             DeviceKind::Switch if port.routed => self.l3_in(t, d, at.port, f),
             DeviceKind::Switch => self.switch_in(t, d, at.port, f, hops),
             DeviceKind::Hub => self.hub_in(t, d, at.port, bytes, hops),
+            DeviceKind::Phone => self.phone_in(t, d, at.port, f, hops),
             _ => self.l3_in(t, d, at.port, f),
         }
     }
@@ -1794,11 +1814,15 @@ impl Sim {
         let sp = &d.ports.get(in_port).ok_or("no port")?.switchport;
         let vlan = match if t.is_trunk(End { device: d.id, port: in_port }) { SwitchportMode::Trunk } else { SwitchportMode::Access } {
             SwitchportMode::Access | SwitchportMode::DynamicAuto | SwitchportMode::DynamicDesirable => {
-                if f.vlan.is_some_and(|v| v != sp.access_vlan.get()) {
+                // A phone tags its own traffic in the port's voice VLAN.
+                if let Some(v) = sp.voice_vlan.filter(|v| f.vlan == Some(v.get())) {
+                    v
+                } else if f.vlan.is_some_and(|v| v != sp.access_vlan.get()) {
                     return Err("tagged frame on an access port".into());
+                } else {
+                    // Off an access point's radio: the VLAN of the sender's WLAN.
+                    wlan::radio_vlan(t, End { device: d.id, port: in_port }, f.src).unwrap_or(sp.access_vlan)
                 }
-                // Off an access point's radio: the VLAN of the sender's WLAN.
-                wlan::radio_vlan(t, End { device: d.id, port: in_port }, f.src).unwrap_or(sp.access_vlan)
             }
             SwitchportMode::Trunk => {
                 let v = match f.vlan {
@@ -1902,8 +1926,14 @@ impl Sim {
         for p in outs {
             let p = chm.pick(p, f.src, f.dst);
             let Some(port) = d.ports.get(p) else { continue };
-            let tag = if !t.is_trunk(End { device: d.id, port: p }) || port.switchport.native_vlan == vlan { None } else { Some(vlan.get()) };
             let end = End { device: d.id, port: p };
+            let trunk = t.is_trunk(end);
+            // An access port tags its voice VLAN for the phone on it.
+            let tag = if trunk {
+                (port.switchport.native_vlan != vlan).then_some(vlan.get())
+            } else {
+                (port.switchport.voice_vlan == Some(vlan)).then_some(vlan.get())
+            };
             let only = is_ap_radio(t, end).then_some(vlan);
             if self.emit_hops_in(t, end, f.retagged(tag).encode(), hops + 1, only) {
                 sent += 1;
@@ -2193,6 +2223,9 @@ impl Sim {
             if d.kind == DeviceKind::Router && u.dst_port == packetcraft_wire::ike::ISAKMP_PORT && u.src_port == packetcraft_wire::ike::ISAKMP_PORT {
                 return self.ike_in(t, d, &ip, &u.payload);
             }
+            if let Some(r) = self.voice_udp_in(t, d, &ip, &u) {
+                return r;
+            }
             if let Some(r) = self.wlan_udp_in(t, d, &ip, &u) {
                 return r;
             }
@@ -2472,6 +2505,7 @@ impl Sim {
         reply.router = pool.default_router;
         reply.dns = pool.dns;
         reply.lease_secs = Some(86_400);
+        reply.tftp = d.voice.option150.get(&pool.name).copied();
         match msg.kind {
             DhcpKind::Discover => {
                 reply.your_ip = self
@@ -2631,7 +2665,7 @@ impl Sim {
             }
             let mask = ack.mask.or(offer.mask).unwrap_or(Ipv4Addr::new(255, 255, 255, 0));
             let address = Ipv4Net::with_mask(ack.your_ip, mask).map_err(|e| SimError::NoSource(e.to_string()))?;
-            Ok(DhcpResult { address, router: ack.router, dns: ack.dns, server: ack.server_id })
+            Ok(DhcpResult { address, router: ack.router, dns: ack.dns, server: ack.server_id, tftp: ack.tftp.or(offer.tftp) })
         })();
         let st = self.st(dev);
         st.dhcp_xid = None;
@@ -2721,9 +2755,13 @@ impl Sim {
             let path = request.lines().next().and_then(|l| l.split_whitespace().nth(1)).unwrap_or("/");
             let name = path.trim_start_matches('/');
             let name = if name.is_empty() { "index.html" } else { name };
-            let (status, body) = match d.services.http.files.iter().find(|f| f.name.eq_ignore_ascii_case(name)) {
-                Some(f) => ("200 OK", f.content.clone()),
-                None => ("404 Not Found", format!("<html><body><h1>Not found</h1><p>This server has no file named {name}.</p></body></html>")),
+            let iot = name.strip_prefix("iot/").and_then(|rest| self.iot_http(d, ip.src, rest));
+            let (status, body) = match (iot, d.services.http.files.iter().find(|f| f.name.eq_ignore_ascii_case(name))) {
+                (Some(answer), _) => answer,
+                (None, Some(f)) => ("200 OK", f.content.clone()),
+                (None, None) => {
+                    ("404 Not Found", format!("<html><body><h1>Not found</h1><p>This server has no file named {name}.</p></body></html>"))
+                }
             };
             let response = format!(
                 "HTTP/1.1 {status}\r\nServer: PacketCraft\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
@@ -3019,7 +3057,7 @@ fn default_ttl(kind: DeviceKind) -> u8 {
 /// Whether switch port `p` carries `vlan` (a routed port carries none).
 fn carries(t: &Topology, d: &Device, p: usize, vlan: VlanId) -> bool {
     d.ports.get(p).filter(|port| !port.routed).is_some_and(|port| {
-        if t.is_trunk(End { device: d.id, port: p }) { port.switchport.allowed.contains(vlan) } else { port.switchport.access_vlan == vlan }
+        if t.is_trunk(End { device: d.id, port: p }) { port.switchport.allowed.contains(vlan) } else { port.switchport.access_carries(vlan) }
     }) || t.radio_carries(d, p, vlan)
 }
 

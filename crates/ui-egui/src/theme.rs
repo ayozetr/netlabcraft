@@ -107,6 +107,8 @@ pub fn device_color(kind: DeviceKind) -> Color32 {
         DeviceKind::Pc | DeviceKind::Laptop => Color32::from_rgb(0x4b, 0x83, 0xb5),
         DeviceKind::Server => Color32::from_rgb(0x2a, 0x8e, 0x9e),
         DeviceKind::Printer => Color32::from_rgb(0x5c, 0x7a, 0x96),
+        DeviceKind::Phone => Color32::from_rgb(0x3f, 0x6f, 0x8f),
+        DeviceKind::Iot => Color32::from_rgb(0x3a, 0x8f, 0x7a),
     }
 }
 

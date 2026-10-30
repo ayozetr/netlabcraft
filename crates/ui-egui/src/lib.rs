@@ -22,11 +22,14 @@ mod canvas;
 mod console;
 mod credits;
 mod events;
+mod hardware;
 pub mod i18n;
 pub mod icons;
+mod iot_page;
 mod mail;
 mod mib;
 pub mod pdf;
+mod phone;
 mod physical;
 pub mod png;
 mod services;
@@ -255,6 +258,14 @@ pub fn open_config_tab(app: &mut PacketApp, d: DeviceId) {
     console::open(app, d);
     if let Some(w) = app.ui.windows.get_mut(&d) {
         w.tab = console::Tab::Config;
+    }
+}
+
+/// Opens a device's Physical tab (power switch, and the bays of a modular router).
+pub fn open_physical_tab(app: &mut PacketApp, d: DeviceId) {
+    console::open(app, d);
+    if let Some(w) = app.ui.windows.get_mut(&d) {
+        w.tab = console::Tab::Physical;
     }
 }
 

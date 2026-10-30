@@ -170,8 +170,10 @@ pub fn running_config(d: &Device) -> String {
         if let Some(r) = p.dns {
             let _ = writeln!(s, " dns-server {r}");
         }
+        crate::exec::voice::pool_lines(&mut s, d, &p.name);
         let _ = writeln!(s, "!");
     }
+    crate::exec::voice::running_config(&mut s, d);
     if d.rapid_stp {
         let _ = writeln!(s, "spanning-tree mode rapid-pvst");
     }
@@ -234,6 +236,9 @@ pub fn running_config(d: &Device) -> String {
             let sp = &p.switchport;
             if sp.access_vlan != VlanId::DEFAULT {
                 let _ = writeln!(s, " switchport access vlan {}", sp.access_vlan);
+            }
+            if let Some(v) = sp.voice_vlan {
+                let _ = writeln!(s, " switchport voice vlan {v}");
             }
             if sp.native_vlan != VlanId::DEFAULT {
                 let _ = writeln!(s, " switchport trunk native vlan {}", sp.native_vlan);
@@ -752,7 +757,7 @@ pub fn vlans(t: &Topology, d: &Device) -> String {
             .ports
             .iter()
             .enumerate()
-            .filter(|(i, p)| !p.routed && !t.is_trunk(End { device: d.id, port: *i }) && p.switchport.access_vlan == *v)
+            .filter(|(i, p)| !p.routed && !t.is_trunk(End { device: d.id, port: *i }) && p.switchport.access_carries(*v))
             .map(|(_, p)| ifname::short(&p.name))
             .collect();
         let mut lines = ports.chunks(6).map(|c| c.join(", "));
@@ -1643,6 +1648,9 @@ pub fn switchport(t: &Topology, d: &Device, port: usize) -> Result<String, Strin
     let mut s = format!("{}\n", p.name);
     let _ = writeln!(s, "  Mode: {} (working as {oper}){}", sp.mode.name(), if sp.nonegotiate { ", no negotiation" } else { "" });
     let _ = writeln!(s, "  Access VLAN: {} ({})", sp.access_vlan, vname(sp.access_vlan));
+    if let Some(v) = sp.voice_vlan {
+        let _ = writeln!(s, "  Voice VLAN: {v} ({})", vname(v));
+    }
     let _ = writeln!(s, "  Trunk native VLAN: {} ({})", sp.native_vlan, vname(sp.native_vlan));
     let _ = writeln!(s, "  Trunk allowed VLANs: {}", if sp.allowed.is_all() { "all".to_string() } else { sp.allowed.to_string() });
     let _ = writeln!(s, "  Port security: {}", if p.port_security.is_some() { "on" } else { "off" });

@@ -19,6 +19,10 @@ pub enum Tab {
     Cli,
     Services,
     Desktop,
+    /// An IP phone's screen and dial pad.
+    Phone,
+    /// A smart thing's reading or state; a server's IoT service.
+    Iot,
     Attributes,
 }
 
@@ -84,6 +88,12 @@ pub struct DeviceWindow {
     echo: String,
     /// Services tab and browser state.
     pub(crate) svc: crate::services::ServiceForms,
+    /// The card picked in the Physical tab's list, to fit in the next bay clicked.
+    pub(crate) card: Option<&'static str>,
+    /// The digits typed on an IP phone's dial pad.
+    pub(crate) dialled: String,
+    /// The IoT tab's fields.
+    pub(crate) iot: crate::iot_page::IotForm,
 }
 
 impl DeviceWindow {
@@ -118,7 +128,11 @@ pub fn open(app: &mut PacketApp, d: DeviceId) {
     w.name = dev.name.clone();
     w.label = dev.display_name().to_string();
     if dev.kind.is_host() && w.tab == Tab::Cli {
-        w.tab = Tab::Desktop;
+        w.tab = match dev.kind {
+            DeviceKind::Phone => Tab::Phone,
+            DeviceKind::Iot => Tab::Iot,
+            _ => Tab::Desktop,
+        };
     }
     if dev.kind == DeviceKind::Hub {
         w.tab = Tab::Physical;
@@ -170,8 +184,13 @@ pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
                             (Tab::Config, "Config"),
                             (Tab::Services, "Services"),
                             (Tab::Desktop, "Desktop"),
+                            (Tab::Iot, "IoT"),
                             (Tab::Attributes, "Attributes"),
                         ]
+                    } else if dev.kind == DeviceKind::Iot {
+                        &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Iot, "IoT"), (Tab::Attributes, "Attributes")]
+                    } else if dev.kind == DeviceKind::Phone {
+                        &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Phone, "Phone"), (Tab::Attributes, "Attributes")]
                     } else if dev.kind.is_host() {
                         &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Desktop, "Desktop"), (Tab::Attributes, "Attributes")]
                     } else {
@@ -194,6 +213,14 @@ pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
                         console(app, ui, d, false);
                     }
                     Tab::Desktop => desktop(app, ui, &dev),
+                    Tab::Phone => crate::phone::tab(app, ui, &dev),
+                    Tab::Iot => {
+                        let mut form = app.ui.windows.get_mut(&d).map(|w| std::mem::take(&mut w.iot)).unwrap_or_default();
+                        crate::iot_page::tab(app, ui, &dev, &mut form);
+                        if let Some(w) = app.ui.windows.get_mut(&d) {
+                            w.iot = form;
+                        }
+                    }
                     Tab::Services => {
                         let mut forms = app.ui.windows.get_mut(&d).map(|w| std::mem::take(&mut w.svc)).unwrap_or_default();
                         crate::services::tab(app, ui, &dev, &mut forms);
@@ -356,6 +383,7 @@ fn console(app: &mut PacketApp, ui: &mut egui::Ui, d: DeviceId, dark: bool) {
 /// The front panel: one socket per port, its link light, and what is plugged in.
 fn physical(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     let tk = theme::tokens(app.ui.dark);
+    crate::hardware::panel(app, ui, dev);
     ui.label(RichText::new(crate::i18n::trf("{}: {} ports", &[&dev.catalogue_model().label, &dev.ports.len()])).strong());
     let per_row = 13usize;
     let rows = dev.ports.len().div_ceil(per_row).max(1);
@@ -365,7 +393,11 @@ fn physical(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     p.rect_filled(rect, 6.0, egui::Color32::from_rgb(0x3a, 0x40, 0x48));
     p.rect_filled(rect.shrink(4.0), 4.0, egui::Color32::from_rgb(0x55, 0x5d, 0x68));
     let led_power = rect.left_top() + vec2(18.0, 18.0);
-    p.circle_filled(led_power, 4.0, egui::Color32::from_rgb(0x7c, 0xf0, 0x7c));
+    p.circle_filled(
+        led_power,
+        4.0,
+        if dev.powered_off { egui::Color32::from_rgb(0x2a, 0x2a, 0x2a) } else { egui::Color32::from_rgb(0x7c, 0xf0, 0x7c) },
+    );
     p.text(led_power + vec2(10.0, 0.0), egui::Align2::LEFT_CENTER, "PWR", egui::FontId::proportional(10.0), egui::Color32::WHITE);
     let mut hovered = None;
     for (i, port) in dev.ports.iter().enumerate() {
@@ -883,7 +915,7 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
         DeviceKind::Hub => {
             ui.label(tl("Hub ports have nothing to configure: every frame is repeated out of every other port."));
         }
-        DeviceKind::Pc | DeviceKind::Laptop | DeviceKind::Server | DeviceKind::Printer => {
+        DeviceKind::Pc | DeviceKind::Laptop | DeviceKind::Server | DeviceKind::Printer | DeviceKind::Phone | DeviceKind::Iot => {
             field(ui, tl("IPv4 Address"), &mut w.ip);
             field(ui, tl("Subnet Mask"), &mut w.mask);
             if ui.button(tl("Apply")).clicked() {

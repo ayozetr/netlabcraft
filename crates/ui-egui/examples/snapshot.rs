@@ -1,7 +1,7 @@
 //! Offscreen render of the app to a PNG, for looking at UI work without a window:
 //!
 //! `cargo run -p packetcraft-ui-egui --example snapshot -- --sample vlans [--dark] [--simulation] [--size 1280x820]
-//!  [--cmd 'id={json}']... [--console DEVICE]... [--event N] [--physical [--place N]] out.png`
+//!  [--cmd 'id={json}']... [--console DEVICE]... [--event N] [--physical [--place N]] [--physical-tab] out.png`
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use packetcraft_engine::Session;
@@ -18,6 +18,7 @@ fn main() {
     let mut desktop: Option<String> = None;
     let mut config = false;
     let mut services = false;
+    let mut physical_tab = false;
     let mut about: Option<bool> = None;
     let mut compare = false;
     let mut page: Option<String> = None;
@@ -51,6 +52,7 @@ fn main() {
             "--desktop" => desktop = Some(it.next().expect("prompt|ip|home").clone()),
             "--config" => config = true,
             "--services" => services = true,
+            "--physical-tab" => physical_tab = true,
             "--about" => about = Some(false),
             "--credits" => about = Some(true),
             "--compare" => compare = true,
@@ -80,6 +82,9 @@ fn main() {
                 }
                 if config {
                     packetcraft_ui_egui::open_config_tab(&mut app, id);
+                }
+                if physical_tab {
+                    packetcraft_ui_egui::open_physical_tab(&mut app, id);
                 }
                 if services {
                     packetcraft_ui_egui::open_services_tab(&mut app, id);

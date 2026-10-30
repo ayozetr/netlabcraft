@@ -15,6 +15,7 @@ use crate::{host, render};
 
 pub(crate) mod firewall;
 pub(crate) mod qos;
+pub(crate) mod voice;
 mod vpn;
 mod wlan;
 
@@ -83,6 +84,12 @@ pub enum Mode {
     /// `FW1(config-network-object-group)#` / `(config-service-object-group)#`: an object group
     /// (its name, and whether it is a service group).
     ObjectGroup(String, bool),
+    /// `R1(config-telephony)#`
+    Telephony,
+    /// `R1(config-ephone-dn)#`: the directory number's tag.
+    EphoneDn(u16),
+    /// `R1(config-ephone)#`: the phone's tag.
+    Ephone(u16),
 }
 
 impl Mode {
@@ -112,6 +119,8 @@ impl Mode {
             Mode::PolicyMap(_) => Modes::POLICY_MAP,
             Mode::PolicyClass(..) => Modes::POLICY_CLASS,
             Mode::Object(_) | Mode::ObjectGroup(..) => Modes::OBJECT,
+            Mode::Telephony => Modes::TELEPHONY,
+            Mode::EphoneDn(_) | Mode::Ephone(_) => Modes::EPHONE,
         }
     }
 }
@@ -427,6 +436,9 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::Object(_) => format!("{n}(config-network-object)#"),
         Mode::ObjectGroup(_, false) => format!("{n}(config-network-object-group)#"),
         Mode::ObjectGroup(_, true) => format!("{n}(config-service-object-group)#"),
+        Mode::Telephony => format!("{n}(config-telephony)#"),
+        Mode::EphoneDn(_) => format!("{n}(config-ephone-dn)#"),
+        Mode::Ephone(_) => format!("{n}(config-ephone)#"),
     }
 }
 
@@ -633,6 +645,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::PolicyClass(..)
                 | Mode::Object(_)
                 | Mode::ObjectGroup(..)
+                | Mode::Telephony
+                | Mode::EphoneDn(_)
+                | Mode::Ephone(_)
         )
         && let Ok(r) = grammar::resolve(&words, Modes::CONFIG, dbits)
     {
@@ -686,7 +701,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::ClassMap(_)
                 | Mode::PolicyMap(_)
                 | Mode::Object(_)
-                | Mode::ObjectGroup(..) => Mode::Config,
+                | Mode::ObjectGroup(..)
+                | Mode::Telephony
+                | Mode::EphoneDn(_)
+                | Mode::Ephone(_) => Mode::Config,
                 // A class inside a policy map goes back to the policy map.
                 Mode::PolicyClass(ref p, _) => Mode::PolicyMap(p.clone()),
             };
@@ -1630,6 +1648,30 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::FwServicePolicy
         | Id::FwNoServicePolicy
         | Id::FwShowServicePolicy => firewall::command(&mut c, spec.id, &args, line),
+        Id::VoiceTelephonyService
+        | Id::VoiceNoTelephonyService
+        | Id::VoiceMaxEphones
+        | Id::VoiceMaxDn
+        | Id::VoiceSourceAddress
+        | Id::VoiceNoSourceAddress
+        | Id::VoiceAutoAssign
+        | Id::VoiceNoAutoAssign
+        | Id::VoiceEphoneDn
+        | Id::VoiceNoEphoneDn
+        | Id::VoiceNumber
+        | Id::VoiceNoNumber
+        | Id::VoiceEphone
+        | Id::VoiceNoEphone
+        | Id::VoiceMacAddress
+        | Id::VoiceButton
+        | Id::VoiceNoButton
+        | Id::VoiceDhcpOption150
+        | Id::VoiceNoDhcpOption150
+        | Id::SwVoiceVlan
+        | Id::NoSwVoiceVlan
+        | Id::ShowEphone
+        | Id::ShowEphoneDn
+        | Id::ShowTelephony => voice::command(&mut c, spec.id, &args),
         Id::WlanAdd | Id::NoWlan | Id::CapwapController | Id::NoCapwapController | Id::ShowWlan | Id::ShowCapwap => {
             wlan::command(&mut c, spec.id, &args)
         }

@@ -16,11 +16,14 @@ pub mod activity;
 pub mod drawing;
 pub mod file;
 pub mod firewall;
+pub mod hardware;
 pub mod ifname;
+pub mod iot;
 pub mod models;
 pub mod physical;
 pub mod qos;
 pub mod services;
+pub mod voice;
 pub mod vpn;
 pub mod wlan;
 
@@ -76,11 +79,24 @@ pub enum DeviceKind {
     Server,
     /// One fast port, a host.
     Printer,
+    /// An IP phone: a host with a built-in 2-port switch (network port, PC port).
+    Phone,
+    /// A smart sensor or smart device: a host that registers with an IoT server.
+    Iot,
 }
 
 impl DeviceKind {
-    pub const ALL: [DeviceKind; 7] =
-        [DeviceKind::Router, DeviceKind::Switch, DeviceKind::Hub, DeviceKind::Pc, DeviceKind::Laptop, DeviceKind::Server, DeviceKind::Printer];
+    pub const ALL: [DeviceKind; 9] = [
+        DeviceKind::Router,
+        DeviceKind::Switch,
+        DeviceKind::Hub,
+        DeviceKind::Pc,
+        DeviceKind::Laptop,
+        DeviceKind::Server,
+        DeviceKind::Printer,
+        DeviceKind::Phone,
+        DeviceKind::Iot,
+    ];
 
     pub fn id(self) -> &'static str {
         match self {
@@ -91,6 +107,8 @@ impl DeviceKind {
             DeviceKind::Laptop => "laptop",
             DeviceKind::Server => "server",
             DeviceKind::Printer => "printer",
+            DeviceKind::Phone => "phone",
+            DeviceKind::Iot => "iot",
         }
     }
 
@@ -103,6 +121,8 @@ impl DeviceKind {
             DeviceKind::Laptop => "Laptop",
             DeviceKind::Server => "Server",
             DeviceKind::Printer => "Printer",
+            DeviceKind::Phone => "IP Phone",
+            DeviceKind::Iot => "IoT",
         }
     }
 
@@ -120,12 +140,14 @@ impl DeviceKind {
             DeviceKind::Laptop => "LAPTOP",
             DeviceKind::Server => "SRV",
             DeviceKind::Printer => "PRN",
+            DeviceKind::Phone => "PHONE",
+            DeviceKind::Iot => "IOT",
         }
     }
 
     /// Hosts run a desktop-style shell, have one port and a default gateway; they don't forward.
     pub fn is_host(self) -> bool {
-        matches!(self, DeviceKind::Pc | DeviceKind::Laptop | DeviceKind::Server | DeviceKind::Printer)
+        matches!(self, DeviceKind::Pc | DeviceKind::Laptop | DeviceKind::Server | DeviceKind::Printer | DeviceKind::Phone | DeviceKind::Iot)
     }
 
     /// The port names of a new device of this kind (its default model).
@@ -173,6 +195,17 @@ pub struct Switchport {
     pub allowed: VlanSet,
     /// `switchport nonegotiate`: send no DTP messages.
     pub nonegotiate: bool,
+    /// `switchport voice vlan V`: an IP phone on this access port sends its own traffic
+    /// tagged in V; the computer behind it stays untagged in the access VLAN.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub voice_vlan: Option<VlanId>,
+}
+
+impl Switchport {
+    /// Whether an access port carries `vlan`: its access VLAN, or its voice VLAN.
+    pub fn access_carries(&self, vlan: VlanId) -> bool {
+        self.access_vlan == vlan || self.voice_vlan == Some(vlan)
+    }
 }
 
 impl Default for Switchport {
@@ -183,6 +216,7 @@ impl Default for Switchport {
             native_vlan: VlanId::DEFAULT,
             allowed: VlanSet::all(),
             nonegotiate: false,
+            voice_vlan: None,
         }
     }
 }
@@ -840,6 +874,19 @@ pub struct Device {
     /// The firewall appliance: named interfaces, security levels, objects, rules and NAT.
     #[serde(default, skip_serializing_if = "firewall::Firewall::is_default")]
     pub firewall: firewall::Firewall,
+    /// Modular routers: the card in each bay (bay `0/1` → module id), see [`hardware`].
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub modules: BTreeMap<String, String>,
+    /// Switched off with its power switch: no port carries anything, the running
+    /// configuration is gone until it boots from the saved one.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub powered_off: bool,
+    /// Routers: call control for IP phones; phones: where they register (see [`voice`]).
+    #[serde(default, skip_serializing_if = "voice::Voice::is_default")]
+    pub voice: voice::Voice,
+    /// Smart things: their IoT server and reading; servers: the IoT service and its rules.
+    #[serde(default, skip_serializing_if = "iot::Iot::is_default")]
+    pub iot: iot::Iot,
 }
 
 /// Which side of NAT an interface is on.
@@ -1565,6 +1612,10 @@ impl Device {
             qos: qos::Qos::default(),
             wlan: wlan::WlanConf::default(),
             firewall: firewall::Firewall::default(),
+            modules: BTreeMap::new(),
+            powered_off: false,
+            voice: voice::Voice::default(),
+            iot: iot::Iot::default(),
         };
         d.ensure_default_vlan();
         d
@@ -1573,8 +1624,14 @@ impl Device {
     /// Back to factory configuration, keeping identity, position and MACs.
     pub fn reset_config(&mut self) {
         let fresh = Device::of_model(self.id, self.catalogue_model(), self.name.clone(), self.x, self.y);
-        for (p, f) in self.ports.iter_mut().zip(fresh.ports) {
-            *p = Port { mac: p.mac, ..f };
+        // Card ports (modular routers) aren't in the model's list: they take the factory
+        // settings every port of the kind starts with.
+        let blank = fresh.ports.first().cloned();
+        for p in &mut self.ports {
+            let f = fresh.ports.iter().find(|f| f.name == p.name).cloned().or_else(|| blank.clone());
+            if let Some(f) = f {
+                *p = Port { mac: p.mac, name: p.name.clone(), ..f };
+            }
         }
         self.gateway = None;
         self.gateway6 = None;
@@ -1612,6 +1669,7 @@ impl Device {
         self.crypto = vpn::Crypto::default();
         self.qos = qos::Qos::default();
         self.firewall = firewall::Firewall::default();
+        self.voice = voice::Voice { tftp: self.voice.tftp, ..voice::Voice::default() };
         self.services = fresh.services;
     }
 
@@ -2032,6 +2090,9 @@ impl Topology {
                 d.crypto.sanitize();
                 d.qos.sanitize();
                 d.firewall.sanitize();
+                d.sanitize_modules();
+                d.voice.sanitize();
+                d.iot.sanitize();
                 for p in &mut d.ports {
                     p.subifs.truncate(MAX_SUBIFS);
                     p.subifs.sort_by_key(|s| s.number);

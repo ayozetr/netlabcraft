@@ -42,7 +42,19 @@ Every front end (UI, `packetcraft-cli run`, MCP `packetcraft_run`) runs these.
 | `browser.get` | Open a web page |  |  | `{"device": "host", "url": "http://name-or-address/page.html"} → {"status", "body", "url"}` |
 | `device.startup` | Startup configuration (NVRAM) |  |  | `{"device", "action": "save\|erase\|load", "text"?: "configuration lines (load)"}` |
 | `device.label` | Set display name |  |  | `{"device", "label": "workspace label (empty: the hostname)"}` |
-| `device.models` | Device catalogue |  |  | `{} → [{id, kind, label, description, ports}]` |
+| `device.models` | Device catalogue |  |  | `{} → [{id, kind, label, description, ports, slots}]` |
+| `device.power` | Power switch |  |  | `{"device", "on": true\|false or "on"\|"off"} → {"power", "changed", "errors"}: switched off, no port carries anything and a router or switch loses its running configuration; switched on, it boots from the saved one` |
+| `device.module.add` | Fit a card |  |  | `{"device", "slot": "0/1", "module": "Card-2S\|Card-4S\|Card-1GE\|Card-2GE\|Card-1FE"} → {"slots", "added": [port names]}: modular routers, switched off` |
+| `device.module.remove` | Remove a card |  |  | `{"device", "slot": "0/1"} → {"slots", "removed": [port names]}: switched off; cables on the card's ports are unplugged` |
+| `iot.configure` | Smart thing settings |  |  | `{"device": smart sensor or device, "server"?: "IoT server address (empty: none)", "value"?: sensor reading -1000..1000} → {"kind", "server", "value", "registered", "on", "message"} (reports at once)` |
+| `iot.sync` | IoT reports |  |  | `{} → {"things": [...]}: every smart thing reports to its server over HTTP (sensors first)` |
+| `iot.server` | IoT service |  |  | `{"device": server, "service"?: true\|false, "rules"?: [{"sensor", "above", "actuator"}]} → {"service", "rules", "things": [{"name", "kind", "address", "value", "on"}]}` |
+| `iot.switch` | Switch a smart device |  |  | `{"device": server, "name": registered smart device, "on": true\|false} → the server's IoT page` |
+| `phone.status` | Phone screen |  |  | `{"device": IP phone} → {"address", "tftp", "voice_vlan", "registered", "number", "server", "message", "call": {"state": "dialing"\|"ringback"\|"ringing"\|"connected", "peer", "peer_address", "rtp_sent", "rtp_received"}} (lets the phone register first)` |
+| `phone.dial` | Dial a number |  |  | `{"device": IP phone, "number": "1002"} → the phone's status: the far phone rings` |
+| `phone.answer` | Answer the phone |  |  | `{"device": a ringing IP phone} → its status: the call connects and voice packets flow` |
+| `phone.hangup` | Hang up |  |  | `{"device": IP phone} → its status: the call ends at both phones` |
+| `device.module.list` | Card catalogue |  |  | `{"device"?} → {"modules": [{id, label, description, ports, type}], "device": {"power", "slots": [{slot, module, label, ports}]}}` |
 | `note.add` | Place note or drawing | Insert |  | `{"x", "y", "text"?, "shape"?: "text\|rectangle\|ellipse\|line\|freehand\|polygon", "w"?, "h"?, "points": [[x, y], …] (freehand: simplified, at most 512 kept; polygon: 3-64 corners), "color"?: "#rrggbb"} → {"id"} (placed in the cluster being viewed)` |
 | `note.edit` | Edit note |  |  | `{"id", "text"}` |
 | `note.move` | Move note |  |  | `{"id", "x", "y", "transient"?: false}` |
@@ -706,6 +718,31 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `service-policy NAME global` | config | firewall | Apply a policy to every interface |
 | `no service-policy NAME global` | config | firewall | Stop applying the global policy |
 | `show service-policy` | user, privileged | firewall | The global policy and what its inspections saw |
+| `telephony-service` | config | router | Set up call control for IP phones |
+| `no telephony-service` | config | router | Turn call control off |
+| `max-ephones <1-256>` |  | router | How many phones may register |
+| `max-dn <1-256>` |  | router | How many directory numbers may be defined |
+| `ip source-address A.B.C.D` |  | router | The address phones register at |
+| `ip source-address A.B.C.D port <1-65535>` |  | router | The address and UDP port phones register at |
+| `no ip source-address` |  | router | Phones register at any address |
+| `auto assign <1-1000> to <1-1000>` |  | router | Hand these directory numbers to phones with no ephone entry |
+| `no auto assign` |  | router | Stop handing out numbers |
+| `ephone-dn <1-1000>` | config | router | Define or edit a directory number |
+| `no ephone-dn <1-1000>` | config | router | Delete a directory number |
+| `number DIGITS` |  | router | The number (under ephone-dn) |
+| `no number` |  | router | Remove the number (under ephone-dn) |
+| `ephone <1-1000>` | config | router | Define or edit a phone |
+| `no ephone <1-1000>` | config | router | Delete a phone |
+| `mac-address H.H.H` |  | router | The phone's MAC address (under ephone) |
+| `button BUTTON:DN` |  | router | Put a directory number on a line button (under ephone) |
+| `no button` |  | router | Clear the line buttons (under ephone) |
+| `option 150 ip A.B.C.D` |  | router | Tell IP phones the TFTP server (where they register) |
+| `no option 150` |  | router | Stop telling phones a TFTP server |
+| `switchport voice vlan <1-4094>` | interface | switch | Phones on this access port send their traffic tagged in this VLAN |
+| `no switchport voice vlan` | interface | switch | No voice VLAN on this port |
+| `show ephone` | user, privileged | router | Phones: configured and registered |
+| `show ephone-dn` | user, privileged | router | Directory numbers and their state |
+| `show telephony-service` | user, privileged | router | Call control settings and counts |
 
 ## Host shell (PCs and servers)
 

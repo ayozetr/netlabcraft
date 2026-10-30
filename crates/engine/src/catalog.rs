@@ -196,7 +196,82 @@ pub static CATALOG: &[CommandInfo] = &[
         true
     ),
     c!("device.label", "Set display name", "", None, r#"{"device", "label": "workspace label (empty: the hostname)"}"#, true),
-    c!("device.models", "Device catalogue", "", None, "{} → [{id, kind, label, description, ports}]", false),
+    c!("device.models", "Device catalogue", "", None, "{} → [{id, kind, label, description, ports, slots}]", false),
+    c!(
+        "device.power",
+        "Power switch",
+        "",
+        None,
+        r#"{"device", "on": true|false or "on"|"off"} → {"power", "changed", "errors"}: switched off, no port carries anything and a router or switch loses its running configuration; switched on, it boots from the saved one"#,
+        true
+    ),
+    c!(
+        "device.module.add",
+        "Fit a card",
+        "",
+        None,
+        r#"{"device", "slot": "0/1", "module": "Card-2S|Card-4S|Card-1GE|Card-2GE|Card-1FE"} → {"slots", "added": [port names]}: modular routers, switched off"#,
+        true
+    ),
+    c!(
+        "device.module.remove",
+        "Remove a card",
+        "",
+        None,
+        r#"{"device", "slot": "0/1"} → {"slots", "removed": [port names]}: switched off; cables on the card's ports are unplugged"#,
+        true
+    ),
+    c!(
+        "iot.configure",
+        "Smart thing settings",
+        "",
+        None,
+        r#"{"device": smart sensor or device, "server"?: "IoT server address (empty: none)", "value"?: sensor reading -1000..1000} → {"kind", "server", "value", "registered", "on", "message"} (reports at once)"#,
+        true
+    ),
+    c!("iot.sync", "IoT reports", "", None, r#"{} → {"things": [...]}: every smart thing reports to its server over HTTP (sensors first)"#, false),
+    c!(
+        "iot.server",
+        "IoT service",
+        "",
+        None,
+        r#"{"device": server, "service"?: true|false, "rules"?: [{"sensor", "above", "actuator"}]} → {"service", "rules", "things": [{"name", "kind", "address", "value", "on"}]}"#,
+        true
+    ),
+    c!(
+        "iot.switch",
+        "Switch a smart device",
+        "",
+        None,
+        r#"{"device": server, "name": registered smart device, "on": true|false} → the server's IoT page"#,
+        false
+    ),
+    c!(
+        "phone.status",
+        "Phone screen",
+        "",
+        None,
+        r#"{"device": IP phone} → {"address", "tftp", "voice_vlan", "registered", "number", "server", "message", "call": {"state": "dialing"|"ringback"|"ringing"|"connected", "peer", "peer_address", "rtp_sent", "rtp_received"}} (lets the phone register first)"#,
+        false
+    ),
+    c!("phone.dial", "Dial a number", "", None, r#"{"device": IP phone, "number": "1002"} → the phone's status: the far phone rings"#, false),
+    c!(
+        "phone.answer",
+        "Answer the phone",
+        "",
+        None,
+        r#"{"device": a ringing IP phone} → its status: the call connects and voice packets flow"#,
+        false
+    ),
+    c!("phone.hangup", "Hang up", "", None, r#"{"device": IP phone} → its status: the call ends at both phones"#, false),
+    c!(
+        "device.module.list",
+        "Card catalogue",
+        "",
+        None,
+        r#"{"device"?} → {"modules": [{id, label, description, ports, type}], "device": {"power", "slots": [{slot, module, label, ports}]}}"#,
+        false
+    ),
     c!(
         "note.add",
         "Place note or drawing",

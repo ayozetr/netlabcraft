@@ -110,6 +110,21 @@ pub static SAMPLES: &[Sample] = &[
         title: "DHCP and basic device security",
         description: "A router hands out addresses with DHCP; console, vty and enable are password protected (console: cisco, enable: class).",
     },
+    Sample {
+        id: "ip-phones",
+        title: "IP phones with a voice VLAN",
+        description: "Two IP phones, each with a PC plugged into it, share switch ports: the phones talk in voice VLAN 100, the PCs in data VLAN 10. R1 hands out addresses and registers the phones; dial 1002 from Phone1.",
+    },
+    Sample {
+        id: "iot",
+        title: "IoT: a sensor, a fan and a rule",
+        description: "A smart sensor and a smart fan register with the IoT server over HTTP; the server's rule switches the fan on when the sensor reads above 30.",
+    },
+    Sample {
+        id: "modular",
+        title: "Modular routers: serial cards for a WAN link",
+        description: "Two modular routers got a 2-port serial card each (fitted while switched off) and are joined over Serial0/1/0; their configurations are saved, so a power cycle keeps them.",
+    },
 ];
 
 struct Builder {
@@ -123,6 +138,19 @@ impl Builder {
         let id = self.t.add_model(m, Some(name), x * 1.4, y * 1.15)?;
         crate::home::factory(&mut self.t, id);
         Ok(id)
+    }
+
+    /// Fits a card in a modular router's bay (switched off and back on, as a person would).
+    fn fit_card(&mut self, dev: &str, slot: &str, card: &str) -> Result<()> {
+        let d = self.t.resolve(dev)?;
+        if let Some(x) = self.t.device_mut(d) {
+            x.power_off();
+        }
+        self.t.set_module(d, slot, Some(card))?;
+        if let Some(x) = self.t.device_mut(d) {
+            x.powered_off = false;
+        }
+        Ok(())
     }
 
     /// Places a device; sample coordinates are on a compact grid, spread out here.
@@ -145,10 +173,13 @@ impl Builder {
         for l in lines.lines().map(str::trim).filter(|l| !l.is_empty()) {
             // Samples start converged: no port spends its 30 s listening and learning.
             self.sim.topology_changed(&self.t);
-            let _ = self.sim.spanning_tree(&self.t, packetcraft_core::VlanId::DEFAULT);
+            let vlans: std::collections::BTreeSet<packetcraft_core::VlanId> = self.t.devices.iter().flat_map(|d| d.vlans.keys().copied()).collect();
+            for v in vlans {
+                let _ = self.sim.spanning_tree(&self.t, v);
+            }
             self.sim.converge_stp();
             let o = packetcraft_ios::execute(&mut self.t, &mut self.sim, d, &mut cli, l);
-            if o.output.starts_with("% ") || o.output.contains("\n% ") {
+            if o.output.starts_with("% ") || o.output.contains("\n% ") || o.output.starts_with("DHCP failed") {
                 return Err(EngineError::Failed(format!("sample: {dev}: `{l}`: {}", o.output)));
             }
         }
@@ -888,6 +919,151 @@ pub fn build(id: &str) -> Result<Topology> {
             b.t.add_drawing(packetcraft_model::Shape::Rectangle, 120.0, 240.0, 760.0, 210.0, Some("#e3eefa"))?;
             b.t.add_annotation(130.0, 250.0, "Office LAN - addresses from DHCP (192.168.50.21 onwards)")?;
             b.t.notes = "PCs get their addresses from R1 by DHCP (Desktop > IP Configuration > DHCP, or `ipconfig /renew`). R1's console asks for `cisco`; `enable` asks for `class`. Try `show ip dhcp binding` on R1.".into();
+        }
+        "modular" => {
+            b.add_model("Router-M3", "HQ", 200.0, 80.0)?;
+            b.add_model("Router-M2", "Branch", 520.0, 80.0)?;
+            b.fit_card("HQ", "0/1", "Card-2S")?;
+            b.fit_card("HQ", "0/0", "Card-1GE")?;
+            b.fit_card("Branch", "0/1", "Card-2S")?;
+            b.cable("HQ", "s0/1/0", "Branch", "s0/1/0")?;
+            b.add(DeviceKind::Switch, "S1", 120.0, 220.0)?;
+            b.add(DeviceKind::Switch, "S2", 600.0, 220.0)?;
+            b.cable("HQ", "g0/0", "S1", "g0/1")?;
+            b.cable("Branch", "g0/0", "S2", "g0/1")?;
+            for (pc, sw, x, ip, gw) in [("PC1", "S1", 120.0, "10.1.1.10", "10.1.1.1"), ("PC2", "S2", 600.0, "10.2.2.10", "10.2.2.1")] {
+                b.add(DeviceKind::Pc, pc, x, 360.0)?;
+                b.cable(pc, "fa0", sw, "fa0/1")?;
+                b.type_in(pc, &format!("ipconfig {ip} 255.255.255.0 {gw}"))?;
+            }
+            b.type_in(
+                "HQ",
+                "enable
+                configure terminal
+                interface g0/0
+                ip address 10.1.1.1 255.255.255.0
+                no shutdown
+                interface s0/1/0
+                ip address 172.16.0.1 255.255.255.252
+                clock rate 64000
+                no shutdown
+                exit
+                ip route 10.2.2.0 255.255.255.0 172.16.0.2
+                end
+                copy running-config startup-config",
+            )?;
+            b.type_in(
+                "Branch",
+                "enable
+                configure terminal
+                interface g0/0
+                ip address 10.2.2.1 255.255.255.0
+                no shutdown
+                interface s0/1/0
+                ip address 172.16.0.2 255.255.255.252
+                no shutdown
+                exit
+                ip route 0.0.0.0 0.0.0.0 172.16.0.1
+                end
+                copy running-config startup-config",
+            )?;
+            b.t.add_annotation(300.0, 20.0, "WAN 172.16.0.0/30 over the serial cards")?;
+            b.t.notes = "HQ has a 2-port serial card in bay 0/1 and a Gigabit card in bay 0/0; Branch a serial card in bay 0/1 (see each router's Physical tab). To change a card, switch the router off there first: the cable on a card that comes out is unplugged. Both configurations are saved, so switching a router off and on keeps them (try it: `show ip interface brief` before and after).".into();
+        }
+        "iot" => {
+            b.add(DeviceKind::Switch, "S1", 360.0, 160.0)?;
+            b.add(DeviceKind::Server, "IoT-Server", 360.0, 20.0)?;
+            b.cable("IoT-Server", "g0", "S1", "g0/1")?;
+            b.type_in("IoT-Server", "ipconfig 192.168.1.2 255.255.255.0")?;
+            let srv = b.t.resolve("IoT-Server")?;
+            if let Some(d) = b.t.device_mut(srv) {
+                d.services.http.on = true;
+                d.iot.service = true;
+                d.iot.rules = vec![packetcraft_model::iot::IotRule { sensor: "Sensor1".into(), above: 30, actuator: "Fan1".into() }];
+            }
+            for (i, (name, model, addr, x)) in
+                [("Sensor1", "IoT-Sensor", 10, 140.0), ("Fan1", "IoT-Device", 11, 360.0), ("PC1", "PC", 20, 580.0)].into_iter().enumerate()
+            {
+                b.add_model(model, name, x, 300.0)?;
+                b.cable(name, "fa0", "S1", &format!("fa0/{}", i + 1))?;
+                b.type_in(name, &format!("ipconfig 192.168.1.{addr} 255.255.255.0"))?;
+                let d = b.t.resolve(name)?;
+                if let Some(dev) = b.t.device_mut(d)
+                    && model != "PC"
+                {
+                    dev.iot.server = Some(Ipv4Addr::new(192, 168, 1, 2));
+                    dev.iot.value = if model == "IoT-Sensor" { 25 } else { 0 };
+                }
+            }
+            b.t.notes = "Sensor1 reads 25 degrees and Fan1 is off. Open Sensor1 > IoT and raise the reading above 30: the server's rule (IoT-Server > IoT) switches Fan1 on. Every report is an HTTP request to the server (see the events in Simulation mode).".into();
+        }
+        "ip-phones" => {
+            b.add(DeviceKind::Router, "R1", 360.0, 40.0)?;
+            b.add(DeviceKind::Switch, "S1", 360.0, 160.0)?;
+            b.cable("R1", "g0/0", "S1", "g0/1")?;
+            b.type_in(
+                "S1",
+                "enable
+                configure terminal
+                vlan 10
+                name DATA
+                vlan 100
+                name VOICE
+                exit
+                interface range fa0/1 - 2
+                switchport mode access
+                switchport access vlan 10
+                switchport voice vlan 100
+                interface g0/1
+                switchport mode trunk
+                end",
+            )?;
+            b.type_in(
+                "R1",
+                "enable
+                configure terminal
+                interface g0/0
+                no shutdown
+                interface g0/0.10
+                encapsulation dot1Q 10
+                ip address 192.168.10.1 255.255.255.0
+                interface g0/0.100
+                encapsulation dot1Q 100
+                ip address 192.168.100.1 255.255.255.0
+                exit
+                ip dhcp excluded-address 192.168.10.1
+                ip dhcp excluded-address 192.168.100.1
+                ip dhcp pool DATA
+                network 192.168.10.0 255.255.255.0
+                default-router 192.168.10.1
+                ip dhcp pool VOICE
+                network 192.168.100.0 255.255.255.0
+                default-router 192.168.100.1
+                option 150 ip 192.168.100.1
+                exit
+                telephony-service
+                max-ephones 4
+                max-dn 4
+                ip source-address 192.168.100.1 port 2000
+                auto assign 1 to 4
+                exit
+                ephone-dn 1
+                number 1001
+                ephone-dn 2
+                number 1002
+                end",
+            )?;
+            for (i, x) in [(1, 160.0), (2, 560.0)] {
+                let (phone, pc) = (format!("Phone{i}"), format!("PC{i}"));
+                b.add_model("IP-Phone", &phone, x, 280.0)?;
+                b.cable(&phone, "fa0", "S1", &format!("fa0/{i}"))?;
+                b.add(DeviceKind::Pc, &pc, x, 400.0)?;
+                b.cable(&pc, "fa0", &phone, "fa1")?;
+                b.type_in(&phone, "ipconfig /renew")?;
+                b.type_in(&pc, "ipconfig /renew")?;
+            }
+            b.t.add_annotation(560.0, 140.0, "Data VLAN 10 untagged, voice VLAN 100 tagged")?;
+            b.t.notes = "Each phone takes an address in voice VLAN 100 and learns from DHCP option 150 where to register (R1); its PC, plugged into the phone, gets an address in data VLAN 10. Open Phone1 > Phone, dial 1002 and press Call; on Phone2 press Pick up. `show ephone` and `show ephone-dn` on R1 show the registrations and the call.".into();
         }
         other => return Err(EngineError::BadParams(format!("unknown sample `{other}`"))),
     }
