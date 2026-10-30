@@ -130,8 +130,17 @@ pub fn l3_ifaces(d: &Device) -> Vec<L3If> {
         return Vec::new();
     }
     let mut out = Vec::new();
+    // A router's switch card: its VLAN interfaces.
+    if d.has_switch_card() {
+        let mac = svi_mac(d);
+        out.extend(
+            d.svis.iter().filter(|s| !s.shutdown).filter_map(|s| {
+                s.ip.map(|net| L3If { port: SVI_PORT, sub: None, vlan: Some(s.vlan.get()), net, mac, name: format!("Vlan{}", s.vlan) })
+            }),
+        );
+    }
     for (i, p) in d.ports.iter().enumerate() {
-        if p.shutdown {
+        if p.shutdown || d.switch_card_port(i) {
             continue;
         }
         if let Some(net) = p.ip {
@@ -1445,6 +1454,8 @@ impl Sim {
         match d.kind {
             DeviceKind::Switch if port.routed => self.l3_in(t, d, at.port, f),
             DeviceKind::Switch => self.switch_in(t, d, at.port, f, hops),
+            // A router's switch card switches like a switch.
+            DeviceKind::Router if d.is_switchport(at.port) => self.switch_in(t, d, at.port, f, hops),
             DeviceKind::Hub => self.hub_in(t, d, at.port, bytes, hops),
             DeviceKind::Phone => self.phone_in(t, d, at.port, f, hops),
             _ => self.l3_in(t, d, at.port, f),
@@ -3248,7 +3259,7 @@ fn default_ttl(kind: DeviceKind) -> u8 {
 
 /// Whether switch port `p` carries `vlan` (a routed port carries none).
 fn carries(t: &Topology, d: &Device, p: usize, vlan: VlanId) -> bool {
-    d.ports.get(p).filter(|port| !port.routed).is_some_and(|port| {
+    d.ports.get(p).filter(|_| d.is_switchport(p)).is_some_and(|port| {
         if t.is_trunk(End { device: d.id, port: p }) { port.switchport.allowed.contains(vlan) } else { port.switchport.access_carries(vlan) }
     }) || t.radio_carries(d, p, vlan)
 }

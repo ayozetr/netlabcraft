@@ -151,8 +151,8 @@ impl VoiceState {
 /// The voice VLAN of the switch port a phone's network port is cabled to.
 pub fn voice_vlan(t: &Topology, phone: DeviceId) -> Option<u16> {
     let peer = t.peer(End { device: phone, port: NETWORK_PORT })?;
-    let sw = t.device(peer.device).filter(|d| d.kind == DeviceKind::Switch)?;
-    let p = sw.ports.get(peer.port).filter(|p| !p.routed)?;
+    let sw = t.device(peer.device).filter(|d| d.is_switchport(peer.port))?;
+    let p = sw.ports.get(peer.port)?;
     if t.is_trunk(peer) {
         return None;
     }

@@ -239,6 +239,9 @@ pub struct Module {
     pub port_count: u32,
     /// What the ports take; `None`: what their name says.
     pub medium: Option<Medium>,
+    /// Layer-2 switch ports (a switch card): VLAN members switched inside the router, routed
+    /// through its VLAN interfaces.
+    pub switched: bool,
 }
 
 /// The cards a modular router's bays take.
@@ -250,6 +253,7 @@ pub static MODULES: &[Module] = &[
         port_type: "Serial",
         port_count: 2,
         medium: None,
+        switched: false,
     },
     Module {
         id: "Card-4S",
@@ -258,6 +262,7 @@ pub static MODULES: &[Module] = &[
         port_type: "Serial",
         port_count: 4,
         medium: None,
+        switched: false,
     },
     Module {
         id: "Card-1GE",
@@ -266,6 +271,7 @@ pub static MODULES: &[Module] = &[
         port_type: "GigabitEthernet",
         port_count: 1,
         medium: None,
+        switched: false,
     },
     Module {
         id: "Card-2GE",
@@ -274,6 +280,7 @@ pub static MODULES: &[Module] = &[
         port_type: "GigabitEthernet",
         port_count: 2,
         medium: None,
+        switched: false,
     },
     Module {
         id: "Card-1FE",
@@ -282,6 +289,7 @@ pub static MODULES: &[Module] = &[
         port_type: "FastEthernet",
         port_count: 1,
         medium: None,
+        switched: false,
     },
     Module {
         id: "Card-1GF",
@@ -290,6 +298,16 @@ pub static MODULES: &[Module] = &[
         port_type: "GigabitEthernet",
         port_count: 1,
         medium: Some(Medium::Fiber),
+        switched: false,
+    },
+    Module {
+        id: "Card-4SW",
+        label: "4-port switch card",
+        description: "Four layer-2 switch ports inside the router: VLAN membership and trunks as on a switch, routed through the router's VLAN interfaces",
+        port_type: "FastEthernet",
+        port_count: 4,
+        medium: None,
+        switched: true,
     },
 ];
 

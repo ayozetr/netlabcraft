@@ -28,7 +28,9 @@ pub(crate) fn panel(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     }
     let selected = app.ui.windows.get(&dev.id).and_then(|w| w.card);
     let mut clicked_bay = None;
-    chassis(ui, dev, selected.is_some(), &tk, &mut clicked_bay);
+    let up: Vec<bool> =
+        (0..dev.ports.len()).map(|i| netlabcraft_sim::port_up(&app.session.topology, netlabcraft_model::End { device: dev.id, port: i })).collect();
+    chassis(ui, dev, &up, selected.is_some(), &tk, &mut clicked_bay);
     if let Some(bay) = clicked_bay {
         match (dev.module_in(bay), selected) {
             (Some(_), _) => {
@@ -84,7 +86,7 @@ fn power_switch(ui: &mut egui::Ui, on: bool, tk: &theme::Tokens) -> egui::Respon
 
 /// The chassis seen from the back: the bays in a row, each empty (a dark blank plate) or
 /// holding a card with its sockets.
-fn chassis(ui: &mut egui::Ui, dev: &Device, armed: bool, tk: &theme::Tokens, clicked: &mut Option<&'static str>) {
+fn chassis(ui: &mut egui::Ui, dev: &Device, up: &[bool], armed: bool, tk: &theme::Tokens, clicked: &mut Option<&'static str>) {
     let slots = dev.catalogue_model().slots();
     let bay_w = 130.0;
     let size = vec2((slots.len() as f32 * (bay_w + 10.0) + 30.0).min(ui.available_width().max(200.0)), 92.0);
@@ -124,6 +126,12 @@ fn chassis(ui: &mut egui::Ui, dev: &Device, armed: bool, tk: &theme::Tokens, cli
                     let socket =
                         egui::Rect::from_center_size(egui::pos2(cx, bay.center().y - 6.0), if serial { vec2(22.0, 12.0) } else { vec2(16.0, 14.0) });
                     p.rect_filled(socket, if serial { 5.0 } else { 1.5 }, tk.console_bg);
+                    // A switch card's ports: a link light over each socket.
+                    if c.switched {
+                        let name = format!("{}{slot}/{k}", c.port_type);
+                        let lit = dev.ports.iter().position(|x| x.name == name).is_some_and(|i| up.get(i).copied().unwrap_or(false));
+                        p.circle_filled(socket.center_top() - vec2(0.0, 5.0), 2.5, if lit { tk.ok } else { tk.muted });
+                    }
                 }
                 p.text(bay.center_bottom() - vec2(0.0, 9.0), egui::Align2::CENTER_CENTER, tr(c.label), egui::FontId::proportional(10.0), tk.bar_text);
             }

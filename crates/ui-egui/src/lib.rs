@@ -38,6 +38,7 @@ mod wlan_page;
 
 #[cfg(test)]
 mod tests;
+mod tests_families;
 
 use crate::i18n::tl;
 use icons::Glyph;

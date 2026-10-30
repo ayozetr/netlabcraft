@@ -886,3 +886,8 @@ L3 Switch 24	Switch L3 24
 Home City	Ciudad principal
 Main Building	Edificio principal
 Main Wiring Closet	Armario de cableado principal
+4-port switch card	Tarjeta de switch de 4 puertos
+Four layer-2 switch ports inside the router: VLAN membership and trunks as on a switch, routed through the router's VLAN interfaces	Cuatro puertos de switch de capa 2 dentro del router: pertenencia a VLAN y troncales como en un switch, enrutados por las interfaces VLAN del router
+A switch card in a router	Una tarjeta de switch en un router
+R1 has a 4-port switch card: its ports are VLAN members (10 and 20) and a trunk to S1, and the router routes between its VLAN interfaces.	R1 tiene una tarjeta de switch de 4 puertos: sus puertos son miembros de VLAN (10 y 20) y un troncal hacia S1, y el router enruta entre sus interfaces VLAN.
+R1's 4-port switch card (bay 0/1, see its Physical tab) switches like a switch: `show vlan brief` and `show interfaces trunk` on R1. PC1 and PC3 share VLAN 10 across the trunk; PC1 reaches PC2 and PC4 through R1's VLAN interfaces (`show ip route`).	La tarjeta de switch de 4 puertos de R1 (bahía 0/1, mira su pestaña Físico) conmuta como un switch: `show vlan brief` y `show interfaces trunk` en R1. PC1 y PC3 comparten la VLAN 10 a través del troncal; PC1 llega a PC2 y PC4 por las interfaces VLAN de R1 (`show ip route`).

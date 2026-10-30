@@ -1744,10 +1744,13 @@ impl Device {
         // Card ports (modular routers) aren't in the model's list: they take the factory
         // settings every port of the kind starts with.
         let blank = fresh.ports.first().cloned();
-        for p in &mut self.ports {
+        let switched: Vec<bool> = (0..self.ports.len()).map(|i| self.switch_card_port(i)).collect();
+        for (i, p) in self.ports.iter_mut().enumerate() {
             let f = fresh.ports.iter().find(|f| f.name == p.name).cloned().or_else(|| blank.clone());
             if let Some(f) = f {
-                *p = Port { mac: p.mac, name: p.name.clone(), ..f };
+                // Switch-card ports start up, as a switch's do.
+                let shutdown = f.shutdown && !switched.get(i).copied().unwrap_or(false);
+                *p = Port { mac: p.mac, name: p.name.clone(), shutdown, ..f };
             }
         }
         self.gateway = None;
@@ -1811,7 +1814,7 @@ impl Device {
     }
 
     pub fn ensure_default_vlan(&mut self) {
-        if self.kind == DeviceKind::Switch {
+        if self.switches_frames() {
             self.vlans.entry(VlanId::DEFAULT).or_insert_with(|| "default".into());
         }
     }
@@ -2106,7 +2109,7 @@ impl Topology {
     /// agrees with trunk, desirable or auto; auto only with trunk or desirable; nothing
     /// negotiates with a port that sends no DTP).
     pub fn is_trunk(&self, end: End) -> bool {
-        let port = |e: End| self.device(e.device).filter(|d| d.kind == DeviceKind::Switch).and_then(|d| d.ports.get(e.port)).filter(|p| !p.routed);
+        let port = |e: End| self.device(e.device).filter(|d| d.is_switchport(e.port)).and_then(|d| d.ports.get(e.port));
         let Some(p) = port(end) else { return false };
         let mine = p.switchport.mode;
         match mine {

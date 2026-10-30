@@ -125,6 +125,11 @@ pub static SAMPLES: &[Sample] = &[
         title: "Modular routers: serial cards for a WAN link",
         description: "Two modular routers got a 2-port serial card each (fitted while switched off) and are joined over Serial0/1/0; their configurations are saved, so a power cycle keeps them.",
     },
+    Sample {
+        id: "switch-card",
+        title: "A switch card in a router",
+        description: "R1 has a 4-port switch card: its ports are VLAN members (10 and 20) and a trunk to S1, and the router routes between its VLAN interfaces.",
+    },
 ];
 
 struct Builder {
@@ -971,6 +976,66 @@ pub fn build(id: &str) -> Result<Topology> {
             )?;
             b.t.add_annotation(300.0, 20.0, "WAN 172.16.0.0/30 over the serial cards")?;
             b.t.notes = "HQ has a 2-port serial card in bay 0/1 and a Gigabit card in bay 0/0; Branch a serial card in bay 0/1 (see each router's Physical tab). To change a card, switch the router off there first: the cable on a card that comes out is unplugged. Both configurations are saved, so switching a router off and on keeps them (try it: `show ip interface brief` before and after).".into();
+        }
+        "switch-card" => {
+            b.add_model("Router-M2", "R1", 360.0, 60.0)?;
+            b.fit_card("R1", "0/1", "Card-4SW")?;
+            b.add(DeviceKind::Switch, "S1", 600.0, 220.0)?;
+            b.cable("R1", "fa0/1/3", "S1", "g0/1")?;
+            b.type_in(
+                "R1",
+                "enable
+                configure terminal
+                vlan 10
+                name STAFF
+                vlan 20
+                name GUESTS
+                exit
+                interface fa0/1/0
+                switchport access vlan 10
+                interface fa0/1/1
+                switchport access vlan 20
+                interface fa0/1/3
+                switchport mode trunk
+                interface vlan 10
+                ip address 192.168.10.1 255.255.255.0
+                no shutdown
+                interface vlan 20
+                ip address 192.168.20.1 255.255.255.0
+                no shutdown
+                end
+                copy running-config startup-config",
+            )?;
+            b.type_in(
+                "S1",
+                "enable
+                configure terminal
+                vlan 10
+                name STAFF
+                vlan 20
+                name GUESTS
+                exit
+                interface fa0/1
+                switchport access vlan 10
+                interface fa0/2
+                switchport access vlan 20
+                interface g0/1
+                switchport mode trunk
+                end
+                copy running-config startup-config",
+            )?;
+            for (pc, dev, port, x, y, ip, gw) in [
+                ("PC1", "R1", "fa0/1/0", 120.0, 220.0, "192.168.10.10", "192.168.10.1"),
+                ("PC2", "R1", "fa0/1/1", 300.0, 220.0, "192.168.20.10", "192.168.20.1"),
+                ("PC3", "S1", "fa0/1", 520.0, 380.0, "192.168.10.11", "192.168.10.1"),
+                ("PC4", "S1", "fa0/2", 680.0, 380.0, "192.168.20.11", "192.168.20.1"),
+            ] {
+                b.add(DeviceKind::Pc, pc, x, y)?;
+                b.cable(pc, "fa0", dev, port)?;
+                b.type_in(pc, &format!("ipconfig {ip} 255.255.255.0 {gw}"))?;
+            }
+            b.t.add_annotation(300.0, 0.0, "VLAN 10 STAFF 192.168.10.0/24 - VLAN 20 GUESTS 192.168.20.0/24")?;
+            b.t.notes = "R1's 4-port switch card (bay 0/1, see its Physical tab) switches like a switch: `show vlan brief` and `show interfaces trunk` on R1. PC1 and PC3 share VLAN 10 across the trunk; PC1 reaches PC2 and PC4 through R1's VLAN interfaces (`show ip route`).".into();
         }
         "iot" => {
             b.add(DeviceKind::Switch, "S1", 360.0, 160.0)?;

@@ -28,6 +28,8 @@ pub mod sample;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_families;
 
 pub use catalog::{CATALOG, CommandInfo};
 pub use netlabcraft_core::DeviceId;

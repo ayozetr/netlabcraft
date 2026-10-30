@@ -379,11 +379,19 @@ pub struct Outcome {
     pub clear: bool,
 }
 
-fn device_bits(d: &Device) -> Modes {
+fn device_bits(d: &Device, mode: &Mode) -> Modes {
     if netlabcraft_model::firewall::is_firewall(d) {
         Modes::FIREWALL
     } else if d.kind == DeviceKind::Switch {
         Modes::SWITCH
+    } else if d.has_switch_card() {
+        // A router with a switch card: its switch ports, VLANs and VLAN interfaces take the
+        // switch's commands; elsewhere it is a router that also keeps a VLAN database.
+        match mode {
+            Mode::Iface(ifs) if !ifs.is_empty() && ifs.iter().all(|r| r.sub.is_none() && d.switch_card_port(r.port)) => Modes::SWITCH,
+            Mode::Svi(_) | Mode::Vlan(_) => Modes::SWITCH,
+            _ => Modes::ROUTER.or(Modes::CARD),
+        }
     } else {
         Modes::ROUTER
     }
@@ -575,7 +583,7 @@ pub fn help_line(t: &Topology, dev: DeviceId, cli: &Cli, line: &str) -> String {
     let ends_in_space = line.is_empty() || line.ends_with(char::is_whitespace);
     let mut words: Vec<&str> = line.split_whitespace().collect();
     let partial = if ends_in_space { "" } else { words.pop().unwrap_or("") };
-    let items = grammar::help(&words, partial, cli.mode.bits(), device_bits(d));
+    let items = grammar::help(&words, partial, cli.mode.bits(), device_bits(d, &cli.mode));
     if items.is_empty() {
         return "% No command matches".into();
     }
@@ -592,7 +600,7 @@ pub fn complete_line(t: &Topology, dev: DeviceId, cli: &Cli, line: &str) -> Opti
     }
     let mut words: Vec<&str> = line.split_whitespace().collect();
     let partial = words.pop()?;
-    let kw = grammar::complete(&words, partial, cli.mode.bits(), device_bits(d))?;
+    let kw = grammar::complete(&words, partial, cli.mode.bits(), device_bits(d, &cli.mode))?;
     let head = line.get(..line.len() - partial.len()).unwrap_or("");
     Some(format!("{head}{kw} "))
 }
@@ -639,7 +647,8 @@ fn caret(line: &str, word: usize) -> String {
 type R = Result<String, String>;
 
 fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line: &str) -> R {
-    let dbits = t.device(dev).map(device_bits).ok_or("% That device no longer exists")?;
+    let dbits = t.device(dev).map(|d| device_bits(d, &cli.mode)).ok_or("% That device no longer exists")?;
+    let config_bits = t.device(dev).map_or(dbits, |d| device_bits(d, &Mode::Config));
     let words: Vec<&str> = line.split_whitespace().collect();
     let mut resolved = grammar::resolve(&words, cli.mode.bits(), dbits);
     // An access-list line starts with a number or `permit`/`deny`; anything else is a global
@@ -686,7 +695,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::EphoneDn(_)
                 | Mode::Ephone(_)
         )
-        && let Ok(r) = grammar::resolve(&words, Modes::CONFIG, dbits)
+        && let Ok(r) = grammar::resolve(&words, Modes::CONFIG, config_bits)
     {
         cli.mode = Mode::Config;
         resolved = Ok(r);
@@ -1074,8 +1083,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             }
             if let Some(v) = vlan_iface(arg(0)) {
                 let v = v?;
-                if c.d()?.kind != DeviceKind::Switch {
-                    return Err("% VLAN interfaces are for switches; routers use subinterfaces (`interface g0/0.10`)".into());
+                if !c.d()?.switches_frames() {
+                    return Err(
+                        "% VLAN interfaces are for switches (and routers with a switch card); routers use subinterfaces (`interface g0/0.10`)".into(),
+                    );
                 }
                 c.dm()?.svi_mut(v).ok_or("% Too many VLAN interfaces")?;
                 c.cli.mode = Mode::Svi(v);
@@ -3414,12 +3425,12 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(())
         }),
         Id::IpAddressDhcp => {
-            let switch = c.d()?.kind == DeviceKind::Switch;
+            let l2 = c.d()?.switchport_names();
             c.each_if(|p, sub| {
                 if sub.is_some() {
                     return Err("% `ip address dhcp` goes on the physical interface here".into());
                 }
-                if switch && !p.routed {
+                if l2.contains(&p.name) {
                     return Err(format!("% {} is a switch port: `no switchport` first", p.name));
                 }
                 p.dhcp = true;
@@ -4180,9 +4191,9 @@ impl Ctx<'_> {
             f(&mut lo.ipv6, mac, &format!("Loopback{n}"))?;
             return Ok(String::new());
         }
-        let switch = self.d()?.kind == DeviceKind::Switch;
+        let l2 = self.d()?.switchport_names();
         self.each_if(|p, sub| {
-            if switch && !p.routed {
+            if l2.contains(&p.name) {
                 return Err(format!("% {} is a switch port: IPv6 goes on a VLAN interface, or `no switchport` first", p.name));
             }
             match sub {
@@ -4250,7 +4261,7 @@ impl Ctx<'_> {
         let [r] = ifs.as_slice() else { return Err("% Set addresses one interface at a time".into()) };
         let r = *r;
         let d = self.d()?;
-        if d.kind == DeviceKind::Switch && d.ports.get(r.port).is_some_and(|p| !p.routed) {
+        if d.is_switchport(r.port) {
             return Err("% This is a switch port: `no switchport` first (multilayer switches), or address a VLAN interface".into());
         }
         if let Some(l) = d.loopbacks.iter().find(|l| l.ip.is_some_and(|ip| ip.overlaps(net))) {

@@ -10,7 +10,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use netlabcraft_core::{DeviceId, MacAddr, VlanId};
-use netlabcraft_model::{Device, DeviceKind, End, STP_DEFAULT_PRIORITY, Topology};
+use netlabcraft_model::{Device, End, STP_DEFAULT_PRIORITY, Topology};
 
 use crate::channel::PortMap;
 use crate::port_up;
@@ -145,16 +145,16 @@ pub fn bridge_id(d: &Device, vlan: VlanId) -> BridgeId {
 
 /// Whether a switch port carries a VLAN.
 pub fn carries(t: &Topology, d: &Device, port: usize, vlan: VlanId) -> bool {
-    d.kind == DeviceKind::Switch
+    d.switches_frames()
         && t.switch_has_vlan(d, vlan)
-        && (d.ports.get(port).filter(|p| !p.routed).is_some_and(|p| {
+        && (d.ports.get(port).filter(|_| d.is_switchport(port)).is_some_and(|p| {
             if t.is_trunk(End { device: d.id, port }) { p.switchport.allowed.contains(vlan) } else { p.switchport.access_carries(vlan) }
         }) || t.radio_carries(d, port, vlan))
 }
 
 fn compute_with(t: &Topology, vlan: VlanId, excluded: &BTreeSet<(DeviceId, usize)>) -> VlanTree {
     let mut tree = VlanTree::default();
-    let switches: Vec<&Device> = t.devices.iter().filter(|d| d.kind == DeviceKind::Switch && t.switch_has_vlan(d, vlan)).collect();
+    let switches: Vec<&Device> = t.devices.iter().filter(|d| d.switches_frames() && t.switch_has_vlan(d, vlan)).collect();
     // An EtherChannel takes part as one port: its lead member, costed by the bundle's speed.
     let maps: BTreeMap<DeviceId, PortMap> = switches.iter().map(|d| (d.id, PortMap::new(t, d))).collect();
     let logical = |dev: DeviceId, p: usize| maps.get(&dev).map_or(p, |m| m.logical(p));
@@ -336,11 +336,12 @@ pub fn fingerprint(t: &Topology) -> u64 {
         for p in &d.ports {
             (p.shutdown, p.err_disabled, p.channel, p.routed).hash(&mut h);
             (&p.l2.stp_cost, &p.l2.stp_priority, p.l2.root_guard).hash(&mut h);
-            if d.kind == DeviceKind::Switch {
+            if d.switches_frames() {
                 format!("{:?}", p.switchport).hash(&mut h);
             }
         }
-        if d.kind == DeviceKind::Switch {
+        d.modules.hash(&mut h);
+        if d.switches_frames() {
             format!("{:?}{:?}", d.vlans.keys().collect::<Vec<_>>(), d.stp_priority).hash(&mut h);
             // An access point's radio is up while hosts are associated (a host moving in or
             // out of range changes it), and a lightweight AP carries its WLANs' VLANs.
