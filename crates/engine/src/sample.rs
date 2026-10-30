@@ -609,7 +609,7 @@ pub fn build(id: &str) -> Result<Topology> {
                 }
                 b.type_in(name, "ipconfig /renew")?;
             }
-            b.t.notes = "AP1 offers Aula (WPA2, passphrase clase1234). Open a laptop's Config ▸ Wireless0 to change its network, or move it far from AP1 and watch it drop.".into();
+            b.t.notes = "AP1 offers Aula (WPA2, passphrase clase1234). Open a laptop's Config › Wireless0 to change its network, or move it far from AP1 and watch it drop.".into();
         }
         "wlc" => {
             b.add_model("Router-2", "R1", 360.0, 30.0)?;
