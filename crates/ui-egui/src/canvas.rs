@@ -656,6 +656,9 @@ fn draw_devices(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Toke
         }
         icons::device(painter, r, d.kind, tk);
         icons::model_marks(painter, r, d.catalogue_model().id, d.catalogue_model().multilayer());
+        if d.powered_off {
+            icons::powered_off_mark(painter, r);
+        }
         // Two centred lines under the icon: model, then name.
         let font = FontId::proportional((16.0 * view.zoom).clamp(8.0, 24.0));
         let mut y = r.bottom() + 2.0;

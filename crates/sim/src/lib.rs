@@ -146,6 +146,10 @@ pub fn l3_ifaces(d: &Device) -> Vec<L3If> {
 /// on a serial cable also clocked by its DCE end and framed alike at both ends.
 pub fn port_up(t: &Topology, end: End) -> bool {
     let ok = |p: &packetcraft_model::Port| !p.shutdown && !p.err_disabled;
+    // A switched-off device lights no port, at either end of its cables.
+    if t.device(end.device).is_some_and(|d| d.powered_off) || t.peer(end).and_then(|p| t.device(p.device)).is_some_and(|d| d.powered_off) {
+        return false;
+    }
     let own = t.device(end.device).and_then(|d| d.ports.get(end.port)).is_some_and(ok);
     // An access point's radio is up while some host is associated with it.
     if is_ap_radio(t, end) {
@@ -1203,6 +1207,9 @@ impl Sim {
     fn receive(&mut self, t: &Topology, at: End, bytes: &[u8], hops: u8) -> Result<(), String> {
         let d = t.device(at.device).ok_or("device removed")?;
         let port = d.ports.get(at.port).ok_or("port removed")?;
+        if d.powered_off {
+            return Err("the device is switched off".into());
+        }
         if port.shutdown {
             return Err("port is shut down".into());
         }

@@ -70,6 +70,20 @@ pub static MODELS: &[Model] = &[
         ports: &[run("GigabitEthernet0/", 0, 1), run("Serial0/0/", 0, 1)],
     },
     Model {
+        id: "Router-M2",
+        kind: DeviceKind::Router,
+        label: "Modular Router 2GE",
+        description: "Modular router with 2 Gigabit Ethernet ports and 2 empty module bays (serial and Gigabit cards, fitted while powered off)",
+        ports: &[run("GigabitEthernet0/", 0, 1)],
+    },
+    Model {
+        id: "Router-M3",
+        kind: DeviceKind::Router,
+        label: "Modular Router 3GE",
+        description: "Modular router with 3 Gigabit Ethernet ports and 4 empty module bays (serial and Gigabit cards, fitted while powered off)",
+        ports: &[run("GigabitEthernet0/", 0, 2)],
+    },
+    Model {
         id: "Firewall-5",
         kind: DeviceKind::Router,
         label: "Firewall 5GE",
@@ -170,6 +184,70 @@ pub static MODELS: &[Model] = &[
     },
 ];
 
+/// A plug-in card for a modular router's bay: its ports are named after the bay
+/// (`Serial` in bay `0/1` gives `Serial0/1/0`, `Serial0/1/1`).
+#[derive(Debug, Clone, Copy)]
+pub struct Module {
+    /// Stable id, saved in lab files (`Card-2S`).
+    pub id: &'static str,
+    /// What the interface shows: our own descriptive name.
+    pub label: &'static str,
+    pub description: &'static str,
+    /// The port type word (`Serial`, `GigabitEthernet`).
+    pub port_type: &'static str,
+    pub port_count: u32,
+}
+
+/// The cards a modular router's bays take.
+pub static MODULES: &[Module] = &[
+    Module { id: "Card-2S", label: "2-port Serial card", description: "Two synchronous serial WAN ports", port_type: "Serial", port_count: 2 },
+    Module { id: "Card-4S", label: "4-port Serial card", description: "Four synchronous serial WAN ports", port_type: "Serial", port_count: 4 },
+    Module {
+        id: "Card-1GE",
+        label: "1-port Gigabit card",
+        description: "One routed Gigabit Ethernet port",
+        port_type: "GigabitEthernet",
+        port_count: 1,
+    },
+    Module {
+        id: "Card-2GE",
+        label: "2-port Gigabit card",
+        description: "Two routed Gigabit Ethernet ports",
+        port_type: "GigabitEthernet",
+        port_count: 2,
+    },
+    Module {
+        id: "Card-1FE",
+        label: "1-port Fast Ethernet card",
+        description: "One routed Fast Ethernet port",
+        port_type: "FastEthernet",
+        port_count: 1,
+    },
+];
+
+/// A card by its id or its shown name.
+pub fn module(id: &str) -> Option<&'static Module> {
+    MODULES.iter().find(|m| m.id.eq_ignore_ascii_case(id) || m.label.eq_ignore_ascii_case(id))
+}
+
+impl Module {
+    /// The card's port names in bay `slot` (`0/1`).
+    pub fn port_names(&self, slot: &str) -> Vec<String> {
+        (0..self.port_count).map(|n| format!("{}{slot}/{n}", self.port_type)).collect()
+    }
+}
+
+impl Model {
+    /// The module bays of a modular router, in order (`0/0`, `0/1`…); empty for fixed models.
+    pub fn slots(&self) -> &'static [&'static str] {
+        match self.id {
+            "Router-M2" => &["0/0", "0/1"],
+            "Router-M3" => &["0/0", "0/1", "0/2", "0/3"],
+            _ => &[],
+        }
+    }
+}
+
 /// A model by its id (`Router-3`, what lab files keep) or by the name the interface shows
 /// (`Router 3GE`).
 pub fn find(id: &str) -> Option<&'static Model> {
@@ -232,5 +310,22 @@ mod tests {
         }
         assert_eq!(find("switch-48").map(|m| m.port_names().len()), Some(50));
         assert_eq!(find("Hub-8").map(|m| m.port_names()[7].clone()).as_deref(), Some("Ethernet7"));
+    }
+
+    #[test]
+    fn modules_name_their_ports_after_the_bay() {
+        let m = find("Modular Router 3GE").unwrap();
+        assert_eq!(m.slots().len(), 4);
+        assert!(find("Router-3").unwrap().slots().is_empty());
+        let mut seen = std::collections::BTreeSet::new();
+        for c in MODULES {
+            assert!(seen.insert(c.id) && module(c.label).is_some_and(|x| x.id == c.id));
+            for slot in m.slots() {
+                for n in c.port_names(slot) {
+                    assert!(crate::ifname::parse(&n).is_some_and(|x| x.numbers.len() == 3), "{n}");
+                }
+            }
+        }
+        assert_eq!(module("card-2s").unwrap().port_names("0/1"), ["Serial0/1/0", "Serial0/1/1"]);
     }
 }

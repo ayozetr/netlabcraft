@@ -19,6 +19,7 @@ use serde_json::Value;
 pub mod activity;
 pub mod catalog;
 mod cmd;
+mod hardware;
 pub mod home;
 
 pub mod sample;

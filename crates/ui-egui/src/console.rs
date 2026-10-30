@@ -84,6 +84,8 @@ pub struct DeviceWindow {
     echo: String,
     /// Services tab and browser state.
     pub(crate) svc: crate::services::ServiceForms,
+    /// The card picked in the Physical tab's list, to fit in the next bay clicked.
+    pub(crate) card: Option<&'static str>,
 }
 
 impl DeviceWindow {
@@ -356,6 +358,7 @@ fn console(app: &mut PacketApp, ui: &mut egui::Ui, d: DeviceId, dark: bool) {
 /// The front panel: one socket per port, its link light, and what is plugged in.
 fn physical(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     let tk = theme::tokens(app.ui.dark);
+    crate::hardware::panel(app, ui, dev);
     ui.label(RichText::new(crate::i18n::trf("{}: {} ports", &[&dev.catalogue_model().label, &dev.ports.len()])).strong());
     let per_row = 13usize;
     let rows = dev.ports.len().div_ceil(per_row).max(1);
@@ -365,7 +368,11 @@ fn physical(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     p.rect_filled(rect, 6.0, egui::Color32::from_rgb(0x3a, 0x40, 0x48));
     p.rect_filled(rect.shrink(4.0), 4.0, egui::Color32::from_rgb(0x55, 0x5d, 0x68));
     let led_power = rect.left_top() + vec2(18.0, 18.0);
-    p.circle_filled(led_power, 4.0, egui::Color32::from_rgb(0x7c, 0xf0, 0x7c));
+    p.circle_filled(
+        led_power,
+        4.0,
+        if dev.powered_off { egui::Color32::from_rgb(0x2a, 0x2a, 0x2a) } else { egui::Color32::from_rgb(0x7c, 0xf0, 0x7c) },
+    );
     p.text(led_power + vec2(10.0, 0.0), egui::Align2::LEFT_CENTER, "PWR", egui::FontId::proportional(10.0), egui::Color32::WHITE);
     let mut hovered = None;
     for (i, port) in dev.ports.iter().enumerate() {

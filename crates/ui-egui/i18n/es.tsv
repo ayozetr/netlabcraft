@@ -671,3 +671,39 @@ A firewall with inside, outside and DMZ	Un cortafuegos con red interna, externa 
 FW1 lets the office out (sharing its outside address), keeps the Internet out of the office, and publishes the DMZ web server through a fixed address and one access rule.	FW1 deja salir a la oficina (compartiendo su dirección externa), impide que Internet entre en la oficina y publica el servidor web de la DMZ con una dirección fija y una regla de acceso.
 FW1 has three named interfaces: inside (level 100), dmz (50) and outside (0). The office and the DMZ reach the Internet through the outside address (`show xlate`, `show conn`); Home can't start anything towards them, except the web server, published as 203.0.113.10 by a static rule and one access rule (`show access-list` counts the hits). From Home, browse http://203.0.113.10 and ping PC1 to see the difference; `show logging` on FW1 tells why a packet was dropped.	FW1 tiene tres interfaces con nombre: inside (nivel 100), dmz (50) y outside (0). La oficina y la DMZ salen a Internet con la dirección externa (`show xlate`, `show conn`); Home no puede iniciar nada hacia ellas, salvo hacia el servidor web, publicado como 203.0.113.10 con una regla estática y una regla de acceso (`show access-list` cuenta los aciertos). Desde Home, abre http://203.0.113.10 y haz ping a PC1 para ver la diferencia; `show logging` en FW1 explica por qué se descartó un paquete.
 Stateful firewall with 5 Gigabit Ethernet ports: named interfaces with security levels, access rules, object NAT and a DHCP server	Cortafuegos con estado y 5 puertos Gigabit Ethernet: interfaces con nombre y nivel de seguridad, reglas de acceso, NAT por objetos y servidor DHCP
+Modular router with 2 Gigabit Ethernet ports and 2 empty module bays (serial and Gigabit cards, fitted while powered off)	Router modular con 2 puertos Gigabit Ethernet y 2 bahías vacías (tarjetas serie y Gigabit, que se montan con el equipo apagado)
+Modular router with 3 Gigabit Ethernet ports and 4 empty module bays (serial and Gigabit cards, fitted while powered off)	Router modular con 3 puertos Gigabit Ethernet y 4 bahías vacías (tarjetas serie y Gigabit, que se montan con el equipo apagado)
+2-port Serial card	Tarjeta serie de 2 puertos
+4-port Serial card	Tarjeta serie de 4 puertos
+1-port Gigabit card	Tarjeta Gigabit de 1 puerto
+2-port Gigabit card	Tarjeta Gigabit de 2 puertos
+1-port Fast Ethernet card	Tarjeta Fast Ethernet de 1 puerto
+Two synchronous serial WAN ports	Dos puertos serie síncronos de WAN
+Four synchronous serial WAN ports	Cuatro puertos serie síncronos de WAN
+One routed Gigabit Ethernet port	Un puerto Gigabit Ethernet enrutado
+Two routed Gigabit Ethernet ports	Dos puertos Gigabit Ethernet enrutados
+One routed Fast Ethernet port	Un puerto Fast Ethernet enrutado
+Switched on	Encendido
+Switched off	Apagado
+Switching on boots from the saved configuration.	Al encenderlo arranca con la configuración guardada.
+Pick a card in the list first, then click an empty bay.	Elige primero una tarjeta de la lista y luego haz clic en una bahía vacía.
+Pick a card, then click an empty bay to fit it; click a fitted card to take it out.	Elige una tarjeta y haz clic en una bahía vacía para montarla; haz clic en una tarjeta montada para quitarla.
+Cards are fitted and removed with the device switched off.	Las tarjetas se montan y se quitan con el equipo apagado.
+Cards:	Tarjetas:
+Power: on (click to switch off)	Alimentación: encendido (clic para apagar)
+Power: off (click to switch on)	Alimentación: apagado (clic para encender)
+Bay {}: {} (click to take it out)	Bahía {}: {} (clic para quitarla)
+Bay {}: empty	Bahía {}: vacía
+empty: click to fit	vacía: clic para montar
+empty	vacía
+{} is switched on: switch it off before fitting or removing a card	{} está encendido: apágalo antes de montar o quitar una tarjeta
+bay {} of {} is empty	la bahía {} de {} está vacía
+bay {} of {} already holds a {}	la bahía {} de {} ya tiene una {}
+{} has no bay {} (bays: {})	{} no tiene la bahía {} (bahías: {})
+{} ({}) has no module bays	{} ({}) no tiene bahías para tarjetas
+% The device is switched off: switch it on in its Physical tab (device.power).	% El equipo está apagado: enciéndelo en su pestaña Física (device.power).
+the device is switched off	el equipo está apagado
+Modular routers: serial cards for a WAN link	Routers modulares: tarjetas serie para un enlace WAN
+Two modular routers got a 2-port serial card each (fitted while switched off) and are joined over Serial0/1/0; their configurations are saved, so a power cycle keeps them.	Dos routers modulares llevan cada uno una tarjeta serie de 2 puertos (montada con el equipo apagado) y se unen por Serial0/1/0; sus configuraciones están guardadas, así que sobreviven a un apagado.
+WAN 172.16.0.0/30 over the serial cards	WAN 172.16.0.0/30 por las tarjetas serie
+HQ has a 2-port serial card in bay 0/1 and a Gigabit card in bay 0/0; Branch a serial card in bay 0/1 (see each router's Physical tab). To change a card, switch the router off there first: the cable on a card that comes out is unplugged. Both configurations are saved, so switching a router off and on keeps them (try it: `show ip interface brief` before and after).	HQ tiene una tarjeta serie de 2 puertos en la bahía 0/1 y una tarjeta Gigabit en la bahía 0/0; Branch, una tarjeta serie en la bahía 0/1 (mira la pestaña Física de cada router). Para cambiar una tarjeta, apaga antes el router ahí: el cable de una tarjeta que se quita queda desconectado. Las dos configuraciones están guardadas, así que apagar y encender un router las conserva (pruébalo: `show ip interface brief` antes y después).

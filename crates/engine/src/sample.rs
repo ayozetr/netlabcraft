@@ -110,6 +110,11 @@ pub static SAMPLES: &[Sample] = &[
         title: "DHCP and basic device security",
         description: "A router hands out addresses with DHCP; console, vty and enable are password protected (console: cisco, enable: class).",
     },
+    Sample {
+        id: "modular",
+        title: "Modular routers: serial cards for a WAN link",
+        description: "Two modular routers got a 2-port serial card each (fitted while switched off) and are joined over Serial0/1/0; their configurations are saved, so a power cycle keeps them.",
+    },
 ];
 
 struct Builder {
@@ -123,6 +128,19 @@ impl Builder {
         let id = self.t.add_model(m, Some(name), x * 1.4, y * 1.15)?;
         crate::home::factory(&mut self.t, id);
         Ok(id)
+    }
+
+    /// Fits a card in a modular router's bay (switched off and back on, as a person would).
+    fn fit_card(&mut self, dev: &str, slot: &str, card: &str) -> Result<()> {
+        let d = self.t.resolve(dev)?;
+        if let Some(x) = self.t.device_mut(d) {
+            x.power_off();
+        }
+        self.t.set_module(d, slot, Some(card))?;
+        if let Some(x) = self.t.device_mut(d) {
+            x.powered_off = false;
+        }
+        Ok(())
     }
 
     /// Places a device; sample coordinates are on a compact grid, spread out here.
@@ -868,6 +886,56 @@ pub fn build(id: &str) -> Result<Topology> {
             b.t.add_drawing(packetcraft_model::Shape::Rectangle, 120.0, 240.0, 760.0, 210.0, Some("#e3eefa"))?;
             b.t.add_annotation(130.0, 250.0, "Office LAN - addresses from DHCP (192.168.50.21 onwards)")?;
             b.t.notes = "PCs get their addresses from R1 by DHCP (Desktop > IP Configuration > DHCP, or `ipconfig /renew`). R1's console asks for `cisco`; `enable` asks for `class`. Try `show ip dhcp binding` on R1.".into();
+        }
+        "modular" => {
+            b.add_model("Router-M3", "HQ", 200.0, 80.0)?;
+            b.add_model("Router-M2", "Branch", 520.0, 80.0)?;
+            b.fit_card("HQ", "0/1", "Card-2S")?;
+            b.fit_card("HQ", "0/0", "Card-1GE")?;
+            b.fit_card("Branch", "0/1", "Card-2S")?;
+            b.cable("HQ", "s0/1/0", "Branch", "s0/1/0")?;
+            b.add(DeviceKind::Switch, "S1", 120.0, 220.0)?;
+            b.add(DeviceKind::Switch, "S2", 600.0, 220.0)?;
+            b.cable("HQ", "g0/0", "S1", "g0/1")?;
+            b.cable("Branch", "g0/0", "S2", "g0/1")?;
+            for (pc, sw, x, ip, gw) in [("PC1", "S1", 120.0, "10.1.1.10", "10.1.1.1"), ("PC2", "S2", 600.0, "10.2.2.10", "10.2.2.1")] {
+                b.add(DeviceKind::Pc, pc, x, 360.0)?;
+                b.cable(pc, "fa0", sw, "fa0/1")?;
+                b.type_in(pc, &format!("ipconfig {ip} 255.255.255.0 {gw}"))?;
+            }
+            b.type_in(
+                "HQ",
+                "enable
+                configure terminal
+                interface g0/0
+                ip address 10.1.1.1 255.255.255.0
+                no shutdown
+                interface s0/1/0
+                ip address 172.16.0.1 255.255.255.252
+                clock rate 64000
+                no shutdown
+                exit
+                ip route 10.2.2.0 255.255.255.0 172.16.0.2
+                end
+                copy running-config startup-config",
+            )?;
+            b.type_in(
+                "Branch",
+                "enable
+                configure terminal
+                interface g0/0
+                ip address 10.2.2.1 255.255.255.0
+                no shutdown
+                interface s0/1/0
+                ip address 172.16.0.2 255.255.255.252
+                no shutdown
+                exit
+                ip route 0.0.0.0 0.0.0.0 172.16.0.1
+                end
+                copy running-config startup-config",
+            )?;
+            b.t.add_annotation(300.0, 20.0, "WAN 172.16.0.0/30 over the serial cards")?;
+            b.t.notes = "HQ has a 2-port serial card in bay 0/1 and a Gigabit card in bay 0/0; Branch a serial card in bay 0/1 (see each router's Physical tab). To change a card, switch the router off there first: the cable on a card that comes out is unplugged. Both configurations are saved, so switching a router off and on keeps them (try it: `show ip interface brief` before and after).".into();
         }
         other => return Err(EngineError::BadParams(format!("unknown sample `{other}`"))),
     }

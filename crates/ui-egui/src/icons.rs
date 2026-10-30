@@ -88,8 +88,48 @@ pub fn model_marks(p: &Painter, rect: Rect, model_id: &str, multilayer: bool) {
         }
         "WLC" => wlc_mark(p, rect),
         "Firewall-5" => firewall_mark(p, rect),
+        "Router-M2" | "Router-M3" => modular_mark(p, rect),
         _ => {}
     }
+}
+
+/// A modular router: a row of card bays on the drum's side band, one holding a card (a lit
+/// plate with two sockets), the others blank.
+pub fn modular_mark(p: &Painter, rect: Rect) {
+    let w = rect.width();
+    let plate = Color32::from_rgb(0x2b, 0x31, 0x3a);
+    let card = Color32::from_rgb(0xd9, 0xb2, 0x4c);
+    let y = rect.center().y + w * 0.16;
+    let (bw, bh) = (w * 0.2, w * 0.11);
+    for k in 0..3 {
+        let x = rect.center().x + (k as f32 - 1.0) * (bw + w * 0.04);
+        let bay = Rect::from_center_size(pos2(x, y), vec2(bw, bh));
+        p.rect_filled(bay, w * 0.015, if k == 0 { card } else { plate });
+        if k == 0 {
+            for s in [-1.0, 1.0] {
+                p.rect_filled(Rect::from_center_size(pos2(x + s * bw * 0.22, y), vec2(bw * 0.28, bh * 0.45)), 0.0, plate);
+            }
+        }
+        p.rect_stroke(bay, w * 0.015, Stroke::new((w / 60.0).max(0.5), Color32::WHITE), StrokeKind::Inside);
+    }
+}
+
+/// A switched-off device: a dark veil and a small power symbol.
+pub fn powered_off_mark(p: &Painter, rect: Rect) {
+    let w = rect.width();
+    p.rect_filled(rect.expand(w * 0.04), w * 0.08, Color32::from_black_alpha(110));
+    let c = pos2(rect.right() - w * 0.1, rect.top() + w * 0.1);
+    p.circle_filled(c, w * 0.11, Color32::from_rgb(0x30, 0x30, 0x30));
+    let s = Stroke::new((w / 28.0).max(1.0), Color32::WHITE);
+    let r = w * 0.065;
+    let pts: Vec<Pos2> = (0..=12)
+        .map(|i| {
+            let a = -std::f32::consts::FRAC_PI_2 + 0.6 + i as f32 * (std::f32::consts::TAU - 1.2) / 12.0;
+            c + vec2(a.cos(), a.sin()) * r
+        })
+        .collect();
+    p.add(Shape::line(pts, s));
+    p.line_segment([c - vec2(0.0, r * 1.25), c - vec2(0.0, r * 0.2)], s);
 }
 
 /// The firewall appliance: a brick wall standing in front of the router drum (it routes, and

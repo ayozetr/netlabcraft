@@ -196,7 +196,39 @@ pub static CATALOG: &[CommandInfo] = &[
         true
     ),
     c!("device.label", "Set display name", "", None, r#"{"device", "label": "workspace label (empty: the hostname)"}"#, true),
-    c!("device.models", "Device catalogue", "", None, "{} → [{id, kind, label, description, ports}]", false),
+    c!("device.models", "Device catalogue", "", None, "{} → [{id, kind, label, description, ports, slots}]", false),
+    c!(
+        "device.power",
+        "Power switch",
+        "",
+        None,
+        r#"{"device", "on": true|false or "on"|"off"} → {"power", "changed", "errors"}: switched off, no port carries anything and a router or switch loses its running configuration; switched on, it boots from the saved one"#,
+        true
+    ),
+    c!(
+        "device.module.add",
+        "Fit a card",
+        "",
+        None,
+        r#"{"device", "slot": "0/1", "module": "Card-2S|Card-4S|Card-1GE|Card-2GE|Card-1FE"} → {"slots", "added": [port names]}: modular routers, switched off"#,
+        true
+    ),
+    c!(
+        "device.module.remove",
+        "Remove a card",
+        "",
+        None,
+        r#"{"device", "slot": "0/1"} → {"slots", "removed": [port names]}: switched off; cables on the card's ports are unplugged"#,
+        true
+    ),
+    c!(
+        "device.module.list",
+        "Card catalogue",
+        "",
+        None,
+        r#"{"device"?} → {"modules": [{id, label, description, ports, type}], "device": {"power", "slots": [{slot, module, label, ports}]}}"#,
+        false
+    ),
     c!(
         "note.add",
         "Place note or drawing",

@@ -24,7 +24,7 @@ fn f32_param(p: &Value, key: &str) -> Option<f32> {
 }
 
 /// A device given by name (`"R1"`), `"#id"` or numeric id.
-fn device_param(s: &Session, p: &Value, key: &str) -> Result<DeviceId> {
+pub(crate) fn device_param(s: &Session, p: &Value, key: &str) -> Result<DeviceId> {
     match p.get(key) {
         Some(Value::Number(n)) => {
             let id = n.as_u64().and_then(|v| u32::try_from(v).ok()).ok_or_else(|| bad(format!("`{key}` is not a device id")))?;
@@ -243,7 +243,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             Ok(Value::Null)
         }
         "device.models" => Ok(Value::Array(
-            models::MODELS.iter().map(|m| json!({"id": m.id, "kind": m.kind.id(), "label": m.label, "description": m.description, "ports": m.port_names()})).collect(),
+            models::MODELS.iter().map(|m| json!({"id": m.id, "kind": m.kind.id(), "label": m.label, "description": m.description, "ports": m.port_names(), "slots": m.slots()})).collect(),
         )),
                                 "snmp.request" => {
             use packetcraft_wire::snmp::{PduKind, Snmp, Value as SnmpValue, parse_oid};
@@ -860,6 +860,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         }
         "view.physical" | "view.logical" | "view.enter_place" | "view.place_up" | "view.intercity" | "place.add" | "place.rename" | "place.move"
         | "place.remove" | "place.list" | "device.place" | "link.length" => physical(s, cmd, p),
+        "device.power" | "device.module.add" | "device.module.remove" | "device.module.list" => crate::hardware::run(s, cmd, p),
         "view.enter_cluster" => {
             s.view = Some(cluster_param(s, p)?);
             s.revision += 1;
@@ -1337,6 +1338,12 @@ fn prompt_of(s: &mut Session, d: DeviceId) -> String {
 /// Runs a console line, echoing it and its output into the device's scrollback.
 pub fn cli_line(s: &mut Session, d: DeviceId, line: &str) -> Value {
     let line: String = line.chars().take(4_096).filter(|c| *c != '\r').collect();
+    if s.topology.device(d).is_some_and(|x| x.powered_off) {
+        let output = "% The device is switched off: switch it on in its Physical tab (device.power).".to_string();
+        let cli = s.console(d).cli.clone();
+        let prompt = packetcraft_ios::prompt(&s.topology, d, &cli);
+        return json!({"output": output, "prompt": prompt, "clear": false});
+    }
     let before = s.topology.clone();
     let mut cli = std::mem::take(&mut s.console(d).cli);
     // What is typed at a password prompt is never echoed.

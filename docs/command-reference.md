@@ -42,7 +42,11 @@ Every front end (UI, `packetcraft-cli run`, MCP `packetcraft_run`) runs these.
 | `browser.get` | Open a web page |  |  | `{"device": "host", "url": "http://name-or-address/page.html"} → {"status", "body", "url"}` |
 | `device.startup` | Startup configuration (NVRAM) |  |  | `{"device", "action": "save\|erase\|load", "text"?: "configuration lines (load)"}` |
 | `device.label` | Set display name |  |  | `{"device", "label": "workspace label (empty: the hostname)"}` |
-| `device.models` | Device catalogue |  |  | `{} → [{id, kind, label, description, ports}]` |
+| `device.models` | Device catalogue |  |  | `{} → [{id, kind, label, description, ports, slots}]` |
+| `device.power` | Power switch |  |  | `{"device", "on": true\|false or "on"\|"off"} → {"power", "changed", "errors"}: switched off, no port carries anything and a router or switch loses its running configuration; switched on, it boots from the saved one` |
+| `device.module.add` | Fit a card |  |  | `{"device", "slot": "0/1", "module": "Card-2S\|Card-4S\|Card-1GE\|Card-2GE\|Card-1FE"} → {"slots", "added": [port names]}: modular routers, switched off` |
+| `device.module.remove` | Remove a card |  |  | `{"device", "slot": "0/1"} → {"slots", "removed": [port names]}: switched off; cables on the card's ports are unplugged` |
+| `device.module.list` | Card catalogue |  |  | `{"device"?} → {"modules": [{id, label, description, ports, type}], "device": {"power", "slots": [{slot, module, label, ports}]}}` |
 | `note.add` | Place note or drawing | Insert |  | `{"x", "y", "text"?, "shape"?: "text\|rectangle\|ellipse\|line\|freehand\|polygon", "w"?, "h"?, "points": [[x, y], …] (freehand: simplified, at most 512 kept; polygon: 3-64 corners), "color"?: "#rrggbb"} → {"id"} (placed in the cluster being viewed)` |
 | `note.edit` | Edit note |  |  | `{"id", "text"}` |
 | `note.move` | Move note |  |  | `{"id", "x", "y", "transient"?: false}` |

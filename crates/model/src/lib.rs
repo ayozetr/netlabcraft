@@ -16,6 +16,7 @@ pub mod activity;
 pub mod drawing;
 pub mod file;
 pub mod firewall;
+pub mod hardware;
 pub mod ifname;
 pub mod models;
 pub mod physical;
@@ -837,6 +838,13 @@ pub struct Device {
     /// The firewall appliance: named interfaces, security levels, objects, rules and NAT.
     #[serde(default, skip_serializing_if = "firewall::Firewall::is_default")]
     pub firewall: firewall::Firewall,
+    /// Modular routers: the card in each bay (bay `0/1` → module id), see [`hardware`].
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub modules: BTreeMap<String, String>,
+    /// Switched off with its power switch: no port carries anything, the running
+    /// configuration is gone until it boots from the saved one.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub powered_off: bool,
 }
 
 /// Which side of NAT an interface is on.
@@ -1532,6 +1540,8 @@ impl Device {
             qos: qos::Qos::default(),
             wlan: wlan::WlanConf::default(),
             firewall: firewall::Firewall::default(),
+            modules: BTreeMap::new(),
+            powered_off: false,
         };
         d.ensure_default_vlan();
         d
@@ -1540,8 +1550,14 @@ impl Device {
     /// Back to factory configuration, keeping identity, position and MACs.
     pub fn reset_config(&mut self) {
         let fresh = Device::of_model(self.id, self.catalogue_model(), self.name.clone(), self.x, self.y);
-        for (p, f) in self.ports.iter_mut().zip(fresh.ports) {
-            *p = Port { mac: p.mac, ..f };
+        // Card ports (modular routers) aren't in the model's list: they take the factory
+        // settings every port of the kind starts with.
+        let blank = fresh.ports.first().cloned();
+        for p in &mut self.ports {
+            let f = fresh.ports.iter().find(|f| f.name == p.name).cloned().or_else(|| blank.clone());
+            if let Some(f) = f {
+                *p = Port { mac: p.mac, name: p.name.clone(), ..f };
+            }
         }
         self.gateway = None;
         self.gateway6 = None;
@@ -1998,6 +2014,7 @@ impl Topology {
                 d.crypto.sanitize();
                 d.qos.sanitize();
                 d.firewall.sanitize();
+                d.sanitize_modules();
                 for p in &mut d.ports {
                     p.subifs.truncate(MAX_SUBIFS);
                     p.subifs.sort_by_key(|s| s.number);
