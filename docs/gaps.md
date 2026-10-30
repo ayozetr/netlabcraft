@@ -14,7 +14,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 | # | Gap | Who notices | Estimate |
 |---|---|---|---|
 | 1 | **Activity depth:** a side-by-side view of the student's lab against the answer network | Instructors | 5–8 h |
-| 2 | **Wireless depth:** WLC with lightweight APs, 802.1X/RADIUS, 802.11 frames in Simulation mode, a DHCP client on the home router's Internet port | CCNA 2 | 18–30 h |
+| 2 | **Wireless depth:** WLC with lightweight APs, 802.1X/RADIUS, 802.11 frames in Simulation mode | CCNA 2 | 16–26 h |
 | 3 | **Services:** SNMP, TACACS+, relaying mail between servers | CCNA 3, network management labs | 14–22 h |
 | 4 | **More languages and full coverage:** engine messages (errors, drop reasons, event summaries) in Spanish; more interface languages | Non-English students | 8–14 h |
 | 5 | **Packaging and first release:** installers for Windows, macOS, FreeBSD and Flatpak, workflows, contributors in the About window ([releasing.md](releasing.md)); the app ID and the project's home are the owner's decision | Everyone who isn't a developer | 10–18 h |
@@ -26,6 +26,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Wireless narrowed: the home router's Internet port takes DHCP (`ip address dhcp` on routers too). |
 | 2026-10-30 | minor | Services narrowed: email (SMTP, POP3, the Email app). |
 | 2026-10-30 | minor | Activities narrowed: values per student (variables picked from the student's name), results per section. |
 | 2026-10-30 | minor | Done: console coverage (the CCNA 1 lab commands: output filters, password rules, speed and duplex, many `show` commands). |

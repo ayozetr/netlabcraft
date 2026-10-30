@@ -58,6 +58,8 @@ pub struct Settings {
     pub dhcp_start: Option<String>,
     /// Static Internet address, mask and gateway (`None` leaves the Internet port as it is).
     pub internet: Option<(String, String, String)>,
+    /// The Internet port takes its address from the provider's DHCP server.
+    pub internet_dhcp: bool,
 }
 
 /// The configuration lines that make a home router match `s`.
@@ -99,7 +101,14 @@ pub fn settings_config(t: &Topology, id: DeviceId, s: &Settings) -> Result<Strin
         out.push_str(&format!("ip dhcp pool LAN\n network {} {}\n default-router {}\nexit\n", net.addr, net.mask(), lan.addr));
     }
     out.push_str(&format!("no access-list 1\naccess-list 1 permit {} {}\n", net.addr, std::net::Ipv4Addr::from(!u32::from(net.mask()))));
-    if let Some((addr, mask, gw)) = &s.internet {
+    if s.internet_dhcp {
+        for r in d.routes.iter().filter(|r| r.net.prefix == 0) {
+            if let packetcraft_model::NextHop::Address(old) = r.via {
+                out.push_str(&format!("no ip route 0.0.0.0 0.0.0.0 {old}\n"));
+            }
+        }
+        out.push_str("interface Internet0\n ip address dhcp\nexit\n");
+    } else if let Some((addr, mask, gw)) = &s.internet {
         let a = parse_ip(addr).map_err(|e| e.to_string())?;
         let m = parse_ip(mask).map_err(|e| e.to_string())?;
         let g = parse_ip(gw).map_err(|e| e.to_string())?;

@@ -301,6 +301,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                 dhcp: p.get("dhcp").and_then(Value::as_bool),
                 dhcp_start: opt_str(p, "dhcp_start").map(str::to_string),
                 internet: pair("internet", "internet_mask").and_then(|(a, m)| Some((a, m, opt_str(p, "gateway")?.to_string()))),
+                internet_dhcp: p.get("internet_dhcp").and_then(Value::as_bool).unwrap_or(false),
             };
             let config = crate::home::settings_config(&s.topology, d, &settings).map_err(bad)?;
             let mut t = s.topology.clone();

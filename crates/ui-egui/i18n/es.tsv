@@ -404,3 +404,5 @@ EMAIL	CORREO
 SMTP and POP3 Service	Servicio SMTP y POP3
 Domain Name	Nombre de dominio
 {} waiting	{} pendientes
+Obtain the address from the provider (DHCP)	Obtener la dirección del proveedor (DHCP)
+Leased: {}	Concedida: {}

@@ -1913,3 +1913,31 @@ fn ccna1_lab_commands_by_typing() {
         assert!(!out.starts_with("% ") || cmd.contains("vlan 1"), "{cmd}: {out}");
     }
 }
+
+#[test]
+fn ip_address_dhcp_by_typing() {
+    let mut lab = Lab::new();
+    let isp = lab.add(DeviceKind::Router);
+    let r = lab.add(DeviceKind::Router);
+    let pc = lab.add(DeviceKind::Pc);
+    lab.cable(r, "g0/1", isp, "g0/0");
+    lab.cable(pc, "fa0", isp, "g0/1");
+    lab.run(pc, "ipconfig 203.0.113.50 255.255.255.0 203.0.113.1");
+    lab.run(isp, "en\nconf t\nint g0/0\nip add 198.51.100.1 255.255.255.0\nno shut\nint g0/1\nip add 203.0.113.1 255.255.255.0\nno shut\nexit\nip dhcp excluded-address 198.51.100.1 198.51.100.19\nip dhcp pool CUSTOMERS\nnetwork 198.51.100.0 255.255.255.0\ndefault-router 198.51.100.1\nend");
+    // Address first, then up: the lease comes with `no shutdown`.
+    lab.run(r, "en\nconf t\nint g0/1\nip address dhcp");
+    let out = lab.run(r, "no shutdown");
+    assert!(out.contains("198.51.100.20/24 assigned to GigabitEthernet0/1") && out.contains("default route via 198.51.100.1"), "{out}");
+    lab.run(r, "end");
+    assert!(lab.run(r, "show running-config").contains(" ip address dhcp"));
+    assert!(lab.run(r, "show ip interface brief").contains("198.51.100.20"));
+    let rt = lab.run(r, "show ip route");
+    assert!(rt.contains("S    0.0.0.0/0") && rt.contains("198.51.100.1"), "{rt}");
+    lab.run(r, "ping 203.0.113.50");
+    assert!(lab.run(r, "ping 203.0.113.50").contains("answered"));
+    // A static default wins over the lease's.
+    lab.run(r, "conf t\nip route 0.0.0.0 0.0.0.0 198.51.100.254\nend");
+    assert!(lab.run(r, "show ip route").contains("via 198.51.100.254"));
+    lab.run(r, "conf t\nint g0/1\nno ip address\nend");
+    assert!(!lab.run(r, "show running-config").contains("ip address dhcp"));
+}

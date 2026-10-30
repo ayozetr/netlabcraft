@@ -224,6 +224,10 @@ pub fn running_config(d: &Device) -> String {
             }
         }
         match p.ip {
+            // The leased address isn't configuration; how it is obtained is.
+            _ if p.dhcp => {
+                let _ = writeln!(s, " ip address dhcp");
+            }
             Some(ip) => {
                 let _ = writeln!(s, " ip address {} {}", ip.addr, ip.mask());
             }

@@ -28,7 +28,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Engine commands | 52 | measured: `crates/engine/src/catalog.rs` |
 | Console grammar entries | 351 across 13 modes | measured: `crates/ios/src/grammar.rs` |
 | Device models · sample labs | 16 · 18 | measured |
-| Tests | 159 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Tests | 160 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~600–950 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
@@ -60,6 +60,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-10-30 — `ip address dhcp`.** Router interfaces, routed ports and the home router's Internet port can lease their address (and a default route) from a provider's DHCP server.
 - **2026-10-30 — Email.** Servers have an EMAIL service (domain, users) and PCs an Email app: set up the account, write, send and receive; Simulation mode shows the SMTP and POP3 sessions.
 - **2026-10-30 — Values per student.** Activities can have variables (`{net}` in instructions and checks): each student types their name and gets their own values, so no two labs are the same; results also come per section (per device by default).
 - **2026-10-30 — CCNA 1 lab commands.** Output filters (`show running-config | include …`, `section`, `begin`), `security passwords min-length`, `login block-for`, `username … privilege 15`, `speed`/`duplex`/`mdix auto` (a speed mismatch takes the link down), `delete vlan.dat`, and many more `show` commands; VLANs now live in the VLAN database as on real switches.

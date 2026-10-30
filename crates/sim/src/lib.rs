@@ -314,6 +314,15 @@ fn routing_table_static(t: &Topology, d: &Device) -> Vec<RouteEntry> {
             out.push(RouteEntry { code: 'L', net: Ipv4Net::new(i.net.addr, 32), via: None, iface: Some(i.name.clone()) });
         }
     }
+    if d.routes_ip() && !d.routes.iter().any(|r| r.net.prefix == 0) {
+        for (i, p) in d.ports.iter().enumerate() {
+            if let Some(gw) = p.dhcp_router
+                && ifs.iter().any(|x| x.port == i && x.net.contains(gw))
+            {
+                out.push(RouteEntry { code: 'S', net: Ipv4Net::new(Ipv4Addr::UNSPECIFIED, 0), via: Some(gw), iface: None });
+            }
+        }
+    }
     if d.routes_ip() {
         for r in &d.routes {
             match &r.via {
@@ -419,6 +428,15 @@ pub fn route_with(
     for r in rip_routes.iter().filter(|r| r.net.contains(dst)) {
         if let Some(i) = ifs.iter().find(|i| i.name == r.iface) {
             consider(r.net.prefix, i, r.via);
+        }
+    }
+    // A default from a DHCP lease (distance 254): considered last, so any other route to the
+    // same length wins.
+    for (i, p) in d.ports.iter().enumerate() {
+        if let Some(gw) = p.dhcp_router
+            && let Some(ifc) = ifs.iter().find(|x| x.port == i && x.net.contains(gw))
+        {
+            consider(0, ifc, gw);
         }
     }
     best.map(|(_, i, nh)| (i, nh))
@@ -533,6 +551,8 @@ pub struct DevState {
     pub secure: BTreeMap<usize, Vec<MacAddr>>,
     pub violations: BTreeMap<usize, u64>,
     dhcp_xid: Option<u32>,
+    /// The port a router's DHCP client is asking on.
+    dhcp_port: Option<usize>,
     dhcp_inbox: Vec<Dhcp>,
     /// A DNS question in flight: (local port, id), and its answer.
     dns_wait: Option<(u16, u16)>,
@@ -1690,9 +1710,9 @@ impl Sim {
         if packetcraft_wire::control::link_local(f.dst) {
             return Ok(());
         }
-        // A host waiting for DHCP takes answers before it has an address.
-        if d.kind.is_host()
-            && self.state.get(&d.id).is_some_and(|s| s.dhcp_xid.is_some())
+        // A host (or a router's `ip address dhcp` port) waiting for DHCP takes answers before
+        // it has an address.
+        if self.state.get(&d.id).is_some_and(|s| s.dhcp_xid.is_some() && (d.kind.is_host() || s.dhcp_port == Some(in_port)))
             && (f.dst.is_broadcast() || d.ports.get(in_port).is_some_and(|p| p.mac == f.dst))
             && let Some(msg) = dhcp_in_frame(&f)
         {
@@ -2225,13 +2245,14 @@ impl Sim {
     }
 
     fn dhcp_send(&mut self, t: &Topology, d: &Device, msg: &Dhcp) {
-        let Some(port) = d.ports.first() else { return };
+        let at = self.state.get(&d.id).and_then(|s| s.dhcp_port).unwrap_or(0);
+        let Some(port) = d.ports.get(at) else { return };
         let src = Ipv4Addr::UNSPECIFIED;
         let udp = Udp { src_port: dhcp::CLIENT_PORT, dst_port: dhcp::SERVER_PORT, payload: msg.encode() };
         let ip =
             Ipv4 { id: self.ip_id(), ttl: 128, protocol: PROTO_UDP, src, dst: Ipv4Addr::BROADCAST, payload: udp.encode(src, Ipv4Addr::BROADCAST) };
         let frame = Frame { dst: MacAddr::BROADCAST, src: port.mac, vlan: None, ethertype: ETHERTYPE_IPV4, payload: ip.encode() };
-        self.emit(t, End { device: d.id, port: 0 }, frame.encode());
+        self.emit(t, End { device: d.id, port: at }, frame.encode());
     }
 
     fn dhcp_wait(&mut self, t: &Topology, dev: DeviceId, kinds: &[DhcpKind]) -> Option<Dhcp> {
@@ -2250,15 +2271,22 @@ impl Sim {
         if !d.kind.is_host() {
             return Err(SimError::NoSource("only hosts ask for addresses with DHCP".into()));
         }
-        if !port_up(t, End { device: dev, port: 0 }) {
+        self.dhcp_acquire_port(t, dev, 0)
+    }
+
+    /// The same exchange from one port (`ip address dhcp` on a router or a routed port).
+    pub fn dhcp_acquire_port(&mut self, t: &Topology, dev: DeviceId, port: usize) -> Result<DhcpResult, SimError> {
+        let d = t.device(dev).ok_or(SimError::NoDevice(dev))?;
+        if !port_up(t, End { device: dev, port }) {
             return Err(SimError::NoSource("the network cable is not connected".into()));
         }
-        let mac = d.ports.first().map(|p| p.mac).unwrap_or_default();
+        let mac = d.ports.get(port).map(|p| p.mac).unwrap_or_default();
         self.seq += 1;
         let xid = (self.seq as u32) ^ (u32::from(mac.0[4]) << 8) ^ u32::from(mac.0[5]) << 16;
         {
             let st = self.st(dev);
             st.dhcp_xid = Some(xid);
+            st.dhcp_port = Some(port);
             st.dhcp_inbox.clear();
         }
         let result = (|| {
@@ -2280,6 +2308,7 @@ impl Sim {
         })();
         let st = self.st(dev);
         st.dhcp_xid = None;
+        st.dhcp_port = None;
         st.dhcp_inbox.clear();
         result
     }

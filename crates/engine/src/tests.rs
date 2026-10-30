@@ -417,6 +417,18 @@ fn a_home_router_hands_out_addresses_and_translates() {
     assert_eq!(s.execute("net.ping", json!({"from": laptop, "to": "198.51.100.10", "count": 3})).unwrap()["marks"], "!!!");
     let nat = s.execute("cli.exec", json!({"device": home, "line": "show ip nat translations"})).unwrap()["output"].as_str().unwrap().to_string();
     assert!(nat.contains("203.0.113.2") && nat.contains("192.168.0.100"), "{nat}");
+    // The Internet port can lease its address from the provider instead.
+    s.execute(
+        "device.configure",
+        json!({"device": isp, "lines": ["ip dhcp excluded-address 203.0.113.1", "ip dhcp pool WAN", "network 203.0.113.0 255.255.255.252", "default-router 203.0.113.1"]}),
+    )
+    .unwrap();
+    s.execute("home.settings", json!({"device": home, "internet_dhcp": true})).unwrap();
+    let homed = s.topology.resolve(&home).unwrap();
+    let inet = s.topology.device(homed).unwrap().ports.iter().find(|p| p.name == "Internet0").cloned().unwrap();
+    assert!(inet.dhcp && inet.ip.is_some_and(|n| n.addr.to_string() == "203.0.113.2") && inet.dhcp_router.is_some(), "{inet:?}");
+    s.execute("net.ping", json!({"from": laptop, "to": "198.51.100.10", "count": 2})).unwrap();
+    assert_eq!(s.execute("net.ping", json!({"from": laptop, "to": "198.51.100.10", "count": 3})).unwrap()["marks"], "!!!");
     // A new LAN: pool, exclusions and NAT's list follow.
     let r = s.execute("home.settings", json!({"device": home, "lan": "10.10.0.1", "lan_mask": "255.255.255.0", "dhcp_start": "10.10.0.50"})).unwrap();
     assert!(r["config"].as_str().unwrap().contains("access-list 1 permit 10.10.0.0 0.0.0.255"));

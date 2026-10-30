@@ -522,6 +522,12 @@ pub struct Port {
     /// `no mdix auto`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub mdix_off: bool,
+    /// Routers and routed ports: `ip address dhcp` (the address comes from a DHCP server).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub dhcp: bool,
+    /// The router the DHCP lease named: a default route with distance 254.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dhcp_router: Option<Ipv4Addr>,
     /// Multilayer switches: `no switchport` made this a routed port (it takes `ip address`).
     #[serde(default)]
     pub routed: bool,
@@ -1296,6 +1302,8 @@ impl Device {
                 speed: None,
                 duplex: None,
                 mdix_off: false,
+                dhcp: false,
+                dhcp_router: None,
                 routed: false,
                 err_disabled: false,
                 helpers: Vec::new(),

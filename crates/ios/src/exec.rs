@@ -161,6 +161,40 @@ pub fn connect(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, pr
     out
 }
 
+/// Runs DHCP on every `ip address dhcp` port that is up and has no address yet; returns a line
+/// per port about what happened.
+fn dhcp_leases(t: &mut Topology, sim: &mut Sim, dev: DeviceId) -> Vec<String> {
+    let Some(d) = t.device(dev) else { return Vec::new() };
+    let wanted: Vec<usize> = d
+        .ports
+        .iter()
+        .enumerate()
+        .filter(|(i, p)| p.dhcp && p.ip.is_none() && !p.shutdown && port_up(t, packetcraft_model::End { device: dev, port: *i }))
+        .map(|(i, _)| i)
+        .collect();
+    let mut out = Vec::new();
+    for port in wanted {
+        sim.topology_changed(t);
+        let r = sim.dhcp_acquire_port(t, dev, port);
+        let Some(p) = t.device_mut(dev).and_then(|d| d.ports.get_mut(port)) else { continue };
+        match r {
+            Ok(lease) => {
+                p.ip = Some(lease.address);
+                p.dhcp_router = lease.router;
+                out.push(format!(
+                    "%DHCP: {} assigned to {}{}",
+                    lease.address,
+                    p.name,
+                    lease.router.map(|g| format!(", default route via {g}")).unwrap_or_default()
+                ));
+            }
+            Err(e) => out.push(format!("{}: no address yet ({e}); it asks again when the interface comes up", p.name)),
+        }
+    }
+    sim.topology_changed(t);
+    out
+}
+
 /// A login checked through the device's AAA methods, in order: a RADIUS server's answer is
 /// final; when none answers, the next method is tried.
 fn aaa_login(t: &Topology, sim: &mut Sim, target: &packetcraft_model::Device, user: &str, password: &str) -> bool {
@@ -414,6 +448,14 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, li
         (Ok(s), None) => s,
         (Err(e), _) => e,
     };
+    // `ip address dhcp` ports ask for their address when they are brought up.
+    let mut output = output;
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.starts_with("no sh") && t.device(dev).is_some_and(|d| d.ports.iter().any(|p| p.dhcp && p.ip.is_none())) {
+        for line in dhcp_leases(t, sim, dev) {
+            output = if output.is_empty() { line } else { format!("{output}\n{line}") };
+        }
+    }
     let changed = t.device(dev).cloned() != before;
     if changed {
         // VLAN or VTP changes reach the rest of the domain at once.
@@ -2422,10 +2464,30 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::NoIpAddress => c.each_if(|p, sub| {
             match sub {
                 Some(s) => s.ip = None,
-                None => p.ip = None,
+                None => {
+                    p.ip = None;
+                    p.dhcp = false;
+                    p.dhcp_router = None;
+                }
             }
             Ok(())
         }),
+        Id::IpAddressDhcp => {
+            let switch = c.d()?.kind == DeviceKind::Switch;
+            c.each_if(|p, sub| {
+                if sub.is_some() {
+                    return Err("% `ip address dhcp` goes on the physical interface here".into());
+                }
+                if switch && !p.routed {
+                    return Err(format!("% {} is a switch port: `no switchport` first", p.name));
+                }
+                p.dhcp = true;
+                p.ip = None;
+                p.dhcp_router = None;
+                Ok(())
+            })?;
+            Ok(dhcp_leases(c.t, c.sim, c.dev).join("\n"))
+        }
         Id::Shutdown | Id::NoShutdown => {
             let down = spec.id == Id::Shutdown;
             c.each_if(|p, sub| {

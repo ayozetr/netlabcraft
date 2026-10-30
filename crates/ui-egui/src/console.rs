@@ -579,6 +579,7 @@ struct HomeForm {
     internet: String,
     internet_mask: String,
     gateway: String,
+    internet_dhcp: bool,
     ssid: String,
     key: String,
 }
@@ -603,6 +604,7 @@ impl HomeForm {
             lan_mask: lan.map(|l| l.mask().to_string()).unwrap_or_default(),
             dhcp: !dev.dhcp_pools.is_empty(),
             dhcp_start: start.map(|a| a.to_string()).unwrap_or_default(),
+            internet_dhcp: dev.ports.iter().any(|p| p.name.starts_with("Internet") && p.dhcp),
             internet: inet.map(|n| n.addr.to_string()).unwrap_or_default(),
             internet_mask: inet.map(|n| n.mask().to_string()).unwrap_or_default(),
             gateway: gw.map(|g| g.to_string()).unwrap_or_default(),
@@ -631,15 +633,22 @@ fn home_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
         actions.push(("home.settings", p));
     }
     ui.separator();
-    ui.label(RichText::new(tl("Internet (static)")).strong());
-    field(ui, tl("IPv4 Address"), &mut f.internet);
-    field(ui, tl("Subnet Mask"), &mut f.internet_mask);
-    field(ui, tl("Default Gateway"), &mut f.gateway);
+    ui.label(RichText::new(tl("Internet")).strong());
+    ui.checkbox(&mut f.internet_dhcp, tl("Obtain the address from the provider (DHCP)"));
+    if !f.internet_dhcp {
+        field(ui, tl("IPv4 Address"), &mut f.internet);
+        field(ui, tl("Subnet Mask"), &mut f.internet_mask);
+        field(ui, tl("Default Gateway"), &mut f.gateway);
+    } else if !f.internet.is_empty() {
+        ui.label(crate::i18n::trf("Leased: {}", &[&f.internet]));
+    }
     if ui.button(tl("Save Internet")).clicked() {
-        actions.push((
-            "home.settings",
-            json!({"device": d.0, "internet": f.internet.trim(), "internet_mask": f.internet_mask.trim(), "gateway": f.gateway.trim()}),
-        ));
+        let p = if f.internet_dhcp {
+            json!({"device": d.0, "internet_dhcp": true})
+        } else {
+            json!({"device": d.0, "internet": f.internet.trim(), "internet_mask": f.internet_mask.trim(), "gateway": f.gateway.trim()})
+        };
+        actions.push(("home.settings", p));
     }
     ui.separator();
     ui.label(RichText::new(tl("Wireless")).strong());

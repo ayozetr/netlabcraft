@@ -114,6 +114,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `do <command>` | config, interface, subinterface, vlan | router, switch | Run a privileged command |
 | `ip address A.B.C.D MASK` | interface, subinterface | router | Set the interface address |
 | `no ip address` | interface, subinterface | router | Remove the interface address |
+| `ip address dhcp` | interface | router, switch | Take the address from a DHCP server |
 | `shutdown` | interface, subinterface | router, switch | Disable the interface |
 | `no shutdown` | interface, subinterface | router, switch | Enable the interface |
 | `description LINE` | interface, subinterface | router, switch | Describe the interface |

@@ -1,6 +1,6 @@
 # Protocol and command parity
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (email: SMTP, POP3 and the Email app) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (`ip address dhcp`) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 What the simulated devices do, protocol by protocol, against the reference app. Part of
 [target-app-parity.md](target-app-parity.md). Behaviour comes from the standards named in each
@@ -57,7 +57,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | DHCPv4 server on routers | RFC 2131 | ✅ | Pools, exclusions, bindings, conflicts; `show ip dhcp binding/pool`. |
 | DHCPv4 relay | RFC 2131 | ✅ | `ip helper-address`. |
 | DHCPv4 on servers | RFC 2131 | ✅ | Services tab pools. |
-| DHCP client on hosts | RFC 2131 | ✅ | `ipconfig /renew`, IP Configuration DHCP option. |
+| DHCP client | RFC 2131 | ✅ | Hosts: `ipconfig /renew`, IP Configuration DHCP option. Routers and routed ports: `ip address dhcp` (leased at `no shutdown` or at once when up; the lease's router becomes a default route that any static default overrides); the home router's Internet port. |
 | DNS | RFC 1035 | ✅ | A records on servers; `nslookup`, names in ping/tracert/browser. |
 | HTTP | RFC 9110 over TCP (RFC 9293) | ✅ | Server file manager, PC web browser. No HTTPS: 6–10 h. |
 | Telnet and SSH | RFC 854, RFC 4253 | ✅ | Local users, `login local`, `transport input`, RSA keys, `ip ssh version`. The SSH session is simulated, not encrypted. |
@@ -121,6 +121,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | 2026-10-30 | minor | HSRP. |
 | 2026-10-30 | minor | Logging buffer and console messages; `debug ip icmp`. |
 | 2026-10-30 | minor | BPDUs, OSPF hellos and RIP updates on the wire, so Simulation mode and captures show them. |
+| 2026-10-30 | minor | `ip address dhcp` on routers, routed ports and the home router's Internet port. |
 | 2026-10-30 | minor | Email: SMTP, POP3, the server's EMAIL service and the PC Email app; TCP retries a SYN four times. |
 | 2026-10-30 | minor | CCNA 1 lab commands: output filters, password rules, login blocking, privilege 15 users, speed/duplex/mdix (a speed mismatch takes the link down), many `show` commands, `delete vlan.dat`; VLANs live in the VLAN database, not the configuration (except VTP transparent). |
 | 2026-10-30 | minor | `debug ip packet`, `debug ip nat`, `debug ip dhcp server events`. |
