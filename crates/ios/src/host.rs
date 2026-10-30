@@ -11,25 +11,30 @@ use crate::render::{ms, traceroute};
 
 pub const HELP: &str = "\
 Commands:
-  ipconfig                         show this host's address
-    ipconfig <address> <mask> [gw] [dns]  set the address (gateway, DNS server)
-    ipconfig /renew                  ask a DHCP server for an address
-    ipconfig /release                remove the address
-  ipv6config                       show the IPv6 settings
-    ipv6config <address/len> [gw]    set an IPv6 address (and gateway)
-    ipv6config auto                  take an address from the router (SLAAC)
-    ipv6config off                   turn IPv6 off
-    ping [-n count] <address|name>   send echo requests
-  tracert <address|name>           trace the route (also: traceroute)
-  nslookup <name>                  ask the DNS server for a name
-  telnet <address>                 log in to a router or switch
-  ssh -l <user> <address>          log in securely
-    ftp <address>                    send and fetch files on an FTP server
-  dir                              list this host's files
-  arp -a                           show the ARP cache
-  arp -d                           empty the ARP cache
-  hostname                         show this host's name
-  cls                              clear the screen";
+  ipconfig                               show this host's address
+  ipconfig /all                          also the DHCP lease, domain and server
+  ipconfig <address> <mask> [gw] [dns]   set the address (gateway, DNS server)
+  ipconfig /renew                        ask a DHCP server for an address
+  ipconfig /release                      remove the address
+  ipv6config                             show the IPv6 settings
+  ipv6config <address/len> [gw]          set an IPv6 address (and gateway)
+  ipv6config auto                        take an address from the router (SLAAC)
+  ipv6config off                         turn IPv6 off
+  ping [-n count] [-l size] [-t] <host>  send echo requests (-t: keep going, up to 100)
+  tracert <address|name>                 trace the route (also: traceroute)
+  nslookup <name>                        ask the DNS server for a name
+  telnet <address>                       log in to a router or switch
+  ssh -l <user> <address>                log in securely
+  ftp <address>                          send and fetch files on an FTP server
+  netstat                                TCP connections this host set up
+  dir                                    list this host's files
+  arp -a                                 show the ARP cache
+  arp -d [address]                       empty the ARP cache (or forget one entry)
+  hostname                               show this host's name
+  cls                                    clear the screen";
+
+/// The most echo requests `ping -t` sends.
+const PING_T_CAP: u16 = 100;
 
 /// A host's FTP session: the server, and where the login stands.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -218,11 +223,19 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut crate::
             let _ = write!(s, "{} file{}", files.len(), if files.len() == 1 { "" } else { "s" });
             out(s)
         }
+        "netstat" => out(netstat(sim, dev)),
         "arp" => match words.get(1).map(|w| w.to_ascii_lowercase()) {
-            Some(f) if f == "-d" => {
-                sim.clear_arp(dev);
-                out("ARP cache emptied.".into())
-            }
+            Some(f) if f == "-d" => match words.get(2) {
+                None | Some(&"*") => {
+                    sim.clear_arp(dev);
+                    out("ARP cache emptied.".into())
+                }
+                Some(a) => match parse_ip(a) {
+                    Ok(ip) if sim.forget_arp(dev, ip) => out(format!("{ip} removed from the ARP cache.")),
+                    Ok(ip) => out(format!("{ip} is not in the ARP cache.")),
+                    Err(e) => out(e.to_string()),
+                },
+            },
             _ => {
                 let mut s = format!("{:<17} {}\n", "Address", "MAC address");
                 if let Some(st) = sim.state(dev) {
@@ -241,7 +254,7 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut crate::
 }
 
 fn ipconfig(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Outcome {
-    let show = |d: &Device| {
+    let show_basic = |d: &Device| {
         let p = d.ports.first();
         format!(
             "Interface   {}\nMAC address {}\nIP address  {}\nSubnet mask {}\nGateway     {}\nDNS server  {}\nAssigned    {}",
@@ -252,12 +265,27 @@ fn ipconfig(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Ou
             d.gateway.map_or("not set".to_string(), |g| g.to_string()),
             d.dns.map_or("not set".to_string(), |g| g.to_string()),
             if d.dhcp_client { "by DHCP" } else { "by hand (static)" },
-        ) + &ipv6_lines(d)
+        )
     };
+    let show_all = |d: &Device| {
+        let l = d.dhcp_lease.clone().unwrap_or_default();
+        let mut s = show_basic(d);
+        if d.dhcp_client {
+            let _ = write!(
+                s,
+                "\nDomain name {}\nLease time  {}\nDHCP server {}",
+                l.domain.as_deref().unwrap_or("not set"),
+                l.lease_secs.map_or("unknown".to_string(), netlabcraft_model::mgmt::lease_text),
+                l.server.map_or("unknown".to_string(), |a| a.to_string())
+            );
+        }
+        s + &ipv6_lines(d)
+    };
+    let show = |d: &Device| show_basic(d) + &ipv6_lines(d);
     let Some(d) = t.device(dev) else { return Outcome::default() };
     let result: Result<String, String> = match args {
         [] => return Outcome { output: show(d), ..Outcome::default() },
-        [flag] if flag.eq_ignore_ascii_case("/all") => return Outcome { output: show(d), ..Outcome::default() },
+        [flag] if flag.eq_ignore_ascii_case("/all") => return Outcome { output: show_all(d), ..Outcome::default() },
         [flag] if flag.eq_ignore_ascii_case("/release") => {
             if let Some(d) = t.device_mut(dev) {
                 if let Some(p) = d.ports.first_mut() {
@@ -266,6 +294,7 @@ fn ipconfig(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Ou
                 d.gateway = None;
                 d.dns = None;
                 d.dhcp_client = false;
+                d.dhcp_lease = None;
             }
             Ok("Address released.".into())
         }
@@ -279,12 +308,15 @@ fn ipconfig(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Ou
                     d.dns = lease.dns;
                     d.dhcp_client = true;
                     d.voice.tftp = lease.tftp;
+                    d.dhcp_lease =
+                        Some(netlabcraft_model::mgmt::HostLease { domain: lease.domain.clone(), lease_secs: lease.lease_secs, server: lease.server });
                 }
                 Ok(format!(
-                    "DHCP gave this host {}{}{}{}.",
+                    "DHCP gave this host {}{}{}{}{}.",
                     lease.address,
                     lease.router.map(|g| format!(", gateway {g}")).unwrap_or_default(),
                     lease.dns.map(|g| format!(", DNS {g}")).unwrap_or_default(),
+                    lease.domain.as_ref().map(|g| format!(", domain {g}")).unwrap_or_default(),
                     lease.tftp.map(|g| format!(", TFTP server {g}")).unwrap_or_default()
                 ))
             }
@@ -317,6 +349,7 @@ fn ipconfig(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Ou
             }
             d.gateway = gw;
             d.dhcp_client = false;
+            d.dhcp_lease = None;
             Ok(format!("Address set to {net}{}.", gw.map(|g| format!(", gateway {g}")).unwrap_or_default()))
         })(),
         _ => Err("Usage: ipconfig [<address> <mask> [<gateway> [<dns>]]] | /renew | /release".into()),
@@ -330,8 +363,30 @@ fn ipconfig(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Ou
     }
 }
 
+/// `netstat`: the TCP connections this host set up or answered.
+fn netstat(sim: &Sim, dev: DeviceId) -> String {
+    let list = sim.state(dev).map(|st| st.tcp_recent.clone()).unwrap_or_default();
+    if list.is_empty() {
+        return "No TCP connections yet.".into();
+    }
+    let mut s = format!("{:<6} {:<22} {:<22} {}\n", "Proto", "Local address", "Remote address", "Opened (s)");
+    for r in &list {
+        let _ = writeln!(
+            s,
+            "{:<6} {:<22} {:<22} {}",
+            "TCP",
+            format!("{}:{}", r.local.0, r.local.1),
+            format!("{}:{}", r.remote.0, r.remote.1),
+            r.since_us / 1_000_000
+        );
+    }
+    s.trim_end().to_string()
+}
+
 fn host_ping(t: &Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> String {
     let mut count: u16 = 4;
+    let mut size: usize = 32;
+    let mut forever = false;
     let mut target = None;
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -340,12 +395,24 @@ fn host_ping(t: &Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Strin
                 Some(n) => count = n,
                 None => return "The count must be 1-1000.".into(),
             }
+        } else if a.eq_ignore_ascii_case("-l") {
+            match it.next().and_then(|n| n.parse::<usize>().ok()).filter(|n| *n <= 1_472) {
+                Some(n) => size = n,
+                None => return "The size must be 0-1472 bytes.".into(),
+            }
+        } else if a.eq_ignore_ascii_case("-t") {
+            forever = true;
+        } else if a.starts_with('-') {
+            return format!("`{a}` is not a ping option (-n, -l, -t).");
         } else {
             target = Some(*a);
         }
     }
-    let Some(target) = target else { return "Usage: ping [-n count] <address or name>".into() };
-    let opts = PingOptions { count, size: 32, ..PingOptions::default() };
+    let Some(target) = target else { return "Usage: ping [-n count] [-l size] [-t] <address or name>".into() };
+    if forever {
+        count = PING_T_CAP;
+    }
+    let opts = PingOptions { count, size, ..PingOptions::default() };
     let (dst, probes): (std::net::IpAddr, _) = if let Ok(dst6) = target.parse::<std::net::Ipv6Addr>() {
         (dst6.into(), sim.ping6(t, dev, dst6, opts))
     } else {
@@ -359,7 +426,11 @@ fn host_ping(t: &Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Strin
         Ok(p) => p,
         Err(e) => return e.to_string(),
     };
-    let mut s = format!("Pinging {dst}, {count} echo requests of 32 bytes:\n");
+    let mut s = if forever {
+        format!("Pinging {dst} until stopped ({PING_T_CAP} echo requests at most here), {size} bytes each:\n")
+    } else {
+        format!("Pinging {dst}, {count} echo requests of {size} bytes:\n")
+    };
     for (i, p) in probes.iter().enumerate() {
         let seq = i + 1;
         let _ = match p {
@@ -393,6 +464,12 @@ fn ipv6config(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> 
     let Some(d) = t.device(dev) else { return Outcome::default() };
     let result: Result<String, String> = match args {
         [] => return Outcome { output: ipv6_lines(d).trim_start().to_string(), ..Outcome::default() },
+        [w] if w.eq_ignore_ascii_case("/all") => {
+            return Outcome {
+                output: format!("Interface   {}{}", d.ports.first().map_or("-", |p| p.name.as_str()), ipv6_lines(d)),
+                ..Outcome::default()
+            };
+        }
         [w] if w.eq_ignore_ascii_case("off") => {
             if let Some(d) = t.device_mut(dev) {
                 if let Some(p) = d.ports.first_mut() {

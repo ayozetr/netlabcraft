@@ -21,6 +21,7 @@ pub mod hardware;
 pub mod ifname;
 pub mod iot;
 pub mod l2sec;
+pub mod mgmt;
 pub mod models;
 pub mod physical;
 pub mod qos;
@@ -376,7 +377,7 @@ impl ChannelMode {
 }
 
 /// An HSRP group on an interface (`standby N …`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Standby {
     pub group: u8,
     /// The virtual gateway address.
@@ -386,11 +387,18 @@ pub struct Standby {
     pub priority: u8,
     #[serde(default)]
     pub preempt: bool,
+    /// `standby N track INTERFACE [decrement D]`: while that interface is down, the priority
+    /// drops by D (10 by default).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub track: Vec<(String, u8)>,
 }
+
+/// Most tracked interfaces per HSRP group.
+pub const MAX_TRACK: usize = 8;
 
 impl Standby {
     pub fn new(group: u8) -> Standby {
-        Standby { group, ip: None, priority: 100, preempt: false }
+        Standby { group, ip: None, priority: 100, preempt: false, track: Vec::new() }
     }
 }
 
@@ -768,6 +776,10 @@ impl Ipv6Conf {
     }
 }
 
+fn is_default<T: Default + PartialEq>(v: &T) -> bool {
+    *v == T::default()
+}
+
 /// A device: identity, position on the canvas, ports, and its configuration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Device {
@@ -843,6 +855,16 @@ pub struct Device {
     /// Hosts: the DNS server.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dns: Option<Ipv4Addr>,
+    /// Hosts: what DHCP gave beyond the address (domain, lease time, server).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dhcp_lease: Option<mgmt::HostLease>,
+    /// Routers and switches: timestamps, log filters, NTP master and keys, boot lines.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub mgmt: mgmt::Mgmt,
+    /// Routers and switches: the configuration register and files copied into flash (kept
+    /// across reloads).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub nvram: mgmt::Nvram,
     /// Routers and switches: access and management settings.
     #[serde(default)]
     pub access: Access,
@@ -1324,6 +1346,12 @@ pub struct Svi {
     /// `ip nat inside` / `ip nat outside`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nat: Option<NatSide>,
+    /// `ip helper-address` (multilayer switches): DHCP relay targets.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub helpers: Vec<Ipv4Addr>,
+    /// `ip access-group` (multilayer switches).
+    #[serde(default, skip_serializing_if = "AccessGroups::is_empty")]
+    pub access: AccessGroups,
 }
 
 impl Device {
@@ -1354,6 +1382,8 @@ impl Device {
                 description: String::new(),
                 ipv6: Ipv6Conf::default(),
                 nat: None,
+                helpers: Vec::new(),
+                access: AccessGroups::default(),
             });
             self.svis.sort_by_key(|s| s.vlan);
         }
@@ -1365,7 +1395,7 @@ impl Device {
 pub const STP_DEFAULT_PRIORITY: u16 = 32_768;
 
 /// A DHCP pool.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DhcpPool {
     pub name: String,
     #[serde(default)]
@@ -1374,6 +1404,13 @@ pub struct DhcpPool {
     pub default_router: Option<Ipv4Addr>,
     #[serde(default)]
     pub dns: Option<Ipv4Addr>,
+    /// `lease DAYS [HOURS [MINUTES]]` or `lease infinite` (`u32::MAX`), in seconds; one day
+    /// when not set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lease_secs: Option<u32>,
+    /// `domain-name NAME`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain: Option<String>,
 }
 
 /// Most DHCP pools and excluded ranges per device.
@@ -1662,6 +1699,9 @@ impl Device {
             dhcp_excluded: Vec::new(),
             dhcp_client: false,
             dns: None,
+            dhcp_lease: None,
+            mgmt: mgmt::Mgmt::default(),
+            nvram: mgmt::Nvram::default(),
             access: Access::default(),
             stp_priority: BTreeMap::new(),
             svis: Vec::new(),
@@ -1729,6 +1769,8 @@ impl Device {
         self.dhcp_excluded.clear();
         self.dhcp_client = false;
         self.dns = None;
+        self.dhcp_lease = None;
+        self.mgmt = mgmt::Mgmt::default();
         self.access = Access::default();
         self.stp_priority.clear();
         self.svis.clear();

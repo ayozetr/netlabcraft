@@ -15,6 +15,7 @@ use crate::{host, render};
 
 pub(crate) mod firewall;
 pub(crate) mod l2sec;
+pub(crate) mod mgmt;
 pub(crate) mod qos;
 pub(crate) mod routing;
 pub(crate) mod voice;
@@ -147,6 +148,8 @@ pub struct Cli {
     pub remote: Option<Box<Remote>>,
     /// A host's `ftp` session.
     pub ftp: Option<crate::host::FtpClient>,
+    /// `terminal history size N` / `history size N`: commands this session remembers.
+    pub history_cap: Option<usize>,
 }
 
 /// A login to another device.
@@ -509,7 +512,14 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, li
     }
     // Changing the console password mid-session applies to the next login, not this one.
     cli.logged_in = true;
+    if cli.history_cap.is_none()
+        && let Some(n) = d.mgmt.history_size
+    {
+        cli.history_cap = Some(usize::from(n));
+    }
     remember(cli, trimmed);
+    // The `^` marker sits under the typed line, after the prompt.
+    let indent = prompt(t, dev, cli).chars().count() + line.chars().take_while(|ch| ch.is_whitespace()).count();
     let before = t.device(dev).cloned();
     // `show … | include …`: the command runs, then its output is filtered.
     let (command, filter) = match crate::pipe::split(trimmed) {
@@ -519,7 +529,10 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, li
     let output = match (dispatch(t, sim, dev, cli, command), filter) {
         (Ok(s), Some(f)) => crate::pipe::apply(&s, f).unwrap_or_else(|e| e),
         (Ok(s), None) => s,
-        (Err(e), _) => e,
+        (Err(e), _) => match e.split_once('\n') {
+            Some((first, rest)) if first.trim_start().starts_with('^') && first.trim() == "^" => format!("{}{first}\n{rest}", " ".repeat(indent)),
+            _ => e,
+        },
     };
     // `ip address dhcp` ports ask for their address when they are brought up.
     let mut output = output;
@@ -543,8 +556,12 @@ fn remember(cli: &mut Cli, line: &str) {
     if l.is_empty() || cli.history.last().is_some_and(|h| h == l) {
         return;
     }
-    if cli.history.len() >= MAX_HISTORY {
+    let cap = cli.history_cap.unwrap_or(MAX_HISTORY).min(MAX_HISTORY);
+    while cli.history.len() >= cap.max(1) && !cli.history.is_empty() {
         cli.history.remove(0);
+    }
+    if cap == 0 {
+        return;
     }
     cli.history.push(l.chars().take(1_024).collect());
 }
@@ -625,6 +642,20 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
     let dbits = t.device(dev).map(device_bits).ok_or("% That device no longer exists")?;
     let words: Vec<&str> = line.split_whitespace().collect();
     let mut resolved = grammar::resolve(&words, cli.mode.bits(), dbits);
+    // An access-list line starts with a number or `permit`/`deny`; anything else is a global
+    // command (`access-list 10 …` typed inside a named list).
+    if let Ok((s, a)) = &resolved
+        && match s.id {
+            Id::AclSeqLine => !a.first().is_some_and(|w| is_number(w)),
+            Id::NoAclEntryLine => !a
+                .first()
+                .and_then(|w| w.split_whitespace().next())
+                .is_some_and(|w| is_number(w) || w.eq_ignore_ascii_case("permit") || w.eq_ignore_ascii_case("deny")),
+            _ => false,
+        }
+    {
+        resolved = Err(ParseError::Unknown(0));
+    }
     // A sub-mode falls back to global configuration commands, which leave the sub-mode.
     if resolved.is_err()
         && matches!(
@@ -729,14 +760,18 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok("Configuring from the terminal, one command per line; `end` returns to privileged mode.".into())
         }
         Id::Ping => c.ping(arg(0), 5, None),
-        Id::PingRepeat => {
-            let n: u16 = arg(1).parse().ok().filter(|n| (1..=1000).contains(n)).ok_or("% Repeat count must be 1-1000")?;
-            c.ping(arg(0), n, None)
-        }
-        Id::PingSize => {
-            let n: usize = arg(1).parse().ok().filter(|n| (36..=18_024).contains(n)).ok_or("% Datagram size 36-18024")?;
-            // The size counts the IP and ICMP headers (28 bytes); the rest is data.
-            c.ping(arg(0), 5, Some(n - 28))
+        Id::PingRepeat => c.ping_extended(arg(0), arg(1)),
+        Id::ShowIpTraffic => Ok(render::ip_traffic(c.sim, c.dev)),
+        Id::ShowTcpBrief => Ok(render::tcp_brief(c.sim, c.dev)),
+        Id::HistorySize | Id::NoHistorySize => {
+            let n = if spec.id == Id::HistorySize {
+                Some(arg(0).parse::<u16>().ok().filter(|n| *n <= 256).ok_or("% The history size is 0-256")?)
+            } else {
+                None
+            };
+            c.dm()?.mgmt.history_size = n;
+            c.cli.history_cap = n.map(usize::from);
+            Ok(String::new())
         }
         Id::Traceroute => c.traceroute(arg(0)),
         Id::ShowRun => Ok(render::running_config(c.d()?)),
@@ -829,11 +864,16 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::ShowLogging => {
             let lines: Vec<String> = c.sim.state(c.dev).map(|s| s.log.iter().map(|(_, l)| l.clone()).collect()).unwrap_or_default();
+            let m = &c.d()?.mgmt;
+            let lv = |l: Option<u8>, def: u8| netlabcraft_model::mgmt::severity_name(l.unwrap_or(def));
             Ok(format!(
-                "Logging buffer: {} message{} (at most {})\n{}",
+                "Logging buffer: {} message{} (at most {})\nLevels: console {}, buffer {}, syslog servers {}\n{}",
                 lines.len(),
                 if lines.len() == 1 { "" } else { "s" },
                 netlabcraft_sim::MAX_LOG,
+                lv(m.logging_console, 7),
+                lv(m.logging_buffered, 7),
+                lv(m.logging_trap, 6),
                 lines.join("\n")
             )
             .trim_end()
@@ -843,7 +883,32 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             c.sim.clear_log(c.dev);
             Ok(String::new())
         }
-        Id::LoggingBuffered => Ok(String::new()),
+        Id::LoggingBuffered
+        | Id::ServiceTimestamps
+        | Id::NoServiceTimestamps
+        | Id::LoggingTrap
+        | Id::NoLoggingTrap
+        | Id::LoggingConsole
+        | Id::NoLoggingConsole
+        | Id::NtpMaster
+        | Id::NoNtpMaster
+        | Id::NtpAuthenticate
+        | Id::NoNtpAuthenticate
+        | Id::NtpAuthKey
+        | Id::NoNtpAuthKey
+        | Id::NtpTrustedKey
+        | Id::NoNtpTrustedKey
+        | Id::NtpServerKey
+        | Id::NtpUpdateCalendar
+        | Id::NoNtpUpdateCalendar
+        | Id::ShowIpNatStatistics
+        | Id::ShowFileSystems
+        | Id::BootSystem
+        | Id::NoBootSystem
+        | Id::ConfigRegister
+        | Id::CopyStartRun
+        | Id::CopyFlashTftp
+        | Id::CopyTftpFlash => mgmt::command(&mut c, spec.id, &args),
         Id::DebugIpIcmp => {
             c.sim.set_debug(c.dev, DebugKind::Icmp, true);
             Ok("ICMP debugging is on: echo messages this device receives are reported.".into())
@@ -906,7 +971,12 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let w: Vec<&str> = arg(0).split_whitespace().collect();
             match w.as_slice() {
                 ["length" | "width", n] if n.parse::<u16>().is_ok() => Ok(String::new()),
-                ["history"] | ["history", "size", _] => Ok(String::new()),
+                ["history"] => Ok(String::new()),
+                ["history", "size", n] => {
+                    let n = n.parse::<usize>().ok().filter(|n| *n <= 256).ok_or("% The history size is 0-256")?;
+                    c.cli.history_cap = Some(n);
+                    Ok(String::new())
+                }
                 ["monitor"] | ["no", "monitor"] => Ok(String::new()),
                 _ => Err("% terminal length N, terminal width N or terminal monitor".into()),
             }
@@ -1269,6 +1339,59 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Some(p) => format!("VTP password: {p}"),
             None => "No VTP password is set.".into(),
         }),
+        Id::StandbyVersion | Id::NoStandbyVersion => {
+            let v2 = match (spec.id, arg(0)) {
+                (Id::NoStandbyVersion, _) | (_, "1") => false,
+                (_, "2") => true,
+                _ => return Err("% HSRP version 1 or 2".into()),
+            };
+            let names = c.mode_iface_names()?;
+            let m = &mut c.dm()?.mgmt;
+            m.hsrp_v2.retain(|n| !names.contains(n));
+            if v2 {
+                m.hsrp_v2.extend(names.into_iter().take(64));
+            }
+            Ok(String::new())
+        }
+        Id::StandbyTrack | Id::NoStandbyTrack => {
+            let group: u8 = arg(0).parse().map_err(|_| "% The group is 0-255")?;
+            let d = c.d()?;
+            let idx = d.port_index(arg(1));
+            let name = match idx.and_then(|i| d.ports.get(i)) {
+                Some(p) => p.name.clone(),
+                None if arg(1).to_ascii_lowercase().starts_with("vlan") && arg(1).get(4..).is_some_and(|n| n.parse::<u16>().is_ok()) => {
+                    format!("Vlan{}", arg(1).get(4..).unwrap_or(""))
+                }
+                None => return Err(format!("% No interface {}", arg(1))),
+            };
+            let dec: u8 = if args.len() > 2 { arg(2).parse().ok().filter(|n| *n > 0).ok_or("% The decrement is 1-255")? } else { 10 };
+            let add = spec.id == Id::StandbyTrack;
+            let apply = |list: &mut Vec<netlabcraft_model::Standby>| -> Result<(), String> {
+                if add && !list.iter().any(|s| s.group == group) {
+                    if list.len() >= netlabcraft_model::MAX_STANDBY {
+                        return Err("% Too many HSRP groups on this interface".into());
+                    }
+                    list.push(netlabcraft_model::Standby::new(group));
+                }
+                let Some(s) = list.iter_mut().find(|s| s.group == group) else { return Err(format!("% No HSRP group {group} here")) };
+                s.track.retain(|(n, _)| *n != name);
+                if add {
+                    if s.track.len() >= netlabcraft_model::MAX_TRACK {
+                        return Err(format!("% At most {} tracked interfaces", netlabcraft_model::MAX_TRACK));
+                    }
+                    s.track.push((name.clone(), dec));
+                }
+                Ok(())
+            };
+            if let Mode::Svi(v) = c.cli.mode {
+                apply(&mut c.dm()?.svi_mut(v).ok_or("% Too many VLAN interfaces")?.standby)?;
+                return Ok(String::new());
+            }
+            c.each_if(|p, sub| match sub {
+                Some(s) => apply(&mut s.standby),
+                None => apply(&mut p.standby),
+            })
+        }
         Id::StandbyIp | Id::StandbyIpGroup0 | Id::StandbyPriority | Id::StandbyPreempt | Id::NoStandby => {
             let group: u8 = if spec.id == Id::StandbyIpGroup0 { 0 } else { arg(0).parse().map_err(|_| "% The group is 0-255")? };
             let ip = match spec.id {
@@ -1470,17 +1593,27 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::ShowNtp => {
             let d = c.d()?;
+            let master = d.mgmt.ntp_master.map(|n| format!("This device serves NTP from its own clock (stratum {n})\n")).unwrap_or_default();
             if d.ntp_servers.is_empty() {
+                if !master.is_empty() {
+                    let (now, _) = c.sim.clock(c.dev);
+                    return Ok(format!("{master}{}", crate::clock::show(now, true)));
+                }
                 return Ok("No NTP server is configured; the clock runs on its own.".into());
             }
             let synced = c.sim.state(c.dev).and_then(|s| s.ntp_synced);
             let (now, _) = c.sim.clock(c.dev);
-            let mut s = match synced {
+            let mut s = master;
+            s.push_str(&match synced {
                 Some(x) => format!("Clock synchronised with {x}\n"),
                 None => "Clock not synchronised\n".to_string(),
-            };
+            });
+            if d.mgmt.ntp_authenticate {
+                s.push_str("Authentication on: only signed time with a trusted key counts\n");
+            }
             for a in &d.ntp_servers {
-                s.push_str(&format!("  server {a}{}\n", if synced == Some(*a) { "  (in use)" } else { "" }));
+                let key = d.mgmt.ntp_server_keys.iter().find(|(x, _)| x == a).map(|(_, k)| format!(", key {k}")).unwrap_or_default();
+                s.push_str(&format!("  server {a}{key}{}\n", if synced == Some(*a) { "  (in use)" } else { "" }));
             }
             s.push_str(&crate::clock::show(now, true));
             Ok(s)
@@ -1819,10 +1952,34 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let extended = acl::numbered_kind(&name).ok_or("% Numbered lists are 1-99 (standard) or 100-199 (extended)")?;
             let words: Vec<&str> = arg(1).split_whitespace().collect();
             if words.first().is_some_and(|w| w.eq_ignore_ascii_case("remark")) {
-                return Ok(String::new());
+                let text = words.get(1..).map(|w| w.join(" ")).unwrap_or_default();
+                return c.acl_remark(&name, extended, &text, true);
             }
             let entry = parse_acl_entry(&words, extended)?;
             c.acl_add(&name, extended, entry)
+        }
+        Id::AclRemark | Id::NoAclRemark => {
+            let Mode::Acl(name) = c.cli.mode.clone() else { return Err("% Not in access-list mode".into()) };
+            let extended = c.d()?.acls.iter().find(|a| a.name == name).is_some_and(|a| a.extended);
+            c.acl_remark(&name, extended, arg(0), spec.id == Id::AclRemark)
+        }
+        Id::NoAccessListRemark => {
+            let extended = acl::numbered_kind(arg(0)).ok_or("% Numbered lists are 1-99 (standard) or 100-199 (extended)")?;
+            c.acl_remark(arg(0), extended, arg(1), false)
+        }
+        Id::AclSeqLine => {
+            let Mode::Acl(name) = c.cli.mode.clone() else { return Err("% Not in access-list mode".into()) };
+            let seq = parse_seq(arg(0))?;
+            let extended = c.d()?.acls.iter().find(|a| a.name == name).is_some_and(|a| a.extended);
+            let words: Vec<&str> = arg(1).split_whitespace().collect();
+            let entry = acl::AclEntry { seq, ..parse_acl_entry(&words, extended)? };
+            c.acl_add(&name, extended, entry)
+        }
+        Id::AclResequence => {
+            let (start, step) = (parse_seq(arg(1))?, parse_seq(arg(2))?);
+            let list = c.dm()?.acls.iter_mut().find(|a| a.name == arg(0)).ok_or_else(|| format!("% No access list {}", arg(0)))?;
+            list.resequence(start, step);
+            Ok(String::new())
         }
         Id::NoAccessList => {
             let d = c.dm()?;
@@ -1843,7 +2000,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                     if d.acls.len() >= acl::MAX_ACLS {
                         return Err(format!("% At most {} access lists", acl::MAX_ACLS));
                     }
-                    d.acls.push(acl::Acl { name: name.clone(), extended, entries: Vec::new() });
+                    d.acls.push(acl::Acl::new(name.clone(), extended));
                 }
             }
             c.cli.mode = Mode::Acl(name);
@@ -1859,13 +2016,21 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let Mode::Acl(name) = c.cli.mode.clone() else { return Err("% Not in access-list mode".into()) };
             let extended = c.d()?.acls.iter().find(|a| a.name == name).is_some_and(|a| a.extended);
             let words: Vec<&str> = line.split_whitespace().skip(usize::from(spec.id == Id::NoAclEntryLine)).collect();
+            if let [w] = words.as_slice()
+                && spec.id == Id::NoAclEntryLine
+                && is_number(w)
+            {
+                let seq = parse_seq(w)?;
+                let list = c.dm()?.acls.iter_mut().find(|a| a.name == name).ok_or("% The list was deleted")?;
+                return if list.remove_seq(seq) { Ok(String::new()) } else { Err(format!("% {name} has no line {seq}")) };
+            }
             let entry = parse_acl_entry(&words, extended)?;
             if spec.id == Id::AclEntryLine {
                 c.acl_add(&name, extended, entry)
             } else {
                 let list = c.dm()?.acls.iter_mut().find(|a| a.name == name).ok_or("% The list was deleted")?;
                 let before = list.entries.len();
-                list.entries.retain(|e| *e != entry);
+                list.entries.retain(|e| !e.same_rule(&entry));
                 if list.entries.len() == before { Err("% No such line".into()) } else { Ok(String::new()) }
             }
         }
@@ -1877,6 +2042,23 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             };
             let name = arg(0).to_string();
             let add = spec.id == Id::AccessGroup;
+            let set = |g: &mut netlabcraft_model::AccessGroups| {
+                let slot = if inbound { &mut g.inbound } else { &mut g.outbound };
+                if add {
+                    *slot = Some(name.clone());
+                } else if slot.as_deref() == Some(name.as_str()) {
+                    *slot = None;
+                }
+            };
+            if let Mode::Svi(v) = c.cli.mode {
+                set(&mut c.dm()?.svi_mut(v).ok_or("% Too many VLAN interfaces")?.access);
+                let exists = c.d()?.acls.iter().any(|a| a.name == name);
+                return Ok(if add && !exists {
+                    format!("Access list {name} doesn't exist yet: until it does, everything passes.")
+                } else {
+                    String::new()
+                });
+            }
             c.each_if(|p, sub| {
                 let g = match sub {
                     Some(s) => &mut s.access,
@@ -2584,11 +2766,18 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::ShowBoot => {
             let d = c.d()?;
+            let skip = d.nvram.register() == netlabcraft_model::mgmt::CONFREG_SKIP_STARTUP;
             Ok(format!(
-                "Boot image: flash:netlabcraft-{}-{}.bin\nConfiguration at start-up: {}",
-                d.kind.label().to_lowercase(),
-                env!("CARGO_PKG_VERSION"),
-                if d.startup.is_some() { "startup-config (saved)" } else { "none saved: factory settings" }
+                "Boot image: flash:{}\nConfiguration at start-up: {}\nConfiguration register: 0x{:04x}",
+                mgmt::boot_image(d),
+                if skip {
+                    "ignored at the next reload (register 0x2142)"
+                } else if d.startup.is_some() {
+                    "startup-config (saved)"
+                } else {
+                    "none saved: factory settings"
+                },
+                d.nvram.register()
             ))
         }
         Id::ShowEnv => Ok("Power supply: OK (simulated)\nFans: OK\nTemperature: normal".into()),
@@ -3178,17 +3367,21 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let target =
                 if args.first().is_some_and(|a| !a.trim().is_empty()) { Some(parse_ip(arg(0).trim()).map_err(|e| format!("% {e}"))?) } else { None };
             let add = spec.id == Id::HelperAddress;
+            let edit = |list: &mut Vec<Ipv4Addr>| match (add, target) {
+                (true, Some(a)) if !list.contains(&a) && list.len() < 8 => list.push(a),
+                (true, _) => {}
+                (false, Some(a)) => list.retain(|x| *x != a),
+                (false, None) => list.clear(),
+            };
+            if let Mode::Svi(v) = c.cli.mode {
+                edit(&mut c.dm()?.svi_mut(v).ok_or("% Too many VLAN interfaces")?.helpers);
+                return Ok(String::new());
+            }
             c.each_if(|p, sub| {
-                let list = match sub {
+                edit(match sub {
                     Some(s) => &mut s.helpers,
                     None => &mut p.helpers,
-                };
-                match (add, target) {
-                    (true, Some(a)) if !list.contains(&a) && list.len() < 8 => list.push(a),
-                    (true, _) => {}
-                    (false, Some(a)) => list.retain(|x| *x != a),
-                    (false, None) => list.clear(),
-                }
+                });
                 Ok(())
             })
         }
@@ -3441,7 +3634,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 if d.dhcp_pools.len() >= MAX_DHCP_POOLS {
                     return Err(format!("% At most {MAX_DHCP_POOLS} pools"));
                 }
-                d.dhcp_pools.push(DhcpPool { name: name.clone(), network: None, default_router: None, dns: None });
+                d.dhcp_pools.push(DhcpPool { name: name.clone(), ..DhcpPool::default() });
             }
             c.cli.mode = Mode::DhcpPool(name);
             Ok(String::new())
@@ -3552,8 +3745,47 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::ShowDhcpBinding => Ok(render::dhcp_bindings(c.sim, c.d()?)),
         Id::ShowDhcpPool => Ok(render::dhcp_pools(c.sim, c.d()?)),
-        Id::ClearDhcpBinding => {
-            c.sim.clear_leases(c.dev);
+        Id::ClearDhcpBinding => match arg(0).trim() {
+            "*" => {
+                c.sim.clear_leases(c.dev);
+                Ok(String::new())
+            }
+            a => {
+                let ip = parse_ip(a).map_err(|_| "% `*` for every lease, or one leased address".to_string())?;
+                if c.sim.clear_lease(c.dev, ip) { Ok(String::new()) } else { Err(format!("% {ip} is not leased")) }
+            }
+        },
+        Id::ShowDhcpConflict => Ok(render::dhcp_conflicts(c.sim, c.d()?)),
+        Id::ShowDhcpStats => Ok(render::dhcp_stats(c.sim, c.d()?)),
+        Id::ClearDhcpConflict => {
+            if arg(0).trim() != "*" {
+                return Err("% `clear ip dhcp conflict *`".into());
+            }
+            c.sim.clear_dhcp_conflicts(c.dev);
+            Ok(String::new())
+        }
+        Id::ClearDhcpStats => {
+            c.sim.clear_dhcp_stats(c.dev);
+            Ok(String::new())
+        }
+        Id::DebugDhcpPacket | Id::NoDebugDhcpPacket => {
+            let on = spec.id == Id::DebugDhcpPacket;
+            c.sim.set_dhcp_packet_debug(c.dev, on);
+            Ok(if on { "DHCP packet debugging is on: every message the server handles is reported." } else { "DHCP packet debugging is off." }.into())
+        }
+        Id::DhcpLease | Id::NoDhcpLease | Id::DhcpDomain | Id::NoDhcpDomain => {
+            let Mode::DhcpPool(name) = c.cli.mode.clone() else { return Err("% Not in DHCP pool mode".into()) };
+            let lease = if spec.id == Id::DhcpLease { Some(parse_lease(arg(0))?) } else { None };
+            let domain: String = arg(0).chars().take(64).collect();
+            if spec.id == Id::DhcpDomain && !domain.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '.') {
+                return Err("% A domain name has letters, digits, `-` and `.`".into());
+            }
+            let pool = c.dm()?.dhcp_pools.iter_mut().find(|p| p.name == name).ok_or("% The pool was deleted")?;
+            match spec.id {
+                Id::DhcpLease | Id::NoDhcpLease => pool.lease_secs = lease,
+                Id::DhcpDomain => pool.domain = Some(domain),
+                _ => pool.domain = None,
+            }
             Ok(String::new())
         }
         Id::VlanName | Id::NoVlanName => {
@@ -3570,6 +3802,45 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             vtp_bump(d, &before);
             Ok(String::new())
         }
+    }
+}
+
+/// `lease DAYS [HOURS [MINUTES]]` or `lease infinite`, in seconds (`u32::MAX`: infinite).
+fn parse_lease(rest: &str) -> Result<u32, String> {
+    let words: Vec<&str> = rest.split_whitespace().collect();
+    if let [w] = words.as_slice()
+        && w.eq_ignore_ascii_case("infinite")
+    {
+        return Ok(u32::MAX);
+    }
+    let usage = "% lease DAYS [HOURS [MINUTES]] (0-365, 0-23, 0-59) or lease infinite";
+    if words.is_empty() || words.len() > 3 {
+        return Err(usage.into());
+    }
+    let mut secs = 0u32;
+    for (w, (max, unit)) in words.iter().zip([(365u32, 86_400u32), (23, 3_600), (59, 60)]) {
+        let n: u32 = w.parse().map_err(|_| usage.to_string())?;
+        if n > max {
+            return Err(usage.into());
+        }
+        secs = secs.saturating_add(n.saturating_mul(unit));
+    }
+    if secs == 0 {
+        return Err("% A lease lasts at least a minute".into());
+    }
+    Ok(secs)
+}
+
+/// Whether a word is all digits.
+fn is_number(w: &str) -> bool {
+    !w.is_empty() && w.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// An access-list sequence number (1 to 2147483647).
+fn parse_seq(w: &str) -> Result<u32, String> {
+    match w.parse::<u32>() {
+        Ok(n) if (1..=acl::MAX_SEQ).contains(&n) => Ok(n),
+        _ => Err(format!("% `{w}` is not a sequence number (1-{})", acl::MAX_SEQ)),
     }
 }
 
@@ -3642,12 +3913,19 @@ fn parse_acl_entry(words: &[&str], extended: bool) -> Result<acl::AclEntry, Stri
     } else {
         (acl::AclAddr::ANY, None)
     };
-    match it.next() {
-        None => {}
-        Some(w) if w.eq_ignore_ascii_case("log") => {}
-        Some(w) => return Err(format!("% Unexpected `{w}` at the end of the line")),
+    let mut entry = acl::AclEntry { src_port, dst_port, ..acl::AclEntry::new(permit, proto, src, dst) };
+    for w in it {
+        let lw = w.to_ascii_lowercase();
+        match lw.as_str() {
+            "log" => {}
+            "established" if extended && proto == acl::AclProto::Tcp => entry.established = true,
+            _ if extended && proto == acl::AclProto::Icmp && entry.icmp_type.is_none() && acl::icmp_type_from_name(w).is_some() => {
+                entry.icmp_type = acl::icmp_type_from_name(w);
+            }
+            _ => return Err(format!("% Unexpected `{w}` at the end of the line")),
+        }
     }
-    Ok(acl::AclEntry { permit, proto, src, src_port, dst, dst_port })
+    Ok(entry)
 }
 
 /// A port by number or by its usual name.
@@ -3746,14 +4024,44 @@ impl Ctx<'_> {
             if d.acls.len() >= acl::MAX_ACLS {
                 return Err(format!("% At most {} access lists", acl::MAX_ACLS));
             }
-            d.acls.push(acl::Acl { name: name.to_string(), extended, entries: Vec::new() });
+            d.acls.push(acl::Acl::new(name, extended));
         }
         let list = d.acls.iter_mut().find(|a| a.name == name).ok_or("% No such list")?;
         if list.entries.len() >= acl::MAX_ENTRIES {
             return Err(format!("% At most {} lines per list", acl::MAX_ENTRIES));
         }
-        if !list.entries.contains(&entry) {
-            list.entries.push(entry);
+        if list.extended != extended {
+            return Err(format!("% {name} is a{} list", if list.extended { "n extended" } else { " standard" }));
+        }
+        list.insert(entry)?;
+        Ok(String::new())
+    }
+
+    /// Adds (or with `add` false removes) a remark on a list, creating the list if needed.
+    fn acl_remark(&mut self, name: &str, extended: bool, text: &str, add: bool) -> R {
+        let text: String = text.trim().chars().take(100).collect();
+        let d = self.dm()?;
+        if !add {
+            let list = d.acls.iter_mut().find(|a| a.name == name).ok_or_else(|| format!("% No access list {name}"))?;
+            let before = list.remarks.len();
+            list.remarks.retain(|r| *r != text);
+            return if list.remarks.len() == before { Err("% No such remark".into()) } else { Ok(String::new()) };
+        }
+        if text.is_empty() {
+            return Err("% Give the remark's text".into());
+        }
+        if !d.acls.iter().any(|a| a.name == name) {
+            if d.acls.len() >= acl::MAX_ACLS {
+                return Err(format!("% At most {} access lists", acl::MAX_ACLS));
+            }
+            d.acls.push(acl::Acl::new(name, extended));
+        }
+        let list = d.acls.iter_mut().find(|a| a.name == name).ok_or("% No such list")?;
+        if list.remarks.len() >= acl::MAX_REMARKS {
+            return Err(format!("% At most {} remarks per list", acl::MAX_REMARKS));
+        }
+        if !list.remarks.contains(&text) {
+            list.remarks.push(text);
         }
         Ok(String::new())
     }
@@ -3832,6 +4140,17 @@ impl Ctx<'_> {
             }
         }
         Ok(String::new())
+    }
+
+    /// The names of the interfaces the mode configures (`GigabitEthernet0/0`, `…0/0.10`,
+    /// `Vlan10`).
+    fn mode_iface_names(&self) -> Result<Vec<String>, String> {
+        if let Mode::Svi(v) = &self.cli.mode {
+            return Ok(vec![format!("Vlan{v}")]);
+        }
+        let Mode::Iface(ifs) = &self.cli.mode else { return Err("% Not in interface mode".into()) };
+        let d = self.d()?;
+        Ok(ifs.iter().filter_map(|r| d.ports.get(r.port).map(|p| r.sub.map_or(p.name.clone(), |s| format!("{}.{s}", p.name)))).collect())
     }
 
     /// `security passwords min-length`: a new password must be at least that long.
@@ -4084,19 +4403,7 @@ impl Ctx<'_> {
             let name = file.unwrap_or_else(|| format!("{}-confg", d.name.to_lowercase()));
             let text = if startup { d.startup.clone().ok_or("% No startup-config to copy")? } else { render::running_config(&d) };
             self.sim.tftp_put(self.t, self.dev, server, &name, text.as_bytes()).map_err(|e| format!("% {e}"))?;
-            // The server keeps the file.
-            if let Some(sd) =
-                self.t.devices.iter_mut().find(|x| x.kind == DeviceKind::Server && x.ports.iter().any(|p| p.ip.is_some_and(|n| n.addr == server)))
-            {
-                let files = &mut sd.services.tftp.files;
-                files.retain(|f| f.name != name);
-                if files.len() < netlabcraft_model::services::MAX_ITEMS {
-                    files.push(netlabcraft_model::services::WebFile {
-                        name: name.clone(),
-                        content: text.chars().take(netlabcraft_model::services::MAX_FILE).collect(),
-                    });
-                }
-            }
+            keep_on_tftp_server(self.t, server, &name, &text);
             Ok(format!("Copied {} bytes to tftp://{server}/{name}", text.len()))
         } else {
             let name = file.ok_or("% Give the file name to copy")?;
@@ -4142,6 +4449,50 @@ impl Ctx<'_> {
         self.d()?.ports.get(r.port).map(|p| p.name.clone()).ok_or_else(|| "% No such port".into())
     }
 
+    /// `ping A [repeat N] [size S] [source IF|A.B.C.D] [timeout T]` (keywords may be shortened).
+    fn ping_extended(&mut self, target: &str, rest: &str) -> R {
+        let words: Vec<&str> = rest.split_whitespace().collect();
+        let mut opts = PingOptions::default();
+        let mut i = 0;
+        let usage = "% ping A.B.C.D [repeat N] [size S] [source INTERFACE|A.B.C.D] [timeout SECONDS]";
+        while let Some(w) = words.get(i) {
+            let lw = w.to_ascii_lowercase();
+            let key = ["repeat", "size", "source", "timeout"].into_iter().find(|k| !lw.is_empty() && k.starts_with(&lw)).ok_or(usage)?;
+            let v = *words.get(i + 1).ok_or(usage)?;
+            match key {
+                "repeat" => opts.count = v.parse().ok().filter(|n| (1..=1000).contains(n)).ok_or("% Repeat count must be 1-1000")?,
+                // The size counts the IP and ICMP headers (28 bytes); the rest is data.
+                "size" => opts.size = v.parse::<usize>().ok().filter(|n| (36..=18_024).contains(n)).ok_or("% Datagram size 36-18024")? - 28,
+                "timeout" => opts.timeout_us = v.parse::<u64>().ok().filter(|n| *n <= 3_600).ok_or("% Timeout 0-3600 seconds")?.max(1) * 1_000_000,
+                _ => {
+                    let d = self.d()?;
+                    let addrs = netlabcraft_sim::l3_ifaces(d);
+                    let src = match parse_ip(v) {
+                        Ok(a) => addrs.iter().find(|i| i.net.addr == a).map(|i| i.net.addr),
+                        Err(_) => {
+                            let r = self.iface_ref(v)?;
+                            let d = self.d()?;
+                            let name = d.ports.get(r.port).map(|p| r.sub.map_or(p.name.clone(), |s| format!("{}.{s}", p.name))).unwrap_or_default();
+                            addrs.iter().find(|i| i.name == name).map(|i| i.net.addr)
+                        }
+                    };
+                    opts.source = Some(src.ok_or_else(|| format!("% `{v}` is not an address of an interface that is up here"))?);
+                }
+            }
+            i += 2;
+        }
+        if let Ok(dst6) = target.parse::<std::net::Ipv6Addr>() {
+            if opts.source.is_some() {
+                return Err("% `source` is for IPv4 pings".into());
+            }
+            let probes = self.sim.ping6(self.t, self.dev, dst6, opts).map_err(|e| format!("% {e}"))?;
+            return Ok(render::ping(dst6.into(), &probes, opts));
+        }
+        let dst = parse_ip(target).map_err(|e| format!("% {e}"))?;
+        let probes = self.sim.ping(self.t, self.dev, dst, opts).map_err(|e| format!("% {e}"))?;
+        Ok(render::ping(dst.into(), &probes, opts))
+    }
+
     fn ping(&mut self, target: &str, count: u16, data: Option<usize>) -> R {
         let mut opts = PingOptions { count, ..PingOptions::default() };
         if let Some(n) = data {
@@ -4167,7 +4518,10 @@ impl Ctx<'_> {
     }
 
     fn reload(&mut self) -> R {
-        let startup = self.d()?.startup.clone();
+        // Configuration register 0x2142 (password recovery): start without the saved
+        // configuration, which stays in NVRAM.
+        let skip = self.d()?.nvram.register() == netlabcraft_model::mgmt::CONFREG_SKIP_STARTUP;
+        let startup = if skip { None } else { self.d()?.startup.clone() };
         let d = self.dm()?;
         if d.vlan_dat_deleted {
             d.vlans.clear();
@@ -4188,10 +4542,28 @@ impl Ctx<'_> {
                 }
                 Ok(out)
             }
+            None if skip => {
+                self.sim.topology_changed(self.t);
+                Ok("Restarted without reading the saved configuration (configuration register 0x2142); it is still in NVRAM.".into())
+            }
             None => {
                 self.sim.topology_changed(self.t);
                 Ok("Restarted with factory settings (no saved configuration).".into())
             }
+        }
+    }
+}
+
+/// Stores a file a device sent with TFTP on the server that has that address.
+pub(crate) fn keep_on_tftp_server(t: &mut Topology, server: Ipv4Addr, name: &str, text: &str) {
+    if let Some(sd) = t.devices.iter_mut().find(|x| x.kind == DeviceKind::Server && x.ports.iter().any(|p| p.ip.is_some_and(|n| n.addr == server))) {
+        let files = &mut sd.services.tftp.files;
+        files.retain(|f| f.name != name);
+        if files.len() < netlabcraft_model::services::MAX_ITEMS {
+            files.push(netlabcraft_model::services::WebFile {
+                name: name.to_string(),
+                content: text.chars().take(netlabcraft_model::services::MAX_FILE).collect(),
+            });
         }
     }
 }

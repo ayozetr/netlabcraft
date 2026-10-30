@@ -328,17 +328,11 @@ impl Sim {
                 let active = r.state == crate::hsrp::State::Active;
                 let hello = control::HsrpHello { active, priority: r.priority, group: r.group, virtual_ip: r.virtual_ip };
                 let udp = Udp { src_port: control::HSRP_PORT, dst_port: control::HSRP_PORT, payload: hello.encode() };
-                let ip = Ipv4 {
-                    id: 0,
-                    ttl: 1,
-                    protocol: PROTO_UDP,
-                    src: ifc.net.addr,
-                    dst: control::ALL_ROUTERS,
-                    payload: udp.encode(ifc.net.addr, control::ALL_ROUTERS),
-                };
+                let group = if r.version == 2 { crate::hsrp::HSRP2_GROUP } else { control::ALL_ROUTERS };
+                let ip = Ipv4 { id: 0, ttl: 1, protocol: PROTO_UDP, src: ifc.net.addr, dst: group, payload: udp.encode(ifc.net.addr, group) };
                 // The active router speaks with the virtual MAC, so switches learn where it is.
                 let src = if active { r.virtual_mac() } else { ifc.mac };
-                self.queue_l3(t, d, &ifc, src, control::ipv4_multicast_mac(control::ALL_ROUTERS), ip.encode(), at);
+                self.queue_l3(t, d, &ifc, src, control::ipv4_multicast_mac(group), ip.encode(), at);
             }
         }
     }

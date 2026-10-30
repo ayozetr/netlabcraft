@@ -116,7 +116,12 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `end` | config, interface, subinterface, vlan, object | router, switch, firewall | Return to privileged mode |
 | `configure terminal` | privileged | router, switch, firewall | Configure from the terminal |
 | `ping A.B.C.D\|X:X::X` | user, privileged | router, switch, firewall | Send echo requests |
-| `ping A.B.C.D repeat <1-1000>` | user, privileged | router, switch, firewall | Send echo requests |
+| `ping A.B.C.D\|X:X::X [repeat <1-1000>] [size <36-18024>] [source A.B.C.D\|INTERFACE] [timeout <0-3600>]` | user, privileged | router, switch, firewall | Send echo requests with options |
+| `show ip traffic` | user, privileged | router, switch | IPv4 packets counted by what happened to them |
+| `show tcp brief` | user, privileged | router, switch | TCP connections to and from this device |
+| `show tcp` | user, privileged | router, switch | TCP connections to and from this device |
+| `history size <0-256>` |  | router, switch | How many commands a session remembers |
+| `no history size` |  | router, switch | Remember the default number of commands |
 | `traceroute A.B.C.D\|X:X::X` | user, privileged | router, switch, firewall | Trace the route to a destination |
 | `show running-config` | privileged | router, switch, firewall | Current configuration |
 | `show startup-config` | privileged | router, switch, firewall | Saved configuration |
@@ -166,8 +171,12 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip access-list {standard\|extended} WORD` | config | router, switch | Delete a named list |
 | `permit ...` |  | router, switch | Allow matching packets |
 | `deny ...` |  | router, switch | Drop matching packets |
-| `remark LINE` |  | router, switch | A comment (accepted, not kept) |
-| `no {permit\|deny} ...` |  | router, switch | Remove a line |
+| `remark LINE` |  | router, switch | A note kept with the list |
+| `no remark LINE` |  | router, switch | Delete a note |
+| `no {<1-2147483647>\|permit ...\|deny ...}` |  | router, switch | Remove a line (by number or by its words) |
+| `<1-2147483647> {permit\|deny} ...` |  | router, switch | Add a line at this sequence number |
+| `ip access-list resequence WORD <1-2147483647> <1-2147483647>` | config | router, switch | Renumber a list's lines: first number, then the step |
+| `no access-list <1-199> remark LINE` | config | router, switch | Delete a note from a numbered list |
 | `ip access-group WORD {in\|out}` | interface, subinterface | router, switch | Filter this interface's traffic |
 | `no ip access-group WORD {in\|out}` | interface, subinterface | router, switch | Stop filtering |
 | `access-class WORD {in\|out}` |  | router, switch | Restrict remote logins (accepted, not simulated) |
@@ -320,6 +329,35 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show flash:` | user, privileged | router, switch | Files in flash memory |
 | `show flash` | user, privileged | router, switch | Files in flash memory |
 | `dir flash:` | privileged | router, switch | Files in flash memory |
+| `service timestamps {log\|debug} datetime` | config | router, switch | Stamp messages with date and time |
+| `service timestamps {log\|debug} datetime [msec]` | config | router, switch | Stamp messages with date and time (msec: and milliseconds) |
+| `no service timestamps {log\|debug}` | config | router, switch | Back to the time of day only |
+| `logging trap <0-7>\|LEVEL` | config | router, switch | The most detailed severity sent to syslog servers |
+| `no logging trap` | config | router, switch | Syslog servers get informational and above |
+| `logging console <0-7>\|LEVEL` | config | router, switch | The most detailed severity shown on the console |
+| `no logging console` | config | router, switch | The console shows every severity |
+| `ntp master` | config | router, switch | Serve NTP from this device's own clock |
+| `ntp master <1-15>` | config | router, switch | Serve NTP from this device's own clock, at this stratum |
+| `no ntp master` | config | router, switch | Stop serving NTP |
+| `ntp authenticate` | config | router, switch | Only take the time from servers that sign with a trusted key |
+| `no ntp authenticate` | config | router, switch | Take unsigned NTP time |
+| `ntp authentication-key <1-4294967295> md5 KEY` | config | router, switch | Define an NTP key |
+| `no ntp authentication-key <1-4294967295>` | config | router, switch | Delete an NTP key |
+| `ntp trusted-key <1-4294967295>` | config | router, switch | Trust time signed with this key |
+| `no ntp trusted-key <1-4294967295>` | config | router, switch | Stop trusting a key |
+| `ntp server A.B.C.D key <1-4294967295>` | config | router, switch | Take the time from an NTP server that signs with this key |
+| `ntp update-calendar` | config | router, switch | Let NTP set the hardware calendar too |
+| `no ntp update-calendar` | config | router, switch | Leave the hardware calendar alone |
+| `show ip nat statistics` | user, privileged | router, switch | NAT translations counted, and where NAT applies |
+| `show file systems` | user, privileged | router, switch | Flash, NVRAM and network file systems |
+| `dir` | privileged | router, switch | Files in flash memory |
+| `boot system flash:NAME` | config | router, switch | The image to start from |
+| `no boot system` | config | router, switch | Start from the factory image |
+| `no boot system flash:NAME` | config | router, switch | Forget one boot image |
+| `config-register 0x0-0xFFFF` | config | router, switch | How the device starts (0x2142 skips the startup-config) |
+| `copy startup-config running-config` | privileged | router, switch | Merge the saved configuration into the running one |
+| `copy flash: tftp: <file> <address> [name on the server]` | privileged | router, switch | Back up a flash file to a TFTP server |
+| `copy tftp: flash: <address> <file> [name in flash]` | privileged | router, switch | Copy a file from a TFTP server into flash |
 | `show users` | user, privileged | router, switch | Who is logged in, and where |
 | `terminal length N \| width N \| monitor` | user, privileged | router, switch | Terminal settings (output here is never paged) |
 | `cdp run` | config | router, switch | Discover neighbouring routers and switches |
@@ -350,7 +388,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show running-config interface <interface>` | privileged | router, switch | One interface's configuration |
 | `show logging` | user, privileged | router, switch, firewall | The logging buffer |
 | `clear logging` | privileged | router, switch, firewall | Empty the logging buffer |
-| `logging buffered [size]` | config | router, switch | Keep messages in the logging buffer (always on here) |
+| `logging buffered [size] [level]` | config | router, switch | Keep messages in the logging buffer, up to a severity |
+| `logging buffered` | config | router, switch | Keep every severity in the logging buffer |
 | `debug ip icmp` | privileged | router, switch | Report echo requests and replies this device receives |
 | `undebug all` | privileged | router, switch | Turn every debug off |
 | `no debug all` | privileged | router, switch | Turn every debug off |
@@ -362,6 +401,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no debug ip packet` | privileged | router, switch | Stop reporting packets |
 | `no debug ip nat` | privileged | router, switch | Stop reporting NAT |
 | `no debug ip dhcp server events` | privileged | router, switch | Stop reporting DHCP |
+| `debug ip dhcp server packet` | privileged | router, switch | Report every DHCP message this server receives and sends |
+| `no debug ip dhcp server packet` | privileged | router, switch | Stop reporting DHCP messages |
 | `no debug ip rip` | privileged | router, switch | Stop reporting RIP updates |
 | `debug ip ospf adj\|events\|hello` | privileged | router | Report the OSPF hellos this router hears |
 | `no debug ip ospf adj\|events\|hello` | privileged | router | Stop reporting OSPF hellos |
@@ -372,6 +413,16 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `standby <0-255> priority <0-255>` | interface, subinterface | router | HSRP: higher priority becomes active |
 | `standby <0-255> preempt` | interface, subinterface | router | HSRP: take over when this router has the highest priority |
 | `no standby <0-255>` | interface, subinterface | router | Remove an HSRP group |
+| `standby version {1\|2}` | interface, subinterface | router | HSRP version on this interface |
+| `no standby version` | interface, subinterface | router | Back to HSRP version 1 |
+| `standby <0-255> track INTERFACE` | interface, subinterface | router | Lower the priority by 10 while an interface is down |
+| `standby <0-255> track INTERFACE decrement <1-255>` | interface, subinterface | router | Lower the priority by this much while an interface is down |
+| `no standby <0-255> track INTERFACE` | interface, subinterface | router | Stop tracking an interface |
+| `standby version {1\|2}` |  | switch | HSRP version on this interface |
+| `no standby version` |  | switch | Back to HSRP version 1 |
+| `standby <0-255> track INTERFACE` |  | switch | Lower the priority by 10 while an interface is down |
+| `standby <0-255> track INTERFACE decrement <1-255>` |  | switch | Lower the priority by this much while an interface is down |
+| `no standby <0-255> track INTERFACE` |  | switch | Stop tracking an interface |
 | `standby <0-255> ip A.B.C.D` |  | switch | HSRP: the group's virtual gateway address |
 | `standby ip A.B.C.D` |  | switch | HSRP group 0's virtual gateway address |
 | `standby <0-255> priority <0-255>` |  | switch | HSRP: higher priority becomes active |
@@ -495,6 +546,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `ip helper-address A.B.C.D` | interface, subinterface | router | Relay DHCP requests to this server |
 | `no ip helper-address [A.B.C.D]` | interface, subinterface | router | Stop relaying (to one server) |
 | `no ip helper-address` | interface, subinterface | router | Stop relaying DHCP requests |
+| `ip helper-address A.B.C.D` |  | switch | Relay DHCP requests to this server |
+| `no ip helper-address [A.B.C.D]` |  | switch | Stop relaying (to one server) |
+| `no ip helper-address` |  | switch | Stop relaying DHCP requests |
 | `no interface vlan <1-4094>` | config | switch | Delete a VLAN interface |
 | `ip default-gateway A.B.C.D` | config | switch | Gateway for the switch's own traffic |
 | `no ip default-gateway` | config | switch | Remove the gateway |
@@ -643,7 +697,6 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ipv6 interface <interface>` | user, privileged | router, switch | One interface's IPv6 settings |
 | `show ipv6 route {connected\|static\|ospf}` | user, privileged | router, switch | Only the IPv6 routes one source gave |
 | `clear counters` | privileged | router, switch | Reset interface counters |
-| `ping A.B.C.D\|X:X::X size <36-18024>` | user, privileged | router, switch | Send echo requests of a given size |
 | `show sessions` | user, privileged | router, switch | Telnet and SSH sessions opened from here |
 | `show hosts` | user, privileged | router, switch | Name lookup settings |
 | `show mac address-table dynamic` | user, privileged | switch | Learned MAC addresses |
@@ -661,9 +714,17 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `network A.B.C.D MASK` |  | router, switch | The pool's network |
 | `default-router A.B.C.D` |  | router, switch | Gateway given to clients |
 | `dns-server A.B.C.D` |  | router, switch | DNS server given to clients |
+| `lease {<0-365> [<0-23> [<0-59>]] \| infinite}` |  | router, switch | How long clients keep an address |
+| `no lease` |  | router, switch | Back to leases of one day |
+| `domain-name NAME` |  | router, switch | Domain name given to clients |
+| `no domain-name` |  | router, switch | Give clients no domain name |
 | `show ip dhcp binding` | user, privileged | router, switch | Addresses DHCP handed out |
 | `show ip dhcp pool` | user, privileged | router, switch | DHCP pools |
-| `clear ip dhcp binding *` | privileged | router, switch | Forget DHCP leases |
+| `clear ip dhcp binding {* \| A.B.C.D}` | privileged | router, switch | Forget DHCP leases |
+| `show ip dhcp conflict` | user, privileged | router, switch | Pool addresses found in use by others |
+| `show ip dhcp server statistics` | user, privileged | router, switch | DHCP messages counted |
+| `clear ip dhcp conflict *` | privileged | router, switch | Forget address conflicts |
+| `clear ip dhcp server statistics` | privileged | router, switch | Reset the DHCP message counts |
 | `spanning-tree vlan <1-4094>[,-] priority <0-61440>` | config | switch | Bridge priority (multiples of 4096) |
 | `no spanning-tree vlan <1-4094>[,-] priority` | config | switch | Back to priority 32768 |
 | `spanning-tree vlan <1-4094>[,-] root {primary\|secondary}` | config | switch | Make this switch the root (or the backup root) |
@@ -855,23 +916,25 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 
 ```text
 Commands:
-  ipconfig                         show this host's address
-    ipconfig <address> <mask> [gw] [dns]  set the address (gateway, DNS server)
-    ipconfig /renew                  ask a DHCP server for an address
-    ipconfig /release                remove the address
-  ipv6config                       show the IPv6 settings
-    ipv6config <address/len> [gw]    set an IPv6 address (and gateway)
-    ipv6config auto                  take an address from the router (SLAAC)
-    ipv6config off                   turn IPv6 off
-    ping [-n count] <address|name>   send echo requests
-  tracert <address|name>           trace the route (also: traceroute)
-  nslookup <name>                  ask the DNS server for a name
-  telnet <address>                 log in to a router or switch
-  ssh -l <user> <address>          log in securely
-    ftp <address>                    send and fetch files on an FTP server
-  dir                              list this host's files
-  arp -a                           show the ARP cache
-  arp -d                           empty the ARP cache
-  hostname                         show this host's name
-  cls                              clear the screen
+  ipconfig                               show this host's address
+  ipconfig /all                          also the DHCP lease, domain and server
+  ipconfig <address> <mask> [gw] [dns]   set the address (gateway, DNS server)
+  ipconfig /renew                        ask a DHCP server for an address
+  ipconfig /release                      remove the address
+  ipv6config                             show the IPv6 settings
+  ipv6config <address/len> [gw]          set an IPv6 address (and gateway)
+  ipv6config auto                        take an address from the router (SLAAC)
+  ipv6config off                         turn IPv6 off
+  ping [-n count] [-l size] [-t] <host>  send echo requests (-t: keep going, up to 100)
+  tracert <address|name>                 trace the route (also: traceroute)
+  nslookup <name>                        ask the DNS server for a name
+  telnet <address>                       log in to a router or switch
+  ssh -l <user> <address>                log in securely
+  ftp <address>                          send and fetch files on an FTP server
+  netstat                                TCP connections this host set up
+  dir                                    list this host's files
+  arp -a                                 show the ARP cache
+  arp -d [address]                       empty the ARP cache (or forget one entry)
+  hostname                               show this host's name
+  cls                                    clear the screen
 ```

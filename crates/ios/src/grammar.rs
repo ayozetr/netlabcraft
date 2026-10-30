@@ -196,6 +196,41 @@ pub enum Id {
     ShowDhcpBinding,
     ShowDhcpPool,
     ClearDhcpBinding,
+    ServiceTimestamps,
+    NoServiceTimestamps,
+    LoggingTrap,
+    NoLoggingTrap,
+    LoggingConsole,
+    NoLoggingConsole,
+    NtpMaster,
+    NoNtpMaster,
+    NtpAuthenticate,
+    NoNtpAuthenticate,
+    NtpAuthKey,
+    NoNtpAuthKey,
+    NtpTrustedKey,
+    NoNtpTrustedKey,
+    NtpServerKey,
+    NtpUpdateCalendar,
+    NoNtpUpdateCalendar,
+    ShowIpNatStatistics,
+    ShowFileSystems,
+    BootSystem,
+    NoBootSystem,
+    ConfigRegister,
+    CopyStartRun,
+    CopyFlashTftp,
+    CopyTftpFlash,
+    DhcpLease,
+    NoDhcpLease,
+    DhcpDomain,
+    NoDhcpDomain,
+    ShowDhcpConflict,
+    ShowDhcpStats,
+    ClearDhcpConflict,
+    ClearDhcpStats,
+    DebugDhcpPacket,
+    NoDebugDhcpPacket,
     StpPriority,
     NoStpPriority,
     StpRoot,
@@ -319,6 +354,11 @@ pub enum Id {
     NoIpAccessList,
     AclEntryLine,
     NoAclEntryLine,
+    AclSeqLine,
+    AclResequence,
+    AclRemark,
+    NoAclRemark,
+    NoAccessListRemark,
     AccessGroup,
     NoAccessGroup,
     ShowAccessLists,
@@ -522,7 +562,10 @@ pub enum Id {
     DeleteVlanDat,
     ShowIpv6Interface,
     ClearCounters,
-    PingSize,
+    ShowIpTraffic,
+    ShowTcpBrief,
+    HistorySize,
+    NoHistorySize,
     ShowSessions,
     ShowHosts,
     PortSecurity,
@@ -647,6 +690,10 @@ pub enum Id {
     StandbyPriority,
     StandbyPreempt,
     NoStandby,
+    StandbyVersion,
+    NoStandbyVersion,
+    StandbyTrack,
+    NoStandbyTrack,
     ShowStandby,
     SwModeDynAuto,
     SwModeDynDesirable,
@@ -780,7 +827,18 @@ pub static SPECS: &[Spec] = &[
     spec!(End, Modes::CONFIG.or(SUBMODES), BOTH_FW, [K("end")], "Return to privileged mode"),
     spec!(ConfigureTerminal, Modes::EXEC, BOTH_FW, [K("configure"), K("terminal")], "Configure from the terminal"),
     spec!(Ping, EXECS, BOTH_FW, [K("ping"), Arg("A.B.C.D|X:X::X")], "Send echo requests"),
-    spec!(PingRepeat, EXECS, BOTH_FW, [K("ping"), Arg("A.B.C.D"), K("repeat"), Arg("<1-1000>")], "Send echo requests"),
+    spec!(
+        PingRepeat,
+        EXECS,
+        BOTH_FW,
+        [K("ping"), Arg("A.B.C.D|X:X::X"), Rest("[repeat <1-1000>] [size <36-18024>] [source A.B.C.D|INTERFACE] [timeout <0-3600>]")],
+        "Send echo requests with options"
+    ),
+    spec!(ShowIpTraffic, EXECS, Modes::BOTH, [K("show"), K("ip"), K("traffic")], "IPv4 packets counted by what happened to them"),
+    spec!(ShowTcpBrief, EXECS, Modes::BOTH, [K("show"), K("tcp"), K("brief")], "TCP connections to and from this device"),
+    spec!(ShowTcpBrief, EXECS, Modes::BOTH, [K("show"), K("tcp")], "TCP connections to and from this device"),
+    spec!(HistorySize, Modes::LINE, Modes::BOTH, [K("history"), K("size"), Arg("<0-256>")], "How many commands a session remembers"),
+    spec!(NoHistorySize, Modes::LINE, Modes::BOTH, [K("no"), K("history"), K("size")], "Remember the default number of commands"),
     spec!(Traceroute, EXECS, BOTH_FW, [K("traceroute"), Arg("A.B.C.D|X:X::X")], "Trace the route to a destination"),
     spec!(ShowRun, Modes::EXEC, BOTH_FW, [K("show"), K("running-config")], "Current configuration"),
     spec!(ShowStartup, Modes::EXEC, BOTH_FW, [K("show"), K("startup-config")], "Saved configuration"),
@@ -872,10 +930,32 @@ pub static SPECS: &[Spec] = &[
     ),
     spec!(AclEntryLine, Modes::ACL, Modes::BOTH, [K("permit"), Rest("...")], "Allow matching packets"),
     spec!(AclEntryLine, Modes::ACL, Modes::BOTH, [K("deny"), Rest("...")], "Drop matching packets"),
-    spec!(Accepted, Modes::ACL, Modes::BOTH, [K("remark"), Rest("LINE")], "A comment (accepted, not kept)"),
-    spec!(NoAclEntryLine, Modes::ACL, Modes::BOTH, [K("no"), Rest("{permit|deny} ...")], "Remove a line"),
-    spec!(AccessGroup, IFS, Modes::BOTH, [K("ip"), K("access-group"), Arg("WORD"), Arg("{in|out}")], "Filter this interface's traffic"),
-    spec!(NoAccessGroup, IFS, Modes::BOTH, [K("no"), K("ip"), K("access-group"), Arg("WORD"), Arg("{in|out}")], "Stop filtering"),
+    spec!(AclRemark, Modes::ACL, Modes::BOTH, [K("remark"), Rest("LINE")], "A note kept with the list"),
+    spec!(NoAclRemark, Modes::ACL, Modes::BOTH, [K("no"), K("remark"), Rest("LINE")], "Delete a note"),
+    spec!(
+        NoAclEntryLine,
+        Modes::ACL,
+        Modes::BOTH,
+        [K("no"), Rest("{<1-2147483647>|permit ...|deny ...}")],
+        "Remove a line (by number or by its words)"
+    ),
+    spec!(AclSeqLine, Modes::ACL, Modes::BOTH, [Arg("<1-2147483647>"), Rest("{permit|deny} ...")], "Add a line at this sequence number"),
+    spec!(
+        AclResequence,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ip"), K("access-list"), K("resequence"), Arg("WORD"), Arg("<1-2147483647>"), Arg("<1-2147483647>")],
+        "Renumber a list's lines: first number, then the step"
+    ),
+    spec!(
+        NoAccessListRemark,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("access-list"), Arg("<1-199>"), K("remark"), Rest("LINE")],
+        "Delete a note from a numbered list"
+    ),
+    spec!(AccessGroup, ANY_IF, Modes::BOTH, [K("ip"), K("access-group"), Arg("WORD"), Arg("{in|out}")], "Filter this interface's traffic"),
+    spec!(NoAccessGroup, ANY_IF, Modes::BOTH, [K("no"), K("ip"), K("access-group"), Arg("WORD"), Arg("{in|out}")], "Stop filtering"),
     spec!(Accepted, Modes::LINE, Modes::BOTH, [K("access-class"), Rest("WORD {in|out}")], "Restrict remote logins (accepted, not simulated)"),
     spec!(ShowAccessLists, EXECS, Modes::BOTH, [K("show"), K("access-lists")], "Access lists and their matches"),
     spec!(ShowAccessLists, EXECS, Modes::BOTH, [K("show"), K("ip"), K("access-lists")], "Access lists and their matches"),
@@ -1217,6 +1297,107 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowFlash, EXECS, Modes::BOTH, [K("show"), K("flash:")], "Files in flash memory"),
     spec!(ShowFlash, EXECS, Modes::BOTH, [K("show"), K("flash")], "Files in flash memory"),
     spec!(ShowFlash, Modes::EXEC, Modes::BOTH, [K("dir"), K("flash:")], "Files in flash memory"),
+    spec!(
+        ServiceTimestamps,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("service"), K("timestamps"), Arg("{log|debug}"), K("datetime")],
+        "Stamp messages with date and time"
+    ),
+    spec!(
+        ServiceTimestamps,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("service"), K("timestamps"), Arg("{log|debug}"), K("datetime"), Rest("[msec]")],
+        "Stamp messages with date and time (msec: and milliseconds)"
+    ),
+    spec!(
+        NoServiceTimestamps,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("service"), K("timestamps"), Arg("{log|debug}")],
+        "Back to the time of day only"
+    ),
+    spec!(
+        LoggingTrap,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("logging"), K("trap"), Arg("<0-7>|LEVEL")],
+        "The most detailed severity sent to syslog servers"
+    ),
+    spec!(NoLoggingTrap, Modes::CONFIG, Modes::BOTH, [K("no"), K("logging"), K("trap")], "Syslog servers get informational and above"),
+    spec!(
+        LoggingConsole,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("logging"), K("console"), Arg("<0-7>|LEVEL")],
+        "The most detailed severity shown on the console"
+    ),
+    spec!(NoLoggingConsole, Modes::CONFIG, Modes::BOTH, [K("no"), K("logging"), K("console")], "The console shows every severity"),
+    spec!(NtpMaster, Modes::CONFIG, Modes::BOTH, [K("ntp"), K("master")], "Serve NTP from this device's own clock"),
+    spec!(NtpMaster, Modes::CONFIG, Modes::BOTH, [K("ntp"), K("master"), Arg("<1-15>")], "Serve NTP from this device's own clock, at this stratum"),
+    spec!(NoNtpMaster, Modes::CONFIG, Modes::BOTH, [K("no"), K("ntp"), K("master")], "Stop serving NTP"),
+    spec!(NtpAuthenticate, Modes::CONFIG, Modes::BOTH, [K("ntp"), K("authenticate")], "Only take the time from servers that sign with a trusted key"),
+    spec!(NoNtpAuthenticate, Modes::CONFIG, Modes::BOTH, [K("no"), K("ntp"), K("authenticate")], "Take unsigned NTP time"),
+    spec!(
+        NtpAuthKey,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ntp"), K("authentication-key"), Arg("<1-4294967295>"), K("md5"), Arg("KEY")],
+        "Define an NTP key"
+    ),
+    spec!(NoNtpAuthKey, Modes::CONFIG, Modes::BOTH, [K("no"), K("ntp"), K("authentication-key"), Arg("<1-4294967295>")], "Delete an NTP key"),
+    spec!(NtpTrustedKey, Modes::CONFIG, Modes::BOTH, [K("ntp"), K("trusted-key"), Arg("<1-4294967295>")], "Trust time signed with this key"),
+    spec!(NoNtpTrustedKey, Modes::CONFIG, Modes::BOTH, [K("no"), K("ntp"), K("trusted-key"), Arg("<1-4294967295>")], "Stop trusting a key"),
+    spec!(
+        NtpServerKey,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ntp"), K("server"), Arg("A.B.C.D"), K("key"), Arg("<1-4294967295>")],
+        "Take the time from an NTP server that signs with this key"
+    ),
+    spec!(NtpUpdateCalendar, Modes::CONFIG, Modes::BOTH, [K("ntp"), K("update-calendar")], "Let NTP set the hardware calendar too"),
+    spec!(NoNtpUpdateCalendar, Modes::CONFIG, Modes::BOTH, [K("no"), K("ntp"), K("update-calendar")], "Leave the hardware calendar alone"),
+    spec!(
+        ShowIpNatStatistics,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("nat"), K("statistics")],
+        "NAT translations counted, and where NAT applies"
+    ),
+    spec!(ShowFileSystems, EXECS, Modes::BOTH, [K("show"), K("file"), K("systems")], "Flash, NVRAM and network file systems"),
+    spec!(ShowFlash, Modes::EXEC, Modes::BOTH, [K("dir")], "Files in flash memory"),
+    spec!(BootSystem, Modes::CONFIG, Modes::BOTH, [K("boot"), K("system"), Arg("flash:NAME")], "The image to start from"),
+    spec!(NoBootSystem, Modes::CONFIG, Modes::BOTH, [K("no"), K("boot"), K("system")], "Start from the factory image"),
+    spec!(NoBootSystem, Modes::CONFIG, Modes::BOTH, [K("no"), K("boot"), K("system"), Arg("flash:NAME")], "Forget one boot image"),
+    spec!(
+        ConfigRegister,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("config-register"), Arg("0x0-0xFFFF")],
+        "How the device starts (0x2142 skips the startup-config)"
+    ),
+    spec!(
+        CopyStartRun,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("startup-config"), K("running-config")],
+        "Merge the saved configuration into the running one"
+    ),
+    spec!(
+        CopyFlashTftp,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("flash:"), K("tftp:"), Rest("<file> <address> [name on the server]")],
+        "Back up a flash file to a TFTP server"
+    ),
+    spec!(
+        CopyTftpFlash,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("tftp:"), K("flash:"), Rest("<address> <file> [name in flash]")],
+        "Copy a file from a TFTP server into flash"
+    ),
     spec!(ShowUsers, EXECS, Modes::BOTH, [K("show"), K("users")], "Who is logged in, and where"),
     spec!(
         TerminalLength,
@@ -1269,9 +1450,10 @@ pub static SPECS: &[Spec] = &[
         LoggingBuffered,
         Modes::CONFIG,
         Modes::BOTH,
-        [K("logging"), K("buffered"), Rest("[size]")],
-        "Keep messages in the logging buffer (always on here)"
+        [K("logging"), K("buffered"), Rest("[size] [level]")],
+        "Keep messages in the logging buffer, up to a severity"
     ),
+    spec!(LoggingBuffered, Modes::CONFIG, Modes::BOTH, [K("logging"), K("buffered")], "Keep every severity in the logging buffer"),
     spec!(DebugIpIcmp, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("icmp")], "Report echo requests and replies this device receives"),
     spec!(UndebugAll, Modes::EXEC, Modes::BOTH, [K("undebug"), K("all")], "Turn every debug off"),
     spec!(UndebugAll, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("all")], "Turn every debug off"),
@@ -1289,6 +1471,20 @@ pub static SPECS: &[Spec] = &[
     spec!(NoDebugIpOther, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("packet")], "Stop reporting packets"),
     spec!(NoDebugIpOther, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("nat")], "Stop reporting NAT"),
     spec!(NoDebugIpOther, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("dhcp"), K("server"), K("events")], "Stop reporting DHCP"),
+    spec!(
+        DebugDhcpPacket,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("debug"), K("ip"), K("dhcp"), K("server"), K("packet")],
+        "Report every DHCP message this server receives and sends"
+    ),
+    spec!(
+        NoDebugDhcpPacket,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("no"), K("debug"), K("ip"), K("dhcp"), K("server"), K("packet")],
+        "Stop reporting DHCP messages"
+    ),
     spec!(NoDebugIpRip, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("rip")], "Stop reporting RIP updates"),
     spec!(
         DebugIpOspf,
@@ -1317,6 +1513,46 @@ pub static SPECS: &[Spec] = &[
         "HSRP: take over when this router has the highest priority"
     ),
     spec!(NoStandby, IFS, Modes::ROUTER, [K("no"), K("standby"), Arg("<0-255>")], "Remove an HSRP group"),
+    spec!(StandbyVersion, IFS, Modes::ROUTER, [K("standby"), K("version"), Arg("{1|2}")], "HSRP version on this interface"),
+    spec!(NoStandbyVersion, IFS, Modes::ROUTER, [K("no"), K("standby"), K("version")], "Back to HSRP version 1"),
+    spec!(
+        StandbyTrack,
+        IFS,
+        Modes::ROUTER,
+        [K("standby"), Arg("<0-255>"), K("track"), Arg("INTERFACE")],
+        "Lower the priority by 10 while an interface is down"
+    ),
+    spec!(
+        StandbyTrack,
+        IFS,
+        Modes::ROUTER,
+        [K("standby"), Arg("<0-255>"), K("track"), Arg("INTERFACE"), K("decrement"), Arg("<1-255>")],
+        "Lower the priority by this much while an interface is down"
+    ),
+    spec!(NoStandbyTrack, IFS, Modes::ROUTER, [K("no"), K("standby"), Arg("<0-255>"), K("track"), Arg("INTERFACE")], "Stop tracking an interface"),
+    spec!(StandbyVersion, Modes::SVI, Modes::SWITCH, [K("standby"), K("version"), Arg("{1|2}")], "HSRP version on this interface"),
+    spec!(NoStandbyVersion, Modes::SVI, Modes::SWITCH, [K("no"), K("standby"), K("version")], "Back to HSRP version 1"),
+    spec!(
+        StandbyTrack,
+        Modes::SVI,
+        Modes::SWITCH,
+        [K("standby"), Arg("<0-255>"), K("track"), Arg("INTERFACE")],
+        "Lower the priority by 10 while an interface is down"
+    ),
+    spec!(
+        StandbyTrack,
+        Modes::SVI,
+        Modes::SWITCH,
+        [K("standby"), Arg("<0-255>"), K("track"), Arg("INTERFACE"), K("decrement"), Arg("<1-255>")],
+        "Lower the priority by this much while an interface is down"
+    ),
+    spec!(
+        NoStandbyTrack,
+        Modes::SVI,
+        Modes::SWITCH,
+        [K("no"), K("standby"), Arg("<0-255>"), K("track"), Arg("INTERFACE")],
+        "Stop tracking an interface"
+    ),
     spec!(StandbyIp, Modes::SVI, Modes::SWITCH, [K("standby"), Arg("<0-255>"), K("ip"), Arg("A.B.C.D")], "HSRP: the group's virtual gateway address"),
     spec!(StandbyIpGroup0, Modes::SVI, Modes::SWITCH, [K("standby"), K("ip"), Arg("A.B.C.D")], "HSRP group 0's virtual gateway address"),
     spec!(
@@ -1608,6 +1844,9 @@ pub static SPECS: &[Spec] = &[
     spec!(HelperAddress, IFS, Modes::ROUTER, [K("ip"), K("helper-address"), Arg("A.B.C.D")], "Relay DHCP requests to this server"),
     spec!(NoHelperAddress, IFS, Modes::ROUTER, [K("no"), K("ip"), K("helper-address"), Rest("[A.B.C.D]")], "Stop relaying (to one server)"),
     spec!(NoHelperAddress, IFS, Modes::ROUTER, [K("no"), K("ip"), K("helper-address")], "Stop relaying DHCP requests"),
+    spec!(HelperAddress, Modes::SVI, Modes::SWITCH, [K("ip"), K("helper-address"), Arg("A.B.C.D")], "Relay DHCP requests to this server"),
+    spec!(NoHelperAddress, Modes::SVI, Modes::SWITCH, [K("no"), K("ip"), K("helper-address"), Rest("[A.B.C.D]")], "Stop relaying (to one server)"),
+    spec!(NoHelperAddress, Modes::SVI, Modes::SWITCH, [K("no"), K("ip"), K("helper-address")], "Stop relaying DHCP requests"),
     spec!(NoInterfaceVlan, Modes::CONFIG, Modes::SWITCH, [K("no"), K("interface"), K("vlan"), Arg("<1-4094>")], "Delete a VLAN interface"),
     spec!(DefaultGateway, Modes::CONFIG, Modes::SWITCH, [K("ip"), K("default-gateway"), Arg("A.B.C.D")], "Gateway for the switch's own traffic"),
     spec!(NoDefaultGateway, Modes::CONFIG, Modes::SWITCH, [K("no"), K("ip"), K("default-gateway")], "Remove the gateway"),
@@ -1924,7 +2163,6 @@ pub static SPECS: &[Spec] = &[
         "Only the IPv6 routes one source gave"
     ),
     spec!(ClearCounters, Modes::EXEC, Modes::BOTH, [K("clear"), K("counters")], "Reset interface counters"),
-    spec!(PingSize, EXECS, Modes::BOTH, [K("ping"), Arg("A.B.C.D|X:X::X"), K("size"), Arg("<36-18024>")], "Send echo requests of a given size"),
     spec!(ShowSessions, EXECS, Modes::BOTH, [K("show"), K("sessions")], "Telnet and SSH sessions opened from here"),
     spec!(ShowHosts, EXECS, Modes::BOTH, [K("show"), K("hosts")], "Name lookup settings"),
     spec!(ShowMac, EXECS, Modes::SWITCH, [K("show"), K("mac"), K("address-table"), K("dynamic")], "Learned MAC addresses"),
@@ -1954,9 +2192,17 @@ pub static SPECS: &[Spec] = &[
     spec!(DhcpNetwork, Modes::DHCP, Modes::BOTH, [K("network"), Arg("A.B.C.D"), Arg("MASK")], "The pool's network"),
     spec!(DhcpDefaultRouter, Modes::DHCP, Modes::BOTH, [K("default-router"), Arg("A.B.C.D")], "Gateway given to clients"),
     spec!(DhcpDns, Modes::DHCP, Modes::BOTH, [K("dns-server"), Arg("A.B.C.D")], "DNS server given to clients"),
+    spec!(DhcpLease, Modes::DHCP, Modes::BOTH, [K("lease"), Rest("{<0-365> [<0-23> [<0-59>]] | infinite}")], "How long clients keep an address"),
+    spec!(NoDhcpLease, Modes::DHCP, Modes::BOTH, [K("no"), K("lease")], "Back to leases of one day"),
+    spec!(DhcpDomain, Modes::DHCP, Modes::BOTH, [K("domain-name"), Arg("NAME")], "Domain name given to clients"),
+    spec!(NoDhcpDomain, Modes::DHCP, Modes::BOTH, [K("no"), K("domain-name")], "Give clients no domain name"),
     spec!(ShowDhcpBinding, EXECS, Modes::BOTH, [K("show"), K("ip"), K("dhcp"), K("binding")], "Addresses DHCP handed out"),
     spec!(ShowDhcpPool, EXECS, Modes::BOTH, [K("show"), K("ip"), K("dhcp"), K("pool")], "DHCP pools"),
-    spec!(ClearDhcpBinding, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("dhcp"), K("binding"), Rest("*")], "Forget DHCP leases"),
+    spec!(ClearDhcpBinding, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("dhcp"), K("binding"), Rest("{* | A.B.C.D}")], "Forget DHCP leases"),
+    spec!(ShowDhcpConflict, EXECS, Modes::BOTH, [K("show"), K("ip"), K("dhcp"), K("conflict")], "Pool addresses found in use by others"),
+    spec!(ShowDhcpStats, EXECS, Modes::BOTH, [K("show"), K("ip"), K("dhcp"), K("server"), K("statistics")], "DHCP messages counted"),
+    spec!(ClearDhcpConflict, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("dhcp"), K("conflict"), Rest("*")], "Forget address conflicts"),
+    spec!(ClearDhcpStats, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("dhcp"), K("server"), K("statistics")], "Reset the DHCP message counts"),
     spec!(
         StpPriority,
         Modes::CONFIG,
@@ -2637,9 +2883,11 @@ fn resolve_prefix(words: &[&str], mode: Modes, device: Modes) -> PrefixState {
         {
             return PrefixState::Alive(cands.into_iter().filter(|s| matches!(s.path.get(i), Some(Rest(_)))).collect());
         }
+        let exact = cands.iter().any(|s| matches!(s.path.get(i), Some(K(k)) if k.eq_ignore_ascii_case(&lw)));
         cands.retain(|s| match s.path.get(i) {
+            Some(K(k)) if exact => k.eq_ignore_ascii_case(&lw),
             Some(K(k)) => k.to_ascii_lowercase().starts_with(&lw),
-            Some(Arg(_)) | Some(Rest(_)) => true,
+            Some(Arg(_)) | Some(Rest(_)) => !exact,
             None => false,
         });
         if cands.is_empty() {
@@ -2656,9 +2904,10 @@ pub fn help(words: &[&str], partial: &str, mode: Modes, device: Modes) -> Vec<(S
     let i = words.len();
     let lp = partial.to_ascii_lowercase();
     let mut out: Vec<(String, &'static str)> = Vec::new();
-    for s in cands {
+    for s in &cands {
+        let s = *s;
         let item = match s.path.get(i) {
-            Some(K(k)) if k.starts_with(&lp) => Some((k.to_string(), s.help)),
+            Some(K(k)) if k.starts_with(&lp) => Some((k.to_string(), keyword_help(&cands, i, k, s))),
             Some(Arg(a)) | Some(Rest(a)) if partial.is_empty() => Some((a.to_string(), s.help)),
             None if partial.is_empty() && s.path.len() == i => Some(("<cr>".to_string(), "")),
             _ => None,
@@ -2670,6 +2919,44 @@ pub fn help(words: &[&str], partial: &str, mode: Modes, device: Modes) -> Vec<(S
         }
     }
     out
+}
+
+/// The help for keyword `k` at position `i`: the command's own text when `k` ends it or every
+/// command under `k` says the same; otherwise a summary of what the word leads to.
+fn keyword_help(cands: &[&'static Spec], i: usize, k: &str, first: &'static Spec) -> &'static str {
+    let under: Vec<&'static Spec> = cands.iter().copied().filter(|s| matches!(s.path.get(i), Some(K(x)) if *x == k)).collect();
+    if let Some(s) = under.iter().find(|s| s.path.len() == i + 1) {
+        return s.help;
+    }
+    // Past the first word the first command's text describes the word well enough.
+    if i > 0 || under.iter().all(|s| s.help == first.help) {
+        return first.help;
+    }
+    match k {
+        "show" => "Look at the device's state and configuration",
+        "ip" => "IPv4 settings",
+        "ipv6" => "IPv6 settings",
+        "no" => "Undo a setting (or put back its default)",
+        "clear" => "Empty tables and reset counters",
+        "debug" => "Report events as they happen",
+        "undebug" => "Stop reporting events",
+        "copy" => "Copy configurations and files",
+        "interface" => "Configure interfaces",
+        "router" => "Configure a routing protocol",
+        "spanning-tree" => "Spanning-tree settings",
+        "switchport" => "How this switch port carries VLANs",
+        "service" => "Device-wide services",
+        "logging" => "Where log messages go",
+        "ntp" => "Time from NTP servers",
+        "standby" => "HSRP gateway redundancy",
+        "crypto" => "Keys and VPN protection",
+        "access-list" => "Numbered access lists",
+        "line" => "Console and remote-access lines",
+        "ping" => "Send echo requests",
+        "terminal" => "Settings of this session",
+        "write" => "Save the configuration",
+        _ => "Several commands start here (type the word and ? for them)",
+    }
 }
 
 /// Tab completion of the last word: the keyword it uniquely starts, if any.
@@ -2717,7 +3004,7 @@ mod tests {
         let (s, _) = resolve(&["wr"], Modes::EXEC, R).unwrap();
         assert_eq!(s.id, Id::WriteMemory);
         let (s, a) = resolve(&["ping", "1.2.3.4", "rep", "3"], Modes::USER, R).unwrap();
-        assert_eq!((s.id, a), (Id::PingRepeat, vec!["1.2.3.4".to_string(), "3".to_string()]));
+        assert_eq!((s.id, a), (Id::PingRepeat, vec!["1.2.3.4".to_string(), "rep 3".to_string()]));
     }
 
     #[test]

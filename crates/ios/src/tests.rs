@@ -226,8 +226,10 @@ fn modes_prompts_and_errors() {
     assert!(e.contains("overlaps"), "{e}");
     assert!(lab.try_run(r, "ip address 10.1.0.0 255.255.255.0").contains("network or broadcast"));
     assert!(lab.try_run(r, "ip address 10.1.0.1 255.0.255.0").contains("contiguous"));
+    // The marker is under `adress`: past the prompt and `ip `.
+    let indent = lab.prompt(r).len() + 3;
     let e = lab.try_run(r, "ip adress 1.1.1.1 255.0.0.0");
-    assert!(e.starts_with("   ^"), "{e:?}");
+    assert!(e.starts_with(&format!("{}^\n", " ".repeat(indent))), "{e:?}");
     let amb = lab.try_run(r, "d");
     assert!(amb.contains("Ambiguous: `d` could be delay, description, do"), "{amb}");
     assert!(lab.try_run(r, "ip").contains("Incomplete"));
@@ -279,6 +281,42 @@ fn host_shell() {
     assert!(lab.try_run(a, "ping 10.0.0.9").contains("no IP address"));
 }
 
+#[test]
+fn pc_prompt_options_by_typing() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let a = lab.add(DeviceKind::Pc);
+    lab.cable(a, "fa0", r, "g0/0");
+    lab.run(a, "ipconfig 10.0.0.5 255.255.255.0 10.0.0.1");
+    lab.run(r, "en\nconf t\nint g0/0\nip address 10.0.0.1 255.255.255.0\nno shut\nexit\nline vty 0 4\npassword cisco\nlogin\nend");
+    // Every line of the help is a command at the same indentation.
+    let help = lab.run(a, "help");
+    for l in help.lines().skip(1) {
+        assert!(l.starts_with("  ") && !l.starts_with("   "), "{l:?}");
+    }
+    assert!(lab.run(a, "ping -l 100 10.0.0.1").contains("of 100 bytes"));
+    let t = lab.run(a, "ping -t 10.0.0.1");
+    assert!(t.contains("100 sent, 100 answered") && t.contains("until stopped"), "{t}");
+    assert!(lab.try_run(a, "ping -l 9000 10.0.0.1").contains("0-1472"));
+    assert!(lab.try_run(a, "ping -x 10.0.0.1").contains("not a ping option"));
+    // ARP: one entry, then all.
+    assert!(lab.run(a, "arp -a").contains("10.0.0.1"));
+    assert!(lab.run(a, "arp -d 10.0.0.1").contains("removed"));
+    assert!(lab.run(a, "arp -d 10.0.0.1").contains("not in the ARP cache"));
+    assert!(lab.run(a, "arp -a").contains("(no entries)"));
+    // ipv6config /all shows the settings instead of failing.
+    let v6 = lab.run(a, "ipv6config /all");
+    assert!(v6.starts_with("Interface   FastEthernet0") && v6.contains("IPv6        off"), "{v6}");
+    // netstat lists the TCP connection a telnet set up; the router sees it too.
+    assert!(lab.run(a, "netstat").contains("No TCP connections"));
+    lab.run(a, "telnet 10.0.0.1");
+    lab.clis.remove(&a);
+    let ns = lab.run(a, "netstat");
+    assert!(ns.contains("10.0.0.5:") && ns.contains("10.0.0.1:23"), "{ns}");
+    let tcp = lab.run(r, "show tcp brief");
+    assert!(tcp.contains("10.0.0.1:23") && tcp.contains("10.0.0.5:"), "{tcp}");
+}
+
 /// Every command, in every mode it exists in, with empty, hostile and huge arguments: no panic.
 #[test]
 fn every_command_survives_hostile_arguments() {
@@ -325,6 +363,8 @@ fn every_command_survives_hostile_arguments() {
                     "en\nconf t\nrouter eigrp 1",
                     "en\nconf t\nint lo0",
                     "en\nconf t\nrouter ospf 1",
+                    "en\nconf t\nip access-list extended X",
+                    "en\nconf t\nip dhcp pool P",
                     "en\nconf t\ntelephony-service\nmax-dn 4\nmax-ephones 4\nexit\nephone-dn 1",
                     "en\nconf t\ntelephony-service\nmax-ephones 4\nexit\nephone 1",
                 ] {
@@ -384,6 +424,67 @@ fn dhcp_by_typing() {
     assert!(lab.run(r, "show ip dhcp binding").contains("0 bindings"));
     assert!(lab.try_run(r, "conf t").is_empty() || true);
     assert!(lab.try_run(r, "no ip dhcp pool NOPE").contains("No pool"));
+}
+
+#[test]
+fn dhcp_server_details_by_typing() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let s = lab.add(DeviceKind::Switch);
+    let a = lab.add(DeviceKind::Pc);
+    let b = lab.add(DeviceKind::Pc);
+    lab.cable(r, "g0/0", s, "g0/1");
+    lab.cable(a, "fa0", s, "fa0/1");
+    lab.cable(b, "fa0", s, "fa0/2");
+    lab.run(
+        r,
+        "en\nconf t\nint g0/0\nip add 192.168.10.1 255.255.255.0\nno shut\nexit\nip dhcp excluded-address 192.168.10.1 192.168.10.9\n\
+         ip dhcp pool LAN\nnetwork 192.168.10.0 255.255.255.0\ndefault-router 192.168.10.1\ndomain-name lab.local\nlease 2 3\nend",
+    );
+    // PC2 took the first free address by hand: the server notices and passes over it.
+    lab.run(b, "ipconfig 192.168.10.10 255.255.255.0 192.168.10.1");
+    lab.run(r, "debug ip dhcp server packet");
+    let out = lab.run(a, "ipconfig /renew");
+    assert!(out.contains("192.168.10.11/24") && out.contains("domain lab.local"), "{out}");
+    let all = lab.run(a, "ipconfig /all");
+    assert!(all.contains("Domain name lab.local") && all.contains("Lease time  2 days 3 hours") && all.contains("DHCP server 192.168.10.1"), "{all}");
+    assert!(!lab.run(a, "ipconfig").contains("Domain name"), "plain ipconfig stays short");
+    let log = lab.run(r, "show logging");
+    assert!(log.contains("DHCP packet debug: DISCOVER from") && log.contains("DHCP packet debug: ACK to"), "{log}");
+    lab.run(r, "no debug ip dhcp server packet");
+    let conflict = lab.run(r, "show ip dhcp conflict");
+    assert!(conflict.contains("192.168.10.10") && conflict.contains("1 conflict"), "{conflict}");
+    let stats = lab.run(r, "show ip dhcp server statistics");
+    assert!(
+        stats.contains("DISCOVER     1") && stats.contains("REQUEST      1") && stats.contains("OFFER        1") && stats.contains("ACK          1"),
+        "{stats}"
+    );
+    assert!(lab.run(r, "show ip dhcp pool").contains("Lease time       2 days 3 hours"));
+    // The pool's settings survive a reload; `lease infinite` too.
+    lab.run(r, "conf t\nip dhcp pool LAN\nlease infinite\nend");
+    let run = lab.run(r, "show run");
+    assert!(run.contains(" default-router 192.168.10.1\n domain-name lab.local\n lease infinite"), "{run}");
+    lab.run(r, "copy run start\nreload\nen");
+    assert_eq!(lab.run(r, "show run"), run);
+    lab.run(r, "conf t\nip dhcp pool LAN\nlease 0 0 30\nend");
+    assert!(lab.run(r, "show run").contains(" lease 0 0 30"));
+    // Clearing: one binding, all of them, conflicts and counters.
+    lab.run(a, "ipconfig /renew");
+    assert!(lab.try_run(r, "clear ip dhcp binding 10.9.9.9").contains("not leased"));
+    lab.run(r, "clear ip dhcp binding 192.168.10.11");
+    assert!(lab.run(r, "show ip dhcp binding").contains("0 bindings"));
+    lab.run(a, "ipconfig /renew");
+    lab.run(r, "clear ip dhcp binding *\nclear ip dhcp conflict *\nclear ip dhcp server statistics");
+    assert!(lab.run(r, "show ip dhcp binding").contains("0 bindings"));
+    assert!(lab.run(r, "show ip dhcp conflict").starts_with("No address conflicts"));
+    assert!(lab.run(r, "show ip dhcp server statistics").contains("DISCOVER     0"));
+    // Bad values.
+    lab.run(r, "conf t\nip dhcp pool LAN");
+    for bad in ["lease 366", "lease 1 24", "lease 1 2 60", "lease 0", "lease 1 2 3 4", "lease forever", "domain-name bad_name!"] {
+        assert!(lab.try_run(r, bad).starts_with('%'), "{bad}");
+    }
+    lab.run(r, "no domain-name\nno lease\nend");
+    assert!(!lab.run(r, "show run").contains("lease"));
 }
 
 #[test]
@@ -619,6 +720,74 @@ fn access_lists_by_typing() {
     assert!(lab.try_run(r, "access-list 500 permit any").contains("1-99"));
     lab.run(r, "end\nclear access-list counters");
     assert!(!lab.run(r, "show access-lists").contains("matches)"));
+}
+
+#[test]
+fn access_list_sequence_numbers_icmp_types_and_established_by_typing() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let a = lab.add(DeviceKind::Pc);
+    let c = lab.add(DeviceKind::Pc);
+    lab.cable(a, "fa0", r, "g0/0");
+    lab.cable(c, "fa0", r, "g0/1");
+    lab.run(a, "ipconfig 192.168.1.10 255.255.255.0 192.168.1.1");
+    lab.run(c, "ipconfig 10.0.0.10 255.255.255.0 10.0.0.1");
+    lab.run(r, "en\nconf t\nint g0/0\nip add 192.168.1.1 255.255.255.0\nno shut\nint g0/1\nip add 10.0.0.1 255.255.255.0\nno shut\nend");
+    lab.run(a, "ping 10.0.0.10");
+    // From the outside only answers come in: echo replies and established TCP.
+    lab.run(
+        r,
+        "conf t\nip access-list extended OUTSIDE-IN\nremark answers only\n20 permit tcp any any established\n10 permit icmp any any echo-reply\n\
+         30 deny ip any any\nexit\nint g0/1\nip access-group OUTSIDE-IN in\nend",
+    );
+    assert!(lab.run(a, "ping 10.0.0.10").contains("4 answered"));
+    assert!(lab.run(c, "ping 192.168.1.10").contains("0 answered"));
+    let show = lab.run(r, "show access-lists");
+    assert!(
+        show.contains("    10 permit icmp any any echo-reply (4 matches)\n    20 permit tcp any any established\n    30 deny ip any any (4 matches)"),
+        "{show}"
+    );
+    // Editing by number: insert, delete, renumber.
+    lab.run(r, "conf t\nip access-list extended OUTSIDE-IN\n15 permit icmp any any echo\nno 30");
+    assert!(lab.try_run(r, "15 permit icmp any any time-exceeded").contains("already has a line 15"));
+    assert!(lab.try_run(r, "0 permit ip any any").starts_with('%'));
+    assert!(lab.try_run(r, "no 99").contains("no line 99"));
+    lab.run(r, "end");
+    assert!(lab.run(c, "ping 192.168.1.10").contains("4 answered"));
+    lab.run(r, "conf t\nip access-list resequence OUTSIDE-IN 100 50\nend");
+    let show = lab.run(r, "show access-lists");
+    assert!(
+        show.contains("    100 permit icmp any any echo-reply")
+            && show.contains("    150 permit icmp any any echo")
+            && show.contains("    200 permit tcp any any established"),
+        "{show}"
+    );
+    // Numbered lists take numbers too, under `ip access-list standard N`.
+    lab.run(
+        r,
+        "conf t\naccess-list 10 permit host 10.0.0.10\naccess-list 10 remark the server\nip access-list standard 10\n5 deny host 10.0.0.99\nend",
+    );
+    let show = lab.run(r, "show access-lists");
+    assert!(show.contains("Standard access list 10\n    5 deny host 10.0.0.99\n    10 permit host 10.0.0.10"), "{show}");
+    // The configuration keeps remarks and options and survives a reload.
+    let run = lab.run(r, "show run");
+    assert!(
+        run.contains(
+            "ip access-list extended OUTSIDE-IN\n remark answers only\n permit icmp any any echo-reply\n permit icmp any any echo\n permit tcp any any established"
+        ),
+        "{run}"
+    );
+    assert!(run.contains("access-list 10 remark the server\naccess-list 10 deny host 10.0.0.99\naccess-list 10 permit host 10.0.0.10"), "{run}");
+    lab.run(r, "copy run start\nreload");
+    lab.run(r, "en");
+    assert_eq!(lab.run(r, "show run"), run);
+    lab.run(r, "conf t\nno access-list 10 remark the server\nip access-list extended OUTSIDE-IN\nno remark answers only\nend");
+    assert!(!lab.run(r, "show run").contains("remark"));
+    // Options only where they make sense.
+    lab.run(r, "conf t");
+    assert!(lab.try_run(r, "access-list 120 permit udp any any established").contains("Unexpected"));
+    assert!(lab.try_run(r, "access-list 120 permit icmp any any bogus").contains("Unexpected"));
+    assert!(lab.try_run(r, "ip access-list resequence NOPE 10 10").contains("No access list"));
 }
 
 #[test]
@@ -1003,6 +1172,47 @@ fn multilayer_switch_by_typing() {
 }
 
 #[test]
+fn relay_and_access_lists_on_vlan_interfaces_by_typing() {
+    let mut lab = Lab::new();
+    let ml = lab.t.add_model(netlabcraft_model::models::find("Switch-ML-24").unwrap(), None, 0.0, 0.0).unwrap();
+    let r = lab.add(DeviceKind::Router);
+    let a = lab.add(DeviceKind::Pc);
+    let b = lab.add(DeviceKind::Pc);
+    lab.cable(a, "fa0", ml, "fa0/1");
+    lab.cable(b, "fa0", ml, "fa0/2");
+    lab.cable(ml, "g0/1", r, "g0/0");
+    lab.run(b, "ipconfig 192.168.20.10 255.255.255.0 192.168.20.1");
+    lab.run(
+        ml,
+        "en\nconf t\nip routing\nvlan 10\nvlan 20\nexit\nint fa0/1\nswitchport access vlan 10\nint fa0/2\nswitchport access vlan 20\nexit\n\
+         int g0/1\nno switchport\nip address 10.0.0.1 255.255.255.252\nexit\n\
+         interface vlan 10\nip address 192.168.10.1 255.255.255.0\nip helper-address 10.0.0.2\nno shut\n\
+         interface vlan 20\nip address 192.168.20.1 255.255.255.0\nno shut\nend",
+    );
+    // The router keeps the pool for VLAN 10; the switch relays to it.
+    lab.run(
+        r,
+        "en\nconf t\nint g0/0\nip address 10.0.0.2 255.255.255.252\nno shut\nexit\nip route 192.168.0.0 255.255.0.0 10.0.0.1\n\
+         ip dhcp excluded-address 192.168.10.1\nip dhcp pool V10\nnetwork 192.168.10.0 255.255.255.0\ndefault-router 192.168.10.1\nend",
+    );
+    let out = lab.run(a, "ipconfig /renew");
+    assert!(out.contains("192.168.10.2/24") && out.contains("gateway 192.168.10.1"), "{out}");
+    lab.run(a, "ping 192.168.20.10");
+    assert!(lab.run(a, "ping 192.168.20.10").contains("4 answered"));
+    // An access list on VLAN 20's interface keeps VLAN 10 out.
+    lab.run(ml, "conf t\naccess-list 20 deny 192.168.10.0 0.0.0.255\naccess-list 20 permit any\ninterface vlan 20\nip access-group 20 out\nend");
+    assert!(lab.run(a, "ping 192.168.20.10").contains(" 0 answered"));
+    let run = lab.run(ml, "show run");
+    assert!(run.contains("interface Vlan10\n ip address 192.168.10.1 255.255.255.0\n ip helper-address 10.0.0.2"), "{run}");
+    assert!(run.contains("interface Vlan20\n ip address 192.168.20.1 255.255.255.0\n ip access-group 20 out"), "{run}");
+    lab.run(ml, "copy run start\nreload\nen");
+    assert_eq!(lab.run(ml, "show run"), run);
+    lab.run(ml, "conf t\ninterface vlan 20\nno ip access-group 20 out\ninterface vlan 10\nno ip helper-address\nend");
+    let run = lab.run(ml, "show run");
+    assert!(!run.contains("helper-address") && !run.contains("access-group"), "{run}");
+}
+
+#[test]
 fn rip_by_typing() {
     let mut lab = Lab::new();
     let r1 = lab.add(DeviceKind::Router);
@@ -1191,6 +1401,74 @@ fn logging_and_debug_by_typing() {
 }
 
 #[test]
+fn console_polish_by_typing() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let a = lab.add(DeviceKind::Pc);
+    lab.cable(a, "fa0", r, "g0/0");
+    lab.run(a, "ipconfig 10.0.0.5 255.255.255.0 10.0.0.1");
+    lab.run(r, "en");
+    // The marker sits under the word, past the prompt.
+    let e = lab.try_run(r, "show bogus");
+    assert!(e.starts_with("        ^\n"), "{e:?}");
+    let e = lab.try_run(r, "  show bogus");
+    assert!(e.starts_with("          ^\n"), "{e:?}");
+    // `ip ?` on an interface lists IPv4 commands only.
+    lab.run(r, "conf t\nint g0/0\nip address 10.0.0.1 255.255.255.0\nno shut");
+    let h = lab.try_run(r, "ip ?");
+    assert!(h.contains("address") && !h.lines().any(|l| l.trim_start().starts_with("traffic-filter") || l.trim_start().starts_with("nd ")), "{h}");
+    assert!(lab.try_run(r, "ipv6 ?").contains("traffic-filter"));
+    lab.run(r, "end");
+    // A first word's help summarises the word.
+    let h = lab.try_run(r, "?");
+    let show = h.lines().find(|l| l.trim_start().starts_with("show ")).unwrap_or_default().to_string();
+    assert!(show.contains("Look at the device's state"), "{h}");
+    let ping = h.lines().find(|l| l.trim_start().starts_with("ping ")).unwrap_or_default().to_string();
+    assert!(ping.contains("Send echo requests"), "{ping}");
+    // Extended ping.
+    let p = lab.run(r, "ping 10.0.0.5 repeat 3 size 200 source g0/0");
+    assert!(p.contains("Sending 3 ICMP echo requests") && p.contains(".!!"), "{p}");
+    let p = lab.run(r, "ping 10.0.0.5 rep 2 sou 10.0.0.1 time 1");
+    assert!(p.contains("!!"), "{p}");
+    for bad in [
+        "ping 10.0.0.5 repeat 0",
+        "ping 10.0.0.5 size 20",
+        "ping 10.0.0.5 source 9.9.9.9",
+        "ping 10.0.0.5 source g0/7",
+        "ping 10.0.0.5 colour red",
+        "ping 10.0.0.5 repeat",
+    ] {
+        assert!(lab.try_run(r, bad).starts_with('%'), "{bad}");
+    }
+    // Traffic counters.
+    let tr = lab.run(r, "show ip traffic");
+    assert!(tr.contains("ICMP echo replies") && !tr.contains("ICMP echo replies   0"), "{tr}");
+    assert!(lab.run(r, "show tcp brief").contains("No TCP connections"));
+    // History size: the line setting, saved with the configuration, and the session one.
+    lab.run(r, "conf t\nline con 0\nhistory size 2\nend");
+    lab.clis.remove(&r);
+    lab.run(r, "en\nshow version\nshow clock");
+    let hist = lab.run(r, "show history");
+    assert!(!hist.contains("show version") && hist.contains("show clock"), "{hist}");
+    assert!(lab.run(r, "show run").contains("history size 2"));
+    lab.run(r, "terminal history size 20\nshow ip route\nshow arp");
+    assert!(lab.run(r, "show history").contains("show ip route"));
+    lab.run(r, "conf t\nline con 0");
+    assert!(lab.try_run(r, "history size 300").starts_with('%'));
+    lab.run(r, "no history size\nend");
+    assert!(!lab.run(r, "show run").contains("history size"));
+}
+
+#[test]
+fn solicited_node_group_listed_once() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    lab.run(r, "en\nconf t\nipv6 unicast-routing\nint g0/0\nipv6 address 2001:db8::1/64\nipv6 address fe80::1 link-local\nno shut\nend");
+    let out = lab.run(r, "show ipv6 interface g0/0");
+    assert_eq!(out.matches("FF02::1:FF00:1").count(), 1, "{out}");
+}
+
+#[test]
 fn hsrp_by_typing() {
     let mut lab = Lab::new();
     let r1 = lab.add(DeviceKind::Router);
@@ -1237,6 +1515,66 @@ fn hsrp_by_typing() {
     assert!(run.contains(" standby 1 ip 192.168.1.254\n standby 1 preempt"), "{run}");
     lab.run(r2, "conf t\nint g0/0");
     assert!(lab.try_run(r2, "standby 2 ip 172.16.0.1").contains("not on"));
+}
+
+#[test]
+fn hsrp_version_2_and_interface_tracking_by_typing() {
+    let mut lab = Lab::new();
+    let r1 = lab.add(DeviceKind::Router);
+    let r2 = lab.add(DeviceKind::Router);
+    let s1 = lab.add(DeviceKind::Switch);
+    let s2 = lab.add(DeviceKind::Switch);
+    let pc = lab.add(DeviceKind::Pc);
+    let srv = lab.add(DeviceKind::Server);
+    lab.cable(pc, "fa0", s1, "fa0/1");
+    lab.cable(r1, "g0/0", s1, "fa0/2");
+    lab.cable(r2, "g0/0", s1, "fa0/3");
+    lab.cable(r1, "g0/1", s2, "fa0/2");
+    lab.cable(r2, "g0/1", s2, "fa0/3");
+    lab.cable(srv, "g0", s2, "fa0/1");
+    lab.run(pc, "ipconfig 192.168.1.10 255.255.255.0 192.168.1.254");
+    lab.run(srv, "ipconfig 10.0.0.10 255.255.255.0 10.0.0.254");
+    lab.run(
+        r1,
+        "en\nconf t\nint g0/0\nip address 192.168.1.1 255.255.255.0\nstandby version 2\nstandby 1 ip 192.168.1.254\nstandby 1 priority 110\n\
+         standby 1 preempt\nstandby 1 track g0/1 decrement 20\nno shut\nint g0/1\nip address 10.0.0.1 255.255.255.0\nstandby ip 10.0.0.254\nno shut\nend",
+    );
+    lab.run(
+        r2,
+        "en\nconf t\nint g0/0\nip address 192.168.1.2 255.255.255.0\nstandby version 2\nstandby 1 ip 192.168.1.254\nstandby 1 preempt\nno shut\n\
+         int g0/1\nip address 10.0.0.2 255.255.255.0\nstandby ip 10.0.0.254\nno shut\nend",
+    );
+    let sb = lab.run(r1, "show standby");
+    assert!(
+        sb.contains("Group 1 on GigabitEthernet0/0: active (priority 110, preempt)") && sb.contains("Version 2") && sb.contains("0000.0c9f.f001"),
+        "{sb}"
+    );
+    lab.run(pc, "ping 10.0.0.10");
+    assert!(lab.run(pc, "arp -a").contains("00:00:0c:9f:f0:01"));
+    // R1's uplink fails: its priority drops to 90 and R2 (100, preempt) takes over.
+    lab.run(r1, "conf t\nint g0/1\nshutdown\nend");
+    let sb = lab.run(r1, "show standby");
+    assert!(
+        sb.contains("Group 1 on GigabitEthernet0/0: standby (priority 90") && sb.contains("lowered from 110") && sb.contains("GigabitEthernet0/1"),
+        "{sb}"
+    );
+    assert!(lab.run(r2, "show standby").contains("Group 1 on GigabitEthernet0/0: active"));
+    lab.run(pc, "ping 10.0.0.10");
+    assert!(lab.run(pc, "ping 10.0.0.10").contains("4 answered"));
+    // The uplink comes back: R1 is active again.
+    lab.run(r1, "conf t\nint g0/1\nno shutdown\nend");
+    assert!(lab.run(r1, "show standby").contains("Group 1 on GigabitEthernet0/0: active (priority 110"));
+    let run = lab.run(r1, "show running-config interface g0/0");
+    assert!(run.contains(" standby version 2\n standby 1 ip 192.168.1.254\n standby 1 priority 110\n standby 1 preempt\n standby 1 track GigabitEthernet0/1 decrement 20"), "{run}");
+    let all = lab.run(r1, "show run");
+    lab.run(r1, "copy run start\nreload\nen");
+    assert_eq!(lab.run(r1, "show run"), all);
+    lab.run(r1, "conf t\nint g0/0\nno standby 1 track g0/1\nno standby version");
+    let run = lab.run(r1, "do show running-config interface g0/0");
+    assert!(!run.contains("track") && !run.contains("version"), "{run}");
+    for bad in ["standby version 3", "standby 1 track g9/9", "standby 1 track g0/1 decrement 0", "no standby 7 track g0/1"] {
+        assert!(lab.try_run(r1, bad).starts_with('%'), "{bad}");
+    }
 }
 
 #[test]
@@ -1833,6 +2171,190 @@ fn ntp_syslog_and_tftp_by_typing() {
     assert!(lab.try_run(r, "copy tftp: running-config 10.0.0.100 nope").contains("no such file"));
     assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("TFTP data block 2")));
     assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("NTP time from 10.0.0.100")));
+}
+
+#[test]
+fn log_timestamps_and_severity_filters_by_typing() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let srv = lab.add(DeviceKind::Server);
+    lab.cable(srv, "g0", r, "g0/0");
+    lab.run(srv, "ipconfig 10.0.0.100 255.255.255.0 10.0.0.1");
+    lab.run(r, "en\nconf t\nint g0/0\nip address 10.0.0.1 255.255.255.0\nno shut\nend\nping 10.0.0.100\nclock set 10:20:30 30 Oct 2026");
+    lab.run(
+        r,
+        "conf t\nservice timestamps log datetime msec\nservice timestamps debug datetime\nlogging host 10.0.0.100\nlogging trap warnings\nend",
+    );
+    let log = lab.run(r, "show logging");
+    assert!(log.contains("[Oct 30 2026 10:20:3") && log.contains("] Configuration changed from the console"), "{log}");
+    assert!(log.contains("Levels: console debugging, buffer debugging, syslog servers warnings"), "{log}");
+    // The debug stamp has no milliseconds.
+    lab.run(r, "debug ip icmp");
+    lab.run(srv, "ping 10.0.0.1");
+    let log = lab.run(r, "show logging");
+    let debug_line = log.lines().find(|l| l.contains("ICMP debug")).unwrap_or_default().to_string();
+    assert!(debug_line.starts_with("[Oct 30 2026 ") && !debug_line.split(']').next().unwrap_or_default().contains('.'), "{log}");
+    lab.run(r, "undebug all");
+    // Notifications (5) stay off the syslog server at `warnings` (4); errors (3) go.
+    lab.run(r, "conf t\nint g0/1\nno shut\nend");
+    lab.run(r, "ping 10.0.0.100");
+    let got = lab.sim.state(srv).map(|s| s.syslog.iter().map(|x| x.2.clone()).collect::<Vec<_>>()).unwrap_or_default();
+    assert!(!got.iter().any(|m| m.contains("Configuration changed")), "{got:?}");
+    // `logging buffered errors` keeps notifications out of the buffer; `logging console`
+    // filters what the console prints.
+    lab.sim.take_console(r);
+    lab.run(r, "clear logging\nconf t\nlogging buffered 8192 errors\nlogging console 0\nend");
+    let log = lab.run(r, "show logging");
+    assert!(!log.contains("Configuration changed"), "{log}");
+    assert!(lab.sim.take_console(r).iter().all(|l| !l.contains("Configuration changed")));
+    let run = lab.run(r, "show run");
+    for l in [
+        "service timestamps log datetime msec",
+        "service timestamps debug datetime",
+        "logging buffered errors",
+        "logging console emergencies",
+        "logging trap warnings",
+    ] {
+        assert!(run.contains(l), "{l}\n{run}");
+    }
+    lab.run(r, "copy run start\nreload\nen");
+    assert_eq!(lab.run(r, "show run"), run);
+    lab.run(r, "conf t\nno service timestamps log\nno logging trap\nno logging console\nlogging buffered\nend");
+    let run = lab.run(r, "show run");
+    assert!(
+        !run.contains("timestamps log") && !run.contains("logging trap") && !run.contains("logging console") && !run.contains("logging buffered"),
+        "{run}"
+    );
+    lab.run(r, "conf t");
+    for bad in
+        ["logging trap 8", "logging trap loud", "logging console e", "service timestamps log datetime sometimes", "service timestamps trace datetime"]
+    {
+        assert!(lab.try_run(r, bad).starts_with('%'), "{bad}");
+    }
+}
+
+#[test]
+fn ntp_master_and_authentication_by_typing() {
+    let mut lab = Lab::new();
+    let r1 = lab.add(DeviceKind::Router);
+    let r2 = lab.add(DeviceKind::Router);
+    lab.cable(r1, "g0/0", r2, "g0/0");
+    lab.run(r1, "en\nconf t\nint g0/0\nip address 10.0.0.1 255.255.255.0\nno shut\nend\nclock set 09:00:00 15 Mar 2030");
+    lab.run(r2, "en\nconf t\nint g0/0\nip address 10.0.0.2 255.255.255.0\nno shut\nend\nping 10.0.0.1");
+    // R1 is the master: R2 follows its clock.
+    lab.run(r1, "conf t\nntp master 3\nntp authentication-key 1 md5 S3cret\nend");
+    assert!(lab.run(r1, "show ntp status").contains("stratum 3"));
+    lab.run(r2, "conf t");
+    assert!(lab.run(r2, "ntp server 10.0.0.1").contains("synchronised with 10.0.0.1"));
+    lab.run(r2, "end");
+    assert!(lab.run(r2, "show clock").contains("2030"));
+    lab.run(r2, "conf t\nno ntp server 10.0.0.1\nend\nclock set 09:00:00 1 Jan 2027");
+    // Authentication with the wrong key: R2 stays unsynchronised.
+    lab.run(r2, "conf t\nntp authenticate\nntp authentication-key 1 md5 wrong\nntp trusted-key 1");
+    let out = lab.run(r2, "ntp server 10.0.0.1 key 1");
+    assert!(out.contains("no time this device accepts"), "{out}");
+    lab.run(r2, "end");
+    assert!(lab.run(r2, "show ntp status").contains("Clock not synchronised"));
+    assert!(lab.run(r2, "show clock").contains("2027"));
+    // An untrusted key is refused too, even when it matches.
+    lab.run(r2, "conf t\nntp authentication-key 1 md5 S3cret\nno ntp trusted-key 1\nntp server 10.0.0.1 key 1\nend");
+    assert!(lab.run(r2, "show ntp status").contains("Clock not synchronised"));
+    // The right, trusted key: synchronised.
+    lab.run(r2, "conf t\nntp trusted-key 1");
+    assert!(lab.run(r2, "ntp server 10.0.0.1 key 1").contains("synchronised with 10.0.0.1"));
+    lab.run(r2, "ntp update-calendar\nend");
+    let st = lab.run(r2, "show ntp status");
+    assert!(st.contains("Clock synchronised with 10.0.0.1") && st.contains("Authentication on") && st.contains("server 10.0.0.1, key 1"), "{st}");
+    assert!(lab.run(r2, "show clock").contains("2030"));
+    let run = lab.run(r2, "show run");
+    for l in ["ntp authenticate", "ntp authentication-key 1 md5 S3cret", "ntp trusted-key 1", "ntp server 10.0.0.1 key 1", "ntp update-calendar"] {
+        assert!(run.contains(l), "{l}\n{run}");
+    }
+    assert!(!run.contains("ntp server 10.0.0.1\n"), "the keyed line replaces the plain one\n{run}");
+    lab.run(r2, "copy run start\nreload\nen");
+    assert_eq!(lab.run(r2, "show run"), run);
+    assert!(lab.run(r1, "show run").contains("ntp master 3"));
+    lab.run(r2, "conf t");
+    for bad in ["ntp master 16", "ntp authentication-key 0 md5 x", "ntp trusted-key abc", "ntp server 10.0.0.1 key 0"] {
+        assert!(lab.try_run(r2, bad).starts_with('%'), "{bad}");
+    }
+}
+
+#[test]
+fn flash_images_boot_and_password_recovery_by_typing() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let srv = lab.add(DeviceKind::Server);
+    lab.cable(srv, "g0", r, "g0/0");
+    lab.run(srv, "ipconfig 10.0.0.100 255.255.255.0 10.0.0.1");
+    lab.run(r, "en\nconf t\nint g0/0\nip address 10.0.0.1 255.255.255.0\nno shut\nend\nping 10.0.0.100");
+    let image = format!("netlabcraft-router-{}.bin", env!("CARGO_PKG_VERSION"));
+    assert!(lab.run(r, "dir").contains(&image));
+    assert!(lab.run(r, "show file systems").contains("flash:"));
+    // Back the image up, then restore it under another name and boot from it.
+    let up = lab.run(r, &format!("copy flash: tftp: {image} 10.0.0.100"));
+    assert!(up.contains("33591768 bytes") && up.contains(&format!("tftp://10.0.0.100/{image}")), "{up}");
+    assert!(lab.t.device(srv).unwrap().services.tftp.files.iter().any(|f| f.name == image));
+    let down = lab.run(r, &format!("copy tftp: flash: 10.0.0.100 {image} backup.bin"));
+    assert!(down.contains("flash:backup.bin (33591768 bytes)"), "{down}");
+    assert!(lab.run(r, "dir flash:").contains("backup.bin"));
+    assert!(lab.try_run(r, "copy tftp: flash: 10.0.0.100 missing.bin").contains("no such file"));
+    assert!(lab.try_run(r, "copy flash: tftp: nothing.bin 10.0.0.100").contains("no such file"));
+    lab.run(r, "conf t\nboot system flash:backup.bin\nend");
+    assert!(lab.run(r, "show boot").contains("Boot image: flash:backup.bin"));
+    assert!(lab.run(r, "show version").contains("System image flash:backup.bin"));
+    // Password recovery: the register skips the saved configuration at the next reload.
+    lab.run(r, "conf t\nenable secret Forgotten1\nend\ncopy run start");
+    lab.run(r, "conf t");
+    assert!(lab.run(r, "config-register 0x2142").contains("0x2142 at the next reload"));
+    lab.run(r, "end");
+    assert!(lab.run(r, "show version").contains("Configuration register 0x2142"));
+    let out = lab.run(r, "reload");
+    assert!(out.contains("0x2142"), "{out}");
+    assert!(lab.run(r, "en").is_empty(), "no secret asked: the saved configuration was skipped");
+    assert!(!lab.run(r, "show run").contains("enable secret"));
+    assert!(lab.run(r, "show startup-config").contains("enable secret"), "still in NVRAM");
+    lab.run(r, "copy startup-config running-config");
+    assert_eq!(lab.prompt(r), "R1#");
+    lab.run(r, "conf t\nenable secret Remembered2\nconfig-register 0x2102\nend\ncopy run start\nreload");
+    lab.run(r, "en");
+    assert_eq!(lab.prompt(r), "Password: ");
+    lab.run(r, "Remembered2");
+    assert_eq!(lab.prompt(r), "R1#");
+    let run = lab.run(r, "show run");
+    assert!(run.contains("boot system flash:backup.bin") && !run.contains("config-register"), "{run}");
+    lab.run(r, "conf t");
+    for bad in ["config-register 0xZZ", "config-register 0x12345", "boot system flash:", "boot system flash:../x"] {
+        assert!(lab.try_run(r, bad).starts_with('%'), "{bad}");
+    }
+}
+
+#[test]
+fn nat_statistics_by_typing() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let a = lab.add(DeviceKind::Pc);
+    let srv = lab.add(DeviceKind::Server);
+    lab.cable(a, "fa0", r, "g0/0");
+    lab.cable(srv, "g0", r, "g0/1");
+    lab.run(a, "ipconfig 192.168.1.10 255.255.255.0 192.168.1.1");
+    lab.run(srv, "ipconfig 203.0.113.10 255.255.255.0 203.0.113.1");
+    lab.run(
+        r,
+        "en\nconf t\nint g0/0\nip address 192.168.1.1 255.255.255.0\nip nat inside\nno shut\nint g0/1\nip address 203.0.113.1 255.255.255.0\nip nat outside\nno shut\nexit\n\
+         access-list 1 permit 192.168.1.0 0.0.0.255\nip nat inside source list 1 interface g0/1 overload\nip nat inside source static 192.168.1.20 203.0.113.20\nend",
+    );
+    lab.run(a, "ping 203.0.113.10");
+    let st = lab.run(r, "show ip nat statistics");
+    assert!(
+        st.contains("Inside interfaces:  GigabitEthernet0/0")
+            && st.contains("Outside interfaces: GigabitEthernet0/1")
+            && st.contains("1 static")
+            && st.contains("access list 1")
+            && st.contains("(overload)"),
+        "{st}"
+    );
+    assert!(!st.contains("0 dynamic"), "{st}");
 }
 
 #[test]

@@ -48,6 +48,29 @@ impl Ntp {
     }
 }
 
+/// Appends an NTP message authentication code (RFC 5905 §7.3): the key identifier, then the MD5
+/// digest of the key followed by the 48-byte header.
+pub fn ntp_sign(packet: &[u8], key_id: u32, secret: &str) -> Vec<u8> {
+    let mut v = packet.get(..48).unwrap_or(packet).to_vec();
+    let digest = crate::md5::md5(&[secret.as_bytes(), &v].concat());
+    v.extend_from_slice(&key_id.to_be_bytes());
+    v.extend_from_slice(&digest);
+    v
+}
+
+/// The key identifier of a signed NTP message.
+pub fn ntp_key_id(b: &[u8]) -> Option<u32> {
+    b.get(48..52).filter(|_| b.len() >= 68).map(|k| u32::from_be_bytes([k[0], k[1], k[2], k[3]]))
+}
+
+/// Whether a signed NTP message's digest matches this key.
+pub fn ntp_verify(b: &[u8], secret: &str) -> bool {
+    match (b.get(..48), b.get(52..68)) {
+        (Some(head), Some(mac)) => crate::md5::md5(&[secret.as_bytes(), head].concat()) == mac,
+        _ => false,
+    }
+}
+
 /// A syslog message (RFC 5424 header, facility local7, severity notice).
 pub fn syslog_encode(host: &str, msg: &str) -> Vec<u8> {
     format!("<189>1 - {host} netlabcraft - - - {msg}").into_bytes()
@@ -116,6 +139,23 @@ impl Tftp {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn ntp_signatures() {
+        let p = Ntp { server: true, stratum: 3, time: 1_800_000_000 }.encode();
+        let signed = ntp_sign(&p, 7, "secret");
+        assert_eq!(signed.len(), 68);
+        assert_eq!(ntp_key_id(&signed), Some(7));
+        assert!(ntp_verify(&signed, "secret"));
+        assert!(!ntp_verify(&signed, "other"));
+        assert_eq!(ntp_key_id(&p), None);
+        assert!(!ntp_verify(&p, "secret"));
+        assert_eq!(Ntp::decode(&signed).unwrap(), Ntp::decode(&p).unwrap());
+        for n in 0..signed.len() {
+            let _ = (ntp_key_id(&signed[..n]), ntp_verify(&signed[..n], "secret"), Ntp::decode(&signed[..n]));
+        }
+    }
+
     use super::*;
 
     #[test]

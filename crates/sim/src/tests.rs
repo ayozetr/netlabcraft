@@ -341,6 +341,7 @@ fn dhcp_hands_out_addresses_from_a_pool() {
             network: Some(net("192.168.1.0/24")),
             default_router: Some(ip("192.168.1.1")),
             dns: Some(ip("192.168.1.2")),
+            ..Default::default()
         });
         rt.dhcp_excluded.push((ip("192.168.1.1"), ip("192.168.1.10")));
     }
@@ -377,7 +378,13 @@ fn dhcp_hands_out_addresses_from_a_pool() {
     sim.clear_leases(r);
     assert!(sim.dhcp_acquire(&t, a).is_err());
     // A tiny pool runs out.
-    t.device_mut(r).unwrap().dhcp_pools.push(DhcpPool { name: "TINY".into(), network: Some(net("192.168.1.0/29")), default_router: None, dns: None });
+    t.device_mut(r).unwrap().dhcp_pools.push(DhcpPool {
+        name: "TINY".into(),
+        network: Some(net("192.168.1.0/29")),
+        default_router: None,
+        dns: None,
+        ..Default::default()
+    });
     t.device_mut(r).unwrap().dhcp_excluded = vec![(ip("192.168.1.2"), ip("192.168.1.5"))];
     assert_eq!(sim.dhcp_acquire(&t, a).unwrap().address.to_string(), "192.168.1.6/29");
     assert!(sim.dhcp_acquire(&t, b).is_err());
@@ -484,6 +491,7 @@ fn a_relay_forwards_dhcp_to_a_server_on_another_subnet() {
             network: Some(net("192.168.20.0/24")),
             default_router: Some(ip("192.168.20.1")),
             dns: None,
+            ..Default::default()
         });
         r.routes.push(StaticRoute { net: net("192.168.20.0/24"), via: NextHop::Address(ip("10.0.0.1")), distance: None });
     }
@@ -583,6 +591,7 @@ fn access_lists_filter_forwarded_traffic() {
         r.acls.push(Acl {
             name: "110".into(),
             extended: true,
+            remarks: Vec::new(),
             entries: vec![
                 AclEntry {
                     permit: false,
@@ -591,8 +600,21 @@ fn access_lists_filter_forwarded_traffic() {
                     src_port: None,
                     dst: AclAddr::host(ip("10.2.0.10")),
                     dst_port: None,
+                    seq: 0,
+                    established: false,
+                    icmp_type: None,
                 },
-                AclEntry { permit: true, proto: AclProto::Ip, src: AclAddr::ANY, src_port: None, dst: AclAddr::ANY, dst_port: None },
+                AclEntry {
+                    permit: true,
+                    proto: AclProto::Ip,
+                    src: AclAddr::ANY,
+                    src_port: None,
+                    dst: AclAddr::ANY,
+                    dst_port: None,
+                    seq: 0,
+                    established: false,
+                    icmp_type: None,
+                },
             ],
         });
         r.ports[0].access.inbound = Some("110".into());
@@ -608,6 +630,7 @@ fn access_lists_filter_forwarded_traffic() {
         r.acls.push(Acl {
             name: "5".into(),
             extended: false,
+            remarks: Vec::new(),
             entries: vec![AclEntry {
                 permit: true,
                 proto: AclProto::Ip,
@@ -615,6 +638,9 @@ fn access_lists_filter_forwarded_traffic() {
                 src_port: None,
                 dst: AclAddr::ANY,
                 dst_port: None,
+                seq: 0,
+                established: false,
+                icmp_type: None,
             }],
         });
         r.ports[1].access.outbound = Some("5".into());
@@ -655,6 +681,7 @@ fn nat_translates_both_ways() {
         r.acls.push(Acl {
             name: "1".into(),
             extended: false,
+            remarks: Vec::new(),
             entries: vec![AclEntry {
                 permit: true,
                 proto: AclProto::Ip,
@@ -662,6 +689,9 @@ fn nat_translates_both_ways() {
                 src_port: None,
                 dst: AclAddr::ANY,
                 dst_port: None,
+                seq: 0,
+                established: false,
+                icmp_type: None,
             }],
         });
         r.nat.rules.push(NatRule { acl: "1".into(), target: NatTarget::Interface("GigabitEthernet0/1".into()), overload: true });
@@ -753,6 +783,7 @@ fn a_server_answers_dns_http_and_dhcp() {
         rt.acls.push(Acl {
             name: "120".into(),
             extended: true,
+            remarks: Vec::new(),
             entries: vec![
                 AclEntry {
                     permit: false,
@@ -761,8 +792,21 @@ fn a_server_answers_dns_http_and_dhcp() {
                     src_port: None,
                     dst: AclAddr::ANY,
                     dst_port: Some(PortMatch::Eq(80)),
+                    seq: 0,
+                    established: false,
+                    icmp_type: None,
                 },
-                AclEntry { permit: true, proto: AclProto::Ip, src: AclAddr::ANY, src_port: None, dst: AclAddr::ANY, dst_port: None },
+                AclEntry {
+                    permit: true,
+                    proto: AclProto::Ip,
+                    src: AclAddr::ANY,
+                    src_port: None,
+                    dst: AclAddr::ANY,
+                    dst_port: None,
+                    seq: 0,
+                    established: false,
+                    icmp_type: None,
+                },
             ],
         });
         rt.ports[1].access.inbound = Some("120".into());

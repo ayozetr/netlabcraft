@@ -726,6 +726,7 @@ impl Sim {
             network: Some(ifc.net.network()),
             default_router: Some(ifc.net.addr),
             dns: conf.dhcpd_dns,
+            ..Default::default()
         };
         Ok((pool, range.addresses().filter(|a| ifc.net.contains(*a) && *a != ifc.net.addr).collect()))
     }

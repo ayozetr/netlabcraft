@@ -30,11 +30,13 @@ pub mod loopback;
 
 pub mod channel;
 pub mod control;
+pub mod dhcpsrv;
 pub mod eigrp;
 pub mod firewall;
 pub mod hsrp;
 pub mod iot;
 pub mod l2sec;
+pub mod logcfg;
 pub mod mgmt;
 pub mod ospf;
 pub mod ospf6;
@@ -681,7 +683,7 @@ pub struct Lease {
 }
 
 /// What a DHCP client obtained.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DhcpResult {
     pub address: Ipv4Net,
     pub router: Option<Ipv4Addr>,
@@ -689,6 +691,10 @@ pub struct DhcpResult {
     pub server: Option<Ipv4Addr>,
     /// Option 150: where an IP phone registers.
     pub tftp: Option<Ipv4Addr>,
+    /// Option 15: the domain name.
+    pub domain: Option<String>,
+    /// Option 51: the lease time in seconds (`u32::MAX`: infinite).
+    pub lease_secs: Option<u32>,
 }
 
 /// One NAT translation.
@@ -808,6 +814,12 @@ pub struct DevState {
     pub(crate) qos_drained: BTreeMap<String, u64>,
     /// The firewall appliance: connections and translations.
     pub fw: firewall::FwState,
+    /// Routers: DHCP server message counts and address conflicts.
+    pub dhcp_srv: dhcpsrv::ServerStats,
+    /// IPv4 packets counted by what happened to them (`show ip traffic`).
+    pub ip_traffic: BTreeMap<&'static str, u64>,
+    /// TCP connections set up to or from this device, newest last.
+    pub tcp_recent: VecDeque<TcpRecord>,
 }
 
 /// One frame delivered across a cable.
@@ -861,13 +873,27 @@ pub struct PingOptions {
     pub size: usize,
     /// `None`: the device's default (128 on hosts, 255 on routers).
     pub ttl: Option<u8>,
+    /// The source address (`ping … source`); `None`: the outgoing interface's.
+    pub source: Option<Ipv4Addr>,
 }
 
 impl Default for PingOptions {
     fn default() -> Self {
-        PingOptions { count: 5, timeout_us: 2_000_000, size: 72, ttl: None }
+        PingOptions { count: 5, timeout_us: 2_000_000, size: 72, ttl: None, source: None }
     }
 }
+
+/// A TCP connection this device took part in, for `netstat` and `show tcp brief`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TcpRecord {
+    pub local: (Ipv4Addr, u16),
+    pub remote: (Ipv4Addr, u16),
+    /// Simulated µs when it was set up.
+    pub since_us: u64,
+}
+
+/// Most TCP connections remembered per device.
+pub const MAX_TCP_RECORDS: usize = 32;
 
 /// The outcome of one echo request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -979,6 +1005,8 @@ pub struct Sim {
     iot: iot::IotState,
     /// DHCP snooping bindings, ARP inspection, rate limits, errdisable timers, port counters.
     l2: l2sec::L2State,
+    /// Log stamps and severity filters of devices that changed them.
+    log_cfg: BTreeMap<DeviceId, logcfg::LogCfg>,
 }
 
 impl Sim {
@@ -1002,20 +1030,25 @@ impl Sim {
     }
 
     /// Adds a message to a device's logging buffer and its console, stamped with its clock.
+    /// Each copy (buffer, console, syslog servers) takes the message only when its severity is
+    /// within that copy's `logging` level.
     pub fn log(&mut self, d: DeviceId, msg: &str) {
         let (unix, _) = self.clock(d);
-        let secs = unix.rem_euclid(86_400);
-        let line = format!("[{:02}:{:02}:{:02}] {msg}", secs / 3_600, secs / 60 % 60, secs % 60);
+        let cfg = self.log_cfg.get(&d).copied().unwrap_or_default();
+        let sev = logcfg::severity(msg);
+        let line = format!("{} {msg}", logcfg::stamp(unix, self.now, if sev == 7 { cfg.ts_debug } else { cfg.ts_log }));
         let now = self.now;
         let st = self.st(d);
-        if st.log.len() >= MAX_LOG {
-            st.log.pop_front();
+        if sev <= cfg.buffered {
+            if st.log.len() >= MAX_LOG {
+                st.log.pop_front();
+            }
+            st.log.push_back((now, line.clone()));
         }
-        st.log.push_back((now, line.clone()));
-        if st.syslog_out.len() < MAX_LOG {
+        if sev <= cfg.trap && st.syslog_out.len() < MAX_LOG {
             st.syslog_out.push(msg.to_string());
         }
-        if st.console.len() < MAX_LOG {
+        if sev <= cfg.console && st.console.len() < MAX_LOG {
             st.console.push(line);
         }
     }
@@ -1163,6 +1196,27 @@ impl Sim {
         }
     }
 
+    /// Counts a packet in `show ip traffic`.
+    fn bump(&mut self, d: DeviceId, what: &'static str) {
+        let c = self.st(d).ip_traffic.entry(what).or_insert(0);
+        *c = c.saturating_add(1);
+    }
+
+    /// Remembers a TCP connection for `netstat` and `show tcp brief`.
+    fn note_tcp(&mut self, d: DeviceId, local: (Ipv4Addr, u16), remote: (Ipv4Addr, u16)) {
+        let now = self.now;
+        let st = self.st(d);
+        if st.tcp_recent.len() >= MAX_TCP_RECORDS {
+            st.tcp_recent.pop_front();
+        }
+        st.tcp_recent.push_back(TcpRecord { local, remote, since_us: now });
+    }
+
+    /// Forgets one ARP entry; whether there was one.
+    pub fn forget_arp(&mut self, d: DeviceId, ip: Ipv4Addr) -> bool {
+        self.state.get_mut(&d).is_some_and(|st| st.arp.remove(&ip).is_some())
+    }
+
     /// Empties a device's ARP cache.
     pub fn clear_arp(&mut self, d: DeviceId) {
         if let Some(st) = self.state.get_mut(&d) {
@@ -1175,6 +1229,7 @@ impl Sim {
     /// down, and frames in flight on removed cables.
     pub fn topology_changed(&mut self, t: &Topology) {
         self.state.retain(|id, _| t.device(*id).is_some());
+        self.log_cfg = t.devices.iter().map(|d| (d.id, logcfg::LogCfg::of(d))).filter(|(_, c)| *c != logcfg::LogCfg::default()).collect();
         self.note_links(t);
         // Ports reset by `shutdown`/`no shutdown`, or no longer secured, forget what they learned.
         for (id, st) in &mut self.state {
@@ -1418,7 +1473,7 @@ impl Sim {
                 fixed: true,
             }
         } else {
-            let key = netlabcraft_model::acl::PacketKey { protocol: ip.protocol, src: ip.src, dst: ip.dst, src_port: None, dst_port: None };
+            let key = netlabcraft_model::acl::PacketKey::bare(ip.protocol, ip.src, ip.dst);
             let Some(rule) = d.nat.rules.iter().find(|r| d.acls.iter().find(|a| a.name == r.acl).is_some_and(|a| a.evaluate(&key).0)) else {
                 return Ok(None);
             };
@@ -1551,20 +1606,19 @@ impl Sim {
     /// Applies the interface's inbound or outbound access list. A denied packet is dropped and
     /// its sender told "administratively prohibited".
     fn acl_check(&mut self, t: &Topology, d: &Device, ifc: &L3If, ip: &Ipv4, raw: &[u8], inbound: bool) -> Result<(), String> {
-        let Some(port) = d.ports.get(ifc.port) else { return Ok(()) };
-        let groups = match ifc.sub {
-            Some(n) => port.subif(n).map(|s| &s.access),
-            None => Some(&port.access),
+        let groups = if ifc.port == SVI_PORT {
+            d.svis.iter().find(|s| Some(s.vlan.get()) == ifc.vlan).map(|s| &s.access)
+        } else {
+            let Some(port) = d.ports.get(ifc.port) else { return Ok(()) };
+            match ifc.sub {
+                Some(n) => port.subif(n).map(|s| &s.access),
+                None => Some(&port.access),
+            }
         };
         let Some(name) = groups.and_then(|g| if inbound { g.inbound.as_ref() } else { g.outbound.as_ref() }) else { return Ok(()) };
         // An applied list that doesn't exist permits everything, as on real routers.
         let Some(acl) = d.acls.iter().find(|a| &a.name == name) else { return Ok(()) };
-        let (src_port, dst_port) = match ip.protocol {
-            PROTO_UDP => Udp::decode(&ip.payload, ip.src, ip.dst).map_or((None, None), |u| (Some(u.src_port), Some(u.dst_port))),
-            PROTO_TCP => Tcp::decode(&ip.payload, ip.src, ip.dst).map_or((None, None), |u| (Some(u.src_port), Some(u.dst_port))),
-            _ => (None, None),
-        };
-        let key = netlabcraft_model::acl::PacketKey { protocol: ip.protocol, src: ip.src, dst: ip.dst, src_port, dst_port };
+        let key = acl_key(ip);
         let (permit, entry) = acl.evaluate(&key);
         let st = self.st(d.id);
         *st.acl_hits.entry((acl.name.clone(), entry.unwrap_or(usize::MAX))).or_insert(0) += 1;
@@ -2144,6 +2198,7 @@ impl Sim {
 
     fn ip_in(&mut self, t: &Topology, d: &Device, ifc: &L3If, payload: &[u8]) -> Result<(), String> {
         let mut ip = Ipv4::decode(payload).map_err(|e| e.to_string())?;
+        self.bump(d.id, "received");
         // Routing-protocol messages to the link's routers (OSPF, RIP); hosts ignore them.
         let udp_port = if ip.protocol == PROTO_UDP { Udp::decode(&ip.payload, ip.src, ip.dst).ok().map(|u| u.dst_port) } else { None };
         let rip = udp_port == Some(netlabcraft_wire::control::RIP_PORT);
@@ -2247,6 +2302,7 @@ impl Sim {
             return Err(format!("{} is not this device's address", ip.dst));
         }
         if ip.ttl <= 1 {
+            self.bump(d.id, "TTL expired");
             self.icmp_error(t, d, ifc, &ip, Icmp::TimeExceeded { original: Icmp::quote(payload) });
             return Err("TTL expired in transit".into());
         }
@@ -2267,9 +2323,11 @@ impl Sim {
                 {
                     fwd = tr;
                 }
+                self.bump(d.id, "forwarded");
                 self.transmit(t, d, &out, nh, qos::keep_ds(payload, fwd.encode()))
             }
             None => {
+                self.bump(d.id, "no route");
                 if debug {
                     self.log(d.id, &format!("IP debug: {} → {}, in {}, no route: dropped", ip.src, ip.dst, ifc.name));
                 }
@@ -2280,6 +2338,17 @@ impl Sim {
     }
 
     fn local_in(&mut self, t: &Topology, d: &Device, ifc: &L3If, ip: Ipv4) -> Result<(), String> {
+        self.bump(
+            d.id,
+            match (ip.protocol, ip.payload.first()) {
+                (PROTO_ICMP, Some(8)) => "delivered: ICMP echo request",
+                (PROTO_ICMP, Some(0)) => "delivered: ICMP echo reply",
+                (PROTO_ICMP, _) => "delivered: ICMP other",
+                (PROTO_TCP, _) => "delivered: TCP",
+                (PROTO_UDP, _) => "delivered: UDP",
+                _ => "delivered: other",
+            },
+        );
         if d.kind == DeviceKind::Router && ip.protocol == netlabcraft_wire::vpn::PROTO_GRE {
             return self.gre_in(t, d, &ip);
         }
@@ -2434,6 +2503,7 @@ impl Sim {
 
     /// Routes and sends a datagram this device originates.
     fn send_ip(&mut self, t: &Topology, d: &Device, ip: Ipv4) -> Result<(), String> {
+        self.bump(d.id, "sent");
         let (out, nh) = self.route_flow(t, d, ip.src, ip.dst).ok_or_else(|| format!("no route to {}", ip.dst))?;
         self.transmit(t, d, &out, nh, ip.encode())
     }
@@ -2523,6 +2593,7 @@ impl Sim {
                 x.ports
                     .iter()
                     .flat_map(|p| p.ip.map(|n| (n.addr, p.mac)).into_iter().chain(p.subifs.iter().filter_map(|s| s.ip.map(|n| (n.addr, p.mac)))))
+                    .chain(x.svis.iter().filter_map(|s| s.ip.map(|n| (n.addr, svi_mac(x)))))
             })
             .collect();
         if let Some((ip, _)) =
@@ -2558,7 +2629,13 @@ impl Sim {
             let net = Ipv4Net::with_mask(sp.start, sp.mask).map_err(|e| e.to_string())?.network();
             let nz = |a: Ipv4Addr| (!a.is_unspecified()).then_some(a);
             (
-                netlabcraft_model::DhcpPool { name: sp.name.clone(), network: Some(net), default_router: nz(sp.gateway), dns: nz(sp.dns) },
+                netlabcraft_model::DhcpPool {
+                    name: sp.name.clone(),
+                    network: Some(net),
+                    default_router: nz(sp.gateway),
+                    dns: nz(sp.dns),
+                    ..Default::default()
+                },
                 Some(sp.addresses().collect()),
             )
         } else if netlabcraft_model::firewall::is_firewall(d) {
@@ -2574,18 +2651,23 @@ impl Sim {
             (p, None)
         };
         let net = pool.network.ok_or("pool without network")?;
+        self.dhcp_srv_in(d.id, msg.kind, msg.client_mac, &ifc.name);
         let mut reply = Dhcp::new(DhcpKind::Offer, msg.xid, msg.client_mac);
         reply.server_id = Some(ifc.net.addr);
         reply.mask = Some(net.mask());
         reply.router = pool.default_router;
         reply.dns = pool.dns;
-        reply.lease_secs = Some(86_400);
+        reply.lease_secs = Some(pool.lease_secs.unwrap_or(86_400));
+        reply.domain = pool.domain.clone();
         reply.tftp = d.voice.option150.get(&pool.name).copied();
         match msg.kind {
             DhcpKind::Discover => {
                 reply.your_ip = self
                     .dhcp_pick(t, d, &pool, msg.client_mac, allowed.as_deref())
                     .ok_or_else(|| format!("pool {} has no free address", pool.name))?;
+                if allowed.is_none() {
+                    self.dhcp_note_conflicts(t, d, net, reply.your_ip, msg.client_mac);
+                }
             }
             DhcpKind::Request => {
                 if msg.server_id.is_some_and(|s| !l3_ifaces(d).iter().any(|i| i.net.addr == s)) {
@@ -2617,6 +2699,7 @@ impl Sim {
             }
             _ => return Err("not a client message".into()),
         }
+        self.dhcp_srv_out(d.id, reply.kind, msg.client_mac, reply.your_ip);
         if !msg.relay.is_unspecified() {
             // Through a relay: answer the relay agent, which broadcasts on the client's segment.
             reply.relay = msg.relay;
@@ -2726,8 +2809,17 @@ impl Sim {
             st.dhcp_inbox.clear();
         }
         let result = (|| {
-            self.dhcp_send(t, d, &Dhcp::new(DhcpKind::Discover, xid, mac));
-            let offer = self.dhcp_wait(t, dev, &[DhcpKind::Offer]).ok_or_else(|| SimError::NoSource("no DHCP server answered".into()))?;
+            // A client asks again when the first DISCOVER goes unanswered (a relay may still
+            // have been resolving its server's address).
+            let mut offer = None;
+            for _ in 0..2 {
+                self.dhcp_send(t, d, &Dhcp::new(DhcpKind::Discover, xid, mac));
+                offer = self.dhcp_wait(t, dev, &[DhcpKind::Offer]);
+                if offer.is_some() {
+                    break;
+                }
+            }
+            let offer = offer.ok_or_else(|| SimError::NoSource("no DHCP server answered".into()))?;
             let mut req = Dhcp::new(DhcpKind::Request, xid, mac);
             req.requested = Some(offer.your_ip);
             req.server_id = offer.server_id;
@@ -2740,7 +2832,15 @@ impl Sim {
             }
             let mask = ack.mask.or(offer.mask).unwrap_or(Ipv4Addr::new(255, 255, 255, 0));
             let address = Ipv4Net::with_mask(ack.your_ip, mask).map_err(|e| SimError::NoSource(e.to_string()))?;
-            Ok(DhcpResult { address, router: ack.router, dns: ack.dns, server: ack.server_id, tftp: ack.tftp.or(offer.tftp) })
+            Ok(DhcpResult {
+                address,
+                router: ack.router,
+                dns: ack.dns,
+                server: ack.server_id,
+                tftp: ack.tftp.or(offer.tftp),
+                domain: ack.domain.clone().or(offer.domain),
+                lease_secs: ack.lease_secs.or(offer.lease_secs),
+            })
         })();
         let st = self.st(dev);
         st.dhcp_xid = None;
@@ -2879,11 +2979,10 @@ impl Sim {
                 && let Some(acl) = d.acls.iter().find(|a| a.name == *name)
             {
                 let key = netlabcraft_model::acl::PacketKey {
-                    protocol: PROTO_TCP,
-                    src: ip.src,
-                    dst: ip.dst,
                     src_port: Some(seg.src_port),
                     dst_port: Some(seg.dst_port),
+                    tcp_flags: Some(seg.flags),
+                    ..netlabcraft_model::acl::PacketKey::bare(PROTO_TCP, ip.src, ip.dst)
                 };
                 let (permit, hit) = acl.evaluate(&key);
                 *self.st(d.id).acl_hits.entry((name.clone(), hit.unwrap_or(usize::MAX))).or_insert(0) += 1;
@@ -2893,6 +2992,7 @@ impl Sim {
                 }
             }
             if d.access.accepts(proto) {
+                self.note_tcp(d.id, (ip.dst, seg.dst_port), (ip.src, seg.src_port));
                 return self.tcp_send(t, d, ip.dst, ip.src, &reply(tcp::SYN | tcp::ACK, 7_000, seg.seq.wrapping_add(1)));
             }
             self.tcp_send(t, d, ip.dst, ip.src, &reply(tcp::RST | tcp::ACK, 0, seg.seq.wrapping_add(1)))?;
@@ -2941,6 +3041,9 @@ impl Sim {
         let st = self.st(dev);
         st.tcp_wait.retain(|w| *w != (local, port));
         st.tcp_inbox.retain(|s| s.dst_port != local);
+        if result.is_ok() {
+            self.note_tcp(dev, (src, local), (dst, port));
+        }
         result
     }
 
@@ -3058,9 +3161,23 @@ impl Sim {
         self.route(t, d, dst).map(|(i, _)| i.net.addr).ok_or_else(|| SimError::NoSource(format!("{} has no route to {dst}", d.name)))
     }
 
-    fn probe(&mut self, t: &Topology, dev: DeviceId, dst: Ipv4Addr, ttl: u8, seq: u16, size: usize, timeout: u64) -> Result<Probe, SimError> {
+    #[allow(clippy::too_many_arguments)]
+    fn probe(
+        &mut self,
+        t: &Topology,
+        dev: DeviceId,
+        dst: Ipv4Addr,
+        ttl: u8,
+        seq: u16,
+        size: usize,
+        timeout: u64,
+        source: Option<Ipv4Addr>,
+    ) -> Result<Probe, SimError> {
         let d = t.device(dev).ok_or(SimError::NoDevice(dev))?;
-        let src = self.source_for(t, d, dst)?;
+        let src = match source {
+            Some(s) => s,
+            None => self.source_for(t, d, dst)?,
+        };
         self.next_echo_id = self.next_echo_id.wrapping_add(1);
         let id = self.next_echo_id;
         let ip = Ipv4 {
@@ -3102,7 +3219,7 @@ impl Sim {
         let ttl = opts.ttl.unwrap_or(default_ttl(kind)).max(1);
         let mut out = Vec::with_capacity(usize::from(count));
         for seq in 1..=count {
-            out.push(self.probe(t, dev, dst, ttl, seq, opts.size, opts.timeout_us)?);
+            out.push(self.probe(t, dev, dst, ttl, seq, opts.size, opts.timeout_us, opts.source)?);
         }
         Ok(out)
     }
@@ -3113,7 +3230,7 @@ impl Sim {
         for ttl in 1..=max_hops.clamp(1, 64) {
             let mut probes = Vec::new();
             for seq in 1..=3 {
-                probes.push(self.probe(t, dev, dst, ttl, seq, 32, timeout_us)?);
+                probes.push(self.probe(t, dev, dst, ttl, seq, 32, timeout_us, None)?);
             }
             let done = probes.iter().any(|p| matches!(p, Probe::Reply { .. } | Probe::Unreachable { .. }));
             hops.push(Hop { ttl, probes });
@@ -3154,6 +3271,9 @@ fn dhcp_in_frame(f: &Frame) -> Option<Dhcp> {
 
 /// The `ip helper-address` list of an interface.
 fn helpers_of(d: &Device, ifc: &L3If) -> Vec<Ipv4Addr> {
+    if ifc.port == SVI_PORT {
+        return d.svis.iter().find(|s| Some(s.vlan.get()) == ifc.vlan).map(|s| s.helpers.clone()).unwrap_or_default();
+    }
     let Some(p) = d.ports.get(ifc.port) else { return Vec::new() };
     match ifc.sub {
         Some(n) => p.subif(n).map(|s| s.helpers.clone()).unwrap_or_default(),
@@ -3234,4 +3354,28 @@ fn rewrite(ip: &Ipv4, outbound: bool, addr: Ipv4Addr, id: Option<u16>) -> Ipv4 {
         _ => {}
     }
     out
+}
+
+/// What a datagram looks like to an access list: protocol, addresses, ports, ICMP type and TCP
+/// flags.
+pub(crate) fn acl_key(ip: &Ipv4) -> netlabcraft_model::acl::PacketKey {
+    let mut key = netlabcraft_model::acl::PacketKey::bare(ip.protocol, ip.src, ip.dst);
+    match ip.protocol {
+        PROTO_UDP => {
+            if let Ok(u) = Udp::decode(&ip.payload, ip.src, ip.dst) {
+                key.src_port = Some(u.src_port);
+                key.dst_port = Some(u.dst_port);
+            }
+        }
+        PROTO_TCP => {
+            if let Ok(u) = Tcp::decode(&ip.payload, ip.src, ip.dst) {
+                key.src_port = Some(u.src_port);
+                key.dst_port = Some(u.dst_port);
+                key.tcp_flags = Some(u.flags);
+            }
+        }
+        PROTO_ICMP => key.icmp_type = ip.payload.first().copied(),
+        _ => {}
+    }
+    key
 }

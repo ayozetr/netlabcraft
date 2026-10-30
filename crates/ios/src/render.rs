@@ -31,13 +31,16 @@ pub fn running_config(d: &Device) -> String {
     if d.lldp_on {
         let _ = writeln!(s, "lldp run\n!");
     }
-    for a in &d.ntp_servers {
+    // Servers with a key are written with it (`ntp server A key N`) among the NTP lines below.
+    for a in d.ntp_servers.iter().filter(|a| !d.mgmt.ntp_server_keys.iter().any(|(x, _)| x == *a)) {
         let _ = writeln!(s, "ntp server {a}");
     }
     for a in &d.log_hosts {
         let _ = writeln!(s, "logging host {a}");
     }
-    if !d.ntp_servers.is_empty() || !d.log_hosts.is_empty() {
+    let before = s.len();
+    crate::exec::mgmt::running_config(&mut s, d);
+    if !d.ntp_servers.is_empty() || !d.log_hosts.is_empty() || s.len() != before {
         let _ = writeln!(s, "!");
     }
     if d.ipv6_routing {
@@ -170,6 +173,29 @@ pub fn running_config(d: &Device) -> String {
         if let Some(r) = p.dns {
             let _ = writeln!(s, " dns-server {r}");
         }
+        if let Some(dn) = &p.domain {
+            let _ = writeln!(s, " domain-name {dn}");
+        }
+        match p.lease_secs {
+            Some(u32::MAX) => {
+                let _ = writeln!(s, " lease infinite");
+            }
+            Some(l) => {
+                let (dd, h, m) = (l / 86_400, l / 3_600 % 24, l / 60 % 60);
+                let _ = writeln!(
+                    s,
+                    " lease {dd}{}",
+                    if m > 0 {
+                        format!(" {h} {m}")
+                    } else if h > 0 {
+                        format!(" {h}")
+                    } else {
+                        String::new()
+                    }
+                );
+            }
+            None => {}
+        }
         crate::exec::voice::pool_lines(&mut s, d, &p.name);
         let _ = writeln!(s, "!");
     }
@@ -290,7 +316,7 @@ pub fn running_config(d: &Device) -> String {
             }
             None => {}
         }
-        standby_lines(&mut s, &p.standby);
+        standby_lines(&mut s, d, &p.name, &p.standby);
         ospf_if_lines(&mut s, d, &p.name);
         if d.kind == DeviceKind::Router {
             if netlabcraft_model::ifname::is_serial(&p.name) {
@@ -341,7 +367,7 @@ pub fn running_config(d: &Device) -> String {
                 let _ = writeln!(s, " ip address {} {}", ip.addr, ip.mask());
             }
             ipv6_lines(&mut s, &sub.ipv6);
-            standby_lines(&mut s, &sub.standby);
+            standby_lines(&mut s, d, &format!("{}.{}", p.name, sub.number), &sub.standby);
             ospf_if_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
             for h in &sub.helpers {
                 let _ = writeln!(s, " ip helper-address {h}");
@@ -370,8 +396,12 @@ pub fn running_config(d: &Device) -> String {
             }
         }
         ipv6_lines(&mut s, &svi.ipv6);
+        for h in &svi.helpers {
+            let _ = writeln!(s, " ip helper-address {h}");
+        }
+        access_groups(&mut s, &svi.access);
         nat_side(&mut s, svi.nat);
-        standby_lines(&mut s, &svi.standby);
+        standby_lines(&mut s, d, &format!("Vlan{}", svi.vlan), &svi.standby);
         ospf_if_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
         crate::exec::qos::service_policy_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
         let _ = writeln!(s, "{}", if svi.shutdown { " shutdown" } else { " no shutdown" });
@@ -379,11 +409,17 @@ pub fn running_config(d: &Device) -> String {
     }
     for a in &d.acls {
         if netlabcraft_model::acl::numbered_kind(&a.name).is_some() {
+            for r in &a.remarks {
+                let _ = writeln!(s, "access-list {} remark {r}", a.name);
+            }
             for e in &a.entries {
                 let _ = writeln!(s, "access-list {} {}", a.name, e.text(a.extended));
             }
         } else {
             let _ = writeln!(s, "ip access-list {} {}", if a.extended { "extended" } else { "standard" }, a.name);
+            for r in &a.remarks {
+                let _ = writeln!(s, " remark {r}");
+            }
             for e in &a.entries {
                 let _ = writeln!(s, " {}", e.text(a.extended));
             }
@@ -551,6 +587,9 @@ pub fn running_config(d: &Device) -> String {
     // The line blocks are always written, configured or not, as on real devices.
     for (name, line) in [("line con 0", &a.console), ("line vty 0 4", &a.vty)] {
         let _ = writeln!(s, "{name}");
+        if let Some(n) = d.mgmt.history_size {
+            let _ = writeln!(s, " history size {n}");
+        }
         if let Some(p) = &line.password {
             let _ = writeln!(s, " password {}", pw(p));
         }
@@ -849,10 +888,11 @@ pub fn version(sim: &Sim, d: &Device) -> String {
         "NetLabCraft simulated {}, software {v}\n\
          Model {} ({})\n\
          {} has been up {} h {} min {} s (since the simulation started)\n\
-         System image flash:netlabcraft-{}-{v}.bin\n\
+         System image flash:{}\n\
          Ports: {}\n\
          Base hardware address {}\n\
-         Configuration {}",
+         Configuration {}\n\
+         Configuration register 0x{:04x}",
         d.kind.label().to_lowercase(),
         m.label,
         m.description,
@@ -860,10 +900,11 @@ pub fn version(sim: &Sim, d: &Device) -> String {
         up / 3_600,
         up / 60 % 60,
         up % 60,
-        d.kind.label().to_lowercase(),
+        crate::exec::mgmt::boot_image(d),
         ports.join(", "),
         d.ports.first().map_or("-".to_string(), |p| p.mac.to_string()),
         if d.startup.is_some() { "saved (startup-config present)" } else { "not saved" },
+        d.nvram.register(),
         v = env!("CARGO_PKG_VERSION"),
     )
 }
@@ -930,6 +971,36 @@ pub fn dhcp_bindings(sim: &Sim, d: &Device) -> String {
     s
 }
 
+/// `show ip dhcp conflict`.
+pub fn dhcp_conflicts(sim: &Sim, d: &Device) -> String {
+    let list = sim.state(d.id).map(|st| st.dhcp_srv.conflicts.clone()).unwrap_or_default();
+    if list.is_empty() {
+        return "No address conflicts: no pool address was found in use by another device.".into();
+    }
+    let mut s = format!("{:<17} {:<26} {}\n", "Address", "How it was found", "When (s)");
+    for (ip, at) in &list {
+        let _ = writeln!(s, "{:<17} {:<26} {}", ip.to_string(), "already on another device", at / 1_000_000);
+    }
+    let _ = write!(s, "{} conflict{} (these addresses are not handed out)", list.len(), if list.len() == 1 { "" } else { "s" });
+    s
+}
+
+/// `show ip dhcp server statistics`.
+pub fn dhcp_stats(sim: &Sim, d: &Device) -> String {
+    let st = sim.state(d.id).map(|st| st.dhcp_srv.clone()).unwrap_or_default();
+    let leases = sim.state(d.id).map_or(0, |st| st.leases.len());
+    let mut s = format!("Pools              {}\nLeased addresses   {leases}\nConflicts          {}\n", d.dhcp_pools.len(), st.conflicts.len());
+    s.push_str("\nReceived\n");
+    for k in ["DISCOVER", "REQUEST", "RELEASE"] {
+        let _ = writeln!(s, "  {k:<12} {}", st.received.get(k).copied().unwrap_or(0));
+    }
+    s.push_str("\nSent\n");
+    for k in ["OFFER", "ACK", "NAK"] {
+        let _ = writeln!(s, "  {k:<12} {}", st.sent.get(k).copied().unwrap_or(0));
+    }
+    s.trim_end().to_string()
+}
+
 /// `show ip dhcp pool`.
 pub fn dhcp_pools(sim: &Sim, d: &Device) -> String {
     if d.dhcp_pools.is_empty() {
@@ -942,6 +1013,8 @@ pub fn dhcp_pools(sim: &Sim, d: &Device) -> String {
         let _ = writeln!(s, "  Network          {}", p.network.map_or("not set (the pool hands out nothing)".to_string(), |n| n.to_string()));
         let _ = writeln!(s, "  Default router   {}", p.default_router.map_or("-".to_string(), |r| r.to_string()));
         let _ = writeln!(s, "  DNS server       {}", p.dns.map_or("-".to_string(), |r| r.to_string()));
+        let _ = writeln!(s, "  Domain name      {}", p.domain.as_deref().unwrap_or("-"));
+        let _ = writeln!(s, "  Lease time       {}", netlabcraft_model::mgmt::lease_text(p.lease_secs.unwrap_or(86_400)));
         let _ = writeln!(s, "  Leased addresses {leased}");
     }
     if !d.dhcp_excluded.is_empty() {
@@ -1275,7 +1348,10 @@ pub(crate) fn ospf_if_lines(s: &mut String, d: &Device, name: &str) {
     }
 }
 
-fn standby_lines(s: &mut String, list: &[netlabcraft_model::Standby]) {
+fn standby_lines(s: &mut String, d: &Device, name: &str, list: &[netlabcraft_model::Standby]) {
+    if d.mgmt.hsrp_v2.iter().any(|n| n == name) {
+        let _ = writeln!(s, " standby version 2");
+    }
     for g in list {
         if let Some(ip) = g.ip {
             let _ = writeln!(s, " standby {} ip {ip}", g.group);
@@ -1285,6 +1361,9 @@ fn standby_lines(s: &mut String, list: &[netlabcraft_model::Standby]) {
         }
         if g.preempt {
             let _ = writeln!(s, " standby {} preempt", g.group);
+        }
+        for (i, dec) in &g.track {
+            let _ = writeln!(s, " standby {} track {i}{}", g.group, if *dec == 10 { String::new() } else { format!(" decrement {dec}") });
         }
     }
 }
@@ -1318,7 +1397,7 @@ pub fn access_lists(sim: &Sim, d: &Device) -> String {
         for (i, e) in a.entries.iter().enumerate() {
             let n = hits.get(&(a.name.clone(), i)).copied().unwrap_or(0);
             let m = if n > 0 { format!(" ({n} match{})", if n == 1 { "" } else { "es" }) } else { String::new() };
-            let _ = writeln!(s, "    {} {}{m}", (i + 1) * 10, e.text(a.extended));
+            let _ = writeln!(s, "    {} {}{m}", a.seq_of(i), e.text(a.extended));
         }
         let implicit = hits.get(&(a.name.clone(), usize::MAX)).copied().unwrap_or(0);
         let _ = writeln!(s, "    (implicit) deny everything else{}", if implicit > 0 { format!(" ({implicit} matches)") } else { String::new() });
@@ -1707,11 +1786,7 @@ pub fn switchport(t: &Topology, d: &Device, port: usize) -> Result<String, Strin
 
 /// `show flash`: our own file listing.
 pub fn flash(d: &Device) -> String {
-    let kind = d.kind.label().to_lowercase();
-    let mut files = vec![(format!("netlabcraft-{kind}-{}.bin", env!("CARGO_PKG_VERSION")), 33_591_768u64)];
-    if d.kind == DeviceKind::Switch && d.vlans.len() > 1 && !d.vlan_dat_deleted {
-        files.push(("vlan.dat".into(), 616 + 32 * d.vlans.len() as u64));
-    }
+    let files = crate::exec::mgmt::flash_files(d);
     let mut s = format!("{:<4} {:>10}  {}\n", "#", "Bytes", "Name");
     for (i, (name, size)) in files.iter().enumerate() {
         let _ = writeln!(s, "{:<4} {:>10}  {name}", i + 1, size);
@@ -1877,8 +1952,14 @@ pub fn ipv6_interface(t: &Topology, d: &Device, r: IfRef) -> Result<String, Stri
     if netlabcraft_sim::v6::routes6(d) {
         let _ = writeln!(s, "    FF02::2");
     }
+    // Addresses sharing their last 24 bits share one group, listed once.
+    let mut groups: Vec<String> = Vec::new();
     for a in ifc.addresses.iter().map(|n| n.addr).chain([ifc.link_local]) {
-        let _ = writeln!(s, "    {}", netlabcraft_wire_solicited(a));
+        let g = netlabcraft_wire_solicited(a);
+        if !groups.contains(&g) {
+            let _ = writeln!(s, "    {g}");
+            groups.push(g);
+        }
     }
     if netlabcraft_sim::v6::routes6(d) {
         let _ = write!(s, "  Router advertisements are sent; hosts use them to autoconfigure");
@@ -1892,6 +1973,45 @@ pub fn ipv6_interface(t: &Topology, d: &Device, r: IfRef) -> Result<String, Stri
 fn netlabcraft_wire_solicited(a: std::net::Ipv6Addr) -> String {
     let o = a.octets();
     format!("FF02::1:FF{:02X}:{:X}", o[13], u16::from_be_bytes([o[14], o[15]]))
+}
+
+/// `show ip traffic`.
+pub fn ip_traffic(sim: &Sim, dev: netlabcraft_core::DeviceId) -> String {
+    let c = sim.state(dev).map(|st| st.ip_traffic.clone()).unwrap_or_default();
+    let n = |k: &str| c.get(k).copied().unwrap_or(0);
+    let delivered: u64 = c.iter().filter(|(k, _)| k.starts_with("delivered")).map(|(_, v)| *v).sum();
+    let mut s = String::from("IPv4 packets\n");
+    let _ = writeln!(s, "  Received       {}", n("received"));
+    let _ = writeln!(s, "  For this device {delivered}");
+    let _ = writeln!(s, "  Forwarded      {}", n("forwarded"));
+    let _ = writeln!(s, "  Sent (own)     {}", n("sent"));
+    let _ = writeln!(s, "  Dropped: no route {}, TTL expired {}", n("no route"), n("TTL expired"));
+    s.push_str("Delivered by protocol\n");
+    for (k, label) in [
+        ("delivered: ICMP echo request", "ICMP echo requests"),
+        ("delivered: ICMP echo reply", "ICMP echo replies"),
+        ("delivered: ICMP other", "ICMP other"),
+        ("delivered: TCP", "TCP"),
+        ("delivered: UDP", "UDP"),
+        ("delivered: other", "Other"),
+    ] {
+        let _ = writeln!(s, "  {label:<19} {}", n(k));
+    }
+    s.trim_end().to_string()
+}
+
+/// `show tcp brief`: connections set up to or from this device.
+pub fn tcp_brief(sim: &Sim, dev: netlabcraft_core::DeviceId) -> String {
+    let list = sim.state(dev).map(|st| st.tcp_recent.clone()).unwrap_or_default();
+    if list.is_empty() {
+        return "No TCP connections.".into();
+    }
+    let mut s = format!("{:<22} {:<22} {}\n", "Local address", "Remote address", "Opened (s)");
+    for r in &list {
+        let _ =
+            writeln!(s, "{:<22} {:<22} {}", format!("{}:{}", r.local.0, r.local.1), format!("{}:{}", r.remote.0, r.remote.1), r.since_us / 1_000_000);
+    }
+    s.trim_end().to_string()
 }
 
 /// `show users`.
@@ -2097,7 +2217,10 @@ pub fn standby(d: &Device, roles: &[netlabcraft_sim::hsrp::Role]) -> String {
         };
         let _ =
             writeln!(s, "Group {} on {}: {} (priority {}{})", r.group, r.iface, r.state.name(), r.priority, if r.preempt { ", preempt" } else { "" });
-        let _ = writeln!(s, "  Virtual address {}, virtual MAC {}", r.virtual_ip, r.virtual_mac().dotted());
+        let _ = writeln!(s, "  Version {}, virtual address {}, virtual MAC {}", r.version, r.virtual_ip, r.virtual_mac().dotted());
+        if !r.tracked_down.is_empty() {
+            let _ = writeln!(s, "  Priority lowered from {}: tracked interface down ({})", r.configured_priority, r.tracked_down.join(", "));
+        }
         let _ = writeln!(
             s,
             "  Active: {}; standby: {}",
