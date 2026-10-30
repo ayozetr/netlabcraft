@@ -20,25 +20,25 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 | Number | Value | Kind |
 |---|---|---|
-| **Ready for real work** (weighted) | **~78%** | estimated from written weights (77.9); [target-app-parity.md](docs/target-app-parity.md) |
+| **Ready for real work** (weighted) | **~81%** | estimated from written weights (80.6); [target-app-parity.md](docs/target-app-parity.md) |
 | **CCNA 1 student** | **~86%** | estimated; [method](docs/target-app-parity.md#audiences) |
-| **CCNA 2 student** | **~90%** | estimated |
-| **CCNA 3 student** | **~87%** | estimated |
+| **CCNA 2 student** | **~92%** | estimated |
+| **CCNA 3 student** | **~91%** | estimated |
 | **Instructor** (graded activities) | **~78%** | estimated |
-| Engine commands | 80 | measured: `crates/engine/src/catalog.rs` |
-| Console grammar entries | 558 across 22 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
-| Device models · sample labs | 19 · 20 | measured |
-| Tests | 246 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Engine commands | 92 | measured: `crates/engine/src/catalog.rs` |
+| Console grammar entries | 636 across 26 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
+| Device models · sample labs | 27 · 23 | measured |
+| Tests | 289 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~550–880 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
 
 | Audience | Ready % | Opus 5.5 agent wall-clock hours to ~95% | Work that dominates |
 |---|---|---|---|
-| Full target | ~68% | ~320–520 | More device families (modules, IoT, phones), depth everywhere |
+| Full target | ~72% | ~250–420 | Depth everywhere, cloud and DSL/cable devices, fibre |
 | CCNA 1 student | ~86% | ~12–25 | PDU details, a few host apps |
-| CCNA 2 student | ~90% | ~15–30 | Console polish, wireless encryption and roaming |
-| CCNA 3 student | ~87% | ~30–55 | Automation, IKE on the wire, QoS queuing |
+| CCNA 2 student | ~92% | ~10–20 | Console polish, wireless group keys and real PEAP |
+| CCNA 3 student | ~91% | ~20–40 | Automation, QoS shaping and trust, floating static routes |
 | Instructor | ~78% | ~15–25 | Translated activity texts, an answer-network view |
 
 ## Dimensions
@@ -47,19 +47,23 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 |---|---|---|---|---|
 | Device console | 20 | 74% | 35–55 | Modes, abbreviations, `?`, Tab, history, config round-trip; `show` coverage growing |
 | Layer 2 | 12 | 85% | 12–20 | VLANs, trunks, DTP, per-VLAN STP with BPDUs and timers, rapid-pvst, EtherChannel, VTP, port security |
-| Layer 3 | 15 | 85% | 18–30 | IPv4, IPv6 (NDP, SLAAC, subinterfaces, VLAN interfaces, DHCPv6 relay), static, RIP, multi-area OSPF with DR/BDR, stub areas and ranges, OSPFv3, EIGRP with feasible successors, multilayer switching with OSPF and RIP, HSRP |
+| Layer 3 | 15 | 90% | 10–18 | IPv4, IPv6 (NDP, SLAAC, subinterfaces, VLAN interfaces, DHCPv6 relay), static, RIP, multi-area OSPF with DR/BDR and equal-cost paths, OSPFv3, EIGRP with timers, queries and equal or unequal-cost load balancing, multilayer switching, HSRP |
 | Services | 8 | 92% | 3–5 | DHCPv4 and DHCPv6 (with relay), DNS, HTTP with browser, email with the Email app, Telnet/SSH, NTP, syslog, TFTP, FTP, AAA with RADIUS and TACACS+, SNMP v2c/v3 with traps and a MIB Browser, mail relay between domains |
-| Security | 8 | 78% | 16–28 | IPv4 and IPv6 ACLs, access-class, NAT/PAT, passwords and lines, PPP PAP/CHAP, GRE tunnels and IPsec site-to-site; no firewalls |
-| WAN, cabling, wireless | 6 | 78% | 18–30 | Copper (auto-MDIX), serial (DCE/DTE, HDLC/PPP), Wi-Fi access points, home wireless routers and clients, WLC with lightweight APs, 802.11 frames, WPA2-PSK and Enterprise; no fibre or CCMP |
+| Security | 8 | 85% | 10–18 | IPv4 and IPv6 ACLs, access-class, NAT/PAT, passwords and lines, PPP PAP/CHAP, GRE tunnels and IPsec with IKE on the wire, a stateful firewall with object groups, twice NAT and subinterfaces |
+| WAN, cabling, wireless | 6 | 85% | 10–18 | Copper (auto-MDIX, 100 m), serial (DCE/DTE, HDLC/PPP), serial cards in modular routers, Wi-Fi access points, home routers, WLC with lightweight APs, a VLAN per WLAN, beacons, roaming, WPA2-PSK and Enterprise with CCMP; no fibre |
 | Simulation mode | 8 | 70% | 18–28 | Event list, replay, decode, drop reasons, pcap; BPDUs, OSPF hellos and database exchange, RIP updates, HSRP hellos, LLDP, LACP; no complex PDUs |
 | Workspace and windows | 10 | 78% | 18–30 | Reference-app arrangement, device tabs, notes, shapes, freehand and polygon drawings, nested clusters, printing, the physical view with places and cable lengths |
 | Teaching | 8 | 80% | 15–25 | Activities with checks, points, sections, hints, hidden answers, values per student, a time limit, a password lock, a wizard and a side-by-side comparison with the answer; Spanish interface |
-| Device families | 5 | 40% | 65–100 | 19 models of our own, a stateful firewall among them; no modules or IoT |
+| Device families | 5 | 60% | 30–50 | 27 models of our own: modular routers with cards and power, a stateful firewall, IP phones with call control, IoT sensors and devices |
 | Files | — | — | — | Own open `.pcraft` JSON; no `.pkt` (out of scope: [decisions.md](docs/decisions.md)) |
 | Platforms and agents | — | — | — | Linux, Windows, macOS, BSD, web; MCP server and CLI over the full command catalog |
 
 ## Progress log
 
+- **2026-10-30 — Modular routers, IP phones and IoT.** Modular routers take serial and Gigabit cards in their bays while switched off (a Physical tab with a power switch); IP phones on voice VLANs register with call control on a router and call each other; smart sensors and devices report to an IoT server that runs simple rules; three new sample labs.
+- **2026-10-30 — Routing and VPN depth.** EIGRP balances over equal and unequal-cost paths, drops silent neighbours after their hold time and sends updates, queries and replies on the wire; OSPF equal-cost paths; GRE tunnels over learned routes; IKE main and quick mode on the wire before ESP; QoS output queues on congested links.
+- **2026-10-30 — Firewall depth.** Traceroute through the firewall, ICMP rules for the firewall itself, subinterfaces with VLANs, object groups, outbound access rules, twice NAT, a global inspection policy; TTL left alone.
+- **2026-10-30 — Wireless depth.** A VLAN per WLAN, beacons, roaming between access points, CCMP encryption after the WPA2 handshake, PEAP shown as an exchange.
 - **2026-10-30 — Physical view.** The Physical tab works: an intercity map, cities, buildings and wiring closets; devices move between places, cables show their length, and copper longer than 100 m goes down and says why.
 - **2026-10-30 — Firewall.** A stateful firewall model with named interfaces and security levels, a connection table, access rules, object NAT and a DHCP server; firewall sample lab with inside, DMZ and outside.
 - **2026-10-30 — Model names and equivalents.** Models are named after their ports (Router 3GE, Switch 24FE, L3 Switch 24…), and a new page says which one to place when a course lab names a vendor model; old lab files open unchanged.

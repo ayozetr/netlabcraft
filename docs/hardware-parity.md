@@ -1,6 +1,6 @@
 # Hardware parity
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (WLC, lightweight APs, 802.11 frames, WPA2-Enterprise) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (modular routers, phones, IoT, wireless and firewall depth) · **Target:** Cisco Packet Tracer 9.0
 
 Two kinds of hardware matter here: the **simulated** hardware (device models, ports, cables,
 modules) and the **real** hardware the app runs on. Part of
@@ -11,12 +11,14 @@ host hardware: ~70% ready, 10–16 h** (estimated).
 
 | Feature | Reference app | PacketCraft | Gap and estimate |
 |---|---|---|---|
-| Routers | Many models, modular slots (HWIC, NIM) | Router 2GE/3GE/4GE, Router 2GE+2S (2 Gigabit Ethernet + 2 serial); our own names, mapped to course models in [model-equivalents.md](model-equivalents.md) | Modules added in the Physical tab with the power off: 20–30 h |
+| Routers | Many models, modular slots (HWIC, NIM) | Router 2GE/3GE/4GE, Router 2GE+2S, Modular Router 2GE (2 bays) and 3GE (4 bays) with serial (2 and 4 ports), Gigabit (1 and 2 ports) and Fast Ethernet cards fitted while switched off; power on and off (boots from the saved configuration); a Physical tab drawn in code; [model-equivalents.md](model-equivalents.md) | A switch card (switching inside a router), power supplies as parts: 6–10 h |
 | Switches | Access and multilayer models | Switch 8FE/24FE/48FE, L3 Switch 24 (multilayer) | — for CCNA labs |
 | Hubs, PCs, laptops, servers, printers | yes | yes | — |
-| Wireless (access points, wireless routers, wireless clients) | yes | 🟡 Home-Router (Internet port, 4 LAN ports, Wi-Fi; DHCP and NAT set up at the factory; a Home Router settings page for LAN, DHCP, static Internet and Wi-Fi, all as configuration commands), AccessPoint and Laptop-WiFi models: SSID, open or WPA2-PSK, channel, association by range (nearest access point), relay between clients; real IEEE 802.11 frames on every air hop (probe, authentication, association, data with LLC/SNAP) and the WPA2-PSK 4-way handshake with real keys; WLC and LAP models: APs join their controller with a CAPWAP exchange (UDP 5246) and get its WLANs (`wlan N SSID open|psk|enterprise`, `capwap controller`, `show wlan`, `show capwap`, a WLC/LAP Config page); WPA2-Enterprise logins relayed to RADIUS by the WLC; the capture stays Ethernet and a separate 802.11 capture holds the air hops; wlc sample lab | CCMP encryption, beacons, roaming handover, VLAN per WLAN, central tunnelling, PEAP: 8–14 h |
-| Firewalls | yes | 🟡 Firewall 5GE: named interfaces with security levels, stateful connection table with timeouts, extended access lists bound to interfaces, object NAT (dynamic interface PAT, dynamic, static), static routes, a DHCP server, `show conn|xlate|nat|access-list|route`; firewall sample lab | ICMP errors through the firewall, subinterfaces, twice NAT, object groups, outbound access groups: 8–12 h |
-| IoT devices, phones, cloud/modems | yes | ❌ | 40–60 h; low priority for CCNA |
+| Wireless (access points, wireless routers, wireless clients) | yes | 🟡 Home Router, Access Point and Wi-Fi Laptop; real IEEE 802.11 frames (probe, authentication, association, reassociation, beacons every 2048 TU, data); WPA2-PSK 4-way handshake and CCMP (AES-CCM) on data frames; WLC and LAP with a CAPWAP join, WLANs pushed to joined APs, a VLAN per WLAN tagged on the AP's trunk uplink; WPA2-Enterprise via RADIUS, PEAP shown as an exchange; roaming between APs of the same SSID; a separate 802.11 capture; wlc sample | Group keys, a real PEAP/TLS tunnel, range by distance, central tunnelling: 6–10 h |
+| Firewalls | yes | 🟡 Firewall 5GE: named interfaces and subinterfaces with security levels, a stateful connection table with timeouts, ICMP errors and traceroute through it, ICMP rules for the firewall itself, extended access lists with object groups and remarks bound in or out, object NAT and twice NAT, static routes with distances, a DHCP server, a global policy with `inspect icmp`; firewall sample | Route distance in path choice, more inspections: 4–6 h |
+| IP phones | yes | 🟡 IP Phone with a PC port; `switchport voice vlan`; DHCP option 150; call control on routers (`telephony-service`, `ephone-dn`, `ephone`, `auto assign`, `show ephone`); registration, ringing, answer, hang up over our own documented signalling, RTP packets while a call is up; a Phone tab with a dial pad; ip-phones sample | Power over Ethernet, SIP, the phone's own setup screen: 8–12 h |
+| IoT devices | yes | 🟡 Smart Sensor and Smart Device registering to a server's IoT service over HTTP; the server lists them and runs rules (if a reading passes a value, switch a device); an IoT tab; iot sample | Reports on a timer, more kinds of things, a home gateway: 8–12 h |
+| Cloud, DSL and cable modems | yes | ❌ | 8–12 h; low priority for CCNA |
 | Copper cables | Straight-through and crossover (with mismatch errors) | One copper cable; every port is auto-MDIX | By design; a "strict cabling" option: 2–4 h |
 | Serial cables | DCE and DTE | ✅ the first end cabled is the DCE; red cable with a clock at the DCE end | — |
 | Fibre, console, coaxial, phone cables | yes | ❌ | Fibre ports and console sessions over a cable: 8–12 h |
@@ -40,6 +42,7 @@ host hardware: ~70% ready, 10–16 h** (estimated).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Modular routers and cards, power, IP phones, IoT devices; wireless and firewall depth. |
 | 2026-10-30 | minor | Workspace image export (PNG). |
 | 2026-10-30 | minor | Home wireless router. |
 | 2026-10-30 | minor | Firewall 5GE: a stateful firewall appliance. |

@@ -13,16 +13,17 @@ Hours are Opus 5.5 agent wall-clock estimates.
 
 | # | Gap | Who notices | Estimate |
 |---|---|---|---|
-| 1 | **Wireless depth:** CCMP encryption, beacons, roaming, VLAN per WLAN, PEAP | CCNA 2 extras | 8–14 h |
-| 2 | **More languages:** interface languages beyond English and Spanish (catalogs in the same format) | Non-English students | 3–6 h |
-| 3 | **Packaging and first release:** installers for Windows, macOS, FreeBSD and Flatpak, workflows ([releasing.md](releasing.md)); the app ID and the project's home are the owner's decision | Everyone who isn't a developer | 7–13 h |
-| 4 | **Device families:** modular routers, IoT, phones; firewall depth (ICMP errors through it, subinterfaces, object groups) | Specialised labs | 65–100 h |
-| 5 | **Routing and VPN depth:** a congestion model for QoS queuing, `mls qos trust`; EIGRP queries, timers and unequal-cost paths; the IKE exchange on the wire, tunnels over learned routes | CCNA 3 extras | 18–30 h |
+| 1 | **More languages:** interface languages beyond English and Spanish (catalogs in the same format) | Non-English students | 3–6 h |
+| 2 | **Packaging and first release:** installers for Windows, macOS, FreeBSD and Flatpak, workflows ([releasing.md](releasing.md)); the app ID and the project's home are the owner's decision | Everyone who isn't a developer | 7–13 h |
+| 3 | **Routing and security depth:** QoS shaping and `mls qos trust`, route distance in path choice (floating static routes), EIGRP for IPv6, IKEv2 and real ciphers | CCNA 3 extras | 15–25 h |
+| 4 | **Wireless depth:** group keys, a real PEAP/TLS tunnel, wireless range by distance in the physical view | CCNA 2 extras | 6–10 h |
+| 5 | **Device families:** a switch card in routers (switching inside a router), power over Ethernet, SIP phones, IoT on a timer and more things, cloud and DSL/cable modems, fibre | Specialised labs | 30–50 h |
 
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Depth round: wireless (VLAN per WLAN, beacons, roaming, CCMP), routing and VPN (EIGRP depth, ECMP, tunnels over learned routes, IKE, QoS queuing), firewall depth, modular routers, IP phones and IoT; what remains of each re-ranked. |
 | 2026-10-30 | minor | Workspace done: the physical view. Device families narrowed: a stateful firewall. |
 | 2026-10-30 | minor | Wireless narrowed: WLC, LAPs, 802.11 frames, WPA2-Enterprise. QoS basics done (classification, marking, policing). |
 | 2026-10-30 | minor | Services done: SNMP traps, SNMPv3 without privacy, mail relay (v3 privacy and MX records are in protocol-parity.md). |
