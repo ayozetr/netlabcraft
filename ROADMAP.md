@@ -20,15 +20,15 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 | Number | Value | Kind |
 |---|---|---|
-| **Ready for real work** (weighted) | **~69%** | estimated from written weights (69.3); [target-app-parity.md](docs/target-app-parity.md) |
+| **Ready for real work** (weighted) | **~70%** | estimated from written weights (70.1); [target-app-parity.md](docs/target-app-parity.md) |
 | **CCNA 1 student** | **~84%** | estimated; [method](docs/target-app-parity.md#audiences) |
 | **CCNA 2 student** | **~84%** | estimated |
 | **CCNA 3 student** | **~70%** | estimated |
-| **Instructor** (graded activities) | **~60%** | estimated |
+| **Instructor** (graded activities) | **~72%** | estimated |
 | Engine commands | 52 | measured: `crates/engine/src/catalog.rs` |
 | Console grammar entries | 351 across 13 modes | measured: `crates/ios/src/grammar.rs` |
 | Device models · sample labs | 16 · 18 | measured |
-| Tests | 157 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Tests | 158 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~600–950 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
@@ -39,7 +39,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | CCNA 1 student | ~84% | ~15–30 | PDU details, email, a few host apps |
 | CCNA 2 student | ~84% | ~30–55 | WLC and 802.11 frames, console polish |
 | CCNA 3 student | ~70% | ~80–130 | VPN/GRE, QoS, SNMP, TACACS+, automation |
-| Instructor | ~60% | ~35–60 | Variables per student, an answer network to compare against, translated activity texts |
+| Instructor | ~72% | ~20–35 | A side-by-side answer view, translated activity texts |
 
 ## Dimensions
 
@@ -53,13 +53,14 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | WAN, cabling, wireless | 6 | 62% | 28–45 | Copper (auto-MDIX), serial (DCE/DTE, HDLC/PPP), Wi-Fi access points, home wireless routers and clients; no WLC or fibre |
 | Simulation mode | 8 | 70% | 18–28 | Event list, replay, decode, drop reasons, pcap; BPDUs, OSPF hellos and database exchange, RIP updates, HSRP hellos, LLDP, LACP; no complex PDUs |
 | Workspace and windows | 10 | 55% | 60–90 | Reference-app arrangement, device tabs, notes and drawings; no physical view or clusters |
-| Teaching | 8 | 65% | 35–60 | Activities with checks, points, hints, hidden answers, a time limit, a password lock and a wizard; Spanish interface; no variables per student |
+| Teaching | 8 | 75% | 20–35 | Activities with checks, points, sections, hints, hidden answers, values per student, a time limit, a password lock and a wizard; Spanish interface |
 | Device families | 5 | 25% | 80–120 | 16 generic models; no modules, ASA, IoT |
 | Files | — | — | — | Own open `.pcraft` JSON; no `.pkt` (out of scope: [decisions.md](docs/decisions.md)) |
 | Platforms and agents | — | — | — | Linux, Windows, macOS, BSD, web; MCP server and CLI over the full command catalog |
 
 ## Progress log
 
+- **2026-10-30 — Values per student.** Activities can have variables (`{net}` in instructions and checks): each student types their name and gets their own values, so no two labs are the same; results also come per section (per device by default).
 - **2026-10-30 — CCNA 1 lab commands.** Output filters (`show running-config | include …`, `section`, `begin`), `security passwords min-length`, `login block-for`, `username … privilege 15`, `speed`/`duplex`/`mdix auto` (a speed mismatch takes the link down), `delete vlan.dat`, and many more `show` commands; VLANs now live in the VLAN database as on real switches.
 - **2026-10-30 — Home wireless router.** A Home-Router model: Internet port, four LAN ports and Wi-Fi, handing out addresses and translating to the Internet out of the box, with a Home Router settings page; multilayer switches also do NAT, DHCP server and ACLs.
 - **2026-10-30 — Sample labs in Spanish.** The sample labs' titles, descriptions and notes, the sample activity and the status messages built from parts read in Spanish too.

@@ -298,6 +298,24 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         {
             Err(bad("the activity is locked: `activity.unlock` with the instructor's password first"))
         }
+        "activity.start" => {
+            let who: String = str_param(p, "student")?.trim().chars().take(64).collect();
+            if who.is_empty() {
+                return Err(bad("give the student's name"));
+            }
+            let mut t = s.topology.clone();
+            let a = t.activity.as_mut().ok_or_else(|| bad("this lab has no activity"))?;
+            if a.student.is_some() {
+                return Err(bad("this activity was already started"));
+            }
+            a.student = Some(who);
+            let values: serde_json::Map<String, Value> = a.values().into_iter().map(|(k, v)| (k, json!(v))).collect();
+            let instructions = a.resolve(&a.instructions);
+            s.checkpoint();
+            s.topology = t;
+            s.changed();
+            Ok(json!({"values": values, "instructions": instructions}))
+        }
         "activity.lock" => {
             let password = str_param(p, "password")?;
             if password.is_empty() {
@@ -334,6 +352,19 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             let a = t.activity.get_or_insert_with(|| packetcraft_model::activity::Activity { title: "Activity".into(), salt: fresh_salt, ..Default::default() });
             if let Some(title) = opt_str(p, "title") {
                 a.title = title.chars().take(200).collect();
+            }
+            if let Some(vars) = p.get("variables").and_then(Value::as_object) {
+                use packetcraft_model::activity::{MAX_VALUES, MAX_VARIABLES, Variable};
+                a.variables = vars
+                    .iter()
+                    .take(MAX_VARIABLES)
+                    .filter(|(k, _)| !k.trim().is_empty())
+                    .map(|(k, v)| Variable {
+                        name: k.trim().chars().take(64).collect(),
+                        values: v.as_array().into_iter().flatten().filter_map(Value::as_str).take(MAX_VALUES).map(|x| x.chars().take(64).collect()).collect(),
+                    })
+                    .filter(|v| !v.values.is_empty())
+                    .collect();
             }
             if let Some(text) = opt_str(p, "instructions") {
                 a.instructions = text.chars().take(packetcraft_model::activity::MAX_TEXT).collect();
@@ -430,13 +461,14 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             let label = opt_str(p, "label").map_or(label, |l| l.chars().take(300).collect());
                         let points = p.get("points").and_then(Value::as_u64).map_or(1, |n| n.clamp(1, 1_000) as u32);
             let feedback = opt_str(p, "feedback").map_or(String::new(), |f| f.chars().take(1_000).collect());
+            let section = opt_str(p, "section").map(str::trim).filter(|f| !f.is_empty()).map_or(name.clone(), |f| f.chars().take(64).collect());
             let mut t = s.topology.clone();
             let fresh_salt = crate::activity::new_salt(&t, "Activity");
             let a = t.activity.get_or_insert_with(|| packetcraft_model::activity::Activity { title: "Activity".into(), salt: fresh_salt, ..Default::default() });
             if a.checks.len() >= packetcraft_model::activity::MAX_CHECKS {
                 return Err(bad("too many checks"));
             }
-            a.checks.push(Check { label, points, feedback, kind });
+            a.checks.push(Check { label, points, section, feedback, kind });
             let n = a.checks.len();
             s.checkpoint();
             s.topology = t;
@@ -466,17 +498,42 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         }
         "activity.check" => {
             let a = s.topology.activity.as_ref().ok_or_else(|| bad("this lab has no activity"))?;
-            let results = crate::activity::evaluate(&s.topology, &s.sim, &a.checks, &a.salt);
+            if a.needs_student() {
+                return Err(bad("start the activity first: `activity.start` with the student's name"));
+            }
+            let results = crate::activity::evaluate(&s.topology, &s.sim, &a.resolved_checks(), &a.salt);
             let total: u32 = results.iter().map(|r| r.points).sum();
             let score: u32 = results.iter().filter(|r| r.passed).map(|r| r.points).sum();
                         let percent = (score * 100).checked_div(total).unwrap_or(0);
             let detail = !(a.locked() && a.score_only);
             let shown: Vec<Value> = if detail {
-                results.iter().map(|r| json!({"label": r.label, "points": r.points, "passed": r.passed, "feedback": r.feedback})).collect()
+                results.iter().map(|r| json!({"label": r.label, "points": r.points, "passed": r.passed, "feedback": r.feedback, "section": r.section})).collect()
             } else {
                 Vec::new()
             };
-            Ok(json!({"results": shown, "score": score, "total": total, "percent": percent, "detail": detail}))
+            // Per section, in the order sections first appear.
+            let mut sections: Vec<(String, u32, u32)> = Vec::new();
+            for r in &results {
+                let i = match sections.iter().position(|x| x.0 == r.section) {
+                    Some(i) => i,
+                    None => {
+                        sections.push((r.section.clone(), 0, 0));
+                        sections.len() - 1
+                    }
+                };
+                if let Some(x) = sections.get_mut(i) {
+                    x.2 += r.points;
+                    if r.passed {
+                        x.1 += r.points;
+                    }
+                }
+            }
+            let sections: Vec<Value> = if detail {
+                sections.iter().map(|(n, sc, tot)| json!({"name": n, "score": sc, "total": tot, "percent": (sc * 100).checked_div(*tot).unwrap_or(0)})).collect()
+            } else {
+                Vec::new()
+            };
+            Ok(json!({"results": shown, "sections": sections, "score": score, "total": total, "percent": percent, "detail": detail}))
         }
         "activity.reset" => {
             let start = s.activity_start.clone().ok_or_else(|| bad("this lab wasn't opened as an activity"))?;

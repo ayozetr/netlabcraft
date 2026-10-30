@@ -506,6 +506,7 @@ pub fn build(id: &str) -> Result<Topology> {
             activity.checks.push(packetcraft_model::activity::Check {
                 label: "PC1 reaches PC2".into(),
                 points: 3,
+                section: "PC1".into(),
                 feedback: "Both router interfaces need their address and `no shutdown`.".into(),
                 kind: packetcraft_model::activity::CheckKind::Ping { from: pc1, to: "192.168.20.10".into(), succeed: true },
             });

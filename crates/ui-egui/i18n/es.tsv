@@ -377,3 +377,9 @@ Wireless	Inalámbrica
 SSID	SSID
 WPA2 passphrase (empty: open)	Clave WPA2 (vacía: abierta)
 Save Wireless	Guardar Wi-Fi
+This activity gives each student their own values. Type your name to start.	Esta actividad da a cada alumno sus propios valores. Escribe tu nombre para empezar.
+Your name	Tu nombre
+Start	Empezar
+Student: {}	Alumno: {}
+Values per student, one variable per line (net = 10, 20, 30); write {net} in the instructions and checks	Valores por alumno, una variable por línea (red = 10, 20, 30); escribe {red} en las instrucciones y comprobaciones
+Section	Sección

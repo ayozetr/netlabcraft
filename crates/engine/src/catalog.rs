@@ -51,7 +51,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Activity Wizard…",
         "Extensions",
         None,
-        r#"{"title"?, "instructions"?, "hidden"?: true to store configuration answers as hashes, "time_limit"?: minutes (0: none), "score_only"?: while locked, Check Results shows the score only}"#,
+        r#"{"title"?, "instructions"?, "hidden"?: true to store configuration answers as hashes, "time_limit"?: minutes (0: none), "score_only"?: while locked, Check Results shows the score only, "variables"?: {"name": ["value", …]} picked per student, used as {name}}"#,
         true
     ),
     c!(
@@ -67,11 +67,19 @@ pub static CATALOG: &[CommandInfo] = &[
         "Add check",
         "",
         None,
-        r#"{"type": "config"|"ping"|"host-address"|"output", "device" (or "from"), "line" | "to"+"succeed"? | "address"+"gateway"? | "command"+"contains", "points"?: 1, "label"?, "feedback"?: hint shown when it fails}"#,
+        r#"{"type": "config"|"ping"|"host-address"|"output", "device" (or "from"), "line" | "to"+"succeed"? | "address"+"gateway"? | "command"+"contains", "points"?: 1, "label"?, "feedback"?: hint shown when it fails, "section"?: the part it counts towards (the device by default)}"#,
         true
     ),
     c!("activity.remove_check", "Remove check", "", None, r#"{"index": n}"#, true),
     c!("activity.clear", "Remove the activity", "", None, "{}", true),
+    c!(
+        "activity.start",
+        "Start the activity",
+        "",
+        None,
+        r#"{"student": "name"} → {"values", "instructions"}: picks this student's variable values"#,
+        true
+    ),
     c!("activity.lock", "Lock the activity", "", None, r#"{"password"}: the activity can't be changed or its checks seen until unlocked"#, true),
     c!("activity.unlock", "Unlock the activity", "", None, r#"{"password"}"#, true),
     c!(
@@ -79,7 +87,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Check Results",
         "Extensions",
         None,
-        r#"{} → {"results": [{"label", "points", "passed", "feedback"}] (empty when locked with score_only), "score", "total", "percent", "detail"}"#,
+        r#"{} → {"results": [{"label", "points", "passed", "feedback", "section"}] and "sections": [{"name", "score", "total", "percent"}] (both empty when locked with score_only), "score", "total", "percent", "detail"}"#,
         false
     ),
     c!("activity.reset", "Reset Activity", "Extensions", None, "{}: back to the lab as the activity was opened", false),

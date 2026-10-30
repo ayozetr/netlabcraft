@@ -424,3 +424,56 @@ fn a_home_router_hands_out_addresses_and_translates() {
     assert!(s.execute("home.settings", json!({"device": home, "dhcp_start": "172.16.0.5"})).is_err());
     assert!(s.execute("home.settings", json!({"device": isp, "dhcp": false})).is_err());
 }
+
+#[test]
+fn activity_variables_differ_per_student_and_results_come_per_section() {
+    let mut s = Session::new();
+    s.execute("device.add", json!({"kind": "router", "x": 0, "y": 0})).unwrap();
+    s.execute("device.add", json!({"kind": "pc", "x": 0, "y": 100})).unwrap();
+    s.execute("link.add", json!({"a": "R1", "a_port": "g0/0", "b": "PC1", "b_port": "fa0"})).unwrap();
+    s.execute(
+        "activity.set",
+        json!({"title": "Your network", "instructions": "Give R1 g0/0 the address 10.{net}.0.1/24.", "variables": {"net": ["11", "22", "33", "44"]}}),
+    )
+    .unwrap();
+    s.execute(
+        "activity.add_check",
+        json!({"type": "config", "device": "R1", "line": "interface gigabitethernet0/0 | ip address 10.{net}.0.1 255.255.255.0", "points": 2}),
+    )
+    .unwrap();
+    s.execute(
+        "activity.add_check",
+        json!({"type": "output", "device": "R1", "command": "show ip interface brief", "contains": "10.{net}.0.1", "section": "Checks"}),
+    )
+    .unwrap();
+    let file = s.execute("file.save", json!({})).unwrap()["json"].as_str().unwrap().to_string();
+    // Each student starts with a name and gets their own network.
+    let mut nets = std::collections::BTreeSet::new();
+    for who in ["Ana", "Bruno", "Carla", "Diego", "Elena", "Fran", "Gema", "Hugo"] {
+        let mut st = Session::new();
+        st.execute("file.open", json!({"json": file})).unwrap();
+        assert!(st.execute("activity.check", json!({})).is_err(), "a name first");
+        let r = st.execute("activity.start", json!({"student": who})).unwrap();
+        let net = r["values"]["net"].as_str().unwrap().to_string();
+        assert!(r["instructions"].as_str().unwrap().contains(&format!("10.{net}.0.1/24")));
+        assert!(st.execute("activity.start", json!({"student": "x"})).is_err(), "only once");
+        st.execute(
+            "device.configure",
+            json!({"device": "R1", "lines": ["interface g0/0", format!("ip address 10.{net}.0.1 255.255.255.0"), "no shutdown"]}),
+        )
+        .unwrap();
+        let res = st.execute("activity.check", json!({})).unwrap();
+        assert_eq!(res["percent"], 100, "{who}: {res}");
+        assert_eq!(
+            res["sections"],
+            json!([{"name": "R1", "score": 2, "total": 2, "percent": 100}, {"name": "Checks", "score": 1, "total": 1, "percent": 100}])
+        );
+        // Someone else's network doesn't count.
+        let other = if net == "11" { "22" } else { "11" };
+        st.execute("device.configure", json!({"device": "R1", "lines": ["interface g0/0", format!("ip address 10.{other}.0.1 255.255.255.0")]}))
+            .unwrap();
+        assert_eq!(st.execute("activity.check", json!({})).unwrap()["percent"], 0);
+        nets.insert(net);
+    }
+    assert!(nets.len() >= 3, "{nets:?}");
+}

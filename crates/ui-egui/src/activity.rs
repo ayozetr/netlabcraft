@@ -33,6 +33,25 @@ pub struct ActivityView {
     time_up: bool,
     feedback: String,
     password: String,
+    /// The student's name, to start an activity with variables.
+    student: String,
+    /// The wizard's variables, one per line: `name = value, value, …`.
+    variables: String,
+    section: String,
+}
+
+/// `name = a, b, c` lines as the `activity.set` variables object.
+fn parse_variables(text: &str) -> Value {
+    let mut map = serde_json::Map::new();
+    for line in text.lines() {
+        if let Some((name, values)) = line.split_once('=') {
+            let values: Vec<Value> = values.split(',').map(str::trim).filter(|v| !v.is_empty()).map(|v| json!(v)).collect();
+            if !name.trim().is_empty() && !values.is_empty() {
+                map.insert(name.trim().to_string(), Value::Array(values));
+            }
+        }
+    }
+    Value::Object(map)
 }
 
 /// The time left as `m:ss` (or `h:mm:ss`).
@@ -69,6 +88,7 @@ fn instructions(app: &mut PacketApp, ctx: &egui::Context) {
     let mut open = true;
     let mut check = false;
     let mut reset = false;
+    let mut start = None;
     let now = ctx.input(|i| i.time);
     let left = (a.time_limit > 0).then(|| {
         let elapsed = (now - app.ui.activity.started).max(0.0) as u64;
@@ -86,9 +106,24 @@ fn instructions(app: &mut PacketApp, ctx: &egui::Context) {
     egui::Window::new(tl("Instructions")).open(&mut open).default_size([380.0, 320.0]).anchor(egui::Align2::LEFT_TOP, [12.0, 190.0]).show(
         ctx,
         |ui| {
-            ui.heading(crate::i18n::tr(&a.title));
+            ui.heading(a.resolve(crate::i18n::tr(&a.title)));
+            // An activity with values per student starts with the student's name.
+            if a.needs_student() {
+                ui.label(tl("This activity gives each student their own values. Type your name to start."));
+                ui.horizontal(|ui| {
+                    let l = ui.label(tl("Your name"));
+                    ui.add(egui::TextEdit::singleline(&mut app.ui.activity.student).desired_width(180.0)).labelled_by(l.id);
+                    if ui.add_enabled(!app.ui.activity.student.trim().is_empty(), egui::Button::new(tl("Start"))).clicked() {
+                        start = Some(app.ui.activity.student.trim().to_string());
+                    }
+                });
+                return;
+            }
+            if let Some(who) = &a.student {
+                ui.label(RichText::new(crate::i18n::trf("Student: {}", &[who])).small());
+            }
             egui::ScrollArea::vertical().max_height(160.0).id_salt("activity_text").show(ui, |ui| {
-                ui.label(if a.instructions.is_empty() { tl("(no instructions)") } else { crate::i18n::tr(&a.instructions) });
+                ui.label(if a.instructions.is_empty() { tl("(no instructions)").to_string() } else { a.resolve(crate::i18n::tr(&a.instructions)) });
             });
             ui.separator();
             let (score, total, percent) = match &app.ui.activity.results {
@@ -110,6 +145,22 @@ fn instructions(app: &mut PacketApp, ctx: &egui::Context) {
                     if r["detail"] == false {
                         ui.label(RichText::new(tl("The instructor shows the score only.")).italics());
                     }
+                    let sections = r["sections"].as_array().cloned().unwrap_or_default();
+                    if sections.len() > 1 {
+                        for sec in &sections {
+                            ui.label(
+                                RichText::new(format!(
+                                    "{}: {}%  ({}/{})",
+                                    sec["name"].as_str().unwrap_or(""),
+                                    sec["percent"].as_u64().unwrap_or(0),
+                                    sec["score"].as_u64().unwrap_or(0),
+                                    sec["total"].as_u64().unwrap_or(0)
+                                ))
+                                .strong(),
+                            );
+                        }
+                        ui.separator();
+                    }
                     for item in r["results"].as_array().into_iter().flatten() {
                         let passed = item["passed"].as_bool().unwrap_or(false);
                         let (mark, color) =
@@ -127,6 +178,11 @@ fn instructions(app: &mut PacketApp, ctx: &egui::Context) {
         },
     );
     app.ui.activity.show_instructions = open;
+    if let Some(who) = start
+        && app.run("activity.start", json!({"student": who})).is_some()
+    {
+        app.ui.activity.started = now;
+    }
     if check {
         app.ui.activity.results = app.run("activity.check", json!({}));
     }
@@ -147,6 +203,7 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
         let a = app.session.topology.activity.clone().unwrap_or_default();
         app.ui.activity.title = if a.title.is_empty() { "Activity".into() } else { a.title };
         app.ui.activity.instructions = a.instructions;
+        app.ui.activity.variables = a.variables.iter().map(|v| format!("{} = {}", v.name, v.values.join(", "))).collect::<Vec<_>>().join("\n");
         app.ui.activity.loaded = true;
     }
     let activity = app.session.topology.activity.clone();
@@ -179,10 +236,12 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
         field(ui, tl("Title"), &mut v.title, 360.0);
         let l = ui.label(tl("Instructions"));
         ui.add(egui::TextEdit::multiline(&mut v.instructions).desired_rows(4).desired_width(f32::INFINITY)).labelled_by(l.id);
+        let l = ui.label(tl("Values per student, one variable per line (net = 10, 20, 30); write {net} in the instructions and checks"));
+        ui.add(egui::TextEdit::multiline(&mut v.variables).desired_rows(2).desired_width(f32::INFINITY).font(egui::TextStyle::Monospace)).labelled_by(l.id);
         let mut hidden = activity.as_ref().is_some_and(|a| a.hidden);
         ui.horizontal(|ui| {
             if ui.button(tl("Save title and instructions")).clicked() {
-                run.push(("activity.set", json!({"title": v.title, "instructions": v.instructions})));
+                run.push(("activity.set", json!({"title": v.title, "instructions": v.instructions, "variables": parse_variables(&v.variables)})));
             }
                         if ui.checkbox(&mut hidden, tl("Hide answers in the file")).changed() {
                 run.push(("activity.set", json!({"hidden": hidden})));
@@ -234,6 +293,7 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
             }
         });
                 field(ui, tl("Hint when it fails"), &mut v.feedback, 300.0);
+                field(ui, tl("Section"), &mut v.section, 200.0);
         ui.collapsing(tl("Add a ping check"), |ui| {
             field(ui, tl("From device"), &mut v.ping_from, 140.0);
             field(ui, tl("To address"), &mut v.ping_to, 140.0);
@@ -241,7 +301,7 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
             if ui.button(tl("Add")).clicked() {
                 run.push((
                     "activity.add_check",
-                    json!({"type": "ping", "from": v.ping_from.trim(), "to": v.ping_to.trim(), "succeed": !v.ping_fail, "feedback": v.feedback.trim()}),
+                    json!({"type": "ping", "from": v.ping_from.trim(), "to": v.ping_to.trim(), "succeed": !v.ping_fail, "feedback": v.feedback.trim(), "section": v.section.trim()}),
                 ));
             }
         });
@@ -250,7 +310,7 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
             field(ui, tl("Line"), &mut v.cfg_line, 300.0);
             ui.label(RichText::new(tl("Inside a block: interface g0/0 | ip address 10.0.0.1 255.255.255.0")).small());
             if ui.button(tl("Add")).clicked() {
-                run.push(("activity.add_check", json!({"type": "config", "device": v.cfg_device.trim(), "line": v.cfg_line.trim(), "feedback": v.feedback.trim()})));
+                run.push(("activity.add_check", json!({"type": "config", "device": v.cfg_device.trim(), "line": v.cfg_line.trim(), "feedback": v.feedback.trim(), "section": v.section.trim()})));
             }
         });
         ui.collapsing(tl("Add a command check"), |ui| {
@@ -260,7 +320,7 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
             if ui.button(tl("Add")).clicked() {
                 run.push((
                     "activity.add_check",
-                    json!({"type": "output", "device": v.out_device.trim(), "command": v.out_command.trim(), "contains": v.out_contains.trim(), "feedback": v.feedback.trim()}),
+                    json!({"type": "output", "device": v.out_device.trim(), "command": v.out_command.trim(), "contains": v.out_contains.trim(), "feedback": v.feedback.trim(), "section": v.section.trim()}),
                 ));
             }
         });

@@ -16,12 +16,12 @@ This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summa
 | Console grammar entries | **309** across 12 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
 | Device models | **15** | measured: `crates/model/src/models.rs` |
 | Sample labs | **18** | measured: `crates/engine/src/sample.rs` |
-| Tests | **157** | measured: `cargo test --workspace` |
-| **Ready for real work** (weighted) | **~50%** | estimated; written weights below (69.3 computed) |
+| Tests | **158** | measured: `cargo test --workspace` |
+| **Ready for real work** (weighted) | **~50%** | estimated; written weights below (70.1 computed) |
 | **CCNA 1 student** (Introduction to Networks) | **~84%** | estimated; [method](#audiences) |
 | **CCNA 2 student** (Switching, Routing and Wireless Essentials) | **~84%** | estimated; [method](#audiences) |
 | **CCNA 3 student** (Enterprise Networking, Security and Automation) | **~70%** | estimated; [method](#audiences) |
-| **Instructor** (builds graded activities) | **~60%** | estimated; activities with checks, points, hints, hidden answers, a time limit, a password lock and a wizard; no variables or answer network |
+| **Instructor** (builds graded activities) | **~72%** | estimated; activities with checks, points, sections, hints, hidden answers, values per student, a time limit, a password lock and a wizard |
 | Stage | **pre-alpha** | see [Stage](#stage) |
 | Remaining to alpha | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](roadmap.md#alpha-gates) |
 | Remaining to full parity | **~600–950 Opus 5.5 agent-hours** | estimated; sum of the rows below |
@@ -34,7 +34,7 @@ This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summa
 | CCNA 1 student | ~84% | ~15–30 | PDU details layout, email and a few host apps (text editor, terminal) |
 | CCNA 2 student | ~84% | ~30–55 | WLC with lightweight APs and 802.11 frames (15–25 h), console polish |
 | CCNA 3 student | ~70% | ~80–130 | VPN/GRE (15–25 h), QoS basics, SNMP and TACACS+, automation APIs |
-| Instructor | ~60% | ~35–60 | Activity depth: variables per student, an answer network (20–35 h), translated activity texts |
+| Instructor | ~72% | ~20–35 | A side-by-side answer view (5–8 h), translated activity texts |
 
 Each student tier is mostly a superset of the one before. Hours are wall-clock for one agent;
 the protocol work splits well across 3–4 agents by crate (`sim`, `ios`, `ui-egui`).
@@ -68,9 +68,9 @@ Weights reflect how much of a typical CCNA lab session each area carries.
 | WAN, cabling and wireless | 6 | 62% | 3.7 | [hardware-parity.md](hardware-parity.md) | 60–90 |
 | Simulation mode (event list, PDU details, filters, complex PDUs) | 8 | 70% | 5.6 | [ui-parity.md](ui-parity.md) | 22–35 |
 | Workspace and windows (canvas, device tabs, physical view, drawing) | 10 | 55% | 5.5 | [ui-parity.md](ui-parity.md) | 60–90 |
-| Teaching (activities, scoring, instructions, languages) | 8 | 65% | 5.2 | [gaps.md](gaps.md) | 35–60 |
+| Teaching (activities, scoring, instructions, languages) | 8 | 75% | 6.0 | [gaps.md](gaps.md) | 35–60 |
 | Device families and hardware (models, modules, ASA, IoT) | 5 | 25% | 1.3 | [hardware-parity.md](hardware-parity.md) | 80–120 |
-| **Total** | **100** | | **69.3** | | **~600–950** |
+| **Total** | **100** | | **70.1** | | **~600–950** |
 
 ## Audiences
 
@@ -105,6 +105,7 @@ misses commands students meet in the first labs. Alpha gates are in
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Values per student and results per section: teaching 65% → 75%, instructor ~60% → ~72%. |
 | 2026-10-30 | minor | CCNA 1 lab commands: console 68% → 74%, CCNA 1 ~80% → ~84%. |
 | 2026-10-30 | minor | Audiences re-estimated after this round: CCNA 1 ~80%, CCNA 2 ~84%, CCNA 3 ~70%, full target ~58%. |
 | 2026-10-30 | minor | Home wireless router: WAN, cabling and wireless 55% → 62%. |

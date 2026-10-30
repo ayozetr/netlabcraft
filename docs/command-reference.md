@@ -11,14 +11,15 @@ Every front end (UI, `packetcraft-cli run`, MCP `packetcraft_run`) runs these.
 | `device.wireless` | Wi-Fi settings |  |  | `{"device", "port"?: "Wireless0", "ssid": "network name (empty: radio off)", "key"?: "WPA2-PSK passphrase, 8-63 characters (none: open)", "channel"?: 1-13}` |
 | `home.settings` | Home router settings |  |  | `{"device", "lan"?+"lan_mask"?, "dhcp"?: true\|false, "dhcp_start"?, "internet"?+"internet_mask"?+"gateway"?} → {"config": the lines applied}` |
 | `activity.show` | Activity |  |  | `{} → {"activity" (or null; a locked one without its checks), "total_points", "checks", "locked"}` |
-| `activity.set` | Activity Wizard… | Extensions |  | `{"title"?, "instructions"?, "hidden"?: true to store configuration answers as hashes, "time_limit"?: minutes (0: none), "score_only"?: while locked, Check Results shows the score only}` |
+| `activity.set` | Activity Wizard… | Extensions |  | `{"title"?, "instructions"?, "hidden"?: true to store configuration answers as hashes, "time_limit"?: minutes (0: none), "score_only"?: while locked, Check Results shows the score only, "variables"?: {"name": ["value", …]} picked per student, used as {name}}` |
 | `activity.capture` | Capture answers from this lab |  |  | `{} → {"checks": n}: configuration lines and host addresses become checks (pings and command checks are kept)` |
-| `activity.add_check` | Add check |  |  | `{"type": "config"\|"ping"\|"host-address"\|"output", "device" (or "from"), "line" \| "to"+"succeed"? \| "address"+"gateway"? \| "command"+"contains", "points"?: 1, "label"?, "feedback"?: hint shown when it fails}` |
+| `activity.add_check` | Add check |  |  | `{"type": "config"\|"ping"\|"host-address"\|"output", "device" (or "from"), "line" \| "to"+"succeed"? \| "address"+"gateway"? \| "command"+"contains", "points"?: 1, "label"?, "feedback"?: hint shown when it fails, "section"?: the part it counts towards (the device by default)}` |
 | `activity.remove_check` | Remove check |  |  | `{"index": n}` |
 | `activity.clear` | Remove the activity |  |  | `{}` |
+| `activity.start` | Start the activity |  |  | `{"student": "name"} → {"values", "instructions"}: picks this student's variable values` |
 | `activity.lock` | Lock the activity |  |  | `{"password"}: the activity can't be changed or its checks seen until unlocked` |
 | `activity.unlock` | Unlock the activity |  |  | `{"password"}` |
-| `activity.check` | Check Results | Extensions |  | `{} → {"results": [{"label", "points", "passed", "feedback"}] (empty when locked with score_only), "score", "total", "percent", "detail"}` |
+| `activity.check` | Check Results | Extensions |  | `{} → {"results": [{"label", "points", "passed", "feedback", "section"}] and "sections": [{"name", "score", "total", "percent"}] (both empty when locked with score_only), "score", "total", "percent", "detail"}` |
 | `activity.reset` | Reset Activity | Extensions |  | `{}: back to the lab as the activity was opened` |
 | `file.new` | New lab | File | Ctrl+N | `{"sample"?: "sample id (see sample.list)"}` |
 | `file.open` | Open lab… | File | Ctrl+O | `{"json": "lab file contents"} or {"path": "file (desktop/CLI)"}` |
