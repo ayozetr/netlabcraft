@@ -566,9 +566,33 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                     eigrp::PROTO_EIGRP => match eigrp::EigrpHello::header(&ip.payload) {
                         Ok((eigrp::OPCODE_HELLO, _)) => match eigrp::EigrpHello::decode(&ip.payload) {
                             Ok(h) => (Protocol::Eigrp, format!("EIGRP hello, AS {} (hold {} s) {route}{tag}", h.asn, h.hold_secs)),
-                            Err(e) => (Protocol::Eigrp, format!("EIGRP ({e}) {route}{tag}")),
+                            Err(_) => match eigrp::EigrpPacket::decode(&ip.payload) {
+                                Ok(p) if p.ack != 0 && p.tlvs.is_empty() => {
+                                    (Protocol::Eigrp, format!("EIGRP acknowledgement of {}, AS {} {route}{tag}", p.ack, p.asn))
+                                }
+                                Ok(p) => (Protocol::Eigrp, format!("EIGRP hello, AS {} {route}{tag}", p.asn)),
+                                Err(e) => (Protocol::Eigrp, format!("EIGRP ({e}) {route}{tag}")),
+                            },
                         },
-                        Ok((op, asn)) => (Protocol::Eigrp, format!("EIGRP {}, AS {asn} {route}{tag}", eigrp::opcode_name(op))),
+                        Ok((op, asn)) => match eigrp::EigrpPacket::decode(&ip.payload) {
+                            Ok(p) => {
+                                let n = p.routes().count();
+                                let down = p.routes().filter(|r| r.is_unreachable()).count();
+                                let first = p.routes().next().map(|r| format!(": {}{}", r.net, if n > 1 { ", …" } else { "" })).unwrap_or_default();
+                                let unreach = if down > 0 { format!(", {down} unreachable") } else { String::new() };
+                                let init = if p.flags & eigrp::FLAG_INIT != 0 { " (init)" } else { "" };
+                                (
+                                    Protocol::Eigrp,
+                                    format!(
+                                        "EIGRP {}{init} #{}, AS {asn}, {n} route{}{unreach}{first} {route}{tag}",
+                                        eigrp::opcode_name(op),
+                                        p.seq,
+                                        if n == 1 { "" } else { "s" }
+                                    ),
+                                )
+                            }
+                            Err(e) => (Protocol::Eigrp, format!("EIGRP {} ({e}) {route}{tag}", eigrp::opcode_name(op))),
+                        },
                         Err(e) => (Protocol::Eigrp, format!("EIGRP ({e}) {route}{tag}")),
                     },
                     PROTO_UDP => match Udp::decode(&ip.payload, ip.src, ip.dst) {

@@ -711,7 +711,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::ShowStartup => c.d()?.startup.clone().ok_or_else(|| "% No saved configuration (use `copy running-config startup-config`)".into()),
         Id::ShowIpIntBrief => Ok(render::ip_int_brief(c.t, c.d()?)),
         Id::ShowIpRoute => {
-            let full = render::ip_route(c.t, c.d()?);
+            let d = c.d()?.clone();
+            let table = c.sim.routing_table(c.t, &d);
+            let full = render::ip_route_table(&d, &table);
             let which = arg(0).to_ascii_lowercase();
             if which.is_empty() {
                 return Ok(full);
@@ -2746,13 +2748,71 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             c.dm()?.eigrp.as_mut().ok_or("% Not in EIGRP mode")?.router_id = id;
             Ok(String::new())
         }
+        Id::EigrpMaximumPaths | Id::NoEigrpMaximumPaths | Id::OspfMaximumPaths | Id::NoOspfMaximumPaths => {
+            let n = match spec.id {
+                Id::EigrpMaximumPaths | Id::OspfMaximumPaths => {
+                    Some(arg(0).parse::<u8>().ok().filter(|n| (1..=16).contains(n)).ok_or("% Maximum paths is 1-16")?)
+                }
+                _ => None,
+            };
+            let d = c.dm()?;
+            if matches!(spec.id, Id::EigrpMaximumPaths | Id::NoEigrpMaximumPaths) {
+                d.eigrp.as_mut().ok_or("% Not in EIGRP mode")?.maximum_paths = n;
+            } else {
+                d.ospf.as_mut().ok_or("% Not in OSPF mode")?.maximum_paths = n;
+            }
+            Ok(String::new())
+        }
+        Id::EigrpVariance | Id::NoEigrpVariance => {
+            let n = if spec.id == Id::EigrpVariance {
+                Some(arg(0).parse::<u8>().ok().filter(|n| (1..=128).contains(n)).ok_or("% Variance is 1-128")?)
+            } else {
+                None
+            };
+            c.dm()?.eigrp.as_mut().ok_or("% Not in EIGRP mode")?.variance = n.filter(|n| *n > 1);
+            Ok(String::new())
+        }
+        Id::IpHelloEigrp | Id::NoIpHelloEigrp | Id::IpHoldEigrp | Id::NoIpHoldEigrp => {
+            let asn: u16 = arg(0).parse().ok().filter(|n| *n >= 1).ok_or("% The autonomous system number is 1-65535")?;
+            let secs = match spec.id {
+                Id::IpHelloEigrp | Id::IpHoldEigrp => Some(arg(1).parse::<u16>().ok().filter(|n| *n >= 1).ok_or("% Seconds are 1-65535")?),
+                _ => None,
+            };
+            let names: Vec<String> = match &c.cli.mode {
+                Mode::Svi(v) => vec![format!("Vlan{v}")],
+                Mode::Tunnel(n) => vec![format!("Tunnel{n}")],
+                Mode::Iface(ifs) => {
+                    let d = c.d()?;
+                    ifs.iter().filter_map(|r| d.ports.get(r.port).map(|p| r.sub.map_or(p.name.clone(), |s| format!("{}.{s}", p.name)))).collect()
+                }
+                _ => return Err("% Not in interface mode".into()),
+            };
+            let id = spec.id;
+            let d = c.dm()?;
+            for n in names {
+                let e = d.eigrp_if.entry(n.clone()).or_default();
+                let slot = if matches!(id, Id::IpHelloEigrp | Id::NoIpHelloEigrp) { &mut e.hello } else { &mut e.hold };
+                match secs {
+                    Some(v) => *slot = Some((asn, v)),
+                    None => {
+                        if slot.is_some_and(|(a, _)| a == asn) {
+                            *slot = None;
+                        }
+                    }
+                }
+                if *e == packetcraft_model::EigrpIfConf::default() {
+                    d.eigrp_if.remove(&n);
+                }
+            }
+            Ok(String::new())
+        }
         Id::EigrpAutoSummary | Id::NoEigrpAutoSummary => {
             c.dm()?.eigrp.as_mut().ok_or("% Not in EIGRP mode")?.auto_summary = spec.id == Id::EigrpAutoSummary;
             Ok(String::new())
         }
         Id::ShowIpEigrpNeighbors => {
             let st = c.sim.eigrp_state(c.t);
-            Ok(render::eigrp_neighbors(c.t, c.d()?, &st))
+            Ok(render::eigrp_neighbors(c.t, c.d()?, &st, c.sim.now_us()))
         }
         Id::ShowIpEigrpTopology => {
             let st = c.sim.eigrp_state(c.t);

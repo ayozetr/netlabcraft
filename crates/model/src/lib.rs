@@ -796,6 +796,9 @@ pub struct Device {
     /// Routers: EIGRP (`router eigrp N`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub eigrp: Option<Eigrp>,
+    /// Per-interface EIGRP timers, by interface name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub eigrp_if: BTreeMap<String, EigrpIfConf>,
     /// Routers: access lists.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub acls: Vec<acl::Acl>,
@@ -929,6 +932,9 @@ pub struct Ospf {
     /// Area settings (`area N stub`, `area N range`), by area number.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub areas: BTreeMap<u32, OspfArea>,
+    /// `maximum-paths N`: equal-cost paths installed per destination (4 when not set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximum_paths: Option<u8>,
 }
 
 /// The SNMP agent's settings.
@@ -1108,6 +1114,32 @@ pub struct Eigrp {
     /// `auto-summary` (kept, not simulated: subnets are advertised as they are).
     #[serde(default)]
     pub auto_summary: bool,
+    /// `maximum-paths N`: equal-cost (or, with `variance`, unequal-cost) paths installed per
+    /// destination (4 when not set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximum_paths: Option<u8>,
+    /// `variance N`: feasible successors whose distance is below N times the feasible distance
+    /// are installed too (1 when not set: equal cost only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variance: Option<u8>,
+}
+
+impl Eigrp {
+    /// Paths installed per destination at most.
+    pub fn max_paths(&self) -> usize {
+        usize::from(self.maximum_paths.unwrap_or(4).max(1))
+    }
+}
+
+/// Per-interface EIGRP timers (`ip hello-interval eigrp AS N`, `ip hold-time eigrp AS N`):
+/// (autonomous system, seconds). They live with the interface, so they survive `no router
+/// eigrp`, and apply only to the process of that autonomous system.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct EigrpIfConf {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hello: Option<(u16, u16)>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hold: Option<(u16, u16)>,
 }
 
 impl Eigrp {
@@ -1518,6 +1550,7 @@ impl Device {
             dns6: None,
             rip: None,
             eigrp: None,
+            eigrp_if: BTreeMap::new(),
             acls: Vec::new(),
             nat: Nat::default(),
             services: if kind == DeviceKind::Server { services::Services::server_defaults() } else { services::Services::default() },
@@ -1570,6 +1603,7 @@ impl Device {
         self.eigrp = None;
         self.acls6.clear();
         self.ospf_if.clear();
+        self.eigrp_if.clear();
         self.dhcp6_pools.clear();
         self.dns6 = None;
         self.acls.clear();

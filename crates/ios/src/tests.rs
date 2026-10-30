@@ -3058,3 +3058,170 @@ fn every_firewall_command_survives_hostile_arguments() {
         }
     }
 }
+
+/// A diamond R1 → (R2 | R3) → R4, with a switch between R1 and R3: EIGRP builds it with
+/// router ids from the addresses.
+fn eigrp_diamond() -> (Lab, [DeviceId; 6], DeviceId) {
+    let mut lab = Lab::new();
+    let three = packetcraft_model::models::find("Router-3").unwrap();
+    let r1 = lab.t.add_model(three, None, 0.0, 0.0).unwrap();
+    let r2 = lab.t.add_model(three, None, 0.0, 0.0).unwrap();
+    let r3 = lab.t.add_model(three, None, 0.0, 0.0).unwrap();
+    let r4 = lab.t.add_model(three, None, 0.0, 0.0).unwrap();
+    let sw = lab.add(DeviceKind::Switch);
+    let a = lab.add(DeviceKind::Pc);
+    let b = lab.add(DeviceKind::Pc);
+    lab.cable(a, "fa0", r1, "g0/0");
+    lab.cable(r1, "g0/1", r2, "g0/0");
+    lab.cable(r1, "g0/2", sw, "fa0/1");
+    lab.cable(sw, "fa0/2", r3, "g0/0");
+    lab.cable(r2, "g0/1", r4, "g0/0");
+    lab.cable(r3, "g0/1", r4, "g0/1");
+    lab.cable(b, "fa0", r4, "g0/2");
+    lab.run(a, "ipconfig 192.168.1.10 255.255.255.0 192.168.1.1");
+    lab.run(b, "ipconfig 192.168.4.10 255.255.255.0 192.168.4.1");
+    let cfg = [
+        (r1, [("g0/0", "192.168.1.1 255.255.255.0"), ("g0/1", "10.0.12.1 255.255.255.252"), ("g0/2", "10.0.13.1 255.255.255.0")]),
+        (r2, [("g0/0", "10.0.12.2 255.255.255.252"), ("g0/1", "10.0.24.1 255.255.255.252"), ("g0/2", "")]),
+        (r3, [("g0/0", "10.0.13.3 255.255.255.0"), ("g0/1", "10.0.34.1 255.255.255.252"), ("g0/2", "")]),
+        (r4, [("g0/0", "10.0.24.2 255.255.255.252"), ("g0/1", "10.0.34.2 255.255.255.252"), ("g0/2", "192.168.4.1 255.255.255.0")]),
+    ];
+    for (r, ifs) in cfg {
+        lab.run(r, "en\nconf t");
+        for (i, ip) in ifs.iter().filter(|(_, ip)| !ip.is_empty()) {
+            lab.run(r, &format!("int {i}\nip address {ip}\nno shut"));
+        }
+        lab.run(r, "router eigrp 10\nnetwork 10.0.0.0\nnetwork 192.168.0.0 0.0.255.255\nno auto-summary\nend");
+    }
+    (lab, [r1, r2, r3, r4, a, b], sw)
+}
+
+#[test]
+fn eigrp_load_balances_over_equal_and_unequal_paths() {
+    let (mut lab, [r1, _, _, _, a, _], _) = eigrp_diamond();
+    // Two equal-cost successors to R4's LAN: both installed, both in the table.
+    let rt = lab.run(r1, "show ip route");
+    assert!(rt.contains("D    192.168.4.0/24       via 10.0.12.2, GigabitEthernet0/1 (EIGRP)"), "{rt}");
+    assert!(rt.contains("D    192.168.4.0/24       via 10.0.13.3, GigabitEthernet0/2 (EIGRP)"), "{rt}");
+    assert!(lab.run(r1, "show ip eigrp topology").contains("192.168.4.0/24  FD 3328, 2 successors"));
+    // Flows spread over both, each flow always the same way.
+    let d = lab.t.device(r1).unwrap().clone();
+    let dst: std::net::Ipv4Addr = "192.168.4.10".parse().unwrap();
+    let mut seen = std::collections::BTreeSet::new();
+    for k in 1..40u8 {
+        let src = std::net::Ipv4Addr::new(192, 168, 1, k);
+        let (out, _) = lab.sim.route_flow(&lab.t, &d, src, dst).unwrap();
+        assert_eq!(lab.sim.route_flow(&lab.t, &d, src, dst).unwrap().0.name, out.name);
+        seen.insert(out.name);
+    }
+    assert_eq!(seen.len(), 2, "{seen:?}");
+    lab.run(a, "ping 192.168.4.10");
+    assert!(lab.run(a, "ping 192.168.4.10").contains("4 answered"));
+    // `maximum-paths 1`: one path only.
+    lab.run(r1, "conf t\nrouter eigrp 10\nmaximum-paths 1\nend");
+    let rt = lab.run(r1, "show ip route eigrp");
+    assert_eq!(rt.matches("192.168.4.0/24").count(), 1, "{rt}");
+    assert!(lab.run(r1, "show ip protocols").contains("up to 1 paths per destination"));
+    // A slower way through R3 is a feasible successor (R3 reports 3072 < FD 3328), unused…
+    lab.run(r1, "conf t\nrouter eigrp 10\nno maximum-paths\nexit\nint g0/2\ndelay 10\nend");
+    let rt = lab.run(r1, "show ip route eigrp");
+    assert_eq!(rt.matches("192.168.4.0/24").count(), 1, "{rt}");
+    let topo = lab.run(r1, "show ip eigrp topology");
+    assert!(topo.contains("feasible successor  via 10.0.13.3, Gi0/2 (5632 / 3072)"), "{topo}");
+    // …until `variance 2` admits it: below twice the feasible distance.
+    lab.run(r1, "conf t\nrouter eigrp 10\nvariance 2\nend");
+    let rt = lab.run(r1, "show ip route eigrp");
+    assert_eq!(rt.matches("192.168.4.0/24").count(), 2, "{rt}");
+    assert!(lab.run(r1, "show ip eigrp topology").contains("(5632 / 3072), in use (variance)"));
+    assert!(lab.run(r1, "show ip protocols").contains("up to 4 paths per destination, variance 2"));
+    // The settings survive a save and reload.
+    let run = lab.run(r1, "show running-config");
+    assert!(run.contains(" variance 2\n"), "{run}");
+    lab.run(r1, "conf t\nrouter eigrp 10\nmaximum-paths 3\nend");
+    let run = lab.run(r1, "show running-config");
+    assert!(run.contains(" variance 2\n maximum-paths 3\n no auto-summary"), "{run}");
+    lab.run(r1, "copy run start\nreload\nen");
+    assert_eq!(lab.run(r1, "show running-config"), run);
+    lab.run(r1, "conf t\nrouter eigrp 10");
+    for bad in ["maximum-paths 0", "maximum-paths 17", "variance 0", "variance 129"] {
+        assert!(lab.try_run(r1, bad).starts_with('%'), "{bad}");
+    }
+    lab.run(r1, "end");
+}
+
+#[test]
+fn a_silent_eigrp_neighbour_is_dropped_after_its_hold_time() {
+    let (mut lab, [r1, _, r3, r4, ..], sw) = eigrp_diamond();
+    // R3 announces a 30-second hold time and says hello every 10 seconds.
+    lab.run(r3, "conf t\nint g0/0\nip hello-interval eigrp 10 10\nip hold-time eigrp 10 30\nend");
+    let ifs = lab.run(r3, "show ip eigrp interfaces");
+    assert!(ifs.lines().any(|l| l.starts_with("Gi0/0") && l.contains(" 10 ") && l.contains(" 30 ")), "{ifs}");
+    lab.sim.clear_trace();
+    lab.sim.run_for(&lab.t, 11_000_000);
+    assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("EIGRP hello, AS 10 (hold 30 s) 10.0.13.3")));
+    let nb = lab.run(r1, "show ip eigrp neighbors");
+    assert!(nb.contains("10.0.13.3"), "{nb}");
+    lab.run(r1, "show logging");
+    lab.sim.take_console(r1);
+    // The switch port towards R3 goes down: R1's own link stays up, so it only notices that
+    // the hellos stopped.
+    lab.run(sw, "en\nconf t\nint fa0/2\nshutdown\nend");
+    let nb = lab.run(r1, "show ip eigrp neighbors");
+    assert!(nb.contains("10.0.13.3") && nb.contains("no hellos heard"), "{nb}");
+    assert_eq!(lab.run(r1, "show ip route eigrp").matches("192.168.4.0/24").count(), 2);
+    // R3's own interface went down with the switch port: it drops R1 at once.
+    assert!(!lab.run(r3, "show ip eigrp neighbors").contains("10.0.13.1"));
+    lab.sim.clear_trace();
+    lab.sim.run_for(&lab.t, 15_000_000);
+    assert!(lab.run(r1, "show ip eigrp neighbors").contains("10.0.13.3"), "still within the hold time");
+    lab.sim.run_for(&lab.t, 16_000_000);
+    let nb = lab.run(r1, "show ip eigrp neighbors");
+    assert!(!nb.contains("10.0.13.3"), "{nb}");
+    let log = lab.run(r1, "show logging");
+    assert!(log.contains("EIGRP AS 10: neighbour 10.0.13.3 (GigabitEthernet0/2) is down: hold time expired"), "{log}");
+    // Reconverged: only the way through R2 is left, and R1 told its neighbours.
+    let rt = lab.run(r1, "show ip route eigrp");
+    assert_eq!(rt.matches("192.168.4.0/24").count(), 1, "{rt}");
+    assert!(rt.contains("via 10.0.12.2"), "{rt}");
+    assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("EIGRP update") && e.summary.contains("10.0.12.1 → 224.0.0.10")));
+    assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("EIGRP acknowledgement")));
+    // The neighbour comes back as soon as it is heard again.
+    lab.run(sw, "conf t\nint fa0/2\nno shutdown\nend");
+    assert!(lab.run(r1, "show ip eigrp neighbors").contains("10.0.13.3"));
+    assert!(lab.run(r1, "show logging").contains("neighbour 10.0.13.3 (GigabitEthernet0/2) is up"));
+    lab.sim.run_for(&lab.t, 1_000_000);
+    assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("EIGRP update (init)")));
+    // A lost destination with no feasible successor: queries, answered by replies.
+    lab.sim.clear_trace();
+    lab.run(r4, "conf t\nint g0/2\nshutdown\nend");
+    lab.sim.run_for(&lab.t, 1_000_000);
+    let trace = lab.sim.trace();
+    assert!(trace.iter().any(|e| e.summary.starts_with("EIGRP query") && e.summary.contains("1 unreachable")), "no query");
+    assert!(trace.iter().any(|e| e.summary.starts_with("EIGRP reply")), "no reply");
+    assert!(!lab.run(r1, "show ip route").contains("192.168.4.0"));
+    // `debug eigrp packets` reports them.
+    lab.run(r1, "debug eigrp packets");
+    lab.run(r4, "conf t\nint g0/2\nno shutdown\nend");
+    lab.sim.run_for(&lab.t, 1_000_000);
+    assert!(lab.run(r1, "show logging").contains("EIGRP debug: update #"));
+    // The timers are part of the interface's configuration.
+    let run = lab.run(r3, "show running-config");
+    assert!(run.contains(" ip hello-interval eigrp 10 10\n ip hold-time eigrp 10 30\n"), "{run}");
+    lab.run(r3, "copy run start\nreload\nen");
+    assert_eq!(lab.run(r3, "show running-config"), run);
+    lab.run(r3, "conf t\nint g0/0\nno ip hold-time eigrp 10\nno ip hello-interval eigrp 10\nend");
+    assert!(!lab.run(r3, "show running-config").contains("eigrp 10 "));
+}
+
+#[test]
+fn ospf_installs_equal_cost_paths() {
+    let (mut lab, [r1, r2, r3, r4, ..], _) = eigrp_diamond();
+    for r in [r1, r2, r3, r4] {
+        lab.run(r, "conf t\nno router eigrp 10\nrouter ospf 1\nnetwork 0.0.0.0 255.255.255.255 area 0\nend");
+    }
+    let rt = lab.run(r1, "show ip route ospf");
+    assert_eq!(rt.matches("192.168.4.0/24").count(), 2, "{rt}");
+    lab.run(r1, "conf t\nrouter ospf 1\nmaximum-paths 1\nend");
+    assert_eq!(lab.run(r1, "show ip route ospf").matches("192.168.4.0/24").count(), 1);
+    assert!(lab.run(r1, "show running-config").contains(" maximum-paths 1\n"));
+}
