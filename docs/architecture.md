@@ -1,6 +1,6 @@
 # Architecture
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (modules added since M0: IPv6, serial framing, STP, OSPF, RIP, VTP, EtherChannel; shared format)
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (modules added since: routing, security, services, wireless, voice, IoT, switch security, management; forwarding by administrative distance)
 
 How NetLabCraft is built. Rules for contributors and agents are in [`AGENTS.md`](../AGENTS.md);
 the reasons behind the choices are in [decisions.md](decisions.md).
@@ -13,10 +13,10 @@ L6 depends on a UI toolkit.
 | Layer | Crate | Role |
 |---|---|---|
 | L0 | `netlabcraft-core` | Value types: `MacAddr`, `Ipv4Net`, `Ipv6Net` (with EUI-64 and link-local helpers), `VlanId`, `VlanSet`, `DeviceId`. |
-| L1 | `netlabcraft-wire` | Wire formats and checksums: Ethernet II/802.1Q, ARP, IPv4, ICMP, UDP, TCP, DHCP, DNS (`dns.rs`), IPv6/ICMPv6/NDP (`ipv6.rs`), HDLC and PPP framing (`serial.rs`), the pcap writer, and the one-line summaries the event list shows. Depends on `core` only. |
-| L2 | `netlabcraft-model` | The lab document: devices, ports and their configuration, cables (a serial cable's first end is the DCE), the device catalogue (`models.rs`), access lists (`acl.rs`), server services (`services.rs`), interface names (`ifname.rs`), the `.nlcraft` format (`file.rs`). |
-| L3 | `netlabcraft-sim` | The discrete-event simulator (`lib.rs`) and the protocols computed from the topology: spanning tree (`stp.rs`), EtherChannel bundles (`channel.rs`), OSPF (`ospf.rs`), RIP (`rip.rs`), VTP (`vtp.rs`); IPv6 forwarding, NDP and autoconfiguration (`v6.rs`). |
-| L4 | `netlabcraft-ios` | Device consoles: the command grammar (`grammar.rs`), dispatch and modes (`exec.rs`), `show` output and running-config (`render.rs`), the PC/server shell (`host.rs`). |
+| L1 | `netlabcraft-wire` | Wire formats and checksums: Ethernet II/802.1Q, ARP, IPv4, ICMP, UDP, TCP, DHCP, DNS (`dns.rs`), IPv6/ICMPv6/NDP (`ipv6.rs`), HDLC and PPP framing (`serial.rs`), TCP (`tcp.rs`), DHCPv6, OSPF and OSPFv3 packets and LSAs, EIGRP, LACP, LLDP, RADIUS, TACACS+, SNMP, IKE and ESP, CAPWAP and 802.11 (`wlan.rs`), the MD5, SHA-1 and AES code those need, the pcap writer, and the one-line summaries the event list shows. Depends on `core` only. |
+| L2 | `netlabcraft-model` | The lab document: devices, ports and their configuration, cables (a serial cable's first end is the DCE), the device catalogue (`models.rs`), access lists (`acl.rs`), server services (`services.rs`), interface names (`ifname.rs`), routing settings and loopbacks (`routing.rs`), switch security (`l2sec.rs`), management settings and flash (`mgmt.rs`), VPN, QoS, firewall, wireless, voice, IoT, cables, modules and the physical view (`vpn.rs`, `qos.rs`, `firewall.rs`, `wlan.rs`, `voice.rs`, `iot.rs`, `cable.rs`, `hardware.rs`, `physical.rs`), activities (`activity.rs`), the `.nlcraft` format (`file.rs`). |
+| L3 | `netlabcraft-sim` | The discrete-event simulator (`lib.rs`) and the protocols computed from the topology: spanning tree (`stp.rs`), EtherChannel bundles (`channel.rs`), OSPF (`ospf.rs`, with its database in `ospf_lsdb.rs`), OSPFv3 (`ospf6.rs`), RIP (`rip.rs`), EIGRP (`eigrp.rs`), HSRP (`hsrp.rs`), VTP (`vtp.rs`); IPv6 forwarding, NDP and autoconfiguration (`v6.rs`); DHCP snooping, ARP inspection and edge protection (`l2sec.rs`); loopbacks (`loopback.rs`); the DHCP server (`dhcpsrv.rs`), logging levels and timestamps (`logcfg.rs`), NTP, syslog and SNMP (`mgmt.rs`, `snmp.rs`), email, FTP, VPN, QoS, firewall, wireless, voice and IoT in their own modules. |
+| L4 | `netlabcraft-ios` | Device consoles: the command grammar (`grammar.rs`), dispatch and modes (`exec.rs`), `show` output and running-config (`render.rs`), the PC/server shell (`host.rs`), output filters (`pipe.rs`); `exec/` holds the dispatch for routing, switch security, management, VPN, QoS, firewall, wireless and voice commands. |
 | L5 | `netlabcraft-engine` | `Session` (lab + simulator + consoles + undo), the command catalog (`catalog.rs`, `cmd.rs`), sample labs (`sample.rs`). |
 | L6 | `netlabcraft-ui-egui` | The egui interface. |
 | L6 | `netlabcraft-mcp` | MCP server over stdio. |
@@ -39,8 +39,9 @@ L6 depends on a UI toolkit.
   the native VLAN, treat an EtherChannel as one port (spreading frames over its members by
   address), enforce port security, and flush learned addresses when the topology changes. A
   frame that crosses `MAX_SWITCH_HOPS` switches is a loop: dropped and reported.
-- **Routers and multilayer switches** forward by longest prefix (connected, then static, OSPF and
-  RIP on ties), decrement TTL or hop limit, send ICMP/ICMPv6 errors, answer proxy ARP, apply
+- **Routers and multilayer switches** forward by longest prefix, and between routes to the same
+  prefix by administrative distance (connected 0, static 1 unless a distance is typed, EIGRP 90,
+  OSPF 110, RIP 120), decrement TTL or hop limit, send ICMP/ICMPv6 errors, answer proxy ARP, apply
   ACLs and NAT, and relay DHCP. On IPv4 a router drops the packet that starts ARP (hosts queue
   it); with IPv6 everyone holds the packet until neighbour discovery answers.
 - **Computed protocols.** Spanning tree, EtherChannel negotiation, OSPF, RIP and VTP are computed
@@ -84,5 +85,6 @@ L6 depends on a UI toolkit.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Layer table lists the modules added since (routing, security, services, wireless, voice, IoT, switch security, management); forwarding chooses by administrative distance. |
 | 2026-10-30 | minor | Shared format; modules added since M0 (IPv6, serial framing, STP, EtherChannel, OSPF, RIP, VTP); simulator, console and engine notes brought up to date. |
 | 2026-10-29 | major | Created. |

@@ -1,8 +1,11 @@
 # Releasing NetLabCraft
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (About window contributors)
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (releases on hold by the owner's decision)
 
-NetLabCraft has **no release yet**. This page records how releases will work, following the
+NetLabCraft has **no release yet**, and releasing is **on hold** by the owner's decision: there
+will be no release for now, and GitHub Actions is not available for the workflows below. The
+remaining steps are not planned or estimated until the hold is lifted. This page records how
+releases will work, following the
 shared craftrules release playbook (`release/playbook.md`) that the other Craft apps implement,
 and what is missing before the first one.
 
@@ -25,8 +28,8 @@ and what is missing before the first one.
 | Step | State | Estimate |
 |---|---|---|
 | App icon (original artwork) and `assets/app-icon/` with its row in `ATTRIBUTION.md` | ✅ `netlabcraft.png` (supplied by the owner) and its renderings (`packaging/icons.sh`); the window icon and the web favicon use it | — |
-| `packaging/` (macOS bundle, Windows MSI, Linux `.desktop`/metainfo/Flatpak, FreeBSD, web) | 🟡 Linux: `.desktop`, the `.nlcraft` MIME type and a per-user `install.sh`. The rest waits for the app ID (reverse-DNS name), which depends on where the project will live; the siblings' packaging carries their own IDs and brand, so it is adapted, not copied as is | 5–8 h |
-| `.github/workflows/` (ci, release, packaging lint) | ❌ | 3–5 h |
+| `packaging/` (macOS bundle, Windows MSI, Linux `.desktop`/metainfo/Flatpak, FreeBSD, web) | 🟡 Linux: `.desktop`, the `.nlcraft` MIME type and a per-user `install.sh`. The rest waits for the app ID (reverse-DNS name), which depends on where the project will live; the siblings' packaging carries their own IDs and brand, so it is adapted, not copied as is | on hold |
+| `.github/workflows/` (ci, release, packaging lint) | ❌ GitHub Actions is not available; `cargo xtask ci` runs the same gates locally | on hold |
 | About window with version, licences and contributors ([`contributors.md`](contributors.md)) | ✅ About and Contributors tabs; run `cargo xtask contributors` right before tagging so the numbers are current | — |
 | A public repository and a home for the project | ❌ | owner's decision |
 
@@ -34,6 +37,7 @@ and what is missing before the first one.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Releases on hold by the owner's decision (no release for now; GitHub Actions not available); remaining steps no longer estimated. |
 | 2026-10-30 | minor | About window lists contributors; refresh `contributors.json` before tagging. |
 | 2026-10-30 | minor | App icon, window icon and favicon; Linux desktop entry, MIME type and per-user installer. |
 | 2026-10-30 | major | Created: release plan and what the first release still needs. |
