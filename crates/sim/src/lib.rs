@@ -27,6 +27,7 @@ pub mod email;
 pub mod ftp;
 pub mod lldp;
 pub mod loopback;
+mod mtu;
 
 pub mod channel;
 pub mod control;
@@ -823,6 +824,8 @@ pub struct DevState {
     pub tcp_recent: VecDeque<TcpRecord>,
     /// Routers: zone firewall and classic inspection sessions.
     pub zfw: zfw::ZfwState,
+    /// IPv4 fragments waiting for the rest of their datagram.
+    pub(crate) reasm: netlabcraft_wire::ipfrag::Reassembly,
 }
 
 /// One frame delivered across a cable.
@@ -878,11 +881,13 @@ pub struct PingOptions {
     pub ttl: Option<u8>,
     /// The source address (`ping … source`); `None`: the outgoing interface's.
     pub source: Option<Ipv4Addr>,
+    /// Set "don't fragment" (`ping -f`, `df-bit`); echo requests may be fragmented otherwise.
+    pub df: bool,
 }
 
 impl Default for PingOptions {
     fn default() -> Self {
-        PingOptions { count: 5, timeout_us: 2_000_000, size: 72, ttl: None, source: None }
+        PingOptions { count: 5, timeout_us: 2_000_000, size: 72, ttl: None, source: None, df: false }
     }
 }
 
@@ -914,6 +919,7 @@ impl Probe {
         match self {
             Probe::Reply { .. } => '!',
             Probe::TtlExceeded { .. } => 'T',
+            Probe::Unreachable { code: netlabcraft_wire::ipfrag::UNREACH_FRAG_NEEDED, .. } => 'M',
             Probe::Unreachable { .. } => 'U',
             Probe::Timeout => '.',
         }
@@ -2200,6 +2206,25 @@ impl Sim {
     }
 
     fn ip_in(&mut self, t: &Topology, d: &Device, ifc: &L3If, payload: &[u8]) -> Result<(), String> {
+        // A fragment of a datagram for this device waits for the rest (RFC 791 reassembly).
+        let whole;
+        let payload = if netlabcraft_wire::ipfrag::is_fragment(payload) && Sim::addressed_here(d, payload) {
+            let now = self.now;
+            match self.st(d.id).reasm.add(payload, now) {
+                Ok(Some(w)) => {
+                    self.bump(d.id, "reassembled");
+                    whole = w;
+                    &whole[..]
+                }
+                Ok(None) => {
+                    self.bump(d.id, "fragments held for reassembly");
+                    return Ok(());
+                }
+                Err(e) => return Err(format!("fragment dropped: {e}")),
+            }
+        } else {
+            payload
+        };
         let mut ip = Ipv4::decode(payload).map_err(|e| e.to_string())?;
         self.bump(d.id, "received");
         // Routing-protocol messages to the link's routers (OSPF, RIP); hosts ignore them.
@@ -2338,7 +2363,16 @@ impl Sim {
                     fwd = tr;
                 }
                 self.bump(d.id, "forwarded");
-                self.transmit(t, d, &out, nh, qos::keep_ds(payload, fwd.encode()))
+                let mut bytes = netlabcraft_wire::ipfrag::keep_fragment_bits(payload, qos::keep_ds(payload, fwd.encode()));
+                // `ip tcp adjust-mss` on either interface: SYNs announce no more than that.
+                let mss = [&ifc.name, &out.name].iter().filter_map(|n| d.security.adjust_mss.get(n.as_str()).copied()).min();
+                if let Some(m) = mss
+                    && let Some(c) = netlabcraft_wire::ipfrag::clamp_mss(&bytes, m)
+                {
+                    self.bump(d.id, "TCP MSS adjusted");
+                    bytes = c;
+                }
+                self.transmit(t, d, &out, nh, bytes)
             }
             None => {
                 self.bump(d.id, "no route");
@@ -2476,7 +2510,7 @@ impl Sim {
                     dst: ip.src,
                     payload: Icmp::EchoReply { id, seq, data }.encode(),
                 };
-                self.send_ip(t, d, reply)
+                self.send_ip_df(t, d, reply, false)
             }
             Icmp::EchoReply { id, seq, .. } => {
                 note(id, seq, IcmpKind::Reply);
@@ -2517,9 +2551,17 @@ impl Sim {
 
     /// Routes and sends a datagram this device originates.
     fn send_ip(&mut self, t: &Topology, d: &Device, ip: Ipv4) -> Result<(), String> {
+        self.send_ip_df(t, d, ip, true)
+    }
+
+    /// Routes and sends a datagram this device originates, with "don't fragment" set or not.
+    fn send_ip_df(&mut self, t: &Topology, d: &Device, ip: Ipv4, df: bool) -> Result<(), String> {
         self.bump(d.id, "sent");
         let (out, nh) = self.route_flow(t, d, ip.src, ip.dst).ok_or_else(|| format!("no route to {}", ip.dst))?;
-        let raw = ip.encode();
+        let mut raw = ip.encode();
+        if !df {
+            netlabcraft_wire::ipfrag::set_dont_fragment(&mut raw, false);
+        }
         self.zfw_check(d, None, Some(&out), &ip, &raw)?;
         self.transmit(t, d, &out, nh, raw)
     }
@@ -2529,6 +2571,12 @@ impl Sim {
         // A loopback has nothing behind it: only its own address answers.
         if loopback::is_loopback(out.port) {
             return Err(format!("{nh} is not on {} (a loopback reaches no other address)", out.name));
+        }
+        // `ip mtu`: larger datagrams are fragmented, or refused when they say "don't fragment".
+        if let Some(mtu) = d.security.ip_mtu.get(&out.name).copied()
+            && datagram.len() > usize::from(mtu)
+        {
+            return self.transmit_mtu(t, d, out, nh, datagram, mtu);
         }
         // Into a GRE tunnel: encapsulated and routed again.
         if vpn::is_tunnel(out.port) {
@@ -2924,7 +2972,13 @@ impl Sim {
     }
 
     fn tcp_send(&mut self, t: &Topology, d: &Device, src: Ipv4Addr, dst: Ipv4Addr, seg: &Tcp) -> Result<(), String> {
-        let out = Ipv4 { id: self.ip_id(), ttl: default_ttl(d.kind), protocol: PROTO_TCP, src, dst, payload: seg.encode(src, dst) };
+        // SYNs announce the largest segment a 1500-byte Ethernet MTU carries (RFC 9293 §3.7.1).
+        let payload = if seg.flags & tcp::SYN != 0 {
+            netlabcraft_wire::ipfrag::tcp_with_mss(&seg.encode(src, dst), 1_460, src, dst)
+        } else {
+            seg.encode(src, dst)
+        };
+        let out = Ipv4 { id: self.ip_id(), ttl: default_ttl(d.kind), protocol: PROTO_TCP, src, dst, payload };
         self.send_ip(t, d, out)
     }
 
@@ -3188,6 +3242,7 @@ impl Sim {
         size: usize,
         timeout: u64,
         source: Option<Ipv4Addr>,
+        df: bool,
     ) -> Result<Probe, SimError> {
         let d = t.device(dev).ok_or(SimError::NoDevice(dev))?;
         let src = match source {
@@ -3202,14 +3257,14 @@ impl Sim {
             protocol: PROTO_ICMP,
             src,
             dst,
-            payload: Icmp::EchoRequest { id, seq, data: vec![0xab; size.min(1_472)] }.encode(),
+            payload: Icmp::EchoRequest { id, seq, data: vec![0xab; size.min(17_996)] }.encode(),
         };
         // An echo to ourselves never touches a cable.
         if l3_ifaces(d).iter().any(|i| i.net.addr == dst) {
             return Ok(Probe::Reply { from: dst.into(), rtt_us: 0 });
         }
         let sent = self.now;
-        if self.send_ip(t, d, ip).is_err() && !d.routes_ip() {
+        if self.send_ip_df(t, d, ip, df).is_err() && !d.routes_ip() {
             return Ok(Probe::Timeout);
         }
         let matches = |s: &Sim| s.state.get(&dev).is_some_and(|st| st.icmp.iter().any(|e| e.id == id && e.seq == seq));
@@ -3235,7 +3290,7 @@ impl Sim {
         let ttl = opts.ttl.unwrap_or(default_ttl(kind)).max(1);
         let mut out = Vec::with_capacity(usize::from(count));
         for seq in 1..=count {
-            out.push(self.probe(t, dev, dst, ttl, seq, opts.size, opts.timeout_us, opts.source)?);
+            out.push(self.probe(t, dev, dst, ttl, seq, opts.size, opts.timeout_us, opts.source, opts.df)?);
         }
         Ok(out)
     }
@@ -3246,7 +3301,7 @@ impl Sim {
         for ttl in 1..=max_hops.clamp(1, 64) {
             let mut probes = Vec::new();
             for seq in 1..=3 {
-                probes.push(self.probe(t, dev, dst, ttl, seq, 32, timeout_us, None)?);
+                probes.push(self.probe(t, dev, dst, ttl, seq, 32, timeout_us, None, false)?);
             }
             let done = probes.iter().any(|p| matches!(p, Probe::Reply { .. } | Probe::Unreachable { .. }));
             hops.push(Hop { ttl, probes });

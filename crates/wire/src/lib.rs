@@ -20,6 +20,7 @@ pub mod dhcp6;
 pub mod dns;
 pub mod eigrp;
 pub mod ike;
+pub mod ipfrag;
 pub mod ipv6;
 pub mod lacp;
 pub mod lldp;

@@ -194,3 +194,151 @@ fn classic_inspection_by_typing() {
     lab.run(r1, "int g0/1");
     assert!(lab.try_run(r1, "ip inspect FW sideways").contains("in or out"));
 }
+
+// ---- IP MTU and TCP MSS clamping ----
+
+/// The IPv4 flags/offset word and total length of each captured IPv4 frame from `from` that
+/// matches `pick`.
+fn ipv4_frames(lab: &Lab, from: DeviceId) -> Vec<Vec<u8>> {
+    lab.sim
+        .trace()
+        .iter()
+        .filter(|e| e.from.device == from)
+        .filter_map(|e| {
+            let f = &e.frame;
+            let at = if f.get(12..14) == Some(&[0x81, 0x00]) { 16 } else { 12 };
+            (f.get(at..at + 2) == Some(&[0x08, 0x00])).then(|| f.get(at + 2..).unwrap_or_default().to_vec())
+        })
+        .collect()
+}
+
+fn is_fragment(d: &[u8]) -> bool {
+    u16::from_be_bytes([d[6], d[7]]) & 0x3fff != 0
+}
+
+/// (protocol, IPv4 payload) of a datagram.
+fn l4(d: &[u8]) -> (u8, &[u8]) {
+    let ihl = usize::from(d[0] & 0x0f) * 4;
+    let total = usize::from(u16::from_be_bytes([d[2], d[3]]));
+    (d[9], &d[ihl..total])
+}
+
+/// The MSS option of a TCP SYN.
+fn syn_mss(seg: &[u8]) -> Option<u16> {
+    if seg[13] & 0x02 == 0 {
+        return None;
+    }
+    let off = usize::from(seg[12] >> 4) * 4;
+    let opts = &seg[20..off];
+    (opts.first() == Some(&2)).then(|| u16::from_be_bytes([opts[2], opts[3]]))
+}
+
+/// The TCP checksum over the pseudo-header is right.
+fn tcp_ok(d: &[u8]) -> bool {
+    let (_, seg) = l4(d);
+    let mut sum: u32 = 0;
+    let mut add = |b: &[u8]| {
+        for c in b.chunks(2) {
+            sum += u32::from(u16::from_be_bytes([c[0], *c.get(1).unwrap_or(&0)]));
+        }
+    };
+    add(&d[12..20]);
+    add(&[0, 6]);
+    add(&(seg.len() as u16).to_be_bytes());
+    add(seg);
+    while sum > 0xffff {
+        sum = (sum & 0xffff) + (sum >> 16);
+    }
+    sum == 0xffff
+}
+
+#[test]
+fn ip_mtu_fragments_and_honours_df_by_typing() {
+    let (mut lab, r1, a, srv, _c) = three_legs();
+    assert!(ping_settled(&mut lab, a, "203.0.113.10").contains("4 answered"));
+    lab.run(r1, "conf t\nint g0/1\nip mtu 576\nend");
+    assert!(
+        lab.run(r1, "show running-config").contains("interface GigabitEthernet0/1\n") && lab.run(r1, "show running-config").contains(" ip mtu 576\n")
+    );
+    // 1400 data bytes: three fragments on the 576-byte link, put back together by the server.
+    lab.sim.clear_trace();
+    let ping = lab.run(a, "ping -n 2 -l 1400 203.0.113.10");
+    assert!(ping.contains("2 answered"), "{ping}");
+    let frags: Vec<Vec<u8>> = ipv4_frames(&lab, r1).into_iter().filter(|d| is_fragment(d)).collect();
+    assert!(frags.len() >= 6, "{} fragments", frags.len());
+    assert!(frags.iter().all(|f| f.len() <= 576));
+    // "Don't fragment": the router answers "fragmentation needed" with its MTU (RFC 1191).
+    lab.sim.clear_trace();
+    let ping = lab.run(a, "ping -n 1 -f -l 1400 203.0.113.10");
+    assert!(ping.contains("needs fragmenting") && ping.contains("0 answered"), "{ping}");
+    let needed = ipv4_frames(&lab, r1).into_iter().find_map(|d| {
+        let (proto, icmp) = l4(&d);
+        (proto == 1 && icmp.first() == Some(&3) && icmp.get(1) == Some(&4)).then(|| icmp.to_vec())
+    });
+    let needed = needed.expect("a fragmentation-needed message");
+    assert_eq!(u16::from_be_bytes([needed[6], needed[7]]), 576);
+    // A small packet with DF still fits.
+    assert!(lab.run(a, "ping -n 1 -f -l 100 203.0.113.10").contains("1 answered"));
+    // The router's own extended ping: `M` when DF is set and the packet doesn't fit.
+    let p = lab.run(r1, "ping 203.0.113.10 size 1200 repeat 2 df-bit");
+    assert!(p.contains("MM"), "{p}");
+    let p = lab.run(r1, "ping 203.0.113.10 size 1200 repeat 2");
+    assert!(p.contains("!!"), "{p}");
+    lab.run(r1, "conf t\nint g0/1\nno ip mtu\nend");
+    assert!(lab.run(a, "ping -n 1 -f -l 1400 203.0.113.10").contains("1 answered"));
+    lab.run(r1, "conf t\nint g0/1");
+    assert!(lab.try_run(r1, "ip mtu 20").contains("68-9216"));
+    let _ = srv;
+}
+
+#[test]
+fn tcp_adjust_mss_rewrites_syns_by_typing() {
+    let (mut lab, r1, a, _srv, _c) = three_legs();
+    lab.run(r1, "conf t\nint g0/0\nip tcp adjust-mss 1360\nend");
+    lab.sim.clear_trace();
+    let (status, _) = lab.sim.http_get(&lab.t, a, "203.0.113.10".parse().unwrap(), "203.0.113.10", "/").unwrap();
+    assert!(status.contains("200"), "{status}");
+    let mss_of = |frames: Vec<Vec<u8>>| -> Vec<u16> {
+        frames
+            .into_iter()
+            .filter_map(|d| {
+                let (proto, seg) = l4(&d);
+                if proto == 6 { syn_mss(seg) } else { None }
+            })
+            .collect()
+    };
+    // The PC's SYN says 1460; after the router it says 1360, checksum still right.
+    assert!(mss_of(ipv4_frames(&lab, a)).contains(&1460));
+    let after = mss_of(ipv4_frames(&lab, r1));
+    assert!(after.iter().all(|m| *m == 1360) && !after.is_empty(), "{after:?}");
+    for d in ipv4_frames(&lab, r1) {
+        if l4(&d).0 == 6 {
+            assert!(tcp_ok(&d));
+        }
+    }
+    assert!(lab.run(r1, "show running-config").contains(" ip tcp adjust-mss 1360\n"));
+    lab.run(r1, "conf t\nint g0/0");
+    assert!(lab.try_run(r1, "ip tcp adjust-mss 100").contains("500-1460"));
+    lab.run(r1, "no ip tcp adjust-mss\nend");
+    assert!(lab.t.device(r1).unwrap().security.adjust_mss.is_empty());
+}
+
+#[test]
+fn ip_mtu_and_mss_on_a_tunnel_by_typing() {
+    let (mut lab, r1, _isp, r2, a) = super::two_sites();
+    lab.run(
+        r1,
+        "conf t\ninterface tunnel 0\nip address 10.0.0.1 255.255.255.252\ntunnel source g0/1\ntunnel destination 198.51.100.1\nip mtu 1000\nip tcp adjust-mss 960\nexit\nip route 192.168.2.0 255.255.255.0 10.0.0.2\nend",
+    );
+    lab.run(r2, "conf t\nint tu0\nip address 10.0.0.2 255.255.255.252\ntunnel source g0/1\ntunnel destination 203.0.113.1\nexit\nip route 192.168.1.0 255.255.255.0 tunnel 0\nend");
+    assert!(ping_settled(&mut lab, a, "192.168.2.10").contains("4 answered"));
+    lab.sim.clear_trace();
+    let ping = lab.run(a, "ping -n 1 -l 1400 192.168.2.10");
+    assert!(ping.contains("1 answered"), "{ping}");
+    // The inner packet was fragmented before it went into GRE.
+    let gre_frags = lab.sim.trace().iter().filter(|e| e.from.device == r1 && e.summary.starts_with("GRE")).count();
+    assert!(gre_frags >= 2, "{gre_frags}");
+    assert!(lab.run(a, "ping -n 1 -f -l 1400 192.168.2.10").contains("needs fragmenting"));
+    let run = lab.run(r1, "show running-config interface tunnel 0");
+    assert!(run.contains(" ip mtu 1000") && run.contains(" ip tcp adjust-mss 960"), "{run}");
+}

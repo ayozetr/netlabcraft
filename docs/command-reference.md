@@ -962,6 +962,12 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ip inspect sessions` | user, privileged | router | Sessions classic inspection opened |
 | `show ip inspect all` | user, privileged | router | Inspection rules, where they apply, and sessions |
 | `clear ip inspect sessions` | privileged | router | Forget classic inspection's sessions |
+| `ip mtu <68-9216>` | interface, subinterface | router | Largest IPv4 packet sent here (larger ones are fragmented) |
+| `no ip mtu` | interface, subinterface | router | No IP MTU limit of its own |
+| `no ip mtu <68-9216>` | interface, subinterface | router | No IP MTU limit of its own |
+| `ip tcp adjust-mss <500-1460>` | interface, subinterface | router | Lower the MSS TCP SYNs crossing this interface announce |
+| `no ip tcp adjust-mss` | interface, subinterface | router | Leave TCP SYNs alone |
+| `no ip tcp adjust-mss <500-1460>` | interface, subinterface | router | Leave TCP SYNs alone |
 
 ## Host shell (PCs and servers)
 

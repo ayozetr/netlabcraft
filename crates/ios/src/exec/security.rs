@@ -6,7 +6,7 @@ use std::fmt::Write as _;
 
 use netlabcraft_model::security::{
     CLASS_DEFAULT, InspectAction, InspectBinding, InspectClass, InspectMatch, InspectPolicy, InspectPolicyClass, InspectRule, MAX_IFACES, MAX_ITEMS,
-    MAX_LINES, MAX_NAME, PROTOCOLS, SELF_ZONE, Zone, ZonePair, protocol,
+    MAX_LINES, MAX_MSS, MAX_MTU, MAX_NAME, MIN_MSS, MIN_MTU, PROTOCOLS, SELF_ZONE, Zone, ZonePair, protocol,
 };
 use netlabcraft_model::{Device, DeviceKind, MAX_DESCRIPTION};
 use netlabcraft_sim::Sim;
@@ -415,6 +415,40 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             let d = c.d()?.clone();
             Ok(inspect_report(c.sim, &d, id == Id::ShowIpInspectAll))
         }
+        Id::IpMtu | Id::NoIpMtu | Id::TcpAdjustMss | Id::NoTcpAdjustMss => {
+            let names = mode_ifaces(c)?;
+            let value = match id {
+                Id::IpMtu => Some(
+                    arg(0)
+                        .parse::<u16>()
+                        .ok()
+                        .filter(|m| (MIN_MTU..=MAX_MTU).contains(m))
+                        .ok_or(format!("% The IP MTU is {MIN_MTU}-{MAX_MTU} bytes"))?,
+                ),
+                Id::TcpAdjustMss => Some(
+                    arg(0)
+                        .parse::<u16>()
+                        .ok()
+                        .filter(|m| (MIN_MSS..=MAX_MSS).contains(m))
+                        .ok_or(format!("% The MSS is {MIN_MSS}-{MAX_MSS} bytes"))?,
+                ),
+                _ => None,
+            };
+            let sec = &mut c.dm()?.security;
+            let map = if matches!(id, Id::IpMtu | Id::NoIpMtu) { &mut sec.ip_mtu } else { &mut sec.adjust_mss };
+            for n in names {
+                match value {
+                    Some(v) if map.len() < MAX_IFACES || map.contains_key(&n) => {
+                        map.insert(n, v);
+                    }
+                    Some(_) => return Err("% Too many interfaces with this setting".into()),
+                    None => {
+                        map.remove(&n);
+                    }
+                }
+            }
+            Ok(String::new())
+        }
         _ => Err("% Not a security command".into()),
     }
 }
@@ -494,9 +528,15 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
     }
 }
 
-/// The lines under one interface: zone membership and inspection.
+/// The lines under one interface: IP MTU, MSS clamping, zone membership and inspection.
 pub(crate) fn iface_lines(s: &mut String, d: &Device, name: &str) {
     let sec = &d.security;
+    if let Some(m) = sec.ip_mtu.get(name) {
+        let _ = writeln!(s, " ip mtu {m}");
+    }
+    if let Some(m) = sec.adjust_mss.get(name) {
+        let _ = writeln!(s, " ip tcp adjust-mss {m}");
+    }
     if let Some(z) = sec.members.get(name) {
         let _ = writeln!(s, " zone-member security {z}");
     }

@@ -1828,7 +1828,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::IpInspectIf
         | Id::NoIpInspectIf
         | Id::ShowIpInspectSessions
-        | Id::ShowIpInspectAll => security::command(&mut c, spec.id, &args),
+        | Id::ShowIpInspectAll
+        | Id::IpMtu
+        | Id::NoIpMtu
+        | Id::TcpAdjustMss
+        | Id::NoTcpAdjustMss => security::command(&mut c, spec.id, &args),
         Id::ClassMap
         | Id::NoClassMap
         | Id::PolicyMap
@@ -4555,9 +4559,14 @@ impl Ctx<'_> {
         let words: Vec<&str> = rest.split_whitespace().collect();
         let mut opts = PingOptions::default();
         let mut i = 0;
-        let usage = "% ping A.B.C.D [repeat N] [size S] [source INTERFACE|A.B.C.D] [timeout SECONDS]";
+        let usage = "% ping A.B.C.D [repeat N] [size S] [source INTERFACE|A.B.C.D] [timeout SECONDS] [df-bit]";
         while let Some(w) = words.get(i) {
             let lw = w.to_ascii_lowercase();
+            if lw.len() >= 2 && "df-bit".starts_with(&lw) {
+                opts.df = true;
+                i += 1;
+                continue;
+            }
             let key = ["repeat", "size", "source", "timeout"].into_iter().find(|k| !lw.is_empty() && k.starts_with(&lw)).ok_or(usage)?;
             let v = *words.get(i + 1).ok_or(usage)?;
             match key {

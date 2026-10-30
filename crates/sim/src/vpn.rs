@@ -509,6 +509,9 @@ impl Sim {
         let gre = Gre { protocol: ETHERTYPE_IPV4, checksum: false, payload: datagram };
         let mut outer = Ipv4 { id: self.ip_id(), ttl: 255, protocol: PROTO_GRE, src, dst, payload: gre.encode() }.encode();
         crate::qos::copy_ds(&gre.payload, &mut outer);
+        // The outer header copies the inner packet's "don't fragment" (so `ip mtu` on the way can
+        // fragment GRE carrying packets that may be fragmented).
+        netlabcraft_wire::ipfrag::set_dont_fragment(&mut outer, netlabcraft_wire::ipfrag::dont_fragment(&gre.payload));
         if self.state.get(&d.id).is_some_and(|s| s.debug_packet) {
             self.log(d.id, &format!("IP debug: {} encapsulated in GRE {src} → {dst}, out {}", tun.name(), out.name));
         }

@@ -829,6 +829,11 @@ pub enum Id {
     NoIpInspectIf,
     ShowIpInspectSessions,
     ShowIpInspectAll,
+    // IP MTU and TCP MSS clamping.
+    IpMtu,
+    NoIpMtu,
+    TcpAdjustMss,
+    NoTcpAdjustMss,
 }
 
 use Tok::{Arg, K, Rest};
@@ -3025,6 +3030,18 @@ pub static SPECS: &[Spec] = &[
         [K("clear"), K("ip"), K("inspect"), K("sessions")],
         "Forget classic inspection's sessions"
     ),
+    spec!(IpMtu, SEC_IFS, Modes::ROUTER, [K("ip"), K("mtu"), Arg("<68-9216>")], "Largest IPv4 packet sent here (larger ones are fragmented)"),
+    spec!(NoIpMtu, SEC_IFS, Modes::ROUTER, [K("no"), K("ip"), K("mtu")], "No IP MTU limit of its own"),
+    spec!(NoIpMtu, SEC_IFS, Modes::ROUTER, [K("no"), K("ip"), K("mtu"), Arg("<68-9216>")], "No IP MTU limit of its own"),
+    spec!(
+        TcpAdjustMss,
+        SEC_IFS,
+        Modes::ROUTER,
+        [K("ip"), K("tcp"), K("adjust-mss"), Arg("<500-1460>")],
+        "Lower the MSS TCP SYNs crossing this interface announce"
+    ),
+    spec!(NoTcpAdjustMss, SEC_IFS, Modes::ROUTER, [K("no"), K("ip"), K("tcp"), K("adjust-mss")], "Leave TCP SYNs alone"),
+    spec!(NoTcpAdjustMss, SEC_IFS, Modes::ROUTER, [K("no"), K("ip"), K("tcp"), K("adjust-mss"), Arg("<500-1460>")], "Leave TCP SYNs alone"),
 ];
 
 /// Why a line didn't parse. Positions are word indexes.
