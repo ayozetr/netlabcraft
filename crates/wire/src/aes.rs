@@ -1,6 +1,7 @@
 //! AES-128 (FIPS 197) with the CBC mode (NIST SP 800-38A, as IPsec's ESP and IKEv2 use it),
 //! and the CCM mode (RFC 3610, as IEEE 802.11 CCMP and other protocols use it: counter-mode
-//! encryption with a CBC-MAC; it decrypts by running the same counter keystream).
+//! encryption with a CBC-MAC; it decrypts by running the same counter keystream), and the AES
+//! key wrap (RFC 3394) that IEEE 802.11 uses to carry the group key inside the 4-way handshake.
 //! Written from the published specifications; checked against their test vectors.
 
 /// The AES S-box, generated from its definition (the multiplicative inverse in GF(2^8)
@@ -195,6 +196,70 @@ pub fn cbc_decrypt(aes: &Aes128, iv: &[u8; 16], data: &[u8]) -> Vec<u8> {
     out
 }
 
+/// The key wrap's initial value (RFC 3394 §2.2.3.1).
+const WRAP_IV: [u8; 8] = [0xa6; 8];
+/// Longest key data wrapped or unwrapped (hostile input).
+pub const MAX_WRAP: usize = 4096;
+
+/// AES key wrap (RFC 3394 §2.2.1): `plain` (a multiple of 8 bytes, at least 16) under `kek`;
+/// 8 bytes longer than it went in. `None` for a length the wrap can't take.
+pub fn key_wrap(kek: &[u8; 16], plain: &[u8]) -> Option<Vec<u8>> {
+    if plain.len() < 16 || !plain.len().is_multiple_of(8) || plain.len() > MAX_WRAP {
+        return None;
+    }
+    let aes = Aes128::new(kek);
+    let n = plain.len() / 8;
+    let mut a = WRAP_IV;
+    let mut r: Vec<[u8; 8]> = plain.chunks(8).filter_map(|c| <[u8; 8]>::try_from(c).ok()).collect();
+    for j in 0..6u64 {
+        for (i, ri) in r.iter_mut().enumerate() {
+            let mut b = [0u8; 16];
+            b[..8].copy_from_slice(&a);
+            b[8..].copy_from_slice(ri);
+            let b = aes.encrypt(&b);
+            let t = (n as u64) * j + (i as u64) + 1;
+            for (x, (y, z)) in a.iter_mut().zip(b[..8].iter().zip(t.to_be_bytes())) {
+                *x = y ^ z;
+            }
+            ri.copy_from_slice(&b[8..]);
+        }
+    }
+    let mut out = a.to_vec();
+    for ri in &r {
+        out.extend_from_slice(ri);
+    }
+    Some(out)
+}
+
+/// AES key unwrap (RFC 3394 §2.2.2): the key data, or `None` when the integrity check fails
+/// (a wrong key or changed bytes) or the length is wrong.
+pub fn key_unwrap(kek: &[u8; 16], wrapped: &[u8]) -> Option<Vec<u8>> {
+    if wrapped.len() < 24 || !wrapped.len().is_multiple_of(8) || wrapped.len() > MAX_WRAP + 8 {
+        return None;
+    }
+    let aes = Aes128::new(kek);
+    let n = wrapped.len() / 8 - 1;
+    let mut a: [u8; 8] = wrapped.get(..8)?.try_into().ok()?;
+    let mut r: Vec<[u8; 8]> = wrapped.get(8..)?.chunks(8).filter_map(|c| <[u8; 8]>::try_from(c).ok()).collect();
+    for j in (0..6u64).rev() {
+        for i in (0..n).rev() {
+            let t = (n as u64) * j + (i as u64) + 1;
+            let mut b = [0u8; 16];
+            for (x, (y, z)) in b[..8].iter_mut().zip(a.iter().zip(t.to_be_bytes())) {
+                *x = y ^ z;
+            }
+            b[8..].copy_from_slice(r.get(i)?);
+            let b = aes.decrypt(&b);
+            a.copy_from_slice(&b[..8]);
+            r.get_mut(i)?.copy_from_slice(&b[8..]);
+        }
+    }
+    if a != WRAP_IV {
+        return None;
+    }
+    Some(r.concat())
+}
+
 /// CCM with a 13-byte nonce (so a 2-byte length field, L = 2) and an `M`-byte tag.
 #[derive(Debug, Clone)]
 pub struct Ccm {
@@ -364,5 +429,26 @@ mod tests {
         for n in 0..sealed.len() {
             assert!(ccm.open(&nonce, &aad, &sealed[..n]).is_err());
         }
+    }
+
+    #[test]
+    fn rfc_3394_key_wrap_vector_4_1() {
+        let kek: [u8; 16] = hex("000102030405060708090a0b0c0d0e0f").try_into().unwrap();
+        let data = hex("00112233445566778899aabbccddeeff");
+        let wrapped = key_wrap(&kek, &data).unwrap();
+        assert_eq!(wrapped, hex("1fa68b0a8112b447aef34bd8fb5a7b829d3e862371d2cfe5"));
+        assert_eq!(key_unwrap(&kek, &wrapped).unwrap(), data);
+        // A changed byte or another key fails the integrity check.
+        let mut bad = wrapped.clone();
+        bad[10] ^= 1;
+        assert!(key_unwrap(&kek, &bad).is_none());
+        assert!(key_unwrap(&[0; 16], &wrapped).is_none());
+        // Longer data round-trips; lengths the wrap can't take are refused, never panic.
+        let long: Vec<u8> = (0..48u8).collect();
+        assert_eq!(key_unwrap(&kek, &key_wrap(&kek, &long).unwrap()).unwrap(), long);
+        for n in 0..wrapped.len() {
+            assert!(key_unwrap(&kek, &wrapped[..n]).is_none(), "{n}");
+        }
+        assert!(key_wrap(&kek, &[0; 8]).is_none() && key_wrap(&kek, &[0; 17]).is_none());
     }
 }

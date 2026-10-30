@@ -35,6 +35,8 @@ pub mod channel;
 pub mod control;
 pub mod dhcpsrv;
 pub mod eigrp;
+pub mod eigrp6;
+pub mod fhrp;
 pub mod firewall;
 pub mod hsrp;
 pub mod ikev2;
@@ -818,6 +820,8 @@ pub struct DevState {
     pub(crate) qos: qos::QosCounters,
     /// Output queuing: when each interface's queues last drained (simulated µs).
     pub(crate) qos_drained: BTreeMap<String, u64>,
+    /// Switches with `mls qos`: frames per port whose DS field was kept or rewritten.
+    pub mls_qos: BTreeMap<usize, qos::MlsCounts>,
     /// The firewall appliance: connections and translations.
     pub fw: firewall::FwState,
     /// Routers: DHCP server message counts and address conflicts.
@@ -962,6 +966,10 @@ pub struct Sim {
     stp_prev: BTreeMap<u16, stp::VlanTree>,
     /// Ports that started forwarding at this time (µs) and spend 30 s listening and learning.
     stp_since: BTreeMap<(u16, DeviceId, usize), u64>,
+    /// Rapid spanning tree: designated ports that just came up on a point-to-point link to
+    /// another rapid switch, (VLAN, switch, port), whose proposal and agreement are still to go
+    /// on the wire.
+    rstp_handshakes: Vec<(u16, DeviceId, usize)>,
     /// EtherChannel bundles per switch, for the same topology as `stp`.
     chmaps: BTreeMap<DeviceId, channel::PortMap>,
     /// OSPF's routes, for the topology with this fingerprint.
@@ -969,6 +977,8 @@ pub struct Sim {
     ospf: Option<ospf::OspfState>,
     ospf6_for: u64,
     ospf6: Option<ospf6::Ospf6State>,
+    eigrp6_for: u64,
+    eigrp6: Option<eigrp6::Eigrp6State>,
     rip_for: u64,
     rip: Option<rip::RipState>,
     eigrp_for: u64,
@@ -1000,12 +1010,22 @@ pub struct Sim {
     hold_for_arp: bool,
     hsrp_for: u64,
     hsrp: Option<BTreeMap<DeviceId, Vec<hsrp::Role>>>,
+    /// Who was active in each HSRP group at the last election (for preemption).
+    hsrp_actives: hsrp::Actives,
+    fhrp_for: u64,
+    fhrp: Option<fhrp::FhrpRoles>,
+    /// Who held each VRRP and GLBP role at the last election.
+    fhrp_held: fhrp::Held,
+    /// GLBP round-robin: the forwarder the next ARP answer names, by (gateway, group).
+    glbp_next: BTreeMap<(DeviceId, u16), usize>,
     /// Last known link state of every router and switch port, for link messages.
     links_seen: BTreeMap<(DeviceId, usize), bool>,
     /// Lab changes waiting for the engine.
     events: Vec<PortEvent>,
     /// Wi-Fi associations as the air has shown them, by host radio.
     assoc: BTreeMap<End, wlan::Assoc>,
+    /// Access point radios: the packet number of the last group-addressed frame protected.
+    group_pn: BTreeMap<End, u64>,
     /// Lightweight APs' joins as CAPWAP has shown them.
     joined: BTreeMap<DeviceId, wlan::Joined>,
     /// 802.1X logins waiting for a RADIUS answer, by the controller's source port.
@@ -1339,6 +1359,7 @@ impl Sim {
     fn advance(&mut self, t: &Topology, deadline: u64, mut stop: impl FnMut(&Sim) -> bool) -> bool {
         self.storm = false;
         self.refresh_stp(t);
+        self.send_rstp_handshakes(t);
         self.l2_tick(t);
         self.wlan_sync(t);
         self.flush_syslog(t);
@@ -1732,12 +1753,73 @@ impl Sim {
         let f = hsrp::fingerprint(t);
         if self.hsrp.is_none() || self.hsrp_for != f {
             self.hsrp_for = f;
-            self.hsrp = Some(hsrp::compute(t));
+            let (roles, actives) = hsrp::compute_with(t, &self.hsrp_actives);
+            self.hsrp = Some(roles);
+            self.hsrp_actives = actives;
         }
         self.hsrp.clone().unwrap_or_default()
     }
 
     /// Groups this device is active for on an interface: (virtual address, virtual MAC).
+    /// VRRP and GLBP roles, recomputed when what they depend on changes.
+    pub fn fhrp_roles(&mut self, t: &Topology) -> fhrp::FhrpRoles {
+        let f = fhrp::fingerprint(t);
+        if self.fhrp.is_none() || self.fhrp_for != f {
+            self.fhrp_for = f;
+            let (roles, held) = fhrp::compute(t, &self.fhrp_held);
+            self.fhrp = Some(roles);
+            self.fhrp_held = held;
+        }
+        self.fhrp.clone().unwrap_or_default()
+    }
+
+    /// The virtual MACs this router takes frames for on an interface: a VRRP group it is
+    /// master of, and its own GLBP forwarders.
+    fn fhrp_macs(&mut self, t: &Topology, d: &Device, iface: &str) -> Vec<MacAddr> {
+        if d.fhrp.is_empty() {
+            return Vec::new();
+        }
+        let roles = self.fhrp_roles(t);
+        let vrrp =
+            roles.vrrp.get(&d.id).into_iter().flatten().filter(|r| r.iface == iface && r.state == fhrp::VrrpState::Master).map(|r| r.virtual_mac());
+        let glbp = roles
+            .glbp
+            .get(&d.id)
+            .into_iter()
+            .flatten()
+            .filter(|r| r.iface == iface)
+            .filter_map(|r| r.forwarder.and_then(|n| r.forwarders.iter().find(|f| f.0 == n)).map(|f| f.2));
+        vrrp.chain(glbp).collect()
+    }
+
+    /// The MAC this router answers an ARP request for `target` with, as VRRP master or GLBP
+    /// active gateway (the next forwarder in turn, or the asking host's own).
+    fn fhrp_arp(&mut self, t: &Topology, d: &Device, iface: &str, target: Ipv4Addr, asker: MacAddr, request: bool) -> Option<MacAddr> {
+        if d.fhrp.is_empty() {
+            return None;
+        }
+        let roles = self.fhrp_roles(t);
+        if let Some(r) =
+            roles.vrrp.get(&d.id).into_iter().flatten().find(|r| r.iface == iface && r.virtual_ip == target && r.state == fhrp::VrrpState::Master)
+        {
+            return Some(r.virtual_mac());
+        }
+        let r = roles.glbp.get(&d.id).into_iter().flatten().find(|r| r.iface == iface && r.virtual_ip == target && r.avg)?;
+        let n = r.forwarders.len().max(1);
+        let k = match r.balance {
+            netlabcraft_model::fhrp::GlbpBalance::HostDependent => usize::from(asker.0[5]) % n,
+            netlabcraft_model::fhrp::GlbpBalance::RoundRobin => {
+                let slot = self.glbp_next.entry((d.id, r.group)).or_insert(0);
+                let k = *slot % n;
+                if request {
+                    *slot = (k + 1) % n;
+                }
+                k
+            }
+        };
+        r.forwarders.get(k).map(|f| f.2)
+    }
+
     fn hsrp_active(&mut self, t: &Topology, d: &Device, iface: Option<&str>) -> Vec<(Ipv4Addr, MacAddr)> {
         if !d.ports.iter().any(|p| !p.standby.is_empty() || p.subifs.iter().any(|s| !s.standby.is_empty()))
             && !d.svis.iter().any(|s| !s.standby.is_empty())
@@ -1774,30 +1856,49 @@ impl Sim {
         self.ospf6.clone().unwrap_or_default()
     }
 
-    /// A device's dynamic IPv6 routes (OSPFv3), as routing-table lines.
-    pub fn dynamic_routes6(&mut self, t: &Topology, d: &Device) -> Vec<v6::Route6Entry> {
-        if d.ospf6.is_none() {
-            return Vec::new();
+    /// EIGRP for IPv6's view of the lab, recomputed when what it depends on changes.
+    pub fn eigrp6_state(&mut self, t: &Topology) -> eigrp6::Eigrp6State {
+        let f = eigrp6::fingerprint(t);
+        if self.eigrp6.is_none() || self.eigrp6_for != f {
+            self.eigrp6_for = f;
+            self.eigrp6 = Some(eigrp6::compute(t));
         }
-        let st = self.ospf6_state(t);
-        st.routes
-            .get(&d.id)
-            .into_iter()
-            .flatten()
-            .map(|r| v6::Route6Entry {
-                code: if r.external {
-                    'E'
-                } else if r.inter_area {
-                    'I'
-                } else {
-                    'O'
-                },
+        self.eigrp6.clone().unwrap_or_default()
+    }
+
+    /// A device's dynamic IPv6 routes (OSPFv3 and EIGRP for IPv6), as routing-table lines.
+    pub fn dynamic_routes6(&mut self, t: &Topology, d: &Device) -> Vec<v6::Route6Entry> {
+        let mut out = Vec::new();
+        if d.eigrp6.is_some() {
+            let st = self.eigrp6_state(t);
+            out.extend(st.routes.get(&d.id).into_iter().flatten().map(|r| v6::Route6Entry {
+                code: 'D',
                 net: r.net,
                 iface: Some(r.iface.clone()),
                 next_hop: Some(r.via),
-                distance: 110,
-            })
-            .collect()
+                distance: eigrp::DISTANCE,
+            }));
+        }
+        if d.ospf6.is_none() {
+            return out;
+        }
+        let st = self.ospf6_state(t);
+        // The lower administrative distance wins a prefix both protocols know.
+        let have: std::collections::BTreeSet<netlabcraft_core::Ipv6Net> = out.iter().map(|r| r.net).collect();
+        out.extend(st.routes.get(&d.id).into_iter().flatten().filter(|r| !have.contains(&r.net)).map(|r| v6::Route6Entry {
+            code: if r.external {
+                'E'
+            } else if r.inter_area {
+                'I'
+            } else {
+                'O'
+            },
+            net: r.net,
+            iface: Some(r.iface.clone()),
+            next_hop: Some(r.via),
+            distance: 110,
+        }));
+        out
     }
 
     pub fn ospf_state(&mut self, t: &Topology) -> ospf::OspfState {
@@ -1906,12 +2007,22 @@ impl Sim {
                         })
                         .unwrap_or_else(|| vec![*p]);
                     let was = members.iter().any(|m| prev.ports.get(&(*dev, *m)).is_some_and(|i| i.role.forwards()));
-                    // Portfast, rapid spanning tree, and access-point radios forward at once.
-                    let immediate = t
-                        .device(*dev)
-                        .is_some_and(|d| d.rapid_stp || l2sec::edge_port(t, d, *p) || d.ports.get(*p).is_some_and(|x| ifname::is_wireless(&x.name)));
-                    if !was && !immediate {
+                    // Portfast ports and access-point radios forward at once; so do rapid ports
+                    // on a point-to-point link to another rapid switch, after the proposal and
+                    // agreement handshake (802.1w), and rapid ports facing a host or router,
+                    // which hear no BPDU and become edge ports by themselves (802.1D-2004
+                    // AutoEdge). Anything else listens and learns.
+                    let edge = t.device(*dev).is_some_and(|d| {
+                        l2sec::edge_port(t, d, *p)
+                            || d.ports.get(*p).is_some_and(|x| ifname::is_wireless(&x.name))
+                            || (d.rapid_stp && !stp::faces_switch(t, *dev, *p))
+                    });
+                    let rapid = stp::rapid_link(t, *dev, *p);
+                    if !was && !edge && !rapid {
                         self.stp_since.insert(key, self.now);
+                    }
+                    if !was && !edge && rapid && info.role == stp::Role::Designated && self.rstp_handshakes.len() < 4_096 {
+                        self.rstp_handshakes.push(key);
                     }
                 }
             }
@@ -1999,6 +2110,8 @@ impl Sim {
             return Err(format!("port blocked by spanning tree (VLAN {vlan})"));
         }
         self.l2_switch_in(d, in_port, vlan, &f)?;
+        let f = self.snoop_option82(d, in_port, vlan, f)?;
+        let f = self.mls_qos_in(d, in_port, f);
         self.psec_age(d, in_port, f.src);
         self.port_security(d, in_port, f.src)?;
         self.switch_forward(t, d, Some(in_port), vlan, f, hops)
@@ -2169,7 +2282,9 @@ impl Sim {
         })?;
         // Unicast to us, broadcast, or an IPv4 multicast group (the IP layer decides on those).
         let ipv4_group = f.dst.is_group() && f.dst.0[..3] == [0x01, 0x00, 0x5e] && f.ethertype == ETHERTYPE_IPV4;
-        let virtual_mac = !f.dst.is_group() && f.dst != ifc.mac && self.hsrp_active(t, d, Some(&ifc.name)).iter().any(|(_, m)| *m == f.dst);
+        let virtual_mac = !f.dst.is_group()
+            && f.dst != ifc.mac
+            && (self.hsrp_active(t, d, Some(&ifc.name)).iter().any(|(_, m)| *m == f.dst) || self.fhrp_macs(t, d, &ifc.name).contains(&f.dst));
         if f.dst != ifc.mac && !f.dst.is_broadcast() && !ipv4_group && !virtual_mac {
             return Err("not addressed to this device".into());
         }
@@ -2194,7 +2309,10 @@ impl Sim {
             return Err(format!("ARP from {} is not on {}", a.sender_ip, ifc.net.network()));
         }
         // An HSRP virtual address this router is active for answers with the virtual MAC.
-        let virtual_mac = self.hsrp_active(t, d, Some(&ifc.name)).into_iter().find(|(ip, _)| *ip == a.target_ip).map(|(_, m)| m);
+        let virtual_mac = match self.hsrp_active(t, d, Some(&ifc.name)).into_iter().find(|(ip, _)| *ip == a.target_ip).map(|(_, m)| m) {
+            Some(m) => Some(m),
+            None => self.fhrp_arp(t, d, &ifc.name, a.target_ip, a.sender_mac, a.op == ArpOp::Request),
+        };
         let for_me = a.target_ip == ifc.net.addr
             || virtual_mac.is_some()
             || (nat_side(d, ifc) == Some(netlabcraft_model::NatSide::Outside) && Sim::nat_owns(d, a.target_ip))
@@ -2228,7 +2346,10 @@ impl Sim {
         if a.op == ArpOp::Request {
             let mac = virtual_mac.unwrap_or(ifc.mac);
             let reply = Arp { op: ArpOp::Reply, sender_mac: mac, sender_ip: a.target_ip, target_mac: a.sender_mac, target_ip: a.sender_ip };
-            let frame = Frame { dst: a.sender_mac, src: mac, vlan: ifc.vlan, ethertype: ETHERTYPE_ARP, payload: reply.encode() };
+            // A GLBP gateway naming another router's forwarder sends from its own address, so
+            // switches keep learning that MAC where its forwarder is.
+            let src = if mac.0[..3] == [0x00, 0x07, 0xb4] && !self.fhrp_macs(t, d, &ifc.name).contains(&mac) { ifc.mac } else { mac };
+            let frame = Frame { dst: a.sender_mac, src, vlan: ifc.vlan, ethertype: ETHERTYPE_ARP, payload: reply.encode() };
             self.l3_emit(t, d, ifc, frame);
         }
         Ok(())
@@ -2324,6 +2445,8 @@ impl Sim {
                 (netlabcraft_wire::control::PROTO_OSPF, _) => Err("OSPF is not running here".into()),
                 (netlabcraft_wire::eigrp::PROTO_EIGRP, _) if d.eigrp.is_some() => Ok(()),
                 (netlabcraft_wire::eigrp::PROTO_EIGRP, _) => Err("EIGRP is not running here".into()),
+                (netlabcraft_wire::vrrp::PROTO_VRRP, _) if !d.fhrp.vrrp.is_empty() => Ok(()),
+                (netlabcraft_wire::vrrp::PROTO_VRRP, _) => Err("VRRP is not running here".into()),
                 (_, true) if d.rip.is_some() => Ok(()),
                 (_, true) => Err("RIP is not running here".into()),
                 _ if hsrp => Ok(()),
@@ -2364,6 +2487,11 @@ impl Sim {
             }
             self.note(explain::Step::Delivered { dst: ip.dst });
             return self.local_in(t, d, ifc, ip);
+        }
+        // A VRRP master that doesn't own the virtual address takes no packets for it (accept
+        // mode off, RFC 5798 §6.4.3); it only forwards what is sent through it.
+        if !d.fhrp.vrrp.is_empty() && self.fhrp_roles(t).vrrp.get(&d.id).into_iter().flatten().any(|r| r.virtual_ip == ip.dst && !r.owner) {
+            return Err(format!("VRRP: {} is a virtual address this router doesn't own; it takes no packets for it (accept mode off)", ip.dst));
         }
         if !d.routes_ip() {
             return Err(format!("{} is not this device's address", ip.dst));
@@ -2458,6 +2586,17 @@ impl Sim {
             return match (u.dst_port, d.kind) {
                 (dhcp::SERVER_PORT, k) if k == DeviceKind::Router || (k == DeviceKind::Switch && d.routes_ip()) => {
                     let msg = Dhcp::decode(&u.payload).map_err(|e| e.to_string())?;
+                    // RFC 3046 §2.1.1 and §2.2: relay information with no relay address came
+                    // from a switch on the client's segment; only a trusted interface takes it.
+                    let client = matches!(msg.kind, DhcpKind::Discover | DhcpKind::Request | DhcpKind::Release);
+                    let trusted = d.l2.relay_trust_all || d.ports.get(ifc.port).is_some_and(|p| p.l2.relay_trusted);
+                    if client && msg.relay.is_unspecified() && msg.relay_info.is_some() && !trusted {
+                        return Err(format!(
+                            "DHCP {}: relay information (option 82) with relay address 0.0.0.0 on untrusted {}; dropped (`ip dhcp relay information trusted` takes it)",
+                            msg.kind.name(),
+                            ifc.name
+                        ));
+                    }
                     match msg.kind {
                         DhcpKind::Offer | DhcpKind::Ack | DhcpKind::Nak => self.dhcp_relay_down(t, d, msg),
                         _ if msg.relay.is_unspecified() => {
@@ -2761,6 +2900,8 @@ impl Sim {
         reply.lease_secs = Some(pool.lease_secs.unwrap_or(86_400));
         reply.domain = pool.domain.clone();
         reply.tftp = d.voice.option150.get(&pool.name).copied();
+        // Relay agent information comes back as it came (RFC 3046 §2.2).
+        reply.relay_info = msg.relay_info.clone();
         match msg.kind {
             DhcpKind::Discover => {
                 reply.your_ip = self
@@ -2788,6 +2929,7 @@ impl Sim {
                 } else {
                     reply = Dhcp::new(DhcpKind::Nak, msg.xid, msg.client_mac);
                     reply.server_id = Some(ifc.net.addr);
+                    reply.relay_info = msg.relay_info.clone();
                 }
             }
             DhcpKind::Release => {

@@ -6,7 +6,7 @@
 use std::fmt::Write as _;
 
 use netlabcraft_core::{VlanId, VlanSet};
-use netlabcraft_model::l2sec::{ArpValidate, ERRDISABLE_INTERVAL, ErrCause, LinkType, LoadBalance, PortL2, SDM_TEMPLATES, vlan_list};
+use netlabcraft_model::l2sec::{ArpValidate, ERRDISABLE_INTERVAL, ErrCause, LinkType, LoadBalance, PortL2, QosTrust, SDM_TEMPLATES, vlan_list};
 use netlabcraft_model::{Device, DeviceKind, End, Topology, ifname};
 use netlabcraft_sim::stp::Role;
 use netlabcraft_sim::{Sim, port_up};
@@ -164,14 +164,91 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             Ok(())
         }),
         L2Guard | L2NoGuard => {
-            let on = id == L2Guard
-                && match arg(0).to_ascii_lowercase().as_str() {
-                    "root" => true,
-                    "none" => false,
-                    _ => return Err("% `root` or `none` (loop guard is not simulated)".into()),
-                };
+            let (root, lp) = if id == L2NoGuard {
+                (false, false)
+            } else {
+                match arg(0).to_ascii_lowercase().as_str() {
+                    "root" => (true, false),
+                    "loop" => (false, true),
+                    "none" => (false, false),
+                    _ => return Err("% `root`, `loop` or `none`".into()),
+                }
+            };
             c.each_if(|p, _| {
-                p.l2.root_guard = on;
+                p.l2.root_guard = root;
+                p.l2.loop_guard = lp;
+                Ok(())
+            })
+        }
+        L2LoopguardDefault | L2NoLoopguardDefault => {
+            c.dm()?.l2.loopguard_default = id == L2LoopguardDefault;
+            Ok(String::new())
+        }
+        L2Bpdufilter | L2NoBpdufilter => {
+            let v = if id == L2NoBpdufilter {
+                None
+            } else {
+                Some(match arg(0).to_ascii_lowercase().as_str() {
+                    "enable" => true,
+                    "disable" => false,
+                    _ => return Err("% `enable` or `disable`".into()),
+                })
+            };
+            c.each_if(|p, _| {
+                p.l2.bpdufilter = v;
+                Ok(())
+            })?;
+            Ok(if v == Some(true) {
+                "BPDUs stop on this port at both ends of its link: a loop through it is not caught (add loop guard at the far end).".into()
+            } else {
+                String::new()
+            })
+        }
+        L2ShowStpInconsistent => Ok(show_inconsistent(c)),
+        // ---- QoS trust ----
+        L2MlsQos | L2NoMlsQos => {
+            let on = id == L2MlsQos;
+            c.dm()?.l2.mls_qos = on;
+            Ok(if on { "QoS is on: ports without `mls qos trust` now rewrite arriving markings to 0.".into() } else { String::new() })
+        }
+        L2MlsTrust | L2NoMlsTrust => {
+            let trust = if id == L2MlsTrust {
+                Some(match arg(0).to_ascii_lowercase().as_str() {
+                    "dscp" => QosTrust::Dscp,
+                    "cos" => QosTrust::Cos,
+                    _ => return Err("% `dscp` or `cos`".into()),
+                })
+            } else {
+                None
+            };
+            c.each_if(|p, _| {
+                p.l2.qos_trust = trust;
+                Ok(())
+            })?;
+            Ok(if trust.is_some() && !c.d()?.l2.mls_qos {
+                "Saved; trust acts once `mls qos` turns QoS on (until then every marking passes).".into()
+            } else {
+                String::new()
+            })
+        }
+        L2ShowMlsQos => {
+            let d = c.d()?;
+            Ok(if d.l2.mls_qos {
+                "QoS is enabled: markings are kept on trusted ports and rewritten to 0 on the others.".into()
+            } else {
+                "QoS is disabled: every marking passes through untouched.".into()
+            })
+        }
+        L2ShowMlsQosIf => show_mls_qos_if(c.sim, c.d()?, arg(0)),
+        // ---- DHCP relay information (RFC 3046) ----
+        L2RelayTrustAll | L2NoRelayTrustAll => {
+            c.dm()?.l2.relay_trust_all = id == L2RelayTrustAll;
+            Ok(String::new())
+        }
+        L2RelayTrusted | L2NoRelayTrusted => {
+            let on = id == L2RelayTrusted;
+            c.each_if(|p, _| {
+                p.l2.relay_trusted = on;
                 Ok(())
             })
         }
@@ -422,6 +499,12 @@ pub(crate) fn global_lines(s: &mut String, d: &Device) {
     if l.load_balance != LoadBalance::default() {
         let _ = writeln!(s, "port-channel load-balance {}", l.load_balance.name());
     }
+    if l.loopguard_default {
+        let _ = writeln!(s, "spanning-tree loopguard default");
+    }
+    if l.mls_qos {
+        let _ = writeln!(s, "mls qos");
+    }
     if s.len() > start {
         let _ = writeln!(s, "!");
     }
@@ -446,6 +529,15 @@ pub(crate) fn port_lines(s: &mut String, p: &netlabcraft_model::Port) {
     }
     if l.root_guard {
         let _ = writeln!(s, " spanning-tree guard root");
+    }
+    if l.loop_guard {
+        let _ = writeln!(s, " spanning-tree guard loop");
+    }
+    if let Some(on) = l.bpdufilter {
+        let _ = writeln!(s, " spanning-tree bpdufilter {}", if on { "enable" } else { "disable" });
+    }
+    if let Some(tr) = l.qos_trust {
+        let _ = writeln!(s, " mls qos trust {}", tr.name());
     }
     if let Some(lt) = l.link_type {
         let _ = writeln!(s, " spanning-tree link-type {}", lt.name());
@@ -479,6 +571,61 @@ pub(crate) fn port_lines(s: &mut String, p: &netlabcraft_model::Port) {
     if let Some(n) = l.dai_rate {
         let _ = writeln!(s, " ip arp inspection limit rate {n}");
     }
+}
+
+/// Global lines of a router's DHCP relay settings, for `show running-config`.
+pub(crate) fn relay_global_lines(s: &mut String, d: &Device) {
+    if d.l2.relay_trust_all {
+        let _ = writeln!(s, "ip dhcp relay information trust-all");
+    }
+}
+
+/// Interface lines of a router port's DHCP relay settings, for `show running-config`.
+pub(crate) fn relay_port_lines(s: &mut String, p: &netlabcraft_model::Port) {
+    if p.l2.relay_trusted {
+        let _ = writeln!(s, " ip dhcp relay information trusted");
+    }
+}
+
+/// `show mls qos interface [IFACE]`.
+fn show_mls_qos_if(sim: &Sim, d: &Device, only: &str) -> R {
+    let ports: Vec<usize> = if only.trim().is_empty() {
+        (0..d.ports.len()).filter(|i| d.ports.get(*i).is_some_and(|p| !p.routed)).collect()
+    } else {
+        vec![d.port_index(only.trim()).ok_or_else(|| format!("% No interface {}", only.trim()))?]
+    };
+    let mut s = format!("QoS {}\n", if d.l2.mls_qos { "enabled" } else { "disabled (the settings below wait for `mls qos`)" });
+    let _ = writeln!(s, "{:<10} {:<8} {:<10} Rewritten", "Port", "Trust", "Kept");
+    for i in ports {
+        let Some(p) = d.ports.get(i) else { continue };
+        let n = sim.mls_counts(d.id, i);
+        let trust = p.l2.qos_trust.map_or("none", QosTrust::name);
+        let _ = writeln!(s, "{:<10} {:<8} {:<10} {}", short(d, i), trust, n.kept, n.rewritten);
+    }
+    Ok(s.trim_end().to_string())
+}
+
+/// `show spanning-tree inconsistentports`.
+fn show_inconsistent(c: &mut Ctx) -> String {
+    let dev = c.dev;
+    let Some(d) = c.t.device(dev).cloned() else { return String::new() };
+    let d = &d;
+    let vlans: Vec<VlanId> = d.vlans.keys().copied().collect();
+    let mut s = format!("{:<10} {:<12} Type\n", "VLAN", "Interface");
+    let mut n = 0;
+    for v in vlans {
+        let tree = c.sim.spanning_tree(c.t, v).clone();
+        for (k, what) in
+            tree.inconsistent.iter().map(|k| (k, "Root inconsistent")).chain(tree.loop_inconsistent.iter().map(|k| (k, "Loop inconsistent")))
+        {
+            if k.0 == dev {
+                n += 1;
+                let _ = writeln!(s, "{:<10} {:<12} {what}", format!("VLAN{:04}", v.get()), short(d, k.1));
+            }
+        }
+    }
+    let _ = write!(s, "{n} inconsistent port{}", if n == 1 { "" } else { "s" });
+    s
 }
 
 fn show_snooping(sim: &Sim, d: &Device) -> String {
@@ -614,6 +761,7 @@ fn show_stp_summary(t: &Topology, sim: &Sim, d: &Device, trees: &[(VlanId, netla
     let _ = writeln!(s, "BPDU guard default:   {}", on_off(l.bpduguard_default));
     let guarded: Vec<String> = d.ports.iter().enumerate().filter(|(_, p)| p.l2.root_guard).map(|(i, _)| short(d, i)).collect();
     let _ = writeln!(s, "Root guard on:        {}", if guarded.is_empty() { "none".to_string() } else { guarded.join(", ") });
+    let _ = writeln!(s, "Loop guard default:   {}", on_off(l.loopguard_default));
     let _ = writeln!(s, "\n{:<10} {:<9} {:<10} {:<9} {:<11} Total", "VLAN", "Blocking", "Listening", "Learning", "Forwarding");
     let mut total = [0usize; 5];
     for (v, tree) in trees {
@@ -670,13 +818,20 @@ fn show_stp_detail(t: &Topology, sim: &Sim, d: &Device, vlan: VlanId, tree: &net
             _ => "forwarding",
         };
         let inconsistent = tree.inconsistent.contains(&(d.id, *p));
+        let looped = tree.loop_inconsistent.contains(&(d.id, *p));
         let _ = writeln!(
             s,
             "\n  {} (port id {}.{}): {role}, {}",
             netlabcraft_sim::channel::port_label(t, d, *p, false),
             info.port_id / 1000,
             info.port_id % 1000,
-            if inconsistent { "blocked by root guard (root-inconsistent)" } else { state }
+            if inconsistent {
+                "blocked by root guard (root-inconsistent)"
+            } else if looped {
+                "blocked by loop guard (loop-inconsistent: no BPDUs heard)"
+            } else {
+                state
+            }
         );
         let lt = port.l2.link_type.map_or_else(
             || {
@@ -689,10 +844,12 @@ fn show_stp_detail(t: &Topology, sim: &Sim, d: &Device, vlan: VlanId, tree: &net
         let _ = writeln!(s, "    Path cost {}{}; link type {lt}", info.cost, if port.l2.cost(vlan).is_some() { " (set)" } else { " (from speed)" });
         let _ = writeln!(
             s,
-            "    Edge port {}; BPDU guard {}; root guard {}",
+            "    Edge port {}; BPDU guard {}; root guard {}; loop guard {}; BPDU filter {}",
             if edge { "yes" } else { "no" },
             on_off(netlabcraft_sim::l2sec::bpduguard_on(t, d, *p)),
-            on_off(port.l2.root_guard)
+            on_off(port.l2.root_guard),
+            on_off(netlabcraft_sim::stp::loop_guard_on(t, d.id, *p)),
+            on_off(netlabcraft_sim::stp::bpdufilter_on(d, *p))
         );
     }
     s.trim_end().to_string()

@@ -27,6 +27,7 @@ pub mod ipv6;
 pub mod lacp;
 pub mod lldp;
 pub mod md5;
+pub mod vrrp;
 
 pub mod mgmt;
 pub mod netconf;
@@ -573,6 +574,10 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                         },
                         Err(e) => (Protocol::Ospf, format!("OSPF ({e}) {route}{tag}")),
                     },
+                    vrrp::PROTO_VRRP => match vrrp::Vrrp::decode(&ip.payload, ip.src, ip.dst) {
+                        Ok(v) => (Protocol::Hsrp, format!("{} {route}{tag}", v.describe())),
+                        Err(e) => (Protocol::Hsrp, format!("VRRP ({e}) {route}{tag}")),
+                    },
                     eigrp::PROTO_EIGRP => match eigrp::EigrpHello::header(&ip.payload) {
                         Ok((eigrp::OPCODE_HELLO, _)) => match eigrp::EigrpHello::decode(&ip.payload) {
                             Ok(h) => (Protocol::Eigrp, format!("EIGRP hello, AS {} (hold {} s) {route}{tag}", h.asn, h.hold_secs)),
@@ -743,11 +748,12 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                             Ok(d) => (
                                 Protocol::Dhcp,
                                 format!(
-                                    "DHCP {} {} → {}{}{tag}",
+                                    "DHCP {} {} → {}{}{}{tag}",
                                     d.kind.name(),
                                     ip.src,
                                     ip.dst,
-                                    if d.your_ip.is_unspecified() { String::new() } else { format!(" (address {})", d.your_ip) }
+                                    if d.your_ip.is_unspecified() { String::new() } else { format!(" (address {})", d.your_ip) },
+                                    d.relay_info.as_ref().map(|r| format!(" [option 82: {}]", r.describe())).unwrap_or_default()
                                 ),
                             ),
                             Err(e) => (Protocol::Dhcp, format!("DHCP ({e}){tag}")),
@@ -855,6 +861,29 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                 Ok((sp, dp, _)) => (Protocol::Ipv6, format!("UDP [{}]:{sp} → [{}]:{dp}{tag}", ip.src, ip.dst)),
                 Err(e) => (Protocol::Ipv6, format!("UDP ({e}){tag}")),
             },
+            Ok(ip) if ip.next_header == eigrp::PROTO_EIGRP => match eigrp::EigrpPacket::decode(&ip.payload) {
+                Ok(p) if p.opcode == eigrp::OPCODE_HELLO && p.ack != 0 && p.tlvs.is_empty() => {
+                    (Protocol::Eigrp, format!("EIGRPv6 acknowledgement of {}, AS {} {} → {}{tag}", p.ack, p.asn, ip.src, ip.dst))
+                }
+                Ok(p) if p.opcode == eigrp::OPCODE_HELLO => (Protocol::Eigrp, format!("EIGRPv6 hello, AS {} {} → {}{tag}", p.asn, ip.src, ip.dst)),
+                Ok(p) => {
+                    let n = p.routes6().count();
+                    let first = p.routes6().next().map(|r| format!(": {}{}", r.net, if n > 1 { ", …" } else { "" })).unwrap_or_default();
+                    (
+                        Protocol::Eigrp,
+                        format!(
+                            "EIGRPv6 {} #{}, AS {}, {n} route{}{first} {} → {}{tag}",
+                            eigrp::opcode_name(p.opcode),
+                            p.seq,
+                            p.asn,
+                            if n == 1 { "" } else { "s" },
+                            ip.src,
+                            ip.dst
+                        ),
+                    )
+                }
+                Err(e) => (Protocol::Eigrp, format!("EIGRPv6 ({e}){tag}")),
+            },
             Ok(ip) if ip.next_header == ospf6::PROTO_OSPF => match ospf6::Hello6::decode(ip.src, ip.dst, &ip.payload) {
                 Ok(h) => (
                     Protocol::Ospf,
@@ -910,7 +939,13 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
             Err(e) => (Protocol::Eapol, format!("EAPOL ({e}){tag}")),
         },
         len if len <= 1_500 && f.payload.starts_with(&[0x42, 0x42, 0x03]) => match control::Bpdu::decode(&f.payload) {
-            Ok(b) => (Protocol::Stp, format!("STP BPDU from {}: root {}, cost {}{tag}", b.bridge, b.root, b.root_cost)),
+            Ok(b) => match b.rstp {
+                Some(flags) => (
+                    Protocol::Stp,
+                    format!("RSTP BPDU from {}: root {}, cost {} [{}]{tag}", b.bridge, b.root, b.root_cost, control::rstp_flags_text(flags)),
+                ),
+                None => (Protocol::Stp, format!("STP BPDU from {}: root {}, cost {}{tag}", b.bridge, b.root, b.root_cost)),
+            },
             Err(e) => (Protocol::Stp, format!("STP ({e}){tag}")),
         },
         other => (Protocol::Other, format!("ethertype 0x{other:04x}{tag}")),

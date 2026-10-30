@@ -1345,3 +1345,20 @@ fn a_pc_terminal_reaches_the_console_of_the_device_its_cable_leads_to() {
     assert!(s.execute("pc.terminal", json!({"pc": "L1"})).is_err());
     assert!(s.execute("link.remove", json!({"device": "L1", "port": "RS-232"})).is_err());
 }
+
+#[test]
+fn wifi_range_follows_the_buildings_of_the_physical_view() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "wifi"})).unwrap();
+    let ping = s.execute("net.ping", json!({"from": "PC1", "to": "192.168.10.10", "count": 2})).unwrap();
+    assert_ne!(ping["replies"], 0, "{ping}");
+    // Laptop1 moves to another building: the access point's walls are between them.
+    let b = s.execute("place.add", json!({"kind": "building", "name": "Annex", "x": 500, "y": 220})).unwrap()["id"].as_u64().unwrap();
+    s.execute("device.place", json!({"device": "Laptop1", "place": b})).unwrap();
+    let ping = s.execute("net.ping", json!({"from": "PC1", "to": "192.168.10.10", "count": 2})).unwrap();
+    assert_eq!(ping["replies"], 0, "{ping}");
+    // Back in the main building it joins again.
+    s.execute("device.place", json!({"device": "Laptop1", "place": 2})).unwrap();
+    let ping = s.execute("net.ping", json!({"from": "PC1", "to": "192.168.10.10", "count": 4})).unwrap();
+    assert_ne!(ping["replies"], 0, "{ping}");
+}

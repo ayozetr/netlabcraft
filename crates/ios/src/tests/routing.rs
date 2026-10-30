@@ -253,6 +253,11 @@ fn routers_as_ipv6_clients() {
     let out = lab.run(r2, "conf t\nint g0/2\nno shut\nipv6 address dhcp");
     assert!(out.contains("GigabitEthernet0/2 took 2001:db8:13::") && out.contains("DHCPv6 server"), "{out}");
     lab.run(r2, "end");
+    // A DHCPv6 address comes without a prefix length: the router installs a /128 (a local
+    // route), not a connected /64.
+    assert!(out.contains("/128 from"), "{out}");
+    let rt = lab.run(r2, "show ipv6 route");
+    assert!(rt.contains("L  2001:db8:13::") && !rt.contains("C  2001:db8:13::/64"), "{rt}");
     assert!(lab.run(r1, "show ipv6 dhcp binding").contains("2001:db8:13::"));
     assert!(lab.run(r2, "ping 2001:db8:13::1").contains('!'));
     // Without an answer, the setting stays and says so.

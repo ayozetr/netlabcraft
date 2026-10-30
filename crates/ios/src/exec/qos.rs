@@ -648,7 +648,17 @@ fn policy_report(s: &mut String, sim: &Sim, d: &Device, iface: &str, input: bool
             }
         }
         if let Some(b) = pc.shape {
-            let _ = writeln!(s, "      shape average {b} bit/s: configured, not simulated (nothing is delayed by it)");
+            if input {
+                let _ = writeln!(s, "      shape average {b} bit/s: only output policies shape");
+            } else {
+                let _ = writeln!(
+                    s,
+                    "      shape average {b} bit/s, bucket {} bytes: {} delayed, {} tail-dropped",
+                    netlabcraft_sim::qos::shape_bc(b),
+                    plural(st.shaped_delayed, "packet"),
+                    plural(st.shaped_drops, "packet")
+                );
+            }
         }
     }
 }

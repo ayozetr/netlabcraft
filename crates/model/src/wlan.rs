@@ -307,6 +307,22 @@ impl Topology {
         Some((d, p, p.wifi.as_ref()?))
     }
 
+    /// Whether an access point (or wireless router) reaches a Wi-Fi host. Once the lab has a
+    /// physical layout of its own, the walls decide: a host hears the access points of its own
+    /// building and none of another building's; a host or access point standing outside any
+    /// building (in a city) falls back to the distance on the logical map. Without a layout
+    /// (every device in the one implicit building) the logical distance decides, up to
+    /// [`crate::WIFI_RANGE`].
+    pub fn wifi_in_range(&self, host: &Device, ap: &Device) -> bool {
+        if !self.implicit_layout() {
+            let building = |d: &Device| self.home_of(d.id).and_then(|h| self.building_of(h.place)).map(|b| b.id);
+            if let (Some(a), Some(b)) = (building(host), building(ap)) {
+                return a == b;
+            }
+        }
+        ((ap.x - host.x).powi(2) + (ap.y - host.y).powi(2)).sqrt() <= crate::WIFI_RANGE
+    }
+
     /// The nearest radio in range offering the network a Wi-Fi host is set to join, and
     /// whether the host's key or login gets it in. A radio that admits the host wins over a
     /// nearer one that would refuse it.
@@ -318,7 +334,7 @@ impl Topology {
         let mut best: Option<(bool, f32, Attempt)> = None;
         for d in self.devices.iter().filter(|d| d.kind == DeviceKind::Switch) {
             let dist = ((d.x - cd.x).powi(2) + (d.y - cd.y).powi(2)).sqrt();
-            if dist > crate::WIFI_RANGE {
+            if !self.wifi_in_range(cd, d) {
                 continue;
             }
             for p in 0..d.ports.len() {

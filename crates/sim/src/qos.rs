@@ -21,17 +21,27 @@
 //!   have gone, so it reaches the cable that much later. A priority class may only queue what its
 //!   rate sends in 200 ms (it is policed to its rate under congestion); every other queue holds at
 //!   most 64 full-size packets. A packet that doesn't fit is tail-dropped with the reason.
-//!   `shape` is kept and shown, not simulated.
+//! - **Shaping** (`shape average BPS`) on an output policy: a token bucket per class holding
+//!   Bc = an eighth of a second at the rate (at least one full-size packet). A packet goes at
+//!   once while the bucket has its bytes; otherwise it waits until the rate has refilled them,
+//!   so a burst leaves at the shaped rate instead of being dropped as policing would. A class
+//!   may hold at most 64 full-size packets waiting; one more is tail-dropped.
+//! - **Switch trust** (`mls qos`, `mls qos trust dscp|cos` on switch ports): with `mls qos` on,
+//!   a switch rewrites the DS field of IPv4 frames arriving on a port that is not trusted to 0
+//!   (best effort). `trust dscp` keeps it; `trust cos` sets it from the frame's 802.1p
+//!   priority (CoS × 8), which is 0 on the frames the simulator's devices send. With `mls qos`
+//!   off the switch passes markings through untouched.
 
 use std::collections::BTreeMap;
 
 use netlabcraft_core::DeviceId;
 use netlabcraft_model::Device;
+use netlabcraft_model::l2sec::QosTrust;
 use netlabcraft_model::qos::{AppProto, CLASS_DEFAULT, ClassMap, Match, PoliceAction, PolicyMap, Rate};
-use netlabcraft_wire::Ipv4;
 use netlabcraft_wire::qos as ds;
 /// DSCP names and numbers, for the console.
 pub use netlabcraft_wire::qos::{dscp_name, parse_dscp};
+use netlabcraft_wire::{Frame, Ipv4};
 
 use crate::Sim;
 
@@ -58,6 +68,26 @@ pub struct ClassStats {
     queued: u128,
     pub max_queued: u64,
     pub tail_drops: u64,
+    /// Shaping: bytes sent ahead of the shaped rate (millionths), when that was last worked
+    /// out, the packets that had to wait and those dropped because too many waited.
+    shape_debt: u128,
+    shape_last: u64,
+    pub shaped_delayed: u64,
+    pub shaped_drops: u64,
+}
+
+/// Frames a switch port saw with `mls qos` on.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct MlsCounts {
+    /// IPv4 frames whose DS field was kept (trusted).
+    pub kept: u64,
+    /// IPv4 frames whose DS field was rewritten.
+    pub rewritten: u64,
+}
+
+/// The shaper's bucket for a rate: an eighth of a second of traffic, at least 1500 bytes.
+pub fn shape_bc(rate_bps: u64) -> u64 {
+    (rate_bps / 64).max(1_500)
 }
 
 impl ClassStats {
@@ -202,8 +232,14 @@ impl Sim {
             }
         }
         let mut datagram = datagram;
-        if !input && policy.classes.iter().any(|c| c.priority.is_some() || c.bandwidth.is_some()) {
-            let delay = self.qos_enqueue(d, iface, policy, &class, size)?;
+        if !input {
+            let mut delay = 0;
+            if policy.classes.iter().any(|c| c.priority.is_some() || c.bandwidth.is_some()) {
+                delay = self.qos_enqueue(d, iface, policy, &class, size)?;
+            }
+            if let Some(rate) = action.shape.filter(|r| *r > 0) {
+                delay = delay.max(self.shape(d.id, (iface.to_string(), input, policy.name.clone(), class.clone()), rate, size)?);
+            }
             self.tx_delay = delay;
         }
         let st = self.st(d.id);
@@ -314,6 +350,62 @@ impl Sim {
         Ok(u64::try_from(wait_us).unwrap_or(u64::MAX).min(60_000_000))
     }
 
+    /// Shapes one packet of `size` bytes to `rate` bit/s (see the module notes): how long it
+    /// waits (µs), or why it was dropped.
+    fn shape(&mut self, d: DeviceId, key: (String, bool, String, String), rate: u64, size: u64) -> Result<u64, String> {
+        let now = self.now;
+        let (iface, policy, class) = (key.0.clone(), key.2.clone(), key.3.clone());
+        let Some(q) = self.st(d).qos.get_mut(&key) else { return Ok(0) };
+        let elapsed = u128::from(now.saturating_sub(q.shape_last));
+        q.shape_last = now;
+        q.shape_debt = q.shape_debt.saturating_sub(elapsed.saturating_mul(u128::from(rate)) / 8);
+        let bc = u128::from(shape_bc(rate)).saturating_mul(1_000_000);
+        let after = q.shape_debt.saturating_add(u128::from(size).saturating_mul(1_000_000));
+        let waiting = after.saturating_sub(bc);
+        if waiting > QUEUE_LIMIT {
+            q.shaped_drops = q.shaped_drops.saturating_add(1);
+            return Err(format!("tail drop: the shaping queue of class {class} (policy-map {policy}) is full on {iface}"));
+        }
+        q.shape_debt = after;
+        if waiting == 0 {
+            return Ok(0);
+        }
+        q.shaped_delayed = q.shaped_delayed.saturating_add(1);
+        // Millionths of a byte × 8 bits / rate = µs.
+        let us = waiting.saturating_mul(8) / u128::from(rate.max(1));
+        Ok(u64::try_from(us).unwrap_or(u64::MAX).min(60_000_000))
+    }
+
+    /// `mls qos` on a switch: keeps or rewrites the DS field of an IPv4 frame arriving on a
+    /// port, by the port's trust (see the module notes).
+    pub(crate) fn mls_qos_in(&mut self, d: &Device, port: usize, mut f: Frame) -> Frame {
+        if !d.l2.mls_qos || f.ethertype != netlabcraft_wire::ETHERTYPE_IPV4 {
+            return f;
+        }
+        let Some(dscp) = ds::dscp(&f.payload) else { return f };
+        let want = match d.ports.get(port).and_then(|p| p.l2.qos_trust) {
+            Some(QosTrust::Dscp) => dscp,
+            // The frames carry 802.1p priority 0: CoS 0 maps to DSCP 0.
+            Some(QosTrust::Cos) | None => 0,
+        };
+        let st = self.st(d.id);
+        if !st.mls_qos.contains_key(&port) && st.mls_qos.len() >= MAX_COUNTERS {
+            st.mls_qos.clear();
+        }
+        let c = st.mls_qos.entry(port).or_default();
+        if want == dscp {
+            c.kept = c.kept.saturating_add(1);
+        } else if ds::set_dscp(&mut f.payload, want) {
+            c.rewritten = c.rewritten.saturating_add(1);
+        }
+        f
+    }
+
+    /// A switch port's `mls qos` counters.
+    pub fn mls_counts(&self, d: DeviceId, port: usize) -> MlsCounts {
+        self.state.get(&d).and_then(|s| s.mls_qos.get(&port)).copied().unwrap_or_default()
+    }
+
     /// One class's counters on an interface's input or output policy.
     pub fn qos_stats(&self, d: DeviceId, iface: &str, input: bool, policy: &str, class: &str) -> ClassStats {
         self.state.get(&d).and_then(|s| s.qos.get(&(iface.to_string(), input, policy.to_string(), class.to_string()))).cloned().unwrap_or_default()
@@ -323,6 +415,7 @@ impl Sim {
     pub fn clear_qos(&mut self, d: DeviceId) {
         if let Some(st) = self.state.get_mut(&d) {
             st.qos.clear();
+            st.mls_qos.clear();
         }
     }
 }
@@ -430,5 +523,56 @@ mod tests {
         let data = sim.qos_stats(d.id, out, false, "WAN", "DATA");
         // 2 s at 64 kbit/s is 16 000 bytes: 1000 of voice, the rest of data.
         assert_eq!(data.queued_bytes(), 96_000 - 15_000);
+    }
+
+    /// A router whose Gi0/1 output policy shapes everything to 64 kbit/s.
+    fn shaper() -> Device {
+        let mut t = Topology::new();
+        let r = t.add_device(DeviceKind::Router, None, 0.0, 0.0).unwrap();
+        let mut d = t.device(r).unwrap().clone();
+        let mut all = PolicyClass::new(CLASS_DEFAULT);
+        all.shape = Some(64_000);
+        d.qos.policy_maps.push(PolicyMap { name: "SHAPE".into(), classes: vec![all] });
+        d.qos.applied.insert("GigabitEthernet0/1".into(), ServicePolicy { input: None, output: Some("SHAPE".into()) });
+        d
+    }
+
+    #[test]
+    fn shaping_delays_a_burst_to_the_rate_instead_of_dropping_it() {
+        let d = shaper();
+        let mut sim = Sim::new();
+        let out = "GigabitEthernet0/1";
+        // Bc at 64 kbit/s is an eighth of a second (1000 bytes), raised to one full packet.
+        assert_eq!(shape_bc(64_000), 1_500);
+        let mut waits = Vec::new();
+        let mut drops = 0;
+        for _ in 0..100 {
+            match sim.qos_apply(&d, out, false, packet(0)) {
+                Ok(_) => waits.push(sim.tx_delay),
+                Err(e) => {
+                    assert!(e.contains("shaping queue of class class-default"), "{e}");
+                    drops += 1;
+                }
+            }
+        }
+        // The first packet fits the bucket; each later one waits 125 ms more (1000 bytes at
+        // 64 kbit/s): the second 500 bytes' worth (62.5 ms), the third 187.5 ms…
+        assert_eq!(&waits[..4], &[0, 62_500, 187_500, 312_500]);
+        // At most 64 full-size packets (96 000 bytes) wait: 97 go, 3 are dropped.
+        assert_eq!((waits.len(), drops), (97, 3));
+        let st = sim.qos_stats(d.id, out, false, "SHAPE", CLASS_DEFAULT);
+        assert_eq!((st.shaped_delayed, st.shaped_drops), (96, 3));
+        // Time drains the shaper: after 20 s idle the next packet goes at once.
+        sim.now += 20_000_000;
+        assert!(sim.qos_apply(&d, out, false, packet(0)).is_ok());
+        assert_eq!(sim.tx_delay, 0);
+        // Input policies don't shape.
+        let mut d_in = d.clone();
+        d_in.qos.applied.insert(out.into(), ServicePolicy { input: Some("SHAPE".into()), output: None });
+        let mut sim = Sim::new();
+        for _ in 0..5 {
+            assert!(sim.qos_apply(&d_in, out, true, packet(0)).is_ok());
+            assert_eq!(sim.tx_delay, 0);
+        }
     }
 }

@@ -557,6 +557,34 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `ipv6 ospf <1-65535> area <0-4294967295>` | interface, subinterface | router, switch | Run OSPFv3 on this interface |
 | `no ipv6 ospf <1-65535> area <0-4294967295>` | interface, subinterface | router, switch | Stop OSPFv3 on this interface |
 | `show ipv6 ospf neighbor` | user, privileged | router, switch | OSPFv3 neighbours |
+| `ipv6 router eigrp <1-65535>` | config | router, switch | Start or configure EIGRP for IPv6 |
+| `no ipv6 router eigrp <1-65535>` | config | router, switch | Stop EIGRP for IPv6 |
+| `ipv6 eigrp <1-65535>` | interface, subinterface | router, switch | Run EIGRP for IPv6 on this interface |
+| `no ipv6 eigrp <1-65535>` | interface, subinterface | router, switch | Stop EIGRP for IPv6 here |
+| `shutdown` |  | router, switch | Keep the process configured but stopped |
+| `no shutdown` |  | router, switch | Run the process |
+| `show ipv6 eigrp neighbors` | user, privileged | router, switch | EIGRP for IPv6 neighbours |
+| `show ipv6 eigrp topology` | user, privileged | router, switch | EIGRP for IPv6 successors and feasible successors |
+| `show ipv6 eigrp interfaces` | user, privileged | router, switch | Interfaces running EIGRP for IPv6 |
+| `fhrp version vrrp v3` | config | router, switch | Send VRRP version 3 advertisements (RFC 5798) |
+| `no fhrp version vrrp v3` | config | router, switch | Send VRRP version 2 advertisements |
+| `vrrp <1-255> ip A.B.C.D` | interface, subinterface | router, switch | Share this gateway address with VRRP |
+| `vrrp <1-255> priority <1-254>` | interface, subinterface | router, switch | This router's VRRP priority (highest is master) |
+| `no vrrp <1-255> priority` | interface, subinterface | router, switch | VRRP priority 100 again |
+| `vrrp <1-255> preempt` | interface, subinterface | router, switch | Take over as master when better (the default) |
+| `no vrrp <1-255> preempt` | interface, subinterface | router, switch | Leave a working master alone |
+| `no vrrp <1-255>` | interface, subinterface | router, switch | Remove the VRRP group |
+| `show vrrp` | user, privileged | router, switch | VRRP groups and who is master |
+| `show vrrp {brief}` | user, privileged | router, switch | VRRP groups, one line each |
+| `glbp <0-1023> ip A.B.C.D` | interface, subinterface | router, switch | Share this gateway address with GLBP |
+| `glbp <0-1023> priority <1-255>` | interface, subinterface | router, switch | This router's GLBP priority (highest is the gateway) |
+| `no glbp <0-1023> priority` | interface, subinterface | router, switch | GLBP priority 100 again |
+| `glbp <0-1023> preempt` | interface, subinterface | router, switch | Take over as active gateway when better |
+| `no glbp <0-1023> preempt` | interface, subinterface | router, switch | Leave a working gateway alone (the default) |
+| `glbp <0-1023> load-balancing {round-robin\|host-dependent}` | interface, subinterface | router, switch | How hosts are shared among the forwarders |
+| `no glbp <0-1023>` | interface, subinterface | router, switch | Remove the GLBP group |
+| `show glbp` | user, privileged | router, switch | GLBP groups, gateway and forwarders |
+| `show glbp {brief}` | user, privileged | router, switch | GLBP groups, one line each |
 | `show ipv6 ospf` | user, privileged | router, switch | OSPFv3 process |
 | `show ip protocols` | user, privileged | router, switch | Routing protocols running |
 | `ip helper-address A.B.C.D` | interface, subinterface | router | Relay DHCP requests to this server |
@@ -711,7 +739,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show inventory` | user, privileged | router, switch | Hardware |
 | `delete flash:vlan.dat` | privileged | switch | Delete the VLAN database (takes effect at reload) |
 | `show ipv6 interface <interface>` | user, privileged | router, switch | One interface's IPv6 settings |
-| `show ipv6 route {connected\|static\|ospf}` | user, privileged | router, switch | Only the IPv6 routes one source gave |
+| `show ipv6 route {connected\|static\|ospf\|eigrp}` | user, privileged | router, switch | Only the IPv6 routes one source gave |
 | `clear counters` | privileged | router, switch | Reset interface counters |
 | `show sessions` | user, privileged | router, switch | Telnet and SSH sessions opened from here |
 | `show hosts` | user, privileged | router, switch | Name lookup settings |
@@ -775,7 +803,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no spanning-tree portfast bpduguard default` | config | switch | No BPDU guard unless set on the port |
 | `spanning-tree bpduguard {enable\|disable}` | interface | switch | Err-disable the port when a BPDU arrives |
 | `no spanning-tree bpduguard` | interface | switch | BPDU guard as the switch default says |
-| `spanning-tree guard {root\|none}` | interface | switch | Root guard: never let a better root in through this port |
+| `spanning-tree guard {root\|loop\|none}` | interface | switch | Root guard (no better root in through this port) or loop guard (block if BPDUs stop) |
 | `no spanning-tree guard` | interface | switch | No root guard |
 | `spanning-tree link-type {point-to-point\|shared}` | interface | switch | What the port is cabled to |
 | `no spanning-tree link-type` | interface | switch | Link type from the duplex |
@@ -815,6 +843,23 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `sdm prefer {default\|dual-ipv4-and-ipv6 default\|lanbase-routing\|vlan\|advanced}` | config | switch | Memory template, used from the next reload |
 | `no sdm prefer` | config | switch | Default template from the next reload |
 | `show sdm prefer` | user, privileged | switch | Memory template now and after reload |
+| `mls qos` | config | switch | Classify on arrival: untrusted ports lose their markings |
+| `no mls qos` | config | switch | Pass every marking through untouched |
+| `mls qos trust {dscp\|cos}` | interface | switch | Keep the marking that arrives on this port |
+| `no mls qos trust` | interface | switch | Rewrite markings arriving here to 0 |
+| `no mls qos trust ...` | interface | switch | Rewrite markings arriving here to 0 |
+| `show mls qos` | user, privileged | switch | Whether the switch classifies on arrival |
+| `show mls qos interface` | user, privileged | switch | Trust and markings per port |
+| `show mls qos interface INTERFACE` | user, privileged | switch | Trust and markings of one port |
+| `spanning-tree loopguard default` | config | switch | Loop guard on every switch-to-switch port |
+| `no spanning-tree loopguard default` | config | switch | Loop guard only where set on the port |
+| `spanning-tree bpdufilter {enable\|disable}` | interface | switch | Send and take no BPDUs on this port |
+| `no spanning-tree bpdufilter` | interface | switch | BPDUs as usual on this port |
+| `show spanning-tree inconsistentports` | user, privileged | switch | Ports blocked by root guard or loop guard |
+| `ip dhcp relay information trust-all` | config | router, switch | Take DHCP requests with relay information but no relay address on every interface |
+| `no ip dhcp relay information trust-all` | config | router, switch | Drop DHCP requests with relay information but no relay address |
+| `ip dhcp relay information trusted` | interface, subinterface | router, switch | Take DHCP requests with relay information but no relay address here |
+| `no ip dhcp relay information trusted` | interface, subinterface | router, switch | Drop DHCP requests with relay information but no relay address here |
 | `show spanning-tree` | user, privileged | switch | Spanning trees of every VLAN |
 | `show spanning-tree vlan <1-4094>` | user, privileged | switch | One VLAN's spanning tree |
 | `nameif NAME` | interface, subinterface | firewall | Name the interface (rules, routes and NAT refer to it by this name) |

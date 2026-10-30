@@ -152,8 +152,12 @@ pub fn routing_table6(t: &Topology, d: &Device, dynamic: &[Route6Entry]) -> Vec<
     let ifs = up_ifaces6(t, d);
     let mut out = Vec::new();
     for i in &ifs {
+        // A DHCPv6 /128 is a local address only: no connected network comes with it.
+        let leased: Vec<Ipv6Net> = conf6(d, i).filter(|c| c.dhcp_client).map(|c| c.learned.clone()).unwrap_or_default();
         for a in &i.addresses {
-            out.push(Route6Entry { code: 'C', net: a.network(), iface: Some(i.name.clone()), next_hop: None, distance: 0 });
+            if !(a.prefix == 128 && leased.contains(a)) {
+                out.push(Route6Entry { code: 'C', net: a.network(), iface: Some(i.name.clone()), next_hop: None, distance: 0 });
+            }
             out.push(Route6Entry { code: 'L', net: Ipv6Net::new(a.addr, 128), iface: Some(i.name.clone()), next_hop: None, distance: 0 });
         }
     }
@@ -277,10 +281,12 @@ impl Sim {
         let all = l3_ifaces6(d);
         let serves = conf6(d, &ifc).is_some_and(|c| c.dhcp_server.is_some() || !c.dhcp_relay.is_empty());
         let ospf6 = d.ospf6.is_some();
+        let eigrp6 = d.eigrp6.is_some();
         let joined = |g: Ipv6Addr| {
             g == ALL_NODES
                 || (router && g == ALL_ROUTERS)
                 || (ospf6 && g == netlabcraft_wire::ospf6::ALL_SPF_ROUTERS6)
+                || (eigrp6 && g == netlabcraft_wire::eigrp::EIGRP_ROUTERS6)
                 || (serves && g == dhcp6::ALL_SERVERS)
                 || all.iter().any(|i| i.addresses.iter().map(|n| n.addr).chain([i.link_local]).any(|a| solicited_node(a) == g))
         };
@@ -332,6 +338,10 @@ impl Sim {
         }
         // OSPFv3 is computed; its hellos are taken in quietly.
         if ip.next_header == netlabcraft_wire::ospf6::PROTO_OSPF && d.ospf6.is_some() {
+            return Ok(());
+        }
+        // So is EIGRP for IPv6.
+        if ip.next_header == netlabcraft_wire::eigrp::PROTO_EIGRP && d.eigrp6.is_some() {
             return Ok(());
         }
         if ip.next_header != PROTO_ICMPV6 {
@@ -858,6 +868,7 @@ impl Sim {
             domain: None,
         };
         let rep = self.dhcp6_ask(t, d, &ifc, req, dhcp6::Kind::Reply).ok_or_else(|| SimError::NoSource("the DHCPv6 server didn't confirm".into()))?;
-        Ok(Ipv6Net::new(rep.ia.and_then(|(_, a)| a).unwrap_or(offered), 64))
+        // IA_NA addresses carry no prefix length (RFC 8415 §21.6): the router installs a /128.
+        Ok(Ipv6Net::new(rep.ia.and_then(|(_, a)| a).unwrap_or(offered), 128))
     }
 }

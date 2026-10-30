@@ -5,6 +5,7 @@ use netlabcraft_sim::Sim;
 use crate::grammar::{SPECS, Tok};
 use crate::*;
 
+mod leftovers;
 mod routing;
 mod security;
 
@@ -4386,7 +4387,7 @@ fn dhcp_snooping_blocks_a_rogue_server_and_builds_bindings() {
 #[test]
 fn arp_inspection_drops_a_spoofed_arp() {
     let (mut lab, _r1, s, a, b) = snooping_lab();
-    lab.run(s, "en\nconf t\nip dhcp snooping\nip dhcp snooping vlan 1\nip arp inspection vlan 1\nip arp inspection validate src-mac ip\nint fa0/24\nip dhcp snooping trust\nip arp inspection trust\nend");
+    lab.run(s, "en\nconf t\nip dhcp snooping\nip dhcp snooping vlan 1\nno ip dhcp snooping information option\nip arp inspection vlan 1\nip arp inspection validate src-mac ip\nint fa0/24\nip dhcp snooping trust\nip arp inspection trust\nend");
     assert!(lab.run(a, "ipconfig /renew").contains("192.168.10.10/24"));
     // PC1's address is bound: its ARP passes.
     assert!(lab.run(a, "ping 192.168.10.1").contains("4 answered"));

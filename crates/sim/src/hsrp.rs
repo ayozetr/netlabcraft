@@ -4,8 +4,12 @@
 //! that carry the same group and are up, the highest priority (then the highest address) is
 //! active, the next one standby, the rest listen. The active router answers ARP for the virtual
 //! address with the group's virtual MAC and takes frames sent to it, so hosts keep one gateway
-//! while routers come and go. Preemption is recorded but not timed: the election is always the
-//! one the priorities give. Hellos go on the wire every 3 s (see `control`).
+//! while routers come and go. Hellos go on the wire every 3 s (see `control`).
+//!
+//! Preemption (RFC 2281 §5.4): the simulator remembers which router was active in each group.
+//! While that router stays in the group it keeps the role, even when a router with a higher
+//! priority appears, unless that router has `standby N preempt`; then the higher priority takes
+//! over. When nobody was active before (the lab just opened), the highest priority wins.
 
 use std::collections::BTreeMap;
 use std::net::Ipv4Addr;
@@ -96,8 +100,31 @@ pub fn standby_of<'a>(d: &'a Device, ifc: &L3If) -> &'a [Standby] {
     }
 }
 
-/// Every device's roles.
+/// Who was active in each group (subnet, group) at the last election.
+pub type Actives = BTreeMap<(Ipv4Net, u8), Ipv4Addr>;
+
+/// Orders a group's members (sorted best first by priority, then address) so the one that
+/// should be active comes first: the previous active router keeps the role unless a better
+/// member may preempt it. `preempts(i)` says whether member `i` preempts.
+pub fn keep_active<T>(members: &mut [T], prev: Option<Ipv4Addr>, addr: impl Fn(&T) -> Ipv4Addr, preempts: impl Fn(&T) -> bool) {
+    let Some(prev) = prev else { return };
+    let Some(at) = members.iter().position(|m| addr(m) == prev) else { return };
+    // Someone ahead of the active router that preempts takes over; else it stays first.
+    if members.iter().take(at).any(&preempts) {
+        return;
+    }
+    if let Some(head) = members.get_mut(..=at) {
+        head.rotate_right(1);
+    }
+}
+
+/// Every device's roles, for a lab opened just now (nobody active before).
 pub fn compute(t: &Topology) -> BTreeMap<DeviceId, Vec<Role>> {
+    compute_with(t, &Actives::new()).0
+}
+
+/// Every device's roles, given who was active before; and who is active now.
+pub fn compute_with(t: &Topology, prev: &Actives) -> (BTreeMap<DeviceId, Vec<Role>>, Actives) {
     // (subnet, group) → members: (device, interface, its address, settings).
     // Each member: its settings with the priority tracking left it, the configured one, the
     // tracked interfaces down, and its HSRP version.
@@ -114,10 +141,15 @@ pub fn compute(t: &Topology) -> BTreeMap<DeviceId, Vec<Role>> {
         }
     }
     let mut out: BTreeMap<DeviceId, Vec<Role>> = BTreeMap::new();
-    for ((_, group), mut members) in groups {
+    let mut actives = Actives::new();
+    for ((subnet, group), mut members) in groups {
         // Routers learn the virtual address from whoever has it configured.
         let Some(vip) = members.iter().find_map(|(_, _, s, ..)| s.ip) else { continue };
         members.sort_by_key(|(_, ifc, s, ..)| std::cmp::Reverse((s.priority, ifc.net.addr)));
+        keep_active(&mut members, prev.get(&(subnet, group)).copied(), |m| m.1.net.addr, |m| m.2.preempt);
+        if let Some(m) = members.first() {
+            actives.insert((subnet, group), m.1.net.addr);
+        }
         let active = members.first().map(|m| m.1.net.addr);
         let standby = members.get(1).map(|m| m.1.net.addr);
         for (i, (dev, ifc, s, configured, down, version)) in members.iter().enumerate() {
@@ -141,7 +173,7 @@ pub fn compute(t: &Topology) -> BTreeMap<DeviceId, Vec<Role>> {
             });
         }
     }
-    out
+    (out, actives)
 }
 
 /// A fingerprint of what the election depends on.

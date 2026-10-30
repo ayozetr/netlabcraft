@@ -1,5 +1,6 @@
 //! Control-plane messages the simulator puts on the wire so they show in Simulation mode:
-//! spanning-tree configuration BPDUs (IEEE 802.1D §9.3.1), OSPFv2 hellos (RFC 2328 A.3.1, A.3.2)
+//! spanning-tree configuration BPDUs (IEEE 802.1D §9.3.1) and rapid spanning tree BPDUs
+//! (802.1D-2004 §9.3.3, the 802.1w format with its role, proposal and agreement flags), OSPFv2 hellos (RFC 2328 A.3.1, A.3.2)
 //! and RIPv2 responses (RFC 2453 §4).
 
 use std::net::Ipv4Addr;
@@ -56,7 +57,44 @@ impl std::fmt::Display for BridgeId {
     }
 }
 
-/// A configuration BPDU (timers in seconds).
+/// RST BPDU flags (IEEE 802.1D-2004 §9.3.3, octet 5).
+pub const FLAG_TC: u8 = 0x01;
+pub const FLAG_PROPOSAL: u8 = 0x02;
+/// The port role sits in bits 3 and 4.
+pub const ROLE_SHIFT: u8 = 2;
+pub const ROLE_ALTERNATE: u8 = 1;
+pub const ROLE_ROOT: u8 = 2;
+pub const ROLE_DESIGNATED: u8 = 3;
+pub const FLAG_LEARNING: u8 = 0x10;
+pub const FLAG_FORWARDING: u8 = 0x20;
+pub const FLAG_AGREEMENT: u8 = 0x40;
+pub const FLAG_TC_ACK: u8 = 0x80;
+
+/// The words for an RST BPDU's flags.
+pub fn rstp_flags_text(flags: u8) -> String {
+    let role = match (flags >> ROLE_SHIFT) & 0x03 {
+        ROLE_ALTERNATE => "alternate",
+        ROLE_ROOT => "root",
+        ROLE_DESIGNATED => "designated",
+        _ => "unknown",
+    };
+    let mut words = vec![role];
+    for (bit, name) in [
+        (FLAG_PROPOSAL, "proposal"),
+        (FLAG_AGREEMENT, "agreement"),
+        (FLAG_LEARNING, "learning"),
+        (FLAG_FORWARDING, "forwarding"),
+        (FLAG_TC, "topology change"),
+        (FLAG_TC_ACK, "change acknowledged"),
+    ] {
+        if flags & bit != 0 {
+            words.push(name);
+        }
+    }
+    words.join(", ")
+}
+
+/// A configuration BPDU (timers in seconds), or with `rstp` an RST BPDU and its flags.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Bpdu {
     pub root: BridgeId,
@@ -64,13 +102,20 @@ pub struct Bpdu {
     pub bridge: BridgeId,
     pub port_id: u16,
     pub message_age: u16,
+    /// `Some(flags)`: an RST BPDU (protocol version 2, type 2).
+    pub rstp: Option<u8>,
 }
 
 impl Bpdu {
     /// The 802.3 payload: LLC header then the BPDU (the frame's type field holds its length).
     pub fn encode(&self) -> Vec<u8> {
         let mut v = LLC_STP.to_vec();
-        v.extend_from_slice(&[0, 0, 0, 0, 0]); // protocol id, version, type (configuration), flags
+        match self.rstp {
+            // Protocol id, version 2, type 2 (RST), flags.
+            Some(flags) => v.extend_from_slice(&[0, 0, 2, 2, flags]),
+            // Protocol id, version, type (configuration), flags.
+            None => v.extend_from_slice(&[0, 0, 0, 0, 0]),
+        }
         self.root.encode(&mut v);
         v.extend_from_slice(&self.root_cost.to_be_bytes());
         self.bridge.encode(&mut v);
@@ -78,12 +123,20 @@ impl Bpdu {
         for secs in [self.message_age, 20, 2, 15] {
             v.extend_from_slice(&(secs.saturating_mul(256)).to_be_bytes());
         }
+        if self.rstp.is_some() {
+            v.push(0); // version 1 length
+        }
         v
     }
 
-    /// The length field an 802.3 frame carries for this BPDU.
+    /// The length field an 802.3 frame carries for a configuration BPDU.
     pub fn frame_length() -> u16 {
         3 + 35
+    }
+
+    /// The length field an 802.3 frame carries for this BPDU (an RST BPDU is one byte longer).
+    pub fn length(&self) -> u16 {
+        if self.rstp.is_some() { 3 + 36 } else { 3 + 35 }
     }
 
     pub fn decode(b: &[u8]) -> Result<Bpdu> {
@@ -91,10 +144,17 @@ impl Bpdu {
         if b.get(..3) != Some(&LLC_STP[..]) {
             return Err(WireError::Unsupported("bpdu", "not an LLC 0x42 frame".into()));
         }
-        if b.get(3..6).ok_or_else(t)? != [0, 0, 0] {
-            return Err(WireError::Unsupported("bpdu", "not a configuration BPDU".into()));
+        // Protocol id (2 bytes), version, type; then the flags.
+        let rstp = match b.get(3..7).ok_or_else(t)? {
+            [0, 0, 0, 0] => None,
+            [0, 0, 2, 2] => Some(*b.get(7).ok_or_else(t)?),
+            _ => return Err(WireError::Unsupported("bpdu", "not a configuration or RST BPDU".into())),
+        };
+        if rstp.is_some() && b.len() < 3 + 36 {
+            return Err(t());
         }
         Ok(Bpdu {
+            rstp,
             root: BridgeId::decode(b, 8).ok_or_else(t)?,
             root_cost: u32::from_be_bytes(b.get(16..20).ok_or_else(t)?.try_into().map_err(|_| t())?),
             bridge: BridgeId::decode(b, 20).ok_or_else(t)?,
@@ -269,12 +329,40 @@ mod tests {
             bridge: BridgeId { priority: 32769, mac: MacAddr([2, 0, 0, 2, 0, 0]) },
             port_id: 0x8001,
             message_age: 1,
+            rstp: None,
         };
         let v = b.encode();
         assert_eq!(v.len(), usize::from(Bpdu::frame_length()));
         assert_eq!(Bpdu::decode(&v).unwrap(), b);
         for n in 0..v.len() {
             let _ = Bpdu::decode(&v[..n]);
+        }
+    }
+
+    #[test]
+    fn rst_bpdu_carries_its_flags() {
+        let flags = (ROLE_DESIGNATED << ROLE_SHIFT) | FLAG_PROPOSAL | FLAG_LEARNING;
+        let b = Bpdu {
+            root: BridgeId { priority: 32769, mac: MacAddr([2, 0, 0, 1, 0, 0]) },
+            root_cost: 0,
+            bridge: BridgeId { priority: 32769, mac: MacAddr([2, 0, 0, 1, 0, 0]) },
+            port_id: 0x8002,
+            message_age: 0,
+            rstp: Some(flags),
+        };
+        let v = b.encode();
+        assert_eq!(v.len(), usize::from(b.length()));
+        // LLC, protocol 0000, version 2, type 2, flags 0x1e (designated, proposal, learning).
+        assert_eq!(&v[..8], &[0x42, 0x42, 0x03, 0, 0, 2, 2, 0x1e]);
+        assert_eq!(v.last(), Some(&0));
+        assert_eq!(Bpdu::decode(&v).unwrap(), b);
+        assert_eq!(rstp_flags_text(flags), "designated, proposal, learning");
+        let agree = (ROLE_ROOT << ROLE_SHIFT) | FLAG_AGREEMENT | FLAG_LEARNING | FLAG_FORWARDING;
+        assert_eq!(agree, 0x78);
+        assert_eq!(rstp_flags_text(agree), "root, agreement, learning, forwarding");
+        for n in 0..v.len() {
+            let r = Bpdu::decode(&v[..n]);
+            assert!(r.is_err() || n >= 3 + 36, "{n}");
         }
     }
 

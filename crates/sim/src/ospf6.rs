@@ -68,7 +68,7 @@ fn ifaces(t: &Topology, d: &Device) -> Vec<(L3If6, u32, bool)> {
 }
 
 /// Ports reachable at layer 2 from an interface.
-fn reach(t: &Topology, d: &Device, ifc: &L3If6) -> BTreeSet<End> {
+pub(crate) fn reach(t: &Topology, d: &Device, ifc: &L3If6) -> BTreeSet<End> {
     if ifc.port != SVI_PORT {
         return crate::ospf::l2_reach(t, End { device: d.id, port: ifc.port });
     }
@@ -80,7 +80,7 @@ fn reach(t: &Topology, d: &Device, ifc: &L3If6) -> BTreeSet<End> {
     all
 }
 
-fn reaches(t: &Topology, r: &BTreeSet<End>, b: &Device, ib: &L3If6) -> bool {
+pub(crate) fn reaches(t: &Topology, r: &BTreeSet<End>, b: &Device, ib: &L3If6) -> bool {
     if ib.port != SVI_PORT {
         return r.contains(&End { device: b.id, port: ib.port });
     }

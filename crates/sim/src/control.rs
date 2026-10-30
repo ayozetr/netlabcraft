@@ -22,10 +22,20 @@ pub const RIP_UPDATE_EVERY_US: u64 = 30_000_000;
 /// EIGRP hellos are considered every second; each interface sends at its own hello interval.
 pub const EIGRP_HELLO_EVERY_US: u64 = 1_000_000;
 pub const HSRP_HELLO_EVERY_US: u64 = 3_000_000;
+/// EIGRP for IPv6 hellos, at the default hello interval.
+pub const EIGRP6_HELLO_EVERY_US: u64 = 5_000_000;
+/// VRRP masters advertise every second (RFC 5798's default).
+pub const VRRP_EVERY_US: u64 = 1_000_000;
 /// NTP clients poll every 64 s.
 pub const NTP_POLL_EVERY_US: u64 = 64_000_000;
 /// A long run only replays the last ten minutes of control traffic.
 const MAX_CATCH_UP_US: u64 = 600_000_000;
+
+/// A port id on the wire: the port's priority in the top four bits (IEEE 802.1D-2004 9.2.7)
+/// and its number below.
+fn wire_port_id(port_id: u32, port: usize) -> u16 {
+    (u16::try_from(port_id / 1000).unwrap_or(128).min(240) << 8) | (u16::try_from(port + 1).unwrap_or(0xff) & 0x0fff)
+}
 
 impl Sim {
     /// Queues the control frames due in `(self.ctl_until, deadline]`.
@@ -45,6 +55,8 @@ impl Sim {
             (crate::channel::LACP_EVERY_US, 6),
             (OSPF_HELLO_EVERY_US, 7),
             (EIGRP_HELLO_EVERY_US, 8),
+            (EIGRP6_HELLO_EVERY_US, 9),
+            (VRRP_EVERY_US, 10),
         ] {
             let mut at = (from / every + 1) * every;
             while at <= deadline {
@@ -57,6 +69,8 @@ impl Sim {
                     6 => self.send_lacp(t, at),
                     7 => self.send_ospf6_hellos(t, at),
                     8 => self.send_eigrp_hellos(t, at),
+                    9 => self.send_eigrp6_hellos(t, at),
+                    10 => self.send_vrrp(t, at),
                     _ => self.send_rip_updates(t, at),
                 }
                 at += every;
@@ -125,19 +139,86 @@ impl Sim {
                 let wire = |b: crate::stp::BridgeId| BridgeId { priority: u16::try_from(b.priority).unwrap_or(u16::MAX), mac: b.mac };
                 for ((dev, p), info) in tree.ports.iter().filter(|((dev, _), i)| *dev == id && i.role == crate::stp::Role::Designated) {
                     let Some(port) = d.ports.get(*p) else { continue };
+                    if crate::stp::bpdufilter_on(d, *p) {
+                        continue;
+                    }
                     let tag = (t.is_trunk(End { device: *dev, port: *p }) && port.switchport.native_vlan != v).then(|| v.get());
+                    // Rapid spanning tree sends RST BPDUs: a designated port, learning and
+                    // forwarding as its state says.
+                    let rstp = d.rapid_stp.then(|| {
+                        let state = match self.stp_transition(id, *p, v) {
+                            Some("LIS") => 0,
+                            Some(_) => control::FLAG_LEARNING,
+                            None => control::FLAG_LEARNING | control::FLAG_FORWARDING,
+                        };
+                        (control::ROLE_DESIGNATED << control::ROLE_SHIFT) | state
+                    });
                     let bpdu = Bpdu {
                         root: wire(me.root),
                         root_cost: me.root_cost,
                         bridge: wire(me.id),
-                        // The port's priority in the top four bits (IEEE 802.1D-2004 9.2.7).
-                        port_id: (u16::try_from(info.port_id / 1000).unwrap_or(128).min(240) << 8) | (u16::try_from(p + 1).unwrap_or(0xff) & 0x0fff),
+                        port_id: wire_port_id(info.port_id, *p),
                         message_age: u16::from(me.root != me.id),
+                        rstp,
                     };
-                    let frame = Frame { dst: control::STP_GROUP, src: port.mac, vlan: tag, ethertype: Bpdu::frame_length(), payload: bpdu.encode() };
+                    let frame = Frame { dst: control::STP_GROUP, src: port.mac, vlan: tag, ethertype: bpdu.length(), payload: bpdu.encode() };
                     self.queue_at(t, End { device: *dev, port: *p }, frame.encode(), at);
                 }
             }
+        }
+    }
+
+    /// Rapid spanning tree (802.1w): a designated port that just came up on a point-to-point
+    /// link proposes (an RST BPDU with the proposal flag, discarding), and the switch at the
+    /// far end, having put its other ports in sync, agrees from its root (or alternate) port.
+    /// Both ports then forward at once instead of waiting out the timers.
+    pub(crate) fn send_rstp_handshakes(&mut self, t: &Topology) {
+        if !t.devices.iter().any(|d| d.rapid_stp) {
+            self.rstp_handshakes.clear();
+            return;
+        }
+        // Work out every rapid switch's trees so the ports that just changed are known.
+        let vlans: std::collections::BTreeSet<VlanId> =
+            t.devices.iter().filter(|d| d.kind == DeviceKind::Switch && d.rapid_stp).flat_map(|d| d.vlans.keys().copied()).collect();
+        for v in &vlans {
+            let _ = self.spanning_tree(t, *v);
+        }
+        let now = self.now;
+        for (v, dev, p) in std::mem::take(&mut self.rstp_handshakes) {
+            let Some(vlan) = VlanId::new(v) else { continue };
+            let tree = self.spanning_tree(t, vlan).clone();
+            let (Some(d), Some(me)) = (t.device(dev), tree.bridges.get(&dev)) else { continue };
+            let Some(info) = tree.ports.get(&(dev, p)) else { continue };
+            let Some(port) = d.ports.get(p) else { continue };
+            let end = End { device: dev, port: p };
+            let Some(far) = t.peer(end) else { continue };
+            let Some(fd) = t.device(far.device) else { continue };
+            let Some(fport) = fd.ports.get(far.port) else { continue };
+            let wire = |b: crate::stp::BridgeId| BridgeId { priority: u16::try_from(b.priority).unwrap_or(u16::MAX), mac: b.mac };
+            let tag_at = |dd: &netlabcraft_model::Device, e: End| {
+                let native = dd.ports.get(e.port).map(|x| x.switchport.native_vlan);
+                (t.is_trunk(e) && native != Some(vlan)).then_some(v)
+            };
+            let proposal = Bpdu {
+                root: wire(me.root),
+                root_cost: me.root_cost,
+                bridge: wire(me.id),
+                port_id: wire_port_id(info.port_id, p),
+                message_age: u16::from(me.root != me.id),
+                rstp: Some((control::ROLE_DESIGNATED << control::ROLE_SHIFT) | control::FLAG_PROPOSAL),
+            };
+            let f = Frame { dst: control::STP_GROUP, src: port.mac, vlan: tag_at(d, end), ethertype: proposal.length(), payload: proposal.encode() };
+            self.queue_at(t, end, f.encode(), now);
+            // The agreement echoes the proposal's priority vector, from the far port's role.
+            let frole = tree.ports.get(&(far.device, far.port)).map_or(crate::stp::Role::Root, |i| i.role);
+            let role_bits = match frole {
+                crate::stp::Role::Root => (control::ROLE_ROOT << control::ROLE_SHIFT) | control::FLAG_LEARNING | control::FLAG_FORWARDING,
+                _ => control::ROLE_ALTERNATE << control::ROLE_SHIFT,
+            };
+            let agreement = Bpdu { rstp: Some(role_bits | control::FLAG_AGREEMENT), ..proposal };
+            let f =
+                Frame { dst: control::STP_GROUP, src: fport.mac, vlan: tag_at(fd, far), ethertype: agreement.length(), payload: agreement.encode() };
+            self.queue_at(t, far, f.encode(), now + LINK_DELAY_US);
         }
     }
 
@@ -384,6 +465,59 @@ impl Sim {
                 };
                 let frame =
                     Frame { dst: multicast_mac(ALL_SPF_ROUTERS6), src: ifc.mac, vlan: ifc.vlan, ethertype: ETHERTYPE_IPV6, payload: ip.encode() };
+                self.queue_frame(t, d, ifc.port, frame, at);
+            }
+        }
+    }
+
+    /// VRRP advertisements: each master, from its interface address and the group's virtual
+    /// MAC, to `224.0.0.18` (version 2, or 3 with `fhrp version vrrp v3`).
+    fn send_vrrp(&mut self, t: &Topology, at: u64) {
+        use netlabcraft_wire::vrrp::{PROTO_VRRP, VRRP_GROUP, Vrrp};
+        if !t.devices.iter().any(|d| !d.fhrp.vrrp.is_empty()) {
+            return;
+        }
+        let roles = self.fhrp_roles(t);
+        for (id, list) in roles.vrrp {
+            let Some(d) = t.device(id) else { continue };
+            for r in list.iter().filter(|r| r.state == crate::fhrp::VrrpState::Master) {
+                let Some(ifc) = l3_ifaces(d).into_iter().find(|i| i.name == r.iface) else { continue };
+                let v3 = d.fhrp.vrrp_v3;
+                let adv = Vrrp {
+                    version: if v3 { 3 } else { 2 },
+                    vrid: r.group,
+                    priority: r.priority,
+                    interval: if v3 { 100 } else { 1 },
+                    addresses: vec![r.virtual_ip],
+                };
+                let ip =
+                    Ipv4 { id: 0, ttl: 255, protocol: PROTO_VRRP, src: ifc.net.addr, dst: VRRP_GROUP, payload: adv.encode(ifc.net.addr, VRRP_GROUP) };
+                self.queue_l3(t, d, &ifc, r.virtual_mac(), control::ipv4_multicast_mac(VRRP_GROUP), ip.encode(), at);
+            }
+        }
+    }
+
+    /// EIGRP for IPv6 hellos: from each interface's link-local address to `FF02::A`.
+    fn send_eigrp6_hellos(&mut self, t: &Topology, at: u64) {
+        use netlabcraft_wire::eigrp::{EIGRP_ROUTERS6, EigrpHello, PROTO_EIGRP};
+        use netlabcraft_wire::ipv6::{ETHERTYPE_IPV6, Ipv6, multicast_mac};
+        if !t.devices.iter().any(|d| d.eigrp6.is_some()) {
+            return;
+        }
+        let st = self.eigrp6_state(t);
+        for (id, ifs) in &st.interfaces {
+            let Some(d) = t.device(*id) else { continue };
+            let asn = d.eigrp6.as_ref().map_or(0, |e| e.asn);
+            let up = crate::v6::up_ifaces6(t, d);
+            for info in ifs.iter().filter(|x| !x.passive) {
+                let Some(ifc) = up.iter().find(|i| i.name == info.name) else { continue };
+                if crate::loopback::is_loopback(ifc.port) {
+                    continue;
+                }
+                let hello = EigrpHello::new(asn);
+                let ip = Ipv6 { hop_limit: 1, next_header: PROTO_EIGRP, src: ifc.link_local, dst: EIGRP_ROUTERS6, payload: hello.encode() };
+                let frame =
+                    Frame { dst: multicast_mac(EIGRP_ROUTERS6), src: ifc.mac, vlan: ifc.vlan, ethertype: ETHERTYPE_IPV6, payload: ip.encode() };
                 self.queue_frame(t, d, ifc.port, frame, at);
             }
         }

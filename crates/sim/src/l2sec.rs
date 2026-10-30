@@ -3,6 +3,16 @@
 //! inspection (ARP from untrusted ports must match that table), BPDU guard, rate limits that
 //! err-disable a port, errdisable recovery on simulated time, port-security aging, and the
 //! per-port counters `show interfaces counters` reads.
+//!
+//! Option 82 (RFC 3046): a snooping switch acts as a relay agent that adds information without
+//! relaying. A client's DISCOVER, REQUEST or RELEASE arriving on an untrusted port gets relay
+//! agent information appended (circuit id: the VLAN and port; remote id: the switch's MAC
+//! address), with the relay address left at 0.0.0.0; the server echoes it, and the switch takes
+//! it out again before the answer reaches the client. A client message that arrives on an
+//! untrusted port already carrying the option is dropped (§2.1.1: it can't have come from a
+//! client). `no ip dhcp snooping information option` turns insertion off. Routers, as server or
+//! relay, drop requests with the option and no relay address unless the interface is trusted
+//! (`ip dhcp relay information trusted`, or `… trust-all` for every interface).
 
 use std::collections::BTreeMap;
 use std::net::Ipv4Addr;
@@ -116,6 +126,11 @@ fn dhcp_of(f: &Frame) -> Option<Dhcp> {
     Dhcp::decode(&u.payload).ok()
 }
 
+/// The switch's own address, its option 82 remote id.
+fn remote_id(d: &Device) -> Vec<u8> {
+    d.ports.first().map(|p| p.mac.0.to_vec()).unwrap_or_default()
+}
+
 fn kind_name(k: DhcpKind) -> &'static str {
     match k {
         DhcpKind::Discover => "DISCOVER",
@@ -156,6 +171,10 @@ impl Sim {
 
     /// A frame for spanning tree (a BPDU) on a switch port: BPDU guard err-disables the port.
     pub(crate) fn l2_bpdu_in(&mut self, t: &Topology, d: &Device, port: usize, f: &Frame) -> Result<(), String> {
+        // BPDU filter: the port takes no BPDUs at all (nor does BPDU guard see them).
+        if f.dst == netlabcraft_wire::control::STP_GROUP && crate::stp::bpdufilter_on(d, port) {
+            return Ok(());
+        }
         if f.dst == netlabcraft_wire::control::STP_GROUP && bpduguard_on(t, d, port) {
             let short = d.ports.get(port).map_or(String::new(), |p| ifname::short(&p.name));
             self.err_disable(d, port, ErrCause::Bpduguard, "BPDU guard: a BPDU arrived on an edge port");
@@ -249,6 +268,49 @@ impl Sim {
             c.forwarded += 1;
         }
         Ok(())
+    }
+
+    /// Option 82 on a frame that passed snooping (see the module notes): the frame as it goes
+    /// on, with the relay agent information added or taken out.
+    pub(crate) fn snoop_option82(&mut self, d: &Device, port: usize, vlan: VlanId, f: Frame) -> Result<Frame, String> {
+        if !d.l2.snoops(vlan) || f.ethertype != ETHERTYPE_IPV4 {
+            return Ok(f);
+        }
+        let Some(p) = d.ports.get(port) else { return Ok(f) };
+        let Ok(ip) = Ipv4::decode(&f.payload) else { return Ok(f) };
+        if ip.protocol != PROTO_UDP {
+            return Ok(f);
+        }
+        let Ok(u) = Udp::decode(&ip.payload, ip.src, ip.dst) else { return Ok(f) };
+        if u.dst_port != dhcp::CLIENT_PORT && u.dst_port != dhcp::SERVER_PORT {
+            return Ok(f);
+        }
+        let Ok(mut msg) = Dhcp::decode(&u.payload) else { return Ok(f) };
+        let client = matches!(msg.kind, DhcpKind::Discover | DhcpKind::Request | DhcpKind::Release);
+        let me = remote_id(d);
+        if client && !p.l2.snoop_trust {
+            if msg.relay_info.is_some() {
+                self.l2.counts.entry(d.id).or_default().dhcp_dropped += 1;
+                let short = ifname::short(&p.name);
+                return Err(format!(
+                    "DHCP snooping: a client's {} on untrusted port {short} already carries relay information (option 82); dropped",
+                    kind_name(msg.kind)
+                ));
+            }
+            if !d.l2.option82 || !msg.relay.is_unspecified() {
+                return Ok(f);
+            }
+            let number = u8::try_from(port + 1).unwrap_or(u8::MAX);
+            msg.relay_info = Some(dhcp::RelayInfo { circuit_id: dhcp::RelayInfo::switch_circuit(vlan.get(), number), remote_id: me });
+        } else if !client && msg.relay_info.as_ref().is_some_and(|r| r.remote_id == me) {
+            msg.relay_info = None;
+        } else {
+            return Ok(f);
+        }
+        let udp = Udp { src_port: u.src_port, dst_port: u.dst_port, payload: msg.encode() };
+        let payload = udp.encode(ip.src, ip.dst);
+        let ip = Ipv4 { payload, ..ip };
+        Ok(Frame { payload: ip.encode(), ..f })
     }
 
     /// Records the binding an ACK makes: the client is where the switch learned its address.
@@ -384,6 +446,8 @@ impl Sim {
                     .peer(end)
                     .and_then(|q| t.device(q.device).map(|pd| (q, pd)))
                     .is_some_and(|(q, pd)| pd.kind == DeviceKind::Switch && pd.ports.get(q.port).is_some_and(|x| !x.routed) && port_up(t, q));
+                // Filtered at either end: no BPDU crosses the link.
+                let switch_peer = switch_peer && !crate::stp::filtered_link(t, d.id, i);
                 if switch_peer {
                     guard.push((d.id, i));
                 }

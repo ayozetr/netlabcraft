@@ -210,6 +210,8 @@ pub fn running_config(d: &Device) -> String {
         let _ = writeln!(s, "!");
     }
     crate::exec::l2sec::global_lines(&mut s, d);
+    crate::exec::l2sec::relay_global_lines(&mut s, d);
+    crate::exec::fhrp::global_lines(&mut s, d);
     // VLANs live in the VLAN database (vlan.dat), not in the configuration: only a VTP
     // transparent switch writes them there.
     if d.kind == DeviceKind::Switch && d.vtp.mode == netlabcraft_model::VtpMode::Transparent {
@@ -318,6 +320,7 @@ pub fn running_config(d: &Device) -> String {
             None => {}
         }
         standby_lines(&mut s, d, &p.name, &p.standby);
+        crate::exec::fhrp::iface_lines(&mut s, d, &p.name);
         ospf_if_lines(&mut s, d, &p.name);
         if d.kind == DeviceKind::Router {
             if netlabcraft_model::ifname::is_serial(&p.name) {
@@ -339,6 +342,7 @@ pub fn running_config(d: &Device) -> String {
         for h in &p.helpers {
             let _ = writeln!(s, " ip helper-address {h}");
         }
+        crate::exec::l2sec::relay_port_lines(&mut s, p);
         access_groups(&mut s, &p.access);
         nat_side(&mut s, p.nat);
         if let Some(b) = p.bandwidth {
@@ -370,6 +374,7 @@ pub fn running_config(d: &Device) -> String {
             }
             ipv6_lines(&mut s, &sub.ipv6);
             standby_lines(&mut s, d, &format!("{}.{}", p.name, sub.number), &sub.standby);
+            crate::exec::fhrp::iface_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
             ospf_if_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
             for h in &sub.helpers {
                 let _ = writeln!(s, " ip helper-address {h}");
@@ -405,6 +410,7 @@ pub fn running_config(d: &Device) -> String {
         access_groups(&mut s, &svi.access);
         nat_side(&mut s, svi.nat);
         standby_lines(&mut s, d, &format!("Vlan{}", svi.vlan), &svi.standby);
+        crate::exec::fhrp::iface_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
         ospf_if_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
         crate::exec::qos::service_policy_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
         let _ = writeln!(s, "{}", if svi.shutdown { " shutdown" } else { " no shutdown" });
@@ -560,6 +566,7 @@ pub fn running_config(d: &Device) -> String {
         let distance = r.distance.map_or(String::new(), |a| format!(" {a}"));
         let _ = writeln!(s, "ipv6 route {} {via}{distance}", r.net);
     }
+    crate::exec::eigrp6::running_config(&mut s, d);
     if let Some(o) = &d.ospf6 {
         let _ = writeln!(s, "ipv6 router ospf {}", o.process);
         if let Some(id) = o.router_id {
@@ -1048,6 +1055,8 @@ pub fn spanning_tree(t: &Topology, sim: &Sim, d: &Device, vlan: VlanId, tree: &n
         }
         let kind = if tree.inconsistent.contains(&(d.id, *p)) {
             "Root-inconsistent"
+        } else if tree.loop_inconsistent.contains(&(d.id, *p)) {
+            "Loop-inconsistent"
         } else if netlabcraft_sim::l2sec::edge_port(t, d, *p) {
             "Edge"
         } else if t.peer(End { device: d.id, port: *p }).and_then(|q| t.device(q.device)).is_some_and(|x| x.kind == DeviceKind::Switch) {
@@ -1089,6 +1098,13 @@ pub fn ospf_neighbors(t: &Topology, d: &Device, st: &netlabcraft_sim::ospf::Ospf
             _ => "FULL/OTHER",
         };
         let _ = writeln!(s, "{:<16} {:<10} {:<16} {:<22} {name}", n.router_id.to_string(), state, n.address.to_string(), ifname::short(&n.iface));
+    }
+    for (iface, addr) in st.type_mismatch.get(&d.id).into_iter().flatten() {
+        let _ = writeln!(
+            s,
+            "Note: the network type differs from {addr}'s on {} (point-to-point at one end, broadcast at the other): adjacent, but no route crosses this link",
+            ifname::short(iface)
+        );
     }
     crate::exec::routing::mismatch_lines(&mut s, st, d.id);
     s.trim_end().to_string()
@@ -1514,6 +1530,9 @@ pub(crate) fn ipv6_lines(s: &mut String, c: &netlabcraft_model::Ipv6Conf) {
     for a in &c.dhcp_relay {
         let _ = writeln!(s, " ipv6 dhcp relay destination {a}");
     }
+    if let Some(asn) = c.eigrp {
+        let _ = writeln!(s, " ipv6 eigrp {asn}");
+    }
     if let Some((p, a)) = c.ospf {
         let _ = writeln!(s, " ipv6 ospf {p} area {a}");
     }
@@ -1590,7 +1609,7 @@ pub fn ipv6_route(t: &Topology, sim: &mut Sim, d: &Device) -> String {
     let dynamic = sim.dynamic_routes6(t, d);
     let table = netlabcraft_sim::v6::routing_table6(t, d, &dynamic);
     let mut s = String::from(
-        "Codes: C connected, L local, S static, O OSPFv3, OI OSPFv3 other area, OE2 OSPFv3 external, ND default from a router advertisement\n",
+        "Codes: C connected, L local, S static, O OSPFv3, OI OSPFv3 other area, OE2 OSPFv3 external, D EIGRP, ND default from a router advertisement\n",
     );
     if !d.ipv6_routing {
         s.push_str("IPv6 forwarding is off (no `ipv6 unicast-routing`)\n");
