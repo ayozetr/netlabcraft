@@ -35,8 +35,16 @@ pub static CATALOG: &[CommandInfo] = &[
         "SNMP request",
         "",
         None,
-        r#"{"device": manager, "target": agent address, "community"?: "public", "operation"?: "get"|"get-next"|"set", "oid": "1.3.6.1.2.1.1.5.0", "value"?: for a set} → {"bindings": [{"oid", "value"}], "error"}"#,
+        r#"{"device": manager, "target": agent address, "version"?: "2c"|"3", "community"?: "public" (2c), "user"? (3), "auth"?: "none"|"md5"|"sha" (3), "password"? (3, 8+ characters), "operation"?: "get"|"get-next"|"set", "oid": "1.3.6.1.2.1.1.5.0", "value"?: for a set} → {"bindings": [{"oid", "value"}], "error"}"#,
         true
+    ),
+    c!(
+        "snmp.traps",
+        "SNMP traps received",
+        "",
+        None,
+        r#"{"device": a host, "clear"?: true} → {"traps": [{"at_ms", "from", "community", "trap": "linkDown"|"linkUp"|"coldStart"|OID, "bindings": [{"oid", "value"}]}]}"#,
+        false
     ),
     c!(
         "mail.configure",

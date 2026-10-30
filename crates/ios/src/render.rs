@@ -108,6 +108,33 @@ pub fn running_config(d: &Device) -> String {
     if !d.snmp.contact.is_empty() {
         let _ = writeln!(s, "snmp-server contact {}", d.snmp.contact);
     }
+    for g in &d.snmp.groups {
+        let _ = writeln!(
+            s,
+            "snmp-server group {} v3 {}{}",
+            g.name,
+            if g.auth { "auth" } else { "noauth" },
+            if g.write { " write v1default" } else { "" }
+        );
+    }
+    for u in &d.snmp.users {
+        match &u.auth {
+            // Like real devices with password encryption on, the line isn't shown at all then.
+            Some(_) if a.password_encryption => {}
+            Some((h, p)) => {
+                let _ = writeln!(s, "snmp-server user {} {} v3 auth {h} {p}", u.name, u.group);
+            }
+            None => {
+                let _ = writeln!(s, "snmp-server user {} {} v3", u.name, u.group);
+            }
+        }
+    }
+    for (h, comm) in &d.snmp.trap_hosts {
+        let _ = writeln!(s, "snmp-server host {h} version 2c {comm}");
+    }
+    if !d.snmp.traps.is_empty() {
+        let _ = writeln!(s, "snmp-server enable traps snmp {}", d.snmp.traps.join(" "));
+    }
     if let Some((u, p)) = &d.ftp_login {
         if !u.is_empty() {
             let _ = writeln!(s, "ip ftp username {u}");

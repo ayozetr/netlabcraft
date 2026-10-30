@@ -17,7 +17,16 @@ pub const MAX_SYSLOG: usize = 500;
 const WAIT_US: u64 = 2_000_000;
 
 impl Sim {
-    fn udp_out(&mut self, t: &Topology, d: &Device, src: Ipv4Addr, dst: Ipv4Addr, sport: u16, dport: u16, payload: Vec<u8>) -> Result<(), String> {
+    pub(crate) fn udp_out(
+        &mut self,
+        t: &Topology,
+        d: &Device,
+        src: Ipv4Addr,
+        dst: Ipv4Addr,
+        sport: u16,
+        dport: u16,
+        payload: Vec<u8>,
+    ) -> Result<(), String> {
         let u = Udp { src_port: sport, dst_port: dport, payload };
         let ip = Ipv4 { id: self.ip_id(), ttl: default_ttl(d.kind), protocol: PROTO_UDP, src, dst, payload: u.encode(src, dst) };
         self.send_ip(t, d, ip)
@@ -83,6 +92,13 @@ impl Sim {
                 let answer = Radius::answer(&req, good, if good { "Welcome" } else { "Login refused" }, &client.secret);
                 self.udp_out(t, d, me, ip.src, RADIUS_PORT, u.src_port, answer.encode())
             }
+            (SNMP_PORT, _) if matches!(d.kind, DeviceKind::Router | DeviceKind::Switch) && snmp::version(&u.payload) == Some(3) => {
+                match self.snmp_v3_answer(t, d, &u.payload) {
+                    Ok(answer) => self.udp_out(t, d, me, ip.src, SNMP_PORT, u.src_port, answer),
+                    Err(e) => Err(e),
+                }
+            }
+            (snmp::SNMP_TRAP_PORT, _) if d.kind.is_host() => self.trap_in(d, ip.src, &u.payload),
             (SNMP_PORT, _) if matches!(d.kind, DeviceKind::Router | DeviceKind::Switch) => {
                 let Ok(req) = Snmp::decode(&u.payload) else { return Some(Err("not an SNMP message".into())) };
                 // A wrong community gets no answer at all, as on real agents.
@@ -93,11 +109,9 @@ impl Sim {
                 self.udp_out(t, d, me, ip.src, SNMP_PORT, u.src_port, answer.encode())
             }
             (port, SNMP_PORT) if self.state.get(&d.id).is_some_and(|s| s.snmp_port == Some(port)) => {
-                if let Ok(r) = Snmp::decode(&u.payload) {
-                    let st = self.st(d.id);
-                    if st.snmp_inbox.len() < 16 {
-                        st.snmp_inbox.push(r);
-                    }
+                let st = self.st(d.id);
+                if st.snmp_inbox.len() < 16 {
+                    st.snmp_inbox.push(u.payload.clone());
                 }
                 Ok(())
             }
@@ -386,7 +400,7 @@ impl Sim {
         out
     }
 
-    fn snmp_answer(&mut self, t: &Topology, d: &Device, req: &Snmp, rw: bool) -> Snmp {
+    pub(crate) fn snmp_answer(&mut self, t: &Topology, d: &Device, req: &Snmp, rw: bool) -> Snmp {
         use snmp::Value;
         let mib = self.mib(t, d);
         let mut answer = Snmp { kind: PduKind::Response, bindings: Vec::new(), error_status: snmp::NO_ERROR, error_index: 0, ..req.clone() };
@@ -431,29 +445,44 @@ impl Sim {
 
     /// An SNMP request from `dev` (a manager, such as a PC's MIB browser) to an agent.
     pub fn snmp_request(&mut self, t: &Topology, dev: DeviceId, agent: Ipv4Addr, req: Snmp) -> Result<Snmp, SimError> {
+        let id = req.request_id;
+        let answer = |b: &[u8]| Snmp::decode(b).ok().filter(|r| r.request_id == id);
+        let got = self.snmp_exchange(t, dev, agent, req.encode(), &|b| answer(b).is_some())?;
+        got.as_deref().and_then(answer).ok_or_else(|| SimError::NoSource(format!("{agent} did not answer (no SNMP agent, or a wrong community)")))
+    }
+
+    /// Sends an SNMP message to an agent and waits for the answer `want` accepts. `None` when
+    /// none came.
+    pub(crate) fn snmp_exchange(
+        &mut self,
+        t: &Topology,
+        dev: DeviceId,
+        agent: Ipv4Addr,
+        msg: Vec<u8>,
+        want: &dyn Fn(&[u8]) -> bool,
+    ) -> Result<Option<Vec<u8>>, SimError> {
         let d = t.device(dev).ok_or(SimError::NoDevice(dev))?.clone();
         let src = self.source_for(t, &d, agent)?;
         let port = self.next_port();
         let st = self.st(dev);
         st.snmp_port = Some(port);
         st.snmp_inbox.clear();
-        let id = req.request_id;
+        let have = |s: &Sim| s.state.get(&dev).is_some_and(|st| st.snmp_inbox.iter().any(|b| want(b)));
         // Sent up to three times: the first may wait for ARP on the way.
         for _ in 0..3 {
             let start = self.now;
-            if self.udp_out(t, &d, src, agent, port, SNMP_PORT, req.encode()).is_err() {
+            if self.udp_out(t, &d, src, agent, port, SNMP_PORT, msg.clone()).is_err() {
                 self.advance(t, start.saturating_add(100_000), |_| false);
                 continue;
             }
-            self.advance(t, start.saturating_add(WAIT_US), |s| s.state.get(&dev).is_some_and(|st| st.snmp_inbox.iter().any(|r| r.request_id == id)));
-            if self.state.get(&dev).is_some_and(|st| st.snmp_inbox.iter().any(|r| r.request_id == id)) {
+            self.advance(t, start.saturating_add(WAIT_US), have);
+            if have(self) {
                 break;
             }
         }
         let st = self.st(dev);
         st.snmp_port = None;
-        let got = st.snmp_inbox.iter().find(|r| r.request_id == id).cloned();
-        got.ok_or_else(|| SimError::NoSource(format!("{agent} did not answer (no SNMP agent, or a wrong community)")))
+        Ok(st.snmp_inbox.iter().find(|b| want(b)).cloned())
     }
 
     /// Asks the device's NTP servers for the time; returns the server that answered.

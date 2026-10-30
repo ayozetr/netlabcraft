@@ -1762,11 +1762,143 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::ShowSnmp => {
             let s = &c.d()?.snmp;
-            if s.communities.is_empty() {
-                return Ok("The SNMP agent is off (no `snmp-server community`).".into());
+            let mut out = if s.agent_on() {
+                let list: Vec<String> =
+                    s.communities.iter().map(|(n, rw)| format!("{n} ({})", if *rw { "read-write" } else { "read-only" })).collect();
+                format!(
+                    "SNMP agent on, UDP port 161\nCommunities: {}\nLocation: {}\nContact: {}",
+                    if list.is_empty() { "none".into() } else { list.join(", ") },
+                    s.location,
+                    s.contact
+                )
+            } else {
+                "The SNMP agent is off (no `snmp-server community` or `snmp-server user`).".into()
+            };
+            if !s.users.is_empty() {
+                out.push_str("\nSNMPv3 users:");
+                for u in &s.users {
+                    let level = s.groups.iter().find(|g| g.name == u.group).map_or("no such group", |g| match (g.auth, g.write) {
+                        (true, true) => "authNoPriv, read-write",
+                        (true, false) => "authNoPriv, read-only",
+                        (false, true) => "noAuthNoPriv, read-write",
+                        (false, false) => "noAuthNoPriv, read-only",
+                    });
+                    let auth = u.auth.as_ref().map_or("no authentication".to_string(), |(h, _)| format!("auth {}", h.to_ascii_uppercase()));
+                    out.push_str(&format!("\n  {} (group {}: {level}; {auth})", u.name, u.group));
+                }
             }
-            let list: Vec<String> = s.communities.iter().map(|(n, rw)| format!("{n} ({})", if *rw { "read-write" } else { "read-only" })).collect();
-            Ok(format!("SNMP agent on, UDP port 161\nCommunities: {}\nLocation: {}\nContact: {}", list.join(", "), s.location, s.contact))
+            if s.trap_hosts.is_empty() {
+                out.push_str("\nTraps: no trap hosts (`snmp-server host`)");
+            } else {
+                let on = if s.traps.is_empty() { "none enabled (`snmp-server enable traps`)".to_string() } else { s.traps.join(", ") };
+                out.push_str(&format!("\nTraps to UDP port 162 (SNMPv2c): {on}"));
+                for (h, comm) in &s.trap_hosts {
+                    out.push_str(&format!("\n  {h}, community {comm}"));
+                }
+                let sent = c.sim.traps_sent(c.dev);
+                out.push_str(&format!("\n{sent} trap(s) sent"));
+            }
+            Ok(out)
+        }
+        Id::SnmpHost | Id::NoSnmpHost => {
+            let a = parse_ip(arg(0)).map_err(|e| format!("% {e}"))?;
+            let d = c.dm()?;
+            d.snmp.trap_hosts.retain(|(h, _)| *h != a);
+            if spec.id == Id::SnmpHost {
+                let words: Vec<String> = arg(1).split_whitespace().map(str::to_string).collect();
+                let community = match words.as_slice() {
+                    [v, ver, comm] if v.eq_ignore_ascii_case("version") => {
+                        if ver != "2c" {
+                            return Err("% Only SNMPv2c traps are sent (version 2c)".into());
+                        }
+                        comm.clone()
+                    }
+                    [comm] if !comm.eq_ignore_ascii_case("version") => comm.clone(),
+                    _ => return Err("% snmp-server host A.B.C.D [version 2c] COMMUNITY".into()),
+                };
+                if d.snmp.trap_hosts.len() >= packetcraft_model::MAX_SNMP_ITEMS {
+                    return Err("% Too many trap hosts".into());
+                }
+                d.snmp.trap_hosts.push((a, community.chars().take(32).collect()));
+            }
+            Ok(String::new())
+        }
+        Id::SnmpTraps | Id::NoSnmpTraps => {
+            let mut which: Vec<&str> = Vec::new();
+            for w in arg(0).split_whitespace() {
+                let w = w.to_ascii_lowercase();
+                if w == "snmp" {
+                    continue;
+                }
+                match packetcraft_model::SNMP_TRAPS.iter().find(|t| t.starts_with(w.as_str())) {
+                    Some(t) => which.push(t),
+                    None => return Err(format!("% Unknown trap `{w}` (linkdown, linkup, coldstart)")),
+                }
+            }
+            if which.is_empty() {
+                which = packetcraft_model::SNMP_TRAPS.to_vec();
+            }
+            let d = c.dm()?;
+            d.snmp.traps.retain(|t| !which.contains(&t.as_str()));
+            if spec.id == Id::SnmpTraps {
+                d.snmp.traps.extend(which.iter().map(|t| t.to_string()));
+            }
+            d.snmp.traps.sort_by_key(|t| packetcraft_model::SNMP_TRAPS.iter().position(|x| x == t));
+            d.snmp.traps.dedup();
+            Ok(String::new())
+        }
+        Id::SnmpGroup | Id::NoSnmpGroup => {
+            let name: String = arg(0).chars().take(32).collect();
+            let d = c.dm()?;
+            d.snmp.groups.retain(|g| g.name != name);
+            if spec.id == Id::SnmpGroup {
+                let words: Vec<String> = arg(1).split_whitespace().map(str::to_ascii_lowercase).collect();
+                let auth = match words.first().map(String::as_str) {
+                    Some("auth") => true,
+                    Some("noauth") => false,
+                    Some("priv") => return Err("% Privacy (encryption) isn't simulated: use noauth or auth".into()),
+                    _ => return Err("% noauth or auth".into()),
+                };
+                let write = words.iter().any(|w| w == "write");
+                if d.snmp.groups.len() >= packetcraft_model::MAX_SNMP_ITEMS {
+                    return Err("% Too many SNMP groups".into());
+                }
+                d.snmp.groups.push(packetcraft_model::SnmpGroup { name, auth, write });
+            }
+            Ok(String::new())
+        }
+        Id::SnmpUser | Id::NoSnmpUser => {
+            let name: String = arg(0).chars().take(32).collect();
+            let d = c.dm()?;
+            if spec.id == Id::NoSnmpUser {
+                d.snmp.users.retain(|u| u.name != name);
+                return Ok(String::new());
+            }
+            let group: String = arg(1).chars().take(32).collect();
+            let words: Vec<&str> = arg(2).split_whitespace().collect();
+            let auth = match words.as_slice() {
+                [] => None,
+                [a, h, p] if a.eq_ignore_ascii_case("auth") => {
+                    let h = h.to_ascii_lowercase();
+                    if h != "md5" && h != "sha" {
+                        return Err("% auth md5 or auth sha".into());
+                    }
+                    if p.chars().count() < 8 {
+                        return Err("% The password needs at least 8 characters".into());
+                    }
+                    Some((h, p.chars().take(64).collect()))
+                }
+                [a, _, _, ..] if a.eq_ignore_ascii_case("auth") => {
+                    return Err("% Privacy (priv) isn't simulated: give only auth {md5|sha} PASSWORD".into());
+                }
+                _ => return Err("% snmp-server user NAME GROUP v3 [auth {md5|sha} PASSWORD]".into()),
+            };
+            d.snmp.users.retain(|u| u.name != name);
+            if d.snmp.users.len() >= packetcraft_model::MAX_SNMP_ITEMS {
+                return Err("% Too many SNMP users".into());
+            }
+            d.snmp.users.push(packetcraft_model::SnmpUser { name, group, auth });
+            Ok(String::new())
         }
         Id::TacacsHost | Id::NoTacacsHost => {
             let a = parse_ip(arg(0)).map_err(|e| format!("% {e}"))?;

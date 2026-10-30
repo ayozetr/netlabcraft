@@ -587,3 +587,12 @@ Destination port	Puerto de destino
 Print...	Imprimir...
 The workspace on an A4 page, opened in the system's PDF viewer to print	El espacio de trabajo en una página A4, abierta en el visor de PDF del sistema para imprimirla
 Opened the page in the PDF viewer: print it from there.	Se abrió la página en el visor de PDF: imprímela desde ahí.
+Version	Versión
+User	Usuario
+Authentication	Autenticación
+None	Ninguna
+Traps	Traps
+Forget the traps received	Olvidar los traps recibidos
+Trap	Trap
+Details	Detalles
+No traps yet. Routers and switches send them with snmp-server host and snmp-server enable traps.	Aún no hay traps. Los routers y switches los envían con snmp-server host y snmp-server enable traps.

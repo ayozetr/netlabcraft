@@ -36,6 +36,7 @@ pub mod ospf;
 pub mod ospf6;
 
 pub mod rip;
+pub mod snmp;
 pub mod stp;
 #[cfg(test)]
 mod tests;
@@ -643,7 +644,12 @@ pub struct DevState {
     radius_inbox: Vec<packetcraft_wire::radius::Radius>,
     /// An SNMP manager waiting on this port, and the answers that came.
     snmp_port: Option<u16>,
-    snmp_inbox: Vec<packetcraft_wire::snmp::Snmp>,
+    snmp_inbox: Vec<Vec<u8>>,
+    /// SNMP agents: notifications waiting to go to the trap hosts, and how many went.
+    pub(crate) trap_out: Vec<snmp::TrapEvent>,
+    pub traps_sent: u32,
+    /// Hosts: SNMP traps received (newest last).
+    pub traps: VecDeque<snmp::ReceivedTrap>,
     /// FTP server connections.
     pub(crate) ftp: ftp::ServerState,
     /// SMTP and POP3 server connections.
@@ -788,6 +794,12 @@ pub struct Sim {
     mail_changes: Vec<(DeviceId, email::MailChange)>,
     /// SNMP sets agents accepted: (device, object name, value), for the lab to apply.
     snmp_changes: Vec<(DeviceId, &'static str, String)>,
+    /// SNMPv3 localized keys: (hash, password, engine ID) → key.
+    snmp_keys: BTreeMap<(u8, String, Vec<u8>), Vec<u8>>,
+    /// Messages SMTP servers took for other domains: (server, message), to relay.
+    mail_relay: Vec<(DeviceId, packetcraft_model::services::Mail)>,
+    /// Locally raised packets wait for ARP instead of being dropped (see `transmit`).
+    hold_for_arp: bool,
     hsrp_for: u64,
     hsrp: Option<BTreeMap<DeviceId, Vec<hsrp::Role>>>,
     /// Last known link state of every router and switch port, for link messages.
@@ -926,6 +938,7 @@ impl Sim {
             {
                 let msg = format!("{}: link {}", p.name, if up { "up" } else { "down" });
                 self.log(key.0, &msg);
+                self.queue_trap(key.0, snmp::TrapEvent::Link(key.1, up));
             }
             seen.insert(key, up);
         }
@@ -963,6 +976,8 @@ impl Sim {
     /// Forgets one device's dynamic state (it reloaded).
     pub fn reset_device(&mut self, d: DeviceId) {
         self.state.remove(&d);
+        // It starts again: a coldStart trap, when traps are on.
+        self.queue_trap(d, snmp::TrapEvent::ColdStart);
     }
 
     /// Empties a switch's MAC table.
@@ -1050,6 +1065,7 @@ impl Sim {
         self.storm = false;
         self.refresh_stp(t);
         self.flush_syslog(t);
+        self.flush_traps(t);
         self.schedule_control(t, deadline);
         let mut count = 0usize;
         while let Some(Reverse(top)) = self.queue.peek() {
@@ -2153,7 +2169,8 @@ impl Sim {
             self.l3_emit(t, d, out, frame);
             return Ok(());
         }
-        let host = !d.routes_ip();
+        // A notification the device itself raises (a trap) waits too: it is sent only once.
+        let host = !d.routes_ip() || self.hold_for_arp;
         let st = self.st(d.id);
         st.pending.retain(|p| now.saturating_sub(p.since) < ARP_WAIT_US);
         // Hosts hold the packet until ARP answers; routers drop it, as real routers do.
