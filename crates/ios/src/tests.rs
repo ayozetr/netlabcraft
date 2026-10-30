@@ -1088,3 +1088,24 @@ fn everyday_show_commands_by_typing() {
     assert!(lab.try_run(r, "terminal length 0").is_empty());
     assert!(lab.try_run(r, "terminal bogus").contains("terminal length"));
 }
+
+#[test]
+fn logging_and_debug_by_typing() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let a = lab.add(DeviceKind::Pc);
+    lab.cable(a, "fa0", r, "g0/0");
+    lab.sim.topology_changed(&lab.t);
+    lab.run(a, "ipconfig 10.0.0.2 255.255.255.0 10.0.0.1");
+    lab.run(r, "en\nconf t\nint g0/0\nip address 10.0.0.1 255.255.255.0\nno shut\nend");
+    let log = lab.run(r, "show logging");
+    assert!(log.contains("GigabitEthernet0/0: link up") && log.contains("Configuration changed from the console"), "{log}");
+    lab.run(r, "debug ip icmp");
+    assert!(lab.run(r, "show debugging").contains("ICMP debugging is on"));
+    lab.run(a, "ping 10.0.0.1");
+    assert!(lab.run(r, "show logging").contains("ICMP debug: echo request from 10.0.0.2 to 10.0.0.1"));
+    lab.run(r, "undebug all\nclear logging");
+    assert!(lab.run(r, "show logging").contains("0 messages"));
+    lab.run(r, "conf t\nint g0/0\nshutdown\nend");
+    assert!(lab.run(r, "show logging").contains("GigabitEthernet0/0: link down"));
+}

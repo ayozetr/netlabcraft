@@ -149,6 +149,14 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ip interface <interface>` | user, privileged | router, switch | Layer-3 settings of an interface |
 | `show interfaces status` | user, privileged | switch | Port state, VLAN and speed |
 | `show running-config interface <interface>` | privileged | router, switch | One interface's configuration |
+| `show logging` | user, privileged | router, switch | The logging buffer |
+| `clear logging` | privileged | router, switch | Empty the logging buffer |
+| `logging buffered [size]` | config | router, switch | Keep messages in the logging buffer (always on here) |
+| `debug ip icmp` | privileged | router, switch | Report echo requests and replies this device receives |
+| `undebug all` | privileged | router, switch | Turn every debug off |
+| `no debug all` | privileged | router, switch | Turn every debug off |
+| `no debug ip icmp` | privileged | router, switch | Stop reporting echo messages |
+| `show debugging` | user, privileged | router, switch | Which debugs are on |
 | `router rip` | config | router | Start or configure RIP |
 | `no router rip` | config | router | Stop RIP |
 | `version {1\|2}` |  | router | RIP version |

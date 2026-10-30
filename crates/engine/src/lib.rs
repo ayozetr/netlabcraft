@@ -102,6 +102,7 @@ impl Session {
         if packetcraft_sim::vtp::sync(&mut self.topology) {
             self.sim.topology_changed(&self.topology);
         }
+        self.print_console_messages();
         match outcome {
             Ok(r) => r,
             Err(_) => {
@@ -111,6 +112,21 @@ impl Session {
                 self.revision += 1;
                 Err(EngineError::Panic(id.to_string()))
             }
+        }
+    }
+
+    /// Prints messages devices raised (link changes, debug output…) on their consoles, after
+    /// the prompt, as a real console does.
+    fn print_console_messages(&mut self) {
+        for dev in self.sim.console_pending() {
+            let msgs = self.sim.take_console(dev);
+            if msgs.is_empty() || self.topology.device(dev).is_none_or(|d| d.kind.is_host()) {
+                continue;
+            }
+            let con = self.console(dev);
+            let cli = con.cli.clone();
+            let prompt = packetcraft_ios::prompt(&self.topology, dev, &cli);
+            self.console(dev).append(&format!("\n{}\n{prompt}", msgs.join("\n")));
         }
     }
 
@@ -183,6 +199,8 @@ impl Session {
     /// Replaces the lab (open / new): history, consoles and simulation start over.
     pub fn replace(&mut self, t: Topology, path: Option<String>) {
         *self = Session { topology: t, path, revision: self.revision + 1, ..Session::default() };
+        // The links as they are now are the starting point for link messages.
+        self.sim.topology_changed(&self.topology);
     }
 
     /// The console of a device (created on first use, with its prompt).

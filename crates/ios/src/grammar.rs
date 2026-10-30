@@ -262,6 +262,12 @@ pub enum Id {
     ShowIpInterface,
     ShowIntStatus,
     ShowRunInterface,
+    ShowLogging,
+    ClearLogging,
+    LoggingBuffered,
+    DebugIpIcmp,
+    UndebugAll,
+    ShowDebugging,
 }
 
 use Tok::{Arg, K, Rest};
@@ -440,6 +446,20 @@ pub static SPECS: &[Spec] = &[
         [K("show"), K("running-config"), K("interface"), Rest("<interface>")],
         "One interface's configuration"
     ),
+    spec!(ShowLogging, EXECS, Modes::BOTH, [K("show"), K("logging")], "The logging buffer"),
+    spec!(ClearLogging, Modes::EXEC, Modes::BOTH, [K("clear"), K("logging")], "Empty the logging buffer"),
+    spec!(
+        LoggingBuffered,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("logging"), K("buffered"), Rest("[size]")],
+        "Keep messages in the logging buffer (always on here)"
+    ),
+    spec!(DebugIpIcmp, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("icmp")], "Report echo requests and replies this device receives"),
+    spec!(UndebugAll, Modes::EXEC, Modes::BOTH, [K("undebug"), K("all")], "Turn every debug off"),
+    spec!(UndebugAll, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("all")], "Turn every debug off"),
+    spec!(UndebugAll, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("icmp")], "Stop reporting echo messages"),
+    spec!(ShowDebugging, EXECS, Modes::BOTH, [K("show"), K("debugging")], "Which debugs are on"),
     spec!(RouterRip, Modes::CONFIG, Modes::ROUTER, [K("router"), K("rip")], "Start or configure RIP"),
     spec!(NoRouterRip, Modes::CONFIG, Modes::ROUTER, [K("no"), K("router"), K("rip")], "Stop RIP"),
     spec!(RipVersion, Modes::RIP, Modes::ROUTER, [K("version"), Arg("{1|2}")], "RIP version"),

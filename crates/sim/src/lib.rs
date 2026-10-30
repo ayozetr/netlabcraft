@@ -46,6 +46,8 @@ pub const MAX_SWITCH_HOPS: u8 = 64;
 pub const TRACE_CAP: usize = 20_000;
 /// Where an unset device clock starts: 2026-01-01 00:00:00 UTC.
 pub const DEFAULT_CLOCK: i64 = 1_767_225_600;
+/// Most messages a logging buffer keeps.
+pub const MAX_LOG: usize = 256;
 pub const MAC_AGING_US: u64 = 300 * 1_000_000;
 pub const ARP_AGING_US: u64 = 4 * 3_600 * 1_000_000;
 /// How long a host keeps a packet waiting for an ARP reply, and how often it re-asks.
@@ -450,6 +452,12 @@ pub struct DevState {
     icmp6: Vec<v6::Icmp6Event>,
     /// `clock set`: Unix seconds at simulated time zero, when someone set the clock.
     clock_base: Option<i64>,
+    /// The logging buffer (`show logging`): (simulated µs, message).
+    pub log: VecDeque<(u64, String)>,
+    /// Messages waiting to be printed on the device's console.
+    console: Vec<String>,
+    /// `debug ip icmp`.
+    pub debug_icmp: bool,
     /// Hosts: the last router advertisement heard (router's address, prefixes).
     ra: Option<(std::net::Ipv6Addr, Vec<packetcraft_wire::ipv6::PrefixInfo>)>,
 }
@@ -561,6 +569,8 @@ pub struct Sim {
     rip: Option<rip::RipState>,
     /// Control frames (BPDUs, hellos, updates) are queued up to this time.
     ctl_until: u64,
+    /// Last known link state of every router and switch port, for link messages.
+    links_seen: BTreeMap<(DeviceId, usize), bool>,
     /// Lab changes waiting for the engine.
     events: Vec<PortEvent>,
 }
@@ -583,6 +593,69 @@ impl Sim {
             Some(base) => (base.saturating_add(now), true),
             None => (DEFAULT_CLOCK.saturating_add(now), false),
         }
+    }
+
+    /// Adds a message to a device's logging buffer and its console, stamped with its clock.
+    pub fn log(&mut self, d: DeviceId, msg: &str) {
+        let (unix, _) = self.clock(d);
+        let secs = unix.rem_euclid(86_400);
+        let line = format!("[{:02}:{:02}:{:02}] {msg}", secs / 3_600, secs / 60 % 60, secs % 60);
+        let now = self.now;
+        let st = self.st(d);
+        if st.log.len() >= MAX_LOG {
+            st.log.pop_front();
+        }
+        st.log.push_back((now, line.clone()));
+        if st.console.len() < MAX_LOG {
+            st.console.push(line);
+        }
+    }
+
+    /// Messages for a device's console since the last call.
+    pub fn take_console(&mut self, d: DeviceId) -> Vec<String> {
+        self.state.get_mut(&d).map(|s| std::mem::take(&mut s.console)).unwrap_or_default()
+    }
+
+    /// Devices with console messages waiting.
+    pub fn console_pending(&self) -> Vec<DeviceId> {
+        self.state.iter().filter(|(_, s)| !s.console.is_empty()).map(|(id, _)| *id).collect()
+    }
+
+    pub fn clear_log(&mut self, d: DeviceId) {
+        if let Some(s) = self.state.get_mut(&d) {
+            s.log.clear();
+        }
+    }
+
+    pub fn set_debug_icmp(&mut self, d: DeviceId, on: bool) {
+        self.st(d).debug_icmp = on;
+    }
+
+    /// Logs link changes on routers and switches since the last look.
+    fn note_links(&mut self, t: &Topology) {
+        let mut now: Vec<((DeviceId, usize), bool)> = Vec::new();
+        for d in t.devices.iter().filter(|d| matches!(d.kind, DeviceKind::Router | DeviceKind::Switch)) {
+            for (i, p) in d.ports.iter().enumerate() {
+                let end = End { device: d.id, port: i };
+                if t.peer(end).is_some() || !p.shutdown {
+                    now.push(((d.id, i), port_up(t, end)));
+                }
+            }
+        }
+        let first = self.links_seen.is_empty();
+        let mut seen = BTreeMap::new();
+        for (key, up) in now {
+            if !first
+                && let Some(before) = self.links_seen.get(&key)
+                && *before != up
+                && let Some(p) = t.device(key.0).and_then(|d| d.ports.get(key.1))
+            {
+                let msg = format!("{}: link {}", p.name, if up { "up" } else { "down" });
+                self.log(key.0, &msg);
+            }
+            seen.insert(key, up);
+        }
+        self.links_seen = seen;
     }
 
     /// `clock set`: the device's clock reads `unix` now.
@@ -637,6 +710,7 @@ impl Sim {
     /// down, and frames in flight on removed cables.
     pub fn topology_changed(&mut self, t: &Topology) {
         self.state.retain(|id, _| t.device(*id).is_some());
+        self.note_links(t);
         // Ports reset by `shutdown`/`no shutdown`, or no longer secured, forget what they learned.
         for (id, st) in &mut self.state {
             if let Some(d) = t.device(*id) {
@@ -1000,6 +1074,8 @@ impl Sim {
                 *self.st(d.id).violations.entry(port).or_insert(0) += 1;
                 if !self.events.contains(&PortEvent::ErrDisabled { device: d.id, port }) {
                     self.events.push(PortEvent::ErrDisabled { device: d.id, port });
+                    let name = d.ports.get(port).map_or(String::new(), |p| p.name.clone());
+                    self.log(d.id, &format!("{name}: port security violation by {src}; port shut down (err-disabled)"));
                 }
                 Err(format!("port security violation from {src}: the port is shut down (err-disabled)"))
             }
@@ -1409,6 +1485,9 @@ impl Sim {
         };
         match icmp {
             Icmp::EchoRequest { id, seq, data } => {
+                if self.state.get(&d.id).is_some_and(|s| s.debug_icmp) {
+                    self.log(d.id, &format!("ICMP debug: echo request from {} to {} (id {id}, seq {seq})", ip.src, ip.dst));
+                }
                 let src = if ip.dst == Ipv4Addr::BROADCAST || ip.dst == ifc.net.broadcast() { ifc.net.addr } else { ip.dst };
                 let reply = Ipv4 {
                     id: self.ip_id(),
@@ -1422,6 +1501,9 @@ impl Sim {
             }
             Icmp::EchoReply { id, seq, .. } => {
                 note(id, seq, IcmpKind::Reply);
+                if self.state.get(&d.id).is_some_and(|s| s.debug_icmp) {
+                    self.log(d.id, &format!("ICMP debug: echo reply from {} (id {id}, seq {seq})", ip.src));
+                }
                 Ok(())
             }
             Icmp::TimeExceeded { original } => {

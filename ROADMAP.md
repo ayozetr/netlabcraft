@@ -28,7 +28,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Engine commands | 40 | measured: `crates/engine/src/catalog.rs` |
 | Console grammar entries | 225 across 12 modes | measured: `crates/ios/src/grammar.rs` |
 | Device models · sample labs | 13 · 15 | measured |
-| Tests | 117 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Tests | 119 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~600–950 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
@@ -60,6 +60,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-10-30 — Console messages and logging.** Devices report link up/down, port-security shutdowns and configuration changes in a logging buffer (`show logging`, `clear logging`) and on their console after the prompt; `debug ip icmp`, `undebug all`, `show debugging`.
 - **2026-10-30 — Protocol frames in Simulation mode.** Switches send spanning-tree BPDUs every 2 s (tagged per VLAN on trunks), OSPF routers hellos every 10 s with their neighbours, DR and BDR, RIP routers updates every 30 s with split horizon; new STP, OSPF and RIP filters and colours; captures include them.
 - **2026-10-30 — Everyday console commands.** Neighbour discovery (`cdp run`, `cdp enable`, `show cdp neighbors [detail]`); `clock set` and `show clock`; `show flash`/`dir flash:`, `show users`, `terminal length`; `show ip interface`, `show interfaces status`, `show interfaces X switchport`, `show running-config interface X`; a fuller `show version`.
 - **2026-10-30 — Documentation in the shared Craft format.** README with screenshots; parity assessment with written weights, audiences per CCNA course and labelled estimates; ranked gaps with hours; milestones with alpha and beta gates; new protocol, hardware and localization checklists; contributors and releasing pages; a review line and revision history on every page.

@@ -227,3 +227,17 @@ fn control_traffic_shows_in_the_event_list() {
     s.execute("sim.advance", json!({"seconds": 31})).unwrap();
     assert!(s.execute("file.export_pcap", json!({})).unwrap()["bytes"].as_u64().unwrap() > 200);
 }
+
+#[test]
+fn device_messages_appear_on_the_console() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "two-subnets"})).unwrap();
+    s.execute("cli.script", json!({"device": "R1", "lines": "en\nconf t\nint g0/0\nshutdown"})).unwrap();
+    let log = &s.consoles[&s.topology.resolve("R1").unwrap()].log;
+    assert!(log.contains("GigabitEthernet0/0: link down\nR1(config-if)#"), "{log}");
+    // A far-end change shows on the switch too.
+    let sw = s.topology.devices.iter().find(|d| d.name == "S1").unwrap().id;
+    s.execute("cli.exec", json!({"device": "S1", "line": "enable"})).unwrap();
+    s.execute("cli.exec", json!({"device": "R1", "line": "no shutdown"})).unwrap();
+    assert!(s.consoles[&sw].log.contains(": link up"), "{}", s.consoles[&sw].log);
+}

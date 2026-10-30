@@ -491,7 +491,13 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             };
             c.set_mode(next)
         }
-        Id::End => c.set_mode(Mode::Exec),
+        Id::End => {
+            if !matches!(c.cli.mode, Mode::Exec | Mode::User) {
+                let by = if c.cli.vty { "a remote session" } else { "the console" };
+                c.sim.log(c.dev, &format!("Configuration changed from {by}"));
+            }
+            c.set_mode(Mode::Exec)
+        }
         Id::ConfigureTerminal => {
             c.cli.mode = Mode::Config;
             Ok("Configuring from the terminal, one command per line; `end` returns to privileged mode.".into())
@@ -531,6 +537,34 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let p = d.ports.get(r.port).ok_or("% No such port")?;
             let name = r.sub.map_or(p.name.clone(), |s| format!("{}.{s}", p.name));
             Ok(render::running_config_interface(d, &name))
+        }
+        Id::ShowLogging => {
+            let lines: Vec<String> = c.sim.state(c.dev).map(|s| s.log.iter().map(|(_, l)| l.clone()).collect()).unwrap_or_default();
+            Ok(format!(
+                "Logging buffer: {} message{} (at most {})\n{}",
+                lines.len(),
+                if lines.len() == 1 { "" } else { "s" },
+                packetcraft_sim::MAX_LOG,
+                lines.join("\n")
+            )
+            .trim_end()
+            .to_string())
+        }
+        Id::ClearLogging => {
+            c.sim.clear_log(c.dev);
+            Ok(String::new())
+        }
+        Id::LoggingBuffered => Ok(String::new()),
+        Id::DebugIpIcmp => {
+            c.sim.set_debug_icmp(c.dev, true);
+            Ok("ICMP debugging is on: echo messages this device receives are reported.".into())
+        }
+        Id::UndebugAll => {
+            c.sim.set_debug_icmp(c.dev, false);
+            Ok("All debugging is off.".into())
+        }
+        Id::ShowDebugging => {
+            Ok(if c.sim.state(c.dev).is_some_and(|s| s.debug_icmp) { "ICMP debugging is on.".into() } else { "No debugging is on.".into() })
         }
         Id::ShowClock => {
             let (now, set) = c.sim.clock(c.dev);
