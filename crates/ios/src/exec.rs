@@ -602,7 +602,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::ShowCdp => Ok(render::cdp(c.d()?)),
         Id::ShowCdpNeighbors | Id::ShowCdpNeighborsDetail => Ok(render::cdp_neighbors(c.t, c.sim, c.d()?, spec.id == Id::ShowCdpNeighborsDetail)),
         Id::ShowIntTrunk => Ok(render::trunks(c.t, c.d()?)),
-        Id::ShowVlan | Id::ShowVlanBrief => Ok(render::vlans(c.d()?)),
+        Id::ShowVlan | Id::ShowVlanBrief => Ok(render::vlans(c.t, c.d()?)),
         Id::ShowMac => Ok(render::mac_table(c.t, c.sim, c.d()?)),
         Id::ShowArp => Ok(render::arp(c.t, c.sim, c.d()?)),
         Id::ShowVersion => Ok(render::version(c.sim, c.d()?)),
@@ -1224,8 +1224,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                     p.err_disabled = false;
                     return Ok(());
                 }
-                if p.switchport.mode == SwitchportMode::Trunk {
-                    return Err(format!("% {} is a trunk: port security needs `switchport mode access`", p.name));
+                if p.switchport.mode != SwitchportMode::Access {
+                    return Err(format!("% {} is {}: port security needs `switchport mode access`", p.name, p.switchport.mode.name()));
                 }
                 if p.channel.is_some() {
                     return Err(format!("% {} is in an EtherChannel: port security can't be used there", p.name));
@@ -1644,10 +1644,28 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             }
             Ok(())
         }),
-        Id::SwModeAccess | Id::SwModeTrunk => {
-            let mode = if spec.id == Id::SwModeTrunk { SwitchportMode::Trunk } else { SwitchportMode::Access };
+        Id::SwModeAccess | Id::SwModeTrunk | Id::SwModeDynAuto | Id::SwModeDynDesirable => {
+            let mode = match spec.id {
+                Id::SwModeTrunk => SwitchportMode::Trunk,
+                Id::SwModeDynAuto => SwitchportMode::DynamicAuto,
+                Id::SwModeDynDesirable => SwitchportMode::DynamicDesirable,
+                _ => SwitchportMode::Access,
+            };
             c.each_if(|p, _| {
+                if mode != SwitchportMode::Access && p.port_security.is_some() {
+                    return Err(format!("% {} has port security: it stays an access port", p.name));
+                }
                 p.switchport.mode = mode;
+                Ok(())
+            })
+        }
+        Id::SwNonegotiate | Id::NoSwNonegotiate => {
+            let on = spec.id == Id::SwNonegotiate;
+            c.each_if(|p, _| {
+                if on && matches!(p.switchport.mode, SwitchportMode::DynamicAuto | SwitchportMode::DynamicDesirable) {
+                    return Err(format!("% {} negotiates its mode: set `switchport mode access` or `trunk` first", p.name));
+                }
+                p.switchport.nonegotiate = on;
                 Ok(())
             })
         }

@@ -274,6 +274,10 @@ pub enum Id {
     StandbyPreempt,
     NoStandby,
     ShowStandby,
+    SwModeDynAuto,
+    SwModeDynDesirable,
+    SwNonegotiate,
+    NoSwNonegotiate,
 }
 
 use Tok::{Arg, K, Rest};
@@ -563,6 +567,22 @@ pub static SPECS: &[Spec] = &[
     spec!(NoIpAddress, Modes::IF, Modes::SWITCH, [K("no"), K("ip"), K("address")], "Remove a routed port's address"),
     spec!(SwModeAccess, Modes::IF, Modes::SWITCH, [K("switchport"), K("mode"), K("access")], "Carry one VLAN, untagged"),
     spec!(SwModeTrunk, Modes::IF, Modes::SWITCH, [K("switchport"), K("mode"), K("trunk")], "Carry many VLANs, 802.1Q tagged"),
+    spec!(
+        SwModeDynAuto,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("switchport"), K("mode"), K("dynamic"), K("auto")],
+        "Become a trunk if the other end asks (DTP)"
+    ),
+    spec!(
+        SwModeDynDesirable,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("switchport"), K("mode"), K("dynamic"), K("desirable")],
+        "Ask the other end to trunk (DTP)"
+    ),
+    spec!(SwNonegotiate, Modes::IF, Modes::SWITCH, [K("switchport"), K("nonegotiate")], "Send no DTP messages"),
+    spec!(NoSwNonegotiate, Modes::IF, Modes::SWITCH, [K("no"), K("switchport"), K("nonegotiate")], "Send DTP messages again"),
     spec!(SwAccessVlan, Modes::IF, Modes::SWITCH, [K("switchport"), K("access"), K("vlan"), Arg("<1-4094>")], "Set the access VLAN"),
     spec!(NoSwAccessVlan, Modes::IF, Modes::SWITCH, [K("no"), K("switchport"), K("access"), K("vlan")], "Back to VLAN 1"),
     spec!(

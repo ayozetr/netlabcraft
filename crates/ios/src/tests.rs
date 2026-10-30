@@ -1158,3 +1158,40 @@ fn hsrp_by_typing() {
     lab.run(r2, "conf t\nint g0/0");
     assert!(lab.try_run(r2, "standby 2 ip 172.16.0.1").contains("not on"));
 }
+
+#[test]
+fn dtp_by_typing() {
+    let mut lab = Lab::new();
+    let s1 = lab.add(DeviceKind::Switch);
+    let s2 = lab.add(DeviceKind::Switch);
+    let a = lab.add(DeviceKind::Pc);
+    let b = lab.add(DeviceKind::Pc);
+    lab.cable(s1, "g0/1", s2, "g0/1");
+    lab.cable(a, "fa0", s1, "fa0/1");
+    lab.cable(b, "fa0", s2, "fa0/1");
+    lab.run(a, "ipconfig 10.0.10.1 255.255.255.0");
+    lab.run(b, "ipconfig 10.0.10.2 255.255.255.0");
+    for s in [s1, s2] {
+        lab.run(s, "en\nconf t\nvlan 10\nexit\nint fa0/1\nswitchport access vlan 10\nend");
+    }
+    let trunks = |lab: &mut Lab| lab.run(s1, "show interfaces trunk").contains("Gi0/1");
+    // auto with auto: no trunk, VLAN 10 doesn't cross.
+    for s in [s1, s2] {
+        lab.run(s, "conf t\nint g0/1\nswitchport mode dynamic auto\nend");
+    }
+    assert!(!trunks(&mut lab));
+    assert!(lab.run(a, "ping 10.0.10.2").contains(" 0 answered"));
+    // desirable asks: it trunks.
+    lab.run(s1, "conf t\nint g0/1\nswitchport mode dynamic desirable\nend");
+    assert!(trunks(&mut lab));
+    lab.run(a, "ping 10.0.10.2");
+    assert!(lab.run(a, "ping 10.0.10.2").contains("4 answered"));
+    let sw = lab.run(s2, "show interfaces g0/1 switchport");
+    assert!(sw.contains("Mode: dynamic auto (working as trunk)"), "{sw}");
+    // A trunk that sends no DTP leaves an auto end as access.
+    lab.run(s1, "conf t\nint g0/1\nswitchport mode trunk\nswitchport nonegotiate\nend");
+    assert!(lab.run(s2, "show interfaces g0/1 switchport").contains("working as access"));
+    assert!(lab.run(s1, "show running-config interface g0/1").contains(" switchport mode trunk\n switchport nonegotiate"));
+    lab.run(s1, "conf t\nint g0/1\nswitchport mode dynamic auto");
+    assert!(lab.try_run(s1, "switchport nonegotiate").contains("negotiates"));
+}

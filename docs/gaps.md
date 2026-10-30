@@ -17,7 +17,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 | 2 | **Console coverage:** more debugs, `show processes/memory`, LLDP, `show ip ospf interface`; going through the CCNA 1 labs command by command | CCNA 1 from the first lab | 6–14 h |
 | 3 | **More protocol frames in Simulation mode:** OSPF database exchange (DBD/LSR/LSU), LACP, LLDP; BPDUs, OSPF hellos and RIP updates are done | CCNA 2–3 students watching Simulation mode | 8–14 h |
 | 4 | **Wireless LANs:** access points, wireless routers, laptop wireless cards, SSID and WPA2, association | CCNA 2 | 40–60 h |
-| 5 | **DTP** (`switchport mode dynamic`, `nonegotiate`) and RSTP timers | CCNA 2 | 10–16 h |
+| 5 | **Spanning-tree timers and RSTP** (listening/learning delays, proposal/agreement) | CCNA 2 | 8–12 h |
 | 6 | **OSPF depth:** multi-area, `ip ospf cost`, DR/BDR, `show ip ospf interface`; OSPF and RIP on multilayer switches | CCNA 3 | 24–36 h |
 | 7 | **PPP authentication** (PAP/CHAP) | CCNA 3 | 6–10 h |
 | 8 | **ACL depth:** `access-class` on vty lines, IPv6 ACLs, NAT for ICMP errors | CCNA 3 | 11–18 h |
@@ -34,6 +34,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Done: DTP (dynamic auto/desirable, nonegotiate, negotiated working mode). |
 | 2026-10-30 | minor | Done: HSRP (groups, priority, preempt, virtual MAC, hellos, `show standby`, hsrp sample). |
 | 2026-10-30 | minor | Gap 1 narrowed: activities with instructions, checks (configuration, ping, host address, command output), points, hidden answers, Check Results, Reset Activity and an Activity Wizard. |
 | 2026-10-30 | minor | Gap 2 narrowed: logging buffer, console messages, `debug ip icmp`. |

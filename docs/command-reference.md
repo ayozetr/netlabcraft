@@ -214,6 +214,10 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip address` | interface | switch | Remove a routed port's address |
 | `switchport mode access` | interface | switch | Carry one VLAN, untagged |
 | `switchport mode trunk` | interface | switch | Carry many VLANs, 802.1Q tagged |
+| `switchport mode dynamic auto` | interface | switch | Become a trunk if the other end asks (DTP) |
+| `switchport mode dynamic desirable` | interface | switch | Ask the other end to trunk (DTP) |
+| `switchport nonegotiate` | interface | switch | Send no DTP messages |
+| `no switchport nonegotiate` | interface | switch | Send DTP messages again |
 | `switchport access vlan <1-4094>` | interface | switch | Set the access VLAN |
 | `no switchport access vlan` | interface | switch | Back to VLAN 1 |
 | `switchport trunk native vlan <1-4094>` | interface | switch | Set the untagged trunk VLAN |

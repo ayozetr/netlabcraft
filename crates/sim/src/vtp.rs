@@ -10,7 +10,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use packetcraft_core::DeviceId;
-use packetcraft_model::{DeviceKind, SwitchportMode, Topology, VTP_MAX_VLAN, VtpMode};
+use packetcraft_model::{DeviceKind, Topology, VTP_MAX_VLAN, VtpMode};
 
 use crate::port_up;
 
@@ -18,10 +18,7 @@ use crate::port_up;
 fn trunk_neighbours(t: &Topology) -> BTreeMap<DeviceId, BTreeSet<DeviceId>> {
     let mut adj: BTreeMap<DeviceId, BTreeSet<DeviceId>> = BTreeMap::new();
     let trunk = |e: packetcraft_model::End| {
-        t.device(e.device)
-            .filter(|d| d.kind == DeviceKind::Switch)
-            .and_then(|d| d.ports.get(e.port))
-            .is_some_and(|p| p.switchport.mode == SwitchportMode::Trunk)
+        t.device(e.device).filter(|d| d.kind == DeviceKind::Switch).and_then(|d| d.ports.get(e.port)).is_some() && t.is_trunk(e)
     };
     for l in &t.links {
         if l.a.device != l.b.device && trunk(l.a) && trunk(l.b) && port_up(t, l.a) {

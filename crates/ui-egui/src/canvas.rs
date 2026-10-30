@@ -339,10 +339,7 @@ fn stp_blocked(app: &mut PacketApp, end: End) -> bool {
     let t = &app.session.topology;
     let Some(d) = t.device(end.device).filter(|d| d.kind == packetcraft_model::DeviceKind::Switch) else { return false };
     let Some(p) = d.ports.get(end.port) else { return false };
-    let vlan = match p.switchport.mode {
-        packetcraft_model::SwitchportMode::Access => p.switchport.access_vlan,
-        packetcraft_model::SwitchportMode::Trunk => p.switchport.native_vlan,
-    };
+    let vlan = if t.is_trunk(end) { p.switchport.native_vlan } else { p.switchport.access_vlan };
     let f = packetcraft_sim::stp::fingerprint(t);
     let c = &mut app.ui.canvas;
     if c.stp_for != f {

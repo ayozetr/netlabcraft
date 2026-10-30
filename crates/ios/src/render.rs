@@ -120,8 +120,11 @@ pub fn running_config(d: &Device) -> String {
             if !sp.allowed.is_all() {
                 let _ = writeln!(s, " switchport trunk allowed vlan {}", sp.allowed);
             }
-            if sp.mode == SwitchportMode::Trunk {
-                let _ = writeln!(s, " switchport mode trunk");
+            if sp.mode != SwitchportMode::Access {
+                let _ = writeln!(s, " switchport mode {}", sp.mode.name());
+            }
+            if sp.nonegotiate {
+                let _ = writeln!(s, " switchport nonegotiate");
             }
             if let Some(ps) = &p.port_security {
                 let _ = writeln!(s, " switchport port-security");
@@ -448,13 +451,10 @@ pub fn interfaces(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
             }
             if d.kind == DeviceKind::Switch {
                 let sp = &p.switchport;
-                match sp.mode {
-                    SwitchportMode::Access => {
-                        let _ = writeln!(s, "  Switchport: access, VLAN {}", sp.access_vlan);
-                    }
-                    SwitchportMode::Trunk => {
-                        let _ = writeln!(s, "  Switchport: trunk, native VLAN {}, allowed {}", sp.native_vlan, sp.allowed);
-                    }
+                if t.is_trunk(end) {
+                    let _ = writeln!(s, "  Switchport: trunk ({}), native VLAN {}, allowed {}", sp.mode.name(), sp.native_vlan, sp.allowed);
+                } else {
+                    let _ = writeln!(s, "  Switchport: access ({}), VLAN {}", sp.mode.name(), sp.access_vlan);
                 }
             }
         }
@@ -489,7 +489,7 @@ pub fn trunks(t: &Topology, d: &Device) -> String {
     let mut s = format!("{:<10} {:<10} {:<8} {}\n", "Port", "Status", "Native", "Allowed (and existing)");
     let mut any = false;
     for (i, p) in d.ports.iter().enumerate() {
-        if p.switchport.mode != SwitchportMode::Trunk {
+        if !t.is_trunk(End { device: d.id, port: i }) {
             continue;
         }
         any = true;
@@ -507,14 +507,15 @@ pub fn trunks(t: &Topology, d: &Device) -> String {
 }
 
 /// The VLAN database with each VLAN's access ports.
-pub fn vlans(d: &Device) -> String {
+pub fn vlans(t: &Topology, d: &Device) -> String {
     let mut s = format!("{:<5} {:<32} {:<9} {}\n", "VLAN", "Name", "Status", "Access ports");
     for (v, name) in &d.vlans {
         let ports: Vec<String> = d
             .ports
             .iter()
-            .filter(|p| p.switchport.mode == SwitchportMode::Access && p.switchport.access_vlan == *v)
-            .map(|p| ifname::short(&p.name))
+            .enumerate()
+            .filter(|(i, p)| !p.routed && !t.is_trunk(End { device: d.id, port: *i }) && p.switchport.access_vlan == *v)
+            .map(|(_, p)| ifname::short(&p.name))
             .collect();
         let mut lines = ports.chunks(6).map(|c| c.join(", "));
         let _ = writeln!(s, "{:<5} {:<32} {:<9} {}", v.to_string(), name, "active", lines.next().unwrap_or_default());
@@ -526,8 +527,9 @@ pub fn vlans(d: &Device) -> String {
     let orphans: Vec<String> = d
         .ports
         .iter()
-        .filter(|p| p.switchport.mode == SwitchportMode::Access && !d.vlans.contains_key(&p.switchport.access_vlan))
-        .map(|p| format!("{} (VLAN {})", ifname::short(&p.name), p.switchport.access_vlan))
+        .enumerate()
+        .filter(|(i, p)| !p.routed && !t.is_trunk(End { device: d.id, port: *i }) && !d.vlans.contains_key(&p.switchport.access_vlan))
+        .map(|(_, p)| format!("{} (VLAN {})", ifname::short(&p.name), p.switchport.access_vlan))
         .collect();
     if !orphans.is_empty() {
         let _ = writeln!(s, "\nInactive (VLAN missing): {}", orphans.join(", "));
@@ -1124,7 +1126,7 @@ pub fn interface_status(t: &Topology, d: &Device) -> String {
         };
         let vlan = if p.routed {
             "routed".to_string()
-        } else if p.switchport.mode == SwitchportMode::Trunk {
+        } else if t.is_trunk(End { device: d.id, port: i }) {
             "trunk".to_string()
         } else {
             p.switchport.access_vlan.to_string()
@@ -1147,9 +1149,9 @@ pub fn switchport(t: &Topology, d: &Device, port: usize) -> Result<String, Strin
     }
     let sp = &p.switchport;
     let vname = |v: VlanId| d.vlans.get(&v).map_or("not in the VLAN database".to_string(), Clone::clone);
-    let mode = if sp.mode == SwitchportMode::Trunk { "trunk" } else { "access" };
+    let oper = if t.is_trunk(End { device: d.id, port }) { "trunk" } else { "access" };
     let mut s = format!("{}\n", p.name);
-    let _ = writeln!(s, "  Mode: {mode}");
+    let _ = writeln!(s, "  Mode: {} (working as {oper}){}", sp.mode.name(), if sp.nonegotiate { ", no negotiation" } else { "" });
     let _ = writeln!(s, "  Access VLAN: {} ({})", sp.access_vlan, vname(sp.access_vlan));
     let _ = writeln!(s, "  Trunk native VLAN: {} ({})", sp.native_vlan, vname(sp.native_vlan));
     let _ = writeln!(s, "  Trunk allowed VLANs: {}", if sp.allowed.is_all() { "all".to_string() } else { sp.allowed.to_string() });

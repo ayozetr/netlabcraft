@@ -138,6 +138,21 @@ pub enum SwitchportMode {
     #[default]
     Access,
     Trunk,
+    /// DTP: becomes a trunk if the other end asks (trunk or desirable).
+    DynamicAuto,
+    /// DTP: asks the other end to trunk (trunk, desirable or auto agree).
+    DynamicDesirable,
+}
+
+impl SwitchportMode {
+    pub fn name(self) -> &'static str {
+        match self {
+            SwitchportMode::Access => "access",
+            SwitchportMode::Trunk => "trunk",
+            SwitchportMode::DynamicAuto => "dynamic auto",
+            SwitchportMode::DynamicDesirable => "dynamic desirable",
+        }
+    }
 }
 
 /// Layer-2 settings of a switch port.
@@ -148,11 +163,19 @@ pub struct Switchport {
     pub access_vlan: VlanId,
     pub native_vlan: VlanId,
     pub allowed: VlanSet,
+    /// `switchport nonegotiate`: send no DTP messages.
+    pub nonegotiate: bool,
 }
 
 impl Default for Switchport {
     fn default() -> Self {
-        Switchport { mode: SwitchportMode::Access, access_vlan: VlanId::DEFAULT, native_vlan: VlanId::DEFAULT, allowed: VlanSet::all() }
+        Switchport {
+            mode: SwitchportMode::Access,
+            access_vlan: VlanId::DEFAULT,
+            native_vlan: VlanId::DEFAULT,
+            allowed: VlanSet::all(),
+            nonegotiate: false,
+        }
     }
 }
 
@@ -1313,6 +1336,30 @@ impl Topology {
         let d = self.device(id)?;
         (0..d.ports.len())
             .find(|&p| self.link_at(End { device: id, port: p }).is_none() && d.ports.get(p).is_some_and(|x| ifname::is_serial(&x.name) == serial))
+    }
+
+    /// Whether a switch port runs as a trunk: configured so, or negotiated with DTP (desirable
+    /// agrees with trunk, desirable or auto; auto only with trunk or desirable; nothing
+    /// negotiates with a port that sends no DTP).
+    pub fn is_trunk(&self, end: End) -> bool {
+        let port = |e: End| self.device(e.device).filter(|d| d.kind == DeviceKind::Switch).and_then(|d| d.ports.get(e.port)).filter(|p| !p.routed);
+        let Some(p) = port(end) else { return false };
+        let mine = p.switchport.mode;
+        match mine {
+            SwitchportMode::Trunk => true,
+            SwitchportMode::Access => false,
+            SwitchportMode::DynamicAuto | SwitchportMode::DynamicDesirable => {
+                let Some(q) = self.peer(end).and_then(port) else { return false };
+                if q.switchport.nonegotiate {
+                    return false;
+                }
+                matches!(
+                    (mine, q.switchport.mode),
+                    (SwitchportMode::DynamicDesirable, SwitchportMode::Trunk | SwitchportMode::DynamicDesirable | SwitchportMode::DynamicAuto)
+                        | (SwitchportMode::DynamicAuto, SwitchportMode::Trunk | SwitchportMode::DynamicDesirable)
+                )
+            }
+        }
     }
 
     /// Whether a port is serial.

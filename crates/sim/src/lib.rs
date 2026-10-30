@@ -178,7 +178,7 @@ pub fn up_ifaces(t: &Topology, d: &Device) -> Vec<L3If> {
                 // A VLAN interface is up while some port of its VLAN is up.
                 i.vlan
                     .and_then(VlanId::new)
-                    .is_some_and(|v| (0..d.ports.len()).any(|p| stp::carries(d, p, v) && port_up(t, End { device: d.id, port: p })))
+                    .is_some_and(|v| (0..d.ports.len()).any(|p| stp::carries(t, d, p, v) && port_up(t, End { device: d.id, port: p })))
             } else {
                 port_up(t, End { device: d.id, port: i.port })
             }
@@ -1163,8 +1163,8 @@ impl Sim {
             return Ok(());
         }
         let sp = &d.ports.get(in_port).ok_or("no port")?.switchport;
-        let vlan = match sp.mode {
-            SwitchportMode::Access => {
+        let vlan = match if t.is_trunk(End { device: d.id, port: in_port }) { SwitchportMode::Trunk } else { SwitchportMode::Access } {
+            SwitchportMode::Access | SwitchportMode::DynamicAuto | SwitchportMode::DynamicDesirable => {
                 if f.vlan.is_some_and(|v| v != sp.access_vlan.get()) {
                     return Err("tagged frame on an access port".into());
                 }
@@ -1232,18 +1232,14 @@ impl Sim {
         let outs: Vec<usize> = match known {
             Some(p) if Some(p) == in_port => return Err("destination is on the arrival port (filtered)".into()),
             Some(p) => vec![p],
-            None => (0..d.ports.len()).filter(|&p| Some(p) != in_port && !chm.hidden(p) && !chm.suspended(p) && carries(d, p, vlan)).collect(),
+            None => (0..d.ports.len()).filter(|&p| Some(p) != in_port && !chm.hidden(p) && !chm.suspended(p) && carries(t, d, p, vlan)).collect(),
         };
         let outs: Vec<usize> = outs.into_iter().filter(|&p| self.stp_forwards(t, d.id, p, vlan)).collect();
         let mut sent = 0;
         for p in outs {
             let p = chm.pick(p, f.src, f.dst);
             let Some(port) = d.ports.get(p) else { continue };
-            let tag = match port.switchport.mode {
-                SwitchportMode::Access => None,
-                SwitchportMode::Trunk if port.switchport.native_vlan == vlan => None,
-                SwitchportMode::Trunk => Some(vlan.get()),
-            };
+            let tag = if !t.is_trunk(End { device: d.id, port: p }) || port.switchport.native_vlan == vlan { None } else { Some(vlan.get()) };
             if self.emit_hops(t, End { device: d.id, port: p }, f.retagged(tag).encode(), hops + 1) {
                 sent += 1;
             }
@@ -2203,10 +2199,9 @@ fn default_ttl(kind: DeviceKind) -> u8 {
 }
 
 /// Whether switch port `p` carries `vlan` (a routed port carries none).
-fn carries(d: &Device, p: usize, vlan: VlanId) -> bool {
-    d.ports.get(p).filter(|port| !port.routed).is_some_and(|port| match port.switchport.mode {
-        SwitchportMode::Access => port.switchport.access_vlan == vlan,
-        SwitchportMode::Trunk => port.switchport.allowed.contains(vlan),
+fn carries(t: &Topology, d: &Device, p: usize, vlan: VlanId) -> bool {
+    d.ports.get(p).filter(|port| !port.routed).is_some_and(|port| {
+        if t.is_trunk(End { device: d.id, port: p }) { port.switchport.allowed.contains(vlan) } else { port.switchport.access_vlan == vlan }
     })
 }
 

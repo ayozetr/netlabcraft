@@ -725,7 +725,7 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
             }
         }
         DeviceKind::Switch => {
-            let mut trunk = port.switchport.mode == SwitchportMode::Trunk;
+            let mut trunk = port.switchport.mode != SwitchportMode::Access;
             ui.horizontal(|ui| {
                 ui.label("Mode");
                 if ui.radio_value(&mut trunk, false, "Access").changed() || ui.radio_value(&mut trunk, true, "Trunk").changed() {

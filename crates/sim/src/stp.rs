@@ -10,7 +10,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use packetcraft_core::{DeviceId, MacAddr, VlanId};
-use packetcraft_model::{Device, DeviceKind, End, STP_DEFAULT_PRIORITY, SwitchportMode, Topology};
+use packetcraft_model::{Device, DeviceKind, End, STP_DEFAULT_PRIORITY, Topology};
 
 use crate::channel::PortMap;
 use crate::port_up;
@@ -108,12 +108,11 @@ pub fn bridge_id(d: &Device, vlan: VlanId) -> BridgeId {
 }
 
 /// Whether a switch port carries a VLAN.
-pub fn carries(d: &Device, port: usize, vlan: VlanId) -> bool {
+pub fn carries(t: &Topology, d: &Device, port: usize, vlan: VlanId) -> bool {
     d.kind == DeviceKind::Switch
         && d.vlans.contains_key(&vlan)
-        && d.ports.get(port).filter(|p| !p.routed).is_some_and(|p| match p.switchport.mode {
-            SwitchportMode::Access => p.switchport.access_vlan == vlan,
-            SwitchportMode::Trunk => p.switchport.allowed.contains(vlan),
+        && d.ports.get(port).filter(|p| !p.routed).is_some_and(|p| {
+            if t.is_trunk(End { device: d.id, port }) { p.switchport.allowed.contains(vlan) } else { p.switchport.access_vlan == vlan }
         })
 }
 
@@ -138,7 +137,7 @@ pub fn compute(t: &Topology, vlan: VlanId) -> VlanTree {
     for d in &switches {
         for p in 0..d.ports.len() {
             let end = End { device: d.id, port: p };
-            if !carries(d, p, vlan) {
+            if !carries(t, d, p, vlan) {
                 continue;
             }
             let lp = logical(d.id, p);
@@ -149,7 +148,7 @@ pub fn compute(t: &Topology, vlan: VlanId) -> VlanTree {
                 continue;
             }
             match t.peer(end).and_then(|q| t.device(q.device).map(|pd| (q, pd))) {
-                Some((q, pd)) if carries(pd, q.port, vlan) && !blocked(q.device, q.port) => {
+                Some((q, pd)) if carries(t, pd, q.port, vlan) && !blocked(q.device, q.port) => {
                     let (a, b) = ((d.id, lp), (q.device, logical(q.device, q.port)));
                     let (a, b) = if a < b { (a, b) } else { (b, a) };
                     linkset.insert((a.0, a.1, b.0, b.1));

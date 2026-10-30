@@ -21,7 +21,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | Spanning tree (per VLAN) | IEEE 802.1D | 🟡 | Roles, priorities, `root primary/secondary`, portfast, amber lights; computed at once; configuration BPDUs (IEEE format, tagged per VLAN on trunks) every 2 s from designated ports. No timers or RSTP proposal/agreement: 8–12 h. |
 | EtherChannel | IEEE 802.1AX (LACP); PAgP | ✅ | `on`, `active/passive`, `desirable/auto`; suspended members; one STP port per bundle; traffic spread by address; `interface port-channel`, `show etherchannel summary`. No LACP frames. |
 | VTP | — | 🟡 | Server/client/transparent, domain, password, versions 1/2, revisions. No pruning, version 3 or advertisement frames: 4–6 h. |
-| DTP | — | ❌ | `switchport mode dynamic auto/desirable`, `switchport nonegotiate`: 4–6 h. |
+| DTP | — | ✅ | `switchport mode dynamic auto/desirable`, `switchport nonegotiate`; the working mode is negotiated from both ends and shown in `show interfaces X switchport`, `show interfaces trunk`, `show vlan brief`. Ports default to access (real access switches default to dynamic auto). No DTP frames. |
 | Port security | — | ✅ | Maximum, violation shutdown/restrict/protect, sticky and static addresses, err-disabled recovery, `show port-security`. No `errdisable recovery` timer. |
 | Hubs | IEEE 802.3 | ✅ | Repeat every frame. |
 | Switch management (SVI, default gateway) | — | ✅ | `interface vlan N`, `ip default-gateway`. |
@@ -105,6 +105,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | DTP. |
 | 2026-10-30 | minor | HSRP. |
 | 2026-10-30 | minor | Logging buffer and console messages; `debug ip icmp`. |
 | 2026-10-30 | minor | BPDUs, OSPF hellos and RIP updates on the wire, so Simulation mode and captures show them. |

@@ -7,7 +7,7 @@
 use std::net::Ipv4Addr;
 
 use packetcraft_core::{MacAddr, VlanId};
-use packetcraft_model::{DeviceKind, End, SwitchportMode, Topology};
+use packetcraft_model::{DeviceKind, End, Topology};
 use packetcraft_wire::control::{self, Bpdu, BridgeId, OspfHello, RipEntry};
 use packetcraft_wire::{Frame, Ipv4, PROTO_UDP, Udp};
 
@@ -63,10 +63,7 @@ impl Sim {
                 let wire = |b: crate::stp::BridgeId| BridgeId { priority: u16::try_from(b.priority).unwrap_or(u16::MAX), mac: b.mac };
                 for ((dev, p), _) in tree.ports.iter().filter(|((dev, _), i)| *dev == id && i.role == crate::stp::Role::Designated) {
                     let Some(port) = d.ports.get(*p) else { continue };
-                    let tag = match port.switchport.mode {
-                        SwitchportMode::Trunk if port.switchport.native_vlan != v => Some(v.get()),
-                        _ => None,
-                    };
+                    let tag = (t.is_trunk(End { device: *dev, port: *p }) && port.switchport.native_vlan != v).then(|| v.get());
                     let bpdu = Bpdu {
                         root: wire(me.root),
                         root_cost: me.root_cost,
