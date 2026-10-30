@@ -136,6 +136,12 @@ pub fn connect(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, pr
     let Some(target) = t.devices.iter().find(|d| packetcraft_sim::l3_ifaces(d).iter().any(|i| i.net.addr == dst)).map(|d| d.id) else {
         return format!("% {dst} answered but isn't a device in this lab");
     };
+    // `login block-for`: the quiet period after too many failed logins.
+    if let Some(secs) = sim.login_blocked(target) {
+        return format!(
+            "Trying {dst} ... Open\n% Logins are blocked for {secs} more seconds (too many failed attempts)\nConnection closed by the remote host"
+        );
+    }
     let local = t.device(target).is_some_and(|d| d.access.vty.login_local || d.access.aaa);
     let stage = match (local, user) {
         (true, Some(u)) => LoginStage::Password(Some(u)),
@@ -194,7 +200,19 @@ fn remote_line(t: &mut Topology, sim: &mut Sim, cli: &mut Cli, line: &str) -> Ou
             };
             if ok {
                 r.stage = LoginStage::Ready;
+                // A local user with privilege 15 starts in privileged mode.
+                let top = user.as_ref().is_some_and(|u| target.access.users.iter().any(|x| &x.name == u && x.privilege >= 15 && x.matches(line)));
+                if top {
+                    r.cli.mode = Mode::Exec;
+                }
                 return Outcome::default();
+            }
+            if let Some(secs) = sim.login_failed(target.id, target.access.login_block) {
+                cli.remote = None;
+                return Outcome {
+                    output: format!("% Login invalid\n% Too many failed logins: logins are blocked for {secs} seconds"),
+                    ..Outcome::default()
+                };
             }
             r.tries += 1;
             if r.tries >= 3 {
@@ -386,9 +404,15 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, li
     cli.logged_in = true;
     remember(cli, trimmed);
     let before = t.device(dev).cloned();
-    let output = match dispatch(t, sim, dev, cli, trimmed) {
-        Ok(s) => s,
-        Err(e) => e,
+    // `show … | include …`: the command runs, then its output is filtered.
+    let (command, filter) = match crate::pipe::split(trimmed) {
+        Some((c, f)) => (c, Some(f)),
+        None => (trimmed, None),
+    };
+    let output = match (dispatch(t, sim, dev, cli, command), filter) {
+        (Ok(s), Some(f)) => crate::pipe::apply(&s, f).unwrap_or_else(|e| e),
+        (Ok(s), None) => s,
+        (Err(e), _) => e,
     };
     let changed = t.device(dev).cloned() != before;
     if changed {
@@ -561,10 +585,15 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             c.cli.mode = Mode::Config;
             Ok("Configuring from the terminal, one command per line; `end` returns to privileged mode.".into())
         }
-        Id::Ping => c.ping(arg(0), 5),
+        Id::Ping => c.ping(arg(0), 5, None),
         Id::PingRepeat => {
             let n: u16 = arg(1).parse().ok().filter(|n| (1..=1000).contains(n)).ok_or("% Repeat count must be 1-1000")?;
-            c.ping(arg(0), n)
+            c.ping(arg(0), n, None)
+        }
+        Id::PingSize => {
+            let n: usize = arg(1).parse().ok().filter(|n| (36..=18_024).contains(n)).ok_or("% Datagram size 36-18024")?;
+            // The size counts the IP and ICMP headers (28 bytes); the rest is data.
+            c.ping(arg(0), 5, Some(n - 28))
         }
         Id::Traceroute => c.traceroute(arg(0)),
         Id::ShowRun => Ok(render::running_config(c.d()?)),
@@ -575,6 +604,26 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let which = arg(0).to_ascii_lowercase();
             if which.is_empty() {
                 return Ok(full);
+            }
+            // `show ip route A.B.C.D`: the route that address follows.
+            if let Ok(a) = parse_ip(&which) {
+                let d = c.d()?.clone();
+                return Ok(match c.sim.route(c.t, &d, a) {
+                    Some((out, nh)) => {
+                        let line = full
+                            .lines()
+                            .filter(|l| l.len() > 5)
+                            .filter_map(|l| {
+                                let net = l.get(5..)?.split_whitespace().next()?.parse::<Ipv4Net>().ok()?;
+                                net.contains(a).then_some((net.prefix, l))
+                            })
+                            .max_by_key(|x| x.0)
+                            .map_or(String::new(), |x| x.1.to_string());
+                        let via = if nh == a { "directly connected".to_string() } else { format!("via {nh}") };
+                        format!("Routing entry for {a}\n  {line}\n  Out {}, {via}", out.name)
+                    }
+                    None => format!("% {a} is not in the routing table"),
+                });
             }
             // The codes each source shows; the header stays.
             let codes: &[&str] = match () {
@@ -590,6 +639,12 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::ShowInterfaces => Ok(render::interfaces(c.t, c.d()?, None)),
         Id::ShowInterface => {
+            // `show interfaces vlan 1`
+            let lower = arg(0).trim().to_ascii_lowercase();
+            if let Some(v) = lower.strip_prefix("vlan").map(str::trim) {
+                let v: u16 = v.parse().map_err(|_| "% show interfaces vlan <1-4094>")?;
+                return render::svi_interface(c.t, c.d()?, v);
+            }
             // `show interfaces fa0/1 switchport`
             if let Some(name) = arg(0).trim().strip_suffix("switchport").filter(|n| !n.trim().is_empty()) {
                 let r = c.iface_ref(name.trim())?;
@@ -688,6 +743,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let w: Vec<&str> = arg(0).split_whitespace().collect();
             match w.as_slice() {
                 ["length" | "width", n] if n.parse::<u16>().is_ok() => Ok(String::new()),
+                ["history"] | ["history", "size", _] => Ok(String::new()),
                 ["monitor"] | ["no", "monitor"] => Ok(String::new()),
                 _ => Err("% terminal length N, terminal width N or terminal monitor".into()),
             }
@@ -952,7 +1008,21 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::ShowIpv6IntBrief => Ok(render::ipv6_brief(c.t, c.d()?)),
         Id::ShowIpv6Route => {
             let d = c.d()?.clone();
-            Ok(render::ipv6_route(c.t, c.sim, &d))
+            let full = render::ipv6_route(c.t, c.sim, &d);
+            let which = arg(0).to_ascii_lowercase();
+            if which.is_empty() {
+                return Ok(full);
+            }
+            let codes: &[&str] = match () {
+                _ if "connected".starts_with(&which) => &["C ", "L "],
+                _ if "static".starts_with(&which) => &["S "],
+                _ if "ospf".starts_with(&which) => &["O ", "OI ", "OE2"],
+                _ => return Err("% connected, static or ospf".into()),
+            };
+            let mut lines = full.lines();
+            let head: Vec<&str> = lines.by_ref().take_while(|l| l.starts_with("Codes") || l.starts_with("IPv6 forwarding")).collect();
+            let body: Vec<&str> = full.lines().filter(|l| codes.iter().any(|c| l.starts_with(c))).collect();
+            Ok(format!("{}\n{}", head.join("\n"), if body.is_empty() { "(no such routes)".to_string() } else { body.join("\n") }))
         }
         Id::ShowIpv6Neighbors => Ok(render::ipv6_neighbors(c.sim, c.d()?)),
         Id::IpRouting | Id::NoIpRouting => {
@@ -1402,9 +1472,17 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::Username => {
             let name: String = arg(0).chars().take(32).collect();
             let words: Vec<&str> = arg(1).split_whitespace().collect();
+            // `username NAME privilege 15 secret …`: the level comes first.
+            let (privilege, words) = match words.as_slice() {
+                [p, n, rest @ ..] if p.eq_ignore_ascii_case("privilege") => {
+                    let n: u8 = n.parse().ok().filter(|n| *n <= 15).ok_or("% Privilege level 0-15")?;
+                    (n, rest.to_vec())
+                }
+                _ => (1, words),
+            };
             let (kind, rest) = match words.split_first() {
                 Some((k, rest)) => (k.to_ascii_lowercase(), rest.join(" ")),
-                None => return Err("% username <name> secret <password>".into()),
+                None => return Err("% username <name> [privilege N] secret <password>".into()),
             };
             let user = match kind.as_str() {
                 "secret" => {
@@ -1413,10 +1491,16 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                         (_, Some(p)) => secret_hash(p),
                         _ => return Err("% Give a password".into()),
                     };
-                    packetcraft_model::User { name: name.clone(), credential: hash, hashed: true }
+                    if let (None | Some("0"), Some(p)) = password_words(&rest) {
+                        c.check_length(p)?;
+                    }
+                    packetcraft_model::User { name: name.clone(), credential: hash, hashed: true, privilege }
                 }
-                "password" => packetcraft_model::User { name: name.clone(), credential: line_password(&rest)?, hashed: false },
-                "privilege" => return Err("% Privilege levels are not simulated; use `username <name> secret <password>`".into()),
+                "password" => {
+                    let p = line_password(&rest)?;
+                    c.check_length(&p)?;
+                    packetcraft_model::User { name: name.clone(), credential: p, hashed: false, privilege }
+                }
                 _ => return Err("% username <name> secret|password <password>".into()),
             };
             let d = c.dm()?;
@@ -1792,12 +1876,142 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let a = &c.d()?.access;
             Ok(match a.rsa_bits {
                 Some(b) => format!(
-                    "SSH enabled - version {}\nKey size {b} bits\nDomain {}",
+                    "SSH enabled - version {}\nKey size {b} bits\nDomain {}\nLogin time-out {} s, {} password tries",
                     a.ssh_version.unwrap_or(2),
-                    a.domain_name.clone().unwrap_or_default()
+                    a.domain_name.clone().unwrap_or_default(),
+                    a.ssh_timeout.unwrap_or(120),
+                    a.ssh_retries.unwrap_or(3)
                 ),
                 None => "SSH disabled: generate keys with `crypto key generate rsa` (after `ip domain-name`).".into(),
             })
+        }
+        Id::SshTimeout => {
+            let n: u32 = arg(0).parse().ok().filter(|n| (1..=120).contains(n)).ok_or("% 1-120 seconds")?;
+            c.dm()?.access.ssh_timeout = Some(n);
+            Ok(String::new())
+        }
+        Id::SshRetries => {
+            let n: u8 = arg(0).parse().ok().filter(|n| *n <= 5).ok_or("% 0-5 tries")?;
+            c.dm()?.access.ssh_retries = Some(n);
+            Ok(String::new())
+        }
+        Id::ShowSsh => Ok(render::ssh_sessions(c.cli)),
+        Id::SecurityMinLength | Id::NoSecurityMinLength => {
+            let n = if spec.id == Id::SecurityMinLength {
+                Some(arg(0).parse::<u8>().ok().filter(|n| *n <= 16).ok_or("% 0-16 characters")?)
+            } else {
+                None
+            };
+            c.dm()?.access.min_password_len = n.filter(|n| *n > 0);
+            Ok(String::new())
+        }
+        Id::LoginBlockFor | Id::NoLoginBlockFor => {
+            let block = if spec.id == Id::LoginBlockFor {
+                let n = |i: usize| arg(i).parse::<u32>().ok().filter(|n| (1..=65_535).contains(n)).ok_or("% 1-65535");
+                Some((n(0)?, n(1)?, n(2)?))
+            } else {
+                None
+            };
+            c.dm()?.access.login_block = block;
+            Ok(String::new())
+        }
+        Id::IfSpeed => {
+            let words: Vec<String> = line.split_whitespace().map(str::to_ascii_lowercase).collect();
+            let value = if words.first().is_some_and(|w| w == "no") { "auto".to_string() } else { arg(0).to_ascii_lowercase() };
+            let speed = match value.as_str() {
+                "auto" => None,
+                v => Some(v.parse::<u32>().ok().filter(|s| [10, 100, 1000].contains(s)).ok_or("% 10, 100, 1000 or auto")?),
+            };
+            c.each_if(|p, _| {
+                let max = packetcraft_sim::port_max_speed(&p.name).ok_or(format!("% {} has no Ethernet speed to set", p.name))?;
+                if speed.is_some_and(|s| s > max) {
+                    return Err(format!("% {} goes up to {max} Mbit/s", p.name));
+                }
+                p.speed = speed;
+                Ok(())
+            })
+        }
+        Id::IfDuplex => {
+            let words: Vec<String> = line.split_whitespace().map(str::to_ascii_lowercase).collect();
+            let value = if words.first().is_some_and(|w| w == "no") { "auto".to_string() } else { arg(0).to_ascii_lowercase() };
+            let duplex = match value.as_str() {
+                "auto" => None,
+                "full" => Some(packetcraft_model::Duplex::Full),
+                "half" => Some(packetcraft_model::Duplex::Half),
+                _ => return Err("% full, half or auto".into()),
+            };
+            c.each_if(|p, _| {
+                if packetcraft_sim::port_max_speed(&p.name).is_none() {
+                    return Err(format!("% {} has no duplex to set", p.name));
+                }
+                p.duplex = duplex;
+                Ok(())
+            })
+        }
+        Id::IfMdix | Id::NoIfMdix => {
+            let off = spec.id == Id::NoIfMdix;
+            c.each_if(|p, _| {
+                p.mdix_off = off;
+                Ok(())
+            })
+        }
+        Id::ShowProtocols => Ok(render::protocols(c.t, c.d()?)),
+        Id::ShowIntDescription => Ok(render::int_descriptions(c.t, c.d()?)),
+        Id::ShowLogin => Ok(render::login_state(c.d()?, c.sim.login_blocked(c.dev))),
+        Id::ShowPrivilege => Ok(format!("Current privilege level is {}", if c.cli.mode == Mode::User { 1 } else { 15 })),
+        Id::ShowTechSupport => {
+            let d = c.d()?;
+            Ok(format!(
+                "------------------ show version ------------------\n{}\n\n------------------ show running-config ------------------\n{}\n\n------------------ show ip interface brief ------------------\n{}\n\n------------------ show interfaces ------------------\n{}",
+                render::version(c.sim, d),
+                render::running_config(d),
+                render::ip_int_brief(c.t, d),
+                render::interfaces(c.t, d, None)
+            ))
+        }
+        Id::ShowBoot => {
+            let d = c.d()?;
+            Ok(format!(
+                "Boot image: flash:packetcraft-{}-{}.bin\nConfiguration at start-up: {}",
+                d.kind.label().to_lowercase(),
+                env!("CARGO_PKG_VERSION"),
+                if d.startup.is_some() { "startup-config (saved)" } else { "none saved: factory settings" }
+            ))
+        }
+        Id::ShowEnv => Ok("Power supply: OK (simulated)\nFans: OK\nTemperature: normal".into()),
+        Id::ShowInventory => {
+            let d = c.d()?;
+            let m = d.catalogue_model();
+            Ok(format!("NAME: \"{}\", DESCR: \"{}\"\nPID: {}, SN: PC{:08X}", d.name, m.description, m.label, d.id.0))
+        }
+        Id::DeleteVlanDat => {
+            let file = arg(0).trim().to_ascii_lowercase();
+            if !matches!(file.as_str(), "vlan.dat" | "flash:vlan.dat" | "flash:/vlan.dat") {
+                return Err("% Only flash:vlan.dat (the VLAN database) can be deleted here".into());
+            }
+            c.dm()?.vlan_dat_deleted = true;
+            Ok("vlan.dat deleted: the VLANs go back to factory at the next reload.".into())
+        }
+        Id::ShowIpv6Interface => {
+            let r = c.iface_ref(arg(0))?;
+            render::ipv6_interface(c.t, c.d()?, r)
+        }
+        Id::ClearCounters => Ok("Interface counters cleared.".into()),
+        Id::ShowSessions => Ok(match &c.cli.remote {
+            Some(r) => format!(
+                "Conn Host                Protocol\n*  1 {:<19} {}",
+                c.t.device(r.target).map_or("?".to_string(), |d| d.name.clone()),
+                r.proto.name()
+            ),
+            None => "No open sessions.".into(),
+        }),
+        Id::ShowHosts => {
+            let a = &c.d()?.access;
+            Ok(format!(
+                "Default domain: {}\nName lookup: {}",
+                a.domain_name.clone().unwrap_or_else(|| "not set".into()),
+                if a.no_domain_lookup { "off (no ip domain-lookup)" } else { "on (no name servers set)" }
+            ))
         }
         Id::NatSideCmd | Id::NoNatSide => {
             let side = match arg(0).to_ascii_lowercase().as_str() {
@@ -1953,7 +2167,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let p = d.ports.get(r.port).ok_or("% No such port")?;
             let e = packetcraft_model::End { device: d.id, port: r.port };
             Ok(if !packetcraft_model::ifname::is_serial(&p.name) {
-                format!("{}: Ethernet, no clocking", p.name)
+                render::ethernet_controller(c.t, d, r.port)
             } else {
                 match c.t.dce_of(e) {
                     None => format!("{}: no cable attached", p.name),
@@ -2324,7 +2538,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let hash = match password_words(arg(0)) {
                 (Some("5"), Some(h)) if h.starts_with("$pc$") => h.to_string(),
                 (Some("5"), _) => return Err("% Give the secret itself, or a hash PacketCraft wrote (`$pc$…`)".into()),
-                (_, Some(plain)) => secret_hash(plain),
+                (_, Some(plain)) => {
+                    c.check_length(plain)?;
+                    secret_hash(plain)
+                }
                 _ => return Err("% Give a password".into()),
             };
             c.dm()?.access.enable_secret = Some(hash);
@@ -2332,6 +2549,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::EnablePassword => {
             let p = line_password(arg(0))?;
+            c.check_length(&p)?;
             c.dm()?.access.enable_password = Some(p);
             Ok(String::new())
         }
@@ -2362,6 +2580,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::LinePassword | Id::NoLinePassword | Id::Login | Id::NoLogin => {
             let Mode::Line(vty) = c.cli.mode else { return Err("% Not in line mode".into()) };
             let pw = if spec.id == Id::LinePassword { Some(line_password(arg(0))?) } else { None };
+            if let Some(p) = &pw {
+                c.check_length(p)?;
+            }
             let d = c.dm()?;
             let line = if vty { &mut d.access.vty } else { &mut d.access.console };
             match spec.id {
@@ -2797,6 +3018,16 @@ impl Ctx<'_> {
         Ok(String::new())
     }
 
+    /// `security passwords min-length`: a new password must be at least that long.
+    fn check_length(&self, password: &str) -> Result<(), String> {
+        match self.d()?.access.min_password_len {
+            Some(n) if password.chars().count() < usize::from(n) => {
+                Err(format!("% Password too short: at least {n} characters (security passwords min-length)"))
+            }
+            _ => Ok(()),
+        }
+    }
+
     /// Applies `f` to the IPv6 settings of each interface the mode is on (ports, subinterfaces
     /// or a VLAN interface), with the MAC address and name of the interface.
     fn each_v6(&mut self, mut f: impl FnMut(&mut packetcraft_model::Ipv6Conf, packetcraft_core::MacAddr, &str) -> Result<(), String>) -> R {
@@ -3068,8 +3299,11 @@ impl Ctx<'_> {
         self.d()?.ports.get(r.port).map(|p| p.name.clone()).ok_or_else(|| "% No such port".into())
     }
 
-    fn ping(&mut self, target: &str, count: u16) -> R {
-        let opts = PingOptions { count, ..PingOptions::default() };
+    fn ping(&mut self, target: &str, count: u16, data: Option<usize>) -> R {
+        let mut opts = PingOptions { count, ..PingOptions::default() };
+        if let Some(n) = data {
+            opts.size = n;
+        }
         if let Ok(dst6) = target.parse::<std::net::Ipv6Addr>() {
             let probes = self.sim.ping6(self.t, self.dev, dst6, opts).map_err(|e| format!("% {e}"))?;
             return Ok(render::ping(dst6.into(), &probes, opts));
@@ -3091,6 +3325,12 @@ impl Ctx<'_> {
 
     fn reload(&mut self) -> R {
         let startup = self.d()?.startup.clone();
+        let d = self.dm()?;
+        if d.vlan_dat_deleted {
+            d.vlans.clear();
+            d.vlan_dat_deleted = false;
+            d.ensure_default_vlan();
+        }
         self.dm()?.reset_config();
         self.sim.reset_device(self.dev);
         self.cli.mode = Mode::User;

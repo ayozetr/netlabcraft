@@ -20,15 +20,15 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 | Number | Value | Kind |
 |---|---|---|
-| **Ready for real work** (weighted) | **~68%** | estimated from written weights (68.1); [target-app-parity.md](docs/target-app-parity.md) |
-| **CCNA 1 student** | **~80%** | estimated; [method](docs/target-app-parity.md#audiences) |
+| **Ready for real work** (weighted) | **~69%** | estimated from written weights (69.3); [target-app-parity.md](docs/target-app-parity.md) |
+| **CCNA 1 student** | **~84%** | estimated; [method](docs/target-app-parity.md#audiences) |
 | **CCNA 2 student** | **~84%** | estimated |
 | **CCNA 3 student** | **~70%** | estimated |
 | **Instructor** (graded activities) | **~60%** | estimated |
 | Engine commands | 52 | measured: `crates/engine/src/catalog.rs` |
 | Console grammar entries | 351 across 13 modes | measured: `crates/ios/src/grammar.rs` |
 | Device models · sample labs | 16 · 18 | measured |
-| Tests | 155 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Tests | 157 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~600–950 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
@@ -36,7 +36,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Audience | Ready % | Opus 5.5 agent wall-clock hours to ~95% | Work that dominates |
 |---|---|---|---|
 | Full target | ~58% | ~480–780 | More device families, physical workspace, email and SNMP, EIGRP/VPN/QoS, WLC |
-| CCNA 1 student | ~80% | ~20–40 | Walking the CCNA 1 labs command by command, PDU details, email |
+| CCNA 1 student | ~84% | ~15–30 | PDU details, email, a few host apps |
 | CCNA 2 student | ~84% | ~30–55 | WLC and 802.11 frames, console polish |
 | CCNA 3 student | ~70% | ~80–130 | VPN/GRE, QoS, SNMP, TACACS+, automation |
 | Instructor | ~60% | ~35–60 | Variables per student, an answer network to compare against, translated activity texts |
@@ -45,7 +45,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 | Dimension | Weight | Ready | Hours to ~95% | State |
 |---|---|---|---|---|
-| Device console | 20 | 68% | 45–70 | Modes, abbreviations, `?`, Tab, history, config round-trip; `show` coverage growing |
+| Device console | 20 | 74% | 35–55 | Modes, abbreviations, `?`, Tab, history, config round-trip; `show` coverage growing |
 | Layer 2 | 12 | 85% | 12–20 | VLANs, trunks, DTP, per-VLAN STP with BPDUs and timers, rapid-pvst, EtherChannel, VTP, port security |
 | Layer 3 | 15 | 78% | 30–50 | IPv4, IPv6 (NDP, SLAAC, subinterfaces, VLAN interfaces, DHCPv6 relay), static, RIP, multi-area OSPF with DR/BDR, stub areas and ranges, OSPFv3, multilayer switching with OSPF and RIP, HSRP; no EIGRP |
 | Services | 8 | 70% | 18–30 | DHCPv4 and DHCPv6 (with relay), DNS, HTTP with browser, Telnet/SSH, NTP, syslog, TFTP, FTP, AAA with RADIUS; no email, SNMP, TACACS+ |
@@ -60,6 +60,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-10-30 — CCNA 1 lab commands.** Output filters (`show running-config | include …`, `section`, `begin`), `security passwords min-length`, `login block-for`, `username … privilege 15`, `speed`/`duplex`/`mdix auto` (a speed mismatch takes the link down), `delete vlan.dat`, and many more `show` commands; VLANs now live in the VLAN database as on real switches.
 - **2026-10-30 — Home wireless router.** A Home-Router model: Internet port, four LAN ports and Wi-Fi, handing out addresses and translating to the Internet out of the box, with a Home Router settings page; multilayer switches also do NAT, DHCP server and ACLs.
 - **2026-10-30 — Sample labs in Spanish.** The sample labs' titles, descriptions and notes, the sample activity and the status messages built from parts read in Spanish too.
 - **2026-10-30 — App icon and Linux install.** PacketCraft has its own icon (window, menu, web tab) and `packaging/linux/install.sh` puts it in the desktop menu with `.pcraft` files opening in it.

@@ -1824,3 +1824,92 @@ fn spanning_tree_timers_by_typing() {
     assert!(lab.run(a, "ping 10.0.0.3").contains("answered") && !lab.run(a, "ping 10.0.0.3").contains(" 0 answered"));
     assert!(lab.run(s1, "show running-config").contains("spanning-tree mode rapid-pvst"));
 }
+
+#[test]
+fn ccna1_lab_commands_by_typing() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let s = lab.add(DeviceKind::Switch);
+    let pc = lab.add(DeviceKind::Pc);
+    lab.cable(r, "g0/0", s, "g0/1");
+    lab.cable(pc, "fa0", s, "fa0/1");
+    lab.run(pc, "ipconfig 192.168.1.10 255.255.255.0 192.168.1.1");
+    lab.run(r, "en\nconf t\nint g0/0\nip address 192.168.1.1 255.255.255.0\nno shut\nend");
+    // Output filters.
+    assert_eq!(lab.run(r, "show running-config | include ip address 192"), " ip address 192.168.1.1 255.255.255.0");
+    assert!(lab.run(r, "show running-config | section line").starts_with("line con 0"));
+    assert!(lab.run(r, "sh ip int br | i up").contains("GigabitEthernet0/0"));
+    assert!(lab.try_run(r, "show running-config | grep x").contains("include, exclude"));
+    // Password rules: a minimum length, then a privilege-15 user who lands in privileged mode.
+    lab.run(r, "conf t\nsecurity passwords min-length 8");
+    assert!(lab.try_run(r, "enable secret short").contains("too short"));
+    lab.run(r, "enable secret longenough\nusername admin privilege 15 secret adminpass1\nline vty 0 4\nlogin local\nexit\nlogin block-for 60 attempts 2 within 30\nend");
+    let run = lab.run(r, "show running-config");
+    assert!(
+        run.contains("username admin privilege 15 secret 5")
+            && run.contains("security passwords min-length 8")
+            && run.contains("login block-for 60 attempts 2 within 30"),
+        "{run}"
+    );
+    lab.try_run(pc, "telnet 192.168.1.1");
+    lab.try_run(pc, "admin");
+    assert_eq!(lab.try_run(pc, "adminpass1"), "");
+    assert_eq!(lab.prompt(pc), "R1#", "privilege 15 starts in privileged mode");
+    lab.try_run(pc, "exit");
+    // Two failures in the window: logins blocked for a minute.
+    lab.try_run(pc, "telnet 192.168.1.1");
+    lab.try_run(pc, "admin");
+    lab.try_run(pc, "bad");
+    lab.try_run(pc, "admin");
+    assert!(lab.try_run(pc, "bad").contains("blocked for 60 seconds"));
+    assert!(lab.try_run(pc, "telnet 192.168.1.1").contains("Logins are blocked"));
+    assert!(lab.run(r, "show login").contains("Quiet mode"));
+    lab.sim.run_for(&lab.t, 61_000_000);
+    assert!(lab.try_run(pc, "telnet 192.168.1.1").contains("Open"));
+    lab.try_run(pc, "admin");
+    lab.try_run(pc, "adminpass1");
+    lab.try_run(pc, "exit");
+    // Speed: a fixed mismatch takes the link down; the far end follows a fixed speed.
+    lab.run(s, "en\nconf t\nint g0/1\nspeed 100\nduplex full\nend");
+    assert!(lab.run(r, "show interfaces g0/0").contains("Full-duplex, 100 Mb/s"));
+    lab.run(r, "conf t\nint g0/0\nspeed 1000\nend");
+    assert!(lab.run(r, "show interfaces g0/0").contains("speed mismatch"));
+    assert!(lab.try_run(r, "ping 192.168.1.10").contains("0 answered") || lab.try_run(r, "ping 192.168.1.10").contains("% "));
+    lab.run(r, "conf t\nint g0/0\nspeed auto\nend");
+    assert!(lab.run(s, "show controllers g0/1").contains("link up, 100 Mb/s"));
+    lab.run(s, "conf t\nint fa0/1");
+    assert!(lab.try_run(s, "speed 1000").contains("up to 100"));
+    lab.run(s, "end");
+    // Routes and pings.
+    let rt = lab.run(r, "show ip route 192.168.1.10");
+    assert!(rt.contains("Routing entry for 192.168.1.10") && rt.contains("GigabitEthernet0/0, directly connected"), "{rt}");
+    lab.run(r, "ping 192.168.1.10");
+    assert!(lab.run(r, "ping 192.168.1.10 size 1500").contains("answered"));
+    // VLAN database: gone at the next reload.
+    lab.run(s, "conf t\nvlan 30\nend\ncopy running-config startup-config");
+    assert!(lab.run(s, "show flash").contains("vlan.dat"));
+    lab.run(s, "delete flash:vlan.dat");
+    assert!(lab.run(s, "show vlan brief").contains("VLAN0030"), "until the reload");
+    lab.run(s, "reload");
+    lab.run(s, "en");
+    assert!(!lab.run(s, "show vlan brief").contains("VLAN0030"));
+    for cmd in [
+        "show protocols",
+        "show interfaces description",
+        "show privilege",
+        "show tech-support",
+        "show boot",
+        "show environment",
+        "show inventory",
+        "show ssh",
+        "show sessions",
+        "show hosts",
+        "clear counters",
+        "show interfaces vlan 1",
+        "show mac address-table dynamic",
+        "terminal history size 50",
+    ] {
+        let out = lab.try_run(s, cmd);
+        assert!(!out.starts_with("% ") || cmd.contains("vlan 1"), "{cmd}: {out}");
+    }
+}

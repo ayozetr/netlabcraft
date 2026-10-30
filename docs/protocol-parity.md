@@ -1,6 +1,6 @@
 # Protocol and command parity
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (`debug ip packet`, `debug ip nat`, `debug ip dhcp server events`) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (CCNA 1 lab commands: output filters, password rules, speed and duplex, more `show`) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 What the simulated devices do, protocol by protocol, against the reference app. Part of
 [target-app-parity.md](target-app-parity.md). Behaviour comes from the standards named in each
@@ -79,7 +79,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | `access-class` on vty lines | ✅ | Telnet/SSH logins refused (TCP reset) when the list denies the source; counted in `show access-lists`. |
 | IPv6 ACLs | ✅ | `ipv6 access-list` with `permit|deny ipv6|icmp|tcp|udp` and any/host/prefix addresses and ports, `ipv6 traffic-filter in|out`, neighbour discovery passes implicitly, `show ipv6 access-list` with matches; denied packets get an administratively-prohibited unreachable. |
 | NAT: static, pool, PAT (overload) | ✅ | ICMP, UDP and TCP; `show ip nat translations`. ICMP errors about translated packets are translated back (traceroute works through PAT). |
-| Passwords and lines | ✅ | `enable secret/password`, console and vty passwords with real prompts, `banner motd`, `service password-encryption`. |
+| Passwords and lines | ✅ | `enable secret/password`, console and vty passwords with real prompts, `banner motd`, `service password-encryption`, `security passwords min-length`, `login block-for … attempts … within …` (`show login`), `username … privilege 15` (logs in to privileged mode), `ip ssh time-out` and `authentication-retries`. |
 | PPP authentication (PAP/CHAP) | ✅ | `ppp authentication chap|pap` (one or both, in order), `ppp pap sent-username`, checked against `username` entries (CHAP: both routers name each other with the same secret); failure keeps the line protocol down and `show interfaces` says why. No LCP/CHAP frames on the wire. |
 | ASA firewall, zone-based firewall, VPN (GRE/IPsec) | ❌ | 40–60 h. |
 
@@ -100,7 +100,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | Modes: user, privileged, global, interface, subinterface, range, VLAN, line, DHCP pool, router OSPF/RIP, ACL, VLAN interface | ✅ | Prompts follow the usual `name>`, `name#`, `name(config)#` convention. |
 | Abbreviations, `?` help, Tab completion, history, `do` | ✅ | Ambiguity and unknown-word errors point at the word. |
 | Running/startup config, `write`, `copy`, `erase`, `reload` | ✅ | Configuration round-trips through the same dispatcher (tested). |
-| `show` coverage | 🟡 | Interfaces (also `status`, `X switchport`), IP/IPv6 interface and routes, ARP, MAC table, VLANs, trunks, STP, EtherChannel, VTP, port security, OSPF (also `interface`), RIP, DHCP, NAT, ACLs, SSH, controllers, CDP, LLDP, HSRP (`standby`), logging, version, flash, clock, users, history, processes, memory, `running-config interface X`. Missing: going through the CCNA 1 labs command by command: 4–8 h. |
+| `show` coverage | 🟡 | Interfaces (also `status`, `X switchport`), IP/IPv6 interface and routes, ARP, MAC table, VLANs, trunks, STP, EtherChannel, VTP, port security, OSPF (also `interface`), RIP, DHCP, NAT, ACLs, SSH, controllers (Ethernet and serial), CDP, LLDP, HSRP (`standby`), logging, version, flash, clock, users, history, processes, memory, protocols, `interfaces description`, `interfaces vlan N`, `ipv6 interface X`, `ip route A.B.C.D` and by source, login, privilege, ssh, sessions, hosts, boot, environment, inventory, tech-support, `running-config interface X`; output filters `| include`, `exclude`, `begin`, `section`, `count`. Missing: `show ip traffic`, `show tcp`, interface counters: 2–4 h. |
 | CDP | 🟡 | `cdp run`, `cdp enable`, `show cdp`, `show cdp neighbors [detail]`; computed, no advertisement frames (the CDP frame format is proprietary). |
 | LLDP (IEEE 802.1AB) | ✅ | `lldp run`, `lldp transmit`/`receive` per port, `show lldp`, `show lldp neighbors [detail]`, `show lldp entry *`; real LLDP frames every 30 s in Simulation mode and captures. |
 | `clock set`, `terminal`, `debug` | 🟡 | `clock set` and `show clock` (per device, advances with simulated time, lost on reload); `terminal length/width/monitor` accepted (output is never paged); `debug ip icmp`, `debug ip rip`, `debug ip ospf adj|events|hello` (the hellos heard), `debug ip packet` (each routed or dropped packet), `debug ip nat` (new translations), `debug ip dhcp server events` (leases given and released), `undebug all`, `show debugging`. |
@@ -121,6 +121,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | 2026-10-30 | minor | HSRP. |
 | 2026-10-30 | minor | Logging buffer and console messages; `debug ip icmp`. |
 | 2026-10-30 | minor | BPDUs, OSPF hellos and RIP updates on the wire, so Simulation mode and captures show them. |
+| 2026-10-30 | minor | CCNA 1 lab commands: output filters, password rules, login blocking, privilege 15 users, speed/duplex/mdix (a speed mismatch takes the link down), many `show` commands, `delete vlan.dat`; VLANs live in the VLAN database, not the configuration (except VTP transparent). |
 | 2026-10-30 | minor | `debug ip packet`, `debug ip nat`, `debug ip dhcp server events`. |
 | 2026-10-30 | minor | FTP. |
 | 2026-10-30 | minor | AAA with RADIUS. |

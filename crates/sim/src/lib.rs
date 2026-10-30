@@ -142,7 +142,41 @@ pub fn port_up(t: &Topology, end: End) -> bool {
     if is_ap_radio(t, end) {
         return own && !t.wifi_clients(end).is_empty();
     }
-    own && t.peer(end).and_then(|p| t.device(p.device).and_then(|d| d.ports.get(p.port))).is_some_and(ok) && serial_problem(t, end).is_none()
+    own && t.peer(end).and_then(|p| t.device(p.device).and_then(|d| d.ports.get(p.port))).is_some_and(ok)
+        && serial_problem(t, end).is_none()
+        && !speed_mismatch(t, end)
+}
+
+/// The fastest an Ethernet port goes, in Mbit/s, from its type (`None`: not Ethernet).
+pub fn port_max_speed(name: &str) -> Option<u32> {
+    match packetcraft_model::ifname::parse(name)?.kind {
+        "GigabitEthernet" => Some(1000),
+        "FastEthernet" | "Ethernet" | "Internet" => Some(100),
+        _ => None,
+    }
+}
+
+/// Both ends set to different fixed speeds: no link.
+pub fn speed_mismatch(t: &Topology, end: End) -> bool {
+    let port = |e: End| t.device(e.device).and_then(|d| d.ports.get(e.port));
+    match (port(end).and_then(|p| p.speed), t.peer(end).and_then(port).and_then(|p| p.speed)) {
+        (Some(a), Some(b)) => a != b,
+        _ => false,
+    }
+}
+
+/// What an Ethernet link runs at: the fixed speed of either end, else the fastest both ends
+/// manage; full duplex unless this end is set to half. `None` when the link is down or not
+/// Ethernet.
+pub fn link_speed(t: &Topology, end: End) -> Option<(u32, packetcraft_model::Duplex)> {
+    let port = |e: End| t.device(e.device).and_then(|d| d.ports.get(e.port));
+    let p = port(end)?;
+    let q = port(t.peer(end)?)?;
+    if !port_up(t, end) {
+        return None;
+    }
+    let speed = p.speed.or(q.speed).unwrap_or(port_max_speed(&p.name)?.min(port_max_speed(&q.name)?));
+    Some((speed, p.duplex.unwrap_or(packetcraft_model::Duplex::Full)))
 }
 
 /// Whether a port is an access point's radio.
@@ -543,6 +577,9 @@ pub struct DevState {
     tftp_inbox: Vec<packetcraft_wire::mgmt::Tftp>,
     /// A RADIUS client waiting on this port, and the answers that came.
     radius_port: Option<u16>,
+    /// Failed remote logins (simulated µs), for `login block-for`, and when the block ends.
+    login_failures: Vec<u64>,
+    login_blocked_until: u64,
     radius_inbox: Vec<packetcraft_wire::radius::Radius>,
     /// FTP server connections.
     pub(crate) ftp: ftp::ServerState,
@@ -739,6 +776,29 @@ impl Sim {
         if let Some(s) = self.state.get_mut(&d) {
             s.log.clear();
         }
+    }
+
+    /// Seconds left of a `login block-for` quiet period on a device (`None`: logins allowed).
+    pub fn login_blocked(&self, d: DeviceId) -> Option<u64> {
+        let until = self.state.get(&d)?.login_blocked_until;
+        (until > self.now).then(|| (until - self.now).div_ceil(1_000_000))
+    }
+
+    /// Records a failed remote login; with `login block-for`, enough failures in the window start
+    /// the quiet period. Returns its length in seconds when it starts.
+    pub fn login_failed(&mut self, d: DeviceId, block: Option<(u32, u32, u32)>) -> Option<u32> {
+        let now = self.now;
+        let st = self.st(d);
+        let (secs, attempts, within) = block?;
+        let window = u64::from(within).saturating_mul(1_000_000);
+        st.login_failures.retain(|t| now.saturating_sub(*t) < window);
+        st.login_failures.push(now);
+        if st.login_failures.len() >= attempts.max(1) as usize {
+            st.login_failures.clear();
+            st.login_blocked_until = now.saturating_add(u64::from(secs).saturating_mul(1_000_000));
+            return Some(secs);
+        }
+        None
     }
 
     pub fn set_debug(&mut self, d: DeviceId, what: DebugKind, on: bool) {
@@ -1213,7 +1273,7 @@ impl Sim {
         self.ospf.as_ref().and_then(|s| s.routes.get(&d.id).cloned()).unwrap_or_default()
     }
 
-    fn route(&mut self, t: &Topology, d: &Device, dst: Ipv4Addr) -> Option<(L3If, Ipv4Addr)> {
+    pub fn route(&mut self, t: &Topology, d: &Device, dst: Ipv4Addr) -> Option<(L3If, Ipv4Addr)> {
         let o = self.ospf_routes(t, d);
         let r = self.rip_routes(t, d);
         route_with(t, d, dst, &o, &r)

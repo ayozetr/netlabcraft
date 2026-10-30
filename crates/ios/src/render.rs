@@ -53,10 +53,11 @@ pub fn running_config(d: &Device) -> String {
         let _ = writeln!(s, "ip domain-name {dn}");
     }
     for u in &a.users {
+        let level = if u.privilege == 1 { String::new() } else { format!(" privilege {}", u.privilege) };
         if u.hashed {
-            let _ = writeln!(s, "username {} secret 5 {}", u.name, u.credential);
+            let _ = writeln!(s, "username {}{level} secret 5 {}", u.name, u.credential);
         } else {
-            let _ = writeln!(s, "username {} password {}", u.name, pw(&u.credential));
+            let _ = writeln!(s, "username {}{level} password {}", u.name, pw(&u.credential));
         }
     }
     if let Some(b) = a.rsa_bits {
@@ -64,6 +65,18 @@ pub fn running_config(d: &Device) -> String {
     }
     if let Some(v) = a.ssh_version {
         let _ = writeln!(s, "ip ssh version {v}");
+    }
+    if let Some(n) = a.ssh_timeout {
+        let _ = writeln!(s, "ip ssh time-out {n}");
+    }
+    if let Some(n) = a.ssh_retries {
+        let _ = writeln!(s, "ip ssh authentication-retries {n}");
+    }
+    if let Some(n) = a.min_password_len {
+        let _ = writeln!(s, "security passwords min-length {n}");
+    }
+    if let Some((b, n, w)) = a.login_block {
+        let _ = writeln!(s, "login block-for {b} attempts {n} within {w}");
     }
     if a.aaa {
         let _ = writeln!(s, "aaa new-model");
@@ -125,8 +138,9 @@ pub fn running_config(d: &Device) -> String {
     if !d.stp_priority.is_empty() {
         let _ = writeln!(s, "!");
     }
-    // A VTP client's VLANs come from its domain, not from its configuration.
-    if d.kind == DeviceKind::Switch && d.vtp.mode != packetcraft_model::VtpMode::Client {
+    // VLANs live in the VLAN database (vlan.dat), not in the configuration: only a VTP
+    // transparent switch writes them there.
+    if d.kind == DeviceKind::Switch && d.vtp.mode == packetcraft_model::VtpMode::Transparent {
         for (v, name) in &d.vlans {
             if *v == VlanId::DEFAULT {
                 continue;
@@ -145,6 +159,21 @@ pub fn running_config(d: &Device) -> String {
         }
         if p.cdp_off {
             let _ = writeln!(s, " no cdp enable");
+        }
+        if let Some(sp) = p.speed {
+            let _ = writeln!(s, " speed {sp}");
+        }
+        match p.duplex {
+            Some(packetcraft_model::Duplex::Full) => {
+                let _ = writeln!(s, " duplex full");
+            }
+            Some(packetcraft_model::Duplex::Half) => {
+                let _ = writeln!(s, " duplex half");
+            }
+            None => {}
+        }
+        if p.mdix_off {
+            let _ = writeln!(s, " no mdix auto");
         }
         if p.lldp_tx_off {
             let _ = writeln!(s, " no lldp transmit");
@@ -409,10 +438,8 @@ pub fn running_config(d: &Device) -> String {
     if !a.banner_motd.is_empty() {
         let _ = writeln!(s, "banner motd ^{}^\n!", a.banner_motd.replace('^', ""));
     }
+    // The line blocks are always written, configured or not, as on real devices.
     for (name, line) in [("line con 0", &a.console), ("line vty 0 4", &a.vty)] {
-        if line.password.is_none() && !line.login && !line.login_local && line.transport.is_none() {
-            continue;
-        }
         let _ = writeln!(s, "{name}");
         if let Some(p) = &line.password {
             let _ = writeln!(s, " password {}", pw(p));
@@ -531,6 +558,8 @@ pub fn interfaces(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
             "down (no cable)".to_string()
         } else if let Some(why) = packetcraft_sim::serial_problem(t, end) {
             format!("up, line protocol down ({why})")
+        } else if packetcraft_sim::speed_mismatch(t, end) {
+            "down (speed mismatch with the far end)".to_string()
         } else {
             "down (far end shut down)".to_string()
         };
@@ -546,6 +575,10 @@ pub fn interfaces(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
             }
             if let Some(ip) = p.ip {
                 let _ = writeln!(s, "  Internet address {ip}");
+            }
+            if let Some((speed, duplex)) = packetcraft_sim::link_speed(t, end) {
+                let half = duplex == packetcraft_model::Duplex::Half;
+                let _ = writeln!(s, "  {}-duplex, {speed} Mb/s", if half { "Half" } else { "Full" });
             }
             if let Some(peer) = t.peer(end) {
                 let _ = writeln!(s, "  Cabled to {}", t.end_label(peer));
@@ -1379,7 +1412,7 @@ pub fn switchport(t: &Topology, d: &Device, port: usize) -> Result<String, Strin
 pub fn flash(d: &Device) -> String {
     let kind = d.kind.label().to_lowercase();
     let mut files = vec![(format!("packetcraft-{kind}-{}.bin", env!("CARGO_PKG_VERSION")), 33_591_768u64)];
-    if d.kind == DeviceKind::Switch && d.vlans.len() > 1 {
+    if d.kind == DeviceKind::Switch && d.vlans.len() > 1 && !d.vlan_dat_deleted {
         files.push(("vlan.dat".into(), 616 + 32 * d.vlans.len() as u64));
     }
     let mut s = format!("{:<4} {:>10}  {}\n", "#", "Bytes", "Name");
@@ -1389,6 +1422,167 @@ pub fn flash(d: &Device) -> String {
     let used: u64 = files.iter().map(|f| f.1).sum();
     let _ = write!(s, "{} bytes free of 268435456", 268_435_456u64.saturating_sub(used));
     s
+}
+
+/// `show interfaces vlan N`.
+pub fn svi_interface(t: &Topology, d: &Device, vlan: u16) -> Result<String, String> {
+    let svi = d.svis.iter().find(|s| s.vlan.get() == vlan).ok_or(format!("% No interface Vlan{vlan} (create it with `interface vlan {vlan}`)"))?;
+    let up = packetcraft_sim::up_ifaces(t, d).iter().any(|i| i.name == format!("Vlan{vlan}"));
+    let state = if svi.shutdown {
+        "administratively down"
+    } else if up {
+        "up"
+    } else {
+        "down (no port of the VLAN is up)"
+    };
+    let mut s = format!("Vlan{vlan} is {state}\n  Hardware address {}\n", packetcraft_sim::svi_mac(d));
+    if !svi.description.is_empty() {
+        let _ = writeln!(s, "  Description: {}", svi.description);
+    }
+    let _ = write!(s, "  Internet address {}", svi.ip.map_or("not set".to_string(), |n| n.to_string()));
+    Ok(s)
+}
+
+/// `show controllers` on an Ethernet port.
+pub fn ethernet_controller(t: &Topology, d: &Device, port: usize) -> String {
+    let Some(p) = d.ports.get(port) else { return String::new() };
+    let end = End { device: d.id, port };
+    let link = match packetcraft_sim::link_speed(t, end) {
+        Some((sp, du)) => format!("link up, {sp} Mb/s, {} duplex", if du == packetcraft_model::Duplex::Half { "half" } else { "full" }),
+        None => "no link".into(),
+    };
+    let set = |o: Option<String>| o.unwrap_or_else(|| "auto".into());
+    format!(
+        "{}: Ethernet, {link}\n  Speed set to {}, duplex set to {}\n  Auto-MDIX {}",
+        p.name,
+        set(p.speed.map(|x| format!("{x} Mb/s"))),
+        set(p.duplex.map(|x| if x == packetcraft_model::Duplex::Half { "half".into() } else { "full".into() })),
+        if p.mdix_off { "off" } else { "on" }
+    )
+}
+
+/// `show ssh`.
+pub fn ssh_sessions(cli: &crate::Cli) -> String {
+    if cli.vty {
+        "Connection Version State\n0          2.0     Session started (this session, if over SSH)".into()
+    } else {
+        "No SSH sessions are open to this console.".into()
+    }
+}
+
+/// `show protocols`.
+pub fn protocols(t: &Topology, d: &Device) -> String {
+    let mut s = format!("Global values:\n  Internet Protocol routing is {}\n", if d.routes_ip() { "enabled" } else { "disabled" });
+    for (i, p) in d.ports.iter().enumerate() {
+        let end = End { device: d.id, port: i };
+        let state = if p.shutdown {
+            "administratively down"
+        } else if port_up(t, end) {
+            "up"
+        } else {
+            "down"
+        };
+        let _ = writeln!(s, "{} is {state}, line protocol is {}", p.name, if port_up(t, end) { "up" } else { "down" });
+        if let Some(ip) = p.ip {
+            let _ = writeln!(s, "  Internet address is {ip}");
+        }
+    }
+    for svi in &d.svis {
+        let _ = writeln!(s, "Vlan{} is {}", svi.vlan, if svi.shutdown { "administratively down" } else { "up" });
+        if let Some(ip) = svi.ip {
+            let _ = writeln!(s, "  Internet address is {ip}");
+        }
+    }
+    s.trim_end().to_string()
+}
+
+/// `show interfaces description`.
+pub fn int_descriptions(t: &Topology, d: &Device) -> String {
+    let mut s = format!("{:<12} {:<22} {:<9} {}\n", "Interface", "Status", "Protocol", "Description");
+    for (i, p) in d.ports.iter().enumerate() {
+        let end = End { device: d.id, port: i };
+        let up = port_up(t, end);
+        let status = if p.shutdown {
+            "admin down"
+        } else if up {
+            "up"
+        } else {
+            "down"
+        };
+        let _ = writeln!(s, "{:<12} {:<22} {:<9} {}", ifname::short(&p.name), status, if up { "up" } else { "down" }, p.description);
+        for sub in &p.subifs {
+            let _ = writeln!(
+                s,
+                "{:<12} {:<22} {:<9} {}",
+                format!("{}.{}", ifname::short(&p.name), sub.number),
+                status,
+                if up { "up" } else { "down" },
+                sub.description
+            );
+        }
+    }
+    for svi in &d.svis {
+        let _ = writeln!(s, "{:<12} {:<22} {:<9} {}", format!("Vl{}", svi.vlan), if svi.shutdown { "admin down" } else { "up" }, "", svi.description);
+    }
+    s.trim_end().to_string()
+}
+
+/// `show login`.
+pub fn login_state(d: &Device, blocked: Option<u64>) -> String {
+    match (d.access.login_block, blocked) {
+        (None, _) => "No login blocking is configured (`login block-for`).".into(),
+        (Some((b, n, w)), None) => {
+            format!("Logins are blocked for {b} s after {n} failures within {w} s.\nRouter presently in Normal mode: logins accepted.")
+        }
+        (Some((b, n, w)), Some(left)) => format!(
+            "Logins are blocked for {b} s after {n} failures within {w} s.\nRouter presently in Quiet mode: logins refused for {left} more seconds."
+        ),
+    }
+}
+
+/// `show ipv6 interface X`.
+pub fn ipv6_interface(t: &Topology, d: &Device, r: IfRef) -> Result<String, String> {
+    let p = d.ports.get(r.port).ok_or("% No such port")?;
+    let name = r.sub.map_or(p.name.clone(), |n| format!("{}.{n}", p.name));
+    let up = port_up(t, End { device: d.id, port: r.port });
+    let Some(ifc) = packetcraft_sim::v6::l3_ifaces6(d).into_iter().find(|i| i.name == name) else {
+        return Ok(format!("{name} is {}: IPv6 is not enabled on it", if up { "up" } else { "down" }));
+    };
+    let mut s = format!(
+        "{name} is {}, line protocol is {}\n",
+        if p.shutdown {
+            "administratively down"
+        } else if up {
+            "up"
+        } else {
+            "down"
+        },
+        if up { "up" } else { "down" }
+    );
+    let _ = writeln!(s, "  IPv6 is enabled, link-local address is {}", ifc.link_local);
+    let _ = writeln!(s, "  Global unicast address(es):");
+    for a in &ifc.addresses {
+        let _ = writeln!(s, "    {}, subnet is {}", a.addr, a.network());
+    }
+    let _ = writeln!(s, "  Joined group address(es):\n    FF02::1");
+    if packetcraft_sim::v6::routes6(d) {
+        let _ = writeln!(s, "    FF02::2");
+    }
+    for a in ifc.addresses.iter().map(|n| n.addr).chain([ifc.link_local]) {
+        let _ = writeln!(s, "    {}", packetcraft_wire_solicited(a));
+    }
+    if packetcraft_sim::v6::routes6(d) {
+        let _ = write!(s, "  Router advertisements are sent; hosts use them to autoconfigure");
+    } else {
+        let _ = write!(s, "  Not routing IPv6 (no `ipv6 unicast-routing`)");
+    }
+    Ok(s)
+}
+
+/// The solicited-node group of an address (`FF02::1:FFxx:xxxx`), as `show ipv6 interface` lists it.
+fn packetcraft_wire_solicited(a: std::net::Ipv6Addr) -> String {
+    let o = a.octets();
+    format!("FF02::1:FF{:02X}:{:X}", o[13], u16::from_be_bytes([o[14], o[15]]))
 }
 
 /// `show users`.

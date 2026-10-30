@@ -13,6 +13,7 @@ mod clock;
 mod exec;
 pub mod grammar;
 pub mod host;
+mod pipe;
 mod render;
 
 #[cfg(test)]

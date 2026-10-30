@@ -513,6 +513,15 @@ pub struct Port {
     /// `no lldp receive`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub lldp_rx_off: bool,
+    /// `speed 10|100|1000` in Mbit/s (`None`: auto).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speed: Option<u32>,
+    /// `duplex full|half` (`None`: auto).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duplex: Option<Duplex>,
+    /// `no mdix auto`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub mdix_off: bool,
     /// Multilayer switches: `no switchport` made this a routed port (it takes `ip address`).
     #[serde(default)]
     pub routed: bool,
@@ -775,6 +784,9 @@ pub struct Device {
     /// Routers and switches: `ip ftp username` and `ip ftp password`, for `copy … ftp:`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ftp_login: Option<(String, String)>,
+    /// Switches: `delete vlan.dat` ran; the VLAN database goes back to factory at the next reload.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub vlan_dat_deleted: bool,
 }
 
 /// Which side of NAT an interface is on.
@@ -1092,6 +1104,25 @@ pub struct User {
     pub credential: String,
     #[serde(default)]
     pub hashed: bool,
+    /// `privilege 15`: the user logs in straight to privileged mode (1 otherwise).
+    #[serde(default = "user_privilege", skip_serializing_if = "is_user_privilege")]
+    pub privilege: u8,
+}
+
+fn user_privilege() -> u8 {
+    1
+}
+
+fn is_user_privilege(p: &u8) -> bool {
+    *p == 1
+}
+
+/// `duplex full` / `duplex half`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Duplex {
+    Full,
+    Half,
 }
 
 impl User {
@@ -1149,6 +1180,18 @@ pub struct Access {
     /// `radius-server host A.B.C.D key K`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub radius_servers: Vec<(Ipv4Addr, String)>,
+    /// `security passwords min-length N`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_password_len: Option<u8>,
+    /// `login block-for S attempts N within W`: (block seconds, attempts, window seconds).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub login_block: Option<(u32, u32, u32)>,
+    /// `ip ssh time-out S`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssh_timeout: Option<u32>,
+    /// `ip ssh authentication-retries N`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssh_retries: Option<u8>,
 }
 
 /// A way to check a login, in an AAA method list.
@@ -1245,6 +1288,9 @@ impl Device {
                 cdp_off: false,
                 lldp_tx_off: false,
                 lldp_rx_off: false,
+                speed: None,
+                duplex: None,
+                mdix_off: false,
                 routed: false,
                 err_disabled: false,
                 helpers: Vec::new(),
@@ -1294,6 +1340,7 @@ impl Device {
             services: if kind == DeviceKind::Server { services::Services::server_defaults() } else { services::Services::default() },
             files: Vec::new(),
             ftp_login: None,
+            vlan_dat_deleted: false,
         };
         d.ensure_default_vlan();
         d

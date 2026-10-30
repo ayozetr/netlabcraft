@@ -81,8 +81,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ip interface brief` | user, privileged | router, switch | Interface addresses and status |
 | `show ip route` | user, privileged | router, switch | Routing table |
 | `show ip route {connected\|static\|ospf\|rip}` | user, privileged | router, switch | Only the routes one source gave |
-| `show ip arp` | user, privileged | router | ARP cache |
-| `show arp` | user, privileged | router | ARP cache |
+| `show ip arp` | user, privileged | router, switch | ARP cache |
+| `show arp` | user, privileged | router, switch | ARP cache |
 | `show interfaces` | user, privileged | router, switch | Interface details |
 | `show interfaces trunk` | user, privileged | switch | Trunk ports |
 | `show interfaces <interface>` | user, privileged | router, switch | One interface's details |
@@ -142,7 +142,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `encapsulation {hdlc\|ppp}` | interface | router | Framing on a serial link |
 | `clock rate <1200-2000000>` | interface | router | Clock a serial link from its DCE end |
 | `no clock rate` | interface | router | Remove the clock rate |
-| `show controllers <interface>` | user, privileged | router | Cable type at an interface (DCE or DTE) |
+| `show controllers <interface>` | user, privileged | router, switch | Cable type at an interface (DCE or DTE) |
 | `show clock` | user, privileged | router, switch | The device's date and time |
 | `clock set hh:mm:ss <day> <month> <year>` | privileged | router, switch | Set the date and time |
 | `show flash:` | user, privileged | router, switch | Files in flash memory |
@@ -394,6 +394,36 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `telnet A.B.C.D` | user, privileged | router, switch | Log in to another device with Telnet |
 | `ssh -l USER A.B.C.D` | user, privileged | router, switch | Log in to another device with SSH |
 | `show ip ssh` | user, privileged | router, switch | SSH status |
+| `show ssh` | user, privileged | router, switch | SSH sessions open to this device |
+| `ip ssh time-out <1-120>` | config | router, switch | Seconds an SSH login may take |
+| `ip ssh authentication-retries <0-5>` | config | router, switch | Password tries per SSH login |
+| `security passwords min-length <0-16>` | config | router, switch | Refuse shorter passwords from now on |
+| `no security passwords min-length` | config | router, switch | Any password length |
+| `login block-for <1-65535> attempts <1-65535> within <1-65535>` | config | router, switch | After N failed logins in W seconds, refuse logins for S seconds |
+| `no login block-for` | config | router, switch | Stop blocking logins |
+| `speed {10\|100\|1000\|auto}` | interface | router, switch | Fix the port's speed (auto negotiates) |
+| `no speed` | interface | router, switch | Negotiate the speed |
+| `duplex {full\|half\|auto}` | interface | router, switch | Fix the port's duplex (auto negotiates) |
+| `no duplex` | interface | router, switch | Negotiate the duplex |
+| `mdix auto` | interface | router, switch | Work with straight-through or crossover cables |
+| `no mdix auto` | interface | router, switch | Expect the right cable type |
+| `show protocols` | user, privileged | router, switch | Interface status and addresses |
+| `show interfaces description` | user, privileged | router, switch | Interface status and descriptions |
+| `show login` | user, privileged | router, switch | Login blocking state |
+| `show privilege` | user, privileged | router, switch | This session's privilege level |
+| `show tech-support` | privileged | router, switch | Everything for a support request |
+| `show boot` | user, privileged | router, switch | What the device starts from |
+| `show environment` | user, privileged | router, switch | Power and temperature |
+| `show inventory` | user, privileged | router, switch | Hardware |
+| `delete flash:vlan.dat` | privileged | switch | Delete the VLAN database (takes effect at reload) |
+| `show ipv6 interface <interface>` | user, privileged | router, switch | One interface's IPv6 settings |
+| `show ipv6 route {connected\|static\|ospf}` | user, privileged | router, switch | Only the IPv6 routes one source gave |
+| `clear counters` | privileged | router, switch | Reset interface counters |
+| `ping A.B.C.D\|X:X::X size <36-18024>` | user, privileged | router, switch | Send echo requests of a given size |
+| `show sessions` | user, privileged | router, switch | Telnet and SSH sessions opened from here |
+| `show hosts` | user, privileged | router, switch | Name lookup settings |
+| `show mac address-table dynamic` | user, privileged | switch | Learned MAC addresses |
+| `clear mac address-table dynamic` | privileged | switch | Forget learned MAC addresses |
 | `banner motd #message#` | config | router, switch | Message shown before login |
 | `no banner motd` | config | router, switch | Remove the message |
 | `service password-encryption` | config | router, switch | Write passwords obscured |
