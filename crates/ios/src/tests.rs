@@ -2439,3 +2439,284 @@ fn snmp_trap_hosts_traps_and_v3_users_are_configured() {
     let s = &lab.t.device(r).unwrap().snmp;
     assert_eq!((s.users.len(), s.groups.len(), s.traps.len()), (1, 1, 0));
 }
+
+// ---- QoS ----
+
+/// [`two_sites`] with the ISP routing both private networks, so the sites reach each other.
+fn two_routed_sites() -> (Lab, DeviceId, DeviceId, DeviceId, DeviceId) {
+    let (mut lab, r1, isp, r2, a) = two_sites();
+    lab.run(isp, "conf t\nip route 192.168.1.0 255.255.255.0 203.0.113.1\nip route 192.168.2.0 255.255.255.0 198.51.100.1\nend");
+    (lab, r1, isp, r2, a)
+}
+
+const QOS_R1: &str = "
+    conf t
+    access-list 101 permit icmp 192.168.1.0 0.0.0.255 any
+    class-map match-all PINGS
+    match access-group 101
+    match protocol icmp
+    class-map match-any WEB
+    match protocol http
+    match protocol https
+    exit
+    policy-map MARK
+    class PINGS
+    set dscp ef
+    class WEB
+    set ip precedence 3
+    class class-default
+    set dscp default
+    exit
+    exit
+    int g0/0
+    service-policy input MARK
+    end";
+
+const QOS_ISP: &str = "
+    conf t
+    class-map VOICE
+    match dscp ef cs5
+    policy-map CORE
+    class VOICE
+    police 64000 conform-action transmit exceed-action set-dscp-transmit af11
+    int g0/0
+    service-policy input CORE
+    end";
+
+/// The DS byte of an untagged IPv4 frame.
+fn ds_byte(frame: &[u8]) -> Option<u8> {
+    (frame.get(12..14) == Some(&[0x08, 0x00]) && frame.get(14).is_some_and(|v| v >> 4 == 4)).then(|| frame.get(15).copied()).flatten()
+}
+
+/// The `!` marks of a router's ping report.
+fn replies(out: &str) -> usize {
+    out.lines().nth(1).map_or(0, |l| l.matches('!').count())
+}
+
+#[test]
+fn qos_marking_and_classification_by_typing() {
+    let (mut lab, r1, isp, _r2, a) = two_routed_sites();
+    lab.run(r1, QOS_R1);
+    lab.run(isp, QOS_ISP);
+    assert!(ping_settled(&mut lab, a, "192.168.2.10").contains("4 answered"));
+    // R1 marked the echo requests EF: the frames it sends the ISP carry DSCP 46 (0xb8) and
+    // still decode, so the header checksum was fixed.
+    let marked: Vec<_> =
+        lab.sim.trace().iter().filter(|e| e.from.device == r1 && e.to.device == isp && e.summary.starts_with("ICMP echo request")).collect();
+    assert!(!marked.is_empty());
+    assert!(marked.iter().all(|e| ds_byte(&e.frame) == Some(0xb8)), "{:?}", marked.iter().map(|e| ds_byte(&e.frame)).collect::<Vec<_>>());
+    // What the PC sent was unmarked.
+    assert!(lab.sim.trace().iter().filter(|e| e.from.device == a).filter_map(|e| ds_byte(&e.frame)).all(|b| b == 0));
+    // Counters on both routers.
+    let r1_show = lab.run(r1, "show policy-map interface g0/0");
+    assert!(r1_show.starts_with("GigabitEthernet0/0\n  Input policy MARK"), "{r1_show}");
+    assert!(r1_show.contains("Class PINGS (match-all: access-group 101; protocol icmp)"), "{r1_show}");
+    assert!(count_after(&r1_show, "set dscp ef: ") >= 4, "{r1_show}");
+    // The ISP classifies on the DSCP R1 wrote: the echo requests land in VOICE.
+    let isp_show = lab.run(isp, "show policy-map interface");
+    let voice = isp_show.split("Class VOICE").nth(1).unwrap_or("").to_string();
+    assert!(count_after(&voice, "matched ") >= 4, "{isp_show}");
+    assert!(voice.contains("police 64000 bit/s, bucket 2000 bytes:") && voice.contains("0 dropped"), "{isp_show}");
+    // Clearing the counters starts again.
+    lab.run(isp, "clear counters");
+    let isp_show = lab.run(isp, "show policy-map interface g0/0");
+    assert_eq!(count_after(isp_show.split("Class VOICE").nth(1).unwrap_or(""), "matched "), 0, "{isp_show}");
+    // Without the marking the ISP sees default traffic only.
+    lab.run(r1, "conf t\nint g0/0\nno service-policy input\nend");
+    lab.run(a, "ping 192.168.2.10");
+    let isp_show = lab.run(isp, "show policy-map interface g0/0");
+    assert_eq!(count_after(isp_show.split("Class VOICE").nth(1).unwrap_or(""), "matched "), 0, "{isp_show}");
+    assert!(count_after(isp_show.split("Class class-default").nth(1).unwrap_or(""), "matched ") >= 4, "{isp_show}");
+    assert_eq!(lab.run(r1, "show policy-map interface"), "No service policies applied");
+}
+
+#[test]
+fn qos_policing_drops_with_a_reason() {
+    let (mut lab, r1, isp, _r2, _a) = two_routed_sites();
+    lab.run(isp, "conf t\npolicy-map LIMIT\nclass class-default\npolice 8000 conform-action transmit exceed-action drop\nint g0/0\nservice-policy input LIMIT\nend");
+    lab.sim.clear_trace();
+    // 1000-byte packets against a 1500-byte bucket refilling at 1000 bytes a second: back to
+    // back, the second one finds the bucket short and is dropped.
+    let mut answered = 0;
+    for _ in 0..3 {
+        answered += replies(&lab.run(r1, "ping 198.51.100.1 size 1000"));
+    }
+    assert!(answered > 0);
+    let reason = "policed by policy-map LIMIT class class-default (input on GigabitEthernet0/0)";
+    assert!(lab.sim.trace().iter().any(|e| e.to.device == isp && e.dropped.as_deref() == Some(reason)), "no policed drop");
+    let show = lab.run(isp, "show policy-map interface g0/0");
+    assert!(show.contains("police 8000 bit/s, bucket 1500 bytes: "), "{show}");
+    assert!(count_after(&show, "bytes: ") > 0 && count_after(&show, "conformed (transmit), ") > 0, "{show}");
+    assert!(count_after(&show, "exceeded (drop), ") > 0, "{show}");
+    // Small packets fit: a normal ping passes untouched.
+    lab.run(isp, "clear counters");
+    assert_eq!(replies(&lab.run(r1, "ping 198.51.100.1")), 5);
+}
+
+#[test]
+fn qos_configuration_round_trip_and_modes() {
+    let (mut lab, r1, _isp, _r2, _a) = two_routed_sites();
+    lab.run(r1, QOS_R1);
+    lab.run(
+        r1,
+        "conf t\nclass-map match-any VOICE\nmatch dscp ef\nmatch ip precedence 5 critical\nmatch access-group name NOTYET\npolicy-map WAN\n\
+         class VOICE\npriority 512\nclass class-default\nbandwidth percent 20\nshape average 2000000\npolice cir 128000 4000 exceed-action set-dscp-transmit cs1\n\
+         int g0/1\nservice-policy output WAN\nend",
+    );
+    assert_eq!(lab.prompt(r1), "R1#");
+    let run = lab.run(r1, "show running-config");
+    for want in [
+        "class-map match-all PINGS\n match access-group 101\n match protocol icmp\n!",
+        "class-map match-any WEB\n match protocol http\n match protocol https\n!",
+        "class-map match-any VOICE\n match dscp ef\n match ip precedence 5\n match access-group name NOTYET\n!",
+        "policy-map MARK\n class PINGS\n  set dscp ef\n class WEB\n  set ip precedence 3\n class class-default\n  set dscp default\n!",
+        "policy-map WAN\n class VOICE\n  priority 512\n class class-default\n  bandwidth percent 20\n  police 128000 4000 conform-action transmit exceed-action set-dscp-transmit cs1\n  shape average 2000000\n!",
+        " service-policy input MARK\n",
+        " service-policy output WAN\n",
+    ] {
+        assert!(run.contains(want), "{want}\n{run}");
+    }
+    // Replayed line by line on another router: the same configuration.
+    let r3 = lab.add(DeviceKind::Router);
+    lab.run(r3, "en\nconf t");
+    for l in run.lines().filter(|l| !l.starts_with('!') && !l.starts_with("hostname")) {
+        lab.try_run(r3, l);
+    }
+    assert_eq!(lab.t.device(r3).unwrap().qos, lab.t.device(r1).unwrap().qos);
+    // Saved and reloaded: identical.
+    lab.run(r1, "copy running-config startup-config");
+    lab.run(r1, "reload");
+    assert_eq!(lab.run(r1, "en\nshow running-config"), run);
+    // Shows.
+    let cm = lab.run(r1, "show class-map VOICE");
+    assert!(cm.starts_with("Class map VOICE (match-any") && cm.contains("  match ip precedence 5"), "{cm}");
+    assert!(lab.run(r1, "show class-map").contains("Class map WEB"));
+    let pm = lab.run(r1, "show policy-map WAN");
+    assert!(pm.contains("  class VOICE\n    priority 512") && pm.contains("    shape average 2000000"), "{pm}");
+    let out = lab.run(r1, "show policy-map interface g0/1");
+    assert!(out.contains("Output policy WAN") && out.contains("priority 512 kbit/s: configured; no congestion is simulated"), "{out}");
+    // Modes and prompts.
+    lab.run(r1, "conf t\nclass-map WEB");
+    assert_eq!(lab.prompt(r1), "R1(config-cmap)#");
+    lab.run(r1, "policy-map MARK");
+    assert_eq!(lab.prompt(r1), "R1(config-pmap)#");
+    lab.run(r1, "class WEB");
+    assert_eq!(lab.prompt(r1), "R1(config-pmap-c)#");
+    lab.run(r1, "exit");
+    assert_eq!(lab.prompt(r1), "R1(config-pmap)#");
+    lab.run(r1, "class WEB\nno set ip precedence\nexit\nno class WEB\nexit");
+    assert_eq!(lab.prompt(r1), "R1(config)#");
+    assert!(!lab.run(r1, "do show running-config").contains("  set ip precedence 3"));
+    // `no` forms.
+    lab.run(
+        r1,
+        "class-map VOICE\nno match ip precedence 5\nexit\nint g0/1\nno service-policy output\nexit\nno policy-map WAN\nno class-map VOICE\nend",
+    );
+    let run = lab.run(r1, "show running-config");
+    assert!(!run.contains("VOICE") && !run.contains("WAN"), "{run}");
+}
+
+#[test]
+fn qos_mistakes_are_refused() {
+    let (mut lab, r1, _isp, _r2, _a) = two_routed_sites();
+    lab.run(r1, QOS_R1);
+    lab.run(r1, "conf t");
+    for (line, says) in [
+        ("class-map match-some X", "Usage"),
+        ("class-map class-default", "reserved"),
+        ("no class-map PINGS", "used by policy map MARK"),
+        ("no policy-map MARK", "applied to GigabitEthernet0/0"),
+        ("no class-map NOPE", "no class map NOPE"),
+    ] {
+        let out = lab.try_run(r1, line);
+        assert!(out.contains(says), "{line}: {out}");
+    }
+    lab.run(r1, "class-map T");
+    for (line, says) in [
+        ("match dscp ef99", "not a DSCP"),
+        ("match dscp 64", "not a DSCP"),
+        ("match ip precedence 9", "not a precedence"),
+        ("match protocol gopher", "not a protocol"),
+        ("match access-group 5000", "numbered access list"),
+        ("match dscp 1 2 3 4 5 6 7 8 9", "At most 8"),
+        ("no match any", "no line"),
+    ] {
+        let out = lab.try_run(r1, line);
+        assert!(out.contains(says), "{line}: {out}");
+    }
+    lab.run(r1, "exit\npolicy-map Q");
+    assert!(lab.try_run(r1, "class NOPE").contains("no class map NOPE"));
+    lab.run(r1, "class T");
+    for (line, says) in [
+        ("set dscp xx", "not a DSCP"),
+        ("police 100", "8000-"),
+        ("police 8000 exceed-action explode", "transmit, drop"),
+        ("police 8000 surprise", "not understood"),
+        ("priority 4", "8-10000000"),
+        ("bandwidth percent 101", "1-100"),
+        ("shape average 10", "8000-"),
+    ] {
+        let out = lab.try_run(r1, line);
+        assert!(out.contains(says), "{line}: {out}");
+    }
+    lab.run(r1, "priority 512");
+    assert!(lab.try_run(r1, "bandwidth 100").contains("not both"));
+    lab.run(r1, "exit\nclass class-default");
+    assert!(lab.try_run(r1, "priority 100").contains("class-default cannot"));
+    lab.run(r1, "exit\nexit\nint g0/1");
+    assert!(lab.try_run(r1, "service-policy input Q").contains("apply it as `output`"));
+    assert!(lab.try_run(r1, "service-policy output NOPE").contains("no policy map NOPE"));
+    assert!(lab.try_run(r1, "service-policy sideways Q").contains("`input` or `output`"));
+    lab.run(r1, "service-policy output Q\nend");
+    // A layer-2 switch, and a switch port, refuse service policies.
+    let l2 = lab.add(DeviceKind::Switch);
+    lab.run(l2, "en\nconf t\npolicy-map P\nclass class-default\nset dscp af41\nexit\nexit\ninterface vlan 1");
+    assert!(lab.try_run(l2, "service-policy input P").contains("`ip routing`"));
+    let s = lab.t.add_model(packetcraft_model::models::find("Switch-ML-24").unwrap(), None, 0.0, 0.0).unwrap();
+    lab.run(s, "en\nconf t\npolicy-map P\nclass class-default\nset dscp af41\nexit\nexit\ninterface vlan 1");
+    assert!(lab.try_run(s, "service-policy input P").contains("`ip routing`"));
+    lab.run(s, "exit\nip routing\ninterface fa0/1");
+    assert!(lab.try_run(s, "service-policy input P").contains("switch port"));
+    lab.run(s, "no switchport\nservice-policy input P\ninterface vlan 1\nservice-policy output P\nend");
+    let run = lab.run(s, "show running-config");
+    assert!(run.contains("interface Vlan1\n") && run.contains(" service-policy output P\n") && run.contains(" service-policy input P\n"), "{run}");
+}
+
+#[test]
+fn qos_modes_survive_hostile_arguments() {
+    let hostile = ["", "0", "-1", "99999999999999999999", "ef", "class-default", "match-any", "1.2.3.4", "g9/9/9", "ä€😀", "%s%n"];
+    let huge = "x".repeat(10_000);
+    for spec in SPECS {
+        for arg in hostile.iter().chain(std::iter::once(&huge.as_str())) {
+            let line: Vec<String> = spec
+                .path
+                .iter()
+                .map(|t| match t {
+                    Tok::K(k) => k.to_string(),
+                    Tok::Arg(_) | Tok::Rest(_) => arg.to_string(),
+                })
+                .collect();
+            for (kind, setup) in [
+                (DeviceKind::Router, "en\nconf t\nclass-map match-any C"),
+                (DeviceKind::Router, "en\nconf t\npolicy-map P"),
+                (DeviceKind::Router, "en\nconf t\nclass-map C\nexit\npolicy-map P\nclass C"),
+                (DeviceKind::Router, "en\nconf t\npolicy-map P\nclass class-default\nexit\nexit\nint g0/0\nservice-policy input P"),
+                (DeviceKind::Switch, "en\nconf t\nip routing\npolicy-map P\nclass class-default\nexit\nexit\nint vlan 1"),
+            ] {
+                let mut lab = Lab::new();
+                let d = if kind == DeviceKind::Switch {
+                    lab.t.add_model(packetcraft_model::models::find("Switch-ML-24").unwrap(), None, 0.0, 0.0).unwrap()
+                } else {
+                    lab.add(kind)
+                };
+                for l in setup.lines() {
+                    lab.try_run(d, l);
+                }
+                let _ = lab.try_run(d, &line.join(" "));
+                let _ = lab.try_run(d, &format!("{} ?", line.join(" ")));
+                let _ = lab.try_run(d, "do show running-config");
+                let _ = lab.try_run(d, "do show policy-map interface");
+            }
+        }
+    }
+}

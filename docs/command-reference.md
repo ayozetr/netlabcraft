@@ -195,6 +195,49 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show crypto isakmp sa` | user, privileged | router | IKE peers and their state |
 | `show crypto isakmp policy` | user, privileged | router | IKE policies |
 | `show crypto ipsec sa` | user, privileged | router | IPsec associations and packet counts |
+| `class-map [match-all\|match-any] NAME` | config | router, switch | Define or edit a traffic class |
+| `no class-map [match-all\|match-any] NAME` | config | router, switch | Delete a traffic class |
+| `policy-map NAME` | config | router, switch | Define or edit what happens to each class |
+| `no policy-map NAME` | config | router, switch | Delete a policy map |
+| `match dscp DSCP [DSCP...]` |  | router, switch | Packets carrying one of these DSCPs |
+| `match ip dscp DSCP [DSCP...]` |  | router, switch | Packets carrying one of these DSCPs |
+| `match ip precedence <0-7> [<0-7>...]` |  | router, switch | Packets with one of these IP precedences |
+| `match precedence <0-7> [<0-7>...]` |  | router, switch | Packets with one of these IP precedences |
+| `match access-group <1-2699>` |  | router, switch | Packets a numbered access list permits |
+| `match access-group name NAME` |  | router, switch | Packets a named access list permits |
+| `match protocol {icmp\|tcp\|udp\|http\|https\|dns\|telnet\|ssh\|ftp\|smtp\|pop3\|snmp\|tftp\|ntp}` |  | router, switch | Packets of a protocol (applications by their well-known port) |
+| `match any` |  | router, switch | Every packet |
+| `no match CRITERION` |  | router, switch | Remove a match line |
+| `class {NAME\|class-default}` |  | router, switch | Set what happens to a class |
+| `no class {NAME\|class-default}` |  | router, switch | Remove a class from the policy |
+| `set dscp DSCP` |  | router, switch | Mark the class's packets with a DSCP |
+| `set ip dscp DSCP` |  | router, switch | Mark the class's packets with a DSCP |
+| `set ip precedence <0-7>` |  | router, switch | Mark the class's packets with an IP precedence |
+| `set precedence <0-7>` |  | router, switch | Mark the class's packets with an IP precedence |
+| `no set {dscp\|ip precedence} ...` |  | router, switch | Stop marking |
+| `priority <8-10000000> kbit/s` |  | router, switch | Strict-priority queue for the class |
+| `priority percent <1-100>` |  | router, switch | Strict-priority queue, share of the link |
+| `no priority` |  | router, switch | Remove the priority queue |
+| `no priority ...` |  | router, switch | Remove the priority queue |
+| `bandwidth <8-10000000> kbit/s` |  | router, switch | Guaranteed bandwidth for the class |
+| `bandwidth percent <1-100>` |  | router, switch | Guaranteed share of the link |
+| `no bandwidth` |  | router, switch | Remove the bandwidth guarantee |
+| `no bandwidth ...` |  | router, switch | Remove the bandwidth guarantee |
+| `police BPS [BURST] [conform-action ACTION] [exceed-action ACTION]` |  | router, switch | Limit the class to a rate (token bucket) |
+| `no police` |  | router, switch | Stop policing |
+| `no police ...` |  | router, switch | Stop policing |
+| `shape average BPS` |  | router, switch | Shape the class to an average rate |
+| `no shape` |  | router, switch | Stop shaping |
+| `no shape ...` |  | router, switch | Stop shaping |
+| `service-policy {input\|output} NAME` | interface, subinterface | router, switch | Apply a policy map to this interface |
+| `no service-policy {input\|output}` | interface, subinterface | router, switch | Remove a service policy |
+| `no service-policy {input\|output} NAME` | interface, subinterface | router, switch | Remove a service policy |
+| `show class-map` | user, privileged | router, switch | Traffic classes |
+| `show class-map NAME` | user, privileged | router, switch | One traffic class |
+| `show policy-map` | user, privileged | router, switch | Policy maps |
+| `show policy-map NAME` | user, privileged | router, switch | One policy map |
+| `show policy-map interface` | user, privileged | router, switch | Service policies and their counters |
+| `show policy-map interface <interface>` | user, privileged | router, switch | One interface's service policies and counters |
 | `show crypto map` | user, privileged | router | Crypto maps and where they apply |
 | `clear crypto sa` | privileged | router | Forget IPsec associations and counters |
 | `encapsulation {hdlc\|ppp}` | interface | router | Framing on a serial link |

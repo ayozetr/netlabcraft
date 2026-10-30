@@ -13,6 +13,7 @@ use packetcraft_sim::{DebugKind, PingOptions, Sim, port_up};
 use crate::grammar::{self, Id, Modes, ParseError};
 use crate::{host, render};
 
+pub(crate) mod qos;
 mod vpn;
 
 /// Lines of history kept per session.
@@ -69,6 +70,12 @@ pub enum Mode {
     Transform(String),
     /// `R1(config-crypto-map)#`: the map's name and sequence number.
     CryptoMap(String, u32),
+    /// `R1(config-cmap)#`: the class map's name.
+    ClassMap(String),
+    /// `R1(config-pmap)#`: the policy map's name.
+    PolicyMap(String),
+    /// `R1(config-pmap-c)#`: the policy map's and the class's names.
+    PolicyClass(String, String),
 }
 
 impl Mode {
@@ -94,6 +101,9 @@ impl Mode {
             Mode::Isakmp(_) => Modes::ISAKMP,
             Mode::Transform(_) => Modes::TRANSFORM,
             Mode::CryptoMap(..) => Modes::CRYPTO_MAP,
+            Mode::ClassMap(_) => Modes::CLASS_MAP,
+            Mode::PolicyMap(_) => Modes::POLICY_MAP,
+            Mode::PolicyClass(..) => Modes::POLICY_CLASS,
         }
     }
 }
@@ -397,6 +407,9 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::Isakmp(_) => format!("{n}(config-isakmp)#"),
         Mode::Transform(_) => format!("{n}(cfg-crypto-trans)#"),
         Mode::CryptoMap(..) => format!("{n}(config-crypto-map)#"),
+        Mode::ClassMap(_) => format!("{n}(config-cmap)#"),
+        Mode::PolicyMap(_) => format!("{n}(config-pmap)#"),
+        Mode::PolicyClass(..) => format!("{n}(config-pmap-c)#"),
     }
 }
 
@@ -599,6 +612,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Isakmp(_)
                 | Mode::Transform(_)
                 | Mode::CryptoMap(..)
+                | Mode::ClassMap(_)
+                | Mode::PolicyMap(_)
+                | Mode::PolicyClass(..)
         )
         && let Ok(r) = grammar::resolve(&words, Modes::CONFIG, dbits)
     {
@@ -648,7 +664,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Tunnel(_)
                 | Mode::Isakmp(_)
                 | Mode::Transform(_)
-                | Mode::CryptoMap(..) => Mode::Config,
+                | Mode::CryptoMap(..)
+                | Mode::ClassMap(_)
+                | Mode::PolicyMap(_) => Mode::Config,
+                // A class inside a policy map goes back to the policy map.
+                Mode::PolicyClass(ref p, _) => Mode::PolicyMap(p.clone()),
             };
             c.set_mode(next)
         }
@@ -1490,6 +1510,37 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ShowCryptoIsakmpPolicy
         | Id::ShowCryptoMap
         | Id::ClearCryptoSa => vpn::command(&mut c, spec.id, &args),
+        Id::ClassMap
+        | Id::NoClassMap
+        | Id::PolicyMap
+        | Id::NoPolicyMap
+        | Id::QosMatchDscp
+        | Id::QosMatchPrecedence
+        | Id::QosMatchAccessGroup
+        | Id::QosMatchAccessGroupName
+        | Id::QosMatchProtocol
+        | Id::QosMatchAny
+        | Id::NoQosMatch
+        | Id::PolicyClass
+        | Id::NoPolicyClass
+        | Id::QosSetDscp
+        | Id::QosSetPrecedence
+        | Id::NoQosSet
+        | Id::QosPriority
+        | Id::QosPriorityPercent
+        | Id::NoQosPriority
+        | Id::QosBandwidth
+        | Id::QosBandwidthPercent
+        | Id::NoQosBandwidth
+        | Id::QosPolice
+        | Id::NoQosPolice
+        | Id::QosShape
+        | Id::NoQosShape
+        | Id::ServicePolicy
+        | Id::NoServicePolicy
+        | Id::ShowClassMap
+        | Id::ShowPolicyMap
+        | Id::ShowPolicyMapInterface => qos::command(&mut c, spec.id, &args),
         Id::IpAddress | Id::NoIpAddress | Id::Shutdown | Id::NoShutdown | Id::Description | Id::NoDescription
             if matches!(c.cli.mode, Mode::Svi(_)) =>
         {
@@ -2314,7 +2365,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let r = c.iface_ref(arg(0))?;
             render::ipv6_interface(c.t, c.d()?, r)
         }
-        Id::ClearCounters => Ok("Interface counters cleared.".into()),
+        Id::ClearCounters => {
+            c.sim.clear_qos(c.dev);
+            Ok("Interface counters cleared.".into())
+        }
         Id::ShowSessions => Ok(match &c.cli.remote {
             Some(r) => format!(
                 "Conn Host                Protocol\n*  1 {:<19} {}",

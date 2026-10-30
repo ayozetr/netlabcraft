@@ -34,6 +34,7 @@ pub mod hsrp;
 pub mod mgmt;
 pub mod ospf;
 pub mod ospf6;
+pub mod qos;
 
 pub mod rip;
 pub mod snmp;
@@ -664,6 +665,8 @@ pub struct DevState {
     pub dhcp6_leases: BTreeMap<std::net::Ipv6Addr, (MacAddr, String)>,
     /// Routers: IPsec security associations, by peer address.
     pub ipsec: BTreeMap<Ipv4Addr, vpn::IpsecSa>,
+    /// Routers and multilayer switches: QoS class counters and policer buckets.
+    pub(crate) qos: qos::QosCounters,
 }
 
 /// One frame delivered across a cable.
@@ -1938,8 +1941,15 @@ impl Sim {
             };
         }
         let mut from_outside = false;
+        let marked;
+        let mut payload = payload;
         if d.routes_ip() {
             self.acl_check(t, d, ifc, &ip, payload, true)?;
+            // An input service policy: may re-mark the packet, or police it away.
+            if !d.qos.applied.is_empty() {
+                marked = self.qos_apply(d, &ifc.name, true, payload.to_vec())?;
+                payload = &marked;
+            }
             // NAT, outside to inside: undo the translation before deciding where it goes.
             if nat_side(d, ifc) == Some(packetcraft_model::NatSide::Outside)
                 && let Some(back) = self.nat_untranslate(d, &ip)
@@ -1976,7 +1986,7 @@ impl Sim {
                 {
                     fwd = tr;
                 }
-                self.transmit(t, d, &out, nh, fwd.encode())
+                self.transmit(t, d, &out, nh, qos::keep_ds(payload, fwd.encode()))
             }
             None => {
                 if debug {
@@ -2142,6 +2152,7 @@ impl Sim {
     fn transmit(&mut self, t: &Topology, d: &Device, out: &L3If, nh: Ipv4Addr, datagram: Vec<u8>) -> Result<(), String> {
         // Into a GRE tunnel: encapsulated and routed again.
         if vpn::is_tunnel(out.port) {
+            let datagram = if d.qos.applied.is_empty() { datagram } else { self.qos_apply(d, &out.name, false, datagram)? };
             return self.gre_out(t, d, out, datagram);
         }
         // Protected by a crypto map on this interface: sent to the IPsec peer as ESP.
@@ -2151,6 +2162,8 @@ impl Sim {
             let (o2, nh2) = self.route(t, d, peer).ok_or_else(|| format!("no route to IPsec peer {peer}"))?;
             return self.transmit(t, d, &o2, nh2, esp);
         }
+        // An output service policy, on the packet as it goes on the wire.
+        let datagram = if d.qos.applied.is_empty() { datagram } else { self.qos_apply(d, &out.name, false, datagram)? };
         // A serial link is point to point: no address to resolve.
         if out.port != SVI_PORT && t.is_serial(End { device: d.id, port: out.port }) {
             let frame = Frame { dst: MacAddr::BROADCAST, src: out.mac, vlan: None, ethertype: ETHERTYPE_IPV4, payload: datagram };
