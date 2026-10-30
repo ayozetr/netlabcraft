@@ -9,6 +9,9 @@ Every front end (UI, `packetcraft-cli run`, MCP `packetcraft_run`) runs these.
 | Id | Label | Menu | Shortcut | Parameters |
 |---|---|---|---|---|
 | `device.wireless` | Wi-Fi settings |  |  | `{"device", "port"?: "Wireless0", "ssid": "network name (empty: radio off)", "key"?: "WPA2-PSK passphrase, 8-63 characters (none: open)", "channel"?: 1-13}` |
+| `mail.configure` | Email account |  |  | `{"device", "name"?, "address": "ana@lab.local", "incoming": "POP3 server address or name", "outgoing": "SMTP server", "user", "password"}` |
+| `mail.send` | Send email |  |  | `{"device", "to", "subject"?, "body"?} → {"answer"}: SMTP through the outgoing server` |
+| `mail.receive` | Receive email |  |  | `{"device"} → {"received": n}: POP3 from the incoming server; the messages move to the host` |
 | `home.settings` | Home router settings |  |  | `{"device", "lan"?+"lan_mask"?, "dhcp"?: true\|false, "dhcp_start"?, "internet"?+"internet_mask"?+"gateway"?} → {"config": the lines applied}` |
 | `activity.show` | Activity |  |  | `{} → {"activity" (or null; a locked one without its checks), "total_points", "checks", "locked"}` |
 | `activity.set` | Activity Wizard… | Extensions |  | `{"title"?, "instructions"?, "hidden"?: true to store configuration answers as hashes, "time_limit"?: minutes (0: none), "score_only"?: while locked, Check Results shows the score only, "variables"?: {"name": ["value", …]} picked per student, used as {name}}` |

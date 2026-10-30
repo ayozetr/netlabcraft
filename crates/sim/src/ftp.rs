@@ -64,7 +64,7 @@ pub enum FtpOp {
 }
 
 /// A client's TCP connection, for the length of one operation.
-struct Conn {
+pub(crate) struct Conn {
     dev: DeviceId,
     src: Ipv4Addr,
     dst: Ipv4Addr,
@@ -84,7 +84,7 @@ fn may(u: &FtpUser, what: &str) -> bool {
 }
 
 impl Sim {
-    fn seg_to(&mut self, t: &Topology, d: &Device, src: Ipv4Addr, dst: Ipv4Addr, seg: Tcp) -> Result<(), String> {
+    pub(crate) fn seg_to(&mut self, t: &Topology, d: &Device, src: Ipv4Addr, dst: Ipv4Addr, seg: Tcp) -> Result<(), String> {
         let ip = Ipv4 {
             id: self.ip_id(),
             ttl: crate::default_ttl(d.kind),
@@ -348,14 +348,16 @@ impl Sim {
 
     // ---- client ----
 
-    fn conn_open(&mut self, t: &Topology, dev: DeviceId, dst: Ipv4Addr, port: u16) -> Result<Conn, SimError> {
+    pub(crate) fn conn_open(&mut self, t: &Topology, dev: DeviceId, dst: Ipv4Addr, port: u16) -> Result<Conn, SimError> {
         let d = t.device(dev).ok_or(SimError::NoDevice(dev))?;
         let src = self.source_for(t, d, dst)?;
         let local = self.next_port();
         self.st(dev).tcp_wait.push((local, port));
         let mut c = Conn { dev, src, dst, local, remote: port, seq: 4_000, ack: 0 };
         let mut answer = None;
-        for _ in 0..2 {
+        // SYN retransmissions: every router on the way may drop the first one while it
+        // resolves the next hop's address.
+        for _ in 0..4 {
             let syn = Tcp { src_port: local, dst_port: port, seq: c.seq, ack: 0, flags: tcp::SYN, window: 65_535, payload: Vec::new() };
             let _ = self.seg_to(t, d, src, dst, syn);
             answer = self.tcp_wait(t, dev, |s| s.dst_port == local && s.flags & (tcp::SYN | tcp::RST) != 0);
@@ -381,7 +383,7 @@ impl Sim {
         Ok(c)
     }
 
-    fn conn_send(&mut self, t: &Topology, c: &mut Conn, data: &[u8]) {
+    pub(crate) fn conn_send(&mut self, t: &Topology, c: &mut Conn, data: &[u8]) {
         let Some(d) = t.device(c.dev) else { return };
         let chunks: Vec<&[u8]> = data.chunks(1460).collect();
         for chunk in chunks {
@@ -401,7 +403,7 @@ impl Sim {
 
     /// Reads what arrives on a connection until `done` says the text is complete, the far end
     /// closes, or nothing comes for two seconds. Returns the bytes and whether it closed.
-    fn conn_recv(&mut self, t: &Topology, c: &mut Conn, done: impl Fn(&[u8]) -> bool) -> (Vec<u8>, bool) {
+    pub(crate) fn conn_recv(&mut self, t: &Topology, c: &mut Conn, done: impl Fn(&[u8]) -> bool) -> (Vec<u8>, bool) {
         let mut got = Vec::new();
         let local = c.local;
         loop {
@@ -424,7 +426,7 @@ impl Sim {
         }
     }
 
-    fn conn_close(&mut self, t: &Topology, c: &mut Conn) {
+    pub(crate) fn conn_close(&mut self, t: &Topology, c: &mut Conn) {
         if let Some(d) = t.device(c.dev) {
             let fin = Tcp {
                 src_port: c.local,
@@ -442,7 +444,7 @@ impl Sim {
         self.conn_forget(c);
     }
 
-    fn conn_forget(&mut self, c: &Conn) {
+    pub(crate) fn conn_forget(&mut self, c: &Conn) {
         let st = self.st(c.dev);
         st.tcp_wait.retain(|w| *w != (c.local, c.remote));
         st.tcp_inbox.retain(|s| s.dst_port != c.local);

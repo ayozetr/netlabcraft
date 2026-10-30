@@ -144,7 +144,10 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             sv.http.files.retain(|f| !f.name.is_empty());
             sv.dns.records.truncate(MAX_ITEMS);
                         sv.dhcp.pools.truncate(MAX_ITEMS);
-                                    sv.ftp.users.truncate(MAX_ITEMS);
+                                    sv.email.users.truncate(MAX_ITEMS);
+            sv.email.domain = sv.email.domain.trim().chars().take(64).collect();
+            sv.email.mailboxes.truncate(packetcraft_model::services::MAX_MAILS);
+            sv.ftp.users.truncate(MAX_ITEMS);
             sv.ftp.files.truncate(MAX_ITEMS);
             for f in &mut sv.ftp.files {
                 f.name = f.name.trim().chars().filter(|c| !c.is_whitespace() && *c != '/').take(64).collect();
@@ -232,7 +235,65 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         "device.models" => Ok(Value::Array(
             models::MODELS.iter().map(|m| json!({"id": m.id, "kind": m.kind.id(), "label": m.label, "description": m.description, "ports": m.port_names()})).collect(),
         )),
-                                "home.settings" => {
+                                "mail.configure" => {
+            let d = device_param(s, p, "device")?;
+            if !s.topology.device(d).is_some_and(|x| x.kind.is_host()) {
+                return Err(bad("the Email app runs on PCs, laptops and servers"));
+            }
+            let f = |k: &str| opt_str(p, k).map_or(String::new(), |v| v.trim().chars().take(128).collect());
+            let account = packetcraft_model::services::MailAccount {
+                name: f("name"),
+                address: f("address"),
+                incoming: f("incoming"),
+                outgoing: f("outgoing"),
+                user: f("user"),
+                password: opt_str(p, "password").map_or(String::new(), |v| v.chars().take(64).collect()),
+            };
+            if !account.address.contains('@') {
+                return Err(bad("the email address needs an @ (ana@lab.local)"));
+            }
+            s.checkpoint();
+            if let Some(x) = s.topology.device_mut(d) {
+                x.mail = Some(account);
+            }
+            s.changed();
+            Ok(json!({}))
+        }
+        "mail.send" => {
+            let d = device_param(s, p, "device")?;
+            let account = s.topology.device(d).and_then(|x| x.mail.clone()).ok_or_else(|| bad("set up the Email app first (mail.configure)"))?;
+            let to: String = str_param(p, "to")?.trim().chars().take(128).collect();
+            let mail = packetcraft_model::services::Mail {
+                from: account.address.clone(),
+                to,
+                subject: opt_str(p, "subject").map_or(String::new(), |v| v.chars().take(200).collect()),
+                body: opt_str(p, "body").map_or(String::new(), |v| v.chars().take(packetcraft_model::services::MAX_MAIL).collect()),
+            };
+            let server = s.sim.dns_resolve(&s.topology, d, &account.outgoing).map_err(|e| EngineError::Failed(e.to_string()))?;
+            let r = s.sim.smtp_send(&s.topology, d, server, &mail);
+            apply_mail_changes(s);
+            let done = r.map_err(|e| EngineError::Failed(e.to_string()))?;
+            Ok(json!({"answer": done}))
+        }
+        "mail.receive" => {
+            let d = device_param(s, p, "device")?;
+            let account = s.topology.device(d).and_then(|x| x.mail.clone()).ok_or_else(|| bad("set up the Email app first (mail.configure)"))?;
+            let server = s.sim.dns_resolve(&s.topology, d, &account.incoming).map_err(|e| EngineError::Failed(e.to_string()))?;
+            let r = s.sim.pop3_fetch(&s.topology, d, server, &account.user, &account.password);
+            apply_mail_changes(s);
+            let got = r.map_err(|e| EngineError::Failed(e.to_string()))?;
+            let n = got.len();
+            if n > 0 {
+                if let Some(x) = s.topology.device_mut(d) {
+                    x.inbox.extend(got);
+                    let over = x.inbox.len().saturating_sub(packetcraft_model::services::MAX_MAILS);
+                    x.inbox.drain(..over);
+                }
+                s.changed();
+            }
+            Ok(json!({"received": n}))
+        }
+        "home.settings" => {
             let d = device_param(s, p, "device")?;
             let pair = |a: &str, b: &str| -> Option<(String, String)> { Some((opt_str(p, a)?.to_string(), opt_str(p, b)?.to_string())) };
             let settings = crate::home::Settings {
@@ -868,4 +929,36 @@ fn write_file(path: &str, bytes: &[u8]) -> Result<()> {
 #[cfg(target_arch = "wasm32")]
 fn write_file(_: &str, _: &[u8]) -> Result<()> {
     Err(EngineError::Failed("the browser build saves through downloads".into()))
+}
+
+/// Applies to the lab what mail servers changed in their mailboxes.
+fn apply_mail_changes(s: &mut Session) {
+    use packetcraft_sim::email::MailChange;
+    let changes = s.sim.take_mail_changes();
+    if changes.is_empty() {
+        return;
+    }
+    for (srv, change) in changes {
+        let Some(d) = s.topology.device_mut(srv) else { continue };
+        let boxes = &mut d.services.email.mailboxes;
+        match change {
+            MailChange::Deliver(user, mail) => {
+                if boxes.len() < packetcraft_model::services::MAX_MAILS {
+                    boxes.push((user, mail));
+                }
+            }
+            MailChange::Remove(user, n) => {
+                let mut left = n;
+                boxes.retain(|(u, _)| {
+                    if left > 0 && u.eq_ignore_ascii_case(&user) {
+                        left -= 1;
+                        false
+                    } else {
+                        true
+                    }
+                });
+            }
+        }
+    }
+    s.changed();
 }

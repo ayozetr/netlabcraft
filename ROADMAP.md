@@ -20,15 +20,15 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 | Number | Value | Kind |
 |---|---|---|
-| **Ready for real work** (weighted) | **~70%** | estimated from written weights (70.1); [target-app-parity.md](docs/target-app-parity.md) |
-| **CCNA 1 student** | **~84%** | estimated; [method](docs/target-app-parity.md#audiences) |
+| **Ready for real work** (weighted) | **~71%** | estimated from written weights (70.7); [target-app-parity.md](docs/target-app-parity.md) |
+| **CCNA 1 student** | **~86%** | estimated; [method](docs/target-app-parity.md#audiences) |
 | **CCNA 2 student** | **~84%** | estimated |
 | **CCNA 3 student** | **~70%** | estimated |
 | **Instructor** (graded activities) | **~72%** | estimated |
 | Engine commands | 52 | measured: `crates/engine/src/catalog.rs` |
 | Console grammar entries | 351 across 13 modes | measured: `crates/ios/src/grammar.rs` |
 | Device models · sample labs | 16 · 18 | measured |
-| Tests | 158 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Tests | 159 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~600–950 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
@@ -36,7 +36,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Audience | Ready % | Opus 5.5 agent wall-clock hours to ~95% | Work that dominates |
 |---|---|---|---|
 | Full target | ~58% | ~480–780 | More device families, physical workspace, email and SNMP, EIGRP/VPN/QoS, WLC |
-| CCNA 1 student | ~84% | ~15–30 | PDU details, email, a few host apps |
+| CCNA 1 student | ~86% | ~12–25 | PDU details, a few host apps |
 | CCNA 2 student | ~84% | ~30–55 | WLC and 802.11 frames, console polish |
 | CCNA 3 student | ~70% | ~80–130 | VPN/GRE, QoS, SNMP, TACACS+, automation |
 | Instructor | ~72% | ~20–35 | A side-by-side answer view, translated activity texts |
@@ -48,7 +48,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Device console | 20 | 74% | 35–55 | Modes, abbreviations, `?`, Tab, history, config round-trip; `show` coverage growing |
 | Layer 2 | 12 | 85% | 12–20 | VLANs, trunks, DTP, per-VLAN STP with BPDUs and timers, rapid-pvst, EtherChannel, VTP, port security |
 | Layer 3 | 15 | 78% | 30–50 | IPv4, IPv6 (NDP, SLAAC, subinterfaces, VLAN interfaces, DHCPv6 relay), static, RIP, multi-area OSPF with DR/BDR, stub areas and ranges, OSPFv3, multilayer switching with OSPF and RIP, HSRP; no EIGRP |
-| Services | 8 | 70% | 18–30 | DHCPv4 and DHCPv6 (with relay), DNS, HTTP with browser, Telnet/SSH, NTP, syslog, TFTP, FTP, AAA with RADIUS; no email, SNMP, TACACS+ |
+| Services | 8 | 77% | 12–20 | DHCPv4 and DHCPv6 (with relay), DNS, HTTP with browser, email with the Email app, Telnet/SSH, NTP, syslog, TFTP, FTP, AAA with RADIUS; no SNMP, TACACS+ |
 | Security | 8 | 72% | 24–40 | IPv4 and IPv6 ACLs, access-class, NAT/PAT, passwords and lines, PPP PAP/CHAP; no firewalls or VPN |
 | WAN, cabling, wireless | 6 | 62% | 28–45 | Copper (auto-MDIX), serial (DCE/DTE, HDLC/PPP), Wi-Fi access points, home wireless routers and clients; no WLC or fibre |
 | Simulation mode | 8 | 70% | 18–28 | Event list, replay, decode, drop reasons, pcap; BPDUs, OSPF hellos and database exchange, RIP updates, HSRP hellos, LLDP, LACP; no complex PDUs |
@@ -60,6 +60,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-10-30 — Email.** Servers have an EMAIL service (domain, users) and PCs an Email app: set up the account, write, send and receive; Simulation mode shows the SMTP and POP3 sessions.
 - **2026-10-30 — Values per student.** Activities can have variables (`{net}` in instructions and checks): each student types their name and gets their own values, so no two labs are the same; results also come per section (per device by default).
 - **2026-10-30 — CCNA 1 lab commands.** Output filters (`show running-config | include …`, `section`, `begin`), `security passwords min-length`, `login block-for`, `username … privilege 15`, `speed`/`duplex`/`mdix auto` (a speed mismatch takes the link down), `delete vlan.dat`, and many more `show` commands; VLANs now live in the VLAN database as on real switches.
 - **2026-10-30 — Home wireless router.** A Home-Router model: Internet port, four LAN ports and Wi-Fi, handing out addresses and translating to the Internet out of the box, with a Home Router settings page; multilayer switches also do NAT, DHCP server and ACLs.

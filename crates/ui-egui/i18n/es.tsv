@@ -383,3 +383,24 @@ Start	Empezar
 Student: {}	Alumno: {}
 Values per student, one variable per line (net = 10, 20, 30); write {net} in the instructions and checks	Valores por alumno, una variable por línea (red = 10, 20, 30); escribe {red} en las instrucciones y comprobaciones
 Section	Sección
+Email	Correo
+Inbox	Bandeja de entrada
+Compose	Redactar
+Account	Cuenta
+Receive	Recibir
+{} new message(s)	{} mensaje(s) nuevo(s)
+Your account	Tu cuenta
+Email address	Dirección de correo
+Incoming (POP3) server	Servidor de entrada (POP3)
+Outgoing (SMTP) server	Servidor de salida (SMTP)
+User name	Nombre de usuario
+To	Para
+Subject	Asunto
+Send	Enviar
+Sent to {}	Enviado a {}
+No messages. Press Receive to fetch new mail.	No hay mensajes. Pulsa Recibir para traer el correo nuevo.
+From {} to {}	De {} para {}
+EMAIL	CORREO
+SMTP and POP3 Service	Servicio SMTP y POP3
+Domain Name	Nombre de dominio
+{} waiting	{} pendientes

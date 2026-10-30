@@ -23,6 +23,7 @@ mod console;
 mod events;
 pub mod i18n;
 pub mod icons;
+mod mail;
 mod services;
 pub mod theme;
 
@@ -167,6 +168,7 @@ pub fn open_desktop_app(app: &mut PacketApp, d: DeviceId, which: &str) {
         w.desktop = match which {
             "prompt" => Some(console::DesktopApp::Prompt),
             "ip" => Some(console::DesktopApp::IpConfig),
+            "email" => Some(console::DesktopApp::Email),
             _ => None,
         };
     }
@@ -193,6 +195,7 @@ pub fn open_services_page(app: &mut PacketApp, d: DeviceId, page: &str) {
         "tftp" => Page::Tftp,
         "aaa" => Page::Aaa,
         "ftp" => Page::Ftp,
+        "email" => Page::Email,
         _ => Page::Http,
     };
     if let Some(w) = app.ui.windows.get_mut(&d) {

@@ -31,6 +31,23 @@ pub static CATALOG: &[CommandInfo] = &[
         true
     ),
     c!(
+        "mail.configure",
+        "Email account",
+        "",
+        None,
+        r#"{"device", "name"?, "address": "ana@lab.local", "incoming": "POP3 server address or name", "outgoing": "SMTP server", "user", "password"}"#,
+        true
+    ),
+    c!("mail.send", "Send email", "", None, r#"{"device", "to", "subject"?, "body"?} → {"answer"}: SMTP through the outgoing server"#, true),
+    c!(
+        "mail.receive",
+        "Receive email",
+        "",
+        None,
+        r#"{"device"} → {"received": n}: POP3 from the incoming server; the messages move to the host"#,
+        true
+    ),
+    c!(
         "home.settings",
         "Home router settings",
         "",

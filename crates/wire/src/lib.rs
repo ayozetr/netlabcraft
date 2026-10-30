@@ -54,6 +54,9 @@ pub const PROTO_TCP: u8 = 6;
 /// FTP's control port, and the ports PacketCraft's FTP servers open for passive data.
 pub const FTP_PORT: u16 = 21;
 pub const FTP_DATA_PORTS: std::ops::Range<u16> = 20_000..30_000;
+/// SMTP (mail in) and POP3 (mail out to its owner).
+pub const SMTP_PORT: u16 = 25;
+pub const POP3_PORT: u16 = 110;
 
 /// Shortest Ethernet payload; shorter ones are padded on the wire.
 const MIN_PAYLOAD: usize = 46;
@@ -427,6 +430,8 @@ pub enum Protocol {
     Hsrp,
     Radius,
     Ftp,
+    Smtp,
+    Pop3,
     Lacp,
     Lldp,
     Ntp,
@@ -457,6 +462,8 @@ impl Protocol {
             Protocol::Lacp => "LACP",
             Protocol::Radius => "RADIUS",
             Protocol::Ftp => "FTP",
+            Protocol::Smtp => "SMTP",
+            Protocol::Pop3 => "POP3",
             Protocol::Lldp => "LLDP",
             Protocol::Ntp => "NTP",
             Protocol::Syslog => "Syslog",
@@ -605,6 +612,12 @@ pub fn summarize(bytes: &[u8]) -> (Protocol, String) {
                         Ok(s) if !s.payload.is_empty() && (s.dst_port == 80 || s.src_port == 80) => {
                             let first = String::from_utf8_lossy(&s.payload).lines().next().unwrap_or("").chars().take(60).collect::<String>();
                             (Protocol::Http, format!("HTTP {first} {route}{tag}"))
+                        }
+                        Ok(s) if !s.payload.is_empty() && [SMTP_PORT, POP3_PORT].iter().any(|p| s.dst_port == *p || s.src_port == *p) => {
+                            let first = String::from_utf8_lossy(&s.payload).lines().next().unwrap_or("").chars().take(60).collect::<String>();
+                            let first = if first.to_ascii_uppercase().starts_with("PASS ") { "PASS ****".to_string() } else { first };
+                            let proto = if s.dst_port == SMTP_PORT || s.src_port == SMTP_PORT { Protocol::Smtp } else { Protocol::Pop3 };
+                            (proto, format!("{} {first} {route}{tag}", proto.name()))
                         }
                         Ok(s) if !s.payload.is_empty() && (s.dst_port == FTP_PORT || s.src_port == FTP_PORT) => {
                             let first = String::from_utf8_lossy(&s.payload).lines().next().unwrap_or("").chars().take(60).collect::<String>();

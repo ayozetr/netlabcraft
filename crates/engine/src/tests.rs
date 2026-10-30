@@ -477,3 +477,59 @@ fn activity_variables_differ_per_student_and_results_come_per_section() {
     }
     assert!(nets.len() >= 3, "{nets:?}");
 }
+
+#[test]
+fn email_goes_from_one_pc_to_another_through_the_server() {
+    let mut s = Session::new();
+    let mut names = Vec::new();
+    for (k, x) in [("switch", 0), ("pc", 100), ("pc", 200), ("server", 300)] {
+        names.push(s.execute("device.add", json!({"kind": k, "x": x, "y": 0})).unwrap()["name"].as_str().unwrap().to_string());
+    }
+    let (sw_name, srv_name) = (names[0].clone(), names[3].clone());
+    for (dev, port, sw) in [("PC1", "fa0", "fa0/1"), ("PC2", "fa0", "fa0/2"), (srv_name.as_str(), "g0", "fa0/3")] {
+        s.execute("link.add", json!({"a": dev, "a_port": port, "b": sw_name, "b_port": sw})).unwrap();
+    }
+    for (dev, ip) in [("PC1", "10.0.0.11"), ("PC2", "10.0.0.12"), (srv_name.as_str(), "10.0.0.5")] {
+        s.execute("cli.exec", json!({"device": dev, "line": format!("ipconfig {ip} 255.255.255.0")})).unwrap();
+    }
+    let mut sv = s.topology.device(s.topology.resolve(&srv_name).unwrap()).unwrap().services.clone();
+    sv.email.domain = "lab.local".into();
+    sv.email.users = vec![
+        packetcraft_model::services::AaaUser { name: "ana".into(), password: "a1".into() },
+        packetcraft_model::services::AaaUser { name: "bea".into(), password: "b2".into() },
+    ];
+    s.execute("server.services", json!({"device": srv_name, "services": sv})).unwrap();
+    for (dev, user, pw) in [("PC1", "ana", "a1"), ("PC2", "bea", "b2")] {
+        s.execute(
+            "mail.configure",
+            json!({"device": dev, "name": user, "address": format!("{user}@lab.local"), "incoming": "10.0.0.5", "outgoing": "10.0.0.5", "user": user, "password": pw}),
+        )
+        .unwrap();
+    }
+    // Spanning tree lets the new ports forward after 30 s.
+    s.sim.run_for(&s.topology, 31_000_000);
+    let r = s
+        .execute("mail.send", json!({"device": "PC1", "to": "bea@lab.local", "subject": "Hola", "body": "Una línea\n.empieza con punto\nfin"}))
+        .unwrap();
+    assert!(r["answer"].as_str().unwrap().starts_with("250"), "{r}");
+    let srv = s.topology.resolve(&srv_name).unwrap();
+    assert_eq!(s.topology.device(srv).unwrap().services.email.mailboxes.len(), 1);
+    assert!(s.execute("mail.send", json!({"device": "PC1", "to": "nadie@lab.local"})).unwrap_err().to_string().contains("550"));
+    assert!(s.execute("mail.send", json!({"device": "PC1", "to": "x@otro.com"})).unwrap_err().to_string().contains("550"));
+    let got = s.execute("mail.receive", json!({"device": "PC2"})).unwrap();
+    assert_eq!(got["received"], 1);
+    let pc2 = s.topology.resolve("PC2").unwrap();
+    let m = &s.topology.device(pc2).unwrap().inbox[0];
+    assert_eq!((m.from.as_str(), m.subject.as_str(), m.body.as_str()), ("ana@lab.local", "Hola", "Una línea\n.empieza con punto\nfin"));
+    assert!(s.topology.device(srv).unwrap().services.email.mailboxes.is_empty(), "fetched mail leaves the server");
+    assert_eq!(s.execute("mail.receive", json!({"device": "PC2"})).unwrap()["received"], 0);
+    // Wrong password: refused.
+    s.execute(
+        "mail.configure",
+        json!({"device": "PC2", "address": "bea@lab.local", "incoming": "10.0.0.5", "outgoing": "10.0.0.5", "user": "bea", "password": "x"}),
+    )
+    .unwrap();
+    assert!(s.execute("mail.receive", json!({"device": "PC2"})).is_err());
+    let protos: std::collections::BTreeSet<&str> = s.sim.trace().iter().map(|e| e.protocol.name()).collect();
+    assert!(protos.contains("SMTP") && protos.contains("POP3"), "{protos:?}");
+}

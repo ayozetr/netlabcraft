@@ -781,6 +781,11 @@ pub struct Device {
     /// Hosts: files kept on the device (what `ftp` sends and fetches, `dir` lists).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub files: Vec<services::WebFile>,
+    /// Hosts: the Email app's account and the messages received.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mail: Option<services::MailAccount>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inbox: Vec<services::Mail>,
     /// Routers and switches: `ip ftp username` and `ip ftp password`, for `copy … ftp:`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ftp_login: Option<(String, String)>,
@@ -1339,6 +1344,8 @@ impl Device {
             nat: Nat::default(),
             services: if kind == DeviceKind::Server { services::Services::server_defaults() } else { services::Services::default() },
             files: Vec::new(),
+            mail: None,
+            inbox: Vec::new(),
             ftp_login: None,
             vlan_dat_deleted: false,
         };

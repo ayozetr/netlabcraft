@@ -23,6 +23,7 @@ use packetcraft_wire::tcp::{self, Tcp};
 use packetcraft_wire::{Arp, ArpOp, ETHERTYPE_ARP, ETHERTYPE_IPV4, Frame, Icmp, Ipv4, PROTO_ICMP, PROTO_TCP, PROTO_UDP, Protocol, Udp, dns};
 
 pub mod cdp;
+pub mod email;
 pub mod ftp;
 pub mod lldp;
 
@@ -583,6 +584,8 @@ pub struct DevState {
     radius_inbox: Vec<packetcraft_wire::radius::Radius>,
     /// FTP server connections.
     pub(crate) ftp: ftp::ServerState,
+    /// SMTP and POP3 server connections.
+    pub(crate) mail: email::ServerState,
     /// TFTP server: files being read, by (client, port).
     tftp_tx: BTreeMap<(Ipv4Addr, u16), Vec<u8>>,
     /// Hosts: the last router advertisement heard (router's address, prefixes).
@@ -715,6 +718,8 @@ pub struct Sim {
     ftp_changes: Vec<(DeviceId, String, Option<String>)>,
     /// FTP data connections: (server, data port) → the client's port.
     ftp_data_peer: BTreeMap<(DeviceId, u16), u16>,
+    /// Mailbox changes mail servers made, for the lab to apply.
+    mail_changes: Vec<(DeviceId, email::MailChange)>,
     hsrp_for: u64,
     hsrp: Option<BTreeMap<DeviceId, Vec<hsrp::Role>>>,
     /// Last known link state of every router and switch port, for link messages.
@@ -2295,6 +2300,9 @@ impl Sim {
         if let Some(r) = self.ftp_server_in(t, d, ip, &seg) {
             return r;
         }
+        if let Some(r) = self.mail_server_in(t, d, ip, &seg) {
+            return r;
+        }
         if seg.dst_port == 80 && d.kind == DeviceKind::Server {
             return self.http_server_in(t, d, ip, &seg);
         }
@@ -2444,7 +2452,7 @@ impl Sim {
         }
         let result = (|| {
             let mut answer = None;
-            for _ in 0..2 {
+            for _ in 0..4 {
                 let _ = self.tcp_send(t, d, src, dst, &seg(tcp::SYN, 3_000, 0));
                 answer = self.tcp_wait(t, dev, |s| s.dst_port == local && s.flags & (tcp::SYN | tcp::RST) != 0);
                 if answer.is_some() {
@@ -2523,7 +2531,7 @@ impl Sim {
         let result = (|| {
             // The handshake (tried twice: the first SYN can be lost while routers resolve ARP).
             let mut synack = None;
-            for _ in 0..2 {
+            for _ in 0..4 {
                 let _ = self.tcp_send(t, d, src, server, &seg(tcp::SYN, isn, 0, Vec::new()));
                 synack = self.tcp_wait(t, dev, |s| s.dst_port == port && s.flags & (tcp::SYN | tcp::RST) != 0);
                 if synack.is_some() {

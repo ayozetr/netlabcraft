@@ -40,6 +40,7 @@ pub enum DesktopApp {
     IpConfig,
     Prompt,
     Browser,
+    Email,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -927,9 +928,12 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 ui.set_min_size(vec2(640.0, 380.0));
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing = vec2(28.0, 20.0);
-                    for (app_id, label) in
-                        [(DesktopApp::IpConfig, "IP Configuration"), (DesktopApp::Prompt, "Command Prompt"), (DesktopApp::Browser, "Web Browser")]
-                    {
+                    for (app_id, label) in [
+                        (DesktopApp::IpConfig, "IP Configuration"),
+                        (DesktopApp::Prompt, "Command Prompt"),
+                        (DesktopApp::Browser, "Web Browser"),
+                        (DesktopApp::Email, "Email"),
+                    ] {
                         let (rect, resp) = ui.allocate_exact_size(vec2(130.0, 150.0), Sense::click());
                         resp.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, label));
                         let p = ui.painter_at(rect);
@@ -960,6 +964,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 DesktopApp::IpConfig => "IP Configuration",
                 DesktopApp::Prompt => "Command Prompt",
                 DesktopApp::Browser => "Web Browser",
+                DesktopApp::Email => "Email",
             };
             let mut close = false;
             egui::Frame::new().fill(tk.bar).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
@@ -1070,6 +1075,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                     }
                 }
                 DesktopApp::Prompt => console(app, ui, d, true),
+                DesktopApp::Email => crate::mail::app(app, ui, dev),
                 DesktopApp::Browser => {
                     let mut forms = app.ui.windows.get_mut(&d).map(|w| std::mem::take(&mut w.svc)).unwrap_or_default();
                     crate::services::browser(app, ui, d, &mut forms);
@@ -1128,6 +1134,15 @@ fn draw_app_icon(p: &egui::Painter, r: egui::Rect, app: DesktopApp) {
             let tag = egui::Rect::from_center_size(c + vec2(0.0, r.height() * 0.02), vec2(r.width() * 0.8, r.height() * 0.28));
             p.rect_filled(tag, 3.0, light);
             p.text(tag.center(), egui::Align2::CENTER_CENTER, "http:", egui::FontId::proportional(r.height() * 0.2), dark);
+        }
+        DesktopApp::Email => {
+            // An envelope with its flap.
+            let env = egui::Rect::from_center_size(r.center(), vec2(r.width() * 0.9, r.height() * 0.62));
+            p.rect_filled(env, 3.0, light);
+            p.rect_stroke(env, 3.0, egui::Stroke::new(2.0, dark), egui::StrokeKind::Inside);
+            let stroke = egui::Stroke::new(2.0, dark);
+            p.line_segment([env.left_top(), env.center() + vec2(0.0, env.height() * 0.08)], stroke);
+            p.line_segment([env.right_top(), env.center() + vec2(0.0, env.height() * 0.08)], stroke);
         }
         DesktopApp::Prompt => {
             // A monitor with a prompt on a black screen.

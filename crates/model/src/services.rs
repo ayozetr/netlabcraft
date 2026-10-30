@@ -31,6 +31,51 @@ pub struct Services {
     /// FTP: files that users with an account send and fetch.
     #[serde(default)]
     pub ftp: Ftp,
+    /// Email: SMTP takes messages for the domain's users, POP3 hands them out.
+    #[serde(default)]
+    pub email: Email,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Email {
+    #[serde(default)]
+    pub on: bool,
+    /// The domain whose mail this server keeps (`lab.local` in `ana@lab.local`).
+    #[serde(default)]
+    pub domain: String,
+    #[serde(default)]
+    pub users: Vec<AaaUser>,
+    /// Messages waiting to be fetched, with the user they are for.
+    #[serde(default)]
+    pub mailboxes: Vec<(String, Mail)>,
+}
+
+/// An email message.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Mail {
+    pub from: String,
+    pub to: String,
+    #[serde(default)]
+    pub subject: String,
+    #[serde(default)]
+    pub body: String,
+}
+
+/// Most messages a server keeps, and the longest message.
+pub const MAX_MAILS: usize = 500;
+pub const MAX_MAIL: usize = 20_000;
+
+/// A host's email account (the Email app's settings).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct MailAccount {
+    pub name: String,
+    /// The address (`ana@lab.local`).
+    pub address: String,
+    /// Incoming (POP3) and outgoing (SMTP) servers: addresses or names.
+    pub incoming: String,
+    pub outgoing: String,
+    pub user: String,
+    pub password: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -124,6 +169,7 @@ impl Services {
                         tftp: Tftp { on: true, files: Vec::new() },
                         aaa: Aaa::default(),
             ftp: Ftp { on: true, users: Vec::new(), files: Vec::new() },
+            email: Email { on: true, ..Email::default() },
             dhcp: ServerDhcp { on: false, pools: vec![ServerPool { name: "defaultPool".into(), gateway: Ipv4Addr::UNSPECIFIED, dns: Ipv4Addr::UNSPECIFIED, start: Ipv4Addr::new(192, 168, 0, 10), mask: Ipv4Addr::new(255, 255, 255, 0), max_users: 50 }] },
         }
     }

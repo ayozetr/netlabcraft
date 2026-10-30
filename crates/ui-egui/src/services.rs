@@ -23,6 +23,7 @@ pub enum Page {
     Tftp,
     Aaa,
     Ftp,
+    Email,
 }
 
 /// Form state of the Services tab and the browser, per device window.
@@ -49,6 +50,8 @@ pub struct ServiceForms {
     ftp_user: String,
     ftp_password: String,
     ftp_perms: [bool; 4],
+    mail_user: String,
+    mail_password: String,
     // Browser.
     pub url: String,
     /// Press Go on the next frame.
@@ -125,6 +128,7 @@ pub fn tab(app: &mut PacketApp, ui: &mut Ui, dev: &Device, forms: &mut ServiceFo
                     (Page::Tftp, "TFTP"),
                     (Page::Aaa, "AAA"),
                     (Page::Ftp, "FTP"),
+                    (Page::Email, "EMAIL"),
                 ] {
                     if crate::console::list_item(ui, name, forms.page == p, false).clicked() {
                         forms.page = p;
@@ -144,6 +148,7 @@ pub fn tab(app: &mut PacketApp, ui: &mut Ui, dev: &Device, forms: &mut ServiceFo
                 Page::Tftp => tftp(app, ui, d, &dev.services),
                 Page::Aaa => aaa(app, ui, d, &dev.services, forms),
                 Page::Ftp => ftp(app, ui, d, &dev.services, forms),
+                Page::Email => email(app, ui, d, &dev.services, forms),
             });
         });
     });
@@ -821,6 +826,53 @@ fn ftp(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mut
         new.ftp.files.remove(i);
         changed = true;
     }
+    if changed {
+        apply(app, d, &new);
+    }
+}
+
+fn email(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mut ServiceForms) {
+    use packetcraft_model::services::AaaUser;
+    ui.vertical_centered(|ui| ui.label(RichText::new(tl("EMAIL")).size(16.0)));
+    ui.separator();
+    let mut new = sv.clone();
+    let mut changed = on_off(ui, tl("SMTP and POP3 Service"), &mut new.email.on);
+    let mut domain = new.email.domain.clone();
+    ui.horizontal(|ui| {
+        let l = ui.add_sized([140.0, 22.0], egui::Label::new(tl("Domain Name")));
+        let r = ui.add(egui::TextEdit::singleline(&mut domain).desired_width(200.0)).labelled_by(l.id);
+        if r.lost_focus() && domain.trim() != new.email.domain {
+            new.email.domain = domain.trim().to_string();
+            changed = true;
+        }
+    });
+    ui.separator();
+    ui.label(RichText::new(tl("Users")).strong());
+    field(ui, tl("Username"), &mut forms.mail_user);
+    field(ui, tl("Password"), &mut forms.mail_password);
+    if ui.button(tl("Add user")).clicked() && !forms.mail_user.trim().is_empty() {
+        let name = forms.mail_user.trim().to_string();
+        new.email.users.retain(|u| u.name != name);
+        new.email.users.push(AaaUser { name, password: forms.mail_password.clone() });
+        changed = true;
+    }
+    egui::Grid::new(("mail_users", d.0)).striped(true).show(ui, |ui| {
+        let mut remove = None;
+        for (i, u) in new.email.users.iter().enumerate() {
+            let waiting = new.email.mailboxes.iter().filter(|(x, _)| x.eq_ignore_ascii_case(&u.name)).count();
+            ui.label(format!("{}@{}", u.name, new.email.domain));
+            ui.label(&u.password);
+            ui.label(crate::i18n::trf("{} waiting", &[&waiting]));
+            if ui.small_button(tl("Remove")).clicked() {
+                remove = Some(i);
+            }
+            ui.end_row();
+        }
+        if let Some(i) = remove {
+            new.email.users.remove(i);
+            changed = true;
+        }
+    });
     if changed {
         apply(app, d, &new);
     }
