@@ -1,19 +1,47 @@
-# Gaps (ranked work list)
+# Gaps
 
-_Updated 2026-10-29. Pick from the top; each item lands with tests and doc updates._
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** major (rewritten: only open shortfalls, ranked, with estimates; finished work moved to the revision history) · **Target:** Cisco Packet Tracer 9.0
 
-1. ~~DHCP~~ — done 2026-10-29 (router pools, exclusions, bindings, conflict detection, relay with `ip helper-address`, host `/renew`). Still to do: DHCP service on Server devices.
-2. ~~Spanning tree~~ — done 2026-10-29 (PVST-style per-VLAN trees, roles and blocking, priorities, `root primary/secondary`, portfast, `show spanning-tree`, amber lights). Still to do: BPDUs in the event list, convergence timers, RSTP proposal/agreement.
-3. ~~Switch VLAN interfaces and layer-3 switching~~ — done 2026-10-29 (`interface vlan N`, `ip default-gateway`; a Switch-ML-24 multilayer model with `ip routing`, routed ports with `no switchport`, static routes, `show ip route`; multilayer sample lab). Still to do: OSPF on multilayer switches, IPv6 on switch interfaces.
-4. ~~OSPF single area~~ — done 2026-10-29 (computed convergence: neighbours, SPF, passive interfaces, router id, default-information originate, `show ip ospf neighbor`, `show ip protocols`). ~~RIP~~ — done 2026-10-29 (versions 1/2 behaving classless, classful `network`, passive interfaces, split horizon, 15-hop limit, default-information originate, `show ip rip database`, rip sample lab). Still to do: hello/LSA/update packets in the event list, OSPF multi-area and `ip ospf cost`, RIP auto-summary, EIGRP.
-5. **Unsaved-changes prompt in the web build**, and recent files on desktop.
-6. ~~ACLs and NAT~~ — done 2026-10-29 (numbered and named standard/extended ACLs with counters; static NAT, pools, PAT with interface overload). Still to do: `access-class` on vty lines, NAT for ICMP errors (traceroute through NAT).
-7. ~~Remote access~~ — done 2026-10-29 (passwords, banner, password encryption, local users, Telnet and SSH; see 14). Still to do: `access-class` on vty lines.
-8. **Activity checks**: a lab can carry expected results (pings that must succeed, config lines that must exist) and a score.
-9. ~~Serial WAN links~~ — done 2026-10-29 (Router-WAN model with Serial0/0/0-1, serial cables with a DCE end, `clock rate`, `encapsulation hdlc|ppp`, line protocol down without clock or with mismatched framing, `show controllers`, HDLC/PPP frames on the wire, serial-wan sample lab). Still to do: PPP authentication (PAP/CHAP), Frame Relay, modular slots.
-10. ~~IPv6~~ — done 2026-10-29 (global, EUI-64 and link-local addresses, neighbour discovery, router solicitations/advertisements and host autoconfiguration, static routes with link-local next hops, `ipv6 unicast-routing`, ICMPv6 echo/errors, ping and traceroute, `show ipv6 interface brief|route|neighbors`, PC IPv6 configuration, ipv6 sample lab). Still to do: OSPFv3, DHCPv6, IPv6 on subinterfaces and switch VLAN interfaces, IPv6 ACLs.
-11. **Translations** through `craft-i18n`.
-12. **Packaging**: desktop icons, installers, release workflow like the other Craft apps.
-13. ~~Services on Server devices~~ — done 2026-10-29 (HTTP over simulated TCP with a file manager, DNS A records, DHCP pools on servers; Web Browser on the PC Desktop; `nslookup`, names in `ping`/`tracert`). Still to do: HTTPS, Email, FTP, TFTP, NTP, Syslog, AAA.
-14. ~~Telnet/SSH between devices~~ — done 2026-10-29 (`telnet`/`ssh -l` from hosts and devices, `username`, `login local`, `transport input`, `crypto key generate rsa`, `ip ssh version`).
-15. ~~VTP~~ — done 2026-10-29 (server/client/transparent, domain learned from the first advertisement, password, version 2 relaying, highest revision wins, client and extended-range restrictions, VLAN database kept across reloads, `show vtp status`, a vtp sample lab). Still to do: VTP pruning, version 3, DTP. EtherChannel done 2026-10-29 (`channel-group N mode on|active|passive|desirable|auto`, negotiation from both ends' modes, suspended members, `interface port-channel`, one spanning-tree port per bundle, `show etherchannel summary`, an etherchannel sample lab). Port security done 2026-10-29 (`maximum`, `violation shutdown|restrict|protect`, sticky and static addresses, err-disabled ports recovered with `shutdown`/`no shutdown`, `show port-security`).
+Every known shortfall against the reference app, ranked: the work list. Pick from the top; each
+item lands with tests and doc updates. The weights behind the ranking are in
+[target-app-parity.md](target-app-parity.md); detail per area in
+[protocol-parity.md](protocol-parity.md), [ui-parity.md](ui-parity.md),
+[hardware-parity.md](hardware-parity.md) and [localization-parity.md](localization-parity.md).
+Hours are Opus 5.5 agent wall-clock estimates.
+
+## Ranked
+
+| # | Gap | Who notices | Estimate |
+|---|---|---|---|
+| 1 | **Activities and scoring:** a lab carries expected results (pings that must succeed, configuration lines that must exist) and shows a score; an instructions panel | Instructors, every graded lab | 60–100 h |
+| 2 | **Console coverage:** `show version`, `show flash`, `show clock`, `show users`, CDP (`show cdp neighbors`), `terminal length`, `clock set`, `debug` basics | CCNA 1 from the first lab | 20–35 h |
+| 3 | **Protocol frames in Simulation mode:** BPDUs, OSPF hellos/LSAs, RIP updates, LACP, CDP in the event list | CCNA 1–3 students watching Simulation mode | 15–25 h |
+| 4 | **Wireless LANs:** access points, wireless routers, laptop wireless cards, SSID and WPA2, association | CCNA 2 | 40–60 h |
+| 5 | **HSRP** | CCNA 2 | 12–18 h |
+| 6 | **DTP** (`switchport mode dynamic`, `nonegotiate`) and RSTP timers | CCNA 2 | 10–16 h |
+| 7 | **OSPF depth:** multi-area, `ip ospf cost`, DR/BDR, `show ip ospf interface`; OSPF and RIP on multilayer switches | CCNA 3 | 24–36 h |
+| 8 | **PPP authentication** (PAP/CHAP) | CCNA 3 | 6–10 h |
+| 9 | **ACL depth:** `access-class` on vty lines, IPv6 ACLs, NAT for ICMP errors | CCNA 3 | 11–18 h |
+| 10 | **IPv6 depth:** OSPFv3, DHCPv6, RA flags, IPv6 on subinterfaces and VLAN interfaces | CCNA 2–3 | 28–40 h |
+| 11 | **Services:** FTP/TFTP (and `copy running-config tftp:`), email, NTP, syslog, SNMP, AAA | CCNA 3, network management labs | 40–60 h |
+| 12 | **Translations** through `craft-i18n`, Spanish first | Non-English students | 25–40 h |
+| 13 | **Packaging and first release:** icon, installers, workflows, About window ([releasing.md](releasing.md)) | Everyone who isn't a developer | 14–24 h |
+| 14 | **Workspace:** drawing freeform, clusters, physical view, print/export the workspace | Everyone, occasionally | 50–75 h |
+| 15 | **Device families:** modular routers, ASA, IoT, phones | Specialised labs | 80–120 h |
+| 16 | **Unsaved-changes prompt in the web build**, recent files on desktop | Everyone | 3–5 h |
+| 17 | **EIGRP, VPN (GRE/IPsec), QoS** | CCNA 3 extras | 40–60 h |
+
+## Revision history
+
+| Date | Change | Summary |
+|---|---|---|
+| 2026-10-30 | major | Rewritten as a ranked table of open gaps with estimates; finished items moved here. |
+| 2026-10-29 | minor | Done: serial WAN links (Router-WAN, DCE/DTE, clock rate, HDLC/PPP, `show controllers`). |
+| 2026-10-29 | minor | Done: RIP (versions 1/2, classful networks, passive interfaces, split horizon, default origination). |
+| 2026-10-29 | minor | Done: multilayer switch (`ip routing`, routed ports, static routes). |
+| 2026-10-29 | minor | Done: IPv6 (addresses, NDP, SLAAC, static routes, ICMPv6, PC IPv6 configuration). |
+| 2026-10-29 | minor | Done: EtherChannel (LACP, PAgP, static), VTP, port security. |
+| 2026-10-29 | minor | Done: Telnet and SSH between devices, local users, `login local`. |
+| 2026-10-29 | minor | Done: server services (HTTP, DNS, DHCP) and the PC web browser. |
+| 2026-10-29 | minor | Done: DHCP server and relay, spanning tree, switch VLAN interfaces, OSPF, ACLs and NAT. |
+| 2026-10-29 | major | Created. |

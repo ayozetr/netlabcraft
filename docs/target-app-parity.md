@@ -1,40 +1,110 @@
-# Target-app parity
+# Target-app parity: PacketCraft vs Cisco Packet Tracer
 
-_Updated 2026-10-29. Authoritative assessment against Cisco Packet Tracer as a CCNA teaching tool, by black-box observation and public documentation only (see AGENTS.md, clean room)._
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** major (rewritten in the shared parity format: method, weights, audiences, estimates) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
-| Area | Reference app | PacketCraft | Notes |
+This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summarizes it,
+[`gaps.md`](gaps.md) lists every shortfall, and the area checklists hold the detail:
+[protocols and commands](protocol-parity.md), [UI](ui-parity.md), [hardware](hardware-parity.md),
+[localization](localization-parity.md). The generated command list is
+[`command-reference.md`](command-reference.md).
+
+## Summary
+
+| Number | Value | Kind |
+|---|---|---|
+| Engine commands | **40** | measured: `crates/engine/src/catalog.rs` |
+| Console grammar entries | **206** across 12 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
+| Device models | **13** | measured: `crates/model/src/models.rs` |
+| Sample labs | **15** | measured: `crates/engine/src/sample.rs` |
+| Tests | **111** | measured: `cargo test --workspace` |
+| **Ready for real work** (weighted) | **~50%** | estimated; written weights below (50.9 computed) |
+| **CCNA 1 student** (Introduction to Networks) | **~70%** | estimated; [method](#audiences) |
+| **CCNA 2 student** (Switching, Routing and Wireless Essentials) | **~58%** | estimated; [method](#audiences) |
+| **CCNA 3 student** (Enterprise Networking, Security and Automation) | **~45%** | estimated; [method](#audiences) |
+| **Instructor** (builds graded activities) | **~12%** | estimated; no activity checks or scoring yet |
+| Stage | **pre-alpha** | see [Stage](#stage) |
+| Remaining to alpha | **~40–70 Opus 5.5 agent-hours** | estimated; [roadmap.md](roadmap.md#alpha-gates) |
+| Remaining to full parity | **~600–950 Opus 5.5 agent-hours** | estimated; sum of the rows below |
+
+### Readiness by audience
+
+| Audience | Ready % | Opus 5.5 agent wall-clock hours to ~95% | Work that dominates |
 |---|---|---|---|
-| Logical workspace (place, move, cable devices) | yes | yes | Port chooser per cable; link lights; zoom/pan; grid snap. |
-| Physical workspace (buildings, racks) | yes | no | Low priority. |
-| Device catalogue | many models | 12 generic models (routers, switches incl. multilayer, hub, hosts) | Generic on purpose; modular slots later. |
-| Cable types (straight, cross, fibre, serial, console) | yes | copper (auto-MDIX) and serial (DCE/DTE) | HDLC and PPP framing; no PAP/CHAP, fibre or console cable yet. |
-| Switch MAC learning, VLANs, trunks | yes | yes | |
-| STP / RSTP | yes | per-VLAN tree, computed instantly | No BPDU frames or timers yet. |
-| Port security | yes | yes | sticky, static, three violation modes, err-disabled |
-| EtherChannel (LACP, PAgP, static) | yes | yes | computed negotiation; members spread traffic by address |
-| VTP | yes | yes | computed; no pruning or version 3 |
-| DTP | yes | no | |
-| IPv4 static routing, router-on-a-stick | yes | yes | |
-| Switch VLAN interface (management SVI, default gateway) | yes | yes | |
-| Layer-3 switch (`ip routing`) | yes | yes | VLAN interfaces and routed ports, static routes; no OSPF on switches yet |
-| OSPF | yes | single area, computed convergence | No hello/LSA frames yet. |
-| RIP | yes | yes | v1/v2 computed, classless; no update packets or auto-summary |
-| EIGRP, BGP | yes | no | |
-| IPv6 | yes | yes | addressing, NDP, SLAAC, static routes, ping/traceroute; no OSPFv3, DHCPv6 or IPv6 ACLs |
-| DHCP server/relay | yes | yes | Routers and servers; relay; clients on hosts. |
-| DNS, HTTP (server and browser) | yes | yes | HTTP over simulated TCP; no HTTPS. |
-| FTP, TFTP, email, syslog, NTP, AAA | yes | no | |
-| ACLs, NAT/PAT | yes | yes | Standard/extended, numbered/named; static, pool, PAT. |
-| Passwords / `enable secret` / lines / banner | yes | yes | Real password prompts on the console. |
-| SSH / Telnet | yes | yes | Local users, `login local`, `transport input`. |
-| Router/switch console (modes, abbreviations, `?`, Tab) | yes | yes | Our own messages and table layouts. |
-| Running/startup config, `write`, `reload` | yes | yes | |
-| PC desktop (IP config, command prompt, web browser) | yes | yes | No email client, terminal or Telnet/SSH client yet. |
-| Simulation mode: event list, step, replay | yes | yes | Plus drop reasons, hex dump. |
-| PDU details (per layer) | yes | yes | Decoded from real bytes. |
-| Packet capture export (pcap) | no | **yes** | Opens in any analyser. |
-| Activity wizard / grading | yes | no | Planned as checks over the lab (`docs/gaps.md`). |
-| Scripting / automation | limited | **full** | CLI and MCP reach every command. |
-| Open file format | no | **yes** | JSON `.pcraft`. |
-| Platforms | desktop | desktop + browser | |
-| Licence | proprietary, account required | MIT/Apache-2.0, no account | |
+| Full target (ready for real work) | ~50% | ~600–950 | Activities and scoring, wireless, more device families (ASA, IoT, modules), services (FTP, email, AAA, syslog), physical workspace, translations |
+| CCNA 1 student | ~70% | ~40–70 | Protocol frames in Simulation mode (BPDU, hellos), console polish (`show` coverage), PDU details layout, a few host apps (text editor, terminal) |
+| CCNA 2 student | ~58% | ~110–170 | Wireless LANs (40–60 h), DTP and RSTP timers (10–16 h), DHCPv6 and SLAAC flags (8–12 h), HSRP (12–18 h), console polish |
+| CCNA 3 student | ~45% | ~180–280 | OSPF multi-area and OSPFv3 (20–30 h), ACL depth and IPv6 ACLs (10–16 h), PPP authentication (6–10 h), VPN/GRE (15–25 h), QoS basics, SNMP/syslog/NTP, automation APIs |
+| Instructor | ~12% | ~120–200 | Activity wizard: answer network, checks and scoring (60–100 h), locked activities, instructions panel, translations |
+
+Each student tier is mostly a superset of the one before. Hours are wall-clock for one agent;
+the protocol work splits well across 3–4 agents by crate (`sim`, `ios`, `ui-egui`).
+
+## What we measured against, and how
+
+- **Target:** Cisco Packet Tracer 9.0.1, the version on the owner's machine, as used in the
+  Cisco Networking Academy CCNA courses.
+- **Clean-room limits.** The project's absolute rule ([`AGENTS.md`](../AGENTS.md)) forbids reading,
+  disassembling or decompiling anything inside the Packet Tracer installation, its `.pkt`/`.pka`
+  files or its protocols. The reference was observed **black-box only**: running it with
+  synthetic labs and taking screenshots that stay in the local `plan/packet-tracer/screenshots/`
+  folder (never committed). Protocol behaviour comes from the IETF RFCs and IEEE standards named
+  in [`protocol-parity.md`](protocol-parity.md).
+- **Feature list:** the course topics of the three CCNA courses, as public in the course outlines,
+  and the menus, tabs and device windows observed in the running app.
+- **Measured numbers** are counted from source; **estimated** numbers are judgement against the
+  weights below and say so.
+
+## Areas and weights
+
+Weights reflect how much of a typical CCNA lab session each area carries.
+
+| Area | Weight | Ready | Points | Detail | Hours to ~95% |
+|---|---|---|---|---|---|
+| Device console (modes, commands, `show` output, help, completion) | 20 | 60% | 12.0 | [protocol-parity.md](protocol-parity.md#console) | 60–90 |
+| Layer 2 (VLANs, trunks, STP, EtherChannel, VTP, port security, DTP) | 12 | 75% | 9.0 | [protocol-parity.md](protocol-parity.md#layer-2) | 25–40 |
+| Layer 3 (static, RIP, OSPF, EIGRP, IPv6, multilayer switching) | 15 | 55% | 8.3 | [protocol-parity.md](protocol-parity.md#layer-3) | 70–110 |
+| Services (DHCP, DNS, HTTP, FTP, email, NTP, syslog, AAA) | 8 | 40% | 3.2 | [protocol-parity.md](protocol-parity.md#services) | 40–60 |
+| Security (ACLs, NAT, SSH, passwords, AAA, PPP authentication) | 8 | 60% | 4.8 | [protocol-parity.md](protocol-parity.md#security) | 35–55 |
+| WAN, cabling and wireless | 6 | 35% | 2.1 | [hardware-parity.md](hardware-parity.md) | 60–90 |
+| Simulation mode (event list, PDU details, filters, complex PDUs) | 8 | 55% | 4.4 | [ui-parity.md](ui-parity.md) | 30–45 |
+| Workspace and windows (canvas, device tabs, physical view, drawing) | 10 | 55% | 5.5 | [ui-parity.md](ui-parity.md) | 60–90 |
+| Teaching (activities, scoring, instructions, languages) | 8 | 5% | 0.4 | [gaps.md](gaps.md) | 120–200 |
+| Device families and hardware (models, modules, ASA, IoT) | 5 | 25% | 1.3 | [hardware-parity.md](hardware-parity.md) | 80–120 |
+| **Total** | **100** | | **50.9** | | **~600–950** |
+
+## Audiences
+
+- **CCNA 1 (Introduction to Networks):** basic switch and router configuration, passwords and
+  SSH, IPv4 and IPv6 addressing, ARP and NDP, ping and traceroute, Simulation mode to watch
+  frames. Almost all of it works; what is missing is console breadth and some Simulation-mode
+  detail (per-layer PDU view layout, protocol frames such as BPDUs).
+- **CCNA 2 (SRWE):** VLANs, trunks, inter-VLAN routing (router-on-a-stick and multilayer), STP,
+  EtherChannel, DHCPv4, SLAAC, FHRP, port security, wireless LANs, static routing. Wireless and
+  HSRP are the large missing pieces.
+- **CCNA 3 (ENSA):** single-area OSPF, ACLs, NAT, WAN concepts, VPN, QoS, network management,
+  automation. OSPF, ACLs and NAT work; VPN, QoS, SNMP/syslog/NTP and the automation topics do not.
+- **Instructor:** builds activities with an answer network and a score. Not started.
+
+## Stage
+
+**Pre-alpha:** every core workflow works end to end (build a lab, configure by typing, ping,
+watch frames, save), but there is no packaged release, no activities, and the console still
+misses commands students meet in the first labs. Alpha gates are in
+[`roadmap.md`](roadmap.md#alpha-gates).
+
+## Better than the reference
+
+- **Real frames:** every frame is encoded and decoded; the event list exports to pcap for
+  Wireshark or any analyser.
+- **Open lab format:** `.pcraft` is readable JSON ([`file-format.md`](file-format.md)).
+- **Agent control:** every action is a command, reachable from the CLI and an MCP server.
+- **Runs everywhere:** Linux, Windows, macOS, BSD and the browser, with no account or sign-in.
+- **Drop reasons:** a dropped frame says why (ACL, VLAN not allowed, blocked by STP…).
+
+## Revision history
+
+| Date | Change | Summary |
+|---|---|---|
+| 2026-10-30 | major | Rewritten in the shared format: measured numbers, weights, audiences per CCNA course, estimates and stage. |
+| 2026-10-29 | minor | Serial WAN links, RIP, multilayer switch, IPv6, EtherChannel, VTP, port security, Telnet/SSH. |
+| 2026-10-29 | major | Created. |
