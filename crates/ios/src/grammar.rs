@@ -35,8 +35,10 @@ impl Modes {
     pub const ACL: Modes = Modes(4096);
     /// `router rip`.
     pub const RIP: Modes = Modes(8192);
+    /// `ipv6 access-list`.
+    pub const ACL6: Modes = Modes(16384);
     /// Every command mode, either device.
-    pub const ANY_MODE: Modes = Modes(63 | 256 | 512 | 1024 | 2048 | 4096 | 8192);
+    pub const ANY_MODE: Modes = Modes(63 | 256 | 512 | 1024 | 2048 | 4096 | 8192 | 16384);
     pub const BOTH: Modes = Modes(192);
 
     pub const fn or(self, o: Modes) -> Modes {
@@ -281,13 +283,30 @@ pub enum Id {
     PppAuthentication,
     NoPppAuthentication,
     PppPapSent,
+    AccessClass,
+    NoAccessClass,
+    Ipv6AccessList,
+    NoIpv6AccessList,
+    Acl6EntryLine,
+    NoAcl6EntryLine,
+    TrafficFilter,
+    NoTrafficFilter,
+    ShowIpv6AccessList,
 }
 
 use Tok::{Arg, K, Rest};
 
 const EXECS: Modes = Modes::USER.or(Modes::EXEC);
-const SUBMODES: Modes =
-    Modes::IF.or(Modes::SUBIF).or(Modes::VLAN).or(Modes::LINE).or(Modes::DHCP).or(Modes::SVI).or(Modes::OSPF).or(Modes::ACL).or(Modes::RIP);
+const SUBMODES: Modes = Modes::IF
+    .or(Modes::SUBIF)
+    .or(Modes::VLAN)
+    .or(Modes::LINE)
+    .or(Modes::DHCP)
+    .or(Modes::SVI)
+    .or(Modes::OSPF)
+    .or(Modes::ACL)
+    .or(Modes::RIP)
+    .or(Modes::ACL6);
 const IFS: Modes = Modes::IF.or(Modes::SUBIF);
 const ANY_IF: Modes = IFS.or(Modes::SVI);
 
@@ -646,6 +665,22 @@ pub static SPECS: &[Spec] = &[
     spec!(NoLogin, Modes::LINE, Modes::BOTH, [K("no"), K("login")], "Don't ask for a password"),
     spec!(Accepted, Modes::LINE, Modes::BOTH, [K("exec-timeout"), Rest("<minutes> [<seconds>]")], "Idle timeout (accepted, not simulated)"),
     spec!(Accepted, Modes::LINE, Modes::BOTH, [K("logging"), K("synchronous")], "Keep messages from breaking your typing (accepted)"),
+    spec!(Ipv6AccessList, Modes::CONFIG, Modes::ROUTER, [K("ipv6"), K("access-list"), Arg("WORD")], "Create or edit an IPv6 access list"),
+    spec!(NoIpv6AccessList, Modes::CONFIG, Modes::ROUTER, [K("no"), K("ipv6"), K("access-list"), Arg("WORD")], "Delete an IPv6 access list"),
+    spec!(Acl6EntryLine, Modes::ACL6, Modes::ROUTER, [K("permit"), Rest("{ipv6|icmp|tcp|udp} <src> [port] <dst> [port]")], "Allow matching packets"),
+    spec!(Acl6EntryLine, Modes::ACL6, Modes::ROUTER, [K("deny"), Rest("{ipv6|icmp|tcp|udp} <src> [port] <dst> [port]")], "Drop matching packets"),
+    spec!(NoAcl6EntryLine, Modes::ACL6, Modes::ROUTER, [K("no"), Rest("{permit|deny} ...")], "Remove a line"),
+    spec!(
+        TrafficFilter,
+        Modes::IF,
+        Modes::ROUTER,
+        [K("ipv6"), K("traffic-filter"), Arg("WORD"), Arg("{in|out}")],
+        "Filter IPv6 packets with an access list"
+    ),
+    spec!(NoTrafficFilter, Modes::IF, Modes::ROUTER, [K("no"), K("ipv6"), K("traffic-filter"), Arg("WORD"), Arg("{in|out}")], "Stop filtering"),
+    spec!(ShowIpv6AccessList, EXECS, Modes::ROUTER, [K("show"), K("ipv6"), K("access-list")], "IPv6 access lists and their matches"),
+    spec!(AccessClass, Modes::LINE, Modes::BOTH, [K("access-class"), Arg("<1-99>|WORD"), K("in")], "Only logins this list permits (vty lines)"),
+    spec!(NoAccessClass, Modes::LINE, Modes::BOTH, [K("no"), K("access-class"), Rest("[list in]")], "Remove the login filter"),
     spec!(TransportInput, Modes::LINE, Modes::BOTH, [K("transport"), K("input"), Rest("{ssh|telnet|all|none}")], "Protocols remote logins may use"),
     spec!(LoginLocal, Modes::LINE, Modes::BOTH, [K("login"), K("local")], "Ask for a username and password (username lines)"),
     spec!(Username, Modes::CONFIG, Modes::BOTH, [K("username"), Arg("WORD"), Rest("{secret|password} PASSWORD")], "Add a local user"),
@@ -1024,6 +1059,7 @@ mod tests {
                 Modes::OSPF,
                 Modes::ACL,
                 Modes::RIP,
+                Modes::ACL6,
             ]
             .into_iter()
             .find(|m| s.modes.has(*m))

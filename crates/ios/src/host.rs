@@ -277,7 +277,13 @@ fn ipv6config(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> 
                 Ok((addr, router)) => {
                     if let Some(d) = t.device_mut(dev) {
                         if let Some(p) = d.ports.first_mut() {
-                            p.ipv6 = packetcraft_model::Ipv6Conf { enabled: true, addresses: vec![addr], link_local: None, autoconfig: true };
+                            p.ipv6 = packetcraft_model::Ipv6Conf {
+                                enabled: true,
+                                addresses: vec![addr],
+                                link_local: None,
+                                autoconfig: true,
+                                ..Default::default()
+                            };
                         }
                         d.gateway6 = Some(router);
                     }
@@ -303,7 +309,8 @@ fn ipv6config(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> 
             }
             let d = t.device_mut(dev).ok_or("the device no longer exists")?;
             if let Some(p) = d.ports.first_mut() {
-                p.ipv6 = packetcraft_model::Ipv6Conf { enabled: true, addresses: vec![net], link_local: None, autoconfig: false };
+                p.ipv6 =
+                    packetcraft_model::Ipv6Conf { enabled: true, addresses: vec![net], link_local: None, autoconfig: false, ..Default::default() };
             }
             d.gateway6 = gw;
             Ok(format!("IPv6 address set to {net}{}.", gw.map(|g| format!(", gateway {g}")).unwrap_or_default()))

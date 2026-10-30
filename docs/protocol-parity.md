@@ -71,9 +71,9 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | Feature | Status | Notes and gap |
 |---|---|---|
 | Standard and extended ACLs, numbered and named | ✅ | `ip access-group in/out`, match counters, implicit deny, TCP/UDP ports. |
-| `access-class` on vty lines | ❌ | 2–3 h. |
-| IPv6 ACLs | ❌ | 6–10 h. |
-| NAT: static, pool, PAT (overload) | ✅ | ICMP, UDP and TCP; `show ip nat translations`. No NAT for ICMP errors (traceroute through NAT): 3–5 h. |
+| `access-class` on vty lines | ✅ | Telnet/SSH logins refused (TCP reset) when the list denies the source; counted in `show access-lists`. |
+| IPv6 ACLs | ✅ | `ipv6 access-list` with `permit|deny ipv6|icmp|tcp|udp` and any/host/prefix addresses and ports, `ipv6 traffic-filter in|out`, neighbour discovery passes implicitly, `show ipv6 access-list` with matches; denied packets get an administratively-prohibited unreachable. |
+| NAT: static, pool, PAT (overload) | ✅ | ICMP, UDP and TCP; `show ip nat translations`. ICMP errors about translated packets are translated back (traceroute works through PAT). |
 | Passwords and lines | ✅ | `enable secret/password`, console and vty passwords with real prompts, `banner motd`, `service password-encryption`. |
 | PPP authentication (PAP/CHAP) | ✅ | `ppp authentication chap|pap` (one or both, in order), `ppp pap sent-username`, checked against `username` entries (CHAP: both routers name each other with the same secret); failure keeps the line protocol down and `show interfaces` says why. No LCP/CHAP frames on the wire. |
 | ASA firewall, zone-based firewall, VPN (GRE/IPsec) | ❌ | 40–60 h. |
@@ -105,6 +105,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | access-class, IPv6 ACLs, NAT for ICMP errors. |
 | 2026-10-30 | minor | PPP PAP and CHAP authentication. |
 | 2026-10-30 | minor | DTP. |
 | 2026-10-30 | minor | HSRP. |

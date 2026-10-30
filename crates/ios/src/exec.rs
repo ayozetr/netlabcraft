@@ -49,6 +49,8 @@ pub enum Mode {
     Ospf,
     /// `R1(config-router)#` under `router rip`.
     Rip,
+    /// `R1(config-ipv6-acl)#`: the list's name.
+    Acl6(String),
     /// `R1(config-std-nacl)#` / `R1(config-ext-nacl)#`: the list's name.
     Acl(String),
 }
@@ -67,6 +69,7 @@ impl Mode {
             Mode::Svi(_) => Modes::SVI,
             Mode::Ospf => Modes::OSPF,
             Mode::Rip => Modes::RIP,
+            Mode::Acl6(_) => Modes::ACL6,
             Mode::Acl(_) => Modes::ACL,
         }
     }
@@ -278,6 +281,7 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::DhcpPool(_) => format!("{n}(dhcp-config)#"),
         Mode::Svi(_) => format!("{n}(config-if)#"),
         Mode::Ospf | Mode::Rip => format!("{n}(config-router)#"),
+        Mode::Acl6(_) => format!("{n}(config-ipv6-acl)#"),
         Mode::Acl(name) => {
             let ext = d.acls.iter().find(|a| &a.name == name).is_some_and(|a| a.extended);
             format!("{n}(config-{}-nacl)#", if ext { "ext" } else { "std" })
@@ -450,7 +454,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
     if resolved.is_err()
         && matches!(
             cli.mode,
-            Mode::Iface(_) | Mode::Vlan(_) | Mode::Line(_) | Mode::DhcpPool(_) | Mode::Svi(_) | Mode::Ospf | Mode::Rip | Mode::Acl(_)
+            Mode::Iface(_) | Mode::Vlan(_) | Mode::Line(_) | Mode::DhcpPool(_) | Mode::Svi(_) | Mode::Ospf | Mode::Rip | Mode::Acl(_) | Mode::Acl6(_)
         )
         && let Ok(r) = grammar::resolve(&words, Modes::CONFIG, dbits)
     {
@@ -485,9 +489,15 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 Mode::User => return c.logout(),
                 Mode::Exec => Mode::User,
                 Mode::Config => Mode::Exec,
-                Mode::Iface(_) | Mode::Vlan(_) | Mode::Line(_) | Mode::DhcpPool(_) | Mode::Svi(_) | Mode::Ospf | Mode::Rip | Mode::Acl(_) => {
-                    Mode::Config
-                }
+                Mode::Iface(_)
+                | Mode::Vlan(_)
+                | Mode::Line(_)
+                | Mode::DhcpPool(_)
+                | Mode::Svi(_)
+                | Mode::Ospf
+                | Mode::Rip
+                | Mode::Acl(_)
+                | Mode::Acl6(_) => Mode::Config,
             };
             c.set_mode(next)
         }
@@ -1183,6 +1193,76 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             line.login_local = true;
             line.login = false;
             Ok(if d.access.users.is_empty() { "No local users yet: add one with `username <name> secret <password>`.".into() } else { String::new() })
+        }
+        Id::Ipv6AccessList => {
+            let name: String = arg(0).chars().take(32).collect();
+            let d = c.dm()?;
+            if !d.acls6.iter().any(|a| a.name == name) {
+                if d.acls6.len() >= acl::MAX_ACLS {
+                    return Err(format!("% At most {} IPv6 access lists", acl::MAX_ACLS));
+                }
+                d.acls6.push(acl::Acl6 { name: name.clone(), entries: Vec::new() });
+            }
+            c.cli.mode = Mode::Acl6(name);
+            Ok(String::new())
+        }
+        Id::NoIpv6AccessList => {
+            let d = c.dm()?;
+            let before = d.acls6.len();
+            d.acls6.retain(|a| a.name != arg(0));
+            if d.acls6.len() == before { Err(format!("% No IPv6 access list {}", arg(0))) } else { Ok(String::new()) }
+        }
+        Id::Acl6EntryLine | Id::NoAcl6EntryLine => {
+            let Mode::Acl6(name) = c.cli.mode.clone() else { return Err("% Not in IPv6 access-list mode".into()) };
+            let words: Vec<&str> = line.split_whitespace().skip(usize::from(spec.id == Id::NoAcl6EntryLine)).collect();
+            let entry = acl::Acl6Entry::parse(&words).map_err(|e| format!("% {e}"))?;
+            let list = c.dm()?.acls6.iter_mut().find(|a| a.name == name).ok_or("% The list was deleted")?;
+            if spec.id == Id::Acl6EntryLine {
+                if list.entries.len() >= acl::MAX_ENTRIES {
+                    return Err("% The list is full".into());
+                }
+                if !list.entries.contains(&entry) {
+                    list.entries.push(entry);
+                }
+                Ok(String::new())
+            } else {
+                let before = list.entries.len();
+                list.entries.retain(|e| *e != entry);
+                if list.entries.len() == before { Err("% No such line".into()) } else { Ok(String::new()) }
+            }
+        }
+        Id::TrafficFilter | Id::NoTrafficFilter => {
+            let inbound = match arg(1).to_ascii_lowercase().as_str() {
+                "in" => true,
+                "out" => false,
+                _ => return Err("% `in` or `out`".into()),
+            };
+            let name = arg(0).to_string();
+            let add = spec.id == Id::TrafficFilter;
+            c.each_if(|p, sub| {
+                if sub.is_some() {
+                    return Err("% IPv6 on subinterfaces is not simulated yet".into());
+                }
+                let slot = if inbound { &mut p.ipv6.filter_in } else { &mut p.ipv6.filter_out };
+                if add {
+                    *slot = Some(name.clone());
+                } else if slot.as_deref() == Some(name.as_str()) {
+                    *slot = None;
+                }
+                Ok(())
+            })?;
+            let exists = c.d()?.acls6.iter().any(|a| a.name == name);
+            Ok(if add && !exists { format!("IPv6 access list {name} doesn't exist yet: until it does, everything passes.") } else { String::new() })
+        }
+        Id::ShowIpv6AccessList => Ok(render::ipv6_access_lists(c.sim, c.d()?)),
+        Id::AccessClass | Id::NoAccessClass => {
+            let Mode::Line(vty) = c.cli.mode else { return Err("% Not in line mode".into()) };
+            if !vty {
+                return Err("% access-class filters remote logins: use it under `line vty 0 4`".into());
+            }
+            let name = (spec.id == Id::AccessClass).then(|| arg(0).to_string());
+            c.dm()?.access.vty.access_class = name;
+            Ok(String::new())
         }
         Id::TransportInput => {
             let Mode::Line(vty) = c.cli.mode else { return Err("% Not in line mode".into()) };

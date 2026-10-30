@@ -616,6 +616,9 @@ fn nat_by_typing() {
     );
     lab.run(a, "ping 8.8.8.8");
     assert!(lab.run(a, "ping 8.8.8.8").contains("4 answered"));
+    // Traceroute through PAT: the ISP's "time exceeded" comes back to the PC.
+    let trace = lab.run(a, "tracert 8.8.8.8");
+    assert!(trace.contains("200.0.0.2") && trace.contains("8.8.8.8"), "{trace}");
     let tr = lab.run(r1, "show ip nat translations");
     assert!(tr.contains("icmp") && tr.contains("200.0.0.1:") && tr.contains("192.168.1.10:") && tr.contains("8.8.8.8"), "{tr}");
     let run = lab.run(r1, "show run");
@@ -1222,4 +1225,63 @@ fn ppp_authentication_by_typing() {
     assert!(run.contains(" encapsulation ppp\n ppp authentication chap\n ppp pap sent-username invitado password abc"), "{run}");
     lab.run(r1, "conf t\nint g0/0");
     assert!(lab.try_run(r1, "ppp authentication chap").contains("not a serial"));
+}
+
+#[test]
+fn access_class_on_vty_by_typing() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let s = lab.add(DeviceKind::Switch);
+    let admin = lab.add(DeviceKind::Pc);
+    let guest = lab.add(DeviceKind::Pc);
+    lab.cable(r, "g0/0", s, "g0/1");
+    lab.cable(admin, "fa0", s, "fa0/1");
+    lab.cable(guest, "fa0", s, "fa0/2");
+    lab.run(admin, "ipconfig 10.0.0.10 255.255.255.0 10.0.0.1");
+    lab.run(guest, "ipconfig 10.0.0.20 255.255.255.0 10.0.0.1");
+    lab.run(r, "en\nconf t\nint g0/0\nip address 10.0.0.1 255.255.255.0\nno shut\nexit\naccess-list 5 permit host 10.0.0.10\nline vty 0 4\npassword cisco\nlogin\naccess-class 5 in\nend");
+    lab.run(admin, "ping 10.0.0.1");
+    assert!(lab.run(admin, "telnet 10.0.0.1").contains("Open"));
+    lab.run(admin, "cisco");
+    lab.run(admin, "exit");
+    lab.run(guest, "ping 10.0.0.1");
+    assert!(lab.try_run(guest, "telnet 10.0.0.1").contains("refused"));
+    assert!(lab.run(r, "show access-lists").contains("match"));
+    assert!(lab.run(r, "show running-config").contains("line vty 0 4") && lab.run(r, "show running-config").contains(" access-class 5 in"));
+    lab.run(r, "conf t\nline con 0");
+    assert!(lab.try_run(r, "access-class 5 in").contains("line vty"));
+}
+
+#[test]
+fn ipv6_access_lists_by_typing() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let a = lab.add(DeviceKind::Pc);
+    let b = lab.add(DeviceKind::Pc);
+    lab.cable(a, "fa0", r, "g0/0");
+    lab.cable(b, "fa0", r, "g0/1");
+    lab.run(
+        r,
+        "en\nconf t\nipv6 unicast-routing\nint g0/0\nipv6 address 2001:db8:1::1/64\nno shut\nint g0/1\nipv6 address 2001:db8:2::1/64\nno shut\nend",
+    );
+    lab.run(a, "ipv6config 2001:db8:1::10/64 2001:db8:1::1");
+    lab.run(b, "ipv6config 2001:db8:2::10/64 2001:db8:2::1");
+    assert!(lab.run(a, "ping 2001:db8:2::10").contains("4 answered"));
+    lab.run(r, "conf t\nipv6 access-list NO-PING\ndeny icmp host 2001:db8:1::10 any\npermit ipv6 any any\nexit\nint g0/0\nipv6 traffic-filter NO-PING in\nend");
+    let p = lab.run(a, "ping 2001:db8:2::10");
+    assert!(p.contains(" 0 answered") && p.contains("unreachable"), "{p}");
+    // Neighbour discovery still passes the filter, and other hosts aren't affected.
+    let acl = lab.run(r, "show ipv6 access-list");
+    assert!(acl.contains("10 deny icmp host 2001:db8:1::10 any (") && acl.contains("20 permit ipv6 any any"), "{acl}");
+    let run = lab.run(r, "show running-config");
+    assert!(
+        run.contains("ipv6 access-list NO-PING\n deny icmp host 2001:db8:1::10 any\n permit ipv6 any any")
+            && run.contains(" ipv6 traffic-filter NO-PING in"),
+        "{run}"
+    );
+    lab.run(r, "conf t\nint g0/0\nno ipv6 traffic-filter NO-PING in\nend");
+    assert!(lab.run(a, "ping 2001:db8:2::10").contains("4 answered"));
+    lab.run(r, "conf t\nipv6 access-list X");
+    assert!(lab.try_run(r, "permit ip any any").contains("ipv6, icmp, tcp or udp"));
+    assert!(lab.try_run(r, "permit tcp any 2001:db8::/129").contains("prefix"));
 }

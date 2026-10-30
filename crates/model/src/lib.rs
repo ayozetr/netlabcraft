@@ -579,6 +579,11 @@ pub struct Ipv6Conf {
     /// Hosts: addresses come from router advertisements (stateless autoconfiguration).
     #[serde(default)]
     pub autoconfig: bool,
+    /// `ipv6 traffic-filter NAME in` / `out`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filter_in: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filter_out: Option<String>,
 }
 
 impl Ipv6Conf {
@@ -660,6 +665,9 @@ pub struct Device {
     /// Switches: VLAN interfaces (`interface vlan N`), for management.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub svis: Vec<Svi>,
+    /// Routers: IPv6 access lists.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub acls6: Vec<acl::Acl6>,
     /// Routers: OSPF (`router ospf N`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ospf: Option<Ospf>,
@@ -881,6 +889,9 @@ pub struct Line {
     /// `transport input`: the protocols remote logins may use (`None`: all).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transport: Option<Vec<RemoteProto>>,
+    /// `access-class N in`: who may log in (vty lines).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access_class: Option<String>,
 }
 
 /// A remote login protocol.
@@ -1068,6 +1079,7 @@ impl Device {
             stp_priority: BTreeMap::new(),
             svis: Vec::new(),
             ospf: None,
+            acls6: Vec::new(),
             rip: None,
             acls: Vec::new(),
             nat: Nat::default(),
@@ -1101,6 +1113,7 @@ impl Device {
         self.svis.clear();
         self.ospf = None;
         self.rip = None;
+        self.acls6.clear();
         self.acls.clear();
         self.nat = Nat::default();
         self.services = fresh.services;

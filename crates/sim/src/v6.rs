@@ -165,6 +165,10 @@ impl Sim {
         }
         let ifc = l3_ifaces6(d).into_iter().find(|i| i.port == in_port).ok_or("IPv6 is not enabled on this interface")?;
         let ip = Ipv6::decode(&f.payload).map_err(|e| e.to_string())?;
+        if let Err(e) = self.acl6_check(d, ifc.port, &ip, true) {
+            self.acl6_refuse(t, d, &ifc, &ip);
+            return Err(e);
+        }
         let router = d.kind == DeviceKind::Router && d.ipv6_routing;
         let all = l3_ifaces6(d);
         let joined = |g: Ipv6Addr| {
@@ -192,6 +196,10 @@ impl Sim {
         }
         match route6(t, d, ip.dst, None) {
             Some((out, nh)) => {
+                if let Err(e) = self.acl6_check(d, out.port, &ip, false) {
+                    self.acl6_refuse(t, d, &ifc, &ip);
+                    return Err(e);
+                }
                 let fwd = Ipv6 { hop_limit: ip.hop_limit - 1, ..ip };
                 self.transmit6(t, d, &out, nh, fwd.encode())
             }
@@ -302,6 +310,27 @@ impl Sim {
                 Ok(())
             }
         }
+    }
+
+    /// Applies the IPv6 access list on a port, if one is set and exists.
+    fn acl6_check(&mut self, d: &Device, port: usize, ip: &Ipv6, inbound: bool) -> Result<(), String> {
+        let Some(p) = d.ports.get(port) else { return Ok(()) };
+        let Some(name) = (if inbound { &p.ipv6.filter_in } else { &p.ipv6.filter_out }) else { return Ok(()) };
+        // A filter naming a list that doesn't exist lets everything through.
+        let Some(acl) = d.acls6.iter().find(|a| a.name == *name) else { return Ok(()) };
+        let nd = ip.next_header == PROTO_ICMPV6 && ip.payload.first().is_some_and(|t| (133..=137).contains(t));
+        let key = packetcraft_model::acl::Packet6Key { next_header: ip.next_header, src: ip.src, dst: ip.dst, src_port: None, dst_port: None, nd };
+        let (permit, hit) = acl.evaluate(&key);
+        if hit.is_some() || !permit {
+            *self.st(d.id).acl_hits.entry((format!("ipv6 {name}"), hit.unwrap_or(usize::MAX))).or_insert(0) += 1;
+        }
+        if permit { Ok(()) } else { Err(format!("denied by IPv6 access list {name} ({})", if inbound { "in" } else { "out" })) }
+    }
+
+    /// Tells the sender a filter refused its packet (administratively prohibited).
+    fn acl6_refuse(&mut self, t: &Topology, d: &Device, ifc: &L3If6, ip: &Ipv6) {
+        let raw = ip.encode();
+        self.icmp6_error(t, d, ifc, ip, Icmp6::Unreachable { code: 1, original: Icmp6::quote(&raw) });
     }
 
     fn learn_nd(&mut self, t: &Topology, d: &Device, ifc: &L3If6, ip: Ipv6Addr, mac: MacAddr) {

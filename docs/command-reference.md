@@ -242,6 +242,16 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no login` |  | router, switch | Don't ask for a password |
 | `exec-timeout <minutes> [<seconds>]` |  | router, switch | Idle timeout (accepted, not simulated) |
 | `logging synchronous` |  | router, switch | Keep messages from breaking your typing (accepted) |
+| `ipv6 access-list WORD` | config | router | Create or edit an IPv6 access list |
+| `no ipv6 access-list WORD` | config | router | Delete an IPv6 access list |
+| `permit {ipv6\|icmp\|tcp\|udp} <src> [port] <dst> [port]` |  | router | Allow matching packets |
+| `deny {ipv6\|icmp\|tcp\|udp} <src> [port] <dst> [port]` |  | router | Drop matching packets |
+| `no {permit\|deny} ...` |  | router | Remove a line |
+| `ipv6 traffic-filter WORD {in\|out}` | interface | router | Filter IPv6 packets with an access list |
+| `no ipv6 traffic-filter WORD {in\|out}` | interface | router | Stop filtering |
+| `show ipv6 access-list` | user, privileged | router | IPv6 access lists and their matches |
+| `access-class <1-99>\|WORD in` |  | router, switch | Only logins this list permits (vty lines) |
+| `no access-class [list in]` |  | router, switch | Remove the login filter |
 | `transport input {ssh\|telnet\|all\|none}` |  | router, switch | Protocols remote logins may use |
 | `login local` |  | router, switch | Ask for a username and password (username lines) |
 | `username WORD {secret\|password} PASSWORD` | config | router, switch | Add a local user |

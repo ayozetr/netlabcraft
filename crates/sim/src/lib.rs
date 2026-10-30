@@ -965,6 +965,9 @@ impl Sim {
     /// Outside to inside: the packet with its inside address restored, if it matches a
     /// translation (or a static one).
     fn nat_untranslate(&mut self, d: &Device, ip: &Ipv4) -> Option<Ipv4> {
+        if let Some(back) = self.nat_untranslate_error(d, ip) {
+            return Some(back);
+        }
         let id = flow_id(ip, false);
         let st = self.state.get(&d.id);
         if let Some(e) = st.and_then(|s| {
@@ -973,6 +976,50 @@ impl Sim {
             return Some(rewrite(ip, false, e.inside_local, e.local_id));
         }
         d.nat.statics.iter().find(|(_, g)| *g == ip.dst).map(|(l, _)| rewrite(ip, false, *l, None))
+    }
+
+    /// An ICMP error about a packet NAT translated on its way out: the error goes back to the
+    /// inside host, and the packet it quotes is translated back too (RFC 3022 §4.3), so
+    /// traceroute and "unreachable" work through NAT.
+    fn nat_untranslate_error(&self, d: &Device, ip: &Ipv4) -> Option<Ipv4> {
+        if ip.protocol != PROTO_ICMP {
+            return None;
+        }
+        let (code, mut original, time_exceeded) = match Icmp::decode(&ip.payload).ok()? {
+            Icmp::TimeExceeded { original } => (0, original, true),
+            Icmp::Unreachable { code, original } => (code, original, false),
+            _ => return None,
+        };
+        let ihl = usize::from(original.first()? & 0x0f) * 4;
+        let proto = *original.get(9)?;
+        let src = Ipv4Addr::new(*original.get(12)?, *original.get(13)?, *original.get(14)?, *original.get(15)?);
+        // The quoted flow id: the echo id, or the source port.
+        let id_at = if proto == PROTO_ICMP { ihl + 4 } else { ihl };
+        let quoted_id = u16::from_be_bytes([*original.get(id_at)?, *original.get(id_at + 1)?]);
+        let e = self
+            .state
+            .get(&d.id)?
+            .nat
+            .iter()
+            .find(|e| e.inside_global == src && e.protocol == proto && e.global_id.is_none_or(|g| g == quoted_id))
+            .cloned()
+            .or_else(|| {
+                d.nat.statics.iter().find(|(_, g)| *g == src).map(|(l, g)| NatEntry {
+                    protocol: proto,
+                    inside_local: *l,
+                    local_id: None,
+                    inside_global: *g,
+                    global_id: None,
+                    outside: ip.src,
+                    fixed: true,
+                })
+            })?;
+        original.get_mut(12..16)?.copy_from_slice(&e.inside_local.octets());
+        if let Some(local) = e.local_id {
+            original.get_mut(id_at..id_at + 2)?.copy_from_slice(&local.to_be_bytes());
+        }
+        let msg = if time_exceeded { Icmp::TimeExceeded { original } } else { Icmp::Unreachable { code, original } };
+        Some(Ipv4 { dst: e.inside_local, payload: msg.encode(), ..ip.clone() })
     }
 
     /// Whether NAT makes this router answer for an address (static or pool globals).
@@ -1984,6 +2031,24 @@ impl Sim {
             payload: Vec::new(),
         };
         if seg.flags & tcp::SYN != 0 {
+            // `access-class`: the vty lines only take logins its list permits.
+            if let Some(name) = &d.access.vty.access_class
+                && let Some(acl) = d.acls.iter().find(|a| a.name == *name)
+            {
+                let key = packetcraft_model::acl::PacketKey {
+                    protocol: PROTO_TCP,
+                    src: ip.src,
+                    dst: ip.dst,
+                    src_port: Some(seg.src_port),
+                    dst_port: Some(seg.dst_port),
+                };
+                let (permit, hit) = acl.evaluate(&key);
+                *self.st(d.id).acl_hits.entry((name.clone(), hit.unwrap_or(usize::MAX))).or_insert(0) += 1;
+                if !permit {
+                    self.tcp_send(t, d, ip.dst, ip.src, &reply(tcp::RST | tcp::ACK, 0, seg.seq.wrapping_add(1)))?;
+                    return Err(format!("login from {} refused by access-class {name}", ip.src));
+                }
+            }
             if d.access.accepts(proto) {
                 return self.tcp_send(t, d, ip.dst, ip.src, &reply(tcp::SYN | tcp::ACK, 7_000, seg.seq.wrapping_add(1)));
             }

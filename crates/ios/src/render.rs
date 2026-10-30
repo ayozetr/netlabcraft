@@ -182,6 +182,12 @@ pub fn running_config(d: &Device) -> String {
             if p.ipv6.enabled {
                 let _ = writeln!(s, " ipv6 enable");
             }
+            if let Some(f) = &p.ipv6.filter_in {
+                let _ = writeln!(s, " ipv6 traffic-filter {f} in");
+            }
+            if let Some(f) = &p.ipv6.filter_out {
+                let _ = writeln!(s, " ipv6 traffic-filter {f} out");
+            }
         }
         for h in &p.helpers {
             let _ = writeln!(s, " ip helper-address {h}");
@@ -245,6 +251,13 @@ pub fn running_config(d: &Device) -> String {
             for e in &a.entries {
                 let _ = writeln!(s, " {}", e.text(a.extended));
             }
+        }
+        let _ = writeln!(s, "!");
+    }
+    for a in &d.acls6 {
+        let _ = writeln!(s, "ipv6 access-list {}", a.name);
+        for e in &a.entries {
+            let _ = writeln!(s, " {}", e.text());
         }
         let _ = writeln!(s, "!");
     }
@@ -338,6 +351,9 @@ pub fn running_config(d: &Device) -> String {
         if let Some(tr) = &line.transport {
             let names: Vec<&str> = tr.iter().map(|p| p.name()).collect();
             let _ = writeln!(s, " transport input {}", if names.is_empty() { "none".to_string() } else { names.join(" ") });
+        }
+        if let Some(a) = &line.access_class {
+            let _ = writeln!(s, " access-class {a} in");
         }
         let _ = writeln!(s, "!");
     }
@@ -1261,6 +1277,31 @@ pub fn standby(d: &Device, roles: &[packetcraft_sim::hsrp::Role]) -> String {
             "  Active: {}; standby: {}",
             me(r.active, packetcraft_sim::hsrp::State::Active),
             me(r.standby, packetcraft_sim::hsrp::State::Standby)
+        );
+    }
+    s.trim_end().to_string()
+}
+
+/// `show ipv6 access-list`.
+pub fn ipv6_access_lists(sim: &Sim, d: &Device) -> String {
+    if d.acls6.is_empty() {
+        return "No IPv6 access lists configured.".into();
+    }
+    let hits = sim.state(d.id).map(|st| st.acl_hits.clone()).unwrap_or_default();
+    let mut s = String::new();
+    for a in &d.acls6 {
+        let key = format!("ipv6 {}", a.name);
+        let _ = writeln!(s, "IPv6 access list {}", a.name);
+        for (i, e) in a.entries.iter().enumerate() {
+            let n = hits.get(&(key.clone(), i)).copied().unwrap_or(0);
+            let m = if n > 0 { format!(" ({n} match{})", if n == 1 { "" } else { "es" }) } else { String::new() };
+            let _ = writeln!(s, "    {} {}{m}", (i + 1) * 10, e.text());
+        }
+        let implicit = hits.get(&(key.clone(), usize::MAX)).copied().unwrap_or(0);
+        let _ = writeln!(
+            s,
+            "    (implicit) neighbour discovery passes, everything else is denied{}",
+            if implicit > 0 { format!(" ({implicit} matches)") } else { String::new() }
         );
     }
     s.trim_end().to_string()

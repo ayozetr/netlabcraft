@@ -19,20 +19,20 @@ Hours are Opus 5.5 agent wall-clock estimates.
 | 4 | **Wireless LANs:** access points, wireless routers, laptop wireless cards, SSID and WPA2, association | CCNA 2 | 40–60 h |
 | 5 | **Spanning-tree timers and RSTP** (listening/learning delays, proposal/agreement) | CCNA 2 | 8–12 h |
 | 6 | **OSPF depth:** multi-area, `ip ospf cost`, DR/BDR, `show ip ospf interface`; OSPF and RIP on multilayer switches | CCNA 3 | 24–36 h |
-| 7 | **ACL depth:** `access-class` on vty lines, IPv6 ACLs, NAT for ICMP errors | CCNA 3 | 11–18 h |
-| 8 | **IPv6 depth:** OSPFv3, DHCPv6, RA flags, IPv6 on subinterfaces and VLAN interfaces | CCNA 2–3 | 28–40 h |
-| 9 | **Services:** FTP/TFTP (and `copy running-config tftp:`), email, NTP, syslog, SNMP, AAA | CCNA 3, network management labs | 40–60 h |
-| 10 | **Translations** through `craft-i18n`, Spanish first | Non-English students | 25–40 h |
-| 11 | **Packaging and first release:** icon, installers, workflows, About window ([releasing.md](releasing.md)) | Everyone who isn't a developer | 14–24 h |
-| 12 | **Workspace:** drawing freeform, clusters, physical view, print/export the workspace | Everyone, occasionally | 50–75 h |
-| 13 | **Device families:** modular routers, ASA, IoT, phones | Specialised labs | 80–120 h |
-| 14 | **Unsaved-changes prompt in the web build**, recent files on desktop | Everyone | 3–5 h |
-| 15 | **EIGRP, VPN (GRE/IPsec), QoS** | CCNA 3 extras | 40–60 h |
+| 7 | **IPv6 depth:** OSPFv3, DHCPv6, RA flags, IPv6 on subinterfaces and VLAN interfaces | CCNA 2–3 | 28–40 h |
+| 8 | **Services:** FTP/TFTP (and `copy running-config tftp:`), email, NTP, syslog, SNMP, AAA | CCNA 3, network management labs | 40–60 h |
+| 9 | **Translations** through `craft-i18n`, Spanish first | Non-English students | 25–40 h |
+| 10 | **Packaging and first release:** icon, installers, workflows, About window ([releasing.md](releasing.md)) | Everyone who isn't a developer | 14–24 h |
+| 11 | **Workspace:** drawing freeform, clusters, physical view, print/export the workspace | Everyone, occasionally | 50–75 h |
+| 12 | **Device families:** modular routers, ASA, IoT, phones | Specialised labs | 80–120 h |
+| 13 | **Unsaved-changes prompt in the web build**, recent files on desktop | Everyone | 3–5 h |
+| 14 | **EIGRP, VPN (GRE/IPsec), QoS** | CCNA 3 extras | 40–60 h |
 
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Done: ACL depth (`access-class` on vty lines, IPv6 access lists and traffic filters, NAT for ICMP errors). |
 | 2026-10-30 | minor | Done: PPP PAP/CHAP authentication. |
 | 2026-10-30 | minor | Done: DTP (dynamic auto/desirable, nonegotiate, negotiated working mode). |
 | 2026-10-30 | minor | Done: HSRP (groups, priority, preempt, virtual MAC, hellos, `show standby`, hsrp sample). |
