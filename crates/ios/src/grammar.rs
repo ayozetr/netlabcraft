@@ -357,6 +357,11 @@ pub enum Id {
     NoLoggingHost,
     CopyToTftp,
     CopyFromTftp,
+    CopyToFtp,
+    CopyFromFtp,
+    IpFtpUsername,
+    IpFtpPassword,
+    NoIpFtpLogin,
     StpMode,
 }
 
@@ -744,6 +749,37 @@ pub static SPECS: &[Spec] = &[
         [K("copy"), K("tftp:"), K("startup-config"), Rest("<address> <file>")],
         "Make a TFTP file the startup configuration"
     ),
+    spec!(
+        CopyToFtp,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("running-config"), K("ftp:"), Rest("<address> [file]")],
+        "Save the configuration on an FTP server"
+    ),
+    spec!(
+        CopyToFtp,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("startup-config"), K("ftp:"), Rest("<address> [file]")],
+        "Save the startup configuration on an FTP server"
+    ),
+    spec!(
+        CopyFromFtp,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("ftp:"), K("running-config"), Rest("<address> <file>")],
+        "Merge a configuration from an FTP server"
+    ),
+    spec!(
+        CopyFromFtp,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("ftp:"), K("startup-config"), Rest("<address> <file>")],
+        "Make an FTP file the startup configuration"
+    ),
+    spec!(IpFtpUsername, Modes::CONFIG, Modes::BOTH, [K("ip"), K("ftp"), K("username"), Arg("WORD")], "The FTP account `copy … ftp:` uses"),
+    spec!(IpFtpPassword, Modes::CONFIG, Modes::BOTH, [K("ip"), K("ftp"), K("password"), Arg("WORD")], "The FTP account's password"),
+    spec!(NoIpFtpLogin, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("ftp"), K("username")], "Forget the FTP account"),
     spec!(RouterRip, Modes::CONFIG, Modes::BOTH, [K("router"), K("rip")], "Start or configure RIP"),
     spec!(NoRouterRip, Modes::CONFIG, Modes::BOTH, [K("no"), K("router"), K("rip")], "Stop RIP"),
     spec!(RipVersion, Modes::RIP, Modes::BOTH, [K("version"), Arg("{1|2}")], "RIP version"),

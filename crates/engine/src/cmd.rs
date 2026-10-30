@@ -143,7 +143,14 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             sv.http.files.retain(|f| !f.name.is_empty());
             sv.dns.records.truncate(MAX_ITEMS);
                         sv.dhcp.pools.truncate(MAX_ITEMS);
-                        sv.aaa.clients.truncate(MAX_ITEMS);
+                                    sv.ftp.users.truncate(MAX_ITEMS);
+            sv.ftp.files.truncate(MAX_ITEMS);
+            for f in &mut sv.ftp.files {
+                f.name = f.name.trim().chars().filter(|c| !c.is_whitespace() && *c != '/').take(64).collect();
+                f.content = f.content.chars().take(MAX_FILE).collect();
+            }
+            sv.ftp.files.retain(|f| !f.name.is_empty());
+            sv.aaa.clients.truncate(MAX_ITEMS);
             sv.aaa.users.truncate(MAX_ITEMS);
             for c in &mut sv.aaa.clients {
                 c.name = c.name.chars().take(64).collect();

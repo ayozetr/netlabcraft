@@ -1689,6 +1689,70 @@ fn aaa_logins_through_radius_by_typing() {
 }
 
 #[test]
+fn ftp_by_typing() {
+    use packetcraft_model::services::{FtpUser, WebFile};
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let s = lab.add(DeviceKind::Switch);
+    let pc = lab.add(DeviceKind::Pc);
+    let srv = lab.add(DeviceKind::Server);
+    lab.cable(r, "g0/0", s, "g0/1");
+    lab.cable(pc, "fa0", s, "fa0/1");
+    lab.cable(srv, "g0", s, "fa0/2");
+    lab.run(pc, "ipconfig 192.168.1.10 255.255.255.0 192.168.1.1");
+    lab.run(srv, "ipconfig 192.168.1.5 255.255.255.0 192.168.1.1");
+    lab.run(r, "en\nconf t\nint g0/0\nip add 192.168.1.1 255.255.255.0\nno shut\nend");
+    {
+        let ftp = &mut lab.t.device_mut(srv).unwrap().services.ftp;
+        ftp.users.push(FtpUser { name: "student".into(), password: "ftp123".into(), read: true, write: true, delete: false, list: true });
+        ftp.files.push(WebFile { name: "notes.txt".into(), content: "Lab notes\n".repeat(400) });
+    }
+    lab.t.device_mut(pc).unwrap().files.push(WebFile { name: "report.txt".into(), content: "my report".into() });
+    // A wrong password ends the session.
+    lab.try_run(pc, "ftp 192.168.1.5");
+    assert_eq!(lab.prompt(pc), "Username: ");
+    lab.try_run(pc, "student");
+    assert!(lab.try_run(pc, "nope").contains("530"));
+    assert_eq!(lab.prompt(pc), "PC1> ");
+    lab.try_run(pc, "ftp 192.168.1.5");
+    lab.try_run(pc, "student");
+    assert!(lab.try_run(pc, "ftp123").contains("230"));
+    assert_eq!(lab.prompt(pc), "ftp> ");
+    // Fetch a file bigger than one segment, send one, list, and a refused delete.
+    let got = lab.try_run(pc, "get notes.txt");
+    assert!(got.contains("Receiving notes.txt (4000 bytes)") && got.contains("226"), "{got}");
+    assert_eq!(lab.t.device(pc).unwrap().files.iter().find(|f| f.name == "notes.txt").unwrap().content.len(), 4000);
+    assert!(lab.try_run(pc, "put report.txt").contains("226"));
+    assert_eq!(lab.t.device(srv).unwrap().services.ftp.files.iter().find(|f| f.name == "report.txt").unwrap().content, "my report");
+    let dir = lab.try_run(pc, "dir");
+    assert!(dir.contains("report.txt") && dir.contains("notes.txt"), "{dir}");
+    assert!(lab.try_run(pc, "delete report.txt").contains("550 Permission denied"));
+    assert!(lab.try_run(pc, "get missing.txt").contains("550"));
+    assert!(lab.try_run(pc, "quit").contains("221"));
+    assert!(lab.try_run(pc, "dir").contains("notes.txt"));
+    // The exchange is on the wire, without the password.
+    let ftp: Vec<String> = lab.sim.trace().iter().filter(|e| e.protocol.name() == "FTP").map(|e| e.summary.clone()).collect();
+    assert!(ftp.iter().any(|x| x.starts_with("FTP USER student")) && ftp.iter().any(|x| x.starts_with("FTP PASS ****")), "{ftp:?}");
+    assert!(
+        ftp.iter().any(|x| x.starts_with("FTP 227 Entering Passive Mode")) && ftp.iter().any(|x| x.starts_with("FTP data, 1460 bytes")),
+        "{ftp:?}"
+    );
+    assert!(!ftp.iter().any(|x| x.contains("ftp123")));
+    // A router saves its configuration there.
+    assert!(lab.try_run(r, "copy running-config ftp: 192.168.1.5").contains("ip ftp username"));
+    lab.run(r, "conf t\nip ftp username student\nip ftp password ftp123\nend");
+    assert!(lab.run(r, "copy running-config ftp: 192.168.1.5").contains("to ftp://192.168.1.5/r1-confg"));
+    let saved = lab.t.device(srv).unwrap().services.ftp.files.iter().find(|f| f.name == "r1-confg").unwrap().content.clone();
+    assert!(saved.contains("ip ftp username student"));
+    assert!(lab.run(r, "copy ftp: running-config 192.168.1.5 r1-confg").contains("Merged"));
+    // FTP off: refused.
+    lab.t.device_mut(srv).unwrap().services.ftp.on = false;
+    lab.try_run(pc, "ftp 192.168.1.5");
+    lab.try_run(pc, "student");
+    assert!(lab.try_run(pc, "ftp123").contains("refused"));
+}
+
+#[test]
 fn ntp_syslog_and_tftp_by_typing() {
     let mut lab = Lab::new();
     let r = lab.add(DeviceKind::Router);

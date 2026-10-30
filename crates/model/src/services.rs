@@ -28,6 +28,34 @@ pub struct Services {
     /// AAA: a RADIUS server that checks the logins of its client routers and switches.
     #[serde(default)]
     pub aaa: Aaa,
+    /// FTP: files that users with an account send and fetch.
+    #[serde(default)]
+    pub ftp: Ftp,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Ftp {
+    #[serde(default)]
+    pub on: bool,
+    #[serde(default)]
+    pub users: Vec<FtpUser>,
+    #[serde(default)]
+    pub files: Vec<WebFile>,
+}
+
+/// An FTP account and what it may do.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FtpUser {
+    pub name: String,
+    pub password: String,
+    #[serde(default)]
+    pub read: bool,
+    #[serde(default)]
+    pub write: bool,
+    #[serde(default)]
+    pub delete: bool,
+    #[serde(default)]
+    pub list: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -94,7 +122,8 @@ impl Services {
                         ntp: Switch { on: true },
             syslog: Switch { on: true },
                         tftp: Tftp { on: true, files: Vec::new() },
-            aaa: Aaa::default(),
+                        aaa: Aaa::default(),
+            ftp: Ftp { on: true, users: Vec::new(), files: Vec::new() },
             dhcp: ServerDhcp { on: false, pools: vec![ServerPool { name: "defaultPool".into(), gateway: Ipv4Addr::UNSPECIFIED, dns: Ipv4Addr::UNSPECIFIED, start: Ipv4Addr::new(192, 168, 0, 10), mask: Ipv4Addr::new(255, 255, 255, 0), max_users: 50 }] },
         }
     }

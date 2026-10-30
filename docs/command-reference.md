@@ -244,6 +244,13 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `copy startup-config tftp: <address> [file]` | privileged | router, switch | Save the startup configuration on a TFTP server |
 | `copy tftp: running-config <address> <file>` | privileged | router, switch | Merge a configuration from a TFTP server |
 | `copy tftp: startup-config <address> <file>` | privileged | router, switch | Make a TFTP file the startup configuration |
+| `copy running-config ftp: <address> [file]` | privileged | router, switch | Save the configuration on an FTP server |
+| `copy startup-config ftp: <address> [file]` | privileged | router, switch | Save the startup configuration on an FTP server |
+| `copy ftp: running-config <address> <file>` | privileged | router, switch | Merge a configuration from an FTP server |
+| `copy ftp: startup-config <address> <file>` | privileged | router, switch | Make an FTP file the startup configuration |
+| `ip ftp username WORD` | config | router, switch | The FTP account `copy … ftp:` uses |
+| `ip ftp password WORD` | config | router, switch | The FTP account's password |
+| `no ip ftp username` | config | router, switch | Forget the FTP account |
 | `router rip` | config | router, switch | Start or configure RIP |
 | `no router rip` | config | router, switch | Stop RIP |
 | `version {1\|2}` |  | router, switch | RIP version |
@@ -421,6 +428,8 @@ Commands:
   nslookup <name>                  ask the DNS server for a name
   telnet <address>                 log in to a router or switch
   ssh -l <user> <address>          log in securely
+    ftp <address>                    send and fetch files on an FTP server
+  dir                              list this host's files
   arp -a                           show the ARP cache
   arp -d                           empty the ARP cache
   hostname                         show this host's name

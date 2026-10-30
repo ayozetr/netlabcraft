@@ -96,6 +96,8 @@ pub struct Cli {
     pub modulus_prompt: bool,
     /// A Telnet or SSH session this console opened to another device.
     pub remote: Option<Box<Remote>>,
+    /// A host's `ftp` session.
+    pub ftp: Option<crate::host::FtpClient>,
 }
 
 /// A login to another device.
@@ -275,6 +277,9 @@ fn device_bits(kind: DeviceKind) -> Modes {
 /// The prompt for the session's current mode.
 pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
     let Some(d) = t.device(dev) else { return "> ".into() };
+    if let Some(f) = &cli.ftp {
+        return f.prompt().into();
+    }
     if let Some(r) = &cli.remote {
         return match &r.stage {
             LoginStage::Username => "Username: ".into(),
@@ -340,6 +345,10 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, li
         return Outcome { output: "A hub has no console: it repeats every frame and has nothing to configure.".into(), ..Outcome::default() };
     }
     if d.kind.is_host() {
+        // Inside `ftp` nothing is remembered: the password is typed there.
+        if cli.ftp.is_some() {
+            return host::ftp_line(t, sim, dev, cli, line);
+        }
         remember(cli, line);
         return host::execute(t, sim, dev, cli, line);
     }
@@ -1209,6 +1218,23 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(String::new())
         }
         Id::CopyToTftp | Id::CopyFromTftp => c.tftp_copy(spec.id == Id::CopyToTftp, line, arg(0)),
+        Id::CopyToFtp | Id::CopyFromFtp => c.ftp_copy(spec.id == Id::CopyToFtp, line, arg(0)),
+        Id::IpFtpUsername | Id::IpFtpPassword => {
+            let v: String = arg(0).chars().take(64).collect();
+            let d = c.dm()?;
+            let (mut u, mut p) = d.ftp_login.clone().unwrap_or_default();
+            if spec.id == Id::IpFtpUsername {
+                u = v;
+            } else {
+                p = v;
+            }
+            d.ftp_login = Some((u, p));
+            Ok(String::new())
+        }
+        Id::NoIpFtpLogin => {
+            c.dm()?.ftp_login = None;
+            Ok(String::new())
+        }
         Id::StpMode => {
             let rapid = match arg(0).to_ascii_lowercase().as_str() {
                 "pvst" => false,
@@ -2884,6 +2910,44 @@ impl Ctx<'_> {
             }
         }
         Ok(String::new())
+    }
+
+    /// `copy … ftp: <address> [file]` and `copy ftp: … <address> <file>`, as the `ip ftp` user.
+    fn ftp_copy(&mut self, upload: bool, line: &str, rest: &str) -> R {
+        use packetcraft_sim::ftp::FtpOp;
+        let words: Vec<&str> = rest.split_whitespace().collect();
+        let (addr, file) = match words.as_slice() {
+            [a] => (*a, None),
+            [a, f] => (*a, Some(f.to_string())),
+            _ => return Err("% Give the server's address and the file name".into()),
+        };
+        let server = parse_ip(addr).map_err(|e| format!("% {e}"))?;
+        let d = self.d()?.clone();
+        let (user, pass) = d.ftp_login.clone().ok_or("% Set the account first: ip ftp username <name>, ip ftp password <password>")?;
+        let startup = line.contains("startup-config");
+        if upload {
+            let name = file.unwrap_or_else(|| format!("{}-confg", d.name.to_lowercase()));
+            let text = if startup { d.startup.clone().ok_or("% No startup-config to copy")? } else { render::running_config(&d) };
+            let r = self.sim.ftp(self.t, self.dev, server, &user, &pass, &FtpOp::Put(name.clone(), text.clone().into_bytes()));
+            crate::host::apply_ftp_changes(self.t, self.sim);
+            r.map_err(|e| format!("% {e}"))?;
+            Ok(format!("Copied {} bytes to ftp://{server}/{name}", text.len()))
+        } else {
+            let name = file.ok_or("% Give the file name to copy")?;
+            let (_, bytes) = self.sim.ftp(self.t, self.dev, server, &user, &pass, &FtpOp::Get(name.clone())).map_err(|e| format!("% {e}"))?;
+            let text = String::from_utf8_lossy(&bytes).into_owned();
+            if startup {
+                self.dm()?.startup = Some(text.clone());
+                Ok(format!("Copied {} bytes from ftp://{server}/{name} to startup-config", text.len()))
+            } else {
+                let failed = apply_config(self.t, self.sim, self.dev, &text);
+                let mut out = format!("Merged {} bytes from ftp://{server}/{name} into the running configuration", text.len());
+                for f in failed.iter().take(10) {
+                    out.push_str(&format!("\n% {f}"));
+                }
+                Ok(out)
+            }
+        }
     }
 
     /// `copy … tftp: <address> [file]` and `copy tftp: … <address> <file>` (or `tftp://a/file`).

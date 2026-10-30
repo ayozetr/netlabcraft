@@ -1,4 +1,4 @@
-//! The shell of PCs and servers: `ipconfig`, `ping`, `tracert`, `arp`, `hostname`.
+//! The shell of PCs and servers: `ipconfig`, `ping`, `tracert`, `arp`, `hostname`, `ftp`.
 
 use std::fmt::Write as _;
 
@@ -24,10 +24,121 @@ Commands:
   nslookup <name>                  ask the DNS server for a name
   telnet <address>                 log in to a router or switch
   ssh -l <user> <address>          log in securely
+    ftp <address>                    send and fetch files on an FTP server
+  dir                              list this host's files
   arp -a                           show the ARP cache
   arp -d                           empty the ARP cache
   hostname                         show this host's name
   cls                              clear the screen";
+
+/// A host's FTP session: the server, and where the login stands.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FtpClient {
+    server: std::net::Ipv4Addr,
+    stage: FtpStage,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum FtpStage {
+    User,
+    Password(String),
+    Ready(String, String),
+}
+
+impl FtpClient {
+    pub fn prompt(&self) -> &'static str {
+        match self.stage {
+            FtpStage::User => "Username: ",
+            FtpStage::Password(_) => crate::PASSWORD_PROMPT,
+            FtpStage::Ready(..) => "ftp> ",
+        }
+    }
+}
+
+const FTP_HELP: &str = "\
+  put <file>      send one of this host's files
+  get <file>      fetch a file from the server
+  dir             list the server's files
+  delete <file>   delete a file on the server
+  quit            leave ftp";
+
+/// Applies to the lab the server files FTP changed.
+pub fn apply_ftp_changes(t: &mut Topology, sim: &mut Sim) {
+    for (srv, name, content) in sim.take_ftp_changes() {
+        if let Some(d) = t.device_mut(srv) {
+            packetcraft_sim::ftp::apply_change(&mut d.services.ftp.files, &name, content);
+        }
+    }
+}
+
+/// A line typed inside `ftp`.
+pub fn ftp_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut crate::Cli, line: &str) -> Outcome {
+    use packetcraft_sim::ftp::FtpOp;
+    let out = |s: String| Outcome { output: s, ..Outcome::default() };
+    let Some(mut f) = cli.ftp.take() else { return Outcome::default() };
+    match f.stage.clone() {
+        FtpStage::User => {
+            f.stage = FtpStage::Password(line.trim().to_string());
+            cli.ftp = Some(f);
+            Outcome::default()
+        }
+        FtpStage::Password(user) => match sim.ftp(t, dev, f.server, &user, line, &FtpOp::Login) {
+            Ok(_) => {
+                f.stage = FtpStage::Ready(user, line.to_string());
+                cli.ftp = Some(f);
+                out("230 Logged in".into())
+            }
+            Err(e) => out(format!("{e}\nftp session closed")),
+        },
+        FtpStage::Ready(user, pass) => {
+            let words: Vec<&str> = line.split_whitespace().collect();
+            let cmd = words.first().map(|w| w.to_ascii_lowercase()).unwrap_or_default();
+            let name = words.get(1).map(|s| s.to_string());
+            let op = match (cmd.as_str(), name) {
+                ("", _) => {
+                    cli.ftp = Some(f);
+                    return Outcome::default();
+                }
+                ("quit" | "bye" | "exit", _) => return out("221 Goodbye".into()),
+                ("help" | "?", _) => {
+                    cli.ftp = Some(f);
+                    return out(FTP_HELP.into());
+                }
+                ("put", Some(n)) => match t.device(dev).and_then(|d| d.files.iter().find(|x| x.name == n)) {
+                    Some(file) => FtpOp::Put(n, file.content.clone().into_bytes()),
+                    None => {
+                        cli.ftp = Some(f);
+                        return out(format!("{n}: no such file on this host (dir lists them)"));
+                    }
+                },
+                ("get", Some(n)) => FtpOp::Get(n),
+                ("delete", Some(n)) => FtpOp::Delete(n),
+                ("dir" | "ls", _) => FtpOp::List,
+                _ => {
+                    cli.ftp = Some(f);
+                    return out(format!("`{line}`: not an ftp command\n{FTP_HELP}"));
+                }
+            };
+            let r = sim.ftp(t, dev, f.server, &user, &pass, &op);
+            apply_ftp_changes(t, sim);
+            cli.ftp = Some(f);
+            out(match (r, op) {
+                (Ok((done, _)), FtpOp::Put(n, b)) => format!("Sending {n} ({} bytes)\n{done}", b.len()),
+                (Ok((done, bytes)), FtpOp::Get(n)) => {
+                    let content: String = String::from_utf8_lossy(&bytes).chars().take(packetcraft_model::services::MAX_FILE).collect();
+                    let len = bytes.len();
+                    if let Some(d) = t.device_mut(dev) {
+                        packetcraft_sim::ftp::apply_change(&mut d.files, &n, Some(content));
+                    }
+                    format!("Receiving {n} ({len} bytes)\n{done}")
+                }
+                (Ok((done, bytes)), FtpOp::List) => format!("{}\n{done}", String::from_utf8_lossy(&bytes).trim_end()),
+                (Ok((done, _)), _) => done,
+                (Err(e), _) => e.to_string(),
+            })
+        }
+    }
+}
 
 pub fn prompt(d: &Device) -> String {
     format!("{}> ", d.name)
@@ -87,6 +198,25 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut crate::
                 Ok(a) => out(format!("Server:  {server}\nName:    {name}\nAddress: {a}")),
                 Err(e) => out(format!("Server:  {server}\n{e}")),
             }
+        }
+        "ftp" => {
+            let Some(addr) = words.get(1) else { return out("Usage: ftp <address>".into()) };
+            match sim.dns_resolve(t, dev, addr) {
+                Ok(server) => {
+                    cli.ftp = Some(FtpClient { server, stage: FtpStage::User });
+                    out(format!("Trying to connect...{server}"))
+                }
+                Err(e) => out(e.to_string()),
+            }
+        }
+        "dir" => {
+            let files = t.device(dev).map(|d| d.files.clone()).unwrap_or_default();
+            let mut s = String::from("Directory of this host\n\n");
+            for f in &files {
+                let _ = writeln!(s, "{:>8}  {}", f.content.len(), f.name);
+            }
+            let _ = write!(s, "{} file{}", files.len(), if files.len() == 1 { "" } else { "s" });
+            out(s)
         }
         "arp" => match words.get(1).map(|w| w.to_ascii_lowercase()) {
             Some(f) if f == "-d" => {

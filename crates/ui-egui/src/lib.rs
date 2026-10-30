@@ -192,6 +192,7 @@ pub fn open_services_page(app: &mut PacketApp, d: DeviceId, page: &str) {
         "ntp" => Page::Ntp,
         "tftp" => Page::Tftp,
         "aaa" => Page::Aaa,
+        "ftp" => Page::Ftp,
         _ => Page::Http,
     };
     if let Some(w) = app.ui.windows.get_mut(&d) {

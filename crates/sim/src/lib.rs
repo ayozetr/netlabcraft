@@ -23,6 +23,7 @@ use packetcraft_wire::tcp::{self, Tcp};
 use packetcraft_wire::{Arp, ArpOp, ETHERTYPE_ARP, ETHERTYPE_IPV4, Frame, Icmp, Ipv4, PROTO_ICMP, PROTO_TCP, PROTO_UDP, Protocol, Udp, dns};
 
 pub mod cdp;
+pub mod ftp;
 pub mod lldp;
 
 pub mod channel;
@@ -495,7 +496,8 @@ pub struct DevState {
     dns_wait: Option<(u16, u16)>,
     dns_answer: Option<dns::Dns>,
     /// TCP segments for a client connection in flight: (local port, remote port).
-    tcp_wait: Option<(u16, u16)>,
+    /// Connections this device is a client of: (local port, remote port).
+    tcp_wait: Vec<(u16, u16)>,
     tcp_inbox: Vec<tcp::Tcp>,
     pending: Vec<Pending>,
     arp_asked: BTreeMap<Ipv4Addr, u64>,
@@ -529,6 +531,8 @@ pub struct DevState {
     /// A RADIUS client waiting on this port, and the answers that came.
     radius_port: Option<u16>,
     radius_inbox: Vec<packetcraft_wire::radius::Radius>,
+    /// FTP server connections.
+    pub(crate) ftp: ftp::ServerState,
     /// TFTP server: files being read, by (client, port).
     tftp_tx: BTreeMap<(Ipv4Addr, u16), Vec<u8>>,
     /// Hosts: the last router advertisement heard (router's address, prefixes).
@@ -657,6 +661,10 @@ pub struct Sim {
     /// OSPF adjacencies already announced on the wire: (router, interface, neighbour's router
     /// ID). A new one gets its database exchange.
     ospf_adjacent: std::collections::BTreeSet<(DeviceId, String, Ipv4Addr)>,
+    /// Server files FTP changed, for the lab to apply (see [`Sim::take_ftp_changes`]).
+    ftp_changes: Vec<(DeviceId, String, Option<String>)>,
+    /// FTP data connections: (server, data port) → the client's port.
+    ftp_data_peer: BTreeMap<(DeviceId, u16), u16>,
     hsrp_for: u64,
     hsrp: Option<BTreeMap<DeviceId, Vec<hsrp::Role>>>,
     /// Last known link state of every router and switch port, for link messages.
@@ -2175,6 +2183,9 @@ impl Sim {
     /// segment for one of this host's client connections.
     fn tcp_in(&mut self, t: &Topology, d: &Device, ip: &Ipv4) -> Result<(), String> {
         let seg = Tcp::decode(&ip.payload, ip.src, ip.dst).map_err(|e| e.to_string())?;
+        if let Some(r) = self.ftp_server_in(t, d, ip, &seg) {
+            return r;
+        }
         if seg.dst_port == 80 && d.kind == DeviceKind::Server {
             return self.http_server_in(t, d, ip, &seg);
         }
@@ -2182,7 +2193,7 @@ impl Sim {
             return self.login_server_in(t, d, ip, &seg);
         }
         let st = self.st(d.id);
-        if st.tcp_wait != Some((seg.dst_port, seg.src_port)) {
+        if !st.tcp_wait.contains(&(seg.dst_port, seg.src_port)) {
             if seg.flags & tcp::RST == 0 {
                 let rst = Tcp {
                     src_port: seg.dst_port,
@@ -2320,14 +2331,13 @@ impl Sim {
         let seg = |flags: u8, seq: u32, ack: u32| Tcp { src_port: local, dst_port: port, seq, ack, flags, window: 65_535, payload: Vec::new() };
         {
             let st = self.st(dev);
-            st.tcp_wait = Some((local, port));
-            st.tcp_inbox.clear();
+            st.tcp_wait.push((local, port));
         }
         let result = (|| {
             let mut answer = None;
             for _ in 0..2 {
                 let _ = self.tcp_send(t, d, src, dst, &seg(tcp::SYN, 3_000, 0));
-                answer = self.tcp_wait(t, dev, |s| s.flags & (tcp::SYN | tcp::RST) != 0);
+                answer = self.tcp_wait(t, dev, |s| s.dst_port == local && s.flags & (tcp::SYN | tcp::RST) != 0);
                 if answer.is_some() {
                     break;
                 }
@@ -2340,8 +2350,8 @@ impl Sim {
             Ok(())
         })();
         let st = self.st(dev);
-        st.tcp_wait = None;
-        st.tcp_inbox.clear();
+        st.tcp_wait.retain(|w| *w != (local, port));
+        st.tcp_inbox.retain(|s| s.dst_port != local);
         result
     }
 
@@ -2399,15 +2409,14 @@ impl Sim {
         let seg = |flags: u8, seq: u32, ack: u32, payload: Vec<u8>| Tcp { src_port: port, dst_port: 80, seq, ack, flags, window: 65_535, payload };
         {
             let st = self.st(dev);
-            st.tcp_wait = Some((port, 80));
-            st.tcp_inbox.clear();
+            st.tcp_wait.push((port, 80));
         }
         let result = (|| {
             // The handshake (tried twice: the first SYN can be lost while routers resolve ARP).
             let mut synack = None;
             for _ in 0..2 {
                 let _ = self.tcp_send(t, d, src, server, &seg(tcp::SYN, isn, 0, Vec::new()));
-                synack = self.tcp_wait(t, dev, |s| s.flags & (tcp::SYN | tcp::RST) != 0);
+                synack = self.tcp_wait(t, dev, |s| s.dst_port == port && s.flags & (tcp::SYN | tcp::RST) != 0);
                 if synack.is_some() {
                     break;
                 }
@@ -2424,7 +2433,7 @@ impl Sim {
             let mut body = Vec::new();
             let mut last_seq;
             loop {
-                let Some(s) = self.tcp_wait(t, dev, |s| !s.payload.is_empty() || s.flags & tcp::FIN != 0) else {
+                let Some(s) = self.tcp_wait(t, dev, |s| s.dst_port == port && (!s.payload.is_empty() || s.flags & tcp::FIN != 0)) else {
                     return Err(SimError::NoSource("the server stopped answering".into()));
                 };
                 last_seq = s.seq.wrapping_add(s.payload.len() as u32);
@@ -2440,8 +2449,8 @@ impl Sim {
             Ok((status, content.to_string()))
         })();
         let st = self.st(dev);
-        st.tcp_wait = None;
-        st.tcp_inbox.clear();
+        st.tcp_wait.retain(|w| *w != (port, 80));
+        st.tcp_inbox.retain(|s| s.dst_port != port);
         result
     }
 

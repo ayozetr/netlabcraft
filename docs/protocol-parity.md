@@ -1,6 +1,6 @@
 # Protocol and command parity
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (AAA with RADIUS) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (FTP) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 What the simulated devices do, protocol by protocol, against the reference app. Part of
 [target-app-parity.md](target-app-parity.md). Behaviour comes from the standards named in each
@@ -62,7 +62,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | HTTP | RFC 9110 over TCP (RFC 9293) | ✅ | Server file manager, PC web browser. No HTTPS: 6–10 h. |
 | Telnet and SSH | RFC 854, RFC 4253 | ✅ | Local users, `login local`, `transport input`, RSA keys, `ip ssh version`. The SSH session is simulated, not encrypted. |
 | TFTP | RFC 1350 | ✅ | Server TFTP service with a file list; `copy running-config|startup-config tftp: <address> [file]`, `copy tftp: running-config|startup-config <address> <file>`; 512-byte blocks and acknowledgements on the wire (the server answers from port 69). |
-| FTP | RFC 959 | ❌ | Server FTP users and the PC `ftp` client: 8–12 h. |
+| FTP | RFC 959 | ✅ | Server FTP service with accounts (read, write, delete, list) and files; the PC `ftp` client (`put`, `get`, `dir`, `delete`, `quit`) and `dir` for the PC's own files; `copy running-config|startup-config ftp:` and back with `ip ftp username/password`. Control and passive data connections over TCP on the wire (each command is its own session); the password is never shown in the event list. No active mode or `rename`. |
 | Email (SMTP/POP3) | RFC 5321, RFC 1939 | ❌ | 10–15 h. |
 | NTP | RFC 5905 | ✅ | Server NTP service; `ntp server` syncs at once and every 64 s; `show ntp status/associations`. No authentication or stratum chains. |
 | Syslog | RFC 5424 | ✅ | `logging host` sends every log message to the server, whose SYSLOG page lists them. No severity filtering (`logging trap`). |
@@ -121,6 +121,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | 2026-10-30 | minor | HSRP. |
 | 2026-10-30 | minor | Logging buffer and console messages; `debug ip icmp`. |
 | 2026-10-30 | minor | BPDUs, OSPF hellos and RIP updates on the wire, so Simulation mode and captures show them. |
+| 2026-10-30 | minor | FTP. |
 | 2026-10-30 | minor | AAA with RADIUS. |
 | 2026-10-30 | minor | OSPFv3. |
 | 2026-10-30 | minor | DHCPv6 relay. |

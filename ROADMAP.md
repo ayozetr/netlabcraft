@@ -20,7 +20,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 | Number | Value | Kind |
 |---|---|---|
-| **Ready for real work** (weighted) | **~67%** | estimated from written weights (67.2); [target-app-parity.md](docs/target-app-parity.md) |
+| **Ready for real work** (weighted) | **~67%** | estimated from written weights (67.7); [target-app-parity.md](docs/target-app-parity.md) |
 | **CCNA 1 student** | **~74%** | estimated; [method](docs/target-app-parity.md#audiences) |
 | **CCNA 2 student** | **~78%** | estimated |
 | **CCNA 3 student** | **~62%** | estimated |
@@ -28,7 +28,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Engine commands | 40 | measured: `crates/engine/src/catalog.rs` |
 | Console grammar entries | 309 across 12 modes | measured: `crates/ios/src/grammar.rs` |
 | Device models · sample labs | 15 · 18 | measured |
-| Tests | 151 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Tests | 152 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~600–950 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
@@ -48,7 +48,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Device console | 20 | 68% | 45–70 | Modes, abbreviations, `?`, Tab, history, config round-trip; `show` coverage growing |
 | Layer 2 | 12 | 85% | 12–20 | VLANs, trunks, DTP, per-VLAN STP with BPDUs and timers, rapid-pvst, EtherChannel, VTP, port security |
 | Layer 3 | 15 | 78% | 30–50 | IPv4, IPv6 (NDP, SLAAC, subinterfaces, VLAN interfaces, DHCPv6 relay), static, RIP, multi-area OSPF with DR/BDR, stub areas and ranges, OSPFv3, multilayer switching with OSPF and RIP, HSRP; no EIGRP |
-| Services | 8 | 64% | 22–36 | DHCPv4 and DHCPv6 (with relay), DNS, HTTP with browser, Telnet/SSH, NTP, syslog, TFTP, AAA with RADIUS; no FTP, email, SNMP, TACACS+ |
+| Services | 8 | 70% | 18–30 | DHCPv4 and DHCPv6 (with relay), DNS, HTTP with browser, Telnet/SSH, NTP, syslog, TFTP, FTP, AAA with RADIUS; no email, SNMP, TACACS+ |
 | Security | 8 | 72% | 24–40 | IPv4 and IPv6 ACLs, access-class, NAT/PAT, passwords and lines, PPP PAP/CHAP; no firewalls or VPN |
 | WAN, cabling, wireless | 6 | 55% | 35–55 | Copper (auto-MDIX), serial (DCE/DTE, HDLC/PPP), Wi-Fi access points and clients; no wireless routers, WLC or fibre |
 | Simulation mode | 8 | 70% | 18–28 | Event list, replay, decode, drop reasons, pcap; BPDUs, OSPF hellos and database exchange, RIP updates, HSRP hellos, LLDP, LACP; no complex PDUs |
@@ -60,6 +60,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-10-30 — FTP.** Servers have an FTP service with accounts and permissions; PCs have an `ftp` client (`put`, `get`, `dir`, `delete`) and `dir` for their own files; routers copy configurations with `copy running-config ftp:`. Simulation mode shows the control and data connections.
 - **2026-10-30 — AAA with RADIUS.** Routers and switches check remote logins against a RADIUS server (`aaa new-model`, `aaa authentication login default group radius local`, `radius-server host`); the Server has an AAA service with clients and users; Simulation mode shows the Access-Request and its answer.
 - **2026-10-30 — OSPFv3.** OSPF for IPv6: `ipv6 router ospf`, `ipv6 ospf N area A` on interfaces, neighbours over link-local addresses, routes across areas and a default route, hellos in Simulation mode, `show ipv6 ospf neighbor`.
 - **2026-10-30 — DHCPv6 relay.** `ipv6 dhcp relay destination` passes a LAN's DHCPv6 clients on to a server elsewhere; Simulation mode shows the Relay-forward and Relay-reply messages.

@@ -22,6 +22,7 @@ pub enum Page {
     Ntp,
     Tftp,
     Aaa,
+    Ftp,
 }
 
 /// Form state of the Services tab and the browser, per device window.
@@ -45,6 +46,9 @@ pub struct ServiceForms {
     aaa_secret: String,
     aaa_user: String,
     aaa_password: String,
+    ftp_user: String,
+    ftp_password: String,
+    ftp_perms: [bool; 4],
     // Browser.
     pub url: String,
     /// Press Go on the next frame.
@@ -120,6 +124,7 @@ pub fn tab(app: &mut PacketApp, ui: &mut Ui, dev: &Device, forms: &mut ServiceFo
                     (Page::Ntp, "NTP"),
                     (Page::Tftp, "TFTP"),
                     (Page::Aaa, "AAA"),
+                    (Page::Ftp, "FTP"),
                 ] {
                     if crate::console::list_item(ui, name, forms.page == p, false).clicked() {
                         forms.page = p;
@@ -138,6 +143,7 @@ pub fn tab(app: &mut PacketApp, ui: &mut Ui, dev: &Device, forms: &mut ServiceFo
                 Page::Ntp => ntp(app, ui, d, &dev.services),
                 Page::Tftp => tftp(app, ui, d, &dev.services),
                 Page::Aaa => aaa(app, ui, d, &dev.services, forms),
+                Page::Ftp => ftp(app, ui, d, &dev.services, forms),
             });
         });
     });
@@ -746,6 +752,75 @@ fn aaa(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mut
             changed = true;
         }
     });
+    if changed {
+        apply(app, d, &new);
+    }
+}
+
+fn ftp(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mut ServiceForms) {
+    use packetcraft_model::services::FtpUser;
+    ui.vertical_centered(|ui| ui.label(RichText::new(tl("FTP")).size(16.0)));
+    ui.separator();
+    let mut new = sv.clone();
+    let mut changed = on_off(ui, tl("FTP Service"), &mut new.ftp.on);
+    ui.separator();
+    field(ui, tl("Username"), &mut forms.ftp_user);
+    field(ui, tl("Password"), &mut forms.ftp_password);
+    ui.horizontal(|ui| {
+        for (i, label) in ["Read", "Write", "Delete", "List"].into_iter().enumerate() {
+            if let Some(p) = forms.ftp_perms.get_mut(i) {
+                ui.checkbox(p, crate::i18n::tr(label));
+            }
+        }
+    });
+    if ui.button(tl("Add user")).clicked() && !forms.ftp_user.trim().is_empty() {
+        let name = forms.ftp_user.trim().to_string();
+        let [read, write, delete, list] = forms.ftp_perms;
+        new.ftp.users.retain(|u| u.name != name);
+        new.ftp.users.push(FtpUser { name, password: forms.ftp_password.clone(), read, write, delete, list });
+        changed = true;
+    }
+    egui::Grid::new(("ftp_users", d.0)).striped(true).show(ui, |ui| {
+        for h in ["Username", "Password", "Permissions", ""] {
+            ui.strong(crate::i18n::tr(h));
+        }
+        ui.end_row();
+        let mut remove = None;
+        for (i, u) in new.ftp.users.iter().enumerate() {
+            ui.label(&u.name);
+            ui.label(&u.password);
+            let perms: String =
+                [(u.read, 'R'), (u.write, 'W'), (u.delete, 'D'), (u.list, 'L')].iter().map(|(on, c)| if *on { *c } else { '-' }).collect();
+            ui.monospace(perms);
+            if ui.small_button(tl("Remove")).clicked() {
+                remove = Some(i);
+            }
+            ui.end_row();
+        }
+        if let Some(i) = remove {
+            new.ftp.users.remove(i);
+            changed = true;
+        }
+    });
+    ui.separator();
+    ui.label(RichText::new(tl("Files")).strong());
+    let mut remove = None;
+    egui::ScrollArea::vertical().max_height(140.0).id_salt("ftp_files").show(ui, |ui| {
+        egui::Grid::new(("ftp_files_grid", d.0)).striped(true).show(ui, |ui| {
+            for (i, f) in new.ftp.files.iter().enumerate() {
+                ui.label(&f.name);
+                ui.label(format!("{} B", f.content.len()));
+                if ui.small_button(tl("Remove")).clicked() {
+                    remove = Some(i);
+                }
+                ui.end_row();
+            }
+        });
+    });
+    if let Some(i) = remove {
+        new.ftp.files.remove(i);
+        changed = true;
+    }
     if changed {
         apply(app, d, &new);
     }

@@ -82,6 +82,14 @@ pub fn running_config(d: &Device) -> String {
     for (h, k) in &a.radius_servers {
         let _ = writeln!(s, "radius-server host {h} key {}", pw(k));
     }
+    if let Some((u, p)) = &d.ftp_login {
+        if !u.is_empty() {
+            let _ = writeln!(s, "ip ftp username {u}");
+        }
+        if !p.is_empty() {
+            let _ = writeln!(s, "ip ftp password {}", pw(p));
+        }
+    }
     if a.enable_secret.is_some() || a.enable_password.is_some() || a.no_domain_lookup || a.domain_name.is_some() || !a.users.is_empty() {
         let _ = writeln!(s, "!");
     }

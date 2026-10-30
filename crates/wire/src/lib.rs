@@ -51,6 +51,9 @@ pub const ETHERTYPE_VLAN: u16 = 0x8100;
 pub const PROTO_ICMP: u8 = 1;
 pub const PROTO_UDP: u8 = 17;
 pub const PROTO_TCP: u8 = 6;
+/// FTP's control port, and the ports PacketCraft's FTP servers open for passive data.
+pub const FTP_PORT: u16 = 21;
+pub const FTP_DATA_PORTS: std::ops::Range<u16> = 20_000..30_000;
 
 /// Shortest Ethernet payload; shorter ones are padded on the wire.
 const MIN_PAYLOAD: usize = 46;
@@ -423,6 +426,7 @@ pub enum Protocol {
     Rip,
     Hsrp,
     Radius,
+    Ftp,
     Lacp,
     Lldp,
     Ntp,
@@ -452,6 +456,7 @@ impl Protocol {
             Protocol::Hsrp => "HSRP",
             Protocol::Lacp => "LACP",
             Protocol::Radius => "RADIUS",
+            Protocol::Ftp => "FTP",
             Protocol::Lldp => "LLDP",
             Protocol::Ntp => "NTP",
             Protocol::Syslog => "Syslog",
@@ -600,6 +605,15 @@ pub fn summarize(bytes: &[u8]) -> (Protocol, String) {
                         Ok(s) if !s.payload.is_empty() && (s.dst_port == 80 || s.src_port == 80) => {
                             let first = String::from_utf8_lossy(&s.payload).lines().next().unwrap_or("").chars().take(60).collect::<String>();
                             (Protocol::Http, format!("HTTP {first} {route}{tag}"))
+                        }
+                        Ok(s) if !s.payload.is_empty() && (s.dst_port == FTP_PORT || s.src_port == FTP_PORT) => {
+                            let first = String::from_utf8_lossy(&s.payload).lines().next().unwrap_or("").chars().take(60).collect::<String>();
+                            // Never show the password a client sends.
+                            let first = if first.to_ascii_uppercase().starts_with("PASS ") { "PASS ****".to_string() } else { first };
+                            (Protocol::Ftp, format!("FTP {first} {route}{tag}"))
+                        }
+                        Ok(s) if !s.payload.is_empty() && (FTP_DATA_PORTS.contains(&s.dst_port) || FTP_DATA_PORTS.contains(&s.src_port)) => {
+                            (Protocol::Ftp, format!("FTP data, {} bytes {route}{tag}", s.payload.len()))
                         }
                         Ok(s) => (Protocol::Tcp, format!("TCP [{}] {}:{} → {}:{}{tag}", s.flag_names(), ip.src, s.src_port, ip.dst, s.dst_port)),
                         Err(e) => (Protocol::Tcp, format!("TCP ({e}) {route}{tag}")),

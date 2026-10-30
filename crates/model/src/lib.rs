@@ -769,6 +769,12 @@ pub struct Device {
     /// Servers: HTTP, DNS and DHCP services.
     #[serde(default, skip_serializing_if = "services::Services::is_default")]
     pub services: services::Services,
+    /// Hosts: files kept on the device (what `ftp` sends and fetches, `dir` lists).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<services::WebFile>,
+    /// Routers and switches: `ip ftp username` and `ip ftp password`, for `copy … ftp:`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ftp_login: Option<(String, String)>,
 }
 
 /// Which side of NAT an interface is on.
@@ -1275,6 +1281,8 @@ impl Device {
             acls: Vec::new(),
             nat: Nat::default(),
             services: if kind == DeviceKind::Server { services::Services::server_defaults() } else { services::Services::default() },
+            files: Vec::new(),
+            ftp_login: None,
         };
         d.ensure_default_vlan();
         d
@@ -1291,6 +1299,7 @@ impl Device {
         self.ip_routing = false;
         self.cdp_off = false;
         self.lldp_on = false;
+        self.ftp_login = None;
         self.ntp_servers.clear();
         self.log_hosts.clear();
         self.ipv6_routing = false;
