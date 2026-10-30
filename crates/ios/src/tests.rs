@@ -385,6 +385,67 @@ fn dhcp_by_typing() {
 }
 
 #[test]
+fn dhcp_server_details_by_typing() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let s = lab.add(DeviceKind::Switch);
+    let a = lab.add(DeviceKind::Pc);
+    let b = lab.add(DeviceKind::Pc);
+    lab.cable(r, "g0/0", s, "g0/1");
+    lab.cable(a, "fa0", s, "fa0/1");
+    lab.cable(b, "fa0", s, "fa0/2");
+    lab.run(
+        r,
+        "en\nconf t\nint g0/0\nip add 192.168.10.1 255.255.255.0\nno shut\nexit\nip dhcp excluded-address 192.168.10.1 192.168.10.9\n\
+         ip dhcp pool LAN\nnetwork 192.168.10.0 255.255.255.0\ndefault-router 192.168.10.1\ndomain-name lab.local\nlease 2 3\nend",
+    );
+    // PC2 took the first free address by hand: the server notices and passes over it.
+    lab.run(b, "ipconfig 192.168.10.10 255.255.255.0 192.168.10.1");
+    lab.run(r, "debug ip dhcp server packet");
+    let out = lab.run(a, "ipconfig /renew");
+    assert!(out.contains("192.168.10.11/24") && out.contains("domain lab.local"), "{out}");
+    let all = lab.run(a, "ipconfig /all");
+    assert!(all.contains("Domain name lab.local") && all.contains("Lease time  2 days 3 hours") && all.contains("DHCP server 192.168.10.1"), "{all}");
+    assert!(!lab.run(a, "ipconfig").contains("Domain name"), "plain ipconfig stays short");
+    let log = lab.run(r, "show logging");
+    assert!(log.contains("DHCP packet debug: DISCOVER from") && log.contains("DHCP packet debug: ACK to"), "{log}");
+    lab.run(r, "no debug ip dhcp server packet");
+    let conflict = lab.run(r, "show ip dhcp conflict");
+    assert!(conflict.contains("192.168.10.10") && conflict.contains("1 conflict"), "{conflict}");
+    let stats = lab.run(r, "show ip dhcp server statistics");
+    assert!(
+        stats.contains("DISCOVER     1") && stats.contains("REQUEST      1") && stats.contains("OFFER        1") && stats.contains("ACK          1"),
+        "{stats}"
+    );
+    assert!(lab.run(r, "show ip dhcp pool").contains("Lease time       2 days 3 hours"));
+    // The pool's settings survive a reload; `lease infinite` too.
+    lab.run(r, "conf t\nip dhcp pool LAN\nlease infinite\nend");
+    let run = lab.run(r, "show run");
+    assert!(run.contains(" default-router 192.168.10.1\n domain-name lab.local\n lease infinite"), "{run}");
+    lab.run(r, "copy run start\nreload\nen");
+    assert_eq!(lab.run(r, "show run"), run);
+    lab.run(r, "conf t\nip dhcp pool LAN\nlease 0 0 30\nend");
+    assert!(lab.run(r, "show run").contains(" lease 0 0 30"));
+    // Clearing: one binding, all of them, conflicts and counters.
+    lab.run(a, "ipconfig /renew");
+    assert!(lab.try_run(r, "clear ip dhcp binding 10.9.9.9").contains("not leased"));
+    lab.run(r, "clear ip dhcp binding 192.168.10.11");
+    assert!(lab.run(r, "show ip dhcp binding").contains("0 bindings"));
+    lab.run(a, "ipconfig /renew");
+    lab.run(r, "clear ip dhcp binding *\nclear ip dhcp conflict *\nclear ip dhcp server statistics");
+    assert!(lab.run(r, "show ip dhcp binding").contains("0 bindings"));
+    assert!(lab.run(r, "show ip dhcp conflict").starts_with("No address conflicts"));
+    assert!(lab.run(r, "show ip dhcp server statistics").contains("DISCOVER     0"));
+    // Bad values.
+    lab.run(r, "conf t\nip dhcp pool LAN");
+    for bad in ["lease 366", "lease 1 24", "lease 1 2 60", "lease 0", "lease 1 2 3 4", "lease forever", "domain-name bad_name!"] {
+        assert!(lab.try_run(r, bad).starts_with('%'), "{bad}");
+    }
+    lab.run(r, "no domain-name\nno lease\nend");
+    assert!(!lab.run(r, "show run").contains("lease"));
+}
+
+#[test]
 fn passwords_banner_and_lines() {
     let mut lab = Lab::new();
     let r = lab.add(DeviceKind::Router);
@@ -1066,6 +1127,47 @@ fn multilayer_switch_by_typing() {
     assert!(lab.try_run(plain, "ip address 1.1.1.1 255.255.255.0").contains("switch port"));
     lab.run(plain, "exit");
     assert!(lab.try_run(plain, "ip route 0.0.0.0 0.0.0.0 1.1.1.1").contains("ip routing"));
+}
+
+#[test]
+fn relay_and_access_lists_on_vlan_interfaces_by_typing() {
+    let mut lab = Lab::new();
+    let ml = lab.t.add_model(netlabcraft_model::models::find("Switch-ML-24").unwrap(), None, 0.0, 0.0).unwrap();
+    let r = lab.add(DeviceKind::Router);
+    let a = lab.add(DeviceKind::Pc);
+    let b = lab.add(DeviceKind::Pc);
+    lab.cable(a, "fa0", ml, "fa0/1");
+    lab.cable(b, "fa0", ml, "fa0/2");
+    lab.cable(ml, "g0/1", r, "g0/0");
+    lab.run(b, "ipconfig 192.168.20.10 255.255.255.0 192.168.20.1");
+    lab.run(
+        ml,
+        "en\nconf t\nip routing\nvlan 10\nvlan 20\nexit\nint fa0/1\nswitchport access vlan 10\nint fa0/2\nswitchport access vlan 20\nexit\n\
+         int g0/1\nno switchport\nip address 10.0.0.1 255.255.255.252\nexit\n\
+         interface vlan 10\nip address 192.168.10.1 255.255.255.0\nip helper-address 10.0.0.2\nno shut\n\
+         interface vlan 20\nip address 192.168.20.1 255.255.255.0\nno shut\nend",
+    );
+    // The router keeps the pool for VLAN 10; the switch relays to it.
+    lab.run(
+        r,
+        "en\nconf t\nint g0/0\nip address 10.0.0.2 255.255.255.252\nno shut\nexit\nip route 192.168.0.0 255.255.0.0 10.0.0.1\n\
+         ip dhcp excluded-address 192.168.10.1\nip dhcp pool V10\nnetwork 192.168.10.0 255.255.255.0\ndefault-router 192.168.10.1\nend",
+    );
+    let out = lab.run(a, "ipconfig /renew");
+    assert!(out.contains("192.168.10.2/24") && out.contains("gateway 192.168.10.1"), "{out}");
+    lab.run(a, "ping 192.168.20.10");
+    assert!(lab.run(a, "ping 192.168.20.10").contains("4 answered"));
+    // An access list on VLAN 20's interface keeps VLAN 10 out.
+    lab.run(ml, "conf t\naccess-list 20 deny 192.168.10.0 0.0.0.255\naccess-list 20 permit any\ninterface vlan 20\nip access-group 20 out\nend");
+    assert!(lab.run(a, "ping 192.168.20.10").contains(" 0 answered"));
+    let run = lab.run(ml, "show run");
+    assert!(run.contains("interface Vlan10\n ip address 192.168.10.1 255.255.255.0\n ip helper-address 10.0.0.2"), "{run}");
+    assert!(run.contains("interface Vlan20\n ip address 192.168.20.1 255.255.255.0\n ip access-group 20 out"), "{run}");
+    lab.run(ml, "copy run start\nreload\nen");
+    assert_eq!(lab.run(ml, "show run"), run);
+    lab.run(ml, "conf t\ninterface vlan 20\nno ip access-group 20 out\ninterface vlan 10\nno ip helper-address\nend");
+    let run = lab.run(ml, "show run");
+    assert!(!run.contains("helper-address") && !run.contains("access-group"), "{run}");
 }
 
 #[test]

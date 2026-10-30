@@ -78,6 +78,8 @@ pub struct Dhcp {
     pub requested: Option<Ipv4Addr>,
     /// Option 150: TFTP servers IP phones fetch their settings from (the first one).
     pub tftp: Option<Ipv4Addr>,
+    /// Option 15: the domain name clients use.
+    pub domain: Option<String>,
 }
 
 impl Dhcp {
@@ -97,6 +99,7 @@ impl Dhcp {
             server_id: None,
             requested: None,
             tftp: None,
+            domain: None,
         }
     }
 
@@ -124,6 +127,12 @@ impl Dhcp {
             b.push(51);
             b.push(4);
             b.extend_from_slice(&l.to_be_bytes());
+        }
+        if let Some(name) = &self.domain {
+            let bytes: Vec<u8> = name.bytes().take(255).collect();
+            b.push(15);
+            b.push(u8::try_from(bytes.len()).unwrap_or(255));
+            b.extend_from_slice(&bytes);
         }
         b.push(255);
         b
@@ -168,6 +177,7 @@ impl Dhcp {
                 50 => d.requested = addr,
                 150 if len >= 4 => d.tftp = Some(Ipv4Addr::new(v[0], v[1], v[2], v[3])),
                 51 if len == 4 => d.lease_secs = Some(u32::from_be_bytes([v[0], v[1], v[2], v[3]])),
+                15 if len > 0 => d.domain = Some(String::from_utf8_lossy(v).trim_end_matches('\0').to_string()),
                 _ => {}
             }
             at += 2 + len;
@@ -191,6 +201,7 @@ mod tests {
         d.lease_secs = Some(86_400);
         d.server_id = Some(Ipv4Addr::new(192, 168, 1, 1));
         d.tftp = Some(Ipv4Addr::new(192, 168, 100, 1));
+        d.domain = Some("lab.example".into());
         let b = d.encode();
         assert_eq!(Dhcp::decode(&b).unwrap(), d);
         for n in 0..b.len() {

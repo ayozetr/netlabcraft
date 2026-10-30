@@ -170,6 +170,29 @@ pub fn running_config(d: &Device) -> String {
         if let Some(r) = p.dns {
             let _ = writeln!(s, " dns-server {r}");
         }
+        if let Some(dn) = &p.domain {
+            let _ = writeln!(s, " domain-name {dn}");
+        }
+        match p.lease_secs {
+            Some(u32::MAX) => {
+                let _ = writeln!(s, " lease infinite");
+            }
+            Some(l) => {
+                let (dd, h, m) = (l / 86_400, l / 3_600 % 24, l / 60 % 60);
+                let _ = writeln!(
+                    s,
+                    " lease {dd}{}",
+                    if m > 0 {
+                        format!(" {h} {m}")
+                    } else if h > 0 {
+                        format!(" {h}")
+                    } else {
+                        String::new()
+                    }
+                );
+            }
+            None => {}
+        }
         crate::exec::voice::pool_lines(&mut s, d, &p.name);
         let _ = writeln!(s, "!");
     }
@@ -367,6 +390,10 @@ pub fn running_config(d: &Device) -> String {
             }
         }
         ipv6_lines(&mut s, &svi.ipv6);
+        for h in &svi.helpers {
+            let _ = writeln!(s, " ip helper-address {h}");
+        }
+        access_groups(&mut s, &svi.access);
         nat_side(&mut s, svi.nat);
         standby_lines(&mut s, &svi.standby);
         ospf_if_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
@@ -917,6 +944,36 @@ pub fn dhcp_bindings(sim: &Sim, d: &Device) -> String {
     s
 }
 
+/// `show ip dhcp conflict`.
+pub fn dhcp_conflicts(sim: &Sim, d: &Device) -> String {
+    let list = sim.state(d.id).map(|st| st.dhcp_srv.conflicts.clone()).unwrap_or_default();
+    if list.is_empty() {
+        return "No address conflicts: no pool address was found in use by another device.".into();
+    }
+    let mut s = format!("{:<17} {:<26} {}\n", "Address", "How it was found", "When (s)");
+    for (ip, at) in &list {
+        let _ = writeln!(s, "{:<17} {:<26} {}", ip.to_string(), "already on another device", at / 1_000_000);
+    }
+    let _ = write!(s, "{} conflict{} (these addresses are not handed out)", list.len(), if list.len() == 1 { "" } else { "s" });
+    s
+}
+
+/// `show ip dhcp server statistics`.
+pub fn dhcp_stats(sim: &Sim, d: &Device) -> String {
+    let st = sim.state(d.id).map(|st| st.dhcp_srv.clone()).unwrap_or_default();
+    let leases = sim.state(d.id).map_or(0, |st| st.leases.len());
+    let mut s = format!("Pools              {}\nLeased addresses   {leases}\nConflicts          {}\n", d.dhcp_pools.len(), st.conflicts.len());
+    s.push_str("\nReceived\n");
+    for k in ["DISCOVER", "REQUEST", "RELEASE"] {
+        let _ = writeln!(s, "  {k:<12} {}", st.received.get(k).copied().unwrap_or(0));
+    }
+    s.push_str("\nSent\n");
+    for k in ["OFFER", "ACK", "NAK"] {
+        let _ = writeln!(s, "  {k:<12} {}", st.sent.get(k).copied().unwrap_or(0));
+    }
+    s.trim_end().to_string()
+}
+
 /// `show ip dhcp pool`.
 pub fn dhcp_pools(sim: &Sim, d: &Device) -> String {
     if d.dhcp_pools.is_empty() {
@@ -929,6 +986,8 @@ pub fn dhcp_pools(sim: &Sim, d: &Device) -> String {
         let _ = writeln!(s, "  Network          {}", p.network.map_or("not set (the pool hands out nothing)".to_string(), |n| n.to_string()));
         let _ = writeln!(s, "  Default router   {}", p.default_router.map_or("-".to_string(), |r| r.to_string()));
         let _ = writeln!(s, "  DNS server       {}", p.dns.map_or("-".to_string(), |r| r.to_string()));
+        let _ = writeln!(s, "  Domain name      {}", p.domain.as_deref().unwrap_or("-"));
+        let _ = writeln!(s, "  Lease time       {}", netlabcraft_model::mgmt::lease_text(p.lease_secs.unwrap_or(86_400)));
         let _ = writeln!(s, "  Leased addresses {leased}");
     }
     if !d.dhcp_excluded.is_empty() {

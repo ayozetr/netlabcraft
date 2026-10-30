@@ -1814,6 +1814,23 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             };
             let name = arg(0).to_string();
             let add = spec.id == Id::AccessGroup;
+            let set = |g: &mut netlabcraft_model::AccessGroups| {
+                let slot = if inbound { &mut g.inbound } else { &mut g.outbound };
+                if add {
+                    *slot = Some(name.clone());
+                } else if slot.as_deref() == Some(name.as_str()) {
+                    *slot = None;
+                }
+            };
+            if let Mode::Svi(v) = c.cli.mode {
+                set(&mut c.dm()?.svi_mut(v).ok_or("% Too many VLAN interfaces")?.access);
+                let exists = c.d()?.acls.iter().any(|a| a.name == name);
+                return Ok(if add && !exists {
+                    format!("Access list {name} doesn't exist yet: until it does, everything passes.")
+                } else {
+                    String::new()
+                });
+            }
             c.each_if(|p, sub| {
                 let g = match sub {
                     Some(s) => &mut s.access,
@@ -3112,17 +3129,21 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let target =
                 if args.first().is_some_and(|a| !a.trim().is_empty()) { Some(parse_ip(arg(0).trim()).map_err(|e| format!("% {e}"))?) } else { None };
             let add = spec.id == Id::HelperAddress;
+            let edit = |list: &mut Vec<Ipv4Addr>| match (add, target) {
+                (true, Some(a)) if !list.contains(&a) && list.len() < 8 => list.push(a),
+                (true, _) => {}
+                (false, Some(a)) => list.retain(|x| *x != a),
+                (false, None) => list.clear(),
+            };
+            if let Mode::Svi(v) = c.cli.mode {
+                edit(&mut c.dm()?.svi_mut(v).ok_or("% Too many VLAN interfaces")?.helpers);
+                return Ok(String::new());
+            }
             c.each_if(|p, sub| {
-                let list = match sub {
+                edit(match sub {
                     Some(s) => &mut s.helpers,
                     None => &mut p.helpers,
-                };
-                match (add, target) {
-                    (true, Some(a)) if !list.contains(&a) && list.len() < 8 => list.push(a),
-                    (true, _) => {}
-                    (false, Some(a)) => list.retain(|x| *x != a),
-                    (false, None) => list.clear(),
-                }
+                });
                 Ok(())
             })
         }
@@ -3369,7 +3390,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 if d.dhcp_pools.len() >= MAX_DHCP_POOLS {
                     return Err(format!("% At most {MAX_DHCP_POOLS} pools"));
                 }
-                d.dhcp_pools.push(DhcpPool { name: name.clone(), network: None, default_router: None, dns: None });
+                d.dhcp_pools.push(DhcpPool { name: name.clone(), ..DhcpPool::default() });
             }
             c.cli.mode = Mode::DhcpPool(name);
             Ok(String::new())
@@ -3480,8 +3501,47 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::ShowDhcpBinding => Ok(render::dhcp_bindings(c.sim, c.d()?)),
         Id::ShowDhcpPool => Ok(render::dhcp_pools(c.sim, c.d()?)),
-        Id::ClearDhcpBinding => {
-            c.sim.clear_leases(c.dev);
+        Id::ClearDhcpBinding => match arg(0).trim() {
+            "*" => {
+                c.sim.clear_leases(c.dev);
+                Ok(String::new())
+            }
+            a => {
+                let ip = parse_ip(a).map_err(|_| "% `*` for every lease, or one leased address".to_string())?;
+                if c.sim.clear_lease(c.dev, ip) { Ok(String::new()) } else { Err(format!("% {ip} is not leased")) }
+            }
+        },
+        Id::ShowDhcpConflict => Ok(render::dhcp_conflicts(c.sim, c.d()?)),
+        Id::ShowDhcpStats => Ok(render::dhcp_stats(c.sim, c.d()?)),
+        Id::ClearDhcpConflict => {
+            if arg(0).trim() != "*" {
+                return Err("% `clear ip dhcp conflict *`".into());
+            }
+            c.sim.clear_dhcp_conflicts(c.dev);
+            Ok(String::new())
+        }
+        Id::ClearDhcpStats => {
+            c.sim.clear_dhcp_stats(c.dev);
+            Ok(String::new())
+        }
+        Id::DebugDhcpPacket | Id::NoDebugDhcpPacket => {
+            let on = spec.id == Id::DebugDhcpPacket;
+            c.sim.set_dhcp_packet_debug(c.dev, on);
+            Ok(if on { "DHCP packet debugging is on: every message the server handles is reported." } else { "DHCP packet debugging is off." }.into())
+        }
+        Id::DhcpLease | Id::NoDhcpLease | Id::DhcpDomain | Id::NoDhcpDomain => {
+            let Mode::DhcpPool(name) = c.cli.mode.clone() else { return Err("% Not in DHCP pool mode".into()) };
+            let lease = if spec.id == Id::DhcpLease { Some(parse_lease(arg(0))?) } else { None };
+            let domain: String = arg(0).chars().take(64).collect();
+            if spec.id == Id::DhcpDomain && !domain.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '.') {
+                return Err("% A domain name has letters, digits, `-` and `.`".into());
+            }
+            let pool = c.dm()?.dhcp_pools.iter_mut().find(|p| p.name == name).ok_or("% The pool was deleted")?;
+            match spec.id {
+                Id::DhcpLease | Id::NoDhcpLease => pool.lease_secs = lease,
+                Id::DhcpDomain => pool.domain = Some(domain),
+                _ => pool.domain = None,
+            }
             Ok(String::new())
         }
         Id::VlanName | Id::NoVlanName => {
@@ -3499,6 +3559,32 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(String::new())
         }
     }
+}
+
+/// `lease DAYS [HOURS [MINUTES]]` or `lease infinite`, in seconds (`u32::MAX`: infinite).
+fn parse_lease(rest: &str) -> Result<u32, String> {
+    let words: Vec<&str> = rest.split_whitespace().collect();
+    if let [w] = words.as_slice()
+        && w.eq_ignore_ascii_case("infinite")
+    {
+        return Ok(u32::MAX);
+    }
+    let usage = "% lease DAYS [HOURS [MINUTES]] (0-365, 0-23, 0-59) or lease infinite";
+    if words.is_empty() || words.len() > 3 {
+        return Err(usage.into());
+    }
+    let mut secs = 0u32;
+    for (w, (max, unit)) in words.iter().zip([(365u32, 86_400u32), (23, 3_600), (59, 60)]) {
+        let n: u32 = w.parse().map_err(|_| usage.to_string())?;
+        if n > max {
+            return Err(usage.into());
+        }
+        secs = secs.saturating_add(n.saturating_mul(unit));
+    }
+    if secs == 0 {
+        return Err("% A lease lasts at least a minute".into());
+    }
+    Ok(secs)
 }
 
 /// Whether a word is all digits.

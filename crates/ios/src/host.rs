@@ -241,7 +241,7 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut crate::
 }
 
 fn ipconfig(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Outcome {
-    let show = |d: &Device| {
+    let show_basic = |d: &Device| {
         let p = d.ports.first();
         format!(
             "Interface   {}\nMAC address {}\nIP address  {}\nSubnet mask {}\nGateway     {}\nDNS server  {}\nAssigned    {}",
@@ -252,12 +252,27 @@ fn ipconfig(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Ou
             d.gateway.map_or("not set".to_string(), |g| g.to_string()),
             d.dns.map_or("not set".to_string(), |g| g.to_string()),
             if d.dhcp_client { "by DHCP" } else { "by hand (static)" },
-        ) + &ipv6_lines(d)
+        )
     };
+    let show_all = |d: &Device| {
+        let l = d.dhcp_lease.clone().unwrap_or_default();
+        let mut s = show_basic(d);
+        if d.dhcp_client {
+            let _ = write!(
+                s,
+                "\nDomain name {}\nLease time  {}\nDHCP server {}",
+                l.domain.as_deref().unwrap_or("not set"),
+                l.lease_secs.map_or("unknown".to_string(), netlabcraft_model::mgmt::lease_text),
+                l.server.map_or("unknown".to_string(), |a| a.to_string())
+            );
+        }
+        s + &ipv6_lines(d)
+    };
+    let show = |d: &Device| show_basic(d) + &ipv6_lines(d);
     let Some(d) = t.device(dev) else { return Outcome::default() };
     let result: Result<String, String> = match args {
         [] => return Outcome { output: show(d), ..Outcome::default() },
-        [flag] if flag.eq_ignore_ascii_case("/all") => return Outcome { output: show(d), ..Outcome::default() },
+        [flag] if flag.eq_ignore_ascii_case("/all") => return Outcome { output: show_all(d), ..Outcome::default() },
         [flag] if flag.eq_ignore_ascii_case("/release") => {
             if let Some(d) = t.device_mut(dev) {
                 if let Some(p) = d.ports.first_mut() {
@@ -266,6 +281,7 @@ fn ipconfig(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Ou
                 d.gateway = None;
                 d.dns = None;
                 d.dhcp_client = false;
+                d.dhcp_lease = None;
             }
             Ok("Address released.".into())
         }
@@ -279,12 +295,15 @@ fn ipconfig(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Ou
                     d.dns = lease.dns;
                     d.dhcp_client = true;
                     d.voice.tftp = lease.tftp;
+                    d.dhcp_lease =
+                        Some(netlabcraft_model::mgmt::HostLease { domain: lease.domain.clone(), lease_secs: lease.lease_secs, server: lease.server });
                 }
                 Ok(format!(
-                    "DHCP gave this host {}{}{}{}.",
+                    "DHCP gave this host {}{}{}{}{}.",
                     lease.address,
                     lease.router.map(|g| format!(", gateway {g}")).unwrap_or_default(),
                     lease.dns.map(|g| format!(", DNS {g}")).unwrap_or_default(),
+                    lease.domain.as_ref().map(|g| format!(", domain {g}")).unwrap_or_default(),
                     lease.tftp.map(|g| format!(", TFTP server {g}")).unwrap_or_default()
                 ))
             }
@@ -317,6 +336,7 @@ fn ipconfig(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Ou
             }
             d.gateway = gw;
             d.dhcp_client = false;
+            d.dhcp_lease = None;
             Ok(format!("Address set to {net}{}.", gw.map(|g| format!(", gateway {g}")).unwrap_or_default()))
         })(),
         _ => Err("Usage: ipconfig [<address> <mask> [<gateway> [<dns>]]] | /renew | /release".into()),

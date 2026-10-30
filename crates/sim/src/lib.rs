@@ -29,6 +29,7 @@ pub mod lldp;
 
 pub mod channel;
 pub mod control;
+pub mod dhcpsrv;
 pub mod eigrp;
 pub mod firewall;
 pub mod hsrp;
@@ -636,7 +637,7 @@ pub struct Lease {
 }
 
 /// What a DHCP client obtained.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DhcpResult {
     pub address: Ipv4Net,
     pub router: Option<Ipv4Addr>,
@@ -644,6 +645,10 @@ pub struct DhcpResult {
     pub server: Option<Ipv4Addr>,
     /// Option 150: where an IP phone registers.
     pub tftp: Option<Ipv4Addr>,
+    /// Option 15: the domain name.
+    pub domain: Option<String>,
+    /// Option 51: the lease time in seconds (`u32::MAX`: infinite).
+    pub lease_secs: Option<u32>,
 }
 
 /// One NAT translation.
@@ -763,6 +768,8 @@ pub struct DevState {
     pub(crate) qos_drained: BTreeMap<String, u64>,
     /// The firewall appliance: connections and translations.
     pub fw: firewall::FwState,
+    /// Routers: DHCP server message counts and address conflicts.
+    pub dhcp_srv: dhcpsrv::ServerStats,
 }
 
 /// One frame delivered across a cable.
@@ -1500,10 +1507,14 @@ impl Sim {
     /// Applies the interface's inbound or outbound access list. A denied packet is dropped and
     /// its sender told "administratively prohibited".
     fn acl_check(&mut self, t: &Topology, d: &Device, ifc: &L3If, ip: &Ipv4, raw: &[u8], inbound: bool) -> Result<(), String> {
-        let Some(port) = d.ports.get(ifc.port) else { return Ok(()) };
-        let groups = match ifc.sub {
-            Some(n) => port.subif(n).map(|s| &s.access),
-            None => Some(&port.access),
+        let groups = if ifc.port == SVI_PORT {
+            d.svis.iter().find(|s| Some(s.vlan.get()) == ifc.vlan).map(|s| &s.access)
+        } else {
+            let Some(port) = d.ports.get(ifc.port) else { return Ok(()) };
+            match ifc.sub {
+                Some(n) => port.subif(n).map(|s| &s.access),
+                None => Some(&port.access),
+            }
         };
         let Some(name) = groups.and_then(|g| if inbound { g.inbound.as_ref() } else { g.outbound.as_ref() }) else { return Ok(()) };
         // An applied list that doesn't exist permits everything, as on real routers.
@@ -2450,6 +2461,7 @@ impl Sim {
                 x.ports
                     .iter()
                     .flat_map(|p| p.ip.map(|n| (n.addr, p.mac)).into_iter().chain(p.subifs.iter().filter_map(|s| s.ip.map(|n| (n.addr, p.mac)))))
+                    .chain(x.svis.iter().filter_map(|s| s.ip.map(|n| (n.addr, svi_mac(x)))))
             })
             .collect();
         if let Some((ip, _)) =
@@ -2485,7 +2497,13 @@ impl Sim {
             let net = Ipv4Net::with_mask(sp.start, sp.mask).map_err(|e| e.to_string())?.network();
             let nz = |a: Ipv4Addr| (!a.is_unspecified()).then_some(a);
             (
-                netlabcraft_model::DhcpPool { name: sp.name.clone(), network: Some(net), default_router: nz(sp.gateway), dns: nz(sp.dns) },
+                netlabcraft_model::DhcpPool {
+                    name: sp.name.clone(),
+                    network: Some(net),
+                    default_router: nz(sp.gateway),
+                    dns: nz(sp.dns),
+                    ..Default::default()
+                },
                 Some(sp.addresses().collect()),
             )
         } else if netlabcraft_model::firewall::is_firewall(d) {
@@ -2501,18 +2519,23 @@ impl Sim {
             (p, None)
         };
         let net = pool.network.ok_or("pool without network")?;
+        self.dhcp_srv_in(d.id, msg.kind, msg.client_mac, &ifc.name);
         let mut reply = Dhcp::new(DhcpKind::Offer, msg.xid, msg.client_mac);
         reply.server_id = Some(ifc.net.addr);
         reply.mask = Some(net.mask());
         reply.router = pool.default_router;
         reply.dns = pool.dns;
-        reply.lease_secs = Some(86_400);
+        reply.lease_secs = Some(pool.lease_secs.unwrap_or(86_400));
+        reply.domain = pool.domain.clone();
         reply.tftp = d.voice.option150.get(&pool.name).copied();
         match msg.kind {
             DhcpKind::Discover => {
                 reply.your_ip = self
                     .dhcp_pick(t, d, &pool, msg.client_mac, allowed.as_deref())
                     .ok_or_else(|| format!("pool {} has no free address", pool.name))?;
+                if allowed.is_none() {
+                    self.dhcp_note_conflicts(t, d, net, reply.your_ip, msg.client_mac);
+                }
             }
             DhcpKind::Request => {
                 if msg.server_id.is_some_and(|s| !l3_ifaces(d).iter().any(|i| i.net.addr == s)) {
@@ -2544,6 +2567,7 @@ impl Sim {
             }
             _ => return Err("not a client message".into()),
         }
+        self.dhcp_srv_out(d.id, reply.kind, msg.client_mac, reply.your_ip);
         if !msg.relay.is_unspecified() {
             // Through a relay: answer the relay agent, which broadcasts on the client's segment.
             reply.relay = msg.relay;
@@ -2653,8 +2677,17 @@ impl Sim {
             st.dhcp_inbox.clear();
         }
         let result = (|| {
-            self.dhcp_send(t, d, &Dhcp::new(DhcpKind::Discover, xid, mac));
-            let offer = self.dhcp_wait(t, dev, &[DhcpKind::Offer]).ok_or_else(|| SimError::NoSource("no DHCP server answered".into()))?;
+            // A client asks again when the first DISCOVER goes unanswered (a relay may still
+            // have been resolving its server's address).
+            let mut offer = None;
+            for _ in 0..2 {
+                self.dhcp_send(t, d, &Dhcp::new(DhcpKind::Discover, xid, mac));
+                offer = self.dhcp_wait(t, dev, &[DhcpKind::Offer]);
+                if offer.is_some() {
+                    break;
+                }
+            }
+            let offer = offer.ok_or_else(|| SimError::NoSource("no DHCP server answered".into()))?;
             let mut req = Dhcp::new(DhcpKind::Request, xid, mac);
             req.requested = Some(offer.your_ip);
             req.server_id = offer.server_id;
@@ -2667,7 +2700,15 @@ impl Sim {
             }
             let mask = ack.mask.or(offer.mask).unwrap_or(Ipv4Addr::new(255, 255, 255, 0));
             let address = Ipv4Net::with_mask(ack.your_ip, mask).map_err(|e| SimError::NoSource(e.to_string()))?;
-            Ok(DhcpResult { address, router: ack.router, dns: ack.dns, server: ack.server_id, tftp: ack.tftp.or(offer.tftp) })
+            Ok(DhcpResult {
+                address,
+                router: ack.router,
+                dns: ack.dns,
+                server: ack.server_id,
+                tftp: ack.tftp.or(offer.tftp),
+                domain: ack.domain.clone().or(offer.domain),
+                lease_secs: ack.lease_secs.or(offer.lease_secs),
+            })
         })();
         let st = self.st(dev);
         st.dhcp_xid = None;
@@ -3080,6 +3121,9 @@ fn dhcp_in_frame(f: &Frame) -> Option<Dhcp> {
 
 /// The `ip helper-address` list of an interface.
 fn helpers_of(d: &Device, ifc: &L3If) -> Vec<Ipv4Addr> {
+    if ifc.port == SVI_PORT {
+        return d.svis.iter().find(|s| Some(s.vlan.get()) == ifc.vlan).map(|s| s.helpers.clone()).unwrap_or_default();
+    }
     let Some(p) = d.ports.get(ifc.port) else { return Vec::new() };
     match ifc.sub {
         Some(n) => p.subif(n).map(|s| s.helpers.clone()).unwrap_or_default(),

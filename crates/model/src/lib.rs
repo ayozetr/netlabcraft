@@ -20,6 +20,7 @@ pub mod firewall;
 pub mod hardware;
 pub mod ifname;
 pub mod iot;
+pub mod mgmt;
 pub mod models;
 pub mod physical;
 pub mod qos;
@@ -800,6 +801,9 @@ pub struct Device {
     /// Hosts: the DNS server.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dns: Option<Ipv4Addr>,
+    /// Hosts: what DHCP gave beyond the address (domain, lease time, server).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dhcp_lease: Option<mgmt::HostLease>,
     /// Routers and switches: access and management settings.
     #[serde(default)]
     pub access: Access,
@@ -1251,6 +1255,12 @@ pub struct Svi {
     /// `ip nat inside` / `ip nat outside`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nat: Option<NatSide>,
+    /// `ip helper-address` (multilayer switches): DHCP relay targets.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub helpers: Vec<Ipv4Addr>,
+    /// `ip access-group` (multilayer switches).
+    #[serde(default, skip_serializing_if = "AccessGroups::is_empty")]
+    pub access: AccessGroups,
 }
 
 impl Device {
@@ -1281,6 +1291,8 @@ impl Device {
                 description: String::new(),
                 ipv6: Ipv6Conf::default(),
                 nat: None,
+                helpers: Vec::new(),
+                access: AccessGroups::default(),
             });
             self.svis.sort_by_key(|s| s.vlan);
         }
@@ -1292,7 +1304,7 @@ impl Device {
 pub const STP_DEFAULT_PRIORITY: u16 = 32_768;
 
 /// A DHCP pool.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DhcpPool {
     pub name: String,
     #[serde(default)]
@@ -1301,6 +1313,13 @@ pub struct DhcpPool {
     pub default_router: Option<Ipv4Addr>,
     #[serde(default)]
     pub dns: Option<Ipv4Addr>,
+    /// `lease DAYS [HOURS [MINUTES]]` or `lease infinite` (`u32::MAX`), in seconds; one day
+    /// when not set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lease_secs: Option<u32>,
+    /// `domain-name NAME`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain: Option<String>,
 }
 
 /// Most DHCP pools and excluded ranges per device.
@@ -1588,6 +1607,7 @@ impl Device {
             dhcp_excluded: Vec::new(),
             dhcp_client: false,
             dns: None,
+            dhcp_lease: None,
             access: Access::default(),
             stp_priority: BTreeMap::new(),
             svis: Vec::new(),
@@ -1653,6 +1673,7 @@ impl Device {
         self.dhcp_excluded.clear();
         self.dhcp_client = false;
         self.dns = None;
+        self.dhcp_lease = None;
         self.access = Access::default();
         self.stp_priority.clear();
         self.svis.clear();

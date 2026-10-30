@@ -329,6 +329,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no debug ip packet` | privileged | router, switch | Stop reporting packets |
 | `no debug ip nat` | privileged | router, switch | Stop reporting NAT |
 | `no debug ip dhcp server events` | privileged | router, switch | Stop reporting DHCP |
+| `debug ip dhcp server packet` | privileged | router, switch | Report every DHCP message this server receives and sends |
+| `no debug ip dhcp server packet` | privileged | router, switch | Stop reporting DHCP messages |
 | `no debug ip rip` | privileged | router, switch | Stop reporting RIP updates |
 | `debug ip ospf adj\|events\|hello` | privileged | router | Report the OSPF hellos this router hears |
 | `no debug ip ospf adj\|events\|hello` | privileged | router | Stop reporting OSPF hellos |
@@ -462,6 +464,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `ip helper-address A.B.C.D` | interface, subinterface | router | Relay DHCP requests to this server |
 | `no ip helper-address [A.B.C.D]` | interface, subinterface | router | Stop relaying (to one server) |
 | `no ip helper-address` | interface, subinterface | router | Stop relaying DHCP requests |
+| `ip helper-address A.B.C.D` |  | switch | Relay DHCP requests to this server |
+| `no ip helper-address [A.B.C.D]` |  | switch | Stop relaying (to one server) |
+| `no ip helper-address` |  | switch | Stop relaying DHCP requests |
 | `no interface vlan <1-4094>` | config | switch | Delete a VLAN interface |
 | `ip default-gateway A.B.C.D` | config | switch | Gateway for the switch's own traffic |
 | `no ip default-gateway` | config | switch | Remove the gateway |
@@ -628,9 +633,17 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `network A.B.C.D MASK` |  | router, switch | The pool's network |
 | `default-router A.B.C.D` |  | router, switch | Gateway given to clients |
 | `dns-server A.B.C.D` |  | router, switch | DNS server given to clients |
+| `lease {<0-365> [<0-23> [<0-59>]] \| infinite}` |  | router, switch | How long clients keep an address |
+| `no lease` |  | router, switch | Back to leases of one day |
+| `domain-name NAME` |  | router, switch | Domain name given to clients |
+| `no domain-name` |  | router, switch | Give clients no domain name |
 | `show ip dhcp binding` | user, privileged | router, switch | Addresses DHCP handed out |
 | `show ip dhcp pool` | user, privileged | router, switch | DHCP pools |
-| `clear ip dhcp binding *` | privileged | router, switch | Forget DHCP leases |
+| `clear ip dhcp binding {* \| A.B.C.D}` | privileged | router, switch | Forget DHCP leases |
+| `show ip dhcp conflict` | user, privileged | router, switch | Pool addresses found in use by others |
+| `show ip dhcp server statistics` | user, privileged | router, switch | DHCP messages counted |
+| `clear ip dhcp conflict *` | privileged | router, switch | Forget address conflicts |
+| `clear ip dhcp server statistics` | privileged | router, switch | Reset the DHCP message counts |
 | `spanning-tree vlan <1-4094>[,-] priority <0-61440>` | config | switch | Bridge priority (multiples of 4096) |
 | `no spanning-tree vlan <1-4094>[,-] priority` | config | switch | Back to priority 32768 |
 | `spanning-tree vlan <1-4094>[,-] root {primary\|secondary}` | config | switch | Make this switch the root (or the backup root) |

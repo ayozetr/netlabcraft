@@ -341,6 +341,7 @@ fn dhcp_hands_out_addresses_from_a_pool() {
             network: Some(net("192.168.1.0/24")),
             default_router: Some(ip("192.168.1.1")),
             dns: Some(ip("192.168.1.2")),
+            ..Default::default()
         });
         rt.dhcp_excluded.push((ip("192.168.1.1"), ip("192.168.1.10")));
     }
@@ -377,7 +378,13 @@ fn dhcp_hands_out_addresses_from_a_pool() {
     sim.clear_leases(r);
     assert!(sim.dhcp_acquire(&t, a).is_err());
     // A tiny pool runs out.
-    t.device_mut(r).unwrap().dhcp_pools.push(DhcpPool { name: "TINY".into(), network: Some(net("192.168.1.0/29")), default_router: None, dns: None });
+    t.device_mut(r).unwrap().dhcp_pools.push(DhcpPool {
+        name: "TINY".into(),
+        network: Some(net("192.168.1.0/29")),
+        default_router: None,
+        dns: None,
+        ..Default::default()
+    });
     t.device_mut(r).unwrap().dhcp_excluded = vec![(ip("192.168.1.2"), ip("192.168.1.5"))];
     assert_eq!(sim.dhcp_acquire(&t, a).unwrap().address.to_string(), "192.168.1.6/29");
     assert!(sim.dhcp_acquire(&t, b).is_err());
@@ -484,6 +491,7 @@ fn a_relay_forwards_dhcp_to_a_server_on_another_subnet() {
             network: Some(net("192.168.20.0/24")),
             default_router: Some(ip("192.168.20.1")),
             dns: None,
+            ..Default::default()
         });
         r.routes.push(StaticRoute { net: net("192.168.20.0/24"), via: NextHop::Address(ip("10.0.0.1")) });
     }
