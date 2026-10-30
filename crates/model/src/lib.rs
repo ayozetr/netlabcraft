@@ -356,13 +356,38 @@ impl Encapsulation {
 }
 
 /// A serial port's settings.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SerialConf {
     #[serde(default)]
     pub encapsulation: Encapsulation,
     /// `clock rate N` (bit/s): needed on the DCE end of the cable.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clock_rate: Option<u32>,
+    /// `ppp authentication …`: what this end demands from the other, in order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ppp_auth: Vec<PppAuth>,
+    /// `ppp pap sent-username U password P`: what this end answers to PAP.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pap_sent: Option<(String, String)>,
+}
+
+/// A PPP authentication protocol.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PppAuth {
+    /// RFC 1994: a challenge answered with a hash of the shared secret.
+    Chap,
+    /// RFC 1334: the name and password sent as they are.
+    Pap,
+}
+
+impl PppAuth {
+    pub fn name(self) -> &'static str {
+        match self {
+            PppAuth::Chap => "chap",
+            PppAuth::Pap => "pap",
+        }
+    }
 }
 
 impl SerialConf {
@@ -895,6 +920,15 @@ pub struct User {
 impl User {
     pub fn matches(&self, typed: &str) -> bool {
         if self.hashed { self.credential == secret_hash(typed) } else { self.credential == typed }
+    }
+
+    /// Whether two users hold the same secret (CHAP's shared secret), however each is stored.
+    pub fn same_secret(&self, other: &User) -> bool {
+        match (self.hashed, other.hashed) {
+            (false, _) => other.matches(&self.credential),
+            (true, false) => self.matches(&other.credential),
+            (true, true) => self.credential == other.credential,
+        }
     }
 }
 

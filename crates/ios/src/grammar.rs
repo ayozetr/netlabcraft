@@ -278,6 +278,9 @@ pub enum Id {
     SwModeDynDesirable,
     SwNonegotiate,
     NoSwNonegotiate,
+    PppAuthentication,
+    NoPppAuthentication,
+    PppPapSent,
 }
 
 use Tok::{Arg, K, Rest};
@@ -500,6 +503,21 @@ pub static SPECS: &[Spec] = &[
     spec!(NoStandby, Modes::SVI, Modes::SWITCH, [K("no"), K("standby"), Arg("<0-255>")], "Remove an HSRP group"),
     spec!(ShowStandby, EXECS, Modes::BOTH, [K("show"), K("standby")], "HSRP groups and who is active"),
     spec!(ShowStandby, EXECS, Modes::BOTH, [K("show"), K("standby"), K("brief")], "HSRP groups and who is active"),
+    spec!(
+        PppAuthentication,
+        Modes::IF,
+        Modes::ROUTER,
+        [K("ppp"), K("authentication"), Rest("{chap | pap | chap pap | pap chap}")],
+        "Demand authentication from the other end"
+    ),
+    spec!(NoPppAuthentication, Modes::IF, Modes::ROUTER, [K("no"), K("ppp"), K("authentication")], "Demand no authentication"),
+    spec!(
+        PppPapSent,
+        Modes::IF,
+        Modes::ROUTER,
+        [K("ppp"), K("pap"), K("sent-username"), Arg("WORD"), K("password"), Arg("WORD")],
+        "The name and password this end answers PAP with"
+    ),
     spec!(RouterRip, Modes::CONFIG, Modes::ROUTER, [K("router"), K("rip")], "Start or configure RIP"),
     spec!(NoRouterRip, Modes::CONFIG, Modes::ROUTER, [K("no"), K("router"), K("rip")], "Stop RIP"),
     spec!(RipVersion, Modes::RIP, Modes::ROUTER, [K("version"), Arg("{1|2}")], "RIP version"),

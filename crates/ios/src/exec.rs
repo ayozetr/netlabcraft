@@ -952,6 +952,42 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 }
             })
         }
+        Id::PppAuthentication | Id::NoPppAuthentication | Id::PppPapSent => {
+            let methods = if spec.id == Id::PppAuthentication {
+                let mut list = Vec::new();
+                for w in arg(0).split_whitespace() {
+                    let m = match w.to_ascii_lowercase().as_str() {
+                        "chap" => packetcraft_model::PppAuth::Chap,
+                        "pap" => packetcraft_model::PppAuth::Pap,
+                        _ => return Err(format!("% `{w}`: chap or pap")),
+                    };
+                    if !list.contains(&m) {
+                        list.push(m);
+                    }
+                }
+                if list.is_empty() {
+                    return Err("% chap, pap, or both in the order to try".into());
+                }
+                list
+            } else {
+                Vec::new()
+            };
+            let pap = (spec.id == Id::PppPapSent).then(|| (arg(0).chars().take(64).collect::<String>(), arg(1).chars().take(64).collect::<String>()));
+            let id = spec.id;
+            c.each_if(|p, _| {
+                if !packetcraft_model::ifname::is_serial(&p.name) {
+                    return Err(format!("% {} is not a serial interface", p.name));
+                }
+                if p.serial.encapsulation != packetcraft_model::Encapsulation::Ppp {
+                    return Err("% Set `encapsulation ppp` first".into());
+                }
+                match id {
+                    Id::PppPapSent => p.serial.pap_sent = pap.clone(),
+                    _ => p.serial.ppp_auth = methods.clone(),
+                }
+                Ok(())
+            })
+        }
         Id::ShowStandby => {
             let roles = c.sim.hsrp_roles(c.t);
             Ok(render::standby(c.d()?, roles.get(&c.dev).map_or(&[][..], Vec::as_slice)))
@@ -1380,6 +1416,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                     return Err(format!("% {} is not a serial interface", p.name));
                 }
                 p.serial.encapsulation = enc;
+                // PPP's own settings go with it.
+                if enc == packetcraft_model::Encapsulation::Hdlc {
+                    p.serial.ppp_auth.clear();
+                    p.serial.pap_sent = None;
+                }
                 Ok(())
             })
         }

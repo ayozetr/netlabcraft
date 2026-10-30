@@ -75,7 +75,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | IPv6 ACLs | ❌ | 6–10 h. |
 | NAT: static, pool, PAT (overload) | ✅ | ICMP, UDP and TCP; `show ip nat translations`. No NAT for ICMP errors (traceroute through NAT): 3–5 h. |
 | Passwords and lines | ✅ | `enable secret/password`, console and vty passwords with real prompts, `banner motd`, `service password-encryption`. |
-| PPP authentication (PAP/CHAP) | ❌ | 6–10 h. |
+| PPP authentication (PAP/CHAP) | ✅ | `ppp authentication chap|pap` (one or both, in order), `ppp pap sent-username`, checked against `username` entries (CHAP: both routers name each other with the same secret); failure keeps the line protocol down and `show interfaces` says why. No LCP/CHAP frames on the wire. |
 | ASA firewall, zone-based firewall, VPN (GRE/IPsec) | ❌ | 40–60 h. |
 
 ## WAN
@@ -105,6 +105,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | PPP PAP and CHAP authentication. |
 | 2026-10-30 | minor | DTP. |
 | 2026-10-30 | minor | HSRP. |
 | 2026-10-30 | minor | Logging buffer and console messages; `debug ip icmp`. |

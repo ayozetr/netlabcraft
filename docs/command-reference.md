@@ -177,6 +177,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no standby <0-255>` |  | switch | Remove an HSRP group |
 | `show standby` | user, privileged | router, switch | HSRP groups and who is active |
 | `show standby brief` | user, privileged | router, switch | HSRP groups and who is active |
+| `ppp authentication {chap \| pap \| chap pap \| pap chap}` | interface | router | Demand authentication from the other end |
+| `no ppp authentication` | interface | router | Demand no authentication |
+| `ppp pap sent-username WORD password WORD` | interface | router | The name and password this end answers PAP with |
 | `router rip` | config | router | Start or configure RIP |
 | `no router rip` | config | router | Stop RIP |
 | `version {1\|2}` |  | router | RIP version |

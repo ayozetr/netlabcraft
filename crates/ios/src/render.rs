@@ -162,6 +162,12 @@ pub fn running_config(d: &Device) -> String {
             if packetcraft_model::ifname::is_serial(&p.name) {
                 if p.serial.encapsulation == packetcraft_model::Encapsulation::Ppp {
                     let _ = writeln!(s, " encapsulation ppp");
+                    if !p.serial.ppp_auth.is_empty() {
+                        let _ = writeln!(s, " ppp authentication {}", p.serial.ppp_auth.iter().map(|m| m.name()).collect::<Vec<_>>().join(" "));
+                    }
+                    if let Some((u, pw)) = &p.serial.pap_sent {
+                        let _ = writeln!(s, " ppp pap sent-username {u} password {pw}");
+                    }
                 }
                 if let Some(r) = p.serial.clock_rate {
                     let _ = writeln!(s, " clock rate {r}");

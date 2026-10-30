@@ -149,7 +149,32 @@ pub fn serial_problem(t: &Topology, end: End) -> Option<&'static str> {
     if port(end).map(|p| p.serial.encapsulation) != port(peer).map(|p| p.serial.encapsulation) {
         return Some("the two ends use different encapsulations");
     }
+    if port(end).is_some_and(|p| p.serial.encapsulation == packetcraft_model::Encapsulation::Ppp) && !ppp_authenticates(t, end, peer) {
+        return Some("PPP authentication failed (check the usernames and passwords)");
+    }
     None
+}
+
+/// Whether each end of a PPP link that demands authentication gets it from the other.
+fn ppp_authenticates(t: &Topology, end: End, peer: End) -> bool {
+    use packetcraft_model::PppAuth;
+    [(end, peer), (peer, end)].into_iter().all(|(me, other)| {
+        let (Some(dm), Some(dother)) = (t.device(me.device), t.device(other.device)) else { return false };
+        let (Some(pm), Some(po)) = (dm.ports.get(me.port), dother.ports.get(other.port)) else { return false };
+        if pm.serial.ppp_auth.is_empty() {
+            return true;
+        }
+        let user = |d: &Device, name: &str| d.access.users.iter().find(|u| u.name == name).cloned();
+        // Any method this end offers that the other end can satisfy.
+        pm.serial.ppp_auth.iter().any(|m| match m {
+            // Both ends name each other with the same secret.
+            PppAuth::Chap => match (user(dm, &dother.name), user(dother, &dm.name)) {
+                (Some(a), Some(b)) => a.same_secret(&b),
+                _ => false,
+            },
+            PppAuth::Pap => po.serial.pap_sent.as_ref().is_some_and(|(u, pw)| user(dm, u).is_some_and(|x| x.matches(pw))),
+        })
+    })
 }
 
 /// The framing a serial port sends.

@@ -1195,3 +1195,31 @@ fn dtp_by_typing() {
     lab.run(s1, "conf t\nint g0/1\nswitchport mode dynamic auto");
     assert!(lab.try_run(s1, "switchport nonegotiate").contains("negotiates"));
 }
+
+#[test]
+fn ppp_authentication_by_typing() {
+    let mut lab = Lab::new();
+    let wan = packetcraft_model::models::find("Router-WAN").unwrap();
+    let r1 = lab.t.add_model(wan, None, 0.0, 0.0).unwrap();
+    let r2 = lab.t.add_model(wan, None, 0.0, 0.0).unwrap();
+    lab.cable(r1, "s0/0/0", r2, "s0/0/0");
+    lab.run(r1, "en\nconf t\nhostname R1\nint s0/0/0\nip address 10.0.0.1 255.255.255.252\nencapsulation ppp\nclock rate 64000\nno shut\nend");
+    lab.run(r2, "en\nconf t\nhostname R2\nint s0/0/0\nip address 10.0.0.2 255.255.255.252\nencapsulation ppp\nno shut\nend");
+    assert!(lab.run(r1, "ping 10.0.0.2").contains("!!!!!"));
+    // CHAP: each names the other with the same secret.
+    lab.run(r1, "conf t\nusername R2 secret clave\nint s0/0/0\nppp authentication chap\nend");
+    assert!(lab.run(r1, "show interfaces s0/0/0").contains("PPP authentication failed"));
+    lab.run(r2, "conf t\nusername R1 password otra\nend");
+    assert!(lab.try_run(r1, "ping 10.0.0.2").contains("no route"));
+    lab.run(r2, "conf t\nno username R1\nusername R1 password clave\nend");
+    assert!(lab.run(r1, "ping 10.0.0.2").contains("!!!!!"), "{}", lab.run(r1, "show interfaces s0/0/0"));
+    // PAP the other way: R2 demands it, R1 sends a name and password R2 knows.
+    lab.run(r2, "conf t\nusername invitado password abc\nint s0/0/0\nppp authentication pap\nend");
+    assert!(lab.run(r2, "show interfaces s0/0/0").contains("authentication failed"));
+    lab.run(r1, "conf t\nint s0/0/0\nppp pap sent-username invitado password abc\nend");
+    assert!(lab.run(r2, "ping 10.0.0.1").contains("!!!!!"));
+    let run = lab.run(r1, "show running-config interface s0/0/0");
+    assert!(run.contains(" encapsulation ppp\n ppp authentication chap\n ppp pap sent-username invitado password abc"), "{run}");
+    lab.run(r1, "conf t\nint g0/0");
+    assert!(lab.try_run(r1, "ppp authentication chap").contains("not a serial"));
+}

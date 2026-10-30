@@ -213,13 +213,14 @@ pub fn fingerprint(t: &Topology) -> u64 {
     for d in &t.devices {
         d.id.hash(&mut h);
         for p in &d.ports {
-            (p.shutdown, p.ip).hash(&mut h);
+            // Serial settings and users decide whether a PPP link comes up.
+            (p.shutdown, p.ip, &p.serial).hash(&mut h);
             for s in &p.subifs {
                 (s.ip, s.vlan, s.shutdown).hash(&mut h);
             }
         }
         if d.kind == DeviceKind::Router {
-            format!("{:?}{:?}{:?}", d.ospf, d.rip, d.routes).hash(&mut h);
+            format!("{:?}{:?}{:?}{:?}", d.ospf, d.rip, d.routes, d.access.users).hash(&mut h);
         }
     }
     h.finish()
