@@ -16,6 +16,45 @@ pub struct CheckResult {
     /// The check's hint, when it failed.
     pub feedback: String,
     pub section: String,
+    /// What the answer holds, for the side-by-side view; empty when the activity hides answers.
+    pub expected: String,
+    /// What the student's lab holds in the same place.
+    pub actual: String,
+}
+
+/// The longest output kept for the side-by-side view.
+const SHOWN_OUTPUT: usize = 400;
+
+/// The student's lines that answer the same question as `want` (`interface g0/0 | ip address
+/// 10.0.0.1 …` → that block's `ip address` lines): the same block and the same first word, or
+/// two words for `ip`/`ipv6`/`no`/`switchport`/`spanning-tree`.
+fn same_place<'a>(have: &'a [String], want: &str) -> Vec<&'a str> {
+    let (block, line) = match want.rsplit_once(" | ") {
+        Some((b, l)) => (Some(b), l),
+        None => (None, want),
+    };
+    let words: Vec<&str> = line.split_whitespace().collect();
+    let n =
+        if matches!(words.first(), Some(&("ip" | "ipv6" | "no" | "switchport" | "spanning-tree" | "standby" | "ppp" | "crypto"))) { 2 } else { 1 };
+    let key = words.iter().take(n).copied().collect::<Vec<_>>().join(" ");
+    have.iter()
+        .filter(|h| {
+            let (hb, hl) = match h.rsplit_once(" | ") {
+                Some((b, l)) => (Some(b), l),
+                None => (None, h.as_str()),
+            };
+            hb == block && (hl == key || hl.starts_with(&format!("{key} ")))
+        })
+        .map(String::as_str)
+        .collect()
+}
+
+fn clip(s: &str) -> String {
+    let s = s.trim();
+    match s.char_indices().nth(SHOWN_OUTPUT) {
+        Some((i, _)) => format!("{}…", s.get(..i).unwrap_or(s)),
+        None => s.to_string(),
+    }
 }
 
 /// The configuration lines a device has beyond a factory-fresh device of the same model.
@@ -72,7 +111,9 @@ pub fn capture(t: &Topology, hidden: bool, salt: &str) -> Vec<Check> {
 
 /// Runs every check against the lab. Pings and commands run on copies, so the lab, its
 /// consoles and its event list are left as they were.
-pub fn evaluate(t: &Topology, sim: &Sim, checks: &[Check], salt: &str) -> Vec<CheckResult> {
+/// `hidden`: the activity hides its answers, so `expected` stays empty where it would give one
+/// away.
+pub fn evaluate(t: &Topology, sim: &Sim, checks: &[Check], salt: &str, hidden: bool) -> Vec<CheckResult> {
     let mut configs: std::collections::BTreeMap<DeviceId, Vec<String>> = std::collections::BTreeMap::new();
     let mut lines = |d: DeviceId| -> Vec<String> {
         configs.entry(d).or_insert_with(|| t.device(d).map(|x| flatten(&packetcraft_ios::running_config(x))).unwrap_or_default()).clone()
@@ -81,14 +122,29 @@ pub fn evaluate(t: &Topology, sim: &Sim, checks: &[Check], salt: &str) -> Vec<Ch
     checks
         .iter()
         .map(|c| {
-            let passed = match &c.kind {
-                CheckKind::Config { device, line } => lines(*device).contains(&normalize_flat(line)),
-                CheckKind::ConfigHashed { device, hash } => lines(*device).iter().any(|l| line_hash(salt, *device, l) == *hash),
-                CheckKind::HostAddress { device, address, gateway } => t.device(*device).is_some_and(|d| {
-                    let ip_ok = address.parse::<Ipv4Net>().is_ok_and(|want| d.ports.first().and_then(|p| p.ip) == Some(want));
-                    let gw_ok = gateway.as_ref().is_none_or(|g| d.gateway.map(|x| x.to_string()).as_deref() == Some(g.as_str()));
-                    ip_ok && gw_ok
-                }),
+            let (passed, expected, actual) = match &c.kind {
+                CheckKind::Config { device, line } => {
+                    let want = normalize_flat(line);
+                    let have = lines(*device);
+                    let near = same_place(&have, &want).join("\n");
+                    (have.contains(&want), want, near)
+                }
+                CheckKind::ConfigHashed { device, hash } => {
+                    (lines(*device).iter().any(|l| line_hash(salt, *device, l) == *hash), String::new(), String::new())
+                }
+                CheckKind::HostAddress { device, address, gateway } => {
+                    let d = t.device(*device);
+                    let ip = d.and_then(|d| d.ports.first().and_then(|p| p.ip));
+                    let gw = d.and_then(|d| d.gateway);
+                    let ip_ok = address.parse::<Ipv4Net>().is_ok_and(|want| ip == Some(want));
+                    let gw_ok = gateway.as_ref().is_none_or(|g| gw.map(|x| x.to_string()).as_deref() == Some(g.as_str()));
+                    let show = |ip: String, gw: Option<String>| match gw {
+                        Some(g) => format!("{ip} via {g}"),
+                        None => ip,
+                    };
+                    let actual = show(ip.map_or_else(|| "no address".to_string(), |i| i.to_string()), gw.map(|g| g.to_string()));
+                    (ip_ok && gw_ok, show(address.clone(), gateway.clone()), actual)
+                }
                 CheckKind::Ping { from, to, succeed } => {
                     let opts = PingOptions { count: 3, ..PingOptions::default() };
                     let probes = match to.parse::<std::net::IpAddr>() {
@@ -97,22 +153,29 @@ pub fn evaluate(t: &Topology, sim: &Sim, checks: &[Check], salt: &str) -> Vec<Ch
                         Err(_) => Ok(Vec::new()),
                     }
                     .unwrap_or_default();
-                    probes.iter().any(|p| matches!(p, Probe::Reply { .. })) == *succeed
+                    let replied = probes.iter().any(|p| matches!(p, Probe::Reply { .. }));
+                    let say = |r: bool| if r { "replies".to_string() } else { "no replies".to_string() };
+                    (replied == *succeed, say(*succeed), say(replied))
                 }
                 CheckKind::Output { device, command, contains } => {
                     let mut tt = t.clone();
                     // Privileged mode, past any password, as the instructor means it.
                     let mut cli = Cli { mode: packetcraft_ios::Mode::Exec, logged_in: true, ..Cli::default() };
                     let out = packetcraft_ios::execute(&mut tt, &mut scratch, *device, &mut cli, command).output;
-                    out.to_lowercase().contains(&contains.to_lowercase())
+                    (out.to_lowercase().contains(&contains.to_lowercase()), format!("contains \"{contains}\""), clip(&out))
                 }
             };
+            // A hidden activity shows what the student has, never what the answer is (pings
+            // say only whether replies are wanted).
+            let expected = if hidden && !matches!(c.kind, CheckKind::Ping { .. }) { String::new() } else { expected };
             CheckResult {
                 label: c.label.clone(),
                 points: c.points,
                 passed,
                 feedback: if passed { String::new() } else { c.feedback.clone() },
                 section: c.section.clone(),
+                expected,
+                actual,
             }
         })
         .collect()

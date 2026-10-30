@@ -20,11 +20,11 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 | Number | Value | Kind |
 |---|---|---|
-| **Ready for real work** (weighted) | **~73%** | estimated from written weights (73.4); [target-app-parity.md](docs/target-app-parity.md) |
+| **Ready for real work** (weighted) | **~74%** | estimated from written weights (73.8); [target-app-parity.md](docs/target-app-parity.md) |
 | **CCNA 1 student** | **~86%** | estimated; [method](docs/target-app-parity.md#audiences) |
 | **CCNA 2 student** | **~84%** | estimated |
 | **CCNA 3 student** | **~80%** | estimated |
-| **Instructor** (graded activities) | **~72%** | estimated |
+| **Instructor** (graded activities) | **~78%** | estimated |
 | Engine commands | 65 | measured: `crates/engine/src/catalog.rs` |
 | Console grammar entries | 453 across 18 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
 | Device models · sample labs | 16 · 18 | measured |
@@ -39,7 +39,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | CCNA 1 student | ~86% | ~12–25 | PDU details, a few host apps |
 | CCNA 2 student | ~84% | ~30–55 | WLC and 802.11 frames, console polish |
 | CCNA 3 student | ~80% | ~40–70 | QoS, automation, IKE on the wire |
-| Instructor | ~72% | ~20–35 | A side-by-side answer view, translated activity texts |
+| Instructor | ~78% | ~15–25 | Translated activity texts, an answer-network view |
 
 ## Dimensions
 
@@ -53,13 +53,14 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | WAN, cabling, wireless | 6 | 62% | 28–45 | Copper (auto-MDIX), serial (DCE/DTE, HDLC/PPP), Wi-Fi access points, home wireless routers and clients; no WLC or fibre |
 | Simulation mode | 8 | 70% | 18–28 | Event list, replay, decode, drop reasons, pcap; BPDUs, OSPF hellos and database exchange, RIP updates, HSRP hellos, LLDP, LACP; no complex PDUs |
 | Workspace and windows | 10 | 63% | 40–60 | Reference-app arrangement, device tabs, notes, shapes, freehand and polygon drawings, nested clusters; no physical view |
-| Teaching | 8 | 75% | 20–35 | Activities with checks, points, sections, hints, hidden answers, values per student, a time limit, a password lock and a wizard; Spanish interface |
+| Teaching | 8 | 80% | 15–25 | Activities with checks, points, sections, hints, hidden answers, values per student, a time limit, a password lock, a wizard and a side-by-side comparison with the answer; Spanish interface |
 | Device families | 5 | 25% | 80–120 | 16 generic models; no modules, ASA, IoT |
 | Files | — | — | — | Own open `.pcraft` JSON; no `.pkt` (out of scope: [decisions.md](docs/decisions.md)) |
 | Platforms and agents | — | — | — | Linux, Windows, macOS, BSD, web; MCP server and CLI over the full command catalog |
 
 ## Progress log
 
+- **2026-10-30 — Compare with the answer.** After Check Results, the Instructions window's Compare button lists each check's answer next to what the student's lab has (the lab's side only when the answers are hidden).
 - **2026-10-30 — Drawings and clusters.** Draw freehand strokes and polygons on the workspace; pick several devices (Shift+drag or Shift+click), group them into a cluster with Ctrl+G, open it with a double click and come back through the Root › … path; clusters nest and the simulation ignores them.
 - **2026-10-30 — GRE tunnels and IPsec.** `interface tunnel` with GRE (OSPF runs over it) and site-to-site IPsec with ISAKMP policies, pre-shared keys, transform sets and crypto maps; ESP on the wire, `show crypto` views, and a stated reason when the two ends don't agree.
 - **2026-10-30 — EIGRP.** `router eigrp` with networks, passive interfaces and router IDs; DUAL successors and feasible successors from bandwidth and delay; hellos on the wire; `show ip eigrp neighbors|topology|interfaces`; administrative distances decide between EIGRP, OSPF and RIP.

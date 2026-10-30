@@ -616,13 +616,13 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             if a.needs_student() {
                 return Err(bad("start the activity first: `activity.start` with the student's name"));
             }
-            let results = crate::activity::evaluate(&s.topology, &s.sim, &a.resolved_checks(), &a.salt);
+            let results = crate::activity::evaluate(&s.topology, &s.sim, &a.resolved_checks(), &a.salt, a.hidden);
             let total: u32 = results.iter().map(|r| r.points).sum();
             let score: u32 = results.iter().filter(|r| r.passed).map(|r| r.points).sum();
                         let percent = (score * 100).checked_div(total).unwrap_or(0);
             let detail = !(a.locked() && a.score_only);
             let shown: Vec<Value> = if detail {
-                results.iter().map(|r| json!({"label": r.label, "points": r.points, "passed": r.passed, "feedback": r.feedback, "section": r.section})).collect()
+                results.iter().map(|r| json!({"label": r.label, "points": r.points, "passed": r.passed, "feedback": r.feedback, "section": r.section, "expected": r.expected, "actual": r.actual})).collect()
             } else {
                 Vec::new()
             };

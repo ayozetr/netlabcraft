@@ -177,6 +177,11 @@ fn an_activity_opens_its_instructions_and_checks_results() {
     let r = h.state().ui.activity.results.clone().unwrap();
     assert_eq!(r["percent"], 0);
     assert!(r["results"].as_array().unwrap().len() >= 7);
+    // Side by side: the answer next to what the lab has.
+    h.get_by_label("Compare").click();
+    h.run();
+    assert!(h.state().ui.activity.show_compare);
+    assert!(h.query_by_label("Compare with the Answer").is_some() && h.query_by_label("Your lab").is_some());
     h.state_mut().ui.activity.show_wizard = true;
     h.run();
     h.get_by_label("Capture answers from this lab").click();

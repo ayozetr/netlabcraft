@@ -11,6 +11,8 @@ use crate::i18n::tl;
 pub struct ActivityView {
     pub show_instructions: bool,
     pub show_wizard: bool,
+    /// The side-by-side window: each check's answer next to what the lab holds.
+    pub show_compare: bool,
     /// The last Check Results answer.
     pub results: Option<Value>,
     /// Whether the lab had an activity last frame (to open the instructions when one appears).
@@ -77,6 +79,7 @@ pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
     }
     app.ui.activity.had = has;
     instructions(app, ctx);
+    compare(app, ctx);
     wizard(app, ctx);
 }
 
@@ -139,6 +142,14 @@ fn instructions(app: &mut PacketApp, ctx: &egui::Context) {
             ui.horizontal(|ui| {
                 check = ui.add_enabled(!time_up, egui::Button::new(tl("Check Results"))).clicked();
                 reset = ui.add_enabled(app.session.activity_start.is_some(), egui::Button::new(tl("Reset Activity"))).clicked();
+                let detail = app.ui.activity.results.as_ref().is_some_and(|r| r["detail"] != false);
+                if ui
+                    .add_enabled(detail, egui::Button::new(tl("Compare")))
+                    .on_hover_text(tl("Each check's answer next to what your lab has"))
+                    .clicked()
+                {
+                    app.ui.activity.show_compare = true;
+                }
             });
             if let Some(r) = &app.ui.activity.results {
                 egui::ScrollArea::vertical().max_height(180.0).id_salt("activity_results").show(ui, |ui| {
@@ -167,7 +178,7 @@ fn instructions(app: &mut PacketApp, ctx: &egui::Context) {
                             if passed { ("done", Color32::from_rgb(0x2e, 0x8b, 0x3e)) } else { ("missing", Color32::from_rgb(0xc8, 0x3a, 0x2e)) };
                         ui.horizontal(|ui| {
                             ui.label(RichText::new(mark).color(color).strong());
-                            ui.label(crate::i18n::tr(item["label"].as_str().unwrap_or("")));
+                            ui.label(crate::i18n::tr_any(item["label"].as_str().unwrap_or("")));
                         });
                         if let Some(hint) = item["feedback"].as_str().filter(|h| !passed && !h.is_empty()) {
                             ui.label(RichText::new(format!("    {}", crate::i18n::tr(hint))).italics().small());
@@ -192,6 +203,65 @@ fn instructions(app: &mut PacketApp, ctx: &egui::Context) {
         app.ui.activity.time_up = false;
         app.info(tl("Activity reset to how it was opened."));
     }
+}
+
+/// The answer next to the lab, check by check, grouped by section. A hidden activity shows only
+/// the lab's side (the engine leaves `expected` empty).
+fn compare(app: &mut PacketApp, ctx: &egui::Context) {
+    let Some(r) = app.ui.activity.results.as_ref().filter(|r| r["detail"] != false) else {
+        app.ui.activity.show_compare = false;
+        return;
+    };
+    if !app.ui.activity.show_compare {
+        return;
+    }
+    let mut open = true;
+    let items = r["results"].as_array().cloned().unwrap_or_default();
+    egui::Window::new(tl("Compare with the Answer")).open(&mut open).default_size([720.0, 420.0]).show(ctx, |ui| {
+        let failed = items.iter().filter(|i| i["passed"] != true).count();
+        ui.label(crate::i18n::trf("{} of {} checks differ from the answer", &[&failed, &items.len()]));
+        ui.separator();
+        egui::ScrollArea::both().auto_shrink([false, false]).show(ui, |ui| {
+            egui::Grid::new("activity_compare").striped(true).num_columns(4).spacing([12.0, 6.0]).show(ui, |ui| {
+                for h in ["Result", "Check", "Answer", "Your lab"] {
+                    ui.label(RichText::new(tl(h)).strong());
+                }
+                ui.end_row();
+                let mut section = "";
+                for item in &items {
+                    let sec = item["section"].as_str().unwrap_or("");
+                    if sec != section && !sec.is_empty() {
+                        section = sec;
+                        ui.allocate_space(egui::Vec2::ZERO);
+                        ui.label(RichText::new(sec).strong().underline());
+                        ui.end_row();
+                    }
+                    let passed = item["passed"].as_bool().unwrap_or(false);
+                    let color = if passed { Color32::from_rgb(0x2e, 0x8b, 0x3e) } else { Color32::from_rgb(0xc8, 0x3a, 0x2e) };
+                    ui.label(RichText::new(if passed { tl("same") } else { tl("differs") }).color(color).strong());
+                    ui.label(crate::i18n::tr_any(item["label"].as_str().unwrap_or("")));
+                    let expected = item["expected"].as_str().unwrap_or("");
+                    if expected.is_empty() {
+                        ui.label(RichText::new(tl("(hidden)")).italics().weak());
+                    } else {
+                        ui.label(RichText::new(crate::i18n::tr_any(expected)).monospace());
+                    }
+                    let actual = item["actual"].as_str().unwrap_or("");
+                    if actual.is_empty() {
+                        ui.label(RichText::new(tl("(nothing)")).italics().weak());
+                    } else {
+                        ui.label(RichText::new(crate::i18n::tr_any(actual)).monospace().color(if passed {
+                            ui.visuals().text_color()
+                        } else {
+                            color
+                        }));
+                    }
+                    ui.end_row();
+                }
+            });
+        });
+    });
+    app.ui.activity.show_compare = open;
 }
 
 fn wizard(app: &mut PacketApp, ctx: &egui::Context) {

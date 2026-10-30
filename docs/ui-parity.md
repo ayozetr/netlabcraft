@@ -23,7 +23,7 @@ The window, element by element, against the reference app. Part of
 | PC window | Physical, Config, Desktop, Programming, Attributes | Physical, Config, Desktop (navy desktop with tiles: IP Configuration with DHCP/Static and IPv6 Off/Automatic/Static, Command Prompt, Web Browser), Attributes; only working apps are shown |
 | Server window | Physical, Config, Services (HTTP, DHCP, DHCPv6, TFTP, DNS, SYSLOG, AAA, NTP, EMAIL, FTP, IoT…), Desktop, Programming, Attributes | Physical, Config, Services (HTTP with file manager, DHCP pools, DNS records, SYSLOG messages, NTP, TFTP files), Desktop, Attributes |
 | Web Browser | URL bar with back/forward, Go, Stop; page view | same; renders headings, paragraphs, bold, lists and links |
-| Activities | Instructions window with timer and score, Check Results tree, Reset Activity; Activity Wizard with answer network | Instructions window with Completion, Check Results list and Reset Activity; Activity Wizard (title, instructions, capture answers, ping/config/command checks, hidden answers); no timer, answer-network tree or locking |
+| Activities | Instructions window with timer and score, Check Results tree, Reset Activity; Activity Wizard with answer network | Instructions window with Completion, a timer, Check Results per section, Compare with the Answer (each check's answer next to the lab, answers kept back when hidden) and Reset Activity; Activity Wizard (title, instructions, values per student, capture answers, ping/config/command/address checks, sections, hints, hidden answers, time limit, password lock); no answer-network tree |
 | Clusters | grouped devices shown as one cloud; open, rename, uncluster | same: pick with Shift+drag or Shift+click, Ctrl+G groups, a code-drawn cloud with the device count, double-click to open, nesting, cables to the cloud at the parent level |
 | Not yet | — | physical workspace, complex PDUs, Programming tab, protocol frames (BPDU, hellos) in the event list |
 
@@ -31,6 +31,7 @@ The window, element by element, against the reference app. Part of
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Activities: Compare with the Answer; the Activities row brought up to date. |
 | 2026-10-30 | minor | Freehand and polygon drawings; multi-selection and nested clusters; About ▸ Contributors. |
 | 2026-10-30 | minor | File ▸ Export Workspace Image (PNG); the PC Email app; the model count. |
 | 2026-10-30 | minor | Open Recent; unsaved-changes guard on the web; Activities row. |

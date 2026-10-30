@@ -19,6 +19,7 @@ fn main() {
     let mut config = false;
     let mut services = false;
     let mut about: Option<bool> = None;
+    let mut compare = false;
     let mut page: Option<String> = None;
     let mut url: Option<String> = None;
     let mut it = args.iter();
@@ -48,6 +49,7 @@ fn main() {
             "--services" => services = true,
             "--about" => about = Some(false),
             "--credits" => about = Some(true),
+            "--compare" => compare = true,
             "--services-page" => page = Some(it.next().expect("page").clone()),
             "--url" => url = Some(it.next().expect("url").clone()),
             "--event" => event = Some(it.next().and_then(|s| s.parse().ok()).expect("event id")),
@@ -92,7 +94,14 @@ fn main() {
             app
         },
     );
-    harness.run_steps(8);
+    harness.run_steps(2);
+    if compare {
+        // After the first frames: opening an activity clears earlier results.
+        let app = harness.state_mut();
+        app.ui.activity.results = app.run("activity.check", serde_json::json!({}));
+        app.ui.activity.show_compare = true;
+    }
+    harness.run_steps(6);
     let img = harness.render().expect("render");
     img.save(&out).expect("save png");
     eprintln!("wrote {out} ({}x{})", img.width(), img.height());

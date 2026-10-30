@@ -275,6 +275,18 @@ fn an_activity_is_built_captured_checked_and_reset() {
         let pct = r["percent"].as_u64().unwrap();
         assert!(pct > 0 && pct < 60, "{r}");
         assert!(r["results"].as_array().unwrap().iter().any(|x| x["passed"] == false && x["label"].as_str().unwrap().starts_with("R1")));
+        // Side by side: the answer next to the lab, never the answer when it's hidden.
+        let items = r["results"].as_array().unwrap().clone();
+        let answer_shown = items.iter().any(|x| x["expected"].as_str().unwrap().contains("10.0.1.1"));
+        assert_eq!(answer_shown, !hidden, "{r}");
+        let ping = items.iter().find(|x| x["points"] == 3).unwrap();
+        assert_eq!((ping["expected"].as_str().unwrap(), ping["actual"].as_str().unwrap()), ("replies", "no replies"));
+        student.execute("device.configure", json!({"device": "R1", "lines": ["interface g0/0", "ip address 10.0.9.1 255.255.255.0"]})).unwrap();
+        let r = student.execute("activity.check", json!({})).unwrap();
+        // A hidden answer gives no place to look, so only open activities show the lab's line.
+        let shown =
+            r["results"].as_array().unwrap().iter().any(|x| x["actual"] == "interface gigabitethernet0/0 | ip address 10.0.9.1 255.255.255.0");
+        assert_eq!(shown, !hidden, "{r}");
         // The event list stays clean: checks ping on a copy.
         assert!(student.sim.trace().is_empty());
         student

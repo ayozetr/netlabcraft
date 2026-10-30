@@ -546,3 +546,25 @@ Yellow	Amarillo
 Red	Rojo
 Purple	Morado
 Grey	Gris
+Compare	Comparar
+Each check's answer next to what your lab has	La respuesta de cada comprobación junto a lo que tiene tu red
+Compare with the Answer	Comparar con la respuesta
+{} of {} checks differ from the answer	{} de {} comprobaciones no coinciden con la respuesta
+Check	Comprobación
+Answer	Respuesta
+Your lab	Tu red
+same	coincide
+differs	distinto
+(hidden)	(oculta)
+(nothing)	(nada)
+replies	respuestas
+no replies	sin respuesta
+Result	Resultado
+{}: configuration item {}	{}: elemento de configuración {}
+{}: address	{}: dirección
+{}: address {}	{}: dirección {}
+{} via {}	{} por {}
+{} reaches {}	{} llega a {}
+contains "{}"	contiene "{}"
+{} can't reach {}	{} no llega a {}
+{}: `{}` shows "{}"	{}: `{}` muestra "{}"
