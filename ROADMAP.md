@@ -60,6 +60,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-10-30 — More debugs.** `debug ip packet`, `debug ip nat` and `debug ip dhcp server events` report what the router routes, translates and hands out.
 - **2026-10-30 — FTP.** Servers have an FTP service with accounts and permissions; PCs have an `ftp` client (`put`, `get`, `dir`, `delete`) and `dir` for their own files; routers copy configurations with `copy running-config ftp:`. Simulation mode shows the control and data connections.
 - **2026-10-30 — AAA with RADIUS.** Routers and switches check remote logins against a RADIUS server (`aaa new-model`, `aaa authentication login default group radius local`, `radius-server host`); the Server has an AAA service with clients and users; Simulation mode shows the Access-Request and its answer.
 - **2026-10-30 — OSPFv3.** OSPF for IPv6: `ipv6 router ospf`, `ipv6 ospf N area A` on interfaces, neighbours over link-local addresses, routes across areas and a default route, hellos in Simulation mode, `show ipv6 ospf neighbor`.

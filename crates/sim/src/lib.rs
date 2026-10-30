@@ -419,6 +419,13 @@ pub enum DebugKind {
     Icmp,
     Rip,
     Ospf,
+    Packet,
+    Nat,
+    Dhcp,
+}
+
+impl DebugKind {
+    pub const ALL: [DebugKind; 6] = [DebugKind::Icmp, DebugKind::Rip, DebugKind::Ospf, DebugKind::Packet, DebugKind::Nat, DebugKind::Dhcp];
 }
 
 /// What came back for one of our echo requests.
@@ -519,6 +526,12 @@ pub struct DevState {
     pub debug_rip: bool,
     /// `debug ip ospf adj|events|hello`.
     pub debug_ospf: bool,
+    /// `debug ip packet`.
+    pub debug_packet: bool,
+    /// `debug ip nat`.
+    pub debug_nat: bool,
+    /// `debug ip dhcp server events`.
+    pub debug_dhcp: bool,
     /// Log lines waiting to go to syslog servers.
     syslog_out: Vec<String>,
     /// Syslog servers: messages received (µs, sender, text).
@@ -734,13 +747,27 @@ impl Sim {
             DebugKind::Icmp => st.debug_icmp = on,
             DebugKind::Rip => st.debug_rip = on,
             DebugKind::Ospf => st.debug_ospf = on,
+            DebugKind::Packet => st.debug_packet = on,
+            DebugKind::Nat => st.debug_nat = on,
+            DebugKind::Dhcp => st.debug_dhcp = on,
         }
     }
 
     /// The debugs that are on, by name.
     pub fn debugs(&self, d: DeviceId) -> Vec<&'static str> {
         let Some(s) = self.state.get(&d) else { return Vec::new() };
-        [(s.debug_icmp, "ICMP"), (s.debug_rip, "RIP"), (s.debug_ospf, "OSPF")].into_iter().filter(|x| x.0).map(|x| x.1).collect()
+        [
+            (s.debug_icmp, "ICMP"),
+            (s.debug_rip, "RIP"),
+            (s.debug_ospf, "OSPF"),
+            (s.debug_packet, "IP packets"),
+            (s.debug_nat, "NAT"),
+            (s.debug_dhcp, "DHCP server"),
+        ]
+        .into_iter()
+        .filter(|x| x.0)
+        .map(|x| x.1)
+        .collect()
     }
 
     /// Logs link changes on routers and switches since the last look.
@@ -1052,6 +1079,9 @@ impl Sim {
             }
         };
         let out = rewrite(ip, true, entry.inside_global, entry.global_id);
+        if self.state.get(&d.id).is_some_and(|s| s.debug_nat) {
+            self.log(d.id, &format!("NAT debug: new translation, source {} → {}, to {}", ip.src, entry.inside_global, ip.dst));
+        }
         let st = self.st(d.id);
         if st.nat.len() >= MAX_NAT_ENTRIES {
             st.nat.remove(0);
@@ -1734,8 +1764,13 @@ impl Sim {
             return Err("TTL expired in transit".into());
         }
         let fwd = Ipv4 { ttl: ip.ttl - 1, ..ip.clone() };
+        let debug = self.state.get(&d.id).is_some_and(|s| s.debug_packet);
         match self.route(t, d, ip.dst) {
             Some((out, nh)) => {
+                if debug {
+                    let via = if nh == ip.dst { String::new() } else { format!(" via {nh}") };
+                    self.log(d.id, &format!("IP debug: {} → {}, in {}, routed out {}{via}", ip.src, ip.dst, ifc.name, out.name));
+                }
                 self.acl_check(t, d, &out, &ip, payload, false)?;
                 let mut fwd = fwd;
                 if !from_outside
@@ -1748,6 +1783,9 @@ impl Sim {
                 self.transmit(t, d, &out, nh, fwd.encode())
             }
             None => {
+                if debug {
+                    self.log(d.id, &format!("IP debug: {} → {}, in {}, no route: dropped", ip.src, ip.dst, ifc.name));
+                }
                 self.icmp_error(t, d, ifc, &ip, Icmp::Unreachable { code: packetcraft_wire::UNREACH_NET, original: Icmp::quote(payload) });
                 Err(format!("no route to {}", ip.dst))
             }
@@ -2033,6 +2071,9 @@ impl Sim {
                 if ok {
                     let now = self.now;
                     self.st(d.id).leases.insert(wanted, Lease { mac: msg.client_mac, pool: pool.name.clone(), since_us: now });
+                    if self.state.get(&d.id).is_some_and(|s| s.debug_dhcp) {
+                        self.log(d.id, &format!("DHCP debug: {wanted} given to {} from pool {}", msg.client_mac, pool.name));
+                    }
                     reply.kind = DhcpKind::Ack;
                     reply.your_ip = wanted;
                 } else {
@@ -2042,6 +2083,9 @@ impl Sim {
             }
             DhcpKind::Release => {
                 let mac = msg.client_mac;
+                if self.state.get(&d.id).is_some_and(|s| s.debug_dhcp) {
+                    self.log(d.id, &format!("DHCP debug: {mac} released its address"));
+                }
                 self.st(d.id).leases.retain(|_, l| l.mac != mac);
                 return Ok(());
             }

@@ -182,6 +182,12 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no debug all` | privileged | router, switch | Turn every debug off |
 | `no debug ip icmp` | privileged | router, switch | Stop reporting echo messages |
 | `debug ip rip` | privileged | router, switch | Report the RIP updates this router hears |
+| `debug ip packet` | privileged | router, switch | Report each packet this device routes |
+| `debug ip nat` | privileged | router | Report new NAT translations |
+| `debug ip dhcp server events` | privileged | router, switch | Report the addresses this DHCP server hands out |
+| `no debug ip packet` | privileged | router, switch | Stop reporting packets |
+| `no debug ip nat` | privileged | router | Stop reporting NAT |
+| `no debug ip dhcp server events` | privileged | router, switch | Stop reporting DHCP |
 | `no debug ip rip` | privileged | router, switch | Stop reporting RIP updates |
 | `debug ip ospf adj\|events\|hello` | privileged | router | Report the OSPF hellos this router hears |
 | `no debug ip ospf adj\|events\|hello` | privileged | router | Stop reporting OSPF hellos |

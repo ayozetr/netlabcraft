@@ -1,6 +1,6 @@
 # Protocol and command parity
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (FTP) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (`debug ip packet`, `debug ip nat`, `debug ip dhcp server events`) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 What the simulated devices do, protocol by protocol, against the reference app. Part of
 [target-app-parity.md](target-app-parity.md). Behaviour comes from the standards named in each
@@ -103,7 +103,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | `show` coverage | 🟡 | Interfaces (also `status`, `X switchport`), IP/IPv6 interface and routes, ARP, MAC table, VLANs, trunks, STP, EtherChannel, VTP, port security, OSPF (also `interface`), RIP, DHCP, NAT, ACLs, SSH, controllers, CDP, LLDP, HSRP (`standby`), logging, version, flash, clock, users, history, processes, memory, `running-config interface X`. Missing: going through the CCNA 1 labs command by command: 4–8 h. |
 | CDP | 🟡 | `cdp run`, `cdp enable`, `show cdp`, `show cdp neighbors [detail]`; computed, no advertisement frames (the CDP frame format is proprietary). |
 | LLDP (IEEE 802.1AB) | ✅ | `lldp run`, `lldp transmit`/`receive` per port, `show lldp`, `show lldp neighbors [detail]`, `show lldp entry *`; real LLDP frames every 30 s in Simulation mode and captures. |
-| `clock set`, `terminal`, `debug` | 🟡 | `clock set` and `show clock` (per device, advances with simulated time, lost on reload); `terminal length/width/monitor` accepted (output is never paged); `debug ip icmp`, `debug ip rip`, `debug ip ospf adj|events|hello` (the hellos heard), `undebug all`, `show debugging`. No packet-level `debug ip packet` or NAT/DHCP debugs: 3–5 h. |
+| `clock set`, `terminal`, `debug` | 🟡 | `clock set` and `show clock` (per device, advances with simulated time, lost on reload); `terminal length/width/monitor` accepted (output is never paged); `debug ip icmp`, `debug ip rip`, `debug ip ospf adj|events|hello` (the hellos heard), `debug ip packet` (each routed or dropped packet), `debug ip nat` (new translations), `debug ip dhcp server events` (leases given and released), `undebug all`, `show debugging`. |
 | Logging and console messages | ✅ | A logging buffer per device (`show logging`, `clear logging`): link up/down, port-security shutdowns, configuration changes, debug output; the same messages appear on the device's console after the prompt, and go to syslog servers (`logging host`). |
 | Host shell (PC Command Prompt) | 🟡 | `ipconfig`, `ipv6config`, `ping`, `tracert`, `nslookup`, `telnet`, `ssh`, `arp`. No `netstat`, `ftp`. |
 
@@ -121,6 +121,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | 2026-10-30 | minor | HSRP. |
 | 2026-10-30 | minor | Logging buffer and console messages; `debug ip icmp`. |
 | 2026-10-30 | minor | BPDUs, OSPF hellos and RIP updates on the wire, so Simulation mode and captures show them. |
+| 2026-10-30 | minor | `debug ip packet`, `debug ip nat`, `debug ip dhcp server events`. |
 | 2026-10-30 | minor | FTP. |
 | 2026-10-30 | minor | AAA with RADIUS. |
 | 2026-10-30 | minor | OSPFv3. |

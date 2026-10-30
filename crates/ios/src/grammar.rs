@@ -298,6 +298,8 @@ pub enum Id {
     DebugIpIcmp,
     DebugIpRip,
     DebugIpOspf,
+    DebugIpOther,
+    NoDebugIpOther,
     NoDebugIpRip,
     NoDebugIpOspf,
     UndebugAll,
@@ -585,6 +587,18 @@ pub static SPECS: &[Spec] = &[
     spec!(UndebugAll, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("all")], "Turn every debug off"),
     spec!(UndebugAll, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("icmp")], "Stop reporting echo messages"),
     spec!(DebugIpRip, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("rip")], "Report the RIP updates this router hears"),
+    spec!(DebugIpOther, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("packet")], "Report each packet this device routes"),
+    spec!(DebugIpOther, Modes::EXEC, Modes::ROUTER, [K("debug"), K("ip"), K("nat")], "Report new NAT translations"),
+    spec!(
+        DebugIpOther,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("debug"), K("ip"), K("dhcp"), K("server"), K("events")],
+        "Report the addresses this DHCP server hands out"
+    ),
+    spec!(NoDebugIpOther, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("packet")], "Stop reporting packets"),
+    spec!(NoDebugIpOther, Modes::EXEC, Modes::ROUTER, [K("no"), K("debug"), K("ip"), K("nat")], "Stop reporting NAT"),
+    spec!(NoDebugIpOther, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("dhcp"), K("server"), K("events")], "Stop reporting DHCP"),
     spec!(NoDebugIpRip, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("rip")], "Stop reporting RIP updates"),
     spec!(
         DebugIpOspf,

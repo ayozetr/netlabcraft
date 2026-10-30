@@ -352,7 +352,10 @@ fn dhcp_by_typing() {
         end",
     );
     assert_eq!(lab.prompt(r), "R1#");
+    lab.run(r, "debug ip dhcp server events");
     let out = lab.run(a, "ipconfig /renew");
+    assert!(lab.run(r, "show logging").contains("DHCP debug: 192.168.10.10 given to"), "the debug reports the lease");
+    lab.run(r, "undebug all");
     assert!(out.contains("192.168.10.10/24") && out.contains("gateway 192.168.10.1") && out.contains("DNS 192.168.10.5"), "{out}");
     assert!(lab.run(b, "ipconfig /renew").contains("192.168.10.11/24"));
     assert!(lab.run(a, "ipconfig").contains("by DHCP"));
@@ -634,8 +637,14 @@ fn nat_by_typing() {
         ip nat inside source list 1 interface g0/1 overload
         end",
     );
+    lab.run(r1, "debug ip nat\ndebug ip pac");
     lab.run(a, "ping 8.8.8.8");
     assert!(lab.run(a, "ping 8.8.8.8").contains("4 answered"));
+    let log = lab.run(r1, "show logging");
+    assert!(log.contains("NAT debug: new translation, source 192.168.1.10 → 200.0.0.1, to 8.8.8.8"), "{log}");
+    assert!(log.contains("IP debug: 192.168.1.10 → 8.8.8.8, in GigabitEthernet0/0, routed out GigabitEthernet0/1 via 200.0.0.2"), "{log}");
+    assert!(lab.run(r1, "show debugging").contains("IP packets, NAT"));
+    lab.run(r1, "no debug ip packet\nno debug ip nat");
     // Traceroute through PAT: the ISP's "time exceeded" comes back to the PC.
     let trace = lab.run(a, "tracert 8.8.8.8");
     assert!(trace.contains("200.0.0.2") && trace.contains("8.8.8.8"), "{trace}");

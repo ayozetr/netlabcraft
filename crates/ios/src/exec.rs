@@ -618,6 +618,20 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             c.sim.set_debug(c.dev, DebugKind::Icmp, true);
             Ok("ICMP debugging is on: echo messages this device receives are reported.".into())
         }
+        Id::DebugIpOther | Id::NoDebugIpOther => {
+            let on = spec.id == Id::DebugIpOther;
+            let w: Vec<String> = line.split_whitespace().map(str::to_ascii_lowercase).collect();
+            let topic = w.get(if on { 2 } else { 3 }).map(String::as_str).unwrap_or("");
+            let (kind, name) = if "packet".starts_with(topic) {
+                (DebugKind::Packet, "IP packet")
+            } else if "nat".starts_with(topic) {
+                (DebugKind::Nat, "NAT")
+            } else {
+                (DebugKind::Dhcp, "DHCP server")
+            };
+            c.sim.set_debug(c.dev, kind, on);
+            Ok(if on { format!("{name} debugging is on.") } else { format!("{name} debugging is off.") })
+        }
         Id::DebugIpRip | Id::NoDebugIpRip => {
             let on = spec.id == Id::DebugIpRip;
             c.sim.set_debug(c.dev, DebugKind::Rip, on);
@@ -633,7 +647,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(if on { "OSPF debugging is on: the hellos this router hears are reported." } else { "OSPF debugging is off." }.into())
         }
         Id::UndebugAll => {
-            for k in [DebugKind::Icmp, DebugKind::Rip, DebugKind::Ospf] {
+            for k in DebugKind::ALL {
                 c.sim.set_debug(c.dev, k, false);
             }
             Ok("All debugging is off.".into())
