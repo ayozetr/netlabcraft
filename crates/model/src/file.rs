@@ -6,12 +6,9 @@ use serde::{Deserialize, Serialize};
 use crate::{ModelError, Result, Topology};
 
 pub const FORMAT: &str = "netlabcraft";
-/// The format name labs carried before the project was renamed (still read).
-pub const LEGACY_FORMAT: &str = "packetcraft";
 pub const VERSION: u32 = 1;
 pub const EXTENSION: &str = "nlcraft";
-/// Extensions the open dialogs accept: today's and the one from before the rename.
-pub const OPEN_EXTENSIONS: [&str; 2] = ["nlcraft", "pcraft"];
+
 /// Largest lab file accepted (hostile input).
 pub const MAX_BYTES: usize = 64 * 1024 * 1024;
 
@@ -32,7 +29,7 @@ pub fn from_json(s: &str) -> Result<Topology> {
         return Err(ModelError::Invalid("the file is too large to be a lab".into()));
     }
     let env: Envelope = serde_json::from_str(s).map_err(|e| ModelError::Invalid(format!("not a NetLabCraft lab: {e}")))?;
-    if env.format != FORMAT && env.format != LEGACY_FORMAT {
+    if env.format != FORMAT {
         return Err(ModelError::Invalid(format!("not a NetLabCraft lab (format `{}`)", env.format)));
     }
     if env.version > VERSION {
@@ -49,15 +46,6 @@ pub fn from_json(s: &str) -> Result<Topology> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn labs_saved_before_the_rename_still_open() {
-        let t = Topology { notes: "old".into(), ..Default::default() };
-        let old = to_json(&t).unwrap().replace("\"netlabcraft\"", "\"packetcraft\"");
-        assert!(old.contains("\"packetcraft\""));
-        assert_eq!(from_json(&old).unwrap().notes, "old");
-        assert!(from_json(&to_json(&t).unwrap().replace("\"netlabcraft\"", "\"other\"")).is_err());
-    }
     use crate::{DeviceKind, End};
 
     #[test]

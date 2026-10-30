@@ -83,7 +83,7 @@ impl eframe::App for WebShell {
                     let inbox = self.inbox.clone();
                     let ctx = ui.ctx().clone();
                     wasm_bindgen_futures::spawn_local(async move {
-                        if let Some(f) = rfd::AsyncFileDialog::new().add_filter("NetLabCraft lab", &["nlcraft", "pcraft"]).pick_file().await {
+                        if let Some(f) = rfd::AsyncFileDialog::new().add_filter("NetLabCraft lab", &["nlcraft"]).pick_file().await {
                             let bytes = f.read().await;
                             inbox.lock().unwrap_or_else(|e| e.into_inner()).push((
                                 f.file_name(),

@@ -22,7 +22,7 @@ Choices that shape NetLabCraft, newest last within each date, with the reason fo
 - **2026-10-29 — Both RIP versions behave classless.** `network` statements are classful, as typed, but subnets are advertised as they are; automatic summarisation is stored and not simulated.
 - **2026-10-29 — One copper cable, auto-MDIX.** Superseded on 2026-10-30 (cable types below).
 - **2026-10-30 — Cable types.** Links carry a kind: automatic (resolves to the right kind for the two ports, today's behaviour and the default in old files), copper straight-through, copper cross-over, fiber, console, serial DCE, serial DTE. Ports have a medium (copper, fiber, combo, serial, wireless, console, RS-232) and a cable only joins ports of its medium. Routers and switches do auto-MDIX unless `no mdix auto`; hosts and hubs don't, so a wrong copper cable leaves the link down and says why. Serial DTE puts the DCE at the far end. Console cables join a PC's RS-232 port to a device's Console port and are not network links. Copper reaches 100 m, fiber 2000 m.
-- **2026-10-30 — Renamed to NetLabCraft.** The earlier name belongs to an unrelated company with a registered trademark in software services, and names built on "Packet" or "Tracer" lean on the reference app's name. Labs are now `.nlcraft` with `"format": "netlabcraft"`; files saved as `.pcraft` with `"format": "packetcraft"` still open.
+- **2026-10-30 — Renamed to NetLabCraft.** The earlier name belongs to an unrelated company with a registered trademark in software services, and names built on "Packet" or "Tracer" lean on the reference app's name. Labs are `.nlcraft` with `"format": "netlabcraft"`; no files with the earlier name were ever shared, so none are read.
 - **2026-10-29 — Serial frames are captured as Ethernet II.** The wire carries HDLC or PPP; the event list and pcap show the equivalent Ethernet II frame, marked with its framing, because a pcap file has one link type.
 - **2026-10-29 — Multilayer switching is a model, not a mode.** `ip routing` and routed ports are only accepted on the Switch-ML-24 model; other switches say why.
 - **2026-10-30 — Control frames show what the computed protocols say.** BPDUs (every 2 s), OSPF hellos (10 s) and RIP updates (30 s) go on the wire in their standard formats so Simulation mode and captures have them; receivers take them in quietly and the protocols stay computed. CDP frames are left out because their format isn't published as a standard.
@@ -33,7 +33,7 @@ Choices that shape NetLabCraft, newest last within each date, with the reason fo
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-10-30 | minor | Renamed to NetLabCraft; old lab files still open. |
+| 2026-10-30 | minor | Renamed to NetLabCraft. |
 | 2026-10-30 | minor | Cable types replace the single copper cable. |
 | 2026-10-30 | minor | Model names describe their ports; vendor models only in the equivalents page. |
 | 2026-10-30 | minor | Decisions from M1–M2 recorded; shared format. |

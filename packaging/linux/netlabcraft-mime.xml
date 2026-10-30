@@ -4,7 +4,6 @@
     <comment>NetLabCraft lab</comment>
     <sub-class-of type="application/json"/>
     <glob pattern="*.nlcraft"/>
-    <glob pattern="*.pcraft"/>
     <icon name="netlabcraft"/>
   </mime-type>
 </mime-info>

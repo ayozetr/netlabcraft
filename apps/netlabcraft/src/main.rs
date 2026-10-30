@@ -70,7 +70,7 @@ impl App {
         for r in self.app.take_requests() {
             match r {
                 UiRequest::Open => {
-                    if let Some(p) = rfd::FileDialog::new().add_filter("NetLabCraft lab", &["nlcraft", "pcraft"]).pick_file() {
+                    if let Some(p) = rfd::FileDialog::new().add_filter("NetLabCraft lab", &["nlcraft"]).pick_file() {
                         self.app.open_path(&p.to_string_lossy());
                     }
                 }

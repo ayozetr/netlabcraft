@@ -28,7 +28,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Engine commands | 94 | measured: `crates/engine/src/catalog.rs` |
 | Console grammar entries | 636 across 26 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
 | Device models · sample labs | 28 · 23 | measured |
-| Tests | 301 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Tests | 300 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~550–880 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
@@ -60,7 +60,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
-- **2026-10-30 — New name: NetLabCraft.** The project, its programs and its lab files (`.nlcraft`) take the new name; labs saved before (`.pcraft`) still open.
+- **2026-10-30 — New name: NetLabCraft.** The project, its programs and its lab files (`.nlcraft`) take the new name.
 - **2026-10-30 — Cable types.** Connections offers automatic, straight-through, cross-over, fiber, console and serial DCE/DTE cables; a wrong copper cable leaves the link down and says why; fiber uplinks and a fiber card; a console cable and the PC's Terminal app open a device's CLI with no IP. The device box shows every model in wrapping rows with names on two lines.
 - **2026-10-30 — Modular routers, IP phones and IoT.** Modular routers take serial and Gigabit cards in their bays while switched off (a Physical tab with a power switch); IP phones on voice VLANs register with call control on a router and call each other; smart sensors and devices report to an IoT server that runs simple rules; three new sample labs.
 - **2026-10-30 — Routing and VPN depth.** EIGRP balances over equal and unequal-cost paths, drops silent neighbours after their hold time and sends updates, queries and replies on the wire; OSPF equal-cost paths; GRE tunnels over learned routes; IKE main and quick mode on the wire before ESP; QoS output queues on congested links.
