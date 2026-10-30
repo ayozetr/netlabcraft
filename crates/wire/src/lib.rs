@@ -17,6 +17,7 @@ pub mod dhcp;
 pub mod dhcp6;
 pub mod dns;
 pub mod ipv6;
+pub mod mgmt;
 pub mod pcap;
 pub mod serial;
 pub mod tcp;
@@ -412,6 +413,9 @@ pub enum Protocol {
     Ospf,
     Rip,
     Hsrp,
+    Ntp,
+    Syslog,
+    Tftp,
     Icmpv6,
     /// IPv6 neighbour discovery (neighbour and router solicitations and advertisements).
     Ndp,
@@ -434,6 +438,9 @@ impl Protocol {
             Protocol::Ospf => "OSPF",
             Protocol::Rip => "RIP",
             Protocol::Hsrp => "HSRP",
+            Protocol::Ntp => "NTP",
+            Protocol::Syslog => "Syslog",
+            Protocol::Tftp => "TFTP",
             Protocol::Icmpv6 => "ICMPv6",
             Protocol::Ndp => "NDP",
             Protocol::Ipv6 => "IPv6",
@@ -479,6 +486,27 @@ pub fn summarize(bytes: &[u8]) -> (Protocol, String) {
                         Err(e) => (Protocol::Ospf, format!("OSPF ({e}) {route}{tag}")),
                     },
                     PROTO_UDP => match Udp::decode(&ip.payload, ip.src, ip.dst) {
+                        Ok(u) if u.dst_port == mgmt::NTP_PORT || u.src_port == mgmt::NTP_PORT => match mgmt::Ntp::decode(&u.payload) {
+                            Ok(n) if n.server => (Protocol::Ntp, format!("NTP time from {} (stratum {}){tag}", ip.src, n.stratum)),
+                            Ok(_) => (Protocol::Ntp, format!("NTP time request {} → {}{tag}", ip.src, ip.dst)),
+                            Err(e) => (Protocol::Ntp, format!("NTP ({e}){tag}")),
+                        },
+                        Ok(u) if u.dst_port == mgmt::SYSLOG_PORT => match mgmt::syslog_decode(&u.payload) {
+                            Ok((host, msg)) => {
+                                (Protocol::Syslog, format!("Syslog from {host} ({}): {}{tag}", ip.src, msg.chars().take(60).collect::<String>()))
+                            }
+                            Err(e) => (Protocol::Syslog, format!("Syslog ({e}){tag}")),
+                        },
+                        Ok(u) if u.dst_port == mgmt::TFTP_PORT || u.src_port == mgmt::TFTP_PORT || (u.src_port >= 49_152 && u.dst_port >= 49_152) => {
+                            match mgmt::Tftp::decode(&u.payload) {
+                                Ok(mgmt::Tftp::Read(n)) => (Protocol::Tftp, format!("TFTP read request for {n} {route}{tag}")),
+                                Ok(mgmt::Tftp::Write(n)) => (Protocol::Tftp, format!("TFTP write request for {n} {route}{tag}")),
+                                Ok(mgmt::Tftp::Data(b, d)) => (Protocol::Tftp, format!("TFTP data block {b} ({} bytes) {route}{tag}", d.len())),
+                                Ok(mgmt::Tftp::Ack(b)) => (Protocol::Tftp, format!("TFTP ack {b} {route}{tag}")),
+                                Ok(mgmt::Tftp::Error(_, m)) => (Protocol::Tftp, format!("TFTP error: {m} {route}{tag}")),
+                                Err(_) => (Protocol::Udp, format!("UDP {}:{} → {}:{}{tag}", ip.src, u.src_port, ip.dst, u.dst_port)),
+                            }
+                        }
                         Ok(u) if u.dst_port == control::HSRP_PORT => match control::HsrpHello::decode(&u.payload) {
                             Ok(h) => (
                                 Protocol::Hsrp,

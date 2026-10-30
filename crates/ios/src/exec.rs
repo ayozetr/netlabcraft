@@ -1053,6 +1053,56 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let st = c.sim.ospf_state(c.t);
             Ok(render::ospf_interfaces(c.d()?, &st))
         }
+        Id::NtpServer | Id::NoNtpServer => {
+            let a = parse_ip(arg(0)).map_err(|e| format!("% {e}"))?;
+            let add = spec.id == Id::NtpServer;
+            let d = c.dm()?;
+            d.ntp_servers.retain(|x| *x != a);
+            if add {
+                if d.ntp_servers.len() >= 4 {
+                    return Err("% At most 4 NTP servers".into());
+                }
+                d.ntp_servers.push(a);
+            }
+            if !add {
+                return Ok(String::new());
+            }
+            // Ask at once, as a router does when the server is configured.
+            Ok(match c.sim.ntp_sync(c.t, c.dev) {
+                Some(s) => format!("Clock synchronised with {s}."),
+                None => format!("{a} didn't answer yet; the clock will follow when it does."),
+            })
+        }
+        Id::ShowNtp => {
+            let d = c.d()?;
+            if d.ntp_servers.is_empty() {
+                return Ok("No NTP server is configured; the clock runs on its own.".into());
+            }
+            let synced = c.sim.state(c.dev).and_then(|s| s.ntp_synced);
+            let (now, _) = c.sim.clock(c.dev);
+            let mut s = match synced {
+                Some(x) => format!("Clock synchronised with {x}\n"),
+                None => "Clock not synchronised\n".to_string(),
+            };
+            for a in &d.ntp_servers {
+                s.push_str(&format!("  server {a}{}\n", if synced == Some(*a) { "  (in use)" } else { "" }));
+            }
+            s.push_str(&crate::clock::show(now, true));
+            Ok(s)
+        }
+        Id::LoggingHost | Id::NoLoggingHost => {
+            let a = parse_ip(arg(0)).map_err(|e| format!("% {e}"))?;
+            let d = c.dm()?;
+            d.log_hosts.retain(|x| *x != a);
+            if spec.id == Id::LoggingHost {
+                if d.log_hosts.len() >= 4 {
+                    return Err("% At most 4 syslog servers".into());
+                }
+                d.log_hosts.push(a);
+            }
+            Ok(String::new())
+        }
+        Id::CopyToTftp | Id::CopyFromTftp => c.tftp_copy(spec.id == Id::CopyToTftp, line, arg(0)),
         Id::ShowStandby => {
             let roles = c.sim.hsrp_roles(c.t);
             Ok(render::standby(c.d()?, roles.get(&c.dev).map_or(&[][..], Vec::as_slice)))
@@ -2542,6 +2592,58 @@ impl Ctx<'_> {
             }
         }
         Ok(String::new())
+    }
+
+    /// `copy … tftp: <address> [file]` and `copy tftp: … <address> <file>` (or `tftp://a/file`).
+    fn tftp_copy(&mut self, upload: bool, line: &str, rest: &str) -> R {
+        let words: Vec<&str> = rest.split_whitespace().collect();
+        let (addr, file) = match words.as_slice() {
+            [url] if url.to_ascii_lowercase().starts_with("tftp://") => {
+                let u = url.get(7..).unwrap_or("");
+                let (a, f) = u.split_once('/').unwrap_or((u, ""));
+                (a.to_string(), (!f.is_empty()).then(|| f.to_string()))
+            }
+            [a] => (a.to_string(), None),
+            [a, f] => (a.to_string(), Some(f.to_string())),
+            _ => return Err("% Give the server's address and the file name".into()),
+        };
+        let server = parse_ip(&addr).map_err(|e| format!("% {e}"))?;
+        let startup = line.contains("startup-config");
+        let d = self.d()?.clone();
+        if upload {
+            let name = file.unwrap_or_else(|| format!("{}-confg", d.name.to_lowercase()));
+            let text = if startup { d.startup.clone().ok_or("% No startup-config to copy")? } else { render::running_config(&d) };
+            self.sim.tftp_put(self.t, self.dev, server, &name, text.as_bytes()).map_err(|e| format!("% {e}"))?;
+            // The server keeps the file.
+            if let Some(sd) =
+                self.t.devices.iter_mut().find(|x| x.kind == DeviceKind::Server && x.ports.iter().any(|p| p.ip.is_some_and(|n| n.addr == server)))
+            {
+                let files = &mut sd.services.tftp.files;
+                files.retain(|f| f.name != name);
+                if files.len() < packetcraft_model::services::MAX_ITEMS {
+                    files.push(packetcraft_model::services::WebFile {
+                        name: name.clone(),
+                        content: text.chars().take(packetcraft_model::services::MAX_FILE).collect(),
+                    });
+                }
+            }
+            Ok(format!("Copied {} bytes to tftp://{server}/{name}", text.len()))
+        } else {
+            let name = file.ok_or("% Give the file name to copy")?;
+            let bytes = self.sim.tftp_get(self.t, self.dev, server, &name).map_err(|e| format!("% {e}"))?;
+            let text = String::from_utf8_lossy(&bytes).into_owned();
+            if startup {
+                self.dm()?.startup = Some(text.clone());
+                Ok(format!("Copied {} bytes from tftp://{server}/{name} to startup-config", text.len()))
+            } else {
+                let failed = apply_config(self.t, self.sim, self.dev, &text);
+                let mut out = format!("Merged {} bytes from tftp://{server}/{name} into the running configuration", text.len());
+                for f in failed.iter().take(10) {
+                    out.push_str(&format!("\n% {f}"));
+                }
+                Ok(out)
+            }
+        }
     }
 
     /// The `<next hop and/or interface>` part of `ipv6 route`.

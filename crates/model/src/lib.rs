@@ -644,6 +644,12 @@ pub struct Device {
     /// Multilayer switches: `ip routing`.
     #[serde(default)]
     pub ip_routing: bool,
+    /// Routers and switches: `ntp server A.B.C.D`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ntp_servers: Vec<Ipv4Addr>,
+    /// Routers and switches: `logging host A.B.C.D`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub log_hosts: Vec<Ipv4Addr>,
     /// Routers and switches: `no cdp run`.
     #[serde(default)]
     pub cdp_off: bool,
@@ -1109,6 +1115,8 @@ impl Device {
             gateway6: None,
             ip_routing: false,
             cdp_off: false,
+            ntp_servers: Vec::new(),
+            log_hosts: Vec::new(),
             ipv6_routing: false,
             routes6: Vec::new(),
             routes: Vec::new(),
@@ -1146,6 +1154,8 @@ impl Device {
         self.gateway6 = None;
         self.ip_routing = false;
         self.cdp_off = false;
+        self.ntp_servers.clear();
+        self.log_hosts.clear();
         self.ipv6_routing = false;
         self.routes6.clear();
         self.routes.clear();

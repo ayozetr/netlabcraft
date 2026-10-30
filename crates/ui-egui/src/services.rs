@@ -17,6 +17,9 @@ pub enum Page {
     Http,
     Dhcp,
     Dns,
+    Syslog,
+    Ntp,
+    Tftp,
 }
 
 /// Form state of the Services tab and the browser, per device window.
@@ -102,7 +105,14 @@ pub fn tab(app: &mut PacketApp, ui: &mut Ui, dev: &Device, forms: &mut ServiceFo
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 crate::console::list_item(ui, "SERVICES", false, true);
-                for (p, name) in [(Page::Http, "HTTP"), (Page::Dhcp, "DHCP"), (Page::Dns, "DNS")] {
+                for (p, name) in [
+                    (Page::Http, "HTTP"),
+                    (Page::Dhcp, "DHCP"),
+                    (Page::Dns, "DNS"),
+                    (Page::Syslog, "SYSLOG"),
+                    (Page::Ntp, "NTP"),
+                    (Page::Tftp, "TFTP"),
+                ] {
                     if crate::console::list_item(ui, name, forms.page == p, false).clicked() {
                         forms.page = p;
                     }
@@ -116,6 +126,9 @@ pub fn tab(app: &mut PacketApp, ui: &mut Ui, dev: &Device, forms: &mut ServiceFo
                 Page::Http => http(app, ui, d, &dev.services, forms),
                 Page::Dhcp => dhcp(app, ui, dev, forms),
                 Page::Dns => dns(app, ui, d, &dev.services, forms),
+                Page::Syslog => syslog(app, ui, d, &dev.services),
+                Page::Ntp => ntp(app, ui, d, &dev.services),
+                Page::Tftp => tftp(app, ui, d, &dev.services),
             });
         });
     });
@@ -620,6 +633,86 @@ fn render_html(ui: &mut Ui, html: &str) -> Option<String> {
         ui.add_space(6.0);
     }
     clicked
+}
+
+fn syslog(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services) {
+    ui.vertical_centered(|ui| ui.label(RichText::new("Syslog").size(16.0)));
+    ui.separator();
+    let mut new = sv.clone();
+    if on_off(ui, "Syslog Service", &mut new.syslog.on) {
+        apply(app, d, &new);
+    }
+    ui.separator();
+    let msgs = app.session.sim.state(d).map(|s| s.syslog.clone()).unwrap_or_default();
+    ui.label(format!("{} message{} received", msgs.len(), if msgs.len() == 1 { "" } else { "s" }));
+    egui::ScrollArea::vertical().max_height(260.0).id_salt("syslog_list").show(ui, |ui| {
+        egui::Grid::new("syslog_grid").striped(true).show(ui, |ui| {
+            ui.label(RichText::new("Time (s)").strong());
+            ui.label(RichText::new("From").strong());
+            ui.label(RichText::new("Message").strong());
+            ui.end_row();
+            for (at, from, m) in msgs.iter().rev() {
+                ui.label(format!("{:.1}", *at as f64 / 1e6));
+                ui.label(from.to_string());
+                ui.label(m);
+                ui.end_row();
+            }
+        });
+    });
+}
+
+fn ntp(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services) {
+    ui.vertical_centered(|ui| ui.label(RichText::new("NTP").size(16.0)));
+    ui.separator();
+    let mut new = sv.clone();
+    if on_off(ui, "NTP Service", &mut new.ntp.on) {
+        apply(app, d, &new);
+    }
+    ui.separator();
+    let (now, _) = app.session.sim.clock(d);
+    let secs = now.rem_euclid(86_400);
+    ui.label(format!(
+        "This server's time: {:02}:{:02}:{:02} UTC (day {} of the Unix era)",
+        secs / 3_600,
+        secs / 60 % 60,
+        secs % 60,
+        now.div_euclid(86_400)
+    ));
+    ui.label("Routers and switches with `ntp server <this address>` take this time.");
+}
+
+fn tftp(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services) {
+    ui.vertical_centered(|ui| ui.label(RichText::new("TFTP").size(16.0)));
+    ui.separator();
+    let mut new = sv.clone();
+    if on_off(ui, "TFTP Service", &mut new.tftp.on) {
+        apply(app, d, &new);
+    }
+    ui.separator();
+    let mut remove = None;
+    egui::ScrollArea::vertical().max_height(260.0).id_salt("tftp_files").show(ui, |ui| {
+        egui::Grid::new("tftp_grid").striped(true).show(ui, |ui| {
+            ui.label(RichText::new("File").strong());
+            ui.label(RichText::new("Bytes").strong());
+            ui.label("");
+            ui.end_row();
+            for (i, f) in sv.tftp.files.iter().enumerate() {
+                ui.label(&f.name);
+                ui.label(f.content.len().to_string());
+                if ui.small_button("Remove").clicked() {
+                    remove = Some(i);
+                }
+                ui.end_row();
+            }
+        });
+    });
+    if sv.tftp.files.is_empty() {
+        ui.label("No files yet: `copy running-config tftp: <this address>` on a router saves one here.");
+    }
+    if let Some(i) = remove {
+        new.tftp.files.remove(i);
+        apply(app, d, &new);
+    }
 }
 
 #[cfg(test)]

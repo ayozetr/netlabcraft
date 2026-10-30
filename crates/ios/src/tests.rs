@@ -1382,3 +1382,37 @@ fn dhcpv6_by_typing() {
         "{run}"
     );
 }
+
+#[test]
+fn ntp_syslog_and_tftp_by_typing() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let srv = lab.add(DeviceKind::Server);
+    lab.cable(srv, "g0", r, "g0/0");
+    lab.run(srv, "ipconfig 10.0.0.100 255.255.255.0 10.0.0.1");
+    lab.run(r, "en\nconf t\nint g0/0\nip address 10.0.0.1 255.255.255.0\nno shut\nend\nping 10.0.0.100");
+    // NTP: a router whose clock is far off takes the server's time.
+    lab.run(r, "clock set 08:00:00 1 Jan 2031\nconf t");
+    let out = lab.run(r, "ntp server 10.0.0.100");
+    assert!(out.contains("synchronised with 10.0.0.100"), "{out}");
+    lab.run(r, "end");
+    assert!(lab.run(r, "show clock").contains("2026"));
+    assert!(lab.run(r, "show ntp status").contains("Clock synchronised with 10.0.0.100"));
+    // Syslog: link changes reach the server.
+    lab.run(r, "conf t\nlogging host 10.0.0.100\nint g0/1\nno shut\nshutdown\nend");
+    lab.run(r, "ping 10.0.0.100");
+    let got = lab.sim.state(srv).map(|s| s.syslog.iter().map(|x| x.2.clone()).collect::<Vec<_>>()).unwrap_or_default();
+    assert!(got.iter().any(|m| m.starts_with("R1: ") && m.contains("Configuration changed")), "{got:?}");
+    // TFTP: save the configuration on the server, then bring it back as startup-config.
+    let routes: String = (1..=20).map(|n| format!("ip route 172.16.{n}.0 255.255.255.0 10.0.0.100\n")).collect();
+    lab.run(r, &format!("conf t\n{routes}end"));
+    let up = lab.run(r, "copy running-config tftp: 10.0.0.100");
+    assert!(up.contains("tftp://10.0.0.100/r1-confg"), "{up}");
+    let file = lab.t.device(srv).unwrap().services.tftp.files.iter().find(|f| f.name == "r1-confg").cloned().unwrap();
+    assert!(file.content.contains("ntp server 10.0.0.100") && file.content.len() > 512, "multi-block transfer");
+    assert!(lab.run(r, "copy tftp: startup-config 10.0.0.100 r1-confg").contains("to startup-config"));
+    assert!(lab.run(r, "show startup-config").contains("logging host 10.0.0.100"));
+    assert!(lab.try_run(r, "copy tftp: running-config 10.0.0.100 nope").contains("no such file"));
+    assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("TFTP data block 2")));
+    assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("NTP time from 10.0.0.100")));
+}

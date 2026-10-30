@@ -25,6 +25,15 @@ pub fn running_config(d: &Device) -> String {
     if d.cdp_off {
         let _ = writeln!(s, "no cdp run\n!");
     }
+    for a in &d.ntp_servers {
+        let _ = writeln!(s, "ntp server {a}");
+    }
+    for a in &d.log_hosts {
+        let _ = writeln!(s, "logging host {a}");
+    }
+    if !d.ntp_servers.is_empty() || !d.log_hosts.is_empty() {
+        let _ = writeln!(s, "!");
+    }
     if d.ipv6_routing {
         let _ = writeln!(s, "ipv6 unicast-routing\n!");
     }

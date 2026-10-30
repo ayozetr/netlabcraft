@@ -18,6 +18,8 @@ pub const BPDU_EVERY_US: u64 = 2_000_000;
 pub const OSPF_HELLO_EVERY_US: u64 = 10_000_000;
 pub const RIP_UPDATE_EVERY_US: u64 = 30_000_000;
 pub const HSRP_HELLO_EVERY_US: u64 = 3_000_000;
+/// NTP clients poll every 64 s.
+pub const NTP_POLL_EVERY_US: u64 = 64_000_000;
 /// A long run only replays the last ten minutes of control traffic.
 const MAX_CATCH_UP_US: u64 = 600_000_000;
 
@@ -29,13 +31,16 @@ impl Sim {
             return;
         }
         self.ctl_until = deadline;
-        for (every, kind) in [(BPDU_EVERY_US, 0u8), (OSPF_HELLO_EVERY_US, 1), (RIP_UPDATE_EVERY_US, 2), (HSRP_HELLO_EVERY_US, 3)] {
+        for (every, kind) in
+            [(BPDU_EVERY_US, 0u8), (OSPF_HELLO_EVERY_US, 1), (RIP_UPDATE_EVERY_US, 2), (HSRP_HELLO_EVERY_US, 3), (NTP_POLL_EVERY_US, 4)]
+        {
             let mut at = (from / every + 1) * every;
             while at <= deadline {
                 match kind {
                     0 => self.send_bpdus(t, at),
                     1 => self.send_ospf_hellos(t, at),
                     3 => self.send_hsrp_hellos(t, at),
+                    4 => self.send_ntp_polls(t, at),
                     _ => self.send_rip_updates(t, at),
                 }
                 at += every;
@@ -132,6 +137,23 @@ impl Sim {
                     let ip = Ipv4 { id: 0, ttl: 1, protocol: PROTO_UDP, src: ifc.net.addr, dst, payload: udp.encode(ifc.net.addr, dst) };
                     self.queue_l3(t, d, &ifc, ifc.mac, mac, ip.encode(), at);
                 }
+            }
+        }
+    }
+
+    fn send_ntp_polls(&mut self, t: &Topology, at: u64) {
+        let clients: Vec<_> = t.devices.iter().filter(|d| !d.ntp_servers.is_empty()).map(|d| d.id).collect();
+        for id in clients {
+            let Some(d) = t.device(id) else { continue };
+            for server in d.ntp_servers.clone() {
+                let Some((ifc, _)) = crate::route(t, d, server) else { continue };
+                let req = packetcraft_wire::mgmt::Ntp { server: false, stratum: 0, time: self.clock(id).0 };
+                let udp = Udp { src_port: packetcraft_wire::mgmt::NTP_PORT, dst_port: packetcraft_wire::mgmt::NTP_PORT, payload: req.encode() };
+                let ip = Ipv4 { id: 0, ttl: 255, protocol: PROTO_UDP, src: ifc.net.addr, dst: server, payload: udp.encode(ifc.net.addr, server) };
+                // Only the first hop needs a known address: polls go out where ARP already knows the way.
+                let Some((_, nh)) = crate::route(t, d, server) else { continue };
+                let Some(mac) = self.state.get(&id).and_then(|s| s.arp.get(&nh)).map(|e| e.mac) else { continue };
+                self.queue_l3(t, d, &ifc, ifc.mac, mac, ip.encode(), at);
             }
         }
     }

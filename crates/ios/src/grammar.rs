@@ -314,6 +314,13 @@ pub enum Id {
     NoNdOther,
     ShowIpv6DhcpPool,
     ShowIpv6DhcpBinding,
+    NtpServer,
+    NoNtpServer,
+    ShowNtp,
+    LoggingHost,
+    NoLoggingHost,
+    CopyToTftp,
+    CopyFromTftp,
 }
 
 use Tok::{Arg, K, Rest};
@@ -591,6 +598,41 @@ pub static SPECS: &[Spec] = &[
     spec!(NoNdOther, Modes::IF, Modes::ROUTER, [K("no"), K("ipv6"), K("nd"), K("other-config-flag")], "No other settings from DHCPv6"),
     spec!(ShowIpv6DhcpPool, EXECS, Modes::ROUTER, [K("show"), K("ipv6"), K("dhcp"), K("pool")], "DHCPv6 pools"),
     spec!(ShowIpv6DhcpBinding, EXECS, Modes::ROUTER, [K("show"), K("ipv6"), K("dhcp"), K("binding")], "DHCPv6 addresses handed out"),
+    spec!(NtpServer, Modes::CONFIG, Modes::BOTH, [K("ntp"), K("server"), Arg("A.B.C.D")], "Take the time from an NTP server"),
+    spec!(NoNtpServer, Modes::CONFIG, Modes::BOTH, [K("no"), K("ntp"), K("server"), Arg("A.B.C.D")], "Stop using an NTP server"),
+    spec!(ShowNtp, EXECS, Modes::BOTH, [K("show"), K("ntp"), K("status")], "Whether the clock is synchronised"),
+    spec!(ShowNtp, EXECS, Modes::BOTH, [K("show"), K("ntp"), K("associations")], "NTP servers and which one answered"),
+    spec!(LoggingHost, Modes::CONFIG, Modes::BOTH, [K("logging"), K("host"), Arg("A.B.C.D")], "Send log messages to a syslog server"),
+    spec!(LoggingHost, Modes::CONFIG, Modes::BOTH, [K("logging"), Arg("A.B.C.D")], "Send log messages to a syslog server"),
+    spec!(NoLoggingHost, Modes::CONFIG, Modes::BOTH, [K("no"), K("logging"), K("host"), Arg("A.B.C.D")], "Stop sending to a syslog server"),
+    spec!(
+        CopyToTftp,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("running-config"), K("tftp:"), Rest("<address> [file]")],
+        "Save the configuration on a TFTP server"
+    ),
+    spec!(
+        CopyToTftp,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("startup-config"), K("tftp:"), Rest("<address> [file]")],
+        "Save the startup configuration on a TFTP server"
+    ),
+    spec!(
+        CopyFromTftp,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("tftp:"), K("running-config"), Rest("<address> <file>")],
+        "Merge a configuration from a TFTP server"
+    ),
+    spec!(
+        CopyFromTftp,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("tftp:"), K("startup-config"), Rest("<address> <file>")],
+        "Make a TFTP file the startup configuration"
+    ),
     spec!(RouterRip, Modes::CONFIG, Modes::ROUTER, [K("router"), K("rip")], "Start or configure RIP"),
     spec!(NoRouterRip, Modes::CONFIG, Modes::ROUTER, [K("no"), K("router"), K("rip")], "Stop RIP"),
     spec!(RipVersion, Modes::RIP, Modes::ROUTER, [K("version"), Arg("{1|2}")], "RIP version"),

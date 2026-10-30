@@ -16,6 +16,30 @@ pub struct Services {
     pub dns: Dns,
     #[serde(default)]
     pub dhcp: ServerDhcp,
+    /// NTP: the server gives its clock to whoever asks.
+    #[serde(default)]
+    pub ntp: Switch,
+    /// Syslog: the server keeps messages devices send it.
+    #[serde(default)]
+    pub syslog: Switch,
+    /// TFTP: files routers and switches copy configurations to and from.
+    #[serde(default)]
+    pub tftp: Tftp,
+}
+
+/// A service that is just on or off.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Switch {
+    #[serde(default)]
+    pub on: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Tftp {
+    #[serde(default)]
+    pub on: bool,
+    #[serde(default)]
+    pub files: Vec<WebFile>,
 }
 
 impl Services {
@@ -40,6 +64,9 @@ impl Services {
                 ],
             },
             dns: Dns::default(),
+                        ntp: Switch { on: true },
+            syslog: Switch { on: true },
+            tftp: Tftp { on: true, files: Vec::new() },
             dhcp: ServerDhcp { on: false, pools: vec![ServerPool { name: "defaultPool".into(), gateway: Ipv4Addr::UNSPECIFIED, dns: Ipv4Addr::UNSPECIFIED, start: Ipv4Addr::new(192, 168, 0, 10), mask: Ipv4Addr::new(255, 255, 255, 0), max_users: 50 }] },
         }
     }

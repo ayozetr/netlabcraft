@@ -142,7 +142,11 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             }
             sv.http.files.retain(|f| !f.name.is_empty());
             sv.dns.records.truncate(MAX_ITEMS);
-            sv.dhcp.pools.truncate(MAX_ITEMS);
+                        sv.dhcp.pools.truncate(MAX_ITEMS);
+            sv.tftp.files.truncate(MAX_ITEMS);
+            for f in &mut sv.tftp.files {
+                f.content = f.content.chars().take(MAX_FILE).collect();
+            }
             for pool in &mut sv.dhcp.pools {
                 pool.max_users = pool.max_users.min(65_536);
                 if packetcraft_core::mask_to_prefix(pool.mask).is_none() {

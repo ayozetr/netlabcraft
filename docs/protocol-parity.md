@@ -61,9 +61,12 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | DNS | RFC 1035 | ✅ | A records on servers; `nslookup`, names in ping/tracert/browser. |
 | HTTP | RFC 9110 over TCP (RFC 9293) | ✅ | Server file manager, PC web browser. No HTTPS: 6–10 h. |
 | Telnet and SSH | RFC 854, RFC 4253 | ✅ | Local users, `login local`, `transport input`, RSA keys, `ip ssh version`. The SSH session is simulated, not encrypted. |
-| FTP, TFTP | RFC 959, RFC 1350 | ❌ | Including `copy running-config tftp:`: 10–16 h. |
+| TFTP | RFC 1350 | ✅ | Server TFTP service with a file list; `copy running-config|startup-config tftp: <address> [file]`, `copy tftp: running-config|startup-config <address> <file>`; 512-byte blocks and acknowledgements on the wire (the server answers from port 69). |
+| FTP | RFC 959 | ❌ | Server FTP users and the PC `ftp` client: 8–12 h. |
 | Email (SMTP/POP3) | RFC 5321, RFC 1939 | ❌ | 10–15 h. |
-| NTP, syslog, SNMP, AAA/RADIUS/TACACS+ | RFC 5905, 5424, 3416, 2865 | ❌ | 20–30 h. |
+| NTP | RFC 5905 | ✅ | Server NTP service; `ntp server` syncs at once and every 64 s; `show ntp status/associations`. No authentication or stratum chains. |
+| Syslog | RFC 5424 | ✅ | `logging host` sends every log message to the server, whose SYSLOG page lists them. No severity filtering (`logging trap`). |
+| SNMP, AAA/RADIUS/TACACS+ | RFC 3416, 2865 | ❌ | 14–22 h. |
 
 ## Security
 
@@ -106,6 +109,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | NTP, syslog and TFTP. |
 | 2026-10-30 | minor | DHCPv6 and router advertisement flags. |
 | 2026-10-30 | minor | OSPF depth: cost, priority and DR/BDR, reference bandwidth, inter-area routes, interface and process views, multilayer switches. |
 | 2026-10-30 | minor | access-class, IPv6 ACLs, NAT for ICMP errors. |

@@ -205,6 +205,17 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ipv6 nd other-config-flag` | interface | router | No other settings from DHCPv6 |
 | `show ipv6 dhcp pool` | user, privileged | router | DHCPv6 pools |
 | `show ipv6 dhcp binding` | user, privileged | router | DHCPv6 addresses handed out |
+| `ntp server A.B.C.D` | config | router, switch | Take the time from an NTP server |
+| `no ntp server A.B.C.D` | config | router, switch | Stop using an NTP server |
+| `show ntp status` | user, privileged | router, switch | Whether the clock is synchronised |
+| `show ntp associations` | user, privileged | router, switch | NTP servers and which one answered |
+| `logging host A.B.C.D` | config | router, switch | Send log messages to a syslog server |
+| `logging A.B.C.D` | config | router, switch | Send log messages to a syslog server |
+| `no logging host A.B.C.D` | config | router, switch | Stop sending to a syslog server |
+| `copy running-config tftp: <address> [file]` | privileged | router, switch | Save the configuration on a TFTP server |
+| `copy startup-config tftp: <address> [file]` | privileged | router, switch | Save the startup configuration on a TFTP server |
+| `copy tftp: running-config <address> <file>` | privileged | router, switch | Merge a configuration from a TFTP server |
+| `copy tftp: startup-config <address> <file>` | privileged | router, switch | Make a TFTP file the startup configuration |
 | `router rip` | config | router | Start or configure RIP |
 | `no router rip` | config | router | Stop RIP |
 | `version {1\|2}` |  | router | RIP version |

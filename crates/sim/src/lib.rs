@@ -26,6 +26,7 @@ pub mod cdp;
 pub mod channel;
 pub mod control;
 pub mod hsrp;
+pub mod mgmt;
 pub mod ospf;
 pub mod rip;
 pub mod stp;
@@ -491,6 +492,17 @@ pub struct DevState {
     console: Vec<String>,
     /// `debug ip icmp`.
     pub debug_icmp: bool,
+    /// Log lines waiting to go to syslog servers.
+    syslog_out: Vec<String>,
+    /// Syslog servers: messages received (µs, sender, text).
+    pub syslog: VecDeque<(u64, Ipv4Addr, String)>,
+    /// NTP: the server that last set this device's clock.
+    pub ntp_synced: Option<Ipv4Addr>,
+    /// TFTP client: the local port of the transfer in flight, and what came back.
+    tftp_port: Option<u16>,
+    tftp_inbox: Vec<packetcraft_wire::mgmt::Tftp>,
+    /// TFTP server: files being read, by (client, port).
+    tftp_tx: BTreeMap<(Ipv4Addr, u16), Vec<u8>>,
     /// Hosts: the last router advertisement heard (router's address, prefixes).
     ra: Option<(std::net::Ipv6Addr, Vec<packetcraft_wire::ipv6::PrefixInfo>, u8)>,
     /// Hosts: DHCPv6 messages for a client exchange in flight.
@@ -647,6 +659,9 @@ impl Sim {
             st.log.pop_front();
         }
         st.log.push_back((now, line.clone()));
+        if st.syslog_out.len() < MAX_LOG {
+            st.syslog_out.push(msg.to_string());
+        }
         if st.console.len() < MAX_LOG {
             st.console.push(line);
         }
@@ -803,6 +818,7 @@ impl Sim {
     fn advance(&mut self, t: &Topology, deadline: u64, mut stop: impl FnMut(&Sim) -> bool) -> bool {
         self.storm = false;
         self.refresh_stp(t);
+        self.flush_syslog(t);
         self.schedule_control(t, deadline);
         let mut count = 0usize;
         while let Some(Reverse(top)) = self.queue.peek() {
@@ -1525,6 +1541,9 @@ impl Sim {
         }
         if ip.protocol == PROTO_UDP {
             let u = Udp::decode(&ip.payload, ip.src, ip.dst).map_err(|e| e.to_string())?;
+            if let Some(r) = self.mgmt_udp_in(t, d, ifc, &ip, &u) {
+                return r;
+            }
             return match (u.dst_port, d.kind) {
                 (dhcp::SERVER_PORT, DeviceKind::Router) => {
                     let msg = Dhcp::decode(&u.payload).map_err(|e| e.to_string())?;
