@@ -721,6 +721,20 @@ pub struct Ipv6Conf {
     pub filter_in: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filter_out: Option<String>,
+    /// Routers: `ipv6 address autoconfig default` (with `autoconfig`): the advertising router
+    /// becomes a default route.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub autoconfig_default: bool,
+    /// Routers: `ipv6 address dhcp` (the address comes from a DHCPv6 server).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub dhcp_client: bool,
+    /// Routers: the addresses autoconfiguration or DHCPv6 handed out (a lease, not
+    /// configuration: the running configuration shows how they are obtained).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub learned: Vec<Ipv6Net>,
+    /// Routers: the router whose advertisement gave the address (the default route's next hop).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub learned_router: Option<Ipv6Addr>,
 }
 
 impl Ipv6Conf {
@@ -729,7 +743,7 @@ impl Ipv6Conf {
     }
 
     pub fn active(&self) -> bool {
-        self.enabled || self.autoconfig || !self.addresses.is_empty() || self.link_local.is_some()
+        self.enabled || self.autoconfig || self.dhcp_client || !self.addresses.is_empty() || self.link_local.is_some()
     }
 }
 

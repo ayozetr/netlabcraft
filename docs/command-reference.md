@@ -198,6 +198,11 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ipv6 ospf <1-65535> area <0-4294967295>` |  | router, switch | Stop advertising it in OSPFv3 |
 | `ip ospf cost <1-65535>` |  | router, switch | This loopback's OSPF cost |
 | `no ip ospf cost` |  | router, switch | Cost 1 again |
+| `ipv6 address autoconfig` | interface | router, switch | Take an address from router advertisements |
+| `ipv6 address autoconfig default` | interface | router, switch | Autoconfigure, and route by default to the advertising router |
+| `no ipv6 address autoconfig` | interface | router, switch | Stop autoconfiguring |
+| `ipv6 address dhcp` | interface | router, switch | Take an address from a DHCPv6 server |
+| `no ipv6 address dhcp` | interface | router, switch | Give the DHCPv6 address back |
 | `ip ospf <1-65535> area <0-4294967295>\|A.B.C.D` | interface, subinterface | router, switch | Run OSPF on this interface, in this area |
 | `no ip ospf <1-65535> area [AREA]` | interface, subinterface | router, switch | Stop OSPF here |
 | `ip ospf hello-interval <1-65535>` | interface, subinterface | router, switch | Seconds between hellos (10) |

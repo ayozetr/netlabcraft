@@ -230,3 +230,42 @@ fn ospf_dr_election_waits_for_clear_ip_ospf_process() {
     assert!(nb.contains("3.3.3.3          FULL/DR"), "{nb}");
     assert!(lab.try_run(r1, "clear ip ospf 9 process").contains("No OSPF process 9"));
 }
+
+#[test]
+fn routers_as_ipv6_clients() {
+    let (mut lab, r1, r2) = two_routers();
+    lab.cable(r1, "g0/2", r2, "g0/2");
+    // R1 advertises 2001:db8:12::/64 on g0/1 and hands out addresses of 2001:db8:13::/64 on g0/2.
+    lab.run(
+        r1,
+        "conf t\nipv6 unicast-routing\nipv6 dhcp pool WAN\naddress prefix 2001:db8:13::/64\nexit\nint g0/1\nipv6 address 2001:db8:12::1/64\nint g0/2\nno shut\nipv6 address 2001:db8:13::1/64\nipv6 dhcp server WAN\nint lo0\nipv6 address 2001:db8:ff::1/128\nend",
+    );
+    // SLAAC with a default route towards the advertising router.
+    let out = lab.run(r2, "conf t\nint g0/1\nipv6 address autoconfig default");
+    assert!(out.contains("GigabitEthernet0/1 took 2001:db8:12::ff:fe02:1") && out.contains("from router fe80::"), "{out}");
+    lab.run(r2, "end");
+    let brief = lab.run(r2, "show ipv6 interface brief");
+    assert!(brief.contains("2001:db8:12::ff:fe02:1"), "{brief}");
+    let rt = lab.run(r2, "show ipv6 route");
+    assert!(rt.contains("ND ::/0") && rt.contains("[2]"), "{rt}");
+    assert!(lab.run(r2, "ping 2001:db8:ff::1").contains('!'));
+    // Stateful DHCPv6 on the other link.
+    let out = lab.run(r2, "conf t\nint g0/2\nno shut\nipv6 address dhcp");
+    assert!(out.contains("GigabitEthernet0/2 took 2001:db8:13::") && out.contains("DHCPv6 server"), "{out}");
+    lab.run(r2, "end");
+    assert!(lab.run(r1, "show ipv6 dhcp binding").contains("2001:db8:13::"));
+    assert!(lab.run(r2, "ping 2001:db8:13::1").contains('!'));
+    // Without an answer, the setting stays and says so.
+    let lone = lab.add(DeviceKind::Router);
+    let out = lab.run(lone, "en\nconf t\nint g0/0\nipv6 address autoconfig");
+    assert!(out.contains("no address yet"), "{out}");
+    lab.run(lone, "end");
+    // The configuration keeps how, not what: a reload asks again.
+    let run = survives_reload(&mut lab, r2);
+    assert!(run.contains(" ipv6 address autoconfig default") && run.contains(" ipv6 address dhcp"), "{run}");
+    assert!(!run.contains("2001:db8:12::ff:fe02:1"), "{run}");
+    assert!(lab.run(r2, "show ipv6 interface brief").contains("2001:db8:12::ff:fe02:1"));
+    lab.run(r2, "conf t\nint g0/1\nno ipv6 address autoconfig\nint g0/2\nno ipv6 address dhcp\nend");
+    let rt = lab.run(r2, "show ipv6 route");
+    assert!(!rt.contains("ND ::/0") && !lab.run(r2, "show running-config").contains("autoconfig"), "{rt}");
+}

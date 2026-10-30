@@ -78,7 +78,7 @@ pub fn l3_ifaces6(d: &Device) -> Vec<L3If6> {
         name,
         mac,
         link_local: c.link_local.unwrap_or_else(|| link_local(mac)),
-        addresses: c.addresses.clone(),
+        addresses: c.addresses.iter().chain(&c.learned).copied().collect(),
     };
     match d.kind {
         DeviceKind::Hub => Vec::new(),
@@ -169,6 +169,20 @@ pub fn routing_table6(t: &Topology, d: &Device, dynamic: &[Route6Entry]) -> Vec<
         }
     }
     out.extend(dynamic.iter().cloned());
+    // `ipv6 address autoconfig default`: the advertising router is a default route (distance 2).
+    for i in &ifs {
+        if let Some(c) = conf6(d, i).filter(|c| c.autoconfig && c.autoconfig_default)
+            && let Some(r) = c.learned_router
+        {
+            out.push(Route6Entry {
+                code: 'N',
+                net: Ipv6Net::new(Ipv6Addr::UNSPECIFIED, 0),
+                iface: Some(i.name.clone()),
+                next_hop: Some(r),
+                distance: 2,
+            });
+        }
+    }
     // Connected routes, then for every other network the routes with the lowest administrative
     // distance (a floating static waits behind OSPFv3 until its network disappears).
     let all = out.clone();
@@ -406,7 +420,7 @@ impl Sim {
                 Ok(())
             }
             Icmp6::RouterAdvert { lifetime, mac, prefixes, flags, .. } => {
-                if d.kind.is_host() && lifetime > 0 {
+                if (d.kind.is_host() || conf6(d, ifc).is_some_and(|c| c.autoconfig)) && lifetime > 0 {
                     self.learn_nd(t, d, ifc, ip.src, mac.unwrap_or(src_mac));
                     self.st(d.id).ra = Some((ip.src, prefixes, flags));
                 }
@@ -627,7 +641,7 @@ impl Sim {
             return Ok(());
         }
         match dst_port {
-            dhcp6::CLIENT_PORT if d.kind.is_host() => {
+            dhcp6::CLIENT_PORT if d.kind.is_host() || conf.dhcp_client => {
                 let st = self.st(d.id);
                 if st.dhcp6_inbox.len() < 16 {
                     st.dhcp6_inbox.push(msg);
@@ -792,5 +806,58 @@ impl Sim {
         self.last_ra_flags = flags;
         let p = prefixes.iter().find(|p| p.len == 64).ok_or_else(|| SimError::NoSource(format!("router {router} advertises no /64 prefix")))?;
         Ok((Ipv6Net::new(eui64(p.prefix, ifc.mac), 64), router))
+    }
+}
+
+// ---- routers as IPv6 clients ----
+
+impl Sim {
+    /// `ipv6 address autoconfig` on a router interface: asks the routers on that link and builds
+    /// an address from the first /64 prefix advertised. Returns it and the advertising router.
+    pub fn router_autoconfig6(&mut self, t: &Topology, dev: crate::DeviceId, iface: &str) -> Result<(Ipv6Net, Ipv6Addr), SimError> {
+        let d = t.device(dev).ok_or(SimError::NoDevice(dev))?;
+        let ifc = up_ifaces6(t, d).into_iter().find(|i| i.name == iface).ok_or_else(|| SimError::NoSource(format!("{iface} is not up")))?;
+        self.st(dev).ra = None;
+        let rs = Icmp6::RouterSolicit { mac: Some(ifc.mac) };
+        let p = Ipv6 {
+            hop_limit: 255,
+            next_header: PROTO_ICMPV6,
+            src: ifc.link_local,
+            dst: ALL_ROUTERS,
+            payload: rs.encode(ifc.link_local, ALL_ROUTERS),
+        };
+        self.emit6(t, d, &ifc, multicast_mac(ALL_ROUTERS), p.encode());
+        let start = self.now;
+        self.advance(t, start.saturating_add(ND_WAIT_US), |s| s.state.get(&dev).is_some_and(|st| st.ra.is_some()));
+        let (router, prefixes, _) = self
+            .st(dev)
+            .ra
+            .take()
+            .ok_or_else(|| SimError::NoSource("no router advertisement on that link (is `ipv6 unicast-routing` on there?)".into()))?;
+        let p = prefixes.iter().find(|p| p.len == 64).ok_or_else(|| SimError::NoSource(format!("router {router} advertises no /64 prefix")))?;
+        Ok((Ipv6Net::new(eui64(p.prefix, ifc.mac), 64), router))
+    }
+
+    /// `ipv6 address dhcp` on a router interface: a stateful DHCPv6 exchange (solicit,
+    /// advertise, request, reply) for one address.
+    pub fn router_dhcp6(&mut self, t: &Topology, dev: crate::DeviceId, iface: &str) -> Result<Ipv6Net, SimError> {
+        let d = t.device(dev).ok_or(SimError::NoDevice(dev))?;
+        let ifc = up_ifaces6(t, d).into_iter().find(|i| i.name == iface).ok_or_else(|| SimError::NoSource(format!("{iface} is not up")))?;
+        self.next_echo_id = self.next_echo_id.wrapping_add(1);
+        let xid = u32::from(self.next_echo_id) | 0x0002_0000;
+        let ask = Dhcp6 { kind: dhcp6::Kind::Solicit, xid, client: Some(ifc.mac), server: None, ia: Some((1, None)), dns: Vec::new(), domain: None };
+        let adv = self.dhcp6_ask(t, d, &ifc, ask, dhcp6::Kind::Advertise).ok_or_else(|| SimError::NoSource("no DHCPv6 server answered".into()))?;
+        let offered = adv.ia.and_then(|(_, a)| a).ok_or_else(|| SimError::NoSource("the DHCPv6 server has no addresses to give".into()))?;
+        let req = Dhcp6 {
+            kind: dhcp6::Kind::Request,
+            xid: xid + 1,
+            client: Some(ifc.mac),
+            server: adv.server,
+            ia: Some((1, Some(offered))),
+            dns: Vec::new(),
+            domain: None,
+        };
+        let rep = self.dhcp6_ask(t, d, &ifc, req, dhcp6::Kind::Reply).ok_or_else(|| SimError::NoSource("the DHCPv6 server didn't confirm".into()))?;
+        Ok(Ipv6Net::new(rep.ia.and_then(|(_, a)| a).unwrap_or(offered), 64))
     }
 }

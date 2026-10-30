@@ -1551,6 +1551,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             routing::ospf_redistribute(&mut c, spec.id == Id::OspfRedistributeStatic, arg(0))
         }
         Id::ClearIpOspf => routing::clear_ospf(&mut c, arg(0)),
+        Id::Ipv6AddressAutoconfig | Id::NoIpv6AddressAutoconfig | Id::Ipv6AddressDhcp | Id::NoIpv6AddressDhcp => {
+            routing::ipv6_client(&mut c, spec.id, spec.path.len() == 4)
+        }
         Id::ShowIpOspfDatabase => routing::ospf_database(&mut c),
         Id::ShowOspfNeighborDetail => routing::ospf_neighbor_detail(&mut c),
         // ---- site-to-site VPN: GRE tunnels and IPsec (see exec/vpn.rs) ----
@@ -3176,7 +3179,12 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 }
                 Ok(())
             })?;
-            Ok(c.link_notice())
+            let notice = c.link_notice();
+            if down {
+                return Ok(notice);
+            }
+            // An IPv6 client interface asks for its address once it comes up.
+            Ok([notice, routing::ipv6_client_retry(&mut c)].into_iter().filter(|x| !x.is_empty()).collect::<Vec<_>>().join("\n"))
         }
         Id::Description => {
             let text: String = arg(0).chars().take(MAX_DESCRIPTION).collect();

@@ -1415,6 +1415,7 @@ pub(crate) fn ipv6_lines(s: &mut String, c: &netlabcraft_model::Ipv6Conf) {
     for a in &c.addresses {
         let _ = writeln!(s, " ipv6 address {a}");
     }
+    crate::exec::routing::ipv6_client_lines(s, c);
     if c.enabled {
         let _ = writeln!(s, " ipv6 enable");
     }
@@ -1499,7 +1500,9 @@ pub fn ipv6_brief(t: &Topology, d: &Device) -> String {
 pub fn ipv6_route(t: &Topology, sim: &mut Sim, d: &Device) -> String {
     let dynamic = sim.dynamic_routes6(t, d);
     let table = netlabcraft_sim::v6::routing_table6(t, d, &dynamic);
-    let mut s = String::from("Codes: C connected, L local, S static, O OSPFv3, OI OSPFv3 other area, OE2 OSPFv3 external\n");
+    let mut s = String::from(
+        "Codes: C connected, L local, S static, O OSPFv3, OI OSPFv3 other area, OE2 OSPFv3 external, ND default from a router advertisement\n",
+    );
     if !d.ipv6_routing {
         s.push_str("IPv6 forwarding is off (no `ipv6 unicast-routing`)\n");
     }
@@ -1514,6 +1517,7 @@ pub fn ipv6_route(t: &Topology, sim: &mut Sim, d: &Device) -> String {
         let code = match r.code {
             'I' => "OI".to_string(),
             'E' => "OE2".to_string(),
+            'N' => "ND".to_string(),
             c => c.to_string(),
         };
         let ad = if matches!(r.code, 'C' | 'L') { String::new() } else { format!(" [{}]", r.distance) };

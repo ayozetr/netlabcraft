@@ -220,6 +220,10 @@ pub enum Id {
     NoOspfDefaultOriginate,
     ShowOspfNeighbor,
     ShowOspfNeighborDetail,
+    Ipv6AddressAutoconfig,
+    NoIpv6AddressAutoconfig,
+    Ipv6AddressDhcp,
+    NoIpv6AddressDhcp,
     ShowIpOspfDatabase,
     ClearIpOspf,
     IpOspfArea,
@@ -862,6 +866,18 @@ pub static SPECS: &[Spec] = &[
     ),
     spec!(IpOspfCost, Modes::LOOPBACK, Modes::BOTH, [K("ip"), K("ospf"), K("cost"), Arg("<1-65535>")], "This loopback's OSPF cost"),
     spec!(NoIpOspfCost, Modes::LOOPBACK, Modes::BOTH, [K("no"), K("ip"), K("ospf"), K("cost")], "Cost 1 again"),
+    // ---- routers as IPv6 clients ----
+    spec!(Ipv6AddressAutoconfig, Modes::IF, Modes::BOTH, [K("ipv6"), K("address"), K("autoconfig")], "Take an address from router advertisements"),
+    spec!(
+        Ipv6AddressAutoconfig,
+        Modes::IF,
+        Modes::BOTH,
+        [K("ipv6"), K("address"), K("autoconfig"), K("default")],
+        "Autoconfigure, and route by default to the advertising router"
+    ),
+    spec!(NoIpv6AddressAutoconfig, Modes::IF, Modes::BOTH, [K("no"), K("ipv6"), K("address"), K("autoconfig")], "Stop autoconfiguring"),
+    spec!(Ipv6AddressDhcp, Modes::IF, Modes::BOTH, [K("ipv6"), K("address"), K("dhcp")], "Take an address from a DHCPv6 server"),
+    spec!(NoIpv6AddressDhcp, Modes::IF, Modes::BOTH, [K("no"), K("ipv6"), K("address"), K("dhcp")], "Give the DHCPv6 address back"),
     // ---- OSPF as the courses teach it ----
     spec!(
         IpOspfArea,

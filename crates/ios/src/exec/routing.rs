@@ -398,3 +398,78 @@ pub(crate) fn mismatch_lines(s: &mut String, st: &netlabcraft_sim::ospf::OspfSta
         let _ = writeln!(s, "Not a neighbour: {} on {}: {}", m.address, m.iface, m.why);
     }
 }
+
+// ---- routers as IPv6 clients ----
+
+/// `[no] ipv6 address autoconfig [default]` and `[no] ipv6 address dhcp` on a router
+/// interface: the setting is kept, and the address is asked for at once.
+pub(super) fn ipv6_client(c: &mut Ctx, id: Id, default: bool) -> R {
+    let names = c.v6_names();
+    let [name] = names.as_slice() else { return Err("% Set this on one interface at a time".into()) };
+    let name = name.clone();
+    let slaac = matches!(id, Id::Ipv6AddressAutoconfig | Id::NoIpv6AddressAutoconfig);
+    let on = matches!(id, Id::Ipv6AddressAutoconfig | Id::Ipv6AddressDhcp);
+    c.each_v6(|v6, _, _| {
+        if slaac {
+            v6.autoconfig = on;
+            v6.autoconfig_default = on && default;
+            v6.learned_router = None;
+        } else {
+            v6.dhcp_client = on;
+        }
+        v6.learned.clear();
+        Ok(())
+    })?;
+    if !on {
+        return Ok(String::new());
+    }
+    let got = if slaac {
+        c.sim.router_autoconfig6(c.t, c.dev, &name).map(|(net, router)| (net, Some(router)))
+    } else {
+        c.sim.router_dhcp6(c.t, c.dev, &name).map(|net| (net, None))
+    };
+    match got {
+        Ok((net, router)) => {
+            c.each_v6(|v6, _, _| {
+                v6.learned = vec![net];
+                v6.learned_router = router;
+                Ok(())
+            })?;
+            let from = router.map_or("a DHCPv6 server".to_string(), |r| format!("router {r}"));
+            Ok(format!("{name} took {net} from {from}"))
+        }
+        // The setting stays: the address comes when a router or server answers.
+        Err(e) => Ok(format!("{name} has no address yet: {e}")),
+    }
+}
+
+/// After `no shutdown`: an IPv6 client interface without its address asks for it again.
+pub(super) fn ipv6_client_retry(c: &mut Ctx) -> String {
+    let Mode::Iface(ifs) = &c.cli.mode else { return String::new() };
+    let [r] = ifs.as_slice() else { return String::new() };
+    let Ok(d) = c.d() else { return String::new() };
+    let Some(p) = d.ports.get(r.port).filter(|_| r.sub.is_none()) else { return String::new() };
+    let v6 = &p.ipv6;
+    if !v6.learned.is_empty() {
+        return String::new();
+    }
+    let id = if v6.autoconfig {
+        Id::Ipv6AddressAutoconfig
+    } else if v6.dhcp_client {
+        Id::Ipv6AddressDhcp
+    } else {
+        return String::new();
+    };
+    let default = v6.autoconfig_default;
+    ipv6_client(c, id, default).unwrap_or_default()
+}
+
+/// The running-configuration lines of an interface that is an IPv6 client.
+pub(crate) fn ipv6_client_lines(s: &mut String, c: &netlabcraft_model::Ipv6Conf) {
+    if c.autoconfig {
+        s.push_str(if c.autoconfig_default { " ipv6 address autoconfig default\n" } else { " ipv6 address autoconfig\n" });
+    }
+    if c.dhcp_client {
+        s.push_str(" ipv6 address dhcp\n");
+    }
+}
