@@ -1526,6 +1526,11 @@ impl Sim {
             if f.dst.is_broadcast() && f.ethertype == ETHERTYPE_ARP {
                 let _ = self.arp_in(t, d, &svi, &f.payload);
             }
+            // IPv4 broadcasts (a DHCP request, for one) reach the switch's own interface too,
+            // and keep flooding the VLAN.
+            if f.dst.is_broadcast() && f.ethertype == ETHERTYPE_IPV4 {
+                let _ = self.ip_in(t, d, &svi, &f.payload);
+            }
         }
         // IPv6 for the VLAN interface: its own address, or a group it may have joined (and
         // the frame still floods on).
@@ -1742,7 +1747,7 @@ impl Sim {
             };
         }
         let mut from_outside = false;
-        if d.kind == DeviceKind::Router {
+        if d.routes_ip() {
             self.acl_check(t, d, ifc, &ip, payload, true)?;
             // NAT, outside to inside: undo the translation before deciding where it goes.
             if nat_side(d, ifc) == Some(packetcraft_model::NatSide::Outside)
@@ -1802,7 +1807,7 @@ impl Sim {
                 return r;
             }
             return match (u.dst_port, d.kind) {
-                (dhcp::SERVER_PORT, DeviceKind::Router) => {
+                (dhcp::SERVER_PORT, k) if k == DeviceKind::Router || (k == DeviceKind::Switch && d.routes_ip()) => {
                     let msg = Dhcp::decode(&u.payload).map_err(|e| e.to_string())?;
                     match msg.kind {
                         DhcpKind::Offer | DhcpKind::Ack | DhcpKind::Nak => self.dhcp_relay_down(t, d, msg),
@@ -2618,6 +2623,9 @@ fn helpers_of(d: &Device, ifc: &L3If) -> Vec<Ipv4Addr> {
 
 /// The NAT side of an interface.
 fn nat_side(d: &Device, ifc: &L3If) -> Option<packetcraft_model::NatSide> {
+    if ifc.port == SVI_PORT {
+        return d.svis.iter().find(|s| Some(s.vlan.get()) == ifc.vlan)?.nat;
+    }
     let p = d.ports.get(ifc.port)?;
     match ifc.sub {
         Some(n) => p.subif(n)?.nat,

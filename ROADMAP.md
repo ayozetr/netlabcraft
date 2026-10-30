@@ -20,7 +20,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 | Number | Value | Kind |
 |---|---|---|
-| **Ready for real work** (weighted) | **~67%** | estimated from written weights (67.7); [target-app-parity.md](docs/target-app-parity.md) |
+| **Ready for real work** (weighted) | **~68%** | estimated from written weights (68.1); [target-app-parity.md](docs/target-app-parity.md) |
 | **CCNA 1 student** | **~74%** | estimated; [method](docs/target-app-parity.md#audiences) |
 | **CCNA 2 student** | **~78%** | estimated |
 | **CCNA 3 student** | **~62%** | estimated |
@@ -28,7 +28,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Engine commands | 40 | measured: `crates/engine/src/catalog.rs` |
 | Console grammar entries | 309 across 12 modes | measured: `crates/ios/src/grammar.rs` |
 | Device models · sample labs | 15 · 18 | measured |
-| Tests | 153 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Tests | 155 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~600–950 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
@@ -50,16 +50,17 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Layer 3 | 15 | 78% | 30–50 | IPv4, IPv6 (NDP, SLAAC, subinterfaces, VLAN interfaces, DHCPv6 relay), static, RIP, multi-area OSPF with DR/BDR, stub areas and ranges, OSPFv3, multilayer switching with OSPF and RIP, HSRP; no EIGRP |
 | Services | 8 | 70% | 18–30 | DHCPv4 and DHCPv6 (with relay), DNS, HTTP with browser, Telnet/SSH, NTP, syslog, TFTP, FTP, AAA with RADIUS; no email, SNMP, TACACS+ |
 | Security | 8 | 72% | 24–40 | IPv4 and IPv6 ACLs, access-class, NAT/PAT, passwords and lines, PPP PAP/CHAP; no firewalls or VPN |
-| WAN, cabling, wireless | 6 | 55% | 35–55 | Copper (auto-MDIX), serial (DCE/DTE, HDLC/PPP), Wi-Fi access points and clients; no wireless routers, WLC or fibre |
+| WAN, cabling, wireless | 6 | 62% | 28–45 | Copper (auto-MDIX), serial (DCE/DTE, HDLC/PPP), Wi-Fi access points, home wireless routers and clients; no WLC or fibre |
 | Simulation mode | 8 | 70% | 18–28 | Event list, replay, decode, drop reasons, pcap; BPDUs, OSPF hellos and database exchange, RIP updates, HSRP hellos, LLDP, LACP; no complex PDUs |
 | Workspace and windows | 10 | 55% | 60–90 | Reference-app arrangement, device tabs, notes and drawings; no physical view or clusters |
 | Teaching | 8 | 65% | 35–60 | Activities with checks, points, hints, hidden answers, a time limit, a password lock and a wizard; Spanish interface; no variables per student |
-| Device families | 5 | 25% | 80–120 | 15 generic models; no modules, ASA, IoT |
+| Device families | 5 | 25% | 80–120 | 16 generic models; no modules, ASA, IoT |
 | Files | — | — | — | Own open `.pcraft` JSON; no `.pkt` (out of scope: [decisions.md](docs/decisions.md)) |
 | Platforms and agents | — | — | — | Linux, Windows, macOS, BSD, web; MCP server and CLI over the full command catalog |
 
 ## Progress log
 
+- **2026-10-30 — Home wireless router.** A Home-Router model: Internet port, four LAN ports and Wi-Fi, handing out addresses and translating to the Internet out of the box, with a Home Router settings page; multilayer switches also do NAT, DHCP server and ACLs.
 - **2026-10-30 — Sample labs in Spanish.** The sample labs' titles, descriptions and notes, the sample activity and the status messages built from parts read in Spanish too.
 - **2026-10-30 — App icon and Linux install.** PacketCraft has its own icon (window, menu, web tab) and `packaging/linux/install.sh` puts it in the desktop menu with `.pcraft` files opening in it.
 - **2026-10-30 — More debugs.** `debug ip packet`, `debug ip nat` and `debug ip dhcp server events` report what the router routes, translates and hands out.

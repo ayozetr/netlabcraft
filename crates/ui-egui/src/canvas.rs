@@ -469,7 +469,7 @@ fn draw_devices(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Toke
         if d.catalogue_model().multilayer() {
             icons::multilayer_mark(painter, r);
         }
-        if d.catalogue_model().id == "AccessPoint" {
+        if d.catalogue_model().id == "AccessPoint" || d.catalogue_model().home_router() {
             icons::access_point_mark(painter, r);
         }
         // Two centred lines under the icon: model, then name.

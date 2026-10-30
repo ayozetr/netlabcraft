@@ -27,6 +27,8 @@ pub enum Tab {
 pub enum ConfigPage {
     #[default]
     Settings,
+    /// A home router's LAN, DHCP, Internet and Wi-Fi.
+    Home,
     Vlans,
     Routes,
     Port(usize),
@@ -94,7 +96,13 @@ impl DeviceWindow {
 pub fn open(app: &mut PacketApp, d: DeviceId) {
     app.session.console(d);
     let Some(dev) = app.session.topology.device(d).cloned() else { return };
+    let new = !app.ui.windows.contains_key(&d);
     let w = app.ui.windows.entry(d).or_default();
+    // A home router opens on its settings page.
+    if new && dev.catalogue_model().home_router() {
+        w.tab = Tab::Config;
+        w.page = ConfigPage::Home;
+    }
     w.focus = true;
     w.name = dev.name.clone();
     w.label = dev.display_name().to_string();
@@ -474,6 +482,9 @@ fn config(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                     if list_item(ui, tl("Settings"), page == ConfigPage::Settings, false).clicked() {
                         page = ConfigPage::Settings;
                     }
+                    if dev.catalogue_model().home_router() && list_item(ui, tl("Home Router"), page == ConfigPage::Home, false).clicked() {
+                        page = ConfigPage::Home;
+                    }
                     match dev.kind {
                         DeviceKind::Switch => {
                             list_item(ui, tl("SWITCHING"), false, true);
@@ -515,6 +526,7 @@ fn config(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 }
                 match page {
                     ConfigPage::Settings => settings_page(app, ui, dev),
+                    ConfigPage::Home => home_page(app, ui, dev),
                     ConfigPage::Vlans => vlan_page(app, ui, dev),
                     ConfigPage::Routes => routes_page(app, ui, dev),
                     ConfigPage::Port(i) => port_page(app, ui, dev, i),
@@ -554,6 +566,97 @@ fn field(ui: &mut egui::Ui, label: &str, value: &mut String) {
 fn page_title(ui: &mut egui::Ui, title: &str) {
     ui.vertical_centered(|ui| ui.label(RichText::new(crate::i18n::tr(title)).size(16.0)));
     ui.separator();
+}
+
+/// The form of a home router's settings page, kept between frames.
+#[derive(Debug, Clone, Default)]
+struct HomeForm {
+    lan: String,
+    lan_mask: String,
+    dhcp: bool,
+    dhcp_start: String,
+    internet: String,
+    internet_mask: String,
+    gateway: String,
+    ssid: String,
+    key: String,
+}
+
+impl HomeForm {
+    fn from_device(dev: &Device) -> HomeForm {
+        let lan = dev.svis.iter().find(|s| s.vlan.get() == 1).and_then(|s| s.ip);
+        let inet = dev.ports.iter().find(|p| p.name.starts_with("Internet")).and_then(|p| p.ip);
+        let gw = dev.routes.iter().find(|r| r.net.prefix == 0).and_then(|r| match r.via {
+            packetcraft_model::NextHop::Address(a) => Some(a),
+            _ => None,
+        });
+        let start = dev
+            .dhcp_excluded
+            .iter()
+            .map(|(_, y)| std::net::Ipv4Addr::from(u32::from(*y).saturating_add(1)))
+            .max()
+            .or_else(|| lan.map(|l| std::net::Ipv4Addr::from(u32::from(l.network().addr) + 100)));
+        let wifi = dev.ports.iter().find_map(|p| p.wifi.clone());
+        HomeForm {
+            lan: lan.map(|l| l.addr.to_string()).unwrap_or_default(),
+            lan_mask: lan.map(|l| l.mask().to_string()).unwrap_or_default(),
+            dhcp: !dev.dhcp_pools.is_empty(),
+            dhcp_start: start.map(|a| a.to_string()).unwrap_or_default(),
+            internet: inet.map(|n| n.addr.to_string()).unwrap_or_default(),
+            internet_mask: inet.map(|n| n.mask().to_string()).unwrap_or_default(),
+            gateway: gw.map(|g| g.to_string()).unwrap_or_default(),
+            ssid: wifi.as_ref().map(|w| w.ssid.clone()).unwrap_or_default(),
+            key: wifi.and_then(|w| w.key).unwrap_or_default(),
+        }
+    }
+}
+
+fn home_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
+    let d = dev.id;
+    page_title(ui, "Home Router");
+    let id = egui::Id::unique(("home_form", d.0));
+    let mut f: HomeForm = ui.data_mut(|m| m.get_temp(id)).unwrap_or_else(|| HomeForm::from_device(dev));
+    let mut actions: Vec<(&str, serde_json::Value)> = Vec::new();
+    ui.label(RichText::new(tl("LAN")).strong());
+    field(ui, tl("Router address"), &mut f.lan);
+    field(ui, tl("Subnet Mask"), &mut f.lan_mask);
+    ui.checkbox(&mut f.dhcp, tl("Hand out addresses (DHCP)"));
+    field(ui, tl("First address"), &mut f.dhcp_start);
+    if ui.button(tl("Save LAN")).clicked() {
+        let mut p = json!({"device": d.0, "lan": f.lan.trim(), "lan_mask": f.lan_mask.trim(), "dhcp": f.dhcp});
+        if f.dhcp && !f.dhcp_start.trim().is_empty() {
+            p["dhcp_start"] = json!(f.dhcp_start.trim());
+        }
+        actions.push(("home.settings", p));
+    }
+    ui.separator();
+    ui.label(RichText::new(tl("Internet (static)")).strong());
+    field(ui, tl("IPv4 Address"), &mut f.internet);
+    field(ui, tl("Subnet Mask"), &mut f.internet_mask);
+    field(ui, tl("Default Gateway"), &mut f.gateway);
+    if ui.button(tl("Save Internet")).clicked() {
+        actions.push((
+            "home.settings",
+            json!({"device": d.0, "internet": f.internet.trim(), "internet_mask": f.internet_mask.trim(), "gateway": f.gateway.trim()}),
+        ));
+    }
+    ui.separator();
+    ui.label(RichText::new(tl("Wireless")).strong());
+    field(ui, tl("SSID"), &mut f.ssid);
+    field(ui, tl("WPA2 passphrase (empty: open)"), &mut f.key);
+    if ui.button(tl("Save Wireless")).clicked() {
+        actions.push(("device.wireless", json!({"device": d.0, "ssid": f.ssid.trim(), "key": f.key})));
+    }
+    let mut saved = false;
+    for (cmd, p) in actions {
+        saved |= app.run(cmd, p).is_some();
+    }
+    if saved {
+        // Read back what the router now has.
+        ui.data_mut(|m| m.remove::<HomeForm>(id));
+    } else {
+        ui.data_mut(|m| m.insert_temp(id, f));
+    }
 }
 
 fn settings_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {

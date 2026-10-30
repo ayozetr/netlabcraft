@@ -110,7 +110,9 @@ struct Builder {
 impl Builder {
     fn add_model(&mut self, model: &str, name: &str, x: f32, y: f32) -> Result<packetcraft_core::DeviceId> {
         let m = packetcraft_model::models::find(model).ok_or_else(|| EngineError::Failed(format!("no model {model}")))?;
-        Ok(self.t.add_model(m, Some(name), x * 1.4, y * 1.15)?)
+        let id = self.t.add_model(m, Some(name), x * 1.4, y * 1.15)?;
+        crate::home::factory(&mut self.t, id);
+        Ok(id)
     }
 
     /// Places a device; sample coordinates are on a compact grid, spread out here.

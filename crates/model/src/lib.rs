@@ -997,6 +997,9 @@ pub struct Svi {
     pub description: String,
     #[serde(default, skip_serializing_if = "Ipv6Conf::is_default")]
     pub ipv6: Ipv6Conf,
+    /// `ip nat inside` / `ip nat outside`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nat: Option<NatSide>,
 }
 
 impl Device {
@@ -1006,7 +1009,15 @@ impl Device {
             if self.svis.len() >= MAX_SUBIFS {
                 return None;
             }
-            self.svis.push(Svi { vlan, ip: None, standby: Vec::new(), shutdown: true, description: String::new(), ipv6: Ipv6Conf::default() });
+            self.svis.push(Svi {
+                vlan,
+                ip: None,
+                standby: Vec::new(),
+                shutdown: true,
+                description: String::new(),
+                ipv6: Ipv6Conf::default(),
+                nat: None,
+            });
             self.svis.sort_by_key(|s| s.vlan);
         }
         self.svis.iter_mut().find(|s| s.vlan == vlan)

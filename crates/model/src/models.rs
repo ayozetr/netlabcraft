@@ -24,7 +24,13 @@ pub struct Model {
 impl Model {
     /// A multilayer switch: can route (`ip routing`) and have routed ports (`no switchport`).
     pub fn multilayer(&self) -> bool {
-        self.id.starts_with("Switch-ML")
+        self.id.starts_with("Switch-ML") || self.home_router()
+    }
+
+    /// A home wireless router: a multilayer switch with an Internet port, four LAN ports and a
+    /// radio, set up at the factory to route, translate and hand out addresses.
+    pub fn home_router(&self) -> bool {
+        self.id == "Home-Router"
     }
 }
 
@@ -95,6 +101,13 @@ pub static MODELS: &[Model] = &[
         label: "AccessPoint",
         description: "Wi-Fi access point: bridges its radio and its Ethernet port (SSID, WPA2-PSK)",
         ports: &[run("GigabitEthernet", 0, 0), run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Home-Router",
+        kind: DeviceKind::Switch,
+        label: "Home-Router",
+        description: "Home wireless router: Internet port, 4 LAN ports and Wi-Fi, with DHCP and NAT set up",
+        ports: &[run("Internet", 0, 0), run("Ethernet", 1, 4), run("Wireless", 0, 0)],
     },
     Model {
         id: "Hub-8",

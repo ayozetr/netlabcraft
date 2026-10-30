@@ -376,3 +376,51 @@ fn wifi_hosts_join_an_access_point() {
     assert!(s.execute("device.wireless", json!({"device": ap, "ssid": "x", "key": "short"})).is_err());
     assert!(s.execute("device.wireless", json!({"device": "R1", "ssid": "x"})).is_err());
 }
+
+#[test]
+fn a_home_router_hands_out_addresses_and_translates() {
+    let mut s = Session::new();
+    let home = s.execute("device.add", json!({"model": "Home-Router", "x": 0, "y": 0})).unwrap()["name"].as_str().unwrap().to_string();
+    let laptop = s.execute("device.add", json!({"model": "Laptop-WiFi", "x": 120, "y": 80})).unwrap()["name"].as_str().unwrap().to_string();
+    let pc = s.execute("device.add", json!({"kind": "pc", "x": -100, "y": 100})).unwrap()["name"].as_str().unwrap().to_string();
+    let isp = s.execute("device.add", json!({"kind": "router", "x": 300, "y": 0})).unwrap()["name"].as_str().unwrap().to_string();
+    let web = s.execute("device.add", json!({"kind": "server", "x": 500, "y": 0})).unwrap()["name"].as_str().unwrap().to_string();
+    s.execute("link.add", json!({"a": pc, "a_port": "fa0", "b": home, "b_port": "Ethernet1"})).unwrap();
+    s.execute("link.add", json!({"a": home, "a_port": "Internet0", "b": isp, "b_port": "g0/0"})).unwrap();
+    s.execute("link.add", json!({"a": isp, "a_port": "g0/1", "b": web, "b_port": "g0"})).unwrap();
+    s.execute(
+        "device.configure",
+        json!({"device": isp, "lines": ["interface g0/0", "ip address 203.0.113.1 255.255.255.252", "no shutdown", "interface g0/1", "ip address 198.51.100.1 255.255.255.0", "no shutdown"]}),
+    )
+    .unwrap();
+    s.execute("cli.exec", json!({"device": web, "line": "ipconfig 198.51.100.10 255.255.255.0 198.51.100.1"})).unwrap();
+    // Factory settings: the running configuration says what the router does.
+    s.execute("cli.exec", json!({"device": home, "line": "enable"})).unwrap();
+    let run = s.execute("cli.exec", json!({"device": home, "line": "show running-config"})).unwrap()["output"].as_str().unwrap().to_string();
+    assert!(
+        run.contains("interface Vlan1\n ip address 192.168.0.1 255.255.255.0\n ip nat inside")
+            && run.contains("ip nat inside source list 1 interface Internet0 overload"),
+        "{run}"
+    );
+    // The laptop joins the open factory network; both hosts get addresses from .100 up.
+    let r = s.execute("device.wireless", json!({"device": laptop, "ssid": "HomeNetwork"})).unwrap();
+    assert!(r["associated_with"].as_str().is_some_and(|a| a.contains(&home)), "{r}");
+    let got = s.execute("cli.exec", json!({"device": laptop, "line": "ipconfig /renew"})).unwrap()["output"].as_str().unwrap().to_string();
+    assert!(got.contains("192.168.0.100/24") && got.contains("gateway 192.168.0.1"), "{got}");
+    assert!(
+        s.execute("cli.exec", json!({"device": pc, "line": "ipconfig /renew"})).unwrap()["output"].as_str().unwrap().contains("192.168.0.101/24")
+    );
+    // The Internet side, set from the settings page; the home LAN reaches the web server through NAT.
+    s.execute("home.settings", json!({"device": home, "internet": "203.0.113.2", "internet_mask": "255.255.255.252", "gateway": "203.0.113.1"}))
+        .unwrap();
+    s.execute("net.ping", json!({"from": laptop, "to": "198.51.100.10", "count": 2})).unwrap();
+    assert_eq!(s.execute("net.ping", json!({"from": laptop, "to": "198.51.100.10", "count": 3})).unwrap()["marks"], "!!!");
+    let nat = s.execute("cli.exec", json!({"device": home, "line": "show ip nat translations"})).unwrap()["output"].as_str().unwrap().to_string();
+    assert!(nat.contains("203.0.113.2") && nat.contains("192.168.0.100"), "{nat}");
+    // A new LAN: pool, exclusions and NAT's list follow.
+    let r = s.execute("home.settings", json!({"device": home, "lan": "10.10.0.1", "lan_mask": "255.255.255.0", "dhcp_start": "10.10.0.50"})).unwrap();
+    assert!(r["config"].as_str().unwrap().contains("access-list 1 permit 10.10.0.0 0.0.0.255"));
+    assert!(s.execute("cli.exec", json!({"device": pc, "line": "ipconfig /renew"})).unwrap()["output"].as_str().unwrap().contains("10.10.0.50/24"));
+    assert!(s.execute("home.settings", json!({"device": home, "dhcp_start": "172.16.0.5"})).is_err());
+    assert!(s.execute("home.settings", json!({"device": isp, "dhcp": false})).is_err());
+}

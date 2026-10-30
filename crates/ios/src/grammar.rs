@@ -456,68 +456,62 @@ pub static SPECS: &[Spec] = &[
     spec!(
         AccessList,
         Modes::CONFIG,
-        Modes::ROUTER,
+        Modes::BOTH,
         [K("access-list"), Arg("<1-199>"), Rest("{permit|deny|remark} ...")],
         "Add a line to a numbered access list"
     ),
-    spec!(NoAccessList, Modes::CONFIG, Modes::ROUTER, [K("no"), K("access-list"), Arg("<1-199>")], "Delete a numbered access list"),
+    spec!(NoAccessList, Modes::CONFIG, Modes::BOTH, [K("no"), K("access-list"), Arg("<1-199>")], "Delete a numbered access list"),
     spec!(
         IpAccessListStandard,
         Modes::CONFIG,
-        Modes::ROUTER,
+        Modes::BOTH,
         [K("ip"), K("access-list"), K("standard"), Arg("WORD")],
         "Create or edit a named standard list"
     ),
     spec!(
         IpAccessListExtended,
         Modes::CONFIG,
-        Modes::ROUTER,
+        Modes::BOTH,
         [K("ip"), K("access-list"), K("extended"), Arg("WORD")],
         "Create or edit a named extended list"
     ),
     spec!(
         NoIpAccessList,
         Modes::CONFIG,
-        Modes::ROUTER,
+        Modes::BOTH,
         [K("no"), K("ip"), K("access-list"), Arg("{standard|extended}"), Arg("WORD")],
         "Delete a named list"
     ),
-    spec!(AclEntryLine, Modes::ACL, Modes::ROUTER, [K("permit"), Rest("...")], "Allow matching packets"),
-    spec!(AclEntryLine, Modes::ACL, Modes::ROUTER, [K("deny"), Rest("...")], "Drop matching packets"),
-    spec!(Accepted, Modes::ACL, Modes::ROUTER, [K("remark"), Rest("LINE")], "A comment (accepted, not kept)"),
-    spec!(NoAclEntryLine, Modes::ACL, Modes::ROUTER, [K("no"), Rest("{permit|deny} ...")], "Remove a line"),
-    spec!(AccessGroup, IFS, Modes::ROUTER, [K("ip"), K("access-group"), Arg("WORD"), Arg("{in|out}")], "Filter this interface's traffic"),
-    spec!(NoAccessGroup, IFS, Modes::ROUTER, [K("no"), K("ip"), K("access-group"), Arg("WORD"), Arg("{in|out}")], "Stop filtering"),
+    spec!(AclEntryLine, Modes::ACL, Modes::BOTH, [K("permit"), Rest("...")], "Allow matching packets"),
+    spec!(AclEntryLine, Modes::ACL, Modes::BOTH, [K("deny"), Rest("...")], "Drop matching packets"),
+    spec!(Accepted, Modes::ACL, Modes::BOTH, [K("remark"), Rest("LINE")], "A comment (accepted, not kept)"),
+    spec!(NoAclEntryLine, Modes::ACL, Modes::BOTH, [K("no"), Rest("{permit|deny} ...")], "Remove a line"),
+    spec!(AccessGroup, IFS, Modes::BOTH, [K("ip"), K("access-group"), Arg("WORD"), Arg("{in|out}")], "Filter this interface's traffic"),
+    spec!(NoAccessGroup, IFS, Modes::BOTH, [K("no"), K("ip"), K("access-group"), Arg("WORD"), Arg("{in|out}")], "Stop filtering"),
     spec!(Accepted, Modes::LINE, Modes::BOTH, [K("access-class"), Rest("WORD {in|out}")], "Restrict remote logins (accepted, not simulated)"),
-    spec!(ShowAccessLists, EXECS, Modes::ROUTER, [K("show"), K("access-lists")], "Access lists and their matches"),
-    spec!(ShowAccessLists, EXECS, Modes::ROUTER, [K("show"), K("ip"), K("access-lists")], "Access lists and their matches"),
-    spec!(ClearAclCounters, Modes::EXEC, Modes::ROUTER, [K("clear"), K("access-list"), K("counters")], "Reset the match counts"),
-    spec!(NatSideCmd, IFS, Modes::ROUTER, [K("ip"), K("nat"), Arg("{inside|outside}")], "Mark this interface inside or outside NAT"),
-    spec!(NoNatSide, IFS, Modes::ROUTER, [K("no"), K("ip"), K("nat"), Arg("{inside|outside}")], "Take this interface out of NAT"),
+    spec!(ShowAccessLists, EXECS, Modes::BOTH, [K("show"), K("access-lists")], "Access lists and their matches"),
+    spec!(ShowAccessLists, EXECS, Modes::BOTH, [K("show"), K("ip"), K("access-lists")], "Access lists and their matches"),
+    spec!(ClearAclCounters, Modes::EXEC, Modes::BOTH, [K("clear"), K("access-list"), K("counters")], "Reset the match counts"),
+    spec!(NatSideCmd, ANY_IF, Modes::BOTH, [K("ip"), K("nat"), Arg("{inside|outside}")], "Mark this interface inside or outside NAT"),
+    spec!(NoNatSide, ANY_IF, Modes::BOTH, [K("no"), K("ip"), K("nat"), Arg("{inside|outside}")], "Take this interface out of NAT"),
     spec!(
         NatSource,
         Modes::CONFIG,
-        Modes::ROUTER,
+        Modes::BOTH,
         [K("ip"), K("nat"), K("inside"), K("source"), Rest("{static A B | list ACL {interface IF | pool NAME} [overload]}")],
         "Translate inside addresses"
     ),
-    spec!(
-        NoNatSource,
-        Modes::CONFIG,
-        Modes::ROUTER,
-        [K("no"), K("ip"), K("nat"), K("inside"), K("source"), Rest("...")],
-        "Remove a translation rule"
-    ),
+    spec!(NoNatSource, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("nat"), K("inside"), K("source"), Rest("...")], "Remove a translation rule"),
     spec!(
         NatPool,
         Modes::CONFIG,
-        Modes::ROUTER,
+        Modes::BOTH,
         [K("ip"), K("nat"), K("pool"), Arg("WORD"), Rest("START END {netmask M | prefix-length N}")],
         "Addresses to translate to"
     ),
-    spec!(NoNatPool, Modes::CONFIG, Modes::ROUTER, [K("no"), K("ip"), K("nat"), K("pool"), Arg("WORD")], "Delete a NAT pool"),
-    spec!(ShowNat, EXECS, Modes::ROUTER, [K("show"), K("ip"), K("nat"), K("translations")], "Translations in use"),
-    spec!(ClearNat, Modes::EXEC, Modes::ROUTER, [K("clear"), K("ip"), K("nat"), K("translation"), Rest("*")], "Forget dynamic translations"),
+    spec!(NoNatPool, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("nat"), K("pool"), Arg("WORD")], "Delete a NAT pool"),
+    spec!(ShowNat, EXECS, Modes::BOTH, [K("show"), K("ip"), K("nat"), K("translations")], "Translations in use"),
+    spec!(ClearNat, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("nat"), K("translation"), Rest("*")], "Forget dynamic translations"),
     spec!(EncapSerial, Modes::IF, Modes::ROUTER, [K("encapsulation"), Arg("{hdlc|ppp}")], "Framing on a serial link"),
     spec!(ClockRate, Modes::IF, Modes::ROUTER, [K("clock"), K("rate"), Arg("<1200-2000000>")], "Clock a serial link from its DCE end"),
     spec!(NoClockRate, Modes::IF, Modes::ROUTER, [K("no"), K("clock"), K("rate")], "Remove the clock rate"),
@@ -588,7 +582,7 @@ pub static SPECS: &[Spec] = &[
     spec!(UndebugAll, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("icmp")], "Stop reporting echo messages"),
     spec!(DebugIpRip, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("rip")], "Report the RIP updates this router hears"),
     spec!(DebugIpOther, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("packet")], "Report each packet this device routes"),
-    spec!(DebugIpOther, Modes::EXEC, Modes::ROUTER, [K("debug"), K("ip"), K("nat")], "Report new NAT translations"),
+    spec!(DebugIpOther, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("nat")], "Report new NAT translations"),
     spec!(
         DebugIpOther,
         Modes::EXEC,
@@ -597,7 +591,7 @@ pub static SPECS: &[Spec] = &[
         "Report the addresses this DHCP server hands out"
     ),
     spec!(NoDebugIpOther, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("packet")], "Stop reporting packets"),
-    spec!(NoDebugIpOther, Modes::EXEC, Modes::ROUTER, [K("no"), K("debug"), K("ip"), K("nat")], "Stop reporting NAT"),
+    spec!(NoDebugIpOther, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("nat")], "Stop reporting NAT"),
     spec!(NoDebugIpOther, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("dhcp"), K("server"), K("events")], "Stop reporting DHCP"),
     spec!(NoDebugIpRip, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("rip")], "Stop reporting RIP updates"),
     spec!(
@@ -1073,28 +1067,28 @@ pub static SPECS: &[Spec] = &[
     spec!(NoServicePasswordEncryption, Modes::CONFIG, Modes::BOTH, [K("no"), K("service"), K("password-encryption")], "Write passwords in clear"),
     spec!(DomainLookup, Modes::CONFIG, Modes::BOTH, [K("ip"), K("domain-lookup")], "Resolve mistyped commands as host names"),
     spec!(NoDomainLookup, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("domain-lookup")], "Don't resolve mistyped commands"),
-    spec!(DhcpPool, Modes::CONFIG, Modes::ROUTER, [K("ip"), K("dhcp"), K("pool"), Arg("WORD")], "Create or edit a DHCP pool"),
-    spec!(NoDhcpPool, Modes::CONFIG, Modes::ROUTER, [K("no"), K("ip"), K("dhcp"), K("pool"), Arg("WORD")], "Delete a DHCP pool"),
+    spec!(DhcpPool, Modes::CONFIG, Modes::BOTH, [K("ip"), K("dhcp"), K("pool"), Arg("WORD")], "Create or edit a DHCP pool"),
+    spec!(NoDhcpPool, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("dhcp"), K("pool"), Arg("WORD")], "Delete a DHCP pool"),
     spec!(
         DhcpExcluded,
         Modes::CONFIG,
-        Modes::ROUTER,
+        Modes::BOTH,
         [K("ip"), K("dhcp"), K("excluded-address"), Rest("A.B.C.D [A.B.C.D]")],
         "Addresses DHCP never hands out"
     ),
     spec!(
         NoDhcpExcluded,
         Modes::CONFIG,
-        Modes::ROUTER,
+        Modes::BOTH,
         [K("no"), K("ip"), K("dhcp"), K("excluded-address"), Rest("A.B.C.D [A.B.C.D]")],
         "Hand those addresses out again"
     ),
-    spec!(DhcpNetwork, Modes::DHCP, Modes::ROUTER, [K("network"), Arg("A.B.C.D"), Arg("MASK")], "The pool's network"),
-    spec!(DhcpDefaultRouter, Modes::DHCP, Modes::ROUTER, [K("default-router"), Arg("A.B.C.D")], "Gateway given to clients"),
-    spec!(DhcpDns, Modes::DHCP, Modes::ROUTER, [K("dns-server"), Arg("A.B.C.D")], "DNS server given to clients"),
-    spec!(ShowDhcpBinding, EXECS, Modes::ROUTER, [K("show"), K("ip"), K("dhcp"), K("binding")], "Addresses DHCP handed out"),
-    spec!(ShowDhcpPool, EXECS, Modes::ROUTER, [K("show"), K("ip"), K("dhcp"), K("pool")], "DHCP pools"),
-    spec!(ClearDhcpBinding, Modes::EXEC, Modes::ROUTER, [K("clear"), K("ip"), K("dhcp"), K("binding"), Rest("*")], "Forget DHCP leases"),
+    spec!(DhcpNetwork, Modes::DHCP, Modes::BOTH, [K("network"), Arg("A.B.C.D"), Arg("MASK")], "The pool's network"),
+    spec!(DhcpDefaultRouter, Modes::DHCP, Modes::BOTH, [K("default-router"), Arg("A.B.C.D")], "Gateway given to clients"),
+    spec!(DhcpDns, Modes::DHCP, Modes::BOTH, [K("dns-server"), Arg("A.B.C.D")], "DNS server given to clients"),
+    spec!(ShowDhcpBinding, EXECS, Modes::BOTH, [K("show"), K("ip"), K("dhcp"), K("binding")], "Addresses DHCP handed out"),
+    spec!(ShowDhcpPool, EXECS, Modes::BOTH, [K("show"), K("ip"), K("dhcp"), K("pool")], "DHCP pools"),
+    spec!(ClearDhcpBinding, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("dhcp"), K("binding"), Rest("*")], "Forget DHCP leases"),
     spec!(
         StpPriority,
         Modes::CONFIG,
@@ -1315,7 +1309,7 @@ mod tests {
         // Mode and device gate commands.
         assert!(resolve(&["configure", "terminal"], Modes::USER, R).is_err());
         assert!(resolve(&["vlan", "10"], Modes::CONFIG, R).is_err());
-        assert!(resolve(&["no", "ip", "nat", "pool", "p"], Modes::CONFIG, S).is_err());
+        assert!(resolve(&["no", "interface", "g0/0.1"], Modes::CONFIG, S).is_err());
     }
 
     #[test]

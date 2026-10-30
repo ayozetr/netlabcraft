@@ -197,7 +197,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                                 if m.multilayer {
                                     icons::multilayer_mark(&p, icon);
                                 }
-                                if m.short == "AccessPoint" {
+                                if m.short == "AccessPoint" || m.short == "Home-Router" {
                                     icons::access_point_mark(&p, icon);
                                 }
                             }

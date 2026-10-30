@@ -1789,6 +1789,15 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 _ => return Err("% `inside` or `outside`".into()),
             };
             let set = spec.id == Id::NatSideCmd;
+            if let Mode::Svi(v) = c.cli.mode {
+                let svi = c.dm()?.svi_mut(v).ok_or("% Too many VLAN interfaces")?;
+                if set {
+                    svi.nat = Some(side);
+                } else if svi.nat == Some(side) {
+                    svi.nat = None;
+                }
+                return Ok(String::new());
+            }
             c.each_if(|p, sub| {
                 let slot = match sub {
                     Some(s) => &mut s.nat,

@@ -365,3 +365,15 @@ R1 joins two LANs.\n\n1. Name the router R1.\n2. Protect privileged mode with th
 PC1 reaches PC2	PC1 llega a PC2
 Both router interfaces need their address and `no shutdown`.	Las dos interfaces del router necesitan su dirección y `no shutdown`.
 (no instructions)	(sin instrucciones)
+Home Router	Router doméstico
+LAN	LAN
+Router address	Dirección del router
+Hand out addresses (DHCP)	Repartir direcciones (DHCP)
+First address	Primera dirección
+Save LAN	Guardar LAN
+Internet (static)	Internet (estática)
+Save Internet	Guardar Internet
+Wireless	Inalámbrica
+SSID	SSID
+WPA2 passphrase (empty: open)	Clave WPA2 (vacía: abierta)
+Save Wireless	Guardar Wi-Fi

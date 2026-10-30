@@ -19,6 +19,8 @@ use serde_json::Value;
 pub mod activity;
 pub mod catalog;
 mod cmd;
+pub mod home;
+
 pub mod sample;
 
 #[cfg(test)]

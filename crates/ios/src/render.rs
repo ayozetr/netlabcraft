@@ -273,6 +273,7 @@ pub fn running_config(d: &Device) -> String {
             }
         }
         ipv6_lines(&mut s, &svi.ipv6);
+        nat_side(&mut s, svi.nat);
         standby_lines(&mut s, &svi.standby);
         ospf_if_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
         let _ = writeln!(s, "{}", if svi.shutdown { " shutdown" } else { " no shutdown" });

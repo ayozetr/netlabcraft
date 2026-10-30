@@ -100,7 +100,8 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             };
             let (x, y) = (f32_param(p, "x").unwrap_or(0.0), f32_param(p, "y").unwrap_or(0.0));
             let mut t = s.topology.clone();
-            let id = t.add_model(model, opt_str(p, "name"), x, y)?;
+                        let id = t.add_model(model, opt_str(p, "name"), x, y)?;
+            crate::home::factory(&mut t, id);
             s.checkpoint();
             s.topology = t;
             s.changed();
@@ -231,6 +232,26 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         "device.models" => Ok(Value::Array(
             models::MODELS.iter().map(|m| json!({"id": m.id, "kind": m.kind.id(), "label": m.label, "description": m.description, "ports": m.port_names()})).collect(),
         )),
+                                "home.settings" => {
+            let d = device_param(s, p, "device")?;
+            let pair = |a: &str, b: &str| -> Option<(String, String)> { Some((opt_str(p, a)?.to_string(), opt_str(p, b)?.to_string())) };
+            let settings = crate::home::Settings {
+                lan: pair("lan", "lan_mask"),
+                dhcp: p.get("dhcp").and_then(Value::as_bool),
+                dhcp_start: opt_str(p, "dhcp_start").map(str::to_string),
+                internet: pair("internet", "internet_mask").and_then(|(a, m)| Some((a, m, opt_str(p, "gateway")?.to_string()))),
+            };
+            let config = crate::home::settings_config(&s.topology, d, &settings).map_err(bad)?;
+            let mut t = s.topology.clone();
+            let failed = packetcraft_ios::apply_config(&mut t, &mut s.sim, d, &config);
+            if let Some(f) = failed.first() {
+                return Err(bad(format!("the router refused a setting: {f}")));
+            }
+            s.checkpoint();
+            s.topology = t;
+            s.changed();
+            Ok(json!({"config": config}))
+        }
                         "device.wireless" => {
             let d = device_param(s, p, "device")?;
             let dev = s.topology.device(d).ok_or_else(|| bad("no such device"))?;

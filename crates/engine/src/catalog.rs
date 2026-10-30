@@ -31,6 +31,14 @@ pub static CATALOG: &[CommandInfo] = &[
         true
     ),
     c!(
+        "home.settings",
+        "Home router settings",
+        "",
+        None,
+        r#"{"device", "lan"?+"lan_mask"?, "dhcp"?: true|false, "dhcp_start"?, "internet"?+"internet_mask"?+"gateway"?} → {"config": the lines applied}"#,
+        true
+    ),
+    c!(
         "activity.show",
         "Activity",
         "",

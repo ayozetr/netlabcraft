@@ -9,6 +9,7 @@ Every front end (UI, `packetcraft-cli run`, MCP `packetcraft_run`) runs these.
 | Id | Label | Menu | Shortcut | Parameters |
 |---|---|---|---|---|
 | `device.wireless` | Wi-Fi settings |  |  | `{"device", "port"?: "Wireless0", "ssid": "network name (empty: radio off)", "key"?: "WPA2-PSK passphrase, 8-63 characters (none: open)", "channel"?: 1-13}` |
+| `home.settings` | Home router settings |  |  | `{"device", "lan"?+"lan_mask"?, "dhcp"?: true\|false, "dhcp_start"?, "internet"?+"internet_mask"?+"gateway"?} → {"config": the lines applied}` |
 | `activity.show` | Activity |  |  | `{} → {"activity" (or null; a locked one without its checks), "total_points", "checks", "locked"}` |
 | `activity.set` | Activity Wizard… | Extensions |  | `{"title"?, "instructions"?, "hidden"?: true to store configuration answers as hashes, "time_limit"?: minutes (0: none), "score_only"?: while locked, Check Results shows the score only}` |
 | `activity.capture` | Capture answers from this lab |  |  | `{} → {"checks": n}: configuration lines and host addresses become checks (pings and command checks are kept)` |
@@ -114,29 +115,29 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no description` | interface, subinterface | router, switch | Remove the description |
 | `ip address A.B.C.D MASK` |  | switch | Set the management address |
 | `no ip address` |  | switch | Remove the management address |
-| `access-list <1-199> {permit\|deny\|remark} ...` | config | router | Add a line to a numbered access list |
-| `no access-list <1-199>` | config | router | Delete a numbered access list |
-| `ip access-list standard WORD` | config | router | Create or edit a named standard list |
-| `ip access-list extended WORD` | config | router | Create or edit a named extended list |
-| `no ip access-list {standard\|extended} WORD` | config | router | Delete a named list |
-| `permit ...` |  | router | Allow matching packets |
-| `deny ...` |  | router | Drop matching packets |
-| `remark LINE` |  | router | A comment (accepted, not kept) |
-| `no {permit\|deny} ...` |  | router | Remove a line |
-| `ip access-group WORD {in\|out}` | interface, subinterface | router | Filter this interface's traffic |
-| `no ip access-group WORD {in\|out}` | interface, subinterface | router | Stop filtering |
+| `access-list <1-199> {permit\|deny\|remark} ...` | config | router, switch | Add a line to a numbered access list |
+| `no access-list <1-199>` | config | router, switch | Delete a numbered access list |
+| `ip access-list standard WORD` | config | router, switch | Create or edit a named standard list |
+| `ip access-list extended WORD` | config | router, switch | Create or edit a named extended list |
+| `no ip access-list {standard\|extended} WORD` | config | router, switch | Delete a named list |
+| `permit ...` |  | router, switch | Allow matching packets |
+| `deny ...` |  | router, switch | Drop matching packets |
+| `remark LINE` |  | router, switch | A comment (accepted, not kept) |
+| `no {permit\|deny} ...` |  | router, switch | Remove a line |
+| `ip access-group WORD {in\|out}` | interface, subinterface | router, switch | Filter this interface's traffic |
+| `no ip access-group WORD {in\|out}` | interface, subinterface | router, switch | Stop filtering |
 | `access-class WORD {in\|out}` |  | router, switch | Restrict remote logins (accepted, not simulated) |
-| `show access-lists` | user, privileged | router | Access lists and their matches |
-| `show ip access-lists` | user, privileged | router | Access lists and their matches |
-| `clear access-list counters` | privileged | router | Reset the match counts |
-| `ip nat {inside\|outside}` | interface, subinterface | router | Mark this interface inside or outside NAT |
-| `no ip nat {inside\|outside}` | interface, subinterface | router | Take this interface out of NAT |
-| `ip nat inside source {static A B \| list ACL {interface IF \| pool NAME} [overload]}` | config | router | Translate inside addresses |
-| `no ip nat inside source ...` | config | router | Remove a translation rule |
-| `ip nat pool WORD START END {netmask M \| prefix-length N}` | config | router | Addresses to translate to |
-| `no ip nat pool WORD` | config | router | Delete a NAT pool |
-| `show ip nat translations` | user, privileged | router | Translations in use |
-| `clear ip nat translation *` | privileged | router | Forget dynamic translations |
+| `show access-lists` | user, privileged | router, switch | Access lists and their matches |
+| `show ip access-lists` | user, privileged | router, switch | Access lists and their matches |
+| `clear access-list counters` | privileged | router, switch | Reset the match counts |
+| `ip nat {inside\|outside}` | interface, subinterface | router, switch | Mark this interface inside or outside NAT |
+| `no ip nat {inside\|outside}` | interface, subinterface | router, switch | Take this interface out of NAT |
+| `ip nat inside source {static A B \| list ACL {interface IF \| pool NAME} [overload]}` | config | router, switch | Translate inside addresses |
+| `no ip nat inside source ...` | config | router, switch | Remove a translation rule |
+| `ip nat pool WORD START END {netmask M \| prefix-length N}` | config | router, switch | Addresses to translate to |
+| `no ip nat pool WORD` | config | router, switch | Delete a NAT pool |
+| `show ip nat translations` | user, privileged | router, switch | Translations in use |
+| `clear ip nat translation *` | privileged | router, switch | Forget dynamic translations |
 | `encapsulation {hdlc\|ppp}` | interface | router | Framing on a serial link |
 | `clock rate <1200-2000000>` | interface | router | Clock a serial link from its DCE end |
 | `no clock rate` | interface | router | Remove the clock rate |
@@ -183,10 +184,10 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no debug ip icmp` | privileged | router, switch | Stop reporting echo messages |
 | `debug ip rip` | privileged | router, switch | Report the RIP updates this router hears |
 | `debug ip packet` | privileged | router, switch | Report each packet this device routes |
-| `debug ip nat` | privileged | router | Report new NAT translations |
+| `debug ip nat` | privileged | router, switch | Report new NAT translations |
 | `debug ip dhcp server events` | privileged | router, switch | Report the addresses this DHCP server hands out |
 | `no debug ip packet` | privileged | router, switch | Stop reporting packets |
-| `no debug ip nat` | privileged | router | Stop reporting NAT |
+| `no debug ip nat` | privileged | router, switch | Stop reporting NAT |
 | `no debug ip dhcp server events` | privileged | router, switch | Stop reporting DHCP |
 | `no debug ip rip` | privileged | router, switch | Stop reporting RIP updates |
 | `debug ip ospf adj\|events\|hello` | privileged | router | Report the OSPF hellos this router hears |
@@ -398,16 +399,16 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no service password-encryption` | config | router, switch | Write passwords in clear |
 | `ip domain-lookup` | config | router, switch | Resolve mistyped commands as host names |
 | `no ip domain-lookup` | config | router, switch | Don't resolve mistyped commands |
-| `ip dhcp pool WORD` | config | router | Create or edit a DHCP pool |
-| `no ip dhcp pool WORD` | config | router | Delete a DHCP pool |
-| `ip dhcp excluded-address A.B.C.D [A.B.C.D]` | config | router | Addresses DHCP never hands out |
-| `no ip dhcp excluded-address A.B.C.D [A.B.C.D]` | config | router | Hand those addresses out again |
-| `network A.B.C.D MASK` |  | router | The pool's network |
-| `default-router A.B.C.D` |  | router | Gateway given to clients |
-| `dns-server A.B.C.D` |  | router | DNS server given to clients |
-| `show ip dhcp binding` | user, privileged | router | Addresses DHCP handed out |
-| `show ip dhcp pool` | user, privileged | router | DHCP pools |
-| `clear ip dhcp binding *` | privileged | router | Forget DHCP leases |
+| `ip dhcp pool WORD` | config | router, switch | Create or edit a DHCP pool |
+| `no ip dhcp pool WORD` | config | router, switch | Delete a DHCP pool |
+| `ip dhcp excluded-address A.B.C.D [A.B.C.D]` | config | router, switch | Addresses DHCP never hands out |
+| `no ip dhcp excluded-address A.B.C.D [A.B.C.D]` | config | router, switch | Hand those addresses out again |
+| `network A.B.C.D MASK` |  | router, switch | The pool's network |
+| `default-router A.B.C.D` |  | router, switch | Gateway given to clients |
+| `dns-server A.B.C.D` |  | router, switch | DNS server given to clients |
+| `show ip dhcp binding` | user, privileged | router, switch | Addresses DHCP handed out |
+| `show ip dhcp pool` | user, privileged | router, switch | DHCP pools |
+| `clear ip dhcp binding *` | privileged | router, switch | Forget DHCP leases |
 | `spanning-tree vlan <1-4094>[,-] priority <0-61440>` | config | switch | Bridge priority (multiples of 4096) |
 | `no spanning-tree vlan <1-4094>[,-] priority` | config | switch | Back to priority 32768 |
 | `spanning-tree vlan <1-4094>[,-] root {primary\|secondary}` | config | switch | Make this switch the root (or the backup root) |
