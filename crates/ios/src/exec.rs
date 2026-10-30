@@ -1644,7 +1644,16 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::L2ShowPortChannel
         | Id::L2LacpPriority
         | Id::L2NoLacpPriority
-        | Id::L2ShowLacpNeighbor => l2sec::command(&mut c, spec.id, &args),
+        | Id::L2ShowLacpNeighbor
+        | Id::L2ShowVlanId
+        | Id::L2ShowVlanSummary
+        | Id::L2ShowDtp
+        | Id::L2ShowCounters
+        | Id::L2TrunkEncap
+        | Id::L2NoTrunkEncap
+        | Id::L2SdmPrefer
+        | Id::L2NoSdmPrefer
+        | Id::L2ShowSdm => l2sec::command(&mut c, spec.id, &args),
         Id::FwNameif
         | Id::FwNoNameif
         | Id::FwSecurityLevel

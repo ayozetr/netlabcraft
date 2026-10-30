@@ -692,6 +692,15 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `lacp port-priority <1-65535>` | interface | switch | LACP priority of this port (lower is preferred) |
 | `no lacp port-priority` | interface | switch | LACP priority back to 32768 |
 | `show lacp neighbor` | user, privileged | switch | What LACP hears from the other end |
+| `show vlan id <1-4094>` | user, privileged | switch | One VLAN and its ports |
+| `show vlan summary` | user, privileged | switch | How many VLANs exist |
+| `show dtp` | user, privileged | switch | Trunk negotiation on each port |
+| `show interfaces counters` | user, privileged | switch | Frames and bytes in and out of each port |
+| `switchport trunk encapsulation {dot1q\|isl\|negotiate}` | interface | switch | Trunk tagging (multilayer switches) |
+| `no switchport trunk encapsulation` | interface | switch | Trunk tagging back to the default |
+| `sdm prefer {default\|dual-ipv4-and-ipv6 default\|lanbase-routing\|vlan\|advanced}` | config | switch | Memory template, used from the next reload |
+| `no sdm prefer` | config | switch | Default template from the next reload |
+| `show sdm prefer` | user, privileged | switch | Memory template now and after reload |
 | `show spanning-tree` | user, privileged | switch | Spanning trees of every VLAN |
 | `show spanning-tree vlan <1-4094>` | user, privileged | switch | One VLAN's spanning tree |
 | `nameif NAME` | interface, subinterface | firewall | Name the interface (rules, routes and NAT refer to it by this name) |

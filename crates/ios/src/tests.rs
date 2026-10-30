@@ -4051,3 +4051,104 @@ fn port_security_aging_forgets_learned_addresses() {
     lab.run(s, "conf t\nint fa0/3");
     assert!(lab.try_run(s, "switchport port-security aging time 5").contains("no port security"));
 }
+
+#[test]
+fn small_switch_commands() {
+    let mut lab = Lab::new();
+    let s = lab.add(DeviceKind::Switch);
+    let s2 = lab.add(DeviceKind::Switch);
+    let a = lab.add(DeviceKind::Pc);
+    lab.cable(a, "fa0", s, "fa0/1");
+    lab.cable(s, "g0/1", s2, "g0/1");
+    lab.run(s, "en\nconf t\nvtp mode transparent\nvlan 10\nname SALES\nvlan 2000\nexit\nint fa0/1\nswitchport access vlan 10\nint g0/1\nswitchport mode trunk\nend");
+    let v = lab.run(s, "show vlan id 10");
+    assert!(v.contains("VLAN 10: SALES") && v.contains("Access ports:    Fa0/1") && v.contains("Trunks carrying: Gi0/1"), "{v}");
+    assert!(lab.try_run(s, "show vlan id 99").contains("not in this switch's VLAN database"));
+    let sum = lab.run(s, "show vlan summary");
+    assert!(sum.contains("VLANs in the database:      3") && sum.contains("Extended range (1006-4094): 1"), "{sum}");
+    let dtp = lab.run(s, "show dtp");
+    assert!(dtp.contains("Gi0/1      trunk") && dtp.contains("Fa0/1      access             yes         access"), "{dtp}");
+    lab.run(a, "ipconfig 10.0.0.1 255.255.255.0");
+    let _ = lab.try_run(a, "ping 10.0.0.9");
+    let counters = lab.run(s, "show interfaces counters");
+    assert!(counters.contains("Bytes in") && counters.contains("Bytes out"), "{counters}");
+    let fa1 = counters.lines().find(|l| l.starts_with("Fa0/1 ")).unwrap();
+    assert!(fa1.split_whitespace().nth(1).is_some_and(|n| n != "0"), "{counters}");
+    // Trunk encapsulation: refused on a plain switch, kept on a multilayer one.
+    lab.run(s, "conf t\nint g0/1");
+    assert!(lab.try_run(s, "switchport trunk encapsulation dot1q").contains("802.1Q only"));
+    lab.run(s, "end");
+    let ml = lab.t.add_model(netlabcraft_model::models::find("Switch-ML-24").unwrap(), None, 0.0, 0.0).unwrap();
+    lab.run(ml, "en\nconf t\nint g0/1\nswitchport trunk encapsulation dot1q\nswitchport mode trunk\nend");
+    assert!(lab.run(ml, "show run").contains(" switchport trunk encapsulation dot1q"));
+    lab.run(ml, "conf t\nint g0/1");
+    assert!(lab.try_run(ml, "switchport trunk encapsulation isl").contains("ISL is not simulated"));
+    lab.run(ml, "end");
+    // SDM: chosen now, used after a reload; not part of the configuration.
+    let out = lab.run(s, "conf t\nsdm prefer lanbase-routing\nend\nshow sdm prefer");
+    assert!(out.contains("Template in use:  default") && out.contains("After the next reload: lanbase-routing"), "{out}");
+    lab.run(s, "conf t");
+    assert!(lab.try_run(s, "sdm prefer fastest").contains("not a template"));
+    lab.run(s, "end\nreload");
+    let out = lab.run(s, "en\nshow sdm prefer");
+    assert!(out.contains("Template in use:  lanbase-routing") && !out.contains("After the next reload"), "{out}");
+}
+
+#[test]
+fn switch_protection_config_round_trips() {
+    let mut lab = Lab::new();
+    let s = lab.add(DeviceKind::Switch);
+    lab.run(
+        s,
+        "en
+        conf t
+        ip dhcp snooping
+        ip dhcp snooping vlan 1,10-12
+        no ip dhcp snooping information option
+        ip arp inspection vlan 10
+        ip arp inspection validate dst-mac
+        spanning-tree portfast default
+        spanning-tree portfast bpduguard default
+        errdisable recovery cause all
+        errdisable recovery interval 60
+        port-channel load-balance src-dst-mac
+        int fa0/1
+        switchport port-security
+        switchport port-security aging time 10
+        spanning-tree bpduguard enable
+        spanning-tree guard root
+        spanning-tree link-type shared
+        spanning-tree cost 7
+        spanning-tree vlan 10,20 cost 30
+        spanning-tree port-priority 32
+        spanning-tree vlan 10 port-priority 224
+        ip dhcp snooping trust
+        ip dhcp snooping limit rate 15
+        ip arp inspection trust
+        ip arp inspection limit rate 20
+        int fa0/23
+        channel-group 1 mode active
+        lacp port-priority 200
+        end",
+    );
+    let before = lab.run(s, "show run");
+    for line in [
+        "errdisable recovery cause bpduguard",
+        "errdisable recovery cause psecure-violation",
+        "errdisable recovery interval 60",
+        " spanning-tree vlan 20 cost 30",
+    ] {
+        assert!(before.contains(line), "{line}\n{before}");
+    }
+    let body: String = before.lines().filter(|l| !l.starts_with("hostname")).map(|l| format!("{l}\n")).collect();
+    let s2 = lab.add(DeviceKind::Switch);
+    let failed = crate::exec::apply_config(&mut lab.t, &mut lab.sim, s2, &body);
+    assert!(failed.is_empty(), "{failed:?}");
+    let after = lab.run(s2, "en\nshow run");
+    assert_eq!(after.replace("S2", "S1"), before);
+    // The lab file keeps it too.
+    let json = netlabcraft_model::file::to_json(&lab.t).unwrap();
+    let back = netlabcraft_model::file::from_json(&json).unwrap();
+    assert_eq!(back.device(s).unwrap().l2, lab.t.device(s).unwrap().l2);
+    assert_eq!(back.device(s).unwrap().ports[0].l2, lab.t.device(s).unwrap().ports[0].l2);
+}

@@ -6,10 +6,10 @@
 use std::fmt::Write as _;
 
 use netlabcraft_core::{VlanId, VlanSet};
-use netlabcraft_model::l2sec::{ArpValidate, ERRDISABLE_INTERVAL, ErrCause, LinkType, LoadBalance, PortL2, vlan_list};
+use netlabcraft_model::l2sec::{ArpValidate, ERRDISABLE_INTERVAL, ErrCause, LinkType, LoadBalance, PortL2, SDM_TEMPLATES, vlan_list};
 use netlabcraft_model::{Device, DeviceKind, End, Topology, ifname};
-use netlabcraft_sim::Sim;
 use netlabcraft_sim::stp::Role;
+use netlabcraft_sim::{Sim, port_up};
 
 use super::{Ctx, R};
 use crate::grammar::Id;
@@ -329,6 +329,56 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             })
         }
         L2ShowLacpNeighbor => Ok(show_lacp_neighbors(c.t, c.d()?)),
+        // ---- small switch reports and settings ----
+        L2ShowVlanId => {
+            let v: VlanId = arg(0).parse().map_err(|e| format!("% {e}"))?;
+            show_vlan_id(c.t, c.d()?, v)
+        }
+        L2ShowVlanSummary => Ok(show_vlan_summary(c.d()?)),
+        L2ShowDtp => Ok(show_dtp(c.t, c.d()?)),
+        L2ShowCounters => Ok(show_counters(c.sim, c.d()?)),
+        L2TrunkEncap | L2NoTrunkEncap => {
+            let d = c.d()?;
+            let model = d.catalogue_model();
+            let w = arg(0).to_ascii_lowercase();
+            if !model.multilayer() {
+                return Err(format!(
+                    "% A {} tags trunks with 802.1Q only, so it has no encapsulation to choose: `switchport mode trunk` is all it needs",
+                    model.label
+                ));
+            }
+            let dot1q = match w.as_str() {
+                _ if id == L2NoTrunkEncap => false,
+                "dot1q" => true,
+                "negotiate" => false,
+                "isl" => return Err("% ISL is not simulated: NetLabCraft trunks are IEEE 802.1Q; use `dot1q`".into()),
+                _ => return Err("% `dot1q` or `negotiate`".into()),
+            };
+            c.each_if(|p, _| {
+                p.l2.encap_dot1q = dot1q;
+                Ok(())
+            })
+        }
+        L2SdmPrefer => {
+            let words: Vec<String> = arg(0).split_whitespace().map(str::to_ascii_lowercase).collect();
+            let first = words.first().map(String::as_str).unwrap_or("");
+            if !SDM_TEMPLATES.contains(&first) {
+                return Err(format!("% `{first}` is not a template: {}", SDM_TEMPLATES.join(", ")));
+            }
+            let name = match (first, words.get(1).map(String::as_str), words.len()) {
+                (_, None, _) => first.to_string(),
+                ("dual-ipv4-and-ipv6", Some(second @ ("default" | "routing" | "vlan")), 2) => format!("{first} {second}"),
+                _ => return Err("% Too many words: only `dual-ipv4-and-ipv6` takes a second one (default, routing or vlan)".into()),
+            };
+            let d = c.dm()?;
+            d.l2.sdm_next = Some(name.clone());
+            Ok(format!("The switch uses the {name} template after the next reload (`reload`)."))
+        }
+        L2NoSdmPrefer => {
+            c.dm()?.l2.sdm_next = None;
+            Ok("The switch goes back to the default template after the next reload.".into())
+        }
+        L2ShowSdm => Ok(show_sdm(c.d()?)),
         _ => Err("% Not a switch-protection command".into()),
     }
 }
@@ -739,4 +789,86 @@ fn show_lacp_neighbors(t: &Topology, d: &Device) -> String {
         }
     }
     s.trim_end().to_string()
+}
+
+fn show_vlan_id(t: &Topology, d: &Device, v: VlanId) -> R {
+    let name = d.vlans.get(&v).ok_or_else(|| format!("% VLAN {v} is not in this switch's VLAN database"))?;
+    let access: Vec<String> = d
+        .ports
+        .iter()
+        .enumerate()
+        .filter(|(i, p)| !p.routed && !t.is_trunk(End { device: d.id, port: *i }) && p.switchport.access_carries(v))
+        .map(|(i, _)| short(d, i))
+        .collect();
+    let trunks: Vec<String> = d
+        .ports
+        .iter()
+        .enumerate()
+        .filter(|(i, p)| !p.routed && t.is_trunk(End { device: d.id, port: *i }) && p.switchport.allowed.contains(v))
+        .map(|(i, _)| short(d, i))
+        .collect();
+    let mut s = format!("VLAN {v}: {name}, active\n");
+    let _ = writeln!(s, "  Access ports:    {}", if access.is_empty() { "none".to_string() } else { access.join(", ") });
+    let _ = writeln!(s, "  Trunks carrying: {}", if trunks.is_empty() { "none".to_string() } else { trunks.join(", ") });
+    let svi = d.svis.iter().any(|x| x.vlan == v);
+    let _ = write!(s, "  VLAN interface:  {}", if svi { format!("Vlan{v}") } else { "none".to_string() });
+    Ok(s)
+}
+
+fn show_vlan_summary(d: &Device) -> String {
+    let normal = d.vlans.keys().filter(|v| v.get() <= netlabcraft_model::VTP_MAX_VLAN).count();
+    let extended = d.vlans.len().saturating_sub(normal);
+    format!("VLANs in the database:      {}\n  Normal range (1-1005):     {normal}\n  Extended range (1006-4094): {extended}", d.vlans.len())
+}
+
+fn show_dtp(t: &Topology, d: &Device) -> String {
+    let mut s = String::from("DTP: trunk negotiation messages every 30 s on switch ports that negotiate\n\n");
+    let _ = writeln!(s, "{:<10} {:<18} {:<11} Now", "Port", "Mode", "Negotiates");
+    for (i, p) in d.ports.iter().enumerate().filter(|(_, p)| !p.routed && !ifname::is_wireless(&p.name)) {
+        let end = End { device: d.id, port: i };
+        let negotiates = !p.switchport.nonegotiate;
+        let now = if !port_up(t, end) {
+            "down"
+        } else if t.is_trunk(end) {
+            "trunk"
+        } else {
+            "access"
+        };
+        let _ = writeln!(s, "{:<10} {:<18} {:<11} {now}", short(d, i), p.switchport.mode.name(), if negotiates { "yes" } else { "no" });
+    }
+    s.trim_end().to_string()
+}
+
+fn show_counters(sim: &Sim, d: &Device) -> String {
+    let mut s = format!("{:<10} {:>12} {:>10} {:>10} {:>10}\n", "Port", "Bytes in", "Unicast", "Multicast", "Broadcast");
+    for (i, _) in d.ports.iter().enumerate() {
+        let c = sim.port_counters(d.id, i);
+        let _ = writeln!(s, "{:<10} {:>12} {:>10} {:>10} {:>10}", short(d, i), c.in_octets, c.in_ucast, c.in_mcast, c.in_bcast);
+    }
+    let _ = writeln!(s, "\n{:<10} {:>12} {:>10} {:>10} {:>10}", "Port", "Bytes out", "Unicast", "Multicast", "Broadcast");
+    for (i, _) in d.ports.iter().enumerate() {
+        let c = sim.port_counters(d.id, i);
+        let _ = writeln!(s, "{:<10} {:>12} {:>10} {:>10} {:>10}", short(d, i), c.out_octets, c.out_ucast, c.out_mcast, c.out_bcast);
+    }
+    s.trim_end().to_string()
+}
+
+fn sdm_about(name: &str) -> &'static str {
+    match name.split_whitespace().next().unwrap_or("") {
+        "dual-ipv4-and-ipv6" => "room for IPv4 and IPv6 routes and addresses",
+        "lanbase-routing" => "room for static routes and VLAN interfaces",
+        "vlan" => "most room for MAC addresses, no unicast routes",
+        "advanced" => "room for routing, security and QoS together",
+        _ => "a balance of MAC addresses, routes and access lists",
+    }
+}
+
+fn show_sdm(d: &Device) -> String {
+    let now = d.l2.sdm_active.clone().unwrap_or_else(|| "default".into());
+    let next = d.l2.sdm_next.clone().unwrap_or_else(|| "default".into());
+    let mut s = format!("Template in use:  {now} ({})", sdm_about(&now));
+    if next != now {
+        let _ = write!(s, "\nAfter the next reload: {next} ({})", sdm_about(&next));
+    }
+    s
 }
