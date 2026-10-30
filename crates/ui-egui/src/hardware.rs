@@ -46,8 +46,8 @@ pub(crate) fn panel(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
         tl("Cards are fitted and removed with the device switched off.")
     };
     ui.label(RichText::new(hint).color(tk.muted));
+    ui.label(RichText::new(tl("Cards:")).strong());
     ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new(tl("Cards:")).strong());
         for m in models::MODULES {
             let picked = selected == Some(m.id);
             if ui.selectable_label(picked, tr(m.label)).on_hover_text(tr(m.description)).clicked()

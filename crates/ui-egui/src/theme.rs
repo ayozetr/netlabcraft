@@ -163,6 +163,17 @@ pub fn protocol_color(p: Protocol) -> Color32 {
 }
 
 /// Pale and dark variants of a colour, for the shaded icons.
+/// The fill of a drawing (rectangle, ellipse, polygon) as shown: the colour itself on the light
+/// workspace; in dark mode a deep tint of it, so the light names and port labels over it stay
+/// readable.
+pub fn drawing_fill(c: Color32, tk: &Tokens) -> Color32 {
+    if tk.text.r() < 128 {
+        return c;
+    }
+    let mix = |a: u8, b: u8| ((f32::from(a) * 0.3 + f32::from(b) * 0.7).round().clamp(0.0, 255.0)) as u8;
+    Color32::from_rgb(mix(c.r(), tk.canvas.r()), mix(c.g(), tk.canvas.g()), mix(c.b(), tk.canvas.b()))
+}
+
 pub fn shade(c: Color32, f: f32) -> Color32 {
     let m = |v: u8| -> u8 {
         let v = f32::from(v);

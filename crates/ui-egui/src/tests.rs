@@ -944,3 +944,78 @@ fn string_literals(code: &str) -> Vec<String> {
     }
     out
 }
+
+/// The left edge of the text field a label names (a form's field, through `labelled_by`).
+fn field_left(h: &Harness<'static, PacketApp>, label: &str) -> f32 {
+    use egui::accesskit::Role;
+    h.get_by_role_and_label(Role::TextInput, i18n::tr(label)).rect().left()
+}
+
+/// The one-line forms keep their fields in one column in both languages, however long a label
+/// grows in Spanish (it wraps instead of pushing its field out of line).
+#[test]
+fn form_fields_line_up_whatever_the_label_length() {
+    for spanish in [false, true] {
+        let _lang = spanish.then(InSpanish::new);
+        // A server's DHCP page.
+        let mut h = harness(Some("services"));
+        h.state_mut().ui.show_notes = false;
+        let srv = h.state().session.topology.resolve("Server0").unwrap();
+        open_services_page(h.state_mut(), srv, "dhcp");
+        h.run_steps(3);
+        let lefts: Vec<f32> = ["Pool Name", "Default Gateway", "DNS Server", "Maximum Number of Users"].iter().map(|l| field_left(&h, l)).collect();
+        assert!(lefts.iter().all(|x| (x - lefts[0]).abs() < 0.5), "DHCP fields out of line (es={spanish}): {lefts:?}");
+        // A wireless laptop's Wi-Fi settings.
+        let mut h = harness(Some("wlc"));
+        h.state_mut().ui.show_notes = false;
+        let laptop = h.state().session.topology.resolve("Laptop1").unwrap();
+        open_config_page(h.state_mut(), laptop, "port:0");
+        h.run_steps(3);
+        let lefts: Vec<f32> =
+            ["SSID", "WPA2 passphrase", "Username (WPA2-Enterprise)", "Password (WPA2-Enterprise)"].iter().map(|l| field_left(&h, l)).collect();
+        assert!(lefts.iter().all(|x| (x - lefts[0]).abs() < 0.5), "Wi-Fi fields out of line (es={spanish}): {lefts:?}");
+    }
+}
+
+/// The simulation panel shows its filter buttons whole above the time bar at the usual window
+/// size, in both languages.
+#[test]
+fn the_simulation_panel_fits_above_the_time_bar() {
+    use egui::accesskit::Role;
+    for spanish in [false, true] {
+        let _lang = spanish.then(InSpanish::new);
+        let mut s = Session::new();
+        s.execute("file.new", json!({"sample": "static-routing"})).unwrap();
+        s.execute("net.ping", json!({"from": "PC1", "to": "172.16.3.10"})).unwrap();
+        let mut h = Harness::builder().with_size(egui::vec2(1280.0, 820.0)).build_ui_state(|ui, app: &mut PacketApp| app.ui(ui), PacketApp::new(s));
+        h.state_mut().ui.mode = Mode::Simulation;
+        h.run_steps(3);
+        let bar = h.get_by_role_and_label(Role::Tab, i18n::tr("Simulation")).rect();
+        for b in ["Edit Filters", "Show All/None"] {
+            let r = h.get_by_role_and_label(Role::Button, i18n::tr(b)).rect();
+            assert!(r.bottom() <= bar.top() - 2.0, "{b} {r:?} reaches the time bar {bar:?} (es={spanish})");
+        }
+    }
+}
+
+/// A device window opens below the view bar (Logical, Physical, zoom), never over it, even in a
+/// small window.
+#[test]
+fn device_windows_open_below_the_view_bar() {
+    use egui::accesskit::Role;
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "wlc"})).unwrap();
+    let mut h = Harness::builder().with_size(egui::vec2(1024.0, 700.0)).build_ui_state(|ui, app: &mut PacketApp| app.ui(ui), PacketApp::new(s));
+    h.state_mut().ui.show_notes = false;
+    h.run_steps(2);
+    let view_bar = h.get_by_role_and_label(Role::Tab, i18n::tr("Logical")).rect();
+    let ids: Vec<DeviceId> = h.state().session.topology.devices.iter().map(|d| d.id).collect();
+    for d in ids {
+        open_console(h.state_mut(), d);
+        h.run_steps(2);
+        let area = h.ctx.memory(|m| m.area_rect(egui::Id::unique(("device", d.0)))).unwrap();
+        assert!(area.top() >= view_bar.bottom(), "the window of {d:?} {area:?} covers the view bar {view_bar:?}");
+        h.state_mut().ui.windows.clear();
+        h.run_steps(1);
+    }
+}

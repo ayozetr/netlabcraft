@@ -1,7 +1,9 @@
 //! Offscreen render of the app to a PNG, for looking at UI work without a window:
 //!
 //! `cargo run -p netlabcraft-ui-egui --example snapshot -- --sample vlans [--dark] [--simulation] [--size 1280x820]
-//!  [--cmd 'id={json}']... [--console DEVICE]... [--event N] [--physical [--place N]] [--physical-tab] out.png`
+//!  [--cmd 'id={json}']... [--console DEVICE]... [--event N] [--physical [--place N]] [--physical-tab]
+//!  [--tab physical|config|cli|services|desktop|phone|iot|attributes] [--config-page settings|vlans|routes|wireless|port:N]
+//!  [--instructions] [--wizard] [--info N] out.png`
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use netlabcraft_engine::Session;
@@ -14,6 +16,7 @@ fn main() {
     let (mut dark, mut size, mut out) = (false, (1280.0f32, 820.0f32), String::from("snapshot.png"));
     let mut consoles = Vec::new();
     let mut event: Option<u64> = None;
+    let mut info: Option<u64> = None;
     let mut simulation = false;
     let mut desktop: Option<String> = None;
     let mut config = false;
@@ -26,6 +29,9 @@ fn main() {
     let mut physical = false;
     let mut place: Option<u32> = None;
     let mut connections: Option<Option<String>> = None;
+    let mut tab: Option<String> = None;
+    let mut config_page: Option<String> = None;
+    let (mut instructions, mut wizard) = (false, false);
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -59,8 +65,13 @@ fn main() {
             "--compare" => compare = true,
             "--services-page" => page = Some(it.next().expect("page").clone()),
             "--url" => url = Some(it.next().expect("url").clone()),
+            "--tab" => tab = Some(it.next().expect("tab name").clone()),
+            "--config-page" => config_page = Some(it.next().expect("config page").clone()),
+            "--instructions" => instructions = true,
+            "--wizard" => wizard = true,
             "--connections" => connections = Some(None),
             "--cable" => connections = Some(Some(it.next().expect("cable id").clone())),
+            "--info" => info = Some(it.next().and_then(|s| s.parse().ok()).expect("event id")),
             "--event" => event = Some(it.next().and_then(|s| s.parse().ok()).expect("event id")),
             other => out = other.to_string(),
         }
@@ -98,11 +109,18 @@ fn main() {
                 if let Some(u) = &url {
                     netlabcraft_ui_egui::open_browser(&mut app, id, u);
                 }
+                if let Some(t) = &tab {
+                    netlabcraft_ui_egui::open_tab(&mut app, id, t);
+                }
+                if let Some(p) = &config_page {
+                    netlabcraft_ui_egui::open_config_page(&mut app, id, p);
+                }
             }
             if let Some(c) = &connections {
                 netlabcraft_ui_egui::show_connections(&mut app, c.as_deref());
             }
             app.ui.events.selected = event;
+            app.ui.events.info = info;
             if simulation {
                 app.ui.mode = netlabcraft_ui_egui::Mode::Simulation;
             }
@@ -123,6 +141,11 @@ fn main() {
         let app = harness.state_mut();
         app.ui.activity.results = app.run("activity.check", serde_json::json!({}));
         app.ui.activity.show_compare = true;
+    }
+    if instructions || wizard {
+        let app = harness.state_mut();
+        app.ui.activity.show_instructions = instructions;
+        app.ui.activity.show_wizard = wizard;
     }
     harness.run_steps(6);
     let img = harness.render().expect("render");

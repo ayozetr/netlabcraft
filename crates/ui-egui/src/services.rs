@@ -71,7 +71,7 @@ fn apply(app: &mut PacketApp, d: DeviceId, sv: &Services) {
 fn on_off(ui: &mut Ui, label: &str, on: &mut bool) -> bool {
     let mut changed = false;
     ui.horizontal(|ui| {
-        ui.add_sized([140.0, 22.0], egui::Label::new(label));
+        crate::console::form_label(ui, label, crate::console::LABEL_W);
         changed |= ui.radio_value(on, true, tl("On")).changed();
         ui.add_space(60.0);
         changed |= ui.radio_value(on, false, tl("Off")).changed();
@@ -81,7 +81,7 @@ fn on_off(ui: &mut Ui, label: &str, on: &mut bool) -> bool {
 
 fn octets(ui: &mut Ui, label: &str, boxes: &mut [String; 4]) {
     ui.horizontal(|ui| {
-        let l = ui.add_sized([140.0, 22.0], egui::Label::new(label));
+        let l = crate::console::form_label(ui, label, crate::console::LABEL_W);
         for b in boxes.iter_mut() {
             ui.add(egui::TextEdit::singleline(b).desired_width(56.0)).labelled_by(l.id);
         }
@@ -103,7 +103,7 @@ fn join(b: &[String; 4]) -> Option<Ipv4Addr> {
 
 fn field(ui: &mut Ui, label: &str, value: &mut String) {
     ui.horizontal(|ui| {
-        let l = ui.add_sized([140.0, 22.0], egui::Label::new(label));
+        let l = crate::console::form_label(ui, label, crate::console::LABEL_W);
         ui.add(egui::TextEdit::singleline(value).desired_width(260.0)).labelled_by(l.id);
     });
 }
@@ -256,9 +256,9 @@ fn dhcp(app: &mut PacketApp, ui: &mut Ui, dev: &Device, forms: &mut ServiceForms
     ui.separator();
     let mut new = sv.clone();
     ui.horizontal(|ui| {
-        ui.add_sized([140.0, 22.0], egui::Label::new(tl("Interface")));
+        crate::console::form_label(ui, tl("Interface"), crate::console::LABEL_W);
         ui.label(dev.ports.first().map_or("-", |p| p.name.as_str()));
-        ui.add_space(30.0);
+        ui.add_space(12.0);
         ui.label(tl("Service"));
         if ui.radio_value(&mut new.dhcp.on, true, tl("On")).changed() | ui.radio_value(&mut new.dhcp.on, false, tl("Off")).changed() {
             apply(app, d, &new);
@@ -274,9 +274,9 @@ fn dhcp(app: &mut PacketApp, ui: &mut Ui, dev: &Device, forms: &mut ServiceForms
     field(ui, tl("Pool Name"), &mut forms.pool_name);
     field(ui, tl("Default Gateway"), &mut forms.pool_gw);
     field(ui, tl("DNS Server"), &mut forms.pool_dns);
-    octets(ui, tl("Start IP Address:"), &mut forms.pool_start);
-    octets(ui, tl("Subnet Mask:"), &mut forms.pool_mask);
-    field(ui, tl("Maximum Number of Users:"), &mut forms.pool_max);
+    octets(ui, tl("Start IP Address"), &mut forms.pool_start);
+    octets(ui, tl("Subnet Mask"), &mut forms.pool_mask);
+    field(ui, tl("Maximum Number of Users"), &mut forms.pool_max);
     let pool = || -> Result<ServerPool, String> {
         let ip = |s: &str, what: &'static str| {
             s.trim().parse::<Ipv4Addr>().map_err(|_| crate::i18n::trf("{}: `{}` is not an address", &[&tl(what), &s.trim()]))
@@ -382,7 +382,7 @@ fn dns(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mut
     ui.separator();
     ui.label(tl("Resource Records"));
     ui.horizontal(|ui| {
-        let l = ui.add_sized([140.0, 22.0], egui::Label::new(tl("Name")));
+        let l = crate::console::form_label(ui, tl("Name"), crate::console::LABEL_W);
         ui.add(egui::TextEdit::singleline(&mut forms.dns_name).desired_width(170.0)).labelled_by(l.id);
         ui.label(tl("Type"));
         ui.label(RichText::new(tl("A Record")).strong());
@@ -841,7 +841,7 @@ fn email(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &m
     let mut changed = on_off(ui, tl("SMTP and POP3 Service"), &mut new.email.on);
     let mut domain = new.email.domain.clone();
     ui.horizontal(|ui| {
-        let l = ui.add_sized([140.0, 22.0], egui::Label::new(tl("Domain Name")));
+        let l = crate::console::form_label(ui, tl("Domain Name"), crate::console::LABEL_W);
         let r = ui.add(egui::TextEdit::singleline(&mut domain).desired_width(200.0)).labelled_by(l.id);
         if r.lost_focus() && domain.trim() != new.email.domain {
             new.email.domain = domain.trim().to_string();
