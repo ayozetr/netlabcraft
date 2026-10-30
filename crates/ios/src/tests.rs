@@ -6,6 +6,7 @@ use crate::grammar::{SPECS, Tok};
 use crate::*;
 
 mod routing;
+mod security;
 
 struct Lab {
     t: Topology,
@@ -367,6 +368,10 @@ fn every_command_survives_hostile_arguments() {
                     "en\nconf t\nip dhcp pool P",
                     "en\nconf t\ntelephony-service\nmax-dn 4\nmax-ephones 4\nexit\nephone-dn 1",
                     "en\nconf t\ntelephony-service\nmax-ephones 4\nexit\nephone 1",
+                    "en\nconf t\nzone security Z",
+                    "en\nconf t\nclass-map type inspect C",
+                    "en\nconf t\npolicy-map type inspect P\nclass class-default",
+                    "en\nconf t\nzone security Z\nexit\nzone-pair security ZP source Z destination self",
                 ] {
                     for l in setup.lines() {
                         lab.try_run(d, l);

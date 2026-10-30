@@ -18,6 +18,7 @@ pub(crate) mod l2sec;
 pub(crate) mod mgmt;
 pub(crate) mod qos;
 pub(crate) mod routing;
+pub(crate) mod security;
 pub(crate) mod voice;
 mod vpn;
 mod wlan;
@@ -95,6 +96,16 @@ pub enum Mode {
     EphoneDn(u16),
     /// `R1(config-ephone)#`: the phone's tag.
     Ephone(u16),
+    /// `R1(config-sec-zone)#`: the zone's name.
+    Zone(String),
+    /// `R1(config-cmap)#` under `class-map type inspect`: the class's name.
+    InspectClass(String),
+    /// `R1(config-pmap)#` under `policy-map type inspect`: the policy's name.
+    InspectPolicy(String),
+    /// `R1(config-pmap-c)#` under an inspect policy: the policy's and the class's names.
+    InspectPolicyClass(String, String),
+    /// `R1(config-sec-zone-pair)#`: the zone pair's name.
+    ZonePair(String),
 }
 
 impl Mode {
@@ -127,6 +138,11 @@ impl Mode {
             Mode::Object(_) | Mode::ObjectGroup(..) => Modes::OBJECT,
             Mode::Telephony => Modes::TELEPHONY,
             Mode::EphoneDn(_) | Mode::Ephone(_) => Modes::EPHONE,
+            Mode::Zone(_) => Modes::ZONE,
+            Mode::InspectClass(_) => Modes::INSPECT_CLASS,
+            Mode::InspectPolicy(_) => Modes::INSPECT_POLICY,
+            Mode::InspectPolicyClass(..) => Modes::INSPECT_PCLASS,
+            Mode::ZonePair(_) => Modes::ZONE_PAIR,
         }
     }
 }
@@ -447,6 +463,34 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::Telephony => format!("{n}(config-telephony)#"),
         Mode::EphoneDn(_) => format!("{n}(config-ephone-dn)#"),
         Mode::Ephone(_) => format!("{n}(config-ephone)#"),
+        Mode::Zone(_) => format!("{n}(config-sec-zone)#"),
+        Mode::InspectClass(_) => format!("{n}(config-cmap)#"),
+        Mode::InspectPolicy(_) => format!("{n}(config-pmap)#"),
+        Mode::InspectPolicyClass(..) => format!("{n}(config-pmap-c)#"),
+        Mode::ZonePair(_) => format!("{n}(config-sec-zone-pair)#"),
+    }
+}
+
+/// `[no] class-map T…` / `[no] policy-map T…` where the word after the keyword is a shorter
+/// prefix of `type` (a QoS map's name, not `type inspect`): the QoS command and where its name
+/// starts.
+fn qos_map_named_like_type(words: &[&str]) -> Option<(Id, usize)> {
+    let lw: Vec<String> = words.iter().map(|w| w.to_ascii_lowercase()).collect();
+    let no = lw.first().is_some_and(|w| w == "no");
+    let at = usize::from(no);
+    let kw = lw.get(at)?;
+    let next = lw.get(at + 1)?;
+    if next == "type" || !"type".starts_with(next.as_str()) {
+        return None;
+    }
+    let class = kw.len() >= 6 && "class-map".starts_with(kw.as_str());
+    let policy = kw.len() >= 7 && "policy-map".starts_with(kw.as_str());
+    match (class, policy, no) {
+        (true, _, false) => Some((Id::ClassMap, at + 1)),
+        (true, _, true) => Some((Id::NoClassMap, at + 1)),
+        (_, true, false) => Some((Id::PolicyMap, at + 1)),
+        (_, true, true) => Some((Id::NoPolicyMap, at + 1)),
+        _ => None,
     }
 }
 
@@ -656,6 +700,14 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
     {
         resolved = Err(ParseError::Unknown(0));
     }
+    // `class-map T` / `policy-map T`: a QoS map whose name happens to start like `type`, not
+    // the zone firewall's `class-map type inspect`.
+    if let Some((qos, at)) = qos_map_named_like_type(&words)
+        && let Some(q) = grammar::SPECS.iter().find(|x| x.id == qos && x.devices.has(dbits) && x.modes.has(Modes::CONFIG))
+        && !matches!(cli.mode, Mode::User | Mode::Exec)
+    {
+        resolved = Ok((q, vec![words.get(at..).unwrap_or(&[]).join(" ")]));
+    }
     // A sub-mode falls back to global configuration commands, which leave the sub-mode.
     if resolved.is_err()
         && matches!(
@@ -685,6 +737,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Telephony
                 | Mode::EphoneDn(_)
                 | Mode::Ephone(_)
+                | Mode::Zone(_)
+                | Mode::InspectClass(_)
+                | Mode::InspectPolicy(_)
+                | Mode::InspectPolicyClass(..)
+                | Mode::ZonePair(_)
         )
         && let Ok(r) = grammar::resolve(&words, Modes::CONFIG, dbits)
     {
@@ -742,9 +799,14 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::ObjectGroup(..)
                 | Mode::Telephony
                 | Mode::EphoneDn(_)
-                | Mode::Ephone(_) => Mode::Config,
+                | Mode::Ephone(_)
+                | Mode::Zone(_)
+                | Mode::InspectClass(_)
+                | Mode::InspectPolicy(_)
+                | Mode::ZonePair(_) => Mode::Config,
                 // A class inside a policy map goes back to the policy map.
                 Mode::PolicyClass(ref p, _) => Mode::PolicyMap(p.clone()),
+                Mode::InspectPolicyClass(ref p, _) => Mode::InspectPolicy(p.clone()),
             };
             c.set_mode(next)
         }
@@ -1728,6 +1790,45 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ShowCryptoIsakmpPolicy
         | Id::ShowCryptoMap
         | Id::ClearCryptoSa => vpn::command(&mut c, spec.id, &args),
+        Id::ZoneSecurity
+        | Id::NoZoneSecurity
+        | Id::ZoneDescription
+        | Id::NoZoneDescription
+        | Id::InspectClassMap
+        | Id::NoInspectClassMap
+        | Id::InspectMatchProtocol
+        | Id::InspectMatchAcl
+        | Id::InspectMatchClass
+        | Id::NoInspectMatch
+        | Id::InspectPolicyMap
+        | Id::NoInspectPolicyMap
+        | Id::InspectPolicyClass
+        | Id::NoInspectPolicyClass
+        | Id::InspectActionInspect
+        | Id::InspectActionPass
+        | Id::InspectActionPassLog
+        | Id::InspectActionDrop
+        | Id::InspectActionDropLog
+        | Id::NoInspectAction
+        | Id::ZonePairSecurity
+        | Id::NoZonePairSecurity
+        | Id::ZonePairServicePolicy
+        | Id::NoZonePairServicePolicy
+        | Id::ZoneMember
+        | Id::NoZoneMember
+        | Id::ShowZoneSecurity
+        | Id::ShowZonePairSecurity
+        | Id::ShowInspectSessions
+        | Id::ShowInspectZonePair
+        | Id::ShowInspectClassMaps
+        | Id::ShowInspectPolicyMaps
+        | Id::ClearInspectSessions
+        | Id::IpInspectName
+        | Id::NoIpInspectName
+        | Id::IpInspectIf
+        | Id::NoIpInspectIf
+        | Id::ShowIpInspectSessions
+        | Id::ShowIpInspectAll => security::command(&mut c, spec.id, &args),
         Id::ClassMap
         | Id::NoClassMap
         | Id::PolicyMap

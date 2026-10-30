@@ -14,7 +14,7 @@ pub enum Tok {
 
 /// Where a command is available.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Modes(pub u32);
+pub struct Modes(pub u64);
 
 impl Modes {
     pub const USER: Modes = Modes(1);
@@ -67,6 +67,16 @@ impl Modes {
     pub const FIREWALL: Modes = Modes(1 << 29);
     /// `object network NAME` on the firewall.
     pub const OBJECT: Modes = Modes(1 << 30);
+    /// `zone security NAME` (bits 31-39 are left for others; `Modes` is a u64).
+    pub const ZONE: Modes = Modes(1 << 40);
+    /// `class-map type inspect NAME`.
+    pub const INSPECT_CLASS: Modes = Modes(1 << 41);
+    /// `policy-map type inspect NAME`.
+    pub const INSPECT_POLICY: Modes = Modes(1 << 42);
+    /// `class type inspect NAME` inside an inspect policy map.
+    pub const INSPECT_PCLASS: Modes = Modes(1 << 43);
+    /// `zone-pair security NAME …`.
+    pub const ZONE_PAIR: Modes = Modes(1 << 44);
     /// Every command mode, either device.
     pub const ANY_MODE: Modes = Modes(
         63 | 256
@@ -89,7 +99,12 @@ impl Modes {
             | (1 << 26)
             | (1 << 27)
             | (1 << 28)
-            | (1 << 30),
+            | (1 << 30)
+            | (1 << 40)
+            | (1 << 41)
+            | (1 << 42)
+            | (1 << 43)
+            | (1 << 44),
     );
     pub const BOTH: Modes = Modes(192);
 
@@ -774,6 +789,46 @@ pub enum Id {
     ShowEphone,
     ShowEphoneDn,
     ShowTelephony,
+    // Zone-based firewall and classic inspection.
+    ZoneSecurity,
+    NoZoneSecurity,
+    ZoneDescription,
+    NoZoneDescription,
+    InspectClassMap,
+    NoInspectClassMap,
+    InspectMatchProtocol,
+    InspectMatchAcl,
+    InspectMatchClass,
+    NoInspectMatch,
+    InspectPolicyMap,
+    NoInspectPolicyMap,
+    InspectPolicyClass,
+    NoInspectPolicyClass,
+    InspectActionInspect,
+    InspectActionPass,
+    InspectActionPassLog,
+    InspectActionDrop,
+    InspectActionDropLog,
+    NoInspectAction,
+    ZonePairSecurity,
+    NoZonePairSecurity,
+    ZonePairServicePolicy,
+    NoZonePairServicePolicy,
+    ZoneMember,
+    NoZoneMember,
+    ShowZoneSecurity,
+    ShowZonePairSecurity,
+    ShowInspectSessions,
+    ShowInspectZonePair,
+    ShowInspectClassMaps,
+    ShowInspectPolicyMaps,
+    ClearInspectSessions,
+    IpInspectName,
+    NoIpInspectName,
+    IpInspectIf,
+    NoIpInspectIf,
+    ShowIpInspectSessions,
+    ShowIpInspectAll,
 }
 
 use Tok::{Arg, K, Rest};
@@ -797,7 +852,12 @@ const SUBMODES: Modes = Modes::IF
     .or(Modes::OBJECT)
     .or(Modes::TELEPHONY)
     .or(Modes::EPHONE)
-    .or(Modes::LOOPBACK);
+    .or(Modes::LOOPBACK)
+    .or(SEC_MODES);
+/// The zone firewall's sub-modes.
+const SEC_MODES: Modes = Modes::ZONE.or(Modes::INSPECT_CLASS).or(Modes::INSPECT_POLICY).or(Modes::INSPECT_PCLASS).or(Modes::ZONE_PAIR);
+/// Where zones, inspection, IP MTU and MSS clamping are set: routed ports, subinterfaces, tunnels.
+const SEC_IFS: Modes = IFS.or(Modes::TUNNEL);
 /// Routers, switches and the firewall.
 const BOTH_FW: Modes = Modes::BOTH.or(Modes::FIREWALL);
 const FW: Modes = Modes::FIREWALL;
@@ -2787,6 +2847,184 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowEphone, EXECS, Modes::ROUTER, [K("show"), K("ephone")], "Phones: configured and registered"),
     spec!(ShowEphoneDn, EXECS, Modes::ROUTER, [K("show"), K("ephone-dn")], "Directory numbers and their state"),
     spec!(ShowTelephony, EXECS, Modes::ROUTER, [K("show"), K("telephony-service")], "Call control settings and counts"),
+    // Zone-based policy firewall and classic inspection (routers).
+    spec!(ZoneSecurity, Modes::CONFIG, Modes::ROUTER, [K("zone"), K("security"), Arg("NAME")], "Create or edit a security zone"),
+    spec!(NoZoneSecurity, Modes::CONFIG, Modes::ROUTER, [K("no"), K("zone"), K("security"), Arg("NAME")], "Delete a security zone"),
+    spec!(ZoneDescription, Modes::ZONE.or(Modes::ZONE_PAIR), Modes::ROUTER, [K("description"), Rest("LINE")], "A note about this zone or zone pair"),
+    spec!(NoZoneDescription, Modes::ZONE.or(Modes::ZONE_PAIR), Modes::ROUTER, [K("no"), K("description")], "Remove the note"),
+    spec!(
+        InspectClassMap,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("class-map"), K("type"), K("inspect"), Rest("[match-any|match-all] NAME")],
+        "Create or edit a class of traffic for the zone firewall"
+    ),
+    spec!(
+        NoInspectClassMap,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("no"), K("class-map"), K("type"), K("inspect"), Rest("[match-any|match-all] NAME")],
+        "Delete an inspect class"
+    ),
+    spec!(
+        InspectMatchProtocol,
+        Modes::INSPECT_CLASS,
+        Modes::ROUTER,
+        [K("match"), K("protocol"), Arg("{tcp|udp|icmp|http|https|dns|ftp|…}")],
+        "Traffic of this protocol"
+    ),
+    spec!(
+        InspectMatchAcl,
+        Modes::INSPECT_CLASS,
+        Modes::ROUTER,
+        [K("match"), K("access-group"), Arg("<1-2699>")],
+        "Traffic a numbered access list permits"
+    ),
+    spec!(
+        InspectMatchAcl,
+        Modes::INSPECT_CLASS,
+        Modes::ROUTER,
+        [K("match"), K("access-group"), K("name"), Arg("NAME")],
+        "Traffic a named access list permits"
+    ),
+    spec!(InspectMatchClass, Modes::INSPECT_CLASS, Modes::ROUTER, [K("match"), K("class-map"), Arg("NAME")], "Traffic another inspect class takes"),
+    spec!(NoInspectMatch, Modes::INSPECT_CLASS, Modes::ROUTER, [K("no"), K("match"), Rest("CRITERION")], "Remove a match line"),
+    spec!(
+        InspectPolicyMap,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("policy-map"), K("type"), K("inspect"), Arg("NAME")],
+        "Create or edit what the zone firewall does with each class"
+    ),
+    spec!(
+        NoInspectPolicyMap,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("no"), K("policy-map"), K("type"), K("inspect"), Arg("NAME")],
+        "Delete an inspect policy"
+    ),
+    spec!(
+        InspectPolicyClass,
+        Modes::INSPECT_POLICY.or(Modes::INSPECT_PCLASS),
+        Modes::ROUTER,
+        [K("class"), K("type"), K("inspect"), Arg("NAME")],
+        "Say what to do with an inspect class"
+    ),
+    spec!(
+        InspectPolicyClass,
+        Modes::INSPECT_POLICY.or(Modes::INSPECT_PCLASS),
+        Modes::ROUTER,
+        [K("class"), K("class-default")],
+        "Say what to do with everything else"
+    ),
+    spec!(
+        NoInspectPolicyClass,
+        Modes::INSPECT_POLICY.or(Modes::INSPECT_PCLASS),
+        Modes::ROUTER,
+        [K("no"), K("class"), K("type"), K("inspect"), Arg("NAME")],
+        "Remove a class from the policy"
+    ),
+    spec!(
+        NoInspectPolicyClass,
+        Modes::INSPECT_POLICY.or(Modes::INSPECT_PCLASS),
+        Modes::ROUTER,
+        [K("no"), K("class"), K("class-default")],
+        "Back to dropping everything else"
+    ),
+    spec!(InspectActionInspect, Modes::INSPECT_PCLASS, Modes::ROUTER, [K("inspect")], "Let it through and let its replies back"),
+    spec!(InspectActionPass, Modes::INSPECT_PCLASS, Modes::ROUTER, [K("pass")], "Let it through, this way only"),
+    spec!(InspectActionPassLog, Modes::INSPECT_PCLASS, Modes::ROUTER, [K("pass"), K("log")], "Let it through, this way only, and log each packet"),
+    spec!(InspectActionDrop, Modes::INSPECT_PCLASS, Modes::ROUTER, [K("drop")], "Throw it away"),
+    spec!(InspectActionDropLog, Modes::INSPECT_PCLASS, Modes::ROUTER, [K("drop"), K("log")], "Throw it away and log each packet"),
+    spec!(NoInspectAction, Modes::INSPECT_PCLASS, Modes::ROUTER, [K("no"), K("inspect")], "Remove the action (the class drops)"),
+    spec!(NoInspectAction, Modes::INSPECT_PCLASS, Modes::ROUTER, [K("no"), K("pass"), Rest("[log]")], "Remove the action (the class drops)"),
+    spec!(NoInspectAction, Modes::INSPECT_PCLASS, Modes::ROUTER, [K("no"), K("pass")], "Remove the action (the class drops)"),
+    spec!(NoInspectAction, Modes::INSPECT_PCLASS, Modes::ROUTER, [K("no"), K("drop"), Rest("[log]")], "Remove the action (the class drops)"),
+    spec!(NoInspectAction, Modes::INSPECT_PCLASS, Modes::ROUTER, [K("no"), K("drop")], "Remove the action (the class drops)"),
+    spec!(
+        ZonePairSecurity,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("zone-pair"), K("security"), Arg("NAME"), K("source"), Arg("ZONE"), K("destination"), Arg("ZONE")],
+        "Create a zone pair: traffic from one zone to another"
+    ),
+    spec!(NoZonePairSecurity, Modes::CONFIG, Modes::ROUTER, [K("no"), K("zone-pair"), K("security"), Arg("NAME")], "Delete a zone pair"),
+    spec!(
+        ZonePairServicePolicy,
+        Modes::ZONE_PAIR,
+        Modes::ROUTER,
+        [K("service-policy"), K("type"), K("inspect"), Arg("NAME")],
+        "The inspect policy for this zone pair"
+    ),
+    spec!(NoZonePairServicePolicy, Modes::ZONE_PAIR, Modes::ROUTER, [K("no"), K("service-policy"), K("type"), K("inspect")], "Remove the policy"),
+    spec!(
+        NoZonePairServicePolicy,
+        Modes::ZONE_PAIR,
+        Modes::ROUTER,
+        [K("no"), K("service-policy"), K("type"), K("inspect"), Arg("NAME")],
+        "Remove the policy"
+    ),
+    spec!(ZoneMember, SEC_IFS, Modes::ROUTER, [K("zone-member"), K("security"), Arg("NAME")], "Put this interface in a security zone"),
+    spec!(NoZoneMember, SEC_IFS, Modes::ROUTER, [K("no"), K("zone-member"), K("security")], "Take this interface out of its zone"),
+    spec!(NoZoneMember, SEC_IFS, Modes::ROUTER, [K("no"), K("zone-member"), K("security"), Arg("NAME")], "Take this interface out of its zone"),
+    spec!(ShowZoneSecurity, EXECS, Modes::ROUTER, [K("show"), K("zone"), K("security")], "Security zones and their interfaces"),
+    spec!(ShowZoneSecurity, EXECS, Modes::ROUTER, [K("show"), K("zone"), K("security"), Arg("NAME")], "One security zone"),
+    spec!(ShowZonePairSecurity, EXECS, Modes::ROUTER, [K("show"), K("zone-pair"), K("security")], "Zone pairs and their policies"),
+    spec!(
+        ShowInspectSessions,
+        EXECS,
+        Modes::ROUTER,
+        [K("show"), K("policy-map"), K("type"), K("inspect"), K("zone-pair"), K("sessions")],
+        "Sessions the zone firewall inspected"
+    ),
+    spec!(
+        ShowInspectZonePair,
+        EXECS,
+        Modes::ROUTER,
+        [K("show"), K("policy-map"), K("type"), K("inspect"), K("zone-pair")],
+        "Each zone pair's classes, packet counts and sessions"
+    ),
+    spec!(ShowInspectPolicyMaps, EXECS, Modes::ROUTER, [K("show"), K("policy-map"), K("type"), K("inspect")], "Inspect policies"),
+    spec!(ShowInspectClassMaps, EXECS, Modes::ROUTER, [K("show"), K("class-map"), K("type"), K("inspect")], "Inspect classes"),
+    spec!(
+        ClearInspectSessions,
+        Modes::EXEC,
+        Modes::ROUTER,
+        [K("clear"), K("zone-pair"), K("inspect"), K("sessions")],
+        "Forget the zone firewall's sessions"
+    ),
+    spec!(
+        IpInspectName,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("ip"), K("inspect"), K("name"), Arg("NAME"), Arg("{tcp|udp|icmp|http|…}")],
+        "Add a protocol to an inspection rule"
+    ),
+    spec!(
+        NoIpInspectName,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("no"), K("ip"), K("inspect"), K("name"), Arg("NAME"), Arg("PROTOCOL")],
+        "Remove a protocol from an inspection rule"
+    ),
+    spec!(
+        NoIpInspectName,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("no"), K("ip"), K("inspect"), K("name"), Arg("NAME")],
+        "Remove the whole inspection rule"
+    ),
+    spec!(IpInspectIf, SEC_IFS, Modes::ROUTER, [K("ip"), K("inspect"), Arg("NAME"), Arg("{in|out}")], "Inspect sessions crossing this interface"),
+    spec!(NoIpInspectIf, SEC_IFS, Modes::ROUTER, [K("no"), K("ip"), K("inspect"), Arg("NAME"), Arg("{in|out}")], "Stop inspecting here"),
+    spec!(ShowIpInspectSessions, EXECS, Modes::ROUTER, [K("show"), K("ip"), K("inspect"), K("sessions")], "Sessions classic inspection opened"),
+    spec!(ShowIpInspectAll, EXECS, Modes::ROUTER, [K("show"), K("ip"), K("inspect"), K("all")], "Inspection rules, where they apply, and sessions"),
+    spec!(
+        ClearInspectSessions,
+        Modes::EXEC,
+        Modes::ROUTER,
+        [K("clear"), K("ip"), K("inspect"), K("sessions")],
+        "Forget classic inspection's sessions"
+    ),
 ];
 
 /// Why a line didn't parse. Positions are word indexes.
@@ -3070,6 +3308,11 @@ mod tests {
                 Modes::OBJECT,
                 Modes::TELEPHONY,
                 Modes::EPHONE,
+                Modes::ZONE,
+                Modes::INSPECT_CLASS,
+                Modes::INSPECT_POLICY,
+                Modes::INSPECT_PCLASS,
+                Modes::ZONE_PAIR,
             ]
             .into_iter()
             .find(|m| s.modes.has(*m))

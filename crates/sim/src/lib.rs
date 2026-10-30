@@ -53,6 +53,7 @@ pub mod voice;
 pub mod vpn;
 pub mod vtp;
 pub mod wlan;
+pub mod zfw;
 
 /// One cable hop (serialisation + propagation), in microseconds.
 pub const LINK_DELAY_US: u64 = 250;
@@ -820,6 +821,8 @@ pub struct DevState {
     pub ip_traffic: BTreeMap<&'static str, u64>,
     /// TCP connections set up to or from this device, newest last.
     pub tcp_recent: VecDeque<TcpRecord>,
+    /// Routers: zone firewall and classic inspection sessions.
+    pub zfw: zfw::ZfwState,
 }
 
 /// One frame delivered across a cable.
@@ -2279,8 +2282,12 @@ impl Sim {
         let mut from_outside = false;
         let marked;
         let mut payload = payload;
+        // The reply of a session classic inspection opened passes the access lists.
+        let inspected = d.routes_ip() && self.cbac_return(d, &ip, payload);
         if d.routes_ip() {
-            self.acl_check(t, d, ifc, &ip, payload, true)?;
+            if !inspected {
+                self.acl_check(t, d, ifc, &ip, payload, true)?;
+            }
             // An input service policy: may re-mark the packet, or police it away.
             if !d.qos.applied.is_empty() {
                 marked = self.qos_apply(d, &ifc.name, true, payload.to_vec())?;
@@ -2296,6 +2303,9 @@ impl Sim {
         }
         let mine = l3_ifaces(d).iter().any(|i| i.net.addr == ip.dst) || self.hsrp_active(t, d, None).iter().any(|(v, _)| *v == ip.dst);
         if mine || ip.dst == Ipv4Addr::BROADCAST || (ifc.net.prefix < 31 && ip.dst == ifc.net.broadcast()) {
+            if mine {
+                self.zfw_check(d, Some(ifc), None, &ip, payload)?;
+            }
             return self.local_in(t, d, ifc, ip);
         }
         if !d.routes_ip() {
@@ -2314,7 +2324,11 @@ impl Sim {
                     let via = if nh == ip.dst { String::new() } else { format!(" via {nh}") };
                     self.log(d.id, &format!("IP debug: {} → {}, in {}, routed out {}{via}", ip.src, ip.dst, ifc.name, out.name));
                 }
-                self.acl_check(t, d, &out, &ip, payload, false)?;
+                self.zfw_check(d, Some(ifc), Some(&out), &ip, payload)?;
+                if !inspected {
+                    self.acl_check(t, d, &out, &ip, payload, false)?;
+                }
+                self.cbac_open(d, ifc, &out, &ip, payload);
                 let mut fwd = fwd;
                 if !from_outside
                     && nat_side(d, ifc) == Some(netlabcraft_model::NatSide::Inside)
@@ -2505,7 +2519,9 @@ impl Sim {
     fn send_ip(&mut self, t: &Topology, d: &Device, ip: Ipv4) -> Result<(), String> {
         self.bump(d.id, "sent");
         let (out, nh) = self.route_flow(t, d, ip.src, ip.dst).ok_or_else(|| format!("no route to {}", ip.dst))?;
-        self.transmit(t, d, &out, nh, ip.encode())
+        let raw = ip.encode();
+        self.zfw_check(d, None, Some(&out), &ip, &raw)?;
+        self.transmit(t, d, &out, nh, raw)
     }
 
     /// Puts a datagram on the wire towards `nh`, resolving its MAC with ARP first.

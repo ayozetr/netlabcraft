@@ -911,6 +911,57 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ephone` | user, privileged | router | Phones: configured and registered |
 | `show ephone-dn` | user, privileged | router | Directory numbers and their state |
 | `show telephony-service` | user, privileged | router | Call control settings and counts |
+| `zone security NAME` | config | router | Create or edit a security zone |
+| `no zone security NAME` | config | router | Delete a security zone |
+| `description LINE` |  | router | A note about this zone or zone pair |
+| `no description` |  | router | Remove the note |
+| `class-map type inspect [match-any\|match-all] NAME` | config | router | Create or edit a class of traffic for the zone firewall |
+| `no class-map type inspect [match-any\|match-all] NAME` | config | router | Delete an inspect class |
+| `match protocol {tcp\|udp\|icmp\|http\|https\|dns\|ftp\|…}` |  | router | Traffic of this protocol |
+| `match access-group <1-2699>` |  | router | Traffic a numbered access list permits |
+| `match access-group name NAME` |  | router | Traffic a named access list permits |
+| `match class-map NAME` |  | router | Traffic another inspect class takes |
+| `no match CRITERION` |  | router | Remove a match line |
+| `policy-map type inspect NAME` | config | router | Create or edit what the zone firewall does with each class |
+| `no policy-map type inspect NAME` | config | router | Delete an inspect policy |
+| `class type inspect NAME` |  | router | Say what to do with an inspect class |
+| `class class-default` |  | router | Say what to do with everything else |
+| `no class type inspect NAME` |  | router | Remove a class from the policy |
+| `no class class-default` |  | router | Back to dropping everything else |
+| `inspect` |  | router | Let it through and let its replies back |
+| `pass` |  | router | Let it through, this way only |
+| `pass log` |  | router | Let it through, this way only, and log each packet |
+| `drop` |  | router | Throw it away |
+| `drop log` |  | router | Throw it away and log each packet |
+| `no inspect` |  | router | Remove the action (the class drops) |
+| `no pass [log]` |  | router | Remove the action (the class drops) |
+| `no pass` |  | router | Remove the action (the class drops) |
+| `no drop [log]` |  | router | Remove the action (the class drops) |
+| `no drop` |  | router | Remove the action (the class drops) |
+| `zone-pair security NAME source ZONE destination ZONE` | config | router | Create a zone pair: traffic from one zone to another |
+| `no zone-pair security NAME` | config | router | Delete a zone pair |
+| `service-policy type inspect NAME` |  | router | The inspect policy for this zone pair |
+| `no service-policy type inspect` |  | router | Remove the policy |
+| `no service-policy type inspect NAME` |  | router | Remove the policy |
+| `zone-member security NAME` | interface, subinterface | router | Put this interface in a security zone |
+| `no zone-member security` | interface, subinterface | router | Take this interface out of its zone |
+| `no zone-member security NAME` | interface, subinterface | router | Take this interface out of its zone |
+| `show zone security` | user, privileged | router | Security zones and their interfaces |
+| `show zone security NAME` | user, privileged | router | One security zone |
+| `show zone-pair security` | user, privileged | router | Zone pairs and their policies |
+| `show policy-map type inspect zone-pair sessions` | user, privileged | router | Sessions the zone firewall inspected |
+| `show policy-map type inspect zone-pair` | user, privileged | router | Each zone pair's classes, packet counts and sessions |
+| `show policy-map type inspect` | user, privileged | router | Inspect policies |
+| `show class-map type inspect` | user, privileged | router | Inspect classes |
+| `clear zone-pair inspect sessions` | privileged | router | Forget the zone firewall's sessions |
+| `ip inspect name NAME {tcp\|udp\|icmp\|http\|…}` | config | router | Add a protocol to an inspection rule |
+| `no ip inspect name NAME PROTOCOL` | config | router | Remove a protocol from an inspection rule |
+| `no ip inspect name NAME` | config | router | Remove the whole inspection rule |
+| `ip inspect NAME {in\|out}` | interface, subinterface | router | Inspect sessions crossing this interface |
+| `no ip inspect NAME {in\|out}` | interface, subinterface | router | Stop inspecting here |
+| `show ip inspect sessions` | user, privileged | router | Sessions classic inspection opened |
+| `show ip inspect all` | user, privileged | router | Inspection rules, where they apply, and sessions |
+| `clear ip inspect sessions` | privileged | router | Forget classic inspection's sessions |
 
 ## Host shell (PCs and servers)
 
