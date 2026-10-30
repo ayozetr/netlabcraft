@@ -362,7 +362,7 @@ pub(super) fn command(c: &mut Ctx<'_>, id: Id, args: &[String], line: &str) -> R
                 w => w.parse().ok().filter(|n| *n >= 1).ok_or("% A distance is 1-255")?,
             };
             let d = c.dm()?;
-            let route = StaticRoute { net, via: NextHop::Address(gw) };
+            let route = StaticRoute { net, via: NextHop::Address(gw), distance: None };
             if id == Id::FwNoRoute {
                 let before = d.routes.len();
                 d.routes.retain(|r| *r != route);

@@ -144,7 +144,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `interface range <interfaces>` | config | router, switch | Configure several interfaces |
 | `interface <interface>` | config | router, switch, firewall | Configure an interface |
 | `no interface <subinterface>` | config | router | Delete a subinterface |
-| `ip route A.B.C.D MASK <next hop or interface>` | config | router, switch | Add a static route |
+| `ip route A.B.C.D MASK <next hop or interface> [distance]` | config | router, switch | Add a static route (a distance above the protocol's makes it a backup) |
 | `no ip route A.B.C.D MASK <next hop or interface>` | config | router, switch | Remove a static route |
 | `no ip route A.B.C.D MASK` | config | router, switch | Remove static routes |
 | `vlan <1-4094>[,-]` | config | switch | Create or edit VLANs |
@@ -576,7 +576,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `ip ssh version {1\|2}` | config | router, switch | SSH protocol version |
 | `ipv6 unicast-routing` | config | router, switch | Forward IPv6 and advertise prefixes |
 | `no ipv6 unicast-routing` | config | router, switch | Stop forwarding IPv6 |
-| `ipv6 route X:X::X/<0-128> <next hop and/or interface>` | config | router, switch | Add an IPv6 static route |
+| `ipv6 route X:X::X/<0-128> <next hop and/or interface> [distance]` | config | router, switch | Add an IPv6 static route (with a distance: a backup route) |
 | `no ipv6 route X:X::X/<0-128>` | config | router, switch | Remove IPv6 static routes |
 | `no ipv6 route X:X::X/<0-128> <next hop and/or interface>` | config | router, switch | Remove an IPv6 static route |
 | `ipv6 address X:X::X/<0-128>` | interface, subinterface | router, switch | Add an IPv6 address |

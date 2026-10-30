@@ -745,8 +745,8 @@ pub static SPECS: &[Spec] = &[
         IpRoute,
         Modes::CONFIG,
         Modes::BOTH,
-        [K("ip"), K("route"), Arg("A.B.C.D"), Arg("MASK"), Rest("<next hop or interface>")],
-        "Add a static route"
+        [K("ip"), K("route"), Arg("A.B.C.D"), Arg("MASK"), Rest("<next hop or interface> [distance]")],
+        "Add a static route (a distance above the protocol's makes it a backup)"
     ),
     spec!(
         NoIpRoute,
@@ -1733,8 +1733,8 @@ pub static SPECS: &[Spec] = &[
         Ipv6Route,
         Modes::CONFIG,
         Modes::BOTH,
-        [K("ipv6"), K("route"), Arg("X:X::X/<0-128>"), Rest("<next hop and/or interface>")],
-        "Add an IPv6 static route"
+        [K("ipv6"), K("route"), Arg("X:X::X/<0-128>"), Rest("<next hop and/or interface> [distance]")],
+        "Add an IPv6 static route (with a distance: a backup route)"
     ),
     spec!(NoIpv6Route, Modes::CONFIG, Modes::BOTH, [K("no"), K("ipv6"), K("route"), Arg("X:X::X/<0-128>")], "Remove IPv6 static routes"),
     spec!(

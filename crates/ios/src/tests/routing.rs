@@ -156,6 +156,53 @@ fn ospf_as_the_courses_teach_it() {
 }
 
 #[test]
+fn floating_static_routes() {
+    // R1 reaches R2's LAN over two links: g0/1 with OSPF, g0/2 with a floating static route.
+    let (mut lab, r1, r2) = two_routers();
+    lab.cable(r1, "g0/2", r2, "g0/2");
+    lab.run(r1, "conf t\nint g0/2\nip address 10.0.1.1 255.255.255.252\nno shut\nend");
+    lab.run(r2, "conf t\nint g0/2\nip address 10.0.1.2 255.255.255.252\nno shut\nint lo0\nip address 192.168.2.1 255.255.255.0\nend");
+    lab.run(r1, "conf t\nrouter ospf 1\nnetwork 10.0.0.0 0.0.0.3 area 0\nexit\nip route 192.168.2.0 255.255.255.0 10.0.1.2 130\nip route 0.0.0.0 0.0.0.0 10.0.1.2 250\nend");
+    lab.run(r2, "conf t\nrouter ospf 1\nnetwork 10.0.0.0 0.0.0.3 area 0\nnetwork 192.168.2.0 0.0.0.255 area 0\nend");
+    // OSPF (110) wins over the static route of distance 130, which stays out of the table.
+    assert!(lab.run(r1, "show ip route").contains("O    192.168.2.1/32"));
+    lab.run(r2, "conf t\nint lo0\nip ospf network point-to-point\nend");
+    let rt = lab.run(r1, "show ip route");
+    assert!(rt.contains("O    192.168.2.0/24       via 10.0.0.2, GigabitEthernet0/1 (OSPF) [110/2]"), "{rt}");
+    assert!(!rt.contains("S    192.168.2.0/24"), "{rt}");
+    // The floating default is in (nothing else knows 0.0.0.0/0), with its distance.
+    assert!(rt.contains("S    0.0.0.0/0            via 10.0.1.2 [250/0]"), "{rt}");
+    assert!(lab.run(r1, "show ip route static").contains("0.0.0.0/0"));
+    let tr = lab.run(r1, "traceroute 192.168.2.1");
+    assert!(tr.contains("10.0.0.2") || tr.contains("192.168.2.1"), "{tr}");
+    // The OSPF link fails: the floating route takes over.
+    lab.run(r1, "conf t\nint g0/1\nshutdown\nend");
+    let rt = lab.run(r1, "show ip route");
+    assert!(rt.contains("S    192.168.2.0/24       via 10.0.1.2 [130/0]"), "{rt}");
+    assert!(lab.run(r1, "ping 192.168.2.1").contains('!'));
+    // Back up: OSPF again.
+    lab.run(r1, "conf t\nint g0/1\nno shutdown\nend");
+    assert!(lab.run(r1, "show ip route").contains("O    192.168.2.0/24"));
+    // Typing the route again with another distance replaces it; a bad distance is refused.
+    lab.run(r1, "conf t\nip route 192.168.2.0 255.255.255.0 10.0.1.2 140\nend");
+    lab.run(r1, "conf t");
+    assert!(lab.try_run(r1, "ip route 10.9.0.0 255.255.0.0 10.0.1.2 0").contains("distance is 1-255"));
+    // IPv6 alike: the route of distance 200 waits behind the one of distance 1.
+    lab.run(r1, "ipv6 unicast-routing\nint g0/2\nipv6 address 2001:db8:12::1/64\nexit\nipv6 route 2001:db8:99::/64 2001:db8:12::2 200\nend");
+    assert!(lab.run(r1, "show ipv6 route").contains("2001:db8:12::2"));
+    lab.run(r1, "conf t\nipv6 route 2001:db8:99::/64 2001:db8:12::3\nend");
+    let rt6 = lab.run(r1, "show ipv6 route");
+    assert!(rt6.contains("2001:db8:12::3") && !rt6.contains("2001:db8:12::2"), "{rt6}");
+    lab.run(r1, "conf t\nno ipv6 route 2001:db8:99::/64 2001:db8:12::3\nend");
+    lab.run(r1, "conf t\nip route 172.20.0.0 255.255.0.0 g0/2 150\nend");
+    let run = survives_reload(&mut lab, r1);
+    assert!(run.contains("ip route 0.0.0.0 0.0.0.0 10.0.1.2 250"), "{run}");
+    assert!(run.contains("ip route 172.20.0.0 255.255.0.0 GigabitEthernet0/2 150"), "{run}");
+    assert!(run.contains("ip route 192.168.2.0 255.255.255.0 10.0.1.2 140") && !run.contains(" 10.0.1.2 130"), "{run}");
+    assert!(run.contains("ipv6 route 2001:db8:99::/64 2001:db8:12::2 200"), "{run}");
+}
+
+#[test]
 fn ospf_dr_election_waits_for_clear_ip_ospf_process() {
     let mut lab = Lab::new();
     let sw = lab.add(DeviceKind::Switch);

@@ -648,6 +648,10 @@ pub struct StaticRoute {
     /// Network (host bits clear).
     pub net: Ipv4Net,
     pub via: NextHop,
+    /// Administrative distance (1 when not set). A higher one makes a floating route: it stays
+    /// out of the routing table while a protocol with a lower distance knows the network.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub distance: Option<u8>,
 }
 
 /// An IPv6 static route: out of an interface, towards a next hop, or both (a link-local next
@@ -660,6 +664,9 @@ pub struct StaticRoute6 {
     pub iface: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next_hop: Option<Ipv6Addr>,
+    /// Administrative distance (1 when not set); see [`StaticRoute::distance`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub distance: Option<u8>,
 }
 
 /// Most IPv6 addresses on one interface.

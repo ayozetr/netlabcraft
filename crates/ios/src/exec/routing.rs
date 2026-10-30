@@ -8,6 +8,20 @@ use netlabcraft_model::routing::loopback_number;
 use super::{Ctx, Mode, R};
 use crate::grammar::Id;
 
+/// The words of a static route's target, and the administrative distance typed after them (a
+/// last word of digits: `10.0.0.2 200`, `g0/0 200`, `2001:db8::1 130`).
+pub(super) fn split_distance(text: &str) -> Result<(String, Option<u8>), String> {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    match words.split_last() {
+        // `tunnel 0` is an interface, not a distance: the words before must name a target alone.
+        Some((last, rest)) if rest.iter().any(|w| w.contains(|c: char| c.is_ascii_digit())) && last.chars().all(|c| c.is_ascii_digit()) => {
+            let ad = last.parse::<u8>().ok().filter(|a| *a >= 1).ok_or("% The administrative distance is 1-255")?;
+            Ok((rest.join(" "), Some(ad)))
+        }
+        _ => Ok((words.join(" "), None)),
+    }
+}
+
 /// The loopback number an interface name gives, if it names a loopback.
 pub(super) fn loopback(name: &str) -> Option<u32> {
     loopback_number(name)

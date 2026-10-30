@@ -142,6 +142,8 @@ pub struct Route6Entry {
     pub net: Ipv6Net,
     pub iface: Option<String>,
     pub next_hop: Option<Ipv6Addr>,
+    /// Administrative distance: 0 connected, 1 static (or as configured), 110 OSPFv3.
+    pub distance: u8,
 }
 
 /// A device's IPv6 routing table: connected and local routes of its up interfaces, the static
@@ -151,8 +153,8 @@ pub fn routing_table6(t: &Topology, d: &Device, dynamic: &[Route6Entry]) -> Vec<
     let mut out = Vec::new();
     for i in &ifs {
         for a in &i.addresses {
-            out.push(Route6Entry { code: 'C', net: a.network(), iface: Some(i.name.clone()), next_hop: None });
-            out.push(Route6Entry { code: 'L', net: Ipv6Net::new(a.addr, 128), iface: Some(i.name.clone()), next_hop: None });
+            out.push(Route6Entry { code: 'C', net: a.network(), iface: Some(i.name.clone()), next_hop: None, distance: 0 });
+            out.push(Route6Entry { code: 'L', net: Ipv6Net::new(a.addr, 128), iface: Some(i.name.clone()), next_hop: None, distance: 0 });
         }
     }
     for r in &d.routes6 {
@@ -163,15 +165,18 @@ pub fn routing_table6(t: &Topology, d: &Device, dynamic: &[Route6Entry]) -> Vec<
             (None, None) => false,
         };
         if reachable {
-            out.push(Route6Entry { code: 'S', net: r.net, iface: r.iface.clone(), next_hop: r.next_hop });
+            out.push(Route6Entry { code: 'S', net: r.net, iface: r.iface.clone(), next_hop: r.next_hop, distance: r.distance.unwrap_or(1) });
         }
     }
-    // Connected and static routes win over OSPF for the same network (administrative distance).
-    for r in dynamic {
-        if !out.iter().any(|x| x.net == r.net && x.code != 'L') {
-            out.push(r.clone());
-        }
-    }
+    out.extend(dynamic.iter().cloned());
+    // Connected routes, then for every other network the routes with the lowest administrative
+    // distance (a floating static waits behind OSPFv3 until its network disappears).
+    let all = out.clone();
+    out.retain(|r| {
+        matches!(r.code, 'C' | 'L')
+            || (!all.iter().any(|x| x.net == r.net && x.code == 'C')
+                && !all.iter().any(|x| x.net == r.net && !matches!(x.code, 'L') && x.distance < r.distance))
+    });
     out
 }
 

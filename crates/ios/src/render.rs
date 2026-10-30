@@ -516,7 +516,8 @@ pub fn running_config(d: &Device) -> String {
     }
     for r in &d.routes6 {
         let via = [r.iface.clone(), r.next_hop.map(|a| a.to_string())].into_iter().flatten().collect::<Vec<_>>().join(" ");
-        let _ = writeln!(s, "ipv6 route {} {via}", r.net);
+        let distance = r.distance.map_or(String::new(), |a| format!(" {a}"));
+        let _ = writeln!(s, "ipv6 route {} {via}{distance}", r.net);
     }
     if let Some(o) = &d.ospf6 {
         let _ = writeln!(s, "ipv6 router ospf {}", o.process);
@@ -536,7 +537,8 @@ pub fn running_config(d: &Device) -> String {
             NextHop::Address(a) => a.to_string(),
             NextHop::Interface(n) => n.clone(),
         };
-        let _ = writeln!(s, "ip route {} {} {via}", r.net.addr, r.net.mask());
+        let distance = r.distance.map_or(String::new(), |a| format!(" {a}"));
+        let _ = writeln!(s, "ip route {} {} {via}{distance}", r.net.addr, r.net.mask());
     }
     if !d.routes.is_empty() {
         let _ = writeln!(s, "!");
@@ -649,7 +651,9 @@ pub fn ip_route_table(d: &Device, table: &[netlabcraft_sim::RouteEntry]) -> Stri
             'I' => "O IA".to_string(),
             c => format!("{c}   "),
         };
-        let _ = writeln!(s, "{code} {:<20} {what}", r.net.to_string());
+        // Distance and metric, for every route a protocol or a person put there.
+        let ad = if matches!(r.code, 'C' | 'L') { String::new() } else { format!(" [{}/{}]", r.distance, r.metric) };
+        let _ = writeln!(s, "{code} {:<20} {what}{ad}", r.net.to_string());
     }
     s.trim_end().to_string()
 }
@@ -1512,7 +1516,8 @@ pub fn ipv6_route(t: &Topology, sim: &mut Sim, d: &Device) -> String {
             'E' => "OE2".to_string(),
             c => c.to_string(),
         };
-        let _ = writeln!(s, "{code:<2} {:<28} {via}", r.net.to_string());
+        let ad = if matches!(r.code, 'C' | 'L') { String::new() } else { format!(" [{}]", r.distance) };
+        let _ = writeln!(s, "{code:<2} {:<28} {via}{ad}", r.net.to_string());
     }
     if table.is_empty() {
         s.push_str("(no IPv6 routes)");

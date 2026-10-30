@@ -1084,10 +1084,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::Ipv6Route | Id::NoIpv6Route => {
             let net: netlabcraft_core::Ipv6Net = arg(0).parse().map_err(|e| format!("% {e}"))?;
             let net = net.network();
-            let via = match args.get(1) {
-                Some(rest) => Some(c.route6_via(rest)?),
-                None => None,
-            };
+            let (rest, distance) = routing::split_distance(args.get(1).map_or("", String::as_str))?;
+            let via = if rest.is_empty() { None } else { Some(c.route6_via(&rest)?) };
             let d = c.dm()?;
             if spec.id == Id::NoIpv6Route {
                 let before = d.routes6.len();
@@ -1095,7 +1093,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 return if d.routes6.len() == before { Err("% No such IPv6 route".into()) } else { Ok(String::new()) };
             }
             let (iface, next_hop) = via.ok_or("% Give a next hop, an interface, or both")?;
-            let r = netlabcraft_model::StaticRoute6 { net, iface, next_hop };
+            let r = netlabcraft_model::StaticRoute6 { net, iface, next_hop, distance };
             if !d.routes6.contains(&r) {
                 if d.routes6.len() >= netlabcraft_model::MAX_ROUTES {
                     return Err("% Too many routes".into());
@@ -3900,7 +3898,14 @@ impl Ctx<'_> {
         if n.network() != n {
             return Err(format!("% {n} has host bits set; the network is {}", n.network()));
         }
-        let via = match target {
+        let (target, distance) = match target {
+            Some(t) => {
+                let (rest, distance) = routing::split_distance(t)?;
+                (Some(rest).filter(|r| !r.is_empty()), distance)
+            }
+            None => (None, None),
+        };
+        let via = match target.as_deref() {
             None => None,
             Some(t) => Some(match t.parse::<Ipv4Addr>() {
                 Ok(a) => NextHop::Address(a),
@@ -3922,7 +3927,9 @@ impl Ctx<'_> {
         let d = self.dm()?;
         if add {
             let Some(via) = via else { return Err("% Give a next-hop address or an exit interface".into()) };
-            let route = StaticRoute { net: n, via };
+            let route = StaticRoute { net: n, via, distance };
+            // One route per network and next hop: typing it again changes its distance.
+            d.routes.retain(|r| !(r.net == route.net && r.via == route.via));
             if !d.routes.contains(&route) {
                 if d.routes.len() >= MAX_ROUTES {
                     return Err(format!("% At most {MAX_ROUTES} static routes"));

@@ -320,6 +320,11 @@ pub struct RouteEntry {
     pub net: Ipv4Net,
     pub via: Option<Ipv4Addr>,
     pub iface: Option<String>,
+    /// Administrative distance: 0 connected, 1 static (or as configured), 90 EIGRP, 110 OSPF,
+    /// 120 RIP, 254 a default from DHCP.
+    pub distance: u8,
+    /// The protocol's metric (OSPF cost, EIGRP metric, RIP hops; 0 for static routes).
+    pub metric: u32,
 }
 
 /// The device's routing table: connected and local routes of up interfaces, static routes
@@ -342,11 +347,20 @@ pub fn routing_table_with(
     ospf_routes: &[ospf::OspfRoute],
     rip_routes: &[rip::RipRoute],
 ) -> Vec<RouteEntry> {
-    let mut out = routing_table_static(t, d);
-    let mut learned: Vec<(u8, RouteEntry)> = Vec::new();
+    // Connected and local routes always; for any other network, the candidates with the lowest
+    // administrative distance (static routes, a DHCP default, then what the protocols learned).
+    let (mut out, mut learned): (Vec<RouteEntry>, Vec<RouteEntry>) =
+        routing_table_static(t, d).into_iter().partition(|r| matches!(r.code, 'C' | 'L'));
     if d.eigrp.is_some() {
         for r in eigrp_routes {
-            learned.push((eigrp::DISTANCE, RouteEntry { code: 'D', net: r.net, via: Some(r.via), iface: Some(r.iface.clone()) }));
+            learned.push(RouteEntry {
+                code: 'D',
+                net: r.net,
+                via: Some(r.via),
+                iface: Some(r.iface.clone()),
+                distance: eigrp::DISTANCE,
+                metric: r.metric,
+            });
         }
     }
     if d.ospf.is_some() {
@@ -358,17 +372,24 @@ pub fn routing_table_with(
             } else {
                 'O'
             };
-            learned.push((110, RouteEntry { code, net: r.net, via: Some(r.via), iface: Some(r.iface.clone()) }));
+            learned.push(RouteEntry { code, net: r.net, via: Some(r.via), iface: Some(r.iface.clone()), distance: 110, metric: r.cost });
         }
     }
     if d.rip.is_some() {
         for r in rip_routes {
-            learned.push((120, RouteEntry { code: 'R', net: r.net, via: Some(r.via), iface: Some(r.iface.clone()) }));
+            learned.push(RouteEntry {
+                code: 'R',
+                net: r.net,
+                via: Some(r.via),
+                iface: Some(r.iface.clone()),
+                distance: 120,
+                metric: u32::from(r.hops),
+            });
         }
     }
     let have: Vec<Ipv4Net> = out.iter().map(|r| r.net).collect();
-    for (ad, r) in &learned {
-        if !have.contains(&r.net) && !learned.iter().any(|(other, x)| x.net == r.net && other < ad) {
+    for r in &learned {
+        if !have.contains(&r.net) && !learned.iter().any(|x| x.net == r.net && x.distance < r.distance) {
             out.push(r.clone());
         }
     }
@@ -381,17 +402,17 @@ fn routing_table_static(t: &Topology, d: &Device) -> Vec<RouteEntry> {
     let ifs = up_ifaces(t, d);
     let mut out = Vec::new();
     for i in &ifs {
-        out.push(RouteEntry { code: 'C', net: i.net.network(), via: None, iface: Some(i.name.clone()) });
+        out.push(RouteEntry { code: 'C', net: i.net.network(), via: None, iface: Some(i.name.clone()), distance: 0, metric: 0 });
         if i.net.prefix < 32 {
-            out.push(RouteEntry { code: 'L', net: Ipv4Net::new(i.net.addr, 32), via: None, iface: Some(i.name.clone()) });
+            out.push(RouteEntry { code: 'L', net: Ipv4Net::new(i.net.addr, 32), via: None, iface: Some(i.name.clone()), distance: 0, metric: 0 });
         }
     }
-    if d.routes_ip() && !d.routes.iter().any(|r| r.net.prefix == 0) {
+    if d.routes_ip() {
         for (i, p) in d.ports.iter().enumerate() {
             if let Some(gw) = p.dhcp_router
                 && ifs.iter().any(|x| x.port == i && x.net.contains(gw))
             {
-                out.push(RouteEntry { code: 'S', net: Ipv4Net::new(Ipv4Addr::UNSPECIFIED, 0), via: Some(gw), iface: None });
+                out.push(RouteEntry { code: 'S', net: Ipv4Net::new(Ipv4Addr::UNSPECIFIED, 0), via: Some(gw), iface: None, distance: 254, metric: 0 });
             }
         }
     }
@@ -400,12 +421,19 @@ fn routing_table_static(t: &Topology, d: &Device) -> Vec<RouteEntry> {
             match &r.via {
                 NextHop::Address(a) => {
                     if ifs.iter().any(|i| i.net.contains(*a)) {
-                        out.push(RouteEntry { code: 'S', net: r.net, via: Some(*a), iface: None });
+                        out.push(RouteEntry { code: 'S', net: r.net, via: Some(*a), iface: None, distance: r.distance.unwrap_or(1), metric: 0 });
                     }
                 }
                 NextHop::Interface(n) => {
                     if let Some(i) = find_iface(&ifs, n) {
-                        out.push(RouteEntry { code: 'S', net: r.net, via: None, iface: Some(i.name.clone()) });
+                        out.push(RouteEntry {
+                            code: 'S',
+                            net: r.net,
+                            via: None,
+                            iface: Some(i.name.clone()),
+                            distance: r.distance.unwrap_or(1),
+                            metric: 0,
+                        });
                     }
                 }
             }
@@ -508,15 +536,16 @@ pub fn route_with(
     if d.kind == DeviceKind::Hub {
         return None;
     }
-    let mut best: Option<(u8, L3If, Ipv4Addr)> = None;
-    let mut consider = |prefix: u8, i: &L3If, nh: Ipv4Addr| {
-        if best.as_ref().is_none_or(|(p, _, _)| prefix > *p) {
-            best = Some((prefix, i.clone(), nh));
+    // The longest prefix wins; at equal length, the lowest administrative distance.
+    let mut best: Option<(u8, u8, L3If, Ipv4Addr)> = None;
+    let mut consider_ad = |prefix: u8, ad: u8, i: &L3If, nh: Ipv4Addr| {
+        if best.as_ref().is_none_or(|(p, a, _, _)| prefix > *p || (prefix == *p && ad < *a)) {
+            best = Some((prefix, ad, i.clone(), nh));
         }
     };
     for i in &ifs {
         if i.net.contains(dst) {
-            consider(i.net.prefix, i, dst);
+            consider_ad(i.net.prefix, 0, i, dst);
         }
     }
     for r in &d.routes {
@@ -526,12 +555,12 @@ pub fn route_with(
         match &r.via {
             NextHop::Address(a) => {
                 if let Some(i) = ifs.iter().filter(|i| i.net.contains(*a)).max_by_key(|i| i.net.prefix) {
-                    consider(r.net.prefix, i, *a);
+                    consider_ad(r.net.prefix, r.distance.unwrap_or(1), i, *a);
                 }
             }
             NextHop::Interface(n) => {
                 if let Some(i) = find_iface(&ifs, n) {
-                    consider(r.net.prefix, i, dst);
+                    consider_ad(r.net.prefix, r.distance.unwrap_or(1), i, dst);
                 }
             }
         }
@@ -547,7 +576,7 @@ pub fn route_with(
         let usable: Vec<(u32, (L3If, Ipv4Addr))> =
             paths.iter().filter_map(|r| ifs.iter().find(|i| i.name == r.iface).map(|i| (worst / r.metric.max(1), (i.clone(), r.via)))).collect();
         if let Some((i, nh)) = pick_path(&usable, flow) {
-            consider(net.prefix, &i, nh);
+            consider_ad(net.prefix, eigrp::DISTANCE, &i, nh);
         }
     }
     let mut nets: Vec<Ipv4Net> = ospf_routes.iter().filter(|r| r.net.contains(dst)).map(|r| r.net).collect();
@@ -559,13 +588,13 @@ pub fn route_with(
             .filter_map(|r| ifs.iter().find(|i| i.name == r.iface).map(|i| (1, (i.clone(), r.via))))
             .collect();
         if let Some((i, nh)) = pick_path(&usable, flow) {
-            consider(net.prefix, &i, nh);
+            consider_ad(net.prefix, 110, &i, nh);
         }
     }
     // RIP last: at equal prefix length the others win (administrative distance 120).
     for r in rip_routes.iter().filter(|r| r.net.contains(dst)) {
         if let Some(i) = ifs.iter().find(|i| i.name == r.iface) {
-            consider(r.net.prefix, i, r.via);
+            consider_ad(r.net.prefix, 120, i, r.via);
         }
     }
     // A default from a DHCP lease (distance 254): considered last, so any other route to the
@@ -574,10 +603,10 @@ pub fn route_with(
         if let Some(gw) = p.dhcp_router
             && let Some(ifc) = ifs.iter().find(|x| x.port == i && x.net.contains(gw))
         {
-            consider(0, ifc, gw);
+            consider_ad(0, 254, ifc, gw);
         }
     }
-    best.map(|(_, i, nh)| (i, nh))
+    best.map(|(_, _, i, nh)| (i, nh))
 }
 
 /// A learned ARP binding.
@@ -1669,6 +1698,7 @@ impl Sim {
                 net: r.net,
                 iface: Some(r.iface.clone()),
                 next_hop: Some(r.via),
+                distance: 110,
             })
             .collect()
     }
