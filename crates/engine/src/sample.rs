@@ -126,6 +126,11 @@ pub static SAMPLES: &[Sample] = &[
         description: "Two modular routers got a 2-port serial card each (fitted while switched off) and are joined over Serial0/1/0; their configurations are saved, so a power cycle keeps them.",
     },
     Sample {
+        id: "sip-phones",
+        title: "SIP phones on a PoE switch",
+        description: "Two SIP phones, powered by a PoE switch, register with R1's SIP call control (voice register) and call each other; dial 2002 from Phone1.",
+    },
+    Sample {
         id: "switch-card",
         title: "A switch card in a router",
         description: "R1 has a 4-port switch card: its ports are VLAN members (10 and 20) and a trunk to S1, and the router routes between its VLAN interfaces.",
@@ -976,6 +981,66 @@ pub fn build(id: &str) -> Result<Topology> {
             )?;
             b.t.add_annotation(300.0, 20.0, "WAN 172.16.0.0/30 over the serial cards")?;
             b.t.notes = "HQ has a 2-port serial card in bay 0/1 and a Gigabit card in bay 0/0; Branch a serial card in bay 0/1 (see each router's Physical tab). To change a card, switch the router off there first: the cable on a card that comes out is unplugged. Both configurations are saved, so switching a router off and on keeps them (try it: `show ip interface brief` before and after).".into();
+        }
+        "sip-phones" => {
+            b.add(DeviceKind::Router, "R1", 360.0, 40.0)?;
+            b.add_model("Switch-24-PoE", "S1", 360.0, 160.0)?;
+            b.cable("R1", "g0/0", "S1", "g0/1")?;
+            for (i, x) in [(1, 160.0), (2, 560.0)] {
+                let phone = format!("Phone{i}");
+                b.add_model("IP-Phone", &phone, x, 300.0)?;
+                b.cable(&phone, "fa0", "S1", &format!("fa0/{i}"))?;
+                let id = b.t.resolve(&phone)?;
+                if let Some(d) = b.t.device_mut(id) {
+                    d.voice.sip = true;
+                }
+            }
+            let mac = |b: &Builder, name: &str| -> Result<String> {
+                let id = b.t.resolve(name)?;
+                let m = b.t.device(id).and_then(|d| d.ports.first()).map(|p| p.mac.0).unwrap_or_default();
+                Ok(format!("{:02x}{:02x}.{:02x}{:02x}.{:02x}{:02x}", m[0], m[1], m[2], m[3], m[4], m[5]))
+            };
+            let (m1, m2) = (mac(&b, "Phone1")?, mac(&b, "Phone2")?);
+            b.type_in(
+                "R1",
+                &format!(
+                    "enable
+                    configure terminal
+                    interface g0/0
+                    ip address 192.168.50.1 255.255.255.0
+                    no shutdown
+                    exit
+                    ip dhcp excluded-address 192.168.50.1
+                    ip dhcp pool PHONES
+                    network 192.168.50.0 255.255.255.0
+                    default-router 192.168.50.1
+                    option 150 ip 192.168.50.1
+                    exit
+                    voice register global
+                    mode cme
+                    source-address 192.168.50.1 port 5060
+                    max-dn 4
+                    max-pool 4
+                    exit
+                    voice register dn 1
+                    number 2001
+                    voice register dn 2
+                    number 2002
+                    exit
+                    voice register pool 1
+                    id mac {m1}
+                    number 1 dn 1
+                    voice register pool 2
+                    id mac {m2}
+                    number 1 dn 2
+                    end
+                    copy running-config startup-config"
+                ),
+            )?;
+            for i in 1..=2 {
+                b.type_in(&format!("Phone{i}"), "ipconfig /renew")?;
+            }
+            b.t.notes = "The phones take their addresses by DHCP and register over SIP (UDP 5060) with R1, which knows them by MAC address (voice register pool). Open Phone1 > Phone, dial 2002 and press Call; on Phone2 press Pick up. In Simulation mode the event list shows REGISTER, INVITE, 180 Ringing, 200 OK, ACK and BYE. `show voice register all` on R1, `show power inline` on S1.".into();
         }
         "switch-card" => {
             b.add_model("Router-M2", "R1", 360.0, 60.0)?;

@@ -78,3 +78,63 @@ fn phones_boot_on_poe_or_their_adapter_and_stay_dark_on_a_plain_switch() {
     assert!(s.execute("device.adapter", json!({"device": "SW", "on": true})).is_err(), "a switch has no adapter to plug");
     assert!(s.execute("device.adapter", json!({"device": "P"})).is_err());
 }
+
+#[test]
+fn sip_phones_register_ring_talk_and_hang_up_and_captures_show_sip() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "sip-phones"})).unwrap();
+    let p1 = s.execute("phone.status", json!({"device": "Phone1"})).unwrap();
+    let p2 = s.execute("phone.status", json!({"device": "Phone2"})).unwrap();
+    assert_eq!((p1["registered"].clone(), p1["number"].clone(), p1["protocol"].clone()), (json!(true), json!("2001"), json!("sip")), "{p1}");
+    assert_eq!(p2["number"], "2002", "{p2}");
+    assert!(cli(&mut s, "R1", "show voice register all").contains("2002         idle (registered)"));
+    // Unknown numbers: 404 from the router.
+    let r = s.execute("phone.dial", json!({"device": "Phone1", "number": "2999"})).unwrap();
+    assert!(r["call"].is_null() && r["message"].as_str().unwrap().contains("404"), "{r}");
+    let r = s.execute("phone.dial", json!({"device": "Phone1", "number": "2002"})).unwrap();
+    assert_eq!(r["call"]["state"], "ringback", "{r}");
+    assert_eq!(s.execute("phone.status", json!({"device": "Phone2"})).unwrap()["call"]["state"], "ringing");
+    let r = s.execute("phone.answer", json!({"device": "Phone2"})).unwrap();
+    assert_eq!(r["call"]["state"], "connected", "{r}");
+    s.execute("sim.advance", json!({"seconds": 3})).unwrap();
+    let r = s.execute("phone.status", json!({"device": "Phone1"})).unwrap();
+    assert_eq!(r["call"]["state"], "connected", "{r}");
+    assert!(r["call"]["rtp_received"].as_u64().unwrap() >= 1, "{r}");
+    assert!(cli(&mut s, "R1", "show voice register all").contains("in a call"));
+    let r = s.execute("phone.hangup", json!({"device": "Phone1"})).unwrap();
+    assert!(r["call"].is_null(), "{r}");
+    s.execute("sim.advance", json!({"seconds": 1})).unwrap();
+    assert!(s.execute("phone.status", json!({"device": "Phone2"})).unwrap()["call"].is_null());
+    // The event list shows the SIP exchange, in its own words.
+    let summaries: Vec<String> = s.sim.trace().iter().map(|e| e.summary.clone()).collect();
+    for want in [
+        "SIP REGISTER sip:",
+        "SIP 200 OK (REGISTER)",
+        "SIP INVITE sip:2002@",
+        "SIP 100 Trying",
+        "SIP 180 Ringing (INVITE)",
+        "SIP 200 OK (INVITE)",
+        "SIP ACK",
+        "SIP BYE",
+        "SIP 404 Not Found",
+    ] {
+        assert!(summaries.iter().any(|x| x.contains(want)), "no `{want}` in the event list");
+    }
+    // The capture holds the message text as sent.
+    let pcap = s.sim.pcap();
+    assert!(pcap.windows(28).any(|w| w == b"INVITE sip:2002@192.168.50.1"), "the capture carries the SIP text");
+    // A declined call ends with 603 at the caller.
+    s.execute("phone.dial", json!({"device": "Phone2", "number": "2001"})).unwrap();
+    s.execute("phone.hangup", json!({"device": "Phone1"})).unwrap();
+    s.execute("sim.advance", json!({"seconds": 1})).unwrap();
+    let r = s.execute("phone.status", json!({"device": "Phone2"})).unwrap();
+    assert!(r["call"].is_null() && r["message"].as_str().unwrap().contains("603"), "{r}");
+    // Back to the own signalling: no voice register for it on R1, so it can't register.
+    let r = s.execute("phone.configure", json!({"device": "Phone1", "protocol": "own"})).unwrap();
+    assert_eq!((r["protocol"].clone(), r["registered"].clone()), (json!("own"), json!(false)), "{r}");
+    assert!(s.execute("phone.configure", json!({"device": "Phone1", "protocol": "h323"})).is_err());
+    assert!(s.execute("phone.configure", json!({"device": "R1", "protocol": "sip"})).is_err());
+    let s2 = round_trip(&mut s);
+    assert!(s2.topology.find("Phone2").unwrap().voice.sip);
+    assert_eq!(s2.topology.find("R1").unwrap().voice.pools.len(), 2);
+}

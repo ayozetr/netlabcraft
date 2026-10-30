@@ -122,6 +122,14 @@ pub(crate) fn tab(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                     app.run("phone.status", json!({"device": d.0}));
                 }
             });
+            let mut sip = dev.voice.sip;
+            if ui
+                .checkbox(&mut sip, tl("Signal with SIP"))
+                .on_hover_text(tl("Use SIP (UDP 5060) instead of NetLabCraft's own call-control protocol"))
+                .changed()
+            {
+                app.run("phone.configure", json!({"device": d.0, "protocol": if sip { "sip" } else { "own" }}));
+            }
         });
     });
 }

@@ -908,3 +908,8 @@ no power: {} is switched off	sin alimentación: {} está apagado
 no power: {} has `power inline never`	sin alimentación: {} tiene `power inline never`
 no power: {}'s power budget is used up	sin alimentación: el presupuesto de potencia de {} está agotado
 no power: {} is shut down	sin alimentación: {} está desactivado
+SIP phones on a PoE switch	Teléfonos SIP en un switch PoE
+Two SIP phones, powered by a PoE switch, register with R1's SIP call control (voice register) and call each other; dial 2002 from Phone1.	Dos teléfonos SIP, alimentados por un switch PoE, se registran en el control de llamadas SIP de R1 (voice register) y se llaman entre sí; marca 2002 desde Phone1.
+The phones take their addresses by DHCP and register over SIP (UDP 5060) with R1, which knows them by MAC address (voice register pool). Open Phone1 > Phone, dial 2002 and press Call; on Phone2 press Pick up. In Simulation mode the event list shows REGISTER, INVITE, 180 Ringing, 200 OK, ACK and BYE. `show voice register all` on R1, `show power inline` on S1.	Los teléfonos toman su dirección por DHCP y se registran por SIP (UDP 5060) en R1, que los conoce por su dirección MAC (voice register pool). Abre Phone1 > Teléfono, marca 2002 y pulsa Llamar; en Phone2 pulsa Descolgar. En el modo Simulación la lista de eventos muestra REGISTER, INVITE, 180 Ringing, 200 OK, ACK y BYE. `show voice register all` en R1, `show power inline` en S1.
+Signal with SIP	Señalizar con SIP
+Use SIP (UDP 5060) instead of NetLabCraft's own call-control protocol	Usar SIP (UDP 5060) en lugar del protocolo de control de llamadas propio de NetLabCraft

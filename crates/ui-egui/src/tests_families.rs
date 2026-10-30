@@ -92,4 +92,29 @@ mod t {
         h.run_steps(3);
         assert!(h.query_by_label_contains("W of 370.0 W in use").is_some());
     }
+
+    #[test]
+    fn the_phone_tab_switches_to_sip_and_calls() {
+        let mut h = harness("sip-phones");
+        let (p1, p2) = (h.state().session.topology.resolve("Phone1").unwrap(), h.state().session.topology.resolve("Phone2").unwrap());
+        h.state_mut().ui.show_notes = false;
+        crate::open_console(h.state_mut(), p1);
+        h.run_steps(3);
+        h.get_by_label("Refresh").click();
+        h.run_steps(2);
+        assert!(h.query_by_label_contains("Line 2001").is_some());
+        for k in "2002".chars() {
+            h.get_by_label(&k.to_string()).click();
+            h.run_steps(1);
+        }
+        h.get_by_label("Call").click();
+        h.run_steps(2);
+        let state = |h: &Harness<'_, PacketApp>, p| h.state().session.sim.phone(p).and_then(|x| x.call.as_ref()).map(|c| c.state);
+        assert_eq!(state(&h, p2), Some(netlabcraft_sim::voice::CallState::Ringing));
+        // Back to the own signalling from the checkbox.
+        h.state_mut().session.execute("phone.hangup", json!({"device": "Phone1"})).unwrap();
+        h.get_by_label("Signal with SIP").click();
+        h.run_steps(2);
+        assert!(!h.state().session.topology.device(p1).unwrap().voice.sip);
+    }
 }

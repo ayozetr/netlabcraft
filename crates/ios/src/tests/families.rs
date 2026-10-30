@@ -124,7 +124,18 @@ fn every_command_survives_hostile_arguments_on_a_router_with_a_switch_card() {
                     Tok::Arg(_) | Tok::Rest(_) => arg.to_string(),
                 })
                 .collect();
-            for setup in ["", "en", "en\nconf t", "en\nconf t\nint fa0/1/0", "en\nconf t\nint g0/0", "en\nconf t\nint vlan 5", "en\nconf t\nvlan 5"] {
+            for setup in [
+                "",
+                "en",
+                "en\nconf t",
+                "en\nconf t\nint fa0/1/0",
+                "en\nconf t\nint g0/0",
+                "en\nconf t\nint vlan 5",
+                "en\nconf t\nvlan 5",
+                "en\nconf t\nvoice register global",
+                "en\nconf t\nvoice register global\nmax-dn 2\nmax-pool 2\nexit\nvoice register dn 1",
+                "en\nconf t\nvoice register global\nmax-dn 2\nmax-pool 2\nexit\nvoice register pool 1",
+            ] {
                 for l in setup.lines() {
                     lab.try_run(d, l);
                 }
@@ -163,4 +174,61 @@ fn power_inline_by_typing() {
     assert!(lab.try_run(plain, "show power inline").contains("gives no power"));
     lab.run(plain, "conf t\nint fa0/1");
     assert!(lab.try_run(plain, "power inline never").contains("gives no power"));
+}
+
+#[test]
+fn voice_register_by_typing() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    lab.run(
+        r,
+        "en
+        conf t
+        int g0/0
+        ip add 10.5.0.1 255.255.255.0
+        no shut
+        exit
+        voice register global
+        mode cme
+        source-address 10.5.0.1 port 5060
+        max-dn 2
+        max-pool 2
+        exit
+        voice register dn 1
+        number 3001
+        exit
+        voice register pool 1
+        id mac 0200.0000.0a01
+        number 1 dn 1
+        end",
+    );
+    assert_eq!(lab.prompt(r), "R1#");
+    lab.run(r, "conf t\nvoice register pool 1");
+    assert_eq!(lab.prompt(r), "R1(config-register-pool)#");
+    // Telephony-service commands don't belong here, nor pool commands under a dn.
+    assert!(lab.try_run(r, "button 1:1").contains("% "));
+    assert!(lab.try_run(r, "number 2 dn 1").contains("% "));
+    assert!(lab.try_run(r, "number 1 dn 9").contains("no voice register dn 9"));
+    lab.run(r, "exit\nvoice register dn 1");
+    assert!(lab.try_run(r, "id mac 0200.0000.0a02").contains("% "));
+    lab.run(r, "exit\nvoice register global");
+    assert!(lab.try_run(r, "max-ephones 4").contains("% "));
+    lab.run(r, "exit\nvoice register dn 2\nexit");
+    assert!(lab.try_run(r, "voice register dn 3").contains("max-dn is 2"));
+    lab.run(r, "telephony-service");
+    assert!(lab.try_run(r, "mode cme").contains("voice register global"));
+    lab.run(r, "end");
+    let shown = lab.run(r, "show voice register all");
+    assert!(shown.contains("10.5.0.1, UDP port 5060 (mode cme)") && shown.contains("3001") && shown.contains("not registered"), "{shown}");
+    let before = lab.run(r, "show running-config");
+    for l in [
+        "voice register global\n mode cme\n source-address 10.5.0.1 port 5060\n max-dn 2\n max-pool 2",
+        "voice register pool 1\n id mac 0200.0000.0a01\n number 1 dn 1",
+    ] {
+        assert!(before.contains(l), "{l}\n{before}");
+    }
+    lab.run(r, "copy run start\nreload");
+    assert_eq!(lab.run(r, "en\nshow running-config"), before);
+    lab.run(r, "conf t\nno voice register pool 1\nno voice register global\nend");
+    assert!(lab.run(r, "show voice register all").contains("off"));
 }

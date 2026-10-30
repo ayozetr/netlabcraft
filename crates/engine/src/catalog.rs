@@ -273,6 +273,14 @@ pub static CATALOG: &[CommandInfo] = &[
         true
     ),
     c!(
+        "phone.configure",
+        "Phone settings",
+        "",
+        None,
+        r#"{"device": IP phone, "protocol"?: "sip"|"own", "server"?: "SIP registrar address (empty: the TFTP server DHCP gave)"} → the phone's status (it registers again)"#,
+        true
+    ),
+    c!(
         "device.power.source",
         "Power source",
         "",

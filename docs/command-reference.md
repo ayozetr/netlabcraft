@@ -55,6 +55,7 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `phone.answer` | Answer the phone |  |  | `{"device": a ringing IP phone} → its status: the call connects and voice packets flow` |
 | `phone.hangup` | Hang up |  |  | `{"device": IP phone} → its status: the call ends at both phones` |
 | `device.adapter` | Power adapter |  |  | `{"device": IP phone or lightweight AP, "on": true\|false} → the power source: plugged in, the device runs without power over Ethernet; unplugged, it needs a PoE switch port` |
+| `phone.configure` | Phone settings |  |  | `{"device": IP phone, "protocol"?: "sip"\|"own", "server"?: "SIP registrar address (empty: the TFTP server DHCP gave)"} → the phone's status (it registers again)` |
 | `device.power.source` | Power source |  |  | `{"device"} → {"powered_device", "adapter", "source": "mains"\|"adapter"\|"poe"\|"none"\|"off", "detail" (the PoE port, or why there is no power), "draw_w"}` |
 | `device.module.list` | Card catalogue |  |  | `{"device"?} → {"modules": [{id, label, description, ports, type}], "device": {"power", "slots": [{slot, module, label, ports}]}}` |
 | `note.add` | Place note or drawing | Insert |  | `{"x", "y", "text"?, "shape"?: "text\|rectangle\|ellipse\|line\|freehand\|polygon", "w"?, "h"?, "points": [[x, y], …] (freehand: simplified, at most 512 kept; polygon: 3-64 corners), "color"?: "#rrggbb"} → {"id"} (placed in the cluster being viewed)` |

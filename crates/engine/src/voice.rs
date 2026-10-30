@@ -21,6 +21,8 @@ pub(crate) fn status(s: &Session, d: netlabcraft_core::DeviceId) -> Value {
         "device": dev.name,
         "address": dev.ports.first().and_then(|p| p.ip).map(|n| n.to_string()),
         "tftp": dev.voice.tftp.map(|a| a.to_string()),
+        "protocol": if dev.voice.sip { "sip" } else { "own" },
+        "sip_server": dev.voice.sip_server.map(|a| a.to_string()),
         "voice_vlan": netlabcraft_sim::voice::voice_vlan(&s.topology, d),
         "registered": st.number.is_some(),
         "number": st.number,
