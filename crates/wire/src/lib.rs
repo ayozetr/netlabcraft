@@ -27,6 +27,7 @@ pub mod ospfdb;
 
 pub mod pcap;
 pub mod radius;
+pub mod tacacs;
 
 pub mod serial;
 pub mod tcp;
@@ -432,6 +433,7 @@ pub enum Protocol {
     Ftp,
     Smtp,
     Pop3,
+    Tacacs,
     Lacp,
     Lldp,
     Ntp,
@@ -464,6 +466,7 @@ impl Protocol {
             Protocol::Ftp => "FTP",
             Protocol::Smtp => "SMTP",
             Protocol::Pop3 => "POP3",
+            Protocol::Tacacs => "TACACS+",
             Protocol::Lldp => "LLDP",
             Protocol::Ntp => "NTP",
             Protocol::Syslog => "Syslog",
@@ -612,6 +615,10 @@ pub fn summarize(bytes: &[u8]) -> (Protocol, String) {
                         Ok(s) if !s.payload.is_empty() && (s.dst_port == 80 || s.src_port == 80) => {
                             let first = String::from_utf8_lossy(&s.payload).lines().next().unwrap_or("").chars().take(60).collect::<String>();
                             (Protocol::Http, format!("HTTP {first} {route}{tag}"))
+                        }
+                        Ok(s) if !s.payload.is_empty() && (s.dst_port == tacacs::TACACS_PORT || s.src_port == tacacs::TACACS_PORT) => {
+                            let what = if s.dst_port == tacacs::TACACS_PORT { "authentication START" } else { "authentication REPLY" };
+                            (Protocol::Tacacs, format!("TACACS+ {what} (body encrypted) {route}{tag}"))
                         }
                         Ok(s) if !s.payload.is_empty() && [SMTP_PORT, POP3_PORT].iter().any(|p| s.dst_port == *p || s.src_port == *p) => {
                             let first = String::from_utf8_lossy(&s.payload).lines().next().unwrap_or("").chars().take(60).collect::<String>();

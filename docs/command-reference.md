@@ -351,6 +351,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no aaa authentication login default` | config | router, switch | Local users only |
 | `radius-server host A.B.C.D key WORD` | config | router, switch | A RADIUS server and the secret shared with it |
 | `no radius-server host A.B.C.D` | config | router, switch | Forget a RADIUS server |
+| `tacacs-server host A.B.C.D key WORD` | config | router, switch | A TACACS+ server and the key shared with it |
+| `no tacacs-server host A.B.C.D` | config | router, switch | Forget a TACACS+ server |
 | `login authentication default` |  | router, switch | Use the default AAA method list |
 | `username WORD {secret\|password} PASSWORD` | config | router, switch | Add a local user |
 | `no username WORD` | config | router, switch | Delete a local user |

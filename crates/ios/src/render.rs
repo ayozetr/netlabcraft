@@ -86,6 +86,7 @@ pub fn running_config(d: &Device) -> String {
                 .iter()
                 .map(|m| match m {
                     packetcraft_model::LoginMethod::Radius => "group radius",
+                    packetcraft_model::LoginMethod::Tacacs => "group tacacs+",
                     packetcraft_model::LoginMethod::Local => "local",
                 })
                 .collect();
@@ -94,6 +95,9 @@ pub fn running_config(d: &Device) -> String {
     }
     for (h, k) in &a.radius_servers {
         let _ = writeln!(s, "radius-server host {h} key {}", pw(k));
+    }
+    for (h, k) in &a.tacacs_servers {
+        let _ = writeln!(s, "tacacs-server host {h} key {}", pw(k));
     }
     if let Some((u, p)) = &d.ftp_login {
         if !u.is_empty() {

@@ -1693,8 +1693,33 @@ fn aaa_logins_through_radius_by_typing() {
     assert_eq!(lab.try_run(pc, "local1"), "");
     assert_eq!(lab.prompt(pc), "R1>");
     lab.try_run(pc, "exit");
-    lab.run(r, "conf t");
-    assert!(lab.try_run(r, "aaa authentication login default group tacacs+").contains("TACACS+"));
+    // TACACS+ instead: the same server and secret, over TCP port 49.
+    lab.t.device_mut(srv).unwrap().services.aaa.on = true;
+    lab.run(r, "conf t\nno radius-server host 192.168.1.5\ntacacs-server host 192.168.1.5 key radkey\naaa authentication login default group tacacs+ local\nend");
+    assert!(
+        lab.run(r, "show running-config").contains("aaa authentication login default group tacacs+ local\ntacacs-server host 192.168.1.5 key radkey")
+    );
+    lab.sim.clear_trace();
+    lab.try_run(pc, "telnet 192.168.1.1");
+    lab.try_run(pc, "teacher");
+    assert_eq!(lab.try_run(pc, "pt-pass"), "");
+    assert_eq!(lab.prompt(pc), "R1>");
+    lab.try_run(pc, "exit");
+    lab.try_run(pc, "telnet 192.168.1.1");
+    lab.try_run(pc, "teacher");
+    assert!(lab.try_run(pc, "nope").contains("Login invalid"), "a TACACS+ no is final");
+    assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("TACACS+ authentication START")));
+    assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("TACACS+ authentication REPLY")));
+    // A wrong key: the answer doesn't read, so the local user is next.
+    lab.run(r, "conf t\ntacacs-server host 192.168.1.5 key wrong\nend");
+    lab.try_run(pc, "x");
+    lab.try_run(pc, "x");
+    lab.try_run(pc, "x");
+    lab.try_run(pc, "x");
+    lab.try_run(pc, "telnet 192.168.1.1");
+    lab.try_run(pc, "backup");
+    assert_eq!(lab.try_run(pc, "local1"), "");
+    assert_eq!(lab.prompt(pc), "R1>");
 }
 
 #[test]

@@ -205,6 +205,11 @@ fn aaa_login(t: &Topology, sim: &mut Sim, target: &packetcraft_model::Device, us
                     return accepted;
                 }
             }
+            packetcraft_model::LoginMethod::Tacacs => {
+                if let Some(accepted) = sim.tacacs_login(t, target.id, user, password) {
+                    return accepted;
+                }
+            }
             packetcraft_model::LoginMethod::Local => return target.access.users.iter().any(|x| x.name == user && x.matches(password)),
         }
     }
@@ -1612,14 +1617,17 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                             methods.push(packetcraft_model::LoginMethod::Radius);
                             i += 2;
                         }
-                        Some("tacacs+") => return Err("% TACACS+ is not simulated yet; use RADIUS (`group radius`)".into()),
-                        _ => return Err("% group radius".into()),
+                        Some("tacacs+") => {
+                            methods.push(packetcraft_model::LoginMethod::Tacacs);
+                            i += 2;
+                        }
+                        _ => return Err("% group radius or group tacacs+".into()),
                     },
                     "local" => {
                         methods.push(packetcraft_model::LoginMethod::Local);
                         i += 1;
                     }
-                    other => return Err(format!("% `{other}`: group radius or local")),
+                    other => return Err(format!("% `{other}`: group radius, group tacacs+ or local")),
                 }
             }
             if methods.is_empty() {
@@ -1635,6 +1643,19 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::NoAaaLogin => {
             c.dm()?.access.login_methods.clear();
+            Ok(String::new())
+        }
+        Id::TacacsHost | Id::NoTacacsHost => {
+            let a = parse_ip(arg(0)).map_err(|e| format!("% {e}"))?;
+            let key: String = arg(1).chars().take(63).collect();
+            let d = c.dm()?;
+            d.access.tacacs_servers.retain(|(x, _)| *x != a);
+            if spec.id == Id::TacacsHost {
+                if d.access.tacacs_servers.len() >= packetcraft_model::MAX_RADIUS_SERVERS {
+                    return Err("% Too many TACACS+ servers".into());
+                }
+                d.access.tacacs_servers.push((a, key));
+            }
             Ok(String::new())
         }
         Id::RadiusHost | Id::NoRadiusHost => {

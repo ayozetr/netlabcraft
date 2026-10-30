@@ -264,6 +264,79 @@ impl Sim {
         None
     }
 
+    /// TACACS+ arriving at a server: `None` when it isn't for port 49 on a server.
+    pub(crate) fn tacacs_server_in(&mut self, t: &Topology, d: &Device, ip: &Ipv4, seg: &packetcraft_wire::tcp::Tcp) -> Option<Result<(), String>> {
+        use packetcraft_wire::tacacs::{STATUS_FAIL, STATUS_PASS, TACACS_PORT, Tacacs};
+        use packetcraft_wire::tcp::{self, Tcp};
+        if d.kind != DeviceKind::Server || seg.dst_port != TACACS_PORT {
+            return None;
+        }
+        let reply = |flags: u8, seq: u32, ack: u32, payload: Vec<u8>| Tcp {
+            src_port: TACACS_PORT,
+            dst_port: seg.src_port,
+            seq,
+            ack,
+            flags,
+            window: 65_535,
+            payload,
+        };
+        let isn = 90_000u32;
+        if !d.services.aaa.on {
+            let _ = self.seg_to(t, d, ip.dst, ip.src, reply(tcp::RST | tcp::ACK, 0, seg.seq.wrapping_add(1), Vec::new()));
+            return Some(Err("no AAA service here".into()));
+        }
+        if seg.flags & tcp::SYN != 0 {
+            return Some(self.seg_to(t, d, ip.dst, ip.src, reply(tcp::SYN | tcp::ACK, isn, seg.seq.wrapping_add(1), Vec::new())));
+        }
+        if seg.payload.is_empty() {
+            if seg.flags & tcp::FIN != 0 {
+                return Some(self.seg_to(t, d, ip.dst, ip.src, reply(tcp::ACK | tcp::FIN, seg.ack, seg.seq.wrapping_add(1), Vec::new())));
+            }
+            return Some(Ok(()));
+        }
+        // Unknown clients get no answer.
+        let Some(client) = d.services.aaa.clients.iter().find(|c| c.address == ip.src) else {
+            return Some(Err(format!("{} isn't one of this AAA server's clients", ip.src)));
+        };
+        let Ok((Tacacs::Start { user, password }, session, seq)) = Tacacs::decode(&seg.payload, &client.secret) else {
+            return Some(Err("a TACACS+ packet this server can't read (wrong key?)".into()));
+        };
+        let good = d.services.aaa.users.iter().any(|u| u.name == user && u.password == password);
+        let answer = Tacacs::Reply {
+            status: if good { STATUS_PASS } else { STATUS_FAIL },
+            message: if good { "Welcome".into() } else { "Login refused".into() },
+        };
+        let ack = seg.seq.wrapping_add(seg.payload.len() as u32);
+        Some(self.seg_to(
+            t,
+            d,
+            ip.dst,
+            ip.src,
+            reply(tcp::PSH | tcp::ACK, isn.wrapping_add(1), ack, answer.encode(session, seq.wrapping_add(1), &client.secret)),
+        ))
+    }
+
+    /// Asks the device's TACACS+ servers about a login, like [`Sim::radius_login`].
+    pub fn tacacs_login(&mut self, t: &Topology, dev: DeviceId, user: &str, password: &str) -> Option<bool> {
+        use packetcraft_wire::tacacs::{STATUS_PASS, TACACS_PORT, Tacacs};
+        let d = t.device(dev)?.clone();
+        for (server, key) in d.access.tacacs_servers.clone() {
+            let Ok(mut c) = self.conn_open(t, dev, server, TACACS_PORT) else { continue };
+            self.seq += 1;
+            let session = u32::try_from(self.seq % u64::from(u32::MAX)).unwrap_or(1) ^ 0x5a5a_0000;
+            self.conn_send(t, &mut c, &Tacacs::Start { user: user.into(), password: password.into() }.encode(session, 1, &key));
+            let (got, _) = self.conn_recv(t, &mut c, |b| b.len() >= 12);
+            self.conn_close(t, &mut c);
+            // An answer that doesn't read with our key doesn't count.
+            if let Ok((Tacacs::Reply { status, .. }, s, _)) = Tacacs::decode(&got, &key)
+                && s == session
+            {
+                return Some(status == STATUS_PASS);
+            }
+        }
+        None
+    }
+
     /// Asks the device's NTP servers for the time; returns the server that answered.
     pub fn ntp_sync(&mut self, t: &Topology, dev: DeviceId) -> Option<Ipv4Addr> {
         let d = t.device(dev)?.clone();

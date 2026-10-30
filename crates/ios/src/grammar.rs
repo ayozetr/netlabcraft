@@ -211,6 +211,8 @@ pub enum Id {
     NoAaaLogin,
     RadiusHost,
     NoRadiusHost,
+    TacacsHost,
+    NoTacacsHost,
     LoginAuthentication,
     TransportInput,
     Telnet,
@@ -1005,6 +1007,14 @@ pub static SPECS: &[Spec] = &[
         "A RADIUS server and the secret shared with it"
     ),
     spec!(NoRadiusHost, Modes::CONFIG, Modes::BOTH, [K("no"), K("radius-server"), K("host"), Arg("A.B.C.D")], "Forget a RADIUS server"),
+    spec!(
+        TacacsHost,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("tacacs-server"), K("host"), Arg("A.B.C.D"), K("key"), Arg("WORD")],
+        "A TACACS+ server and the key shared with it"
+    ),
+    spec!(NoTacacsHost, Modes::CONFIG, Modes::BOTH, [K("no"), K("tacacs-server"), K("host"), Arg("A.B.C.D")], "Forget a TACACS+ server"),
     spec!(LoginAuthentication, Modes::LINE, Modes::BOTH, [K("login"), K("authentication"), Arg("default")], "Use the default AAA method list"),
     spec!(Username, Modes::CONFIG, Modes::BOTH, [K("username"), Arg("WORD"), Rest("{secret|password} PASSWORD")], "Add a local user"),
     spec!(NoUsername, Modes::CONFIG, Modes::BOTH, [K("no"), K("username"), Arg("WORD")], "Delete a local user"),

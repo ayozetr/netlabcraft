@@ -2332,6 +2332,9 @@ impl Sim {
         if let Some(r) = self.mail_server_in(t, d, ip, &seg) {
             return r;
         }
+        if let Some(r) = self.tacacs_server_in(t, d, ip, &seg) {
+            return r;
+        }
         if seg.dst_port == 80 && d.kind == DeviceKind::Server {
             return self.http_server_in(t, d, ip, &seg);
         }

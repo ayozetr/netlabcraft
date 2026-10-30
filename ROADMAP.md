@@ -20,7 +20,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 | Number | Value | Kind |
 |---|---|---|
-| **Ready for real work** (weighted) | **~71%** | estimated from written weights (70.7); [target-app-parity.md](docs/target-app-parity.md) |
+| **Ready for real work** (weighted) | **~71%** | estimated from written weights (70.9); [target-app-parity.md](docs/target-app-parity.md) |
 | **CCNA 1 student** | **~86%** | estimated; [method](docs/target-app-parity.md#audiences) |
 | **CCNA 2 student** | **~84%** | estimated |
 | **CCNA 3 student** | **~70%** | estimated |
@@ -28,7 +28,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Engine commands | 52 | measured: `crates/engine/src/catalog.rs` |
 | Console grammar entries | 351 across 13 modes | measured: `crates/ios/src/grammar.rs` |
 | Device models · sample labs | 16 · 18 | measured |
-| Tests | 162 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Tests | 163 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~600–950 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
@@ -48,7 +48,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Device console | 20 | 74% | 35–55 | Modes, abbreviations, `?`, Tab, history, config round-trip; `show` coverage growing |
 | Layer 2 | 12 | 85% | 12–20 | VLANs, trunks, DTP, per-VLAN STP with BPDUs and timers, rapid-pvst, EtherChannel, VTP, port security |
 | Layer 3 | 15 | 78% | 30–50 | IPv4, IPv6 (NDP, SLAAC, subinterfaces, VLAN interfaces, DHCPv6 relay), static, RIP, multi-area OSPF with DR/BDR, stub areas and ranges, OSPFv3, multilayer switching with OSPF and RIP, HSRP; no EIGRP |
-| Services | 8 | 77% | 12–20 | DHCPv4 and DHCPv6 (with relay), DNS, HTTP with browser, email with the Email app, Telnet/SSH, NTP, syslog, TFTP, FTP, AAA with RADIUS; no SNMP, TACACS+ |
+| Services | 8 | 80% | 10–16 | DHCPv4 and DHCPv6 (with relay), DNS, HTTP with browser, email with the Email app, Telnet/SSH, NTP, syslog, TFTP, FTP, AAA with RADIUS and TACACS+; no SNMP |
 | Security | 8 | 72% | 24–40 | IPv4 and IPv6 ACLs, access-class, NAT/PAT, passwords and lines, PPP PAP/CHAP; no firewalls or VPN |
 | WAN, cabling, wireless | 6 | 62% | 28–45 | Copper (auto-MDIX), serial (DCE/DTE, HDLC/PPP), Wi-Fi access points, home wireless routers and clients; no WLC or fibre |
 | Simulation mode | 8 | 70% | 18–28 | Event list, replay, decode, drop reasons, pcap; BPDUs, OSPF hellos and database exchange, RIP updates, HSRP hellos, LLDP, LACP; no complex PDUs |
@@ -60,6 +60,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-10-30 — TACACS+.** Logins can be checked by a TACACS+ server too (`tacacs-server host`, `group tacacs+`), with the encrypted exchange on the wire.
 - **2026-10-30 — Errors in Spanish.** With the Spanish interface, the status bar's errors and the reasons a frame was dropped read in Spanish too.
 - **2026-10-30 — Workspace image.** File ▸ Export Workspace Image (PNG) saves the lab as a picture, on the desktop and on the web.
 - **2026-10-30 — `ip address dhcp`.** Router interfaces, routed ports and the home router's Internet port can lease their address (and a default route) from a provider's DHCP server.

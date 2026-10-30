@@ -1191,6 +1191,9 @@ pub struct Access {
     /// `radius-server host A.B.C.D key K`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub radius_servers: Vec<(Ipv4Addr, String)>,
+    /// `tacacs-server host A.B.C.D key K`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tacacs_servers: Vec<(Ipv4Addr, String)>,
     /// `security passwords min-length N`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_password_len: Option<u8>,
@@ -1211,6 +1214,8 @@ pub struct Access {
 pub enum LoginMethod {
     /// `group radius`: ask the RADIUS servers; if none answers, try the next method.
     Radius,
+    /// `group tacacs+`: the same with the TACACS+ servers.
+    Tacacs,
     /// `local`: the `username` lines.
     Local,
 }
@@ -1230,6 +1235,7 @@ impl Access {
         let aaa_ready = self.aaa
             && self.methods().iter().any(|m| match m {
                 LoginMethod::Radius => !self.radius_servers.is_empty(),
+                LoginMethod::Tacacs => !self.tacacs_servers.is_empty(),
                 LoginMethod::Local => !self.users.is_empty(),
             });
         let auth = aaa_ready || (v.login_local && !self.users.is_empty()) || (v.login && v.password.is_some());

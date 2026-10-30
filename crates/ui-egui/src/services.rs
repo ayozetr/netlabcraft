@@ -688,7 +688,7 @@ fn aaa(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mut
     ui.vertical_centered(|ui| ui.label(RichText::new(tl("AAA")).size(16.0)));
     ui.separator();
     let mut new = sv.clone();
-    if on_off(ui, tl("AAA Service (RADIUS)"), &mut new.aaa.on) {
+    if on_off(ui, tl("AAA Service (RADIUS, TACACS+)"), &mut new.aaa.on) {
         apply(app, d, &new);
     }
     ui.separator();
