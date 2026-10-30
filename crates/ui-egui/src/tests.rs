@@ -437,3 +437,34 @@ fn polygons_triangulate_without_trouble() {
     let _ = canvas::triangulate_for_tests(&p(&[(0.0, 0.0), (10.0, 10.0), (10.0, 0.0), (0.0, 10.0)]));
     let _ = canvas::triangulate_for_tests(&p(&[(f32::NAN, 0.0), (1.0, 1.0), (2.0, 0.0), (3.0, 3.0)]));
 }
+
+#[test]
+fn a_drawing_being_dragged_out_stays_under_the_cables() {
+    let mut h = harness(Some("two-subnets"));
+    h.run_steps(2);
+    let t = &h.state().session.topology;
+    let (r1, s2) = (t.find("R1").map(|d| (d.x, d.y)).unwrap(), t.find("S2").map(|d| (d.x, d.y)).unwrap());
+    let origin = canvas_origin(&h) + h.state().ui.pan;
+    let screen = |x: f32, y: f32| origin + egui::vec2(x, y);
+    // The cable's middle, then an ellipse dragged out over it (not released yet).
+    let mid = screen((r1.0 + s2.0) / 2.0, (r1.1 + s2.1) / 2.0);
+    h.state_mut().ui.tool = Tool::Draw(packetcraft_model::Shape::Ellipse);
+    let from = mid - egui::vec2(80.0, 60.0);
+    press(&mut h, from, true, egui::Modifiers::NONE);
+    h.run_steps(1);
+    for i in 1..=8 {
+        h.input_mut().events.push(egui::Event::PointerMoved(from + egui::vec2(20.0, 15.0) * i as f32));
+        h.run_steps(1);
+    }
+    let img = h.render().unwrap();
+    let dark = |p: egui::Pos2| {
+        (-1..=1).flat_map(|dx| (-1..=1).map(move |dy| (dx, dy))).any(|(dx, dy)| {
+            let px = img.get_pixel((p.x as i32 + dx) as u32, (p.y as i32 + dy) as u32);
+            u32::from(px[0]) + u32::from(px[1]) + u32::from(px[2]) < 300
+        })
+    };
+    assert!(dark(mid), "the cable shows through the drawing in progress");
+    press(&mut h, from + egui::vec2(160.0, 120.0), false, egui::Modifiers::NONE);
+    h.run_steps(2);
+    assert_eq!(h.state().session.topology.annotations.len(), 1);
+}

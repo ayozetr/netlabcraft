@@ -455,8 +455,8 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
     }
 
     draw_shapes(app, &painter, &view);
-    draw_links(app, &painter, &view, &tk);
-    draw_notes(app, &painter, &view, &tk);
+    // The drawing being dragged out sits with the other drawings, under the cables and their
+    // port labels, as it will once placed.
     if let (Some((x0, y0)), Some(p), Tool::Draw(shape)) = (app.ui.canvas.draw_from, ui.input(|i| i.pointer.hover_pos()), app.ui.tool) {
         let (x1, y1) = view.world(p);
         let preview = packetcraft_model::Annotation {
@@ -473,6 +473,8 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
         };
         paint_shape(&painter, &view, &preview);
     }
+    draw_links(app, &painter, &view, &tk);
+    draw_notes(app, &painter, &view, &tk);
     draw_in_progress(app, &painter, &view, ui.input(|i| i.pointer.hover_pos()));
     draw_packet(app, ui, &painter, &view, &tk);
     draw_clusters(app, &painter, &view, &tk);
