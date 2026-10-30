@@ -25,6 +25,7 @@ fn main() {
     let mut url: Option<String> = None;
     let mut physical = false;
     let mut place: Option<u32> = None;
+    let mut connections: Option<Option<String>> = None;
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -58,6 +59,8 @@ fn main() {
             "--compare" => compare = true,
             "--services-page" => page = Some(it.next().expect("page").clone()),
             "--url" => url = Some(it.next().expect("url").clone()),
+            "--connections" => connections = Some(None),
+            "--cable" => connections = Some(Some(it.next().expect("cable id").clone())),
             "--event" => event = Some(it.next().and_then(|s| s.parse().ok()).expect("event id")),
             other => out = other.to_string(),
         }
@@ -95,6 +98,9 @@ fn main() {
                 if let Some(u) = &url {
                     packetcraft_ui_egui::open_browser(&mut app, id, u);
                 }
+            }
+            if let Some(c) = &connections {
+                packetcraft_ui_egui::show_connections(&mut app, c.as_deref());
             }
             app.ui.events.selected = event;
             if simulation {

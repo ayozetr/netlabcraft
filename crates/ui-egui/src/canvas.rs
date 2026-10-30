@@ -2,6 +2,7 @@
 
 use egui::{Align2, FontId, Id, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2, pos2, vec2};
 use packetcraft_core::DeviceId;
+use packetcraft_model::cable::Cable;
 use packetcraft_model::{Cluster, Device, End, Shape, Shown, ifname};
 use packetcraft_sim::port_up;
 use serde_json::{Value, json};
@@ -18,6 +19,8 @@ const GRID: f32 = 40.0;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Pending {
     CableFrom(End),
+    /// A console cable started at a device's Console or RS-232 port.
+    ConsoleCable(DeviceId),
     PingFrom(DeviceId),
 }
 
@@ -87,9 +90,14 @@ pub fn hint(app: &PacketApp) -> String {
         }
         (Tool::Draw(_), _) => crate::i18n::tl("Drag on the workspace to draw. Drawings sit behind devices; move them with Select.").into(),
         (Tool::Note, _) => crate::i18n::tl("Click the workspace to place a note. Drag notes to move them; double-click to edit.").into(),
-        (Tool::Cable, None) => crate::i18n::tl("Click the first device and pick a port.").into(),
-        (Tool::Cable, Some(Pending::CableFrom(e))) => {
+        (Tool::Cable(Cable::Console), None) => crate::i18n::tl("Console cable: click a PC (RS-232) and a router or switch (Console).").into(),
+        (Tool::Cable(_), None) => crate::i18n::tl("Click the first device and pick a port.").into(),
+        (Tool::Cable(_), Some(Pending::CableFrom(e))) => {
             crate::i18n::trf("From {}: click the second device and pick a port. Esc cancels.", &[&app.session.topology.end_label(e)])
+        }
+        (Tool::Cable(_), Some(Pending::ConsoleCable(d))) => {
+            let name = app.session.topology.device(d).map_or(String::new(), |x| format!("{} {}", x.name, x.console_port_name().unwrap_or("")));
+            crate::i18n::trf("From {}: click the second device. Esc cancels.", &[&name])
         }
         (Tool::Ping, None) => crate::i18n::tl("Simple PDU: click the source device.").into(),
         (Tool::Ping, Some(_)) => crate::i18n::tl("Simple PDU: now click the destination device.").into(),
@@ -368,6 +376,15 @@ pub fn note_editor(app: &mut PacketApp, ctx: &egui::Context) {
     }
 }
 
+/// The console cable under the pointer: the PC at its RS-232 end.
+fn hit_console(app: &PacketApp, view: &View, p: Pos2) -> Option<DeviceId> {
+    let t = &app.session.topology;
+    t.consoles.iter().filter(|c| view.visible(c.pc) && view.visible(c.device)).find_map(|c| {
+        let (a, b) = (t.device(c.pc)?, t.device(c.device)?);
+        (segment_distance(p, view.screen(a.x, a.y), view.screen(b.x, b.y)) < 6.0).then_some(c.pc)
+    })
+}
+
 fn hit_link(app: &PacketApp, view: &View, p: Pos2) -> Option<End> {
     let t = &app.session.topology;
     t.links.iter().filter(|l| view.visible(l.a.device) && view.visible(l.b.device)).find_map(|l| {
@@ -489,8 +506,13 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
     }
 
     // A cable being drawn follows the pointer.
-    if let (Some(Pending::CableFrom(e)), Some(p)) = (app.ui.canvas.pending, ui.input(|i| i.pointer.hover_pos()))
-        && let Some(d) = app.session.topology.device(e.device)
+    let drawing_from = match app.ui.canvas.pending {
+        Some(Pending::CableFrom(e)) => Some(e.device),
+        Some(Pending::ConsoleCable(d)) => Some(d),
+        _ => None,
+    };
+    if let (Some(from), Some(p)) = (drawing_from, ui.input(|i| i.pointer.hover_pos()))
+        && let Some(d) = app.session.topology.device(from)
     {
         let from = view.screen(d.x, d.y);
         painter.extend(egui::Shape::dashed_line(&[from, p], Stroke::new(2.0, tk.selection), 6.0, 4.0));
@@ -557,23 +579,39 @@ fn draw_links(app: &mut PacketApp, painter: &egui::Painter, view: &View, tk: &To
             _ => Vec2::ZERO,
         };
         let len = (pb - pa).length();
-        if t.is_serial(l.a) && len >= 1.0 {
+        let kind = t.resolved_cable(l);
+        let width = (2.2 * view.zoom).max(1.0);
+        if kind.is_serial() && len >= 1.0 {
             // A serial cable: red, with a zigzag in the middle; a clock by the DCE end.
-            let red = Stroke::new((2.2 * view.zoom).max(1.0), egui::Color32::from_rgb(0xc8, 0x3a, 0x2e));
+            let red = Stroke::new(width, tk.serial_cable);
             let d = (pb - pa) / len;
             let n = vec2(-d.y, d.x);
             let mid = pa + (pb - pa) * 0.5;
             let z = 9.0 * view.zoom;
             painter.add(egui::Shape::line(vec![pa, mid - d * z, mid + n * z * 0.9, mid - n * z * 0.9, mid + d * z, pb], red));
             // Opposite the port labels, which sit above a lone cable.
-            let below = if n.y > 0.0 { n } else { -n };
-            let clock = pa + d * (ICON * 0.5 + 34.0) * view.zoom + below * 13.0 * view.zoom;
+            let (from, toward) = if t.dce_of(l.a) == Some(l.b) { (pb, -d) } else { (pa, d) };
+            let n_end = vec2(-toward.y, toward.x);
+            let below = if n_end.y > 0.0 { n_end } else { -n_end };
+            // Past the name lines under the icon when the cable leaves downwards.
+            let down = toward.y.max(0.0);
+            let clock = from + toward * (ICON * 0.5 + 34.0 + 40.0 * down * down) * view.zoom + below * 13.0 * view.zoom;
             let r = 6.0 * view.zoom.clamp(0.6, 1.4);
             painter.circle(clock, r, tk.chrome, Stroke::new(1.2, red.color));
             painter.line_segment([clock, clock - vec2(0.0, r * 0.7)], Stroke::new(1.2, red.color));
             painter.line_segment([clock, clock + vec2(r * 0.55, 0.0)], Stroke::new(1.2, red.color));
         } else {
-            painter.line_segment([pa, pb], Stroke::new((2.2 * view.zoom).max(1.0), tk.cable));
+            match kind {
+                Cable::Cross => {
+                    painter.extend(egui::Shape::dashed_line(&[pa, pb], Stroke::new(width, tk.cable), 10.0 * view.zoom, 5.0 * view.zoom));
+                }
+                Cable::Fiber => {
+                    painter.line_segment([pa, pb], Stroke::new(width, tk.fiber_cable));
+                }
+                _ => {
+                    painter.line_segment([pa, pb], Stroke::new(width, tk.cable));
+                }
+            }
         }
         if len < 1.0 {
             continue;
@@ -615,6 +653,14 @@ fn draw_links(app: &mut PacketApp, painter: &egui::Painter, view: &View, tk: &To
             }
         }
     }
+    // Console cables: light blue and dashed, from the PC to the device; no link lights (they
+    // carry no frames).
+    for c in t.consoles.iter().filter(|c| view.visible(c.pc) && view.visible(c.device)) {
+        let (Some(a), Some(b)) = (t.device(c.pc), t.device(c.device)) else { continue };
+        let (pa, pb) = (view.screen(a.x, a.y), view.screen(b.x, b.y));
+        let stroke = Stroke::new((2.0 * view.zoom).max(1.0), tk.console_cable);
+        painter.extend(egui::Shape::dashed_line(&[pa, pb], stroke, 5.0 * view.zoom, 4.0 * view.zoom));
+    }
     // Wi-Fi associations: a dashed line from each host to its access point.
     for d in t.devices.iter().filter(|d| d.kind.is_host() && view.visible(d.id)) {
         for p in 0..d.ports.len() {
@@ -650,7 +696,8 @@ fn draw_devices(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Toke
             painter.rect_filled(r.expand(6.0), 8.0, tk.selection.gamma_multiply(0.15));
             painter.rect_stroke(r.expand(6.0), 8.0, Stroke::new(1.5, tk.selection), StrokeKind::Outside);
         }
-        if matches!(app.ui.canvas.pending, Some(Pending::CableFrom(e)) if e.device == d.id) || app.ui.canvas.pending == Some(Pending::PingFrom(d.id))
+        if matches!(app.ui.canvas.pending, Some(Pending::CableFrom(e)) if e.device == d.id)
+            || matches!(app.ui.canvas.pending, Some(Pending::ConsoleCable(x) | Pending::PingFrom(x)) if x == d.id)
         {
             painter.rect_stroke(r.expand(6.0), 8.0, Stroke::new(2.0, tk.selection), StrokeKind::Outside);
         }
@@ -1047,7 +1094,11 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
                 }
             }
         }
-        Tool::Cable => match hit {
+        Tool::Cable(Cable::Console) => match hit {
+            Some(d) => console_click(app, d),
+            None => app.ui.canvas.cancel(),
+        },
+        Tool::Cable(_) => match hit {
             Some(d) => app.ui.canvas.port_menu = Some((d, p)),
             None => app.ui.canvas.cancel(),
         },
@@ -1075,6 +1126,8 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
             } else if let Some(end) = hit_link(app, view, p) {
                 let port = app.session.topology.device(end.device).and_then(|d| d.ports.get(end.port)).map(|p| p.name.clone()).unwrap_or_default();
                 app.run("link.remove", json!({"device": end.device.0, "port": port}));
+            } else if let Some(pc) = hit_console(app, view, p) {
+                app.run("link.remove", json!({"device": pc.0, "port": packetcraft_model::cable::RS232_PORT}));
             }
         }
     }
@@ -1331,6 +1384,26 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, d: DeviceId) {
     }
 }
 
+/// The console cable tool: each device has one console-cable port, so a click picks it.
+fn console_click(app: &mut PacketApp, d: DeviceId) {
+    let Some(dev) = app.session.topology.device(d) else { return };
+    if dev.console_port_name().is_none() {
+        let msg = crate::i18n::trf("{} has no Console or RS-232 port.", &[&dev.name]);
+        app.ui.status = Some((msg, true));
+        return;
+    }
+    match app.ui.canvas.pending {
+        Some(Pending::ConsoleCable(a)) if a != d => {
+            app.ui.canvas.pending = None;
+            if let Some(v) = app.run("link.add", json!({"a": a.0, "b": d.0, "cable": "console"})) {
+                let msg = format!("Connected {} and {}", v["a"].as_str().unwrap_or(""), v["b"].as_str().unwrap_or(""));
+                app.info(msg);
+            }
+        }
+        _ => app.ui.canvas.pending = Some(Pending::ConsoleCable(d)),
+    }
+}
+
 /// The port chooser of the cable tool.
 fn port_menu(app: &mut PacketApp, ui: &Ui) {
     let Some((d, at)) = app.ui.canvas.port_menu else { return };
@@ -1340,9 +1413,14 @@ fn port_menu(app: &mut PacketApp, ui: &Ui) {
     };
     let mut chosen = None;
     let mut close = false;
-    // The second end of a cable must be the same type as the first (serial or Ethernet).
-    let want_serial = match app.ui.canvas.pending {
-        Some(Pending::CableFrom(a)) if a.device != d => Some(app.session.topology.is_serial(a)),
+    // A port the cable doesn't fit (or, for the second end, that doesn't fit the first) is
+    // greyed out.
+    let kind = match app.ui.tool {
+        Tool::Cable(k) => k,
+        _ => Cable::Auto,
+    };
+    let first = match app.ui.canvas.pending {
+        Some(Pending::CableFrom(a)) if a.device != d => Some(a),
         _ => None,
     };
     egui::Area::new(Id::unique("port_menu")).fixed_pos(at + vec2(8.0, 8.0)).order(egui::Order::Foreground).show(ui.ctx(), |ui| {
@@ -1355,8 +1433,10 @@ fn port_menu(app: &mut PacketApp, ui: &Ui) {
                         Some(peer) => {
                             ui.add_enabled(false, egui::Button::new(format!("{}  (to {})", p.name, app.session.topology.end_label(peer))));
                         }
-                        None if want_serial.is_some_and(|s| s != packetcraft_model::ifname::is_serial(&p.name)) => {
-                            ui.add_enabled(false, egui::Button::new(format!("{}  (other cable type)", p.name)));
+                        None if app.session.topology.cable_misfit(kind, first.unwrap_or(end), end).is_some() => {
+                            let why = app.session.topology.cable_misfit(kind, first.unwrap_or(end), end).unwrap_or_default();
+                            ui.add_enabled(false, egui::Button::new(format!("{}  ({})", p.name, crate::i18n::tl("other cable type"))))
+                                .on_disabled_hover_text(why);
                         }
                         None => {
                             if ui.button(&p.name).clicked() {
@@ -1381,7 +1461,7 @@ fn port_menu(app: &mut PacketApp, ui: &Ui) {
             app.ui.canvas.pending = None;
             let port = |e: End| app.session.topology.device(e.device).and_then(|d| d.ports.get(e.port)).map(|p| p.name.clone()).unwrap_or_default();
             let (pa, pb) = (port(a), port(end));
-            if let Some(v) = app.run("link.add", json!({"a": a.device.0, "a_port": pa, "b": end.device.0, "b_port": pb})) {
+            if let Some(v) = app.run("link.add", json!({"a": a.device.0, "a_port": pa, "b": end.device.0, "b_port": pb, "cable": kind.id()})) {
                 let msg = format!("Connected {} and {}", v["a"].as_str().unwrap_or(""), v["b"].as_str().unwrap_or(""));
                 app.info(msg);
             }

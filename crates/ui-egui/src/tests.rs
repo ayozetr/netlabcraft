@@ -531,3 +531,94 @@ fn the_physical_view_opens_places_and_goes_back() {
         assert!(!h.state().session.physical);
     }
 }
+
+fn click_at(h: &mut Harness<'static, PacketApp>, at: egui::Pos2) {
+    h.input_mut().events.push(egui::Event::PointerMoved(at));
+    for pressed in [true, false] {
+        h.input_mut().events.push(egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        });
+    }
+    h.run_steps(2);
+}
+
+#[test]
+fn every_cable_tile_picks_its_cable_and_cables_ports_of_its_kind() {
+    use packetcraft_model::cable::Cable;
+    let mut h = harness(None);
+    h.run_steps(2);
+    let (fiber_sw, sw, pc, r) = (egui::pos2(500.0, 300.0), egui::pos2(800.0, 300.0), egui::pos2(500.0, 460.0), egui::pos2(800.0, 460.0));
+    for (model, at) in [("Switch-24-SFP", fiber_sw), ("Switch-24", sw), ("PC", pc), ("Router-3", r)] {
+        h.state_mut().set_tool(Tool::Place(model));
+        click_at(&mut h, at);
+    }
+    assert_eq!(h.state().session.topology.devices.len(), 4);
+    h.get_by_label("Connections").click();
+    h.run_steps(2);
+    for c in Cable::ALL {
+        h.get_by_label(c.label()).scroll_to_me();
+        h.run_steps(2);
+        h.get_by_label(c.label()).click();
+        h.run_steps(1);
+        assert_eq!(h.state().ui.tool, Tool::Cable(c), "{}", c.label());
+    }
+    // Fiber: the port menu offers the fiber and combo ports.
+    h.get_by_label("Fiber").scroll_to_me();
+    h.run_steps(12);
+    h.get_by_label("Fiber").click();
+    h.run_steps(1);
+    h.get_by_label("Fiber").scroll_to_me();
+    h.run_steps(12);
+    h.get_by_label("Fiber").click();
+    h.run_steps(1);
+    assert_eq!(h.state().ui.tool, Tool::Select);
+    h.get_by_label("Fiber").scroll_to_me();
+    h.run_steps(12);
+    h.get_by_label("Fiber").click();
+    h.run_steps(1);
+    click_at(&mut h, fiber_sw);
+    assert!(h.query_by_label("FastEthernet0/1  (other cable type)").is_some());
+    h.get_by_label("GigabitEthernet0/1").scroll_to_me();
+    h.run_steps(12);
+    h.get_by_label("GigabitEthernet0/1").click();
+    h.run_steps(12);
+    click_at(&mut h, sw);
+    h.get_by_label("GigabitEthernet0/2").scroll_to_me();
+    h.run_steps(12);
+    h.get_by_label("GigabitEthernet0/2").click();
+    h.run_steps(12);
+    let t = &h.state().session.topology;
+    assert_eq!(t.links.len(), 1);
+    assert_eq!(t.links[0].cable, Cable::Fiber);
+    // Console: a click on each device, then the PC's Terminal types into the router.
+    h.get_by_label("Console").scroll_to_me();
+    h.run_steps(12);
+    h.get_by_label("Console").click();
+    h.run_steps(1);
+    click_at(&mut h, pc);
+    click_at(&mut h, r);
+    let (pc_id, r_id) = {
+        let t = &h.state().session.topology;
+        (t.resolve("PC1").unwrap(), t.resolve("R1").unwrap())
+    };
+    assert_eq!(h.state().session.topology.console_peer(pc_id), Some(r_id));
+    h.state_mut().set_tool(Tool::Select);
+    open_desktop_app(h.state_mut(), pc_id, "terminal");
+    h.run_steps(3);
+    assert!(h.query_by_label_contains("Console of R1").is_some());
+    h.input_mut().events.push(egui::Event::Text("enable".into()));
+    h.run_steps(1);
+    h.input_mut().events.push(egui::Event::Key {
+        key: egui::Key::Enter,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: egui::Modifiers::NONE,
+    });
+    h.run_steps(2);
+    let log = &h.state_mut().session.console(r_id).log;
+    assert!(log.contains("R1>enable"), "{log}");
+}

@@ -768,3 +768,78 @@ pub fn glyph(p: &Painter, rect: Rect, g: Glyph, c: Color32) {
         }
     }
 }
+
+/// The picture of a cable kind on its Connections tile: a cable running corner to corner with
+/// a plug at each end, drawn the way the workspace draws that kind (straight-through solid,
+/// cross-over dashed, fiber orange, console light blue and dashed, serial red with a zigzag and
+/// a clock at the DCE end); the automatic cable carries a small spark.
+pub fn cable(p: &Painter, rect: Rect, kind: packetcraft_model::cable::Cable, tk: &Tokens) {
+    use packetcraft_model::cable::Cable;
+    let r = rect.shrink(rect.width() * 0.12);
+    let (w, h) = (r.width(), r.height());
+    let a = pos2(r.left() + w * 0.08, r.bottom() - h * 0.08);
+    let b = pos2(r.right() - w * 0.08, r.top() + h * 0.08);
+    let width = (rect.width() / 12.0).clamp(1.6, 2.8);
+    let color = match kind {
+        Cable::Fiber => tk.fiber_cable,
+        Cable::Console => tk.console_cable,
+        Cable::SerialDce | Cable::SerialDte => tk.serial_cable,
+        _ => tk.cable,
+    };
+    let s = Stroke::new(width, color);
+    match kind {
+        Cable::Cross => p.extend(Shape::dashed_line(&[a, b], s, w * 0.16, w * 0.09)),
+        Cable::Console => {
+            // A loose curve, as a rollover cable lies on the desk.
+            let pts: Vec<Pos2> = (0..=16)
+                .map(|i| i as f32 / 16.0)
+                .map(|t| a + (b - a) * t + vec2(1.0, 1.0).normalized() * (t * std::f32::consts::PI).sin() * w * 0.18)
+                .collect();
+            p.extend(Shape::dashed_line(&pts, s, w * 0.12, w * 0.08));
+        }
+        Cable::SerialDce | Cable::SerialDte => {
+            let d = (b - a).normalized();
+            let n = vec2(-d.y, d.x);
+            let mid = a + (b - a) * 0.5;
+            let z = w * 0.12;
+            p.add(Shape::line(vec![a, mid - d * z, mid + n * z, mid - n * z, mid + d * z, b], s));
+            // The clock: by the end clicked first for DCE, by the far end for DTE.
+            let at = if kind == Cable::SerialDce { a + (b - a) * 0.22 } else { a + (b - a) * 0.78 };
+            let c = at + n * w * 0.16;
+            let rad = w * 0.11;
+            p.circle(c, rad, tk.chrome, Stroke::new(1.2, color));
+            p.line_segment([c, c - vec2(0.0, rad * 0.7)], Stroke::new(1.1, color));
+            p.line_segment([c, c + vec2(rad * 0.55, 0.0)], Stroke::new(1.1, color));
+        }
+        Cable::Fiber => {
+            // A glow around the core.
+            p.line_segment([a, b], Stroke::new(width * 2.2, color.gamma_multiply(0.3)));
+            p.line_segment([a, b], s);
+        }
+        Cable::Straight | Cable::Auto => {
+            p.line_segment([a, b], s);
+        }
+    }
+    // Plugs: small squares at both ends.
+    let plug = w * 0.13;
+    for end in [a, b] {
+        p.rect_filled(Rect::from_center_size(end, vec2(plug, plug)), 1.5, color);
+    }
+    if kind == Cable::Auto {
+        // A four-pointed spark above the middle: the right kind is picked for you.
+        let c = pos2(r.left() + w * 0.3, r.top() + h * 0.3);
+        let k = w * 0.16;
+        let pts = vec![
+            c + vec2(0.0, -k),
+            c + vec2(k * 0.25, -k * 0.25),
+            c + vec2(k, 0.0),
+            c + vec2(k * 0.25, k * 0.25),
+            c + vec2(0.0, k),
+            c + vec2(-k * 0.25, k * 0.25),
+            c + vec2(-k, 0.0),
+            c + vec2(-k * 0.25, -k * 0.25),
+        ];
+        p.add(Shape::closed_line(pts, Stroke::new(1.4, tk.fiber_cable)));
+        p.circle_filled(c, k * 0.3, tk.fiber_cable);
+    }
+}

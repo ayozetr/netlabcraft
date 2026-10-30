@@ -23,6 +23,9 @@ pub const MAX_LENGTHS: usize = 10_000;
 pub const MAX_CABLE_M: u32 = 20_000_000;
 /// Longest copper Ethernet run that still carries a signal, in metres.
 pub const COPPER_MAX_M: u32 = 100;
+/// Longest fiber run that still carries a signal here, in metres (multimode at gigabit speed
+/// reaches a few hundred metres, single-mode many kilometres: one generous figure for both).
+pub const FIBER_MAX_M: u32 = 2000;
 /// Two ends in the same closet (or the same room).
 pub const SAME_PLACE_M: u32 = 3;
 /// Two ends in different closets or rooms of one building.
