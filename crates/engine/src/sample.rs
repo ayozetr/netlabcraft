@@ -81,6 +81,11 @@ pub static SAMPLES: &[Sample] = &[
         description: "An access point offers the network Aula with WPA2; two Wi-Fi laptops join it and get addresses from the router's DHCP pool.",
     },
     Sample {
+        id: "wlc",
+        title: "Wi-Fi with a controller: lightweight APs and WPA2-Enterprise",
+        description: "Two lightweight access points join the controller WLC1, which offers Staff (WPA2-Enterprise, logins checked by a RADIUS server) and Guest (WPA2-PSK).",
+    },
+    Sample {
         id: "ospf",
         title: "OSPF on three routers",
         description: "Three routers in a triangle learn each other's networks with OSPF; cut a link and the routes move.",
@@ -555,7 +560,7 @@ pub fn build(id: &str) -> Result<Topology> {
                 "enable\nconfigure terminal\ninterface g0/0\nip address 192.168.10.1 255.255.255.0\nno shutdown\nexit\nip dhcp excluded-address 192.168.10.1 192.168.10.9\nip dhcp pool AULA\nnetwork 192.168.10.0 255.255.255.0\ndefault-router 192.168.10.1\nend",
             )?;
             b.type_in("PC1", "ipconfig 192.168.10.5 255.255.255.0 192.168.10.1")?;
-            let wifi = packetcraft_model::Wifi { ssid: "Aula".into(), key: Some("clase1234".into()), channel: 6 };
+            let wifi = packetcraft_model::Wifi { ssid: "Aula".into(), key: Some("clase1234".into()), channel: 6, login: None };
             let ap = b.t.resolve("AP1").map_err(|e| EngineError::Failed(e.to_string()))?;
             if let Some(p) = b.t.device_mut(ap).and_then(|d| d.ports.get_mut(1)) {
                 p.wifi = Some(wifi.clone());
@@ -569,6 +574,63 @@ pub fn build(id: &str) -> Result<Topology> {
                 b.type_in(name, "ipconfig /renew")?;
             }
             b.t.notes = "AP1 offers Aula (WPA2, passphrase clase1234). Open a laptop's Config ▸ Wireless0 to change its network, or move it far from AP1 and watch it drop.".into();
+        }
+        "wlc" => {
+            b.add_model("Router-2", "R1", 360.0, 30.0)?;
+            b.add_model("Switch-24", "S1", 360.0, 150.0)?;
+            b.add_model("WLC", "WLC1", 120.0, 90.0)?;
+            b.add_model("Server", "RADIUS1", 600.0, 90.0)?;
+            b.add_model("LAP", "LAP1", 200.0, 260.0)?;
+            b.add_model("LAP", "LAP2", 560.0, 260.0)?;
+            b.cable("R1", "g0/0", "S1", "g0/1")?;
+            b.cable("WLC1", "g0/1", "S1", "fa0/1")?;
+            b.cable("LAP1", "g0", "S1", "fa0/2")?;
+            b.cable("LAP2", "g0", "S1", "fa0/3")?;
+            b.cable("RADIUS1", "g0", "S1", "fa0/4")?;
+            b.type_in(
+                "R1",
+                "enable\nconfigure terminal\ninterface g0/0\nip address 192.168.20.1 255.255.255.0\nno shutdown\nexit\nip dhcp excluded-address 192.168.20.1 192.168.20.20\nip dhcp pool WIFI\nnetwork 192.168.20.0 255.255.255.0\ndefault-router 192.168.20.1\nend",
+            )?;
+            b.type_in("RADIUS1", "ipconfig 192.168.20.5 255.255.255.0 192.168.20.1")?;
+            let server = b.t.resolve("RADIUS1").map_err(|e| EngineError::Failed(e.to_string()))?;
+            if let Some(d) = b.t.device_mut(server) {
+                use packetcraft_model::services::{AaaClient, AaaUser};
+                d.services.aaa.on = true;
+                d.services.aaa.clients.push(AaaClient {
+                    name: "WLC1".into(),
+                    address: "192.168.20.2".parse().map_err(|_| EngineError::Failed("address".into()))?,
+                    secret: "wlcsecret".into(),
+                });
+                for (u, pw) in [("ana", "ana12345"), ("luis", "luis1234")] {
+                    d.services.aaa.users.push(AaaUser { name: u.into(), password: pw.into() });
+                }
+            }
+            b.type_in(
+                "WLC1",
+                "enable\nconfigure terminal\ninterface vlan 1\nip address 192.168.20.2 255.255.255.0\nno shutdown\nexit\nip default-gateway 192.168.20.1\nradius-server host 192.168.20.5 key wlcsecret\nwlan 1 Staff enterprise\nwlan 2 Guest psk invitado123\nend",
+            )?;
+            for (lap, a) in [("LAP1", 3), ("LAP2", 4)] {
+                b.type_in(
+                    lap,
+                    &format!("enable\nconfigure terminal\ninterface vlan 1\nip address 192.168.20.{a} 255.255.255.0\nno shutdown\nexit\nip default-gateway 192.168.20.1\nend"),
+                )?;
+            }
+            let staff = packetcraft_model::Wifi {
+                ssid: "Staff".into(),
+                key: None,
+                channel: 6,
+                login: Some(packetcraft_model::wlan::WifiLogin { user: "ana".into(), password: "ana12345".into() }),
+            };
+            let guest = packetcraft_model::Wifi { ssid: "Guest".into(), key: Some("invitado123".into()), channel: 6, login: None };
+            for (name, x, wifi) in [("Laptop1", 160.0, staff), ("Laptop2", 600.0, guest)] {
+                b.add_model("Laptop-WiFi", name, x, 400.0)?;
+                let id = b.t.resolve(name).map_err(|e| EngineError::Failed(e.to_string()))?;
+                if let Some(p) = b.t.device_mut(id).and_then(|d| d.ports.get_mut(0)) {
+                    p.wifi = Some(wifi);
+                }
+                b.type_in(name, "ipconfig /renew")?;
+            }
+            b.t.notes = "WLC1 holds two WLANs (`show wlan`, `show capwap`): Staff checks logins with RADIUS1 (users ana/ana12345 and luis/luis1234), Guest uses the passphrase invitado123. In Simulation mode, reset and ping from Laptop1 to watch the 802.11 association, the EAP login and the RADIUS exchange; give Laptop1 a wrong password and watch it refused.".into();
         }
         "ospf" => {
             for (name, x, y) in [("R1", 120.0, 80.0), ("R2", 600.0, 80.0), ("R3", 360.0, 260.0)] {

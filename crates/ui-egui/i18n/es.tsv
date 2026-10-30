@@ -596,3 +596,36 @@ Forget the traps received	Olvidar los traps recibidos
 Trap	Trap
 Details	Detalles
 No traps yet. Routers and switches send them with snmp-server host and snmp-server enable traps.	Aún no hay traps. Los routers y switches los envían con snmp-server host y snmp-server enable traps.
+Wireless LANs	Redes inalámbricas
+Controller	Controlador
+WLAN	WLAN
+Security	Seguridad
+Add or change a WLAN	Añadir o cambiar una WLAN
+WLAN number	Número de WLAN
+Save WLAN	Guardar WLAN
+RADIUS server (WPA2-Enterprise logins)	Servidor RADIUS (inicios de sesión WPA2-Enterprise)
+Server address	Dirección del servidor
+Shared secret	Secreto compartido
+Add RADIUS server	Añadir servidor RADIUS
+A WPA2-Enterprise WLAN needs a RADIUS server.	Una WLAN WPA2-Enterprise necesita un servidor RADIUS.
+Management address: {}	Dirección de gestión: {}
+No management address yet: give interface Vlan1 an address.	Aún no hay dirección de gestión: da una dirección a la interfaz Vlan1.
+Access points joined: {}	Puntos de acceso unidos: {}
+This access point's address: {}	Dirección de este punto de acceso: {}
+No address yet: give interface Vlan1 an address.	Aún no tiene dirección: da una dirección a la interfaz Vlan1.
+Controller address (empty: any in this subnet)	Dirección del controlador (vacío: cualquiera de esta subred)
+Joined to {}: offers {} WLAN(s) on channel {}	Unido a {}: ofrece {} WLAN en el canal {}
+Not joined: no controller answers (check both addresses, the cabling and the default gateways).	Sin unir: ningún controlador responde (revisa ambas direcciones, el cableado y las puertas de enlace).
+A lightweight AP offers the WLANs of its controller: see its Controller page.	Un AP ligero ofrece las WLAN de su controlador: mira su página Controlador.
+Username (WPA2-Enterprise)	Usuario (WPA2-Enterprise)
+Password (WPA2-Enterprise)	Contraseña (WPA2-Enterprise)
+Not associated: {}	No asociado: {}
+wrong WPA2 passphrase	frase de paso WPA2 incorrecta
+the network needs a WPA2 passphrase	la red necesita una frase de paso WPA2
+the network needs a username and password (WPA2-Enterprise)	la red necesita usuario y contraseña (WPA2-Enterprise)
+the network is open but the host has a key or login set	la red es abierta pero el equipo tiene una clave o un usuario puestos
+802.1X login refused	inicio de sesión 802.1X rechazado
+data from a host that is not associated	datos de un equipo que no está asociado
+Wi-Fi with a controller: lightweight APs and WPA2-Enterprise	Wi-Fi con controlador: AP ligeros y WPA2-Enterprise
+Two lightweight access points join the controller WLC1, which offers Staff (WPA2-Enterprise, logins checked by a RADIUS server) and Guest (WPA2-PSK).	Dos puntos de acceso ligeros se unen al controlador WLC1, que ofrece Staff (WPA2-Enterprise, con los inicios de sesión comprobados por un servidor RADIUS) y Guest (WPA2-PSK).
+WLC1 holds two WLANs (`show wlan`, `show capwap`): Staff checks logins with RADIUS1 (users ana/ana12345 and luis/luis1234), Guest uses the passphrase invitado123. In Simulation mode, reset and ping from Laptop1 to watch the 802.11 association, the EAP login and the RADIUS exchange; give Laptop1 a wrong password and watch it refused.	WLC1 tiene dos WLAN (`show wlan`, `show capwap`): Staff comprueba los inicios de sesión con RADIUS1 (usuarios ana/ana12345 y luis/luis1234) y Guest usa la frase de paso invitado123. En modo Simulación, reinicia y haz ping desde Laptop1 para ver la asociación 802.11, el inicio de sesión EAP y el intercambio RADIUS; pon a Laptop1 una contraseña incorrecta y mira cómo la rechazan.

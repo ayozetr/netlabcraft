@@ -296,6 +296,12 @@ pub enum Id {
     ShowClassMap,
     ShowPolicyMap,
     ShowPolicyMapInterface,
+    WlanAdd,
+    NoWlan,
+    CapwapController,
+    NoCapwapController,
+    ShowWlan,
+    ShowCapwap,
     Username,
     NoUsername,
     DomainName,
@@ -889,6 +895,24 @@ pub static SPECS: &[Spec] = &[
         "One interface's service policies and counters"
     ),
     spec!(ShowCryptoMap, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("map")], "Crypto maps and where they apply"),
+    spec!(
+        WlanAdd,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("wlan"), Arg("<1-16>"), Arg("SSID"), Rest("{open | psk PASSPHRASE | enterprise}")],
+        "A WLAN this controller offers through its access points"
+    ),
+    spec!(NoWlan, Modes::CONFIG, Modes::SWITCH, [K("no"), K("wlan"), Arg("<1-16>")], "Stop offering a WLAN"),
+    spec!(
+        CapwapController,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("capwap"), K("controller"), Arg("A.B.C.D")],
+        "The wireless LAN controller this access point joins"
+    ),
+    spec!(NoCapwapController, Modes::CONFIG, Modes::SWITCH, [K("no"), K("capwap"), K("controller")], "Join a controller in this subnet"),
+    spec!(ShowWlan, EXECS, Modes::SWITCH, [K("show"), K("wlan")], "WLANs and the hosts on them"),
+    spec!(ShowCapwap, EXECS, Modes::SWITCH, [K("show"), K("capwap")], "Access points joined to this controller, or this AP's controller"),
     spec!(ClearCryptoSa, Modes::EXEC, Modes::ROUTER, [K("clear"), K("crypto"), K("sa")], "Forget IPsec associations and counters"),
     spec!(EncapSerial, Modes::IF, Modes::ROUTER, [K("encapsulation"), Arg("{hdlc|ppp}")], "Framing on a serial link"),
     spec!(ClockRate, Modes::IF, Modes::ROUTER, [K("clock"), K("rate"), Arg("<1200-2000000>")], "Clock a serial link from its DCE end"),

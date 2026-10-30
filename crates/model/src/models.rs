@@ -103,6 +103,20 @@ pub static MODELS: &[Model] = &[
         ports: &[run("GigabitEthernet", 0, 0), run("Wireless", 0, 0)],
     },
     Model {
+        id: "WLC",
+        kind: DeviceKind::Switch,
+        label: "WLC",
+        description: "Wireless LAN controller: holds the WLANs (SSID, WPA2-PSK or WPA2-Enterprise) and pushes them to the lightweight APs that join it",
+        ports: &[run("GigabitEthernet0/", 1, 4)],
+    },
+    Model {
+        id: "LAP",
+        kind: DeviceKind::Switch,
+        label: "LAP",
+        description: "Lightweight access point: joins a wireless LAN controller over its Ethernet port and offers the controller's WLANs",
+        ports: &[run("GigabitEthernet", 0, 0), run("Wireless", 0, 0)],
+    },
+    Model {
         id: "Home-Router",
         kind: DeviceKind::Switch,
         label: "Home-Router",

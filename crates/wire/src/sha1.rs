@@ -1,4 +1,5 @@
-//! SHA-1 (FIPS 180-4) and HMAC (RFC 2104), for SNMPv3's user-based security (RFC 3414).
+//! SHA-1 (FIPS 180-4) and HMAC (RFC 2104), for SNMPv3's user-based security (RFC 3414), plus
+//! PBKDF2 (RFC 8018) and the IEEE 802.11i PRF that WPA2-Personal uses for its 4-way handshake.
 //! Not for anything that needs to be secure.
 
 use crate::md5::md5;
@@ -79,6 +80,67 @@ pub fn hmac(hash: Hash, key: &[u8], data: &[u8]) -> Vec<u8> {
     hash.digest(&outer)
 }
 
+pub fn hmac_sha1(key: &[u8], data: &[u8]) -> [u8; 20] {
+    let mut k = [0u8; 64];
+    if key.len() > 64 {
+        k[..20].copy_from_slice(&sha1(key));
+    } else {
+        k[..key.len()].copy_from_slice(key);
+    }
+    let ipad: Vec<u8> = k.iter().map(|b| b ^ 0x36).collect();
+    let opad: Vec<u8> = k.iter().map(|b| b ^ 0x5c).collect();
+    let inner = sha1(&[&ipad[..], data].concat());
+    sha1(&[&opad[..], &inner[..]].concat())
+}
+
+/// PBKDF2 with HMAC-SHA1: `len` bytes from `password` and `salt` after `rounds` iterations.
+pub fn pbkdf2_sha1(password: &[u8], salt: &[u8], rounds: u32, len: usize) -> Vec<u8> {
+    let mut out = Vec::with_capacity(len + 20);
+    let mut block = 1u32;
+    while out.len() < len {
+        let mut u = hmac_sha1(password, &[salt, &block.to_be_bytes()[..]].concat());
+        let mut acc = u;
+        for _ in 1..rounds {
+            u = hmac_sha1(password, &u);
+            for (a, b) in acc.iter_mut().zip(u) {
+                *a ^= b;
+            }
+        }
+        out.extend_from_slice(&acc);
+        block = block.wrapping_add(1);
+    }
+    out.truncate(len);
+    out
+}
+
+/// The IEEE 802.11i pseudo-random function: `len` bytes of HMAC-SHA1(key, label, 0, data, i).
+pub fn prf(key: &[u8], label: &str, data: &[u8], len: usize) -> Vec<u8> {
+    let mut out = Vec::with_capacity(len + 20);
+    let mut i = 0u8;
+    while out.len() < len {
+        out.extend_from_slice(&hmac_sha1(key, &[label.as_bytes(), &[0], data, &[i]].concat()));
+        i = i.wrapping_add(1);
+    }
+    out.truncate(len);
+    out
+}
+
+/// The WPA2-Personal pairwise master key: PBKDF2(passphrase, SSID, 4096 rounds, 32 bytes).
+pub fn wpa_pmk(passphrase: &str, ssid: &str) -> [u8; 32] {
+    let mut out = [0u8; 32];
+    out.copy_from_slice(&pbkdf2_sha1(passphrase.as_bytes(), ssid.as_bytes(), 4096, 32));
+    out
+}
+
+/// The pairwise transient key (48 bytes for CCMP) from the PMK, both addresses and both nonces;
+/// its first 16 bytes (the KCK) sign the handshake messages.
+pub fn wpa_ptk(pmk: &[u8; 32], aa: &[u8; 6], spa: &[u8; 6], anonce: &[u8; 32], snonce: &[u8; 32]) -> Vec<u8> {
+    let (lo, hi) = if aa <= spa { (aa, spa) } else { (spa, aa) };
+    let (n1, n2) = if anonce <= snonce { (anonce, snonce) } else { (snonce, anonce) };
+    let data = [&lo[..], &hi[..], &n1[..], &n2[..]].concat();
+    prf(pmk, "Pairwise key expansion", &data, 48)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -94,5 +156,16 @@ mod tests {
         assert_eq!(hex(&sha1(b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")), "84983e441c3bd26ebaae4aa1f95129e5e54670f1");
         assert_eq!(hex(&hmac(Hash::Sha1, b"Jefe", b"what do ya want for nothing?")), "effcdf6ae5eb2fa2d27416d5f184df9c259a7c79");
         assert_eq!(hex(&hmac(Hash::Md5, b"Jefe", b"what do ya want for nothing?")), "750c783e6ab0b503eaa86e310a5db738");
+    }
+
+    #[test]
+    fn wpa2_known_answers() {
+        assert_eq!(hex(&sha1(b"abc")), "a9993e364706816aba3e25717850c26c9cd0d89d");
+        assert_eq!(hex(&sha1(b"")), "da39a3ee5e6b4b0d3255bfef95601890afd80709");
+        // RFC 2202 test case 1.
+        assert_eq!(hex(&hmac_sha1(&[0x0b; 20], b"Hi There")), "b617318655057264e28bc0b6fb378c8ef146be00");
+        // IEEE 802.11i Annex: passphrase "password", SSID "IEEE".
+        assert_eq!(hex(&wpa_pmk("password", "IEEE")), "f42c6fc52df0ebef9ebb4b90b38a5f902e83fe1b135a70e23aed762e9710a12e");
+        assert_eq!(prf(b"k", "x", b"y", 50).len(), 50);
     }
 }

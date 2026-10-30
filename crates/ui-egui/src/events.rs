@@ -8,7 +8,7 @@ use serde_json::json;
 use crate::i18n::tl;
 use crate::{PacketApp, theme};
 
-const FILTERS: [Protocol; 30] = [
+const FILTERS: [Protocol; 33] = [
     Protocol::Arp,
     Protocol::Icmp,
     Protocol::Dhcp,
@@ -38,6 +38,9 @@ const FILTERS: [Protocol; 30] = [
     Protocol::Ipv6,
     Protocol::Gre,
     Protocol::Esp,
+    Protocol::Wlan,
+    Protocol::Eapol,
+    Protocol::Capwap,
     Protocol::Other,
 ];
 
@@ -48,7 +51,7 @@ pub struct EventView {
     step_started: f64,
     /// Seconds per hop while playing.
     pub step_seconds: f64,
-    pub filter: [bool; 9],
+    pub filter: [bool; FILTERS.len()],
     start_at: Option<u64>,
     scroll_to_selected: bool,
     /// The event whose PDU information window is open.
@@ -63,7 +66,7 @@ impl Default for EventView {
             playing: false,
             step_started: 0.0,
             step_seconds: 0.8,
-            filter: [true; 9],
+            filter: [true; FILTERS.len()],
             start_at: None,
             scroll_to_selected: false,
             info: None,
@@ -312,7 +315,7 @@ pub fn panel(app: &mut PacketApp, ui: &mut Ui) {
             && crate::navy_button_wide(c, "Show All/None").clicked()
         {
             let all = app.ui.events.filter.iter().all(|f| *f);
-            app.ui.events.filter = [!all; 9];
+            app.ui.events.filter = [!all; FILTERS.len()];
         }
     });
 }
@@ -341,7 +344,7 @@ pub fn pdu_window(app: &mut PacketApp, ctx: &egui::Context) {
             };
             ui.separator();
             egui::ScrollArea::vertical().show(ui, |ui| {
-                for (layer, fields) in decode(&e.frame) {
+                for (layer, fields) in decode_event(&e.frame, e.air.as_deref()) {
                     egui::CollapsingHeader::new(RichText::new(crate::i18n::tr(&layer)).strong())
                         .id_salt(("layer", id, layer))
                         .default_open(true)
@@ -356,7 +359,7 @@ pub fn pdu_window(app: &mut PacketApp, ctx: &egui::Context) {
                         });
                 }
                 egui::CollapsingHeader::new(tl("Bytes")).id_salt(("hex", id)).default_open(false).show(ui, |ui| {
-                    ui.monospace(hex_dump(&e.frame));
+                    ui.monospace(hex_dump(e.air.as_deref().unwrap_or(&e.frame)));
                 });
             });
         },
@@ -364,6 +367,23 @@ pub fn pdu_window(app: &mut PacketApp, ctx: &egui::Context) {
     if !open {
         app.ui.events.info = None;
     }
+}
+
+/// Layers of an event: the 802.11 frame first when it crossed the air, then what it carries.
+pub fn decode_event(frame: &[u8], air: Option<&[u8]>) -> Vec<(String, Vec<(String, String)>)> {
+    let Some(air) = air else { return decode(frame) };
+    let mut out = match packetcraft_wire::wlan::Dot11::decode(air) {
+        Ok(f) => vec![("IEEE 802.11".to_string(), f.fields())],
+        Err(e) => vec![("IEEE 802.11".to_string(), vec![("Error".into(), e.to_string()), ("Length".into(), air.len().to_string())])],
+    };
+    if !frame.is_empty() {
+        let mut inner = decode(frame);
+        if let Some((title, _)) = inner.first_mut() {
+            *title = "Ethernet II (equivalent)".to_string();
+        }
+        out.extend(inner);
+    }
+    out
 }
 
 /// Layers of a frame as (title, fields).
@@ -445,6 +465,21 @@ pub fn decode(bytes: &[u8]) -> Vec<(String, Vec<(String, String)>)> {
                     ));
                 }
             }
+        }
+        packetcraft_wire::wlan::ETHERTYPE_EAPOL => {
+            use packetcraft_wire::wlan::Eapol;
+            let fields = match Eapol::decode(&f.payload) {
+                Ok(Eapol::Key(k)) => vec![
+                    ("Packet".to_string(), format!("EAPOL-Key, handshake message {} of 4", k.message())),
+                    ("Key information".into(), format!("0x{:04x}", k.info)),
+                    ("Replay counter".into(), k.replay.to_string()),
+                    ("Nonce".into(), k.nonce.iter().take(8).map(|b| format!("{b:02x}")).collect::<String>() + "…"),
+                    ("MIC".into(), k.mic.iter().map(|b| format!("{b:02x}")).collect()),
+                ],
+                Ok(e) => vec![("Packet".to_string(), e.describe())],
+                Err(e) => vec![("Error".to_string(), e.to_string())],
+            };
+            out.push(("IEEE 802.1X (EAPOL)".into(), fields));
         }
         _ => {}
     }

@@ -20,6 +20,7 @@ pub mod models;
 pub mod qos;
 pub mod services;
 pub mod vpn;
+pub mod wlan;
 
 pub use drawing::{Cluster, MAX_CLUSTERS, MAX_FREEHAND_POINTS, MAX_POLYGON_POINTS, Shown};
 
@@ -351,6 +352,9 @@ pub struct Wifi {
     /// 2.4 GHz channel (access points).
     #[serde(default = "default_channel")]
     pub channel: u8,
+    /// Hosts: the username and password a WPA2-Enterprise network checks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub login: Option<wlan::WifiLogin>,
 }
 
 fn default_channel() -> u8 {
@@ -825,6 +829,9 @@ pub struct Device {
     /// Routers and multilayer switches: QoS class maps, policy maps and service policies.
     #[serde(default, skip_serializing_if = "qos::Qos::is_empty")]
     pub qos: qos::Qos,
+    /// Wireless LAN controllers: their WLANs; lightweight APs: the controller to join.
+    #[serde(default, skip_serializing_if = "wlan::WlanConf::is_default")]
+    pub wlan: wlan::WlanConf,
 }
 
 /// Which side of NAT an interface is on.
@@ -1518,6 +1525,7 @@ impl Device {
             tunnels: Vec::new(),
             crypto: vpn::Crypto::default(),
             qos: qos::Qos::default(),
+            wlan: wlan::WlanConf::default(),
         };
         d.ensure_default_vlan();
         d
@@ -1846,45 +1854,6 @@ impl Topology {
     /// The port at the other end: of the cable, or for a Wi-Fi host the access point's radio.
     pub fn peer(&self, end: End) -> Option<End> {
         self.link_at(end).map(|l| if l.a == end { l.b } else { l.a }).or_else(|| self.wifi_ap_of(end))
-    }
-
-    fn radio(&self, end: End) -> Option<(&Device, &Port, &Wifi)> {
-        let d = self.device(end.device)?;
-        let p = d.ports.get(end.port).filter(|p| ifname::is_wireless(&p.name) && !p.shutdown)?;
-        Some((d, p, p.wifi.as_ref()?))
-    }
-
-    /// The access point a Wi-Fi host is associated with: the nearest one in range offering
-    /// the same SSID with the same key.
-    pub fn wifi_ap_of(&self, client: End) -> Option<End> {
-        let (cd, _, want) = self.radio(client)?;
-        if !cd.kind.is_host() {
-            return None;
-        }
-        self.devices
-            .iter()
-            .filter(|d| d.kind == DeviceKind::Switch)
-            .flat_map(|d| (0..d.ports.len()).map(move |p| End { device: d.id, port: p }))
-            .filter_map(|e| {
-                let (ad, _, offer) = self.radio(e)?;
-                let dist = ((ad.x - cd.x).powi(2) + (ad.y - cd.y).powi(2)).sqrt();
-                (offer.ssid == want.ssid && offer.key == want.key && !offer.ssid.is_empty() && dist <= WIFI_RANGE).then_some((dist, e))
-            })
-            .min_by(|a, b| a.0.total_cmp(&b.0))
-            .map(|(_, e)| e)
-    }
-
-    /// The hosts associated with an access point's radio.
-    pub fn wifi_clients(&self, ap: End) -> Vec<End> {
-        if self.radio(ap).is_none_or(|(d, ..)| d.kind != DeviceKind::Switch) {
-            return Vec::new();
-        }
-        self.devices
-            .iter()
-            .filter(|d| d.kind.is_host())
-            .flat_map(|d| (0..d.ports.len()).map(move |p| End { device: d.id, port: p }))
-            .filter(|e| self.wifi_ap_of(*e) == Some(ap))
-            .collect()
     }
 
     /// The first port of a device with no cable.

@@ -194,12 +194,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                         match m.kind {
                             Some(k) => {
                                 icons::device(&p, icon, k, &tk);
-                                if m.multilayer {
-                                    icons::multilayer_mark(&p, icon);
-                                }
-                                if m.short == "AccessPoint" || m.short == "Home-Router" {
-                                    icons::access_point_mark(&p, icon);
-                                }
+                                icons::model_marks(&p, icon, m.short, m.multilayer);
                             }
                             None => icons::glyph(&p, icon.shrink(4.0), Glyph::Cable, tk.cable),
                         }

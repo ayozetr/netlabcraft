@@ -650,12 +650,7 @@ fn draw_devices(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Toke
             painter.rect_stroke(r.expand(6.0), 8.0, Stroke::new(2.0, tk.selection), StrokeKind::Outside);
         }
         icons::device(painter, r, d.kind, tk);
-        if d.catalogue_model().multilayer() {
-            icons::multilayer_mark(painter, r);
-        }
-        if d.catalogue_model().id == "AccessPoint" || d.catalogue_model().home_router() {
-            icons::access_point_mark(painter, r);
-        }
+        icons::model_marks(painter, r, d.catalogue_model().id, d.catalogue_model().multilayer());
         // Two centred lines under the icon: model, then name.
         let font = FontId::proportional((16.0 * view.zoom).clamp(8.0, 24.0));
         let mut y = r.bottom() + 2.0;

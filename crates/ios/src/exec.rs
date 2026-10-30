@@ -15,6 +15,7 @@ use crate::{host, render};
 
 pub(crate) mod qos;
 mod vpn;
+mod wlan;
 
 /// Lines of history kept per session.
 const MAX_HISTORY: usize = 256;
@@ -1541,6 +1542,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ShowClassMap
         | Id::ShowPolicyMap
         | Id::ShowPolicyMapInterface => qos::command(&mut c, spec.id, &args),
+        Id::WlanAdd | Id::NoWlan | Id::CapwapController | Id::NoCapwapController | Id::ShowWlan | Id::ShowCapwap => {
+            wlan::command(&mut c, spec.id, &args)
+        }
         Id::IpAddress | Id::NoIpAddress | Id::Shutdown | Id::NoShutdown | Id::Description | Id::NoDescription
             if matches!(c.cli.mode, Mode::Svi(_)) =>
         {

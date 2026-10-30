@@ -31,6 +31,8 @@ pub enum ConfigPage {
     Home,
     Vlans,
     Routes,
+    /// A wireless LAN controller's WLANs and RADIUS server, or a lightweight AP's controller.
+    Wireless,
     Port(usize),
 }
 
@@ -69,6 +71,9 @@ pub struct DeviceWindow {
     wifi_ssid: String,
     wifi_key: String,
     wifi_channel: String,
+    /// WPA2-Enterprise login (hosts).
+    wifi_user: String,
+    wifi_password: String,
     vlan_id: String,
     vlan_name: String,
     route_net: String,
@@ -104,6 +109,10 @@ pub fn open(app: &mut PacketApp, d: DeviceId) {
     if new && dev.catalogue_model().home_router() {
         w.tab = Tab::Config;
         w.page = ConfigPage::Home;
+    }
+    // A controller's (or lightweight AP's) Config tab opens on its wireless page.
+    if new && (packetcraft_model::wlan::is_wlc(&dev) || packetcraft_model::wlan::is_lap(&dev)) {
+        w.page = ConfigPage::Wireless;
     }
     w.focus = true;
     w.name = dev.name.clone();
@@ -423,7 +432,7 @@ fn attributes(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
 }
 
 /// Runs configuration lines through the engine and echoes them under the form.
-fn configure(app: &mut PacketApp, d: DeviceId, lines: Vec<String>) {
+pub(crate) fn configure(app: &mut PacketApp, d: DeviceId, lines: Vec<String>) {
     let echo = lines.join("\n");
     if let Some(v) = app.run("device.configure", json!({"device": d.0, "lines": lines})) {
         let errors: Vec<String> =
@@ -487,6 +496,12 @@ fn config(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                     if dev.catalogue_model().home_router() && list_item(ui, tl("Home Router"), page == ConfigPage::Home, false).clicked() {
                         page = ConfigPage::Home;
                     }
+                    let wlc = packetcraft_model::wlan::is_wlc(dev);
+                    if (wlc || packetcraft_model::wlan::is_lap(dev))
+                        && list_item(ui, tl(if wlc { "Wireless LANs" } else { "Controller" }), page == ConfigPage::Wireless, false).clicked()
+                    {
+                        page = ConfigPage::Wireless;
+                    }
                     match dev.kind {
                         DeviceKind::Switch => {
                             list_item(ui, tl("SWITCHING"), false, true);
@@ -531,6 +546,7 @@ fn config(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                     ConfigPage::Home => home_page(app, ui, dev),
                     ConfigPage::Vlans => vlan_page(app, ui, dev),
                     ConfigPage::Routes => routes_page(app, ui, dev),
+                    ConfigPage::Wireless => crate::wlan_page::show(app, ui, dev),
                     ConfigPage::Port(i) => port_page(app, ui, dev, i),
                 }
             });
@@ -557,7 +573,7 @@ fn config(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     }
 }
 
-fn field(ui: &mut egui::Ui, label: &str, value: &mut String) {
+pub(crate) fn field(ui: &mut egui::Ui, label: &str, value: &mut String) {
     ui.horizontal(|ui| {
         let l = ui.add_sized([130.0, 22.0], egui::Label::new(label));
         ui.add(egui::TextEdit::singleline(value).desired_width(ui.available_width().min(320.0))).labelled_by(l.id);
@@ -565,7 +581,7 @@ fn field(ui: &mut egui::Ui, label: &str, value: &mut String) {
 }
 
 /// A centred title with a rule under it, as the Config pages have.
-fn page_title(ui: &mut egui::Ui, title: &str) {
+pub(crate) fn page_title(ui: &mut egui::Ui, title: &str) {
     ui.vertical_centered(|ui| ui.label(RichText::new(crate::i18n::tr(title)).size(16.0)));
     ui.separator();
 }
@@ -891,14 +907,29 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
             w.wifi_ssid = wf.ssid.clone();
             w.wifi_key = wf.key.clone().unwrap_or_default();
             w.wifi_channel = wf.channel.to_string();
+            w.wifi_user = wf.login.as_ref().map(|l| l.user.clone()).unwrap_or_default();
+            w.wifi_password = wf.login.as_ref().map(|l| l.password.clone()).unwrap_or_default();
+        }
+        let ap = dev.kind == DeviceKind::Switch;
+        if packetcraft_model::wlan::is_lap(dev) {
+            ui.label(tl("A lightweight AP offers the WLANs of its controller: see its Controller page."));
+            let n = app.session.topology.wifi_clients(packetcraft_model::End { device: d, port: i }).len();
+            ui.label(crate::i18n::trf("{} host(s) associated", &[&n]));
+            if let Some(l) = lines {
+                configure(app, d, l);
+            }
+            return;
         }
         field(ui, tl("SSID"), &mut w.wifi_ssid);
         field(ui, tl("WPA2 passphrase"), &mut w.wifi_key);
-        let ap = dev.kind == DeviceKind::Switch;
         if ap {
             field(ui, tl("Channel"), &mut w.wifi_channel);
+        } else {
+            field(ui, tl("Username (WPA2-Enterprise)"), &mut w.wifi_user);
+            field(ui, tl("Password (WPA2-Enterprise)"), &mut w.wifi_password);
         }
         let (ssid, key, chan) = (w.wifi_ssid.trim().to_string(), w.wifi_key.trim().to_string(), w.wifi_channel.trim().parse::<u64>().unwrap_or(6));
+        let (user, password) = (w.wifi_user.trim().to_string(), w.wifi_password.clone());
         let assoc = if ap {
             crate::i18n::trf("{} host(s) associated", &[&app.session.topology.wifi_clients(packetcraft_model::End { device: d, port: i }).len()])
         } else {
@@ -911,12 +942,16 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
         };
         ui.label(assoc);
         if ui.button(tl("Apply Wi-Fi")).clicked()
-            && let Some(v) = app.run("device.wireless", json!({"device": d.0, "port": port.name, "ssid": ssid, "key": key, "channel": chan}))
+            && let Some(v) = app.run(
+                "device.wireless",
+                json!({"device": d.0, "port": port.name, "ssid": ssid, "key": key, "channel": chan, "user": user, "password": password}),
+            )
         {
-            let msg = match v["associated_with"].as_str() {
-                Some(a) => crate::i18n::trf("Associated with {}", &[&a]),
-                None if ap => "Wi-Fi settings applied".to_string(),
-                None => "Not associated: check the SSID, the passphrase and the distance".to_string(),
+            let msg = match (v["associated_with"].as_str(), v["problem"].as_str()) {
+                (Some(a), _) => crate::i18n::trf("Associated with {}", &[&a]),
+                (None, _) if ap => "Wi-Fi settings applied".to_string(),
+                (None, Some(why)) => crate::i18n::trf("Not associated: {}", &[&crate::i18n::tr_any(why)]),
+                (None, None) => "Not associated: check the SSID, the passphrase and the distance".to_string(),
             };
             app.info(msg);
         }
