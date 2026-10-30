@@ -110,16 +110,16 @@ pub fn bridge_id(d: &Device, vlan: VlanId) -> BridgeId {
 /// Whether a switch port carries a VLAN.
 pub fn carries(t: &Topology, d: &Device, port: usize, vlan: VlanId) -> bool {
     d.kind == DeviceKind::Switch
-        && d.vlans.contains_key(&vlan)
-        && d.ports.get(port).filter(|p| !p.routed).is_some_and(|p| {
+        && t.switch_has_vlan(d, vlan)
+        && (d.ports.get(port).filter(|p| !p.routed).is_some_and(|p| {
             if t.is_trunk(End { device: d.id, port }) { p.switchport.allowed.contains(vlan) } else { p.switchport.access_vlan == vlan }
-        })
+        }) || t.radio_carries(d, port, vlan))
 }
 
 /// Computes one VLAN's tree.
 pub fn compute(t: &Topology, vlan: VlanId) -> VlanTree {
     let mut tree = VlanTree::default();
-    let switches: Vec<&Device> = t.devices.iter().filter(|d| d.kind == DeviceKind::Switch && d.vlans.contains_key(&vlan)).collect();
+    let switches: Vec<&Device> = t.devices.iter().filter(|d| d.kind == DeviceKind::Switch && t.switch_has_vlan(d, vlan)).collect();
     // An EtherChannel takes part as one port: its lead member, costed by the bundle's speed.
     let maps: BTreeMap<DeviceId, PortMap> = switches.iter().map(|d| (d.id, PortMap::new(t, d))).collect();
     let logical = |dev: DeviceId, p: usize| maps.get(&dev).map_or(p, |m| m.logical(p));
@@ -293,6 +293,14 @@ pub fn fingerprint(t: &Topology) -> u64 {
         }
         if d.kind == DeviceKind::Switch {
             format!("{:?}{:?}", d.vlans.keys().collect::<Vec<_>>(), d.stp_priority).hash(&mut h);
+            // An access point's radio is up while hosts are associated (a host moving in or
+            // out of range changes it), and a lightweight AP carries its WLANs' VLANs.
+            for p in (0..d.ports.len()).filter(|p| crate::is_ap_radio(t, End { device: d.id, port: *p })) {
+                crate::port_up(t, End { device: d.id, port: p }).hash(&mut h);
+            }
+            if packetcraft_model::wlan::is_lap(d) {
+                t.lap_vlans(d.id).hash(&mut h);
+            }
         }
     }
     h.finish()

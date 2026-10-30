@@ -42,10 +42,11 @@ fn show_wlan(t: &Topology, dev: packetcraft_core::DeviceId) -> R {
         .iter()
         .flat_map(|ap| ap_hosts(t, *ap).into_iter().map(move |(h, ssid)| (h, ssid, t.device(*ap).map(|x| x.name.clone()).unwrap_or_default())))
         .collect();
-    let mut s = format!("{:<5} {:<24} {:<16} Hosts\n", "WLAN", "SSID", "Security");
+    let mut s = format!("{:<5} {:<24} {:<16} {:<6} Hosts\n", "WLAN", "SSID", "Security", "VLAN");
     for w in &wlans {
         let n = hosts.iter().filter(|(_, ssid, _)| *ssid == w.ssid).count();
-        let _ = writeln!(s, "{:<5} {:<24} {:<16} {n}", w.id, w.ssid, w.security.name());
+        let vlan = w.vlan.map_or("-".to_string(), |v| v.to_string());
+        let _ = writeln!(s, "{:<5} {:<24} {:<16} {vlan:<6} {n}", w.id, w.ssid, w.security.name());
     }
     if !hosts.is_empty() {
         let _ = writeln!(s, "\n{:<20} {:<24} Access point", "Host", "SSID");
@@ -88,6 +89,18 @@ fn show_capwap(t: &Topology, dev: packetcraft_core::DeviceId) -> R {
         Some(w) => {
             let addr = mgmt_addr(w).map(|(_, n)| n.addr.to_string()).unwrap_or_default();
             let _ = writeln!(s, "Joined to {} ({addr}), radio on channel {}, {} WLAN(s)", w.name, lap_channel(d.id), w.wlan.wlans.len());
+            let vlans = t.lap_vlans(d.id);
+            if !vlans.is_empty() {
+                let list: Vec<String> = vlans.iter().map(ToString::to_string).collect();
+                let trunk = (0..d.ports.len())
+                    .any(|p| d.ports.get(p).is_some_and(|x| !ifname::is_wireless(&x.name)) && t.is_trunk(End { device: d.id, port: p }));
+                let _ = writeln!(
+                    s,
+                    "WLAN VLANs {}: {}",
+                    list.join(","),
+                    if trunk { "tagged on the trunk uplink" } else { "no trunk uplink to carry them (switchport mode trunk)" }
+                );
+            }
         }
         None => {
             let _ = writeln!(s, "Not joined: no controller answers (check both addresses, the cabling and the default gateways)");
@@ -116,7 +129,16 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             if ssid.is_empty() || ssid.chars().count() > 32 || !ssid.chars().all(|ch| ch.is_ascii_graphic()) {
                 return Err("% Give an SSID of 1-32 printable characters, without spaces".into());
             }
-            let words: Vec<&str> = arg(2).split_whitespace().collect();
+            let mut words: Vec<&str> = arg(2).split_whitespace().collect();
+            // An optional `vlan V` at the end: the VLAN the APs bridge this WLAN into.
+            let mut vlan = None;
+            if let [.., kw, v] = words.as_slice()
+                && kw.eq_ignore_ascii_case("vlan")
+            {
+                let n = v.parse::<u16>().ok().and_then(packetcraft_core::VlanId::new).ok_or("% A VLAN is 1-4094")?;
+                vlan = Some(n);
+                words.truncate(words.len().saturating_sub(2));
+            }
             let security = match words.as_slice() {
                 [] | ["open"] => WlanSecurity::Open,
                 ["psk", pass] if (8..=63).contains(&pass.chars().count()) => WlanSecurity::Psk((*pass).to_string()),
@@ -128,7 +150,7 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             if d.wlan.wlans.iter().any(|w| w.ssid == ssid && w.id != n) {
                 return Err(format!("% Another WLAN already offers {ssid}"));
             }
-            let w = Wlan { id: n, ssid: ssid.to_string(), security };
+            let w = Wlan { id: n, ssid: ssid.to_string(), security, vlan };
             match d.wlan.wlans.iter_mut().find(|x| x.id == n) {
                 Some(x) => *x = w,
                 None => {

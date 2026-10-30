@@ -5,8 +5,8 @@
 //! control; management bodies with their information elements; data frames carrying an
 //! LLC/SNAP header then the EtherType and payload), IEEE 802.1X-2020 §11 (EAPOL), RFC 3748
 //! (EAP) and IEEE 802.11 §12.7.2 (EAPOL-Key). The frame check sequence is not modelled, as for
-//! Ethernet. Data frames are sent in the clear: the CCMP encryption a real RSN network applies
-//! after its handshake is not modelled.
+//! Ethernet. On an RSN network, data frames after the 4-way handshake are protected with CCMP
+//! (IEEE 802.11 §12.5.3: AES-CCM with an 8-byte MIC, keyed by the pairwise temporal key).
 
 use packetcraft_core::MacAddr;
 
@@ -19,6 +19,8 @@ const TYPE_MGMT: u8 = 0;
 const TYPE_DATA: u8 = 2;
 const ST_ASSOC_REQ: u8 = 0;
 const ST_ASSOC_RESP: u8 = 1;
+const ST_REASSOC_REQ: u8 = 2;
+const ST_REASSOC_RESP: u8 = 3;
 const ST_PROBE_REQ: u8 = 4;
 const ST_PROBE_RESP: u8 = 5;
 const ST_BEACON: u8 = 8;
@@ -28,6 +30,18 @@ const ST_DEAUTH: u8 = 12;
 
 const FLAG_TO_DS: u8 = 0x01;
 const FLAG_FROM_DS: u8 = 0x02;
+/// The Protected Frame bit: the body is encrypted (CCMP here).
+pub const FLAG_PROTECTED: u8 = 0x40;
+const FLAG_RETRY: u8 = 0x08;
+const FLAG_PWR_MGT: u8 = 0x10;
+const FLAG_MORE_DATA: u8 = 0x20;
+/// The CCMP header: PN0, PN1, reserved, key id with Ext IV, PN2-PN5.
+pub const CCMP_HEADER_LEN: usize = 8;
+/// The CCMP message integrity code.
+pub const CCMP_MIC_LEN: usize = 8;
+const EXT_IV: u8 = 0x20;
+/// The largest packet number (48 bits).
+pub const MAX_PN: u64 = (1 << 48) - 1;
 
 /// Capability information bits.
 const CAP_ESS: u16 = 0x0001;
@@ -138,6 +152,17 @@ pub enum Body {
         status: u16,
         aid: u16,
     },
+    /// A host moving to another access point of the same network: `current_ap` is the one it
+    /// leaves.
+    ReassocRequest {
+        ssid: String,
+        rsn: Option<Akm>,
+        current_ap: MacAddr,
+    },
+    ReassocResponse {
+        status: u16,
+        aid: u16,
+    },
     Disassoc {
         reason: u16,
     },
@@ -148,6 +173,13 @@ pub enum Body {
     Data {
         ethertype: u16,
         payload: Vec<u8>,
+    },
+    /// A CCMP-protected data frame: its packet number and key id (from the CCMP header), then
+    /// the encrypted LLC/SNAP, EtherType and payload, and the MIC. [`ccmp_decrypt`] opens it.
+    Protected {
+        key_id: u8,
+        pn: u64,
+        data: Vec<u8>,
     },
 }
 
@@ -268,20 +300,26 @@ impl Dot11 {
     }
 
     pub fn is_data(&self) -> bool {
-        matches!(self.body, Body::Data { .. })
+        matches!(self.body, Body::Data { .. } | Body::Protected { .. })
+    }
+
+    pub fn is_protected(&self) -> bool {
+        matches!(self.body, Body::Protected { .. })
     }
 
     fn type_subtype(&self) -> (u8, u8) {
         match &self.body {
             Body::AssocRequest { .. } => (TYPE_MGMT, ST_ASSOC_REQ),
             Body::AssocResponse { .. } => (TYPE_MGMT, ST_ASSOC_RESP),
+            Body::ReassocRequest { .. } => (TYPE_MGMT, ST_REASSOC_REQ),
+            Body::ReassocResponse { .. } => (TYPE_MGMT, ST_REASSOC_RESP),
             Body::ProbeRequest { .. } => (TYPE_MGMT, ST_PROBE_REQ),
             Body::ProbeResponse(_) => (TYPE_MGMT, ST_PROBE_RESP),
             Body::Beacon(_) => (TYPE_MGMT, ST_BEACON),
             Body::Disassoc { .. } => (TYPE_MGMT, ST_DISASSOC),
             Body::Auth { .. } => (TYPE_MGMT, ST_AUTH),
             Body::Deauth { .. } => (TYPE_MGMT, ST_DEAUTH),
-            Body::Data { .. } => (TYPE_DATA, 0),
+            Body::Data { .. } | Body::Protected { .. } => (TYPE_DATA, 0),
         }
     }
 
@@ -289,7 +327,7 @@ impl Dot11 {
         let (ty, st) = self.type_subtype();
         let mut out = Vec::with_capacity(64);
         out.push((st << 4) | (ty << 2));
-        out.push(self.flags);
+        out.push(if self.is_protected() { self.flags | FLAG_PROTECTED } else { self.flags & !FLAG_PROTECTED });
         out.extend_from_slice(&self.duration.to_le_bytes());
         out.extend_from_slice(&self.addr1.0);
         out.extend_from_slice(&self.addr2.0);
@@ -309,17 +347,20 @@ impl Dot11 {
                     out.extend_from_slice(&v.to_le_bytes());
                 }
             }
-            Body::AssocRequest { ssid, rsn } => {
+            Body::AssocRequest { ssid, rsn } | Body::ReassocRequest { ssid, rsn, .. } => {
                 let cap = CAP_ESS | CAP_SHORT_PREAMBLE | if rsn.is_some() { CAP_PRIVACY } else { 0 };
                 out.extend_from_slice(&cap.to_le_bytes());
                 out.extend_from_slice(&10u16.to_le_bytes()); // listen interval
+                if let Body::ReassocRequest { current_ap, .. } = &self.body {
+                    out.extend_from_slice(&current_ap.0);
+                }
                 ie(&mut out, IE_SSID, ssid.as_bytes());
                 ie(&mut out, IE_RATES, &RATES);
                 if let Some(a) = rsn {
                     out.extend_from_slice(&rsn_ie(*a));
                 }
             }
-            Body::AssocResponse { status, aid } => {
+            Body::AssocResponse { status, aid } | Body::ReassocResponse { status, aid } => {
                 out.extend_from_slice(&(CAP_ESS | CAP_SHORT_PREAMBLE).to_le_bytes());
                 out.extend_from_slice(&status.to_le_bytes());
                 out.extend_from_slice(&(0xc000 | (aid & 0x3fff)).to_le_bytes());
@@ -330,6 +371,10 @@ impl Dot11 {
                 out.extend_from_slice(&SNAP);
                 out.extend_from_slice(&ethertype.to_be_bytes());
                 out.extend_from_slice(payload);
+            }
+            Body::Protected { key_id, pn, data } => {
+                out.extend_from_slice(&ccmp_header(*pn, *key_id));
+                out.extend_from_slice(data);
             }
         }
         out
@@ -370,8 +415,25 @@ impl Dot11 {
                 Body::AssocRequest { ssid: ssid_of(&ies), rsn: ies.iter().find(|(id, _)| *id == IE_RSN).and_then(|(_, d)| rsn_akm(d)) }
             }
             (TYPE_MGMT, ST_ASSOC_RESP) => Body::AssocResponse { status: le16(body, 2).ok_or_else(t)?, aid: le16(body, 4).ok_or_else(t)? & 0x3fff },
+            (TYPE_MGMT, ST_REASSOC_REQ) => {
+                le16(body, 2).ok_or_else(t)?;
+                let current_ap = mac_at(body, 4).ok_or_else(t)?;
+                let ies = elements(body.get(10..).unwrap_or_default());
+                Body::ReassocRequest { ssid: ssid_of(&ies), rsn: ies.iter().find(|(id, _)| *id == IE_RSN).and_then(|(_, d)| rsn_akm(d)), current_ap }
+            }
+            (TYPE_MGMT, ST_REASSOC_RESP) => {
+                Body::ReassocResponse { status: le16(body, 2).ok_or_else(t)?, aid: le16(body, 4).ok_or_else(t)? & 0x3fff }
+            }
             (TYPE_MGMT, ST_DISASSOC) => Body::Disassoc { reason: le16(body, 0).ok_or_else(t)? },
             (TYPE_MGMT, ST_DEAUTH) => Body::Deauth { reason: le16(body, 0).ok_or_else(t)? },
+            (TYPE_DATA, 0) if flags & FLAG_PROTECTED != 0 => {
+                let (pn, key_id) = ccmp_header_decode(body).ok_or_else(t)?;
+                let data = body.get(CCMP_HEADER_LEN..).unwrap_or_default();
+                if data.len() < CCMP_MIC_LEN {
+                    return Err(t());
+                }
+                Body::Protected { key_id, pn, data: data.to_vec() }
+            }
             (TYPE_DATA, 0) => {
                 if body.get(..6).ok_or_else(t)? != SNAP {
                     return Err(WireError::Unsupported("802.11", "data without an LLC/SNAP header".into()));
@@ -407,6 +469,11 @@ impl Dot11 {
             }
             Body::AssocResponse { status, aid } if *status == STATUS_SUCCESS => format!("802.11 association response: success, association id {aid}"),
             Body::AssocResponse { status, .. } => format!("802.11 association response: {}", auth(*status)),
+            Body::ReassocRequest { ssid, current_ap, .. } => format!("802.11 reassociation request: \"{ssid}\", moving from {current_ap}"),
+            Body::ReassocResponse { status, aid } if *status == STATUS_SUCCESS => {
+                format!("802.11 reassociation response: success, association id {aid}")
+            }
+            Body::ReassocResponse { status, .. } => format!("802.11 reassociation response: {}", auth(*status)),
             Body::Disassoc { reason } => format!("802.11 disassociation (reason {reason})"),
             Body::Deauth { reason } => format!("802.11 deauthentication (reason {reason}: {})", reason_text(*reason)),
             Body::Data { ethertype, payload } if *ethertype == ETHERTYPE_EAPOL => match Eapol::decode(payload) {
@@ -414,6 +481,7 @@ impl Dot11 {
                 Err(e) => format!("EAPOL ({e})"),
             },
             Body::Data { ethertype, .. } => format!("802.11 data, EtherType 0x{ethertype:04x}"),
+            Body::Protected { pn, .. } => format!("802.11 protected data (CCMP, packet number {pn})"),
         }
     }
 
@@ -427,9 +495,12 @@ impl Dot11 {
             Body::Auth { .. } => "authentication",
             Body::AssocRequest { .. } => "association request",
             Body::AssocResponse { .. } => "association response",
+            Body::ReassocRequest { .. } => "reassociation request",
+            Body::ReassocResponse { .. } => "reassociation response",
             Body::Disassoc { .. } => "disassociation",
             Body::Deauth { .. } => "deauthentication",
             Body::Data { .. } => "data",
+            Body::Protected { .. } => "protected data",
         };
         let mut out = vec![
             ("Type".to_string(), format!("{kind} (type {ty}, subtype {st})")),
@@ -457,7 +528,12 @@ impl Dot11 {
                 out.push(("SSID".into(), ssid.clone()));
                 out.push(("Security".into(), rsn.map_or("open", Akm::name).into()));
             }
-            Body::AssocResponse { status, aid } => {
+            Body::ReassocRequest { ssid, rsn, current_ap } => {
+                out.push(("SSID".into(), ssid.clone()));
+                out.push(("Security".into(), rsn.map_or("open", Akm::name).into()));
+                out.push(("Current AP".into(), current_ap.to_string()));
+            }
+            Body::AssocResponse { status, aid } | Body::ReassocResponse { status, aid } => {
                 out.push(("Status".into(), status.to_string()));
                 out.push(("Association id".into(), aid.to_string()));
             }
@@ -467,9 +543,123 @@ impl Dot11 {
                 out.push(("EtherType".into(), format!("0x{ethertype:04x}")));
                 out.push(("Payload".into(), format!("{} bytes", payload.len())));
             }
+            Body::Protected { key_id, pn, data } => {
+                out.push(("Protected".into(), "yes (CCMP)".into()));
+                out.push(("Key id".into(), key_id.to_string()));
+                out.push(("Packet number".into(), pn.to_string()));
+                out.push(("Encrypted".into(), format!("{} bytes + {CCMP_MIC_LEN}-byte MIC", data.len().saturating_sub(CCMP_MIC_LEN))));
+            }
         }
         out
     }
+}
+
+// ---- CCMP (IEEE 802.11 §12.5.3) ----
+
+fn ccmp_header(pn: u64, key_id: u8) -> [u8; CCMP_HEADER_LEN] {
+    let p = (pn & MAX_PN).to_le_bytes();
+    [p[0], p[1], 0, EXT_IV | ((key_id & 3) << 6), p[2], p[3], p[4], p[5]]
+}
+
+fn ccmp_header_decode(b: &[u8]) -> Option<(u64, u8)> {
+    let h = b.get(..CCMP_HEADER_LEN)?;
+    let (h0, h1, h3, h4, h5, h6, h7) = (*h.first()?, *h.get(1)?, *h.get(3)?, *h.get(4)?, *h.get(5)?, *h.get(6)?, *h.get(7)?);
+    if h3 & EXT_IV == 0 {
+        return None;
+    }
+    Some((u64::from_le_bytes([h0, h1, h4, h5, h6, h7, 0, 0]), h3 >> 6))
+}
+
+/// The MAC header's length: three addresses and sequence control, a fourth address between
+/// two access points, and QoS control on QoS data subtypes.
+fn mac_header_len(b: &[u8]) -> Option<usize> {
+    let (fc, flags) = (*b.first()?, *b.get(1)?);
+    let mut n = 24;
+    if (fc >> 2) & 3 == TYPE_DATA {
+        if flags & (FLAG_TO_DS | FLAG_FROM_DS) == FLAG_TO_DS | FLAG_FROM_DS {
+            n += 6;
+        }
+        if fc & 0x80 != 0 {
+            n += 2;
+        }
+    }
+    (b.len() >= n).then_some(n)
+}
+
+/// The CCM nonce and additional authenticated data of a frame (§12.5.3.3.3-4).
+fn ccmp_nonce_aad(hdr: &[u8], pn: u64) -> Option<([u8; 13], Vec<u8>)> {
+    let fc = *hdr.first()?;
+    let flags = *hdr.get(1)?;
+    let data = (fc >> 2) & 3 == TYPE_DATA;
+    let qos = data && fc & 0x80 != 0;
+    let mut aad = Vec::with_capacity(30);
+    // Subtype bits 4-6 masked on data frames; retry, power management and more data masked;
+    // protected set.
+    aad.push(if data { fc & 0x8f } else { fc });
+    aad.push((flags & !(FLAG_RETRY | FLAG_PWR_MGT | FLAG_MORE_DATA)) | FLAG_PROTECTED);
+    aad.extend_from_slice(hdr.get(4..22)?);
+    // Sequence control: the fragment number only.
+    aad.push(*hdr.get(22)? & 0x0f);
+    aad.push(0);
+    let mut at = 24;
+    if data && flags & (FLAG_TO_DS | FLAG_FROM_DS) == FLAG_TO_DS | FLAG_FROM_DS {
+        aad.extend_from_slice(hdr.get(24..30)?);
+        at = 30;
+    }
+    let mut priority = 0;
+    if qos {
+        priority = *hdr.get(at)? & 0x0f;
+        aad.push(priority);
+        aad.push(0);
+    }
+    let mut nonce = [0u8; 13];
+    nonce[0] = priority;
+    nonce[1..7].copy_from_slice(hdr.get(10..16)?);
+    nonce[7..].copy_from_slice(&(pn & MAX_PN).to_be_bytes()[2..]);
+    Some((nonce, aad))
+}
+
+/// Protects a data frame with CCMP under a temporal key: same MAC header (with the Protected
+/// bit), the CCMP header carrying `pn`, the encrypted body and the MIC.
+pub fn ccmp_encrypt(tk: &[u8; 16], mpdu: &[u8], pn: u64, key_id: u8) -> Result<Vec<u8>> {
+    let t = || WireError::Truncated("802.11");
+    let n = mac_header_len(mpdu).ok_or_else(t)?;
+    if (*mpdu.first().ok_or_else(t)? >> 2) & 3 != TYPE_DATA {
+        return Err(WireError::Unsupported("CCMP", "only data frames are protected here".into()));
+    }
+    let mut hdr = mpdu.get(..n).ok_or_else(t)?.to_vec();
+    if let Some(f) = hdr.get_mut(1) {
+        *f |= FLAG_PROTECTED;
+    }
+    let (nonce, aad) = ccmp_nonce_aad(&hdr, pn).ok_or_else(t)?;
+    let sealed = crate::aes::Ccm::new(tk, CCMP_MIC_LEN)
+        .seal(&nonce, &aad, mpdu.get(n..).unwrap_or_default())
+        .map_err(|_| WireError::Unsupported("CCMP", "frame too long".into()))?;
+    hdr.extend_from_slice(&ccmp_header(pn, key_id));
+    hdr.extend_from_slice(&sealed);
+    Ok(hdr)
+}
+
+/// Opens a CCMP-protected frame: the plaintext frame (Protected bit cleared) and its packet
+/// number. Fails on a wrong key or changed bytes (the MIC doesn't check out).
+pub fn ccmp_decrypt(tk: &[u8; 16], mpdu: &[u8]) -> Result<(Vec<u8>, u64)> {
+    let t = || WireError::Truncated("802.11");
+    let n = mac_header_len(mpdu).ok_or_else(t)?;
+    if mpdu.get(1).is_none_or(|f| f & FLAG_PROTECTED == 0) {
+        return Err(WireError::Unsupported("CCMP", "frame is not protected".into()));
+    }
+    let hdr = mpdu.get(..n).ok_or_else(t)?;
+    let (pn, _) = ccmp_header_decode(mpdu.get(n..).unwrap_or_default()).ok_or_else(t)?;
+    let (nonce, aad) = ccmp_nonce_aad(hdr, pn).ok_or_else(t)?;
+    let body = crate::aes::Ccm::new(tk, CCMP_MIC_LEN)
+        .open(&nonce, &aad, mpdu.get(n + CCMP_HEADER_LEN..).unwrap_or_default())
+        .map_err(|_| WireError::Unsupported("CCMP", "MIC check failed (wrong key or changed bytes)".into()))?;
+    let mut out = hdr.to_vec();
+    if let Some(f) = out.get_mut(1) {
+        *f &= !FLAG_PROTECTED;
+    }
+    out.extend_from_slice(&body);
+    Ok((out, pn))
 }
 
 fn reason_text(r: u16) -> &'static str {
@@ -497,6 +687,11 @@ pub const EAP_RESPONSE: u8 = 2;
 pub const EAP_SUCCESS: u8 = 3;
 pub const EAP_FAILURE: u8 = 4;
 pub const EAP_IDENTITY: u8 = 1;
+/// EAP method 25, PEAP: a TLS tunnel protecting an inner login. Its first data byte holds the
+/// flags (length included, more fragments, start) and version.
+pub const EAP_PEAP: u8 = 25;
+/// The PEAP Start flag (version 0).
+pub const PEAP_START: u8 = 0x20;
 
 /// An EAP packet (RFC 3748 §4).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -645,6 +840,12 @@ impl Eapol {
             Eapol::Eap(e) => match (e.code, e.kind) {
                 (EAP_REQUEST, Some(EAP_IDENTITY)) => "EAP request: identity?".into(),
                 (EAP_RESPONSE, Some(EAP_IDENTITY)) => format!("EAP response: identity \"{}\"", String::from_utf8_lossy(&e.data)),
+                (EAP_REQUEST, Some(EAP_PEAP)) if e.data.first().is_some_and(|f| f & PEAP_START != 0) => "EAP request: PEAP start".into(),
+                (EAP_REQUEST | EAP_RESPONSE, Some(EAP_PEAP)) => format!(
+                    "EAP {}: PEAP, {} byte(s) of TLS tunnel (contents not modelled)",
+                    if e.code == EAP_REQUEST { "request" } else { "response" },
+                    e.data.len().saturating_sub(1)
+                ),
                 (EAP_SUCCESS, _) => "EAP success".into(),
                 (EAP_FAILURE, _) => "EAP failure".into(),
                 (c, k) => format!("EAP code {c} type {}", k.unwrap_or(0)),
@@ -691,6 +892,13 @@ mod tests {
             Dot11::mgmt(mac(2), mac(1), mac(2), 4, Body::Auth { algorithm: 0, transaction: 1, status: 0 }),
             Dot11::mgmt(mac(2), mac(1), mac(2), 5, Body::AssocRequest { ssid: "Aula".into(), rsn: Some(Akm::Psk) }),
             Dot11::mgmt(mac(1), mac(2), mac(2), 6, Body::AssocResponse { status: 0, aid: 3 }),
+            Dot11::mgmt(mac(3), mac(1), mac(3), 12, Body::ReassocRequest { ssid: "Aula".into(), rsn: Some(Akm::Psk), current_ap: mac(2) }),
+            Dot11::mgmt(mac(1), mac(3), mac(3), 13, Body::ReassocResponse { status: 0, aid: 1 }),
+            Dot11 {
+                flags: FLAG_TO_DS | FLAG_PROTECTED,
+                body: Body::Protected { key_id: 0, pn: 0x0102_0304_0506, data: vec![0x5a; 40] },
+                ..Dot11::to_ap(mac(2), mac(1), mac(9), 14, 0, vec![])
+            },
             Dot11::mgmt(mac(1), mac(2), mac(2), 7, Body::Deauth { reason: REASON_HANDSHAKE_TIMEOUT }),
             Dot11::mgmt(mac(1), mac(2), mac(2), 8, Body::Disassoc { reason: REASON_LEAVING }),
             Dot11::to_ap(mac(2), mac(1), mac(9), 9, crate::ETHERTYPE_IPV4, vec![0x45; 30]),
@@ -745,13 +953,70 @@ mod tests {
         assert_eq!(signed.message(), 2);
         assert_eq!(key_mic(&[1; 16], &signed), mic);
         assert_ne!(key_mic(&[2; 16], &signed), mic);
-        for e in [Eapol::Start, Eapol::Logoff, Eapol::Eap(Eap { code: EAP_RESPONSE, id: 4, kind: Some(EAP_IDENTITY), data: b"ana".to_vec() })] {
+        for e in [
+            Eapol::Start,
+            Eapol::Logoff,
+            Eapol::Eap(Eap { code: EAP_RESPONSE, id: 4, kind: Some(EAP_IDENTITY), data: b"ana".to_vec() }),
+            Eapol::Eap(Eap { code: EAP_REQUEST, id: 5, kind: Some(EAP_PEAP), data: vec![PEAP_START] }),
+            Eapol::Eap(Eap { code: EAP_RESPONSE, id: 5, kind: Some(EAP_PEAP), data: vec![0] }),
+        ] {
             assert_eq!(Eapol::decode(&e.encode()), Ok(e.clone()));
         }
         assert_eq!(
             Eapol::decode(&Eapol::Eap(Eap { code: EAP_SUCCESS, id: 4, kind: None, data: vec![] }).encode()).map(|e| e.describe()),
             Ok("EAP success".into())
         );
+    }
+
+    fn hex(s: &str) -> Vec<u8> {
+        let s: String = s.chars().filter(|c| !c.is_whitespace()).collect();
+        (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect()
+    }
+
+    /// The CCMP test vector of IEEE 802.11 Annex J (non-QoS data frame, retry set).
+    #[test]
+    fn ccmp_matches_the_ieee_802_11_test_vector() {
+        let tk: [u8; 16] = hex("c97c1f67ce371185514a8a19f2bdd52f").try_into().unwrap();
+        let hdr = hex("08 48 c3 2c 0f d2 e1 28 a5 7c 50 30 f1 84 44 08 ab ae a5 b8 fc ba 80 33");
+        let plain = hex("f8 ba 1a 55 d0 2f 85 ae 96 7b b6 2f b6 cd a8 eb 7e 78 a0 50");
+        let mut mpdu = hdr.clone();
+        mpdu[1] &= !FLAG_PROTECTED;
+        mpdu.extend_from_slice(&plain);
+        let enc = ccmp_encrypt(&tk, &mpdu, 0xb503_9776_e70c, 0).unwrap();
+        let want = hex("08 48 c3 2c 0f d2 e1 28 a5 7c 50 30 f1 84 44 08 ab ae a5 b8 fc ba 80 33 0c e7 00 20 76 97 03 b5
+             f3 d0 a2 fe 9a 3d bf 23 42 a6 43 e4 32 46 e8 0c 3c 04 d0 19 78 45 ce 0b 16 f9 76 23");
+        assert_eq!(enc, want);
+        let (back, pn) = ccmp_decrypt(&tk, &enc).unwrap();
+        assert_eq!((back, pn), (mpdu, 0xb503_9776_e70c));
+        let f = Dot11::decode(&enc).unwrap();
+        assert!(f.is_protected() && f.ethernet().is_none());
+        assert_eq!(f.encode(), enc);
+        assert!(summarize(&enc).contains("protected"));
+    }
+
+    #[test]
+    fn ccmp_round_trips_and_refuses_a_wrong_key_or_changed_bytes() {
+        let tk = [7u8; 16];
+        let f = Dot11::to_ap(mac(2), mac(1), mac(9), 5, crate::ETHERTYPE_IPV4, vec![0x45; 60]).encode();
+        let enc = ccmp_encrypt(&tk, &f, 42, 0).unwrap();
+        assert_eq!(enc.len(), f.len() + CCMP_HEADER_LEN + CCMP_MIC_LEN);
+        assert_ne!(&enc[24 + 8..24 + 8 + 20], &f[24..44]);
+        assert_eq!(ccmp_decrypt(&tk, &enc).unwrap(), (f.clone(), 42));
+        assert!(ccmp_decrypt(&[8; 16], &enc).is_err());
+        let mut bad = enc.clone();
+        bad[40] ^= 0x80;
+        assert!(ccmp_decrypt(&tk, &bad).is_err());
+        // The header is authenticated too: changing the destination breaks the MIC.
+        let mut moved = enc.clone();
+        moved[16] ^= 1;
+        assert!(ccmp_decrypt(&tk, &moved).is_err());
+        assert!(ccmp_decrypt(&tk, &f).is_err());
+        for n in 0..enc.len() {
+            assert!(ccmp_decrypt(&tk, &enc[..n]).is_err());
+            let _ = ccmp_encrypt(&tk, &f[..n.min(f.len())], 1, 0);
+        }
+        let probe = Dot11::mgmt(MacAddr::BROADCAST, mac(1), MacAddr::BROADCAST, 0, Body::ProbeRequest { ssid: String::new() }).encode();
+        assert!(ccmp_encrypt(&tk, &probe, 1, 0).is_err());
     }
 
     #[test]

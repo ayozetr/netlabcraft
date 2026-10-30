@@ -68,7 +68,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Controller WLAN",
         "",
         None,
-        r#"{"device": controller, "id": 1-16, "ssid"?: "network name", "security"?: "open"|"psk"|"enterprise", "key"?: "WPA2-PSK passphrase", "remove"?: true} → {"config": the line applied}"#,
+        r#"{"device": controller, "id": 1-16, "ssid"?: "network name", "security"?: "open"|"psk"|"enterprise", "key"?: "WPA2-PSK passphrase", "vlan"?: 1-4094 (the VLAN its hosts land in, tagged on the APs' uplinks), "remove"?: true} → {"config": the line applied}"#,
         true
     ),
     c!(

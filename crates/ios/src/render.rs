@@ -2348,7 +2348,8 @@ fn wlan_config(s: &mut String, d: &Device) {
             WlanSecurity::Psk(k) => format!("psk {k}"),
             WlanSecurity::Enterprise => "enterprise".to_string(),
         };
-        let _ = writeln!(s, "wlan {} {} {sec}", w.id, w.ssid);
+        let vlan = w.vlan.map(|v| format!(" vlan {v}")).unwrap_or_default();
+        let _ = writeln!(s, "wlan {} {} {sec}{vlan}", w.id, w.ssid);
     }
     if let Some(a) = d.wlan.controller {
         let _ = writeln!(s, "capwap controller {a}");

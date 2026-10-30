@@ -49,6 +49,10 @@ pub struct Wlan {
     pub id: u8,
     pub ssid: String,
     pub security: WlanSecurity,
+    /// The VLAN the access points bridge this WLAN's hosts into, tagged on their uplink
+    /// (`None`: the AP's own VLAN, untagged).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vlan: Option<VlanId>,
 }
 
 /// Wireless-controller settings of a device.
@@ -83,6 +87,8 @@ pub struct Offer {
     /// The controller whose WLAN it is (`None`: an autonomous access point's own setting).
     pub controller: Option<DeviceId>,
     pub channel: u8,
+    /// The VLAN the WLAN's hosts land in (`None`: the radio port's own access VLAN).
+    pub vlan: Option<VlanId>,
 }
 
 /// What became of a host's attempt to join the nearest radio offering its network.
@@ -216,7 +222,13 @@ impl Topology {
                 .wlan
                 .wlans
                 .iter()
-                .map(|w| Offer { ssid: w.ssid.clone(), security: w.security.clone(), controller: Some(wlc.id), channel: lap_channel(d.id) })
+                .map(|w| Offer {
+                    ssid: w.ssid.clone(),
+                    security: w.security.clone(),
+                    controller: Some(wlc.id),
+                    channel: lap_channel(d.id),
+                    vlan: w.vlan,
+                })
                 .collect();
         }
         p.wifi
@@ -227,8 +239,39 @@ impl Topology {
                 security: w.key.clone().map_or(WlanSecurity::Open, WlanSecurity::Psk),
                 controller: None,
                 channel: w.channel,
+                vlan: None,
             })
             .collect()
+    }
+
+    /// The VLANs a lightweight AP bridges WLANs into: those its controller's WLANs name.
+    pub fn lap_vlans(&self, lap: DeviceId) -> Vec<VlanId> {
+        let Some(wlc) = self.device(lap).filter(|d| is_lap(d)).and_then(|_| self.lap_controller(lap)).and_then(|w| self.device(w)) else {
+            return Vec::new();
+        };
+        let mut v: Vec<VlanId> = wlc.wlan.wlans.iter().filter_map(|w| w.vlan).collect();
+        v.sort();
+        v.dedup();
+        v
+    }
+
+    /// Whether a switch knows a VLAN: one it has, or (a lightweight AP) one of its WLANs'.
+    pub fn switch_has_vlan(&self, d: &Device, vlan: VlanId) -> bool {
+        d.vlans.contains_key(&vlan) || (is_lap(d) && self.lap_vlans(d.id).contains(&vlan))
+    }
+
+    /// Whether an access point's radio carries a VLAN besides its access VLAN: a lightweight
+    /// AP's radio carries every VLAN its WLANs map to.
+    pub fn radio_carries(&self, d: &Device, port: usize, vlan: VlanId) -> bool {
+        d.ports.get(port).is_some_and(|p| ifname::is_wireless(&p.name)) && is_lap(d) && self.lap_vlans(d.id).contains(&vlan)
+    }
+
+    /// The VLAN a Wi-Fi host's frames land in at its access point: its WLAN's, else the radio
+    /// port's access VLAN. `None` when the host isn't associated.
+    pub fn wifi_vlan(&self, client: End) -> Option<VlanId> {
+        let a = self.wifi_attempt(client).filter(|a| a.outcome.is_ok())?;
+        let radio = self.device(a.ap.device)?.ports.get(a.ap.port)?;
+        Some(a.offer.vlan.unwrap_or(radio.switchport.access_vlan))
     }
 
     /// Whether a controller's RADIUS servers accept a login: the first server it names that is
