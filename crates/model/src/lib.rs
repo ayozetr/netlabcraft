@@ -23,6 +23,7 @@ pub mod iot;
 pub mod models;
 pub mod physical;
 pub mod qos;
+pub mod routing;
 pub mod services;
 pub mod voice;
 pub mod vpn;
@@ -863,6 +864,9 @@ pub struct Device {
     /// Routers: GRE tunnel interfaces (`interface Tunnel N`), sorted by number.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tunnels: Vec<vpn::Tunnel>,
+    /// Routers and switches: loopback interfaces (`interface Loopback N`), sorted by number.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub loopbacks: Vec<routing::Loopback>,
     /// Routers: IPsec (`crypto isakmp`, `crypto ipsec`, `crypto map`).
     #[serde(default, skip_serializing_if = "vpn::Crypto::is_empty")]
     pub crypto: vpn::Crypto,
@@ -1609,6 +1613,7 @@ impl Device {
             snmp: SnmpConf::default(),
             vlan_dat_deleted: false,
             tunnels: Vec::new(),
+            loopbacks: Vec::new(),
             crypto: vpn::Crypto::default(),
             qos: qos::Qos::default(),
             wlan: wlan::WlanConf::default(),
@@ -1667,6 +1672,7 @@ impl Device {
         self.acls.clear();
         self.nat = Nat::default();
         self.tunnels.clear();
+        self.loopbacks.clear();
         self.crypto = vpn::Crypto::default();
         self.qos = qos::Qos::default();
         self.firewall = firewall::Firewall::default();
@@ -2084,6 +2090,9 @@ impl Topology {
                 d.tunnels.truncate(vpn::MAX_TUNNELS);
                 d.tunnels.sort_by_key(|t| t.number);
                 d.tunnels.dedup_by_key(|t| t.number);
+                d.loopbacks.truncate(routing::MAX_LOOPBACKS);
+                d.loopbacks.sort_by_key(|l| l.number);
+                d.loopbacks.dedup_by_key(|l| l.number);
                 d.crypto.sanitize();
                 d.qos.sanitize();
                 d.firewall.sanitize();

@@ -46,7 +46,7 @@ pub struct Ospf6State {
 /// without one.
 pub fn router_id(d: &Device) -> Option<Ipv4Addr> {
     let o = d.ospf6.as_ref()?;
-    o.router_id.or_else(|| crate::l3_ifaces(d).iter().map(|i| i.net.addr).max())
+    o.router_id.or_else(|| crate::loopback::default_router_id(d))
 }
 
 fn cost(ifc: &L3If6) -> u32 {
@@ -218,6 +218,7 @@ pub fn fingerprint(t: &Topology) -> u64 {
         for s in &d.svis {
             (s.vlan, s.shutdown, format!("{:?}", s.ipv6)).hash(&mut h);
         }
+        format!("{:?}", d.loopbacks).hash(&mut h);
         for p in &d.ports {
             format!("{:?}", p.switchport).hash(&mut h);
         }

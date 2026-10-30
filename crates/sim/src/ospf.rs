@@ -70,6 +70,9 @@ pub fn cost(d: &Device, ifc: &L3If) -> u32 {
         100_000
     } else if ifc.name.starts_with("Serial") {
         1_544
+    } else if ifc.name.starts_with("Loopback") {
+        // A loopback costs 1 whatever the reference bandwidth.
+        return 1;
     } else if ifc.name.starts_with("Tunnel") {
         // A tunnel's nominal bandwidth: 100 kbit/s.
         100
@@ -77,6 +80,15 @@ pub fn cost(d: &Device, ifc: &L3If) -> u32 {
         10_000
     };
     u32::try_from((u64::from(reference) * 1_000 / kbps).max(1)).unwrap_or(u32::MAX)
+}
+
+/// The network an interface puts in its router's LSA: a loopback stands for one host (a /32
+/// stub), every other interface for its subnet.
+pub fn advertised(_d: &Device, ifc: &L3If) -> Ipv4Net {
+    if crate::loopback::is_loopback(ifc.port) {
+        return Ipv4Net::new(ifc.net.addr, 32);
+    }
+    ifc.net.network()
 }
 
 /// The interfaces of a router OSPF runs on.
@@ -95,7 +107,7 @@ fn ospf_ifaces(t: &Topology, d: &Device) -> Vec<(L3If, bool)> {
 /// The router id: configured, else the highest interface address.
 pub fn router_id(d: &Device) -> Option<Ipv4Addr> {
     let o = d.ospf.as_ref()?;
-    o.router_id.or_else(|| crate::l3_ifaces(d).iter().map(|i| i.net.addr).max())
+    o.router_id.or_else(|| crate::loopback::default_router_id(d))
 }
 
 /// The area of the network statement an interface address falls under.
@@ -231,7 +243,7 @@ pub fn compute(t: &Topology) -> OspfState {
     // Networks each router advertises (cost of its own interface added), with their area.
     let stubs: BTreeMap<DeviceId, Vec<(Ipv4Net, u32, u32)>> = routers
         .iter()
-        .map(|d| (d.id, ifs.get(&d.id).into_iter().flatten().map(|(i, _)| (i.net.network(), cost(d, i), area_of(d, i.net.addr))).collect()))
+        .map(|d| (d.id, ifs.get(&d.id).into_iter().flatten().map(|(i, _)| (advertised(d, i), cost(d, i), area_of(d, i.net.addr))).collect()))
         .collect();
     let originators: Vec<DeviceId> = routers
         .iter()
@@ -388,6 +400,7 @@ pub fn fingerprint(t: &Topology) -> u64 {
             format!("{:?}{:?}{:?}{:?}{:?}{:?}{:?}{}", d.ospf, d.rip, d.eigrp, d.routes, d.access.users, d.ospf_if, d.eigrp_if, d.ip_routing)
                 .hash(&mut h);
             d.tunnels.hash(&mut h);
+            format!("{:?}", d.loopbacks).hash(&mut h);
             for s in &d.svis {
                 (s.vlan, s.ip, s.shutdown).hash(&mut h);
             }

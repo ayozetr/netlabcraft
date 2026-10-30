@@ -57,7 +57,7 @@ pub fn tunnel_of(port: usize) -> Option<u32> {
     if port == SVI_PORT {
         return None;
     }
-    port.checked_sub(TUNNEL_BASE).and_then(|n| u32::try_from(n).ok())
+    port.checked_sub(TUNNEL_BASE).and_then(|n| u32::try_from(n).ok()).filter(|n| *n <= netlabcraft_model::vpn::MAX_TUNNEL_NUMBER)
 }
 
 pub fn is_tunnel(port: usize) -> bool {

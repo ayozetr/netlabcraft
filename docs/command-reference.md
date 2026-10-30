@@ -182,6 +182,22 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip nat pool WORD` | config | router, switch | Delete a NAT pool |
 | `show ip nat translations` | user, privileged | router, switch | Translations in use |
 | `clear ip nat translation *` | privileged | router, switch | Forget dynamic translations |
+| `ip address A.B.C.D MASK` |  | router, switch | Set the loopback's address |
+| `no ip address` |  | router, switch | Remove the loopback's address |
+| `shutdown` |  | router, switch | Take the loopback down |
+| `no shutdown` |  | router, switch | Bring the loopback up again |
+| `description LINE` |  | router, switch | Describe the loopback |
+| `no description` |  | router, switch | Remove the description |
+| `ipv6 address X:X::X/<0-128>` |  | router, switch | Add an IPv6 address |
+| `ipv6 address FE80::X link-local` |  | router, switch | Set the link-local address |
+| `no ipv6 address` |  | router, switch | Remove every IPv6 address |
+| `no ipv6 address <address>` |  | router, switch | Remove one IPv6 address |
+| `ipv6 enable` |  | router, switch | IPv6 with a link-local address only |
+| `no ipv6 enable` |  | router, switch | Turn link-local-only IPv6 off |
+| `ipv6 ospf <1-65535> area <0-4294967295>` |  | router, switch | Advertise this loopback in OSPFv3 |
+| `no ipv6 ospf <1-65535> area <0-4294967295>` |  | router, switch | Stop advertising it in OSPFv3 |
+| `ip ospf cost <1-65535>` |  | router, switch | This loopback's OSPF cost |
+| `no ip ospf cost` |  | router, switch | Cost 1 again |
 | `ip address A.B.C.D MASK` |  | router | Set the tunnel's address |
 | `no ip address` |  | router | Remove the tunnel's address |
 | `shutdown` |  | router | Disable the tunnel |

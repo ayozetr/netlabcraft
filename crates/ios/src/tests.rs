@@ -5,6 +5,8 @@ use netlabcraft_sim::Sim;
 use crate::grammar::{SPECS, Tok};
 use crate::*;
 
+mod routing;
+
 struct Lab {
     t: Topology,
     sim: Sim,
@@ -321,6 +323,8 @@ fn every_command_survives_hostile_arguments() {
                     "en\nconf t\nint fa0/1",
                     "en\nconf t\nvlan 5",
                     "en\nconf t\nrouter eigrp 1",
+                    "en\nconf t\nint lo0",
+                    "en\nconf t\nrouter ospf 1",
                     "en\nconf t\ntelephony-service\nmax-dn 4\nmax-ephones 4\nexit\nephone-dn 1",
                     "en\nconf t\ntelephony-service\nmax-ephones 4\nexit\nephone 1",
                 ] {

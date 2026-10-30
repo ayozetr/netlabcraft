@@ -55,6 +55,8 @@ impl Modes {
     pub const CRYPTO_MAP: Modes = Modes(1 << 22);
     /// `crypto ipsec transform-set NAME …`.
     pub const TRANSFORM: Modes = Modes(1 << 23);
+    /// `interface Loopback N`.
+    pub const LOOPBACK: Modes = Modes(1 << 24);
     /// `class-map [match-all|match-any] NAME`.
     pub const CLASS_MAP: Modes = Modes(1 << 26);
     /// `policy-map NAME`.
@@ -83,6 +85,7 @@ impl Modes {
             | (1 << 21)
             | (1 << 22)
             | (1 << 23)
+            | (1 << 24)
             | (1 << 26)
             | (1 << 27)
             | (1 << 28)
@@ -660,7 +663,8 @@ const SUBMODES: Modes = Modes::IF
     .or(QOS_MODES)
     .or(Modes::OBJECT)
     .or(Modes::TELEPHONY)
-    .or(Modes::EPHONE);
+    .or(Modes::EPHONE)
+    .or(Modes::LOOPBACK);
 /// Routers, switches and the firewall.
 const BOTH_FW: Modes = Modes::BOTH.or(Modes::FIREWALL);
 const FW: Modes = Modes::FIREWALL;
@@ -808,6 +812,41 @@ pub static SPECS: &[Spec] = &[
     spec!(NoNatPool, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("nat"), K("pool"), Arg("WORD")], "Delete a NAT pool"),
     spec!(ShowNat, EXECS, Modes::BOTH, [K("show"), K("ip"), K("nat"), K("translations")], "Translations in use"),
     spec!(ClearNat, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("nat"), K("translation"), Rest("*")], "Forget dynamic translations"),
+    // ---- loopback interfaces (`interface Loopback N`) ----
+    spec!(IpAddress, Modes::LOOPBACK, Modes::BOTH, [K("ip"), K("address"), Arg("A.B.C.D"), Arg("MASK")], "Set the loopback's address"),
+    spec!(NoIpAddress, Modes::LOOPBACK, Modes::BOTH, [K("no"), K("ip"), K("address")], "Remove the loopback's address"),
+    spec!(Shutdown, Modes::LOOPBACK, Modes::BOTH, [K("shutdown")], "Take the loopback down"),
+    spec!(NoShutdown, Modes::LOOPBACK, Modes::BOTH, [K("no"), K("shutdown")], "Bring the loopback up again"),
+    spec!(Description, Modes::LOOPBACK, Modes::BOTH, [K("description"), Rest("LINE")], "Describe the loopback"),
+    spec!(NoDescription, Modes::LOOPBACK, Modes::BOTH, [K("no"), K("description")], "Remove the description"),
+    spec!(Ipv6Address, Modes::LOOPBACK, Modes::BOTH, [K("ipv6"), K("address"), Arg("X:X::X/<0-128>")], "Add an IPv6 address"),
+    spec!(
+        Ipv6AddressLinkLocal,
+        Modes::LOOPBACK,
+        Modes::BOTH,
+        [K("ipv6"), K("address"), Arg("FE80::X"), K("link-local")],
+        "Set the link-local address"
+    ),
+    spec!(NoIpv6Address, Modes::LOOPBACK, Modes::BOTH, [K("no"), K("ipv6"), K("address")], "Remove every IPv6 address"),
+    spec!(NoIpv6Address, Modes::LOOPBACK, Modes::BOTH, [K("no"), K("ipv6"), K("address"), Rest("<address>")], "Remove one IPv6 address"),
+    spec!(Ipv6Enable, Modes::LOOPBACK, Modes::BOTH, [K("ipv6"), K("enable")], "IPv6 with a link-local address only"),
+    spec!(NoIpv6Enable, Modes::LOOPBACK, Modes::BOTH, [K("no"), K("ipv6"), K("enable")], "Turn link-local-only IPv6 off"),
+    spec!(
+        Ipv6OspfArea,
+        Modes::LOOPBACK,
+        Modes::BOTH,
+        [K("ipv6"), K("ospf"), Arg("<1-65535>"), K("area"), Arg("<0-4294967295>")],
+        "Advertise this loopback in OSPFv3"
+    ),
+    spec!(
+        NoIpv6OspfArea,
+        Modes::LOOPBACK,
+        Modes::BOTH,
+        [K("no"), K("ipv6"), K("ospf"), Arg("<1-65535>"), K("area"), Arg("<0-4294967295>")],
+        "Stop advertising it in OSPFv3"
+    ),
+    spec!(IpOspfCost, Modes::LOOPBACK, Modes::BOTH, [K("ip"), K("ospf"), K("cost"), Arg("<1-65535>")], "This loopback's OSPF cost"),
+    spec!(NoIpOspfCost, Modes::LOOPBACK, Modes::BOTH, [K("no"), K("ip"), K("ospf"), K("cost")], "Cost 1 again"),
     // ---- site-to-site VPN: GRE tunnels (`interface Tunnel N`) and IPsec ----
     spec!(IpAddress, Modes::TUNNEL, Modes::ROUTER, [K("ip"), K("address"), Arg("A.B.C.D"), Arg("MASK")], "Set the tunnel's address"),
     spec!(NoIpAddress, Modes::TUNNEL, Modes::ROUTER, [K("no"), K("ip"), K("address")], "Remove the tunnel's address"),
@@ -2314,6 +2353,7 @@ mod tests {
                 Modes::OSPF6,
                 Modes::EIGRP,
                 Modes::TUNNEL,
+                Modes::LOOPBACK,
                 Modes::ISAKMP,
                 Modes::CRYPTO_MAP,
                 Modes::TRANSFORM,

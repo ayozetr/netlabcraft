@@ -57,6 +57,9 @@ pub fn routes6(d: &Device) -> bool {
 
 /// The IPv6 settings behind an interface.
 pub fn conf6<'a>(d: &'a Device, ifc: &L3If6) -> Option<&'a Ipv6Conf> {
+    if crate::loopback::is_loopback(ifc.port) {
+        return crate::loopback::conf6(d, ifc.port);
+    }
     if ifc.port == SVI_PORT {
         return d.svis.iter().find(|s| Some(s.vlan.get()) == ifc.vlan).map(|s| &s.ipv6);
     }
@@ -106,6 +109,7 @@ pub fn l3_ifaces6(d: &Device) -> Vec<L3If6> {
                     }
                 }
             }
+            out.extend(crate::loopback::loopback_ifaces6(d));
             out
         }
     }
@@ -117,7 +121,9 @@ pub fn up_ifaces6(t: &Topology, d: &Device) -> Vec<L3If6> {
     l3_ifaces6(d)
         .into_iter()
         .filter(|i| {
-            if i.port == SVI_PORT {
+            if crate::loopback::is_loopback(i.port) {
+                true
+            } else if i.port == SVI_PORT {
                 i.vlan
                     .and_then(VlanId::new)
                     .is_some_and(|v| (0..d.ports.len()).any(|p| crate::stp::carries(t, d, p, v) && port_up(t, End { device: d.id, port: p })))
@@ -445,6 +451,9 @@ impl Sim {
     /// Sends a packet out of an interface: tagged on a subinterface, through the switch on a
     /// VLAN interface.
     fn emit6(&mut self, t: &Topology, d: &Device, ifc: &L3If6, to: MacAddr, packet: Vec<u8>) {
+        if crate::loopback::is_loopback(ifc.port) {
+            return;
+        }
         if ifc.port == SVI_PORT {
             let frame = Frame { dst: to, src: ifc.mac, vlan: None, ethertype: ETHERTYPE_IPV6, payload: packet };
             if let Some(v) = ifc.vlan.and_then(VlanId::new) {

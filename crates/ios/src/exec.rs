@@ -15,6 +15,7 @@ use crate::{host, render};
 
 pub(crate) mod firewall;
 pub(crate) mod qos;
+pub(crate) mod routing;
 pub(crate) mod voice;
 mod vpn;
 mod wlan;
@@ -67,6 +68,8 @@ pub enum Mode {
     Acl(String),
     /// `R1(config-if)#` on `interface Tunnel N`.
     Tunnel(u32),
+    /// `R1(config-if)#` on `interface Loopback N`.
+    Loopback(u32),
     /// `R1(config-isakmp)#`: the policy's priority.
     Isakmp(u16),
     /// `R1(cfg-crypto-trans)#`: the transform set's name.
@@ -112,6 +115,7 @@ impl Mode {
             Mode::Dhcp6(_) => Modes::DHCP6,
             Mode::Acl(_) => Modes::ACL,
             Mode::Tunnel(_) => Modes::TUNNEL,
+            Mode::Loopback(_) => Modes::LOOPBACK,
             Mode::Isakmp(_) => Modes::ISAKMP,
             Mode::Transform(_) => Modes::TRANSFORM,
             Mode::CryptoMap(..) => Modes::CRYPTO_MAP,
@@ -426,7 +430,7 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
             let ext = d.acls.iter().find(|a| &a.name == name).is_some_and(|a| a.extended);
             format!("{n}(config-{}-nacl)#", if ext { "ext" } else { "std" })
         }
-        Mode::Tunnel(_) => format!("{n}(config-if)#"),
+        Mode::Tunnel(_) | Mode::Loopback(_) => format!("{n}(config-if)#"),
         Mode::Isakmp(_) => format!("{n}(config-isakmp)#"),
         Mode::Transform(_) => format!("{n}(cfg-crypto-trans)#"),
         Mode::CryptoMap(..) => format!("{n}(config-crypto-map)#"),
@@ -637,6 +641,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Acl6(_)
                 | Mode::Dhcp6(_)
                 | Mode::Tunnel(_)
+                | Mode::Loopback(_)
                 | Mode::Isakmp(_)
                 | Mode::Transform(_)
                 | Mode::CryptoMap(..)
@@ -695,6 +700,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Acl6(_)
                 | Mode::Dhcp6(_)
                 | Mode::Tunnel(_)
+                | Mode::Loopback(_)
                 | Mode::Isakmp(_)
                 | Mode::Transform(_)
                 | Mode::CryptoMap(..)
@@ -792,6 +798,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             if let Some(n) = netlabcraft_model::vpn::tunnel_number(arg(0)) {
                 return render::tunnel_interface(c.t, c.d()?, n);
             }
+            if let Some(n) = routing::loopback(arg(0)) {
+                return routing::loopback_interface(c.d()?, n);
+            }
             let d = c.d()?;
             let r = c.iface_ref(arg(0))?;
             Ok(render::interfaces(c.t, d, Some(r)))
@@ -807,6 +816,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::ShowRunInterface => {
             if let Some(n) = netlabcraft_model::vpn::tunnel_number(arg(0)) {
                 return Ok(render::running_config_interface(c.d()?, &format!("Tunnel{n}")));
+            }
+            if let Some(n) = routing::loopback(arg(0)) {
+                return Ok(render::running_config_interface(c.d()?, &format!("Loopback{n}")));
             }
             let r = c.iface_ref(arg(0))?;
             let d = c.d()?;
@@ -986,6 +998,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             if let Some(n) = netlabcraft_model::vpn::tunnel_number(arg(0)) {
                 return vpn::enter_tunnel(&mut c, n);
             }
+            if let Some(n) = routing::loopback(arg(0)) {
+                return routing::enter_loopback(&mut c, n);
+            }
             if let Some(v) = vlan_iface(arg(0)) {
                 let v = v?;
                 if c.d()?.kind != DeviceKind::Switch {
@@ -1010,6 +1025,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::NoInterface => {
             if let Some(n) = netlabcraft_model::vpn::tunnel_number(arg(0)) {
                 return vpn::delete_tunnel(&mut c, n);
+            }
+            if let Some(n) = routing::loopback(arg(0)) {
+                return routing::delete_loopback(&mut c, n);
             }
             let r = c.iface_ref(arg(0))?;
             let n = r.sub.ok_or("% Only subinterfaces can be deleted")?;
@@ -1353,6 +1371,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let names: Vec<String> = match &c.cli.mode {
                 Mode::Svi(v) => vec![format!("Vlan{v}")],
                 Mode::Tunnel(n) => vec![format!("Tunnel{n}")],
+                Mode::Loopback(n) => vec![format!("Loopback{n}")],
                 Mode::Iface(ifs) => {
                     let d = c.d()?;
                     ifs.iter().filter_map(|r| d.ports.get(r.port).map(|p| r.sub.map_or(p.name.clone(), |s| format!("{}.{s}", p.name)))).collect()
@@ -1515,6 +1534,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let r = dispatch(c.t, c.sim, c.dev, c.cli, arg(0));
             c.cli.mode = saved;
             r
+        }
+        Id::IpAddress | Id::NoIpAddress | Id::Shutdown | Id::NoShutdown | Id::Description | Id::NoDescription
+            if matches!(c.cli.mode, Mode::Loopback(_)) =>
+        {
+            routing::loopback_iface(&mut c, spec.id, arg(0), arg(1))
         }
         // ---- site-to-site VPN: GRE tunnels and IPsec (see exec/vpn.rs) ----
         Id::IpAddress | Id::NoIpAddress | Id::Shutdown | Id::NoShutdown | Id::Description | Id::NoDescription
@@ -2859,6 +2883,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let names: Vec<String> = match &c.cli.mode {
                 Mode::Svi(v) => vec![format!("Vlan{v}")],
                 Mode::Tunnel(n) => vec![format!("Tunnel{n}")],
+                Mode::Loopback(n) => vec![format!("Loopback{n}")],
                 Mode::Iface(ifs) => {
                     let d = c.d()?;
                     ifs.iter().filter_map(|r| d.ports.get(r.port).map(|p| r.sub.map_or(p.name.clone(), |s| format!("{}.{s}", p.name)))).collect()
@@ -3736,6 +3761,13 @@ impl Ctx<'_> {
             f(&mut svi.ipv6, mac, &format!("Vlan{v}"))?;
             return Ok(String::new());
         }
+        if let Mode::Loopback(n) = self.cli.mode {
+            let d = self.dm()?;
+            let mac = netlabcraft_core::MacAddr::local(d.id, 0xfffc);
+            let lo = d.loopback_mut(n).ok_or("% Too many loopback interfaces")?;
+            f(&mut lo.ipv6, mac, &format!("Loopback{n}"))?;
+            return Ok(String::new());
+        }
         let switch = self.d()?.kind == DeviceKind::Switch;
         self.each_if(|p, sub| {
             if switch && !p.routed {
@@ -3758,6 +3790,7 @@ impl Ctx<'_> {
     fn v6_names(&self) -> Vec<String> {
         match &self.cli.mode {
             Mode::Svi(v) => vec![format!("Vlan{v}")],
+            Mode::Loopback(n) => vec![format!("Loopback{n}")],
             Mode::Iface(ifs) => self.d().map_or(Vec::new(), |d| {
                 ifs.iter()
                     .filter_map(|r| {
@@ -3807,6 +3840,9 @@ impl Ctx<'_> {
         let d = self.d()?;
         if d.kind == DeviceKind::Switch && d.ports.get(r.port).is_some_and(|p| !p.routed) {
             return Err("% This is a switch port: `no switchport` first (multilayer switches), or address a VLAN interface".into());
+        }
+        if let Some(l) = d.loopbacks.iter().find(|l| l.ip.is_some_and(|ip| ip.overlaps(net))) {
+            return Err(format!("% {} overlaps {}", net.network(), l.name()));
         }
         // VLAN interfaces count too on a switch.
         if let Some(s) = d.svis.iter().find(|s| s.ip.is_some_and(|ip| ip.overlaps(net))) {

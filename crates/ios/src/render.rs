@@ -200,6 +200,7 @@ pub fn running_config(d: &Device) -> String {
     crate::exec::qos::running_config(&mut s, d);
     vpn_config(&mut s, d);
     wlan_config(&mut s, d);
+    crate::exec::routing::loopback_config(&mut s, d);
     for p in &d.ports {
         let _ = writeln!(s, "interface {}", p.name);
         if !p.description.is_empty() {
@@ -593,6 +594,7 @@ pub fn ip_int_brief(t: &Topology, d: &Device) -> String {
         let up = netlabcraft_sim::vpn::tunnel_status(t, d, tun.number).is_ok();
         let _ = writeln!(s, "{:<24} {:<18} {:<7} {}", tun.name(), addr, yes(!tun.shutdown), yes(up));
     }
+    crate::exec::routing::loopback_brief(&mut s, d);
     s.trim_end().to_string()
 }
 
@@ -723,6 +725,7 @@ pub fn interfaces(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
         for tun in &d.tunnels {
             s.push_str(&tunnel_block(t, d, tun));
         }
+        s.push_str(&crate::exec::routing::loopback_blocks(d));
     }
     s.trim_end().to_string()
 }
@@ -1218,7 +1221,7 @@ fn ospf_protocol(d: &Device, st: &netlabcraft_sim::ospf::OspfState) -> String {
     s
 }
 
-fn ospf_if_lines(s: &mut String, d: &Device, name: &str) {
+pub(crate) fn ospf_if_lines(s: &mut String, d: &Device, name: &str) {
     if let Some(e) = d.eigrp_if.get(name) {
         if let Some((asn, secs)) = e.hello {
             let _ = writeln!(s, " ip hello-interval eigrp {asn} {secs}");
@@ -1376,7 +1379,7 @@ pub fn vtp(d: &Device) -> String {
 }
 
 /// An interface's IPv6 lines in the running configuration.
-fn ipv6_lines(s: &mut String, c: &netlabcraft_model::Ipv6Conf) {
+pub(crate) fn ipv6_lines(s: &mut String, c: &netlabcraft_model::Ipv6Conf) {
     if let Some(ll) = c.link_local {
         let _ = writeln!(s, " ipv6 address {ll} link-local");
     }
@@ -1456,6 +1459,9 @@ pub fn ipv6_brief(t: &Topology, d: &Device) -> String {
             "down"
         };
         row(&mut s, &name, status);
+    }
+    for l in &d.loopbacks {
+        row(&mut s, &l.name(), if l.shutdown { "administratively down" } else { "up" });
     }
     s.trim_end().to_string()
 }

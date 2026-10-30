@@ -172,7 +172,7 @@ pub struct Held {
 /// The router id: configured, else the highest interface address.
 pub fn router_id(d: &Device) -> Option<Ipv4Addr> {
     let e = d.eigrp.as_ref()?;
-    e.router_id.or_else(|| crate::l3_ifaces(d).iter().map(|i| i.net.addr).max())
+    e.router_id.or_else(|| crate::loopback::default_router_id(d))
 }
 
 fn is_passive(d: &Device, name: &str) -> bool {

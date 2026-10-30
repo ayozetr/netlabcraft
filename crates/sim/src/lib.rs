@@ -26,6 +26,7 @@ pub mod cdp;
 pub mod email;
 pub mod ftp;
 pub mod lldp;
+pub mod loopback;
 
 pub mod channel;
 pub mod control;
@@ -118,6 +119,7 @@ pub fn l3_ifaces(d: &Device) -> Vec<L3If> {
                 out.push(L3If { port: i, sub: None, vlan: None, net, mac: p.mac, name: p.name.clone() });
             }
         }
+        out.extend(loopback::loopback_ifaces(d));
         return out;
     }
     if d.kind == DeviceKind::Hub {
@@ -141,6 +143,7 @@ pub fn l3_ifaces(d: &Device) -> Vec<L3If> {
     }
     // GRE tunnels (routers).
     out.extend(vpn::tunnel_ifaces(d));
+    out.extend(loopback::loopback_ifaces(d));
     out
 }
 
@@ -294,7 +297,9 @@ pub(crate) fn phys_up_ifaces(t: &Topology, d: &Device) -> Vec<L3If> {
         .into_iter()
         .filter(|i| !vpn::is_tunnel(i.port))
         .filter(|i| {
-            if i.port == SVI_PORT {
+            if loopback::is_loopback(i.port) {
+                true
+            } else if i.port == SVI_PORT {
                 // A VLAN interface is up while some port of its VLAN is up.
                 i.vlan
                     .and_then(VlanId::new)
@@ -1951,6 +1956,9 @@ impl Sim {
 
     /// Sends a frame out of a layer-3 interface: a port, or a switch's VLAN interface.
     fn l3_emit(&mut self, t: &Topology, d: &Device, ifc: &L3If, frame: Frame) {
+        if loopback::is_loopback(ifc.port) {
+            return;
+        }
         if vpn::is_tunnel(ifc.port) {
             if frame.ethertype == ETHERTYPE_IPV4 {
                 let _ = self.gre_out(t, d, ifc, frame.payload);
@@ -2376,6 +2384,10 @@ impl Sim {
 
     /// Puts a datagram on the wire towards `nh`, resolving its MAC with ARP first.
     fn transmit(&mut self, t: &Topology, d: &Device, out: &L3If, nh: Ipv4Addr, datagram: Vec<u8>) -> Result<(), String> {
+        // A loopback has nothing behind it: only its own address answers.
+        if loopback::is_loopback(out.port) {
+            return Err(format!("{nh} is not on {} (a loopback reaches no other address)", out.name));
+        }
         // Into a GRE tunnel: encapsulated and routed again.
         if vpn::is_tunnel(out.port) {
             let datagram = if d.qos.applied.is_empty() { datagram } else { self.qos_apply(d, &out.name, false, datagram)? };
