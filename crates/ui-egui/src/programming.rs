@@ -1,6 +1,8 @@
 //! The Programming app on a host's Desktop: an HTTP client for RESTCONF (method, URL, headers,
-//! a JSON body, a Basic login, saved requests) and a NETCONF session runner, with a JSON viewer
-//! for the answers. It acts through `pc.http_request`, `pc.http_saved` and `netconf.session`.
+//! a JSON body, a Basic login, saved requests), a NETCONF session runner and a small controller
+//! (managed routers, their inventory, a template pushed to all of them), with a JSON viewer for
+//! the answers. It acts through `pc.http_request`, `pc.http_saved`, `netconf.session`,
+//! `controller.devices` and `controller.push`.
 
 use egui::RichText;
 use serde_json::{Value, json};
@@ -14,9 +16,24 @@ const METHODS: [&str; 7] = ["GET", "PUT", "PATCH", "POST", "DELETE", "HEAD", "OP
 /// Most JSON nodes the viewer draws (a huge answer stays usable).
 const MAX_NODES: usize = 1_500;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum Mode {
+    #[default]
+    Http,
+    Netconf,
+    Controller,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 struct Form {
+    mode: Mode,
     netconf: bool,
+    ctl_address: String,
+    ctl_path: String,
+    ctl_method: &'static str,
+    ctl_template: String,
+    ctl_devices: Option<Value>,
+    ctl_results: Option<Value>,
     method: &'static str,
     url: String,
     headers: String,
@@ -36,7 +53,16 @@ struct Form {
 impl Default for Form {
     fn default() -> Form {
         Form {
+            mode: Mode::Http,
             netconf: false,
+            ctl_address: String::new(),
+            ctl_path: "/restconf/data/ietf-interfaces:interfaces".into(),
+            ctl_method: "PATCH",
+            ctl_template:
+                "{\"ietf-interfaces:interfaces\": {\"interface\": [{\"name\": \"Loopback100\", \"description\": \"Pushed by the controller\"}]}}"
+                    .into(),
+            ctl_devices: None,
+            ctl_results: None,
             method: "GET",
             url: "https://192.168.1.1/restconf/data/ietf-interfaces:interfaces".into(),
             headers: "Accept: application/yang-data+json".into(),
@@ -63,17 +89,21 @@ pub fn app(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     let id = egui::Id::unique(("programming_form", dev.id.0));
     let mut f: Form = ui.data_mut(|m| m.get_temp(id)).unwrap_or_default();
     ui.horizontal(|ui| {
-        ui.radio_value(&mut f.netconf, false, tl("RESTCONF (HTTP)"));
-        ui.radio_value(&mut f.netconf, true, "NETCONF");
+        ui.radio_value(&mut f.mode, Mode::Http, tl("RESTCONF (HTTP)"));
+        ui.radio_value(&mut f.mode, Mode::Netconf, "NETCONF");
+        ui.radio_value(&mut f.mode, Mode::Controller, tl("Controller"));
     });
     ui.separator();
-    egui::ScrollArea::vertical().id_salt(("programming_scroll", dev.id.0)).auto_shrink([false, true]).show(ui, |ui| {
-        if f.netconf {
-            netconf_form(app, ui, dev, &mut f);
-        } else {
-            http_form(app, ui, dev, &mut f);
+    egui::ScrollArea::vertical().id_salt(("programming_scroll", dev.id.0)).auto_shrink([false, true]).show(ui, |ui| match f.mode {
+        Mode::Controller => controller(app, ui, dev, &mut f),
+        mode => {
+            if mode == Mode::Netconf {
+                netconf_form(app, ui, dev, &mut f);
+            } else {
+                http_form(app, ui, dev, &mut f);
+            }
+            answer(ui, dev, &mut f);
         }
-        answer(ui, dev, &mut f);
     });
     ui.data_mut(|m| m.insert_temp(id, f));
 }
@@ -170,6 +200,7 @@ fn http_form(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, f: &mut Form)
             p["password"] = json!(f.password);
         }
         f.answer = app.run("pc.http_request", p);
+        f.netconf = false;
         f.error = if f.answer.is_some() { None } else { failed(app) };
     }
 }
@@ -193,7 +224,89 @@ fn netconf_form(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, f: &mut Fo
         let rpcs: Vec<String> = f.rpcs.split("\n\n").map(str::trim).filter(|x| !x.is_empty()).map(str::to_string).collect();
         let p = json!({"pc": dev.id.0, "target": f.target.trim(), "user": f.user.trim(), "password": f.password, "framing": if f.chunked { "1.1" } else { "1.0" }, "rpcs": rpcs});
         f.answer = app.run("netconf.session", p);
+        f.netconf = true;
         f.error = if f.answer.is_some() { None } else { failed(app) };
+    }
+}
+
+/// The controller: the routers this host manages, their inventory, and a template for all.
+fn controller(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, f: &mut Form) {
+    ui.label(RichText::new(tl("Managed routers")).strong());
+    let list = dev.automation.managed.clone();
+    let shown = f.ctl_devices.as_ref().and_then(|v| v["devices"].as_array().cloned()).unwrap_or_default();
+    egui::Grid::new(("ctl_grid", dev.id.0)).striped(true).show(ui, |ui| {
+        for h in [tl("Address"), tl("User"), tl("Hostname"), tl("Interfaces up"), ""] {
+            ui.label(RichText::new(h).strong());
+        }
+        ui.end_row();
+        for m in &list {
+            let info = shown.iter().find(|x| x["address"] == m.address.as_str());
+            ui.monospace(&m.address);
+            ui.label(&m.user);
+            match info {
+                Some(x) if x["error"].is_string() => {
+                    ui.colored_label(egui::Color32::from_rgb(0xc0, 0x39, 0x2b), x["error"].as_str().unwrap_or(""));
+                    ui.label("");
+                }
+                Some(x) if x["hostname"].is_string() => {
+                    ui.label(x["hostname"].as_str().unwrap_or(""));
+                    ui.label(format!("{} / {}", x["up"].as_u64().unwrap_or(0), x["interfaces"].as_u64().unwrap_or(0)));
+                }
+                _ => {
+                    ui.weak(tl("(not read yet)"));
+                    ui.label("");
+                }
+            }
+            if ui.button(tl("Remove")).clicked() {
+                app.run("controller.devices", json!({"host": dev.id.0, "remove": m.address}));
+            }
+            ui.end_row();
+        }
+    });
+    if list.is_empty() {
+        ui.weak(tl("No routers yet: add one with its address and an admin login."));
+    }
+    ui.horizontal(|ui| {
+        let l = form_label(ui, tl("Router address"), LABEL_W);
+        ui.add(egui::TextEdit::singleline(&mut f.ctl_address).desired_width(140.0)).labelled_by(l.id);
+        if ui.button(tl("Add")).clicked() {
+            let add = json!({"address": f.ctl_address.trim(), "user": f.user.trim(), "password": f.password});
+            f.error = app.run("controller.devices", json!({"host": dev.id.0, "add": add})).map_or_else(|| failed(app), |_| None);
+        }
+    });
+    login(ui, f);
+    if ui.button(tl("Read the inventory")).on_hover_text(tl("Ask every managed router for its hostname and interfaces over RESTCONF")).clicked() {
+        f.ctl_devices = app.run("controller.devices", json!({"host": dev.id.0, "refresh": true}));
+    }
+    ui.separator();
+    ui.label(RichText::new(tl("Push a template to every router")).strong());
+    ui.horizontal(|ui| {
+        let l = form_label(ui, tl("Request"), LABEL_W);
+        let combo = egui::ComboBox::from_id_salt(("ctl_method", dev.id.0)).selected_text(f.ctl_method).width(90.0).show_ui(ui, |ui| {
+            for m in ["PATCH", "PUT", "POST", "DELETE"] {
+                ui.selectable_value(&mut f.ctl_method, m, m);
+            }
+        });
+        let _ = combo.response.labelled_by(l.id);
+        ui.add(egui::TextEdit::singleline(&mut f.ctl_path).desired_width(360.0)).labelled_by(l.id);
+    });
+    ui.horizontal_top(|ui| {
+        let l = form_label(ui, tl("Template (JSON)"), LABEL_W);
+        ui.add(egui::TextEdit::multiline(&mut f.ctl_template).desired_rows(5).desired_width(420.0).code_editor()).labelled_by(l.id);
+    });
+    if ui.button(RichText::new(tl("Push")).strong()).clicked() {
+        let p = json!({"host": dev.id.0, "method": f.ctl_method, "path": f.ctl_path.trim(), "body": f.ctl_template});
+        f.ctl_results = app.run("controller.push", p);
+        f.error = if f.ctl_results.is_some() { None } else { failed(app) };
+    }
+    if let Some(e) = &f.error {
+        ui.colored_label(egui::Color32::from_rgb(0xc0, 0x39, 0x2b), e);
+    }
+    for r in f.ctl_results.as_ref().and_then(|v| v["results"].as_array()).into_iter().flatten() {
+        let ok = r["status"].as_u64().is_some_and(|s| s < 300);
+        let colour = if ok { egui::Color32::from_rgb(0x2e, 0x8b, 0x57) } else { egui::Color32::from_rgb(0xc0, 0x39, 0x2b) };
+        let what = r["error"].as_str().map_or_else(|| r["status"].to_string(), |e| format!("{} {e}", r["status"]));
+        ui.colored_label(colour, format!("{}: {what}", r["address"].as_str().unwrap_or("")));
     }
 }
 

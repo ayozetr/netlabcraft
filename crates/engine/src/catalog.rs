@@ -434,6 +434,22 @@ pub static CATALOG: &[CommandInfo] = &[
         true
     ),
     c!(
+        "controller.devices",
+        "Controller: managed routers",
+        "",
+        None,
+        r#"{"host": "the controller (PC, laptop or server)", "add"?: {"address", "user", "password"}, "remove"?: address, "refresh"?: true (read each router's hostname and interfaces over RESTCONF)} → {"devices": [{"address", "user", "reachable"?, "hostname"?, "interfaces"?, "up"?, "error"?}]}"#,
+        true
+    ),
+    c!(
+        "controller.push",
+        "Controller: push a template",
+        "",
+        None,
+        r#"{"host", "path": "/restconf/data/…", "method"?: "PATCH"|"PUT"|"POST"|"DELETE", "body": JSON template, "devices"?: [addresses] (all managed routers when left out)} → {"results": [{"address", "status", "error"?, "applied"}]}"#,
+        true
+    ),
+    c!(
         "pc.http_saved",
         "Saved HTTP requests",
         "",

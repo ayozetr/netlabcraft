@@ -1797,7 +1797,11 @@ impl Device {
         self.voice = voice::Voice { tftp: self.voice.tftp, ..voice::Voice::default() };
         self.services = fresh.services;
         self.l2.reload();
-        self.automation = automation::Automation { saved: std::mem::take(&mut self.automation.saved), ..automation::Automation::default() };
+        self.automation = automation::Automation {
+            saved: std::mem::take(&mut self.automation.saved),
+            managed: std::mem::take(&mut self.automation.managed),
+            ..automation::Automation::default()
+        };
     }
 
     /// What the workspace shows under the icon.

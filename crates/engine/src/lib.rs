@@ -20,6 +20,7 @@ pub mod activity;
 pub mod automation;
 pub mod catalog;
 mod cmd;
+mod controller;
 mod hardware;
 pub mod home;
 mod iot;

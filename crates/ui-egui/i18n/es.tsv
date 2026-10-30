@@ -916,3 +916,12 @@ Show as text	Ver como texto
 Configuration applied on {}	Configuración aplicada en {}
 {} members	{} miembros
 {} entries	{} entradas
+Managed routers	Routers gestionados
+Interfaces up	Interfaces activas
+(not read yet)	(sin leer todavía)
+No routers yet: add one with its address and an admin login.	Todavía no hay routers: añade uno con su dirección y un usuario administrador.
+Read the inventory	Leer el inventario
+Ask every managed router for its hostname and interfaces over RESTCONF	Pide a cada router gestionado su nombre y sus interfaces por RESTCONF
+Push a template to every router	Enviar una plantilla a todos los routers
+Template (JSON)	Plantilla (JSON)
+Push	Enviar plantilla

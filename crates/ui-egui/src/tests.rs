@@ -1053,3 +1053,25 @@ fn the_programming_app_sends_restconf_and_netconf() {
     assert!(h.query_all_by_label_contains("Reply 1").next().is_some());
     assert!(h.query_all_by_label_contains("rpc-reply").next().is_some());
 }
+
+/// The controller mode lists the managed routers and pushes a template to them.
+#[test]
+fn the_controller_reads_the_inventory_and_pushes() {
+    use egui::accesskit::Role;
+    let mut h = harness(Some("automation"));
+    h.state_mut().ui.show_notes = false;
+    let pc = h.state().session.topology.resolve("PC2").unwrap();
+    h.state_mut().run("controller.devices", json!({"host": "PC2", "add": {"address": "192.168.1.1", "user": "admin", "password": "NetLab2026"}}));
+    open_desktop_app(h.state_mut(), pc, "programming");
+    h.run_steps(3);
+    h.get_by_label("Controller").click();
+    h.run_steps(2);
+    h.get_by_role_and_label(Role::Button, "Read the inventory").click();
+    h.run_steps(3);
+    assert!(h.query_all_by_label("R1").next().is_some());
+    h.get_by_role_and_label(Role::Button, "Push").click();
+    h.run_steps(3);
+    assert!(h.query_all_by_label_contains("192.168.1.1: 204").next().is_some());
+    let r1 = h.state().session.topology.resolve("R1").unwrap();
+    assert!(h.state().session.topology.device(r1).unwrap().loopbacks.iter().any(|l| l.number == 100));
+}
