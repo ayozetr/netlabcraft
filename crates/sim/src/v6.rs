@@ -10,7 +10,10 @@ use std::net::{IpAddr, Ipv6Addr};
 use packetcraft_core::{Ipv6Net, MacAddr, eui64, link_local};
 use packetcraft_model::{Device, DeviceKind, End, Topology};
 use packetcraft_wire::Frame;
-use packetcraft_wire::ipv6::{ALL_NODES, ALL_ROUTERS, ETHERTYPE_IPV6, Icmp6, Ipv6, PROTO_ICMPV6, PrefixInfo, multicast_mac, solicited_node};
+use packetcraft_wire::dhcp6::{self, Dhcp6};
+use packetcraft_wire::ipv6::{
+    ALL_NODES, ALL_ROUTERS, ETHERTYPE_IPV6, Icmp6, Ipv6, PROTO_ICMPV6, PrefixInfo, RA_MANAGED, RA_OTHER, multicast_mac, solicited_node,
+};
 
 use crate::{ARP_AGING_US, ArpEntry, IcmpKind, MAX_PENDING, PingOptions, Probe, Sim, SimError, port_up};
 
@@ -130,6 +133,16 @@ pub fn route6(t: &Topology, d: &Device, dst: Ipv6Addr, via: Option<&L3If6>) -> O
     }
 }
 
+/// What automatic IPv6 configuration got a host.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Auto6 {
+    pub address: Ipv6Net,
+    pub router: Ipv6Addr,
+    pub dns: Option<Ipv6Addr>,
+    /// How: SLAAC, SLAAC and stateless DHCPv6, or stateful DHCPv6.
+    pub how: &'static str,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct Pending6 {
     next_hop: Ipv6Addr,
@@ -171,9 +184,11 @@ impl Sim {
         }
         let router = d.kind == DeviceKind::Router && d.ipv6_routing;
         let all = l3_ifaces6(d);
+        let serves = d.ports.get(ifc.port).is_some_and(|p| p.ipv6.dhcp_server.is_some());
         let joined = |g: Ipv6Addr| {
             g == ALL_NODES
                 || (router && g == ALL_ROUTERS)
+                || (serves && g == dhcp6::ALL_SERVERS)
                 || all.iter().any(|i| i.addresses.iter().map(|n| n.addr).chain([i.link_local]).any(|a| solicited_node(a) == g))
         };
         let for_me = if f.dst.is_group() { f.dst == multicast_mac(ip.dst) && joined(ip.dst) } else { f.dst == ifc.mac };
@@ -218,6 +233,9 @@ impl Sim {
     }
 
     fn local6_in(&mut self, t: &Topology, d: &Device, ifc: &L3If6, src_mac: MacAddr, ip: Ipv6) -> Result<(), String> {
+        if ip.next_header == packetcraft_wire::PROTO_UDP {
+            return self.udp6_in(t, d, ifc, ip);
+        }
         if ip.next_header != PROTO_ICMPV6 {
             return Err(format!("IPv6 next header {} not understood", ip.next_header));
         }
@@ -291,7 +309,9 @@ impl Sim {
                 }
                 let prefixes: Vec<PrefixInfo> =
                     ifc.addresses.iter().filter(|n| n.prefix == 64).map(|n| PrefixInfo { prefix: n.network().addr, len: 64 }).collect();
-                let ra = Icmp6::RouterAdvert { hop_limit: 64, lifetime: 1_800, mac: Some(ifc.mac), prefixes };
+                let conf = d.ports.get(ifc.port).map(|p| p.ipv6.clone()).unwrap_or_default();
+                let flags = (if conf.nd_managed { RA_MANAGED } else { 0 }) | (if conf.nd_other { RA_OTHER } else { 0 });
+                let ra = Icmp6::RouterAdvert { hop_limit: 64, flags, lifetime: 1_800, mac: Some(ifc.mac), prefixes };
                 let packet = Ipv6 {
                     hop_limit: 255,
                     next_header: PROTO_ICMPV6,
@@ -302,10 +322,10 @@ impl Sim {
                 self.emit6(t, d, ifc, multicast_mac(ALL_NODES), packet.encode());
                 Ok(())
             }
-            Icmp6::RouterAdvert { lifetime, mac, prefixes, .. } => {
+            Icmp6::RouterAdvert { lifetime, mac, prefixes, flags, .. } => {
                 if d.kind.is_host() && lifetime > 0 {
                     self.learn_nd(t, d, ifc, ip.src, mac.unwrap_or(src_mac));
-                    self.st(d.id).ra = Some((ip.src, prefixes));
+                    self.st(d.id).ra = Some((ip.src, prefixes, flags));
                 }
                 Ok(())
             }
@@ -493,6 +513,112 @@ impl Sim {
         Ok(hops)
     }
 
+    /// DHCPv6 messages: a server's answers to clients on this interface, or a client's replies.
+    fn udp6_in(&mut self, t: &Topology, d: &Device, ifc: &L3If6, ip: Ipv6) -> Result<(), String> {
+        let (_, dst_port, body) = dhcp6::udp6_decode(ip.src, ip.dst, &ip.payload).map_err(|e| e.to_string())?;
+        let msg = Dhcp6::decode(&body).map_err(|e| e.to_string())?;
+        match dst_port {
+            dhcp6::CLIENT_PORT if d.kind.is_host() => {
+                let st = self.st(d.id);
+                if st.dhcp6_inbox.len() < 16 {
+                    st.dhcp6_inbox.push(msg);
+                }
+                Ok(())
+            }
+            dhcp6::SERVER_PORT => {
+                let pool_name = d.ports.get(ifc.port).and_then(|p| p.ipv6.dhcp_server.clone()).ok_or("no DHCPv6 server on this interface")?;
+                let pool =
+                    d.dhcp6_pools.iter().find(|p| p.name == pool_name).cloned().ok_or_else(|| format!("DHCPv6 pool {pool_name} doesn't exist"))?;
+                let client = msg.client.ok_or("DHCPv6 message without a client id")?;
+                let ia = match (msg.kind, msg.ia, pool.prefix) {
+                    (dhcp6::Kind::Solicit | dhcp6::Kind::Request, Some((iaid, _)), Some(prefix)) => {
+                        let addr = self.dhcp6_address(d, client, prefix, &pool.name, msg.kind == dhcp6::Kind::Request)?;
+                        Some((iaid, Some(addr)))
+                    }
+                    _ => None,
+                };
+                let kind = if msg.kind == dhcp6::Kind::Solicit { dhcp6::Kind::Advertise } else { dhcp6::Kind::Reply };
+                let reply =
+                    Dhcp6 { kind, xid: msg.xid, client: Some(client), server: Some(ifc.mac), ia, dns: pool.dns.clone(), domain: pool.domain.clone() };
+                let src = ifc.link_local;
+                let udp = dhcp6::udp6_encode(src, ip.src, dhcp6::SERVER_PORT, dhcp6::CLIENT_PORT, &reply.encode());
+                let packet = Ipv6 { hop_limit: 64, next_header: packetcraft_wire::PROTO_UDP, src, dst: ip.src, payload: udp };
+                self.send_ip6(t, d, packet, Some(ifc))
+            }
+            p => Err(format!("UDP port {p} not open here")),
+        }
+    }
+
+    /// The address a client gets from a pool: the one it already has, else the first free
+    /// one from `prefix::10` up. `commit` records the binding.
+    fn dhcp6_address(&mut self, d: &Device, client: MacAddr, prefix: Ipv6Net, pool: &str, commit: bool) -> Result<Ipv6Addr, String> {
+        let st = self.st(d.id);
+        if let Some((a, _)) = st.dhcp6_leases.iter().find(|(a, (m, _))| *m == client && prefix.contains(**a)) {
+            return Ok(*a);
+        }
+        let base = u128::from(prefix.network().addr);
+        let free =
+            (0x10u128..0x10_000).map(|n| Ipv6Addr::from(base | n)).find(|a| !st.dhcp6_leases.contains_key(a)).ok_or("the DHCPv6 pool is full")?;
+        if commit {
+            st.dhcp6_leases.insert(free, (client, pool.to_string()));
+        }
+        Ok(free)
+    }
+
+    /// Sends a client DHCPv6 message from a host and waits for the answer of `want`.
+    fn dhcp6_ask(&mut self, t: &Topology, d: &Device, ifc: &L3If6, msg: Dhcp6, want: dhcp6::Kind) -> Option<Dhcp6> {
+        let dev = d.id;
+        self.st(dev).dhcp6_inbox.clear();
+        let xid = msg.xid;
+        let udp = dhcp6::udp6_encode(ifc.link_local, dhcp6::ALL_SERVERS, dhcp6::CLIENT_PORT, dhcp6::SERVER_PORT, &msg.encode());
+        let p = Ipv6 { hop_limit: 1, next_header: packetcraft_wire::PROTO_UDP, src: ifc.link_local, dst: dhcp6::ALL_SERVERS, payload: udp };
+        self.emit6(t, d, ifc, multicast_mac(dhcp6::ALL_SERVERS), p.encode());
+        let start = self.now;
+        self.advance(t, start.saturating_add(ND_WAIT_US), |s| {
+            s.state.get(&dev).is_some_and(|st| st.dhcp6_inbox.iter().any(|m| m.xid == xid && m.kind == want))
+        });
+        let st = self.st(dev);
+        st.dhcp6_inbox.iter().position(|m| m.xid == xid && m.kind == want).map(|i| st.dhcp6_inbox.remove(i))
+    }
+
+    /// Automatic configuration on a host, the way the router says: SLAAC, SLAAC plus stateless
+    /// DHCPv6 (O flag), or stateful DHCPv6 (M flag).
+    pub fn autoconfig6_full(&mut self, t: &Topology, dev: crate::DeviceId) -> Result<Auto6, SimError> {
+        let (net, router) = self.autoconfig6(t, dev)?;
+        let flags = self.last_ra_flags;
+        let d = t.device(dev).ok_or(SimError::NoDevice(dev))?;
+        let ifc = up_ifaces6(t, d).into_iter().next().ok_or_else(|| SimError::NoSource("no IPv6 interface".into()))?;
+        self.next_echo_id = self.next_echo_id.wrapping_add(1);
+        let xid = u32::from(self.next_echo_id) | 0x0001_0000;
+        if flags & RA_MANAGED != 0 {
+            let ask =
+                Dhcp6 { kind: dhcp6::Kind::Solicit, xid, client: Some(ifc.mac), server: None, ia: Some((1, None)), dns: Vec::new(), domain: None };
+            let adv =
+                self.dhcp6_ask(t, d, &ifc, ask, dhcp6::Kind::Advertise).ok_or_else(|| SimError::NoSource("no DHCPv6 server answered".into()))?;
+            let offered = adv.ia.and_then(|(_, a)| a).ok_or_else(|| SimError::NoSource("the DHCPv6 server has no addresses to give".into()))?;
+            let req = Dhcp6 {
+                kind: dhcp6::Kind::Request,
+                xid: xid + 1,
+                client: Some(ifc.mac),
+                server: adv.server,
+                ia: Some((1, Some(offered))),
+                dns: Vec::new(),
+                domain: None,
+            };
+            let rep =
+                self.dhcp6_ask(t, d, &ifc, req, dhcp6::Kind::Reply).ok_or_else(|| SimError::NoSource("the DHCPv6 server didn't confirm".into()))?;
+            let addr = rep.ia.and_then(|(_, a)| a).unwrap_or(offered);
+            return Ok(Auto6 { address: Ipv6Net::new(addr, 64), router, dns: rep.dns.first().copied(), how: "stateful DHCPv6" });
+        }
+        if flags & RA_OTHER != 0 {
+            let ask =
+                Dhcp6 { kind: dhcp6::Kind::InformationRequest, xid, client: Some(ifc.mac), server: None, ia: None, dns: Vec::new(), domain: None };
+            let rep = self.dhcp6_ask(t, d, &ifc, ask, dhcp6::Kind::Reply);
+            return Ok(Auto6 { address: net, router, dns: rep.and_then(|r| r.dns.first().copied()), how: "SLAAC and stateless DHCPv6" });
+        }
+        Ok(Auto6 { address: net, router, dns: None, how: "SLAAC" })
+    }
+
     /// Stateless autoconfiguration on a host: asks the routers on the link and builds an
     /// address from the first /64 prefix advertised. Returns the address and the router.
     pub fn autoconfig6(&mut self, t: &Topology, dev: crate::DeviceId) -> Result<(Ipv6Net, Ipv6Addr), SimError> {
@@ -511,8 +637,9 @@ impl Sim {
         self.emit6(t, d, &ifc, multicast_mac(ALL_ROUTERS), p.encode());
         let start = self.now;
         self.advance(t, start.saturating_add(ND_WAIT_US), |s| s.state.get(&dev).is_some_and(|st| st.ra.is_some()));
-        let (router, prefixes) =
+        let (router, prefixes, flags) =
             self.st(dev).ra.take().ok_or_else(|| SimError::NoSource("no IPv6 router answered (is `ipv6 unicast-routing` on?)".into()))?;
+        self.last_ra_flags = flags;
         let p = prefixes.iter().find(|p| p.len == 64).ok_or_else(|| SimError::NoSource(format!("router {router} advertises no /64 prefix")))?;
         Ok((Ipv6Net::new(eui64(p.prefix, ifc.mac), 64), router))
     }

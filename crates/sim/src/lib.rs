@@ -492,7 +492,11 @@ pub struct DevState {
     /// `debug ip icmp`.
     pub debug_icmp: bool,
     /// Hosts: the last router advertisement heard (router's address, prefixes).
-    ra: Option<(std::net::Ipv6Addr, Vec<packetcraft_wire::ipv6::PrefixInfo>)>,
+    ra: Option<(std::net::Ipv6Addr, Vec<packetcraft_wire::ipv6::PrefixInfo>, u8)>,
+    /// Hosts: DHCPv6 messages for a client exchange in flight.
+    dhcp6_inbox: Vec<packetcraft_wire::dhcp6::Dhcp6>,
+    /// Routers: DHCPv6 addresses handed out (address → client MAC, pool).
+    pub dhcp6_leases: BTreeMap<std::net::Ipv6Addr, (MacAddr, String)>,
 }
 
 /// One frame delivered across a cable.
@@ -600,6 +604,8 @@ pub struct Sim {
     ospf: Option<ospf::OspfState>,
     rip_for: u64,
     rip: Option<rip::RipState>,
+    /// The flags of the last router advertisement a host autoconfigured from.
+    last_ra_flags: u8,
     /// Control frames (BPDUs, hellos, updates) are queued up to this time.
     ctl_until: u64,
     hsrp_for: u64,

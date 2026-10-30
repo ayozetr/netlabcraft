@@ -183,6 +183,15 @@ pub fn running_config(d: &Device) -> String {
             if p.ipv6.enabled {
                 let _ = writeln!(s, " ipv6 enable");
             }
+            if let Some(pool) = &p.ipv6.dhcp_server {
+                let _ = writeln!(s, " ipv6 dhcp server {pool}");
+            }
+            if p.ipv6.nd_managed {
+                let _ = writeln!(s, " ipv6 nd managed-config-flag");
+            }
+            if p.ipv6.nd_other {
+                let _ = writeln!(s, " ipv6 nd other-config-flag");
+            }
             if let Some(f) = &p.ipv6.filter_in {
                 let _ = writeln!(s, " ipv6 traffic-filter {f} in");
             }
@@ -254,6 +263,19 @@ pub fn running_config(d: &Device) -> String {
             for e in &a.entries {
                 let _ = writeln!(s, " {}", e.text(a.extended));
             }
+        }
+        let _ = writeln!(s, "!");
+    }
+    for p in &d.dhcp6_pools {
+        let _ = writeln!(s, "ipv6 dhcp pool {}", p.name);
+        if let Some(n) = p.prefix {
+            let _ = writeln!(s, " address prefix {n}");
+        }
+        for a in &p.dns {
+            let _ = writeln!(s, " dns-server {a}");
+        }
+        if let Some(dn) = &p.domain {
+            let _ = writeln!(s, " domain-name {dn}");
         }
         let _ = writeln!(s, "!");
     }
@@ -1380,6 +1402,43 @@ pub fn ospf_interfaces(d: &Device, st: &packetcraft_sim::ospf::OspfState) -> Str
         };
         let n = st.neighbors.get(&d.id).map_or(0, |l| l.iter().filter(|x| x.iface == name).count());
         let _ = writeln!(s, "{:<10} {:<6} {:<20} {:<6} {:<9} {n}", ifname::short(&name), seg.map_or(0, |g| g.area), net.to_string(), cost, role);
+    }
+    s.trim_end().to_string()
+}
+
+/// `show ipv6 dhcp pool`.
+pub fn dhcp6_pools(sim: &Sim, d: &Device) -> String {
+    if d.dhcp6_pools.is_empty() {
+        return "No DHCPv6 pools configured.".into();
+    }
+    let leases = sim.state(d.id).map(|s| s.dhcp6_leases.clone()).unwrap_or_default();
+    let mut s = String::new();
+    for p in &d.dhcp6_pools {
+        let used = leases.values().filter(|(_, pool)| *pool == p.name).count();
+        let _ = writeln!(s, "DHCPv6 pool {}", p.name);
+        let _ = writeln!(s, "  Addresses: {}", p.prefix.map_or("none (stateless: settings only)".to_string(), |n| format!("{n}, {used} handed out")));
+        let _ = writeln!(
+            s,
+            "  DNS server: {}",
+            if p.dns.is_empty() { "none".to_string() } else { p.dns.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ") }
+        );
+        let _ = writeln!(s, "  Domain: {}", p.domain.as_deref().unwrap_or("none"));
+        let users: Vec<String> =
+            d.ports.iter().filter(|x| x.ipv6.dhcp_server.as_deref() == Some(p.name.as_str())).map(|x| ifname::short(&x.name)).collect();
+        let _ = writeln!(s, "  Served on: {}", if users.is_empty() { "no interface yet".to_string() } else { users.join(", ") });
+    }
+    s.trim_end().to_string()
+}
+
+/// `show ipv6 dhcp binding`.
+pub fn dhcp6_bindings(sim: &Sim, d: &Device) -> String {
+    let leases = sim.state(d.id).map(|s| s.dhcp6_leases.clone()).unwrap_or_default();
+    if leases.is_empty() {
+        return "No DHCPv6 addresses handed out.".into();
+    }
+    let mut s = format!("{:<28} {:<19} {}\n", "Address", "Client MAC", "Pool");
+    for (a, (m, pool)) in &leases {
+        let _ = writeln!(s, "{:<28} {:<19} {pool}", a.to_string(), m.dotted());
     }
     s.trim_end().to_string()
 }

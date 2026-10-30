@@ -37,8 +37,10 @@ impl Modes {
     pub const RIP: Modes = Modes(8192);
     /// `ipv6 access-list`.
     pub const ACL6: Modes = Modes(16384);
+    /// `ipv6 dhcp pool`.
+    pub const DHCP6: Modes = Modes(32768);
     /// Every command mode, either device.
-    pub const ANY_MODE: Modes = Modes(63 | 256 | 512 | 1024 | 2048 | 4096 | 8192 | 16384);
+    pub const ANY_MODE: Modes = Modes(63 | 256 | 512 | 1024 | 2048 | 4096 | 8192 | 16384 | 32768);
     pub const BOTH: Modes = Modes(192);
 
     pub const fn or(self, o: Modes) -> Modes {
@@ -299,6 +301,19 @@ pub enum Id {
     AutoCost,
     ShowIpOspf,
     ShowIpOspfInterface,
+    Ipv6DhcpPool,
+    NoIpv6DhcpPool,
+    Dhcp6AddressPrefix,
+    Dhcp6DnsServer,
+    Dhcp6DomainName,
+    Ipv6DhcpServer,
+    NoIpv6DhcpServer,
+    NdManaged,
+    NoNdManaged,
+    NdOther,
+    NoNdOther,
+    ShowIpv6DhcpPool,
+    ShowIpv6DhcpBinding,
 }
 
 use Tok::{Arg, K, Rest};
@@ -313,7 +328,8 @@ const SUBMODES: Modes = Modes::IF
     .or(Modes::OSPF)
     .or(Modes::ACL)
     .or(Modes::RIP)
-    .or(Modes::ACL6);
+    .or(Modes::ACL6)
+    .or(Modes::DHCP6);
 const IFS: Modes = Modes::IF.or(Modes::SUBIF);
 const ANY_IF: Modes = IFS.or(Modes::SVI);
 
@@ -562,6 +578,19 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowIpOspf, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf")], "OSPF process summary"),
     spec!(ShowIpOspfInterface, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf"), K("interface")], "OSPF interfaces: area, cost, state"),
     spec!(ShowIpOspfInterface, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf"), K("interface"), K("brief")], "OSPF interfaces: area, cost, state"),
+    spec!(Ipv6DhcpPool, Modes::CONFIG, Modes::ROUTER, [K("ipv6"), K("dhcp"), K("pool"), Arg("WORD")], "Create or edit a DHCPv6 pool"),
+    spec!(NoIpv6DhcpPool, Modes::CONFIG, Modes::ROUTER, [K("no"), K("ipv6"), K("dhcp"), K("pool"), Arg("WORD")], "Delete a DHCPv6 pool"),
+    spec!(Dhcp6AddressPrefix, Modes::DHCP6, Modes::ROUTER, [K("address"), K("prefix"), Arg("X:X::/64")], "Addresses to hand out (stateful DHCPv6)"),
+    spec!(Dhcp6DnsServer, Modes::DHCP6, Modes::ROUTER, [K("dns-server"), Arg("X:X::X")], "The DNS server clients get"),
+    spec!(Dhcp6DomainName, Modes::DHCP6, Modes::ROUTER, [K("domain-name"), Arg("WORD")], "The domain clients get"),
+    spec!(Ipv6DhcpServer, Modes::IF, Modes::ROUTER, [K("ipv6"), K("dhcp"), K("server"), Arg("WORD")], "Answer DHCPv6 on this interface from a pool"),
+    spec!(NoIpv6DhcpServer, Modes::IF, Modes::ROUTER, [K("no"), K("ipv6"), K("dhcp"), K("server")], "Stop answering DHCPv6 here"),
+    spec!(NdManaged, Modes::IF, Modes::ROUTER, [K("ipv6"), K("nd"), K("managed-config-flag")], "Tell hosts to take addresses from DHCPv6"),
+    spec!(NoNdManaged, Modes::IF, Modes::ROUTER, [K("no"), K("ipv6"), K("nd"), K("managed-config-flag")], "Hosts build their own addresses"),
+    spec!(NdOther, Modes::IF, Modes::ROUTER, [K("ipv6"), K("nd"), K("other-config-flag")], "Tell hosts to take DNS and domain from DHCPv6"),
+    spec!(NoNdOther, Modes::IF, Modes::ROUTER, [K("no"), K("ipv6"), K("nd"), K("other-config-flag")], "No other settings from DHCPv6"),
+    spec!(ShowIpv6DhcpPool, EXECS, Modes::ROUTER, [K("show"), K("ipv6"), K("dhcp"), K("pool")], "DHCPv6 pools"),
+    spec!(ShowIpv6DhcpBinding, EXECS, Modes::ROUTER, [K("show"), K("ipv6"), K("dhcp"), K("binding")], "DHCPv6 addresses handed out"),
     spec!(RouterRip, Modes::CONFIG, Modes::ROUTER, [K("router"), K("rip")], "Start or configure RIP"),
     spec!(NoRouterRip, Modes::CONFIG, Modes::ROUTER, [K("no"), K("router"), K("rip")], "Stop RIP"),
     spec!(RipVersion, Modes::RIP, Modes::ROUTER, [K("version"), Arg("{1|2}")], "RIP version"),
@@ -1078,6 +1107,7 @@ mod tests {
                 Modes::ACL,
                 Modes::RIP,
                 Modes::ACL6,
+                Modes::DHCP6,
             ]
             .into_iter()
             .find(|m| s.modes.has(*m))

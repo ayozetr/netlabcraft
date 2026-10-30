@@ -43,7 +43,8 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | NDP and SLAAC | RFC 4861, RFC 4862 | ✅ | Neighbour solicitation/advertisement, router solicitation/advertisement, host autoconfiguration. No DAD or RA flags (M/O). |
 | ICMPv6 | RFC 4443 | ✅ | Echo, time exceeded, unreachable; ping and traceroute. |
 | IPv6 static routes | — | ✅ | Next hop, interface, or link-local next hop with its interface. |
-| OSPFv3, DHCPv6 | RFC 5340, RFC 8415 | ❌ | 20–30 h. |
+| DHCPv6 | RFC 8415 | ✅ | `ipv6 dhcp pool` (address prefix, DNS, domain), `ipv6 dhcp server`, `ipv6 nd managed-config-flag` / `other-config-flag`; hosts follow the router: SLAAC, SLAAC with stateless DHCPv6, or stateful DHCPv6 (Solicit, Advertise, Request, Reply on the wire); `show ipv6 dhcp pool/binding`. No DHCPv6 relay. |
+| OSPFv3 | RFC 5340 | ❌ | 12–18 h. |
 | IPv6 on subinterfaces and VLAN interfaces | — | ❌ | 4–6 h. |
 | FHRP (HSRP) | RFC 2281 | ✅ | `standby N ip/priority/preempt` on router interfaces, subinterfaces and multilayer VLAN interfaces; active answers ARP with the virtual MAC; hellos every 3 s; `show standby`. Election computed (no timers or coup/resign messages); no HSRP version 2, tracking or VRRP/GLBP: 6–10 h. |
 
@@ -105,6 +106,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | DHCPv6 and router advertisement flags. |
 | 2026-10-30 | minor | OSPF depth: cost, priority and DR/BDR, reference bandwidth, inter-area routes, interface and process views, multilayer switches. |
 | 2026-10-30 | minor | access-class, IPv6 ACLs, NAT for ICMP errors. |
 | 2026-10-30 | minor | PPP PAP and CHAP authentication. |

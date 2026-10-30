@@ -1344,3 +1344,41 @@ fn ospf_on_a_multilayer_switch_by_typing() {
     lab.run(pc, "ping 172.16.0.10");
     assert!(lab.run(pc, "ping 172.16.0.10").contains("4 answered"));
 }
+
+#[test]
+fn dhcpv6_by_typing() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let s = lab.add(DeviceKind::Switch);
+    let a = lab.add(DeviceKind::Pc);
+    let b = lab.add(DeviceKind::Pc);
+    lab.cable(r, "g0/0", s, "g0/1");
+    lab.cable(a, "fa0", s, "fa0/1");
+    lab.cable(b, "fa0", s, "fa0/2");
+    lab.run(
+        r,
+        "en\nconf t\nipv6 unicast-routing\nipv6 dhcp pool LAN\naddress prefix 2001:db8:acad:1::/64\ndns-server 2001:db8::53\ndomain-name lab.local\nexit\nint g0/0\nipv6 address 2001:db8:acad:1::1/64\nno shut\nend",
+    );
+    // SLAAC: no flags.
+    assert!(lab.run(a, "ipv6config auto").contains("(SLAAC)"));
+    // Stateless: SLAAC address, DNS from DHCPv6.
+    lab.run(r, "conf t\nint g0/0\nipv6 dhcp server LAN\nipv6 nd other-config-flag\nend");
+    let st = lab.run(a, "ipv6config auto");
+    assert!(st.contains("DNS 2001:db8::53") && st.contains("stateless DHCPv6") && st.contains("ff:fe"), "{st}");
+    // Stateful: the address comes from the pool.
+    lab.run(r, "conf t\nint g0/0\nipv6 nd managed-config-flag\nend");
+    let sf = lab.run(b, "ipv6config auto");
+    assert!(sf.contains("Autoconfigured 2001:db8:acad:1::10/64") && sf.contains("stateful DHCPv6"), "{sf}");
+    assert!(lab.run(a, "ipv6config auto").contains("2001:db8:acad:1::11/64"));
+    let bind = lab.run(r, "show ipv6 dhcp binding");
+    assert!(bind.contains("2001:db8:acad:1::10") && bind.contains("LAN"), "{bind}");
+    assert!(lab.run(r, "show ipv6 dhcp pool").contains("2 handed out"));
+    assert!(lab.run(a, "ping 2001:db8:acad:1::10").contains("4 answered"));
+    assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("DHCPv6 Advertise")));
+    let run = lab.run(r, "show running-config");
+    assert!(
+        run.contains("ipv6 dhcp pool LAN\n address prefix 2001:db8:acad:1::/64\n dns-server 2001:db8::53\n domain-name lab.local")
+            && run.contains(" ipv6 nd managed-config-flag"),
+        "{run}"
+    );
+}

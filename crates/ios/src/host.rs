@@ -251,6 +251,9 @@ fn ipv6_lines(d: &Device) -> String {
     }
     let how = if d.ports.first().is_some_and(|p| p.ipv6.autoconfig) { " (from the router)" } else { "" };
     let _ = write!(s, "\nIPv6 gw     {}{how}", d.gateway6.map_or("not set".to_string(), |g| g.to_string()));
+    if let Some(dns) = d.dns6 {
+        let _ = write!(s, "\nIPv6 DNS    {dns}");
+    }
     s
 }
 
@@ -273,8 +276,9 @@ fn ipv6config(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> 
                 p.ipv6.enabled = true;
             }
             sim.topology_changed(t);
-            match sim.autoconfig6(t, dev) {
-                Ok((addr, router)) => {
+            match sim.autoconfig6_full(t, dev) {
+                Ok(auto) => {
+                    let (addr, router) = (auto.address, auto.router);
                     if let Some(d) = t.device_mut(dev) {
                         if let Some(p) = d.ports.first_mut() {
                             p.ipv6 = packetcraft_model::Ipv6Conf {
@@ -286,8 +290,13 @@ fn ipv6config(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> 
                             };
                         }
                         d.gateway6 = Some(router);
+                        d.dns6 = auto.dns;
                     }
-                    Ok(format!("Autoconfigured {addr}, gateway {router}."))
+                    Ok(format!(
+                        "Autoconfigured {addr}, gateway {router}{} ({}).",
+                        auto.dns.map(|a| format!(", DNS {a}")).unwrap_or_default(),
+                        auto.how
+                    ))
                 }
                 Err(e) => Err(format!("Autoconfiguration failed: {e}.")),
             }

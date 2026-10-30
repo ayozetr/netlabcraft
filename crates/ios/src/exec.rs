@@ -51,6 +51,8 @@ pub enum Mode {
     Rip,
     /// `R1(config-ipv6-acl)#`: the list's name.
     Acl6(String),
+    /// `R1(config-dhcpv6)#`: the pool's name.
+    Dhcp6(String),
     /// `R1(config-std-nacl)#` / `R1(config-ext-nacl)#`: the list's name.
     Acl(String),
 }
@@ -70,6 +72,7 @@ impl Mode {
             Mode::Ospf => Modes::OSPF,
             Mode::Rip => Modes::RIP,
             Mode::Acl6(_) => Modes::ACL6,
+            Mode::Dhcp6(_) => Modes::DHCP6,
             Mode::Acl(_) => Modes::ACL,
         }
     }
@@ -282,6 +285,7 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::Svi(_) => format!("{n}(config-if)#"),
         Mode::Ospf | Mode::Rip => format!("{n}(config-router)#"),
         Mode::Acl6(_) => format!("{n}(config-ipv6-acl)#"),
+        Mode::Dhcp6(_) => format!("{n}(config-dhcpv6)#"),
         Mode::Acl(name) => {
             let ext = d.acls.iter().find(|a| &a.name == name).is_some_and(|a| a.extended);
             format!("{n}(config-{}-nacl)#", if ext { "ext" } else { "std" })
@@ -454,7 +458,16 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
     if resolved.is_err()
         && matches!(
             cli.mode,
-            Mode::Iface(_) | Mode::Vlan(_) | Mode::Line(_) | Mode::DhcpPool(_) | Mode::Svi(_) | Mode::Ospf | Mode::Rip | Mode::Acl(_) | Mode::Acl6(_)
+            Mode::Iface(_)
+                | Mode::Vlan(_)
+                | Mode::Line(_)
+                | Mode::DhcpPool(_)
+                | Mode::Svi(_)
+                | Mode::Ospf
+                | Mode::Rip
+                | Mode::Acl(_)
+                | Mode::Acl6(_)
+                | Mode::Dhcp6(_)
         )
         && let Ok(r) = grammar::resolve(&words, Modes::CONFIG, dbits)
     {
@@ -497,7 +510,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Ospf
                 | Mode::Rip
                 | Mode::Acl(_)
-                | Mode::Acl6(_) => Mode::Config,
+                | Mode::Acl6(_)
+                | Mode::Dhcp6(_) => Mode::Config,
             };
             c.set_mode(next)
         }
@@ -1235,6 +1249,65 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             line.login = false;
             Ok(if d.access.users.is_empty() { "No local users yet: add one with `username <name> secret <password>`.".into() } else { String::new() })
         }
+        Id::Ipv6DhcpPool => {
+            let name: String = arg(0).chars().take(32).collect();
+            let d = c.dm()?;
+            if !d.dhcp6_pools.iter().any(|p| p.name == name) {
+                if d.dhcp6_pools.len() >= MAX_DHCP_POOLS {
+                    return Err("% Too many DHCPv6 pools".into());
+                }
+                d.dhcp6_pools.push(packetcraft_model::Dhcp6Pool { name: name.clone(), ..Default::default() });
+            }
+            c.cli.mode = Mode::Dhcp6(name);
+            Ok(String::new())
+        }
+        Id::NoIpv6DhcpPool => {
+            let d = c.dm()?;
+            let before = d.dhcp6_pools.len();
+            d.dhcp6_pools.retain(|p| p.name != arg(0));
+            if d.dhcp6_pools.len() == before { Err(format!("% No DHCPv6 pool {}", arg(0))) } else { Ok(String::new()) }
+        }
+        Id::Dhcp6AddressPrefix | Id::Dhcp6DnsServer | Id::Dhcp6DomainName => {
+            let Mode::Dhcp6(name) = c.cli.mode.clone() else { return Err("% Not in DHCPv6 pool mode".into()) };
+            let id = spec.id;
+            let value = arg(0).to_string();
+            let pool = c.dm()?.dhcp6_pools.iter_mut().find(|p| p.name == name).ok_or("% The pool was deleted")?;
+            match id {
+                Id::Dhcp6AddressPrefix => {
+                    let n: packetcraft_core::Ipv6Net = value.parse().map_err(|e| format!("% {e}"))?;
+                    if n.prefix != 64 {
+                        return Err("% Pools hand out from a /64".into());
+                    }
+                    pool.prefix = Some(n.network());
+                }
+                Id::Dhcp6DnsServer => {
+                    let a: std::net::Ipv6Addr = value.parse().map_err(|_| format!("% `{value}` is not an IPv6 address"))?;
+                    if !pool.dns.contains(&a) && pool.dns.len() < 4 {
+                        pool.dns.push(a);
+                    }
+                }
+                _ => pool.domain = Some(value.chars().take(64).collect()),
+            }
+            Ok(String::new())
+        }
+        Id::Ipv6DhcpServer | Id::NoIpv6DhcpServer | Id::NdManaged | Id::NoNdManaged | Id::NdOther | Id::NoNdOther => {
+            let id = spec.id;
+            let pool = arg(0).to_string();
+            c.each_if(|p, sub| {
+                if sub.is_some() {
+                    return Err("% IPv6 on subinterfaces is not simulated yet".into());
+                }
+                match id {
+                    Id::Ipv6DhcpServer => p.ipv6.dhcp_server = Some(pool.clone()),
+                    Id::NoIpv6DhcpServer => p.ipv6.dhcp_server = None,
+                    Id::NdManaged | Id::NoNdManaged => p.ipv6.nd_managed = id == Id::NdManaged,
+                    _ => p.ipv6.nd_other = id == Id::NdOther,
+                }
+                Ok(())
+            })
+        }
+        Id::ShowIpv6DhcpPool => Ok(render::dhcp6_pools(c.sim, c.d()?)),
+        Id::ShowIpv6DhcpBinding => Ok(render::dhcp6_bindings(c.sim, c.d()?)),
         Id::Ipv6AccessList => {
             let name: String = arg(0).chars().take(32).collect();
             let d = c.dm()?;

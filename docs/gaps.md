@@ -19,7 +19,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 | 4 | **Wireless LANs:** access points, wireless routers, laptop wireless cards, SSID and WPA2, association | CCNA 2 | 40–60 h |
 | 5 | **Spanning-tree timers and RSTP** (listening/learning delays, proposal/agreement) | CCNA 2 | 8–12 h |
 | 6 | **OSPF database on the wire and area types:** DBD/LSR/LSU/LSAck exchange in Simulation mode, stub/NSSA areas, summarisation; RIP on multilayer switches | CCNA 3 | 14–21 h |
-| 7 | **IPv6 depth:** OSPFv3, DHCPv6, RA flags, IPv6 on subinterfaces and VLAN interfaces | CCNA 2–3 | 28–40 h |
+| 7 | **IPv6 depth:** OSPFv3, DHCPv6 relay, IPv6 on subinterfaces and VLAN interfaces | CCNA 2–3 | 28–40 h |
 | 8 | **Services:** FTP/TFTP (and `copy running-config tftp:`), email, NTP, syslog, SNMP, AAA | CCNA 3, network management labs | 40–60 h |
 | 9 | **Translations** through `craft-i18n`, Spanish first | Non-English students | 25–40 h |
 | 10 | **Packaging and first release:** icon, installers, workflows, About window ([releasing.md](releasing.md)) | Everyone who isn't a developer | 14–24 h |
@@ -32,6 +32,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Done: DHCPv6 (stateless and stateful) and router advertisement M/O flags. |
 | 2026-10-30 | minor | Done: OSPF cost, priority and DR/BDR, reference bandwidth, inter-area routes, `show ip ospf [interface]`, OSPF on multilayer switches. |
 | 2026-10-30 | minor | Done: ACL depth (`access-class` on vty lines, IPv6 access lists and traffic filters, NAT for ICMP errors). |
 | 2026-10-30 | minor | Done: PPP PAP/CHAP authentication. |

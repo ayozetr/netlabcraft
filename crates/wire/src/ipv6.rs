@@ -107,6 +107,8 @@ pub enum Icmp6 {
     /// Type 134. `lifetime` 0: not a default router.
     RouterAdvert {
         hop_limit: u8,
+        /// [`RA_MANAGED`] (addresses from DHCPv6) and [`RA_OTHER`] (other settings from DHCPv6).
+        flags: u8,
         lifetime: u16,
         mac: Option<MacAddr>,
         prefixes: Vec<PrefixInfo>,
@@ -124,6 +126,10 @@ pub enum Icmp6 {
         mac: Option<MacAddr>,
     },
 }
+
+/// Router advertisement flags (RFC 4861 §4.2).
+pub const RA_MANAGED: u8 = 0x80;
+pub const RA_OTHER: u8 = 0x40;
 
 /// Destination-unreachable codes used here.
 pub const UNREACH6_NO_ROUTE: u8 = 0;
@@ -154,8 +160,8 @@ impl Icmp6 {
                 v
             }
             Icmp6::RouterSolicit { mac } => [vec![133, 0, 0, 0, 0, 0, 0, 0], lla(1, *mac)].concat(),
-            Icmp6::RouterAdvert { hop_limit, lifetime, mac, prefixes } => {
-                let mut v = vec![134, 0, 0, 0, *hop_limit, 0];
+            Icmp6::RouterAdvert { hop_limit, flags, lifetime, mac, prefixes } => {
+                let mut v = vec![134, 0, 0, 0, *hop_limit, *flags];
                 v.extend_from_slice(&lifetime.to_be_bytes());
                 v.extend_from_slice(&[0; 8]); // reachable time, retransmit timer
                 v.extend(lla(1, *mac));
@@ -223,7 +229,13 @@ impl Icmp6 {
                     .filter(|(k, _)| *k == 3)
                     .filter_map(|(_, body)| Some(PrefixInfo { len: *body.get(2)?, prefix: ip6_at(body, 16)? }))
                     .collect();
-                Ok(Icmp6::RouterAdvert { hop_limit: b[4], lifetime: be16(b, 6).ok_or_else(t)?, mac: mac_opt(16, 1), prefixes })
+                Ok(Icmp6::RouterAdvert {
+                    hop_limit: b[4],
+                    flags: b[5] & (RA_MANAGED | RA_OTHER),
+                    lifetime: be16(b, 6).ok_or_else(t)?,
+                    mac: mac_opt(16, 1),
+                    prefixes,
+                })
             }
             135 => Ok(Icmp6::NeighborSolicit { target: ip6_at(b, 8).ok_or_else(t)?, mac: mac_opt(24, 1) }),
             136 => {
@@ -270,9 +282,14 @@ pub fn describe(ip: &Ipv6) -> (bool, String) {
         Ok(Icmp6::Unreachable { code, .. }) => (false, format!("ICMPv6 destination unreachable (code {code}) {route}")),
         Ok(Icmp6::TimeExceeded { .. }) => (false, format!("ICMPv6 time exceeded {route}")),
         Ok(Icmp6::RouterSolicit { .. }) => (true, format!("NDP router solicitation from {}", ip.src)),
-        Ok(Icmp6::RouterAdvert { prefixes, .. }) => {
+        Ok(Icmp6::RouterAdvert { prefixes, flags, .. }) => {
             let p: Vec<String> = prefixes.iter().map(|p| format!("{}/{}", p.prefix, p.len)).collect();
-            (true, format!("NDP router advertisement from {} (prefix {})", ip.src, if p.is_empty() { "none".into() } else { p.join(", ") }))
+            let how = match (flags & RA_MANAGED != 0, flags & RA_OTHER != 0) {
+                (true, _) => ", addresses from DHCPv6",
+                (false, true) => ", other settings from DHCPv6",
+                _ => "",
+            };
+            (true, format!("NDP router advertisement from {} (prefix {}{how})", ip.src, if p.is_empty() { "none".into() } else { p.join(", ") }))
         }
         Ok(Icmp6::NeighborSolicit { target, .. }) => (true, format!("NDP who has {target}? tell {}", ip.src)),
         Ok(Icmp6::NeighborAdvert { target, mac, .. }) => {
@@ -306,7 +323,13 @@ mod tests {
             Icmp6::Unreachable { code: 3, original: vec![1, 2, 3] },
             Icmp6::TimeExceeded { original: vec![] },
             Icmp6::RouterSolicit { mac: Some(m) },
-            Icmp6::RouterAdvert { hop_limit: 64, lifetime: 1800, mac: Some(m), prefixes: vec![PrefixInfo { prefix: a("2001:db8:1::"), len: 64 }] },
+            Icmp6::RouterAdvert {
+                hop_limit: 64,
+                flags: RA_OTHER,
+                lifetime: 1800,
+                mac: Some(m),
+                prefixes: vec![PrefixInfo { prefix: a("2001:db8:1::"), len: 64 }],
+            },
             Icmp6::NeighborSolicit { target: a("2001:db8::5"), mac: Some(m) },
             Icmp6::NeighborAdvert { target: a("2001:db8::5"), router: true, solicited: true, mac: Some(m) },
         ];

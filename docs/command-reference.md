@@ -192,6 +192,19 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ip ospf` | user, privileged | router, switch | OSPF process summary |
 | `show ip ospf interface` | user, privileged | router, switch | OSPF interfaces: area, cost, state |
 | `show ip ospf interface brief` | user, privileged | router, switch | OSPF interfaces: area, cost, state |
+| `ipv6 dhcp pool WORD` | config | router | Create or edit a DHCPv6 pool |
+| `no ipv6 dhcp pool WORD` | config | router | Delete a DHCPv6 pool |
+| `address prefix X:X::/64` |  | router | Addresses to hand out (stateful DHCPv6) |
+| `dns-server X:X::X` |  | router | The DNS server clients get |
+| `domain-name WORD` |  | router | The domain clients get |
+| `ipv6 dhcp server WORD` | interface | router | Answer DHCPv6 on this interface from a pool |
+| `no ipv6 dhcp server` | interface | router | Stop answering DHCPv6 here |
+| `ipv6 nd managed-config-flag` | interface | router | Tell hosts to take addresses from DHCPv6 |
+| `no ipv6 nd managed-config-flag` | interface | router | Hosts build their own addresses |
+| `ipv6 nd other-config-flag` | interface | router | Tell hosts to take DNS and domain from DHCPv6 |
+| `no ipv6 nd other-config-flag` | interface | router | No other settings from DHCPv6 |
+| `show ipv6 dhcp pool` | user, privileged | router | DHCPv6 pools |
+| `show ipv6 dhcp binding` | user, privileged | router | DHCPv6 addresses handed out |
 | `router rip` | config | router | Start or configure RIP |
 | `no router rip` | config | router | Stop RIP |
 | `version {1\|2}` |  | router | RIP version |

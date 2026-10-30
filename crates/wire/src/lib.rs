@@ -14,6 +14,7 @@ use packetcraft_core::MacAddr;
 
 pub mod control;
 pub mod dhcp;
+pub mod dhcp6;
 pub mod dns;
 pub mod ipv6;
 pub mod pcap;
@@ -537,6 +538,23 @@ pub fn summarize(bytes: &[u8]) -> (Protocol, String) {
             Err(e) => (Protocol::Ipv4, format!("IPv4 ({e}){tag}")),
         },
         ipv6::ETHERTYPE_IPV6 => match ipv6::Ipv6::decode(&f.payload) {
+            Ok(ip) if ip.next_header == PROTO_UDP => match dhcp6::udp6_decode(ip.src, ip.dst, &ip.payload) {
+                Ok((_, dp, body)) if [dhcp6::CLIENT_PORT, dhcp6::SERVER_PORT].contains(&dp) => match dhcp6::Dhcp6::decode(&body) {
+                    Ok(m) => (
+                        Protocol::Dhcp,
+                        format!(
+                            "DHCPv6 {} {} → {}{}{tag}",
+                            m.kind.name(),
+                            ip.src,
+                            ip.dst,
+                            m.ia.and_then(|(_, a)| a).map(|a| format!(" (address {a})")).unwrap_or_default()
+                        ),
+                    ),
+                    Err(e) => (Protocol::Dhcp, format!("DHCPv6 ({e}){tag}")),
+                },
+                Ok((sp, dp, _)) => (Protocol::Ipv6, format!("UDP [{}]:{sp} → [{}]:{dp}{tag}", ip.src, ip.dst)),
+                Err(e) => (Protocol::Ipv6, format!("UDP ({e}){tag}")),
+            },
             Ok(ip) => {
                 let (ndp, text) = ipv6::describe(&ip);
                 let proto = if ndp {

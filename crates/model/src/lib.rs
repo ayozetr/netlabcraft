@@ -564,6 +564,19 @@ pub struct StaticRoute6 {
 /// Most IPv6 addresses on one interface.
 pub const MAX_IPV6_ADDRESSES: usize = 8;
 
+/// A DHCPv6 pool (`ipv6 dhcp pool NAME`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Dhcp6Pool {
+    pub name: String,
+    /// `address prefix X::/64`: where stateful addresses come from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prefix: Option<Ipv6Net>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dns: Vec<Ipv6Addr>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain: Option<String>,
+}
+
 /// A port's IPv6 settings.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Ipv6Conf {
@@ -579,6 +592,15 @@ pub struct Ipv6Conf {
     /// Hosts: addresses come from router advertisements (stateless autoconfiguration).
     #[serde(default)]
     pub autoconfig: bool,
+    /// Routers: `ipv6 dhcp server POOL` on this interface.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dhcp_server: Option<String>,
+    /// Routers: `ipv6 nd managed-config-flag` (hosts take addresses from DHCPv6).
+    #[serde(default)]
+    pub nd_managed: bool,
+    /// Routers: `ipv6 nd other-config-flag` (hosts take DNS and domain from DHCPv6).
+    #[serde(default)]
+    pub nd_other: bool,
     /// `ipv6 traffic-filter NAME in` / `out`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filter_in: Option<String>,
@@ -671,6 +693,12 @@ pub struct Device {
     /// Routers: OSPF (`router ospf N`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ospf: Option<Ospf>,
+    /// Routers: DHCPv6 pools.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dhcp6_pools: Vec<Dhcp6Pool>,
+    /// Hosts: the IPv6 DNS server learned from DHCPv6.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dns6: Option<Ipv6Addr>,
     /// Per-interface OSPF settings, by interface name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub ospf_if: BTreeMap<String, OspfIf>,
@@ -1097,6 +1125,8 @@ impl Device {
             ospf: None,
             acls6: Vec::new(),
             ospf_if: BTreeMap::new(),
+            dhcp6_pools: Vec::new(),
+            dns6: None,
             rip: None,
             acls: Vec::new(),
             nat: Nat::default(),
@@ -1132,6 +1162,8 @@ impl Device {
         self.rip = None;
         self.acls6.clear();
         self.ospf_if.clear();
+        self.dhcp6_pools.clear();
+        self.dns6 = None;
         self.acls.clear();
         self.nat = Nat::default();
         self.services = fresh.services;
