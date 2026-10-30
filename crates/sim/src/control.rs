@@ -147,18 +147,20 @@ impl Sim {
         let st = self.ospf_state(t);
         for (id, ifs) in &st.interfaces {
             let (Some(d), Some(rid)) = (t.device(*id), st.router_ids.get(id)) else { continue };
-            let Some(o) = &d.ospf else { continue };
             for (name, ..) in ifs.iter().filter(|x| !x.3) {
                 let Some(ifc) = l3_ifaces(d).into_iter().find(|i| i.name == *name) else { continue };
                 let heard: Vec<Ipv4Addr> = st.neighbors.get(id).into_iter().flatten().filter(|n| n.iface == *name).map(|n| n.router_id).collect();
                 let seg = st.segments.get(&(*id, name.clone())).copied();
-                let area = o.networks.iter().find(|n| n.matches(ifc.net.addr)).map_or(0, |n| n.area);
+                let area = seg.map_or(0, |s| s.area);
+                let (hello_secs, dead) = crate::ospf::timers(d, name);
                 // DR and BDR are only announced once there is someone to elect with.
                 let elected = |a: Option<Ipv4Addr>| a.filter(|_| !heard.is_empty()).unwrap_or(Ipv4Addr::UNSPECIFIED);
                 let hello = OspfHello {
                     router_id: *rid,
                     area,
                     mask: ifc.net.mask(),
+                    hello_secs,
+                    dead_secs: u32::from(dead),
                     priority: seg.map_or(1, |s| s.priority),
                     dr: elected(seg.and_then(|s| s.dr)),
                     bdr: elected(seg.and_then(|s| s.bdr)),

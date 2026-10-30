@@ -200,6 +200,7 @@ pub fn running_config(d: &Device) -> String {
     crate::exec::qos::running_config(&mut s, d);
     vpn_config(&mut s, d);
     wlan_config(&mut s, d);
+    crate::exec::routing::loopback_config(&mut s, d);
     for p in &d.ports {
         let _ = writeln!(s, "interface {}", p.name);
         if !p.description.is_empty() {
@@ -431,8 +432,17 @@ pub fn running_config(d: &Device) -> String {
         for p in &o.passive {
             let _ = writeln!(s, " passive-interface {p}");
         }
+        if o.passive_default {
+            s.push_str(" passive-interface default\n");
+            for p in &o.not_passive {
+                let _ = writeln!(s, " no passive-interface {p}");
+            }
+        }
         for n in &o.networks {
             let _ = writeln!(s, " network {} {} area {}", n.address, n.wildcard, n.area);
+        }
+        if o.redistribute_static {
+            s.push_str(" redistribute static subnets\n");
         }
         if o.default_originate {
             let _ = writeln!(s, " default-information originate");
@@ -506,7 +516,8 @@ pub fn running_config(d: &Device) -> String {
     }
     for r in &d.routes6 {
         let via = [r.iface.clone(), r.next_hop.map(|a| a.to_string())].into_iter().flatten().collect::<Vec<_>>().join(" ");
-        let _ = writeln!(s, "ipv6 route {} {via}", r.net);
+        let distance = r.distance.map_or(String::new(), |a| format!(" {a}"));
+        let _ = writeln!(s, "ipv6 route {} {via}{distance}", r.net);
     }
     if let Some(o) = &d.ospf6 {
         let _ = writeln!(s, "ipv6 router ospf {}", o.process);
@@ -526,7 +537,8 @@ pub fn running_config(d: &Device) -> String {
             NextHop::Address(a) => a.to_string(),
             NextHop::Interface(n) => n.clone(),
         };
-        let _ = writeln!(s, "ip route {} {} {via}", r.net.addr, r.net.mask());
+        let distance = r.distance.map_or(String::new(), |a| format!(" {a}"));
+        let _ = writeln!(s, "ip route {} {} {via}{distance}", r.net.addr, r.net.mask());
     }
     if !d.routes.is_empty() {
         let _ = writeln!(s, "!");
@@ -593,6 +605,7 @@ pub fn ip_int_brief(t: &Topology, d: &Device) -> String {
         let up = netlabcraft_sim::vpn::tunnel_status(t, d, tun.number).is_ok();
         let _ = writeln!(s, "{:<24} {:<18} {:<7} {}", tun.name(), addr, yes(!tun.shutdown), yes(up));
     }
+    crate::exec::routing::loopback_brief(&mut s, d);
     s.trim_end().to_string()
 }
 
@@ -600,7 +613,7 @@ pub fn ip_int_brief(t: &Topology, d: &Device) -> String {
 /// traffic).
 pub fn ip_route_table(d: &Device, table: &[netlabcraft_sim::RouteEntry]) -> String {
     let mut s = String::from(
-        "Codes: C connected, L local, S static, R RIP, D EIGRP, O OSPF, O IA OSPF other area, O*E2 OSPF external default, O*IA default into a stub area\n\n",
+        "Codes: C connected, L local, S static, R RIP, D EIGRP, O OSPF, O IA OSPF other area, O E2 OSPF external, O*E2 OSPF external default, O*IA default into a stub area\n\n",
     );
     if d.kind == DeviceKind::Switch && !d.ip_routing {
         let _ = writeln!(
@@ -632,12 +645,15 @@ pub fn ip_route_table(d: &Device, table: &[netlabcraft_sim::RouteEntry]) -> Stri
             _ => String::new(),
         };
         let code = match r.code {
-            'E' => "O*E2".to_string(),
+            'E' if r.net.prefix == 0 => "O*E2".to_string(),
+            'E' => "O E2".to_string(),
             'I' if r.net.prefix == 0 => "O*IA".to_string(),
             'I' => "O IA".to_string(),
             c => format!("{c}   "),
         };
-        let _ = writeln!(s, "{code} {:<20} {what}", r.net.to_string());
+        // Distance and metric, for every route a protocol or a person put there.
+        let ad = if matches!(r.code, 'C' | 'L') { String::new() } else { format!(" [{}/{}]", r.distance, r.metric) };
+        let _ = writeln!(s, "{code} {:<20} {what}{ad}", r.net.to_string());
     }
     s.trim_end().to_string()
 }
@@ -723,6 +739,7 @@ pub fn interfaces(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
         for tun in &d.tunnels {
             s.push_str(&tunnel_block(t, d, tun));
         }
+        s.push_str(&crate::exec::routing::loopback_blocks(d));
     }
     s.trim_end().to_string()
 }
@@ -975,7 +992,9 @@ pub fn ospf_neighbors(t: &Topology, d: &Device, st: &netlabcraft_sim::ospf::Ospf
     }
     let list = st.neighbors.get(&d.id).cloned().unwrap_or_default();
     if list.is_empty() {
-        return "No OSPF neighbours (check the network statements, passive interfaces and cables).".into();
+        let mut why = String::new();
+        crate::exec::routing::mismatch_lines(&mut why, st, d.id);
+        return format!("No OSPF neighbours (check the network statements, passive interfaces and cables).\n{why}").trim_end().to_string();
     }
     let mut s = format!("{:<16} {:<10} {:<16} {:<22} Device\n", "Neighbour ID", "State", "Address", "Interface");
     for n in list {
@@ -988,6 +1007,7 @@ pub fn ospf_neighbors(t: &Topology, d: &Device, st: &netlabcraft_sim::ospf::Ospf
         };
         let _ = writeln!(s, "{:<16} {:<10} {:<16} {:<22} {name}", n.router_id.to_string(), state, n.address.to_string(), ifname::short(&n.iface));
     }
+    crate::exec::routing::mismatch_lines(&mut s, st, d.id);
     s.trim_end().to_string()
 }
 
@@ -1218,7 +1238,7 @@ fn ospf_protocol(d: &Device, st: &netlabcraft_sim::ospf::OspfState) -> String {
     s
 }
 
-fn ospf_if_lines(s: &mut String, d: &Device, name: &str) {
+pub(crate) fn ospf_if_lines(s: &mut String, d: &Device, name: &str) {
     if let Some(e) = d.eigrp_if.get(name) {
         if let Some((asn, secs)) = e.hello {
             let _ = writeln!(s, " ip hello-interval eigrp {asn} {secs}");
@@ -1233,6 +1253,18 @@ fn ospf_if_lines(s: &mut String, d: &Device, name: &str) {
         }
         if let Some(p) = o.priority {
             let _ = writeln!(s, " ip ospf priority {p}");
+        }
+        if let Some(h) = o.hello {
+            let _ = writeln!(s, " ip ospf hello-interval {h}");
+        }
+        if let Some(h) = o.dead {
+            let _ = writeln!(s, " ip ospf dead-interval {h}");
+        }
+        if o.p2p {
+            s.push_str(" ip ospf network point-to-point\n");
+        }
+        if let Some((p, a)) = o.area {
+            let _ = writeln!(s, " ip ospf {p} area {a}");
         }
     }
 }
@@ -1376,13 +1408,14 @@ pub fn vtp(d: &Device) -> String {
 }
 
 /// An interface's IPv6 lines in the running configuration.
-fn ipv6_lines(s: &mut String, c: &netlabcraft_model::Ipv6Conf) {
+pub(crate) fn ipv6_lines(s: &mut String, c: &netlabcraft_model::Ipv6Conf) {
     if let Some(ll) = c.link_local {
         let _ = writeln!(s, " ipv6 address {ll} link-local");
     }
     for a in &c.addresses {
         let _ = writeln!(s, " ipv6 address {a}");
     }
+    crate::exec::routing::ipv6_client_lines(s, c);
     if c.enabled {
         let _ = writeln!(s, " ipv6 enable");
     }
@@ -1457,6 +1490,9 @@ pub fn ipv6_brief(t: &Topology, d: &Device) -> String {
         };
         row(&mut s, &name, status);
     }
+    for l in &d.loopbacks {
+        row(&mut s, &l.name(), if l.shutdown { "administratively down" } else { "up" });
+    }
     s.trim_end().to_string()
 }
 
@@ -1464,7 +1500,9 @@ pub fn ipv6_brief(t: &Topology, d: &Device) -> String {
 pub fn ipv6_route(t: &Topology, sim: &mut Sim, d: &Device) -> String {
     let dynamic = sim.dynamic_routes6(t, d);
     let table = netlabcraft_sim::v6::routing_table6(t, d, &dynamic);
-    let mut s = String::from("Codes: C connected, L local, S static, O OSPFv3, OI OSPFv3 other area, OE2 OSPFv3 external\n");
+    let mut s = String::from(
+        "Codes: C connected, L local, S static, O OSPFv3, OI OSPFv3 other area, OE2 OSPFv3 external, ND default from a router advertisement\n",
+    );
     if !d.ipv6_routing {
         s.push_str("IPv6 forwarding is off (no `ipv6 unicast-routing`)\n");
     }
@@ -1479,9 +1517,11 @@ pub fn ipv6_route(t: &Topology, sim: &mut Sim, d: &Device) -> String {
         let code = match r.code {
             'I' => "OI".to_string(),
             'E' => "OE2".to_string(),
+            'N' => "ND".to_string(),
             c => c.to_string(),
         };
-        let _ = writeln!(s, "{code:<2} {:<28} {via}", r.net.to_string());
+        let ad = if matches!(r.code, 'C' | 'L') { String::new() } else { format!(" [{}]", r.distance) };
+        let _ = writeln!(s, "{code:<2} {:<28} {via}{ad}", r.net.to_string());
     }
     if table.is_empty() {
         s.push_str("(no IPv6 routes)");

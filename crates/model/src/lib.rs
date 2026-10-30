@@ -23,6 +23,7 @@ pub mod iot;
 pub mod models;
 pub mod physical;
 pub mod qos;
+pub mod routing;
 pub mod services;
 pub mod voice;
 pub mod vpn;
@@ -647,6 +648,10 @@ pub struct StaticRoute {
     /// Network (host bits clear).
     pub net: Ipv4Net,
     pub via: NextHop,
+    /// Administrative distance (1 when not set). A higher one makes a floating route: it stays
+    /// out of the routing table while a protocol with a lower distance knows the network.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub distance: Option<u8>,
 }
 
 /// An IPv6 static route: out of an interface, towards a next hop, or both (a link-local next
@@ -659,6 +664,9 @@ pub struct StaticRoute6 {
     pub iface: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next_hop: Option<Ipv6Addr>,
+    /// Administrative distance (1 when not set); see [`StaticRoute::distance`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub distance: Option<u8>,
 }
 
 /// Most IPv6 addresses on one interface.
@@ -713,6 +721,20 @@ pub struct Ipv6Conf {
     pub filter_in: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filter_out: Option<String>,
+    /// Routers: `ipv6 address autoconfig default` (with `autoconfig`): the advertising router
+    /// becomes a default route.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub autoconfig_default: bool,
+    /// Routers: `ipv6 address dhcp` (the address comes from a DHCPv6 server).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub dhcp_client: bool,
+    /// Routers: the addresses autoconfiguration or DHCPv6 handed out (a lease, not
+    /// configuration: the running configuration shows how they are obtained).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub learned: Vec<Ipv6Net>,
+    /// Routers: the router whose advertisement gave the address (the default route's next hop).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub learned_router: Option<Ipv6Addr>,
 }
 
 impl Ipv6Conf {
@@ -721,7 +743,7 @@ impl Ipv6Conf {
     }
 
     pub fn active(&self) -> bool {
-        self.enabled || self.autoconfig || !self.addresses.is_empty() || self.link_local.is_some()
+        self.enabled || self.autoconfig || self.dhcp_client || !self.addresses.is_empty() || self.link_local.is_some()
     }
 }
 
@@ -863,6 +885,9 @@ pub struct Device {
     /// Routers: GRE tunnel interfaces (`interface Tunnel N`), sorted by number.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tunnels: Vec<vpn::Tunnel>,
+    /// Routers and switches: loopback interfaces (`interface Loopback N`), sorted by number.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub loopbacks: Vec<routing::Loopback>,
     /// Routers: IPsec (`crypto isakmp`, `crypto ipsec`, `crypto map`).
     #[serde(default, skip_serializing_if = "vpn::Crypto::is_empty")]
     pub crypto: vpn::Crypto,
@@ -983,6 +1008,16 @@ pub struct Ospf {
     /// `maximum-paths N`: equal-cost paths installed per destination (4 when not set).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub maximum_paths: Option<u8>,
+    /// `passive-interface default`: every interface is passive except those in `not_passive`
+    /// (`no passive-interface X`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub passive_default: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub not_passive: Vec<String>,
+    /// `redistribute static`: this router's static routes go to the others as external type-2
+    /// routes.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub redistribute_static: bool,
 }
 
 /// The SNMP agent's settings.
@@ -1100,6 +1135,19 @@ pub struct OspfIf {
     pub cost: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub priority: Option<u8>,
+    /// `ip ospf hello-interval N` (seconds; 10 when not set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hello: Option<u16>,
+    /// `ip ospf dead-interval N` (seconds; four hello intervals when not set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dead: Option<u16>,
+    /// `ip ospf network point-to-point`: no DR or BDR on the link, and a loopback advertises
+    /// its subnet instead of a host route.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub p2p: bool,
+    /// `ip ospf PROCESS area AREA`: (process, area), alongside or instead of `network`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub area: Option<(u16, u32)>,
 }
 
 /// `router rip`.
@@ -1609,6 +1657,7 @@ impl Device {
             snmp: SnmpConf::default(),
             vlan_dat_deleted: false,
             tunnels: Vec::new(),
+            loopbacks: Vec::new(),
             crypto: vpn::Crypto::default(),
             qos: qos::Qos::default(),
             wlan: wlan::WlanConf::default(),
@@ -1667,6 +1716,7 @@ impl Device {
         self.acls.clear();
         self.nat = Nat::default();
         self.tunnels.clear();
+        self.loopbacks.clear();
         self.crypto = vpn::Crypto::default();
         self.qos = qos::Qos::default();
         self.firewall = firewall::Firewall::default();
@@ -2084,6 +2134,9 @@ impl Topology {
                 d.tunnels.truncate(vpn::MAX_TUNNELS);
                 d.tunnels.sort_by_key(|t| t.number);
                 d.tunnels.dedup_by_key(|t| t.number);
+                d.loopbacks.truncate(routing::MAX_LOOPBACKS);
+                d.loopbacks.sort_by_key(|l| l.number);
+                d.loopbacks.dedup_by_key(|l| l.number);
                 d.crypto.sanitize();
                 d.qos.sanitize();
                 d.firewall.sanitize();

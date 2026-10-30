@@ -55,6 +55,8 @@ impl Modes {
     pub const CRYPTO_MAP: Modes = Modes(1 << 22);
     /// `crypto ipsec transform-set NAME …`.
     pub const TRANSFORM: Modes = Modes(1 << 23);
+    /// `interface Loopback N`.
+    pub const LOOPBACK: Modes = Modes(1 << 24);
     /// `class-map [match-all|match-any] NAME`.
     pub const CLASS_MAP: Modes = Modes(1 << 26);
     /// `policy-map NAME`.
@@ -83,6 +85,7 @@ impl Modes {
             | (1 << 21)
             | (1 << 22)
             | (1 << 23)
+            | (1 << 24)
             | (1 << 26)
             | (1 << 27)
             | (1 << 28)
@@ -216,6 +219,23 @@ pub enum Id {
     OspfDefaultOriginate,
     NoOspfDefaultOriginate,
     ShowOspfNeighbor,
+    ShowOspfNeighborDetail,
+    Ipv6AddressAutoconfig,
+    NoIpv6AddressAutoconfig,
+    Ipv6AddressDhcp,
+    NoIpv6AddressDhcp,
+    ShowIpOspfDatabase,
+    ClearIpOspf,
+    IpOspfArea,
+    NoIpOspfArea,
+    IpOspfHello,
+    NoIpOspfHello,
+    IpOspfDead,
+    NoIpOspfDead,
+    IpOspfNetwork,
+    NoIpOspfNetwork,
+    OspfRedistributeStatic,
+    NoOspfRedistributeStatic,
     Ipv6RouterOspf,
     NoIpv6RouterOspf,
     Ipv6OspfArea,
@@ -660,7 +680,8 @@ const SUBMODES: Modes = Modes::IF
     .or(QOS_MODES)
     .or(Modes::OBJECT)
     .or(Modes::TELEPHONY)
-    .or(Modes::EPHONE);
+    .or(Modes::EPHONE)
+    .or(Modes::LOOPBACK);
 /// Routers, switches and the firewall.
 const BOTH_FW: Modes = Modes::BOTH.or(Modes::FIREWALL);
 const FW: Modes = Modes::FIREWALL;
@@ -672,6 +693,8 @@ const QOS_MODES: Modes = Modes::CLASS_MAP.or(Modes::POLICY_MAP).or(Modes::POLICY
 const QOS_IFS: Modes = IFS.or(Modes::SVI).or(Modes::TUNNEL);
 const IFS: Modes = Modes::IF.or(Modes::SUBIF);
 const ANY_IF: Modes = IFS.or(Modes::SVI);
+/// Every interface OSPF can run on: ports, subinterfaces, VLAN interfaces, tunnels, loopbacks.
+const OSPF_IFS: Modes = ANY_IF.or(Modes::TUNNEL).or(Modes::LOOPBACK);
 
 macro_rules! spec {
     ($id:ident, $modes:expr, $dev:expr, [$($t:expr),*], $help:literal) => {
@@ -726,8 +749,8 @@ pub static SPECS: &[Spec] = &[
         IpRoute,
         Modes::CONFIG,
         Modes::BOTH,
-        [K("ip"), K("route"), Arg("A.B.C.D"), Arg("MASK"), Rest("<next hop or interface>")],
-        "Add a static route"
+        [K("ip"), K("route"), Arg("A.B.C.D"), Arg("MASK"), Rest("<next hop or interface> [distance]")],
+        "Add a static route (a distance above the protocol's makes it a backup)"
     ),
     spec!(
         NoIpRoute,
@@ -808,6 +831,94 @@ pub static SPECS: &[Spec] = &[
     spec!(NoNatPool, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("nat"), K("pool"), Arg("WORD")], "Delete a NAT pool"),
     spec!(ShowNat, EXECS, Modes::BOTH, [K("show"), K("ip"), K("nat"), K("translations")], "Translations in use"),
     spec!(ClearNat, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("nat"), K("translation"), Rest("*")], "Forget dynamic translations"),
+    // ---- loopback interfaces (`interface Loopback N`) ----
+    spec!(IpAddress, Modes::LOOPBACK, Modes::BOTH, [K("ip"), K("address"), Arg("A.B.C.D"), Arg("MASK")], "Set the loopback's address"),
+    spec!(NoIpAddress, Modes::LOOPBACK, Modes::BOTH, [K("no"), K("ip"), K("address")], "Remove the loopback's address"),
+    spec!(Shutdown, Modes::LOOPBACK, Modes::BOTH, [K("shutdown")], "Take the loopback down"),
+    spec!(NoShutdown, Modes::LOOPBACK, Modes::BOTH, [K("no"), K("shutdown")], "Bring the loopback up again"),
+    spec!(Description, Modes::LOOPBACK, Modes::BOTH, [K("description"), Rest("LINE")], "Describe the loopback"),
+    spec!(NoDescription, Modes::LOOPBACK, Modes::BOTH, [K("no"), K("description")], "Remove the description"),
+    spec!(Ipv6Address, Modes::LOOPBACK, Modes::BOTH, [K("ipv6"), K("address"), Arg("X:X::X/<0-128>")], "Add an IPv6 address"),
+    spec!(
+        Ipv6AddressLinkLocal,
+        Modes::LOOPBACK,
+        Modes::BOTH,
+        [K("ipv6"), K("address"), Arg("FE80::X"), K("link-local")],
+        "Set the link-local address"
+    ),
+    spec!(NoIpv6Address, Modes::LOOPBACK, Modes::BOTH, [K("no"), K("ipv6"), K("address")], "Remove every IPv6 address"),
+    spec!(NoIpv6Address, Modes::LOOPBACK, Modes::BOTH, [K("no"), K("ipv6"), K("address"), Rest("<address>")], "Remove one IPv6 address"),
+    spec!(Ipv6Enable, Modes::LOOPBACK, Modes::BOTH, [K("ipv6"), K("enable")], "IPv6 with a link-local address only"),
+    spec!(NoIpv6Enable, Modes::LOOPBACK, Modes::BOTH, [K("no"), K("ipv6"), K("enable")], "Turn link-local-only IPv6 off"),
+    spec!(
+        Ipv6OspfArea,
+        Modes::LOOPBACK,
+        Modes::BOTH,
+        [K("ipv6"), K("ospf"), Arg("<1-65535>"), K("area"), Arg("<0-4294967295>")],
+        "Advertise this loopback in OSPFv3"
+    ),
+    spec!(
+        NoIpv6OspfArea,
+        Modes::LOOPBACK,
+        Modes::BOTH,
+        [K("no"), K("ipv6"), K("ospf"), Arg("<1-65535>"), K("area"), Arg("<0-4294967295>")],
+        "Stop advertising it in OSPFv3"
+    ),
+    spec!(IpOspfCost, Modes::LOOPBACK, Modes::BOTH, [K("ip"), K("ospf"), K("cost"), Arg("<1-65535>")], "This loopback's OSPF cost"),
+    spec!(NoIpOspfCost, Modes::LOOPBACK, Modes::BOTH, [K("no"), K("ip"), K("ospf"), K("cost")], "Cost 1 again"),
+    // ---- routers as IPv6 clients ----
+    spec!(Ipv6AddressAutoconfig, Modes::IF, Modes::BOTH, [K("ipv6"), K("address"), K("autoconfig")], "Take an address from router advertisements"),
+    spec!(
+        Ipv6AddressAutoconfig,
+        Modes::IF,
+        Modes::BOTH,
+        [K("ipv6"), K("address"), K("autoconfig"), K("default")],
+        "Autoconfigure, and route by default to the advertising router"
+    ),
+    spec!(NoIpv6AddressAutoconfig, Modes::IF, Modes::BOTH, [K("no"), K("ipv6"), K("address"), K("autoconfig")], "Stop autoconfiguring"),
+    spec!(Ipv6AddressDhcp, Modes::IF, Modes::BOTH, [K("ipv6"), K("address"), K("dhcp")], "Take an address from a DHCPv6 server"),
+    spec!(NoIpv6AddressDhcp, Modes::IF, Modes::BOTH, [K("no"), K("ipv6"), K("address"), K("dhcp")], "Give the DHCPv6 address back"),
+    // ---- OSPF as the courses teach it ----
+    spec!(
+        IpOspfArea,
+        OSPF_IFS,
+        Modes::BOTH,
+        [K("ip"), K("ospf"), Arg("<1-65535>"), K("area"), Arg("<0-4294967295>|A.B.C.D")],
+        "Run OSPF on this interface, in this area"
+    ),
+    spec!(NoIpOspfArea, OSPF_IFS, Modes::BOTH, [K("no"), K("ip"), K("ospf"), Arg("<1-65535>"), K("area"), Rest("[AREA]")], "Stop OSPF here"),
+    spec!(IpOspfHello, OSPF_IFS, Modes::BOTH, [K("ip"), K("ospf"), K("hello-interval"), Arg("<1-65535>")], "Seconds between hellos (10)"),
+    spec!(NoIpOspfHello, OSPF_IFS, Modes::BOTH, [K("no"), K("ip"), K("ospf"), K("hello-interval")], "Hellos every 10 seconds again"),
+    spec!(IpOspfDead, OSPF_IFS, Modes::BOTH, [K("ip"), K("ospf"), K("dead-interval"), Arg("<1-65535>")], "Silence before a neighbour is dropped"),
+    spec!(NoIpOspfDead, OSPF_IFS, Modes::BOTH, [K("no"), K("ip"), K("ospf"), K("dead-interval")], "Four hello intervals again"),
+    spec!(
+        IpOspfNetwork,
+        OSPF_IFS,
+        Modes::BOTH,
+        [K("ip"), K("ospf"), K("network"), Arg("{point-to-point|broadcast}")],
+        "Link type: point-to-point elects no DR"
+    ),
+    spec!(NoIpOspfNetwork, OSPF_IFS, Modes::BOTH, [K("no"), K("ip"), K("ospf"), K("network")], "The link type its medium has"),
+    spec!(OspfRedistributeStatic, Modes::OSPF, Modes::BOTH, [K("redistribute"), K("static")], "Advertise static routes as external"),
+    spec!(
+        OspfRedistributeStatic,
+        Modes::OSPF,
+        Modes::BOTH,
+        [K("redistribute"), K("static"), Rest("[subnets]")],
+        "Advertise static routes as external"
+    ),
+    spec!(NoOspfRedistributeStatic, Modes::OSPF, Modes::BOTH, [K("no"), K("redistribute"), K("static")], "Stop advertising static routes"),
+    spec!(
+        NoOspfRedistributeStatic,
+        Modes::OSPF,
+        Modes::BOTH,
+        [K("no"), K("redistribute"), K("static"), Rest("[subnets]")],
+        "Stop advertising static routes"
+    ),
+    spec!(ClearIpOspf, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("ospf"), K("process")], "Restart OSPF: neighbours and DR elections anew"),
+    spec!(ClearIpOspf, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("ospf"), Arg("<1-65535>"), K("process")], "Restart this OSPF process"),
+    spec!(ShowIpOspfDatabase, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf"), K("database")], "OSPF link-state database"),
+    spec!(ShowOspfNeighborDetail, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf"), K("neighbor"), K("detail")], "OSPF neighbours in full"),
     // ---- site-to-site VPN: GRE tunnels (`interface Tunnel N`) and IPsec ----
     spec!(IpAddress, Modes::TUNNEL, Modes::ROUTER, [K("ip"), K("address"), Arg("A.B.C.D"), Arg("MASK")], "Set the tunnel's address"),
     spec!(NoIpAddress, Modes::TUNNEL, Modes::ROUTER, [K("no"), K("ip"), K("address")], "Remove the tunnel's address"),
@@ -1638,8 +1749,8 @@ pub static SPECS: &[Spec] = &[
         Ipv6Route,
         Modes::CONFIG,
         Modes::BOTH,
-        [K("ipv6"), K("route"), Arg("X:X::X/<0-128>"), Rest("<next hop and/or interface>")],
-        "Add an IPv6 static route"
+        [K("ipv6"), K("route"), Arg("X:X::X/<0-128>"), Rest("<next hop and/or interface> [distance]")],
+        "Add an IPv6 static route (with a distance: a backup route)"
     ),
     spec!(NoIpv6Route, Modes::CONFIG, Modes::BOTH, [K("no"), K("ipv6"), K("route"), Arg("X:X::X/<0-128>")], "Remove IPv6 static routes"),
     spec!(
@@ -2314,6 +2425,7 @@ mod tests {
                 Modes::OSPF6,
                 Modes::EIGRP,
                 Modes::TUNNEL,
+                Modes::LOOPBACK,
                 Modes::ISAKMP,
                 Modes::CRYPTO_MAP,
                 Modes::TRANSFORM,

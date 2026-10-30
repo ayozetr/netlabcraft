@@ -144,7 +144,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `interface range <interfaces>` | config | router, switch | Configure several interfaces |
 | `interface <interface>` | config | router, switch, firewall | Configure an interface |
 | `no interface <subinterface>` | config | router | Delete a subinterface |
-| `ip route A.B.C.D MASK <next hop or interface>` | config | router, switch | Add a static route |
+| `ip route A.B.C.D MASK <next hop or interface> [distance]` | config | router, switch | Add a static route (a distance above the protocol's makes it a backup) |
 | `no ip route A.B.C.D MASK <next hop or interface>` | config | router, switch | Remove a static route |
 | `no ip route A.B.C.D MASK` | config | router, switch | Remove static routes |
 | `vlan <1-4094>[,-]` | config | switch | Create or edit VLANs |
@@ -182,6 +182,43 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip nat pool WORD` | config | router, switch | Delete a NAT pool |
 | `show ip nat translations` | user, privileged | router, switch | Translations in use |
 | `clear ip nat translation *` | privileged | router, switch | Forget dynamic translations |
+| `ip address A.B.C.D MASK` |  | router, switch | Set the loopback's address |
+| `no ip address` |  | router, switch | Remove the loopback's address |
+| `shutdown` |  | router, switch | Take the loopback down |
+| `no shutdown` |  | router, switch | Bring the loopback up again |
+| `description LINE` |  | router, switch | Describe the loopback |
+| `no description` |  | router, switch | Remove the description |
+| `ipv6 address X:X::X/<0-128>` |  | router, switch | Add an IPv6 address |
+| `ipv6 address FE80::X link-local` |  | router, switch | Set the link-local address |
+| `no ipv6 address` |  | router, switch | Remove every IPv6 address |
+| `no ipv6 address <address>` |  | router, switch | Remove one IPv6 address |
+| `ipv6 enable` |  | router, switch | IPv6 with a link-local address only |
+| `no ipv6 enable` |  | router, switch | Turn link-local-only IPv6 off |
+| `ipv6 ospf <1-65535> area <0-4294967295>` |  | router, switch | Advertise this loopback in OSPFv3 |
+| `no ipv6 ospf <1-65535> area <0-4294967295>` |  | router, switch | Stop advertising it in OSPFv3 |
+| `ip ospf cost <1-65535>` |  | router, switch | This loopback's OSPF cost |
+| `no ip ospf cost` |  | router, switch | Cost 1 again |
+| `ipv6 address autoconfig` | interface | router, switch | Take an address from router advertisements |
+| `ipv6 address autoconfig default` | interface | router, switch | Autoconfigure, and route by default to the advertising router |
+| `no ipv6 address autoconfig` | interface | router, switch | Stop autoconfiguring |
+| `ipv6 address dhcp` | interface | router, switch | Take an address from a DHCPv6 server |
+| `no ipv6 address dhcp` | interface | router, switch | Give the DHCPv6 address back |
+| `ip ospf <1-65535> area <0-4294967295>\|A.B.C.D` | interface, subinterface | router, switch | Run OSPF on this interface, in this area |
+| `no ip ospf <1-65535> area [AREA]` | interface, subinterface | router, switch | Stop OSPF here |
+| `ip ospf hello-interval <1-65535>` | interface, subinterface | router, switch | Seconds between hellos (10) |
+| `no ip ospf hello-interval` | interface, subinterface | router, switch | Hellos every 10 seconds again |
+| `ip ospf dead-interval <1-65535>` | interface, subinterface | router, switch | Silence before a neighbour is dropped |
+| `no ip ospf dead-interval` | interface, subinterface | router, switch | Four hello intervals again |
+| `ip ospf network {point-to-point\|broadcast}` | interface, subinterface | router, switch | Link type: point-to-point elects no DR |
+| `no ip ospf network` | interface, subinterface | router, switch | The link type its medium has |
+| `redistribute static` |  | router, switch | Advertise static routes as external |
+| `redistribute static [subnets]` |  | router, switch | Advertise static routes as external |
+| `no redistribute static` |  | router, switch | Stop advertising static routes |
+| `no redistribute static [subnets]` |  | router, switch | Stop advertising static routes |
+| `clear ip ospf process` | privileged | router, switch | Restart OSPF: neighbours and DR elections anew |
+| `clear ip ospf <1-65535> process` | privileged | router, switch | Restart this OSPF process |
+| `show ip ospf database` | user, privileged | router, switch | OSPF link-state database |
+| `show ip ospf neighbor detail` | user, privileged | router, switch | OSPF neighbours in full |
 | `ip address A.B.C.D MASK` |  | router | Set the tunnel's address |
 | `no ip address` |  | router | Remove the tunnel's address |
 | `shutdown` |  | router | Disable the tunnel |
@@ -544,7 +581,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `ip ssh version {1\|2}` | config | router, switch | SSH protocol version |
 | `ipv6 unicast-routing` | config | router, switch | Forward IPv6 and advertise prefixes |
 | `no ipv6 unicast-routing` | config | router, switch | Stop forwarding IPv6 |
-| `ipv6 route X:X::X/<0-128> <next hop and/or interface>` | config | router, switch | Add an IPv6 static route |
+| `ipv6 route X:X::X/<0-128> <next hop and/or interface> [distance]` | config | router, switch | Add an IPv6 static route (with a distance: a backup route) |
 | `no ipv6 route X:X::X/<0-128>` | config | router, switch | Remove IPv6 static routes |
 | `no ipv6 route X:X::X/<0-128> <next hop and/or interface>` | config | router, switch | Remove an IPv6 static route |
 | `ipv6 address X:X::X/<0-128>` | interface, subinterface | router, switch | Add an IPv6 address |
