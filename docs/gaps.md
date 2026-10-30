@@ -17,20 +17,20 @@ Hours are Opus 5.5 agent wall-clock estimates.
 | 2 | **Console coverage:** more debugs, `show processes/memory`, LLDP, `show ip ospf interface`; going through the CCNA 1 labs command by command | CCNA 1 from the first lab | 6–14 h |
 | 3 | **More protocol frames in Simulation mode:** OSPF database exchange (DBD/LSR/LSU), LACP, LLDP; BPDUs, OSPF hellos and RIP updates are done | CCNA 2–3 students watching Simulation mode | 8–14 h |
 | 4 | **Wireless LANs:** access points, wireless routers, laptop wireless cards, SSID and WPA2, association | CCNA 2 | 40–60 h |
-| 5 | **Spanning-tree timers and RSTP** (listening/learning delays, proposal/agreement) | CCNA 2 | 8–12 h |
-| 6 | **OSPF database on the wire and area types:** DBD/LSR/LSU/LSAck exchange in Simulation mode, stub/NSSA areas, summarisation; RIP on multilayer switches | CCNA 3 | 14–21 h |
-| 7 | **IPv6 depth:** OSPFv3, DHCPv6 relay, IPv6 on subinterfaces and VLAN interfaces | CCNA 2–3 | 28–40 h |
-| 8 | **Services:** FTP, email (SMTP/POP3 with the PC Email app), SNMP, AAA (RADIUS/TACACS+) | CCNA 3, network management labs | 40–60 h |
-| 9 | **Translations** through `craft-i18n`, Spanish first | Non-English students | 25–40 h |
-| 10 | **Packaging and first release:** icon, installers, workflows, About window ([releasing.md](releasing.md)) | Everyone who isn't a developer | 14–24 h |
-| 11 | **Workspace:** drawing freeform, clusters, physical view, print/export the workspace | Everyone, occasionally | 50–75 h |
-| 12 | **Device families:** modular routers, ASA, IoT, phones | Specialised labs | 80–120 h |
-| 13 | **EIGRP, VPN (GRE/IPsec), QoS** | CCNA 3 extras | 40–60 h |
+| 5 | **OSPF database on the wire and area types:** DBD/LSR/LSU/LSAck exchange in Simulation mode, stub/NSSA areas, summarisation; RIP on multilayer switches | CCNA 3 | 14–21 h |
+| 6 | **IPv6 depth:** OSPFv3, DHCPv6 relay, IPv6 on subinterfaces and VLAN interfaces | CCNA 2–3 | 28–40 h |
+| 7 | **Services:** FTP, email (SMTP/POP3 with the PC Email app), SNMP, AAA (RADIUS/TACACS+) | CCNA 3, network management labs | 40–60 h |
+| 8 | **Translations** through `craft-i18n`, Spanish first | Non-English students | 25–40 h |
+| 9 | **Packaging and first release:** icon, installers, workflows, About window ([releasing.md](releasing.md)) | Everyone who isn't a developer | 14–24 h |
+| 10 | **Workspace:** drawing freeform, clusters, physical view, print/export the workspace | Everyone, occasionally | 50–75 h |
+| 11 | **Device families:** modular routers, ASA, IoT, phones | Specialised labs | 80–120 h |
+| 12 | **EIGRP, VPN (GRE/IPsec), QoS** | CCNA 3 extras | 40–60 h |
 
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Done: spanning-tree listening/learning timers, rapid-pvst. |
 | 2026-10-30 | minor | Done: the web build asks before closing a tab with unsaved changes; File ▸ Open Recent on the desktop. |
 | 2026-10-30 | minor | Done: NTP, syslog and TFTP (server services and router commands). |
 | 2026-10-30 | minor | Done: DHCPv6 (stateless and stateful) and router advertisement M/O flags. |

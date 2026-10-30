@@ -347,7 +347,8 @@ fn stp_blocked(app: &mut PacketApp, end: End) -> bool {
         c.stp.clear();
     }
     let tree = c.stp.entry(vlan.get()).or_insert_with(|| packetcraft_sim::stp::compute(t, vlan));
-    !tree.forwards(end.device, end.port)
+    // Amber while blocked, and while listening or learning after coming up.
+    !tree.forwards(end.device, end.port) || app.session.sim.stp_converging(end.device, end.port)
 }
 
 fn draw_links(app: &mut PacketApp, painter: &egui::Painter, view: &View, tk: &Tokens) {

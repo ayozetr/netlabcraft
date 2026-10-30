@@ -88,6 +88,9 @@ pub fn running_config(d: &Device) -> String {
         }
         let _ = writeln!(s, "!");
     }
+    if d.rapid_stp {
+        let _ = writeln!(s, "spanning-tree mode rapid-pvst");
+    }
     for (v, p) in &d.stp_priority {
         let _ = writeln!(s, "spanning-tree vlan {v} priority {p}");
     }
@@ -750,7 +753,7 @@ pub fn dhcp_pools(sim: &Sim, d: &Device) -> String {
 }
 
 /// `show spanning-tree` for one VLAN.
-pub fn spanning_tree(t: &Topology, d: &Device, vlan: VlanId, tree: &packetcraft_sim::stp::VlanTree) -> String {
+pub fn spanning_tree(t: &Topology, sim: &Sim, d: &Device, vlan: VlanId, tree: &packetcraft_sim::stp::VlanTree) -> String {
     let Some(me) = tree.bridges.get(&d.id) else { return format!("VLAN{:04}: this switch has no port in the tree", vlan.get()) };
     let mut s = format!("VLAN{:04}\n", vlan.get());
     let _ = writeln!(s, "  Root ID    Priority {:<6} Address {}", me.root.priority, me.root.mac.dotted());
@@ -777,7 +780,7 @@ pub fn spanning_tree(t: &Topology, d: &Device, vlan: VlanId, tree: &packetcraft_
             "{:<10} {:<4} {:<5} {:<6} {:<8} {kind}",
             packetcraft_sim::channel::port_label(t, d, *p, true),
             info.role.short(),
-            info.role.state(),
+            sim.stp_transition(d.id, *p, vlan).unwrap_or(info.role.state()),
             info.cost,
             format!("128.{}", p + 1)
         );

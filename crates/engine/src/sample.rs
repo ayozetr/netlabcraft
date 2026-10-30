@@ -126,6 +126,10 @@ impl Builder {
         let d = self.t.resolve(dev)?;
         let mut cli = packetcraft_ios::Cli::default();
         for l in lines.lines().map(str::trim).filter(|l| !l.is_empty()) {
+            // Samples start converged: no port spends its 30 s listening and learning.
+            self.sim.topology_changed(&self.t);
+            let _ = self.sim.spanning_tree(&self.t, packetcraft_core::VlanId::DEFAULT);
+            self.sim.converge_stp();
             let o = packetcraft_ios::execute(&mut self.t, &mut self.sim, d, &mut cli, l);
             if o.output.starts_with("% ") || o.output.contains("\n% ") {
                 return Err(EngineError::Failed(format!("sample: {dev}: `{l}`: {}", o.output)));

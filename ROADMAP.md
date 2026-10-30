@@ -20,15 +20,15 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 | Number | Value | Kind |
 |---|---|---|
-| **Ready for real work** (weighted) | **~60%** | estimated from written weights (60.5); [target-app-parity.md](docs/target-app-parity.md) |
+| **Ready for real work** (weighted) | **~61%** | estimated from written weights (61.1); [target-app-parity.md](docs/target-app-parity.md) |
 | **CCNA 1 student** | **~74%** | estimated; [method](docs/target-app-parity.md#audiences) |
-| **CCNA 2 student** | **~68%** | estimated |
+| **CCNA 2 student** | **~71%** | estimated |
 | **CCNA 3 student** | **~62%** | estimated |
 | **Instructor** (graded activities) | **~45%** | estimated |
 | Engine commands | 40 | measured: `crates/engine/src/catalog.rs` |
 | Console grammar entries | 225 across 12 modes | measured: `crates/ios/src/grammar.rs` |
 | Device models · sample labs | 13 · 17 | measured |
-| Tests | 136 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Tests | 137 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~600–950 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
@@ -37,7 +37,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 |---|---|---|---|
 | Full target | ~50% | ~600–950 | Activities and scoring, wireless, more device families, services, physical workspace, translations |
 | CCNA 1 student | ~74% | ~30–55 | Console coverage, protocol frames in Simulation mode, PDU details |
-| CCNA 2 student | ~68% | ~80–130 | Wireless LANs, STP timers and RSTP |
+| CCNA 2 student | ~71% | ~70–115 | Wireless LANs |
 | CCNA 3 student | ~62% | ~110–180 | OSPFv3, VPN, SNMP and AAA, QoS |
 | Instructor | ~45% | ~50–90 | Timer, locking, variables, per-check feedback, translations |
 
@@ -46,7 +46,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Dimension | Weight | Ready | Hours to ~95% | State |
 |---|---|---|---|---|
 | Device console | 20 | 65% | 50–80 | Modes, abbreviations, `?`, Tab, history, config round-trip; `show` coverage growing |
-| Layer 2 | 12 | 80% | 18–30 | VLANs, trunks, DTP, per-VLAN STP with BPDUs, EtherChannel, VTP, port security; no STP timers or RSTP |
+| Layer 2 | 12 | 85% | 12–20 | VLANs, trunks, DTP, per-VLAN STP with BPDUs and timers, rapid-pvst, EtherChannel, VTP, port security |
 | Layer 3 | 15 | 66% | 50–80 | IPv4, IPv6 (NDP, SLAAC), static, RIP, multi-area OSPF with DR/BDR, multilayer switching, HSRP; no EIGRP or OSPFv3 |
 | Services | 8 | 58% | 26–42 | DHCPv4 and DHCPv6, DNS, HTTP with browser, Telnet/SSH, NTP, syslog, TFTP; no FTP, email, SNMP, AAA |
 | Security | 8 | 72% | 24–40 | IPv4 and IPv6 ACLs, access-class, NAT/PAT, passwords and lines, PPP PAP/CHAP; no firewalls or VPN |
@@ -60,6 +60,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-10-30 — Spanning-tree timers.** A port that starts forwarding listens 15 s and learns 15 s first (amber light, LIS/LRN in `show spanning-tree`), as on real switches; portfast and `spanning-tree mode rapid-pvst` skip the wait; sample labs start converged.
 - **2026-10-30 — Safer files.** The web build asks before a tab with unsaved changes closes; the desktop keeps a File ▸ Open Recent list.
 - **2026-10-30 — NTP, syslog and TFTP.** Server NTP, SYSLOG and TFTP services with their pages in the Services tab; `ntp server`, `show ntp status`, `logging host`, `copy running-config tftp:` and `copy tftp: startup-config`, all on the wire in their standard formats.
 - **2026-10-30 — DHCPv6.** `ipv6 dhcp pool`, `ipv6 dhcp server` and the M/O flags in router advertisements; hosts follow them with SLAAC, stateless DHCPv6 or stateful DHCPv6, with the exchange in Simulation mode; `show ipv6 dhcp pool/binding`.

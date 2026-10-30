@@ -321,6 +321,7 @@ pub enum Id {
     NoLoggingHost,
     CopyToTftp,
     CopyFromTftp,
+    StpMode,
 }
 
 use Tok::{Arg, K, Rest};
@@ -911,11 +912,11 @@ pub static SPECS: &[Spec] = &[
         "Make this switch the root (or the backup root)"
     ),
     spec!(
-        Accepted,
+        StpMode,
         Modes::CONFIG,
         Modes::SWITCH,
         [K("spanning-tree"), K("mode"), Arg("{pvst|rapid-pvst}")],
-        "Spanning-tree flavour (accepted; the tree is computed the same way)"
+        "Classic (30 s to forward) or rapid spanning tree"
     ),
     spec!(Portfast, Modes::IF, Modes::SWITCH, [K("spanning-tree"), K("portfast")], "An edge port: forward at once"),
     spec!(NoPortfast, Modes::IF, Modes::SWITCH, [K("no"), K("spanning-tree"), K("portfast")], "Not an edge port"),

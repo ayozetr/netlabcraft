@@ -1103,6 +1103,15 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(String::new())
         }
         Id::CopyToTftp | Id::CopyFromTftp => c.tftp_copy(spec.id == Id::CopyToTftp, line, arg(0)),
+        Id::StpMode => {
+            let rapid = match arg(0).to_ascii_lowercase().as_str() {
+                "pvst" => false,
+                "rapid-pvst" => true,
+                _ => return Err("% pvst or rapid-pvst".into()),
+            };
+            c.dm()?.rapid_stp = rapid;
+            Ok(String::new())
+        }
         Id::ShowStandby => {
             let roles = c.sim.hsrp_roles(c.t);
             Ok(render::standby(c.d()?, roles.get(&c.dev).map_or(&[][..], Vec::as_slice)))
@@ -2185,7 +2194,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             for v in vlans {
                 let tree = c.sim.spanning_tree(c.t, v).clone();
                 if tree.bridges.contains_key(&d.id) {
-                    out.push(render::spanning_tree(c.t, &d, v, &tree));
+                    out.push(render::spanning_tree(c.t, c.sim, &d, v, &tree));
                 }
             }
             Ok(if out.is_empty() { "No VLAN has a port in a spanning tree yet.".into() } else { out.join("\n\n") })
@@ -2197,7 +2206,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 return Err(format!("% VLAN {v} does not exist on this switch"));
             }
             let tree = c.sim.spanning_tree(c.t, v).clone();
-            Ok(render::spanning_tree(c.t, &d, v, &tree))
+            Ok(render::spanning_tree(c.t, c.sim, &d, v, &tree))
         }
         Id::ShowDhcpBinding => Ok(render::dhcp_bindings(c.sim, c.d()?)),
         Id::ShowDhcpPool => Ok(render::dhcp_pools(c.sim, c.d()?)),

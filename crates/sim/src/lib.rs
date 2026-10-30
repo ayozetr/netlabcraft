@@ -609,6 +609,10 @@ pub struct Sim {
     /// Spanning trees per VLAN, for the topology with this fingerprint.
     stp_for: u64,
     stp: BTreeMap<u16, stp::VlanTree>,
+    /// Trees from before the last topology change, to see which ports started forwarding.
+    stp_prev: BTreeMap<u16, stp::VlanTree>,
+    /// Ports that started forwarding at this time (µs) and spend 30 s listening and learning.
+    stp_since: BTreeMap<(u16, DeviceId, usize), u64>,
     /// EtherChannel bundles per switch, for the same topology as `stp`.
     chmaps: BTreeMap<DeviceId, channel::PortMap>,
     /// OSPF's routes, for the topology with this fingerprint.
@@ -1228,7 +1232,9 @@ impl Sim {
         let f = stp::fingerprint(t);
         if f != self.stp_for {
             self.stp_for = f;
-            self.stp.clear();
+            for (v, tree) in std::mem::take(&mut self.stp) {
+                self.stp_prev.insert(v, tree);
+            }
             self.chmaps.clear();
             // A topology change: switches flush what they learned, as a topology-change
             // notification makes them do, so no address points at a path that is gone.
@@ -1241,7 +1247,61 @@ impl Sim {
     /// The spanning tree of a VLAN for this topology.
     pub fn spanning_tree(&mut self, t: &Topology, vlan: VlanId) -> &stp::VlanTree {
         self.refresh_stp(t);
-        self.stp.entry(vlan.get()).or_insert_with(|| stp::compute(t, vlan))
+        self.stp_tree(t, vlan)
+    }
+
+    /// The tree of a VLAN (computed once per topology). Ports that just became root or
+    /// designated, without portfast or rapid spanning tree, start listening and learning.
+    fn stp_tree(&mut self, t: &Topology, vlan: VlanId) -> &stp::VlanTree {
+        let v = vlan.get();
+        if !self.stp.contains_key(&v) {
+            let tree = stp::compute(t, vlan);
+            if let Some(prev) = self.stp_prev.remove(&v) {
+                for ((dev, p), info) in &tree.ports {
+                    let key = (v, *dev, *p);
+                    if !info.role.forwards() {
+                        self.stp_since.remove(&key);
+                        continue;
+                    }
+                    // An EtherChannel is one port whichever member leads it now.
+                    let members: Vec<usize> = t
+                        .device(*dev)
+                        .and_then(|d| {
+                            let group = d.ports.get(*p)?.channel?.number;
+                            Some((0..d.ports.len()).filter(|i| d.ports.get(*i).and_then(|x| x.channel).is_some_and(|g| g.number == group)).collect())
+                        })
+                        .unwrap_or_else(|| vec![*p]);
+                    let was = members.iter().any(|m| prev.ports.get(&(*dev, *m)).is_some_and(|i| i.role.forwards()));
+                    let immediate = t.device(*dev).is_some_and(|d| d.rapid_stp || d.ports.get(*p).is_some_and(|x| x.portfast));
+                    if !was && !immediate {
+                        self.stp_since.insert(key, self.now);
+                    }
+                }
+            }
+            self.stp.insert(v, tree);
+        }
+        self.stp.entry(v).or_insert_with(|| stp::compute(t, vlan))
+    }
+
+    /// A port that is still listening or learning: `"LIS"` the first 15 s, `"LRN"` the next 15.
+    pub fn stp_transition(&self, dev: DeviceId, port: usize, vlan: VlanId) -> Option<&'static str> {
+        let since = *self.stp_since.get(&(vlan.get(), dev, port))?;
+        match self.now.saturating_sub(since) {
+            0..15_000_000 => Some("LIS"),
+            15_000_000..30_000_000 => Some("LRN"),
+            _ => None,
+        }
+    }
+
+    /// Ends every listening and learning period at once (a lab built offline starts converged;
+    /// the time bar's fast-forward does the same).
+    pub fn converge_stp(&mut self) {
+        self.stp_since.clear();
+    }
+
+    /// Whether a port is listening or learning in any VLAN (an amber light).
+    pub fn stp_converging(&self, dev: DeviceId, port: usize) -> bool {
+        self.stp_since.iter().any(|((_, d, p), since)| *d == dev && *p == port && self.now.saturating_sub(*since) < 30_000_000)
     }
 
     fn chmap(&mut self, t: &Topology, d: &Device) -> channel::PortMap {
@@ -1249,7 +1309,7 @@ impl Sim {
     }
 
     fn stp_forwards(&mut self, t: &Topology, dev: DeviceId, port: usize, vlan: VlanId) -> bool {
-        self.stp.entry(vlan.get()).or_insert_with(|| stp::compute(t, vlan)).forwards(dev, port)
+        self.stp_tree(t, vlan).forwards(dev, port) && self.stp_transition(dev, port, vlan).is_none()
     }
 
     // ---- switching (IEEE 802.1D learning, 802.1Q tagging) ----
@@ -1290,6 +1350,10 @@ impl Sim {
             return Err("port suspended: it can't join its EtherChannel".into());
         }
         if !self.stp_forwards(t, d.id, chm.logical(in_port), vlan) {
+            if let Some(state) = self.stp_transition(d.id, chm.logical(in_port), vlan) {
+                let what = if state == "LIS" { "listening" } else { "learning" };
+                return Err(format!("port still {what} (spanning tree, VLAN {vlan}): it forwards 30 s after coming up"));
+            }
             return Err(format!("port blocked by spanning tree (VLAN {vlan})"));
         }
         self.port_security(d, in_port, f.src)?;

@@ -355,7 +355,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `spanning-tree vlan <1-4094>[,-] priority <0-61440>` | config | switch | Bridge priority (multiples of 4096) |
 | `no spanning-tree vlan <1-4094>[,-] priority` | config | switch | Back to priority 32768 |
 | `spanning-tree vlan <1-4094>[,-] root {primary\|secondary}` | config | switch | Make this switch the root (or the backup root) |
-| `spanning-tree mode {pvst\|rapid-pvst}` | config | switch | Spanning-tree flavour (accepted; the tree is computed the same way) |
+| `spanning-tree mode {pvst\|rapid-pvst}` | config | switch | Classic (30 s to forward) or rapid spanning tree |
 | `spanning-tree portfast` | interface | switch | An edge port: forward at once |
 | `no spanning-tree portfast` | interface | switch | Not an edge port |
 | `show spanning-tree` | user, privileged | switch | Spanning trees of every VLAN |

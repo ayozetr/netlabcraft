@@ -1187,6 +1187,9 @@ fn dtp_by_typing() {
     // desirable asks: it trunks.
     lab.run(s1, "conf t\nint g0/1\nswitchport mode dynamic desirable\nend");
     assert!(trunks(&mut lab));
+    // The new trunk listens and learns for 30 s before it forwards VLAN 10.
+    assert!(lab.run(s1, "show spanning-tree vlan 10").contains("LIS"));
+    lab.sim.run_for(&lab.t, 31_000_000);
     lab.run(a, "ping 10.0.10.2");
     assert!(lab.run(a, "ping 10.0.10.2").contains("4 answered"));
     let sw = lab.run(s2, "show interfaces g0/1 switchport");
@@ -1415,4 +1418,34 @@ fn ntp_syslog_and_tftp_by_typing() {
     assert!(lab.try_run(r, "copy tftp: running-config 10.0.0.100 nope").contains("no such file"));
     assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("TFTP data block 2")));
     assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("NTP time from 10.0.0.100")));
+}
+
+#[test]
+fn spanning_tree_timers_by_typing() {
+    let mut lab = Lab::new();
+    let s1 = lab.add(DeviceKind::Switch);
+    let a = lab.add(DeviceKind::Pc);
+    let b = lab.add(DeviceKind::Pc);
+    lab.cable(a, "fa0", s1, "fa0/1");
+    lab.run(a, "ipconfig 10.0.0.1 255.255.255.0");
+    lab.run(b, "ipconfig 10.0.0.2 255.255.255.0");
+    lab.run(s1, "en\nshow spanning-tree");
+    // A PC cabled later: its port listens 15 s, learns 15 s, then forwards.
+    lab.cable(b, "fa0", s1, "fa0/2");
+    lab.sim.topology_changed(&lab.t);
+    assert!(lab.run(s1, "show spanning-tree").contains("Fa0/2      Desg LIS"));
+    assert!(lab.run(a, "ping 10.0.0.2").contains(" 0 answered"));
+    lab.sim.run_for(&lab.t, 10_000_000);
+    assert!(lab.run(s1, "show spanning-tree").contains("Fa0/2      Desg LRN"));
+    lab.sim.run_for(&lab.t, 15_000_000);
+    lab.run(a, "ping 10.0.0.2");
+    assert!(lab.run(a, "ping 10.0.0.2").contains("4 answered"));
+    // Portfast or rapid spanning tree: at once.
+    let c = lab.add(DeviceKind::Pc);
+    lab.run(c, "ipconfig 10.0.0.3 255.255.255.0");
+    lab.run(s1, "conf t\nspanning-tree mode rapid-pvst\nend");
+    lab.cable(c, "fa0", s1, "fa0/3");
+    lab.sim.topology_changed(&lab.t);
+    assert!(lab.run(a, "ping 10.0.0.3").contains("answered") && !lab.run(a, "ping 10.0.0.3").contains(" 0 answered"));
+    assert!(lab.run(s1, "show running-config").contains("spanning-tree mode rapid-pvst"));
 }

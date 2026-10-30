@@ -366,6 +366,9 @@ fn dhcp_hands_out_addresses_from_a_pool() {
     let mut t2 = t.clone();
     t2.device_mut(a).unwrap().ports[0].ip = Some(la.address);
     t2.device_mut(b).unwrap().ports[0].ip = Some(lb.address);
+    // The new PC's switch port listens and learns for 30 s first.
+    sim.topology_changed(&t2);
+    sim.run_for(&t2, 31_000_000);
     assert_eq!(sim.dhcp_acquire(&t2, c).unwrap().address.to_string(), "192.168.1.13/24");
     assert_eq!(sim.dhcp_acquire(&t2, a).unwrap().address, la.address);
     // No pool for the subnet: no answer.
@@ -422,6 +425,8 @@ fn spanning_tree_breaks_a_triangle_of_switches() {
     sim.topology_changed(&t);
     let tree = sim.spanning_tree(&t, v1).clone();
     assert!(tree.ports.values().all(|p| p.role != stp::Role::Alternate));
+    // The port that stops blocking listens and learns for 30 s before it forwards.
+    sim.run_for(&t, 31_000_000);
     assert_eq!(marks(&sim.ping(&t, a, ip("10.0.0.2"), PingOptions { count: 2, ..Default::default() }).unwrap()), "!!");
 }
 

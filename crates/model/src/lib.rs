@@ -668,6 +668,10 @@ pub struct Device {
     /// Switches: VTP.
     #[serde(default, skip_serializing_if = "Vtp::is_default")]
     pub vtp: Vtp,
+    /// Switches: `spanning-tree mode rapid-pvst` (ports forward at once instead of listening
+    /// and learning for 30 s).
+    #[serde(default)]
+    pub rapid_stp: bool,
     /// The saved configuration (`copy running-config startup-config`), as command lines.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub startup: Option<String>,
@@ -1122,6 +1126,7 @@ impl Device {
             routes: Vec::new(),
             vlans: BTreeMap::new(),
             vtp: Vtp::default(),
+            rapid_stp: false,
             startup: None,
             dhcp_pools: Vec::new(),
             dhcp_excluded: Vec::new(),
