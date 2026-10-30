@@ -70,6 +70,13 @@ pub static MODELS: &[Model] = &[
         ports: &[run("GigabitEthernet0/", 0, 1), run("Serial0/0/", 0, 1)],
     },
     Model {
+        id: "Firewall-5",
+        kind: DeviceKind::Router,
+        label: "Firewall-5",
+        description: "Stateful firewall with 5 Gigabit Ethernet ports: named interfaces with security levels, access rules, object NAT and a DHCP server",
+        ports: &[run("GigabitEthernet1/", 1, 5)],
+    },
+    Model {
         id: "Switch-8",
         kind: DeviceKind::Switch,
         label: "Switch 8FE",

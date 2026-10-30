@@ -87,8 +87,43 @@ pub fn model_marks(p: &Painter, rect: Rect, model_id: &str, multilayer: bool) {
             lap_mark(p, rect);
         }
         "WLC" => wlc_mark(p, rect),
+        "Firewall-5" => firewall_mark(p, rect),
         _ => {}
     }
+}
+
+/// The firewall appliance: a brick wall standing in front of the router drum (it routes, and
+/// it stops what isn't allowed), with a small shield on its top edge.
+pub fn firewall_mark(p: &Painter, rect: Rect) {
+    let w = rect.width();
+    let brick = Color32::from_rgb(0xb5, 0x4a, 0x2c);
+    let mortar = Color32::from_rgb(0xf1, 0xe4, 0xd6);
+    let wall = Rect::from_min_max(pos2(rect.left() + w * 0.04, rect.center().y - w * 0.12), pos2(rect.right() - w * 0.04, rect.center().y + w * 0.3));
+    p.rect_filled(wall, w * 0.03, brick);
+    let line = Stroke::new((w / 32.0).max(1.0), mortar);
+    let rows = 3;
+    let row_h = wall.height() / rows as f32;
+    for r in 1..rows {
+        let y = wall.top() + row_h * r as f32;
+        p.line_segment([pos2(wall.left(), y), pos2(wall.right(), y)], line);
+    }
+    for r in 0..rows {
+        let (top, bottom) = (wall.top() + row_h * r as f32, wall.top() + row_h * (r + 1) as f32);
+        // Bricks a third of the wall wide, every other row shifted by half a brick.
+        let offset = if r % 2 == 0 { 1.0 / 6.0 } else { 1.0 / 3.0 };
+        for k in 0..3 {
+            let x = wall.left() + wall.width() * (offset + k as f32 / 3.0);
+            if x > wall.left() + w * 0.02 && x < wall.right() - w * 0.02 {
+                p.line_segment([pos2(x, top), pos2(x, bottom)], line);
+            }
+        }
+    }
+    p.rect_stroke(wall, w * 0.03, Stroke::new((w / 30.0).max(1.0), shade(brick, 0.55)), StrokeKind::Inside);
+    // The shield: a pointed badge over the wall's top right corner.
+    let c = pos2(wall.right() - w * 0.14, wall.top() - w * 0.02);
+    let s = w * 0.13;
+    let shield = vec![c + vec2(-s, -s * 0.9), c + vec2(s, -s * 0.9), c + vec2(s, s * 0.1), c + vec2(0.0, s * 1.1), c + vec2(-s, s * 0.1)];
+    p.add(Shape::convex_polygon(shield, Color32::from_rgb(0x2e, 0x8b, 0x57), Stroke::new((w / 32.0).max(1.0), Color32::WHITE)));
 }
 
 /// Draws a device icon filling `rect`.

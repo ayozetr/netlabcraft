@@ -86,6 +86,11 @@ pub static SAMPLES: &[Sample] = &[
         description: "Two lightweight access points join the controller WLC1, which offers Staff (WPA2-Enterprise, logins checked by a RADIUS server) and Guest (WPA2-PSK).",
     },
     Sample {
+        id: "firewall",
+        title: "A firewall with inside, outside and DMZ",
+        description: "FW1 lets the office out (sharing its outside address), keeps the Internet out of the office, and publishes the DMZ web server through a fixed address and one access rule.",
+    },
+    Sample {
         id: "ospf",
         title: "OSPF on three routers",
         description: "Three routers in a triangle learn each other's networks with OSPF; cut a link and the routes move.",
@@ -631,6 +636,76 @@ pub fn build(id: &str) -> Result<Topology> {
                 b.type_in(name, "ipconfig /renew")?;
             }
             b.t.notes = "WLC1 holds two WLANs (`show wlan`, `show capwap`): Staff checks logins with RADIUS1 (users ana/ana12345 and luis/luis1234), Guest uses the passphrase invitado123. In Simulation mode, reset and ping from Laptop1 to watch the 802.11 association, the EAP login and the RADIUS exchange; give Laptop1 a wrong password and watch it refused.".into();
+        }
+        "firewall" => {
+            b.add_model("Firewall-5", "FW1", 360.0, 120.0)?;
+            b.add_model("Router-2", "ISP", 640.0, 120.0)?;
+            b.add_model("Switch-24", "S1", 360.0, 280.0)?;
+            b.add(DeviceKind::Server, "Web", 120.0, 120.0)?;
+            b.add(DeviceKind::Pc, "Home", 880.0, 120.0)?;
+            b.cable("FW1", "g1/1", "S1", "g0/1")?;
+            b.cable("FW1", "g1/2", "ISP", "g0/0")?;
+            b.cable("FW1", "g1/3", "Web", "g0")?;
+            b.cable("Home", "fa0", "ISP", "g0/1")?;
+            b.type_in(
+                "FW1",
+                "enable
+                configure terminal
+                interface g1/1
+                nameif inside
+                security-level 100
+                ip address 192.168.10.1 255.255.255.0
+                no shutdown
+                interface g1/2
+                nameif outside
+                security-level 0
+                ip address 203.0.113.2 255.255.255.0
+                no shutdown
+                interface g1/3
+                nameif dmz
+                security-level 50
+                ip address 172.16.1.1 255.255.255.0
+                no shutdown
+                exit
+                route outside 0.0.0.0 0.0.0.0 203.0.113.1
+                object network OFFICE
+                subnet 192.168.10.0 255.255.255.0
+                nat (inside,outside) dynamic interface
+                object network DMZ_NET
+                subnet 172.16.1.0 255.255.255.0
+                nat (dmz,outside) dynamic interface
+                object network WEB
+                host 172.16.1.10
+                nat (dmz,outside) static 203.0.113.10
+                exit
+                access-list OUTSIDE_IN extended permit tcp any object WEB eq www
+                access-list OUTSIDE_IN extended permit icmp any object WEB
+                access-group OUTSIDE_IN in interface outside
+                dhcpd address 192.168.10.100-192.168.10.150 inside
+                dhcpd dns 172.16.1.10
+                dhcpd enable inside
+                end",
+            )?;
+            b.type_in(
+                "ISP",
+                "enable
+                configure terminal
+                interface g0/0
+                ip address 203.0.113.1 255.255.255.0
+                no shutdown
+                interface g0/1
+                ip address 198.51.100.1 255.255.255.0
+                no shutdown
+                end",
+            )?;
+            b.type_in("Web", "ipconfig 172.16.1.10 255.255.255.0 172.16.1.1")?;
+            b.type_in("Home", "ipconfig 198.51.100.10 255.255.255.0 198.51.100.1")?;
+            for (i, pc) in ["PC1", "PC2"].into_iter().enumerate() {
+                b.add(DeviceKind::Pc, pc, 240.0 + 240.0 * i as f32, 440.0)?;
+                b.cable(pc, "fa0", "S1", &format!("fa0/{}", i + 1))?;
+                b.type_in(pc, "ipconfig /renew")?;
+            }
+            b.t.notes = "FW1 has three named interfaces: inside (level 100), dmz (50) and outside (0). The office and the DMZ reach the Internet through the outside address (`show xlate`, `show conn`); Home can't start anything towards them, except the web server, published as 203.0.113.10 by a static rule and one access rule (`show access-list` counts the hits). From Home, browse http://203.0.113.10 and ping PC1 to see the difference; `show logging` on FW1 tells why a packet was dropped.".into();
         }
         "ospf" => {
             for (name, x, y) in [("R1", 120.0, 80.0), ("R2", 600.0, 80.0), ("R3", 360.0, 260.0)] {

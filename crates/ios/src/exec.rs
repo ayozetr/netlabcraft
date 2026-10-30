@@ -13,6 +13,7 @@ use packetcraft_sim::{DebugKind, PingOptions, Sim, port_up};
 use crate::grammar::{self, Id, Modes, ParseError};
 use crate::{host, render};
 
+pub(crate) mod firewall;
 pub(crate) mod qos;
 mod vpn;
 mod wlan;
@@ -77,6 +78,8 @@ pub enum Mode {
     PolicyMap(String),
     /// `R1(config-pmap-c)#`: the policy map's and the class's names.
     PolicyClass(String, String),
+    /// `FW1(config-network-object)#`: the firewall's network object.
+    Object(String),
 }
 
 impl Mode {
@@ -105,6 +108,7 @@ impl Mode {
             Mode::ClassMap(_) => Modes::CLASS_MAP,
             Mode::PolicyMap(_) => Modes::POLICY_MAP,
             Mode::PolicyClass(..) => Modes::POLICY_CLASS,
+            Mode::Object(_) => Modes::OBJECT,
         }
     }
 }
@@ -355,8 +359,14 @@ pub struct Outcome {
     pub clear: bool,
 }
 
-fn device_bits(kind: DeviceKind) -> Modes {
-    if kind == DeviceKind::Switch { Modes::SWITCH } else { Modes::ROUTER }
+fn device_bits(d: &Device) -> Modes {
+    if packetcraft_model::firewall::is_firewall(d) {
+        Modes::FIREWALL
+    } else if d.kind == DeviceKind::Switch {
+        Modes::SWITCH
+    } else {
+        Modes::ROUTER
+    }
 }
 
 /// The prompt for the session's current mode.
@@ -411,6 +421,7 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::ClassMap(_) => format!("{n}(config-cmap)#"),
         Mode::PolicyMap(_) => format!("{n}(config-pmap)#"),
         Mode::PolicyClass(..) => format!("{n}(config-pmap-c)#"),
+        Mode::Object(_) => format!("{n}(config-network-object)#"),
     }
 }
 
@@ -525,7 +536,7 @@ pub fn help_line(t: &Topology, dev: DeviceId, cli: &Cli, line: &str) -> String {
     let ends_in_space = line.is_empty() || line.ends_with(char::is_whitespace);
     let mut words: Vec<&str> = line.split_whitespace().collect();
     let partial = if ends_in_space { "" } else { words.pop().unwrap_or("") };
-    let items = grammar::help(&words, partial, cli.mode.bits(), device_bits(d.kind));
+    let items = grammar::help(&words, partial, cli.mode.bits(), device_bits(d));
     if items.is_empty() {
         return "% No command matches".into();
     }
@@ -542,7 +553,7 @@ pub fn complete_line(t: &Topology, dev: DeviceId, cli: &Cli, line: &str) -> Opti
     }
     let mut words: Vec<&str> = line.split_whitespace().collect();
     let partial = words.pop()?;
-    let kw = grammar::complete(&words, partial, cli.mode.bits(), device_bits(d.kind))?;
+    let kw = grammar::complete(&words, partial, cli.mode.bits(), device_bits(d))?;
     let head = line.get(..line.len() - partial.len()).unwrap_or("");
     Some(format!("{head}{kw} "))
 }
@@ -589,9 +600,8 @@ fn caret(line: &str, word: usize) -> String {
 type R = Result<String, String>;
 
 fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line: &str) -> R {
-    let kind = t.device(dev).map(|d| d.kind).ok_or("% That device no longer exists")?;
+    let dbits = t.device(dev).map(device_bits).ok_or("% That device no longer exists")?;
     let words: Vec<&str> = line.split_whitespace().collect();
-    let dbits = device_bits(kind);
     let mut resolved = grammar::resolve(&words, cli.mode.bits(), dbits);
     // A sub-mode falls back to global configuration commands, which leave the sub-mode.
     if resolved.is_err()
@@ -616,6 +626,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::ClassMap(_)
                 | Mode::PolicyMap(_)
                 | Mode::PolicyClass(..)
+                | Mode::Object(_)
         )
         && let Ok(r) = grammar::resolve(&words, Modes::CONFIG, dbits)
     {
@@ -667,7 +678,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Transform(_)
                 | Mode::CryptoMap(..)
                 | Mode::ClassMap(_)
-                | Mode::PolicyMap(_) => Mode::Config,
+                | Mode::PolicyMap(_)
+                | Mode::Object(_) => Mode::Config,
                 // A class inside a policy map goes back to the policy map.
                 Mode::PolicyClass(ref p, _) => Mode::PolicyMap(p.clone()),
             };
@@ -1542,6 +1554,44 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ShowClassMap
         | Id::ShowPolicyMap
         | Id::ShowPolicyMapInterface => qos::command(&mut c, spec.id, &args),
+        Id::FwNameif
+        | Id::FwNoNameif
+        | Id::FwSecurityLevel
+        | Id::FwNoSecurityLevel
+        | Id::FwRoute
+        | Id::FwNoRoute
+        | Id::FwAccessList
+        | Id::FwNoAccessList
+        | Id::FwNoAccessListEntry
+        | Id::FwAccessGroup
+        | Id::FwNoAccessGroup
+        | Id::FwObjectNetwork
+        | Id::FwNoObjectNetwork
+        | Id::FwObjHost
+        | Id::FwObjSubnet
+        | Id::FwObjNat
+        | Id::FwObjNoNat
+        | Id::FwSameSecurity
+        | Id::FwNoSameSecurity
+        | Id::FwDhcpdAddress
+        | Id::FwNoDhcpdAddress
+        | Id::FwDhcpdEnable
+        | Id::FwNoDhcpdEnable
+        | Id::FwDhcpdDns
+        | Id::FwNoDhcpdDns
+        | Id::FwTimeout
+        | Id::FwShowNat
+        | Id::FwShowXlate
+        | Id::FwShowConn
+        | Id::FwShowAccessList
+        | Id::FwShowIntIpBrief
+        | Id::FwShowRoute
+        | Id::FwShowNameif
+        | Id::FwShowDhcpdBinding
+        | Id::FwShowObjects
+        | Id::FwClearConn
+        | Id::FwClearXlate
+        | Id::FwClearAclCounters => firewall::command(&mut c, spec.id, &args, line),
         Id::WlanAdd | Id::NoWlan | Id::CapwapController | Id::NoCapwapController | Id::ShowWlan | Id::ShowCapwap => {
             wlan::command(&mut c, spec.id, &args)
         }
@@ -3472,6 +3522,9 @@ impl Ctx<'_> {
         let port = d.port_index(&parsed.port_name()).ok_or_else(|| format!("% {} has no interface {}", d.name, parsed.port_name()))?;
         if parsed.sub.is_some() && d.kind != DeviceKind::Router {
             return Err("% Subinterfaces exist only on routers".into());
+        }
+        if parsed.sub.is_some() && packetcraft_model::firewall::is_firewall(d) {
+            return Err("% The firewall's interfaces have no subinterfaces".into());
         }
         Ok(IfRef { port, sub: parsed.sub })
     }
