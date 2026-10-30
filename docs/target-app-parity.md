@@ -1,4 +1,4 @@
-# Target-app parity: PacketCraft vs Cisco Packet Tracer
+# Target-app parity: NetLabCraft vs Cisco Packet Tracer
 
 > **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (EIGRP, GRE/IPsec, drawings and clusters; measured numbers recounted) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
@@ -16,7 +16,7 @@ This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summa
 | Console grammar entries | **636** across 26 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
 | Device models | **28** | measured: `crates/model/src/models.rs` |
 | Sample labs | **23** | measured: `crates/engine/src/sample.rs` |
-| Tests | **300** | measured: `cargo test --workspace` |
+| Tests | **301** | measured: `cargo test --workspace` |
 | **Ready for real work** (weighted) | **~81%** | estimated; written weights below (80.6 computed) |
 | **CCNA 1 student** (Introduction to Networks) | **~86%** | estimated; [method](#audiences) |
 | **CCNA 2 student** (Switching, Routing and Wireless Essentials) | **~92%** | estimated; [method](#audiences) |
@@ -96,7 +96,7 @@ misses commands students meet in the first labs. Alpha gates are in
 
 - **Real frames:** every frame is encoded and decoded; the event list exports to pcap for
   Wireshark or any analyser.
-- **Open lab format:** `.pcraft` is readable JSON ([`file-format.md`](file-format.md)).
+- **Open lab format:** `.nlcraft` is readable JSON ([`file-format.md`](file-format.md)).
 - **Agent control:** every action is a command, reachable from the CLI and an MCP server.
 - **Runs everywhere:** Linux, Windows, macOS, BSD and the browser, with no account or sign-in.
 - **Drop reasons:** a dropped frame says why (ACL, VLAN not allowed, blocked by STP…).

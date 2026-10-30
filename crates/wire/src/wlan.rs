@@ -8,7 +8,7 @@
 //! Ethernet. On an RSN network, data frames after the 4-way handshake are protected with CCMP
 //! (IEEE 802.11 §12.5.3: AES-CCM with an 8-byte MIC, keyed by the pairwise temporal key).
 
-use packetcraft_core::MacAddr;
+use netlabcraft_core::MacAddr;
 
 use crate::{Frame, Result, WireError, be16, mac_at};
 

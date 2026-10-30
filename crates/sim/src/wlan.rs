@@ -33,16 +33,16 @@
 
 use std::net::Ipv4Addr;
 
-use packetcraft_core::{DeviceId, MacAddr, VlanId};
-use packetcraft_model::wlan::{Attempt, WlanSecurity, is_lap, is_wlc, mgmt_addr};
-use packetcraft_model::{Device, End, Topology, ifname};
-use packetcraft_wire::capwap::{self, Control};
-use packetcraft_wire::radius::{ACCESS_ACCEPT, RADIUS_PORT, Radius};
-use packetcraft_wire::wlan::{
+use netlabcraft_core::{DeviceId, MacAddr, VlanId};
+use netlabcraft_model::wlan::{Attempt, WlanSecurity, is_lap, is_wlc, mgmt_addr};
+use netlabcraft_model::{Device, End, Topology, ifname};
+use netlabcraft_wire::capwap::{self, Control};
+use netlabcraft_wire::radius::{ACCESS_ACCEPT, RADIUS_PORT, Radius};
+use netlabcraft_wire::wlan::{
     self, Akm, Body, Bss, Dot11, EAP_FAILURE, EAP_IDENTITY, EAP_PEAP, EAP_REQUEST, EAP_RESPONSE, EAP_SUCCESS, ETHERTYPE_EAPOL, Eap, Eapol, EapolKey,
     KEY_ACK, KEY_INSTALL, KEY_MIC, KEY_PAIRWISE, KEY_SECURE, KEY_VERSION_2, PEAP_START,
 };
-use packetcraft_wire::{Frame, Ipv4, PROTO_UDP, Udp};
+use netlabcraft_wire::{Frame, Ipv4, PROTO_UDP, Udp};
 
 use crate::{LINK_DELAY_US, Queued, Sim, default_ttl, is_ap_radio};
 
@@ -108,7 +108,7 @@ pub(crate) struct Dot1xWait {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Joined {
     wlc: Option<DeviceId>,
-    wlans: Vec<packetcraft_model::wlan::Wlan>,
+    wlans: Vec<netlabcraft_model::wlan::Wlan>,
 }
 
 fn port_mac(t: &Topology, e: End) -> MacAddr {
@@ -149,8 +149,8 @@ pub(crate) fn radio_vlan(t: &Topology, ap: End, src: MacAddr) -> Option<VlanId> 
 }
 
 fn nonce(seed: &str) -> [u8; 32] {
-    let a = packetcraft_wire::sha1::sha1(seed.as_bytes());
-    let b = packetcraft_wire::sha1::sha1(&a);
+    let a = netlabcraft_wire::sha1::sha1(seed.as_bytes());
+    let b = netlabcraft_wire::sha1::sha1(&a);
     let mut out = [0u8; 32];
     out[..20].copy_from_slice(&a);
     out[20..].copy_from_slice(&b[..12]);
@@ -270,12 +270,12 @@ impl Sim {
             return;
         }
         let mut plan: Vec<(End, End, Body)> = Vec::new();
-        for d in t.devices.iter().filter(|d| d.kind == packetcraft_model::DeviceKind::Switch) {
+        for d in t.devices.iter().filter(|d| d.kind == netlabcraft_model::DeviceKind::Switch) {
             for p in (0..d.ports.len()).filter(|p| is_ap_radio(t, End { device: d.id, port: *p })) {
                 let ap = End { device: d.id, port: p };
                 let offers = t.offers(ap);
                 for (h, x, y) in &hosts {
-                    if ((d.x - x).powi(2) + (d.y - y).powi(2)).sqrt() > packetcraft_model::WIFI_RANGE {
+                    if ((d.x - x).powi(2) + (d.y - y).powi(2)).sqrt() > netlabcraft_model::WIFI_RANGE {
                         continue;
                     }
                     for o in &offers {
@@ -546,7 +546,7 @@ impl Sim {
         if let Some(p) = self.pmks.get(&k) {
             return *p;
         }
-        let p = packetcraft_wire::sha1::wpa_pmk(pass, ssid);
+        let p = netlabcraft_wire::sha1::wpa_pmk(pass, ssid);
         if self.pmks.len() < 64 {
             self.pmks.insert(k, p);
         }
@@ -557,7 +557,7 @@ impl Sim {
     /// WPA2-Enterprise from the host's login, standing in for the key its EAP method's TLS
     /// tunnel would export (the tunnel is not modelled).
     /// `ap_side`: the access point's view (its own passphrase) rather than the host's.
-    fn pmk_for(&mut self, t: &Topology, offer: &packetcraft_model::wlan::Offer, client: End, ap_side: bool) -> [u8; 32] {
+    fn pmk_for(&mut self, t: &Topology, offer: &netlabcraft_model::wlan::Offer, client: End, ap_side: bool) -> [u8; 32] {
         let mine = t.device(client.device).and_then(|d| d.ports.get(client.port)).and_then(|p| p.wifi.clone()).unwrap_or_default();
         match &offer.security {
             WlanSecurity::Enterprise => {
@@ -571,7 +571,7 @@ impl Sim {
 
     /// The pairwise transient key: KCK (bytes 0-15), KEK (16-31), TK (32-47).
     fn ptk(&mut self, t: &Topology, pmk: &[u8; 32], ap: End, client: End, anonce: &[u8; 32], snonce: &[u8; 32]) -> Vec<u8> {
-        packetcraft_wire::sha1::wpa_ptk(pmk, &port_mac(t, ap).0, &port_mac(t, client).0, anonce, snonce)
+        netlabcraft_wire::sha1::wpa_ptk(pmk, &port_mac(t, ap).0, &port_mac(t, client).0, anonce, snonce)
     }
 
     fn kck(&mut self, t: &Topology, pmk: &[u8; 32], ap: End, client: End, anonce: &[u8; 32], snonce: &[u8; 32]) -> Vec<u8> {
@@ -706,7 +706,7 @@ impl Sim {
         self.udp_send(t, from, dst.addr, port, port, payload)
     }
 
-    fn wlan_config(&mut self, wlc: &Device, wlans: &[packetcraft_model::wlan::Wlan], removed: &[u8]) -> Control {
+    fn wlan_config(&mut self, wlc: &Device, wlans: &[netlabcraft_model::wlan::Wlan], removed: &[u8]) -> Control {
         let mut msg = Control::new(capwap::WLAN_CONFIG_REQUEST, self.capwap_seq());
         for id in removed {
             msg = msg.with(capwap::DELETE_WLAN, vec![1, *id]);
@@ -834,7 +834,7 @@ impl Sim {
         let port = self.next_port();
         self.seq += 1;
         let id = (self.seq % 256) as u8;
-        let authenticator = packetcraft_wire::md5::md5(format!("{}:{}:{user}", self.now, self.seq).as_bytes());
+        let authenticator = netlabcraft_wire::md5::md5(format!("{}:{}:{user}", self.now, self.seq).as_bytes());
         // The password the host's PEAP tunnel would carry: the controller asks with it directly.
         let req = Radius::request(id, authenticator, &user, &login.password, &secret, src.addr);
         if self.dot1x.len() >= 64 {
@@ -887,8 +887,8 @@ impl Sim {
 
     /// A capture of the air hops only, as IEEE 802.11 frames (link type 105).
     pub fn pcap_wlan(&self) -> Vec<u8> {
-        packetcraft_wire::pcap::write_link(
-            packetcraft_wire::pcap::LINKTYPE_IEEE802_11,
+        netlabcraft_wire::pcap::write_link(
+            netlabcraft_wire::pcap::LINKTYPE_IEEE802_11,
             self.trace.iter().filter_map(|e| Some((e.at_us, e.air.as_deref()?))),
         )
     }
@@ -906,8 +906,8 @@ fn host_with_mac(t: &Topology, mac: MacAddr) -> Option<End> {
 mod tests {
     use super::*;
     use crate::{PingOptions, Probe};
-    use packetcraft_model::{Wifi, models};
-    use packetcraft_wire::Protocol;
+    use netlabcraft_model::{Wifi, models};
+    use netlabcraft_wire::Protocol;
 
     /// A PC and an access point on one cable, a Wi-Fi laptop near the AP.
     fn lab(key: Option<&str>, laptop_key: Option<&str>) -> (Topology, DeviceId, DeviceId) {

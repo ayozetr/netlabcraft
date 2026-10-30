@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
-  <mime-type type="application/x-packetcraft+json">
-    <comment>PacketCraft lab</comment>
+  <mime-type type="application/x-netlabcraft+json">
+    <comment>NetLabCraft lab</comment>
     <sub-class-of type="application/json"/>
+    <glob pattern="*.nlcraft"/>
     <glob pattern="*.pcraft"/>
-    <icon name="packetcraft"/>
+    <icon name="netlabcraft"/>
   </mime-type>
 </mime-info>

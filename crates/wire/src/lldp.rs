@@ -2,7 +2,7 @@
 
 use std::net::Ipv4Addr;
 
-use packetcraft_core::MacAddr;
+use netlabcraft_core::MacAddr;
 
 use crate::{Result, WireError};
 
@@ -15,7 +15,7 @@ pub const CAP_BRIDGE: u16 = 1 << 2;
 pub const CAP_ROUTER: u16 = 1 << 4;
 pub const CAP_STATION: u16 = 1 << 7;
 
-/// The fields PacketCraft sends and reads.
+/// The fields NetLabCraft sends and reads.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Lldp {
     /// Chassis ID, as a MAC address (subtype 4).
@@ -116,7 +116,7 @@ mod tests {
             port: "GigabitEthernet0/1".into(),
             ttl: 120,
             system_name: "R1".into(),
-            description: "PacketCraft Router-2".into(),
+            description: "NetLabCraft Router-2".into(),
             caps: (CAP_ROUTER, CAP_ROUTER),
             address: Some(Ipv4Addr::new(10, 0, 0, 1)),
         };

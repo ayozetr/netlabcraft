@@ -6,7 +6,7 @@
 //! salted hashes so students can't read them in the file. (A determined student could still
 //! guess lines and hash them; this keeps honest people honest, it isn't encryption.)
 
-use packetcraft_core::DeviceId;
+use netlabcraft_core::DeviceId;
 use serde::{Deserialize, Serialize};
 
 /// Most checks an activity holds.

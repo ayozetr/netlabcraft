@@ -24,21 +24,21 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::Ipv4Addr;
 
-use packetcraft_core::{DeviceId, Ipv4Net};
-use packetcraft_model::{Device, Topology};
-use packetcraft_wire::eigrp::{
+use netlabcraft_core::{DeviceId, Ipv4Net};
+use netlabcraft_model::{Device, Topology};
+use netlabcraft_wire::eigrp::{
     EIGRP_ROUTERS, EigrpPacket, FLAG_EOT, FLAG_INIT, InternalRoute, OPCODE_QUERY, OPCODE_REPLY, OPCODE_UPDATE, PROTO_EIGRP, Tlv,
 };
-use packetcraft_wire::{Ipv4, control};
+use netlabcraft_wire::{Ipv4, control};
 
 use crate::{L3If, Sim, l3_ifaces, up_ifaces};
 
 /// Administrative distance of internal EIGRP routes.
 pub const DISTANCE: u8 = 90;
 /// Hold time announced in hellos by default (seconds).
-pub const HOLD_SECS: u16 = packetcraft_wire::eigrp::HOLD_SECS;
+pub const HOLD_SECS: u16 = netlabcraft_wire::eigrp::HOLD_SECS;
 /// Hello interval by default (seconds).
-pub const HELLO_SECS: u16 = packetcraft_wire::eigrp::HELLO_SECS;
+pub const HELLO_SECS: u16 = netlabcraft_wire::eigrp::HELLO_SECS;
 /// The metric that means unreachable.
 pub const INFINITY: u32 = u32::MAX;
 /// Most neighbours held past their last hello at once.
@@ -176,7 +176,7 @@ pub fn router_id(d: &Device) -> Option<Ipv4Addr> {
 }
 
 fn is_passive(d: &Device, name: &str) -> bool {
-    d.eigrp.as_ref().is_some_and(|e| e.passive.iter().any(|p| packetcraft_model::ifname::parse(p).is_some_and(|n| n.to_string() == name)))
+    d.eigrp.as_ref().is_some_and(|e| e.passive.iter().any(|p| netlabcraft_model::ifname::parse(p).is_some_and(|n| n.to_string() == name)))
 }
 
 fn eigrp_ifaces(t: &Topology, d: &Device) -> Vec<(L3If, bool)> {

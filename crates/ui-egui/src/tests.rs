@@ -1,6 +1,6 @@
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable as _;
-use packetcraft_engine::Session;
+use netlabcraft_engine::Session;
 use serde_json::json;
 
 use crate::*;
@@ -15,7 +15,7 @@ fn harness(sample: Option<&str>) -> Harness<'static, PacketApp> {
 
 #[test]
 fn every_sample_renders_in_both_themes() {
-    for s in packetcraft_engine::sample::SAMPLES {
+    for s in netlabcraft_engine::sample::SAMPLES {
         for dark in [false, true] {
             let mut h = harness(Some(s.id));
             h.state_mut().ui.dark = dark;
@@ -79,7 +79,7 @@ fn frame_details_decode_every_layer() {
     let mut s = Session::new();
     s.execute("file.new", json!({"sample": "vlans"})).unwrap();
     s.execute("net.ping", json!({"from": "PC1", "to": "192.168.20.10", "count": 2})).unwrap();
-    let tagged_icmp = s.sim.trace().iter().find(|e| e.protocol == packetcraft_wire::Protocol::Icmp && e.summary.contains("VLAN")).unwrap();
+    let tagged_icmp = s.sim.trace().iter().find(|e| e.protocol == netlabcraft_wire::Protocol::Icmp && e.summary.contains("VLAN")).unwrap();
     let layers: Vec<String> = events::decode(&tagged_icmp.frame).into_iter().map(|(l, _)| l).collect();
     assert_eq!(layers, ["Ethernet II", "IPv4", "ICMP"]);
     assert!(events::decode(&tagged_icmp.frame)[0].1.iter().any(|(k, _)| k == "802.1Q VLAN"));
@@ -144,10 +144,10 @@ fn device_windows_show_every_tab() {
 fn the_browser_opens_a_page_by_name() {
     let mut h = harness(Some("services"));
     let pc = h.state().session.topology.resolve("PC1").unwrap();
-    open_browser(h.state_mut(), pc, "www.packetcraft.lab");
+    open_browser(h.state_mut(), pc, "www.netlabcraft.lab");
     h.run_steps(3);
-    assert!(h.query_by_label_contains("PacketCraft web server").is_some());
-    assert!(h.state().session.sim.trace().iter().any(|e| e.protocol == packetcraft_wire::Protocol::Http));
+    assert!(h.query_by_label_contains("NetLabCraft web server").is_some());
+    assert!(h.state().session.sim.trace().iter().any(|e| e.protocol == netlabcraft_wire::Protocol::Http));
 }
 
 #[test]
@@ -295,7 +295,7 @@ fn drawing_a_polygon_and_a_freehand_stroke_with_the_mouse() {
     h.run_steps(2);
     h.get_by_label("Draw Polygon (click the corners)").click();
     h.run_steps(2);
-    assert_eq!(h.state().ui.tool, Tool::Draw(packetcraft_model::Shape::Polygon));
+    assert_eq!(h.state().ui.tool, Tool::Draw(netlabcraft_model::Shape::Polygon));
     let o = canvas_origin(&h);
     for (x, y) in [(200.0, 100.0), (360.0, 120.0), (300.0, 260.0), (240.0, 200.0)] {
         click(&mut h, o + egui::vec2(x, y));
@@ -304,14 +304,14 @@ fn drawing_a_polygon_and_a_freehand_stroke_with_the_mouse() {
     key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
     let notes = &h.state().session.topology.annotations;
     assert_eq!(notes.len(), 1, "{notes:?}");
-    assert_eq!(notes[0].shape, packetcraft_model::Shape::Polygon);
+    assert_eq!(notes[0].shape, netlabcraft_model::Shape::Polygon);
     assert_eq!(notes[0].points.len(), 4);
     assert!(h.state().ui.canvas.poly.is_empty());
     // Esc drops a polygon half placed.
     click(&mut h, o + egui::vec2(500.0, 100.0));
     key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
     assert!(h.state().ui.canvas.poly.is_empty());
-    assert_eq!(h.state().ui.tool, Tool::Draw(packetcraft_model::Shape::Polygon));
+    assert_eq!(h.state().ui.tool, Tool::Draw(netlabcraft_model::Shape::Polygon));
 
     h.get_by_label("Draw Freehand (drag on the workspace)").click();
     h.run_steps(2);
@@ -327,7 +327,7 @@ fn drawing_a_polygon_and_a_freehand_stroke_with_the_mouse() {
     h.run_steps(2);
     let notes = &h.state().session.topology.annotations;
     assert_eq!(notes.len(), 2, "{notes:?}");
-    assert_eq!(notes[1].shape, packetcraft_model::Shape::Freehand);
+    assert_eq!(notes[1].shape, netlabcraft_model::Shape::Freehand);
     assert!(notes[1].points.len() >= 3 && notes[1].points.len() <= 31, "{:?}", notes[1].points);
     // Both are one undo step each.
     h.state_mut().run("edit.undo", json!({}));
@@ -369,7 +369,7 @@ fn picking_devices_grouping_them_and_opening_the_cluster() {
     let c = t.clusters[0].clone();
     assert_eq!(c.devices, vec![pc1, pc2]);
     assert_eq!((c.x, c.y), (160.0, 100.0));
-    assert_eq!(t.shown_as(pc3, None), Some(packetcraft_model::Shown::Device));
+    assert_eq!(t.shown_as(pc3, None), Some(netlabcraft_model::Shown::Device));
 
     // Into the cluster and back out through the bar.
     h.state_mut().enter_cluster(c.id);
@@ -448,7 +448,7 @@ fn a_drawing_being_dragged_out_stays_under_the_cables() {
     let screen = |x: f32, y: f32| origin + egui::vec2(x, y);
     // The cable's middle, then an ellipse dragged out over it (not released yet).
     let mid = screen((r1.0 + s2.0) / 2.0, (r1.1 + s2.1) / 2.0);
-    h.state_mut().ui.tool = Tool::Draw(packetcraft_model::Shape::Ellipse);
+    h.state_mut().ui.tool = Tool::Draw(netlabcraft_model::Shape::Ellipse);
     let from = mid - egui::vec2(80.0, 60.0);
     press(&mut h, from, true, egui::Modifiers::NONE);
     h.run_steps(1);
@@ -512,12 +512,12 @@ fn the_physical_view_opens_places_and_goes_back() {
         assert_eq!(h.state().session.topology.place(closet).unwrap().name, "Lab rack");
         // A cable length through its dialog.
         let pc1 = h.state().session.topology.resolve("PC1").unwrap();
-        h.state_mut().ui.physical.length = Some((packetcraft_model::End { device: pc1, port: 0 }, "150".into()));
+        h.state_mut().ui.physical.length = Some((netlabcraft_model::End { device: pc1, port: 0 }, "150".into()));
         h.run_steps(2);
         assert!(h.query_by_label("Length (m):").is_some());
         h.get_by_label("OK").click();
         h.run_steps(2);
-        let l = *h.state().session.topology.link_at(packetcraft_model::End { device: pc1, port: 0 }).unwrap();
+        let l = *h.state().session.topology.link_at(netlabcraft_model::End { device: pc1, port: 0 }).unwrap();
         assert_eq!(h.state().session.topology.cable_length(&l).meters, 150);
         // Back up through the bar: one level, then the whole way.
         h.get_by_label("Back to the enclosing place (Intercity is the top)").click();
@@ -547,7 +547,7 @@ fn click_at(h: &mut Harness<'static, PacketApp>, at: egui::Pos2) {
 
 #[test]
 fn every_cable_tile_picks_its_cable_and_cables_ports_of_its_kind() {
-    use packetcraft_model::cable::Cable;
+    use netlabcraft_model::cable::Cable;
     let mut h = harness(None);
     h.run_steps(2);
     let (fiber_sw, sw, pc, r) = (egui::pos2(500.0, 300.0), egui::pos2(800.0, 300.0), egui::pos2(500.0, 460.0), egui::pos2(800.0, 460.0));

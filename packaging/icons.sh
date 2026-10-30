@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenerate every app icon from assets/app-icon/packetcraft.png (the 1254 px master).
+# Regenerate every app icon from assets/app-icon/netlabcraft.png (the 1254 px master).
 #
 # Needs ImageMagick 7 (magick). The outputs are committed, so builds and packaging never need it.
 #
@@ -7,8 +7,8 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIR="$ROOT/assets/app-icon"
-SRC="$DIR/packetcraft.png"
-NAME="packetcraft"
+SRC="$DIR/netlabcraft.png"
+NAME="netlabcraft"
 
 command -v magick >/dev/null || { echo "error: ImageMagick (magick) not found" >&2; exit 1; }
 

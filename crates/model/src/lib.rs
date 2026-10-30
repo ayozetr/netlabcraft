@@ -1,14 +1,14 @@
-//! PacketCraft L2: the lab document.
+//! NetLabCraft L2: the lab document.
 //!
 //! A [`Topology`] holds devices (each with its ports and configuration) and the cables between
-//! ports. It is plain data: the simulator (`packetcraft-sim`) reads it, the command line
-//! (`packetcraft-ios`) and the engine change it. Saved as JSON (`.pcraft`, see [`file`]).
+//! ports. It is plain data: the simulator (`netlabcraft-sim`) reads it, the command line
+//! (`netlabcraft-ios`) and the engine change it. Saved as JSON (`.nlcraft`, see [`file`]).
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 use std::collections::BTreeMap;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
-use packetcraft_core::{DeviceId, Ipv4Net, Ipv6Net, MacAddr, VlanId, VlanSet};
+use netlabcraft_core::{DeviceId, Ipv4Net, Ipv6Net, MacAddr, VlanId, VlanSet};
 use serde::{Deserialize, Serialize};
 
 pub mod acl;
@@ -1486,12 +1486,12 @@ impl Access {
     }
 }
 
-/// PacketCraft's one-way hash for `enable secret` (64-bit FNV-1a, salted, iterated). Labs only:
+/// NetLabCraft's one-way hash for `enable secret` (64-bit FNV-1a, salted, iterated). Labs only:
 /// it keeps the secret out of the configuration text; it is not meant to resist attack.
 pub fn secret_hash(plain: &str) -> String {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for _ in 0..1000 {
-        for b in "packetcraft:".bytes().chain(plain.bytes()) {
+        for b in "netlabcraft:".bytes().chain(plain.bytes()) {
             h ^= u64::from(b);
             h = h.wrapping_mul(0x0000_0100_0000_01b3);
         }

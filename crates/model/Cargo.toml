@@ -1,16 +1,16 @@
 [package]
-name = "packetcraft-model"
+name = "netlabcraft-model"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "PacketCraft L2: the lab document (devices, ports, their configuration, cables) and its file format"
+description = "NetLabCraft L2: the lab document (devices, ports, their configuration, cables) and its file format"
 
 [lints]
 workspace = true
 
 [dependencies]
-packetcraft-core = { workspace = true }
+netlabcraft-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

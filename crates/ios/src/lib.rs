@@ -1,4 +1,4 @@
-//! PacketCraft L4: the device command lines.
+//! NetLabCraft L4: the device command lines.
 //!
 //! Routers and switches get a configuration shell with the command names network engineers
 //! already type (`enable`, `configure terminal`, `interface g0/0`, `ip address`, `show ip

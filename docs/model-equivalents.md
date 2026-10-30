@@ -2,9 +2,9 @@
 
 > **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** major (created) · **Target:** CCNA course labs
 
-Course labs name specific vendor models. PacketCraft's models are its own, named after their
+Course labs name specific vendor models. NetLabCraft's models are its own, named after their
 ports (`GE` Gigabit Ethernet, `FE` Fast Ethernet, `S` serial), and never carry vendor names
-([decisions.md](decisions.md)). This table says which PacketCraft model to place when a lab
+([decisions.md](decisions.md)). This table says which NetLabCraft model to place when a lab
 asks for a given model, so the same commands and port numbers work. It only describes
 equivalence for teaching; the vendor names below are mentioned to identify the products a lab
 refers to.
@@ -12,7 +12,7 @@ refers to.
 Lab files keep the stable model id (second column); the workspace shows the name (first
 column). Commands accept either: `device.add {"model": "Router 3GE"}` or `{"model": "Router-3"}`.
 
-| PacketCraft model | Id in files | Use it where a lab asks for | Port names | Notes |
+| NetLabCraft model | Id in files | Use it where a lab asks for | Port names | Notes |
 |---|---|---|---|---|
 | Router 2GE | `Router-2` | 1941, 2901, ISR 4321 | `GigabitEthernet0/0–0/1` | A 4321 names its ports `0/0/0–0/0/1`. |
 | Router 3GE | `Router-3` | 2911, ISR 4331 | `GigabitEthernet0/0–0/2` | The usual CCNA router. A 4331 names its ports `0/0/0–0/0/2`. |
@@ -48,7 +48,7 @@ column). Commands accept either: `device.add {"model": "Router 3GE"}` or `{"mode
 Models a lab names that have no equivalent yet (modular slots, IP phones, IoT devices, cloud,
 DSL/cable modems) are listed in [hardware-parity.md](hardware-parity.md).
 
-Cisco, Catalyst, ISR and Packet Tracer are trademarks of Cisco Systems, Inc. PacketCraft is an
+Cisco, Catalyst, ISR and Packet Tracer are trademarks of Cisco Systems, Inc. NetLabCraft is an
 independent project, not affiliated with or endorsed by Cisco.
 
 ## Revision history
@@ -58,4 +58,4 @@ independent project, not affiliated with or endorsed by Cisco.
 | 2026-10-30 | minor | Switch 24FE+2SFP and the fiber card. |
 | 2026-10-30 | minor | Modular routers and their cards, IP Phone, Smart Sensor and Smart Device. |
 | 2026-10-30 | minor | Firewall 5GE. |
-| 2026-10-30 | major | Created: which PacketCraft model to place for each model course labs name. |
+| 2026-10-30 | major | Created: which NetLabCraft model to place for each model course labs name. |

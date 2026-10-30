@@ -3,8 +3,8 @@
 //! `iot.sync`, `iot.server`, `iot.switch`).
 
 use egui::{RichText, Sense, vec2};
-use packetcraft_model::Device;
-use packetcraft_model::iot::is_sensor;
+use netlabcraft_model::Device;
+use netlabcraft_model::iot::is_sensor;
 use serde_json::{Value, json};
 
 use crate::i18n::{tl, tr_any, trf};
@@ -21,7 +21,7 @@ pub(crate) struct IotForm {
 }
 
 pub(crate) fn tab(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut IotForm) {
-    if dev.kind == packetcraft_model::DeviceKind::Server { server_page(app, ui, dev, form) } else { thing_page(app, ui, dev, form) }
+    if dev.kind == netlabcraft_model::DeviceKind::Server { server_page(app, ui, dev, form) } else { thing_page(app, ui, dev, form) }
 }
 
 fn thing_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut IotForm) {
@@ -149,7 +149,7 @@ fn server_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut 
 mod tests {
     use egui_kittest::Harness;
     use egui_kittest::kittest::Queryable as _;
-    use packetcraft_engine::Session;
+    use netlabcraft_engine::Session;
     use serde_json::json;
 
     use crate::PacketApp;

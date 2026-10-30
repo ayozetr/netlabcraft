@@ -3,7 +3,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use packetcraft_core::DeviceId;
+use netlabcraft_core::DeviceId;
 use serde::{Deserialize, Serialize};
 
 use crate::{MAX_NAME, ModelError, Result, Shape, Topology, finite, parse_color};

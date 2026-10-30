@@ -7,11 +7,11 @@
 
 use std::net::Ipv4Addr;
 
-use packetcraft_core::{DeviceId, MacAddr, VlanId};
-use packetcraft_model::{DeviceKind, End, Topology};
-use packetcraft_wire::control::{self, Bpdu, BridgeId, OspfHello, RipEntry};
-use packetcraft_wire::ospfdb::{DBD_INIT, DBD_MASTER, DBD_MORE, OspfDb, RouterLink, RouterLsa};
-use packetcraft_wire::{Frame, Ipv4, PROTO_UDP, Udp};
+use netlabcraft_core::{DeviceId, MacAddr, VlanId};
+use netlabcraft_model::{DeviceKind, End, Topology};
+use netlabcraft_wire::control::{self, Bpdu, BridgeId, OspfHello, RipEntry};
+use netlabcraft_wire::ospfdb::{DBD_INIT, DBD_MASTER, DBD_MORE, OspfDb, RouterLink, RouterLsa};
+use netlabcraft_wire::{Frame, Ipv4, PROTO_UDP, Udp};
 
 use crate::{LINK_DELAY_US, Sim, l3_ifaces, port_up};
 
@@ -78,10 +78,10 @@ impl Sim {
             for (i, p) in d.ports.iter().enumerate() {
                 if let Some(l) = crate::lldp::advertisement(d, i) {
                     let f = Frame {
-                        dst: packetcraft_wire::lldp::LLDP_GROUP,
+                        dst: netlabcraft_wire::lldp::LLDP_GROUP,
                         src: p.mac,
                         vlan: None,
-                        ethertype: packetcraft_wire::lldp::ETHERTYPE_LLDP,
+                        ethertype: netlabcraft_wire::lldp::ETHERTYPE_LLDP,
                         payload: l.encode(),
                     };
                     frames.push((End { device: d.id, port: i }, f.encode()));
@@ -99,10 +99,10 @@ impl Sim {
             for (i, p) in d.ports.iter().enumerate().filter(|(_, p)| p.channel.is_some()) {
                 if let Some(pdu) = crate::channel::lacpdu(t, d, i) {
                     let f = Frame {
-                        dst: packetcraft_wire::lacp::SLOW_GROUP,
+                        dst: netlabcraft_wire::lacp::SLOW_GROUP,
                         src: p.mac,
                         vlan: None,
-                        ethertype: packetcraft_wire::lacp::ETHERTYPE_SLOW,
+                        ethertype: netlabcraft_wire::lacp::ETHERTYPE_SLOW,
                         payload: pdu.encode(),
                     };
                     frames.push((End { device: d.id, port: i }, f.encode()));
@@ -237,7 +237,7 @@ impl Sim {
     /// EIGRP hellos (RFC 7868) from every EIGRP interface that isn't passive, at the interface's
     /// hello interval, announcing its hold time.
     fn send_eigrp_hellos(&mut self, t: &Topology, at: u64) {
-        use packetcraft_wire::eigrp::{EIGRP_ROUTERS, EigrpHello, PROTO_EIGRP};
+        use netlabcraft_wire::eigrp::{EIGRP_ROUTERS, EigrpHello, PROTO_EIGRP};
         if !t.devices.iter().any(|d| d.eigrp.is_some()) {
             return;
         }
@@ -305,8 +305,8 @@ impl Sim {
             let Some(d) = t.device(id) else { continue };
             for server in d.ntp_servers.clone() {
                 let Some((ifc, _)) = crate::route(t, d, server) else { continue };
-                let req = packetcraft_wire::mgmt::Ntp { server: false, stratum: 0, time: self.clock(id).0 };
-                let udp = Udp { src_port: packetcraft_wire::mgmt::NTP_PORT, dst_port: packetcraft_wire::mgmt::NTP_PORT, payload: req.encode() };
+                let req = netlabcraft_wire::mgmt::Ntp { server: false, stratum: 0, time: self.clock(id).0 };
+                let udp = Udp { src_port: netlabcraft_wire::mgmt::NTP_PORT, dst_port: netlabcraft_wire::mgmt::NTP_PORT, payload: req.encode() };
                 let ip = Ipv4 { id: 0, ttl: 255, protocol: PROTO_UDP, src: ifc.net.addr, dst: server, payload: udp.encode(ifc.net.addr, server) };
                 // Only the first hop needs a known address: polls go out where ARP already knows the way.
                 let Some((_, nh)) = crate::route(t, d, server) else { continue };
@@ -344,21 +344,21 @@ impl Sim {
     pub(crate) fn queue_l3(
         &mut self,
         t: &Topology,
-        d: &packetcraft_model::Device,
+        d: &netlabcraft_model::Device,
         ifc: &crate::L3If,
         src: MacAddr,
         dst: MacAddr,
         packet: Vec<u8>,
         at: u64,
     ) {
-        let frame = Frame { dst, src, vlan: ifc.vlan, ethertype: packetcraft_wire::ETHERTYPE_IPV4, payload: packet };
+        let frame = Frame { dst, src, vlan: ifc.vlan, ethertype: netlabcraft_wire::ETHERTYPE_IPV4, payload: packet };
         self.queue_frame(t, d, ifc.port, frame, at);
     }
 
     /// OSPFv3 hellos from every interface of every OSPFv3 router (passive ones excepted).
     fn send_ospf6_hellos(&mut self, t: &Topology, at: u64) {
-        use packetcraft_wire::ipv6::{ETHERTYPE_IPV6, Ipv6, multicast_mac};
-        use packetcraft_wire::ospf6::{ALL_SPF_ROUTERS6, Hello6, PROTO_OSPF};
+        use netlabcraft_wire::ipv6::{ETHERTYPE_IPV6, Ipv6, multicast_mac};
+        use netlabcraft_wire::ospf6::{ALL_SPF_ROUTERS6, Hello6, PROTO_OSPF};
         if !t.devices.iter().any(|d| d.ospf6.is_some()) {
             return;
         }
@@ -394,10 +394,10 @@ impl Sim {
 
     /// Queues a frame out of a port at a given time (re-framed on serial); a VLAN interface's
     /// frame (`SVI_PORT`, its VLAN in the tag) goes through the switch at once.
-    fn queue_frame(&mut self, t: &Topology, d: &packetcraft_model::Device, port: usize, frame: Frame, at: u64) {
+    fn queue_frame(&mut self, t: &Topology, d: &netlabcraft_model::Device, port: usize, frame: Frame, at: u64) {
         if crate::vpn::is_tunnel(port) {
             // Into a GRE tunnel, at once: encapsulated and routed to the far end.
-            if frame.ethertype == packetcraft_wire::ETHERTYPE_IPV4
+            if frame.ethertype == netlabcraft_wire::ETHERTYPE_IPV4
                 && let Some(ifc) = crate::up_ifaces(t, d).into_iter().find(|i| i.port == port)
             {
                 let _ = self.gre_out(t, d, &ifc, frame.payload);
@@ -412,8 +412,8 @@ impl Sim {
             return;
         }
         let end = End { device: d.id, port };
-        let bytes = match d.ports.get(port).filter(|p| packetcraft_model::ifname::is_serial(&p.name)) {
-            Some(p) => match packetcraft_wire::serial::encode(crate::framing(p), frame.ethertype, &frame.payload) {
+        let bytes = match d.ports.get(port).filter(|p| netlabcraft_model::ifname::is_serial(&p.name)) {
+            Some(p) => match netlabcraft_wire::serial::encode(crate::framing(p), frame.ethertype, &frame.payload) {
                 Ok(b) => b,
                 Err(_) => return,
             },

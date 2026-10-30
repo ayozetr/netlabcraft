@@ -1,9 +1,9 @@
-//! PacketCraft on the desktop: `packetcraft [LAB.pcraft] [--sample ID]`.
+//! NetLabCraft on the desktop: `netlabcraft [LAB.nlcraft] [--sample ID]`.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
-use packetcraft_engine::Session;
-use packetcraft_ui_egui::{PacketApp, UiRequest};
+use netlabcraft_engine::Session;
+use netlabcraft_ui_egui::{PacketApp, UiRequest};
 use serde_json::json;
 
 /// What to do with unsaved changes when the window closes.
@@ -33,7 +33,7 @@ fn recent_file() -> Option<std::path::PathBuf> {
             .map(std::path::PathBuf::from)
             .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config")))
     }?;
-    Some(base.join("packetcraft").join("recent.txt"))
+    Some(base.join("netlabcraft").join("recent.txt"))
 }
 
 /// The saved interface language, else the system's (`LC_ALL`, `LC_MESSAGES`, `LANG`).
@@ -41,13 +41,13 @@ fn pick_language() {
     let saved = recent_file().and_then(|f| std::fs::read_to_string(f.with_file_name("language")).ok());
     let system = ["LC_ALL", "LC_MESSAGES", "LANG"].iter().find_map(|v| std::env::var(v).ok().filter(|s| !s.is_empty()));
     if let Some(l) = saved.or(system) {
-        packetcraft_ui_egui::i18n::set_lang(packetcraft_ui_egui::i18n::Lang::from_locale(l.trim()));
+        netlabcraft_ui_egui::i18n::set_lang(netlabcraft_ui_egui::i18n::Lang::from_locale(l.trim()));
     }
 }
 
 fn save_language() {
     if let Some(f) = recent_file() {
-        let _ = std::fs::write(f.with_file_name("language"), packetcraft_ui_egui::i18n::lang().code());
+        let _ = std::fs::write(f.with_file_name("language"), netlabcraft_ui_egui::i18n::lang().code());
     }
 }
 
@@ -70,14 +70,14 @@ impl App {
         for r in self.app.take_requests() {
             match r {
                 UiRequest::Open => {
-                    if let Some(p) = rfd::FileDialog::new().add_filter("PacketCraft lab", &["pcraft"]).pick_file() {
+                    if let Some(p) = rfd::FileDialog::new().add_filter("NetLabCraft lab", &["nlcraft", "pcraft"]).pick_file() {
                         self.app.open_path(&p.to_string_lossy());
                     }
                 }
                 UiRequest::Save { path, .. } => {
                     let path = path
                         .map(std::path::PathBuf::from)
-                        .or_else(|| rfd::FileDialog::new().add_filter("PacketCraft lab", &["pcraft"]).set_file_name("lab.pcraft").save_file());
+                        .or_else(|| rfd::FileDialog::new().add_filter("NetLabCraft lab", &["nlcraft"]).set_file_name("lab.nlcraft").save_file());
                     if let Some(p) = path {
                         let p = p.to_string_lossy().to_string();
                         if self.app.run("file.save", json!({"path": p})).is_some() {
@@ -107,10 +107,10 @@ impl App {
                 }
                 UiRequest::Print(bytes) => {
                     // No print API here: the system's PDF viewer prints (and previews) it.
-                    let path = std::env::temp_dir().join(format!("packetcraft-print-{}.pdf", std::process::id()));
+                    let path = std::env::temp_dir().join(format!("netlabcraft-print-{}.pdf", std::process::id()));
                     let opened = std::fs::write(&path, &bytes).map_err(|e| e.to_string()).and_then(|()| open_with_system(&path));
                     match opened {
-                        Ok(()) => self.app.info(packetcraft_ui_egui::i18n::tr("Opened the page in the PDF viewer: print it from there.").to_string()),
+                        Ok(()) => self.app.info(netlabcraft_ui_egui::i18n::tr("Opened the page in the PDF viewer: print it from there.").to_string()),
                         Err(e) => self.app.ui.status = Some((format!("{}: {e}", path.display()), true)),
                     }
                 }
@@ -207,9 +207,9 @@ impl eframe::App for App {
     }
 }
 
-/// The window icon (the hicolor 256 px rendering of `assets/app-icon/packetcraft.png`).
+/// The window icon (the hicolor 256 px rendering of `assets/app-icon/netlabcraft.png`).
 fn icon() -> egui::IconData {
-    let bytes = include_bytes!("../../../assets/app-icon/hicolor/256x256/apps/packetcraft.png");
+    let bytes = include_bytes!("../../../assets/app-icon/hicolor/256x256/apps/netlabcraft.png");
     match image::load_from_memory_with_format(bytes, image::ImageFormat::Png) {
         Ok(img) => {
             let img = img.to_rgba8();
@@ -230,13 +230,13 @@ fn main() -> eframe::Result {
                 session.execute("file.new", json!({"sample": args.get(i).map_or("lan", String::as_str)}))
             }
             "--version" => {
-                println!("packetcraft {}", env!("CARGO_PKG_VERSION"));
+                println!("netlabcraft {}", env!("CARGO_PKG_VERSION"));
                 return Ok(());
             }
             path => session.execute("file.open", json!({"path": path})),
         };
         if let Err(e) = r {
-            eprintln!("packetcraft: {e}");
+            eprintln!("netlabcraft: {e}");
         }
         i += 1;
     }
@@ -251,12 +251,12 @@ fn main() -> eframe::Result {
             .with_title(title.clone())
             .with_inner_size([1280.0, 820.0])
             .with_min_inner_size([720.0, 480.0])
-            .with_app_id("packetcraft")
+            .with_app_id("netlabcraft")
             .with_icon(icon()),
         ..Default::default()
     };
     eframe::run_native(
-        "PacketCraft",
+        "NetLabCraft",
         options,
         Box::new(move |cc| {
             app.apply_theme(&cc.egui_ctx);

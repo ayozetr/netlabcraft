@@ -1,7 +1,7 @@
-//! PacketCraft L3: the network simulator.
+//! NetLabCraft L3: the network simulator.
 //!
 //! A discrete-event simulator over simulated time (microseconds). Devices exchange real
-//! Ethernet frames ([`packetcraft_wire`]) across the cables of a [`Topology`]; every delivery is
+//! Ethernet frames ([`netlabcraft_wire`]) across the cables of a [`Topology`]; every delivery is
 //! recorded in the event list ([`TraceEvent`]) so the UI can replay it and export a pcap.
 //!
 //! The simulator reads configuration from the topology on every event and keeps only dynamic
@@ -16,11 +16,11 @@ use std::cmp::Reverse;
 use std::collections::{BTreeMap, BinaryHeap, VecDeque};
 use std::net::{IpAddr, Ipv4Addr};
 
-use packetcraft_core::{DeviceId, Ipv4Net, MacAddr, VlanId};
-use packetcraft_model::{Device, DeviceKind, End, NextHop, SwitchportMode, Topology, ifname};
-use packetcraft_wire::dhcp::{self, Dhcp, DhcpKind};
-use packetcraft_wire::tcp::{self, Tcp};
-use packetcraft_wire::{Arp, ArpOp, ETHERTYPE_ARP, ETHERTYPE_IPV4, Frame, Icmp, Ipv4, PROTO_ICMP, PROTO_TCP, PROTO_UDP, Protocol, Udp, dns};
+use netlabcraft_core::{DeviceId, Ipv4Net, MacAddr, VlanId};
+use netlabcraft_model::{Device, DeviceKind, End, NextHop, SwitchportMode, Topology, ifname};
+use netlabcraft_wire::dhcp::{self, Dhcp, DhcpKind};
+use netlabcraft_wire::tcp::{self, Tcp};
+use netlabcraft_wire::{Arp, ArpOp, ETHERTYPE_ARP, ETHERTYPE_IPV4, Frame, Icmp, Ipv4, PROTO_ICMP, PROTO_TCP, PROTO_UDP, Protocol, Udp, dns};
 
 pub mod cdp;
 pub mod email;
@@ -147,7 +147,7 @@ pub fn l3_ifaces(d: &Device) -> Vec<L3If> {
 /// Whether a port can pass traffic: not shut down, cabled, and the far port not shut down;
 /// on a serial cable also clocked by its DCE end and framed alike at both ends.
 pub fn port_up(t: &Topology, end: End) -> bool {
-    let ok = |p: &packetcraft_model::Port| !p.shutdown && !p.err_disabled;
+    let ok = |p: &netlabcraft_model::Port| !p.shutdown && !p.err_disabled;
     // A switched-off device lights no port, at either end of its cables.
     if t.device(end.device).is_some_and(|d| d.powered_off) || t.peer(end).and_then(|p| t.device(p.device)).is_some_and(|d| d.powered_off) {
         return false;
@@ -173,10 +173,10 @@ pub fn cable_problem(t: &Topology, end: End) -> Option<String> {
     }
     let l = t.link_at(end)?;
     let (what, max) = match t.resolved_cable(l) {
-        packetcraft_model::cable::Cable::SerialDce | packetcraft_model::cable::Cable::SerialDte => return None,
-        packetcraft_model::cable::Cable::Fiber => ("fiber", packetcraft_model::physical::FIBER_MAX_M),
+        netlabcraft_model::cable::Cable::SerialDce | netlabcraft_model::cable::Cable::SerialDte => return None,
+        netlabcraft_model::cable::Cable::Fiber => ("fiber", netlabcraft_model::physical::FIBER_MAX_M),
         _ if t.is_serial(end) => return None,
-        _ => ("copper", packetcraft_model::physical::COPPER_MAX_M),
+        _ => ("copper", netlabcraft_model::physical::COPPER_MAX_M),
     };
     let len = t.cable_length(l);
     (len.meters > max).then(|| format!("cable too long: {} m {what}, max {max} m", len.meters))
@@ -184,7 +184,7 @@ pub fn cable_problem(t: &Topology, end: End) -> Option<String> {
 
 /// The fastest an Ethernet port goes, in Mbit/s, from its type (`None`: not Ethernet).
 pub fn port_max_speed(name: &str) -> Option<u32> {
-    match packetcraft_model::ifname::parse(name)?.kind {
+    match netlabcraft_model::ifname::parse(name)?.kind {
         "GigabitEthernet" => Some(1000),
         "FastEthernet" | "Ethernet" | "Internet" => Some(100),
         _ => None,
@@ -203,7 +203,7 @@ pub fn speed_mismatch(t: &Topology, end: End) -> bool {
 /// What an Ethernet link runs at: the fixed speed of either end, else the fastest both ends
 /// manage; full duplex unless this end is set to half. `None` when the link is down or not
 /// Ethernet.
-pub fn link_speed(t: &Topology, end: End) -> Option<(u32, packetcraft_model::Duplex)> {
+pub fn link_speed(t: &Topology, end: End) -> Option<(u32, netlabcraft_model::Duplex)> {
     let port = |e: End| t.device(e.device).and_then(|d| d.ports.get(e.port));
     let p = port(end)?;
     let q = port(t.peer(end)?)?;
@@ -211,7 +211,7 @@ pub fn link_speed(t: &Topology, end: End) -> Option<(u32, packetcraft_model::Dup
         return None;
     }
     let speed = p.speed.or(q.speed).unwrap_or(port_max_speed(&p.name)?.min(port_max_speed(&q.name)?));
-    Some((speed, p.duplex.unwrap_or(packetcraft_model::Duplex::Full)))
+    Some((speed, p.duplex.unwrap_or(netlabcraft_model::Duplex::Full)))
 }
 
 /// Whether a port is an access point's radio.
@@ -233,7 +233,7 @@ pub fn serial_problem(t: &Topology, end: End) -> Option<&'static str> {
     if port(end).map(|p| p.serial.encapsulation) != port(peer).map(|p| p.serial.encapsulation) {
         return Some("the two ends use different encapsulations");
     }
-    if port(end).is_some_and(|p| p.serial.encapsulation == packetcraft_model::Encapsulation::Ppp) && !ppp_authenticates(t, end, peer) {
+    if port(end).is_some_and(|p| p.serial.encapsulation == netlabcraft_model::Encapsulation::Ppp) && !ppp_authenticates(t, end, peer) {
         return Some("PPP authentication failed (check the usernames and passwords)");
     }
     None
@@ -241,7 +241,7 @@ pub fn serial_problem(t: &Topology, end: End) -> Option<&'static str> {
 
 /// Whether each end of a PPP link that demands authentication gets it from the other.
 fn ppp_authenticates(t: &Topology, end: End, peer: End) -> bool {
-    use packetcraft_model::PppAuth;
+    use netlabcraft_model::PppAuth;
     [(end, peer), (peer, end)].into_iter().all(|(me, other)| {
         let (Some(dm), Some(dother)) = (t.device(me.device), t.device(other.device)) else { return false };
         let (Some(pm), Some(po)) = (dm.ports.get(me.port), dother.ports.get(other.port)) else { return false };
@@ -262,10 +262,10 @@ fn ppp_authenticates(t: &Topology, end: End, peer: End) -> bool {
 }
 
 /// The framing a serial port sends.
-fn framing(p: &packetcraft_model::Port) -> packetcraft_wire::serial::Framing {
+fn framing(p: &netlabcraft_model::Port) -> netlabcraft_wire::serial::Framing {
     match p.serial.encapsulation {
-        packetcraft_model::Encapsulation::Hdlc => packetcraft_wire::serial::Framing::Hdlc,
-        packetcraft_model::Encapsulation::Ppp => packetcraft_wire::serial::Framing::Ppp,
+        netlabcraft_model::Encapsulation::Hdlc => netlabcraft_wire::serial::Framing::Hdlc,
+        netlabcraft_model::Encapsulation::Ppp => netlabcraft_wire::serial::Framing::Ppp,
     }
 }
 
@@ -410,7 +410,7 @@ fn routing_table_static(t: &Topology, d: &Device) -> Vec<RouteEntry> {
 }
 
 fn find_iface<'a>(ifs: &'a [L3If], name: &str) -> Option<&'a L3If> {
-    if packetcraft_model::vpn::tunnel_number(name).is_some() {
+    if netlabcraft_model::vpn::tunnel_number(name).is_some() {
         return ifs.iter().find(|i| vpn::same_name(&i.name, name));
     }
     let n = ifname::parse(name)?;
@@ -728,13 +728,13 @@ pub struct DevState {
     pub ntp_synced: Option<Ipv4Addr>,
     /// TFTP client: the local port of the transfer in flight, and what came back.
     tftp_port: Option<u16>,
-    tftp_inbox: Vec<packetcraft_wire::mgmt::Tftp>,
+    tftp_inbox: Vec<netlabcraft_wire::mgmt::Tftp>,
     /// A RADIUS client waiting on this port, and the answers that came.
     radius_port: Option<u16>,
     /// Failed remote logins (simulated µs), for `login block-for`, and when the block ends.
     login_failures: Vec<u64>,
     login_blocked_until: u64,
-    radius_inbox: Vec<packetcraft_wire::radius::Radius>,
+    radius_inbox: Vec<netlabcraft_wire::radius::Radius>,
     /// An SNMP manager waiting on this port, and the answers that came.
     snmp_port: Option<u16>,
     snmp_inbox: Vec<Vec<u8>>,
@@ -750,9 +750,9 @@ pub struct DevState {
     /// TFTP server: files being read, by (client, port).
     tftp_tx: BTreeMap<(Ipv4Addr, u16), Vec<u8>>,
     /// Hosts: the last router advertisement heard (router's address, prefixes).
-    ra: Option<(std::net::Ipv6Addr, Vec<packetcraft_wire::ipv6::PrefixInfo>, u8)>,
+    ra: Option<(std::net::Ipv6Addr, Vec<netlabcraft_wire::ipv6::PrefixInfo>, u8)>,
     /// Hosts: DHCPv6 messages for a client exchange in flight.
-    dhcp6_inbox: Vec<packetcraft_wire::dhcp6::Dhcp6>,
+    dhcp6_inbox: Vec<netlabcraft_wire::dhcp6::Dhcp6>,
     /// Routers: DHCPv6 addresses handed out (address → client MAC, pool).
     pub dhcp6_leases: BTreeMap<std::net::Ipv6Addr, (MacAddr, String)>,
     /// Routers: IPsec security associations, by peer address.
@@ -905,7 +905,7 @@ pub struct Sim {
     /// SNMPv3 localized keys: (hash, password, engine ID) → key.
     snmp_keys: BTreeMap<(u8, String, Vec<u8>), Vec<u8>>,
     /// Messages SMTP servers took for other domains: (server, message), to relay.
-    mail_relay: Vec<(DeviceId, packetcraft_model::services::Mail)>,
+    mail_relay: Vec<(DeviceId, netlabcraft_model::services::Mail)>,
     /// Locally raised packets wait for ARP instead of being dropped (see `transmit`).
     hold_for_arp: bool,
     hsrp_for: u64,
@@ -1158,7 +1158,7 @@ impl Sim {
 
     /// A capture of the event list, in pcap format.
     pub fn pcap(&self) -> Vec<u8> {
-        packetcraft_wire::pcap::write(self.trace.iter().filter(|e| !e.frame.is_empty()).map(|e| (e.at_us, e.frame.as_slice())))
+        netlabcraft_wire::pcap::write(self.trace.iter().filter(|e| !e.frame.is_empty()).map(|e| (e.at_us, e.frame.as_slice())))
     }
 
     fn st(&mut self, d: DeviceId) -> &mut DevState {
@@ -1274,7 +1274,7 @@ impl Sim {
     fn deliver(&mut self, t: &Topology, q: Queued) {
         // Serial frames are listed (and captured) as the equivalent Ethernet II frame, since a
         // capture file has one link type; the summary says which framing the cable carried.
-        let serial = t.is_serial(q.to).then(|| packetcraft_wire::serial::decode(&q.frame).ok()).flatten();
+        let serial = t.is_serial(q.to).then(|| netlabcraft_wire::serial::decode(&q.frame).ok()).flatten();
         let mac = |e: End| t.device(e.device).and_then(|d| d.ports.get(e.port)).map_or(MacAddr::ZERO, |p| p.mac);
         let shown = match &serial {
             Some((_, et, payload)) => Frame { dst: mac(q.to), src: mac(q.from), vlan: None, ethertype: *et, payload: payload.clone() }.encode(),
@@ -1283,12 +1283,12 @@ impl Sim {
         let air = wlan::air_hop(t, q.from, q.to);
         // Over the air: listed by what the 802.11 frame carries (its Ethernet equivalent).
         let plain = if air { self.air_plain(t, q.from, q.to, &q.frame) } else { None };
-        let ccmp = air && packetcraft_wire::wlan::Dot11::decode(&q.frame).is_ok_and(|d| d.is_protected());
+        let ccmp = air && netlabcraft_wire::wlan::Dot11::decode(&q.frame).is_ok_and(|d| d.is_protected());
         let shown = if air { plain.and_then(|d| d.ethernet()).map(|e| e.encode()).unwrap_or_default() } else { shown };
         let (protocol, mut summary) =
-            if air && shown.is_empty() { (Protocol::Wlan, packetcraft_wire::wlan::summarize(&q.frame)) } else { packetcraft_wire::summarize(&shown) };
+            if air && shown.is_empty() { (Protocol::Wlan, netlabcraft_wire::wlan::summarize(&q.frame)) } else { netlabcraft_wire::summarize(&shown) };
         if let Some((f, ..)) = &serial {
-            summary.push_str(if *f == packetcraft_wire::serial::Framing::Ppp { " [serial, PPP]" } else { " [serial, HDLC]" });
+            summary.push_str(if *f == netlabcraft_wire::serial::Framing::Ppp { " [serial, PPP]" } else { " [serial, HDLC]" });
         }
         if air && !shown.is_empty() {
             summary.push_str(if ccmp { " [802.11, CCMP]" } else { " [802.11]" });
@@ -1324,11 +1324,11 @@ impl Sim {
             return Err("port is shut down".into());
         }
         if ifname::is_serial(&port.name) {
-            let (got, ethertype, payload) = packetcraft_wire::serial::decode(bytes).map_err(|e| e.to_string())?;
+            let (got, ethertype, payload) = netlabcraft_wire::serial::decode(bytes).map_err(|e| e.to_string())?;
             if got != framing(port) {
                 return Err(format!(
                     "{} framing on a {} port",
-                    if got == packetcraft_wire::serial::Framing::Ppp { "PPP" } else { "HDLC" },
+                    if got == netlabcraft_wire::serial::Framing::Ppp { "PPP" } else { "HDLC" },
                     port.serial.encapsulation.name()
                 ));
             }
@@ -1367,19 +1367,19 @@ impl Sim {
                 fixed: true,
             }
         } else {
-            let key = packetcraft_model::acl::PacketKey { protocol: ip.protocol, src: ip.src, dst: ip.dst, src_port: None, dst_port: None };
+            let key = netlabcraft_model::acl::PacketKey { protocol: ip.protocol, src: ip.src, dst: ip.dst, src_port: None, dst_port: None };
             let Some(rule) = d.nat.rules.iter().find(|r| d.acls.iter().find(|a| a.name == r.acl).is_some_and(|a| a.evaluate(&key).0)) else {
                 return Ok(None);
             };
             let (global, pat) = match &rule.target {
-                packetcraft_model::NatTarget::Interface(name) => {
+                netlabcraft_model::NatTarget::Interface(name) => {
                     let ifc = l3_ifaces(d)
                         .into_iter()
-                        .find(|i| packetcraft_model::ifname::parse(name).is_some_and(|n| n.to_string() == i.name))
+                        .find(|i| netlabcraft_model::ifname::parse(name).is_some_and(|n| n.to_string() == i.name))
                         .ok_or_else(|| format!("NAT interface {name} has no address"))?;
                     (ifc.net.addr, true)
                 }
-                packetcraft_model::NatTarget::Pool(name) => {
+                netlabcraft_model::NatTarget::Pool(name) => {
                     let pool = d.nat.pools.iter().find(|p| &p.name == name).ok_or_else(|| format!("NAT pool {name} doesn't exist"))?;
                     let st = self.st(d.id);
                     let (a, b) = (u32::from(pool.start), u32::from(pool.end));
@@ -1513,14 +1513,14 @@ impl Sim {
             PROTO_TCP => Tcp::decode(&ip.payload, ip.src, ip.dst).map_or((None, None), |u| (Some(u.src_port), Some(u.dst_port))),
             _ => (None, None),
         };
-        let key = packetcraft_model::acl::PacketKey { protocol: ip.protocol, src: ip.src, dst: ip.dst, src_port, dst_port };
+        let key = netlabcraft_model::acl::PacketKey { protocol: ip.protocol, src: ip.src, dst: ip.dst, src_port, dst_port };
         let (permit, entry) = acl.evaluate(&key);
         let st = self.st(d.id);
         *st.acl_hits.entry((acl.name.clone(), entry.unwrap_or(usize::MAX))).or_insert(0) += 1;
         if permit {
             return Ok(());
         }
-        self.icmp_error(t, d, ifc, ip, Icmp::Unreachable { code: packetcraft_wire::UNREACH_ADMIN, original: Icmp::quote(raw) });
+        self.icmp_error(t, d, ifc, ip, Icmp::Unreachable { code: netlabcraft_wire::UNREACH_ADMIN, original: Icmp::quote(raw) });
         Err(format!("denied by access list {} ({})", acl.name, if inbound { "in" } else { "out" }))
     }
 
@@ -1692,12 +1692,12 @@ impl Sim {
             return Ok(());
         }
         match ps.violation {
-            packetcraft_model::Violation::Protect => Err(format!("port security: {src} is one address too many (dropped)")),
-            packetcraft_model::Violation::Restrict => {
+            netlabcraft_model::Violation::Protect => Err(format!("port security: {src} is one address too many (dropped)")),
+            netlabcraft_model::Violation::Restrict => {
                 *self.st(d.id).violations.entry(port).or_insert(0) += 1;
                 Err(format!("port security: {src} is one address too many (dropped and counted)"))
             }
-            packetcraft_model::Violation::Shutdown => {
+            netlabcraft_model::Violation::Shutdown => {
                 *self.st(d.id).violations.entry(port).or_insert(0) += 1;
                 if !self.events.contains(&PortEvent::ErrDisabled { device: d.id, port }) {
                     self.events.push(PortEvent::ErrDisabled { device: d.id, port });
@@ -1815,7 +1815,7 @@ impl Sim {
             return Err(format!("switching loop: the frame crossed {MAX_SWITCH_HOPS} switches (no spanning tree)"));
         }
         // Spanning tree takes its BPDUs (the tree itself is computed), LLDP its advertisements.
-        if packetcraft_wire::control::link_local(f.dst) {
+        if netlabcraft_wire::control::link_local(f.dst) {
             return Ok(());
         }
         let sp = &d.ports.get(in_port).ok_or("no port")?.switchport;
@@ -1881,7 +1881,7 @@ impl Sim {
         };
         // The switch's own VLAN interface.
         if in_port.is_some()
-            && f.ethertype != packetcraft_wire::ipv6::ETHERTYPE_IPV6
+            && f.ethertype != netlabcraft_wire::ipv6::ETHERTYPE_IPV6
             && let Some(svi) = up_ifaces(t, d).into_iter().find(|i| i.vlan == Some(vlan.get()))
         {
             if f.dst == svi.mac {
@@ -1903,7 +1903,7 @@ impl Sim {
         // IPv6 for the VLAN interface: its own address, or a group it may have joined (and
         // the frame still floods on).
         if in_port.is_some()
-            && f.ethertype == packetcraft_wire::ipv6::ETHERTYPE_IPV6
+            && f.ethertype == netlabcraft_wire::ipv6::ETHERTYPE_IPV6
             && let Some(svi6) = v6::up_ifaces6(t, d).into_iter().find(|i| i.port == SVI_PORT && i.vlan == Some(vlan.get()))
         {
             if f.dst == svi6.mac {
@@ -1971,7 +1971,7 @@ impl Sim {
         let end = End { device: d.id, port };
         match d.ports.get(port).filter(|p| ifname::is_serial(&p.name)) {
             Some(p) => {
-                if let Ok(bytes) = packetcraft_wire::serial::encode(framing(p), frame.ethertype, &frame.payload) {
+                if let Ok(bytes) = netlabcraft_wire::serial::encode(framing(p), frame.ethertype, &frame.payload) {
                     self.emit(t, end, bytes);
                 }
             }
@@ -2000,11 +2000,11 @@ impl Sim {
     // ---- hosts and routers ----
 
     fn l3_in(&mut self, t: &Topology, d: &Device, in_port: usize, f: Frame) -> Result<(), String> {
-        if f.ethertype == packetcraft_wire::ipv6::ETHERTYPE_IPV6 {
+        if f.ethertype == netlabcraft_wire::ipv6::ETHERTYPE_IPV6 {
             return self.ip6_in(t, d, in_port, &f);
         }
         // Spanning-tree BPDUs and LLDP stay on the link (neighbours are computed).
-        if packetcraft_wire::control::link_local(f.dst) {
+        if netlabcraft_wire::control::link_local(f.dst) {
             return Ok(());
         }
         // A host (or a router's `ip address dhcp` port) waiting for DHCP takes answers before
@@ -2044,8 +2044,8 @@ impl Sim {
         let virtual_mac = self.hsrp_active(t, d, Some(&ifc.name)).into_iter().find(|(ip, _)| *ip == a.target_ip).map(|(_, m)| m);
         let for_me = a.target_ip == ifc.net.addr
             || virtual_mac.is_some()
-            || (nat_side(d, ifc) == Some(packetcraft_model::NatSide::Outside) && Sim::nat_owns(d, a.target_ip))
-            || (packetcraft_model::firewall::is_firewall(d) && Sim::fw_owns(d, ifc, a.target_ip));
+            || (nat_side(d, ifc) == Some(netlabcraft_model::NatSide::Outside) && Sim::nat_owns(d, a.target_ip))
+            || (netlabcraft_model::firewall::is_firewall(d) && Sim::fw_owns(d, ifc, a.target_ip));
         let now = self.now;
         let st = self.st(d.id);
         if (for_me || st.arp.contains_key(&a.sender_ip)) && (st.arp.len() < MAX_ARP_ENTRIES || st.arp.contains_key(&a.sender_ip)) {
@@ -2085,17 +2085,17 @@ impl Sim {
         let mut ip = Ipv4::decode(payload).map_err(|e| e.to_string())?;
         // Routing-protocol messages to the link's routers (OSPF, RIP); hosts ignore them.
         let udp_port = if ip.protocol == PROTO_UDP { Udp::decode(&ip.payload, ip.src, ip.dst).ok().map(|u| u.dst_port) } else { None };
-        let rip = udp_port == Some(packetcraft_wire::control::RIP_PORT);
-        let hsrp = udp_port == Some(packetcraft_wire::control::HSRP_PORT);
+        let rip = udp_port == Some(netlabcraft_wire::control::RIP_PORT);
+        let hsrp = udp_port == Some(netlabcraft_wire::control::HSRP_PORT);
         if (ip.dst.octets()[..3] == [224, 0, 0]) || (rip && ip.dst == Ipv4Addr::BROADCAST) {
             if d.kind.is_host() {
                 return Ok(());
             }
             let debug = self.state.get(&d.id).map_or((false, false), |s| (s.debug_rip, s.debug_ospf));
             if debug.1
-                && ip.protocol == packetcraft_wire::control::PROTO_OSPF
+                && ip.protocol == netlabcraft_wire::control::PROTO_OSPF
                 && d.ospf.is_some()
-                && let Ok(h) = packetcraft_wire::control::OspfHello::decode(&ip.payload)
+                && let Ok(h) = netlabcraft_wire::control::OspfHello::decode(&ip.payload)
             {
                 let msg = format!(
                     "OSPF debug: hello from {} (router ID {}, area {}) on {}, {} neighbour{} listed",
@@ -2108,19 +2108,19 @@ impl Sim {
                 );
                 self.log(d.id, &msg);
             }
-            if ip.protocol == packetcraft_wire::eigrp::PROTO_EIGRP
+            if ip.protocol == netlabcraft_wire::eigrp::PROTO_EIGRP
                 && d.eigrp.is_some()
                 && self.state.get(&d.id).is_some_and(|s| s.debug_eigrp)
-                && let Ok(p) = packetcraft_wire::eigrp::EigrpPacket::decode(&ip.payload)
+                && let Ok(p) = netlabcraft_wire::eigrp::EigrpPacket::decode(&ip.payload)
             {
-                let msg = match packetcraft_wire::eigrp::EigrpHello::decode(&ip.payload) {
+                let msg = match netlabcraft_wire::eigrp::EigrpHello::decode(&ip.payload) {
                     Ok(h) => format!("EIGRP debug: hello from {} on {}, AS {}, hold time {} s", ip.src, ifc.name, h.asn, h.hold_secs),
-                    Err(_) if p.opcode == packetcraft_wire::eigrp::OPCODE_HELLO => {
+                    Err(_) if p.opcode == netlabcraft_wire::eigrp::OPCODE_HELLO => {
                         format!("EIGRP debug: acknowledgement of {} from {} on {}, AS {}", p.ack, ip.src, ifc.name, p.asn)
                     }
                     Err(_) => format!(
                         "EIGRP debug: {} #{} from {} on {}, AS {}, {} route{}",
-                        packetcraft_wire::eigrp::opcode_name(p.opcode),
+                        netlabcraft_wire::eigrp::opcode_name(p.opcode),
                         p.seq,
                         ip.src,
                         ifc.name,
@@ -2132,29 +2132,29 @@ impl Sim {
                 self.log(d.id, &msg);
             }
             if debug.0 && rip && d.rip.is_some() {
-                let entries = Udp::decode(&ip.payload, ip.src, ip.dst).ok().and_then(|u| packetcraft_wire::control::rip_decode(&u.payload).ok());
+                let entries = Udp::decode(&ip.payload, ip.src, ip.dst).ok().and_then(|u| netlabcraft_wire::control::rip_decode(&u.payload).ok());
                 if let Some((v, routes)) = entries {
                     let listed: Vec<String> = routes
                         .iter()
                         .take(8)
-                        .map(|r| format!("{}/{} metric {}", r.net, packetcraft_core::mask_to_prefix(r.mask).unwrap_or(0), r.metric))
+                        .map(|r| format!("{}/{} metric {}", r.net, netlabcraft_core::mask_to_prefix(r.mask).unwrap_or(0), r.metric))
                         .collect();
                     let more = if routes.len() > 8 { format!(" and {} more", routes.len() - 8) } else { String::new() };
                     self.log(d.id, &format!("RIP debug: version {v} update from {} on {}: {}{more}", ip.src, ifc.name, listed.join(", ")));
                 }
             }
             return match (ip.protocol, rip) {
-                (packetcraft_wire::control::PROTO_OSPF, _) if d.ospf.is_some() => Ok(()),
-                (packetcraft_wire::control::PROTO_OSPF, _) => Err("OSPF is not running here".into()),
-                (packetcraft_wire::eigrp::PROTO_EIGRP, _) if d.eigrp.is_some() => Ok(()),
-                (packetcraft_wire::eigrp::PROTO_EIGRP, _) => Err("EIGRP is not running here".into()),
+                (netlabcraft_wire::control::PROTO_OSPF, _) if d.ospf.is_some() => Ok(()),
+                (netlabcraft_wire::control::PROTO_OSPF, _) => Err("OSPF is not running here".into()),
+                (netlabcraft_wire::eigrp::PROTO_EIGRP, _) if d.eigrp.is_some() => Ok(()),
+                (netlabcraft_wire::eigrp::PROTO_EIGRP, _) => Err("EIGRP is not running here".into()),
                 (_, true) if d.rip.is_some() => Ok(()),
                 (_, true) => Err("RIP is not running here".into()),
                 _ if hsrp => Ok(()),
                 _ => Err(format!("not listening to {}", ip.dst)),
             };
         }
-        if packetcraft_model::firewall::is_firewall(d) {
+        if netlabcraft_model::firewall::is_firewall(d) {
             return self.fw_ip_in(t, d, ifc, ip, payload);
         }
         let mut from_outside = false;
@@ -2168,7 +2168,7 @@ impl Sim {
                 payload = &marked;
             }
             // NAT, outside to inside: undo the translation before deciding where it goes.
-            if nat_side(d, ifc) == Some(packetcraft_model::NatSide::Outside)
+            if nat_side(d, ifc) == Some(netlabcraft_model::NatSide::Outside)
                 && let Some(back) = self.nat_untranslate(d, &ip)
             {
                 ip = back;
@@ -2197,8 +2197,8 @@ impl Sim {
                 self.acl_check(t, d, &out, &ip, payload, false)?;
                 let mut fwd = fwd;
                 if !from_outside
-                    && nat_side(d, ifc) == Some(packetcraft_model::NatSide::Inside)
-                    && nat_side(d, &out) == Some(packetcraft_model::NatSide::Outside)
+                    && nat_side(d, ifc) == Some(netlabcraft_model::NatSide::Inside)
+                    && nat_side(d, &out) == Some(netlabcraft_model::NatSide::Outside)
                     && let Some(tr) = self.nat_translate(d, &fwd)?
                 {
                     fwd = tr;
@@ -2209,17 +2209,17 @@ impl Sim {
                 if debug {
                     self.log(d.id, &format!("IP debug: {} → {}, in {}, no route: dropped", ip.src, ip.dst, ifc.name));
                 }
-                self.icmp_error(t, d, ifc, &ip, Icmp::Unreachable { code: packetcraft_wire::UNREACH_NET, original: Icmp::quote(payload) });
+                self.icmp_error(t, d, ifc, &ip, Icmp::Unreachable { code: netlabcraft_wire::UNREACH_NET, original: Icmp::quote(payload) });
                 Err(format!("no route to {}", ip.dst))
             }
         }
     }
 
     fn local_in(&mut self, t: &Topology, d: &Device, ifc: &L3If, ip: Ipv4) -> Result<(), String> {
-        if d.kind == DeviceKind::Router && ip.protocol == packetcraft_wire::vpn::PROTO_GRE {
+        if d.kind == DeviceKind::Router && ip.protocol == netlabcraft_wire::vpn::PROTO_GRE {
             return self.gre_in(t, d, &ip);
         }
-        if d.kind == DeviceKind::Router && ip.protocol == packetcraft_wire::vpn::PROTO_ESP {
+        if d.kind == DeviceKind::Router && ip.protocol == netlabcraft_wire::vpn::PROTO_ESP {
             return self.esp_in(t, d, ifc, &ip);
         }
         if ip.protocol == PROTO_TCP {
@@ -2227,7 +2227,7 @@ impl Sim {
         }
         if ip.protocol == PROTO_UDP {
             let u = Udp::decode(&ip.payload, ip.src, ip.dst).map_err(|e| e.to_string())?;
-            if d.kind == DeviceKind::Router && u.dst_port == packetcraft_wire::ike::ISAKMP_PORT && u.src_port == packetcraft_wire::ike::ISAKMP_PORT {
+            if d.kind == DeviceKind::Router && u.dst_port == netlabcraft_wire::ike::ISAKMP_PORT && u.src_port == netlabcraft_wire::ike::ISAKMP_PORT {
                 return self.ike_in(t, d, &ip, &u.payload);
             }
             if let Some(r) = self.voice_udp_in(t, d, &ip, &u) {
@@ -2439,7 +2439,7 @@ impl Sim {
         &self,
         t: &Topology,
         d: &Device,
-        pool: &packetcraft_model::DhcpPool,
+        pool: &netlabcraft_model::DhcpPool,
         mac: MacAddr,
         allowed: Option<&[Ipv4Addr]>,
     ) -> Option<Ipv4Addr> {
@@ -2479,7 +2479,7 @@ impl Sim {
     fn dhcp_server_in(&mut self, t: &Topology, d: &Device, ifc: &L3If, msg: Dhcp) -> Result<(), String> {
         let anchor = if msg.relay.is_unspecified() { ifc.net.addr } else { msg.relay };
         // A server's pools are ranges (start address, count); a router's are whole networks.
-        let (pool, allowed): (packetcraft_model::DhcpPool, Option<Vec<Ipv4Addr>>) = if d.kind == DeviceKind::Server {
+        let (pool, allowed): (netlabcraft_model::DhcpPool, Option<Vec<Ipv4Addr>>) = if d.kind == DeviceKind::Server {
             let sp = d
                 .services
                 .dhcp
@@ -2490,10 +2490,10 @@ impl Sim {
             let net = Ipv4Net::with_mask(sp.start, sp.mask).map_err(|e| e.to_string())?.network();
             let nz = |a: Ipv4Addr| (!a.is_unspecified()).then_some(a);
             (
-                packetcraft_model::DhcpPool { name: sp.name.clone(), network: Some(net), default_router: nz(sp.gateway), dns: nz(sp.dns) },
+                netlabcraft_model::DhcpPool { name: sp.name.clone(), network: Some(net), default_router: nz(sp.gateway), dns: nz(sp.dns) },
                 Some(sp.addresses().collect()),
             )
-        } else if packetcraft_model::firewall::is_firewall(d) {
+        } else if netlabcraft_model::firewall::is_firewall(d) {
             let (pool, allowed) = Sim::fw_dhcp_pool(d, ifc)?;
             (pool, Some(allowed))
         } else {
@@ -2771,7 +2771,7 @@ impl Sim {
                 }
             };
             let response = format!(
-                "HTTP/1.1 {status}\r\nServer: PacketCraft\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                "HTTP/1.1 {status}\r\nServer: NetLabCraft\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                 body.len()
             );
             let ack = seg.seq.wrapping_add(seg.payload.len() as u32);
@@ -2795,7 +2795,7 @@ impl Sim {
     /// Remote logins: SYN-ACK when the vty lines accept the protocol, RST otherwise; data and
     /// FINs are acknowledged (the session itself runs in the console layer).
     fn login_server_in(&mut self, t: &Topology, d: &Device, ip: &Ipv4, seg: &Tcp) -> Result<(), String> {
-        let proto = if seg.dst_port == 22 { packetcraft_model::RemoteProto::Ssh } else { packetcraft_model::RemoteProto::Telnet };
+        let proto = if seg.dst_port == 22 { netlabcraft_model::RemoteProto::Ssh } else { netlabcraft_model::RemoteProto::Telnet };
         let reply = |flags: u8, seq: u32, ack: u32| Tcp {
             src_port: seg.dst_port,
             dst_port: seg.src_port,
@@ -2810,7 +2810,7 @@ impl Sim {
             if let Some(name) = &d.access.vty.access_class
                 && let Some(acl) = d.acls.iter().find(|a| a.name == *name)
             {
-                let key = packetcraft_model::acl::PacketKey {
+                let key = netlabcraft_model::acl::PacketKey {
                     protocol: PROTO_TCP,
                     src: ip.src,
                     dst: ip.dst,
@@ -2843,7 +2843,7 @@ impl Sim {
         let d = t.device(dev).ok_or(SimError::NoDevice(dev))?;
         // A connection to one of our own addresses never touches a cable.
         if l3_ifaces(d).iter().any(|i| i.net.addr == dst) {
-            let proto = if port == 22 { packetcraft_model::RemoteProto::Ssh } else { packetcraft_model::RemoteProto::Telnet };
+            let proto = if port == 22 { netlabcraft_model::RemoteProto::Ssh } else { netlabcraft_model::RemoteProto::Telnet };
             let open = matches!(port, 22 | 23) && matches!(d.kind, DeviceKind::Router | DeviceKind::Switch) && d.access.accepts(proto);
             return if open { Ok(()) } else { Err(SimError::NoSource(format!("{dst} refused the connection"))) };
         }
@@ -2948,7 +2948,7 @@ impl Sim {
             }
             let srv_seq = synack.seq.wrapping_add(1);
             let _ = self.tcp_send(t, d, src, server, &seg(tcp::ACK, isn + 1, srv_seq, Vec::new()));
-            let request = format!("GET {path} HTTP/1.1\r\nHost: {host}\r\nUser-Agent: PacketCraft\r\nConnection: close\r\n\r\n").into_bytes();
+            let request = format!("GET {path} HTTP/1.1\r\nHost: {host}\r\nUser-Agent: NetLabCraft\r\nConnection: close\r\n\r\n").into_bytes();
             let req_len = request.len() as u32;
             let _ = self.tcp_send(t, d, src, server, &seg(tcp::PSH | tcp::ACK, isn + 1, srv_seq, request));
             let mut body = Vec::new();
@@ -3094,7 +3094,7 @@ fn helpers_of(d: &Device, ifc: &L3If) -> Vec<Ipv4Addr> {
 }
 
 /// The NAT side of an interface.
-fn nat_side(d: &Device, ifc: &L3If) -> Option<packetcraft_model::NatSide> {
+fn nat_side(d: &Device, ifc: &L3If) -> Option<netlabcraft_model::NatSide> {
     if ifc.port == SVI_PORT {
         return d.svis.iter().find(|s| Some(s.vlan.get()) == ifc.vlan)?.nat;
     }

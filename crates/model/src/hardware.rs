@@ -8,7 +8,7 @@
 
 use std::collections::BTreeMap;
 
-use packetcraft_core::{DeviceId, MacAddr};
+use netlabcraft_core::{DeviceId, MacAddr};
 
 use crate::{Device, ModelError, Result, Topology, models};
 

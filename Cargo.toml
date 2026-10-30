@@ -1,25 +1,25 @@
 [workspace]
 resolver = "3"
 members = ["crates/*", "apps/*", "xtask"]
-default-members = ["crates/*", "apps/packetcraft", "apps/packetcraft-cli", "xtask"]
+default-members = ["crates/*", "apps/netlabcraft", "apps/netlabcraft-cli", "xtask"]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 rust-version = "1.95"
-repository = "https://github.com/ayozetr/packetcraft"
+repository = "https://github.com/ayozetr/netlabcraft"
 
 [workspace.dependencies]
 # internal
-packetcraft-core = { path = "crates/core" }
-packetcraft-wire = { path = "crates/wire" }
-packetcraft-model = { path = "crates/model" }
-packetcraft-sim = { path = "crates/sim" }
-packetcraft-ios = { path = "crates/ios" }
-packetcraft-engine = { path = "crates/engine" }
-packetcraft-ui-egui = { path = "crates/ui-egui" }
-packetcraft-mcp = { path = "crates/mcp" }
+netlabcraft-core = { path = "crates/core" }
+netlabcraft-wire = { path = "crates/wire" }
+netlabcraft-model = { path = "crates/model" }
+netlabcraft-sim = { path = "crates/sim" }
+netlabcraft-ios = { path = "crates/ios" }
+netlabcraft-engine = { path = "crates/engine" }
+netlabcraft-ui-egui = { path = "crates/ui-egui" }
+netlabcraft-mcp = { path = "crates/mcp" }
 
 # foundation
 thiserror = "2"

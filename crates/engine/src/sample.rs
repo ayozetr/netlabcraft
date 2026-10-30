@@ -2,8 +2,8 @@
 
 use std::net::Ipv4Addr;
 
-use packetcraft_model::{DeviceKind, End, Topology};
-use packetcraft_sim::Sim;
+use netlabcraft_model::{DeviceKind, End, Topology};
+use netlabcraft_sim::Sim;
 
 use crate::{EngineError, Result};
 
@@ -103,7 +103,7 @@ pub static SAMPLES: &[Sample] = &[
     Sample {
         id: "services",
         title: "A server with DHCP, DNS and a web site",
-        description: "PCs get their addresses from the server, resolve www.packetcraft.lab with its DNS service and open its web pages.",
+        description: "PCs get their addresses from the server, resolve www.netlabcraft.lab with its DNS service and open its web pages.",
     },
     Sample {
         id: "dhcp",
@@ -133,8 +133,8 @@ struct Builder {
 }
 
 impl Builder {
-    fn add_model(&mut self, model: &str, name: &str, x: f32, y: f32) -> Result<packetcraft_core::DeviceId> {
-        let m = packetcraft_model::models::find(model).ok_or_else(|| EngineError::Failed(format!("no model {model}")))?;
+    fn add_model(&mut self, model: &str, name: &str, x: f32, y: f32) -> Result<netlabcraft_core::DeviceId> {
+        let m = netlabcraft_model::models::find(model).ok_or_else(|| EngineError::Failed(format!("no model {model}")))?;
         let id = self.t.add_model(m, Some(name), x * 1.4, y * 1.15)?;
         crate::home::factory(&mut self.t, id);
         Ok(id)
@@ -154,7 +154,7 @@ impl Builder {
     }
 
     /// Places a device; sample coordinates are on a compact grid, spread out here.
-    fn add(&mut self, kind: DeviceKind, name: &str, x: f32, y: f32) -> Result<packetcraft_core::DeviceId> {
+    fn add(&mut self, kind: DeviceKind, name: &str, x: f32, y: f32) -> Result<netlabcraft_core::DeviceId> {
         Ok(self.t.add_device(kind, Some(name), x * 1.4, y * 1.15)?)
     }
 
@@ -169,16 +169,16 @@ impl Builder {
     /// Types `lines` at a device; any error fails the build (samples must be clean).
     fn type_in(&mut self, dev: &str, lines: &str) -> Result<()> {
         let d = self.t.resolve(dev)?;
-        let mut cli = packetcraft_ios::Cli::default();
+        let mut cli = netlabcraft_ios::Cli::default();
         for l in lines.lines().map(str::trim).filter(|l| !l.is_empty()) {
             // Samples start converged: no port spends its 30 s listening and learning.
             self.sim.topology_changed(&self.t);
-            let vlans: std::collections::BTreeSet<packetcraft_core::VlanId> = self.t.devices.iter().flat_map(|d| d.vlans.keys().copied()).collect();
+            let vlans: std::collections::BTreeSet<netlabcraft_core::VlanId> = self.t.devices.iter().flat_map(|d| d.vlans.keys().copied()).collect();
             for v in vlans {
                 let _ = self.sim.spanning_tree(&self.t, v);
             }
             self.sim.converge_stp();
-            let o = packetcraft_ios::execute(&mut self.t, &mut self.sim, d, &mut cli, l);
+            let o = netlabcraft_ios::execute(&mut self.t, &mut self.sim, d, &mut cli, l);
             if o.output.starts_with("% ") || o.output.contains("\n% ") || o.output.starts_with("DHCP failed") {
                 return Err(EngineError::Failed(format!("sample: {dev}: `{l}`: {}", o.output)));
             }
@@ -484,7 +484,7 @@ pub fn build(id: &str) -> Result<Topology> {
                 let nets: Vec<String> = [a0, a1]
                     .iter()
                     .filter_map(|a| a.split_whitespace().next())
-                    .map(|ip| packetcraft_model::Rip::classful(ip.parse().unwrap_or(std::net::Ipv4Addr::UNSPECIFIED)).addr.to_string())
+                    .map(|ip| netlabcraft_model::Rip::classful(ip.parse().unwrap_or(std::net::Ipv4Addr::UNSPECIFIED)).addr.to_string())
                     .collect();
                 let mut lines = format!(
                     "enable\nconfigure terminal\ninterface g0/0\nip address {a0}\nno shutdown\ninterface g0/1\nip address {a1}\nno shutdown\nexit\nrouter rip\nversion 2\nno auto-summary\n"
@@ -535,7 +535,7 @@ pub fn build(id: &str) -> Result<Topology> {
                 "Router0",
                 "enable\nconfigure terminal\nhostname R1\nenable secret class\ninterface g0/0\nip address 192.168.10.1 255.255.255.0\nno shutdown\ninterface g0/1\nip address 192.168.20.1 255.255.255.0\nno shutdown\nend",
             )?;
-            let mut activity = packetcraft_model::activity::Activity {
+            let mut activity = netlabcraft_model::activity::Activity {
                 title: "Your first router".into(),
                 instructions: "R1 joins two LANs.\n\n1. Name the router R1.\n2. Protect privileged mode with the secret class.\n3. Give GigabitEthernet0/0 the address 192.168.10.1/24 and GigabitEthernet0/1 192.168.20.1/24, and turn both on.\n4. Check that PC1 reaches PC2.\n\nPress Check Results at any time.".into(),
                 hidden: true,
@@ -544,12 +544,12 @@ pub fn build(id: &str) -> Result<Topology> {
             };
             activity.checks = crate::activity::capture(&b.t, true, &activity.salt).into_iter().filter(|c| c.kind.device() == router).collect();
             let pc1 = b.t.resolve("PC1").map_err(|e| EngineError::Failed(e.to_string()))?;
-            activity.checks.push(packetcraft_model::activity::Check {
+            activity.checks.push(netlabcraft_model::activity::Check {
                 label: "PC1 reaches PC2".into(),
                 points: 3,
                 section: "PC1".into(),
                 feedback: "Both router interfaces need their address and `no shutdown`.".into(),
-                kind: packetcraft_model::activity::CheckKind::Ping { from: pc1, to: "192.168.20.10".into(), succeed: true },
+                kind: netlabcraft_model::activity::CheckKind::Ping { from: pc1, to: "192.168.20.10".into(), succeed: true },
             });
             if let Some(d) = b.t.device_mut(router) {
                 d.reset_config();
@@ -596,7 +596,7 @@ pub fn build(id: &str) -> Result<Topology> {
                 "enable\nconfigure terminal\ninterface g0/0\nip address 192.168.10.1 255.255.255.0\nno shutdown\nexit\nip dhcp excluded-address 192.168.10.1 192.168.10.9\nip dhcp pool AULA\nnetwork 192.168.10.0 255.255.255.0\ndefault-router 192.168.10.1\nend",
             )?;
             b.type_in("PC1", "ipconfig 192.168.10.5 255.255.255.0 192.168.10.1")?;
-            let wifi = packetcraft_model::Wifi { ssid: "Aula".into(), key: Some("clase1234".into()), channel: 6, login: None };
+            let wifi = netlabcraft_model::Wifi { ssid: "Aula".into(), key: Some("clase1234".into()), channel: 6, login: None };
             let ap = b.t.resolve("AP1").map_err(|e| EngineError::Failed(e.to_string()))?;
             if let Some(p) = b.t.device_mut(ap).and_then(|d| d.ports.get_mut(1)) {
                 p.wifi = Some(wifi.clone());
@@ -636,7 +636,7 @@ pub fn build(id: &str) -> Result<Topology> {
             b.type_in("RADIUS1", "ipconfig 192.168.20.5 255.255.255.0 192.168.20.1")?;
             let server = b.t.resolve("RADIUS1").map_err(|e| EngineError::Failed(e.to_string()))?;
             if let Some(d) = b.t.device_mut(server) {
-                use packetcraft_model::services::{AaaClient, AaaUser};
+                use netlabcraft_model::services::{AaaClient, AaaUser};
                 d.services.aaa.on = true;
                 d.services.aaa.clients.push(AaaClient {
                     name: "WLC1".into(),
@@ -657,13 +657,13 @@ pub fn build(id: &str) -> Result<Topology> {
                     &format!("enable\nconfigure terminal\ninterface vlan 1\nip address 192.168.20.{a} 255.255.255.0\nno shutdown\nexit\nip default-gateway 192.168.20.1\ninterface g0\nswitchport mode trunk\nend"),
                 )?;
             }
-            let staff = packetcraft_model::Wifi {
+            let staff = netlabcraft_model::Wifi {
                 ssid: "Staff".into(),
                 key: None,
                 channel: 6,
-                login: Some(packetcraft_model::wlan::WifiLogin { user: "ana".into(), password: "ana12345".into() }),
+                login: Some(netlabcraft_model::wlan::WifiLogin { user: "ana".into(), password: "ana12345".into() }),
             };
-            let guest = packetcraft_model::Wifi { ssid: "Guest".into(), key: Some("invitado123".into()), channel: 6, login: None };
+            let guest = netlabcraft_model::Wifi { ssid: "Guest".into(), key: Some("invitado123".into()), channel: 6, login: None };
             for (name, x, wifi) in [("Laptop1", 160.0, staff), ("Laptop2", 600.0, guest)] {
                 b.add_model("Laptop-WiFi", name, x, 400.0)?;
                 let id = b.t.resolve(name).map_err(|e| EngineError::Failed(e.to_string()))?;
@@ -852,7 +852,7 @@ pub fn build(id: &str) -> Result<Topology> {
             b.t.notes = "PC1 pings the Web server through PAT (`show ip nat translations` on Office). PC2 is blocked by the GUESTS access list (`show access-lists`). The ISP has no route to 192.168.0.0/24: only NAT makes the replies come back.".into();
         }
         "services" => {
-            use packetcraft_model::services::{DnsRecord, ServerPool};
+            use netlabcraft_model::services::{DnsRecord, ServerPool};
             b.add(DeviceKind::Switch, "S1", 360.0, 160.0)?;
             b.add(DeviceKind::Server, "Server0", 360.0, 20.0)?;
             b.cable("Server0", "g0", "S1", "g0/1")?;
@@ -860,7 +860,7 @@ pub fn build(id: &str) -> Result<Topology> {
             let srv = b.t.resolve("Server0")?;
             if let Some(d) = b.t.device_mut(srv) {
                 d.services.dns.on = true;
-                d.services.dns.records.push(DnsRecord { name: "www.packetcraft.lab".into(), address: Ipv4Addr::new(192, 168, 100, 2) });
+                d.services.dns.records.push(DnsRecord { name: "www.netlabcraft.lab".into(), address: Ipv4Addr::new(192, 168, 100, 2) });
                 d.services.dhcp.on = true;
                 d.services.dhcp.pools = vec![ServerPool {
                     name: "office".into(),
@@ -876,7 +876,7 @@ pub fn build(id: &str) -> Result<Topology> {
                 b.cable(name, "fa0", "S1", &format!("fa0/{}", i + 1))?;
                 b.type_in(name, "ipconfig /renew")?;
             }
-            b.t.notes = "Open PC1 > Desktop > Web Browser and go to www.packetcraft.lab. Edit the pages in Server0 > Services > HTTP. Try `ping www.packetcraft.lab` and `nslookup www.packetcraft.lab` in a Command Prompt.".into();
+            b.t.notes = "Open PC1 > Desktop > Web Browser and go to www.netlabcraft.lab. Edit the pages in Server0 > Services > HTTP. Try `ping www.netlabcraft.lab` and `nslookup www.netlabcraft.lab` in a Command Prompt.".into();
         }
         "dhcp" => {
             b.add(DeviceKind::Router, "R1", 360.0, 60.0)?;
@@ -916,7 +916,7 @@ pub fn build(id: &str) -> Result<Topology> {
                 b.cable(name, "fa0", "S1", &format!("fa0/{}", i + 1))?;
                 b.type_in(name, "ipconfig /renew")?;
             }
-            b.t.add_drawing(packetcraft_model::Shape::Rectangle, 120.0, 240.0, 760.0, 210.0, Some("#e3eefa"))?;
+            b.t.add_drawing(netlabcraft_model::Shape::Rectangle, 120.0, 240.0, 760.0, 210.0, Some("#e3eefa"))?;
             b.t.add_annotation(130.0, 250.0, "Office LAN - addresses from DHCP (192.168.50.21 onwards)")?;
             b.t.notes = "PCs get their addresses from R1 by DHCP (Desktop > IP Configuration > DHCP, or `ipconfig /renew`). R1's console asks for `cisco`; `enable` asks for `class`. Try `show ip dhcp binding` on R1.".into();
         }
@@ -979,7 +979,7 @@ pub fn build(id: &str) -> Result<Topology> {
             if let Some(d) = b.t.device_mut(srv) {
                 d.services.http.on = true;
                 d.iot.service = true;
-                d.iot.rules = vec![packetcraft_model::iot::IotRule { sensor: "Sensor1".into(), above: 30, actuator: "Fan1".into() }];
+                d.iot.rules = vec![netlabcraft_model::iot::IotRule { sensor: "Sensor1".into(), above: 30, actuator: "Fan1".into() }];
             }
             for (i, (name, model, addr, x)) in
                 [("Sensor1", "IoT-Sensor", 10, 140.0), ("Fan1", "IoT-Device", 11, 360.0), ("PC1", "PC", 20, 580.0)].into_iter().enumerate()

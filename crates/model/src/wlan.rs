@@ -8,7 +8,7 @@
 use std::collections::BTreeSet;
 use std::net::Ipv4Addr;
 
-use packetcraft_core::{DeviceId, Ipv4Net, VlanId};
+use netlabcraft_core::{DeviceId, Ipv4Net, VlanId};
 use serde::{Deserialize, Serialize};
 
 use crate::{Device, DeviceKind, End, Topology, Wifi, ifname};

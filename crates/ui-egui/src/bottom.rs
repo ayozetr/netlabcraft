@@ -2,8 +2,8 @@
 //! scenario and its PDU list on the right.
 
 use egui::{RichText, Sense, Ui, vec2};
-use packetcraft_model::cable::Cable;
-use packetcraft_model::{DeviceKind, models};
+use netlabcraft_model::cable::Cable;
+use netlabcraft_model::{DeviceKind, models};
 
 use crate::i18n::tl;
 use crate::icons::{self, Glyph};

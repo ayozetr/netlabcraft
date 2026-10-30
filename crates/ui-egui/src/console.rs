@@ -3,9 +3,9 @@
 //! engine commands (`device.configure`, `cli.exec`, `device.rename`), so it can be undone.
 
 use egui::{Key, Modifiers, RichText, Sense, TextStyle, vec2};
-use packetcraft_core::DeviceId;
-use packetcraft_model::{Device, DeviceKind, End, SwitchportMode, ifname};
-use packetcraft_sim::port_up;
+use netlabcraft_core::DeviceId;
+use netlabcraft_model::{Device, DeviceKind, End, SwitchportMode, ifname};
+use netlabcraft_sim::port_up;
 use serde_json::{Value, json};
 
 use crate::i18n::tl;
@@ -123,7 +123,7 @@ pub fn open(app: &mut PacketApp, d: DeviceId) {
         w.page = ConfigPage::Home;
     }
     // A controller's (or lightweight AP's) Config tab opens on its wireless page.
-    if new && (packetcraft_model::wlan::is_wlc(&dev) || packetcraft_model::wlan::is_lap(&dev)) {
+    if new && (netlabcraft_model::wlan::is_wlc(&dev) || netlabcraft_model::wlan::is_lap(&dev)) {
         w.page = ConfigPage::Wireless;
     }
     w.focus = true;
@@ -254,7 +254,7 @@ fn console_in(app: &mut PacketApp, ui: &mut egui::Ui, win: DeviceId, d: DeviceId
     let input_id = egui::Id::unique(("console_input", win.0, d.0));
     let prompt = {
         let cli = app.session.console(d).cli.clone();
-        packetcraft_ios::prompt(&app.session.topology, d, &cli)
+        netlabcraft_ios::prompt(&app.session.topology, d, &cli)
     };
     // Keys the console handles before the text field sees them.
     let focused = ui.memory(|m| m.has_focus(input_id));
@@ -332,7 +332,7 @@ fn console_in(app: &mut PacketApp, ui: &mut egui::Ui, win: DeviceId, d: DeviceId
                         .desired_width(f32::INFINITY)
                         .frame(egui::Frame::NONE)
                         .text_color(fg)
-                        .password(prompt == packetcraft_ios::PASSWORD_PROMPT),
+                        .password(prompt == netlabcraft_ios::PASSWORD_PROMPT),
                 )
                 .labelled_by(label.id);
             if w.focus || enter || tab {
@@ -536,8 +536,8 @@ fn config(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                     if dev.catalogue_model().home_router() && list_item(ui, tl("Home Router"), page == ConfigPage::Home, false).clicked() {
                         page = ConfigPage::Home;
                     }
-                    let wlc = packetcraft_model::wlan::is_wlc(dev);
-                    if (wlc || packetcraft_model::wlan::is_lap(dev))
+                    let wlc = netlabcraft_model::wlan::is_wlc(dev);
+                    if (wlc || netlabcraft_model::wlan::is_lap(dev))
                         && list_item(ui, tl(if wlc { "Wireless LANs" } else { "Controller" }), page == ConfigPage::Wireless, false).clicked()
                     {
                         page = ConfigPage::Wireless;
@@ -646,7 +646,7 @@ impl HomeForm {
         let lan = dev.svis.iter().find(|s| s.vlan.get() == 1).and_then(|s| s.ip);
         let inet = dev.ports.iter().find(|p| p.name.starts_with("Internet")).and_then(|p| p.ip);
         let gw = dev.routes.iter().find(|r| r.net.prefix == 0).and_then(|r| match r.via {
-            packetcraft_model::NextHop::Address(a) => Some(a),
+            netlabcraft_model::NextHop::Address(a) => Some(a),
             _ => None,
         });
         let start = dev
@@ -791,7 +791,7 @@ fn settings_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
         let (export_run, merge) = row(ui, "Running Config", "Export...", "Merge...");
         if export_run {
             requests
-                .push(crate::UiRequest::SaveText { name: format!("{}_running-config.txt", dev.name), text: packetcraft_ios::running_config(dev) });
+                .push(crate::UiRequest::SaveText { name: format!("{}_running-config.txt", dev.name), text: netlabcraft_ios::running_config(dev) });
         }
         if merge {
             requests.push(crate::UiRequest::OpenText { device: d, merge: true });
@@ -849,8 +849,8 @@ fn routes_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     for r in &dev.routes {
         ui.horizontal(|ui| {
             let via = match &r.via {
-                packetcraft_model::NextHop::Address(a) => a.to_string(),
-                packetcraft_model::NextHop::Interface(i) => i.clone(),
+                netlabcraft_model::NextHop::Address(a) => a.to_string(),
+                netlabcraft_model::NextHop::Interface(i) => i.clone(),
             };
             ui.monospace(format!("{} via {via}", r.net));
             if ui.small_button(tl("Remove")).clicked() {
@@ -893,7 +893,7 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
             field(ui, tl("IPv6 Address"), &mut w.ip6);
             ui.label(format!(
                 "Link Local Address: {}",
-                packetcraft_sim::v6::l3_ifaces6(dev).iter().find(|x| x.port == i).map_or("(IPv6 off)".to_string(), |x| x.link_local.to_string())
+                netlabcraft_sim::v6::l3_ifaces6(dev).iter().find(|x| x.port == i).map_or("(IPv6 off)".to_string(), |x| x.link_local.to_string())
             ));
             if ui.button(tl("Apply IPv6")).clicked() {
                 let mut l = vec![iface.clone(), "no ipv6 address".into()];
@@ -951,9 +951,9 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
             w.wifi_password = wf.login.as_ref().map(|l| l.password.clone()).unwrap_or_default();
         }
         let ap = dev.kind == DeviceKind::Switch;
-        if packetcraft_model::wlan::is_lap(dev) {
+        if netlabcraft_model::wlan::is_lap(dev) {
             ui.label(tl("A lightweight AP offers the WLANs of its controller: see its Controller page."));
-            let n = app.session.topology.wifi_clients(packetcraft_model::End { device: d, port: i }).len();
+            let n = app.session.topology.wifi_clients(netlabcraft_model::End { device: d, port: i }).len();
             ui.label(crate::i18n::trf("{} host(s) associated", &[&n]));
             if let Some(l) = lines {
                 configure(app, d, l);
@@ -971,11 +971,11 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
         let (ssid, key, chan) = (w.wifi_ssid.trim().to_string(), w.wifi_key.trim().to_string(), w.wifi_channel.trim().parse::<u64>().unwrap_or(6));
         let (user, password) = (w.wifi_user.trim().to_string(), w.wifi_password.clone());
         let assoc = if ap {
-            crate::i18n::trf("{} host(s) associated", &[&app.session.topology.wifi_clients(packetcraft_model::End { device: d, port: i }).len()])
+            crate::i18n::trf("{} host(s) associated", &[&app.session.topology.wifi_clients(netlabcraft_model::End { device: d, port: i }).len()])
         } else {
             app.session
                 .topology
-                .wifi_ap_of(packetcraft_model::End { device: d, port: i })
+                .wifi_ap_of(netlabcraft_model::End { device: d, port: i })
                 .map_or(crate::i18n::tl("Not associated").to_string(), |e| {
                     crate::i18n::trf("Associated with {}", &[&app.session.topology.end_label(e)])
                 })
@@ -1146,7 +1146,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                         fill_host(w, dev);
                     }
                     field(ui, tl("IPv6 Address"), &mut w.ip6);
-                    let ll = packetcraft_sim::v6::l3_ifaces6(dev).first().map_or("(IPv6 off)".to_string(), |x| x.link_local.to_string());
+                    let ll = netlabcraft_sim::v6::l3_ifaces6(dev).first().map_or("(IPv6 off)".to_string(), |x| x.link_local.to_string());
                     ui.horizontal(|ui| {
                         ui.add_sized([130.0, 22.0], egui::Label::new(tl("Link Local Address")));
                         ui.label(ll);

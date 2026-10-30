@@ -2,9 +2,9 @@
 //! (`iot.sync`), the server's IoT service and rules (`iot.server`) and switching a device by
 //! hand from the server's page (`iot.switch`).
 
-use packetcraft_core::parse_ip;
-use packetcraft_model::DeviceKind;
-use packetcraft_model::iot::{IotRule, MAX_RULES, MAX_VALUE, MIN_VALUE, is_sensor};
+use netlabcraft_core::parse_ip;
+use netlabcraft_model::DeviceKind;
+use netlabcraft_model::iot::{IotRule, MAX_RULES, MAX_VALUE, MIN_VALUE, is_sensor};
 use serde_json::{Value, json};
 
 use crate::{EngineError, Result, Session};
@@ -14,7 +14,7 @@ fn bad(msg: impl Into<String>) -> EngineError {
 }
 
 /// A smart thing as its own page shows it.
-pub(crate) fn thing(s: &Session, d: packetcraft_core::DeviceId) -> Value {
+pub(crate) fn thing(s: &Session, d: netlabcraft_core::DeviceId) -> Value {
     let Some(dev) = s.topology.device(d) else { return Value::Null };
     let st = s.sim.iot_thing(d).cloned().unwrap_or_default();
     json!({
@@ -29,7 +29,7 @@ pub(crate) fn thing(s: &Session, d: packetcraft_core::DeviceId) -> Value {
 }
 
 /// A server's IoT page.
-pub(crate) fn server(s: &Session, d: packetcraft_core::DeviceId) -> Value {
+pub(crate) fn server(s: &Session, d: netlabcraft_core::DeviceId) -> Value {
     let Some(dev) = s.topology.device(d) else { return Value::Null };
     let things: Vec<Value> = s
         .sim

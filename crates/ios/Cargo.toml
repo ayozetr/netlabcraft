@@ -1,15 +1,15 @@
 [package]
-name = "packetcraft-ios"
+name = "netlabcraft-ios"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "PacketCraft L4: the device command lines (router/switch configuration shell, host shell)"
+description = "NetLabCraft L4: the device command lines (router/switch configuration shell, host shell)"
 
 [lints]
 workspace = true
 
 [dependencies]
-packetcraft-core = { workspace = true }
-packetcraft-model = { workspace = true }
-packetcraft-sim = { workspace = true }
+netlabcraft-core = { workspace = true }
+netlabcraft-model = { workspace = true }
+netlabcraft-sim = { workspace = true }

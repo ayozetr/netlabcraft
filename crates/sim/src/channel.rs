@@ -7,10 +7,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use packetcraft_core::MacAddr;
-use packetcraft_model::{ChannelGroup, Device, DeviceKind, End, Topology};
+use netlabcraft_core::MacAddr;
+use netlabcraft_model::{ChannelGroup, Device, DeviceKind, End, Topology};
 
-use packetcraft_wire::lacp::{self, LacpInfo, Lacpdu};
+use netlabcraft_wire::lacp::{self, LacpInfo, Lacpdu};
 
 use crate::port_up;
 
@@ -77,7 +77,7 @@ pub fn channels(t: &Topology, d: &Device) -> Vec<Channel> {
         .map(|(number, ports)| {
             // The first port that negotiates decides the neighbour, its group and the settings
             // every other member must share.
-            let mut lead: Option<(packetcraft_core::DeviceId, u16, &packetcraft_model::Switchport)> = None;
+            let mut lead: Option<(netlabcraft_core::DeviceId, u16, &netlabcraft_model::Switchport)> = None;
             let members = ports
                 .into_iter()
                 .map(|p| {
@@ -94,7 +94,7 @@ fn member_status<'a>(
     t: &'a Topology,
     d: &'a Device,
     p: usize,
-    lead: &mut Option<(packetcraft_core::DeviceId, u16, &'a packetcraft_model::Switchport)>,
+    lead: &mut Option<(netlabcraft_core::DeviceId, u16, &'a netlabcraft_model::Switchport)>,
 ) -> Status {
     let end = End { device: d.id, port: p };
     let (Some(port), Some(own)) = (d.ports.get(p), d.ports.get(p).and_then(|x| x.channel)) else { return Status::Down };
@@ -107,7 +107,7 @@ fn member_status<'a>(
         own.mode.bundles_with(g.mode).then_some(g)
     });
     let Some(far) = far else {
-        return if own.mode == packetcraft_model::ChannelMode::On { Status::Suspended } else { Status::Individual };
+        return if own.mode == netlabcraft_model::ChannelMode::On { Status::Suspended } else { Status::Individual };
     };
     let Some(peer) = t.peer(end) else { return Status::Down };
     match lead {
@@ -130,7 +130,7 @@ pub const LACP_EVERY_US: u64 = 30_000_000;
 
 /// What an LACP port says about itself, and its state bits.
 fn lacp_actor(t: &Topology, d: &Device, p: usize) -> Option<LacpInfo> {
-    use packetcraft_model::ChannelMode;
+    use netlabcraft_model::ChannelMode;
     let g = d.ports.get(p)?.channel?;
     if !matches!(g.mode, ChannelMode::Active | ChannelMode::Passive) {
         return None;
@@ -234,6 +234,6 @@ pub fn port_label(t: &Topology, d: &Device, p: usize, short: bool) -> String {
     match PortMap::new(t, d).channel_of(p) {
         Some(n) if short => format!("Po{n}"),
         Some(n) => format!("Port-channel{n}"),
-        None => d.ports.get(p).map_or_else(String::new, |x| if short { packetcraft_model::ifname::short(&x.name) } else { x.name.clone() }),
+        None => d.ports.get(p).map_or_else(String::new, |x| if short { netlabcraft_model::ifname::short(&x.name) } else { x.name.clone() }),
     }
 }

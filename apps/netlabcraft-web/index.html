@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>NetLabCraft</title>
+  <link data-trunk rel="icon" type="image/png" href="../../assets/app-icon/hicolor/256x256/apps/netlabcraft.png" />
+  <link data-trunk rel="rust" data-bin="netlabcraft-web" data-wasm-opt="z" data-weak-refs />
+  <style>
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #f6f7f9; }
+    #netlabcraft_canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    #netlabcraft_loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      color: #555; font: 14px system-ui, sans-serif; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <canvas id="netlabcraft_canvas"></canvas>
+  <div id="netlabcraft_loading">Loading NetLabCraft&hellip;</div>
+</body>
+</html>

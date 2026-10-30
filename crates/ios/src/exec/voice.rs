@@ -4,9 +4,9 @@
 
 use std::fmt::Write as _;
 
-use packetcraft_core::{MacAddr, VlanId, parse_ip};
-use packetcraft_model::voice::{Ephone, EphoneDn, MAX_DNS, MAX_EPHONES, TelephonyService, valid_number};
-use packetcraft_model::{Device, DeviceKind};
+use netlabcraft_core::{MacAddr, VlanId, parse_ip};
+use netlabcraft_model::voice::{Ephone, EphoneDn, MAX_DNS, MAX_EPHONES, TelephonyService, valid_number};
+use netlabcraft_model::{Device, DeviceKind};
 
 use super::{Ctx, Mode, R};
 use crate::grammar::Id;
@@ -48,10 +48,10 @@ pub(super) fn command(c: &mut Ctx<'_>, id: Id, args: &[String]) -> R {
         Id::VoiceSourceAddress => {
             let a = parse_ip(arg(0)).map_err(|e| format!("% {e}"))?;
             let port = match arg(1) {
-                "" => packetcraft_model::voice::SIGNAL_PORT,
+                "" => netlabcraft_model::voice::SIGNAL_PORT,
                 p => p.parse::<u16>().ok().filter(|p| *p > 0).ok_or("% The port is 1-65535")?,
             };
-            let mine = packetcraft_sim::l3_ifaces(c.d()?).iter().any(|i| i.net.addr == a);
+            let mine = netlabcraft_sim::l3_ifaces(c.d()?).iter().any(|i| i.net.addr == a);
             let s = service(c)?;
             s.source = Some(a);
             s.port = port;
@@ -60,7 +60,7 @@ pub(super) fn command(c: &mut Ctx<'_>, id: Id, args: &[String]) -> R {
         Id::VoiceNoSourceAddress => {
             let s = service(c)?;
             s.source = None;
-            s.port = packetcraft_model::voice::SIGNAL_PORT;
+            s.port = netlabcraft_model::voice::SIGNAL_PORT;
             Ok(String::new())
         }
         Id::VoiceAutoAssign => {

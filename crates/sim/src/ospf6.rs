@@ -7,8 +7,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::{Ipv4Addr, Ipv6Addr};
 
-use packetcraft_core::{DeviceId, Ipv6Net};
-use packetcraft_model::{Device, DeviceKind, End, Topology};
+use netlabcraft_core::{DeviceId, Ipv6Net};
+use netlabcraft_model::{Device, DeviceKind, End, Topology};
 
 use crate::v6::{L3If6, conf6, routes6, up_ifaces6};
 use crate::{SVI_PORT, port_up};
@@ -61,7 +61,7 @@ fn ifaces(t: &Topology, d: &Device) -> Vec<(L3If6, u32, bool)> {
         .into_iter()
         .filter_map(|i| {
             let (process, area) = conf6(d, &i)?.ospf?;
-            let passive = o.passive.iter().any(|p| packetcraft_model::ifname::parse(p).is_some_and(|n| n.to_string() == i.name));
+            let passive = o.passive.iter().any(|p| netlabcraft_model::ifname::parse(p).is_some_and(|n| n.to_string() == i.name));
             (process == o.process).then_some((i, area, passive))
         })
         .collect()
@@ -72,7 +72,7 @@ fn reach(t: &Topology, d: &Device, ifc: &L3If6) -> BTreeSet<End> {
     if ifc.port != SVI_PORT {
         return crate::ospf::l2_reach(t, End { device: d.id, port: ifc.port });
     }
-    let Some(v) = ifc.vlan.and_then(packetcraft_core::VlanId::new) else { return BTreeSet::new() };
+    let Some(v) = ifc.vlan.and_then(netlabcraft_core::VlanId::new) else { return BTreeSet::new() };
     let mut all = BTreeSet::new();
     for p in (0..d.ports.len()).filter(|p| crate::stp::carries(t, d, *p, v)) {
         all.extend(crate::ospf::l2_reach(t, End { device: d.id, port: p }));
@@ -84,7 +84,7 @@ fn reaches(t: &Topology, r: &BTreeSet<End>, b: &Device, ib: &L3If6) -> bool {
     if ib.port != SVI_PORT {
         return r.contains(&End { device: b.id, port: ib.port });
     }
-    let Some(v) = ib.vlan.and_then(packetcraft_core::VlanId::new) else { return false };
+    let Some(v) = ib.vlan.and_then(netlabcraft_core::VlanId::new) else { return false };
     (0..b.ports.len()).any(|p| crate::stp::carries(t, b, p, v) && r.contains(&End { device: b.id, port: p }))
 }
 

@@ -1,21 +1,21 @@
 [package]
-name = "packetcraft-ui-egui"
+name = "netlabcraft-ui-egui"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "PacketCraft L6: the egui interface (topology canvas, device consoles, simulation event list)"
+description = "NetLabCraft L6: the egui interface (topology canvas, device consoles, simulation event list)"
 
 [lints]
 workspace = true
 
 [dependencies]
-packetcraft-core = { workspace = true }
-packetcraft-wire = { workspace = true }
-packetcraft-model = { workspace = true }
-packetcraft-sim = { workspace = true }
-packetcraft-ios = { workspace = true }
-packetcraft-engine = { workspace = true }
+netlabcraft-core = { workspace = true }
+netlabcraft-wire = { workspace = true }
+netlabcraft-model = { workspace = true }
+netlabcraft-sim = { workspace = true }
+netlabcraft-ios = { workspace = true }
+netlabcraft-engine = { workspace = true }
 egui = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }

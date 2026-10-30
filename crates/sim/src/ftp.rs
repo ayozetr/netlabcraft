@@ -7,11 +7,11 @@
 use std::collections::BTreeMap;
 use std::net::Ipv4Addr;
 
-use packetcraft_core::DeviceId;
-use packetcraft_model::services::{FtpUser, MAX_FILE, MAX_ITEMS, WebFile};
-use packetcraft_model::{Device, DeviceKind, Topology};
-use packetcraft_wire::tcp::{self, Tcp};
-use packetcraft_wire::{FTP_DATA_PORTS, FTP_PORT, Ipv4};
+use netlabcraft_core::DeviceId;
+use netlabcraft_model::services::{FtpUser, MAX_FILE, MAX_ITEMS, WebFile};
+use netlabcraft_model::{Device, DeviceKind, Topology};
+use netlabcraft_wire::tcp::{self, Tcp};
+use netlabcraft_wire::{FTP_DATA_PORTS, FTP_PORT, Ipv4};
 
 use crate::{Sim, SimError};
 
@@ -88,7 +88,7 @@ impl Sim {
         let ip = Ipv4 {
             id: self.ip_id(),
             ttl: crate::default_ttl(d.kind),
-            protocol: packetcraft_wire::PROTO_TCP,
+            protocol: netlabcraft_wire::PROTO_TCP,
             src,
             dst,
             payload: seg.encode(src, dst),
@@ -153,7 +153,7 @@ impl Sim {
                 payload: Vec::new(),
             };
             self.seg_to(t, d, ip.dst, ip.src, synack)?;
-            return self.ftp_reply(t, d, ip.dst, key, seg.seq.wrapping_add(1), "220 PacketCraft FTP server ready", false);
+            return self.ftp_reply(t, d, ip.dst, key, seg.seq.wrapping_add(1), "220 NetLabCraft FTP server ready", false);
         }
         if seg.flags & tcp::FIN != 0 && seg.payload.is_empty() {
             let c = self.st(d.id).ftp.control.remove(&key);

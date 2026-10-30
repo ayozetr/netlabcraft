@@ -1,12 +1,12 @@
 [Desktop Entry]
 Type=Application
-Name=PacketCraft
+Name=NetLabCraft
 GenericName=Network Simulator
 Comment=Build network labs, configure routers and switches, and watch every frame
-Exec=packetcraft %f
-Icon=packetcraft
+Exec=netlabcraft %f
+Icon=netlabcraft
 Terminal=false
 Categories=Education;ComputerScience;
-MimeType=application/x-packetcraft+json;
+MimeType=application/x-netlabcraft+json;
 Keywords=network;simulator;router;switch;lab;ccna;
-StartupWMClass=packetcraft
+StartupWMClass=netlabcraft

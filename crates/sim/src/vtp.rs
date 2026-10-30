@@ -9,15 +9,15 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use packetcraft_core::DeviceId;
-use packetcraft_model::{DeviceKind, Topology, VTP_MAX_VLAN, VtpMode};
+use netlabcraft_core::DeviceId;
+use netlabcraft_model::{DeviceKind, Topology, VTP_MAX_VLAN, VtpMode};
 
 use crate::port_up;
 
 /// Switch neighbours over up trunk links.
 fn trunk_neighbours(t: &Topology) -> BTreeMap<DeviceId, BTreeSet<DeviceId>> {
     let mut adj: BTreeMap<DeviceId, BTreeSet<DeviceId>> = BTreeMap::new();
-    let trunk = |e: packetcraft_model::End| {
+    let trunk = |e: netlabcraft_model::End| {
         t.device(e.device).filter(|d| d.kind == DeviceKind::Switch).and_then(|d| d.ports.get(e.port)).is_some() && t.is_trunk(e)
     };
     for l in &t.links {

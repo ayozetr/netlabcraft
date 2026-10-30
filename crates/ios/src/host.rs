@@ -2,9 +2,9 @@
 
 use std::fmt::Write as _;
 
-use packetcraft_core::{DeviceId, Ipv4Net, parse_ip};
-use packetcraft_model::{Device, Topology};
-use packetcraft_sim::{PingOptions, Probe, Sim};
+use netlabcraft_core::{DeviceId, Ipv4Net, parse_ip};
+use netlabcraft_model::{Device, Topology};
+use netlabcraft_sim::{PingOptions, Probe, Sim};
 
 use crate::Outcome;
 use crate::render::{ms, traceroute};
@@ -66,14 +66,14 @@ const FTP_HELP: &str = "\
 pub fn apply_ftp_changes(t: &mut Topology, sim: &mut Sim) {
     for (srv, name, content) in sim.take_ftp_changes() {
         if let Some(d) = t.device_mut(srv) {
-            packetcraft_sim::ftp::apply_change(&mut d.services.ftp.files, &name, content);
+            netlabcraft_sim::ftp::apply_change(&mut d.services.ftp.files, &name, content);
         }
     }
 }
 
 /// A line typed inside `ftp`.
 pub fn ftp_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut crate::Cli, line: &str) -> Outcome {
-    use packetcraft_sim::ftp::FtpOp;
+    use netlabcraft_sim::ftp::FtpOp;
     let out = |s: String| Outcome { output: s, ..Outcome::default() };
     let Some(mut f) = cli.ftp.take() else { return Outcome::default() };
     match f.stage.clone() {
@@ -125,10 +125,10 @@ pub fn ftp_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut crate:
             out(match (r, op) {
                 (Ok((done, _)), FtpOp::Put(n, b)) => format!("Sending {n} ({} bytes)\n{done}", b.len()),
                 (Ok((done, bytes)), FtpOp::Get(n)) => {
-                    let content: String = String::from_utf8_lossy(&bytes).chars().take(packetcraft_model::services::MAX_FILE).collect();
+                    let content: String = String::from_utf8_lossy(&bytes).chars().take(netlabcraft_model::services::MAX_FILE).collect();
                     let len = bytes.len();
                     if let Some(d) = t.device_mut(dev) {
-                        packetcraft_sim::ftp::apply_change(&mut d.files, &n, Some(content));
+                        netlabcraft_sim::ftp::apply_change(&mut d.files, &n, Some(content));
                     }
                     format!("Receiving {n} ({len} bytes)\n{done}")
                 }
@@ -173,15 +173,15 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut crate::
             }
         }
         "telnet" | "ssh" => {
-            let proto = if first.eq_ignore_ascii_case("ssh") { packetcraft_model::RemoteProto::Ssh } else { packetcraft_model::RemoteProto::Telnet };
+            let proto = if first.eq_ignore_ascii_case("ssh") { netlabcraft_model::RemoteProto::Ssh } else { netlabcraft_model::RemoteProto::Telnet };
             let rest = words.get(1..).unwrap_or_default();
             let (user, target) = match rest {
                 ["-l", u, a] | [a, "-l", u] => (Some(u.to_string()), a.to_string()),
-                [a] if proto == packetcraft_model::RemoteProto::Telnet => (None, a.to_string()),
+                [a] if proto == netlabcraft_model::RemoteProto::Telnet => (None, a.to_string()),
                 _ => {
                     return out(format!(
                         "Usage: {}",
-                        if proto == packetcraft_model::RemoteProto::Ssh { "ssh -l <user> <address>" } else { "telnet <address>" }
+                        if proto == netlabcraft_model::RemoteProto::Ssh { "ssh -l <user> <address>" } else { "telnet <address>" }
                     ));
                 }
             };
@@ -376,7 +376,7 @@ fn host_ping(t: &Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Strin
 
 /// The IPv6 part of `ipconfig` and `ipv6config`.
 fn ipv6_lines(d: &Device) -> String {
-    let Some(i) = packetcraft_sim::v6::l3_ifaces6(d).into_iter().next() else { return "\nIPv6        off".into() };
+    let Some(i) = netlabcraft_sim::v6::l3_ifaces6(d).into_iter().next() else { return "\nIPv6        off".into() };
     let mut s = format!("\nLink-local  {}", i.link_local);
     for a in &i.addresses {
         let _ = write!(s, "\nIPv6        {a}");
@@ -396,7 +396,7 @@ fn ipv6config(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> 
         [w] if w.eq_ignore_ascii_case("off") => {
             if let Some(d) = t.device_mut(dev) {
                 if let Some(p) = d.ports.first_mut() {
-                    p.ipv6 = packetcraft_model::Ipv6Conf::default();
+                    p.ipv6 = netlabcraft_model::Ipv6Conf::default();
                 }
                 d.gateway6 = None;
             }
@@ -413,7 +413,7 @@ fn ipv6config(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> 
                     let (addr, router) = (auto.address, auto.router);
                     if let Some(d) = t.device_mut(dev) {
                         if let Some(p) = d.ports.first_mut() {
-                            p.ipv6 = packetcraft_model::Ipv6Conf {
+                            p.ipv6 = netlabcraft_model::Ipv6Conf {
                                 enabled: true,
                                 addresses: vec![addr],
                                 link_local: None,
@@ -434,8 +434,8 @@ fn ipv6config(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> 
             }
         }
         [addr, rest @ ..] if rest.len() <= 1 => (|| {
-            let net: packetcraft_core::Ipv6Net = addr.parse().map_err(|e: packetcraft_core::CoreError| e.to_string())?;
-            if net.addr.is_multicast() || net.addr.is_unspecified() || packetcraft_core::Ipv6Net::is_link_local(net.addr) {
+            let net: netlabcraft_core::Ipv6Net = addr.parse().map_err(|e: netlabcraft_core::CoreError| e.to_string())?;
+            if net.addr.is_multicast() || net.addr.is_unspecified() || netlabcraft_core::Ipv6Net::is_link_local(net.addr) {
                 return Err(format!("{} can't be this host's address", net.addr));
             }
             let gw = match rest.first() {
@@ -443,7 +443,7 @@ fn ipv6config(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> 
                 None => None,
             };
             if let Some(g) = gw
-                && !packetcraft_core::Ipv6Net::is_link_local(g)
+                && !netlabcraft_core::Ipv6Net::is_link_local(g)
                 && !net.contains(g)
             {
                 return Err(format!("the gateway {g} is not on {}", net.network()));
@@ -451,7 +451,7 @@ fn ipv6config(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> 
             let d = t.device_mut(dev).ok_or("the device no longer exists")?;
             if let Some(p) = d.ports.first_mut() {
                 p.ipv6 =
-                    packetcraft_model::Ipv6Conf { enabled: true, addresses: vec![net], link_local: None, autoconfig: false, ..Default::default() };
+                    netlabcraft_model::Ipv6Conf { enabled: true, addresses: vec![net], link_local: None, autoconfig: false, ..Default::default() };
             }
             d.gateway6 = gw;
             Ok(format!("IPv6 address set to {net}{}.", gw.map(|g| format!(", gateway {g}")).unwrap_or_default()))

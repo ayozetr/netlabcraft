@@ -25,13 +25,13 @@
 
 use std::collections::BTreeMap;
 
-use packetcraft_core::DeviceId;
-use packetcraft_model::Device;
-use packetcraft_model::qos::{AppProto, CLASS_DEFAULT, ClassMap, Match, PoliceAction, PolicyMap, Rate};
-use packetcraft_wire::Ipv4;
-use packetcraft_wire::qos as ds;
+use netlabcraft_core::DeviceId;
+use netlabcraft_model::Device;
+use netlabcraft_model::qos::{AppProto, CLASS_DEFAULT, ClassMap, Match, PoliceAction, PolicyMap, Rate};
+use netlabcraft_wire::Ipv4;
+use netlabcraft_wire::qos as ds;
 /// DSCP names and numbers, for the console.
-pub use packetcraft_wire::qos::{dscp_name, parse_dscp};
+pub use netlabcraft_wire::qos::{dscp_name, parse_dscp};
 
 use crate::Sim;
 
@@ -74,7 +74,7 @@ const QUEUE_LIMIT: u128 = 64 * 1_500 * 1_000_000;
 /// bandwidth, else the speed of its type.
 pub fn link_rate_bps(d: &Device, iface: &str) -> u64 {
     let port = d.ports.iter().find(|p| p.name == iface);
-    if let Some(c) = port.filter(|p| packetcraft_model::ifname::is_serial(&p.name)).and_then(|p| p.serial.clock_rate) {
+    if let Some(c) = port.filter(|p| netlabcraft_model::ifname::is_serial(&p.name)).and_then(|p| p.serial.clock_rate) {
         return u64::from(c.max(1));
     }
     let kbit = port.and_then(|p| p.bandwidth).unwrap_or_else(|| crate::eigrp::default_metrics(iface).0);
@@ -100,7 +100,7 @@ struct Pkt {
 }
 
 fn ports(ip: &Ipv4) -> Option<(u16, u16)> {
-    if ip.protocol != packetcraft_wire::PROTO_TCP && ip.protocol != packetcraft_wire::PROTO_UDP {
+    if ip.protocol != netlabcraft_wire::PROTO_TCP && ip.protocol != netlabcraft_wire::PROTO_UDP {
         return None;
     }
     let b = ip.payload.get(..4)?;
@@ -135,7 +135,7 @@ fn class_matches(d: &Device, cm: &ClassMap, pkt: &Pkt) -> bool {
 
 /// The class a packet falls into under a policy: the first class whose class map takes it,
 /// else class-default (whether or not the policy lists it).
-fn classify<'a>(d: &Device, policy: &'a packetcraft_model::qos::PolicyMap, pkt: &Pkt) -> &'a str {
+fn classify<'a>(d: &Device, policy: &'a netlabcraft_model::qos::PolicyMap, pkt: &Pkt) -> &'a str {
     for c in &policy.classes {
         if c.class == CLASS_DEFAULT {
             return CLASS_DEFAULT;
@@ -167,7 +167,7 @@ impl Sim {
         let stats = st.qos.entry(key).or_default();
         stats.packets = stats.packets.saturating_add(1);
         stats.bytes = stats.bytes.saturating_add(size);
-        let action = action.unwrap_or_else(|| packetcraft_model::qos::PolicyClass::new(&class));
+        let action = action.unwrap_or_else(|| netlabcraft_model::qos::PolicyClass::new(&class));
         let mut mark = action.set_dscp.map(Mark::Dscp).or(action.set_precedence.map(Mark::Precedence));
         if let Some(pol) = action.police {
             let depth = u128::from(pol.depth()).saturating_mul(1_000_000);
@@ -352,8 +352,8 @@ pub(crate) fn keep_ds(original: &[u8], mut encoded: Vec<u8>) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use packetcraft_model::qos::{PolicyClass, ServicePolicy};
-    use packetcraft_model::{DeviceKind, Topology};
+    use netlabcraft_model::qos::{PolicyClass, ServicePolicy};
+    use netlabcraft_model::{DeviceKind, Topology};
 
     /// A router whose Gi0/1 sends at 64 kbit/s with a voice class (priority 16 kbit/s), a data
     /// class (bandwidth 32 kbit/s) and class-default.
@@ -379,7 +379,7 @@ mod tests {
         let ip = Ipv4 {
             id: 1,
             ttl: 64,
-            protocol: packetcraft_wire::PROTO_UDP,
+            protocol: netlabcraft_wire::PROTO_UDP,
             src: "10.0.0.1".parse().unwrap(),
             dst: "10.0.0.2".parse().unwrap(),
             payload: vec![0; 980],

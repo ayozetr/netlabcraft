@@ -4,12 +4,12 @@
 //! directory numbers (`ephone-dn N` with `number X`, given to the phone `ephone N` with that
 //! MAC address through `button 1:N`; or handed out with `auto assign`). Phones learn where to
 //! register from the DHCP option 150 (`option 150 ip A.B.C.D` in the router's pool). The
-//! signalling and the voice packets are in `packetcraft-sim`'s `voice` module.
+//! signalling and the voice packets are in `netlabcraft-sim`'s `voice` module.
 
 use std::collections::BTreeMap;
 use std::net::Ipv4Addr;
 
-use packetcraft_core::MacAddr;
+use netlabcraft_core::MacAddr;
 use serde::{Deserialize, Serialize};
 
 use crate::{Device, DeviceKind};
@@ -19,7 +19,7 @@ pub const MAX_DNS: usize = 256;
 pub const MAX_EPHONES: usize = 256;
 /// The longest directory number.
 pub const MAX_NUMBER: usize = 16;
-/// The UDP port the call agent listens on (our own signalling, see `packetcraft-sim`).
+/// The UDP port the call agent listens on (our own signalling, see `netlabcraft-sim`).
 pub const SIGNAL_PORT: u16 = 2000;
 
 /// `telephony-service`.

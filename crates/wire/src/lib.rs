@@ -1,4 +1,4 @@
-//! PacketCraft L1: the bytes that cross a simulated cable.
+//! NetLabCraft L1: the bytes that cross a simulated cable.
 //!
 //! Every frame the simulator moves is real wire format, so a capture opens in any pcap reader.
 //! Formats follow the public standards: Ethernet II and IEEE 802.1Q tags, ARP (RFC 826), IPv4
@@ -10,7 +10,7 @@
 
 use std::net::Ipv4Addr;
 
-use packetcraft_core::MacAddr;
+use netlabcraft_core::MacAddr;
 
 pub mod aes;
 pub mod capwap;
@@ -61,7 +61,7 @@ pub const ETHERTYPE_VLAN: u16 = 0x8100;
 pub const PROTO_ICMP: u8 = 1;
 pub const PROTO_UDP: u8 = 17;
 pub const PROTO_TCP: u8 = 6;
-/// FTP's control port, and the ports PacketCraft's FTP servers open for passive data.
+/// FTP's control port, and the ports NetLabCraft's FTP servers open for passive data.
 pub const FTP_PORT: u16 = 21;
 pub const FTP_DATA_PORTS: std::ops::Range<u16> = 20_000..30_000;
 /// SMTP (mail in) and POP3 (mail out to its owner).

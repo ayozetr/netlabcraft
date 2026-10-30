@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 use std::net::Ipv4Addr;
 
-use packetcraft_core::Ipv4Net;
+use netlabcraft_core::Ipv4Net;
 use serde::{Deserialize, Serialize};
 
 /// Most tunnel interfaces per router.

@@ -3,8 +3,8 @@
 //! `phone.hangup`, `phone.status`).
 
 use egui::{RichText, Sense, vec2};
-use packetcraft_model::Device;
-use packetcraft_sim::voice::CallState;
+use netlabcraft_model::Device;
+use netlabcraft_sim::voice::CallState;
 use serde_json::json;
 
 use crate::i18n::{tl, tr_any, trf};
@@ -130,7 +130,7 @@ pub(crate) fn tab(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
 mod tests {
     use egui_kittest::Harness;
     use egui_kittest::kittest::Queryable as _;
-    use packetcraft_engine::Session;
+    use netlabcraft_engine::Session;
     use serde_json::json;
 
     use crate::PacketApp;
@@ -155,7 +155,7 @@ mod tests {
         assert_eq!(h.state().ui.windows.get(&p1).unwrap().dialled, n2);
         h.get_by_label("Call").click();
         h.run_steps(2);
-        assert_eq!(h.state().session.sim.phone(p2).and_then(|x| x.call.as_ref()).map(|c| c.state), Some(packetcraft_sim::voice::CallState::Ringing));
+        assert_eq!(h.state().session.sim.phone(p2).and_then(|x| x.call.as_ref()).map(|c| c.state), Some(netlabcraft_sim::voice::CallState::Ringing));
         h.state_mut().ui.windows.clear();
         crate::open_console(h.state_mut(), p2);
         h.run_steps(3);
@@ -163,7 +163,7 @@ mod tests {
         h.run_steps(2);
         assert_eq!(
             h.state().session.sim.phone(p2).and_then(|x| x.call.as_ref()).map(|c| c.state),
-            Some(packetcraft_sim::voice::CallState::Connected)
+            Some(netlabcraft_sim::voice::CallState::Connected)
         );
         h.get_by_label("Hang up").click();
         h.run_steps(2);

@@ -7,11 +7,11 @@
 
 use std::net::{IpAddr, Ipv6Addr};
 
-use packetcraft_core::{Ipv6Net, MacAddr, VlanId, eui64, link_local};
-use packetcraft_model::{Device, DeviceKind, End, Ipv6Conf, Topology};
-use packetcraft_wire::Frame;
-use packetcraft_wire::dhcp6::{self, Dhcp6};
-use packetcraft_wire::ipv6::{
+use netlabcraft_core::{Ipv6Net, MacAddr, VlanId, eui64, link_local};
+use netlabcraft_model::{Device, DeviceKind, End, Ipv6Conf, Topology};
+use netlabcraft_wire::Frame;
+use netlabcraft_wire::dhcp6::{self, Dhcp6};
+use netlabcraft_wire::ipv6::{
     ALL_NODES, ALL_ROUTERS, ETHERTYPE_IPV6, Icmp6, Ipv6, PROTO_ICMPV6, PrefixInfo, RA_MANAGED, RA_OTHER, multicast_mac, solicited_node,
 };
 
@@ -255,7 +255,7 @@ impl Sim {
         let joined = |g: Ipv6Addr| {
             g == ALL_NODES
                 || (router && g == ALL_ROUTERS)
-                || (ospf6 && g == packetcraft_wire::ospf6::ALL_SPF_ROUTERS6)
+                || (ospf6 && g == netlabcraft_wire::ospf6::ALL_SPF_ROUTERS6)
                 || (serves && g == dhcp6::ALL_SERVERS)
                 || all.iter().any(|i| i.addresses.iter().map(|n| n.addr).chain([i.link_local]).any(|a| solicited_node(a) == g))
         };
@@ -294,7 +294,7 @@ impl Sim {
                     d,
                     &ifc,
                     &ip,
-                    Icmp6::Unreachable { code: packetcraft_wire::ipv6::UNREACH6_NO_ROUTE, original: Icmp6::quote(&raw) },
+                    Icmp6::Unreachable { code: netlabcraft_wire::ipv6::UNREACH6_NO_ROUTE, original: Icmp6::quote(&raw) },
                 );
                 Err(format!("no IPv6 route to {}", ip.dst))
             }
@@ -302,11 +302,11 @@ impl Sim {
     }
 
     fn local6_in(&mut self, t: &Topology, d: &Device, ifc: &L3If6, src_mac: MacAddr, ip: Ipv6) -> Result<(), String> {
-        if ip.next_header == packetcraft_wire::PROTO_UDP {
+        if ip.next_header == netlabcraft_wire::PROTO_UDP {
             return self.udp6_in(t, d, ifc, ip);
         }
         // OSPFv3 is computed; its hellos are taken in quietly.
-        if ip.next_header == packetcraft_wire::ospf6::PROTO_OSPF && d.ospf6.is_some() {
+        if ip.next_header == netlabcraft_wire::ospf6::PROTO_OSPF && d.ospf6.is_some() {
             return Ok(());
         }
         if ip.next_header != PROTO_ICMPV6 {
@@ -411,7 +411,7 @@ impl Sim {
         // A filter naming a list that doesn't exist lets everything through.
         let Some(acl) = d.acls6.iter().find(|a| a.name == *name) else { return Ok(()) };
         let nd = ip.next_header == PROTO_ICMPV6 && ip.payload.first().is_some_and(|t| (133..=137).contains(t));
-        let key = packetcraft_model::acl::Packet6Key { next_header: ip.next_header, src: ip.src, dst: ip.dst, src_port: None, dst_port: None, nd };
+        let key = netlabcraft_model::acl::Packet6Key { next_header: ip.next_header, src: ip.src, dst: ip.dst, src_port: None, dst_port: None, nd };
         let (permit, hit) = acl.evaluate(&key);
         if hit.is_some() || !permit {
             *self.st(d.id).acl_hits.entry((format!("ipv6 {name}"), hit.unwrap_or(usize::MAX))).or_insert(0) += 1;
@@ -624,7 +624,7 @@ impl Sim {
                 let reply = self.dhcp6_serve(d, ifc, &msg, None)?;
                 let src = ifc.link_local;
                 let udp = dhcp6::udp6_encode(src, ip.src, dhcp6::SERVER_PORT, dhcp6::CLIENT_PORT, &reply.encode());
-                let packet = Ipv6 { hop_limit: 64, next_header: packetcraft_wire::PROTO_UDP, src, dst: ip.src, payload: udp };
+                let packet = Ipv6 { hop_limit: 64, next_header: netlabcraft_wire::PROTO_UDP, src, dst: ip.src, payload: udp };
                 self.send_ip6(t, d, packet, Some(ifc))
             }
             p => Err(format!("UDP port {p} not open here")),
@@ -660,7 +660,7 @@ impl Sim {
         let (out, _) = route6(t, d, dst, None, &dynamic).ok_or_else(|| format!("no IPv6 route to {dst}"))?;
         let src = out.source_for(dst);
         let udp = dhcp6::udp6_encode(src, dst, sport, dport, payload);
-        self.send_ip6(t, d, Ipv6 { hop_limit: 64, next_header: packetcraft_wire::PROTO_UDP, src, dst, payload: udp }, None)
+        self.send_ip6(t, d, Ipv6 { hop_limit: 64, next_header: netlabcraft_wire::PROTO_UDP, src, dst, payload: udp }, None)
     }
 
     /// A server answering a relayed message: the answer goes back to the relay, wrapped.
@@ -682,7 +682,7 @@ impl Sim {
             .ok_or("no interface for this relayed answer")?;
         let src = out.link_local;
         let udp = dhcp6::udp6_encode(src, r.peer, dhcp6::SERVER_PORT, dhcp6::CLIENT_PORT, &r.message);
-        self.send_ip6(t, d, Ipv6 { hop_limit: 64, next_header: packetcraft_wire::PROTO_UDP, src, dst: r.peer, payload: udp }, Some(&out))
+        self.send_ip6(t, d, Ipv6 { hop_limit: 64, next_header: netlabcraft_wire::PROTO_UDP, src, dst: r.peer, payload: udp }, Some(&out))
     }
 
     /// The address a client gets from a pool: the one it already has, else the first free
@@ -707,7 +707,7 @@ impl Sim {
         self.st(dev).dhcp6_inbox.clear();
         let xid = msg.xid;
         let udp = dhcp6::udp6_encode(ifc.link_local, dhcp6::ALL_SERVERS, dhcp6::CLIENT_PORT, dhcp6::SERVER_PORT, &msg.encode());
-        let p = Ipv6 { hop_limit: 1, next_header: packetcraft_wire::PROTO_UDP, src: ifc.link_local, dst: dhcp6::ALL_SERVERS, payload: udp };
+        let p = Ipv6 { hop_limit: 1, next_header: netlabcraft_wire::PROTO_UDP, src: ifc.link_local, dst: dhcp6::ALL_SERVERS, payload: udp };
         self.emit6(t, d, ifc, multicast_mac(dhcp6::ALL_SERVERS), p.encode());
         let start = self.now;
         self.advance(t, start.saturating_add(ND_WAIT_US), |s| {

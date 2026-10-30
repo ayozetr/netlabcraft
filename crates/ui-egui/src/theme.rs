@@ -3,8 +3,8 @@
 //! the values are our own.
 
 use egui::Color32;
-use packetcraft_model::DeviceKind;
-use packetcraft_wire::Protocol;
+use netlabcraft_model::DeviceKind;
+use netlabcraft_wire::Protocol;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Tokens {

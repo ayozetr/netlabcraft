@@ -1,6 +1,6 @@
 //! Hardware commands: the power switch and the cards of modular routers.
 
-use packetcraft_model::models;
+use netlabcraft_model::models;
 use serde_json::{Value, json};
 
 use crate::{EngineError, Result, Session};
@@ -14,7 +14,7 @@ fn text<'a>(p: &'a Value, key: &str) -> Result<&'a str> {
 }
 
 /// What a device's hardware looks like: power, bays and the cards in them.
-fn describe(s: &Session, d: packetcraft_core::DeviceId) -> Value {
+fn describe(s: &Session, d: netlabcraft_core::DeviceId) -> Value {
     let Some(dev) = s.topology.device(d) else { return Value::Null };
     let model = dev.catalogue_model();
     let slots: Vec<Value> = model
@@ -93,7 +93,7 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
 
 /// Boots a switched-off device: factory settings, then the saved configuration (routers and
 /// switches), as after a reload.
-fn power_on(s: &mut Session, d: packetcraft_core::DeviceId) -> Vec<String> {
+fn power_on(s: &mut Session, d: netlabcraft_core::DeviceId) -> Vec<String> {
     let Some(dev) = s.topology.device_mut(d) else { return Vec::new() };
     dev.powered_off = false;
     if !dev.has_running_config() {
@@ -107,7 +107,7 @@ fn power_on(s: &mut Session, d: packetcraft_core::DeviceId) -> Vec<String> {
     dev.reset_config();
     let startup = dev.startup.clone();
     match startup {
-        Some(cfg) => packetcraft_ios::apply_config(&mut s.topology, &mut s.sim, d, &cfg),
+        Some(cfg) => netlabcraft_ios::apply_config(&mut s.topology, &mut s.sim, d, &cfg),
         None => Vec::new(),
     }
 }

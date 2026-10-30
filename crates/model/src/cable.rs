@@ -11,7 +11,7 @@
 //! port, which are not network interfaces (no frames, not in the interface tables), and are
 //! kept in [`Topology::consoles`].
 
-use packetcraft_core::DeviceId;
+use netlabcraft_core::DeviceId;
 use serde::{Deserialize, Serialize};
 
 use crate::{Device, DeviceKind, End, Link, ModelError, Result, Topology, ifname, models};

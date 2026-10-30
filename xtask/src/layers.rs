@@ -24,7 +24,7 @@ impl Class {
 }
 
 /// The layering table (AGENTS.md "Layering", docs/architecture.md). Names are package names
-/// without the `packetcraft-` prefix.
+/// without the `netlabcraft-` prefix.
 pub const TABLE: &[(&str, Class)] = &[
     ("core", Class::Layer(0)),
     ("wire", Class::Layer(1)),
@@ -35,7 +35,7 @@ pub const TABLE: &[(&str, Class)] = &[
     ("ui-egui", Class::Layer(6)),
     ("mcp", Class::Layer(6)),
     // L7 apps (exempt) and tooling (unchecked)
-    ("packetcraft", Class::Layer(7)),
+    ("netlabcraft", Class::Layer(7)),
     ("cli", Class::Layer(7)),
     ("web", Class::Layer(7)),
     ("xtask", Class::Exempt),
@@ -64,7 +64,7 @@ pub const UI_CRATES: &[&str] = &["egui*", "eframe", "winit", "rfd", "wgpu*"];
 pub const UI_MIN_LAYER: u8 = 6;
 
 pub fn short_name(pkg: &str) -> &str {
-    pkg.strip_prefix("packetcraft-").unwrap_or(pkg)
+    pkg.strip_prefix("netlabcraft-").unwrap_or(pkg)
 }
 
 pub fn classify(pkg: &str) -> Option<Class> {
@@ -219,46 +219,46 @@ mod tests {
     #[test]
     fn clean_downward_graph_passes() {
         let g = [
-            c("packetcraft-core", &[("serde", Normal, false)]),
-            c("packetcraft-wire", &[("packetcraft-core", Normal, true)]),
-            c("packetcraft-model", &[("packetcraft-core", Normal, true)]),
-            c("packetcraft-sim", &[("packetcraft-model", Normal, true), ("packetcraft-wire", Normal, true)]),
-            c("packetcraft-ios", &[("packetcraft-sim", Normal, true)]),
-            c("packetcraft-engine", &[("packetcraft-ios", Normal, true)]),
-            c("packetcraft-ui-egui", &[("packetcraft-engine", Normal, true), ("egui", Normal, false)]),
-            c("packetcraft-cli", &[("packetcraft-mcp", Normal, true)]),
+            c("netlabcraft-core", &[("serde", Normal, false)]),
+            c("netlabcraft-wire", &[("netlabcraft-core", Normal, true)]),
+            c("netlabcraft-model", &[("netlabcraft-core", Normal, true)]),
+            c("netlabcraft-sim", &[("netlabcraft-model", Normal, true), ("netlabcraft-wire", Normal, true)]),
+            c("netlabcraft-ios", &[("netlabcraft-sim", Normal, true)]),
+            c("netlabcraft-engine", &[("netlabcraft-ios", Normal, true)]),
+            c("netlabcraft-ui-egui", &[("netlabcraft-engine", Normal, true), ("egui", Normal, false)]),
+            c("netlabcraft-cli", &[("netlabcraft-mcp", Normal, true)]),
         ];
         assert!(check(&g).is_empty(), "{:?}", check(&g));
     }
 
     #[test]
     fn upward_and_sideways_dependencies_flagged() {
-        let v = check(&[c("packetcraft-model", &[("packetcraft-sim", Normal, true)])]);
+        let v = check(&[c("netlabcraft-model", &[("netlabcraft-sim", Normal, true)])]);
         assert!(matches!(v[..], [Violation::Upward { from: 2, to: 3, .. }]));
-        let v = check(&[c("packetcraft-ui-egui", &[("packetcraft-mcp", Normal, true)])]);
+        let v = check(&[c("netlabcraft-ui-egui", &[("netlabcraft-mcp", Normal, true)])]);
         assert!(matches!(v[..], [Violation::Upward { from: 6, to: 6, .. }]));
     }
 
     #[test]
     fn wire_formats_depend_on_core_only() {
-        let v = check(&[c("packetcraft-wire", &[("packetcraft-model", Normal, true)])]);
+        let v = check(&[c("netlabcraft-wire", &[("netlabcraft-model", Normal, true)])]);
         assert!(v.iter().any(|x| matches!(x, Violation::FormatDep { .. })), "{v:?}");
     }
 
     #[test]
     fn ui_crates_below_l6_flagged() {
         for dep in ["egui", "eframe", "winit", "rfd", "wgpu"] {
-            let v = check(&[c("packetcraft-engine", &[(dep, Normal, false)])]);
+            let v = check(&[c("netlabcraft-engine", &[(dep, Normal, false)])]);
             assert!(matches!(v[..], [Violation::UiBelowL6 { layer: 5, .. }]), "{dep}");
         }
-        assert!(check(&[c("packetcraft-mcp", &[("serde_json", Normal, false)])]).is_empty());
+        assert!(check(&[c("netlabcraft-mcp", &[("serde_json", Normal, false)])]).is_empty());
     }
 
     #[test]
     fn unregistered_crate_is_error_and_apps_are_exempt() {
-        assert!(matches!(&check(&[c("packetcraft-mystery", &[])])[..], [Violation::Unregistered { .. }]));
-        for app in ["packetcraft", "packetcraft-cli", "packetcraft-web", "xtask"] {
-            assert!(check(&[c(app, &[("egui", Normal, false), ("packetcraft-ui-egui", Normal, true)])]).is_empty());
+        assert!(matches!(&check(&[c("netlabcraft-mystery", &[])])[..], [Violation::Unregistered { .. }]));
+        for app in ["netlabcraft", "netlabcraft-cli", "netlabcraft-web", "xtask"] {
+            assert!(check(&[c(app, &[("egui", Normal, false), ("netlabcraft-ui-egui", Normal, true)])]).is_empty());
         }
     }
 }

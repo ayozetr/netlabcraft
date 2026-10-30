@@ -5,7 +5,7 @@
 
 use std::net::Ipv4Addr;
 
-use packetcraft_core::Ipv4Net;
+use netlabcraft_core::Ipv4Net;
 
 use crate::{Result, WireError, be16, checksum};
 

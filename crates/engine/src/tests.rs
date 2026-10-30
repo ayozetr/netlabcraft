@@ -94,18 +94,18 @@ fn building_a_lab_with_commands_then_undo_redo_and_save() {
     assert!(pcap["bytes"].as_u64().unwrap() > 24);
     s.execute("device.remove", json!({"device": "R1"})).unwrap();
     assert!(s.topology.links.is_empty());
-    assert!(!s.consoles.contains_key(&packetcraft_core::DeviceId(1)));
+    assert!(!s.consoles.contains_key(&netlabcraft_core::DeviceId(1)));
 }
 
 #[test]
 fn save_writes_atomically_and_open_reads_back() {
-    let dir = std::env::temp_dir().join(format!("packetcraft-engine-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("netlabcraft-engine-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("lab.pcraft");
+    let path = dir.join("lab.nlcraft");
     let mut s = Session::new();
     s.execute("file.new", json!({"sample": "static-routing"})).unwrap();
     s.execute("file.save", json!({"path": path.to_str().unwrap()})).unwrap();
-    assert!(!dir.join(".lab.pcraft.part").exists());
+    assert!(!dir.join(".lab.nlcraft.part").exists());
     let mut s2 = Session::new();
     s2.execute("file.open", json!({"path": path.to_str().unwrap()})).unwrap();
     assert_eq!(s2.topology, s.topology);
@@ -211,7 +211,7 @@ fn port_security_writes_sticky_addresses_and_err_disabled_into_the_lab() {
 
 #[test]
 fn control_traffic_shows_in_the_event_list() {
-    use packetcraft_wire::Protocol;
+    use netlabcraft_wire::Protocol;
     for (sample, proto, secs, text) in [
         ("stp", Protocol::Stp, 3, "STP BPDU from"),
         ("ospf", Protocol::Ospf, 11, "(1 neighbour)"),
@@ -523,8 +523,8 @@ fn email_goes_from_one_pc_to_another_through_the_server() {
     let mut sv = s.topology.device(s.topology.resolve(&srv_name).unwrap()).unwrap().services.clone();
     sv.email.domain = "lab.local".into();
     sv.email.users = vec![
-        packetcraft_model::services::AaaUser { name: "ana".into(), password: "a1".into() },
-        packetcraft_model::services::AaaUser { name: "bea".into(), password: "b2".into() },
+        netlabcraft_model::services::AaaUser { name: "ana".into(), password: "a1".into() },
+        netlabcraft_model::services::AaaUser { name: "bea".into(), password: "b2".into() },
     ];
     s.execute("server.services", json!({"device": srv_name, "services": sv})).unwrap();
     for (dev, user, pw) in [("PC1", "ana", "a1"), ("PC2", "bea", "b2")] {
@@ -708,7 +708,7 @@ fn snmpv3_users_authenticate_with_md5_or_sha() {
 
 #[test]
 fn mail_for_another_domain_is_relayed_to_its_server() {
-    use packetcraft_model::services::{AaaUser, DnsRecord};
+    use netlabcraft_model::services::{AaaUser, DnsRecord};
     let mut s = Session::new();
     let mut names = Vec::new();
     for (k, x) in [("switch", 0), ("pc", 100), ("pc", 200), ("server", 300), ("server", 400), ("server", 500)] {
@@ -781,7 +781,7 @@ fn freehand_and_polygon_drawings_are_simplified_moved_and_undone() {
     let r = s.execute("note.add", json!({"shape": "freehand", "points": stroke, "color": "#336699"})).unwrap();
     let id = r["id"].as_u64().unwrap() as u32;
     let a = s.topology.annotations.iter().find(|a| a.id == id).unwrap();
-    assert_eq!(a.shape, packetcraft_model::Shape::Freehand);
+    assert_eq!(a.shape, netlabcraft_model::Shape::Freehand);
     assert!(a.points.len() <= 4, "{:?}", a.points);
     assert_eq!(a.color.as_deref(), Some("#336699"));
     let r = s.execute("note.add", json!({"shape": "polygon", "points": [{"x": 10, "y": 10}, {"x": 60, "y": 10}, {"x": 35, "y": 50}]})).unwrap();
@@ -892,7 +892,7 @@ fn cluster_commands_refuse_hostile_params() {
     }
     assert!(s.topology.clusters.is_empty());
     let id = s.execute("cluster.create", json!({"devices": ["PC1"], "name": "\u{0}\u{7}x".repeat(100)})).unwrap()["id"].as_u64().unwrap();
-    assert!(s.topology.clusters[0].name.chars().count() <= packetcraft_model::MAX_NAME);
+    assert!(s.topology.clusters[0].name.chars().count() <= netlabcraft_model::MAX_NAME);
     assert!(s.topology.clusters[0].name.chars().all(|c| !c.is_control()));
     for (cmd, p) in [
         ("cluster.rename", json!({"id": id, "name": "   "})),
@@ -908,16 +908,16 @@ fn cluster_commands_refuse_hostile_params() {
     let c = &s.topology.clusters[0];
     assert!(c.x.is_finite() && c.y.is_finite());
     // Up to the cap, each new cluster nesting the last one.
-    let mut t = packetcraft_model::Topology::new();
-    let d = t.add_device(packetcraft_model::DeviceKind::Pc, None, 0.0, 0.0).unwrap();
-    for _ in 0..packetcraft_model::MAX_CLUSTERS {
+    let mut t = netlabcraft_model::Topology::new();
+    let d = t.add_device(netlabcraft_model::DeviceKind::Pc, None, 0.0, 0.0).unwrap();
+    for _ in 0..netlabcraft_model::MAX_CLUSTERS {
         t.create_cluster(&[d], &[], None).unwrap();
     }
     assert!(t.create_cluster(&[d], &[], None).is_err());
     let inner = t.clusters.last().map(|c| c.id);
-    assert_eq!(t.shown_as(d, None), Some(packetcraft_model::Shown::Cluster(1)));
-    assert_eq!(t.shown_as(d, inner), Some(packetcraft_model::Shown::Device));
-    assert_eq!(t.cluster_path(inner).len(), packetcraft_model::MAX_CLUSTERS);
+    assert_eq!(t.shown_as(d, None), Some(netlabcraft_model::Shown::Cluster(1)));
+    assert_eq!(t.shown_as(d, inner), Some(netlabcraft_model::Shown::Device));
+    assert_eq!(t.cluster_path(inner).len(), netlabcraft_model::MAX_CLUSTERS);
 }
 
 fn trace_text(s: &Session) -> String {
@@ -932,7 +932,7 @@ fn trace_text(s: &Session) -> String {
 fn a_controller_pushes_wlans_to_its_access_points_and_checks_logins_with_radius() {
     let mut s = Session::new();
     s.execute("file.new", json!({"sample": "wlc"})).unwrap();
-    let end = |s: &Session, n: &str| packetcraft_model::End { device: s.topology.resolve(n).unwrap(), port: 0 };
+    let end = |s: &Session, n: &str| netlabcraft_model::End { device: s.topology.resolve(n).unwrap(), port: 0 };
     // Both laptops got addresses through their access points.
     for l in ["Laptop1", "Laptop2"] {
         assert!(s.topology.find(l).unwrap().ports[0].ip.is_some(), "{l} has no address");
@@ -966,7 +966,7 @@ fn a_controller_pushes_wlans_to_its_access_points_and_checks_logins_with_radius(
     ] {
         assert!(tr.contains(want), "missing {want}:\n{tr}");
     }
-    assert!(s.sim.trace().iter().any(|e| e.protocol == packetcraft_wire::Protocol::Wlan && e.air.is_some() && e.frame.is_empty()));
+    assert!(s.sim.trace().iter().any(|e| e.protocol == netlabcraft_wire::Protocol::Wlan && e.air.is_some() && e.frame.is_empty()));
     // The Ethernet capture skips management frames; the 802.11 capture has every air hop.
     let wl = s.sim.pcap_wlan();
     assert_eq!(&wl[20..24], &105u32.to_le_bytes());
@@ -1047,12 +1047,12 @@ fn each_wlan_lands_in_its_own_vlan_and_hosts_roam_between_access_points() {
     let marks = s.execute("net.ping", json!({"from": "Laptop1", "to": to, "count": 3})).unwrap()["marks"].as_str().unwrap().to_string();
     assert!(marks.ends_with("!!"), "{marks}");
     let tags: std::collections::BTreeSet<u16> =
-        s.sim.trace().iter().filter_map(|e| packetcraft_wire::Frame::decode(&e.frame).ok().and_then(|f| f.vlan)).collect();
+        s.sim.trace().iter().filter_map(|e| netlabcraft_wire::Frame::decode(&e.frame).ok().and_then(|f| f.vlan)).collect();
     assert!(tags.contains(&10) && tags.contains(&30), "{tags:?}");
     // A Staff broadcast stays in VLAN 10: Laptop2 never hears Laptop1's ARP.
-    let l2 = packetcraft_model::End { device: s.topology.resolve("Laptop2").unwrap(), port: 0 };
+    let l2 = netlabcraft_model::End { device: s.topology.resolve("Laptop2").unwrap(), port: 0 };
     let l1mac = s.topology.find("Laptop1").unwrap().ports[0].mac;
-    assert!(!s.sim.trace().iter().any(|e| e.to == l2 && packetcraft_wire::Frame::decode(&e.frame).is_ok_and(|f| f.src == l1mac)));
+    assert!(!s.sim.trace().iter().any(|e| e.to == l2 && netlabcraft_wire::Frame::decode(&e.frame).is_ok_and(|f| f.src == l1mac)));
     // Without the VLAN, Staff is back in the management subnet, where R1 has no pool for it.
     s.execute("wlc.wlan", json!({"device": "WLC1", "id": 1, "ssid": "Staff", "security": "enterprise"})).unwrap();
     let run = s.execute("cli.exec", json!({"device": "WLC1", "line": "show running-config"})).unwrap()["output"].as_str().unwrap().to_string();
@@ -1071,7 +1071,7 @@ fn each_wlan_lands_in_its_own_vlan_and_hosts_roam_between_access_points() {
     assert_eq!(ip(&s, "Laptop1"), staff);
     let lap2 = s.topology.resolve("LAP2").unwrap();
     assert_eq!(
-        s.topology.wifi_ap_of(packetcraft_model::End { device: s.topology.resolve("Laptop1").unwrap(), port: 0 }).map(|e| e.device),
+        s.topology.wifi_ap_of(netlabcraft_model::End { device: s.topology.resolve("Laptop1").unwrap(), port: 0 }).map(|e| e.device),
         Some(lap2)
     );
     // Beacons show up while time passes.
@@ -1137,7 +1137,7 @@ fn the_physical_view_places_devices_and_long_copper_goes_down() {
     let ping = s.execute("net.ping", json!({"from": "PC1", "to": pc3_ip})).unwrap();
     assert!(ping["replies"].as_u64().unwrap() > 0, "{ping}");
     s.execute("edit.undo", json!({})).unwrap();
-    assert!(!packetcraft_sim::port_up(&s.topology, packetcraft_model::End { device: pc3, port: 0 }));
+    assert!(!netlabcraft_sim::port_up(&s.topology, netlabcraft_model::End { device: pc3, port: 0 }));
     s.execute("edit.redo", json!({})).unwrap();
     // Rename, move, save and load.
     s.execute("place.rename", json!({"id": b, "name": "Shop"})).unwrap();
@@ -1269,7 +1269,7 @@ fn cables_have_kinds_that_fit_their_ports() {
     assert!(e.contains("serial port on both ends") && e.contains("R2 Gi0/1 is copper"), "{e}");
     s.execute("link.add", json!({"a": "R1", "a_port": "s0/0/0", "b": "R1", "b_port": "s0/0/1", "cable": "serial-dte"})).unwrap();
     let r1 = s.topology.find("R1").unwrap().id;
-    assert_eq!(s.topology.dce_of(packetcraft_model::End { device: r1, port: 2 }), Some(packetcraft_model::End { device: r1, port: 3 }));
+    assert_eq!(s.topology.dce_of(netlabcraft_model::End { device: r1, port: 2 }), Some(netlabcraft_model::End { device: r1, port: 3 }));
     // The fiber card's port takes fiber only.
     let e = s
         .execute("link.add", json!({"a": "R1", "a_port": "g0/1/0", "b": "S1", "b_port": "fa0/5", "cable": "straight-through"}))
@@ -1293,7 +1293,7 @@ fn old_lab_files_load_with_automatic_cables_and_kinds_round_trip() {
     assert!(!saved.contains("\"cable\"") && !saved.contains("consoles"));
     let mut old = Session::new();
     old.execute("file.open", json!({"json": saved})).unwrap();
-    assert!(old.topology.links.iter().all(|l| l.cable == packetcraft_model::cable::Cable::Auto));
+    assert!(old.topology.links.iter().all(|l| l.cable == netlabcraft_model::cable::Cable::Auto));
     assert_eq!(old.topology.links, s.topology.links);
     // Kinds and console cables are saved and read back.
     s.execute("device.add", json!({"model": "Switch-24", "name": "S9"})).unwrap();

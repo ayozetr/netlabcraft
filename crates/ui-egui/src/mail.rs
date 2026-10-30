@@ -6,7 +6,7 @@ use serde_json::json;
 
 use crate::PacketApp;
 use crate::i18n::tl;
-use packetcraft_model::Device;
+use netlabcraft_model::Device;
 
 /// The app's state between frames.
 #[derive(Debug, Clone, Default)]

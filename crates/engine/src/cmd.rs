@@ -1,9 +1,9 @@
 //! Command implementations.
 
-use packetcraft_core::{DeviceId, parse_ip};
-use packetcraft_model::cable::{CONSOLE_PORT, Cable, RS232_PORT, is_console_port_name};
-use packetcraft_model::{DeviceKind, End, Shape, file, models};
-use packetcraft_sim::{PingOptions, Probe};
+use netlabcraft_core::{DeviceId, parse_ip};
+use netlabcraft_model::cable::{CONSOLE_PORT, Cable, RS232_PORT, is_console_port_name};
+use netlabcraft_model::{DeviceKind, End, Shape, file, models};
+use netlabcraft_sim::{PingOptions, Probe};
 use serde_json::{Value, json};
 
 use crate::{EngineError, Result, Session, catalog, sample};
@@ -49,7 +49,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         "file.new" => {
             let t = match opt_str(p, "sample") {
                 Some(name) => sample::build(name)?,
-                None => packetcraft_model::Topology::new(),
+                None => netlabcraft_model::Topology::new(),
             };
             s.replace(t, None);
             Ok(json!({"devices": s.topology.devices.len()}))
@@ -127,7 +127,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             if let Some(copy) = t.device_mut(id) {
                 // Same configuration, fresh identity: new name and MAC addresses.
                 for (dst, from) in copy.ports.iter_mut().zip(&src.ports) {
-                    *dst = packetcraft_model::Port { name: dst.name.clone(), mac: dst.mac, ..from.clone() };
+                    *dst = netlabcraft_model::Port { name: dst.name.clone(), mac: dst.mac, ..from.clone() };
                 }
                 copy.gateway = src.gateway;
                 copy.routes = src.routes.clone();
@@ -141,7 +141,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             Ok(json!({"id": id.0, "name": name}))
         }
                                 "server.services" => {
-            use packetcraft_model::services::{MAX_FILE, MAX_ITEMS, Services};
+            use netlabcraft_model::services::{MAX_FILE, MAX_ITEMS, Services};
             let d = device_param(s, p, "device")?;
             if s.topology.device(d).is_none_or(|x| x.kind != DeviceKind::Server) {
                 return Err(bad("services run on Server devices"));
@@ -157,7 +157,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                         sv.dhcp.pools.truncate(MAX_ITEMS);
                                     sv.email.users.truncate(MAX_ITEMS);
             sv.email.domain = sv.email.domain.trim().chars().take(64).collect();
-            sv.email.mailboxes.truncate(packetcraft_model::services::MAX_MAILS);
+            sv.email.mailboxes.truncate(netlabcraft_model::services::MAX_MAILS);
             sv.ftp.users.truncate(MAX_ITEMS);
             sv.ftp.files.truncate(MAX_ITEMS);
             for f in &mut sv.ftp.files {
@@ -181,7 +181,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             }
             for pool in &mut sv.dhcp.pools {
                 pool.max_users = pool.max_users.min(65_536);
-                if packetcraft_core::mask_to_prefix(pool.mask).is_none() {
+                if netlabcraft_core::mask_to_prefix(pool.mask).is_none() {
                     return Err(bad(format!("pool {}: {} is not a subnet mask", pool.name, pool.mask)));
                 }
             }
@@ -221,7 +221,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                 return Err(bad("only routers and switches keep a startup configuration"));
             }
             let new = match str_param(p, "action")? {
-                "save" => Some(packetcraft_ios::running_config(dev)),
+                "save" => Some(netlabcraft_ios::running_config(dev)),
                 "erase" => None,
                 "load" => Some(str_param(p, "text")?.chars().take(1_000_000).collect()),
                 other => return Err(bad(format!("unknown action `{other}` (save, erase, load)"))),
@@ -235,7 +235,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         }
         "device.label" => {
             let d = device_param(s, p, "device")?;
-            let label: String = str_param(p, "label")?.trim().chars().take(packetcraft_model::MAX_NAME).collect();
+            let label: String = str_param(p, "label")?.trim().chars().take(netlabcraft_model::MAX_NAME).collect();
             s.checkpoint();
             if let Some(dev) = s.topology.device_mut(d) {
                 dev.label = if label.is_empty() { None } else { Some(label) };
@@ -247,7 +247,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             models::MODELS.iter().map(|m| json!({"id": m.id, "kind": m.kind.id(), "label": m.label, "description": m.description, "ports": m.port_names(), "slots": m.slots()})).collect(),
         )),
                                 "snmp.request" => {
-            use packetcraft_wire::snmp::{PduKind, Snmp, Value as SnmpValue, parse_oid};
+            use netlabcraft_wire::snmp::{PduKind, Snmp, Value as SnmpValue, parse_oid};
             let d = device_param(s, p, "device")?;
             let target = parse_ip(str_param(p, "target")?).map_err(|e| bad(e.to_string()))?;
             let community: String = opt_str(p, "community").unwrap_or("public").chars().take(32).collect();
@@ -277,11 +277,11 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                             if pw.chars().count() < 8 {
                                 return Err(bad("an SNMPv3 password has at least 8 characters"));
                             }
-                            Some((if h == "md5" { packetcraft_wire::sha1::Hash::Md5 } else { packetcraft_wire::sha1::Hash::Sha1 }, pw))
+                            Some((if h == "md5" { netlabcraft_wire::sha1::Hash::Md5 } else { netlabcraft_wire::sha1::Hash::Sha1 }, pw))
                         }
                         other => return Err(bad(format!("unknown authentication `{other}` (none, md5, sha)"))),
                     };
-                    s.sim.snmp_request_v3(&s.topology, d, target, req, &packetcraft_sim::snmp::V3Login { user, auth })
+                    s.sim.snmp_request_v3(&s.topology, d, target, req, &netlabcraft_sim::snmp::V3Login { user, auth })
                 }
                 other => return Err(bad(format!("unknown SNMP version `{other}` (2c, 3)"))),
             }
@@ -306,14 +306,14 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             }
             let error = match r.error_status {
                 0 => Value::Null,
-                packetcraft_wire::snmp::NO_ACCESS => json!("no access (a read-only community)"),
-                packetcraft_wire::snmp::NOT_WRITABLE => json!("not writable"),
-                packetcraft_wire::snmp::WRONG_TYPE => json!("wrong type"),
+                netlabcraft_wire::snmp::NO_ACCESS => json!("no access (a read-only community)"),
+                netlabcraft_wire::snmp::NOT_WRITABLE => json!("not writable"),
+                netlabcraft_wire::snmp::WRONG_TYPE => json!("wrong type"),
                 16 => json!("not authorized (the user is in no group)"),
                 n => json!(format!("error {n}")),
             };
             Ok(json!({
-                "bindings": r.bindings.iter().map(|(o, v)| json!({"oid": packetcraft_wire::snmp::oid_text(o), "value": v.show()})).collect::<Vec<_>>(),
+                "bindings": r.bindings.iter().map(|(o, v)| json!({"oid": netlabcraft_wire::snmp::oid_text(o), "value": v.show()})).collect::<Vec<_>>(),
                 "error": error,
             }))
         }
@@ -345,7 +345,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                 return Err(bad("the Email app runs on PCs, laptops and servers"));
             }
             let f = |k: &str| opt_str(p, k).map_or(String::new(), |v| v.trim().chars().take(128).collect());
-            let account = packetcraft_model::services::MailAccount {
+            let account = netlabcraft_model::services::MailAccount {
                 name: f("name"),
                 address: f("address"),
                 incoming: f("incoming"),
@@ -367,11 +367,11 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             let d = device_param(s, p, "device")?;
             let account = s.topology.device(d).and_then(|x| x.mail.clone()).ok_or_else(|| bad("set up the Email app first (mail.configure)"))?;
             let to: String = str_param(p, "to")?.trim().chars().take(128).collect();
-            let mail = packetcraft_model::services::Mail {
+            let mail = netlabcraft_model::services::Mail {
                 from: account.address.clone(),
                 to,
                 subject: opt_str(p, "subject").map_or(String::new(), |v| v.chars().take(200).collect()),
-                body: opt_str(p, "body").map_or(String::new(), |v| v.chars().take(packetcraft_model::services::MAX_MAIL).collect()),
+                body: opt_str(p, "body").map_or(String::new(), |v| v.chars().take(netlabcraft_model::services::MAX_MAIL).collect()),
             };
             let server = s.sim.dns_resolve(&s.topology, d, &account.outgoing).map_err(|e| EngineError::Failed(e.to_string()))?;
             let r = s.sim.smtp_send(&s.topology, d, server, &mail);
@@ -402,7 +402,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             if n > 0 {
                 if let Some(x) = s.topology.device_mut(d) {
                     x.inbox.extend(got);
-                    let over = x.inbox.len().saturating_sub(packetcraft_model::services::MAX_MAILS);
+                    let over = x.inbox.len().saturating_sub(netlabcraft_model::services::MAX_MAILS);
                     x.inbox.drain(..over);
                 }
                 s.changed();
@@ -439,7 +439,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                 }
             };
             let mut t = s.topology.clone();
-            let failed = packetcraft_ios::apply_config(&mut t, &mut s.sim, d, &line);
+            let failed = netlabcraft_ios::apply_config(&mut t, &mut s.sim, d, &line);
             if let Some(f) = failed.first() {
                 return Err(bad(f.clone()));
             }
@@ -461,7 +461,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             };
             let config = crate::home::settings_config(&s.topology, d, &settings).map_err(bad)?;
             let mut t = s.topology.clone();
-            let failed = packetcraft_ios::apply_config(&mut t, &mut s.sim, d, &config);
+            let failed = netlabcraft_ios::apply_config(&mut t, &mut s.sim, d, &config);
             if let Some(f) = failed.first() {
                 return Err(bad(format!("the router refused a setting: {f}")));
             }
@@ -475,9 +475,9 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             let dev = s.topology.device(d).ok_or_else(|| bad("no such device"))?;
             let port = match opt_str(p, "port") {
                 Some(n) => port_param(s, d, n)?,
-                None => dev.ports.iter().position(|x| packetcraft_model::ifname::is_wireless(&x.name)).ok_or_else(|| bad(format!("{} has no radio", dev.name)))?,
+                None => dev.ports.iter().position(|x| netlabcraft_model::ifname::is_wireless(&x.name)).ok_or_else(|| bad(format!("{} has no radio", dev.name)))?,
             };
-            if !dev.ports.get(port).is_some_and(|x| packetcraft_model::ifname::is_wireless(&x.name)) {
+            if !dev.ports.get(port).is_some_and(|x| netlabcraft_model::ifname::is_wireless(&x.name)) {
                 return Err(bad("that port is not a radio"));
             }
             let ssid: String = str_param(p, "ssid")?.trim().chars().take(32).collect();
@@ -494,14 +494,14 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             if !user.is_empty() && !dev.kind.is_host() {
                 return Err(bad("only hosts log in to a WPA2-Enterprise network; set WLANs on the controller (device.wlan)"));
             }
-            let login = (!user.is_empty()).then_some(packetcraft_model::wlan::WifiLogin { user, password });
-            let wifi = (!ssid.is_empty()).then_some(packetcraft_model::Wifi { ssid, key, channel, login });
+            let login = (!user.is_empty()).then_some(netlabcraft_model::wlan::WifiLogin { user, password });
+            let wifi = (!ssid.is_empty()).then_some(netlabcraft_model::Wifi { ssid, key, channel, login });
             s.checkpoint();
             if let Some(x) = s.topology.device_mut(d).and_then(|x| x.ports.get_mut(port)) {
                 x.wifi = wifi;
             }
             s.changed();
-            let end = packetcraft_model::End { device: d, port };
+            let end = netlabcraft_model::End { device: d, port };
             let ap = s.topology.wifi_ap_of(end);
             let problem = s.topology.wifi_attempt(end).and_then(|a| a.outcome.err());
             Ok(json!({"associated_with": ap.map(|e| s.topology.end_label(e)), "problem": problem}))
@@ -515,13 +515,13 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             }
             Ok(json!({
                 "activity": a,
-                "total_points": s.topology.activity.as_ref().map_or(0, packetcraft_model::activity::Activity::total_points),
+                "total_points": s.topology.activity.as_ref().map_or(0, netlabcraft_model::activity::Activity::total_points),
                 "checks": s.topology.activity.as_ref().map_or(0, |x| x.checks.len()),
-                "locked": s.topology.activity.as_ref().is_some_and(packetcraft_model::activity::Activity::locked),
+                "locked": s.topology.activity.as_ref().is_some_and(netlabcraft_model::activity::Activity::locked),
             }))
         }
         "activity.set" | "activity.capture" | "activity.add_check" | "activity.remove_check" | "activity.clear" | "activity.lock"
-            if s.topology.activity.as_ref().is_some_and(packetcraft_model::activity::Activity::locked) =>
+            if s.topology.activity.as_ref().is_some_and(netlabcraft_model::activity::Activity::locked) =>
         {
             Err(bad("the activity is locked: `activity.unlock` with the instructor's password first"))
         }
@@ -576,12 +576,12 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             let mut t = s.topology.clone();
             let salt_title = opt_str(p, "title").unwrap_or("Activity").to_string();
             let fresh_salt = crate::activity::new_salt(&t, &salt_title);
-            let a = t.activity.get_or_insert_with(|| packetcraft_model::activity::Activity { title: "Activity".into(), salt: fresh_salt, ..Default::default() });
+            let a = t.activity.get_or_insert_with(|| netlabcraft_model::activity::Activity { title: "Activity".into(), salt: fresh_salt, ..Default::default() });
             if let Some(title) = opt_str(p, "title") {
                 a.title = title.chars().take(200).collect();
             }
             if let Some(vars) = p.get("variables").and_then(Value::as_object) {
-                use packetcraft_model::activity::{MAX_VALUES, MAX_VARIABLES, Variable};
+                use netlabcraft_model::activity::{MAX_VALUES, MAX_VARIABLES, Variable};
                 a.variables = vars
                     .iter()
                     .take(MAX_VARIABLES)
@@ -594,25 +594,25 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                     .collect();
             }
             if let Some(text) = opt_str(p, "instructions") {
-                a.instructions = text.chars().take(packetcraft_model::activity::MAX_TEXT).collect();
+                a.instructions = text.chars().take(netlabcraft_model::activity::MAX_TEXT).collect();
             }
                         if let Some(m) = p.get("time_limit").and_then(Value::as_u64) {
-                a.time_limit = u32::try_from(m).unwrap_or(u32::MAX).min(packetcraft_model::activity::MAX_TIME_LIMIT);
+                a.time_limit = u32::try_from(m).unwrap_or(u32::MAX).min(netlabcraft_model::activity::MAX_TIME_LIMIT);
             }
             if let Some(b) = p.get("score_only").and_then(Value::as_bool) {
                 a.score_only = b;
             }
             if let Some(h) = p.get("hidden").and_then(Value::as_bool) {
-                if !h && a.hidden && a.checks.iter().any(|c| matches!(c.kind, packetcraft_model::activity::CheckKind::ConfigHashed { .. })) {
+                if !h && a.hidden && a.checks.iter().any(|c| matches!(c.kind, netlabcraft_model::activity::CheckKind::ConfigHashed { .. })) {
                     return Err(bad("hidden answers can't be shown again: capture the answers again with `hidden` off"));
                 }
                 if h && !a.hidden {
                     // Hide what is already there.
                     let salt = a.salt.clone();
                     for c in &mut a.checks {
-                        if let packetcraft_model::activity::CheckKind::Config { device, line } = &c.kind {
-                            let hash = packetcraft_model::activity::line_hash(&salt, *device, line);
-                            c.kind = packetcraft_model::activity::CheckKind::ConfigHashed { device: *device, hash };
+                        if let netlabcraft_model::activity::CheckKind::Config { device, line } = &c.kind {
+                            let hash = netlabcraft_model::activity::line_hash(&salt, *device, line);
+                            c.kind = netlabcraft_model::activity::CheckKind::ConfigHashed { device: *device, hash };
                             c.label = c.label.split(':').next().map_or("configuration item".to_string(), |d| format!("{d}: configuration item"));
                         }
                     }
@@ -631,11 +631,11 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             let kept: Vec<_> = a
                 .checks
                 .iter()
-                .filter(|c| matches!(c.kind, packetcraft_model::activity::CheckKind::Ping { .. } | packetcraft_model::activity::CheckKind::Output { .. }))
+                .filter(|c| matches!(c.kind, netlabcraft_model::activity::CheckKind::Ping { .. } | netlabcraft_model::activity::CheckKind::Output { .. }))
                 .cloned()
                 .collect();
             checks.extend(kept);
-            checks.truncate(packetcraft_model::activity::MAX_CHECKS);
+            checks.truncate(netlabcraft_model::activity::MAX_CHECKS);
             let n = checks.len();
             if let Some(a) = t.activity.as_mut() {
                 a.checks = checks;
@@ -646,7 +646,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             Ok(json!({"checks": n}))
         }
         "activity.add_check" => {
-            use packetcraft_model::activity::{Check, CheckKind, normalize};
+            use netlabcraft_model::activity::{Check, CheckKind, normalize};
             let ty = str_param(p, "type")?;
             let dev_key = if ty == "ping" { "from" } else { "device" };
             let d = device_param(s, p, dev_key)?;
@@ -661,7 +661,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                         None => normalize(line),
                     };
                     if hidden {
-                        (format!("{name}: configuration item"), CheckKind::ConfigHashed { device: d, hash: packetcraft_model::activity::line_hash(&salt, d, &flat) })
+                        (format!("{name}: configuration item"), CheckKind::ConfigHashed { device: d, hash: netlabcraft_model::activity::line_hash(&salt, d, &flat) })
                     } else {
                         (format!("{name}: {flat}"), CheckKind::Config { device: d, line: flat })
                     }
@@ -674,7 +674,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                 }
                 "host-address" => {
                     let address = str_param(p, "address")?;
-                    address.parse::<packetcraft_core::Ipv4Net>().map_err(|e| bad(e.to_string()))?;
+                    address.parse::<netlabcraft_core::Ipv4Net>().map_err(|e| bad(e.to_string()))?;
                     let gateway = opt_str(p, "gateway").map(str::to_string);
                     (format!("{name}: address {address}"), CheckKind::HostAddress { device: d, address: address.to_string(), gateway })
                 }
@@ -691,8 +691,8 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             let section = opt_str(p, "section").map(str::trim).filter(|f| !f.is_empty()).map_or(name.clone(), |f| f.chars().take(64).collect());
             let mut t = s.topology.clone();
             let fresh_salt = crate::activity::new_salt(&t, "Activity");
-            let a = t.activity.get_or_insert_with(|| packetcraft_model::activity::Activity { title: "Activity".into(), salt: fresh_salt, ..Default::default() });
-            if a.checks.len() >= packetcraft_model::activity::MAX_CHECKS {
+            let a = t.activity.get_or_insert_with(|| netlabcraft_model::activity::Activity { title: "Activity".into(), salt: fresh_salt, ..Default::default() });
+            if a.checks.len() >= netlabcraft_model::activity::MAX_CHECKS {
                 return Err(bad("too many checks"));
             }
             a.checks.push(Check { label, points, section, feedback, kind });
@@ -771,8 +771,8 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         "note.add" => {
             let (x, y) = (f32_param(p, "x").unwrap_or(0.0), f32_param(p, "y").unwrap_or(0.0));
                         let shape = match opt_str(p, "shape") {
-                Some(sh) => packetcraft_model::Shape::from_id(sh).ok_or_else(|| bad(format!("unknown shape `{sh}` (text, rectangle, ellipse, line, freehand, polygon)")))?,
-                None => packetcraft_model::Shape::Text,
+                Some(sh) => netlabcraft_model::Shape::from_id(sh).ok_or_else(|| bad(format!("unknown shape `{sh}` (text, rectangle, ellipse, line, freehand, polygon)")))?,
+                None => netlabcraft_model::Shape::Text,
             };
             let mut t = s.topology.clone();
             let id = match shape {
@@ -792,7 +792,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             t.annotation_mut(id)?;
             let mut transient = false;
             match cmd {
-                "note.edit" => t.annotation_mut(id)?.text = str_param(p, "text")?.chars().take(packetcraft_model::MAX_ANNOTATION_TEXT).collect(),
+                "note.edit" => t.annotation_mut(id)?.text = str_param(p, "text")?.chars().take(netlabcraft_model::MAX_ANNOTATION_TEXT).collect(),
                 "note.move" => {
                     let (x, y) = (f32_param(p, "x").ok_or_else(|| bad("`x` is required"))?, f32_param(p, "y").ok_or_else(|| bad("`y` is required"))?);
                     let a = t.annotation_mut(id)?;
@@ -802,7 +802,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                 }
                 "note.color" => {
                     let c = str_param(p, "color")?;
-                    packetcraft_model::parse_color(c).ok_or_else(|| bad(format!("`{c}` is not a #rrggbb colour")))?;
+                    netlabcraft_model::parse_color(c).ok_or_else(|| bad(format!("`{c}` is not a #rrggbb colour")))?;
                     t.annotation_mut(id)?.color = Some(c.to_string());
                 }
                 _ => t.annotations.retain(|a| a.id != id),
@@ -925,8 +925,8 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                                 "name": port.name,
                                 "ip": port.ip.map(|ip| ip.to_string()),
                                 "shutdown": port.shutdown,
-                                "up": packetcraft_sim::port_up(&s.topology, end),
-                                "problem": packetcraft_sim::cable_problem(&s.topology, end),
+                                "up": netlabcraft_sim::port_up(&s.topology, end),
+                                "problem": netlabcraft_sim::cable_problem(&s.topology, end),
                                 "peer": s.topology.peer(end).map(|e| s.topology.end_label(e)),
                                 "medium": d.port_medium(i).map(|m| m.id()),
                                 "cable": s.topology.link_at(end).map(|l| l.cable.id()),
@@ -1007,8 +1007,8 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                         "b": t.end_label(l.b),
                         "cable": l.cable.id(),
                         "resolved": t.resolved_cable(l).id(),
-                        "up": packetcraft_sim::port_up(t, l.a) && packetcraft_sim::port_up(t, l.b),
-                        "problem": packetcraft_sim::cable_problem(t, l.a),
+                        "up": netlabcraft_sim::port_up(t, l.a) && netlabcraft_sim::port_up(t, l.b),
+                        "problem": netlabcraft_sim::cable_problem(t, l.a),
                     })
                 })
                 .collect();
@@ -1086,13 +1086,13 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             let d = device_param(s, p, "device")?;
             let line = opt_str(p, "line").unwrap_or("");
             let cli = s.console(d).cli.clone();
-            Ok(json!({"help": packetcraft_ios::help_line(&s.topology, d, &cli, line)}))
+            Ok(json!({"help": netlabcraft_ios::help_line(&s.topology, d, &cli, line)}))
         }
         "cli.complete" => {
             let d = device_param(s, p, "device")?;
             let line = str_param(p, "line")?;
             let cli = s.console(d).cli.clone();
-            Ok(json!({"line": packetcraft_ios::complete_line(&s.topology, d, &cli, line)}))
+            Ok(json!({"line": netlabcraft_ios::complete_line(&s.topology, d, &cli, line)}))
         }
         "cli.prompt" => {
             let d = device_param(s, p, "device")?;
@@ -1138,7 +1138,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                 return Err(bad("hosts are configured with `ipconfig` through cli.exec"));
             }
             let before = s.topology.clone();
-            let errors = packetcraft_ios::apply_config(&mut s.topology, &mut s.sim, d, &text);
+            let errors = netlabcraft_ios::apply_config(&mut s.topology, &mut s.sim, d, &text);
             if s.topology != before {
                 let after = std::mem::replace(&mut s.topology, before);
                 s.checkpoint();
@@ -1186,7 +1186,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
 
 /// A device made while looking inside a cluster goes into it; one made while looking at a
 /// closet or building in the physical view stands there.
-fn join_view(s: &Session, t: &mut packetcraft_model::Topology, dev: DeviceId) {
+fn join_view(s: &Session, t: &mut netlabcraft_model::Topology, dev: DeviceId) {
     if let Some(c) = s.view
         && let Ok(c) = t.cluster_mut(c)
     {
@@ -1217,7 +1217,7 @@ fn place_view_json(s: &Session) -> Value {
 
 /// A free spot for a new icon on the map of `place` (none: the Intercity map): the first point
 /// of a loose grid clear of the places and devices already there.
-fn spot(t: &packetcraft_model::Topology, place: Option<u32>) -> (f32, f32) {
+fn spot(t: &netlabcraft_model::Topology, place: Option<u32>) -> (f32, f32) {
     let taken: Vec<(f32, f32)> =
         t.places_in(place).iter().map(|x| (x.x, x.y)).chain(t.homes().iter().filter(|h| place == Some(h.place)).map(|h| (h.x, h.y))).collect();
     let grid = (0..40u16).map(|n| (160.0 + 180.0 * f32::from(n % 5), 140.0 + 170.0 * f32::from(n / 5)));
@@ -1233,7 +1233,7 @@ fn spot(t: &packetcraft_model::Topology, place: Option<u32>) -> (f32, f32) {
 
 /// The physical view: places, where devices stand, cable lengths.
 fn physical(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
-    use packetcraft_model::physical::PlaceKind;
+    use netlabcraft_model::physical::PlaceKind;
     match cmd {
         "view.physical" | "view.logical" => {
             s.physical = cmd == "view.physical";
@@ -1326,7 +1326,7 @@ fn physical(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
                 .iter()
                 .map(|l| {
                     let len = t.cable_length(l);
-                    json!({"a": t.end_label(l.a), "b": t.end_label(l.b), "meters": len.meters, "manual": len.manual, "problem": packetcraft_sim::cable_problem(t, l.a)})
+                    json!({"a": t.end_label(l.a), "b": t.end_label(l.b), "meters": len.meters, "manual": len.manual, "problem": netlabcraft_sim::cable_problem(t, l.a)})
                 })
                 .collect();
             Ok(json!({"implicit": t.implicit_layout(), "places": places, "cables": cables}))
@@ -1335,7 +1335,7 @@ fn physical(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
             let mut devices = Vec::new();
             match p.get("devices") {
                 Some(Value::Array(a)) => {
-                    for v in a.iter().take(packetcraft_model::MAX_DEVICES) {
+                    for v in a.iter().take(netlabcraft_model::MAX_DEVICES) {
                         devices.push(device_param(s, &json!({"d": v}), "d")?);
                     }
                 }
@@ -1366,7 +1366,7 @@ fn physical(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
             // link.length
             let d = device_param(s, p, "device")?;
             let port = port_param(s, d, str_param(p, "port")?)?;
-            let max = packetcraft_model::physical::MAX_CABLE_M;
+            let max = netlabcraft_model::physical::MAX_CABLE_M;
             let meters = match p.get("meters") {
                 Some(Value::Null) => None,
                 Some(v) => Some(
@@ -1383,7 +1383,7 @@ fn physical(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
             s.checkpoint();
             s.topology = t;
             s.changed();
-            Ok(json!({"meters": len.meters, "manual": len.manual, "problem": packetcraft_sim::cable_problem(&s.topology, end)}))
+            Ok(json!({"meters": len.meters, "manual": len.manual, "problem": netlabcraft_sim::cable_problem(&s.topology, end)}))
         }
     }
 }
@@ -1406,7 +1406,7 @@ fn points_param(p: &Value) -> Result<Vec<[f32; 2]>> {
     let num = |v: Option<&Value>| v.and_then(Value::as_f64).filter(|v| v.is_finite()).map(|v| v.clamp(-1.0e6, 1.0e6) as f32);
     list_param(p, "points")?
         .iter()
-        .take(packetcraft_model::drawing::MAX_RAW_POINTS)
+        .take(netlabcraft_model::drawing::MAX_RAW_POINTS)
         .map(|v| match v {
             Value::Array(a) => num(a.first()).zip(num(a.get(1))),
             Value::Object(_) => num(v.get("x")).zip(num(v.get("y"))),
@@ -1433,7 +1433,7 @@ fn probe_json(p: &Probe) -> Value {
 }
 
 /// `PC1 RS-232` (or `R1 Console`): the far end of a device's console cable.
-fn console_peer_label(t: &packetcraft_model::Topology, id: DeviceId) -> Option<String> {
+fn console_peer_label(t: &netlabcraft_model::Topology, id: DeviceId) -> Option<String> {
     let c = t.console_at(id)?;
     let (far, port) = if c.pc == id { (c.device, CONSOLE_PORT) } else { (c.pc, RS232_PORT) };
     t.device(far).map(|d| format!("{} {port}", d.name))
@@ -1441,7 +1441,7 @@ fn console_peer_label(t: &packetcraft_model::Topology, id: DeviceId) -> Option<S
 
 fn prompt_of(s: &mut Session, d: DeviceId) -> String {
     let cli = s.console(d).cli.clone();
-    packetcraft_ios::prompt(&s.topology, d, &cli)
+    netlabcraft_ios::prompt(&s.topology, d, &cli)
 }
 
 /// Runs a console line, echoing it and its output into the device's scrollback.
@@ -1450,14 +1450,14 @@ pub fn cli_line(s: &mut Session, d: DeviceId, line: &str) -> Value {
     if s.topology.device(d).is_some_and(|x| x.powered_off) {
         let output = "% The device is switched off: switch it on in its Physical tab (device.power).".to_string();
         let cli = s.console(d).cli.clone();
-        let prompt = packetcraft_ios::prompt(&s.topology, d, &cli);
+        let prompt = netlabcraft_ios::prompt(&s.topology, d, &cli);
         return json!({"output": output, "prompt": prompt, "clear": false});
     }
     let before = s.topology.clone();
     let mut cli = std::mem::take(&mut s.console(d).cli);
     // What is typed at a password prompt is never echoed.
-    let secret = packetcraft_ios::prompt(&s.topology, d, &cli) == packetcraft_ios::PASSWORD_PROMPT;
-    let out = packetcraft_ios::execute(&mut s.topology, &mut s.sim, d, &mut cli, &line);
+    let secret = netlabcraft_ios::prompt(&s.topology, d, &cli) == netlabcraft_ios::PASSWORD_PROMPT;
+    let out = netlabcraft_ios::execute(&mut s.topology, &mut s.sim, d, &mut cli, &line);
     if out.changed {
         let after = std::mem::replace(&mut s.topology, before);
         s.checkpoint();
@@ -1466,7 +1466,7 @@ pub fn cli_line(s: &mut Session, d: DeviceId, line: &str) -> Value {
     } else {
         s.revision += 1;
     }
-    let prompt = packetcraft_ios::prompt(&s.topology, d, &cli);
+    let prompt = netlabcraft_ios::prompt(&s.topology, d, &cli);
     let console = s.console(d);
     console.cli = cli;
     if out.clear {
@@ -1516,7 +1516,7 @@ fn write_file(_: &str, _: &[u8]) -> Result<()> {
 
 /// Applies to the lab what mail servers changed in their mailboxes.
 fn apply_mail_changes(s: &mut Session) {
-    use packetcraft_sim::email::MailChange;
+    use netlabcraft_sim::email::MailChange;
     let changes = s.sim.take_mail_changes();
     if changes.is_empty() {
         return;
@@ -1526,7 +1526,7 @@ fn apply_mail_changes(s: &mut Session) {
         let boxes = &mut d.services.email.mailboxes;
         match change {
             MailChange::Deliver(user, mail) => {
-                if boxes.len() < packetcraft_model::services::MAX_MAILS {
+                if boxes.len() < netlabcraft_model::services::MAX_MAILS {
                     boxes.push((user, mail));
                 }
             }

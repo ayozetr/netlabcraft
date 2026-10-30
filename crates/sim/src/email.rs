@@ -7,11 +7,11 @@
 use std::collections::BTreeMap;
 use std::net::Ipv4Addr;
 
-use packetcraft_core::DeviceId;
-use packetcraft_model::services::{MAX_MAIL, Mail};
-use packetcraft_model::{Device, DeviceKind, Topology};
-use packetcraft_wire::tcp::{self, Tcp};
-use packetcraft_wire::{Ipv4, POP3_PORT, SMTP_PORT};
+use netlabcraft_core::DeviceId;
+use netlabcraft_model::services::{MAX_MAIL, Mail};
+use netlabcraft_model::{Device, DeviceKind, Topology};
+use netlabcraft_wire::tcp::{self, Tcp};
+use netlabcraft_wire::{Ipv4, POP3_PORT, SMTP_PORT};
 
 use crate::{Sim, SimError};
 
@@ -144,7 +144,7 @@ impl Sim {
             };
             self.seg_to(t, d, ip.dst, ip.src, synack)?;
             let hello =
-                if smtp { format!("220 {} PacketCraft mail service ready", email.domain) } else { "+OK PacketCraft POP3 service ready".into() };
+                if smtp { format!("220 {} NetLabCraft mail service ready", email.domain) } else { "+OK NetLabCraft POP3 service ready".into() };
             // The greeting follows the handshake.
             let fake = Tcp { flags: tcp::ACK, payload: Vec::new(), ..seg.clone() };
             return self.mail_reply(t, d, ip, &Tcp { seq: seg.seq, ..fake }, &hello, false);

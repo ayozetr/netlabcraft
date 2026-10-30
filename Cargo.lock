@@ -1783,6 +1783,132 @@ dependencies = [
 ]
 
 [[package]]
+name = "netlabcraft"
+version = "0.1.0"
+dependencies = [
+ "eframe",
+ "egui",
+ "image",
+ "log",
+ "netlabcraft-engine",
+ "netlabcraft-ui-egui",
+ "rfd",
+ "serde_json",
+]
+
+[[package]]
+name = "netlabcraft-cli"
+version = "0.1.0"
+dependencies = [
+ "netlabcraft-engine",
+ "netlabcraft-mcp",
+ "serde_json",
+]
+
+[[package]]
+name = "netlabcraft-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "netlabcraft-engine"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "netlabcraft-core",
+ "netlabcraft-ios",
+ "netlabcraft-model",
+ "netlabcraft-sim",
+ "netlabcraft-wire",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "netlabcraft-ios"
+version = "0.1.0"
+dependencies = [
+ "netlabcraft-core",
+ "netlabcraft-model",
+ "netlabcraft-sim",
+]
+
+[[package]]
+name = "netlabcraft-mcp"
+version = "0.1.0"
+dependencies = [
+ "netlabcraft-engine",
+ "serde_json",
+]
+
+[[package]]
+name = "netlabcraft-model"
+version = "0.1.0"
+dependencies = [
+ "netlabcraft-core",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "netlabcraft-sim"
+version = "0.1.0"
+dependencies = [
+ "netlabcraft-core",
+ "netlabcraft-model",
+ "netlabcraft-wire",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "netlabcraft-ui-egui"
+version = "0.1.0"
+dependencies = [
+ "egui",
+ "egui_kittest",
+ "log",
+ "netlabcraft-core",
+ "netlabcraft-engine",
+ "netlabcraft-ios",
+ "netlabcraft-model",
+ "netlabcraft-sim",
+ "netlabcraft-wire",
+ "serde_json",
+ "toml",
+]
+
+[[package]]
+name = "netlabcraft-web"
+version = "0.1.0"
+dependencies = [
+ "eframe",
+ "egui",
+ "js-sys",
+ "log",
+ "netlabcraft-engine",
+ "netlabcraft-ui-egui",
+ "rfd",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
+name = "netlabcraft-wire"
+version = "0.1.0"
+dependencies = [
+ "netlabcraft-core",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "nohash-hasher"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2193,132 +2319,6 @@ checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "packetcraft"
-version = "0.1.0"
-dependencies = [
- "eframe",
- "egui",
- "image",
- "log",
- "packetcraft-engine",
- "packetcraft-ui-egui",
- "rfd",
- "serde_json",
-]
-
-[[package]]
-name = "packetcraft-cli"
-version = "0.1.0"
-dependencies = [
- "packetcraft-engine",
- "packetcraft-mcp",
- "serde_json",
-]
-
-[[package]]
-name = "packetcraft-core"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "packetcraft-engine"
-version = "0.1.0"
-dependencies = [
- "log",
- "packetcraft-core",
- "packetcraft-ios",
- "packetcraft-model",
- "packetcraft-sim",
- "packetcraft-wire",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "packetcraft-ios"
-version = "0.1.0"
-dependencies = [
- "packetcraft-core",
- "packetcraft-model",
- "packetcraft-sim",
-]
-
-[[package]]
-name = "packetcraft-mcp"
-version = "0.1.0"
-dependencies = [
- "packetcraft-engine",
- "serde_json",
-]
-
-[[package]]
-name = "packetcraft-model"
-version = "0.1.0"
-dependencies = [
- "packetcraft-core",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "packetcraft-sim"
-version = "0.1.0"
-dependencies = [
- "packetcraft-core",
- "packetcraft-model",
- "packetcraft-wire",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "packetcraft-ui-egui"
-version = "0.1.0"
-dependencies = [
- "egui",
- "egui_kittest",
- "log",
- "packetcraft-core",
- "packetcraft-engine",
- "packetcraft-ios",
- "packetcraft-model",
- "packetcraft-sim",
- "packetcraft-wire",
- "serde_json",
- "toml",
-]
-
-[[package]]
-name = "packetcraft-web"
-version = "0.1.0"
-dependencies = [
- "eframe",
- "egui",
- "js-sys",
- "log",
- "packetcraft-engine",
- "packetcraft-ui-egui",
- "rfd",
- "serde_json",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
-]
-
-[[package]]
-name = "packetcraft-wire"
-version = "0.1.0"
-dependencies = [
- "packetcraft-core",
- "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -4054,8 +4054,8 @@ checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
 name = "xtask"
 version = "0.1.0"
 dependencies = [
- "packetcraft-engine",
- "packetcraft-ios",
+ "netlabcraft-engine",
+ "netlabcraft-ios",
  "serde_json",
 ]
 

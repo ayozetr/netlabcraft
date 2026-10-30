@@ -3,9 +3,9 @@
 
 use std::net::Ipv4Addr;
 
-use packetcraft_core::{Ipv4Net, parse_ip};
-use packetcraft_model::vpn::{CryptoMapEntry, IsakmpPolicy, MAX_CRYPTO, MAX_CRYPTO_TEXT, TransformSet, TunnelSource, tunnel_number};
-use packetcraft_model::{DeviceKind, MAX_DESCRIPTION, ifname};
+use netlabcraft_core::{Ipv4Net, parse_ip};
+use netlabcraft_model::vpn::{CryptoMapEntry, IsakmpPolicy, MAX_CRYPTO, MAX_CRYPTO_TEXT, TransformSet, TunnelSource, tunnel_number};
+use netlabcraft_model::{DeviceKind, MAX_DESCRIPTION, ifname};
 
 use super::{Ctx, Mode, R};
 use crate::grammar::Id;

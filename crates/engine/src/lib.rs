@@ -1,4 +1,4 @@
-//! PacketCraft L5: the session and its commands.
+//! NetLabCraft L5: the session and its commands.
 //!
 //! **Everything is a command.** A [`Session`] holds the lab ([`Topology`]), the simulator and
 //! one console per device; every user-visible action is a command in [`catalog`] with an id
@@ -11,9 +11,9 @@
 
 use std::collections::BTreeMap;
 
-use packetcraft_ios::Cli;
-use packetcraft_model::Topology;
-use packetcraft_sim::Sim;
+use netlabcraft_ios::Cli;
+use netlabcraft_model::Topology;
+use netlabcraft_sim::Sim;
 use serde_json::Value;
 
 pub mod activity;
@@ -30,7 +30,7 @@ pub mod sample;
 mod tests;
 
 pub use catalog::{CATALOG, CommandInfo};
-pub use packetcraft_core::DeviceId;
+pub use netlabcraft_core::DeviceId;
 
 /// Undo steps kept.
 pub const MAX_UNDO: usize = 200;
@@ -49,8 +49,8 @@ pub enum EngineError {
 
 pub type Result<T> = std::result::Result<T, EngineError>;
 
-impl From<packetcraft_model::ModelError> for EngineError {
-    fn from(e: packetcraft_model::ModelError) -> Self {
+impl From<netlabcraft_model::ModelError> for EngineError {
+    fn from(e: netlabcraft_model::ModelError) -> Self {
         EngineError::Failed(e.to_string())
     }
 }
@@ -113,7 +113,7 @@ impl Session {
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| cmd::run(self, id, &params)));
         self.apply_sim_events();
         // A new cable or trunk can join switches into a VTP domain.
-        if packetcraft_sim::vtp::sync(&mut self.topology) {
+        if netlabcraft_sim::vtp::sync(&mut self.topology) {
             self.sim.topology_changed(&self.topology);
         }
         self.print_console_messages();
@@ -139,7 +139,7 @@ impl Session {
             }
             let con = self.console(dev);
             let cli = con.cli.clone();
-            let prompt = packetcraft_ios::prompt(&self.topology, dev, &cli);
+            let prompt = netlabcraft_ios::prompt(&self.topology, dev, &cli);
             self.console(dev).append(&format!("\n{}\n{prompt}", msgs.join("\n")));
         }
     }
@@ -153,12 +153,12 @@ impl Session {
         }
         for e in events {
             match e {
-                packetcraft_sim::PortEvent::ErrDisabled { device, port } => {
+                netlabcraft_sim::PortEvent::ErrDisabled { device, port } => {
                     if let Some(p) = self.topology.device_mut(device).and_then(|d| d.ports.get_mut(port)) {
                         p.err_disabled = true;
                     }
                 }
-                packetcraft_sim::PortEvent::Sticky { device, port, mac } => {
+                netlabcraft_sim::PortEvent::Sticky { device, port, mac } => {
                     if let Some(ps) = self.topology.device_mut(device).and_then(|d| d.ports.get_mut(port)).and_then(|p| p.port_security.as_mut())
                         && !ps.macs.contains(&mac)
                     {
@@ -231,7 +231,7 @@ impl Session {
         let t = &self.topology;
         self.consoles.entry(dev).or_insert_with(|| {
             let cli = Cli::default();
-            let log = format!("{}{}", packetcraft_ios::greeting(t, dev), packetcraft_ios::prompt(t, dev, &cli));
+            let log = format!("{}{}", netlabcraft_ios::greeting(t, dev), netlabcraft_ios::prompt(t, dev, &cli));
             Console { cli, log }
         })
     }

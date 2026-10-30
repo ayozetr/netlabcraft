@@ -2,13 +2,13 @@
 
 use std::net::Ipv4Addr;
 
-use packetcraft_core::{DeviceId, Ipv4Net, VlanId, VlanSet, parse_ip};
-use packetcraft_model::{
+use netlabcraft_core::{DeviceId, Ipv4Net, VlanId, VlanSet, parse_ip};
+use netlabcraft_model::{
     Device, DeviceKind, DhcpPool, MAX_DESCRIPTION, MAX_DHCP_POOLS, MAX_ROUTES, NextHop, StaticRoute, SwitchportMode, Topology, ifname, secret_hash,
     unobscure,
 };
-use packetcraft_model::{NatPool, NatRule, NatSide, NatTarget, Ospf, OspfNetwork, RemoteProto, acl};
-use packetcraft_sim::{DebugKind, PingOptions, Sim, port_up};
+use netlabcraft_model::{NatPool, NatRule, NatSide, NatTarget, Ospf, OspfNetwork, RemoteProto, acl};
+use netlabcraft_sim::{DebugKind, PingOptions, Sim, port_up};
 
 use crate::grammar::{self, Id, Modes, ParseError};
 use crate::{host, render};
@@ -177,7 +177,7 @@ pub fn connect(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, pr
             format!("Trying {dst} ...\n% {e}")
         };
     }
-    let Some(target) = t.devices.iter().find(|d| packetcraft_sim::l3_ifaces(d).iter().any(|i| i.net.addr == dst)).map(|d| d.id) else {
+    let Some(target) = t.devices.iter().find(|d| netlabcraft_sim::l3_ifaces(d).iter().any(|i| i.net.addr == dst)).map(|d| d.id) else {
         return format!("% {dst} answered but isn't a device in this lab");
     };
     // `login block-for`: the quiet period after too many failed logins.
@@ -213,7 +213,7 @@ fn dhcp_leases(t: &mut Topology, sim: &mut Sim, dev: DeviceId) -> Vec<String> {
         .ports
         .iter()
         .enumerate()
-        .filter(|(i, p)| p.dhcp && p.ip.is_none() && !p.shutdown && port_up(t, packetcraft_model::End { device: dev, port: *i }))
+        .filter(|(i, p)| p.dhcp && p.ip.is_none() && !p.shutdown && port_up(t, netlabcraft_model::End { device: dev, port: *i }))
         .map(|(i, _)| i)
         .collect();
     let mut out = Vec::new();
@@ -241,20 +241,20 @@ fn dhcp_leases(t: &mut Topology, sim: &mut Sim, dev: DeviceId) -> Vec<String> {
 
 /// A login checked through the device's AAA methods, in order: a RADIUS server's answer is
 /// final; when none answers, the next method is tried.
-fn aaa_login(t: &Topology, sim: &mut Sim, target: &packetcraft_model::Device, user: &str, password: &str) -> bool {
+fn aaa_login(t: &Topology, sim: &mut Sim, target: &netlabcraft_model::Device, user: &str, password: &str) -> bool {
     for m in target.access.methods() {
         match m {
-            packetcraft_model::LoginMethod::Radius => {
+            netlabcraft_model::LoginMethod::Radius => {
                 if let Some(accepted) = sim.radius_login(t, target.id, user, password) {
                     return accepted;
                 }
             }
-            packetcraft_model::LoginMethod::Tacacs => {
+            netlabcraft_model::LoginMethod::Tacacs => {
                 if let Some(accepted) = sim.tacacs_login(t, target.id, user, password) {
                     return accepted;
                 }
             }
-            packetcraft_model::LoginMethod::Local => return target.access.users.iter().any(|x| x.name == user && x.matches(password)),
+            netlabcraft_model::LoginMethod::Local => return target.access.users.iter().any(|x| x.name == user && x.matches(password)),
         }
     }
     false
@@ -372,7 +372,7 @@ pub struct Outcome {
 }
 
 fn device_bits(d: &Device) -> Modes {
-    if packetcraft_model::firewall::is_firewall(d) {
+    if netlabcraft_model::firewall::is_firewall(d) {
         Modes::FIREWALL
     } else if d.kind == DeviceKind::Switch {
         Modes::SWITCH
@@ -527,7 +527,7 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, li
     let changed = t.device(dev).cloned() != before;
     if changed {
         // VLAN or VTP changes reach the rest of the domain at once.
-        packetcraft_sim::vtp::sync(t);
+        netlabcraft_sim::vtp::sync(t);
         sim.topology_changed(t);
     }
     Outcome { output, changed, clear: false }
@@ -592,7 +592,7 @@ pub fn apply_config(t: &mut Topology, sim: &mut Sim, dev: DeviceId, config: &str
             cli.mode = Mode::Config;
         }
     }
-    packetcraft_sim::vtp::sync(t);
+    netlabcraft_sim::vtp::sync(t);
     sim.topology_changed(t);
     failed
 }
@@ -789,7 +789,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 let r = c.iface_ref(name.trim())?;
                 return render::switchport(c.t, c.d()?, r.port);
             }
-            if let Some(n) = packetcraft_model::vpn::tunnel_number(arg(0)) {
+            if let Some(n) = netlabcraft_model::vpn::tunnel_number(arg(0)) {
                 return render::tunnel_interface(c.t, c.d()?, n);
             }
             let d = c.d()?;
@@ -805,7 +805,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(render::ip_interface(c.t, c.d()?, only))
         }
         Id::ShowRunInterface => {
-            if let Some(n) = packetcraft_model::vpn::tunnel_number(arg(0)) {
+            if let Some(n) = netlabcraft_model::vpn::tunnel_number(arg(0)) {
                 return Ok(render::running_config_interface(c.d()?, &format!("Tunnel{n}")));
             }
             let r = c.iface_ref(arg(0))?;
@@ -820,7 +820,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 "Logging buffer: {} message{} (at most {})\n{}",
                 lines.len(),
                 if lines.len() == 1 { "" } else { "s" },
-                packetcraft_sim::MAX_LOG,
+                netlabcraft_sim::MAX_LOG,
                 lines.join("\n")
             )
             .trim_end()
@@ -983,7 +983,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 c.cli.mode = Mode::Iface(members);
                 return Ok(String::new());
             }
-            if let Some(n) = packetcraft_model::vpn::tunnel_number(arg(0)) {
+            if let Some(n) = netlabcraft_model::vpn::tunnel_number(arg(0)) {
                 return vpn::enter_tunnel(&mut c, n);
             }
             if let Some(v) = vlan_iface(arg(0)) {
@@ -1008,7 +1008,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(String::new())
         }
         Id::NoInterface => {
-            if let Some(n) = packetcraft_model::vpn::tunnel_number(arg(0)) {
+            if let Some(n) = netlabcraft_model::vpn::tunnel_number(arg(0)) {
                 return vpn::delete_tunnel(&mut c, n);
             }
             let r = c.iface_ref(arg(0))?;
@@ -1064,7 +1064,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(String::new())
         }
         Id::Ipv6Route | Id::NoIpv6Route => {
-            let net: packetcraft_core::Ipv6Net = arg(0).parse().map_err(|e| format!("% {e}"))?;
+            let net: netlabcraft_core::Ipv6Net = arg(0).parse().map_err(|e| format!("% {e}"))?;
             let net = net.network();
             let via = match args.get(1) {
                 Some(rest) => Some(c.route6_via(rest)?),
@@ -1077,9 +1077,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 return if d.routes6.len() == before { Err("% No such IPv6 route".into()) } else { Ok(String::new()) };
             }
             let (iface, next_hop) = via.ok_or("% Give a next hop, an interface, or both")?;
-            let r = packetcraft_model::StaticRoute6 { net, iface, next_hop };
+            let r = netlabcraft_model::StaticRoute6 { net, iface, next_hop };
             if !d.routes6.contains(&r) {
-                if d.routes6.len() >= packetcraft_model::MAX_ROUTES {
+                if d.routes6.len() >= netlabcraft_model::MAX_ROUTES {
                     return Err("% Too many routes".into());
                 }
                 d.routes6.push(r);
@@ -1088,11 +1088,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(String::new())
         }
         Id::Ipv6Address | Id::Ipv6AddressEui => {
-            let net: packetcraft_core::Ipv6Net = arg(0).parse().map_err(|e| format!("% {e}"))?;
+            let net: netlabcraft_core::Ipv6Net = arg(0).parse().map_err(|e| format!("% {e}"))?;
             if net.addr.is_multicast() || net.addr.is_unspecified() || net.addr.is_loopback() {
                 return Err(format!("% {} can't be an interface address", net.addr));
             }
-            if packetcraft_core::Ipv6Net::is_link_local(net.addr) {
+            if netlabcraft_core::Ipv6Net::is_link_local(net.addr) {
                 return Err("% For a link-local address use `ipv6 address FE80::X link-local`".into());
             }
             if spec.id == Id::Ipv6AddressEui && net.prefix != 64 {
@@ -1100,17 +1100,17 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             }
             let eui = spec.id == Id::Ipv6AddressEui;
             let mine = c.v6_names();
-            let clash = packetcraft_sim::v6::l3_ifaces6(c.d()?)
+            let clash = netlabcraft_sim::v6::l3_ifaces6(c.d()?)
                 .into_iter()
                 .find(|i| !mine.contains(&i.name) && i.addresses.iter().any(|a| a.network() == net.network()));
             if let Some(i) = clash {
                 return Err(format!("% {} overlaps with {}", net.network(), i.name));
             }
             c.each_v6(|v6, mac, name| {
-                let a = if eui { packetcraft_core::Ipv6Net::new(packetcraft_core::eui64(net.addr, mac), 64) } else { net };
+                let a = if eui { netlabcraft_core::Ipv6Net::new(netlabcraft_core::eui64(net.addr, mac), 64) } else { net };
                 if !v6.addresses.contains(&a) {
-                    if v6.addresses.len() >= packetcraft_model::MAX_IPV6_ADDRESSES {
-                        return Err(format!("% {name} has {} IPv6 addresses already", packetcraft_model::MAX_IPV6_ADDRESSES));
+                    if v6.addresses.len() >= netlabcraft_model::MAX_IPV6_ADDRESSES {
+                        return Err(format!("% {name} has {} IPv6 addresses already", netlabcraft_model::MAX_IPV6_ADDRESSES));
                     }
                     v6.addresses.push(a);
                 }
@@ -1119,7 +1119,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::Ipv6AddressLinkLocal => {
             let a: std::net::Ipv6Addr = arg(0).parse().map_err(|_| format!("% `{}` is not an IPv6 address", arg(0)))?;
-            if !packetcraft_core::Ipv6Net::is_link_local(a) {
+            if !netlabcraft_core::Ipv6Net::is_link_local(a) {
                 return Err("% A link-local address is in FE80::/10".into());
             }
             c.each_v6(|v6, _, _| {
@@ -1212,17 +1212,17 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::VtpModeCmd => {
             let mode = match arg(0).to_ascii_lowercase().as_str() {
-                "server" => packetcraft_model::VtpMode::Server,
-                "client" => packetcraft_model::VtpMode::Client,
-                "transparent" => packetcraft_model::VtpMode::Transparent,
+                "server" => netlabcraft_model::VtpMode::Server,
+                "client" => netlabcraft_model::VtpMode::Client,
+                "transparent" => netlabcraft_model::VtpMode::Transparent,
                 _ => return Err("% server, client or transparent".into()),
             };
             let d = c.dm()?;
-            if mode != packetcraft_model::VtpMode::Transparent && d.vlans.keys().any(|v| v.get() > packetcraft_model::VTP_MAX_VLAN) {
+            if mode != netlabcraft_model::VtpMode::Transparent && d.vlans.keys().any(|v| v.get() > netlabcraft_model::VTP_MAX_VLAN) {
                 return Err("% Delete the VLANs above 1005 first: only a transparent switch can keep them".into());
             }
             // Leaving or entering transparent mode starts the database revision again.
-            if (mode == packetcraft_model::VtpMode::Transparent) != (d.vtp.mode == packetcraft_model::VtpMode::Transparent) {
+            if (mode == netlabcraft_model::VtpMode::Transparent) != (d.vtp.mode == netlabcraft_model::VtpMode::Transparent) {
                 d.vtp.revision = 0;
             }
             d.vtp.mode = mode;
@@ -1262,7 +1262,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let priority: Option<u8> =
                 if spec.id == Id::StandbyPriority { Some(arg(1).parse().map_err(|_| "% The priority is 0-255")?) } else { None };
             let id = spec.id;
-            let apply = |list: &mut Vec<packetcraft_model::Standby>, net: Option<Ipv4Net>| -> Result<(), String> {
+            let apply = |list: &mut Vec<netlabcraft_model::Standby>, net: Option<Ipv4Net>| -> Result<(), String> {
                 if id == Id::NoStandby {
                     list.retain(|s| s.group != group);
                     return Ok(());
@@ -1273,10 +1273,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                     return Err(format!("% {v} is not on {}", n.network()));
                 }
                 if !list.iter().any(|s| s.group == group) {
-                    if list.len() >= packetcraft_model::MAX_STANDBY {
+                    if list.len() >= netlabcraft_model::MAX_STANDBY {
                         return Err("% Too many HSRP groups on this interface".into());
                     }
-                    list.push(packetcraft_model::Standby::new(group));
+                    list.push(netlabcraft_model::Standby::new(group));
                 }
                 if let Some(s) = list.iter_mut().find(|s| s.group == group) {
                     if ip.is_some() {
@@ -1313,8 +1313,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 let mut list = Vec::new();
                 for w in arg(0).split_whitespace() {
                     let m = match w.to_ascii_lowercase().as_str() {
-                        "chap" => packetcraft_model::PppAuth::Chap,
-                        "pap" => packetcraft_model::PppAuth::Pap,
+                        "chap" => netlabcraft_model::PppAuth::Chap,
+                        "pap" => netlabcraft_model::PppAuth::Pap,
                         _ => return Err(format!("% `{w}`: chap or pap")),
                     };
                     if !list.contains(&m) {
@@ -1331,10 +1331,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let pap = (spec.id == Id::PppPapSent).then(|| (arg(0).chars().take(64).collect::<String>(), arg(1).chars().take(64).collect::<String>()));
             let id = spec.id;
             c.each_if(|p, _| {
-                if !packetcraft_model::ifname::is_serial(&p.name) {
+                if !netlabcraft_model::ifname::is_serial(&p.name) {
                     return Err(format!("% {} is not a serial interface", p.name));
                 }
-                if p.serial.encapsulation != packetcraft_model::Encapsulation::Ppp {
+                if p.serial.encapsulation != netlabcraft_model::Encapsulation::Ppp {
                     return Err("% Set `encapsulation ppp` first".into());
                 }
                 match id {
@@ -1367,7 +1367,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                     Id::IpOspfCost | Id::NoIpOspfCost => e.cost = value,
                     _ => e.priority = value.and_then(|v| u8::try_from(v).ok()),
                 }
-                if *e == packetcraft_model::OspfIf::default() {
+                if *e == netlabcraft_model::OspfIf::default() {
                     d.ospf_if.remove(&n);
                 }
             }
@@ -1412,7 +1412,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let a = o.areas.entry(area).or_default();
             a.ranges.retain(|r| *r != net);
             if spec.id == Id::AreaRange {
-                if a.ranges.len() >= packetcraft_model::MAX_AREA_RANGES {
+                if a.ranges.len() >= netlabcraft_model::MAX_AREA_RANGES {
                     return Err("% Too many ranges in this area".into());
                 }
                 a.ranges.push(net);
@@ -1814,12 +1814,12 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                     if let (None | Some("0"), Some(p)) = password_words(&rest) {
                         c.check_length(p)?;
                     }
-                    packetcraft_model::User { name: name.clone(), credential: hash, hashed: true, privilege }
+                    netlabcraft_model::User { name: name.clone(), credential: hash, hashed: true, privilege }
                 }
                 "password" => {
                     let p = line_password(&rest)?;
                     c.check_length(&p)?;
-                    packetcraft_model::User { name: name.clone(), credential: p, hashed: false, privilege }
+                    netlabcraft_model::User { name: name.clone(), credential: p, hashed: false, privilege }
                 }
                 _ => return Err("% username <name> secret|password <password>".into()),
             };
@@ -1887,17 +1887,17 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 match w.as_str() {
                     "group" => match words.get(i + 1).map(String::as_str) {
                         Some("radius") => {
-                            methods.push(packetcraft_model::LoginMethod::Radius);
+                            methods.push(netlabcraft_model::LoginMethod::Radius);
                             i += 2;
                         }
                         Some("tacacs+") => {
-                            methods.push(packetcraft_model::LoginMethod::Tacacs);
+                            methods.push(netlabcraft_model::LoginMethod::Tacacs);
                             i += 2;
                         }
                         _ => return Err("% group radius or group tacacs+".into()),
                     },
                     "local" => {
-                        methods.push(packetcraft_model::LoginMethod::Local);
+                        methods.push(netlabcraft_model::LoginMethod::Local);
                         i += 1;
                     }
                     other => return Err(format!("% `{other}`: group radius, group tacacs+ or local")),
@@ -2001,7 +2001,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                     [comm] if !comm.eq_ignore_ascii_case("version") => comm.clone(),
                     _ => return Err("% snmp-server host A.B.C.D [version 2c] COMMUNITY".into()),
                 };
-                if d.snmp.trap_hosts.len() >= packetcraft_model::MAX_SNMP_ITEMS {
+                if d.snmp.trap_hosts.len() >= netlabcraft_model::MAX_SNMP_ITEMS {
                     return Err("% Too many trap hosts".into());
                 }
                 d.snmp.trap_hosts.push((a, community.chars().take(32).collect()));
@@ -2015,20 +2015,20 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 if w == "snmp" {
                     continue;
                 }
-                match packetcraft_model::SNMP_TRAPS.iter().find(|t| t.starts_with(w.as_str())) {
+                match netlabcraft_model::SNMP_TRAPS.iter().find(|t| t.starts_with(w.as_str())) {
                     Some(t) => which.push(t),
                     None => return Err(format!("% Unknown trap `{w}` (linkdown, linkup, coldstart)")),
                 }
             }
             if which.is_empty() {
-                which = packetcraft_model::SNMP_TRAPS.to_vec();
+                which = netlabcraft_model::SNMP_TRAPS.to_vec();
             }
             let d = c.dm()?;
             d.snmp.traps.retain(|t| !which.contains(&t.as_str()));
             if spec.id == Id::SnmpTraps {
                 d.snmp.traps.extend(which.iter().map(|t| t.to_string()));
             }
-            d.snmp.traps.sort_by_key(|t| packetcraft_model::SNMP_TRAPS.iter().position(|x| x == t));
+            d.snmp.traps.sort_by_key(|t| netlabcraft_model::SNMP_TRAPS.iter().position(|x| x == t));
             d.snmp.traps.dedup();
             Ok(String::new())
         }
@@ -2045,10 +2045,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                     _ => return Err("% noauth or auth".into()),
                 };
                 let write = words.iter().any(|w| w == "write");
-                if d.snmp.groups.len() >= packetcraft_model::MAX_SNMP_ITEMS {
+                if d.snmp.groups.len() >= netlabcraft_model::MAX_SNMP_ITEMS {
                     return Err("% Too many SNMP groups".into());
                 }
-                d.snmp.groups.push(packetcraft_model::SnmpGroup { name, auth, write });
+                d.snmp.groups.push(netlabcraft_model::SnmpGroup { name, auth, write });
             }
             Ok(String::new())
         }
@@ -2079,10 +2079,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 _ => return Err("% snmp-server user NAME GROUP v3 [auth {md5|sha} PASSWORD]".into()),
             };
             d.snmp.users.retain(|u| u.name != name);
-            if d.snmp.users.len() >= packetcraft_model::MAX_SNMP_ITEMS {
+            if d.snmp.users.len() >= netlabcraft_model::MAX_SNMP_ITEMS {
                 return Err("% Too many SNMP users".into());
             }
-            d.snmp.users.push(packetcraft_model::SnmpUser { name, group, auth });
+            d.snmp.users.push(netlabcraft_model::SnmpUser { name, group, auth });
             Ok(String::new())
         }
         Id::TacacsHost | Id::NoTacacsHost => {
@@ -2091,7 +2091,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let d = c.dm()?;
             d.access.tacacs_servers.retain(|(x, _)| *x != a);
             if spec.id == Id::TacacsHost {
-                if d.access.tacacs_servers.len() >= packetcraft_model::MAX_RADIUS_SERVERS {
+                if d.access.tacacs_servers.len() >= netlabcraft_model::MAX_RADIUS_SERVERS {
                     return Err("% Too many TACACS+ servers".into());
                 }
                 d.access.tacacs_servers.push((a, key));
@@ -2104,7 +2104,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let d = c.dm()?;
             d.access.radius_servers.retain(|(x, _)| *x != a);
             if spec.id == Id::RadiusHost {
-                if d.access.radius_servers.len() >= packetcraft_model::MAX_RADIUS_SERVERS {
+                if d.access.radius_servers.len() >= netlabcraft_model::MAX_RADIUS_SERVERS {
                     return Err("% Too many RADIUS servers".into());
                 }
                 d.access.radius_servers.push((a, key));
@@ -2124,7 +2124,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 if d.dhcp6_pools.len() >= MAX_DHCP_POOLS {
                     return Err("% Too many DHCPv6 pools".into());
                 }
-                d.dhcp6_pools.push(packetcraft_model::Dhcp6Pool { name: name.clone(), ..Default::default() });
+                d.dhcp6_pools.push(netlabcraft_model::Dhcp6Pool { name: name.clone(), ..Default::default() });
             }
             c.cli.mode = Mode::Dhcp6(name);
             Ok(String::new())
@@ -2142,7 +2142,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let pool = c.dm()?.dhcp6_pools.iter_mut().find(|p| p.name == name).ok_or("% The pool was deleted")?;
             match id {
                 Id::Dhcp6AddressPrefix => {
-                    let n: packetcraft_core::Ipv6Net = value.parse().map_err(|e| format!("% {e}"))?;
+                    let n: netlabcraft_core::Ipv6Net = value.parse().map_err(|e| format!("% {e}"))?;
                     if n.prefix != 64 {
                         return Err("% Pools hand out from a /64".into());
                     }
@@ -2232,7 +2232,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::Ipv6DhcpRelay | Id::NoIpv6DhcpRelay => {
             let a: std::net::Ipv6Addr = arg(0).parse().map_err(|_| format!("% `{}` is not an IPv6 address", arg(0)))?;
-            if a.is_multicast() || a.is_unspecified() || packetcraft_core::Ipv6Net::is_link_local(a) {
+            if a.is_multicast() || a.is_unspecified() || netlabcraft_core::Ipv6Net::is_link_local(a) {
                 return Err("% The server's global address".into());
             }
             let add = spec.id == Id::Ipv6DhcpRelay;
@@ -2277,9 +2277,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::ChannelGroup | Id::NoChannelGroup => {
             let group = if spec.id == Id::ChannelGroup {
-                let n = arg(0).parse::<u16>().ok().filter(|n| (1..=packetcraft_model::MAX_CHANNEL_GROUP).contains(n)).ok_or("% The group is 1-48")?;
-                let mode = packetcraft_model::ChannelMode::parse(arg(1)).ok_or("% on, active, passive, desirable or auto")?;
-                Some(packetcraft_model::ChannelGroup { number: n, mode })
+                let n = arg(0).parse::<u16>().ok().filter(|n| (1..=netlabcraft_model::MAX_CHANNEL_GROUP).contains(n)).ok_or("% The group is 1-48")?;
+                let mode = netlabcraft_model::ChannelMode::parse(arg(1)).ok_or("% on, active, passive, desirable or auto")?;
+                Some(netlabcraft_model::ChannelGroup { number: n, mode })
             } else {
                 None
             };
@@ -2317,15 +2317,15 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             };
             let violation = if spec.id == Id::PortSecViolation {
                 Some(match arg(0).to_ascii_lowercase().as_str() {
-                    "shutdown" => packetcraft_model::Violation::Shutdown,
-                    "restrict" => packetcraft_model::Violation::Restrict,
-                    "protect" => packetcraft_model::Violation::Protect,
+                    "shutdown" => netlabcraft_model::Violation::Shutdown,
+                    "restrict" => netlabcraft_model::Violation::Restrict,
+                    "protect" => netlabcraft_model::Violation::Protect,
                     _ => return Err("% shutdown, restrict or protect".into()),
                 })
             } else {
                 None
             };
-            let mac = if spec.id == Id::PortSecMac { Some(arg(0).parse::<packetcraft_core::MacAddr>().map_err(|e| format!("% {e}"))?) } else { None };
+            let mac = if spec.id == Id::PortSecMac { Some(arg(0).parse::<netlabcraft_core::MacAddr>().map_err(|e| format!("% {e}"))?) } else { None };
             let id = spec.id;
             c.each_if(|p, _| {
                 if id == Id::NoPortSecurity {
@@ -2339,7 +2339,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 if p.channel.is_some() {
                     return Err(format!("% {} is in an EtherChannel: port security can't be used there", p.name));
                 }
-                let ps = p.port_security.get_or_insert_with(packetcraft_model::PortSecurity::default);
+                let ps = p.port_security.get_or_insert_with(netlabcraft_model::PortSecurity::default);
                 if let Some(m) = max {
                     ps.max = m;
                 }
@@ -2426,7 +2426,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 v => Some(v.parse::<u32>().ok().filter(|s| [10, 100, 1000].contains(s)).ok_or("% 10, 100, 1000 or auto")?),
             };
             c.each_if(|p, _| {
-                let max = packetcraft_sim::port_max_speed(&p.name).ok_or(format!("% {} has no Ethernet speed to set", p.name))?;
+                let max = netlabcraft_sim::port_max_speed(&p.name).ok_or(format!("% {} has no Ethernet speed to set", p.name))?;
                 if speed.is_some_and(|s| s > max) {
                     return Err(format!("% {} goes up to {max} Mbit/s", p.name));
                 }
@@ -2439,12 +2439,12 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let value = if words.first().is_some_and(|w| w == "no") { "auto".to_string() } else { arg(0).to_ascii_lowercase() };
             let duplex = match value.as_str() {
                 "auto" => None,
-                "full" => Some(packetcraft_model::Duplex::Full),
-                "half" => Some(packetcraft_model::Duplex::Half),
+                "full" => Some(netlabcraft_model::Duplex::Full),
+                "half" => Some(netlabcraft_model::Duplex::Half),
                 _ => return Err("% full, half or auto".into()),
             };
             c.each_if(|p, _| {
-                if packetcraft_sim::port_max_speed(&p.name).is_none() {
+                if netlabcraft_sim::port_max_speed(&p.name).is_none() {
                     return Err(format!("% {} has no duplex to set", p.name));
                 }
                 p.duplex = duplex;
@@ -2475,7 +2475,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::ShowBoot => {
             let d = c.d()?;
             Ok(format!(
-                "Boot image: flash:packetcraft-{}-{}.bin\nConfiguration at start-up: {}",
+                "Boot image: flash:netlabcraft-{}-{}.bin\nConfiguration at start-up: {}",
                 d.kind.label().to_lowercase(),
                 env!("CARGO_PKG_VERSION"),
                 if d.startup.is_some() { "startup-config (saved)" } else { "none saved: factory settings" }
@@ -2597,7 +2597,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             }
             let prefix = match (w.get(2).map(|s| s.to_ascii_lowercase()).as_deref(), w.get(3)) {
                 (Some("netmask"), Some(m)) => {
-                    packetcraft_core::mask_to_prefix(parse_ip(m).map_err(|e| format!("% {e}"))?).ok_or("% Not a contiguous mask")?
+                    netlabcraft_core::mask_to_prefix(parse_ip(m).map_err(|e| format!("% {e}"))?).ok_or("% Not a contiguous mask")?
                 }
                 (Some("prefix-length"), Some(n)) => n.parse::<u8>().ok().filter(|n| *n <= 32).ok_or("% prefix-length is 0-32")?,
                 _ => return Err("% Give `netmask <mask>` or `prefix-length <n>`".into()),
@@ -2621,18 +2621,18 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::EncapSerial => {
             let enc = match arg(0).to_ascii_lowercase().as_str() {
-                "hdlc" => packetcraft_model::Encapsulation::Hdlc,
-                "ppp" => packetcraft_model::Encapsulation::Ppp,
+                "hdlc" => netlabcraft_model::Encapsulation::Hdlc,
+                "ppp" => netlabcraft_model::Encapsulation::Ppp,
                 "dot1q" => return Err("% dot1Q is for subinterfaces: `interface g0/0.10` first".into()),
                 _ => return Err("% hdlc or ppp".into()),
             };
             c.each_if(|p, _| {
-                if !packetcraft_model::ifname::is_serial(&p.name) {
+                if !netlabcraft_model::ifname::is_serial(&p.name) {
                     return Err(format!("% {} is not a serial interface", p.name));
                 }
                 p.serial.encapsulation = enc;
                 // PPP's own settings go with it.
-                if enc == packetcraft_model::Encapsulation::Hdlc {
+                if enc == netlabcraft_model::Encapsulation::Hdlc {
                     p.serial.ppp_auth.clear();
                     p.serial.pap_sent = None;
                 }
@@ -2642,8 +2642,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::ClockRate | Id::NoClockRate => {
             let rate = if spec.id == Id::ClockRate {
                 let r: u32 = arg(0).parse().map_err(|_| "% The clock rate is a number of bit/s")?;
-                if !packetcraft_model::CLOCK_RATES.contains(&r) {
-                    let list: Vec<String> = packetcraft_model::CLOCK_RATES.iter().map(u32::to_string).collect();
+                if !netlabcraft_model::CLOCK_RATES.contains(&r) {
+                    let list: Vec<String> = netlabcraft_model::CLOCK_RATES.iter().map(u32::to_string).collect();
                     return Err(format!("% Unsupported clock rate; use one of {}", list.join(", ")));
                 }
                 Some(r)
@@ -2651,7 +2651,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 None
             };
             c.each_if(|p, _| {
-                if !packetcraft_model::ifname::is_serial(&p.name) {
+                if !netlabcraft_model::ifname::is_serial(&p.name) {
                     return Err(format!("% {} is not a serial interface", p.name));
                 }
                 p.serial.clock_rate = rate;
@@ -2660,7 +2660,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             // On the DTE end the setting is kept but has no effect; say so.
             let dte = match &c.cli.mode {
                 Mode::Iface(ifs) => ifs.iter().any(|r| {
-                    let e = packetcraft_model::End { device: c.dev, port: r.port };
+                    let e = netlabcraft_model::End { device: c.dev, port: r.port };
                     c.t.dce_of(e).is_some_and(|dce| dce != e)
                 }),
                 _ => false,
@@ -2671,8 +2671,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let r = c.iface_ref(arg(0))?;
             let d = c.d()?;
             let p = d.ports.get(r.port).ok_or("% No such port")?;
-            let e = packetcraft_model::End { device: d.id, port: r.port };
-            Ok(if !packetcraft_model::ifname::is_serial(&p.name) {
+            let e = netlabcraft_model::End { device: d.id, port: r.port };
+            Ok(if !netlabcraft_model::ifname::is_serial(&p.name) {
                 render::ethernet_controller(c.t, d, r.port)
             } else {
                 match c.t.dce_of(e) {
@@ -2690,7 +2690,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::RouterRip => {
             let d = c.dm()?;
             if d.rip.is_none() {
-                d.rip = Some(packetcraft_model::Rip::default());
+                d.rip = Some(netlabcraft_model::Rip::default());
             }
             c.cli.mode = Mode::Rip;
             Ok(String::new())
@@ -2709,7 +2709,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::RipNetwork | Id::NoRipNetwork => {
             let a = parse_ip(arg(0)).map_err(|e| format!("% {e}"))?;
-            let net = packetcraft_model::Rip::classful(a).addr;
+            let net = netlabcraft_model::Rip::classful(a).addr;
             let r = c.dm()?.rip.as_mut().ok_or("% Not in RIP mode")?;
             if spec.id == Id::RipNetwork {
                 if !r.networks.contains(&net) {
@@ -2757,10 +2757,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let d = c.dm()?;
             match &d.eigrp {
                 Some(e) if e.asn != n => {
-                    return Err(format!("% EIGRP already runs here in AS {}; PacketCraft runs one EIGRP process per router", e.asn));
+                    return Err(format!("% EIGRP already runs here in AS {}; NetLabCraft runs one EIGRP process per router", e.asn));
                 }
                 Some(_) => {}
-                None => d.eigrp = Some(packetcraft_model::Eigrp { asn: n, ..Default::default() }),
+                None => d.eigrp = Some(netlabcraft_model::Eigrp { asn: n, ..Default::default() }),
             }
             c.cli.mode = Mode::Eigrp;
             Ok(String::new())
@@ -2778,7 +2778,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let wildcard = match args.get(1) {
                 Some(w) => {
                     let w = parse_ip(w).map_err(|e| format!("% {e}"))?;
-                    if packetcraft_core::mask_to_prefix(Ipv4Addr::from(!u32::from(w))).is_none() {
+                    if netlabcraft_core::mask_to_prefix(Ipv4Addr::from(!u32::from(w))).is_none() {
                         return Err(format!("% {w} is not a wildcard mask (the inverse of a subnet mask, such as 0.0.0.255)"));
                     }
                     Some(w)
@@ -2788,13 +2788,13 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             // Without a wildcard the statement is classful: keep the classful network.
             let address = match wildcard {
                 Some(w) => Ipv4Addr::from(u32::from(address) & !u32::from(w)),
-                None => packetcraft_model::Rip::classful(address).addr,
+                None => netlabcraft_model::Rip::classful(address).addr,
             };
-            let n = packetcraft_model::EigrpNetwork { address, wildcard };
+            let n = netlabcraft_model::EigrpNetwork { address, wildcard };
             let e = c.dm()?.eigrp.as_mut().ok_or("% Not in EIGRP mode")?;
             if spec.id == Id::EigrpNetwork {
                 if !e.networks.contains(&n) {
-                    if e.networks.len() >= packetcraft_model::MAX_NETWORKS {
+                    if e.networks.len() >= netlabcraft_model::MAX_NETWORKS {
                         return Err("% At most 256 network statements".into());
                     }
                     e.networks.push(n);
@@ -2814,7 +2814,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let e = c.dm()?.eigrp.as_mut().ok_or("% Not in EIGRP mode")?;
             e.passive.retain(|p| *p != name);
             if spec.id == Id::EigrpPassive {
-                if e.passive.len() >= packetcraft_model::MAX_NETWORKS {
+                if e.passive.len() >= netlabcraft_model::MAX_NETWORKS {
                     return Err("% Too many passive interfaces".into());
                 }
                 e.passive.push(name);
@@ -2878,7 +2878,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                         }
                     }
                 }
-                if *e == packetcraft_model::EigrpIfConf::default() {
+                if *e == netlabcraft_model::EigrpIfConf::default() {
                     d.eigrp_if.remove(&n);
                 }
             }
@@ -2928,7 +2928,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let d = c.dm()?;
             match &mut d.ospf {
                 Some(o) if o.process != n => {
-                    return Err(format!("% OSPF process {} already runs here; PacketCraft runs one process per router", o.process));
+                    return Err(format!("% OSPF process {} already runs here; NetLabCraft runs one process per router", o.process));
                 }
                 Some(_) => {}
                 None => d.ospf = Some(Ospf { process: n, ..Ospf::default() }),
@@ -2949,7 +2949,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let address = parse_ip(arg(0)).map_err(|e| format!("% {e}"))?;
             let wildcard = parse_ip(arg(1)).map_err(|e| format!("% {e}"))?;
             let area: u32 = arg(2).parse().map_err(|_| "% The area is a number")?;
-            if packetcraft_core::mask_to_prefix(Ipv4Addr::from(!u32::from(wildcard))).is_none() {
+            if netlabcraft_core::mask_to_prefix(Ipv4Addr::from(!u32::from(wildcard))).is_none() {
                 return Err(format!("% {wildcard} is not a wildcard mask (the inverse of a subnet mask, such as 0.0.0.255)"));
             }
             let o = c.dm()?.ospf.as_mut().ok_or("% Not in OSPF mode")?;
@@ -3010,12 +3010,12 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let d = c.dm()?;
             match &d.ospf6 {
                 Some(o) if o.process != n => {
-                    return Err(format!("% OSPFv3 process {} already runs here; PacketCraft runs one process per router", o.process));
+                    return Err(format!("% OSPFv3 process {} already runs here; NetLabCraft runs one process per router", o.process));
                 }
                 Some(_) => {}
-                None => d.ospf6 = Some(packetcraft_model::Ospf6 { process: n, ..Default::default() }),
+                None => d.ospf6 = Some(netlabcraft_model::Ospf6 { process: n, ..Default::default() }),
             }
-            let note = if packetcraft_sim::ospf6::router_id(d).is_none() {
+            let note = if netlabcraft_sim::ospf6::router_id(d).is_none() {
                 "OSPFv3 needs a router ID: give one with `router-id A.B.C.D` (there's no IPv4 address to take it from)."
             } else {
                 ""
@@ -3235,7 +3235,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::EnableSecret => {
             let hash = match password_words(arg(0)) {
                 (Some("5"), Some(h)) if h.starts_with("$pc$") => h.to_string(),
-                (Some("5"), _) => return Err("% Give the secret itself, or a hash PacketCraft wrote (`$pc$…`)".into()),
+                (Some("5"), _) => return Err("% Give the secret itself, or a hash NetLabCraft wrote (`$pc$…`)".into()),
                 (_, Some(plain)) => {
                     c.check_length(plain)?;
                     secret_hash(plain)
@@ -3466,7 +3466,7 @@ fn parse_acl_entry(words: &[&str], extended: bool) -> Result<acl::AclEntry, Stri
     };
     let proto = if extended {
         let w = it.next().ok_or("% Give a protocol: ip, icmp, tcp or udp")?;
-        acl::AclProto::from_name(w).ok_or_else(|| format!("% `{w}` is not a protocol PacketCraft knows (ip, icmp, tcp, udp)"))?
+        acl::AclProto::from_name(w).ok_or_else(|| format!("% `{w}` is not a protocol NetLabCraft knows (ip, icmp, tcp, udp)"))?
     } else {
         acl::AclProto::Ip
     };
@@ -3569,11 +3569,11 @@ fn password_words(text: &str) -> (Option<&str>, Option<&str>) {
     }
 }
 
-/// A line or enable password as typed: plain, `0 plain`, or `7 <obscured>` (as PacketCraft
+/// A line or enable password as typed: plain, `0 plain`, or `7 <obscured>` (as NetLabCraft
 /// writes it with `service password-encryption`).
 fn line_password(text: &str) -> Result<String, String> {
     match password_words(text) {
-        (Some("7"), Some(o)) => unobscure(o).ok_or_else(|| "% That is not an obscured password PacketCraft wrote".to_string()),
+        (Some("7"), Some(o)) => unobscure(o).ok_or_else(|| "% That is not an obscured password NetLabCraft wrote".to_string()),
         (Some("5"), _) => Err("% Type-5 hashes are for `enable secret` only".into()),
         (_, Some(p)) => Ok(p.chars().take(64).collect()),
         _ => Err("% Give a password".into()),
@@ -3696,7 +3696,7 @@ impl Ctx<'_> {
     }
 
     /// Applies `f` to every interface of the current interface mode.
-    fn each_if(&mut self, mut f: impl FnMut(&mut packetcraft_model::Port, Option<&mut packetcraft_model::SubIf>) -> Result<(), String>) -> R {
+    fn each_if(&mut self, mut f: impl FnMut(&mut netlabcraft_model::Port, Option<&mut netlabcraft_model::SubIf>) -> Result<(), String>) -> R {
         let Mode::Iface(ifs) = &self.cli.mode else { return Err("% Not in interface mode".into()) };
         let ifs = ifs.clone();
         let d = self.dm()?;
@@ -3728,10 +3728,10 @@ impl Ctx<'_> {
 
     /// Applies `f` to the IPv6 settings of each interface the mode is on (ports, subinterfaces
     /// or a VLAN interface), with the MAC address and name of the interface.
-    fn each_v6(&mut self, mut f: impl FnMut(&mut packetcraft_model::Ipv6Conf, packetcraft_core::MacAddr, &str) -> Result<(), String>) -> R {
+    fn each_v6(&mut self, mut f: impl FnMut(&mut netlabcraft_model::Ipv6Conf, netlabcraft_core::MacAddr, &str) -> Result<(), String>) -> R {
         if let Mode::Svi(v) = self.cli.mode {
             let d = self.dm()?;
-            let mac = packetcraft_sim::svi_mac(d);
+            let mac = netlabcraft_sim::svi_mac(d);
             let svi = d.svi_mut(v).ok_or("% Too many VLAN interfaces")?;
             f(&mut svi.ipv6, mac, &format!("Vlan{v}"))?;
             return Ok(String::new());
@@ -3782,9 +3782,9 @@ impl Ctx<'_> {
                 };
                 let state = if admin_down {
                     "administratively down"
-                } else if port_up(self.t, packetcraft_model::End { device: d.id, port: r.port }) {
+                } else if port_up(self.t, netlabcraft_model::End { device: d.id, port: r.port }) {
                     "up"
-                } else if self.t.peer(packetcraft_model::End { device: d.id, port: r.port }).is_none() {
+                } else if self.t.peer(netlabcraft_model::End { device: d.id, port: r.port }).is_none() {
                     "down (no cable)"
                 } else {
                     "down (the far end is shut down)"
@@ -3852,8 +3852,8 @@ impl Ctx<'_> {
             None => None,
             Some(t) => Some(match t.parse::<Ipv4Addr>() {
                 Ok(a) => NextHop::Address(a),
-                Err(_) if packetcraft_model::vpn::tunnel_number(t).is_some() => {
-                    let n = packetcraft_model::vpn::tunnel_number(t).unwrap_or(0);
+                Err(_) if netlabcraft_model::vpn::tunnel_number(t).is_some() => {
+                    let n = netlabcraft_model::vpn::tunnel_number(t).unwrap_or(0);
                     if self.d()?.kind != DeviceKind::Router {
                         return Err("% Tunnel interfaces exist only on routers".into());
                     }
@@ -3890,7 +3890,7 @@ impl Ctx<'_> {
 
     /// `copy … ftp: <address> [file]` and `copy ftp: … <address> <file>`, as the `ip ftp` user.
     fn ftp_copy(&mut self, upload: bool, line: &str, rest: &str) -> R {
-        use packetcraft_sim::ftp::FtpOp;
+        use netlabcraft_sim::ftp::FtpOp;
         let words: Vec<&str> = rest.split_whitespace().collect();
         let (addr, file) = match words.as_slice() {
             [a] => (*a, None),
@@ -3952,10 +3952,10 @@ impl Ctx<'_> {
             {
                 let files = &mut sd.services.tftp.files;
                 files.retain(|f| f.name != name);
-                if files.len() < packetcraft_model::services::MAX_ITEMS {
-                    files.push(packetcraft_model::services::WebFile {
+                if files.len() < netlabcraft_model::services::MAX_ITEMS {
+                    files.push(netlabcraft_model::services::WebFile {
                         name: name.clone(),
-                        content: text.chars().take(packetcraft_model::services::MAX_FILE).collect(),
+                        content: text.chars().take(netlabcraft_model::services::MAX_FILE).collect(),
                     });
                 }
             }
@@ -3985,7 +3985,7 @@ impl Ctx<'_> {
         match words.as_slice() {
             [w] if w.contains(':') => {
                 let nh = addr(w)?;
-                if packetcraft_core::Ipv6Net::is_link_local(nh) {
+                if netlabcraft_core::Ipv6Net::is_link_local(nh) {
                     return Err("% A link-local next hop needs its interface: `ipv6 route P/L <interface> FE80::X`".into());
                 }
                 Ok((None, Some(nh)))
@@ -4069,18 +4069,18 @@ fn port_channel(name: &str) -> Option<Result<u16, String>> {
         digits
             .parse::<u16>()
             .ok()
-            .filter(|n| (1..=packetcraft_model::MAX_CHANNEL_GROUP).contains(n))
+            .filter(|n| (1..=netlabcraft_model::MAX_CHANNEL_GROUP).contains(n))
             .ok_or_else(|| "% Port channels are 1-48".to_string()),
     )
 }
 
 /// Whether this switch may change these VLANs under its VTP mode.
 fn vtp_may_edit(d: &Device, ids: &[VlanId]) -> Result<(), String> {
-    use packetcraft_model::VtpMode;
+    use netlabcraft_model::VtpMode;
     if d.vtp.mode == VtpMode::Client {
         return Err("% This switch is a VTP client: VLANs are changed on a server of the domain".into());
     }
-    if d.vtp.mode == VtpMode::Server && ids.iter().any(|v| v.get() > packetcraft_model::VTP_MAX_VLAN) {
+    if d.vtp.mode == VtpMode::Server && ids.iter().any(|v| v.get() > netlabcraft_model::VTP_MAX_VLAN) {
         return Err("% VLANs 1006-4094 need `vtp mode transparent`".into());
     }
     Ok(())
@@ -4088,7 +4088,7 @@ fn vtp_may_edit(d: &Device, ids: &[VlanId]) -> Result<(), String> {
 
 /// A server's VLAN database changed: one revision more, so the domain takes it.
 fn vtp_bump(d: &mut Device, before: &std::collections::BTreeMap<VlanId, String>) {
-    if d.vtp.mode == packetcraft_model::VtpMode::Server && d.vlans != *before {
+    if d.vtp.mode == netlabcraft_model::VtpMode::Server && d.vlans != *before {
         d.vtp.revision = d.vtp.revision.saturating_add(1);
     }
 }

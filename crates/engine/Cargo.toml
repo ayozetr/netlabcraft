@@ -1,20 +1,20 @@
 [package]
-name = "packetcraft-engine"
+name = "netlabcraft-engine"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "PacketCraft L5: the session (lab + simulator + device consoles) and the command catalog every front end drives"
+description = "NetLabCraft L5: the session (lab + simulator + device consoles) and the command catalog every front end drives"
 
 [lints]
 workspace = true
 
 [dependencies]
-packetcraft-core = { workspace = true }
-packetcraft-wire = { workspace = true }
-packetcraft-model = { workspace = true }
-packetcraft-sim = { workspace = true }
-packetcraft-ios = { workspace = true }
+netlabcraft-core = { workspace = true }
+netlabcraft-wire = { workspace = true }
+netlabcraft-model = { workspace = true }
+netlabcraft-sim = { workspace = true }
+netlabcraft-ios = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

@@ -1,6 +1,6 @@
 [package]
-name = "packetcraft-web"
-description = "PacketCraft in the browser (eframe web runner, WebGPU with WebGL2 fallback)"
+name = "netlabcraft-web"
+description = "NetLabCraft in the browser (eframe web runner, WebGPU with WebGL2 fallback)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -10,12 +10,12 @@ publish = false
 workspace = true
 
 [[bin]]
-name = "packetcraft-web"
+name = "netlabcraft-web"
 path = "src/main.rs"
 
 [dependencies]
-packetcraft-engine = { workspace = true }
-packetcraft-ui-egui = { workspace = true }
+netlabcraft-engine = { workspace = true }
+netlabcraft-ui-egui = { workspace = true }
 egui = { workspace = true }
 log = { workspace = true }
 serde_json = { workspace = true }

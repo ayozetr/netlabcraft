@@ -7,14 +7,14 @@
 use std::fmt::Write as _;
 use std::net::Ipv4Addr;
 
-use packetcraft_core::{Ipv4Net, parse_ip};
-use packetcraft_model::acl::{AclProto, PortMatch};
-use packetcraft_model::firewall::{
+use netlabcraft_core::{Ipv4Net, parse_ip};
+use netlabcraft_model::acl::{AclProto, PortMatch};
+use netlabcraft_model::firewall::{
     self as fw, AccessGroup, Dhcpd, FwAce, FwAcl, FwClassMap, FwPolicyClass, FwPolicyMap, FwRemark, IcmpRule, MAX_DHCPD, MAX_DHCPD_ADDRESSES,
     MAX_ENTRIES, MAX_LISTS, MAX_MEMBERS, MAX_OBJECTS, MAX_POLICY, MAX_REMARK, NatKind, NetGroup, NetMember, NetObject, ObjAddr, ObjNat,
     RouteDistance, SvcGroup, SvcMember, SvcProto, TwiceNat, duration_text, parse_duration, port_number, valid_name,
 };
-use packetcraft_model::{Device, End, MAX_ROUTES, NextHop, StaticRoute, Topology};
+use netlabcraft_model::{Device, End, MAX_ROUTES, NextHop, StaticRoute, Topology};
 
 use super::{Ctx, Mode, R};
 use crate::grammar::Id;
@@ -970,7 +970,7 @@ fn show_ip_brief(t: &Topology, d: &Device) -> String {
         let n = d.firewall.zone(&name).map_or("-", |(n, _)| n);
         let addr = ip.map_or("unassigned".to_string(), |ip| ip.to_string());
         let parent_shut = d.ports.get(port).is_some_and(|p| p.shutdown);
-        let up = !shut && !parent_shut && packetcraft_sim::port_up(t, End { device: d.id, port });
+        let up = !shut && !parent_shut && netlabcraft_sim::port_up(t, End { device: d.id, port });
         let _ = writeln!(s, "{:<22} {:<12} {:<18} {:<6} {}", name, n, addr, if shut { "down" } else { "up" }, if up { "up" } else { "down" });
     }
     s.trim_end().to_string()
@@ -978,7 +978,7 @@ fn show_ip_brief(t: &Topology, d: &Device) -> String {
 
 /// The routing table, interfaces by name and static routes with their distance.
 fn show_route(t: &Topology, d: &Device) -> String {
-    let table = packetcraft_sim::routing_table(t, d);
+    let table = netlabcraft_sim::routing_table(t, d);
     let ifname = |i: &Option<String>| i.as_deref().map(|p| d.firewall.zone(p).map_or(p.to_string(), |(n, _)| n.to_string()));
     let via_if = |gw: Ipv4Addr| {
         all_ifaces(d).into_iter().find(|i| i.1.is_some_and(|n| n.contains(gw))).and_then(|i| d.firewall.zone(&i.0).map(|(n, _)| n.to_string()))
@@ -1071,7 +1071,7 @@ fn show_nat(c: &Ctx<'_>) -> String {
     if !f.twice.is_empty() {
         s.push_str("Twice NAT, in order:\n");
         for (i, r) in f.twice.iter().enumerate() {
-            let used = hits.get(&packetcraft_sim::firewall::twice_label(i)).copied().unwrap_or(0);
+            let used = hits.get(&netlabcraft_sim::firewall::twice_label(i)).copied().unwrap_or(0);
             let _ = writeln!(s, "{:>3}. {}  [used {used} times]", i + 1, r.text());
         }
     }
@@ -1105,7 +1105,7 @@ fn ordered_objects<'a>(rules: &[&'a NetObject]) -> Vec<&'a NetObject> {
 
 /// `show nat detail`: both sections in the order they are checked, what each rule turns
 /// into what, and how often it translated and was undone.
-fn show_nat_detail(d: &Device, st: &packetcraft_sim::firewall::FwState) -> String {
+fn show_nat_detail(d: &Device, st: &netlabcraft_sim::firewall::FwState) -> String {
     let f = &d.firewall;
     let count = |key: &str| (st.nat_hits.get(key).copied().unwrap_or(0), st.nat_unhits.get(key).copied().unwrap_or(0));
     let mut s = String::from("Section 1, twice NAT (checked first, in order):\n");
@@ -1113,7 +1113,7 @@ fn show_nat_detail(d: &Device, st: &packetcraft_sim::firewall::FwState) -> Strin
         s.push_str("  (none)\n");
     }
     for (i, r) in f.twice.iter().enumerate() {
-        let (out, back) = count(&packetcraft_sim::firewall::twice_label(i));
+        let (out, back) = count(&netlabcraft_sim::firewall::twice_label(i));
         let _ = writeln!(s, "{:>3}. {}", i + 1, r.text());
         let how = if r.dynamic { "port translation" } else { "one to one, both directions" };
         let _ = writeln!(s, "       source {} → {} ({how})", addresses_of(f, &r.src_real), addresses_of(f, &r.src_mapped));
@@ -1150,7 +1150,7 @@ fn ago(now: u64, then: u64) -> String {
     duration_text(u32::try_from(now.saturating_sub(then) / 1_000_000).unwrap_or(u32::MAX))
 }
 
-fn show_xlate(d: &Device, st: &packetcraft_sim::firewall::FwState, now: u64) -> String {
+fn show_xlate(d: &Device, st: &netlabcraft_sim::firewall::FwState, now: u64) -> String {
     let f = &d.firewall;
     let mut statics: Vec<String> = f
         .objects
@@ -1187,7 +1187,7 @@ fn show_xlate(d: &Device, st: &packetcraft_sim::firewall::FwState, now: u64) -> 
         let _ = writeln!(
             s,
             "dynamic  {} {} {}:{} → {} {}:{}  idle {}  ({rule})",
-            packetcraft_sim::firewall::proto_name(x.protocol),
+            netlabcraft_sim::firewall::proto_name(x.protocol),
             x.real_if,
             x.real,
             x.real_port,
@@ -1200,7 +1200,7 @@ fn show_xlate(d: &Device, st: &packetcraft_sim::firewall::FwState, now: u64) -> 
     s.trim_end().to_string()
 }
 
-fn show_conn(st: &packetcraft_sim::firewall::FwState, now: u64) -> String {
+fn show_conn(st: &netlabcraft_sim::firewall::FwState, now: u64) -> String {
     let n = st.conns.len();
     let mut s = format!("{n} connection{} in use\n", if n == 1 { "" } else { "s" });
     for c in &st.conns {
@@ -1256,7 +1256,7 @@ fn show_access_list(c: &Ctx<'_>, only: Option<&str>) -> R {
     Ok(s.trim_end().to_string())
 }
 
-fn show_service_policy(d: &Device, st: &packetcraft_sim::firewall::FwState) -> String {
+fn show_service_policy(d: &Device, st: &netlabcraft_sim::firewall::FwState) -> String {
     let f = &d.firewall;
     let Some(name) = f.service_policy.as_deref() else {
         return "No global policy (`service-policy NAME global`): ICMP is not inspected, and the firewall leaves TTL alone.".into();
@@ -1309,7 +1309,7 @@ fn show_bindings(c: &Ctx<'_>) -> String {
 pub(crate) fn running_config(d: &Device) -> String {
     let f = &d.firewall;
     let mut s = String::new();
-    let _ = writeln!(s, "! PacketCraft configuration of {} ({})", d.name, d.catalogue_model().label);
+    let _ = writeln!(s, "! NetLabCraft configuration of {} ({})", d.name, d.catalogue_model().label);
     let _ = writeln!(s, "hostname {}", d.name);
     if let Some(p) = &d.access.enable_password {
         let _ = writeln!(s, "enable password {p}");

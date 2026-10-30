@@ -2,7 +2,7 @@
 
 use std::net::Ipv6Addr;
 
-use packetcraft_core::MacAddr;
+use netlabcraft_core::MacAddr;
 
 use crate::{Result, WireError, be16, checksum, mac_at};
 

@@ -1,4 +1,4 @@
-# Build with: trunk build --release   (from apps/packetcraft-web)
+# Build with: trunk build --release   (from apps/netlabcraft-web)
 [build]
 target = "index.html"
 dist = "../../dist/web"

@@ -3,15 +3,15 @@
 
 use std::fmt::Write as _;
 
-use packetcraft_core::parse_ip;
-use packetcraft_model::wlan::{MAX_WLANS, Wlan, WlanSecurity, is_lap, is_wlc, lap_channel, mgmt_addr};
-use packetcraft_model::{End, Topology, ifname};
+use netlabcraft_core::parse_ip;
+use netlabcraft_model::wlan::{MAX_WLANS, Wlan, WlanSecurity, is_lap, is_wlc, lap_channel, mgmt_addr};
+use netlabcraft_model::{End, Topology, ifname};
 
 use super::{Ctx, R};
 use crate::grammar::Id;
 
 /// The hosts associated through a lightweight AP's radio, with the SSID each joined.
-fn ap_hosts(t: &Topology, ap: packetcraft_core::DeviceId) -> Vec<(String, String)> {
+fn ap_hosts(t: &Topology, ap: netlabcraft_core::DeviceId) -> Vec<(String, String)> {
     let Some(d) = t.device(ap) else { return Vec::new() };
     let Some(radio) = d.ports.iter().position(|p| ifname::is_wireless(&p.name)) else { return Vec::new() };
     t.wifi_clients(End { device: ap, port: radio })
@@ -23,7 +23,7 @@ fn ap_hosts(t: &Topology, ap: packetcraft_core::DeviceId) -> Vec<(String, String
         .collect()
 }
 
-fn show_wlan(t: &Topology, dev: packetcraft_core::DeviceId) -> R {
+fn show_wlan(t: &Topology, dev: netlabcraft_core::DeviceId) -> R {
     let d = t.device(dev).ok_or("% That device no longer exists")?;
     let (wlans, aps) = if is_wlc(d) {
         (d.wlan.wlans.clone(), t.joined_aps(d.id))
@@ -57,7 +57,7 @@ fn show_wlan(t: &Topology, dev: packetcraft_core::DeviceId) -> R {
     Ok(s.trim_end().to_string())
 }
 
-fn show_capwap(t: &Topology, dev: packetcraft_core::DeviceId) -> R {
+fn show_capwap(t: &Topology, dev: netlabcraft_core::DeviceId) -> R {
     let d = t.device(dev).ok_or("% That device no longer exists")?;
     if is_wlc(d) {
         let me = mgmt_addr(d).map_or("none (give interface Vlan1 an address)".to_string(), |(_, n)| n.addr.to_string());
@@ -135,7 +135,7 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             if let [.., kw, v] = words.as_slice()
                 && kw.eq_ignore_ascii_case("vlan")
             {
-                let n = v.parse::<u16>().ok().and_then(packetcraft_core::VlanId::new).ok_or("% A VLAN is 1-4094")?;
+                let n = v.parse::<u16>().ok().and_then(netlabcraft_core::VlanId::new).ok_or("% A VLAN is 1-4094")?;
                 vlan = Some(n);
                 words.truncate(words.len().saturating_sub(2));
             }

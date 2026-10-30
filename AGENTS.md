@@ -1,6 +1,6 @@
-# PacketCraft — instructions for agents
+# NetLabCraft — instructions for agents
 
-PacketCraft is a clean-room, open-source, pure-Rust network simulator targeting Cisco Packet Tracer parity for teaching and lab work — and superiority (real wire-format frames, pcap export, speed, openness, agent control). It runs natively on Linux, Windows, macOS and BSD, and on the web via WASM. It follows the conventions of the storytold Crafting Apps (`../gridcraft`, `../cadcraft`, `../filmcraft`, `../soundcraft`…).
+NetLabCraft is a clean-room, open-source, pure-Rust network simulator targeting Cisco Packet Tracer parity for teaching and lab work — and superiority (real wire-format frames, pcap export, speed, openness, agent control). It runs natively on Linux, Windows, macOS and BSD, and on the web via WASM. It follows the conventions of the storytold Crafting Apps (`../gridcraft`, `../cadcraft`, `../filmcraft`, `../soundcraft`…).
 
 Standards and learnings shared across the crafting apps live in `storytold/craftrules`. Follow its standards where they apply.
 
@@ -21,7 +21,7 @@ Standards and learnings shared across the crafting apps live in `storytold/craft
 
 ## Assets and iconography
 **No Cisco (or any other vendor's) iconography, images, artwork, fonts, templates or sample files — ever.**
-- Every asset in the repo is original work by PacketCraft contributors, or public domain / CC0, or open source / Creative Commons that allows redistribution.
+- Every asset in the repo is original work by NetLabCraft contributors, or public domain / CC0, or open source / Creative Commons that allows redistribution.
 - Every asset file has a row in [`ATTRIBUTION.md`](ATTRIBUTION.md) (author, source, licence). `cargo xtask assets` enforces it.
 - Prefer art generated in code: device icons (`crates/ui-egui/src/icons.rs`), themes (`crates/ui-egui/src/theme.rs`) and sample labs (`crates/engine/src/sample.rs`) are drawn/defined in code and original.
 
@@ -36,7 +36,7 @@ People build labs for hours; a crash loses their work. **This outranks feature w
 - Crates carry `#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]`.
 
 ## Non-negotiables
-- **Everything is a command.** User-visible behaviour = a command in `crates/engine/src/catalog.rs` + `cmd.rs` (id, label, menu, shortcut, params doc) + tests. The UI, `packetcraft-cli run` and MCP reach all of them. Device configuration goes through the console grammar (`crates/ios/src/grammar.rs`), never around it, so everything a person can type an agent can type.
+- **Everything is a command.** User-visible behaviour = a command in `crates/engine/src/catalog.rs` + `cmd.rs` (id, label, menu, shortcut, params doc) + tests. The UI, `netlabcraft-cli run` and MCP reach all of them. Device configuration goes through the console grammar (`crates/ios/src/grammar.rs`), never around it, so everything a person can type an agent can type.
 - **Programmatic calls never open dialogs**: a command with missing params returns an error.
 - **Layering** is enforced by `cargo xtask layers`: `core` (L0) → `wire` (L1) → `model` (L2) → `sim` (L3) → `ios` (L4) → `engine` (L5) → `ui-egui`/`mcp` (L6) → `apps/*` (L7). Nothing below L6 depends on egui/eframe/winit/rfd. `wire` depends on `core` only. **The UI crate is swappable.**
 - **The UI is thin**: panels read engine state and act through `app.run(id, params)`. Colours come from `theme::Tokens`.
@@ -45,9 +45,9 @@ People build labs for hours; a crash loses their work. **This outranks feature w
 - **Quality gates** before every commit: `cargo xtask ci` (fmt, clippy -D warnings, tests, doctests, assets, layers, wasm, parity). One task id per commit (`M1.3: DHCP server`).
 
 ## Running and looking at the app
-- `cargo run --release -p packetcraft -- --sample vlans` (or a `.pcraft` file).
-- Headless: `packetcraft-cli exec --sample two-subnets PC1 'ping 10.0.2.10'`, `packetcraft-cli run --sample lan --cmd 'net.ping={"from":"PC1","to":"192.168.1.13"}'`, `packetcraft-cli pcap --sample vlans --ping PC1:192.168.20.10 --out cap.pcap`, `packetcraft-cli mcp`.
-- **Offscreen UI render** (no window): `cargo run -p packetcraft-ui-egui --example snapshot -- --sample vlans --console R1 out.png`. **For UI work, look at the result.**
+- `cargo run --release -p netlabcraft -- --sample vlans` (or a `.nlcraft` file).
+- Headless: `netlabcraft-cli exec --sample two-subnets PC1 'ping 10.0.2.10'`, `netlabcraft-cli run --sample lan --cmd 'net.ping={"from":"PC1","to":"192.168.1.13"}'`, `netlabcraft-cli pcap --sample vlans --ping PC1:192.168.20.10 --out cap.pcap`, `netlabcraft-cli mcp`.
+- **Offscreen UI render** (no window): `cargo run -p netlabcraft-ui-egui --example snapshot -- --sample vlans --console R1 out.png`. **For UI work, look at the result.**
 - Parallel agents: separate `CARGO_TARGET_DIR` per agent; edit only the crates you own.
 
 ## Roadmap and documentation

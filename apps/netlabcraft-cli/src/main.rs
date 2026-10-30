@@ -1,14 +1,14 @@
-//! `packetcraft-cli`: PacketCraft without a window. See `docs/cli.md`.
+//! `netlabcraft-cli`: NetLabCraft without a window. See `docs/cli.md`.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 use std::io::{BufRead, Write};
 use std::process::ExitCode;
 
-use packetcraft_engine::{CATALOG, Session, sample};
+use netlabcraft_engine::{CATALOG, Session, sample};
 use serde_json::{Value, json};
 
 const USAGE: &str = "\
-usage: packetcraft-cli <command>
+usage: netlabcraft-cli <command>
 
 commands:
   run [--in LAB] [--sample ID] --cmd 'id={json}'... [--out LAB]
@@ -150,7 +150,7 @@ fn run(args: &[String]) -> Result<(), String> {
             Ok(())
         }
         "version" | "--version" | "-V" => {
-            println!("packetcraft-cli {}", env!("CARGO_PKG_VERSION"));
+            println!("netlabcraft-cli {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
         "help" | "--help" | "-h" => {
@@ -163,5 +163,5 @@ fn run(args: &[String]) -> Result<(), String> {
 
 fn serve_mcp(s: &mut Session) -> Result<(), String> {
     let stdin = std::io::stdin();
-    packetcraft_mcp::serve(s, stdin.lock(), std::io::stdout()).map_err(|e| e.to_string())
+    netlabcraft_mcp::serve(s, stdin.lock(), std::io::stdout()).map_err(|e| e.to_string())
 }

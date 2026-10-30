@@ -10,7 +10,7 @@
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 
-use packetcraft_core::DeviceId;
+use netlabcraft_core::DeviceId;
 use serde::{Deserialize, Serialize};
 
 use crate::{End, Link, MAX_DEVICES, MAX_NAME, ModelError, Result, Topology, finite};

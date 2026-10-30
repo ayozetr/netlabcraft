@@ -2,7 +2,7 @@
 
 > **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (modules added since M0: IPv6, serial framing, STP, OSPF, RIP, VTP, EtherChannel; shared format)
 
-How PacketCraft is built. Rules for contributors and agents are in [`AGENTS.md`](../AGENTS.md);
+How NetLabCraft is built. Rules for contributors and agents are in [`AGENTS.md`](../AGENTS.md);
 the reasons behind the choices are in [decisions.md](decisions.md).
 
 ## Layers
@@ -12,15 +12,15 @@ L6 depends on a UI toolkit.
 
 | Layer | Crate | Role |
 |---|---|---|
-| L0 | `packetcraft-core` | Value types: `MacAddr`, `Ipv4Net`, `Ipv6Net` (with EUI-64 and link-local helpers), `VlanId`, `VlanSet`, `DeviceId`. |
-| L1 | `packetcraft-wire` | Wire formats and checksums: Ethernet II/802.1Q, ARP, IPv4, ICMP, UDP, TCP, DHCP, DNS (`dns.rs`), IPv6/ICMPv6/NDP (`ipv6.rs`), HDLC and PPP framing (`serial.rs`), the pcap writer, and the one-line summaries the event list shows. Depends on `core` only. |
-| L2 | `packetcraft-model` | The lab document: devices, ports and their configuration, cables (a serial cable's first end is the DCE), the device catalogue (`models.rs`), access lists (`acl.rs`), server services (`services.rs`), interface names (`ifname.rs`), the `.pcraft` format (`file.rs`). |
-| L3 | `packetcraft-sim` | The discrete-event simulator (`lib.rs`) and the protocols computed from the topology: spanning tree (`stp.rs`), EtherChannel bundles (`channel.rs`), OSPF (`ospf.rs`), RIP (`rip.rs`), VTP (`vtp.rs`); IPv6 forwarding, NDP and autoconfiguration (`v6.rs`). |
-| L4 | `packetcraft-ios` | Device consoles: the command grammar (`grammar.rs`), dispatch and modes (`exec.rs`), `show` output and running-config (`render.rs`), the PC/server shell (`host.rs`). |
-| L5 | `packetcraft-engine` | `Session` (lab + simulator + consoles + undo), the command catalog (`catalog.rs`, `cmd.rs`), sample labs (`sample.rs`). |
-| L6 | `packetcraft-ui-egui` | The egui interface. |
-| L6 | `packetcraft-mcp` | MCP server over stdio. |
-| L7 | `apps/packetcraft`, `apps/packetcraft-cli`, `apps/packetcraft-web` | Shells: desktop window and file dialogs, headless CLI, browser. |
+| L0 | `netlabcraft-core` | Value types: `MacAddr`, `Ipv4Net`, `Ipv6Net` (with EUI-64 and link-local helpers), `VlanId`, `VlanSet`, `DeviceId`. |
+| L1 | `netlabcraft-wire` | Wire formats and checksums: Ethernet II/802.1Q, ARP, IPv4, ICMP, UDP, TCP, DHCP, DNS (`dns.rs`), IPv6/ICMPv6/NDP (`ipv6.rs`), HDLC and PPP framing (`serial.rs`), the pcap writer, and the one-line summaries the event list shows. Depends on `core` only. |
+| L2 | `netlabcraft-model` | The lab document: devices, ports and their configuration, cables (a serial cable's first end is the DCE), the device catalogue (`models.rs`), access lists (`acl.rs`), server services (`services.rs`), interface names (`ifname.rs`), the `.nlcraft` format (`file.rs`). |
+| L3 | `netlabcraft-sim` | The discrete-event simulator (`lib.rs`) and the protocols computed from the topology: spanning tree (`stp.rs`), EtherChannel bundles (`channel.rs`), OSPF (`ospf.rs`), RIP (`rip.rs`), VTP (`vtp.rs`); IPv6 forwarding, NDP and autoconfiguration (`v6.rs`). |
+| L4 | `netlabcraft-ios` | Device consoles: the command grammar (`grammar.rs`), dispatch and modes (`exec.rs`), `show` output and running-config (`render.rs`), the PC/server shell (`host.rs`). |
+| L5 | `netlabcraft-engine` | `Session` (lab + simulator + consoles + undo), the command catalog (`catalog.rs`, `cmd.rs`), sample labs (`sample.rs`). |
+| L6 | `netlabcraft-ui-egui` | The egui interface. |
+| L6 | `netlabcraft-mcp` | MCP server over stdio. |
+| L7 | `apps/netlabcraft`, `apps/netlabcraft-cli`, `apps/netlabcraft-web` | Shells: desktop window and file dialogs, headless CLI, browser. |
 
 ## The simulator
 

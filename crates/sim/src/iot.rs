@@ -15,9 +15,9 @@
 use std::collections::BTreeMap;
 use std::net::Ipv4Addr;
 
-use packetcraft_core::DeviceId;
-use packetcraft_model::iot::{is_actuator, is_sensor};
-use packetcraft_model::{Device, DeviceKind, Topology};
+use netlabcraft_core::DeviceId;
+use netlabcraft_model::iot::{is_actuator, is_sensor};
+use netlabcraft_model::{Device, DeviceKind, Topology};
 
 use crate::{Sim, SimError};
 
@@ -83,7 +83,7 @@ impl Sim {
             return None;
         }
         let (what, q) = path.split_once('?').unwrap_or((path, ""));
-        let name: String = query(q, "name").unwrap_or("").chars().take(packetcraft_model::MAX_NAME).collect();
+        let name: String = query(q, "name").unwrap_or("").chars().take(netlabcraft_model::MAX_NAME).collect();
         if name.is_empty() {
             return Some(("400 Bad Request", "no name".into()));
         }

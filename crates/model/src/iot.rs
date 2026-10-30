@@ -1,6 +1,6 @@
 //! IoT: smart sensors and smart devices register with a server's IoT service over HTTP; the
 //! server lists them with their state and applies simple rules (a sensor reading above a
-//! threshold switches a device on). The exchange is in `packetcraft-sim`'s `iot` module.
+//! threshold switches a device on). The exchange is in `netlabcraft-sim`'s `iot` module.
 
 use std::net::Ipv4Addr;
 

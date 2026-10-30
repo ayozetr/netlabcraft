@@ -5,9 +5,9 @@
 //! settings and every change go through the device's own configuration commands, so the
 //! running configuration always says what the router does.
 
-use packetcraft_core::{DeviceId, Ipv4Net, mask_to_prefix, parse_ip};
-use packetcraft_model::{Topology, Wifi};
-use packetcraft_sim::Sim;
+use netlabcraft_core::{DeviceId, Ipv4Net, mask_to_prefix, parse_ip};
+use netlabcraft_model::{Topology, Wifi};
+use netlabcraft_sim::Sim;
 
 /// The LAN a new home router hands out (`.100` up).
 pub const FACTORY_CONFIG: &str = "\
@@ -44,8 +44,8 @@ pub fn factory(t: &mut Topology, id: DeviceId) {
         return;
     }
     let mut scratch = Sim::new();
-    let _ = packetcraft_ios::apply_config(t, &mut scratch, id, FACTORY_CONFIG);
-    if let Some(radio) = t.device_mut(id).and_then(|d| d.ports.iter_mut().find(|p| packetcraft_model::ifname::is_wireless(&p.name))) {
+    let _ = netlabcraft_ios::apply_config(t, &mut scratch, id, FACTORY_CONFIG);
+    if let Some(radio) = t.device_mut(id).and_then(|d| d.ports.iter_mut().find(|p| netlabcraft_model::ifname::is_wireless(&p.name))) {
         radio.wifi = Some(Wifi { ssid: "HomeNetwork".into(), key: None, channel: 6, login: None });
     }
 }
@@ -103,7 +103,7 @@ pub fn settings_config(t: &Topology, id: DeviceId, s: &Settings) -> Result<Strin
     out.push_str(&format!("no access-list 1\naccess-list 1 permit {} {}\n", net.addr, std::net::Ipv4Addr::from(!u32::from(net.mask()))));
     if s.internet_dhcp {
         for r in d.routes.iter().filter(|r| r.net.prefix == 0) {
-            if let packetcraft_model::NextHop::Address(old) = r.via {
+            if let netlabcraft_model::NextHop::Address(old) = r.via {
                 out.push_str(&format!("no ip route 0.0.0.0 0.0.0.0 {old}\n"));
             }
         }
@@ -113,7 +113,7 @@ pub fn settings_config(t: &Topology, id: DeviceId, s: &Settings) -> Result<Strin
         let m = parse_ip(mask).map_err(|e| e.to_string())?;
         let g = parse_ip(gw).map_err(|e| e.to_string())?;
         for r in d.routes.iter().filter(|r| r.net.prefix == 0) {
-            if let packetcraft_model::NextHop::Address(old) = r.via {
+            if let netlabcraft_model::NextHop::Address(old) = r.via {
                 out.push_str(&format!("no ip route 0.0.0.0 0.0.0.0 {old}\n"));
             }
         }
@@ -129,9 +129,9 @@ mod tests {
     #[test]
     fn every_factory_line_is_understood() {
         let mut t = Topology::new();
-        let m = packetcraft_model::models::find("Home-Router").unwrap();
+        let m = netlabcraft_model::models::find("Home-Router").unwrap();
         let id = t.add_model(m, None, 0.0, 0.0).unwrap();
-        let failed = packetcraft_ios::apply_config(&mut t, &mut Sim::new(), id, FACTORY_CONFIG);
+        let failed = netlabcraft_ios::apply_config(&mut t, &mut Sim::new(), id, FACTORY_CONFIG);
         assert!(failed.is_empty(), "{failed:?}");
     }
 }

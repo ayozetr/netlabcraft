@@ -3,7 +3,7 @@
 //! `device.module.add`, `device.module.remove`).
 
 use egui::{RichText, Sense, vec2};
-use packetcraft_model::{Device, models};
+use netlabcraft_model::{Device, models};
 use serde_json::json;
 
 use crate::i18n::{tl, tr, trf};
@@ -137,7 +137,7 @@ fn chassis(ui: &mut egui::Ui, dev: &Device, armed: bool, tk: &theme::Tokens, cli
 mod tests {
     use egui_kittest::Harness;
     use egui_kittest::kittest::Queryable as _;
-    use packetcraft_engine::Session;
+    use netlabcraft_engine::Session;
     use serde_json::json;
 
     use crate::PacketApp;

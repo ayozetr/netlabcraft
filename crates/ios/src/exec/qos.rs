@@ -3,13 +3,13 @@
 
 use std::fmt::Write as _;
 
-use packetcraft_model::qos::{
+use netlabcraft_model::qos::{
     AppProto, CLASS_DEFAULT, ClassMap, MAX_APPLIED, MAX_LINES, MAX_MAPS, MAX_NAME, MAX_VALUES, Match, Police, PoliceAction, PolicyClass, PolicyMap,
     Rate,
 };
-use packetcraft_model::{Device, DeviceKind, ifname};
-use packetcraft_sim::Sim;
-use packetcraft_sim::qos::{dscp_name, parse_dscp};
+use netlabcraft_model::{Device, DeviceKind, ifname};
+use netlabcraft_sim::Sim;
+use netlabcraft_sim::qos::{dscp_name, parse_dscp};
 
 use super::{Ctx, Mode, R};
 use crate::grammar::Id;
@@ -71,7 +71,7 @@ fn parse_match(words: &[&str]) -> Result<Match, String> {
         ["ip", "precedence", ..] => Ok(Match::Precedence(values(rest(2), precedence)?)),
         ["access-group", "name", _] => Ok(Match::AccessGroup(name_ok(words.get(2).copied().unwrap_or(""))?)),
         ["access-group", n] => {
-            if packetcraft_model::acl::numbered_kind(n).is_none() {
+            if netlabcraft_model::acl::numbered_kind(n).is_none() {
                 return Err("% A numbered access list is 1-199 or 1300-2699 (or use `match access-group name NAME`)".into());
             }
             Ok(Match::AccessGroup((*n).to_string()))
@@ -88,7 +88,7 @@ fn match_text(m: &Match) -> String {
         Match::Any => "any".into(),
         Match::Dscp(v) => format!("dscp {}", v.iter().map(|x| dscp_name(*x)).collect::<Vec<_>>().join(" ")),
         Match::Precedence(v) => format!("ip precedence {}", v.iter().map(u8::to_string).collect::<Vec<_>>().join(" ")),
-        Match::AccessGroup(n) if packetcraft_model::acl::numbered_kind(n).is_some() => format!("access-group {n}"),
+        Match::AccessGroup(n) if netlabcraft_model::acl::numbered_kind(n).is_some() => format!("access-group {n}"),
         Match::AccessGroup(n) => format!("access-group name {n}"),
         Match::Protocol(p) => format!("protocol {}", p.name()),
     }
@@ -169,7 +169,7 @@ pub(crate) fn service_policy_lines(s: &mut String, d: &Device, iface: &str) {
 
 /// Whether two interface names (any spelling) are the same interface.
 fn same_iface(a: &str, b: &str) -> bool {
-    use packetcraft_model::vpn::tunnel_number;
+    use netlabcraft_model::vpn::tunnel_number;
     if let (Some(x), Some(y)) = (tunnel_number(a), tunnel_number(b)) {
         return x == y;
     }
@@ -581,7 +581,7 @@ fn plural(n: u64, what: &str) -> String {
 fn policy_report(s: &mut String, sim: &Sim, d: &Device, iface: &str, input: bool, name: &str) {
     let _ = writeln!(s, "  {} policy {name}", if input { "Input" } else { "Output" });
     if !input {
-        let _ = writeln!(s, "    Link rate {} kbit/s", packetcraft_sim::qos::link_rate_bps(d, iface) / 1_000);
+        let _ = writeln!(s, "    Link rate {} kbit/s", netlabcraft_sim::qos::link_rate_bps(d, iface) / 1_000);
     }
     let Some(pm) = d.qos.policy_map(name) else {
         let _ = writeln!(s, "    (the policy map does not exist: nothing is done)");

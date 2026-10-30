@@ -1,10 +1,10 @@
 //! The topology canvas: devices, cables, link lights, and the packets of the event list.
 
 use egui::{Align2, FontId, Id, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2, pos2, vec2};
-use packetcraft_core::DeviceId;
-use packetcraft_model::cable::Cable;
-use packetcraft_model::{Cluster, Device, End, Shape, Shown, ifname};
-use packetcraft_sim::port_up;
+use netlabcraft_core::DeviceId;
+use netlabcraft_model::cable::Cable;
+use netlabcraft_model::{Cluster, Device, End, Shape, Shown, ifname};
+use netlabcraft_sim::port_up;
 use serde_json::{Value, json};
 
 use crate::i18n::tl;
@@ -38,7 +38,7 @@ pub struct CanvasState {
     ctx: Option<egui::Context>,
     /// Spanning trees for the link lights, for the topology with this fingerprint.
     stp_for: u64,
-    stp: std::collections::BTreeMap<u16, packetcraft_sim::stp::VlanTree>,
+    stp: std::collections::BTreeMap<u16, netlabcraft_sim::stp::VlanTree>,
     context: Option<DeviceId>,
     /// A cluster or drawing right-clicked (its menu is open).
     context_cluster: Option<u32>,
@@ -84,8 +84,8 @@ pub fn hint(app: &PacketApp) -> String {
             crate::i18n::tl("Click a device to configure it · drag to move · Shift+drag or Shift+click to pick several · scroll to pan").into()
         }
         (Tool::Place(m), _) => crate::i18n::trf("Click the workspace to place a {}. Esc to stop.", &[&m]),
-        (Tool::Draw(packetcraft_model::Shape::Freehand), _) => crate::i18n::tl("Drag on the workspace to draw freehand.").into(),
-        (Tool::Draw(packetcraft_model::Shape::Polygon), _) => {
+        (Tool::Draw(netlabcraft_model::Shape::Freehand), _) => crate::i18n::tl("Drag on the workspace to draw freehand.").into(),
+        (Tool::Draw(netlabcraft_model::Shape::Polygon), _) => {
             crate::i18n::tl("Click the corners of the polygon; double-click or Enter to finish, Esc to cancel.").into()
         }
         (Tool::Draw(_), _) => crate::i18n::tl("Drag on the workspace to draw. Drawings sit behind devices; move them with Select.").into(),
@@ -139,7 +139,7 @@ impl View {
     }
 
     /// Where a device appears in this view: itself, or the cluster icon holding it.
-    fn stand_in(&self, t: &packetcraft_model::Topology, d: DeviceId) -> Option<(Shown, Pos2)> {
+    fn stand_in(&self, t: &netlabcraft_model::Topology, d: DeviceId) -> Option<(Shown, Pos2)> {
         match *self.shown.get(&d)? {
             Shown::Device => t.device(d).map(|x| (Shown::Device, self.screen(x.x, x.y))),
             Shown::Cluster(c) => t.cluster(c).map(|x| (Shown::Cluster(c), self.screen(x.x, x.y))),
@@ -157,7 +157,7 @@ fn hit_cluster(app: &PacketApp, view: &View, p: Pos2) -> Option<u32> {
 }
 
 /// The screen rectangle of a workspace note.
-fn note_rect(ctx: &egui::Context, view: &View, a: &packetcraft_model::Annotation) -> Rect {
+fn note_rect(ctx: &egui::Context, view: &View, a: &netlabcraft_model::Annotation) -> Rect {
     let font = FontId::proportional((15.0 * view.zoom).clamp(8.0, 24.0));
     let galley = ctx.fonts_mut(|f| f.layout_no_wrap(a.text.clone(), font, egui::Color32::BLACK));
     Rect::from_min_size(view.screen(a.x, a.y), galley.size()).expand2(vec2(6.0, 3.0))
@@ -165,7 +165,7 @@ fn note_rect(ctx: &egui::Context, view: &View, a: &packetcraft_model::Annotation
 
 fn hit_note(app: &PacketApp, view: &View, p: Pos2) -> Option<u32> {
     let ctx = app.ui.canvas.ctx.as_ref()?;
-    let notes: Vec<&packetcraft_model::Annotation> = app.session.topology.annotations.iter().filter(|a| a.cluster == view.level).collect();
+    let notes: Vec<&netlabcraft_model::Annotation> = app.session.topology.annotations.iter().filter(|a| a.cluster == view.level).collect();
     // Text notes sit on top of drawings.
     notes
         .iter()
@@ -176,12 +176,12 @@ fn hit_note(app: &PacketApp, view: &View, p: Pos2) -> Option<u32> {
 }
 
 /// The screen rectangle of a drawing (normalised).
-fn shape_rect(view: &View, a: &packetcraft_model::Annotation) -> Rect {
+fn shape_rect(view: &View, a: &netlabcraft_model::Annotation) -> Rect {
     Rect::from_two_pos(view.screen(a.x, a.y), view.screen(a.x + a.w, a.y + a.h))
 }
 
 /// A freehand stroke's or polygon's points on screen.
-fn path_points(view: &View, a: &packetcraft_model::Annotation) -> Vec<Pos2> {
+fn path_points(view: &View, a: &netlabcraft_model::Annotation) -> Vec<Pos2> {
     a.points.iter().map(|p| view.screen(a.x + p[0], a.y + p[1])).collect()
 }
 
@@ -203,7 +203,7 @@ fn inside_polygon(pts: &[Pos2], p: Pos2) -> bool {
     inside
 }
 
-fn shape_hit(view: &View, a: &packetcraft_model::Annotation, p: Pos2) -> bool {
+fn shape_hit(view: &View, a: &netlabcraft_model::Annotation, p: Pos2) -> bool {
     match a.shape {
         Shape::Line => segment_distance(p, view.screen(a.x, a.y), view.screen(a.x + a.w, a.y + a.h)) < 6.0,
         Shape::Freehand => near_path(&path_points(view, a), p, false),
@@ -258,21 +258,21 @@ fn triangulate(pts: &[Pos2]) -> Vec<[u32; 3]> {
 const DRAW_COLORS: [&str; 5] = ["#bcd9f2", "#c8ecc0", "#fde9a8", "#f6c6c6", "#d9cff2"];
 
 fn next_color(app: &PacketApp) -> &'static str {
-    let n = app.session.topology.annotations.iter().filter(|a| a.shape != packetcraft_model::Shape::Text).count();
+    let n = app.session.topology.annotations.iter().filter(|a| a.shape != netlabcraft_model::Shape::Text).count();
     DRAW_COLORS.get(n % DRAW_COLORS.len()).copied().unwrap_or("#bcd9f2")
 }
 
-fn paint_shape(painter: &egui::Painter, view: &View, a: &packetcraft_model::Annotation) {
-    let [r, g, b] = a.color.as_deref().and_then(packetcraft_model::parse_color).unwrap_or([0xbc, 0xd9, 0xf2]);
+fn paint_shape(painter: &egui::Painter, view: &View, a: &netlabcraft_model::Annotation) {
+    let [r, g, b] = a.color.as_deref().and_then(netlabcraft_model::parse_color).unwrap_or([0xbc, 0xd9, 0xf2]);
     let fill = egui::Color32::from_rgb(r, g, b);
     let edge = Stroke::new(1.0, crate::theme::shade(fill, 0.7));
     match a.shape {
-        packetcraft_model::Shape::Rectangle => {
+        netlabcraft_model::Shape::Rectangle => {
             let rect = shape_rect(view, a);
             painter.rect_filled(rect, 2.0, fill);
             painter.rect_stroke(rect, 2.0, edge, StrokeKind::Inside);
         }
-        packetcraft_model::Shape::Ellipse => {
+        netlabcraft_model::Shape::Ellipse => {
             let rect = shape_rect(view, a);
             let pts: Vec<Pos2> = (0..48)
                 .map(|i| i as f32 / 48.0 * std::f32::consts::TAU)
@@ -280,7 +280,7 @@ fn paint_shape(painter: &egui::Painter, view: &View, a: &packetcraft_model::Anno
                 .collect();
             painter.add(egui::Shape::convex_polygon(pts, fill, edge));
         }
-        packetcraft_model::Shape::Line => {
+        netlabcraft_model::Shape::Line => {
             painter.line_segment(
                 [view.screen(a.x, a.y), view.screen(a.x + a.w, a.y + a.h)],
                 Stroke::new((3.0 * view.zoom).max(1.5), crate::theme::shade(fill, 0.6)),
@@ -302,12 +302,12 @@ fn paint_shape(painter: &egui::Painter, view: &View, a: &packetcraft_model::Anno
             painter.add(mesh);
             painter.add(egui::Shape::closed_line(pts, edge));
         }
-        packetcraft_model::Shape::Text => {}
+        netlabcraft_model::Shape::Text => {}
     }
 }
 
 fn draw_shapes(app: &PacketApp, painter: &egui::Painter, view: &View) {
-    for a in app.session.topology.annotations.iter().filter(|a| a.shape != packetcraft_model::Shape::Text && a.cluster == view.level) {
+    for a in app.session.topology.annotations.iter().filter(|a| a.shape != netlabcraft_model::Shape::Text && a.cluster == view.level) {
         paint_shape(painter, view, a);
     }
 }
@@ -315,7 +315,7 @@ fn draw_shapes(app: &PacketApp, painter: &egui::Painter, view: &View) {
 /// A drawing in progress: the freehand stroke so far, or the polygon's corners and the pointer.
 fn draw_in_progress(app: &PacketApp, painter: &egui::Painter, view: &View, pointer: Option<Pos2>) {
     let c = &app.ui.canvas;
-    let [r, g, b] = packetcraft_model::parse_color(next_color(app)).unwrap_or([0xbc, 0xd9, 0xf2]);
+    let [r, g, b] = netlabcraft_model::parse_color(next_color(app)).unwrap_or([0xbc, 0xd9, 0xf2]);
     let color = crate::theme::shade(egui::Color32::from_rgb(r, g, b), 0.6);
     let stroke = Stroke::new((3.0 * view.zoom).max(1.5), color);
     if c.stroke.len() > 1 {
@@ -332,7 +332,7 @@ fn draw_in_progress(app: &PacketApp, painter: &egui::Painter, view: &View, point
 }
 
 fn draw_notes(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Tokens) {
-    for a in app.session.topology.annotations.iter().filter(|a| a.shape == packetcraft_model::Shape::Text && a.cluster == view.level) {
+    for a in app.session.topology.annotations.iter().filter(|a| a.shape == netlabcraft_model::Shape::Text && a.cluster == view.level) {
         let r = note_rect(painter.ctx(), view, a);
         painter.rect_filled(r, 2.0, if app.ui.dark { tk.chrome } else { egui::Color32::from_rgb(0xf3, 0xf4, 0xf6) });
         let font = FontId::proportional((15.0 * view.zoom).clamp(8.0, 24.0));
@@ -395,11 +395,11 @@ fn hit_link(app: &PacketApp, view: &View, p: Pos2) -> Option<End> {
 
 /// Where a cable is drawn. Cables between the same two devices (an EtherChannel, or a
 /// redundant pair) sit side by side instead of on top of each other.
-fn cable_ends(t: &packetcraft_model::Topology, view: &View, l: &packetcraft_model::Link) -> Option<(Pos2, Pos2)> {
+fn cable_ends(t: &netlabcraft_model::Topology, view: &View, l: &netlabcraft_model::Link) -> Option<(Pos2, Pos2)> {
     let (a, b) = (t.device(l.a.device)?, t.device(l.b.device)?);
     let (pa, pb) = (view.screen(a.x, a.y), view.screen(b.x, b.y));
-    let pair = |x: &packetcraft_model::Link| (x.a.device.min(x.b.device), x.a.device.max(x.b.device));
-    let same: Vec<&packetcraft_model::Link> = t.links.iter().filter(|x| pair(x) == pair(l)).collect();
+    let pair = |x: &netlabcraft_model::Link| (x.a.device.min(x.b.device), x.a.device.max(x.b.device));
+    let same: Vec<&netlabcraft_model::Link> = t.links.iter().filter(|x| pair(x) == pair(l)).collect();
     let len = (pb - pa).length();
     if same.len() < 2 || len < 1.0 {
         return Some((pa, pb));
@@ -479,7 +479,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
     // port labels, as it will once placed.
     if let (Some((x0, y0)), Some(p), Tool::Draw(shape)) = (app.ui.canvas.draw_from, ui.input(|i| i.pointer.hover_pos()), app.ui.tool) {
         let (x1, y1) = view.world(p);
-        let preview = packetcraft_model::Annotation {
+        let preview = netlabcraft_model::Annotation {
             id: 0,
             x: x0,
             y: y0,
@@ -522,11 +522,11 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
     {
         painter.extend(egui::Shape::dashed_line(
             &[view.screen(d.x, d.y), p],
-            Stroke::new(1.5, theme::protocol_color(packetcraft_wire::Protocol::Icmp)),
+            Stroke::new(1.5, theme::protocol_color(netlabcraft_wire::Protocol::Icmp)),
             4.0,
             4.0,
         ));
-        icons::envelope(&painter, p + vec2(14.0, 14.0), 18.0, theme::protocol_color(packetcraft_wire::Protocol::Icmp), tk.text);
+        icons::envelope(&painter, p + vec2(14.0, 14.0), 18.0, theme::protocol_color(netlabcraft_wire::Protocol::Icmp), tk.text);
     }
 
     interact(app, ui, &resp, &view);
@@ -536,16 +536,16 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
 /// Whether the spanning tree blocks a switch port (in its access VLAN, or a trunk's native VLAN).
 fn stp_blocked(app: &mut PacketApp, end: End) -> bool {
     let t = &app.session.topology;
-    let Some(d) = t.device(end.device).filter(|d| d.kind == packetcraft_model::DeviceKind::Switch) else { return false };
+    let Some(d) = t.device(end.device).filter(|d| d.kind == netlabcraft_model::DeviceKind::Switch) else { return false };
     let Some(p) = d.ports.get(end.port) else { return false };
     let vlan = if t.is_trunk(end) { p.switchport.native_vlan } else { p.switchport.access_vlan };
-    let f = packetcraft_sim::stp::fingerprint(t);
+    let f = netlabcraft_sim::stp::fingerprint(t);
     let c = &mut app.ui.canvas;
     if c.stp_for != f {
         c.stp_for = f;
         c.stp.clear();
     }
-    let tree = c.stp.entry(vlan.get()).or_insert_with(|| packetcraft_sim::stp::compute(t, vlan));
+    let tree = c.stp.entry(vlan.get()).or_insert_with(|| netlabcraft_sim::stp::compute(t, vlan));
     // Amber while blocked, and while listening or learning after coming up.
     !tree.forwards(end.device, end.port) || app.session.sim.stp_converging(end.device, end.port)
 }
@@ -675,8 +675,8 @@ fn draw_links(app: &mut PacketApp, painter: &egui::Painter, view: &View, tk: &To
         }
     }
     // An EtherChannel: a ring around its bundled cables, next to each switch.
-    for d in t.devices.iter().filter(|d| d.kind == packetcraft_model::DeviceKind::Switch && view.visible(d.id)) {
-        for c in packetcraft_sim::channel::channels(t, d) {
+    for d in t.devices.iter().filter(|d| d.kind == netlabcraft_model::DeviceKind::Switch && view.visible(d.id)) {
+        for c in netlabcraft_sim::channel::channels(t, d) {
             let pts: Vec<Pos2> =
                 c.bundled().iter().filter_map(|p| lights.iter().find(|(e, _)| e.device == d.id && e.port == *p).map(|(_, at)| *at)).collect();
             if pts.len() < 2 {
@@ -865,7 +865,7 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
             let (x, y) = view.world(p);
             let c = &mut app.ui.canvas;
             let far = c.poly.last().is_none_or(|(lx, ly)| (x - lx).hypot(y - ly) * view.zoom >= 3.0);
-            if far && c.poly.len() < packetcraft_model::MAX_POLYGON_POINTS {
+            if far && c.poly.len() < netlabcraft_model::MAX_POLYGON_POINTS {
                 c.poly.push((x, y));
             }
             return;
@@ -1127,7 +1127,7 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
                 let port = app.session.topology.device(end.device).and_then(|d| d.ports.get(end.port)).map(|p| p.name.clone()).unwrap_or_default();
                 app.run("link.remove", json!({"device": end.device.0, "port": port}));
             } else if let Some(pc) = hit_console(app, view, p) {
-                app.run("link.remove", json!({"device": pc.0, "port": packetcraft_model::cable::RS232_PORT}));
+                app.run("link.remove", json!({"device": pc.0, "port": netlabcraft_model::cable::RS232_PORT}));
             }
         }
     }
@@ -1169,7 +1169,7 @@ fn note_menu(app: &mut PacketApp, ui: &mut Ui, n: u32) {
         ui.label(tl("Colour"));
         ui.horizontal(|ui| {
             for (name, hex) in NAMED_COLORS {
-                let [r, g, b] = packetcraft_model::parse_color(hex).unwrap_or([0xbc, 0xd9, 0xf2]);
+                let [r, g, b] = netlabcraft_model::parse_color(hex).unwrap_or([0xbc, 0xd9, 0xf2]);
                 if ui
                     .add(egui::Button::new(egui::RichText::new(tl(name)).color(egui::Color32::BLACK)).fill(egui::Color32::from_rgb(r, g, b)))
                     .clicked()
@@ -1291,7 +1291,7 @@ pub fn inspect_window(app: &mut PacketApp, ctx: &egui::Context) {
         .default_size([460.0, 300.0])
         .show(ctx, |ui| {
             egui::ScrollArea::vertical().show(ui, |ui| {
-                if dev.kind == packetcraft_model::DeviceKind::Switch {
+                if dev.kind == netlabcraft_model::DeviceKind::Switch {
                     ui.strong("MAC Table");
                     egui::Grid::new(("mac", d.0)).striped(true).num_columns(3).show(ui, |ui| {
                         for h in ["VLAN", "MAC Address", "Port"] {
@@ -1326,7 +1326,7 @@ pub fn inspect_window(app: &mut PacketApp, ctx: &egui::Context) {
                             ui.strong(h);
                         }
                         ui.end_row();
-                        for r in packetcraft_sim::routing_table(t, dev) {
+                        for r in netlabcraft_sim::routing_table(t, dev) {
                             ui.label(match r.code {
                                 'C' => "Connected",
                                 'L' => "Local",

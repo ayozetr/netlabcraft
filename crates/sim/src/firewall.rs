@@ -17,11 +17,11 @@
 use std::collections::BTreeMap;
 use std::net::Ipv4Addr;
 
-use packetcraft_model::Device;
-use packetcraft_model::Topology;
-use packetcraft_model::firewall::{FlowKey, NatKind, ObjAddr};
-use packetcraft_wire::tcp::{self, Tcp};
-use packetcraft_wire::{Icmp, Ipv4, PROTO_ICMP, PROTO_TCP, PROTO_UDP, Udp};
+use netlabcraft_model::Device;
+use netlabcraft_model::Topology;
+use netlabcraft_model::firewall::{FlowKey, NatKind, ObjAddr};
+use netlabcraft_wire::tcp::{self, Tcp};
+use netlabcraft_wire::{Icmp, Ipv4, PROTO_ICMP, PROTO_TCP, PROTO_UDP, Udp};
 
 use crate::{L3If, Sim, flow_id, l3_ifaces, rewrite};
 
@@ -63,7 +63,7 @@ impl Conn {
     }
 
     /// How long it may stay idle (µs).
-    pub fn idle_limit_us(&self, t: &packetcraft_model::firewall::Timeouts) -> u64 {
+    pub fn idle_limit_us(&self, t: &netlabcraft_model::firewall::Timeouts) -> u64 {
         if self.closing {
             return CLOSING_US;
         }
@@ -195,7 +195,7 @@ fn requote(mut original: Vec<u8>, at: usize, addr: Ipv4Addr, id: Option<(usize, 
     }
     let ihl = usize::from(original.first()? & 0x0f) * 4;
     original.get_mut(10..12)?.copy_from_slice(&[0, 0]);
-    let sum = packetcraft_wire::checksum(&[original.get(..ihl)?]);
+    let sum = netlabcraft_wire::checksum(&[original.get(..ihl)?]);
     original.get_mut(10..12)?.copy_from_slice(&sum.to_be_bytes());
     Some(original)
 }
@@ -274,7 +274,7 @@ impl Sim {
             return Err("TTL expired in transit".into());
         }
         let Some((out, nh)) = self.route(t, d, ip.dst) else {
-            self.icmp_error(t, d, ifc, &ip, Icmp::Unreachable { code: packetcraft_wire::UNREACH_NET, original: Icmp::quote(payload) });
+            self.icmp_error(t, d, ifc, &ip, Icmp::Unreachable { code: netlabcraft_wire::UNREACH_NET, original: Icmp::quote(payload) });
             return Err(format!("no route to {}", ip.dst));
         };
         let Some((out_name, out_level)) = conf.zone(&out.name) else {
@@ -697,14 +697,14 @@ impl Sim {
     }
 
     /// `clear conn`.
-    pub fn fw_clear_conns(&mut self, d: packetcraft_core::DeviceId) {
+    pub fn fw_clear_conns(&mut self, d: netlabcraft_core::DeviceId) {
         if let Some(st) = self.state.get_mut(&d) {
             st.fw.conns.clear();
         }
     }
 
     /// `clear xlate`: the dynamic translations, and the connections that used them.
-    pub fn fw_clear_xlates(&mut self, d: packetcraft_core::DeviceId) {
+    pub fn fw_clear_xlates(&mut self, d: netlabcraft_core::DeviceId) {
         if let Some(st) = self.state.get_mut(&d) {
             let xs = std::mem::take(&mut st.fw.xlates);
             st.fw.conns.retain(|c| !xs.iter().any(|x| x.protocol == c.protocol && x.real == c.src && x.real_port == c.src_port));
@@ -713,7 +713,7 @@ impl Sim {
 
     /// The DHCP pool the firewall serves on an interface: the `dhcpd address` range of its
     /// nameif, when `dhcpd enable` is on there.
-    pub(crate) fn fw_dhcp_pool(d: &Device, ifc: &L3If) -> Result<(packetcraft_model::DhcpPool, Vec<Ipv4Addr>), String> {
+    pub(crate) fn fw_dhcp_pool(d: &Device, ifc: &L3If) -> Result<(netlabcraft_model::DhcpPool, Vec<Ipv4Addr>), String> {
         let conf = &d.firewall;
         let (name, _) = conf.zone(&ifc.name).ok_or_else(|| format!("{} has no nameif", ifc.name))?;
         let range = conf
@@ -721,7 +721,7 @@ impl Sim {
             .iter()
             .find(|r| r.nameif.eq_ignore_ascii_case(name) && r.enabled)
             .ok_or_else(|| format!("the DHCP server is not enabled on {name}"))?;
-        let pool = packetcraft_model::DhcpPool {
+        let pool = netlabcraft_model::DhcpPool {
             name: format!("dhcpd {name}"),
             network: Some(ifc.net.network()),
             default_router: Some(ifc.net.addr),

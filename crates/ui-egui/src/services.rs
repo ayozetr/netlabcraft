@@ -4,9 +4,9 @@
 use std::net::Ipv4Addr;
 
 use egui::{RichText, Ui, vec2};
-use packetcraft_core::DeviceId;
-use packetcraft_model::Device;
-use packetcraft_model::services::{DnsRecord, ServerPool, Services, WebFile};
+use netlabcraft_core::DeviceId;
+use netlabcraft_model::Device;
+use netlabcraft_model::services::{DnsRecord, ServerPool, Services, WebFile};
 use serde_json::{Value, json};
 
 use crate::i18n::tl;
@@ -684,7 +684,7 @@ fn syslog(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services) {
 }
 
 fn aaa(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mut ServiceForms) {
-    use packetcraft_model::services::{AaaClient, AaaUser};
+    use netlabcraft_model::services::{AaaClient, AaaUser};
     ui.vertical_centered(|ui| ui.label(RichText::new(tl("AAA")).size(16.0)));
     ui.separator();
     let mut new = sv.clone();
@@ -763,7 +763,7 @@ fn aaa(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mut
 }
 
 fn ftp(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mut ServiceForms) {
-    use packetcraft_model::services::FtpUser;
+    use netlabcraft_model::services::FtpUser;
     ui.vertical_centered(|ui| ui.label(RichText::new(tl("FTP")).size(16.0)));
     ui.separator();
     let mut new = sv.clone();
@@ -832,7 +832,7 @@ fn ftp(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mut
 }
 
 fn email(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mut ServiceForms) {
-    use packetcraft_model::services::AaaUser;
+    use netlabcraft_model::services::AaaUser;
     ui.vertical_centered(|ui| ui.label(RichText::new(tl("EMAIL")).size(16.0)));
     ui.separator();
     let mut new = sv.clone();

@@ -23,7 +23,7 @@ commands:
   test            workspace tests (cargo nextest when installed, else cargo test), then doctests
   assets          check that every icon/image/font/sample file is attributed in ATTRIBUTION.md
   layers          enforce the crate dependency layering (AGENTS.md \"Layering\")
-  wasm            cargo check --target wasm32-unknown-unknown for the L0-L5 crates (+ packetcraft-web), one call
+  wasm            cargo check --target wasm32-unknown-unknown for the L0-L5 crates (+ netlabcraft-web), one call
   parity [--check] [--out PATH]
                   write docs/command-reference.md from the engine catalog and the console grammar
   contributors [--check]
@@ -120,13 +120,13 @@ fn cmd_layers() -> Result<(), String> {
 }
 
 /// Workspace packages that must build for wasm32: every L0–L5 crate, plus the web app
-/// (`apps/packetcraft-web`).
+/// (`apps/netlabcraft-web`).
 fn wasm_set() -> Result<Vec<String>, String> {
     let crates = layers::from_metadata(&metadata()?)?;
     Ok(crates
         .into_iter()
         .filter(|c| match layers::classify(&c.name) {
-            Some(layers::Class::Layer(l)) => l <= 5 || c.name == "packetcraft-web",
+            Some(layers::Class::Layer(l)) => l <= 5 || c.name == "netlabcraft-web",
             _ => false,
         })
         .map(|c| c.name)

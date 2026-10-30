@@ -1,14 +1,14 @@
 [package]
-name = "packetcraft-wire"
+name = "netlabcraft-wire"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "PacketCraft L1: on-the-wire formats (Ethernet/802.1Q, ARP, IPv4, ICMP, UDP) and pcap capture files"
+description = "NetLabCraft L1: on-the-wire formats (Ethernet/802.1Q, ARP, IPv4, ICMP, UDP) and pcap capture files"
 
 [lints]
 workspace = true
 
 [dependencies]
-packetcraft-core = { workspace = true }
+netlabcraft-core = { workspace = true }
 thiserror = { workspace = true }

@@ -1,7 +1,7 @@
 //! IP phone commands: the dial pad (`phone.dial`, `phone.answer`, `phone.hangup`) and what the
 //! phone's screen shows (`phone.status`).
 
-use packetcraft_model::DeviceKind;
+use netlabcraft_model::DeviceKind;
 use serde_json::{Value, json};
 
 use crate::{EngineError, Result, Session};
@@ -11,7 +11,7 @@ fn bad(msg: impl Into<String>) -> EngineError {
 }
 
 /// What a phone's screen shows.
-pub(crate) fn status(s: &Session, d: packetcraft_core::DeviceId) -> Value {
+pub(crate) fn status(s: &Session, d: netlabcraft_core::DeviceId) -> Value {
     let Some(dev) = s.topology.device(d) else { return Value::Null };
     let st = s.sim.phone(d).cloned().unwrap_or_default();
     let call = st.call.as_ref().map(|c| {
@@ -21,7 +21,7 @@ pub(crate) fn status(s: &Session, d: packetcraft_core::DeviceId) -> Value {
         "device": dev.name,
         "address": dev.ports.first().and_then(|p| p.ip).map(|n| n.to_string()),
         "tftp": dev.voice.tftp.map(|a| a.to_string()),
-        "voice_vlan": packetcraft_sim::voice::voice_vlan(&s.topology, d),
+        "voice_vlan": netlabcraft_sim::voice::voice_vlan(&s.topology, d),
         "registered": st.number.is_some(),
         "number": st.number,
         "server": st.agent.map(|a| a.to_string()),

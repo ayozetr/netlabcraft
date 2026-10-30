@@ -10,8 +10,8 @@
 use std::collections::BTreeMap;
 use std::net::Ipv4Addr;
 
-use packetcraft_core::{DeviceId, Ipv4Net, MacAddr};
-use packetcraft_model::{Device, DeviceKind, Standby, Topology};
+use netlabcraft_core::{DeviceId, Ipv4Net, MacAddr};
+use netlabcraft_model::{Device, DeviceKind, Standby, Topology};
 
 use crate::{L3If, SVI_PORT, up_ifaces};
 
@@ -47,7 +47,7 @@ pub struct Role {
 
 impl Role {
     pub fn virtual_mac(&self) -> MacAddr {
-        packetcraft_wire::control::hsrp_mac(self.group)
+        netlabcraft_wire::control::hsrp_mac(self.group)
     }
 }
 

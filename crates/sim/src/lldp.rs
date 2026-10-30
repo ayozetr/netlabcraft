@@ -7,9 +7,9 @@
 
 use std::net::Ipv4Addr;
 
-use packetcraft_core::MacAddr;
-use packetcraft_model::{Device, DeviceKind, End, Topology};
-pub use packetcraft_wire::lldp::{CAP_BRIDGE, CAP_ROUTER, Lldp};
+use netlabcraft_core::MacAddr;
+use netlabcraft_model::{Device, DeviceKind, End, Topology};
+pub use netlabcraft_wire::lldp::{CAP_BRIDGE, CAP_ROUTER, Lldp};
 
 use crate::port_up;
 
@@ -42,7 +42,7 @@ pub fn advertisement(d: &Device, port: usize) -> Option<Lldp> {
         port: p.name.clone(),
         ttl: HOLD_SECS,
         system_name: d.name.clone(),
-        description: format!("PacketCraft {} {}", d.catalogue_model().label, env!("CARGO_PKG_VERSION")),
+        description: format!("NetLabCraft {} {}", d.catalogue_model().label, env!("CARGO_PKG_VERSION")),
         caps,
         address,
     })

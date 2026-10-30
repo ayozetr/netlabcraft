@@ -25,21 +25,21 @@
 //! pre-shared keys that differ fail authentication at message 5, transform sets or crypto map
 //! entries that don't match are refused at quick mode message 2; the refusing side sends a
 //! notification (in the clear here, so the event list shows it). Protected packets travel as
-//! ESP whose cipher is a keyed XOR, **not real encryption** (see `packetcraft_wire::vpn`).
+//! ESP whose cipher is a keyed XOR, **not real encryption** (see `netlabcraft_wire::vpn`).
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::Ipv4Addr;
 
-use packetcraft_core::DeviceId;
+use netlabcraft_core::DeviceId;
 
-use packetcraft_core::MacAddr;
-use packetcraft_model::vpn::{CryptoMapEntry, Tunnel, TunnelSource};
-use packetcraft_model::{Device, DeviceKind, End, NextHop, Topology, ifname};
-use packetcraft_wire::ike::{self, Isakmp, Payload, Proposal, Transform};
-use packetcraft_wire::tcp::Tcp;
-use packetcraft_wire::vpn::{Esp, Gre, NEXT_IPV4, PROTO_ESP, PROTO_GRE};
-use packetcraft_wire::{ETHERTYPE_IPV4, Ipv4, PROTO_TCP, PROTO_UDP, Udp};
+use netlabcraft_core::MacAddr;
+use netlabcraft_model::vpn::{CryptoMapEntry, Tunnel, TunnelSource};
+use netlabcraft_model::{Device, DeviceKind, End, NextHop, Topology, ifname};
+use netlabcraft_wire::ike::{self, Isakmp, Payload, Proposal, Transform};
+use netlabcraft_wire::tcp::Tcp;
+use netlabcraft_wire::vpn::{Esp, Gre, NEXT_IPV4, PROTO_ESP, PROTO_GRE};
+use netlabcraft_wire::{ETHERTYPE_IPV4, Ipv4, PROTO_TCP, PROTO_UDP, Udp};
 
 use crate::{L3If, SVI_PORT, Sim};
 
@@ -93,7 +93,7 @@ fn phys_routable(d: &Device, dst: Ipv4Addr, phys: &[L3If]) -> bool {
 
 /// Whether two interface names (any spelling) are the same interface.
 pub(crate) fn same_name(a: &str, b: &str) -> bool {
-    if let (Some(x), Some(y)) = (packetcraft_model::vpn::tunnel_number(a), packetcraft_model::vpn::tunnel_number(b)) {
+    if let (Some(x), Some(y)) = (netlabcraft_model::vpn::tunnel_number(a), netlabcraft_model::vpn::tunnel_number(b)) {
         return x == y;
     }
     match (ifname::parse(a), ifname::parse(b)) {
@@ -364,7 +364,7 @@ fn spi(key: &str, from: Ipv4Addr, to: Ipv4Addr) -> u32 {
     let mut seed = key.as_bytes().to_vec();
     seed.extend_from_slice(&from.octets());
     seed.extend_from_slice(&to.octets());
-    let h = packetcraft_wire::md5::md5(&seed);
+    let h = netlabcraft_wire::md5::md5(&seed);
     u32::from_be_bytes([h[0], h[1], h[2], h[3]]) | 0x100
 }
 
@@ -433,7 +433,7 @@ fn negotiate(t: &Topology, d: &Device, local: Ipv4Addr, e: &CryptoMapEntry) -> R
 }
 
 /// ISAKMP attribute values for a policy (RFC 2409 appendix A).
-fn policy_transform(number: u8, p: Option<&packetcraft_model::vpn::IsakmpPolicy>) -> Transform {
+fn policy_transform(number: u8, p: Option<&netlabcraft_model::vpn::IsakmpPolicy>) -> Transform {
     let words: Vec<&str> = p.map_or(vec!["des"], |p| p.encryption.split_whitespace().collect());
     let cipher = match words.first().copied().unwrap_or("des") {
         "3des" => 5,
@@ -458,7 +458,7 @@ fn policy_transform(number: u8, p: Option<&packetcraft_model::vpn::IsakmpPolicy>
 }
 
 /// ESP transform from a transform set (RFC 2407 §4.4.4 and §4.5).
-fn esp_transform(ts: Option<&packetcraft_model::vpn::TransformSet>) -> Transform {
+fn esp_transform(ts: Option<&netlabcraft_model::vpn::TransformSet>) -> Transform {
     let has = |w: &str| ts.is_some_and(|t| t.transforms.iter().any(|x| x == w));
     let id = if has("esp-aes") {
         12
@@ -500,7 +500,7 @@ pub(crate) fn acl_permits(d: &Device, name: &str, ip: &Ipv4) -> bool {
         PROTO_TCP => Tcp::decode(&ip.payload, ip.src, ip.dst).map_or((None, None), |u| (Some(u.src_port), Some(u.dst_port))),
         _ => (None, None),
     };
-    let key = packetcraft_model::acl::PacketKey { protocol: ip.protocol, src: ip.src, dst: ip.dst, src_port, dst_port };
+    let key = netlabcraft_model::acl::PacketKey { protocol: ip.protocol, src: ip.src, dst: ip.dst, src_port, dst_port };
     acl.evaluate(&key).0
 }
 
@@ -898,12 +898,12 @@ impl Sim {
     }
 
     /// Every IPsec peer this router has protected traffic with (or tried to).
-    pub fn ipsec_sas(&self, d: packetcraft_core::DeviceId) -> Vec<IpsecSa> {
+    pub fn ipsec_sas(&self, d: netlabcraft_core::DeviceId) -> Vec<IpsecSa> {
         self.state.get(&d).map(|s| s.ipsec.values().cloned().collect()).unwrap_or_default()
     }
 
     /// Forgets the security associations and their counters (`clear crypto sa`).
-    pub fn clear_ipsec(&mut self, d: packetcraft_core::DeviceId) {
+    pub fn clear_ipsec(&mut self, d: netlabcraft_core::DeviceId) {
         if let Some(st) = self.state.get_mut(&d) {
             st.ipsec.clear();
         }

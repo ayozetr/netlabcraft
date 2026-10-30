@@ -2,7 +2,7 @@
 //! filters, and the PDU information window (layer by layer, plus the bytes).
 
 use egui::{RichText, Ui};
-use packetcraft_wire::{Arp, ArpOp, ETHERTYPE_ARP, ETHERTYPE_IPV4, Frame, Icmp, Ipv4, PROTO_ICMP, PROTO_UDP, Protocol, Udp};
+use netlabcraft_wire::{Arp, ArpOp, ETHERTYPE_ARP, ETHERTYPE_IPV4, Frame, Icmp, Ipv4, PROTO_ICMP, PROTO_UDP, Protocol, Udp};
 use serde_json::json;
 
 use crate::i18n::tl;
@@ -373,7 +373,7 @@ pub fn pdu_window(app: &mut PacketApp, ctx: &egui::Context) {
 /// Layers of an event: the 802.11 frame first when it crossed the air, then what it carries.
 pub fn decode_event(frame: &[u8], air: Option<&[u8]>) -> Vec<(String, Vec<(String, String)>)> {
     let Some(air) = air else { return decode(frame) };
-    let mut out = match packetcraft_wire::wlan::Dot11::decode(air) {
+    let mut out = match netlabcraft_wire::wlan::Dot11::decode(air) {
         Ok(f) => vec![("IEEE 802.11".to_string(), f.fields())],
         Err(e) => vec![("IEEE 802.11".to_string(), vec![("Error".into(), e.to_string()), ("Length".into(), air.len().to_string())])],
     };
@@ -467,8 +467,8 @@ pub fn decode(bytes: &[u8]) -> Vec<(String, Vec<(String, String)>)> {
                 }
             }
         }
-        packetcraft_wire::wlan::ETHERTYPE_EAPOL => {
-            use packetcraft_wire::wlan::Eapol;
+        netlabcraft_wire::wlan::ETHERTYPE_EAPOL => {
+            use netlabcraft_wire::wlan::Eapol;
             let fields = match Eapol::decode(&f.payload) {
                 Ok(Eapol::Key(k)) => vec![
                     ("Packet".to_string(), format!("EAPOL-Key, handshake message {} of 4", k.message())),

@@ -26,7 +26,7 @@ simulator into a teaching tool.
 
 ## Alpha gates
 
-PacketCraft is **alpha** when a student can do the CCNA 1 labs in it without falling back to
+NetLabCraft is **alpha** when a student can do the CCNA 1 labs in it without falling back to
 the reference app:
 
 1. Every command of the CCNA 1 labs is accepted, with output in our own wording (gap 2): 10–20 h left (CDP, clock, flash and interface views done).

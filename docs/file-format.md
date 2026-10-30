@@ -1,12 +1,12 @@
-# The `.pcraft` lab file
+# The `.nlcraft` lab file
 
 > **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (cable kinds)
 
-A lab is one UTF-8 JSON file. It is the serde form of `packetcraft_model::Topology`
+A lab is one UTF-8 JSON file. It is the serde form of `netlabcraft_model::Topology`
 (`crates/model/src/lib.rs`), wrapped with a format tag and version (`crates/model/src/file.rs`):
 
 ```json
-{"format": "packetcraft", "version": 1, "topology": {"devices": [...], "links": [...], "next_id": 7, "notes": "...", "annotations": [...]}}
+{"format": "netlabcraft", "version": 1, "topology": {"devices": [...], "links": [...], "next_id": 7, "notes": "...", "annotations": [...]}}
 ```
 
 Fields that hold their default value are left out when saving, so a small lab stays small and an

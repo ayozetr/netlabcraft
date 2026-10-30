@@ -1,7 +1,7 @@
 //! IP telephony: phones register with a router's call control, call each other, and send
 //! voice packets while a call is up. Also the phone's built-in switch and voice VLANs.
 //!
-//! **Signalling** is PacketCraft's own small protocol, not any vendor's: one line of ASCII
+//! **Signalling** is NetLabCraft's own small protocol, not any vendor's: one line of ASCII
 //! text per UDP datagram, to and from port 2000, `PCV1 <VERB> <arguments>`.
 //!
 //! | From | Message | Meaning |
@@ -32,10 +32,10 @@
 use std::collections::BTreeMap;
 use std::net::Ipv4Addr;
 
-use packetcraft_core::{DeviceId, MacAddr};
-use packetcraft_model::voice::SIGNAL_PORT;
-use packetcraft_model::{Device, DeviceKind, End, Topology};
-use packetcraft_wire::{Frame, Ipv4, PROTO_UDP, Udp};
+use netlabcraft_core::{DeviceId, MacAddr};
+use netlabcraft_model::voice::SIGNAL_PORT;
+use netlabcraft_model::{Device, DeviceKind, End, Topology};
+use netlabcraft_wire::{Frame, Ipv4, PROTO_UDP, Udp};
 
 use crate::{LINK_DELAY_US, MAX_SWITCH_HOPS, Sim, SimError, default_ttl, port_up};
 
@@ -522,7 +522,7 @@ impl Sim {
     /// Dials a number from a phone and waits for the router's answer.
     pub fn phone_dial(&mut self, t: &Topology, dev: DeviceId, number: &str) -> Result<(), SimError> {
         let d = self.phone_device(t, dev)?;
-        if !packetcraft_model::voice::valid_number(number) {
+        if !netlabcraft_model::voice::valid_number(number) {
             return Err(SimError::NoSource(format!("`{number}` is not a directory number (digits only)")));
         }
         self.phone_sync(t);

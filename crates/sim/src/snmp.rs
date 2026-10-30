@@ -4,10 +4,10 @@
 
 use std::net::Ipv4Addr;
 
-use packetcraft_core::DeviceId;
-use packetcraft_model::{Device, DeviceKind, Topology};
-use packetcraft_wire::sha1::Hash;
-use packetcraft_wire::snmp::{self, FLAG_AUTH, FLAG_REPORTABLE, PduKind, SNMP_TRAP_PORT, Snmp, V3, Value, localize_key, oids};
+use netlabcraft_core::DeviceId;
+use netlabcraft_model::{Device, DeviceKind, Topology};
+use netlabcraft_wire::sha1::Hash;
+use netlabcraft_wire::snmp::{self, FLAG_AUTH, FLAG_REPORTABLE, PduKind, SNMP_TRAP_PORT, Snmp, V3, Value, localize_key, oids};
 
 use crate::{Sim, SimError};
 

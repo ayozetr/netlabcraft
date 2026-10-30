@@ -1,10 +1,10 @@
 [package]
-name = "packetcraft-core"
+name = "netlabcraft-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "PacketCraft L0: addresses, prefixes, VLAN ids and sets, ids"
+description = "NetLabCraft L0: addresses, prefixes, VLAN ids and sets, ids"
 
 [lints]
 workspace = true

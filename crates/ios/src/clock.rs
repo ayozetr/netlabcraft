@@ -79,7 +79,7 @@ mod tests {
         let t = parse_set("14:05:09 30 Oct 2026").unwrap();
         assert_eq!(parse_set("14:05:09 october 30 2026").unwrap(), t);
         assert_eq!(show(t, true), "14:05:09 UTC Fri Oct 30 2026");
-        assert_eq!(show(packetcraft_sim::DEFAULT_CLOCK, false).lines().next().unwrap(), "00:00:00 UTC Thu Jan 1 2026");
+        assert_eq!(show(netlabcraft_sim::DEFAULT_CLOCK, false).lines().next().unwrap(), "00:00:00 UTC Thu Jan 1 2026");
         assert_eq!(show(parse_set("23:59:59 29 Feb 2028").unwrap(), true), "23:59:59 UTC Tue Feb 29 2028");
         assert!(parse_set("12:00:00 29 Feb 2027").is_err());
         assert!(parse_set("25:00:00 1 Jan 2026").is_err());

@@ -9,7 +9,7 @@ host hardware: ~70% ready, 10–16 h** (estimated).
 
 ## Simulated devices and cables
 
-| Feature | Reference app | PacketCraft | Gap and estimate |
+| Feature | Reference app | NetLabCraft | Gap and estimate |
 |---|---|---|---|
 | Routers | Many models, modular slots (HWIC, NIM) | Router 2GE/3GE/4GE, Router 2GE+2S, Modular Router 2GE (2 bays) and 3GE (4 bays) with serial (2 and 4 ports), Gigabit (1 and 2 ports) and Fast Ethernet cards fitted while switched off; power on and off (boots from the saved configuration); a Physical tab drawn in code; [model-equivalents.md](model-equivalents.md) | A switch card (switching inside a router), power supplies as parts: 6–10 h |
 | Switches | Access and multilayer models | Switch 8FE/24FE/48FE, L3 Switch 24 (multilayer) | — for CCNA labs |
@@ -28,7 +28,7 @@ host hardware: ~70% ready, 10–16 h** (estimated).
 
 ## Host hardware
 
-| Hardware feature | Reference app | PacketCraft (Linux · Windows · macOS · BSD · web) | Gap and estimate |
+| Hardware feature | Reference app | NetLabCraft (Linux · Windows · macOS · BSD · web) | Gap and estimate |
 |---|---|---|---|
 | GPU rendering | Desktop toolkit | wgpu through eframe: Vulkan/GL · DirectX 12 · Metal · Vulkan/GL · WebGPU or WebGL2 | At parity in kind; verify on each platform: 2–4 h |
 | High-DPI and display scaling | yes | yes (egui scales with the display) | — |

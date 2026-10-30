@@ -1,0 +1,15 @@
+[package]
+name = "netlabcraft-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "NetLabCraft headless: run commands on lab files, type at device consoles, serve MCP"
+
+[lints]
+workspace = true
+
+[dependencies]
+netlabcraft-engine = { workspace = true }
+netlabcraft-mcp = { workspace = true }
+serde_json = { workspace = true }

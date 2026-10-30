@@ -1,4 +1,4 @@
-//! PacketCraft L0: the value types every other crate shares.
+//! NetLabCraft L0: the value types every other crate shares.
 //!
 //! - [`MacAddr`]: an Ethernet address (IEEE 802).
 //! - [`Ipv4Net`]: an IPv4 address with its prefix length (an interface address or a route).

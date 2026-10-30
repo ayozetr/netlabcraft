@@ -146,7 +146,7 @@ fn generate(root: &Path) -> Result<Value, String> {
     }
     Ok(json!({
         "schema": 1,
-        "repo": "ayozetr/packetcraft",
+        "repo": "ayozetr/netlabcraft",
         "branch": branch,
         "head": head,
         "head_date": utc(&head_date),

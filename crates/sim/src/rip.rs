@@ -11,8 +11,8 @@
 use std::collections::BTreeMap;
 use std::net::Ipv4Addr;
 
-use packetcraft_core::{DeviceId, Ipv4Net};
-use packetcraft_model::{Device, Topology};
+use netlabcraft_core::{DeviceId, Ipv4Net};
+use netlabcraft_model::{Device, Topology};
 
 use crate::{L3If, up_ifaces};
 
@@ -44,7 +44,7 @@ fn rip_ifaces(t: &Topology, d: &Device) -> Vec<(L3If, bool)> {
         .into_iter()
         .filter(|i| r.covers(i.net.addr))
         .map(|i| {
-            let passive = r.passive.iter().any(|p| packetcraft_model::ifname::parse(p).is_some_and(|n| n.to_string() == i.name));
+            let passive = r.passive.iter().any(|p| netlabcraft_model::ifname::parse(p).is_some_and(|n| n.to_string() == i.name));
             (i, passive)
         })
         .collect()

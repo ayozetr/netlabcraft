@@ -3,12 +3,12 @@
 
 use std::net::Ipv4Addr;
 
-use packetcraft_core::DeviceId;
-use packetcraft_model::{Device, DeviceKind, Topology};
-use packetcraft_wire::mgmt::{NTP_PORT, Ntp, SYSLOG_PORT, TFTP_BLOCK, TFTP_PORT, Tftp, syslog_decode, syslog_encode};
-use packetcraft_wire::radius::{RADIUS_PORT, Radius, reveal_password};
-use packetcraft_wire::snmp::{self, PduKind, SNMP_PORT, Snmp};
-use packetcraft_wire::{Ipv4, PROTO_UDP, Udp};
+use netlabcraft_core::DeviceId;
+use netlabcraft_model::{Device, DeviceKind, Topology};
+use netlabcraft_wire::mgmt::{NTP_PORT, Ntp, SYSLOG_PORT, TFTP_BLOCK, TFTP_PORT, Tftp, syslog_decode, syslog_encode};
+use netlabcraft_wire::radius::{RADIUS_PORT, Radius, reveal_password};
+use netlabcraft_wire::snmp::{self, PduKind, SNMP_PORT, Snmp};
+use netlabcraft_wire::{Ipv4, PROTO_UDP, Udp};
 
 use crate::{L3If, Sim, SimError, default_ttl};
 
@@ -269,7 +269,7 @@ impl Sim {
             let port = self.next_port();
             self.seq += 1;
             let id = (self.seq % 256) as u8;
-            let auth = packetcraft_wire::md5::md5(format!("{}:{}:{user}", self.now, self.seq).as_bytes());
+            let auth = netlabcraft_wire::md5::md5(format!("{}:{}:{user}", self.now, self.seq).as_bytes());
             let st = self.st(dev);
             st.radius_port = Some(port);
             st.radius_inbox.clear();
@@ -291,16 +291,16 @@ impl Sim {
             let answer = st.radius_inbox.iter().find(|r| r.id == id).cloned();
             // An answer signed with another secret doesn't count.
             if let Some(a) = answer.filter(|a| a.verifies(&auth, &key)) {
-                return Some(a.code == packetcraft_wire::radius::ACCESS_ACCEPT);
+                return Some(a.code == netlabcraft_wire::radius::ACCESS_ACCEPT);
             }
         }
         None
     }
 
     /// TACACS+ arriving at a server: `None` when it isn't for port 49 on a server.
-    pub(crate) fn tacacs_server_in(&mut self, t: &Topology, d: &Device, ip: &Ipv4, seg: &packetcraft_wire::tcp::Tcp) -> Option<Result<(), String>> {
-        use packetcraft_wire::tacacs::{STATUS_FAIL, STATUS_PASS, TACACS_PORT, Tacacs};
-        use packetcraft_wire::tcp::{self, Tcp};
+    pub(crate) fn tacacs_server_in(&mut self, t: &Topology, d: &Device, ip: &Ipv4, seg: &netlabcraft_wire::tcp::Tcp) -> Option<Result<(), String>> {
+        use netlabcraft_wire::tacacs::{STATUS_FAIL, STATUS_PASS, TACACS_PORT, Tacacs};
+        use netlabcraft_wire::tcp::{self, Tcp};
         if d.kind != DeviceKind::Server || seg.dst_port != TACACS_PORT {
             return None;
         }
@@ -351,7 +351,7 @@ impl Sim {
 
     /// Asks the device's TACACS+ servers about a login, like [`Sim::radius_login`].
     pub fn tacacs_login(&mut self, t: &Topology, dev: DeviceId, user: &str, password: &str) -> Option<bool> {
-        use packetcraft_wire::tacacs::{STATUS_PASS, TACACS_PORT, Tacacs};
+        use netlabcraft_wire::tacacs::{STATUS_PASS, TACACS_PORT, Tacacs};
         let d = t.device(dev)?.clone();
         for (server, key) in d.access.tacacs_servers.clone() {
             let Ok(mut c) = self.conn_open(t, dev, server, TACACS_PORT) else { continue };
@@ -376,7 +376,7 @@ impl Sim {
         use snmp::Value;
         let sys = |n: u32| vec![1, 3, 6, 1, 2, 1, 1, n, 0];
         let mut out = vec![
-            (sys(1), Value::Text(format!("PacketCraft {} {}, simulated", d.catalogue_model().label, env!("CARGO_PKG_VERSION")))),
+            (sys(1), Value::Text(format!("NetLabCraft {} {}, simulated", d.catalogue_model().label, env!("CARGO_PKG_VERSION")))),
             (sys(3), Value::TimeTicks(u32::try_from(self.now / 10_000).unwrap_or(u32::MAX))),
             (sys(4), Value::Text(d.snmp.contact.clone())),
             (sys(5), Value::Text(d.name.clone())),
@@ -386,7 +386,7 @@ impl Sim {
         for col in [1u32, 2, 5, 7, 8] {
             for (i, p) in d.ports.iter().enumerate() {
                 let n = u32::try_from(i + 1).unwrap_or(0);
-                let up = crate::port_up(t, packetcraft_model::End { device: d.id, port: i });
+                let up = crate::port_up(t, netlabcraft_model::End { device: d.id, port: i });
                 let v = match col {
                     1 => Value::Integer(i64::from(n)),
                     2 => Value::Text(p.name.clone()),

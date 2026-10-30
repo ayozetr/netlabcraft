@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/app-icon/hicolor/256x256/apps/packetcraft.png" width="128" height="128" alt="PacketCraft icon: a laptop and a desktop PC cabled to a switch, with a server below it, on a teal tile">
+  <img src="assets/app-icon/hicolor/256x256/apps/netlabcraft.png" width="128" height="128" alt="NetLabCraft icon: a laptop and a desktop PC cabled to a switch, with a server below it, on a teal tile">
 </p>
 
-<h1 align="center">PacketCraft</h1>
+<h1 align="center">NetLabCraft</h1>
 
 <p align="center">
   <b>Network labs for learning and teaching; an open-source, clean-room network simulator built in pure Rust.</b>
@@ -25,13 +25,13 @@
 <br>
 
 <p align="center">
-  <img src="docs/images/hero-multilayer.png" alt="PacketCraft's main window: a multilayer switch in the middle routes between four PCs in two VLANs and reaches a router and a server above it; menus and two toolbars on top, the device box, scenario list and PDU table at the bottom" width="100%">
-  <br><sub><b>Inter-VLAN routing on a multilayer switch</b>: one of the eighteen sample labs (<code>File → New → Sample</code>), built entirely from PacketCraft commands.</sub>
+  <img src="docs/images/hero-multilayer.png" alt="NetLabCraft's main window: a multilayer switch in the middle routes between four PCs in two VLANs and reaches a router and a server above it; menus and two toolbars on top, the device box, scenario list and PDU table at the bottom" width="100%">
+  <br><sub><b>Inter-VLAN routing on a multilayer switch</b>: one of the eighteen sample labs (<code>File → New → Sample</code>), built entirely from NetLabCraft commands.</sub>
 </p>
 
 <p align="center">
   <a href="#a-look-around">A look around</a> ·
-  <a href="#why-packetcraft">Why PacketCraft</a> ·
+  <a href="#why-netlabcraft">Why NetLabCraft</a> ·
   <a href="#what-it-simulates">What it simulates</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#for-agents-mcp-and-cli">For agents</a> ·
@@ -58,7 +58,7 @@
 </tr>
 </table>
 
-## Why PacketCraft
+## Why NetLabCraft
 
 - **Familiar.** The window is arranged like the network simulator learners already know: menus and
   toolbars, the device box, Realtime and Simulation modes, device windows with Physical, Config,
@@ -66,7 +66,7 @@
 - **Real frames.** Devices exchange encoded Ethernet, ARP, IPv4, IPv6, ICMP, NDP, TCP, UDP, DHCP,
   DNS, HTTP, FTP, RADIUS, STP, OSPF, RIP, HSRP, LLDP and LACP frames. Captures open in any packet
   analyser, and a dropped frame says why.
-- **Open.** Labs are readable JSON ([`.pcraft`](docs/file-format.md)); the code is MIT or Apache-2.0.
+- **Open.** Labs are readable JSON ([`.nlcraft`](docs/file-format.md)); the code is MIT or Apache-2.0.
 - **Agent-native.** Every action is a command that agents can run through an **MCP server** or the
   CLI, including typing at any device's console.
 - **In your language.** The interface comes in English and Spanish (Options → Language), the
@@ -108,10 +108,10 @@ What it doesn't do yet is listed, ranked, in [`docs/gaps.md`](docs/gaps.md).
 ## Quick start
 
 ```sh
-cargo run --release -p packetcraft                            # desktop app
-cargo run --release -p packetcraft -- --sample vlans          # open a sample lab
-cargo run --release -p packetcraft -- lab.pcraft              # open a lab
-cargo run --release -p packetcraft-cli -- samples             # list the sample labs
+cargo run --release -p netlabcraft                            # desktop app
+cargo run --release -p netlabcraft -- --sample vlans          # open a sample lab
+cargo run --release -p netlabcraft -- lab.nlcraft              # open a lab
+cargo run --release -p netlabcraft-cli -- samples             # list the sample labs
 cargo xtask ci                                                # fmt, clippy, tests, assets, layering, wasm, parity
 ```
 
@@ -121,15 +121,15 @@ Choose Español under Options → Language for the Spanish interface.
 ### Install on Linux (your user only)
 
 ```sh
-packaging/linux/install.sh            # builds, then installs to ~/.local: menu entry, icon, .pcraft files
+packaging/linux/install.sh            # builds, then installs to ~/.local: menu entry, icon, .nlcraft files
 packaging/linux/install.sh --remove   # uninstalls
 ```
 
 ### Web
 
 ```sh
-cd apps/packetcraft-web && trunk build --release     # → dist/web (serve it with any static server)
-cd apps/packetcraft-web && trunk serve --release     # http://127.0.0.1:8781  (?sample=vlans opens a sample)
+cd apps/netlabcraft-web && trunk build --release     # → dist/web (serve it with any static server)
+cd apps/netlabcraft-web && trunk serve --release     # http://127.0.0.1:8781  (?sample=vlans opens a sample)
 ```
 
 You need [trunk](https://trunk-rs.github.io/trunk/) and the `wasm32-unknown-unknown` target. Open
@@ -139,32 +139,32 @@ unsaved changes closes.
 ## For agents: MCP and CLI
 
 ```sh
-claude mcp add packetcraft -- packetcraft-cli mcp                       # headless MCP server
-packetcraft-cli exec --sample two-subnets R1 enable 'show ip route'     # type at a console
-packetcraft-cli run --sample lan --cmd 'net.ping={"from":"PC1","to":"192.168.1.13"}'
-packetcraft-cli pcap --sample vlans --ping PC1:192.168.20.10 --out vlans.pcap
-packetcraft-cli commands                                                 # every command and its params
+claude mcp add netlabcraft -- netlabcraft-cli mcp                       # headless MCP server
+netlabcraft-cli exec --sample two-subnets R1 enable 'show ip route'     # type at a console
+netlabcraft-cli run --sample lan --cmd 'net.ping={"from":"PC1","to":"192.168.1.13"}'
+netlabcraft-cli pcap --sample vlans --ping PC1:192.168.20.10 --out vlans.pcap
+netlabcraft-cli commands                                                 # every command and its params
 ```
 
-The MCP server offers `packetcraft_run` (any engine command), `packetcraft_cli` (type lines at a
-device), `packetcraft_lab` (devices, ports, addresses and cables) and `packetcraft_commands`. See
+The MCP server offers `netlabcraft_run` (any engine command), `netlabcraft_cli` (type lines at a
+device), `netlabcraft_lab` (devices, ports, addresses and cables) and `netlabcraft_commands`. See
 [`docs/mcp.md`](docs/mcp.md) and [`docs/cli.md`](docs/cli.md).
 
 ## Architecture
 
-PacketCraft is an engine-first Cargo workspace with enforced layering (`cargo xtask layers`). The
+NetLabCraft is an engine-first Cargo workspace with enforced layering (`cargo xtask layers`). The
 egui frontend is a separate crate, so the UI can be swapped without touching the simulator.
 
 | Layer | Crates |
 |---|---|
 | L0 | `core` (MAC and IP addresses, networks, VLAN ids) |
 | L1 | `wire` (frame formats, checksums, pcap) |
-| L2 | `model` (the lab: devices, ports, configuration, cables; the `.pcraft` format) |
+| L2 | `model` (the lab: devices, ports, configuration, cables; the `.nlcraft` format) |
 | L3 | `sim` (discrete-event simulator: switching, routing, STP, OSPF, RIP, HSRP, IPv6, services) |
 | L4 | `ios` (device consoles: grammar, configuration, `show` output, host shell) |
 | L5 | `engine` (session, command catalog, undo, sample labs, activities) |
 | L6 | `ui-egui` (the interface and its translations) · `mcp` (MCP server) |
-| L7 | `apps/packetcraft`, `apps/packetcraft-cli`, `apps/packetcraft-web` |
+| L7 | `apps/netlabcraft`, `apps/netlabcraft-cli`, `apps/netlabcraft-web` |
 
 - **Contributor and agent rules** (clean room, asset policy, never-crash, quality gates): [`AGENTS.md`](AGENTS.md)
 - **How it is built:** [`docs/architecture.md`](docs/architecture.md); decisions in [`docs/decisions.md`](docs/decisions.md)
@@ -173,7 +173,7 @@ egui frontend is a separate crate, so the UI can be swapped without touching the
 
 ## Roadmap
 
-PacketCraft is **pre-alpha**: every core workflow works end to end (build a lab, configure it by
+NetLabCraft is **pre-alpha**: every core workflow works end to end (build a lab, configure it by
 typing, ping, watch the frames, grade an activity, save), but there are no installers yet beyond
 the Linux user install. Weighted by what CCNA labs rely on, we estimate it is about 68% ready for
 real work: about 80% for the first CCNA course, 84% for the second and 70% for the third. Next up:
@@ -190,7 +190,7 @@ for Linux, Windows, macOS, FreeBSD and the web, file names) is in
 
 ## Clean room
 
-PacketCraft is built from public standards (IEEE, IETF RFCs) and black-box observation of how
+NetLabCraft is built from public standards (IEEE, IETF RFCs) and black-box observation of how
 network simulators behave. Nobody working on it reads, disassembles or decompiles any vendor's
 software or file formats, and no vendor artwork, icons, sample labs or wording is used. Protocols
 whose formats aren't public (CDP, DTP, PAgP) are simulated without their frames. For the same
@@ -198,16 +198,16 @@ reason it does not open `.pkt` files; see [`docs/decisions.md`](docs/decisions.m
 
 ## License and credits
 
-PacketCraft is dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your
-option. Copyright (c) 2026 the PacketCraft contributors. Required notices are in [NOTICE](NOTICE).
+NetLabCraft is dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your
+option. Copyright (c) 2026 the NetLabCraft contributors. Required notices are in [NOTICE](NOTICE).
 
 Bundled icons, images and other assets keep their own open licences; each one is listed with its
 author, source and licence in [ATTRIBUTION.md](ATTRIBUTION.md).
 
 The app icon ([`assets/app-icon/`](assets/app-icon/)) was supplied by the project owner. Every
 other icon and device picture is drawn in code and is original; the sample labs and every
-screenshot in this README were made with PacketCraft itself. PacketCraft bundles no fonts beyond
+screenshot in this README were made with NetLabCraft itself. NetLabCraft bundles no fonts beyond
 the ones its UI toolkit ships with. Contributors: [`docs/contributors.md`](docs/contributors.md).
 
-Cisco, Cisco IOS and Packet Tracer are trademarks of Cisco Systems, Inc. PacketCraft is an
+Cisco, Cisco IOS and Packet Tracer are trademarks of Cisco Systems, Inc. NetLabCraft is an
 independent project, not affiliated with or endorsed by Cisco.

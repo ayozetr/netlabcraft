@@ -3,8 +3,8 @@
 //! Scans all git-tracked (and untracked, not ignored) files and fails if an asset is not listed
 //! as `` `path` `` in ATTRIBUTION.md's table. An asset is:
 //! - any file under `assets/`, `docs/brand/` or `docs/images/`;
-//! - any file in `examples/` with an asset or sample-workbook extension (`.pcraft`, `.json`, ...);
-//! - anywhere else, any image, icon or font file, or a lab or capture (`.pcraft`, `.pkt`, `.pcap`).
+//! - any file in `examples/` with an asset or sample-workbook extension (`.nlcraft`, `.json`, ...);
+//! - anywhere else, any image, icon or font file, or a lab or capture (`.nlcraft`, `.pkt`, `.pcap`).
 //!
 //! See the asset rule in AGENTS.md: no vendor artwork, and every asset has an attribution row.
 
@@ -13,7 +13,7 @@ use std::process::Command;
 
 /// Image, icon and font extensions: an asset wherever it lives.
 const ASSET_EXT: &[&str] = &[
-    "png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "ico", "icns", "svg", "pdf", "ttf", "otf", "woff", "woff2", "pcraft", "pkt", "pka",
+    "png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "ico", "icns", "svg", "pdf", "ttf", "otf", "woff", "woff2", "nlcraft", "pkt", "pka",
     "pcap", "pcapng",
 ];
 /// Extra extensions that count as assets inside `examples/` (sample data).
@@ -81,7 +81,7 @@ mod tests {
         assert!(!is_asset("docs/releasing.md"));
         assert!(is_asset("assets/app-icon/LICENSE.txt"));
         assert!(is_asset("examples/sales.csv"));
-        assert!(is_asset("crates/engine/examples/lab.pcraft"));
+        assert!(is_asset("crates/engine/examples/lab.nlcraft"));
         assert!(!is_asset("crates/wire/tests/data.csv"));
         assert!(is_asset("crates/ui-egui/icon.PNG"));
     }

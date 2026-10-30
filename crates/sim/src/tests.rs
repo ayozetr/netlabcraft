@@ -1,6 +1,6 @@
 use super::*;
-use packetcraft_core::VlanSet;
-use packetcraft_model::{StaticRoute, SubIf};
+use netlabcraft_core::VlanSet;
+use netlabcraft_model::{StaticRoute, SubIf};
 
 fn net(s: &str) -> Ipv4Net {
     s.parse().unwrap()
@@ -305,7 +305,7 @@ fn hostile_frames_are_dropped_not_fatal() {
     }
     sim.settle(&t);
     // (Spanning-tree BPDUs from the switch are taken in quietly; everything else was garbage.)
-    assert!(sim.trace().iter().all(|e| e.dropped.is_some() || e.to.device == s || e.protocol == packetcraft_wire::Protocol::Stp));
+    assert!(sim.trace().iter().all(|e| e.dropped.is_some() || e.to.device == s || e.protocol == netlabcraft_wire::Protocol::Stp));
 }
 
 #[test]
@@ -327,7 +327,7 @@ fn a_hub_repeats_to_everyone_and_hosts_ignore_what_is_not_theirs() {
 
 #[test]
 fn dhcp_hands_out_addresses_from_a_pool() {
-    use packetcraft_model::DhcpPool;
+    use netlabcraft_model::DhcpPool;
     let mut t = Topology::new();
     let r = add(&mut t, DeviceKind::Router);
     let s = add(&mut t, DeviceKind::Switch);
@@ -466,7 +466,7 @@ fn a_switch_vlan_interface_answers_and_reaches_other_subnets() {
 
 #[test]
 fn a_relay_forwards_dhcp_to_a_server_on_another_subnet() {
-    use packetcraft_model::DhcpPool;
+    use netlabcraft_model::DhcpPool;
     // PC1 - S1 - R1 (relay) ==10.0.0.0/30== R2 (DHCP server)
     let mut t = Topology::new();
     let r1 = add(&mut t, DeviceKind::Router);
@@ -500,7 +500,7 @@ fn a_relay_forwards_dhcp_to_a_server_on_another_subnet() {
 
 #[test]
 fn ospf_routes_around_a_triangle() {
-    use packetcraft_model::{Ospf, OspfNetwork};
+    use netlabcraft_model::{Ospf, OspfNetwork};
     let mut t = Topology::new();
     let r1 = add(&mut t, DeviceKind::Router);
     let r2 = add(&mut t, DeviceKind::Router);
@@ -508,7 +508,7 @@ fn ospf_routes_around_a_triangle() {
     for r in [r1, r2, r3] {
         let d = t.device_mut(r).unwrap();
         d.model = "Router-4".into();
-        let more = packetcraft_model::Device::of_model(r, packetcraft_model::models::find("Router-4").unwrap(), d.name.clone(), 0.0, 0.0).ports;
+        let more = netlabcraft_model::Device::of_model(r, netlabcraft_model::models::find("Router-4").unwrap(), d.name.clone(), 0.0, 0.0).ports;
         d.ports = more;
     }
     let a = host(&mut t, "192.168.1.10/24", Some("192.168.1.1"));
@@ -571,7 +571,7 @@ fn ospf_routes_around_a_triangle() {
 
 #[test]
 fn access_lists_filter_forwarded_traffic() {
-    use packetcraft_model::acl::{Acl, AclAddr, AclEntry, AclProto};
+    use netlabcraft_model::acl::{Acl, AclAddr, AclEntry, AclProto};
     let (mut t, r1, _r2, a, _b) = chain();
     let mut sim = Sim::new();
     for _ in 0..2 {
@@ -628,8 +628,8 @@ fn access_lists_filter_forwarded_traffic() {
 
 #[test]
 fn nat_translates_both_ways() {
-    use packetcraft_model::acl::{Acl, AclAddr, AclEntry, AclProto};
-    use packetcraft_model::{NatRule, NatSide, NatTarget};
+    use netlabcraft_model::acl::{Acl, AclAddr, AclEntry, AclProto};
+    use netlabcraft_model::{NatRule, NatSide, NatTarget};
     // PC1, PC2 (inside 192.168.1.0/24) - R1 (NAT) - ISP router - SRV 8.8.8.8 network
     let mut t = Topology::new();
     let r1 = add(&mut t, DeviceKind::Router);
@@ -687,7 +687,7 @@ fn nat_translates_both_ways() {
 
 #[test]
 fn a_server_answers_dns_http_and_dhcp() {
-    use packetcraft_model::services::{DnsRecord, ServerPool};
+    use netlabcraft_model::services::{DnsRecord, ServerPool};
     let mut t = Topology::new();
     let s = add(&mut t, DeviceKind::Switch);
     let srv = add(&mut t, DeviceKind::Server);
@@ -732,7 +732,7 @@ fn a_server_answers_dns_http_and_dhcp() {
     assert!(sim.dns_resolve(&t, a, "nope.lab.test").is_err());
     let (status, body) = sim.http_get(&t, a, ip("192.168.5.2"), "www.lab.test", "/").unwrap();
     assert_eq!(status, "200 OK");
-    assert!(body.contains("PacketCraft web server"), "{body}");
+    assert!(body.contains("NetLabCraft web server"), "{body}");
     let (status, _) = sim.http_get(&t, a, ip("192.168.5.2"), "www.lab.test", "/missing.html").unwrap();
     assert_eq!(status, "404 Not Found");
     assert!(sim.trace().iter().any(|e| e.protocol == Protocol::Tcp && e.summary.contains("SYN")));
@@ -746,7 +746,7 @@ fn a_server_answers_dns_http_and_dhcp() {
     t.device_mut(srv).unwrap().services.http.on = false;
     assert!(sim.http_get(&t, a, ip("192.168.5.2"), "x", "/").unwrap_err().to_string().contains("refused"));
     // An access list on the router can stop web traffic by port.
-    use packetcraft_model::acl::{Acl, AclAddr, AclEntry, AclProto, PortMatch};
+    use netlabcraft_model::acl::{Acl, AclAddr, AclEntry, AclProto, PortMatch};
     t.device_mut(srv).unwrap().services.http.on = true;
     {
         let rt = t.device_mut(r).unwrap();
@@ -773,7 +773,7 @@ fn a_server_answers_dns_http_and_dhcp() {
 
 #[test]
 fn straight_and_cross_over_cables_need_auto_mdix_or_the_right_kind() {
-    use packetcraft_model::cable::Cable;
+    use netlabcraft_model::cable::Cable;
     let wire = |t: &mut Topology, a: DeviceId, b: DeviceId, pb: usize, c: Cable| {
         t.connect_with(End { device: a, port: 0 }, End { device: b, port: pb }, c).unwrap();
     };
@@ -816,9 +816,9 @@ fn straight_and_cross_over_cables_need_auto_mdix_or_the_right_kind() {
 
 #[test]
 fn fiber_reaches_two_kilometres_and_copper_a_hundred_metres() {
-    use packetcraft_model::cable::Cable;
+    use netlabcraft_model::cable::Cable;
     let mut t = Topology::new();
-    let a = t.add_model(packetcraft_model::models::find("Switch-24-SFP").unwrap(), None, 0.0, 0.0).unwrap();
+    let a = t.add_model(netlabcraft_model::models::find("Switch-24-SFP").unwrap(), None, 0.0, 0.0).unwrap();
     let b = add(&mut t, DeviceKind::Switch);
     let (ea, eb) = (End { device: a, port: 24 }, End { device: b, port: 24 });
     t.connect_with(ea, eb, Cable::Fiber).unwrap();

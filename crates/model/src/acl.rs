@@ -266,7 +266,7 @@ mod tests {
 pub enum Addr6 {
     Any,
     Host(std::net::Ipv6Addr),
-    Prefix(packetcraft_core::Ipv6Net),
+    Prefix(netlabcraft_core::Ipv6Net),
 }
 
 impl Addr6 {
@@ -375,7 +375,7 @@ impl Acl6Entry {
                     let a = it.next().ok_or("host needs an address")?;
                     a.parse().map(Addr6::Host).map_err(|_| format!("`{a}` is not an IPv6 address"))
                 }
-                Some(w) => w.parse::<packetcraft_core::Ipv6Net>().map(Addr6::Prefix).map_err(|e| e.to_string()),
+                Some(w) => w.parse::<netlabcraft_core::Ipv6Net>().map(Addr6::Prefix).map_err(|e| e.to_string()),
                 None => Err("missing an address (any, host X or X::/n)".into()),
             }
         };

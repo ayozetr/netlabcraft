@@ -1,4 +1,4 @@
-//! PacketCraft L6: the egui interface.
+//! NetLabCraft L6: the egui interface.
 //!
 //! [`PacketApp`] draws everything inside one `egui::Ui`. The arrangement follows the reference
 //! app learners know (menus and two toolbars on top, a navy workspace bar, the workspace, a navy
@@ -11,8 +11,8 @@
 use std::collections::BTreeMap;
 
 use egui::{Color32, Key, KeyboardShortcut, Modifiers, RichText, Sense, vec2};
-use packetcraft_core::DeviceId;
-use packetcraft_engine::{EngineError, Session, sample};
+use netlabcraft_core::DeviceId;
+use netlabcraft_engine::{EngineError, Session, sample};
 
 use serde_json::{Value, json};
 
@@ -76,11 +76,11 @@ pub enum Tool {
     /// Place a device of a catalogue model (`models::MODELS` id).
     Place(&'static str),
     /// Cable two ports with a cable of this kind.
-    Cable(packetcraft_model::cable::Cable),
+    Cable(netlabcraft_model::cable::Cable),
     /// Place a note on the workspace.
     Note,
     /// Drag out a rectangle, ellipse or line.
-    Draw(packetcraft_model::Shape),
+    Draw(netlabcraft_model::Shape),
     /// Click a source then a destination: one echo request (a simple PDU).
     Ping,
     Delete,
@@ -222,7 +222,7 @@ pub fn show_connections(app: &mut PacketApp, cable: Option<&str>) {
     app.ui.bottom.category = bottom::Category::Connections;
     app.ui.bottom.sub = bottom::Sub::Cables;
     app.ui.bottom.search.clear();
-    if let Some(c) = cable.and_then(packetcraft_model::cable::Cable::parse) {
+    if let Some(c) = cable.and_then(netlabcraft_model::cable::Cable::parse) {
         app.set_tool(Tool::Cable(c));
     }
 }
@@ -486,9 +486,9 @@ impl PacketApp {
         let mut sv = d.services.clone();
         let name: String = name.chars().filter(|c| !c.is_whitespace() && *c != '/').take(64).collect();
         sv.http.files.retain(|f| f.name != name);
-        sv.http.files.push(packetcraft_model::services::WebFile {
+        sv.http.files.push(netlabcraft_model::services::WebFile {
             name: name.clone(),
-            content: text.chars().take(packetcraft_model::services::MAX_FILE).collect(),
+            content: text.chars().take(netlabcraft_model::services::MAX_FILE).collect(),
         });
         if let Ok(v) = serde_json::to_value(&sv)
             && self.run("server.services", json!({"device": device.0, "services": v})).is_some()
@@ -535,7 +535,7 @@ impl PacketApp {
 
     /// The window title.
     pub fn title(&self) -> String {
-        format!("PacketCraft - {}", self.session.title())
+        format!("NetLabCraft - {}", self.session.title())
     }
 
     /// Applies the theme (call at start and when it changes).
@@ -883,9 +883,9 @@ impl PacketApp {
                     ui.close();
                 }
                 ui.separator();
-                ui.label(tl("Agents and scripts drive PacketCraft through"));
-                ui.monospace("packetcraft-cli mcp");
-                ui.monospace("packetcraft-cli run --cmd ...");
+                ui.label(tl("Agents and scripts drive NetLabCraft through"));
+                ui.monospace("netlabcraft-cli mcp");
+                ui.monospace("netlabcraft-cli run --cmd ...");
             });
             ui.menu_button(tl("Window"), |ui| {
                 ui.checkbox(&mut self.ui.show_notes, tl("Lab Notes"));
@@ -948,7 +948,7 @@ impl PacketApp {
                 self.requests.push(UiRequest::ExportPcap(self.session.pcap()));
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if tool_button(ui, Glyph::Help, "About PacketCraft", false, true).clicked() {
+                if tool_button(ui, Glyph::Help, "About NetLabCraft", false, true).clicked() {
                     self.ui.show_about = true;
                 }
             });
@@ -977,9 +977,9 @@ impl PacketApp {
                 self.set_tool(Tool::Note);
             }
             for (g, label, shape) in [
-                (Glyph::Line, "Draw Line", packetcraft_model::Shape::Line),
-                (Glyph::Rectangle, "Draw Rectangle", packetcraft_model::Shape::Rectangle),
-                (Glyph::Ellipse, "Draw Ellipse", packetcraft_model::Shape::Ellipse),
+                (Glyph::Line, "Draw Line", netlabcraft_model::Shape::Line),
+                (Glyph::Rectangle, "Draw Rectangle", netlabcraft_model::Shape::Rectangle),
+                (Glyph::Ellipse, "Draw Ellipse", netlabcraft_model::Shape::Ellipse),
             ] {
                 if tool_button(ui, g, &crate::i18n::trf("{} (drag on the workspace)", &[&crate::i18n::tr(label)]), t == Tool::Draw(shape), true)
                     .clicked()
@@ -987,14 +987,14 @@ impl PacketApp {
                     self.set_tool(Tool::Draw(shape));
                 }
             }
-            if tool_button(ui, Glyph::Freeform, "Draw Freehand (drag on the workspace)", t == Tool::Draw(packetcraft_model::Shape::Freehand), true)
+            if tool_button(ui, Glyph::Freeform, "Draw Freehand (drag on the workspace)", t == Tool::Draw(netlabcraft_model::Shape::Freehand), true)
                 .clicked()
             {
-                self.set_tool(Tool::Draw(packetcraft_model::Shape::Freehand));
+                self.set_tool(Tool::Draw(netlabcraft_model::Shape::Freehand));
             }
-            if tool_button(ui, Glyph::Polygon, "Draw Polygon (click the corners)", t == Tool::Draw(packetcraft_model::Shape::Polygon), true).clicked()
+            if tool_button(ui, Glyph::Polygon, "Draw Polygon (click the corners)", t == Tool::Draw(netlabcraft_model::Shape::Polygon), true).clicked()
             {
-                self.set_tool(Tool::Draw(packetcraft_model::Shape::Polygon));
+                self.set_tool(Tool::Draw(netlabcraft_model::Shape::Polygon));
             }
             ui.add_space(8.0);
             if tool_button(ui, Glyph::SimplePdu, "Add Simple PDU (P)", t == Tool::Ping, true).clicked() {
@@ -1237,7 +1237,7 @@ impl PacketApp {
         }
         let mut open = true;
         let credits = &mut self.ui.about_credits;
-        egui::Window::new(tl("About PacketCraft")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
+        egui::Window::new(tl("About NetLabCraft")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
             ui.horizontal(|ui| {
                 if ui.selectable_label(!*credits, tl("About")).clicked() {
                     *credits = false;
@@ -1253,7 +1253,7 @@ impl PacketApp {
                 credits::contributors_ui(ui);
                 return;
             }
-            ui.heading(tl("PacketCraft"));
+            ui.heading(tl("NetLabCraft"));
             ui.label(crate::i18n::trf("Version {}", &[&env!("CARGO_PKG_VERSION")]));
             ui.label(tl("An open-source network simulator: build labs, configure routers and switches, and watch every frame."));
             ui.label(tl("Licensed under MIT or Apache-2.0."));

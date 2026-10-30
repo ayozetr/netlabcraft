@@ -1,11 +1,11 @@
 //! Offscreen render of the app to a PNG, for looking at UI work without a window:
 //!
-//! `cargo run -p packetcraft-ui-egui --example snapshot -- --sample vlans [--dark] [--simulation] [--size 1280x820]
+//! `cargo run -p netlabcraft-ui-egui --example snapshot -- --sample vlans [--dark] [--simulation] [--size 1280x820]
 //!  [--cmd 'id={json}']... [--console DEVICE]... [--event N] [--physical [--place N]] [--physical-tab] out.png`
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use packetcraft_engine::Session;
-use packetcraft_ui_egui::PacketApp;
+use netlabcraft_engine::Session;
+use netlabcraft_ui_egui::PacketApp;
 use serde_json::json;
 
 fn main() {
@@ -49,7 +49,7 @@ fn main() {
                 }
             }
             "--console" => consoles.push(it.next().expect("device").clone()),
-            "--lang" => packetcraft_ui_egui::i18n::set_lang(packetcraft_ui_egui::i18n::Lang::from_locale(it.next().map_or("en", String::as_str))),
+            "--lang" => netlabcraft_ui_egui::i18n::set_lang(netlabcraft_ui_egui::i18n::Lang::from_locale(it.next().map_or("en", String::as_str))),
             "--desktop" => desktop = Some(it.next().expect("prompt|ip|home").clone()),
             "--config" => config = true,
             "--services" => services = true,
@@ -79,32 +79,32 @@ fn main() {
             }
             for c in &consoles {
                 let id = app.session.topology.resolve(c).expect("device");
-                packetcraft_ui_egui::open_console(&mut app, id);
+                netlabcraft_ui_egui::open_console(&mut app, id);
                 if let Some(which) = &desktop {
-                    packetcraft_ui_egui::open_desktop_app(&mut app, id, which.as_str());
+                    netlabcraft_ui_egui::open_desktop_app(&mut app, id, which.as_str());
                 }
                 if config {
-                    packetcraft_ui_egui::open_config_tab(&mut app, id);
+                    netlabcraft_ui_egui::open_config_tab(&mut app, id);
                 }
                 if physical_tab {
-                    packetcraft_ui_egui::open_physical_tab(&mut app, id);
+                    netlabcraft_ui_egui::open_physical_tab(&mut app, id);
                 }
                 if services {
-                    packetcraft_ui_egui::open_services_tab(&mut app, id);
+                    netlabcraft_ui_egui::open_services_tab(&mut app, id);
                 }
                 if let Some(p) = &page {
-                    packetcraft_ui_egui::open_services_page(&mut app, id, p);
+                    netlabcraft_ui_egui::open_services_page(&mut app, id, p);
                 }
                 if let Some(u) = &url {
-                    packetcraft_ui_egui::open_browser(&mut app, id, u);
+                    netlabcraft_ui_egui::open_browser(&mut app, id, u);
                 }
             }
             if let Some(c) = &connections {
-                packetcraft_ui_egui::show_connections(&mut app, c.as_deref());
+                netlabcraft_ui_egui::show_connections(&mut app, c.as_deref());
             }
             app.ui.events.selected = event;
             if simulation {
-                app.ui.mode = packetcraft_ui_egui::Mode::Simulation;
+                app.ui.mode = netlabcraft_ui_egui::Mode::Simulation;
             }
             app
         },

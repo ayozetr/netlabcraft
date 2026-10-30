@@ -1,6 +1,6 @@
-use packetcraft_core::DeviceId;
-use packetcraft_model::{DeviceKind, End, SwitchportMode, Topology};
-use packetcraft_sim::Sim;
+use netlabcraft_core::DeviceId;
+use netlabcraft_model::{DeviceKind, End, SwitchportMode, Topology};
+use netlabcraft_sim::Sim;
 
 use crate::grammar::{SPECS, Tok};
 use crate::*;
@@ -761,7 +761,7 @@ fn port_security_by_typing() {
     assert!(lab.run(a, "ping 10.0.0.3").contains("4 answered"));
     // The engine writes sticky addresses into the lab; here we do it by hand, as it would.
     for e in lab.sim.take_events() {
-        if let packetcraft_sim::PortEvent::Sticky { port, mac, .. } = e {
+        if let netlabcraft_sim::PortEvent::Sticky { port, mac, .. } = e {
             lab.t.device_mut(s).unwrap().ports[port].port_security.as_mut().unwrap().macs.push(mac);
         }
     }
@@ -770,7 +770,7 @@ fn port_security_by_typing() {
     let out = lab.run(b, "ping 10.0.0.3");
     assert!(out.contains("0 answered"), "{out}");
     let events = lab.sim.take_events();
-    assert!(events.iter().any(|e| matches!(e, packetcraft_sim::PortEvent::ErrDisabled { .. })));
+    assert!(events.iter().any(|e| matches!(e, netlabcraft_sim::PortEvent::ErrDisabled { .. })));
     lab.t.device_mut(s).unwrap().ports[0].err_disabled = true;
     lab.sim.topology_changed(&lab.t);
     let ps = lab.run(s, "show port-security");
@@ -949,7 +949,7 @@ fn ipv6_by_typing() {
 #[test]
 fn multilayer_switch_by_typing() {
     let mut lab = Lab::new();
-    let ml = lab.t.add_model(packetcraft_model::models::find("Switch-ML-24").unwrap(), None, 0.0, 0.0).unwrap();
+    let ml = lab.t.add_model(netlabcraft_model::models::find("Switch-ML-24").unwrap(), None, 0.0, 0.0).unwrap();
     let plain = lab.add(DeviceKind::Switch);
     let r = lab.add(DeviceKind::Router);
     let a = lab.add(DeviceKind::Pc);
@@ -1056,7 +1056,7 @@ fn rip_by_typing() {
 #[test]
 fn serial_link_by_typing() {
     let mut lab = Lab::new();
-    let wan = packetcraft_model::models::find("Router-WAN").unwrap();
+    let wan = netlabcraft_model::models::find("Router-WAN").unwrap();
     let r1 = lab.t.add_model(wan, None, 0.0, 0.0).unwrap();
     let r2 = lab.t.add_model(wan, None, 0.0, 0.0).unwrap();
     let a = lab.add(DeviceKind::Pc);
@@ -1159,7 +1159,7 @@ fn everyday_show_commands_by_typing() {
     assert!(block.starts_with("interface FastEthernet0/2\n description aula\n switchport access vlan 10"), "{block}");
     // Flash, users, terminal.
     assert!(lab.run(s, "show flash").contains("vlan.dat"));
-    assert!(lab.run(r, "dir flash:").contains("packetcraft-router-"));
+    assert!(lab.run(r, "dir flash:").contains("netlabcraft-router-"));
     assert!(lab.run(r, "show users").contains("con 0"));
     assert!(lab.try_run(r, "terminal length 0").is_empty());
     assert!(lab.try_run(r, "terminal bogus").contains("terminal length"));
@@ -1278,7 +1278,7 @@ fn dtp_by_typing() {
 #[test]
 fn ppp_authentication_by_typing() {
     let mut lab = Lab::new();
-    let wan = packetcraft_model::models::find("Router-WAN").unwrap();
+    let wan = netlabcraft_model::models::find("Router-WAN").unwrap();
     let r1 = lab.t.add_model(wan, None, 0.0, 0.0).unwrap();
     let r2 = lab.t.add_model(wan, None, 0.0, 0.0).unwrap();
     lab.cable(r1, "s0/0/0", r2, "s0/0/0");
@@ -1445,7 +1445,7 @@ fn ospf_stub_areas_and_ranges_by_typing() {
 #[test]
 fn ospf_on_a_multilayer_switch_by_typing() {
     let mut lab = Lab::new();
-    let ml = lab.t.add_model(packetcraft_model::models::find("Switch-ML-24").unwrap(), None, 0.0, 0.0).unwrap();
+    let ml = lab.t.add_model(netlabcraft_model::models::find("Switch-ML-24").unwrap(), None, 0.0, 0.0).unwrap();
     let r = lab.add(DeviceKind::Router);
     let pc = lab.add(DeviceKind::Pc);
     let far = lab.add(DeviceKind::Pc);
@@ -1499,7 +1499,7 @@ fn ipv6_on_subinterfaces_and_vlan_interfaces_by_typing() {
 
     // A multilayer switch routing IPv6 between its VLAN interfaces.
     let mut lab = Lab::new();
-    let ml = lab.t.add_model(packetcraft_model::models::find("Switch-ML-24").unwrap(), None, 0.0, 0.0).unwrap();
+    let ml = lab.t.add_model(netlabcraft_model::models::find("Switch-ML-24").unwrap(), None, 0.0, 0.0).unwrap();
     let a = lab.add(DeviceKind::Pc);
     let b = lab.add(DeviceKind::Pc);
     lab.cable(a, "fa0", ml, "fa0/1");
@@ -1646,7 +1646,7 @@ fn ospfv3_by_typing() {
 
 #[test]
 fn aaa_logins_through_radius_by_typing() {
-    use packetcraft_model::services::{AaaClient, AaaUser};
+    use netlabcraft_model::services::{AaaClient, AaaUser};
     let mut lab = Lab::new();
     let r = lab.add(DeviceKind::Router);
     let s = lab.add(DeviceKind::Switch);
@@ -1735,7 +1735,7 @@ fn aaa_logins_through_radius_by_typing() {
 
 #[test]
 fn ftp_by_typing() {
-    use packetcraft_model::services::{FtpUser, WebFile};
+    use netlabcraft_model::services::{FtpUser, WebFile};
     let mut lab = Lab::new();
     let r = lab.add(DeviceKind::Router);
     let s = lab.add(DeviceKind::Switch);
@@ -1981,7 +1981,7 @@ fn ip_address_dhcp_by_typing() {
 #[test]
 fn eigrp_by_typing() {
     let mut lab = Lab::new();
-    let three = packetcraft_model::models::find("Router-3").unwrap();
+    let three = netlabcraft_model::models::find("Router-3").unwrap();
     let r1 = lab.t.add_model(three, None, 0.0, 0.0).unwrap();
     let r2 = lab.t.add_model(three, None, 0.0, 0.0).unwrap();
     let r3 = lab.t.add_model(three, None, 0.0, 0.0).unwrap();
@@ -2677,7 +2677,7 @@ fn qos_mistakes_are_refused() {
     let l2 = lab.add(DeviceKind::Switch);
     lab.run(l2, "en\nconf t\npolicy-map P\nclass class-default\nset dscp af41\nexit\nexit\ninterface vlan 1");
     assert!(lab.try_run(l2, "service-policy input P").contains("`ip routing`"));
-    let s = lab.t.add_model(packetcraft_model::models::find("Switch-ML-24").unwrap(), None, 0.0, 0.0).unwrap();
+    let s = lab.t.add_model(netlabcraft_model::models::find("Switch-ML-24").unwrap(), None, 0.0, 0.0).unwrap();
     lab.run(s, "en\nconf t\npolicy-map P\nclass class-default\nset dscp af41\nexit\nexit\ninterface vlan 1");
     assert!(lab.try_run(s, "service-policy input P").contains("`ip routing`"));
     lab.run(s, "exit\nip routing\ninterface fa0/1");
@@ -2710,7 +2710,7 @@ fn qos_modes_survive_hostile_arguments() {
             ] {
                 let mut lab = Lab::new();
                 let d = if kind == DeviceKind::Switch {
-                    lab.t.add_model(packetcraft_model::models::find("Switch-ML-24").unwrap(), None, 0.0, 0.0).unwrap()
+                    lab.t.add_model(netlabcraft_model::models::find("Switch-ML-24").unwrap(), None, 0.0, 0.0).unwrap()
                 } else {
                     lab.add(kind)
                 };
@@ -2729,7 +2729,7 @@ fn qos_modes_survive_hostile_arguments() {
 // ---- the firewall appliance ----
 
 fn add_firewall(lab: &mut Lab) -> DeviceId {
-    let m = packetcraft_model::models::find("Firewall-5").unwrap();
+    let m = netlabcraft_model::models::find("Firewall-5").unwrap();
     lab.t.add_model(m, None, 0.0, 0.0).unwrap()
 }
 
@@ -3446,7 +3446,7 @@ fn every_firewall_command_survives_hostile_arguments() {
 /// router ids from the addresses.
 fn eigrp_diamond() -> (Lab, [DeviceId; 6], DeviceId) {
     let mut lab = Lab::new();
-    let three = packetcraft_model::models::find("Router-3").unwrap();
+    let three = netlabcraft_model::models::find("Router-3").unwrap();
     let r1 = lab.t.add_model(three, None, 0.0, 0.0).unwrap();
     let r2 = lab.t.add_model(three, None, 0.0, 0.0).unwrap();
     let r3 = lab.t.add_model(three, None, 0.0, 0.0).unwrap();

@@ -1,16 +1,16 @@
 [package]
-name = "packetcraft-sim"
+name = "netlabcraft-sim"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "PacketCraft L3: the discrete-event network simulator (switching, VLANs, ARP, IPv4 routing, ICMP)"
+description = "NetLabCraft L3: the discrete-event network simulator (switching, VLANs, ARP, IPv4 routing, ICMP)"
 
 [lints]
 workspace = true
 
 [dependencies]
-packetcraft-core = { workspace = true }
-packetcraft-wire = { workspace = true }
-packetcraft-model = { workspace = true }
+netlabcraft-core = { workspace = true }
+netlabcraft-wire = { workspace = true }
+netlabcraft-model = { workspace = true }
 thiserror = { workspace = true }

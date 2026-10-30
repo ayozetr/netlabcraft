@@ -3,12 +3,12 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use packetcraft_engine::Session;
-use packetcraft_ui_egui::{PacketApp, UiRequest};
+use netlabcraft_engine::Session;
+use netlabcraft_ui_egui::{PacketApp, UiRequest};
 use wasm_bindgen::JsCast as _;
 
-const CANVAS_ID: &str = "packetcraft_canvas";
-const LOADING_ID: &str = "packetcraft_loading";
+const CANVAS_ID: &str = "netlabcraft_canvas";
+const LOADING_ID: &str = "netlabcraft_loading";
 
 /// Files the picker read, waiting for the next frame: (name, contents, the device a
 /// configuration file is for and whether to merge it).
@@ -18,8 +18,8 @@ type Inbox = Arc<Mutex<Vec<(String, String, Target)>>>;
 #[derive(Clone, Copy)]
 enum Target {
     Lab,
-    Config(packetcraft_engine::DeviceId, bool),
-    WebFile(packetcraft_engine::DeviceId),
+    Config(netlabcraft_engine::DeviceId, bool),
+    WebFile(netlabcraft_engine::DeviceId),
 }
 
 struct WebShell {
@@ -83,7 +83,7 @@ impl eframe::App for WebShell {
                     let inbox = self.inbox.clone();
                     let ctx = ui.ctx().clone();
                     wasm_bindgen_futures::spawn_local(async move {
-                        if let Some(f) = rfd::AsyncFileDialog::new().add_filter("PacketCraft lab", &["pcraft"]).pick_file().await {
+                        if let Some(f) = rfd::AsyncFileDialog::new().add_filter("NetLabCraft lab", &["nlcraft", "pcraft"]).pick_file().await {
                             let bytes = f.read().await;
                             inbox.lock().unwrap_or_else(|e| e.into_inner()).push((
                                 f.file_name(),
@@ -95,7 +95,7 @@ impl eframe::App for WebShell {
                     });
                 }
                 UiRequest::Save { json, path } => {
-                    let name = path.unwrap_or_else(|| "lab.pcraft".into());
+                    let name = path.unwrap_or_else(|| "lab.nlcraft".into());
                     download(&name, json.as_bytes(), "application/json");
                     self.app.saved_to(&name);
                 }
@@ -157,7 +157,7 @@ pub fn start() {
                 options,
                 Box::new(|cc| {
                     if let Some(l) = web_sys::window().and_then(|w| w.navigator().language()) {
-                        packetcraft_ui_egui::i18n::set_lang(packetcraft_ui_egui::i18n::Lang::from_locale(&l));
+                        netlabcraft_ui_egui::i18n::set_lang(netlabcraft_ui_egui::i18n::Lang::from_locale(&l));
                     }
                     let mut session = Session::new();
                     let q = query();
@@ -174,7 +174,7 @@ pub fn start() {
         if let Some(loading) = document.get_element_by_id(LOADING_ID) {
             match result {
                 Ok(()) => loading.remove(),
-                Err(e) => loading.set_inner_html(&format!("PacketCraft could not start: {e:?}")),
+                Err(e) => loading.set_inner_html(&format!("NetLabCraft could not start: {e:?}")),
             }
         }
     });

@@ -5,8 +5,8 @@
 //! for one port) and the cable is up. Hosts don't take part. The advertisement frames are not
 //! drawn in the event list yet.
 
-use packetcraft_core::Ipv4Net;
-use packetcraft_model::{Device, DeviceKind, End, Topology};
+use netlabcraft_core::Ipv4Net;
+use netlabcraft_model::{Device, DeviceKind, End, Topology};
 
 use crate::port_up;
 

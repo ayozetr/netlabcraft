@@ -5,7 +5,7 @@
 
 use std::net::Ipv4Addr;
 
-use packetcraft_core::MacAddr;
+use netlabcraft_core::MacAddr;
 
 use crate::{Result, WireError};
 

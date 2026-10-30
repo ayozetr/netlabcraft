@@ -1,7 +1,7 @@
 //! Interface names and their abbreviations: `GigabitEthernet0/1`, `g0/1`, `gi 0/1`,
 //! `Fa0/1.10`. A name is a type word followed by slot/port numbers and an optional `.sub`.
 
-/// The interface types PacketCraft devices have, with their full spelling.
+/// The interface types NetLabCraft devices have, with their full spelling.
 pub const TYPES: [&str; 6] = ["GigabitEthernet", "FastEthernet", "Ethernet", "Serial", "Wireless", "Internet"];
 
 /// A parsed interface name.

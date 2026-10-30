@@ -1,6 +1,6 @@
 //! LACP (IEEE 802.1AX): the LACPDUs that ports of an EtherChannel exchange to agree on bundling.
 
-use packetcraft_core::MacAddr;
+use netlabcraft_core::MacAddr;
 
 use crate::{Result, WireError, be16};
 

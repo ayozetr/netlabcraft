@@ -215,10 +215,10 @@ mod tests {
 
     #[test]
     fn every_sample_lab_reads_in_spanish() {
-        for s in packetcraft_engine::sample::SAMPLES {
+        for s in netlabcraft_engine::sample::SAMPLES {
             assert!(spanish().contains_key(s.title), "title of {}", s.id);
             assert!(spanish().contains_key(s.description), "description of {}", s.id);
-            let mut session = packetcraft_engine::Session::new();
+            let mut session = netlabcraft_engine::Session::new();
             session.execute("file.new", serde_json::json!({"sample": s.id})).unwrap();
             let t = &session.topology;
             assert!(t.notes.is_empty() || spanish().contains_key(t.notes.as_str()), "notes of {}", s.id);
@@ -260,7 +260,7 @@ mod tests {
         assert_eq!(parse("a\tb\n# c\td\nx\t\n").get("a"), Some(&"b"));
         assert_eq!(parse("one\\ntwo\tuno\\ndos\n").get("one\ntwo"), Some(&"uno\ndos"));
         // Templates keep their parts, in order, and a translation keeps their number.
-        assert_eq!(trf("Opened {}", &[&"lab.pcraft"]), "Opened lab.pcraft");
+        assert_eq!(trf("Opened {}", &[&"lab.nlcraft"]), "Opened lab.nlcraft");
         assert_eq!(trf("{} of {}", &[&1, &2]), "1 of 2");
         assert_eq!(match_template("no route to {}", "no route to 10.0.0.1"), Some(vec!["10.0.0.1".to_string()]));
         assert_eq!(match_template("denied by access list {} ({})", "denied by access list 10 (in)"), Some(vec!["10".into(), "in".into()]));

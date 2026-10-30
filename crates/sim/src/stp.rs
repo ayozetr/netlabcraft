@@ -9,8 +9,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use packetcraft_core::{DeviceId, MacAddr, VlanId};
-use packetcraft_model::{Device, DeviceKind, End, STP_DEFAULT_PRIORITY, Topology};
+use netlabcraft_core::{DeviceId, MacAddr, VlanId};
+use netlabcraft_model::{Device, DeviceKind, End, STP_DEFAULT_PRIORITY, Topology};
 
 use crate::channel::PortMap;
 use crate::port_up;
@@ -298,7 +298,7 @@ pub fn fingerprint(t: &Topology) -> u64 {
             for p in (0..d.ports.len()).filter(|p| crate::is_ap_radio(t, End { device: d.id, port: *p })) {
                 crate::port_up(t, End { device: d.id, port: p }).hash(&mut h);
             }
-            if packetcraft_model::wlan::is_lap(d) {
+            if netlabcraft_model::wlan::is_lap(d) {
                 t.lap_vlans(d.id).hash(&mut h);
             }
         }

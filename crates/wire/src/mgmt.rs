@@ -50,7 +50,7 @@ impl Ntp {
 
 /// A syslog message (RFC 5424 header, facility local7, severity notice).
 pub fn syslog_encode(host: &str, msg: &str) -> Vec<u8> {
-    format!("<189>1 - {host} packetcraft - - - {msg}").into_bytes()
+    format!("<189>1 - {host} netlabcraft - - - {msg}").into_bytes()
 }
 
 /// The (host, message) of a syslog datagram.

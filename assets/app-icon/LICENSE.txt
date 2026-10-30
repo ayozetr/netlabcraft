@@ -1,8 +1,8 @@
-PacketCraft app icon (packetcraft.png and every file derived from it in this directory:
-packetcraft-1024.png, packetcraft-macos-512.png, packetcraft.ico, hicolor/).
+NetLabCraft app icon (netlabcraft.png and every file derived from it in this directory:
+netlabcraft-1024.png, netlabcraft-macos-512.png, netlabcraft.ico, hicolor/).
 
-Artwork supplied by the PacketCraft project owner for this project. Licensed like the rest of
-PacketCraft, under either of
+Artwork supplied by the NetLabCraft project owner for this project. Licensed like the rest of
+NetLabCraft, under either of
 
   * Apache License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
   * MIT license (https://opensource.org/licenses/MIT)

@@ -2,7 +2,7 @@
 //! solids in the blue family network diagrams use; toolbar glyphs are simple line drawings.
 
 use egui::{Color32, Painter, Pos2, Rect, Shape, Stroke, StrokeKind, Vec2, pos2, vec2};
-use packetcraft_model::DeviceKind;
+use netlabcraft_model::DeviceKind;
 
 use crate::theme::{Tokens, device_color, shade};
 
@@ -773,8 +773,8 @@ pub fn glyph(p: &Painter, rect: Rect, g: Glyph, c: Color32) {
 /// a plug at each end, drawn the way the workspace draws that kind (straight-through solid,
 /// cross-over dashed, fiber orange, console light blue and dashed, serial red with a zigzag and
 /// a clock at the DCE end); the automatic cable carries a small spark.
-pub fn cable(p: &Painter, rect: Rect, kind: packetcraft_model::cable::Cable, tk: &Tokens) {
-    use packetcraft_model::cable::Cable;
+pub fn cable(p: &Painter, rect: Rect, kind: netlabcraft_model::cable::Cable, tk: &Tokens) {
+    use netlabcraft_model::cable::Cable;
     let r = rect.shrink(rect.width() * 0.12);
     let (w, h) = (r.width(), r.height());
     let a = pos2(r.left() + w * 0.08, r.bottom() - h * 0.08);

@@ -280,7 +280,7 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
     let mut open = true;
     let mut run: Vec<(&'static str, Value)> = Vec::new();
     let v = &mut app.ui.activity;
-    if activity.as_ref().is_some_and(packetcraft_model::activity::Activity::locked) {
+    if activity.as_ref().is_some_and(netlabcraft_model::activity::Activity::locked) {
         egui::Window::new(tl("Activity Wizard")).open(&mut open).default_size([360.0, 120.0]).show(ctx, |ui| {
             ui.label(tl("This activity is locked. The instructor's password unlocks it."));
             ui.horizontal(|ui| {
@@ -321,7 +321,7 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
             ui.horizontal(|ui| {
                 let mut minutes = a.time_limit;
                 let l = ui.label(tl("Time limit (minutes, 0: none)"));
-                if ui.add(egui::DragValue::new(&mut minutes).range(0..=packetcraft_model::activity::MAX_TIME_LIMIT)).labelled_by(l.id).changed() {
+                if ui.add(egui::DragValue::new(&mut minutes).range(0..=netlabcraft_model::activity::MAX_TIME_LIMIT)).labelled_by(l.id).changed() {
                     run.push(("activity.set", json!({"time_limit": minutes})));
                 }
                 let mut score_only = a.score_only;
@@ -399,7 +399,7 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
         ui.label(
             RichText::new(crate::i18n::trf(
                 "{} checks, {} points",
-                &[&checks.len(), &activity.as_ref().map_or(0, packetcraft_model::activity::Activity::total_points)],
+                &[&checks.len(), &activity.as_ref().map_or(0, netlabcraft_model::activity::Activity::total_points)],
             ))
             .strong(),
         );

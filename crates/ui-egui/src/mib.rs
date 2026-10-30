@@ -6,9 +6,9 @@ use serde_json::json;
 
 use crate::PacketApp;
 use crate::i18n::tl;
-use packetcraft_model::Device;
+use netlabcraft_model::Device;
 
-/// Objects every PacketCraft agent serves, by name.
+/// Objects every NetLabCraft agent serves, by name.
 const NAMED: [(&str, &str); 8] = [
     ("sysDescr", "1.3.6.1.2.1.1.1.0"),
     ("sysUpTime", "1.3.6.1.2.1.1.3.0"),

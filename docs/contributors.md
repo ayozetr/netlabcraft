@@ -2,7 +2,7 @@
 
 > **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** major (About ▸ Contributors shipped; `cargo xtask contributors`)
 
-PacketCraft follows the storytold craftrules contributor standard
+NetLabCraft follows the storytold craftrules contributor standard
 ([`standards/contributors.md`](https://github.com/storytold/craftrules/blob/main/standards/contributors.md)).
 This page is the local copy of the decision.
 
@@ -32,7 +32,7 @@ sync_github_name = true        # or: use the name on your public GitHub profile
 
 To remove your names, delete your entry in a pull request.
 
-## In PacketCraft
+## In NetLabCraft
 
 - **Help ▸ About ▸ Contributors** lists everyone, like the other Craft apps: show usernames,
   display names or real names (names fall back to `@username`), sort by name, merged PRs,
@@ -49,7 +49,7 @@ To remove your names, delete your entry in a pull request.
   - `cargo xtask contributors --check` fails when the committed file is stale. It is not part of
     `cargo xtask ci` (every commit changes the numbers): refresh it before each release
     ([`releasing.md`](releasing.md)).
-- There is no AI-models tab: PacketCraft's history carries no model trailers to count.
+- There is no AI-models tab: NetLabCraft's history carries no model trailers to count.
 
 ## Revision history
 

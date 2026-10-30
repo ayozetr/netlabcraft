@@ -2,8 +2,8 @@
 //! lightweight access point joins. Every change goes through engine commands.
 
 use egui::RichText;
-use packetcraft_model::Device;
-use packetcraft_model::wlan::{WlanSecurity, is_wlc, lap_channel, mgmt_addr};
+use netlabcraft_model::Device;
+use netlabcraft_model::wlan::{WlanSecurity, is_wlc, lap_channel, mgmt_addr};
 use serde_json::json;
 
 use crate::PacketApp;

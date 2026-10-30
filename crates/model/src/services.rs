@@ -155,7 +155,7 @@ impl Services {
                 files: vec![
                     WebFile {
                         name: "index.html".into(),
-                        content: "<html>\n<body>\n<h1>PacketCraft web server</h1>\n<p>This page comes from a simulated server, over simulated TCP.</p>\n<p><a href=\"about.html\">About this server</a></p>\n</body>\n</html>\n".into(),
+                        content: "<html>\n<body>\n<h1>NetLabCraft web server</h1>\n<p>This page comes from a simulated server, over simulated TCP.</p>\n<p><a href=\"about.html\">About this server</a></p>\n</body>\n</html>\n".into(),
                     },
                     WebFile {
                         name: "about.html".into(),

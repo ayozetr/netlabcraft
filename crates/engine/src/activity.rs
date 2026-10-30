@@ -1,11 +1,11 @@
 //! Activities: checking a lab against its expected results, and capturing those results from a
 //! finished lab.
 
-use packetcraft_core::{DeviceId, Ipv4Net};
-use packetcraft_ios::Cli;
-use packetcraft_model::activity::{Check, CheckKind, flatten, line_hash, normalize};
-use packetcraft_model::{Device, DeviceKind, Topology};
-use packetcraft_sim::{PingOptions, Probe, Sim};
+use netlabcraft_core::{DeviceId, Ipv4Net};
+use netlabcraft_ios::Cli;
+use netlabcraft_model::activity::{Check, CheckKind, flatten, line_hash, normalize};
+use netlabcraft_model::{Device, DeviceKind, Topology};
+use netlabcraft_sim::{PingOptions, Probe, Sim};
 
 /// One check's outcome.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,8 +62,8 @@ fn answer_lines(d: &Device) -> Vec<String> {
     let mut fresh = Device::of_model(d.id, d.catalogue_model(), d.name.clone(), d.x, d.y);
     // The hostname counts as an answer: a fresh device here has none.
     fresh.name = String::new();
-    let base = flatten(&packetcraft_ios::running_config(&fresh));
-    flatten(&packetcraft_ios::running_config(d))
+    let base = flatten(&netlabcraft_ios::running_config(&fresh));
+    flatten(&netlabcraft_ios::running_config(d))
         .into_iter()
         .filter(|l| !base.contains(l))
         // A block header alone says nothing; its lines carry the answers.
@@ -116,7 +116,7 @@ pub fn capture(t: &Topology, hidden: bool, salt: &str) -> Vec<Check> {
 pub fn evaluate(t: &Topology, sim: &Sim, checks: &[Check], salt: &str, hidden: bool) -> Vec<CheckResult> {
     let mut configs: std::collections::BTreeMap<DeviceId, Vec<String>> = std::collections::BTreeMap::new();
     let mut lines = |d: DeviceId| -> Vec<String> {
-        configs.entry(d).or_insert_with(|| t.device(d).map(|x| flatten(&packetcraft_ios::running_config(x))).unwrap_or_default()).clone()
+        configs.entry(d).or_insert_with(|| t.device(d).map(|x| flatten(&netlabcraft_ios::running_config(x))).unwrap_or_default()).clone()
     };
     let mut scratch = sim.clone();
     checks
@@ -160,8 +160,8 @@ pub fn evaluate(t: &Topology, sim: &Sim, checks: &[Check], salt: &str, hidden: b
                 CheckKind::Output { device, command, contains } => {
                     let mut tt = t.clone();
                     // Privileged mode, past any password, as the instructor means it.
-                    let mut cli = Cli { mode: packetcraft_ios::Mode::Exec, logged_in: true, ..Cli::default() };
-                    let out = packetcraft_ios::execute(&mut tt, &mut scratch, *device, &mut cli, command).output;
+                    let mut cli = Cli { mode: netlabcraft_ios::Mode::Exec, logged_in: true, ..Cli::default() };
+                    let out = netlabcraft_ios::execute(&mut tt, &mut scratch, *device, &mut cli, command).output;
                     (out.to_lowercase().contains(&contains.to_lowercase()), format!("contains \"{contains}\""), clip(&out))
                 }
             };

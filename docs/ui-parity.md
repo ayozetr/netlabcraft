@@ -7,7 +7,7 @@ The window, element by element, against the reference app. Part of
 `plan/packet-tracer/observed-ui.md`); artwork and wording are ours. **Workspace and windows:
 ~63% ready, 40–60 h; Simulation mode: ~55% ready, 30–45 h** (estimated).
 
-| Element | Reference app | PacketCraft |
+| Element | Reference app | NetLabCraft |
 |---|---|---|
 | Menu bar | File, Edit, Options, View, Tools, Extensions, Window, Help | same menus, our items; File ▸ Open Recent on the desktop; File ▸ Print… makes an A4 PDF of the workspace and opens it in the system's PDF viewer to print (the web build downloads it); the web build asks before closing a tab with unsaved changes |
 | Main toolbar | file, print, info, copy/paste, undo/redo, zoom, palette… ; help at right | new, open, save, network information, copy/paste devices, undo, redo, zoom in/reset/out, capture export; help at right |

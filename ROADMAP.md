@@ -1,10 +1,10 @@
-# PacketCraft roadmap
+# NetLabCraft roadmap
 
 **Stage: pre-alpha** · next: alpha, ~25–45 agent-hours away
 
 > **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** major (rewritten in the shared roadmap format) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
-PacketCraft aims at Cisco Packet Tracer parity for teaching and lab work, and at being better
+NetLabCraft aims at Cisco Packet Tracer parity for teaching and lab work, and at being better
 in places: real frames you can open in any packet analyser, an open lab format, agent control
 (MCP and CLI), and the browser. This page is the summary. The detail is in:
 
@@ -28,7 +28,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Engine commands | 94 | measured: `crates/engine/src/catalog.rs` |
 | Console grammar entries | 636 across 26 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
 | Device models · sample labs | 28 · 23 | measured |
-| Tests | 300 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Tests | 301 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~550–880 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
@@ -55,11 +55,12 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Workspace and windows | 10 | 78% | 18–30 | Reference-app arrangement, device tabs, notes, shapes, freehand and polygon drawings, nested clusters, printing, the physical view with places and cable lengths |
 | Teaching | 8 | 80% | 15–25 | Activities with checks, points, sections, hints, hidden answers, values per student, a time limit, a password lock, a wizard and a side-by-side comparison with the answer; Spanish interface |
 | Device families | 5 | 60% | 30–50 | 27 models of our own: modular routers with cards and power, a stateful firewall, IP phones with call control, IoT sensors and devices |
-| Files | — | — | — | Own open `.pcraft` JSON; no `.pkt` (out of scope: [decisions.md](docs/decisions.md)) |
+| Files | — | — | — | Own open `.nlcraft` JSON; no `.pkt` (out of scope: [decisions.md](docs/decisions.md)) |
 | Platforms and agents | — | — | — | Linux, Windows, macOS, BSD, web; MCP server and CLI over the full command catalog |
 
 ## Progress log
 
+- **2026-10-30 — New name: NetLabCraft.** The project, its programs and its lab files (`.nlcraft`) take the new name; labs saved before (`.pcraft`) still open.
 - **2026-10-30 — Cable types.** Connections offers automatic, straight-through, cross-over, fiber, console and serial DCE/DTE cables; a wrong copper cable leaves the link down and says why; fiber uplinks and a fiber card; a console cable and the PC's Terminal app open a device's CLI with no IP. The device box shows every model in wrapping rows with names on two lines.
 - **2026-10-30 — Modular routers, IP phones and IoT.** Modular routers take serial and Gigabit cards in their bays while switched off (a Physical tab with a power switch); IP phones on voice VLANs register with call control on a router and call each other; smart sensors and devices report to an IoT server that runs simple rules; three new sample labs.
 - **2026-10-30 — Routing and VPN depth.** EIGRP balances over equal and unequal-cost paths, drops silent neighbours after their hold time and sends updates, queries and replies on the wire; OSPF equal-cost paths; GRE tunnels over learned routes; IKE main and quick mode on the wire before ESP; QoS output queues on congested links.
@@ -88,7 +89,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 - **2026-10-30 — CCNA 1 lab commands.** Output filters (`show running-config | include …`, `section`, `begin`), `security passwords min-length`, `login block-for`, `username … privilege 15`, `speed`/`duplex`/`mdix auto` (a speed mismatch takes the link down), `delete vlan.dat`, and many more `show` commands; VLANs now live in the VLAN database as on real switches.
 - **2026-10-30 — Home wireless router.** A Home-Router model: Internet port, four LAN ports and Wi-Fi, handing out addresses and translating to the Internet out of the box, with a Home Router settings page; multilayer switches also do NAT, DHCP server and ACLs.
 - **2026-10-30 — Sample labs in Spanish.** The sample labs' titles, descriptions and notes, the sample activity and the status messages built from parts read in Spanish too.
-- **2026-10-30 — App icon and Linux install.** PacketCraft has its own icon (window, menu, web tab) and `packaging/linux/install.sh` puts it in the desktop menu with `.pcraft` files opening in it.
+- **2026-10-30 — App icon and Linux install.** NetLabCraft has its own icon (window, menu, web tab) and `packaging/linux/install.sh` puts it in the desktop menu with `.nlcraft` files opening in it.
 - **2026-10-30 — More debugs.** `debug ip packet`, `debug ip nat` and `debug ip dhcp server events` report what the router routes, translates and hands out.
 - **2026-10-30 — FTP.** Servers have an FTP service with accounts and permissions; PCs have an `ftp` client (`put`, `get`, `dir`, `delete`) and `dir` for their own files; routers copy configurations with `copy running-config ftp:`. Simulation mode shows the control and data connections.
 - **2026-10-30 — AAA with RADIUS.** Routers and switches check remote logins against a RADIUS server (`aaa new-model`, `aaa authentication login default group radius local`, `radius-server host`); the Server has an AAA service with clients and users; Simulation mode shows the Access-Request and its answer.

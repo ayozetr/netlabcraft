@@ -6,9 +6,9 @@
 use std::collections::BTreeMap;
 
 use egui::{Align2, FontId, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2, pos2, vec2};
-use packetcraft_core::DeviceId;
-use packetcraft_model::End;
-use packetcraft_model::physical::{Place, PlaceKind};
+use netlabcraft_core::DeviceId;
+use netlabcraft_model::End;
+use netlabcraft_model::physical::{Place, PlaceKind};
 use serde_json::{Value, json};
 
 use crate::i18n::{tl, tr, trf};
@@ -137,7 +137,7 @@ fn runs(app: &PacketApp, view: &View) -> Vec<Run> {
     let mut exits: Vec<(Node, String, (End, u32, bool))> = Vec::new();
     for l in &t.links {
         let len = t.cable_length(l);
-        let cable = (l.a, len.meters, packetcraft_sim::cable_problem(t, l.a).is_some());
+        let cable = (l.a, len.meters, netlabcraft_sim::cable_problem(t, l.a).is_some());
         match (view.shown.get(&l.a.device), view.shown.get(&l.b.device)) {
             (Some(na), Some(nb)) if na != nb => {
                 let key = if na <= nb { (*na, *nb) } else { (*nb, *na) };
@@ -528,7 +528,7 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target) {
             };
             let len = t.cable_length(&l);
             ui.label(egui::RichText::new(format!("{} - {}: {}", t.end_label(l.a), t.end_label(l.b), length_text(len.meters))).strong());
-            if let Some(why) = packetcraft_sim::cable_problem(t, l.a) {
+            if let Some(why) = netlabcraft_sim::cable_problem(t, l.a) {
                 ui.label(egui::RichText::new(crate::i18n::tr_any(&why)).color(theme::tokens(app.ui.dark).error));
             }
             if ui.button(tl("Cable Length…")).clicked() {
