@@ -203,3 +203,27 @@ fn port_security_writes_sticky_addresses_and_err_disabled_into_the_lab() {
     s2.execute("file.open", json!({"json": saved["json"]})).unwrap();
     assert_eq!(s2.topology, s.topology);
 }
+
+#[test]
+fn control_traffic_shows_in_the_event_list() {
+    use packetcraft_wire::Protocol;
+    for (sample, proto, secs, text) in [
+        ("stp", Protocol::Stp, 3, "STP BPDU from"),
+        ("ospf", Protocol::Ospf, 11, "(1 neighbour)"),
+        ("rip", Protocol::Rip, 31, "RIPv2 update from"),
+        ("vlans", Protocol::Stp, 3, "[VLAN"),
+    ] {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"sample": sample})).unwrap();
+        s.execute("sim.advance", json!({"seconds": secs})).unwrap();
+        let ev: Vec<_> = s.sim.trace().iter().filter(|e| e.protocol == proto).collect();
+        assert!(ev.iter().any(|e| e.summary.contains(text)), "{sample}: {:?}", ev.iter().map(|e| &e.summary).collect::<Vec<_>>());
+        let dropped: Vec<_> = ev.iter().filter_map(|e| e.dropped.as_ref().map(|d| format!("{}: {d}", e.summary))).collect();
+        assert!(dropped.is_empty(), "{sample}: {dropped:?}");
+    }
+    // The capture holds them too.
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "rip"})).unwrap();
+    s.execute("sim.advance", json!({"seconds": 31})).unwrap();
+    assert!(s.execute("file.export_pcap", json!({})).unwrap()["bytes"].as_u64().unwrap() > 200);
+}

@@ -45,7 +45,8 @@ L6 depends on a UI toolkit.
   it); with IPv6 everyone holds the packet until neighbour discovery answers.
 - **Computed protocols.** Spanning tree, EtherChannel negotiation, OSPF, RIP and VTP are computed
   from the topology the way the protocols converge, cached by a fingerprint of what they depend
-  on, and recomputed when it changes. Their hello/update frames are not drawn yet.
+  on, and recomputed when it changes. `control.rs` puts what they say on the wire at their
+  usual intervals (BPDUs, OSPF hellos, RIP updates) for Simulation mode and captures.
 - **Ping/traceroute** send echo requests and run the event loop until the answer arrives or the
   timeout passes; DHCP, DNS, HTTP and Telnet/SSH do the same with their own exchanges.
 

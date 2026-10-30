@@ -30,10 +30,10 @@ PacketCraft is **alpha** when a student can do the CCNA 1 labs in it without fal
 the reference app:
 
 1. Every command of the CCNA 1 labs is accepted, with output in our own wording (gap 2): 10–20 h left (CDP, clock, flash and interface views done).
-2. Simulation mode shows the frames those labs talk about, BPDUs and CDP included (gap 3): 15–25 h.
+2. Simulation mode shows the frames those labs talk about (gap 3): BPDUs, OSPF hellos and RIP updates done; what is left is optional for CCNA 1.
 3. A packaged build exists for Linux, Windows and macOS (gap 13): 14–24 h.
 
-**Total to alpha: ~30–55 h** (estimated; items 1 and 2 run in parallel).
+**Total to alpha: ~25–45 h** (estimated; items 1 and 2 run in parallel).
 
 ## Beta gates
 

@@ -24,6 +24,7 @@ use packetcraft_wire::{Arp, ArpOp, ETHERTYPE_ARP, ETHERTYPE_IPV4, Frame, Icmp, I
 
 pub mod cdp;
 pub mod channel;
+pub mod control;
 pub mod ospf;
 pub mod rip;
 pub mod stp;
@@ -558,6 +559,8 @@ pub struct Sim {
     ospf: Option<ospf::OspfState>,
     rip_for: u64,
     rip: Option<rip::RipState>,
+    /// Control frames (BPDUs, hellos, updates) are queued up to this time.
+    ctl_until: u64,
     /// Lab changes waiting for the engine.
     events: Vec<PortEvent>,
 }
@@ -685,6 +688,7 @@ impl Sim {
     fn advance(&mut self, t: &Topology, deadline: u64, mut stop: impl FnMut(&Sim) -> bool) -> bool {
         self.storm = false;
         self.refresh_stp(t);
+        self.schedule_control(t, deadline);
         let mut count = 0usize;
         while let Some(Reverse(top)) = self.queue.peek() {
             if top.at > deadline {
@@ -1049,6 +1053,10 @@ impl Sim {
             self.storm = true;
             return Err(format!("switching loop: the frame crossed {MAX_SWITCH_HOPS} switches (no spanning tree)"));
         }
+        // Spanning tree takes its BPDUs (the tree itself is computed).
+        if f.dst == packetcraft_wire::control::STP_GROUP {
+            return Ok(());
+        }
         let sp = &d.ports.get(in_port).ok_or("no port")?.switchport;
         let vlan = match sp.mode {
             SwitchportMode::Access => {
@@ -1186,6 +1194,10 @@ impl Sim {
         if f.ethertype == packetcraft_wire::ipv6::ETHERTYPE_IPV6 {
             return self.ip6_in(t, d, in_port, &f);
         }
+        // Routers and hosts ignore spanning-tree BPDUs.
+        if f.dst == packetcraft_wire::control::STP_GROUP {
+            return Ok(());
+        }
         // A host waiting for DHCP takes answers before it has an address.
         if d.kind.is_host()
             && self.state.get(&d.id).is_some_and(|s| s.dhcp_xid.is_some())
@@ -1198,7 +1210,9 @@ impl Sim {
             Some(v) => format!("no subinterface for VLAN {v}"),
             None => "the interface has no IP address".to_string(),
         })?;
-        if f.dst != ifc.mac && !f.dst.is_broadcast() {
+        // Unicast to us, broadcast, or an IPv4 multicast group (the IP layer decides on those).
+        let ipv4_group = f.dst.is_group() && f.dst.0[..3] == [0x01, 0x00, 0x5e] && f.ethertype == ETHERTYPE_IPV4;
+        if f.dst != ifc.mac && !f.dst.is_broadcast() && !ipv4_group {
             return Err("not addressed to this device".into());
         }
         match f.ethertype {
@@ -1253,6 +1267,21 @@ impl Sim {
 
     fn ip_in(&mut self, t: &Topology, d: &Device, ifc: &L3If, payload: &[u8]) -> Result<(), String> {
         let mut ip = Ipv4::decode(payload).map_err(|e| e.to_string())?;
+        // Routing-protocol messages to the link's routers (OSPF, RIP); hosts ignore them.
+        let rip =
+            ip.protocol == PROTO_UDP && Udp::decode(&ip.payload, ip.src, ip.dst).is_ok_and(|u| u.dst_port == packetcraft_wire::control::RIP_PORT);
+        if (ip.dst.octets()[..3] == [224, 0, 0]) || (rip && ip.dst == Ipv4Addr::BROADCAST) {
+            if d.kind.is_host() {
+                return Ok(());
+            }
+            return match (ip.protocol, rip) {
+                (packetcraft_wire::control::PROTO_OSPF, _) if d.ospf.is_some() => Ok(()),
+                (packetcraft_wire::control::PROTO_OSPF, _) => Err("OSPF is not running here".into()),
+                (_, true) if d.rip.is_some() => Ok(()),
+                (_, true) => Err("RIP is not running here".into()),
+                _ => Err(format!("not listening to {}", ip.dst)),
+            };
+        }
         let mut from_outside = false;
         if d.kind == DeviceKind::Router {
             self.acl_check(t, d, ifc, &ip, payload, true)?;

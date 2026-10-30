@@ -1,6 +1,6 @@
 # PacketCraft roadmap
 
-**Stage: pre-alpha** · next: alpha, ~30–55 agent-hours away
+**Stage: pre-alpha** · next: alpha, ~25–45 agent-hours away
 
 > **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** major (rewritten in the shared roadmap format) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
@@ -20,7 +20,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 | Number | Value | Kind |
 |---|---|---|
-| **Ready for real work** (weighted) | **~52%** | estimated from written weights (51.9); [target-app-parity.md](docs/target-app-parity.md) |
+| **Ready for real work** (weighted) | **~53%** | estimated from written weights (52.7); [target-app-parity.md](docs/target-app-parity.md) |
 | **CCNA 1 student** | **~74%** | estimated; [method](docs/target-app-parity.md#audiences) |
 | **CCNA 2 student** | **~58%** | estimated |
 | **CCNA 3 student** | **~45%** | estimated |
@@ -28,8 +28,8 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Engine commands | 40 | measured: `crates/engine/src/catalog.rs` |
 | Console grammar entries | 225 across 12 modes | measured: `crates/ios/src/grammar.rs` |
 | Device models · sample labs | 13 · 15 | measured |
-| Tests | 113 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
-| Remaining to **alpha** | **~30–55 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
+| Tests | 117 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~600–950 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
 
@@ -51,7 +51,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Services | 8 | 40% | 40–60 | DHCP, DNS, HTTP with browser, Telnet/SSH; no FTP, email, NTP, syslog, AAA |
 | Security | 8 | 60% | 35–55 | ACLs, NAT/PAT, passwords and lines; no PPP authentication or IPv6 ACLs |
 | WAN, cabling, wireless | 6 | 35% | 60–90 | Copper (auto-MDIX) and serial (DCE/DTE, HDLC/PPP); no wireless or fibre |
-| Simulation mode | 8 | 55% | 30–45 | Event list, replay, decode, drop reasons, pcap; no protocol hellos or complex PDUs |
+| Simulation mode | 8 | 65% | 22–35 | Event list, replay, decode, drop reasons, pcap; BPDUs, OSPF hellos, RIP updates; no complex PDUs |
 | Workspace and windows | 10 | 55% | 60–90 | Reference-app arrangement, device tabs, notes and drawings; no physical view or clusters |
 | Teaching | 8 | 5% | 120–200 | Sample labs with notes; no activities or translations |
 | Device families | 5 | 25% | 80–120 | 13 generic models; no modules, ASA, IoT |
@@ -60,6 +60,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-10-30 — Protocol frames in Simulation mode.** Switches send spanning-tree BPDUs every 2 s (tagged per VLAN on trunks), OSPF routers hellos every 10 s with their neighbours, DR and BDR, RIP routers updates every 30 s with split horizon; new STP, OSPF and RIP filters and colours; captures include them.
 - **2026-10-30 — Everyday console commands.** Neighbour discovery (`cdp run`, `cdp enable`, `show cdp neighbors [detail]`); `clock set` and `show clock`; `show flash`/`dir flash:`, `show users`, `terminal length`; `show ip interface`, `show interfaces status`, `show interfaces X switchport`, `show running-config interface X`; a fuller `show version`.
 - **2026-10-30 — Documentation in the shared Craft format.** README with screenshots; parity assessment with written weights, audiences per CCNA course and labelled estimates; ranked gaps with hours; milestones with alpha and beta gates; new protocol, hardware and localization checklists; contributors and releasing pages; a review line and revision history on every page.
 - **2026-10-29 — Serial WAN links.** A Router-WAN model with serial ports; serial cables whose first end is the DCE; `clock rate`, `encapsulation hdlc|ppp`, line protocol down without a clock or with mismatched framing; `show controllers`; HDLC/PPP frames on the wire (listed and captured as Ethernet II); red serial cables with a clock at the DCE end; serial-wan sample lab.

@@ -15,7 +15,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 |---|---|---|---|
 | 1 | **Activities and scoring:** a lab carries expected results (pings that must succeed, configuration lines that must exist) and shows a score; an instructions panel | Instructors, every graded lab | 60–100 h |
 | 2 | **Console coverage:** `debug` basics, `show processes/memory/logging`, LLDP, `show ip ospf interface`; going through the CCNA 1 labs command by command | CCNA 1 from the first lab | 10–20 h |
-| 3 | **Protocol frames in Simulation mode:** BPDUs, OSPF hellos/LSAs, RIP updates, LACP, CDP in the event list | CCNA 1–3 students watching Simulation mode | 15–25 h |
+| 3 | **More protocol frames in Simulation mode:** OSPF database exchange (DBD/LSR/LSU), LACP, LLDP; BPDUs, OSPF hellos and RIP updates are done | CCNA 2–3 students watching Simulation mode | 8–14 h |
 | 4 | **Wireless LANs:** access points, wireless routers, laptop wireless cards, SSID and WPA2, association | CCNA 2 | 40–60 h |
 | 5 | **HSRP** | CCNA 2 | 12–18 h |
 | 6 | **DTP** (`switchport mode dynamic`, `nonegotiate`) and RSTP timers | CCNA 2 | 10–16 h |
@@ -35,6 +35,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Gap 3 narrowed: BPDUs, OSPF hellos and RIP updates in the event list and captures. |
 | 2026-10-30 | minor | Gap 2 narrowed: CDP, clock, flash, users, terminal, `show ip interface`, `show interfaces status/switchport`, `show running-config interface`, richer `show version` done. |
 | 2026-10-30 | major | Rewritten as a ranked table of open gaps with estimates; finished items moved here. |
 | 2026-10-29 | minor | Done: serial WAN links (Router-WAN, DCE/DTE, clock rate, HDLC/PPP, `show controllers`). |

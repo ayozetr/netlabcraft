@@ -302,7 +302,8 @@ fn hostile_frames_are_dropped_not_fatal() {
         }
     }
     sim.settle(&t);
-    assert!(sim.trace().iter().all(|e| e.dropped.is_some() || e.to.device == s));
+    // (Spanning-tree BPDUs from the switch are taken in quietly; everything else was garbage.)
+    assert!(sim.trace().iter().all(|e| e.dropped.is_some() || e.to.device == s || e.protocol == packetcraft_wire::Protocol::Stp));
 }
 
 #[test]

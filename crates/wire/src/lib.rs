@@ -12,6 +12,7 @@ use std::net::Ipv4Addr;
 
 use packetcraft_core::MacAddr;
 
+pub mod control;
 pub mod dhcp;
 pub mod dns;
 pub mod ipv6;
@@ -405,6 +406,10 @@ pub enum Protocol {
     Tcp,
     Udp,
     Ipv4,
+    /// Spanning-tree BPDUs.
+    Stp,
+    Ospf,
+    Rip,
     Icmpv6,
     /// IPv6 neighbour discovery (neighbour and router solicitations and advertisements).
     Ndp,
@@ -423,6 +428,9 @@ impl Protocol {
             Protocol::Tcp => "TCP",
             Protocol::Udp => "UDP",
             Protocol::Ipv4 => "IPv4",
+            Protocol::Stp => "STP",
+            Protocol::Ospf => "OSPF",
+            Protocol::Rip => "RIP",
             Protocol::Icmpv6 => "ICMPv6",
             Protocol::Ndp => "NDP",
             Protocol::Ipv6 => "IPv6",
@@ -455,7 +463,26 @@ pub fn summarize(bytes: &[u8]) -> (Protocol, String) {
                         };
                         (Protocol::Icmp, format!("ICMP {what} {route} ttl {}{tag}", ip.ttl))
                     }
+                    control::PROTO_OSPF => match control::OspfHello::decode(&ip.payload) {
+                        Ok(h) => (
+                            Protocol::Ospf,
+                            format!(
+                                "OSPF hello from router {} ({} neighbour{}) {route}{tag}",
+                                h.router_id,
+                                h.neighbors.len(),
+                                if h.neighbors.len() == 1 { "" } else { "s" }
+                            ),
+                        ),
+                        Err(e) => (Protocol::Ospf, format!("OSPF ({e}) {route}{tag}")),
+                    },
                     PROTO_UDP => match Udp::decode(&ip.payload, ip.src, ip.dst) {
+                        Ok(u) if u.dst_port == control::RIP_PORT => match control::rip_decode(&u.payload) {
+                            Ok((v, entries)) => (
+                                Protocol::Rip,
+                                format!("RIPv{v} update from {}: {} route{}{tag}", ip.src, entries.len(), if entries.len() == 1 { "" } else { "s" }),
+                            ),
+                            Err(e) => (Protocol::Rip, format!("RIP ({e}){tag}")),
+                        },
                         Ok(u) if u.dst_port == dhcp::SERVER_PORT || u.dst_port == dhcp::CLIENT_PORT => match dhcp::Dhcp::decode(&u.payload) {
                             Ok(d) => (
                                 Protocol::Dhcp,
@@ -506,6 +533,10 @@ pub fn summarize(bytes: &[u8]) -> (Protocol, String) {
                 (proto, format!("{text}{tag}"))
             }
             Err(e) => (Protocol::Ipv6, format!("IPv6 ({e}){tag}")),
+        },
+        len if len <= 1_500 && f.payload.starts_with(&[0x42, 0x42, 0x03]) => match control::Bpdu::decode(&f.payload) {
+            Ok(b) => (Protocol::Stp, format!("STP BPDU from {}: root {}, cost {}{tag}", b.bridge, b.root, b.root_cost)),
+            Err(e) => (Protocol::Stp, format!("STP ({e}){tag}")),
         },
         other => (Protocol::Other, format!("ethertype 0x{other:04x}{tag}")),
     }

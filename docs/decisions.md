@@ -22,6 +22,7 @@ Choices that shape PacketCraft, newest last within each date, with the reason fo
 - **2026-10-29 — One copper cable, auto-MDIX.** No straight-through/crossover mismatch errors; a serial cable is chosen when both ports are serial, and the end cabled first is the DCE (like the reference app's DCE cable).
 - **2026-10-29 — Serial frames are captured as Ethernet II.** The wire carries HDLC or PPP; the event list and pcap show the equivalent Ethernet II frame, marked with its framing, because a pcap file has one link type.
 - **2026-10-29 — Multilayer switching is a model, not a mode.** `ip routing` and routed ports are only accepted on the Switch-ML-24 model; other switches say why.
+- **2026-10-30 — Control frames show what the computed protocols say.** BPDUs (every 2 s), OSPF hellos (10 s) and RIP updates (30 s) go on the wire in their standard formats so Simulation mode and captures have them; receivers take them in quietly and the protocols stay computed. CDP frames are left out because their format isn't published as a standard.
 - **2026-10-30 — Documentation follows the shared Craft format**: every page carries a review line and a revision history; parity is assessed with written weights and labelled estimates.
 
 ## Revision history
