@@ -655,6 +655,24 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `ip arp inspection limit rate <1-2048>` | interface | switch | Most ARP messages a second; more err-disables the port |
 | `no ip arp inspection limit rate` | interface | switch | No ARP rate limit on this port |
 | `show ip arp inspection` | user, privileged | switch | ARP inspection settings and counts |
+| `spanning-tree portfast default` | config | switch | Every access port is an edge port |
+| `no spanning-tree portfast default` | config | switch | Edge ports only where set |
+| `spanning-tree portfast bpduguard default` | config | switch | BPDU guard on every edge port |
+| `no spanning-tree portfast bpduguard default` | config | switch | No BPDU guard unless set on the port |
+| `spanning-tree bpduguard {enable\|disable}` | interface | switch | Err-disable the port when a BPDU arrives |
+| `no spanning-tree bpduguard` | interface | switch | BPDU guard as the switch default says |
+| `spanning-tree link-type {point-to-point\|shared}` | interface | switch | What the port is cabled to |
+| `no spanning-tree link-type` | interface | switch | Link type from the duplex |
+| `errdisable recovery cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|all}` | config | switch | Bring ports shut for this reason back by themselves |
+| `no errdisable recovery cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|all}` | config | switch | Ports shut for this reason wait for shutdown / no shutdown |
+| `errdisable recovery interval <30-86400>` | config | switch | Seconds before an err-disabled port comes back |
+| `no errdisable recovery interval` | config | switch | Back to 300 seconds |
+| `show interfaces status err-disabled` | user, privileged | switch | Err-disabled ports and why |
+| `show errdisable recovery` | user, privileged | switch | Which causes recover by themselves, and when |
+| `switchport port-security aging time <0-1440>` | interface | switch | Minutes before a learned address is forgotten |
+| `no switchport port-security aging time` | interface | switch | Learned addresses never age |
+| `switchport port-security aging type {absolute\|inactivity}` | interface | switch | Age from learning, or from the last frame |
+| `no switchport port-security aging type` | interface | switch | Age from learning (absolute) |
 | `show spanning-tree` | user, privileged | switch | Spanning trees of every VLAN |
 | `show spanning-tree vlan <1-4094>` | user, privileged | switch | One VLAN's spanning tree |
 | `nameif NAME` | interface, subinterface | firewall | Name the interface (rules, routes and NAT refer to it by this name) |

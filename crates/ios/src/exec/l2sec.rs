@@ -6,7 +6,7 @@
 use std::fmt::Write as _;
 
 use netlabcraft_core::VlanSet;
-use netlabcraft_model::l2sec::{ArpValidate, ERRDISABLE_INTERVAL, ErrCause, LoadBalance, PortL2, vlan_list};
+use netlabcraft_model::l2sec::{ArpValidate, ERRDISABLE_INTERVAL, ErrCause, LinkType, LoadBalance, PortL2, vlan_list};
 use netlabcraft_model::{Device, DeviceKind, ifname};
 use netlabcraft_sim::Sim;
 
@@ -133,6 +133,104 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             })
         }
         L2ShowDai => Ok(show_dai(c.sim, c.d()?)),
+        // ---- spanning-tree edge protection ----
+        L2PortfastDefault | L2NoPortfastDefault => {
+            let on = id == L2PortfastDefault;
+            c.dm()?.l2.portfast_default = on;
+            Ok(if on {
+                "Every access port is now an edge port; trunks are not. Keep switches off access ports, or add BPDU guard.".into()
+            } else {
+                String::new()
+            })
+        }
+        L2BpduguardDefault | L2NoBpduguardDefault => {
+            c.dm()?.l2.bpduguard_default = id == L2BpduguardDefault;
+            Ok(String::new())
+        }
+        L2Bpduguard => {
+            let on = match arg(0).to_ascii_lowercase().as_str() {
+                "enable" => true,
+                "disable" => false,
+                _ => return Err("% `enable` or `disable`".into()),
+            };
+            c.each_if(|p, _| {
+                p.l2.bpduguard = Some(on);
+                Ok(())
+            })
+        }
+        L2NoBpduguard => c.each_if(|p, _| {
+            p.l2.bpduguard = None;
+            Ok(())
+        }),
+        L2LinkType | L2NoLinkType => {
+            let lt = if id == L2LinkType {
+                Some(match arg(0).to_ascii_lowercase().as_str() {
+                    "point-to-point" => LinkType::PointToPoint,
+                    "shared" => LinkType::Shared,
+                    _ => return Err("% `point-to-point` or `shared`".into()),
+                })
+            } else {
+                None
+            };
+            c.each_if(|p, _| {
+                p.l2.link_type = lt;
+                Ok(())
+            })
+        }
+        // ---- errdisable ----
+        L2RecoveryCause | L2NoRecoveryCause => {
+            let causes: Vec<ErrCause> =
+                if arg(0).eq_ignore_ascii_case("all") {
+                    ErrCause::ALL.to_vec()
+                } else {
+                    vec![ErrCause::parse(arg(0)).ok_or_else(|| {
+                        format!("% `{}` is not a cause: bpduguard, psecure-violation, dhcp-rate-limit, arp-inspection or all", arg(0))
+                    })?]
+                };
+            let d = c.dm()?;
+            for cause in causes {
+                if id == L2RecoveryCause {
+                    d.l2.recovery.insert(cause);
+                } else {
+                    d.l2.recovery.remove(&cause);
+                }
+            }
+            Ok(String::new())
+        }
+        L2RecoveryInterval | L2NoRecoveryInterval => {
+            let n = if id == L2RecoveryInterval { number(arg(0), 30, 86_400, "The interval (seconds)")? } else { ERRDISABLE_INTERVAL };
+            c.dm()?.l2.recovery_interval = n;
+            Ok(String::new())
+        }
+        L2ShowErrDisabled => Ok(show_err_disabled(c.d()?)),
+        L2ShowRecovery => Ok(show_recovery(c.sim, c.d()?)),
+        // ---- port security aging ----
+        L2PsecAgingTime | L2NoPsecAgingTime => {
+            let n = if id == L2PsecAgingTime { number(arg(0), 0, 1440, "The aging time (minutes)")? } else { 0 };
+            c.each_if(|p, _| {
+                let name = p.name.clone();
+                let ps = p.port_security.as_mut().ok_or_else(|| format!("% {name} has no port security: `switchport port-security` first"))?;
+                ps.aging_time = n;
+                Ok(())
+            })
+        }
+        L2PsecAgingType | L2NoPsecAgingType => {
+            let kind = if id == L2PsecAgingType {
+                match arg(0).to_ascii_lowercase().as_str() {
+                    "absolute" => netlabcraft_model::l2sec::AgingType::Absolute,
+                    "inactivity" => netlabcraft_model::l2sec::AgingType::Inactivity,
+                    _ => return Err("% `absolute` or `inactivity`".into()),
+                }
+            } else {
+                netlabcraft_model::l2sec::AgingType::Absolute
+            };
+            c.each_if(|p, _| {
+                let name = p.name.clone();
+                let ps = p.port_security.as_mut().ok_or_else(|| format!("% {name} has no port security: `switchport port-security` first"))?;
+                ps.aging_type = kind;
+                Ok(())
+            })
+        }
         _ => Err("% Not a switch-protection command".into()),
     }
 }
@@ -309,4 +407,46 @@ pub(crate) fn cause_words(cause: Option<ErrCause>) -> &'static str {
         ErrCause::DhcpRateLimit => "the DHCP snooping rate limit",
         ErrCause::ArpInspection => "the ARP inspection rate limit",
     }
+}
+
+fn cause_of(p: &netlabcraft_model::Port) -> ErrCause {
+    p.l2.err_cause.unwrap_or(ErrCause::PsecureViolation)
+}
+
+fn show_err_disabled(d: &Device) -> String {
+    let down: Vec<(usize, &netlabcraft_model::Port)> = d.ports.iter().enumerate().filter(|(_, p)| p.err_disabled).collect();
+    if down.is_empty() {
+        return "No port is err-disabled.".into();
+    }
+    let mut s = format!("{:<10} {:<18} {:<13} Cause\n", "Port", "Description", "State");
+    for (i, p) in down {
+        let desc: String = p.description.chars().take(18).collect();
+        let _ = writeln!(s, "{:<10} {:<18} {:<13} {}", short(d, i), desc, "err-disabled", cause_of(p).name());
+    }
+    s.trim_end().to_string()
+}
+
+fn show_recovery(sim: &Sim, d: &Device) -> String {
+    let l = &d.l2;
+    let mut s = format!("{:<20} Recovers by itself\n", "Cause");
+    for cause in ErrCause::ALL {
+        let _ = writeln!(s, "{:<20} {}", cause.name(), if l.recovery.contains(&cause) { "yes" } else { "no" });
+    }
+    let _ = writeln!(s, "\nRecovery interval: {} s", l.recovery_interval);
+    let down: Vec<(usize, &netlabcraft_model::Port)> = d.ports.iter().enumerate().filter(|(_, p)| p.err_disabled).collect();
+    if !down.is_empty() {
+        let _ = writeln!(s, "\n{:<10} {:<20} Back up in", "Port", "Cause");
+        for (i, p) in down {
+            let cause = cause_of(p);
+            let when = if !l.recovery.contains(&cause) {
+                "never (shutdown / no shutdown)".to_string()
+            } else {
+                let at = sim.err_disabled_since(d.id, i).unwrap_or(sim.now_us());
+                let left = (at.saturating_add(u64::from(l.recovery_interval).saturating_mul(1_000_000))).saturating_sub(sim.now_us());
+                format!("{} s", left.div_ceil(1_000_000))
+            };
+            let _ = writeln!(s, "{:<10} {:<20} {when}", short(d, i), cause.name());
+        }
+    }
+    s.trim_end().to_string()
 }

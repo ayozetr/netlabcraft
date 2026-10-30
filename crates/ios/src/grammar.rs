@@ -221,6 +221,24 @@ pub enum Id {
     L2DaiRate,
     L2NoDaiRate,
     L2ShowDai,
+    L2PortfastDefault,
+    L2NoPortfastDefault,
+    L2BpduguardDefault,
+    L2NoBpduguardDefault,
+    L2Bpduguard,
+    L2NoBpduguard,
+    L2LinkType,
+    L2NoLinkType,
+    L2RecoveryCause,
+    L2NoRecoveryCause,
+    L2RecoveryInterval,
+    L2NoRecoveryInterval,
+    L2ShowErrDisabled,
+    L2ShowRecovery,
+    L2PsecAgingTime,
+    L2NoPsecAgingTime,
+    L2PsecAgingType,
+    L2NoPsecAgingType,
     ShowStp,
     ShowStpVlan,
     NoInterfaceVlan,
@@ -1937,6 +1955,84 @@ pub static SPECS: &[Spec] = &[
         "No ARP rate limit on this port"
     ),
     spec!(L2ShowDai, EXECS, Modes::SWITCH, [K("show"), K("ip"), K("arp"), K("inspection")], "ARP inspection settings and counts"),
+    spec!(L2PortfastDefault, Modes::CONFIG, Modes::SWITCH, [K("spanning-tree"), K("portfast"), K("default")], "Every access port is an edge port"),
+    spec!(L2NoPortfastDefault, Modes::CONFIG, Modes::SWITCH, [K("no"), K("spanning-tree"), K("portfast"), K("default")], "Edge ports only where set"),
+    spec!(
+        L2BpduguardDefault,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("spanning-tree"), K("portfast"), K("bpduguard"), K("default")],
+        "BPDU guard on every edge port"
+    ),
+    spec!(
+        L2NoBpduguardDefault,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("spanning-tree"), K("portfast"), K("bpduguard"), K("default")],
+        "No BPDU guard unless set on the port"
+    ),
+    spec!(
+        L2Bpduguard,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("spanning-tree"), K("bpduguard"), Arg("{enable|disable}")],
+        "Err-disable the port when a BPDU arrives"
+    ),
+    spec!(L2NoBpduguard, Modes::IF, Modes::SWITCH, [K("no"), K("spanning-tree"), K("bpduguard")], "BPDU guard as the switch default says"),
+    spec!(L2LinkType, Modes::IF, Modes::SWITCH, [K("spanning-tree"), K("link-type"), Arg("{point-to-point|shared}")], "What the port is cabled to"),
+    spec!(L2NoLinkType, Modes::IF, Modes::SWITCH, [K("no"), K("spanning-tree"), K("link-type")], "Link type from the duplex"),
+    spec!(
+        L2RecoveryCause,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("errdisable"), K("recovery"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|all}")],
+        "Bring ports shut for this reason back by themselves"
+    ),
+    spec!(
+        L2NoRecoveryCause,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("errdisable"), K("recovery"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|all}")],
+        "Ports shut for this reason wait for shutdown / no shutdown"
+    ),
+    spec!(
+        L2RecoveryInterval,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("errdisable"), K("recovery"), K("interval"), Arg("<30-86400>")],
+        "Seconds before an err-disabled port comes back"
+    ),
+    spec!(L2NoRecoveryInterval, Modes::CONFIG, Modes::SWITCH, [K("no"), K("errdisable"), K("recovery"), K("interval")], "Back to 300 seconds"),
+    spec!(L2ShowErrDisabled, EXECS, Modes::SWITCH, [K("show"), K("interfaces"), K("status"), K("err-disabled")], "Err-disabled ports and why"),
+    spec!(L2ShowRecovery, EXECS, Modes::SWITCH, [K("show"), K("errdisable"), K("recovery")], "Which causes recover by themselves, and when"),
+    spec!(
+        L2PsecAgingTime,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("switchport"), K("port-security"), K("aging"), K("time"), Arg("<0-1440>")],
+        "Minutes before a learned address is forgotten"
+    ),
+    spec!(
+        L2NoPsecAgingTime,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("no"), K("switchport"), K("port-security"), K("aging"), K("time")],
+        "Learned addresses never age"
+    ),
+    spec!(
+        L2PsecAgingType,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("switchport"), K("port-security"), K("aging"), K("type"), Arg("{absolute|inactivity}")],
+        "Age from learning, or from the last frame"
+    ),
+    spec!(
+        L2NoPsecAgingType,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("no"), K("switchport"), K("port-security"), K("aging"), K("type")],
+        "Age from learning (absolute)"
+    ),
     spec!(ShowStp, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree")], "Spanning trees of every VLAN"),
     spec!(ShowStpVlan, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree"), K("vlan"), Arg("<1-4094>")], "One VLAN's spanning tree"),
     // ---- the firewall appliance ----

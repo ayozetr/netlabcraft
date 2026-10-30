@@ -1607,7 +1607,25 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::L2NoDaiTrust
         | Id::L2DaiRate
         | Id::L2NoDaiRate
-        | Id::L2ShowDai => l2sec::command(&mut c, spec.id, &args),
+        | Id::L2ShowDai
+        | Id::L2PortfastDefault
+        | Id::L2NoPortfastDefault
+        | Id::L2BpduguardDefault
+        | Id::L2NoBpduguardDefault
+        | Id::L2Bpduguard
+        | Id::L2NoBpduguard
+        | Id::L2LinkType
+        | Id::L2NoLinkType
+        | Id::L2RecoveryCause
+        | Id::L2NoRecoveryCause
+        | Id::L2RecoveryInterval
+        | Id::L2NoRecoveryInterval
+        | Id::L2ShowErrDisabled
+        | Id::L2ShowRecovery
+        | Id::L2PsecAgingTime
+        | Id::L2NoPsecAgingTime
+        | Id::L2PsecAgingType
+        | Id::L2NoPsecAgingType => l2sec::command(&mut c, spec.id, &args),
         Id::FwNameif
         | Id::FwNoNameif
         | Id::FwSecurityLevel

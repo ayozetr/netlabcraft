@@ -3873,3 +3873,84 @@ fn arp_inspection_drops_a_spoofed_arp() {
     assert!(run.contains("ip arp inspection vlan 1\nip arp inspection validate src-mac ip"), "{run}");
     assert!(run.contains(" ip dhcp snooping trust\n ip arp inspection trust"), "{run}");
 }
+
+#[test]
+fn bpdu_guard_err_disables_and_recovery_brings_the_port_back() {
+    let mut lab = Lab::new();
+    let s1 = lab.add(DeviceKind::Switch);
+    let s2 = lab.add(DeviceKind::Switch);
+    let s3 = lab.add(DeviceKind::Switch);
+    lab.cable(s1, "fa0/1", s2, "fa0/1");
+    lab.cable(s1, "fa0/2", s3, "fa0/1");
+    lab.run(s1, "en\nconf t\nerrdisable recovery cause bpduguard\nerrdisable recovery interval 30\nint fa0/1\nspanning-tree portfast\nspanning-tree bpduguard enable\nend");
+    lab.sim.run_for(&lab.t, 3_000_000);
+    l2_apply(&mut lab);
+    assert!(lab.t.device(s1).unwrap().ports[0].err_disabled);
+    let err = lab.run(s1, "show interfaces status err-disabled");
+    assert!(err.contains("Fa0/1") && err.contains("bpduguard"), "{err}");
+    assert!(lab.run(s1, "show logging").contains("BPDU guard"));
+    assert!(lab.run(s1, "show interfaces fa0/1").contains("err-disabled by BPDU guard"));
+    let rec = lab.run(s1, "show errdisable recovery");
+    assert!(rec.contains("bpduguard            yes") && rec.contains("Recovery interval: 30 s") && rec.contains("Fa0/1"), "{rec}");
+    // Thirty simulated seconds later the port comes back by itself.
+    lab.sim.run_for(&lab.t, 31_000_000);
+    let events = lab.sim.take_events();
+    assert!(events.iter().any(|e| matches!(e, netlabcraft_sim::PortEvent::Recovered { port: 0, .. })), "{events:?}");
+    for e in events {
+        if let netlabcraft_sim::PortEvent::Recovered { device, port } = e {
+            lab.t.device_mut(device).unwrap().ports[port].err_disabled = false;
+        }
+    }
+    assert!(!lab.t.device(s1).unwrap().ports[0].err_disabled);
+    assert!(lab.run(s1, "show logging").contains("errdisable recovery (bpduguard)"));
+    // Still cabled to a switch: down again; without recovery it stays down.
+    lab.sim.run_for(&lab.t, 3_000_000);
+    l2_apply(&mut lab);
+    assert!(lab.t.device(s1).unwrap().ports[0].err_disabled);
+    lab.run(s1, "conf t\nno errdisable recovery cause bpduguard\nend");
+    lab.sim.run_for(&lab.t, 120_000_000);
+    l2_apply(&mut lab);
+    assert!(lab.t.device(s1).unwrap().ports[0].err_disabled);
+    assert!(lab.run(s1, "show errdisable recovery").contains("never"));
+    // The global defaults: every access port an edge port, with BPDU guard.
+    lab.run(s1, "conf t\nspanning-tree portfast default\nspanning-tree portfast bpduguard default\nend");
+    lab.sim.run_for(&lab.t, 3_000_000);
+    l2_apply(&mut lab);
+    assert_eq!(lab.t.device(s1).unwrap().ports[1].l2.err_cause, Some(netlabcraft_model::l2sec::ErrCause::Bpduguard));
+    // `spanning-tree bpduguard disable` overrides the default; shutdown / no shutdown revives.
+    lab.run(s1, "conf t\nint fa0/2\nspanning-tree bpduguard disable\nshutdown\nno shutdown\nend");
+    lab.sim.run_for(&lab.t, 3_000_000);
+    l2_apply(&mut lab);
+    assert!(!lab.t.device(s1).unwrap().ports[1].err_disabled);
+    let run = lab.run(s1, "show run");
+    assert!(run.contains("spanning-tree portfast default\nspanning-tree portfast bpduguard default"), "{run}");
+    assert!(run.contains(" spanning-tree portfast\n spanning-tree bpduguard enable"), "{run}");
+    assert!(run.contains(" spanning-tree bpduguard disable"), "{run}");
+}
+
+#[test]
+fn port_security_aging_forgets_learned_addresses() {
+    let mut lab = Lab::new();
+    let s = lab.add(DeviceKind::Switch);
+    let hub = lab.add(DeviceKind::Hub);
+    let a = lab.add(DeviceKind::Pc);
+    let b = lab.add(DeviceKind::Pc);
+    let c = lab.add(DeviceKind::Pc);
+    lab.cable(hub, "e0", s, "fa0/1");
+    lab.cable(a, "fa0", hub, "e1");
+    lab.cable(b, "fa0", hub, "e2");
+    lab.cable(c, "fa0", s, "fa0/2");
+    lab.run(a, "ipconfig 10.0.0.1 255.255.255.0");
+    lab.run(b, "ipconfig 10.0.0.2 255.255.255.0");
+    lab.run(c, "ipconfig 10.0.0.3 255.255.255.0");
+    lab.run(s, "en\nconf t\nint fa0/1\nswitchport port-security\nswitchport port-security violation restrict\nswitchport port-security aging time 1\nswitchport port-security aging type inactivity\nend");
+    assert!(lab.run(a, "ping 10.0.0.3").contains("4 answered"));
+    assert!(lab.run(b, "ping 10.0.0.3").contains("0 answered"), "PC2 is one address too many");
+    // A quiet minute later PC1's address is forgotten and PC2 takes the place.
+    lab.sim.run_for(&lab.t, 61_000_000);
+    assert!(lab.run(b, "ping 10.0.0.3").contains("4 answered"));
+    let run = lab.run(s, "show run");
+    assert!(run.contains(" switchport port-security aging time 1\n switchport port-security aging type inactivity"), "{run}");
+    lab.run(s, "conf t\nint fa0/3");
+    assert!(lab.try_run(s, "switchport port-security aging time 5").contains("no port security"));
+}
