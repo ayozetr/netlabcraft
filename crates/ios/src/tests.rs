@@ -321,6 +321,8 @@ fn every_command_survives_hostile_arguments() {
                     "en\nconf t\nint fa0/1",
                     "en\nconf t\nvlan 5",
                     "en\nconf t\nrouter eigrp 1",
+                    "en\nconf t\nip access-list extended X",
+                    "en\nconf t\nip dhcp pool P",
                     "en\nconf t\ntelephony-service\nmax-dn 4\nmax-ephones 4\nexit\nephone-dn 1",
                     "en\nconf t\ntelephony-service\nmax-ephones 4\nexit\nephone 1",
                 ] {
@@ -615,6 +617,74 @@ fn access_lists_by_typing() {
     assert!(lab.try_run(r, "access-list 500 permit any").contains("1-99"));
     lab.run(r, "end\nclear access-list counters");
     assert!(!lab.run(r, "show access-lists").contains("matches)"));
+}
+
+#[test]
+fn access_list_sequence_numbers_icmp_types_and_established_by_typing() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let a = lab.add(DeviceKind::Pc);
+    let c = lab.add(DeviceKind::Pc);
+    lab.cable(a, "fa0", r, "g0/0");
+    lab.cable(c, "fa0", r, "g0/1");
+    lab.run(a, "ipconfig 192.168.1.10 255.255.255.0 192.168.1.1");
+    lab.run(c, "ipconfig 10.0.0.10 255.255.255.0 10.0.0.1");
+    lab.run(r, "en\nconf t\nint g0/0\nip add 192.168.1.1 255.255.255.0\nno shut\nint g0/1\nip add 10.0.0.1 255.255.255.0\nno shut\nend");
+    lab.run(a, "ping 10.0.0.10");
+    // From the outside only answers come in: echo replies and established TCP.
+    lab.run(
+        r,
+        "conf t\nip access-list extended OUTSIDE-IN\nremark answers only\n20 permit tcp any any established\n10 permit icmp any any echo-reply\n\
+         30 deny ip any any\nexit\nint g0/1\nip access-group OUTSIDE-IN in\nend",
+    );
+    assert!(lab.run(a, "ping 10.0.0.10").contains("4 answered"));
+    assert!(lab.run(c, "ping 192.168.1.10").contains("0 answered"));
+    let show = lab.run(r, "show access-lists");
+    assert!(
+        show.contains("    10 permit icmp any any echo-reply (4 matches)\n    20 permit tcp any any established\n    30 deny ip any any (4 matches)"),
+        "{show}"
+    );
+    // Editing by number: insert, delete, renumber.
+    lab.run(r, "conf t\nip access-list extended OUTSIDE-IN\n15 permit icmp any any echo\nno 30");
+    assert!(lab.try_run(r, "15 permit icmp any any time-exceeded").contains("already has a line 15"));
+    assert!(lab.try_run(r, "0 permit ip any any").starts_with('%'));
+    assert!(lab.try_run(r, "no 99").contains("no line 99"));
+    lab.run(r, "end");
+    assert!(lab.run(c, "ping 192.168.1.10").contains("4 answered"));
+    lab.run(r, "conf t\nip access-list resequence OUTSIDE-IN 100 50\nend");
+    let show = lab.run(r, "show access-lists");
+    assert!(
+        show.contains("    100 permit icmp any any echo-reply")
+            && show.contains("    150 permit icmp any any echo")
+            && show.contains("    200 permit tcp any any established"),
+        "{show}"
+    );
+    // Numbered lists take numbers too, under `ip access-list standard N`.
+    lab.run(
+        r,
+        "conf t\naccess-list 10 permit host 10.0.0.10\naccess-list 10 remark the server\nip access-list standard 10\n5 deny host 10.0.0.99\nend",
+    );
+    let show = lab.run(r, "show access-lists");
+    assert!(show.contains("Standard access list 10\n    5 deny host 10.0.0.99\n    10 permit host 10.0.0.10"), "{show}");
+    // The configuration keeps remarks and options and survives a reload.
+    let run = lab.run(r, "show run");
+    assert!(
+        run.contains(
+            "ip access-list extended OUTSIDE-IN\n remark answers only\n permit icmp any any echo-reply\n permit icmp any any echo\n permit tcp any any established"
+        ),
+        "{run}"
+    );
+    assert!(run.contains("access-list 10 remark the server\naccess-list 10 deny host 10.0.0.99\naccess-list 10 permit host 10.0.0.10"), "{run}");
+    lab.run(r, "copy run start\nreload");
+    lab.run(r, "en");
+    assert_eq!(lab.run(r, "show run"), run);
+    lab.run(r, "conf t\nno access-list 10 remark the server\nip access-list extended OUTSIDE-IN\nno remark answers only\nend");
+    assert!(!lab.run(r, "show run").contains("remark"));
+    // Options only where they make sense.
+    lab.run(r, "conf t");
+    assert!(lab.try_run(r, "access-list 120 permit udp any any established").contains("Unexpected"));
+    assert!(lab.try_run(r, "access-list 120 permit icmp any any bogus").contains("Unexpected"));
+    assert!(lab.try_run(r, "ip access-list resequence NOPE 10 10").contains("No access list"));
 }
 
 #[test]

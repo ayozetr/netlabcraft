@@ -37,9 +37,8 @@ use netlabcraft_core::MacAddr;
 use netlabcraft_model::vpn::{CryptoMapEntry, Tunnel, TunnelSource};
 use netlabcraft_model::{Device, DeviceKind, End, NextHop, Topology, ifname};
 use netlabcraft_wire::ike::{self, Isakmp, Payload, Proposal, Transform};
-use netlabcraft_wire::tcp::Tcp;
 use netlabcraft_wire::vpn::{Esp, Gre, NEXT_IPV4, PROTO_ESP, PROTO_GRE};
-use netlabcraft_wire::{ETHERTYPE_IPV4, Ipv4, PROTO_TCP, PROTO_UDP, Udp};
+use netlabcraft_wire::{ETHERTYPE_IPV4, Ipv4, PROTO_UDP, Udp};
 
 use crate::{L3If, SVI_PORT, Sim};
 
@@ -495,13 +494,7 @@ fn is_isakmp(ip: &Ipv4) -> bool {
 /// nothing).
 pub(crate) fn acl_permits(d: &Device, name: &str, ip: &Ipv4) -> bool {
     let Some(acl) = d.acls.iter().find(|a| a.name == name) else { return false };
-    let (src_port, dst_port) = match ip.protocol {
-        PROTO_UDP => Udp::decode(&ip.payload, ip.src, ip.dst).map_or((None, None), |u| (Some(u.src_port), Some(u.dst_port))),
-        PROTO_TCP => Tcp::decode(&ip.payload, ip.src, ip.dst).map_or((None, None), |u| (Some(u.src_port), Some(u.dst_port))),
-        _ => (None, None),
-    };
-    let key = netlabcraft_model::acl::PacketKey { protocol: ip.protocol, src: ip.src, dst: ip.dst, src_port, dst_port };
-    acl.evaluate(&key).0
+    acl.evaluate(&crate::acl_key(ip)).0
 }
 
 impl Sim {

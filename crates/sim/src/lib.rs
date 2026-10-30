@@ -1367,7 +1367,7 @@ impl Sim {
                 fixed: true,
             }
         } else {
-            let key = netlabcraft_model::acl::PacketKey { protocol: ip.protocol, src: ip.src, dst: ip.dst, src_port: None, dst_port: None };
+            let key = netlabcraft_model::acl::PacketKey::bare(ip.protocol, ip.src, ip.dst);
             let Some(rule) = d.nat.rules.iter().find(|r| d.acls.iter().find(|a| a.name == r.acl).is_some_and(|a| a.evaluate(&key).0)) else {
                 return Ok(None);
             };
@@ -1508,12 +1508,7 @@ impl Sim {
         let Some(name) = groups.and_then(|g| if inbound { g.inbound.as_ref() } else { g.outbound.as_ref() }) else { return Ok(()) };
         // An applied list that doesn't exist permits everything, as on real routers.
         let Some(acl) = d.acls.iter().find(|a| &a.name == name) else { return Ok(()) };
-        let (src_port, dst_port) = match ip.protocol {
-            PROTO_UDP => Udp::decode(&ip.payload, ip.src, ip.dst).map_or((None, None), |u| (Some(u.src_port), Some(u.dst_port))),
-            PROTO_TCP => Tcp::decode(&ip.payload, ip.src, ip.dst).map_or((None, None), |u| (Some(u.src_port), Some(u.dst_port))),
-            _ => (None, None),
-        };
-        let key = netlabcraft_model::acl::PacketKey { protocol: ip.protocol, src: ip.src, dst: ip.dst, src_port, dst_port };
+        let key = acl_key(ip);
         let (permit, entry) = acl.evaluate(&key);
         let st = self.st(d.id);
         *st.acl_hits.entry((acl.name.clone(), entry.unwrap_or(usize::MAX))).or_insert(0) += 1;
@@ -2811,11 +2806,10 @@ impl Sim {
                 && let Some(acl) = d.acls.iter().find(|a| a.name == *name)
             {
                 let key = netlabcraft_model::acl::PacketKey {
-                    protocol: PROTO_TCP,
-                    src: ip.src,
-                    dst: ip.dst,
                     src_port: Some(seg.src_port),
                     dst_port: Some(seg.dst_port),
+                    tcp_flags: Some(seg.flags),
+                    ..netlabcraft_model::acl::PacketKey::bare(PROTO_TCP, ip.src, ip.dst)
                 };
                 let (permit, hit) = acl.evaluate(&key);
                 *self.st(d.id).acl_hits.entry((name.clone(), hit.unwrap_or(usize::MAX))).or_insert(0) += 1;
@@ -3166,4 +3160,28 @@ fn rewrite(ip: &Ipv4, outbound: bool, addr: Ipv4Addr, id: Option<u16>) -> Ipv4 {
         _ => {}
     }
     out
+}
+
+/// What a datagram looks like to an access list: protocol, addresses, ports, ICMP type and TCP
+/// flags.
+pub(crate) fn acl_key(ip: &Ipv4) -> netlabcraft_model::acl::PacketKey {
+    let mut key = netlabcraft_model::acl::PacketKey::bare(ip.protocol, ip.src, ip.dst);
+    match ip.protocol {
+        PROTO_UDP => {
+            if let Ok(u) = Udp::decode(&ip.payload, ip.src, ip.dst) {
+                key.src_port = Some(u.src_port);
+                key.dst_port = Some(u.dst_port);
+            }
+        }
+        PROTO_TCP => {
+            if let Ok(u) = Tcp::decode(&ip.payload, ip.src, ip.dst) {
+                key.src_port = Some(u.src_port);
+                key.dst_port = Some(u.dst_port);
+                key.tcp_flags = Some(u.flags);
+            }
+        }
+        PROTO_ICMP => key.icmp_type = ip.payload.first().copied(),
+        _ => {}
+    }
+    key
 }

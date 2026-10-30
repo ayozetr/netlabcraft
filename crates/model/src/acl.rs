@@ -15,6 +15,28 @@ pub struct Acl {
     pub extended: bool,
     #[serde(default)]
     pub entries: Vec<AclEntry>,
+    /// `remark` lines: notes kept with the list (shown in the configuration).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub remarks: Vec<String>,
+}
+
+/// Most remarks kept per list.
+pub const MAX_REMARKS: usize = 64;
+/// The highest sequence number a line can have.
+pub const MAX_SEQ: u32 = 2_147_483_647;
+
+/// The ICMP message types an extended entry can name.
+pub const ICMP_TYPES: &[(&str, u8)] = &[("echo-reply", 0), ("unreachable", 3), ("echo", 8), ("time-exceeded", 11)];
+
+/// The ICMP type a name stands for (a number is taken as is).
+pub fn icmp_type_from_name(w: &str) -> Option<u8> {
+    let lw = w.to_ascii_lowercase();
+    ICMP_TYPES.iter().find(|(n, _)| *n == lw).map(|(_, t)| *t).or_else(|| w.parse().ok())
+}
+
+/// The name an ICMP type is written with (its number when it has none).
+pub fn icmp_type_name(t: u8) -> String {
+    ICMP_TYPES.iter().find(|(_, v)| *v == t).map_or_else(|| t.to_string(), |(n, _)| (*n).to_string())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -133,6 +155,32 @@ pub struct AclEntry {
     pub dst: AclAddr,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dst_port: Option<PortMatch>,
+    /// The line's sequence number (0 in files from before sequence numbers: its position
+    /// decides, see [`Acl::seq_of`]).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub seq: u32,
+    /// `established`: only TCP segments with ACK or RST set (replies to inside connections).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub established: bool,
+    /// An ICMP message type (`echo`, `echo-reply`, `unreachable`, `time-exceeded` or a number).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icmp_type: Option<u8>,
+}
+
+fn is_zero(v: &u32) -> bool {
+    *v == 0
+}
+
+impl AclEntry {
+    /// A line matching `proto` from `src` to `dst`, with no ports or options.
+    pub fn new(permit: bool, proto: AclProto, src: AclAddr, dst: AclAddr) -> AclEntry {
+        AclEntry { permit, proto, src, src_port: None, dst, dst_port: None, seq: 0, established: false, icmp_type: None }
+    }
+
+    /// Whether two lines match the same packets the same way (sequence numbers aside).
+    pub fn same_rule(&self, o: &AclEntry) -> bool {
+        AclEntry { seq: 0, ..self.clone() } == AclEntry { seq: 0, ..o.clone() }
+    }
 }
 
 /// What a packet looks like to an ACL.
@@ -143,6 +191,17 @@ pub struct PacketKey {
     pub dst: Ipv4Addr,
     pub src_port: Option<u16>,
     pub dst_port: Option<u16>,
+    /// The ICMP message type, for ICMP packets.
+    pub icmp_type: Option<u8>,
+    /// The TCP flags byte, for TCP segments.
+    pub tcp_flags: Option<u8>,
+}
+
+impl PacketKey {
+    /// A key with only protocol and addresses (no ports, type or flags).
+    pub fn bare(protocol: u8, src: Ipv4Addr, dst: Ipv4Addr) -> PacketKey {
+        PacketKey { protocol, src, dst, src_port: None, dst_port: None, icmp_type: None, tcp_flags: None }
+    }
 }
 
 impl AclEntry {
@@ -157,7 +216,17 @@ impl AclEntry {
             return false;
         }
         let port_ok = |m: Option<PortMatch>, v: Option<u16>| m.is_none_or(|m| v.is_some_and(|v| m.matches(v)));
-        port_ok(self.src_port, p.src_port) && port_ok(self.dst_port, p.dst_port)
+        if !(port_ok(self.src_port, p.src_port) && port_ok(self.dst_port, p.dst_port)) {
+            return false;
+        }
+        // ACK (0x10) or RST (0x04): part of a connection already under way.
+        if self.established && self.proto == AclProto::Tcp && !p.tcp_flags.is_some_and(|f| f & 0x14 != 0) {
+            return false;
+        }
+        if self.proto == AclProto::Icmp && self.icmp_type.is_some_and(|t| p.icmp_type != Some(t)) {
+            return false;
+        }
+        true
     }
 
     /// The entry as configuration words after `permit`/`deny`.
@@ -174,11 +243,82 @@ impl AclEntry {
         if let Some(p) = self.dst_port {
             s.push_str(&format!(" {p}"));
         }
+        if let Some(t) = self.icmp_type.filter(|_| self.proto == AclProto::Icmp) {
+            s.push_str(&format!(" {}", icmp_type_name(t)));
+        }
+        if self.established && self.proto == AclProto::Tcp {
+            s.push_str(" established");
+        }
         s
     }
 }
 
 impl Acl {
+    /// An empty list.
+    pub fn new(name: impl Into<String>, extended: bool) -> Acl {
+        Acl { name: name.into(), extended, entries: Vec::new(), remarks: Vec::new() }
+    }
+
+    /// The sequence number of the line at `i` (its stored number, or ten per position for
+    /// lines from older files).
+    pub fn seq_of(&self, i: usize) -> u32 {
+        match self.entries.get(i).map(|e| e.seq) {
+            Some(n) if n > 0 => n,
+            _ => u32::try_from(i.saturating_add(1)).unwrap_or(u32::MAX).saturating_mul(10).min(MAX_SEQ),
+        }
+    }
+
+    /// Gives every line its effective sequence number, so explicit numbers can be added.
+    pub fn number_lines(&mut self) {
+        let seqs: Vec<u32> = (0..self.entries.len()).map(|i| self.seq_of(i)).collect();
+        for (e, n) in self.entries.iter_mut().zip(seqs) {
+            e.seq = n;
+        }
+    }
+
+    /// The number the next unnumbered line gets: ten past the last.
+    pub fn next_seq(&self) -> u32 {
+        match self.entries.len() {
+            0 => 10,
+            n => self.seq_of(n - 1).saturating_add(10).min(MAX_SEQ),
+        }
+    }
+
+    /// Inserts a line in sequence order (an identical line is kept once). Errors: the number
+    /// is taken.
+    pub fn insert(&mut self, mut e: AclEntry) -> Result<(), String> {
+        if self.entries.iter().any(|x| x.same_rule(&e)) {
+            return Ok(());
+        }
+        self.number_lines();
+        if e.seq == 0 {
+            e.seq = self.next_seq();
+        }
+        if self.entries.iter().any(|x| x.seq == e.seq) {
+            return Err(format!("% {} already has a line {}", self.name, e.seq));
+        }
+        let at = self.entries.iter().position(|x| x.seq > e.seq).unwrap_or(self.entries.len());
+        self.entries.insert(at, e);
+        Ok(())
+    }
+
+    /// Removes the line numbered `seq`; whether there was one.
+    pub fn remove_seq(&mut self, seq: u32) -> bool {
+        self.number_lines();
+        let before = self.entries.len();
+        self.entries.retain(|e| e.seq != seq);
+        self.entries.len() != before
+    }
+
+    /// Renumbers the lines `start`, `start + step`, …
+    pub fn resequence(&mut self, start: u32, step: u32) {
+        let mut n = start.clamp(1, MAX_SEQ);
+        for e in &mut self.entries {
+            e.seq = n;
+            n = n.saturating_add(step.max(1)).min(MAX_SEQ);
+        }
+    }
+
     /// The first matching entry's index and whether it permits; `None`: the implicit deny.
     pub fn evaluate(&self, p: &PacketKey) -> (bool, Option<usize>) {
         match self.entries.iter().position(|e| e.matches(self.extended, p)) {
@@ -203,7 +343,7 @@ mod tests {
     use super::*;
 
     fn key(proto: u8, src: &str, dst: &str, dport: Option<u16>) -> PacketKey {
-        PacketKey { protocol: proto, src: src.parse().unwrap(), dst: dst.parse().unwrap(), src_port: None, dst_port: dport }
+        PacketKey { dst_port: dport, ..PacketKey::bare(proto, src.parse().unwrap(), dst.parse().unwrap()) }
     }
 
     #[test]
@@ -211,6 +351,7 @@ mod tests {
         let std_acl = Acl {
             name: "10".into(),
             extended: false,
+            remarks: Vec::new(),
             entries: vec![
                 AclEntry {
                     permit: false,
@@ -219,6 +360,9 @@ mod tests {
                     src_port: None,
                     dst: AclAddr::ANY,
                     dst_port: None,
+                    seq: 0,
+                    established: false,
+                    icmp_type: None,
                 },
                 AclEntry {
                     permit: true,
@@ -227,6 +371,9 @@ mod tests {
                     src_port: None,
                     dst: AclAddr::ANY,
                     dst_port: None,
+                    seq: 0,
+                    established: false,
+                    icmp_type: None,
                 },
             ],
         };
@@ -236,6 +383,7 @@ mod tests {
         let ext = Acl {
             name: "WEB".into(),
             extended: true,
+            remarks: Vec::new(),
             entries: vec![
                 AclEntry {
                     permit: true,
@@ -244,9 +392,32 @@ mod tests {
                     src_port: None,
                     dst: AclAddr::host("10.0.0.1".parse().unwrap()),
                     dst_port: Some(PortMatch::Eq(67)),
+                    seq: 0,
+                    established: false,
+                    icmp_type: None,
                 },
-                AclEntry { permit: false, proto: AclProto::Icmp, src: AclAddr::ANY, src_port: None, dst: AclAddr::ANY, dst_port: None },
-                AclEntry { permit: true, proto: AclProto::Ip, src: AclAddr::ANY, src_port: None, dst: AclAddr::ANY, dst_port: None },
+                AclEntry {
+                    permit: false,
+                    proto: AclProto::Icmp,
+                    src: AclAddr::ANY,
+                    src_port: None,
+                    dst: AclAddr::ANY,
+                    dst_port: None,
+                    seq: 0,
+                    established: false,
+                    icmp_type: None,
+                },
+                AclEntry {
+                    permit: true,
+                    proto: AclProto::Ip,
+                    src: AclAddr::ANY,
+                    src_port: None,
+                    dst: AclAddr::ANY,
+                    dst_port: None,
+                    seq: 0,
+                    established: false,
+                    icmp_type: None,
+                },
             ],
         };
         assert!(ext.evaluate(&key(17, "1.1.1.1", "10.0.0.1", Some(67))).0);
@@ -257,6 +428,37 @@ mod tests {
         assert_eq!(numbered_kind("10"), Some(false));
         assert_eq!(numbered_kind("101"), Some(true));
         assert_eq!(numbered_kind("500"), None);
+    }
+
+    #[test]
+    fn established_icmp_types_and_sequence_numbers() {
+        let est = AclEntry { established: true, ..AclEntry::new(true, AclProto::Tcp, AclAddr::ANY, AclAddr::ANY) };
+        let mut k = key(6, "1.1.1.1", "2.2.2.2", Some(80));
+        k.tcp_flags = Some(0x02);
+        assert!(!est.matches(true, &k), "a SYN opens a new connection");
+        k.tcp_flags = Some(0x12);
+        assert!(est.matches(true, &k));
+        k.tcp_flags = Some(0x04);
+        assert!(est.matches(true, &k));
+        assert_eq!(est.text(true), "permit tcp any any established");
+        let echo = AclEntry { icmp_type: icmp_type_from_name("echo"), ..AclEntry::new(false, AclProto::Icmp, AclAddr::ANY, AclAddr::ANY) };
+        let mut k = key(1, "1.1.1.1", "2.2.2.2", None);
+        k.icmp_type = Some(8);
+        assert!(echo.matches(true, &k));
+        k.icmp_type = Some(0);
+        assert!(!echo.matches(true, &k));
+        assert_eq!(echo.text(true), "deny icmp any any echo");
+        assert_eq!(icmp_type_name(42), "42");
+        let mut a = Acl::new("X", true);
+        a.entries.push(AclEntry::new(true, AclProto::Udp, AclAddr::ANY, AclAddr::ANY));
+        a.entries.push(AclEntry::new(true, AclProto::Tcp, AclAddr::ANY, AclAddr::ANY));
+        assert_eq!((a.seq_of(0), a.seq_of(1), a.next_seq()), (10, 20, 30));
+        a.insert(AclEntry { seq: 15, ..AclEntry::new(false, AclProto::Ip, AclAddr::ANY, AclAddr::ANY) }).unwrap();
+        assert_eq!(a.entries[1].proto, AclProto::Ip);
+        assert!(a.insert(AclEntry { seq: 15, ..AclEntry::new(false, AclProto::Icmp, AclAddr::ANY, AclAddr::ANY) }).is_err());
+        assert!(a.remove_seq(20) && !a.remove_seq(20));
+        a.resequence(u32::MAX, u32::MAX);
+        assert_eq!((a.entries[0].seq, a.entries[1].seq), (MAX_SEQ, MAX_SEQ));
     }
 }
 

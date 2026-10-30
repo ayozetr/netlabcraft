@@ -376,11 +376,17 @@ pub fn running_config(d: &Device) -> String {
     }
     for a in &d.acls {
         if netlabcraft_model::acl::numbered_kind(&a.name).is_some() {
+            for r in &a.remarks {
+                let _ = writeln!(s, "access-list {} remark {r}", a.name);
+            }
             for e in &a.entries {
                 let _ = writeln!(s, "access-list {} {}", a.name, e.text(a.extended));
             }
         } else {
             let _ = writeln!(s, "ip access-list {} {}", if a.extended { "extended" } else { "standard" }, a.name);
+            for r in &a.remarks {
+                let _ = writeln!(s, " remark {r}");
+            }
             for e in &a.entries {
                 let _ = writeln!(s, " {}", e.text(a.extended));
             }
@@ -1280,7 +1286,7 @@ pub fn access_lists(sim: &Sim, d: &Device) -> String {
         for (i, e) in a.entries.iter().enumerate() {
             let n = hits.get(&(a.name.clone(), i)).copied().unwrap_or(0);
             let m = if n > 0 { format!(" ({n} match{})", if n == 1 { "" } else { "es" }) } else { String::new() };
-            let _ = writeln!(s, "    {} {}{m}", (i + 1) * 10, e.text(a.extended));
+            let _ = writeln!(s, "    {} {}{m}", a.seq_of(i), e.text(a.extended));
         }
         let implicit = hits.get(&(a.name.clone(), usize::MAX)).copied().unwrap_or(0);
         let _ = writeln!(s, "    (implicit) deny everything else{}", if implicit > 0 { format!(" ({implicit} matches)") } else { String::new() });

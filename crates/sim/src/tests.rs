@@ -583,6 +583,7 @@ fn access_lists_filter_forwarded_traffic() {
         r.acls.push(Acl {
             name: "110".into(),
             extended: true,
+            remarks: Vec::new(),
             entries: vec![
                 AclEntry {
                     permit: false,
@@ -591,8 +592,21 @@ fn access_lists_filter_forwarded_traffic() {
                     src_port: None,
                     dst: AclAddr::host(ip("10.2.0.10")),
                     dst_port: None,
+                    seq: 0,
+                    established: false,
+                    icmp_type: None,
                 },
-                AclEntry { permit: true, proto: AclProto::Ip, src: AclAddr::ANY, src_port: None, dst: AclAddr::ANY, dst_port: None },
+                AclEntry {
+                    permit: true,
+                    proto: AclProto::Ip,
+                    src: AclAddr::ANY,
+                    src_port: None,
+                    dst: AclAddr::ANY,
+                    dst_port: None,
+                    seq: 0,
+                    established: false,
+                    icmp_type: None,
+                },
             ],
         });
         r.ports[0].access.inbound = Some("110".into());
@@ -608,6 +622,7 @@ fn access_lists_filter_forwarded_traffic() {
         r.acls.push(Acl {
             name: "5".into(),
             extended: false,
+            remarks: Vec::new(),
             entries: vec![AclEntry {
                 permit: true,
                 proto: AclProto::Ip,
@@ -615,6 +630,9 @@ fn access_lists_filter_forwarded_traffic() {
                 src_port: None,
                 dst: AclAddr::ANY,
                 dst_port: None,
+                seq: 0,
+                established: false,
+                icmp_type: None,
             }],
         });
         r.ports[1].access.outbound = Some("5".into());
@@ -655,6 +673,7 @@ fn nat_translates_both_ways() {
         r.acls.push(Acl {
             name: "1".into(),
             extended: false,
+            remarks: Vec::new(),
             entries: vec![AclEntry {
                 permit: true,
                 proto: AclProto::Ip,
@@ -662,6 +681,9 @@ fn nat_translates_both_ways() {
                 src_port: None,
                 dst: AclAddr::ANY,
                 dst_port: None,
+                seq: 0,
+                established: false,
+                icmp_type: None,
             }],
         });
         r.nat.rules.push(NatRule { acl: "1".into(), target: NatTarget::Interface("GigabitEthernet0/1".into()), overload: true });
@@ -753,6 +775,7 @@ fn a_server_answers_dns_http_and_dhcp() {
         rt.acls.push(Acl {
             name: "120".into(),
             extended: true,
+            remarks: Vec::new(),
             entries: vec![
                 AclEntry {
                     permit: false,
@@ -761,8 +784,21 @@ fn a_server_answers_dns_http_and_dhcp() {
                     src_port: None,
                     dst: AclAddr::ANY,
                     dst_port: Some(PortMatch::Eq(80)),
+                    seq: 0,
+                    established: false,
+                    icmp_type: None,
                 },
-                AclEntry { permit: true, proto: AclProto::Ip, src: AclAddr::ANY, src_port: None, dst: AclAddr::ANY, dst_port: None },
+                AclEntry {
+                    permit: true,
+                    proto: AclProto::Ip,
+                    src: AclAddr::ANY,
+                    src_port: None,
+                    dst: AclAddr::ANY,
+                    dst_port: None,
+                    seq: 0,
+                    established: false,
+                    icmp_type: None,
+                },
             ],
         });
         rt.ports[1].access.inbound = Some("120".into());

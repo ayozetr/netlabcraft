@@ -620,6 +620,20 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
     let dbits = t.device(dev).map(device_bits).ok_or("% That device no longer exists")?;
     let words: Vec<&str> = line.split_whitespace().collect();
     let mut resolved = grammar::resolve(&words, cli.mode.bits(), dbits);
+    // An access-list line starts with a number or `permit`/`deny`; anything else is a global
+    // command (`access-list 10 …` typed inside a named list).
+    if let Ok((s, a)) = &resolved
+        && match s.id {
+            Id::AclSeqLine => !a.first().is_some_and(|w| is_number(w)),
+            Id::NoAclEntryLine => !a
+                .first()
+                .and_then(|w| w.split_whitespace().next())
+                .is_some_and(|w| is_number(w) || w.eq_ignore_ascii_case("permit") || w.eq_ignore_ascii_case("deny")),
+            _ => false,
+        }
+    {
+        resolved = Err(ParseError::Unknown(0));
+    }
     // A sub-mode falls back to global configuration commands, which leave the sub-mode.
     if resolved.is_err()
         && matches!(
@@ -1710,10 +1724,34 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let extended = acl::numbered_kind(&name).ok_or("% Numbered lists are 1-99 (standard) or 100-199 (extended)")?;
             let words: Vec<&str> = arg(1).split_whitespace().collect();
             if words.first().is_some_and(|w| w.eq_ignore_ascii_case("remark")) {
-                return Ok(String::new());
+                let text = words.get(1..).map(|w| w.join(" ")).unwrap_or_default();
+                return c.acl_remark(&name, extended, &text, true);
             }
             let entry = parse_acl_entry(&words, extended)?;
             c.acl_add(&name, extended, entry)
+        }
+        Id::AclRemark | Id::NoAclRemark => {
+            let Mode::Acl(name) = c.cli.mode.clone() else { return Err("% Not in access-list mode".into()) };
+            let extended = c.d()?.acls.iter().find(|a| a.name == name).is_some_and(|a| a.extended);
+            c.acl_remark(&name, extended, arg(0), spec.id == Id::AclRemark)
+        }
+        Id::NoAccessListRemark => {
+            let extended = acl::numbered_kind(arg(0)).ok_or("% Numbered lists are 1-99 (standard) or 100-199 (extended)")?;
+            c.acl_remark(arg(0), extended, arg(1), false)
+        }
+        Id::AclSeqLine => {
+            let Mode::Acl(name) = c.cli.mode.clone() else { return Err("% Not in access-list mode".into()) };
+            let seq = parse_seq(arg(0))?;
+            let extended = c.d()?.acls.iter().find(|a| a.name == name).is_some_and(|a| a.extended);
+            let words: Vec<&str> = arg(1).split_whitespace().collect();
+            let entry = acl::AclEntry { seq, ..parse_acl_entry(&words, extended)? };
+            c.acl_add(&name, extended, entry)
+        }
+        Id::AclResequence => {
+            let (start, step) = (parse_seq(arg(1))?, parse_seq(arg(2))?);
+            let list = c.dm()?.acls.iter_mut().find(|a| a.name == arg(0)).ok_or_else(|| format!("% No access list {}", arg(0)))?;
+            list.resequence(start, step);
+            Ok(String::new())
         }
         Id::NoAccessList => {
             let d = c.dm()?;
@@ -1734,7 +1772,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                     if d.acls.len() >= acl::MAX_ACLS {
                         return Err(format!("% At most {} access lists", acl::MAX_ACLS));
                     }
-                    d.acls.push(acl::Acl { name: name.clone(), extended, entries: Vec::new() });
+                    d.acls.push(acl::Acl::new(name.clone(), extended));
                 }
             }
             c.cli.mode = Mode::Acl(name);
@@ -1750,13 +1788,21 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let Mode::Acl(name) = c.cli.mode.clone() else { return Err("% Not in access-list mode".into()) };
             let extended = c.d()?.acls.iter().find(|a| a.name == name).is_some_and(|a| a.extended);
             let words: Vec<&str> = line.split_whitespace().skip(usize::from(spec.id == Id::NoAclEntryLine)).collect();
+            if let [w] = words.as_slice()
+                && spec.id == Id::NoAclEntryLine
+                && is_number(w)
+            {
+                let seq = parse_seq(w)?;
+                let list = c.dm()?.acls.iter_mut().find(|a| a.name == name).ok_or("% The list was deleted")?;
+                return if list.remove_seq(seq) { Ok(String::new()) } else { Err(format!("% {name} has no line {seq}")) };
+            }
             let entry = parse_acl_entry(&words, extended)?;
             if spec.id == Id::AclEntryLine {
                 c.acl_add(&name, extended, entry)
             } else {
                 let list = c.dm()?.acls.iter_mut().find(|a| a.name == name).ok_or("% The list was deleted")?;
                 let before = list.entries.len();
-                list.entries.retain(|e| *e != entry);
+                list.entries.retain(|e| !e.same_rule(&entry));
                 if list.entries.len() == before { Err("% No such line".into()) } else { Ok(String::new()) }
             }
         }
@@ -3455,6 +3501,19 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
     }
 }
 
+/// Whether a word is all digits.
+fn is_number(w: &str) -> bool {
+    !w.is_empty() && w.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// An access-list sequence number (1 to 2147483647).
+fn parse_seq(w: &str) -> Result<u32, String> {
+    match w.parse::<u32>() {
+        Ok(n) if (1..=acl::MAX_SEQ).contains(&n) => Ok(n),
+        _ => Err(format!("% `{w}` is not a sequence number (1-{})", acl::MAX_SEQ)),
+    }
+}
+
 /// Parses an access-list line after the list name: `permit|deny <src>` (standard) or
 /// `permit|deny <proto> <src> [<port>] <dst> [<port>]` (extended).
 fn parse_acl_entry(words: &[&str], extended: bool) -> Result<acl::AclEntry, String> {
@@ -3524,12 +3583,19 @@ fn parse_acl_entry(words: &[&str], extended: bool) -> Result<acl::AclEntry, Stri
     } else {
         (acl::AclAddr::ANY, None)
     };
-    match it.next() {
-        None => {}
-        Some(w) if w.eq_ignore_ascii_case("log") => {}
-        Some(w) => return Err(format!("% Unexpected `{w}` at the end of the line")),
+    let mut entry = acl::AclEntry { src_port, dst_port, ..acl::AclEntry::new(permit, proto, src, dst) };
+    for w in it {
+        let lw = w.to_ascii_lowercase();
+        match lw.as_str() {
+            "log" => {}
+            "established" if extended && proto == acl::AclProto::Tcp => entry.established = true,
+            _ if extended && proto == acl::AclProto::Icmp && entry.icmp_type.is_none() && acl::icmp_type_from_name(w).is_some() => {
+                entry.icmp_type = acl::icmp_type_from_name(w);
+            }
+            _ => return Err(format!("% Unexpected `{w}` at the end of the line")),
+        }
     }
-    Ok(acl::AclEntry { permit, proto, src, src_port, dst, dst_port })
+    Ok(entry)
 }
 
 /// A port by number or by its usual name.
@@ -3628,14 +3694,44 @@ impl Ctx<'_> {
             if d.acls.len() >= acl::MAX_ACLS {
                 return Err(format!("% At most {} access lists", acl::MAX_ACLS));
             }
-            d.acls.push(acl::Acl { name: name.to_string(), extended, entries: Vec::new() });
+            d.acls.push(acl::Acl::new(name, extended));
         }
         let list = d.acls.iter_mut().find(|a| a.name == name).ok_or("% No such list")?;
         if list.entries.len() >= acl::MAX_ENTRIES {
             return Err(format!("% At most {} lines per list", acl::MAX_ENTRIES));
         }
-        if !list.entries.contains(&entry) {
-            list.entries.push(entry);
+        if list.extended != extended {
+            return Err(format!("% {name} is a{} list", if list.extended { "n extended" } else { " standard" }));
+        }
+        list.insert(entry)?;
+        Ok(String::new())
+    }
+
+    /// Adds (or with `add` false removes) a remark on a list, creating the list if needed.
+    fn acl_remark(&mut self, name: &str, extended: bool, text: &str, add: bool) -> R {
+        let text: String = text.trim().chars().take(100).collect();
+        let d = self.dm()?;
+        if !add {
+            let list = d.acls.iter_mut().find(|a| a.name == name).ok_or_else(|| format!("% No access list {name}"))?;
+            let before = list.remarks.len();
+            list.remarks.retain(|r| *r != text);
+            return if list.remarks.len() == before { Err("% No such remark".into()) } else { Ok(String::new()) };
+        }
+        if text.is_empty() {
+            return Err("% Give the remark's text".into());
+        }
+        if !d.acls.iter().any(|a| a.name == name) {
+            if d.acls.len() >= acl::MAX_ACLS {
+                return Err(format!("% At most {} access lists", acl::MAX_ACLS));
+            }
+            d.acls.push(acl::Acl::new(name, extended));
+        }
+        let list = d.acls.iter_mut().find(|a| a.name == name).ok_or("% No such list")?;
+        if list.remarks.len() >= acl::MAX_REMARKS {
+            return Err(format!("% At most {} remarks per list", acl::MAX_REMARKS));
+        }
+        if !list.remarks.contains(&text) {
+            list.remarks.push(text);
         }
         Ok(String::new())
     }

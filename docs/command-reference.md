@@ -166,8 +166,12 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip access-list {standard\|extended} WORD` | config | router, switch | Delete a named list |
 | `permit ...` |  | router, switch | Allow matching packets |
 | `deny ...` |  | router, switch | Drop matching packets |
-| `remark LINE` |  | router, switch | A comment (accepted, not kept) |
-| `no {permit\|deny} ...` |  | router, switch | Remove a line |
+| `remark LINE` |  | router, switch | A note kept with the list |
+| `no remark LINE` |  | router, switch | Delete a note |
+| `no {<1-2147483647>\|permit ...\|deny ...}` |  | router, switch | Remove a line (by number or by its words) |
+| `<1-2147483647> {permit\|deny} ...` |  | router, switch | Add a line at this sequence number |
+| `ip access-list resequence WORD <1-2147483647> <1-2147483647>` | config | router, switch | Renumber a list's lines: first number, then the step |
+| `no access-list <1-199> remark LINE` | config | router, switch | Delete a note from a numbered list |
 | `ip access-group WORD {in\|out}` | interface, subinterface | router, switch | Filter this interface's traffic |
 | `no ip access-group WORD {in\|out}` | interface, subinterface | router, switch | Stop filtering |
 | `access-class WORD {in\|out}` |  | router, switch | Restrict remote logins (accepted, not simulated) |
