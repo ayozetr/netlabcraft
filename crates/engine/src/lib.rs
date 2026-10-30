@@ -22,6 +22,7 @@ mod cmd;
 mod hardware;
 pub mod home;
 mod iot;
+mod pdu;
 mod voice;
 
 pub mod sample;

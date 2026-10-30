@@ -255,34 +255,35 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                 ui.painter().circle_filled(r.center(), 15.0, tk.bar);
                 ui.painter().circle_filled(r.center(), 10.0, egui::Color32::WHITE);
                 ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, "i", egui::FontId::proportional(15.0), tk.bar);
-                egui::Frame::new()
-                    .stroke(egui::Stroke::new(1.0, tk.chrome_line))
-                    .inner_margin(egui::Margin::symmetric(8, 4))
-                    .corner_radius(3.0)
-                    .show(ui, |ui| {
-                        ui.set_min_width(130.0);
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new(tl("Scenario 0")).size(16.0));
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                let (r, _) = ui.allocate_exact_size(vec2(12.0, 12.0), Sense::hover());
-                                ui.painter().add(egui::Shape::convex_polygon(
-                                    vec![r.left_top() + vec2(1.0, 3.0), r.right_top() + vec2(-1.0, 3.0), r.center_bottom() - vec2(0.0, 2.0)],
-                                    tk.glyph,
-                                    egui::Stroke::NONE,
-                                ));
-                            });
-                        });
-                    });
+                // The scenario in use; the menu switches to another.
+                let sc = &app.session.topology.scenarios;
+                let (current, count) = (sc.current, sc.count());
+                let mut pick = None;
+                egui::ComboBox::from_id_salt("scenario")
+                    .width(130.0)
+                    .selected_text(RichText::new(crate::i18n::trf("Scenario {}", &[&current])).size(16.0))
+                    .show_ui(ui, |ui| {
+                        for i in 0..count {
+                            if ui.selectable_label(i == current, crate::i18n::trf("Scenario {}", &[&i])).clicked() {
+                                pick = Some(i);
+                            }
+                        }
+                    })
+                    .response
+                    .widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::ComboBox, true, tl("Scenario")));
+                if let Some(i) = pick.filter(|i| *i != current) {
+                    app.run("scenario.select", serde_json::json!({"index": i}));
+                }
             });
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 ui.add_space(18.0);
-                if crate::navy_button(ui, "New").on_hover_text(tl("Start an empty PDU list")).clicked() {
-                    app.ui.pdus.clear();
+                if crate::navy_button(ui, "New").on_hover_text(tl("Start a new scenario with an empty PDU list")).clicked() {
+                    app.run("scenario.new", serde_json::json!({}));
                 }
                 ui.add_space(18.0);
-                if crate::navy_button(ui, "Delete").on_hover_text(tl("Delete every PDU in the list")).clicked() {
-                    app.ui.pdus.clear();
+                if crate::navy_button(ui, "Delete").on_hover_text(tl("Delete this scenario and its PDUs")).clicked() {
+                    app.run("scenario.delete", serde_json::json!({}));
                 }
             });
             ui.add_space(6.0);
@@ -293,7 +294,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
         ui.separator();
         if app.ui.bottom.hide_pdus {
             if crate::navy_button(ui, "Fire All").on_hover_text(tl("Send every PDU in the list again")).clicked() {
-                for i in 0..app.ui.pdus.len() {
+                for i in 0..app.session.topology.scenarios.pdus().len() {
                     canvas::fire(app, i);
                 }
             }
@@ -310,17 +311,18 @@ fn pdu_list(app: &mut PacketApp, ui: &mut Ui) {
     egui::ScrollArea::both().id_salt("pdu_list").auto_shrink([false, false]).show(ui, |ui| {
         // Tight columns so the header fits the box at the usual window width (it scrolls when not).
         ui.spacing_mut().item_spacing.x = 4.0;
-        egui::Grid::new("pdu_grid").striped(true).num_columns(9).min_col_width(18.0).show(ui, |ui| {
-            for h in ["Fire", "Last Status", "Source", "Destination", "Type", "Color", "Time(sec)", "Num", "Delete"] {
+        egui::Grid::new("pdu_grid").striped(true).num_columns(10).min_col_width(18.0).show(ui, |ui| {
+            for h in ["Fire", "Last Status", "Source", "Destination", "Type", "Color", "Time(sec)", "Periodic", "Num", "Delete"] {
                 ui.label(RichText::new(crate::i18n::tr(h)).size(12.0).strong());
             }
             ui.end_row();
-            for (i, pdu) in app.ui.pdus.iter().enumerate() {
-                let name = |d| app.session.topology.device(d).map_or("?".to_string(), |x| x.name.clone());
-                let (status, color) = match pdu.ok {
-                    Some(true) => ("Successful", tk.ok),
-                    Some(false) => ("Failed", tk.error),
-                    None => ("In Progress", tk.muted),
+            let t = &app.session.topology;
+            for (i, pdu) in t.scenarios.pdus().iter().enumerate() {
+                let name = |d| t.device(d).map_or("?".to_string(), |x| x.name.clone());
+                let (status, color) = match pdu.status {
+                    netlabcraft_model::scenario::PduStatus::Successful => ("Successful", tk.ok),
+                    netlabcraft_model::scenario::PduStatus::Failed => ("Failed", tk.error),
+                    netlabcraft_model::scenario::PduStatus::Waiting => ("Waiting", tk.muted),
                 };
                 let (r, resp) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::click());
                 resp.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, crate::i18n::trf("Fire PDU {}", &[&pdu.num])));
@@ -328,16 +330,26 @@ fn pdu_list(app: &mut PacketApp, ui: &mut Ui) {
                 if resp.on_hover_text(tl("Fire again")).clicked() {
                     fire = Some(i);
                 }
-                ui.label(RichText::new(tl(status)).color(color));
+                let status = ui.label(RichText::new(tl(status)).color(color));
+                if !pdu.note.is_empty() {
+                    status.on_hover_text(crate::i18n::tr_any(&pdu.note));
+                }
                 ui.label(name(pdu.source));
-                ui.label(format!("{} ({})", name(pdu.destination), pdu.address));
-                ui.label(tl("ICMP"));
+                let dest = match pdu.target {
+                    Some(d) => format!("{} ({})", name(d), pdu.destination),
+                    None if pdu.destination.is_empty() => tl("(broadcast)").to_string(),
+                    None => pdu.destination.clone(),
+                };
+                ui.label(dest);
+                ui.label(pdu.type_name());
                 let (r, _) = ui.allocate_exact_size(vec2(18.0, 14.0), Sense::hover());
-                ui.painter().rect_filled(r, 2.0, pdu.color);
-                ui.label(format!("{:.3}", pdu.time_s));
+                ui.painter().rect_filled(r, 2.0, canvas::pdu_color(pdu.num));
+                ui.label(pdu.last_s.map_or("-".to_string(), |s| format!("{s:.3}")));
+                ui.label(pdu.period_s.map_or_else(|| tl("No").to_string(), |p| crate::i18n::trf("every {} s", &[&p])));
                 ui.label(pdu.num.to_string());
-                if ui.small_button(tl("delete")).clicked() {
-                    delete = Some(i);
+                let del = ui.small_button(tl("delete"));
+                if del.clicked() {
+                    delete = Some(pdu.num);
                 }
                 ui.end_row();
             }
@@ -346,9 +358,7 @@ fn pdu_list(app: &mut PacketApp, ui: &mut Ui) {
     if let Some(i) = fire {
         canvas::fire(app, i);
     }
-    if let Some(i) = delete
-        && i < app.ui.pdus.len()
-    {
-        app.ui.pdus.remove(i);
+    if let Some(num) = delete {
+        app.run("pdu.delete", serde_json::json!({"num": num}));
     }
 }

@@ -102,6 +102,17 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `sim.status` | Simulation status |  |  | `{} → {time_us, events, storm}` |
 | `topology.get` | The whole lab |  |  | `{} → the lab document` |
 | `sample.list` | Sample labs |  |  | `{} → [{id, title, description}]` |
+| `pdu.simple` | Add Simple PDU | Simulation |  | `{"from": "device", "to": "address or device"} → the PDU {num, status, note, first_event…}: one echo request, added to the scenario's PDU list and sent now` |
+| `pdu.complex` | Add Complex PDU | Simulation |  | `{"from": "device", "port"?: "source interface", "to"?: "address or device" (not for dhcp), "app"?: "ping"\|"dns"\|"http"\|"telnet"\|"ssh"\|"ftp"\|"smtp"\|"pop3"\|"dhcp"\|"tftp"\|"snmp"\|"arp"\|"udp"\|"tcp", "src_port"?, "dst_port"?, "ttl"?: 1-255, "tos"?: 0-255 or "dscp"?: 0-63\|"ef"\|"af31"…, "seq"?, "size"?: bytes (0-1400), "text"?: DNS name, HTTP page, TFTP file or SNMP community, "period"?: seconds (periodic; none: one-shot), "start"?: seconds from now} → the PDU; sent now when "start" is 0, else by sim.advance` |
+| `pdu.fire` | Fire PDU |  |  | `{"num"} → the PDU with its new status and "first_event"` |
+| `pdu.fire_all` | Fire every PDU |  |  | `{} → {"pdus": [...]}` |
+| `pdu.delete` | Delete PDU |  |  | `{"num"} or {"all": true} → the PDU list` |
+| `pdu.list` | PDU list |  |  | `{} → {"scenario", "scenarios", "description", "pdus": [{num, source, destination, type, app, status, last, fired, note, period…}]}` |
+| `scenario.list` | Scenarios |  |  | `{} → {"current", "scenarios": [{index, description, pdus}]}` |
+| `scenario.new` | New scenario |  |  | `{"description"?} → the scenarios (the new one in use)` |
+| `scenario.delete` | Delete scenario |  |  | `{"index"?: the one in use} → the scenarios (the last one is only emptied)` |
+| `scenario.select` | Switch scenario |  |  | `{"index"} → its PDU list` |
+| `sim.event` | PDU details |  |  | `{"id": event} → {id, at_us, from, to, protocol, summary, dropped, cause, "explain": [what the receiver decided], "osi": {"in": [{layer, lines}], "out": [...]}, "sent": [events it caused]}` |
 
 ## Device console (routers, switches and the firewall)
 

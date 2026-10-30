@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 
 use crate::i18n::tl;
 use crate::theme::{self, Tokens};
-use crate::{Mode, PacketApp, Pdu, Tool, console, icons};
+use crate::{Mode, PacketApp, Tool, console, icons};
 
 /// Icon size in canvas units.
 pub const ICON: f32 = 46.0;
@@ -1170,7 +1170,7 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
         Tool::Ping => match (app.ui.canvas.pending, hit) {
             (Some(Pending::PingFrom(src)), Some(dst)) if src != dst => {
                 app.ui.canvas.pending = None;
-                simple_pdu(app, src, dst, None);
+                simple_pdu(app, src, dst);
             }
             (_, Some(src)) => app.ui.canvas.pending = Some(Pending::PingFrom(src)),
             (_, None) => app.ui.canvas.cancel(),
@@ -1279,64 +1279,68 @@ pub fn cluster_rename_window(app: &mut PacketApp, ctx: &egui::Context) {
     }
 }
 
-const PDU_COLORS: [egui::Color32; 6] = [
-    egui::Color32::from_rgb(0x8e, 0x44, 0xad),
-    egui::Color32::from_rgb(0x27, 0xae, 0x60),
-    egui::Color32::from_rgb(0xe6, 0x7e, 0x22),
-    egui::Color32::from_rgb(0x29, 0x80, 0xb9),
-    egui::Color32::from_rgb(0xc0, 0x39, 0x2b),
-    egui::Color32::from_rgb(0x16, 0xa0, 0x85),
-];
+/// The colour of PDU `num` in the PDU list.
+pub(crate) fn pdu_color(num: u32) -> egui::Color32 {
+    const PDU_COLORS: [egui::Color32; 6] = [
+        egui::Color32::from_rgb(0x8e, 0x44, 0xad),
+        egui::Color32::from_rgb(0x27, 0xae, 0x60),
+        egui::Color32::from_rgb(0xe6, 0x7e, 0x22),
+        egui::Color32::from_rgb(0x29, 0x80, 0xb9),
+        egui::Color32::from_rgb(0xc0, 0x39, 0x2b),
+        egui::Color32::from_rgb(0x16, 0xa0, 0x85),
+    ];
+    PDU_COLORS.get((num as usize) % PDU_COLORS.len()).copied().unwrap_or(egui::Color32::GRAY)
+}
 
-/// Sends one echo request from `src` to `dst` (a simple PDU), recording it in the PDU list
-/// (`row`: an existing row to update, else a new one).
-fn simple_pdu(app: &mut PacketApp, src: DeviceId, dst: DeviceId, row: Option<usize>) {
-    let t = &app.session.topology;
-    let (Some(s), Some(d)) = (t.device(src), t.device(dst)) else { return };
-    let (sname, dname) = (s.name.clone(), d.name.clone());
-    let Some(addr) = first_address(d) else {
-        app.ui.status = Some((crate::i18n::trf("{} has no IP address to send a PDU to", &[&dname]), true));
-        return;
-    };
-    let first_event = app.session.sim.trace().back().map_or(0, |e| e.id);
-    let sent_at = app.session.sim.now_us() as f64 / 1e6;
-    let Some(v) = app.run("net.ping", json!({"from": src.0, "to": addr, "count": 1})) else { return };
-    let result = v.pointer("/probes/0/result").and_then(Value::as_str).unwrap_or("timeout").to_string();
-    let ok = result == "reply";
-    let msg = match result.as_str() {
-        "reply" => crate::i18n::trf("{} to {} ({}): successful", &[&sname, &dname, &addr]),
-        "unreachable" => crate::i18n::trf("{} to {} ({}): failed, destination unreachable", &[&sname, &dname, &addr]),
-        "ttl-exceeded" => crate::i18n::trf("{} to {} ({}): failed, TTL ran out", &[&sname, &dname, &addr]),
-        _ => crate::i18n::trf("{} to {} ({}): failed, no answer", &[&sname, &dname, &addr]),
+/// Says in the status bar how a PDU did, and replays it in simulation mode.
+fn pdu_sent(app: &mut PacketApp, v: &Value, first_event: u64) {
+    let name = |key: &str| v.get(key).and_then(Value::as_str).unwrap_or("?").to_string();
+    let (sname, dname, addr) =
+        (name("source"), v.get("target").and_then(Value::as_str).map_or_else(|| name("destination"), str::to_string), name("destination"));
+    let ok = v.get("status").and_then(Value::as_str) == Some("successful");
+    let note = v.get("note").and_then(Value::as_str).unwrap_or_default();
+    let msg = if ok {
+        crate::i18n::trf("{} to {} ({}): successful", &[&sname, &dname, &addr])
+    } else if note.contains("unreachable") {
+        crate::i18n::trf("{} to {} ({}): failed, destination unreachable", &[&sname, &dname, &addr])
+    } else if note.contains("TTL ran out") {
+        crate::i18n::trf("{} to {} ({}): failed, TTL ran out", &[&sname, &dname, &addr])
+    } else {
+        crate::i18n::trf("{} to {} ({}): failed, no answer", &[&sname, &dname, &addr])
     };
     app.ui.status = Some((msg, !ok));
-    match row.and_then(|i| app.ui.pdus.get_mut(i)) {
-        Some(p) => {
-            p.ok = Some(ok);
-            p.time_s = sent_at;
-        }
-        None => {
-            let num = app.ui.pdus.iter().map(|p| p.num).max().unwrap_or(0) + 1;
-            let color = PDU_COLORS.get((num as usize) % PDU_COLORS.len()).copied().unwrap_or(egui::Color32::GRAY);
-            app.ui.pdus.push(Pdu { num, source: src, destination: dst, address: addr, ok: Some(ok), color, time_s: sent_at });
-        }
-    }
     // In simulation mode, replay what just happened.
     if app.ui.mode == Mode::Simulation {
         app.ui.events.start_from(first_event + 1);
     }
 }
 
+/// Sends one echo request from `src` to `dst` (a simple PDU), adding it to the scenario's PDU
+/// list.
+fn simple_pdu(app: &mut PacketApp, src: DeviceId, dst: DeviceId) {
+    let t = &app.session.topology;
+    let (Some(_), Some(d)) = (t.device(src), t.device(dst)) else { return };
+    let dname = d.name.clone();
+    if first_address(d).is_none() {
+        app.ui.status = Some((crate::i18n::trf("{} has no IP address to send a PDU to", &[&dname]), true));
+        return;
+    }
+    let first_event = app.session.sim.trace().back().map_or(0, |e| e.id);
+    let Some(v) = app.run("pdu.simple", json!({"from": src.0, "to": dname})) else { return };
+    pdu_sent(app, &v, first_event);
+}
+
 #[cfg(test)]
 pub fn simple_pdu_for_tests(app: &mut PacketApp, src: DeviceId, dst: DeviceId) {
-    simple_pdu(app, src, dst, None);
+    simple_pdu(app, src, dst);
 }
 
 /// Sends the PDU in row `i` of the list again.
 pub fn fire(app: &mut PacketApp, i: usize) {
-    if let Some(p) = app.ui.pdus.get(i) {
-        let (s, d) = (p.source, p.destination);
-        simple_pdu(app, s, d, Some(i));
+    let Some(num) = app.session.topology.scenarios.pdus().get(i).map(|p| p.num) else { return };
+    let first_event = app.session.sim.trace().back().map_or(0, |e| e.id);
+    if let Some(v) = app.run("pdu.fire", json!({"num": num})) {
+        pdu_sent(app, &v, first_event);
     }
 }
 

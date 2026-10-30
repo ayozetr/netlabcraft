@@ -115,9 +115,10 @@ fn a_simple_pdu_lands_in_the_pdu_list() {
     canvas::simple_pdu_for_tests(h.state_mut(), a, b);
     canvas::fire(h.state_mut(), 0);
     h.run_steps(2);
-    let pdus = &h.state().ui.pdus;
+    let pdus = h.state().session.topology.scenarios.pdus();
     assert_eq!(pdus.len(), 1);
-    assert_eq!(pdus[0].ok, Some(true));
+    assert_eq!(pdus[0].status, netlabcraft_model::scenario::PduStatus::Successful);
+    assert_eq!(pdus[0].fired, 2);
     assert!(h.query_by_label("Fire PDU 1").is_some());
 }
 
@@ -1018,4 +1019,128 @@ fn device_windows_open_below_the_view_bar() {
         h.state_mut().ui.windows.clear();
         h.run_steps(1);
     }
+}
+
+/// The Add Complex PDU tool opens its window; Create PDU sends the PDU through `pdu.complex`
+/// and lists it; a missing destination keeps the window open with the reason.
+#[test]
+fn the_complex_pdu_window_builds_and_sends_a_pdu() {
+    let mut h = harness(Some("services"));
+    h.state_mut().ui.show_notes = false;
+    h.run_steps(2);
+    let pc1 = h.state().session.topology.resolve("PC1").unwrap();
+    h.state_mut().ui.selected = Some(pc1);
+    h.get_by_label("Add Complex PDU").click();
+    h.run_steps(2);
+    assert_eq!(h.state().ui.complex.as_ref().and_then(|d| d.source), Some(pc1));
+    use egui::accesskit::Role;
+    for label in ["Device", "Outgoing port", "Application"] {
+        assert!(h.query_by_role_and_label(Role::ComboBox, label).is_some(), "{label}");
+    }
+    for label in ["Destination", "TTL", "TOS", "Sequence number", "Size", "Start time"] {
+        assert!(h.query_by_role_and_label(Role::TextInput, label).is_some(), "{label}");
+    }
+    // No destination yet: the window says so and stays.
+    h.get_by_label("Create PDU").click();
+    h.run_steps(2);
+    assert!(h.state().ui.complex.as_ref().is_some_and(|d| d.problem.is_some()));
+    assert!(h.state().session.topology.scenarios.pdus().is_empty());
+    {
+        let d = h.state_mut().ui.complex.as_mut().unwrap();
+        d.app = netlabcraft_model::scenario::PduApp::Http;
+        d.destination = "Server0".into();
+        d.periodic = true;
+        d.period = "4".into();
+    }
+    h.run_steps(2);
+    for label in ["Page", "Source port", "Destination port", "Interval"] {
+        assert!(h.query_by_role_and_label(Role::TextInput, label).is_some(), "{label}");
+    }
+    h.get_by_label("Create PDU").click();
+    h.run_steps(2);
+    assert!(h.state().ui.complex.is_none());
+    let pdus = h.state().session.topology.scenarios.pdus();
+    assert_eq!(pdus.len(), 1);
+    assert_eq!(pdus[0].app, netlabcraft_model::scenario::PduApp::Http);
+    assert_eq!(pdus[0].period_s, Some(4.0));
+    assert_eq!(pdus[0].status, netlabcraft_model::scenario::PduStatus::Successful, "{}", pdus[0].note);
+    assert!(h.query_by_label("Fire PDU 1").is_some());
+    // The parameters a draft makes.
+    let mut d = pdu_dialog::Draft::new(Some(pc1));
+    d.destination = "10.0.0.1".into();
+    d.ttl = "x".into();
+    assert!(pdu_dialog::params(&d).is_err());
+    d.ttl = "12".into();
+    d.tos = "184".into();
+    let p = pdu_dialog::params(&d).unwrap();
+    assert_eq!((p["ttl"].as_u64(), p["tos"].as_u64(), p["size"].as_u64(), p["app"].as_str()), (Some(12), Some(184), Some(32), Some("ping")));
+}
+
+/// The PDU information window opens on the OSI model: In and Out layers with what the router
+/// decided, then the inbound and outbound PDUs layer by layer; every line reads in Spanish.
+#[test]
+fn the_pdu_window_shows_the_osi_model_and_both_pdus() {
+    let mut h = harness(Some("nat-acl"));
+    h.state_mut().ui.show_notes = false;
+    h.state_mut().ui.mode = Mode::Simulation;
+    h.run_steps(2);
+    h.state_mut().run("pdu.simple", json!({"from": "PC1", "to": "Web"}));
+    h.state_mut().run("pdu.simple", json!({"from": "PC1", "to": "Web"}));
+    let office = h.state().session.topology.resolve("Office").unwrap();
+    let id = h.state().session.sim.trace().iter().rev().find(|e| e.to.device == office && e.summary.contains("echo request")).unwrap().id;
+    h.state_mut().ui.events.info = Some(id);
+    h.run_steps(3);
+    for label in ["Layer 7: Application", "Layer 1: Physical"] {
+        assert_eq!(h.query_all_by_label(label).count(), 2, "{label}: one per column");
+    }
+    for label in ["OSI Model", "Inbound PDU Details", "Outbound PDU Details", "In Layers", "Out Layers"] {
+        assert!(h.query_by_label(label).is_some(), "{label}");
+    }
+    assert!(h.query_by_label_contains("NAT translates the inside source 192.168.0.10").is_some());
+    h.get_by_label("Outbound PDU Details").click();
+    h.run_steps(2);
+    assert_eq!(h.state().ui.events.info_tab, events::InfoTab::Outbound);
+    assert!(h.query_by_label("203.0.113.1").is_some(), "the outbound PDU carries the translated source");
+    // Every OSI line of the lab's events has a Spanish reading.
+    let _es = InSpanish::new();
+    let app = h.state();
+    let mut untranslated = std::collections::BTreeSet::new();
+    for e in app.session.sim.trace() {
+        let osi = netlabcraft_sim::explain::osi(&app.session.topology, &app.session.sim, e);
+        for l in osi.inbound.iter().chain(osi.outbound.iter()).flatten() {
+            if i18n::tr_any(l) == *l {
+                untranslated.insert(l.clone());
+            }
+        }
+    }
+    assert!(untranslated.is_empty(), "no Spanish for: {untranslated:#?}");
+    for name in netlabcraft_sim::explain::LAYER_NAMES {
+        assert_ne!(i18n::tr(name), name);
+    }
+}
+
+/// Scenarios from the bottom box: New starts an empty list, the menu switches back, Delete
+/// removes the one in use.
+#[test]
+fn scenarios_switch_from_the_bottom_box() {
+    let mut h = harness(Some("lan"));
+    h.state_mut().ui.show_notes = false;
+    h.run_steps(2);
+    let (a, b) = {
+        let t = &h.state().session.topology;
+        (t.resolve("PC1").unwrap(), t.resolve("PC2").unwrap())
+    };
+    canvas::simple_pdu_for_tests(h.state_mut(), a, b);
+    h.get_by_label("New").click();
+    h.run_steps(2);
+    assert_eq!(h.state().session.topology.scenarios.current, 1);
+    assert!(h.query_by_label("Fire PDU 1").is_none());
+    h.state_mut().run("scenario.select", json!({"index": 0}));
+    h.run_steps(2);
+    assert!(h.query_by_label("Fire PDU 1").is_some());
+    assert!(h.query_by_label("Scenario").is_some());
+    h.get_by_role_and_label(egui::accesskit::Role::Button, "Delete").click();
+    h.run_steps(2);
+    assert_eq!(h.state().session.topology.scenarios.count(), 1);
+    assert!(h.query_by_label("Fire PDU 1").is_none());
 }

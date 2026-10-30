@@ -300,7 +300,7 @@ fn hostile_frames_are_dropped_not_fatal() {
     let garbage: [&[u8]; 4] = [&[], &[0xff; 13], &[0xff; 20], &[0xff; 200]];
     for g in garbage {
         for to in [End { device: s, port: 0 }, End { device: r, port: 0 }, End { device: a, port: 0 }] {
-            sim.queue.push(Reverse(Queued { at: 0, seq: 0, from: to, to, frame: g.to_vec(), hops: 0 }));
+            sim.queue.push(Reverse(Queued { at: 0, seq: 0, from: to, to, frame: g.to_vec(), hops: 0, cause: None }));
         }
     }
     sim.settle(&t);

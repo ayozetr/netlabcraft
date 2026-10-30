@@ -868,6 +868,8 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         "device.power" | "device.module.add" | "device.module.remove" | "device.module.list" => crate::hardware::run(s, cmd, p),
         "phone.status" | "phone.dial" | "phone.answer" | "phone.hangup" => crate::voice::run(s, cmd, p),
         "iot.sync" | "iot.configure" | "iot.server" | "iot.switch" => crate::iot::run(s, cmd, p),
+        "pdu.simple" | "pdu.complex" | "pdu.fire" | "pdu.fire_all" | "pdu.delete" | "pdu.list" | "scenario.list" | "scenario.new" | "scenario.delete"
+        | "scenario.select" | "sim.event" => crate::pdu::run(s, cmd, p),
         "view.enter_cluster" => {
             s.view = Some(cluster_param(s, p)?);
             s.revision += 1;
@@ -1149,9 +1151,9 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         }
         "sim.advance" => {
             let secs = p.get("seconds").and_then(Value::as_f64).filter(|v| v.is_finite()).unwrap_or(30.0).clamp(0.0, 86_400.0);
-            s.sim.run_for(&s.topology, (secs * 1_000_000.0) as u64);
-            s.revision += 1;
-            Ok(json!({"time_us": s.sim.now_us()}))
+            // Scheduled and periodic PDUs go out as their time comes.
+            let fired = crate::pdu::advance(s, (secs * 1_000_000.0) as u64);
+            Ok(json!({"time_us": s.sim.now_us(), "pdus_fired": fired}))
         }
         "sim.reset" => {
             s.sim.reset();
