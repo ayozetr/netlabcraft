@@ -257,6 +257,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
     let tk = theme::tokens(app.ui.dark);
     app.ui.canvas.ctx = Some(ui.ctx().clone());
     let rect = ui.max_rect();
+    app.ui.canvas_rect = Some(rect);
     let resp = ui.allocate_rect(rect, Sense::click_and_drag());
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 0.0, tk.canvas);

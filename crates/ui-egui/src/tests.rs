@@ -183,3 +183,31 @@ fn an_activity_opens_its_instructions_and_checks_results() {
     h.run();
     assert!(h.state().session.topology.activity.as_ref().unwrap().checks.iter().any(|c| c.label.starts_with("PC1")));
 }
+
+#[test]
+fn exporting_the_workspace_crops_the_screenshot_to_a_png() {
+    let mut h = harness(Some("lan"));
+    h.run_steps(2);
+    let area = h.state().ui.canvas_rect.expect("the workspace was drawn");
+    // A fake 1200×800 screenshot: the workspace's pixels are green, the rest red.
+    let mut img = egui::ColorImage::filled([1200, 800], egui::Color32::RED);
+    for y in area.min.y as usize..area.max.y as usize {
+        for x in area.min.x as usize..area.max.x as usize {
+            if let Some(p) = img.pixels.get_mut(y * 1200 + x) {
+                *p = egui::Color32::GREEN;
+            }
+        }
+    }
+    h.state_mut().ui.image_pending = true;
+    *h.state().ui.shot.lock().unwrap() = Some(std::sync::Arc::new(img));
+    h.run_steps(1);
+    let png = h.state_mut().take_requests().into_iter().find_map(|r| match r {
+        UiRequest::ExportImage(b) => Some(b),
+        _ => None,
+    });
+    let png = png.expect("an image was exported");
+    assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
+    let (w, hgt) = (u32::from_be_bytes(png[16..20].try_into().unwrap()), u32::from_be_bytes(png[20..24].try_into().unwrap()));
+    assert_eq!((w, hgt), (area.width().round() as u32, area.height().round() as u32));
+    assert!(!h.state().ui.image_pending);
+}

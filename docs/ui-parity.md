@@ -1,6 +1,6 @@
 # UI parity
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (serial cables, multilayer and WAN models, IPv6 settings, drawings; shared format) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (workspace image export, Email app) · **Target:** Cisco Packet Tracer 9.0
 
 The window, element by element, against the reference app. Part of
 [target-app-parity.md](target-app-parity.md). The arrangement was observed black-box (local
@@ -15,7 +15,7 @@ The window, element by element, against the reference app. Part of
 | Workspace bar | Logical / Physical, coordinates, Root, navigation, clock | Logical / Physical (physical not available yet), coordinates, Root, clock |
 | Workspace | white, icons with model + name, port labels, link triangles; red serial cables with a clock at the DCE; EtherChannel marks | same arrangement, icons drawn in code; parallel cables side by side, a ring around each EtherChannel, red zigzag serial cables with a clock at the DCE end, a router mark on multilayer switches |
 | Time bar | time, power cycle, fast forward; Realtime / Simulation | same |
-| Device box | categories, search, subcategories, model tiles, model name box | same; 13 generic models (routers incl. Router-WAN with serial ports, switches incl. multilayer Switch-ML-24, hub, PC, laptop, server, printer) + one cable that is copper or serial by the ports; the port menu greys out ports of the other cable type |
+| Device box | categories, search, subcategories, model tiles, model name box | same; 16 generic models (routers incl. Router-WAN with serial ports, switches incl. multilayer Switch-ML-24, Home-Router, AccessPoint, hub, PC, laptops incl. Wi-Fi, server, printer) + one cable that is copper or serial by the ports; the port menu greys out ports of the other cable type |
 | Scenario / PDU list | scenario, New/Delete, PDU table | scenario, New/Delete/Fire All, PDU table (Fire, Last Status, Source, Destination, Type, Color, Time, Num, Delete) |
 | Simulation Panel | event list (Vis., Time, Last/At Device, Type, Info), Reset Simulation, play controls with speed, filters, Edit Filters / Show All/None; time bar with ms and play controls, Event List toggle | same arrangement; plus drop reasons and pcap export; no Constant Delay option |
 | PDU information | OSI model and per-layer details | per-layer decode and hex dump |
@@ -30,6 +30,7 @@ The window, element by element, against the reference app. Part of
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | File ▸ Export Workspace Image (PNG); the PC Email app; the model count. |
 | 2026-10-30 | minor | Open Recent; unsaved-changes guard on the web; Activities row. |
 | 2026-10-30 | minor | Shared format; serial cables, EtherChannel rings, multilayer and WAN models, IPv6 in the PC IP Configuration and router port pages, drawings. |
 | 2026-10-29 | major | Created from black-box screenshots of the main window, Simulation mode, the PC Desktop and Web Browser, the router Config tab and the server Services pages. |

@@ -24,6 +24,7 @@ mod events;
 pub mod i18n;
 pub mod icons;
 mod mail;
+pub mod png;
 mod services;
 pub mod theme;
 
@@ -44,6 +45,8 @@ pub enum UiRequest {
     ExportPcap(Vec<u8>),
     /// Ask where to write a text file (a device configuration).
     SaveText { name: String, text: String },
+    /// Ask where to write a PNG image of the workspace.
+    ExportImage(Vec<u8>),
     /// Pick a text file for a device: its startup configuration (`merge: false`) or lines to
     /// merge into the running configuration; then call [`PacketApp::text_opened`].
     OpenText { device: DeviceId, merge: bool },
@@ -120,6 +123,11 @@ pub struct UiState {
     pub recent: Vec<String>,
     /// The person picked another interface language (the shell saves the choice).
     pub lang_changed: bool,
+    /// Where the workspace was drawn last frame (points), and a screenshot asked for it.
+    pub canvas_rect: Option<egui::Rect>,
+    pub image_pending: bool,
+    /// Where the screenshot lands when it is ready.
+    pub shot: std::sync::Arc<std::sync::Mutex<Option<std::sync::Arc<egui::ColorImage>>>>,
     /// Activity instructions and wizard.
     pub activity: activity::ActivityView,
     canvas: canvas::CanvasState,
@@ -149,6 +157,9 @@ impl Default for UiState {
             editing_note: None,
             recent: Vec::new(),
             lang_changed: false,
+            canvas_rect: None,
+            image_pending: false,
+            shot: Default::default(),
             activity: activity::ActivityView::default(),
             canvas: canvas::CanvasState::default(),
         }
@@ -552,6 +563,7 @@ impl PacketApp {
     pub fn ui(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let tk = theme::tokens(self.ui.dark);
+        self.take_screenshot(&ctx);
         self.shortcuts(&ctx);
         let chrome = egui::Frame::new().fill(tk.chrome).inner_margin(egui::Margin::symmetric(6, 4));
         let bar = egui::Frame::new().fill(tk.bar).inner_margin(egui::Margin::symmetric(6, 3));
@@ -610,6 +622,17 @@ impl PacketApp {
                 }
                 if ui.button(tl("Export Capture (pcap)...")).on_hover_text(tl("The event list as a capture any packet analyser opens")).clicked() {
                     self.requests.push(UiRequest::ExportPcap(self.session.pcap()));
+                }
+                if ui.button(tl("Export Workspace Image (PNG)...")).on_hover_text(tl("The workspace as a picture, for a report")).clicked() {
+                    self.ui.image_pending = true;
+                    let slot = self.ui.shot.clone();
+                    let ctx = ui.ctx().clone();
+                    ui.ctx().request_screenshot(move |image| {
+                        if let Ok(mut s) = slot.lock() {
+                            *s = Some(image);
+                        }
+                        ctx.request_repaint();
+                    });
                 }
                 ui.separator();
                 if ui.button(tl("Exit")).clicked() {
@@ -916,6 +939,33 @@ impl PacketApp {
             },
         );
         self.ui.show_notes = open;
+    }
+
+    /// The screenshot asked for by Export Workspace Image: cropped to the workspace, as PNG.
+    fn take_screenshot(&mut self, ctx: &egui::Context) {
+        if !self.ui.image_pending {
+            return;
+        }
+        let shot = self.ui.shot.lock().ok().and_then(|mut s| s.take());
+        let Some(image) = shot else { return };
+        self.ui.image_pending = false;
+        let ppp = ctx.pixels_per_point();
+        let [w, h] = image.size;
+        let area = self.ui.canvas_rect.unwrap_or(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(w as f32 / ppp, h as f32 / ppp)));
+        let px = |v: f32, max: usize| ((v * ppp).round().max(0.0) as usize).min(max);
+        let (x0, y0, x1, y1) = (px(area.min.x, w), px(area.min.y, h), px(area.max.x, w), px(area.max.y, h));
+        if x1 <= x0 || y1 <= y0 {
+            return;
+        }
+        let mut rgba = Vec::with_capacity((x1 - x0) * (y1 - y0) * 4);
+        for y in y0..y1 {
+            for x in x0..x1 {
+                let c = image.pixels.get(y * w + x).copied().unwrap_or_default();
+                rgba.extend_from_slice(&[c.r(), c.g(), c.b(), 255]);
+            }
+        }
+        let png = png::encode(u32::try_from(x1 - x0).unwrap_or(0), u32::try_from(y1 - y0).unwrap_or(0), &rgba);
+        self.requests.push(UiRequest::ExportImage(png));
     }
 
     fn about_window(&mut self, ctx: &egui::Context) {

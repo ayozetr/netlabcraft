@@ -1,6 +1,6 @@
 # Hardware parity
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (home wireless router) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (workspace image export) · **Target:** Cisco Packet Tracer 9.0
 
 Two kinds of hardware matter here: the **simulated** hardware (device models, ports, cables,
 modules) and the **real** hardware the app runs on. Part of
@@ -33,12 +33,13 @@ host hardware: ~70% ready, 10–16 h** (estimated).
 | Touch and pen | Limited | egui's touch handling, untested | Verify on a touch screen: 1–2 h |
 | Multi-core | Single simulation thread | Single-threaded discrete-event simulator (deterministic) | Not needed at lab sizes |
 | Accessibility (screen readers) | Partial | AccessKit tree; every widget has an accessible name (checked by the UI tests) | Canvas devices as accessible nodes: 3–5 h |
-| Printing | Print the workspace | ❌ | Export the workspace as PNG/PDF: 3–5 h |
+| Printing | Print the workspace | 🟡 File ▸ Export Workspace Image (PNG), desktop and web, to print or put in a report | Direct printing and PDF: 3–5 h |
 
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Workspace image export (PNG). |
 | 2026-10-30 | minor | Home wireless router. |
 | 2026-10-30 | minor | Wi-Fi access point and laptop. |
 | 2026-10-30 | major | Created: simulated device families and cables, host hardware. |

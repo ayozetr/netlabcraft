@@ -97,6 +97,14 @@ impl App {
                         }
                     }
                 }
+                UiRequest::ExportImage(bytes) => {
+                    if let Some(p) = rfd::FileDialog::new().add_filter("PNG image", &["png"]).set_file_name("workspace.png").save_file() {
+                        match std::fs::write(&p, &bytes) {
+                            Ok(()) => self.app.info(format!("Wrote {}", p.display())),
+                            Err(e) => self.app.ui.status = Some((format!("{}: {e}", p.display()), true)),
+                        }
+                    }
+                }
                 UiRequest::SaveText { name, text } => {
                     if let Some(p) = rfd::FileDialog::new().add_filter("Text", &["txt"]).set_file_name(&name).save_file() {
                         match std::fs::write(&p, text.as_bytes()) {

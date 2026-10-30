@@ -18,7 +18,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 | 3 | **Services:** SNMP, TACACS+, relaying mail between servers | CCNA 3, network management labs | 14–22 h |
 | 4 | **More languages and full coverage:** engine messages (errors, drop reasons, event summaries) in Spanish; more interface languages | Non-English students | 8–14 h |
 | 5 | **Packaging and first release:** installers for Windows, macOS, FreeBSD and Flatpak, workflows, contributors in the About window ([releasing.md](releasing.md)); the app ID and the project's home are the owner's decision | Everyone who isn't a developer | 10–18 h |
-| 6 | **Workspace:** drawing freeform, clusters, physical view, print/export the workspace | Everyone, occasionally | 50–75 h |
+| 6 | **Workspace:** drawing freeform, clusters, physical view, direct printing | Everyone, occasionally | 45–70 h |
 | 7 | **Device families:** modular routers, ASA, IoT, phones | Specialised labs | 80–120 h |
 | 8 | **EIGRP, VPN (GRE/IPsec), QoS** | CCNA 3 extras | 40–60 h |
 
@@ -26,6 +26,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Workspace narrowed: File ▸ Export Workspace Image (PNG). |
 | 2026-10-30 | minor | Wireless narrowed: the home router's Internet port takes DHCP (`ip address dhcp` on routers too). |
 | 2026-10-30 | minor | Services narrowed: email (SMTP, POP3, the Email app). |
 | 2026-10-30 | minor | Activities narrowed: values per student (variables picked from the student's name), results per section. |
