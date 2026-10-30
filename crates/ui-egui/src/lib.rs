@@ -26,6 +26,7 @@ pub mod i18n;
 pub mod icons;
 mod mail;
 mod mib;
+pub mod pdf;
 pub mod png;
 mod services;
 pub mod theme;
@@ -49,6 +50,9 @@ pub enum UiRequest {
     SaveText { name: String, text: String },
     /// Ask where to write a PNG image of the workspace.
     ExportImage(Vec<u8>),
+    /// Print a one-page PDF of the workspace (the desktop opens it in the system's PDF viewer;
+    /// the web build downloads it).
+    Print(Vec<u8>),
     /// Pick a text file for a device: its startup configuration (`merge: false`) or lines to
     /// merge into the running configuration; then call [`PacketApp::text_opened`].
     OpenText { device: DeviceId, merge: bool },
@@ -135,6 +139,8 @@ pub struct UiState {
     /// Where the workspace was drawn last frame (points), and a screenshot asked for it.
     pub canvas_rect: Option<egui::Rect>,
     pub image_pending: bool,
+    /// The pending screenshot is for File ▸ Print (a PDF), not for the PNG export.
+    pub print_pending: bool,
     /// Where the screenshot lands when it is ready.
     pub shot: std::sync::Arc<std::sync::Mutex<Option<std::sync::Arc<egui::ColorImage>>>>,
     /// Activity instructions and wizard.
@@ -172,6 +178,7 @@ impl Default for UiState {
             lang_changed: false,
             canvas_rect: None,
             image_pending: false,
+            print_pending: false,
             shot: Default::default(),
             activity: activity::ActivityView::default(),
             canvas: canvas::CanvasState::default(),
@@ -709,8 +716,12 @@ impl PacketApp {
                 if ui.button(tl("Export Capture (pcap)...")).on_hover_text(tl("The event list as a capture any packet analyser opens")).clicked() {
                     self.requests.push(UiRequest::ExportPcap(self.session.pcap()));
                 }
-                if ui.button(tl("Export Workspace Image (PNG)...")).on_hover_text(tl("The workspace as a picture, for a report")).clicked() {
+                let png = ui.button(tl("Export Workspace Image (PNG)...")).on_hover_text(tl("The workspace as a picture, for a report")).clicked();
+                let print =
+                    ui.button(tl("Print...")).on_hover_text(tl("The workspace on an A4 page, opened in the system's PDF viewer to print")).clicked();
+                if png || print {
                     self.ui.image_pending = true;
+                    self.ui.print_pending = print;
                     let slot = self.ui.shot.clone();
                     let ctx = ui.ctx().clone();
                     ui.ctx().request_screenshot(move |image| {
@@ -1093,8 +1104,13 @@ impl PacketApp {
                 rgba.extend_from_slice(&[c.r(), c.g(), c.b(), 255]);
             }
         }
-        let png = png::encode(u32::try_from(x1 - x0).unwrap_or(0), u32::try_from(y1 - y0).unwrap_or(0), &rgba);
-        self.requests.push(UiRequest::ExportImage(png));
+        let (w, h) = (u32::try_from(x1 - x0).unwrap_or(0), u32::try_from(y1 - y0).unwrap_or(0));
+        if std::mem::take(&mut self.ui.print_pending) {
+            let rgb: Vec<u8> = rgba.as_chunks::<4>().0.iter().flat_map(|[r, g, b, _]| [*r, *g, *b]).collect();
+            self.requests.push(UiRequest::Print(pdf::page(&self.title(), w, h, &rgb)));
+        } else {
+            self.requests.push(UiRequest::ExportImage(png::encode(w, h, &rgba)));
+        }
     }
 
     fn about_window(&mut self, ctx: &egui::Context) {

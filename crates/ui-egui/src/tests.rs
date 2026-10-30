@@ -218,6 +218,24 @@ fn exporting_the_workspace_crops_the_screenshot_to_a_png() {
 }
 
 #[test]
+fn printing_makes_a_one_page_pdf_of_the_workspace() {
+    let mut h = harness(Some("lan"));
+    h.run_steps(2);
+    let img = egui::ColorImage::filled([1200, 800], egui::Color32::LIGHT_BLUE);
+    h.state_mut().ui.image_pending = true;
+    h.state_mut().ui.print_pending = true;
+    *h.state().ui.shot.lock().unwrap() = Some(std::sync::Arc::new(img));
+    h.run_steps(1);
+    let pdf = h.state_mut().take_requests().into_iter().find_map(|r| match r {
+        UiRequest::Print(b) => Some(b),
+        _ => None,
+    });
+    let pdf = pdf.expect("a page to print");
+    assert!(pdf.starts_with(b"%PDF-1.4") && pdf.windows(9).any(|w| w == b"/Count 1 "));
+    assert!(!h.state().ui.print_pending && !h.state().ui.image_pending);
+}
+
+#[test]
 fn about_lists_the_contributors_as_a_bag_and_a_table() {
     let mut h = harness(None);
     h.state_mut().ui.show_about = true;

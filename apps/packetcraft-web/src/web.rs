@@ -102,6 +102,7 @@ impl eframe::App for WebShell {
                 UiRequest::ExportPcap(bytes) => download("capture.pcap", &bytes, "application/vnd.tcpdump.pcap"),
                 UiRequest::SaveText { name, text } => download(&name, text.as_bytes(), "text/plain"),
                 UiRequest::ExportImage(bytes) => download("workspace.png", &bytes, "image/png"),
+                UiRequest::Print(bytes) => download("workspace.pdf", &bytes, "application/pdf"),
                 UiRequest::OpenText { device, merge } => {
                     let inbox = self.inbox.clone();
                     let ctx = ui.ctx().clone();

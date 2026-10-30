@@ -1,6 +1,6 @@
 # UI parity
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (freehand and polygon drawings, clusters, About ▸ Contributors) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (File ▸ Print) · **Target:** Cisco Packet Tracer 9.0
 
 The window, element by element, against the reference app. Part of
 [target-app-parity.md](target-app-parity.md). The arrangement was observed black-box (local
@@ -9,7 +9,7 @@ The window, element by element, against the reference app. Part of
 
 | Element | Reference app | PacketCraft |
 |---|---|---|
-| Menu bar | File, Edit, Options, View, Tools, Extensions, Window, Help | same menus, our items; File ▸ Open Recent on the desktop; the web build asks before closing a tab with unsaved changes |
+| Menu bar | File, Edit, Options, View, Tools, Extensions, Window, Help | same menus, our items; File ▸ Open Recent on the desktop; File ▸ Print… makes an A4 PDF of the workspace and opens it in the system's PDF viewer to print (the web build downloads it); the web build asks before closing a tab with unsaved changes |
 | Main toolbar | file, print, info, copy/paste, undo/redo, zoom, palette… ; help at right | new, open, save, network information, copy/paste devices, undo, redo, zoom in/reset/out, capture export; help at right |
 | Second toolbar | select, inspect, delete, resize, note, drawing, simple/complex PDU | select, inspect, delete, place note, line, rectangle, ellipse, freehand, polygon, simple PDU, group into a cluster; resize and complex PDU shown but not available yet |
 | Workspace bar | Logical / Physical, coordinates, Root, navigation, clock | Logical / Physical (physical not available yet), coordinates, a clickable Root › cluster › … path with back, clock |
@@ -31,6 +31,7 @@ The window, element by element, against the reference app. Part of
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | File ▸ Print: the workspace as an A4 PDF for the system's viewer to print. |
 | 2026-10-30 | minor | Activities: Compare with the Answer; the Activities row brought up to date. |
 | 2026-10-30 | minor | Freehand and polygon drawings; multi-selection and nested clusters; About ▸ Contributors. |
 | 2026-10-30 | minor | File ▸ Export Workspace Image (PNG); the PC Email app; the model count. |

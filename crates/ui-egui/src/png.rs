@@ -30,16 +30,9 @@ fn chunk(out: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
     out.extend_from_slice(&crc32(&[kind, data]).to_be_bytes());
 }
 
-/// Encodes `rgba` (`width × height` pixels, 4 bytes each, rows top to bottom) as a PNG file.
-pub fn encode(width: u32, height: u32, rgba: &[u8]) -> Vec<u8> {
-    let row = width as usize * 4;
-    // Each row starts with its filter type: 0 (none).
-    let mut raw = Vec::with_capacity((row + 1) * height as usize);
-    for y in 0..height as usize {
-        raw.push(0);
-        raw.extend_from_slice(rgba.get(y * row..(y + 1) * row).unwrap_or(&vec![0; row]));
-    }
-    // zlib: header, stored deflate blocks of at most 65535 bytes, Adler-32.
+/// A zlib stream of stored (uncompressed) deflate blocks: valid wherever zlib is read (PNG
+/// IDAT, PDF FlateDecode) with no compressor in the tree.
+pub(crate) fn zlib_stored(raw: &[u8]) -> Vec<u8> {
     let mut z = vec![0x78, 0x01];
     let blocks: Vec<&[u8]> = if raw.is_empty() { vec![&[][..]] } else { raw.chunks(65_535).collect() };
     let last = blocks.len().saturating_sub(1);
@@ -50,7 +43,20 @@ pub fn encode(width: u32, height: u32, rgba: &[u8]) -> Vec<u8> {
         z.extend_from_slice(&(!len).to_le_bytes());
         z.extend_from_slice(b);
     }
-    z.extend_from_slice(&adler32(&raw).to_be_bytes());
+    z.extend_from_slice(&adler32(raw).to_be_bytes());
+    z
+}
+
+/// Encodes `rgba` (`width × height` pixels, 4 bytes each, rows top to bottom) as a PNG file.
+pub fn encode(width: u32, height: u32, rgba: &[u8]) -> Vec<u8> {
+    let row = width as usize * 4;
+    // Each row starts with its filter type: 0 (none).
+    let mut raw = Vec::with_capacity((row + 1) * height as usize);
+    for y in 0..height as usize {
+        raw.push(0);
+        raw.extend_from_slice(rgba.get(y * row..(y + 1) * row).unwrap_or(&vec![0; row]));
+    }
+    let z = zlib_stored(&raw);
     let mut out = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
     let mut ihdr = Vec::with_capacity(13);
     ihdr.extend_from_slice(&width.to_be_bytes());

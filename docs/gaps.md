@@ -17,7 +17,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 | 2 | **Services:** SNMP traps and v3, relaying mail between servers | Network management labs | 6–10 h |
 | 3 | **More languages:** interface languages beyond English and Spanish (catalogs in the same format) | Non-English students | 3–6 h |
 | 4 | **Packaging and first release:** installers for Windows, macOS, FreeBSD and Flatpak, workflows ([releasing.md](releasing.md)); the app ID and the project's home are the owner's decision | Everyone who isn't a developer | 7–13 h |
-| 5 | **Workspace:** physical view, direct printing | Everyone, occasionally | 30–45 h |
+| 5 | **Workspace:** physical view (cities, buildings, wiring closets, cable lengths) | Everyone, occasionally | 28–42 h |
 | 6 | **Device families:** modular routers, ASA, IoT, phones | Specialised labs | 80–120 h |
 | 7 | **QoS; EIGRP and VPN depth:** QoS classification and queuing; EIGRP queries, timers and unequal-cost paths; the IKE exchange on the wire, tunnels over learned routes | CCNA 3 extras | 25–40 h |
 
@@ -25,6 +25,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Workspace narrowed: File ▸ Print. |
 | 2026-10-30 | minor | Languages narrowed: event summaries and PDU details in Spanish. |
 | 2026-10-30 | minor | Activity depth done: Compare with the Answer, check by check. |
 | 2026-10-30 | minor | Workspace narrowed: freehand and polygon drawings, clusters. |

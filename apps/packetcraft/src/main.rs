@@ -105,6 +105,15 @@ impl App {
                         }
                     }
                 }
+                UiRequest::Print(bytes) => {
+                    // No print API here: the system's PDF viewer prints (and previews) it.
+                    let path = std::env::temp_dir().join(format!("packetcraft-print-{}.pdf", std::process::id()));
+                    let opened = std::fs::write(&path, &bytes).map_err(|e| e.to_string()).and_then(|()| open_with_system(&path));
+                    match opened {
+                        Ok(()) => self.app.info(packetcraft_ui_egui::i18n::tr("Opened the page in the PDF viewer: print it from there.").to_string()),
+                        Err(e) => self.app.ui.status = Some((format!("{}: {e}", path.display()), true)),
+                    }
+                }
                 UiRequest::SaveText { name, text } => {
                     if let Some(p) = rfd::FileDialog::new().add_filter("Text", &["txt"]).set_file_name(&name).save_file() {
                         match std::fs::write(&p, text.as_bytes()) {
@@ -254,4 +263,18 @@ fn main() -> eframe::Result {
             Ok(Box::new(App { app, title, closing: Closing::No, last_path }))
         }),
     )
+}
+
+/// Opens a file with the system's default application.
+fn open_with_system(path: &std::path::Path) -> Result<(), String> {
+    let mut cmd = if cfg!(target_os = "windows") {
+        let mut c = std::process::Command::new("cmd");
+        c.args(["/C", "start", ""]);
+        c
+    } else if cfg!(target_os = "macos") {
+        std::process::Command::new("open")
+    } else {
+        std::process::Command::new("xdg-open")
+    };
+    cmd.arg(path).spawn().map(|_| ()).map_err(|e| e.to_string())
 }

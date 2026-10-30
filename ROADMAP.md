@@ -20,7 +20,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 | Number | Value | Kind |
 |---|---|---|
-| **Ready for real work** (weighted) | **~74%** | estimated from written weights (73.8); [target-app-parity.md](docs/target-app-parity.md) |
+| **Ready for real work** (weighted) | **~74%** | estimated from written weights (74.0); [target-app-parity.md](docs/target-app-parity.md) |
 | **CCNA 1 student** | **~86%** | estimated; [method](docs/target-app-parity.md#audiences) |
 | **CCNA 2 student** | **~84%** | estimated |
 | **CCNA 3 student** | **~80%** | estimated |
@@ -28,7 +28,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Engine commands | 65 | measured: `crates/engine/src/catalog.rs` |
 | Console grammar entries | 453 across 18 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
 | Device models · sample labs | 16 · 18 | measured |
-| Tests | 197 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Tests | 199 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~550–880 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
@@ -52,7 +52,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Security | 8 | 78% | 16–28 | IPv4 and IPv6 ACLs, access-class, NAT/PAT, passwords and lines, PPP PAP/CHAP, GRE tunnels and IPsec site-to-site; no firewalls |
 | WAN, cabling, wireless | 6 | 62% | 28–45 | Copper (auto-MDIX), serial (DCE/DTE, HDLC/PPP), Wi-Fi access points, home wireless routers and clients; no WLC or fibre |
 | Simulation mode | 8 | 70% | 18–28 | Event list, replay, decode, drop reasons, pcap; BPDUs, OSPF hellos and database exchange, RIP updates, HSRP hellos, LLDP, LACP; no complex PDUs |
-| Workspace and windows | 10 | 63% | 40–60 | Reference-app arrangement, device tabs, notes, shapes, freehand and polygon drawings, nested clusters; no physical view |
+| Workspace and windows | 10 | 65% | 38–56 | Reference-app arrangement, device tabs, notes, shapes, freehand and polygon drawings, nested clusters, printing; no physical view |
 | Teaching | 8 | 80% | 15–25 | Activities with checks, points, sections, hints, hidden answers, values per student, a time limit, a password lock, a wizard and a side-by-side comparison with the answer; Spanish interface |
 | Device families | 5 | 25% | 80–120 | 16 generic models; no modules, ASA, IoT |
 | Files | — | — | — | Own open `.pcraft` JSON; no `.pkt` (out of scope: [decisions.md](docs/decisions.md)) |
@@ -60,6 +60,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-10-30 — Printing.** File ▸ Print puts the workspace on an A4 page with the lab's name and opens it in the system's PDF viewer to print; the web build downloads the PDF.
 - **2026-10-30 — Events in Spanish.** With the Spanish interface, the event list's summaries and the PDU details read in Spanish too; addresses, names and protocol names stay as they are.
 - **2026-10-30 — Compare with the answer.** After Check Results, the Instructions window's Compare button lists each check's answer next to what the student's lab has (the lab's side only when the answers are hidden).
 - **2026-10-30 — Drawings and clusters.** Draw freehand strokes and polygons on the workspace; pick several devices (Shift+drag or Shift+click), group them into a cluster with Ctrl+G, open it with a double click and come back through the Root › … path; clusters nest and the simulation ignores them.
