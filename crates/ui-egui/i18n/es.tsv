@@ -568,3 +568,19 @@ Result	Resultado
 contains "{}"	contiene "{}"
 {} can't reach {}	{} no llega a {}
 {}: `{}` shows "{}"	{}: `{}` muestra "{}"
+Malformed frame	Trama mal formada
+Length	Longitud
+Sender MAC	MAC del emisor
+Sender IP	IP del emisor
+Target MAC	MAC buscada
+Target IP	IP buscada
+Protocol	Protocolo
+Identification	Identificación
+Payload	Carga útil
+Identifier	Identificador
+Sequence	Secuencia
+Data	Datos
+Code	Código
+Quoted	Citado
+Source port	Puerto de origen
+Destination port	Puerto de destino

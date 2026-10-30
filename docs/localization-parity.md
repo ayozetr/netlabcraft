@@ -1,6 +1,6 @@
 # Localization parity
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (event summaries in Spanish) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (event summaries and PDU details in Spanish) · **Target:** Cisco Packet Tracer 9.0
 
 Part of [target-app-parity.md](target-app-parity.md). **Localization: ~75% ready, 8–14 h**
 (estimated).
@@ -11,7 +11,7 @@ storytold Craft apps share their translations through
 
 | Feature | Reference app | PacketCraft | Gap and estimate |
 |---|---|---|---|
-| Interface language | English plus community language files | English and Spanish: Options ▸ Language, the system's language by default (the browser's on the web), remembered on the desktop | Engine errors in the status bar and the reasons a frame was dropped are translated by matching templates (`no route to {}` fits `no route to 10.0.0.1`); event summaries are translated phrase by phrase (`i18n/es-events.tsv`), leaving addresses, names and protocol names as they are. PDU detail layers stay English: 3–5 h |
+| Interface language | English plus community language files | English and Spanish: Options ▸ Language, the system's language by default (the browser's on the web), remembered on the desktop | Engine errors in the status bar and the reasons a frame was dropped are translated by matching templates (`no route to {}` fits `no route to 10.0.0.1`); event summaries are translated phrase by phrase (`i18n/es-events.tsv`), leaving addresses, names and protocol names as they are. PDU details (layer names, fields and values) too: done |
 | Catalogs | — | `crates/ui-egui/i18n/es.tsv` (566 rows) and `es-events.tsv` (55 phrases) in the craft-i18n row format (`English<TAB>translation`, `\n` for line breaks), embedded at build time; a missing row shows English; messages with parts use templates with `{}` (a test checks each translation keeps them) | Move to `storytold/craft-i18n` if PacketCraft joins the Craft apps; more languages: 4–6 h each with review |
 | Device console | English (as on real equipment) | English | Stays English on purpose: commands and output are what students meet on real devices |
 | Sample labs, notes and activity texts | — | Sample titles, descriptions, notes and the sample activity in Spanish (a test checks every sample has its rows); notes and activities people write stay as written | — |
@@ -22,7 +22,7 @@ storytold Craft apps share their translations through
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-10-30 | minor | Event summaries in Spanish through a phrase catalog. |
+| 2026-10-30 | minor | Event summaries and PDU details in Spanish through a phrase catalog. |
 | 2026-10-30 | minor | Engine errors and drop reasons in Spanish, matched against templates. |
 | 2026-10-30 | minor | Messages with parts and the sample labs in Spanish. |
 | 2026-10-30 | major | Spanish interface: catalog, language menu, system default. |

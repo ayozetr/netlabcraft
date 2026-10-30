@@ -15,7 +15,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 |---|---|---|---|
 | 1 | **Wireless depth:** WLC with lightweight APs, 802.1X/RADIUS, 802.11 frames in Simulation mode | CCNA 2 | 16–26 h |
 | 2 | **Services:** SNMP traps and v3, relaying mail between servers | Network management labs | 6–10 h |
-| 3 | **More languages and full coverage:** PDU detail layers in Spanish; more interface languages | Non-English students | 4–8 h |
+| 3 | **More languages:** interface languages beyond English and Spanish (catalogs in the same format) | Non-English students | 3–6 h |
 | 4 | **Packaging and first release:** installers for Windows, macOS, FreeBSD and Flatpak, workflows ([releasing.md](releasing.md)); the app ID and the project's home are the owner's decision | Everyone who isn't a developer | 7–13 h |
 | 5 | **Workspace:** physical view, direct printing | Everyone, occasionally | 30–45 h |
 | 6 | **Device families:** modular routers, ASA, IoT, phones | Specialised labs | 80–120 h |
@@ -25,7 +25,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-10-30 | minor | Languages narrowed: event summaries in Spanish. |
+| 2026-10-30 | minor | Languages narrowed: event summaries and PDU details in Spanish. |
 | 2026-10-30 | minor | Activity depth done: Compare with the Answer, check by check. |
 | 2026-10-30 | minor | Workspace narrowed: freehand and polygon drawings, clusters. |
 | 2026-10-30 | minor | CCNA 3 extras narrowed: EIGRP, GRE tunnels and IPsec site-to-site; QoS and depth remain. |

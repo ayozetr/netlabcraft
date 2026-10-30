@@ -342,20 +342,20 @@ pub fn pdu_window(app: &mut PacketApp, ctx: &egui::Context) {
             ui.separator();
             egui::ScrollArea::vertical().show(ui, |ui| {
                 for (layer, fields) in decode(&e.frame) {
-                    egui::CollapsingHeader::new(RichText::new(layer.clone()).strong()).id_salt(("layer", id, layer)).default_open(true).show(
-                        ui,
-                        |ui| {
+                    egui::CollapsingHeader::new(RichText::new(crate::i18n::tr(&layer)).strong())
+                        .id_salt(("layer", id, layer))
+                        .default_open(true)
+                        .show(ui, |ui| {
                             egui::Grid::new(("fields", id, fields.first().map(|f| f.0.clone()))).num_columns(2).striped(true).show(ui, |ui| {
                                 for (k, v) in fields {
-                                    ui.label(k);
-                                    ui.monospace(v);
+                                    ui.label(crate::i18n::tr(&k));
+                                    ui.monospace(crate::i18n::tr_event(&v));
                                     ui.end_row();
                                 }
                             });
-                        },
-                    );
+                        });
                 }
-                egui::CollapsingHeader::new("Bytes").id_salt(("hex", id)).default_open(false).show(ui, |ui| {
+                egui::CollapsingHeader::new(tl("Bytes")).id_salt(("hex", id)).default_open(false).show(ui, |ui| {
                     ui.monospace(hex_dump(&e.frame));
                 });
             });
