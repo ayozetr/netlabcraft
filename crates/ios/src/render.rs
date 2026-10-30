@@ -25,6 +25,9 @@ pub fn running_config(d: &Device) -> String {
     if d.cdp_off {
         let _ = writeln!(s, "no cdp run\n!");
     }
+    if d.lldp_on {
+        let _ = writeln!(s, "lldp run\n!");
+    }
     for a in &d.ntp_servers {
         let _ = writeln!(s, "ntp server {a}");
     }
@@ -117,6 +120,12 @@ pub fn running_config(d: &Device) -> String {
         }
         if p.cdp_off {
             let _ = writeln!(s, " no cdp enable");
+        }
+        if p.lldp_tx_off {
+            let _ = writeln!(s, " no lldp transmit");
+        }
+        if p.lldp_rx_off {
+            let _ = writeln!(s, " no lldp receive");
         }
         if d.kind == DeviceKind::Switch && p.routed {
             let _ = writeln!(s, " no switchport");
@@ -1310,6 +1319,133 @@ pub fn cdp_neighbors(t: &Topology, sim: &Sim, d: &Device, detail: bool) -> Strin
     }
     let _ = write!(s, "{} neighbour{}", list.len(), if list.len() == 1 { "" } else { "s" });
     s
+}
+
+/// `show lldp`.
+pub fn lldp(d: &Device) -> String {
+    if !d.lldp_on {
+        return "LLDP is off on this device (`lldp run` turns it on).".into();
+    }
+    let mut s = format!(
+        "LLDP is on: advertisements every {} s, kept for {} s.",
+        packetcraft_sim::lldp::LLDP_EVERY_US / 1_000_000,
+        packetcraft_sim::lldp::HOLD_SECS
+    );
+    let names = |f: fn(&packetcraft_model::Port) -> bool| d.ports.iter().filter(|p| f(p)).map(|p| ifname::short(&p.name)).collect::<Vec<_>>();
+    for (what, off) in [("Not sending on", names(|p| p.lldp_tx_off)), ("Not hearing on", names(|p| p.lldp_rx_off))] {
+        if !off.is_empty() {
+            let _ = write!(s, "\n{what}: {}", off.join(", "));
+        }
+    }
+    s
+}
+
+/// `show lldp neighbors [detail]`.
+pub fn lldp_neighbors(t: &Topology, sim: &Sim, d: &Device, detail: bool) -> String {
+    if !d.lldp_on {
+        return "LLDP is off on this device.".into();
+    }
+    let list = packetcraft_sim::lldp::neighbors(t, d);
+    let every = packetcraft_sim::lldp::LLDP_EVERY_US / 1_000_000;
+    let hold = u64::from(packetcraft_sim::lldp::HOLD_SECS) - (sim.now_us() / 1_000_000 % every);
+    let caps = |c: u16| {
+        let mut v = Vec::new();
+        if c & packetcraft_sim::lldp::CAP_ROUTER != 0 {
+            v.push("router");
+        }
+        if c & packetcraft_sim::lldp::CAP_BRIDGE != 0 {
+            v.push("bridge");
+        }
+        if v.is_empty() { "-".to_string() } else { v.join(", ") }
+    };
+    let mut s = String::new();
+    if detail {
+        for n in &list {
+            let i = &n.info;
+            let _ = writeln!(s, "Neighbour {}", i.system_name);
+            let _ = writeln!(s, "  Heard on     {}, their port {}", n.local, i.port);
+            let _ = writeln!(s, "  Chassis      {}", i.chassis);
+            let _ = writeln!(s, "  Description  {}", i.description);
+            let _ = writeln!(s, "  Can act as   {}", caps(i.caps.0));
+            let _ = writeln!(s, "  Address      {}", i.address.map_or("none".to_string(), |a| a.to_string()));
+            let _ = writeln!(s, "  Expires      in {hold} s\n");
+        }
+    } else {
+        let _ = writeln!(s, "{:<14} {:<9} {:<9} {:<15} Expires", "Neighbour", "Here", "There", "Can act as");
+        for n in &list {
+            let _ = writeln!(
+                s,
+                "{:<14} {:<9} {:<9} {:<15} {hold} s",
+                n.info.system_name,
+                ifname::short(&n.local),
+                ifname::short(&n.info.port),
+                caps(n.info.caps.0)
+            );
+        }
+    }
+    let _ = write!(s, "{} neighbour{}", list.len(), if list.len() == 1 { "" } else { "s" });
+    s
+}
+
+/// `show processes [cpu]`: the protocol tasks this device is running. A simulated device has no
+/// real load; the figures are small and steady so the command answers what students look for.
+pub fn processes(t: &Topology, sim: &Sim, d: &Device) -> String {
+    let mut tasks: Vec<&str> = vec!["Console", "IP input", "ARP"];
+    if d.kind == DeviceKind::Switch {
+        tasks.extend(["Spanning tree", "MAC address table"]);
+    }
+    if !d.cdp_off && d.kind != DeviceKind::Pc {
+        tasks.push("CDP");
+    }
+    if d.lldp_on {
+        tasks.push("LLDP");
+    }
+    if d.ospf.is_some() {
+        tasks.push("OSPF");
+    }
+    if d.rip.is_some() {
+        tasks.push("RIP");
+    }
+    if !d.dhcp_pools.is_empty() {
+        tasks.push("DHCP server");
+    }
+    if !d.ntp_servers.is_empty() {
+        tasks.push("NTP client");
+    }
+    let busy = 1
+        + u64::from(d.ospf.is_some())
+        + u64::from(d.rip.is_some())
+        + u64::try_from((0..d.ports.len()).filter(|i| t.peer(packetcraft_model::End { device: d.id, port: *i }).is_some()).count() / 8).unwrap_or(0);
+    let up = sim.now_us() / 1_000;
+    let mut s = format!("CPU use: {busy}% over the last 5 s, {busy}% over 1 min, {busy}% over 5 min\n\n");
+    let _ = writeln!(s, "{:>4}  {:<20} {:>12}", "Task", "Name", "Run time (ms)");
+    for (n, name) in tasks.iter().enumerate() {
+        let share = up / 1_000 / (n as u64 + 2);
+        let _ = writeln!(s, "{:>4}  {:<20} {:>12}", n + 1, name, share);
+    }
+    s.trim_end().to_string()
+}
+
+/// `show memory [statistics]`: what the configuration and tables would take.
+pub fn memory(d: &Device) -> String {
+    let total: u64 = match d.kind {
+        DeviceKind::Router => 512 * 1024,
+        DeviceKind::Switch => 128 * 1024,
+        _ => 64 * 1024,
+    };
+    let config = u64::try_from(running_config(d).len()).unwrap_or(0) / 1024 + 1;
+    let used = 24 * 1024 + config * 4 + u64::try_from(d.ports.len()).unwrap_or(0) * 32;
+    format!(
+        "{:<12} {:>10} {:>10} {:>10}\n{:<12} {:>10} {:>10} {:>10}\n(kilobytes)",
+        "",
+        "Total",
+        "Used",
+        "Free",
+        "Main memory",
+        total,
+        used,
+        total.saturating_sub(used)
+    )
 }
 
 /// `show standby`.

@@ -156,6 +156,20 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show cdp neighbors` | user, privileged | router, switch | Neighbouring routers and switches |
 | `show cdp neighbors detail` | user, privileged | router, switch | Neighbours with their addresses |
 | `show cdp entry *` | user, privileged | router, switch | Neighbours with their addresses |
+| `lldp run` | config | router, switch | Send and hear LLDP advertisements (IEEE 802.1AB) |
+| `no lldp run` | config | router, switch | Stop LLDP on this device |
+| `lldp transmit` | interface | router, switch | Send LLDP advertisements on this port |
+| `no lldp transmit` | interface | router, switch | Stop sending LLDP on this port |
+| `lldp receive` | interface | router, switch | Hear LLDP advertisements on this port |
+| `no lldp receive` | interface | router, switch | Ignore LLDP advertisements on this port |
+| `show lldp` | user, privileged | router, switch | LLDP settings |
+| `show lldp neighbors` | user, privileged | router, switch | Neighbours heard through LLDP |
+| `show lldp neighbors detail` | user, privileged | router, switch | LLDP neighbours with everything they advertise |
+| `show lldp entry *` | user, privileged | router, switch | LLDP neighbours with everything they advertise |
+| `show processes` | user, privileged | router, switch | What the device is busy with |
+| `show processes cpu` | user, privileged | router, switch | What the device is busy with |
+| `show memory` | user, privileged | router, switch | Memory in use |
+| `show memory statistics` | user, privileged | router, switch | Memory in use |
 | `show ip interface` | user, privileged | router, switch | Layer-3 settings of every interface |
 | `show ip interface <interface>` | user, privileged | router, switch | Layer-3 settings of an interface |
 | `show interfaces status` | user, privileged | switch | Port state, VLAN and speed |

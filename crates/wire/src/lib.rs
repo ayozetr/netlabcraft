@@ -17,6 +17,8 @@ pub mod dhcp;
 pub mod dhcp6;
 pub mod dns;
 pub mod ipv6;
+pub mod lldp;
+
 pub mod mgmt;
 pub mod pcap;
 pub mod serial;
@@ -413,6 +415,7 @@ pub enum Protocol {
     Ospf,
     Rip,
     Hsrp,
+    Lldp,
     Ntp,
     Syslog,
     Tftp,
@@ -438,6 +441,7 @@ impl Protocol {
             Protocol::Ospf => "OSPF",
             Protocol::Rip => "RIP",
             Protocol::Hsrp => "HSRP",
+            Protocol::Lldp => "LLDP",
             Protocol::Ntp => "NTP",
             Protocol::Syslog => "Syslog",
             Protocol::Tftp => "TFTP",
@@ -595,6 +599,13 @@ pub fn summarize(bytes: &[u8]) -> (Protocol, String) {
                 (proto, format!("{text}{tag}"))
             }
             Err(e) => (Protocol::Ipv6, format!("IPv6 ({e}){tag}")),
+        },
+        lldp::ETHERTYPE_LLDP => match lldp::Lldp::decode(&f.payload) {
+            Ok(l) => (
+                Protocol::Lldp,
+                format!("LLDP {} on {}, keep {} s{tag}", if l.system_name.is_empty() { l.chassis.to_string() } else { l.system_name }, l.port, l.ttl),
+            ),
+            Err(e) => (Protocol::Lldp, format!("LLDP ({e}){tag}")),
         },
         len if len <= 1_500 && f.payload.starts_with(&[0x42, 0x42, 0x03]) => match control::Bpdu::decode(&f.payload) {
             Ok(b) => (Protocol::Stp, format!("STP BPDU from {}: root {}, cost {}{tag}", b.bridge, b.root, b.root_cost)),

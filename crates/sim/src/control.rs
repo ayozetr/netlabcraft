@@ -1,4 +1,5 @@
-//! Control-plane traffic on the wire: spanning-tree BPDUs, OSPF hellos and RIP updates.
+//! Control-plane traffic on the wire: spanning-tree BPDUs, OSPF hellos, RIP updates, HSRP
+//! hellos, NTP polls and LLDP advertisements.
 //!
 //! The protocols themselves are computed from the topology (`stp`, `ospf`, `rip`); these frames
 //! show what they would say, at their usual intervals, so Simulation mode and captures have them.
@@ -31,9 +32,14 @@ impl Sim {
             return;
         }
         self.ctl_until = deadline;
-        for (every, kind) in
-            [(BPDU_EVERY_US, 0u8), (OSPF_HELLO_EVERY_US, 1), (RIP_UPDATE_EVERY_US, 2), (HSRP_HELLO_EVERY_US, 3), (NTP_POLL_EVERY_US, 4)]
-        {
+        for (every, kind) in [
+            (BPDU_EVERY_US, 0u8),
+            (OSPF_HELLO_EVERY_US, 1),
+            (RIP_UPDATE_EVERY_US, 2),
+            (HSRP_HELLO_EVERY_US, 3),
+            (NTP_POLL_EVERY_US, 4),
+            (crate::lldp::LLDP_EVERY_US, 5),
+        ] {
             let mut at = (from / every + 1) * every;
             while at <= deadline {
                 match kind {
@@ -41,6 +47,7 @@ impl Sim {
                     1 => self.send_ospf_hellos(t, at),
                     3 => self.send_hsrp_hellos(t, at),
                     4 => self.send_ntp_polls(t, at),
+                    5 => self.send_lldp(t, at),
                     _ => self.send_rip_updates(t, at),
                 }
                 at += every;
@@ -55,6 +62,27 @@ impl Sim {
         let Some(to) = t.peer(from) else { return };
         self.seq += 1;
         self.queue.push(std::cmp::Reverse(Queued { at: at + LINK_DELAY_US, seq: self.seq, from, to, frame, hops: 0 }));
+    }
+
+    fn send_lldp(&mut self, t: &Topology, at: u64) {
+        let mut frames = Vec::new();
+        for d in t.devices.iter().filter(|d| d.lldp_on) {
+            for (i, p) in d.ports.iter().enumerate() {
+                if let Some(l) = crate::lldp::advertisement(d, i) {
+                    let f = Frame {
+                        dst: packetcraft_wire::lldp::LLDP_GROUP,
+                        src: p.mac,
+                        vlan: None,
+                        ethertype: packetcraft_wire::lldp::ETHERTYPE_LLDP,
+                        payload: l.encode(),
+                    };
+                    frames.push((End { device: d.id, port: i }, f.encode()));
+                }
+            }
+        }
+        for (from, f) in frames {
+            self.queue_at(t, from, f, at);
+        }
     }
 
     fn send_bpdus(&mut self, t: &Topology, at: u64) {

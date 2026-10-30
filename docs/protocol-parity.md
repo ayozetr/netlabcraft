@@ -1,6 +1,6 @@
 # Protocol and command parity
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (logging buffer, console messages, `debug ip icmp`) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (LLDP, `show processes`, `show memory`) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 What the simulated devices do, protocol by protocol, against the reference app. Part of
 [target-app-parity.md](target-app-parity.md). Behaviour comes from the standards named in each
@@ -99,8 +99,9 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | Modes: user, privileged, global, interface, subinterface, range, VLAN, line, DHCP pool, router OSPF/RIP, ACL, VLAN interface | ✅ | Prompts follow the usual `name>`, `name#`, `name(config)#` convention. |
 | Abbreviations, `?` help, Tab completion, history, `do` | ✅ | Ambiguity and unknown-word errors point at the word. |
 | Running/startup config, `write`, `copy`, `erase`, `reload` | ✅ | Configuration round-trips through the same dispatcher (tested). |
-| `show` coverage | 🟡 | Interfaces (also `status`, `X switchport`), IP/IPv6 interface and routes, ARP, MAC table, VLANs, trunks, STP, EtherChannel, VTP, port security, OSPF, RIP, DHCP, NAT, ACLs, SSH, controllers, CDP, version, flash, clock, users, history, `running-config interface X`. Missing: `show processes`, `show memory`, `show logging`, `show ip ospf interface`, `show standby`: 6–10 h. |
-| CDP | 🟡 | `cdp run`, `cdp enable`, `show cdp`, `show cdp neighbors [detail]`; computed, no advertisement frames yet. No LLDP: 3–5 h. |
+| `show` coverage | 🟡 | Interfaces (also `status`, `X switchport`), IP/IPv6 interface and routes, ARP, MAC table, VLANs, trunks, STP, EtherChannel, VTP, port security, OSPF (also `interface`), RIP, DHCP, NAT, ACLs, SSH, controllers, CDP, LLDP, HSRP (`standby`), logging, version, flash, clock, users, history, processes, memory, `running-config interface X`. Missing: going through the CCNA 1 labs command by command: 4–8 h. |
+| CDP | 🟡 | `cdp run`, `cdp enable`, `show cdp`, `show cdp neighbors [detail]`; computed, no advertisement frames (the CDP frame format is proprietary). |
+| LLDP (IEEE 802.1AB) | ✅ | `lldp run`, `lldp transmit`/`receive` per port, `show lldp`, `show lldp neighbors [detail]`, `show lldp entry *`; real LLDP frames every 30 s in Simulation mode and captures. |
 | `clock set`, `terminal`, `debug` | 🟡 | `clock set` and `show clock` (per device, advances with simulated time, lost on reload); `terminal length/width/monitor` accepted (output is never paged); `debug ip icmp`, `undebug all`, `show debugging`. No other debugs: 4–6 h. |
 | Logging and console messages | 🟡 | A logging buffer per device (`show logging`, `clear logging`): link up/down, port-security shutdowns, configuration changes, debug output; the same messages appear on the device's console after the prompt. No syslog server yet. |
 | Host shell (PC Command Prompt) | 🟡 | `ipconfig`, `ipv6config`, `ping`, `tracert`, `nslookup`, `telnet`, `ssh`, `arp`. No `netstat`, `ftp`. |
@@ -119,5 +120,6 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | 2026-10-30 | minor | HSRP. |
 | 2026-10-30 | minor | Logging buffer and console messages; `debug ip icmp`. |
 | 2026-10-30 | minor | BPDUs, OSPF hellos and RIP updates on the wire, so Simulation mode and captures show them. |
+| 2026-10-30 | minor | LLDP with frames on the wire, `show processes`, `show memory`. |
 | 2026-10-30 | minor | Console: CDP, clock, flash, users, terminal, show ip interface, show interfaces status and switchport, show running-config interface, richer show version. |
 | 2026-10-30 | major | Created: every protocol and console area with its standard, status and estimate. |

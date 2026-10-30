@@ -20,15 +20,15 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 | Number | Value | Kind |
 |---|---|---|
-| **Ready for real work** (weighted) | **~64%** | estimated from written weights (63.9); [target-app-parity.md](docs/target-app-parity.md) |
+| **Ready for real work** (weighted) | **~65%** | estimated from written weights (64.7); [target-app-parity.md](docs/target-app-parity.md) |
 | **CCNA 1 student** | **~74%** | estimated; [method](docs/target-app-parity.md#audiences) |
 | **CCNA 2 student** | **~78%** | estimated |
 | **CCNA 3 student** | **~62%** | estimated |
 | **Instructor** (graded activities) | **~60%** | estimated |
 | Engine commands | 40 | measured: `crates/engine/src/catalog.rs` |
-| Console grammar entries | 225 across 12 modes | measured: `crates/ios/src/grammar.rs` |
+| Console grammar entries | 309 across 12 modes | measured: `crates/ios/src/grammar.rs` |
 | Device models · sample labs | 15 · 18 | measured |
-| Tests | 140 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Tests | 141 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~600–950 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
@@ -45,21 +45,22 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 | Dimension | Weight | Ready | Hours to ~95% | State |
 |---|---|---|---|---|
-| Device console | 20 | 65% | 50–80 | Modes, abbreviations, `?`, Tab, history, config round-trip; `show` coverage growing |
+| Device console | 20 | 68% | 45–70 | Modes, abbreviations, `?`, Tab, history, config round-trip; `show` coverage growing |
 | Layer 2 | 12 | 85% | 12–20 | VLANs, trunks, DTP, per-VLAN STP with BPDUs and timers, rapid-pvst, EtherChannel, VTP, port security |
 | Layer 3 | 15 | 66% | 50–80 | IPv4, IPv6 (NDP, SLAAC), static, RIP, multi-area OSPF with DR/BDR, multilayer switching, HSRP; no EIGRP or OSPFv3 |
 | Services | 8 | 58% | 26–42 | DHCPv4 and DHCPv6, DNS, HTTP with browser, Telnet/SSH, NTP, syslog, TFTP; no FTP, email, SNMP, AAA |
 | Security | 8 | 72% | 24–40 | IPv4 and IPv6 ACLs, access-class, NAT/PAT, passwords and lines, PPP PAP/CHAP; no firewalls or VPN |
 | WAN, cabling, wireless | 6 | 55% | 35–55 | Copper (auto-MDIX), serial (DCE/DTE, HDLC/PPP), Wi-Fi access points and clients; no wireless routers, WLC or fibre |
-| Simulation mode | 8 | 65% | 22–35 | Event list, replay, decode, drop reasons, pcap; BPDUs, OSPF hellos, RIP updates; no complex PDUs |
+| Simulation mode | 8 | 67% | 20–32 | Event list, replay, decode, drop reasons, pcap; BPDUs, OSPF hellos, RIP updates, HSRP hellos, LLDP; no complex PDUs |
 | Workspace and windows | 10 | 55% | 60–90 | Reference-app arrangement, device tabs, notes and drawings; no physical view or clusters |
 | Teaching | 8 | 65% | 35–60 | Activities with checks, points, hints, hidden answers, a time limit, a password lock and a wizard; Spanish interface; no variables per student |
-| Device families | 5 | 25% | 80–120 | 13 generic models; no modules, ASA, IoT |
+| Device families | 5 | 25% | 80–120 | 15 generic models; no modules, ASA, IoT |
 | Files | — | — | — | Own open `.pcraft` JSON; no `.pkt` (out of scope: [decisions.md](docs/decisions.md)) |
 | Platforms and agents | — | — | — | Linux, Windows, macOS, BSD, web; MCP server and CLI over the full command catalog |
 
 ## Progress log
 
+- **2026-10-30 — LLDP.** Standard neighbour discovery (IEEE 802.1AB): `lldp run`, `lldp transmit`/`receive` per port, `show lldp neighbors [detail]`, with real LLDP frames every 30 s in Simulation mode and captures; also `show processes` and `show memory`.
 - **2026-10-30 — Activity time limit and lock.** An activity can have a time limit (a countdown in the Instructions window; the results are taken when it runs out), a hint per check shown when it fails, and an instructor password that locks it: students can't change it or see its checks, and with "score only" Check Results shows just the score.
 - **2026-10-30 — Spanish interface.** Menus, toolbars, panels and device windows in Spanish (Options ▸ Language; the system or browser language by default); the device consoles stay in English, as on real equipment.
 - **2026-10-30 — Wi-Fi.** An AccessPoint model and a Laptop-WiFi model: SSID, open or WPA2-PSK, channel; hosts join the nearest access point in range with the same network and key, drawn as a dashed line; the access point relays between its hosts; Wi-Fi settings in the port pages and the `device.wireless` command; wifi sample lab.

@@ -505,6 +505,12 @@ pub struct Port {
     /// `no cdp enable`.
     #[serde(default)]
     pub cdp_off: bool,
+    /// `no lldp transmit`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub lldp_tx_off: bool,
+    /// `no lldp receive`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub lldp_rx_off: bool,
     /// Multilayer switches: `no switchport` made this a routed port (it takes `ip address`).
     #[serde(default)]
     pub routed: bool,
@@ -676,6 +682,9 @@ pub struct Device {
     /// Routers and switches: `no cdp run`.
     #[serde(default)]
     pub cdp_off: bool,
+    /// Routers and switches: `lldp run` (off until turned on, as on most equipment).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub lldp_on: bool,
     /// Routers: `ipv6 unicast-routing` (forward IPv6 and send router advertisements).
     #[serde(default)]
     pub ipv6_routing: bool,
@@ -1123,6 +1132,8 @@ impl Device {
                 standby: Vec::new(),
                 wifi: None,
                 cdp_off: false,
+                lldp_tx_off: false,
+                lldp_rx_off: false,
                 routed: false,
                 err_disabled: false,
                 helpers: Vec::new(),
@@ -1143,6 +1154,7 @@ impl Device {
             gateway6: None,
             ip_routing: false,
             cdp_off: false,
+            lldp_on: false,
             ntp_servers: Vec::new(),
             log_hosts: Vec::new(),
             ipv6_routing: false,
@@ -1183,6 +1195,7 @@ impl Device {
         self.gateway6 = None;
         self.ip_routing = false;
         self.cdp_off = false;
+        self.lldp_on = false;
         self.ntp_servers.clear();
         self.log_hosts.clear();
         self.ipv6_routing = false;

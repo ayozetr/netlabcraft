@@ -623,6 +623,29 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 Ok(())
             })
         }
+        Id::LldpRun | Id::NoLldpRun => {
+            c.dm()?.lldp_on = spec.id == Id::LldpRun;
+            Ok(String::new())
+        }
+        Id::LldpTransmit | Id::NoLldpTransmit | Id::LldpReceive | Id::NoLldpReceive => {
+            let off = matches!(spec.id, Id::NoLldpTransmit | Id::NoLldpReceive);
+            let tx = matches!(spec.id, Id::LldpTransmit | Id::NoLldpTransmit);
+            c.each_if(|p, sub| {
+                if sub.is_some() {
+                    return Err("% LLDP is set on the physical port".into());
+                }
+                if tx {
+                    p.lldp_tx_off = off
+                } else {
+                    p.lldp_rx_off = off
+                }
+                Ok(())
+            })
+        }
+        Id::ShowLldp => Ok(render::lldp(c.d()?)),
+        Id::ShowLldpNeighbors | Id::ShowLldpNeighborsDetail => Ok(render::lldp_neighbors(c.t, c.sim, c.d()?, spec.id == Id::ShowLldpNeighborsDetail)),
+        Id::ShowProcesses => Ok(render::processes(c.t, c.sim, c.d()?)),
+        Id::ShowMemory => Ok(render::memory(c.d()?)),
         Id::ShowCdp => Ok(render::cdp(c.d()?)),
         Id::ShowCdpNeighbors | Id::ShowCdpNeighborsDetail => Ok(render::cdp_neighbors(c.t, c.sim, c.d()?, spec.id == Id::ShowCdpNeighborsDetail)),
         Id::ShowIntTrunk => Ok(render::trunks(c.t, c.d()?)),

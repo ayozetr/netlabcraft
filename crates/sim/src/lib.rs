@@ -23,6 +23,8 @@ use packetcraft_wire::tcp::{self, Tcp};
 use packetcraft_wire::{Arp, ArpOp, ETHERTYPE_ARP, ETHERTYPE_IPV4, Frame, Icmp, Ipv4, PROTO_ICMP, PROTO_TCP, PROTO_UDP, Protocol, Udp, dns};
 
 pub mod cdp;
+pub mod lldp;
+
 pub mod channel;
 pub mod control;
 pub mod hsrp;
@@ -1343,8 +1345,8 @@ impl Sim {
             self.storm = true;
             return Err(format!("switching loop: the frame crossed {MAX_SWITCH_HOPS} switches (no spanning tree)"));
         }
-        // Spanning tree takes its BPDUs (the tree itself is computed).
-        if f.dst == packetcraft_wire::control::STP_GROUP {
+        // Spanning tree takes its BPDUs (the tree itself is computed), LLDP its advertisements.
+        if packetcraft_wire::control::link_local(f.dst) {
             return Ok(());
         }
         let sp = &d.ports.get(in_port).ok_or("no port")?.switchport;
@@ -1494,8 +1496,8 @@ impl Sim {
         if f.ethertype == packetcraft_wire::ipv6::ETHERTYPE_IPV6 {
             return self.ip6_in(t, d, in_port, &f);
         }
-        // Routers and hosts ignore spanning-tree BPDUs.
-        if f.dst == packetcraft_wire::control::STP_GROUP {
+        // Spanning-tree BPDUs and LLDP stay on the link (neighbours are computed).
+        if packetcraft_wire::control::link_local(f.dst) {
             return Ok(());
         }
         // A host waiting for DHCP takes answers before it has an address.

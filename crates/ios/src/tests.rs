@@ -1069,6 +1069,26 @@ fn everyday_show_commands_by_typing() {
     assert!(lab.run(s, "show running-config").contains(" no cdp enable"));
     lab.run(r, "conf t\nno cdp run\nend");
     assert!(lab.run(r, "show cdp").contains("off"));
+    // LLDP: off until `lldp run` on both ends; advertisements on the wire every 30 s.
+    assert!(lab.run(r, "show lldp neighbors").contains("off"));
+    lab.run(r, "conf t\nlldp run\nend");
+    assert!(lab.run(r, "show lldp neighbors").contains("0 neighbours"));
+    lab.run(s, "conf t\nlldp run\nend");
+    let n = lab.run(r, "show lldp neighbors");
+    assert!(n.contains("S1") && n.contains("Gi0/0") && n.contains("Gi0/1") && n.contains("bridge") && n.contains("1 neighbour"), "{n}");
+    let det = lab.run(s, "show lldp entry *");
+    assert!(det.contains("Neighbour R1") && det.contains("Can act as   router") && det.contains("192.168.1.1"), "{det}");
+    lab.sim.clear_trace();
+    lab.sim.run_for(&lab.t, 31_000_000);
+    let lldp: Vec<_> = lab.sim.trace().iter().filter(|e| e.protocol.name() == "LLDP").collect();
+    assert!(lldp.len() >= 2 && lldp.iter().all(|e| e.dropped.is_none()), "{lldp:?}");
+    lab.run(s, "conf t\nint g0/1\nno lldp transmit\nend");
+    assert!(lab.run(r, "show lldp neighbors").contains("0 neighbours"));
+    assert!(lab.run(s, "show lldp neighbors").contains("1 neighbour"));
+    assert!(lab.run(s, "show running-config").contains("lldp run\n") && lab.run(s, "show lldp").contains("Not sending on: Gi0/1"));
+    // Processes and memory.
+    assert!(lab.run(r, "show processes cpu").contains("CPU use") && lab.run(s, "show processes").contains("Spanning tree"));
+    assert!(lab.run(r, "show memory statistics").contains("Main memory"));
     // Clock.
     assert!(lab.run(r, "show clock").contains("not set"));
     assert!(lab.try_run(r, "clock set 25:00:00 1 Jan 2026").contains("time of day"));
