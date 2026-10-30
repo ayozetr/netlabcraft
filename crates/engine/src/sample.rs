@@ -678,9 +678,23 @@ pub fn build(id: &str) -> Result<Topology> {
                 host 172.16.1.10
                 nat (dmz,outside) static 203.0.113.10
                 exit
-                access-list OUTSIDE_IN extended permit tcp any object WEB eq www
+                object-group service WEB_PORTS tcp
+                port-object eq www
+                port-object eq https
+                exit
+                access-list OUTSIDE_IN remark Publish the web server, and let it be pinged
+                access-list OUTSIDE_IN extended permit tcp any object WEB object-group WEB_PORTS
                 access-list OUTSIDE_IN extended permit icmp any object WEB
                 access-group OUTSIDE_IN in interface outside
+                icmp deny any outside
+                class-map inspection_default
+                match default-inspection-traffic
+                policy-map global_policy
+                class inspection_default
+                inspect icmp
+                exit
+                exit
+                service-policy global_policy global
                 dhcpd address 192.168.10.100-192.168.10.150 inside
                 dhcpd dns 172.16.1.10
                 dhcpd enable inside
@@ -705,7 +719,7 @@ pub fn build(id: &str) -> Result<Topology> {
                 b.cable(pc, "fa0", "S1", &format!("fa0/{}", i + 1))?;
                 b.type_in(pc, "ipconfig /renew")?;
             }
-            b.t.notes = "FW1 has three named interfaces: inside (level 100), dmz (50) and outside (0). The office and the DMZ reach the Internet through the outside address (`show xlate`, `show conn`); Home can't start anything towards them, except the web server, published as 203.0.113.10 by a static rule and one access rule (`show access-list` counts the hits). From Home, browse http://203.0.113.10 and ping PC1 to see the difference; `show logging` on FW1 tells why a packet was dropped.".into();
+            b.t.notes = "FW1 has three named interfaces: inside (level 100), dmz (50) and outside (0). The office and the DMZ reach the Internet through the outside address (`show xlate`, `show conn`); Home can't start anything towards them, except the web server, published as 203.0.113.10 by a static rule and one access rule (`show access-list` counts the hits). From Home, browse http://203.0.113.10 and ping PC1 to see the difference; `show logging` on FW1 tells why a packet was dropped. The global policy inspects ICMP, so pings from the office come back without a rule; FW1 is not a hop, so a traceroute from PC1 starts at the ISP router; and FW1 ignores pings to its outside address (`icmp deny any outside`).".into();
         }
         "ospf" => {
             for (name, x, y) in [("R1", 120.0, 80.0), ("R2", 600.0, 80.0), ("R3", 360.0, 260.0)] {
