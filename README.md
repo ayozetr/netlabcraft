@@ -65,7 +65,8 @@
 ## What it simulates
 
 - **Devices:** routers (also one with serial WAN ports), switches (also a multilayer one that
-  routes), a hub, PCs, laptops, servers and a printer: 13 generic models.
+  routes), a Wi-Fi access point, a hub, PCs, laptops (also with Wi-Fi), servers and a printer:
+  15 generic models.
 - **Switching:** MAC learning, VLANs, access and 802.1Q trunk ports, per-VLAN spanning tree,
   EtherChannel (LACP, PAgP, static), VTP, port security, switch VLAN interfaces.
 - **Routing:** static, RIP and OSPF routes, router-on-a-stick, multilayer switching, ACLs, NAT and
