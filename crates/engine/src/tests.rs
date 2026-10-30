@@ -46,6 +46,10 @@ fn every_sample_builds_and_its_hosts_reach_each_other() {
                 if sample.id == "nat-acl" && from == "Web" {
                     continue;
                 }
+                // The firewall keeps lower security levels from starting connections to higher ones.
+                if sample.id == "firewall" && (from == "Home" || (from == "Web" && to.starts_with("PC"))) {
+                    continue;
+                }
                 // The VTP lab has no router: each VLAN only reaches itself.
                 let own = hosts.iter().find(|(n, _)| n == from).map(|(_, a)| a.rsplit_once('.').map(|x| x.0.to_string()));
                 if sample.id == "vtp" && own != Some(ip.rsplit_once('.').map(|x| x.0.to_string())) {
@@ -1016,4 +1020,48 @@ fn a_controller_pushes_wlans_to_its_access_points_and_checks_logins_with_radius(
         assert!(tr.contains(want), "missing {want}:\n{tr}");
     }
     assert!(s.execute("lap.controller", json!({"device": "WLC1", "address": "1.2.3.4"})).is_err());
+}
+
+#[test]
+fn the_firewall_sample_publishes_its_web_server_and_keeps_the_office_private() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "firewall"})).unwrap();
+    let ip = |s: &Session, n: &str| s.topology.find(n).unwrap().ports[0].ip.unwrap().addr.to_string();
+    assert!(ip(&s, "PC1").starts_with("192.168.10.1"), "PC1 got its address from FW1's DHCP server");
+    let cli = |s: &mut Session, dev: &str, line: &str| {
+        s.execute("cli.exec", json!({"device": dev, "line": line})).unwrap()["output"].as_str().unwrap().to_string()
+    };
+    cli(&mut s, "FW1", "enable");
+    // The office gets out, sharing FW1's outside address.
+    s.execute("net.ping", json!({"from": "PC1", "to": "198.51.100.10", "count": 4})).unwrap();
+    assert_eq!(s.execute("net.ping", json!({"from": "PC1", "to": "198.51.100.10", "count": 2})).unwrap()["marks"], "!!");
+    let xlate = cli(&mut s, "FW1", "show xlate");
+    assert!(xlate.contains("→ outside 203.0.113.2:"), "{xlate}");
+    assert!(cli(&mut s, "FW1", "show conn").contains("icmp inside"));
+    // Home reaches the web server's published address, by web and by ping.
+    let page = s.execute("browser.get", json!({"device": "Home", "url": "http://203.0.113.10/"})).unwrap();
+    assert!(page["status"].as_str().unwrap().starts_with("200"), "{page}");
+    s.execute("net.ping", json!({"from": "Home", "to": "203.0.113.10", "count": 4})).unwrap();
+    assert_eq!(s.execute("net.ping", json!({"from": "Home", "to": "203.0.113.10", "count": 2})).unwrap()["marks"], "!!");
+    let acl = cli(&mut s, "FW1", "show access-list");
+    assert!(acl.contains("permit tcp any object WEB eq 80  (hits 1)"), "{acl}");
+    // But not the office, even with a route to it: the drop says why.
+    cli(&mut s, "ISP", "enable");
+    cli(&mut s, "ISP", "configure terminal");
+    cli(&mut s, "ISP", "ip route 192.168.10.0 255.255.255.0 203.0.113.2");
+    cli(&mut s, "ISP", "end");
+    s.execute("sim.reset", json!({})).unwrap();
+    let pc1 = ip(&s, "PC1");
+    assert_eq!(s.execute("net.ping", json!({"from": "Home", "to": pc1, "count": 2})).unwrap()["marks"], "..");
+    let tr = trace_text(&s);
+    assert!(tr.contains("DROPPED: denied by access-group OUTSIDE_IN on outside (no rule matched)"), "{tr}");
+    // Unbound, the security levels decide.
+    cli(&mut s, "FW1", "configure terminal");
+    cli(&mut s, "FW1", "no access-group OUTSIDE_IN in interface outside");
+    cli(&mut s, "FW1", "end");
+    s.execute("sim.reset", json!({})).unwrap();
+    s.execute("net.ping", json!({"from": "Home", "to": pc1, "count": 3})).unwrap();
+    assert!(trace_text(&s).contains("DROPPED: denied: from security level 0 to 100 without an access rule"), "{}", trace_text(&s));
+    let run = cli(&mut s, "FW1", "show running-config");
+    assert!(run.contains("nat (dmz,outside) static 203.0.113.10") && run.contains("dhcpd enable inside"), "{run}");
 }

@@ -12,7 +12,7 @@ pub fn render() -> String {
     for c in packetcraft_engine::CATALOG {
         s.push_str(&format!("| `{}` | {} | {} | {} | `{}` |\n", c.id, c.label, c.menu, c.shortcut.unwrap_or(""), c.params.replace('|', "\\|")));
     }
-    s.push_str("\n## Device console (routers and switches)\n\nWords may be abbreviated to any unambiguous prefix. `?` lists what can follow; Tab completes.\n\n| Command | Modes | Devices | What it does |\n|---|---|---|---|\n");
+    s.push_str("\n## Device console (routers, switches and the firewall)\n\nWords may be abbreviated to any unambiguous prefix. `?` lists what can follow; Tab completes.\n\n| Command | Modes | Devices | What it does |\n|---|---|---|---|\n");
     for spec in SPECS {
         let words: Vec<String> = spec
             .path
@@ -29,16 +29,18 @@ pub fn render() -> String {
             (Modes::IF, "interface"),
             (Modes::SUBIF, "subinterface"),
             (Modes::VLAN, "vlan"),
+            (Modes::OBJECT, "object"),
         ]
         .iter()
         .filter(|(m, _)| spec.modes.has(*m))
         .map(|(_, n)| *n)
         .collect();
-        let devices = match (spec.devices.has(Modes::ROUTER), spec.devices.has(Modes::SWITCH)) {
-            (true, true) => "router, switch",
-            (true, false) => "router",
-            _ => "switch",
-        };
+        let devices: Vec<&str> = [(Modes::ROUTER, "router"), (Modes::SWITCH, "switch"), (Modes::FIREWALL, "firewall")]
+            .iter()
+            .filter(|(m, _)| spec.devices.has(*m))
+            .map(|(_, n)| *n)
+            .collect();
+        let devices = devices.join(", ");
         s.push_str(&format!("| `{}` | {} | {devices} | {} |\n", words.join(" "), modes.join(", "), spec.help));
     }
     s.push_str("\n## Host shell (PCs and servers)\n\n```text\n");

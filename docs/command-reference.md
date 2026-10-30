@@ -77,60 +77,60 @@ Every front end (UI, `packetcraft-cli run`, MCP `packetcraft_run`) runs these.
 | `topology.get` | The whole lab |  |  | `{} → the lab document` |
 | `sample.list` | Sample labs |  |  | `{} → [{id, title, description}]` |
 
-## Device console (routers and switches)
+## Device console (routers, switches and the firewall)
 
 Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; Tab completes.
 
 | Command | Modes | Devices | What it does |
 |---|---|---|---|
-| `enable` | user | router, switch | Turn on privileged commands |
-| `disable` | privileged | router, switch | Turn off privileged commands |
-| `exit` | user, privileged, config, interface, subinterface, vlan | router, switch | Leave the current mode |
-| `logout` | user, privileged | router, switch | End the session |
-| `end` | config, interface, subinterface, vlan | router, switch | Return to privileged mode |
-| `configure terminal` | privileged | router, switch | Configure from the terminal |
-| `ping A.B.C.D\|X:X::X` | user, privileged | router, switch | Send echo requests |
-| `ping A.B.C.D repeat <1-1000>` | user, privileged | router, switch | Send echo requests |
-| `traceroute A.B.C.D\|X:X::X` | user, privileged | router, switch | Trace the route to a destination |
-| `show running-config` | privileged | router, switch | Current configuration |
-| `show startup-config` | privileged | router, switch | Saved configuration |
+| `enable` | user | router, switch, firewall | Turn on privileged commands |
+| `disable` | privileged | router, switch, firewall | Turn off privileged commands |
+| `exit` | user, privileged, config, interface, subinterface, vlan, object | router, switch, firewall | Leave the current mode |
+| `logout` | user, privileged | router, switch, firewall | End the session |
+| `end` | config, interface, subinterface, vlan, object | router, switch, firewall | Return to privileged mode |
+| `configure terminal` | privileged | router, switch, firewall | Configure from the terminal |
+| `ping A.B.C.D\|X:X::X` | user, privileged | router, switch, firewall | Send echo requests |
+| `ping A.B.C.D repeat <1-1000>` | user, privileged | router, switch, firewall | Send echo requests |
+| `traceroute A.B.C.D\|X:X::X` | user, privileged | router, switch, firewall | Trace the route to a destination |
+| `show running-config` | privileged | router, switch, firewall | Current configuration |
+| `show startup-config` | privileged | router, switch, firewall | Saved configuration |
 | `show ip interface brief` | user, privileged | router, switch | Interface addresses and status |
 | `show ip route` | user, privileged | router, switch | Routing table |
 | `show ip route {connected\|static\|eigrp\|ospf\|rip}` | user, privileged | router, switch | Only the routes one source gave |
 | `show ip arp` | user, privileged | router, switch | ARP cache |
-| `show arp` | user, privileged | router, switch | ARP cache |
-| `show interfaces` | user, privileged | router, switch | Interface details |
+| `show arp` | user, privileged | router, switch, firewall | ARP cache |
+| `show interfaces` | user, privileged | router, switch, firewall | Interface details |
 | `show interfaces trunk` | user, privileged | switch | Trunk ports |
-| `show interfaces <interface>` | user, privileged | router, switch | One interface's details |
+| `show interfaces <interface>` | user, privileged | router, switch, firewall | One interface's details |
 | `show vlan` | user, privileged | switch | VLAN database |
 | `show vlan brief` | user, privileged | switch | VLAN database |
 | `show mac address-table` | user, privileged | switch | Learned MAC addresses |
-| `show version` | user, privileged | router, switch | Software and hardware |
-| `show history` | user, privileged | router, switch | Commands typed in this session |
-| `copy running-config startup-config` | privileged | router, switch | Save the configuration |
-| `write memory` | privileged | router, switch | Save the configuration |
-| `write` | privileged | router, switch | Save the configuration |
-| `erase startup-config` | privileged | router, switch | Delete the saved configuration |
-| `reload` | privileged | router, switch | Restart with the saved configuration |
+| `show version` | user, privileged | router, switch, firewall | Software and hardware |
+| `show history` | user, privileged | router, switch, firewall | Commands typed in this session |
+| `copy running-config startup-config` | privileged | router, switch, firewall | Save the configuration |
+| `write memory` | privileged | router, switch, firewall | Save the configuration |
+| `write` | privileged | router, switch, firewall | Save the configuration |
+| `erase startup-config` | privileged | router, switch, firewall | Delete the saved configuration |
+| `reload` | privileged | router, switch, firewall | Restart with the saved configuration |
 | `clear mac address-table` | privileged | switch | Forget learned MAC addresses |
 | `clear arp-cache` | privileged | router | Forget ARP entries |
-| `hostname WORD` | config | router, switch | Set the device name |
+| `hostname WORD` | config | router, switch, firewall | Set the device name |
 | `interface range <interfaces>` | config | router, switch | Configure several interfaces |
-| `interface <interface>` | config | router, switch | Configure an interface |
+| `interface <interface>` | config | router, switch, firewall | Configure an interface |
 | `no interface <subinterface>` | config | router | Delete a subinterface |
 | `ip route A.B.C.D MASK <next hop or interface>` | config | router, switch | Add a static route |
 | `no ip route A.B.C.D MASK <next hop or interface>` | config | router, switch | Remove a static route |
 | `no ip route A.B.C.D MASK` | config | router, switch | Remove static routes |
 | `vlan <1-4094>[,-]` | config | switch | Create or edit VLANs |
 | `no vlan <1-4094>[,-]` | config | switch | Delete VLANs |
-| `do <command>` | config, interface, subinterface, vlan | router, switch | Run a privileged command |
-| `ip address A.B.C.D MASK` | interface, subinterface | router | Set the interface address |
-| `no ip address` | interface, subinterface | router | Remove the interface address |
+| `do <command>` | config, interface, subinterface, vlan, object | router, switch, firewall | Run a privileged command |
+| `ip address A.B.C.D MASK` | interface, subinterface | router, firewall | Set the interface address |
+| `no ip address` | interface, subinterface | router, firewall | Remove the interface address |
 | `ip address dhcp` | interface | router, switch | Take the address from a DHCP server |
-| `shutdown` | interface, subinterface | router, switch | Disable the interface |
-| `no shutdown` | interface, subinterface | router, switch | Enable the interface |
-| `description LINE` | interface, subinterface | router, switch | Describe the interface |
-| `no description` | interface, subinterface | router, switch | Remove the description |
+| `shutdown` | interface, subinterface | router, switch, firewall | Disable the interface |
+| `no shutdown` | interface, subinterface | router, switch, firewall | Enable the interface |
+| `description LINE` | interface, subinterface | router, switch, firewall | Describe the interface |
+| `no description` | interface, subinterface | router, switch, firewall | Remove the description |
 | `ip address A.B.C.D MASK` |  | switch | Set the management address |
 | `no ip address` |  | switch | Remove the management address |
 | `access-list <1-199> {permit\|deny\|remark} ...` | config | router, switch | Add a line to a numbered access list |
@@ -285,8 +285,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ip interface <interface>` | user, privileged | router, switch | Layer-3 settings of an interface |
 | `show interfaces status` | user, privileged | switch | Port state, VLAN and speed |
 | `show running-config interface <interface>` | privileged | router, switch | One interface's configuration |
-| `show logging` | user, privileged | router, switch | The logging buffer |
-| `clear logging` | privileged | router, switch | Empty the logging buffer |
+| `show logging` | user, privileged | router, switch, firewall | The logging buffer |
+| `clear logging` | privileged | router, switch, firewall | Empty the logging buffer |
 | `logging buffered [size]` | config | router, switch | Keep messages in the logging buffer (always on here) |
 | `debug ip icmp` | privileged | router, switch | Report echo requests and replies this device receives |
 | `undebug all` | privileged | router, switch | Turn every debug off |
@@ -445,9 +445,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `name WORD` | vlan | switch | Name the VLAN |
 | `no name` | vlan | switch | Back to the default name |
 | `enable secret [0\|5] PASSWORD` | config | router, switch | Protect privileged mode with a hashed password |
-| `enable password [0\|7] PASSWORD` | config | router, switch | Protect privileged mode with a password |
+| `enable password [0\|7] PASSWORD` | config | router, switch, firewall | Protect privileged mode with a password |
 | `no enable secret` | config | router, switch | Remove the enable secret |
-| `no enable password` | config | router, switch | Remove the enable password |
+| `no enable password` | config | router, switch, firewall | Remove the enable password |
 | `line console 0` | config | router, switch | Configure the console line |
 | `line vty <first> [<last>]` | config | router, switch | Configure the remote-access lines |
 | `password [0\|7] PASSWORD` |  | router, switch | Set the line password |
@@ -599,6 +599,48 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no spanning-tree portfast` | interface | switch | Not an edge port |
 | `show spanning-tree` | user, privileged | switch | Spanning trees of every VLAN |
 | `show spanning-tree vlan <1-4094>` | user, privileged | switch | One VLAN's spanning tree |
+| `nameif NAME` | interface | firewall | Name the interface (rules, routes and NAT refer to it by this name) |
+| `no nameif` | interface | firewall | Take the name away: the interface stops passing traffic |
+| `security-level <0-100>` | interface | firewall | How trusted the interface is (100 most, 0 least) |
+| `no security-level` | interface | firewall | Back to level 0 |
+| `route IFNAME A.B.C.D MASK GATEWAY` | config | firewall | A static route out of a named interface |
+| `route IFNAME A.B.C.D MASK GATEWAY <1-255>` | config | firewall | A static route out of a named interface, with a distance |
+| `no route IFNAME A.B.C.D MASK GATEWAY` | config | firewall | Remove a static route |
+| `no route IFNAME A.B.C.D MASK GATEWAY <1-255>` | config | firewall | Remove a static route |
+| `access-list NAME extended {permit\|deny} PROTOCOL SOURCE [PORT] DESTINATION [PORT]` | config | firewall | Add a rule to an access list (addresses: any, host A.B.C.D, A.B.C.D MASK, object NAME) |
+| `no access-list NAME` | config | firewall | Delete an access list |
+| `no access-list NAME extended {permit\|deny} RULE` | config | firewall | Delete one rule of an access list |
+| `access-group ACL in interface IFNAME` | config | firewall | Check traffic arriving on an interface against an access list |
+| `no access-group ACL in interface IFNAME` | config | firewall | Stop checking an interface against the list |
+| `object network NAME` | config | firewall | Create or edit a network object |
+| `no object network NAME` | config | firewall | Delete a network object |
+| `host A.B.C.D` | object | firewall | The object is one address |
+| `subnet A.B.C.D MASK` | object | firewall | The object is a subnet |
+| `nat (REAL,MAPPED) dynamic {interface\|A.B.C.D}` | object | firewall | Share one address among the object's hosts (port translation) |
+| `nat (REAL,MAPPED) static A.B.C.D` | object | firewall | Give the object a fixed outside address |
+| `no nat` | object | firewall | Stop translating the object |
+| `same-security-traffic permit inter-interface` | config | firewall | Let traffic pass between interfaces of equal security level |
+| `no same-security-traffic permit inter-interface` | config | firewall | Interfaces of equal level don't talk unless a rule says so |
+| `dhcpd address A.B.C.D-A.B.C.D IFNAME` | config | firewall | Addresses the DHCP server hands out on an interface |
+| `no dhcpd address A.B.C.D-A.B.C.D IFNAME` | config | firewall | Remove a DHCP range |
+| `dhcpd enable IFNAME` | config | firewall | Run the DHCP server on an interface |
+| `no dhcpd enable IFNAME` | config | firewall | Stop the DHCP server on an interface |
+| `dhcpd dns A.B.C.D` | config | firewall | The DNS server DHCP clients are told about |
+| `no dhcpd dns` | config | firewall | Tell DHCP clients no DNS server |
+| `timeout {conn\|udp\|icmp} H:MM:SS` | config | firewall | How long an idle connection is kept |
+| `show nat` | user, privileged | firewall | NAT rules and how often each was used |
+| `show xlate` | user, privileged | firewall | Address translations in use |
+| `show conn` | user, privileged | firewall | Connections the firewall is tracking |
+| `show access-list` | user, privileged | firewall | Access lists with hit counts |
+| `show access-list NAME` | user, privileged | firewall | One access list with hit counts |
+| `show interfaces ip brief` | user, privileged | firewall | Interface addresses and status |
+| `show route` | user, privileged | firewall | Routing table |
+| `show nameif` | user, privileged | firewall | Interface names and security levels |
+| `show dhcpd binding` | user, privileged | firewall | Addresses the DHCP server handed out |
+| `show object` | user, privileged | firewall | Network objects |
+| `clear conn` | privileged | firewall | Forget every tracked connection |
+| `clear xlate` | privileged | firewall | Forget the dynamic translations |
+| `clear access-list counters` | privileged | firewall | Reset access-list hit counts |
 
 ## Host shell (PCs and servers)
 

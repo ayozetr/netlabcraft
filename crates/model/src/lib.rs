@@ -15,6 +15,7 @@ pub mod acl;
 pub mod activity;
 pub mod drawing;
 pub mod file;
+pub mod firewall;
 pub mod ifname;
 pub mod models;
 pub mod qos;
@@ -832,6 +833,9 @@ pub struct Device {
     /// Wireless LAN controllers: their WLANs; lightweight APs: the controller to join.
     #[serde(default, skip_serializing_if = "wlan::WlanConf::is_default")]
     pub wlan: wlan::WlanConf,
+    /// The firewall appliance: named interfaces, security levels, objects, rules and NAT.
+    #[serde(default, skip_serializing_if = "firewall::Firewall::is_default")]
+    pub firewall: firewall::Firewall,
 }
 
 /// Which side of NAT an interface is on.
@@ -1526,6 +1530,7 @@ impl Device {
             crypto: vpn::Crypto::default(),
             qos: qos::Qos::default(),
             wlan: wlan::WlanConf::default(),
+            firewall: firewall::Firewall::default(),
         };
         d.ensure_default_vlan();
         d
@@ -1571,6 +1576,7 @@ impl Device {
         self.tunnels.clear();
         self.crypto = vpn::Crypto::default();
         self.qos = qos::Qos::default();
+        self.firewall = firewall::Firewall::default();
         self.services = fresh.services;
     }
 
@@ -1982,6 +1988,7 @@ impl Topology {
                 d.tunnels.dedup_by_key(|t| t.number);
                 d.crypto.sanitize();
                 d.qos.sanitize();
+                d.firewall.sanitize();
                 for p in &mut d.ports {
                     p.subifs.truncate(MAX_SUBIFS);
                     p.subifs.sort_by_key(|s| s.number);

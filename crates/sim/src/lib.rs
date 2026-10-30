@@ -30,6 +30,7 @@ pub mod lldp;
 pub mod channel;
 pub mod control;
 pub mod eigrp;
+pub mod firewall;
 pub mod hsrp;
 pub mod mgmt;
 pub mod ospf;
@@ -668,6 +669,8 @@ pub struct DevState {
     pub ipsec: BTreeMap<Ipv4Addr, vpn::IpsecSa>,
     /// Routers and multilayer switches: QoS class counters and policer buckets.
     pub(crate) qos: qos::QosCounters,
+    /// The firewall appliance: connections and translations.
+    pub fw: firewall::FwState,
 }
 
 /// One frame delivered across a cable.
@@ -1891,7 +1894,8 @@ impl Sim {
         let virtual_mac = self.hsrp_active(t, d, Some(&ifc.name)).into_iter().find(|(ip, _)| *ip == a.target_ip).map(|(_, m)| m);
         let for_me = a.target_ip == ifc.net.addr
             || virtual_mac.is_some()
-            || (nat_side(d, ifc) == Some(packetcraft_model::NatSide::Outside) && Sim::nat_owns(d, a.target_ip));
+            || (nat_side(d, ifc) == Some(packetcraft_model::NatSide::Outside) && Sim::nat_owns(d, a.target_ip))
+            || (packetcraft_model::firewall::is_firewall(d) && Sim::fw_owns(d, ifc, a.target_ip));
         let now = self.now;
         let st = self.st(d.id);
         if (for_me || st.arp.contains_key(&a.sender_ip)) && (st.arp.len() < MAX_ARP_ENTRIES || st.arp.contains_key(&a.sender_ip)) {
@@ -1984,6 +1988,9 @@ impl Sim {
                 _ if hsrp => Ok(()),
                 _ => Err(format!("not listening to {}", ip.dst)),
             };
+        }
+        if packetcraft_model::firewall::is_firewall(d) {
+            return self.fw_ip_in(t, d, ifc, ip, payload);
         }
         let mut from_outside = false;
         let marked;
@@ -2314,6 +2321,9 @@ impl Sim {
                 packetcraft_model::DhcpPool { name: sp.name.clone(), network: Some(net), default_router: nz(sp.gateway), dns: nz(sp.dns) },
                 Some(sp.addresses().collect()),
             )
+        } else if packetcraft_model::firewall::is_firewall(d) {
+            let (pool, allowed) = Sim::fw_dhcp_pool(d, ifc)?;
+            (pool, Some(allowed))
         } else {
             let p = d
                 .dhcp_pools

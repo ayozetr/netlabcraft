@@ -2720,3 +2720,341 @@ fn qos_modes_survive_hostile_arguments() {
         }
     }
 }
+
+// ---- the firewall appliance ----
+
+fn add_firewall(lab: &mut Lab) -> DeviceId {
+    let m = packetcraft_model::models::find("Firewall-5").unwrap();
+    lab.t.add_model(m, None, 0.0, 0.0).unwrap()
+}
+
+struct FwLab {
+    lab: Lab,
+    fw: DeviceId,
+    isp: DeviceId,
+    pc1: DeviceId,
+    pc2: DeviceId,
+    pc3: DeviceId,
+    web: DeviceId,
+}
+
+/// FW1 between an inside LAN (PC1, PC3 on a switch), a DMZ web server and an ISP router with a
+/// PC behind it.
+fn firewall_lab() -> FwLab {
+    let mut lab = Lab::new();
+    let fw = add_firewall(&mut lab);
+    let isp = lab.add(DeviceKind::Router);
+    let sw = lab.add(DeviceKind::Switch);
+    let pc1 = lab.add(DeviceKind::Pc);
+    let pc3 = lab.add(DeviceKind::Pc);
+    let web = lab.add(DeviceKind::Server);
+    let pc2 = lab.add(DeviceKind::Pc);
+    lab.cable(fw, "g1/1", sw, "g0/1");
+    lab.cable(pc1, "fa0", sw, "fa0/1");
+    lab.cable(pc3, "fa0", sw, "fa0/2");
+    lab.cable(fw, "g1/2", isp, "g0/0");
+    lab.cable(fw, "g1/3", web, "g0");
+    lab.cable(pc2, "fa0", isp, "g0/1");
+    lab.run(
+        fw,
+        "enable
+        configure terminal
+        hostname FW1
+        interface g1/1
+        nameif inside
+        ip address 192.168.1.1 255.255.255.0
+        no shutdown
+        interface g1/2
+        nameif outside
+        security-level 0
+        ip address 203.0.113.2 255.255.255.0
+        no shutdown
+        interface g1/3
+        nameif dmz
+        security-level 50
+        ip address 172.16.1.1 255.255.255.0
+        no shutdown
+        exit
+        route outside 0.0.0.0 0.0.0.0 203.0.113.1
+        object network INSIDE_NET
+        subnet 192.168.1.0 255.255.255.0
+        nat (inside,outside) dynamic interface
+        object network WEB
+        host 172.16.1.10
+        nat (dmz,outside) static 203.0.113.10
+        end",
+    );
+    lab.run(
+        isp,
+        "en\nconf t\nint g0/0\nip address 203.0.113.1 255.255.255.0\nno shut\nint g0/1\nip address 198.51.100.1 255.255.255.0\nno shut\nend",
+    );
+    lab.run(pc1, "ipconfig 192.168.1.10 255.255.255.0 192.168.1.1");
+    lab.run(web, "ipconfig 172.16.1.10 255.255.255.0 172.16.1.1");
+    lab.run(pc2, "ipconfig 198.51.100.10 255.255.255.0 198.51.100.1");
+    // The first echoes of a lab wait for ARP; start with every cache warm and nothing tracked.
+    lab.run(pc1, "ping 198.51.100.10");
+    lab.run(web, "ping 198.51.100.10");
+    lab.run(fw, "clear xlate\nclear conn\nclear access-list counters");
+    lab.sim.run_for(&lab.t, 60_000_000);
+    FwLab { lab, fw, isp, pc1, pc2, pc3, web }
+}
+
+#[test]
+fn a_firewall_lets_inside_out_with_port_translation_and_keeps_outside_out() {
+    let FwLab { mut lab, fw, isp, pc1, pc2, .. } = firewall_lab();
+    assert_eq!(lab.prompt(fw), "FW1#");
+    let names = lab.run(fw, "show nameif");
+    assert!(names.contains("GigabitEthernet1/1     inside         100"), "{names}");
+    assert!(names.contains("GigabitEthernet1/3     dmz            50"), "{names}");
+    let brief = lab.run(fw, "show interface ip brief");
+    assert!(brief.contains("GigabitEthernet1/2     outside      203.0.113.2/24     up     up"), "{brief}");
+    assert!(lab.run(fw, "show route").contains("0.0.0.0/0"));
+
+    // Inside (100) to outside (0): allowed, translated to the outside address, replies come back.
+    let out = lab.run(pc1, "ping 198.51.100.10");
+    assert!(out.contains("reply from 198.51.100.10") && out.contains("4 answered"), "{out}");
+    let xlate = lab.run(fw, "show xlate");
+    assert!(xlate.contains("dynamic  icmp inside 192.168.1.10:") && xlate.contains("→ outside 203.0.113.2:"), "{xlate}");
+    assert!(xlate.contains("static   dmz 172.16.1.10 ↔ outside 203.0.113.10"), "{xlate}");
+    let conn = lab.run(fw, "show conn");
+    // One connection per echo (each carries its own identifier).
+    assert!(conn.starts_with("4 connections in use") && conn.contains("icmp inside 192.168.1.10:"), "{conn}");
+    assert!(conn.contains("→ outside 198.51.100.10:"), "{conn}");
+    let nat = lab.run(fw, "show nat");
+    assert!(nat.contains("(inside,outside) object INSIDE_NET: 192.168.1.0/24 → outside's address, ports shared  [used "), "{nat}");
+    assert!(nat.find("object WEB").unwrap() < nat.find("object INSIDE_NET").unwrap(), "static rules first: {nat}");
+
+    // Outside (0) to inside (100): dropped without an access rule, with the reason logged.
+    lab.run(isp, "conf t\nip route 192.168.1.0 255.255.255.0 203.0.113.2\nend");
+    let out = lab.run(pc2, "ping 192.168.1.10");
+    assert!(out.contains("0 answered"), "{out}");
+    let log = lab.run(fw, "show logging");
+    assert!(log.contains("denied: from security level 0 to 100 without an access rule"), "{log}");
+    // An access rule bound to the outside lets it in; replies are not translated.
+    lab.run(fw, "conf t\naccess-list OUTSIDE_IN extended permit icmp any host 192.168.1.10\naccess-group OUTSIDE_IN in interface outside\nend");
+    let out = lab.run(pc2, "ping 192.168.1.10");
+    assert!(out.contains("reply from 192.168.1.10") && out.contains("4 answered"), "{out}");
+    let acl = lab.run(fw, "show access-list");
+    assert!(acl.contains("access-list OUTSIDE_IN: 1 rule, checks traffic in on outside"), "{acl}");
+    assert!(acl.contains("1. permit icmp any host 192.168.1.10  (hits 4)"), "{acl}");
+    // Only that host: another inside address still gets the implicit deny.
+    let out = lab.run(pc2, "ping 192.168.1.11");
+    assert!(out.contains("0 answered"), "{out}");
+    assert!(lab.run(fw, "show access-list OUTSIDE_IN").contains("anything else is denied  (hits 4)"));
+    assert!(lab.run(fw, "show logging").contains("denied by access-group OUTSIDE_IN on outside (no rule matched)"));
+    lab.run(fw, "clear access-list counters");
+    assert!(lab.run(fw, "show access-list").contains("(hits 0)"));
+    lab.run(fw, "clear conn");
+    assert!(lab.run(fw, "show conn").starts_with("0 connections"));
+    lab.run(fw, "clear xlate");
+    assert!(lab.run(fw, "show xlate").contains("1 static, 0 dynamic"));
+}
+
+#[test]
+fn a_dmz_web_server_is_reachable_from_outside_through_static_nat_and_a_rule() {
+    let FwLab { mut lab, fw, pc1, pc2, web, .. } = firewall_lab();
+    let target: std::net::Ipv4Addr = "203.0.113.10".parse().unwrap();
+    // Without a rule the outside can't open a connection to the DMZ (level 0 to 50).
+    assert!(lab.sim.http_get(&lab.t, pc2, target, "203.0.113.10", "/").is_err());
+    lab.run(fw, "conf t\naccess-list OUTSIDE_IN extended permit tcp any object WEB eq www\naccess-group OUTSIDE_IN in interface outside\nend");
+    let (status, body) = lab.sim.http_get(&lab.t, pc2, target, "203.0.113.10", "/").unwrap();
+    assert!(status.starts_with("200"), "{status} {body}");
+    let acl = lab.run(fw, "show access-list");
+    assert!(acl.contains("permit tcp any object WEB eq 80  (hits 1)"), "{acl}");
+    let conn = lab.run(fw, "show conn");
+    assert!(conn.contains("tcp  outside 198.51.100.10:") && conn.contains("→ dmz 172.16.1.10:80"), "{conn}");
+    // The DMZ (50) reaches the outside (0) by itself, and the inside (100) reaches the DMZ.
+    let out = lab.run(web, "ping 198.51.100.10");
+    assert!(out.contains("4 answered"), "{out}");
+    let out = lab.run(pc1, "ping 172.16.1.10");
+    assert!(out.contains("4 answered"), "{out}");
+    // The DMZ can't start a connection to the inside.
+    let out = lab.run(web, "ping 192.168.1.10");
+    assert!(out.contains("0 answered"), "{out}");
+    assert!(lab.run(fw, "show logging").contains("denied: from security level 50 to 100 without an access rule"));
+    // Equal levels talk only with same-security-traffic.
+    lab.run(fw, "conf t\ninterface g1/3\nsecurity-level 100\nend");
+    let out = lab.run(web, "ping 192.168.1.10");
+    assert!(out.contains("0 answered"), "{out}");
+    assert!(lab.run(fw, "show logging").contains("both at security level 100 (same-security-traffic is not permitted)"));
+    lab.run(fw, "conf t\nsame-security-traffic permit inter-interface\nend");
+    let out = lab.run(web, "ping 192.168.1.10");
+    assert!(out.contains("4 answered"), "{out}");
+}
+
+#[test]
+fn firewall_connections_time_out_in_simulated_time() {
+    let FwLab { mut lab, fw, pc1, .. } = firewall_lab();
+    lab.run(pc1, "ping 198.51.100.10");
+    assert!(lab.run(fw, "show conn").starts_with("4 connections"));
+    // ICMP connections are kept 2 s by default; their translations stay a while longer.
+    lab.sim.run_for(&lab.t, 3_000_000);
+    assert!(lab.run(fw, "show conn").starts_with("0 connections"));
+    let xlate = lab.run(fw, "show xlate");
+    assert!(xlate.contains("4 dynamic") && xlate.contains("idle 0:00:03"), "{xlate}");
+    lab.sim.run_for(&lab.t, 30_000_000);
+    assert!(lab.run(fw, "show xlate").contains("0 dynamic"));
+    // A longer timeout keeps them.
+    lab.run(fw, "conf t\ntimeout icmp 0:00:30\nend");
+    lab.run(pc1, "ping 198.51.100.10");
+    lab.sim.run_for(&lab.t, 10_000_000);
+    let conn = lab.run(fw, "show conn");
+    assert!(conn.starts_with("4 connections") && conn.contains("idle 0:00:10"), "{conn}");
+    lab.sim.run_for(&lab.t, 25_000_000);
+    assert!(lab.run(fw, "show conn").starts_with("0 connections"));
+    assert!(lab.run(fw, "show running-config").contains("timeout icmp 0:00:30"));
+}
+
+#[test]
+fn the_firewall_hands_out_addresses_and_its_config_round_trips() {
+    let FwLab { mut lab, fw, pc3, .. } = firewall_lab();
+    lab.run(fw, "conf t\ndhcpd address 192.168.1.100-192.168.1.120 inside\ndhcpd dns 198.51.100.53\ndhcpd enable inside\nend");
+    let out = lab.run(pc3, "ipconfig /renew");
+    assert!(out.contains("192.168.1.100/24"), "{out}");
+    let pc = lab.t.device(pc3).unwrap();
+    assert_eq!(pc.gateway, Some("192.168.1.1".parse().unwrap()));
+    assert_eq!(pc.dns, Some("198.51.100.53".parse().unwrap()));
+    assert!(lab.run(fw, "show dhcpd binding").contains("192.168.1.100"));
+    // The DHCP client gets out too.
+    assert!(lab.run(pc3, "ping 198.51.100.10").contains("4 answered"));
+
+    lab.run(
+        fw,
+        "conf t
+        access-list OUTSIDE_IN extended permit tcp any object WEB eq www
+        access-list OUTSIDE_IN extended deny ip 10.0.0.0 255.0.0.0 any
+        access-group OUTSIDE_IN in interface outside
+        same-security-traffic permit inter-interface
+        timeout udp 0:05:00
+        enable password secret123
+        end",
+    );
+    let run = lab.run(fw, "show running-config");
+    for want in [
+        "hostname FW1",
+        "interface GigabitEthernet1/1\n nameif inside\n security-level 100\n ip address 192.168.1.1 255.255.255.0\n no shutdown",
+        "object network INSIDE_NET\n subnet 192.168.1.0 255.255.255.0\n nat (inside,outside) dynamic interface",
+        "object network WEB\n host 172.16.1.10\n nat (dmz,outside) static 203.0.113.10",
+        "access-list OUTSIDE_IN extended permit tcp any object WEB eq 80",
+        "access-list OUTSIDE_IN extended deny ip 10.0.0.0 255.0.0.0 any",
+        "access-group OUTSIDE_IN in interface outside",
+        "route outside 0.0.0.0 0.0.0.0 203.0.113.1 1",
+        "timeout udp 0:05:00",
+        "dhcpd address 192.168.1.100-192.168.1.120 inside",
+        "dhcpd enable inside",
+        "same-security-traffic permit inter-interface",
+    ] {
+        assert!(run.contains(want), "missing {want}:\n{run}");
+    }
+    // Saved, reloaded, and replayed onto a fresh firewall: the same configuration.
+    lab.run(fw, "write memory\nreload");
+    lab.clis.clear();
+    lab.run(fw, "en\nsecret123");
+    assert_eq!(lab.run(fw, "show running-config"), run);
+    let other = add_firewall(&mut lab);
+    let failed = apply_config(&mut lab.t, &mut lab.sim, other, &run.replace("hostname FW1", "hostname FW2"));
+    assert!(failed.is_empty(), "{failed:?}");
+    assert_eq!(running_config(lab.t.device(other).unwrap()), run.replace("FW1", "FW2"));
+}
+
+#[test]
+fn firewall_mistakes_are_refused() {
+    let FwLab { mut lab, fw, .. } = firewall_lab();
+    lab.run(fw, "conf t");
+    for (line, why) in [
+        ("route nowhere 0.0.0.0 0.0.0.0 203.0.113.1", "No interface is named nowhere"),
+        ("route outside 0.0.0.0 0.0.0.0 10.9.9.9", "not a neighbour on outside"),
+        ("route outside 10.0.0.1 255.0.0.0 203.0.113.1", "host bits"),
+        ("access-group NOPE in interface outside", "No access list NOPE"),
+        ("access-list A extended permit ip 10.0.0.0 0.0.0.255 any", "masks, not wildcards"),
+        ("access-list A extended permit tcp any object NOPE eq 80", "no network object NOPE"),
+        ("access-list A extended allow ip any any", "permit or deny"),
+        ("access-list 9x extended permit ip any any", "can't name an access list"),
+        ("dhcpd address 10.0.0.1-10.0.0.9 inside", "must lie in inside's subnet"),
+        ("dhcpd address 192.168.1.1-192.168.1.9 inside", "own address"),
+        ("dhcpd address 192.168.1.9-192.168.1.2 inside", "ends"),
+        ("dhcpd enable dmz", "Give dmz a range first"),
+        ("timeout icmp forever", "H:MM:SS"),
+        ("timeout tcp 0:00:10", "conn, udp or icmp"),
+        ("no object network NOPE", "No network object NOPE"),
+        ("ip route 0.0.0.0 0.0.0.0 1.2.3.4", "Not understood"),
+        ("vlan 10", "Not understood"),
+        ("interface g1/1.10", "no subinterfaces"),
+    ] {
+        let out = lab.try_run(fw, line);
+        assert!(out.contains(why), "`{line}`: {out}");
+    }
+    lab.run(fw, "interface g1/4");
+    for (line, why) in
+        [("nameif 1bad", "can't name an interface"), ("nameif inside", "already names GigabitEthernet1/1"), ("security-level 101", "0-100")]
+    {
+        let out = lab.try_run(fw, line);
+        assert!(out.contains(why), "`{line}`: {out}");
+    }
+    lab.run(fw, "exit\nobject network EMPTY");
+    assert_eq!(lab.prompt(fw), "FW1(config-network-object)#");
+    for (line, why) in [
+        ("nat (inside,outside) dynamic interface", "addresses first"),
+        ("subnet 10.0.0.1 255.0.0.0", "host bits"),
+        ("nat (inside,nowhere) dynamic interface", "No interface is named nowhere"),
+        ("nat inside,outside dynamic interface", "(real,mapped)"),
+    ] {
+        let out = lab.try_run(fw, line);
+        assert!(out.contains(why), "`{line}`: {out}");
+    }
+    lab.run(fw, "host 192.168.1.50");
+    assert!(lab.try_run(fw, "nat (inside,inside) static 1.2.3.4").contains("other than the real one"));
+    // A global command leaves the object; an object used by a rule can't be deleted.
+    lab.run(fw, "access-list A extended permit ip any object EMPTY");
+    assert_eq!(lab.prompt(fw), "FW1(config)#");
+    assert!(lab.try_run(fw, "no object network EMPTY").contains("Access list A uses EMPTY"));
+    lab.run(fw, "no access-list A extended permit ip any object EMPTY\nno object network EMPTY");
+    assert!(lab.run(fw, "do show object").contains("WEB"));
+    // Renaming an interface carries its rules along.
+    lab.run(fw, "access-list B extended permit icmp any any\naccess-group B in interface outside\ninterface g1/2\nnameif internet\nend");
+    let run = lab.run(fw, "show run");
+    assert!(run.contains("access-group B in interface internet") && run.contains("nat (dmz,internet) static 203.0.113.10"), "{run}");
+    assert!(run.contains("route internet 0.0.0.0 0.0.0.0 203.0.113.1 1"), "{run}");
+    // The help lists the firewall's own commands, not the router's.
+    let help = lab.try_run(fw, "show ?");
+    assert!(help.contains("xlate") && help.contains("conn") && !help.contains("vlan"), "{help}");
+}
+
+#[test]
+fn every_firewall_command_survives_hostile_arguments() {
+    let hostile =
+        ["", "0", "-1", "99999999999999999999", "1.2.3.4", "255.255.255.255", "(a,b)", "(inside,outside)", "1.1.1.1-1.1.1.0", "ä€😀", "%s%n"];
+    let huge = "x".repeat(10_000);
+    let base = firewall_lab();
+    let fw = base.fw;
+    for spec in SPECS.iter().filter(|s| s.devices.has(crate::grammar::Modes::FIREWALL)) {
+        for arg in hostile.iter().chain(std::iter::once(&huge.as_str())) {
+            let line: Vec<String> = spec
+                .path
+                .iter()
+                .map(|t| match t {
+                    Tok::K(k) => k.to_string(),
+                    Tok::Arg(_) | Tok::Rest(_) => arg.to_string(),
+                })
+                .collect();
+            for setup in [
+                "",
+                "en",
+                "en\nconf t",
+                "en\nconf t\nint g1/1",
+                "en\nconf t\nint g1/5",
+                "en\nconf t\nobject network X",
+                "en\nconf t\nobject network WEB",
+            ] {
+                let mut lab = Lab { t: base.lab.t.clone(), sim: base.lab.sim.clone(), clis: Default::default() };
+                for l in setup.lines() {
+                    lab.try_run(fw, l);
+                }
+                let _ = lab.try_run(fw, &line.join(" "));
+                let _ = lab.try_run(fw, &format!("{} ?", line.join(" ")));
+                let _ = lab.try_run(fw, "do show run");
+                let _ = lab.try_run(fw, "do show xlate");
+            }
+        }
+    }
+}

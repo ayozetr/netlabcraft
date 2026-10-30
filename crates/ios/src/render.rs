@@ -11,6 +11,9 @@ use crate::IfRef;
 
 /// The running configuration as re-playable command lines.
 pub fn running_config(d: &Device) -> String {
+    if packetcraft_model::firewall::is_firewall(d) {
+        return crate::exec::firewall::running_config(d);
+    }
     let mut s = String::new();
     let a = &d.access;
     let pw = |p: &str| if a.password_encryption { format!("7 {}", obscure(p)) } else { p.to_string() };

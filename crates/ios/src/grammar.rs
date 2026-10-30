@@ -57,6 +57,10 @@ impl Modes {
     pub const POLICY_MAP: Modes = Modes(1 << 27);
     /// `class NAME` inside a policy map.
     pub const POLICY_CLASS: Modes = Modes(1 << 28);
+    /// The firewall appliance (a device flag, like `ROUTER` and `SWITCH`).
+    pub const FIREWALL: Modes = Modes(1 << 29);
+    /// `object network NAME` on the firewall.
+    pub const OBJECT: Modes = Modes(1 << 30);
     /// Every command mode, either device.
     pub const ANY_MODE: Modes = Modes(
         63 | 256
@@ -75,7 +79,8 @@ impl Modes {
             | (1 << 23)
             | (1 << 26)
             | (1 << 27)
-            | (1 << 28),
+            | (1 << 28)
+            | (1 << 30),
     );
     pub const BOTH: Modes = Modes(192);
 
@@ -302,6 +307,44 @@ pub enum Id {
     NoCapwapController,
     ShowWlan,
     ShowCapwap,
+    FwNameif,
+    FwNoNameif,
+    FwSecurityLevel,
+    FwNoSecurityLevel,
+    FwRoute,
+    FwNoRoute,
+    FwAccessList,
+    FwNoAccessList,
+    FwNoAccessListEntry,
+    FwAccessGroup,
+    FwNoAccessGroup,
+    FwObjectNetwork,
+    FwNoObjectNetwork,
+    FwObjHost,
+    FwObjSubnet,
+    FwObjNat,
+    FwObjNoNat,
+    FwSameSecurity,
+    FwNoSameSecurity,
+    FwDhcpdAddress,
+    FwNoDhcpdAddress,
+    FwDhcpdEnable,
+    FwNoDhcpdEnable,
+    FwDhcpdDns,
+    FwNoDhcpdDns,
+    FwTimeout,
+    FwShowNat,
+    FwShowXlate,
+    FwShowConn,
+    FwShowAccessList,
+    FwShowIntIpBrief,
+    FwShowRoute,
+    FwShowNameif,
+    FwShowDhcpdBinding,
+    FwShowObjects,
+    FwClearConn,
+    FwClearXlate,
+    FwClearAclCounters,
     Username,
     NoUsername,
     DomainName,
@@ -549,7 +592,11 @@ const SUBMODES: Modes = Modes::IF
     .or(Modes::OSPF6)
     .or(Modes::EIGRP)
     .or(VPN_MODES)
-    .or(QOS_MODES);
+    .or(QOS_MODES)
+    .or(Modes::OBJECT);
+/// Routers, switches and the firewall.
+const BOTH_FW: Modes = Modes::BOTH.or(Modes::FIREWALL);
+const FW: Modes = Modes::FIREWALL;
 /// The site-to-site VPN sub-modes.
 const VPN_MODES: Modes = Modes::TUNNEL.or(Modes::ISAKMP).or(Modes::CRYPTO_MAP).or(Modes::TRANSFORM);
 /// The QoS sub-modes.
@@ -567,17 +614,17 @@ macro_rules! spec {
 
 /// Every command. Order matters only for help listings.
 pub static SPECS: &[Spec] = &[
-    spec!(Enable, Modes::USER, Modes::BOTH, [K("enable")], "Turn on privileged commands"),
-    spec!(Disable, Modes::EXEC, Modes::BOTH, [K("disable")], "Turn off privileged commands"),
-    spec!(Exit, Modes::ANY_MODE, Modes::BOTH, [K("exit")], "Leave the current mode"),
-    spec!(Logout, EXECS, Modes::BOTH, [K("logout")], "End the session"),
-    spec!(End, Modes::CONFIG.or(SUBMODES), Modes::BOTH, [K("end")], "Return to privileged mode"),
-    spec!(ConfigureTerminal, Modes::EXEC, Modes::BOTH, [K("configure"), K("terminal")], "Configure from the terminal"),
-    spec!(Ping, EXECS, Modes::BOTH, [K("ping"), Arg("A.B.C.D|X:X::X")], "Send echo requests"),
-    spec!(PingRepeat, EXECS, Modes::BOTH, [K("ping"), Arg("A.B.C.D"), K("repeat"), Arg("<1-1000>")], "Send echo requests"),
-    spec!(Traceroute, EXECS, Modes::BOTH, [K("traceroute"), Arg("A.B.C.D|X:X::X")], "Trace the route to a destination"),
-    spec!(ShowRun, Modes::EXEC, Modes::BOTH, [K("show"), K("running-config")], "Current configuration"),
-    spec!(ShowStartup, Modes::EXEC, Modes::BOTH, [K("show"), K("startup-config")], "Saved configuration"),
+    spec!(Enable, Modes::USER, BOTH_FW, [K("enable")], "Turn on privileged commands"),
+    spec!(Disable, Modes::EXEC, BOTH_FW, [K("disable")], "Turn off privileged commands"),
+    spec!(Exit, Modes::ANY_MODE, BOTH_FW, [K("exit")], "Leave the current mode"),
+    spec!(Logout, EXECS, BOTH_FW, [K("logout")], "End the session"),
+    spec!(End, Modes::CONFIG.or(SUBMODES), BOTH_FW, [K("end")], "Return to privileged mode"),
+    spec!(ConfigureTerminal, Modes::EXEC, BOTH_FW, [K("configure"), K("terminal")], "Configure from the terminal"),
+    spec!(Ping, EXECS, BOTH_FW, [K("ping"), Arg("A.B.C.D|X:X::X")], "Send echo requests"),
+    spec!(PingRepeat, EXECS, BOTH_FW, [K("ping"), Arg("A.B.C.D"), K("repeat"), Arg("<1-1000>")], "Send echo requests"),
+    spec!(Traceroute, EXECS, BOTH_FW, [K("traceroute"), Arg("A.B.C.D|X:X::X")], "Trace the route to a destination"),
+    spec!(ShowRun, Modes::EXEC, BOTH_FW, [K("show"), K("running-config")], "Current configuration"),
+    spec!(ShowStartup, Modes::EXEC, BOTH_FW, [K("show"), K("startup-config")], "Saved configuration"),
     spec!(ShowIpIntBrief, EXECS, Modes::BOTH, [K("show"), K("ip"), K("interface"), K("brief")], "Interface addresses and status"),
     spec!(ShowIpRoute, EXECS, Modes::BOTH, [K("show"), K("ip"), K("route")], "Routing table"),
     spec!(
@@ -588,25 +635,25 @@ pub static SPECS: &[Spec] = &[
         "Only the routes one source gave"
     ),
     spec!(ShowArp, EXECS, Modes::BOTH, [K("show"), K("ip"), K("arp")], "ARP cache"),
-    spec!(ShowArp, EXECS, Modes::BOTH, [K("show"), K("arp")], "ARP cache"),
-    spec!(ShowInterfaces, EXECS, Modes::BOTH, [K("show"), K("interfaces")], "Interface details"),
+    spec!(ShowArp, EXECS, BOTH_FW, [K("show"), K("arp")], "ARP cache"),
+    spec!(ShowInterfaces, EXECS, BOTH_FW, [K("show"), K("interfaces")], "Interface details"),
     spec!(ShowIntTrunk, EXECS, Modes::SWITCH, [K("show"), K("interfaces"), K("trunk")], "Trunk ports"),
-    spec!(ShowInterface, EXECS, Modes::BOTH, [K("show"), K("interfaces"), Rest("<interface>")], "One interface's details"),
+    spec!(ShowInterface, EXECS, BOTH_FW, [K("show"), K("interfaces"), Rest("<interface>")], "One interface's details"),
     spec!(ShowVlan, EXECS, Modes::SWITCH, [K("show"), K("vlan")], "VLAN database"),
     spec!(ShowVlanBrief, EXECS, Modes::SWITCH, [K("show"), K("vlan"), K("brief")], "VLAN database"),
     spec!(ShowMac, EXECS, Modes::SWITCH, [K("show"), K("mac"), K("address-table")], "Learned MAC addresses"),
-    spec!(ShowVersion, EXECS, Modes::BOTH, [K("show"), K("version")], "Software and hardware"),
-    spec!(ShowHistory, EXECS, Modes::BOTH, [K("show"), K("history")], "Commands typed in this session"),
-    spec!(CopyRunStart, Modes::EXEC, Modes::BOTH, [K("copy"), K("running-config"), K("startup-config")], "Save the configuration"),
-    spec!(WriteMemory, Modes::EXEC, Modes::BOTH, [K("write"), K("memory")], "Save the configuration"),
-    spec!(WriteMemory, Modes::EXEC, Modes::BOTH, [K("write")], "Save the configuration"),
-    spec!(EraseStartup, Modes::EXEC, Modes::BOTH, [K("erase"), K("startup-config")], "Delete the saved configuration"),
-    spec!(Reload, Modes::EXEC, Modes::BOTH, [K("reload")], "Restart with the saved configuration"),
+    spec!(ShowVersion, EXECS, BOTH_FW, [K("show"), K("version")], "Software and hardware"),
+    spec!(ShowHistory, EXECS, BOTH_FW, [K("show"), K("history")], "Commands typed in this session"),
+    spec!(CopyRunStart, Modes::EXEC, BOTH_FW, [K("copy"), K("running-config"), K("startup-config")], "Save the configuration"),
+    spec!(WriteMemory, Modes::EXEC, BOTH_FW, [K("write"), K("memory")], "Save the configuration"),
+    spec!(WriteMemory, Modes::EXEC, BOTH_FW, [K("write")], "Save the configuration"),
+    spec!(EraseStartup, Modes::EXEC, BOTH_FW, [K("erase"), K("startup-config")], "Delete the saved configuration"),
+    spec!(Reload, Modes::EXEC, BOTH_FW, [K("reload")], "Restart with the saved configuration"),
     spec!(ClearMac, Modes::EXEC, Modes::SWITCH, [K("clear"), K("mac"), K("address-table")], "Forget learned MAC addresses"),
     spec!(ClearArp, Modes::EXEC, Modes::ROUTER, [K("clear"), K("arp-cache")], "Forget ARP entries"),
-    spec!(Hostname, Modes::CONFIG, Modes::BOTH, [K("hostname"), Arg("WORD")], "Set the device name"),
+    spec!(Hostname, Modes::CONFIG, BOTH_FW, [K("hostname"), Arg("WORD")], "Set the device name"),
     spec!(InterfaceRange, Modes::CONFIG, Modes::BOTH, [K("interface"), K("range"), Rest("<interfaces>")], "Configure several interfaces"),
-    spec!(Interface, Modes::CONFIG, Modes::BOTH, [K("interface"), Rest("<interface>")], "Configure an interface"),
+    spec!(Interface, Modes::CONFIG, BOTH_FW, [K("interface"), Rest("<interface>")], "Configure an interface"),
     spec!(NoInterface, Modes::CONFIG, Modes::ROUTER, [K("no"), K("interface"), Rest("<subinterface>")], "Delete a subinterface"),
     spec!(
         IpRoute,
@@ -625,14 +672,14 @@ pub static SPECS: &[Spec] = &[
     spec!(NoIpRoute, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("route"), Arg("A.B.C.D"), Arg("MASK")], "Remove static routes"),
     spec!(Vlan, Modes::CONFIG, Modes::SWITCH, [K("vlan"), Arg("<1-4094>[,-]")], "Create or edit VLANs"),
     spec!(NoVlan, Modes::CONFIG, Modes::SWITCH, [K("no"), K("vlan"), Arg("<1-4094>[,-]")], "Delete VLANs"),
-    spec!(Do, Modes::CONFIG.or(SUBMODES), Modes::BOTH, [K("do"), Rest("<command>")], "Run a privileged command"),
-    spec!(IpAddress, IFS, Modes::ROUTER, [K("ip"), K("address"), Arg("A.B.C.D"), Arg("MASK")], "Set the interface address"),
-    spec!(NoIpAddress, IFS, Modes::ROUTER, [K("no"), K("ip"), K("address")], "Remove the interface address"),
+    spec!(Do, Modes::CONFIG.or(SUBMODES), BOTH_FW, [K("do"), Rest("<command>")], "Run a privileged command"),
+    spec!(IpAddress, IFS, Modes::ROUTER.or(Modes::FIREWALL), [K("ip"), K("address"), Arg("A.B.C.D"), Arg("MASK")], "Set the interface address"),
+    spec!(NoIpAddress, IFS, Modes::ROUTER.or(Modes::FIREWALL), [K("no"), K("ip"), K("address")], "Remove the interface address"),
     spec!(IpAddressDhcp, Modes::IF, Modes::BOTH, [K("ip"), K("address"), K("dhcp")], "Take the address from a DHCP server"),
-    spec!(Shutdown, ANY_IF, Modes::BOTH, [K("shutdown")], "Disable the interface"),
-    spec!(NoShutdown, ANY_IF, Modes::BOTH, [K("no"), K("shutdown")], "Enable the interface"),
-    spec!(Description, ANY_IF, Modes::BOTH, [K("description"), Rest("LINE")], "Describe the interface"),
-    spec!(NoDescription, ANY_IF, Modes::BOTH, [K("no"), K("description")], "Remove the description"),
+    spec!(Shutdown, ANY_IF, BOTH_FW, [K("shutdown")], "Disable the interface"),
+    spec!(NoShutdown, ANY_IF, BOTH_FW, [K("no"), K("shutdown")], "Enable the interface"),
+    spec!(Description, ANY_IF, BOTH_FW, [K("description"), Rest("LINE")], "Describe the interface"),
+    spec!(NoDescription, ANY_IF, BOTH_FW, [K("no"), K("description")], "Remove the description"),
     spec!(IpAddress, Modes::SVI, Modes::SWITCH, [K("ip"), K("address"), Arg("A.B.C.D"), Arg("MASK")], "Set the management address"),
     spec!(NoIpAddress, Modes::SVI, Modes::SWITCH, [K("no"), K("ip"), K("address")], "Remove the management address"),
     spec!(
@@ -969,8 +1016,8 @@ pub static SPECS: &[Spec] = &[
         [K("show"), K("running-config"), K("interface"), Rest("<interface>")],
         "One interface's configuration"
     ),
-    spec!(ShowLogging, EXECS, Modes::BOTH, [K("show"), K("logging")], "The logging buffer"),
-    spec!(ClearLogging, Modes::EXEC, Modes::BOTH, [K("clear"), K("logging")], "Empty the logging buffer"),
+    spec!(ShowLogging, EXECS, BOTH_FW, [K("show"), K("logging")], "The logging buffer"),
+    spec!(ClearLogging, Modes::EXEC, BOTH_FW, [K("clear"), K("logging")], "Empty the logging buffer"),
     spec!(
         LoggingBuffered,
         Modes::CONFIG,
@@ -1333,15 +1380,9 @@ pub static SPECS: &[Spec] = &[
         [K("enable"), K("secret"), Rest("[0|5] PASSWORD")],
         "Protect privileged mode with a hashed password"
     ),
-    spec!(
-        EnablePassword,
-        Modes::CONFIG,
-        Modes::BOTH,
-        [K("enable"), K("password"), Rest("[0|7] PASSWORD")],
-        "Protect privileged mode with a password"
-    ),
+    spec!(EnablePassword, Modes::CONFIG, BOTH_FW, [K("enable"), K("password"), Rest("[0|7] PASSWORD")], "Protect privileged mode with a password"),
     spec!(NoEnableSecret, Modes::CONFIG, Modes::BOTH, [K("no"), K("enable"), K("secret")], "Remove the enable secret"),
-    spec!(NoEnablePassword, Modes::CONFIG, Modes::BOTH, [K("no"), K("enable"), K("password")], "Remove the enable password"),
+    spec!(NoEnablePassword, Modes::CONFIG, BOTH_FW, [K("no"), K("enable"), K("password")], "Remove the enable password"),
     spec!(LineConsole, Modes::CONFIG, Modes::BOTH, [K("line"), K("console"), Arg("0")], "Configure the console line"),
     spec!(LineVty, Modes::CONFIG, Modes::BOTH, [K("line"), K("vty"), Rest("<first> [<last>]")], "Configure the remote-access lines"),
     spec!(LinePassword, Modes::LINE, Modes::BOTH, [K("password"), Rest("[0|7] PASSWORD")], "Set the line password"),
@@ -1667,6 +1708,115 @@ pub static SPECS: &[Spec] = &[
     spec!(NoPortfast, Modes::IF, Modes::SWITCH, [K("no"), K("spanning-tree"), K("portfast")], "Not an edge port"),
     spec!(ShowStp, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree")], "Spanning trees of every VLAN"),
     spec!(ShowStpVlan, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree"), K("vlan"), Arg("<1-4094>")], "One VLAN's spanning tree"),
+    // ---- the firewall appliance ----
+    spec!(FwNameif, Modes::IF, FW, [K("nameif"), Arg("NAME")], "Name the interface (rules, routes and NAT refer to it by this name)"),
+    spec!(FwNoNameif, Modes::IF, FW, [K("no"), K("nameif")], "Take the name away: the interface stops passing traffic"),
+    spec!(FwSecurityLevel, Modes::IF, FW, [K("security-level"), Arg("<0-100>")], "How trusted the interface is (100 most, 0 least)"),
+    spec!(FwNoSecurityLevel, Modes::IF, FW, [K("no"), K("security-level")], "Back to level 0"),
+    spec!(
+        FwRoute,
+        Modes::CONFIG,
+        FW,
+        [K("route"), Arg("IFNAME"), Arg("A.B.C.D"), Arg("MASK"), Arg("GATEWAY")],
+        "A static route out of a named interface"
+    ),
+    spec!(
+        FwRoute,
+        Modes::CONFIG,
+        FW,
+        [K("route"), Arg("IFNAME"), Arg("A.B.C.D"), Arg("MASK"), Arg("GATEWAY"), Arg("<1-255>")],
+        "A static route out of a named interface, with a distance"
+    ),
+    spec!(FwNoRoute, Modes::CONFIG, FW, [K("no"), K("route"), Arg("IFNAME"), Arg("A.B.C.D"), Arg("MASK"), Arg("GATEWAY")], "Remove a static route"),
+    spec!(
+        FwNoRoute,
+        Modes::CONFIG,
+        FW,
+        [K("no"), K("route"), Arg("IFNAME"), Arg("A.B.C.D"), Arg("MASK"), Arg("GATEWAY"), Arg("<1-255>")],
+        "Remove a static route"
+    ),
+    spec!(
+        FwAccessList,
+        Modes::CONFIG,
+        FW,
+        [K("access-list"), Arg("NAME"), K("extended"), Rest("{permit|deny} PROTOCOL SOURCE [PORT] DESTINATION [PORT]")],
+        "Add a rule to an access list (addresses: any, host A.B.C.D, A.B.C.D MASK, object NAME)"
+    ),
+    spec!(FwNoAccessList, Modes::CONFIG, FW, [K("no"), K("access-list"), Arg("NAME")], "Delete an access list"),
+    spec!(
+        FwNoAccessListEntry,
+        Modes::CONFIG,
+        FW,
+        [K("no"), K("access-list"), Arg("NAME"), K("extended"), Rest("{permit|deny} RULE")],
+        "Delete one rule of an access list"
+    ),
+    spec!(
+        FwAccessGroup,
+        Modes::CONFIG,
+        FW,
+        [K("access-group"), Arg("ACL"), K("in"), K("interface"), Arg("IFNAME")],
+        "Check traffic arriving on an interface against an access list"
+    ),
+    spec!(
+        FwNoAccessGroup,
+        Modes::CONFIG,
+        FW,
+        [K("no"), K("access-group"), Arg("ACL"), K("in"), K("interface"), Arg("IFNAME")],
+        "Stop checking an interface against the list"
+    ),
+    spec!(FwObjectNetwork, Modes::CONFIG, FW, [K("object"), K("network"), Arg("NAME")], "Create or edit a network object"),
+    spec!(FwNoObjectNetwork, Modes::CONFIG, FW, [K("no"), K("object"), K("network"), Arg("NAME")], "Delete a network object"),
+    spec!(FwObjHost, Modes::OBJECT, FW, [K("host"), Arg("A.B.C.D")], "The object is one address"),
+    spec!(FwObjSubnet, Modes::OBJECT, FW, [K("subnet"), Arg("A.B.C.D"), Arg("MASK")], "The object is a subnet"),
+    spec!(
+        FwObjNat,
+        Modes::OBJECT,
+        FW,
+        [K("nat"), Arg("(REAL,MAPPED)"), K("dynamic"), Arg("{interface|A.B.C.D}")],
+        "Share one address among the object's hosts (port translation)"
+    ),
+    spec!(FwObjNat, Modes::OBJECT, FW, [K("nat"), Arg("(REAL,MAPPED)"), K("static"), Arg("A.B.C.D")], "Give the object a fixed outside address"),
+    spec!(FwObjNoNat, Modes::OBJECT, FW, [K("no"), K("nat")], "Stop translating the object"),
+    spec!(
+        FwSameSecurity,
+        Modes::CONFIG,
+        FW,
+        [K("same-security-traffic"), K("permit"), K("inter-interface")],
+        "Let traffic pass between interfaces of equal security level"
+    ),
+    spec!(
+        FwNoSameSecurity,
+        Modes::CONFIG,
+        FW,
+        [K("no"), K("same-security-traffic"), K("permit"), K("inter-interface")],
+        "Interfaces of equal level don't talk unless a rule says so"
+    ),
+    spec!(
+        FwDhcpdAddress,
+        Modes::CONFIG,
+        FW,
+        [K("dhcpd"), K("address"), Arg("A.B.C.D-A.B.C.D"), Arg("IFNAME")],
+        "Addresses the DHCP server hands out on an interface"
+    ),
+    spec!(FwNoDhcpdAddress, Modes::CONFIG, FW, [K("no"), K("dhcpd"), K("address"), Arg("A.B.C.D-A.B.C.D"), Arg("IFNAME")], "Remove a DHCP range"),
+    spec!(FwDhcpdEnable, Modes::CONFIG, FW, [K("dhcpd"), K("enable"), Arg("IFNAME")], "Run the DHCP server on an interface"),
+    spec!(FwNoDhcpdEnable, Modes::CONFIG, FW, [K("no"), K("dhcpd"), K("enable"), Arg("IFNAME")], "Stop the DHCP server on an interface"),
+    spec!(FwDhcpdDns, Modes::CONFIG, FW, [K("dhcpd"), K("dns"), Arg("A.B.C.D")], "The DNS server DHCP clients are told about"),
+    spec!(FwNoDhcpdDns, Modes::CONFIG, FW, [K("no"), K("dhcpd"), K("dns")], "Tell DHCP clients no DNS server"),
+    spec!(FwTimeout, Modes::CONFIG, FW, [K("timeout"), Arg("{conn|udp|icmp}"), Arg("H:MM:SS")], "How long an idle connection is kept"),
+    spec!(FwShowNat, EXECS, FW, [K("show"), K("nat")], "NAT rules and how often each was used"),
+    spec!(FwShowXlate, EXECS, FW, [K("show"), K("xlate")], "Address translations in use"),
+    spec!(FwShowConn, EXECS, FW, [K("show"), K("conn")], "Connections the firewall is tracking"),
+    spec!(FwShowAccessList, EXECS, FW, [K("show"), K("access-list")], "Access lists with hit counts"),
+    spec!(FwShowAccessList, EXECS, FW, [K("show"), K("access-list"), Arg("NAME")], "One access list with hit counts"),
+    spec!(FwShowIntIpBrief, EXECS, FW, [K("show"), K("interfaces"), K("ip"), K("brief")], "Interface addresses and status"),
+    spec!(FwShowRoute, EXECS, FW, [K("show"), K("route")], "Routing table"),
+    spec!(FwShowNameif, EXECS, FW, [K("show"), K("nameif")], "Interface names and security levels"),
+    spec!(FwShowDhcpdBinding, EXECS, FW, [K("show"), K("dhcpd"), K("binding")], "Addresses the DHCP server handed out"),
+    spec!(FwShowObjects, EXECS, FW, [K("show"), K("object")], "Network objects"),
+    spec!(FwClearConn, Modes::EXEC, FW, [K("clear"), K("conn")], "Forget every tracked connection"),
+    spec!(FwClearXlate, Modes::EXEC, FW, [K("clear"), K("xlate")], "Forget the dynamic translations"),
+    spec!(FwClearAclCounters, Modes::EXEC, FW, [K("clear"), K("access-list"), K("counters")], "Reset access-list hit counts"),
 ];
 
 /// Why a line didn't parse. Positions are word indexes.
@@ -1905,11 +2055,18 @@ mod tests {
                 Modes::CLASS_MAP,
                 Modes::POLICY_MAP,
                 Modes::POLICY_CLASS,
+                Modes::OBJECT,
             ]
             .into_iter()
             .find(|m| s.modes.has(*m))
             .unwrap();
-            let dev = if s.devices.has(R) { R } else { S };
+            let dev = if s.devices.has(R) {
+                R
+            } else if s.devices.has(S) {
+                S
+            } else {
+                Modes::FIREWALL
+            };
             let got = resolve(&words, mode, dev).unwrap_or_else(|e| panic!("{:?}: {e:?}", s.path));
             assert_eq!(got.0.id, s.id, "{:?}", s.path);
         }
