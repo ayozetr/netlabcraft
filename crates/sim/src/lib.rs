@@ -230,7 +230,14 @@ pub fn routing_table(t: &Topology, d: &Device) -> Vec<RouteEntry> {
         let have: Vec<Ipv4Net> = out.iter().map(|r| r.net).collect();
         for r in st.routes.get(&d.id).into_iter().flatten() {
             if !have.contains(&r.net) {
-                out.push(RouteEntry { code: if r.external { 'E' } else { 'O' }, net: r.net, via: Some(r.via), iface: Some(r.iface.clone()) });
+                let code = if r.external {
+                    'E'
+                } else if r.inter_area {
+                    'I'
+                } else {
+                    'O'
+                };
+                out.push(RouteEntry { code, net: r.net, via: Some(r.via), iface: Some(r.iface.clone()) });
             }
         }
         out.sort_by_key(|r| (r.net.addr, r.net.prefix, r.code));

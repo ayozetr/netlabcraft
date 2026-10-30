@@ -88,22 +88,19 @@ impl Sim {
             let Some(o) = &d.ospf else { continue };
             for (name, ..) in ifs.iter().filter(|x| !x.3) {
                 let Some(ifc) = l3_ifaces(d).into_iter().find(|i| i.name == *name) else { continue };
-                let heard: Vec<(Ipv4Addr, Ipv4Addr)> =
-                    st.neighbors.get(id).into_iter().flatten().filter(|n| n.iface == *name).map(|n| (n.router_id, n.address)).collect();
-                // DR and BDR: highest router ids on the segment (all priorities 1).
-                let mut seg: Vec<(Ipv4Addr, Ipv4Addr)> = heard.clone();
-                seg.push((*rid, ifc.net.addr));
-                seg.sort_by_key(|x| std::cmp::Reverse(x.0));
-                let addr = |i: usize| seg.get(i).filter(|_| seg.len() > 1).map_or(Ipv4Addr::UNSPECIFIED, |x| x.1);
+                let heard: Vec<Ipv4Addr> = st.neighbors.get(id).into_iter().flatten().filter(|n| n.iface == *name).map(|n| n.router_id).collect();
+                let seg = st.segments.get(&(*id, name.clone())).copied();
                 let area = o.networks.iter().find(|n| n.matches(ifc.net.addr)).map_or(0, |n| n.area);
+                // DR and BDR are only announced once there is someone to elect with.
+                let elected = |a: Option<Ipv4Addr>| a.filter(|_| !heard.is_empty()).unwrap_or(Ipv4Addr::UNSPECIFIED);
                 let hello = OspfHello {
                     router_id: *rid,
                     area,
                     mask: ifc.net.mask(),
-                    priority: 1,
-                    dr: addr(0),
-                    bdr: addr(1),
-                    neighbors: heard.iter().map(|h| h.0).collect(),
+                    priority: seg.map_or(1, |s| s.priority),
+                    dr: elected(seg.and_then(|s| s.dr)),
+                    bdr: elected(seg.and_then(|s| s.bdr)),
+                    neighbors: heard.clone(),
                 };
                 let ip =
                     Ipv4 { id: 0, ttl: 1, protocol: control::PROTO_OSPF, src: ifc.net.addr, dst: control::OSPF_ALL_ROUTERS, payload: hello.encode() };

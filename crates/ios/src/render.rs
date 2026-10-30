@@ -158,6 +158,7 @@ pub fn running_config(d: &Device) -> String {
             None => {}
         }
         standby_lines(&mut s, &p.standby);
+        ospf_if_lines(&mut s, d, &p.name);
         if d.kind == DeviceKind::Router {
             if packetcraft_model::ifname::is_serial(&p.name) {
                 if p.serial.encapsulation == packetcraft_model::Encapsulation::Ppp {
@@ -213,6 +214,7 @@ pub fn running_config(d: &Device) -> String {
                 let _ = writeln!(s, " ip address {} {}", ip.addr, ip.mask());
             }
             standby_lines(&mut s, &sub.standby);
+            ospf_if_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
             for h in &sub.helpers {
                 let _ = writeln!(s, " ip helper-address {h}");
             }
@@ -238,6 +240,7 @@ pub fn running_config(d: &Device) -> String {
             }
         }
         standby_lines(&mut s, &svi.standby);
+        ospf_if_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
         let _ = writeln!(s, "{}", if svi.shutdown { " shutdown" } else { " no shutdown" });
         let _ = writeln!(s, "!");
     }
@@ -290,6 +293,9 @@ pub fn running_config(d: &Device) -> String {
         }
         if o.default_originate {
             let _ = writeln!(s, " default-information originate");
+        }
+        if let Some(r) = o.reference_bw {
+            let _ = writeln!(s, " auto-cost reference-bandwidth {r}");
         }
         let _ = writeln!(s, "!");
     }
@@ -420,13 +426,14 @@ pub fn ip_route(t: &Topology, d: &Device) -> String {
         let what = match (r.code, r.via, &r.iface) {
             ('C', _, Some(i)) => format!("connected, {i}"),
             ('L', _, Some(i)) => format!("local address, {i}"),
-            ('O' | 'E', Some(v), Some(i)) => format!("via {v}, {i} (OSPF)"),
+            ('O' | 'E' | 'I', Some(v), Some(i)) => format!("via {v}, {i} (OSPF)"),
             (_, Some(v), _) => format!("via {v}"),
             (_, None, Some(i)) => format!("out {i}"),
             _ => String::new(),
         };
         let code = match r.code {
             'E' => "O*E2".to_string(),
+            'I' => "O IA".to_string(),
             c => format!("{c}   "),
         };
         let _ = writeln!(s, "{code} {:<20} {what}", r.net.to_string());
@@ -759,7 +766,13 @@ pub fn ospf_neighbors(t: &Topology, d: &Device, st: &packetcraft_sim::ospf::Ospf
     let mut s = format!("{:<16} {:<10} {:<16} {:<22} Device\n", "Neighbour ID", "State", "Address", "Interface");
     for n in list {
         let name = t.device(n.device).map_or("?".to_string(), |x| x.name.clone());
-        let _ = writeln!(s, "{:<16} {:<10} {:<16} {:<22} {name}", n.router_id.to_string(), "FULL", n.address.to_string(), ifname::short(&n.iface));
+        let state = match st.segments.get(&(d.id, n.iface.clone())) {
+            Some(seg) if seg.dr.is_none() => "FULL/P2P",
+            Some(seg) if seg.dr == Some(n.address) => "FULL/DR",
+            Some(seg) if seg.bdr == Some(n.address) => "FULL/BDR",
+            _ => "FULL/OTHER",
+        };
+        let _ = writeln!(s, "{:<16} {:<10} {:<16} {:<22} {name}", n.router_id.to_string(), state, n.address.to_string(), ifname::short(&n.iface));
     }
     s.trim_end().to_string()
 }
@@ -825,6 +838,17 @@ fn ospf_protocol(d: &Device, st: &packetcraft_sim::ospf::OspfState) -> String {
     }
     let _ = write!(s, "  Administrative distance 110");
     s
+}
+
+fn ospf_if_lines(s: &mut String, d: &Device, name: &str) {
+    if let Some(o) = d.ospf_if.get(name) {
+        if let Some(c) = o.cost {
+            let _ = writeln!(s, " ip ospf cost {c}");
+        }
+        if let Some(p) = o.priority {
+            let _ = writeln!(s, " ip ospf priority {p}");
+        }
+    }
 }
 
 fn standby_lines(s: &mut String, list: &[packetcraft_model::Standby]) {
@@ -1303,6 +1327,59 @@ pub fn ipv6_access_lists(sim: &Sim, d: &Device) -> String {
             "    (implicit) neighbour discovery passes, everything else is denied{}",
             if implicit > 0 { format!(" ({implicit} matches)") } else { String::new() }
         );
+    }
+    s.trim_end().to_string()
+}
+
+/// `show ip ospf`.
+pub fn ospf_summary(d: &Device, st: &packetcraft_sim::ospf::OspfState) -> String {
+    let Some(o) = &d.ospf else { return "OSPF is not running here.".into() };
+    let areas: std::collections::BTreeSet<u32> = o.networks.iter().map(|n| n.area).collect();
+    let ifs = st.interfaces.get(&d.id).map_or(0, Vec::len);
+    let mut s = format!("OSPF process {}\n", o.process);
+    let _ = writeln!(s, "  Router id {}", st.router_ids.get(&d.id).map_or("none (no interface address)".to_string(), |r| r.to_string()));
+    let _ = writeln!(s, "  Reference bandwidth {} Mbit/s", o.reference_bw.unwrap_or(100));
+    let _ = writeln!(s, "  Areas: {}", areas.iter().map(ToString::to_string).collect::<Vec<_>>().join(", "));
+    let _ = writeln!(
+        s,
+        "  {ifs} interface{} running OSPF, {} neighbour{}",
+        if ifs == 1 { "" } else { "s" },
+        st.neighbors.get(&d.id).map_or(0, Vec::len),
+        if st.neighbors.get(&d.id).map_or(0, Vec::len) == 1 { "" } else { "s" }
+    );
+    if areas.len() > 1 {
+        s.push_str("  Joins several areas: an area border router\n");
+    }
+    let _ = write!(s, "  Routes are computed at once (no SPF timers)");
+    s
+}
+
+/// `show ip ospf interface [brief]`.
+pub fn ospf_interfaces(d: &Device, st: &packetcraft_sim::ospf::OspfState) -> String {
+    if d.ospf.is_none() {
+        return "OSPF is not running here.".into();
+    }
+    let list = st.interfaces.get(&d.id).cloned().unwrap_or_default();
+    if list.is_empty() {
+        return "No interface runs OSPF (check the network statements and that interfaces are up).".into();
+    }
+    let mut s = format!("{:<10} {:<6} {:<20} {:<6} {:<9} {}\n", "Interface", "Area", "Network", "Cost", "Role", "Neighbours");
+    for (name, net, cost, passive) in list {
+        let seg = st.segments.get(&(d.id, name.clone()));
+        let me = packetcraft_sim::l3_ifaces(d).into_iter().find(|i| i.name == name).map(|i| i.net.addr);
+        let role = if passive {
+            "passive"
+        } else {
+            match seg {
+                Some(g) if g.dr.is_none() => "p2p",
+                Some(g) if g.dr == me => "DR",
+                Some(g) if g.bdr == me => "BDR",
+                Some(g) if g.priority == 0 => "never-DR",
+                _ => "other",
+            }
+        };
+        let n = st.neighbors.get(&d.id).map_or(0, |l| l.iter().filter(|x| x.iface == name).count());
+        let _ = writeln!(s, "{:<10} {:<6} {:<20} {:<6} {:<9} {n}", ifname::short(&name), seg.map_or(0, |g| g.area), net.to_string(), cost, role);
     }
     s.trim_end().to_string()
 }

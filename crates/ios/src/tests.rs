@@ -1285,3 +1285,62 @@ fn ipv6_access_lists_by_typing() {
     assert!(lab.try_run(r, "permit ip any any").contains("ipv6, icmp, tcp or udp"));
     assert!(lab.try_run(r, "permit tcp any 2001:db8::/129").contains("prefix"));
 }
+
+#[test]
+fn ospf_depth_by_typing() {
+    let mut lab = Lab::new();
+    let r1 = lab.add(DeviceKind::Router);
+    let r2 = lab.add(DeviceKind::Router);
+    let r3 = lab.add(DeviceKind::Router);
+    let lan = lab.add(DeviceKind::Switch);
+    // R1, R2 and R3 share one LAN (area 0); R3 also has a stub network in area 1.
+    lab.cable(r1, "g0/0", lan, "fa0/1");
+    lab.cable(r2, "g0/0", lan, "fa0/2");
+    lab.cable(r3, "g0/0", lan, "fa0/3");
+    let host = lab.add(DeviceKind::Pc);
+    lab.cable(host, "fa0", r3, "g0/1");
+    lab.run(host, "ipconfig 172.16.1.10 255.255.255.0 172.16.1.1");
+    for (r, n, prio) in [(r1, 1, 200), (r2, 2, 0), (r3, 3, 1)] {
+        lab.run(r, &format!("en\nconf t\nint g0/0\nip address 10.0.0.{n} 255.255.255.0\nip ospf priority {prio}\nno shut\nexit\nrouter ospf 1\nrouter-id {n}.{n}.{n}.{n}\nnetwork 10.0.0.0 0.0.0.255 area 0\nend"));
+    }
+    lab.run(r3, "conf t\nint g0/1\nip address 172.16.1.1 255.255.255.0\nip ospf cost 50\nno shut\nexit\nrouter ospf 1\nnetwork 172.16.1.0 0.0.0.255 area 1\nauto-cost reference-bandwidth 1000\nend");
+    // DR: R1 (priority 200); R2 (priority 0) never; R3 is BDR.
+    let n = lab.run(r2, "show ip ospf neighbor");
+    assert!(n.contains("1.1.1.1") && n.contains("FULL/DR") && n.contains("FULL/BDR"), "{n}");
+    let oi = lab.run(r3, "show ip ospf interface brief");
+    assert!(oi.contains("Gi0/0      0") && oi.contains("BDR") && oi.contains("Gi0/1      1") && oi.contains("50"), "{oi}");
+    assert!(lab.run(r2, "show ip ospf interface").contains("never-DR"));
+    // R1 learns the area-1 network as inter-area.
+    let rt = lab.run(r1, "show ip route");
+    assert!(rt.contains("O IA 172.16.1.0/24"), "{rt}");
+    assert!(lab.run(r3, "show ip ospf").contains("area border router"));
+    assert!(
+        lab.run(r3, "show running-config").contains(" ip ospf cost 50")
+            && lab.run(r3, "show running-config").contains(" auto-cost reference-bandwidth 1000")
+    );
+    lab.run(r1, "ping 172.16.1.10");
+    assert!(lab.run(r1, "ping 172.16.1.10").contains("!!!!!"));
+}
+
+#[test]
+fn ospf_on_a_multilayer_switch_by_typing() {
+    let mut lab = Lab::new();
+    let ml = lab.t.add_model(packetcraft_model::models::find("Switch-ML-24").unwrap(), None, 0.0, 0.0).unwrap();
+    let r = lab.add(DeviceKind::Router);
+    let pc = lab.add(DeviceKind::Pc);
+    let far = lab.add(DeviceKind::Pc);
+    lab.cable(ml, "g0/1", r, "g0/0");
+    lab.cable(pc, "fa0", ml, "fa0/1");
+    lab.cable(far, "fa0", r, "g0/1");
+    lab.run(pc, "ipconfig 192.168.10.10 255.255.255.0 192.168.10.1");
+    lab.run(far, "ipconfig 172.16.0.10 255.255.255.0 172.16.0.1");
+    lab.run(ml, "en\nconf t");
+    assert!(lab.try_run(ml, "router ospf 1").contains("ip routing"));
+    lab.run(ml, "ip routing\nvlan 10\nvlan 99\nexit\nint fa0/1\nswitchport access vlan 10\nint g0/1\nswitchport access vlan 99\nexit\ninterface vlan 10\nip address 192.168.10.1 255.255.255.0\nno shut\ninterface vlan 99\nip address 10.0.99.2 255.255.255.0\nno shut\nexit\nrouter ospf 1\nnetwork 192.168.10.0 0.0.0.255 area 0\nnetwork 10.0.99.0 0.0.0.255 area 0\nend");
+    lab.run(r, "en\nconf t\nint g0/0\nip address 10.0.99.1 255.255.255.0\nno shut\nint g0/1\nip address 172.16.0.1 255.255.255.0\nno shut\nexit\nrouter ospf 1\nnetwork 0.0.0.0 255.255.255.255 area 0\nend");
+    let n = lab.run(ml, "show ip ospf neighbor");
+    assert!(n.contains("Vlan99") || n.contains("10.0.99.1"), "{n}");
+    assert!(lab.run(r, "show ip route").contains("192.168.10.0/24"));
+    lab.run(pc, "ping 172.16.0.10");
+    assert!(lab.run(pc, "ping 172.16.0.10").contains("4 answered"));
+}

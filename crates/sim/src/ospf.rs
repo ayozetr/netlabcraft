@@ -24,6 +24,8 @@ pub struct OspfRoute {
     pub cost: u32,
     /// A type-2 external route (the default route).
     pub external: bool,
+    /// The network is in an area this router has no interface in (an inter-area route).
+    pub inter_area: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,16 +45,35 @@ pub struct OspfState {
     pub routes: BTreeMap<DeviceId, Vec<OspfRoute>>,
     /// Interfaces running OSPF, per router: (name, network, cost, passive).
     pub interfaces: BTreeMap<DeviceId, Vec<(String, Ipv4Net, u32, bool)>>,
+    /// Per router and interface: its area, priority, and the segment's DR and BDR addresses
+    /// (`None` on point-to-point links, which elect none).
+    pub segments: BTreeMap<(DeviceId, String), Segment>,
 }
 
-pub fn iface_cost(name: &str) -> u32 {
-    if name.starts_with("GigabitEthernet") || name.starts_with("FastEthernet") {
-        1
-    } else if name.starts_with("Serial") {
-        64
-    } else {
-        10
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Segment {
+    pub area: u32,
+    pub priority: u8,
+    pub dr: Option<Ipv4Addr>,
+    pub bdr: Option<Ipv4Addr>,
+}
+
+/// An interface's OSPF cost: configured, else the reference bandwidth over its speed.
+pub fn cost(d: &Device, ifc: &L3If) -> u32 {
+    if let Some(c) = d.ospf_if.get(&ifc.name).and_then(|o| o.cost) {
+        return c.max(1);
     }
+    let reference = d.ospf.as_ref().and_then(|o| o.reference_bw).unwrap_or(100);
+    let kbps: u64 = if ifc.name.starts_with("GigabitEthernet") {
+        1_000_000
+    } else if ifc.name.starts_with("FastEthernet") || ifc.name.starts_with("Vlan") {
+        100_000
+    } else if ifc.name.starts_with("Serial") {
+        1_544
+    } else {
+        10_000
+    };
+    u32::try_from((u64::from(reference) * 1_000 / kbps).max(1)).unwrap_or(u32::MAX)
 }
 
 /// The interfaces of a router OSPF runs on.
@@ -72,6 +93,35 @@ fn ospf_ifaces(t: &Topology, d: &Device) -> Vec<(L3If, bool)> {
 pub fn router_id(d: &Device) -> Option<Ipv4Addr> {
     let o = d.ospf.as_ref()?;
     o.router_id.or_else(|| crate::l3_ifaces(d).iter().map(|i| i.net.addr).max())
+}
+
+/// The area of the network statement an interface address falls under.
+fn area_of(d: &Device, a: Ipv4Addr) -> u32 {
+    d.ospf.as_ref().and_then(|o| o.networks.iter().find(|n| n.matches(a))).map_or(0, |n| n.area)
+}
+
+/// Ports reachable at layer 2 from an OSPF interface: from its port, or for a switch's VLAN
+/// interface from every port of that VLAN.
+fn iface_reach(t: &Topology, d: &Device, ifc: &L3If) -> BTreeSet<End> {
+    if ifc.port != crate::SVI_PORT {
+        return l2_reach(t, End { device: d.id, port: ifc.port });
+    }
+    let Some(v) = ifc.vlan.and_then(packetcraft_core::VlanId::new) else { return BTreeSet::new() };
+    let mut all = BTreeSet::new();
+    for p in (0..d.ports.len()).filter(|p| crate::stp::carries(t, d, *p, v)) {
+        all.extend(l2_reach(t, End { device: d.id, port: p }));
+    }
+    all
+}
+
+/// Whether a reach set gets to another router's interface (a switch's VLAN interface counts
+/// when any port of its VLAN is reached).
+fn reaches(t: &Topology, reach: &BTreeSet<End>, b: &Device, ib: &L3If) -> bool {
+    if ib.port != crate::SVI_PORT {
+        return reach.contains(&End { device: b.id, port: ib.port });
+    }
+    let Some(v) = ib.vlan.and_then(packetcraft_core::VlanId::new) else { return false };
+    (0..b.ports.len()).any(|p| crate::stp::carries(t, b, p, v) && reach.contains(&End { device: b.id, port: p }))
 }
 
 /// Ports reachable at layer 2 from a port (through cables, switches and hubs).
@@ -105,14 +155,14 @@ pub(crate) fn l2_reach(t: &Topology, from: End) -> BTreeSet<End> {
 
 pub fn compute(t: &Topology) -> OspfState {
     let mut st = OspfState::default();
-    let routers: Vec<&Device> = t.devices.iter().filter(|d| d.kind == DeviceKind::Router && d.ospf.is_some()).collect();
+    let routers: Vec<&Device> = t.devices.iter().filter(|d| d.routes_ip() && d.ospf.is_some()).collect();
     let mut ifs: BTreeMap<DeviceId, Vec<(L3If, bool)>> = BTreeMap::new();
     for d in &routers {
         if let Some(id) = router_id(d) {
             st.router_ids.insert(d.id, id);
         }
         let list = ospf_ifaces(t, d);
-        st.interfaces.insert(d.id, list.iter().map(|(i, p)| (i.name.clone(), i.net.network(), iface_cost(&i.name), *p)).collect());
+        st.interfaces.insert(d.id, list.iter().map(|(i, p)| (i.name.clone(), i.net.network(), cost(d, i), *p)).collect());
         ifs.insert(d.id, list);
     }
     // Adjacencies: (from, to, from's interface, to's address, cost).
@@ -122,15 +172,16 @@ pub fn compute(t: &Topology) -> OspfState {
             if *pa {
                 continue;
             }
-            let reach = l2_reach(t, End { device: a.id, port: ia.port });
+            let reach = iface_reach(t, a, ia);
             for b in &routers {
                 if b.id == a.id {
                     continue;
                 }
                 for (ib, pb) in ifs.get(&b.id).into_iter().flatten() {
-                    let same = ib.net.network() == ia.net.network() && ib.vlan == ia.vlan;
-                    if !*pb && same && reach.contains(&End { device: b.id, port: ib.port }) {
-                        adj.entry(a.id).or_default().push((b.id, ia.clone(), ib.net.addr, iface_cost(&ia.name)));
+                    let same =
+                        ib.net.network() == ia.net.network() && (ib.vlan == ia.vlan || ia.port == crate::SVI_PORT || ib.port == crate::SVI_PORT);
+                    if !*pb && same && reaches(t, &reach, b, ib) {
+                        adj.entry(a.id).or_default().push((b.id, ia.clone(), ib.net.addr, cost(a, ia)));
                         if let Some(rid) = st.router_ids.get(&b.id) {
                             st.neighbors.entry(a.id).or_default().push(Neighbor {
                                 device: b.id,
@@ -144,9 +195,31 @@ pub fn compute(t: &Topology) -> OspfState {
             }
         }
     }
-    // Networks each router advertises (cost of its own interface added).
-    let stubs: BTreeMap<DeviceId, Vec<(Ipv4Net, u32)>> =
-        ifs.iter().map(|(d, l)| (*d, l.iter().map(|(i, _)| (i.net.network(), iface_cost(&i.name))).collect())).collect();
+    // DR and BDR per segment: highest priority, then router id; priority 0 never; none on
+    // point-to-point (serial) links.
+    for d in &routers {
+        let Some(rid) = st.router_ids.get(&d.id).copied() else { continue };
+        for (ifc, _) in ifs.get(&d.id).into_iter().flatten() {
+            let prio = |dev: &Device, name: &str| dev.ospf_if.get(name).and_then(|o| o.priority).unwrap_or(1);
+            let area = area_of(d, ifc.net.addr);
+            let p2p = ifc.name.starts_with("Serial");
+            let mut seg: Vec<(u8, Ipv4Addr, Ipv4Addr)> = vec![(prio(d, &ifc.name), rid, ifc.net.addr)];
+            for n in st.neighbors.get(&d.id).into_iter().flatten().filter(|n| n.iface == ifc.name) {
+                let their_if =
+                    t.device(n.device).and_then(|nd| crate::l3_ifaces(nd).into_iter().find(|i| i.net.addr == n.address).map(|i| prio(nd, &i.name)));
+                seg.push((their_if.unwrap_or(1), n.router_id, n.address));
+            }
+            seg.retain(|x| x.0 > 0);
+            seg.sort_by_key(|x| std::cmp::Reverse((x.0, x.1)));
+            let (dr, bdr) = if p2p { (None, None) } else { (seg.first().map(|x| x.2), seg.get(1).map(|x| x.2)) };
+            st.segments.insert((d.id, ifc.name.clone()), Segment { area, priority: prio(d, &ifc.name), dr, bdr });
+        }
+    }
+    // Networks each router advertises (cost of its own interface added), with their area.
+    let stubs: BTreeMap<DeviceId, Vec<(Ipv4Net, u32, u32)>> = routers
+        .iter()
+        .map(|d| (d.id, ifs.get(&d.id).into_iter().flatten().map(|(i, _)| (i.net.network(), cost(d, i), area_of(d, i.net.addr))).collect()))
+        .collect();
     let originators: Vec<DeviceId> = routers
         .iter()
         .filter(|d| {
@@ -178,21 +251,29 @@ pub fn compute(t: &Topology) -> OspfState {
             }
         }
         let mine: Vec<Ipv4Net> = up_ifaces(t, r).iter().map(|i| i.net.network()).collect();
+        let my_areas: BTreeSet<u32> = ifs.get(&r.id).into_iter().flatten().map(|(i, _)| area_of(r, i.net.addr)).collect();
         let mut routes: BTreeMap<Ipv4Net, OspfRoute> = BTreeMap::new();
         for (x, (cx, hop)) in &best {
             let Some((ifc, via)) = hop else { continue };
-            for (net, c) in stubs.get(x).into_iter().flatten() {
+            for (net, c, area) in stubs.get(x).into_iter().flatten() {
                 if mine.contains(net) {
                     continue;
                 }
-                let cand = OspfRoute { net: *net, via: *via, iface: ifc.name.clone(), cost: cx.saturating_add(*c), external: false };
+                let cand = OspfRoute {
+                    net: *net,
+                    via: *via,
+                    iface: ifc.name.clone(),
+                    cost: cx.saturating_add(*c),
+                    external: false,
+                    inter_area: !my_areas.contains(area),
+                };
                 if routes.get(net).is_none_or(|old| (cand.cost, cand.via) < (old.cost, old.via)) {
                     routes.insert(*net, cand);
                 }
             }
             if originators.contains(x) && *x != r.id {
                 let def = Ipv4Net::new(Ipv4Addr::UNSPECIFIED, 0);
-                let cand = OspfRoute { net: def, via: *via, iface: ifc.name.clone(), cost: 1, external: true };
+                let cand = OspfRoute { net: def, via: *via, iface: ifc.name.clone(), cost: 1, external: true, inter_area: false };
                 if routes.get(&def).is_none_or(|old| (*cx, cand.via) < (old.cost.saturating_add(*cx), old.via)) {
                     routes.insert(def, cand);
                 }
@@ -219,8 +300,11 @@ pub fn fingerprint(t: &Topology) -> u64 {
                 (s.ip, s.vlan, s.shutdown).hash(&mut h);
             }
         }
-        if d.kind == DeviceKind::Router {
-            format!("{:?}{:?}{:?}{:?}", d.ospf, d.rip, d.routes, d.access.users).hash(&mut h);
+        if matches!(d.kind, DeviceKind::Router | DeviceKind::Switch) {
+            format!("{:?}{:?}{:?}{:?}{:?}{}", d.ospf, d.rip, d.routes, d.access.users, d.ospf_if, d.ip_routing).hash(&mut h);
+            for s in &d.svis {
+                (s.vlan, s.ip, s.shutdown).hash(&mut h);
+            }
         }
     }
     h.finish()

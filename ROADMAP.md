@@ -20,15 +20,15 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 | Number | Value | Kind |
 |---|---|---|
-| **Ready for real work** (weighted) | **~57%** | estimated from written weights (58.2); [target-app-parity.md](docs/target-app-parity.md) |
+| **Ready for real work** (weighted) | **~59%** | estimated from written weights (59.1); [target-app-parity.md](docs/target-app-parity.md) |
 | **CCNA 1 student** | **~74%** | estimated; [method](docs/target-app-parity.md#audiences) |
 | **CCNA 2 student** | **~62%** | estimated |
-| **CCNA 3 student** | **~52%** | estimated |
+| **CCNA 3 student** | **~57%** | estimated |
 | **Instructor** (graded activities) | **~45%** | estimated |
 | Engine commands | 40 | measured: `crates/engine/src/catalog.rs` |
 | Console grammar entries | 225 across 12 modes | measured: `crates/ios/src/grammar.rs` |
 | Device models · sample labs | 13 · 17 | measured |
-| Tests | 129 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Tests | 131 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~600–950 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
@@ -38,7 +38,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Full target | ~50% | ~600–950 | Activities and scoring, wireless, more device families, services, physical workspace, translations |
 | CCNA 1 student | ~74% | ~30–55 | Console coverage, protocol frames in Simulation mode, PDU details |
 | CCNA 2 student | ~62% | ~95–150 | Wireless LANs, DTP and RSTP, DHCPv6 |
-| CCNA 3 student | ~52% | ~150–240 | OSPF depth and OSPFv3, VPN, network services |
+| CCNA 3 student | ~57% | ~130–210 | OSPFv3, VPN, network services, QoS |
 | Instructor | ~45% | ~50–90 | Timer, locking, variables, per-check feedback, translations |
 
 ## Dimensions
@@ -47,7 +47,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 |---|---|---|---|---|
 | Device console | 20 | 65% | 50–80 | Modes, abbreviations, `?`, Tab, history, config round-trip; `show` coverage growing |
 | Layer 2 | 12 | 80% | 18–30 | VLANs, trunks, DTP, per-VLAN STP with BPDUs, EtherChannel, VTP, port security; no STP timers or RSTP |
-| Layer 3 | 15 | 60% | 60–95 | IPv4, IPv6 (NDP, SLAAC), static, RIP, single-area OSPF, multilayer switching, HSRP; no EIGRP or OSPFv3 |
+| Layer 3 | 15 | 66% | 50–80 | IPv4, IPv6 (NDP, SLAAC), static, RIP, multi-area OSPF with DR/BDR, multilayer switching, HSRP; no EIGRP or OSPFv3 |
 | Services | 8 | 40% | 40–60 | DHCP, DNS, HTTP with browser, Telnet/SSH; no FTP, email, NTP, syslog, AAA |
 | Security | 8 | 72% | 24–40 | IPv4 and IPv6 ACLs, access-class, NAT/PAT, passwords and lines, PPP PAP/CHAP; no firewalls or VPN |
 | WAN, cabling, wireless | 6 | 35% | 60–90 | Copper (auto-MDIX) and serial (DCE/DTE, HDLC/PPP); no wireless or fibre |
@@ -60,6 +60,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-10-30 — OSPF depth.** `ip ospf cost` and `ip ospf priority` with a real DR/BDR election, `auto-cost reference-bandwidth`, several areas with inter-area routes (`O IA`), `show ip ospf` and `show ip ospf interface [brief]`, DR/BDR in `show ip ospf neighbor`, OSPF on multilayer switches.
 - **2026-10-30 — Access-list depth.** `access-class` on vty lines; IPv6 access lists (`ipv6 access-list`, `ipv6 traffic-filter`, `show ipv6 access-list`); ICMP errors translated back through NAT, so traceroute works through PAT.
 - **2026-10-30 — PPP authentication.** `ppp authentication chap|pap` and `ppp pap sent-username` on serial links, checked against local usernames; a failed authentication keeps the link down and says so.
 - **2026-10-30 — DTP.** `switchport mode dynamic auto|desirable` and `switchport nonegotiate`; whether a link trunks is negotiated from both ends, and every view shows the working mode.

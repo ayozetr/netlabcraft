@@ -180,6 +180,18 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `ppp authentication {chap \| pap \| chap pap \| pap chap}` | interface | router | Demand authentication from the other end |
 | `no ppp authentication` | interface | router | Demand no authentication |
 | `ppp pap sent-username WORD password WORD` | interface | router | The name and password this end answers PAP with |
+| `ip ospf cost <1-65535>` | interface, subinterface | router | This interface's OSPF cost |
+| `no ip ospf cost` | interface, subinterface | router | Cost from the bandwidth again |
+| `ip ospf priority <0-255>` | interface, subinterface | router | DR election priority (0: never DR) |
+| `no ip ospf priority` | interface, subinterface | router | Priority 1 again |
+| `ip ospf cost <1-65535>` | interface | switch | This interface's OSPF cost |
+| `no ip ospf cost` | interface | switch | Cost from the bandwidth again |
+| `ip ospf priority <0-255>` | interface | switch | DR election priority (0: never DR) |
+| `no ip ospf priority` | interface | switch | Priority 1 again |
+| `auto-cost reference-bandwidth <1-4294967>` |  | router, switch | Mbit/s that cost 1 |
+| `show ip ospf` | user, privileged | router, switch | OSPF process summary |
+| `show ip ospf interface` | user, privileged | router, switch | OSPF interfaces: area, cost, state |
+| `show ip ospf interface brief` | user, privileged | router, switch | OSPF interfaces: area, cost, state |
 | `router rip` | config | router | Start or configure RIP |
 | `no router rip` | config | router | Stop RIP |
 | `version {1\|2}` |  | router | RIP version |
@@ -192,19 +204,18 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `auto-summary` |  | router | Summarise at classful boundaries (kept, not simulated) |
 | `no auto-summary` |  | router | Advertise subnets as they are |
 | `show ip rip database` | user, privileged | router | Routes RIP knows |
-| `router ospf <1-65535>` | config | router | Start or configure OSPF |
-| `no router ospf <1-65535>` | config | router | Stop OSPF |
-| `network A.B.C.D WILDCARD area <0-4294967295>` |  | router | Run OSPF on matching interfaces |
-| `no network A.B.C.D WILDCARD area <0-4294967295>` |  | router | Stop OSPF on matching interfaces |
-| `router-id A.B.C.D` |  | router | Set the router id |
-| `no router-id` |  | router | Use the highest interface address |
-| `passive-interface <interface>` |  | router | Advertise but form no neighbours |
-| `no passive-interface <interface>` |  | router | Form neighbours again |
-| `default-information originate` |  | router | Advertise this router's default route |
-| `no default-information originate` |  | router | Stop advertising the default route |
-| `auto-cost reference-bandwidth <1-4294967>` |  | router | Reference bandwidth (accepted; costs use 100 Mbit/s) |
-| `show ip ospf neighbor` | user, privileged | router | OSPF neighbours |
-| `show ip protocols` | user, privileged | router | Routing protocols running |
+| `router ospf <1-65535>` | config | router, switch | Start or configure OSPF |
+| `no router ospf <1-65535>` | config | router, switch | Stop OSPF |
+| `network A.B.C.D WILDCARD area <0-4294967295>` |  | router, switch | Run OSPF on matching interfaces |
+| `no network A.B.C.D WILDCARD area <0-4294967295>` |  | router, switch | Stop OSPF on matching interfaces |
+| `router-id A.B.C.D` |  | router, switch | Set the router id |
+| `no router-id` |  | router, switch | Use the highest interface address |
+| `passive-interface <interface>` |  | router, switch | Advertise but form no neighbours |
+| `no passive-interface <interface>` |  | router, switch | Form neighbours again |
+| `default-information originate` |  | router, switch | Advertise this router's default route |
+| `no default-information originate` |  | router, switch | Stop advertising the default route |
+| `show ip ospf neighbor` | user, privileged | router, switch | OSPF neighbours |
+| `show ip protocols` | user, privileged | router, switch | Routing protocols running |
 | `ip helper-address A.B.C.D` | interface, subinterface | router | Relay DHCP requests to this server |
 | `no ip helper-address [A.B.C.D]` | interface, subinterface | router | Stop relaying (to one server) |
 | `no ip helper-address` | interface, subinterface | router | Stop relaying DHCP requests |

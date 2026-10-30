@@ -671,6 +671,9 @@ pub struct Device {
     /// Routers: OSPF (`router ospf N`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ospf: Option<Ospf>,
+    /// Per-interface OSPF settings, by interface name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub ospf_if: BTreeMap<String, OspfIf>,
     /// Routers: RIP (`router rip`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rip: Option<Rip>,
@@ -769,6 +772,19 @@ pub struct Ospf {
     /// `default-information originate`: advertise this router's default route.
     #[serde(default)]
     pub default_originate: bool,
+    /// `auto-cost reference-bandwidth N` (Mbit/s; 100 when not set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_bw: Option<u32>,
+}
+
+/// OSPF settings of one interface (`ip ospf cost`, `ip ospf priority`), kept apart from the
+/// process as on real routers.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct OspfIf {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub priority: Option<u8>,
 }
 
 /// `router rip`.
@@ -1080,6 +1096,7 @@ impl Device {
             svis: Vec::new(),
             ospf: None,
             acls6: Vec::new(),
+            ospf_if: BTreeMap::new(),
             rip: None,
             acls: Vec::new(),
             nat: Nat::default(),
@@ -1114,6 +1131,7 @@ impl Device {
         self.ospf = None;
         self.rip = None;
         self.acls6.clear();
+        self.ospf_if.clear();
         self.acls.clear();
         self.nat = Nat::default();
         self.services = fresh.services;

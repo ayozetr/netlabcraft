@@ -75,7 +75,11 @@ pub fn compute(t: &Topology) -> RipState {
                     continue;
                 }
                 for (ib, pb) in ifs.get(&b.id).into_iter().flatten() {
-                    if !*pb && ib.net.network() == ia.net.network() && ib.vlan == ia.vlan && reach.contains(&End { device: b.id, port: ib.port }) {
+                    if !*pb
+                        && ib.net.network() == ia.net.network()
+                        && (ib.vlan == ia.vlan || ia.port == crate::SVI_PORT || ib.port == crate::SVI_PORT)
+                        && reach.contains(&End { device: b.id, port: ib.port })
+                    {
                         adj.entry(a.id).or_default().push((ia.clone(), ib.net.addr, b.id));
                         st.neighbors.entry(a.id).or_default().push((b.id, ib.net.addr, ia.name.clone()));
                     }

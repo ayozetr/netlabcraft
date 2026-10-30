@@ -998,6 +998,47 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 Ok(())
             })
         }
+        Id::IpOspfCost | Id::NoIpOspfCost | Id::IpOspfPriority | Id::NoIpOspfPriority => {
+            let value: Option<u32> = match spec.id {
+                Id::IpOspfCost => Some(arg(0).parse::<u32>().ok().filter(|c| (1..=65_535).contains(c)).ok_or("% The cost is 1-65535")?),
+                Id::IpOspfPriority => Some(u32::from(arg(0).parse::<u8>().map_err(|_| "% The priority is 0-255")?)),
+                _ => None,
+            };
+            let names: Vec<String> = match &c.cli.mode {
+                Mode::Svi(v) => vec![format!("Vlan{v}")],
+                Mode::Iface(ifs) => {
+                    let d = c.d()?;
+                    ifs.iter().filter_map(|r| d.ports.get(r.port).map(|p| r.sub.map_or(p.name.clone(), |s| format!("{}.{s}", p.name)))).collect()
+                }
+                _ => return Err("% Not in interface mode".into()),
+            };
+            let id = spec.id;
+            let d = c.dm()?;
+            for n in names {
+                let e = d.ospf_if.entry(n.clone()).or_default();
+                match id {
+                    Id::IpOspfCost | Id::NoIpOspfCost => e.cost = value,
+                    _ => e.priority = value.and_then(|v| u8::try_from(v).ok()),
+                }
+                if *e == packetcraft_model::OspfIf::default() {
+                    d.ospf_if.remove(&n);
+                }
+            }
+            Ok(String::new())
+        }
+        Id::AutoCost => {
+            let mbps: u32 = arg(0).parse().ok().filter(|v| (1..=4_294_967).contains(v)).ok_or("% 1-4294967 Mbit/s")?;
+            c.dm()?.ospf.as_mut().ok_or("% Not in OSPF mode")?.reference_bw = Some(mbps);
+            Ok("Make the reference bandwidth the same on every router.".into())
+        }
+        Id::ShowIpOspf => {
+            let st = c.sim.ospf_state(c.t);
+            Ok(render::ospf_summary(c.d()?, &st))
+        }
+        Id::ShowIpOspfInterface => {
+            let st = c.sim.ospf_state(c.t);
+            Ok(render::ospf_interfaces(c.d()?, &st))
+        }
         Id::ShowStandby => {
             let roles = c.sim.hsrp_roles(c.t);
             Ok(render::standby(c.d()?, roles.get(&c.dev).map_or(&[][..], Vec::as_slice)))
@@ -1615,6 +1656,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let st = c.sim.rip_state(c.t);
             Ok(render::rip_database(c.t, c.d()?, &st))
         }
+        Id::RouterOspf if c.d()?.kind == DeviceKind::Switch && !c.d()?.ip_routing => Err("% OSPF needs `ip routing` (multilayer switches)".into()),
         Id::RouterOspf => {
             let n: u16 = arg(0).parse().ok().filter(|n| *n >= 1).ok_or("% The process id is 1-65535")?;
             let d = c.dm()?;

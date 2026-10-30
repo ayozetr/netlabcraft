@@ -292,6 +292,13 @@ pub enum Id {
     TrafficFilter,
     NoTrafficFilter,
     ShowIpv6AccessList,
+    IpOspfCost,
+    NoIpOspfCost,
+    IpOspfPriority,
+    NoIpOspfPriority,
+    AutoCost,
+    ShowIpOspf,
+    ShowIpOspfInterface,
 }
 
 use Tok::{Arg, K, Rest};
@@ -537,6 +544,24 @@ pub static SPECS: &[Spec] = &[
         [K("ppp"), K("pap"), K("sent-username"), Arg("WORD"), K("password"), Arg("WORD")],
         "The name and password this end answers PAP with"
     ),
+    spec!(IpOspfCost, IFS, Modes::ROUTER, [K("ip"), K("ospf"), K("cost"), Arg("<1-65535>")], "This interface's OSPF cost"),
+    spec!(NoIpOspfCost, IFS, Modes::ROUTER, [K("no"), K("ip"), K("ospf"), K("cost")], "Cost from the bandwidth again"),
+    spec!(IpOspfPriority, IFS, Modes::ROUTER, [K("ip"), K("ospf"), K("priority"), Arg("<0-255>")], "DR election priority (0: never DR)"),
+    spec!(NoIpOspfPriority, IFS, Modes::ROUTER, [K("no"), K("ip"), K("ospf"), K("priority")], "Priority 1 again"),
+    spec!(IpOspfCost, Modes::SVI.or(Modes::IF), Modes::SWITCH, [K("ip"), K("ospf"), K("cost"), Arg("<1-65535>")], "This interface's OSPF cost"),
+    spec!(NoIpOspfCost, Modes::SVI.or(Modes::IF), Modes::SWITCH, [K("no"), K("ip"), K("ospf"), K("cost")], "Cost from the bandwidth again"),
+    spec!(
+        IpOspfPriority,
+        Modes::SVI.or(Modes::IF),
+        Modes::SWITCH,
+        [K("ip"), K("ospf"), K("priority"), Arg("<0-255>")],
+        "DR election priority (0: never DR)"
+    ),
+    spec!(NoIpOspfPriority, Modes::SVI.or(Modes::IF), Modes::SWITCH, [K("no"), K("ip"), K("ospf"), K("priority")], "Priority 1 again"),
+    spec!(AutoCost, Modes::OSPF, Modes::BOTH, [K("auto-cost"), K("reference-bandwidth"), Arg("<1-4294967>")], "Mbit/s that cost 1"),
+    spec!(ShowIpOspf, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf")], "OSPF process summary"),
+    spec!(ShowIpOspfInterface, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf"), K("interface")], "OSPF interfaces: area, cost, state"),
+    spec!(ShowIpOspfInterface, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf"), K("interface"), K("brief")], "OSPF interfaces: area, cost, state"),
     spec!(RouterRip, Modes::CONFIG, Modes::ROUTER, [K("router"), K("rip")], "Start or configure RIP"),
     spec!(NoRouterRip, Modes::CONFIG, Modes::ROUTER, [K("no"), K("router"), K("rip")], "Stop RIP"),
     spec!(RipVersion, Modes::RIP, Modes::ROUTER, [K("version"), Arg("{1|2}")], "RIP version"),
@@ -555,43 +580,36 @@ pub static SPECS: &[Spec] = &[
     spec!(RipAutoSummary, Modes::RIP, Modes::ROUTER, [K("auto-summary")], "Summarise at classful boundaries (kept, not simulated)"),
     spec!(NoRipAutoSummary, Modes::RIP, Modes::ROUTER, [K("no"), K("auto-summary")], "Advertise subnets as they are"),
     spec!(ShowIpRipDatabase, EXECS, Modes::ROUTER, [K("show"), K("ip"), K("rip"), K("database")], "Routes RIP knows"),
-    spec!(RouterOspf, Modes::CONFIG, Modes::ROUTER, [K("router"), K("ospf"), Arg("<1-65535>")], "Start or configure OSPF"),
-    spec!(NoRouterOspf, Modes::CONFIG, Modes::ROUTER, [K("no"), K("router"), K("ospf"), Arg("<1-65535>")], "Stop OSPF"),
+    spec!(RouterOspf, Modes::CONFIG, Modes::BOTH, [K("router"), K("ospf"), Arg("<1-65535>")], "Start or configure OSPF"),
+    spec!(NoRouterOspf, Modes::CONFIG, Modes::BOTH, [K("no"), K("router"), K("ospf"), Arg("<1-65535>")], "Stop OSPF"),
     spec!(
         OspfNetwork,
         Modes::OSPF,
-        Modes::ROUTER,
+        Modes::BOTH,
         [K("network"), Arg("A.B.C.D"), Arg("WILDCARD"), K("area"), Arg("<0-4294967295>")],
         "Run OSPF on matching interfaces"
     ),
     spec!(
         NoOspfNetwork,
         Modes::OSPF,
-        Modes::ROUTER,
+        Modes::BOTH,
         [K("no"), K("network"), Arg("A.B.C.D"), Arg("WILDCARD"), K("area"), Arg("<0-4294967295>")],
         "Stop OSPF on matching interfaces"
     ),
-    spec!(OspfRouterId, Modes::OSPF, Modes::ROUTER, [K("router-id"), Arg("A.B.C.D")], "Set the router id"),
-    spec!(NoOspfRouterId, Modes::OSPF, Modes::ROUTER, [K("no"), K("router-id")], "Use the highest interface address"),
-    spec!(OspfPassive, Modes::OSPF, Modes::ROUTER, [K("passive-interface"), Rest("<interface>")], "Advertise but form no neighbours"),
-    spec!(NoOspfPassive, Modes::OSPF, Modes::ROUTER, [K("no"), K("passive-interface"), Rest("<interface>")], "Form neighbours again"),
-    spec!(OspfDefaultOriginate, Modes::OSPF, Modes::ROUTER, [K("default-information"), K("originate")], "Advertise this router's default route"),
+    spec!(OspfRouterId, Modes::OSPF, Modes::BOTH, [K("router-id"), Arg("A.B.C.D")], "Set the router id"),
+    spec!(NoOspfRouterId, Modes::OSPF, Modes::BOTH, [K("no"), K("router-id")], "Use the highest interface address"),
+    spec!(OspfPassive, Modes::OSPF, Modes::BOTH, [K("passive-interface"), Rest("<interface>")], "Advertise but form no neighbours"),
+    spec!(NoOspfPassive, Modes::OSPF, Modes::BOTH, [K("no"), K("passive-interface"), Rest("<interface>")], "Form neighbours again"),
+    spec!(OspfDefaultOriginate, Modes::OSPF, Modes::BOTH, [K("default-information"), K("originate")], "Advertise this router's default route"),
     spec!(
         NoOspfDefaultOriginate,
         Modes::OSPF,
-        Modes::ROUTER,
+        Modes::BOTH,
         [K("no"), K("default-information"), K("originate")],
         "Stop advertising the default route"
     ),
-    spec!(
-        Accepted,
-        Modes::OSPF,
-        Modes::ROUTER,
-        [K("auto-cost"), K("reference-bandwidth"), Arg("<1-4294967>")],
-        "Reference bandwidth (accepted; costs use 100 Mbit/s)"
-    ),
-    spec!(ShowOspfNeighbor, EXECS, Modes::ROUTER, [K("show"), K("ip"), K("ospf"), K("neighbor")], "OSPF neighbours"),
-    spec!(ShowIpProtocols, EXECS, Modes::ROUTER, [K("show"), K("ip"), K("protocols")], "Routing protocols running"),
+    spec!(ShowOspfNeighbor, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf"), K("neighbor")], "OSPF neighbours"),
+    spec!(ShowIpProtocols, EXECS, Modes::BOTH, [K("show"), K("ip"), K("protocols")], "Routing protocols running"),
     spec!(HelperAddress, IFS, Modes::ROUTER, [K("ip"), K("helper-address"), Arg("A.B.C.D")], "Relay DHCP requests to this server"),
     spec!(NoHelperAddress, IFS, Modes::ROUTER, [K("no"), K("ip"), K("helper-address"), Rest("[A.B.C.D]")], "Stop relaying (to one server)"),
     spec!(NoHelperAddress, IFS, Modes::ROUTER, [K("no"), K("ip"), K("helper-address")], "Stop relaying DHCP requests"),
@@ -1020,7 +1038,7 @@ mod tests {
         // Mode and device gate commands.
         assert!(resolve(&["configure", "terminal"], Modes::USER, R).is_err());
         assert!(resolve(&["vlan", "10"], Modes::CONFIG, R).is_err());
-        assert!(resolve(&["router", "ospf", "1"], Modes::CONFIG, S).is_err());
+        assert!(resolve(&["router", "rip"], Modes::CONFIG, S).is_err());
     }
 
     #[test]
