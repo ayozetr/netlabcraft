@@ -164,16 +164,18 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                     if q.is_empty() { m.sub == app.ui.bottom.sub } else { m.short.to_lowercase().contains(&q) || m.long.to_lowercase().contains(&q) }
                 })
                 .collect();
-            egui::ScrollArea::horizontal().id_salt("model_tiles").max_height(90.0).show(ui, |ui| {
-                ui.horizontal(|ui| {
+            // Rows of tiles that wrap, scrolled up and down, so every model of a group is in reach.
+            let room = (ui.available_height() - 30.0).max(60.0);
+            egui::ScrollArea::vertical().id_salt("model_tiles").max_height(room).auto_shrink([false, true]).show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
                     if shown.is_empty() {
                         ui.label(RichText::new(tl("No device matches.")).color(tk.muted));
                     }
                     for m in &shown {
                         let tool = m.tool;
                         let selected = app.ui.tool == tool;
-                        // Wide enough for the longest shown name (`Router 2GE+2S`).
-                        let (rect, resp) = ui.allocate_exact_size(vec2(76.0, 54.0), Sense::click());
+                        // Room for a name on two lines (`Modular Router 3GE`).
+                        let (rect, resp) = ui.allocate_exact_size(vec2(76.0, 56.0), Sense::click());
                         let resp = resp.on_hover_text(m.long);
                         resp.widget_info(|| egui::WidgetInfo::selected(egui::accesskit::Role::Button, true, selected, m.short));
                         let p = ui.painter_at(rect);
@@ -191,7 +193,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                             egui::Stroke::new(1.2, if selected { tk.pill } else { tk.chrome_line }),
                             egui::StrokeKind::Inside,
                         );
-                        let icon = egui::Rect::from_center_size(rect.center_top() + vec2(0.0, 22.0), vec2(36.0, 36.0));
+                        let icon = egui::Rect::from_center_size(rect.center_top() + vec2(0.0, 17.0), vec2(28.0, 28.0));
                         match m.kind {
                             Some(k) => {
                                 icons::device(&p, icon, k, &tk);
@@ -201,13 +203,14 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                             }
                             None => icons::glyph(&p, icon.shrink(4.0), Glyph::Cable, tk.cable),
                         }
-                        p.text(
-                            rect.center_bottom() - vec2(0.0, 9.0),
-                            egui::Align2::CENTER_CENTER,
-                            m.short,
-                            egui::FontId::proportional(11.0),
-                            tk.text,
-                        );
+                        // The name wraps onto a second line under the icon rather than being cut.
+                        let mut job =
+                            egui::text::LayoutJob::simple(m.short.to_string(), egui::FontId::proportional(10.0), tk.text, rect.width() - 6.0);
+                        job.halign = egui::Align::Center;
+                        job.wrap.max_rows = 2;
+                        let galley = ui.fonts_mut(|f| f.layout_job(job));
+                        let top = rect.top() + 31.0;
+                        p.galley(egui::pos2(rect.center().x, top), galley, tk.text);
                         if resp.clicked() {
                             app.set_tool(if selected { Tool::Select } else { tool });
                         }
