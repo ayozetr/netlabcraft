@@ -739,3 +739,39 @@ IP phones with a voice VLAN	Teléfonos IP con una VLAN de voz
 Two IP phones, each with a PC plugged into it, share switch ports: the phones talk in voice VLAN 100, the PCs in data VLAN 10. R1 hands out addresses and registers the phones; dial 1002 from Phone1.	Dos teléfonos IP, cada uno con un PC conectado, comparten puertos del switch: los teléfonos hablan en la VLAN de voz 100 y los PC en la VLAN de datos 10. R1 reparte las direcciones y registra los teléfonos; marca 1002 desde Phone1.
 Data VLAN 10 untagged, voice VLAN 100 tagged	VLAN de datos 10 sin etiquetar, VLAN de voz 100 etiquetada
 Each phone takes an address in voice VLAN 100 and learns from DHCP option 150 where to register (R1); its PC, plugged into the phone, gets an address in data VLAN 10. Open Phone1 > Phone, dial 1002 and press Call; on Phone2 press Pick up. `show ephone` and `show ephone-dn` on R1 show the registrations and the call.	Cada teléfono toma una dirección en la VLAN de voz 100 y aprende por la opción 150 de DHCP dónde registrarse (R1); su PC, conectado al teléfono, recibe una dirección en la VLAN de datos 10. Abre Phone1 > Teléfono, marca 1002 y pulsa Llamar; en Phone2 pulsa Descolgar. `show ephone` y `show ephone-dn` en R1 muestran los registros y la llamada.
+Smart temperature sensor with one Fast Ethernet port: reports its reading to an IoT server	Sensor de temperatura inteligente con un puerto Fast Ethernet: envía su lectura a un servidor IoT
+Smart fan with one Fast Ethernet port: registers with an IoT server, which switches it on and off	Ventilador inteligente con un puerto Fast Ethernet: se registra en un servidor IoT, que lo enciende y lo apaga
+IoT	IoT
+IoT server:	Servidor IoT:
+Reading: {}	Lectura: {}
+Change the reading	Cambia la lectura
+Running (switched on by the server)	En marcha (encendido por el servidor)
+Stopped	Parado
+Registered with {}	Registrado en {}
+Not registered yet	Todavía sin registrar
+Report now	Informar ahora
+Every smart thing reports to its server over HTTP	Cada objeto inteligente informa a su servidor por HTTP
+IoT service	Servicio IoT
+Let the smart things report, then list them	Deja que los objetos inteligentes informen y luego los lista
+Registered things	Objetos registrados
+None yet: smart things register when they report (Refresh).	Ninguno todavía: los objetos inteligentes se registran al informar (Actualizar).
+reading {}	lectura {}
+on	encendido
+off	apagado
+Switch off	Apagar
+Switch on	Encender
+Rules	Reglas
+If {} is above {}, switch {} on	Si {} supera {}, enciende {}
+If	Si
+sensor	sensor
+is above	supera
+switch on	enciende
+device	dispositivo
+Add rule	Añadir regla
+no IoT server set	sin servidor IoT configurado
+the server answered {}	el servidor respondió {}
+{} is not a registered smart device	{} no es un dispositivo inteligente registrado
+switched off	apagado
+IoT: a sensor, a fan and a rule	IoT: un sensor, un ventilador y una regla
+A smart sensor and a smart fan register with the IoT server over HTTP; the server's rule switches the fan on when the sensor reads above 30.	Un sensor y un ventilador inteligentes se registran en el servidor IoT por HTTP; la regla del servidor enciende el ventilador cuando el sensor marca más de 30.
+Sensor1 reads 25 degrees and Fan1 is off. Open Sensor1 > IoT and raise the reading above 30: the server's rule (IoT-Server > IoT) switches Fan1 on. Every report is an HTTP request to the server (see the events in Simulation mode).	Sensor1 marca 25 grados y Fan1 está apagado. Abre Sensor1 > IoT y sube la lectura por encima de 30: la regla del servidor (IoT-Server > IoT) enciende Fan1. Cada informe es una petición HTTP al servidor (mira los eventos en el modo Simulación).

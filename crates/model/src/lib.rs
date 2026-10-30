@@ -18,6 +18,7 @@ pub mod file;
 pub mod firewall;
 pub mod hardware;
 pub mod ifname;
+pub mod iot;
 pub mod models;
 pub mod physical;
 pub mod qos;
@@ -80,10 +81,12 @@ pub enum DeviceKind {
     Printer,
     /// An IP phone: a host with a built-in 2-port switch (network port, PC port).
     Phone,
+    /// A smart sensor or smart device: a host that registers with an IoT server.
+    Iot,
 }
 
 impl DeviceKind {
-    pub const ALL: [DeviceKind; 8] = [
+    pub const ALL: [DeviceKind; 9] = [
         DeviceKind::Router,
         DeviceKind::Switch,
         DeviceKind::Hub,
@@ -92,6 +95,7 @@ impl DeviceKind {
         DeviceKind::Server,
         DeviceKind::Printer,
         DeviceKind::Phone,
+        DeviceKind::Iot,
     ];
 
     pub fn id(self) -> &'static str {
@@ -104,6 +108,7 @@ impl DeviceKind {
             DeviceKind::Server => "server",
             DeviceKind::Printer => "printer",
             DeviceKind::Phone => "phone",
+            DeviceKind::Iot => "iot",
         }
     }
 
@@ -117,6 +122,7 @@ impl DeviceKind {
             DeviceKind::Server => "Server",
             DeviceKind::Printer => "Printer",
             DeviceKind::Phone => "IP Phone",
+            DeviceKind::Iot => "IoT",
         }
     }
 
@@ -135,12 +141,13 @@ impl DeviceKind {
             DeviceKind::Server => "SRV",
             DeviceKind::Printer => "PRN",
             DeviceKind::Phone => "PHONE",
+            DeviceKind::Iot => "IOT",
         }
     }
 
     /// Hosts run a desktop-style shell, have one port and a default gateway; they don't forward.
     pub fn is_host(self) -> bool {
-        matches!(self, DeviceKind::Pc | DeviceKind::Laptop | DeviceKind::Server | DeviceKind::Printer | DeviceKind::Phone)
+        matches!(self, DeviceKind::Pc | DeviceKind::Laptop | DeviceKind::Server | DeviceKind::Printer | DeviceKind::Phone | DeviceKind::Iot)
     }
 
     /// The port names of a new device of this kind (its default model).
@@ -874,6 +881,9 @@ pub struct Device {
     /// Routers: call control for IP phones; phones: where they register (see [`voice`]).
     #[serde(default, skip_serializing_if = "voice::Voice::is_default")]
     pub voice: voice::Voice,
+    /// Smart things: their IoT server and reading; servers: the IoT service and its rules.
+    #[serde(default, skip_serializing_if = "iot::Iot::is_default")]
+    pub iot: iot::Iot,
 }
 
 /// Which side of NAT an interface is on.
@@ -1572,6 +1582,7 @@ impl Device {
             modules: BTreeMap::new(),
             powered_off: false,
             voice: voice::Voice::default(),
+            iot: iot::Iot::default(),
         };
         d.ensure_default_vlan();
         d
@@ -2047,6 +2058,7 @@ impl Topology {
                 d.firewall.sanitize();
                 d.sanitize_modules();
                 d.voice.sanitize();
+                d.iot.sanitize();
                 for p in &mut d.ports {
                     p.subifs.truncate(MAX_SUBIFS);
                     p.subifs.sort_by_key(|s| s.number);

@@ -21,6 +21,7 @@ pub mod catalog;
 mod cmd;
 mod hardware;
 pub mod home;
+mod iot;
 mod voice;
 
 pub mod sample;

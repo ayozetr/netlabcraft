@@ -46,6 +46,10 @@ Every front end (UI, `packetcraft-cli run`, MCP `packetcraft_run`) runs these.
 | `device.power` | Power switch |  |  | `{"device", "on": true\|false or "on"\|"off"} → {"power", "changed", "errors"}: switched off, no port carries anything and a router or switch loses its running configuration; switched on, it boots from the saved one` |
 | `device.module.add` | Fit a card |  |  | `{"device", "slot": "0/1", "module": "Card-2S\|Card-4S\|Card-1GE\|Card-2GE\|Card-1FE"} → {"slots", "added": [port names]}: modular routers, switched off` |
 | `device.module.remove` | Remove a card |  |  | `{"device", "slot": "0/1"} → {"slots", "removed": [port names]}: switched off; cables on the card's ports are unplugged` |
+| `iot.configure` | Smart thing settings |  |  | `{"device": smart sensor or device, "server"?: "IoT server address (empty: none)", "value"?: sensor reading -1000..1000} → {"kind", "server", "value", "registered", "on", "message"} (reports at once)` |
+| `iot.sync` | IoT reports |  |  | `{} → {"things": [...]}: every smart thing reports to its server over HTTP (sensors first)` |
+| `iot.server` | IoT service |  |  | `{"device": server, "service"?: true\|false, "rules"?: [{"sensor", "above", "actuator"}]} → {"service", "rules", "things": [{"name", "kind", "address", "value", "on"}]}` |
+| `iot.switch` | Switch a smart device |  |  | `{"device": server, "name": registered smart device, "on": true\|false} → the server's IoT page` |
 | `phone.status` | Phone screen |  |  | `{"device": IP phone} → {"address", "tftp", "voice_vlan", "registered", "number", "server", "message", "call": {"state": "dialing"\|"ringback"\|"ringing"\|"connected", "peer", "peer_address", "rtp_sent", "rtp_received"}} (lets the phone register first)` |
 | `phone.dial` | Dial a number |  |  | `{"device": IP phone, "number": "1002"} → the phone's status: the far phone rings` |
 | `phone.answer` | Answer the phone |  |  | `{"device": a ringing IP phone} → its status: the call connects and voice packets flow` |

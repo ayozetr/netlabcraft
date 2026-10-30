@@ -21,6 +21,8 @@ pub enum Tab {
     Desktop,
     /// An IP phone's screen and dial pad.
     Phone,
+    /// A smart thing's reading or state; a server's IoT service.
+    Iot,
     Attributes,
 }
 
@@ -90,6 +92,8 @@ pub struct DeviceWindow {
     pub(crate) card: Option<&'static str>,
     /// The digits typed on an IP phone's dial pad.
     pub(crate) dialled: String,
+    /// The IoT tab's fields.
+    pub(crate) iot: crate::iot_page::IotForm,
 }
 
 impl DeviceWindow {
@@ -124,7 +128,11 @@ pub fn open(app: &mut PacketApp, d: DeviceId) {
     w.name = dev.name.clone();
     w.label = dev.display_name().to_string();
     if dev.kind.is_host() && w.tab == Tab::Cli {
-        w.tab = if dev.kind == DeviceKind::Phone { Tab::Phone } else { Tab::Desktop };
+        w.tab = match dev.kind {
+            DeviceKind::Phone => Tab::Phone,
+            DeviceKind::Iot => Tab::Iot,
+            _ => Tab::Desktop,
+        };
     }
     if dev.kind == DeviceKind::Hub {
         w.tab = Tab::Physical;
@@ -176,8 +184,11 @@ pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
                             (Tab::Config, "Config"),
                             (Tab::Services, "Services"),
                             (Tab::Desktop, "Desktop"),
+                            (Tab::Iot, "IoT"),
                             (Tab::Attributes, "Attributes"),
                         ]
+                    } else if dev.kind == DeviceKind::Iot {
+                        &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Iot, "IoT"), (Tab::Attributes, "Attributes")]
                     } else if dev.kind == DeviceKind::Phone {
                         &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Phone, "Phone"), (Tab::Attributes, "Attributes")]
                     } else if dev.kind.is_host() {
@@ -203,6 +214,13 @@ pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
                     }
                     Tab::Desktop => desktop(app, ui, &dev),
                     Tab::Phone => crate::phone::tab(app, ui, &dev),
+                    Tab::Iot => {
+                        let mut form = app.ui.windows.get_mut(&d).map(|w| std::mem::take(&mut w.iot)).unwrap_or_default();
+                        crate::iot_page::tab(app, ui, &dev, &mut form);
+                        if let Some(w) = app.ui.windows.get_mut(&d) {
+                            w.iot = form;
+                        }
+                    }
                     Tab::Services => {
                         let mut forms = app.ui.windows.get_mut(&d).map(|w| std::mem::take(&mut w.svc)).unwrap_or_default();
                         crate::services::tab(app, ui, &dev, &mut forms);
@@ -897,7 +915,7 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
         DeviceKind::Hub => {
             ui.label(tl("Hub ports have nothing to configure: every frame is repeated out of every other port."));
         }
-        DeviceKind::Pc | DeviceKind::Laptop | DeviceKind::Server | DeviceKind::Printer | DeviceKind::Phone => {
+        DeviceKind::Pc | DeviceKind::Laptop | DeviceKind::Server | DeviceKind::Printer | DeviceKind::Phone | DeviceKind::Iot => {
             field(ui, tl("IPv4 Address"), &mut w.ip);
             field(ui, tl("Subnet Mask"), &mut w.mask);
             if ui.button(tl("Apply")).clicked() {

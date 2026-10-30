@@ -222,6 +222,31 @@ pub static CATALOG: &[CommandInfo] = &[
         true
     ),
     c!(
+        "iot.configure",
+        "Smart thing settings",
+        "",
+        None,
+        r#"{"device": smart sensor or device, "server"?: "IoT server address (empty: none)", "value"?: sensor reading -1000..1000} → {"kind", "server", "value", "registered", "on", "message"} (reports at once)"#,
+        true
+    ),
+    c!("iot.sync", "IoT reports", "", None, r#"{} → {"things": [...]}: every smart thing reports to its server over HTTP (sensors first)"#, false),
+    c!(
+        "iot.server",
+        "IoT service",
+        "",
+        None,
+        r#"{"device": server, "service"?: true|false, "rules"?: [{"sensor", "above", "actuator"}]} → {"service", "rules", "things": [{"name", "kind", "address", "value", "on"}]}"#,
+        true
+    ),
+    c!(
+        "iot.switch",
+        "Switch a smart device",
+        "",
+        None,
+        r#"{"device": server, "name": registered smart device, "on": true|false} → the server's IoT page"#,
+        false
+    ),
+    c!(
         "phone.status",
         "Phone screen",
         "",

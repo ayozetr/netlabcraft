@@ -189,6 +189,20 @@ pub static MODELS: &[Model] = &[
         description: "IP phone with a built-in switch: FastEthernet0 goes to the network, FastEthernet1 to a computer behind it; takes its address and its call server by DHCP",
         ports: &[run("FastEthernet", 0, 1)],
     },
+    Model {
+        id: "IoT-Sensor",
+        kind: DeviceKind::Iot,
+        label: "Smart Sensor",
+        description: "Smart temperature sensor with one Fast Ethernet port: reports its reading to an IoT server",
+        ports: &[run("FastEthernet", 0, 0)],
+    },
+    Model {
+        id: "IoT-Device",
+        kind: DeviceKind::Iot,
+        label: "Smart Device",
+        description: "Smart fan with one Fast Ethernet port: registers with an IoT server, which switches it on and off",
+        ports: &[run("FastEthernet", 0, 0)],
+    },
 ];
 
 /// A plug-in card for a modular router's bay: its ports are named after the bay
@@ -272,6 +286,7 @@ pub fn default_for(kind: DeviceKind) -> &'static Model {
         DeviceKind::Server => "Server",
         DeviceKind::Printer => "Printer",
         DeviceKind::Phone => "IP-Phone",
+        DeviceKind::Iot => "IoT-Sensor",
     };
     MODELS.iter().find(|m| m.id == id).unwrap_or(&FALLBACK)
 }

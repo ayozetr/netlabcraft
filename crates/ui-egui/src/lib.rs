@@ -25,6 +25,7 @@ mod events;
 mod hardware;
 pub mod i18n;
 pub mod icons;
+mod iot_page;
 mod mail;
 mod mib;
 pub mod pdf;

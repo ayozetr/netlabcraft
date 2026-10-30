@@ -116,6 +116,11 @@ pub static SAMPLES: &[Sample] = &[
         description: "Two IP phones, each with a PC plugged into it, share switch ports: the phones talk in voice VLAN 100, the PCs in data VLAN 10. R1 hands out addresses and registers the phones; dial 1002 from Phone1.",
     },
     Sample {
+        id: "iot",
+        title: "IoT: a sensor, a fan and a rule",
+        description: "A smart sensor and a smart fan register with the IoT server over HTTP; the server's rule switches the fan on when the sensor reads above 30.",
+    },
+    Sample {
         id: "modular",
         title: "Modular routers: serial cards for a WAN link",
         description: "Two modular routers got a 2-port serial card each (fitted while switched off) and are joined over Serial0/1/0; their configurations are saved, so a power cycle keeps them.",
@@ -944,6 +949,33 @@ pub fn build(id: &str) -> Result<Topology> {
             )?;
             b.t.add_annotation(300.0, 20.0, "WAN 172.16.0.0/30 over the serial cards")?;
             b.t.notes = "HQ has a 2-port serial card in bay 0/1 and a Gigabit card in bay 0/0; Branch a serial card in bay 0/1 (see each router's Physical tab). To change a card, switch the router off there first: the cable on a card that comes out is unplugged. Both configurations are saved, so switching a router off and on keeps them (try it: `show ip interface brief` before and after).".into();
+        }
+        "iot" => {
+            b.add(DeviceKind::Switch, "S1", 360.0, 160.0)?;
+            b.add(DeviceKind::Server, "IoT-Server", 360.0, 20.0)?;
+            b.cable("IoT-Server", "g0", "S1", "g0/1")?;
+            b.type_in("IoT-Server", "ipconfig 192.168.1.2 255.255.255.0")?;
+            let srv = b.t.resolve("IoT-Server")?;
+            if let Some(d) = b.t.device_mut(srv) {
+                d.services.http.on = true;
+                d.iot.service = true;
+                d.iot.rules = vec![packetcraft_model::iot::IotRule { sensor: "Sensor1".into(), above: 30, actuator: "Fan1".into() }];
+            }
+            for (i, (name, model, addr, x)) in
+                [("Sensor1", "IoT-Sensor", 10, 140.0), ("Fan1", "IoT-Device", 11, 360.0), ("PC1", "PC", 20, 580.0)].into_iter().enumerate()
+            {
+                b.add_model(model, name, x, 300.0)?;
+                b.cable(name, "fa0", "S1", &format!("fa0/{}", i + 1))?;
+                b.type_in(name, &format!("ipconfig 192.168.1.{addr} 255.255.255.0"))?;
+                let d = b.t.resolve(name)?;
+                if let Some(dev) = b.t.device_mut(d)
+                    && model != "PC"
+                {
+                    dev.iot.server = Some(Ipv4Addr::new(192, 168, 1, 2));
+                    dev.iot.value = if model == "IoT-Sensor" { 25 } else { 0 };
+                }
+            }
+            b.t.notes = "Sensor1 reads 25 degrees and Fan1 is off. Open Sensor1 > IoT and raise the reading above 30: the server's rule (IoT-Server > IoT) switches Fan1 on. Every report is an HTTP request to the server (see the events in Simulation mode).".into();
         }
         "ip-phones" => {
             b.add(DeviceKind::Router, "R1", 360.0, 40.0)?;

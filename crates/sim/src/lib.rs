@@ -32,6 +32,7 @@ pub mod control;
 pub mod eigrp;
 pub mod firewall;
 pub mod hsrp;
+pub mod iot;
 pub mod mgmt;
 pub mod ospf;
 pub mod ospf6;
@@ -850,6 +851,8 @@ pub struct Sim {
     capwap_seq: u8,
     /// IP phones and call control (registrations, calls).
     voice: voice::VoiceState,
+    /// Smart things and IoT servers.
+    iot: iot::IotState,
 }
 
 impl Sim {
@@ -1021,6 +1024,7 @@ impl Sim {
     pub fn reset_device(&mut self, d: DeviceId) {
         self.state.remove(&d);
         self.voice.forget(d);
+        self.iot.forget(d);
         // It starts again: a coldStart trap, when traps are on.
         self.queue_trap(d, snmp::TrapEvent::ColdStart);
     }
@@ -2632,9 +2636,13 @@ impl Sim {
             let path = request.lines().next().and_then(|l| l.split_whitespace().nth(1)).unwrap_or("/");
             let name = path.trim_start_matches('/');
             let name = if name.is_empty() { "index.html" } else { name };
-            let (status, body) = match d.services.http.files.iter().find(|f| f.name.eq_ignore_ascii_case(name)) {
-                Some(f) => ("200 OK", f.content.clone()),
-                None => ("404 Not Found", format!("<html><body><h1>Not found</h1><p>This server has no file named {name}.</p></body></html>")),
+            let iot = name.strip_prefix("iot/").and_then(|rest| self.iot_http(d, ip.src, rest));
+            let (status, body) = match (iot, d.services.http.files.iter().find(|f| f.name.eq_ignore_ascii_case(name))) {
+                (Some(answer), _) => answer,
+                (None, Some(f)) => ("200 OK", f.content.clone()),
+                (None, None) => {
+                    ("404 Not Found", format!("<html><body><h1>Not found</h1><p>This server has no file named {name}.</p></body></html>"))
+                }
             };
             let response = format!(
                 "HTTP/1.1 {status}\r\nServer: PacketCraft\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",

@@ -862,6 +862,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         | "place.remove" | "place.list" | "device.place" | "link.length" => physical(s, cmd, p),
         "device.power" | "device.module.add" | "device.module.remove" | "device.module.list" => crate::hardware::run(s, cmd, p),
         "phone.status" | "phone.dial" | "phone.answer" | "phone.hangup" => crate::voice::run(s, cmd, p),
+        "iot.sync" | "iot.configure" | "iot.server" | "iot.switch" => crate::iot::run(s, cmd, p),
         "view.enter_cluster" => {
             s.view = Some(cluster_param(s, p)?);
             s.revision += 1;

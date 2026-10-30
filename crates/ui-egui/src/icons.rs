@@ -89,8 +89,37 @@ pub fn model_marks(p: &Painter, rect: Rect, model_id: &str, multilayer: bool) {
         "WLC" => wlc_mark(p, rect),
         "Firewall-5" => firewall_mark(p, rect),
         "Router-M2" | "Router-M3" => modular_mark(p, rect),
+        "IoT-Sensor" => thermometer_mark(p, rect),
+        "IoT-Device" => fan_mark(p, rect),
         _ => {}
     }
+}
+
+/// A smart sensor: a thermometer on the puck.
+pub fn thermometer_mark(p: &Painter, rect: Rect) {
+    let w = rect.width();
+    let c = rect.center() + vec2(0.0, w * 0.12);
+    let red = Color32::from_rgb(0xd6, 0x45, 0x3a);
+    let tube = Rect::from_center_size(c - vec2(0.0, w * 0.06), vec2(w * 0.1, w * 0.3));
+    p.rect_filled(tube, w * 0.05, Color32::WHITE);
+    p.rect_filled(Rect::from_min_max(pos2(tube.left() + w * 0.025, tube.center().y), pos2(tube.right() - w * 0.025, tube.bottom())), 0.0, red);
+    p.circle_filled(pos2(c.x, tube.bottom()), w * 0.08, Color32::WHITE);
+    p.circle_filled(pos2(c.x, tube.bottom()), w * 0.055, red);
+}
+
+/// A smart device: a three-bladed fan on the puck.
+pub fn fan_mark(p: &Painter, rect: Rect) {
+    let w = rect.width();
+    let c = rect.center() + vec2(0.0, w * 0.12);
+    p.circle_filled(c, w * 0.21, Color32::WHITE);
+    let blade = Color32::from_rgb(0x2f, 0x5d, 0x7c);
+    for k in 0..3 {
+        let a = k as f32 * std::f32::consts::TAU / 3.0;
+        let tip = c + vec2(a.cos(), a.sin()) * w * 0.18;
+        let side = c + vec2((a + 0.7).cos(), (a + 0.7).sin()) * w * 0.13;
+        p.add(Shape::convex_polygon(vec![c, tip, side], blade, Stroke::NONE));
+    }
+    p.circle_filled(c, w * 0.035, blade);
 }
 
 /// A modular router: a row of card bays on the drum's side band, one holding a card (a lit
@@ -270,6 +299,24 @@ pub fn device(p: &Painter, rect: Rect, kind: DeviceKind, _tk: &Tokens) {
             p.rect_filled(out, 1.0, Color32::WHITE);
             p.rect_stroke(out, 1.0, Stroke::new(1.0, dark), StrokeKind::Inside);
             p.circle_filled(pos2(body.right() - w * 0.1, body.center().y), w * 0.03, Color32::from_rgb(0x8f, 0xf0, 0x8f));
+        }
+        DeviceKind::Iot => {
+            // A smart thing: a rounded puck with two signal arcs above it (the model mark
+            // says what it is).
+            let body = Rect::from_center_size(rect.center() + vec2(0.0, w * 0.12), vec2(w * 0.7, w * 0.56));
+            p.rect_filled(body.translate(vec2(0.0, w * 0.05)), w * 0.14, dark);
+            p.rect_filled(body, w * 0.14, c);
+            p.rect_stroke(body, w * 0.14, Stroke::new(1.0, dark), StrokeKind::Inside);
+            let top = pos2(body.center().x, body.top() - w * 0.04);
+            for (k, r) in [0.12f32, 0.22].into_iter().enumerate() {
+                let pts: Vec<Pos2> = (0..=8)
+                    .map(|i| {
+                        let a = -std::f32::consts::FRAC_PI_2 - 0.7 + i as f32 * 1.4 / 8.0;
+                        top + vec2(a.cos(), a.sin()) * w * r
+                    })
+                    .collect();
+                p.add(Shape::line(pts, Stroke::new((w / 24.0).max(1.0), if k == 0 { light } else { c })));
+            }
         }
         DeviceKind::Phone => {
             // A desk phone: a sloped body with a small screen and a 3x4 key grid, the handset
