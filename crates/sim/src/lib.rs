@@ -40,6 +40,7 @@ pub mod stp;
 #[cfg(test)]
 mod tests;
 pub mod v6;
+pub mod vpn;
 pub mod vtp;
 
 /// One cable hop (serialisation + propagation), in microseconds.
@@ -132,6 +133,8 @@ pub fn l3_ifaces(d: &Device) -> Vec<L3If> {
             }
         }
     }
+    // GRE tunnels (routers).
+    out.extend(vpn::tunnel_ifaces(d));
     out
 }
 
@@ -247,8 +250,19 @@ pub enum PortEvent {
 
 /// The layer-3 interfaces that are up (connected routes exist only for these).
 pub fn up_ifaces(t: &Topology, d: &Device) -> Vec<L3If> {
+    let mut out = phys_up_ifaces(t, d);
+    if !d.tunnels.is_empty() {
+        let tunnels = vpn::up_tunnels(d, &out);
+        out.extend(tunnels);
+    }
+    out
+}
+
+/// [`up_ifaces`] without tunnels: ports, subinterfaces and VLAN interfaces.
+pub(crate) fn phys_up_ifaces(t: &Topology, d: &Device) -> Vec<L3If> {
     l3_ifaces(d)
         .into_iter()
+        .filter(|i| !vpn::is_tunnel(i.port))
         .filter(|i| {
             if i.port == SVI_PORT {
                 // A VLAN interface is up while some port of its VLAN is up.
@@ -353,6 +367,9 @@ fn routing_table_static(t: &Topology, d: &Device) -> Vec<RouteEntry> {
 }
 
 fn find_iface<'a>(ifs: &'a [L3If], name: &str) -> Option<&'a L3If> {
+    if packetcraft_model::vpn::tunnel_number(name).is_some() {
+        return ifs.iter().find(|i| vpn::same_name(&i.name, name));
+    }
     let n = ifname::parse(name)?;
     ifs.iter().find(|i| ifname::parse(&i.name).is_some_and(|m| m == n))
 }
@@ -639,6 +656,8 @@ pub struct DevState {
     dhcp6_inbox: Vec<packetcraft_wire::dhcp6::Dhcp6>,
     /// Routers: DHCPv6 addresses handed out (address → client MAC, pool).
     pub dhcp6_leases: BTreeMap<std::net::Ipv6Addr, (MacAddr, String)>,
+    /// Routers: IPsec security associations, by peer address.
+    pub ipsec: BTreeMap<Ipv4Addr, vpn::IpsecSa>,
 }
 
 /// One frame delivered across a cable.
@@ -1715,6 +1734,12 @@ impl Sim {
 
     /// Sends a frame out of a layer-3 interface: a port, or a switch's VLAN interface.
     fn l3_emit(&mut self, t: &Topology, d: &Device, ifc: &L3If, frame: Frame) {
+        if vpn::is_tunnel(ifc.port) {
+            if frame.ethertype == ETHERTYPE_IPV4 {
+                let _ = self.gre_out(t, d, ifc, frame.payload);
+            }
+            return;
+        }
         if ifc.port == SVI_PORT {
             if let Some(v) = ifc.vlan.and_then(VlanId::new) {
                 let _ = self.switch_forward(t, d, None, v, frame.retagged(None), 0);
@@ -1948,6 +1973,12 @@ impl Sim {
     }
 
     fn local_in(&mut self, t: &Topology, d: &Device, ifc: &L3If, ip: Ipv4) -> Result<(), String> {
+        if d.kind == DeviceKind::Router && ip.protocol == packetcraft_wire::vpn::PROTO_GRE {
+            return self.gre_in(t, d, &ip);
+        }
+        if d.kind == DeviceKind::Router && ip.protocol == packetcraft_wire::vpn::PROTO_ESP {
+            return self.esp_in(t, d, ifc, &ip);
+        }
         if ip.protocol == PROTO_TCP {
             return self.tcp_in(t, d, &ip);
         }
@@ -2093,6 +2124,17 @@ impl Sim {
 
     /// Puts a datagram on the wire towards `nh`, resolving its MAC with ARP first.
     fn transmit(&mut self, t: &Topology, d: &Device, out: &L3If, nh: Ipv4Addr, datagram: Vec<u8>) -> Result<(), String> {
+        // Into a GRE tunnel: encapsulated and routed again.
+        if vpn::is_tunnel(out.port) {
+            return self.gre_out(t, d, out, datagram);
+        }
+        // Protected by a crypto map on this interface: sent to the IPsec peer as ESP.
+        if !d.crypto.applied.is_empty()
+            && let Some((esp, peer)) = self.crypto_out(t, d, out, &datagram)?
+        {
+            let (o2, nh2) = self.route(t, d, peer).ok_or_else(|| format!("no route to IPsec peer {peer}"))?;
+            return self.transmit(t, d, &o2, nh2, esp);
+        }
         // A serial link is point to point: no address to resolve.
         if out.port != SVI_PORT && t.is_serial(End { device: d.id, port: out.port }) {
             let frame = Frame { dst: MacAddr::BROADCAST, src: out.mac, vlan: None, ethertype: ETHERTYPE_IPV4, payload: datagram };

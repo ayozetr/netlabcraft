@@ -367,6 +367,15 @@ impl Sim {
     /// Queues a frame out of a port at a given time (re-framed on serial); a VLAN interface's
     /// frame (`SVI_PORT`, its VLAN in the tag) goes through the switch at once.
     fn queue_frame(&mut self, t: &Topology, d: &packetcraft_model::Device, port: usize, frame: Frame, at: u64) {
+        if crate::vpn::is_tunnel(port) {
+            // Into a GRE tunnel, at once: encapsulated and routed to the far end.
+            if frame.ethertype == packetcraft_wire::ETHERTYPE_IPV4
+                && let Some(ifc) = crate::up_ifaces(t, d).into_iter().find(|i| i.port == port)
+            {
+                let _ = self.gre_out(t, d, &ifc, frame.payload);
+            }
+            return;
+        }
         if port == crate::SVI_PORT {
             // A VLAN interface sends through its own switch, at once (not at `at`).
             if let Some(v) = frame.vlan.and_then(VlanId::new) {

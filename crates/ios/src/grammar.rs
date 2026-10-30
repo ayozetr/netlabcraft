@@ -43,8 +43,17 @@ impl Modes {
     pub const OSPF6: Modes = Modes(65536);
     /// `router eigrp`.
     pub const EIGRP: Modes = Modes(131072);
+    /// `interface Tunnel N`.
+    pub const TUNNEL: Modes = Modes(1 << 20);
+    /// `crypto isakmp policy N`.
+    pub const ISAKMP: Modes = Modes(1 << 21);
+    /// `crypto map NAME N ipsec-isakmp`.
+    pub const CRYPTO_MAP: Modes = Modes(1 << 22);
+    /// `crypto ipsec transform-set NAME …`.
+    pub const TRANSFORM: Modes = Modes(1 << 23);
     /// Every command mode, either device.
-    pub const ANY_MODE: Modes = Modes(63 | 256 | 512 | 1024 | 2048 | 4096 | 8192 | 16384 | 32768 | 65536 | 131072);
+    pub const ANY_MODE: Modes =
+        Modes(63 | 256 | 512 | 1024 | 2048 | 4096 | 8192 | 16384 | 32768 | 65536 | 131072 | (1 << 20) | (1 << 21) | (1 << 22) | (1 << 23));
     pub const BOTH: Modes = Modes(192);
 
     pub const fn or(self, o: Modes) -> Modes {
@@ -199,6 +208,39 @@ pub enum Id {
     NoNatPool,
     ShowNat,
     ClearNat,
+    // ---- site-to-site VPN: GRE tunnels and IPsec ----
+    TunnelSource,
+    NoTunnelSource,
+    TunnelDestination,
+    NoTunnelDestination,
+    TunnelMode,
+    IsakmpPolicy,
+    NoIsakmpPolicy,
+    IsakmpEncryption,
+    IsakmpHash,
+    IsakmpAuthentication,
+    IsakmpGroup,
+    IsakmpLifetime,
+    IsakmpKey,
+    NoIsakmpKey,
+    TransformSet,
+    NoTransformSet,
+    TransformMode,
+    CryptoMap,
+    NoCryptoMap,
+    CryptoSetPeer,
+    NoCryptoSetPeer,
+    CryptoSetTransformSet,
+    NoCryptoSetTransformSet,
+    CryptoMatchAddress,
+    NoCryptoMatchAddress,
+    CryptoMapIf,
+    NoCryptoMapIf,
+    ShowCryptoIsakmpSa,
+    ShowCryptoIpsecSa,
+    ShowCryptoIsakmpPolicy,
+    ShowCryptoMap,
+    ClearCryptoSa,
     Username,
     NoUsername,
     DomainName,
@@ -436,7 +478,10 @@ const SUBMODES: Modes = Modes::IF
     .or(Modes::ACL6)
     .or(Modes::DHCP6)
     .or(Modes::OSPF6)
-    .or(Modes::EIGRP);
+    .or(Modes::EIGRP)
+    .or(VPN_MODES);
+/// The site-to-site VPN sub-modes.
+const VPN_MODES: Modes = Modes::TUNNEL.or(Modes::ISAKMP).or(Modes::CRYPTO_MAP).or(Modes::TRANSFORM);
 const IFS: Modes = Modes::IF.or(Modes::SUBIF);
 const ANY_IF: Modes = IFS.or(Modes::SVI);
 
@@ -569,6 +614,86 @@ pub static SPECS: &[Spec] = &[
     spec!(NoNatPool, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("nat"), K("pool"), Arg("WORD")], "Delete a NAT pool"),
     spec!(ShowNat, EXECS, Modes::BOTH, [K("show"), K("ip"), K("nat"), K("translations")], "Translations in use"),
     spec!(ClearNat, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("nat"), K("translation"), Rest("*")], "Forget dynamic translations"),
+    // ---- site-to-site VPN: GRE tunnels (`interface Tunnel N`) and IPsec ----
+    spec!(IpAddress, Modes::TUNNEL, Modes::ROUTER, [K("ip"), K("address"), Arg("A.B.C.D"), Arg("MASK")], "Set the tunnel's address"),
+    spec!(NoIpAddress, Modes::TUNNEL, Modes::ROUTER, [K("no"), K("ip"), K("address")], "Remove the tunnel's address"),
+    spec!(Shutdown, Modes::TUNNEL, Modes::ROUTER, [K("shutdown")], "Disable the tunnel"),
+    spec!(NoShutdown, Modes::TUNNEL, Modes::ROUTER, [K("no"), K("shutdown")], "Enable the tunnel"),
+    spec!(Description, Modes::TUNNEL, Modes::ROUTER, [K("description"), Rest("LINE")], "Describe the tunnel"),
+    spec!(NoDescription, Modes::TUNNEL, Modes::ROUTER, [K("no"), K("description")], "Remove the description"),
+    spec!(IpOspfCost, Modes::TUNNEL, Modes::ROUTER, [K("ip"), K("ospf"), K("cost"), Arg("<1-65535>")], "This tunnel's OSPF cost"),
+    spec!(NoIpOspfCost, Modes::TUNNEL, Modes::ROUTER, [K("no"), K("ip"), K("ospf"), K("cost")], "Cost from the bandwidth again"),
+    spec!(TunnelSource, Modes::TUNNEL, Modes::ROUTER, [K("tunnel"), K("source"), Rest("<interface>|A.B.C.D")], "Where the tunnel starts"),
+    spec!(NoTunnelSource, Modes::TUNNEL, Modes::ROUTER, [K("no"), K("tunnel"), K("source")], "Clear the tunnel's source"),
+    spec!(TunnelDestination, Modes::TUNNEL, Modes::ROUTER, [K("tunnel"), K("destination"), Arg("A.B.C.D")], "Where the tunnel ends"),
+    spec!(NoTunnelDestination, Modes::TUNNEL, Modes::ROUTER, [K("no"), K("tunnel"), K("destination")], "Clear the tunnel's destination"),
+    spec!(TunnelMode, Modes::TUNNEL, Modes::ROUTER, [K("tunnel"), K("mode"), Rest("gre ip")], "Encapsulation: GRE over IPv4 (the default)"),
+    spec!(IsakmpPolicy, Modes::CONFIG, Modes::ROUTER, [K("crypto"), K("isakmp"), K("policy"), Arg("<1-10000>")], "Define an IKE phase-1 policy"),
+    spec!(NoIsakmpPolicy, Modes::CONFIG, Modes::ROUTER, [K("no"), K("crypto"), K("isakmp"), K("policy"), Arg("<1-10000>")], "Delete an IKE policy"),
+    spec!(IsakmpEncryption, Modes::ISAKMP, Modes::ROUTER, [K("encryption"), Rest("{des|3des|aes [128|192|256]}")], "Cipher the policy proposes"),
+    spec!(IsakmpHash, Modes::ISAKMP, Modes::ROUTER, [K("hash"), Arg("{sha|sha256|md5}")], "Hash the policy proposes"),
+    spec!(IsakmpAuthentication, Modes::ISAKMP, Modes::ROUTER, [K("authentication"), Arg("{pre-share|rsa-sig}")], "How peers prove who they are"),
+    spec!(IsakmpGroup, Modes::ISAKMP, Modes::ROUTER, [K("group"), Arg("{1|2|5|14|15|16|19|20|24}")], "Diffie-Hellman group"),
+    spec!(IsakmpLifetime, Modes::ISAKMP, Modes::ROUTER, [K("lifetime"), Arg("<60-86400>")], "Seconds before the keys are renewed"),
+    spec!(
+        IsakmpKey,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("crypto"), K("isakmp"), K("key"), Rest("[0] KEY address A.B.C.D")],
+        "Pre-shared key for a peer"
+    ),
+    spec!(
+        NoIsakmpKey,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("no"), K("crypto"), K("isakmp"), K("key"), Rest("[0] KEY address A.B.C.D")],
+        "Delete a pre-shared key"
+    ),
+    spec!(
+        TransformSet,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("crypto"), K("ipsec"), K("transform-set"), Arg("WORD"), Rest("TRANSFORM [TRANSFORM]")],
+        "Define how protected traffic is wrapped"
+    ),
+    spec!(
+        NoTransformSet,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("no"), K("crypto"), K("ipsec"), K("transform-set"), Arg("WORD")],
+        "Delete a transform set"
+    ),
+    spec!(TransformMode, Modes::TRANSFORM, Modes::ROUTER, [K("mode"), Arg("{tunnel|transport}")], "Protect whole packets or only their payload"),
+    spec!(
+        CryptoMap,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("crypto"), K("map"), Arg("WORD"), Arg("<1-65535>"), K("ipsec-isakmp")],
+        "Define or edit a crypto map entry"
+    ),
+    spec!(
+        NoCryptoMap,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("no"), K("crypto"), K("map"), Arg("WORD"), Rest("[<1-65535>]")],
+        "Delete one crypto map entry"
+    ),
+    spec!(NoCryptoMap, Modes::CONFIG, Modes::ROUTER, [K("no"), K("crypto"), K("map"), Arg("WORD")], "Delete a whole crypto map"),
+    spec!(CryptoSetPeer, Modes::CRYPTO_MAP, Modes::ROUTER, [K("set"), K("peer"), Arg("A.B.C.D")], "The far end of the IPsec tunnel"),
+    spec!(NoCryptoSetPeer, Modes::CRYPTO_MAP, Modes::ROUTER, [K("no"), K("set"), K("peer")], "Clear the peer"),
+    spec!(NoCryptoSetPeer, Modes::CRYPTO_MAP, Modes::ROUTER, [K("no"), K("set"), K("peer"), Arg("A.B.C.D")], "Clear the peer"),
+    spec!(CryptoSetTransformSet, Modes::CRYPTO_MAP, Modes::ROUTER, [K("set"), K("transform-set"), Arg("WORD")], "The transform set to use"),
+    spec!(NoCryptoSetTransformSet, Modes::CRYPTO_MAP, Modes::ROUTER, [K("no"), K("set"), K("transform-set")], "Clear the transform set"),
+    spec!(CryptoMatchAddress, Modes::CRYPTO_MAP, Modes::ROUTER, [K("match"), K("address"), Arg("ACL")], "The access list choosing what to protect"),
+    spec!(NoCryptoMatchAddress, Modes::CRYPTO_MAP, Modes::ROUTER, [K("no"), K("match"), K("address")], "Protect nothing"),
+    spec!(CryptoMapIf, Modes::IF.or(Modes::SUBIF), Modes::ROUTER, [K("crypto"), K("map"), Arg("WORD")], "Protect traffic leaving this interface"),
+    spec!(NoCryptoMapIf, Modes::IF.or(Modes::SUBIF), Modes::ROUTER, [K("no"), K("crypto"), K("map")], "Stop protecting traffic here"),
+    spec!(NoCryptoMapIf, Modes::IF.or(Modes::SUBIF), Modes::ROUTER, [K("no"), K("crypto"), K("map"), Arg("WORD")], "Stop protecting traffic here"),
+    spec!(ShowCryptoIsakmpSa, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("isakmp"), K("sa")], "IKE peers and their state"),
+    spec!(ShowCryptoIsakmpPolicy, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("isakmp"), K("policy")], "IKE policies"),
+    spec!(ShowCryptoIpsecSa, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("ipsec"), K("sa")], "IPsec associations and packet counts"),
+    spec!(ShowCryptoMap, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("map")], "Crypto maps and where they apply"),
+    spec!(ClearCryptoSa, Modes::EXEC, Modes::ROUTER, [K("clear"), K("crypto"), K("sa")], "Forget IPsec associations and counters"),
     spec!(EncapSerial, Modes::IF, Modes::ROUTER, [K("encapsulation"), Arg("{hdlc|ppp}")], "Framing on a serial link"),
     spec!(ClockRate, Modes::IF, Modes::ROUTER, [K("clock"), K("rate"), Arg("<1200-2000000>")], "Clock a serial link from its DCE end"),
     spec!(NoClockRate, Modes::IF, Modes::ROUTER, [K("no"), K("clock"), K("rate")], "Remove the clock rate"),
@@ -1497,6 +1622,10 @@ mod tests {
                 Modes::DHCP6,
                 Modes::OSPF6,
                 Modes::EIGRP,
+                Modes::TUNNEL,
+                Modes::ISAKMP,
+                Modes::CRYPTO_MAP,
+                Modes::TRANSFORM,
             ]
             .into_iter()
             .find(|m| s.modes.has(*m))

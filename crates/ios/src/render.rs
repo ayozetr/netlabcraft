@@ -165,6 +165,7 @@ pub fn running_config(d: &Device) -> String {
             let _ = writeln!(s, "!");
         }
     }
+    vpn_config(&mut s, d);
     for p in &d.ports {
         let _ = writeln!(s, "interface {}", p.name);
         if !p.description.is_empty() {
@@ -279,6 +280,7 @@ pub fn running_config(d: &Device) -> String {
         if let Some(dl) = p.delay {
             let _ = writeln!(s, " delay {dl}");
         }
+        crypto_map_line(&mut s, d, &p.name);
         // Routers write both states: their ports start shut, so a replay must say which are up.
         if p.shutdown {
             let _ = writeln!(s, " shutdown");
@@ -305,6 +307,7 @@ pub fn running_config(d: &Device) -> String {
             }
             access_groups(&mut s, &sub.access);
             nat_side(&mut s, sub.nat);
+            crypto_map_line(&mut s, d, &format!("{}.{}", p.name, sub.number));
             if sub.shutdown {
                 let _ = writeln!(s, " shutdown");
             }
@@ -536,6 +539,11 @@ pub fn ip_int_brief(t: &Topology, d: &Device) -> String {
         let addr = svi.ip.map_or("unassigned".to_string(), |ip| ip.to_string());
         let _ = writeln!(s, "{:<24} {:<18} {:<7} {}", name, addr, yes(!svi.shutdown), yes(up_svis.contains(&name)));
     }
+    for tun in &d.tunnels {
+        let addr = tun.ip.map_or("unassigned".to_string(), |ip| ip.to_string());
+        let up = packetcraft_sim::vpn::tunnel_status(t, d, tun.number).is_ok();
+        let _ = writeln!(s, "{:<24} {:<18} {:<7} {}", tun.name(), addr, yes(!tun.shutdown), yes(up));
+    }
     s.trim_end().to_string()
 }
 
@@ -658,6 +666,11 @@ pub fn interfaces(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
             if let Some(ip) = sub.ip {
                 let _ = writeln!(s, "  Internet address {ip}");
             }
+        }
+    }
+    if only.is_none() {
+        for tun in &d.tunnels {
+            s.push_str(&tunnel_block(t, d, tun));
         }
     }
     s.trim_end().to_string()
@@ -2069,6 +2082,221 @@ pub fn dhcp6_bindings(sim: &Sim, d: &Device) -> String {
     let mut s = format!("{:<28} {:<19} {}\n", "Address", "Client MAC", "Pool");
     for (a, (m, pool)) in &leases {
         let _ = writeln!(s, "{:<28} {:<19} {pool}", a.to_string(), m.dotted());
+    }
+    s.trim_end().to_string()
+}
+
+// ---- site-to-site VPN: GRE tunnels and IPsec ----
+
+/// The VPN part of the running configuration: IPsec settings, then the tunnel interfaces.
+fn vpn_config(s: &mut String, d: &Device) {
+    let c = &d.crypto;
+    for p in &c.policies {
+        let _ = writeln!(s, "crypto isakmp policy {}", p.priority);
+        let _ = writeln!(s, " encryption {}", p.encryption);
+        let _ = writeln!(s, " hash {}", p.hash);
+        let _ = writeln!(s, " authentication {}", p.authentication);
+        let _ = writeln!(s, " group {}", p.group);
+        if let Some(l) = p.lifetime {
+            let _ = writeln!(s, " lifetime {l}");
+        }
+        let _ = writeln!(s, "!");
+    }
+    for (a, k) in &c.keys {
+        let _ = writeln!(s, "crypto isakmp key {k} address {a}");
+    }
+    if !c.keys.is_empty() {
+        let _ = writeln!(s, "!");
+    }
+    for t in &c.transform_sets {
+        let _ = writeln!(s, "crypto ipsec transform-set {} {}", t.name, t.transforms.join(" "));
+        if t.transport {
+            let _ = writeln!(s, " mode transport");
+        }
+    }
+    if !c.transform_sets.is_empty() {
+        let _ = writeln!(s, "!");
+    }
+    for e in &c.maps {
+        let _ = writeln!(s, "crypto map {} {} ipsec-isakmp", e.map, e.seq);
+        if let Some(p) = e.peer {
+            let _ = writeln!(s, " set peer {p}");
+        }
+        if let Some(t) = &e.transform_set {
+            let _ = writeln!(s, " set transform-set {t}");
+        }
+        if let Some(a) = &e.acl {
+            let _ = writeln!(s, " match address {a}");
+        }
+        let _ = writeln!(s, "!");
+    }
+    for t in &d.tunnels {
+        let _ = writeln!(s, "interface {}", t.name());
+        if !t.description.is_empty() {
+            let _ = writeln!(s, " description {}", t.description);
+        }
+        match t.ip {
+            Some(ip) => {
+                let _ = writeln!(s, " ip address {} {}", ip.addr, ip.mask());
+            }
+            None => {
+                let _ = writeln!(s, " no ip address");
+            }
+        }
+        ospf_if_lines(s, d, &t.name());
+        match &t.source {
+            Some(packetcraft_model::vpn::TunnelSource::Interface(n)) => {
+                let _ = writeln!(s, " tunnel source {n}");
+            }
+            Some(packetcraft_model::vpn::TunnelSource::Address(a)) => {
+                let _ = writeln!(s, " tunnel source {a}");
+            }
+            None => {}
+        }
+        if let Some(a) = t.destination {
+            let _ = writeln!(s, " tunnel destination {a}");
+        }
+        if t.shutdown {
+            let _ = writeln!(s, " shutdown");
+        }
+        let _ = writeln!(s, "!");
+    }
+}
+
+/// ` crypto map NAME` under an interface that has one.
+fn crypto_map_line(s: &mut String, d: &Device, name: &str) {
+    if let Some(m) = d.crypto.applied.get(name) {
+        let _ = writeln!(s, " crypto map {m}");
+    }
+}
+
+/// One tunnel's `show interfaces` block.
+fn tunnel_block(t: &Topology, d: &Device, tun: &packetcraft_model::vpn::Tunnel) -> String {
+    let mut s = String::new();
+    let state = match packetcraft_sim::vpn::tunnel_status(t, d, tun.number) {
+        Ok(_) => "up, line protocol up".to_string(),
+        Err(_) if tun.shutdown => "administratively down".to_string(),
+        Err(why) => format!("up, line protocol down ({why})"),
+    };
+    let _ = writeln!(s, "{} is {state}", tun.name());
+    if !tun.description.is_empty() {
+        let _ = writeln!(s, "  Description: {}", tun.description);
+    }
+    match tun.ip {
+        Some(ip) => {
+            let _ = writeln!(s, "  Internet address {ip}");
+        }
+        None => s.push_str("  No address\n"),
+    }
+    let src = match &tun.source {
+        Some(packetcraft_model::vpn::TunnelSource::Interface(n)) => {
+            let addr = packetcraft_sim::up_ifaces(t, d).into_iter().find(|i| i.name == *n).map(|i| format!(" ({})", i.net.addr)).unwrap_or_default();
+            format!("{n}{addr}")
+        }
+        Some(packetcraft_model::vpn::TunnelSource::Address(a)) => a.to_string(),
+        None => "not set".to_string(),
+    };
+    let dst = tun.destination.map_or("not set".to_string(), |a| a.to_string());
+    let _ = writeln!(s, "  Tunnel source {src}, destination {dst}");
+    s.push_str("  Encapsulation GRE over IPv4 (IP protocol 47), nominal bandwidth 100 kbit/s\n");
+    s
+}
+
+/// `show interfaces tunnel N`.
+pub fn tunnel_interface(t: &Topology, d: &Device, n: u32) -> Result<String, String> {
+    let tun = d.tunnels.iter().find(|x| x.number == n).ok_or_else(|| format!("% There is no interface Tunnel{n}"))?;
+    Ok(tunnel_block(t, d, tun).trim_end().to_string())
+}
+
+/// `show crypto isakmp sa`: one row per IPsec peer traffic has tried to reach.
+pub fn crypto_isakmp_sa(sim: &Sim, d: &Device) -> String {
+    let sas = sim.ipsec_sas(d.id);
+    if sas.is_empty() {
+        return "No IKE peers yet (an association is set up when traffic matches a crypto map)".into();
+    }
+    let mut s = format!("{:<16} {:<16} {}\n", "Peer", "Local", "State");
+    for sa in &sas {
+        let state = match &sa.failed {
+            None => "established (pre-shared key)".to_string(),
+            Some(why) => format!("failed: {why}"),
+        };
+        let _ = writeln!(s, "{:<16} {:<16} {state}", sa.peer, sa.local);
+    }
+    s.trim_end().to_string()
+}
+
+/// `show crypto ipsec sa`: per peer, the SPIs and packet counts.
+pub fn crypto_ipsec_sa(sim: &Sim, d: &Device) -> String {
+    let sas = sim.ipsec_sas(d.id);
+    if sas.is_empty() {
+        return "No IPsec security associations".into();
+    }
+    let mut s = String::new();
+    for sa in &sas {
+        let _ = writeln!(
+            s,
+            "Peer {} (local {}){}",
+            sa.peer,
+            sa.local,
+            if sa.iface.is_empty() { String::new() } else { format!(", interface {}", sa.iface) }
+        );
+        if !sa.map.is_empty() {
+            let _ = writeln!(s, "  Crypto map {} entry {}", sa.map, sa.seq);
+        }
+        match &sa.failed {
+            Some(why) => {
+                let _ = writeln!(s, "  No association: {why}");
+            }
+            None if sa.spi_out != 0 => {
+                let _ = writeln!(s, "  Outbound ESP SPI 0x{:08x}, inbound ESP SPI 0x{:08x}", sa.spi_out, sa.spi_in);
+            }
+            None => {}
+        }
+        let _ = writeln!(s, "  Packets encapsulated {}, decapsulated {}, dropped {}", sa.encaps, sa.decaps, sa.drops);
+        let _ = writeln!(s);
+    }
+    s.trim_end().to_string()
+}
+
+/// `show crypto isakmp policy`.
+pub fn isakmp_policies(d: &Device) -> String {
+    if d.crypto.policies.is_empty() {
+        return "No ISAKMP policies configured".into();
+    }
+    let mut s = String::new();
+    for p in &d.crypto.policies {
+        let _ = writeln!(
+            s,
+            "Policy {}: encryption {}, hash {}, authentication {}, DH group {}, lifetime {} s",
+            p.priority,
+            p.encryption,
+            p.hash,
+            p.authentication,
+            p.group,
+            p.lifetime.unwrap_or(86_400)
+        );
+    }
+    s.trim_end().to_string()
+}
+
+/// `show crypto map`.
+pub fn crypto_maps(d: &Device) -> String {
+    let c = &d.crypto;
+    if c.maps.is_empty() {
+        return "No crypto maps configured".into();
+    }
+    let mut s = String::new();
+    for e in &c.maps {
+        let _ = writeln!(s, "Crypto map {} entry {} (IPsec with IKE)", e.map, e.seq);
+        let _ = writeln!(s, "  Peer: {}", e.peer.map_or("not set".to_string(), |p| p.to_string()));
+        let ts = e.transform_set.as_deref().map_or("not set".to_string(), |n| match c.transform_set(n) {
+            Some(t) => format!("{n} ({}{})", t.transforms.join(" "), if t.transport { ", transport mode" } else { "" }),
+            None => format!("{n} (missing)"),
+        });
+        let _ = writeln!(s, "  Transform set: {ts}");
+        let _ = writeln!(s, "  Protects traffic matching: {}", e.acl.as_deref().unwrap_or("nothing (no `match address`)"));
+        let on: Vec<&str> = c.applied.iter().filter(|(_, m)| **m == e.map).map(|(i, _)| i.as_str()).collect();
+        let _ = writeln!(s, "  Applied to: {}", if on.is_empty() { "no interface".to_string() } else { on.join(", ") });
     }
     s.trim_end().to_string()
 }

@@ -70,6 +70,9 @@ pub fn cost(d: &Device, ifc: &L3If) -> u32 {
         100_000
     } else if ifc.name.starts_with("Serial") {
         1_544
+    } else if ifc.name.starts_with("Tunnel") {
+        // A tunnel's nominal bandwidth: 100 kbit/s.
+        100
     } else {
         10_000
     };
@@ -109,6 +112,10 @@ fn stub_here(d: &Device, ifc: &L3If) -> bool {
 /// Ports reachable at layer 2 from an OSPF interface: from its port, or for a switch's VLAN
 /// interface from every port of that VLAN.
 pub(crate) fn iface_reach(t: &Topology, d: &Device, ifc: &L3If) -> BTreeSet<End> {
+    if crate::vpn::is_tunnel(ifc.port) {
+        // A tunnel reaches the far end of the tunnel, point to point.
+        return crate::vpn::tunnel_peers(t, d, ifc);
+    }
     if ifc.port != crate::SVI_PORT {
         return l2_reach(t, End { device: d.id, port: ifc.port });
     }
@@ -208,7 +215,7 @@ pub fn compute(t: &Topology) -> OspfState {
         for (ifc, _) in ifs.get(&d.id).into_iter().flatten() {
             let prio = |dev: &Device, name: &str| dev.ospf_if.get(name).and_then(|o| o.priority).unwrap_or(1);
             let area = area_of(d, ifc.net.addr);
-            let p2p = ifc.name.starts_with("Serial");
+            let p2p = ifc.name.starts_with("Serial") || ifc.name.starts_with("Tunnel");
             let mut seg: Vec<(u8, Ipv4Addr, Ipv4Addr)> = vec![(prio(d, &ifc.name), rid, ifc.net.addr)];
             for n in st.neighbors.get(&d.id).into_iter().flatten().filter(|n| n.iface == ifc.name) {
                 let their_if =
@@ -337,6 +344,7 @@ pub fn fingerprint(t: &Topology) -> u64 {
         }
         if matches!(d.kind, DeviceKind::Router | DeviceKind::Switch) {
             format!("{:?}{:?}{:?}{:?}{:?}{:?}{}", d.ospf, d.rip, d.eigrp, d.routes, d.access.users, d.ospf_if, d.ip_routing).hash(&mut h);
+            d.tunnels.hash(&mut h);
             for s in &d.svis {
                 (s.vlan, s.ip, s.shutdown).hash(&mut h);
             }

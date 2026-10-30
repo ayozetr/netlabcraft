@@ -2089,3 +2089,298 @@ fn eigrp_by_typing() {
     assert!(lab.try_run(r1, "router eigrp 6").contains("AS 5"));
     assert!(lab.try_run(r1, "no router eigrp 6").contains("No EIGRP process"));
 }
+
+// ---- site-to-site VPN: GRE tunnels and IPsec ----
+
+/// Two sites (192.168.1.0/24 behind R1, 192.168.2.0/24 behind R2) joined through an ISP router
+/// that knows only the public links. Returns (lab, R1, ISP, R2, PC A).
+fn two_sites() -> (Lab, DeviceId, DeviceId, DeviceId, DeviceId) {
+    let mut lab = Lab::new();
+    let r1 = lab.add(DeviceKind::Router);
+    let isp = lab.add(DeviceKind::Router);
+    let r2 = lab.add(DeviceKind::Router);
+    let a = lab.add(DeviceKind::Pc);
+    let b = lab.add(DeviceKind::Pc);
+    lab.cable(a, "fa0", r1, "g0/0");
+    lab.cable(r1, "g0/1", isp, "g0/0");
+    lab.cable(isp, "g0/1", r2, "g0/1");
+    lab.cable(b, "fa0", r2, "g0/0");
+    lab.run(a, "ipconfig 192.168.1.10 255.255.255.0 192.168.1.1");
+    lab.run(b, "ipconfig 192.168.2.10 255.255.255.0 192.168.2.1");
+    lab.run(isp, "en\nconf t\nint g0/0\nip add 203.0.113.2 255.255.255.252\nno shut\nint g0/1\nip add 198.51.100.2 255.255.255.252\nno shut\nend");
+    lab.run(
+        r1,
+        "en\nconf t\nint g0/0\nip add 192.168.1.1 255.255.255.0\nno shut\nint g0/1\nip add 203.0.113.1 255.255.255.252\nno shut\nexit\nip route 0.0.0.0 0.0.0.0 203.0.113.2\nend",
+    );
+    lab.run(
+        r2,
+        "en\nconf t\nint g0/0\nip add 192.168.2.1 255.255.255.0\nno shut\nint g0/1\nip add 198.51.100.1 255.255.255.252\nno shut\nexit\nip route 0.0.0.0 0.0.0.0 198.51.100.2\nend",
+    );
+    (lab, r1, isp, r2, a)
+}
+
+/// Pings a few times (the first ones wait for ARP along the way); the last report.
+fn ping_settled(lab: &mut Lab, from: DeviceId, to: &str) -> String {
+    let mut last = String::new();
+    for _ in 0..4 {
+        last = lab.run(from, &format!("ping {to}"));
+    }
+    last
+}
+
+#[test]
+fn gre_tunnel_by_typing() {
+    let (mut lab, r1, isp, r2, a) = two_sites();
+    // Without the tunnel the ISP drops traffic for the private networks.
+    assert!(ping_settled(&mut lab, a, "192.168.2.10").contains(" 0 answered"));
+    lab.run(
+        r1,
+        "conf t\ninterface tunnel 0\ndescription to site 2\nip address 10.0.0.1 255.255.255.252\ntunnel source g0/1\ntunnel destination 198.51.100.1\ntunnel mode gre ip\nexit\nip route 192.168.2.0 255.255.255.0 10.0.0.2\nend",
+    );
+    assert_eq!(lab.prompt(r1), "R1#");
+    lab.run(
+        r2,
+        "conf t\nint tu0\nip address 10.0.0.2 255.255.255.252\ntunnel source 198.51.100.1\ntunnel destination 203.0.113.1\nexit\nip route 192.168.1.0 255.255.255.0 tunnel 0\nend",
+    );
+    let brief = lab.run(r1, "show ip interface brief");
+    assert!(brief.lines().any(|l| l.starts_with("Tunnel0") && l.contains("10.0.0.1") && l.ends_with("up")), "{brief}");
+    let tun = lab.run(r1, "show interfaces tunnel 0");
+    assert!(
+        tun.contains("Tunnel0 is up, line protocol up") && tun.contains("source GigabitEthernet0/1 (203.0.113.1), destination 198.51.100.1"),
+        "{tun}"
+    );
+    assert!(lab.run(r1, "show interfaces").contains("Tunnel0 is up"));
+    let rt = lab.run(r2, "show ip route");
+    assert!(rt.contains("10.0.0.0/30") && rt.contains("Tunnel0"), "{rt}");
+    lab.sim.clear_trace();
+    let ping = ping_settled(&mut lab, a, "192.168.2.10");
+    assert!(ping.contains("4 answered"), "{ping}");
+    // The ISP only ever saw GRE between the public addresses.
+    let gre: Vec<String> = lab.sim.trace().iter().filter(|e| e.summary.starts_with("GRE")).map(|e| e.summary.clone()).collect();
+    assert!(
+        gre.iter().any(|s| s.starts_with("GRE 203.0.113.1 → 198.51.100.1 carrying ICMP echo request") && s.contains("192.168.1.10 → 192.168.2.10")),
+        "{gre:#?}"
+    );
+    assert!(gre.iter().any(|s| s.contains("GRE 198.51.100.1 → 203.0.113.1 carrying ICMP echo reply")), "{gre:#?}");
+    assert!(lab.sim.trace().iter().filter(|e| e.to.device == isp).all(|e| !(e.summary.starts_with("ICMP") && e.summary.contains("192.168."))));
+    let run = lab.run(r1, "show running-config");
+    assert!(
+        run.contains("interface Tunnel0\n description to site 2\n ip address 10.0.0.1 255.255.255.252\n tunnel source GigabitEthernet0/1\n tunnel destination 198.51.100.1\n!"),
+        "{run}"
+    );
+    assert!(lab.run(r1, "show running-config interface tunnel 0").starts_with("interface Tunnel0"));
+    // A replay of the configuration rebuilds the same tunnel.
+    let r3 = lab.add(DeviceKind::Router);
+    lab.run(r3, "en\nconf t");
+    for l in run.lines().filter(|l| !l.starts_with('!') && !l.starts_with("hostname")) {
+        lab.try_run(r3, l);
+    }
+    assert_eq!(lab.t.device(r3).unwrap().tunnels, lab.t.device(r1).unwrap().tunnels);
+    // No destination: line protocol down, with the reason.
+    lab.run(r1, "conf t\nint tunnel 0\nno tunnel destination\nend");
+    assert!(lab.run(r1, "show interfaces tunnel 0").contains("line protocol down (no tunnel destination)"));
+    assert!(lab.run(r1, "show ip interface brief").lines().any(|l| l.starts_with("Tunnel0") && l.ends_with("down")));
+    assert!(ping_settled(&mut lab, a, "192.168.2.10").contains(" 0 answered"));
+    // Recursive routing: the destination routed into the tunnel itself is never encapsulated
+    // twice.
+    lab.run(r1, "conf t\nint tunnel 0\ntunnel destination 198.51.100.1\nexit\nip route 198.51.100.0 255.255.255.252 10.0.0.2\nend");
+    lab.sim.clear_trace();
+    assert!(ping_settled(&mut lab, a, "192.168.2.10").contains(" 0 answered"));
+    assert!(lab.sim.trace().iter().any(|e| e.dropped.as_deref().is_some_and(|d| d.contains("recursive routing"))));
+    lab.run(r1, "conf t\nno ip route 198.51.100.0 255.255.255.252 10.0.0.2\nend");
+    assert!(ping_settled(&mut lab, a, "192.168.2.10").contains("4 answered"));
+    // Errors that explain themselves.
+    lab.run(r1, "conf t\nint tunnel 0");
+    assert!(lab.try_run(r1, "tunnel mode ipip").contains("GRE over IPv4"));
+    assert!(lab.try_run(r1, "tunnel source tunnel 1").contains("another tunnel"));
+    assert!(lab.try_run(r1, "tunnel source g9/9").contains("no interface"));
+    lab.run(r1, "end");
+    let sw = lab.add(DeviceKind::Switch);
+    lab.run(sw, "en\nconf t");
+    assert!(lab.try_run(sw, "interface tunnel 0").contains('%'));
+    lab.run(r1, "conf t\nno interface tunnel 0\nend");
+    assert!(lab.t.device(r1).unwrap().tunnels.is_empty());
+    assert!(lab.try_run(r1, "show interfaces tunnel 0").contains("no interface Tunnel0"));
+    let _ = r2;
+}
+
+#[test]
+fn ospf_over_a_gre_tunnel() {
+    let (mut lab, r1, _isp, r2, a) = two_sites();
+    lab.run(
+        r1,
+        "conf t\nint tunnel 1\nip address 10.9.9.1 255.255.255.252\ntunnel source g0/1\ntunnel destination 198.51.100.1\nexit\nrouter ospf 1\nrouter-id 1.1.1.1\nnetwork 192.168.1.0 0.0.0.255 area 0\nnetwork 10.9.9.0 0.0.0.3 area 0\nend",
+    );
+    lab.run(
+        r2,
+        "conf t\nint tunnel 1\nip address 10.9.9.2 255.255.255.252\ntunnel source g0/1\ntunnel destination 203.0.113.1\nexit\nrouter ospf 1\nrouter-id 2.2.2.2\nnetwork 192.168.2.0 0.0.0.255 area 0\nnetwork 10.9.9.0 0.0.0.3 area 0\nend",
+    );
+    let nb = lab.run(r1, "show ip ospf neighbor");
+    assert!(nb.contains("2.2.2.2") && nb.contains("10.9.9.2") && nb.contains("Tunnel1"), "{nb}");
+    let rt = lab.run(r1, "show ip route");
+    assert!(rt.contains("192.168.2.0/24") && rt.contains("via 10.9.9.2, Tunnel1 (OSPF)"), "{rt}");
+    assert!(ping_settled(&mut lab, a, "192.168.2.10").contains("4 answered"));
+    // Tunnels cost 1000 by default (100 kbit/s against the 100 Mbit/s reference).
+    let oi = lab.run(r1, "show ip ospf interface brief");
+    assert!(oi.contains("1000"), "{oi}");
+    lab.run(r1, "conf t\nint tunnel 1\nip ospf cost 7\nend");
+    assert!(lab.run(r1, "show running-config").contains("interface Tunnel1\n ip address 10.9.9.1 255.255.255.252\n ip ospf cost 7"));
+    // Hellos cross the tunnel inside GRE.
+    lab.sim.run_for(&lab.t, 11_000_000);
+    assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("GRE") && e.summary.contains("OSPF hello from router 1.1.1.1")));
+    // The far end shut: no adjacency, no route.
+    lab.run(r2, "conf t\nint tunnel 1\nshutdown\nend");
+    assert!(!lab.run(r1, "show ip ospf neighbor").contains("2.2.2.2"));
+    assert!(!lab.run(r1, "show ip route").contains("Tunnel1 (OSPF)"));
+}
+
+const IPSEC_R1: &str = "conf t
+access-list 110 permit ip 192.168.1.0 0.0.0.255 192.168.2.0 0.0.0.255
+crypto isakmp policy 10
+encryption aes 256
+hash sha
+authentication pre-share
+group 14
+exit
+crypto isakmp key vpnsecret address 198.51.100.1
+crypto ipsec transform-set TS esp-aes esp-sha-hmac
+exit
+crypto map VPN 10 ipsec-isakmp
+set peer 198.51.100.1
+set transform-set TS
+match address 110
+exit
+int g0/1
+crypto map VPN
+end";
+
+const IPSEC_R2: &str = "conf t
+access-list 110 permit ip 192.168.2.0 0.0.0.255 192.168.1.0 0.0.0.255
+crypto isakmp policy 10
+encryption aes 256
+hash sha
+authentication pre-share
+group 14
+exit
+crypto isakmp key vpnsecret address 203.0.113.1
+crypto ipsec transform-set TS esp-aes esp-sha-hmac
+exit
+crypto map VPN 10 ipsec-isakmp
+set peer 203.0.113.1
+set transform-set TS
+match address 110
+exit
+int g0/1
+crypto map VPN
+end";
+
+/// The number after `what` in a report.
+fn count_after(text: &str, what: &str) -> u64 {
+    text.split(what).nth(1).and_then(|t| t.trim().split(|c: char| !c.is_ascii_digit()).next()).and_then(|n| n.parse().ok()).unwrap_or(0)
+}
+
+#[test]
+fn ipsec_site_to_site_by_typing() {
+    let (mut lab, r1, isp, r2, a) = two_sites();
+    lab.run(r1, IPSEC_R1);
+    lab.run(r2, IPSEC_R2);
+    assert!(lab.run(r1, "show crypto isakmp sa").contains("No IKE peers"));
+    let ping = ping_settled(&mut lab, a, "192.168.2.10");
+    assert!(ping.contains("4 answered"), "{ping}");
+    let sa = lab.run(r1, "show crypto ipsec sa");
+    assert!(sa.contains("Peer 198.51.100.1 (local 203.0.113.1), interface GigabitEthernet0/1") && sa.contains("Outbound ESP SPI 0x"), "{sa}");
+    let (enc, dec) = (count_after(&sa, "encapsulated "), count_after(&sa, "decapsulated "));
+    assert!(enc >= 4 && dec >= 4, "{sa}");
+    assert!(lab.run(r1, "show crypto isakmp sa").contains("198.51.100.1     203.0.113.1      established"));
+    // Counters move with traffic.
+    lab.run(a, "ping 192.168.2.10");
+    let after = lab.run(r1, "show crypto ipsec sa");
+    assert_eq!(count_after(&after, "encapsulated "), enc + 4, "{after}");
+    assert!(count_after(&lab.run(r2, "show crypto ipsec sa"), "decapsulated ") >= 4);
+    // On the ISP's links the packets are ESP between the public addresses, payload hidden.
+    assert!(
+        lab.sim.trace().iter().any(|e| e.to.device == isp && e.summary.starts_with("ESP SPI") && e.summary.contains("203.0.113.1 → 198.51.100.1"))
+    );
+    assert!(lab.sim.trace().iter().filter(|e| e.to.device == isp).all(|e| !e.summary.contains("192.168.")));
+    // Traffic the access list doesn't match leaves in the clear.
+    assert!(ping_settled(&mut lab, r1, "198.51.100.1").contains("100% answered"));
+    // The configuration shows and replays.
+    let run = lab.run(r1, "show running-config");
+    for want in [
+        "crypto isakmp policy 10\n encryption aes 256\n hash sha\n authentication pre-share\n group 14\n!",
+        "crypto isakmp key vpnsecret address 198.51.100.1",
+        "crypto ipsec transform-set TS esp-aes esp-sha-hmac",
+        "crypto map VPN 10 ipsec-isakmp\n set peer 198.51.100.1\n set transform-set TS\n match address 110",
+        " crypto map VPN\n",
+    ] {
+        assert!(run.contains(want), "{want}\n{run}");
+    }
+    let r3 = lab.add(DeviceKind::Router);
+    lab.run(r3, "en\nconf t");
+    for l in run.lines().filter(|l| !l.starts_with('!') && !l.starts_with("hostname")) {
+        lab.try_run(r3, l);
+    }
+    assert_eq!(lab.t.device(r3).unwrap().crypto, lab.t.device(r1).unwrap().crypto);
+    assert!(lab.run(r1, "show crypto map").contains("Applied to: GigabitEthernet0/1"));
+    assert!(lab.run(r1, "show crypto isakmp policy").contains("Policy 10: encryption aes 256, hash sha, authentication pre-share, DH group 14"));
+    // Mismatched keys: no association, traffic dropped with the reason.
+    lab.run(r2, "conf t\ncrypto isakmp key different address 203.0.113.1\nend");
+    lab.run(r1, "clear crypto sa");
+    lab.run(r2, "clear crypto sa");
+    lab.sim.clear_trace();
+    assert!(ping_settled(&mut lab, a, "192.168.2.10").contains(" 0 answered"));
+    assert!(lab.run(r1, "show crypto isakmp sa").contains("failed: the pre-shared keys differ"));
+    assert!(lab.sim.trace().iter().any(|e| e.dropped.as_deref().is_some_and(|d| d.contains("IPsec: no security association with 198.51.100.1"))));
+    let sa = lab.run(r1, "show crypto ipsec sa");
+    assert!(count_after(&sa, "encapsulated ") == 0 && count_after(&sa, "dropped ") > 0, "{sa}");
+    // Keys agree again; transform sets that differ fail too.
+    lab.run(r2, "conf t\ncrypto isakmp key vpnsecret address 203.0.113.1\ncrypto ipsec transform-set TS esp-3des esp-md5-hmac\nend");
+    assert!(ping_settled(&mut lab, a, "192.168.2.10").contains(" 0 answered"));
+    assert!(lab.run(r1, "show crypto isakmp sa").contains("transform sets differ"));
+    lab.run(r2, "conf t\ncrypto ipsec transform-set TS esp-aes esp-sha-hmac\nend");
+    assert!(ping_settled(&mut lab, a, "192.168.2.10").contains("4 answered"));
+    // Taking the map off the interface sends LAN traffic in the clear again.
+    lab.run(r1, "conf t\nint g0/1\nno crypto map\nend");
+    assert!(!lab.run(r1, "show running-config").contains(" crypto map VPN\n"));
+    // Errors that explain themselves.
+    lab.run(r1, "conf t");
+    assert!(lab.try_run(r1, "crypto ipsec transform-set X esp-rot13").contains("not a transform"));
+    assert!(lab.try_run(r1, "crypto isakmp key onlykey").contains("Usage"));
+    assert!(lab.try_run(r1, "crypto isakmp policy 0").contains("1-10000"));
+    lab.run(r1, "int g0/1");
+    assert!(lab.try_run(r1, "crypto map NOPE").contains("no crypto map NOPE"));
+    lab.run(r1, "end");
+}
+
+#[test]
+fn vpn_modes_survive_hostile_arguments() {
+    let hostile = ["", "0", "-1", "99999999999999999999", "a.b.c.d", "1.2.3.4", "255.255.255.255", "g9/9/9", "tunnel 4294967295", "ä€😀", "%s%n"];
+    let huge = "x".repeat(10_000);
+    for spec in SPECS {
+        for arg in hostile.iter().chain(std::iter::once(&huge.as_str())) {
+            let line: Vec<String> = spec
+                .path
+                .iter()
+                .map(|t| match t {
+                    Tok::K(k) => k.to_string(),
+                    Tok::Arg(_) | Tok::Rest(_) => arg.to_string(),
+                })
+                .collect();
+            for setup in [
+                "en\nconf t\nint tunnel 0",
+                "en\nconf t\ncrypto isakmp policy 1",
+                "en\nconf t\ncrypto map M 1 ipsec-isakmp",
+                "en\nconf t\ncrypto ipsec transform-set T esp-aes",
+            ] {
+                let mut lab = Lab::new();
+                let d = lab.add(DeviceKind::Router);
+                for l in setup.lines() {
+                    lab.try_run(d, l);
+                }
+                let _ = lab.try_run(d, &line.join(" "));
+                let _ = lab.try_run(d, &format!("{} ?", line.join(" ")));
+                let _ = lab.try_run(d, "do show running-config");
+            }
+        }
+    }
+}
