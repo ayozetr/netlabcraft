@@ -142,6 +142,7 @@ pub fn protocol_color(p: Protocol) -> Color32 {
         Protocol::Ipv6 => Color32::from_rgb(0x2f, 0x8f, 0x8a),
         Protocol::Gre => Color32::from_rgb(0x4a, 0x6f, 0xb5),
         Protocol::Esp => Color32::from_rgb(0x9c, 0x3d, 0x3d),
+        Protocol::Isakmp => Color32::from_rgb(0xb0, 0x5a, 0x7a),
         Protocol::Wlan => Color32::from_rgb(0x2e, 0x8b, 0x57),
         Protocol::Eapol => Color32::from_rgb(0xb5, 0x8a, 0x1f),
         Protocol::Capwap => Color32::from_rgb(0x5a, 0x6e, 0xc4),

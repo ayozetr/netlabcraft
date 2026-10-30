@@ -269,7 +269,7 @@ pub enum PortEvent {
 pub fn up_ifaces(t: &Topology, d: &Device) -> Vec<L3If> {
     let mut out = phys_up_ifaces(t, d);
     if !d.tunnels.is_empty() {
-        let tunnels = vpn::up_tunnels(d, &out);
+        let tunnels = vpn::up_tunnels(t, d, &out);
         out.extend(tunnels);
     }
     out
@@ -308,17 +308,30 @@ pub struct RouteEntry {
 /// protocols know, the lowest administrative distance wins: EIGRP (`D`, 90), OSPF (`O`, 110;
 /// `I` inter-area, `E` external default), RIP (`R`, 120); connected and static routes beat them all.
 pub fn routing_table(t: &Topology, d: &Device) -> Vec<RouteEntry> {
+    let e = if d.eigrp.is_some() { eigrp::compute(t).routes.remove(&d.id).unwrap_or_default() } else { Vec::new() };
+    let o = if d.ospf.is_some() { ospf::compute(t).routes.remove(&d.id).unwrap_or_default() } else { Vec::new() };
+    let r = if d.rip.is_some() { rip::compute(t).routes.remove(&d.id).unwrap_or_default() } else { Vec::new() };
+    routing_table_with(t, d, &e, &o, &r)
+}
+
+/// [`routing_table`] with the routing protocols' routes for this device given. A destination
+/// reached over several paths (load balancing) has a row per path.
+pub fn routing_table_with(
+    t: &Topology,
+    d: &Device,
+    eigrp_routes: &[eigrp::EigrpRoute],
+    ospf_routes: &[ospf::OspfRoute],
+    rip_routes: &[rip::RipRoute],
+) -> Vec<RouteEntry> {
     let mut out = routing_table_static(t, d);
     let mut learned: Vec<(u8, RouteEntry)> = Vec::new();
     if d.eigrp.is_some() {
-        let st = eigrp::compute(t);
-        for r in st.routes.get(&d.id).into_iter().flatten() {
+        for r in eigrp_routes {
             learned.push((eigrp::DISTANCE, RouteEntry { code: 'D', net: r.net, via: Some(r.via), iface: Some(r.iface.clone()) }));
         }
     }
     if d.ospf.is_some() {
-        let st = ospf::compute(t);
-        for r in st.routes.get(&d.id).into_iter().flatten() {
+        for r in ospf_routes {
             let code = if r.external {
                 'E'
             } else if r.inter_area {
@@ -330,8 +343,7 @@ pub fn routing_table(t: &Topology, d: &Device) -> Vec<RouteEntry> {
         }
     }
     if d.rip.is_some() {
-        let st = rip::compute(t);
-        for r in st.routes.get(&d.id).into_iter().flatten() {
+        for r in rip_routes {
             learned.push((120, RouteEntry { code: 'R', net: r.net, via: Some(r.via), iface: Some(r.iface.clone()) }));
         }
     }
@@ -341,6 +353,7 @@ pub fn routing_table(t: &Topology, d: &Device) -> Vec<RouteEntry> {
             out.push(r.clone());
         }
     }
+    // Stable: the paths of one destination keep the order the protocol gave them.
     out.sort_by_key(|r| (r.net.addr, r.net.prefix, r.code));
     out
 }
@@ -400,18 +413,52 @@ pub fn route(t: &Topology, d: &Device, dst: Ipv4Addr) -> Option<(L3If, Ipv4Addr)
         t,
         d,
         dst,
+        flow_hash(Ipv4Addr::UNSPECIFIED, dst),
         ep.as_ref().and_then(|s| s.routes.get(&d.id)).map_or(&[][..], Vec::as_slice),
         st.as_ref().and_then(|s| s.routes.get(&d.id)).map_or(&[][..], Vec::as_slice),
         rp.as_ref().and_then(|s| s.routes.get(&d.id)).map_or(&[][..], Vec::as_slice),
     )
 }
 
+/// A flow's hash, for choosing among equal paths: the same source and destination always take
+/// the same path.
+pub fn flow_hash(src: Ipv4Addr, dst: Ipv4Addr) -> u32 {
+    // FNV-1a over both addresses.
+    let mut h: u32 = 0x811c_9dc5;
+    for b in src.octets().into_iter().chain(dst.octets()) {
+        h ^= u32::from(b);
+        h = h.wrapping_mul(0x0100_0193);
+    }
+    h ^ (h >> 16)
+}
+
+/// Picks one of several paths to the same destination for a flow, each path weighted (traffic
+/// share): the paths are `(weight, item)` in a fixed order.
+fn pick_path<T: Clone>(paths: &[(u32, T)], flow: u32) -> Option<T> {
+    let total: u64 = paths.iter().map(|(w, _)| u64::from((*w).max(1))).sum();
+    if total == 0 {
+        return None;
+    }
+    let mut at = u64::from(flow) % total;
+    for (w, p) in paths {
+        let w = u64::from((*w).max(1));
+        if at < w {
+            return Some(p.clone());
+        }
+        at -= w;
+    }
+    paths.last().map(|(_, p)| p.clone())
+}
+
 /// [`route`] with the routing protocols' routes for this device given (at equal prefix length
 /// connected beats static beats EIGRP beats OSPF beats RIP, as their administrative distances say).
+/// Among several paths to the most specific destination, `flow` picks one.
+#[allow(clippy::too_many_arguments)]
 pub fn route_with(
     t: &Topology,
     d: &Device,
     dst: Ipv4Addr,
+    flow: u32,
     eigrp_routes: &[eigrp::EigrpRoute],
     ospf_routes: &[ospf::OspfRoute],
     rip_routes: &[rip::RipRoute],
@@ -466,14 +513,29 @@ pub fn route_with(
         }
     }
     // EIGRP before OSPF: at equal prefix length the first one considered wins (distance 90).
-    for r in eigrp_routes.iter().filter(|r| r.net.contains(dst)) {
-        if let Some(i) = ifs.iter().find(|i| i.name == r.iface) {
-            consider(r.net.prefix, i, r.via);
+    // Several paths to the same destination share the traffic, flow by flow: EIGRP's in
+    // proportion to their metrics (unequal-cost with `variance`), OSPF's equally.
+    let mut nets: Vec<Ipv4Net> = eigrp_routes.iter().filter(|r| r.net.contains(dst)).map(|r| r.net).collect();
+    nets.dedup();
+    for net in nets {
+        let paths: Vec<&eigrp::EigrpRoute> = eigrp_routes.iter().filter(|r| r.net == net).collect();
+        let worst = paths.iter().map(|r| r.metric).max().unwrap_or(1).max(1);
+        let usable: Vec<(u32, (L3If, Ipv4Addr))> =
+            paths.iter().filter_map(|r| ifs.iter().find(|i| i.name == r.iface).map(|i| (worst / r.metric.max(1), (i.clone(), r.via)))).collect();
+        if let Some((i, nh)) = pick_path(&usable, flow) {
+            consider(net.prefix, &i, nh);
         }
     }
-    for r in ospf_routes.iter().filter(|r| r.net.contains(dst)) {
-        if let Some(i) = ifs.iter().find(|i| i.name == r.iface) {
-            consider(r.net.prefix, i, r.via);
+    let mut nets: Vec<Ipv4Net> = ospf_routes.iter().filter(|r| r.net.contains(dst)).map(|r| r.net).collect();
+    nets.dedup();
+    for net in nets {
+        let usable: Vec<(u32, (L3If, Ipv4Addr))> = ospf_routes
+            .iter()
+            .filter(|r| r.net == net)
+            .filter_map(|r| ifs.iter().find(|i| i.name == r.iface).map(|i| (1, (i.clone(), r.via))))
+            .collect();
+        if let Some((i, nh)) = pick_path(&usable, flow) {
+            consider(net.prefix, &i, nh);
         }
     }
     // RIP last: at equal prefix length the others win (administrative distance 120).
@@ -682,6 +744,8 @@ pub struct DevState {
     pub ipsec: BTreeMap<Ipv4Addr, vpn::IpsecSa>,
     /// Routers and multilayer switches: QoS class counters and policer buckets.
     pub(crate) qos: qos::QosCounters,
+    /// Output queuing: when each interface's queues last drained (simulated µs).
+    pub(crate) qos_drained: BTreeMap<String, u64>,
     /// The firewall appliance: connections and translations.
     pub fw: firewall::FwState,
 }
@@ -804,6 +868,10 @@ pub struct Sim {
     rip: Option<rip::RipState>,
     eigrp_for: u64,
     eigrp: Option<eigrp::EigrpState>,
+    /// EIGRP neighbours no longer heard, kept until their hold time runs out.
+    eigrp_held: Vec<eigrp::Held>,
+    /// The last EIGRP sequence number each router used.
+    eigrp_seqs: BTreeMap<DeviceId, u32>,
     /// The flags of the last router advertisement a host autoconfigured from.
     last_ra_flags: u8,
     /// Control frames (BPDUs, hellos, updates) are queued up to this time.
@@ -843,6 +911,8 @@ pub struct Sim {
     capwap_seq: u8,
     /// Beacons are queued up to this time.
     beacon_until: u64,
+    /// Queuing delay for the frame being sent now (output QoS queues), taken by the next emit.
+    tx_delay: u64,
 }
 
 impl Sim {
@@ -1060,6 +1130,9 @@ impl Sim {
             .filter(|Reverse(q)| t.peer(q.from) == Some(q.to) || (wlan::air_hop(t, q.from, q.to) && (joining(q.from, q.to) || joining(q.to, q.from))))
             .collect();
         self.wlan_sync(t);
+        if self.eigrp.is_some() || t.devices.iter().any(|d| d.eigrp.is_some()) {
+            self.eigrp_refresh(t);
+        }
     }
 
     /// A capture of the event list, in pcap format.
@@ -1106,7 +1179,8 @@ impl Sim {
         if self.err_disabled_now(to.device, to.port) {
             return false;
         }
-        self.push_hop(t, self.now + LINK_DELAY_US, from, to, frame, hops);
+        let wait = std::mem::take(&mut self.tx_delay);
+        self.push_hop(t, self.now + LINK_DELAY_US + wait, from, to, frame, hops);
         true
     }
 
@@ -1121,8 +1195,17 @@ impl Sim {
         self.schedule_control(t, deadline);
         self.schedule_beacons(t, deadline);
         let mut count = 0usize;
-        while let Some(Reverse(top)) = self.queue.peek() {
-            if top.at > deadline {
+        loop {
+            let next = self.queue.peek().map(|Reverse(top)| top.at).filter(|at| *at <= deadline);
+            // An EIGRP neighbour's hold time running out is an event of its own.
+            if let Some(h) = self.eigrp_next_expiry().filter(|h| *h <= deadline && next.is_none_or(|q| *h <= q)) {
+                self.now = self.now.max(h);
+                self.eigrp_refresh(t);
+                // Expired holds are gone after a refresh; never spin on one that isn't.
+                self.eigrp_held.retain(|x| x.until > h);
+                continue;
+            }
+            if next.is_none() {
                 break;
             }
             let Some(Reverse(q)) = self.queue.pop() else { break };
@@ -1437,32 +1520,38 @@ impl Sim {
     }
 
     pub fn route(&mut self, t: &Topology, d: &Device, dst: Ipv4Addr) -> Option<(L3If, Ipv4Addr)> {
+        self.route_flow(t, d, Ipv4Addr::UNSPECIFIED, dst)
+    }
+
+    /// [`Sim::route`] for a flow: among equal paths, the one this source and destination take.
+    pub fn route_flow(&mut self, t: &Topology, d: &Device, src: Ipv4Addr, dst: Ipv4Addr) -> Option<(L3If, Ipv4Addr)> {
         let e = self.eigrp_routes(t, d);
         let o = self.ospf_routes(t, d);
         let r = self.rip_routes(t, d);
-        route_with(t, d, dst, &e, &o, &r)
+        route_with(t, d, dst, flow_hash(src, dst), &e, &o, &r)
     }
 
-    /// EIGRP's routes for a device (cached per topology).
+    /// The routing table as the simulation has it now (EIGRP neighbours within their hold time
+    /// included): what `show ip route` prints.
+    pub fn routing_table(&mut self, t: &Topology, d: &Device) -> Vec<RouteEntry> {
+        let e = self.eigrp_routes(t, d);
+        let o = self.ospf_routes(t, d);
+        let r = self.rip_routes(t, d);
+        routing_table_with(t, d, &e, &o, &r)
+    }
+
+    /// EIGRP's routes for a device (cached per topology and hold timers).
     fn eigrp_routes(&mut self, t: &Topology, d: &Device) -> Vec<eigrp::EigrpRoute> {
         if d.eigrp.is_none() {
             return Vec::new();
         }
-        let f = ospf::fingerprint(t);
-        if self.eigrp.is_none() || self.eigrp_for != f {
-            self.eigrp_for = f;
-            self.eigrp = Some(eigrp::compute(t));
-        }
+        self.eigrp_refresh(t);
         self.eigrp.as_ref().and_then(|s| s.routes.get(&d.id).cloned()).unwrap_or_default()
     }
 
     /// EIGRP's view of the lab (neighbours, topology tables, routes).
     pub fn eigrp_state(&mut self, t: &Topology) -> eigrp::EigrpState {
-        let f = ospf::fingerprint(t);
-        if self.eigrp.is_none() || self.eigrp_for != f {
-            self.eigrp_for = f;
-            self.eigrp = Some(eigrp::compute(t));
-        }
+        self.eigrp_refresh(t);
         self.eigrp.clone().unwrap_or_default()
     }
 
@@ -1985,9 +2074,24 @@ impl Sim {
             if ip.protocol == packetcraft_wire::eigrp::PROTO_EIGRP
                 && d.eigrp.is_some()
                 && self.state.get(&d.id).is_some_and(|s| s.debug_eigrp)
-                && let Ok(h) = packetcraft_wire::eigrp::EigrpHello::decode(&ip.payload)
+                && let Ok(p) = packetcraft_wire::eigrp::EigrpPacket::decode(&ip.payload)
             {
-                let msg = format!("EIGRP debug: hello from {} on {}, AS {}, hold time {} s", ip.src, ifc.name, h.asn, h.hold_secs);
+                let msg = match packetcraft_wire::eigrp::EigrpHello::decode(&ip.payload) {
+                    Ok(h) => format!("EIGRP debug: hello from {} on {}, AS {}, hold time {} s", ip.src, ifc.name, h.asn, h.hold_secs),
+                    Err(_) if p.opcode == packetcraft_wire::eigrp::OPCODE_HELLO => {
+                        format!("EIGRP debug: acknowledgement of {} from {} on {}, AS {}", p.ack, ip.src, ifc.name, p.asn)
+                    }
+                    Err(_) => format!(
+                        "EIGRP debug: {} #{} from {} on {}, AS {}, {} route{}",
+                        packetcraft_wire::eigrp::opcode_name(p.opcode),
+                        p.seq,
+                        ip.src,
+                        ifc.name,
+                        p.asn,
+                        p.routes().count(),
+                        if p.routes().count() == 1 { "" } else { "s" }
+                    ),
+                };
                 self.log(d.id, &msg);
             }
             if debug.0 && rip && d.rip.is_some() {
@@ -2047,7 +2151,7 @@ impl Sim {
         }
         let fwd = Ipv4 { ttl: ip.ttl - 1, ..ip.clone() };
         let debug = self.state.get(&d.id).is_some_and(|s| s.debug_packet);
-        match self.route(t, d, ip.dst) {
+        match self.route_flow(t, d, ip.src, ip.dst) {
             Some((out, nh)) => {
                 if debug {
                     let via = if nh == ip.dst { String::new() } else { format!(" via {nh}") };
@@ -2086,6 +2190,9 @@ impl Sim {
         }
         if ip.protocol == PROTO_UDP {
             let u = Udp::decode(&ip.payload, ip.src, ip.dst).map_err(|e| e.to_string())?;
+            if d.kind == DeviceKind::Router && u.dst_port == packetcraft_wire::ike::ISAKMP_PORT && u.src_port == packetcraft_wire::ike::ISAKMP_PORT {
+                return self.ike_in(t, d, &ip, &u.payload);
+            }
             if let Some(r) = self.wlan_udp_in(t, d, &ip, &u) {
                 return r;
             }
@@ -2223,7 +2330,7 @@ impl Sim {
 
     /// Routes and sends a datagram this device originates.
     fn send_ip(&mut self, t: &Topology, d: &Device, ip: Ipv4) -> Result<(), String> {
-        let (out, nh) = self.route(t, d, ip.dst).ok_or_else(|| format!("no route to {}", ip.dst))?;
+        let (out, nh) = self.route_flow(t, d, ip.src, ip.dst).ok_or_else(|| format!("no route to {}", ip.dst))?;
         self.transmit(t, d, &out, nh, ip.encode())
     }
 
@@ -2242,6 +2349,7 @@ impl Sim {
             return self.transmit(t, d, &o2, nh2, esp);
         }
         // An output service policy, on the packet as it goes on the wire.
+        self.tx_delay = 0;
         let datagram = if d.qos.applied.is_empty() { datagram } else { self.qos_apply(d, &out.name, false, datagram)? };
         // A serial link is point to point: no address to resolve.
         if out.port != SVI_PORT && t.is_serial(End { device: d.id, port: out.port }) {

@@ -5,7 +5,7 @@ use std::net::Ipv4Addr;
 
 use packetcraft_core::{Ipv4Net, VlanId, VlanSet};
 use packetcraft_model::{Device, DeviceKind, End, NextHop, SwitchportMode, Topology, ifname, obscure};
-use packetcraft_sim::{Hop, PingOptions, Probe, Sim, port_up, routing_table};
+use packetcraft_sim::{Hop, PingOptions, Probe, Sim, port_up};
 
 use crate::IfRef;
 
@@ -435,6 +435,9 @@ pub fn running_config(d: &Device) -> String {
         if let Some(r) = o.reference_bw {
             let _ = writeln!(s, " auto-cost reference-bandwidth {r}");
         }
+        if let Some(n) = o.maximum_paths {
+            let _ = writeln!(s, " maximum-paths {n}");
+        }
         for (n, a) in &o.areas {
             if a.stub {
                 let _ = writeln!(s, " area {n} stub{}", if a.no_summary { " no-summary" } else { "" });
@@ -462,6 +465,12 @@ pub fn running_config(d: &Device) -> String {
                     let _ = writeln!(s, " network {}", n.address);
                 }
             }
+        }
+        if let Some(n) = e.variance {
+            let _ = writeln!(s, " variance {n}");
+        }
+        if let Some(n) = e.maximum_paths {
+            let _ = writeln!(s, " maximum-paths {n}");
         }
         let _ = writeln!(s, "{}", if e.auto_summary { " auto-summary" } else { " no auto-summary" });
         let _ = writeln!(s, "!");
@@ -582,9 +591,9 @@ pub fn ip_int_brief(t: &Topology, d: &Device) -> String {
     s.trim_end().to_string()
 }
 
-/// The routing table.
-pub fn ip_route(t: &Topology, d: &Device) -> String {
-    let table = routing_table(t, d);
+/// The routing table, from the rows the simulation has (a row per path when several share the
+/// traffic).
+pub fn ip_route_table(d: &Device, table: &[packetcraft_sim::RouteEntry]) -> String {
     let mut s = String::from(
         "Codes: C connected, L local, S static, R RIP, D EIGRP, O OSPF, O IA OSPF other area, O*E2 OSPF external default, O*IA default into a stub area\n\n",
     );
@@ -607,7 +616,7 @@ pub fn ip_route(t: &Topology, d: &Device) -> String {
         s.push_str("(no routes: no interface is up with an address)");
         return s;
     }
-    for r in &table {
+    for r in table {
         let what = match (r.code, r.via, &r.iface) {
             ('C', _, Some(i)) => format!("connected, {i}"),
             ('L', _, Some(i)) => format!("local address, {i}"),
@@ -1084,6 +1093,7 @@ fn eigrp_protocol(d: &Device, st: &packetcraft_sim::eigrp::EigrpState) -> String
     );
     let heard: Vec<String> = st.neighbors.get(&d.id).into_iter().flatten().map(|n| format!("{} on {}", n.address, ifname::short(&n.iface))).collect();
     let _ = writeln!(s, "  Neighbours: {}", if heard.is_empty() { "none".to_string() } else { heard.join(", ") });
+    let _ = writeln!(s, "  Load balancing: up to {} paths per destination, variance {}", e.max_paths(), e.variance.unwrap_or(1).max(1));
     let _ = write!(
         s,
         "  Automatic summarisation {}; administrative distance 90 (internal)",
@@ -1093,7 +1103,7 @@ fn eigrp_protocol(d: &Device, st: &packetcraft_sim::eigrp::EigrpState) -> String
 }
 
 /// `show ip eigrp neighbors`.
-pub fn eigrp_neighbors(t: &Topology, d: &Device, st: &packetcraft_sim::eigrp::EigrpState) -> String {
+pub fn eigrp_neighbors(t: &Topology, d: &Device, st: &packetcraft_sim::eigrp::EigrpState, now_us: u64) -> String {
     let Some(e) = &d.eigrp else { return "EIGRP is not running on this router.".into() };
     let list = st.neighbors.get(&d.id).cloned().unwrap_or_default();
     if list.is_empty() {
@@ -1103,7 +1113,15 @@ pub fn eigrp_neighbors(t: &Topology, d: &Device, st: &packetcraft_sim::eigrp::Ei
     let _ = writeln!(s, "{:<3} {:<16} {:<12} {:<9} Device", "#", "Address", "Interface", "Hold (s)");
     for (k, n) in list.iter().enumerate() {
         let name = t.device(n.device).map_or("?".to_string(), |x| x.name.clone());
-        let _ = writeln!(s, "{:<3} {:<16} {:<12} {:<9} {name}", k, n.address.to_string(), ifname::short(&n.iface), packetcraft_sim::eigrp::HOLD_SECS);
+        // The hold timer counts down from the last hello heard.
+        let (hold, note) = match n.held_until {
+            Some(until) => (until.saturating_sub(now_us) / 1_000_000, "  (no hellos heard: dropped when the hold time runs out)"),
+            None => {
+                let hello = u64::from(n.hello_secs.max(1)) * 1_000_000;
+                (u64::from(n.hold_secs).saturating_sub((now_us % hello) / 1_000_000), "")
+            }
+        };
+        let _ = writeln!(s, "{:<3} {:<16} {:<12} {:<9} {name}{note}", k, n.address.to_string(), ifname::short(&n.iface), hold);
     }
     s.trim_end().to_string()
 }
@@ -1130,7 +1148,8 @@ pub fn eigrp_topology(d: &Device, st: &packetcraft_sim::eigrp::EigrpState) -> St
                 }
                 Some(v) => {
                     let role = if p.successor { "successor" } else { "feasible successor" };
-                    let _ = writeln!(s, "    {role:<19} via {v}, {} ({} / {})", ifname::short(&p.iface), p.distance, p.reported);
+                    let used = if !p.successor && p.installed { ", in use (variance)" } else { "" };
+                    let _ = writeln!(s, "    {role:<19} via {v}, {} ({} / {}){used}", ifname::short(&p.iface), p.distance, p.reported);
                 }
             }
         }
@@ -1146,17 +1165,23 @@ pub fn eigrp_interfaces(d: &Device, st: &packetcraft_sim::eigrp::EigrpState) -> 
         return format!("No interface runs EIGRP in AS {} (check the network statements and that the interfaces are up).", e.asn);
     }
     let mut s = format!("EIGRP interfaces, AS {}\n", e.asn);
-    let _ = writeln!(s, "{:<12} {:<20} {:<6} {:<16} {:<11} Passive", "Interface", "Network", "Peers", "Bandwidth (kbit)", "Delay (µs)");
+    let _ = writeln!(
+        s,
+        "{:<12} {:<20} {:<6} {:<16} {:<11} {:<8} {:<9} Passive",
+        "Interface", "Network", "Peers", "Bandwidth (kbit)", "Delay (µs)", "Hello", "Hold (s)"
+    );
     for i in &ifs {
         let peers = st.neighbors.get(&d.id).into_iter().flatten().filter(|n| n.iface == i.name).count();
         let _ = writeln!(
             s,
-            "{:<12} {:<20} {:<6} {:<16} {:<11} {}",
+            "{:<12} {:<20} {:<6} {:<16} {:<11} {:<8} {:<9} {}",
             ifname::short(&i.name),
             i.net.to_string(),
             peers,
             i.bandwidth,
             u64::from(i.delay) * 10,
+            i.hello_secs,
+            i.hold_secs,
             if i.passive { "yes" } else { "no" }
         );
     }
@@ -1183,11 +1208,20 @@ fn ospf_protocol(d: &Device, st: &packetcraft_sim::ospf::OspfState) -> String {
     if o.default_originate {
         s.push_str("  Advertises its default route\n");
     }
+    let _ = writeln!(s, "  Load balancing: up to {} equal-cost paths per destination", o.maximum_paths.unwrap_or(4).max(1));
     let _ = write!(s, "  Administrative distance 110");
     s
 }
 
 fn ospf_if_lines(s: &mut String, d: &Device, name: &str) {
+    if let Some(e) = d.eigrp_if.get(name) {
+        if let Some((asn, secs)) = e.hello {
+            let _ = writeln!(s, " ip hello-interval eigrp {asn} {secs}");
+        }
+        if let Some((asn, secs)) = e.hold {
+            let _ = writeln!(s, " ip hold-time eigrp {asn} {secs}");
+        }
+    }
     if let Some(o) = d.ospf_if.get(name) {
         if let Some(c) = o.cost {
             let _ = writeln!(s, " ip ospf cost {c}");
@@ -2254,9 +2288,10 @@ pub fn crypto_isakmp_sa(sim: &Sim, d: &Device) -> String {
     }
     let mut s = format!("{:<16} {:<16} {}\n", "Peer", "Local", "State");
     for sa in &sas {
-        let state = match &sa.failed {
-            None => "established (pre-shared key)".to_string(),
-            Some(why) => format!("failed: {why}"),
+        let state = match (&sa.failed, sa.phase) {
+            (_, packetcraft_sim::vpn::IkePhase::Established) => "established (pre-shared key)".to_string(),
+            (Some(why), _) => format!("failed: {why}"),
+            (None, phase) => format!("negotiating: {}", phase.describe()),
         };
         let _ = writeln!(s, "{:<16} {:<16} {state}", sa.peer, sa.local);
     }

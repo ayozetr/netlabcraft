@@ -247,9 +247,11 @@ pub fn compute(t: &Topology) -> OspfState {
     let abrs = |area: u32| -> Vec<DeviceId> { areas_of.iter().filter(|(_, a)| a.len() > 1 && a.contains(&area)).map(|(d, _)| *d).collect() };
     let conf = |d: DeviceId, area: u32| t.device(d).and_then(|x| x.ospf.as_ref()).map(|o| o.area(area)).unwrap_or_default();
     for r in &routers {
-        // Dijkstra: (cost, first hop interface, first hop address) per router.
-        let mut best: BTreeMap<DeviceId, (u32, Option<(L3If, Ipv4Addr)>)> = BTreeMap::new();
-        best.insert(r.id, (0, None));
+        // Dijkstra: (cost, first hops: interface and address) per router; equal-cost paths keep
+        // every first hop (up to `maximum-paths`).
+        let max_paths = usize::from(r.ospf.as_ref().and_then(|o| o.maximum_paths).unwrap_or(4).max(1));
+        let mut best: BTreeMap<DeviceId, (u32, Vec<(L3If, Ipv4Addr)>)> = BTreeMap::new();
+        best.insert(r.id, (0, Vec::new()));
         let mut done: BTreeSet<DeviceId> = BTreeSet::new();
         loop {
             let next = best
@@ -257,14 +259,31 @@ pub fn compute(t: &Topology) -> OspfState {
                 .filter(|(d, _)| !done.contains(*d))
                 .min_by_key(|(d, (c, _))| (*c, st.router_ids.get(*d).copied()))
                 .map(|(d, v)| (*d, v.clone()));
-            let Some((u, (cu, hop))) = next else { break };
+            let Some((u, (cu, hops))) = next else { break };
             done.insert(u);
             for (v, ifc, addr, cost) in adj.get(&u).into_iter().flatten() {
+                if done.contains(v) {
+                    continue;
+                }
                 let c = cu.saturating_add(*cost);
-                let first = hop.clone().or_else(|| Some((ifc.clone(), *addr)));
-                let better = best.get(v).is_none_or(|(old, oh)| c < *old || (c == *old && first.as_ref().map(|f| f.1) < oh.as_ref().map(|f| f.1)));
-                if better && !done.contains(v) {
-                    best.insert(*v, (c, first));
+                let first = if hops.is_empty() { vec![(ifc.clone(), *addr)] } else { hops.clone() };
+                match best.get_mut(v) {
+                    Some((old, oh)) if c == *old => {
+                        for f in first {
+                            if !oh.iter().any(|x| x.0.name == f.0.name && x.1 == f.1) {
+                                oh.push(f);
+                            }
+                        }
+                        oh.sort_by_key(|x| x.1);
+                        oh.truncate(max_paths);
+                    }
+                    Some((old, _)) if c > *old => {}
+                    _ => {
+                        let mut first = first;
+                        first.sort_by_key(|x| x.1);
+                        first.truncate(max_paths);
+                        best.insert(*v, (c, first));
+                    }
                 }
             }
         }
@@ -275,36 +294,50 @@ pub fn compute(t: &Topology) -> OspfState {
         let stub_area = my_areas.first().copied().filter(|a| my_areas.len() == 1 && conf(r.id, *a).stub);
         let totally = stub_area.is_some_and(|a| abrs(a).iter().any(|b| conf(*b, a).no_summary));
         let mut routes: BTreeMap<Ipv4Net, OspfRoute> = BTreeMap::new();
-        for (x, (cx, hop)) in &best {
-            let Some((ifc, via)) = hop else { continue };
-            for (net, c, area) in stubs.get(x).into_iter().flatten() {
-                if mine.contains(net) {
-                    continue;
-                }
-                let inter_area = !my_areas.contains(area);
-                if inter_area && totally {
-                    continue;
-                }
-                // A border router of the network's area may summarise it.
-                let summary = if inter_area {
-                    abrs(*area).iter().flat_map(|b| conf(*b, *area).ranges).find(|g| g.prefix <= net.prefix && g.contains(net.addr))
-                } else {
-                    None
-                };
-                let net = &summary.unwrap_or(*net);
-                if mine.contains(net) {
-                    continue;
-                }
-                let cand = OspfRoute { net: *net, via: *via, iface: ifc.name.clone(), cost: cx.saturating_add(*c), external: false, inter_area };
-                if routes.get(net).is_none_or(|old| (cand.cost, cand.via) < (old.cost, old.via)) {
-                    routes.insert(*net, cand);
+        // Other paths of the same cost to a destination, beside the one in `routes`.
+        let mut more: BTreeMap<Ipv4Net, Vec<OspfRoute>> = BTreeMap::new();
+        let mut add = |routes: &mut BTreeMap<Ipv4Net, OspfRoute>, cand: OspfRoute| match routes.get(&cand.net) {
+            Some(old) if old.cost == cand.cost && old.external == cand.external => {
+                let list = more.entry(cand.net).or_default();
+                if old.via != cand.via && !list.iter().any(|x| x.via == cand.via) {
+                    list.push(cand);
                 }
             }
-            if originators.contains(x) && *x != r.id && stub_area.is_none() {
-                let def = Ipv4Net::new(Ipv4Addr::UNSPECIFIED, 0);
-                let cand = OspfRoute { net: def, via: *via, iface: ifc.name.clone(), cost: 1, external: true, inter_area: false };
-                if routes.get(&def).is_none_or(|old| (*cx, cand.via) < (old.cost.saturating_add(*cx), old.via)) {
-                    routes.insert(def, cand);
+            Some(old) if (old.cost, old.via) <= (cand.cost, cand.via) => {}
+            _ => {
+                more.remove(&cand.net);
+                routes.insert(cand.net, cand);
+            }
+        };
+        for (x, (cx, hops)) in &best {
+            for (ifc, via) in hops {
+                for (net, c, area) in stubs.get(x).into_iter().flatten() {
+                    if mine.contains(net) {
+                        continue;
+                    }
+                    let inter_area = !my_areas.contains(area);
+                    if inter_area && totally {
+                        continue;
+                    }
+                    // A border router of the network's area may summarise it.
+                    let summary = if inter_area {
+                        abrs(*area).iter().flat_map(|b| conf(*b, *area).ranges).find(|g| g.prefix <= net.prefix && g.contains(net.addr))
+                    } else {
+                        None
+                    };
+                    let net = &summary.unwrap_or(*net);
+                    if mine.contains(net) {
+                        continue;
+                    }
+                    let cand = OspfRoute { net: *net, via: *via, iface: ifc.name.clone(), cost: cx.saturating_add(*c), external: false, inter_area };
+                    add(&mut routes, cand);
+                }
+                if originators.contains(x) && *x != r.id && stub_area.is_none() {
+                    let def = Ipv4Net::new(Ipv4Addr::UNSPECIFIED, 0);
+                    let cand = OspfRoute { net: def, via: *via, iface: ifc.name.clone(), cost: 1, external: true, inter_area: false };
+                    if routes.get(&def).is_none_or(|old| (*cx, cand.via) < (old.cost.saturating_add(*cx), old.via)) {
+                        routes.insert(def, cand);
+                    }
                 }
             }
         }
@@ -312,7 +345,9 @@ pub fn compute(t: &Topology) -> OspfState {
         if let Some(a) = stub_area {
             let def = Ipv4Net::new(Ipv4Addr::UNSPECIFIED, 0);
             for b in abrs(a) {
-                if let Some((cx, Some((ifc, via)))) = best.get(&b) {
+                if let Some((cx, hops)) = best.get(&b)
+                    && let Some((ifc, via)) = hops.first()
+                {
                     let cand =
                         OspfRoute { net: def, via: *via, iface: ifc.name.clone(), cost: cx.saturating_add(1), external: false, inter_area: true };
                     if routes.get(&def).is_none_or(|old| (cand.cost, cand.via) < (old.cost, old.via)) {
@@ -321,7 +356,14 @@ pub fn compute(t: &Topology) -> OspfState {
                 }
             }
         }
-        st.routes.insert(r.id, routes.into_values().collect());
+        let mut list = Vec::new();
+        for (net, first) in routes {
+            list.push(first);
+            let mut extra = more.remove(&net).unwrap_or_default();
+            extra.sort_by_key(|x| x.via);
+            list.extend(extra.into_iter().take(max_paths.saturating_sub(1)));
+        }
+        st.routes.insert(r.id, list);
     }
     st
 }
@@ -343,7 +385,8 @@ pub fn fingerprint(t: &Topology) -> u64 {
             }
         }
         if matches!(d.kind, DeviceKind::Router | DeviceKind::Switch) {
-            format!("{:?}{:?}{:?}{:?}{:?}{:?}{}", d.ospf, d.rip, d.eigrp, d.routes, d.access.users, d.ospf_if, d.ip_routing).hash(&mut h);
+            format!("{:?}{:?}{:?}{:?}{:?}{:?}{:?}{}", d.ospf, d.rip, d.eigrp, d.routes, d.access.users, d.ospf_if, d.eigrp_if, d.ip_routing)
+                .hash(&mut h);
             d.tunnels.hash(&mut h);
             for s in &d.svis {
                 (s.vlan, s.ip, s.shutdown).hash(&mut h);

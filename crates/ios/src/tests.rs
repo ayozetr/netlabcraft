@@ -2594,7 +2594,10 @@ fn qos_configuration_round_trip_and_modes() {
     let pm = lab.run(r1, "show policy-map WAN");
     assert!(pm.contains("  class VOICE\n    priority 512") && pm.contains("    shape average 2000000"), "{pm}");
     let out = lab.run(r1, "show policy-map interface g0/1");
-    assert!(out.contains("Output policy WAN") && out.contains("priority 512 kbit/s: configured; no congestion is simulated"), "{out}");
+    assert!(
+        out.contains("Output policy WAN") && out.contains("priority 512 kbit/s: queue 0 bytes now (most 0 bytes), 0 packets tail-dropped"),
+        "{out}"
+    );
     // Modes and prompts.
     lab.run(r1, "conf t\nclass-map WEB");
     assert_eq!(lab.prompt(r1), "R1(config-cmap)#");
@@ -3435,4 +3438,270 @@ fn every_firewall_command_survives_hostile_arguments() {
             }
         }
     }
+}
+
+/// A diamond R1 → (R2 | R3) → R4, with a switch between R1 and R3: EIGRP builds it with
+/// router ids from the addresses.
+fn eigrp_diamond() -> (Lab, [DeviceId; 6], DeviceId) {
+    let mut lab = Lab::new();
+    let three = packetcraft_model::models::find("Router-3").unwrap();
+    let r1 = lab.t.add_model(three, None, 0.0, 0.0).unwrap();
+    let r2 = lab.t.add_model(three, None, 0.0, 0.0).unwrap();
+    let r3 = lab.t.add_model(three, None, 0.0, 0.0).unwrap();
+    let r4 = lab.t.add_model(three, None, 0.0, 0.0).unwrap();
+    let sw = lab.add(DeviceKind::Switch);
+    let a = lab.add(DeviceKind::Pc);
+    let b = lab.add(DeviceKind::Pc);
+    lab.cable(a, "fa0", r1, "g0/0");
+    lab.cable(r1, "g0/1", r2, "g0/0");
+    lab.cable(r1, "g0/2", sw, "fa0/1");
+    lab.cable(sw, "fa0/2", r3, "g0/0");
+    lab.cable(r2, "g0/1", r4, "g0/0");
+    lab.cable(r3, "g0/1", r4, "g0/1");
+    lab.cable(b, "fa0", r4, "g0/2");
+    lab.run(a, "ipconfig 192.168.1.10 255.255.255.0 192.168.1.1");
+    lab.run(b, "ipconfig 192.168.4.10 255.255.255.0 192.168.4.1");
+    let cfg = [
+        (r1, [("g0/0", "192.168.1.1 255.255.255.0"), ("g0/1", "10.0.12.1 255.255.255.252"), ("g0/2", "10.0.13.1 255.255.255.0")]),
+        (r2, [("g0/0", "10.0.12.2 255.255.255.252"), ("g0/1", "10.0.24.1 255.255.255.252"), ("g0/2", "")]),
+        (r3, [("g0/0", "10.0.13.3 255.255.255.0"), ("g0/1", "10.0.34.1 255.255.255.252"), ("g0/2", "")]),
+        (r4, [("g0/0", "10.0.24.2 255.255.255.252"), ("g0/1", "10.0.34.2 255.255.255.252"), ("g0/2", "192.168.4.1 255.255.255.0")]),
+    ];
+    for (r, ifs) in cfg {
+        lab.run(r, "en\nconf t");
+        for (i, ip) in ifs.iter().filter(|(_, ip)| !ip.is_empty()) {
+            lab.run(r, &format!("int {i}\nip address {ip}\nno shut"));
+        }
+        lab.run(r, "router eigrp 10\nnetwork 10.0.0.0\nnetwork 192.168.0.0 0.0.255.255\nno auto-summary\nend");
+    }
+    (lab, [r1, r2, r3, r4, a, b], sw)
+}
+
+#[test]
+fn eigrp_load_balances_over_equal_and_unequal_paths() {
+    let (mut lab, [r1, _, _, _, a, _], _) = eigrp_diamond();
+    // Two equal-cost successors to R4's LAN: both installed, both in the table.
+    let rt = lab.run(r1, "show ip route");
+    assert!(rt.contains("D    192.168.4.0/24       via 10.0.12.2, GigabitEthernet0/1 (EIGRP)"), "{rt}");
+    assert!(rt.contains("D    192.168.4.0/24       via 10.0.13.3, GigabitEthernet0/2 (EIGRP)"), "{rt}");
+    assert!(lab.run(r1, "show ip eigrp topology").contains("192.168.4.0/24  FD 3328, 2 successors"));
+    // Flows spread over both, each flow always the same way.
+    let d = lab.t.device(r1).unwrap().clone();
+    let dst: std::net::Ipv4Addr = "192.168.4.10".parse().unwrap();
+    let mut seen = std::collections::BTreeSet::new();
+    for k in 1..40u8 {
+        let src = std::net::Ipv4Addr::new(192, 168, 1, k);
+        let (out, _) = lab.sim.route_flow(&lab.t, &d, src, dst).unwrap();
+        assert_eq!(lab.sim.route_flow(&lab.t, &d, src, dst).unwrap().0.name, out.name);
+        seen.insert(out.name);
+    }
+    assert_eq!(seen.len(), 2, "{seen:?}");
+    lab.run(a, "ping 192.168.4.10");
+    assert!(lab.run(a, "ping 192.168.4.10").contains("4 answered"));
+    // `maximum-paths 1`: one path only.
+    lab.run(r1, "conf t\nrouter eigrp 10\nmaximum-paths 1\nend");
+    let rt = lab.run(r1, "show ip route eigrp");
+    assert_eq!(rt.matches("192.168.4.0/24").count(), 1, "{rt}");
+    assert!(lab.run(r1, "show ip protocols").contains("up to 1 paths per destination"));
+    // A slower way through R3 is a feasible successor (R3 reports 3072 < FD 3328), unused…
+    lab.run(r1, "conf t\nrouter eigrp 10\nno maximum-paths\nexit\nint g0/2\ndelay 10\nend");
+    let rt = lab.run(r1, "show ip route eigrp");
+    assert_eq!(rt.matches("192.168.4.0/24").count(), 1, "{rt}");
+    let topo = lab.run(r1, "show ip eigrp topology");
+    assert!(topo.contains("feasible successor  via 10.0.13.3, Gi0/2 (5632 / 3072)"), "{topo}");
+    // …until `variance 2` admits it: below twice the feasible distance.
+    lab.run(r1, "conf t\nrouter eigrp 10\nvariance 2\nend");
+    let rt = lab.run(r1, "show ip route eigrp");
+    assert_eq!(rt.matches("192.168.4.0/24").count(), 2, "{rt}");
+    assert!(lab.run(r1, "show ip eigrp topology").contains("(5632 / 3072), in use (variance)"));
+    assert!(lab.run(r1, "show ip protocols").contains("up to 4 paths per destination, variance 2"));
+    // The settings survive a save and reload.
+    let run = lab.run(r1, "show running-config");
+    assert!(run.contains(" variance 2\n"), "{run}");
+    lab.run(r1, "conf t\nrouter eigrp 10\nmaximum-paths 3\nend");
+    let run = lab.run(r1, "show running-config");
+    assert!(run.contains(" variance 2\n maximum-paths 3\n no auto-summary"), "{run}");
+    lab.run(r1, "copy run start\nreload\nen");
+    assert_eq!(lab.run(r1, "show running-config"), run);
+    lab.run(r1, "conf t\nrouter eigrp 10");
+    for bad in ["maximum-paths 0", "maximum-paths 17", "variance 0", "variance 129"] {
+        assert!(lab.try_run(r1, bad).starts_with('%'), "{bad}");
+    }
+    lab.run(r1, "end");
+}
+
+#[test]
+fn a_silent_eigrp_neighbour_is_dropped_after_its_hold_time() {
+    let (mut lab, [r1, _, r3, r4, ..], sw) = eigrp_diamond();
+    // R3 announces a 30-second hold time and says hello every 10 seconds.
+    lab.run(r3, "conf t\nint g0/0\nip hello-interval eigrp 10 10\nip hold-time eigrp 10 30\nend");
+    let ifs = lab.run(r3, "show ip eigrp interfaces");
+    assert!(ifs.lines().any(|l| l.starts_with("Gi0/0") && l.contains(" 10 ") && l.contains(" 30 ")), "{ifs}");
+    lab.sim.clear_trace();
+    lab.sim.run_for(&lab.t, 11_000_000);
+    assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("EIGRP hello, AS 10 (hold 30 s) 10.0.13.3")));
+    let nb = lab.run(r1, "show ip eigrp neighbors");
+    assert!(nb.contains("10.0.13.3"), "{nb}");
+    lab.run(r1, "show logging");
+    lab.sim.take_console(r1);
+    // The switch port towards R3 goes down: R1's own link stays up, so it only notices that
+    // the hellos stopped.
+    lab.run(sw, "en\nconf t\nint fa0/2\nshutdown\nend");
+    let nb = lab.run(r1, "show ip eigrp neighbors");
+    assert!(nb.contains("10.0.13.3") && nb.contains("no hellos heard"), "{nb}");
+    assert_eq!(lab.run(r1, "show ip route eigrp").matches("192.168.4.0/24").count(), 2);
+    // R3's own interface went down with the switch port: it drops R1 at once.
+    assert!(!lab.run(r3, "show ip eigrp neighbors").contains("10.0.13.1"));
+    lab.sim.clear_trace();
+    lab.sim.run_for(&lab.t, 15_000_000);
+    assert!(lab.run(r1, "show ip eigrp neighbors").contains("10.0.13.3"), "still within the hold time");
+    lab.sim.run_for(&lab.t, 16_000_000);
+    let nb = lab.run(r1, "show ip eigrp neighbors");
+    assert!(!nb.contains("10.0.13.3"), "{nb}");
+    let log = lab.run(r1, "show logging");
+    assert!(log.contains("EIGRP AS 10: neighbour 10.0.13.3 (GigabitEthernet0/2) is down: hold time expired"), "{log}");
+    // Reconverged: only the way through R2 is left, and R1 told its neighbours.
+    let rt = lab.run(r1, "show ip route eigrp");
+    assert_eq!(rt.matches("192.168.4.0/24").count(), 1, "{rt}");
+    assert!(rt.contains("via 10.0.12.2"), "{rt}");
+    assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("EIGRP update") && e.summary.contains("10.0.12.1 → 224.0.0.10")));
+    assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("EIGRP acknowledgement")));
+    // The neighbour comes back as soon as it is heard again.
+    lab.run(sw, "conf t\nint fa0/2\nno shutdown\nend");
+    assert!(lab.run(r1, "show ip eigrp neighbors").contains("10.0.13.3"));
+    assert!(lab.run(r1, "show logging").contains("neighbour 10.0.13.3 (GigabitEthernet0/2) is up"));
+    lab.sim.run_for(&lab.t, 1_000_000);
+    assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("EIGRP update (init)")));
+    // A lost destination with no feasible successor: queries, answered by replies.
+    lab.sim.clear_trace();
+    lab.run(r4, "conf t\nint g0/2\nshutdown\nend");
+    lab.sim.run_for(&lab.t, 1_000_000);
+    let trace = lab.sim.trace();
+    assert!(trace.iter().any(|e| e.summary.starts_with("EIGRP query") && e.summary.contains("1 unreachable")), "no query");
+    assert!(trace.iter().any(|e| e.summary.starts_with("EIGRP reply")), "no reply");
+    assert!(!lab.run(r1, "show ip route").contains("192.168.4.0"));
+    // `debug eigrp packets` reports them.
+    lab.run(r1, "debug eigrp packets");
+    lab.run(r4, "conf t\nint g0/2\nno shutdown\nend");
+    lab.sim.run_for(&lab.t, 1_000_000);
+    assert!(lab.run(r1, "show logging").contains("EIGRP debug: update #"));
+    // The timers are part of the interface's configuration.
+    let run = lab.run(r3, "show running-config");
+    assert!(run.contains(" ip hello-interval eigrp 10 10\n ip hold-time eigrp 10 30\n"), "{run}");
+    lab.run(r3, "copy run start\nreload\nen");
+    assert_eq!(lab.run(r3, "show running-config"), run);
+    lab.run(r3, "conf t\nint g0/0\nno ip hold-time eigrp 10\nno ip hello-interval eigrp 10\nend");
+    assert!(!lab.run(r3, "show running-config").contains("eigrp 10 "));
+}
+
+#[test]
+fn ospf_installs_equal_cost_paths() {
+    let (mut lab, [r1, r2, r3, r4, ..], _) = eigrp_diamond();
+    for r in [r1, r2, r3, r4] {
+        lab.run(r, "conf t\nno router eigrp 10\nrouter ospf 1\nnetwork 0.0.0.0 255.255.255.255 area 0\nend");
+    }
+    let rt = lab.run(r1, "show ip route ospf");
+    assert_eq!(rt.matches("192.168.4.0/24").count(), 2, "{rt}");
+    lab.run(r1, "conf t\nrouter ospf 1\nmaximum-paths 1\nend");
+    assert_eq!(lab.run(r1, "show ip route ospf").matches("192.168.4.0/24").count(), 1);
+    assert!(lab.run(r1, "show running-config").contains(" maximum-paths 1\n"));
+}
+
+#[test]
+fn a_gre_tunnel_rides_on_learned_routes_but_not_on_itself() {
+    let (mut lab, r1, isp, r2, a) = two_sites();
+    // No static routes: OSPF over the physical network is all that reaches the far end.
+    lab.run(r1, "conf t\nno ip route 0.0.0.0 0.0.0.0 203.0.113.2\nrouter ospf 1\nnetwork 203.0.113.0 0.0.0.3 area 0\nend");
+    lab.run(r2, "conf t\nno ip route 0.0.0.0 0.0.0.0 198.51.100.2\nrouter ospf 1\nnetwork 198.51.100.0 0.0.0.3 area 0\nend");
+    lab.run(
+        r1,
+        "conf t\nint tunnel 0\nip address 10.0.0.1 255.255.255.252\ntunnel source g0/1\ntunnel destination 198.51.100.1\nexit\nip route 192.168.2.0 255.255.255.0 10.0.0.2\nend",
+    );
+    lab.run(
+        r2,
+        "conf t\nint tunnel 0\nip address 10.0.0.2 255.255.255.252\ntunnel source g0/1\ntunnel destination 203.0.113.1\nexit\nip route 192.168.1.0 255.255.255.0 10.0.0.1\nend",
+    );
+    // The ISP doesn't run OSPF yet: nothing reaches the far end, the tunnel stays down.
+    assert!(lab.run(r1, "show interfaces tunnel 0").contains("line protocol down (no route to the tunnel destination)"));
+    lab.run(isp, "conf t\nrouter ospf 1\nnetwork 0.0.0.0 255.255.255.255 area 0\nend");
+    assert!(lab.run(r1, "show ip route ospf").contains("198.51.100.0/30"));
+    let tun = lab.run(r1, "show interfaces tunnel 0");
+    assert!(tun.contains("Tunnel0 is up, line protocol up"), "{tun}");
+    let ping = ping_settled(&mut lab, a, "192.168.2.10");
+    assert!(ping.contains("4 answered"), "{ping}");
+    // OSPF over the tunnel too, with the tunnel the cheaper way to the far end's public
+    // network: the destination would be routed through the tunnel itself.
+    lab.run(r1, "conf t\nint g0/1\nip ospf cost 10\nint tunnel 0\nip ospf cost 1\nexit\nrouter ospf 1\nnetwork 10.0.0.0 0.0.0.3 area 0\nend");
+    lab.run(r2, "conf t\nint tunnel 0\nip ospf cost 1\nexit\nrouter ospf 1\nnetwork 10.0.0.0 0.0.0.3 area 0\nend");
+    let tun = lab.run(r1, "show interfaces tunnel 0");
+    assert!(tun.contains("line protocol down (recursive routing"), "{tun}");
+    assert!(lab.run(r1, "show ip interface brief").lines().any(|l| l.starts_with("Tunnel0") && l.ends_with("down")));
+    // The far end's own way back is still physical: its tunnel stays up.
+    assert!(lab.run(r2, "show interfaces tunnel 0").contains("line protocol up"));
+    // The physical way cheaper again: up again.
+    lab.run(r1, "conf t\nint g0/1\nno ip ospf cost\nint tunnel 0\nno ip ospf cost\nend");
+    lab.run(r2, "conf t\nint tunnel 0\nno ip ospf cost\nend");
+    assert!(lab.run(r1, "show interfaces tunnel 0").contains("line protocol up"));
+    assert!(ping_settled(&mut lab, a, "192.168.2.10").contains("4 answered"));
+}
+
+#[test]
+fn ike_main_mode_and_quick_mode_go_on_the_wire_before_esp() {
+    let (mut lab, r1, isp, r2, a) = two_sites();
+    lab.run(r1, IPSEC_R1);
+    lab.run(r2, IPSEC_R2);
+    // Warm up ARP along the way with traffic the crypto maps don't protect.
+    ping_settled(&mut lab, r1, "198.51.100.1");
+    lab.sim.clear_trace();
+    // The first protected packet starts IKE and is dropped; the association comes up when quick
+    // mode completes, and the rest goes as ESP.
+    let ping = lab.run(a, "ping 192.168.2.10");
+    assert!(ping.contains("seq 1: no answer") && !ping.contains(" 0 answered"), "{ping}");
+    let trace: Vec<String> = lab.sim.trace().iter().filter(|e| e.to.device == isp).map(|e| e.summary.clone()).collect();
+    let pos = |what: &str| trace.iter().position(|s| s.starts_with(what)).unwrap_or_else(|| panic!("no {what}: {trace:#?}"));
+    let mm1 = pos("ISAKMP main mode [SA, 1 transform] 203.0.113.1 → 198.51.100.1");
+    let mm2 = pos("ISAKMP main mode [SA, 1 transform] 198.51.100.1 → 203.0.113.1");
+    let mm3 = pos("ISAKMP main mode [KE, NONCE] 203.0.113.1");
+    let mm4 = pos("ISAKMP main mode [KE, NONCE] 198.51.100.1");
+    let mm5 = pos("ISAKMP main mode (encrypted) 203.0.113.1");
+    let mm6 = pos("ISAKMP main mode (encrypted) 198.51.100.1");
+    let qm1 = pos("ISAKMP quick mode (encrypted) 203.0.113.1");
+    let qm2 = pos("ISAKMP quick mode (encrypted) 198.51.100.1");
+    let esp = pos("ESP SPI");
+    assert!(mm1 < mm2 && mm2 < mm3 && mm3 < mm4 && mm4 < mm5 && mm5 < mm6 && mm6 < qm1 && qm1 < qm2 && qm2 < esp, "{trace:#?}");
+    assert_eq!(trace.iter().filter(|s| s.starts_with("ISAKMP")).count(), 9, "{trace:#?}");
+    assert!(lab.run(r1, "show crypto isakmp sa").contains("established"));
+    assert!(lab.run(r2, "show crypto isakmp sa").contains("established"));
+    assert!(lab.run(r1, "show logging").contains("IKE with 198.51.100.1: main mode and quick mode complete"));
+
+    // Policies that don't agree: refused at main mode message 2.
+    let retry = |lab: &mut Lab| {
+        lab.run(r1, "clear crypto sa");
+        lab.run(r2, "clear crypto sa");
+        lab.sim.clear_trace();
+        ping_settled(lab, a, "192.168.2.10")
+    };
+    lab.run(r2, "conf t\ncrypto isakmp policy 10\nencryption 3des\nend");
+    assert!(retry(&mut lab).contains(" 0 answered"));
+    let sum = |lab: &Lab| lab.sim.trace().iter().map(|e| e.summary.clone()).collect::<Vec<_>>().join("\n");
+    assert!(sum(&lab).contains("ISAKMP informational [NOTIFY NO-PROPOSAL-CHOSEN] 198.51.100.1 → 203.0.113.1"), "{}", sum(&lab));
+    assert!(!sum(&lab).contains("[KE, NONCE]"));
+    let sa = lab.run(r1, "show crypto isakmp sa");
+    assert!(sa.contains("failed: no ISAKMP policy matches the peer's") && sa.contains("main mode message 2"), "{sa}");
+    lab.run(r2, "conf t\ncrypto isakmp policy 10\nencryption aes 256\nend");
+    // Keys that differ: authentication fails at main mode message 5.
+    lab.run(r2, "conf t\ncrypto isakmp key other address 203.0.113.1\nend");
+    assert!(retry(&mut lab).contains(" 0 answered"));
+    assert!(sum(&lab).contains("[NOTIFY AUTHENTICATION-FAILED]"), "{}", sum(&lab));
+    assert!(lab.run(r2, "show logging").contains("main mode message 5 failed authentication"));
+    assert!(lab.run(r1, "show crypto isakmp sa").contains("failed: the pre-shared keys differ"));
+    lab.run(r2, "conf t\ncrypto isakmp key vpnsecret address 203.0.113.1\nend");
+    // Transform sets that differ: refused in quick mode.
+    lab.run(r2, "conf t\ncrypto ipsec transform-set TS esp-3des esp-md5-hmac\nend");
+    assert!(retry(&mut lab).contains(" 0 answered"));
+    assert!(sum(&lab).contains("ISAKMP quick mode (encrypted)") && sum(&lab).contains("[NOTIFY NO-PROPOSAL-CHOSEN]"));
+    let sa = lab.run(r1, "show crypto isakmp sa");
+    assert!(sa.contains("transform sets differ") && sa.contains("quick mode message 2"), "{sa}");
+    lab.run(r2, "conf t\ncrypto ipsec transform-set TS esp-aes esp-sha-hmac\nend");
+    assert!(retry(&mut lab).contains("4 answered"));
 }
