@@ -173,7 +173,7 @@ same reason it does not open `.pkt` files; see [`docs/decisions.md`](docs/decisi
 PacketCraft is dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your
 option. Copyright (c) 2026 the PacketCraft contributors. Required notices are in [NOTICE](NOTICE).
 
-The app icon (`assets/app-icon/`) is original artwork; every other icon and device picture is
+The app icon (`assets/app-icon/`) was supplied by the project owner; every other icon and device picture is
 drawn in code and is original; the sample labs and every
 screenshot in this README were made with PacketCraft itself. Assets and their licences are listed
 in [ATTRIBUTION.md](ATTRIBUTION.md). Contributors: [`docs/contributors.md`](docs/contributors.md).

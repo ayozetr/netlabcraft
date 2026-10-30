@@ -24,7 +24,7 @@ and what is missing before the first one.
 
 | Step | State | Estimate |
 |---|---|---|
-| App icon (original artwork) and `assets/app-icon/` with its row in `ATTRIBUTION.md` | ✅ `packetcraft.svg` and its renderings (`packaging/icons.sh`); the window icon and the web favicon use it | — |
+| App icon (original artwork) and `assets/app-icon/` with its row in `ATTRIBUTION.md` | ✅ `packetcraft.png` (supplied by the owner) and its renderings (`packaging/icons.sh`); the window icon and the web favicon use it | — |
 | `packaging/` (macOS bundle, Windows MSI, Linux `.desktop`/metainfo/Flatpak, FreeBSD, web) | 🟡 Linux: `.desktop`, the `.pcraft` MIME type and a per-user `install.sh`. The rest waits for the app ID (reverse-DNS name), which depends on where the project will live; the siblings' packaging carries their own IDs and brand, so it is adapted, not copied as is | 5–8 h |
 | `.github/workflows/` (ci, release, packaging lint) | ❌ | 3–5 h |
 | About window with version, licences and contributors ([`contributors.md`](contributors.md)) | ❌ | 3–5 h |

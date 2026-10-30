@@ -1,0 +1,12 @@
+PacketCraft app icon (packetcraft.png and every file derived from it in this directory:
+packetcraft-1024.png, packetcraft-macos-512.png, packetcraft.ico, hicolor/).
+
+Artwork supplied by the PacketCraft project owner for this project. Licensed like the rest of
+PacketCraft, under either of
+
+  * Apache License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
+  * MIT license (https://opensource.org/licenses/MIT)
+
+at your option.
+
+Regenerate the derived files with packaging/icons.sh.
