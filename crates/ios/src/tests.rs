@@ -1456,6 +1456,58 @@ fn ospf_on_a_multilayer_switch_by_typing() {
 }
 
 #[test]
+fn ipv6_on_subinterfaces_and_vlan_interfaces_by_typing() {
+    // Router on a stick: two VLANs, IPv6 on the subinterfaces.
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let s = lab.add(DeviceKind::Switch);
+    let a = lab.add(DeviceKind::Pc);
+    let b = lab.add(DeviceKind::Pc);
+    lab.cable(r, "g0/0", s, "g0/1");
+    lab.cable(a, "fa0", s, "fa0/1");
+    lab.cable(b, "fa0", s, "fa0/2");
+    lab.run(s, "en\nconf t\nvlan 10\nvlan 20\nexit\nint fa0/1\nswitchport access vlan 10\nint fa0/2\nswitchport access vlan 20\nint g0/1\nswitchport mode trunk\nend");
+    lab.run(r, "en\nconf t\nipv6 unicast-routing\nint g0/0\nno shut\nint g0/0.10\nencapsulation dot1Q 10\nipv6 address 2001:db8:10::1/64\nint g0/0.20\nencapsulation dot1Q 20\nipv6 address 2001:db8:20::1/64\nend");
+    lab.run(a, "ipv6config 2001:db8:10::10/64 2001:db8:10::1");
+    assert!(lab.run(b, "ipv6config auto").contains("2001:db8:20::"), "SLAAC through the subinterface");
+    let bb = lab.run(r, "show ipv6 interface brief");
+    assert!(bb.contains("GigabitEthernet0/0.10") && bb.contains("2001:db8:10::1"), "{bb}");
+    let addr_b = lab.t.device(b).unwrap().ports[0].ipv6.addresses[0].addr;
+    lab.run(a, &format!("ping {addr_b}"));
+    assert!(lab.run(a, &format!("ping {addr_b}")).contains("4 answered"));
+    assert!(lab.run(r, "show running-config").contains("interface GigabitEthernet0/0.20\n encapsulation dot1Q 20\n ipv6 address 2001:db8:20::1/64"));
+
+    // A multilayer switch routing IPv6 between its VLAN interfaces.
+    let mut lab = Lab::new();
+    let ml = lab.t.add_model(packetcraft_model::models::find("Switch-ML-24").unwrap(), None, 0.0, 0.0).unwrap();
+    let a = lab.add(DeviceKind::Pc);
+    let b = lab.add(DeviceKind::Pc);
+    lab.cable(a, "fa0", ml, "fa0/1");
+    lab.cable(b, "fa0", ml, "fa0/2");
+    lab.run(ml, "en\nconf t\nvlan 10\nvlan 20\nexit\nint fa0/1\nswitchport access vlan 10\nint fa0/2\nswitchport access vlan 20\nexit");
+    assert!(lab.try_run(ml, "ipv6 unicast-routing").is_empty());
+    lab.run(
+        ml,
+        "ip routing\ninterface vlan 10\nipv6 address 2001:db8:a::1/64\nno shut\ninterface vlan 20\nipv6 address 2001:db8:b::1/64\nno shut\nint fa0/3",
+    );
+    assert!(lab.try_run(ml, "ipv6 address 2001:db8:c::1/64").contains("VLAN interface"));
+    lab.run(ml, "end");
+    lab.run(a, "ipv6config 2001:db8:a::10/64 2001:db8:a::1");
+    lab.run(b, "ipv6config 2001:db8:b::10/64 2001:db8:b::1");
+    lab.run(a, "ping 2001:db8:b::10");
+    let ping = lab.run(a, "ping 2001:db8:b::10");
+    assert!(ping.contains("4 answered"), "{ping}");
+    assert!(lab.run(ml, "ping 2001:db8:a::10").contains("answered"));
+    let rt = lab.run(ml, "show ipv6 route");
+    assert!(rt.contains("2001:db8:a::/64") && rt.contains("Vlan10"), "{rt}");
+    assert!(lab.run(ml, "show running-config").contains("interface Vlan20\n no ip address\n ipv6 address 2001:db8:b::1/64"));
+    // A plain switch can't route IPv6.
+    let sw = lab.add(DeviceKind::Switch);
+    lab.run(sw, "en\nconf t");
+    assert!(lab.try_run(sw, "ipv6 unicast-routing").contains("multilayer"));
+}
+
+#[test]
 fn dhcpv6_by_typing() {
     let mut lab = Lab::new();
     let r = lab.add(DeviceKind::Router);

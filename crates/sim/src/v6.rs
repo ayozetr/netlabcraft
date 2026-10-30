@@ -7,24 +7,27 @@
 
 use std::net::{IpAddr, Ipv6Addr};
 
-use packetcraft_core::{Ipv6Net, MacAddr, eui64, link_local};
-use packetcraft_model::{Device, DeviceKind, End, Topology};
+use packetcraft_core::{Ipv6Net, MacAddr, VlanId, eui64, link_local};
+use packetcraft_model::{Device, DeviceKind, End, Ipv6Conf, Topology};
 use packetcraft_wire::Frame;
 use packetcraft_wire::dhcp6::{self, Dhcp6};
 use packetcraft_wire::ipv6::{
     ALL_NODES, ALL_ROUTERS, ETHERTYPE_IPV6, Icmp6, Ipv6, PROTO_ICMPV6, PrefixInfo, RA_MANAGED, RA_OTHER, multicast_mac, solicited_node,
 };
 
-use crate::{ARP_AGING_US, ArpEntry, IcmpKind, MAX_PENDING, PingOptions, Probe, Sim, SimError, port_up};
+use crate::{ARP_AGING_US, ArpEntry, IcmpKind, MAX_PENDING, PingOptions, Probe, SVI_PORT, Sim, SimError, port_up, svi_mac};
 
 const ND_WAIT_US: u64 = 2_000_000;
 const ND_RETRY_US: u64 = 1_000_000;
 const MAX_ND_ENTRIES: usize = 4_096;
 
-/// An IPv6 interface: a routed port or a host's port with IPv6 on.
+/// An IPv6 interface: a routed port, a router's subinterface, a switch's VLAN interface
+/// (`port` is `SVI_PORT`), or a host's port with IPv6 on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct L3If6 {
     pub port: usize,
+    /// The subinterface's or VLAN interface's VLAN.
+    pub vlan: Option<u16>,
     pub name: String,
     pub mac: MacAddr,
     pub link_local: Ipv6Addr,
@@ -47,28 +50,82 @@ impl L3If6 {
     }
 }
 
-/// The IPv6 interfaces a device has on and not shut down.
-pub fn l3_ifaces6(d: &Device) -> Vec<L3If6> {
-    if matches!(d.kind, DeviceKind::Switch | DeviceKind::Hub) {
-        return Vec::new();
-    }
-    d.ports
-        .iter()
-        .enumerate()
-        .filter(|(_, p)| !p.shutdown && p.ipv6.active())
-        .map(|(i, p)| L3If6 {
-            port: i,
-            name: p.name.clone(),
-            mac: p.mac,
-            link_local: p.ipv6.link_local.unwrap_or_else(|| link_local(p.mac)),
-            addresses: p.ipv6.addresses.clone(),
-        })
-        .collect()
+/// Whether a device forwards IPv6: a router, or a multilayer switch routing IPv4 too.
+pub fn routes6(d: &Device) -> bool {
+    d.ipv6_routing && (d.kind == DeviceKind::Router || (d.kind == DeviceKind::Switch && d.ip_routing))
 }
 
-/// The IPv6 interfaces that are up (cabled, both ends on).
+/// The IPv6 settings behind an interface.
+pub fn conf6<'a>(d: &'a Device, ifc: &L3If6) -> Option<&'a Ipv6Conf> {
+    if ifc.port == SVI_PORT {
+        return d.svis.iter().find(|s| Some(s.vlan.get()) == ifc.vlan).map(|s| &s.ipv6);
+    }
+    let p = d.ports.get(ifc.port)?;
+    match ifc.vlan {
+        Some(v) => p.subifs.iter().find(|s| s.vlan.map(VlanId::get) == Some(v)).map(|s| &s.ipv6),
+        None => Some(&p.ipv6),
+    }
+}
+
+/// The IPv6 interfaces a device has on and not shut down.
+pub fn l3_ifaces6(d: &Device) -> Vec<L3If6> {
+    let make = |port: usize, vlan: Option<u16>, name: String, mac: MacAddr, c: &Ipv6Conf| L3If6 {
+        port,
+        vlan,
+        name,
+        mac,
+        link_local: c.link_local.unwrap_or_else(|| link_local(mac)),
+        addresses: c.addresses.clone(),
+    };
+    match d.kind {
+        DeviceKind::Hub => Vec::new(),
+        DeviceKind::Switch => {
+            let mac = svi_mac(d);
+            let mut out: Vec<L3If6> = d
+                .svis
+                .iter()
+                .filter(|s| !s.shutdown && s.ipv6.active())
+                .map(|s| make(SVI_PORT, Some(s.vlan.get()), format!("Vlan{}", s.vlan), mac, &s.ipv6))
+                .collect();
+            for (i, p) in d.ports.iter().enumerate().filter(|(_, p)| p.routed && !p.shutdown && p.ipv6.active()) {
+                out.push(make(i, None, p.name.clone(), p.mac, &p.ipv6));
+            }
+            out
+        }
+        _ => {
+            let mut out = Vec::new();
+            for (i, p) in d.ports.iter().enumerate().filter(|(_, p)| !p.shutdown) {
+                if p.ipv6.active() {
+                    out.push(make(i, None, p.name.clone(), p.mac, &p.ipv6));
+                }
+                if d.kind == DeviceKind::Router {
+                    for s in p.subifs.iter().filter(|s| !s.shutdown && s.ipv6.active()) {
+                        if let Some(v) = s.vlan {
+                            out.push(make(i, Some(v.get()), format!("{}.{}", p.name, s.number), p.mac, &s.ipv6));
+                        }
+                    }
+                }
+            }
+            out
+        }
+    }
+}
+
+/// The IPv6 interfaces that are up (cabled, both ends on; a VLAN interface while some port of
+/// its VLAN is up).
 pub fn up_ifaces6(t: &Topology, d: &Device) -> Vec<L3If6> {
-    l3_ifaces6(d).into_iter().filter(|i| port_up(t, End { device: d.id, port: i.port })).collect()
+    l3_ifaces6(d)
+        .into_iter()
+        .filter(|i| {
+            if i.port == SVI_PORT {
+                i.vlan
+                    .and_then(VlanId::new)
+                    .is_some_and(|v| (0..d.ports.len()).any(|p| crate::stp::carries(t, d, p, v) && port_up(t, End { device: d.id, port: p })))
+            } else {
+                port_up(t, End { device: d.id, port: i.port })
+            }
+        })
+        .collect()
 }
 
 /// One line of `show ipv6 route`.
@@ -146,14 +203,14 @@ pub struct Auto6 {
 #[derive(Debug, Clone)]
 pub(crate) struct Pending6 {
     next_hop: Ipv6Addr,
-    port: usize,
+    iface: String,
     packet: Vec<u8>,
     since: u64,
 }
 
 impl Pending6 {
-    pub(crate) fn port(&self) -> usize {
-        self.port
+    pub(crate) fn iface(&self) -> &str {
+        &self.iface
     }
 }
 
@@ -173,18 +230,21 @@ fn hop_limit(kind: DeviceKind) -> u8 {
 impl Sim {
     /// Takes an IPv6 frame in on a routed or host port.
     pub(crate) fn ip6_in(&mut self, t: &Topology, d: &Device, in_port: usize, f: &Frame) -> Result<(), String> {
-        if f.vlan.is_some() {
-            return Err("IPv6 on subinterfaces is not simulated yet".into());
-        }
-        let ifc = l3_ifaces6(d).into_iter().find(|i| i.port == in_port).ok_or("IPv6 is not enabled on this interface")?;
+        let ifc = l3_ifaces6(d).into_iter().find(|i| i.port == in_port && i.vlan == f.vlan).ok_or("IPv6 is not enabled on this interface")?;
+        self.ip6_on(t, d, &ifc, f)
+    }
+
+    /// Takes an IPv6 frame in on a known interface (a switch hands its VLAN interface's here).
+    pub(crate) fn ip6_on(&mut self, t: &Topology, d: &Device, ifc: &L3If6, f: &Frame) -> Result<(), String> {
+        let ifc = ifc.clone();
         let ip = Ipv6::decode(&f.payload).map_err(|e| e.to_string())?;
-        if let Err(e) = self.acl6_check(d, ifc.port, &ip, true) {
+        if let Err(e) = self.acl6_check(d, &ifc, &ip, true) {
             self.acl6_refuse(t, d, &ifc, &ip);
             return Err(e);
         }
-        let router = d.kind == DeviceKind::Router && d.ipv6_routing;
+        let router = routes6(d);
         let all = l3_ifaces6(d);
-        let serves = d.ports.get(ifc.port).is_some_and(|p| p.ipv6.dhcp_server.is_some());
+        let serves = conf6(d, &ifc).is_some_and(|c| c.dhcp_server.is_some());
         let joined = |g: Ipv6Addr| {
             g == ALL_NODES
                 || (router && g == ALL_ROUTERS)
@@ -211,7 +271,7 @@ impl Sim {
         }
         match route6(t, d, ip.dst, None) {
             Some((out, nh)) => {
-                if let Err(e) = self.acl6_check(d, out.port, &ip, false) {
+                if let Err(e) = self.acl6_check(d, &out, &ip, false) {
                     self.acl6_refuse(t, d, &ifc, &ip);
                     return Err(e);
                 }
@@ -241,7 +301,7 @@ impl Sim {
         }
         let msg = Icmp6::decode(&ip.payload, ip.src, ip.dst).map_err(|e| e.to_string())?;
         let now = self.now;
-        let router = d.kind == DeviceKind::Router && d.ipv6_routing;
+        let router = routes6(d);
         let note = |s: &mut Sim, id: u16, seq: u16, kind: IcmpKind| {
             let st = s.st(d.id);
             if st.icmp6.len() < 256 {
@@ -288,8 +348,7 @@ impl Sim {
                     self.learn_nd(t, d, ifc, ip.src, mac.unwrap_or(src_mac));
                 }
                 let dst = if ip.src.is_unspecified() { ALL_NODES } else { ip.src };
-                let na =
-                    Icmp6::NeighborAdvert { target, router: d.kind == DeviceKind::Router, solicited: !ip.src.is_unspecified(), mac: Some(ifc.mac) };
+                let na = Icmp6::NeighborAdvert { target, router: routes6(d), solicited: !ip.src.is_unspecified(), mac: Some(ifc.mac) };
                 let src = target;
                 let packet = Ipv6 { hop_limit: 255, next_header: PROTO_ICMPV6, src, dst, payload: na.encode(src, dst) };
                 let to = if dst.is_multicast() { multicast_mac(dst) } else { mac.unwrap_or(src_mac) };
@@ -309,7 +368,7 @@ impl Sim {
                 }
                 let prefixes: Vec<PrefixInfo> =
                     ifc.addresses.iter().filter(|n| n.prefix == 64).map(|n| PrefixInfo { prefix: n.network().addr, len: 64 }).collect();
-                let conf = d.ports.get(ifc.port).map(|p| p.ipv6.clone()).unwrap_or_default();
+                let conf = conf6(d, ifc).cloned().unwrap_or_default();
                 let flags = (if conf.nd_managed { RA_MANAGED } else { 0 }) | (if conf.nd_other { RA_OTHER } else { 0 });
                 let ra = Icmp6::RouterAdvert { hop_limit: 64, flags, lifetime: 1_800, mac: Some(ifc.mac), prefixes };
                 let packet = Ipv6 {
@@ -333,9 +392,9 @@ impl Sim {
     }
 
     /// Applies the IPv6 access list on a port, if one is set and exists.
-    fn acl6_check(&mut self, d: &Device, port: usize, ip: &Ipv6, inbound: bool) -> Result<(), String> {
-        let Some(p) = d.ports.get(port) else { return Ok(()) };
-        let Some(name) = (if inbound { &p.ipv6.filter_in } else { &p.ipv6.filter_out }) else { return Ok(()) };
+    fn acl6_check(&mut self, d: &Device, ifc: &L3If6, ip: &Ipv6, inbound: bool) -> Result<(), String> {
+        let Some(c) = conf6(d, ifc) else { return Ok(()) };
+        let Some(name) = (if inbound { &c.filter_in } else { &c.filter_out }) else { return Ok(()) };
         // A filter naming a list that doesn't exist lets everything through.
         let Some(acl) = d.acls6.iter().find(|a| a.name == *name) else { return Ok(()) };
         let nd = ip.next_header == PROTO_ICMPV6 && ip.payload.first().is_some_and(|t| (133..=137).contains(t));
@@ -363,19 +422,24 @@ impl Sim {
         st.nd_asked.remove(&ip);
         // Packets that waited for this neighbour go now.
         let (ready, rest): (Vec<Pending6>, Vec<Pending6>) =
-            std::mem::take(&mut st.pending6).into_iter().partition(|p| p.next_hop == ip && p.port == ifc.port);
+            std::mem::take(&mut st.pending6).into_iter().partition(|p| p.next_hop == ip && p.iface == ifc.name);
         st.pending6 = rest;
         for p in ready {
-            self.emit(
-                t,
-                End { device: d.id, port: p.port },
-                Frame { dst: mac, src: ifc.mac, vlan: None, ethertype: ETHERTYPE_IPV6, payload: p.packet }.encode(),
-            );
+            self.emit6(t, d, ifc, mac, p.packet);
         }
     }
 
+    /// Sends a packet out of an interface: tagged on a subinterface, through the switch on a
+    /// VLAN interface.
     fn emit6(&mut self, t: &Topology, d: &Device, ifc: &L3If6, to: MacAddr, packet: Vec<u8>) {
-        let frame = Frame { dst: to, src: ifc.mac, vlan: None, ethertype: ETHERTYPE_IPV6, payload: packet };
+        if ifc.port == SVI_PORT {
+            let frame = Frame { dst: to, src: ifc.mac, vlan: None, ethertype: ETHERTYPE_IPV6, payload: packet };
+            if let Some(v) = ifc.vlan.and_then(VlanId::new) {
+                let _ = self.switch_forward(t, d, None, v, frame, 0);
+            }
+            return;
+        }
+        let frame = Frame { dst: to, src: ifc.mac, vlan: ifc.vlan, ethertype: ETHERTYPE_IPV6, payload: packet };
         self.emit_frame(t, d, ifc.port, &frame);
     }
 
@@ -403,7 +467,7 @@ impl Sim {
         let st = self.st(d.id);
         st.pending6.retain(|p| now.saturating_sub(p.since) < ND_WAIT_US);
         if st.pending6.len() < MAX_PENDING {
-            st.pending6.push(Pending6 { next_hop: nh, port: out.port, packet, since: now });
+            st.pending6.push(Pending6 { next_hop: nh, iface: out.name.clone(), packet, since: now });
         }
         let ask = st.nd_asked.get(&nh).is_none_or(|at| now.saturating_sub(*at) >= ND_RETRY_US);
         if ask {
@@ -526,7 +590,7 @@ impl Sim {
                 Ok(())
             }
             dhcp6::SERVER_PORT => {
-                let pool_name = d.ports.get(ifc.port).and_then(|p| p.ipv6.dhcp_server.clone()).ok_or("no DHCPv6 server on this interface")?;
+                let pool_name = conf6(d, ifc).and_then(|c| c.dhcp_server.clone()).ok_or("no DHCPv6 server on this interface")?;
                 let pool =
                     d.dhcp6_pools.iter().find(|p| p.name == pool_name).cloned().ok_or_else(|| format!("DHCPv6 pool {pool_name} doesn't exist"))?;
                 let client = msg.client.ok_or("DHCPv6 message without a client id")?;

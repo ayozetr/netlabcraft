@@ -20,7 +20,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 | Number | Value | Kind |
 |---|---|---|
-| **Ready for real work** (weighted) | **~65%** | estimated from written weights (65.5); [target-app-parity.md](docs/target-app-parity.md) |
+| **Ready for real work** (weighted) | **~65%** | estimated from written weights (65.8); [target-app-parity.md](docs/target-app-parity.md) |
 | **CCNA 1 student** | **~74%** | estimated; [method](docs/target-app-parity.md#audiences) |
 | **CCNA 2 student** | **~78%** | estimated |
 | **CCNA 3 student** | **~62%** | estimated |
@@ -28,7 +28,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Engine commands | 40 | measured: `crates/engine/src/catalog.rs` |
 | Console grammar entries | 309 across 12 modes | measured: `crates/ios/src/grammar.rs` |
 | Device models · sample labs | 15 · 18 | measured |
-| Tests | 144 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Tests | 145 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~600–950 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
@@ -47,7 +47,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 |---|---|---|---|---|
 | Device console | 20 | 68% | 45–70 | Modes, abbreviations, `?`, Tab, history, config round-trip; `show` coverage growing |
 | Layer 2 | 12 | 85% | 12–20 | VLANs, trunks, DTP, per-VLAN STP with BPDUs and timers, rapid-pvst, EtherChannel, VTP, port security |
-| Layer 3 | 15 | 70% | 45–70 | IPv4, IPv6 (NDP, SLAAC), static, RIP, multi-area OSPF with DR/BDR, stub areas and ranges, multilayer switching with OSPF and RIP, HSRP; no EIGRP or OSPFv3 |
+| Layer 3 | 15 | 72% | 40–65 | IPv4, IPv6 (NDP, SLAAC, subinterfaces, VLAN interfaces), static, RIP, multi-area OSPF with DR/BDR, stub areas and ranges, multilayer switching with OSPF and RIP, HSRP; no EIGRP or OSPFv3 |
 | Services | 8 | 58% | 26–42 | DHCPv4 and DHCPv6, DNS, HTTP with browser, Telnet/SSH, NTP, syslog, TFTP; no FTP, email, SNMP, AAA |
 | Security | 8 | 72% | 24–40 | IPv4 and IPv6 ACLs, access-class, NAT/PAT, passwords and lines, PPP PAP/CHAP; no firewalls or VPN |
 | WAN, cabling, wireless | 6 | 55% | 35–55 | Copper (auto-MDIX), serial (DCE/DTE, HDLC/PPP), Wi-Fi access points and clients; no wireless routers, WLC or fibre |
@@ -60,6 +60,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-10-30 — IPv6 on subinterfaces and VLAN interfaces.** Router-on-a-stick with IPv6 on each subinterface, and multilayer switches routing IPv6 between their VLAN interfaces; SLAAC, DHCPv6 and traffic filters work there too.
 - **2026-10-30 — OSPF stub areas.** `area N stub` (with the hello mismatch when only one end says so), `area N stub no-summary` and `area N range` on border routers; RIP also runs on multilayer switches.
 - **2026-10-30 — OSPF database exchange.** When two OSPF routers become neighbours, Simulation mode shows them exchange database descriptions, requests, updates with their router-LSAs and acknowledgements, as real routers do.
 - **2026-10-30 — LACP frames.** EtherChannel ports in LACP mode exchange LACPDUs every 30 s (the passive end answers an active one), visible in Simulation mode and captures with their sync state.

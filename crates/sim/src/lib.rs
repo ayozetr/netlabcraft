@@ -822,7 +822,7 @@ impl Sim {
             st.pending.retain(|p| ifs.iter().any(|i| i.name == p.iface.name));
             let ifs6 = v6::up_ifaces6(t, d);
             st.nd.retain(|_, e| ifs6.iter().any(|i| i.name == e.iface));
-            st.pending6.retain(|p| ifs6.iter().any(|i| i.port == p.port()));
+            st.pending6.retain(|p| ifs6.iter().any(|i| i.name == p.iface()));
         }
         let queue = std::mem::take(&mut self.queue);
         self.queue = queue.into_iter().filter(|Reverse(q)| t.peer(q.from) == Some(q.to)).collect();
@@ -1433,6 +1433,7 @@ impl Sim {
         };
         // The switch's own VLAN interface.
         if in_port.is_some()
+            && f.ethertype != packetcraft_wire::ipv6::ETHERTYPE_IPV6
             && let Some(svi) = up_ifaces(t, d).into_iter().find(|i| i.vlan == Some(vlan.get()))
         {
             if f.dst == svi.mac {
@@ -1444,6 +1445,19 @@ impl Sim {
             }
             if f.dst.is_broadcast() && f.ethertype == ETHERTYPE_ARP {
                 let _ = self.arp_in(t, d, &svi, &f.payload);
+            }
+        }
+        // IPv6 for the VLAN interface: its own address, or a group it may have joined (and
+        // the frame still floods on).
+        if in_port.is_some()
+            && f.ethertype == packetcraft_wire::ipv6::ETHERTYPE_IPV6
+            && let Some(svi6) = v6::up_ifaces6(t, d).into_iter().find(|i| i.port == SVI_PORT && i.vlan == Some(vlan.get()))
+        {
+            if f.dst == svi6.mac {
+                return self.ip6_on(t, d, &svi6, &f);
+            }
+            if f.dst.is_group() {
+                let _ = self.ip6_on(t, d, &svi6, &f);
             }
         }
         let outs: Vec<usize> = match known {

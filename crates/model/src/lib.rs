@@ -465,6 +465,8 @@ pub struct SubIf {
     /// HSRP groups.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub standby: Vec<Standby>,
+    #[serde(default, skip_serializing_if = "Ipv6Conf::is_default")]
+    pub ipv6: Ipv6Conf,
 }
 
 /// One physical port and its configuration.
@@ -556,6 +558,7 @@ impl Port {
                 access: AccessGroups::default(),
                 nat: None,
                 standby: Vec::new(),
+                ipv6: Ipv6Conf::default(),
             },
         );
         self.subifs.get_mut(at)
@@ -962,6 +965,8 @@ pub struct Svi {
     pub shutdown: bool,
     #[serde(default)]
     pub description: String,
+    #[serde(default, skip_serializing_if = "Ipv6Conf::is_default")]
+    pub ipv6: Ipv6Conf,
 }
 
 impl Device {
@@ -971,7 +976,7 @@ impl Device {
             if self.svis.len() >= MAX_SUBIFS {
                 return None;
             }
-            self.svis.push(Svi { vlan, ip: None, standby: Vec::new(), shutdown: true, description: String::new() });
+            self.svis.push(Svi { vlan, ip: None, standby: Vec::new(), shutdown: true, description: String::new(), ipv6: Ipv6Conf::default() });
             self.svis.sort_by_key(|s| s.vlan);
         }
         self.svis.iter_mut().find(|s| s.vlan == vlan)

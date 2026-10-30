@@ -225,12 +225,12 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `address prefix X:X::/64` |  | router | Addresses to hand out (stateful DHCPv6) |
 | `dns-server X:X::X` |  | router | The DNS server clients get |
 | `domain-name WORD` |  | router | The domain clients get |
-| `ipv6 dhcp server WORD` | interface | router | Answer DHCPv6 on this interface from a pool |
-| `no ipv6 dhcp server` | interface | router | Stop answering DHCPv6 here |
-| `ipv6 nd managed-config-flag` | interface | router | Tell hosts to take addresses from DHCPv6 |
-| `no ipv6 nd managed-config-flag` | interface | router | Hosts build their own addresses |
-| `ipv6 nd other-config-flag` | interface | router | Tell hosts to take DNS and domain from DHCPv6 |
-| `no ipv6 nd other-config-flag` | interface | router | No other settings from DHCPv6 |
+| `ipv6 dhcp server WORD` | interface, subinterface | router, switch | Answer DHCPv6 on this interface from a pool |
+| `no ipv6 dhcp server` | interface, subinterface | router, switch | Stop answering DHCPv6 here |
+| `ipv6 nd managed-config-flag` | interface, subinterface | router, switch | Tell hosts to take addresses from DHCPv6 |
+| `no ipv6 nd managed-config-flag` | interface, subinterface | router, switch | Hosts build their own addresses |
+| `ipv6 nd other-config-flag` | interface, subinterface | router, switch | Tell hosts to take DNS and domain from DHCPv6 |
+| `no ipv6 nd other-config-flag` | interface, subinterface | router, switch | No other settings from DHCPv6 |
 | `show ipv6 dhcp pool` | user, privileged | router | DHCPv6 pools |
 | `show ipv6 dhcp binding` | user, privileged | router | DHCPv6 addresses handed out |
 | `ntp server A.B.C.D` | config | router, switch | Take the time from an NTP server |
@@ -305,14 +305,14 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no login` |  | router, switch | Don't ask for a password |
 | `exec-timeout <minutes> [<seconds>]` |  | router, switch | Idle timeout (accepted, not simulated) |
 | `logging synchronous` |  | router, switch | Keep messages from breaking your typing (accepted) |
-| `ipv6 access-list WORD` | config | router | Create or edit an IPv6 access list |
-| `no ipv6 access-list WORD` | config | router | Delete an IPv6 access list |
+| `ipv6 access-list WORD` | config | router, switch | Create or edit an IPv6 access list |
+| `no ipv6 access-list WORD` | config | router, switch | Delete an IPv6 access list |
 | `permit {ipv6\|icmp\|tcp\|udp} <src> [port] <dst> [port]` |  | router | Allow matching packets |
 | `deny {ipv6\|icmp\|tcp\|udp} <src> [port] <dst> [port]` |  | router | Drop matching packets |
 | `no {permit\|deny} ...` |  | router | Remove a line |
-| `ipv6 traffic-filter WORD {in\|out}` | interface | router | Filter IPv6 packets with an access list |
-| `no ipv6 traffic-filter WORD {in\|out}` | interface | router | Stop filtering |
-| `show ipv6 access-list` | user, privileged | router | IPv6 access lists and their matches |
+| `ipv6 traffic-filter WORD {in\|out}` | interface, subinterface | router, switch | Filter IPv6 packets with an access list |
+| `no ipv6 traffic-filter WORD {in\|out}` | interface, subinterface | router, switch | Stop filtering |
+| `show ipv6 access-list` | user, privileged | router, switch | IPv6 access lists and their matches |
 | `access-class <1-99>\|WORD in` |  | router, switch | Only logins this list permits (vty lines) |
 | `no access-class [list in]` |  | router, switch | Remove the login filter |
 | `transport input {ssh\|telnet\|all\|none}` |  | router, switch | Protocols remote logins may use |
@@ -325,21 +325,21 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `crypto key generate rsa [general-keys] modulus <360-4096>` | config | router, switch | Generate the SSH keys |
 | `crypto key zeroize rsa` | config | router, switch | Delete the SSH keys |
 | `ip ssh version {1\|2}` | config | router, switch | SSH protocol version |
-| `ipv6 unicast-routing` | config | router | Forward IPv6 and advertise prefixes |
-| `no ipv6 unicast-routing` | config | router | Stop forwarding IPv6 |
-| `ipv6 route X:X::X/<0-128> <next hop and/or interface>` | config | router | Add an IPv6 static route |
-| `no ipv6 route X:X::X/<0-128>` | config | router | Remove IPv6 static routes |
-| `no ipv6 route X:X::X/<0-128> <next hop and/or interface>` | config | router | Remove an IPv6 static route |
-| `ipv6 address X:X::X/<0-128>` | interface | router | Add an IPv6 address |
-| `ipv6 address X:X::/64 eui-64` | interface | router | Add an address built from the MAC address |
-| `ipv6 address FE80::X link-local` | interface | router | Set the link-local address |
-| `no ipv6 address` | interface | router | Remove every IPv6 address |
-| `no ipv6 address <address>` | interface | router | Remove one IPv6 address |
-| `ipv6 enable` | interface | router | IPv6 with a link-local address only |
-| `no ipv6 enable` | interface | router | Turn link-local-only IPv6 off |
-| `show ipv6 interface brief` | user, privileged | router | IPv6 addresses and status |
-| `show ipv6 route` | user, privileged | router | IPv6 routing table |
-| `show ipv6 neighbors` | user, privileged | router | IPv6 neighbour cache |
+| `ipv6 unicast-routing` | config | router, switch | Forward IPv6 and advertise prefixes |
+| `no ipv6 unicast-routing` | config | router, switch | Stop forwarding IPv6 |
+| `ipv6 route X:X::X/<0-128> <next hop and/or interface>` | config | router, switch | Add an IPv6 static route |
+| `no ipv6 route X:X::X/<0-128>` | config | router, switch | Remove IPv6 static routes |
+| `no ipv6 route X:X::X/<0-128> <next hop and/or interface>` | config | router, switch | Remove an IPv6 static route |
+| `ipv6 address X:X::X/<0-128>` | interface, subinterface | router, switch | Add an IPv6 address |
+| `ipv6 address X:X::/64 eui-64` | interface, subinterface | router, switch | Add an address built from the MAC address |
+| `ipv6 address FE80::X link-local` | interface, subinterface | router, switch | Set the link-local address |
+| `no ipv6 address` | interface, subinterface | router, switch | Remove every IPv6 address |
+| `no ipv6 address <address>` | interface, subinterface | router, switch | Remove one IPv6 address |
+| `ipv6 enable` | interface, subinterface | router, switch | IPv6 with a link-local address only |
+| `no ipv6 enable` | interface, subinterface | router, switch | Turn link-local-only IPv6 off |
+| `show ipv6 interface brief` | user, privileged | router, switch | IPv6 addresses and status |
+| `show ipv6 route` | user, privileged | router, switch | IPv6 routing table |
+| `show ipv6 neighbors` | user, privileged | router, switch | IPv6 neighbour cache |
 | `ip routing` | config | switch | Route between VLAN interfaces and routed ports |
 | `no ip routing` | config | switch | Stop routing |
 | `vtp mode {server\|client\|transparent}` | config | switch | How this switch takes part in VTP |

@@ -1,6 +1,6 @@
 # Protocol and command parity
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (OSPF stub areas and ranges, RIP on multilayer switches) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (IPv6 on subinterfaces and VLAN interfaces) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 What the simulated devices do, protocol by protocol, against the reference app. Part of
 [target-app-parity.md](target-app-parity.md). Behaviour comes from the standards named in each
@@ -45,7 +45,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | IPv6 static routes | — | ✅ | Next hop, interface, or link-local next hop with its interface. |
 | DHCPv6 | RFC 8415 | ✅ | `ipv6 dhcp pool` (address prefix, DNS, domain), `ipv6 dhcp server`, `ipv6 nd managed-config-flag` / `other-config-flag`; hosts follow the router: SLAAC, SLAAC with stateless DHCPv6, or stateful DHCPv6 (Solicit, Advertise, Request, Reply on the wire); `show ipv6 dhcp pool/binding`. No DHCPv6 relay. |
 | OSPFv3 | RFC 5340 | ❌ | 12–18 h. |
-| IPv6 on subinterfaces and VLAN interfaces | — | ❌ | 4–6 h. |
+| IPv6 on subinterfaces and VLAN interfaces | — | ✅ | Router-on-a-stick subinterfaces (tagged), VLAN interfaces and routed ports of multilayer switches (`ipv6 unicast-routing` with `ip routing`), with addresses, SLAAC, DHCPv6 server and traffic filters; `show ipv6 interface brief` lists them. |
 | FHRP (HSRP) | RFC 2281 | ✅ | `standby N ip/priority/preempt` on router interfaces, subinterfaces and multilayer VLAN interfaces; active answers ARP with the virtual MAC; hellos every 3 s; `show standby`. Election computed (no timers or coup/resign messages); no HSRP version 2, tracking or VRRP/GLBP: 6–10 h. |
 
 ## Services
@@ -120,6 +120,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 | 2026-10-30 | minor | HSRP. |
 | 2026-10-30 | minor | Logging buffer and console messages; `debug ip icmp`. |
 | 2026-10-30 | minor | BPDUs, OSPF hellos and RIP updates on the wire, so Simulation mode and captures show them. |
+| 2026-10-30 | minor | IPv6 on subinterfaces, VLAN interfaces and multilayer switches. |
 | 2026-10-30 | minor | OSPF stub and totally stubby areas, `area range`; RIP on multilayer switches. |
 | 2026-10-30 | minor | OSPF database exchange (DBD, LSR, LSU, LSAck) on the wire. |
 | 2026-10-30 | minor | LACPDUs on the wire. |

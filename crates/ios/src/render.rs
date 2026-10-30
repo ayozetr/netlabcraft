@@ -195,30 +195,7 @@ pub fn running_config(d: &Device) -> String {
                     let _ = writeln!(s, " clock rate {r}");
                 }
             }
-            if let Some(ll) = p.ipv6.link_local {
-                let _ = writeln!(s, " ipv6 address {ll} link-local");
-            }
-            for a in &p.ipv6.addresses {
-                let _ = writeln!(s, " ipv6 address {a}");
-            }
-            if p.ipv6.enabled {
-                let _ = writeln!(s, " ipv6 enable");
-            }
-            if let Some(pool) = &p.ipv6.dhcp_server {
-                let _ = writeln!(s, " ipv6 dhcp server {pool}");
-            }
-            if p.ipv6.nd_managed {
-                let _ = writeln!(s, " ipv6 nd managed-config-flag");
-            }
-            if p.ipv6.nd_other {
-                let _ = writeln!(s, " ipv6 nd other-config-flag");
-            }
-            if let Some(f) = &p.ipv6.filter_in {
-                let _ = writeln!(s, " ipv6 traffic-filter {f} in");
-            }
-            if let Some(f) = &p.ipv6.filter_out {
-                let _ = writeln!(s, " ipv6 traffic-filter {f} out");
-            }
+            ipv6_lines(&mut s, &p.ipv6);
         }
         for h in &p.helpers {
             let _ = writeln!(s, " ip helper-address {h}");
@@ -243,6 +220,7 @@ pub fn running_config(d: &Device) -> String {
             if let Some(ip) = sub.ip {
                 let _ = writeln!(s, " ip address {} {}", ip.addr, ip.mask());
             }
+            ipv6_lines(&mut s, &sub.ipv6);
             standby_lines(&mut s, &sub.standby);
             ospf_if_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
             for h in &sub.helpers {
@@ -269,6 +247,7 @@ pub fn running_config(d: &Device) -> String {
                 let _ = writeln!(s, " no ip address");
             }
         }
+        ipv6_lines(&mut s, &svi.ipv6);
         standby_lines(&mut s, &svi.standby);
         ospf_if_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
         let _ = writeln!(s, "{}", if svi.shutdown { " shutdown" } else { " no shutdown" });
@@ -1043,20 +1022,42 @@ pub fn vtp(d: &Device) -> String {
     s
 }
 
+/// An interface's IPv6 lines in the running configuration.
+fn ipv6_lines(s: &mut String, c: &packetcraft_model::Ipv6Conf) {
+    if let Some(ll) = c.link_local {
+        let _ = writeln!(s, " ipv6 address {ll} link-local");
+    }
+    for a in &c.addresses {
+        let _ = writeln!(s, " ipv6 address {a}");
+    }
+    if c.enabled {
+        let _ = writeln!(s, " ipv6 enable");
+    }
+    if let Some(pool) = &c.dhcp_server {
+        let _ = writeln!(s, " ipv6 dhcp server {pool}");
+    }
+    if c.nd_managed {
+        let _ = writeln!(s, " ipv6 nd managed-config-flag");
+    }
+    if c.nd_other {
+        let _ = writeln!(s, " ipv6 nd other-config-flag");
+    }
+    if let Some(f) = &c.filter_in {
+        let _ = writeln!(s, " ipv6 traffic-filter {f} in");
+    }
+    if let Some(f) = &c.filter_out {
+        let _ = writeln!(s, " ipv6 traffic-filter {f} out");
+    }
+}
+
 /// `show ipv6 interface brief`.
 pub fn ipv6_brief(t: &Topology, d: &Device) -> String {
     let mut s = format!("{:<24} {:<22} {}\n", "Interface", "Status", "IPv6 addresses");
     let ifs = packetcraft_sim::v6::l3_ifaces6(d);
-    for (i, p) in d.ports.iter().enumerate() {
-        let status = if p.shutdown {
-            "administratively down"
-        } else if port_up(t, End { device: d.id, port: i }) {
-            "up"
-        } else {
-            "down"
-        };
-        let _ = write!(s, "{:<24} {:<22} ", p.name, status);
-        match ifs.iter().find(|x| x.port == i) {
+    let up6 = packetcraft_sim::v6::up_ifaces6(t, d);
+    let row = |s: &mut String, name: &str, status: &str| {
+        let _ = write!(s, "{name:<24} {status:<22} ");
+        match ifs.iter().find(|x| x.name == name) {
             Some(x) => {
                 let _ = writeln!(s, "{} (link-local)", x.link_local);
                 for a in &x.addresses {
@@ -1067,6 +1068,35 @@ pub fn ipv6_brief(t: &Topology, d: &Device) -> String {
                 let _ = writeln!(s, "IPv6 off");
             }
         }
+    };
+    for (i, p) in d.ports.iter().enumerate() {
+        let status = if p.shutdown {
+            "administratively down"
+        } else if port_up(t, End { device: d.id, port: i }) {
+            "up"
+        } else {
+            "down"
+        };
+        // A switch's own ports carry no IPv6; only its routed ones are listed.
+        if d.kind != DeviceKind::Switch || p.routed {
+            row(&mut s, &p.name, status);
+        }
+        for sub in &p.subifs {
+            let name = format!("{}.{}", p.name, sub.number);
+            let status = if sub.shutdown || p.shutdown { "administratively down" } else { status };
+            row(&mut s, &name, status);
+        }
+    }
+    for svi in &d.svis {
+        let name = format!("Vlan{}", svi.vlan);
+        let status = if svi.shutdown {
+            "administratively down"
+        } else if up6.iter().any(|x| x.name == name) || packetcraft_sim::up_ifaces(t, d).iter().any(|x| x.name == name) {
+            "up"
+        } else {
+            "down"
+        };
+        row(&mut s, &name, status);
     }
     s.trim_end().to_string()
 }

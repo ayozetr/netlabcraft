@@ -774,7 +774,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(String::new())
         }
         Id::Ipv6UnicastRouting | Id::NoIpv6UnicastRouting => {
-            c.dm()?.ipv6_routing = spec.id == Id::Ipv6UnicastRouting;
+            let d = c.dm()?;
+            if d.kind == DeviceKind::Switch && !d.catalogue_model().multilayer() {
+                return Err(format!("% A {} can't route; use a multilayer switch (Switch-ML-24)", d.catalogue_model().label));
+            }
+            d.ipv6_routing = spec.id == Id::Ipv6UnicastRouting;
             Ok(String::new())
         }
         Id::Ipv6Route | Id::NoIpv6Route => {
@@ -813,25 +817,20 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 return Err("% EUI-64 needs a /64 prefix".into());
             }
             let eui = spec.id == Id::Ipv6AddressEui;
-            let mine = match &c.cli.mode {
-                Mode::Iface(ifs) => ifs.iter().map(|r| r.port).collect::<Vec<_>>(),
-                _ => Vec::new(),
-            };
-            let clash =
-                c.d()?.ports.iter().enumerate().find(|(i, p)| !mine.contains(i) && p.ipv6.addresses.iter().any(|a| a.network() == net.network()));
-            if let Some((_, p)) = clash {
-                return Err(format!("% {} overlaps with {}", net.network(), p.name));
+            let mine = c.v6_names();
+            let clash = packetcraft_sim::v6::l3_ifaces6(c.d()?)
+                .into_iter()
+                .find(|i| !mine.contains(&i.name) && i.addresses.iter().any(|a| a.network() == net.network()));
+            if let Some(i) = clash {
+                return Err(format!("% {} overlaps with {}", net.network(), i.name));
             }
-            c.each_if(|p, sub| {
-                if sub.is_some() {
-                    return Err("% IPv6 on subinterfaces is not simulated yet".into());
-                }
-                let a = if eui { packetcraft_core::Ipv6Net::new(packetcraft_core::eui64(net.addr, p.mac), 64) } else { net };
-                if !p.ipv6.addresses.contains(&a) {
-                    if p.ipv6.addresses.len() >= packetcraft_model::MAX_IPV6_ADDRESSES {
-                        return Err(format!("% {} has {} IPv6 addresses already", p.name, packetcraft_model::MAX_IPV6_ADDRESSES));
+            c.each_v6(|v6, mac, name| {
+                let a = if eui { packetcraft_core::Ipv6Net::new(packetcraft_core::eui64(net.addr, mac), 64) } else { net };
+                if !v6.addresses.contains(&a) {
+                    if v6.addresses.len() >= packetcraft_model::MAX_IPV6_ADDRESSES {
+                        return Err(format!("% {name} has {} IPv6 addresses already", packetcraft_model::MAX_IPV6_ADDRESSES));
                     }
-                    p.ipv6.addresses.push(a);
+                    v6.addresses.push(a);
                 }
                 Ok(())
             })
@@ -841,11 +840,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             if !packetcraft_core::Ipv6Net::is_link_local(a) {
                 return Err("% A link-local address is in FE80::/10".into());
             }
-            c.each_if(|p, sub| {
-                if sub.is_some() {
-                    return Err("% IPv6 on subinterfaces is not simulated yet".into());
-                }
-                p.ipv6.link_local = Some(a);
+            c.each_v6(|v6, _, _| {
+                v6.link_local = Some(a);
                 Ok(())
             })
         }
@@ -864,17 +860,17 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 }
                 None => None,
             };
-            c.each_if(|p, _| {
+            c.each_v6(|v6, _, _| {
                 match one {
                     Some(a) => {
-                        p.ipv6.addresses.retain(|n| n.addr != a);
-                        if p.ipv6.link_local == Some(a) {
-                            p.ipv6.link_local = None;
+                        v6.addresses.retain(|n| n.addr != a);
+                        if v6.link_local == Some(a) {
+                            v6.link_local = None;
                         }
                     }
                     None => {
-                        p.ipv6.addresses.clear();
-                        p.ipv6.link_local = None;
+                        v6.addresses.clear();
+                        v6.link_local = None;
                     }
                 }
                 Ok(())
@@ -882,11 +878,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::Ipv6Enable | Id::NoIpv6Enable => {
             let on = spec.id == Id::Ipv6Enable;
-            c.each_if(|p, sub| {
-                if sub.is_some() {
-                    return Err("% IPv6 on subinterfaces is not simulated yet".into());
-                }
-                p.ipv6.enabled = on;
+            c.each_v6(|v6, _, _| {
+                v6.enabled = on;
                 Ok(())
             })
         }
@@ -1436,15 +1429,12 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::Ipv6DhcpServer | Id::NoIpv6DhcpServer | Id::NdManaged | Id::NoNdManaged | Id::NdOther | Id::NoNdOther => {
             let id = spec.id;
             let pool = arg(0).to_string();
-            c.each_if(|p, sub| {
-                if sub.is_some() {
-                    return Err("% IPv6 on subinterfaces is not simulated yet".into());
-                }
+            c.each_v6(|v6, _, _| {
                 match id {
-                    Id::Ipv6DhcpServer => p.ipv6.dhcp_server = Some(pool.clone()),
-                    Id::NoIpv6DhcpServer => p.ipv6.dhcp_server = None,
-                    Id::NdManaged | Id::NoNdManaged => p.ipv6.nd_managed = id == Id::NdManaged,
-                    _ => p.ipv6.nd_other = id == Id::NdOther,
+                    Id::Ipv6DhcpServer => v6.dhcp_server = Some(pool.clone()),
+                    Id::NoIpv6DhcpServer => v6.dhcp_server = None,
+                    Id::NdManaged | Id::NoNdManaged => v6.nd_managed = id == Id::NdManaged,
+                    _ => v6.nd_other = id == Id::NdOther,
                 }
                 Ok(())
             })
@@ -1496,11 +1486,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             };
             let name = arg(0).to_string();
             let add = spec.id == Id::TrafficFilter;
-            c.each_if(|p, sub| {
-                if sub.is_some() {
-                    return Err("% IPv6 on subinterfaces is not simulated yet".into());
-                }
-                let slot = if inbound { &mut p.ipv6.filter_in } else { &mut p.ipv6.filter_out };
+            c.each_v6(|v6, _, _| {
+                let slot = if inbound { &mut v6.filter_in } else { &mut v6.filter_out };
                 if add {
                     *slot = Some(name.clone());
                 } else if slot.as_deref() == Some(name.as_str()) {
@@ -2575,6 +2562,50 @@ impl Ctx<'_> {
             }
         }
         Ok(String::new())
+    }
+
+    /// Applies `f` to the IPv6 settings of each interface the mode is on (ports, subinterfaces
+    /// or a VLAN interface), with the MAC address and name of the interface.
+    fn each_v6(&mut self, mut f: impl FnMut(&mut packetcraft_model::Ipv6Conf, packetcraft_core::MacAddr, &str) -> Result<(), String>) -> R {
+        if let Mode::Svi(v) = self.cli.mode {
+            let d = self.dm()?;
+            let mac = packetcraft_sim::svi_mac(d);
+            let svi = d.svi_mut(v).ok_or("% Too many VLAN interfaces")?;
+            f(&mut svi.ipv6, mac, &format!("Vlan{v}"))?;
+            return Ok(String::new());
+        }
+        let switch = self.d()?.kind == DeviceKind::Switch;
+        self.each_if(|p, sub| {
+            if switch && !p.routed {
+                return Err(format!("% {} is a switch port: IPv6 goes on a VLAN interface, or `no switchport` first", p.name));
+            }
+            match sub {
+                Some(s) => {
+                    let name = format!("{}.{}", p.name, s.number);
+                    f(&mut s.ipv6, p.mac, &name)
+                }
+                None => {
+                    let name = p.name.clone();
+                    f(&mut p.ipv6, p.mac, &name)
+                }
+            }
+        })
+    }
+
+    /// The names of the interfaces the mode is on.
+    fn v6_names(&self) -> Vec<String> {
+        match &self.cli.mode {
+            Mode::Svi(v) => vec![format!("Vlan{v}")],
+            Mode::Iface(ifs) => self.d().map_or(Vec::new(), |d| {
+                ifs.iter()
+                    .filter_map(|r| {
+                        let p = d.ports.get(r.port)?;
+                        Some(r.sub.map_or(p.name.clone(), |n| format!("{}.{n}", p.name)))
+                    })
+                    .collect()
+            }),
+            _ => Vec::new(),
+        }
     }
 
     /// After `shutdown` / `no shutdown`: the resulting state of each interface.
