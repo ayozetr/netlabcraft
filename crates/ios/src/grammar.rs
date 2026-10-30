@@ -41,8 +41,10 @@ impl Modes {
     pub const DHCP6: Modes = Modes(32768);
     /// `ipv6 router ospf`.
     pub const OSPF6: Modes = Modes(65536);
+    /// `router eigrp`.
+    pub const EIGRP: Modes = Modes(131072);
     /// Every command mode, either device.
-    pub const ANY_MODE: Modes = Modes(63 | 256 | 512 | 1024 | 2048 | 4096 | 8192 | 16384 | 32768 | 65536);
+    pub const ANY_MODE: Modes = Modes(63 | 256 | 512 | 1024 | 2048 | 4096 | 8192 | 16384 | 32768 | 65536 | 131072);
     pub const BOTH: Modes = Modes(192);
 
     pub const fn or(self, o: Modes) -> Modes {
@@ -266,6 +268,25 @@ pub enum Id {
     RipAutoSummary,
     NoRipAutoSummary,
     ShowIpRipDatabase,
+    RouterEigrp,
+    NoRouterEigrp,
+    EigrpNetwork,
+    NoEigrpNetwork,
+    EigrpPassive,
+    NoEigrpPassive,
+    EigrpRouterId,
+    NoEigrpRouterId,
+    EigrpAutoSummary,
+    NoEigrpAutoSummary,
+    ShowIpEigrpNeighbors,
+    ShowIpEigrpTopology,
+    ShowIpEigrpInterfaces,
+    DebugEigrpPackets,
+    NoDebugEigrpPackets,
+    Bandwidth,
+    NoBandwidth,
+    Delay,
+    NoDelay,
     ShowClock,
     ClockSet,
     ShowFlash,
@@ -381,7 +402,8 @@ const SUBMODES: Modes = Modes::IF
     .or(Modes::RIP)
     .or(Modes::ACL6)
     .or(Modes::DHCP6)
-    .or(Modes::OSPF6);
+    .or(Modes::OSPF6)
+    .or(Modes::EIGRP);
 const IFS: Modes = Modes::IF.or(Modes::SUBIF);
 const ANY_IF: Modes = IFS.or(Modes::SVI);
 
@@ -406,7 +428,13 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowStartup, Modes::EXEC, Modes::BOTH, [K("show"), K("startup-config")], "Saved configuration"),
     spec!(ShowIpIntBrief, EXECS, Modes::BOTH, [K("show"), K("ip"), K("interface"), K("brief")], "Interface addresses and status"),
     spec!(ShowIpRoute, EXECS, Modes::BOTH, [K("show"), K("ip"), K("route")], "Routing table"),
-    spec!(ShowIpRoute, EXECS, Modes::BOTH, [K("show"), K("ip"), K("route"), Arg("{connected|static|ospf|rip}")], "Only the routes one source gave"),
+    spec!(
+        ShowIpRoute,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("route"), Arg("{connected|static|eigrp|ospf|rip}")],
+        "Only the routes one source gave"
+    ),
     spec!(ShowArp, EXECS, Modes::ROUTER, [K("show"), K("ip"), K("arp")], "ARP cache"),
     spec!(ShowArp, EXECS, Modes::ROUTER, [K("show"), K("arp")], "ARP cache"),
     spec!(ShowInterfaces, EXECS, Modes::BOTH, [K("show"), K("interfaces")], "Interface details"),
@@ -801,6 +829,27 @@ pub static SPECS: &[Spec] = &[
     spec!(RipAutoSummary, Modes::RIP, Modes::BOTH, [K("auto-summary")], "Summarise at classful boundaries (kept, not simulated)"),
     spec!(NoRipAutoSummary, Modes::RIP, Modes::BOTH, [K("no"), K("auto-summary")], "Advertise subnets as they are"),
     spec!(ShowIpRipDatabase, EXECS, Modes::BOTH, [K("show"), K("ip"), K("rip"), K("database")], "Routes RIP knows"),
+    spec!(RouterEigrp, Modes::CONFIG, Modes::BOTH, [K("router"), K("eigrp"), Arg("<1-65535>")], "Start or configure EIGRP in this autonomous system"),
+    spec!(NoRouterEigrp, Modes::CONFIG, Modes::BOTH, [K("no"), K("router"), K("eigrp"), Arg("<1-65535>")], "Stop EIGRP"),
+    spec!(EigrpNetwork, Modes::EIGRP, Modes::BOTH, [K("network"), Arg("A.B.C.D")], "Run EIGRP on this classful network's interfaces"),
+    spec!(EigrpNetwork, Modes::EIGRP, Modes::BOTH, [K("network"), Arg("A.B.C.D"), Arg("WILDCARD")], "Run EIGRP on matching interfaces"),
+    spec!(NoEigrpNetwork, Modes::EIGRP, Modes::BOTH, [K("no"), K("network"), Arg("A.B.C.D")], "Stop EIGRP on these interfaces"),
+    spec!(NoEigrpNetwork, Modes::EIGRP, Modes::BOTH, [K("no"), K("network"), Arg("A.B.C.D"), Arg("WILDCARD")], "Stop EIGRP on these interfaces"),
+    spec!(EigrpPassive, Modes::EIGRP, Modes::BOTH, [K("passive-interface"), Rest("<interface>")], "Advertise but send no hellos there"),
+    spec!(NoEigrpPassive, Modes::EIGRP, Modes::BOTH, [K("no"), K("passive-interface"), Rest("<interface>")], "Send hellos there again"),
+    spec!(EigrpRouterId, Modes::EIGRP, Modes::BOTH, [K("eigrp"), K("router-id"), Arg("A.B.C.D")], "Set the router id"),
+    spec!(NoEigrpRouterId, Modes::EIGRP, Modes::BOTH, [K("no"), K("eigrp"), K("router-id")], "Use the highest interface address"),
+    spec!(EigrpAutoSummary, Modes::EIGRP, Modes::BOTH, [K("auto-summary")], "Summarise at classful boundaries (kept, not simulated)"),
+    spec!(NoEigrpAutoSummary, Modes::EIGRP, Modes::BOTH, [K("no"), K("auto-summary")], "Advertise subnets as they are"),
+    spec!(ShowIpEigrpNeighbors, EXECS, Modes::BOTH, [K("show"), K("ip"), K("eigrp"), K("neighbors")], "EIGRP neighbours"),
+    spec!(ShowIpEigrpTopology, EXECS, Modes::BOTH, [K("show"), K("ip"), K("eigrp"), K("topology")], "Successors and feasible successors"),
+    spec!(ShowIpEigrpInterfaces, EXECS, Modes::BOTH, [K("show"), K("ip"), K("eigrp"), K("interfaces")], "Interfaces running EIGRP"),
+    spec!(DebugEigrpPackets, Modes::EXEC, Modes::BOTH, [K("debug"), K("eigrp"), K("packets")], "Report the EIGRP hellos this router hears"),
+    spec!(NoDebugEigrpPackets, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("eigrp"), K("packets")], "Stop reporting EIGRP hellos"),
+    spec!(Bandwidth, Modes::IF, Modes::BOTH, [K("bandwidth"), Arg("<1-10000000>")], "The bandwidth EIGRP's metric uses (kbit/s)"),
+    spec!(NoBandwidth, Modes::IF, Modes::BOTH, [K("no"), K("bandwidth")], "Bandwidth from the port's speed again"),
+    spec!(Delay, Modes::IF, Modes::BOTH, [K("delay"), Arg("<1-16777215>")], "The delay EIGRP's metric adds (tens of microseconds)"),
+    spec!(NoDelay, Modes::IF, Modes::BOTH, [K("no"), K("delay")], "Delay from the port's type again"),
     spec!(RouterOspf, Modes::CONFIG, Modes::BOTH, [K("router"), K("ospf"), Arg("<1-65535>")], "Start or configure OSPF"),
     spec!(NoRouterOspf, Modes::CONFIG, Modes::BOTH, [K("no"), K("router"), K("ospf"), Arg("<1-65535>")], "Stop OSPF"),
     spec!(
@@ -1351,6 +1400,8 @@ mod tests {
                 Modes::RIP,
                 Modes::ACL6,
                 Modes::DHCP6,
+                Modes::OSPF6,
+                Modes::EIGRP,
             ]
             .into_iter()
             .find(|m| s.modes.has(*m))

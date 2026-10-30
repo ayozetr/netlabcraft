@@ -51,6 +51,8 @@ pub enum Mode {
     Rip,
     /// `R1(config-rtr)#` under `ipv6 router ospf`.
     Ospf6,
+    /// `R1(config-router)#` under `router eigrp N`.
+    Eigrp,
     /// `R1(config-ipv6-acl)#`: the list's name.
     Acl6(String),
     /// `R1(config-dhcpv6)#`: the pool's name.
@@ -74,6 +76,7 @@ impl Mode {
             Mode::Ospf => Modes::OSPF,
             Mode::Rip => Modes::RIP,
             Mode::Ospf6 => Modes::OSPF6,
+            Mode::Eigrp => Modes::EIGRP,
             Mode::Acl6(_) => Modes::ACL6,
             Mode::Dhcp6(_) => Modes::DHCP6,
             Mode::Acl(_) => Modes::ACL,
@@ -311,7 +314,7 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::Line(_) => format!("{n}(config-line)#"),
         Mode::DhcpPool(_) => format!("{n}(dhcp-config)#"),
         Mode::Svi(_) => format!("{n}(config-if)#"),
-        Mode::Ospf | Mode::Rip => format!("{n}(config-router)#"),
+        Mode::Ospf | Mode::Rip | Mode::Eigrp => format!("{n}(config-router)#"),
         Mode::Ospf6 => format!("{n}(config-rtr)#"),
         Mode::Acl6(_) => format!("{n}(config-ipv6-acl)#"),
         Mode::Dhcp6(_) => format!("{n}(config-dhcpv6)#"),
@@ -499,6 +502,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Ospf
                 | Mode::Ospf6
                 | Mode::Rip
+                | Mode::Eigrp
                 | Mode::Acl(_)
                 | Mode::Acl6(_)
                 | Mode::Dhcp6(_)
@@ -544,6 +548,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Ospf
                 | Mode::Ospf6
                 | Mode::Rip
+                | Mode::Eigrp
                 | Mode::Acl(_)
                 | Mode::Acl6(_)
                 | Mode::Dhcp6(_) => Mode::Config,
@@ -580,9 +585,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let codes: &[&str] = match () {
                 _ if "connected".starts_with(&which) => &["C ", "L "],
                 _ if "static".starts_with(&which) => &["S "],
+                _ if "eigrp".starts_with(&which) => &["D "],
                 _ if "ospf".starts_with(&which) => &["O "],
                 _ if "rip".starts_with(&which) => &["R "],
-                _ => return Err("% connected, static, ospf or rip".into()),
+                _ => return Err("% connected, static, eigrp, ospf or rip".into()),
             };
             let (head, body) = full.split_once("\n\n").unwrap_or(("", full.as_str()));
             let lines: Vec<&str> = body.lines().filter(|l| codes.iter().any(|c| l.starts_with(c) || (*c == "O " && l.starts_with("O*")))).collect();
@@ -653,6 +659,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let on = spec.id == Id::DebugIpRip;
             c.sim.set_debug(c.dev, DebugKind::Rip, on);
             Ok(if on { "RIP debugging is on: the updates this router hears are reported." } else { "RIP debugging is off." }.into())
+        }
+        Id::DebugEigrpPackets | Id::NoDebugEigrpPackets => {
+            let on = spec.id == Id::DebugEigrpPackets;
+            c.sim.set_debug(c.dev, DebugKind::Eigrp, on);
+            Ok(if on { "EIGRP debugging is on: the hellos this router hears are reported." } else { "EIGRP debugging is off." }.into())
         }
         Id::DebugIpOspf | Id::NoDebugIpOspf => {
             let what = arg(0).trim();
@@ -2031,6 +2042,119 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let st = c.sim.rip_state(c.t);
             Ok(render::rip_database(c.t, c.d()?, &st))
         }
+        Id::RouterEigrp if c.d()?.kind == DeviceKind::Switch && !c.d()?.ip_routing => Err("% EIGRP needs `ip routing` (multilayer switches)".into()),
+        Id::RouterEigrp => {
+            let n: u16 = arg(0).parse().ok().filter(|n| *n >= 1).ok_or("% The autonomous system number is 1-65535")?;
+            let d = c.dm()?;
+            match &d.eigrp {
+                Some(e) if e.asn != n => {
+                    return Err(format!("% EIGRP already runs here in AS {}; PacketCraft runs one EIGRP process per router", e.asn));
+                }
+                Some(_) => {}
+                None => d.eigrp = Some(packetcraft_model::Eigrp { asn: n, ..Default::default() }),
+            }
+            c.cli.mode = Mode::Eigrp;
+            Ok(String::new())
+        }
+        Id::NoRouterEigrp => {
+            let d = c.dm()?;
+            if d.eigrp.as_ref().is_none_or(|e| e.asn.to_string() != arg(0)) {
+                return Err(format!("% No EIGRP process for AS {}", arg(0)));
+            }
+            d.eigrp = None;
+            Ok(String::new())
+        }
+        Id::EigrpNetwork | Id::NoEigrpNetwork => {
+            let address = parse_ip(arg(0)).map_err(|e| format!("% {e}"))?;
+            let wildcard = match args.get(1) {
+                Some(w) => {
+                    let w = parse_ip(w).map_err(|e| format!("% {e}"))?;
+                    if packetcraft_core::mask_to_prefix(Ipv4Addr::from(!u32::from(w))).is_none() {
+                        return Err(format!("% {w} is not a wildcard mask (the inverse of a subnet mask, such as 0.0.0.255)"));
+                    }
+                    Some(w)
+                }
+                None => None,
+            };
+            // Without a wildcard the statement is classful: keep the classful network.
+            let address = match wildcard {
+                Some(w) => Ipv4Addr::from(u32::from(address) & !u32::from(w)),
+                None => packetcraft_model::Rip::classful(address).addr,
+            };
+            let n = packetcraft_model::EigrpNetwork { address, wildcard };
+            let e = c.dm()?.eigrp.as_mut().ok_or("% Not in EIGRP mode")?;
+            if spec.id == Id::EigrpNetwork {
+                if !e.networks.contains(&n) {
+                    if e.networks.len() >= packetcraft_model::MAX_NETWORKS {
+                        return Err("% At most 256 network statements".into());
+                    }
+                    e.networks.push(n);
+                }
+                Ok(String::new())
+            } else {
+                let before = e.networks.len();
+                e.networks.retain(|x| *x != n);
+                if e.networks.len() == before { Err("% No such network statement".into()) } else { Ok(String::new()) }
+            }
+        }
+        Id::EigrpPassive | Id::NoEigrpPassive => {
+            let r = c.iface_ref(arg(0))?;
+            let d = c.d()?;
+            let port = d.ports.get(r.port).ok_or("% No such port")?;
+            let name = r.sub.map_or(port.name.clone(), |s| format!("{}.{s}", port.name));
+            let e = c.dm()?.eigrp.as_mut().ok_or("% Not in EIGRP mode")?;
+            e.passive.retain(|p| *p != name);
+            if spec.id == Id::EigrpPassive {
+                if e.passive.len() >= packetcraft_model::MAX_NETWORKS {
+                    return Err("% Too many passive interfaces".into());
+                }
+                e.passive.push(name);
+            }
+            Ok(String::new())
+        }
+        Id::EigrpRouterId | Id::NoEigrpRouterId => {
+            let id = if spec.id == Id::EigrpRouterId { Some(parse_ip(arg(0)).map_err(|e| format!("% {e}"))?) } else { None };
+            c.dm()?.eigrp.as_mut().ok_or("% Not in EIGRP mode")?.router_id = id;
+            Ok(String::new())
+        }
+        Id::EigrpAutoSummary | Id::NoEigrpAutoSummary => {
+            c.dm()?.eigrp.as_mut().ok_or("% Not in EIGRP mode")?.auto_summary = spec.id == Id::EigrpAutoSummary;
+            Ok(String::new())
+        }
+        Id::ShowIpEigrpNeighbors => {
+            let st = c.sim.eigrp_state(c.t);
+            Ok(render::eigrp_neighbors(c.t, c.d()?, &st))
+        }
+        Id::ShowIpEigrpTopology => {
+            let st = c.sim.eigrp_state(c.t);
+            Ok(render::eigrp_topology(c.d()?, &st))
+        }
+        Id::ShowIpEigrpInterfaces => {
+            let st = c.sim.eigrp_state(c.t);
+            Ok(render::eigrp_interfaces(c.d()?, &st))
+        }
+        Id::Bandwidth | Id::NoBandwidth => {
+            let bw = if spec.id == Id::Bandwidth {
+                Some(arg(0).parse::<u32>().ok().filter(|b| (1..=10_000_000).contains(b)).ok_or("% Bandwidth is 1-10000000 kbit/s")?)
+            } else {
+                None
+            };
+            c.each_if(|p, _| {
+                p.bandwidth = bw;
+                Ok(())
+            })
+        }
+        Id::Delay | Id::NoDelay => {
+            let delay = if spec.id == Id::Delay {
+                Some(arg(0).parse::<u32>().ok().filter(|b| (1..=16_777_215).contains(b)).ok_or("% Delay is 1-16777215 tens of microseconds")?)
+            } else {
+                None
+            };
+            c.each_if(|p, _| {
+                p.delay = delay;
+                Ok(())
+            })
+        }
         Id::RouterOspf if c.d()?.kind == DeviceKind::Switch && !c.d()?.ip_routing => Err("% OSPF needs `ip routing` (multilayer switches)".into()),
         Id::RouterOspf => {
             let n: u16 = arg(0).parse().ok().filter(|n| *n >= 1).ok_or("% The process id is 1-65535")?;
@@ -2168,7 +2292,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::ShowIpProtocols => {
             let st = c.sim.ospf_state(c.t);
             let rs = c.sim.rip_state(c.t);
-            Ok(render::ip_protocols(c.d()?, &st, &rs))
+            let es = c.sim.eigrp_state(c.t);
+            Ok(render::ip_protocols(c.d()?, &st, &rs, &es))
         }
         Id::HelperAddress | Id::NoHelperAddress => {
             let target =

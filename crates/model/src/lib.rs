@@ -530,6 +530,13 @@ pub struct Port {
     /// `ip nat inside` / `ip nat outside`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nat: Option<NatSide>,
+    /// `bandwidth N` (kbit/s): what EIGRP's metric takes; the port's speed when not set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bandwidth: Option<u32>,
+    /// `delay N` (tens of microseconds): what EIGRP's metric adds up; a default by port type
+    /// when not set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delay: Option<u32>,
 }
 
 impl Port {
@@ -760,6 +767,9 @@ pub struct Device {
     /// Routers: RIP (`router rip`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rip: Option<Rip>,
+    /// Routers: EIGRP (`router eigrp N`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eigrp: Option<Eigrp>,
     /// Routers: access lists.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub acls: Vec<acl::Acl>,
@@ -963,6 +973,53 @@ impl Rip {
     /// Whether an interface address falls under a `network` statement.
     pub fn covers(&self, ip: Ipv4Addr) -> bool {
         self.networks.iter().any(|n| Rip::classful(*n).contains(ip))
+    }
+}
+
+/// Most `network` statements under one routing process.
+pub const MAX_NETWORKS: usize = 256;
+
+/// `router eigrp N` (RFC 7868), IPv4.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Eigrp {
+    /// The autonomous system: routers only become neighbours within the same one.
+    pub asn: u16,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub router_id: Option<Ipv4Addr>,
+    /// `network A.B.C.D [wildcard]`.
+    #[serde(default)]
+    pub networks: Vec<EigrpNetwork>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub passive: Vec<String>,
+    /// `auto-summary` (kept, not simulated: subnets are advertised as they are).
+    #[serde(default)]
+    pub auto_summary: bool,
+}
+
+impl Eigrp {
+    /// Whether an interface address falls under a `network` statement.
+    pub fn covers(&self, ip: Ipv4Addr) -> bool {
+        self.networks.iter().any(|n| n.matches(ip))
+    }
+}
+
+/// An EIGRP `network` statement: without a wildcard it takes the address's classful network.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EigrpNetwork {
+    pub address: Ipv4Addr,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wildcard: Option<Ipv4Addr>,
+}
+
+impl EigrpNetwork {
+    pub fn matches(&self, ip: Ipv4Addr) -> bool {
+        match self.wildcard {
+            Some(w) => {
+                let keep = !u32::from(w);
+                u32::from(ip) & keep == u32::from(self.address) & keep
+            }
+            None => Rip::classful(self.address).contains(ip),
+        }
     }
 }
 
@@ -1245,6 +1302,8 @@ impl Device {
                 cdp_off: false,
                 lldp_tx_off: false,
                 lldp_rx_off: false,
+                bandwidth: None,
+                delay: None,
                 routed: false,
                 err_disabled: false,
                 helpers: Vec::new(),
@@ -1289,6 +1348,7 @@ impl Device {
             dhcp6_pools: Vec::new(),
             dns6: None,
             rip: None,
+            eigrp: None,
             acls: Vec::new(),
             nat: Nat::default(),
             services: if kind == DeviceKind::Server { services::Services::server_defaults() } else { services::Services::default() },
@@ -1328,6 +1388,7 @@ impl Device {
         self.svis.clear();
         self.ospf = None;
         self.rip = None;
+        self.eigrp = None;
         self.acls6.clear();
         self.ospf_if.clear();
         self.dhcp6_pools.clear();
@@ -1755,6 +1816,11 @@ impl Topology {
                     p.subifs.truncate(MAX_SUBIFS);
                     p.subifs.sort_by_key(|s| s.number);
                     p.subifs.dedup_by_key(|s| s.number);
+                    p.bandwidth = p.bandwidth.filter(|b| *b > 0);
+                }
+                if let Some(e) = &mut d.eigrp {
+                    e.networks.truncate(MAX_NETWORKS);
+                    e.passive.truncate(MAX_NETWORKS);
                 }
                 d.ensure_default_vlan();
             }

@@ -226,7 +226,8 @@ fn modes_prompts_and_errors() {
     assert!(lab.try_run(r, "ip address 10.1.0.1 255.0.255.0").contains("contiguous"));
     let e = lab.try_run(r, "ip adress 1.1.1.1 255.0.0.0");
     assert!(e.starts_with("   ^"), "{e:?}");
-    assert!(lab.try_run(r, "d").contains("Ambiguous: `d` could be description, do"));
+    let amb = lab.try_run(r, "d");
+    assert!(amb.contains("Ambiguous: `d` could be delay, description, do"), "{amb}");
     assert!(lab.try_run(r, "ip").contains("Incomplete"));
     assert!(lab.run(r, "do show ip int brief").contains("10.0.0.1/24"));
     assert_eq!(lab.prompt(r), "Core(config-if)#");
@@ -311,8 +312,16 @@ fn every_command_survives_hostile_arguments() {
                         Tok::Arg(_) | Tok::Rest(_) => arg.to_string(),
                     })
                     .collect();
-                for setup in ["", "en", "en\nconf t", "en\nconf t\nint g0/0", "en\nconf t\nint g0/0.1", "en\nconf t\nint fa0/1", "en\nconf t\nvlan 5"]
-                {
+                for setup in [
+                    "",
+                    "en",
+                    "en\nconf t",
+                    "en\nconf t\nint g0/0",
+                    "en\nconf t\nint g0/0.1",
+                    "en\nconf t\nint fa0/1",
+                    "en\nconf t\nvlan 5",
+                    "en\nconf t\nrouter eigrp 1",
+                ] {
                     for l in setup.lines() {
                         lab.try_run(d, l);
                     }
@@ -1823,4 +1832,118 @@ fn spanning_tree_timers_by_typing() {
     lab.sim.topology_changed(&lab.t);
     assert!(lab.run(a, "ping 10.0.0.3").contains("answered") && !lab.run(a, "ping 10.0.0.3").contains(" 0 answered"));
     assert!(lab.run(s1, "show running-config").contains("spanning-tree mode rapid-pvst"));
+}
+
+#[test]
+fn eigrp_by_typing() {
+    let mut lab = Lab::new();
+    let three = packetcraft_model::models::find("Router-3").unwrap();
+    let r1 = lab.t.add_model(three, None, 0.0, 0.0).unwrap();
+    let r2 = lab.t.add_model(three, None, 0.0, 0.0).unwrap();
+    let r3 = lab.t.add_model(three, None, 0.0, 0.0).unwrap();
+    let a = lab.add(DeviceKind::Pc);
+    let b = lab.add(DeviceKind::Pc);
+    // A triangle: R1-R2, R1-R3, R2-R3; a PC behind R1 and one behind R3.
+    lab.cable(a, "fa0", r1, "g0/0");
+    lab.cable(r1, "g0/1", r2, "g0/0");
+    lab.cable(r1, "g0/2", r3, "g0/0");
+    lab.cable(r2, "g0/1", r3, "g0/1");
+    lab.cable(b, "fa0", r3, "g0/2");
+    lab.run(a, "ipconfig 192.168.1.10 255.255.255.0 192.168.1.1");
+    lab.run(b, "ipconfig 192.168.3.10 255.255.255.0 192.168.3.1");
+    let cfg = [
+        (r1, [("g0/0", "192.168.1.1 255.255.255.0"), ("g0/1", "10.0.12.1 255.255.255.252"), ("g0/2", "10.0.13.1 255.255.255.252")]),
+        (r2, [("g0/0", "10.0.12.2 255.255.255.252"), ("g0/1", "10.0.23.1 255.255.255.252"), ("g0/2", "")]),
+        (r3, [("g0/0", "10.0.13.2 255.255.255.252"), ("g0/1", "10.0.23.2 255.255.255.252"), ("g0/2", "192.168.3.1 255.255.255.0")]),
+    ];
+    for (r, ifs) in cfg {
+        lab.run(r, "en\nconf t");
+        for (i, ip) in ifs.iter().filter(|(_, ip)| !ip.is_empty()) {
+            lab.run(r, &format!("int {i}\nip address {ip}\nno shut"));
+        }
+        lab.run(r, "end");
+    }
+    // The direct R1-R3 link is slow: its delay makes the way through R2 the better one.
+    lab.run(
+        r1,
+        "conf t\nint g0/2\ndelay 100\nexit\nrouter eigrp 10\nnetwork 192.168.1.0 0.0.0.255\nnetwork 10.0.0.0\nno auto-summary\npassive-interface g0/0\neigrp router-id 1.1.1.1\nend",
+    );
+    assert_eq!(lab.prompt(r1), "R1#");
+    // R2 starts in another autonomous system: no neighbours there.
+    lab.run(r2, "conf t\nrouter eigrp 20\nnetwork 10.0.0.0\nend");
+    lab.run(r3, "conf t\nrouter eigrp 10\nnetwork 10.0.0.0\nnetwork 192.168.3.0\nend");
+    assert!(lab.run(r2, "show ip eigrp neighbors").contains("No EIGRP neighbours in AS 20"));
+    lab.run(r2, "conf t\nno router eigrp 20\nrouter eigrp 10\nnetwork 10.0.0.0\nend");
+    let nb = lab.run(r1, "show ip eigrp neighbors");
+    assert!(nb.contains("10.0.12.2") && nb.contains("10.0.13.2") && nb.contains("R2") && nb.contains("R3"), "{nb}");
+    // Successor through R2 (FD 256 × (10 + 3)), the direct link a feasible successor: R3
+    // reports 256 × (10 + 1), below the feasible distance.
+    let rt = lab.run(r1, "show ip route");
+    assert!(rt.contains("D    192.168.3.0/24       via 10.0.12.2, GigabitEthernet0/1 (EIGRP)"), "{rt}");
+    let topo = lab.run(r1, "show ip eigrp topology");
+    assert!(topo.contains("router id 1.1.1.1"), "{topo}");
+    assert!(topo.contains("192.168.3.0/24  FD 3328, 1 successor"), "{topo}");
+    assert!(topo.contains("successor           via 10.0.12.2, Gi0/1 (3328 / 3072)"), "{topo}");
+    assert!(topo.contains("feasible successor  via 10.0.13.2, Gi0/2 (28416 / 2816)"), "{topo}");
+    assert!(topo.contains("connected, Gi0/0"), "{topo}");
+    let ifs = lab.run(r1, "show ip eigrp interfaces");
+    assert!(ifs.contains("Gi0/2") && ifs.contains("1000") && ifs.contains("1000000"), "{ifs}");
+    assert!(ifs.lines().any(|l| l.starts_with("Gi0/0") && l.ends_with("yes")), "{ifs}");
+    let pr = lab.run(r1, "show ip protocols");
+    assert!(pr.contains("EIGRP, autonomous system 10") && pr.contains("distance 90") && pr.contains("Router id: 1.1.1.1"), "{pr}");
+    assert!(lab.run(r1, "show ip route eigrp").contains("D    10.0.23.0/30"));
+    lab.run(a, "ping 192.168.3.10");
+    assert!(lab.run(a, "ping 192.168.3.10").contains("4 answered"));
+    // Hellos go out every 5 s to 224.0.0.10; `debug eigrp packets` reports them.
+    lab.run(r1, "debug eigrp packets");
+    lab.sim.clear_trace();
+    lab.sim.run_for(&lab.t, 6_000_000);
+    assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("EIGRP hello, AS 10") && e.summary.contains("→ 224.0.0.10")));
+    let log = lab.run(r1, "show logging");
+    assert!(log.contains("EIGRP debug: hello from 10.0.12.2 on GigabitEthernet0/1, AS 10"), "{log}");
+    assert!(lab.run(r1, "show debugging").contains("EIGRP"));
+    lab.run(r1, "no debug eigrp packets");
+    // The configuration survives a save and reload.
+    let run = lab.run(r1, "show running-config");
+    assert!(run.contains("interface GigabitEthernet0/2\n ip address 10.0.13.1 255.255.255.252\n delay 100\n"), "{run}");
+    assert!(
+        run.contains(
+            "router eigrp 10\n eigrp router-id 1.1.1.1\n passive-interface GigabitEthernet0/0\n network 192.168.1.0 0.0.0.255\n network 10.0.0.0\n no auto-summary\n!"
+        ),
+        "{run}"
+    );
+    lab.run(r1, "copy run start");
+    lab.run(r1, "reload");
+    lab.run(r1, "en");
+    assert_eq!(lab.run(r1, "show running-config"), run);
+    // The link to R2 fails: the feasible successor takes over.
+    lab.run(r2, "conf t\nint g0/0\nshutdown\nend");
+    let rt = lab.run(r1, "show ip route");
+    assert!(rt.contains("D    192.168.3.0/24       via 10.0.13.2, GigabitEthernet0/2 (EIGRP)"), "{rt}");
+    assert!(lab.run(r1, "show ip eigrp topology").contains("192.168.3.0/24  FD 28416, 1 successor"));
+    lab.run(a, "ping 192.168.3.10");
+    assert!(lab.run(a, "ping 192.168.3.10").contains("4 answered"));
+    lab.run(r2, "conf t\nint g0/0\nno shutdown\nend");
+    // OSPF on top: EIGRP's distance (90) beats OSPF's (110) for the same networks.
+    for r in [r1, r2, r3] {
+        lab.run(r, "conf t\nrouter ospf 1\nnetwork 0.0.0.0 255.255.255.255 area 0\nend");
+    }
+    let rt = lab.run(r1, "show ip route");
+    assert!(rt.contains("D    192.168.3.0/24") && !rt.contains("O    192.168.3.0/24"), "{rt}");
+    lab.run(r1, "conf t\nno router eigrp 10\nend");
+    let rt = lab.run(r1, "show ip route");
+    assert!(rt.contains("O    192.168.3.0/24") && !rt.contains("D    "), "{rt}");
+    lab.run(a, "ping 192.168.3.10");
+    assert!(lab.run(a, "ping 192.168.3.10").contains("4 answered"));
+    // Interface metrics go back to their defaults; mistakes are refused.
+    lab.run(r1, "conf t\nint g0/2\nbandwidth 512\nno delay\nno bandwidth\nend");
+    assert!(!lab.run(r1, "show running-config").contains(" delay "));
+    lab.try_run(r1, "conf t");
+    assert!(lab.try_run(r1, "router eigrp 0").contains("1-65535"));
+    lab.run(r1, "router eigrp 5");
+    assert!(lab.try_run(r1, "network 10.0.0.0 0.255.0.255").contains("not a wildcard"));
+    assert!(lab.try_run(r1, "no network 172.16.0.0").contains("No such network"));
+    lab.run(r1, "exit");
+    assert!(lab.try_run(r1, "router eigrp 6").contains("AS 5"));
+    assert!(lab.try_run(r1, "no router eigrp 6").contains("No EIGRP process"));
 }

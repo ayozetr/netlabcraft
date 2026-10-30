@@ -1,4 +1,4 @@
-//! Control-plane traffic on the wire: spanning-tree BPDUs, OSPF hellos, RIP updates, HSRP
+//! Control-plane traffic on the wire: spanning-tree BPDUs, OSPF and EIGRP hellos, RIP updates, HSRP
 //! hellos, NTP polls, LLDP advertisements and LACPDUs.
 //!
 //! The protocols themselves are computed from the topology (`stp`, `ospf`, `rip`); these frames
@@ -19,6 +19,7 @@ use crate::{LINK_DELAY_US, Queued, Sim, l3_ifaces, port_up};
 pub const BPDU_EVERY_US: u64 = 2_000_000;
 pub const OSPF_HELLO_EVERY_US: u64 = 10_000_000;
 pub const RIP_UPDATE_EVERY_US: u64 = 30_000_000;
+pub const EIGRP_HELLO_EVERY_US: u64 = packetcraft_wire::eigrp::HELLO_SECS as u64 * 1_000_000;
 pub const HSRP_HELLO_EVERY_US: u64 = 3_000_000;
 /// NTP clients poll every 64 s.
 pub const NTP_POLL_EVERY_US: u64 = 64_000_000;
@@ -42,6 +43,7 @@ impl Sim {
             (crate::lldp::LLDP_EVERY_US, 5),
             (crate::channel::LACP_EVERY_US, 6),
             (OSPF_HELLO_EVERY_US, 7),
+            (EIGRP_HELLO_EVERY_US, 8),
         ] {
             let mut at = (from / every + 1) * every;
             while at <= deadline {
@@ -53,6 +55,7 @@ impl Sim {
                     5 => self.send_lldp(t, at),
                     6 => self.send_lacp(t, at),
                     7 => self.send_ospf6_hellos(t, at),
+                    8 => self.send_eigrp_hellos(t, at),
                     _ => self.send_rip_updates(t, at),
                 }
                 at += every;
@@ -227,6 +230,25 @@ impl Sim {
                 };
                 // A millisecond apart, so the event list shows them in order.
                 self.queue_l3(t, d, &ifc, ifc.mac, control::ipv4_multicast_mac(control::OSPF_ALL_ROUTERS), ip.encode(), at + k * 1_000);
+            }
+        }
+    }
+
+    /// EIGRP hellos (RFC 7868) from every EIGRP interface that isn't passive.
+    fn send_eigrp_hellos(&mut self, t: &Topology, at: u64) {
+        use packetcraft_wire::eigrp::{EIGRP_ROUTERS, EigrpHello, PROTO_EIGRP};
+        if !t.devices.iter().any(|d| d.eigrp.is_some()) {
+            return;
+        }
+        let st = self.eigrp_state(t);
+        for (id, ifs) in &st.interfaces {
+            let Some(d) = t.device(*id) else { continue };
+            let Some(e) = &d.eigrp else { continue };
+            for x in ifs.iter().filter(|x| !x.passive) {
+                let Some(ifc) = l3_ifaces(d).into_iter().find(|i| i.name == x.name) else { continue };
+                let ip =
+                    Ipv4 { id: 0, ttl: 2, protocol: PROTO_EIGRP, src: ifc.net.addr, dst: EIGRP_ROUTERS, payload: EigrpHello::new(e.asn).encode() };
+                self.queue_l3(t, d, &ifc, ifc.mac, control::ipv4_multicast_mac(EIGRP_ROUTERS), ip.encode(), at);
             }
         }
     }

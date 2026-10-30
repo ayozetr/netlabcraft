@@ -227,6 +227,12 @@ pub fn running_config(d: &Device) -> String {
         }
         access_groups(&mut s, &p.access);
         nat_side(&mut s, p.nat);
+        if let Some(b) = p.bandwidth {
+            let _ = writeln!(s, " bandwidth {b}");
+        }
+        if let Some(dl) = p.delay {
+            let _ = writeln!(s, " delay {dl}");
+        }
         // Routers write both states: their ports start shut, so a replay must say which are up.
         if p.shutdown {
             let _ = writeln!(s, " shutdown");
@@ -355,6 +361,27 @@ pub fn running_config(d: &Device) -> String {
         }
         let _ = writeln!(s, "!");
     }
+    if let Some(e) = &d.eigrp {
+        let _ = writeln!(s, "router eigrp {}", e.asn);
+        if let Some(id) = e.router_id {
+            let _ = writeln!(s, " eigrp router-id {id}");
+        }
+        for p in &e.passive {
+            let _ = writeln!(s, " passive-interface {p}");
+        }
+        for n in &e.networks {
+            match n.wildcard {
+                Some(w) => {
+                    let _ = writeln!(s, " network {} {w}", n.address);
+                }
+                None => {
+                    let _ = writeln!(s, " network {}", n.address);
+                }
+            }
+        }
+        let _ = writeln!(s, "{}", if e.auto_summary { " auto-summary" } else { " no auto-summary" });
+        let _ = writeln!(s, "!");
+    }
     if let Some(r) = &d.rip {
         let _ = writeln!(s, "router rip");
         if r.version != 1 {
@@ -472,7 +499,7 @@ pub fn ip_int_brief(t: &Topology, d: &Device) -> String {
 pub fn ip_route(t: &Topology, d: &Device) -> String {
     let table = routing_table(t, d);
     let mut s = String::from(
-        "Codes: C connected, L local, S static, R RIP, O OSPF, O IA OSPF other area, O*E2 OSPF external default, O*IA default into a stub area\n\n",
+        "Codes: C connected, L local, S static, R RIP, D EIGRP, O OSPF, O IA OSPF other area, O*E2 OSPF external default, O*IA default into a stub area\n\n",
     );
     if d.kind == DeviceKind::Switch && !d.ip_routing {
         let _ = writeln!(
@@ -498,6 +525,7 @@ pub fn ip_route(t: &Topology, d: &Device) -> String {
             ('C', _, Some(i)) => format!("connected, {i}"),
             ('L', _, Some(i)) => format!("local address, {i}"),
             ('O' | 'E' | 'I', Some(v), Some(i)) => format!("via {v}, {i} (OSPF)"),
+            ('D', Some(v), Some(i)) => format!("via {v}, {i} (EIGRP)"),
             (_, Some(v), _) => format!("via {v}"),
             (_, None, Some(i)) => format!("out {i}"),
             _ => String::new(),
@@ -883,8 +911,16 @@ pub fn ospf6_summary(d: &Device, st: &packetcraft_sim::ospf6::Ospf6State) -> Str
 }
 
 /// `show ip protocols`.
-pub fn ip_protocols(d: &Device, st: &packetcraft_sim::ospf::OspfState, rs: &packetcraft_sim::rip::RipState) -> String {
+pub fn ip_protocols(
+    d: &Device,
+    st: &packetcraft_sim::ospf::OspfState,
+    rs: &packetcraft_sim::rip::RipState,
+    es: &packetcraft_sim::eigrp::EigrpState,
+) -> String {
     let mut parts = Vec::new();
+    if d.eigrp.is_some() {
+        parts.push(eigrp_protocol(d, es));
+    }
     if d.ospf.is_some() {
         parts.push(ospf_protocol(d, st));
     }
@@ -919,6 +955,112 @@ pub fn ip_protocols(d: &Device, st: &packetcraft_sim::ospf::OspfState, rs: &pack
         return "No routing protocol is running (static routes only).".into();
     }
     parts.join("\n\n")
+}
+
+fn eigrp_protocol(d: &Device, st: &packetcraft_sim::eigrp::EigrpState) -> String {
+    let Some(e) = &d.eigrp else { return String::new() };
+    let mut s = format!("Routing protocol: EIGRP, autonomous system {}\n", e.asn);
+    let _ = writeln!(s, "  Router id: {}", st.router_ids.get(&d.id).map_or("none (no interface address)".to_string(), |i| i.to_string()));
+    s.push_str("  Metric weights: K1 1, K2 0, K3 1, K4 0, K5 0 (bandwidth and delay)\n");
+    s.push_str("  Networks:\n");
+    for n in &e.networks {
+        match n.wildcard {
+            Some(w) => {
+                let _ = writeln!(s, "    {} {w}", n.address);
+            }
+            None => {
+                let _ = writeln!(s, "    {} (classful)", n.address);
+            }
+        }
+    }
+    if !e.passive.is_empty() {
+        let _ = writeln!(s, "  Passive interfaces: {}", e.passive.iter().map(|p| ifname::short(p)).collect::<Vec<_>>().join(", "));
+    }
+    let ifs = st.interfaces.get(&d.id).cloned().unwrap_or_default();
+    let _ = writeln!(
+        s,
+        "  Interfaces running EIGRP: {}",
+        if ifs.is_empty() { "none".to_string() } else { ifs.iter().map(|i| ifname::short(&i.name)).collect::<Vec<_>>().join(", ") }
+    );
+    let heard: Vec<String> = st.neighbors.get(&d.id).into_iter().flatten().map(|n| format!("{} on {}", n.address, ifname::short(&n.iface))).collect();
+    let _ = writeln!(s, "  Neighbours: {}", if heard.is_empty() { "none".to_string() } else { heard.join(", ") });
+    let _ = write!(
+        s,
+        "  Automatic summarisation {}; administrative distance 90 (internal)",
+        if e.auto_summary { "on (not simulated: subnets are advertised)" } else { "off" }
+    );
+    s
+}
+
+/// `show ip eigrp neighbors`.
+pub fn eigrp_neighbors(t: &Topology, d: &Device, st: &packetcraft_sim::eigrp::EigrpState) -> String {
+    let Some(e) = &d.eigrp else { return "EIGRP is not running on this router.".into() };
+    let list = st.neighbors.get(&d.id).cloned().unwrap_or_default();
+    if list.is_empty() {
+        return format!("No EIGRP neighbours in AS {} (check the network statements, the AS number, passive interfaces and cables).", e.asn);
+    }
+    let mut s = format!("EIGRP neighbours, AS {}\n", e.asn);
+    let _ = writeln!(s, "{:<3} {:<16} {:<12} {:<9} Device", "#", "Address", "Interface", "Hold (s)");
+    for (k, n) in list.iter().enumerate() {
+        let name = t.device(n.device).map_or("?".to_string(), |x| x.name.clone());
+        let _ = writeln!(s, "{:<3} {:<16} {:<12} {:<9} {name}", k, n.address.to_string(), ifname::short(&n.iface), packetcraft_sim::eigrp::HOLD_SECS);
+    }
+    s.trim_end().to_string()
+}
+
+/// `show ip eigrp topology`: per destination its feasible distance, successors and feasible
+/// successors with (computed distance / reported distance).
+pub fn eigrp_topology(d: &Device, st: &packetcraft_sim::eigrp::EigrpState) -> String {
+    let Some(e) = &d.eigrp else { return "EIGRP is not running on this router.".into() };
+    let rid = st.router_ids.get(&d.id).map_or("none".to_string(), |r| r.to_string());
+    let mut s = format!("EIGRP topology, AS {}, router id {rid}\n", e.asn);
+    s.push_str("Every destination is passive (DUAL has converged). Paths show (distance / reported distance).\n");
+    let entries = st.topology.get(&d.id).cloned().unwrap_or_default();
+    if entries.is_empty() {
+        s.push_str("\n(no destinations: no interface runs EIGRP)");
+        return s;
+    }
+    for t in &entries {
+        let succ = t.paths.iter().filter(|p| p.successor).count();
+        let _ = writeln!(s, "\n{}  FD {}, {succ} successor{}", t.net, t.fd, if succ == 1 { "" } else { "s" });
+        for p in &t.paths {
+            match p.via {
+                None => {
+                    let _ = writeln!(s, "    connected, {}", ifname::short(&p.iface));
+                }
+                Some(v) => {
+                    let role = if p.successor { "successor" } else { "feasible successor" };
+                    let _ = writeln!(s, "    {role:<19} via {v}, {} ({} / {})", ifname::short(&p.iface), p.distance, p.reported);
+                }
+            }
+        }
+    }
+    s.trim_end().to_string()
+}
+
+/// `show ip eigrp interfaces`.
+pub fn eigrp_interfaces(d: &Device, st: &packetcraft_sim::eigrp::EigrpState) -> String {
+    let Some(e) = &d.eigrp else { return "EIGRP is not running on this router.".into() };
+    let ifs = st.interfaces.get(&d.id).cloned().unwrap_or_default();
+    if ifs.is_empty() {
+        return format!("No interface runs EIGRP in AS {} (check the network statements and that the interfaces are up).", e.asn);
+    }
+    let mut s = format!("EIGRP interfaces, AS {}\n", e.asn);
+    let _ = writeln!(s, "{:<12} {:<20} {:<6} {:<16} {:<11} Passive", "Interface", "Network", "Peers", "Bandwidth (kbit)", "Delay (µs)");
+    for i in &ifs {
+        let peers = st.neighbors.get(&d.id).into_iter().flatten().filter(|n| n.iface == i.name).count();
+        let _ = writeln!(
+            s,
+            "{:<12} {:<20} {:<6} {:<16} {:<11} {}",
+            ifname::short(&i.name),
+            i.net.to_string(),
+            peers,
+            i.bandwidth,
+            u64::from(i.delay) * 10,
+            if i.passive { "yes" } else { "no" }
+        );
+    }
+    s.trim_end().to_string()
 }
 
 fn ospf_protocol(d: &Device, st: &packetcraft_sim::ospf::OspfState) -> String {
@@ -1531,6 +1673,9 @@ pub fn processes(t: &Topology, sim: &Sim, d: &Device) -> String {
     if d.rip.is_some() {
         tasks.push("RIP");
     }
+    if d.eigrp.is_some() {
+        tasks.push("EIGRP");
+    }
     if !d.dhcp_pools.is_empty() {
         tasks.push("DHCP server");
     }
@@ -1540,6 +1685,7 @@ pub fn processes(t: &Topology, sim: &Sim, d: &Device) -> String {
     let busy = 1
         + u64::from(d.ospf.is_some())
         + u64::from(d.rip.is_some())
+        + u64::from(d.eigrp.is_some())
         + u64::try_from((0..d.ports.len()).filter(|i| t.peer(packetcraft_model::End { device: d.id, port: *i }).is_some()).count() / 8).unwrap_or(0);
     let up = sim.now_us() / 1_000;
     let mut s = format!("CPU use: {busy}% over the last 5 s, {busy}% over 1 min, {busy}% over 5 min\n\n");
