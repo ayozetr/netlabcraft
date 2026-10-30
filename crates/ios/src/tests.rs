@@ -3225,3 +3225,41 @@ fn ospf_installs_equal_cost_paths() {
     assert_eq!(lab.run(r1, "show ip route ospf").matches("192.168.4.0/24").count(), 1);
     assert!(lab.run(r1, "show running-config").contains(" maximum-paths 1\n"));
 }
+
+#[test]
+fn a_gre_tunnel_rides_on_learned_routes_but_not_on_itself() {
+    let (mut lab, r1, isp, r2, a) = two_sites();
+    // No static routes: OSPF over the physical network is all that reaches the far end.
+    lab.run(r1, "conf t\nno ip route 0.0.0.0 0.0.0.0 203.0.113.2\nrouter ospf 1\nnetwork 203.0.113.0 0.0.0.3 area 0\nend");
+    lab.run(r2, "conf t\nno ip route 0.0.0.0 0.0.0.0 198.51.100.2\nrouter ospf 1\nnetwork 198.51.100.0 0.0.0.3 area 0\nend");
+    lab.run(
+        r1,
+        "conf t\nint tunnel 0\nip address 10.0.0.1 255.255.255.252\ntunnel source g0/1\ntunnel destination 198.51.100.1\nexit\nip route 192.168.2.0 255.255.255.0 10.0.0.2\nend",
+    );
+    lab.run(
+        r2,
+        "conf t\nint tunnel 0\nip address 10.0.0.2 255.255.255.252\ntunnel source g0/1\ntunnel destination 203.0.113.1\nexit\nip route 192.168.1.0 255.255.255.0 10.0.0.1\nend",
+    );
+    // The ISP doesn't run OSPF yet: nothing reaches the far end, the tunnel stays down.
+    assert!(lab.run(r1, "show interfaces tunnel 0").contains("line protocol down (no route to the tunnel destination)"));
+    lab.run(isp, "conf t\nrouter ospf 1\nnetwork 0.0.0.0 255.255.255.255 area 0\nend");
+    assert!(lab.run(r1, "show ip route ospf").contains("198.51.100.0/30"));
+    let tun = lab.run(r1, "show interfaces tunnel 0");
+    assert!(tun.contains("Tunnel0 is up, line protocol up"), "{tun}");
+    let ping = ping_settled(&mut lab, a, "192.168.2.10");
+    assert!(ping.contains("4 answered"), "{ping}");
+    // OSPF over the tunnel too, with the tunnel the cheaper way to the far end's public
+    // network: the destination would be routed through the tunnel itself.
+    lab.run(r1, "conf t\nint g0/1\nip ospf cost 10\nint tunnel 0\nip ospf cost 1\nexit\nrouter ospf 1\nnetwork 10.0.0.0 0.0.0.3 area 0\nend");
+    lab.run(r2, "conf t\nint tunnel 0\nip ospf cost 1\nexit\nrouter ospf 1\nnetwork 10.0.0.0 0.0.0.3 area 0\nend");
+    let tun = lab.run(r1, "show interfaces tunnel 0");
+    assert!(tun.contains("line protocol down (recursive routing"), "{tun}");
+    assert!(lab.run(r1, "show ip interface brief").lines().any(|l| l.starts_with("Tunnel0") && l.ends_with("down")));
+    // The far end's own way back is still physical: its tunnel stays up.
+    assert!(lab.run(r2, "show interfaces tunnel 0").contains("line protocol up"));
+    // The physical way cheaper again: up again.
+    lab.run(r1, "conf t\nint g0/1\nno ip ospf cost\nint tunnel 0\nno ip ospf cost\nend");
+    lab.run(r2, "conf t\nint tunnel 0\nno ip ospf cost\nend");
+    assert!(lab.run(r1, "show interfaces tunnel 0").contains("line protocol up"));
+    assert!(ping_settled(&mut lab, a, "192.168.2.10").contains("4 answered"));
+}

@@ -2,8 +2,11 @@
 //!
 //! A tunnel is a layer-3 interface without a port. Its line protocol is up when it is not shut
 //! down, its source names an up interface (or an address of one) and its destination is
-//! reachable through a connected or static route over a physical interface (dynamic routes are
-//! not consulted, so a tunnel never depends on routes learned through itself). Packets routed
+//! reachable over a physical interface: through a connected or static route, or through a route
+//! OSPF, RIP or EIGRP learned over the physical network (worked out with the tunnels that
+//! depend on learned routes down). A tunnel whose destination, once it is up, would be reached
+//! through a tunnel instead (the routing protocol learned it through the tunnel itself) goes
+//! down again for recursive routing. Packets routed
 //! out of it get an outer IPv4 header (source → destination, protocol 47) and a GRE header,
 //! and are routed again; a packet whose outer destination would itself go into a tunnel is
 //! dropped (recursive routing), so nothing is encapsulated twice. The far router accepts GRE
@@ -17,8 +20,11 @@
 //! both have them, an agreeing ISAKMP policy. Protected packets travel as ESP whose cipher is a
 //! keyed XOR, **not real encryption** (see `packetcraft_wire::vpn`).
 
-use std::collections::BTreeSet;
+use std::cell::RefCell;
+use std::collections::{BTreeMap, BTreeSet};
 use std::net::Ipv4Addr;
+
+use packetcraft_core::DeviceId;
 
 use packetcraft_core::MacAddr;
 use packetcraft_model::vpn::{CryptoMapEntry, Tunnel, TunnelSource};
@@ -88,9 +94,109 @@ pub(crate) fn same_name(a: &str, b: &str) -> bool {
     }
 }
 
-/// A tunnel's endpoints (source, destination) when its line protocol is up, else why not.
-/// `phys` are the router's physical up interfaces.
-pub fn tunnel_state(d: &Device, tun: &Tunnel, phys: &[L3If]) -> Result<(Ipv4Addr, Ipv4Addr), &'static str> {
+/// Why a tunnel is down when nothing routes to its destination.
+const NO_ROUTE: &str = "no route to the tunnel destination";
+/// Why a tunnel is down when its destination is reached through a tunnel.
+const RECURSIVE: &str = "recursive routing: the destination is learned through a tunnel";
+
+type TunnelKey = (DeviceId, u32);
+
+thread_local! {
+    /// While the verdicts below are worked out: the tunnels that count as up through learned
+    /// routes (the others that depend on learned routes count as down).
+    static PHASE: RefCell<Option<BTreeSet<TunnelKey>>> = const { RefCell::new(None) };
+    /// For the lab with this fingerprint: each tunnel that depends on learned routes, up or why
+    /// not.
+    static VERDICTS: RefCell<Option<(u64, BTreeMap<TunnelKey, Result<(), &'static str>>)>> = const { RefCell::new(None) };
+}
+
+/// Whether a tunnel whose destination only learned routes reach is up.
+fn learned_verdict(t: &Topology, d: &Device, tun: &Tunnel) -> Result<(), &'static str> {
+    let key = (d.id, tun.number);
+    if let Some(up) = PHASE.try_with(|p| p.try_borrow().ok().and_then(|p| p.as_ref().map(|s| s.contains(&key)))).ok().flatten() {
+        return if up { Ok(()) } else { Err(NO_ROUTE) };
+    }
+    let f = crate::ospf::fingerprint(t);
+    let cached = VERDICTS
+        .try_with(|v| v.try_borrow().ok().and_then(|v| v.as_ref().filter(|(at, _)| *at == f).map(|(_, m)| m.get(&key).copied())))
+        .ok()
+        .flatten();
+    if let Some(v) = cached {
+        return v.unwrap_or(Err(NO_ROUTE));
+    }
+    let verdicts = work_out_verdicts(t);
+    let mine = verdicts.get(&key).copied().unwrap_or(Err(NO_ROUTE));
+    let _ = VERDICTS.try_with(|v| {
+        if let Ok(mut v) = v.try_borrow_mut() {
+            *v = Some((f, verdicts));
+        }
+    });
+    mine
+}
+
+/// Sets the tunnels that count as up through learned routes (`None`: back to the verdicts).
+fn set_phase(up: Option<BTreeSet<TunnelKey>>) {
+    let _ = PHASE.try_with(|p| {
+        if let Ok(mut p) = p.try_borrow_mut() {
+            *p = up;
+        }
+    });
+}
+
+/// Where each router's routing protocols send a destination: the outgoing interface.
+fn learned_out(t: &Topology, d: &Device, dst: Ipv4Addr) -> Option<L3If> {
+    let e = if d.eigrp.is_some() { crate::eigrp::compute(t).routes.remove(&d.id).unwrap_or_default() } else { Vec::new() };
+    let o = if d.ospf.is_some() { crate::ospf::compute(t).routes.remove(&d.id).unwrap_or_default() } else { Vec::new() };
+    let r = if d.rip.is_some() { crate::rip::compute(t).routes.remove(&d.id).unwrap_or_default() } else { Vec::new() };
+    crate::route_with(t, d, dst, crate::flow_hash(Ipv4Addr::UNSPECIFIED, dst), &e, &o, &r).map(|(i, _)| i)
+}
+
+/// Every tunnel that depends on learned routes: first with all of them down, the ones whose
+/// destination the protocols then reach over a physical interface come up; with those up, any
+/// whose destination is now reached through a tunnel goes down for recursive routing.
+fn work_out_verdicts(t: &Topology) -> BTreeMap<TunnelKey, Result<(), &'static str>> {
+    let mut candidates: Vec<(DeviceId, u32, Ipv4Addr)> = Vec::new();
+    for d in t.devices.iter().filter(|d| d.kind == DeviceKind::Router && !d.tunnels.is_empty()) {
+        let phys = crate::phys_up_ifaces(t, d);
+        for tun in &d.tunnels {
+            if let (Ok(_), Some(dst)) = (static_state(d, tun, &phys), tun.destination)
+                && !phys_routable(d, dst, &phys)
+            {
+                candidates.push((d.id, tun.number, dst));
+            }
+        }
+    }
+    let mut out = BTreeMap::new();
+    if candidates.is_empty() {
+        return out;
+    }
+    set_phase(Some(BTreeSet::new()));
+    let mut up = BTreeSet::new();
+    for (id, n, dst) in &candidates {
+        let Some(d) = t.device(*id) else { continue };
+        if learned_out(t, d, *dst).is_some_and(|i| !is_tunnel(i.port)) {
+            up.insert((*id, *n));
+        }
+    }
+    set_phase(Some(up.clone()));
+    for (id, n, dst) in &candidates {
+        let verdict = if !up.contains(&(*id, *n)) {
+            Err(NO_ROUTE)
+        } else {
+            match t.device(*id).and_then(|d| learned_out(t, d, *dst)) {
+                Some(i) if is_tunnel(i.port) => Err(RECURSIVE),
+                Some(_) => Ok(()),
+                None => Err(NO_ROUTE),
+            }
+        };
+        out.insert((*id, *n), verdict);
+    }
+    set_phase(None);
+    out
+}
+
+/// A tunnel's state from its own settings: shut down, source, destination configured.
+fn static_state(_d: &Device, tun: &Tunnel, phys: &[L3If]) -> Result<(Ipv4Addr, Ipv4Addr), &'static str> {
     if tun.shutdown {
         return Err("administratively down");
     }
@@ -104,20 +210,27 @@ pub fn tunnel_state(d: &Device, tun: &Tunnel, phys: &[L3If]) -> Result<(Ipv4Addr
         }
     };
     let dst = tun.destination.ok_or("no tunnel destination")?;
-    if !phys_routable(d, dst, phys) {
-        return Err("no route to the tunnel destination");
-    }
     if tun.ip.is_some_and(|n| n.contains(dst)) {
         return Err("the destination is inside the tunnel's own network");
     }
     Ok((src, dst))
 }
 
+/// A tunnel's endpoints (source, destination) when its line protocol is up, else why not.
+/// `phys` are the router's physical up interfaces.
+pub fn tunnel_state(t: &Topology, d: &Device, tun: &Tunnel, phys: &[L3If]) -> Result<(Ipv4Addr, Ipv4Addr), &'static str> {
+    let (src, dst) = static_state(d, tun, phys)?;
+    if !phys_routable(d, dst, phys) {
+        learned_verdict(t, d, tun)?;
+    }
+    Ok((src, dst))
+}
+
 /// The tunnels of a router that are up, given its physical up interfaces.
-pub(crate) fn up_tunnels(d: &Device, phys: &[L3If]) -> Vec<L3If> {
+pub(crate) fn up_tunnels(t: &Topology, d: &Device, phys: &[L3If]) -> Vec<L3If> {
     tunnel_ifaces(d)
         .into_iter()
-        .filter(|i| tunnel_of(i.port).and_then(|n| d.tunnels.iter().find(|t| t.number == n)).is_some_and(|t| tunnel_state(d, t, phys).is_ok()))
+        .filter(|i| tunnel_of(i.port).and_then(|n| d.tunnels.iter().find(|x| x.number == n)).is_some_and(|x| tunnel_state(t, d, x, phys).is_ok()))
         .collect()
 }
 
@@ -126,7 +239,7 @@ pub(crate) fn up_tunnels(d: &Device, phys: &[L3If]) -> Vec<L3If> {
 pub fn tunnel_status(t: &Topology, d: &Device, number: u32) -> Result<(Ipv4Addr, Ipv4Addr), String> {
     let tun = d.tunnels.iter().find(|x| x.number == number).ok_or_else(|| format!("no interface Tunnel{number}"))?;
     let phys = crate::phys_up_ifaces(t, d);
-    tunnel_state(d, tun, &phys).map_err(str::to_string)
+    tunnel_state(t, d, tun, &phys).map_err(str::to_string)
 }
 
 /// The far ends of an up tunnel interface: every router tunnel, up, whose source and
@@ -134,11 +247,11 @@ pub fn tunnel_status(t: &Topology, d: &Device, number: u32) -> Result<(Ipv4Addr,
 pub(crate) fn tunnel_peers(t: &Topology, d: &Device, ifc: &L3If) -> BTreeSet<End> {
     let mut out = BTreeSet::new();
     let Some(tun) = tunnel_of(ifc.port).and_then(|n| d.tunnels.iter().find(|x| x.number == n)) else { return out };
-    let Ok((src, dst)) = tunnel_state(d, tun, &crate::phys_up_ifaces(t, d)) else { return out };
+    let Ok((src, dst)) = tunnel_state(t, d, tun, &crate::phys_up_ifaces(t, d)) else { return out };
     for b in t.devices.iter().filter(|b| b.id != d.id && b.kind == DeviceKind::Router && !b.tunnels.is_empty()) {
         let phys = crate::phys_up_ifaces(t, b);
         for bt in b.tunnels.iter().filter(|x| x.ip.is_some()) {
-            if tunnel_state(b, bt, &phys) == Ok((dst, src)) {
+            if tunnel_state(t, b, bt, &phys) == Ok((dst, src)) {
                 out.insert(End { device: b.id, port: tunnel_port(bt.number) });
             }
         }
@@ -252,7 +365,7 @@ impl Sim {
     /// Sends a datagram into a tunnel: GRE-encapsulated, then routed to the far end.
     pub(crate) fn gre_out(&mut self, t: &Topology, d: &Device, ifc: &L3If, datagram: Vec<u8>) -> Result<(), String> {
         let tun = tunnel_of(ifc.port).and_then(|n| d.tunnels.iter().find(|x| x.number == n)).ok_or("the tunnel is gone")?;
-        let (src, dst) = tunnel_state(d, tun, &crate::phys_up_ifaces(t, d)).map_err(|e| format!("{} is down: {e}", tun.name()))?;
+        let (src, dst) = tunnel_state(t, d, tun, &crate::phys_up_ifaces(t, d)).map_err(|e| format!("{} is down: {e}", tun.name()))?;
         let (out, nh) = self.route(t, d, dst).ok_or_else(|| format!("no route to tunnel destination {dst}"))?;
         if is_tunnel(out.port) {
             return Err(format!("{}: destination {dst} is routed through a tunnel (recursive routing); dropped", tun.name()));
@@ -278,7 +391,7 @@ impl Sim {
             .find(|i| {
                 tunnel_of(i.port)
                     .and_then(|n| d.tunnels.iter().find(|x| x.number == n))
-                    .is_some_and(|x| tunnel_state(d, x, &phys) == Ok((ip.dst, ip.src)))
+                    .is_some_and(|x| tunnel_state(t, d, x, &phys) == Ok((ip.dst, ip.src)))
             })
             .ok_or_else(|| format!("GRE from {}: no tunnel here is up with that destination and source {}", ip.src, ip.dst))?;
         self.ip_in(t, d, &ifc, &g.payload)

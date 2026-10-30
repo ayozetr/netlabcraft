@@ -269,7 +269,7 @@ pub enum PortEvent {
 pub fn up_ifaces(t: &Topology, d: &Device) -> Vec<L3If> {
     let mut out = phys_up_ifaces(t, d);
     if !d.tunnels.is_empty() {
-        let tunnels = vpn::up_tunnels(d, &out);
+        let tunnels = vpn::up_tunnels(t, d, &out);
         out.extend(tunnels);
     }
     out
