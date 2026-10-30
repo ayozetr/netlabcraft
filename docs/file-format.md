@@ -1,6 +1,6 @@
 # The `.pcraft` lab file
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (fields added since M0; shared format)
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (cable kinds)
 
 A lab is one UTF-8 JSON file. It is the serde form of `packetcraft_model::Topology`
 (`crates/model/src/lib.rs`), wrapped with a format tag and version (`crates/model/src/file.rs`):
@@ -17,7 +17,8 @@ older file without a newer field still opens.
 | Field | Holds |
 |---|---|
 | `devices` | The devices (below). |
-| `links` | Cables: `a` and `b`, each `{"device": id, "port": index}`. On a serial cable `a` is the DCE end. |
+| `links` | Cables: `a` and `b`, each `{"device": id, "port": index}`, and `cable` (`straight-through`, `cross-over`, `fiber`, `serial-dce`, `serial-dte`; left out when automatic). On a serial cable `a` is the DCE end. |
+| `consoles` | Console cables: `{"pc": id, "device": id}` (the PC's RS-232 port to the device's Console port); left out when there are none. |
 | `next_id` | The next device id (ids are never reused). |
 | `notes` | The lab's notes text. |
 | `annotations` | Notes and drawings on the workspace: text, rectangle, ellipse, line, each with position and size. |
@@ -62,6 +63,7 @@ events) is not saved.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | `links[].cable` and `consoles`. |
 | 2026-10-30 | minor | `activity`. |
 | 2026-10-30 | minor | Every field listed by table; IPv6, serial, EtherChannel, VTP, RIP, multilayer fields added since M0. |
 | 2026-10-29 | major | Created. |

@@ -23,10 +23,12 @@ column). Commands accept either: `device.add {"model": "Router 3GE"}` or `{"mode
 | 2-port Serial card | `Card-2S` | HWIC-2T | `Serial0/B/0–0/B/1` (B = bay) | |
 | 4-port Serial card | `Card-4S` | HWIC-4T | `Serial0/B/0–0/B/3` | |
 | 1-port Gigabit card | `Card-1GE` | EHWIC-1GE-SFP-CU | `GigabitEthernet0/B/0` | |
+| 1-port Gigabit fiber card | `Card-1GF` | SFP-based Gigabit cards | `GigabitEthernet0/B/0` (fiber) | |
 | 1-port Fast Ethernet card | `Card-1FE` | HWIC-1FE | `FastEthernet0/B/0` | |
 | Router 2GE+2S | `Router-WAN` | 1941 or 2911 with a 2-port serial card (HWIC-2T), ISR 4321 with a serial NIM | `GigabitEthernet0/0–0/1`, `Serial0/0/0–0/0/1` | Serial ports are fitted from the start. |
 | Switch 8FE | `Switch-8` | Small 8-port access switches | `FastEthernet0/1–0/8`, `GigabitEthernet0/1` | |
 | Switch 24FE | `Switch-24` | 2960-24TT | `FastEthernet0/1–0/24`, `GigabitEthernet0/1–0/2` | The usual CCNA switch. |
+| Switch 24FE+2SFP | `Switch-24-SFP` | 2960 models with SFP uplinks | `FastEthernet0/1–0/24`, `GigabitEthernet0/1–0/2` (fiber) | The other switches' Gigabit uplinks take copper or fiber. |
 | Switch 48FE | `Switch-48` | 48-port 2960 models | `FastEthernet0/1–0/48`, `GigabitEthernet0/1–0/2` | |
 | L3 Switch 24 | `Switch-ML-24` | 3560-24PS, 3650-24PS | `FastEthernet0/1–0/24`, `GigabitEthernet0/1–0/2` | Routes with `ip routing`. A 3650 has Gigabit access ports (`GigabitEthernet1/0/1…`): use the same numbers on `FastEthernet0/…`. |
 | Access Point | `AccessPoint` | AccessPoint-PT, autonomous access points | `GigabitEthernet0`, `Wireless0` | |
@@ -53,6 +55,7 @@ independent project, not affiliated with or endorsed by Cisco.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Switch 24FE+2SFP and the fiber card. |
 | 2026-10-30 | minor | Modular routers and their cards, IP Phone, Smart Sensor and Smart Device. |
 | 2026-10-30 | minor | Firewall 5GE. |
 | 2026-10-30 | major | Created: which PacketCraft model to place for each model course labs name. |

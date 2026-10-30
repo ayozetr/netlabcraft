@@ -1,6 +1,6 @@
 # Hardware parity
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (modular routers, phones, IoT, wireless and firewall depth) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (cable types) · **Target:** Cisco Packet Tracer 9.0
 
 Two kinds of hardware matter here: the **simulated** hardware (device models, ports, cables,
 modules) and the **real** hardware the app runs on. Part of
@@ -19,10 +19,11 @@ host hardware: ~70% ready, 10–16 h** (estimated).
 | IP phones | yes | 🟡 IP Phone with a PC port; `switchport voice vlan`; DHCP option 150; call control on routers (`telephony-service`, `ephone-dn`, `ephone`, `auto assign`, `show ephone`); registration, ringing, answer, hang up over our own documented signalling, RTP packets while a call is up; a Phone tab with a dial pad; ip-phones sample | Power over Ethernet, SIP, the phone's own setup screen: 8–12 h |
 | IoT devices | yes | 🟡 Smart Sensor and Smart Device registering to a server's IoT service over HTTP; the server lists them and runs rules (if a reading passes a value, switch a device); an IoT tab; iot sample | Reports on a timer, more kinds of things, a home gateway: 8–12 h |
 | Cloud, DSL and cable modems | yes | ❌ | 8–12 h; low priority for CCNA |
-| Copper cables | Straight-through and crossover (with mismatch errors) | One copper cable; every port is auto-MDIX | By design; a "strict cabling" option: 2–4 h |
+| Copper cables | Straight-through and crossover (with mismatch errors) | ✅ straight-through and cross-over, a wrong cable leaves the link down with the reason unless auto-MDIX (routers and switches) fixes it; automatic cable; solid and dashed lines | — |
 | Serial cables | DCE and DTE | ✅ the first end cabled is the DCE; red cable with a clock at the DCE end | — |
-| Fibre, console, coaxial, phone cables | yes | ❌ | Fibre ports and console sessions over a cable: 8–12 h |
-| Physical workspace (cities, buildings, racks, cable lengths) | yes | ❌ | 40–60 h |
+| Fibre and console cables | yes | ✅ fiber between fiber or combo ports (switch Gigabit uplinks, Switch 24FE+2SFP, a fiber router card), orange, up to 2 km; console (rollover) from a PC's RS-232 port to a device's Console port, opened by the PC's Terminal app with no IP | — |
+| Coaxial and phone cables | yes | ❌ | Only with cable/DSL modems: 4–6 h |
+| Physical workspace (cities, buildings, racks, cable lengths) | yes | ✅ see [ui-parity.md](ui-parity.md) | — |
 | Power switch and LEDs in the Physical tab | yes | 🟡 Physical tab lists ports; no power switch or module bays | 6–10 h |
 
 ## Host hardware
@@ -42,6 +43,7 @@ host hardware: ~70% ready, 10–16 h** (estimated).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Cable types, port media, fiber ports, console cable and the PC Terminal. |
 | 2026-10-30 | minor | Modular routers and cards, power, IP phones, IoT devices; wireless and firewall depth. |
 | 2026-10-30 | minor | Workspace image export (PNG). |
 | 2026-10-30 | minor | Home wireless router. |
