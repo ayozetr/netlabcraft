@@ -147,7 +147,7 @@ fn lacp_actor(t: &Topology, d: &Device, p: usize) -> Option<LacpInfo> {
         system_priority: 32_768,
         system: d.ports.first().map_or(MacAddr([0; 6]), |f| f.mac),
         key: g.number,
-        port_priority: 32_768,
+        port_priority: d.ports.get(p).and_then(|x| x.l2.lacp_priority).unwrap_or(32_768),
         port: u16::try_from(p + 1).unwrap_or(u16::MAX),
         state,
     })
@@ -220,6 +220,30 @@ impl PortMap {
     pub fn pick(&self, p: usize, src: MacAddr, dst: MacAddr) -> usize {
         let Some(members) = self.bundles.get(&self.logical(p)) else { return p };
         let h = src.0.iter().zip(dst.0.iter()).fold(0usize, |h, (a, b)| h ^ usize::from(a ^ b));
+        members.get(h % members.len().max(1)).copied().unwrap_or(p)
+    }
+
+    /// The member that carries `f` out of logical port `p`, by the switch's load-balance
+    /// method `lb`: a hash of the chosen MAC or IPv4 addresses (frames that aren't IPv4 use the
+    /// matching MAC addresses), so one flow always takes the same member.
+    pub fn pick_frame(&self, p: usize, f: &netlabcraft_wire::Frame, lb: netlabcraft_model::l2sec::LoadBalance) -> usize {
+        use netlabcraft_model::l2sec::LoadBalance as L;
+        let Some(members) = self.bundles.get(&self.logical(p)) else { return p };
+        let fold = |bytes: &[u8]| bytes.iter().fold(0usize, |h, b| h ^ usize::from(*b));
+        let ip = (f.ethertype == netlabcraft_wire::ETHERTYPE_IPV4).then(|| (f.payload.get(12..16), f.payload.get(16..20)));
+        let (src_ip, dst_ip) = match ip {
+            Some((Some(s), Some(d))) => (Some(fold(s)), Some(fold(d))),
+            _ => (None, None),
+        };
+        let (sm, dm) = (fold(&f.src.0), fold(&f.dst.0));
+        let h = match lb {
+            L::SrcMac => sm,
+            L::DstMac => dm,
+            L::SrcDstMac => sm ^ dm,
+            L::SrcIp => src_ip.unwrap_or(sm),
+            L::DstIp => dst_ip.unwrap_or(dm),
+            L::SrcDstIp => src_ip.unwrap_or(sm) ^ dst_ip.unwrap_or(dm),
+        };
         members.get(h % members.len().max(1)).copied().unwrap_or(p)
     }
 

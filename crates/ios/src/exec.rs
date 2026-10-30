@@ -1614,6 +1614,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::L2NoBpduguardDefault
         | Id::L2Bpduguard
         | Id::L2NoBpduguard
+        | Id::L2Guard
+        | Id::L2NoGuard
         | Id::L2LinkType
         | Id::L2NoLinkType
         | Id::L2RecoveryCause
@@ -1625,7 +1627,24 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::L2PsecAgingTime
         | Id::L2NoPsecAgingTime
         | Id::L2PsecAgingType
-        | Id::L2NoPsecAgingType => l2sec::command(&mut c, spec.id, &args),
+        | Id::L2NoPsecAgingType
+        | Id::L2StpCost
+        | Id::L2NoStpCost
+        | Id::L2StpVlanCost
+        | Id::L2NoStpVlanCost
+        | Id::L2StpPortPriority
+        | Id::L2NoStpPortPriority
+        | Id::L2StpVlanPortPriority
+        | Id::L2NoStpVlanPortPriority
+        | Id::L2ShowStpSummary
+        | Id::L2ShowStpDetail
+        | Id::L2LoadBalance
+        | Id::L2NoLoadBalance
+        | Id::L2ShowLoadBalance
+        | Id::L2ShowPortChannel
+        | Id::L2LacpPriority
+        | Id::L2NoLacpPriority
+        | Id::L2ShowLacpNeighbor => l2sec::command(&mut c, spec.id, &args),
         Id::FwNameif
         | Id::FwNoNameif
         | Id::FwSecurityLevel

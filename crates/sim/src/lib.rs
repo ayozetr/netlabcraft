@@ -1948,7 +1948,7 @@ impl Sim {
         let outs: Vec<usize> = outs.into_iter().filter(|&p| self.stp_forwards(t, d.id, p, vlan)).collect();
         let mut sent = 0;
         for p in outs {
-            let p = chm.pick(p, f.src, f.dst);
+            let p = chm.pick_frame(p, &f, d.l2.load_balance);
             let Some(port) = d.ports.get(p) else { continue };
             let end = End { device: d.id, port: p };
             let trunk = t.is_trunk(end);

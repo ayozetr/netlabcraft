@@ -5,10 +5,11 @@
 
 use std::fmt::Write as _;
 
-use netlabcraft_core::VlanSet;
+use netlabcraft_core::{VlanId, VlanSet};
 use netlabcraft_model::l2sec::{ArpValidate, ERRDISABLE_INTERVAL, ErrCause, LinkType, LoadBalance, PortL2, vlan_list};
-use netlabcraft_model::{Device, DeviceKind, ifname};
+use netlabcraft_model::{Device, DeviceKind, End, Topology, ifname};
 use netlabcraft_sim::Sim;
+use netlabcraft_sim::stp::Role;
 
 use super::{Ctx, R};
 use crate::grammar::Id;
@@ -162,6 +163,18 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             p.l2.bpduguard = None;
             Ok(())
         }),
+        L2Guard | L2NoGuard => {
+            let on = id == L2Guard
+                && match arg(0).to_ascii_lowercase().as_str() {
+                    "root" => true,
+                    "none" => false,
+                    _ => return Err("% `root` or `none` (loop guard is not simulated)".into()),
+                };
+            c.each_if(|p, _| {
+                p.l2.root_guard = on;
+                Ok(())
+            })
+        }
         L2LinkType | L2NoLinkType => {
             let lt = if id == L2LinkType {
                 Some(match arg(0).to_ascii_lowercase().as_str() {
@@ -231,6 +244,91 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
                 Ok(())
             })
         }
+        // ---- spanning-tree cost and priority ----
+        L2StpCost
+        | L2NoStpCost
+        | L2StpVlanCost
+        | L2NoStpVlanCost
+        | L2StpPortPriority
+        | L2NoStpPortPriority
+        | L2StpVlanPortPriority
+        | L2NoStpVlanPortPriority => {
+            let per_vlan = matches!(id, L2StpVlanCost | L2NoStpVlanCost | L2StpVlanPortPriority | L2NoStpVlanPortPriority);
+            let keys: Vec<u16> = if per_vlan { vlans(arg(0))?.iter().map(VlanId::get).collect() } else { vec![0] };
+            let value_at = usize::from(per_vlan);
+            let cost = matches!(id, L2StpCost | L2NoStpCost | L2StpVlanCost | L2NoStpVlanCost);
+            let set = matches!(id, L2StpCost | L2StpVlanCost | L2StpPortPriority | L2StpVlanPortPriority);
+            let value = if !set {
+                None
+            } else if cost {
+                Some(number(arg(value_at), 1, 200_000_000, "The cost")?)
+            } else {
+                let p = number(arg(value_at), 0, 240, "The port priority")?;
+                if p % 16 != 0 {
+                    return Err("% The port priority is a multiple of 16 from 0 to 240".into());
+                }
+                Some(p)
+            };
+            c.each_if(|p, _| {
+                let map = if cost { &mut p.l2.stp_cost } else { &mut p.l2.stp_priority };
+                for k in &keys {
+                    match value {
+                        Some(v) => {
+                            map.insert(*k, v);
+                        }
+                        None => {
+                            map.remove(k);
+                        }
+                    }
+                }
+                Ok(())
+            })
+        }
+        L2ShowStpSummary => {
+            let d = c.d()?.clone();
+            let mut trees = Vec::new();
+            for v in d.vlans.keys().copied() {
+                let tree = c.sim.spanning_tree(c.t, v).clone();
+                if tree.bridges.contains_key(&d.id) {
+                    trees.push((v, tree));
+                }
+            }
+            Ok(show_stp_summary(c.t, c.sim, &d, &trees))
+        }
+        L2ShowStpDetail => {
+            let v: VlanId = arg(0).parse().map_err(|e| format!("% {e}"))?;
+            let d = c.d()?.clone();
+            if !d.vlans.contains_key(&v) {
+                return Err(format!("% VLAN {v} does not exist on this switch"));
+            }
+            let tree = c.sim.spanning_tree(c.t, v).clone();
+            Ok(show_stp_detail(c.t, c.sim, &d, v, &tree))
+        }
+        // ---- EtherChannel ----
+        L2LoadBalance | L2NoLoadBalance => {
+            let lb = if id == L2LoadBalance {
+                LoadBalance::parse(arg(0))
+                    .ok_or_else(|| format!("% `{}` is not a method: src-mac, dst-mac, src-dst-mac, src-ip, dst-ip or src-dst-ip", arg(0)))?
+            } else {
+                LoadBalance::default()
+            };
+            c.dm()?.l2.load_balance = lb;
+            Ok(String::new())
+        }
+        L2ShowLoadBalance => Ok(show_load_balance(c.d()?)),
+        L2ShowPortChannel => Ok(show_port_channels(c.t, c.d()?)),
+        L2LacpPriority | L2NoLacpPriority => {
+            let n = if id == L2LacpPriority {
+                Some(u16::try_from(number(arg(0), 1, 65_535, "The LACP port priority")?).unwrap_or(u16::MAX))
+            } else {
+                None
+            };
+            c.each_if(|p, _| {
+                p.l2.lacp_priority = n;
+                Ok(())
+            })
+        }
+        L2ShowLacpNeighbor => Ok(show_lacp_neighbors(c.t, c.d()?)),
         _ => Err("% Not a switch-protection command".into()),
     }
 }
@@ -446,6 +544,198 @@ fn show_recovery(sim: &Sim, d: &Device) -> String {
                 format!("{} s", left.div_ceil(1_000_000))
             };
             let _ = writeln!(s, "{:<10} {:<20} {when}", short(d, i), cause.name());
+        }
+    }
+    s.trim_end().to_string()
+}
+
+fn port_state(sim: &Sim, d: &Device, p: usize, vlan: VlanId, role: Role) -> &'static str {
+    sim.stp_transition(d.id, p, vlan).unwrap_or(role.state())
+}
+
+fn show_stp_summary(t: &Topology, sim: &Sim, d: &Device, trees: &[(VlanId, netlabcraft_sim::stp::VlanTree)]) -> String {
+    let l = &d.l2;
+    let mut s = String::new();
+    let _ = writeln!(s, "Mode:                 {}", if d.rapid_stp { "rapid-pvst" } else { "pvst" });
+    let roots: Vec<String> =
+        trees.iter().filter(|(_, tr)| tr.bridges.get(&d.id).is_some_and(|b| b.root == b.id)).map(|(v, _)| format!("VLAN{:04}", v.get())).collect();
+    let _ = writeln!(s, "Root bridge of:       {}", if roots.is_empty() { "none".to_string() } else { roots.join(", ") });
+    let _ = writeln!(s, "Portfast default:     {}", on_off(l.portfast_default));
+    let _ = writeln!(s, "BPDU guard default:   {}", on_off(l.bpduguard_default));
+    let guarded: Vec<String> = d.ports.iter().enumerate().filter(|(_, p)| p.l2.root_guard).map(|(i, _)| short(d, i)).collect();
+    let _ = writeln!(s, "Root guard on:        {}", if guarded.is_empty() { "none".to_string() } else { guarded.join(", ") });
+    let _ = writeln!(s, "\n{:<10} {:<9} {:<10} {:<9} {:<11} Total", "VLAN", "Blocking", "Listening", "Learning", "Forwarding");
+    let mut total = [0usize; 5];
+    for (v, tree) in trees {
+        let mut n = [0usize; 4];
+        for ((dev, p), info) in tree.ports.iter().filter(|((dev, _), i)| *dev == d.id && i.role != Role::Disabled) {
+            let _ = dev;
+            let i = match port_state(sim, d, *p, *v, info.role) {
+                "BLK" => 0,
+                "LIS" => 1,
+                "LRN" => 2,
+                _ => 3,
+            };
+            if let Some(x) = n.get_mut(i) {
+                *x += 1;
+            }
+        }
+        let sum: usize = n.iter().sum();
+        for (a, b) in total.iter_mut().zip(n.iter().chain(std::iter::once(&sum))) {
+            *a += b;
+        }
+        let _ = writeln!(s, "{:<10} {:<9} {:<10} {:<9} {:<11} {sum}", format!("VLAN{:04}", v.get()), n[0], n[1], n[2], n[3]);
+    }
+    let label = format!("{} VLAN{}", trees.len(), if trees.len() == 1 { "" } else { "s" });
+    let _ = writeln!(s, "{:<10} {:<9} {:<10} {:<9} {:<11} {}", label, total[0], total[1], total[2], total[3], total[4]);
+    let _ = t;
+    s.trim_end().to_string()
+}
+
+fn show_stp_detail(t: &Topology, sim: &Sim, d: &Device, vlan: VlanId, tree: &netlabcraft_sim::stp::VlanTree) -> String {
+    let Some(me) = tree.bridges.get(&d.id) else { return format!("VLAN{:04}: this switch has no port in the tree", vlan.get()) };
+    let mut s = format!("VLAN{:04} ({})\n", vlan.get(), if d.rapid_stp { "rapid spanning tree" } else { "IEEE 802.1D spanning tree" });
+    let _ = writeln!(s, "  This switch:  priority {}, address {}", me.id.priority, me.id.mac.dotted());
+    if me.root == me.id {
+        let _ = writeln!(s, "  Root:         this switch");
+    } else {
+        let rp = me.root_port.map_or("-".to_string(), |p| netlabcraft_sim::channel::port_label(t, d, p, true));
+        let _ =
+            writeln!(s, "  Root:         priority {}, address {}; path cost {} through {rp}", me.root.priority, me.root.mac.dotted(), me.root_cost);
+    }
+    let _ = writeln!(s, "  Timers:       hello 2 s, max age 20 s, forward delay 15 s");
+    for ((dev, p), info) in tree.ports.iter().filter(|((dev, _), i)| *dev == d.id && i.role != Role::Disabled) {
+        let _ = dev;
+        let Some(port) = d.ports.get(*p) else { continue };
+        let role = match info.role {
+            Role::Root => "root",
+            Role::Designated => "designated",
+            Role::Alternate => "alternate",
+            Role::Disabled => "disabled",
+        };
+        let state = match port_state(sim, d, *p, vlan, info.role) {
+            "LIS" => "listening",
+            "LRN" => "learning",
+            "BLK" => "blocking",
+            _ => "forwarding",
+        };
+        let inconsistent = tree.inconsistent.contains(&(d.id, *p));
+        let _ = writeln!(
+            s,
+            "\n  {} (port id {}.{}): {role}, {}",
+            netlabcraft_sim::channel::port_label(t, d, *p, false),
+            info.port_id / 1000,
+            info.port_id % 1000,
+            if inconsistent { "blocked by root guard (root-inconsistent)" } else { state }
+        );
+        let lt = port.l2.link_type.map_or_else(
+            || {
+                let to_switch = t.peer(End { device: d.id, port: *p }).and_then(|q| t.device(q.device)).is_some_and(|x| x.kind == DeviceKind::Switch);
+                if to_switch { "point-to-point (from duplex)" } else { "point-to-point (to a host)" }
+            },
+            |x| x.name(),
+        );
+        let edge = netlabcraft_sim::l2sec::edge_port(t, d, *p);
+        let _ = writeln!(s, "    Path cost {}{}; link type {lt}", info.cost, if port.l2.cost(vlan).is_some() { " (set)" } else { " (from speed)" });
+        let _ = writeln!(
+            s,
+            "    Edge port {}; BPDU guard {}; root guard {}",
+            if edge { "yes" } else { "no" },
+            on_off(netlabcraft_sim::l2sec::bpduguard_on(t, d, *p)),
+            on_off(port.l2.root_guard)
+        );
+    }
+    s.trim_end().to_string()
+}
+
+fn show_load_balance(d: &Device) -> String {
+    let lb = d.l2.load_balance;
+    let (ip, other) = match lb {
+        LoadBalance::SrcMac => ("source MAC address", "source MAC address"),
+        LoadBalance::DstMac => ("destination MAC address", "destination MAC address"),
+        LoadBalance::SrcDstMac => ("source and destination MAC addresses", "source and destination MAC addresses"),
+        LoadBalance::SrcIp => ("source IP address", "source MAC address"),
+        LoadBalance::DstIp => ("destination IP address", "destination MAC address"),
+        LoadBalance::SrcDstIp => ("source and destination IP addresses", "source and destination MAC addresses"),
+    };
+    format!("EtherChannel load balancing: {}\n  IPv4 frames pick a member by their {ip}\n  Other frames pick a member by their {other}", lb.name())
+}
+
+fn show_port_channels(t: &Topology, d: &Device) -> String {
+    let chans = netlabcraft_sim::channel::channels(t, d);
+    if chans.is_empty() {
+        return "No EtherChannel on this switch.".into();
+    }
+    let mut s = String::new();
+    for c in &chans {
+        let _ = writeln!(
+            s,
+            "Port-channel{}: {}, protocol {}, {} of {} ports bundled, load balancing {}",
+            c.number,
+            if c.is_up() { "up" } else { "down" },
+            c.protocol(d),
+            c.bundled().len(),
+            c.members.len(),
+            d.l2.load_balance.name()
+        );
+        let _ = writeln!(s, "  {:<9} {:<10} {:<11} LACP priority", "Port", "Mode", "State");
+        for (p, st) in &c.members {
+            let Some(port) = d.ports.get(*p) else { continue };
+            let mode = port.channel.map_or("", |g| g.mode.name());
+            let pri = port.l2.lacp_priority.unwrap_or(32_768);
+            let _ = writeln!(s, "  {:<9} {:<10} {:<11} {pri}", ifname::short(&port.name), mode, st.name());
+        }
+        let _ = writeln!(s);
+    }
+    s.trim_end().to_string()
+}
+
+fn lacp_state(state: u8) -> String {
+    use netlabcraft_sim::l2sec::lacp;
+    let mut w = vec![if state & lacp::ACTIVITY != 0 { "active" } else { "passive" }];
+    if state & lacp::SYNC != 0 {
+        w.push("in sync");
+    }
+    if state & lacp::COLLECTING != 0 {
+        w.push("collecting");
+    }
+    if state & lacp::DISTRIBUTING != 0 {
+        w.push("distributing");
+    }
+    if state & lacp::DEFAULTED != 0 {
+        w.push("nothing heard");
+    }
+    w.join(", ")
+}
+
+fn show_lacp_neighbors(t: &Topology, d: &Device) -> String {
+    let chans: Vec<_> = netlabcraft_sim::channel::channels(t, d).into_iter().filter(|c| c.protocol(d) == "LACP").collect();
+    if chans.is_empty() {
+        return "No LACP channel on this switch.".into();
+    }
+    let mut s = String::new();
+    for c in &chans {
+        let _ = writeln!(s, "Port-channel{}", c.number);
+        let _ = writeln!(s, "  {:<9} {:<22} {:<6} {:<9} {:<5} Partner state", "Port", "Partner system", "Port", "Priority", "Key");
+        for (p, _) in &c.members {
+            let name = short(d, *p);
+            match netlabcraft_sim::channel::lacpdu(t, d, *p).map(|x| x.partner).filter(|x| x.state & netlabcraft_sim::l2sec::lacp::DEFAULTED == 0) {
+                Some(x) => {
+                    let _ = writeln!(
+                        s,
+                        "  {:<9} {:<22} {:<6} {:<9} {:<5} {}",
+                        name,
+                        format!("{},{}", x.system_priority, x.system.dotted()),
+                        x.port,
+                        x.port_priority,
+                        x.key,
+                        lacp_state(x.state)
+                    );
+                }
+                None => {
+                    let _ = writeln!(s, "  {name:<9} (no LACP partner heard)");
+                }
+            }
         }
     }
     s.trim_end().to_string()

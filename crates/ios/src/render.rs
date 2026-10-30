@@ -949,8 +949,12 @@ pub fn spanning_tree(t: &Topology, sim: &Sim, d: &Device, vlan: VlanId, tree: &n
     let _ = writeln!(s, "{:<10} {:<4} {:<5} {:<6} {:<8} Type", "Interface", "Role", "State", "Cost", "Port ID");
     for ((dev, p), info) in tree.ports.iter().filter(|((dev, _), i)| *dev == d.id && i.role != netlabcraft_sim::stp::Role::Disabled) {
         let _ = dev;
-        let Some(port) = d.ports.get(*p) else { continue };
-        let kind = if port.portfast {
+        if d.ports.get(*p).is_none() {
+            continue;
+        }
+        let kind = if tree.inconsistent.contains(&(d.id, *p)) {
+            "Root-inconsistent"
+        } else if netlabcraft_sim::l2sec::edge_port(t, d, *p) {
             "Edge"
         } else if t.peer(End { device: d.id, port: *p }).and_then(|q| t.device(q.device)).is_some_and(|x| x.kind == DeviceKind::Switch) {
             "P2p"
@@ -964,7 +968,7 @@ pub fn spanning_tree(t: &Topology, sim: &Sim, d: &Device, vlan: VlanId, tree: &n
             info.role.short(),
             sim.stp_transition(d.id, *p, vlan).unwrap_or(info.role.state()),
             info.cost,
-            format!("128.{}", p + 1)
+            format!("{}.{}", info.port_id / 1000, info.port_id % 1000)
         );
     }
     s.trim_end().to_string()

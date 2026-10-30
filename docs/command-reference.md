@@ -661,8 +661,20 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no spanning-tree portfast bpduguard default` | config | switch | No BPDU guard unless set on the port |
 | `spanning-tree bpduguard {enable\|disable}` | interface | switch | Err-disable the port when a BPDU arrives |
 | `no spanning-tree bpduguard` | interface | switch | BPDU guard as the switch default says |
+| `spanning-tree guard {root\|none}` | interface | switch | Root guard: never let a better root in through this port |
+| `no spanning-tree guard` | interface | switch | No root guard |
 | `spanning-tree link-type {point-to-point\|shared}` | interface | switch | What the port is cabled to |
 | `no spanning-tree link-type` | interface | switch | Link type from the duplex |
+| `spanning-tree cost <1-200000000>` | interface | switch | Path cost of this port in every VLAN |
+| `no spanning-tree cost` | interface | switch | Path cost from the port speed |
+| `spanning-tree vlan <1-4094>[,-] cost <1-200000000>` | interface | switch | Path cost in these VLANs |
+| `no spanning-tree vlan <1-4094>[,-] cost` | interface | switch | Path cost from the speed in these VLANs |
+| `spanning-tree port-priority <0-240>` | interface | switch | Port priority (multiple of 16) in every VLAN |
+| `no spanning-tree port-priority` | interface | switch | Port priority back to 128 |
+| `spanning-tree vlan <1-4094>[,-] port-priority <0-240>` | interface | switch | Port priority in these VLANs |
+| `no spanning-tree vlan <1-4094>[,-] port-priority` | interface | switch | Port priority back to 128 in these VLANs |
+| `show spanning-tree summary` | user, privileged | switch | Spanning-tree settings and port states per VLAN |
+| `show spanning-tree vlan <1-4094> detail` | user, privileged | switch | One VLAN's tree, port by port |
 | `errdisable recovery cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|all}` | config | switch | Bring ports shut for this reason back by themselves |
 | `no errdisable recovery cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|all}` | config | switch | Ports shut for this reason wait for shutdown / no shutdown |
 | `errdisable recovery interval <30-86400>` | config | switch | Seconds before an err-disabled port comes back |
@@ -673,6 +685,13 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no switchport port-security aging time` | interface | switch | Learned addresses never age |
 | `switchport port-security aging type {absolute\|inactivity}` | interface | switch | Age from learning, or from the last frame |
 | `no switchport port-security aging type` | interface | switch | Age from learning (absolute) |
+| `port-channel load-balance {src-mac\|dst-mac\|src-dst-mac\|src-ip\|dst-ip\|src-dst-ip}` | config | switch | What picks an EtherChannel member for a frame |
+| `no port-channel load-balance` | config | switch | Back to src-mac |
+| `show etherchannel load-balance` | user, privileged | switch | How EtherChannels spread traffic |
+| `show etherchannel port-channel` | user, privileged | switch | Each port channel and its members |
+| `lacp port-priority <1-65535>` | interface | switch | LACP priority of this port (lower is preferred) |
+| `no lacp port-priority` | interface | switch | LACP priority back to 32768 |
+| `show lacp neighbor` | user, privileged | switch | What LACP hears from the other end |
 | `show spanning-tree` | user, privileged | switch | Spanning trees of every VLAN |
 | `show spanning-tree vlan <1-4094>` | user, privileged | switch | One VLAN's spanning tree |
 | `nameif NAME` | interface, subinterface | firewall | Name the interface (rules, routes and NAT refer to it by this name) |

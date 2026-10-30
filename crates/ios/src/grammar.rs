@@ -227,6 +227,8 @@ pub enum Id {
     L2NoBpduguardDefault,
     L2Bpduguard,
     L2NoBpduguard,
+    L2Guard,
+    L2NoGuard,
     L2LinkType,
     L2NoLinkType,
     L2RecoveryCause,
@@ -239,6 +241,23 @@ pub enum Id {
     L2NoPsecAgingTime,
     L2PsecAgingType,
     L2NoPsecAgingType,
+    L2StpCost,
+    L2NoStpCost,
+    L2StpVlanCost,
+    L2NoStpVlanCost,
+    L2StpPortPriority,
+    L2NoStpPortPriority,
+    L2StpVlanPortPriority,
+    L2NoStpVlanPortPriority,
+    L2ShowStpSummary,
+    L2ShowStpDetail,
+    L2LoadBalance,
+    L2NoLoadBalance,
+    L2ShowLoadBalance,
+    L2ShowPortChannel,
+    L2LacpPriority,
+    L2NoLacpPriority,
+    L2ShowLacpNeighbor,
     ShowStp,
     ShowStpVlan,
     NoInterfaceVlan,
@@ -1979,8 +1998,62 @@ pub static SPECS: &[Spec] = &[
         "Err-disable the port when a BPDU arrives"
     ),
     spec!(L2NoBpduguard, Modes::IF, Modes::SWITCH, [K("no"), K("spanning-tree"), K("bpduguard")], "BPDU guard as the switch default says"),
+    spec!(
+        L2Guard,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("spanning-tree"), K("guard"), Arg("{root|none}")],
+        "Root guard: never let a better root in through this port"
+    ),
+    spec!(L2NoGuard, Modes::IF, Modes::SWITCH, [K("no"), K("spanning-tree"), K("guard")], "No root guard"),
     spec!(L2LinkType, Modes::IF, Modes::SWITCH, [K("spanning-tree"), K("link-type"), Arg("{point-to-point|shared}")], "What the port is cabled to"),
     spec!(L2NoLinkType, Modes::IF, Modes::SWITCH, [K("no"), K("spanning-tree"), K("link-type")], "Link type from the duplex"),
+    spec!(L2StpCost, Modes::IF, Modes::SWITCH, [K("spanning-tree"), K("cost"), Arg("<1-200000000>")], "Path cost of this port in every VLAN"),
+    spec!(L2NoStpCost, Modes::IF, Modes::SWITCH, [K("no"), K("spanning-tree"), K("cost")], "Path cost from the port speed"),
+    spec!(
+        L2StpVlanCost,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("spanning-tree"), K("vlan"), Arg("<1-4094>[,-]"), K("cost"), Arg("<1-200000000>")],
+        "Path cost in these VLANs"
+    ),
+    spec!(
+        L2NoStpVlanCost,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("no"), K("spanning-tree"), K("vlan"), Arg("<1-4094>[,-]"), K("cost")],
+        "Path cost from the speed in these VLANs"
+    ),
+    spec!(
+        L2StpPortPriority,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("spanning-tree"), K("port-priority"), Arg("<0-240>")],
+        "Port priority (multiple of 16) in every VLAN"
+    ),
+    spec!(L2NoStpPortPriority, Modes::IF, Modes::SWITCH, [K("no"), K("spanning-tree"), K("port-priority")], "Port priority back to 128"),
+    spec!(
+        L2StpVlanPortPriority,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("spanning-tree"), K("vlan"), Arg("<1-4094>[,-]"), K("port-priority"), Arg("<0-240>")],
+        "Port priority in these VLANs"
+    ),
+    spec!(
+        L2NoStpVlanPortPriority,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("no"), K("spanning-tree"), K("vlan"), Arg("<1-4094>[,-]"), K("port-priority")],
+        "Port priority back to 128 in these VLANs"
+    ),
+    spec!(L2ShowStpSummary, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree"), K("summary")], "Spanning-tree settings and port states per VLAN"),
+    spec!(
+        L2ShowStpDetail,
+        EXECS,
+        Modes::SWITCH,
+        [K("show"), K("spanning-tree"), K("vlan"), Arg("<1-4094>"), K("detail")],
+        "One VLAN's tree, port by port"
+    ),
     spec!(
         L2RecoveryCause,
         Modes::CONFIG,
@@ -2033,6 +2106,25 @@ pub static SPECS: &[Spec] = &[
         [K("no"), K("switchport"), K("port-security"), K("aging"), K("type")],
         "Age from learning (absolute)"
     ),
+    spec!(
+        L2LoadBalance,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("port-channel"), K("load-balance"), Arg("{src-mac|dst-mac|src-dst-mac|src-ip|dst-ip|src-dst-ip}")],
+        "What picks an EtherChannel member for a frame"
+    ),
+    spec!(L2NoLoadBalance, Modes::CONFIG, Modes::SWITCH, [K("no"), K("port-channel"), K("load-balance")], "Back to src-mac"),
+    spec!(L2ShowLoadBalance, EXECS, Modes::SWITCH, [K("show"), K("etherchannel"), K("load-balance")], "How EtherChannels spread traffic"),
+    spec!(L2ShowPortChannel, EXECS, Modes::SWITCH, [K("show"), K("etherchannel"), K("port-channel")], "Each port channel and its members"),
+    spec!(
+        L2LacpPriority,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("lacp"), K("port-priority"), Arg("<1-65535>")],
+        "LACP priority of this port (lower is preferred)"
+    ),
+    spec!(L2NoLacpPriority, Modes::IF, Modes::SWITCH, [K("no"), K("lacp"), K("port-priority")], "LACP priority back to 32768"),
+    spec!(L2ShowLacpNeighbor, EXECS, Modes::SWITCH, [K("show"), K("lacp"), K("neighbor")], "What LACP hears from the other end"),
     spec!(ShowStp, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree")], "Spanning trees of every VLAN"),
     spec!(ShowStpVlan, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree"), K("vlan"), Arg("<1-4094>")], "One VLAN's spanning tree"),
     // ---- the firewall appliance ----

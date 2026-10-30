@@ -3929,6 +3929,103 @@ fn bpdu_guard_err_disables_and_recovery_brings_the_port_back() {
 }
 
 #[test]
+fn stp_cost_and_port_priority_move_the_root_port() {
+    let mut lab = Lab::new();
+    let s1 = lab.add(DeviceKind::Switch);
+    let s2 = lab.add(DeviceKind::Switch);
+    lab.cable(s1, "fa0/1", s2, "fa0/1");
+    lab.cable(s1, "fa0/2", s2, "fa0/2");
+    lab.run(s1, "en\nconf t\nspanning-tree vlan 1 priority 4096\nend");
+    lab.run(s2, "en");
+    assert!(lab.run(s2, "show spanning-tree vlan 1").contains("Cost 19, reached through Fa0/1"));
+    // A cheaper cost on Fa0/2 makes it the root port.
+    lab.run(s2, "conf t\nint fa0/2\nspanning-tree vlan 1 cost 10\nend");
+    let st = lab.run(s2, "show spanning-tree vlan 1");
+    assert!(st.contains("Cost 10, reached through Fa0/2"), "{st}");
+    let detail = lab.run(s2, "show spanning-tree vlan 1 detail");
+    assert!(detail.contains("FastEthernet0/2 (port id 128.2): root,") && detail.contains("Path cost 10 (set)"), "{detail}");
+    assert!(detail.contains("FastEthernet0/1 (port id 128.1): alternate, blocking"), "{detail}");
+    lab.run(s2, "conf t\nint fa0/2\nno spanning-tree vlan 1 cost\nend");
+    assert!(lab.run(s2, "show spanning-tree vlan 1").contains("reached through Fa0/1"));
+    // A better (lower) port priority on the root's Fa0/2 does the same from the other side.
+    lab.run(s1, "conf t\nint fa0/2\nspanning-tree port-priority 64\nend");
+    assert!(lab.run(s2, "show spanning-tree vlan 1").contains("reached through Fa0/2"));
+    assert!(lab.run(s1, "show spanning-tree vlan 1").contains("64.2"));
+    lab.run(s1, "conf t\nint fa0/2");
+    assert!(lab.try_run(s1, "spanning-tree port-priority 65").contains("multiple of 16"));
+    lab.run(s1, "end");
+    // Root guard on S2's ports: S1's better root is refused, S2 stays its own root.
+    lab.run(s2, "conf t\nint range fa0/1-2\nspanning-tree guard root\nspanning-tree link-type point-to-point\nend");
+    let st = lab.run(s2, "show spanning-tree vlan 1");
+    assert!(st.contains("This switch is the root") && st.contains("Root-inconsistent"), "{st}");
+    assert!(lab.run(s2, "show spanning-tree vlan 1 detail").contains("root-inconsistent"));
+    let sum = lab.run(s2, "show spanning-tree summary");
+    assert!(sum.contains("Root bridge of:       VLAN0001") && sum.contains("Root guard on:        Fa0/1, Fa0/2"), "{sum}");
+    let run = lab.run(s2, "show run");
+    assert!(run.contains(" spanning-tree guard root\n spanning-tree link-type point-to-point"), "{run}");
+}
+
+/// The members of S1's channel that carried IPv4 frames from `mac`.
+fn members_used(lab: &Lab, s1: DeviceId, mac: netlabcraft_core::MacAddr) -> std::collections::BTreeSet<usize> {
+    lab.sim
+        .trace()
+        .iter()
+        .filter(|e| e.from.device == s1 && e.frame.get(6..12) == Some(&mac.0[..]) && e.frame.get(12..14) == Some(&[0x08, 0x00][..]))
+        .map(|e| e.from.port)
+        .collect()
+}
+
+#[test]
+fn etherchannel_load_balance_picks_members() {
+    let mut lab = Lab::new();
+    let s1 = lab.add(DeviceKind::Switch);
+    let s2 = lab.add(DeviceKind::Switch);
+    lab.cable(s1, "fa0/23", s2, "fa0/23");
+    lab.cable(s1, "fa0/24", s2, "fa0/24");
+    let a = lab.add(DeviceKind::Pc);
+    let b = lab.add(DeviceKind::Pc);
+    let c = lab.add(DeviceKind::Pc);
+    lab.cable(a, "fa0", s1, "fa0/1");
+    lab.cable(b, "fa0", s1, "fa0/2");
+    lab.cable(c, "fa0", s2, "fa0/1");
+    lab.run(a, "ipconfig 10.0.0.1 255.255.255.0");
+    lab.run(b, "ipconfig 10.0.0.2 255.255.255.0");
+    lab.run(c, "ipconfig 10.0.0.3 255.255.255.0");
+    for s in [s1, s2] {
+        lab.run(s, "en\nconf t\nint range fa0/23-24\nchannel-group 1 mode active\nlacp port-priority 100\nend");
+    }
+    lab.sim.converge_stp();
+    let (ma, mb) = (lab.t.device(a).unwrap().ports[0].mac, lab.t.device(b).unwrap().ports[0].mac);
+    let flows = |lab: &mut Lab| {
+        lab.sim.clear_trace();
+        assert!(lab.run(a, "ping 10.0.0.3").contains("4 answered"));
+        assert!(lab.run(b, "ping 10.0.0.3").contains("4 answered"));
+        (members_used(lab, s1, ma), members_used(lab, s1, mb))
+    };
+    // By destination IP: both flows go to 10.0.0.3, so one member carries both.
+    lab.run(s1, "conf t\nport-channel load-balance dst-ip\nend");
+    let (x, y) = flows(&mut lab);
+    assert_eq!(x.len(), 1, "{x:?}");
+    assert_eq!(x, y);
+    // By source IP: 10.0.0.1 and 10.0.0.2 hash to different members.
+    lab.run(s1, "conf t\nport-channel load-balance src-ip\nend");
+    let (x, y) = flows(&mut lab);
+    assert_eq!(x.len(), 1, "{x:?}");
+    assert_eq!(y.len(), 1, "{y:?}");
+    assert_ne!(x, y);
+    let lb = lab.run(s1, "show etherchannel load-balance");
+    assert!(lb.contains("src-ip") && lb.contains("source IP address"), "{lb}");
+    let pc = lab.run(s1, "show etherchannel port-channel");
+    assert!(pc.contains("Port-channel1: up, protocol LACP, 2 of 2 ports bundled, load balancing src-ip") && pc.contains("100"), "{pc}");
+    let nb = lab.run(s1, "show lacp neighbor");
+    assert!(nb.contains("Port-channel1") && nb.contains("Fa0/23") && nb.contains("100") && nb.contains("in sync"), "{nb}");
+    let run = lab.run(s1, "show run");
+    assert!(run.contains("port-channel load-balance src-ip") && run.contains(" lacp port-priority 100"), "{run}");
+    lab.run(s1, "conf t\nno port-channel load-balance\nend");
+    assert!(lab.run(s1, "show etherchannel load-balance").contains("src-mac"));
+}
+
+#[test]
 fn port_security_aging_forgets_learned_addresses() {
     let mut lab = Lab::new();
     let s = lab.add(DeviceKind::Switch);
