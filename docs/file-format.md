@@ -21,6 +21,7 @@ older file without a newer field still opens.
 | `next_id` | The next device id (ids are never reused). |
 | `notes` | The lab's notes text. |
 | `annotations` | Notes and drawings on the workspace: text, rectangle, ellipse, line, each with position and size. |
+| `activity` | A graded activity: `title`, `instructions`, `checks` (each `label`, `points`, `type`: `config`, `config-hashed`, `ping`, `host-address`, `output`, with its fields), `hidden`, `salt`. |
 
 ## Device
 
@@ -61,5 +62,6 @@ events) is not saved.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | `activity`. |
 | 2026-10-30 | minor | Every field listed by table; IPv6, serial, EtherChannel, VTP, RIP, multilayer fields added since M0. |
 | 2026-10-29 | major | Created. |

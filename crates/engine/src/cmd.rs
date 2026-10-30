@@ -210,6 +210,157 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         "device.models" => Ok(Value::Array(
             models::MODELS.iter().map(|m| json!({"id": m.id, "kind": m.kind.id(), "label": m.label, "description": m.description, "ports": m.port_names()})).collect(),
         )),
+                "activity.show" => Ok(json!({
+            "activity": s.topology.activity,
+            "total_points": s.topology.activity.as_ref().map_or(0, packetcraft_model::activity::Activity::total_points),
+        })),
+        "activity.set" => {
+            let mut t = s.topology.clone();
+            let salt_title = opt_str(p, "title").unwrap_or("Activity").to_string();
+            let fresh_salt = crate::activity::new_salt(&t, &salt_title);
+            let a = t.activity.get_or_insert_with(|| packetcraft_model::activity::Activity { title: "Activity".into(), salt: fresh_salt, ..Default::default() });
+            if let Some(title) = opt_str(p, "title") {
+                a.title = title.chars().take(200).collect();
+            }
+            if let Some(text) = opt_str(p, "instructions") {
+                a.instructions = text.chars().take(packetcraft_model::activity::MAX_TEXT).collect();
+            }
+            if let Some(h) = p.get("hidden").and_then(Value::as_bool) {
+                if !h && a.hidden && a.checks.iter().any(|c| matches!(c.kind, packetcraft_model::activity::CheckKind::ConfigHashed { .. })) {
+                    return Err(bad("hidden answers can't be shown again: capture the answers again with `hidden` off"));
+                }
+                if h && !a.hidden {
+                    // Hide what is already there.
+                    let salt = a.salt.clone();
+                    for c in &mut a.checks {
+                        if let packetcraft_model::activity::CheckKind::Config { device, line } = &c.kind {
+                            let hash = packetcraft_model::activity::line_hash(&salt, *device, line);
+                            c.kind = packetcraft_model::activity::CheckKind::ConfigHashed { device: *device, hash };
+                            c.label = c.label.split(':').next().map_or("configuration item".to_string(), |d| format!("{d}: configuration item"));
+                        }
+                    }
+                }
+                a.hidden = h;
+            }
+            s.checkpoint();
+            s.topology = t;
+            s.changed();
+            Ok(json!({"title": s.topology.activity.as_ref().map(|a| a.title.clone())}))
+        }
+        "activity.capture" => {
+            let mut t = s.topology.clone();
+            let Some(a) = t.activity.as_ref() else { return Err(bad("no activity yet: `activity.set` first")) };
+            let mut checks = crate::activity::capture(&s.topology, a.hidden, &a.salt);
+            let kept: Vec<_> = a
+                .checks
+                .iter()
+                .filter(|c| matches!(c.kind, packetcraft_model::activity::CheckKind::Ping { .. } | packetcraft_model::activity::CheckKind::Output { .. }))
+                .cloned()
+                .collect();
+            checks.extend(kept);
+            checks.truncate(packetcraft_model::activity::MAX_CHECKS);
+            let n = checks.len();
+            if let Some(a) = t.activity.as_mut() {
+                a.checks = checks;
+            }
+            s.checkpoint();
+            s.topology = t;
+            s.changed();
+            Ok(json!({"checks": n}))
+        }
+        "activity.add_check" => {
+            use packetcraft_model::activity::{Check, CheckKind, normalize};
+            let ty = str_param(p, "type")?;
+            let dev_key = if ty == "ping" { "from" } else { "device" };
+            let d = device_param(s, p, dev_key)?;
+            let name = s.topology.device(d).map_or(String::new(), |x| x.name.clone());
+            let hidden = s.topology.activity.as_ref().is_some_and(|a| a.hidden);
+            let salt = s.topology.activity.as_ref().map(|a| a.salt.clone()).unwrap_or_default();
+            let (label, kind) = match ty {
+                "config" => {
+                    let line = str_param(p, "line")?;
+                    let flat = match line.split_once('|') {
+                        Some((b, l)) => format!("{} | {}", normalize(b), normalize(l)),
+                        None => normalize(line),
+                    };
+                    if hidden {
+                        (format!("{name}: configuration item"), CheckKind::ConfigHashed { device: d, hash: packetcraft_model::activity::line_hash(&salt, d, &flat) })
+                    } else {
+                        (format!("{name}: {flat}"), CheckKind::Config { device: d, line: flat })
+                    }
+                }
+                "ping" => {
+                    let to = str_param(p, "to")?;
+                    to.parse::<std::net::IpAddr>().map_err(|_| bad(format!("`{to}` is not an address")))?;
+                    let succeed = p.get("succeed").and_then(Value::as_bool).unwrap_or(true);
+                    (format!("{name} {} {to}", if succeed { "reaches" } else { "can't reach" }), CheckKind::Ping { from: d, to: to.to_string(), succeed })
+                }
+                "host-address" => {
+                    let address = str_param(p, "address")?;
+                    address.parse::<packetcraft_core::Ipv4Net>().map_err(|e| bad(e.to_string()))?;
+                    let gateway = opt_str(p, "gateway").map(str::to_string);
+                    (format!("{name}: address {address}"), CheckKind::HostAddress { device: d, address: address.to_string(), gateway })
+                }
+                "output" => {
+                    let command = str_param(p, "command")?.chars().take(512).collect::<String>();
+                    let contains = str_param(p, "contains")?.chars().take(512).collect::<String>();
+                    (format!("{name}: `{command}` shows \"{contains}\""), CheckKind::Output { device: d, command, contains })
+                }
+                other => return Err(bad(format!("unknown check type `{other}` (config, ping, host-address, output)"))),
+            };
+            let label = opt_str(p, "label").map_or(label, |l| l.chars().take(300).collect());
+            let points = p.get("points").and_then(Value::as_u64).map_or(1, |n| n.clamp(1, 1_000) as u32);
+            let mut t = s.topology.clone();
+            let fresh_salt = crate::activity::new_salt(&t, "Activity");
+            let a = t.activity.get_or_insert_with(|| packetcraft_model::activity::Activity { title: "Activity".into(), salt: fresh_salt, ..Default::default() });
+            if a.checks.len() >= packetcraft_model::activity::MAX_CHECKS {
+                return Err(bad("too many checks"));
+            }
+            a.checks.push(Check { label, points, kind });
+            let n = a.checks.len();
+            s.checkpoint();
+            s.topology = t;
+            s.changed();
+            Ok(json!({"checks": n}))
+        }
+        "activity.remove_check" => {
+            let i = p.get("index").and_then(Value::as_u64).ok_or_else(|| bad("`index` is required"))? as usize;
+            let mut t = s.topology.clone();
+            let a = t.activity.as_mut().ok_or_else(|| bad("no activity"))?;
+            if i >= a.checks.len() {
+                return Err(bad(format!("no check {i}")));
+            }
+            a.checks.remove(i);
+            s.checkpoint();
+            s.topology = t;
+            s.changed();
+            Ok(json!({}))
+        }
+        "activity.clear" => {
+            let mut t = s.topology.clone();
+            t.activity = None;
+            s.checkpoint();
+            s.topology = t;
+            s.changed();
+            Ok(json!({}))
+        }
+        "activity.check" => {
+            let a = s.topology.activity.as_ref().ok_or_else(|| bad("this lab has no activity"))?;
+            let results = crate::activity::evaluate(&s.topology, &s.sim, &a.checks, &a.salt);
+            let total: u32 = results.iter().map(|r| r.points).sum();
+            let score: u32 = results.iter().filter(|r| r.passed).map(|r| r.points).sum();
+            let percent = (score * 100).checked_div(total).unwrap_or(0);
+            Ok(json!({
+                "results": results.iter().map(|r| json!({"label": r.label, "points": r.points, "passed": r.passed})).collect::<Vec<_>>(),
+                "score": score, "total": total, "percent": percent,
+            }))
+        }
+        "activity.reset" => {
+            let start = s.activity_start.clone().ok_or_else(|| bad("this lab wasn't opened as an activity"))?;
+            let path = s.path.clone();
+            s.replace(start, path);
+            Ok(json!({}))
+        }
         "note.add" => {
             let (x, y) = (f32_param(p, "x").unwrap_or(0.0), f32_param(p, "y").unwrap_or(0.0));
                         let shape = match opt_str(p, "shape") {

@@ -12,6 +12,7 @@ use packetcraft_core::{DeviceId, Ipv4Net, Ipv6Net, MacAddr, VlanId, VlanSet};
 use serde::{Deserialize, Serialize};
 
 pub mod acl;
+pub mod activity;
 pub mod file;
 pub mod ifname;
 pub mod models;
@@ -1080,6 +1081,9 @@ pub struct Topology {
     /// Notes placed on the workspace.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub annotations: Vec<Annotation>,
+    /// A graded activity: instructions and the results to reach.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activity: Option<activity::Activity>,
 }
 
 /// A note or drawing placed on the workspace.
@@ -1141,7 +1145,7 @@ pub const MAX_ANNOTATION_TEXT: usize = 4_000;
 
 impl Topology {
     pub fn new() -> Topology {
-        Topology { devices: Vec::new(), links: Vec::new(), next_id: 1, notes: String::new(), annotations: Vec::new() }
+        Topology { devices: Vec::new(), links: Vec::new(), next_id: 1, notes: String::new(), annotations: Vec::new(), activity: None }
     }
 
     pub fn device(&self, id: DeviceId) -> Option<&Device> {
@@ -1334,6 +1338,9 @@ impl Topology {
     /// Repairs what a hand-edited or hostile file could break: dangling or duplicate cables,
     /// duplicate names and ids, non-finite positions, missing VLAN 1, oversized lists.
     pub fn sanitize(&mut self) {
+        if let Some(a) = &mut self.activity {
+            a.sanitize();
+        }
         self.devices.truncate(MAX_DEVICES);
         let mut seen_ids = std::collections::BTreeSet::new();
         self.devices.retain(|d| seen_ids.insert(d.id));

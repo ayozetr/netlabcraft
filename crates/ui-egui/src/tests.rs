@@ -167,3 +167,19 @@ fn one_click_on_a_device_opens_it() {
     let d = h.state().session.topology.devices[0].id;
     assert!(h.state().ui.windows.contains_key(&d), "one click opens the device window");
 }
+
+#[test]
+fn an_activity_opens_its_instructions_and_checks_results() {
+    let mut h = harness(Some("activity-first-router"));
+    h.run();
+    h.get_by_label("Check Results").click();
+    h.run();
+    let r = h.state().ui.activity.results.clone().unwrap();
+    assert_eq!(r["percent"], 0);
+    assert!(r["results"].as_array().unwrap().len() >= 7);
+    h.state_mut().ui.activity.show_wizard = true;
+    h.run();
+    h.get_by_label("Capture answers from this lab").click();
+    h.run();
+    assert!(h.state().session.topology.activity.as_ref().unwrap().checks.iter().any(|c| c.label.starts_with("PC1")));
+}

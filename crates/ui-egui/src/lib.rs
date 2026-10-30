@@ -16,6 +16,7 @@ use packetcraft_engine::{EngineError, Session, sample};
 
 use serde_json::{Value, json};
 
+pub mod activity;
 mod bottom;
 mod canvas;
 mod console;
@@ -112,6 +113,8 @@ pub struct UiState {
     pub clipboard: Option<DeviceId>,
     /// The workspace note being edited, and its text.
     pub editing_note: Option<(u32, String)>,
+    /// Activity instructions and wizard.
+    pub activity: activity::ActivityView,
     canvas: canvas::CanvasState,
 }
 
@@ -137,6 +140,7 @@ impl Default for UiState {
             pointer: None,
             clipboard: None,
             editing_note: None,
+            activity: activity::ActivityView::default(),
             canvas: canvas::CanvasState::default(),
         }
     }
@@ -532,6 +536,7 @@ impl PacketApp {
         canvas::note_editor(self, &ctx);
         events::pdu_window(self, &ctx);
         self.notes_window(&ctx);
+        activity::windows(self, &ctx);
         self.about_window(&ctx);
     }
 
@@ -612,6 +617,15 @@ impl PacketApp {
                 }
             });
             ui.menu_button("Extensions", |ui| {
+                if ui.button("Activity Wizard…").clicked() {
+                    self.ui.activity.show_wizard = true;
+                    ui.close();
+                }
+                if ui.add_enabled(self.session.topology.activity.is_some(), egui::Button::new("Activity Instructions")).clicked() {
+                    self.ui.activity.show_instructions = true;
+                    ui.close();
+                }
+                ui.separator();
                 ui.label("Agents and scripts drive PacketCraft through");
                 ui.monospace("packetcraft-cli mcp");
                 ui.monospace("packetcraft-cli run --cmd ...");

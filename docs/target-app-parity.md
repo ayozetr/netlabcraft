@@ -15,13 +15,13 @@ This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summa
 | Engine commands | **40** | measured: `crates/engine/src/catalog.rs` |
 | Console grammar entries | **225** across 12 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
 | Device models | **13** | measured: `crates/model/src/models.rs` |
-| Sample labs | **15** | measured: `crates/engine/src/sample.rs` |
-| Tests | **119** | measured: `cargo test --workspace` |
-| **Ready for real work** (weighted) | **~50%** | estimated; written weights below (52.7 computed) |
+| Sample labs | **16** | measured: `crates/engine/src/sample.rs` |
+| Tests | **124** | measured: `cargo test --workspace` |
+| **Ready for real work** (weighted) | **~50%** | estimated; written weights below (55.9 computed) |
 | **CCNA 1 student** (Introduction to Networks) | **~74%** | estimated; [method](#audiences) |
 | **CCNA 2 student** (Switching, Routing and Wireless Essentials) | **~58%** | estimated; [method](#audiences) |
 | **CCNA 3 student** (Enterprise Networking, Security and Automation) | **~45%** | estimated; [method](#audiences) |
-| **Instructor** (builds graded activities) | **~12%** | estimated; no activity checks or scoring yet |
+| **Instructor** (builds graded activities) | **~45%** | estimated; activities with checks, points, hidden answers and a wizard; no timer, locking or variables |
 | Stage | **pre-alpha** | see [Stage](#stage) |
 | Remaining to alpha | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](roadmap.md#alpha-gates) |
 | Remaining to full parity | **~600–950 Opus 5.5 agent-hours** | estimated; sum of the rows below |
@@ -34,7 +34,7 @@ This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summa
 | CCNA 1 student | ~70% | ~40–70 | Protocol frames in Simulation mode (BPDU, hellos), console polish (`show` coverage), PDU details layout, a few host apps (text editor, terminal) |
 | CCNA 2 student | ~58% | ~110–170 | Wireless LANs (40–60 h), DTP and RSTP timers (10–16 h), DHCPv6 and SLAAC flags (8–12 h), HSRP (12–18 h), console polish |
 | CCNA 3 student | ~45% | ~180–280 | OSPF multi-area and OSPFv3 (20–30 h), ACL depth and IPv6 ACLs (10–16 h), PPP authentication (6–10 h), VPN/GRE (15–25 h), QoS basics, SNMP/syslog/NTP, automation APIs |
-| Instructor | ~12% | ~120–200 | Activity wizard: answer network, checks and scoring (60–100 h), locked activities, instructions panel, translations |
+| Instructor | ~45% | ~50–90 | Activity depth: timer, locking, variables, per-check feedback (30–50 h), translations |
 
 Each student tier is mostly a superset of the one before. Hours are wall-clock for one agent;
 the protocol work splits well across 3–4 agents by crate (`sim`, `ios`, `ui-egui`).
@@ -68,9 +68,9 @@ Weights reflect how much of a typical CCNA lab session each area carries.
 | WAN, cabling and wireless | 6 | 35% | 2.1 | [hardware-parity.md](hardware-parity.md) | 60–90 |
 | Simulation mode (event list, PDU details, filters, complex PDUs) | 8 | 65% | 5.2 | [ui-parity.md](ui-parity.md) | 22–35 |
 | Workspace and windows (canvas, device tabs, physical view, drawing) | 10 | 55% | 5.5 | [ui-parity.md](ui-parity.md) | 60–90 |
-| Teaching (activities, scoring, instructions, languages) | 8 | 5% | 0.4 | [gaps.md](gaps.md) | 120–200 |
+| Teaching (activities, scoring, instructions, languages) | 8 | 45% | 3.6 | [gaps.md](gaps.md) | 55–90 |
 | Device families and hardware (models, modules, ASA, IoT) | 5 | 25% | 1.3 | [hardware-parity.md](hardware-parity.md) | 80–120 |
-| **Total** | **100** | | **52.7** | | **~600–950** |
+| **Total** | **100** | | **55.9** | | **~600–950** |
 
 ## Audiences
 
@@ -105,6 +105,7 @@ misses commands students meet in the first labs. Alpha gates are in
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Activities (checks, points, hidden answers, wizard): teaching 5% → 45%, instructor ~12% → ~45%. |
 | 2026-10-30 | minor | BPDUs, OSPF hellos and RIP updates in Simulation mode: simulation 55% → 65%, alpha ~25–45 h. |
 | 2026-10-30 | minor | Console coverage (CDP, clock, flash, users, interface views): console 60% → 65%, CCNA 1 ~70% → ~74%, alpha ~30–55 h. |
 | 2026-10-30 | major | Rewritten in the shared format: measured numbers, weights, audiences per CCNA course, estimates and stage. |

@@ -66,6 +66,11 @@ pub static SAMPLES: &[Sample] = &[
         description: "Two routers joined by a serial cable with PPP; R1 holds the DCE end and sets the clock rate. OSPF carries the routes.",
     },
     Sample {
+        id: "activity-first-router",
+        title: "Activity: your first router",
+        description: "A graded activity: address the router's two interfaces, set its name and a secret, and make the two LANs reach each other. Check Results shows the score.",
+    },
+    Sample {
         id: "ospf",
         title: "OSPF on three routers",
         description: "Three routers in a triangle learn each other's networks with OSPF; cut a link and the routes move.",
@@ -455,6 +460,44 @@ pub fn build(id: &str) -> Result<Topology> {
                 )?;
             }
             b.t.notes = "The red cable is serial; the clock marks R1's DCE end (`show controllers s0/0/0`). Remove the clock rate on R1, or change one end to `encapsulation hdlc`, and the link goes down.".into();
+        }
+        "activity-first-router" => {
+            b.add(DeviceKind::Router, "Router0", 360.0, 80.0)?;
+            b.add(DeviceKind::Switch, "S1", 160.0, 220.0)?;
+            b.add(DeviceKind::Switch, "S2", 560.0, 220.0)?;
+            b.cable("Router0", "g0/0", "S1", "g0/1")?;
+            b.cable("Router0", "g0/1", "S2", "g0/1")?;
+            for (pc, sw, x, net) in [("PC1", "S1", 160.0, 10), ("PC2", "S2", 560.0, 20)] {
+                b.add(DeviceKind::Pc, pc, x, 380.0)?;
+                b.cable(pc, "fa0", sw, "fa0/1")?;
+                b.type_in(pc, &format!("ipconfig 192.168.{net}.10 255.255.255.0 192.168.{net}.1"))?;
+            }
+            // The answer: configured, captured, then wiped back to the starting state.
+            let router = b.t.resolve("Router0").map_err(|e| EngineError::Failed(e.to_string()))?;
+            b.type_in(
+                "Router0",
+                "enable\nconfigure terminal\nhostname R1\nenable secret class\ninterface g0/0\nip address 192.168.10.1 255.255.255.0\nno shutdown\ninterface g0/1\nip address 192.168.20.1 255.255.255.0\nno shutdown\nend",
+            )?;
+            let mut activity = packetcraft_model::activity::Activity {
+                title: "Your first router".into(),
+                instructions: "R1 joins two LANs.\n\n1. Name the router R1.\n2. Protect privileged mode with the secret class.\n3. Give GigabitEthernet0/0 the address 192.168.10.1/24 and GigabitEthernet0/1 192.168.20.1/24, and turn both on.\n4. Check that PC1 reaches PC2.\n\nPress Check Results at any time.".into(),
+                hidden: true,
+                salt: "first-router".into(),
+                ..Default::default()
+            };
+            activity.checks = crate::activity::capture(&b.t, true, &activity.salt).into_iter().filter(|c| c.kind.device() == router).collect();
+            let pc1 = b.t.resolve("PC1").map_err(|e| EngineError::Failed(e.to_string()))?;
+            activity.checks.push(packetcraft_model::activity::Check {
+                label: "PC1 reaches PC2".into(),
+                points: 3,
+                kind: packetcraft_model::activity::CheckKind::Ping { from: pc1, to: "192.168.20.10".into(), succeed: true },
+            });
+            if let Some(d) = b.t.device_mut(router) {
+                d.reset_config();
+                d.name = "Router0".into();
+            }
+            b.t.activity = Some(activity);
+            b.t.notes = "A graded activity: follow the Instructions window and press Check Results.".into();
         }
         "ospf" => {
             for (name, x, y) in [("R1", 120.0, 80.0), ("R2", 600.0, 80.0), ("R3", 360.0, 260.0)] {

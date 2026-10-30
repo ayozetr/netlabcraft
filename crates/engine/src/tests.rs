@@ -26,7 +26,8 @@ fn every_command_survives_empty_and_hostile_params() {
 fn every_sample_builds_and_its_hosts_reach_each_other() {
     // Labs that block some traffic on purpose.
     let blocked = [("nat-acl", "PC2", "Web")];
-    for sample in sample::SAMPLES {
+    // Activities start unfinished on purpose.
+    for sample in sample::SAMPLES.iter().filter(|x| !x.id.starts_with("activity-")) {
         let mut s = Session::new();
         s.execute("file.new", json!({"sample": sample.id})).unwrap();
         let hosts: Vec<(String, String)> = s
@@ -240,4 +241,75 @@ fn device_messages_appear_on_the_console() {
     s.execute("cli.exec", json!({"device": "S1", "line": "enable"})).unwrap();
     s.execute("cli.exec", json!({"device": "R1", "line": "no shutdown"})).unwrap();
     assert!(s.consoles[&sw].log.contains(": link up"), "{}", s.consoles[&sw].log);
+}
+
+#[test]
+fn an_activity_is_built_captured_checked_and_reset() {
+    for hidden in [false, true] {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"sample": "two-subnets"})).unwrap();
+        // The instructor: a finished lab becomes the answers.
+        s.execute("activity.set", json!({"title": "Two subnets", "instructions": "Address R1 and make the PCs reach each other.", "hidden": hidden}))
+            .unwrap();
+        let n = s.execute("activity.capture", json!({})).unwrap()["checks"].as_u64().unwrap();
+        assert!(n >= 6, "{n}");
+        let pc3 = s.topology.find("PC3").unwrap().ports[0].ip.unwrap().addr.to_string();
+        s.execute("activity.add_check", json!({"type": "ping", "from": "PC1", "to": pc3, "points": 3})).unwrap();
+        s.execute("activity.add_check", json!({"type": "output", "device": "R1", "command": "show ip route", "contains": "10.0.2.0/24"})).unwrap();
+        let r = s.execute("activity.check", json!({})).unwrap();
+        assert_eq!(r["percent"], 100, "{r}");
+        let shown = serde_json::to_string(&s.execute("activity.show", json!({})).unwrap()).unwrap();
+        assert_eq!(shown.contains("ip address 10.0.1.1"), !hidden, "{shown}");
+        // The starting lab: R1 wiped. The student's work is checked.
+        let saved = {
+            let mut t = s.topology.clone();
+            let r1 = t.resolve("R1").unwrap();
+            t.device_mut(r1).unwrap().reset_config();
+            let mut st = Session::new();
+            st.replace(t, None);
+            st.execute("file.save", json!({})).unwrap()["json"].clone()
+        };
+        let mut student = Session::new();
+        student.execute("file.open", json!({"json": saved})).unwrap();
+        let r = student.execute("activity.check", json!({})).unwrap();
+        let pct = r["percent"].as_u64().unwrap();
+        assert!(pct > 0 && pct < 60, "{r}");
+        assert!(r["results"].as_array().unwrap().iter().any(|x| x["passed"] == false && x["label"].as_str().unwrap().starts_with("R1")));
+        // The event list stays clean: checks ping on a copy.
+        assert!(student.sim.trace().is_empty());
+        student
+            .execute("device.configure", json!({"device": "R1", "lines": ["interface g0/0", "description LAN 1", "ip address 10.0.1.1 255.255.255.0", "no shutdown", "interface g0/1", "description LAN 2", "ip address 10.0.2.1 255.255.255.0", "no shutdown"]}))
+            .unwrap();
+        let r = student.execute("activity.check", json!({})).unwrap();
+        assert_eq!(
+            r["percent"],
+            100,
+            "{}",
+            r["results"].as_array().unwrap().iter().filter(|x| x["passed"] == false).map(|x| x["label"].to_string()).collect::<Vec<_>>().join("; ")
+        );
+        student.execute("activity.reset", json!({})).unwrap();
+        assert!(student.execute("activity.check", json!({})).unwrap()["percent"].as_u64().unwrap() < 60);
+    }
+    let mut s = Session::new();
+    assert!(s.execute("activity.check", json!({})).is_err());
+    assert!(s.execute("activity.add_check", json!({"type": "bogus", "device": "x"})).is_err());
+}
+
+#[test]
+fn the_sample_activity_can_be_solved_by_typing() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "activity-first-router"})).unwrap();
+    let start = s.execute("activity.check", json!({})).unwrap();
+    assert_eq!(start["percent"], 0, "{start}");
+    s.execute(
+        "cli.script",
+        json!({"device": "Router0", "lines": "en\nconf t\nhostname R1\nenable secret class\nint g0/0\nip add 192.168.10.1 255.255.255.0\nno shut\nint g0/1\nip add 192.168.20.1 255.255.255.0\nno shut\nend"}),
+    )
+    .unwrap();
+    let done = s.execute("activity.check", json!({})).unwrap();
+    assert_eq!(done["percent"], 100, "{done}");
+    // Hidden answers: the file doesn't show them.
+    let file = s.execute("file.save", json!({})).unwrap()["json"].to_string();
+    assert!(!file.contains("192.168.10.1 255.255.255.0") || file.contains("\"ip\":\"192.168.10.1/24\""));
+    assert!(!file.contains("enable secret"));
 }

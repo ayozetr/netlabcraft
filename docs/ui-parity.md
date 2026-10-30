@@ -23,7 +23,8 @@ The window, element by element, against the reference app. Part of
 | PC window | Physical, Config, Desktop, Programming, Attributes | Physical, Config, Desktop (navy desktop with tiles: IP Configuration with DHCP/Static and IPv6 Off/Automatic/Static, Command Prompt, Web Browser), Attributes; only working apps are shown |
 | Server window | Physical, Config, Services (HTTP, DHCP, DHCPv6, TFTP, DNS, SYSLOG, AAA, NTP, EMAIL, FTP, IoT…), Desktop, Programming, Attributes | Physical, Config, Services (HTTP with file manager, DHCP pools, DNS records), Desktop, Attributes |
 | Web Browser | URL bar with back/forward, Go, Stop; page view | same; renders headings, paragraphs, bold, lists and links |
-| Not yet | — | physical workspace, freeform drawing, clusters, complex PDUs, activity wizard, Programming tab, protocol frames (BPDU, hellos) in the event list |
+| Activities | Instructions window with timer and score, Check Results tree, Reset Activity; Activity Wizard with answer network | Instructions window with Completion, Check Results list and Reset Activity; Activity Wizard (title, instructions, capture answers, ping/config/command checks, hidden answers); no timer, answer-network tree or locking |
+| Not yet | — | physical workspace, freeform drawing, clusters, complex PDUs, Programming tab, protocol frames (BPDU, hellos) in the event list |
 
 ## Revision history
 

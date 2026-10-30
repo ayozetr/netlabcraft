@@ -16,6 +16,7 @@ use packetcraft_model::Topology;
 use packetcraft_sim::Sim;
 use serde_json::Value;
 
+pub mod activity;
 pub mod catalog;
 mod cmd;
 pub mod sample;
@@ -85,6 +86,8 @@ pub struct Session {
     pub path: Option<String>,
     /// Bumped on every change, for views that cache.
     pub revision: u64,
+    /// The lab as an activity started (when it was opened), for Reset Activity.
+    pub activity_start: Option<Topology>,
 }
 
 impl Session {
@@ -198,7 +201,8 @@ impl Session {
 
     /// Replaces the lab (open / new): history, consoles and simulation start over.
     pub fn replace(&mut self, t: Topology, path: Option<String>) {
-        *self = Session { topology: t, path, revision: self.revision + 1, ..Session::default() };
+        let start = t.activity.is_some().then(|| t.clone());
+        *self = Session { topology: t, path, revision: self.revision + 1, activity_start: start, ..Session::default() };
         // The links as they are now are the starting point for link messages.
         self.sim.topology_changed(&self.topology);
     }

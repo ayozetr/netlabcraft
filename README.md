@@ -21,7 +21,7 @@
 
 <p align="center">
   <img src="docs/images/hero-multilayer.png" alt="PacketCraft's main window: a multilayer switch in the middle routes between four PCs in two VLANs and reaches a router and a server above it; menus and two toolbars on top, the device box, scenario list and PDU table at the bottom" width="100%">
-  <br><sub><b>Inter-VLAN routing on a multilayer switch</b>: one of the fifteen sample labs (<code>File → New → Sample</code>), built entirely from PacketCraft commands.</sub>
+  <br><sub><b>Inter-VLAN routing on a multilayer switch</b>: one of the sixteen sample labs (<code>File → New → Sample</code>), built entirely from PacketCraft commands.</sub>
 </p>
 
 <p align="center">
@@ -80,8 +80,11 @@
 - **PC Command Prompt:** `ipconfig` (static or DHCP), `ipv6config` (static or automatic), `ping`,
   `tracert`, `nslookup`, `telnet`, `ssh`, `arp`.
 
-What it doesn't do yet is listed, ranked, in [`docs/gaps.md`](docs/gaps.md): graded activities,
-wireless, HSRP and more.
+- **Activities:** a lab can carry instructions and checks worth points (configuration lines,
+  pings, addresses, command output), with Check Results, Reset Activity and an Activity Wizard
+  that captures the answers from a finished lab.
+
+What it doesn't do yet is listed, ranked, in [`docs/gaps.md`](docs/gaps.md): wireless, HSRP and more.
 
 ## Quick start
 
@@ -143,7 +146,7 @@ egui frontend is a separate crate, so the UI can be swapped without touching the
 ## Roadmap
 
 PacketCraft is **pre-alpha**: every core workflow works end to end (build a lab, configure it by
-typing, ping, watch the frames, save), but there are no installers or graded activities yet, and
+typing, ping, watch the frames, save), but there are no installers yet, and
 the console still misses commands students meet early. Weighted by what CCNA labs rely on, we
 estimate it is about 50% ready for real work, and about 70% for the first CCNA course. Next up:
 console coverage and CDP, protocol frames in Simulation mode, then activities with scoring.

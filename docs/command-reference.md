@@ -8,6 +8,14 @@ Every front end (UI, `packetcraft-cli run`, MCP `packetcraft_run`) runs these.
 
 | Id | Label | Menu | Shortcut | Parameters |
 |---|---|---|---|---|
+| `activity.show` | Activity |  |  | `{} → {"activity" (or null), "total_points"}` |
+| `activity.set` | Activity Wizard… | Extensions |  | `{"title"?, "instructions"?, "hidden"?: true to store configuration answers as hashes}` |
+| `activity.capture` | Capture answers from this lab |  |  | `{} → {"checks": n}: configuration lines and host addresses become checks (pings and command checks are kept)` |
+| `activity.add_check` | Add check |  |  | `{"type": "config"\|"ping"\|"host-address"\|"output", "device" (or "from"), "line" \| "to"+"succeed"? \| "address"+"gateway"? \| "command"+"contains", "points"?: 1, "label"?}` |
+| `activity.remove_check` | Remove check |  |  | `{"index": n}` |
+| `activity.clear` | Remove the activity |  |  | `{}` |
+| `activity.check` | Check Results | Extensions |  | `{} → {"results": [{"label", "points", "passed"}], "score", "total", "percent"}` |
+| `activity.reset` | Reset Activity | Extensions |  | `{}: back to the lab as the activity was opened` |
 | `file.new` | New lab | File | Ctrl+N | `{"sample"?: "sample id (see sample.list)"}` |
 | `file.open` | Open lab… | File | Ctrl+O | `{"json": "lab file contents"} or {"path": "file (desktop/CLI)"}` |
 | `file.save` | Save lab | File | Ctrl+S | `{"path"?: "file to write (desktop/CLI)"} → {"json"}` |

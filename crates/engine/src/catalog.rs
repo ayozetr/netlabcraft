@@ -22,6 +22,42 @@ macro_rules! c {
 }
 
 pub static CATALOG: &[CommandInfo] = &[
+    c!("activity.show", "Activity", "", None, r#"{} → {"activity" (or null), "total_points"}"#, false),
+    c!(
+        "activity.set",
+        "Activity Wizard…",
+        "Extensions",
+        None,
+        r#"{"title"?, "instructions"?, "hidden"?: true to store configuration answers as hashes}"#,
+        true
+    ),
+    c!(
+        "activity.capture",
+        "Capture answers from this lab",
+        "",
+        None,
+        r#"{} → {"checks": n}: configuration lines and host addresses become checks (pings and command checks are kept)"#,
+        true
+    ),
+    c!(
+        "activity.add_check",
+        "Add check",
+        "",
+        None,
+        r#"{"type": "config"|"ping"|"host-address"|"output", "device" (or "from"), "line" | "to"+"succeed"? | "address"+"gateway"? | "command"+"contains", "points"?: 1, "label"?}"#,
+        true
+    ),
+    c!("activity.remove_check", "Remove check", "", None, r#"{"index": n}"#, true),
+    c!("activity.clear", "Remove the activity", "", None, "{}", true),
+    c!(
+        "activity.check",
+        "Check Results",
+        "Extensions",
+        None,
+        r#"{} → {"results": [{"label", "points", "passed"}], "score", "total", "percent"}"#,
+        false
+    ),
+    c!("activity.reset", "Reset Activity", "Extensions", None, "{}: back to the lab as the activity was opened", false),
     c!("file.new", "New lab", "File", Some("Ctrl+N"), r#"{"sample"?: "sample id (see sample.list)"}"#, false),
     c!("file.open", "Open lab…", "File", Some("Ctrl+O"), r#"{"json": "lab file contents"} or {"path": "file (desktop/CLI)"}"#, false),
     c!("file.save", "Save lab", "File", Some("Ctrl+S"), r#"{"path"?: "file to write (desktop/CLI)"} → {"json"}"#, false),
