@@ -285,7 +285,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                 }
             });
             ui.add_space(6.0);
-            if crate::navy_button(ui, "Toggle PDU List Window").clicked() {
+            if crate::navy_button_fit(ui, "Toggle PDU List Window").clicked() {
                 app.ui.bottom.hide_pdus = !app.ui.bottom.hide_pdus;
             }
         });

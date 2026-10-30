@@ -342,6 +342,19 @@ pub(crate) fn navy_button(ui: &mut egui::Ui, label: &str) -> egui::Response {
     resp
 }
 
+/// [`navy_button`] that fits the width it is given: the text wraps onto more lines (centred)
+/// rather than running past the column.
+pub(crate) fn navy_button_fit(ui: &mut egui::Ui, label: &str) -> egui::Response {
+    let label = crate::i18n::tr(label);
+    let width = ui.available_width().max(40.0);
+    let mut job = egui::text::LayoutJob::simple(label.to_string(), egui::FontId::proportional(16.0), Color32::WHITE, width - 16.0);
+    job.halign = egui::Align::Center;
+    let galley = ui.painter().layout_job(job);
+    let (rect, resp) = ui.allocate_exact_size(vec2((galley.size().x + 16.0).min(width), galley.size().y + 10.0), Sense::click());
+    paint_navy(ui, rect, &resp, galley, label);
+    resp
+}
+
 /// [`navy_button`] filling the available width.
 pub(crate) fn navy_button_wide(ui: &mut egui::Ui, label: &str) -> egui::Response {
     let label = crate::i18n::tr(label);
@@ -355,7 +368,8 @@ fn paint_navy(ui: &egui::Ui, rect: egui::Rect, resp: &egui::Response, galley: st
     let tk = theme::tokens(ui.visuals().dark_mode);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, label));
     ui.painter().rect_filled(rect, 8.0, if resp.hovered() { tk.pill } else { tk.bar });
-    ui.painter().galley(rect.center() - galley.size() / 2.0, galley, Color32::WHITE);
+    // By the text's own box, so centred (wrapped) text lands in the middle too.
+    ui.painter().galley(rect.center() - galley.rect.center().to_vec2(), galley, Color32::WHITE);
 }
 
 /// The play-control pictures.
@@ -1104,7 +1118,8 @@ impl PacketApp {
 
     fn time_bar(&mut self, ui: &mut egui::Ui) {
         let tk = theme::tokens(self.ui.dark);
-        ui.horizontal(|ui| {
+        // Everything on the bar shares one middle line: text and the round buttons.
+        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
             let now = self.session.sim.now_us();
             let time = if self.ui.mode == Mode::Simulation {
                 format!("{}: {}.{:03}", tl("Time"), clock(now), (now / 1000) % 1000)
