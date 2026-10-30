@@ -28,7 +28,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Engine commands | 68 | measured: `crates/engine/src/catalog.rs` |
 | Console grammar entries | 516 across 21 modes | measured: `spec!` rows in `crates/ios/src/grammar.rs` |
 | Device models · sample labs | 18 · 19 | measured |
-| Tests | 230 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
+| Tests | 231 | measured: `cargo test --workspace` (unit, console scripts, sample labs end to end, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **~25–45 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#alpha-gates) |
 | Remaining to **beta** | **~180–280 Opus 5.5 agent-hours** | estimated; [roadmap.md](docs/roadmap.md#beta-gates) |
 | Remaining to **full parity** | **~550–880 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
@@ -60,6 +60,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-10-30 — Model names and equivalents.** Models are named after their ports (Router 3GE, Switch 24FE, L3 Switch 24…), and a new page says which one to place when a course lab names a vendor model; old lab files open unchanged.
 - **2026-10-30 — Wireless controller and 802.11.** WLC and lightweight AP models: APs join their controller and get its WLANs; Wi-Fi hops carry real 802.11 frames with association and the WPA2 handshake; WPA2-Enterprise logins are checked by RADIUS; wlc sample lab; a separate 802.11 capture.
 - **2026-10-30 — QoS.** Class maps, policy maps and service policies: DSCP marking that shows in captures, policing that drops with a reason, and per-class counters in `show policy-map interface`.
 - **2026-10-30 — SNMP traps, SNMPv3 and mail relay.** Routers and switches send link-down, link-up and cold-start traps that PCs and servers list in the MIB Browser; SNMPv3 users with MD5 or SHA authentication; mail servers hand mail for other domains to the right server and bounce what can't be delivered.

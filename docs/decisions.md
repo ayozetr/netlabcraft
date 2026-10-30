@@ -1,6 +1,6 @@
 # Decisions
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (decisions taken while building M1–M2; shared format)
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (model names describe their ports; equivalents page)
 
 Choices that shape PacketCraft, newest last within each date, with the reason for each.
 
@@ -12,6 +12,7 @@ Choices that shape PacketCraft, newest last within each date, with the reason fo
 - **2026-10-29 — Proxy ARP on by default on routers**, so a static route out of an Ethernet interface works, as on common router software.
 - **2026-10-29 — Loop guard instead of silent hangs.** A frame crossing 64 switches is dropped and the UI reports a switching loop (spanning tree normally prevents it).
 - **2026-10-29 — Generic device kinds.** No vendor model names or pictures; ports are named with the usual `GigabitEthernet0/0` / `FastEthernet0/1` / `Serial0/0/0` convention.
+- **2026-10-30 — Model names describe their ports.** The workspace shows names such as `Router 3GE` or `Switch 24FE`; lab files keep the stable ids (`Router-3`, `Switch-24`) and commands accept both. Vendor model names appear only in [model-equivalents.md](model-equivalents.md), to tell students which model to place for a course lab, never as names of PacketCraft models.
 - **2026-10-29 — Same arrangement, own artwork.** Like WordCraft with Word, the window follows the reference app's layout and workflow (where things are, what tabs a device window has, the Realtime/Simulation switch, the PDU list), observed black-box. Icons, device pictures, colours' exact values and all wording are ours, drawn in code.
 - **2026-10-29 — One click opens a device**, as in the reference app (a double click was the first version).
 - **2026-10-29 — Computed protocols.** Spanning tree, OSPF, RIP, EtherChannel negotiation and VTP are computed from the topology the way they converge, instead of exchanging timed hellos. Labs are correct at once and deterministic; the cost is that their frames are not in the event list yet ([gaps.md](gaps.md), gap 3).
@@ -30,5 +31,6 @@ Choices that shape PacketCraft, newest last within each date, with the reason fo
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Model names describe their ports; vendor models only in the equivalents page. |
 | 2026-10-30 | minor | Decisions from M1–M2 recorded; shared format. |
 | 2026-10-29 | major | Created. |

@@ -15,7 +15,9 @@ pub struct Model {
     /// Stable id, saved in lab files (`Router-3`).
     pub id: &'static str,
     pub kind: DeviceKind,
-    /// What the workspace prints under the icon.
+    /// What the workspace prints under the icon: our own descriptive name (ports at a glance:
+    /// `GE` Gigabit Ethernet, `FE` Fast Ethernet, `S` serial). docs/model-equivalents.md maps the
+    /// models courses name to these.
     pub label: &'static str,
     pub description: &'static str,
     pub ports: &'static [PortRun],
@@ -42,63 +44,63 @@ pub static MODELS: &[Model] = &[
     Model {
         id: "Router-2",
         kind: DeviceKind::Router,
-        label: "Router-2",
+        label: "Router 2GE",
         description: "Router with 2 Gigabit Ethernet ports",
         ports: &[run("GigabitEthernet0/", 0, 1)],
     },
     Model {
         id: "Router-3",
         kind: DeviceKind::Router,
-        label: "Router-3",
+        label: "Router 3GE",
         description: "Router with 3 Gigabit Ethernet ports",
         ports: &[run("GigabitEthernet0/", 0, 2)],
     },
     Model {
         id: "Router-4",
         kind: DeviceKind::Router,
-        label: "Router-4",
+        label: "Router 4GE",
         description: "Router with 4 Gigabit Ethernet ports",
         ports: &[run("GigabitEthernet0/", 0, 3)],
     },
     Model {
         id: "Router-WAN",
         kind: DeviceKind::Router,
-        label: "Router-WAN",
+        label: "Router 2GE+2S",
         description: "Router with 2 Gigabit Ethernet ports and 2 serial WAN ports",
         ports: &[run("GigabitEthernet0/", 0, 1), run("Serial0/0/", 0, 1)],
     },
     Model {
         id: "Switch-8",
         kind: DeviceKind::Switch,
-        label: "Switch-8",
+        label: "Switch 8FE",
         description: "Switch with 8 Fast Ethernet + 1 Gigabit Ethernet ports",
         ports: &[run("FastEthernet0/", 1, 8), run("GigabitEthernet0/", 1, 1)],
     },
     Model {
         id: "Switch-24",
         kind: DeviceKind::Switch,
-        label: "Switch-24",
+        label: "Switch 24FE",
         description: "Switch with 24 Fast Ethernet + 2 Gigabit Ethernet ports",
         ports: &[run("FastEthernet0/", 1, 24), run("GigabitEthernet0/", 1, 2)],
     },
     Model {
         id: "Switch-ML-24",
         kind: DeviceKind::Switch,
-        label: "Switch-ML-24",
+        label: "L3 Switch 24",
         description: "Multilayer switch with 24 Fast Ethernet + 2 Gigabit Ethernet ports: switches, and routes with `ip routing`",
         ports: &[run("FastEthernet0/", 1, 24), run("GigabitEthernet0/", 1, 2)],
     },
     Model {
         id: "Switch-48",
         kind: DeviceKind::Switch,
-        label: "Switch-48",
+        label: "Switch 48FE",
         description: "Switch with 48 Fast Ethernet + 2 Gigabit Ethernet ports",
         ports: &[run("FastEthernet0/", 1, 48), run("GigabitEthernet0/", 1, 2)],
     },
     Model {
         id: "AccessPoint",
         kind: DeviceKind::Switch,
-        label: "AccessPoint",
+        label: "Access Point",
         description: "Wi-Fi access point: bridges its radio and its Ethernet port (SSID, WPA2-PSK)",
         ports: &[run("GigabitEthernet", 0, 0), run("Wireless", 0, 0)],
     },
@@ -112,21 +114,21 @@ pub static MODELS: &[Model] = &[
     Model {
         id: "LAP",
         kind: DeviceKind::Switch,
-        label: "LAP",
+        label: "Light AP",
         description: "Lightweight access point: joins a wireless LAN controller over its Ethernet port and offers the controller's WLANs",
         ports: &[run("GigabitEthernet", 0, 0), run("Wireless", 0, 0)],
     },
     Model {
         id: "Home-Router",
         kind: DeviceKind::Switch,
-        label: "Home-Router",
+        label: "Home Router",
         description: "Home wireless router: Internet port, 4 LAN ports and Wi-Fi, with DHCP and NAT set up",
         ports: &[run("Internet", 0, 0), run("Ethernet", 1, 4), run("Wireless", 0, 0)],
     },
     Model {
         id: "Hub-8",
         kind: DeviceKind::Hub,
-        label: "Hub-8",
+        label: "Hub 8",
         description: "Hub: repeats every frame out of its other 8 ports",
         ports: &[run("Ethernet", 0, 7)],
     },
@@ -141,7 +143,7 @@ pub static MODELS: &[Model] = &[
     Model {
         id: "Laptop-WiFi",
         kind: DeviceKind::Laptop,
-        label: "Laptop-WiFi",
+        label: "Wi-Fi Laptop",
         description: "Laptop with a Wi-Fi card instead of an Ethernet port",
         ports: &[run("Wireless", 0, 0)],
     },
@@ -161,8 +163,10 @@ pub static MODELS: &[Model] = &[
     },
 ];
 
+/// A model by its id (`Router-3`, what lab files keep) or by the name the interface shows
+/// (`Router 3GE`).
 pub fn find(id: &str) -> Option<&'static Model> {
-    MODELS.iter().find(|m| m.id.eq_ignore_ascii_case(id))
+    MODELS.iter().find(|m| m.id.eq_ignore_ascii_case(id)).or_else(|| MODELS.iter().find(|m| m.label.eq_ignore_ascii_case(id)))
 }
 
 /// The model a kind gets when none is named.
@@ -192,6 +196,20 @@ impl Model {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ids_and_shown_names_are_unique_and_both_find_the_model() {
+        let mut seen = std::collections::BTreeSet::new();
+        for m in MODELS {
+            assert!(seen.insert(m.id.to_lowercase()), "{}", m.id);
+            if !m.label.eq_ignore_ascii_case(m.id) {
+                assert!(seen.insert(m.label.to_lowercase()), "{}", m.label);
+            }
+            assert_eq!(find(m.id).map(|x| x.id), Some(m.id));
+            assert_eq!(find(m.label).map(|x| x.id), Some(m.id));
+        }
+        assert_eq!(find("router 3ge").map(|m| m.id), Some("Router-3"));
+    }
 
     #[test]
     fn every_kind_has_a_default_and_names_parse() {

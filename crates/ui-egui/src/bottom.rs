@@ -172,7 +172,8 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                     for m in &shown {
                         let tool = m.tool;
                         let selected = app.ui.tool == tool;
-                        let (rect, resp) = ui.allocate_exact_size(vec2(54.0, 54.0), Sense::click());
+                        // Wide enough for the longest shown name (`Router 2GE+2S`).
+                        let (rect, resp) = ui.allocate_exact_size(vec2(76.0, 54.0), Sense::click());
                         let resp = resp.on_hover_text(m.long);
                         resp.widget_info(|| egui::WidgetInfo::selected(egui::accesskit::Role::Button, true, selected, m.short));
                         let p = ui.painter_at(rect);
@@ -194,7 +195,9 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                         match m.kind {
                             Some(k) => {
                                 icons::device(&p, icon, k, &tk);
-                                icons::model_marks(&p, icon, m.short, m.multilayer);
+                                if let Tool::Place(id) = tool {
+                                    icons::model_marks(&p, icon, id, m.multilayer);
+                                }
                             }
                             None => icons::glyph(&p, icon.shrink(4.0), Glyph::Cable, tk.cable),
                         }

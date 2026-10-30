@@ -32,7 +32,7 @@ fn every_sample_renders_in_both_themes() {
 fn placing_a_device_with_the_palette() {
     let mut h = harness(None);
     h.run_steps(2);
-    h.get_by_label("Router-3").click();
+    h.get_by_label("Router 3GE").click();
     h.run_steps(1);
     assert_eq!(h.state().ui.tool, Tool::Place("Router-3"));
     // Click the middle of the canvas.

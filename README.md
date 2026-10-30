@@ -79,7 +79,9 @@
 
 - **Devices:** routers (also one with serial WAN ports), switches (also a multilayer one that
   routes), a home wireless router, a Wi-Fi access point, a hub, PCs, laptops (also with Wi-Fi),
-  servers and a printer: 16 generic models.
+  servers, a printer, a wireless LAN controller and lightweight APs: 18 models with our own
+  names; [docs/model-equivalents.md](docs/model-equivalents.md) says which one to place when a
+  course lab names a vendor model.
 - **Switching:** MAC learning, VLANs, access and 802.1Q trunk ports, DTP, per-VLAN spanning tree
   with its timers and rapid-pvst, EtherChannel (LACP, PAgP, static), VTP, port security, switch
   VLAN interfaces, CDP and LLDP.
