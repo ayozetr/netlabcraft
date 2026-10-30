@@ -95,3 +95,23 @@ Every page carries a review line and a revision history; parity is assessed with
 ## No release for now
 
 The owner has put releases on hold: no installers or published builds for now, and GitHub Actions is not available to run release workflows. The quality gates run locally with `cargo xtask ci`, Linux users can install from source with `packaging/linux/install.sh`, and the release plan in [releasing.md](releasing.md) waits until the hold is lifted. The alpha gate that asks for a packaged build waits with it.
+
+## Powered devices start without an adapter
+
+IP phones and lightweight APs placed in a lab have no power adapter plugged in: they boot only on a PoE switch port within its budget, or once their adapter is plugged in from the Physical tab. That is how students meet power over Ethernet in the course labs, and a dark device says why it has no power. Labs saved before power existed have no `adapter` field, and their phones and APs count as plugged in, so they open and work as before.
+
+## SIP phones are known by their MAC address
+
+A SIP phone registers with its MAC address as the user part, and the router finds the `voice register pool` whose `id mac` matches it. The router names the phone's number in the `P-Associated-URI` header of its `200 OK` (RFC 3455), so the phone learns its number (the pool's `number 1 dn N`) from the registration; nobody types a number into the phone.
+
+## IoT timers run in simulated time
+
+Things report on their interval only as simulated time advances (`sim.advance`, the play controls, waiting for a ping), never by the wall clock, so runs stay deterministic and a paused lab stays still. A thing also reports at once when its reading changes, so rules react without waiting for the timer.
+
+## Pings don't set "don't fragment" unless asked
+
+Host and router pings go out without DF, as on common operating systems and router software; `ping -f` on hosts and the `df-bit` option of a router's extended ping set it. Echo replies carry no DF, and GRE copies DF from the inner packet. With `ip mtu` in the path, a plain ping is fragmented and a DF ping gets "fragmentation needed", which is what MTU labs show.
+
+## The IKEv2 Diffie-Hellman exchange stays a stand-in
+
+IKEv2 messages follow RFC 7296, and with an `esp-aes` and `esp-sha-hmac` transform set the SK payloads and ESP are really encrypted with AES-128-CBC and HMAC-SHA1-96. The Diffie-Hellman value, though, is filler of the group's size, and both ends derive the shared secret from the two public values, so someone who saw the exchange could work out the keys. Real modular exponentiation over the course's groups would mean a big-number library or our own, for no change in what students see; it stays a documented stand-in, and nothing here is meant to protect real traffic.

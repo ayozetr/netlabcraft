@@ -1,6 +1,6 @@
 # Model equivalents
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** major (created) · **Target:** CCNA course labs
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (switch card, PoE switches, home gateway, cloud and modems, IoT things) · **Target:** CCNA course labs
 
 Course labs name specific vendor models. NetLabCraft's models are its own, named after their
 ports (`GE` Gigabit Ethernet, `FE` Fast Ethernet, `S` serial), and never carry vendor names
@@ -25,28 +25,41 @@ column). Commands accept either: `device.add {"model": "Router 3GE"}` or `{"mode
 | 1-port Gigabit card | `Card-1GE` | EHWIC-1GE-SFP-CU | `GigabitEthernet0/B/0` | |
 | 1-port Gigabit fiber card | `Card-1GF` | SFP-based Gigabit cards | `GigabitEthernet0/B/0` (fiber) | |
 | 1-port Fast Ethernet card | `Card-1FE` | HWIC-1FE | `FastEthernet0/B/0` | |
+| 4-port switch card | `Card-4SW` | HWIC-4ESW, EHWIC-4ESG | `FastEthernet0/B/0–0/B/3` | Layer-2 ports inside the router: VLANs, `switchport access\|trunk`, routed through `interface vlan N`. |
 | Router 2GE+2S | `Router-WAN` | 1941 or 2911 with a 2-port serial card (HWIC-2T), ISR 4321 with a serial NIM | `GigabitEthernet0/0–0/1`, `Serial0/0/0–0/0/1` | Serial ports are fitted from the start. |
 | Switch 8FE | `Switch-8` | Small 8-port access switches | `FastEthernet0/1–0/8`, `GigabitEthernet0/1` | |
 | Switch 24FE | `Switch-24` | 2960-24TT | `FastEthernet0/1–0/24`, `GigabitEthernet0/1–0/2` | The usual CCNA switch. |
 | Switch 24FE+2SFP | `Switch-24-SFP` | 2960 models with SFP uplinks | `FastEthernet0/1–0/24`, `GigabitEthernet0/1–0/2` (fiber) | The other switches' Gigabit uplinks take copper or fiber. |
 | Switch 48FE | `Switch-48` | 48-port 2960 models | `FastEthernet0/1–0/48`, `GigabitEthernet0/1–0/2` | |
+| Switch 8FE PoE | `Switch-8-PoE` | Small PoE access switches | `FastEthernet0/1–0/8`, `GigabitEthernet0/1` | Power over Ethernet on the Fast Ethernet ports, 65 W in all. |
+| Switch 24FE PoE | `Switch-24-PoE` | 2960-24LT-L; 3560-24PS used as a layer-2 switch | `FastEthernet0/1–0/24`, `GigabitEthernet0/1–0/2` | Power over Ethernet, 370 W in all. It doesn't route: for `ip routing` use L3 Switch 24 (which has no PoE). |
 | L3 Switch 24 | `Switch-ML-24` | 3560-24PS, 3650-24PS | `FastEthernet0/1–0/24`, `GigabitEthernet0/1–0/2` | Routes with `ip routing`. A 3650 has Gigabit access ports (`GigabitEthernet1/0/1…`): use the same numbers on `FastEthernet0/…`. |
 | Access Point | `AccessPoint` | AccessPoint-PT, autonomous access points | `GigabitEthernet0`, `Wireless0` | |
 | WLC | `WLC` | WLC-2504, 3504 | `GigabitEthernet0/1–0/4` | WLANs are set with `wlan …`, not a web page. |
-| Light AP | `LAP` | Lightweight APs (3702i and similar) | `GigabitEthernet0`, `Wireless0` | Joins a WLC. |
+| Light AP | `LAP` | Lightweight APs (3702i and similar) | `GigabitEthernet0`, `Wireless0` | Joins a WLC. Needs a PoE switch port or its power adapter. |
 | Home Router | `Home-Router` | WRT300N, HomeRouter-PT | `Internet0`, `Ethernet1–4`, `Wireless0` | |
+| Home Gateway | `Home-Gateway` | The home gateway in the course's IoT labs | `Internet0`, `Ethernet1–4`, `Wireless0` | A home router with a built-in IoT service and an IoT tab. |
+| Cloud | `Cloud` | Cloud-PT | `Ethernet0–1`, `Coaxial0–1`, `Phone0–1` | Ports joined in pairs (`cloud.map`; coaxial to phone by default), shown in its Physical tab. |
+| DSL Modem | `DSL-Modem` | DSL-Modem-PT | `Phone0`, `Ethernet1` | Bridges the phone line to Ethernet. |
+| Cable Modem | `Cable-Modem` | Cable-Modem-PT | `Coaxial0`, `Ethernet1` | Bridges the coaxial cable to Ethernet. |
 | Hub 8 | `Hub-8` | Hub-PT | `Ethernet0–7` | |
 | PC | `PC` | PC-PT | `FastEthernet0` | |
 | Laptop | `Laptop` | Laptop-PT | `FastEthernet0` | |
 | Wi-Fi Laptop | `Laptop-WiFi` | Laptop-PT with a wireless card | `Wireless0` | |
-| IP Phone | `IP-Phone` | 7960 | `FastEthernet0` (network), `FastEthernet1` (PC) | Registers with `telephony-service` on a router. |
-| Smart Sensor | `IoT-Sensor` | The temperature monitor among the course's IoT things | `FastEthernet0` | Reports to a server's IoT service. |
-| Smart Device | `IoT-Device` | The ceiling fan among the course's IoT things | `FastEthernet0` | Switched by the server's rules or by hand. |
+| IP Phone | `IP-Phone` | 7960 | `FastEthernet0` (network), `FastEthernet1` (PC) | Registers with `telephony-service` on a router, or, set to SIP (Signal with SIP, `phone.configure`), with `voice register`. Needs a PoE switch port or its power adapter. |
+| Smart Sensor | `IoT-Sensor` | The temperature monitor among the course's IoT things | `FastEthernet0` | Reports to a server's IoT service or a Home Gateway. |
+| Smart Device | `IoT-Device` | The ceiling fan among the course's IoT things | `FastEthernet0` | Switched by the rules or by hand. |
+| Motion Detector | `IoT-Motion` | The course's motion detector | `FastEthernet0` | Reports 1 while something moves, else 0. |
+| Smoke Detector | `IoT-Smoke` | The course's smoke detector | `FastEthernet0` | Reports the smoke level (0–100 %). |
+| Smart Light | `IoT-Light` | The course's smart lamp or light | `FastEthernet0` | Switched on and off. |
+| Smart Door Lock | `IoT-Door` | The course's smart door | `FastEthernet0` | On unlocks, off locks. |
+| Siren | `IoT-Siren` | The course's siren | `FastEthernet0` | Sounds while on. |
+| Webcam | `IoT-Webcam` | The course's webcam | `FastEthernet0` | Takes a still image at each report while on. |
 | Server | `Server` | Server-PT | `GigabitEthernet0` | |
 | Printer | `Printer` | Printer-PT | `FastEthernet0` | |
 
-Models a lab names that have no equivalent yet (modular slots, IP phones, IoT devices, cloud,
-DSL/cable modems) are listed in [hardware-parity.md](hardware-parity.md).
+Models a lab names that have no equivalent yet (tablets, smartphones and other end devices, more
+IoT things and programmable boards) are listed in [hardware-parity.md](hardware-parity.md).
 
 Cisco, Catalyst, ISR and Packet Tracer are trademarks of Cisco Systems, Inc. NetLabCraft is an
 independent project, not affiliated with or endorsed by Cisco.
@@ -55,6 +68,7 @@ independent project, not affiliated with or endorsed by Cisco.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | 4-port switch card, the two PoE switches, Home Gateway, Cloud, DSL and cable modems, six more IoT things; IP Phone with SIP and power; the "no equivalent yet" list brought up to date. |
 | 2026-10-30 | minor | Switch 24FE+2SFP and the fiber card. |
 | 2026-10-30 | minor | Modular routers and their cards, IP Phone, Smart Sensor and Smart Device. |
 | 2026-10-30 | minor | Firewall 5GE. |

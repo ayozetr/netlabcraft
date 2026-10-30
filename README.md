@@ -26,7 +26,7 @@
 
 <p align="center">
   <img src="docs/images/hero-multilayer.png" alt="NetLabCraft's main window: a multilayer switch in the middle routes between four PCs in two VLANs and reaches a router and a server above it; menus and two toolbars on top, the device box, scenario list and PDU table at the bottom" width="100%">
-  <br><sub><b>Inter-VLAN routing on a multilayer switch</b>: one of the twenty-three sample labs (<code>File → New → Sample</code>), built entirely from NetLabCraft commands.</sub>
+  <br><sub><b>Inter-VLAN routing on a multilayer switch</b>: one of the twenty-eight sample labs (<code>File → New → Sample</code>), built entirely from NetLabCraft commands.</sub>
 </p>
 
 <p align="center">
@@ -64,8 +64,9 @@
   toolbars, the device box, Realtime and Simulation modes, device windows with Physical, Config,
   CLI, Desktop and Services tabs. Every picture and message is our own work.
 - **Real frames.** Devices exchange encoded Ethernet, 802.11, ARP, IPv4, IPv6, ICMP, NDP, TCP, UDP,
-  DHCP, DHCPv6, DNS, HTTP, FTP, SMTP, POP3, NTP, syslog, TFTP, SNMP, RADIUS, TACACS+, STP, OSPF,
-  RIP, EIGRP, HSRP, LLDP, LACP, GRE, IKE and ESP frames. Captures open in any packet analyser, and
+  DHCP, DHCPv6, DNS, HTTP, RESTCONF, NETCONF, FTP, SMTP, POP3, NTP, syslog, TFTP, SNMP, RADIUS,
+  TACACS+, SIP, STP and RSTP, OSPF, RIP, EIGRP, HSRP, VRRP, LLDP, LACP, GRE, IKEv1, IKEv2 and ESP
+  frames, IPv4 fragments included. Captures open in any packet analyser, and
   a dropped frame says why.
 - **Open.** Labs are readable JSON ([`.nlcraft`](docs/file-format.md)); the code is MIT or Apache-2.0.
 - **Agent-native.** Every action is a command that agents can run through an **MCP server** or the
@@ -78,47 +79,62 @@
 
 ## What it simulates
 
-- **Devices:** 25 models with our own names: fixed and modular routers (serial, Gigabit, Fast
-  Ethernet and fiber cards fitted while switched off), a stateful firewall, access switches (also
-  with fiber uplinks) and a multilayer switch, a home wireless router, a Wi-Fi access point, a
-  wireless LAN controller with lightweight APs, a hub, PCs, laptops (also with Wi-Fi), servers, a
-  printer, IP phones, and IoT sensors and devices.
+- **Devices:** 37 models with our own names: fixed and modular routers (serial, Gigabit, Fast
+  Ethernet, fiber and 4-port switch cards fitted while switched off), a stateful firewall, access
+  switches (also with fiber uplinks or power over Ethernet) and a multilayer switch, a home
+  wireless router and a home IoT gateway, a Wi-Fi access point, a wireless LAN controller with
+  lightweight APs, a provider cloud with DSL and cable modems, a hub, PCs, laptops (also with
+  Wi-Fi), servers, a printer, IP phones, and eight IoT things (temperature sensor, fan, motion and
+  smoke detectors, light, door lock, siren, webcam).
   [docs/model-equivalents.md](docs/model-equivalents.md) says which one to place when a course lab
   names a vendor model.
 - **Cables:** automatic, straight-through and cross-over copper (a wrong one leaves the link down
-  and says why, unless auto-MDIX fixes it), fiber, console, and serial DCE/DTE; the physical view
-  has cities, buildings and closets, and copper longer than 100 m goes down.
+  and says why, unless auto-MDIX fixes it), fiber, console, serial DCE/DTE, coaxial and phone
+  lines; the physical view has cities, buildings and closets, copper longer than 100 m goes down,
+  and once a lab has a layout, Wi-Fi reaches only the access points in the same building.
 - **Switching:** MAC learning, VLANs, access and 802.1Q trunk ports, DTP, per-VLAN spanning tree
-  with its timers, rapid-pvst, cost and port priority, PortFast and BPDU guard, root guard,
-  EtherChannel (LACP, PAgP, static) with load balancing, VTP, port security with aging, DHCP
-  snooping, dynamic ARP inspection, errdisable recovery, switch VLAN interfaces, CDP and LLDP.
+  with its timers, rapid-pvst with the proposal/agreement handshake, cost and port priority,
+  PortFast, BPDU guard and filter, root and loop guard, EtherChannel (LACP, PAgP, static) with
+  load balancing, VTP, port security with aging, DHCP snooping with option 82, dynamic ARP
+  inspection, errdisable recovery, switch VLAN interfaces, CDP and LLDP; power over Ethernet with
+  a budget per switch; switch cards that make a router switch too.
 - **Routing:** static and floating static routes, loopbacks, RIP, OSPF as the courses teach it
   (network statements or interface areas, timers, DR/BDR, point-to-point, several areas, stub
   areas, the link-state database), EIGRP with equal and unequal-cost load balancing,
-  router-on-a-stick, multilayer switching, HSRP versions 1 and 2 with tracking; serial links with
-  HDLC or PPP (PAP, CHAP).
+  router-on-a-stick, multilayer switching, HSRP versions 1 and 2 with tracking, VRRP versions 2
+  and 3, GLBP; serial links with HDLC or PPP (PAP, CHAP).
 - **IPv6:** global, EUI-64 and link-local addresses on ports, subinterfaces and VLAN interfaces,
   neighbour discovery, router advertisements, SLAAC, DHCPv6 (stateless, stateful, relay), routers
-  as SLAAC and DHCPv6 clients, static routes, OSPFv3, IPv6 ACLs.
+  as SLAAC and DHCPv6 clients, static routes, OSPFv3, EIGRP for IPv6, IPv6 ACLs.
 - **Security:** standard, extended and named ACLs with sequence numbers, `established` and ICMP
   types, IPv6 ACLs, `access-class`, NAT and PAT, passwords and password recovery, SSH, AAA with
-  RADIUS and TACACS+, GRE tunnels, site-to-site IPsec with IKE on the wire, and a stateful
-  firewall with object groups and twice NAT.
-- **QoS:** class maps, policy maps, DSCP marking, policing and output queues on congested links.
+  RADIUS and TACACS+, GRE tunnels, site-to-site IPsec with IKEv1 or IKEv2 on the wire (real
+  AES-128 and HMAC-SHA1-96 ESP for IKEv2 tunnels), a zone-based firewall and `ip inspect` on
+  routers, `ip mtu` with fragmentation and `ip tcp adjust-mss`, and a stateful firewall with
+  object groups and twice NAT.
+- **QoS:** class maps, policy maps, DSCP marking, policing, shaping and output queues on congested
+  links; `mls qos trust` on switches.
+- **Automation:** routers answer RESTCONF (JSON) and NETCONF; PCs have a Programming app with
+  saved requests and a controller mode that reads and configures several routers at once.
 - **Services:** servers with HTTP (and a web browser on the PCs), DNS, DHCP, email (SMTP and POP3,
   with an Email app on the PCs), FTP, TFTP, NTP (with authentication), syslog, AAA and IoT; DHCP
   servers on routers with leases, domain names and statistics; SNMP v2c and v3 agents with traps
   and a MIB Browser on the PCs.
 - **Wireless:** home routers, access points and a controller with lightweight APs; WPA2-PSK and
-  WPA2-Enterprise (checked by RADIUS), a VLAN per WLAN, roaming, and real 802.11 frames in a
-  separate capture.
-- **Voice and IoT:** IP phones on voice VLANs that register with call control on a router and
-  call each other; smart sensors and devices that report to a server's IoT service, which runs
-  simple rules.
+  WPA2-Enterprise (checked by RADIUS), group keys, a VLAN per WLAN, roaming, and real 802.11
+  frames in a separate capture.
+- **Voice and IoT:** IP phones on voice VLANs, powered over Ethernet or by their adapter, that
+  register with call control on a router (its own signalling or SIP) and call each other; smart
+  things that report on a timer to a server's IoT service or a home gateway, whose rules join
+  several conditions with AND or OR.
+- **Simulation mode:** an event list replayed on the canvas, simple and complex PDUs (ping, DNS,
+  HTTP, Telnet, SSH, FTP, email, DHCP, TFTP, SNMP, ARP, raw UDP and TCP; once or periodically),
+  PDU details in OSI layers with what each device decided, scenarios saved with the lab, drop
+  reasons and pcap export.
 - **Console:** every mode a CCNA course uses, `?` help with a `^` marker on errors, Tab completion,
   history, `do`, `interface range`, output filters, `running-config` / `startup-config` / `write` /
   `reload`, `copy` to and from TFTP and FTP (images too), timestamps, logging levels, debugs,
-  extended ping: 802 grammar entries in all ([`docs/command-reference.md`](docs/command-reference.md)).
+  extended ping: 958 grammar entries in all ([`docs/command-reference.md`](docs/command-reference.md)).
 - **PC Command Prompt:** `ipconfig` (static or DHCP, `/all`), `ipv6config` (static or automatic,
   `/all`), `ping` (`-n`, `-l`, `-t`), `tracert`, `nslookup`, `telnet`, `ssh`, `ftp`, `netstat`,
   `dir`, `arp -a` and `-d`; also a Terminal app over a console cable.
@@ -184,9 +200,9 @@ egui frontend is a separate crate, so the UI can be swapped without touching the
 | L0 | `core` (MAC and IP addresses, networks, VLAN ids) |
 | L1 | `wire` (frame formats, checksums, pcap) |
 | L2 | `model` (the lab: devices, ports, configuration, cables; the `.nlcraft` format) |
-| L3 | `sim` (discrete-event simulator: switching, switch security, routing, STP, OSPF, RIP, EIGRP, HSRP, IPv6, VPN, QoS, firewall, wireless, voice, IoT, services) |
+| L3 | `sim` (discrete-event simulator: switching, switch security, routing, STP, OSPF, RIP, EIGRP, HSRP, VRRP, GLBP, IPv6, VPN with IKEv2, QoS, firewalls, MTU, wireless, voice and SIP, IoT, PoE, automation, services, complex PDUs) |
 | L4 | `ios` (device consoles: grammar, configuration, `show` output, host shell) |
-| L5 | `engine` (session, command catalog, undo, sample labs, activities) |
+| L5 | `engine` (session, command catalog, undo, sample labs, activities, RESTCONF, NETCONF and the controller) |
 | L6 | `ui-egui` (the interface and its translations) · `mcp` (MCP server) |
 | L7 | `apps/netlabcraft`, `apps/netlabcraft-cli`, `apps/netlabcraft-web` |
 
@@ -200,11 +216,11 @@ egui frontend is a separate crate, so the UI can be swapped without touching the
 NetLabCraft is **pre-alpha**: every core workflow works end to end (build a lab, configure it by
 typing, ping, watch the frames, grade an activity, save), and the console covers the commands of
 the first labs, but nobody has yet walked a full CCNA lab book through it. Weighted by what CCNA
-labs rely on, we estimate it is about 84% ready for real work: about 86% for the first CCNA
-course, 85% for the second and 79% for the third (estimated; the method is in
+labs rely on, we estimate it is about 88% ready for real work: about 88% for the first and
+second CCNA courses and 84% for the third (estimated; the method is in
 [`docs/target-app-parity.md`](docs/target-app-parity.md#audiences)). Next up: a CCNA-style lab
-book run end to end, automation for the third course, a zone-based firewall and Simulation-mode
-depth. Stage, numbers and estimates are in [ROADMAP.md](ROADMAP.md); the ranked work list is
+book run end to end (in progress), then automation depth (TLS, a fuller controller) and the
+smaller leftovers. Stage, numbers and estimates are in [ROADMAP.md](ROADMAP.md); the ranked work list is
 [`docs/gaps.md`](docs/gaps.md).
 
 ## Downloads
