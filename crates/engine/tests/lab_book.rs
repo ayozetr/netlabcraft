@@ -53,6 +53,13 @@ labs! {
     lab_11_switch_security => "11-switch-security.md",
     lab_12_wlan_controller => "12-wlan-controller.md",
     lab_13_static_floating_routes => "13-static-floating-routes.md",
+    lab_14_ospf => "14-ospf.md",
+    lab_15_acls => "15-acls.md",
+    lab_16_nat_pat => "16-nat-pat.md",
+    lab_17_gre_over_ipsec => "17-gre-over-ipsec.md",
+    lab_18_qos => "18-qos.md",
+    lab_19_network_management => "19-network-management.md",
+    lab_20_restconf => "20-restconf.md",
 }
 
 #[test]

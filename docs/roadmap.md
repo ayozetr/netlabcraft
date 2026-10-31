@@ -1,6 +1,6 @@
 # Roadmap
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** major (gates point at the new gaps table, estimates redone, packaging on hold) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (beta gate 1 met: the lab book runs end to end and over MCP) · **Target:** Cisco Packet Tracer 9.0
 
 Milestones, the current focus and what comes next. The summary is in
 [`ROADMAP.md`](../ROADMAP.md); the ranked work list is [gaps.md](gaps.md).
@@ -44,7 +44,11 @@ the reference app:
 ## Beta gates
 
 1. A CCNA-style lab book (VLANs, inter-VLAN routing, DHCP, OSPF, ACLs, NAT, IPv6, WAN, switch
-   security, HSRP) runs end to end by hand and through MCP (gaps table, item 1): not started.
+   security, HSRP) runs end to end by hand and through MCP (gaps table, item 1): **met**.
+   [docs/labs/](labs/README.md) holds 20 original labs (4 for CCNA 1, 9 for CCNA 2, 7 for
+   CCNA 3); each one's blocks run as written in `crates/engine/tests/lab_book.rs`, and 8 of them
+   over `netlabcraft-cli mcp` in `apps/netlabcraft-cli/tests/mcp_lab_book.rs`. The fixes they
+   turned up landed with regression tests (M8.1).
 2. Activities with scoring: met.
 3. Spanish interface: met (every window, tab and page, checked by tests).
 4. Wireless LANs: met (access points, home routers, WLC with lightweight APs, WPA2-PSK and
@@ -57,6 +61,7 @@ fixes it turns up.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | Beta gate 1 met: 20-lab book in `docs/labs/`, run as written by the engine and over MCP. |
 | 2026-10-30 | major | Gates cite the new ranked gaps table instead of old gap numbers; alpha gates 1 and 2 met but for a walk through the labs; packaging and M7 on hold by the owner's decision; beta gates 2–4 met; estimates redone (alpha ~5–10 h, beta ~45–80 h). |
 | 2026-10-30 | minor | Milestone states brought up to date: M3–M7 in progress, with what is left in each. |
 | 2026-10-30 | major | Rewritten: milestones as they were built (M0–M2), next milestones by CCNA course, alpha and beta gates with estimates. |
