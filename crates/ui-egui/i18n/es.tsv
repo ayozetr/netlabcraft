@@ -1318,3 +1318,25 @@ A microcontroller board on the home gateway's Wi-Fi runs a BoardScript program: 
 Board1 runs a BoardScript program (Board1 > Programming): it reads Temp1 on pin A0, switches Fan1 on pin D0 above 28 degrees, blinks Light1 on D1 and reports the reading to the Home gateway's IoT service every 2 s of simulated time. Raise Temp1's reading (Temp1 > IoT), then advance the time. Wire more things with the IoT Custom cable.	Board1 ejecuta un programa BoardScript (Board1 > Programación): lee Temp1 en el pin A0, enciende Fan1 en el pin D0 por encima de 28 grados, hace parpadear Light1 en D1 e informa de la lectura al servicio IoT de la pasarela Home cada 2 s de tiempo simulado. Sube la lectura de Temp1 (Temp1 > IoT) y avanza el tiempo. Cablea más objetos con el cable IoT personalizado.
 Wired to {} (its program switches it)	Cableado a {} (su programa lo conmuta)
 Wired to {} (its program reads it)	Cableado a {} (su programa lo lee)
+Phone settings	Ajustes del teléfono
+Own call control	Control de llamadas propio
+SIP	SIP
+Call server	Servidor de llamadas
+from DHCP	por DHCP
+Empty: the TFTP server DHCP gave (option 150)	Vacío: el servidor TFTP que dio el DHCP (opción 150)
+Extension	Extensión
+none yet (not registered)	ninguna todavía (sin registrar)
+MAC address	Dirección MAC
+Voice VLAN	VLAN de voz
+none learned (untagged)	ninguna aprendida (sin etiquetar)
+{} (learned from the switch)	{} (aprendida del switch)
+TFTP server	Servidor TFTP
+Apply address	Aplicar dirección
+Back to the call screen	Volver a la pantalla de llamadas
+The phone's own settings: protocol, call server, extension, address and voice VLAN	Los ajustes del propio teléfono: protocolo, servidor de llamadas, extensión, dirección y VLAN de voz
+Power supplies:	Fuentes de alimentación:
+Power supply {}: fitted (click to take it out)	Fuente de alimentación {}: puesta (haz clic para quitarla)
+Power supply {}: empty bay (click to fit one)	Fuente de alimentación {}: bahía vacía (haz clic para poner una)
+No power supply fitted: the device has no power. Fit one, then switch it on.	Sin fuente de alimentación: el equipo no tiene corriente. Pon una y enciéndelo.
+One supply fitted: taking it out cuts the power. Fit the second for a spare.	Una fuente puesta: quitarla corta la corriente. Pon la segunda como reserva.
+{} has no power supply fitted: fit one in its Physical tab (device.psu) first	{} no tiene fuente de alimentación: pon una primero en su pestaña Físico (device.psu)

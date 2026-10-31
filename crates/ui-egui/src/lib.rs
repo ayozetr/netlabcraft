@@ -290,6 +290,12 @@ pub fn open_tab(app: &mut PacketApp, d: DeviceId, name: &str) {
         "services" => Tab::Services,
         "desktop" => Tab::Desktop,
         "phone" => Tab::Phone,
+        "phone-settings" => {
+            if let Some(w) = app.ui.windows.get_mut(&d) {
+                w.phone.open = true;
+            }
+            Tab::Phone
+        }
         "iot" => Tab::Iot,
         "programming" | "board" => Tab::Board,
         "attributes" => Tab::Attributes,

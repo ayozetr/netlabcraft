@@ -328,3 +328,49 @@ fn a_board_program_reads_switches_reports_and_never_hangs() {
     s3.execute("device.remove", json!({"device": "Siren1"})).unwrap();
     assert_eq!(s3.topology.find("Board1").unwrap().board.wires.len(), 3);
 }
+
+#[test]
+fn power_supplies_come_out_and_the_last_one_switches_the_device_off() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "two-subnets"})).unwrap();
+    let r = s.execute("device.psu", json!({"device": "R1"})).unwrap();
+    assert_eq!(r["bays"], json!([{"bay": 1, "fitted": true}, {"bay": 2, "fitted": false}]), "{r}");
+    assert_eq!(marks(&mut s, "PC1", "10.0.2.10"), "!!!");
+    // A spare in bay 2: the first can come out and the router keeps running.
+    s.execute("device.psu", json!({"device": "R1", "bay": 2, "fitted": true})).unwrap();
+    let r = s.execute("device.psu", json!({"device": "R1", "bay": 1, "fitted": false})).unwrap();
+    assert_eq!(r["power"], "on");
+    assert_eq!(marks(&mut s, "PC1", "10.0.2.10"), "!!!", "the spare keeps it up");
+    // The last one out: off, and it can't be switched on without a supply.
+    let r = s.execute("device.psu", json!({"device": "R1", "bay": 2, "fitted": false})).unwrap();
+    assert_eq!((r["power"].clone(), r["no_supply"].clone()), (json!("off"), json!(true)));
+    assert!(s.topology.find("R1").unwrap().powered_off);
+    let err = s.execute("device.power", json!({"device": "R1", "on": true})).unwrap_err().to_string();
+    assert!(err.contains("no power supply"), "{err}");
+    s.execute("device.psu", json!({"device": "R1", "bay": 1, "fitted": true})).unwrap();
+    s.execute("device.power", json!({"device": "R1", "on": true})).unwrap();
+    assert!(!s.topology.find("R1").unwrap().powered_off);
+    // Hostile: a bay that isn't there, a device without bays.
+    assert!(s.execute("device.psu", json!({"device": "R1", "bay": 3, "fitted": true})).is_err());
+    assert!(s.execute("device.psu", json!({"device": "PC1", "bay": 1, "fitted": false})).is_err());
+    let s2 = round_trip(&mut s);
+    assert_eq!(s2.topology.find("R1").unwrap().psus(), [true, false]);
+}
+
+#[test]
+fn the_phone_settings_set_its_protocol_server_and_address() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "ip-phones"})).unwrap();
+    let st = s.execute("phone.status", json!({"device": "Phone1"})).unwrap();
+    assert!(st["voice_vlan"].as_u64().is_some() && st["number"].as_str().is_some(), "learned VLAN and extension: {st}");
+    let st = s
+        .execute("phone.configure", json!({"device": "Phone1", "address": "192.168.100.77", "mask": "255.255.255.0", "gateway": "192.168.100.1"}))
+        .unwrap();
+    assert_eq!(st["address"], "192.168.100.77/24", "{st}");
+    assert!(!s.topology.find("Phone1").unwrap().dhcp_client);
+    let st = s.execute("phone.configure", json!({"device": "Phone1", "address": "dhcp"})).unwrap();
+    assert!(s.topology.find("Phone1").unwrap().dhcp_client, "{st}");
+    assert!(s.execute("phone.configure", json!({"device": "Phone1", "address": "nonsense"})).is_err());
+    assert!(s.execute("phone.configure", json!({"device": "Phone1", "address": "10.0.0.1", "mask": "x"})).is_err());
+    assert!(s.execute("phone.configure", json!({"device": "PC1", "address": "dhcp"})).is_err());
+}

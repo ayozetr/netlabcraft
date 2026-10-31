@@ -423,7 +423,15 @@ pub static CATALOG: &[CommandInfo] = &[
         "Phone settings",
         "",
         None,
-        r#"{"device": IP phone, "protocol"?: "sip"|"own", "server"?: "SIP registrar address (empty: the TFTP server DHCP gave)"} → the phone's status (it registers again)"#,
+        r#"{"device": IP phone, "protocol"?: "sip"|"own", "server"?: "SIP registrar address (empty: the TFTP server DHCP gave)", "address"?: "dhcp" or "A.B.C.D", "mask"?, "gateway"?} → the phone's status (it registers again)"#,
+        true
+    ),
+    c!(
+        "device.psu",
+        "Power supplies",
+        "",
+        None,
+        r#"{"device": router or switch, "bay"?: 1|2, "fitted"?: true|false} → {"bays": [{"bay", "fitted"}], "power", "no_supply"}: fits or takes out a power supply; taking out the last one switches the device off, and it can't be switched on without one"#,
         true
     ),
     c!(

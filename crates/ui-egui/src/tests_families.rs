@@ -291,3 +291,55 @@ mod boards {
         assert!(h.query_by_label("A microcontroller board seen from above").is_some());
     }
 }
+
+// UI harness tests for the phone's settings screen and power supplies.
+#[cfg(test)]
+mod setup_and_supplies {
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable as _;
+    use netlabcraft_engine::Session;
+    use serde_json::json;
+
+    use crate::PacketApp;
+
+    fn harness(sample: &str) -> Harness<'static, PacketApp> {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"sample": sample})).unwrap();
+        let mut h = Harness::builder().with_size(egui::vec2(1300.0, 860.0)).build_ui_state(|ui, app: &mut PacketApp| app.ui(ui), PacketApp::new(s));
+        h.state_mut().ui.show_notes = false;
+        h
+    }
+
+    #[test]
+    fn the_phone_settings_screen_switches_to_sip_and_back() {
+        let mut h = harness("ip-phones");
+        let ph = h.state().session.topology.resolve("Phone1").unwrap();
+        crate::open_tab(h.state_mut(), ph, "phone");
+        h.run_steps(3);
+        h.get_by_label("Settings").click();
+        h.run_steps(3);
+        assert!(h.query_by_label("Phone settings").is_some() && h.query_by_label("Apply address").is_some());
+        h.get_by_label("SIP").click();
+        h.run_steps(2);
+        assert!(h.state().session.topology.device(ph).unwrap().voice.sip);
+        h.get_by_label("Back to the call screen").click();
+        h.run_steps(2);
+        assert!(h.query_by_label("Call").is_some(), "the dial pad again");
+    }
+
+    #[test]
+    fn the_physical_tab_takes_out_the_last_supply() {
+        let mut h = harness("two-subnets");
+        let r1 = h.state().session.topology.resolve("R1").unwrap();
+        crate::open_physical_tab(h.state_mut(), r1);
+        h.run_steps(3);
+        assert!(h.query_by_label("Power supply 2: empty bay (click to fit one)").is_some());
+        h.get_by_label("Power supply 1: fitted (click to take it out)").click();
+        h.run_steps(2);
+        let d = h.state().session.topology.device(r1).unwrap();
+        assert!(d.powered_off && d.no_psu());
+        h.get_by_label("Power supply 1: empty bay (click to fit one)").click();
+        h.run_steps(2);
+        assert!(!h.state().session.topology.device(r1).unwrap().no_psu());
+    }
+}

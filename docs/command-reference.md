@@ -75,7 +75,8 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `phone.answer` | Answer the phone |  |  | `{"device": a ringing IP phone} → its status: the call connects and voice packets flow` |
 | `phone.hangup` | Hang up |  |  | `{"device": IP phone} → its status: the call ends at both phones` |
 | `device.adapter` | Power adapter |  |  | `{"device": IP phone or lightweight AP, "on": true\|false} → the power source: plugged in, the device runs without power over Ethernet; unplugged, it needs a PoE switch port` |
-| `phone.configure` | Phone settings |  |  | `{"device": IP phone, "protocol"?: "sip"\|"own", "server"?: "SIP registrar address (empty: the TFTP server DHCP gave)"} → the phone's status (it registers again)` |
+| `phone.configure` | Phone settings |  |  | `{"device": IP phone, "protocol"?: "sip"\|"own", "server"?: "SIP registrar address (empty: the TFTP server DHCP gave)", "address"?: "dhcp" or "A.B.C.D", "mask"?, "gateway"?} → the phone's status (it registers again)` |
+| `device.psu` | Power supplies |  |  | `{"device": router or switch, "bay"?: 1\|2, "fitted"?: true\|false} → {"bays": [{"bay", "fitted"}], "power", "no_supply"}: fits or takes out a power supply; taking out the last one switches the device off, and it can't be switched on without one` |
 | `cloud.map` | Cloud port pairs |  |  | `{"device": cloud, "a"?: "Coaxial0", "b"?: "Phone0", "remove"?: true} → {"pairs": [[a, b]…], "ports"}: joins two ports (a frame in one leaves by the other), parts them, or lists the pairs` |
 | `device.power.source` | Power source |  |  | `{"device"} → {"powered_device", "adapter", "source": "mains"\|"adapter"\|"poe"\|"none"\|"off", "detail" (the PoE port, or why there is no power), "draw_w"}` |
 | `device.module.list` | Card catalogue |  |  | `{"device"?} → {"modules": [{id, label, description, ports, type}], "device": {"power", "slots": [{slot, module, label, ports}]}}` |

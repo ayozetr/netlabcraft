@@ -102,6 +102,8 @@ pub struct DeviceWindow {
     pub(crate) iot: crate::iot_page::IotForm,
     /// A board's Programming tab fields.
     pub(crate) board: crate::board_page::BoardForm,
+    /// An IP phone's settings screen.
+    pub(crate) phone: crate::phone::PhoneForm,
 }
 
 impl DeviceWindow {

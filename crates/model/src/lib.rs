@@ -29,6 +29,7 @@ pub mod mgmt;
 pub mod models;
 pub mod physical;
 pub mod poe;
+pub mod psu;
 pub mod qos;
 pub mod routing;
 pub mod scenario;
@@ -996,6 +997,10 @@ pub struct Device {
     /// Programmable boards: their program and the IoT custom cables of their pins.
     #[serde(default, skip_serializing_if = "board::Board::is_default")]
     pub board: board::Board,
+    /// Routers and switches: which power-supply bays hold a supply (`None`: as from the
+    /// factory, one in bay 1); see [`psu`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub psu: Option<Vec<bool>>,
 }
 
 /// Which side of NAT an interface is on.
@@ -1805,6 +1810,7 @@ impl Device {
             automation: automation::Automation::default(),
             security: security::RouterSecurity::default(),
             board: board::Board::default(),
+            psu: None,
         };
         // A board has no report timer of its own: its program reports when it says so.
         if !board::pins(model).is_empty() {
@@ -2318,6 +2324,7 @@ impl Topology {
                 d.voice.sanitize();
                 d.iot.sanitize();
                 d.sanitize_board();
+                d.sanitize_psu();
                 for p in &mut d.ports {
                     p.subifs.truncate(MAX_SUBIFS);
                     p.subifs.sort_by_key(|s| s.number);

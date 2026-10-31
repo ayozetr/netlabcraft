@@ -23,6 +23,7 @@ pub(crate) fn panel(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
         }
     });
     power_supply(app, ui, dev, &tk);
+    power_supplies(app, ui, dev, &tk);
     if dev.catalogue_model().cloud() {
         crate::cloud_page::panel(app, ui, dev);
     }
@@ -101,6 +102,75 @@ fn power_supply(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, tk: &theme
     let src = power_line(&app.session.topology, dev);
     let color = if src.1 { tk.text } else { tk.error };
     ui.label(RichText::new(src.0).color(color));
+}
+
+/// The power-supply bays at the back of a router or switch: a fitted supply (a grille with its
+/// fan and a light) or a blank plate; clicked to take it out or fit one (`device.psu`).
+fn power_supplies(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, tk: &theme::Tokens) {
+    let psus = dev.psus();
+    if psus.is_empty() {
+        return;
+    }
+    let mut clicked = None;
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(tl("Power supplies:")).strong());
+        for (i, fitted) in psus.iter().enumerate() {
+            let bay = i + 1;
+            let (rect, resp) = ui.allocate_exact_size(vec2(96.0, 38.0), Sense::click());
+            let label = if *fitted {
+                trf("Power supply {}: fitted (click to take it out)", &[&bay])
+            } else {
+                trf("Power supply {}: empty bay (click to fit one)", &[&bay])
+            };
+            resp.widget_info(|| egui::WidgetInfo::selected(egui::accesskit::Role::Button, true, *fitted, label.clone()));
+            let resp = resp.on_hover_text(label);
+            let p = ui.painter_at(rect);
+            if *fitted {
+                p.rect_filled(rect, 3.0, tk.bar);
+                // The fan grille and the handle.
+                let fan = egui::pos2(rect.left() + 20.0, rect.center().y);
+                p.circle_stroke(fan, 13.0, egui::Stroke::new(1.5, tk.bar_text));
+                for k in 0..3 {
+                    let a = k as f32 * std::f32::consts::TAU / 3.0;
+                    p.line_segment([fan, fan + vec2(a.cos(), a.sin()) * 11.0], egui::Stroke::new(1.5, tk.bar_text));
+                }
+                p.rect_filled(egui::Rect::from_min_size(rect.right_top() + vec2(-14.0, 6.0), vec2(6.0, 26.0)), 2.0, tk.chrome_line);
+                let lit = !dev.powered_off;
+                p.circle_filled(egui::pos2(rect.left() + 44.0, rect.top() + 9.0), 3.5, if lit { tk.ok } else { tk.muted });
+                p.text(
+                    egui::pos2(rect.left() + 40.0, rect.bottom() - 10.0),
+                    egui::Align2::LEFT_CENTER,
+                    format!("PSU {bay}"),
+                    egui::FontId::proportional(10.0),
+                    tk.bar_text,
+                );
+            } else {
+                p.rect_filled(rect, 3.0, tk.chrome);
+                for x in [rect.left() + 6.0, rect.right() - 6.0] {
+                    p.circle_filled(egui::pos2(x, rect.center().y), 2.5, tk.muted);
+                }
+                p.text(rect.center(), egui::Align2::CENTER_CENTER, tl("empty"), egui::FontId::proportional(10.0), tk.muted);
+            }
+            let hot = resp.hovered();
+            p.rect_stroke(
+                rect,
+                3.0,
+                egui::Stroke::new(if hot { 2.0 } else { 1.0 }, if hot { tk.selection } else { tk.muted }),
+                egui::StrokeKind::Inside,
+            );
+            if resp.clicked() {
+                clicked = Some((bay, !*fitted));
+            }
+        }
+    });
+    if let Some((bay, fit)) = clicked {
+        app.run("device.psu", json!({"device": dev.id.0, "bay": bay, "fitted": fit}));
+    }
+    if dev.no_psu() {
+        ui.label(RichText::new(tl("No power supply fitted: the device has no power. Fit one, then switch it on.")).color(tk.error));
+    } else if psus.len() > 1 && psus.iter().filter(|f| **f).count() == 1 {
+        ui.label(RichText::new(tl("One supply fitted: taking it out cuts the power. Fit the second for a spare.")).color(tk.muted));
+    }
 }
 
 /// What powers a powered device, in words, and whether it has power.
