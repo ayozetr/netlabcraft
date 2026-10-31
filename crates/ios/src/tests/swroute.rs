@@ -286,3 +286,132 @@ fn eigrp_for_ipv4_summary_addresses() {
     lab.run(r2, "no ip summary-address eigrp 1 172.16.0.0 255.255.254.0\nend");
     assert!(!lab.run(r1, "show ip route").contains("/23"));
 }
+
+/// R1 and R2 on a switch (10.0.0.0/24), R2 with a loopback network; RIPv2 on both.
+fn rip_pair() -> (Lab, DeviceId, DeviceId, DeviceId) {
+    let mut lab = Lab::new();
+    let r1 = lab.add(DeviceKind::Router);
+    let r2 = lab.add(DeviceKind::Router);
+    let s = lab.add(DeviceKind::Switch);
+    lab.cable(r1, "g0/0", s, "fa0/1");
+    lab.cable(r2, "g0/0", s, "fa0/2");
+    lab.run(r1, "en\nconf t\nint g0/0\nip address 10.0.0.1 255.255.255.0\nno shut\nexit\nrouter rip\nversion 2\nnetwork 10.0.0.0\nend");
+    lab.run(
+        r2,
+        "en\nconf t\nint g0/0\nip address 10.0.0.2 255.255.255.0\nno shut\nint lo0\nip address 192.168.2.1 255.255.255.0\nexit\nrouter rip\nversion 2\nnetwork 10.0.0.0\nnetwork 192.168.2.0\nend",
+    );
+    lab.run(s, "en");
+    (lab, r1, r2, s)
+}
+
+#[test]
+fn rip_keeps_a_silent_neighbours_routes_until_they_time_out() {
+    let (mut lab, r1, _r2, s) = rip_pair();
+    assert!(lab.run(r1, "show ip route").contains("R    192.168.2.0/24"));
+    let proto = lab.run(r1, "show ip protocols");
+    assert!(proto.contains("Updates every 30 s; a route is invalid after 180 s, held down 180 s, flushed after 240 s"), "{proto}");
+    // R2 falls silent (its switch port shut): R1 keeps the route until it is invalid.
+    lab.run(s, "conf t\nint fa0/2\nshutdown\nend");
+    let proto = lab.run(r1, "show ip protocols");
+    assert!(proto.contains("no longer heard") && proto.contains("10.0.0.2 on Gi0/0"), "{proto}");
+    lab.sim.run_for(&lab.t, 120_000_000);
+    assert!(lab.run(r1, "show ip route").contains("192.168.2.0/24"), "still within the invalid time");
+    lab.sim.run_for(&lab.t, 70_000_000);
+    assert!(!lab.run(r1, "show ip route").contains("192.168.2.0/24"), "invalid after 180 s");
+    let db = lab.run(r1, "show ip rip database");
+    assert!(db.contains("192.168.2.0/24") && db.contains("possibly down"), "{db}");
+    // Flushed 240 s after the last update.
+    lab.sim.run_for(&lab.t, 70_000_000);
+    assert!(!lab.run(r1, "show ip rip database").contains("192.168.2.0/24"));
+    // Back: learned again at the next update.
+    lab.run(s, "conf t\nint fa0/2\nno shutdown\nend");
+    lab.sim.run_for(&lab.t, 31_000_000);
+    assert!(lab.run(r1, "show ip route").contains("R    192.168.2.0/24"));
+}
+
+#[test]
+fn rip_sends_triggered_updates_and_poisons_withdrawn_routes() {
+    let (mut lab, r1, r2, _s) = rip_pair();
+    lab.sim.run_for(&lab.t, 31_000_000);
+    // Regular updates: R1 offers R2's network back to it at metric 16 (poisoned reverse).
+    let r1_update = lab.sim.trace().iter().filter(|e| e.summary.starts_with("RIPv2 update from 10.0.0.1")).map(|e| e.summary.clone()).next_back();
+    assert!(r1_update.as_ref().is_some_and(|u| u.contains("1 route") && u.contains("1 at metric 16")), "{r1_update:?}");
+    // R2's network goes down: a triggered update a second later, withdrawing it.
+    lab.sim.clear_trace();
+    lab.run(r2, "conf t\nint lo0\nshutdown\nend");
+    let _ = lab.run(r2, "show ip rip database");
+    lab.sim.run_for(&lab.t, 2_000_000);
+    let trig: Vec<String> =
+        lab.sim.trace().iter().filter(|e| e.summary.starts_with("RIPv2 update from 10.0.0.2")).map(|e| e.summary.clone()).collect();
+    assert!(trig.iter().any(|u| u.contains("at metric 16")), "{trig:?}");
+    // R1 takes it at once; the route is possibly down and held down.
+    assert!(!lab.run(r1, "show ip route").contains("192.168.2.0/24"));
+    assert!(lab.run(r1, "show ip rip database").contains("possibly down"));
+    // `timers basic`: faster timers, in the configuration.
+    lab.run(r1, "conf t\nrouter rip\ntimers basic 10 30 30 40\nend");
+    let proto = lab.run(r1, "show ip protocols");
+    assert!(proto.contains("Updates every 10 s; a route is invalid after 30 s, held down 30 s, flushed after 40 s"), "{proto}");
+    let run = lab.run(r1, "show running-config");
+    assert!(run.contains(" timers basic 10 30 30 40\n"), "{run}");
+    lab.run(r1, "copy run start\nreload\nen");
+    assert_eq!(lab.run(r1, "show running-config"), run);
+    lab.run(r1, "conf t\nrouter rip");
+    assert!(lab.try_run(r1, "timers basic 30 10 10 40").contains("at least the update time"));
+    assert!(lab.try_run(r1, "timers basic 0 180 180 240").contains("1 to 65535"));
+    lab.run(r1, "no timers basic\nend");
+    assert!(!lab.run(r1, "show running-config").contains("timers basic"));
+}
+
+#[test]
+fn ripng_by_typing() {
+    let mut lab = Lab::new();
+    let r1 = lab.add(DeviceKind::Router);
+    let r2 = lab.add(DeviceKind::Router);
+    let r3 = lab.add(DeviceKind::Router);
+    let pc = lab.add(DeviceKind::Pc);
+    lab.cable(r1, "g0/1", r2, "g0/0");
+    lab.cable(r2, "g0/1", r3, "g0/0");
+    lab.cable(pc, "fa0", r1, "g0/0");
+    for (r, n, ifs) in [
+        (r1, 1, [("g0/0", "2001:db8:1::1/64"), ("g0/1", "2001:db8:12::1/64")]),
+        (r2, 2, [("g0/0", "2001:db8:12::2/64"), ("g0/1", "2001:db8:23::2/64")]),
+        (r3, 3, [("g0/0", "2001:db8:23::3/64"), ("lo0", "2001:db8:3::1/64")]),
+    ] {
+        let mut s = String::from("en\nconf t\nipv6 unicast-routing\nipv6 router rip LAB\nexit\n");
+        for (i, a) in ifs {
+            s.push_str(&format!("int {i}\nipv6 address {a}\nipv6 rip LAB enable\nno shut\n"));
+        }
+        s.push_str("end");
+        lab.run(r, &s);
+        let _ = n;
+    }
+    lab.run(pc, "ipv6config 2001:db8:1::10/64 2001:db8:1::1");
+    let route = lab.run(r1, "show ipv6 route");
+    assert!(route.contains("R  2001:db8:3::/64") && route.contains("[120]") && route.contains("via fe80::"), "{route}");
+    let db = lab.run(r1, "show ipv6 rip database");
+    assert!(db.contains("2001:db8:3::/64") && db.contains(" 3 "), "two hops: metric 3\n{db}");
+    let rip = lab.run(r2, "show ipv6 rip");
+    assert!(rip.contains("RIPng process LAB") && rip.contains("Gi0/0, Gi0/1") && rip.contains("fe80::"), "{rip}");
+    let ping = lab.run(pc, "ping 2001:db8:3::1");
+    assert!(ping.contains("answered") && !ping.contains(" 0 answered"), "{ping}\n{:?}", super::dropped_reasons(&lab));
+    // Responses on the wire to FF02::9.
+    lab.sim.clear_trace();
+    lab.sim.run_for(&lab.t, 31_000_000);
+    assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("RIPng response") && e.summary.contains("ff02::9")));
+    // Configuration and its round trip.
+    let run = lab.run(r1, "show running-config");
+    assert!(run.contains("ipv6 router rip LAB\n!") && run.contains(" ipv6 rip LAB enable"), "{run}");
+    lab.run(r1, "copy run start\nreload\nen");
+    assert_eq!(lab.run(r1, "show running-config"), run);
+    assert_eq!(lab.prompt(r1), "R1#");
+    lab.run(r1, "conf t\nipv6 router rip LAB");
+    assert_eq!(lab.prompt(r1), "R1(config-rtr)#");
+    assert!(lab.try_run(r1, "network 10.0.0.0").contains("Not part of RIPng"));
+    assert!(lab.try_run(r1, "timers basic 10 30 30 40").contains("RIPng"));
+    lab.run(r1, "exit");
+    assert!(lab.try_run(r1, "ipv6 router rip OTHER").contains("already runs here as LAB"));
+    assert!(lab.try_run(r1, "ipv6 router rip bad!name").contains("letters"));
+    lab.run(r1, "no ipv6 router rip LAB\nend");
+    assert!(!lab.run(r1, "show ipv6 route").contains("R  2001:db8:3::/64"));
+    assert!(lab.run(r1, "show ipv6 rip").contains("not running"));
+}

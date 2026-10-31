@@ -107,3 +107,13 @@ impl EigrpSummaries {
         self.v6.iter().filter(|(a, _)| *a == asn).map(|(_, n)| *n).collect()
     }
 }
+
+/// `ipv6 router rip NAME`: a router's RIPng process (RFC 2080). Interfaces join with
+/// `ipv6 rip NAME enable`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Rip6 {
+    pub name: String,
+}
+
+/// Longest RIPng process name.
+pub const MAX_RIP6_NAME: usize = 32;

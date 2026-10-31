@@ -29,6 +29,7 @@ pub mod ipv6;
 pub mod lacp;
 pub mod lldp;
 pub mod md5;
+pub mod ripng;
 pub mod vrrp;
 
 pub mod mgmt;
@@ -789,7 +790,16 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                         Ok(u) if u.dst_port == control::RIP_PORT => match control::rip_decode(&u.payload) {
                             Ok((v, entries)) => (
                                 Protocol::Rip,
-                                format!("RIPv{v} update from {}: {} route{}{tag}", ip.src, entries.len(), if entries.len() == 1 { "" } else { "s" }),
+                                format!(
+                                    "RIPv{v} update from {}: {} route{}{}{tag}",
+                                    ip.src,
+                                    entries.len(),
+                                    if entries.len() == 1 { "" } else { "s" },
+                                    match entries.iter().filter(|e| e.metric >= 16).count() {
+                                        0 => String::new(),
+                                        k => format!(" ({k} at metric 16)"),
+                                    }
+                                ),
                             ),
                             Err(e) => (Protocol::Rip, format!("RIP ({e}){tag}")),
                         },
@@ -902,6 +912,10 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                         ),
                     ),
                     Err(e) => (Protocol::Dhcp, format!("DHCPv6 ({e}){tag}")),
+                },
+                Ok((_, ripng::RIPNG_PORT, body)) => match ripng::decode(&body) {
+                    Ok(e) => (Protocol::Rip, format!("{} {} → {}{tag}", ripng::describe(&e), ip.src, ip.dst)),
+                    Err(e) => (Protocol::Rip, format!("RIPng ({e}) {} → {}{tag}", ip.src, ip.dst)),
                 },
                 Ok((sp, dp, _)) => (Protocol::Ipv6, format!("UDP [{}]:{sp} → [{}]:{dp}{tag}", ip.src, ip.dst)),
                 Err(e) => (Protocol::Ipv6, format!("UDP ({e}){tag}")),

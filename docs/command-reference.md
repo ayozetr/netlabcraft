@@ -1144,6 +1144,14 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip summary-address eigrp <1-65535> A.B.C.D A.B.C.D` | interface, subinterface | router, switch | Advertise the covered routes again |
 | `ipv6 summary-address eigrp <1-65535> X:X::X/N` | interface, subinterface | router, switch | Advertise one IPv6 summary instead of the prefixes it covers |
 | `no ipv6 summary-address eigrp <1-65535> X:X::X/N` | interface, subinterface | router, switch | Advertise the covered IPv6 prefixes again |
+| `timers basic <1-65535> <1-65535> <0-65535> <1-65535>` |  | router, switch | Update, invalid, hold-down and flush times (seconds) |
+| `no timers basic` |  | router, switch | Timers 30 180 180 240 again |
+| `ipv6 router rip WORD` | config | router, switch | Start or configure RIPng |
+| `no ipv6 router rip WORD` | config | router, switch | Stop RIPng |
+| `ipv6 rip WORD enable` | interface, subinterface | router, switch | Run this RIPng process on the interface |
+| `no ipv6 rip WORD enable` | interface, subinterface | router, switch | Stop RIPng here |
+| `show ipv6 rip` | user, privileged | router, switch | RIPng: process, interfaces and neighbours |
+| `show ipv6 rip database` | user, privileged | router, switch | Prefixes RIPng knows |
 
 ## Host shell (PCs and servers)
 

@@ -285,9 +285,11 @@ impl Sim {
         // VRRPv3: the groups this router is master of here answer for their virtual address.
         let vrrp6 = self.vrrp6_masters(t, d, &ifc.name);
         let vrrp_on = !d.fhrp.vrrp.is_empty();
+        let ripng = d.rip6.is_some() && router;
         let joined = |g: Ipv6Addr| {
             vrrp6.iter().any(|(a, _)| solicited_node(*a) == g)
                 || (vrrp_on && g == netlabcraft_wire::vrrp::VRRP_GROUP6)
+                || (ripng && g == netlabcraft_wire::ripng::RIPNG_ROUTERS)
                 || g == ALL_NODES
                 || (router && g == ALL_ROUTERS)
                 || (ospf6 && g == netlabcraft_wire::ospf6::ALL_SPF_ROUTERS6)
@@ -653,6 +655,10 @@ impl Sim {
     /// DHCPv6 messages: a server's answers to clients on this interface, or a client's replies.
     fn udp6_in(&mut self, t: &Topology, d: &Device, ifc: &L3If6, ip: Ipv6) -> Result<(), String> {
         let (_, dst_port, body) = dhcp6::udp6_decode(ip.src, ip.dst, &ip.payload).map_err(|e| e.to_string())?;
+        // RIPng is computed (`rip6`); its responses are taken in quietly.
+        if dst_port == netlabcraft_wire::ripng::RIPNG_PORT && d.rip6.is_some() {
+            return netlabcraft_wire::ripng::decode(&body).map(|_| ()).map_err(|e| e.to_string());
+        }
         if dst_port == dhcp6::SERVER_PORT
             && let Some(r) = dhcp6::Relay::decode(&body)
         {

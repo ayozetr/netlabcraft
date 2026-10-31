@@ -976,6 +976,15 @@ pub enum Id {
     SrNoIpSummaryEigrp,
     SrIpv6SummaryEigrp,
     SrNoIpv6SummaryEigrp,
+    // RIP timers and RIPng.
+    SrRipTimers,
+    SrNoRipTimers,
+    SrIpv6RouterRip,
+    SrNoIpv6RouterRip,
+    SrIpv6RipEnable,
+    SrNoIpv6RipEnable,
+    SrShowIpv6Rip,
+    SrShowIpv6RipDatabase,
 }
 
 use Tok::{Arg, K, Rest};
@@ -3625,6 +3634,27 @@ pub static SPECS: &[Spec] = &[
         [K("no"), K("ipv6"), K("summary-address"), K("eigrp"), Arg("<1-65535>"), Arg("X:X::X/N")],
         "Advertise the covered IPv6 prefixes again"
     ),
+    // ---- Switching and routing leftovers: RIP timers and RIPng ----
+    spec!(
+        SrRipTimers,
+        Modes::RIP,
+        Modes::BOTH,
+        [K("timers"), K("basic"), Arg("<1-65535>"), Arg("<1-65535>"), Arg("<0-65535>"), Arg("<1-65535>")],
+        "Update, invalid, hold-down and flush times (seconds)"
+    ),
+    spec!(SrNoRipTimers, Modes::RIP, Modes::BOTH, [K("no"), K("timers"), K("basic")], "Timers 30 180 180 240 again"),
+    spec!(SrIpv6RouterRip, Modes::CONFIG, Modes::BOTH, [K("ipv6"), K("router"), K("rip"), Arg("WORD")], "Start or configure RIPng"),
+    spec!(SrNoIpv6RouterRip, Modes::CONFIG, Modes::BOTH, [K("no"), K("ipv6"), K("router"), K("rip"), Arg("WORD")], "Stop RIPng"),
+    spec!(
+        SrIpv6RipEnable,
+        ANY_IF.or(Modes::LOOPBACK),
+        Modes::BOTH,
+        [K("ipv6"), K("rip"), Arg("WORD"), K("enable")],
+        "Run this RIPng process on the interface"
+    ),
+    spec!(SrNoIpv6RipEnable, ANY_IF.or(Modes::LOOPBACK), Modes::BOTH, [K("no"), K("ipv6"), K("rip"), Arg("WORD"), K("enable")], "Stop RIPng here"),
+    spec!(SrShowIpv6Rip, EXECS, Modes::BOTH, [K("show"), K("ipv6"), K("rip")], "RIPng: process, interfaces and neighbours"),
+    spec!(SrShowIpv6RipDatabase, EXECS, Modes::BOTH, [K("show"), K("ipv6"), K("rip"), K("database")], "Prefixes RIPng knows"),
 ];
 
 /// Why a line didn't parse. Positions are word indexes.

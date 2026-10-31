@@ -57,6 +57,7 @@ pub mod qos;
 pub mod rip;
 pub mod simmode;
 pub mod script;
+pub mod rip6;
 pub mod sip;
 pub mod snmp;
 pub mod stp;
@@ -1016,6 +1017,11 @@ pub struct Sim {
     eigrp6: Option<eigrp6::Eigrp6State>,
     rip_for: u64,
     rip: Option<rip::RipState>,
+    /// RIP neighbours no longer heard, kept until their invalid time; routes possibly down.
+    rip_held: Vec<rip::Held>,
+    rip_down: Vec<rip::RipDown>,
+    rip6_for: u64,
+    rip6: Option<rip6::Rip6State>,
     eigrp_for: u64,
     eigrp: Option<eigrp::EigrpState>,
     /// EIGRP neighbours no longer heard, kept until their hold time runs out.
@@ -1422,6 +1428,20 @@ impl Sim {
                 self.eigrp_refresh(t);
                 // Expired holds are gone after a refresh; never spin on one that isn't.
                 self.eigrp_held.retain(|x| x.until > h);
+                continue;
+            }
+            // So are RIP's timers.
+            if let Some(h) = self.rip_next_expiry().filter(|h| *h <= deadline && next.is_none_or(|q| *h <= q)) {
+                self.now = self.now.max(h);
+                let _ = self.rip_state(t);
+                if self.rip_next_expiry().is_some_and(|x| x <= h) {
+                    // Never spin on a timer a refresh didn't clear.
+                    self.rip_held.retain(|x| x.until > h);
+                    self.rip_down.retain(|x| x.flush_at > h);
+                    for x in &mut self.rip_down {
+                        x.hold_done |= x.holddown_until <= h;
+                    }
+                }
                 continue;
             }
             // So is a VRRP group's master down interval.
@@ -1903,11 +1923,22 @@ impl Sim {
     /// RIP's view of the lab (neighbours, routes).
     pub fn rip_state(&mut self, t: &Topology) -> rip::RipState {
         let f = ospf::fingerprint(t);
-        if self.rip.is_none() || self.rip_for != f {
+        let due = self.rip_next_expiry().is_some_and(|u| u <= self.now);
+        if self.rip.is_none() || self.rip_for != f || due {
             self.rip_for = f;
-            self.rip = Some(rip::compute(t));
+            self.rip_refresh(t);
         }
         self.rip.clone().unwrap_or_default()
+    }
+
+    /// RIPng's view of the lab, recomputed when what it depends on changes.
+    pub fn rip6_state(&mut self, t: &Topology) -> rip6::Rip6State {
+        let f = rip6::fingerprint(t);
+        if self.rip6.is_none() || self.rip6_for != f {
+            self.rip6_for = f;
+            self.rip6 = Some(rip6::compute(t));
+        }
+        self.rip6.clone().unwrap_or_default()
     }
 
     /// OSPF's view of the lab (neighbours, router ids, routes).
@@ -1955,12 +1986,24 @@ impl Sim {
                 distance: 5,
             }));
         }
+        if rip6::running(d) {
+            let st = self.rip6_state(t);
+            let have: std::collections::BTreeSet<netlabcraft_core::Ipv6Net> = out.iter().map(|r| r.net).collect();
+            out.extend(st.routes.get(&d.id).into_iter().flatten().filter(|r| !have.contains(&r.net)).map(|r| v6::Route6Entry {
+                code: 'R',
+                net: r.net,
+                iface: Some(r.iface.clone()),
+                next_hop: Some(r.via),
+                distance: 120,
+            }));
+        }
         if d.ospf6.is_none() {
             return out;
         }
         let st = self.ospf6_state(t);
         // The lower administrative distance wins a prefix both protocols know.
-        let have: std::collections::BTreeSet<netlabcraft_core::Ipv6Net> = out.iter().map(|r| r.net).collect();
+        let have: std::collections::BTreeSet<netlabcraft_core::Ipv6Net> = out.iter().filter(|r| r.distance <= 110).map(|r| r.net).collect();
+        out.retain(|r| !(r.code == 'R' && st.routes.get(&d.id).is_some_and(|l| l.iter().any(|o| o.net == r.net))));
         out.extend(st.routes.get(&d.id).into_iter().flatten().filter(|r| !have.contains(&r.net)).map(|r| v6::Route6Entry {
             code: if r.external {
                 'E'

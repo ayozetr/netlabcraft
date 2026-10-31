@@ -9,7 +9,7 @@ use std::net::Ipv4Addr;
 
 use netlabcraft_core::{DeviceId, MacAddr, VlanId};
 use netlabcraft_model::{DeviceKind, End, Topology};
-use netlabcraft_wire::control::{self, Bpdu, BridgeId, OspfHello, RipEntry};
+use netlabcraft_wire::control::{self, Bpdu, BridgeId, OspfHello};
 use netlabcraft_wire::ospfdb::{DBD_INIT, DBD_MASTER, DBD_MORE, OspfDb, RouterLink, RouterLsa};
 use netlabcraft_wire::{Frame, Ipv4, PROTO_UDP, Udp};
 
@@ -48,7 +48,8 @@ impl Sim {
         for (every, kind) in [
             (BPDU_EVERY_US, 0u8),
             (OSPF_HELLO_EVERY_US, 1),
-            (RIP_UPDATE_EVERY_US, 2),
+            // RIP updates are considered every second; each router sends at its update timer.
+            (1_000_000, 2),
             (HSRP_HELLO_EVERY_US, 3),
             (NTP_POLL_EVERY_US, 4),
             (crate::lldp::LLDP_EVERY_US, 5),
@@ -356,29 +357,26 @@ impl Sim {
         }
     }
 
+    /// RIP updates at each router's update timer (RIPng's every 30 s): its other networks,
+    /// its routes (poisoned reverse for those learned through the interface) and the routes
+    /// possibly down, at metric 16.
     fn send_rip_updates(&mut self, t: &Topology, at: u64) {
+        if at.is_multiple_of(RIP_UPDATE_EVERY_US) {
+            self.send_ripng(t, at);
+        }
         if !t.devices.iter().any(|d| d.rip.is_some()) {
             return;
         }
         let st = self.rip_state(t);
         for (id, ifs) in &st.interfaces {
             let Some(d) = t.device(*id) else { continue };
-            let Some(r) = &d.rip else { continue };
+            let (update, ..) = crate::rip::timers_us(d);
+            if !at.is_multiple_of(update.max(1_000_000)) {
+                continue;
+            }
             for (name, ..) in ifs.iter().filter(|x| !x.2) {
-                let Some(ifc) = l3_ifaces(d).into_iter().find(|i| i.name == *name) else { continue };
-                // Split horizon: nothing learned through, or attached to, this interface.
-                let mut entries: Vec<RipEntry> =
-                    ifs.iter().filter(|(n, ..)| n != name).map(|(_, other, _)| RipEntry { net: other.addr, mask: other.mask(), metric: 1 }).collect();
-                for route in st.routes.get(id).into_iter().flatten().filter(|x| x.iface != *name) {
-                    entries.push(RipEntry { net: route.net.addr, mask: route.net.mask(), metric: u32::from(route.hops) + 1 });
-                }
-                let dst = if r.version >= 2 { control::RIP_ROUTERS } else { Ipv4Addr::BROADCAST };
-                let mac = if r.version >= 2 { control::ipv4_multicast_mac(dst) } else { MacAddr::BROADCAST };
-                for chunk in entries.chunks(control::RIP_MAX_ENTRIES) {
-                    let udp = Udp { src_port: control::RIP_PORT, dst_port: control::RIP_PORT, payload: control::rip_encode(r.version, chunk) };
-                    let ip = Ipv4 { id: 0, ttl: 1, protocol: PROTO_UDP, src: ifc.net.addr, dst, payload: udp.encode(ifc.net.addr, dst) };
-                    self.queue_l3(t, d, &ifc, ifc.mac, mac, ip.encode(), at);
-                }
+                let entries = crate::rip::update_entries(&st, *id, name);
+                self.rip_send(t, d, name, &entries, at);
             }
         }
     }
