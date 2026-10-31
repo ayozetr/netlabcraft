@@ -129,7 +129,8 @@ pub fn checksum(chunks: &[&[u8]]) -> u16 {
 pub struct Frame {
     pub dst: MacAddr,
     pub src: MacAddr,
-    /// The 802.1Q VLAN id, when tagged (priority bits are always 0).
+    /// The 802.1Q VLAN id, when tagged. The tag's 802.1p priority stays in the encoded bytes
+    /// (`qos::frame_pcp`, `qos::set_frame_pcp`); a frame encodes with priority 0.
     pub vlan: Option<u16>,
     pub ethertype: u16,
     pub payload: Vec<u8>,
@@ -564,7 +565,11 @@ pub fn summarize(bytes: &[u8]) -> (Protocol, String) {
 /// levels down, never without end).
 fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
     let Ok(f) = Frame::decode(bytes) else { return (Protocol::Other, "malformed frame".into()) };
-    let tag = f.vlan.map(|v| format!(" [VLAN {v}]")).unwrap_or_default();
+    let tag = match (f.vlan, qos::frame_pcp(bytes)) {
+        (Some(v), 0) => format!(" [VLAN {v}]"),
+        (Some(v), cos) => format!(" [VLAN {v}, CoS {cos}]"),
+        (None, _) => String::new(),
+    };
     match f.ethertype {
         ETHERTYPE_ARP => match Arp::decode(&f.payload) {
             Ok(a) if a.op == ArpOp::Request => (Protocol::Arp, format!("ARP who has {}? tell {}{tag}", a.target_ip, a.sender_ip)),

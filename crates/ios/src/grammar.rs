@@ -955,6 +955,14 @@ pub enum Id {
     VoiceRegIdMac,
     VoiceRegNumberDn,
     ShowVoiceRegister,
+    // Switching and routing leftovers: CoS.
+    SrCosDscpMap,
+    SrNoCosDscpMap,
+    SrMlsQosCos,
+    SrNoMlsQosCos,
+    SrPriorityExtend,
+    SrNoPriorityExtend,
+    SrShowMlsQosMaps,
 }
 
 use Tok::{Arg, K, Rest};
@@ -3515,6 +3523,27 @@ pub static SPECS: &[Spec] = &[
         [K("show"), K("voice"), K("register"), K("all")],
         "SIP call control: numbers, phones, registrations and calls"
     ),
+    // ---- Switching and routing leftovers: CoS ----
+    spec!(
+        SrCosDscpMap,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("mls"), K("qos"), K("map"), K("cos-dscp"), Rest("<0-63> x8")],
+        "The DSCP each CoS 0-7 becomes on ports that trust CoS"
+    ),
+    spec!(SrNoCosDscpMap, Modes::CONFIG, Modes::SWITCH, [K("no"), K("mls"), K("qos"), K("map"), K("cos-dscp")], "CoS x 8 again"),
+    spec!(SrMlsQosCos, Modes::IF, Modes::SWITCH, [K("mls"), K("qos"), K("cos"), Arg("<0-7>")], "The CoS untagged frames arriving here count as"),
+    spec!(SrNoMlsQosCos, Modes::IF, Modes::SWITCH, [K("no"), K("mls"), K("qos"), K("cos")], "Untagged frames count as CoS 0"),
+    spec!(
+        SrPriorityExtend,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("switchport"), K("priority"), K("extend"), K("cos"), Arg("<0-7>")],
+        "The CoS the IP phone here gives its PC's frames"
+    ),
+    spec!(SrNoPriorityExtend, Modes::IF, Modes::SWITCH, [K("no"), K("switchport"), K("priority"), K("extend")], "The PC's frames get the port's CoS"),
+    spec!(SrShowMlsQosMaps, EXECS, Modes::SWITCH, [K("show"), K("mls"), K("qos"), K("maps")], "The CoS-to-DSCP and DSCP-to-CoS maps"),
+    spec!(SrShowMlsQosMaps, EXECS, Modes::SWITCH, [K("show"), K("mls"), K("qos"), K("maps"), Arg("{cos-dscp|dscp-cos}")], "One QoS map"),
 ];
 
 /// Why a line didn't parse. Positions are word indexes.

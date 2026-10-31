@@ -1124,6 +1124,14 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `id mac H.H.H` |  | router | The SIP phone's MAC address (under voice register pool) |
 | `number <1-8> dn <1-1000>` |  | router | Put a SIP directory number on a line (under voice register pool) |
 | `show voice register all` | user, privileged | router | SIP call control: numbers, phones, registrations and calls |
+| `mls qos map cos-dscp <0-63> x8` | config | switch | The DSCP each CoS 0-7 becomes on ports that trust CoS |
+| `no mls qos map cos-dscp` | config | switch | CoS x 8 again |
+| `mls qos cos <0-7>` | interface | switch | The CoS untagged frames arriving here count as |
+| `no mls qos cos` | interface | switch | Untagged frames count as CoS 0 |
+| `switchport priority extend cos <0-7>` | interface | switch | The CoS the IP phone here gives its PC's frames |
+| `no switchport priority extend` | interface | switch | The PC's frames get the port's CoS |
+| `show mls qos maps` | user, privileged | switch | The CoS-to-DSCP and DSCP-to-CoS maps |
+| `show mls qos maps {cos-dscp\|dscp-cos}` | user, privileged | switch | One QoS map |
 
 ## Host shell (PCs and servers)
 

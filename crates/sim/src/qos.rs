@@ -28,16 +28,21 @@
 //!   may hold at most 64 full-size packets waiting; one more is tail-dropped.
 //! - **Switch trust** (`mls qos`, `mls qos trust dscp|cos` on switch ports): with `mls qos` on,
 //!   a switch rewrites the DS field of IPv4 frames arriving on a port that is not trusted to 0
-//!   (best effort). `trust dscp` keeps it; `trust cos` sets it from the frame's 802.1p
-//!   priority (CoS × 8), which is 0 on the frames the simulator's devices send. With `mls qos`
-//!   off the switch passes markings through untouched.
+//!   (best effort; `mls qos cos N` makes that the port's CoS N through the CoS-to-DSCP map).
+//!   `trust dscp` keeps it; `trust cos` sets it from the frame's 802.1p priority through the
+//!   CoS-to-DSCP map (`mls qos map cos-dscp`, by default CoS × 8). IP phones tag voice CoS 5
+//!   and signalling CoS 3 in their voice VLAN; an untagged frame counts as the port's CoS, or,
+//!   from the PC behind a phone, as `switchport priority extend cos N` says. A frame leaves a
+//!   tagged port with the CoS it was classified with (with trust dscp, the DSCP's top three
+//!   bits). With `mls qos` off the switch passes markings, and tag priorities, through
+//!   untouched.
 
 use std::collections::BTreeMap;
 
 use netlabcraft_core::DeviceId;
-use netlabcraft_model::Device;
 use netlabcraft_model::l2sec::QosTrust;
 use netlabcraft_model::qos::{AppProto, CLASS_DEFAULT, ClassMap, Match, PoliceAction, PolicyMap, Rate};
+use netlabcraft_model::{Device, DeviceKind, End, Topology};
 use netlabcraft_wire::qos as ds;
 /// DSCP names and numbers, for the console.
 pub use netlabcraft_wire::qos::{dscp_name, parse_dscp};
@@ -377,17 +382,37 @@ impl Sim {
     }
 
     /// `mls qos` on a switch: keeps or rewrites the DS field of an IPv4 frame arriving on a
-    /// port, by the port's trust (see the module notes).
-    pub(crate) fn mls_qos_in(&mut self, d: &Device, port: usize, mut f: Frame) -> Frame {
-        if !d.l2.mls_qos || f.ethertype != netlabcraft_wire::ETHERTYPE_IPV4 {
-            return f;
+    /// port, by the port's trust (see the module notes), and works out the 802.1p priority
+    /// (CoS) the frame leaves with on a tagged port. `pcp` is the priority it arrived with.
+    pub(crate) fn mls_qos_in(&mut self, t: &Topology, d: &Device, port: usize, mut f: Frame, pcp: u8) -> (Frame, u8) {
+        let p = d.ports.get(port);
+        if !d.l2.mls_qos {
+            // QoS off: a tag's priority passes through, untagged frames have none.
+            let cos = if f.vlan.is_some() { pcp } else { 0 };
+            return (f, cos);
         }
-        let Some(dscp) = ds::dscp(&f.payload) else { return f };
-        let want = match d.ports.get(port).and_then(|p| p.l2.qos_trust) {
-            Some(QosTrust::Dscp) => dscp,
-            // The frames carry 802.1p priority 0: CoS 0 maps to DSCP 0.
-            Some(QosTrust::Cos) | None => 0,
+        // The CoS a frame counts as: its tag's, else the port's own (`mls qos cos`), or for the
+        // PC behind an IP phone the CoS the phone was told to give it (`priority extend`).
+        let behind_phone = f.vlan.is_none()
+            && p.is_some_and(|p| p.switchport.voice_vlan.is_some())
+            && t.peer(End { device: d.id, port }).and_then(|e| t.device(e.device)).is_some_and(|x| x.kind == DeviceKind::Phone);
+        let port_cos = p.and_then(|p| p.l2.qos_cos).unwrap_or(0);
+        let cos_in = if f.vlan.is_some() {
+            pcp
+        } else if behind_phone {
+            p.and_then(|p| p.l2.priority_extend).unwrap_or(port_cos)
+        } else {
+            port_cos
         };
+        let trust = p.and_then(|p| p.l2.qos_trust);
+        let dscp = if f.ethertype == netlabcraft_wire::ETHERTYPE_IPV4 { ds::dscp(&f.payload) } else { None };
+        let (want, cos) = match (trust, dscp) {
+            (Some(QosTrust::Dscp), Some(v)) => (v, ds::dscp_to_cos(v)),
+            (Some(QosTrust::Dscp), None) => (0, port_cos),
+            (Some(QosTrust::Cos), _) => (d.l2.cos_to_dscp(cos_in), cos_in),
+            (None, _) => (d.l2.cos_to_dscp(port_cos), port_cos),
+        };
+        let Some(dscp) = dscp else { return (f, cos) };
         let st = self.st(d.id);
         if !st.mls_qos.contains_key(&port) && st.mls_qos.len() >= MAX_COUNTERS {
             st.mls_qos.clear();
@@ -398,7 +423,7 @@ impl Sim {
         } else if ds::set_dscp(&mut f.payload, want) {
             c.rewritten = c.rewritten.saturating_add(1);
         }
-        f
+        (f, cos)
     }
 
     /// A switch port's `mls qos` counters.

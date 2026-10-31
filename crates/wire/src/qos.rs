@@ -102,9 +102,65 @@ pub fn set_precedence(datagram: &mut [u8], value: u8) -> bool {
     set_dscp(datagram, ((value & 0x07) << 3) | low)
 }
 
+/// Highest 802.1p priority (three bits).
+pub const MAX_COS: u8 = 7;
+
+/// The 802.1p priority code point (IEEE 802.1Q §6.9.3, the top three bits of the tag control
+/// information) of an encoded Ethernet frame; 0 for an untagged or short frame.
+pub fn frame_pcp(frame: &[u8]) -> u8 {
+    if frame.get(12..14) != Some(&crate::ETHERTYPE_VLAN.to_be_bytes()[..]) {
+        return 0;
+    }
+    frame.get(14).map_or(0, |b| b >> 5)
+}
+
+/// Sets the 802.1p priority of an encoded, tagged Ethernet frame (the VLAN id and the drop
+/// eligible bit are kept). `false` (nothing changed) when the frame carries no tag.
+pub fn set_frame_pcp(frame: &mut [u8], pcp: u8) -> bool {
+    if frame.get(12..14) != Some(&crate::ETHERTYPE_VLAN.to_be_bytes()[..]) {
+        return false;
+    }
+    let Some(b) = frame.get_mut(14) else { return false };
+    *b = (*b & 0x1f) | ((pcp & MAX_COS) << 5);
+    true
+}
+
+/// The usual CoS-to-DSCP map: each CoS to its class selector (CoS × 8).
+pub const DEFAULT_COS_DSCP: [u8; 8] = [0, 8, 16, 24, 32, 40, 48, 56];
+
+/// The usual DSCP-to-CoS map: the DSCP's top three bits.
+pub fn dscp_to_cos(dscp: u8) -> u8 {
+    (dscp & MAX_DSCP) >> 3
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_priority_bits_of_a_tag_are_read_and_written_in_place() {
+        let f = crate::Frame { dst: crate::MacAddr::BROADCAST, src: crate::MacAddr::ZERO, vlan: Some(100), ethertype: 0x0800, payload: vec![0; 46] };
+        let mut b = f.encode();
+        assert_eq!(frame_pcp(&b), 0);
+        assert!(set_frame_pcp(&mut b, 5));
+        assert_eq!(frame_pcp(&b), 5);
+        assert_eq!(b.get(14..16), Some(&[0xa0, 100][..]));
+        // The VLAN id is untouched by the decoder.
+        assert_eq!(crate::Frame::decode(&b).ok().and_then(|f| f.vlan), Some(100));
+        assert!(set_frame_pcp(&mut b, 0xff));
+        assert_eq!(frame_pcp(&b), 7);
+        // Untagged and short frames: nothing to read or set.
+        let mut u = crate::Frame { vlan: None, ..f }.encode();
+        assert_eq!(frame_pcp(&u), 0);
+        assert!(!set_frame_pcp(&mut u, 3));
+        for n in 0..=b.len() {
+            let mut cut = b.get(..n).unwrap_or_default().to_vec();
+            let _ = frame_pcp(&cut);
+            let _ = set_frame_pcp(&mut cut, 6);
+        }
+        assert_eq!(dscp_to_cos(46), 5);
+        assert_eq!(DEFAULT_COS_DSCP[5], 40);
+    }
     use crate::{Ipv4, PROTO_ICMP};
     use std::net::Ipv4Addr;
 

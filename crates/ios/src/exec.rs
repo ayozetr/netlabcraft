@@ -24,6 +24,7 @@ pub(crate) mod mgmt;
 pub(crate) mod qos;
 pub(crate) mod routing;
 pub(crate) mod security;
+pub(crate) mod swroute;
 pub(crate) mod voice;
 mod vpn;
 mod wlan;
@@ -2187,6 +2188,13 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::VoiceRegIdMac
         | Id::VoiceRegNumberDn
         | Id::ShowVoiceRegister => families::command(&mut c, spec.id, &args),
+        Id::SrCosDscpMap
+        | Id::SrNoCosDscpMap
+        | Id::SrMlsQosCos
+        | Id::SrNoMlsQosCos
+        | Id::SrPriorityExtend
+        | Id::SrNoPriorityExtend
+        | Id::SrShowMlsQosMaps => swroute::command(&mut c, spec.id, &args),
         Id::VoiceTelephonyService
         | Id::VoiceNoTelephonyService
         | Id::VoiceMaxEphones

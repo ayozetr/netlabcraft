@@ -1530,11 +1530,12 @@ impl Sim {
             return self.l3_in(t, d, at.port, f);
         }
         let f = Frame::decode(bytes).map_err(|e| e.to_string())?;
+        let pcp = netlabcraft_wire::qos::frame_pcp(bytes);
         match d.kind {
             DeviceKind::Switch if port.routed => self.l3_in(t, d, at.port, f),
-            DeviceKind::Switch => self.switch_in(t, d, at.port, f, hops),
+            DeviceKind::Switch => self.switch_in(t, d, at.port, f, pcp, hops),
             // A router's switch card switches like a switch.
-            DeviceKind::Router if d.is_switchport(at.port) => self.switch_in(t, d, at.port, f, hops),
+            DeviceKind::Router if d.is_switchport(at.port) => self.switch_in(t, d, at.port, f, pcp, hops),
             DeviceKind::Hub => self.hub_in(t, d, at.port, bytes, hops),
             DeviceKind::Phone => self.phone_in(t, d, at.port, f, hops),
             _ => self.l3_in(t, d, at.port, f),
@@ -2099,7 +2100,7 @@ impl Sim {
 
     // ---- switching (IEEE 802.1D learning, 802.1Q tagging) ----
 
-    fn switch_in(&mut self, t: &Topology, d: &Device, in_port: usize, f: Frame, hops: u8) -> Result<(), String> {
+    fn switch_in(&mut self, t: &Topology, d: &Device, in_port: usize, f: Frame, pcp: u8, hops: u8) -> Result<(), String> {
         if hops >= MAX_SWITCH_HOPS {
             self.storm = true;
             return Err(format!("switching loop: the frame crossed {MAX_SWITCH_HOPS} switches (no spanning tree)"));
@@ -2152,15 +2153,30 @@ impl Sim {
         }
         self.l2_switch_in(d, in_port, vlan, &f)?;
         let f = self.snoop_option82(d, in_port, vlan, f)?;
-        let f = self.mls_qos_in(d, in_port, f);
+        let (f, cos) = self.mls_qos_in(t, d, in_port, f, pcp);
         self.psec_age(d, in_port, f.src);
         self.port_security(d, in_port, f.src)?;
-        self.switch_forward(t, d, Some(in_port), vlan, f, hops)
+        self.switch_forward_cos(t, d, Some(in_port), vlan, f, hops, cos)
     }
 
     /// Learns, delivers to the switch's own VLAN interface when addressed to it, and forwards
     /// within `vlan`. `in_port` is `None` for frames the switch itself sends.
     fn switch_forward(&mut self, t: &Topology, d: &Device, in_port: Option<usize>, vlan: VlanId, f: Frame, hops: u8) -> Result<(), String> {
+        self.switch_forward_cos(t, d, in_port, vlan, f, hops, 0)
+    }
+
+    /// [`Sim::switch_forward`] with the 802.1p priority (CoS) tagged frames leave with.
+    #[allow(clippy::too_many_arguments)]
+    fn switch_forward_cos(
+        &mut self,
+        t: &Topology,
+        d: &Device,
+        in_port: Option<usize>,
+        vlan: VlanId,
+        f: Frame,
+        hops: u8,
+        cos: u8,
+    ) -> Result<(), String> {
         let now = self.now;
         // A bundle is one port: learn on it, never send back into it, flood it once.
         let chm = self.chmap(t, d);
@@ -2246,7 +2262,9 @@ impl Sim {
                 (port.switchport.voice_vlan == Some(vlan)).then_some(vlan.get())
             };
             let only = is_ap_radio(t, end).then_some(vlan);
-            if self.emit_hops_in(t, end, f.retagged(tag).encode(), hops + 1, only) {
+            let mut bytes = f.retagged(tag).encode();
+            netlabcraft_wire::qos::set_frame_pcp(&mut bytes, cos);
+            if self.emit_hops_in(t, end, bytes, hops + 1, only) {
                 sent += 1;
             }
         }

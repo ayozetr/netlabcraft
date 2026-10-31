@@ -146,6 +146,10 @@ pub struct SwitchL2 {
     /// information (option 82) with no relay address, from any interface.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub relay_trust_all: bool,
+    /// `mls qos map cos-dscp D0 … D7`: the DSCP each CoS becomes on a port that trusts CoS
+    /// (`None`: CoS × 8).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cos_dscp: Option<[u8; 8]>,
 }
 
 impl Default for SwitchL2 {
@@ -166,6 +170,7 @@ impl Default for SwitchL2 {
             mls_qos: false,
             loopguard_default: false,
             relay_trust_all: false,
+            cos_dscp: None,
         }
     }
 }
@@ -183,6 +188,12 @@ impl SwitchL2 {
     /// Whether ARP inspection acts on a VLAN.
     pub fn inspects(&self, vlan: VlanId) -> bool {
         self.dai_vlans.contains(&vlan)
+    }
+
+    /// The DSCP a CoS value maps to on a port that trusts CoS.
+    pub fn cos_to_dscp(&self, cos: u8) -> u8 {
+        let map = self.cos_dscp.unwrap_or(DEFAULT_COS_DSCP);
+        map.get(usize::from(cos & 7)).copied().unwrap_or(0)
     }
 
     /// A reload: the configuration goes back to factory; the SDM template chosen takes effect.
@@ -238,6 +249,9 @@ impl QosTrust {
     }
 }
 
+/// The usual CoS-to-DSCP map: each CoS to its class selector (CoS × 8).
+pub const DEFAULT_COS_DSCP: [u8; 8] = [0, 8, 16, 24, 32, 40, 48, 56];
+
 /// Spanning-tree port settings that may be per VLAN: key 0 is "every VLAN".
 pub type PerVlan = BTreeMap<u16, u32>;
 
@@ -290,6 +304,13 @@ pub struct PortL2 {
     /// Why the port is err-disabled (`None` with `err_disabled` set: port security).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub err_cause: Option<ErrCause>,
+    /// `mls qos cos N`: the CoS untagged frames arriving here count as (0 when not set).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub qos_cos: Option<u8>,
+    /// `switchport priority extend cos N`: the IP phone on this port gives the frames of the PC
+    /// behind it this CoS (when not set, the PC's frames count as the port's own CoS).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub priority_extend: Option<u8>,
 }
 
 impl PortL2 {
