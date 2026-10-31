@@ -1,5 +1,5 @@
 //! Typed console tests for the switching and routing leftovers: VRRP timers, tracking and
-//! VRRPv3 for IPv6.
+//! VRRPv3 for IPv6, EIGRP updates and summaries, RIP timers and RIPng, VTP pruning.
 
 use netlabcraft_core::DeviceId;
 use netlabcraft_model::DeviceKind;
@@ -161,4 +161,128 @@ fn vrrp_version_3_shares_an_ipv6_link_local_gateway() {
     assert!(lab.try_run(r2, "vrrp 1 ipv6 2001:db8::1").contains("link-local"));
     lab.run(r2, "no vrrp 1 ipv6\nend");
     assert!(!lab.run(r2, "show vrrp").contains("IPv6 group 1"));
+}
+
+/// R1 — R2 — R3 in a line (and R1 — R3 over a slow link), R3 with two loopback networks.
+/// `v6` picks EIGRP for IPv6 (AS 10) or for IPv4 (AS 1).
+fn eigrp_line(v6: bool) -> (Lab, DeviceId, DeviceId, DeviceId) {
+    let mut lab = Lab::new();
+    let r1 = lab.add(DeviceKind::Router);
+    let r2 = lab.add(DeviceKind::Router);
+    let r3 = lab.add(DeviceKind::Router);
+    lab.cable(r1, "g0/1", r2, "g0/0");
+    lab.cable(r2, "g0/1", r3, "g0/0");
+    lab.cable(r1, "g0/2", r3, "g0/2");
+    // (router, its links (interface, subnet number, host), loopbacks)
+    let plan: [(DeviceId, u8, &[(&str, u8)], &[u8]); 3] =
+        [(r1, 1, &[("g0/1", 12), ("g0/2", 13)], &[]), (r2, 2, &[("g0/0", 12), ("g0/1", 23)], &[]), (r3, 3, &[("g0/0", 23), ("g0/2", 13)], &[30, 31])];
+    for (r, n, links, loops) in plan {
+        let mut s = String::from("en\nconf t\n");
+        if v6 {
+            s.push_str(&format!("ipv6 unicast-routing\nipv6 router eigrp 10\neigrp router-id {n}.{n}.{n}.{n}\nexit\n"));
+        } else {
+            s.push_str("router eigrp 1\nnetwork 10.0.0.0\nnetwork 172.16.0.0\nexit\n");
+        }
+        for (ifc, net) in links {
+            if v6 {
+                s.push_str(&format!("int {ifc}\nipv6 address 2001:db8:{net}::{n}/64\nipv6 eigrp 10\nno shut\n"));
+            } else {
+                s.push_str(&format!("int {ifc}\nip address 10.0.{net}.{n} 255.255.255.0\nno shut\n"));
+            }
+            if *ifc == "g0/2" {
+                s.push_str("bandwidth 10000\n");
+            }
+        }
+        for (k, l) in loops.iter().enumerate() {
+            if v6 {
+                s.push_str(&format!("int lo{k}\nipv6 address 2001:db8:{l}::1/64\nipv6 eigrp 10\n"));
+            } else {
+                s.push_str(&format!("int lo{k}\nip address 172.16.{}.1 255.255.255.0\n", l - 30));
+            }
+        }
+        s.push_str("end");
+        lab.run(r, &s);
+    }
+    (lab, r1, r2, r3)
+}
+
+#[test]
+fn eigrp_for_ipv6_puts_dual_on_the_wire_and_summarises() {
+    let (mut lab, r1, r2, r3) = eigrp_line(true);
+    let route = lab.run(r1, "show ipv6 route eigrp");
+    assert!(route.contains("2001:db8:30::/64") && route.contains("2001:db8:31::/64"), "{route}");
+    // Variance: the slow direct link is a feasible successor; variance 128 installs it too.
+    let one = route.lines().filter(|l| l.contains("2001:db8:30::/64")).count();
+    assert_eq!(one, 1, "{route}");
+    lab.run(r1, "conf t\nipv6 router eigrp 10\nvariance 128\nend");
+    let route = lab.run(r1, "show ipv6 route eigrp");
+    let paths: Vec<&str> = route.lines().filter(|l| l.contains("2001:db8:30::/64")).collect();
+    assert_eq!(paths.len(), 2, "{route}");
+    assert!(lab.run(r1, "show running-config").contains("ipv6 router eigrp 10\n eigrp router-id 1.1.1.1\n variance 128\n"));
+    lab.run(r1, "conf t\nipv6 router eigrp 10\nno variance\nend");
+    // R2 summarises R3's loopbacks towards R1.
+    lab.sim.clear_trace();
+    lab.run(r2, "conf t\nint g0/0\nipv6 summary-address eigrp 10 2001:db8:30::/47\nend");
+    let route = lab.run(r1, "show ipv6 route eigrp");
+    assert!(route.contains("2001:db8:30::/47") && route.contains("GigabitEthernet0/1"), "{route}");
+    // R1 still hears the /64s over the slow link from R3, which doesn't summarise.
+    assert!(route.lines().filter(|l| l.contains("2001:db8:31::/64")).all(|l| l.contains("GigabitEthernet0/2")), "{route}");
+    let own = lab.run(r2, "show ipv6 route");
+    assert!(own.contains("2001:db8:30::/47") && own.contains("summary, discarded on Null0 [5]"), "{own}");
+    // The change went out as an update, acknowledged.
+    lab.sim.run_for(&lab.t, 100_000);
+    let saw = |lab: &Lab, what: &str| lab.sim.trace().iter().any(|e| e.summary.starts_with(what));
+    assert!(saw(&lab, "EIGRPv6 update"), "{:?}", lab.sim.trace().iter().map(|e| e.summary.clone()).collect::<Vec<_>>());
+    assert!(saw(&lab, "EIGRPv6 acknowledgement"));
+    // R3 loses a loopback: it queries its neighbours, which reply, all acknowledged.
+    lab.sim.clear_trace();
+    lab.run(r3, "conf t\nint lo1\nshutdown\nend");
+    let _ = lab.run(r3, "show ipv6 eigrp topology");
+    lab.sim.run_for(&lab.t, 100_000);
+    assert!(saw(&lab, "EIGRPv6 query"), "{:?}", lab.sim.trace().iter().map(|e| e.summary.clone()).collect::<Vec<_>>());
+    assert!(saw(&lab, "EIGRPv6 reply"));
+    assert!(saw(&lab, "EIGRPv6 acknowledgement"));
+    // A new neighbour gets the whole table in an initial update.
+    lab.sim.clear_trace();
+    lab.run(r1, "conf t\nint g0/1\nshutdown\nend");
+    let _ = lab.run(r1, "show ipv6 eigrp neighbors");
+    lab.sim.clear_trace();
+    lab.run(r1, "conf t\nint g0/1\nno shutdown\nend");
+    let _ = lab.run(r1, "show ipv6 eigrp neighbors");
+    lab.sim.run_for(&lab.t, 100_000);
+    assert!(saw(&lab, "EIGRPv6 update"));
+    // The configuration reads back, survives a reload and comes off.
+    let run = lab.run(r2, "show running-config interface g0/0");
+    assert!(run.contains(" ipv6 summary-address eigrp 10 2001:db8:30::/47"), "{run}");
+    let all = lab.run(r2, "show running-config");
+    lab.run(r2, "copy run start\nreload\nen");
+    assert_eq!(lab.run(r2, "show running-config"), all);
+    lab.run(r2, "conf t\nint g0/0\nno ipv6 summary-address eigrp 10 2001:db8:30::/47\nend");
+    assert!(!lab.run(r2, "show ipv6 route").contains("/47"));
+    lab.run(r2, "conf t\nint g0/0");
+    assert!(lab.try_run(r2, "ipv6 summary-address eigrp 10 nonsense").contains("not an IPv6 prefix"));
+    assert!(lab.try_run(r2, "ipv6 summary-address eigrp 0 2001:db8::/32").contains("1 to 65535"));
+    assert!(lab.run(r2, "ipv6 summary-address eigrp 99 2001:db8::/32").contains("Saved"));
+}
+
+#[test]
+fn eigrp_for_ipv4_summary_addresses() {
+    let (mut lab, r1, r2, _r3) = eigrp_line(false);
+    let route = lab.run(r1, "show ip route");
+    assert!(route.contains("172.16.0.0/24") && route.contains("172.16.1.0/24"), "{route}");
+    lab.run(r2, "conf t\nint g0/0\nip summary-address eigrp 1 172.16.0.0 255.255.254.0\nend");
+    let route = lab.run(r1, "show ip route");
+    assert!(route.contains("D    172.16.0.0/23") && route.contains("via 10.0.12.2"), "{route}");
+    let own = lab.run(r2, "show ip route");
+    assert!(own.contains("172.16.0.0/23") && own.contains("summary, discarded on Null0 (EIGRP) [5/"), "{own}");
+    assert!(own.contains("172.16.1.0/24"), "R2 keeps the parts: {own}");
+    let run = lab.run(r2, "show running-config interface g0/0");
+    assert!(run.contains(" ip summary-address eigrp 1 172.16.0.0 255.255.254.0"), "{run}");
+    let all = lab.run(r2, "show running-config");
+    lab.run(r2, "copy run start\nreload\nen");
+    assert_eq!(lab.run(r2, "show running-config"), all);
+    lab.run(r2, "conf t\nint g0/0");
+    assert!(lab.try_run(r2, "ip summary-address eigrp 1 172.16.0.0 255.0.255.0").starts_with("% "));
+    lab.run(r2, "no ip summary-address eigrp 1 172.16.0.0 255.255.254.0\nend");
+    assert!(!lab.run(r1, "show ip route").contains("/23"));
 }

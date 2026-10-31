@@ -919,6 +919,9 @@ pub struct Device {
     /// Per-interface EIGRP timers, by interface name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub eigrp_if: BTreeMap<String, EigrpIfConf>,
+    /// EIGRP summary addresses, by interface name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub eigrp_summary: BTreeMap<String, routing::EigrpSummaries>,
     /// Routers: access lists.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub acls: Vec<acl::Acl>,
@@ -1185,6 +1188,10 @@ pub struct Eigrp6 {
     /// `maximum-paths N` (4 when not set).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub maximum_paths: Option<u8>,
+    /// `variance N`: feasible successors within N times the feasible distance are installed
+    /// too (1 when not set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variance: Option<u8>,
 }
 
 impl Eigrp6 {
@@ -1781,6 +1788,7 @@ impl Device {
             rip: None,
             eigrp: None,
             eigrp_if: BTreeMap::new(),
+            eigrp_summary: BTreeMap::new(),
             acls: Vec::new(),
             nat: Nat::default(),
             services: if kind == DeviceKind::Server { services::Services::server_defaults() } else { services::Services::default() },
@@ -1872,6 +1880,7 @@ impl Device {
         self.acls6.clear();
         self.ospf_if.clear();
         self.eigrp_if.clear();
+        self.eigrp_summary.clear();
         self.dhcp6_pools.clear();
         self.dns6 = None;
         self.acls.clear();

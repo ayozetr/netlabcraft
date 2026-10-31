@@ -527,6 +527,7 @@ pub fn fingerprint(t: &Topology) -> u64 {
         if matches!(d.kind, DeviceKind::Router | DeviceKind::Switch) {
             format!("{:?}{:?}{:?}{:?}{:?}{:?}{:?}{}", d.ospf, d.rip, d.eigrp, d.routes, d.access.users, d.ospf_if, d.eigrp_if, d.ip_routing)
                 .hash(&mut h);
+            d.eigrp_summary.hash(&mut h);
             d.tunnels.hash(&mut h);
             format!("{:?}", d.loopbacks).hash(&mut h);
             for s in &d.svis {

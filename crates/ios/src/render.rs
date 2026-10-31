@@ -695,6 +695,7 @@ pub fn ip_route_table(d: &Device, table: &[netlabcraft_sim::RouteEntry]) -> Stri
             ('L', _, Some(i)) => format!("local address, {i}"),
             ('O' | 'E' | 'I', Some(v), Some(i)) => format!("via {v}, {i} (OSPF)"),
             ('D', Some(v), Some(i)) => format!("via {v}, {i} (EIGRP)"),
+            ('D', None, Some(i)) => format!("summary, discarded on {i} (EIGRP)"),
             (_, Some(v), _) => format!("via {v}"),
             (_, None, Some(i)) => format!("out {i}"),
             _ => String::new(),
@@ -1358,6 +1359,7 @@ fn ospf_protocol(d: &Device, st: &netlabcraft_sim::ospf::OspfState) -> String {
 }
 
 pub(crate) fn ospf_if_lines(s: &mut String, d: &Device, name: &str) {
+    crate::exec::swroute::eigrp_summary_lines(s, d, name);
     if let Some(e) = d.eigrp_if.get(name) {
         if let Some((asn, secs)) = e.hello {
             let _ = writeln!(s, " ip hello-interval eigrp {asn} {secs}");
@@ -1639,6 +1641,7 @@ pub fn ipv6_route(t: &Topology, sim: &mut Sim, d: &Device) -> String {
             (Some(nh), Some(i)) => format!("via {nh}, {i}"),
             (Some(nh), None) => format!("via {nh}"),
             (None, Some(i)) if r.code == 'S' => format!("out of {i}"),
+            (None, Some(i)) if i == netlabcraft_sim::eigrp::NULL0 => format!("summary, discarded on {i}"),
             (None, Some(i)) => format!("directly on {i}"),
             (None, None) => String::new(),
         };

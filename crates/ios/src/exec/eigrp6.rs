@@ -111,8 +111,17 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
         Id::EigrpNetwork | Id::NoEigrpNetwork => {
             Err("% EIGRP for IPv6 has no network statements: put `ipv6 eigrp N` on each interface instead".into())
         }
-        Id::EigrpVariance | Id::NoEigrpVariance | Id::EigrpAutoSummary | Id::NoEigrpAutoSummary => {
-            Err("% Not part of EIGRP for IPv6 here (unequal-cost paths and summaries are IPv4 only)".into())
+        Id::EigrpVariance | Id::NoEigrpVariance => {
+            let n = if id == Id::EigrpVariance {
+                Some(arg(0).parse::<u8>().ok().filter(|n| (1..=128).contains(n)).ok_or("% The variance is 1-128")?)
+            } else {
+                None
+            };
+            process(c)?.variance = n.filter(|v| *v > 1);
+            Ok(String::new())
+        }
+        Id::EigrpAutoSummary | Id::NoEigrpAutoSummary => {
+            Err("% EIGRP for IPv6 never summarises automatically; use `ipv6 summary-address eigrp N PREFIX` on an interface".into())
         }
         Id::ShowIpv6EigrpNeighbors => {
             let st = c.sim.eigrp6_state(c.t);
@@ -237,6 +246,9 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
     }
     if let Some(n) = e.maximum_paths {
         let _ = writeln!(s, " maximum-paths {n}");
+    }
+    if let Some(n) = e.variance {
+        let _ = writeln!(s, " variance {n}");
     }
     if e.shutdown {
         let _ = writeln!(s, " shutdown");

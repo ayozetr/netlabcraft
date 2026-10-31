@@ -1140,6 +1140,10 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no vrrp <1-255> track INTERFACE` | interface, subinterface | router, switch | Stop tracking an interface |
 | `vrrp <1-255> ipv6 FE80::X` | interface, subinterface | router, switch | Share this IPv6 link-local gateway address (VRRP version 3) |
 | `no vrrp <1-255> ipv6` | interface, subinterface | router, switch | Remove the group's IPv6 address |
+| `ip summary-address eigrp <1-65535> A.B.C.D A.B.C.D` | interface, subinterface | router, switch | Advertise one summary instead of the routes it covers |
+| `no ip summary-address eigrp <1-65535> A.B.C.D A.B.C.D` | interface, subinterface | router, switch | Advertise the covered routes again |
+| `ipv6 summary-address eigrp <1-65535> X:X::X/N` | interface, subinterface | router, switch | Advertise one IPv6 summary instead of the prefixes it covers |
+| `no ipv6 summary-address eigrp <1-65535> X:X::X/N` | interface, subinterface | router, switch | Advertise the covered IPv6 prefixes again |
 
 ## Host shell (PCs and servers)
 

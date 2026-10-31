@@ -971,6 +971,11 @@ pub enum Id {
     SrNoVrrpTrack,
     SrVrrpIpv6,
     SrNoVrrpIpv6,
+    // EIGRP summaries.
+    SrIpSummaryEigrp,
+    SrNoIpSummaryEigrp,
+    SrIpv6SummaryEigrp,
+    SrNoIpv6SummaryEigrp,
 }
 
 use Tok::{Arg, K, Rest};
@@ -3591,6 +3596,35 @@ pub static SPECS: &[Spec] = &[
         "Share this IPv6 link-local gateway address (VRRP version 3)"
     ),
     spec!(SrNoVrrpIpv6, ANY_IF, Modes::BOTH, [K("no"), K("vrrp"), Arg("<1-255>"), K("ipv6")], "Remove the group's IPv6 address"),
+    // ---- Switching and routing leftovers: EIGRP summaries ----
+    spec!(
+        SrIpSummaryEigrp,
+        ANY_IF,
+        Modes::BOTH,
+        [K("ip"), K("summary-address"), K("eigrp"), Arg("<1-65535>"), Arg("A.B.C.D"), Arg("A.B.C.D")],
+        "Advertise one summary instead of the routes it covers"
+    ),
+    spec!(
+        SrNoIpSummaryEigrp,
+        ANY_IF,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("summary-address"), K("eigrp"), Arg("<1-65535>"), Arg("A.B.C.D"), Arg("A.B.C.D")],
+        "Advertise the covered routes again"
+    ),
+    spec!(
+        SrIpv6SummaryEigrp,
+        ANY_IF,
+        Modes::BOTH,
+        [K("ipv6"), K("summary-address"), K("eigrp"), Arg("<1-65535>"), Arg("X:X::X/N")],
+        "Advertise one IPv6 summary instead of the prefixes it covers"
+    ),
+    spec!(
+        SrNoIpv6SummaryEigrp,
+        ANY_IF,
+        Modes::BOTH,
+        [K("no"), K("ipv6"), K("summary-address"), K("eigrp"), Arg("<1-65535>"), Arg("X:X::X/N")],
+        "Advertise the covered IPv6 prefixes again"
+    ),
 ];
 
 /// Why a line didn't parse. Positions are word indexes.

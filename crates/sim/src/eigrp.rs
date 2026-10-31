@@ -157,6 +157,18 @@ pub struct EigrpState {
     pub interfaces: BTreeMap<DeviceId, Vec<EigrpIf>>,
     pub topology: BTreeMap<DeviceId, Vec<TopoEntry>>,
     pub routes: BTreeMap<DeviceId, Vec<EigrpRoute>>,
+    /// Summaries a router advertises (`ip summary-address eigrp`), with their metrics; each is
+    /// also a route to Null0 among its routes.
+    pub summaries: BTreeMap<DeviceId, Vec<(Ipv4Net, u32)>>,
+}
+
+/// The interface name summary routes point at: they discard what nothing more specific takes.
+pub const NULL0: &str = "Null0";
+
+/// A router's IPv4 summaries for its autonomous system on an interface.
+fn summaries_on(d: &Device, iface: &str) -> Vec<Ipv4Net> {
+    let asn = d.eigrp.as_ref().map_or(0, |e| e.asn);
+    d.eigrp_summary.get(iface).map(|s| s.v4_for(asn)).unwrap_or_default()
 }
 
 /// A neighbour no longer heard, kept until its hold time runs out.
@@ -294,10 +306,25 @@ pub fn compute_with(t: &Topology, held: &[Held]) -> EigrpState {
         }
         connected.insert(d.id, tbl);
     }
-    let offer = |from: &BTreeMap<Ipv4Net, Best>, me: DeviceId, (_, bw, delay, ..): &Adj| -> Vec<(Ipv4Net, Best, u32)> {
-        from.iter()
-            // Split horizon: nothing offered back to the neighbour it goes through.
-            .filter(|(_, b)| !b.via.as_ref().is_some_and(|(_, _, dev)| *dev == me))
+    // The summaries each neighbour applies out of its interface (by its address).
+    let sums_of = |dev: DeviceId, addr: Ipv4Addr| -> Vec<Ipv4Net> {
+        let Some(b) = t.device(dev) else { return Vec::new() };
+        l3_ifaces(b).into_iter().find(|i| i.net.addr == addr).map(|i| summaries_on(b, &i.name)).unwrap_or_default()
+    };
+    let offer = |from: &BTreeMap<Ipv4Net, Best>, me: DeviceId, (_, bw, delay, addr, dev): &Adj| -> Vec<(Ipv4Net, Best, u32)> {
+        // Split horizon: nothing offered back to the neighbour it goes through.
+        let mut view: BTreeMap<Ipv4Net, Best> =
+            from.iter().filter(|(_, b)| !b.via.as_ref().is_some_and(|(_, _, d)| *d == me)).map(|(n, b)| (*n, b.clone())).collect();
+        // A summary that covers something replaces it, with the best metric under it.
+        for s in sums_of(*dev, *addr) {
+            let covered: Vec<Ipv4Net> = view.keys().filter(|n| n.prefix >= s.prefix && s.contains(n.addr)).copied().collect();
+            let Some(best) = covered.iter().filter_map(|n| view.get(n)).min_by_key(|b| b.metric).cloned() else { continue };
+            for n in &covered {
+                view.remove(n);
+            }
+            view.insert(s, best);
+        }
+        view.iter()
             .map(|(net, b)| {
                 let nbw = b.bw.min(*bw);
                 let nd = b.delay.saturating_add(u64::from(*delay));
@@ -387,6 +414,20 @@ pub fn compute_with(t: &Topology, held: &[Held]) -> EigrpState {
             }
             entries.push(TopoEntry { net: *net, fd, paths });
         }
+        // Each summary with something under it: a route to Null0 here.
+        let mut sums: Vec<(Ipv4Net, u32)> = Vec::new();
+        for (i, _) in ifs.get(&d.id).into_iter().flatten() {
+            for s in summaries_on(d, &i.name) {
+                let under = tbl.iter().filter(|(n, _)| n.prefix >= s.prefix && s.contains(n.addr) && **n != s).map(|(_, b)| b.metric).min();
+                if let Some(m) = under
+                    && !sums.iter().any(|(x, _)| *x == s)
+                {
+                    sums.push((s, m));
+                    routes.push(EigrpRoute { net: s, via: Ipv4Addr::UNSPECIFIED, iface: NULL0.to_string(), metric: m });
+                }
+            }
+        }
+        st.summaries.insert(d.id, sums);
         st.topology.insert(d.id, entries);
         st.routes.insert(d.id, routes);
     }
@@ -519,7 +560,7 @@ impl Sim {
         self.eigrp_held.iter().map(|h| h.until).min()
     }
 
-    fn eigrp_seq(&mut self, d: DeviceId) -> u32 {
+    pub(crate) fn eigrp_seq(&mut self, d: DeviceId) -> u32 {
         let s = self.eigrp_seqs.entry(d).or_insert(0);
         *s = s.wrapping_add(1).max(1);
         *s

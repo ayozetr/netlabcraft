@@ -548,7 +548,7 @@ impl Sim {
 
     /// Queues a frame out of a port at a given time (re-framed on serial); a VLAN interface's
     /// frame (`SVI_PORT`, its VLAN in the tag) goes through the switch at once.
-    fn queue_frame(&mut self, t: &Topology, d: &netlabcraft_model::Device, port: usize, frame: Frame, at: u64) {
+    pub(crate) fn queue_frame(&mut self, t: &Topology, d: &netlabcraft_model::Device, port: usize, frame: Frame, at: u64) {
         if crate::vpn::is_tunnel(port) {
             // Into a GRE tunnel, at once: encapsulated and routed to the far end.
             if frame.ethertype == netlabcraft_wire::ETHERTYPE_IPV4

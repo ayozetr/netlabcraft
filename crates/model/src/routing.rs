@@ -1,6 +1,7 @@
-//! Routing settings that are not a protocol process of their own: loopback interfaces.
+//! Routing settings that are not a protocol process of their own: loopback interfaces, and
+//! EIGRP summary addresses (kept with the interface, like the EIGRP timers).
 
-use netlabcraft_core::Ipv4Net;
+use netlabcraft_core::{Ipv4Net, Ipv6Net};
 use serde::{Deserialize, Serialize};
 
 use crate::Ipv6Conf;
@@ -74,5 +75,35 @@ mod tests {
         assert_eq!(loopback_number("l1"), None);
         assert_eq!(loopback_number("Lo99999999999"), None);
         assert_eq!(loopback_number("GigabitEthernet0/0"), None);
+    }
+}
+
+/// Most summary addresses per interface.
+pub const MAX_SUMMARIES: usize = 16;
+
+/// `ip summary-address eigrp AS NET MASK` and `ipv6 summary-address eigrp AS PREFIX` on one
+/// interface: (autonomous system, summary).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(default)]
+pub struct EigrpSummaries {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub v4: Vec<(u16, Ipv4Net)>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub v6: Vec<(u16, Ipv6Net)>,
+}
+
+impl EigrpSummaries {
+    pub fn is_empty(&self) -> bool {
+        self.v4.is_empty() && self.v6.is_empty()
+    }
+
+    /// The IPv4 summaries for one autonomous system.
+    pub fn v4_for(&self, asn: u16) -> Vec<Ipv4Net> {
+        self.v4.iter().filter(|(a, _)| *a == asn).map(|(_, n)| *n).collect()
+    }
+
+    /// The IPv6 summaries for one autonomous system.
+    pub fn v6_for(&self, asn: u16) -> Vec<Ipv6Net> {
+        self.v6.iter().filter(|(a, _)| *a == asn).map(|(_, n)| *n).collect()
     }
 }

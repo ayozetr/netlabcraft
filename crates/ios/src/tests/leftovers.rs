@@ -371,7 +371,7 @@ fn eigrp_for_ipv6_mistakes_are_explained() {
     assert!(note.contains("ipv6 unicast-routing") && note.contains("router id"), "{note}");
     assert_eq!(lab.prompt(r), "R1(config-rtr)#");
     assert!(lab.try_run(r, "network 10.0.0.0").contains("no network statements"));
-    assert!(lab.try_run(r, "variance 2").contains("IPv4 only"));
+    assert!(lab.try_run(r, "auto-summary").contains("never summarises"));
     lab.run(r, "eigrp router-id 9.9.9.9\nmaximum-paths 2\nexit");
     assert!(lab.try_run(r, "ipv6 router eigrp 6").contains("already runs here in AS 5"));
     assert!(lab.try_run(r, "no ipv6 router eigrp 6").contains("No EIGRP for IPv6 process for AS 6"));

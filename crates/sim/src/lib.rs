@@ -386,7 +386,11 @@ pub fn routing_table_with(
     let (mut out, mut learned): (Vec<RouteEntry>, Vec<RouteEntry>) =
         routing_table_static(t, d).into_iter().partition(|r| matches!(r.code, 'C' | 'L'));
     if d.eigrp.is_some() {
-        for r in eigrp_routes {
+        for r in eigrp_routes.iter().filter(|r| r.iface == eigrp::NULL0) {
+            // A summary this router advertises: a discard route (distance 5).
+            learned.push(RouteEntry { code: 'D', net: r.net, via: None, iface: Some(r.iface.clone()), distance: 5, metric: r.metric });
+        }
+        for r in eigrp_routes.iter().filter(|r| r.iface != eigrp::NULL0) {
             learned.push(RouteEntry {
                 code: 'D',
                 net: r.net,
@@ -639,6 +643,13 @@ pub fn route_with(
         {
             consider_ad(0, 254, ifc, gw);
         }
+    }
+    // An EIGRP summary's route to Null0 discards what nothing more specific takes.
+    let discard = eigrp_routes.iter().filter(|r| r.iface == eigrp::NULL0 && r.net.contains(dst)).map(|r| r.net.prefix).max();
+    if let (Some(p), Some((bp, ..))) = (discard, &best)
+        && p > *bp
+    {
+        return None;
     }
     best.map(|(_, _, i, nh)| (i, nh))
 }
@@ -1915,7 +1926,11 @@ impl Sim {
         let f = eigrp6::fingerprint(t);
         if self.eigrp6.is_none() || self.eigrp6_for != f {
             self.eigrp6_for = f;
-            self.eigrp6 = Some(eigrp6::compute(t));
+            let new = eigrp6::compute(t);
+            if let Some(old) = self.eigrp6.take() {
+                self.eigrp6_packets(t, &old, &new);
+            }
+            self.eigrp6 = Some(new);
         }
         self.eigrp6.clone().unwrap_or_default()
     }
@@ -1931,6 +1946,13 @@ impl Sim {
                 iface: Some(r.iface.clone()),
                 next_hop: Some(r.via),
                 distance: eigrp::DISTANCE,
+            }));
+            out.extend(st.summaries.get(&d.id).into_iter().flatten().map(|(net, _)| v6::Route6Entry {
+                code: 'D',
+                net: *net,
+                iface: Some(eigrp::NULL0.to_string()),
+                next_hop: None,
+                distance: 5,
             }));
         }
         if d.ospf6.is_none() {

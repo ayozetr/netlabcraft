@@ -2194,7 +2194,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::SrNoMlsQosCos
         | Id::SrPriorityExtend
         | Id::SrNoPriorityExtend
-        | Id::SrShowMlsQosMaps => swroute::command(&mut c, spec.id, &args),
+        | Id::SrShowMlsQosMaps
+        | Id::SrIpSummaryEigrp
+        | Id::SrNoIpSummaryEigrp
+        | Id::SrIpv6SummaryEigrp
+        | Id::SrNoIpv6SummaryEigrp => swroute::command(&mut c, spec.id, &args),
         Id::VoiceTelephonyService
         | Id::VoiceNoTelephonyService
         | Id::VoiceMaxEphones

@@ -1,10 +1,13 @@
 //! Switching and routing leftovers: 802.1p CoS (`mls qos map cos-dscp`, `mls qos cos`,
-//! `switchport priority extend cos`, `show mls qos maps`).
+//! `switchport priority extend cos`, `show mls qos maps`) and EIGRP summary addresses
+//! (`ip summary-address eigrp`, `ipv6 summary-address eigrp`).
 
 use std::fmt::Write as _;
 
+use netlabcraft_core::{Ipv4Net, Ipv6Net, parse_ip};
 use netlabcraft_model::Device;
 use netlabcraft_model::l2sec::DEFAULT_COS_DSCP;
+use netlabcraft_model::routing::MAX_SUMMARIES;
 
 use super::{Ctx, R};
 use crate::grammar::Id;
@@ -60,6 +63,49 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             })
         }
         SrShowMlsQosMaps => show_maps(c.d()?, arg(0)),
+        SrIpSummaryEigrp | SrNoIpSummaryEigrp | SrIpv6SummaryEigrp | SrNoIpv6SummaryEigrp => {
+            let asn = number(arg(0), 1, 65_535, "The autonomous system").map(|n| u16::try_from(n).unwrap_or(1))?;
+            let v4 = matches!(id, SrIpSummaryEigrp | SrNoIpSummaryEigrp);
+            let add = matches!(id, SrIpSummaryEigrp | SrIpv6SummaryEigrp);
+            let (net4, net6) = if v4 {
+                let a = parse_ip(arg(1)).map_err(|e| format!("% {e}"))?;
+                let m = parse_ip(arg(2)).map_err(|e| format!("% {e}"))?;
+                let n = Ipv4Net::with_mask(a, m).map_err(|e| format!("% {e}"))?;
+                (Some(n.network()), None)
+            } else {
+                let n: Ipv6Net = arg(1).trim().parse().map_err(|_| format!("% `{}` is not an IPv6 prefix (X:X::X/N)", arg(1).trim()))?;
+                (None, Some(n.network()))
+            };
+            let names = c.mode_iface_names()?;
+            let d = c.dm()?;
+            for name in names {
+                let e = d.eigrp_summary.entry(name.clone()).or_default();
+                if let Some(n) = net4 {
+                    e.v4.retain(|x| *x != (asn, n));
+                    if add {
+                        if e.v4.len() >= MAX_SUMMARIES {
+                            return Err("% Too many summary addresses on this interface".into());
+                        }
+                        e.v4.push((asn, n));
+                    }
+                }
+                if let Some(n) = net6 {
+                    e.v6.retain(|x| *x != (asn, n));
+                    if add {
+                        if e.v6.len() >= MAX_SUMMARIES {
+                            return Err("% Too many summary addresses on this interface".into());
+                        }
+                        e.v6.push((asn, n));
+                    }
+                }
+                if e.is_empty() {
+                    d.eigrp_summary.remove(&name);
+                }
+            }
+            let d = c.d()?;
+            let running = if v4 { d.eigrp.as_ref().is_some_and(|e| e.asn == asn) } else { d.eigrp6.as_ref().is_some_and(|e| e.asn == asn) };
+            Ok(if add && !running { format!("Saved; it acts once EIGRP for AS {asn} runs here.") } else { String::new() })
+        }
         _ => Err("% Not handled here".into()),
     }
 }
@@ -93,6 +139,17 @@ fn show_maps(d: &Device, which: &str) -> R {
 pub(crate) fn global_lines(s: &mut String, d: &Device) {
     if let Some(m) = d.l2.cos_dscp {
         let _ = writeln!(s, "mls qos map cos-dscp {}", m.iter().map(u8::to_string).collect::<Vec<_>>().join(" "));
+    }
+}
+
+/// `ip summary-address eigrp` and `ipv6 summary-address eigrp` lines of an interface.
+pub(crate) fn eigrp_summary_lines(s: &mut String, d: &Device, iface: &str) {
+    let Some(e) = d.eigrp_summary.get(iface) else { return };
+    for (asn, n) in &e.v4 {
+        let _ = writeln!(s, " ip summary-address eigrp {asn} {} {}", n.addr, n.mask());
+    }
+    for (asn, n) in &e.v6 {
+        let _ = writeln!(s, " ipv6 summary-address eigrp {asn} {n}");
     }
 }
 
