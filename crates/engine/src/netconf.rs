@@ -29,7 +29,7 @@ use netlabcraft_wire::netconf::{self, BASE_10, BASE_11, Framing, NS};
 use netlabcraft_wire::xml::{self, Element, escape};
 use serde_json::{Map, Value, json};
 
-use crate::automation::{self as rc, ApiError, IF, IP, MODULES, Op, RT, SYS, Target};
+use crate::automation::{self as rc, ApiError, DISC, IF, IP, MODULES, Op, RT, SYS, Target};
 use crate::{EngineError, Result, Session};
 
 pub const WRITABLE_RUNNING: &str = "urn:ietf:params:netconf:capability:writable-running:1.0";
@@ -126,6 +126,7 @@ fn module_of(local: &str) -> Option<&'static str> {
         "system" => Some(SYS),
         "interfaces" => Some(IF),
         "static-routes" => Some(RT),
+        "neighbors" => Some(DISC),
         _ => None,
     }
 }

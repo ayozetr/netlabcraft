@@ -41,6 +41,7 @@ pub const IP: &str = "ietf-ip";
 pub const SYS: &str = "ietf-system";
 pub const RT: &str = "netlabcraft-routing";
 pub const RESTCONF: &str = "ietf-restconf";
+pub const DISC: &str = "netlabcraft-discovery";
 
 /// XML namespaces of the modules (for NETCONF).
 pub fn namespace(module: &str) -> &'static str {
@@ -49,6 +50,7 @@ pub fn namespace(module: &str) -> &'static str {
         IP => "urn:ietf:params:xml:ns:yang:ietf-ip",
         SYS => "urn:ietf:params:xml:ns:yang:ietf-system",
         RT => "urn:netlabcraft:yang:netlabcraft-routing",
+        DISC => "urn:netlabcraft:yang:netlabcraft-discovery",
         RESTCONF => "urn:ietf:params:xml:ns:yang:ietf-restconf",
         _ => "",
     }
@@ -56,12 +58,12 @@ pub fn namespace(module: &str) -> &'static str {
 
 /// The module whose namespace this is (the reverse of [`namespace`]).
 pub fn module_of_ns(ns: &str) -> Option<&'static str> {
-    [IF, IP, SYS, RT, RESTCONF].into_iter().find(|m| namespace(m) == ns)
+    [IF, IP, SYS, RT, DISC, RESTCONF].into_iter().find(|m| namespace(m) == ns)
 }
 
 /// The modules this server implements, with their revisions (for the capabilities NETCONF
 /// announces and `ietf-yang-library`-style listings).
-pub const MODULES: [(&str, &str); 4] = [(IF, "2018-02-20"), (IP, "2018-02-22"), (SYS, "2014-08-06"), (RT, "2026-10-30")];
+pub const MODULES: [(&str, &str); 5] = [(IF, "2018-02-20"), (IP, "2018-02-22"), (SYS, "2014-08-06"), (RT, "2026-10-30"), (DISC, "2026-10-31")];
 
 /// The JSON media type (RFC 8040 §11.3.2).
 pub const YANG_JSON: &str = "application/yang-data+json";
@@ -211,6 +213,33 @@ fn routes_json(d: &Device) -> Vec<Value> {
     out.into_iter().map(|(n, hops)| json!({"prefix": n.to_string(), "next-hop": hops})).collect()
 }
 
+/// The router's CDP and LLDP neighbours (`netlabcraft-discovery:neighbors`, NetLabCraft's own
+/// read-only module): one entry per protocol and port.
+fn neighbors_json(t: &Topology, d: &Device) -> Vec<Value> {
+    let mut out = Vec::new();
+    for n in netlabcraft_sim::cdp::neighbors(t, d) {
+        let mut e = json!({"device-id": n.name, "local-interface": n.local, "remote-interface": n.remote, "platform": n.platform, "protocol": "cdp"});
+        if let Some(a) = n.address {
+            e["management-address"] = json!(a.addr.to_string());
+        }
+        out.push(e);
+    }
+    for n in netlabcraft_sim::lldp::neighbors(t, d) {
+        let mut e = json!({"device-id": n.info.system_name, "local-interface": n.local, "remote-interface": n.info.port, "platform": n.info.description, "protocol": "lldp"});
+        if let Some(a) = n.info.address {
+            e["management-address"] = json!(a.to_string());
+        }
+        out.push(e);
+    }
+    out
+}
+
+/// `ietf-system:system-state` (RFC 7317 §3.2): the platform.
+fn system_state(d: &Device) -> Value {
+    let m = d.catalogue_model();
+    json!({"platform": {"os-name": "NetLabCraft", "os-release": env!("CARGO_PKG_VERSION"), "os-version": format!("simulated {}", d.kind.label().to_lowercase()), "machine": m.label}})
+}
+
 /// A module's top container, as `{"module:name": {...}}` members.
 pub fn module_data(t: &Topology, d: &Device, module: &str, config_only: bool) -> Option<(String, Value)> {
     match module {
@@ -219,6 +248,7 @@ pub fn module_data(t: &Topology, d: &Device, module: &str, config_only: bool) ->
             Some((format!("{IF}:interfaces"), json!({"interface": interfaces(t, d).iter().map(|i| iface_json(i, config_only)).collect::<Vec<_>>()})))
         }
         RT => Some((format!("{RT}:static-routes"), json!({"route": routes_json(d)}))),
+        DISC if !config_only => Some((format!("{DISC}:neighbors"), json!({"neighbor": neighbors_json(t, d)}))),
         _ => None,
     }
 }
@@ -238,6 +268,10 @@ pub enum Target {
     IfChild(String, &'static str),
     Routes,
     Route(String),
+    /// `ietf-system:system-state` (read-only).
+    SystemState,
+    /// `netlabcraft-discovery:neighbors` (read-only).
+    Neighbors,
 }
 
 const IF_CHILDREN: [&str; 8] = ["name", "description", "type", "enabled", "oper-status", "phys-address", "ietf-ip:ipv4", "ietf-ip:ipv6"];
@@ -316,9 +350,12 @@ pub fn parse_target(rest: &str) -> ApiResult<Target> {
             }
             Some((n, _)) => Err(missing(format!("netlabcraft-routing:static-routes has no `{n}` (only route=PREFIX)"))),
         },
-        _ => {
-            Err(missing(format!("no data named `{first}` (here: ietf-system:system, ietf-interfaces:interfaces, netlabcraft-routing:static-routes)")))
-        }
+        (SYS, "system-state") if segs.len() == 1 => Ok(Target::SystemState),
+        (DISC, "neighbors") if segs.len() == 1 => Ok(Target::Neighbors),
+        (SYS, "system-state") | (DISC, "neighbors") => Err(deeper(top)),
+        _ => Err(missing(format!(
+            "no data named `{first}` (here: ietf-system:system, ietf-system:system-state, ietf-interfaces:interfaces, netlabcraft-routing:static-routes, netlabcraft-discovery:neighbors)"
+        ))),
     }
 }
 
@@ -356,6 +393,9 @@ pub fn get(t: &Topology, d: &Device, target: &Target, config_only: bool) -> ApiR
                     m.insert(k, v);
                 }
             }
+            if !config_only {
+                m.insert(format!("{SYS}:system-state"), system_state(d));
+            }
             json!({"ietf-restconf:data": m})
         }
         Target::System => json!({"ietf-system:system": {"hostname": d.name}}),
@@ -372,6 +412,8 @@ pub fn get(t: &Topology, d: &Device, target: &Target, config_only: bool) -> ApiR
             if c.contains(':') { json!({ *c: v }) } else { json!({ format!("{IF}:{c}"): v }) }
         }
         Target::Routes => json!({"netlabcraft-routing:static-routes": {"route": routes_json(d)}}),
+        Target::SystemState => json!({"ietf-system:system-state": system_state(d)}),
+        Target::Neighbors => json!({"netlabcraft-discovery:neighbors": {"neighbor": neighbors_json(t, d)}}),
         Target::Route(p) => {
             let net = prefix(p)?;
             let r: Vec<Value> =
@@ -674,6 +716,7 @@ pub fn edit(t: &Topology, d: &Device, target: &Target, op: Op, body: Option<&Val
     let not_here = |what: &str| err(405, "operation-not-supported", what.to_string());
     match (target, op) {
         (Target::Data, _) => return Err(not_here("edit one module's data at a time (such as /restconf/data/ietf-interfaces:interfaces)")),
+        (Target::SystemState | Target::Neighbors, _) => return Err(not_here("this is state data: it can be read, not changed")),
         (Target::System | Target::Hostname, Op::Delete | Op::Create) => return Err(not_here("the hostname can be replaced, not created or deleted")),
         (Target::System, _) => {
             let v = top(need()?, "ietf-system:system")?;
@@ -947,10 +990,16 @@ pub fn negotiate(accept: Option<&str>) -> ApiResult<Encoding> {
 }
 
 /// List names: their entries become JSON arrays (RFC 7951 §5.4).
-const LISTS: [(&str, &str); 5] =
-    [("interfaces", "interface"), ("ipv4", "address"), ("ipv6", "address"), ("static-routes", "route"), ("route", "next-hop")];
+const LISTS: [(&str, &str); 6] = [
+    ("interfaces", "interface"),
+    ("ipv4", "address"),
+    ("ipv6", "address"),
+    ("static-routes", "route"),
+    ("route", "next-hop"),
+    ("neighbors", "neighbor"),
+];
 /// Containers: an empty element is an empty object, not an empty text.
-const CONTAINERS: [&str; 7] = ["system", "interfaces", "static-routes", "ipv4", "ipv6", "data", "restconf"];
+const CONTAINERS: [&str; 10] = ["system", "interfaces", "static-routes", "ipv4", "ipv6", "data", "restconf", "neighbors", "system-state", "platform"];
 
 type XmlEl = netlabcraft_wire::xml::Element;
 
@@ -1788,6 +1837,29 @@ mod tests {
             .execute("pc.http_request", json!({"pc": "PC1", "url": "http://192.168.1.1/restconf", "user": "admin", "password": "NetLab2026"}))
             .unwrap();
         assert_eq!((r["status"].clone(), r["tls"].clone()), (json!(200), Value::Null));
+    }
+
+    #[test]
+    fn platform_and_neighbours_are_read_only_state() {
+        let mut s = lab();
+        let r = req(&mut s, "GET", "/restconf/data/ietf-system:system-state", None);
+        assert_eq!(r["json"]["ietf-system:system-state"]["platform"]["os-name"], "NetLabCraft", "{r}");
+        s.execute("device.configure", json!({"device": "R1", "lines": "lldp run"})).unwrap();
+        s.execute("device.configure", json!({"device": "S1", "lines": "lldp run"})).unwrap();
+        let r = req(&mut s, "GET", "/restconf/data/netlabcraft-discovery:neighbors", None);
+        let list = r["json"]["netlabcraft-discovery:neighbors"]["neighbor"].as_array().unwrap().clone();
+        for proto in ["cdp", "lldp"] {
+            assert!(
+                list.iter().any(|n| n["device-id"] == "S1" && n["local-interface"] == "GigabitEthernet0/0" && n["protocol"] == proto),
+                "{proto}: {r}"
+            );
+        }
+        for path in ["/restconf/data/netlabcraft-discovery:neighbors", "/restconf/data/ietf-system:system-state"] {
+            assert_eq!(req(&mut s, "PUT", path, Some(json!({"x": 1})))["status"], 405, "{path}");
+        }
+        assert_eq!(req(&mut s, "GET", "/restconf/data/netlabcraft-discovery:neighbors/neighbor", None)["status"], 501);
+        let all = req(&mut s, "GET", "/restconf/data?content=config", None);
+        assert!(all["json"]["ietf-restconf:data"].get("netlabcraft-discovery:neighbors").is_none(), "state stays out of config");
     }
 
     #[test]

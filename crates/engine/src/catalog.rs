@@ -679,7 +679,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Controller: managed routers",
         "",
         None,
-        r#"{"host": "the controller (PC, laptop or server)", "add"?: {"address", "user", "password"}, "remove"?: address, "refresh"?: true (read each router's hostname and interfaces over RESTCONF)} → {"devices": [{"address", "user", "reachable"?, "hostname"?, "interfaces"?, "up"?, "error"?}]}"#,
+        r#"{"host": "the controller (PC, laptop or server)", "add"?: {"address" (IPv4 or IPv6), "user", "password", "vars"?: {"name": "value"}}, "remove"?: address, "set_vars"?: {"address", "vars": {"name": "value"}}, "refresh"?: true (read each router's hostname, model, software and interfaces over RESTCONF)} → {"devices": [{"address", "user", "vars", "reachable"?, "hostname"?, "model"?, "os"?, "interfaces"?, "up"?, "error"?}]}"#,
         true
     ),
     c!(
@@ -687,7 +687,15 @@ pub static CATALOG: &[CommandInfo] = &[
         "Controller: push a template",
         "",
         None,
-        r#"{"host", "path": "/restconf/data/…", "method"?: "PATCH"|"PUT"|"POST"|"DELETE", "body": JSON template, "devices"?: [addresses] (all managed routers when left out)} → {"results": [{"address", "status", "error"?, "applied"}]}"#,
+        r#"{"host", "path": "/restconf/data/…", "method"?: "PATCH"|"PUT"|"POST"|"DELETE", "body": JSON template with {{name}} variables ({{address}} and {{hostname}} built in), "variables"?: {"router address": {"name": "value"}} (on top of each router's stored vars), "devices"?: [addresses] (all managed routers when left out)} → {"results": [{"address", "status", "error"?, "applied"}]}"#,
+        true
+    ),
+    c!(
+        "controller.discover",
+        "Controller: discover routers",
+        "",
+        None,
+        r#"{"host", "seed": "first router's address", "user", "password", "max"?: 1-32 (16), "add"?: false (only report)} → {"devices": [inventory, with "neighbors"], "links": [{"from", "from_interface", "to", "to_interface", "platform", "protocols": ["cdp"|"lldp"]}], "unreachable": [{"address", "error"}]}: breadth first over each router's CDP and LLDP neighbours (RESTCONF netlabcraft-discovery:neighbors); routers that answer with the login become managed"#,
         true
     ),
     c!(

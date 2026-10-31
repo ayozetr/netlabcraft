@@ -64,4 +64,10 @@ pub struct Managed {
     pub address: String,
     pub user: String,
     pub password: String,
+    /// Template variables for this router: (name, value).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub vars: Vec<(String, String)>,
 }
+
+/// Most template variables per managed router.
+pub const MAX_VARS: usize = 32;

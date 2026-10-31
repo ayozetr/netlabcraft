@@ -930,7 +930,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         "pc.http_request" => crate::automation::http_request(s, p),
         "pc.http_saved" => crate::automation::http_saved(s, p),
         "netconf.session" => crate::netconf::session(s, p),
-        "controller.devices" | "controller.push" => crate::controller::run(s, cmd, p),
+        "controller.devices" | "controller.push" | "controller.discover" => crate::controller::run(s, cmd, p),
         "view.enter_cluster" => {
             s.view = Some(cluster_param(s, p)?);
             s.revision += 1;
