@@ -101,6 +101,10 @@ impl Sim {
                     Ok(r) => r,
                     Err(e) => return Some(Err(e.to_string())),
                 };
+                // An 802.1X login: EAP inside RADIUS, played through PEAP (see `crate::peap`).
+                if req.eap_message().is_some() {
+                    return Some(self.peap_radius_in(t, d, me, ip, u, &req));
+                }
                 // Unknown clients are ignored, as RFC 2865 says.
                 let Some(client) = d.services.aaa.clients.iter().find(|c| c.address == ip.src) else {
                     return Some(Err(format!("{} isn't one of this AAA server's clients", ip.src)));

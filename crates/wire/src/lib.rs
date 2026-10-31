@@ -37,6 +37,7 @@ pub mod ospf6;
 pub mod ospfdb;
 
 pub mod pcap;
+pub mod peap;
 pub mod qos;
 pub mod radius;
 pub mod tacacs;
@@ -705,11 +706,12 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                             Ok(r) => (
                                 Protocol::Radius,
                                 format!(
-                                    "RADIUS {} {} → {}{}{tag}",
+                                    "RADIUS {} {} → {}{}{}{tag}",
                                     r.name(),
                                     ip.src,
                                     ip.dst,
-                                    r.user().map(|u| format!(" (user {u})")).unwrap_or_default()
+                                    r.user().map(|u| format!(" (user {u})")).unwrap_or_default(),
+                                    if r.eap_message().is_some() { " carrying EAP" } else { "" }
                                 ),
                             ),
                             Err(e) => (Protocol::Radius, format!("RADIUS ({e}){tag}")),

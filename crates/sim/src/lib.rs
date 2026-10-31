@@ -49,6 +49,7 @@ pub mod ospf;
 pub mod ospf6;
 pub mod ospf_lsdb;
 pub mod pdu;
+pub mod peap;
 pub mod qos;
 
 pub mod rip;
@@ -1074,6 +1075,8 @@ pub struct Sim {
     auto: automation::AutoState,
     /// Simulation-mode options (constant delay, capture filter) and the senders' decisions.
     mode: simmode::SimMode,
+    /// Authentication servers' PEAP logins under way.
+    peap_srv: peap::Sessions,
 }
 
 impl Sim {
