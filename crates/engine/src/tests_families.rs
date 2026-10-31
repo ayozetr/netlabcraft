@@ -282,3 +282,49 @@ fn wifi_things_join_the_gateway_report_and_follow_the_rules() {
     s2.execute("sim.advance", json!({"seconds": 6})).unwrap();
     assert!(s2.execute("iot.server", json!({"device": "Home"})).unwrap()["things"].as_array().unwrap().len() >= 10);
 }
+
+#[test]
+fn a_board_program_reads_switches_reports_and_never_hangs() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "board"})).unwrap();
+    s.execute("sim.advance", json!({"seconds": 1})).unwrap();
+    let st = s.execute("board.status", json!({"device": "Board1"})).unwrap();
+    assert_eq!(st["state"], "running", "{st}");
+    let fan = s.topology.resolve("Fan1").unwrap();
+    assert!(!s.sim.iot_thing(fan).is_some_and(|x| x.on), "22 degrees: the fan stays off");
+    s.execute("iot.configure", json!({"device": "Temp1", "value": 35})).unwrap();
+    s.execute("sim.advance", json!({"seconds": 3})).unwrap();
+    assert!(s.sim.iot_thing(fan).is_some_and(|x| x.on), "35 degrees: the program switches the fan on");
+    let st = s.execute("board.status", json!({"device": "Board1"})).unwrap();
+    assert_eq!(st["vars"]["t"], 35, "{st}");
+    assert!(st["log"].as_array().unwrap().iter().any(|l| l == "temperature 35"), "{st}");
+    assert!(st["pins"].as_array().unwrap().iter().any(|p| p["pin"] == "A0" && p["wired"] == "Temp1" && p["level"] == 35), "{st}");
+    let page = s.execute("iot.server", json!({"device": "Home"})).unwrap();
+    assert!(page["things"].as_array().unwrap().iter().any(|t| t["name"] == "Board1" && t["value"] == 35), "the board reported: {page}");
+    // Stop, a program that doesn't compile, one that never sleeps.
+    let st = s.execute("board.program", json!({"device": "Board1", "run": false})).unwrap();
+    assert_eq!(st["state"], "stopped");
+    let err = s.execute("board.program", json!({"device": "Board1", "source": "if 1\nx = 2\n"})).unwrap_err().to_string();
+    assert!(err.contains("without their `end`"), "{err}");
+    let st = s.execute("board.program", json!({"device": "Board1", "source": "while 1\n  x = 1\nend\n", "run": true})).unwrap();
+    assert!(st["message"].as_str().unwrap().contains("sleep"), "{st}");
+    s.execute("sim.advance", json!({"seconds": 30})).unwrap();
+    // IoT custom cables: by link.add (first free digital pin for a device), listed, removed.
+    s.execute("device.add", json!({"model": "Siren", "name": "Siren1"})).unwrap();
+    let l = s.execute("link.add", json!({"a": "Siren1", "b": "Board1", "cable": "iot-custom"})).unwrap();
+    assert_eq!(l["a"], "Board1 D2", "{l}");
+    assert!(s.execute("link.list", json!({})).unwrap().as_array().unwrap().iter().any(|x| x["a"] == "Board1 D2" && x["cable"] == "iot-custom"));
+    assert!(s.execute("link.add", json!({"a": "Siren1", "b": "Board1", "cable": "iot-custom"})).is_err(), "wired once");
+    assert!(s.execute("link.add", json!({"a": "Home", "b": "Siren1", "cable": "iot-custom"})).is_err(), "no board");
+    s.execute("link.remove", json!({"device": "Board1", "port": "D2"})).unwrap();
+    assert!(s.execute("board.wire", json!({"device": "Board1", "pin": "D9", "thing": "Siren1"})).is_err());
+    s.execute("board.wire", json!({"device": "Board1", "pin": "d3", "thing": "Siren1"})).unwrap();
+    let s2 = round_trip(&mut s);
+    let b = s2.topology.find("Board1").unwrap();
+    assert_eq!(b.board.wires.len(), 4);
+    assert!(b.board.program.starts_with("while 1"));
+    // Removing a thing unplugs its cable.
+    let mut s3 = s2;
+    s3.execute("device.remove", json!({"device": "Siren1"})).unwrap();
+    assert_eq!(s3.topology.find("Board1").unwrap().board.wires.len(), 3);
+}

@@ -64,13 +64,16 @@ pub struct ThingState {
 #[derive(Debug, Clone, Default)]
 pub struct IotState {
     servers: BTreeMap<DeviceId, Vec<IotEntry>>,
-    things: BTreeMap<DeviceId, ThingState>,
+    pub(crate) things: BTreeMap<DeviceId, ThingState>,
+    /// Programmable boards' runs (see the `board` module).
+    pub(crate) boards: BTreeMap<DeviceId, crate::board::BoardRun>,
 }
 
 impl IotState {
     pub(crate) fn forget(&mut self, d: DeviceId) {
         self.servers.remove(&d);
         self.things.remove(&d);
+        self.boards.remove(&d);
     }
 }
 
@@ -204,6 +207,9 @@ impl Sim {
             return Err(SimError::NoSource(format!("{} is not a smart thing", d.name)));
         }
         let now = self.now;
+        // A device wired to a board follows the board's program, not the server.
+        let wired = t.board_of(dev).is_some();
+        let before = self.iot.things.get(&dev).is_some_and(|s| s.on);
         let result = (|| {
             if t.is_dark(dev) {
                 return Err(SimError::NoSource("switched off".into()));
@@ -236,6 +242,7 @@ impl Sim {
         st.last_report_us = Some(now);
         match result {
             Ok((server, on, image)) => {
+                let on = if wired { before } else { on };
                 *st = ThingState { registered: Some(server), on, message: None, image, last_report_us: Some(now) };
                 Ok(())
             }
@@ -292,13 +299,16 @@ impl Sim {
     /// run out.
     pub(crate) fn run_with_iot(&mut self, t: &Topology, deadline: u64) {
         for _ in 0..MAX_TIMED_ROUNDS {
-            match self.iot_next_due(t).filter(|at| *at < deadline) {
+            let due = [self.iot_next_due(t), self.board_next_due(t)].into_iter().flatten().min();
+            match due.filter(|at| *at < deadline) {
                 Some(at) => {
                     if at > self.now {
                         self.advance(t, at, |_| false);
                     }
-                    // Each report stamps its time, so the next due time moves on.
+                    // Each report stamps its time and each program slice sets its next wake,
+                    // so the next due time moves on.
                     self.iot_timed(t);
+                    self.board_timed(t);
                 }
                 None => break,
             }

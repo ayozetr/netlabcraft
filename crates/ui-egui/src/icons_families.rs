@@ -138,6 +138,8 @@ pub fn phone_line(p: &Painter, a: Pos2, b: Pos2, width: f32, tk: &Tokens) {
 pub fn model_icon(p: &Painter, rect: Rect, kind: netlabcraft_model::DeviceKind, model_id: &str, multilayer: bool, tk: &Tokens) {
     if is_wan(model_id) {
         wan_icon(p, rect, model_id, tk);
+    } else if matches!(model_id, "Board-SBC" | "Board-MCU") {
+        board_icon(p, rect, model_id == "Board-SBC");
     } else if matches!(model_id, "Tablet" | "Smartphone") {
         touch_icon(p, rect, model_id == "Tablet");
     } else {
@@ -305,4 +307,41 @@ fn drop_points(c: Pos2, w: f32) -> Vec<Pos2> {
         centre + vec2(a.cos(), a.sin()) * r
     }));
     pts
+}
+
+/// An IoT custom cable: a purple line of short dashes with a small pin plug at each end.
+pub fn pin_line(p: &Painter, a: Pos2, b: Pos2, width: f32, tk: &Tokens) {
+    let s = Stroke::new((width * 0.9).max(1.0), tk.iot_cable);
+    p.extend(Shape::dashed_line(&[a, b], s, width * 2.5, width * 1.5));
+    for at in [a, b] {
+        p.rect_filled(Rect::from_center_size(at, vec2(width * 2.4, width * 2.4)), 1.0, tk.iot_cable);
+    }
+}
+
+/// A programmable board's icon: a green (single-board computer) or blue (microcontroller)
+/// circuit board with a chip and a row of pins.
+pub fn board_icon(p: &Painter, rect: Rect, sbc: bool) {
+    let w = rect.width();
+    let body = Rect::from_center_size(rect.center() + vec2(0.0, w * 0.04), vec2(w * 0.86, w * 0.56));
+    let base = if sbc { Color32::from_rgb(0x1f, 0x6e, 0x43) } else { Color32::from_rgb(0x1d, 0x4f, 0x8a) };
+    p.rect_filled(body.translate(vec2(0.0, w * 0.04)), w * 0.05, crate::theme::shade(base, 0.6));
+    p.rect_filled(body, w * 0.05, base);
+    let chip = Rect::from_center_size(body.center() + vec2(-w * 0.1, w * 0.04), vec2(w * 0.24, w * 0.24));
+    p.rect_filled(chip, w * 0.02, Color32::from_rgb(0x22, 0x22, 0x26));
+    let gold = Color32::from_rgb(0xd8, 0xc8, 0x8a);
+    for k in 0..8 {
+        let x = body.left() + w * 0.08 + k as f32 * w * 0.09;
+        p.rect_filled(Rect::from_center_size(pos2(x, body.top() + w * 0.07), vec2(w * 0.045, w * 0.045)), 0.5, gold);
+    }
+    if sbc {
+        p.rect_filled(
+            Rect::from_min_size(body.right_center() + vec2(-w * 0.22, -w * 0.06), vec2(w * 0.18, w * 0.16)),
+            1.0,
+            Color32::from_rgb(0xb8, 0xbc, 0xc4),
+        );
+    } else {
+        let at = body.right_center() + vec2(-w * 0.22, w * 0.02);
+        let pts: Vec<Pos2> = (0..6).map(|i| at + vec2((i / 2) as f32 * w * 0.07, if (i + 1) % 4 < 2 { -w * 0.08 } else { w * 0.08 })).collect();
+        p.add(Shape::line(pts, Stroke::new((w / 30.0).max(1.0), gold)));
+    }
 }

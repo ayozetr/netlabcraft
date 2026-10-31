@@ -186,6 +186,10 @@ fn thing_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut I
             ui.label(RichText::new(tr_any(img)).monospace());
         }
     }
+    if let Some(at) = app.session.sim.wired_to(&app.session.topology, d) {
+        let words = if is_sensor(dev) { "Wired to {} (its program reads it)" } else { "Wired to {} (its program switches it)" };
+        ui.label(RichText::new(crate::i18n::trf(words, &[&at])).color(tk.muted));
+    }
     match (&st.registered, &st.message) {
         (Some(a), _) => ui.label(trf("Registered with {}", &[a])),
         (None, Some(m)) => ui.label(RichText::new(tr_any(m)).color(tk.error)),

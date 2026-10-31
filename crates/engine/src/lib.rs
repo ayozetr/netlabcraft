@@ -18,6 +18,7 @@ use serde_json::Value;
 
 pub mod activity;
 pub mod automation;
+mod board;
 pub mod catalog;
 mod cmd;
 mod controller;

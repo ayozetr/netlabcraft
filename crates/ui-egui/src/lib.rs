@@ -17,6 +17,7 @@ use netlabcraft_engine::{EngineError, Session, sample};
 use serde_json::{Value, json};
 
 pub mod activity;
+mod board_page;
 mod bottom;
 mod canvas;
 mod cloud_page;
@@ -290,6 +291,7 @@ pub fn open_tab(app: &mut PacketApp, d: DeviceId, name: &str) {
         "desktop" => Tab::Desktop,
         "phone" => Tab::Phone,
         "iot" => Tab::Iot,
+        "programming" | "board" => Tab::Board,
         "attributes" => Tab::Attributes,
         _ => return,
     };

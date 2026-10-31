@@ -257,3 +257,37 @@ mod wifi_things {
         assert!(h.query_by_label("Garage Door").is_some(), "found in the device list");
     }
 }
+
+// UI harness tests for programmable boards: the Programming tab and the Physical tab.
+#[cfg(test)]
+mod boards {
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable as _;
+    use netlabcraft_engine::Session;
+    use serde_json::json;
+
+    use crate::PacketApp;
+
+    #[test]
+    fn the_programming_tab_runs_and_stops_the_board_and_shows_its_pins() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"sample": "board"})).unwrap();
+        let b = s.topology.resolve("Board1").unwrap();
+        let mut h = Harness::builder().with_size(egui::vec2(1300.0, 860.0)).build_ui_state(|ui, app: &mut PacketApp| app.ui(ui), PacketApp::new(s));
+        h.state_mut().ui.show_notes = false;
+        crate::open_console(h.state_mut(), b);
+        h.run_steps(3);
+        assert_eq!(h.state().ui.windows.get(&b).map(|w| w.tab), Some(crate::console::Tab::Board), "a board opens on its program");
+        assert!(h.query_by_label("Pin A0 wired to").is_some());
+        h.get_by_label("Run").click();
+        h.run_steps(2);
+        assert!(h.state().session.sim.board(b).and_then(|r| r.machine.as_ref()).is_some_and(|m| m.due().is_some()), "running");
+        h.get_by_label("Stop").click();
+        h.run_steps(2);
+        assert!(h.state().session.sim.board(b).and_then(|r| r.machine.as_ref()).is_some_and(|m| m.due().is_none()), "stopped");
+        h.state_mut().ui.windows.clear();
+        crate::open_physical_tab(h.state_mut(), b);
+        h.run_steps(3);
+        assert!(h.query_by_label("A microcontroller board seen from above").is_some());
+    }
+}

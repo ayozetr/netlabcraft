@@ -23,6 +23,7 @@ use netlabcraft_wire::tcp::{self, Tcp};
 use netlabcraft_wire::{Arp, ArpOp, ETHERTYPE_ARP, ETHERTYPE_IPV4, Frame, Icmp, Ipv4, PROTO_ICMP, PROTO_TCP, PROTO_UDP, Protocol, Udp, dns};
 
 pub mod automation;
+pub mod board;
 pub mod cdp;
 mod central;
 pub mod email;
@@ -55,6 +56,7 @@ pub mod qos;
 
 pub mod rip;
 pub mod simmode;
+pub mod script;
 pub mod sip;
 pub mod snmp;
 pub mod stp;

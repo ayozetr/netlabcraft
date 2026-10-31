@@ -385,6 +385,20 @@ pub static MODELS: &[Model] = &[
         ports: &[run("Wireless", 0, 0)],
     },
     Model {
+        id: "Board-SBC",
+        kind: DeviceKind::Iot,
+        label: "Board SBC",
+        description: "Single-board computer with one Fast Ethernet port, 8 digital and 4 analog pins: runs a BoardScript program that reads and switches the smart things wired to its pins",
+        ports: &[run("FastEthernet", 0, 0)],
+    },
+    Model {
+        id: "Board-MCU",
+        kind: DeviceKind::Iot,
+        label: "Board MCU",
+        description: "Microcontroller board with Wi-Fi, 6 digital and 2 analog pins: runs a BoardScript program that reads and switches the smart things wired to its pins",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
         id: "IoT-Device",
         kind: DeviceKind::Iot,
         label: "Smart Device",
@@ -521,6 +535,7 @@ impl Model {
             "Home-Gateway" => Some("Gateway"),
             "Tablet" => Some("Tablet"),
             "Smartphone" => Some("Smartphone"),
+            "Board-SBC" | "Board-MCU" => Some("Board"),
             _ => None,
         }
     }

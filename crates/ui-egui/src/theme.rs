@@ -17,6 +17,8 @@ pub struct Tokens {
     pub fiber_cable: Color32,
     pub console_cable: Color32,
     pub serial_cable: Color32,
+    /// IoT custom cables (a board's pin to a smart thing).
+    pub iot_cable: Color32,
     pub link_up: Color32,
     pub link_down: Color32,
     /// A port the spanning tree blocks.
@@ -53,6 +55,7 @@ pub const LIGHT: Tokens = Tokens {
     fiber_cable: Color32::from_rgb(0xe8, 0x76, 0x0c),
     console_cable: Color32::from_rgb(0x2c, 0xa4, 0xe0),
     serial_cable: Color32::from_rgb(0xc8, 0x3a, 0x2e),
+    iot_cable: Color32::from_rgb(0x9a, 0x4c, 0xc8),
     link_up: Color32::from_rgb(0x3c, 0xc8, 0x2c),
     link_down: Color32::from_rgb(0xe0, 0x2a, 0x2a),
     link_blocked: Color32::from_rgb(0xf0, 0x9a, 0x1a),
@@ -83,6 +86,7 @@ pub const DARK: Tokens = Tokens {
     fiber_cable: Color32::from_rgb(0xff, 0x9a, 0x3c),
     console_cable: Color32::from_rgb(0x7c, 0xcc, 0xff),
     serial_cable: Color32::from_rgb(0xff, 0x6e, 0x5e),
+    iot_cable: Color32::from_rgb(0xc8, 0x8c, 0xf0),
     link_up: Color32::from_rgb(0x4c, 0xdc, 0x3c),
     link_down: Color32::from_rgb(0xf0, 0x5a, 0x5a),
     link_blocked: Color32::from_rgb(0xff, 0xb0, 0x3a),

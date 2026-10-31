@@ -1284,3 +1284,37 @@ powered	con corriente
 Wi-Fi smart things: climate, garden and safety	Objetos inteligentes Wi-Fi: clima, jardín y seguridad
 Ten Wi-Fi things join the home gateway: a thermostat drives a heater and an air conditioner, humidity and carbon monoxide open a window, a soil sensor waters the lawn.	Diez objetos Wi-Fi se unen a la pasarela doméstica: un termostato maneja un calefactor y un aire acondicionado, la humedad y el monóxido de carbono abren una ventana, un sensor del suelo riega el césped.
 Ten Wi-Fi things joined the Home gateway's network (HomeNetwork), took addresses by DHCP and report to its IoT service every 5 s. Lower Thermo1 below 18: Heater1 heats; raise it above 26: AC1 cools. Humid1 above 70 or CO1 above 50 opens Window1; CO1 above 50 also opens Garage1; Soil1 below 30 waters the lawn. Switch Plug1 by hand on Home > IoT.	Diez objetos Wi-Fi se unieron a la red de la pasarela Home (HomeNetwork), tomaron dirección por DHCP e informan a su servicio IoT cada 5 s. Baja Thermo1 por debajo de 18: Heater1 calienta; súbelo por encima de 26: AC1 enfría. Humid1 por encima de 70 o CO1 por encima de 50 abre Window1; CO1 por encima de 50 abre también Garage1; Soil1 por debajo de 30 riega el césped. Enciende Plug1 a mano en Home > IoT.
+Board SBC	Placa SBC
+Board MCU	Placa MCU
+Single-board computer with one Fast Ethernet port, 8 digital and 4 analog pins: runs a BoardScript program that reads and switches the smart things wired to its pins	Ordenador de placa única con un puerto Fast Ethernet, 8 pines digitales y 4 analógicos: ejecuta un programa BoardScript que lee y conmuta los objetos inteligentes cableados a sus pines
+Microcontroller board with Wi-Fi, 6 digital and 2 analog pins: runs a BoardScript program that reads and switches the smart things wired to its pins	Placa de microcontrolador con Wi-Fi, 6 pines digitales y 2 analógicos: ejecuta un programa BoardScript que lee y conmuta los objetos inteligentes cableados a sus pines
+IoT Custom	IoT personalizado
+IoT custom cable: joins a programmable board's pin to a smart thing, which the board's program then reads or switches	Cable IoT personalizado: une el pin de una placa programable con un objeto inteligente, que el programa de la placa lee o conmuta
+IoT custom cable: click a programmable board and a smart thing.	Cable IoT personalizado: haz clic en una placa programable y en un objeto inteligente.
+{} is neither a programmable board nor a smart thing.	{} no es una placa programable ni un objeto inteligente.
+Running	En marcha
+Not started	Sin arrancar
+at line {}	en la línea {}
+Run	Ejecutar
+Save the program and run it from the top	Guarda el programa y lo ejecuta desde el principio
+Keep the program without running it	Guarda el programa sin ejecutarlo
+Example	Ejemplo
+Put a short example program in the editor	Pone un programa de ejemplo corto en el editor
+for get(...) and report	para get(...) y report
+Program (BoardScript)	Programa (BoardScript)
+Program text	Texto del programa
+let x = 1 · x = read(A0) · write(D0, 1) · if / elif / else / end · while / end · sleep 2 · print x · report x · get(path) · stop	let x = 1 · x = read(A0) · write(D0, 1) · if / elif / else / end · while / end · sleep 2 · print x · report x · get(path) · stop
+Pins	Pines
+Variables	Variables
+(none yet)	(ninguna todavía)
+Output	Salida
+Pin {} wired to	Pin {} cableado a
+{}: {} pins	{}: {} pines
+A single-board computer seen from above	Un ordenador de placa única visto desde arriba
+A microcontroller board seen from above	Una placa de microcontrolador vista desde arriba
+Join a pin to a smart thing with the IoT Custom cable (Connections), or pick the thing for each pin in the Programming tab.	Une un pin con un objeto inteligente con el cable IoT personalizado (Conexiones), o elige el objeto de cada pin en la pestaña Programación.
+A board reads a sensor and drives a fan	Una placa lee un sensor y maneja un ventilador
+A microcontroller board on the home gateway's Wi-Fi runs a BoardScript program: it reads a temperature sensor on a pin, switches a fan and blinks a light on others, and reports to the IoT service.	Una placa de microcontrolador en el Wi-Fi de la pasarela doméstica ejecuta un programa BoardScript: lee un sensor de temperatura en un pin, conmuta un ventilador y hace parpadear una luz en otros, e informa al servicio IoT.
+Board1 runs a BoardScript program (Board1 > Programming): it reads Temp1 on pin A0, switches Fan1 on pin D0 above 28 degrees, blinks Light1 on D1 and reports the reading to the Home gateway's IoT service every 2 s of simulated time. Raise Temp1's reading (Temp1 > IoT), then advance the time. Wire more things with the IoT Custom cable.	Board1 ejecuta un programa BoardScript (Board1 > Programación): lee Temp1 en el pin A0, enciende Fan1 en el pin D0 por encima de 28 grados, hace parpadear Light1 en D1 e informa de la lectura al servicio IoT de la pasarela Home cada 2 s de tiempo simulado. Sube la lectura de Temp1 (Temp1 > IoT) y avanza el tiempo. Cablea más objetos con el cable IoT personalizado.
+Wired to {} (its program switches it)	Cableado a {} (su programa lo conmuta)
+Wired to {} (its program reads it)	Cableado a {} (su programa lo lee)

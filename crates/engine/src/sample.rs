@@ -160,7 +160,27 @@ pub static SAMPLES: &[Sample] = &[
         title: "Wi-Fi smart things: climate, garden and safety",
         description: "Ten Wi-Fi things join the home gateway: a thermostat drives a heater and an air conditioner, humidity and carbon monoxide open a window, a soil sensor waters the lawn.",
     },
+    Sample {
+        id: "board",
+        title: "A board reads a sensor and drives a fan",
+        description: "A microcontroller board on the home gateway's Wi-Fi runs a BoardScript program: it reads a temperature sensor on a pin, switches a fan and blinks a light on others, and reports to the IoT service.",
+    },
 ];
+
+/// The board sample's program.
+const BOARD_SAMPLE: &str = "# Fan1 (D0) above 28 degrees, Light1 (D1) blinks
+let limit = 28
+t = read(A0)
+if t > limit
+  write(D0, 1)
+else
+  write(D0, 0)
+end
+write(D1, 1 - read(D1))
+report t
+print \"temperature\", t
+sleep 2
+";
 
 struct Builder {
     t: Topology,
@@ -1468,6 +1488,29 @@ pub fn build(id: &str) -> Result<Topology> {
                 ];
             }
             b.t.notes = "Ten Wi-Fi things joined the Home gateway's network (HomeNetwork), took addresses by DHCP and report to its IoT service every 5 s. Lower Thermo1 below 18: Heater1 heats; raise it above 26: AC1 cools. Humid1 above 70 or CO1 above 50 opens Window1; CO1 above 50 also opens Garage1; Soil1 below 30 waters the lawn. Switch Plug1 by hand on Home > IoT.".into();
+        }
+        "board" => {
+            b.add_model("Home-Gateway", "Home", 360.0, 40.0)?;
+            b.add_model("Board-MCU", "Board1", 360.0, 200.0)?;
+            b.type_in("Board1", "ipconfig /renew")?;
+            for (name, model, x, value) in [("Temp1", "IoT-Sensor", 200.0, 22), ("Fan1", "IoT-Device", 360.0, 0), ("Light1", "IoT-Light", 520.0, 0)] {
+                b.add_model(model, name, x, 330.0)?;
+                let d = b.t.resolve(name)?;
+                if let Some(dev) = b.t.device_mut(d) {
+                    dev.iot.value = value;
+                }
+            }
+            let board = b.t.resolve("Board1")?;
+            for (pin, name) in [("A0", "Temp1"), ("D0", "Fan1"), ("D1", "Light1")] {
+                let thing = b.t.resolve(name)?;
+                b.t.wire_pin(board, pin, Some(thing))?;
+            }
+            if let Some(d) = b.t.device_mut(board) {
+                d.iot.server = Some(Ipv4Addr::new(192, 168, 0, 1));
+                d.board.program = BOARD_SAMPLE.into();
+                d.board.run = true;
+            }
+            b.t.notes = "Board1 runs a BoardScript program (Board1 > Programming): it reads Temp1 on pin A0, switches Fan1 on pin D0 above 28 degrees, blinks Light1 on D1 and reports the reading to the Home gateway's IoT service every 2 s of simulated time. Raise Temp1's reading (Temp1 > IoT), then advance the time. Wire more things with the IoT Custom cable.".into();
         }
         other => return Err(EngineError::BadParams(format!("unknown sample `{other}`"))),
     }
