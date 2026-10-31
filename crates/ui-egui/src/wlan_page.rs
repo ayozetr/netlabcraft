@@ -20,6 +20,8 @@ struct Form {
     key: String,
     /// The VLAN its hosts land in (empty: the access points' own).
     vlan: String,
+    /// Central switching: the access points tunnel the hosts' traffic to the controller.
+    central: bool,
     radius: String,
     radius_key: String,
     controller: String,
@@ -48,8 +50,8 @@ pub fn show(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
             joined.iter().filter_map(|a| app.session.topology.device(*a)).map(|a| format!("{} (ch {})", a.name, lap_channel(a.id))).collect();
         ui.label(crate::i18n::trf("Access points joined: {}", &[&if names.is_empty() { "-".to_string() } else { names.join(", ") }]));
         ui.separator();
-        egui::Grid::new(("wlans", d.0)).striped(true).num_columns(5).show(ui, |ui| {
-            for h in ["WLAN", "SSID", "Security", "VLAN", ""] {
+        egui::Grid::new(("wlans", d.0)).striped(true).num_columns(6).show(ui, |ui| {
+            for h in ["WLAN", "SSID", "Security", "VLAN", "Switching", ""] {
                 ui.label(RichText::new(crate::i18n::tr(h)).strong());
             }
             ui.end_row();
@@ -58,6 +60,7 @@ pub fn show(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 ui.label(&w.ssid);
                 ui.label(crate::i18n::tr(w.security.name()));
                 ui.label(w.vlan.map_or("-".to_string(), |v| v.to_string()));
+                ui.label(if w.central { tl("Central") } else { tl("Local") });
                 if ui.small_button(tl("Remove")).clicked() {
                     done |= app.run("wlc.wlan", json!({"device": d.0, "id": w.id, "remove": true})).is_some();
                 }
@@ -84,10 +87,14 @@ pub fn show(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
             field(ui, tl("WPA2 passphrase"), &mut f.key);
         }
         field(ui, tl("VLAN (optional)"), &mut f.vlan);
+        ui.checkbox(&mut f.central, tl("Central switching (through the controller)")).on_hover_text(tl(
+            "The access points tunnel the hosts' traffic to the controller over CAPWAP, and the controller bridges it into the VLAN",
+        ));
         if ui.button(tl("Save WLAN")).clicked() {
             let sec = ["open", "psk", "enterprise"].get(f.security).copied().unwrap_or("open");
             let id = f.id.trim().parse::<u64>().unwrap_or(0);
-            let mut p = json!({"device": d.0, "id": id, "ssid": f.ssid.trim(), "security": sec, "key": f.key.trim()});
+            let switching = if f.central { "central" } else { "local" };
+            let mut p = json!({"device": d.0, "id": id, "ssid": f.ssid.trim(), "security": sec, "key": f.key.trim(), "switching": switching});
             if let Ok(v) = f.vlan.trim().parse::<u64>() {
                 p["vlan"] = json!(v);
             }

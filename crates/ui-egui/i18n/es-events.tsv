@@ -61,3 +61,4 @@ TLS application data	datos de aplicación TLS
 encrypted bytes	bytes cifrados
 client hello	saludo del cliente
 server hello	saludo del servidor
+central switching	conmutación central

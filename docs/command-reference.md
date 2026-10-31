@@ -358,7 +358,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show policy-map interface` | user, privileged | router, switch | Service policies and their counters |
 | `show policy-map interface <interface>` | user, privileged | router, switch | One interface's service policies and counters |
 | `show crypto map` | user, privileged | router | Crypto maps and where they apply |
-| `wlan <1-16> SSID {open \| psk PASSPHRASE \| enterprise}` | config | switch | A WLAN this controller offers through its access points |
+| `wlan <1-16> SSID {open \| psk PASSPHRASE \| enterprise} [vlan V] [central]` | config | switch | A WLAN this controller offers through its access points |
 | `no wlan <1-16>` | config | switch | Stop offering a WLAN |
 | `capwap controller A.B.C.D` | config | switch | The wireless LAN controller this access point joins |
 | `no capwap controller` | config | switch | Join a controller in this subnet |

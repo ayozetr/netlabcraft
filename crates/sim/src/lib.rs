@@ -24,6 +24,7 @@ use netlabcraft_wire::{Arp, ArpOp, ETHERTYPE_ARP, ETHERTYPE_IPV4, Frame, Icmp, I
 
 pub mod automation;
 pub mod cdp;
+mod central;
 pub mod email;
 pub mod explain;
 pub mod ftp;
@@ -2105,6 +2106,10 @@ impl Sim {
         if netlabcraft_wire::control::link_local(f.dst) {
             return self.l2_bpdu_in(t, d, in_port, &f);
         }
+        // Off a lightweight AP's radio, a centrally switched host's frame goes to the controller.
+        if let Some(r) = self.central_in(t, d, in_port, &f) {
+            return r;
+        }
         let sp = &d.ports.get(in_port).ok_or("no port")?.switchport;
         let vlan = match if t.is_trunk(End { device: d.id, port: in_port }) { SwitchportMode::Trunk } else { SwitchportMode::Access } {
             SwitchportMode::Access | SwitchportMode::DynamicAuto | SwitchportMode::DynamicDesirable => {
@@ -2204,6 +2209,11 @@ impl Sim {
                 let _ = self.ip6_on(t, d, &svi6, &f);
             }
         }
+        // A controller tunnels frames for its centrally switched hosts to their APs.
+        let (handled, tunnelled) = self.central_out(t, d, vlan, &f);
+        if handled {
+            return Ok(());
+        }
         let outs: Vec<usize> = match known {
             // An access point relays between hosts on its radio.
             Some(p) if Some(p) == in_port && !is_ap_radio(t, End { device: d.id, port: p }) => {
@@ -2238,7 +2248,7 @@ impl Sim {
                 sent += 1;
             }
         }
-        if sent == 0 { Err(format!("no up port in VLAN {vlan} to forward to")) } else { Ok(()) }
+        if sent == 0 && !tunnelled { Err(format!("no up port in VLAN {vlan} to forward to")) } else { Ok(()) }
     }
 
     /// Sends a frame out of a layer-3 interface: a port, or a switch's VLAN interface.

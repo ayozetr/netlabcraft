@@ -449,7 +449,12 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                         Some(v) => format!(" vlan {}", v.as_u64().ok_or_else(|| bad("vlan is a number, 1-4094"))?),
                         None => String::new(),
                     };
-                    format!("wlan {n} {ssid} {sec}{vlan}")
+                    let central = match opt_str(p, "switching").unwrap_or("local") {
+                        "local" => "",
+                        "central" => " central",
+                        other => return Err(bad(format!("switching `{other}`: local or central"))),
+                    };
+                    format!("wlan {n} {ssid} {sec}{vlan}{central}")
                 }
             } else {
                 match opt_str(p, "address").map(str::trim).filter(|a| !a.is_empty()) {

@@ -1479,3 +1479,70 @@ fn peap_runs_inside_radius_with_message_authenticators_and_keys_the_handshake() 
     assert!(tr.find("TLS application data").is_some_and(|a| a < reject) && reject < failure, "{tr}");
     assert!(tr.contains("IEEE 802.1X authentication failed"), "{tr}");
 }
+
+#[test]
+fn a_centrally_switched_wlan_tunnels_its_hosts_through_the_controller_into_its_vlan() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "wlc"})).unwrap();
+    // The controller's port becomes a trunk (as a controller's uplink is), and Staff switches
+    // centrally into VLAN 10.
+    s.execute("device.configure", json!({"device": "S1", "lines": ["interface fa0/1", "switchport mode trunk"]})).unwrap();
+    s.execute("device.configure", json!({"device": "WLC1", "lines": ["interface g0/1", "switchport mode trunk"]})).unwrap();
+    let r = s
+        .execute("wlc.wlan", json!({"device": "WLC1", "id": 1, "ssid": "Staff", "security": "enterprise", "vlan": 10, "switching": "central"}))
+        .unwrap();
+    assert_eq!(r["config"], "wlan 1 Staff enterprise vlan 10 central");
+    assert!(s.execute("wlc.wlan", json!({"device": "WLC1", "id": 1, "ssid": "Staff", "switching": "sideways"})).is_err());
+    s.execute("cli.exec", json!({"device": "WLC1", "line": "enable"})).unwrap();
+    let run = s.execute("cli.exec", json!({"device": "WLC1", "line": "show running-config"})).unwrap()["output"].as_str().unwrap().to_string();
+    assert!(run.contains("wlan 1 Staff enterprise vlan 10 central\n"), "{run}");
+    // The APs no longer carry VLAN 10 themselves.
+    let lap1 = s.topology.resolve("LAP1").unwrap();
+    assert!(!s.topology.lap_vlans(lap1).iter().any(|v| v.get() == 10));
+    // A fresh address in VLAN 10 through the tunnel, then the gateway answers.
+    s.execute("sim.reset", json!({})).unwrap();
+    s.execute("cli.exec", json!({"device": "Laptop1", "line": "ipconfig /renew"})).unwrap();
+    let ip = s.topology.find("Laptop1").unwrap().ports[0].ip.unwrap();
+    assert!(ip.to_string().starts_with("192.168.10."), "{ip}");
+    let marks = s.execute("net.ping", json!({"from": "Laptop1", "to": "192.168.10.1", "count": 3})).unwrap()["marks"].as_str().unwrap().to_string();
+    assert!(marks.ends_with("!!"), "{marks}\n{}", trace_text(&s));
+    let tr = trace_text(&s);
+    assert!(tr.contains("CAPWAP data (central switching) carrying"), "{tr}");
+    assert!(tr.contains("add WLAN 1 \"Staff\" (WPA2-Enterprise, central switching)") || tr.contains("central switching"), "{tr}");
+    // The echo requests cross the LAP's uplink inside CAPWAP (UDP 5247 to the controller), and
+    // leave the controller's own port tagged 10; the LAP itself sends nothing tagged 10.
+    let wlc = s.topology.resolve("WLC1").unwrap();
+    let wlc_addr: std::net::Ipv4Addr = "192.168.20.2".parse().unwrap();
+    let mut tunnelled = 0;
+    let mut from_wlc_tagged = 0;
+    for e in s.sim.trace() {
+        let Ok(f) = netlabcraft_wire::Frame::decode(&e.frame) else { continue };
+        if e.from.device == lap1 || e.to.device == lap1 {
+            if e.air.is_none() && e.from.device == lap1 {
+                assert_ne!(f.vlan, Some(10), "the LAP bridged a VLAN 10 frame onto its uplink: {}", e.summary);
+            }
+            if let Ok(ip) = netlabcraft_wire::Ipv4::decode(&f.payload)
+                && let Ok(u) = netlabcraft_wire::Udp::decode(&ip.payload, ip.src, ip.dst)
+                && u.dst_port == netlabcraft_wire::capwap::DATA_PORT
+                && ip.dst == wlc_addr
+                && let Ok((inner, false)) = netlabcraft_wire::capwap::data_frame(&u.payload)
+            {
+                let inner = netlabcraft_wire::Frame::decode(&inner).unwrap();
+                assert_eq!(inner.vlan, Some(10));
+                tunnelled += 1;
+            }
+        }
+        if e.from.device == wlc && f.vlan == Some(10) && f.ethertype == netlabcraft_wire::ETHERTYPE_IPV4 {
+            from_wlc_tagged += 1;
+        }
+    }
+    assert!(tunnelled >= 3, "{tunnelled}");
+    assert!(from_wlc_tagged >= 3, "{from_wlc_tagged}");
+    // Back to local switching: the AP bridges again, tagging VLAN 10 on its own trunk.
+    s.execute("wlc.wlan", json!({"device": "WLC1", "id": 1, "ssid": "Staff", "security": "enterprise", "vlan": 10, "switching": "local"})).unwrap();
+    assert!(s.topology.lap_vlans(lap1).iter().any(|v| v.get() == 10));
+    s.execute("sim.reset", json!({})).unwrap();
+    let marks = s.execute("net.ping", json!({"from": "Laptop1", "to": "192.168.10.1", "count": 3})).unwrap()["marks"].as_str().unwrap().to_string();
+    assert!(marks.ends_with("!!"), "{marks}");
+    assert!(!trace_text(&s).contains("central switching) carrying"));
+}

@@ -53,6 +53,11 @@ pub struct Wlan {
     /// (`None`: the AP's own VLAN, untagged).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vlan: Option<VlanId>,
+    /// Central switching: the access points tunnel the hosts' traffic to the controller over
+    /// CAPWAP data, and the controller bridges it into the VLAN (`false`: local switching, the
+    /// APs bridge it onto their own uplink).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub central: bool,
 }
 
 /// Wireless-controller settings of a device.
@@ -89,6 +94,8 @@ pub struct Offer {
     pub channel: u8,
     /// The VLAN the WLAN's hosts land in (`None`: the radio port's own access VLAN).
     pub vlan: Option<VlanId>,
+    /// Tunnelled to the controller (central switching) rather than bridged by the AP.
+    pub central: bool,
 }
 
 /// What became of a host's attempt to join the nearest radio offering its network.
@@ -228,6 +235,7 @@ impl Topology {
                     controller: Some(wlc.id),
                     channel: lap_channel(d.id),
                     vlan: w.vlan,
+                    central: w.central,
                 })
                 .collect();
         }
@@ -240,24 +248,38 @@ impl Topology {
                 controller: None,
                 channel: w.channel,
                 vlan: None,
+                central: false,
             })
             .collect()
     }
 
-    /// The VLANs a lightweight AP bridges WLANs into: those its controller's WLANs name.
+    /// The VLANs a lightweight AP bridges WLANs into: those its controller's locally switched
+    /// WLANs name (centrally switched ones go to the controller instead).
     pub fn lap_vlans(&self, lap: DeviceId) -> Vec<VlanId> {
         let Some(wlc) = self.device(lap).filter(|d| is_lap(d)).and_then(|_| self.lap_controller(lap)).and_then(|w| self.device(w)) else {
             return Vec::new();
         };
-        let mut v: Vec<VlanId> = wlc.wlan.wlans.iter().filter_map(|w| w.vlan).collect();
+        let mut v: Vec<VlanId> = wlc.wlan.wlans.iter().filter(|w| !w.central).filter_map(|w| w.vlan).collect();
         v.sort();
         v.dedup();
         v
     }
 
-    /// Whether a switch knows a VLAN: one it has, or (a lightweight AP) one of its WLANs'.
+    /// Whether a switch knows a VLAN: one it has, (a lightweight AP) one of its WLANs', or (a
+    /// controller) one its centrally switched WLANs bridge into.
     pub fn switch_has_vlan(&self, d: &Device, vlan: VlanId) -> bool {
-        d.vlans.contains_key(&vlan) || (is_lap(d) && self.lap_vlans(d.id).contains(&vlan))
+        d.vlans.contains_key(&vlan)
+            || (is_lap(d) && self.lap_vlans(d.id).contains(&vlan))
+            || (is_wlc(d) && d.wlan.wlans.iter().any(|w| w.central && w.vlan == Some(vlan)))
+    }
+
+    /// A centrally switched Wi-Fi host: its controller, its access point radio and the VLAN
+    /// the controller bridges it into (the WLAN's, else the controller's management VLAN).
+    pub fn central_client(&self, client: End) -> Option<(DeviceId, End, VlanId)> {
+        let a = self.wifi_attempt(client).filter(|a| a.outcome.is_ok() && a.offer.central)?;
+        let wlc = self.device(a.offer.controller?)?;
+        let vlan = a.offer.vlan.or_else(|| mgmt_addr(wlc).map(|(v, _)| v)).unwrap_or(VlanId::DEFAULT);
+        Some((wlc.id, a.ap, vlan))
     }
 
     /// Whether an access point's radio carries a VLAN besides its access VLAN: a lightweight

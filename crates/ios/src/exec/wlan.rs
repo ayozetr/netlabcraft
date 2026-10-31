@@ -130,6 +130,11 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
                 return Err("% Give an SSID of 1-32 printable characters, without spaces".into());
             }
             let mut words: Vec<&str> = arg(2).split_whitespace().collect();
+            // An optional `central` last: the APs tunnel the hosts' traffic to the controller.
+            let central = words.last().is_some_and(|w| w.eq_ignore_ascii_case("central"));
+            if central {
+                words.pop();
+            }
             // An optional `vlan V` at the end: the VLAN the APs bridge this WLAN into.
             let mut vlan = None;
             if let [.., kw, v] = words.as_slice()
@@ -150,7 +155,7 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             if d.wlan.wlans.iter().any(|w| w.ssid == ssid && w.id != n) {
                 return Err(format!("% Another WLAN already offers {ssid}"));
             }
-            let w = Wlan { id: n, ssid: ssid.to_string(), security, vlan };
+            let w = Wlan { id: n, ssid: ssid.to_string(), security, vlan, central };
             match d.wlan.wlans.iter_mut().find(|x| x.id == n) {
                 Some(x) => *x = w,
                 None => {

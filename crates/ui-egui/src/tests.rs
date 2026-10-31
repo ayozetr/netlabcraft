@@ -1336,3 +1336,28 @@ fn simulation_panel_toggles_constant_delay_and_the_capture_filter() {
     assert_eq!(pdu_dialog::params(&d).unwrap()["at"], 12.5);
     assert!(pdu_dialog::params(&d).unwrap().get("start").is_none());
 }
+
+/// The controller's Wireless page sets a WLAN to central switching through `wlc.wlan`.
+#[test]
+fn the_wlan_page_sets_central_switching() {
+    use egui::accesskit::Role;
+    let mut h = harness(Some("wlc"));
+    h.state_mut().ui.show_notes = false;
+    h.run_steps(2);
+    let wlc = h.state().session.topology.resolve("WLC1").unwrap();
+    open_console(h.state_mut(), wlc);
+    {
+        let w = h.state_mut().ui.windows.get_mut(&wlc).unwrap();
+        w.tab = console::Tab::Config;
+        w.page = console::ConfigPage::Wireless;
+    }
+    h.run_steps(3);
+    assert!(h.query_by_label("Switching").is_some());
+    h.get_by_role_and_label(Role::CheckBox, "Central switching (through the controller)").click();
+    h.run_steps(1);
+    h.get_by_label("Save WLAN").click();
+    h.run_steps(2);
+    // The form's next free WLAN number, saved with central switching.
+    let wlans = &h.state().session.topology.device(wlc).unwrap().wlan.wlans;
+    assert!(wlans.iter().any(|w| w.id == 3 && w.central) && wlans.iter().filter(|w| w.central).count() == 1, "{wlans:?}");
+}

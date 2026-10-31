@@ -31,7 +31,8 @@
 //! Lightweight APs join their controller with a CAPWAP exchange (discovery, join, configuration
 //! status, then the IEEE 802.11 WLAN configuration that pushes the WLANs) over UDP 5246, and
 //! relay EAPOL to it over the CAPWAP data channel (UDP 5247). Host traffic itself is bridged
-//! locally by the AP onto its wired port (central tunnelling of data is not modelled).
+//! locally by the AP onto its wired port, or, on a centrally switched WLAN, tunnelled to the
+//! controller over CAPWAP data and bridged there (see [`crate::central`]).
 //!
 //! Who may join and associate is worked out from the lab (`Topology::wifi_attempt`,
 //! `Topology::lap_controller`), as the routing protocols are; these exchanges show it on the
@@ -789,7 +790,7 @@ impl Sim {
         self.send_ip(t, d, ip)
     }
 
-    fn capwap_send(&mut self, t: &Topology, from: &Device, to: &Device, payload: Vec<u8>, port: u16) -> Result<(), String> {
+    pub(crate) fn capwap_send(&mut self, t: &Topology, from: &Device, to: &Device, payload: Vec<u8>, port: u16) -> Result<(), String> {
         let (_, dst) = mgmt_addr(to).ok_or_else(|| format!("{} has no management address", to.name))?;
         self.udp_send(t, from, dst.addr, port, port, payload)
     }
@@ -804,7 +805,7 @@ impl Sim {
                 WlanSecurity::Psk(p) => self.pmk(p, &w.ssid).to_vec(),
                 _ => Vec::new(),
             };
-            let add = capwap::AddWlan { radio: 1, wlan_id: w.id, key, akm: akm(&w.security), ssid: w.ssid.clone() };
+            let add = capwap::AddWlan { radio: 1, wlan_id: w.id, key, akm: akm(&w.security), ssid: w.ssid.clone(), central: w.central };
             msg = msg.with(capwap::ADD_WLAN, add.encode());
         }
         let _ = wlc;
@@ -876,7 +877,11 @@ impl Sim {
     /// CAPWAP data: at a controller, a host's 802.1X identity to check; at an AP, the answer to
     /// put on the air.
     fn capwap_data_in(&mut self, t: &Topology, me: &Device, peer: &Device, payload: &[u8]) -> Result<(), String> {
-        let inner = capwap::data_decode(payload).map_err(|e| e.to_string())?;
+        let (inner, native) = capwap::data_frame(payload).map_err(|e| e.to_string())?;
+        // An 802.3 frame: a centrally switched host's traffic (see `crate::central`).
+        if !native {
+            return if is_wlc(me) { self.central_from_ap(t, me, peer, &inner) } else { self.central_to_air(t, me, &inner) };
+        }
         let f = Dot11::decode(&inner).map_err(|e| e.to_string())?;
         if is_lap(me) {
             // Out of the radio, to the host it names.
@@ -999,7 +1004,7 @@ impl Sim {
 }
 
 /// The Wi-Fi host port with this MAC address.
-fn host_with_mac(t: &Topology, mac: MacAddr) -> Option<End> {
+pub(crate) fn host_with_mac(t: &Topology, mac: MacAddr) -> Option<End> {
     t.devices
         .iter()
         .filter(|d| d.kind.is_host())
