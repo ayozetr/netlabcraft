@@ -371,7 +371,7 @@ fn eigrp_for_ipv6_mistakes_are_explained() {
     assert!(note.contains("ipv6 unicast-routing") && note.contains("router id"), "{note}");
     assert_eq!(lab.prompt(r), "R1(config-rtr)#");
     assert!(lab.try_run(r, "network 10.0.0.0").contains("no network statements"));
-    assert!(lab.try_run(r, "variance 2").contains("IPv4 only"));
+    assert!(lab.try_run(r, "auto-summary").contains("never summarises"));
     lab.run(r, "eigrp router-id 9.9.9.9\nmaximum-paths 2\nexit");
     assert!(lab.try_run(r, "ipv6 router eigrp 6").contains("already runs here in AS 5"));
     assert!(lab.try_run(r, "no ipv6 router eigrp 6").contains("No EIGRP for IPv6 process for AS 6"));
@@ -441,7 +441,9 @@ fn vrrp_by_typing() {
     lab.run(pc1, "ping 10.0.0.10");
     assert!(lab.run(pc1, "ping 10.0.0.10").contains("4 answered"));
     lab.run(r1, "conf t\nint g0/0\nno shutdown\nend");
-    lab.sim.run_for(&lab.t, 2_000_000);
+    // Preempting waits R1's master down interval (3 s and a skew).
+    let _ = lab.run(r1, "show vrrp");
+    lab.sim.run_for(&lab.t, 4_000_000);
     assert!(lab.run(r1, "show vrrp").contains(": master"));
     // Without preempt it waits for R2 to fail.
     lab.run(r1, "conf t\nint g0/0\nno vrrp 1 preempt\nshutdown\nend");

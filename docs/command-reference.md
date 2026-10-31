@@ -1124,6 +1124,38 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `id mac H.H.H` |  | router | The SIP phone's MAC address (under voice register pool) |
 | `number <1-8> dn <1-1000>` |  | router | Put a SIP directory number on a line (under voice register pool) |
 | `show voice register all` | user, privileged | router | SIP call control: numbers, phones, registrations and calls |
+| `mls qos map cos-dscp <0-63> x8` | config | switch | The DSCP each CoS 0-7 becomes on ports that trust CoS |
+| `no mls qos map cos-dscp` | config | switch | CoS x 8 again |
+| `mls qos cos <0-7>` | interface | switch | The CoS untagged frames arriving here count as |
+| `no mls qos cos` | interface | switch | Untagged frames count as CoS 0 |
+| `switchport priority extend cos <0-7>` | interface | switch | The CoS the IP phone here gives its PC's frames |
+| `no switchport priority extend` | interface | switch | The PC's frames get the port's CoS |
+| `show mls qos maps` | user, privileged | switch | The CoS-to-DSCP and DSCP-to-CoS maps |
+| `show mls qos maps {cos-dscp\|dscp-cos}` | user, privileged | switch | One QoS map |
+| `vrrp <1-255> timers advertise <1-40>` | interface, subinterface | router, switch | Seconds between the master's advertisements |
+| `vrrp <1-255> timers advertise msec <10-40950>` | interface, subinterface | router, switch | Milliseconds between advertisements (VRRP version 3) |
+| `no vrrp <1-255> timers advertise` | interface, subinterface | router, switch | Advertise every second again |
+| `vrrp <1-255> track INTERFACE` | interface, subinterface | router, switch | Lower the priority by 10 while that interface is down |
+| `vrrp <1-255> track INTERFACE decrement <1-254>` | interface, subinterface | router, switch | Lower the priority by this much while that interface is down |
+| `no vrrp <1-255> track INTERFACE` | interface, subinterface | router, switch | Stop tracking an interface |
+| `vrrp <1-255> ipv6 FE80::X` | interface, subinterface | router, switch | Share this IPv6 link-local gateway address (VRRP version 3) |
+| `no vrrp <1-255> ipv6` | interface, subinterface | router, switch | Remove the group's IPv6 address |
+| `ip summary-address eigrp <1-65535> A.B.C.D A.B.C.D` | interface, subinterface | router, switch | Advertise one summary instead of the routes it covers |
+| `no ip summary-address eigrp <1-65535> A.B.C.D A.B.C.D` | interface, subinterface | router, switch | Advertise the covered routes again |
+| `ipv6 summary-address eigrp <1-65535> X:X::X/N` | interface, subinterface | router, switch | Advertise one IPv6 summary instead of the prefixes it covers |
+| `no ipv6 summary-address eigrp <1-65535> X:X::X/N` | interface, subinterface | router, switch | Advertise the covered IPv6 prefixes again |
+| `timers basic <1-65535> <1-65535> <0-65535> <1-65535>` |  | router, switch | Update, invalid, hold-down and flush times (seconds) |
+| `no timers basic` |  | router, switch | Timers 30 180 180 240 again |
+| `ipv6 router rip WORD` | config | router, switch | Start or configure RIPng |
+| `no ipv6 router rip WORD` | config | router, switch | Stop RIPng |
+| `ipv6 rip WORD enable` | interface, subinterface | router, switch | Run this RIPng process on the interface |
+| `no ipv6 rip WORD enable` | interface, subinterface | router, switch | Stop RIPng here |
+| `show ipv6 rip` | user, privileged | router, switch | RIPng: process, interfaces and neighbours |
+| `show ipv6 rip database` | user, privileged | router, switch | Prefixes RIPng knows |
+| `vtp pruning` | config | switch | Stop flooding VLANs towards switches that don't need them |
+| `no vtp pruning` | config | switch | Flood every VLAN on every trunk again |
+| `switchport trunk pruning vlan {VLANS\|add VLANS\|remove VLANS\|except VLANS\|none}` | interface | switch | The VLANs VTP pruning may stop on this trunk |
+| `no switchport trunk pruning vlan` | interface | switch | VLANs 2-1001 eligible again |
 
 ## Host shell (PCs and servers)
 

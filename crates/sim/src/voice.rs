@@ -25,7 +25,8 @@
 //! **The built-in switch**: the phone's network port (`FastEthernet0`) faces the switch, its
 //! PC port (`FastEthernet1`) a computer. The PC's frames pass through untouched (untagged:
 //! the access VLAN); the phone's own frames go tagged in the voice VLAN when the switch port
-//! has `switchport voice vlan V`. The phone learns V from the switch port it is cabled to,
+//! has `switchport voice vlan V`, voice marked 802.1p priority (CoS) 5 and DSCP EF, signalling
+//! CoS 3 and CS3 (IEEE 802.1Q's priority field, RFC 4594's usual classes). The phone learns V from the switch port it is cabled to,
 //! standing for the discovery protocols (CDP, LLDP-MED) real phones learn it with, which are
 //! computed here like the other control protocols.
 
@@ -200,6 +201,27 @@ fn rtp_packet(seq: u16, ssrc: u32) -> Vec<u8> {
     b
 }
 
+/// CoS and DSCP a phone gives a frame it sends in its voice VLAN: 5 and EF (46) for voice,
+/// 3 and CS3 (24) for call signalling, 0 for anything else (ARP, DHCP…).
+fn voice_marking(f: &Frame) -> (u8, u8) {
+    if f.ethertype != netlabcraft_wire::ETHERTYPE_IPV4 {
+        return (0, 0);
+    }
+    let Ok(ip) = Ipv4::decode(&f.payload) else { return (0, 0) };
+    if ip.protocol != PROTO_UDP {
+        return (0, 0);
+    }
+    let Ok(u) = Udp::decode(&ip.payload, ip.src, ip.dst) else { return (0, 0) };
+    let signal = [SIGNAL_PORT, netlabcraft_model::voice::SIP_PORT];
+    if u.dst_port == RTP_PORT && is_rtp(&u.payload) {
+        (5, 46)
+    } else if signal.contains(&u.dst_port) || signal.contains(&u.src_port) {
+        (3, 24)
+    } else {
+        (0, 0)
+    }
+}
+
 /// Whether a payload is an RTP packet as phones send them.
 fn is_rtp(b: &[u8]) -> bool {
     b.len() >= 12 && b.first().is_some_and(|v| v >> 6 == 2) && b.get(1).is_some_and(|pt| pt & 0x7f == 0)
@@ -222,7 +244,16 @@ impl Sim {
             return frame;
         }
         match (voice_vlan(t, from.device), Frame::decode(&frame)) {
-            (Some(v), Ok(f)) if f.vlan.is_none() => f.retagged(Some(v)).encode(),
+            (Some(v), Ok(mut f)) if f.vlan.is_none() => {
+                // Voice goes with 802.1p priority 5 and DSCP EF, signalling with 3 and CS3.
+                let (cos, dscp) = voice_marking(&f);
+                if cos != 0 {
+                    netlabcraft_wire::qos::set_dscp(&mut f.payload, dscp);
+                }
+                let mut out = f.retagged(Some(v)).encode();
+                netlabcraft_wire::qos::set_frame_pcp(&mut out, cos);
+                out
+            }
             _ => frame,
         }
     }

@@ -287,11 +287,15 @@ pub struct Vtp {
     /// Goes up by one with every VLAN change on a server; the highest revision wins.
     #[serde(default)]
     pub revision: u32,
+    /// `vtp pruning` (set on a server, shared with the domain): trunks stop flooding a VLAN
+    /// towards switches that have no use for it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pruning: bool,
 }
 
 impl Default for Vtp {
     fn default() -> Self {
-        Vtp { mode: VtpMode::Server, domain: String::new(), password: None, version: 1, revision: 0 }
+        Vtp { mode: VtpMode::Server, domain: String::new(), password: None, version: 1, revision: 0, pruning: false }
     }
 }
 
@@ -753,6 +757,9 @@ pub struct Ipv6Conf {
     /// `ipv6 eigrp AS`: the interface runs EIGRP for IPv6 in that autonomous system.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub eigrp: Option<u16>,
+    /// `ipv6 rip NAME enable`: the interface runs that RIPng process.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rip: Option<String>,
     /// Routers: `ipv6 nd managed-config-flag` (hosts take addresses from DHCPv6).
     #[serde(default)]
     pub nd_managed: bool,
@@ -919,6 +926,12 @@ pub struct Device {
     /// Per-interface EIGRP timers, by interface name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub eigrp_if: BTreeMap<String, EigrpIfConf>,
+    /// EIGRP summary addresses, by interface name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub eigrp_summary: BTreeMap<String, routing::EigrpSummaries>,
+    /// Routers: RIPng (`ipv6 router rip NAME`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rip6: Option<routing::Rip6>,
     /// Routers: access lists.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub acls: Vec<acl::Acl>,
@@ -1185,6 +1198,10 @@ pub struct Eigrp6 {
     /// `maximum-paths N` (4 when not set).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub maximum_paths: Option<u8>,
+    /// `variance N`: feasible successors within N times the feasible distance are installed
+    /// too (1 when not set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variance: Option<u8>,
 }
 
 impl Eigrp6 {
@@ -1276,15 +1293,27 @@ pub struct Rip {
     pub default_originate: bool,
     #[serde(default)]
     pub auto_summary: bool,
+    /// `timers basic UPDATE INVALID HOLDDOWN FLUSH` (seconds; 30 180 180 240 when not set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timers: Option<[u32; 4]>,
 }
 
 impl Default for Rip {
     fn default() -> Self {
-        Rip { version: 1, networks: Vec::new(), passive: Vec::new(), default_originate: false, auto_summary: false }
+        Rip { version: 1, networks: Vec::new(), passive: Vec::new(), default_originate: false, auto_summary: false, timers: None }
     }
 }
 
+/// RIP's timers when not set (RFC 2453 §3.8; hold-down as routers usually have it).
+pub const RIP_TIMERS: [u32; 4] = [30, 180, 180, 240];
+
 impl Rip {
+    /// Update, invalid, hold-down and flush times (seconds).
+    pub fn timers(&self) -> (u32, u32, u32, u32) {
+        let [u, i, h, f] = self.timers.unwrap_or(RIP_TIMERS);
+        (u.max(1), i.max(1), h, f.max(1))
+    }
+
     /// The classful network of an address (class A /8, B /16, C /24).
     pub fn classful(a: Ipv4Addr) -> Ipv4Net {
         let first = a.octets()[0];
@@ -1781,6 +1810,8 @@ impl Device {
             rip: None,
             eigrp: None,
             eigrp_if: BTreeMap::new(),
+            eigrp_summary: BTreeMap::new(),
+            rip6: None,
             acls: Vec::new(),
             nat: Nat::default(),
             services: if kind == DeviceKind::Server { services::Services::server_defaults() } else { services::Services::default() },
@@ -1872,6 +1903,8 @@ impl Device {
         self.acls6.clear();
         self.ospf_if.clear();
         self.eigrp_if.clear();
+        self.eigrp_summary.clear();
+        self.rip6 = None;
         self.dhcp6_pools.clear();
         self.dns6 = None;
         self.acls.clear();

@@ -24,6 +24,7 @@ pub(crate) mod mgmt;
 pub(crate) mod qos;
 pub(crate) mod routing;
 pub(crate) mod security;
+pub(crate) mod swroute;
 pub(crate) mod voice;
 mod vpn;
 mod wlan;
@@ -70,6 +71,8 @@ pub enum Mode {
     Eigrp,
     /// `R1(config-rtr)#` under `ipv6 router eigrp N` (the EIGRP command bits, checked apart).
     Eigrp6,
+    /// `R1(config-rtr)#` under `ipv6 router rip NAME` (the RIP command bits, checked apart).
+    Rip6,
     /// `R1(config-ipv6-acl)#`: the list's name.
     Acl6(String),
     /// `R1(config-dhcpv6)#`: the pool's name.
@@ -144,7 +147,7 @@ impl Mode {
             Mode::DhcpPool(_) => Modes::DHCP,
             Mode::Svi(_) => Modes::SVI,
             Mode::Ospf => Modes::OSPF,
-            Mode::Rip => Modes::RIP,
+            Mode::Rip | Mode::Rip6 => Modes::RIP,
             Mode::Ospf6 => Modes::OSPF6,
             Mode::Eigrp | Mode::Eigrp6 => Modes::EIGRP,
             Mode::Acl6(_) => Modes::ACL6,
@@ -502,7 +505,7 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::DhcpPool(_) => format!("{n}(dhcp-config)#"),
         Mode::Svi(_) => format!("{n}(config-if)#"),
         Mode::Ospf | Mode::Rip | Mode::Eigrp => format!("{n}(config-router)#"),
-        Mode::Ospf6 | Mode::Eigrp6 => format!("{n}(config-rtr)#"),
+        Mode::Ospf6 | Mode::Eigrp6 | Mode::Rip6 => format!("{n}(config-rtr)#"),
         Mode::Acl6(_) => format!("{n}(config-ipv6-acl)#"),
         Mode::Dhcp6(_) => format!("{n}(config-dhcpv6)#"),
         Mode::Acl(name) => {
@@ -806,6 +809,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Rip
                 | Mode::Eigrp
                 | Mode::Eigrp6
+                | Mode::Rip6
                 | Mode::Acl(_)
                 | Mode::Acl6(_)
                 | Mode::Dhcp6(_)
@@ -879,6 +883,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Rip
                 | Mode::Eigrp
                 | Mode::Eigrp6
+                | Mode::Rip6
                 | Mode::Acl(_)
                 | Mode::Acl6(_)
                 | Mode::Dhcp6(_)
@@ -2187,6 +2192,29 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::VoiceRegIdMac
         | Id::VoiceRegNumberDn
         | Id::ShowVoiceRegister => families::command(&mut c, spec.id, &args),
+        Id::SrCosDscpMap
+        | Id::SrNoCosDscpMap
+        | Id::SrMlsQosCos
+        | Id::SrNoMlsQosCos
+        | Id::SrPriorityExtend
+        | Id::SrNoPriorityExtend
+        | Id::SrShowMlsQosMaps
+        | Id::SrIpSummaryEigrp
+        | Id::SrNoIpSummaryEigrp
+        | Id::SrIpv6SummaryEigrp
+        | Id::SrNoIpv6SummaryEigrp
+        | Id::SrRipTimers
+        | Id::SrNoRipTimers
+        | Id::SrIpv6RouterRip
+        | Id::SrNoIpv6RouterRip
+        | Id::SrIpv6RipEnable
+        | Id::SrNoIpv6RipEnable
+        | Id::SrShowIpv6Rip
+        | Id::SrShowIpv6RipDatabase
+        | Id::SrVtpPruning
+        | Id::SrNoVtpPruning
+        | Id::SrTrunkPruning
+        | Id::SrNoTrunkPruning => swroute::command(&mut c, spec.id, &args),
         Id::VoiceTelephonyService
         | Id::VoiceNoTelephonyService
         | Id::VoiceMaxEphones
@@ -3301,6 +3329,19 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 }
             })
         }
+        Id::RipVersion
+        | Id::RipNetwork
+        | Id::NoRipNetwork
+        | Id::RipPassive
+        | Id::NoRipPassive
+        | Id::RipDefaultOriginate
+        | Id::NoRipDefaultOriginate
+        | Id::RipAutoSummary
+        | Id::NoRipAutoSummary
+            if c.cli.mode == Mode::Rip6 =>
+        {
+            Err("% Not part of RIPng here: interfaces join with `ipv6 rip NAME enable`".into())
+        }
         Id::RouterRip if c.d()?.kind == DeviceKind::Switch && !c.d()?.ip_routing => Err("% RIP needs `ip routing` (multilayer switches)".into()),
         Id::RouterRip => {
             let d = c.dm()?;
@@ -3384,6 +3425,13 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::NoVrrpPreempt
         | Id::NoVrrp
         | Id::ShowVrrp
+        | Id::SrVrrpTimers
+        | Id::SrVrrpTimersMsec
+        | Id::SrNoVrrpTimers
+        | Id::SrVrrpTrack
+        | Id::SrNoVrrpTrack
+        | Id::SrVrrpIpv6
+        | Id::SrNoVrrpIpv6
         | Id::GlbpIp
         | Id::GlbpPriority
         | Id::NoGlbpPriority

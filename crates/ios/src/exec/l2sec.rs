@@ -505,6 +505,7 @@ pub(crate) fn global_lines(s: &mut String, d: &Device) {
     if l.mls_qos {
         let _ = writeln!(s, "mls qos");
     }
+    super::swroute::global_lines(s, d);
     if s.len() > start {
         let _ = writeln!(s, "!");
     }
@@ -539,6 +540,7 @@ pub(crate) fn port_lines(s: &mut String, p: &netlabcraft_model::Port) {
     if let Some(tr) = l.qos_trust {
         let _ = writeln!(s, " mls qos trust {}", tr.name());
     }
+    super::swroute::port_lines(s, p);
     if let Some(lt) = l.link_type {
         let _ = writeln!(s, " spanning-tree link-type {}", lt.name());
     }

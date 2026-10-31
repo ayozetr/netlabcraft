@@ -3,7 +3,7 @@
 //! `Vlan10`), so they need no field on every kind of interface.
 
 use std::collections::BTreeMap;
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 use serde::{Deserialize, Serialize};
 
@@ -22,11 +22,32 @@ pub struct Vrrp {
     pub priority: u8,
     /// On by default (RFC 5798 §6.1); `no vrrp N preempt` turns it off.
     pub preempt: bool,
+    /// `vrrp N timers advertise S` (`… msec M` with version 3): the advertisement interval in
+    /// centiseconds (100, one second, when not set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub advertise_cs: Option<u16>,
+    /// `vrrp N track INTERFACE [decrement D]`: while that interface is down, the priority drops
+    /// by D (10 by default).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub track: Vec<(String, u8)>,
+    /// `vrrp N ipv6 FE80::…`: the group's IPv6 virtual link-local address (VRRP version 3).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ipv6: Option<Ipv6Addr>,
 }
+
+/// Most tracked interfaces per VRRP group.
+pub const MAX_TRACK: usize = 8;
+/// Longest advertisement interval (RFC 5798's 12-bit field, centiseconds).
+pub const MAX_ADVERTISE_CS: u16 = 4095;
 
 impl Vrrp {
     pub fn new(group: u8) -> Vrrp {
-        Vrrp { group, ip: None, priority: 100, preempt: true }
+        Vrrp { group, ip: None, priority: 100, preempt: true, advertise_cs: None, track: Vec::new(), ipv6: None }
+    }
+
+    /// The advertisement interval, centiseconds.
+    pub fn interval_cs(&self) -> u16 {
+        self.advertise_cs.unwrap_or(100).clamp(1, MAX_ADVERTISE_CS)
     }
 }
 
@@ -121,6 +142,8 @@ impl Fhrp {
             for g in v.iter_mut() {
                 g.group = g.group.max(1);
                 g.priority = g.priority.clamp(1, 254);
+                g.track.truncate(MAX_TRACK);
+                g.advertise_cs = g.advertise_cs.map(|a| a.clamp(1, MAX_ADVERTISE_CS));
             }
         }
         for v in self.glbp.values_mut() {
@@ -144,13 +167,17 @@ mod tests {
         assert_eq!(GlbpBalance::parse("Host-Dependent"), Some(GlbpBalance::HostDependent));
         let mut f = Fhrp::default();
         assert!(f.is_empty());
-        f.vrrp.insert("g0/0".into(), vec![Vrrp { group: 0, ip: None, priority: 255, preempt: true }; 40]);
+        f.vrrp.insert(
+            "g0/0".into(),
+            vec![Vrrp { group: 0, priority: 255, advertise_cs: Some(9_999), track: vec![(String::new(), 1); 20], ..Vrrp::new(1) }; 40],
+        );
         f.glbp.insert("g0/1".into(), vec![Glbp { group: 5000, ..Glbp::new(1) }]);
         f.glbp.insert("g0/2".into(), Vec::new());
         f.sanitize();
         let v = f.vrrp_on("g0/0");
         assert_eq!(v.len(), MAX_GROUPS);
-        assert!(v.iter().all(|g| g.group == 1 && g.priority == 254));
+        assert!(v.iter().all(|g| g.group == 1 && g.priority == 254 && g.track.len() == MAX_TRACK && g.interval_cs() == MAX_ADVERTISE_CS));
+        assert_eq!(Vrrp::new(1).interval_cs(), 100);
         assert_eq!(f.glbp_on("g0/1").first().map(|g| g.group), Some(1023));
         assert!(f.glbp_on("g0/2").is_empty() && !f.glbp.contains_key("g0/2"));
     }

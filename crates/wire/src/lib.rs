@@ -29,6 +29,7 @@ pub mod ipv6;
 pub mod lacp;
 pub mod lldp;
 pub mod md5;
+pub mod ripng;
 pub mod vrrp;
 
 pub mod mgmt;
@@ -129,7 +130,8 @@ pub fn checksum(chunks: &[&[u8]]) -> u16 {
 pub struct Frame {
     pub dst: MacAddr,
     pub src: MacAddr,
-    /// The 802.1Q VLAN id, when tagged (priority bits are always 0).
+    /// The 802.1Q VLAN id, when tagged. The tag's 802.1p priority stays in the encoded bytes
+    /// (`qos::frame_pcp`, `qos::set_frame_pcp`); a frame encodes with priority 0.
     pub vlan: Option<u16>,
     pub ethertype: u16,
     pub payload: Vec<u8>,
@@ -564,7 +566,11 @@ pub fn summarize(bytes: &[u8]) -> (Protocol, String) {
 /// levels down, never without end).
 fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
     let Ok(f) = Frame::decode(bytes) else { return (Protocol::Other, "malformed frame".into()) };
-    let tag = f.vlan.map(|v| format!(" [VLAN {v}]")).unwrap_or_default();
+    let tag = match (f.vlan, qos::frame_pcp(bytes)) {
+        (Some(v), 0) => format!(" [VLAN {v}]"),
+        (Some(v), cos) => format!(" [VLAN {v}, CoS {cos}]"),
+        (None, _) => String::new(),
+    };
     match f.ethertype {
         ETHERTYPE_ARP => match Arp::decode(&f.payload) {
             Ok(a) if a.op == ArpOp::Request => (Protocol::Arp, format!("ARP who has {}? tell {}{tag}", a.target_ip, a.sender_ip)),
@@ -784,7 +790,16 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                         Ok(u) if u.dst_port == control::RIP_PORT => match control::rip_decode(&u.payload) {
                             Ok((v, entries)) => (
                                 Protocol::Rip,
-                                format!("RIPv{v} update from {}: {} route{}{tag}", ip.src, entries.len(), if entries.len() == 1 { "" } else { "s" }),
+                                format!(
+                                    "RIPv{v} update from {}: {} route{}{}{tag}",
+                                    ip.src,
+                                    entries.len(),
+                                    if entries.len() == 1 { "" } else { "s" },
+                                    match entries.iter().filter(|e| e.metric >= 16).count() {
+                                        0 => String::new(),
+                                        k => format!(" ({k} at metric 16)"),
+                                    }
+                                ),
                             ),
                             Err(e) => (Protocol::Rip, format!("RIP ({e}){tag}")),
                         },
@@ -898,8 +913,16 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                     ),
                     Err(e) => (Protocol::Dhcp, format!("DHCPv6 ({e}){tag}")),
                 },
+                Ok((_, ripng::RIPNG_PORT, body)) => match ripng::decode(&body) {
+                    Ok(e) => (Protocol::Rip, format!("{} {} → {}{tag}", ripng::describe(&e), ip.src, ip.dst)),
+                    Err(e) => (Protocol::Rip, format!("RIPng ({e}) {} → {}{tag}", ip.src, ip.dst)),
+                },
                 Ok((sp, dp, _)) => (Protocol::Ipv6, format!("UDP [{}]:{sp} → [{}]:{dp}{tag}", ip.src, ip.dst)),
                 Err(e) => (Protocol::Ipv6, format!("UDP ({e}){tag}")),
+            },
+            Ok(ip) if ip.next_header == vrrp::PROTO_VRRP => match vrrp::Vrrp6::decode(&ip.payload, ip.src, ip.dst) {
+                Ok(v) => (Protocol::Hsrp, format!("{} {} → {}{tag}", v.describe(), ip.src, ip.dst)),
+                Err(e) => (Protocol::Hsrp, format!("VRRP ({e}) {} → {}{tag}", ip.src, ip.dst)),
             },
             Ok(ip) if ip.next_header == eigrp::PROTO_EIGRP => match eigrp::EigrpPacket::decode(&ip.payload) {
                 Ok(p) if p.opcode == eigrp::OPCODE_HELLO && p.ack != 0 && p.tlvs.is_empty() => {

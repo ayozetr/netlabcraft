@@ -6,8 +6,13 @@
 //! the others) and eight bytes of authentication data, and its checksum covers the VRRP message
 //! only. Version 3 carries the interval in centiseconds (12 bits), no authentication, and its
 //! checksum covers an IPv4 pseudo-header too (§5.2.8).
+//!
+//! Version 3 for IPv6 ([`Vrrp6`], RFC 5798 §5.1.2) goes from the master's link-local address
+//! to `FF02::12` with hop limit 255, from `00-00-5E-00-02-{VRID}`; its addresses are IPv6
+//! (the first is the virtual link-local address) and its checksum covers the IPv6
+//! pseudo-header (RFC 8200 §8.1).
 
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 use netlabcraft_core::MacAddr;
 
@@ -20,6 +25,81 @@ pub const VRRP_GROUP: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 18);
 const TYPE_ADVERTISEMENT: u8 = 1;
 /// Most addresses one advertisement carries (hostile input).
 const MAX_ADDRESSES: usize = 16;
+
+/// VRRP's IPv6 group (RFC 5798 §5.1.2.2).
+pub const VRRP_GROUP6: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 0x12);
+
+/// The virtual MAC address of an IPv6 virtual router: `00-00-5E-00-02-{VRID}` (§7.3).
+pub fn virtual_mac6(vrid: u8) -> MacAddr {
+    MacAddr([0x00, 0x00, 0x5e, 0x00, 0x02, vrid])
+}
+
+/// A VRRP version 3 advertisement for IPv6.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Vrrp6 {
+    pub vrid: u8,
+    pub priority: u8,
+    /// Centiseconds (12 bits).
+    pub interval: u16,
+    pub addresses: Vec<Ipv6Addr>,
+}
+
+impl Vrrp6 {
+    fn sum(src: Ipv6Addr, dst: Ipv6Addr, msg: &[u8]) -> u16 {
+        let len = u32::try_from(msg.len()).unwrap_or(u32::MAX).to_be_bytes();
+        checksum(&[&src.octets(), &dst.octets(), &len, &[0, 0, 0, PROTO_VRRP], msg])
+    }
+
+    /// The message; `src` and `dst` are the IPv6 addresses, for the pseudo-header.
+    pub fn encode(&self, src: Ipv6Addr, dst: Ipv6Addr) -> Vec<u8> {
+        let addrs = self.addresses.get(..self.addresses.len().min(MAX_ADDRESSES)).unwrap_or_default();
+        let count = u8::try_from(addrs.len()).unwrap_or(0);
+        let mut v = vec![(3 << 4) | TYPE_ADVERTISEMENT, self.vrid, self.priority, count];
+        v.extend_from_slice(&(self.interval & 0x0fff).to_be_bytes());
+        v.extend_from_slice(&[0, 0]);
+        for a in addrs {
+            v.extend_from_slice(&a.octets());
+        }
+        let c = Self::sum(src, dst, &v);
+        if let Some(s) = v.get_mut(6..8) {
+            s.copy_from_slice(&c.to_be_bytes());
+        }
+        v
+    }
+
+    pub fn decode(b: &[u8], src: Ipv6Addr, dst: Ipv6Addr) -> Result<Vrrp6> {
+        let t = || WireError::Truncated("vrrp");
+        let first = *b.first().ok_or_else(t)?;
+        if first >> 4 != 3 {
+            return Err(WireError::Unsupported("vrrp", format!("version {} over IPv6", first >> 4)));
+        }
+        if first & 0x0f != TYPE_ADVERTISEMENT {
+            return Err(WireError::Unsupported("vrrp", format!("type {}", first & 0x0f)));
+        }
+        let count = usize::from(*b.get(3).ok_or_else(t)?);
+        if count > MAX_ADDRESSES {
+            return Err(WireError::Unsupported("vrrp", format!("{count} addresses")));
+        }
+        let msg = b.get(..8 + 16 * count).ok_or_else(t)?;
+        if Self::sum(src, dst, msg) != 0 {
+            return Err(WireError::Checksum("vrrp"));
+        }
+        let interval = u16::from_be_bytes([*msg.get(4).ok_or_else(t)?, *msg.get(5).ok_or_else(t)?]) & 0x0fff;
+        let addresses = (0..count)
+            .map(|k| {
+                let s: [u8; 16] = msg.get(8 + 16 * k..24 + 16 * k).ok_or_else(t)?.try_into().map_err(|_| t())?;
+                Ok(Ipv6Addr::from(s))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Ok(Vrrp6 { vrid: *msg.get(1).ok_or_else(t)?, priority: *msg.get(2).ok_or_else(t)?, interval, addresses })
+    }
+
+    /// One line for the event list.
+    pub fn describe(&self) -> String {
+        let addrs: Vec<String> = self.addresses.iter().map(Ipv6Addr::to_string).collect();
+        format!("VRRPv3 (IPv6) advertisement, group {}, priority {}, every {} cs, {}", self.vrid, self.priority, self.interval, addrs.join(", "))
+    }
+}
 
 /// The virtual MAC address of an IPv4 virtual router: `00-00-5E-00-01-{VRID}`.
 pub fn virtual_mac(vrid: u8) -> MacAddr {
@@ -158,5 +238,27 @@ mod tests {
         // Hostile: an address count past the cap, an unknown version.
         assert!(Vrrp::decode(&[0x31, 1, 1, 200, 0, 0, 0, 0], SRC, VRRP_GROUP).is_err());
         assert!(Vrrp::decode(&[0x41, 1, 1, 0, 0, 0, 0, 0], SRC, VRRP_GROUP).is_err());
+    }
+
+    #[test]
+    fn version_3_for_ipv6_carries_link_local_addresses() {
+        let src: Ipv6Addr = "fe80::2".parse().unwrap();
+        let vip: Ipv6Addr = "fe80::1".parse().unwrap();
+        let a = Vrrp6 { vrid: 5, priority: 120, interval: 300, addresses: vec![vip] };
+        let v = a.encode(src, VRRP_GROUP6);
+        assert_eq!(v.len(), 24);
+        assert_eq!(&v[..6], &[0x31, 5, 120, 1, 0x01, 0x2c]);
+        assert_eq!(&v[8..], &vip.octets());
+        assert_eq!(Vrrp6::decode(&v, src, VRRP_GROUP6).unwrap(), a);
+        // Another source: the pseudo-header differs.
+        assert_eq!(Vrrp6::decode(&v, "fe80::3".parse().unwrap(), VRRP_GROUP6), Err(WireError::Checksum("vrrp")));
+        for n in 0..v.len() {
+            assert!(Vrrp6::decode(&v[..n], src, VRRP_GROUP6).is_err(), "{n}");
+        }
+        // Version 2 is IPv4 only; hostile counts are refused.
+        assert!(Vrrp6::decode(&[0x21, 1, 1, 0, 0, 0, 0, 0], src, VRRP_GROUP6).is_err());
+        assert!(Vrrp6::decode(&[0x31, 1, 1, 200, 0, 0, 0, 0], src, VRRP_GROUP6).is_err());
+        assert!(a.describe().contains("group 5, priority 120, every 300 cs, fe80::1"));
+        assert_eq!(virtual_mac6(5), MacAddr([0, 0, 0x5e, 0, 2, 5]));
     }
 }

@@ -39,6 +39,8 @@ mod tests;
 mod tests_families;
 #[cfg(test)]
 mod tests_instructor;
+#[cfg(test)]
+mod tests_swroute;
 
 pub use catalog::{CATALOG, CommandInfo};
 pub use netlabcraft_core::DeviceId;

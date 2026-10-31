@@ -9,7 +9,7 @@ use std::net::Ipv4Addr;
 
 use netlabcraft_core::{DeviceId, MacAddr, VlanId};
 use netlabcraft_model::{DeviceKind, End, Topology};
-use netlabcraft_wire::control::{self, Bpdu, BridgeId, OspfHello, RipEntry};
+use netlabcraft_wire::control::{self, Bpdu, BridgeId, OspfHello};
 use netlabcraft_wire::ospfdb::{DBD_INIT, DBD_MASTER, DBD_MORE, OspfDb, RouterLink, RouterLsa};
 use netlabcraft_wire::{Frame, Ipv4, PROTO_UDP, Udp};
 
@@ -48,7 +48,8 @@ impl Sim {
         for (every, kind) in [
             (BPDU_EVERY_US, 0u8),
             (OSPF_HELLO_EVERY_US, 1),
-            (RIP_UPDATE_EVERY_US, 2),
+            // RIP updates are considered every second; each router sends at its update timer.
+            (1_000_000, 2),
             (HSRP_HELLO_EVERY_US, 3),
             (NTP_POLL_EVERY_US, 4),
             (crate::lldp::LLDP_EVERY_US, 5),
@@ -356,29 +357,26 @@ impl Sim {
         }
     }
 
+    /// RIP updates at each router's update timer (RIPng's every 30 s): its other networks,
+    /// its routes (poisoned reverse for those learned through the interface) and the routes
+    /// possibly down, at metric 16.
     fn send_rip_updates(&mut self, t: &Topology, at: u64) {
+        if at.is_multiple_of(RIP_UPDATE_EVERY_US) {
+            self.send_ripng(t, at);
+        }
         if !t.devices.iter().any(|d| d.rip.is_some()) {
             return;
         }
         let st = self.rip_state(t);
         for (id, ifs) in &st.interfaces {
             let Some(d) = t.device(*id) else { continue };
-            let Some(r) = &d.rip else { continue };
+            let (update, ..) = crate::rip::timers_us(d);
+            if !at.is_multiple_of(update.max(1_000_000)) {
+                continue;
+            }
             for (name, ..) in ifs.iter().filter(|x| !x.2) {
-                let Some(ifc) = l3_ifaces(d).into_iter().find(|i| i.name == *name) else { continue };
-                // Split horizon: nothing learned through, or attached to, this interface.
-                let mut entries: Vec<RipEntry> =
-                    ifs.iter().filter(|(n, ..)| n != name).map(|(_, other, _)| RipEntry { net: other.addr, mask: other.mask(), metric: 1 }).collect();
-                for route in st.routes.get(id).into_iter().flatten().filter(|x| x.iface != *name) {
-                    entries.push(RipEntry { net: route.net.addr, mask: route.net.mask(), metric: u32::from(route.hops) + 1 });
-                }
-                let dst = if r.version >= 2 { control::RIP_ROUTERS } else { Ipv4Addr::BROADCAST };
-                let mac = if r.version >= 2 { control::ipv4_multicast_mac(dst) } else { MacAddr::BROADCAST };
-                for chunk in entries.chunks(control::RIP_MAX_ENTRIES) {
-                    let udp = Udp { src_port: control::RIP_PORT, dst_port: control::RIP_PORT, payload: control::rip_encode(r.version, chunk) };
-                    let ip = Ipv4 { id: 0, ttl: 1, protocol: PROTO_UDP, src: ifc.net.addr, dst, payload: udp.encode(ifc.net.addr, dst) };
-                    self.queue_l3(t, d, &ifc, ifc.mac, mac, ip.encode(), at);
-                }
+                let entries = crate::rip::update_entries(&st, *id, name);
+                self.rip_send(t, d, name, &entries, at);
             }
         }
     }
@@ -471,23 +469,46 @@ impl Sim {
     }
 
     /// VRRP advertisements: each master, from its interface address and the group's virtual
-    /// MAC, to `224.0.0.18` (version 2, or 3 with `fhrp version vrrp v3`).
+    /// MAC, to `224.0.0.18` (version 2, or 3 with `fhrp version vrrp v3`), at its advertisement
+    /// interval (at most once a second here); VRRPv3 IPv6 masters from their link-local address
+    /// to `FF02::12`.
     fn send_vrrp(&mut self, t: &Topology, at: u64) {
-        use netlabcraft_wire::vrrp::{PROTO_VRRP, VRRP_GROUP, Vrrp};
+        use netlabcraft_wire::ipv6::{ETHERTYPE_IPV6, Ipv6, multicast_mac};
+        use netlabcraft_wire::vrrp::{PROTO_VRRP, VRRP_GROUP, VRRP_GROUP6, Vrrp, Vrrp6};
         if !t.devices.iter().any(|d| !d.fhrp.vrrp.is_empty()) {
             return;
         }
+        // Due when a whole number of intervals (rounded up to seconds) has passed.
+        let due = |cs: u16| (at / 1_000_000).is_multiple_of(u64::from(cs).div_ceil(100).max(1));
         let roles = self.fhrp_roles(t);
+        for (id, list) in &roles.vrrp6 {
+            let Some(d) = t.device(*id) else { continue };
+            let up = crate::v6::up_ifaces6(t, d);
+            for r in list.iter().filter(|r| r.state == crate::fhrp::VrrpState::Master && due(r.interval_cs)) {
+                let Some(ifc) = up.iter().find(|i| i.name == r.iface) else { continue };
+                let adv = Vrrp6 { vrid: r.group, priority: r.priority, interval: r.interval_cs, addresses: vec![r.virtual_ip] };
+                let ip = Ipv6 {
+                    hop_limit: 255,
+                    next_header: PROTO_VRRP,
+                    src: ifc.link_local,
+                    dst: VRRP_GROUP6,
+                    payload: adv.encode(ifc.link_local, VRRP_GROUP6),
+                };
+                let frame =
+                    Frame { dst: multicast_mac(VRRP_GROUP6), src: r.virtual_mac(), vlan: ifc.vlan, ethertype: ETHERTYPE_IPV6, payload: ip.encode() };
+                self.queue_frame(t, d, ifc.port, frame, at);
+            }
+        }
         for (id, list) in roles.vrrp {
             let Some(d) = t.device(id) else { continue };
-            for r in list.iter().filter(|r| r.state == crate::fhrp::VrrpState::Master) {
+            for r in list.iter().filter(|r| r.state == crate::fhrp::VrrpState::Master && due(r.interval_cs)) {
                 let Some(ifc) = l3_ifaces(d).into_iter().find(|i| i.name == r.iface) else { continue };
                 let v3 = d.fhrp.vrrp_v3;
                 let adv = Vrrp {
                     version: if v3 { 3 } else { 2 },
                     vrid: r.group,
                     priority: r.priority,
-                    interval: if v3 { 100 } else { 1 },
+                    interval: if v3 { r.interval_cs } else { (r.interval_cs / 100).max(1) },
                     addresses: vec![r.virtual_ip],
                 };
                 let ip =
@@ -525,7 +546,7 @@ impl Sim {
 
     /// Queues a frame out of a port at a given time (re-framed on serial); a VLAN interface's
     /// frame (`SVI_PORT`, its VLAN in the tag) goes through the switch at once.
-    fn queue_frame(&mut self, t: &Topology, d: &netlabcraft_model::Device, port: usize, frame: Frame, at: u64) {
+    pub(crate) fn queue_frame(&mut self, t: &Topology, d: &netlabcraft_model::Device, port: usize, frame: Frame, at: u64) {
         if crate::vpn::is_tunnel(port) {
             // Into a GRE tunnel, at once: encapsulated and routed to the far end.
             if frame.ethertype == netlabcraft_wire::ETHERTYPE_IPV4

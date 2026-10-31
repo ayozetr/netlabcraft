@@ -11,6 +11,7 @@ mod ipsec_crypto;
 mod leftovers;
 mod routing;
 mod security;
+mod swroute;
 
 struct Lab {
     t: Topology,
@@ -379,6 +380,8 @@ fn every_command_survives_hostile_arguments() {
                     "en\nconf t\ncrypto ikev2 proposal P",
                     "en\nconf t\ncrypto ikev2 keyring K\npeer X",
                     "en\nconf t\ncrypto ikev2 profile F",
+                    "en\nconf t\nrouter rip",
+                    "en\nconf t\nipv6 router rip R",
                 ] {
                     for l in setup.lines() {
                         lab.try_run(d, l);

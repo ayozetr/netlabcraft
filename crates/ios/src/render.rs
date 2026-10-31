@@ -557,6 +557,9 @@ pub fn running_config(d: &Device) -> String {
         if !r.auto_summary {
             let _ = writeln!(s, " no auto-summary");
         }
+        if let Some([u, i, h, f]) = r.timers {
+            let _ = writeln!(s, " timers basic {u} {i} {h} {f}");
+        }
         let _ = writeln!(s, "!");
     }
     if d.kind == DeviceKind::Switch
@@ -570,6 +573,7 @@ pub fn running_config(d: &Device) -> String {
         let _ = writeln!(s, "ipv6 route {} {via}{distance}", r.net);
     }
     crate::exec::eigrp6::running_config(&mut s, d);
+    crate::exec::swroute::rip6_running_config(&mut s, d);
     if let Some(o) = &d.ospf6 {
         let _ = writeln!(s, "ipv6 router ospf {}", o.process);
         if let Some(id) = o.router_id {
@@ -695,6 +699,7 @@ pub fn ip_route_table(d: &Device, table: &[netlabcraft_sim::RouteEntry]) -> Stri
             ('L', _, Some(i)) => format!("local address, {i}"),
             ('O' | 'E' | 'I', Some(v), Some(i)) => format!("via {v}, {i} (OSPF)"),
             ('D', Some(v), Some(i)) => format!("via {v}, {i} (EIGRP)"),
+            ('D', None, Some(i)) => format!("summary, discarded on {i} (EIGRP)"),
             (_, Some(v), _) => format!("via {v}"),
             (_, None, Some(i)) => format!("out {i}"),
             _ => String::new(),
@@ -834,6 +839,20 @@ pub fn trunks(t: &Topology, d: &Device) -> String {
     }
     if !any {
         s.push_str("(no trunk ports)");
+    } else if d.vtp.pruning {
+        let _ = writeln!(s, "\n{:<10} {:<24} Pruned by VTP", "Port", "Pruning eligible");
+        for (i, p) in d.ports.iter().enumerate().filter(|(i, _)| t.is_trunk(End { device: d.id, port: *i })) {
+            let pruned = netlabcraft_sim::vtp::pruned_vlans(t, d, i);
+            let eligible =
+                p.l2.prune_eligible.as_ref().map_or_else(|| "2-1001".to_string(), |e| if e.is_empty() { "none".into() } else { e.to_string() });
+            let _ = writeln!(
+                s,
+                "{:<10} {:<24} {}",
+                ifname::short(&p.name),
+                eligible,
+                if pruned.is_empty() { "none".to_string() } else { pruned.to_string() }
+            );
+        }
     }
     s.trim_end().to_string()
 }
@@ -1194,6 +1213,15 @@ pub fn ip_protocols(
         );
         let heard: Vec<String> = rs.neighbors.get(&d.id).into_iter().flatten().map(|(_, a, i)| format!("{a} on {}", ifname::short(i))).collect();
         let _ = writeln!(s, "  Neighbours heard: {}", if heard.is_empty() { "none".to_string() } else { heard.join(", ") });
+        let (u, i, h, f) = r.timers();
+        let _ = writeln!(s, "  Updates every {u} s; a route is invalid after {i} s, held down {h} s, flushed after {f} s");
+        if !rs.held.is_empty() {
+            let silent: Vec<String> =
+                rs.held.iter().filter(|x| x.router == d.id).map(|x| format!("{} on {}", x.address, ifname::short(&x.iface))).collect();
+            if !silent.is_empty() {
+                let _ = writeln!(s, "  Neighbours no longer heard (routes kept until invalid): {}", silent.join(", "));
+            }
+        }
         if r.default_originate {
             s.push_str("  Advertises its default route\n");
         }
@@ -1358,6 +1386,7 @@ fn ospf_protocol(d: &Device, st: &netlabcraft_sim::ospf::OspfState) -> String {
 }
 
 pub(crate) fn ospf_if_lines(s: &mut String, d: &Device, name: &str) {
+    crate::exec::swroute::eigrp_summary_lines(s, d, name);
     if let Some(e) = d.eigrp_if.get(name) {
         if let Some((asn, secs)) = e.hello {
             let _ = writeln!(s, " ip hello-interval eigrp {asn} {secs}");
@@ -1528,6 +1557,9 @@ pub fn vtp(d: &Device) -> String {
     let _ = writeln!(s, "Version             {}", v.version);
     let _ = writeln!(s, "Revision            {}", v.revision);
     let _ = writeln!(s, "Password            {}", if v.password.is_some() { "set" } else { "not set" });
+    if v.pruning {
+        let _ = writeln!(s, "Pruning             enabled");
+    }
     let _ = write!(s, "VLANs               {}", d.vlans.len());
     s
 }
@@ -1552,6 +1584,9 @@ pub(crate) fn ipv6_lines(s: &mut String, c: &netlabcraft_model::Ipv6Conf) {
     }
     if let Some(asn) = c.eigrp {
         let _ = writeln!(s, " ipv6 eigrp {asn}");
+    }
+    if let Some(name) = &c.rip {
+        let _ = writeln!(s, " ipv6 rip {name} enable");
     }
     if let Some((p, a)) = c.ospf {
         let _ = writeln!(s, " ipv6 ospf {p} area {a}");
@@ -1629,7 +1664,7 @@ pub fn ipv6_route(t: &Topology, sim: &mut Sim, d: &Device) -> String {
     let dynamic = sim.dynamic_routes6(t, d);
     let table = netlabcraft_sim::v6::routing_table6(t, d, &dynamic);
     let mut s = String::from(
-        "Codes: C connected, L local, S static, O OSPFv3, OI OSPFv3 other area, OE2 OSPFv3 external, D EIGRP, ND default from a router advertisement\n",
+        "Codes: C connected, L local, S static, O OSPFv3, OI OSPFv3 other area, OE2 OSPFv3 external, D EIGRP, R RIPng, ND default from a router advertisement\n",
     );
     if !d.ipv6_routing {
         s.push_str("IPv6 forwarding is off (no `ipv6 unicast-routing`)\n");
@@ -1639,6 +1674,7 @@ pub fn ipv6_route(t: &Topology, sim: &mut Sim, d: &Device) -> String {
             (Some(nh), Some(i)) => format!("via {nh}, {i}"),
             (Some(nh), None) => format!("via {nh}"),
             (None, Some(i)) if r.code == 'S' => format!("out of {i}"),
+            (None, Some(i)) if i == netlabcraft_sim::eigrp::NULL0 => format!("summary, discarded on {i}"),
             (None, Some(i)) => format!("directly on {i}"),
             (None, None) => String::new(),
         };
@@ -1681,6 +1717,9 @@ pub fn rip_database(t: &Topology, d: &Device, st: &netlabcraft_sim::rip::RipStat
     }
     for r in st.routes.get(&d.id).into_iter().flatten() {
         let _ = writeln!(s, "{:<20} {:<6} {:<16} {}", r.net.to_string(), r.hops, r.via.to_string(), ifname::short(&r.iface));
+    }
+    for x in st.down.get(&d.id).into_iter().flatten() {
+        let _ = writeln!(s, "{:<20} {:<6} {:<16} {}  possibly down", x.net.to_string(), 16, x.via.to_string(), ifname::short(&x.iface));
     }
     let _ = t;
     s.trim_end().to_string()

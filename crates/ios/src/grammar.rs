@@ -955,6 +955,41 @@ pub enum Id {
     VoiceRegIdMac,
     VoiceRegNumberDn,
     ShowVoiceRegister,
+    // Switching and routing leftovers: CoS.
+    SrCosDscpMap,
+    SrNoCosDscpMap,
+    SrMlsQosCos,
+    SrNoMlsQosCos,
+    SrPriorityExtend,
+    SrNoPriorityExtend,
+    SrShowMlsQosMaps,
+    // VRRP timers, tracking and IPv6.
+    SrVrrpTimers,
+    SrVrrpTimersMsec,
+    SrNoVrrpTimers,
+    SrVrrpTrack,
+    SrNoVrrpTrack,
+    SrVrrpIpv6,
+    SrNoVrrpIpv6,
+    // EIGRP summaries.
+    SrIpSummaryEigrp,
+    SrNoIpSummaryEigrp,
+    SrIpv6SummaryEigrp,
+    SrNoIpv6SummaryEigrp,
+    // RIP timers and RIPng.
+    SrRipTimers,
+    SrNoRipTimers,
+    SrIpv6RouterRip,
+    SrNoIpv6RouterRip,
+    SrIpv6RipEnable,
+    SrNoIpv6RipEnable,
+    SrShowIpv6Rip,
+    SrShowIpv6RipDatabase,
+    // VTP pruning.
+    SrVtpPruning,
+    SrNoVtpPruning,
+    SrTrunkPruning,
+    SrNoTrunkPruning,
 }
 
 use Tok::{Arg, K, Rest};
@@ -3515,6 +3550,127 @@ pub static SPECS: &[Spec] = &[
         [K("show"), K("voice"), K("register"), K("all")],
         "SIP call control: numbers, phones, registrations and calls"
     ),
+    // ---- Switching and routing leftovers: CoS ----
+    spec!(
+        SrCosDscpMap,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("mls"), K("qos"), K("map"), K("cos-dscp"), Rest("<0-63> x8")],
+        "The DSCP each CoS 0-7 becomes on ports that trust CoS"
+    ),
+    spec!(SrNoCosDscpMap, Modes::CONFIG, Modes::SWITCH, [K("no"), K("mls"), K("qos"), K("map"), K("cos-dscp")], "CoS x 8 again"),
+    spec!(SrMlsQosCos, Modes::IF, Modes::SWITCH, [K("mls"), K("qos"), K("cos"), Arg("<0-7>")], "The CoS untagged frames arriving here count as"),
+    spec!(SrNoMlsQosCos, Modes::IF, Modes::SWITCH, [K("no"), K("mls"), K("qos"), K("cos")], "Untagged frames count as CoS 0"),
+    spec!(
+        SrPriorityExtend,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("switchport"), K("priority"), K("extend"), K("cos"), Arg("<0-7>")],
+        "The CoS the IP phone here gives its PC's frames"
+    ),
+    spec!(SrNoPriorityExtend, Modes::IF, Modes::SWITCH, [K("no"), K("switchport"), K("priority"), K("extend")], "The PC's frames get the port's CoS"),
+    spec!(SrShowMlsQosMaps, EXECS, Modes::SWITCH, [K("show"), K("mls"), K("qos"), K("maps")], "The CoS-to-DSCP and DSCP-to-CoS maps"),
+    spec!(SrShowMlsQosMaps, EXECS, Modes::SWITCH, [K("show"), K("mls"), K("qos"), K("maps"), Arg("{cos-dscp|dscp-cos}")], "One QoS map"),
+    // ---- Switching and routing leftovers: VRRP timers, tracking and IPv6 ----
+    spec!(
+        SrVrrpTimers,
+        ANY_IF,
+        Modes::BOTH,
+        [K("vrrp"), Arg("<1-255>"), K("timers"), K("advertise"), Arg("<1-40>")],
+        "Seconds between the master's advertisements"
+    ),
+    spec!(
+        SrVrrpTimersMsec,
+        ANY_IF,
+        Modes::BOTH,
+        [K("vrrp"), Arg("<1-255>"), K("timers"), K("advertise"), K("msec"), Arg("<10-40950>")],
+        "Milliseconds between advertisements (VRRP version 3)"
+    ),
+    spec!(SrNoVrrpTimers, ANY_IF, Modes::BOTH, [K("no"), K("vrrp"), Arg("<1-255>"), K("timers"), K("advertise")], "Advertise every second again"),
+    spec!(
+        SrVrrpTrack,
+        ANY_IF,
+        Modes::BOTH,
+        [K("vrrp"), Arg("<1-255>"), K("track"), Arg("INTERFACE")],
+        "Lower the priority by 10 while that interface is down"
+    ),
+    spec!(
+        SrVrrpTrack,
+        ANY_IF,
+        Modes::BOTH,
+        [K("vrrp"), Arg("<1-255>"), K("track"), Arg("INTERFACE"), K("decrement"), Arg("<1-254>")],
+        "Lower the priority by this much while that interface is down"
+    ),
+    spec!(SrNoVrrpTrack, ANY_IF, Modes::BOTH, [K("no"), K("vrrp"), Arg("<1-255>"), K("track"), Arg("INTERFACE")], "Stop tracking an interface"),
+    spec!(
+        SrVrrpIpv6,
+        ANY_IF,
+        Modes::BOTH,
+        [K("vrrp"), Arg("<1-255>"), K("ipv6"), Arg("FE80::X")],
+        "Share this IPv6 link-local gateway address (VRRP version 3)"
+    ),
+    spec!(SrNoVrrpIpv6, ANY_IF, Modes::BOTH, [K("no"), K("vrrp"), Arg("<1-255>"), K("ipv6")], "Remove the group's IPv6 address"),
+    // ---- Switching and routing leftovers: EIGRP summaries ----
+    spec!(
+        SrIpSummaryEigrp,
+        ANY_IF,
+        Modes::BOTH,
+        [K("ip"), K("summary-address"), K("eigrp"), Arg("<1-65535>"), Arg("A.B.C.D"), Arg("A.B.C.D")],
+        "Advertise one summary instead of the routes it covers"
+    ),
+    spec!(
+        SrNoIpSummaryEigrp,
+        ANY_IF,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("summary-address"), K("eigrp"), Arg("<1-65535>"), Arg("A.B.C.D"), Arg("A.B.C.D")],
+        "Advertise the covered routes again"
+    ),
+    spec!(
+        SrIpv6SummaryEigrp,
+        ANY_IF,
+        Modes::BOTH,
+        [K("ipv6"), K("summary-address"), K("eigrp"), Arg("<1-65535>"), Arg("X:X::X/N")],
+        "Advertise one IPv6 summary instead of the prefixes it covers"
+    ),
+    spec!(
+        SrNoIpv6SummaryEigrp,
+        ANY_IF,
+        Modes::BOTH,
+        [K("no"), K("ipv6"), K("summary-address"), K("eigrp"), Arg("<1-65535>"), Arg("X:X::X/N")],
+        "Advertise the covered IPv6 prefixes again"
+    ),
+    // ---- Switching and routing leftovers: RIP timers and RIPng ----
+    spec!(
+        SrRipTimers,
+        Modes::RIP,
+        Modes::BOTH,
+        [K("timers"), K("basic"), Arg("<1-65535>"), Arg("<1-65535>"), Arg("<0-65535>"), Arg("<1-65535>")],
+        "Update, invalid, hold-down and flush times (seconds)"
+    ),
+    spec!(SrNoRipTimers, Modes::RIP, Modes::BOTH, [K("no"), K("timers"), K("basic")], "Timers 30 180 180 240 again"),
+    spec!(SrIpv6RouterRip, Modes::CONFIG, Modes::BOTH, [K("ipv6"), K("router"), K("rip"), Arg("WORD")], "Start or configure RIPng"),
+    spec!(SrNoIpv6RouterRip, Modes::CONFIG, Modes::BOTH, [K("no"), K("ipv6"), K("router"), K("rip"), Arg("WORD")], "Stop RIPng"),
+    spec!(
+        SrIpv6RipEnable,
+        ANY_IF.or(Modes::LOOPBACK),
+        Modes::BOTH,
+        [K("ipv6"), K("rip"), Arg("WORD"), K("enable")],
+        "Run this RIPng process on the interface"
+    ),
+    spec!(SrNoIpv6RipEnable, ANY_IF.or(Modes::LOOPBACK), Modes::BOTH, [K("no"), K("ipv6"), K("rip"), Arg("WORD"), K("enable")], "Stop RIPng here"),
+    spec!(SrShowIpv6Rip, EXECS, Modes::BOTH, [K("show"), K("ipv6"), K("rip")], "RIPng: process, interfaces and neighbours"),
+    spec!(SrShowIpv6RipDatabase, EXECS, Modes::BOTH, [K("show"), K("ipv6"), K("rip"), K("database")], "Prefixes RIPng knows"),
+    // ---- Switching and routing leftovers: VTP pruning ----
+    spec!(SrVtpPruning, Modes::CONFIG, Modes::SWITCH, [K("vtp"), K("pruning")], "Stop flooding VLANs towards switches that don't need them"),
+    spec!(SrNoVtpPruning, Modes::CONFIG, Modes::SWITCH, [K("no"), K("vtp"), K("pruning")], "Flood every VLAN on every trunk again"),
+    spec!(
+        SrTrunkPruning,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("switchport"), K("trunk"), K("pruning"), K("vlan"), Rest("{VLANS|add VLANS|remove VLANS|except VLANS|none}")],
+        "The VLANs VTP pruning may stop on this trunk"
+    ),
+    spec!(SrNoTrunkPruning, Modes::IF, Modes::SWITCH, [K("no"), K("switchport"), K("trunk"), K("pruning"), K("vlan")], "VLANs 2-1001 eligible again"),
 ];
 
 /// Why a line didn't parse. Positions are word indexes.

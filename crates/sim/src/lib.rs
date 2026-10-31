@@ -55,8 +55,9 @@ pub mod peap;
 pub mod qos;
 
 pub mod rip;
-pub mod simmode;
+pub mod rip6;
 pub mod script;
+pub mod simmode;
 pub mod sip;
 pub mod snmp;
 pub mod stp;
@@ -386,7 +387,11 @@ pub fn routing_table_with(
     let (mut out, mut learned): (Vec<RouteEntry>, Vec<RouteEntry>) =
         routing_table_static(t, d).into_iter().partition(|r| matches!(r.code, 'C' | 'L'));
     if d.eigrp.is_some() {
-        for r in eigrp_routes {
+        for r in eigrp_routes.iter().filter(|r| r.iface == eigrp::NULL0) {
+            // A summary this router advertises: a discard route (distance 5).
+            learned.push(RouteEntry { code: 'D', net: r.net, via: None, iface: Some(r.iface.clone()), distance: 5, metric: r.metric });
+        }
+        for r in eigrp_routes.iter().filter(|r| r.iface != eigrp::NULL0) {
             learned.push(RouteEntry {
                 code: 'D',
                 net: r.net,
@@ -639,6 +644,13 @@ pub fn route_with(
         {
             consider_ad(0, 254, ifc, gw);
         }
+    }
+    // An EIGRP summary's route to Null0 discards what nothing more specific takes.
+    let discard = eigrp_routes.iter().filter(|r| r.iface == eigrp::NULL0 && r.net.contains(dst)).map(|r| r.net.prefix).max();
+    if let (Some(p), Some((bp, ..))) = (discard, &best)
+        && p > *bp
+    {
+        return None;
     }
     best.map(|(_, _, i, nh)| (i, nh))
 }
@@ -1005,6 +1017,11 @@ pub struct Sim {
     eigrp6: Option<eigrp6::Eigrp6State>,
     rip_for: u64,
     rip: Option<rip::RipState>,
+    /// RIP neighbours no longer heard, kept until their invalid time; routes possibly down.
+    rip_held: Vec<rip::Held>,
+    rip_down: Vec<rip::RipDown>,
+    rip6_for: u64,
+    rip6: Option<rip6::Rip6State>,
     eigrp_for: u64,
     eigrp: Option<eigrp::EigrpState>,
     /// EIGRP neighbours no longer heard, kept until their hold time runs out.
@@ -1040,6 +1057,9 @@ pub struct Sim {
     fhrp: Option<fhrp::FhrpRoles>,
     /// Who held each VRRP and GLBP role at the last election.
     fhrp_held: fhrp::Held,
+    /// VRRP groups waiting out a master down interval, and who acts as each group's master.
+    vrrp_waits: Vec<fhrp::VrrpWait>,
+    vrrp_acting: BTreeMap<String, fhrp::Acting>,
     /// GLBP round-robin: the forwarder the next ARP answer names, by (gateway, group).
     glbp_next: BTreeMap<(DeviceId, u16), usize>,
     /// Last known link state of every router and switch port, for link messages.
@@ -1330,6 +1350,10 @@ impl Sim {
         if self.eigrp.is_some() || t.devices.iter().any(|d| d.eigrp.is_some()) {
             self.eigrp_refresh(t);
         }
+        // VRRP's master down interval counts from the change.
+        if t.devices.iter().any(|d| !d.fhrp.vrrp.is_empty()) {
+            let _ = self.fhrp_roles(t);
+        }
     }
 
     /// A capture of the event list, in pcap format.
@@ -1404,6 +1428,27 @@ impl Sim {
                 self.eigrp_refresh(t);
                 // Expired holds are gone after a refresh; never spin on one that isn't.
                 self.eigrp_held.retain(|x| x.until > h);
+                continue;
+            }
+            // So are RIP's timers.
+            if let Some(h) = self.rip_next_expiry().filter(|h| *h <= deadline && next.is_none_or(|q| *h <= q)) {
+                self.now = self.now.max(h);
+                let _ = self.rip_state(t);
+                if self.rip_next_expiry().is_some_and(|x| x <= h) {
+                    // Never spin on a timer a refresh didn't clear.
+                    self.rip_held.retain(|x| x.until > h);
+                    self.rip_down.retain(|x| x.flush_at > h);
+                    for x in &mut self.rip_down {
+                        x.hold_done |= x.holddown_until <= h;
+                    }
+                }
+                continue;
+            }
+            // So is a VRRP group's master down interval.
+            if let Some(h) = self.vrrp_next_expiry().filter(|h| *h <= deadline && next.is_none_or(|q| *h <= q)) {
+                self.now = self.now.max(h);
+                let _ = self.fhrp_roles(t);
+                self.vrrp_waits.retain(|w| w.until > h);
                 continue;
             }
             if next.is_none() {
@@ -1530,11 +1575,12 @@ impl Sim {
             return self.l3_in(t, d, at.port, f);
         }
         let f = Frame::decode(bytes).map_err(|e| e.to_string())?;
+        let pcp = netlabcraft_wire::qos::frame_pcp(bytes);
         match d.kind {
             DeviceKind::Switch if port.routed => self.l3_in(t, d, at.port, f),
-            DeviceKind::Switch => self.switch_in(t, d, at.port, f, hops),
+            DeviceKind::Switch => self.switch_in(t, d, at.port, f, pcp, hops),
             // A router's switch card switches like a switch.
-            DeviceKind::Router if d.is_switchport(at.port) => self.switch_in(t, d, at.port, f, hops),
+            DeviceKind::Router if d.is_switchport(at.port) => self.switch_in(t, d, at.port, f, pcp, hops),
             DeviceKind::Hub => self.hub_in(t, d, at.port, bytes, hops),
             DeviceKind::Phone => self.phone_in(t, d, at.port, f, hops),
             _ => self.l3_in(t, d, at.port, f),
@@ -1801,9 +1847,11 @@ impl Sim {
     /// VRRP and GLBP roles, recomputed when what they depend on changes.
     pub fn fhrp_roles(&mut self, t: &Topology) -> fhrp::FhrpRoles {
         let f = fhrp::fingerprint(t);
-        if self.fhrp.is_none() || self.fhrp_for != f {
+        let expired = self.vrrp_next_expiry().is_some_and(|u| u <= self.now);
+        if self.fhrp.is_none() || self.fhrp_for != f || expired {
             self.fhrp_for = f;
-            let (roles, held) = fhrp::compute(t, &self.fhrp_held);
+            let (mut roles, held) = fhrp::compute(t, &self.fhrp_held);
+            self.vrrp_timers(t, &mut roles);
             self.fhrp = Some(roles);
             self.fhrp_held = held;
         }
@@ -1875,11 +1923,22 @@ impl Sim {
     /// RIP's view of the lab (neighbours, routes).
     pub fn rip_state(&mut self, t: &Topology) -> rip::RipState {
         let f = ospf::fingerprint(t);
-        if self.rip.is_none() || self.rip_for != f {
+        let due = self.rip_next_expiry().is_some_and(|u| u <= self.now);
+        if self.rip.is_none() || self.rip_for != f || due {
             self.rip_for = f;
-            self.rip = Some(rip::compute(t));
+            self.rip_refresh(t);
         }
         self.rip.clone().unwrap_or_default()
+    }
+
+    /// RIPng's view of the lab, recomputed when what it depends on changes.
+    pub fn rip6_state(&mut self, t: &Topology) -> rip6::Rip6State {
+        let f = rip6::fingerprint(t);
+        if self.rip6.is_none() || self.rip6_for != f {
+            self.rip6_for = f;
+            self.rip6 = Some(rip6::compute(t));
+        }
+        self.rip6.clone().unwrap_or_default()
     }
 
     /// OSPF's view of the lab (neighbours, router ids, routes).
@@ -1898,7 +1957,11 @@ impl Sim {
         let f = eigrp6::fingerprint(t);
         if self.eigrp6.is_none() || self.eigrp6_for != f {
             self.eigrp6_for = f;
-            self.eigrp6 = Some(eigrp6::compute(t));
+            let new = eigrp6::compute(t);
+            if let Some(old) = self.eigrp6.take() {
+                self.eigrp6_packets(t, &old, &new);
+            }
+            self.eigrp6 = Some(new);
         }
         self.eigrp6.clone().unwrap_or_default()
     }
@@ -1915,13 +1978,32 @@ impl Sim {
                 next_hop: Some(r.via),
                 distance: eigrp::DISTANCE,
             }));
+            out.extend(st.summaries.get(&d.id).into_iter().flatten().map(|(net, _)| v6::Route6Entry {
+                code: 'D',
+                net: *net,
+                iface: Some(eigrp::NULL0.to_string()),
+                next_hop: None,
+                distance: 5,
+            }));
+        }
+        if rip6::running(d) {
+            let st = self.rip6_state(t);
+            let have: std::collections::BTreeSet<netlabcraft_core::Ipv6Net> = out.iter().map(|r| r.net).collect();
+            out.extend(st.routes.get(&d.id).into_iter().flatten().filter(|r| !have.contains(&r.net)).map(|r| v6::Route6Entry {
+                code: 'R',
+                net: r.net,
+                iface: Some(r.iface.clone()),
+                next_hop: Some(r.via),
+                distance: 120,
+            }));
         }
         if d.ospf6.is_none() {
             return out;
         }
         let st = self.ospf6_state(t);
         // The lower administrative distance wins a prefix both protocols know.
-        let have: std::collections::BTreeSet<netlabcraft_core::Ipv6Net> = out.iter().map(|r| r.net).collect();
+        let have: std::collections::BTreeSet<netlabcraft_core::Ipv6Net> = out.iter().filter(|r| r.distance <= 110).map(|r| r.net).collect();
+        out.retain(|r| !(r.code == 'R' && st.routes.get(&d.id).is_some_and(|l| l.iter().any(|o| o.net == r.net))));
         out.extend(st.routes.get(&d.id).into_iter().flatten().filter(|r| !have.contains(&r.net)).map(|r| v6::Route6Entry {
             code: if r.external {
                 'E'
@@ -2099,7 +2181,7 @@ impl Sim {
 
     // ---- switching (IEEE 802.1D learning, 802.1Q tagging) ----
 
-    fn switch_in(&mut self, t: &Topology, d: &Device, in_port: usize, f: Frame, hops: u8) -> Result<(), String> {
+    fn switch_in(&mut self, t: &Topology, d: &Device, in_port: usize, f: Frame, pcp: u8, hops: u8) -> Result<(), String> {
         if hops >= MAX_SWITCH_HOPS {
             self.storm = true;
             return Err(format!("switching loop: the frame crossed {MAX_SWITCH_HOPS} switches (no spanning tree)"));
@@ -2152,15 +2234,30 @@ impl Sim {
         }
         self.l2_switch_in(d, in_port, vlan, &f)?;
         let f = self.snoop_option82(d, in_port, vlan, f)?;
-        let f = self.mls_qos_in(d, in_port, f);
+        let (f, cos) = self.mls_qos_in(t, d, in_port, f, pcp);
         self.psec_age(d, in_port, f.src);
         self.port_security(d, in_port, f.src)?;
-        self.switch_forward(t, d, Some(in_port), vlan, f, hops)
+        self.switch_forward_cos(t, d, Some(in_port), vlan, f, hops, cos)
     }
 
     /// Learns, delivers to the switch's own VLAN interface when addressed to it, and forwards
     /// within `vlan`. `in_port` is `None` for frames the switch itself sends.
     fn switch_forward(&mut self, t: &Topology, d: &Device, in_port: Option<usize>, vlan: VlanId, f: Frame, hops: u8) -> Result<(), String> {
+        self.switch_forward_cos(t, d, in_port, vlan, f, hops, 0)
+    }
+
+    /// [`Sim::switch_forward`] with the 802.1p priority (CoS) tagged frames leave with.
+    #[allow(clippy::too_many_arguments)]
+    fn switch_forward_cos(
+        &mut self,
+        t: &Topology,
+        d: &Device,
+        in_port: Option<usize>,
+        vlan: VlanId,
+        f: Frame,
+        hops: u8,
+        cos: u8,
+    ) -> Result<(), String> {
         let now = self.now;
         // A bundle is one port: learn on it, never send back into it, flood it once.
         let chm = self.chmap(t, d);
@@ -2228,6 +2325,7 @@ impl Sim {
                         && !chm.hidden(p)
                         && !chm.suspended(p)
                         && carries(t, d, p, vlan)
+                        && !vtp::pruned(t, d, p, vlan)
                 })
                 .collect(),
         };
@@ -2246,7 +2344,9 @@ impl Sim {
                 (port.switchport.voice_vlan == Some(vlan)).then_some(vlan.get())
             };
             let only = is_ap_radio(t, end).then_some(vlan);
-            if self.emit_hops_in(t, end, f.retagged(tag).encode(), hops + 1, only) {
+            let mut bytes = f.retagged(tag).encode();
+            netlabcraft_wire::qos::set_frame_pcp(&mut bytes, cos);
+            if self.emit_hops_in(t, end, bytes, hops + 1, only) {
                 sent += 1;
             }
         }
