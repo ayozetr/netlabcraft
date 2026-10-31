@@ -1,40 +1,42 @@
 # Target-app parity: NetLabCraft vs Cisco Packet Tracer
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** major (Simulation-mode depth, automation, security, leftovers and device families: areas and course topics re-scored; counts measured again) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-10-31 · **Last updated:** 2026-10-31 · **Change:** major (the lab book run end to end, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers: areas and course topics re-scored, the untested-labs deduction cut; counts measured again) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summarizes it,
 [`gaps.md`](gaps.md) lists every shortfall, and the area checklists hold the detail:
 [protocols and commands](protocol-parity.md), [UI](ui-parity.md), [hardware](hardware-parity.md),
 [localization](localization-parity.md). The generated command list is
-[`command-reference.md`](command-reference.md).
+[`command-reference.md`](command-reference.md); the lab book that checks the course topics end
+to end is in [`labs/`](labs/README.md).
 
 ## Summary
 
 | Number | Value | Kind |
 |---|---|---|
-| Engine commands | **114** | measured: `c!(` entries in `crates/engine/src/catalog.rs` |
-| Console grammar entries | **958** across 37 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
-| Device models | **37** | measured: `MODELS` in `crates/model/src/models.rs` (the fallback model not counted; the 7 router cards are in `MODULES`) |
-| Sample labs | **28** | measured: `SAMPLES` in `crates/engine/src/sample.rs` |
-| Tests | **443** | measured: sum of "passed" from `cargo test --workspace -q` |
-| **Ready for real work** (weighted) | **~88%** | estimated; written weights below (87.5 computed) |
-| **CCNA 1 student** (Introduction to Networks) | **~88%** | estimated; [method](#audiences) |
-| **CCNA 2 student** (Switching, Routing and Wireless Essentials) | **~88%** | estimated; [method](#audiences) |
-| **CCNA 3 student** (Enterprise Networking, Security and Automation) | **~84%** | estimated; [method](#audiences) |
-| **Instructor** (builds graded activities) | **~78%** | estimated; activities with checks, points, sections, hints, hidden answers, values per student, a time limit, a password lock, a wizard and a side-by-side comparison with the answer |
+| Engine commands | **138** | measured: `c!(` entries in `crates/engine/src/catalog.rs` |
+| Console grammar entries | **1003** across 37 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
+| Device models | **51** | measured: `MODELS` in `crates/model/src/models.rs` (the fallback model not counted; the 7 router cards are in `MODULES`) |
+| Sample labs | **31** | measured: `SAMPLES` in `crates/engine/src/sample.rs` |
+| Lab-book labs | **20** | measured: numbered labs in `docs/labs/` (4 CCNA 1, 9 CCNA 2, 7 CCNA 3), all run by `crates/engine/tests/lab_book.rs`, 8 also over MCP by `apps/netlabcraft-cli/tests/mcp_lab_book.rs` |
+| Tests | **591** | measured: sum of "passed" from `cargo test --workspace -q` |
+| **Ready for real work** (weighted) | **~91%** | estimated; written weights below (90.9 computed) |
+| **CCNA 1 student** (Introduction to Networks) | **~93%** | estimated; [method](#audiences) |
+| **CCNA 2 student** (Switching, Routing and Wireless Essentials) | **~94%** | estimated; [method](#audiences) |
+| **CCNA 3 student** (Enterprise Networking, Security and Automation) | **~90%** | estimated; [method](#audiences) |
+| **Instructor** (builds graded activities) | **~90%** | estimated; activities with checks, points, sections, hints, values per student, a time limit and a password lock, plus an answer network, an assessment tree, an initial network, instructions per language, connectivity tests, signed results and locks |
 | Stage | **pre-alpha** | see [Stage](#stage) |
-| Remaining to alpha | **~5–10 Opus 5.5 agent-hours** | estimated; the packaged-build gate is on hold ([roadmap.md](roadmap.md#alpha-gates)) |
-| Remaining to ~95% in every area | **~90–165 Opus 5.5 agent-hours** | estimated; sum of the area rows below |
+| Remaining to alpha | **on hold** | gates 1 and 2 met; the packaged-build gate is on hold and not estimated ([roadmap.md](roadmap.md#alpha-gates)) |
+| Remaining to ~95% in every area | **~55–110 Opus 5.5 agent-hours** | estimated; sum of the area rows below |
 
 ### Readiness by audience
 
 | Audience | Ready % | Opus 5.5 agent wall-clock hours to ~95% | Work that dominates |
 |---|---|---|---|
-| Full target (the weighted total) | ~88% | ~90–165 (sum of the area rows) | Console depth, teaching tools, device families, workspace, and what the lab book turns up |
-| CCNA 1 student | ~88% | ~5–12 | Walking the labs; Simulation-mode leftovers (constant delay, capturing only filtered events) |
-| CCNA 2 student | ~88% | ~10–18 | Walking the labs; a real PEAP tunnel, VRRP timers, EIGRP for IPv6 updates on the wire |
-| CCNA 3 student | ~84% | ~15–30 | Walking the labs; automation depth (TLS and SSH, XML and IPv6 in RESTCONF, a fuller controller), a real Diffie-Hellman |
-| Instructor | ~78% | ~15–25 | Translated activity texts, an answer-network view |
+| Full target (the weighted total) | ~91% | ~55–110 (sum of the area rows) | Console depth beyond the lab book, workspace, device families (cellular), the remaining crypto stand-ins |
+| CCNA 1 student | ~93% | ~2–5 | More labs walked; small console and host-app details they turn up |
+| CCNA 2 student | ~94% | ~3–8 | More labs walked; VRRPv3 router advertisements, RIPng and EIGRP for IPv6 timers |
+| CCNA 3 student | ~90% | ~8–16 | DES, 3DES and AH for real, certificates, IKE SA rekeying, a controller closer to the course's, virtualization |
+| Instructor | ~90% | ~4–8 | More interface languages, results signatures that resist forgery |
 
 Each student tier is mostly a superset of the one before. Hours are wall-clock for one agent;
 the protocol work splits well across 3–4 agents by crate (`sim`, `ios`, `ui-egui`). The audience
@@ -64,95 +66,101 @@ column. [`ROADMAP.md`](../ROADMAP.md)'s dimension rows are the same rows with th
 
 | Area | Weight | Ready | Points | Detail | Hours to ~95% |
 |---|---|---|---|---|---|
-| Device console (modes, commands, `show` output, help, completion) | 20 | 84% | 16.8 | [protocol-parity.md](protocol-parity.md#console) | 20–35 |
-| Layer 2 (VLANs, trunks, STP, EtherChannel, VTP, port security, DTP, snooping, ARP inspection) | 12 | 95% | 11.4 | [protocol-parity.md](protocol-parity.md#layer-2) | 3–6 |
-| Layer 3 (static, RIP, OSPF, EIGRP, IPv6, multilayer switching, FHRP) | 15 | 94% | 14.1 | [protocol-parity.md](protocol-parity.md#layer-3) | 5–10 |
-| Services (DHCP, DNS, HTTP, FTP, email, NTP, syslog, AAA, SNMP, RESTCONF, NETCONF) | 8 | 95% | 7.6 | [protocol-parity.md](protocol-parity.md#services) | 3–6 |
-| Security (ACLs, NAT, SSH, passwords, AAA, PPP authentication, VPN, firewalls) | 8 | 90% | 7.2 | [protocol-parity.md](protocol-parity.md#security) | 8–14 |
-| WAN, cabling and wireless | 6 | 90% | 5.4 | [hardware-parity.md](hardware-parity.md) | 5–10 |
-| Simulation mode (event list, PDU details, filters, complex PDUs, scenarios) | 8 | 85% | 6.8 | [ui-parity.md](ui-parity.md) | 6–12 |
-| Workspace and windows (canvas, device tabs, physical view, drawing) | 10 | 83% | 8.3 | [ui-parity.md](ui-parity.md) | 12–20 |
-| Teaching (activities, scoring, instructions, languages) | 8 | 80% | 6.4 | [gaps.md](gaps.md) | 15–25 |
-| Device families and hardware (models, modules, firewalls, phones, IoT, WAN emulation) | 5 | 70% | 3.5 | [hardware-parity.md](hardware-parity.md) | 15–25 |
-| **Total** | **100** | | **87.5** | | **~90–165** |
+| Device console (modes, commands, `show` output, help, completion) | 20 | 86% | 17.2 | [protocol-parity.md](protocol-parity.md#console) | 15–30 |
+| Layer 2 (VLANs, trunks, STP, EtherChannel, VTP, port security, DTP, snooping, ARP inspection, CoS) | 12 | 97% | 11.64 | [protocol-parity.md](protocol-parity.md#layer-2) | 1–3 |
+| Layer 3 (static, RIP, RIPng, OSPF, EIGRP, IPv6, multilayer switching, FHRP) | 15 | 96% | 14.4 | [protocol-parity.md](protocol-parity.md#layer-3) | 3–6 |
+| Services (DHCP, DNS, HTTP, FTP, email, NTP, syslog, AAA, SNMP, RESTCONF, NETCONF, the controller) | 8 | 97% | 7.76 | [protocol-parity.md](protocol-parity.md#services) | 2–4 |
+| Security (ACLs, NAT, SSH, passwords, AAA, PPP authentication, VPN, firewalls) | 8 | 94% | 7.52 | [protocol-parity.md](protocol-parity.md#security) | 4–8 |
+| WAN, cabling and wireless | 6 | 93% | 5.58 | [hardware-parity.md](hardware-parity.md) | 4–8 |
+| Simulation mode (event list, PDU details, filters, complex PDUs, scenarios) | 8 | 90% | 7.2 | [ui-parity.md](ui-parity.md) | 3–6 |
+| Workspace and windows (canvas, device tabs, physical view, drawing) | 10 | 85% | 8.5 | [ui-parity.md](ui-parity.md) | 10–18 |
+| Teaching (activities, scoring, instructions, languages, instructor tools) | 8 | 88% | 7.04 | [gaps.md](gaps.md) | 6–12 |
+| Device families and hardware (models, modules, firewalls, phones, mobile devices, IoT, boards, WAN emulation) | 5 | 82% | 4.1 | [hardware-parity.md](hardware-parity.md) | 8–14 |
+| **Total** | **100** | | **90.94** | | **~55–110** |
 
 ## Audiences
 
 **Method.** Each course is split into its lab topics, weighted by their share of the course's
 Packet Tracer activities (estimated from the public course outlines). Each topic is scored for
 how much of what its labs do works here, depth included: a command that is accepted but not
-simulated scores low. The weighted sum then loses **5 points** while no lab book has been run
-end to end (beta gate 1), because untested labs always turn up surprises. The earlier figures
-(CCNA 2 ~92%, CCNA 3 ~91%) counted topics as present without weighing their depth or the
-untested labs; with this method the same state scores lower even after this round's work.
+simulated scores low. The weighted sum then loses points for labs nobody has run: **5 points**
+while no lab book had been run end to end (beta gate 1), and **2 points** now that the
+[lab book](labs/README.md) runs. The 2 points stay because the book is our own (20 labs, not
+the course's own activities, which can't be copied), so the topics it doesn't exercise can
+still hide surprises. Topics the book exercises are scored from what its labs showed; the
+others from the features and tests alone. The earlier figures (CCNA 2 ~92%, CCNA 3 ~91% in the
+first estimate) counted topics as present without weighing their depth or the untested labs.
 
 | CCNA 1 topic | Weight | Ready |
 |---|---|---|
-| Device basics, passwords, SSH | 15 | 95% |
-| IPv4 addressing and hosts | 15 | 98% |
-| IPv6 addressing, SLAAC, DHCPv6 | 10 | 92% |
-| ARP, NDP, ping, traceroute | 10 | 95% |
+| Device basics, passwords, SSH (lab 1) | 15 | 97% |
+| IPv4 addressing and hosts (labs 2, 3) | 15 | 98% |
+| IPv6 addressing, SLAAC, DHCPv6 (lab 2) | 10 | 94% |
+| ARP, NDP, ping, traceroute (lab 4) | 10 | 96% |
 | Switch basics, MAC table | 10 | 95% |
-| Simulation mode and PDU details (complex PDUs, OSI view, scenarios) | 15 | 90% |
+| Simulation mode and PDU details (complex PDUs, OSI view, scenarios, constant delay, capture filter; lab 4) | 15 | 96% |
 | Host apps (prompt, browser, email, FTP, terminal) | 10 | 90% |
 | Cabling and the physical layer | 10 | 90% |
 | Application services (DNS, DHCP, HTTP) | 5 | 95% |
-| **Weighted, less 5** | | **93.4 − 5 ≈ 88%** |
+| **Weighted, less 2** | | **94.9 − 2 ≈ 93%** |
 
 | CCNA 2 topic | Weight | Ready |
 |---|---|---|
-| VLANs, trunks, DTP | 15 | 95% |
-| Inter-VLAN routing (router-on-a-stick, multilayer) | 10 | 95% |
-| STP and RSTP (PortFast, BPDU guard and filter, root and loop guard, cost, priority, proposal/agreement) | 12 | 95% |
-| EtherChannel | 8 | 95% |
-| DHCPv4 and relay | 8 | 95% |
-| SLAAC and DHCPv6 | 7 | 88% |
-| FHRP (HSRP, VRRP, GLBP) | 7 | 95% |
-| LAN security (port security, DHCP snooping with option 82, ARP inspection) | 10 | 94% |
-| Wireless LANs (WLC, WPA2, group keys) | 13 | 85% |
-| Static and floating static routes, IPv4 and IPv6 | 10 | 95% |
-| **Weighted, less 5** | | **93.1 − 5 ≈ 88%** |
+| VLANs, trunks, DTP (lab 5) | 15 | 97% |
+| Inter-VLAN routing (router-on-a-stick, multilayer; lab 6) | 10 | 97% |
+| STP and RSTP (PortFast, BPDU guard and filter, root and loop guard, cost, priority, proposal/agreement; lab 7) | 12 | 96% |
+| EtherChannel (lab 8) | 8 | 97% |
+| DHCPv4 and relay (lab 9) | 8 | 97% |
+| SLAAC and DHCPv6 (lab 9) | 7 | 92% |
+| FHRP (HSRP, VRRP with timers and tracking, GLBP; lab 10) | 7 | 97% |
+| LAN security (port security, DHCP snooping with option 82, ARP inspection; lab 11) | 10 | 96% |
+| Wireless LANs (WLC, WPA2, a real PEAP tunnel, central switching, group keys; lab 12) | 13 | 92% |
+| Static and floating static routes, IPv4 and IPv6 (lab 13) | 10 | 97% |
+| **Weighted, less 2** | | **95.8 − 2 ≈ 94%** |
 
 | CCNA 3 topic | Weight | Ready |
 |---|---|---|
-| Single-area OSPFv2 | 18 | 95% |
-| ACLs | 18 | 93% |
-| NAT | 10 | 95% |
-| Network management (CDP, LLDP, NTP, syslog, SNMP, backups, images, password recovery) | 14 | 92% |
-| VPN and IPsec | 8 | 88% |
-| QoS | 5 | 82% |
+| Single-area OSPFv2 (lab 14) | 18 | 97% |
+| ACLs (lab 15) | 18 | 96% |
+| NAT (lab 16) | 10 | 97% |
+| Network management (CDP, LLDP, NTP, syslog, SNMP, backups, images, password recovery; lab 19) | 14 | 95% |
+| VPN and IPsec (lab 17) | 8 | 94% |
+| QoS (lab 18) | 5 | 86% |
 | WAN concepts | 4 | 90% |
-| Design and troubleshooting labs | 15 | 90% |
-| Automation (REST APIs, controllers) | 5 | 60% |
+| Design and troubleshooting labs | 15 | 91% |
+| Automation (REST APIs, controllers; lab 20) | 5 | 80% |
 | Virtualization and SDN | 3 | 35% |
-| **Weighted, less 5** | | **88.5 − 5 ≈ 84%** |
+| **Weighted, less 2** | | **91.9 − 2 ≈ 90%** |
 
-- **CCNA 1 (Introduction to Networks):** almost all of it works, Simulation mode included:
-  complex PDUs, the OSI Model view of PDU details and scenarios landed. What is left is a walk
-  through the labs and small Simulation-mode options (constant delay, capturing only filtered
-  events, absolute start times).
-- **CCNA 2 (SRWE):** VLANs, STP with its protections (loop guard, BPDU filter, the RSTP
-  handshake), EtherChannel, DHCP, HSRP, VRRP and GLBP, LAN security with option 82 and static
-  routing work. Wireless is still the weakest topic: group keys and range by building landed,
-  but PEAP is shown as an exchange rather than a real TLS tunnel. VRRP masters are computed
-  (the timers don't drive them), and GLBP hellos are not on the wire (their format isn't public).
-- **CCNA 3 (ENSA):** OSPF as the course teaches it, ACLs, NAT, GRE and IPsec with IKEv1 or IKEv2
-  (real AES-128/HMAC-SHA1-96 ESP for IKEv2), QoS with trust, marking, policing, queuing and
-  shaping, SNMP, syslog, NTP, backups and password recovery work. Automation scores 60%:
-  RESTCONF and NETCONF answer on routers, the Programming app and a small controller work, but
-  there is no TLS or SSH under them, RESTCONF speaks JSON only and IPv4 only, NETCONF has no
-  candidate datastore, and the controller is far smaller than the course's network controller.
-  CoS values are always 0, so `mls qos trust cos` keeps nothing but zero.
-- **Instructor:** builds activities with checks, a score and a side-by-side comparison with the
-  answer; no answer-network view.
+- **CCNA 1 (Introduction to Networks):** the four CCNA 1 labs of the book run as written, and
+  Simulation mode has every option the course uses: Constant Delay, capturing only chosen
+  protocols, absolute start times and the sender's own decisions in the OSI view. What is left
+  is walking more labs and the host-app details they turn up.
+- **CCNA 2 (SRWE):** nine labs of the book run (VLANs, inter-VLAN routing, STP, EtherChannel,
+  DHCP, HSRP, switch security, a WLC, static routes). Wireless is no longer far behind:
+  WPA2-Enterprise runs a real PEAP tunnel with EAP over RADIUS, and WLANs can be centrally
+  switched; the PEAP key exchange is a toy size and there are no certificates. VRRP follows its
+  timers now; GLBP hellos are still not on the wire (their format isn't public).
+- **CCNA 3 (ENSA):** seven labs of the book run (OSPF, ACLs, NAT, GRE over IPsec, QoS, network
+  management, RESTCONF). IPsec runs a real Diffie-Hellman exchange and real AES with SHA-1,
+  SHA-256 or MD5 HMACs under IKEv1 and IKEv2, with lifetimes and child-SA rekeying; DES, 3DES
+  and AH keep a stand-in cipher, and the IKE SA itself is not rekeyed. Automation scores 80%:
+  RESTCONF in JSON and XML over TLS 1.2, NETCONF with a candidate datastore over SSH 2.0, and a
+  controller that discovers routers over CDP and LLDP and pushes templates; TLS has no
+  certificate, the SSH host key is a stand-in, and the controller is still smaller than the
+  course's network controller (no policies, no assurance pages). QoS gained 802.1p CoS.
+- **Instructor:** the answer network, assessment tree, initial network, instructions per
+  language, connectivity tests, signed results and locks landed. Results signatures catch hand
+  edits, not a determined forger (the key comes from the salt in the file), and the interface
+  comes in two languages.
 
 ## Stage
 
 **Pre-alpha:** every core workflow works end to end (build a lab, configure by typing, ping,
-watch frames, grade an activity, save), and the console covers the commands of the first labs.
-What keeps it pre-alpha: nobody has yet walked the CCNA 1 labs command by command to confirm it,
-and the packaged-build gate is on hold by the owner's decision (no release for now). Alpha gates
-are in [`roadmap.md`](roadmap.md#alpha-gates).
+watch frames, grade an activity, save), and the 20-lab book runs as written, by the engine and
+over MCP. Alpha gates 1 and 2 are met and every beta gate is met; what keeps the stage at
+pre-alpha is the packaged-build gate, on hold by the owner's decision (no release for now).
+Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 
 ## Better than the reference
 
@@ -162,11 +170,14 @@ are in [`roadmap.md`](roadmap.md#alpha-gates).
 - **Agent control:** every action is a command, reachable from the CLI and an MCP server.
 - **Runs everywhere:** Linux, Windows, macOS, BSD and the browser, with no account or sign-in.
 - **Drop reasons:** a dropped frame says why (ACL, VLAN not allowed, blocked by STP…).
+- **Labs as scripts:** every lab in the lab book is also a test, so a change that breaks a
+  course topic fails the build.
 
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-31 | major | The lab book (20 labs, run end to end and 8 over MCP), real Diffie-Hellman, AES-192/256, SHA-256, IKEv1 ciphers and rekeying, default MTU, more inspections; instructor tools; Simulation-mode leftovers; a real PEAP tunnel and central switching; tablets, smartphones, ten Wi-Fi IoT things, programmable boards, the phone's settings, power supplies; XML, IPv6, TLS and SSH in automation, NETCONF candidate and locks, controller discovery; CoS, VRRP timers and VRRPv3, EIGRP for IPv6 on the wire, RIP timers and RIPng, VTP pruning. Console 84% → 86%, layer 2 95% → 97%, layer 3 94% → 96%, services 95% → 97%, security 90% → 94%, WAN/cabling/wireless 90% → 93%, Simulation mode 85% → 90%, workspace 83% → 85%, teaching 80% → 88%, device families 70% → 82%; total 87.5 → 90.94; hours to ~95% ~90–165 → ~55–110. Method: the untested-labs deduction goes from 5 to 2 points now that the lab book runs. CCNA 1 ~88% → ~93%, CCNA 2 ~88% → ~94%, CCNA 3 ~84% → ~90% (automation 60% → 80%, VPN 88% → 94%, wireless 85% → 92%), instructor ~78% → ~90%. Counts measured again (138 commands, 1003 grammar entries across 37 modes, 51 models, 31 samples, 20 lab-book labs, 591 tests). |
 | 2026-10-30 | major | Complex PDUs, OSI view and scenarios; RESTCONF, NETCONF, the Programming app and a controller; zone-based firewall, `ip inspect`, `ip mtu`, `adjust-mss`, IKEv2 and real ESP; switch, QoS, routing and wireless leftovers; switch card, PoE, SIP phones, IoT things and gateway, cloud and modems. Console 82% → 84%, layer 2 90% → 95%, layer 3 92% → 94%, services 94% → 95%, security 86% → 90%, WAN/cabling/wireless 87% → 90%, Simulation mode 70% → 85%, workspace 80% → 83%, device families 60% → 70%; total 83.6 → 87.5; hours to ~95% ~150–250 → ~90–165. Course topics re-scored with the same method: CCNA 1 ~86% → ~88%, CCNA 2 ~85% → ~88%, CCNA 3 ~79% → ~84% (automation 15% → 60%, QoS 60% → 82%, VPN 75% → 88%). Counts measured again (114 commands, 958 grammar entries across 37 modes, 37 models, 28 samples, 443 tests). |
 | 2026-10-30 | major | Audiences re-estimated per course with a written method (topics weighted by their share of the Packet Tracer activities, depth scored, 5 points off until a lab book runs): CCNA 1 ~86%, CCNA 2 ~92% → ~85%, CCNA 3 ~91% → ~79%. Console 74% → 82%, layer 2 85% → 90%, layer 3 90% → 92%, services 92% → 94%, security 85% → 86%, WAN/cabling/wireless 85% → 87% (fibre was done), workspace 78% → 80%; total 80.6 → 83.6. Hours per area redone so the total is their sum (~150–250); the separate full-parity figure dropped. Counts measured again (94 commands, 802 grammar entries across 26 modes, 25 models, 23 samples). |
 | 2026-10-30 | minor | Depth round: layer 3 85% → 90%, security 78% → 85%, WAN/cabling/wireless 78% → 85%, device families 40% → 60%; total 77.9 → 80.6; CCNA 2 ~92%, CCNA 3 ~91%; counts measured again (92 commands, 636 grammar entries across 26 modes, 27 models, 23 samples). |
