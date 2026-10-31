@@ -42,7 +42,75 @@ pub struct Activity {
     /// The student who started the activity (picks the variables' values).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub student: Option<String>,
+    /// The finished lab (the answer network), sealed: readable JSON when answers are shown,
+    /// encrypted with a key from the salt when they are hidden, or from the instructor's
+    /// password while the activity is locked (see the engine's `activity::seal`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answer: Option<Sealed>,
+    /// The lab the student starts from (Reset Activity returns to it), as a lab file's JSON
+    /// without its activity. None: the lab as the activity was opened.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub initial: Option<serde_json::Value>,
+    /// The instructions in other languages (language code such as `es` → text); `instructions`
+    /// holds the text in `language`. Files from before carry only `instructions`.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub translations: std::collections::BTreeMap<String, String>,
+    /// The language `instructions` is written in (`en` when empty).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub language: String,
+    /// The assessment tree's weights: an item's key (a hash, so it gives nothing away) → its
+    /// points (0: not graded) and hint. Items without a row are worth 1 point.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub assessment: std::collections::BTreeMap<String, Weight>,
+    /// What the student may not change while the activity is locked.
+    #[serde(default, skip_serializing_if = "Locks::is_default")]
+    pub locks: Locks,
 }
+
+/// A sealed lab: `scheme` says how `data` is kept.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Sealed {
+    /// `plain` (data is the JSON), `salt` (encrypted, key from the activity's salt) or
+    /// `password` (encrypted, key from the instructor's password).
+    pub scheme: String,
+    pub data: String,
+}
+
+/// Largest sealed lab kept from a file, in bytes.
+pub const MAX_SEALED: usize = 16 * 1024 * 1024;
+
+/// An assessment tree item's weight.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Weight {
+    pub points: u32,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub feedback: String,
+}
+
+/// Parts of the lab the student can't change while the activity is locked.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Locks {
+    /// No adding or removing devices.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub devices: bool,
+    /// No adding, removing or changing cables.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub cables: bool,
+    /// Devices whose configuration can't change.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub config: Vec<DeviceId>,
+}
+
+impl Locks {
+    pub fn is_default(&self) -> bool {
+        *self == Locks::default()
+    }
+}
+
+/// Most languages an activity's instructions come in.
+pub const MAX_LANGUAGES: usize = 16;
+/// Most assessment weights kept.
+pub const MAX_WEIGHTS: usize = 10_000;
 
 /// A variable: one of its values is picked for each student.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -102,6 +170,10 @@ pub enum CheckKind {
     },
     /// A command's output must contain a text (case-insensitive).
     Output { device: DeviceId, command: String, contains: String },
+    /// A cable joins these two ports (either way round; port names compare case-insensitively).
+    Link { a: DeviceId, a_port: String, b: DeviceId, b_port: String },
+    /// The same, stored as a salted hash of [`link_text`].
+    LinkHashed { device: DeviceId, hash: String },
 }
 
 impl CheckKind {
@@ -111,7 +183,9 @@ impl CheckKind {
             CheckKind::Config { device, .. }
             | CheckKind::ConfigHashed { device, .. }
             | CheckKind::HostAddress { device, .. }
-            | CheckKind::Output { device, .. } => *device,
+            | CheckKind::Output { device, .. }
+            | CheckKind::LinkHashed { device, .. } => *device,
+            CheckKind::Link { a, .. } => *a,
             CheckKind::Ping { from, .. } => *from,
         }
     }
@@ -147,6 +221,14 @@ pub fn flatten(config: &str) -> Vec<String> {
         }
     }
     out
+}
+
+/// A cable as compared: the end with the lower device id first, port names lower case
+/// (`link 3:g0/0-5:fa0/1`), and the device it belongs to (the first end's).
+pub fn link_text(a: DeviceId, a_port: &str, b: DeviceId, b_port: &str) -> (DeviceId, String) {
+    let (ap, bp) = (a_port.trim().to_lowercase(), b_port.trim().to_lowercase());
+    let ((x, xp), (y, yp)) = if (a.0, &ap) <= (b.0, &bp) { ((a, ap), (b, bp)) } else { ((b, bp), (a, ap)) };
+    (x, format!("link {}:{xp}-{}:{yp}", x.0, y.0))
 }
 
 /// The salted hash of a flattened configuration line on a device (FNV-1a, 64 bits).
@@ -185,6 +267,57 @@ impl Activity {
         if let Some(s) = &mut self.student {
             cut(s);
         }
+        if self.answer.as_ref().is_some_and(|a| a.data.len() > MAX_SEALED) {
+            self.answer = None;
+        }
+        if self.initial.as_ref().is_some_and(|v| !v.is_object()) {
+            self.initial = None;
+        }
+        self.translations.retain(|k, _| !k.is_empty() && k.len() <= 16);
+        while self.translations.len() > MAX_LANGUAGES {
+            self.translations.pop_last();
+        }
+        for t in self.translations.values_mut() {
+            if t.len() > MAX_TEXT {
+                let c = (0..=MAX_TEXT).rev().find(|i| t.is_char_boundary(*i)).unwrap_or(0);
+                t.truncate(c);
+            }
+        }
+        cut(&mut self.language);
+        while self.assessment.len() > MAX_WEIGHTS {
+            self.assessment.pop_last();
+        }
+        for w in self.assessment.values_mut() {
+            w.points = w.points.min(1_000);
+            w.feedback.truncate(w.feedback.char_indices().nth(1_000).map_or(w.feedback.len(), |(i, _)| i));
+        }
+        self.locks.config.truncate(crate::MAX_DEVICES);
+    }
+
+    /// The language `instructions` is written in.
+    pub fn default_language(&self) -> &str {
+        if self.language.is_empty() { "en" } else { &self.language }
+    }
+
+    /// The instructions in a language: its translation when there is one, otherwise the
+    /// default text.
+    pub fn instructions_in(&self, lang: &str) -> &str {
+        match self.translations.get(lang) {
+            Some(t) if lang != self.default_language() && !t.trim().is_empty() => t,
+            _ => &self.instructions,
+        }
+    }
+
+    /// Every language the instructions come in, the default first.
+    pub fn languages(&self) -> Vec<String> {
+        let mut out = vec![self.default_language().to_string()];
+        out.extend(self.translations.keys().filter(|k| k.as_str() != self.default_language()).cloned());
+        out
+    }
+
+    /// Whether the locks hold now: they apply while the activity is locked.
+    pub fn locks_active(&self) -> bool {
+        self.locked() && !self.locks.is_default()
     }
 
     pub fn locked(&self) -> bool {
@@ -251,6 +384,7 @@ impl Activity {
                     CheckKind::Output { device, command, contains } => {
                         CheckKind::Output { device: *device, command: r(command), contains: r(contains) }
                     }
+                    other => other.clone(),
                 },
             })
             .collect()
@@ -310,6 +444,7 @@ mod tests {
             score_only: true,
             variables: vec![Variable { name: "net".into(), values: vec!["10".into(), "20".into()] }],
             student: None,
+            ..Default::default()
         };
         let j = serde_json::to_string(&a).unwrap();
         assert!(j.contains(r#""type":"ping""#));

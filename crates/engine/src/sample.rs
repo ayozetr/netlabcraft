@@ -576,12 +576,31 @@ pub fn build(id: &str) -> Result<Topology> {
                 feedback: "Both router interfaces need their address and `no shutdown`.".into(),
                 kind: netlabcraft_model::activity::CheckKind::Ping { from: pc1, to: "192.168.20.10".into(), succeed: true },
             });
+            let pc2 = b.t.resolve("PC2").map_err(|e| EngineError::Failed(e.to_string()))?;
+            activity.checks.push(netlabcraft_model::activity::Check {
+                label: "PC2 reaches PC1".into(),
+                points: 1,
+                section: "PC2".into(),
+                feedback: "Each PC's gateway is the router's address in its LAN.".into(),
+                kind: netlabcraft_model::activity::CheckKind::Ping { from: pc2, to: "192.168.10.10".into(), succeed: true },
+            });
+            b.t.notes = "A graded activity: follow the Instructions window and press Check Results.".into();
+            // The finished lab is the answer network, hidden from a casual look like the checks.
+            let answer = crate::instructor::lab_json(&b.t).map_err(EngineError::Failed)?;
+            activity.answer = Some(crate::instructor::seal(&answer, "salt", &activity.salt, None).map_err(EngineError::Failed)?);
+            activity.translations.insert(
+                "es".into(),
+                "R1 une dos LAN.\n\n1. Llama R1 al router.\n2. Protege el modo privilegiado con la contraseña secret class.\n3. Da a GigabitEthernet0/0 la dirección 192.168.10.1/24 y a GigabitEthernet0/1 la 192.168.20.1/24, y actívalas.\n4. Comprueba que PC1 llega a PC2.\n\nPulsa Comprobar resultados cuando quieras.".into(),
+            );
+            // Students configure the router only: the PCs and the cables are given.
+            activity.locks = netlabcraft_model::activity::Locks { devices: true, cables: true, config: vec![pc1, pc2] };
             if let Some(d) = b.t.device_mut(router) {
                 d.reset_config();
                 d.name = "Router0".into();
             }
+            let initial = crate::instructor::lab_json(&b.t).map_err(EngineError::Failed)?;
+            activity.initial = serde_json::from_str(&initial).ok();
             b.t.activity = Some(activity);
-            b.t.notes = "A graded activity: follow the Instructions window and press Check Results.".into();
         }
         "hsrp" => {
             b.add_model("Router-2", "R1", 240.0, 200.0)?;

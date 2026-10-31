@@ -798,6 +798,17 @@ fn spanish_shows_no_text_that_has_a_translation_in_english() {
     a.show_wizard = true;
     h.run_steps(3);
     shown_texts(&h, &mut seen);
+    // The instructor tools' windows.
+    let conn = h.state_mut().run("activity.connectivity", json!({}));
+    let a = &mut h.state_mut().ui.activity;
+    a.show_wizard = false;
+    a.show_compare = false;
+    a.tools.show_answer = true;
+    a.tools.show_tree = true;
+    a.tools.show_connectivity = true;
+    a.tools.connectivity = conn;
+    h.run_steps(3);
+    shown_texts(&h, &mut seen);
     for credits in [false, true] {
         h.state_mut().ui.show_about = true;
         h.state_mut().ui.about_credits = credits;
@@ -822,6 +833,7 @@ fn spanish_shows_no_text_that_has_a_translation_in_english() {
 
 /// Interface text that reads the same in Spanish.
 const SAME_IN_SPANISH: &[&str] = &[
+    "Español",
     "AAA",
     "DHCP",
     "DNS",
@@ -1199,4 +1211,79 @@ fn the_controller_reads_the_inventory_and_pushes() {
     assert!(h.query_all_by_label_contains("192.168.1.1: 204").next().is_some());
     let r1 = h.state().session.topology.resolve("R1").unwrap();
     assert!(h.state().session.topology.device(r1).unwrap().loopbacks.iter().any(|l| l.number == 100));
+}
+
+#[test]
+fn the_instructor_tools_open_from_the_wizard_and_the_instructions() {
+    let mut h = harness(Some("activity-first-router"));
+    h.run();
+    // The student's side: connectivity tests and a results file to hand in.
+    h.get_by_label("Connectivity Tests").click();
+    h.run();
+    h.get_by_label("Run the tests").click();
+    h.run();
+    assert_eq!(h.state().ui.activity.tools.connectivity.as_ref().unwrap()["total"], 2);
+    assert!(h.query_all_by_label("fail").count() == 2);
+    h.get_by_label("Save results (JSON)").click();
+    h.run();
+    let saved = h.state_mut().take_requests();
+    assert!(saved.iter().any(|r| matches!(r, UiRequest::SaveText { name, text } if name.ends_with(".json") && text.contains("hmac"))), "{saved:?}");
+    // The instructor's side: the networks, the tree, the locks.
+    h.state_mut().ui.activity.tools.show_connectivity = false;
+    h.state_mut().ui.activity.show_instructions = false;
+    h.state_mut().ui.activity.show_wizard = true;
+    h.run_steps(2);
+    // Language tabs: the Spanish text is edited in its own tab.
+    h.get_by_label("Español").click();
+    h.run();
+    assert_eq!(h.state().ui.activity.tools.tab, "es");
+    h.get_by_label("What the student may change").click();
+    h.run();
+    h.get_by_label("No cable changes").click_accesskit();
+    h.run();
+    assert!(!h.state().session.topology.activity.as_ref().unwrap().locks.cables, "the sample locked cables; the box unlocks them");
+    h.get_by_label("Answer and initial networks").click();
+    h.run();
+    h.get_by_label("View the answer network").click_accesskit();
+    h.run_steps(2);
+    assert!(h.query_by_label("Drawing of the answer network").is_some());
+    h.get_by_label("Assessment Tree").click();
+    h.run_steps(2);
+    assert!(h.state().ui.activity.tools.show_tree);
+    // The tree on its own, so no other window covers it.
+    let ui = &mut h.state_mut().ui;
+    ui.activity.show_wizard = false;
+    ui.activity.show_instructions = false;
+    ui.activity.tools.show_answer = false;
+    ui.activity.tools.show_connectivity = false;
+    h.run_steps(2);
+    let before = h.state().session.topology.activity.as_ref().unwrap().assessment.len();
+    h.get_all_by_label("graded").next().unwrap().click_accesskit();
+    h.run();
+    assert_eq!(
+        h.state().session.topology.activity.as_ref().unwrap().assessment.len(),
+        before + 1,
+        "unticking keeps a weight of 0: {:?} {}",
+        h.state().ui.status,
+        h.state().ui.activity.tools.show_tree
+    );
+    h.get_by_label("Make checks from the tree").click();
+    h.run();
+    assert!(h.state().session.topology.activity.as_ref().unwrap().checks.iter().any(|c| c.label.contains("cable")));
+}
+
+#[test]
+fn the_instructions_show_the_students_language() {
+    i18n::set_thread_lang(Some(i18n::Lang::Spanish));
+    let mut h = harness(Some("activity-first-router"));
+    h.run_steps(2);
+    assert!(h.query_by_label_contains("R1 une dos LAN").is_some());
+    h.state_mut().run("activity.set", json!({"instructions": "Main text only"}));
+    h.state_mut().run("activity.translate", json!({"lang": "es", "text": ""}));
+    h.run_steps(2);
+    assert!(h.query_by_label_contains("Main text only").is_some(), "no Spanish text: the main one");
+    h.state_mut().run("activity.translate", json!({"lang": "es", "text": "Solo en español"}));
+    h.run_steps(2);
+    assert!(h.query_by_label_contains("Solo en español").is_some());
+    i18n::set_thread_lang(None);
 }

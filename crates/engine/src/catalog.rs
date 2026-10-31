@@ -139,7 +139,121 @@ pub static CATALOG: &[CommandInfo] = &[
         r#"{} → {"results": [{"label", "points", "passed", "feedback", "section"}] and "sections": [{"name", "score", "total", "percent"}] (both empty when locked with score_only), "score", "total", "percent", "detail"}"#,
         false
     ),
-    c!("activity.reset", "Reset Activity", "Extensions", None, "{}: back to the lab as the activity was opened", false),
+    c!(
+        "activity.reset",
+        "Reset Activity",
+        "Extensions",
+        None,
+        "{}: back to the initial network, or the lab as the activity was opened → {\"from\": \"initial\"|\"opened\"}",
+        false
+    ),
+    c!(
+        "activity.save_answer",
+        "Save as the answer network",
+        "",
+        None,
+        r#"{} → {"devices", "scheme"}: the lab as it is now becomes the answer network, kept in the clear ("plain"), under a key from the salt when answers are hidden ("salt": hides it from a casual look only), or under the password while locked ("password")"#,
+        true
+    ),
+    c!(
+        "activity.answer",
+        "Answer Network",
+        "",
+        None,
+        r#"{} → {"lab": the answer network as a lab file's JSON, "devices", "links", "scheme"}"#,
+        false
+    ),
+    c!(
+        "activity.load_answer",
+        "Edit the answer network",
+        "",
+        None,
+        "{}: puts the answer network in the workspace (the activity stays); `activity.save_answer` keeps the changes",
+        true
+    ),
+    c!("activity.clear_answer", "Remove the answer network", "", None, "{}", true),
+    c!(
+        "activity.tree",
+        "Assessment tree",
+        "",
+        None,
+        r#"{} → {"items": [{"key", "device", "kind": "config"|"address"|"cable", "text", "points" (0: not graded), "feedback"}], "points"}: what the answer network holds, per device"#,
+        false
+    ),
+    c!(
+        "activity.weight",
+        "Set an item's points",
+        "",
+        None,
+        r#"{"key": tree item, "points"?: 0-1000 (0: not graded), "feedback"?: hint when it fails}"#,
+        true
+    ),
+    c!(
+        "activity.tree_checks",
+        "Make checks from the assessment tree",
+        "",
+        None,
+        r#"{} → {"checks", "points"}: the graded tree items replace the configuration, address and cable checks (pings and command checks stay)"#,
+        true
+    ),
+    c!(
+        "activity.save_initial",
+        "Save as the initial network",
+        "",
+        None,
+        r#"{} → {"devices"}: the lab as it is now is where the student starts (Reset Activity returns to it)"#,
+        true
+    ),
+    c!(
+        "activity.load_initial",
+        "Edit the initial network",
+        "",
+        None,
+        "{}: puts the initial network in the workspace (the activity stays); `activity.save_initial` keeps the changes",
+        true
+    ),
+    c!("activity.clear_initial", "Remove the initial network", "", None, "{}", true),
+    c!(
+        "activity.translate",
+        "Instructions in a language",
+        "",
+        None,
+        r#"{"lang": "es", "text"?: the instructions in it (empty removes them), "default"?: true makes it the main language} → {"languages", "default"}"#,
+        true
+    ),
+    c!("activity.edit_check", "Edit check", "", None, r#"{"index": n, "points"?, "feedback"?, "label"?, "section"?}"#, true),
+    c!(
+        "activity.connectivity",
+        "Connectivity Tests",
+        "Extensions",
+        None,
+        r#"{} → {"tests": [{"label", "from", "to", "expect", "passed", "actual"}], "passed", "total", "detail"}: the activity's ping checks, run now"#,
+        false
+    ),
+    c!(
+        "activity.export_results",
+        "Export results…",
+        "",
+        None,
+        r#"{"format"?: "json"|"csv", "path"?, "time"?, "elapsed_s"?} → {"text", "file_name", "score", "total", "percent"}: a results file with the student, the time, the score per section, signed with HMAC-SHA1 under a key from the activity's salt"#,
+        false
+    ),
+    c!(
+        "activity.verify_results",
+        "Verify a results file",
+        "",
+        None,
+        r#"{"text" or "path"} → {"valid", "same_activity", "student", "score", "total", "percent"}"#,
+        false
+    ),
+    c!(
+        "activity.locks",
+        "Activity locks",
+        "",
+        None,
+        r#"{"devices"?: true (no adding or removing devices), "cables"?: true (no cable changes), "config"?: ["R1", …] (devices whose configuration can't change)}: they hold while the activity is locked"#,
+        true
+    ),
     c!("file.new", "New lab", "File", Some("Ctrl+N"), r#"{"sample"?: "sample id (see sample.list)"}"#, false),
     c!("file.open", "Open lab…", "File", Some("Ctrl+O"), r#"{"json": "lab file contents"} or {"path": "file (desktop/CLI)"}"#, false),
     c!("file.save", "Save lab", "File", Some("Ctrl+S"), r#"{"path"?: "file to write (desktop/CLI)"} → {"json"}"#, false),

@@ -58,7 +58,7 @@ fn clip(s: &str) -> String {
 }
 
 /// The configuration lines a device has beyond a factory-fresh device of the same model.
-fn answer_lines(d: &Device) -> Vec<String> {
+pub(crate) fn answer_lines(d: &Device) -> Vec<String> {
     let mut fresh = Device::of_model(d.id, d.catalogue_model(), d.name.clone(), d.x, d.y);
     // The hostname counts as an answer: a fresh device here has none.
     fresh.name = String::new();
@@ -163,6 +163,9 @@ pub fn evaluate(t: &Topology, sim: &Sim, checks: &[Check], salt: &str, hidden: b
                     let mut cli = Cli { mode: netlabcraft_ios::Mode::Exec, logged_in: true, ..Cli::default() };
                     let out = netlabcraft_ios::execute(&mut tt, &mut scratch, *device, &mut cli, command).output;
                     (out.to_lowercase().contains(&contains.to_lowercase()), format!("contains \"{contains}\""), clip(&out))
+                }
+                CheckKind::Link { .. } | CheckKind::LinkHashed { .. } => {
+                    crate::instructor::eval_cable(t, &c.kind, salt).unwrap_or((false, String::new(), String::new()))
                 }
             };
             // A hidden activity shows what the student has, never what the answer is (pings

@@ -27,6 +27,7 @@ mod hardware;
 pub mod i18n;
 pub mod icons;
 pub mod icons_families;
+pub mod instructor;
 mod iot_page;
 mod mail;
 mod mib;
@@ -950,6 +951,10 @@ impl PacketApp {
                 }
                 if ui.add_enabled(self.session.topology.activity.is_some(), egui::Button::new(tl("Activity Instructions"))).clicked() {
                     self.ui.activity.show_instructions = true;
+                    ui.close();
+                }
+                if ui.add_enabled(self.session.topology.activity.is_some(), egui::Button::new(tl("Connectivity Tests"))).clicked() {
+                    self.ui.activity.tools.show_connectivity = true;
                     ui.close();
                 }
                 ui.separator();
