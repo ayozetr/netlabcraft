@@ -13,8 +13,10 @@ use std::net::Ipv4Addr;
 use netlabcraft_core::MacAddr;
 
 pub mod aes;
+pub mod aes256;
 pub mod capwap;
 pub mod control;
+pub mod dh;
 pub mod dhcp;
 pub mod dhcp6;
 pub mod dns;
@@ -41,8 +43,10 @@ pub mod tacacs;
 
 pub mod serial;
 pub mod sha1;
+pub mod sha256;
 pub mod sip;
 pub mod snmp;
+pub mod suite;
 pub mod tcp;
 pub mod vpn;
 pub mod wlan;

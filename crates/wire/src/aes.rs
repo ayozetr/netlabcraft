@@ -6,7 +6,7 @@
 
 /// The AES S-box, generated from its definition (the multiplicative inverse in GF(2^8)
 /// followed by the affine transform), rather than typed in.
-const SBOX: [u8; 256] = make_sbox();
+pub(crate) const SBOX: [u8; 256] = make_sbox();
 
 const fn make_sbox() -> [u8; 256] {
     let mut s = [0u8; 256];
@@ -31,7 +31,7 @@ const fn make_sbox() -> [u8; 256] {
     s
 }
 
-fn xtime(b: u8) -> u8 {
+pub(crate) fn xtime(b: u8) -> u8 {
     (b << 1) ^ if b & 0x80 != 0 { 0x1b } else { 0 }
 }
 
@@ -111,7 +111,7 @@ fn add(s: &mut [u8; 16], k: &[u8; 16]) {
 }
 
 /// The inverse S-box, worked out from the S-box.
-const INV_SBOX: [u8; 256] = invert(&SBOX);
+pub(crate) const INV_SBOX: [u8; 256] = invert(&SBOX);
 
 const fn invert(s: &[u8; 256]) -> [u8; 256] {
     let mut inv = [0u8; 256];
@@ -124,7 +124,7 @@ const fn invert(s: &[u8; 256]) -> [u8; 256] {
 }
 
 /// Multiplication in GF(2^8) (for InvMixColumns).
-fn gmul(mut a: u8, mut b: u8) -> u8 {
+pub(crate) fn gmul(mut a: u8, mut b: u8) -> u8 {
     let mut p = 0;
     while b != 0 {
         if b & 1 != 0 {

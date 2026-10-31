@@ -281,6 +281,10 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no set peer A.B.C.D` |  | router | Clear the peer |
 | `set transform-set WORD` |  | router | The transform set to use |
 | `no set transform-set` |  | router | Clear the transform set |
+| `crypto ipsec security-association lifetime {seconds\|kilobytes} <N>` | config | router | How long IPsec keys last before they are renewed |
+| `no crypto ipsec security-association lifetime {seconds\|kilobytes}` | config | router | Back to the default IPsec key lifetime |
+| `set security-association lifetime {seconds\|kilobytes} <N>` |  | router | This entry's key lifetime |
+| `no set security-association lifetime {seconds\|kilobytes}` |  | router | Use the global key lifetime |
 | `match address ACL` |  | router | The access list choosing what to protect |
 | `no match address` |  | router | Protect nothing |
 | `crypto map WORD` | interface, subinterface | router | Protect traffic leaving this interface |

@@ -404,10 +404,9 @@ pub(crate) fn ikev2_sas(sim: &Sim, d: &Device) -> String {
             let _ = writeln!(s, "  Profile: {p}");
         }
         if sa.phase == IkePhase::Established {
-            let esp = if v2.real_cipher {
-                "AES-128-CBC with HMAC-SHA1-96 (real ciphers)"
-            } else {
-                "the simulator's stand-in cipher (only esp-aes 128 with esp-sha-hmac runs for real)"
+            let esp = match v2.esp_suite {
+                Some(suite) => format!("{} (real ciphers)", suite.describe()),
+                None => "the simulator's stand-in cipher (DES, 3DES and AH are not implemented; esp-aes and esp-null run for real)".to_string(),
             };
             let _ = writeln!(s, "  ESP: {esp}");
         }

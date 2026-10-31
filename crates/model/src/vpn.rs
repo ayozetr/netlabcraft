@@ -107,6 +107,37 @@ pub struct CryptoMapEntry {
     /// `set ikev2-profile NAME`: negotiate with IKEv2 instead of IKEv1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ikev2_profile: Option<String>,
+    /// `set security-association lifetime seconds|kilobytes N` (the global values otherwise).
+    #[serde(default, skip_serializing_if = "SaLifetime::is_unset")]
+    pub lifetime: SaLifetime,
+}
+
+/// An IPsec SA lifetime: seconds, kilobytes, or neither set (the defaults then apply).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct SaLifetime {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seconds: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kilobytes: Option<u32>,
+}
+
+/// The lifetime an IPsec SA gets when nothing is configured.
+pub const DEFAULT_SA_SECONDS: u32 = 3_600;
+pub const DEFAULT_SA_KILOBYTES: u32 = 4_608_000;
+/// The lifetime ranges accepted.
+pub const SA_SECONDS: std::ops::RangeInclusive<u32> = 120..=86_400;
+pub const SA_KILOBYTES: std::ops::RangeInclusive<u32> = 2_560..=u32::MAX;
+
+impl SaLifetime {
+    pub fn is_unset(&self) -> bool {
+        *self == SaLifetime::default()
+    }
+
+    /// Out-of-range values (hostile files) are forgotten.
+    pub fn sanitize(&mut self) {
+        self.seconds = self.seconds.filter(|s| SA_SECONDS.contains(s));
+        self.kilobytes = self.kilobytes.filter(|k| SA_KILOBYTES.contains(k));
+    }
 }
 
 /// A router's IPsec configuration.
@@ -128,6 +159,9 @@ pub struct Crypto {
     /// IKEv2 proposals, policies, keyrings and profiles.
     #[serde(default, skip_serializing_if = "Ikev2::is_empty")]
     pub ikev2: Ikev2,
+    /// `crypto ipsec security-association lifetime seconds|kilobytes N`.
+    #[serde(default, skip_serializing_if = "SaLifetime::is_unset")]
+    pub sa_lifetime: SaLifetime,
 }
 
 /// `crypto ikev2 proposal NAME`: the IKE SA algorithms offered (RFC 7296 §3.3).
@@ -305,8 +339,21 @@ impl Crypto {
         self.maps.iter().filter(move |e| e.map == name)
     }
 
+    /// The lifetime an entry's SAs get (seconds, kilobytes): its own, else the global one, else
+    /// the defaults.
+    pub fn lifetime(&self, e: &CryptoMapEntry) -> (u32, u32) {
+        (
+            e.lifetime.seconds.or(self.sa_lifetime.seconds).unwrap_or(DEFAULT_SA_SECONDS),
+            e.lifetime.kilobytes.or(self.sa_lifetime.kilobytes).unwrap_or(DEFAULT_SA_KILOBYTES),
+        )
+    }
+
     /// Caps every list (hostile files).
     pub fn sanitize(&mut self) {
+        self.sa_lifetime.sanitize();
+        for e in &mut self.maps {
+            e.lifetime.sanitize();
+        }
         self.policies.truncate(MAX_CRYPTO);
         self.keys.truncate(MAX_CRYPTO);
         self.transform_sets.truncate(MAX_CRYPTO);

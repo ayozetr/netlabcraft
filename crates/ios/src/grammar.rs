@@ -471,6 +471,10 @@ pub enum Id {
     NoCryptoSetPeer,
     CryptoSetTransformSet,
     NoCryptoSetTransformSet,
+    IpsecSaLifetime,
+    NoIpsecSaLifetime,
+    CryptoSetSaLifetime,
+    NoCryptoSetSaLifetime,
     CryptoMatchAddress,
     NoCryptoMatchAddress,
     CryptoMapIf,
@@ -1322,6 +1326,34 @@ pub static SPECS: &[Spec] = &[
     spec!(NoCryptoSetPeer, Modes::CRYPTO_MAP, Modes::ROUTER, [K("no"), K("set"), K("peer"), Arg("A.B.C.D")], "Clear the peer"),
     spec!(CryptoSetTransformSet, Modes::CRYPTO_MAP, Modes::ROUTER, [K("set"), K("transform-set"), Arg("WORD")], "The transform set to use"),
     spec!(NoCryptoSetTransformSet, Modes::CRYPTO_MAP, Modes::ROUTER, [K("no"), K("set"), K("transform-set")], "Clear the transform set"),
+    spec!(
+        IpsecSaLifetime,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("crypto"), K("ipsec"), K("security-association"), K("lifetime"), Arg("{seconds|kilobytes}"), Arg("<N>")],
+        "How long IPsec keys last before they are renewed"
+    ),
+    spec!(
+        NoIpsecSaLifetime,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("no"), K("crypto"), K("ipsec"), K("security-association"), K("lifetime"), Arg("{seconds|kilobytes}")],
+        "Back to the default IPsec key lifetime"
+    ),
+    spec!(
+        CryptoSetSaLifetime,
+        Modes::CRYPTO_MAP,
+        Modes::ROUTER,
+        [K("set"), K("security-association"), K("lifetime"), Arg("{seconds|kilobytes}"), Arg("<N>")],
+        "This entry's key lifetime"
+    ),
+    spec!(
+        NoCryptoSetSaLifetime,
+        Modes::CRYPTO_MAP,
+        Modes::ROUTER,
+        [K("no"), K("set"), K("security-association"), K("lifetime"), Arg("{seconds|kilobytes}")],
+        "Use the global key lifetime"
+    ),
     spec!(CryptoMatchAddress, Modes::CRYPTO_MAP, Modes::ROUTER, [K("match"), K("address"), Arg("ACL")], "The access list choosing what to protect"),
     spec!(NoCryptoMatchAddress, Modes::CRYPTO_MAP, Modes::ROUTER, [K("no"), K("match"), K("address")], "Protect nothing"),
     spec!(CryptoMapIf, Modes::IF.or(Modes::SUBIF), Modes::ROUTER, [K("crypto"), K("map"), Arg("WORD")], "Protect traffic leaving this interface"),

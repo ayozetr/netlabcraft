@@ -21,11 +21,17 @@
 //! with the pre-shared key) and quick mode (three encrypted messages agreeing the ESP
 //! transform). The association comes up only when quick mode completes. What each side
 //! accepts is decided from both routers' configuration, at the message where a real exchange
-//! would find out: ISAKMP policies that don't agree are refused at main mode message 2,
-//! pre-shared keys that differ fail authentication at message 5, transform sets or crypto map
-//! entries that don't match are refused at quick mode message 2; the refusing side sends a
-//! notification (in the clear here, so the event list shows it). Protected packets travel as
-//! ESP whose cipher is a keyed XOR, **not real encryption** (see `netlabcraft_wire::vpn`).
+//! would find out, each router deciding from its own configuration and what it received: the
+//! responder picks an offered policy one of its own matches (or refuses at main mode message
+//! 2); messages 3 and 4 carry real Diffie-Hellman values and nonces; SKEYID and its children
+//! come from the pre-shared key and the shared secret (RFC 2409 §5), so pre-shared keys that
+//! differ leave message 5 undecryptable and its HASH_I wrong (AUTHENTICATION-FAILED); quick
+//! mode, encrypted and hashed with those keys, is refused at message 2 when the transform sets
+//! or crypto map entries don't match. The refusing side sends a notification (in the clear
+//! here, so the event list shows it). AES policies encrypt for real, DES and 3DES with a
+//! stand-in (`crate::ikev1`). ESP keys come from quick mode's KEYMAT; `esp-aes` (any key size)
+//! and `esp-null` with HMAC integrity run for real, DES, 3DES and AH with the stand-in cipher of
+//! `netlabcraft_wire::vpn`.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -40,6 +46,7 @@ use netlabcraft_wire::ike::{self, Isakmp, Payload, Proposal, Transform};
 use netlabcraft_wire::vpn::{Esp, Gre, NEXT_IPV4, PROTO_ESP, PROTO_GRE};
 use netlabcraft_wire::{ETHERTYPE_IPV4, Ipv4, PROTO_UDP, Udp};
 
+use crate::ikev1::{P1Suite, V1State};
 use crate::{L3If, SVI_PORT, Sim};
 
 /// Tunnel `n` is reported as port `TUNNEL_BASE + n`: far beyond any real port index, and below
@@ -295,6 +302,66 @@ pub struct IpsecSa {
     pub qm_id: u32,
     /// An IKEv2 exchange's state (`None` for IKEv1).
     pub v2: Option<Box<crate::ikev2::V2State>>,
+    /// An IKEv1 exchange's keys and state (`None` for IKEv2).
+    pub v1: Option<Box<V1State>>,
+    /// When the IPsec SA (its current keys) came up, simulated µs.
+    pub up_us: u64,
+    /// Its lifetime: seconds and kilobytes.
+    pub life: (u32, u32),
+    /// Bytes it protected since it came up, both ways.
+    pub bytes: u64,
+    /// Times its keys were renewed since IKE first set it up.
+    pub rekeys: u32,
+    /// When the rekey under way started (0: none).
+    pub rekey_us: u64,
+    /// The inbound SA before the last rekey, still accepted until the peer deletes it: SPI,
+    /// algorithms and key.
+    pub prev_in: Option<(u32, Option<netlabcraft_wire::vpn::EspSuite>, Vec<u8>)>,
+}
+
+/// Where an IPsec SA stands in its lifetime.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Life {
+    Fresh,
+    /// Past 90 % of its time or volume: time to renew the keys.
+    Soft,
+    Expired,
+}
+
+impl IpsecSa {
+    /// Seconds and kilobytes left.
+    pub fn remaining(&self, now: u64) -> (u64, u64) {
+        let secs = u64::from(self.life.0).saturating_sub(now.saturating_sub(self.up_us) / 1_000_000);
+        let kb = u64::from(self.life.1).saturating_sub(self.bytes / 1024);
+        (secs, kb)
+    }
+
+    pub fn life_state(&self, now: u64) -> Life {
+        if self.life == (0, 0) {
+            return Life::Fresh;
+        }
+        let used_us = now.saturating_sub(self.up_us);
+        let life_us = u64::from(self.life.0).saturating_mul(1_000_000);
+        let life_b = u64::from(self.life.1).saturating_mul(1024);
+        if used_us >= life_us || self.bytes >= life_b {
+            Life::Expired
+        } else if used_us >= life_us / 10 * 9 || self.bytes >= life_b / 10 * 9 {
+            Life::Soft
+        } else {
+            Life::Fresh
+        }
+    }
+
+    /// New keys are in: the old inbound SA is kept for packets already on their way.
+    pub(crate) fn rekeyed(&mut self, now: u64, life: (u32, u32), first: bool) {
+        if !first {
+            self.rekeys = self.rekeys.saturating_add(1);
+        }
+        self.up_us = now;
+        self.life = life;
+        self.bytes = 0;
+        self.rekey_us = 0;
+    }
 }
 
 /// Where an IKE exchange with a peer stands.
@@ -350,6 +417,13 @@ impl Default for IpsecSa {
             started_us: 0,
             qm_id: 0,
             v2: None,
+            v1: None,
+            up_us: 0,
+            life: (0, 0),
+            bytes: 0,
+            rekeys: 0,
+            rekey_us: 0,
+            prev_in: None,
         }
     }
 }
@@ -360,20 +434,14 @@ const IKE_RETRY_US: u64 = 2_000_000;
 /// Most IPsec peers tracked per router.
 const MAX_SAS: usize = 256;
 
-/// A security association both routers' configuration agrees on.
-struct Agreed {
-    key: String,
-    spi_out: u32,
-    spi_in: u32,
+/// An SPI this router picks for its inbound SA, from a seed: never below 256.
+fn fresh_spi(seed: &[u8]) -> u32 {
+    let h = netlabcraft_wire::md5::md5(seed);
+    u32::from_be_bytes([h[0], h[1], h[2], h[3]]) | 0x100
 }
 
-/// The SPI one direction uses: derived from the key and both addresses, never below 256.
-fn spi(key: &str, from: Ipv4Addr, to: Ipv4Addr) -> u32 {
-    let mut seed = key.as_bytes().to_vec();
-    seed.extend_from_slice(&from.octets());
-    seed.extend_from_slice(&to.octets());
-    let h = netlabcraft_wire::md5::md5(&seed);
-    u32::from_be_bytes([h[0], h[1], h[2], h[3]]) | 0x100
+fn spi_u32(spi: &[u8]) -> u32 {
+    spi.get(..4).and_then(|s| s.try_into().ok()).map_or(0, u32::from_be_bytes)
 }
 
 /// The device that owns an address.
@@ -429,15 +497,15 @@ fn quick_check(a: &Device, a_addr: Ipv4Addr, e: &CryptoMapEntry, b: &Device, b_a
     Ok(())
 }
 
-/// Decides the association a crypto map entry asks for, from both routers' configuration: the
-/// checks of every IKE stage in the order the exchange makes them.
-fn negotiate(t: &Topology, d: &Device, local: Ipv4Addr, e: &CryptoMapEntry) -> Result<Agreed, String> {
-    let (peer, key) = local_check(d, e)?;
+/// Whether both routers' configuration still agrees on the association a crypto map entry asks
+/// for: the checks of every IKE stage in the order the exchange makes them (to explain a
+/// refusal, and to notice a configuration changed under an association that is up).
+fn negotiate(t: &Topology, d: &Device, local: Ipv4Addr, e: &CryptoMapEntry) -> Result<(), String> {
+    let (peer, _) = local_check(d, e)?;
     let p = owner(t, d, peer).ok_or_else(|| format!("no device has the address {peer}"))?;
     policy_check(d, p)?;
     auth_check(d, local, p, peer)?;
-    quick_check(d, local, e, p, peer)?;
-    Ok(Agreed { spi_out: spi(&key, local, peer), spi_in: spi(&key, peer, local), key })
+    quick_check(d, local, e, p, peer)
 }
 
 /// ISAKMP attribute values for a policy (RFC 2409 appendix A).
@@ -467,7 +535,8 @@ fn policy_transform(number: u8, p: Option<&netlabcraft_model::vpn::IsakmpPolicy>
 
 /// ESP transform from a transform set (RFC 2407 §4.4.4 and §4.5).
 fn esp_transform(ts: Option<&netlabcraft_model::vpn::TransformSet>) -> Transform {
-    let has = |w: &str| ts.is_some_and(|t| t.transforms.iter().any(|x| x == w));
+    let has = |w: &str| ts.is_some_and(|t| t.transforms.iter().any(|x| x.split_whitespace().next() == Some(w)));
+    let bits: u16 = ts.and_then(|t| t.transforms.iter().find_map(|x| x.strip_prefix("esp-aes ").and_then(|b| b.parse().ok()))).unwrap_or(128);
     let id = if has("esp-aes") {
         12
     } else if has("esp-3des") {
@@ -480,11 +549,13 @@ fn esp_transform(ts: Option<&netlabcraft_model::vpn::TransformSet>) -> Transform
     let mut attrs = vec![(1, 1), (2, 3_600), (4, if ts.is_some_and(|t| t.transport) { 2 } else { 1 })];
     if has("esp-sha-hmac") {
         attrs.push((5, 2));
+    } else if has("esp-sha256-hmac") {
+        attrs.push((5, 5));
     } else if has("esp-md5-hmac") {
         attrs.push((5, 1));
     }
     if id == 12 {
-        attrs.push((6, 128));
+        attrs.push((6, bits));
     }
     Transform { number: 1, id, attrs }
 }
@@ -497,6 +568,39 @@ fn id_payload(a: Ipv4Addr) -> Payload {
 fn is_isakmp(ip: &Ipv4) -> bool {
     ip.protocol == PROTO_UDP
         && Udp::decode(&ip.payload, ip.src, ip.dst).is_ok_and(|u| u.dst_port == ike::ISAKMP_PORT && u.src_port == ike::ISAKMP_PORT)
+}
+
+/// The ESP algorithms a transform set asks for, when every one of them is implemented for real
+/// (AES-CBC of any key size or NULL, with HMAC-SHA1-96, HMAC-SHA-256-128, HMAC-MD5-96 or no
+/// integrity check). `None` for DES, 3DES, AH or a set with neither cipher nor integrity: those
+/// keep the stand-in cipher of `netlabcraft_wire::vpn`.
+pub(crate) fn esp_suite(ts: &netlabcraft_model::vpn::TransformSet) -> Option<netlabcraft_wire::vpn::EspSuite> {
+    use netlabcraft_wire::suite::Integ;
+    use netlabcraft_wire::vpn::{EspEncr, EspSuite};
+    let mut encr = None;
+    let mut integ = Integ::None;
+    for t in &ts.transforms {
+        let mut w = t.split_whitespace();
+        match w.next()? {
+            "esp-aes" => {
+                let bits: u16 = w.next().map_or(Some(128), |b| b.parse().ok())?;
+                if ![128, 192, 256].contains(&bits) {
+                    return None;
+                }
+                encr = Some(EspEncr::AesCbc(bits));
+            }
+            "esp-null" => encr = Some(EspEncr::Null),
+            "esp-sha-hmac" => integ = Integ::HmacSha1_96,
+            "esp-sha256-hmac" => integ = Integ::HmacSha256_128,
+            "esp-md5-hmac" => integ = Integ::HmacMd5_96,
+            _ => return None,
+        }
+    }
+    let encr = encr?;
+    if encr == EspEncr::Null && integ == Integ::None {
+        return None;
+    }
+    Some(EspSuite { encr, integ })
 }
 
 /// Whether an access list permits a packet (an explicit permit; a missing list permits
@@ -591,7 +695,29 @@ impl Sim {
             self.ike_start(t, d, local, peer);
             return Err(format!("IPsec: no security association with {peer} yet: IKE main mode started"));
         }
-        // Established: the configuration may have changed since.
+        // Established: renew the keys near the end of the lifetime, start over after it.
+        match sa.life_state(now) {
+            Life::Expired => {
+                let why = format!("IPsec SA with {peer} reached the end of its lifetime; negotiating new keys");
+                *sa = IpsecSa {
+                    local,
+                    peer,
+                    iface: out.name.clone(),
+                    map: entry.map.clone(),
+                    seq: entry.seq,
+                    drops: sa.drops.saturating_add(1),
+                    ..IpsecSa::default()
+                };
+                self.log(d.id, &why);
+                self.ike_start(t, d, local, peer);
+                return Err(format!("IPsec: {why}"));
+            }
+            Life::Soft if sa.initiator && (sa.rekey_us == 0 || now.saturating_sub(sa.rekey_us) >= IKE_RETRY_US) => {
+                self.ike_rekey_v1(t, d, local, peer);
+            }
+            _ => {}
+        }
+        // The configuration may have changed since.
         match negotiate(t, d, local, &entry) {
             Err(why) => {
                 let sa = self.st(d.id).ipsec.entry(peer).or_default();
@@ -600,14 +726,14 @@ impl Sim {
                 sa.drops = sa.drops.saturating_add(1);
                 Err(format!("IPsec: no security association with {peer}: {why}"))
             }
-            Ok(a) => {
+            Ok(()) => {
                 let sa = self.st(d.id).ipsec.entry(peer).or_default();
                 sa.failed = None;
-                sa.spi_out = a.spi_out;
-                sa.spi_in = a.spi_in;
                 sa.encaps = sa.encaps.saturating_add(1);
+                sa.bytes = sa.bytes.saturating_add(u64::try_from(datagram.len()).unwrap_or(u64::MAX));
                 let seq = u32::try_from(sa.encaps).unwrap_or(u32::MAX);
-                let esp = Esp::seal(a.key.as_bytes(), a.spi_out, seq, NEXT_IPV4, datagram);
+                let (suite, key) = sa.v1.as_deref().map(|v| (v.esp_suite, v.esp_out.clone())).unwrap_or_default();
+                let esp = crate::ikev2::esp_seal(suite, &key, sa.spi_out, seq, datagram);
                 let id = self.ip_id();
                 let mut outer = Ipv4 { id, ttl: 255, protocol: PROTO_ESP, src: local, dst: peer, payload: esp.encode() }.encode();
                 crate::qos::copy_ds(datagram, &mut outer);
@@ -633,30 +759,97 @@ impl Sim {
         seed.extend_from_slice(&peer.octets());
         seed.extend_from_slice(&now.to_be_bytes());
         let icookie: [u8; 8] = ike::filler(&seed, 8).try_into().unwrap_or([1; 8]);
+        let mut transforms: Vec<Transform> = d.crypto.policies.iter().take(16).zip(1u8..).map(|(p, n)| policy_transform(n, Some(p))).collect();
+        if transforms.is_empty() {
+            transforms.push(policy_transform(1, None));
+        }
+        let proposal = Proposal { number: 1, protocol: ike::PROTO_ISAKMP, spi: Vec::new(), transforms };
+        let sa_payload = Payload::Sa(vec![proposal]);
         let sa = self.st(d.id).ipsec.entry(peer).or_default();
         sa.phase = IkePhase::Main(1);
         sa.initiator = true;
         sa.icookie = icookie;
         sa.rcookie = [0; 8];
         sa.started_us = now;
-        let mut transforms: Vec<Transform> = d.crypto.policies.iter().take(16).zip(1u8..).map(|(p, n)| policy_transform(n, Some(p))).collect();
-        if transforms.is_empty() {
-            transforms.push(policy_transform(1, None));
-        }
-        let proposal = Proposal { number: 1, protocol: ike::PROTO_ISAKMP, spi: Vec::new(), transforms };
-        let m = Isakmp::clear(icookie, [0; 8], ike::EXCH_MAIN, 0, vec![Payload::Sa(vec![proposal])]);
+        sa.v1 = Some(Box::new(V1State::new(None, sa_payload.body())));
+        let m = Isakmp::clear(icookie, [0; 8], ike::EXCH_MAIN, 0, vec![sa_payload]);
         if self.state.get(&d.id).is_some_and(|s| s.debug_packet) {
             self.log(d.id, &format!("IKE: starting main mode with {peer} for traffic a crypto map protects"));
         }
         self.ike_send(t, d, local, peer, &m);
     }
 
-    /// Records a failed exchange and logs why.
+    /// Records a failed exchange and logs why. A failed rekey leaves the SA it would have
+    /// renewed as it is.
     fn ike_fail(&mut self, d: &Device, peer: Ipv4Addr, why: String) {
         let sa = self.st(d.id).ipsec.entry(peer).or_default();
+        if sa.phase == IkePhase::Established {
+            sa.rekey_us = 0;
+            self.log(d.id, &format!("IKE with {peer}: renewing the IPsec keys failed: {why}"));
+            return;
+        }
         sa.phase = IkePhase::Failed;
         sa.failed = Some(why.clone());
         self.log(d.id, &format!("IKE with {peer} failed: {why}"));
+    }
+
+    /// Keeps the exchange state; a quick mode under an SA that is up (a rekey) leaves it up.
+    fn set_v1(&mut self, d: &Device, peer: Ipv4Addr, v1: V1State, phase: IkePhase) {
+        let now = self.now;
+        let sa = self.st(d.id).ipsec.entry(peer).or_default();
+        sa.v1 = Some(Box::new(v1));
+        if sa.phase == IkePhase::Established {
+            if sa.rekey_us == 0 {
+                sa.rekey_us = now.max(1);
+            }
+        } else {
+            sa.phase = phase;
+        }
+    }
+
+    /// Renews the IPsec keys: a new quick mode under the ISAKMP SA that is up.
+    fn ike_rekey_v1(&mut self, t: &Topology, d: &Device, local: Ipv4Addr, peer: Ipv4Addr) {
+        let now = self.now;
+        let Some(sa) = self.state.get(&d.id).and_then(|s| s.ipsec.get(&peer)).cloned() else { return };
+        let Some(v1) = sa.v1.as_deref().cloned() else { return };
+        let entry = crate::ikev2::entry_for(d, local, peer);
+        let seed = [&sa.icookie[..], &sa.rcookie[..], &local.octets()[..], &now.to_be_bytes()[..], b"rekey"].concat();
+        self.log(d.id, &format!("IKE with {peer}: the IPsec SA nears the end of its lifetime; quick mode renews its keys"));
+        if let Some(s) = self.st(d.id).ipsec.get_mut(&peer) {
+            s.rekey_us = now.max(1);
+        }
+        self.qm1(t, d, local, peer, v1, &seed, &entry, sa.icookie, sa.rcookie);
+    }
+
+    /// Quick mode message 1: the ESP proposal from the crypto map entry, HASH(1) over it.
+    #[allow(clippy::too_many_arguments)]
+    fn qm1(
+        &mut self,
+        t: &Topology,
+        d: &Device,
+        local: Ipv4Addr,
+        peer: Ipv4Addr,
+        mut v1: V1State,
+        seed: &[u8],
+        my_entry: &Option<CryptoMapEntry>,
+        ic: [u8; 8],
+        rc: [u8; 8],
+    ) {
+        let qm_id = u32::from_be_bytes(ike::filler(&[seed, &b"qm"[..]].concat(), 4).try_into().unwrap_or([0, 0, 0, 1])) | 1;
+        let ts = my_entry.as_ref().and_then(|e| e.transform_set.as_deref()).and_then(|n| d.crypto.transform_set(n));
+        v1.spi_mine = fresh_spi(&[seed, b"spi-i"].concat());
+        v1.esp_suite = ts.and_then(esp_suite);
+        v1.qm_ni = ike::filler(&[seed, b"qm-ni"].concat(), 16);
+        v1.start_qm(qm_id);
+        let proposal = Proposal { number: 1, protocol: ike::PROTO_ESP, spi: v1.spi_mine.to_be_bytes().to_vec(), transforms: vec![esp_transform(ts)] };
+        let rest = vec![Payload::Sa(vec![proposal]), Payload::Nonce(v1.qm_ni.clone()), id_payload(local), id_payload(peer)];
+        let mut payloads = vec![Payload::Hash(v1.hash_qm(qm_id, None, &rest))];
+        payloads.extend(rest);
+        let out = v1.seal(ic, rc, ike::EXCH_QUICK, qm_id, &payloads, true);
+        let sa = self.st(d.id).ipsec.entry(peer).or_default();
+        sa.qm_id = qm_id;
+        self.set_v1(d, peer, v1, IkePhase::Quick(1));
+        self.ike_send(t, d, local, peer, &out);
     }
 
     /// An ISAKMP message to this router: the next step of the exchange it belongs to.
@@ -698,156 +891,204 @@ impl Sim {
             self.ike_fail(d, peer, format!("{why}; the peer sent {what} in place of {at}"));
             return Ok(());
         }
-        let reply_to =
-            |m: &Isakmp, rcookie: [u8; 8], exch: u8, id: u32, payloads: Vec<Payload>| Isakmp::clear(m.icookie, rcookie, exch, id, payloads);
         let refuse = |m: &Isakmp, rcookie: [u8; 8], kind: u16| {
             Isakmp::clear(m.icookie, rcookie, ike::EXCH_INFO, 1, vec![Payload::Notify { protocol: ike::PROTO_ISAKMP, kind, spi: Vec::new() }])
         };
         if m.exchange == ike::EXCH_MAIN && m.rcookie == [0; 8] {
-            // Main mode message 1: a new exchange, this router responding.
-            let mut seed = m.icookie.to_vec();
-            seed.extend_from_slice(&local.octets());
-            seed.extend_from_slice(&now.to_be_bytes());
-            let rcookie: [u8; 8] = ike::filler(&seed, 8).try_into().unwrap_or([2; 8]);
-            let st = self.st(d.id);
-            if !st.ipsec.contains_key(&peer) && st.ipsec.len() >= MAX_SAS {
-                st.ipsec.clear();
-            }
-            let sa = st.ipsec.entry(peer).or_default();
-            *sa = IpsecSa { local, peer, phase: IkePhase::Main(2), icookie: m.icookie, rcookie, started_us: now, ..IpsecSa::default() };
-            if let Some(e) = &my_entry {
-                sa.map = e.map.clone();
-                sa.seq = e.seq;
-            }
-            if let Some(i) = crate::l3_ifaces(d).into_iter().find(|i| i.net.addr == local) {
-                sa.iface = i.name;
-            }
-            let checked = match other {
-                Some(o) => policy_check(o, d),
-                None => Ok(()),
-            };
-            if let Err(why) = checked {
-                self.ike_fail(d, peer, format!("{why}; refused main mode message 1"));
-                self.ike_send(t, d, local, peer, &refuse(&m, rcookie, ike::NO_PROPOSAL_CHOSEN));
-                return Ok(());
-            }
-            let chosen = other
-                .and_then(|o| o.crypto.policies.iter().find(|x| d.crypto.policies.iter().any(|y| x.agrees(y))))
-                .or_else(|| d.crypto.policies.first());
-            let proposal = Proposal { number: 1, protocol: ike::PROTO_ISAKMP, spi: Vec::new(), transforms: vec![policy_transform(1, chosen)] };
-            self.ike_send(t, d, local, peer, &reply_to(&m, rcookie, ike::EXCH_MAIN, 0, vec![Payload::Sa(vec![proposal])]));
-            return Ok(());
+            return self.ike_main1(t, d, local, peer, &m, &my_entry, other);
         }
         if m.icookie != cur.icookie || (cur.rcookie != [0; 8] && m.rcookie != cur.rcookie) {
             return Err(format!("ISAKMP from {peer} for an exchange this router doesn't know (cookies)"));
         }
-        let ke = |who: &[u8]| {
-            let mut seed = who.to_vec();
-            seed.extend_from_slice(&m.icookie);
-            vec![Payload::Ke(ike::filler(&seed, 128)), Payload::Nonce(ike::filler(&[seed.as_slice(), &b"n"[..]].concat(), 16))]
+        let mut v1 = cur.v1.as_deref().cloned().unwrap_or_default();
+        let (ic, rc) = (m.icookie, if cur.rcookie == [0; 8] { m.rcookie } else { cur.rcookie });
+        let seed = [&ic[..], &rc[..], &local.octets()[..], &now.to_be_bytes()[..]].concat();
+        let ke_nonce = |ke: Vec<u8>, n: Vec<u8>| vec![Payload::Ke(ke), Payload::Nonce(n)];
+        let take_ke = |m: &Isakmp| {
+            let ke = m.payloads.iter().find_map(|p| if let Payload::Ke(k) = p { Some(k.clone()) } else { None });
+            let n = m.payloads.iter().find_map(|p| if let Payload::Nonce(k) = p { Some(k.clone()) } else { None });
+            ke.zip(n)
         };
-        let hash = |what: &[u8]| Payload::Hash(ike::filler(&[my_key.as_bytes(), &m.icookie[..], what].concat(), 20));
-        let rc = cur.rcookie;
-        match (m.exchange, cur.initiator, cur.phase) {
-            // Initiator: the policy was accepted (message 2): keys and nonces (message 3).
+        // Quick mode under an SA that is up renews its keys: the steps are those of the first.
+        let phase = match (cur.phase, m.exchange) {
+            (IkePhase::Established, ike::EXCH_QUICK) if cur.rekey_us != 0 && m.message_id == cur.qm_id => {
+                if cur.initiator {
+                    IkePhase::Quick(1)
+                } else {
+                    IkePhase::Quick(2)
+                }
+            }
+            (IkePhase::Established, ike::EXCH_QUICK) if !cur.initiator => IkePhase::Main(6),
+            (p, _) => p,
+        };
+        match (m.exchange, cur.initiator, phase) {
+            // Initiator: the responder chose a policy (message 2): keys and nonces (message 3).
             (ike::EXCH_MAIN, true, IkePhase::Main(1)) if m.proposal().is_some() => {
+                let chosen = m.proposal().and_then(|p| p.transforms.first()).cloned();
+                let offered: Vec<Transform> = d.crypto.policies.iter().map(|p| policy_transform(0, Some(p))).collect();
+                let ok = chosen.as_ref().filter(|c| offered.is_empty() || offered.iter().any(|o| crate::ikev1::same_policy(o, c)));
+                let Some(chosen) = ok else {
+                    self.ike_fail(d, peer, "the peer chose an ISAKMP policy this router did not offer".into());
+                    return Ok(());
+                };
+                v1.suite = Some(P1Suite::from_transform(chosen));
+                v1.ke_i = v1.make_ke(&seed);
+                v1.ni = ike::filler(&[&seed[..], b"ni"].concat(), 16);
+                let out = Isakmp::clear(ic, m.rcookie, ike::EXCH_MAIN, 0, ke_nonce(v1.ke_i.clone(), v1.ni.clone()));
                 let sa = self.st(d.id).ipsec.entry(peer).or_default();
                 sa.rcookie = m.rcookie;
-                sa.phase = IkePhase::Main(3);
-                let out = Isakmp::clear(m.icookie, m.rcookie, ike::EXCH_MAIN, 0, ke(&local.octets()));
+                self.set_v1(d, peer, v1, IkePhase::Main(3));
                 self.ike_send(t, d, local, peer, &out);
             }
-            // Responder: message 3 in, message 4 out.
+            // Responder: message 3 in (the initiator's value and nonce), message 4 out; both
+            // ends can now work out the keys.
             (ike::EXCH_MAIN, false, IkePhase::Main(2)) => {
-                self.st(d.id).ipsec.entry(peer).or_default().phase = IkePhase::Main(4);
-                self.ike_send(t, d, local, peer, &reply_to(&m, rc, ike::EXCH_MAIN, 0, ke(&local.octets())));
-            }
-            // Initiator: message 4 in, the encrypted identity (message 5) out.
-            (ike::EXCH_MAIN, true, IkePhase::Main(3)) => {
-                self.st(d.id).ipsec.entry(peer).or_default().phase = IkePhase::Main(5);
-                let out = Isakmp::sealed(m.icookie, rc, ike::EXCH_MAIN, 0, &[id_payload(local), hash(b"I")], my_key.as_bytes());
+                let Some((ke, ni)) = take_ke(&m) else {
+                    self.ike_fail(d, peer, "main mode message 3 lacks the key exchange or the nonce".into());
+                    return Ok(());
+                };
+                v1.ke_i = ke;
+                v1.ni = ni;
+                v1.ke_r = v1.make_ke(&seed);
+                v1.nr = ike::filler(&[&seed[..], b"nr"].concat(), 16);
+                if !v1.derive(my_key.as_bytes(), &ic, &rc, false) {
+                    self.ike_fail(d, peer, "the peer's Diffie-Hellman value is not valid for the group".into());
+                    self.ike_send(t, d, local, peer, &refuse(&m, rc, ike::INVALID_KEY_INFORMATION));
+                    return Ok(());
+                }
+                let out = Isakmp::clear(ic, rc, ike::EXCH_MAIN, 0, ke_nonce(v1.ke_r.clone(), v1.nr.clone()));
+                self.set_v1(d, peer, v1, IkePhase::Main(4));
                 self.ike_send(t, d, local, peer, &out);
             }
-            // Responder: message 5 must open with this router's key and the keys must agree.
-            (ike::EXCH_MAIN, false, IkePhase::Main(4)) => {
-                let verdict = match other {
-                    Some(o) => auth_check(o, peer, d, local),
-                    None => Ok(()),
+            // Initiator: message 4 in, the encrypted identity and HASH_I (message 5) out.
+            (ike::EXCH_MAIN, true, IkePhase::Main(3)) => {
+                let Some((ke, nr)) = take_ke(&m) else {
+                    self.ike_fail(d, peer, "main mode message 4 lacks the key exchange or the nonce".into());
+                    return Ok(());
+                };
+                v1.ke_r = ke;
+                v1.nr = nr;
+                if !v1.derive(my_key.as_bytes(), &ic, &rc, true) {
+                    self.ike_fail(d, peer, "the peer's Diffie-Hellman value is not valid for the group".into());
+                    return Ok(());
                 }
-                .and_then(|()| {
-                    m.open(my_key.as_bytes()).map(|_| ()).map_err(|_| "main mode message 5 does not decrypt with this router's key".to_string())
+                let id = id_payload(local);
+                let hash = v1.hash_p1(true, &ic, &rc, &id.body());
+                let out = v1.seal(ic, rc, ike::EXCH_MAIN, 0, &[id, Payload::Hash(hash)], false);
+                self.set_v1(d, peer, v1, IkePhase::Main(5));
+                self.ike_send(t, d, local, peer, &out);
+            }
+            // Responder: message 5 must decrypt with the keys and carry the right HASH_I.
+            (ike::EXCH_MAIN, false, IkePhase::Main(4)) => {
+                let opened = v1.open(&m, false);
+                let verdict = opened.and_then(|list| {
+                    let id = list.iter().find(|p| matches!(p, Payload::Id { .. })).map(Payload::body).ok_or(crate::ikev1::OPEN_FAILED)?;
+                    let want = v1.hash_p1(true, &ic, &rc, &id);
+                    if crate::ikev1::hash_of(&list) == Some(&want[..]) { Ok(()) } else { Err(crate::ikev1::OPEN_FAILED.to_string()) }
                 });
-                if let Err(why) = verdict {
+                if let Err(e) = verdict {
+                    // The configurations say why, when the peer is known.
+                    let why = other.and_then(|o| auth_check(o, peer, d, local).err()).unwrap_or_else(|| format!("main mode message 5 {e}"));
                     self.ike_fail(d, peer, format!("{why}; main mode message 5 failed authentication"));
                     self.ike_send(t, d, local, peer, &refuse(&m, rc, ike::AUTHENTICATION_FAILED));
                     return Ok(());
                 }
-                self.st(d.id).ipsec.entry(peer).or_default().phase = IkePhase::Main(6);
-                let out = Isakmp::sealed(m.icookie, rc, ike::EXCH_MAIN, 0, &[id_payload(local), hash(b"R")], my_key.as_bytes());
+                let id = id_payload(local);
+                let hash = v1.hash_p1(false, &ic, &rc, &id.body());
+                let out = v1.seal(ic, rc, ike::EXCH_MAIN, 0, &[id, Payload::Hash(hash)], false);
+                self.set_v1(d, peer, v1, IkePhase::Main(6));
                 self.ike_send(t, d, local, peer, &out);
             }
-            // Initiator: main mode done (message 6); quick mode message 1 proposes ESP.
+            // Initiator: main mode done (message 6, HASH_R checked); quick mode message 1
+            // proposes ESP.
             (ike::EXCH_MAIN, true, IkePhase::Main(5)) => {
-                if m.open(my_key.as_bytes()).is_err() {
-                    self.ike_fail(d, peer, "main mode message 6 does not decrypt with this router's key".into());
+                let ok = v1.open(&m, false).is_ok_and(|list| {
+                    list.iter()
+                        .find(|p| matches!(p, Payload::Id { .. }))
+                        .is_some_and(|id| crate::ikev1::hash_of(&list) == Some(&v1.hash_p1(false, &ic, &rc, &id.body())[..]))
+                });
+                if !ok {
+                    self.ike_fail(d, peer, format!("main mode message 6 {}", crate::ikev1::OPEN_FAILED));
                     return Ok(());
                 }
-                let qm_id = u32::from_be_bytes(ike::filler(&[&m.icookie[..], &b"qm"[..]].concat(), 4).try_into().unwrap_or([0, 0, 0, 1])) | 1;
-                let sa = self.st(d.id).ipsec.entry(peer).or_default();
-                sa.phase = IkePhase::Quick(1);
-                sa.qm_id = qm_id;
-                let ts = my_entry.as_ref().and_then(|e| e.transform_set.as_deref()).and_then(|n| d.crypto.transform_set(n));
-                let spi_in = d.crypto.key_for(peer).map_or(0, |k| spi(k, peer, local));
-                let proposal =
-                    Proposal { number: 1, protocol: ike::PROTO_ESP, spi: spi_in.to_be_bytes().to_vec(), transforms: vec![esp_transform(ts)] };
-                let payloads =
-                    [hash(b"Q1"), Payload::Sa(vec![proposal]), Payload::Nonce(ike::filler(&m.icookie, 16)), id_payload(local), id_payload(peer)];
-                let out = Isakmp::sealed(m.icookie, rc, ike::EXCH_QUICK, qm_id, &payloads, my_key.as_bytes());
-                self.ike_send(t, d, local, peer, &out);
+                self.qm1(t, d, local, peer, v1, &seed, &my_entry, ic, rc);
             }
-            // Responder: quick mode message 1 must match a crypto map entry here.
+            // Responder: quick mode message 1 must authenticate and match a crypto map entry
+            // here with the same transforms.
             (ike::EXCH_QUICK, false, IkePhase::Main(6)) => {
-                let verdict = match (other, &my_entry) {
-                    (Some(o), _) => {
-                        let oe = crate::l3_ifaces(o)
-                            .into_iter()
-                            .find(|i| i.net.addr == peer)
-                            .and_then(|i| o.crypto.applied.iter().find(|(n, _)| same_name(n, &i.name)).map(|(_, m)| m.clone()))
-                            .and_then(|mname| o.crypto.map(&mname).find(|e| e.peer == Some(local)).cloned());
-                        match oe {
-                            Some(oe) => quick_check(o, peer, &oe, d, local),
-                            None => Err(format!("no crypto map entry here for {peer}")),
-                        }
+                v1.start_qm(m.message_id);
+                let list = match v1.open(&m, true) {
+                    Ok(l) if crate::ikev1::hash_of(&l) == Some(&v1.hash_qm(m.message_id, None, crate::ikev1::after_hash(&l))[..]) => l,
+                    _ => {
+                        self.ike_fail(d, peer, format!("quick mode message 1 {}", crate::ikev1::OPEN_FAILED));
+                        return Ok(());
                     }
-                    (None, Some(_)) => Ok(()),
-                    (None, None) => Err(format!("no crypto map entry here for {peer}")),
+                };
+                let offer = list.iter().find_map(|p| if let Payload::Sa(v) = p { v.first().cloned() } else { None });
+                let ts = my_entry.as_ref().and_then(|e| e.transform_set.as_deref()).and_then(|n| d.crypto.transform_set(n));
+                let verdict = match (&my_entry, &offer) {
+                    (None, _) => Err(format!("no crypto map entry here for {peer}")),
+                    (_, None) => Err("quick mode message 1 carries no ESP proposal".to_string()),
+                    (Some(_), Some(o)) if o.transforms.first() != Some(&esp_transform(ts)) => {
+                        // The configurations say how they differ, when the peer is known.
+                        let why = other.and_then(|o| {
+                            let oe = crate::l3_ifaces(o)
+                                .into_iter()
+                                .find(|i| i.net.addr == peer)
+                                .and_then(|i| o.crypto.applied.iter().find(|(n, _)| same_name(n, &i.name)).map(|(_, m)| m.clone()))
+                                .and_then(|mname| o.crypto.map(&mname).find(|e| e.peer == Some(local)).cloned())?;
+                            quick_check(o, peer, &oe, d, local).err()
+                        });
+                        Err(why.unwrap_or_else(|| "the peer's ESP transforms differ from this router's transform set".to_string()))
+                    }
+                    _ => Ok(()),
                 };
                 if let Err(why) = verdict {
                     self.ike_fail(d, peer, format!("{why}; refused quick mode message 1"));
                     self.ike_send(t, d, local, peer, &refuse(&m, rc, ike::NO_PROPOSAL_CHOSEN));
                     return Ok(());
                 }
-                self.st(d.id).ipsec.entry(peer).or_default().phase = IkePhase::Quick(2);
-                let ts = my_entry.as_ref().and_then(|e| e.transform_set.as_deref()).and_then(|n| d.crypto.transform_set(n));
-                let proposal = Proposal {
-                    number: 1,
-                    protocol: ike::PROTO_ESP,
-                    spi: spi(&my_key, peer, local).to_be_bytes().to_vec(),
-                    transforms: vec![esp_transform(ts)],
-                };
-                let payloads =
-                    [hash(b"Q2"), Payload::Sa(vec![proposal]), Payload::Nonce(ike::filler(&m.rcookie, 16)), id_payload(peer), id_payload(local)];
-                let out = Isakmp::sealed(m.icookie, rc, ike::EXCH_QUICK, m.message_id, &payloads, my_key.as_bytes());
+                v1.qm_ni = list.iter().find_map(|p| if let Payload::Nonce(n) = p { Some(n.clone()) } else { None }).unwrap_or_default();
+                v1.spi_peer = offer.as_ref().map_or(0, |o| spi_u32(&o.spi));
+                v1.spi_mine = fresh_spi(&[&seed[..], b"spi-r"].concat());
+                v1.qm_nr = ike::filler(&[&seed[..], b"qm-nr"].concat(), 16);
+                v1.esp_suite = ts.and_then(esp_suite);
+                let proposal =
+                    Proposal { number: 1, protocol: ike::PROTO_ESP, spi: v1.spi_mine.to_be_bytes().to_vec(), transforms: vec![esp_transform(ts)] };
+                let rest = vec![Payload::Sa(vec![proposal]), Payload::Nonce(v1.qm_nr.clone()), id_payload(peer), id_payload(local)];
+                let mut payloads = vec![Payload::Hash(v1.hash_qm(m.message_id, Some(&v1.qm_ni), &rest))];
+                payloads.extend(rest);
+                let out = v1.seal(ic, rc, ike::EXCH_QUICK, m.message_id, &payloads, true);
+                let sa = self.st(d.id).ipsec.entry(peer).or_default();
+                sa.qm_id = m.message_id;
+                self.set_v1(d, peer, v1, IkePhase::Quick(2));
                 self.ike_send(t, d, local, peer, &out);
             }
             // Initiator: quick mode message 2 accepted the transform: up, and message 3 confirms.
             (ike::EXCH_QUICK, true, IkePhase::Quick(1)) => {
-                let out = Isakmp::sealed(m.icookie, rc, ike::EXCH_QUICK, m.message_id, &[hash(b"Q3")], my_key.as_bytes());
-                self.ike_up(d, local, peer, &my_key);
+                let ni = v1.qm_ni.clone();
+                let list = match v1.open(&m, true) {
+                    Ok(l) if crate::ikev1::hash_of(&l) == Some(&v1.hash_qm(m.message_id, Some(&ni), crate::ikev1::after_hash(&l))[..]) => l,
+                    _ => {
+                        self.ike_fail(d, peer, format!("quick mode message 2 {}", crate::ikev1::OPEN_FAILED));
+                        return Ok(());
+                    }
+                };
+                v1.qm_nr = list.iter().find_map(|p| if let Payload::Nonce(n) = p { Some(n.clone()) } else { None }).unwrap_or_default();
+                v1.spi_peer = list.iter().find_map(|p| if let Payload::Sa(v) = p { v.first().map(|x| spi_u32(&x.spi)) } else { None }).unwrap_or(0);
+                let out = v1.seal(ic, rc, ike::EXCH_QUICK, m.message_id, &[Payload::Hash(v1.hash_qm3(m.message_id))], true);
+                self.ike_up(d, local, peer, v1);
                 self.ike_send(t, d, local, peer, &out);
             }
-            // Responder: quick mode message 3: up.
-            (ike::EXCH_QUICK, false, IkePhase::Quick(2)) => self.ike_up(d, local, peer, &my_key),
+            // Responder: quick mode message 3 (HASH(3) checked): up.
+            (ike::EXCH_QUICK, false, IkePhase::Quick(2)) => {
+                let ok = v1.open(&m, true).is_ok_and(|l| crate::ikev1::hash_of(&l) == Some(&v1.hash_qm3(m.message_id)[..]));
+                if !ok {
+                    self.ike_fail(d, peer, format!("quick mode message 3 {}", crate::ikev1::OPEN_FAILED));
+                    return Ok(());
+                }
+                self.ike_up(d, local, peer, v1);
+            }
             (_, _, phase) => {
                 return Err(format!("ISAKMP from {peer} not expected now ({})", phase.describe()));
             }
@@ -855,13 +1096,85 @@ impl Sim {
         Ok(())
     }
 
-    /// The exchange completed: the security association is up.
-    fn ike_up(&mut self, d: &Device, local: Ipv4Addr, peer: Ipv4Addr, key: &str) {
+    /// Main mode message 1: a new exchange, this router responding with the first offered
+    /// policy that one of its own policies matches.
+    #[allow(clippy::too_many_arguments)]
+    fn ike_main1(
+        &mut self,
+        t: &Topology,
+        d: &Device,
+        local: Ipv4Addr,
+        peer: Ipv4Addr,
+        m: &Isakmp,
+        my_entry: &Option<CryptoMapEntry>,
+        other: Option<&Device>,
+    ) -> Result<(), String> {
+        let now = self.now;
+        let mut seed = m.icookie.to_vec();
+        seed.extend_from_slice(&local.octets());
+        seed.extend_from_slice(&now.to_be_bytes());
+        let rcookie: [u8; 8] = ike::filler(&seed, 8).try_into().unwrap_or([2; 8]);
+        let st = self.st(d.id);
+        if !st.ipsec.contains_key(&peer) && st.ipsec.len() >= MAX_SAS {
+            st.ipsec.clear();
+        }
+        let sa = st.ipsec.entry(peer).or_default();
+        *sa = IpsecSa { local, peer, phase: IkePhase::Main(2), icookie: m.icookie, rcookie, started_us: now, ..IpsecSa::default() };
+        if let Some(e) = my_entry {
+            sa.map = e.map.clone();
+            sa.seq = e.seq;
+        }
+        if let Some(i) = crate::l3_ifaces(d).into_iter().find(|i| i.net.addr == local) {
+            sa.iface = i.name;
+        }
+        let offered: Vec<Transform> = m.proposal().map(|p| p.transforms.clone()).unwrap_or_default();
+        let mine: Vec<(Transform, bool)> =
+            d.crypto.policies.iter().map(|p| (policy_transform(0, Some(p)), p.authentication == "pre-share")).collect();
+        let chosen = if mine.is_empty() {
+            offered.iter().find(|t| crate::ikev1::pre_shared(t)).cloned()
+        } else {
+            offered.iter().find(|t| mine.iter().any(|(x, psk)| *psk && crate::ikev1::same_policy(x, t))).cloned()
+        };
+        let Some(chosen) = chosen else {
+            let why = other.and_then(|o| policy_check(o, d).err()).unwrap_or_else(|| "no ISAKMP policy matches the peer's".to_string());
+            self.ike_fail(d, peer, format!("{why}; refused main mode message 1"));
+            let n = Isakmp::clear(
+                m.icookie,
+                rcookie,
+                ike::EXCH_INFO,
+                1,
+                vec![Payload::Notify { protocol: ike::PROTO_ISAKMP, kind: ike::NO_PROPOSAL_CHOSEN, spi: Vec::new() }],
+            );
+            self.ike_send(t, d, local, peer, &n);
+            return Ok(());
+        };
+        let sa_b = m.payloads.iter().find(|p| matches!(p, Payload::Sa(_))).map(Payload::body).unwrap_or_default();
+        let v1 = V1State::new(Some(P1Suite::from_transform(&chosen)), sa_b);
+        self.set_v1(d, peer, v1, IkePhase::Main(2));
+        let proposal = Proposal { number: 1, protocol: ike::PROTO_ISAKMP, spi: Vec::new(), transforms: vec![chosen] };
+        self.ike_send(t, d, local, peer, &Isakmp::clear(m.icookie, rcookie, ike::EXCH_MAIN, 0, vec![Payload::Sa(vec![proposal])]));
+        Ok(())
+    }
+
+    /// The exchange completed: the security association is up, with ESP keys from KEYMAT.
+    fn ike_up(&mut self, d: &Device, local: Ipv4Addr, peer: Ipv4Addr, mut v1: V1State) {
+        let len = v1.esp_suite.map_or(36, netlabcraft_wire::vpn::EspSuite::keymat_len);
+        v1.esp_in = v1.keymat(v1.spi_mine, len);
+        v1.esp_out = v1.keymat(v1.spi_peer, len);
+        let now = self.now;
+        let life = crate::ikev2::entry_for(d, local, peer).map_or((0, 0), |e| d.crypto.lifetime(&e));
         let sa = self.st(d.id).ipsec.entry(peer).or_default();
+        let first = sa.phase != IkePhase::Established;
+        if !first {
+            sa.prev_in = sa.v1.as_deref().map(|old| (sa.spi_in, old.esp_suite, old.esp_in.clone()));
+        }
+        sa.rekeyed(now, life, first);
         sa.phase = IkePhase::Established;
         sa.failed = None;
-        sa.spi_out = spi(key, local, peer);
-        sa.spi_in = spi(key, peer, local);
+        sa.local = local;
+        sa.spi_out = v1.spi_peer;
+        sa.spi_in = v1.spi_mine;
+        sa.v1 = Some(Box::new(v1));
         self.log(d.id, &format!("IKE with {peer}: main mode and quick mode complete, IPsec security association up"));
     }
 
@@ -873,35 +1186,35 @@ impl Sim {
             return r;
         }
         let expects = d.crypto.applied.values().any(|m| d.crypto.map(m).any(|e| e.peer == Some(ip.src)));
-        if expects && !self.state.get(&d.id).and_then(|s| s.ipsec.get(&ip.src)).is_some_and(|sa| sa.phase == IkePhase::Established) {
+        let sa = self.state.get(&d.id).and_then(|s| s.ipsec.get(&ip.src));
+        let keys = sa.filter(|sa| sa.phase == IkePhase::Established).and_then(|sa| {
+            let prev = sa.prev_in.clone().filter(|p| p.0 == esp.spi);
+            sa.v1.as_deref().map(|v| prev.unwrap_or((sa.spi_in, v.esp_suite, v.esp_in.clone())))
+        });
+        let Some((spi_in, suite, key)) = keys else {
             if let Some(sa) = self.st(d.id).ipsec.get_mut(&ip.src) {
                 sa.drops = sa.drops.saturating_add(1);
             }
-            return Err(format!("ESP from {} before IKE set up a security association", ip.src));
-        }
-        let key = d.crypto.key_for(ip.src).map(str::to_string);
-        let (Some(key), true) = (key, expects) else {
-            return Err(format!("ESP from {}, which is not an IPsec peer here", ip.src));
+            return Err(if expects {
+                format!("ESP from {} before IKE set up a security association", ip.src)
+            } else {
+                format!("ESP from {}, which is not an IPsec peer here", ip.src)
+            });
         };
-        let opened = if esp.spi != spi(&key, ip.src, ip.dst) {
+        let opened = if esp.spi != spi_in {
             Err(format!("ESP SPI 0x{:08x} from {} matches no security association", esp.spi, ip.src))
         } else {
-            match esp.open(key.as_bytes()) {
+            match crate::ikev2::esp_open(suite, &key, &esp) {
                 Ok((NEXT_IPV4, inner)) => Ok(inner),
                 Ok((next, _)) => Err(format!("ESP carrying next header {next} is not understood")),
                 Err(_) => Err(format!("ESP from {} failed its integrity check (the keys differ?)", ip.src)),
             }
         };
-        let st = self.st(d.id);
-        if !st.ipsec.contains_key(&ip.src) && st.ipsec.len() >= MAX_SAS {
-            st.ipsec.clear();
-        }
-        let sa = st.ipsec.entry(ip.src).or_default();
-        sa.peer = ip.src;
-        sa.local = ip.dst;
+        let sa = self.st(d.id).ipsec.entry(ip.src).or_default();
         match opened {
             Ok(inner) => {
                 sa.decaps = sa.decaps.saturating_add(1);
+                sa.bytes = sa.bytes.saturating_add(u64::try_from(inner.len()).unwrap_or(u64::MAX));
                 self.ip_in(t, d, ifc, &inner)
             }
             Err(e) => {

@@ -205,6 +205,129 @@ impl Esp {
     }
 }
 
+/// An ESP encryption algorithm implemented for real.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EspEncr {
+    /// NULL encryption (RFC 2410): integrity only, the payload readable.
+    Null,
+    /// AES-CBC (RFC 3602) with a 128-, 192- or 256-bit key.
+    AesCbc(u16),
+}
+
+impl EspEncr {
+    pub fn key_len(self) -> usize {
+        match self {
+            EspEncr::Null => 0,
+            EspEncr::AesCbc(bits) => usize::from(bits) / 8,
+        }
+    }
+}
+
+/// The algorithms of one ESP association.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EspSuite {
+    pub encr: EspEncr,
+    pub integ: crate::suite::Integ,
+}
+
+impl EspSuite {
+    /// Bytes of keying material one direction takes (encryption key first, RFC 7296 §2.17).
+    pub fn keymat_len(self) -> usize {
+        self.encr.key_len() + self.integ.key_len()
+    }
+
+    /// A short description: `AES-CBC-256 / HMAC-SHA256-128`.
+    pub fn describe(self) -> String {
+        let e = match self.encr {
+            EspEncr::Null => "NULL".to_string(),
+            EspEncr::AesCbc(b) => format!("AES-CBC-{b}"),
+        };
+        format!("{e} / {}", self.integ.name())
+    }
+}
+
+/// One direction of an ESP association with real algorithms: the suite and its keys.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EspSa {
+    pub suite: EspSuite,
+    pub enc: Vec<u8>,
+    pub auth: Vec<u8>,
+}
+
+impl EspSa {
+    /// The keys from keying material (encryption key first); `None` when it is too short or
+    /// the key size is not one AES has.
+    pub fn from_keymat(suite: EspSuite, m: &[u8]) -> Option<EspSa> {
+        let e = suite.encr.key_len();
+        let enc = m.get(..e)?.to_vec();
+        if suite.encr != EspEncr::Null {
+            crate::aes256::Aes::new(&enc)?;
+        }
+        let auth = m.get(e..e + suite.integ.key_len())?.to_vec();
+        Some(EspSa { suite, enc, auth })
+    }
+}
+
+impl Esp {
+    /// ESP with real algorithms: AES-CBC with an explicit IV (RFC 3602) or NULL (RFC 2410),
+    /// then the integrity check over SPI, sequence number, IV and ciphertext (RFC 4303 §2.8).
+    pub fn seal_with(sa: &EspSa, spi: u32, seq: u32, next: u8, inner: &[u8], iv: [u8; 16]) -> Esp {
+        let block = if sa.suite.encr == EspEncr::Null { 4 } else { 16 };
+        let mut body = inner.to_vec();
+        let pad = (block - (body.len() + 2) % block) % block;
+        body.extend((1..=pad).map(|i| u8::try_from(i).unwrap_or(0)));
+        body.push(u8::try_from(pad).unwrap_or(0));
+        body.push(next);
+        let mut data = Vec::with_capacity(body.len() + 32);
+        match crate::aes256::Aes::new(&sa.enc).filter(|_| sa.suite.encr != EspEncr::Null) {
+            Some(aes) => {
+                data.extend_from_slice(&iv);
+                data.extend(crate::aes256::cbc_encrypt(&aes, &iv, &body));
+            }
+            None => data.extend(body),
+        }
+        let mut signed = spi.to_be_bytes().to_vec();
+        signed.extend_from_slice(&seq.to_be_bytes());
+        signed.extend_from_slice(&data);
+        data.extend(sa.suite.integ.mac(&sa.auth, &signed));
+        Esp { spi, seq, data }
+    }
+
+    /// Checks the integrity value and decrypts what [`Esp::seal_with`] made: the next header
+    /// and the inner packet.
+    pub fn open_with(&self, sa: &EspSa) -> Result<(u8, Vec<u8>)> {
+        let t = || WireError::Truncated("esp");
+        let icv = sa.suite.integ.icv_len();
+        let split = self.data.len().checked_sub(icv).ok_or_else(t)?;
+        let (body, got) = self.data.split_at(split);
+        let mut signed = self.spi.to_be_bytes().to_vec();
+        signed.extend_from_slice(&self.seq.to_be_bytes());
+        signed.extend_from_slice(body);
+        if !sa.suite.integ.verify(&sa.auth, &signed, got) {
+            return Err(WireError::Checksum("esp integrity"));
+        }
+        let mut plain = if sa.suite.encr == EspEncr::Null {
+            body.to_vec()
+        } else {
+            let aes = crate::aes256::Aes::new(&sa.enc).ok_or(WireError::Unsupported("esp", "key size".into()))?;
+            let iv: [u8; 16] = body.get(..16).and_then(|s| s.try_into().ok()).ok_or_else(t)?;
+            let cipher = body.get(16..).ok_or_else(t)?;
+            if cipher.is_empty() || cipher.len() % 16 != 0 {
+                return Err(t());
+            }
+            crate::aes256::cbc_decrypt(&aes, &iv, cipher)
+        };
+        let next = plain.pop().ok_or_else(t)?;
+        let pad = usize::from(plain.pop().ok_or_else(t)?);
+        let keep = plain.len().checked_sub(pad).ok_or_else(t)?;
+        if plain.get(keep..).is_none_or(|p| p.iter().zip(1u8..).any(|(b, i)| *b != i)) {
+            return Err(WireError::Unsupported("esp", "bad padding".into()));
+        }
+        plain.truncate(keep);
+        Ok((next, plain))
+    }
+}
+
 /// XORs `data` with a keystream: MD5(key ‖ SPI ‖ sequence ‖ block counter), 16 bytes a block.
 /// NOT real encryption.
 fn xor_stream(key: &[u8], spi: u32, seq: u32, data: &mut [u8]) {
@@ -319,5 +442,51 @@ mod tests {
         let mut f = Esp::seal(b"k", 300, 1, NEXT_IPV4, &[]);
         f.data = vec![0xff; ICV_LEN + 1];
         let _ = f.open(b"k");
+    }
+
+    #[test]
+    fn real_esp_with_every_suite() {
+        use crate::suite::Integ;
+        let inner: Vec<u8> = (0..77).collect();
+        for encr in [EspEncr::AesCbc(128), EspEncr::AesCbc(192), EspEncr::AesCbc(256), EspEncr::Null] {
+            for integ in [Integ::HmacSha1_96, Integ::HmacSha256_128, Integ::HmacMd5_96, Integ::None] {
+                let suite = EspSuite { encr, integ };
+                let km: Vec<u8> = (0..suite.keymat_len() as u8).collect();
+                let sa = EspSa::from_keymat(suite, &km).unwrap();
+                let e = Esp::seal_with(&sa, 0x4321, 9, NEXT_IPV4, &inner, [3; 16]);
+                let back = Esp::decode(&e.encode()).unwrap();
+                assert_eq!(back.open_with(&sa).unwrap(), (NEXT_IPV4, inner.clone()), "{}", suite.describe());
+                let ivlen = if encr == EspEncr::Null { 0 } else { 16 };
+                assert_eq!(e.data.len() - ivlen - integ.icv_len(), 80);
+                if encr != EspEncr::Null {
+                    assert!(!e.data.windows(8).any(|w| w == &inner[..8]), "hidden");
+                }
+                if integ != Integ::None {
+                    let mut bad = back.clone();
+                    bad.data[ivlen + 2] ^= 1;
+                    assert_eq!(bad.open_with(&sa), Err(WireError::Checksum("esp integrity")));
+                }
+                for n in 0..e.data.len() {
+                    let cut = Esp { data: e.data[..n].to_vec(), ..e.clone() };
+                    let _ = cut.open_with(&sa);
+                }
+            }
+        }
+        // RFC 4868: 16 bytes of ICV, the first half of HMAC-SHA-256 over the packet.
+        let suite = EspSuite { encr: EspEncr::AesCbc(256), integ: Integ::HmacSha256_128 };
+        let sa = EspSa::from_keymat(suite, &[7; 64]).unwrap();
+        let e = Esp::seal_with(&sa, 0x1000, 1, NEXT_IPV4, &[1, 2, 3], [0; 16]);
+        let (body, icv) = e.data.split_at(e.data.len() - 16);
+        let signed = [&0x1000u32.to_be_bytes()[..], &1u32.to_be_bytes()[..], body].concat();
+        assert_eq!(icv, &crate::sha256::hmac_sha256(&[7; 32], &signed)[..16]);
+        // The 256-bit key really is used: a key differing in its last byte doesn't open it.
+        let mut km = vec![7u8; 64];
+        km[31] = 8;
+        let other = EspSa::from_keymat(EspSuite { encr: EspEncr::AesCbc(256), integ: Integ::None }, &km).unwrap();
+        let mine = EspSa::from_keymat(EspSuite { encr: EspEncr::AesCbc(256), integ: Integ::None }, &[7; 64]).unwrap();
+        let e = Esp::seal_with(&mine, 0x1000, 1, NEXT_IPV4, &[1, 2, 3], [0; 16]);
+        assert_ne!(e.open_with(&other).ok(), e.open_with(&mine).ok());
+        assert!(EspSa::from_keymat(suite, &[0; 47]).is_none());
+        assert!(EspSa::from_keymat(EspSuite { encr: EspEncr::AesCbc(100), integ: Integ::None }, &[0; 64]).is_none());
     }
 }
