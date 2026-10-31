@@ -1,16 +1,17 @@
 # Roadmap
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (beta gate 1 met: the lab book runs end to end and over MCP) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-10-31 · **Last updated:** 2026-10-31 · **Change:** major (alpha gate 1 met through the lab book; every beta gate met; milestone states and estimates after the security, instructor, Simulation-mode, wireless, end-device, automation and routing rounds) · **Target:** Cisco Packet Tracer 9.0
 
 Milestones, the current focus and what comes next. The summary is in
 [`ROADMAP.md`](../ROADMAP.md); the ranked work list is [gaps.md](gaps.md).
 
 ## Current focus
 
-Prove the CCNA courses work end to end: a CCNA-style lab book is being written and run by hand
-and through MCP (gap 1, in progress), fixing what it turns up. Automation, security depth,
-Simulation-mode depth, the switching, routing and wireless leftovers and the device families
-landed; what is left of them (gaps 2–8) is smaller and follows the lab book.
+The CCNA lab book runs end to end, by the engine and over MCP, and the leftovers of the
+earlier rounds landed (security, instructor tools, Simulation mode, wireless, end devices,
+automation, switching and routing). The focus now is depth where it is honestly thin: more labs
+walked to find console gaps (gap 1), the remaining crypto stand-ins and certificates (gaps 2
+and 3), and a cellular network for the mobile devices (gap 4).
 
 ## Milestones
 
@@ -19,28 +20,31 @@ landed; what is left of them (gaps 2–8) is smaller and follows the lab book.
 | **M0 — Foundations** | ✅ 2026-10-29 | Workspace and gates, wire formats, lab model and file format, discrete-event simulator, console, engine with undo and panic guard, egui app in the reference app's arrangement, CLI, MCP, web build. |
 | **M1 — Services and security** | ✅ 2026-10-29 (in the first commit, with M0) | DHCP (server, relay, client), STP, switch VLAN interfaces, OSPF, ACLs, NAT/PAT, passwords and lines, Telnet/SSH, server HTTP/DHCP/DNS and the PC web browser, port security. |
 | **M2 — Layer 2 depth, IPv6 and WAN** | ✅ 2026-10-29 | M2.1 EtherChannel and VTP · M2.2 IPv6 · M2.3 multilayer switch · M2.4 RIP · M2.5 serial WAN links. |
-| **M3 — CCNA 1 complete** | in progress (console coverage, CDP, protocol frames, the PC prompt, complex PDUs, the OSI Model view of PDU details and scenarios landed; walking the labs is left) | Console coverage, CDP, protocol frames in Simulation mode, PDU details layout. |
-| **M4 — Teaching** | in progress (activities, wizard, variables, the comparison with the answer and the Spanish interface landed; an answer-network view is left) | Activities with expected results and a score, instructions panel, translations (Spanish first). |
-| **M5 — CCNA 2 complete** | in progress (wireless with group keys, HSRP v1/v2 with tracking, VRRP, GLBP, DTP, RSTP with the proposal/agreement handshake, loop guard, DHCPv6, switch security with option 82, STP tuning and floating static routes landed; a real PEAP tunnel and walking the labs left) | Wireless LANs, FHRP, DTP, STP, LAN security, DHCPv6, static routing. |
-| **M6 — CCNA 3 complete** | in progress (OSPF as taught, PPP authentication, ACL depth and editing, network management, GRE/IPsec with IKEv1 and IKEv2, QoS with trust and shaping, zone-based firewall, `ip mtu`/`adjust-mss`, RESTCONF, NETCONF, the Programming app and a controller landed; automation depth, a real Diffie-Hellman and walking the labs left) | OSPF depth, PPP authentication, ACL depth, network services, VPN basics, QoS, automation. |
+| **M3 — CCNA 1 complete** | ✅ 2026-10-31 (console coverage, CDP, protocol frames, the PC prompt, complex PDUs, the OSI Model view, scenarios and the Simulation-mode leftovers landed; the lab book's four CCNA 1 labs run) | Console coverage, CDP, protocol frames in Simulation mode, PDU details layout. |
+| **M4 — Teaching** | ✅ 2026-10-31 (activities, wizard, variables, the comparison with the answer, the Spanish interface, and M4.5–M4.9: answer network, assessment tree, initial network, instructions per language, connectivity tests, signed results, locks) | Activities with expected results and a score, instructions panel, translations (Spanish first). |
+| **M5 — CCNA 2 complete** | ✅ 2026-10-31 (wireless with group keys, a real PEAP tunnel and central switching, HSRP, VRRP with timers and VRRPv3, GLBP, DTP, RSTP, loop guard, DHCPv6, switch security, CoS, VTP pruning, routing leftovers, and the end devices of M5.85–M5.88; the lab book's nine CCNA 2 labs run) | Wireless LANs, FHRP, DTP, STP, LAN security, DHCPv6, static routing. |
+| **M6 — CCNA 3 complete** | ✅ 2026-10-31 (OSPF as taught, PPP authentication, ACL depth, network management, GRE/IPsec with IKEv1 and IKEv2 on a real Diffie-Hellman with real AES and rekeying, QoS, zone-based firewall, MTU, RESTCONF and NETCONF over TLS and SSH, a controller with discovery; the lab book's seven CCNA 3 labs run; DES, 3DES, AH and certificates left, in [gaps.md](gaps.md)) | OSPF depth, PPP authentication, ACL depth, network services, VPN basics, QoS, automation. |
 | **M7 — First release** | **on hold** (icon, Linux user install and About window done) | The owner has decided there is no release for now, and GitHub Actions is not available for the release workflow. Installers and workflows are not planned until the hold is lifted ([releasing.md](releasing.md)). |
+| **M8 — CCNA lab book** | ✅ 2026-10-31 | M8.1 fixes the book turned up · M8.2 CCNA 1 labs and the runner · M8.3 CCNA 2 labs · M8.4 CCNA 3 labs and the MCP run ([labs/](labs/README.md)). |
 
 ## Alpha gates
 
 NetLabCraft is **alpha** when a student can do the CCNA 1 labs in it without falling back to
 the reference app:
 
-1. Every command of the CCNA 1 labs is accepted, with output in our own wording: essentially
-   met (958 grammar entries; the CCNA 1 lab commands, the PC prompt and the console fixes
-   landed). What is left is walking the labs command by command to confirm it: ~5–10 h.
+1. Every command of the CCNA 1 labs is accepted, with output in our own wording: **met**. The
+   lab book's four CCNA 1 labs (device basics and SSH, dual-stack addressing, VLSM, ARP, ICMP
+   and DHCP in Simulation mode) run command by command as written, and the fixes they turned
+   up landed (M8.1). The course's own activities can't be copied, so labs beyond the book may
+   still turn up details ([gaps.md](gaps.md), item 1).
 2. Simulation mode shows the frames those labs talk about: met (ARP, ICMP, DHCP, DNS, TCP,
-   BPDUs, OSPF, RIP and more, with pcap export), with complex PDUs and PDU details in OSI
-   layers.
+   BPDUs, OSPF, RIP and more, with pcap export), with complex PDUs, PDU details in OSI layers,
+   Constant Delay and a capture filter.
 3. A packaged build exists for Linux, Windows and macOS: **on hold** by the owner's decision.
    Until it is lifted, Linux users install from source with `packaging/linux/install.sh`, and
    everyone else builds with Cargo.
 
-**Total to alpha: ~5–10 h** (estimated) for gates 1 and 2; gate 3 is on hold and not estimated.
+**Total to alpha:** gates 1 and 2 are met; gate 3 is on hold and not estimated.
 
 ## Beta gates
 
@@ -55,13 +59,14 @@ the reference app:
 4. Wireless LANs: met (access points, home routers, WLC with lightweight APs, WPA2-PSK and
    Enterprise with group keys).
 
-**Total to beta: ~45–80 h** (estimated): 25–40 h for the lab book, and as much again for the
-fixes it turns up.
+**Total to beta:** every gate is met; beta follows alpha, so it waits on the same packaging
+hold.
 
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-31 | major | M3–M6 and M8 done; alpha gate 1 met through the lab book; totals to alpha and beta now wait only on the packaging hold; current focus on depth (more labs, crypto stand-ins, certificates, cellular). |
 | 2026-10-30 | minor | Beta gate 1 met: 20-lab book in `docs/labs/`, run as written by the engine and over MCP. |
 | 2026-10-30 | minor | Current focus and milestone states after Simulation-mode depth, automation, security, leftovers and device families landed; beta gate 1 (the lab book) in progress; grammar count 958. |
 | 2026-10-30 | major | Gates cite the new ranked gaps table instead of old gap numbers; alpha gates 1 and 2 met but for a walk through the labs; packaging and M7 on hold by the owner's decision; beta gates 2–4 met; estimates redone (alpha ~5–10 h, beta ~45–80 h). |

@@ -1,6 +1,6 @@
 # Model equivalents
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (switch card, PoE switches, home gateway, cloud and modems, IoT things) · **Target:** CCNA course labs
+> **Last reviewed:** 2026-10-31 · **Last updated:** 2026-10-31 · **Change:** minor (Tablet, Smartphone, ten Wi-Fi IoT things, Board SBC and Board MCU; power-supply bays) · **Target:** CCNA course labs
 
 Course labs name specific vendor models. NetLabCraft's models are its own, named after their
 ports (`GE` Gigabit Ethernet, `FE` Fast Ethernet, `S` serial), and never carry vendor names
@@ -11,6 +11,11 @@ refers to.
 
 Lab files keep the stable model id (second column); the workspace shows the name (first
 column). Commands accept either: `device.add {"model": "Router 3GE"}` or `{"model": "Router-3"}`.
+
+Routers and switches have one or two power-supply bays at the back with one supply fitted from
+the factory (`device.psu`; the Router 2GE, Router 2GE+2S, Modular Router 2GE, Firewall 5GE,
+Switch 8FE, Switch 8FE PoE and WLC have one bay, the other routers and switches two). Where a
+lab has students fit a redundant supply, use a two-bay model.
 
 | NetLabCraft model | Id in files | Use it where a lab asks for | Port names | Notes |
 |---|---|---|---|---|
@@ -45,6 +50,8 @@ column). Commands accept either: `device.add {"model": "Router 3GE"}` or `{"mode
 | Hub 8 | `Hub-8` | Hub-PT | `Ethernet0–7` | |
 | PC | `PC` | PC-PT | `FastEthernet0` | |
 | Laptop | `Laptop` | Laptop-PT | `FastEthernet0` | |
+| Tablet | `Tablet` | TabletPC-PT | `Wireless0` | Wi-Fi only; a touch home screen with the Desktop's apps. |
+| Smartphone | `Smartphone` | SMARTPHONE-PT | `Wireless0` | Wi-Fi only (no cellular network yet); a touch home screen with the Desktop's apps. |
 | Wi-Fi Laptop | `Laptop-WiFi` | Laptop-PT with a wireless card | `Wireless0` | |
 | IP Phone | `IP-Phone` | 7960 | `FastEthernet0` (network), `FastEthernet1` (PC) | Registers with `telephony-service` on a router, or, set to SIP (Signal with SIP, `phone.configure`), with `voice register`. Needs a PoE switch port or its power adapter. |
 | Smart Sensor | `IoT-Sensor` | The temperature monitor among the course's IoT things | `FastEthernet0` | Reports to a server's IoT service or a Home Gateway. |
@@ -55,11 +62,24 @@ column). Commands accept either: `device.add {"model": "Router 3GE"}` or `{"mode
 | Smart Door Lock | `IoT-Door` | The course's smart door | `FastEthernet0` | On unlocks, off locks. |
 | Siren | `IoT-Siren` | The course's siren | `FastEthernet0` | Sounds while on. |
 | Webcam | `IoT-Webcam` | The course's webcam | `FastEthernet0` | Takes a still image at each report while on. |
+| Thermostat | `IoT-Thermostat` | The course's thermostat | `Wireless0` | Reports degrees. Wi-Fi things join the home gateway's `HomeNetwork` when placed. |
+| Heater | `IoT-Heater` | The course's heater (furnace) | `Wireless0` | Switched on and off; doesn't change a thermostat's reading. |
+| Air Conditioner | `IoT-AC` | The course's air conditioner | `Wireless0` | Switched on and off; doesn't change a thermostat's reading. |
+| Humidity Sensor | `IoT-Humidity` | The course's humidity monitor | `Wireless0` | Reports % humidity. |
+| Smart Window | `IoT-Window` | The course's window | `Wireless0` | On opens, off closes. |
+| Soil Moisture Sensor | `IoT-Soil` | The course's soil moisture sensor | `Wireless0` | Reports % moisture. |
+| Lawn Sprinkler | `IoT-Sprinkler` | The course's lawn sprinkler | `Wireless0` | Waters while on. |
+| CO Detector | `IoT-CO` | The course's carbon monoxide detector | `Wireless0` | Reports ppm CO. |
+| Smart Plug | `IoT-Plug` | The course's power outlet | `Wireless0` | Powered while on. |
+| Garage Door | `IoT-Garage` | The course's garage door | `Wireless0` | On opens, off closes. |
+| Board SBC | `Board-SBC` | SBC boards | `FastEthernet0`, pins `D0–D7`, `A0–A3` | Runs BoardScript, not Python or JavaScript: course programs have to be written again in it. IoT custom cables join pins to things. |
+| Board MCU | `Board-MCU` | MCU boards | `Wireless0`, pins `D0–D5`, `A0–A1` | Runs BoardScript, as the Board SBC. |
 | Server | `Server` | Server-PT | `GigabitEthernet0` | |
 | Printer | `Printer` | Printer-PT | `FastEthernet0` | |
 
-Models a lab names that have no equivalent yet (tablets, smartphones and other end devices, more
-IoT things and programmable boards) are listed in [hardware-parity.md](hardware-parity.md).
+Models a lab names that have no equivalent yet (the cellular network for smartphones, cell
+towers and the central office; TVs, a sniffer and other end devices) are listed in
+[hardware-parity.md](hardware-parity.md).
 
 Cisco, Catalyst, ISR and Packet Tracer are trademarks of Cisco Systems, Inc. NetLabCraft is an
 independent project, not affiliated with or endorsed by Cisco.
@@ -68,6 +88,7 @@ independent project, not affiliated with or endorsed by Cisco.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-31 | minor | Tablet and Smartphone, ten Wi-Fi IoT things, Board SBC and Board MCU (BoardScript, not Python or JavaScript); power-supply bays per model; the "no equivalent yet" list now names cellular, TVs and the sniffer. |
 | 2026-10-30 | minor | 4-port switch card, the two PoE switches, Home Gateway, Cloud, DSL and cable modems, six more IoT things; IP Phone with SIP and power; the "no equivalent yet" list brought up to date. |
 | 2026-10-30 | minor | Switch 24FE+2SFP and the fiber card. |
 | 2026-10-30 | minor | Modular routers and their cards, IP Phone, Smart Sensor and Smart Device. |

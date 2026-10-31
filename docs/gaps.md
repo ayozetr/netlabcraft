@@ -1,6 +1,6 @@
 # Gaps
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** major (automation, security, Simulation-mode depth, leftovers and device families closed; what is left re-ranked) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-10-31 · **Last updated:** 2026-10-31 · **Change:** major (the lab book, automation depth, security, instructor, Simulation-mode, switching and routing, wireless and device-family items closed; what is honestly left re-ranked) · **Target:** Cisco Packet Tracer 9.0
 
 Every known shortfall against the reference app, ranked: the work list. Pick from the top; each
 item lands with tests and doc updates. The weights behind the ranking are in
@@ -13,21 +13,32 @@ Hours are Opus 5.5 agent wall-clock estimates.
 
 | # | Gap | Who notices | Estimate |
 |---|---|---|---|
-| 1 | **A CCNA-style lab book** (beta gate 1, **in progress**): VLANs, inter-VLAN routing, DHCP, OSPF, ACLs, NAT, IPv6, WAN, switch security and HSRP labs written fresh and run end to end by hand and through MCP, fixing what they turn up | Every student; it is also how the readiness estimates get checked | 25–40 h |
-| 2 | **Automation depth (CCNA 3):** TLS under RESTCONF (port 443 carries plain HTTP today) and SSH under NETCONF, XML bodies and IPv6 addresses in RESTCONF, a candidate datastore with commit in NETCONF, a controller closer to the course's (device inventory, topology, policies) | CCNA 3 students | 10–16 h |
-| 3 | **Security leftovers:** a real Diffie-Hellman exchange for IKE (a stand-in today), AES-256 and SHA-256 ESP, real ciphers for IKEv1 tunnels, rekeying, the default MTU of tunnels, more firewall inspections | CCNA 3 and security courses | 8–14 h |
-| 4 | **Instructor tools:** an answer-network view in the Activity Wizard, translated activity texts | Instructors | 6–10 h |
-| 5 | **Simulation-mode leftovers:** a Constant Delay option, capturing only the filtered events, the origin device's own decisions in the OSI view (only receivers record theirs), absolute start times for PDUs | CCNA 1 students | 4–8 h |
-| 6 | **Switching and routing leftovers:** CoS values (frames always carry 0, so `trust cos` keeps 0), VRRP advertisement and master-down timers, EIGRP for IPv6 updates on the wire, RIP triggered updates, VTP pruning | CCNA 2 and 3 extras | 6–10 h |
-| 7 | **Wireless leftovers:** a real PEAP/TLS tunnel (shown as an exchange today), central tunnelling through the controller | CCNA 2 extras | 4–8 h |
-| 8 | **Device families:** tablets, smartphones and other end devices, more IoT things and programmable boards, the phone's own setup screen, power supplies as parts | Specialised labs | 15–25 h |
-| 9 | **More languages:** interface languages beyond English and Spanish (catalogs in the same format) | Non-English students | 3–6 h each |
+| 1 | **Console depth beyond the lab book:** the lab book's 20 labs run, but the courses have many more activities; walking more labs of our own (troubleshooting labs especially) and adding the `show` views, options and messages they turn up | Every student | 10–20 h |
+| 2 | **Crypto stand-ins:** DES and 3DES (IKE and ESP) and AH keep a stand-in cipher, the elliptic-curve groups (such as 19 and 20) a stand-in exchange, and the IKE SA itself is never rekeyed (child SAs are) | CCNA 3 and security courses | 4–8 h |
+| 3 | **Certificates and PKI:** TLS under RESTCONF uses an anonymous Diffie-Hellman suite with no certificate, the SSH host key is an HMAC stand-in for a signature, PEAP names its server instead of showing a certificate and uses a toy 61-bit group; no `crypto pki`, trustpoints or RSA signatures | CCNA 3 automation and security labs | 6–10 h |
+| 4 | **Cellular network:** smartphones are Wi-Fi only; no cell towers, central office server or mobile data | IoT and mobile-device labs | 6–10 h |
+| 5 | **Routing leftovers:** RIPng without timers, hold-down or triggered updates (RIPv2 has them); EIGRP for IPv6 without per-interface hello and hold timers; VRRPv3 for IPv6 sends no router advertisements for the virtual router; GLBP hellos not on the wire (format not public, not planned) | CCNA 2 and 3 extras | 3–6 h |
+| 6 | **IoT and boards depth:** the climate things have no physics (a heater or air conditioner doesn't change a thermostat's reading), BoardScript's compile and run messages are English only, and boards run BoardScript rather than Python or JavaScript ([decisions.md](decisions.md)) | IoT labs | 4–8 h |
+| 7 | **Workspace leftovers:** Resize Shape, device windows as native OS windows, canvas devices as accessible nodes | Everyone, screen-reader users | 8–14 h |
+| 8 | **More end devices:** TVs, a sniffer, more router models | Specialised labs | 4–8 h |
+| 9 | **Results that resist forgery:** results files are signed under a key from the salt in the activity, so they catch hand edits but not someone who reads the open code and the file; a key the instructor keeps outside the file would close it | Instructors | 2–4 h |
+| 10 | **More languages:** interface languages beyond English and Spanish (catalogs in the same format) | Non-English students | 3–6 h each |
+| 11 | **Code health:** two independent modular-exponentiation implementations (`wire/src/dh.rs` for IKE, `wire/src/modp.rs` for TLS and SSH) to merge into one | Contributors | 1–2 h |
 | — | **Packaging and first release:** on hold by the owner's decision (no release for now; GitHub Actions is not available). Not planned or estimated until the hold is lifted; see [releasing.md](releasing.md) | Everyone who isn't a developer | on hold |
 
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-31 | major | Re-ranked after the round below: console depth beyond the lab book first, then the crypto stand-ins, certificates, a cellular network, routing, IoT, workspace, end-device, instructor and language leftovers, and the duplicated modular exponentiation. |
+| 2026-10-31 | minor | Done: switching and routing leftovers (old item 6): CoS 802.1p with trust and maps, VRRP timers, master-down, skew and tracking, VRRPv3 for IPv6, EIGRP for IPv6 updates, queries and replies on the wire with variance and summaries (IPv4 summaries too), RIP timers, hold-down, triggered updates and poisoned reverse, RIPng, VTP pruning (computed). What is left is the new item 5. |
+| 2026-10-31 | minor | Done: device families (old item 8): Tablet and Smartphone (Wi-Fi only), ten Wi-Fi IoT things, Board SBC and Board MCU with BoardScript and the IoT Custom cable, the phone's Settings screen, power supplies. What is left is the new items 4, 6 and 8. |
+| 2026-10-31 | minor | Done: wireless leftovers (old item 7): a real PEAP tunnel with EAP-GTC and EAP over RADIUS (Message-Authenticator, MPPE keys), central switching through CAPWAP data. Certificates are in the new item 3. |
+| 2026-10-31 | minor | Done: Simulation-mode leftovers (old item 5): Constant Delay, the capture filter, the sender's decisions in the OSI view, absolute PDU start times. |
+| 2026-10-31 | minor | Done: instructor tools (old item 4): answer network sealed in the activity, assessment tree, initial network, instructions per language, connectivity tests, signed results export, activity locks. What is left is the new item 9. |
+| 2026-10-31 | minor | Done: security leftovers (old item 3): real Diffie-Hellman over MODP groups 1, 2, 5, 14, 15 and 16, AES-128/192/256, SHA-256 and HMAC-SHA-256-128, IKEv1 keys and AES-CBC, real ESP for AES with SHA-1, SHA-256 or MD5, SA lifetimes and child-SA rekeying, default MTU 1500 and GRE 1476 with path MTU discovery, FTP, DNS and HTTP inspection. What is left is the new item 2. |
+| 2026-10-31 | minor | Done: automation depth (old item 2): XML in RESTCONF with Accept and Content-Type, IPv6 data and transport, NETCONF candidate with commit, discard and validate, locks and kept sessions, TLS 1.2 and SSH 2.0 underneath, controller discovery over CDP and LLDP, inventory, templated pushes. Certificates are in the new item 3. |
+| 2026-10-31 | minor | Done: the CCNA lab book (old item 1, beta gate 1): 20 labs in `docs/labs/` run end to end by the engine, 8 over MCP, with the fixes they turned up. More labs are the new item 1. |
 | 2026-10-30 | major | Re-ranked after the round below: the lab book stays first and is in progress; automation depth, security leftovers, instructor tools, Simulation-mode, switching/routing, wireless and device-family leftovers follow. |
 | 2026-10-30 | minor | Done: device families (old item 9): a 4-port switch card in routers, PoE switches with power budgets and powered devices that need PoE or their adapter, SIP phones, six more IoT things with timed reports and AND/OR rules, a Home Gateway, a Cloud with DSL and cable modems and coaxial and phone cables. What is left is the new item 8. |
 | 2026-10-30 | minor | Wireless depth (old item 7) narrowed: group keys (GTK by AES key wrap, group frames under it) and range by building in the physical view; a real PEAP tunnel is left (new item 7). |

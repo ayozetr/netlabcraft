@@ -112,6 +112,42 @@ Things report on their interval only as simulated time advances (`sim.advance`, 
 
 Host and router pings go out without DF, as on common operating systems and router software; `ping -f` on hosts and the `df-bit` option of a router's extended ping set it. Echo replies carry no DF, and GRE copies DF from the inner packet. With `ip mtu` in the path, a plain ping is fragmented and a DF ping gets "fragmentation needed", which is what MTU labs show.
 
-## The IKEv2 Diffie-Hellman exchange stays a stand-in
+## Diffie-Hellman is real; DES, 3DES, AH and the elliptic-curve groups are stand-ins
 
-IKEv2 messages follow RFC 7296, and with an `esp-aes` and `esp-sha-hmac` transform set the SK payloads and ESP are really encrypted with AES-128-CBC and HMAC-SHA1-96. The Diffie-Hellman value, though, is filler of the group's size, and both ends derive the shared secret from the two public values, so someone who saw the exchange could work out the keys. Real modular exponentiation over the course's groups would mean a big-number library or our own, for no change in what students see; it stays a documented stand-in, and nothing here is meant to protect real traffic.
+IKEv1 and IKEv2 compute a real Diffie-Hellman exchange over the MODP groups the courses use (1, 2, 5, 14, 15 and 16), with big integers of our own (Montgomery multiplication, windowed exponentiation), the primes built from their RFC definition and checked against the RFC digits. Keys follow RFC 2409 and RFC 7296, and AES (128, 192 or 256 bits) with SHA-1, SHA-256 or MD5 HMACs encrypts and authenticates IKE and ESP for real, so a wrong pre-shared key or transform fails where it would on real routers. DES, 3DES and AH are not implemented: they keep a stand-in cipher, the elliptic-curve groups a stand-in exchange, and `show crypto ipsec sa` says so. They are rare in today's course labs, and the time is better spent elsewhere; nothing here is meant to protect real traffic.
+
+## The CCNA lab book is our own and runs as a test
+
+The courses' own Packet Tracer activities can't be copied, so the lab book in `docs/labs/` is written from scratch over the same topics. Each lab is also a script: its `lab`, `console` and `verify` blocks run as written in the test suite, and several over MCP, so a change that breaks a lab fails the build and the book can't drift from what the app does.
+
+## Answer networks are sealed by one of three schemes
+
+An activity keeps its answer network in the lab file, sealed in one of three ways, and the Activity Wizard says which in plain words. `plain` keeps it readable, for open practice labs. `salt` encrypts it under a key from the activity's salt: the salt is in the same file and the code is open, so this only keeps it out of sight of a casual look. `password` encrypts it with AES-128-CTR and an HMAC-SHA1 tag under keys from PBKDF2 of the instructor's lock password (20 000 rounds), which is as strong as the password is hard to guess. New lock passwords are kept as PBKDF2 hashes too. We would rather state the strength honestly than promise secrecy a file format can't give.
+
+## Results signatures catch hand edits, not forgery
+
+Exported results (JSON or CSV) carry an HMAC-SHA1 under a key from the activity's salt, and `activity.verify_results` checks it and that the file belongs to that activity. That catches a student who edits a score in a text editor. It doesn't stop someone who reads the open code and the lab file, since the key comes from the file; resisting that would need a key the instructor keeps outside the lab, which is listed in [gaps.md](gaps.md).
+
+## TLS uses an anonymous Diffie-Hellman suite, without certificates
+
+The router's secure web server speaks real TLS 1.2 with `TLS_DH_anon_WITH_AES_128_CBC_SHA` over the 2048-bit MODP group: the handshake, key derivation, Finished checks and record protection are real, so the event list and captures show an encrypted session. The suite is anonymous because a certificate would mean a PKI the labs don't have yet (keys, signatures, trust); NETCONF's SSH transport likewise uses an HMAC in place of a host-key signature. Both are documented stand-ins, and certificates are in [gaps.md](gaps.md).
+
+## PEAP's key exchange uses a toy group
+
+The PEAP tunnel of WPA2-Enterprise has TLS's shape (records, a handshake, a PRF, AES-CBC with HMAC-SHA1) and its secrecy is real against someone watching the frames, but its Diffie-Hellman runs modulo the Mersenne prime 2^61 − 1, far too small to resist a determined attacker, and the server names itself instead of showing a certificate. It keeps the exchange quick and readable for teaching; it is not meant to protect anything.
+
+## Boards run BoardScript, not Python or JavaScript
+
+Programmable boards run BoardScript, a small line-based language of our own (variables, conditions, loops, pins, sleep, reports to the IoT server), instead of Python or JavaScript. Embedding either interpreter would mean a large dependency (or JavaScript, which the project doesn't write by hand) and an open door into the simulator. BoardScript compiles to steps run in simulated time with a cap on steps per slice and on variables, text, requests and log, so a runaway program stops with a message instead of hanging a lab. Course programs have to be written again in it.
+
+## Wi-Fi things join HomeNetwork when placed
+
+A Wi-Fi smart thing comes out of the box set for `HomeNetwork`, the network a home gateway offers from the factory, so placing it next to a gateway is enough for it to join and register, as in the course's IoT labs. Another network is set as on any Wi-Fi host (`device.wireless`).
+
+## Taking out the last power supply switches a device off
+
+Routers and switches leave the factory with one supply in bay 1 of their one or two bays. Taking out a supply while another is fitted changes nothing; taking out the last one switches the device off as if its power switch were used, and it can't be switched on until a supply is fitted. Labs saved before supplies existed have no `psu` field and open with the factory supply.
+
+## IoT custom cables are not network links
+
+An IoT custom cable joins a board's pin to a smart thing. It is drawn on the workspace and listed with the cables, but it is stored with the board (`board.wires`), not in the lab's links: no frames cross it, nothing routes over it, and the board's program reads or switches the thing through it directly.
