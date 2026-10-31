@@ -985,6 +985,11 @@ pub enum Id {
     SrNoIpv6RipEnable,
     SrShowIpv6Rip,
     SrShowIpv6RipDatabase,
+    // VTP pruning.
+    SrVtpPruning,
+    SrNoVtpPruning,
+    SrTrunkPruning,
+    SrNoTrunkPruning,
 }
 
 use Tok::{Arg, K, Rest};
@@ -3655,6 +3660,17 @@ pub static SPECS: &[Spec] = &[
     spec!(SrNoIpv6RipEnable, ANY_IF.or(Modes::LOOPBACK), Modes::BOTH, [K("no"), K("ipv6"), K("rip"), Arg("WORD"), K("enable")], "Stop RIPng here"),
     spec!(SrShowIpv6Rip, EXECS, Modes::BOTH, [K("show"), K("ipv6"), K("rip")], "RIPng: process, interfaces and neighbours"),
     spec!(SrShowIpv6RipDatabase, EXECS, Modes::BOTH, [K("show"), K("ipv6"), K("rip"), K("database")], "Prefixes RIPng knows"),
+    // ---- Switching and routing leftovers: VTP pruning ----
+    spec!(SrVtpPruning, Modes::CONFIG, Modes::SWITCH, [K("vtp"), K("pruning")], "Stop flooding VLANs towards switches that don't need them"),
+    spec!(SrNoVtpPruning, Modes::CONFIG, Modes::SWITCH, [K("no"), K("vtp"), K("pruning")], "Flood every VLAN on every trunk again"),
+    spec!(
+        SrTrunkPruning,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("switchport"), K("trunk"), K("pruning"), K("vlan"), Rest("{VLANS|add VLANS|remove VLANS|except VLANS|none}")],
+        "The VLANs VTP pruning may stop on this trunk"
+    ),
+    spec!(SrNoTrunkPruning, Modes::IF, Modes::SWITCH, [K("no"), K("switchport"), K("trunk"), K("pruning"), K("vlan")], "VLANs 2-1001 eligible again"),
 ];
 
 /// Why a line didn't parse. Positions are word indexes.

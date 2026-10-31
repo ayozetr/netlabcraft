@@ -6,11 +6,19 @@
 //! with the highest revision is copied to every server and client with a lower one. That
 //! includes a client: plugging in a switch with a higher revision overwrites the domain's
 //! VLANs, as on real networks. A switch with no domain yet takes the first one it hears.
+//!
+//! **Pruning** (`vtp pruning` on a server; the setting travels with the database): a switch
+//! stops flooding a VLAN (broadcasts, multicasts, unknown unicasts) out of a trunk when the
+//! switch at the other end, pruning in the same domain, has no up access port or VLAN
+//! interface in it and no trunk leading on to one that needs it. That is what the pruning
+//! join messages of VTP version 2 tell a neighbour; their format is a vendor's own, so, like
+//! the advertisements, they are computed rather than drawn on the wire. VLAN 1 and VLANs above
+//! 1001 are never pruned; `switchport trunk pruning vlan …` narrows the eligible ones per trunk.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use netlabcraft_core::DeviceId;
-use netlabcraft_model::{DeviceKind, Topology, VTP_MAX_VLAN, VtpMode};
+use netlabcraft_core::{DeviceId, VlanId, VlanSet};
+use netlabcraft_model::{Device, DeviceKind, End, Topology, VTP_MAX_VLAN, VtpMode};
 
 use crate::port_up;
 
@@ -106,7 +114,7 @@ pub fn sync(t: &mut Topology) -> bool {
         }
         done.extend(members.iter().copied());
         let Some(best) = members.iter().filter_map(|id| t.device(*id)).max_by_key(|d| (d.vtp.revision, std::cmp::Reverse(d.id))) else { continue };
-        let (revision, vlans) = (best.vtp.revision, best.vlans.clone());
+        let (revision, vlans, pruning) = (best.vtp.revision, best.vlans.clone(), best.vtp.pruning);
         let vlans: BTreeMap<_, _> = vlans.into_iter().filter(|(v, _)| v.get() <= VTP_MAX_VLAN).collect();
         for id in members {
             if let Some(d) = t.device_mut(id)
@@ -114,9 +122,96 @@ pub fn sync(t: &mut Topology) -> bool {
             {
                 d.vlans = vlans.clone();
                 d.vtp.revision = revision;
+                d.vtp.pruning = pruning;
                 changed = true;
             }
         }
     }
     changed
+}
+
+/// The VLANs pruning may stop on a trunk by default (VLAN 1 and the reserved and extended
+/// ranges never are).
+pub fn default_prune_eligible(v: VlanId) -> bool {
+    (2..=1001).contains(&v.get())
+}
+
+/// Whether VLAN `v` may be pruned on a switch's trunk port: eligible by default or as listed
+/// with `switchport trunk pruning vlan`.
+pub fn prune_eligible(d: &Device, port: usize, v: VlanId) -> bool {
+    match d.ports.get(port).and_then(|p| p.l2.prune_eligible.as_ref()) {
+        Some(set) => set.contains(v) && v.get() != 1,
+        None => default_prune_eligible(v),
+    }
+}
+
+/// Whether a switch takes part in VTP pruning: pruning on in its domain, not transparent.
+fn prunes(d: &Device) -> bool {
+    d.kind == DeviceKind::Switch && d.vtp.pruning && d.vtp.mode != VtpMode::Transparent && !d.vtp.domain.is_empty()
+}
+
+/// Whether switch `d` needs VLAN `v` from the trunk it hears on `from`: it has an up access
+/// port (or VLAN interface) in it, or another trunk leads on to a switch that needs it (or that
+/// doesn't prune, so it can't say it doesn't). This is what VTP pruning's join messages tell
+/// the neighbour, computed here instead of sent.
+fn needs(t: &Topology, d: &Device, from: usize, v: VlanId, seen: &mut BTreeSet<DeviceId>) -> bool {
+    if !seen.insert(d.id) {
+        return false;
+    }
+    if d.svis.iter().any(|s| s.vlan == v && !s.shutdown) {
+        return true;
+    }
+    for (i, p) in d.ports.iter().enumerate() {
+        if i == from || !port_up(t, End { device: d.id, port: i }) {
+            continue;
+        }
+        let end = End { device: d.id, port: i };
+        if !t.is_trunk(end) {
+            if p.switchport.access_carries(v) {
+                return true;
+            }
+            continue;
+        }
+        if !p.switchport.allowed.contains(v) {
+            continue;
+        }
+        let Some(peer) = t.peer(end) else { continue };
+        let Some(n) = t.device(peer.device) else { continue };
+        if !prunes(n) || n.vtp.domain != d.vtp.domain || needs(t, n, peer.port, v, seen) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Whether VTP pruning stops flooding of VLAN `v` out of a switch's trunk port: pruning is on,
+/// the VLAN is eligible there, and the switch at the other end (pruning in the same domain)
+/// has no use for it.
+pub fn pruned(t: &Topology, d: &Device, port: usize, v: VlanId) -> bool {
+    if !prunes(d) || !prune_eligible(d, port, v) {
+        return false;
+    }
+    let end = End { device: d.id, port };
+    if !t.is_trunk(end) {
+        return false;
+    }
+    let Some(peer) = t.peer(end) else { return false };
+    let Some(n) = t.device(peer.device) else { return false };
+    if !prunes(n) || n.vtp.domain != d.vtp.domain {
+        return false;
+    }
+    let mut seen = BTreeSet::from([d.id]);
+    !needs(t, n, peer.port, v, &mut seen)
+}
+
+/// The VLANs pruned on a trunk port, out of those it carries.
+pub fn pruned_vlans(t: &Topology, d: &Device, port: usize) -> VlanSet {
+    let mut set = VlanSet::none();
+    let Some(p) = d.ports.get(port) else { return set };
+    for v in d.vlans.keys().filter(|v| p.switchport.allowed.contains(**v)) {
+        if pruned(t, d, port, *v) {
+            set.insert(*v);
+        }
+    }
+    set
 }

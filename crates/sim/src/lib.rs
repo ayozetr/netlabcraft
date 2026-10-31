@@ -2325,6 +2325,7 @@ impl Sim {
                         && !chm.hidden(p)
                         && !chm.suspended(p)
                         && carries(t, d, p, vlan)
+                        && !vtp::pruned(t, d, p, vlan)
                 })
                 .collect(),
         };

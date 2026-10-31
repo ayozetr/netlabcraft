@@ -287,11 +287,15 @@ pub struct Vtp {
     /// Goes up by one with every VLAN change on a server; the highest revision wins.
     #[serde(default)]
     pub revision: u32,
+    /// `vtp pruning` (set on a server, shared with the domain): trunks stop flooding a VLAN
+    /// towards switches that have no use for it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pruning: bool,
 }
 
 impl Default for Vtp {
     fn default() -> Self {
-        Vtp { mode: VtpMode::Server, domain: String::new(), password: None, version: 1, revision: 0 }
+        Vtp { mode: VtpMode::Server, domain: String::new(), password: None, version: 1, revision: 0, pruning: false }
     }
 }
 

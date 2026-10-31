@@ -2210,7 +2210,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::SrIpv6RipEnable
         | Id::SrNoIpv6RipEnable
         | Id::SrShowIpv6Rip
-        | Id::SrShowIpv6RipDatabase => swroute::command(&mut c, spec.id, &args),
+        | Id::SrShowIpv6RipDatabase
+        | Id::SrVtpPruning
+        | Id::SrNoVtpPruning
+        | Id::SrTrunkPruning
+        | Id::SrNoTrunkPruning => swroute::command(&mut c, spec.id, &args),
         Id::VoiceTelephonyService
         | Id::VoiceNoTelephonyService
         | Id::VoiceMaxEphones

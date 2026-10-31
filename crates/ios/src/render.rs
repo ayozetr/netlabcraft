@@ -839,6 +839,20 @@ pub fn trunks(t: &Topology, d: &Device) -> String {
     }
     if !any {
         s.push_str("(no trunk ports)");
+    } else if d.vtp.pruning {
+        let _ = writeln!(s, "\n{:<10} {:<24} Pruned by VTP", "Port", "Pruning eligible");
+        for (i, p) in d.ports.iter().enumerate().filter(|(i, _)| t.is_trunk(End { device: d.id, port: *i })) {
+            let pruned = netlabcraft_sim::vtp::pruned_vlans(t, d, i);
+            let eligible =
+                p.l2.prune_eligible.as_ref().map_or_else(|| "2-1001".to_string(), |e| if e.is_empty() { "none".into() } else { e.to_string() });
+            let _ = writeln!(
+                s,
+                "{:<10} {:<24} {}",
+                ifname::short(&p.name),
+                eligible,
+                if pruned.is_empty() { "none".to_string() } else { pruned.to_string() }
+            );
+        }
     }
     s.trim_end().to_string()
 }
@@ -1543,6 +1557,9 @@ pub fn vtp(d: &Device) -> String {
     let _ = writeln!(s, "Version             {}", v.version);
     let _ = writeln!(s, "Revision            {}", v.revision);
     let _ = writeln!(s, "Password            {}", if v.password.is_some() { "set" } else { "not set" });
+    if v.pruning {
+        let _ = writeln!(s, "Pruning             enabled");
+    }
     let _ = write!(s, "VLANs               {}", d.vlans.len());
     s
 }

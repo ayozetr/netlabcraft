@@ -311,6 +311,10 @@ pub struct PortL2 {
     /// behind it this CoS (when not set, the PC's frames count as the port's own CoS).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub priority_extend: Option<u8>,
+    /// `switchport trunk pruning vlan …`: the VLANs VTP pruning may stop on this trunk (`None`:
+    /// 2-1001).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prune_eligible: Option<netlabcraft_core::VlanSet>,
 }
 
 impl PortL2 {

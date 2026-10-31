@@ -1152,6 +1152,10 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ipv6 rip WORD enable` | interface, subinterface | router, switch | Stop RIPng here |
 | `show ipv6 rip` | user, privileged | router, switch | RIPng: process, interfaces and neighbours |
 | `show ipv6 rip database` | user, privileged | router, switch | Prefixes RIPng knows |
+| `vtp pruning` | config | switch | Stop flooding VLANs towards switches that don't need them |
+| `no vtp pruning` | config | switch | Flood every VLAN on every trunk again |
+| `switchport trunk pruning vlan {VLANS\|add VLANS\|remove VLANS\|except VLANS\|none}` | interface | switch | The VLANs VTP pruning may stop on this trunk |
+| `no switchport trunk pruning vlan` | interface | switch | VLANs 2-1001 eligible again |
 
 ## Host shell (PCs and servers)
 

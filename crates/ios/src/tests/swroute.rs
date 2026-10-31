@@ -415,3 +415,82 @@ fn ripng_by_typing() {
     assert!(!lab.run(r1, "show ipv6 route").contains("R  2001:db8:3::/64"));
     assert!(lab.run(r1, "show ipv6 rip").contains("not running"));
 }
+
+/// S1 (VTP server, VLANs 10 and 20) with trunks to the clients S2 and S3; PC1 in VLAN 10 on
+/// S2, PC2 in VLAN 20 on S3.
+fn vtp_lab() -> (Lab, [DeviceId; 3], DeviceId, DeviceId) {
+    let mut lab = Lab::new();
+    let s1 = lab.add(DeviceKind::Switch);
+    let s2 = lab.add(DeviceKind::Switch);
+    let s3 = lab.add(DeviceKind::Switch);
+    let pc1 = lab.add(DeviceKind::Pc);
+    let pc2 = lab.add(DeviceKind::Pc);
+    lab.cable(s1, "g0/1", s2, "g0/1");
+    lab.cable(s1, "g0/2", s3, "g0/1");
+    lab.cable(pc1, "fa0", s2, "fa0/1");
+    lab.cable(pc2, "fa0", s3, "fa0/1");
+    lab.run(s1, "en\nconf t\nvtp domain LAB\nvlan 10\nvlan 20\nexit\ninterface range g0/1 - 2\nswitchport mode trunk\nend");
+    for (s, v) in [(s2, 10), (s3, 20)] {
+        lab.run(
+            s,
+            &format!(
+                "en\nconf t\nvtp mode client\nvtp domain LAB\ninterface g0/1\nswitchport mode trunk\ninterface fa0/1\nswitchport access vlan {v}\nend"
+            ),
+        );
+    }
+    lab.run(pc1, "ipconfig 10.10.0.1 255.255.255.0");
+    lab.run(pc2, "ipconfig 10.20.0.1 255.255.255.0");
+    (lab, [s1, s2, s3], pc1, pc2)
+}
+
+/// Whether a broadcast in the trace crossed from `a` to `b`.
+fn flooded(lab: &Lab, a: DeviceId, b: DeviceId) -> bool {
+    lab.sim.trace().iter().any(|e| e.from.device == a && e.to.device == b && e.summary.starts_with("ARP who has"))
+}
+
+#[test]
+fn vtp_pruning_stops_flooding_towards_switches_without_the_vlan() {
+    let (mut lab, [s1, s2, s3], pc1, _pc2) = vtp_lab();
+    // Without pruning, PC1's ARP broadcast reaches S1 and S3.
+    lab.sim.clear_trace();
+    lab.run(pc1, "ping 10.10.0.99");
+    assert!(flooded(&lab, s2, s1) && flooded(&lab, s1, s3));
+    // A client can't turn it on; the server does, and the domain follows.
+    lab.run(s2, "conf t");
+    assert!(lab.try_run(s2, "vtp pruning").contains("server"));
+    lab.run(s2, "end");
+    lab.run(s1, "conf t\nvtp pruning\nend");
+    assert!(lab.run(s2, "show vtp status").contains("Pruning             enabled"));
+    // Now VLAN 10 stays on S2: nobody beyond needs it.
+    lab.sim.clear_trace();
+    lab.run(pc1, "ping 10.10.0.99");
+    assert!(!flooded(&lab, s2, s1), "{:?}", lab.sim.trace().iter().map(|e| e.summary.clone()).collect::<Vec<_>>());
+    let trunk = lab.run(s1, "show interfaces trunk");
+    assert!(trunk.contains("Pruned by VTP"), "{trunk}");
+    let rows: Vec<&str> = trunk.lines().skip_while(|l| !l.contains("Pruned by VTP")).collect();
+    assert!(rows.iter().any(|l| l.starts_with("Gi0/1") && l.contains("2-1001") && l.trim_end().ends_with("20")), "{trunk}");
+    assert!(rows.iter().any(|l| l.starts_with("Gi0/2") && l.trim_end().ends_with("10")), "{trunk}");
+    // A VLAN 10 port on S3 makes S1 (and so S2) carry VLAN 10 that way again.
+    let pc3 = lab.add(DeviceKind::Pc);
+    lab.cable(pc3, "fa0", s3, "fa0/2");
+    lab.run(s3, "conf t\ninterface fa0/2\nswitchport access vlan 10\nend");
+    lab.run(pc3, "ipconfig 10.10.0.3 255.255.255.0");
+    lab.sim.clear_trace();
+    assert!(lab.run(pc1, "ping 10.10.0.3").contains("answered"));
+    assert!(flooded(&lab, s2, s1) && flooded(&lab, s1, s3));
+    // Eligibility per trunk: with only VLAN 20 eligible, VLAN 10 is never pruned there.
+    lab.run(s1, "conf t\ninterface g0/1\nswitchport trunk pruning vlan 20\nend");
+    let run = lab.run(s1, "show running-config interface g0/1");
+    assert!(run.contains(" switchport trunk pruning vlan 20"), "{run}");
+    lab.run(s1, "conf t\ninterface g0/1\nswitchport trunk pruning vlan add 30-40\nend");
+    assert!(lab.run(s1, "show running-config interface g0/1").contains(" switchport trunk pruning vlan 20,30-40"));
+    lab.run(s1, "conf t\ninterface g0/1\nswitchport trunk pruning vlan none\nend");
+    assert!(lab.run(s1, "show interfaces trunk").lines().any(|l| l.starts_with("Gi0/1") && l.contains("none")));
+    let all = lab.run(s1, "show running-config");
+    lab.run(s1, "copy run start\nreload\nen");
+    assert_eq!(lab.run(s1, "show running-config"), all);
+    lab.run(s1, "conf t\ninterface g0/1\nno switchport trunk pruning vlan\nexit\nno vtp pruning\nend");
+    assert!(!lab.run(s1, "show interfaces trunk").contains("Pruned by VTP"));
+    lab.run(s1, "conf t\nvtp mode transparent");
+    assert!(lab.try_run(s1, "vtp pruning").contains("transparent"));
+}

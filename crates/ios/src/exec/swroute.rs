@@ -1,11 +1,12 @@
 //! Switching and routing leftovers: 802.1p CoS (`mls qos map cos-dscp`, `mls qos cos`,
 //! `switchport priority extend cos`, `show mls qos maps`) and EIGRP summary addresses
 //! (`ip summary-address eigrp`, `ipv6 summary-address eigrp`), RIP's timers (`timers basic`)
-//! and RIPng (`ipv6 router rip`, `ipv6 rip NAME enable`, `show ipv6 rip`).
+//! RIPng (`ipv6 router rip`, `ipv6 rip NAME enable`, `show ipv6 rip`) and VTP pruning (`vtp
+//! pruning`, `switchport trunk pruning vlan`).
 
 use std::fmt::Write as _;
 
-use netlabcraft_core::{Ipv4Net, Ipv6Net, parse_ip};
+use netlabcraft_core::{Ipv4Net, Ipv6Net, VlanId, VlanSet, parse_ip};
 use netlabcraft_model::Device;
 use netlabcraft_model::l2sec::DEFAULT_COS_DSCP;
 use netlabcraft_model::routing::MAX_SUMMARIES;
@@ -64,6 +65,33 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             })
         }
         SrShowMlsQosMaps => show_maps(c.d()?, arg(0)),
+        SrVtpPruning | SrNoVtpPruning => {
+            let on = id == SrVtpPruning;
+            let d = c.dm()?;
+            match d.vtp.mode {
+                netlabcraft_model::VtpMode::Client => return Err("% VTP pruning is set on a server; clients take it from the domain".into()),
+                netlabcraft_model::VtpMode::Transparent => {
+                    return Err("% A transparent switch doesn't take part in VTP pruning (it passes VTP messages on)".into());
+                }
+                netlabcraft_model::VtpMode::Server => {}
+            }
+            if d.vtp.pruning != on {
+                d.vtp.pruning = on;
+                // The change travels to the domain with the next revision.
+                d.vtp.revision = d.vtp.revision.saturating_add(1);
+            }
+            Ok(if on && d.vtp.domain.is_empty() { "Saved; pruning acts once the switch is in a VTP domain.".into() } else { String::new() })
+        }
+        SrTrunkPruning | SrNoTrunkPruning => {
+            let set = if id == SrTrunkPruning { Some(prune_list(c, arg(0))?) } else { None };
+            c.each_if(|p, _| {
+                p.l2.prune_eligible = match &set {
+                    None => None,
+                    Some(f) => Some(f(p.l2.prune_eligible.clone())),
+                };
+                Ok(())
+            })
+        }
         SrRipTimers | SrNoRipTimers => {
             if c.cli.mode == Mode::Rip6 {
                 return Err("% RIPng here keeps RIP's usual timers (30 s updates)".into());
@@ -169,6 +197,55 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
         }
         _ => Err("% Not handled here".into()),
     }
+}
+
+/// The eligible VLANs `switchport trunk pruning vlan …` asks for, from the current ones.
+#[allow(clippy::type_complexity)]
+fn prune_list(_c: &Ctx, text: &str) -> Result<Box<dyn Fn(Option<VlanSet>) -> VlanSet>, String> {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let parse = |w: Option<&&str>| VlanSet::parse_list(w.copied().unwrap_or("")).map_err(|e| format!("% {e}"));
+    let default = || {
+        let mut s = VlanSet::none();
+        for v in 2..=1001u16 {
+            if let Some(v) = VlanId::new(v) {
+                s.insert(v);
+            }
+        }
+        s
+    };
+    let cur = move |c: Option<VlanSet>| c.unwrap_or_else(default);
+    Ok(match words.first().map(|w| w.to_ascii_lowercase()).as_deref() {
+        Some("none") => Box::new(|_| VlanSet::none()),
+        Some("add") => {
+            let add = parse(words.get(1))?;
+            Box::new(move |c| {
+                let mut s = cur(c);
+                s.union(&add);
+                s
+            })
+        }
+        Some("remove") => {
+            let rm = parse(words.get(1))?;
+            Box::new(move |c| {
+                let mut s = cur(c);
+                s.subtract(&rm);
+                s
+            })
+        }
+        Some("except") => {
+            let ex = parse(words.get(1))?;
+            Box::new(move |_| {
+                let mut s = default();
+                s.subtract(&ex);
+                s
+            })
+        }
+        Some(_) => {
+            let only = parse(words.first())?;
+            Box::new(move |_| only.clone())
+        }
+        None => return Err("% Give the VLANs, or add, remove, except or none".into()),
+    })
 }
 
 fn rip6_name(text: &str) -> Result<String, String> {
@@ -284,5 +361,12 @@ pub(crate) fn port_lines(s: &mut String, p: &netlabcraft_model::Port) {
     }
     if let Some(n) = p.l2.priority_extend {
         let _ = writeln!(s, " switchport priority extend cos {n}");
+    }
+    if let Some(set) = &p.l2.prune_eligible {
+        if set.is_empty() {
+            let _ = writeln!(s, " switchport trunk pruning vlan none");
+        } else {
+            let _ = writeln!(s, " switchport trunk pruning vlan {set}");
+        }
     }
 }
