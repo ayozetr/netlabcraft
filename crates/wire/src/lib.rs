@@ -525,6 +525,27 @@ impl Protocol {
     }
 }
 
+/// The event-list line of a segment for a router's secure web server (443) or NETCONF (830),
+/// over either IP version; `None` for other ports and for segments without data.
+fn automation_summary(s: &tcp::Tcp, route: &str, tag: &str) -> Option<(Protocol, String)> {
+    if s.payload.is_empty() {
+        return None;
+    }
+    let on = |p: u16| s.dst_port == p || s.src_port == p;
+    if on(http::TLS_PORT) {
+        let first = String::from_utf8_lossy(&s.payload).lines().next().unwrap_or("").chars().take(60).collect::<String>();
+        return Some((Protocol::Http, format!("HTTPS (TLS not simulated) {first} {route}{tag}")));
+    }
+    if on(netconf::PORT) {
+        return Some((Protocol::Tcp, format!("NETCONF {} {route}{tag}", netconf::describe(&s.payload))));
+    }
+    if on(http::PORT) {
+        let first = String::from_utf8_lossy(&s.payload).lines().next().unwrap_or("").chars().take(60).collect::<String>();
+        return Some((Protocol::Http, format!("HTTP {first} {route}{tag}")));
+    }
+    None
+}
+
 /// A one-line, human description of a frame plus its protocol family, as the event list shows.
 pub fn summarize(bytes: &[u8]) -> (Protocol, String) {
     summarize_depth(bytes, 0)
@@ -792,12 +813,8 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                             let first = String::from_utf8_lossy(&s.payload).lines().next().unwrap_or("").chars().take(60).collect::<String>();
                             (Protocol::Http, format!("HTTP {first} {route}{tag}"))
                         }
-                        Ok(s) if !s.payload.is_empty() && (s.dst_port == http::TLS_PORT || s.src_port == http::TLS_PORT) => {
-                            let first = String::from_utf8_lossy(&s.payload).lines().next().unwrap_or("").chars().take(60).collect::<String>();
-                            (Protocol::Http, format!("HTTPS (TLS not simulated) {first} {route}{tag}"))
-                        }
-                        Ok(s) if !s.payload.is_empty() && (s.dst_port == netconf::PORT || s.src_port == netconf::PORT) => {
-                            (Protocol::Tcp, format!("NETCONF {} {route}{tag}", netconf::describe(&s.payload)))
+                        Ok(s) if automation_summary(&s, &route, &tag).is_some() => {
+                            automation_summary(&s, &route, &tag).unwrap_or((Protocol::Tcp, String::new()))
                         }
                         Ok(s) if !s.payload.is_empty() && (s.dst_port == tacacs::TACACS_PORT || s.src_port == tacacs::TACACS_PORT) => {
                             let what = if s.dst_port == tacacs::TACACS_PORT { "authentication START" } else { "authentication REPLY" };
@@ -911,6 +928,15 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                     ),
                 ),
                 Err(e) => (Protocol::Ospf, format!("OSPFv3 ({e}){tag}")),
+            },
+            Ok(ip) if ip.next_header == PROTO_TCP => match tcp::Tcp::decode6(&ip.payload, ip.src, ip.dst) {
+                Ok(s) => {
+                    let route = format!("{} → {}", ip.src, ip.dst);
+                    automation_summary(&s, &route, &tag).unwrap_or_else(|| {
+                        (Protocol::Tcp, format!("TCP [{}] [{}]:{} → [{}]:{}{tag}", s.flag_names(), ip.src, s.src_port, ip.dst, s.dst_port))
+                    })
+                }
+                Err(e) => (Protocol::Tcp, format!("TCP ({e}) {} → {}{tag}", ip.src, ip.dst)),
             },
             Ok(ip) => {
                 let (ndp, text) = ipv6::describe(&ip);

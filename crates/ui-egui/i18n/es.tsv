@@ -1010,7 +1010,7 @@ Save as	Guardar como
 Saved the request {}	Petición {} guardada
 Request	Petición
 Headers (Name: value)	Cabeceras (Nombre: valor)
-Body (JSON)	Cuerpo (JSON)
+Body (JSON or XML)	Cuerpo (JSON o XML)
 Format JSON	Formatear JSON
 The body is not valid JSON: {}	El cuerpo no es JSON válido: {}
 Router (port 830)	Router (puerto 830)

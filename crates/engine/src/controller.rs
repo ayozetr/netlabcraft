@@ -3,7 +3,6 @@
 //! pushes one configuration template to all of them. Every exchange is a real RESTCONF request
 //! across the lab, made with the same machinery as `pc.http_request`.
 
-use netlabcraft_core::parse_ip;
 use netlabcraft_model::automation::{MAX_MANAGED, Managed};
 use serde_json::{Value, json};
 
@@ -11,6 +10,11 @@ use crate::{EngineError, Result, Session};
 
 fn bad(msg: impl Into<String>) -> EngineError {
     EngineError::BadParams(msg.into())
+}
+
+/// An address as a URL's host: IPv6 in brackets.
+fn url_host(a: &str) -> String {
+    if a.contains(':') { format!("[{a}]") } else { a.to_string() }
 }
 
 fn managed(s: &Session, d: netlabcraft_core::DeviceId) -> Vec<Managed> {
@@ -24,7 +28,7 @@ fn as_json(m: &Managed) -> Value {
 /// One RESTCONF request from the controller to a managed router.
 fn call(s: &mut Session, d: netlabcraft_core::DeviceId, m: &Managed, method: &str, path: &str, body: Option<&Value>) -> Result<Value> {
     let mut p = json!({
-        "pc": d.0, "method": method, "url": format!("https://{}{path}", m.address),
+        "pc": d.0, "method": method, "url": format!("https://{}{path}", url_host(&m.address)),
         "headers": {"Accept": crate::automation::YANG_JSON}, "user": m.user, "password": m.password,
     });
     if let Some(b) = body {
@@ -79,7 +83,8 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
             }
             if let Some(x) = p.get("add") {
                 let address = x.get("address").and_then(Value::as_str).ok_or_else(|| bad("a managed router needs its `address`"))?.trim().to_string();
-                parse_ip(&address).map_err(|e| bad(e.to_string()))?;
+                let address = address.trim_start_matches('[').trim_end_matches(']').to_string();
+                address.parse::<std::net::IpAddr>().map_err(|_| bad(format!("`{address}` is not an IPv4 or IPv6 address")))?;
                 let user: String = x.get("user").and_then(Value::as_str).unwrap_or("").trim().chars().take(64).collect();
                 let password: String = x.get("password").and_then(Value::as_str).unwrap_or("").chars().take(128).collect();
                 if user.is_empty() || user.contains(char::is_whitespace) || password.chars().any(char::is_control) {

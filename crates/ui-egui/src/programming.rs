@@ -179,7 +179,7 @@ fn http_form(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, f: &mut Form)
         ui.add(egui::TextEdit::multiline(&mut f.headers).desired_rows(2).desired_width(420.0).code_editor()).labelled_by(l.id);
     });
     ui.horizontal_top(|ui| {
-        let l = form_label(ui, tl("Body (JSON)"), LABEL_W);
+        let l = form_label(ui, tl("Body (JSON or XML)"), LABEL_W);
         ui.vertical(|ui| {
             ui.add(egui::TextEdit::multiline(&mut f.body).desired_rows(5).desired_width(420.0).code_editor()).labelled_by(l.id);
             if ui.button(tl("Format JSON")).clicked() && !f.body.trim().is_empty() {

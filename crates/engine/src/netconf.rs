@@ -2,7 +2,7 @@
 //! command a host uses to open one.
 //!
 //! The data is the same subset RESTCONF serves ([`crate::automation`]), in XML: `system`
-//! (ietf-system), `interfaces` (ietf-interfaces, with ietf-ip's `ipv4`) and `static-routes`
+//! (ietf-system), `interfaces` (ietf-interfaces, with ietf-ip's `ipv4` and `ipv6`) and `static-routes`
 //! (netlabcraft-routing). Operations: `<get-config>` and `<get>` (with subtree filters on the top
 //! containers and on an interface's name), `<edit-config>` on `<running/>` (default operation
 //! merge, replace or none; `operation` attributes merge, replace, create, delete and remove on
@@ -64,7 +64,7 @@ fn api_error(id: &str, e: &ApiError, deleting: bool) -> String {
 }
 
 /// JSON data as XML: `module:name` members start a new default namespace.
-fn to_xml(name: &str, v: &Value, module: &str, out: &mut String) {
+pub(crate) fn to_xml(name: &str, v: &Value, module: &str, out: &mut String) {
     let (m, local) = match name.split_once(':') {
         Some((m, l)) => (m, l),
         None => (module, name),
@@ -173,7 +173,7 @@ fn iface_entry(e: &Element) -> std::result::Result<Map<String, Value>, String> {
                 };
                 m.insert("enabled".into(), json!(b));
             }
-            "ipv4" if c.ns.as_deref() == Some(rc::namespace(IP)) => {
+            "ipv4" | "ipv6" if c.ns.as_deref() == Some(rc::namespace(IP)) => {
                 let mut addrs = Vec::new();
                 for a in c.children_named("address") {
                     let mut x = Map::new();
@@ -186,11 +186,11 @@ fn iface_entry(e: &Element) -> std::result::Result<Map<String, Value>, String> {
                     addrs.push(Value::Object(x));
                 }
                 if let Some(other) = c.children.iter().find(|x| x.name != "address") {
-                    return Err(format!("`ipv4` here holds only `address`, not `{}`", other.name));
+                    return Err(format!("`{}` here holds only `address`, not `{}`", c.name, other.name));
                 }
-                m.insert(format!("{IP}:ipv4"), json!({"address": addrs}));
+                m.insert(format!("{IP}:{}", c.name), json!({"address": addrs}));
             }
-            "ipv4" => return Err("`ipv4` belongs to the ietf-ip namespace (urn:ietf:params:xml:ns:yang:ietf-ip)".into()),
+            "ipv4" | "ipv6" => return Err(format!("`{}` belongs to the ietf-ip namespace (urn:ietf:params:xml:ns:yang:ietf-ip)", c.name)),
             other => {
                 m.insert(other.to_string(), json!(c.text));
             }
@@ -266,13 +266,12 @@ fn edit_config(t: &Topology, dev: DeviceId, config: &Element, default: Option<Op
                     let op = op_of(i, default).map_err(bad)?;
                     let mut entry = iface_entry(i).map_err(bad)?;
                     // Leaf-level deletes first.
-                    for leaf in ["description", "ipv4"] {
+                    for (leaf, key) in [("description", "description"), ("ipv4", "ietf-ip:ipv4"), ("ipv6", "ietf-ip:ipv6")] {
                         if let Some(c) = i.child(leaf)
                             && let Some(Op::Delete) = op_of(c, None).map_err(bad)?
                         {
-                            let target = Target::IfChild(name.clone(), if leaf == "ipv4" { "ietf-ip:ipv4" } else { "description" });
-                            step(&mut view_t, target, Op::Delete, None, c.attr("operation") == Some("remove"))?;
-                            entry.remove(if leaf == "ipv4" { "ietf-ip:ipv4" } else { "description" });
+                            step(&mut view_t, Target::IfChild(name.clone(), key), Op::Delete, None, c.attr("operation") == Some("remove"))?;
+                            entry.remove(key);
                         }
                     }
                     match op {
@@ -457,7 +456,7 @@ pub(crate) fn session(s: &mut Session, p: &Value) -> Result<Value> {
     }
     let close_id = next_id + 1;
     stream.extend(netconf::encode(&format!("<rpc message-id=\"{close_id}\" xmlns=\"{NS}\"><close-session/></rpc>"), framing));
-    let server = s.sim.dns_resolve(&s.topology, d, &host).map_err(|e| EngineError::Failed(e.to_string()))?;
+    let server = rc::resolve(s, d, &host)?;
     let got = s.sim.tcp_session(&s.topology, d, server, netconf::PORT, &stream);
     let applied = rc::apply_changes(s);
     s.revision += 1;
@@ -592,6 +591,36 @@ mod tests {
         assert!(replies[2].as_str().unwrap().contains("<ok/>"), "{r}");
         let run = running(&s);
         assert!(!run.contains("Set by NETCONF") && !run.contains("Loopback5") && !run.contains("10.30.0.0"), "{run}");
+    }
+
+    #[test]
+    fn ipv6_addresses_in_netconf_data() {
+        let mut s = lab();
+        let edit = format!(
+            "<edit-config><target><running/></target><config><interfaces xmlns=\"{}\"><interface><name>GigabitEthernet0/0</name>\
+             <ipv6 xmlns=\"{}\"><address><ip>2001:db8:10::1</ip><prefix-length>64</prefix-length></address></ipv6></interface></interfaces></config></edit-config>",
+            rc::namespace(IF),
+            rc::namespace(IP)
+        );
+        let r = nc(&mut s, &[&edit, "<get-config><source><running/></source></get-config>"], "1.1");
+        let replies = r["replies"].as_array().unwrap();
+        assert!(replies[0].as_str().unwrap().contains("<ok/>"), "{r}");
+        let data = xml::parse(replies[1].as_str().unwrap()).unwrap();
+        let g0 = data.child("data").and_then(|d| d.child("interfaces")).unwrap();
+        let g0 = g0.children_named("interface").find(|i| i.text_of("name") == Some("GigabitEthernet0/0")).unwrap();
+        let v6 = g0.child("ipv6").unwrap();
+        assert_eq!(v6.ns.as_deref(), Some(rc::namespace(IP)));
+        assert_eq!(v6.child("address").and_then(|a| a.text_of("prefix-length")), Some("64"));
+        assert!(running(&s).contains(" ipv6 address 2001:db8:10::1/64"));
+        let del = format!(
+            "<edit-config xmlns:nc=\"{NS}\"><target><running/></target><config><interfaces xmlns=\"{}\"><interface><name>GigabitEthernet0/0</name>\
+             <ipv6 xmlns=\"{}\" nc:operation=\"delete\"/></interface></interfaces></config></edit-config>",
+            rc::namespace(IF),
+            rc::namespace(IP)
+        );
+        let r = nc(&mut s, &[&del], "1.1");
+        assert!(r["replies"][0].as_str().unwrap().contains("<ok/>"), "{r}");
+        assert!(!running(&s).contains("2001:db8:10::1"));
     }
 
     #[test]

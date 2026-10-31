@@ -663,7 +663,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "HTTP request (Programming)",
         "",
         None,
-        r#"{"pc": "PC, laptop or server", "method"?: "GET"|"PUT"|"PATCH"|"POST"|"DELETE"|…, "url": "https://10.0.0.1/restconf/data/ietf-interfaces:interfaces", "headers"?: {"Accept": "application/yang-data+json"} or [["Name", "value"]], "body"?: text or JSON, "user"?, "password"?: Basic login} → {"status", "reason", "headers", "body", "json", "applied": [{"device", "lines", "failed"}]}: over TCP through the lab (port 443 carries no TLS)"#,
+        r#"{"pc": "PC, laptop or server", "method"?: "GET"|"PUT"|"PATCH"|"POST"|"DELETE"|…, "url": "https://10.0.0.1/restconf/data/ietf-interfaces:interfaces", "headers"?: {"Accept": "application/yang-data+json" or "application/yang-data+xml"} or [["Name", "value"]], "body"?: text, JSON or XML text (Content-Type follows it unless given), "user"?, "password"?: Basic login} → {"status", "reason", "headers", "body", "json", "applied": [{"device", "lines", "failed"}]}: over TCP through the lab (port 443 carries no TLS)"#,
         true
     ),
     c!(

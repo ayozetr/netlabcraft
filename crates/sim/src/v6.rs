@@ -336,6 +336,10 @@ impl Sim {
         if ip.next_header == netlabcraft_wire::PROTO_UDP {
             return self.udp6_in(t, d, ifc, ip);
         }
+        // TCP over IPv6: automation servers and client connections (see `automation`).
+        if ip.next_header == netlabcraft_wire::PROTO_TCP && !ip.dst.is_multicast() {
+            return self.tcp6_in(t, d, &ip);
+        }
         // OSPFv3 is computed; its hellos are taken in quietly.
         if ip.next_header == netlabcraft_wire::ospf6::PROTO_OSPF && d.ospf6.is_some() {
             return Ok(());
@@ -495,7 +499,7 @@ impl Sim {
     }
 
     /// Routes and sends a packet this device originates.
-    fn send_ip6(&mut self, t: &Topology, d: &Device, ip: Ipv6, via: Option<&L3If6>) -> Result<(), String> {
+    pub(crate) fn send_ip6(&mut self, t: &Topology, d: &Device, ip: Ipv6, via: Option<&L3If6>) -> Result<(), String> {
         let dynamic = self.dynamic_routes6(t, d);
         let (out, nh) = route6(t, d, ip.dst, via, &dynamic).ok_or_else(|| format!("no IPv6 route to {}", ip.dst))?;
         self.transmit6(t, d, &out, nh, ip.encode())
