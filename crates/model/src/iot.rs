@@ -222,6 +222,16 @@ pub fn thing_of(model_id: &str) -> Option<Thing> {
         "IoT-Door" => t("door", false, "", "unlocked", "locked"),
         "IoT-Siren" => t("siren", false, "", "sounding", "quiet"),
         "IoT-Webcam" => t("webcam", false, "", "recording", "off"),
+        "IoT-Thermostat" => t("thermostat", true, "degrees", "", ""),
+        "IoT-Heater" => t("heater", false, "", "heating", "off"),
+        "IoT-AC" => t("ac", false, "", "cooling", "off"),
+        "IoT-Humidity" => t("humidity", true, "% humidity", "", ""),
+        "IoT-Window" => t("window", false, "", "open", "closed"),
+        "IoT-Soil" => t("soil", true, "% moisture", "", ""),
+        "IoT-Sprinkler" => t("sprinkler", false, "", "watering", "off"),
+        "IoT-CO" => t("co", true, "ppm CO", "", ""),
+        "IoT-Plug" => t("plug", false, "", "powered", "off"),
+        "IoT-Garage" => t("garage", false, "", "open", "closed"),
         _ => None,
     }
 }
@@ -238,8 +248,11 @@ pub fn is_sensor(d: &Device) -> bool {
 
 /// A smart device (switched on and off by the server).
 pub fn is_actuator(d: &Device) -> bool {
-    d.kind == DeviceKind::Iot && !is_sensor(d)
+    thing(d).is_some_and(|t| !t.sensor)
 }
+
+/// The SSID a Wi-Fi smart thing looks for when placed: the home gateway's factory network.
+pub const HOME_SSID: &str = "HomeNetwork";
 
 /// Whether a device can run the IoT service: servers, and home gateways (built in).
 pub fn can_serve(d: &Device) -> bool {
@@ -284,5 +297,6 @@ mod tests {
         assert_eq!(Op::parse("above"), Some(Op::Above));
         assert_eq!(Op::parse("?"), None);
         assert!(thing_of("IoT-Webcam").is_some_and(|t| !t.sensor) && thing_of("Router-3").is_none());
+        assert!(thing_of("IoT-Thermostat").is_some_and(|t| t.sensor) && thing_of("IoT-Garage").is_some_and(|t| t.on_word == "open"));
     }
 }

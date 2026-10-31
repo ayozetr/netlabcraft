@@ -253,3 +253,32 @@ fn tablets_and_smartphones_join_wifi_take_dhcp_and_browse() {
     let s2 = round_trip(&mut s);
     assert_eq!(s2.topology.find("Smartphone2").unwrap().catalogue_model().id, "Smartphone");
 }
+
+#[test]
+fn wifi_things_join_the_gateway_report_and_follow_the_rules() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "wifi-things"})).unwrap();
+    let r = s.execute("iot.sync", json!({})).unwrap();
+    let things = r["things"].as_array().unwrap();
+    assert_eq!(things.len(), 10, "{r}");
+    assert!(things.iter().all(|t| t["registered"] == "192.168.0.1"), "every thing registered over Wi-Fi: {r}");
+    let on = |s: &mut Session, name: &str| s.execute("iot.configure", json!({"device": name})).unwrap()["on"].clone();
+    assert_eq!((on(&mut s, "Heater1"), on(&mut s, "AC1")), (json!(false), json!(false)), "21 degrees: neither runs");
+    s.execute("iot.configure", json!({"device": "Thermo1", "value": 15})).unwrap();
+    assert_eq!(on(&mut s, "Heater1"), json!(true), "cold: the heater heats");
+    s.execute("iot.configure", json!({"device": "Thermo1", "value": 30})).unwrap();
+    assert_eq!((on(&mut s, "Heater1"), on(&mut s, "AC1")), (json!(false), json!(true)), "hot: the air conditioner cools");
+    s.execute("iot.configure", json!({"device": "CO1", "value": 80})).unwrap();
+    assert_eq!((on(&mut s, "Window1"), on(&mut s, "Garage1")), (json!(true), json!(true)), "CO opens the window and the garage");
+    s.execute("iot.configure", json!({"device": "Soil1", "value": 10})).unwrap();
+    assert_eq!(on(&mut s, "Sprinkler1"), json!(true));
+    s.execute("iot.switch", json!({"device": "Home", "name": "Plug1", "on": true})).unwrap();
+    assert_eq!(on(&mut s, "Plug1"), json!(true), "switched by hand");
+    // Every new Wi-Fi thing looks for the home gateway's network when placed.
+    let v = s.execute("device.add", json!({"model": "Garage Door", "x": 400, "y": 300})).unwrap();
+    let g = s.topology.find(v["name"].as_str().unwrap()).unwrap();
+    assert_eq!(g.ports[0].wifi.as_ref().map(|w| w.ssid.as_str()), Some("HomeNetwork"));
+    let mut s2 = round_trip(&mut s);
+    s2.execute("sim.advance", json!({"seconds": 6})).unwrap();
+    assert!(s2.execute("iot.server", json!({"device": "Home"})).unwrap()["things"].as_array().unwrap().len() >= 10);
+}

@@ -229,3 +229,31 @@ mod touch {
         assert!(h.query_by_label("Associated with Home").is_some());
     }
 }
+
+// UI harness tests for the Wi-Fi smart things: their IoT tab and the palette.
+#[cfg(test)]
+mod wifi_things {
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable as _;
+    use netlabcraft_engine::Session;
+    use serde_json::json;
+
+    use crate::PacketApp;
+
+    #[test]
+    fn a_heater_shows_it_heats_and_the_palette_offers_the_wifi_things() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"sample": "wifi-things"})).unwrap();
+        s.execute("iot.configure", json!({"device": "Thermo1", "value": 12})).unwrap();
+        let heater = s.topology.resolve("Heater1").unwrap();
+        let mut h = Harness::builder().with_size(egui::vec2(1200.0, 800.0)).build_ui_state(|ui, app: &mut PacketApp| app.ui(ui), PacketApp::new(s));
+        h.state_mut().ui.show_notes = false;
+        crate::open_tab(h.state_mut(), heater, "iot");
+        h.run_steps(3);
+        assert!(h.query_by_label("heating").is_some(), "the heater says it heats");
+        h.state_mut().ui.windows.clear();
+        h.state_mut().ui.bottom.search = "garage".into();
+        h.run_steps(2);
+        assert!(h.query_by_label("Garage Door").is_some(), "found in the device list");
+    }
+}

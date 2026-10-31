@@ -1253,3 +1253,34 @@ Set its Wi-Fi network in Config > Wireless0; move it near an access point to joi
 Tablets and smartphones on Wi-Fi	Tabletas y smartphones por Wi-Fi
 A tablet and a smartphone join the home router's Wi-Fi, take their addresses by DHCP and open the web server's pages from their touch screens.	Una tableta y un smartphone se unen al Wi-Fi del router doméstico, toman su dirección por DHCP y abren las páginas del servidor web desde sus pantallas táctiles.
 Tablet1 and Smartphone1 are on the Home router's Wi-Fi (HomeNetwork) and took their addresses by DHCP. Open one, tap Web Browser and go to 192.168.0.10; the Command Prompt pings, IP Configuration shows the lease.	Tablet1 y Smartphone1 están en el Wi-Fi del router Home (HomeNetwork) y tomaron su dirección por DHCP. Abre uno, toca Navegador web y ve a 192.168.0.10; el Símbolo del sistema hace ping y Configuración IP muestra la concesión.
+Thermostat	Termostato
+Heater	Calefactor
+Air Conditioner	Aire acondicionado
+Humidity Sensor	Sensor de humedad
+Smart Window	Ventana inteligente
+Soil Moisture Sensor	Sensor de humedad del suelo
+Lawn Sprinkler	Aspersor de césped
+CO Detector	Detector de CO
+Smart Plug	Enchufe inteligente
+Garage Door	Puerta de garaje
+Wi-Fi thermostat: reports the room temperature to its IoT service, so rules can switch a heater or an air conditioner	Termostato Wi-Fi: informa de la temperatura de la habitación a su servicio IoT, para que las reglas enciendan un calefactor o un aire acondicionado
+Wi-Fi heater: warms the room while the IoT service keeps it on	Calefactor Wi-Fi: calienta la habitación mientras el servicio IoT lo mantiene encendido
+Wi-Fi air conditioner: cools the room while the IoT service keeps it on	Aire acondicionado Wi-Fi: enfría la habitación mientras el servicio IoT lo mantiene encendido
+Wi-Fi humidity sensor: reports the air's relative humidity (0-100 %)	Sensor de humedad Wi-Fi: informa de la humedad relativa del aire (0-100 %)
+Wi-Fi window opener: the IoT service opens the window (on) and closes it (off)	Abridor de ventana Wi-Fi: el servicio IoT abre la ventana (encendido) y la cierra (apagado)
+Wi-Fi soil moisture sensor: reports how wet the ground is (0-100 %)	Sensor de humedad del suelo Wi-Fi: informa de lo húmeda que está la tierra (0-100 %)
+Wi-Fi lawn sprinkler: waters the garden while the IoT service keeps it on	Aspersor de césped Wi-Fi: riega el jardín mientras el servicio IoT lo mantiene encendido
+Wi-Fi carbon-monoxide detector: reports the CO level in parts per million	Detector de monóxido de carbono Wi-Fi: informa del nivel de CO en partes por millón
+Wi-Fi smart plug: powers what is plugged into it while the IoT service keeps it on	Enchufe inteligente Wi-Fi: da corriente a lo que tiene enchufado mientras el servicio IoT lo mantiene encendido
+Wi-Fi garage door opener: the IoT service opens the door (on) and closes it (off)	Abridor de puerta de garaje Wi-Fi: el servicio IoT abre la puerta (encendido) y la cierra (apagado)
+% humidity	% de humedad
+% moisture	% de humedad del suelo
+ppm CO	ppm de CO
+heating	calentando
+cooling	enfriando
+closed	cerrada
+watering	regando
+powered	con corriente
+Wi-Fi smart things: climate, garden and safety	Objetos inteligentes Wi-Fi: clima, jardín y seguridad
+Ten Wi-Fi things join the home gateway: a thermostat drives a heater and an air conditioner, humidity and carbon monoxide open a window, a soil sensor waters the lawn.	Diez objetos Wi-Fi se unen a la pasarela doméstica: un termostato maneja un calefactor y un aire acondicionado, la humedad y el monóxido de carbono abren una ventana, un sensor del suelo riega el césped.
+Ten Wi-Fi things joined the Home gateway's network (HomeNetwork), took addresses by DHCP and report to its IoT service every 5 s. Lower Thermo1 below 18: Heater1 heats; raise it above 26: AC1 cools. Humid1 above 70 or CO1 above 50 opens Window1; CO1 above 50 also opens Garage1; Soil1 below 30 waters the lawn. Switch Plug1 by hand on Home > IoT.	Diez objetos Wi-Fi se unieron a la red de la pasarela Home (HomeNetwork), tomaron dirección por DHCP e informan a su servicio IoT cada 5 s. Baja Thermo1 por debajo de 18: Heater1 calienta; súbelo por encima de 26: AC1 enfría. Humid1 por encima de 70 o CO1 por encima de 50 abre Window1; CO1 por encima de 50 abre también Garage1; Soil1 por debajo de 30 riega el césped. Enciende Plug1 a mano en Home > IoT.

@@ -260,7 +260,7 @@ impl Sim {
     fn iot_next_due(&self, t: &Topology) -> Option<u64> {
         t.devices
             .iter()
-            .filter(|d| d.kind == DeviceKind::Iot && d.iot.server.is_some() && d.iot.interval > 0)
+            .filter(|d| thing(d).is_some() && d.iot.server.is_some() && d.iot.interval > 0)
             .map(|d| {
                 let last = self.iot.things.get(&d.id).and_then(|s| s.last_report_us);
                 last.map_or(self.now, |l| l.saturating_add(u64::from(d.iot.interval).saturating_mul(1_000_000)))

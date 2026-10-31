@@ -1802,6 +1802,11 @@ impl Device {
             security: security::RouterSecurity::default(),
         };
         d.ensure_default_vlan();
+        if kind == DeviceKind::Iot {
+            for p in d.ports.iter_mut().filter(|p| ifname::is_wireless(&p.name)) {
+                p.wifi = Some(Wifi { ssid: iot::HOME_SSID.into(), key: None, channel: 6, login: None });
+            }
+        }
         d
     }
 

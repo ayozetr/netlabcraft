@@ -98,7 +98,7 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
         "iot.sync" => {
             s.sim.iot_sync(&s.topology);
             s.revision += 1;
-            let things: Vec<Value> = s.topology.devices.iter().filter(|d| d.kind == DeviceKind::Iot).map(|d| thing_page(s, d.id)).collect();
+            let things: Vec<Value> = s.topology.devices.iter().filter(|d| thing(d).is_some()).map(|d| thing_page(s, d.id)).collect();
             Ok(json!({"things": things}))
         }
         "iot.configure" => {

@@ -155,6 +155,11 @@ pub static SAMPLES: &[Sample] = &[
         title: "Tablets and smartphones on Wi-Fi",
         description: "A tablet and a smartphone join the home router's Wi-Fi, take their addresses by DHCP and open the web server's pages from their touch screens.",
     },
+    Sample {
+        id: "wifi-things",
+        title: "Wi-Fi smart things: climate, garden and safety",
+        description: "Ten Wi-Fi things join the home gateway: a thermostat drives a heater and an air conditioner, humidity and carbon monoxide open a window, a soil sensor waters the lawn.",
+    },
 ];
 
 struct Builder {
@@ -1413,6 +1418,56 @@ pub fn build(id: &str) -> Result<Topology> {
                 b.type_in(name, "ipconfig /renew")?;
             }
             b.t.notes = "Tablet1 and Smartphone1 are on the Home router's Wi-Fi (HomeNetwork) and took their addresses by DHCP. Open one, tap Web Browser and go to 192.168.0.10; the Command Prompt pings, IP Configuration shows the lease.".into();
+        }
+        "wifi-things" => {
+            use netlabcraft_model::iot::{Condition, IotRule, Op};
+            b.add_model("Home-Gateway", "Home", 360.0, 40.0)?;
+            b.add(DeviceKind::Pc, "PC1", 640.0, 40.0)?;
+            b.cable("PC1", "fa0", "Home", "Ethernet1")?;
+            b.type_in("PC1", "ipconfig /renew")?;
+            let things = [
+                ("Thermo1", "IoT-Thermostat", 21),
+                ("Heater1", "IoT-Heater", 0),
+                ("AC1", "IoT-AC", 0),
+                ("Humid1", "IoT-Humidity", 45),
+                ("Window1", "IoT-Window", 0),
+                ("Soil1", "IoT-Soil", 60),
+                ("Sprinkler1", "IoT-Sprinkler", 0),
+                ("CO1", "IoT-CO", 0),
+                ("Plug1", "IoT-Plug", 0),
+                ("Garage1", "IoT-Garage", 0),
+            ];
+            for (i, (name, model, value)) in things.into_iter().enumerate() {
+                let x = 140.0 + 110.0 * (i % 5) as f32;
+                let y = if i < 5 { 160.0 } else { 300.0 } + if i % 2 == 0 { 0.0 } else { 25.0 };
+                b.add_model(model, name, x, y)?;
+                b.type_in(name, "ipconfig /renew")?;
+                let d = b.t.resolve(name)?;
+                if let Some(dev) = b.t.device_mut(d) {
+                    dev.iot.server = Some(Ipv4Addr::new(192, 168, 0, 1));
+                    dev.iot.value = value;
+                }
+            }
+            let cond = |sensor: &str, op: Op, value: i32| Condition { sensor: sensor.into(), op, value };
+            let rule = |conditions: Vec<Condition>, any: bool, actuator: &str| IotRule {
+                sensor: String::new(),
+                above: 0,
+                actuator: actuator.into(),
+                conditions,
+                any,
+                on: true,
+            };
+            let gw = b.t.resolve("Home")?;
+            if let Some(d) = b.t.device_mut(gw) {
+                d.iot.rules = vec![
+                    rule(vec![cond("Thermo1", Op::Below, 18)], false, "Heater1"),
+                    rule(vec![cond("Thermo1", Op::Above, 26)], false, "AC1"),
+                    rule(vec![cond("Humid1", Op::Above, 70), cond("CO1", Op::Above, 50)], true, "Window1"),
+                    rule(vec![cond("Soil1", Op::Below, 30)], false, "Sprinkler1"),
+                    rule(vec![cond("CO1", Op::Above, 50)], false, "Garage1"),
+                ];
+            }
+            b.t.notes = "Ten Wi-Fi things joined the Home gateway's network (HomeNetwork), took addresses by DHCP and report to its IoT service every 5 s. Lower Thermo1 below 18: Heater1 heats; raise it above 26: AC1 cools. Humid1 above 70 or CO1 above 50 opens Window1; CO1 above 50 also opens Garage1; Soil1 below 30 waters the lawn. Switch Plug1 by hand on Home > IoT.".into();
         }
         other => return Err(EngineError::BadParams(format!("unknown sample `{other}`"))),
     }
