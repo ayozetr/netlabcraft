@@ -5,6 +5,8 @@
 //! - A commit counts for a GitHub username when its author email is the username's GitHub noreply
 //!   address (`12345+login@users.noreply.github.com` or `login@users.noreply.github.com`); other
 //!   commits are counted as unattributed rather than guessed.
+//! - Co-authors named in `Co-authored-by:` trailers (with a noreply email) are credited with the
+//!   commit too: its count, its dates and its lines, as a shared commit can't be split.
 //! - `prs` counts merge commits titled `Merge pull request #N from login/…`.
 //! - `people_entry` is true only when every commit that added or removed `[people.login]` in
 //!   people.toml was authored by that same username: nobody can name someone else.
@@ -62,9 +64,29 @@ fn git(root: &Path, args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
+/// The usernames credited with a commit: its author's, then each `Co-authored-by: Name <email>`
+/// trailer's (`trailers` holds the values, \x03-separated), once each, noreply emails only.
+fn credited(author: &str, trailers: &str) -> Vec<String> {
+    let mut out: Vec<String> = login(author).into_iter().collect();
+    for t in trailers.split('\x03') {
+        let email = t.rsplit_once('<').and_then(|(_, r)| r.split_once('>')).map_or("", |(e, _)| e.trim());
+        if let Some(l) = login(email)
+            && !out.iter().any(|o| o.eq_ignore_ascii_case(&l))
+        {
+            out.push(l);
+        }
+    }
+    out
+}
+
 /// The GitHub username in a noreply author email, if it is one.
 fn login(email: &str) -> Option<String> {
-    let local = email.to_ascii_lowercase().strip_suffix("@users.noreply.github.com")?.to_string();
+    // The domain is matched case-insensitively; the username keeps its own case, as GitHub shows it.
+    let at = email.len().checked_sub("@users.noreply.github.com".len())?;
+    if !email.get(at..)?.eq_ignore_ascii_case("@users.noreply.github.com") {
+        return None;
+    }
+    let local = email.get(..at)?.to_string();
     let name = local.split_once('+').map_or(local.as_str(), |(_, l)| l).to_string();
     (!name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')).then_some(name)
 }
@@ -75,47 +97,64 @@ fn generate(root: &Path) -> Result<Value, String> {
     let head_date = git(root, &["log", "-1", "--format=%cI", "--date=iso-strict"])?.trim().to_string();
     let mut people: BTreeMap<String, Stats> = BTreeMap::new();
     let (mut total, mut unattributed) = (0u64, 0u64);
-    // One header line per commit (\x01 marks it), then its --numstat and --summary lines.
-    let log = git(root, &["log", "--no-merges", "--reverse", "--numstat", "--summary", "--format=\x01%ae\x02%aI"])?;
-    let mut who: Option<String> = None;
+    // One header line per commit (\x01 marks it: author email, date, co-authors), then its
+    // --numstat and --summary lines.
+    let log = git(
+        root,
+        &[
+            "log",
+            "--no-merges",
+            "--reverse",
+            "--numstat",
+            "--summary",
+            "--format=\x01%ae\x02%aI\x02%(trailers:key=Co-authored-by,valueonly,separator=%x03)",
+        ],
+    )?;
+    // Everyone credited with the commit being read: its author and its co-authors.
+    let mut who: Vec<String> = Vec::new();
     let mut binary: Vec<String> = Vec::new();
     for line in log.lines() {
         if let Some(h) = line.strip_prefix('\x01') {
             total += 1;
             binary.clear();
-            let (email, date) = h.split_once('\x02').unwrap_or((h, ""));
-            let date = utc(date);
-            who = login(email);
-            match &who {
-                Some(l) => {
-                    let s = people.entry(l.clone()).or_default();
-                    s.commits += 1;
-                    if s.first.is_empty() {
-                        s.first = date.clone();
-                    }
-                    s.last = date;
+            let mut parts = h.split('\x02');
+            let email = parts.next().unwrap_or("");
+            let date = utc(parts.next().unwrap_or(""));
+            who = credited(email, parts.next().unwrap_or(""));
+            if who.is_empty() {
+                unattributed += 1;
+            }
+            for l in &who {
+                let s = people.entry(l.clone()).or_default();
+                s.commits += 1;
+                if s.first.is_empty() {
+                    s.first = date.clone();
                 }
-                None => unattributed += 1,
+                s.last = date.clone();
             }
             continue;
         }
-        let Some(s) = who.as_ref().and_then(|l| people.get_mut(l)) else { continue };
         let cols: Vec<&str> = line.split('\t').collect();
-        if let [a, d, file] = cols.as_slice() {
-            if *a == "-" && *d == "-" {
-                binary.push((*file).to_string());
-            } else {
-                s.lines_added += a.parse::<u64>().unwrap_or(0);
-                s.lines_deleted += d.parse::<u64>().unwrap_or(0);
+        for l in &who {
+            let Some(s) = people.get_mut(l) else { continue };
+            if let [a, d, file] = cols.as_slice() {
+                if *a == "-" && *d == "-" {
+                    if !binary.iter().any(|b| b == file) {
+                        binary.push((*file).to_string());
+                    }
+                } else {
+                    s.lines_added += a.parse::<u64>().unwrap_or(0);
+                    s.lines_deleted += d.parse::<u64>().unwrap_or(0);
+                }
+            } else if let Some(rest) = line.trim().strip_prefix("create mode ") {
+                if binary.iter().any(|b| rest.ends_with(b.as_str())) {
+                    s.binary_added += 1;
+                }
+            } else if let Some(rest) = line.trim().strip_prefix("delete mode ")
+                && binary.iter().any(|b| rest.ends_with(b.as_str()))
+            {
+                s.binary_deleted += 1;
             }
-        } else if let Some(rest) = line.trim().strip_prefix("create mode ") {
-            if binary.iter().any(|b| rest.ends_with(b.as_str())) {
-                s.binary_added += 1;
-            }
-        } else if let Some(rest) = line.trim().strip_prefix("delete mode ")
-            && binary.iter().any(|b| rest.ends_with(b.as_str()))
-        {
-            s.binary_deleted += 1;
         }
     }
     for subject in git(root, &["log", "--merges", "--format=%s"])?.lines() {
@@ -213,9 +252,18 @@ mod tests {
     #[test]
     fn noreply_logins() {
         assert_eq!(login("53948812+ayozetr@users.noreply.github.com").as_deref(), Some("ayozetr"));
-        assert_eq!(login("Someone@users.noreply.github.com").as_deref(), Some("someone"));
+        assert_eq!(login("Someone@Users.Noreply.GitHub.com").as_deref(), Some("Someone"));
         assert_eq!(login("person@example.com"), None);
         assert_eq!(login("1+bad/name@users.noreply.github.com"), None);
+    }
+
+    #[test]
+    fn co_authors_share_the_credit() {
+        let trailers = "Aimar Mendez <93106365+Aimarmndz@users.noreply.github.com>\x03Someone <someone@example.com>\x03Again <1+ayozetr@users.noreply.github.com>";
+        assert_eq!(credited("53948812+ayozetr@users.noreply.github.com", trailers), ["ayozetr", "Aimarmndz"]);
+        assert_eq!(credited("person@example.com", ""), Vec::<String>::new());
+        assert_eq!(credited("person@example.com", "X <2+x@users.noreply.github.com>"), ["x"]);
+        assert_eq!(credited("1+a@users.noreply.github.com", "broken <no-close"), ["a"]);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 # Contributors
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** major (About ▸ Contributors shipped; `cargo xtask contributors`)
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (co-authors credited)
 
 NetLabCraft follows the storytold craftrules contributor standard
 ([`standards/contributors.md`](https://github.com/storytold/craftrules/blob/main/standards/contributors.md)).
@@ -41,6 +41,9 @@ To remove your names, delete your entry in a pull request.
 - `cargo xtask contributors` rebuilds the JSON from `git log`:
   - A commit counts for a username only when its author email is that username's GitHub noreply
     address; any other commit counts as unattributed instead of being guessed.
+  - Co-authors named in `Co-authored-by: Name <noreply email>` trailers are credited with the
+    commit too: the commit, its dates and its lines (a shared commit can't be split).
+  - Usernames keep their own case, as GitHub shows them.
   - `prs` counts `Merge pull request #N from login/…` merge commits.
   - `people_entry` is true only when every commit that added or removed `[people.login]` in
     people.toml was authored by that same username, so nobody can name someone else.
@@ -55,5 +58,6 @@ To remove your names, delete your entry in a pull request.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-31 | minor | Co-authors from `Co-authored-by` trailers are credited in About ▸ Contributors. |
 | 2026-10-30 | major | Created: the craftrules decision, how to credit yourself, current state. |
 | 2026-10-30 | major | About ▸ Contributors (names, sorting, grab bag/table) baked in by build.rs; `cargo xtask contributors` generates the JSON. |

@@ -18,7 +18,7 @@ to end is in [`labs/`](labs/README.md).
 | Device models | **51** | measured: `MODELS` in `crates/model/src/models.rs` (the fallback model not counted; the 7 router cards are in `MODULES`) |
 | Sample labs | **31** | measured: `SAMPLES` in `crates/engine/src/sample.rs` |
 | Lab-book labs | **20** | measured: numbered labs in `docs/labs/` (4 CCNA 1, 9 CCNA 2, 7 CCNA 3), all run by `crates/engine/tests/lab_book.rs`, 8 also over MCP by `apps/netlabcraft-cli/tests/mcp_lab_book.rs` |
-| Tests | **591** | measured: sum of "passed" from `cargo test --workspace -q` |
+| Tests | **592** | measured: sum of "passed" from `cargo test --workspace -q` |
 | **Ready for real work** (weighted) | **~91%** | estimated; written weights below (90.9 computed) |
 | **CCNA 1 student** (Introduction to Networks) | **~93%** | estimated; [method](#audiences) |
 | **CCNA 2 student** (Switching, Routing and Wireless Essentials) | **~94%** | estimated; [method](#audiences) |
