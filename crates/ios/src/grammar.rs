@@ -804,6 +804,7 @@ pub enum Id {
     NoAreaRange,
     ShowIpOspf,
     ShowIpOspfInterface,
+    ShowIpOspfInterfaceOne,
     Ipv6DhcpPool,
     NoIpv6DhcpPool,
     Dhcp6AddressPrefix,
@@ -1147,6 +1148,8 @@ pub static SPECS: &[Spec] = &[
     spec!(Accepted, Modes::LINE, Modes::BOTH, [K("access-class"), Rest("WORD {in|out}")], "Restrict remote logins (accepted, not simulated)"),
     spec!(ShowAccessLists, EXECS, Modes::BOTH, [K("show"), K("access-lists")], "Access lists and their matches"),
     spec!(ShowAccessLists, EXECS, Modes::BOTH, [K("show"), K("ip"), K("access-lists")], "Access lists and their matches"),
+    spec!(ShowAccessLists, EXECS, Modes::BOTH, [K("show"), K("access-lists"), Arg("WORD")], "One access list and its matches"),
+    spec!(ShowAccessLists, EXECS, Modes::BOTH, [K("show"), K("ip"), K("access-lists"), Arg("WORD")], "One access list and its matches"),
     spec!(ClearAclCounters, Modes::EXEC, Modes::BOTH, [K("clear"), K("access-list"), K("counters")], "Reset the match counts"),
     spec!(NatSideCmd, ANY_IF, Modes::BOTH, [K("ip"), K("nat"), Arg("{inside|outside}")], "Mark this interface inside or outside NAT"),
     spec!(NoNatSide, ANY_IF, Modes::BOTH, [K("no"), K("ip"), K("nat"), Arg("{inside|outside}")], "Take this interface out of NAT"),
@@ -1745,6 +1748,13 @@ pub static SPECS: &[Spec] = &[
         [K("standby"), Arg("<0-255>"), K("track"), Arg("INTERFACE"), K("decrement"), Arg("<1-255>")],
         "Lower the priority by this much while an interface is down"
     ),
+    spec!(
+        StandbyTrack,
+        IFS,
+        Modes::ROUTER,
+        [K("standby"), Arg("<0-255>"), K("track"), Arg("INTERFACE"), Arg("<1-255>")],
+        "Lower the priority by this much while an interface is down"
+    ),
     spec!(NoStandbyTrack, IFS, Modes::ROUTER, [K("no"), K("standby"), Arg("<0-255>"), K("track"), Arg("INTERFACE")], "Stop tracking an interface"),
     spec!(StandbyVersion, Modes::SVI, Modes::SWITCH, [K("standby"), K("version"), Arg("{1|2}")], "HSRP version on this interface"),
     spec!(NoStandbyVersion, Modes::SVI, Modes::SWITCH, [K("no"), K("standby"), K("version")], "Back to HSRP version 1"),
@@ -1760,6 +1770,13 @@ pub static SPECS: &[Spec] = &[
         Modes::SVI,
         Modes::SWITCH,
         [K("standby"), Arg("<0-255>"), K("track"), Arg("INTERFACE"), K("decrement"), Arg("<1-255>")],
+        "Lower the priority by this much while an interface is down"
+    ),
+    spec!(
+        StandbyTrack,
+        Modes::SVI,
+        Modes::SWITCH,
+        [K("standby"), Arg("<0-255>"), K("track"), Arg("INTERFACE"), Arg("<1-255>")],
         "Lower the priority by this much while an interface is down"
     ),
     spec!(
@@ -1857,6 +1874,13 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowIpOspf, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf")], "OSPF process summary"),
     spec!(ShowIpOspfInterface, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf"), K("interface")], "OSPF interfaces: area, cost, state"),
     spec!(ShowIpOspfInterface, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf"), K("interface"), K("brief")], "OSPF interfaces: area, cost, state"),
+    spec!(
+        ShowIpOspfInterfaceOne,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("ospf"), K("interface"), Rest("<interface>")],
+        "One OSPF interface: area, cost, timers, priority, DR and BDR"
+    ),
     spec!(Ipv6DhcpPool, Modes::CONFIG, Modes::ROUTER, [K("ipv6"), K("dhcp"), K("pool"), Arg("WORD")], "Create or edit a DHCPv6 pool"),
     spec!(NoIpv6DhcpPool, Modes::CONFIG, Modes::ROUTER, [K("no"), K("ipv6"), K("dhcp"), K("pool"), Arg("WORD")], "Delete a DHCPv6 pool"),
     spec!(Dhcp6AddressPrefix, Modes::DHCP6, Modes::ROUTER, [K("address"), K("prefix"), Arg("X:X::/64")], "Addresses to hand out (stateful DHCPv6)"),
@@ -1877,6 +1901,29 @@ pub static SPECS: &[Spec] = &[
     spec!(LoggingHost, Modes::CONFIG, Modes::BOTH, [K("logging"), K("host"), Arg("A.B.C.D")], "Send log messages to a syslog server"),
     spec!(LoggingHost, Modes::CONFIG, Modes::BOTH, [K("logging"), Arg("A.B.C.D")], "Send log messages to a syslog server"),
     spec!(NoLoggingHost, Modes::CONFIG, Modes::BOTH, [K("no"), K("logging"), K("host"), Arg("A.B.C.D")], "Stop sending to a syslog server"),
+    // Without the server: the copy asks for it, then for the file name.
+    spec!(CopyToTftp, Modes::EXEC, Modes::BOTH, [K("copy"), K("running-config"), K("tftp:")], "Save the configuration on a TFTP server (asks where)"),
+    spec!(
+        CopyToTftp,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("startup-config"), K("tftp:")],
+        "Save the startup configuration on a TFTP server (asks where)"
+    ),
+    spec!(
+        CopyFromTftp,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("tftp:"), K("running-config")],
+        "Merge a configuration from a TFTP server (asks which)"
+    ),
+    spec!(
+        CopyFromTftp,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("tftp:"), K("startup-config")],
+        "Make a TFTP file the startup configuration (asks which)"
+    ),
     spec!(
         CopyToTftp,
         Modes::EXEC,

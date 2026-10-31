@@ -603,6 +603,31 @@ fn a_pc_reads_and_sets_a_router_over_snmp() {
     assert!(s.sim.trace().iter().any(|e| e.summary.starts_with("SNMP response (lectura) 1.3.6.1.2.1.1.5.0 = R1")));
 }
 
+#[test]
+fn a_syslog_server_lists_what_it_received_as_a_command() {
+    // Found by the lab book: the messages were only visible in the Services tab.
+    let mut s = Session::new();
+    s.execute("device.add", json!({"model": "Router-2", "name": "R1"})).unwrap();
+    s.execute("device.add", json!({"model": "Server", "name": "Log"})).unwrap();
+    s.execute("link.add", json!({"a": "R1", "a_port": "g0/0", "b": "Log"})).unwrap();
+    s.execute("server.services", json!({"device": "Log", "services": {"syslog": {"on": true}}})).unwrap();
+    s.execute("cli.exec", json!({"device": "Log", "line": "ipconfig 10.0.0.100 255.255.255.0 10.0.0.1"})).unwrap();
+    s.execute(
+        "device.configure",
+        json!({"device": "R1", "lines": ["interface g0/0", "ip address 10.0.0.1 255.255.255.0", "no shutdown", "exit", "logging host 10.0.0.100"]}),
+    )
+    .unwrap();
+    s.execute("net.ping", json!({"from": "R1", "to": "10.0.0.100"})).unwrap();
+    s.execute("cli.script", json!({"device": "R1", "lines": ["enable", "configure terminal", "hostname R1", "end"]})).unwrap();
+    s.execute("sim.advance", json!({"seconds": 2})).unwrap();
+    let got = s.execute("server.syslog", json!({"device": "Log"})).unwrap();
+    let msgs = got["messages"].as_array().unwrap();
+    assert!(msgs.iter().any(|m| m["from"] == "10.0.0.1" && m["text"].as_str().unwrap().starts_with("R1: ")), "{got}");
+    assert_eq!(s.execute("server.syslog", json!({"device": "Log", "clear": true})).unwrap()["messages"], json!([]));
+    assert_eq!(s.execute("server.syslog", json!({"device": "Log"})).unwrap()["messages"], json!([]));
+    assert!(s.execute("server.syslog", json!({"device": "R1"})).is_err());
+}
+
 /// R1 between PC1 (10.0.0.10, the manager) and PC2 (10.1.0.10).
 fn snmp_lab(extra: &[&str]) -> Session {
     let mut s = Session::new();

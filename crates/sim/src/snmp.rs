@@ -154,6 +154,13 @@ impl Sim {
         }
     }
 
+    /// Empties a syslog server's message list.
+    pub fn clear_syslog(&mut self, d: DeviceId) {
+        if let Some(s) = self.state.get_mut(&d) {
+            s.syslog.clear();
+        }
+    }
+
     /// How many traps an agent sent since it started.
     pub fn traps_sent(&self, d: DeviceId) -> u32 {
         self.state.get(&d).map_or(0, |s| s.traps_sent)
