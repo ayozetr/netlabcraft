@@ -3392,6 +3392,13 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::NoVrrpPreempt
         | Id::NoVrrp
         | Id::ShowVrrp
+        | Id::SrVrrpTimers
+        | Id::SrVrrpTimersMsec
+        | Id::SrNoVrrpTimers
+        | Id::SrVrrpTrack
+        | Id::SrNoVrrpTrack
+        | Id::SrVrrpIpv6
+        | Id::SrNoVrrpIpv6
         | Id::GlbpIp
         | Id::GlbpPriority
         | Id::NoGlbpPriority

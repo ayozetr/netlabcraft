@@ -906,6 +906,10 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                 Ok((sp, dp, _)) => (Protocol::Ipv6, format!("UDP [{}]:{sp} → [{}]:{dp}{tag}", ip.src, ip.dst)),
                 Err(e) => (Protocol::Ipv6, format!("UDP ({e}){tag}")),
             },
+            Ok(ip) if ip.next_header == vrrp::PROTO_VRRP => match vrrp::Vrrp6::decode(&ip.payload, ip.src, ip.dst) {
+                Ok(v) => (Protocol::Hsrp, format!("{} {} → {}{tag}", v.describe(), ip.src, ip.dst)),
+                Err(e) => (Protocol::Hsrp, format!("VRRP ({e}) {} → {}{tag}", ip.src, ip.dst)),
+            },
             Ok(ip) if ip.next_header == eigrp::PROTO_EIGRP => match eigrp::EigrpPacket::decode(&ip.payload) {
                 Ok(p) if p.opcode == eigrp::OPCODE_HELLO && p.ack != 0 && p.tlvs.is_empty() => {
                     (Protocol::Eigrp, format!("EIGRPv6 acknowledgement of {}, AS {} {} → {}{tag}", p.ack, p.asn, ip.src, ip.dst))

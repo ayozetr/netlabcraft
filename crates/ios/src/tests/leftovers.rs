@@ -441,7 +441,9 @@ fn vrrp_by_typing() {
     lab.run(pc1, "ping 10.0.0.10");
     assert!(lab.run(pc1, "ping 10.0.0.10").contains("4 answered"));
     lab.run(r1, "conf t\nint g0/0\nno shutdown\nend");
-    lab.sim.run_for(&lab.t, 2_000_000);
+    // Preempting waits R1's master down interval (3 s and a skew).
+    let _ = lab.run(r1, "show vrrp");
+    lab.sim.run_for(&lab.t, 4_000_000);
     assert!(lab.run(r1, "show vrrp").contains(": master"));
     // Without preempt it waits for R2 to fail.
     lab.run(r1, "conf t\nint g0/0\nno vrrp 1 preempt\nshutdown\nend");

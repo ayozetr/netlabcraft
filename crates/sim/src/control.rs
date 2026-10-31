@@ -471,23 +471,46 @@ impl Sim {
     }
 
     /// VRRP advertisements: each master, from its interface address and the group's virtual
-    /// MAC, to `224.0.0.18` (version 2, or 3 with `fhrp version vrrp v3`).
+    /// MAC, to `224.0.0.18` (version 2, or 3 with `fhrp version vrrp v3`), at its advertisement
+    /// interval (at most once a second here); VRRPv3 IPv6 masters from their link-local address
+    /// to `FF02::12`.
     fn send_vrrp(&mut self, t: &Topology, at: u64) {
-        use netlabcraft_wire::vrrp::{PROTO_VRRP, VRRP_GROUP, Vrrp};
+        use netlabcraft_wire::ipv6::{ETHERTYPE_IPV6, Ipv6, multicast_mac};
+        use netlabcraft_wire::vrrp::{PROTO_VRRP, VRRP_GROUP, VRRP_GROUP6, Vrrp, Vrrp6};
         if !t.devices.iter().any(|d| !d.fhrp.vrrp.is_empty()) {
             return;
         }
+        // Due when a whole number of intervals (rounded up to seconds) has passed.
+        let due = |cs: u16| (at / 1_000_000).is_multiple_of(u64::from(cs).div_ceil(100).max(1));
         let roles = self.fhrp_roles(t);
+        for (id, list) in &roles.vrrp6 {
+            let Some(d) = t.device(*id) else { continue };
+            let up = crate::v6::up_ifaces6(t, d);
+            for r in list.iter().filter(|r| r.state == crate::fhrp::VrrpState::Master && due(r.interval_cs)) {
+                let Some(ifc) = up.iter().find(|i| i.name == r.iface) else { continue };
+                let adv = Vrrp6 { vrid: r.group, priority: r.priority, interval: r.interval_cs, addresses: vec![r.virtual_ip] };
+                let ip = Ipv6 {
+                    hop_limit: 255,
+                    next_header: PROTO_VRRP,
+                    src: ifc.link_local,
+                    dst: VRRP_GROUP6,
+                    payload: adv.encode(ifc.link_local, VRRP_GROUP6),
+                };
+                let frame =
+                    Frame { dst: multicast_mac(VRRP_GROUP6), src: r.virtual_mac(), vlan: ifc.vlan, ethertype: ETHERTYPE_IPV6, payload: ip.encode() };
+                self.queue_frame(t, d, ifc.port, frame, at);
+            }
+        }
         for (id, list) in roles.vrrp {
             let Some(d) = t.device(id) else { continue };
-            for r in list.iter().filter(|r| r.state == crate::fhrp::VrrpState::Master) {
+            for r in list.iter().filter(|r| r.state == crate::fhrp::VrrpState::Master && due(r.interval_cs)) {
                 let Some(ifc) = l3_ifaces(d).into_iter().find(|i| i.name == r.iface) else { continue };
                 let v3 = d.fhrp.vrrp_v3;
                 let adv = Vrrp {
                     version: if v3 { 3 } else { 2 },
                     vrid: r.group,
                     priority: r.priority,
-                    interval: if v3 { 100 } else { 1 },
+                    interval: if v3 { r.interval_cs } else { (r.interval_cs / 100).max(1) },
                     addresses: vec![r.virtual_ip],
                 };
                 let ip =

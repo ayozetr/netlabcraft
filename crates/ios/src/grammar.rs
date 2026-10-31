@@ -963,6 +963,14 @@ pub enum Id {
     SrPriorityExtend,
     SrNoPriorityExtend,
     SrShowMlsQosMaps,
+    // VRRP timers, tracking and IPv6.
+    SrVrrpTimers,
+    SrVrrpTimersMsec,
+    SrNoVrrpTimers,
+    SrVrrpTrack,
+    SrNoVrrpTrack,
+    SrVrrpIpv6,
+    SrNoVrrpIpv6,
 }
 
 use Tok::{Arg, K, Rest};
@@ -3544,6 +3552,45 @@ pub static SPECS: &[Spec] = &[
     spec!(SrNoPriorityExtend, Modes::IF, Modes::SWITCH, [K("no"), K("switchport"), K("priority"), K("extend")], "The PC's frames get the port's CoS"),
     spec!(SrShowMlsQosMaps, EXECS, Modes::SWITCH, [K("show"), K("mls"), K("qos"), K("maps")], "The CoS-to-DSCP and DSCP-to-CoS maps"),
     spec!(SrShowMlsQosMaps, EXECS, Modes::SWITCH, [K("show"), K("mls"), K("qos"), K("maps"), Arg("{cos-dscp|dscp-cos}")], "One QoS map"),
+    // ---- Switching and routing leftovers: VRRP timers, tracking and IPv6 ----
+    spec!(
+        SrVrrpTimers,
+        ANY_IF,
+        Modes::BOTH,
+        [K("vrrp"), Arg("<1-255>"), K("timers"), K("advertise"), Arg("<1-40>")],
+        "Seconds between the master's advertisements"
+    ),
+    spec!(
+        SrVrrpTimersMsec,
+        ANY_IF,
+        Modes::BOTH,
+        [K("vrrp"), Arg("<1-255>"), K("timers"), K("advertise"), K("msec"), Arg("<10-40950>")],
+        "Milliseconds between advertisements (VRRP version 3)"
+    ),
+    spec!(SrNoVrrpTimers, ANY_IF, Modes::BOTH, [K("no"), K("vrrp"), Arg("<1-255>"), K("timers"), K("advertise")], "Advertise every second again"),
+    spec!(
+        SrVrrpTrack,
+        ANY_IF,
+        Modes::BOTH,
+        [K("vrrp"), Arg("<1-255>"), K("track"), Arg("INTERFACE")],
+        "Lower the priority by 10 while that interface is down"
+    ),
+    spec!(
+        SrVrrpTrack,
+        ANY_IF,
+        Modes::BOTH,
+        [K("vrrp"), Arg("<1-255>"), K("track"), Arg("INTERFACE"), K("decrement"), Arg("<1-254>")],
+        "Lower the priority by this much while that interface is down"
+    ),
+    spec!(SrNoVrrpTrack, ANY_IF, Modes::BOTH, [K("no"), K("vrrp"), Arg("<1-255>"), K("track"), Arg("INTERFACE")], "Stop tracking an interface"),
+    spec!(
+        SrVrrpIpv6,
+        ANY_IF,
+        Modes::BOTH,
+        [K("vrrp"), Arg("<1-255>"), K("ipv6"), Arg("FE80::X")],
+        "Share this IPv6 link-local gateway address (VRRP version 3)"
+    ),
+    spec!(SrNoVrrpIpv6, ANY_IF, Modes::BOTH, [K("no"), K("vrrp"), Arg("<1-255>"), K("ipv6")], "Remove the group's IPv6 address"),
 ];
 
 /// Why a line didn't parse. Positions are word indexes.

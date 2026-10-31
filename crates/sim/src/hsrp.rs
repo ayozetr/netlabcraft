@@ -66,7 +66,7 @@ impl Role {
 }
 
 /// Whether an interface (by name, as typed in `standby … track`) is up.
-fn tracked_up(t: &Topology, d: &Device, name: &str) -> bool {
+pub(crate) fn tracked_up(t: &Topology, d: &Device, name: &str) -> bool {
     match d.port_index(name) {
         Some(i) => d.ports.get(i).is_some_and(|p| !p.shutdown && !p.err_disabled) && port_up(t, End { device: d.id, port: i }),
         // A VLAN interface or subinterface: up when it is among the device's working ones.
@@ -106,7 +106,7 @@ pub type Actives = BTreeMap<(Ipv4Net, u8), Ipv4Addr>;
 /// Orders a group's members (sorted best first by priority, then address) so the one that
 /// should be active comes first: the previous active router keeps the role unless a better
 /// member may preempt it. `preempts(i)` says whether member `i` preempts.
-pub fn keep_active<T>(members: &mut [T], prev: Option<Ipv4Addr>, addr: impl Fn(&T) -> Ipv4Addr, preempts: impl Fn(&T) -> bool) {
+pub fn keep_active<T, A: PartialEq>(members: &mut [T], prev: Option<A>, addr: impl Fn(&T) -> A, preempts: impl Fn(&T) -> bool) {
     let Some(prev) = prev else { return };
     let Some(at) = members.iter().position(|m| addr(m) == prev) else { return };
     // Someone ahead of the active router that preempts takes over; else it stays first.

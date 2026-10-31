@@ -1040,6 +1040,9 @@ pub struct Sim {
     fhrp: Option<fhrp::FhrpRoles>,
     /// Who held each VRRP and GLBP role at the last election.
     fhrp_held: fhrp::Held,
+    /// VRRP groups waiting out a master down interval, and who acts as each group's master.
+    vrrp_waits: Vec<fhrp::VrrpWait>,
+    vrrp_acting: BTreeMap<String, fhrp::Acting>,
     /// GLBP round-robin: the forwarder the next ARP answer names, by (gateway, group).
     glbp_next: BTreeMap<(DeviceId, u16), usize>,
     /// Last known link state of every router and switch port, for link messages.
@@ -1330,6 +1333,10 @@ impl Sim {
         if self.eigrp.is_some() || t.devices.iter().any(|d| d.eigrp.is_some()) {
             self.eigrp_refresh(t);
         }
+        // VRRP's master down interval counts from the change.
+        if t.devices.iter().any(|d| !d.fhrp.vrrp.is_empty()) {
+            let _ = self.fhrp_roles(t);
+        }
     }
 
     /// A capture of the event list, in pcap format.
@@ -1404,6 +1411,13 @@ impl Sim {
                 self.eigrp_refresh(t);
                 // Expired holds are gone after a refresh; never spin on one that isn't.
                 self.eigrp_held.retain(|x| x.until > h);
+                continue;
+            }
+            // So is a VRRP group's master down interval.
+            if let Some(h) = self.vrrp_next_expiry().filter(|h| *h <= deadline && next.is_none_or(|q| *h <= q)) {
+                self.now = self.now.max(h);
+                let _ = self.fhrp_roles(t);
+                self.vrrp_waits.retain(|w| w.until > h);
                 continue;
             }
             if next.is_none() {
@@ -1802,9 +1816,11 @@ impl Sim {
     /// VRRP and GLBP roles, recomputed when what they depend on changes.
     pub fn fhrp_roles(&mut self, t: &Topology) -> fhrp::FhrpRoles {
         let f = fhrp::fingerprint(t);
-        if self.fhrp.is_none() || self.fhrp_for != f {
+        let expired = self.vrrp_next_expiry().is_some_and(|u| u <= self.now);
+        if self.fhrp.is_none() || self.fhrp_for != f || expired {
             self.fhrp_for = f;
-            let (roles, held) = fhrp::compute(t, &self.fhrp_held);
+            let (mut roles, held) = fhrp::compute(t, &self.fhrp_held);
+            self.vrrp_timers(t, &mut roles);
             self.fhrp = Some(roles);
             self.fhrp_held = held;
         }

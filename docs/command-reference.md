@@ -1132,6 +1132,14 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no switchport priority extend` | interface | switch | The PC's frames get the port's CoS |
 | `show mls qos maps` | user, privileged | switch | The CoS-to-DSCP and DSCP-to-CoS maps |
 | `show mls qos maps {cos-dscp\|dscp-cos}` | user, privileged | switch | One QoS map |
+| `vrrp <1-255> timers advertise <1-40>` | interface, subinterface | router, switch | Seconds between the master's advertisements |
+| `vrrp <1-255> timers advertise msec <10-40950>` | interface, subinterface | router, switch | Milliseconds between advertisements (VRRP version 3) |
+| `no vrrp <1-255> timers advertise` | interface, subinterface | router, switch | Advertise every second again |
+| `vrrp <1-255> track INTERFACE` | interface, subinterface | router, switch | Lower the priority by 10 while that interface is down |
+| `vrrp <1-255> track INTERFACE decrement <1-254>` | interface, subinterface | router, switch | Lower the priority by this much while that interface is down |
+| `no vrrp <1-255> track INTERFACE` | interface, subinterface | router, switch | Stop tracking an interface |
+| `vrrp <1-255> ipv6 FE80::X` | interface, subinterface | router, switch | Share this IPv6 link-local gateway address (VRRP version 3) |
+| `no vrrp <1-255> ipv6` | interface, subinterface | router, switch | Remove the group's IPv6 address |
 
 ## Host shell (PCs and servers)
 

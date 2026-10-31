@@ -11,6 +11,7 @@ mod ipsec_crypto;
 mod leftovers;
 mod routing;
 mod security;
+mod swroute;
 
 struct Lab {
     t: Topology,

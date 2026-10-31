@@ -282,15 +282,24 @@ impl Sim {
         let serves = conf6(d, &ifc).is_some_and(|c| c.dhcp_server.is_some() || !c.dhcp_relay.is_empty());
         let ospf6 = d.ospf6.is_some();
         let eigrp6 = d.eigrp6.is_some();
+        // VRRPv3: the groups this router is master of here answer for their virtual address.
+        let vrrp6 = self.vrrp6_masters(t, d, &ifc.name);
+        let vrrp_on = !d.fhrp.vrrp.is_empty();
         let joined = |g: Ipv6Addr| {
-            g == ALL_NODES
+            vrrp6.iter().any(|(a, _)| solicited_node(*a) == g)
+                || (vrrp_on && g == netlabcraft_wire::vrrp::VRRP_GROUP6)
+                || g == ALL_NODES
                 || (router && g == ALL_ROUTERS)
                 || (ospf6 && g == netlabcraft_wire::ospf6::ALL_SPF_ROUTERS6)
                 || (eigrp6 && g == netlabcraft_wire::eigrp::EIGRP_ROUTERS6)
                 || (serves && g == dhcp6::ALL_SERVERS)
                 || all.iter().any(|i| i.addresses.iter().map(|n| n.addr).chain([i.link_local]).any(|a| solicited_node(a) == g))
         };
-        let for_me = if f.dst.is_group() { f.dst == multicast_mac(ip.dst) && joined(ip.dst) } else { f.dst == ifc.mac };
+        let for_me = if f.dst.is_group() {
+            f.dst == multicast_mac(ip.dst) && joined(ip.dst)
+        } else {
+            f.dst == ifc.mac || vrrp6.iter().any(|(_, m)| *m == f.dst)
+        };
         if !for_me {
             return Err("not addressed to this device".into());
         }
@@ -348,6 +357,10 @@ impl Sim {
         if ip.next_header == netlabcraft_wire::eigrp::PROTO_EIGRP && d.eigrp6.is_some() {
             return Ok(());
         }
+        // VRRPv3 elections are computed too (`fhrp`).
+        if ip.next_header == netlabcraft_wire::vrrp::PROTO_VRRP && !d.fhrp.vrrp.is_empty() {
+            return Ok(());
+        }
         if ip.next_header != PROTO_ICMPV6 {
             return Err(format!("IPv6 next header {} not understood", ip.next_header));
         }
@@ -393,14 +406,17 @@ impl Sim {
                 Ok(())
             }
             Icmp6::NeighborSolicit { target, mac } => {
-                if !ifc.owns(target) {
+                // A VRRPv3 master answers for the virtual address with the virtual MAC.
+                let vmac = self.vrrp6_masters(t, d, &ifc.name).into_iter().find(|(a, _)| *a == target).map(|(_, m)| m);
+                if !ifc.owns(target) && vmac.is_none() {
                     return Err(format!("neighbour solicitation for {target}, not ours"));
                 }
                 if !ip.src.is_unspecified() {
                     self.learn_nd(t, d, ifc, ip.src, mac.unwrap_or(src_mac));
                 }
                 let dst = if ip.src.is_unspecified() { ALL_NODES } else { ip.src };
-                let na = Icmp6::NeighborAdvert { target, router: routes6(d), solicited: !ip.src.is_unspecified(), mac: Some(ifc.mac) };
+                let na =
+                    Icmp6::NeighborAdvert { target, router: routes6(d), solicited: !ip.src.is_unspecified(), mac: Some(vmac.unwrap_or(ifc.mac)) };
                 let src = target;
                 let packet = Ipv6 { hop_limit: 255, next_header: PROTO_ICMPV6, src, dst, payload: na.encode(src, dst) };
                 let to = if dst.is_multicast() { multicast_mac(dst) } else { mac.unwrap_or(src_mac) };
