@@ -9,8 +9,9 @@
 //! - `ietf-interfaces:interfaces/interface=NAME` (RFC 8343): `name`, `description`, `type`
 //!   (`iana-if-type:…`), `enabled`, read-only `oper-status` and `phys-address`, and the
 //!   `ietf-ip:ipv4` container (RFC 8344) with one `address` entry (`ip`, and `netmask` or
-//!   `prefix-length`). Ports, subinterfaces and loopbacks are listed; loopbacks can be created
-//!   and deleted.
+//!   `prefix-length`), and the `ietf-ip:ipv6` container with its global `address` entries
+//!   (`ip`, `prefix-length`). Ports, subinterfaces and loopbacks are listed; loopbacks can be
+//!   created and deleted.
 //! - `netlabcraft-routing:static-routes/route=PREFIX`: NetLabCraft's own small module, since
 //!   the IETF routing model (RFC 8349) is far deeper than a lab needs. A route is
 //!   `{"prefix": "10.1.0.0/16", "next-hop": [{"address": "10.0.0.2"} | {"interface": "Serial0/1/0"}, "distance"?: 1-255]}`.
@@ -21,8 +22,13 @@
 //!
 //! Requests log in with HTTP Basic authentication against the router's local usernames; only
 //! privilege 15 users may use the API (RFC 8040 §2.5 leaves the method to the server).
+//!
+//! Bodies are JSON (`application/yang-data+json`, RFC 7951) or XML (`application/yang-data+xml`,
+//! RFC 7950 §7): `Content-Type` says which a request carries, and `Accept` picks the answer's
+//! encoding (JSON when it says nothing; 406 when it accepts neither). Errors come back in the
+//! encoding asked for.
 
-use netlabcraft_core::{DeviceId, Ipv4Net, parse_ip};
+use netlabcraft_core::{DeviceId, Ipv4Net, Ipv6Net, parse_ip};
 use netlabcraft_model::{Device, End, NextHop, Topology, ifname};
 use netlabcraft_sim::automation::Served;
 use netlabcraft_wire::http::{self, Request, Response};
@@ -34,6 +40,8 @@ pub const IF: &str = "ietf-interfaces";
 pub const IP: &str = "ietf-ip";
 pub const SYS: &str = "ietf-system";
 pub const RT: &str = "netlabcraft-routing";
+pub const RESTCONF: &str = "ietf-restconf";
+pub const DISC: &str = "netlabcraft-discovery";
 
 /// XML namespaces of the modules (for NETCONF).
 pub fn namespace(module: &str) -> &'static str {
@@ -42,16 +50,25 @@ pub fn namespace(module: &str) -> &'static str {
         IP => "urn:ietf:params:xml:ns:yang:ietf-ip",
         SYS => "urn:ietf:params:xml:ns:yang:ietf-system",
         RT => "urn:netlabcraft:yang:netlabcraft-routing",
+        DISC => "urn:netlabcraft:yang:netlabcraft-discovery",
+        RESTCONF => "urn:ietf:params:xml:ns:yang:ietf-restconf",
         _ => "",
     }
 }
 
+/// The module whose namespace this is (the reverse of [`namespace`]).
+pub fn module_of_ns(ns: &str) -> Option<&'static str> {
+    [IF, IP, SYS, RT, DISC, RESTCONF].into_iter().find(|m| namespace(m) == ns)
+}
+
 /// The modules this server implements, with their revisions (for the capabilities NETCONF
 /// announces and `ietf-yang-library`-style listings).
-pub const MODULES: [(&str, &str); 4] = [(IF, "2018-02-20"), (IP, "2018-02-22"), (SYS, "2014-08-06"), (RT, "2026-10-30")];
+pub const MODULES: [(&str, &str); 5] = [(IF, "2018-02-20"), (IP, "2018-02-22"), (SYS, "2014-08-06"), (RT, "2026-10-30"), (DISC, "2026-10-31")];
 
 /// The JSON media type (RFC 8040 §11.3.2).
 pub const YANG_JSON: &str = "application/yang-data+json";
+/// The XML media type (RFC 8040 §11.3.1).
+pub const YANG_XML: &str = "application/yang-data+xml";
 /// Most interfaces or routes one request may touch.
 const MAX_ENTRIES: usize = 64;
 /// Most characters in a text value.
@@ -89,6 +106,8 @@ pub struct Iface {
     pub description: String,
     pub enabled: bool,
     pub ip: Option<Ipv4Net>,
+    /// Global IPv6 addresses (`ietf-ip:ipv6`).
+    pub ipv6: Vec<Ipv6Net>,
     pub up: bool,
     pub mac: Option<String>,
     pub loopback: bool,
@@ -115,6 +134,7 @@ pub fn interfaces(t: &Topology, d: &Device) -> Vec<Iface> {
             description: p.description.clone(),
             enabled: !p.shutdown,
             ip: p.ip,
+            ipv6: p.ipv6.addresses.clone(),
             up: link && !p.shutdown,
             mac: Some(p.mac.to_string()),
             loopback: false,
@@ -126,6 +146,7 @@ pub fn interfaces(t: &Topology, d: &Device) -> Vec<Iface> {
                 description: s.description.clone(),
                 enabled: !s.shutdown,
                 ip: s.ip,
+                ipv6: s.ipv6.addresses.clone(),
                 up: link && !p.shutdown && !s.shutdown,
                 mac: Some(p.mac.to_string()),
                 loopback: false,
@@ -139,6 +160,7 @@ pub fn interfaces(t: &Topology, d: &Device) -> Vec<Iface> {
             description: l.description.clone(),
             enabled: !l.shutdown,
             ip: l.ip,
+            ipv6: l.ipv6.addresses.clone(),
             up: !l.shutdown,
             mac: None,
             loopback: true,
@@ -157,6 +179,10 @@ fn iface_json(i: &Iface, config_only: bool) -> Value {
     m.insert("enabled".into(), json!(i.enabled));
     if let Some(ip) = i.ip {
         m.insert(format!("{IP}:ipv4"), json!({"address": [{"ip": ip.addr.to_string(), "netmask": ip.mask().to_string()}]}));
+    }
+    if !i.ipv6.is_empty() {
+        let list: Vec<Value> = i.ipv6.iter().map(|n| json!({"ip": n.addr.to_string(), "prefix-length": n.prefix})).collect();
+        m.insert(format!("{IP}:ipv6"), json!({ "address": list }));
     }
     if !config_only {
         m.insert("oper-status".into(), json!(if i.up { "up" } else { "down" }));
@@ -187,6 +213,33 @@ fn routes_json(d: &Device) -> Vec<Value> {
     out.into_iter().map(|(n, hops)| json!({"prefix": n.to_string(), "next-hop": hops})).collect()
 }
 
+/// The router's CDP and LLDP neighbours (`netlabcraft-discovery:neighbors`, NetLabCraft's own
+/// read-only module): one entry per protocol and port.
+fn neighbors_json(t: &Topology, d: &Device) -> Vec<Value> {
+    let mut out = Vec::new();
+    for n in netlabcraft_sim::cdp::neighbors(t, d) {
+        let mut e = json!({"device-id": n.name, "local-interface": n.local, "remote-interface": n.remote, "platform": n.platform, "protocol": "cdp"});
+        if let Some(a) = n.address {
+            e["management-address"] = json!(a.addr.to_string());
+        }
+        out.push(e);
+    }
+    for n in netlabcraft_sim::lldp::neighbors(t, d) {
+        let mut e = json!({"device-id": n.info.system_name, "local-interface": n.local, "remote-interface": n.info.port, "platform": n.info.description, "protocol": "lldp"});
+        if let Some(a) = n.info.address {
+            e["management-address"] = json!(a.to_string());
+        }
+        out.push(e);
+    }
+    out
+}
+
+/// `ietf-system:system-state` (RFC 7317 §3.2): the platform.
+fn system_state(d: &Device) -> Value {
+    let m = d.catalogue_model();
+    json!({"platform": {"os-name": "NetLabCraft", "os-release": env!("CARGO_PKG_VERSION"), "os-version": format!("simulated {}", d.kind.label().to_lowercase()), "machine": m.label}})
+}
+
 /// A module's top container, as `{"module:name": {...}}` members.
 pub fn module_data(t: &Topology, d: &Device, module: &str, config_only: bool) -> Option<(String, Value)> {
     match module {
@@ -195,6 +248,7 @@ pub fn module_data(t: &Topology, d: &Device, module: &str, config_only: bool) ->
             Some((format!("{IF}:interfaces"), json!({"interface": interfaces(t, d).iter().map(|i| iface_json(i, config_only)).collect::<Vec<_>>()})))
         }
         RT => Some((format!("{RT}:static-routes"), json!({"route": routes_json(d)}))),
+        DISC if !config_only => Some((format!("{DISC}:neighbors"), json!({"neighbor": neighbors_json(t, d)}))),
         _ => None,
     }
 }
@@ -214,9 +268,13 @@ pub enum Target {
     IfChild(String, &'static str),
     Routes,
     Route(String),
+    /// `ietf-system:system-state` (read-only).
+    SystemState,
+    /// `netlabcraft-discovery:neighbors` (read-only).
+    Neighbors,
 }
 
-const IF_CHILDREN: [&str; 7] = ["name", "description", "type", "enabled", "oper-status", "phys-address", "ietf-ip:ipv4"];
+const IF_CHILDREN: [&str; 8] = ["name", "description", "type", "enabled", "oper-status", "phys-address", "ietf-ip:ipv4", "ietf-ip:ipv6"];
 
 /// Parses the part of a path after `/restconf/data` (`/ietf-interfaces:interfaces/…`).
 pub fn parse_target(rest: &str) -> ApiResult<Target> {
@@ -265,14 +323,14 @@ pub fn parse_target(rest: &str) -> ApiResult<Target> {
                 let key = key.clone().ok_or_else(|| invalid("`interface` is a list: name the entry, interface=GigabitEthernet0%2F0"))?;
                 let Some((child, ckey)) = segs.get(2) else { return Ok(Target::Interface(key)) };
                 if segs.len() > 3 {
-                    return Err(deeper("ietf-ip:ipv4 and the interface's leaves"));
+                    return Err(deeper("ietf-ip:ipv4, ietf-ip:ipv6 and the interface's leaves"));
                 }
                 if ckey.is_some() {
                     return Err(invalid(format!("`{child}` takes no `=key`")));
                 }
                 let c = local(child, IF);
-                if c == "ipv4" {
-                    return Err(err(400, "unknown-element", "ipv4 comes from another module: write ietf-ip:ipv4"));
+                if c == "ipv4" || c == "ipv6" {
+                    return Err(err(400, "unknown-element", format!("{c} comes from another module: write ietf-ip:{c}")));
                 }
                 match IF_CHILDREN.iter().find(|x| **x == c) {
                     Some(x) => Ok(Target::IfChild(key, x)),
@@ -292,9 +350,12 @@ pub fn parse_target(rest: &str) -> ApiResult<Target> {
             }
             Some((n, _)) => Err(missing(format!("netlabcraft-routing:static-routes has no `{n}` (only route=PREFIX)"))),
         },
-        _ => {
-            Err(missing(format!("no data named `{first}` (here: ietf-system:system, ietf-interfaces:interfaces, netlabcraft-routing:static-routes)")))
-        }
+        (SYS, "system-state") if segs.len() == 1 => Ok(Target::SystemState),
+        (DISC, "neighbors") if segs.len() == 1 => Ok(Target::Neighbors),
+        (SYS, "system-state") | (DISC, "neighbors") => Err(deeper(top)),
+        _ => Err(missing(format!(
+            "no data named `{first}` (here: ietf-system:system, ietf-system:system-state, ietf-interfaces:interfaces, netlabcraft-routing:static-routes, netlabcraft-discovery:neighbors)"
+        ))),
     }
 }
 
@@ -332,6 +393,9 @@ pub fn get(t: &Topology, d: &Device, target: &Target, config_only: bool) -> ApiR
                     m.insert(k, v);
                 }
             }
+            if !config_only {
+                m.insert(format!("{SYS}:system-state"), system_state(d));
+            }
             json!({"ietf-restconf:data": m})
         }
         Target::System => json!({"ietf-system:system": {"hostname": d.name}}),
@@ -348,6 +412,8 @@ pub fn get(t: &Topology, d: &Device, target: &Target, config_only: bool) -> ApiR
             if c.contains(':') { json!({ *c: v }) } else { json!({ format!("{IF}:{c}"): v }) }
         }
         Target::Routes => json!({"netlabcraft-routing:static-routes": {"route": routes_json(d)}}),
+        Target::SystemState => json!({"ietf-system:system-state": system_state(d)}),
+        Target::Neighbors => json!({"netlabcraft-discovery:neighbors": {"neighbor": neighbors_json(t, d)}}),
         Target::Route(p) => {
             let net = prefix(p)?;
             let r: Vec<Value> =
@@ -455,6 +521,63 @@ fn ipv4_line(v: &Value) -> ApiResult<String> {
     }
 }
 
+/// Most IPv6 addresses one interface takes here.
+const MAX_V6: usize = 8;
+
+/// The addresses of an `ietf-ip:ipv6` value (RFC 8344 §3: `address` entries of `ip` and
+/// `prefix-length`).
+fn ipv6_addresses(v: &Value) -> ApiResult<Vec<Ipv6Net>> {
+    let m = v.as_object().ok_or_else(|| invalid("`ietf-ip:ipv6` is an object"))?;
+    for k in m.keys() {
+        if k != "address" {
+            return Err(err(400, "unknown-element", format!("`ietf-ip:ipv6` here holds only `address`, not `{k}`")));
+        }
+    }
+    let Some(a) = m.get("address") else { return Ok(Vec::new()) };
+    let list = entries(a, "address")?;
+    if list.len() > MAX_V6 {
+        return Err(invalid(format!("at most {MAX_V6} IPv6 addresses per interface")));
+    }
+    let mut out: Vec<Ipv6Net> = Vec::new();
+    for one in list {
+        for k in one.keys() {
+            if !["ip", "prefix-length"].contains(&k.as_str()) {
+                return Err(err(400, "unknown-element", format!("an IPv6 address holds ip and prefix-length, not `{k}`")));
+            }
+        }
+        let ip: std::net::Ipv6Addr = text(one.get("ip").ok_or_else(|| err(400, "missing-element", "an address needs `ip`"))?, "ip")?
+            .parse()
+            .map_err(|_| invalid("`ip` is an IPv6 address such as 2001:db8::1"))?;
+        let len = one
+            .get("prefix-length")
+            .ok_or_else(|| err(400, "missing-element", "an IPv6 address needs `prefix-length`"))?
+            .as_u64()
+            .filter(|n| (1..=128).contains(n))
+            .ok_or_else(|| invalid("`prefix-length` is a number from 1 to 128"))?;
+        if ip.is_multicast() || ip.is_unspecified() || ip.is_loopback() || Ipv6Net::is_link_local(ip) {
+            return Err(invalid(format!("{ip} can't be an interface's global address")));
+        }
+        let n = Ipv6Net::new(ip, len as u8);
+        if !out.contains(&n) {
+            out.push(n);
+        }
+    }
+    Ok(out)
+}
+
+/// The lines that give an interface these IPv6 addresses: all of them (`replace`, dropping the
+/// others) or in addition to what it has.
+fn ipv6_lines(have: &[Ipv6Net], want: &[Ipv6Net], replace: bool, lines: &mut Vec<String>) {
+    if replace {
+        for n in have.iter().filter(|n| !want.contains(n)) {
+            lines.push(format!(" no ipv6 address {n}"));
+        }
+    }
+    for n in want.iter().filter(|n| !have.contains(n)) {
+        lines.push(format!(" ipv6 address {n}"));
+    }
+}
+
 /// The lines that make an interface match an entry (`Replace`) or take its values (`Merge`).
 fn iface_lines(t: &Topology, d: &Device, key: Option<&str>, entry: &Map<String, Value>, op: Op, lines: &mut Vec<String>) -> ApiResult<bool> {
     let body_name = entry.get("name").map(|v| text(v, "name")).transpose()?;
@@ -481,9 +604,9 @@ fn iface_lines(t: &Topology, d: &Device, key: Option<&str>, entry: &Map<String, 
     for k in entry.keys() {
         match k.as_str() {
             "name" | "description" | "type" | "enabled" => {}
-            "ietf-ip:ipv4" => {}
+            "ietf-ip:ipv4" | "ietf-ip:ipv6" => {}
             "oper-status" | "phys-address" => return Err(invalid(format!("`{k}` is state data: it can be read, not written"))),
-            "ipv4" => return Err(err(400, "unknown-element", "ipv4 comes from another module: write ietf-ip:ipv4")),
+            "ipv4" | "ipv6" => return Err(err(400, "unknown-element", format!("{k} comes from another module: write ietf-ip:{k}"))),
             other => return Err(err(400, "unknown-element", format!("an interface here has no `{other}`"))),
         }
     }
@@ -507,6 +630,12 @@ fn iface_lines(t: &Topology, d: &Device, key: Option<&str>, entry: &Map<String, 
     match entry.get(&format!("{IP}:ipv4")) {
         Some(v) => lines.push(ipv4_line(v)?),
         None if replace && exists => lines.push(" no ip address".into()),
+        None => {}
+    }
+    let have = if exists { find_iface(t, d, &full)?.ipv6 } else { Vec::new() };
+    match entry.get(&format!("{IP}:ipv6")) {
+        Some(v) => ipv6_lines(&have, &ipv6_addresses(v)?, replace, lines),
+        None if replace => ipv6_lines(&have, &[], true, lines),
         None => {}
     }
     match entry.get("enabled") {
@@ -587,6 +716,7 @@ pub fn edit(t: &Topology, d: &Device, target: &Target, op: Op, body: Option<&Val
     let not_here = |what: &str| err(405, "operation-not-supported", what.to_string());
     match (target, op) {
         (Target::Data, _) => return Err(not_here("edit one module's data at a time (such as /restconf/data/ietf-interfaces:interfaces)")),
+        (Target::SystemState | Target::Neighbors, _) => return Err(not_here("this is state data: it can be read, not changed")),
         (Target::System | Target::Hostname, Op::Delete | Op::Create) => return Err(not_here("the hostname can be replaced, not created or deleted")),
         (Target::System, _) => {
             let v = top(need()?, "ietf-system:system")?;
@@ -655,6 +785,13 @@ pub fn edit(t: &Topology, d: &Device, target: &Target, op: Op, body: Option<&Val
                     Value::Bool(b) => e.lines.push(if *b { " no shutdown".into() } else { " shutdown".into() }),
                     _ => return Err(invalid("`enabled` is true or false")),
                 },
+                ("ietf-ip:ipv6", Op::Delete) => {
+                    if i.ipv6.is_empty() {
+                        return Err(missing(format!("{} has no IPv6 address", i.name)));
+                    }
+                    ipv6_lines(&i.ipv6, &[], true, &mut e.lines);
+                }
+                ("ietf-ip:ipv6", op) => ipv6_lines(&i.ipv6, &ipv6_addresses(top(need()?, "ietf-ip:ipv6")?)?, op == Op::Replace, &mut e.lines),
                 (_, Op::Delete) => {
                     if i.ip.is_none() {
                         return Err(missing(format!("{} has no IPv4 address", i.name)));
@@ -746,17 +883,40 @@ fn response(status: u16, content_type: Option<&str>, body: Vec<u8>) -> Response 
     r
 }
 
-fn json_response(status: u16, v: &Value) -> Response {
-    let mut text = serde_json::to_string_pretty(v).unwrap_or_default();
-    text.push('\n');
-    response(status, Some(YANG_JSON), text.into_bytes())
+/// A data body in the encoding the client asked for.
+fn data_response(status: u16, v: &Value, enc: Encoding) -> Response {
+    match enc {
+        Encoding::Json => {
+            let mut text = serde_json::to_string_pretty(v).unwrap_or_default();
+            text.push('\n');
+            response(status, Some(YANG_JSON), text.into_bytes())
+        }
+        Encoding::Xml => {
+            let mut text = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+            if let Some(m) = v.as_object() {
+                for (k, x) in m {
+                    crate::netconf::to_xml(k, x, "", &mut text);
+                }
+            }
+            text.push('\n');
+            response(status, Some(YANG_XML), text.into_bytes())
+        }
+    }
 }
 
-/// An `ietf-restconf:errors` body (RFC 8040 §7.1).
+/// An `ietf-restconf:errors` body (RFC 8040 §7.1), in JSON.
 pub fn error_response(e: &ApiError) -> Response {
+    error_in(e, Encoding::Json)
+}
+
+/// An `ietf-restconf:errors` body in the encoding the client asked for.
+pub fn error_in(e: &ApiError, enc: Encoding) -> Response {
     let kind = if matches!(e.tag, "malformed-message" | "access-denied" | "operation-not-supported") { "protocol" } else { "application" };
-    let mut r =
-        json_response(e.status, &json!({"ietf-restconf:errors": {"error": [{"error-type": kind, "error-tag": e.tag, "error-message": e.message}]}}));
+    let mut r = data_response(
+        e.status,
+        &json!({"ietf-restconf:errors": {"error": [{"error-type": kind, "error-tag": e.tag, "error-message": e.message}]}}),
+        enc,
+    );
     if e.status == 401 {
         r.headers.insert(1, ("WWW-Authenticate".into(), "Basic realm=\"restconf\"".into()));
     }
@@ -785,13 +945,128 @@ pub fn restconf(t: &Topology, dev: DeviceId, req: &Request) -> Served {
     let Some(d) = t.device(dev) else {
         return Served { response: error_response(&err(500, "operation-failed", "the router is gone")), lines: Vec::new() };
     };
-    match serve(t, d, req) {
+    let enc = match negotiate(req.header("accept")) {
+        Ok(e) => e,
+        Err(e) => return Served { response: error_response(&e), lines: Vec::new() },
+    };
+    match serve(t, d, req, enc) {
         Ok((r, lines)) => Served { response: r, lines },
-        Err(e) => Served { response: error_response(&e), lines: Vec::new() },
+        Err(e) => Served { response: error_in(&e, enc), lines: Vec::new() },
     }
 }
 
-fn serve(t: &Topology, d: &Device, req: &Request) -> ApiResult<(Response, Vec<String>)> {
+/// How a body is encoded (RFC 8040 §5.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Encoding {
+    Json,
+    Xml,
+}
+
+/// The encoding an `Accept` header asks for (RFC 9110 §12.5.1): the supported media range with
+/// the highest quality, the first listed on a tie; JSON when the header is absent or says `*/*`.
+pub fn negotiate(accept: Option<&str>) -> ApiResult<Encoding> {
+    let Some(accept) = accept.map(str::trim).filter(|a| !a.is_empty()) else { return Ok(Encoding::Json) };
+    let mut best: Option<(u16, Encoding)> = None;
+    for range in accept.split(',').take(32) {
+        let mut parts = range.split(';');
+        let media = parts.next().unwrap_or("").trim().to_ascii_lowercase();
+        let mut q = 1000u16;
+        for p in parts {
+            if let Some(v) = p.trim().strip_prefix("q=") {
+                q = v.trim().parse::<f32>().ok().filter(|x| (0.0..=1.0).contains(x)).map_or(0, |x| (x * 1000.0) as u16);
+            }
+        }
+        let enc = match media.as_str() {
+            YANG_JSON | "application/json" | "*/*" | "application/*" => Encoding::Json,
+            YANG_XML | "application/xml" | "text/xml" => Encoding::Xml,
+            _ => continue,
+        };
+        if q > 0 && best.is_none_or(|(b, _)| q > b) {
+            best = Some((q, enc));
+        }
+    }
+    let shown: String = accept.chars().take(80).collect();
+    best.map(|(_, e)| e).ok_or_else(|| err(406, "invalid-value", format!("this server answers {YANG_JSON} or {YANG_XML}, not {shown}")))
+}
+
+/// List names: their entries become JSON arrays (RFC 7951 §5.4).
+const LISTS: [(&str, &str); 6] = [
+    ("interfaces", "interface"),
+    ("ipv4", "address"),
+    ("ipv6", "address"),
+    ("static-routes", "route"),
+    ("route", "next-hop"),
+    ("neighbors", "neighbor"),
+];
+/// Containers: an empty element is an empty object, not an empty text.
+const CONTAINERS: [&str; 10] = ["system", "interfaces", "static-routes", "ipv4", "ipv6", "data", "restconf", "neighbors", "system-state", "platform"];
+
+type XmlEl = netlabcraft_wire::xml::Element;
+
+/// A member name for an element: with its module prefix where the namespace changes.
+fn xml_key(e: &XmlEl, parent: Option<&str>) -> ApiResult<String> {
+    match e.ns.as_deref() {
+        Some(ns) if Some(ns) == parent => Ok(e.name.clone()),
+        Some(ns) => match module_of_ns(ns) {
+            Some(m) => Ok(format!("{m}:{}", e.name)),
+            None => Err(err(
+                400,
+                "unknown-element",
+                format!("<{}>: no module here has the namespace {}", e.name, ns.chars().take(80).collect::<String>()),
+            )),
+        },
+        None => Ok(e.name.clone()),
+    }
+}
+
+fn xml_value(e: &XmlEl, depth: usize) -> ApiResult<Value> {
+    if depth > 16 {
+        return Err(err(400, "malformed-message", "the body is nested too deeply"));
+    }
+    if e.children.is_empty() {
+        if e.text.is_empty() && CONTAINERS.contains(&e.name.as_str()) {
+            return Ok(json!({}));
+        }
+        return Ok(match (e.name.as_str(), e.text.as_str()) {
+            ("enabled", "true") => json!(true),
+            ("enabled", "false") => json!(false),
+            ("prefix-length" | "distance", t) => t.parse::<u64>().map_or_else(|_| json!(t), |n| json!(n)),
+            ("type", t) if !t.is_empty() => json!(format!("iana-if-type:{}", t.rsplit(':').next().unwrap_or(t))),
+            (_, t) => json!(t),
+        });
+    }
+    if !e.text.is_empty() {
+        return Err(err(400, "malformed-message", format!("<{}> holds both text and elements", e.name)));
+    }
+    let mut m = Map::new();
+    for c in &e.children {
+        let k = xml_key(c, e.ns.as_deref())?;
+        let v = xml_value(c, depth + 1)?;
+        if LISTS.contains(&(e.name.as_str(), c.name.as_str())) {
+            match m.entry(k).or_insert_with(|| Value::Array(Vec::new())) {
+                Value::Array(a) => a.push(v),
+                _ => return Err(err(400, "malformed-message", format!("<{}> is a list", c.name))),
+            }
+        } else if m.contains_key(&k) {
+            return Err(err(400, "malformed-message", format!("<{}> appears twice", c.name)));
+        } else {
+            m.insert(k, v);
+        }
+    }
+    Ok(Value::Object(m))
+}
+
+/// An XML body (RFC 8040 §5.2, RFC 7950 §7) as the JSON value the edits read: members take
+/// their module prefix where the namespace changes, lists become arrays, booleans and numbers
+/// their JSON types, and `iana-if-type` identities their module prefix.
+pub fn xml_to_json(el: &XmlEl) -> ApiResult<Value> {
+    let k = xml_key(el, None)?;
+    let v = xml_value(el, 0)?;
+    // A list entry as the resource itself is a one-entry array (RFC 7951 §5.4).
+    if LISTS.iter().any(|(_, l)| *l == el.name && *l != "address" && *l != "next-hop") { Ok(json!({ k: [v] })) } else { Ok(json!({ k: v })) }
+}
+
+fn serve(t: &Topology, d: &Device, req: &Request, enc: Encoding) -> ApiResult<(Response, Vec<String>)> {
     let path = req.path();
     // RFC 8040 §3.1: root discovery through RFC 6415 host-meta.
     if path == "/.well-known/host-meta" {
@@ -805,7 +1080,7 @@ fn serve(t: &Topology, d: &Device, req: &Request) -> ApiResult<(Response, Vec<St
         return Err(missing("RESTCONF is off on this router (configure `restconf`)"));
     }
     if !matches!(req.method.as_str(), "GET" | "HEAD" | "OPTIONS" | "PUT" | "PATCH" | "POST" | "DELETE") {
-        let mut r = error_response(&err(405, "operation-not-supported", format!("{} is not a RESTCONF method", req.method)));
+        let mut r = error_in(&err(405, "operation-not-supported", format!("{} is not a RESTCONF method", req.method)), enc);
         r.headers.push(("Allow".into(), ALLOW.into()));
         return Ok((r, Vec::new()));
     }
@@ -834,7 +1109,7 @@ fn serve(t: &Topology, d: &Device, req: &Request) -> ApiResult<(Response, Vec<St
         if !matches!(req.method.as_str(), "GET" | "HEAD") {
             return Err(err(405, "operation-not-supported", "this resource is read-only"));
         }
-        let mut r = json_response(200, &v);
+        let mut r = data_response(200, &v, enc);
         if req.method == "HEAD" {
             r.body.clear();
         }
@@ -849,7 +1124,7 @@ fn serve(t: &Topology, d: &Device, req: &Request) -> ApiResult<(Response, Vec<St
     let target = parse_target(rest)?;
     let op = match req.method.as_str() {
         "GET" | "HEAD" => {
-            let mut r = json_response(200, &get(t, d, &target, config_only)?);
+            let mut r = data_response(200, &get(t, d, &target, config_only)?, enc);
             if req.method == "HEAD" {
                 r.body.clear();
             }
@@ -860,14 +1135,25 @@ fn serve(t: &Topology, d: &Device, req: &Request) -> ApiResult<(Response, Vec<St
         "POST" => Op::Create,
         _ => Op::Delete,
     };
-    if let Some(ct) = req.header("content-type")
-        && !req.body.is_empty()
-        && !ct.to_ascii_lowercase().contains("json")
-    {
-        return Err(err(415, "invalid-value", format!("this server reads {YANG_JSON}, not {ct}")));
-    }
+    let xml_body = match req.header("content-type").map(str::to_ascii_lowercase) {
+        _ if req.body.is_empty() => false,
+        None => false,
+        Some(ct) if ct.contains("json") => false,
+        Some(ct) if ct.contains("xml") => true,
+        Some(ct) => {
+            return Err(err(
+                415,
+                "invalid-value",
+                format!("this server reads {YANG_JSON} or {YANG_XML}, not {}", ct.chars().take(80).collect::<String>()),
+            ));
+        }
+    };
     let body: Option<Value> = if req.body.is_empty() {
         None
+    } else if xml_body {
+        let text = std::str::from_utf8(&req.body).map_err(|_| err(400, "malformed-message", "the XML body is not UTF-8"))?;
+        let el = netlabcraft_wire::xml::parse(text).map_err(|e| err(400, "malformed-message", format!("the body is not valid XML: {e}")))?;
+        Some(xml_to_json(&el)?)
     } else {
         Some(serde_json::from_slice(&req.body).map_err(|e| err(400, "malformed-message", format!("the body is not valid JSON: {e}")))?)
     };
@@ -922,14 +1208,46 @@ pub fn split_url(url: &str) -> Result<(bool, String, u16, String)> {
     if path.chars().any(|c| c.is_whitespace() || c.is_control()) {
         return Err(bad("the URL's path has spaces: write them as %20"));
     }
-    let (host, port) = match hostport.rsplit_once(':') {
-        Some((h, p)) => (h, p.parse::<u16>().ok().filter(|p| *p > 0).ok_or_else(|| bad(format!("`{p}` is not a port number")))?),
-        None => (hostport, if tls { http::TLS_PORT } else { http::PORT }),
+    // An IPv6 address is written in brackets (RFC 3986 §3.2.2): `https://[2001:db8::1]:443/`.
+    let (host, after) = match hostport.strip_prefix('[') {
+        Some(r) => {
+            let (inside, after) = r.split_once(']').ok_or_else(|| bad("an IPv6 address in a URL ends with ]"))?;
+            inside.parse::<std::net::Ipv6Addr>().map_err(|_| bad(format!("`{inside}` is not an IPv6 address")))?;
+            (hostport.get(..inside.len() + 2).unwrap_or(""), after)
+        }
+        None => match hostport.rsplit_once(':') {
+            Some((h, _)) => (h, hostport.get(h.len()..).unwrap_or("")),
+            None => (hostport, ""),
+        },
+    };
+    let port = match after.strip_prefix(':') {
+        Some(p) => p.parse::<u16>().ok().filter(|p| *p > 0).ok_or_else(|| bad(format!("`{p}` is not a port number")))?,
+        None if after.is_empty() => {
+            if tls {
+                http::TLS_PORT
+            } else {
+                http::PORT
+            }
+        }
+        None => return Err(bad("after the host comes :port or the path")),
     };
     if host.is_empty() || host.len() > 253 || host.contains(['@', ' ']) {
         return Err(bad("the URL needs a host: an address or a name"));
     }
+    if !host.starts_with('[') && host.contains(':') {
+        return Err(bad("write an IPv6 address in brackets, such as https://[2001:db8::1]/restconf"));
+    }
     Ok((tls, host.to_string(), port, path))
+}
+
+/// The address of a host given as an IPv4 or IPv6 address (brackets allowed) or a DNS name.
+pub(crate) fn resolve(s: &mut Session, d: DeviceId, host: &str) -> Result<std::net::IpAddr> {
+    let h = host.trim();
+    let bare = h.strip_prefix('[').and_then(|x| x.strip_suffix(']')).unwrap_or(h);
+    if let Ok(a) = bare.parse::<std::net::IpAddr>() {
+        return Ok(a);
+    }
+    s.sim.dns_resolve(&s.topology, d, bare).map(std::net::IpAddr::V4).map_err(|e| EngineError::Failed(e.to_string()))
 }
 
 /// Header pairs from `{"Name": "value"}` or `[["Name", "value"]]`.
@@ -989,7 +1307,8 @@ pub(crate) fn http_request(s: &mut Session, p: &Value) -> Result<Value> {
         headers.push(("Authorization".into(), format!("Basic {}", http::base64_encode(format!("{u}:{pw}").as_bytes()))));
     }
     if !body.is_empty() && !has(&headers, "content-type") {
-        headers.push(("Content-Type".into(), YANG_JSON.into()));
+        let xml = body.iter().find(|b| !b.is_ascii_whitespace()) == Some(&b'<');
+        headers.push(("Content-Type".into(), if xml { YANG_XML } else { YANG_JSON }.into()));
     }
     let mut all = vec![("Host".to_string(), host.clone()), ("User-Agent".to_string(), "NetLabCraft-Programming".to_string())];
     all.extend(headers);
@@ -997,13 +1316,18 @@ pub(crate) fn http_request(s: &mut Session, p: &Value) -> Result<Value> {
         all.push(("Connection".into(), "close".into()));
     }
     let req = Request { method: method.clone(), target: path.clone(), headers: all, body };
-    let server = s.sim.dns_resolve(&s.topology, d, &host).map_err(|e| EngineError::Failed(e.to_string()))?;
-    let got = s.sim.tcp_session(&s.topology, d, server, port, &req.encode());
+    let server = resolve(s, d, &host)?;
+    let got =
+        if tls { s.sim.https(&s.topology, d, server, port, &req.encode()) } else { s.sim.tcp_session(&s.topology, d, server, port, &req.encode()) };
     let applied = apply_changes(s);
     s.revision += 1;
     let got = got.map_err(|e| EngineError::Failed(e.to_string()))?;
     let resp = match http::Response::parse(&got) {
         Ok(Some(r)) => r,
+        // A TLS alert record: this port wants TLS.
+        _ if !tls && got.first() == Some(&netlabcraft_wire::tls::ALERT) && got.get(1) == Some(&3) => {
+            return Err(EngineError::Failed(format!("{host} port {port} speaks TLS and refused plain HTTP: use https://")));
+        }
         Ok(None) => return Err(EngineError::Failed("the server closed the connection before a full answer".into())),
         Err(e) => return Err(EngineError::Failed(format!("the answer is not HTTP: {e}"))),
     };
@@ -1018,6 +1342,7 @@ pub(crate) fn http_request(s: &mut Session, p: &Value) -> Result<Value> {
         "body": text,
         "json": parsed,
         "applied": applied,
+        "tls": if tls { json!({"version": "TLS 1.2", "cipher": netlabcraft_wire::tls::SUITE_NAME, "certificate": null}) } else { Value::Null },
     }))
 }
 
@@ -1120,8 +1445,11 @@ mod tests {
         assert_eq!(g0["oper-status"], "up");
         assert!(list.iter().any(|i| i["name"] == "Loopback0" && i["type"] == "iana-if-type:softwareLoopback"));
         assert!(r["headers"].as_array().unwrap().iter().any(|h| h[0] == "Content-Type" && h[1] == YANG_JSON));
-        // The request crossed the lab as real TCP on port 443.
-        assert!(s.sim.trace().iter().any(|e| e.summary.contains("HTTPS") && e.summary.contains("GET /restconf")));
+        // The request crossed the lab as TLS on port 443: a handshake, then encrypted data.
+        let trace = s.sim.trace();
+        assert!(trace.iter().any(|e| e.protocol == netlabcraft_wire::Protocol::Tls && e.summary.contains("ClientHello")));
+        assert!(trace.iter().any(|e| e.summary.contains("Application Data (encrypted")));
+        assert!(trace.iter().all(|e| !e.summary.contains("GET /restconf")), "nothing readable");
 
         let r = req(
             &mut s,
@@ -1279,15 +1607,290 @@ mod tests {
             assert!(r["json"]["ietf-restconf:errors"]["error"][0]["error-message"].is_string(), "{m} {path}: {r}");
         }
         assert_eq!(s.topology, before, "failed requests change nothing");
-        // XML bodies are refused with 415.
+        // Media types other than JSON and XML are refused with 415; XML without its namespace
+        // names no module.
+        let put = |ct: &str, body: &str| {
+            json!({"pc": "PC1", "method": "PUT", "url": "https://192.168.1.1/restconf/data/ietf-system:system/hostname", "user": "admin", "password": "NetLab2026",
+                   "headers": {"Content-Type": ct}, "body": body})
+        };
+        assert_eq!(s.execute("pc.http_request", put("text/plain", "X")).unwrap()["status"], 415);
+        assert_eq!(s.execute("pc.http_request", put(YANG_XML, "<hostname>X</hostname>")).unwrap()["status"], 400);
+        assert_eq!(s.execute("pc.http_request", put(YANG_XML, "<hostname xmlns='urn:acme'>X</hostname>")).unwrap()["status"], 400);
+        assert_eq!(s.execute("pc.http_request", put(YANG_XML, "<hostname")).unwrap()["status"], 400);
+        assert_eq!(s.topology, before);
+    }
+
+    fn xml_req(s: &mut Session, method: &str, path: &str, body: Option<&str>) -> Value {
+        let mut p = json!({"pc": "PC1", "method": method, "url": format!("https://192.168.1.1{path}"), "user": "admin", "password": "NetLab2026",
+                           "headers": {"Accept": YANG_XML}});
+        if let Some(b) = body {
+            p["body"] = json!(b);
+        }
+        s.execute("pc.http_request", p).unwrap()
+    }
+
+    #[test]
+    fn xml_bodies_round_trip_through_get_and_edits() {
+        let mut s = lab();
+        // GET in XML: namespaces on the module tops, ietf-ip's ipv4 in its own.
+        let r = xml_req(&mut s, "GET", "/restconf/data/ietf-interfaces:interfaces", None);
+        assert_eq!(r["status"], 200, "{r}");
+        assert!(r["headers"].as_array().unwrap().iter().any(|h| h[0] == "Content-Type" && h[1] == YANG_XML), "{r}");
+        let doc = netlabcraft_wire::xml::parse(r["body"].as_str().unwrap()).unwrap();
+        assert_eq!((doc.name.as_str(), doc.ns.as_deref()), ("interfaces", Some(namespace(IF))));
+        let g0 = doc.children_named("interface").find(|i| i.text_of("name") == Some("GigabitEthernet0/0")).unwrap();
+        assert_eq!(g0.child("ipv4").unwrap().ns.as_deref(), Some(namespace(IP)));
+        // Every resource reads the same in XML as in JSON.
+        for path in [
+            "/restconf/data",
+            "/restconf/data/ietf-interfaces:interfaces",
+            "/restconf/data/ietf-interfaces:interfaces/interface=GigabitEthernet0%2F0",
+            "/restconf/data/ietf-interfaces:interfaces/interface=GigabitEthernet0%2F0/description",
+            "/restconf/data/ietf-system:system",
+            "/restconf/data/netlabcraft-routing:static-routes",
+        ] {
+            let j = req(&mut s, "GET", path, None)["json"].clone();
+            let x = xml_req(&mut s, "GET", path, None);
+            let back = xml_to_json(&netlabcraft_wire::xml::parse(x["body"].as_str().unwrap()).unwrap()).unwrap();
+            // An empty list leaves nothing in XML.
+            fn strip(v: &Value) -> Value {
+                match v {
+                    Value::Object(m) => Value::Object(
+                        m.iter().filter(|(_, x)| x.as_array().is_none_or(|a| !a.is_empty())).map(|(k, x)| (k.clone(), strip(x))).collect(),
+                    ),
+                    Value::Array(a) => Value::Array(a.iter().map(strip).collect()),
+                    x => x.clone(),
+                }
+            }
+            assert_eq!(back, strip(&j), "{path}");
+        }
+        // Edits in XML.
+        let ifns = namespace(IF);
+        let r = xml_req(
+            &mut s,
+            "PUT",
+            "/restconf/data/ietf-interfaces:interfaces/interface=GigabitEthernet0%2F1/description",
+            Some(&format!("<description xmlns=\"{ifns}\">Set &amp; read in XML</description>")),
+        );
+        assert_eq!(r["status"], 204, "{r}");
+        assert!(run(&mut s).contains(" description Set & read in XML"));
+        let body = format!(
+            "<interface xmlns=\"{ifns}\"><name>GigabitEthernet0/1</name><enabled>false</enabled>\
+             <ipv4 xmlns=\"{}\"><address><ip>10.9.9.1</ip><prefix-length>30</prefix-length></address></ipv4></interface>",
+            namespace(IP)
+        );
+        let r = xml_req(&mut s, "PATCH", "/restconf/data/ietf-interfaces:interfaces/interface=GigabitEthernet0%2F1", Some(&body));
+        assert_eq!(r["status"], 204, "{r}");
+        let cfg = run(&mut s);
+        assert!(cfg.contains(" ip address 10.9.9.1 255.255.255.252") && cfg.contains(" shutdown"), "{cfg}");
+        let route = format!(
+            "<route xmlns=\"{}\"><prefix>172.20.0.0/16</prefix><next-hop><address>10.9.9.2</address><distance>7</distance></next-hop></route>",
+            namespace(RT)
+        );
+        let r = xml_req(&mut s, "POST", "/restconf/data/netlabcraft-routing:static-routes", Some(&route));
+        assert_eq!(r["status"], 201, "{r}");
+        assert!(run(&mut s).contains("ip route 172.20.0.0 255.255.0.0 10.9.9.2 7"));
+        let r = xml_req(&mut s, "GET", "/restconf/data/netlabcraft-routing:static-routes/route=172.20.0.0%2F16", None);
+        let back = xml_to_json(&netlabcraft_wire::xml::parse(r["body"].as_str().unwrap()).unwrap()).unwrap();
+        assert_eq!(back["netlabcraft-routing:route"][0]["next-hop"][0]["distance"], 7, "{back}");
+        // Errors come back in XML too.
+        let r = xml_req(&mut s, "GET", "/restconf/data/ietf-interfaces:interfaces/interface=Serial9%2F9", None);
+        assert_eq!(r["status"], 404);
+        let e = netlabcraft_wire::xml::parse(r["body"].as_str().unwrap()).unwrap();
+        assert_eq!((e.name.as_str(), e.ns.as_deref()), ("errors", Some(namespace(RESTCONF))));
+        assert_eq!(e.child("error").and_then(|x| x.text_of("error-tag")), Some("invalid-value"));
+    }
+
+    #[test]
+    fn ipv6_addresses_are_read_and_edited() {
+        let mut s = lab();
+        s.execute("device.configure", json!({"device": "R1", "lines": "interface g0/0\n ipv6 address 2001:db8:1::1/64"})).unwrap();
+        let path = "/restconf/data/ietf-interfaces:interfaces/interface=GigabitEthernet0%2F0";
+        let r = req(&mut s, "GET", path, None);
+        assert_eq!(
+            r["json"]["ietf-interfaces:interface"][0]["ietf-ip:ipv6"],
+            json!({"address": [{"ip": "2001:db8:1::1", "prefix-length": 64}]}),
+            "{r}"
+        );
+        // PATCH adds, PUT on the container replaces, DELETE removes them all.
+        let v6 = |list: Value| json!({"ietf-interfaces:interface": {"name": "GigabitEthernet0/0", "ietf-ip:ipv6": {"address": list}}});
+        let r = req(&mut s, "PATCH", path, Some(v6(json!([{"ip": "2001:DB8:2::1", "prefix-length": 64}]))));
+        assert_eq!(r["status"], 204, "{r}");
+        let cfg = run(&mut s);
+        assert!(cfg.contains(" ipv6 address 2001:db8:1::1/64") && cfg.contains(" ipv6 address 2001:db8:2::1/64"), "{cfg}");
+        let r = req(
+            &mut s,
+            "PUT",
+            &format!("{path}/ietf-ip:ipv6"),
+            Some(json!({"ietf-ip:ipv6": {"address": [{"ip": "2001:db8:3::1", "prefix-length": 48}]}})),
+        );
+        assert_eq!(r["status"], 204, "{r}");
+        let cfg = run(&mut s);
+        assert!(!cfg.contains("2001:db8:1::1") && !cfg.contains("2001:db8:2::1") && cfg.contains(" ipv6 address 2001:db8:3::1/48"), "{cfg}");
+        // The IPv4 address is untouched by IPv6 edits.
+        assert!(cfg.contains(" ip address 192.168.1.1 255.255.255.0"), "{cfg}");
+        assert_eq!(req(&mut s, "DELETE", &format!("{path}/ietf-ip:ipv6"), None)["status"], 204);
+        assert!(!run(&mut s).contains("2001:db8:3::1"));
+        assert_eq!(req(&mut s, "DELETE", &format!("{path}/ietf-ip:ipv6"), None)["status"], 404);
+        // A loopback created with an IPv6 address only.
+        let r = req(
+            &mut s,
+            "POST",
+            "/restconf/data/ietf-interfaces:interfaces",
+            Some(
+                json!({"ietf-interfaces:interface": {"name": "Loopback6", "ietf-ip:ipv6": {"address": [{"ip": "2001:db8:66::1", "prefix-length": 128}]}}}),
+            ),
+        );
+        assert_eq!(r["status"], 201, "{r}");
+        assert!(run(&mut s).contains(" ipv6 address 2001:db8:66::1/128"), "{}", run(&mut s));
+        let before = s.topology.clone();
+        for bad in [
+            json!([{"ip": "fe80::1", "prefix-length": 64}]),
+            json!([{"ip": "2001:db8::1"}]),
+            json!([{"ip": "2001:db8::1", "prefix-length": 0}]),
+            json!([{"ip": "2001:db8::1", "prefix-length": 129}]),
+            json!([{"ip": "10.0.0.1", "prefix-length": 64}]),
+            json!([{"ip": "2001:db8::1", "prefix-length": 64, "origin": "static"}]),
+            json!((0..9).map(|i| json!({"ip": format!("2001:db8:{i}::1"), "prefix-length": 64})).collect::<Vec<_>>()),
+        ] {
+            let r = req(&mut s, "PATCH", path, Some(v6(bad.clone())));
+            assert_eq!(r["status"], 400, "{bad}: {r}");
+        }
+        assert_eq!(s.topology, before);
+    }
+
+    #[test]
+    fn requests_reach_a_routers_ipv6_address() {
+        let mut s = lab();
+        s.execute("device.configure", json!({"device": "R1", "lines": "interface g0/0\n ipv6 address 2001:db8:1::1/64"})).unwrap();
+        s.execute("cli.exec", json!({"device": "PC1", "line": "ipv6config 2001:db8:1::10/64 2001:db8:1::1"})).unwrap();
         let r = s
             .execute(
                 "pc.http_request",
-                json!({"pc": "PC1", "method": "PUT", "url": "https://192.168.1.1/restconf/data/ietf-system:system/hostname", "user": "admin", "password": "NetLab2026",
-                       "headers": {"Content-Type": "application/yang-data+xml"}, "body": "<hostname>X</hostname>"}),
+                json!({"pc": "PC1", "url": "https://[2001:db8:1::1]/restconf/data/ietf-system:system", "user": "admin", "password": "NetLab2026"}),
             )
             .unwrap();
-        assert_eq!(r["status"], 415);
+        assert_eq!(r["status"], 200, "{r}");
+        assert_eq!(r["json"]["ietf-system:system"]["hostname"], "R1");
+        assert_eq!(r["url"], "https://[2001:db8:1::1]/restconf/data/ietf-system:system");
+        // The segments crossed the lab as TCP over IPv6.
+        assert!(s.sim.trace().iter().any(|e| e.summary.contains("2001:db8:1::10 → 2001:db8:1::1")), "IPv6 TCP in the trace");
+        // An edit over IPv6 lands too.
+        let r = s
+            .execute(
+                "pc.http_request",
+                json!({"pc": "PC1", "method": "PATCH", "url": "https://[2001:db8:1::1]:443/restconf/data/ietf-system:system", "user": "admin", "password": "NetLab2026",
+                       "body": {"ietf-system:system": {"hostname": "R1v6"}}}),
+            )
+            .unwrap();
+        assert_eq!(r["status"], 204, "{r}");
+        assert!(s.topology.resolve("R1v6").is_ok());
+        // NETCONF over IPv6.
+        let r = s
+            .execute("netconf.session", json!({"pc": "PC1", "target": "2001:db8:1::1", "user": "admin", "password": "NetLab2026", "rpcs": ["<get-config><source><running/></source></get-config>"]}))
+            .unwrap();
+        assert_eq!(r["connected"], true, "{r}");
+        assert!(r["replies"][0].as_str().unwrap().contains("2001:db8:1::1"), "{r}");
+        // An address nobody has times out; a host without IPv6 can't try.
+        assert!(s.execute("pc.http_request", json!({"pc": "PC1", "url": "https://[2001:db8:1::99]/restconf"})).is_err());
+        assert!(s.execute("pc.http_request", json!({"pc": "PC2", "url": "https://[2001:db8:1::1]/restconf"})).is_err());
+        assert_eq!(split_url("https://[2001:db8::1]:8443/x").unwrap(), (true, "[2001:db8::1]".into(), 8443, "/x".into()));
+        assert_eq!(split_url("http://[fe80::1]").unwrap(), (false, "[fe80::1]".into(), 80, "/".into()));
+        for bad in ["https://2001:db8::1/", "https://[2001:db8::1/", "https://[nope]/", "https://[::1]x/", "https://[::1]:/"] {
+            assert!(split_url(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn https_is_real_tls_and_plain_text_is_refused_on_443() {
+        let mut s = lab();
+        let r = req(&mut s, "GET", "/restconf/data/ietf-system:system", None);
+        assert_eq!(r["status"], 200, "{r}");
+        assert_eq!(r["tls"]["cipher"], netlabcraft_wire::tls::SUITE_NAME);
+        // Every frame on port 443 is TLS, and neither the request nor the password shows.
+        let auth = http::base64_encode(b"admin:NetLab2026");
+        let mut kinds = Vec::new();
+        for e in s.sim.trace() {
+            assert!(!e.frame.windows(8).any(|w| w == b"restconf"), "{}", e.summary);
+            assert!(!e.frame.windows(auth.len()).any(|w| w == auth.as_bytes()));
+            if e.protocol == netlabcraft_wire::Protocol::Tls {
+                kinds.push(e.summary.clone());
+            }
+        }
+        for want in ["ClientHello", "ServerHello", "ServerKeyExchange", "ClientKeyExchange", "ChangeCipherSpec", "Application Data", "Alert"] {
+            assert!(kinds.iter().any(|k| k.contains(want)), "{want}: {kinds:?}");
+        }
+        // Plain HTTP to the TLS port gets a TLS alert, and the client says why.
+        let e = s
+            .execute(
+                "pc.http_request",
+                json!({"pc": "PC1", "url": "http://192.168.1.1:443/restconf/data", "user": "admin", "password": "NetLab2026"}),
+            )
+            .unwrap_err();
+        assert!(e.to_string().contains("speaks TLS"), "{e}");
+        assert!(s.sim.trace().iter().any(|e| e.summary.contains("Alert (unexpected_message)")));
+        // TLS to the plain web server is refused too.
+        s.execute("device.configure", json!({"device": "R1", "lines": "ip http server"})).unwrap();
+        let e = s.execute("pc.http_request", json!({"pc": "PC1", "url": "https://192.168.1.1:80/restconf"})).unwrap_err();
+        assert!(e.to_string().contains("plain text"), "{e}");
+        let r = s
+            .execute("pc.http_request", json!({"pc": "PC1", "url": "http://192.168.1.1/restconf", "user": "admin", "password": "NetLab2026"}))
+            .unwrap();
+        assert_eq!((r["status"].clone(), r["tls"].clone()), (json!(200), Value::Null));
+    }
+
+    #[test]
+    fn platform_and_neighbours_are_read_only_state() {
+        let mut s = lab();
+        let r = req(&mut s, "GET", "/restconf/data/ietf-system:system-state", None);
+        assert_eq!(r["json"]["ietf-system:system-state"]["platform"]["os-name"], "NetLabCraft", "{r}");
+        s.execute("device.configure", json!({"device": "R1", "lines": "lldp run"})).unwrap();
+        s.execute("device.configure", json!({"device": "S1", "lines": "lldp run"})).unwrap();
+        let r = req(&mut s, "GET", "/restconf/data/netlabcraft-discovery:neighbors", None);
+        let list = r["json"]["netlabcraft-discovery:neighbors"]["neighbor"].as_array().unwrap().clone();
+        for proto in ["cdp", "lldp"] {
+            assert!(
+                list.iter().any(|n| n["device-id"] == "S1" && n["local-interface"] == "GigabitEthernet0/0" && n["protocol"] == proto),
+                "{proto}: {r}"
+            );
+        }
+        for path in ["/restconf/data/netlabcraft-discovery:neighbors", "/restconf/data/ietf-system:system-state"] {
+            assert_eq!(req(&mut s, "PUT", path, Some(json!({"x": 1})))["status"], 405, "{path}");
+        }
+        assert_eq!(req(&mut s, "GET", "/restconf/data/netlabcraft-discovery:neighbors/neighbor", None)["status"], 501);
+        let all = req(&mut s, "GET", "/restconf/data?content=config", None);
+        assert!(all["json"]["ietf-restconf:data"].get("netlabcraft-discovery:neighbors").is_none(), "state stays out of config");
+    }
+
+    #[test]
+    fn accept_headers_pick_the_encoding() {
+        assert_eq!(negotiate(None).unwrap(), Encoding::Json);
+        assert_eq!(negotiate(Some("*/*")).unwrap(), Encoding::Json);
+        assert_eq!(negotiate(Some("application/yang-data+xml")).unwrap(), Encoding::Xml);
+        assert_eq!(negotiate(Some("application/yang-data+xml;q=0.5, application/yang-data+json")).unwrap(), Encoding::Json);
+        assert_eq!(negotiate(Some("application/yang-data+json;q=0.1, application/yang-data+xml")).unwrap(), Encoding::Xml);
+        assert_eq!(negotiate(Some("text/html, application/xml;q=0.9")).unwrap(), Encoding::Xml);
+        for bad in ["text/html", "application/yang-data+json;q=0", "image/png;q=1.0"] {
+            assert_eq!(negotiate(Some(bad)).unwrap_err().status, 406, "{bad}");
+        }
+        let mut s = lab();
+        let r = s
+            .execute(
+                "pc.http_request",
+                json!({"pc": "PC1", "url": "https://192.168.1.1/restconf/data", "user": "admin", "password": "NetLab2026", "headers": {"Accept": "text/html"}}),
+            )
+            .unwrap();
+        assert_eq!(r["status"], 406, "{r}");
+        // Hostile XML is answered, never trusted.
+        let deep = format!("{}{}", "<a>".repeat(40), "</a>".repeat(40));
+        for body in [
+            deep.as_str(),
+            "<!DOCTYPE x [<!ENTITY a 'b'>]><x>&a;</x>",
+            "<system xmlns='urn:ietf:params:xml:ns:yang:ietf-system'>t<hostname>X</hostname></system>",
+        ] {
+            let r = xml_req(&mut s, "PATCH", "/restconf/data/ietf-system:system", Some(body));
+            assert_eq!(r["status"], 400, "{body}: {r}");
+        }
     }
 
     #[test]

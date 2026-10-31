@@ -663,7 +663,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "HTTP request (Programming)",
         "",
         None,
-        r#"{"pc": "PC, laptop or server", "method"?: "GET"|"PUT"|"PATCH"|"POST"|"DELETE"|…, "url": "https://10.0.0.1/restconf/data/ietf-interfaces:interfaces", "headers"?: {"Accept": "application/yang-data+json"} or [["Name", "value"]], "body"?: text or JSON, "user"?, "password"?: Basic login} → {"status", "reason", "headers", "body", "json", "applied": [{"device", "lines", "failed"}]}: over TCP through the lab (port 443 carries no TLS)"#,
+        r#"{"pc": "PC, laptop or server", "method"?: "GET"|"PUT"|"PATCH"|"POST"|"DELETE"|…, "url": "https://10.0.0.1/restconf/data/ietf-interfaces:interfaces", "headers"?: {"Accept": "application/yang-data+json" or "application/yang-data+xml"} or [["Name", "value"]], "body"?: text, JSON or XML text (Content-Type follows it unless given), "user"?, "password"?: Basic login} → {"status", "reason", "headers", "body", "json", "applied": [{"device", "lines", "failed"}], "tls"?: {"version", "cipher"}}: over TCP through the lab, IPv4 or IPv6 ([2001:db8::1] in the URL); https:// runs a TLS 1.2 handshake (anonymous Diffie-Hellman, AES-128-CBC) first"#,
         true
     ),
     c!(
@@ -671,7 +671,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "NETCONF session",
         "",
         None,
-        r#"{"pc": "PC, laptop or server", "target": "router address or name", "user", "password", "framing"?: "1.1"|"1.0", "rpcs"?: ["<get-config><source><running/></source></get-config>", …] (bare operations are wrapped in <rpc message-id=…>)} → {"connected", "error"?, "framing", "hello", "replies": [XML], "applied": [{"device", "lines", "failed"}]}: TCP port 830 with RFC 6242 framing; a <close-session> ends it"#,
+        r#"{"pc": "PC, laptop or server", "target": "router address (IPv4 or IPv6) or name", "user", "password", "framing"?: "1.1"|"1.0", "rpcs"?: ["<get-config><source><running/></source></get-config>", …] (bare operations are wrapped in <rpc message-id=…>), "keep_open"?: true (the session stays open: its number comes back as "session"), "session"?: number (go on with a kept session: no target or login), "close"?: true (end a kept session)} → {"connected", "error"?, "framing", "session", "session_id", "hello", "replies": [XML], "applied": [{"device", "lines", "failed"}]}: TCP port 830 with RFC 6242 framing; running and candidate datastores, locks"#,
         true
     ),
     c!(
@@ -679,7 +679,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Controller: managed routers",
         "",
         None,
-        r#"{"host": "the controller (PC, laptop or server)", "add"?: {"address", "user", "password"}, "remove"?: address, "refresh"?: true (read each router's hostname and interfaces over RESTCONF)} → {"devices": [{"address", "user", "reachable"?, "hostname"?, "interfaces"?, "up"?, "error"?}]}"#,
+        r#"{"host": "the controller (PC, laptop or server)", "add"?: {"address" (IPv4 or IPv6), "user", "password", "vars"?: {"name": "value"}}, "remove"?: address, "set_vars"?: {"address", "vars": {"name": "value"}}, "refresh"?: true (read each router's hostname, model, software and interfaces over RESTCONF)} → {"devices": [{"address", "user", "vars", "reachable"?, "hostname"?, "model"?, "os"?, "interfaces"?, "up"?, "error"?}]}"#,
         true
     ),
     c!(
@@ -687,7 +687,15 @@ pub static CATALOG: &[CommandInfo] = &[
         "Controller: push a template",
         "",
         None,
-        r#"{"host", "path": "/restconf/data/…", "method"?: "PATCH"|"PUT"|"POST"|"DELETE", "body": JSON template, "devices"?: [addresses] (all managed routers when left out)} → {"results": [{"address", "status", "error"?, "applied"}]}"#,
+        r#"{"host", "path": "/restconf/data/…", "method"?: "PATCH"|"PUT"|"POST"|"DELETE", "body": JSON template with {{name}} variables ({{address}} and {{hostname}} built in), "variables"?: {"router address": {"name": "value"}} (on top of each router's stored vars), "devices"?: [addresses] (all managed routers when left out)} → {"results": [{"address", "status", "error"?, "applied"}]}"#,
+        true
+    ),
+    c!(
+        "controller.discover",
+        "Controller: discover routers",
+        "",
+        None,
+        r#"{"host", "seed": "first router's address", "user", "password", "max"?: 1-32 (16), "add"?: false (only report)} → {"devices": [inventory, with "neighbors"], "links": [{"from", "from_interface", "to", "to_interface", "platform", "protocols": ["cdp"|"lldp"]}], "unreachable": [{"address", "error"}]}: breadth first over each router's CDP and LLDP neighbours (RESTCONF netlabcraft-discovery:neighbors); routers that answer with the login become managed"#,
         true
     ),
     c!(

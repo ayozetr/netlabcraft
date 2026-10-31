@@ -3179,7 +3179,7 @@ impl Sim {
         if let Some(r) = self.tacacs_server_in(t, d, ip, &seg) {
             return r;
         }
-        if let Some(r) = self.automation_server_in(t, d, ip, &seg) {
+        if let Some(r) = self.automation_server_in(t, d, IpAddr::V4(ip.src), IpAddr::V4(ip.dst), &seg) {
             return r;
         }
         if seg.dst_port == 80 && (d.kind == DeviceKind::Server || d.iot.service) {

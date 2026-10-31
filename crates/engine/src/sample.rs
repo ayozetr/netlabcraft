@@ -1407,16 +1407,20 @@ pub fn build(id: &str) -> Result<Topology> {
                     "{\"netlabcraft-routing:route\": {\"prefix\": \"172.16.0.0/16\", \"next-hop\": [{\"address\": \"192.168.1.254\"}]}}",
                 ),
                 ("Delete Loopback1", "DELETE", format!("{base}/ietf-interfaces:interfaces/interface=Loopback1"), ""),
+                ("Interfaces in XML", "GET", format!("{base}/ietf-interfaces:interfaces"), ""),
             ];
             let pc1 = b.t.resolve("PC1")?;
             if let Some(d) = b.t.device_mut(pc1) {
                 d.automation.saved = saved
                     .into_iter()
                     .map(|(name, method, url, body)| netlabcraft_model::automation::SavedRequest {
+                        headers: vec![(
+                            "Accept".into(),
+                            if name.ends_with("XML") { "application/yang-data+xml" } else { "application/yang-data+json" }.into(),
+                        )],
                         name: name.into(),
                         method: method.into(),
                         url,
-                        headers: vec![("Accept".into(), "application/yang-data+json".into())],
                         body: body.into(),
                     })
                     .collect();

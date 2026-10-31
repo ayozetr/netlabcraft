@@ -1183,20 +1183,39 @@ fn the_programming_app_sends_restconf_and_netconf() {
     h.run_steps(3);
     assert!(h.query_all_by_label_contains("200 OK").next().is_some());
     assert!(h.query_all_by_label_contains("GigabitEthernet0/0").next().is_some());
-    assert!(h.state().session.sim.trace().iter().any(|e| e.summary.contains("GET /restconf/data/ietf-interfaces:interfaces")));
+    assert!(h.query_all_by_label_contains("Encrypted with TLS 1.2: TLS_DH_anon_WITH_AES_128_CBC_SHA").next().is_some());
+    assert!(h.state().session.sim.trace().iter().any(|e| e.protocol == netlabcraft_wire::Protocol::Tls && e.summary.contains("Application Data")));
     h.get_by_label("NETCONF").click();
     h.run_steps(2);
     h.get_by_role_and_label(Role::Button, "Run session").click();
     h.run_steps(3);
     assert!(h.query_all_by_label_contains("Reply 1").next().is_some());
     assert!(h.query_all_by_label_contains("rpc-reply").next().is_some());
+    assert!(h.query_all_by_label_contains("Carried by SSH: key exchange diffie-hellman-group14-sha256").next().is_some());
+    // A kept session: it stays open between runs until closed.
+    h.get_by_label("Keep the session open").click();
+    h.run_steps(1);
+    h.get_by_role_and_label(Role::Button, "Run session").click();
+    h.run_steps(3);
+    assert!(h.query_all_by_label_contains("is open: the next operations run on it").next().is_some());
+    assert_eq!(h.state().session.sim.open_clients().len(), 1);
+    h.get_by_role_and_label(Role::Button, "Run session").click();
+    h.run_steps(3);
+    assert_eq!(h.state().session.sim.open_clients().len(), 1, "the second run used the kept session");
+    h.get_by_role_and_label(Role::Button, "Close the session").click();
+    h.run_steps(3);
+    assert!(h.state().session.sim.open_clients().is_empty());
+    assert!(h.query_by_label("Keep the session open").is_some());
 }
 
 /// The controller mode lists the managed routers and pushes a template to them.
 #[test]
 fn the_controller_reads_the_inventory_and_pushes() {
     use egui::accesskit::Role;
-    let mut h = harness(Some("automation"));
+    // Tall enough for the whole controller form.
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "automation"})).unwrap();
+    let mut h = Harness::builder().with_size(egui::vec2(1200.0, 1600.0)).build_ui_state(|ui, app: &mut PacketApp| app.ui(ui), PacketApp::new(s));
     h.state_mut().ui.show_notes = false;
     let pc = h.state().session.topology.resolve("PC2").unwrap();
     h.state_mut().run("controller.devices", json!({"host": "PC2", "add": {"address": "192.168.1.1", "user": "admin", "password": "NetLab2026"}}));
@@ -1207,11 +1226,25 @@ fn the_controller_reads_the_inventory_and_pushes() {
     h.get_by_role_and_label(Role::Button, "Read the inventory").click();
     h.run_steps(3);
     assert!(h.query_all_by_label("R1").next().is_some());
-    h.get_by_role_and_label(Role::Button, "Push").click();
+    h.get_by_role_and_label(Role::Button, "Push").click_accesskit();
     h.run_steps(3);
     assert!(h.query_all_by_label_contains("192.168.1.1: 204").next().is_some());
     let r1 = h.state().session.topology.resolve("R1").unwrap();
     assert!(h.state().session.topology.device(r1).unwrap().loopbacks.iter().any(|l| l.number == 100));
+    // Discovery from the seed with the login typed in: the topology and the inventory show.
+    for (field, text) in [("User", "admin"), ("Password", "NetLab2026")] {
+        let node = h.query_by_role_and_label(Role::TextInput, field).or_else(|| h.query_by_role_and_label(Role::PasswordInput, field)).unwrap();
+        node.click();
+        h.run_steps(1);
+        h.input_mut().events.push(egui::Event::Text(text.into()));
+        h.run_steps(1);
+    }
+    h.get_by_role_and_label(Role::Button, "Discover").click_accesskit();
+    h.run_steps(3);
+    assert!(h.query_all_by_label_contains("Topology: 1 links").next().is_some());
+    assert!(h.query_all_by_label_contains("R1 GigabitEthernet0/0 - S1").next().is_some());
+    assert!(h.query_all_by_label_contains("NetLabCraft").next().is_some(), "the software column");
+    assert!(h.query_by_label("Variables (address: name=value, …)").is_some());
 }
 
 #[test]

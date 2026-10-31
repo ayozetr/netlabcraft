@@ -34,6 +34,9 @@ struct Form {
     ctl_template: String,
     ctl_devices: Option<Value>,
     ctl_results: Option<Value>,
+    ctl_seed: String,
+    ctl_vars: String,
+    ctl_discovery: Option<Value>,
     method: &'static str,
     url: String,
     headers: String,
@@ -48,6 +51,9 @@ struct Form {
     target: String,
     rpcs: String,
     chunked: bool,
+    keep_open: bool,
+    /// The kept NETCONF session the next operations go to.
+    nc_session: Option<u64>,
 }
 
 impl Default for Form {
@@ -63,6 +69,9 @@ impl Default for Form {
                     .into(),
             ctl_devices: None,
             ctl_results: None,
+            ctl_seed: "192.168.1.1".into(),
+            ctl_vars: String::new(),
+            ctl_discovery: None,
             method: "GET",
             url: "https://192.168.1.1/restconf/data/ietf-interfaces:interfaces".into(),
             headers: "Accept: application/yang-data+json".into(),
@@ -76,6 +85,8 @@ impl Default for Form {
             target: "192.168.1.1".into(),
             rpcs: "<get-config><source><running/></source></get-config>".into(),
             chunked: true,
+            keep_open: false,
+            nc_session: None,
         }
     }
 }
@@ -179,7 +190,7 @@ fn http_form(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, f: &mut Form)
         ui.add(egui::TextEdit::multiline(&mut f.headers).desired_rows(2).desired_width(420.0).code_editor()).labelled_by(l.id);
     });
     ui.horizontal_top(|ui| {
-        let l = form_label(ui, tl("Body (JSON)"), LABEL_W);
+        let l = form_label(ui, tl("Body (JSON or XML)"), LABEL_W);
         ui.vertical(|ui| {
             ui.add(egui::TextEdit::multiline(&mut f.body).desired_rows(5).desired_width(420.0).code_editor()).labelled_by(l.id);
             if ui.button(tl("Format JSON")).clicked() && !f.body.trim().is_empty() {
@@ -220,22 +231,101 @@ fn netconf_form(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, f: &mut Fo
         let l = form_label(ui, tl("Operations (one per blank-line block)"), LABEL_W);
         ui.add(egui::TextEdit::multiline(&mut f.rpcs).desired_rows(6).desired_width(420.0).code_editor()).labelled_by(l.id);
     });
+    // A kept session goes on with the next operations; it may be closed any time.
+    let open = f.nc_session.filter(|h| app.session.sim.open_clients().iter().any(|c| u64::from(c.0) == *h && c.1 == dev.id));
+    if open.is_none() {
+        f.nc_session = None;
+    }
+    ui.horizontal(|ui| match open {
+        Some(h) => {
+            ui.label(trf("Session {} is open: the next operations run on it", &[&h]));
+            if ui.button(tl("Close the session")).clicked() {
+                f.answer = app.run("netconf.session", json!({"pc": dev.id.0, "session": h, "rpcs": [], "close": true}));
+                f.netconf = true;
+                f.nc_session = None;
+            }
+        }
+        None => {
+            ui.checkbox(&mut f.keep_open, tl("Keep the session open"))
+                .on_hover_text(tl("Leave the session open after these operations, to hold a lock or work with the candidate"));
+        }
+    });
     if ui.button(RichText::new(tl("Run session")).strong()).clicked() {
         let rpcs: Vec<String> = f.rpcs.split("\n\n").map(str::trim).filter(|x| !x.is_empty()).map(str::to_string).collect();
-        let p = json!({"pc": dev.id.0, "target": f.target.trim(), "user": f.user.trim(), "password": f.password, "framing": if f.chunked { "1.1" } else { "1.0" }, "rpcs": rpcs});
+        let p = match open {
+            Some(h) => json!({"pc": dev.id.0, "session": h, "rpcs": rpcs}),
+            None => {
+                json!({"pc": dev.id.0, "target": f.target.trim(), "user": f.user.trim(), "password": f.password, "framing": if f.chunked { "1.1" } else { "1.0" }, "rpcs": rpcs, "keep_open": f.keep_open})
+            }
+        };
         f.answer = app.run("netconf.session", p);
         f.netconf = true;
+        f.nc_session = f.answer.as_ref().and_then(|a| a["session"].as_u64());
         f.error = if f.answer.is_some() { None } else { failed(app) };
     }
 }
 
-/// The controller: the routers this host manages, their inventory, and a template for all.
+/// `address: name=value, name=value` lines as `controller.push` variables.
+fn variable_lines(text: &str) -> Value {
+    let mut out = serde_json::Map::new();
+    for line in text.lines() {
+        let Some((addr, rest)) = line.split_once(':').filter(|(a, _)| !a.contains('=')) else { continue };
+        let mut vars = serde_json::Map::new();
+        for pair in rest.split(',') {
+            if let Some((k, v)) = pair.split_once('=') {
+                vars.insert(k.trim().to_string(), json!(v.trim()));
+            }
+        }
+        out.insert(addr.trim().to_string(), Value::Object(vars));
+    }
+    Value::Object(out)
+}
+
+/// The controller: discovery from a seed router, the managed routers' inventory, and a
+/// template with per-router variables pushed to all of them.
 fn controller(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, f: &mut Form) {
+    login(ui, f);
+    ui.horizontal(|ui| {
+        let l = form_label(ui, tl("Seed router"), LABEL_W);
+        ui.add(egui::TextEdit::singleline(&mut f.ctl_seed).desired_width(140.0)).labelled_by(l.id);
+        if ui
+            .button(tl("Discover"))
+            .on_hover_text(tl("Walk the CDP and LLDP neighbours from this router and manage every router that answers RESTCONF"))
+            .clicked()
+        {
+            let p = json!({"host": dev.id.0, "seed": f.ctl_seed.trim(), "user": f.user.trim(), "password": f.password});
+            f.ctl_discovery = app.run("controller.discover", p);
+            f.error = if f.ctl_discovery.is_some() { None } else { failed(app) };
+            if let Some(d) = &f.ctl_discovery {
+                f.ctl_devices = Some(json!({"devices": d["devices"]}));
+            }
+        }
+    });
+    if let Some(d) = &f.ctl_discovery {
+        let links = d["links"].as_array().cloned().unwrap_or_default();
+        egui::CollapsingHeader::new(trf("Topology: {} links", &[&links.len()])).id_salt(("ctl_links", dev.id.0)).default_open(true).show(ui, |ui| {
+            for l in &links {
+                let protos: Vec<&str> = l["protocols"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+                ui.monospace(format!(
+                    "{} {} - {} {} ({})",
+                    l["from"].as_str().unwrap_or(""),
+                    l["from_interface"].as_str().unwrap_or(""),
+                    l["to"].as_str().unwrap_or(""),
+                    l["to_interface"].as_str().unwrap_or(""),
+                    protos.join(", ")
+                ));
+            }
+            for u in d["unreachable"].as_array().into_iter().flatten() {
+                ui.weak(format!("{}: {}", u["address"].as_str().unwrap_or(""), u["error"].as_str().unwrap_or("")));
+            }
+        });
+    }
+    ui.separator();
     ui.label(RichText::new(tl("Managed routers")).strong());
     let list = dev.automation.managed.clone();
     let shown = f.ctl_devices.as_ref().and_then(|v| v["devices"].as_array().cloned()).unwrap_or_default();
     egui::Grid::new(("ctl_grid", dev.id.0)).striped(true).show(ui, |ui| {
-        for h in [tl("Address"), tl("User"), tl("Hostname"), tl("Interfaces up"), ""] {
+        for h in [tl("Address"), tl("User"), tl("Hostname"), tl("Model"), tl("Software"), tl("Interfaces up"), ""] {
             ui.label(RichText::new(h).strong());
         }
         ui.end_row();
@@ -246,15 +336,21 @@ fn controller(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, f: &mut Form
             match info {
                 Some(x) if x["error"].is_string() => {
                     ui.colored_label(egui::Color32::from_rgb(0xc0, 0x39, 0x2b), x["error"].as_str().unwrap_or(""));
-                    ui.label("");
+                    for _ in 0..3 {
+                        ui.label("");
+                    }
                 }
                 Some(x) if x["hostname"].is_string() => {
                     ui.label(x["hostname"].as_str().unwrap_or(""));
+                    ui.label(x["model"].as_str().unwrap_or(""));
+                    ui.label(x["os"].as_str().unwrap_or(""));
                     ui.label(format!("{} / {}", x["up"].as_u64().unwrap_or(0), x["interfaces"].as_u64().unwrap_or(0)));
                 }
                 _ => {
                     ui.weak(tl("(not read yet)"));
-                    ui.label("");
+                    for _ in 0..3 {
+                        ui.label("");
+                    }
                 }
             }
             if ui.button(tl("Remove")).clicked() {
@@ -264,7 +360,7 @@ fn controller(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, f: &mut Form
         }
     });
     if list.is_empty() {
-        ui.weak(tl("No routers yet: add one with its address and an admin login."));
+        ui.weak(tl("No routers yet: discover them from a seed router, or add one with its address and an admin login."));
     }
     ui.horizontal(|ui| {
         let l = form_label(ui, tl("Router address"), LABEL_W);
@@ -273,11 +369,14 @@ fn controller(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, f: &mut Form
             let add = json!({"address": f.ctl_address.trim(), "user": f.user.trim(), "password": f.password});
             f.error = app.run("controller.devices", json!({"host": dev.id.0, "add": add})).map_or_else(|| failed(app), |_| None);
         }
+        if ui
+            .button(tl("Read the inventory"))
+            .on_hover_text(tl("Ask every managed router for its hostname, model, software and interfaces over RESTCONF"))
+            .clicked()
+        {
+            f.ctl_devices = app.run("controller.devices", json!({"host": dev.id.0, "refresh": true}));
+        }
     });
-    login(ui, f);
-    if ui.button(tl("Read the inventory")).on_hover_text(tl("Ask every managed router for its hostname and interfaces over RESTCONF")).clicked() {
-        f.ctl_devices = app.run("controller.devices", json!({"host": dev.id.0, "refresh": true}));
-    }
     ui.separator();
     ui.label(RichText::new(tl("Push a template to every router")).strong());
     ui.horizontal(|ui| {
@@ -294,8 +393,14 @@ fn controller(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, f: &mut Form
         let l = form_label(ui, tl("Template (JSON)"), LABEL_W);
         ui.add(egui::TextEdit::multiline(&mut f.ctl_template).desired_rows(5).desired_width(420.0).code_editor()).labelled_by(l.id);
     });
+    ui.horizontal_top(|ui| {
+        let l = form_label(ui, tl("Variables (address: name=value, …)"), LABEL_W);
+        ui.add(egui::TextEdit::multiline(&mut f.ctl_vars).desired_rows(3).desired_width(420.0).code_editor().hint_text("192.168.1.1: site=HQ, lo=1"))
+            .labelled_by(l.id);
+    });
+    ui.weak(tl("{{name}} in the template takes each router's value; {{address}} and {{hostname}} are built in."));
     if ui.button(RichText::new(tl("Push")).strong()).clicked() {
-        let p = json!({"host": dev.id.0, "method": f.ctl_method, "path": f.ctl_path.trim(), "body": f.ctl_template});
+        let p = json!({"host": dev.id.0, "method": f.ctl_method, "path": f.ctl_path.trim(), "body": f.ctl_template, "variables": variable_lines(&f.ctl_vars)});
         f.ctl_results = app.run("controller.push", p);
         f.error = if f.ctl_results.is_some() { None } else { failed(app) };
     }
@@ -340,6 +445,9 @@ fn answer(ui: &mut egui::Ui, dev: &Device, f: &mut Form) {
         egui::CollapsingHeader::new(tl("The router's hello")).id_salt(("nc_hello", dev.id.0)).show(ui, |ui| {
             ui.add(egui::Label::new(RichText::new(a["hello"].as_str().unwrap_or("")).monospace()).wrap());
         });
+        if let Some(k) = a["ssh"]["kex"].as_str() {
+            ui.weak(trf("Carried by SSH: key exchange {}, cipher {}", &[&k, &a["ssh"]["cipher"].as_str().unwrap_or("")]));
+        }
         applied(ui, &a);
         return;
     }
@@ -349,6 +457,9 @@ fn answer(ui: &mut egui::Ui, dev: &Device, f: &mut Form) {
         ui.label(RichText::new(format!("{status} {}", a["reason"].as_str().unwrap_or(""))).color(colour).strong());
         ui.label(RichText::new(a["url"].as_str().unwrap_or("")).weak());
     });
+    if let Some(c) = a["tls"]["cipher"].as_str() {
+        ui.weak(trf("Encrypted with TLS 1.2: {} (no certificate)", &[&c]));
+    }
     egui::CollapsingHeader::new(tl("Response headers")).id_salt(("http_headers", dev.id.0)).show(ui, |ui| {
         for h in a["headers"].as_array().into_iter().flatten() {
             ui.monospace(format!("{}: {}", h[0].as_str().unwrap_or(""), h[1].as_str().unwrap_or("")));

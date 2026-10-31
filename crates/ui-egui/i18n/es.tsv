@@ -1010,7 +1010,7 @@ Save as	Guardar como
 Saved the request {}	Petición {} guardada
 Request	Petición
 Headers (Name: value)	Cabeceras (Nombre: valor)
-Body (JSON)	Cuerpo (JSON)
+Body (JSON or XML)	Cuerpo (JSON o XML)
 Format JSON	Formatear JSON
 The body is not valid JSON: {}	El cuerpo no es JSON válido: {}
 Router (port 830)	Router (puerto 830)
@@ -1032,9 +1032,9 @@ Configuration applied on {}	Configuración aplicada en {}
 Managed routers	Routers gestionados
 Interfaces up	Interfaces activas
 (not read yet)	(sin leer todavía)
-No routers yet: add one with its address and an admin login.	Todavía no hay routers: añade uno con su dirección y un usuario administrador.
+No routers yet: discover them from a seed router, or add one with its address and an admin login.	Todavía no hay routers: descúbrelos desde un router semilla o añade uno con su dirección y un usuario administrador.
 Read the inventory	Leer el inventario
-Ask every managed router for its hostname and interfaces over RESTCONF	Pide a cada router gestionado su nombre y sus interfaces por RESTCONF
+Ask every managed router for its hostname, model, software and interfaces over RESTCONF	Pide a cada router gestionado su nombre, modelo, software e interfaces por RESTCONF
 Push a template to every router	Enviar una plantilla a todos los routers
 Template (JSON)	Plantilla (JSON)
 Push	Enviar plantilla
@@ -1340,3 +1340,16 @@ Power supply {}: empty bay (click to fit one)	Fuente de alimentación {}: bahía
 No power supply fitted: the device has no power. Fit one, then switch it on.	Sin fuente de alimentación: el equipo no tiene corriente. Pon una y enciéndelo.
 One supply fitted: taking it out cuts the power. Fit the second for a spare.	Una fuente puesta: quitarla corta la corriente. Pon la segunda como reserva.
 {} has no power supply fitted: fit one in its Physical tab (device.psu) first	{} no tiene fuente de alimentación: pon una primero en su pestaña Físico (device.psu)
+Session {} is open: the next operations run on it	La sesión {} está abierta: las próximas operaciones van por ella
+Close the session	Cerrar la sesión
+Keep the session open	Mantener la sesión abierta
+Leave the session open after these operations, to hold a lock or work with the candidate	Deja la sesión abierta tras estas operaciones, para mantener un bloqueo o trabajar con el candidato
+Carried by SSH: key exchange {}, cipher {}	Transportado por SSH: intercambio de claves {}, cifrado {}
+Encrypted with TLS 1.2: {} (no certificate)	Cifrado con TLS 1.2: {} (sin certificado)
+Seed router	Router semilla
+Discover	Descubrir
+Walk the CDP and LLDP neighbours from this router and manage every router that answers RESTCONF	Recorre los vecinos CDP y LLDP desde este router y gestiona cada router que responda a RESTCONF
+Topology: {} links	Topología: {} enlaces
+Software	Versión de software
+Variables (address: name=value, …)	Variables (dirección: nombre=valor, …)
+{{name}} in the template takes each router's value; {{address}} and {{hostname}} are built in.	{{name}} en la plantilla toma el valor de cada router; {{address}} y {{hostname}} vienen incluidas.
