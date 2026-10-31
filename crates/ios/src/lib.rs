@@ -20,7 +20,7 @@ mod render;
 mod tests;
 
 pub use exec::{
-    Cli, IfRef, LoginStage, MODULUS_PROMPT, Mode, Outcome, PASSWORD_PROMPT, Remote, apply_config, complete_line, connect, execute, greeting,
-    help_line, prompt,
+    Cli, CopyPrompt, IfRef, LoginStage, MODULUS_PROMPT, Mode, Outcome, PASSWORD_PROMPT, Remote, apply_config, complete_line, connect, execute,
+    greeting, help_line, prompt,
 };
 pub use render::running_config;

@@ -668,7 +668,7 @@ pub fn ip_int_brief(t: &Topology, d: &Device) -> String {
 /// traffic).
 pub fn ip_route_table(d: &Device, table: &[netlabcraft_sim::RouteEntry]) -> String {
     let mut s = String::from(
-        "Codes: C connected, L local, S static, R RIP, D EIGRP, O OSPF, O IA OSPF other area, O E2 OSPF external, O*E2 OSPF external default, O*IA default into a stub area\n\n",
+        "Codes: C connected, L local, S static, R RIP, D EIGRP, O OSPF, O IA OSPF other area, O E2 OSPF external, O*E2 OSPF external default, O*IA default into a stub area, * the default route\n\n",
     );
     if d.kind == DeviceKind::Switch && !d.ip_routing {
         let _ = writeln!(
@@ -704,6 +704,8 @@ pub fn ip_route_table(d: &Device, table: &[netlabcraft_sim::RouteEntry]) -> Stri
             'E' => "O E2".to_string(),
             'I' if r.net.prefix == 0 => "O*IA".to_string(),
             'I' => "O IA".to_string(),
+            // The default route is starred whoever put it there (S*, R*, D*).
+            c if r.net.prefix == 0 => format!("{c}*  "),
             c => format!("{c}   "),
         };
         // Distance and metric, for every route a protocol or a person put there.
@@ -803,17 +805,32 @@ pub fn interfaces(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
 pub fn trunks(t: &Topology, d: &Device) -> String {
     let mut s = format!("{:<10} {:<10} {:<8} {}\n", "Port", "Status", "Native", "Allowed (and existing)");
     let mut any = false;
+    let mut channels_shown = Vec::new();
     for (i, p) in d.ports.iter().enumerate() {
         if !t.is_trunk(End { device: d.id, port: i }) {
             continue;
         }
         any = true;
-        let status = if port_up(t, End { device: d.id, port: i }) { "trunking" } else { "down" };
+        // An EtherChannel's members trunk as one: the port-channel is listed, once.
+        let (name, up) = match p.channel {
+            Some(g) if channels_shown.contains(&g.number) => continue,
+            Some(g) => {
+                channels_shown.push(g.number);
+                let up = d
+                    .ports
+                    .iter()
+                    .enumerate()
+                    .any(|(j, q)| q.channel.is_some_and(|x| x.number == g.number) && port_up(t, End { device: d.id, port: j }));
+                (format!("Po{}", g.number), up)
+            }
+            None => (ifname::short(&p.name), port_up(t, End { device: d.id, port: i })),
+        };
+        let status = if up { "trunking" } else { "down" };
         let mut active = VlanSet::none();
         for v in d.vlans.keys().filter(|v| p.switchport.allowed.contains(**v)) {
             active.insert(*v);
         }
-        let _ = writeln!(s, "{:<10} {:<10} {:<8} {} ({})", ifname::short(&p.name), status, p.switchport.native_vlan, p.switchport.allowed, active);
+        let _ = writeln!(s, "{:<10} {:<10} {:<8} {} ({})", name, status, p.switchport.native_vlan, p.switchport.allowed, active);
     }
     if !any {
         s.push_str("(no trunk ports)");
@@ -1409,13 +1426,13 @@ fn access_groups(s: &mut String, g: &netlabcraft_model::AccessGroups) {
 }
 
 /// `show access-lists`.
-pub fn access_lists(sim: &Sim, d: &Device) -> String {
+pub fn access_lists(sim: &Sim, d: &Device, only: Option<&str>) -> String {
     if d.acls.is_empty() {
         return "No access lists configured.".into();
     }
     let hits = sim.state(d.id).map(|st| st.acl_hits.clone()).unwrap_or_default();
     let mut s = String::new();
-    for a in &d.acls {
+    for a in d.acls.iter().filter(|a| only.is_none_or(|n| a.name.eq_ignore_ascii_case(n))) {
         let _ = writeln!(s, "{} access list {}", if a.extended { "Extended" } else { "Standard" }, a.name);
         for (i, e) in a.entries.iter().enumerate() {
             let n = hits.get(&(a.name.clone(), i)).copied().unwrap_or(0);
@@ -2043,7 +2060,8 @@ pub fn tcp_brief(sim: &Sim, dev: netlabcraft_core::DeviceId) -> String {
 /// `show users`.
 pub fn users(cli: &crate::Cli) -> String {
     let line = if cli.vty { "vty 0 (remote)" } else { "con 0" };
-    format!("{:<3}{:<18} {}\n*  {:<18} {}", "", "Line", "State", line, "active (this session)")
+    let user = cli.user.as_deref().unwrap_or("");
+    format!("{:<3}{:<18} {:<10} {}\n*  {:<18} {:<10} {}", "", "Line", "User", "State", line, user, "active (this session)")
 }
 
 /// `show cdp`.
@@ -2333,6 +2351,54 @@ pub fn ospf_interfaces(d: &Device, st: &netlabcraft_sim::ospf::OspfState) -> Str
         let _ = writeln!(s, "{:<10} {:<6} {:<20} {:<6} {:<9} {n}", ifname::short(&name), seg.map_or(0, |g| g.area), net.to_string(), cost, role);
     }
     s.trim_end().to_string()
+}
+
+/// `show ip ospf interface g0/0`: one interface's area, cost, timers, priority and the
+/// segment's DR and BDR. `typed` is any accepted spelling of the name (`g0/0`, `vlan 10`).
+pub fn ospf_interface(d: &Device, st: &netlabcraft_sim::ospf::OspfState, typed: &str) -> Result<String, String> {
+    let Some(ospf) = d.ospf.as_ref() else { return Ok("OSPF is not running here.".into()) };
+    let compact: String = typed.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_ascii_lowercase();
+    let split = compact.find(|c: char| c.is_ascii_digit()).unwrap_or(compact.len());
+    let (word, rest) = compact.split_at(split);
+    let list = st.interfaces.get(&d.id).cloned().unwrap_or_default();
+    let found = list.into_iter().find(|(name, ..)| {
+        let lower = name.to_ascii_lowercase();
+        let at = lower.find(|c: char| c.is_ascii_digit()).unwrap_or(lower.len());
+        !word.is_empty() && lower.get(..at).is_some_and(|w| w.starts_with(word)) && lower.get(at..) == Some(rest)
+    });
+    let Some((name, net, cost, passive)) = found else {
+        return Err(format!("% OSPF doesn't run on {typed} (show ip ospf interface brief lists where it does)"));
+    };
+    let seg = st.segments.get(&(d.id, name.clone()));
+    let me = st.addresses.get(&(d.id, name.clone())).copied();
+    let rid = st.router_ids.get(&d.id).map_or("none".to_string(), |r| r.to_string());
+    let (hello, dead) = netlabcraft_sim::ospf::timers(d, &name);
+    let neighbours = st.neighbors.get(&d.id).map_or(0, |l| l.iter().filter(|x| x.iface == name).count());
+    let mut s = String::new();
+    let _ = writeln!(s, "{name}: OSPF process {}, area {}", ospf.process, seg.map_or(0, |g| g.area));
+    let _ = writeln!(s, "  Address {}/{}, router ID {rid}, cost {cost}", me.map_or(net.addr.to_string(), |a| a.to_string()), net.prefix);
+    match seg {
+        _ if passive => s.push_str("  Passive: advertised, but no hellos are sent and no neighbours form\n"),
+        Some(g) if g.dr.is_none() => s.push_str("  Point-to-point: no DR or BDR is elected\n"),
+        Some(g) => {
+            let role = if g.dr == me {
+                "this router is the DR"
+            } else if g.bdr == me {
+                "this router is the BDR"
+            } else if g.priority == 0 {
+                "this router never becomes DR or BDR"
+            } else {
+                "this router is neither DR nor BDR (DROTHER)"
+            };
+            let addr = |a: Option<std::net::Ipv4Addr>| a.map_or("none".to_string(), |a| a.to_string());
+            let _ = writeln!(s, "  Broadcast segment, priority {}: {role}", g.priority);
+            let _ = writeln!(s, "  DR {}, BDR {}", addr(g.dr), addr(g.bdr));
+        }
+        None => {}
+    }
+    let _ = writeln!(s, "  Hello every {hello} s, dead after {dead} s");
+    let _ = write!(s, "  Neighbours on this interface: {neighbours}");
+    Ok(s)
 }
 
 /// `show ipv6 dhcp pool`.

@@ -47,6 +47,14 @@ pub static CATALOG: &[CommandInfo] = &[
         false
     ),
     c!(
+        "server.syslog",
+        "Syslog messages received",
+        "",
+        None,
+        r#"{"device": server, "clear"?: true} → {"messages": [{"at_ms", "from", "text"}]} (what devices sent its Syslog service, oldest first)"#,
+        false
+    ),
+    c!(
         "mail.configure",
         "Email account",
         "",

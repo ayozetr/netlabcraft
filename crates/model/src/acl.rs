@@ -46,6 +46,14 @@ pub enum AclProto {
     Icmp,
     Tcp,
     Udp,
+    /// GRE tunnels (protocol 47): what a crypto map protects for GRE over IPsec.
+    Gre,
+    /// IPsec ESP (50).
+    Esp,
+    /// IPsec AH (51), `ahp` in access lists.
+    Ahp,
+    /// OSPF (89).
+    Ospf,
 }
 
 impl AclProto {
@@ -55,6 +63,10 @@ impl AclProto {
             AclProto::Icmp => "icmp",
             AclProto::Tcp => "tcp",
             AclProto::Udp => "udp",
+            AclProto::Gre => "gre",
+            AclProto::Esp => "esp",
+            AclProto::Ahp => "ahp",
+            AclProto::Ospf => "ospf",
         }
     }
 
@@ -64,6 +76,10 @@ impl AclProto {
             "icmp" => AclProto::Icmp,
             "tcp" => AclProto::Tcp,
             "udp" => AclProto::Udp,
+            "gre" => AclProto::Gre,
+            "esp" => AclProto::Esp,
+            "ahp" => AclProto::Ahp,
+            "ospf" => AclProto::Ospf,
             _ => return None,
         })
     }
@@ -75,6 +91,10 @@ impl AclProto {
             AclProto::Icmp => Some(1),
             AclProto::Tcp => Some(6),
             AclProto::Udp => Some(17),
+            AclProto::Gre => Some(47),
+            AclProto::Esp => Some(50),
+            AclProto::Ahp => Some(51),
+            AclProto::Ospf => Some(89),
         }
     }
 }
@@ -528,10 +548,8 @@ pub struct Packet6Key {
 impl Acl6Entry {
     pub fn matches(&self, p: &Packet6Key) -> bool {
         let proto = match self.proto {
-            AclProto::Ip => None,
             AclProto::Icmp => Some(58),
-            AclProto::Tcp => Some(6),
-            AclProto::Udp => Some(17),
+            other => other.number(),
         };
         let port_ok = |m: Option<PortMatch>, v: Option<u16>| m.is_none_or(|m| v.is_some_and(|v| m.matches(v)));
         proto.is_none_or(|n| n == p.next_header)

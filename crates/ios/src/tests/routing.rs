@@ -171,7 +171,7 @@ fn floating_static_routes() {
     assert!(rt.contains("O    192.168.2.0/24       via 10.0.0.2, GigabitEthernet0/1 (OSPF) [110/2]"), "{rt}");
     assert!(!rt.contains("S    192.168.2.0/24"), "{rt}");
     // The floating default is in (nothing else knows 0.0.0.0/0), with its distance.
-    assert!(rt.contains("S    0.0.0.0/0            via 10.0.1.2 [250/0]"), "{rt}");
+    assert!(rt.contains("S*   0.0.0.0/0            via 10.0.1.2 [250/0]"), "{rt}");
     assert!(lab.run(r1, "show ip route static").contains("0.0.0.0/0"));
     let tr = lab.run(r1, "traceroute 192.168.2.1");
     assert!(tr.contains("10.0.0.2") || tr.contains("192.168.2.1"), "{tr}");

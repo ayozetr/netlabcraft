@@ -11,6 +11,7 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `device.wireless` | Wi-Fi settings |  |  | `{"device", "port"?: "Wireless0", "ssid": "network name (empty: radio off)", "key"?: "WPA2-PSK passphrase, 8-63 characters (none: open)", "channel"?: 1-13, "user"?: "WPA2-Enterprise username (hosts)", "password"?} → {associated_with, problem}` |
 | `snmp.request` | SNMP request |  |  | `{"device": manager, "target": agent address, "version"?: "2c"\|"3", "community"?: "public" (2c), "user"? (3), "auth"?: "none"\|"md5"\|"sha" (3), "password"? (3, 8+ characters), "operation"?: "get"\|"get-next"\|"set", "oid": "1.3.6.1.2.1.1.5.0", "value"?: for a set} → {"bindings": [{"oid", "value"}], "error"}` |
 | `snmp.traps` | SNMP traps received |  |  | `{"device": a host, "clear"?: true} → {"traps": [{"at_ms", "from", "community", "trap": "linkDown"\|"linkUp"\|"coldStart"\|OID, "bindings": [{"oid", "value"}]}]}` |
+| `server.syslog` | Syslog messages received |  |  | `{"device": server, "clear"?: true} → {"messages": [{"at_ms", "from", "text"}]} (what devices sent its Syslog service, oldest first)` |
 | `mail.configure` | Email account |  |  | `{"device", "name"?, "address": "ana@lab.local", "incoming": "POP3 server address or name", "outgoing": "SMTP server", "user", "password"}` |
 | `mail.send` | Send email |  |  | `{"device", "to", "subject"?, "body"?} → {"answer"}: SMTP through the outgoing server` |
 | `mail.receive` | Receive email |  |  | `{"device"} → {"received": n}: POP3 from the incoming server; the messages move to the host` |
@@ -202,6 +203,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `access-class WORD {in\|out}` |  | router, switch | Restrict remote logins (accepted, not simulated) |
 | `show access-lists` | user, privileged | router, switch | Access lists and their matches |
 | `show ip access-lists` | user, privileged | router, switch | Access lists and their matches |
+| `show access-lists WORD` | user, privileged | router, switch | One access list and its matches |
+| `show ip access-lists WORD` | user, privileged | router, switch | One access list and its matches |
 | `clear access-list counters` | privileged | router, switch | Reset the match counts |
 | `ip nat {inside\|outside}` | interface, subinterface | router, switch | Mark this interface inside or outside NAT |
 | `no ip nat {inside\|outside}` | interface, subinterface | router, switch | Take this interface out of NAT |
@@ -437,11 +440,13 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no standby version` | interface, subinterface | router | Back to HSRP version 1 |
 | `standby <0-255> track INTERFACE` | interface, subinterface | router | Lower the priority by 10 while an interface is down |
 | `standby <0-255> track INTERFACE decrement <1-255>` | interface, subinterface | router | Lower the priority by this much while an interface is down |
+| `standby <0-255> track INTERFACE <1-255>` | interface, subinterface | router | Lower the priority by this much while an interface is down |
 | `no standby <0-255> track INTERFACE` | interface, subinterface | router | Stop tracking an interface |
 | `standby version {1\|2}` |  | switch | HSRP version on this interface |
 | `no standby version` |  | switch | Back to HSRP version 1 |
 | `standby <0-255> track INTERFACE` |  | switch | Lower the priority by 10 while an interface is down |
 | `standby <0-255> track INTERFACE decrement <1-255>` |  | switch | Lower the priority by this much while an interface is down |
+| `standby <0-255> track INTERFACE <1-255>` |  | switch | Lower the priority by this much while an interface is down |
 | `no standby <0-255> track INTERFACE` |  | switch | Stop tracking an interface |
 | `standby <0-255> ip A.B.C.D` |  | switch | HSRP: the group's virtual gateway address |
 | `standby ip A.B.C.D` |  | switch | HSRP group 0's virtual gateway address |
@@ -471,6 +476,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ip ospf` | user, privileged | router, switch | OSPF process summary |
 | `show ip ospf interface` | user, privileged | router, switch | OSPF interfaces: area, cost, state |
 | `show ip ospf interface brief` | user, privileged | router, switch | OSPF interfaces: area, cost, state |
+| `show ip ospf interface <interface>` | user, privileged | router, switch | One OSPF interface: area, cost, timers, priority, DR and BDR |
 | `ipv6 dhcp pool WORD` | config | router | Create or edit a DHCPv6 pool |
 | `no ipv6 dhcp pool WORD` | config | router | Delete a DHCPv6 pool |
 | `address prefix X:X::/64` |  | router | Addresses to hand out (stateful DHCPv6) |
@@ -491,6 +497,10 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `logging host A.B.C.D` | config | router, switch | Send log messages to a syslog server |
 | `logging A.B.C.D` | config | router, switch | Send log messages to a syslog server |
 | `no logging host A.B.C.D` | config | router, switch | Stop sending to a syslog server |
+| `copy running-config tftp:` | privileged | router, switch | Save the configuration on a TFTP server (asks where) |
+| `copy startup-config tftp:` | privileged | router, switch | Save the startup configuration on a TFTP server (asks where) |
+| `copy tftp: running-config` | privileged | router, switch | Merge a configuration from a TFTP server (asks which) |
+| `copy tftp: startup-config` | privileged | router, switch | Make a TFTP file the startup configuration (asks which) |
 | `copy running-config tftp: <address> [file]` | privileged | router, switch | Save the configuration on a TFTP server |
 | `copy startup-config tftp: <address> [file]` | privileged | router, switch | Save the startup configuration on a TFTP server |
 | `copy tftp: running-config <address> <file>` | privileged | router, switch | Merge a configuration from a TFTP server |

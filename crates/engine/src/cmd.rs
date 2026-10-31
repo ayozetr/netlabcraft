@@ -339,6 +339,22 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                 .collect();
             Ok(json!({"traps": traps}))
         }
+        "server.syslog" => {
+            let d = device_param(s, p, "device")?;
+            if s.topology.device(d).is_none_or(|x| x.kind != DeviceKind::Server) {
+                return Err(bad("the Syslog service runs on Server devices"));
+            }
+            if p.get("clear").and_then(Value::as_bool) == Some(true) {
+                s.sim.clear_syslog(d);
+                return Ok(json!({"messages": []}));
+            }
+            let msgs: Vec<Value> = s
+                .sim
+                .state(d)
+                .map(|st| st.syslog.iter().map(|(at, from, text)| json!({"at_ms": at / 1_000, "from": from.to_string(), "text": text})).collect())
+                .unwrap_or_default();
+            Ok(json!({"messages": msgs}))
+        }
         "mail.configure" => {
             let d = device_param(s, p, "device")?;
             if !s.topology.device(d).is_some_and(|x| x.kind.is_host()) {

@@ -723,10 +723,20 @@ fn access_lists_by_typing() {
     assert!(run.contains("access-list 10 permit host 192.168.1.10"), "{run}");
     assert!(run.contains("ip access-list extended NO-PING\n deny icmp host 192.168.1.10 host 192.168.1.1\n permit ip any any"), "{run}");
     assert!(run.contains("interface GigabitEthernet0/0\n ip address 192.168.1.1 255.255.255.0\n ip access-group NO-PING in"), "{run}");
+    // One list by its name or number (found by the lab book).
+    let one = lab.run(r, "show access-lists NO-PING");
+    assert!(one.contains("Extended access list NO-PING") && !one.contains("list 10"), "{one}");
+    assert!(lab.run(r, "show ip access-lists 10").contains("Standard access list 10"));
+    assert!(lab.try_run(r, "show access-lists NOPE").starts_with('%'));
     lab.try_run(r, "conf t");
     assert!(lab.try_run(r, "access-list 10 permit tcp any any").contains("not an IPv4 address") || true);
     assert!(lab.try_run(r, "access-list 150 permit tcp any any eq www").is_empty());
-    assert!(lab.try_run(r, "access-list 150 permit gre any any").contains("not a protocol"));
+    // GRE, ESP, AH and OSPF are protocols lists can name (GRE over IPsec, found by the lab book).
+    for p in ["gre", "esp", "ahp", "ospf"] {
+        assert!(lab.try_run(r, &format!("access-list 150 permit {p} host 10.0.0.1 host 10.0.0.2")).is_empty(), "{p}");
+    }
+    assert!(lab.run(r, "do show access-lists 150").contains("permit gre host 10.0.0.1 host 10.0.0.2"));
+    assert!(lab.try_run(r, "access-list 150 permit pim any any").contains("not a protocol"));
     assert!(lab.try_run(r, "access-list 500 permit any").contains("1-99"));
     lab.run(r, "end\nclear access-list counters");
     assert!(!lab.run(r, "show access-lists").contains("matches)"));
@@ -911,6 +921,9 @@ fn telnet_and_ssh_between_devices() {
     lab.try_run(a, "s3cret");
     assert_eq!(lab.prompt(a), "Edge>");
     assert!(lab.try_run(a, "show ip ssh").contains("SSH enabled - version 2"));
+    // `show users` names who logged in (found by the lab book).
+    let users = lab.try_run(a, "show users");
+    assert!(users.contains("vty 0") && users.contains("admin"), "{users}");
     lab.try_run(a, "exit");
     let run = lab.run(r, "show run");
     assert!(
@@ -994,6 +1007,9 @@ fn etherchannel_by_typing() {
     lab.run(s1, "conf t\ninterface port-channel 1\nswitchport mode trunk\nend");
     lab.run(s2, "conf t\nint po1\nswitchport mode trunk\nend");
     assert!(lab.t.device(s1).unwrap().ports.iter().filter(|p| p.channel.is_some()).all(|p| p.switchport.mode == SwitchportMode::Trunk));
+    // The trunk is the port channel, listed once (found by the lab book).
+    let tr = lab.run(s1, "show interfaces trunk");
+    assert!(tr.contains("Po1        trunking") && !tr.contains("Fa0/23"), "{tr}");
     assert!(lab.run(a, "ping 10.0.0.2").contains("4 answered"));
     // One member cut: the bundle carries on.
     lab.run(s1, "conf t\nint fa0/23\nshutdown\nend");
@@ -1582,6 +1598,9 @@ fn hsrp_version_2_and_interface_tracking_by_typing() {
     lab.run(r1, "conf t\nint g0/0\nno standby 1 track g0/1\nno standby version");
     let run = lab.run(r1, "do show running-config interface g0/0");
     assert!(!run.contains("track") && !run.contains("version"), "{run}");
+    // The decrement may follow the interface without the keyword (found by the lab book).
+    assert_eq!(lab.try_run(r1, "standby 1 track g0/1 60"), "");
+    assert!(lab.run(r1, "do show running-config interface g0/0").contains("standby 1 track GigabitEthernet0/1 decrement 60"));
     for bad in ["standby version 3", "standby 1 track g9/9", "standby 1 track g0/1 decrement 0", "no standby 7 track g0/1"] {
         assert!(lab.try_run(r1, bad).starts_with('%'), "{bad}");
     }
@@ -1738,6 +1757,16 @@ fn ospf_depth_by_typing() {
     let oi = lab.run(r3, "show ip ospf interface brief");
     assert!(oi.contains("Gi0/0      0") && oi.contains("BDR") && oi.contains("Gi0/1      1") && oi.contains("50"), "{oi}");
     assert!(lab.run(r2, "show ip ospf interface").contains("never-DR"));
+    // One interface in detail: role, DR and BDR, timers (found by the lab book).
+    lab.run(r1, "conf t\nint g0/0\nip ospf hello-interval 5\nip ospf dead-interval 20\nend");
+    let one = lab.run(r1, "show ip ospf interface g0/0");
+    assert!(
+        one.contains("priority 200: this router is the DR") && one.contains("DR 10.0.0.1") && one.contains("Hello every 5 s, dead after 20 s"),
+        "{one}"
+    );
+    assert!(lab.run(r2, "show ip ospf interface gigabitethernet 0/0").contains("never becomes DR"));
+    assert!(lab.try_run(r1, "show ip ospf interface g0/7").starts_with('%'));
+    lab.run(r1, "conf t\nint g0/0\nno ip ospf hello-interval\nno ip ospf dead-interval\nend");
     // R1 learns the area-1 network as inter-area.
     let rt = lab.run(r1, "show ip route");
     assert!(rt.contains("O IA 172.16.1.0/24"), "{rt}");
@@ -2181,6 +2210,23 @@ fn ntp_syslog_and_tftp_by_typing() {
     assert!(lab.try_run(r, "copy tftp: running-config 10.0.0.100 nope").contains("no such file"));
     assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("TFTP data block 2")));
     assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("NTP time from 10.0.0.100")));
+    // Typed without the server, the copy asks for it and for the file (found by the lab book).
+    assert_eq!(lab.try_run(r, "copy running-config tftp"), "");
+    assert_eq!(lab.prompt(r), "Address or name of remote host []? ");
+    assert_eq!(lab.try_run(r, "10.0.0.100"), "");
+    assert_eq!(lab.prompt(r), "Destination filename [r1-confg]? ");
+    assert!(lab.try_run(r, "backup.cfg").contains("tftp://10.0.0.100/backup.cfg"));
+    assert_eq!(lab.prompt(r), "R1#");
+    lab.try_run(r, "copy tftp running-config");
+    assert_eq!(lab.prompt(r), "Address or name of remote host []? ");
+    lab.try_run(r, "10.0.0.100");
+    assert_eq!(lab.prompt(r), "Source filename []? ");
+    assert!(lab.try_run(r, "backup.cfg").contains("Merged"));
+    // An empty answer gives up.
+    lab.try_run(r, "copy run tftp");
+    assert!(lab.try_run(r, "").contains("nothing copied"));
+    assert_eq!(lab.prompt(r), "R1#");
+    assert!(lab.run(r, "show logging").contains("Syslog servers: 10.0.0.100"));
 }
 
 #[test]
@@ -2504,7 +2550,7 @@ fn ip_address_dhcp_by_typing() {
     assert!(lab.run(r, "show running-config").contains(" ip address dhcp"));
     assert!(lab.run(r, "show ip interface brief").contains("198.51.100.20"));
     let rt = lab.run(r, "show ip route");
-    assert!(rt.contains("S    0.0.0.0/0") && rt.contains("198.51.100.1"), "{rt}");
+    assert!(rt.contains("S*   0.0.0.0/0") && rt.contains("198.51.100.1"), "{rt}");
     lab.run(r, "ping 203.0.113.50");
     assert!(lab.run(r, "ping 203.0.113.50").contains("answered"));
     // A static default wins over the lease's.

@@ -186,14 +186,29 @@ pub struct Cli {
     pub enable_prompt: Option<u8>,
     /// A remote login (vty) session: `enable` needs a password to exist.
     pub vty: bool,
+    /// The user a remote session logged in as (`show users`).
+    pub user: Option<String>,
     /// Waiting for the RSA key size after `crypto key generate rsa`.
     pub modulus_prompt: bool,
+    /// `copy running-config tftp:` typed without a server: asking for it, then the file name.
+    pub copy_prompt: Option<CopyPrompt>,
     /// A Telnet or SSH session this console opened to another device.
     pub remote: Option<Box<Remote>>,
     /// A host's `ftp` session.
     pub ftp: Option<crate::host::FtpClient>,
     /// `terminal history size N` / `history size N`: commands this session remembers.
     pub history_cap: Option<usize>,
+}
+
+/// The questions a TFTP copy asks when the server isn't on the command line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CopyPrompt {
+    /// The copy command as typed (`copy running-config tftp`).
+    pub command: String,
+    /// To the server (else from it).
+    pub upload: bool,
+    /// The server's address, once given.
+    pub address: Option<String>,
 }
 
 /// A login to another device.
@@ -335,6 +350,7 @@ fn remote_line(t: &mut Topology, sim: &mut Sim, cli: &mut Cli, line: &str) -> Ou
             };
             if ok {
                 r.stage = LoginStage::Ready;
+                r.cli.user.clone_from(&user);
                 // A local user with privilege 15 starts in privileged mode.
                 let top = user.as_ref().is_some_and(|u| target.access.users.iter().any(|x| &x.name == u && x.privilege >= 15 && x.matches(line)));
                 if top {
@@ -463,6 +479,13 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
     if cli.modulus_prompt {
         return MODULUS_PROMPT.into();
     }
+    if let Some(p) = &cli.copy_prompt {
+        return match (&p.address, p.upload) {
+            (None, _) => "Address or name of remote host []? ".into(),
+            (Some(_), true) => format!("Destination filename [{}-confg]? ", d.name.to_lowercase()),
+            (Some(_), false) => "Source filename []? ".into(),
+        };
+    }
     if cli.enable_prompt.is_some() || (!cli.logged_in && console_login(d)) {
         return PASSWORD_PROMPT.to_string();
     }
@@ -556,6 +579,22 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, li
         }
         sim.topology_changed(t);
         return Outcome { output: format!("RSA keys generated ({n} bits). SSH is available."), changed: true, clear: false };
+    }
+    // The answers to a TFTP copy's questions: the server, then the file.
+    if let Some(mut p) = cli.copy_prompt.take() {
+        let answer = line.split_whitespace().next().unwrap_or("").to_string();
+        return match p.address {
+            None if answer.is_empty() => Outcome { output: "% No server given; nothing copied".into(), ..Outcome::default() },
+            None => {
+                p.address = Some(answer);
+                cli.copy_prompt = Some(p);
+                Outcome::default()
+            }
+            Some(a) if answer.is_empty() && !p.upload => {
+                Outcome { output: format!("% No file name given; nothing copied from {a}"), ..Outcome::default() }
+            }
+            Some(a) => execute(t, sim, dev, cli, format!("{} {a} {answer}", p.command).trim_end()),
+        };
     }
     if d.kind == DeviceKind::Hub {
         return Outcome { output: "A hub has no console: it repeats every frame and has nothing to configure.".into(), ..Outcome::default() };
@@ -940,7 +979,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 _ => return Err("% connected, static, eigrp, ospf or rip".into()),
             };
             let (head, body) = full.split_once("\n\n").unwrap_or(("", full.as_str()));
-            let lines: Vec<&str> = body.lines().filter(|l| codes.iter().any(|c| l.starts_with(c) || (*c == "O " && l.starts_with("O*")))).collect();
+            // A starred default (S*, O*E2…) belongs to its source too.
+            let lines: Vec<&str> =
+                body.lines().filter(|l| codes.iter().any(|c| l.starts_with(c) || l.starts_with(&format!("{}*", c.trim_end())))).collect();
             Ok(format!("{head}\n\n{}", if lines.is_empty() { "(no such routes)".to_string() } else { lines.join("\n") }))
         }
         Id::ShowInterfaces => Ok(render::interfaces(c.t, c.d()?, None)),
@@ -989,10 +1030,13 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::ShowLogging => {
             let lines: Vec<String> = c.sim.state(c.dev).map(|s| s.log.iter().map(|(_, l)| l.clone()).collect()).unwrap_or_default();
-            let m = &c.d()?.mgmt;
+            let d = c.d()?;
+            let m = &d.mgmt;
             let lv = |l: Option<u8>, def: u8| netlabcraft_model::mgmt::severity_name(l.unwrap_or(def));
+            let hosts =
+                if d.log_hosts.is_empty() { "none".to_string() } else { d.log_hosts.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ") };
             Ok(format!(
-                "Logging buffer: {} message{} (at most {})\nLevels: console {}, buffer {}, syslog servers {}\n{}",
+                "Logging buffer: {} message{} (at most {})\nLevels: console {}, buffer {}, syslog servers {}\nSyslog servers: {hosts}\n{}",
                 lines.len(),
                 if lines.len() == 1 { "" } else { "s" },
                 netlabcraft_sim::MAX_LOG,
@@ -1699,6 +1743,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let st = c.sim.ospf_state(c.t);
             Ok(render::ospf_interfaces(c.d()?, &st))
         }
+        Id::ShowIpOspfInterfaceOne => {
+            let st = c.sim.ospf_state(c.t);
+            render::ospf_interface(c.d()?, &st, arg(0))
+        }
         Id::NtpServer | Id::NoNtpServer => {
             let a = parse_ip(arg(0)).map_err(|e| format!("% {e}"))?;
             let add = spec.id == Id::NtpServer;
@@ -1756,6 +1804,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 }
                 d.log_hosts.push(a);
             }
+            Ok(String::new())
+        }
+        // Without the server on the line, the copy asks for it (and for the file name).
+        Id::CopyToTftp | Id::CopyFromTftp if arg(0).trim().is_empty() => {
+            c.cli.copy_prompt = Some(CopyPrompt { command: line.trim().to_string(), upload: spec.id == Id::CopyToTftp, address: None });
             Ok(String::new())
         }
         Id::CopyToTftp | Id::CopyFromTftp => c.tftp_copy(spec.id == Id::CopyToTftp, line, arg(0)),
@@ -2328,7 +2381,13 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let exists = c.d()?.acls.iter().any(|a| a.name == name);
             Ok(if add && !exists { format!("Access list {name} doesn't exist yet: until it does, everything passes.") } else { String::new() })
         }
-        Id::ShowAccessLists => Ok(render::access_lists(c.sim, c.d()?)),
+        Id::ShowAccessLists => {
+            let d = c.d()?;
+            match args.first() {
+                Some(name) if !d.acls.iter().any(|a| a.name.eq_ignore_ascii_case(name)) => Err(format!("% No access list {name}")),
+                only => Ok(render::access_lists(c.sim, d, only.map(String::as_str))),
+            }
+        }
         Id::ClearAclCounters => {
             c.sim.clear_acl_hits(c.dev);
             Ok(String::new())
@@ -4149,8 +4208,8 @@ fn parse_acl_entry(words: &[&str], extended: bool) -> Result<acl::AclEntry, Stri
         _ => return Err("% A line starts with `permit` or `deny`".into()),
     };
     let proto = if extended {
-        let w = it.next().ok_or("% Give a protocol: ip, icmp, tcp or udp")?;
-        acl::AclProto::from_name(w).ok_or_else(|| format!("% `{w}` is not a protocol NetLabCraft knows (ip, icmp, tcp, udp)"))?
+        let w = it.next().ok_or("% Give a protocol: ip, icmp, tcp, udp, gre, esp, ahp or ospf")?;
+        acl::AclProto::from_name(w).ok_or_else(|| format!("% `{w}` is not a protocol NetLabCraft knows (ip, icmp, tcp, udp, gre, esp, ahp, ospf)"))?
     } else {
         acl::AclProto::Ip
     };
