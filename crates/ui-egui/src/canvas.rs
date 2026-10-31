@@ -21,6 +21,8 @@ enum Pending {
     CableFrom(End),
     /// A console cable started at a device's Console or RS-232 port.
     ConsoleCable(DeviceId),
+    /// An IoT custom cable started at a board or a smart thing.
+    PinCable(DeviceId),
     PingFrom(DeviceId),
 }
 
@@ -93,6 +95,11 @@ pub fn hint(app: &PacketApp) -> String {
         (Tool::Draw(_), _) => crate::i18n::tl("Drag on the workspace to draw. Drawings sit behind devices; move them with Select.").into(),
         (Tool::Note, _) => crate::i18n::tl("Click the workspace to place a note. Drag notes to move them; double-click to edit.").into(),
         (Tool::Cable(Cable::Console), None) => crate::i18n::tl("Console cable: click a PC (RS-232) and a router or switch (Console).").into(),
+        (Tool::Cable(Cable::IotCustom), None) => crate::i18n::tl("IoT custom cable: click a programmable board and a smart thing.").into(),
+        (Tool::Cable(_), Some(Pending::PinCable(d))) => {
+            let name = app.session.topology.device(d).map_or(String::new(), |x| x.name.clone());
+            crate::i18n::trf("From {}: click the second device. Esc cancels.", &[&name])
+        }
         (Tool::Cable(_), None) => crate::i18n::tl("Click the first device and pick a port.").into(),
         (Tool::Cable(_), Some(Pending::CableFrom(e))) => {
             crate::i18n::trf("From {}: click the second device and pick a port. Esc cancels.", &[&app.session.topology.end_label(e)])
@@ -379,6 +386,17 @@ pub fn note_editor(app: &mut PacketApp, ctx: &egui::Context) {
     }
 }
 
+/// The IoT custom cable under the pointer: its board and pin.
+fn hit_wire(app: &PacketApp, view: &View, p: Pos2) -> Option<(DeviceId, String)> {
+    let t = &app.session.topology;
+    t.devices.iter().filter(|b| view.visible(b.id)).find_map(|b| {
+        b.board.wires.iter().filter(|w| view.visible(w.thing)).find_map(|w| {
+            let th = t.device(w.thing)?;
+            (segment_distance(p, view.screen(b.x, b.y), view.screen(th.x, th.y)) < 6.0).then(|| (b.id, w.pin.clone()))
+        })
+    })
+}
+
 /// The console cable under the pointer: the PC at its RS-232 end.
 fn hit_console(app: &PacketApp, view: &View, p: Pos2) -> Option<DeviceId> {
     let t = &app.session.topology;
@@ -514,7 +532,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
     // A cable being drawn follows the pointer.
     let drawing_from = match app.ui.canvas.pending {
         Some(Pending::CableFrom(e)) => Some(e.device),
-        Some(Pending::ConsoleCable(d)) => Some(d),
+        Some(Pending::ConsoleCable(d) | Pending::PinCable(d)) => Some(d),
         _ => None,
     };
     if let (Some(from), Some(p)) = (drawing_from, ui.input(|i| i.pointer.hover_pos()))
@@ -689,6 +707,23 @@ fn draw_links(app: &mut PacketApp, painter: &egui::Painter, view: &View, tk: &To
         let stroke = Stroke::new((2.0 * view.zoom).max(1.0), tk.console_cable);
         painter.extend(egui::Shape::dashed_line(&[pa, pb], stroke, 5.0 * view.zoom, 4.0 * view.zoom));
     }
+    // IoT custom cables: short purple dashes from a board's pin to its smart thing, the pin
+    // named by the board.
+    for b in t.devices.iter().filter(|d| view.visible(d.id)) {
+        for w in &b.board.wires {
+            let Some(th) = t.device(w.thing).filter(|x| view.visible(x.id)) else { continue };
+            let (pa, pb) = (view.screen(b.x, b.y), view.screen(th.x, th.y));
+            crate::icons_families::pin_line(painter, pa, pb, (2.0 * view.zoom).max(1.0), tk);
+            let len = (pb - pa).length();
+            if len > 1.0 {
+                // The pin's name beside the middle of the cable.
+                let d = (pb - pa) / len;
+                let side = if d.y.abs() > 0.5 { vec2(d.y.abs(), 0.0) } else { vec2(0.0, -1.0) };
+                let at = pa + (pb - pa) * 0.5 + side * 12.0 * view.zoom;
+                painter.text(at, Align2::CENTER_CENTER, &w.pin, egui::FontId::proportional(11.0 * view.zoom.clamp(0.7, 1.3)), tk.text);
+            }
+        }
+    }
     // Wi-Fi associations: a dashed line from each host to its access point.
     for d in t.devices.iter().filter(|d| d.kind.is_host() && view.visible(d.id)) {
         for p in 0..d.ports.len() {
@@ -725,7 +760,7 @@ fn draw_devices(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Toke
             painter.rect_stroke(r.expand(6.0), 8.0, Stroke::new(1.5, tk.selection), StrokeKind::Outside);
         }
         if matches!(app.ui.canvas.pending, Some(Pending::CableFrom(e)) if e.device == d.id)
-            || matches!(app.ui.canvas.pending, Some(Pending::ConsoleCable(x) | Pending::PingFrom(x)) if x == d.id)
+            || matches!(app.ui.canvas.pending, Some(Pending::ConsoleCable(x) | Pending::PinCable(x) | Pending::PingFrom(x)) if x == d.id)
         {
             painter.rect_stroke(r.expand(6.0), 8.0, Stroke::new(2.0, tk.selection), StrokeKind::Outside);
         }
@@ -1164,6 +1199,10 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
             Some(d) => console_click(app, d),
             None => app.ui.canvas.cancel(),
         },
+        Tool::Cable(Cable::IotCustom) => match hit {
+            Some(d) => pin_click(app, d),
+            None => app.ui.canvas.cancel(),
+        },
         Tool::Cable(_) => match hit {
             Some(d) => app.ui.canvas.port_menu = Some((d, p)),
             None => app.ui.canvas.cancel(),
@@ -1194,6 +1233,8 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
                 app.run("link.remove", json!({"device": end.device.0, "port": port}));
             } else if let Some(pc) = hit_console(app, view, p) {
                 app.run("link.remove", json!({"device": pc.0, "port": netlabcraft_model::cable::RS232_PORT}));
+            } else if let Some((board, pin)) = hit_wire(app, view, p) {
+                app.run("link.remove", json!({"device": board.0, "port": pin}));
             }
         }
     }
@@ -1471,6 +1512,27 @@ fn console_click(app: &mut PacketApp, d: DeviceId) {
             }
         }
         _ => app.ui.canvas.pending = Some(Pending::ConsoleCable(d)),
+    }
+}
+
+/// The IoT custom cable tool: a board and a smart thing, either first; the board picks a free
+/// pin (analog for a sensor, digital for a device).
+fn pin_click(app: &mut PacketApp, d: DeviceId) {
+    let Some(dev) = app.session.topology.device(d) else { return };
+    if !netlabcraft_model::board::is_board(dev) && netlabcraft_model::iot::thing(dev).is_none() {
+        let msg = crate::i18n::trf("{} is neither a programmable board nor a smart thing.", &[&dev.name]);
+        app.ui.status = Some((msg, true));
+        return;
+    }
+    match app.ui.canvas.pending {
+        Some(Pending::PinCable(a)) if a != d => {
+            app.ui.canvas.pending = None;
+            if let Some(v) = app.run("link.add", json!({"a": a.0, "b": d.0, "cable": "iot-custom"})) {
+                let msg = format!("Connected {} and {}", v["a"].as_str().unwrap_or(""), v["b"].as_str().unwrap_or(""));
+                app.info(msg);
+            }
+        }
+        _ => app.ui.canvas.pending = Some(Pending::PinCable(d)),
     }
 }
 

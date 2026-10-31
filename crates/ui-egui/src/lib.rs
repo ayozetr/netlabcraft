@@ -17,6 +17,7 @@ use netlabcraft_engine::{EngineError, Session, sample};
 use serde_json::{Value, json};
 
 pub mod activity;
+mod board_page;
 mod bottom;
 mod canvas;
 mod cloud_page;
@@ -39,6 +40,7 @@ pub mod png;
 mod programming;
 mod services;
 pub mod theme;
+mod touch;
 mod wlan_page;
 
 #[cfg(test)]
@@ -288,7 +290,14 @@ pub fn open_tab(app: &mut PacketApp, d: DeviceId, name: &str) {
         "services" => Tab::Services,
         "desktop" => Tab::Desktop,
         "phone" => Tab::Phone,
+        "phone-settings" => {
+            if let Some(w) = app.ui.windows.get_mut(&d) {
+                w.phone.open = true;
+            }
+            Tab::Phone
+        }
         "iot" => Tab::Iot,
+        "programming" | "board" => Tab::Board,
         "attributes" => Tab::Attributes,
         _ => return,
     };

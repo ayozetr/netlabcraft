@@ -23,6 +23,8 @@ pub enum Tab {
     Phone,
     /// A smart thing's reading or state; a server's IoT service.
     Iot,
+    /// A programmable board's program, pins and output.
+    Board,
     Attributes,
 }
 
@@ -98,6 +100,10 @@ pub struct DeviceWindow {
     pub(crate) dialled: String,
     /// The IoT tab's fields.
     pub(crate) iot: crate::iot_page::IotForm,
+    /// A board's Programming tab fields.
+    pub(crate) board: crate::board_page::BoardForm,
+    /// An IP phone's settings screen.
+    pub(crate) phone: crate::phone::PhoneForm,
 }
 
 impl DeviceWindow {
@@ -134,6 +140,7 @@ pub fn open(app: &mut PacketApp, d: DeviceId) {
     if dev.kind.is_host() && w.tab == Tab::Cli {
         w.tab = match dev.kind {
             DeviceKind::Phone => Tab::Phone,
+            DeviceKind::Iot if netlabcraft_model::board::is_board(&dev) => Tab::Board,
             DeviceKind::Iot => Tab::Iot,
             _ => Tab::Desktop,
         };
@@ -193,6 +200,8 @@ pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
                         ]
                     } else if netlabcraft_model::iot::can_serve(&dev) && dev.kind != DeviceKind::Server {
                         &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Iot, "IoT"), (Tab::Cli, "CLI"), (Tab::Attributes, "Attributes")]
+                    } else if netlabcraft_model::board::is_board(&dev) {
+                        &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Board, "Programming"), (Tab::Attributes, "Attributes")]
                     } else if dev.kind == DeviceKind::Iot {
                         &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Iot, "IoT"), (Tab::Attributes, "Attributes")]
                     } else if dev.kind == DeviceKind::Phone {
@@ -225,6 +234,13 @@ pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
                         crate::iot_page::tab(app, ui, &dev, &mut form);
                         if let Some(w) = app.ui.windows.get_mut(&d) {
                             w.iot = form;
+                        }
+                    }
+                    Tab::Board => {
+                        let mut form = app.ui.windows.get_mut(&d).map(|w| std::mem::take(&mut w.board)).unwrap_or_default();
+                        crate::board_page::tab(app, ui, &dev, &mut form);
+                        if let Some(w) = app.ui.windows.get_mut(&d) {
+                            w.board = form;
                         }
                     }
                     Tab::Services => {
@@ -394,6 +410,14 @@ fn console_in(app: &mut PacketApp, ui: &mut egui::Ui, win: DeviceId, d: DeviceId
 
 /// The front panel: one socket per port, its link light, and what is plugged in.
 fn physical(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
+    if dev.catalogue_model().touch() {
+        crate::touch::physical(app, ui, dev);
+        return;
+    }
+    if netlabcraft_model::board::is_board(dev) {
+        crate::board_page::physical(app, ui, dev);
+        return;
+    }
     let tk = theme::tokens(app.ui.dark);
     crate::hardware::panel(app, ui, dev);
     ui.label(RichText::new(crate::i18n::trf("{}: {} ports", &[&crate::i18n::tl(dev.catalogue_model().label), &dev.ports.len()])).strong());
@@ -1064,6 +1088,15 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     let tk = theme::tokens(app.ui.dark);
     let Some(w) = app.ui.windows.get_mut(&d) else { return };
     match w.desktop {
+        None if dev.catalogue_model().touch() => {
+            // A tablet or smartphone: its own touch home screen.
+            if let Some(a) = crate::touch::home(app, ui, dev)
+                && let Some(w) = app.ui.windows.get_mut(&d)
+            {
+                w.desktop = Some(a);
+                w.focus = true;
+            }
+        }
         None => {
             // A navy desktop with large tiles, as learners know it. Only working apps are shown.
             let mut open = None;
@@ -1272,7 +1305,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
 }
 
 /// The pictures on the Desktop tiles (our own drawings).
-fn draw_app_icon(p: &egui::Painter, r: egui::Rect, app: DesktopApp) {
+pub(crate) fn draw_app_icon(p: &egui::Painter, r: egui::Rect, app: DesktopApp) {
     let dark = egui::Color32::from_rgb(0x2a, 0x33, 0x40);
     let light = egui::Color32::from_rgb(0xf4, 0xf1, 0xe6);
     match app {

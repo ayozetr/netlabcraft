@@ -231,6 +231,20 @@ pub static MODELS: &[Model] = &[
         ports: &[run("Wireless", 0, 0)],
     },
     Model {
+        id: "Tablet",
+        kind: DeviceKind::Laptop,
+        label: "Tablet",
+        description: "Touch-screen tablet with Wi-Fi: browser, email, command prompt and programming apps; no battery to look after",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Smartphone",
+        kind: DeviceKind::Laptop,
+        label: "Smartphone",
+        description: "Touch-screen smartphone with Wi-Fi: browser, email, command prompt and programming apps; no battery to look after",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
         id: "Server",
         kind: DeviceKind::Server,
         label: "Server",
@@ -299,6 +313,90 @@ pub static MODELS: &[Model] = &[
         label: "Webcam",
         description: "Smart webcam with one Fast Ethernet port: while on, it takes a still image each time it reports and the IoT server keeps the latest",
         ports: &[run("FastEthernet", 0, 0)],
+    },
+    Model {
+        id: "IoT-Thermostat",
+        kind: DeviceKind::Iot,
+        label: "Thermostat",
+        description: "Wi-Fi thermostat: reports the room temperature to its IoT service, so rules can switch a heater or an air conditioner",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-Heater",
+        kind: DeviceKind::Iot,
+        label: "Heater",
+        description: "Wi-Fi heater: warms the room while the IoT service keeps it on",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-AC",
+        kind: DeviceKind::Iot,
+        label: "Air Conditioner",
+        description: "Wi-Fi air conditioner: cools the room while the IoT service keeps it on",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-Humidity",
+        kind: DeviceKind::Iot,
+        label: "Humidity Sensor",
+        description: "Wi-Fi humidity sensor: reports the air's relative humidity (0-100 %)",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-Window",
+        kind: DeviceKind::Iot,
+        label: "Smart Window",
+        description: "Wi-Fi window opener: the IoT service opens the window (on) and closes it (off)",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-Soil",
+        kind: DeviceKind::Iot,
+        label: "Soil Moisture Sensor",
+        description: "Wi-Fi soil moisture sensor: reports how wet the ground is (0-100 %)",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-Sprinkler",
+        kind: DeviceKind::Iot,
+        label: "Lawn Sprinkler",
+        description: "Wi-Fi lawn sprinkler: waters the garden while the IoT service keeps it on",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-CO",
+        kind: DeviceKind::Iot,
+        label: "CO Detector",
+        description: "Wi-Fi carbon-monoxide detector: reports the CO level in parts per million",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-Plug",
+        kind: DeviceKind::Iot,
+        label: "Smart Plug",
+        description: "Wi-Fi smart plug: powers what is plugged into it while the IoT service keeps it on",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-Garage",
+        kind: DeviceKind::Iot,
+        label: "Garage Door",
+        description: "Wi-Fi garage door opener: the IoT service opens the door (on) and closes it (off)",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Board-SBC",
+        kind: DeviceKind::Iot,
+        label: "Board SBC",
+        description: "Single-board computer with one Fast Ethernet port, 8 digital and 4 analog pins: runs a BoardScript program that reads and switches the smart things wired to its pins",
+        ports: &[run("FastEthernet", 0, 0)],
+    },
+    Model {
+        id: "Board-MCU",
+        kind: DeviceKind::Iot,
+        label: "Board MCU",
+        description: "Microcontroller board with Wi-Fi, 6 digital and 2 analog pins: runs a BoardScript program that reads and switches the smart things wired to its pins",
+        ports: &[run("Wireless", 0, 0)],
     },
     Model {
         id: "IoT-Device",
@@ -435,6 +533,9 @@ impl Model {
             "Cloud" => Some("Cloud"),
             "DSL-Modem" | "Cable-Modem" => Some("Modem"),
             "Home-Gateway" => Some("Gateway"),
+            "Tablet" => Some("Tablet"),
+            "Smartphone" => Some("Smartphone"),
+            "Board-SBC" | "Board-MCU" => Some("Board"),
             _ => None,
         }
     }
@@ -498,7 +599,13 @@ impl Model {
 
     /// Whether the model has an RS-232 serial port for a console cable (PCs and laptops).
     pub fn has_rs232(&self) -> bool {
-        matches!(self.kind, DeviceKind::Pc | DeviceKind::Laptop)
+        matches!(self.kind, DeviceKind::Pc | DeviceKind::Laptop) && !self.touch()
+    }
+
+    /// A touch-screen device (a tablet or a smartphone): Wi-Fi only, a touch desktop, no serial
+    /// port for a console cable.
+    pub fn touch(&self) -> bool {
+        matches!(self.id, "Tablet" | "Smartphone")
     }
 }
 
@@ -559,5 +666,17 @@ mod tests {
             }
         }
         assert_eq!(module("card-2s").unwrap().port_names("0/1"), ["Serial0/1/0", "Serial0/1/1"]);
+    }
+
+    #[test]
+    fn tablets_and_smartphones_are_wifi_touch_devices_without_a_serial_port() {
+        for id in ["Tablet", "Smartphone"] {
+            let m = find(id).unwrap();
+            assert!(m.touch() && !m.has_rs232() && !m.has_console(), "{id}");
+            assert_eq!(m.port_names(), ["Wireless0"]);
+            assert_eq!(m.port_medium("Wireless0"), Some(Medium::Wireless));
+            assert_eq!(m.name_prefix(), Some(id));
+        }
+        assert!(!find("Laptop-WiFi").unwrap().touch() && find("Laptop-WiFi").unwrap().has_rs232());
     }
 }

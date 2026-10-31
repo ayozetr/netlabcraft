@@ -84,6 +84,58 @@ fn draw_state(ui: &mut egui::Ui, what: &str, on: bool, tk: &theme::Tokens) {
                 }
             }
         }
+        "heater" | "ac" => {
+            // A unit with fins; warm red or cool blue lines while it runs.
+            let unit = egui::Rect::from_center_size(c + vec2(0.0, 8.0), vec2(54.0, 30.0));
+            p.rect_filled(unit, 4.0, tk.chrome_line);
+            p.rect_stroke(unit, 4.0, s, egui::StrokeKind::Inside);
+            for k in 0..5 {
+                let x = unit.left() + 8.0 + k as f32 * 9.5;
+                p.line_segment([egui::pos2(x, unit.top() + 5.0), egui::pos2(x, unit.bottom() - 5.0)], egui::Stroke::new(1.5, tk.muted));
+            }
+            if on {
+                let col = if what == "heater" { egui::Color32::from_rgb(0xd6, 0x45, 0x3a) } else { egui::Color32::from_rgb(0x3a, 0x8f, 0xd6) };
+                for k in -1..=1 {
+                    let x = c.x + k as f32 * 14.0;
+                    let pts: Vec<egui::Pos2> =
+                        (0..=8).map(|i| egui::pos2(x + (i as f32 * 1.4).sin() * 3.0, unit.top() - 4.0 - i as f32 * 2.2)).collect();
+                    p.add(egui::Shape::line(pts, egui::Stroke::new(2.0, col)));
+                }
+            }
+        }
+        "window" | "garage" => {
+            // A frame whose pane (or door) slides up when open.
+            let frame = egui::Rect::from_center_size(c, vec2(50.0, 54.0));
+            p.rect_stroke(frame, 2.0, egui::Stroke::new(3.0, tk.muted), egui::StrokeKind::Inside);
+            let shut = if on { 0.3 } else { 1.0 };
+            let pane = egui::Rect::from_min_size(frame.min + vec2(3.0, 3.0), vec2(frame.width() - 6.0, (frame.height() - 6.0) * shut));
+            p.rect_filled(pane, 1.0, if what == "window" { egui::Color32::from_rgb(0xcf, 0xe8, 0xf7) } else { tk.chrome_line });
+            if what == "garage" {
+                for k in 1..4 {
+                    let y = pane.top() + k as f32 * pane.height() / 4.0;
+                    p.line_segment([egui::pos2(pane.left(), y), egui::pos2(pane.right(), y)], egui::Stroke::new(1.0, tk.muted));
+                }
+            }
+        }
+        "sprinkler" => {
+            p.rect_filled(egui::Rect::from_center_size(c + vec2(0.0, 22.0), vec2(10.0, 20.0)), 2.0, tk.muted);
+            if on {
+                for k in [-1.0f32, -0.5, 0.0, 0.5, 1.0] {
+                    let tip = c + vec2(k * 28.0, -20.0 + k.abs() * 10.0);
+                    p.line_segment([c + vec2(0.0, 12.0), tip], egui::Stroke::new(1.5, egui::Color32::from_rgb(0x3a, 0x8f, 0xd6)));
+                    p.circle_filled(tip, 2.5, egui::Color32::from_rgb(0x3a, 0x8f, 0xd6));
+                }
+            }
+        }
+        "plug" => {
+            let face = egui::Rect::from_center_size(c, vec2(44.0, 44.0));
+            p.rect_filled(face, 10.0, tk.chrome_line);
+            p.rect_stroke(face, 10.0, s, egui::StrokeKind::Inside);
+            for dx in [-8.0f32, 8.0] {
+                p.circle_filled(c + vec2(dx, 0.0), 4.0, tk.muted);
+            }
+            p.circle_filled(face.right_top() + vec2(-8.0, 8.0), 4.0, if on { tk.link_up } else { tk.muted });
+        }
         _ => {
             // A camera: body and lens.
             p.rect_filled(egui::Rect::from_center_size(c, vec2(44.0, 30.0)), 5.0, col);
@@ -133,6 +185,10 @@ fn thing_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut I
         if let Some(img) = &st.image {
             ui.label(RichText::new(tr_any(img)).monospace());
         }
+    }
+    if let Some(at) = app.session.sim.wired_to(&app.session.topology, d) {
+        let words = if is_sensor(dev) { "Wired to {} (its program reads it)" } else { "Wired to {} (its program switches it)" };
+        ui.label(RichText::new(crate::i18n::trf(words, &[&at])).color(tk.muted));
     }
     match (&st.registered, &st.message) {
         (Some(a), _) => ui.label(trf("Registered with {}", &[a])),

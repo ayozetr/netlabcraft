@@ -351,6 +351,30 @@ pub static CATALOG: &[CommandInfo] = &[
         r#"{"device": smart sensor or device, "server"?: "IoT server address (empty: none)", "value"?: sensor reading -1000..1000} → {"kind", "server", "value", "registered", "on", "message"} (reports at once)"#,
         true
     ),
+    c!(
+        "board.program",
+        "Board program",
+        "",
+        None,
+        r#"{"device": programmable board, "source"?: "BoardScript program", "run"?: true|false, "server"?: "IoT server address for get() and report (empty: none)"} → the board's status: run starts it from the top, false stops it; a program that doesn't compile is refused with its line"#,
+        true
+    ),
+    c!(
+        "board.status",
+        "Board status",
+        "",
+        None,
+        r#"{"device": programmable board} → {"program", "run", "state": "not started"|"running"|"stopped", "line", "message", "log": [...], "vars": {...}, "pins": [{"pin", "analog", "wired", "what", "level"}], "server"}"#,
+        false
+    ),
+    c!(
+        "board.wire",
+        "Wire a board pin",
+        "",
+        None,
+        r#"{"device": programmable board, "pin": "D0"|"A0"…, "thing"?: smart thing (none: unplug the pin)} → the board's status. Also link.add with "cable": "iot-custom""#,
+        true
+    ),
     c!("iot.sync", "IoT reports", "", None, r#"{} → {"things": [...]}: every smart thing reports to its server over HTTP (sensors first)"#, false),
     c!(
         "iot.server",
@@ -399,7 +423,15 @@ pub static CATALOG: &[CommandInfo] = &[
         "Phone settings",
         "",
         None,
-        r#"{"device": IP phone, "protocol"?: "sip"|"own", "server"?: "SIP registrar address (empty: the TFTP server DHCP gave)"} → the phone's status (it registers again)"#,
+        r#"{"device": IP phone, "protocol"?: "sip"|"own", "server"?: "SIP registrar address (empty: the TFTP server DHCP gave)", "address"?: "dhcp" or "A.B.C.D", "mask"?, "gateway"?} → the phone's status (it registers again)"#,
+        true
+    ),
+    c!(
+        "device.psu",
+        "Power supplies",
+        "",
+        None,
+        r#"{"device": router or switch, "bay"?: 1|2, "fitted"?: true|false} → {"bays": [{"bay", "fitted"}], "power", "no_supply"}: fits or takes out a power supply; taking out the last one switches the device off, and it can't be switched on without one"#,
         true
     ),
     c!(

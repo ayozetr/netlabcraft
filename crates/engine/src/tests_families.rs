@@ -232,3 +232,145 @@ fn home_internet_crosses_cable_and_dsl_modems_through_the_cloud() {
     assert_eq!(s2.topology.find("ISP").unwrap().bridges.len(), 3);
     assert!(s2.topology.links.iter().any(|l| l.cable == netlabcraft_model::cable::Cable::Phone));
 }
+
+#[test]
+fn tablets_and_smartphones_join_wifi_take_dhcp_and_browse() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "mobile-devices"})).unwrap();
+    for name in ["Tablet1", "Smartphone1"] {
+        let d = s.topology.find(name).unwrap();
+        assert!(d.dhcp_client && d.ports[0].ip.is_some(), "{name} took a lease");
+        assert!(!d.has_rs232(), "no console port on a touch device");
+        assert_eq!(marks(&mut s, name, "192.168.0.10"), "!!!", "{name} reaches the server over Wi-Fi");
+    }
+    let page = s.execute("browser.get", json!({"device": "Smartphone1", "url": "192.168.0.10"})).unwrap();
+    assert!(page.to_string().contains("200"), "{page}");
+    // Placed from the palette: named after the model, Wi-Fi only.
+    let v = s.execute("device.add", json!({"model": "Smartphone", "x": 10, "y": 10})).unwrap();
+    assert_eq!(v["name"], "Smartphone2");
+    assert!(s.execute("device.add", json!({"model": "Tablet"})).is_ok());
+    assert!(s.execute("pc.terminal", json!({"pc": "Tablet2"})).is_err(), "no RS-232 port for a Terminal");
+    let s2 = round_trip(&mut s);
+    assert_eq!(s2.topology.find("Smartphone2").unwrap().catalogue_model().id, "Smartphone");
+}
+
+#[test]
+fn wifi_things_join_the_gateway_report_and_follow_the_rules() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "wifi-things"})).unwrap();
+    let r = s.execute("iot.sync", json!({})).unwrap();
+    let things = r["things"].as_array().unwrap();
+    assert_eq!(things.len(), 10, "{r}");
+    assert!(things.iter().all(|t| t["registered"] == "192.168.0.1"), "every thing registered over Wi-Fi: {r}");
+    let on = |s: &mut Session, name: &str| s.execute("iot.configure", json!({"device": name})).unwrap()["on"].clone();
+    assert_eq!((on(&mut s, "Heater1"), on(&mut s, "AC1")), (json!(false), json!(false)), "21 degrees: neither runs");
+    s.execute("iot.configure", json!({"device": "Thermo1", "value": 15})).unwrap();
+    assert_eq!(on(&mut s, "Heater1"), json!(true), "cold: the heater heats");
+    s.execute("iot.configure", json!({"device": "Thermo1", "value": 30})).unwrap();
+    assert_eq!((on(&mut s, "Heater1"), on(&mut s, "AC1")), (json!(false), json!(true)), "hot: the air conditioner cools");
+    s.execute("iot.configure", json!({"device": "CO1", "value": 80})).unwrap();
+    assert_eq!((on(&mut s, "Window1"), on(&mut s, "Garage1")), (json!(true), json!(true)), "CO opens the window and the garage");
+    s.execute("iot.configure", json!({"device": "Soil1", "value": 10})).unwrap();
+    assert_eq!(on(&mut s, "Sprinkler1"), json!(true));
+    s.execute("iot.switch", json!({"device": "Home", "name": "Plug1", "on": true})).unwrap();
+    assert_eq!(on(&mut s, "Plug1"), json!(true), "switched by hand");
+    // Every new Wi-Fi thing looks for the home gateway's network when placed.
+    let v = s.execute("device.add", json!({"model": "Garage Door", "x": 400, "y": 300})).unwrap();
+    let g = s.topology.find(v["name"].as_str().unwrap()).unwrap();
+    assert_eq!(g.ports[0].wifi.as_ref().map(|w| w.ssid.as_str()), Some("HomeNetwork"));
+    let mut s2 = round_trip(&mut s);
+    s2.execute("sim.advance", json!({"seconds": 6})).unwrap();
+    assert!(s2.execute("iot.server", json!({"device": "Home"})).unwrap()["things"].as_array().unwrap().len() >= 10);
+}
+
+#[test]
+fn a_board_program_reads_switches_reports_and_never_hangs() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "board"})).unwrap();
+    s.execute("sim.advance", json!({"seconds": 1})).unwrap();
+    let st = s.execute("board.status", json!({"device": "Board1"})).unwrap();
+    assert_eq!(st["state"], "running", "{st}");
+    let fan = s.topology.resolve("Fan1").unwrap();
+    assert!(!s.sim.iot_thing(fan).is_some_and(|x| x.on), "22 degrees: the fan stays off");
+    s.execute("iot.configure", json!({"device": "Temp1", "value": 35})).unwrap();
+    s.execute("sim.advance", json!({"seconds": 3})).unwrap();
+    assert!(s.sim.iot_thing(fan).is_some_and(|x| x.on), "35 degrees: the program switches the fan on");
+    let st = s.execute("board.status", json!({"device": "Board1"})).unwrap();
+    assert_eq!(st["vars"]["t"], 35, "{st}");
+    assert!(st["log"].as_array().unwrap().iter().any(|l| l == "temperature 35"), "{st}");
+    assert!(st["pins"].as_array().unwrap().iter().any(|p| p["pin"] == "A0" && p["wired"] == "Temp1" && p["level"] == 35), "{st}");
+    let page = s.execute("iot.server", json!({"device": "Home"})).unwrap();
+    assert!(page["things"].as_array().unwrap().iter().any(|t| t["name"] == "Board1" && t["value"] == 35), "the board reported: {page}");
+    // Stop, a program that doesn't compile, one that never sleeps.
+    let st = s.execute("board.program", json!({"device": "Board1", "run": false})).unwrap();
+    assert_eq!(st["state"], "stopped");
+    let err = s.execute("board.program", json!({"device": "Board1", "source": "if 1\nx = 2\n"})).unwrap_err().to_string();
+    assert!(err.contains("without their `end`"), "{err}");
+    let st = s.execute("board.program", json!({"device": "Board1", "source": "while 1\n  x = 1\nend\n", "run": true})).unwrap();
+    assert!(st["message"].as_str().unwrap().contains("sleep"), "{st}");
+    s.execute("sim.advance", json!({"seconds": 30})).unwrap();
+    // IoT custom cables: by link.add (first free digital pin for a device), listed, removed.
+    s.execute("device.add", json!({"model": "Siren", "name": "Siren1"})).unwrap();
+    let l = s.execute("link.add", json!({"a": "Siren1", "b": "Board1", "cable": "iot-custom"})).unwrap();
+    assert_eq!(l["a"], "Board1 D2", "{l}");
+    assert!(s.execute("link.list", json!({})).unwrap().as_array().unwrap().iter().any(|x| x["a"] == "Board1 D2" && x["cable"] == "iot-custom"));
+    assert!(s.execute("link.add", json!({"a": "Siren1", "b": "Board1", "cable": "iot-custom"})).is_err(), "wired once");
+    assert!(s.execute("link.add", json!({"a": "Home", "b": "Siren1", "cable": "iot-custom"})).is_err(), "no board");
+    s.execute("link.remove", json!({"device": "Board1", "port": "D2"})).unwrap();
+    assert!(s.execute("board.wire", json!({"device": "Board1", "pin": "D9", "thing": "Siren1"})).is_err());
+    s.execute("board.wire", json!({"device": "Board1", "pin": "d3", "thing": "Siren1"})).unwrap();
+    let s2 = round_trip(&mut s);
+    let b = s2.topology.find("Board1").unwrap();
+    assert_eq!(b.board.wires.len(), 4);
+    assert!(b.board.program.starts_with("while 1"));
+    // Removing a thing unplugs its cable.
+    let mut s3 = s2;
+    s3.execute("device.remove", json!({"device": "Siren1"})).unwrap();
+    assert_eq!(s3.topology.find("Board1").unwrap().board.wires.len(), 3);
+}
+
+#[test]
+fn power_supplies_come_out_and_the_last_one_switches_the_device_off() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "two-subnets"})).unwrap();
+    let r = s.execute("device.psu", json!({"device": "R1"})).unwrap();
+    assert_eq!(r["bays"], json!([{"bay": 1, "fitted": true}, {"bay": 2, "fitted": false}]), "{r}");
+    assert_eq!(marks(&mut s, "PC1", "10.0.2.10"), "!!!");
+    // A spare in bay 2: the first can come out and the router keeps running.
+    s.execute("device.psu", json!({"device": "R1", "bay": 2, "fitted": true})).unwrap();
+    let r = s.execute("device.psu", json!({"device": "R1", "bay": 1, "fitted": false})).unwrap();
+    assert_eq!(r["power"], "on");
+    assert_eq!(marks(&mut s, "PC1", "10.0.2.10"), "!!!", "the spare keeps it up");
+    // The last one out: off, and it can't be switched on without a supply.
+    let r = s.execute("device.psu", json!({"device": "R1", "bay": 2, "fitted": false})).unwrap();
+    assert_eq!((r["power"].clone(), r["no_supply"].clone()), (json!("off"), json!(true)));
+    assert!(s.topology.find("R1").unwrap().powered_off);
+    let err = s.execute("device.power", json!({"device": "R1", "on": true})).unwrap_err().to_string();
+    assert!(err.contains("no power supply"), "{err}");
+    s.execute("device.psu", json!({"device": "R1", "bay": 1, "fitted": true})).unwrap();
+    s.execute("device.power", json!({"device": "R1", "on": true})).unwrap();
+    assert!(!s.topology.find("R1").unwrap().powered_off);
+    // Hostile: a bay that isn't there, a device without bays.
+    assert!(s.execute("device.psu", json!({"device": "R1", "bay": 3, "fitted": true})).is_err());
+    assert!(s.execute("device.psu", json!({"device": "PC1", "bay": 1, "fitted": false})).is_err());
+    let s2 = round_trip(&mut s);
+    assert_eq!(s2.topology.find("R1").unwrap().psus(), [true, false]);
+}
+
+#[test]
+fn the_phone_settings_set_its_protocol_server_and_address() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "ip-phones"})).unwrap();
+    let st = s.execute("phone.status", json!({"device": "Phone1"})).unwrap();
+    assert!(st["voice_vlan"].as_u64().is_some() && st["number"].as_str().is_some(), "learned VLAN and extension: {st}");
+    let st = s
+        .execute("phone.configure", json!({"device": "Phone1", "address": "192.168.100.77", "mask": "255.255.255.0", "gateway": "192.168.100.1"}))
+        .unwrap();
+    assert_eq!(st["address"], "192.168.100.77/24", "{st}");
+    assert!(!s.topology.find("Phone1").unwrap().dhcp_client);
+    let st = s.execute("phone.configure", json!({"device": "Phone1", "address": "dhcp"})).unwrap();
+    assert!(s.topology.find("Phone1").unwrap().dhcp_client, "{st}");
+    assert!(s.execute("phone.configure", json!({"device": "Phone1", "address": "nonsense"})).is_err());
+    assert!(s.execute("phone.configure", json!({"device": "Phone1", "address": "10.0.0.1", "mask": "x"})).is_err());
+    assert!(s.execute("phone.configure", json!({"device": "PC1", "address": "dhcp"})).is_err());
+}

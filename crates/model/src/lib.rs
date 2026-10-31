@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 pub mod acl;
 pub mod activity;
 pub mod automation;
+pub mod board;
 pub mod cable;
 pub mod cloud;
 pub mod drawing;
@@ -28,6 +29,7 @@ pub mod mgmt;
 pub mod models;
 pub mod physical;
 pub mod poe;
+pub mod psu;
 pub mod qos;
 pub mod routing;
 pub mod scenario;
@@ -992,6 +994,13 @@ pub struct Device {
     /// Routers: zone-based firewall, classic inspection, IP MTU and TCP MSS clamping.
     #[serde(default, skip_serializing_if = "security::RouterSecurity::is_default")]
     pub security: security::RouterSecurity,
+    /// Programmable boards: their program and the IoT custom cables of their pins.
+    #[serde(default, skip_serializing_if = "board::Board::is_default")]
+    pub board: board::Board,
+    /// Routers and switches: which power-supply bays hold a supply (`None`: as from the
+    /// factory, one in bay 1); see [`psu`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub psu: Option<Vec<bool>>,
 }
 
 /// Which side of NAT an interface is on.
@@ -1800,8 +1809,19 @@ impl Device {
             l2: l2sec::SwitchL2::default(),
             automation: automation::Automation::default(),
             security: security::RouterSecurity::default(),
+            board: board::Board::default(),
+            psu: None,
         };
+        // A board has no report timer of its own: its program reports when it says so.
+        if !board::pins(model).is_empty() {
+            d.iot.interval = 0;
+        }
         d.ensure_default_vlan();
+        if kind == DeviceKind::Iot {
+            for p in d.ports.iter_mut().filter(|p| ifname::is_wireless(&p.name)) {
+                p.wifi = Some(Wifi { ssid: iot::HOME_SSID.into(), key: None, channel: 6, login: None });
+            }
+        }
         d
     }
 
@@ -2107,6 +2127,9 @@ impl Topology {
         let i = self.devices.iter().position(|d| d.id == id).ok_or_else(|| ModelError::NoDevice(id.to_string()))?;
         self.links.retain(|l| l.a.device != id && l.b.device != id);
         self.consoles.retain(|c| c.pc != id && c.device != id);
+        for d in &mut self.devices {
+            d.board.wires.retain(|w| w.thing != id);
+        }
         for c in &mut self.clusters {
             c.devices.retain(|d| *d != id);
         }
@@ -2300,6 +2323,8 @@ impl Topology {
                 d.sanitize_bridges();
                 d.voice.sanitize();
                 d.iot.sanitize();
+                d.sanitize_board();
+                d.sanitize_psu();
                 for p in &mut d.ports {
                     p.subifs.truncate(MAX_SUBIFS);
                     p.subifs.sort_by_key(|s| s.number);
@@ -2341,8 +2366,10 @@ impl Topology {
                 && used.insert((l.a.device, l.a.port))
                 && used.insert((l.b.device, l.b.port))
                 && l.cable != cable::Cable::Console
+                && l.cable != cable::Cable::IotCustom
         });
         self.sanitize_consoles();
+        self.sanitize_wires();
         self.sanitize_physical();
         let ids: Vec<DeviceId> = self.devices.iter().map(|d| d.id).collect();
         self.scenarios.sanitize(&ids);

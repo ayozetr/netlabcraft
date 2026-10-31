@@ -150,7 +150,37 @@ pub static SAMPLES: &[Sample] = &[
         title: "A switch card in a router",
         description: "R1 has a 4-port switch card: its ports are VLAN members (10 and 20) and a trunk to S1, and the router routes between its VLAN interfaces.",
     },
+    Sample {
+        id: "mobile-devices",
+        title: "Tablets and smartphones on Wi-Fi",
+        description: "A tablet and a smartphone join the home router's Wi-Fi, take their addresses by DHCP and open the web server's pages from their touch screens.",
+    },
+    Sample {
+        id: "wifi-things",
+        title: "Wi-Fi smart things: climate, garden and safety",
+        description: "Ten Wi-Fi things join the home gateway: a thermostat drives a heater and an air conditioner, humidity and carbon monoxide open a window, a soil sensor waters the lawn.",
+    },
+    Sample {
+        id: "board",
+        title: "A board reads a sensor and drives a fan",
+        description: "A microcontroller board on the home gateway's Wi-Fi runs a BoardScript program: it reads a temperature sensor on a pin, switches a fan and blinks a light on others, and reports to the IoT service.",
+    },
 ];
+
+/// The board sample's program.
+const BOARD_SAMPLE: &str = "# Fan1 (D0) above 28 degrees, Light1 (D1) blinks
+let limit = 28
+t = read(A0)
+if t > limit
+  write(D0, 1)
+else
+  write(D0, 0)
+end
+write(D1, 1 - read(D1))
+report t
+print \"temperature\", t
+sleep 2
+";
 
 struct Builder {
     t: Topology,
@@ -1392,6 +1422,95 @@ pub fn build(id: &str) -> Result<Topology> {
                     .collect();
             }
             b.t.notes = "R1's user admin (password NetLab2026) may use RESTCONF over HTTPS and NETCONF on port 830. On PC1 open Desktop > Programming, pick a saved request, give the user and password and press Send; then look at `show running-config` on R1.".into();
+        }
+        "mobile-devices" => {
+            b.add_model("Home-Router", "Home", 360.0, 60.0)?;
+            b.add(DeviceKind::Server, "Web", 620.0, 60.0)?;
+            b.cable("Web", "g0", "Home", "Ethernet1")?;
+            b.type_in("Web", "ipconfig 192.168.0.10 255.255.255.0 192.168.0.1")?;
+            let wifi = netlabcraft_model::Wifi { ssid: "HomeNetwork".into(), key: None, channel: 6, login: None };
+            for (name, model, x) in [("Tablet1", "Tablet", 240.0), ("Smartphone1", "Smartphone", 460.0)] {
+                b.add_model(model, name, x, 230.0)?;
+                let id = b.t.resolve(name)?;
+                if let Some(p) = b.t.device_mut(id).and_then(|d| d.ports.get_mut(0)) {
+                    p.wifi = Some(wifi.clone());
+                }
+                b.type_in(name, "ipconfig /renew")?;
+            }
+            b.t.notes = "Tablet1 and Smartphone1 are on the Home router's Wi-Fi (HomeNetwork) and took their addresses by DHCP. Open one, tap Web Browser and go to 192.168.0.10; the Command Prompt pings, IP Configuration shows the lease.".into();
+        }
+        "wifi-things" => {
+            use netlabcraft_model::iot::{Condition, IotRule, Op};
+            b.add_model("Home-Gateway", "Home", 360.0, 40.0)?;
+            b.add(DeviceKind::Pc, "PC1", 640.0, 40.0)?;
+            b.cable("PC1", "fa0", "Home", "Ethernet1")?;
+            b.type_in("PC1", "ipconfig /renew")?;
+            let things = [
+                ("Thermo1", "IoT-Thermostat", 21),
+                ("Heater1", "IoT-Heater", 0),
+                ("AC1", "IoT-AC", 0),
+                ("Humid1", "IoT-Humidity", 45),
+                ("Window1", "IoT-Window", 0),
+                ("Soil1", "IoT-Soil", 60),
+                ("Sprinkler1", "IoT-Sprinkler", 0),
+                ("CO1", "IoT-CO", 0),
+                ("Plug1", "IoT-Plug", 0),
+                ("Garage1", "IoT-Garage", 0),
+            ];
+            for (i, (name, model, value)) in things.into_iter().enumerate() {
+                let x = 140.0 + 110.0 * (i % 5) as f32;
+                let y = if i < 5 { 160.0 } else { 300.0 } + if i % 2 == 0 { 0.0 } else { 25.0 };
+                b.add_model(model, name, x, y)?;
+                b.type_in(name, "ipconfig /renew")?;
+                let d = b.t.resolve(name)?;
+                if let Some(dev) = b.t.device_mut(d) {
+                    dev.iot.server = Some(Ipv4Addr::new(192, 168, 0, 1));
+                    dev.iot.value = value;
+                }
+            }
+            let cond = |sensor: &str, op: Op, value: i32| Condition { sensor: sensor.into(), op, value };
+            let rule = |conditions: Vec<Condition>, any: bool, actuator: &str| IotRule {
+                sensor: String::new(),
+                above: 0,
+                actuator: actuator.into(),
+                conditions,
+                any,
+                on: true,
+            };
+            let gw = b.t.resolve("Home")?;
+            if let Some(d) = b.t.device_mut(gw) {
+                d.iot.rules = vec![
+                    rule(vec![cond("Thermo1", Op::Below, 18)], false, "Heater1"),
+                    rule(vec![cond("Thermo1", Op::Above, 26)], false, "AC1"),
+                    rule(vec![cond("Humid1", Op::Above, 70), cond("CO1", Op::Above, 50)], true, "Window1"),
+                    rule(vec![cond("Soil1", Op::Below, 30)], false, "Sprinkler1"),
+                    rule(vec![cond("CO1", Op::Above, 50)], false, "Garage1"),
+                ];
+            }
+            b.t.notes = "Ten Wi-Fi things joined the Home gateway's network (HomeNetwork), took addresses by DHCP and report to its IoT service every 5 s. Lower Thermo1 below 18: Heater1 heats; raise it above 26: AC1 cools. Humid1 above 70 or CO1 above 50 opens Window1; CO1 above 50 also opens Garage1; Soil1 below 30 waters the lawn. Switch Plug1 by hand on Home > IoT.".into();
+        }
+        "board" => {
+            b.add_model("Home-Gateway", "Home", 360.0, 40.0)?;
+            b.add_model("Board-MCU", "Board1", 360.0, 200.0)?;
+            b.type_in("Board1", "ipconfig /renew")?;
+            for (name, model, x, value) in [("Temp1", "IoT-Sensor", 200.0, 22), ("Fan1", "IoT-Device", 360.0, 0), ("Light1", "IoT-Light", 520.0, 0)] {
+                b.add_model(model, name, x, 330.0)?;
+                let d = b.t.resolve(name)?;
+                if let Some(dev) = b.t.device_mut(d) {
+                    dev.iot.value = value;
+                }
+            }
+            let board = b.t.resolve("Board1")?;
+            for (pin, name) in [("A0", "Temp1"), ("D0", "Fan1"), ("D1", "Light1")] {
+                let thing = b.t.resolve(name)?;
+                b.t.wire_pin(board, pin, Some(thing))?;
+            }
+            if let Some(d) = b.t.device_mut(board) {
+                d.iot.server = Some(Ipv4Addr::new(192, 168, 0, 1));
+                d.board.program = BOARD_SAMPLE.into();
+                d.board.run = true;
+            }
+            b.t.notes = "Board1 runs a BoardScript program (Board1 > Programming): it reads Temp1 on pin A0, switches Fan1 on pin D0 above 28 degrees, blinks Light1 on D1 and reports the reading to the Home gateway's IoT service every 2 s of simulated time. Raise Temp1's reading (Temp1 > IoT), then advance the time. Wire more things with the IoT Custom cable.".into();
         }
         other => return Err(EngineError::BadParams(format!("unknown sample `{other}`"))),
     }

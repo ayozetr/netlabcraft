@@ -566,7 +566,8 @@ fn every_cable_tile_picks_its_cable_and_cables_ports_of_its_kind() {
     h.run_steps(2);
     for c in Cable::ALL {
         h.get_by_label(c.label()).scroll_to_me();
-        h.run_steps(2);
+        // Let the scroll settle (ten tiles take a third row).
+        h.run_steps(12);
         h.get_by_label(c.label()).click();
         h.run_steps(1);
         assert_eq!(h.state().ui.tool, Tool::Cable(c), "{}", c.label());

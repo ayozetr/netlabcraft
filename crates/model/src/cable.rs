@@ -53,11 +53,24 @@ pub enum Cable {
     /// A phone line (RJ-11: DSL modems and the phone company's cloud).
     #[serde(rename = "phone")]
     Phone,
+    /// An IoT custom cable: a programmable board's pin to a smart thing (not a network link).
+    #[serde(rename = "iot-custom")]
+    IotCustom,
 }
 
 impl Cable {
-    pub const ALL: [Cable; 9] =
-        [Cable::Auto, Cable::Console, Cable::Straight, Cable::Cross, Cable::Fiber, Cable::SerialDce, Cable::SerialDte, Cable::Coaxial, Cable::Phone];
+    pub const ALL: [Cable; 10] = [
+        Cable::Auto,
+        Cable::Console,
+        Cable::Straight,
+        Cable::Cross,
+        Cable::Fiber,
+        Cable::SerialDce,
+        Cable::SerialDte,
+        Cable::Coaxial,
+        Cable::Phone,
+        Cable::IotCustom,
+    ];
 
     pub fn is_auto(&self) -> bool {
         *self == Cable::Auto
@@ -75,6 +88,7 @@ impl Cable {
             Cable::SerialDte => "serial-dte",
             Cable::Coaxial => "coaxial",
             Cable::Phone => "phone",
+            Cable::IotCustom => "iot-custom",
         }
     }
 
@@ -90,6 +104,7 @@ impl Cable {
             Cable::SerialDte => "Serial DTE",
             Cable::Coaxial => "Coaxial",
             Cable::Phone => "Phone (RJ-11)",
+            Cable::IotCustom => "IoT Custom",
         }
     }
 
@@ -105,6 +120,9 @@ impl Cable {
             Cable::SerialDte => "Serial DTE: joins serial ports; the end you click first is the DTE, the other end gives the clock",
             Cable::Coaxial => "Coaxial: joins coaxial ports (a cable modem to the cable provider's cloud); carries a signal up to 500 m here",
             Cable::Phone => "Phone line (RJ-11): joins phone ports (a DSL modem to the phone company's cloud); carries a signal up to 5 km here",
+            Cable::IotCustom => {
+                "IoT custom cable: joins a programmable board's pin to a smart thing, which the board's program then reads or switches"
+            }
         }
     }
 
@@ -121,6 +139,7 @@ impl Cable {
             "serialdte" | "dte" => Cable::SerialDte,
             "coaxial" | "coax" => Cable::Coaxial,
             "phone" | "rj11" | "phoneline" | "phonerj11" | "dsl" => Cable::Phone,
+            "iotcustom" | "iot" | "custom" | "pin" => Cable::IotCustom,
             _ => return None,
         })
     }
@@ -300,6 +319,11 @@ impl Topology {
             Cable::SerialDce | Cable::SerialDte => need("serial", |m| m == Medium::Serial, "serial"),
             Cable::Coaxial => need("coaxial", |m| m == Medium::Coaxial, "coaxial"),
             Cable::Phone => need("phone", |m| m == Medium::Phone, "phone (RJ-11)"),
+            Cable::IotCustom => Some(format!(
+                "an IoT custom cable joins a programmable board's pin to a smart thing, not {} and {}",
+                self.short_label(a),
+                self.short_label(b)
+            )),
             Cable::Console => Some(format!(
                 "a console cable joins a PC's {RS232_PORT} port to a router's or switch's {CONSOLE_PORT} port, not {} and {}",
                 self.short_label(a),

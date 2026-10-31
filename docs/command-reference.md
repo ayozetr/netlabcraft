@@ -64,6 +64,9 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `device.module.add` | Fit a card |  |  | `{"device", "slot": "0/1", "module": "Card-2S\|Card-4S\|Card-1GE\|Card-2GE\|Card-1FE\|Card-1GF"} → {"slots", "added": [port names]}: modular routers, switched off` |
 | `device.module.remove` | Remove a card |  |  | `{"device", "slot": "0/1"} → {"slots", "removed": [port names]}: switched off; cables on the card's ports are unplugged` |
 | `iot.configure` | Smart thing settings |  |  | `{"device": smart sensor or device, "server"?: "IoT server address (empty: none)", "value"?: sensor reading -1000..1000} → {"kind", "server", "value", "registered", "on", "message"} (reports at once)` |
+| `board.program` | Board program |  |  | `{"device": programmable board, "source"?: "BoardScript program", "run"?: true\|false, "server"?: "IoT server address for get() and report (empty: none)"} → the board's status: run starts it from the top, false stops it; a program that doesn't compile is refused with its line` |
+| `board.status` | Board status |  |  | `{"device": programmable board} → {"program", "run", "state": "not started"\|"running"\|"stopped", "line", "message", "log": [...], "vars": {...}, "pins": [{"pin", "analog", "wired", "what", "level"}], "server"}` |
+| `board.wire` | Wire a board pin |  |  | `{"device": programmable board, "pin": "D0"\|"A0"…, "thing"?: smart thing (none: unplug the pin)} → the board's status. Also link.add with "cable": "iot-custom"` |
 | `iot.sync` | IoT reports |  |  | `{} → {"things": [...]}: every smart thing reports to its server over HTTP (sensors first)` |
 | `iot.server` | IoT service |  |  | `{"device": server, "service"?: true\|false, "rules"?: [{"sensor", "above", "actuator"}]} → {"service", "rules", "things": [{"name", "kind", "address", "value", "on"}]}` |
 | `iot.switch` | Switch a smart device |  |  | `{"device": server, "name": registered smart device, "on": true\|false} → the server's IoT page` |
@@ -72,7 +75,8 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `phone.answer` | Answer the phone |  |  | `{"device": a ringing IP phone} → its status: the call connects and voice packets flow` |
 | `phone.hangup` | Hang up |  |  | `{"device": IP phone} → its status: the call ends at both phones` |
 | `device.adapter` | Power adapter |  |  | `{"device": IP phone or lightweight AP, "on": true\|false} → the power source: plugged in, the device runs without power over Ethernet; unplugged, it needs a PoE switch port` |
-| `phone.configure` | Phone settings |  |  | `{"device": IP phone, "protocol"?: "sip"\|"own", "server"?: "SIP registrar address (empty: the TFTP server DHCP gave)"} → the phone's status (it registers again)` |
+| `phone.configure` | Phone settings |  |  | `{"device": IP phone, "protocol"?: "sip"\|"own", "server"?: "SIP registrar address (empty: the TFTP server DHCP gave)", "address"?: "dhcp" or "A.B.C.D", "mask"?, "gateway"?} → the phone's status (it registers again)` |
+| `device.psu` | Power supplies |  |  | `{"device": router or switch, "bay"?: 1\|2, "fitted"?: true\|false} → {"bays": [{"bay", "fitted"}], "power", "no_supply"}: fits or takes out a power supply; taking out the last one switches the device off, and it can't be switched on without one` |
 | `cloud.map` | Cloud port pairs |  |  | `{"device": cloud, "a"?: "Coaxial0", "b"?: "Phone0", "remove"?: true} → {"pairs": [[a, b]…], "ports"}: joins two ports (a frame in one leaves by the other), parts them, or lists the pairs` |
 | `device.power.source` | Power source |  |  | `{"device"} → {"powered_device", "adapter", "source": "mains"\|"adapter"\|"poe"\|"none"\|"off", "detail" (the PoE port, or why there is no power), "draw_w"}` |
 | `device.module.list` | Card catalogue |  |  | `{"device"?} → {"modules": [{id, label, description, ports, type}], "device": {"power", "slots": [{slot, module, label, ports}]}}` |

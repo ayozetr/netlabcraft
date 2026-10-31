@@ -74,6 +74,9 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
             if dev.powered_off != on {
                 return Ok(json!({"power": if on { "on" } else { "off" }, "changed": false, "errors": []}));
             }
+            if on && dev.no_psu() {
+                return Err(EngineError::Failed(format!("{} has no power supply fitted: fit one in its Physical tab (device.psu) first", dev.name)));
+            }
             s.checkpoint();
             let mut errors = Vec::new();
             if on {

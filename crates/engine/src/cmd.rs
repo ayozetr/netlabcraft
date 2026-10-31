@@ -921,9 +921,10 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         "view.physical" | "view.logical" | "view.enter_place" | "view.place_up" | "view.intercity" | "place.add" | "place.rename" | "place.move"
         | "place.remove" | "place.list" | "device.place" | "link.length" => physical(s, cmd, p),
         "device.power" | "device.module.add" | "device.module.remove" | "device.module.list" => crate::hardware::run(s, cmd, p),
-        "device.adapter" | "device.power.source" | "phone.configure" | "cloud.map" => crate::families::run(s, cmd, p),
+        "device.adapter" | "device.power.source" | "phone.configure" | "cloud.map" | "device.psu" => crate::families::run(s, cmd, p),
         "phone.status" | "phone.dial" | "phone.answer" | "phone.hangup" => crate::voice::run(s, cmd, p),
         "iot.sync" | "iot.configure" | "iot.server" | "iot.switch" => crate::iot::run(s, cmd, p),
+        "board.program" | "board.status" | "board.wire" => crate::board::run(s, cmd, p),
         "pdu.simple" | "pdu.complex" | "pdu.fire" | "pdu.fire_all" | "pdu.delete" | "pdu.list" | "scenario.list" | "scenario.new" | "scenario.delete"
         | "scenario.select" | "sim.event" => crate::pdu::run(s, cmd, p),
         "pc.http_request" => crate::automation::http_request(s, p),
@@ -1012,6 +1013,9 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                 })?,
                 None => Cable::Auto,
             };
+            if cable == Cable::IotCustom {
+                return crate::board::link_add(s, a, b, p);
+            }
             let console_named = [opt_str(p, "a_port"), opt_str(p, "b_port")].into_iter().flatten().any(is_console_port_name);
             if cable == Cable::Console || console_named {
                 if a == b {
@@ -1086,6 +1090,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                     "problem": Value::Null,
                 })
             }));
+            out.extend(crate::board::links(s));
             Ok(Value::Array(out))
         }
         "pc.terminal" => {
@@ -1107,6 +1112,11 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         }
         "link.remove" => {
             let d = device_param(s, p, "device")?;
+            if let Some(dev) = s.topology.device(d).filter(|x| netlabcraft_model::board::is_board(x))
+                && let Some(pin) = netlabcraft_model::board::find_pin(dev, str_param(p, "port")?)
+            {
+                return crate::board::unwire(s, d, &pin);
+            }
             if is_console_port_name(str_param(p, "port")?) {
                 if s.topology.console_at(d).is_none() {
                     return Err(EngineError::Failed(format!("{} has no console cable", s.topology.device(d).map_or("?", |x| x.name.as_str()))));

@@ -38,6 +38,13 @@ pub(crate) fn power_source(s: &Session, d: DeviceId) -> Value {
     })
 }
 
+/// A device's power-supply bays.
+fn psu_status(s: &Session, d: DeviceId) -> Value {
+    let Some(dev) = s.topology.device(d) else { return Value::Null };
+    let bays: Vec<Value> = dev.psus().iter().enumerate().map(|(i, f)| json!({"bay": i + 1, "fitted": f})).collect();
+    json!({"device": dev.name, "bays": bays, "power": if dev.powered_off { "off" } else { "on" }, "no_supply": dev.no_psu()})
+}
+
 pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
     match cmd {
         "device.power.source" => {
@@ -77,8 +84,41 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
                 Some(Value::String(a)) => Some(Some(netlabcraft_core::parse_ip(a.trim()).map_err(|e| bad(e.to_string()))?)),
                 Some(_) => return Err(bad("`server` is an address")),
             };
-            if sip.is_none() && server.is_none() {
-                return Err(bad("give `protocol` (\"sip\" or \"own\") and/or `server` (the SIP registrar)"));
+            let address = match p.get("address") {
+                None => None,
+                Some(Value::String(a)) if a.trim().eq_ignore_ascii_case("dhcp") => Some("ipconfig /renew".to_string()),
+                Some(Value::String(a)) => {
+                    let ip = netlabcraft_core::parse_ip(a.trim()).map_err(|e| bad(e.to_string()))?;
+                    let text = |k: &str| p.get(k).and_then(Value::as_str).map(str::trim).filter(|x| !x.is_empty());
+                    let mask = text("mask").unwrap_or("255.255.255.0");
+                    netlabcraft_core::parse_ip(mask).map_err(|e| bad(format!("`mask`: {e}")))?;
+                    let gw = match text("gateway") {
+                        Some(g) => {
+                            netlabcraft_core::parse_ip(g).map_err(|e| bad(format!("`gateway`: {e}")))?;
+                            format!(" {g}")
+                        }
+                        None => String::new(),
+                    };
+                    Some(format!("ipconfig {ip} {mask}{gw}"))
+                }
+                Some(_) => return Err(bad("`address` is \"dhcp\" or an IPv4 address (with `mask` and `gateway`)")),
+            };
+            if sip.is_none() && server.is_none() && address.is_none() {
+                return Err(bad("give `protocol` (\"sip\" or \"own\"), `server` (the call server) and/or `address` (\"dhcp\" or an address)"));
+            }
+            if let Some(line) = address {
+                // The phone's own address setting, typed as on any host.
+                let out = crate::cmd::cli_line(s, d, &line);
+                let text = out.get("output").and_then(Value::as_str).unwrap_or_default();
+                if text.starts_with("DHCP failed") || text.starts_with('%') || text.starts_with("Usage") {
+                    return Err(EngineError::Failed(text.trim().to_string()));
+                }
+                if sip.is_none() && server.is_none() {
+                    s.sim.reset_device(d);
+                    s.changed();
+                    s.sim.phone_sync(&s.topology);
+                    return Ok(crate::voice::status(s, d));
+                }
             }
             s.checkpoint();
             if let Some(dev) = s.topology.device_mut(d) {
@@ -94,6 +134,46 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
             s.changed();
             s.sim.phone_sync(&s.topology);
             Ok(crate::voice::status(s, d))
+        }
+        "device.psu" => {
+            let d = crate::cmd::device_param(s, p, "device")?;
+            let dev = s.topology.device(d).ok_or_else(|| EngineError::Failed("no such device".into()))?;
+            let bays = dev.psus().len();
+            if bays == 0 {
+                return Err(bad(format!("{} has no power-supply bays", dev.name)));
+            }
+            let fitted = match p.get("fitted") {
+                None => None,
+                Some(Value::Bool(b)) => Some(*b),
+                Some(_) => return Err(bad("`fitted` is true (fit a supply) or false (take it out)")),
+            };
+            if let Some(fit) = fitted {
+                let bay = p
+                    .get("bay")
+                    .and_then(Value::as_u64)
+                    .and_then(|b| usize::try_from(b).ok())
+                    .filter(|b| (1..=bays).contains(b))
+                    .ok_or_else(|| bad(format!("`bay` is 1 to {bays}")))?;
+                let mut psus = dev.psus();
+                if let Some(slot) = psus.get_mut(bay - 1) {
+                    *slot = fit;
+                }
+                let lost = !fit && psus.iter().all(|f| !f) && !dev.powered_off;
+                s.checkpoint();
+                if let Some(dev) = s.topology.device_mut(d) {
+                    dev.psu = Some(psus);
+                    // The last supply out: the power is gone, as if switched off.
+                    if lost {
+                        dev.power_off();
+                    }
+                }
+                if lost {
+                    s.sim.reset_device(d);
+                    s.consoles.remove(&d);
+                }
+                s.changed();
+            }
+            Ok(psu_status(s, d))
         }
         "cloud.map" => {
             let d = crate::cmd::device_param(s, p, "device")?;

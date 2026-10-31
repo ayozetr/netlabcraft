@@ -36,6 +36,20 @@ fn screen_lines(app: &PacketApp, dev: &Device) -> Vec<String> {
 pub(crate) fn tab(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     let tk = theme::tokens(app.ui.dark);
     let d = dev.id;
+    let mut form = app.ui.windows.get_mut(&d).map(|w| std::mem::take(&mut w.phone)).unwrap_or_default();
+    if form.open {
+        settings(app, ui, dev, &mut form);
+        if let Some(w) = app.ui.windows.get_mut(&d) {
+            w.phone = form;
+        }
+        return;
+    }
+    if ui.button(tl("Settings")).on_hover_text(tl("The phone's own settings: protocol, call server, extension, address and voice VLAN")).clicked() {
+        form = PhoneForm { open: true, ..PhoneForm::default() };
+    }
+    if let Some(w) = app.ui.windows.get_mut(&d) {
+        w.phone = form;
+    }
     let call = app.session.sim.phone(d).and_then(|s| s.call.clone());
     let dialled = app.ui.windows.get(&d).map(|w| w.dialled.clone()).unwrap_or_default();
     ui.horizontal_top(|ui| {
@@ -132,6 +146,99 @@ pub(crate) fn tab(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
             }
         });
     });
+}
+
+/// The phone's own settings screen: its fields.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct PhoneForm {
+    /// The settings screen is showing (else the call screen).
+    pub(crate) open: bool,
+    filled: bool,
+    server: String,
+    ip: String,
+    mask: String,
+    gateway: String,
+}
+
+/// The settings screen: protocol, call server, the extension and voice VLAN it learned, and
+/// its address (DHCP or static). Every change is `phone.configure`.
+pub(crate) fn settings(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut PhoneForm) {
+    let tk = theme::tokens(app.ui.dark);
+    let d = dev.id;
+    // What the phone learned, read without letting it register again on every frame.
+    let number = app.session.sim.phone(d).and_then(|x| x.number.clone());
+    let vlan = netlabcraft_sim::voice::voice_vlan(&app.session.topology, d);
+    if !form.filled {
+        form.server = dev.voice.sip_server.map(|a| a.to_string()).unwrap_or_default();
+        let ip = dev.ports.first().and_then(|p| p.ip);
+        form.ip = ip.map(|n| n.addr.to_string()).unwrap_or_default();
+        form.mask = ip.map(|n| n.mask().to_string()).unwrap_or_else(|| "255.255.255.0".into());
+        form.gateway = dev.gateway.map(|g| g.to_string()).unwrap_or_default();
+        form.filled = true;
+    }
+    egui::Frame::new().fill(tk.console_bg).inner_margin(10.0).corner_radius(4.0).show(ui, |ui| {
+        ui.set_min_width(420.0);
+        ui.label(RichText::new(tl("Phone settings")).color(tk.console_text).strong().size(16.0));
+        ui.add_space(4.0);
+        let text = |s: String| RichText::new(s).color(tk.console_text);
+        crate::console::form_grid(ui, ("phone_settings", d.0), |ui| {
+            ui.label(text(tl("Protocol").into()));
+            ui.horizontal(|ui| {
+                let mut sip = dev.voice.sip;
+                let a = ui.radio_value(&mut sip, false, tl("Own call control")).clicked();
+                let b = ui.radio_value(&mut sip, true, tl("SIP")).clicked();
+                if (a || b) && sip != dev.voice.sip {
+                    app.run("phone.configure", json!({"device": d.0, "protocol": if sip { "sip" } else { "own" }}));
+                }
+            });
+            ui.end_row();
+            ui.label(text(tl("Call server").into()));
+            ui.horizontal(|ui| {
+                ui.add(egui::TextEdit::singleline(&mut form.server).desired_width(130.0).hint_text(tl("from DHCP")))
+                    .widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::TextInput, true, tl("Call server")));
+                if ui.button(tl("Apply")).on_hover_text(tl("Empty: the TFTP server DHCP gave (option 150)")).clicked() {
+                    app.run("phone.configure", json!({"device": d.0, "server": form.server.trim()}));
+                }
+            });
+            ui.end_row();
+            ui.label(text(tl("Extension").into()));
+            ui.label(text(number.clone().unwrap_or_else(|| tl("none yet (not registered)").to_string())));
+            ui.end_row();
+            ui.label(text(tl("MAC address").into()));
+            ui.label(text(dev.ports.first().map_or_else(String::new, |p| p.mac.to_string())));
+            ui.end_row();
+            ui.label(text(tl("Voice VLAN").into()));
+            ui.label(text(vlan.map_or_else(|| tl("none learned (untagged)").to_string(), |v| trf("{} (learned from the switch)", &[&v]))));
+            ui.end_row();
+            ui.label(text(tl("TFTP server").into()));
+            ui.label(text(dev.voice.tftp.map_or_else(|| "-".to_string(), |a| a.to_string())));
+            ui.end_row();
+            ui.label(text(tl("Address").into()));
+            ui.horizontal(|ui| {
+                let mut dhcp = dev.dhcp_client;
+                if ui.radio_value(&mut dhcp, true, tl("DHCP")).clicked() {
+                    app.run("phone.configure", json!({"device": d.0, "address": "dhcp"}));
+                    form.filled = false;
+                }
+                ui.radio_value(&mut dhcp, false, tl("Static"));
+            });
+            ui.end_row();
+            crate::console::grid_field(ui, tl("IPv4 Address"), &mut form.ip);
+            crate::console::grid_field(ui, tl("Subnet Mask"), &mut form.mask);
+            crate::console::grid_field(ui, tl("Default Gateway"), &mut form.gateway);
+            ui.label("");
+            if ui.button(tl("Apply address")).clicked() {
+                app.run(
+                    "phone.configure",
+                    json!({"device": d.0, "address": form.ip.trim(), "mask": form.mask.trim(), "gateway": form.gateway.trim()}),
+                );
+            }
+            ui.end_row();
+        });
+    });
+    if ui.button(tl("Back to the call screen")).clicked() {
+        form.open = false;
+    }
 }
 
 #[cfg(test)]
