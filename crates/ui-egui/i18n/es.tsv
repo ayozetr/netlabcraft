@@ -1141,3 +1141,81 @@ No port is joined: the cloud passes nothing.	Ningún puerto está unido: la nube
 First port	Primer puerto
 Second port	Segundo puerto
 Join	Unir
+# Instructor tools: answer network, assessment tree, initial network, languages, results, locks
+Answer Network	Red de respuesta
+{} devices, {} cables. Read only: edit it from the Activity Wizard.	{} dispositivos, {} cables. Solo lectura: edítala desde el asistente de actividades.
+Drawing of the answer network	Dibujo de la red de respuesta
+(no devices)	(sin dispositivos)
+Assessment Tree	Árbol de evaluación
+What the answer network holds, device by device. Untick what isn't graded, set the points and a hint, then make the checks.	Lo que contiene la red de respuesta, dispositivo a dispositivo. Desmarca lo que no se califica, pon los puntos y una pista, y crea las comprobaciones.
+{} of {} items graded, {} points	{} de {} elementos calificados, {} puntos
+Make checks from the tree	Crear comprobaciones desde el árbol
+The graded items replace the configuration, address and cable checks	Los elementos calificados sustituyen a las comprobaciones de configuración, direcciones y cables
+{}: {} items, {} points	{}: {} elementos, {} puntos
+configuration	configuración
+address	dirección
+cable	cable
+graded	calificado
+Hint	Pista
+shown when it fails	se muestra cuando falla
+{} checks made, {} points.	{} comprobaciones creadas, {} puntos.
+Connectivity Tests	Pruebas de conectividad
+Run the tests	Ejecutar las pruebas
+{} of {} pass	{} de {} superadas
+Each test pings from a device to an address; it passes when the replies come (or don't, when blocking is the point).	Cada prueba hace ping desde un dispositivo a una dirección; se supera cuando llegan las respuestas (o cuando no llegan, si se trata de bloquear).
+This activity has no ping checks.	Esta actividad no tiene comprobaciones de ping.
+Expected	Esperado
+Got	Obtenido
+pass	superada
+fail	fallida
+Save results (JSON)	Guardar resultados (JSON)
+A signed file with your name, the time and your score, to hand in	Un archivo firmado con tu nombre, la hora y tu nota, para entregar
+Save results (CSV)	Guardar resultados (CSV)
+Instructions in	Instrucciones en
+{} (main)	{} (principal)
+Other language code	Código de otro idioma
+Answer and initial networks	Redes de respuesta e inicial
+none yet	ninguna todavía
+kept in the clear	guardada sin cifrar
+hidden from a casual look (not encryption: the key is in the file)	oculta a simple vista (no es cifrado: la clave está en el archivo)
+encrypted with the password	cifrada con la contraseña
+Answer network: {}	Red de respuesta: {}
+Save this lab as the answer	Guardar este laboratorio como respuesta
+View the answer network	Ver la red de respuesta
+Edit it in the workspace	Editarla en el área de trabajo
+Initial network: {}	Red inicial: {}
+saved: Reset Activity returns to it	guardada: Reiniciar actividad vuelve a ella
+none: Reset Activity returns to the lab as it was opened	ninguna: Reiniciar actividad vuelve al laboratorio tal como se abrió
+Save this lab as the initial network	Guardar este laboratorio como red inicial
+Edit the initial network	Editar la red inicial
+Puts it in the workspace; save it again when done	La pone en el área de trabajo; guárdala de nuevo al terminar
+Remove the initial network	Quitar la red inicial
+Lock the activity so students can't open the answer network; with a password it is encrypted in the file.	Bloquea la actividad para que los alumnos no puedan abrir la red de respuesta; con contraseña queda cifrada en el archivo.
+What the student may change	Lo que puede cambiar el alumno
+These locks hold while the activity is locked with the password.	Estos bloqueos se aplican mientras la actividad está bloqueada con la contraseña.
+No adding or removing devices	No añadir ni quitar dispositivos
+No cable changes	No cambiar cables
+Devices whose configuration is locked:	Dispositivos con la configuración bloqueada:
+Check a student's results file	Comprobar el archivo de resultados de un alumno
+Paste the results file	Pega el archivo de resultados
+Verify	Verificar
+Genuine: {} scored {}% ({} of {} points).	Auténtico: {} obtuvo un {}% ({} de {} puntos).
+This results file is from another activity.	Este archivo de resultados es de otra actividad.
+This results file was changed after it was saved.	Este archivo de resultados se modificó después de guardarse.
+the activity doesn't let you add or remove devices	la actividad no permite añadir ni quitar dispositivos
+the activity doesn't let you change the cables	la actividad no permite cambiar los cables
+the activity doesn't let you change {}'s configuration	la actividad no permite cambiar la configuración de {}
+this activity has no answer network: `activity.save_answer` first	esta actividad no tiene red de respuesta: guárdala primero
+this activity has no initial network: `activity.save_initial` first	esta actividad no tiene red inicial: guárdala primero
+the answer network is locked with the instructor's password	la red de respuesta está bloqueada con la contraseña del instructor
+the answer network doesn't open: wrong password or a damaged file	la red de respuesta no se abre: contraseña incorrecta o archivo dañado
+the answer network is damaged	la red de respuesta está dañada
+not a results file: it has no signature	no es un archivo de resultados: no tiene firma
+{}: cable {}	{}: cable {}
+{}: cable	{}: cable
+{} cabled	{} cableado
+cabled	cableado
+no such cable	no existe ese cable
+{} cables	{} cables
+PC2 reaches PC1	PC2 llega a PC1
+Each PC's gateway is the router's address in its LAN.	La puerta de enlace de cada PC es la dirección del router en su LAN.

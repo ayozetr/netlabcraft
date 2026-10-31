@@ -40,6 +40,8 @@ pub struct ActivityView {
     /// The wizard's variables, one per line: `name = value, value, …`.
     variables: String,
     section: String,
+    /// The instructor tools' windows and wizard parts.
+    pub tools: crate::instructor::ToolsView,
 }
 
 /// `name = a, b, c` lines as the `activity.set` variables object.
@@ -81,6 +83,7 @@ pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
     instructions(app, ctx);
     compare(app, ctx);
     wizard(app, ctx);
+    crate::instructor::windows(app, ctx);
 }
 
 fn instructions(app: &mut PacketApp, ctx: &egui::Context) {
@@ -126,7 +129,11 @@ fn instructions(app: &mut PacketApp, ctx: &egui::Context) {
                 ui.label(RichText::new(crate::i18n::trf("Student: {}", &[who])).small());
             }
             egui::ScrollArea::vertical().max_height(160.0).id_salt("activity_text").show(ui, |ui| {
-                ui.label(if a.instructions.is_empty() { tl("(no instructions)").to_string() } else { a.resolve(crate::i18n::tr(&a.instructions)) });
+                // The text in the interface's language when the instructor wrote one, otherwise
+                // the main text (through the catalog, for the built-in activities).
+                let text = a.instructions_in(crate::instructor::ui_lang());
+                let text = if std::ptr::eq(text, a.instructions.as_str()) { crate::i18n::tr(text) } else { text };
+                ui.label(if text.is_empty() { tl("(no instructions)").to_string() } else { a.resolve(text) });
             });
             ui.separator();
             let (score, total, percent) = match &app.ui.activity.results {
@@ -151,6 +158,8 @@ fn instructions(app: &mut PacketApp, ctx: &egui::Context) {
                     app.ui.activity.show_compare = true;
                 }
             });
+            let elapsed = (now - app.ui.activity.started).max(0.0) as u64;
+            crate::instructor::student_row(app, ui, elapsed);
             if let Some(r) = &app.ui.activity.results {
                 // At least a few rows tall, whatever room the window has left.
                 egui::ScrollArea::vertical().min_scrolled_height(120.0).max_height(170.0).id_salt("activity_results").show(ui, |ui| {
@@ -272,12 +281,16 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
     }
     if !app.ui.activity.loaded {
         let a = app.session.topology.activity.clone().unwrap_or_default();
+        app.ui.activity.tools.tab = a.default_language().to_string();
+        app.ui.activity.tools.texts = a.translations.clone();
         app.ui.activity.title = if a.title.is_empty() { "Activity".into() } else { a.title };
         app.ui.activity.instructions = a.instructions;
         app.ui.activity.variables = a.variables.iter().map(|v| format!("{} = {}", v.name, v.values.join(", "))).collect::<Vec<_>>().join("\n");
         app.ui.activity.loaded = true;
     }
     let activity = app.session.topology.activity.clone();
+    let main_lang = activity.as_ref().map_or_else(|| "en".to_string(), |a| a.default_language().to_string());
+    let devices: Vec<(u32, String)> = app.session.topology.devices.iter().map(|d| (d.id.0, d.name.clone())).collect();
     let mut open = true;
     let mut run: Vec<(&'static str, Value)> = Vec::new();
     let v = &mut app.ui.activity;
@@ -306,13 +319,15 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
         ui.separator();
         field(ui, tl("Title"), &mut v.title, 360.0);
         let l = ui.label(tl("Instructions"));
-        ui.add(egui::TextEdit::multiline(&mut v.instructions).desired_rows(4).desired_width(f32::INFINITY)).labelled_by(l.id);
+        let text = crate::instructor::language_tabs(ui, &mut v.tools, &mut v.instructions, &main_lang);
+        ui.add(egui::TextEdit::multiline(text).desired_rows(4).desired_width(f32::INFINITY)).labelled_by(l.id);
         let l = ui.label(tl("Values per student, one variable per line (net = 10, 20, 30); write {net} in the instructions and checks"));
         ui.add(egui::TextEdit::multiline(&mut v.variables).desired_rows(2).desired_width(f32::INFINITY).font(egui::TextStyle::Monospace)).labelled_by(l.id);
         let mut hidden = activity.as_ref().is_some_and(|a| a.hidden);
         ui.horizontal(|ui| {
             if ui.button(tl("Save title and instructions")).clicked() {
                 run.push(("activity.set", json!({"title": v.title, "instructions": v.instructions, "variables": parse_variables(&v.variables)})));
+                run.extend(crate::instructor::translation_commands(&v.tools, &main_lang));
             }
                         if ui.checkbox(&mut hidden, tl("Hide answers in the file")).changed() {
                 run.push(("activity.set", json!({"hidden": hidden})));
@@ -346,6 +361,7 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
                     v.password.clear();
                 }
             });
+            crate::instructor::wizard_sections(ui, &mut v.tools, a, &devices, &mut run);
         }
         ui.separator();
         ui.horizontal(|ui| {
@@ -417,11 +433,12 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
     });
     app.ui.activity.show_wizard = open;
     for (id, params) in run {
-        if let Some(r) = app.run(id, params)
-            && id == "activity.capture"
-        {
-            let n = r["checks"].as_u64().unwrap_or(0);
-            app.info(crate::i18n::trf("{} checks captured. Now put the lab in its starting state and save it.", &[&n]));
+        if let Some(r) = app.run(id, params) {
+            crate::instructor::after_command(&mut app.ui.activity.tools, id, &r);
+            if id == "activity.capture" {
+                let n = r["checks"].as_u64().unwrap_or(0);
+                app.info(crate::i18n::trf("{} checks captured. Now put the lab in its starting state and save it.", &[&n]));
+            }
         }
     }
 }

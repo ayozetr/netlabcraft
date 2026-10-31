@@ -44,6 +44,9 @@ fn port_param(s: &Session, dev: DeviceId, name: &str) -> Result<usize> {
 pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
     let info = catalog::find(id).ok_or_else(|| EngineError::UnknownCommand(id.to_string()))?;
     let _ = info;
+    if let Some(r) = crate::instructor::run(s, id, p) {
+        return r;
+    }
     let cmd = id;
     match id {
         "file.new" => {
@@ -512,8 +515,19 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             if let Some(x) = a.as_mut().filter(|x| x.locked()) {
                 x.checks.clear();
                 x.lock = "set".into();
+                x.assessment.clear();
             }
+            // The networks are large: they are reached with their own commands.
+            let answer = a.as_mut().and_then(|x| x.answer.take()).map(|x| x.scheme);
+            let initial = a.as_mut().and_then(|x| x.initial.take()).is_some();
+            let text = a.as_ref().map(|x| x.resolve(x.instructions_in(opt_str(p, "lang").unwrap_or(""))));
             Ok(json!({
+                "answer": answer,
+                "initial": initial,
+                "languages": a.as_ref().map(netlabcraft_model::activity::Activity::languages),
+                "text": text,
+                "id": a.as_ref().map(crate::instructor::activity_id),
+                "locks_active": a.as_ref().is_some_and(netlabcraft_model::activity::Activity::locks_active),
                 "activity": a,
                 "total_points": s.topology.activity.as_ref().map_or(0, netlabcraft_model::activity::Activity::total_points),
                 "checks": s.topology.activity.as_ref().map_or(0, |x| x.checks.len()),
@@ -550,7 +564,9 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             }
             let mut t = s.topology.clone();
             let a = t.activity.as_mut().ok_or_else(|| bad("this lab has no activity"))?;
-            a.lock = a.password_hash(password);
+            a.lock = crate::instructor::lock_hash(a, password);
+            // The answer network goes under the password.
+            crate::instructor::reseal(a, None, Some(password)).map_err(EngineError::Failed)?;
             s.checkpoint();
             s.topology = t;
             s.changed();
@@ -563,10 +579,11 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             if !a.locked() {
                 return Ok(json!({"locked": false}));
             }
-            if a.password_hash(password) != a.lock {
+            if !crate::instructor::lock_matches(a, password) {
                 return Err(bad("wrong password"));
             }
             a.lock.clear();
+            crate::instructor::reseal(a, Some(password), None).map_err(EngineError::Failed)?;
             s.checkpoint();
             s.topology = t;
             s.changed();
@@ -615,9 +632,16 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                             c.kind = netlabcraft_model::activity::CheckKind::ConfigHashed { device: *device, hash };
                             c.label = c.label.split(':').next().map_or("configuration item".to_string(), |d| format!("{d}: configuration item"));
                         }
+                        if let netlabcraft_model::activity::CheckKind::Link { a: x, a_port, b: y, b_port } = &c.kind {
+                            let (device, text) = netlabcraft_model::activity::link_text(*x, a_port, *y, b_port);
+                            let hash = netlabcraft_model::activity::line_hash(&salt, device, &text);
+                            c.kind = netlabcraft_model::activity::CheckKind::LinkHashed { device, hash };
+                            c.label = format!("{}: cable", c.section);
+                        }
                     }
                 }
                 a.hidden = h;
+                crate::instructor::reseal(a, None, None).map_err(EngineError::Failed)?;
             }
             s.checkpoint();
             s.topology = t;
@@ -763,10 +787,20 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             Ok(json!({"results": shown, "sections": sections, "score": score, "total": total, "percent": percent, "detail": detail}))
         }
         "activity.reset" => {
-            let start = s.activity_start.clone().ok_or_else(|| bad("this lab wasn't opened as an activity"))?;
             let path = s.path.clone();
+            // An activity with an initial network starts over from it (the student's name
+            // and the activity as they are now are kept).
+            if let Some(a) = s.topology.activity.clone()
+                && let Some(initial) = crate::instructor::initial_network(&a)
+            {
+                let mut t = initial.map_err(EngineError::Failed)?;
+                t.activity = Some(a);
+                s.replace(t, path);
+                return Ok(json!({"from": "initial"}));
+            }
+            let start = s.activity_start.clone().ok_or_else(|| bad("this lab wasn't opened as an activity"))?;
             s.replace(start, path);
-            Ok(json!({}))
+            Ok(json!({"from": "opened"}))
         }
         "note.add" => {
             let (x, y) = (f32_param(p, "x").unwrap_or(0.0), f32_param(p, "y").unwrap_or(0.0));
@@ -1490,7 +1524,7 @@ pub fn cli_line(s: &mut Session, d: DeviceId, line: &str) -> Value {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn read_file(path: &str) -> Result<String> {
+pub(crate) fn read_file(path: &str) -> Result<String> {
     let meta = std::fs::metadata(path).map_err(|e| EngineError::Failed(format!("{path}: {e}")))?;
     if meta.len() > file::MAX_BYTES as u64 {
         return Err(EngineError::Failed(format!("{path}: too large to be a lab")));
@@ -1499,13 +1533,13 @@ fn read_file(path: &str) -> Result<String> {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn read_file(_: &str) -> Result<String> {
+pub(crate) fn read_file(_: &str) -> Result<String> {
     Err(EngineError::Failed("the browser build opens files through the file picker".into()))
 }
 
 /// Writes through a temporary file and a rename, so a failed save never truncates the old file.
 #[cfg(not(target_arch = "wasm32"))]
-fn write_file(path: &str, bytes: &[u8]) -> Result<()> {
+pub(crate) fn write_file(path: &str, bytes: &[u8]) -> Result<()> {
     let target = std::path::Path::new(path);
     let name = target.file_name().and_then(|n| n.to_str()).ok_or_else(|| EngineError::Failed(format!("{path}: not a file path")))?;
     let tmp = target.with_file_name(format!(".{name}.part"));
@@ -1517,7 +1551,7 @@ fn write_file(path: &str, bytes: &[u8]) -> Result<()> {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn write_file(_: &str, _: &[u8]) -> Result<()> {
+pub(crate) fn write_file(_: &str, _: &[u8]) -> Result<()> {
     Err(EngineError::Failed("the browser build saves through downloads".into()))
 }
 

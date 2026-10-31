@@ -3,7 +3,7 @@
 //! `cargo run -p netlabcraft-ui-egui --example snapshot -- --sample vlans [--dark] [--simulation] [--size 1280x820]
 //!  [--cmd 'id={json}']... [--console DEVICE]... [--event N] [--physical [--place N]] [--physical-tab]
 //!  [--tab physical|config|cli|services|desktop|phone|iot|attributes] [--config-page settings|vlans|routes|wireless|port:N]
-//!  [--instructions] [--wizard] [--info N] out.png`
+//!  [--instructions] [--wizard] [--answer] [--tree] [--connectivity] [--info N] out.png`
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use netlabcraft_engine::Session;
@@ -32,6 +32,7 @@ fn main() {
     let mut tab: Option<String> = None;
     let mut config_page: Option<String> = None;
     let (mut instructions, mut wizard) = (false, false);
+    let mut tools: Vec<String> = Vec::new();
     let mut complex: Option<String> = None;
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -70,6 +71,7 @@ fn main() {
             "--config-page" => config_page = Some(it.next().expect("config page").clone()),
             "--instructions" => instructions = true,
             "--wizard" => wizard = true,
+            "--answer" | "--tree" | "--connectivity" => tools.push(a.clone()),
             "--connections" => connections = Some(None),
             "--cable" => connections = Some(Some(it.next().expect("cable id").clone())),
             "--info" => info = Some(it.next().and_then(|s| s.parse().ok()).expect("event id")),
@@ -152,6 +154,20 @@ fn main() {
         let app = harness.state_mut();
         app.ui.activity.show_instructions = instructions;
         app.ui.activity.show_wizard = wizard;
+    }
+    if !tools.is_empty() {
+        let app = harness.state_mut();
+        if !instructions {
+            app.ui.activity.show_instructions = false;
+        }
+        let t = &mut app.ui.activity.tools;
+        t.show_answer = tools.iter().any(|x| x == "--answer");
+        t.show_tree = tools.iter().any(|x| x == "--tree");
+        if tools.iter().any(|x| x == "--connectivity") {
+            let r = app.run("activity.connectivity", serde_json::json!({}));
+            app.ui.activity.tools.show_connectivity = true;
+            app.ui.activity.tools.connectivity = r;
+        }
     }
     harness.run_steps(6);
     let img = harness.render().expect("render");

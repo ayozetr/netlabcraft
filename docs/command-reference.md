@@ -27,7 +27,23 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `activity.lock` | Lock the activity |  |  | `{"password"}: the activity can't be changed or its checks seen until unlocked` |
 | `activity.unlock` | Unlock the activity |  |  | `{"password"}` |
 | `activity.check` | Check Results | Extensions |  | `{} → {"results": [{"label", "points", "passed", "feedback", "section"}] and "sections": [{"name", "score", "total", "percent"}] (both empty when locked with score_only), "score", "total", "percent", "detail"}` |
-| `activity.reset` | Reset Activity | Extensions |  | `{}: back to the lab as the activity was opened` |
+| `activity.reset` | Reset Activity | Extensions |  | `{}: back to the initial network, or the lab as the activity was opened → {"from": "initial"\|"opened"}` |
+| `activity.save_answer` | Save as the answer network |  |  | `{} → {"devices", "scheme"}: the lab as it is now becomes the answer network, kept in the clear ("plain"), under a key from the salt when answers are hidden ("salt": hides it from a casual look only), or under the password while locked ("password")` |
+| `activity.answer` | Answer Network |  |  | `{} → {"lab": the answer network as a lab file's JSON, "devices", "links", "scheme"}` |
+| `activity.load_answer` | Edit the answer network |  |  | `{}: puts the answer network in the workspace (the activity stays); `activity.save_answer` keeps the changes` |
+| `activity.clear_answer` | Remove the answer network |  |  | `{}` |
+| `activity.tree` | Assessment tree |  |  | `{} → {"items": [{"key", "device", "kind": "config"\|"address"\|"cable", "text", "points" (0: not graded), "feedback"}], "points"}: what the answer network holds, per device` |
+| `activity.weight` | Set an item's points |  |  | `{"key": tree item, "points"?: 0-1000 (0: not graded), "feedback"?: hint when it fails}` |
+| `activity.tree_checks` | Make checks from the assessment tree |  |  | `{} → {"checks", "points"}: the graded tree items replace the configuration, address and cable checks (pings and command checks stay)` |
+| `activity.save_initial` | Save as the initial network |  |  | `{} → {"devices"}: the lab as it is now is where the student starts (Reset Activity returns to it)` |
+| `activity.load_initial` | Edit the initial network |  |  | `{}: puts the initial network in the workspace (the activity stays); `activity.save_initial` keeps the changes` |
+| `activity.clear_initial` | Remove the initial network |  |  | `{}` |
+| `activity.translate` | Instructions in a language |  |  | `{"lang": "es", "text"?: the instructions in it (empty removes them), "default"?: true makes it the main language} → {"languages", "default"}` |
+| `activity.edit_check` | Edit check |  |  | `{"index": n, "points"?, "feedback"?, "label"?, "section"?}` |
+| `activity.connectivity` | Connectivity Tests | Extensions |  | `{} → {"tests": [{"label", "from", "to", "expect", "passed", "actual"}], "passed", "total", "detail"}: the activity's ping checks, run now` |
+| `activity.export_results` | Export results… |  |  | `{"format"?: "json"\|"csv", "path"?, "time"?, "elapsed_s"?} → {"text", "file_name", "score", "total", "percent"}: a results file with the student, the time, the score per section, signed with HMAC-SHA1 under a key from the activity's salt` |
+| `activity.verify_results` | Verify a results file |  |  | `{"text" or "path"} → {"valid", "same_activity", "student", "score", "total", "percent"}` |
+| `activity.locks` | Activity locks |  |  | `{"devices"?: true (no adding or removing devices), "cables"?: true (no cable changes), "config"?: ["R1", …] (devices whose configuration can't change)}: they hold while the activity is locked` |
 | `file.new` | New lab | File | Ctrl+N | `{"sample"?: "sample id (see sample.list)"}` |
 | `file.open` | Open lab… | File | Ctrl+O | `{"json": "lab file contents"} or {"path": "file (desktop/CLI)"}` |
 | `file.save` | Save lab | File | Ctrl+S | `{"path"?: "file to write (desktop/CLI)"} → {"json"}` |

@@ -24,6 +24,7 @@ mod controller;
 mod families;
 mod hardware;
 pub mod home;
+pub mod instructor;
 mod iot;
 mod netconf;
 mod pdu;
@@ -35,6 +36,8 @@ pub mod sample;
 mod tests;
 #[cfg(test)]
 mod tests_families;
+#[cfg(test)]
+mod tests_instructor;
 
 pub use catalog::{CATALOG, CommandInfo};
 pub use netlabcraft_core::DeviceId;
@@ -119,7 +122,26 @@ impl Session {
         let before = self.topology.clone();
         self.sim.set_restconf(automation::restconf);
         self.sim.set_netconf(netconf::serve);
-        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| cmd::run(self, id, &params)));
+        let undo_depth = self.undo.len();
+        let mut outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| cmd::run(self, id, &params)));
+        // An activity's locks: what the command changed that the student may not is undone.
+        if matches!(outcome, Ok(Ok(_)))
+            && !instructor::LOCK_FREE.contains(&id)
+            && let Some(why) = instructor::lock_violation(&before, &self.topology)
+        {
+            self.topology = before.clone();
+            self.undo.truncate(undo_depth);
+            self.sim.topology_changed(&self.topology);
+            self.revision += 1;
+            if let Ok(dev) = cmd::device_param(self, &params, "device")
+                && self.consoles.contains_key(&dev)
+            {
+                let cli = self.console(dev).cli.clone();
+                let prompt = netlabcraft_ios::prompt(&self.topology, dev, &cli);
+                self.console(dev).append(&format!("\n% Refused: {why}.\n{prompt}"));
+            }
+            outcome = Ok(Err(EngineError::Failed(why)));
+        }
         self.apply_sim_events();
         // A new cable or trunk can join switches into a VTP domain.
         if netlabcraft_sim::vtp::sync(&mut self.topology) {
