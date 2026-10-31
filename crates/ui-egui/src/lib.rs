@@ -39,6 +39,7 @@ pub mod png;
 mod programming;
 mod services;
 pub mod theme;
+mod touch;
 mod wlan_page;
 
 #[cfg(test)]

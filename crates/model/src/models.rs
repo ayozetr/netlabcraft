@@ -231,6 +231,20 @@ pub static MODELS: &[Model] = &[
         ports: &[run("Wireless", 0, 0)],
     },
     Model {
+        id: "Tablet",
+        kind: DeviceKind::Laptop,
+        label: "Tablet",
+        description: "Touch-screen tablet with Wi-Fi: browser, email, command prompt and programming apps; no battery to look after",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Smartphone",
+        kind: DeviceKind::Laptop,
+        label: "Smartphone",
+        description: "Touch-screen smartphone with Wi-Fi: browser, email, command prompt and programming apps; no battery to look after",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
         id: "Server",
         kind: DeviceKind::Server,
         label: "Server",
@@ -435,6 +449,8 @@ impl Model {
             "Cloud" => Some("Cloud"),
             "DSL-Modem" | "Cable-Modem" => Some("Modem"),
             "Home-Gateway" => Some("Gateway"),
+            "Tablet" => Some("Tablet"),
+            "Smartphone" => Some("Smartphone"),
             _ => None,
         }
     }
@@ -498,7 +514,13 @@ impl Model {
 
     /// Whether the model has an RS-232 serial port for a console cable (PCs and laptops).
     pub fn has_rs232(&self) -> bool {
-        matches!(self.kind, DeviceKind::Pc | DeviceKind::Laptop)
+        matches!(self.kind, DeviceKind::Pc | DeviceKind::Laptop) && !self.touch()
+    }
+
+    /// A touch-screen device (a tablet or a smartphone): Wi-Fi only, a touch desktop, no serial
+    /// port for a console cable.
+    pub fn touch(&self) -> bool {
+        matches!(self.id, "Tablet" | "Smartphone")
     }
 }
 
@@ -559,5 +581,17 @@ mod tests {
             }
         }
         assert_eq!(module("card-2s").unwrap().port_names("0/1"), ["Serial0/1/0", "Serial0/1/1"]);
+    }
+
+    #[test]
+    fn tablets_and_smartphones_are_wifi_touch_devices_without_a_serial_port() {
+        for id in ["Tablet", "Smartphone"] {
+            let m = find(id).unwrap();
+            assert!(m.touch() && !m.has_rs232() && !m.has_console(), "{id}");
+            assert_eq!(m.port_names(), ["Wireless0"]);
+            assert_eq!(m.port_medium("Wireless0"), Some(Medium::Wireless));
+            assert_eq!(m.name_prefix(), Some(id));
+        }
+        assert!(!find("Laptop-WiFi").unwrap().touch() && find("Laptop-WiFi").unwrap().has_rs232());
     }
 }

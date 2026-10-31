@@ -1236,3 +1236,20 @@ Central	Central
 Local	Local
 Central switching (through the controller)	Conmutación central (a través del controlador)
 The access points tunnel the hosts' traffic to the controller over CAPWAP, and the controller bridges it into the VLAN	Los puntos de acceso envían por túnel el tráfico de los equipos al controlador mediante CAPWAP, y el controlador lo pasa a la VLAN
+Tablet	Tableta
+Smartphone	Smartphone
+Touch-screen tablet with Wi-Fi: browser, email, command prompt and programming apps; no battery to look after	Tableta táctil con Wi-Fi: navegador, correo, símbolo del sistema y programación; sin batería de la que preocuparse
+Touch-screen smartphone with Wi-Fi: browser, email, command prompt and programming apps; no battery to look after	Smartphone táctil con Wi-Fi: navegador, correo, símbolo del sistema y programación; sin batería de la que preocuparse
+Wi-Fi {} · {}	Wi-Fi {} · {}
+Wi-Fi {} · no address yet	Wi-Fi {} · aún sin dirección
+Looking for {}	Buscando {}
+Wi-Fi off: pick a network in Config	Wi-Fi apagado: elige una red en Configuración
+{}: Wi-Fi radio (Wireless0)	{}: radio Wi-Fi (Wireless0)
+A tablet seen from the front	Una tableta vista de frente
+A smartphone seen from the front	Un smartphone visto de frente
+Not associated with any access point	Sin asociar con ningún punto de acceso
+Always charged here: there is no battery to look after.	Siempre cargado aquí: no hay batería de la que preocuparse.
+Set its Wi-Fi network in Config > Wireless0; move it near an access point to join.	Elige su red Wi-Fi en Configuración > Wireless0; acércalo a un punto de acceso para unirse.
+Tablets and smartphones on Wi-Fi	Tabletas y smartphones por Wi-Fi
+A tablet and a smartphone join the home router's Wi-Fi, take their addresses by DHCP and open the web server's pages from their touch screens.	Una tableta y un smartphone se unen al Wi-Fi del router doméstico, toman su dirección por DHCP y abren las páginas del servidor web desde sus pantallas táctiles.
+Tablet1 and Smartphone1 are on the Home router's Wi-Fi (HomeNetwork) and took their addresses by DHCP. Open one, tap Web Browser and go to 192.168.0.10; the Command Prompt pings, IP Configuration shows the lease.	Tablet1 y Smartphone1 están en el Wi-Fi del router Home (HomeNetwork) y tomaron su dirección por DHCP. Abre uno, toca Navegador web y ve a 192.168.0.10; el Símbolo del sistema hace ping y Configuración IP muestra la concesión.

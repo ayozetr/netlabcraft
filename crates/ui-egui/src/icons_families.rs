@@ -138,8 +138,43 @@ pub fn phone_line(p: &Painter, a: Pos2, b: Pos2, width: f32, tk: &Tokens) {
 pub fn model_icon(p: &Painter, rect: Rect, kind: netlabcraft_model::DeviceKind, model_id: &str, multilayer: bool, tk: &Tokens) {
     if is_wan(model_id) {
         wan_icon(p, rect, model_id, tk);
+    } else if matches!(model_id, "Tablet" | "Smartphone") {
+        touch_icon(p, rect, model_id == "Tablet");
     } else {
         crate::icons::device(p, rect, kind, tk);
         crate::icons::model_marks(p, rect, model_id, multilayer);
+    }
+}
+
+/// A tablet (wide) or a smartphone (tall): a dark body, a bright screen with a few app squares
+/// and the Wi-Fi waves over it.
+pub fn touch_icon(p: &Painter, rect: Rect, tablet: bool) {
+    let w = rect.width();
+    let size = if tablet { vec2(w * 0.86, w * 0.62) } else { vec2(w * 0.46, w * 0.82) };
+    let body = Rect::from_center_size(rect.center() + vec2(0.0, w * 0.06), size);
+    let edge = Color32::from_rgb(0x1f, 0x24, 0x2b);
+    p.rect_filled(body.translate(vec2(0.0, w * 0.03)), w * 0.08, crate::theme::shade(edge, 0.7));
+    p.rect_filled(body, w * 0.08, edge);
+    let screen = body.shrink2(if tablet { vec2(w * 0.07, w * 0.05) } else { vec2(w * 0.04, w * 0.08) });
+    p.rect_filled(screen, w * 0.03, Color32::from_rgb(0x4b, 0x83, 0xb5));
+    let teal = Color32::from_rgb(0x9a, 0xe6, 0xf2);
+    let (cols, rows) = if tablet { (4, 2) } else { (2, 3) };
+    let cell = vec2(screen.width() / cols as f32, screen.height() / rows as f32);
+    for r in 0..rows {
+        for c in 0..cols {
+            let at = screen.left_top() + vec2((c as f32 + 0.5) * cell.x, (r as f32 + 0.5) * cell.y);
+            p.rect_filled(Rect::from_center_size(at, cell * 0.5), w * 0.015, teal);
+        }
+    }
+    // Wi-Fi waves above the body.
+    let c = pos2(body.center().x, body.top() - w * 0.02);
+    for (i, r) in [0.06f32, 0.11, 0.16].into_iter().enumerate() {
+        let pts: Vec<Pos2> = (0..=8)
+            .map(|k| {
+                let a = -std::f32::consts::FRAC_PI_2 - 0.7 + k as f32 * 1.4 / 8.0;
+                c + vec2(a.cos(), a.sin()) * w * r
+            })
+            .collect();
+        p.add(Shape::line(pts, Stroke::new((w / 30.0).max(1.0), if i == 0 { edge } else { Color32::from_rgb(0x2e, 0x8b, 0x57) })));
     }
 }

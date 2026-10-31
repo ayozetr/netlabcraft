@@ -232,3 +232,24 @@ fn home_internet_crosses_cable_and_dsl_modems_through_the_cloud() {
     assert_eq!(s2.topology.find("ISP").unwrap().bridges.len(), 3);
     assert!(s2.topology.links.iter().any(|l| l.cable == netlabcraft_model::cable::Cable::Phone));
 }
+
+#[test]
+fn tablets_and_smartphones_join_wifi_take_dhcp_and_browse() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "mobile-devices"})).unwrap();
+    for name in ["Tablet1", "Smartphone1"] {
+        let d = s.topology.find(name).unwrap();
+        assert!(d.dhcp_client && d.ports[0].ip.is_some(), "{name} took a lease");
+        assert!(!d.has_rs232(), "no console port on a touch device");
+        assert_eq!(marks(&mut s, name, "192.168.0.10"), "!!!", "{name} reaches the server over Wi-Fi");
+    }
+    let page = s.execute("browser.get", json!({"device": "Smartphone1", "url": "192.168.0.10"})).unwrap();
+    assert!(page.to_string().contains("200"), "{page}");
+    // Placed from the palette: named after the model, Wi-Fi only.
+    let v = s.execute("device.add", json!({"model": "Smartphone", "x": 10, "y": 10})).unwrap();
+    assert_eq!(v["name"], "Smartphone2");
+    assert!(s.execute("device.add", json!({"model": "Tablet"})).is_ok());
+    assert!(s.execute("pc.terminal", json!({"pc": "Tablet2"})).is_err(), "no RS-232 port for a Terminal");
+    let s2 = round_trip(&mut s);
+    assert_eq!(s2.topology.find("Smartphone2").unwrap().catalogue_model().id, "Smartphone");
+}

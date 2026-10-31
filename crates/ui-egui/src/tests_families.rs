@@ -195,3 +195,37 @@ mod t {
         assert_eq!(h.state().session.topology.device(isp).unwrap().bridges.len(), 2);
     }
 }
+
+// UI harness tests for tablets and smartphones: the touch home screen and the Physical tab.
+#[cfg(test)]
+mod touch {
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable as _;
+    use netlabcraft_engine::Session;
+    use serde_json::json;
+
+    use crate::PacketApp;
+
+    #[test]
+    fn a_smartphone_shows_its_touch_apps_and_opens_the_browser() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"sample": "mobile-devices"})).unwrap();
+        let ph = s.topology.resolve("Smartphone1").unwrap();
+        let mut h = Harness::builder().with_size(egui::vec2(1200.0, 800.0)).build_ui_state(|ui, app: &mut PacketApp| app.ui(ui), PacketApp::new(s));
+        h.state_mut().ui.show_notes = false;
+        crate::open_tab(h.state_mut(), ph, "desktop");
+        h.run_steps(3);
+        for app in ["Web Browser", "Email", "IP Configuration", "Command Prompt", "Programming"] {
+            assert!(h.query_by_label(app).is_some(), "{app} on the home screen");
+        }
+        assert!(h.query_by_label("MIB Browser").is_none() && h.query_by_label("Terminal").is_none());
+        h.get_by_label("Web Browser").click();
+        h.run_steps(2);
+        assert_eq!(h.state().ui.windows.get(&ph).and_then(|w| w.desktop), Some(crate::console::DesktopApp::Browser));
+        h.state_mut().ui.windows.clear();
+        crate::open_physical_tab(h.state_mut(), ph);
+        h.run_steps(3);
+        assert!(h.query_by_label("A smartphone seen from the front").is_some());
+        assert!(h.query_by_label("Associated with Home").is_some());
+    }
+}

@@ -150,6 +150,11 @@ pub static SAMPLES: &[Sample] = &[
         title: "A switch card in a router",
         description: "R1 has a 4-port switch card: its ports are VLAN members (10 and 20) and a trunk to S1, and the router routes between its VLAN interfaces.",
     },
+    Sample {
+        id: "mobile-devices",
+        title: "Tablets and smartphones on Wi-Fi",
+        description: "A tablet and a smartphone join the home router's Wi-Fi, take their addresses by DHCP and open the web server's pages from their touch screens.",
+    },
 ];
 
 struct Builder {
@@ -1392,6 +1397,22 @@ pub fn build(id: &str) -> Result<Topology> {
                     .collect();
             }
             b.t.notes = "R1's user admin (password NetLab2026) may use RESTCONF over HTTPS and NETCONF on port 830. On PC1 open Desktop > Programming, pick a saved request, give the user and password and press Send; then look at `show running-config` on R1.".into();
+        }
+        "mobile-devices" => {
+            b.add_model("Home-Router", "Home", 360.0, 60.0)?;
+            b.add(DeviceKind::Server, "Web", 620.0, 60.0)?;
+            b.cable("Web", "g0", "Home", "Ethernet1")?;
+            b.type_in("Web", "ipconfig 192.168.0.10 255.255.255.0 192.168.0.1")?;
+            let wifi = netlabcraft_model::Wifi { ssid: "HomeNetwork".into(), key: None, channel: 6, login: None };
+            for (name, model, x) in [("Tablet1", "Tablet", 240.0), ("Smartphone1", "Smartphone", 460.0)] {
+                b.add_model(model, name, x, 230.0)?;
+                let id = b.t.resolve(name)?;
+                if let Some(p) = b.t.device_mut(id).and_then(|d| d.ports.get_mut(0)) {
+                    p.wifi = Some(wifi.clone());
+                }
+                b.type_in(name, "ipconfig /renew")?;
+            }
+            b.t.notes = "Tablet1 and Smartphone1 are on the Home router's Wi-Fi (HomeNetwork) and took their addresses by DHCP. Open one, tap Web Browser and go to 192.168.0.10; the Command Prompt pings, IP Configuration shows the lease.".into();
         }
         other => return Err(EngineError::BadParams(format!("unknown sample `{other}`"))),
     }

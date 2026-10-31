@@ -394,6 +394,10 @@ fn console_in(app: &mut PacketApp, ui: &mut egui::Ui, win: DeviceId, d: DeviceId
 
 /// The front panel: one socket per port, its link light, and what is plugged in.
 fn physical(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
+    if dev.catalogue_model().touch() {
+        crate::touch::physical(app, ui, dev);
+        return;
+    }
     let tk = theme::tokens(app.ui.dark);
     crate::hardware::panel(app, ui, dev);
     ui.label(RichText::new(crate::i18n::trf("{}: {} ports", &[&crate::i18n::tl(dev.catalogue_model().label), &dev.ports.len()])).strong());
@@ -1064,6 +1068,15 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     let tk = theme::tokens(app.ui.dark);
     let Some(w) = app.ui.windows.get_mut(&d) else { return };
     match w.desktop {
+        None if dev.catalogue_model().touch() => {
+            // A tablet or smartphone: its own touch home screen.
+            if let Some(a) = crate::touch::home(app, ui, dev)
+                && let Some(w) = app.ui.windows.get_mut(&d)
+            {
+                w.desktop = Some(a);
+                w.focus = true;
+            }
+        }
         None => {
             // A navy desktop with large tiles, as learners know it. Only working apps are shown.
             let mut open = None;
@@ -1272,7 +1285,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
 }
 
 /// The pictures on the Desktop tiles (our own drawings).
-fn draw_app_icon(p: &egui::Painter, r: egui::Rect, app: DesktopApp) {
+pub(crate) fn draw_app_icon(p: &egui::Painter, r: egui::Rect, app: DesktopApp) {
     let dark = egui::Color32::from_rgb(0x2a, 0x33, 0x40);
     let light = egui::Color32::from_rgb(0xf4, 0xf1, 0xe6);
     match app {
