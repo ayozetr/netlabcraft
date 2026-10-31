@@ -29,6 +29,9 @@ pub struct Draft {
     pub periodic: bool,
     pub period: String,
     pub start: String,
+    /// Start at an absolute simulated time (`at`) rather than after a delay (`start`).
+    pub absolute: bool,
+    pub at: String,
     /// Why the last Create failed.
     pub problem: Option<String>,
 }
@@ -87,7 +90,7 @@ fn number(p: &mut Value, key: &str, text: &str, label: &str) -> Result<(), Strin
     if !v.is_finite() || v < 0.0 {
         return Err(crate::i18n::trf("{} is not a number", &[&crate::i18n::tr(label)]));
     }
-    p[key] = if v.fract() == 0.0 && key != "period" && key != "start" { json!(v as u64) } else { json!(v) };
+    p[key] = if v.fract() == 0.0 && !matches!(key, "period" | "start" | "at") { json!(v as u64) } else { json!(v) };
     Ok(())
 }
 
@@ -121,7 +124,14 @@ pub fn params(d: &Draft) -> Result<Value, String> {
             return Err(tl("A periodic PDU needs its interval").to_string());
         }
     }
-    number(&mut p, "start", &d.start, "Start time")?;
+    if d.absolute {
+        number(&mut p, "at", &d.at, "At time")?;
+        if p.get("at").is_none() {
+            return Err(tl("Type the simulated time to send it at").to_string());
+        }
+    } else {
+        number(&mut p, "start", &d.start, "Start time")?;
+    }
     Ok(p)
 }
 
@@ -216,7 +226,15 @@ pub fn window(app: &mut PacketApp, ctx: &egui::Context) {
             if d.periodic {
                 row(ui, tl("Interval"), &mut d.period, tl("seconds"));
             }
-            row(ui, tl("Start time"), &mut d.start, tl("seconds from now"));
+            ui.horizontal(|ui| {
+                ui.radio_value(&mut d.absolute, false, tl("After a delay"));
+                ui.radio_value(&mut d.absolute, true, tl("At a simulated time"));
+            });
+            if d.absolute {
+                row(ui, tl("At time"), &mut d.at, tl("seconds of simulated time"));
+            } else {
+                row(ui, tl("Start time"), &mut d.start, tl("seconds from now"));
+            }
             if let Some(p) = &d.problem {
                 ui.label(RichText::new(p).color(tk.error));
             }

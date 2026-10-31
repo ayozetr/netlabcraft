@@ -568,7 +568,23 @@ pub static CATALOG: &[CommandInfo] = &[
     c!("sim.reset", "Reset simulation", "Simulation", None, "{} (forget ARP/MAC tables and events)", false),
     c!("sim.clear_events", "Clear event list", "Simulation", None, "{}", false),
     c!("sim.events", "Event list", "", None, r#"{"since"?: event id, "limit"?: 200} → [{id, at_us, from, to, protocol, summary, dropped}]"#, false),
-    c!("sim.status", "Simulation status", "", None, "{} → {time_us, events, storm}", false),
+    c!("sim.status", "Simulation status", "", None, "{} → {time_us, events, storm, constant_delay_us, capture}", false),
+    c!(
+        "sim.constant_delay",
+        "Constant Delay",
+        "Simulation",
+        None,
+        r#"{"on": true|false, "us"?: hop time in µs (1-1000000, default 1000)} → {"on", "us"}: every hop then takes the same simulated time, whatever queues would add"#,
+        false
+    ),
+    c!(
+        "sim.capture_filter",
+        "Capture only filtered events",
+        "Simulation",
+        None,
+        r#"{"on": true|false, "protocols"?: ["ICMP", "ARP", …] (needed when on), "prune"?: true (also drop recorded events of other protocols)} → {"on", "protocols", "removed"}: the event list and the pcap capture then keep only these protocols"#,
+        false
+    ),
     c!("topology.get", "The whole lab", "", None, "{} → the lab document", false),
     c!("sample.list", "Sample labs", "", None, "{} → [{id, title, description}]", false),
     c!(

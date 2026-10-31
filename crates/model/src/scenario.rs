@@ -203,6 +203,9 @@ pub struct UserPdu {
     /// Seconds after it is created (or the scenario's PDUs are rescheduled) that it is sent first.
     #[serde(default)]
     pub start_s: f64,
+    /// An absolute start instead: the simulated time (seconds) it is sent first.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_at_s: Option<f64>,
     #[serde(default)]
     pub status: PduStatus,
     /// Simulated time it was last sent (seconds).
@@ -234,6 +237,7 @@ impl UserPdu {
         self.ttl = self.ttl.map(|t| t.max(1));
         self.period_s = self.period_s.filter(|p| p.is_finite()).map(|p| p.clamp(MIN_PERIOD_S, MAX_PERIOD_S));
         self.start_s = if self.start_s.is_finite() { self.start_s.clamp(0.0, MAX_PERIOD_S) } else { 0.0 };
+        self.start_at_s = self.start_at_s.filter(|v| v.is_finite()).map(|v| v.clamp(0.0, MAX_PERIOD_S));
         self.last_s = self.last_s.filter(|v| v.is_finite());
     }
 }
@@ -342,6 +346,7 @@ mod tests {
             text: String::new(),
             period_s: Some(f64::NAN),
             start_s: f64::INFINITY,
+            start_at_s: Some(f64::NAN),
             status: PduStatus::Waiting,
             last_s: None,
             fired: 0,
@@ -357,6 +362,7 @@ mod tests {
         assert_eq!(p[0].size, MAX_PDU_SIZE);
         assert_eq!(p[0].period_s, None);
         assert_eq!(p[0].start_s, 0.0);
+        assert_eq!(p[0].start_at_s, None);
         assert_eq!(p[0].target, None);
         assert_eq!(p[0].destination.len(), 64);
         let mut empty = Scenarios::default();

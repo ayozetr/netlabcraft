@@ -48,7 +48,7 @@ use netlabcraft_wire::wlan::{
 };
 use netlabcraft_wire::{Frame, Ipv4, PROTO_UDP, Udp};
 
-use crate::{LINK_DELAY_US, Queued, Sim, default_ttl, is_ap_radio};
+use crate::{Queued, Sim, default_ttl, is_ap_radio};
 
 /// Most frames a host's association keeps waiting.
 const MAX_HELD: usize = 64;
@@ -197,11 +197,12 @@ impl Sim {
     /// Puts bytes on the air (or a cable) as they are.
     fn enqueue(&mut self, at: u64, from: End, to: End, frame: Vec<u8>, hops: u8) {
         self.seq += 1;
+        self.origin_queued(self.seq);
         self.queue.push(std::cmp::Reverse(Queued { at, seq: self.seq, from, to, frame, hops, cause: self.cause }));
     }
 
     fn send_air(&mut self, from: End, to: End, f: Dot11) {
-        let at = self.now + LINK_DELAY_US;
+        let at = self.now + self.hop_delay();
         self.enqueue(at, from, to, f.encode(), 0);
     }
 
@@ -343,7 +344,7 @@ impl Sim {
                 let seq = self.air_seq();
                 let bssid = port_mac(t, *ap);
                 let f = Dot11::mgmt(MacAddr::BROADCAST, bssid, bssid, seq, body);
-                self.enqueue(at + LINK_DELAY_US, *ap, *h, f.encode(), 0);
+                self.enqueue(at + self.hop_delay(), *ap, *h, f.encode(), 0);
             }
             at += BEACON_EVERY_US;
         }
@@ -436,7 +437,7 @@ impl Sim {
         for (from, to, frame, hops) in held {
             let group = client != from && Dot11::decode(&frame).is_ok_and(|f| f.addr1.0[0] & 1 == 1);
             let frame = if group { self.seal_group(client, from, frame) } else { self.seal(client, client == from, frame) };
-            self.enqueue(now + LINK_DELAY_US, from, to, frame, hops);
+            self.enqueue(now + self.hop_delay(), from, to, frame, hops);
         }
     }
 
