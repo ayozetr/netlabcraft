@@ -1219,3 +1219,20 @@ no such cable	no existe ese cable
 {} cables	{} cables
 PC2 reaches PC1	PC2 llega a PC1
 Each PC's gateway is the router's address in its LAN.	La puerta de enlace de cada PC es la dirección del router en su LAN.
+Constant Delay	Retardo constante
+Every hop takes the same simulated time (1 ms), whatever queues would add	Cada salto tarda el mismo tiempo simulado (1 ms), sin importar lo que añadan las colas
+Capture only the visible events	Capturar solo los eventos visibles
+Events of hidden protocols are neither recorded nor exported to pcap; turning it on also removes them from the list	Los eventos de protocolos ocultos no se registran ni se exportan a pcap; al activarlo también se quitan de la lista
+What {} decided before sending it	Lo que decidió {} antes de enviarlo
+After a delay	Tras un retardo
+At a simulated time	En un instante simulado
+At time	Instante
+seconds of simulated time	segundos de tiempo simulado
+Type the simulated time to send it at	Escribe el instante simulado en que se envía
+The device sends a packet to {}: its routing table gives next hop {}, out {}, with TTL {}.	El dispositivo envía un paquete a {}: su tabla de rutas da el siguiente salto {}, sale por {}, con TTL {}.
+The device sends a packet to {}: its routing table says it is directly connected, out {}, with TTL {}.	El dispositivo envía un paquete a {}: su tabla de rutas dice que es una red conectada, sale por {}, con TTL {}.
+Switching	Conmutación
+Central	Central
+Local	Local
+Central switching (through the controller)	Conmutación central (a través del controlador)
+The access points tunnel the hosts' traffic to the controller over CAPWAP, and the controller bridges it into the VLAN	Los puntos de acceso envían por túnel el tráfico de los equipos al controlador mediante CAPWAP, y el controlador lo pasa a la VLAN

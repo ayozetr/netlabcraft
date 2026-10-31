@@ -449,7 +449,12 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                         Some(v) => format!(" vlan {}", v.as_u64().ok_or_else(|| bad("vlan is a number, 1-4094"))?),
                         None => String::new(),
                     };
-                    format!("wlan {n} {ssid} {sec}{vlan}")
+                    let central = match opt_str(p, "switching").unwrap_or("local") {
+                        "local" => "",
+                        "central" => " central",
+                        other => return Err(bad(format!("switching `{other}`: local or central"))),
+                    };
+                    format!("wlan {n} {ssid} {sec}{vlan}{central}")
                 }
             } else {
                 match opt_str(p, "address").map(str::trim).filter(|a| !a.is_empty()) {
@@ -1234,7 +1239,46 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                 .collect();
             Ok(Value::Array(evs))
         }
-        "sim.status" => Ok(json!({"time_us": s.sim.now_us(), "events": s.sim.trace().len(), "storm": s.sim.storm_detected()})),
+        "sim.status" => Ok(json!({
+            "time_us": s.sim.now_us(),
+            "events": s.sim.trace().len(),
+            "storm": s.sim.storm_detected(),
+            "constant_delay_us": s.sim.constant_delay(),
+            "capture": s.sim.capture_filter(),
+        })),
+        "sim.constant_delay" => {
+            let on = p.get("on").and_then(Value::as_bool).ok_or_else(|| bad("`on` (true or false) is required"))?;
+            let us = match p.get("us") {
+                None | Some(Value::Null) => netlabcraft_sim::simmode::DEFAULT_CONSTANT_DELAY_US,
+                Some(v) => v
+                    .as_u64()
+                    .filter(|v| (1..=netlabcraft_sim::simmode::MAX_CONSTANT_DELAY_US).contains(v))
+                    .ok_or_else(|| bad("`us` is a whole number of microseconds from 1 to 1000000"))?,
+            };
+            s.sim.set_constant_delay(on.then_some(us));
+            s.revision += 1;
+            Ok(json!({"on": on, "us": s.sim.constant_delay()}))
+        }
+        "sim.capture_filter" => {
+            let on = p.get("on").and_then(Value::as_bool).ok_or_else(|| bad("`on` (true or false) is required"))?;
+            let protocols = if on {
+                let list = p.get("protocols").and_then(Value::as_array).ok_or_else(|| bad("`protocols` (a list of protocol names) is required"))?;
+                if list.len() > netlabcraft_sim::simmode::MAX_CAPTURE_PROTOCOLS {
+                    return Err(bad(format!("`protocols` names at most {} protocols", netlabcraft_sim::simmode::MAX_CAPTURE_PROTOCOLS)));
+                }
+                let names: Vec<String> = list.iter().filter_map(Value::as_str).map(|x| x.chars().take(32).collect()).collect();
+                if names.len() != list.len() {
+                    return Err(bad("`protocols` holds names such as \"ICMP\" or \"ARP\""));
+                }
+                Some(names)
+            } else {
+                None
+            };
+            s.sim.set_capture_filter(protocols);
+            let removed = if p.get("prune").and_then(Value::as_bool).unwrap_or(false) { s.sim.prune_to_capture_filter() } else { 0 };
+            s.revision += 1;
+            Ok(json!({"on": on, "protocols": s.sim.capture_filter(), "removed": removed}))
+        }
         "topology.get" => serde_json::to_value(&s.topology).map_err(|e| EngineError::Failed(e.to_string())),
         "sample.list" => Ok(Value::Array(sample::SAMPLES.iter().map(|x| json!({"id": x.id, "title": x.title, "description": x.description})).collect())),
         other => Err(EngineError::UnknownCommand(other.to_string())),

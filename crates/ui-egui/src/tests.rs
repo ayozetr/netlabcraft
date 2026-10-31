@@ -1287,3 +1287,77 @@ fn the_instructions_show_the_students_language() {
     assert!(h.query_by_label_contains("Solo en español").is_some());
     i18n::set_thread_lang(None);
 }
+
+/// The Simulation panel's Constant Delay and "Capture only the visible events" boxes set the
+/// engine's options; the complex PDU window offers an absolute start time.
+#[test]
+fn simulation_panel_toggles_constant_delay_and_the_capture_filter() {
+    use egui::accesskit::Role;
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "two-subnets"})).unwrap();
+    s.execute("net.ping", json!({"from": "PC1", "to": "10.0.2.10", "count": 1})).unwrap();
+    let mut h = Harness::builder().with_size(egui::vec2(1280.0, 900.0)).build_ui_state(|ui, app: &mut PacketApp| app.ui(ui), PacketApp::new(s));
+    h.state_mut().ui.show_notes = false;
+    h.state_mut().ui.mode = Mode::Simulation;
+    h.run_steps(3);
+    h.get_by_role_and_label(Role::CheckBox, "Constant Delay").click();
+    h.run_steps(2);
+    assert_eq!(h.state().session.sim.constant_delay(), Some(netlabcraft_sim::simmode::DEFAULT_CONSTANT_DELAY_US));
+    // Only ICMP visible, then captured only.
+    for (i, x) in h.state_mut().ui.events.filter.iter_mut().enumerate() {
+        *x = i == 1;
+    }
+    h.run_steps(1);
+    h.get_by_role_and_label(Role::CheckBox, "Capture only the visible events").click();
+    h.run_steps(2);
+    assert_eq!(h.state().session.sim.capture_filter(), Some(&["ICMP".to_string()][..]));
+    assert!(h.state().session.sim.trace().iter().all(|e| e.protocol == netlabcraft_wire::Protocol::Icmp));
+    h.get_by_role_and_label(Role::CheckBox, "Capture only the visible events").click();
+    h.run_steps(2);
+    h.get_by_role_and_label(Role::CheckBox, "Constant Delay").click();
+    h.run_steps(2);
+    assert!(h.state().session.sim.capture_filter().is_none() && h.state().session.sim.constant_delay().is_none());
+    // An absolute start time in the complex PDU window.
+    h.state_mut().ui.mode = Mode::Realtime;
+    let pc1 = h.state().session.topology.resolve("PC1").unwrap();
+    h.state_mut().ui.selected = Some(pc1);
+    h.run_steps(2);
+    h.get_by_label("Add Complex PDU").click();
+    h.run_steps(2);
+    h.get_by_role_and_label(Role::RadioButton, "At a simulated time").click();
+    h.run_steps(2);
+    assert!(h.query_by_role_and_label(Role::TextInput, "At time").is_some());
+    assert!(h.query_by_role_and_label(Role::TextInput, "Start time").is_none());
+    let mut d = pdu_dialog::Draft::new(Some(pc1));
+    d.destination = "10.0.2.10".into();
+    d.absolute = true;
+    assert!(pdu_dialog::params(&d).is_err(), "no time typed");
+    d.at = "12.5".into();
+    assert_eq!(pdu_dialog::params(&d).unwrap()["at"], 12.5);
+    assert!(pdu_dialog::params(&d).unwrap().get("start").is_none());
+}
+
+/// The controller's Wireless page sets a WLAN to central switching through `wlc.wlan`.
+#[test]
+fn the_wlan_page_sets_central_switching() {
+    use egui::accesskit::Role;
+    let mut h = harness(Some("wlc"));
+    h.state_mut().ui.show_notes = false;
+    h.run_steps(2);
+    let wlc = h.state().session.topology.resolve("WLC1").unwrap();
+    open_console(h.state_mut(), wlc);
+    {
+        let w = h.state_mut().ui.windows.get_mut(&wlc).unwrap();
+        w.tab = console::Tab::Config;
+        w.page = console::ConfigPage::Wireless;
+    }
+    h.run_steps(3);
+    assert!(h.query_by_label("Switching").is_some());
+    h.get_by_role_and_label(Role::CheckBox, "Central switching (through the controller)").click();
+    h.run_steps(1);
+    h.get_by_label("Save WLAN").click();
+    h.run_steps(2);
+    // The form's next free WLAN number, saved with central switching.
+    let wlans = &h.state().session.topology.device(wlc).unwrap().wlan.wlans;
+    assert!(wlans.iter().any(|w| w.id == 3 && w.central) && wlans.iter().filter(|w| w.central).count() == 1, "{wlans:?}");
+}

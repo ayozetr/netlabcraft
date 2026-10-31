@@ -884,12 +884,9 @@ impl Eapol {
             Eapol::Eap(e) => match (e.code, e.kind) {
                 (EAP_REQUEST, Some(EAP_IDENTITY)) => "EAP request: identity?".into(),
                 (EAP_RESPONSE, Some(EAP_IDENTITY)) => format!("EAP response: identity \"{}\"", String::from_utf8_lossy(&e.data)),
-                (EAP_REQUEST, Some(EAP_PEAP)) if e.data.first().is_some_and(|f| f & PEAP_START != 0) => "EAP request: PEAP start".into(),
-                (EAP_REQUEST | EAP_RESPONSE, Some(EAP_PEAP)) => format!(
-                    "EAP {}: PEAP, {} byte(s) of TLS tunnel (contents not modelled)",
-                    if e.code == EAP_REQUEST { "request" } else { "response" },
-                    e.data.len().saturating_sub(1)
-                ),
+                (EAP_REQUEST | EAP_RESPONSE, Some(EAP_PEAP)) => {
+                    format!("EAP {}: PEAP, {}", if e.code == EAP_REQUEST { "request" } else { "response" }, crate::peap::describe(&e.data))
+                }
                 (EAP_SUCCESS, _) => "EAP success".into(),
                 (EAP_FAILURE, _) => "EAP failure".into(),
                 (c, k) => format!("EAP code {c} type {}", k.unwrap_or(0)),

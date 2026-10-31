@@ -42,6 +42,8 @@ pub enum Step {
     ArpAsk { ip: Ipv4Addr, iface: String },
     /// The packet is for this device.
     Delivered { dst: Ipv4Addr },
+    /// The sender's own routing lookup for a packet it raises (no TTL drop: it sets the TTL).
+    Sends { dst: Ipv4Addr, out: String, via: Option<Ipv4Addr>, ttl: u8 },
 }
 
 impl Step {
@@ -53,7 +55,7 @@ impl Step {
             Step::Switched { .. } | Step::Flooded { .. } | Step::ArpKnown { .. } | Step::ArpAsk { .. } => (2, false),
             Step::AclPermit { inbound, .. } => (3, *inbound),
             Step::NatIn { .. } | Step::Routed { .. } | Step::Delivered { .. } => (3, true),
-            Step::NatOut { .. } => (3, false),
+            Step::NatOut { .. } | Step::Sends { .. } => (3, false),
         }
     }
 
@@ -89,6 +91,14 @@ impl Step {
             Step::ArpKnown { ip, mac } => fill("The ARP table gives {} for {}: the frame is addressed to it.", &[&mac.to_string(), &ip.to_string()]),
             Step::ArpAsk { ip, iface } => fill("{} is not in the ARP table: an ARP request for it goes out {} first.", &[&ip.to_string(), iface]),
             Step::Delivered { dst } => fill("{} is this device's own address: the packet is for it.", &[&dst.to_string()]),
+            Step::Sends { dst, out, via: Some(nh), ttl } => fill(
+                "The device sends a packet to {}: its routing table gives next hop {}, out {}, with TTL {}.",
+                &[&dst.to_string(), &nh.to_string(), out, &ttl.to_string()],
+            ),
+            Step::Sends { dst, out, via: None, ttl } => fill(
+                "The device sends a packet to {}: its routing table says it is directly connected, out {}, with TTL {}.",
+                &[&dst.to_string(), out, &ttl.to_string()],
+            ),
         }
     }
 }
@@ -108,18 +118,24 @@ fn fill(template: &str, args: &[&str]) -> String {
 }
 
 impl Sim {
-    /// Records a decision about the frame being received (nothing outside a delivery).
+    /// Records a decision about the frame being received, or (outside a delivery) of a device
+    /// raising a packet itself.
     pub(crate) fn note(&mut self, step: Step) {
-        if let Some(v) = &mut self.explaining
-            && v.len() < MAX_STEPS
-        {
-            v.push(step);
+        match &mut self.explaining {
+            Some(v) => {
+                if v.len() < MAX_STEPS {
+                    v.push(step);
+                }
+            }
+            None => {
+                self.note_origin(step);
+            }
         }
     }
 
     /// Whether decisions are being recorded now (to skip work that only feeds them).
     pub(crate) fn explaining(&self) -> bool {
-        self.explaining.is_some()
+        self.explaining.is_some() || self.mode.origin.is_some()
     }
 
     /// The access list an interface applies (in or out), for the record.
@@ -172,6 +188,9 @@ pub struct Osi {
     pub sent: Vec<u64>,
     /// Why the device dropped the frame, and the layer (index) that dropped it.
     pub dropped: Option<(usize, String)>,
+    /// The sender's side, when it raised the packet itself: what each layer put on the wire
+    /// and what it decided (empty layers otherwise).
+    pub origin: Layers,
 }
 
 fn port_name(t: &Topology, e: netlabcraft_model::End) -> String {
@@ -323,6 +342,16 @@ pub fn osi(t: &Topology, sim: &Sim, e: &TraceEvent) -> Osi {
         {
             let ports: Vec<String> = sent.iter().map(|x| port_name(t, x.from)).collect();
             l.push(fill("Copies leave on {} ports: {}.", &[&sent.len().to_string(), &ports.join(", ")]));
+        }
+    }
+    // The sender's own decisions, when it raised the packet itself.
+    if !e.origin.is_empty() {
+        frame_layers(&e.frame, &port_name(t, e.from), false, &mut v.origin);
+        for s in &e.origin {
+            let (layer, _) = s.place();
+            if let Some(l) = v.origin.get_mut(usize::from(layer).saturating_sub(1)) {
+                l.push(s.describe());
+            }
         }
     }
     // The decisions, after what each layer saw.

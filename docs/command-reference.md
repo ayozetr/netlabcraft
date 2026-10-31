@@ -120,7 +120,9 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `sim.reset` | Reset simulation | Simulation |  | `{} (forget ARP/MAC tables and events)` |
 | `sim.clear_events` | Clear event list | Simulation |  | `{}` |
 | `sim.events` | Event list |  |  | `{"since"?: event id, "limit"?: 200} → [{id, at_us, from, to, protocol, summary, dropped}]` |
-| `sim.status` | Simulation status |  |  | `{} → {time_us, events, storm}` |
+| `sim.status` | Simulation status |  |  | `{} → {time_us, events, storm, constant_delay_us, capture}` |
+| `sim.constant_delay` | Constant Delay | Simulation |  | `{"on": true\|false, "us"?: hop time in µs (1-1000000, default 1000)} → {"on", "us"}: every hop then takes the same simulated time, whatever queues would add` |
+| `sim.capture_filter` | Capture only filtered events | Simulation |  | `{"on": true\|false, "protocols"?: ["ICMP", "ARP", …] (needed when on), "prune"?: true (also drop recorded events of other protocols)} → {"on", "protocols", "removed"}: the event list and the pcap capture then keep only these protocols` |
 | `topology.get` | The whole lab |  |  | `{} → the lab document` |
 | `sample.list` | Sample labs |  |  | `{} → [{id, title, description}]` |
 | `pdu.simple` | Add Simple PDU | Simulation |  | `{"from": "device", "to": "address or device"} → the PDU {num, status, note, first_event…}: one echo request, added to the scenario's PDU list and sent now` |
@@ -356,7 +358,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show policy-map interface` | user, privileged | router, switch | Service policies and their counters |
 | `show policy-map interface <interface>` | user, privileged | router, switch | One interface's service policies and counters |
 | `show crypto map` | user, privileged | router | Crypto maps and where they apply |
-| `wlan <1-16> SSID {open \| psk PASSPHRASE \| enterprise}` | config | switch | A WLAN this controller offers through its access points |
+| `wlan <1-16> SSID {open \| psk PASSPHRASE \| enterprise} [vlan V] [central]` | config | switch | A WLAN this controller offers through its access points |
 | `no wlan <1-16>` | config | switch | Stop offering a WLAN |
 | `capwap controller A.B.C.D` | config | switch | The wireless LAN controller this access point joins |
 | `no capwap controller` | config | switch | Join a controller in this subnet |

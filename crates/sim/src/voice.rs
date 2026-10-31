@@ -37,7 +37,7 @@ use netlabcraft_model::voice::SIGNAL_PORT;
 use netlabcraft_model::{Device, DeviceKind, End, Topology};
 use netlabcraft_wire::{Frame, Ipv4, PROTO_UDP, Udp};
 
-use crate::{LINK_DELAY_US, MAX_SWITCH_HOPS, Sim, SimError, default_ttl, port_up};
+use crate::{MAX_SWITCH_HOPS, Sim, SimError, default_ttl, port_up};
 
 /// The UDP port voice packets go to.
 pub const RTP_PORT: u16 = 16_384;
@@ -263,7 +263,7 @@ impl Sim {
             return Err("the phone's other port is not connected".into());
         }
         let Some(to) = t.peer(from) else { return Err("the phone's other port is not connected".into()) };
-        self.push_hop(t, self.now + LINK_DELAY_US, from, to, frame, hops);
+        self.push_hop(t, self.now + self.hop_delay(), from, to, frame, hops);
         Ok(())
     }
 

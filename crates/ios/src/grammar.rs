@@ -1492,7 +1492,7 @@ pub static SPECS: &[Spec] = &[
         WlanAdd,
         Modes::CONFIG,
         Modes::SWITCH,
-        [K("wlan"), Arg("<1-16>"), Arg("SSID"), Rest("{open | psk PASSPHRASE | enterprise}")],
+        [K("wlan"), Arg("<1-16>"), Arg("SSID"), Rest("{open | psk PASSPHRASE | enterprise} [vlan V] [central]")],
         "A WLAN this controller offers through its access points"
     ),
     spec!(NoWlan, Modes::CONFIG, Modes::SWITCH, [K("no"), K("wlan"), Arg("<1-16>")], "Stop offering a WLAN"),

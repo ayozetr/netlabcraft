@@ -170,7 +170,10 @@ impl Control {
         }
         let wlans = self.wlans();
         if !wlans.is_empty() {
-            let list: Vec<String> = wlans.iter().map(|w| format!("{} \"{}\" ({})", w.wlan_id, w.ssid, w.security_name())).collect();
+            let list: Vec<String> = wlans
+                .iter()
+                .map(|w| format!("{} \"{}\" ({}{})", w.wlan_id, w.ssid, w.security_name(), if w.central { ", central switching" } else { "" }))
+                .collect();
             s.push_str(&format!(": add WLAN {}", list.join(", ")));
         }
         let deleted = self.elements.iter().filter(|(k, _)| *k == DELETE_WLAN).count();
@@ -191,6 +194,8 @@ pub struct AddWlan {
     pub key: Vec<u8>,
     pub akm: Option<Akm>,
     pub ssid: String,
+    /// Tunnel mode 802.3 (central switching) rather than local bridging.
+    pub central: bool,
 }
 
 /// Capability bits of Add WLAN, most significant first: E(SS), I(BSS), C(F-pollable),
@@ -217,7 +222,7 @@ impl AddWlan {
         b.push(0); // QoS: best effort
         b.push(0); // auth type: open system
         b.push(1); // MAC mode: split MAC
-        b.push(0); // tunnel mode: local bridging
+        b.push(u8::from(self.central)); // tunnel mode: 0 local bridging, 1 802.3 tunnel
         b.push(0); // SSID broadcast in beacons
         b.extend_from_slice(ssid);
         // The RSN element follows the SSID, after a zero separator (an extension of ours, so one
@@ -234,13 +239,14 @@ impl AddWlan {
         let (radio, wlan_id) = (*b.first().ok_or_else(t)?, *b.get(1).ok_or_else(t)?);
         let klen = usize::from(be16(b, 6).ok_or_else(t)?);
         let key = b.get(8..8 + klen).ok_or_else(t)?.to_vec();
+        let central = *b.get(8 + klen + 9).ok_or_else(t)? == 1;
         let rest = b.get(8 + klen + 11..).ok_or_else(t)?;
         let (ssid, rsn) = match rest.iter().position(|&x| x == 0) {
             Some(i) => (rest.get(..i).unwrap_or_default(), rest.get(i + 1..).unwrap_or_default()),
             None => (rest, &[][..]),
         };
         let akm = if rsn.first() == Some(&48) { crate::wlan::rsn_akm(rsn.get(2..).unwrap_or_default()) } else { None };
-        Ok(AddWlan { radio, wlan_id, key, akm, ssid: String::from_utf8_lossy(ssid).into_owned() })
+        Ok(AddWlan { radio, wlan_id, key, akm, ssid: String::from_utf8_lossy(ssid).into_owned(), central })
     }
 }
 
@@ -252,6 +258,20 @@ pub fn data_encode(frame: &[u8]) -> Vec<u8> {
 }
 
 /// The 802.11 frame a CAPWAP data message carries.
+/// CAPWAP data carrying an IEEE 802.3 frame (T bit clear): a host's traffic tunnelled between
+/// an access point and its controller (central switching).
+pub fn data_encode_8023(frame: &[u8]) -> Vec<u8> {
+    let mut out = header(false).to_vec();
+    out.extend_from_slice(frame);
+    out
+}
+
+/// The frame CAPWAP data carries, and whether it is a native IEEE 802.11 frame (else 802.3).
+pub fn data_frame(b: &[u8]) -> Result<(Vec<u8>, bool)> {
+    let (rest, native) = strip(b)?;
+    Ok((rest.to_vec(), native))
+}
+
 pub fn data_decode(b: &[u8]) -> Result<Vec<u8>> {
     let (rest, native) = strip(b)?;
     if !native {
@@ -263,8 +283,9 @@ pub fn data_decode(b: &[u8]) -> Result<Vec<u8>> {
 /// One line for the event list: control or data.
 pub fn describe(port: u16, b: &[u8]) -> String {
     if port == DATA_PORT {
-        return match data_decode(b) {
-            Ok(f) => format!("CAPWAP data carrying {}", crate::wlan::summarize(&f)),
+        return match data_frame(b) {
+            Ok((f, true)) => format!("CAPWAP data carrying {}", crate::wlan::summarize(&f)),
+            Ok((f, false)) => format!("CAPWAP data (central switching) carrying {}", crate::summarize(&f).1),
             Err(e) => format!("CAPWAP data ({e})"),
         };
     }
@@ -284,14 +305,14 @@ mod tests {
     use super::*;
 
     fn samples() -> Vec<Control> {
-        let w = AddWlan { radio: 1, wlan_id: 2, key: vec![5; 32], akm: Some(Akm::Psk), ssid: "Staff".into() };
+        let w = AddWlan { radio: 1, wlan_id: 2, key: vec![5; 32], akm: Some(Akm::Psk), ssid: "Staff".into(), central: true };
         vec![
             Control::new(DISCOVERY_REQUEST, 1).with(WTP_NAME, b"LAP1".to_vec()),
             Control::new(JOIN_RESPONSE, 2).with(AC_NAME, b"WLC1".to_vec()).with(RESULT_CODE, result_code(RESULT_SUCCESS)),
             Control::new(WLAN_CONFIG_REQUEST, 3)
                 .with(ADD_WLAN, w.encode())
-                .with(ADD_WLAN, AddWlan { radio: 1, wlan_id: 3, key: vec![], akm: Some(Akm::Dot1x), ssid: "Corp".into() }.encode())
-                .with(ADD_WLAN, AddWlan { radio: 1, wlan_id: 4, key: vec![], akm: None, ssid: "Guest".into() }.encode()),
+                .with(ADD_WLAN, AddWlan { radio: 1, wlan_id: 3, key: vec![], akm: Some(Akm::Dot1x), ssid: "Corp".into(), central: false }.encode())
+                .with(ADD_WLAN, AddWlan { radio: 1, wlan_id: 4, key: vec![], akm: None, ssid: "Guest".into(), central: false }.encode()),
         ]
     }
 
@@ -308,11 +329,34 @@ mod tests {
             vec![("Staff", Some(Akm::Psk)), ("Corp", Some(Akm::Dot1x)), ("Guest", None)]
         );
         assert_eq!(wl[0].key, vec![5; 32]);
-        assert!(samples()[2].describe().contains("2 \"Staff\" (WPA2-PSK)"));
+        assert!(
+            samples()[2].describe().contains("2 \"Staff\" (WPA2-PSK, central switching), 3 \"Corp\" (WPA2-Enterprise)"),
+            "{}",
+            samples()[2].describe()
+        );
+        assert_eq!(wl.iter().map(|w| w.central).collect::<Vec<_>>(), vec![true, false, false]);
         assert_eq!(samples()[1].describe(), "CAPWAP join response from controller \"WLC1\": success");
         let d = data_encode(&[0x08, 0x01, 0, 0]);
         assert_eq!(data_decode(&d), Ok(vec![0x08, 0x01, 0, 0]));
         assert!(data_decode(&samples()[0].encode()).is_err());
+        // Central switching: an 802.3 frame, the T bit clear.
+        let eth = crate::Frame {
+            dst: crate::MacAddr::BROADCAST,
+            src: crate::MacAddr([2, 0, 0, 0, 0, 9]),
+            vlan: Some(10),
+            ethertype: 0x0806,
+            payload: vec![0; 28],
+        }
+        .encode();
+        let d = data_encode_8023(&eth);
+        assert_eq!(d[2] & 1, 0, "T bit clear");
+        assert_eq!(data_frame(&d), Ok((eth.clone(), false)));
+        assert!(data_decode(&d).is_err());
+        assert!(describe(DATA_PORT, &d).starts_with("CAPWAP data (central switching) carrying ARP"), "{}", describe(DATA_PORT, &d));
+        for n in 0..d.len() {
+            let _ = data_frame(&d[..n]);
+            let _ = describe(DATA_PORT, &d[..n]);
+        }
     }
 
     #[test]

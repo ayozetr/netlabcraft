@@ -2712,7 +2712,8 @@ fn wlan_config(s: &mut String, d: &Device) {
             WlanSecurity::Enterprise => "enterprise".to_string(),
         };
         let vlan = w.vlan.map(|v| format!(" vlan {v}")).unwrap_or_default();
-        let _ = writeln!(s, "wlan {} {} {sec}{vlan}", w.id, w.ssid);
+        let central = if w.central { " central" } else { "" };
+        let _ = writeln!(s, "wlan {} {} {sec}{vlan}{central}", w.id, w.ssid);
     }
     if let Some(a) = d.wlan.controller {
         let _ = writeln!(s, "capwap controller {a}");

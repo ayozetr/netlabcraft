@@ -181,7 +181,7 @@ fn columns(ui: &Ui, width: f32) -> [(&'static str, f32); 6] {
 }
 
 /// The height the simulation panel keeps under the event list for its controls and filters.
-const BELOW_LIST: f32 = 260.0;
+const BELOW_LIST: f32 = 316.0;
 
 pub fn panel(app: &mut PacketApp, ui: &mut Ui) {
     let now = ui.input(|i| i.time);
@@ -325,6 +325,15 @@ pub fn panel(app: &mut PacketApp, ui: &mut Ui) {
         if ui.add(egui::Slider::new(&mut speed, 0.1..=2.0).show_value(false)).on_hover_text(tl("Play speed")).changed() {
             app.ui.events.step_seconds = 2.1 - speed;
         }
+        // Constant delay: every hop takes the same simulated time (the engine keeps the option).
+        let mut constant = app.session.sim.constant_delay().is_some();
+        if ui
+            .checkbox(&mut constant, tl("Constant Delay"))
+            .on_hover_text(tl("Every hop takes the same simulated time (1 ms), whatever queues would add"))
+            .changed()
+        {
+            app.run("sim.constant_delay", json!({"on": constant}));
+        }
         ui.separator();
         ui.label(RichText::new(tl("Event List Filters - Visible Events")).size(16.0));
         let visible: Vec<&str> =
@@ -337,11 +346,12 @@ pub fn panel(app: &mut PacketApp, ui: &mut Ui) {
         } else {
             visible.join(", ")
         });
+        let mut filters_changed = false;
         if app.ui.events.show_filters {
             ui.horizontal_wrapped(|ui| {
                 for (i, p) in FILTERS.iter().enumerate() {
                     if let Some(f) = app.ui.events.filter.get_mut(i) {
-                        ui.checkbox(f, RichText::new(p.name()).color(theme::protocol_color(*p)));
+                        filters_changed |= ui.checkbox(f, RichText::new(p.name()).color(theme::protocol_color(*p))).changed();
                     }
                 }
             });
@@ -357,9 +367,33 @@ pub fn panel(app: &mut PacketApp, ui: &mut Ui) {
             {
                 let all = app.ui.events.filter.iter().all(|f| *f);
                 app.ui.events.filter = [!all; FILTERS.len()];
+                filters_changed = true;
             }
         });
+        // The filters can also decide what is recorded (and exported to pcap).
+        let mut only = app.session.sim.capture_filter().is_some();
+        if ui
+            .checkbox(&mut only, tl("Capture only the visible events"))
+            .on_hover_text(tl("Events of hidden protocols are neither recorded nor exported to pcap; turning it on also removes them from the list"))
+            .changed()
+        {
+            set_capture(app, only, true);
+        } else if filters_changed && only {
+            set_capture(app, true, false);
+        }
     });
+}
+
+/// Records only the visible protocols (`on`), or everything; `prune` also drops what the list
+/// holds of the others.
+fn set_capture(app: &mut PacketApp, on: bool, prune: bool) {
+    let names: Vec<&str> =
+        FILTERS.iter().enumerate().filter(|(i, _)| app.ui.events.filter.get(*i).copied().unwrap_or(true)).map(|(_, p)| p.name()).collect();
+    let p = if on { json!({"on": true, "protocols": names, "prune": prune}) } else { json!({"on": false}) };
+    app.run("sim.capture_filter", p);
+    if prune && app.ui.events.selected.is_some_and(|s| !app.session.sim.trace().iter().any(|e| e.id == s)) {
+        app.ui.events.selected = None;
+    }
 }
 
 /// The PDU information window of one event.
@@ -400,8 +434,12 @@ pub fn pdu_window(app: &mut PacketApp, ctx: &egui::Context) {
                 }
             });
             ui.separator();
+            let sender = t.device(e.from.device).map_or("?".to_string(), |d| d.name.clone());
             egui::ScrollArea::vertical().show(ui, |ui| match tab {
-                InfoTab::Osi => osi_view(ui, &osi, &tk),
+                InfoTab::Osi => {
+                    osi_view(ui, &osi, &tk);
+                    origin_view(ui, &osi, &sender);
+                }
                 InfoTab::Inbound => layer_details(ui, id, &e.frame, e.air.as_deref()),
                 InfoTab::Outbound => match &out {
                     Some(o) => {
@@ -454,6 +492,27 @@ fn osi_view(ui: &mut Ui, osi: &netlabcraft_sim::explain::Osi, tk: &theme::Tokens
             ui.end_row();
         }
     });
+}
+
+/// What the sender decided before putting the frame on the wire, when it raised the packet
+/// itself (layer 7 at the top; only the layers that say something).
+fn origin_view(ui: &mut Ui, osi: &netlabcraft_sim::explain::Osi, sender: &str) {
+    if osi.origin.iter().all(Vec::is_empty) {
+        return;
+    }
+    ui.separator();
+    ui.label(RichText::new(crate::i18n::trf("What {} decided before sending it", &[&sender])).strong());
+    for i in (0..7).rev() {
+        let lines = osi.origin.get(i).map(Vec::as_slice).unwrap_or_default();
+        if lines.is_empty() {
+            continue;
+        }
+        let name = netlabcraft_sim::explain::LAYER_NAMES.get(i).copied().unwrap_or_default();
+        ui.label(RichText::new(tl(name)).strong());
+        for l in lines {
+            ui.add(egui::Label::new(crate::i18n::tr_any(l)).wrap());
+        }
+    }
 }
 
 /// A frame layer by layer, plus its bytes.

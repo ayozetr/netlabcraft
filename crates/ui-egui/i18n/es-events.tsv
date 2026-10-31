@@ -56,3 +56,9 @@ end of the MIB	fin de la MIB
 no such object	no existe el objeto
 SIA query	consulta SIA
 SIA reply	respuesta SIA
+TLS handshake	negociación TLS
+TLS application data	datos de aplicación TLS
+encrypted bytes	bytes cifrados
+client hello	saludo del cliente
+server hello	saludo del servidor
+central switching	conmutación central

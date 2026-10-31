@@ -65,11 +65,14 @@ impl Sim {
             return Err(SimError::NoSource("that port has no IP address".into()));
         }
         let held = std::mem::replace(&mut self.hold_for_arp, true);
+        // Its answers are watched for whatever the capture filter keeps in the event list.
+        self.watch(dev);
         let r = match spec.app {
             PduApp::Dhcp => self.pdu_dhcp(t, dev, spec),
             PduApp::Arp => self.pdu_arp(t, dev, spec, from_port.as_ref()),
             _ => self.pdu_ip(t, dev, spec, from_port.as_ref()),
         };
+        self.unwatch();
         self.hold_for_arp = held;
         let (ok, note) = r?;
         Ok(PduOutcome { ok, note, first_event })
@@ -78,13 +81,15 @@ impl Sim {
     /// Runs the network until a frame delivered to `dev` since `since` answers the PDU (or the
     /// wait runs out).
     fn pdu_wait(&mut self, t: &Topology, dev: DeviceId, since: u64, judge: impl Fn(&TraceEvent) -> Option<Answer>) -> Option<Answer> {
-        let found = |s: &Sim| s.trace.iter().rev().take_while(|e| e.id >= since).find(|e| e.to.device == dev).and_then(&judge);
+        let found = |s: &Sim| s.watched(since).filter(|e| e.to.device == dev).last().and_then(&judge);
         if let Some(a) = found(self) {
             return Some(a);
         }
         let deadline = self.now.saturating_add(PDU_WAIT_US);
-        self.advance(t, deadline, |s| s.trace.back().is_some_and(|e| e.id >= since && e.to.device == dev && judge(e).is_some()));
-        self.trace.iter().filter(|e| e.id >= since && e.to.device == dev).find_map(&judge)
+        self.advance(t, deadline, |s| {
+            s.mode.watch.as_ref().and_then(|(_, v)| v.back()).is_some_and(|e| e.id >= since && e.to.device == dev && judge(e).is_some())
+        });
+        self.watched(since).filter(|e| e.to.device == dev).find_map(&judge)
     }
 
     fn pdu_arp(&mut self, t: &Topology, dev: DeviceId, spec: &PduSpec, from: Option<&L3If>) -> Result<(bool, String), SimError> {
@@ -103,7 +108,9 @@ impl Sim {
         let since = self.next_event.saturating_add(1);
         let req = Arp { op: ArpOp::Request, sender_mac: out.mac, sender_ip: out.net.addr, target_mac: MacAddr::ZERO, target_ip: dst };
         let frame = Frame { dst: MacAddr::BROADCAST, src: out.mac, vlan: out.vlan, ethertype: ETHERTYPE_ARP, payload: req.encode() };
+        let origin = self.begin_origin();
         self.l3_emit(t, d, &out, frame);
+        self.end_origin(origin);
         let answer = self.pdu_wait(t, dev, since, |e| {
             let f = Frame::decode(&e.frame).ok().filter(|f| f.ethertype == ETHERTYPE_ARP)?;
             let a = Arp::decode(&f.payload).ok().filter(|a| a.op == ArpOp::Reply && a.sender_ip == dst)?;
@@ -163,7 +170,11 @@ impl Sim {
         let d = t.device(dev).ok_or("device removed")?;
         self.bump(d.id, "sent");
         let (out, nh) = self.route_flow(t, d, ip.src, ip.dst).ok_or_else(|| format!("no route to {}", ip.dst))?;
-        self.transmit(t, d, &out, nh, with_tos(ip.encode(), tos))
+        let origin = self.begin_origin();
+        self.note_sends(ip.dst, &out, nh, ip.ttl);
+        let r = self.transmit(t, d, &out, nh, with_tos(ip.encode(), tos));
+        self.end_origin(origin);
+        r
     }
 
     fn pdu_ip(&mut self, t: &Topology, dev: DeviceId, spec: &PduSpec, from: Option<&L3If>) -> Result<(bool, String), SimError> {

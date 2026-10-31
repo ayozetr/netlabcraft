@@ -15,10 +15,12 @@
 //! in message 3 of the handshake, inside the key data wrapped with the KEK (AES key wrap, RFC
 //! 3394). Group-addressed frames from the access point (broadcasts, multicasts) are protected
 //! with the GTK (key id 1) and a group packet number each host checks for replays; frames from
-//! a host stay under its pairwise key. On WPA2-Enterprise WLANs the controller runs
-//! PEAP after the identity: its TLS tunnel is shown as one opaque round trip (no real TLS
-//! handshake or records), the login inside it is checked with RADIUS, and the master key the
-//! tunnel would export is stood in by one derived from the host's login.
+//! a host stay under its pairwise key. On WPA2-Enterprise WLANs the host logs in with PEAP
+//! (see [`crate::peap`]): the controller passes each EAP message between the host (EAPOL, via
+//! the AP over CAPWAP data) and its RADIUS server (EAP-Message with Message-Authenticator,
+//! RFC 3579); the server runs the tunnel and the inner EAP-GTC login, and its Access-Accept
+//! hands the controller the session key (MPPE key attribute), which keys the 4-way handshake
+//! as the host's own end of the tunnel does.
 //!
 //! Access points beacon every [`BEACON_TU`] time units (about two seconds, slower than real
 //! ones, so the event list stays readable) to the Wi-Fi hosts in range.
@@ -29,7 +31,8 @@
 //! Lightweight APs join their controller with a CAPWAP exchange (discovery, join, configuration
 //! status, then the IEEE 802.11 WLAN configuration that pushes the WLANs) over UDP 5246, and
 //! relay EAPOL to it over the CAPWAP data channel (UDP 5247). Host traffic itself is bridged
-//! locally by the AP onto its wired port (central tunnelling of data is not modelled).
+//! locally by the AP onto its wired port, or, on a centrally switched WLAN, tunnelled to the
+//! controller over CAPWAP data and bridged there (see [`crate::central`]).
 //!
 //! Who may join and associate is worked out from the lab (`Topology::wifi_attempt`,
 //! `Topology::lap_controller`), as the routing protocols are; these exchanges show it on the
@@ -41,14 +44,14 @@ use netlabcraft_core::{DeviceId, MacAddr, VlanId};
 use netlabcraft_model::wlan::{Attempt, WlanSecurity, is_lap, is_wlc, mgmt_addr};
 use netlabcraft_model::{Device, End, Topology, ifname};
 use netlabcraft_wire::capwap::{self, Control};
-use netlabcraft_wire::radius::{ACCESS_ACCEPT, RADIUS_PORT, Radius};
+use netlabcraft_wire::radius::{ACCESS_ACCEPT, ACCESS_CHALLENGE, RADIUS_PORT, Radius};
 use netlabcraft_wire::wlan::{
     self, Akm, Body, Bss, Dot11, EAP_FAILURE, EAP_IDENTITY, EAP_PEAP, EAP_REQUEST, EAP_RESPONSE, EAP_SUCCESS, ETHERTYPE_EAPOL, Eap, Eapol, EapolKey,
     KEY_ACK, KEY_INSTALL, KEY_MIC, KEY_PAIRWISE, KEY_SECURE, KEY_VERSION_2, PEAP_START,
 };
 use netlabcraft_wire::{Frame, Ipv4, PROTO_UDP, Udp};
 
-use crate::{LINK_DELAY_US, Queued, Sim, default_ttl, is_ap_radio};
+use crate::{Queued, Sim, default_ttl, is_ap_radio};
 
 /// Most frames a host's association keeps waiting.
 const MAX_HELD: usize = 64;
@@ -91,6 +94,12 @@ pub struct Assoc {
     pn_down: u64,
     rx_up: u64,
     rx_down: u64,
+    /// WPA2-Enterprise: the host's end of its PEAP tunnel.
+    peap: Option<crate::peap::ClientTunnel>,
+    /// The controller's view: the RADIUS server's State for this login, and the master key
+    /// its Access-Accept delivered.
+    radius_state: Option<Vec<u8>>,
+    pmk_ap: Option<[u8; 32]>,
 }
 
 impl Assoc {
@@ -197,11 +206,12 @@ impl Sim {
     /// Puts bytes on the air (or a cable) as they are.
     fn enqueue(&mut self, at: u64, from: End, to: End, frame: Vec<u8>, hops: u8) {
         self.seq += 1;
+        self.origin_queued(self.seq);
         self.queue.push(std::cmp::Reverse(Queued { at, seq: self.seq, from, to, frame, hops, cause: self.cause }));
     }
 
     fn send_air(&mut self, from: End, to: End, f: Dot11) {
-        let at = self.now + LINK_DELAY_US;
+        let at = self.now + self.hop_delay();
         self.enqueue(at, from, to, f.encode(), 0);
     }
 
@@ -343,7 +353,7 @@ impl Sim {
                 let seq = self.air_seq();
                 let bssid = port_mac(t, *ap);
                 let f = Dot11::mgmt(MacAddr::BROADCAST, bssid, bssid, seq, body);
-                self.enqueue(at + LINK_DELAY_US, *ap, *h, f.encode(), 0);
+                self.enqueue(at + self.hop_delay(), *ap, *h, f.encode(), 0);
             }
             at += BEACON_EVERY_US;
         }
@@ -436,7 +446,7 @@ impl Sim {
         for (from, to, frame, hops) in held {
             let group = client != from && Dot11::decode(&frame).is_ok_and(|f| f.addr1.0[0] & 1 == 1);
             let frame = if group { self.seal_group(client, from, frame) } else { self.seal(client, client == from, frame) };
-            self.enqueue(now + LINK_DELAY_US, from, to, frame, hops);
+            self.enqueue(now + self.hop_delay(), from, to, frame, hops);
         }
     }
 
@@ -602,15 +612,20 @@ impl Sim {
     }
 
     /// The PMK a host and its access point share: from the passphrase (WPA2-Personal), or on
-    /// WPA2-Enterprise from the host's login, standing in for the key its EAP method's TLS
-    /// tunnel would export (the tunnel is not modelled).
+    /// WPA2-Enterprise the key the PEAP tunnel exported (the host's end), as the RADIUS server
+    /// delivered it to the controller (the access point's). Without one, each side's stand-in
+    /// differs, so the handshake fails.
     /// `ap_side`: the access point's view (its own passphrase) rather than the host's.
     fn pmk_for(&mut self, t: &Topology, offer: &netlabcraft_model::wlan::Offer, client: End, ap_side: bool) -> [u8; 32] {
         let mine = t.device(client.device).and_then(|d| d.ports.get(client.port)).and_then(|p| p.wifi.clone()).unwrap_or_default();
         match &offer.security {
             WlanSecurity::Enterprise => {
-                let l = mine.login.unwrap_or_default();
-                self.pmk(&l.password, &format!("{}@{}", l.user, offer.ssid))
+                let a = self.assoc.get(&client);
+                if ap_side {
+                    a.and_then(|a| a.pmk_ap).unwrap_or([0; 32])
+                } else {
+                    a.and_then(|a| a.peap.as_ref()).and_then(|p| p.pmk).unwrap_or([0xff; 32])
+                }
             }
             WlanSecurity::Psk(pass) if ap_side => self.pmk(pass, &offer.ssid),
             _ => self.pmk(mine.key.as_deref().unwrap_or(""), &offer.ssid),
@@ -693,9 +708,18 @@ impl Sim {
                 self.send_eapol(t, client, ap, Eapol::Eap(Eap { code: EAP_RESPONSE, id: q.id, kind: Some(EAP_IDENTITY), data: user.into_bytes() }));
                 Ok(())
             }
-            // PEAP: the host answers into the TLS tunnel (opaque here: the tunnel isn't modelled).
+            // PEAP: the host's end of the tunnel answers (see `crate::peap`); a start opens a new one.
             Eapol::Eap(q) if q.code == EAP_REQUEST && q.kind == Some(EAP_PEAP) => {
-                self.send_eapol(t, client, ap, Eapol::Eap(Eap { code: EAP_RESPONSE, id: q.id, kind: Some(EAP_PEAP), data: vec![0] }));
+                let login = mine.login.unwrap_or_default();
+                let start = q.data.first().is_some_and(|f| f & PEAP_START != 0);
+                let seed = format!("peap{}{}{:?}", self.now, self.seq, client);
+                let st = self.assoc.get_mut(&client).ok_or("no association under way")?;
+                if start || st.peap.is_none() {
+                    st.peap = Some(crate::peap::ClientTunnel::new(seed.as_bytes()));
+                }
+                let tunnel = st.peap.as_mut().ok_or("no tunnel")?;
+                let data = tunnel.answer(&q.data, &login.user, &login.password)?;
+                self.send_eapol(t, client, ap, Eapol::Eap(Eap { code: EAP_RESPONSE, id: q.id, kind: Some(EAP_PEAP), data }));
                 Ok(())
             }
             // Logged in: the access point starts the 4-way handshake next.
@@ -766,7 +790,7 @@ impl Sim {
         self.send_ip(t, d, ip)
     }
 
-    fn capwap_send(&mut self, t: &Topology, from: &Device, to: &Device, payload: Vec<u8>, port: u16) -> Result<(), String> {
+    pub(crate) fn capwap_send(&mut self, t: &Topology, from: &Device, to: &Device, payload: Vec<u8>, port: u16) -> Result<(), String> {
         let (_, dst) = mgmt_addr(to).ok_or_else(|| format!("{} has no management address", to.name))?;
         self.udp_send(t, from, dst.addr, port, port, payload)
     }
@@ -781,7 +805,7 @@ impl Sim {
                 WlanSecurity::Psk(p) => self.pmk(p, &w.ssid).to_vec(),
                 _ => Vec::new(),
             };
-            let add = capwap::AddWlan { radio: 1, wlan_id: w.id, key, akm: akm(&w.security), ssid: w.ssid.clone() };
+            let add = capwap::AddWlan { radio: 1, wlan_id: w.id, key, akm: akm(&w.security), ssid: w.ssid.clone(), central: w.central };
             msg = msg.with(capwap::ADD_WLAN, add.encode());
         }
         let _ = wlc;
@@ -853,7 +877,11 @@ impl Sim {
     /// CAPWAP data: at a controller, a host's 802.1X identity to check; at an AP, the answer to
     /// put on the air.
     fn capwap_data_in(&mut self, t: &Topology, me: &Device, peer: &Device, payload: &[u8]) -> Result<(), String> {
-        let inner = capwap::data_decode(payload).map_err(|e| e.to_string())?;
+        let (inner, native) = capwap::data_frame(payload).map_err(|e| e.to_string())?;
+        // An 802.3 frame: a centrally switched host's traffic (see `crate::central`).
+        if !native {
+            return if is_wlc(me) { self.central_from_ap(t, me, peer, &inner) } else { self.central_to_air(t, me, &inner) };
+        }
         let f = Dot11::decode(&inner).map_err(|e| e.to_string())?;
         if is_lap(me) {
             // Out of the radio, to the host it names.
@@ -872,26 +900,20 @@ impl Sim {
         let Body::Data { ethertype: ETHERTYPE_EAPOL, payload } = &f.body else { return Err("CAPWAP data that is not EAPOL".into()) };
         let Ok(Eapol::Eap(r)) = Eapol::decode(payload) else { return Err("not an EAP packet".into()) };
         let client = host_with_mac(t, f.addr2).ok_or("from an unknown host")?;
-        let login = t
-            .device(client.device)
-            .and_then(|d| d.ports.get(client.port))
-            .and_then(|p| p.wifi.as_ref())
-            .and_then(|w| w.login.clone())
-            .unwrap_or_default();
-        // The identity first: the controller opens a PEAP exchange. Its TLS tunnel is shown as
-        // one opaque round trip (no real TLS); the login inside it is checked with RADIUS.
+        if r.code != EAP_RESPONSE {
+            return Err("EAP from a host that is not a response".into());
+        }
+        // A pass-through authenticator: each EAP response goes to the RADIUS server inside an
+        // Access-Request (RFC 3579), with the server's State; the identity starts a new login.
         if r.kind == Some(EAP_IDENTITY) {
-            let user = String::from_utf8_lossy(&r.data).into_owned();
+            let user: String = String::from_utf8_lossy(&r.data).chars().take(64).collect();
             if let Some(st) = self.assoc.get_mut(&client) {
                 st.identity = user;
+                st.radius_state = None;
+                st.pmk_ap = None;
             }
-            let start = Eap { code: EAP_REQUEST, id: r.id.wrapping_add(1), kind: Some(EAP_PEAP), data: vec![PEAP_START] };
-            return self.eap_to_host(t, me.id, peer.id, client, start);
         }
-        if r.kind != Some(EAP_PEAP) {
-            return Err("unexpected EAP method (only PEAP here)".into());
-        }
-        let user = self.assoc.get(&client).map(|a| a.identity.clone()).unwrap_or_default();
+        let (user, state) = self.assoc.get(&client).map(|a| (a.identity.clone(), a.radius_state.clone())).unwrap_or_default();
         let Some((server, secret)) = me.access.radius_servers.first().cloned() else {
             return self.dot1x_result(t, me.id, peer.id, client, r.id, false);
         };
@@ -900,8 +922,7 @@ impl Sim {
         self.seq += 1;
         let id = (self.seq % 256) as u8;
         let authenticator = netlabcraft_wire::md5::md5(format!("{}:{}:{user}", self.now, self.seq).as_bytes());
-        // The password the host's PEAP tunnel would carry: the controller asks with it directly.
-        let req = Radius::request(id, authenticator, &user, &login.password, &secret, src.addr);
+        let req = Radius::eap_request(id, authenticator, &user, &r.encode(), state.as_deref(), &secret, src.addr);
         if self.dot1x.len() >= 64 {
             self.dot1x.clear();
         }
@@ -918,7 +939,30 @@ impl Sim {
         if !r.verifies(&w.authenticator, &w.secret) {
             return Err("RADIUS answer signed with another secret".into());
         }
-        self.dot1x_result(t, w.wlc, w.lap, w.client, w.id, r.code == ACCESS_ACCEPT)
+        if !r.checks_message(&w.authenticator, &w.secret) {
+            return Err("RADIUS answer without a valid Message-Authenticator: discarded".into());
+        }
+        let eap = r.eap_message().and_then(|m| Eap::decode(&m).ok());
+        match r.code {
+            // Another round: the server's EAP request goes on to the host.
+            ACCESS_CHALLENGE => {
+                let eap = eap.ok_or("an Access-Challenge without EAP")?;
+                if let Some(st) = self.assoc.get_mut(&w.client) {
+                    st.radius_state = r.state().map(<[u8]>::to_vec);
+                }
+                self.eap_to_host(t, w.wlc, w.lap, w.client, eap)
+            }
+            // Logged in: the session key keys the access point's side of the 4-way handshake.
+            ACCESS_ACCEPT => {
+                let key = r.mppe_recv_key(&w.authenticator, &w.secret).and_then(|k| <[u8; 32]>::try_from(k.get(..32)?).ok());
+                if let Some(st) = self.assoc.get_mut(&w.client) {
+                    st.pmk_ap = key;
+                    st.radius_state = None;
+                }
+                self.dot1x_result(t, w.wlc, w.lap, w.client, eap.map_or(w.id, |e| e.id), true)
+            }
+            _ => self.dot1x_result(t, w.wlc, w.lap, w.client, eap.map_or(w.id, |e| e.id), false),
+        }
     }
 
     /// An EAP packet from the controller to a host, through its AP (CAPWAP data, then the air).
@@ -960,7 +1004,7 @@ impl Sim {
 }
 
 /// The Wi-Fi host port with this MAC address.
-fn host_with_mac(t: &Topology, mac: MacAddr) -> Option<End> {
+pub(crate) fn host_with_mac(t: &Topology, mac: MacAddr) -> Option<End> {
     t.devices
         .iter()
         .filter(|d| d.kind.is_host())

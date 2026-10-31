@@ -24,6 +24,7 @@ use netlabcraft_wire::{Arp, ArpOp, ETHERTYPE_ARP, ETHERTYPE_IPV4, Frame, Icmp, I
 
 pub mod automation;
 pub mod cdp;
+mod central;
 pub mod email;
 pub mod explain;
 pub mod ftp;
@@ -49,9 +50,11 @@ pub mod ospf;
 pub mod ospf6;
 pub mod ospf_lsdb;
 pub mod pdu;
+pub mod peap;
 pub mod qos;
 
 pub mod rip;
+pub mod simmode;
 pub mod sip;
 pub mod snmp;
 pub mod stp;
@@ -873,6 +876,9 @@ pub struct TraceEvent {
     pub explain: Vec<explain::Step>,
     /// The event whose handling sent this frame (none: the device raised it itself).
     pub cause: Option<u64>,
+    /// What the sender decided before putting the frame on the wire, when it raised the packet
+    /// itself (its routing lookup, ARP); see [`simmode`].
+    pub origin: Vec<explain::Step>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1068,6 +1074,10 @@ pub struct Sim {
     cause: Option<u64>,
     /// Routers' web and NETCONF servers: connections, handlers, accepted edits.
     auto: automation::AutoState,
+    /// Simulation-mode options (constant delay, capture filter) and the senders' decisions.
+    mode: simmode::SimMode,
+    /// Authentication servers' PEAP logins under way.
+    peap_srv: peap::Sessions,
 }
 
 impl Sim {
@@ -1237,7 +1247,7 @@ impl Sim {
 
     /// Forgets all dynamic state and events (power-cycles the whole lab).
     pub fn reset(&mut self) {
-        *self = Sim { next_event: self.next_event, ..Sim::default() };
+        *self = Sim { next_event: self.next_event, mode: self.mode.options(), ..Sim::default() };
     }
 
     /// Forgets one device's dynamic state (it reloaded).
@@ -1357,7 +1367,7 @@ impl Sim {
                 if mac(&to) == src {
                     continue;
                 }
-                self.push_hop(t, self.now + LINK_DELAY_US, from, to, frame.clone(), hops);
+                self.push_hop(t, self.now + self.hop_delay(), from, to, frame.clone(), hops);
             }
             return true;
         }
@@ -1366,7 +1376,7 @@ impl Sim {
             return false;
         }
         let wait = std::mem::take(&mut self.tx_delay);
-        self.push_hop(t, self.now + LINK_DELAY_US + wait, from, to, frame, hops);
+        self.push_hop(t, self.now + self.hop_delay_after(wait), from, to, frame, hops);
         true
     }
 
@@ -1465,6 +1475,7 @@ impl Sim {
         if self.trace.len() >= TRACE_CAP {
             self.trace.pop_front();
         }
+        let origin = self.origin_of(q.seq);
         self.trace.push_back(TraceEvent {
             id: self.next_event,
             at_us: q.at,
@@ -1477,6 +1488,7 @@ impl Sim {
             air: air.then(|| q.frame.clone()),
             explain: Vec::new(),
             cause: q.cause,
+            origin,
         });
         self.l2_count(q.from, q.to, &q.frame);
         self.explaining = Some(Vec::new());
@@ -1488,6 +1500,7 @@ impl Sim {
             ev.dropped = dropped;
             ev.explain = steps;
         }
+        self.after_delivery();
     }
 
     fn receive(&mut self, t: &Topology, at: End, bytes: &[u8], hops: u8) -> Result<(), String> {
@@ -2093,6 +2106,10 @@ impl Sim {
         if netlabcraft_wire::control::link_local(f.dst) {
             return self.l2_bpdu_in(t, d, in_port, &f);
         }
+        // Off a lightweight AP's radio, a centrally switched host's frame goes to the controller.
+        if let Some(r) = self.central_in(t, d, in_port, &f) {
+            return r;
+        }
         let sp = &d.ports.get(in_port).ok_or("no port")?.switchport;
         let vlan = match if t.is_trunk(End { device: d.id, port: in_port }) { SwitchportMode::Trunk } else { SwitchportMode::Access } {
             SwitchportMode::Access | SwitchportMode::DynamicAuto | SwitchportMode::DynamicDesirable => {
@@ -2192,6 +2209,11 @@ impl Sim {
                 let _ = self.ip6_on(t, d, &svi6, &f);
             }
         }
+        // A controller tunnels frames for its centrally switched hosts to their APs.
+        let (handled, tunnelled) = self.central_out(t, d, vlan, &f);
+        if handled {
+            return Ok(());
+        }
         let outs: Vec<usize> = match known {
             // An access point relays between hosts on its radio.
             Some(p) if Some(p) == in_port && !is_ap_radio(t, End { device: d.id, port: p }) => {
@@ -2226,7 +2248,7 @@ impl Sim {
                 sent += 1;
             }
         }
-        if sent == 0 { Err(format!("no up port in VLAN {vlan} to forward to")) } else { Ok(()) }
+        if sent == 0 && !tunnelled { Err(format!("no up port in VLAN {vlan} to forward to")) } else { Ok(()) }
     }
 
     /// Sends a frame out of a layer-3 interface: a port, or a switch's VLAN interface.
@@ -2762,8 +2784,16 @@ impl Sim {
 
     /// Routes and sends a datagram this device originates, with "don't fragment" set or not.
     fn send_ip_df(&mut self, t: &Topology, d: &Device, ip: Ipv4, df: bool) -> Result<(), String> {
+        let origin = self.begin_origin();
+        let r = self.send_ip_df_now(t, d, ip, df);
+        self.end_origin(origin);
+        r
+    }
+
+    fn send_ip_df_now(&mut self, t: &Topology, d: &Device, ip: Ipv4, df: bool) -> Result<(), String> {
         self.bump(d.id, "sent");
         let (out, nh) = self.route_flow(t, d, ip.src, ip.dst).ok_or_else(|| format!("no route to {}", ip.dst))?;
+        self.note_sends(ip.dst, &out, nh, ip.ttl);
         let mut raw = ip.encode();
         if !df {
             netlabcraft_wire::ipfrag::set_dont_fragment(&mut raw, false);

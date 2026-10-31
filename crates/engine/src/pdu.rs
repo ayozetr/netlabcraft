@@ -57,6 +57,7 @@ pub(crate) fn pdu_json(s: &Session, p: &UserPdu) -> Value {
         "text": p.text,
         "period": p.period_s,
         "start": p.start_s,
+        "at": p.start_at_s,
         "status": p.status.id(),
         "last": p.last_s,
         "fired": p.fired,
@@ -102,9 +103,9 @@ fn new_num(s: &mut Session) -> Result<u32> {
 fn add(s: &mut Session, pdu: UserPdu) -> Result<Value> {
     let now = s.sim.now_us();
     let mut pdu = pdu;
-    pdu.next_us = Some(now.saturating_add(secs_us(pdu.start_s)));
+    pdu.next_us = Some(first_due(&pdu, now));
     let num = pdu.num;
-    let due_now = pdu.start_s <= 0.0;
+    let due_now = pdu.next_us.is_some_and(|n| n <= now);
     s.checkpoint();
     s.topology.scenarios.current_mut().pdus.push(pdu);
     s.dirty = true;
@@ -114,6 +115,15 @@ fn add(s: &mut Session, pdu: UserPdu) -> Result<Value> {
     }
     let p = s.topology.scenarios.pdus().iter().find(|p| p.num == num).cloned();
     Ok(p.map_or(Value::Null, |p| pdu_json(s, &p)))
+}
+
+/// When a PDU is first due: at its absolute start time (never before now), else its delay
+/// after `now`.
+fn first_due(p: &UserPdu, now: u64) -> u64 {
+    match p.start_at_s {
+        Some(at) => secs_us(at).max(now),
+        None => now.saturating_add(secs_us(p.start_s)),
+    }
 }
 
 fn secs_us(secs: f64) -> u64 {
@@ -174,13 +184,15 @@ pub(crate) fn advance(s: &mut Session, us: u64) -> usize {
     // A clock that went back (simulation reset) restarts the schedule from now.
     let now = s.sim.now_us();
     for p in s.topology.scenarios.pdus_mut() {
-        // A reopened lab's periodic PDUs start again.
-        if p.period_s.is_some() && p.next_us.is_none() {
-            p.next_us = Some(now.saturating_add(secs_us(p.start_s)));
+        // A reopened lab's periodic PDUs start again; so does one with an absolute start
+        // time that was never sent.
+        if p.next_us.is_none() && (p.period_s.is_some() || (p.start_at_s.is_some() && p.fired == 0)) {
+            p.next_us = Some(first_due(p, now));
         }
-        let span = secs_us(p.period_s.unwrap_or(0.0).max(p.start_s));
-        if p.next_us.is_some_and(|n| n > now.saturating_add(span).saturating_add(1)) {
-            p.next_us = Some(now);
+        let anchor = p.start_at_s.map_or(now, |at| secs_us(at).max(now));
+        let span = secs_us(p.period_s.unwrap_or(0.0).max(if p.start_at_s.is_some() { 0.0 } else { p.start_s }));
+        if p.next_us.is_some_and(|n| n > anchor.saturating_add(span).saturating_add(1)) {
+            p.next_us = Some(anchor);
         }
     }
     while fired < MAX_FIRES_PER_ADVANCE {
@@ -243,6 +255,7 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
                     text: String::new(),
                     period_s: None,
                     start_s: 0.0,
+                    start_at_s: None,
                     status: PduStatus::Waiting,
                     last_s: None,
                     fired: 0,
@@ -295,6 +308,20 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
                 return Err(bad(format!("`period` is from {MIN_PERIOD_S} to {MAX_PERIOD_S} seconds")));
             }
             let start_s = secs_param(p, "start")?.unwrap_or(0.0).min(MAX_PERIOD_S);
+            // An absolute start: at simulated time `at` (seconds), instead of a delay.
+            let start_at_s = secs_param(p, "at")?;
+            if let Some(at) = start_at_s {
+                if start_s > 0.0 {
+                    return Err(bad("give `start` (a delay) or `at` (a simulated time), not both"));
+                }
+                if at > MAX_PERIOD_S {
+                    return Err(bad(format!("`at` is at most {MAX_PERIOD_S} seconds")));
+                }
+                let now = s.sim.now_us() as f64 / 1e6;
+                if at + 1e-6 < now {
+                    return Err(EngineError::Failed(format!("simulated time is already {now:.3} s: `at` must be later")));
+                }
+            }
             let text: String = p.get("text").and_then(Value::as_str).unwrap_or_default().trim().chars().take(MAX_PDU_TEXT).collect();
             let num = new_num(s)?;
             add(
@@ -316,6 +343,7 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
                     text,
                     period_s,
                     start_s,
+                    start_at_s,
                     status: PduStatus::Waiting,
                     last_s: None,
                     fired: 0,
@@ -367,7 +395,8 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
                 "dropped": e.dropped,
                 "cause": e.cause,
                 "explain": e.explain.iter().map(netlabcraft_sim::explain::Step::describe).collect::<Vec<_>>(),
-                "osi": {"in": side(&inbound), "out": side(&outbound)},
+                "osi": {"in": side(&inbound), "out": side(&outbound), "origin": side(&osi.origin)},
+                "origin": e.origin.iter().map(netlabcraft_sim::explain::Step::describe).collect::<Vec<_>>(),
                 "sent": osi.sent,
             }))
         }
@@ -427,7 +456,7 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
             let now = s.sim.now_us();
             // The scenario's periodic PDUs start again from now.
             for x in s.topology.scenarios.pdus_mut() {
-                x.next_us = x.period_s.map(|_| now.saturating_add(secs_us(x.start_s)));
+                x.next_us = (x.period_s.is_some() || (x.start_at_s.is_some() && x.fired == 0)).then(|| first_due(x, now));
             }
             s.dirty = true;
             s.revision += 1;
@@ -678,5 +707,129 @@ mod tests {
         assert!(s.execute("sim.event", json!({"id": 0})).is_err());
         // The records stay small.
         assert!(s.sim.trace().iter().all(|e| e.explain.len() <= netlabcraft_sim::explain::MAX_STEPS));
+    }
+
+    #[test]
+    fn constant_delay_spaces_every_hop_evenly() {
+        let mut s = lab("two-subnets");
+        // Warm the ARP caches, then time a clean run.
+        s.execute("pdu.simple", json!({"from": "PC1", "to": "PC3"})).unwrap();
+        let v = s.execute("sim.constant_delay", json!({"on": true, "us": 2_000})).unwrap();
+        assert_eq!((v["on"].as_bool(), v["us"].as_u64()), (Some(true), Some(2_000)));
+        assert_eq!(s.execute("sim.status", json!({})).unwrap()["constant_delay_us"], 2_000);
+        s.execute("sim.clear_events", json!({})).unwrap();
+        let v = s.execute("pdu.simple", json!({"from": "PC1", "to": "PC3"})).unwrap();
+        assert_eq!(v["status"], "successful", "{v}");
+        let times: Vec<u64> = s.sim.trace().iter().map(|e| e.at_us).collect();
+        assert!(times.len() >= 6, "{times:?}");
+        // Echo out and reply back: every step 2 ms after the one before.
+        assert!(times.windows(2).all(|w| w[1] - w[0] == 2_000), "{times:?}");
+        // The default: 1 ms; off again: the link's own time; bad values are refused.
+        assert_eq!(s.execute("sim.constant_delay", json!({"on": true})).unwrap()["us"], 1_000);
+        assert!(s.execute("sim.constant_delay", json!({"on": false})).unwrap()["us"].is_null());
+        assert!(s.execute("sim.constant_delay", json!({})).is_err());
+        assert!(s.execute("sim.constant_delay", json!({"on": true, "us": 0})).is_err());
+        assert!(s.execute("sim.constant_delay", json!({"on": true, "us": 5_000_000})).is_err());
+    }
+
+    #[test]
+    fn the_capture_filter_decides_what_is_recorded_and_exported() {
+        let mut s = lab("two-subnets");
+        s.execute("pdu.simple", json!({"from": "PC1", "to": "PC3"})).unwrap();
+        assert!(s.sim.trace().iter().any(|e| e.protocol == netlabcraft_wire::Protocol::Arp));
+        // Prune what is there, then record only ICMP.
+        let v = s.execute("sim.capture_filter", json!({"on": true, "protocols": ["ICMP"], "prune": true})).unwrap();
+        assert!(v["removed"].as_u64().unwrap() > 0, "{v}");
+        assert_eq!(v["protocols"], json!(["ICMP"]));
+        s.execute("sim.reset", json!({})).unwrap();
+        // The PDU still succeeds (its answer is watched, whatever is recorded).
+        let v = s.execute("pdu.simple", json!({"from": "PC2", "to": "PC4"})).unwrap();
+        assert_eq!(v["status"], "successful", "{v}");
+        assert!(!s.sim.trace().is_empty());
+        assert!(s.sim.trace().iter().all(|e| e.protocol == netlabcraft_wire::Protocol::Icmp));
+        let events = s.execute("sim.events", json!({})).unwrap();
+        assert!(events.as_array().unwrap().iter().all(|e| e["protocol"] == "ICMP"));
+        // The capture has exactly the recorded frames.
+        let r = s.execute("file.export_pcap", json!({})).unwrap();
+        assert_eq!(r["frames"].as_u64(), Some(s.sim.trace().len() as u64));
+        let pcap = s.pcap();
+        let mut at = 24;
+        let mut n = 0;
+        while at + 16 <= pcap.len() {
+            let len = u32::from_le_bytes(pcap[at + 8..at + 12].try_into().unwrap()) as usize;
+            let f = Frame::decode(&pcap[at + 16..at + 16 + len]).unwrap();
+            assert_eq!(f.ethertype, ETHERTYPE_IPV4);
+            assert_eq!(Ipv4::decode(&f.payload).unwrap().protocol, PROTO_ICMP);
+            at += 16 + len;
+            n += 1;
+        }
+        assert_eq!(n, s.sim.trace().len());
+        // Off: everything again; the setting survives a reset; bad calls are refused.
+        assert_eq!(s.execute("sim.status", json!({})).unwrap()["capture"], json!(["ICMP"]));
+        s.execute("sim.capture_filter", json!({"on": false})).unwrap();
+        assert!(s.execute("sim.status", json!({})).unwrap()["capture"].is_null());
+        assert!(s.execute("sim.capture_filter", json!({"on": true})).is_err());
+        assert!(s.execute("sim.capture_filter", json!({"on": true, "protocols": [1, 2]})).is_err());
+        assert!(s.execute("sim.capture_filter", json!({"protocols": ["ICMP"]})).is_err());
+    }
+
+    #[test]
+    fn the_sender_shows_its_own_decisions_in_the_osi_view() {
+        let mut s = lab("two-subnets");
+        s.execute("pdu.simple", json!({"from": "PC1", "to": "PC3"})).unwrap();
+        let since = next_id(&s);
+        s.execute("pdu.simple", json!({"from": "PC1", "to": "PC3"})).unwrap();
+        let pc1 = s.topology.resolve("PC1").unwrap();
+        let first = s.sim.trace().iter().find(|e| e.id >= since && e.from.device == pc1).unwrap().id;
+        let v = s.execute("sim.event", json!({"id": first})).unwrap();
+        let text = v["origin"].to_string();
+        assert!(
+            text.contains("The device sends a packet to 10.0.2.10: its routing table gives next hop 10.0.1.1, out FastEthernet0, with TTL 128"),
+            "{text}"
+        );
+        assert!(text.contains("The ARP table gives"), "{text}");
+        let origin = &v["osi"]["origin"];
+        assert!(origin.as_array().unwrap().iter().any(|l| l["layer"] == 3 && l["lines"].to_string().contains("routing table gives")), "{origin}");
+        // A router forwarding it records its own decisions, not the sender's.
+        let r = details(&mut s, "R1", "echo request");
+        assert!(r["origin"].as_array().unwrap().is_empty());
+        assert!(r["osi"]["origin"].as_array().unwrap().is_empty());
+        // A router raising a packet itself (a ping from its console) records its lookup too.
+        s.execute("net.ping", json!({"from": "R1", "to": "10.0.2.10", "count": 1})).unwrap();
+        let r1 = s.topology.resolve("R1").unwrap();
+        let e = s.sim.trace().iter().rev().find(|e| e.from.device == r1 && e.cause.is_none()).unwrap().id;
+        let v = s.execute("sim.event", json!({"id": e})).unwrap();
+        assert!(v["origin"].to_string().contains("directly connected, out GigabitEthernet0/1, with TTL 255"), "{v}");
+    }
+
+    #[test]
+    fn a_complex_pdu_can_start_at_an_absolute_simulated_time() {
+        let mut s = lab("two-subnets");
+        s.execute("sim.advance", json!({"seconds": 2})).unwrap();
+        let v = s.execute("pdu.complex", json!({"from": "PC1", "to": "10.0.2.10", "at": 5.0})).unwrap();
+        assert_eq!(v["status"], "waiting", "{v}");
+        assert_eq!(v["at"], 5.0);
+        s.execute("sim.advance", json!({"seconds": 2.5})).unwrap();
+        assert_eq!(s.topology.scenarios.pdus()[0].fired, 0, "not yet: {} s", s.sim.now_us() as f64 / 1e6);
+        s.execute("sim.advance", json!({"seconds": 1})).unwrap();
+        let p = &s.topology.scenarios.pdus()[0];
+        assert_eq!(p.fired, 1);
+        // Sent exactly at 5 s of simulated time, wherever the clock stood when it was made.
+        assert_eq!(p.last_s, Some(5.0));
+        // Periodic from an absolute time; a time already past and both kinds of start refused.
+        let v = s.execute("pdu.complex", json!({"from": "PC3", "to": "10.0.1.10", "at": 10.0, "period": 2.0})).unwrap();
+        assert_eq!(v["status"], "waiting");
+        s.execute("sim.advance", json!({"seconds": 8})).unwrap();
+        let p = &s.topology.scenarios.pdus()[1];
+        assert_eq!((p.fired, p.last_s), (2, Some(12.0)));
+        assert!(s.execute("pdu.complex", json!({"from": "PC1", "to": "PC3", "at": 1.0})).is_err());
+        assert!(s.execute("pdu.complex", json!({"from": "PC1", "to": "PC3", "at": 20.0, "start": 3.0})).is_err());
+        assert!(s.execute("pdu.complex", json!({"from": "PC1", "to": "PC3", "at": -1.0})).is_err());
+        // Saved with the lab.
+        let v = s.execute("pdu.complex", json!({"from": "PC1", "to": "PC3", "at": 100.0})).unwrap();
+        assert_eq!(v["status"], "waiting");
+        let text = netlabcraft_model::file::to_json(&s.topology).unwrap();
+        let back = netlabcraft_model::file::from_json(&text).unwrap();
+        assert_eq!(back.scenarios.pdus()[2].start_at_s, Some(100.0));
     }
 }
