@@ -44,6 +44,15 @@ labs! {
     lab_02_dual_stack_addressing => "02-dual-stack-addressing.md",
     lab_03_vlsm_subnetting => "03-vlsm-subnetting.md",
     lab_04_arp_icmp_dhcp_simulation => "04-arp-icmp-dhcp-simulation.md",
+    lab_05_vlans_and_trunks => "05-vlans-and-trunks.md",
+    lab_06_inter_vlan_routing => "06-inter-vlan-routing.md",
+    lab_07_stp_tuning => "07-stp-tuning.md",
+    lab_08_etherchannel_lacp => "08-etherchannel-lacp.md",
+    lab_09_dhcpv4_dhcpv6 => "09-dhcpv4-dhcpv6.md",
+    lab_10_hsrp => "10-hsrp.md",
+    lab_11_switch_security => "11-switch-security.md",
+    lab_12_wlan_controller => "12-wlan-controller.md",
+    lab_13_static_floating_routes => "13-static-floating-routes.md",
 }
 
 #[test]
