@@ -1,17 +1,19 @@
 //! IKEv2 messages (RFC 7296): the header, the payloads a site-to-site exchange uses (SA, KE,
-//! nonce, identification, authentication, notify, traffic selectors) and the encrypted SK
-//! payload, sealed with AES-128-CBC (RFC 3602) and HMAC-SHA1-96 (RFC 2404), with the key
-//! derivation of RFC 7296 §2.13–2.15 (prf+ with HMAC-SHA1, the pre-shared key AUTH value).
+//! nonce, identification, authentication, notify, delete, traffic selectors) and the encrypted
+//! SK payload, sealed with AES-CBC (RFC 3602, 128-, 192- or 256-bit keys) and a truncated HMAC
+//! (HMAC-SHA1-96, HMAC-SHA-256-128 of RFC 4868, HMAC-MD5-96), with the key derivation of
+//! RFC 7296 §2.13–2.15 (prf+ with the negotiated PRF, the pre-shared key AUTH value).
 //!
-//! **The Diffie-Hellman exchange is a stand-in:** the KE payloads carry filler of the group's
-//! size, and both sides take the "shared secret" from the two public KE payloads, so the keys
-//! are not secret from someone who saw the exchange. Everything else (payload layout, the
-//! cipher, the integrity check, AUTH over the signed octets) is as the RFC says.
+//! The Diffie-Hellman exchange is real for the MODP groups ([`crate::dh`]); for the
+//! elliptic-curve groups (19, 20) the KE payloads carry filler of the group's size and
+//! [`standin_shared`] stands in for the shared secret. A 3DES proposal is negotiated by name
+//! but its SK payload is sealed with AES-CBC-128 (3DES isn't implemented).
 
 use std::net::Ipv4Addr;
 
-use crate::aes::{Aes128, cbc_decrypt, cbc_encrypt};
-use crate::sha1::{hmac_sha1, sha1};
+use crate::aes256::{Aes, cbc_decrypt, cbc_encrypt};
+use crate::sha1::sha1;
+use crate::suite::{Integ, Prf};
 use crate::{Result, WireError};
 
 /// IKEv2's major/minor version byte.
@@ -35,6 +37,7 @@ pub const PT_NOTIFY: u8 = 41;
 pub const PT_TSI: u8 = 44;
 pub const PT_TSR: u8 = 45;
 pub const PT_SK: u8 = 46;
+pub const PT_DELETE: u8 = 42;
 /// Security protocol ids in proposals.
 pub const PROTO_IKE: u8 = 1;
 pub const PROTO_ESP: u8 = 3;
@@ -58,6 +61,9 @@ pub const NO_PROPOSAL_CHOSEN: u16 = 14;
 pub const INVALID_KE_PAYLOAD: u16 = 17;
 pub const AUTHENTICATION_FAILED: u16 = 24;
 pub const TS_UNACCEPTABLE: u16 = 38;
+pub const CHILD_SA_NOT_FOUND: u16 = 44;
+/// Status notify: the CREATE_CHILD_SA rekeys the child SA with this SPI (RFC 7296 §3.10.1).
+pub const REKEY_SA: u16 = 16_393;
 /// Identification types.
 pub const ID_IPV4_ADDR: u8 = 1;
 pub const ID_FQDN: u8 = 2;
@@ -65,9 +71,8 @@ pub const ID_FQDN: u8 = 2;
 pub const AUTH_SHARED_KEY: u8 = 2;
 /// Traffic selector type: an IPv4 address range.
 pub const TS_IPV4_ADDR_RANGE: u8 = 7;
-/// The SK payload's cipher block and integrity check sizes (AES-CBC, HMAC-SHA1-96).
+/// The SK payload's cipher block size (AES-CBC).
 const BLOCK: usize = 16;
-const ICV: usize = 12;
 /// Longest message accepted (well beyond anything a lab sends).
 pub const MAX_MESSAGE: usize = 16_384;
 /// Most payloads, proposals or transforms read from one message.
@@ -80,6 +85,8 @@ pub fn notify_name(kind: u16) -> &'static str {
         INVALID_KE_PAYLOAD => "INVALID_KE_PAYLOAD",
         AUTHENTICATION_FAILED => "AUTHENTICATION_FAILED",
         TS_UNACCEPTABLE => "TS_UNACCEPTABLE",
+        CHILD_SA_NOT_FOUND => "CHILD_SA_NOT_FOUND",
+        REKEY_SA => "REKEY_SA",
         _ => "notification",
     }
 }
@@ -158,6 +165,11 @@ pub enum Payload {
     },
     TsI(Vec<TrafficSelector>),
     TsR(Vec<TrafficSelector>),
+    /// Delete (RFC 7296 §3.11): the protocol and the SPIs of the SAs it deletes.
+    Delete {
+        protocol: u8,
+        spis: Vec<Vec<u8>>,
+    },
     /// The encrypted payload as it travels: the first inner payload's type and the body (IV,
     /// ciphertext, ICV).
     Sk {
@@ -194,6 +206,7 @@ impl Payload {
             Payload::Notify { .. } => PT_NOTIFY,
             Payload::TsI(_) => PT_TSI,
             Payload::TsR(_) => PT_TSR,
+            Payload::Delete { .. } => PT_DELETE,
             Payload::Sk { .. } => PT_SK,
             Payload::Other { kind, .. } => *kind,
         }
@@ -210,6 +223,7 @@ impl Payload {
             Payload::Notify { .. } => "Notify",
             Payload::TsI(_) => "TSi",
             Payload::TsR(_) => "TSr",
+            Payload::Delete { .. } => "D",
             Payload::Sk { .. } => "SK",
             Payload::Other { .. } => "payload",
         }
@@ -276,6 +290,15 @@ impl Payload {
                     v.extend_from_slice(&s.end_port.to_be_bytes());
                     v.extend_from_slice(&s.start.octets());
                     v.extend_from_slice(&s.end.octets());
+                }
+                v
+            }
+            Payload::Delete { protocol, spis } => {
+                let size = spis.first().map_or(0, Vec::len);
+                let mut v = vec![*protocol, u8::try_from(size).unwrap_or(0)];
+                v.extend_from_slice(&u16::try_from(spis.len()).unwrap_or(0).to_be_bytes());
+                for s in spis {
+                    v.extend_from_slice(s);
                 }
                 v
             }
@@ -369,6 +392,15 @@ impl Payload {
                 }
                 if kind == PT_TSI { Payload::TsI(ts) } else { Payload::TsR(ts) }
             }
+            PT_DELETE => {
+                let size = usize::from(*b.get(1).ok_or_else(t)?);
+                let count = usize::from(be16(b, 2).ok_or_else(t)?);
+                let mut spis = Vec::new();
+                for i in 0..count.min(MAX_ITEMS) {
+                    spis.push(b.get(4 + i * size..4 + (i + 1) * size).ok_or_else(t)?.to_vec());
+                }
+                Payload::Delete { protocol: *b.first().ok_or_else(t)?, spis }
+            }
             PT_SK => Payload::Sk { first: next, body: b.to_vec() },
             other => Payload::Other { kind: other, body: b.to_vec() },
         })
@@ -412,54 +444,59 @@ fn parse_chain(first: u8, b: &[u8]) -> Result<Vec<Payload>> {
     Ok(out)
 }
 
-/// The keys of an IKE SA (RFC 7296 §2.14), for AES-128-CBC with HMAC-SHA1-96 and HMAC-SHA1
-/// as the PRF.
+/// The algorithms of an IKE SA: the cipher's key size (AES-CBC), the PRF and the integrity
+/// check.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Suite {
+    pub enc_len: usize,
+    pub prf: Prf,
+    pub integ: Integ,
+}
+
+impl Default for Suite {
+    fn default() -> Suite {
+        Suite { enc_len: 16, prf: Prf::HmacSha1, integ: Integ::HmacSha1_96 }
+    }
+}
+
+/// The keys of an IKE SA (RFC 7296 §2.14).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Keys {
+    pub suite: Suite,
     pub sk_d: Vec<u8>,
     pub sk_ai: Vec<u8>,
     pub sk_ar: Vec<u8>,
-    pub sk_ei: [u8; 16],
-    pub sk_er: [u8; 16],
+    pub sk_ei: Vec<u8>,
+    pub sk_er: Vec<u8>,
     pub sk_pi: Vec<u8>,
     pub sk_pr: Vec<u8>,
 }
 
 /// prf+ (RFC 7296 §2.13) with HMAC-SHA1: `len` bytes of keying material.
 pub fn prf_plus(key: &[u8], seed: &[u8], len: usize) -> Vec<u8> {
-    let mut out = Vec::with_capacity(len + 20);
-    let mut prev: Vec<u8> = Vec::new();
-    let mut n: u8 = 1;
-    while out.len() < len {
-        let mut input = prev.clone();
-        input.extend_from_slice(seed);
-        input.push(n);
-        prev = hmac_sha1(key, &input).to_vec();
-        out.extend_from_slice(&prev);
-        n = n.wrapping_add(1);
-    }
-    out.truncate(len);
-    out
+    Prf::HmacSha1.plus(key, seed, len)
 }
 
 impl Keys {
-    /// SKEYSEED = prf(Ni | Nr, g^ir), then the seven keys from prf+(SKEYSEED, Ni | Nr | SPIi |
-    /// SPIr). `shared` stands for g^ir (see the module notes).
+    /// [`Keys::derive_with`] for AES-CBC-128, HMAC-SHA1 and HMAC-SHA1-96.
     pub fn derive(shared: &[u8], ni: &[u8], nr: &[u8], spi_i: &[u8; 8], spi_r: &[u8; 8]) -> Keys {
-        let skeyseed = hmac_sha1(&[ni, nr].concat(), shared);
+        Keys::derive_with(Suite::default(), shared, ni, nr, spi_i, spi_r)
+    }
+
+    /// SKEYSEED = prf(Ni | Nr, g^ir), then SK_d, SK_ai, SK_ar, SK_ei, SK_er, SK_pi, SK_pr from
+    /// prf+(SKEYSEED, Ni | Nr | SPIi | SPIr), each as long as its algorithm needs.
+    pub fn derive_with(suite: Suite, shared: &[u8], ni: &[u8], nr: &[u8], spi_i: &[u8; 8], spi_r: &[u8; 8]) -> Keys {
+        let skeyseed = suite.prf.prf(&[ni, nr].concat(), shared);
         let seed = [ni, nr, &spi_i[..], &spi_r[..]].concat();
-        let m = prf_plus(&skeyseed, &seed, 20 * 5 + 16 * 2);
-        let part = |a: usize, b: usize| m.get(a..b).unwrap_or_default().to_vec();
-        let key16 = |a: usize| -> [u8; 16] { m.get(a..a + 16).and_then(|s| s.try_into().ok()).unwrap_or([0; 16]) };
-        Keys {
-            sk_d: part(0, 20),
-            sk_ai: part(20, 40),
-            sk_ar: part(40, 60),
-            sk_ei: key16(60),
-            sk_er: key16(76),
-            sk_pi: part(92, 112),
-            sk_pr: part(112, 132),
-        }
+        let (p, a, e) = (suite.prf.len(), suite.integ.key_len(), suite.enc_len);
+        let m = suite.prf.plus(&skeyseed, &seed, 3 * p + 2 * a + 2 * e);
+        let mut at = 0;
+        let mut take = |n: usize| {
+            let v = m.get(at..at + n).unwrap_or_default().to_vec();
+            at += n;
+            v
+        };
+        Keys { suite, sk_d: take(p), sk_ai: take(a), sk_ar: take(a), sk_ei: take(e), sk_er: take(e), sk_pi: take(p), sk_pr: take(p) }
     }
 }
 
@@ -468,12 +505,17 @@ pub fn standin_shared(ke_i: &[u8], ke_r: &[u8]) -> Vec<u8> {
     sha1(&[ke_i, ke_r].concat()).to_vec()
 }
 
+/// The AUTH value for a pre-shared key (RFC 7296 §2.15) with HMAC-SHA1.
+pub fn psk_auth(psk: &[u8], message: &[u8], peer_nonce: &[u8], sk_p: &[u8], id_body: &[u8]) -> Vec<u8> {
+    psk_auth_with(Prf::HmacSha1, psk, message, peer_nonce, sk_p, id_body)
+}
+
 /// The AUTH value for a pre-shared key (RFC 7296 §2.15): prf(prf(key, "Key Pad for IKEv2"),
 /// message | peer's nonce | prf(SK_p, ID body)).
-pub fn psk_auth(psk: &[u8], message: &[u8], peer_nonce: &[u8], sk_p: &[u8], id_body: &[u8]) -> Vec<u8> {
-    let pad = hmac_sha1(psk, b"Key Pad for IKEv2");
-    let mac_id = hmac_sha1(sk_p, id_body);
-    hmac_sha1(&pad, &[message, peer_nonce, &mac_id[..]].concat()).to_vec()
+pub fn psk_auth_with(prf: Prf, psk: &[u8], message: &[u8], peer_nonce: &[u8], sk_p: &[u8], id_body: &[u8]) -> Vec<u8> {
+    let pad = prf.prf(psk, b"Key Pad for IKEv2");
+    let mac_id = prf.prf(sk_p, id_body);
+    prf.prf(&pad, &[message, peer_nonce, &mac_id[..]].concat())
 }
 
 /// An IKEv2 message.
@@ -506,23 +548,25 @@ impl Message {
     }
 
     /// The message with its payloads inside an SK payload, encrypted with `ek` and protected
-    /// with `ak` (the sender's SK_e and SK_a). `iv` must be unpredictable to a real attacker;
-    /// here the caller derives it.
-    pub fn encode_sealed(&self, ek: &[u8; 16], ak: &[u8], iv: [u8; 16]) -> Vec<u8> {
+    /// with `ak` (the sender's SK_e and SK_a) as `integ` says. `iv` must be unpredictable to a
+    /// real attacker; here the caller derives it. A key AES can't take seals nothing (an empty
+    /// SK payload body).
+    pub fn encode_sealed(&self, integ: Integ, ek: &[u8], ak: &[u8], iv: [u8; 16]) -> Vec<u8> {
+        let icv_len = integ.icv_len();
         let mut plain = chain(&self.payloads);
         let pad = (BLOCK - (plain.len() + 1) % BLOCK) % BLOCK;
         plain.extend(std::iter::repeat_n(0u8, pad));
         plain.push(u8::try_from(pad).unwrap_or(0));
-        let cipher = cbc_encrypt(&Aes128::new(ek), &iv, &plain);
-        let sk_len = 4 + BLOCK + cipher.len() + ICV;
+        let cipher = Aes::new(ek).map(|aes| cbc_encrypt(&aes, &iv, &plain)).unwrap_or_default();
+        let sk_len = 4 + BLOCK + cipher.len() + icv_len;
         let first = self.payloads.first().map_or(0, Payload::kind);
         let mut v = self.header(PT_SK, 28 + sk_len);
         v.extend_from_slice(&[first, 0]);
         v.extend_from_slice(&len16(sk_len));
         v.extend_from_slice(&iv);
         v.extend(cipher);
-        let icv = hmac_sha1(ak, &v);
-        v.extend_from_slice(icv.get(..ICV).unwrap_or_default());
+        let icv = integ.mac(ak, &v);
+        v.extend_from_slice(&icv);
         v
     }
 
@@ -551,24 +595,26 @@ impl Message {
 
     /// The payloads inside the SK payload of the encoded message `raw`: integrity checked with
     /// `ak`, decrypted with `ek`.
-    pub fn open(raw: &[u8], ek: &[u8; 16], ak: &[u8]) -> Result<Vec<Payload>> {
+    pub fn open(raw: &[u8], integ: Integ, ek: &[u8], ak: &[u8]) -> Result<Vec<Payload>> {
+        let icv_len = integ.icv_len();
         let t = || WireError::Truncated("ikev2 sk");
         let m = Message::decode(raw)?;
         let Some(Payload::Sk { first, body }) = m.payloads.first() else {
             return Err(WireError::Unsupported("ikev2", "no encrypted payload".into()));
         };
         let total = usize::try_from(be32(raw, 24).ok_or_else(t)?).map_err(|_| t())?;
-        let signed = raw.get(..total.checked_sub(ICV).ok_or_else(t)?).ok_or_else(t)?;
-        let icv = raw.get(total - ICV..total).ok_or_else(t)?;
-        if hmac_sha1(ak, signed).get(..ICV) != Some(icv) {
+        let signed = raw.get(..total.checked_sub(icv_len).ok_or_else(t)?).ok_or_else(t)?;
+        let icv = raw.get(total - icv_len..total).ok_or_else(t)?;
+        if !integ.verify(ak, signed, icv) {
             return Err(WireError::Checksum("ikev2 integrity"));
         }
         let iv: [u8; 16] = body.get(..BLOCK).and_then(|s| s.try_into().ok()).ok_or_else(t)?;
-        let cipher = body.get(BLOCK..body.len().checked_sub(ICV).ok_or_else(t)?).ok_or_else(t)?;
+        let cipher = body.get(BLOCK..body.len().checked_sub(icv_len).ok_or_else(t)?).ok_or_else(t)?;
         if cipher.is_empty() || cipher.len() % BLOCK != 0 {
             return Err(t());
         }
-        let plain = cbc_decrypt(&Aes128::new(ek), &iv, cipher);
+        let aes = Aes::new(ek).ok_or(WireError::Unsupported("ikev2", "encryption key size".into()))?;
+        let plain = cbc_decrypt(&aes, &iv, cipher);
         let pad = usize::from(*plain.last().ok_or_else(t)?);
         let inner = plain.get(..plain.len().checked_sub(pad + 1).ok_or_else(t)?).ok_or_else(t)?;
         parse_chain(*first, inner)
@@ -666,17 +712,18 @@ mod tests {
                 Payload::Notify { protocol: PROTO_IKE, spi: Vec::new(), kind: AUTHENTICATION_FAILED, data: Vec::new() },
             ],
         };
-        let raw = m.encode_sealed(&k.sk_ei, &k.sk_ai, [5; 16]);
+        let i = k.suite.integ;
+        let raw = m.encode_sealed(i, &k.sk_ei, &k.sk_ai, [5; 16]);
         assert_eq!(raw[16], PT_SK);
-        assert_eq!(Message::open(&raw, &k.sk_ei, &k.sk_ai).unwrap(), m.payloads);
+        assert_eq!(Message::open(&raw, i, &k.sk_ei, &k.sk_ai).unwrap(), m.payloads);
         assert_eq!(Message::notify(&m.payloads), Some(AUTHENTICATION_FAILED));
         // The other direction's keys don't open it; a flipped bit fails the integrity check.
-        assert!(Message::open(&raw, &k.sk_er, &k.sk_ar).is_err());
+        assert!(Message::open(&raw, i, &k.sk_er, &k.sk_ar).is_err());
         let mut bad = raw.clone();
         bad[40] ^= 1;
-        assert_eq!(Message::open(&bad, &k.sk_ei, &k.sk_ai), Err(WireError::Checksum("ikev2 integrity")));
+        assert_eq!(Message::open(&bad, i, &k.sk_ei, &k.sk_ai), Err(WireError::Checksum("ikev2 integrity")));
         for n in 0..raw.len() {
-            let _ = Message::open(&raw[..n], &k.sk_ei, &k.sk_ai);
+            let _ = Message::open(&raw[..n], i, &k.sk_ei, &k.sk_ai);
         }
         // Different keys give different AUTH values.
         assert_ne!(psk_auth(b"a", b"m", b"n", b"k", b"i"), psk_auth(b"b", b"m", b"n", b"k", b"i"));
@@ -686,9 +733,41 @@ mod tests {
     fn prf_plus_chains_its_blocks() {
         // T1 = prf(K, S | 0x01), T2 = prf(K, T1 | S | 0x02).
         let out = prf_plus(b"key", b"seed", 40);
-        let t1 = hmac_sha1(b"key", b"seed\x01");
-        let t2 = hmac_sha1(b"key", &[&t1[..], b"seed\x02"].concat());
+        let t1 = crate::sha1::hmac_sha1(b"key", b"seed\x01");
+        let t2 = crate::sha1::hmac_sha1(b"key", &[&t1[..], b"seed\x02"].concat());
         assert_eq!(&out[..20], &t1);
         assert_eq!(&out[20..], &t2[..20]);
+    }
+
+    #[test]
+    fn aes256_sha256_suites_and_delete_payloads() {
+        let suite = Suite { enc_len: 32, prf: Prf::HmacSha256, integ: Integ::HmacSha256_128 };
+        let g = crate::dh::modp(14).unwrap();
+        let shared = g.shared(&[9; 32], &g.public(&[4; 32])).unwrap();
+        let k = Keys::derive_with(suite, &shared, &[3; 32], &[4; 32], &[1; 8], &[2; 8]);
+        assert_eq!((k.sk_d.len(), k.sk_ai.len(), k.sk_ei.len(), k.sk_pr.len()), (32, 32, 32, 32));
+        // The keys are prf+ of SKEYSEED, in RFC order.
+        let skeyseed = crate::sha256::hmac_sha256(&[[3u8; 32], [4; 32]].concat(), &shared);
+        let m = Prf::HmacSha256.plus(&skeyseed, &[&[3u8; 32][..], &[4; 32], &[1; 8], &[2; 8]].concat(), 224);
+        assert_eq!(k.sk_d, m[..32].to_vec());
+        assert_eq!(k.sk_ei, m[96..128].to_vec());
+        let del = Payload::Delete { protocol: PROTO_ESP, spis: vec![vec![0, 0, 1, 2], vec![0, 0, 3, 4]] };
+        let msg =
+            Message { spi_i: [1; 8], spi_r: [2; 8], exchange: INFORMATIONAL, flags: FLAG_INITIATOR, message_id: 3, payloads: vec![del.clone()] };
+        let raw = msg.encode_sealed(suite.integ, &k.sk_ei, &k.sk_ai, [6; 16]);
+        // 16 bytes of HMAC-SHA-256-128 at the end.
+        assert_eq!(&raw[raw.len() - 16..], &crate::sha256::hmac_sha256(&k.sk_ai, &raw[..raw.len() - 16])[..16]);
+        assert_eq!(Message::open(&raw, suite.integ, &k.sk_ei, &k.sk_ai).unwrap(), vec![del]);
+        // The SHA-1 suite's check doesn't pass it.
+        assert!(Message::open(&raw, Integ::HmacSha1_96, &k.sk_ei, &k.sk_ai).is_err());
+        let clear = msg.encode();
+        assert_eq!(Message::decode(&clear).unwrap(), msg);
+        for n in 0..clear.len() {
+            let _ = Message::decode(&clear[..n]);
+        }
+        for n in 0..raw.len() {
+            let _ = Message::open(&raw[..n], suite.integ, &k.sk_ei, &k.sk_ai);
+        }
+        assert_ne!(psk_auth_with(Prf::HmacSha256, b"a", b"m", b"n", b"k", b"i"), psk_auth(b"a", b"m", b"n", b"k", b"i"));
     }
 }

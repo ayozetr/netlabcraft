@@ -2400,7 +2400,13 @@ fn vpn_config(s: &mut String, d: &Device) {
             let _ = writeln!(s, " mode transport");
         }
     }
-    if !c.transform_sets.is_empty() {
+    if let Some(n) = c.sa_lifetime.seconds {
+        let _ = writeln!(s, "crypto ipsec security-association lifetime seconds {n}");
+    }
+    if let Some(n) = c.sa_lifetime.kilobytes {
+        let _ = writeln!(s, "crypto ipsec security-association lifetime kilobytes {n}");
+    }
+    if !c.transform_sets.is_empty() || !c.sa_lifetime.is_unset() {
         let _ = writeln!(s, "!");
     }
     crate::exec::ikev2::running_config(s, d);
@@ -2417,6 +2423,12 @@ fn vpn_config(s: &mut String, d: &Device) {
         }
         if let Some(p) = &e.ikev2_profile {
             let _ = writeln!(s, " set ikev2-profile {p}");
+        }
+        if let Some(n) = e.lifetime.seconds {
+            let _ = writeln!(s, " set security-association lifetime seconds {n}");
+        }
+        if let Some(n) = e.lifetime.kilobytes {
+            let _ = writeln!(s, " set security-association lifetime kilobytes {n}");
         }
         let _ = writeln!(s, "!");
     }
@@ -2509,7 +2521,10 @@ pub fn crypto_isakmp_sa(sim: &Sim, d: &Device) -> String {
     let mut s = format!("{:<16} {:<16} {}\n", "Peer", "Local", "State");
     for sa in &sas {
         let state = match (&sa.failed, sa.phase) {
-            (_, netlabcraft_sim::vpn::IkePhase::Established) => "established (pre-shared key)".to_string(),
+            (_, netlabcraft_sim::vpn::IkePhase::Established) => match sa.v1.as_deref().and_then(|v| v.suite) {
+                Some(suite) => format!("established (pre-shared key; {})", suite.describe()),
+                None => "established (pre-shared key)".to_string(),
+            },
             (Some(why), _) => format!("failed: {why}"),
             (None, phase) => format!("negotiating: {}", phase.describe()),
         };
@@ -2544,6 +2559,33 @@ pub fn crypto_ipsec_sa(sim: &Sim, d: &Device) -> String {
                 let _ = writeln!(s, "  Outbound ESP SPI 0x{:08x}, inbound ESP SPI 0x{:08x}", sa.spi_out, sa.spi_in);
             }
             None => {}
+        }
+        if sa.phase == netlabcraft_sim::vpn::IkePhase::Established && sa.life != (0, 0) {
+            let (secs, kb) = sa.remaining(sim.now_us());
+            let state = match sa.life_state(sim.now_us()) {
+                netlabcraft_sim::vpn::Life::Expired => ", expired",
+                netlabcraft_sim::vpn::Life::Soft if sa.rekey_us != 0 => ", new keys being negotiated",
+                _ => "",
+            };
+            let _ = writeln!(
+                s,
+                "  Lifetime left: {secs} of {} seconds, {kb} of {} kilobytes{state}; keys renewed {} time{}",
+                sa.life.0,
+                sa.life.1,
+                sa.rekeys,
+                if sa.rekeys == 1 { "" } else { "s" }
+            );
+            if let Some(prev) = &sa.prev_in {
+                let _ = writeln!(s, "  Previous inbound ESP SPI 0x{:08x} (accepted until the peer deletes it)", prev.0);
+            }
+        }
+        if sa.phase == netlabcraft_sim::vpn::IkePhase::Established {
+            let suite = sa.v1.as_deref().map(|v| v.esp_suite).or_else(|| sa.v2.as_deref().map(|v| v.esp_suite)).flatten();
+            let esp = match suite {
+                Some(suite) => format!("{} (real ciphers)", suite.describe()),
+                None => "the simulator's stand-in cipher (DES, 3DES and AH are not implemented)".to_string(),
+            };
+            let _ = writeln!(s, "  ESP: {esp}");
         }
         let _ = writeln!(s, "  Packets encapsulated {}, decapsulated {}, dropped {}", sa.encaps, sa.decaps, sa.drops);
         let _ = writeln!(s);

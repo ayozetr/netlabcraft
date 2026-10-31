@@ -293,7 +293,15 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
                 if crypto.maps.len() >= MAX_CRYPTO {
                     return Err(format!("% At most {MAX_CRYPTO} crypto map entries"));
                 }
-                crypto.maps.push(CryptoMapEntry { map: name.clone(), seq, peer: None, transform_set: None, acl: None, ikev2_profile: None });
+                crypto.maps.push(CryptoMapEntry {
+                    map: name.clone(),
+                    seq,
+                    peer: None,
+                    transform_set: None,
+                    acl: None,
+                    ikev2_profile: None,
+                    lifetime: Default::default(),
+                });
                 crypto.maps.sort_by(|a, b| (&a.map, a.seq).cmp(&(&b.map, b.seq)));
             }
             c.cli.mode = Mode::CryptoMap(name, seq);
@@ -328,6 +336,33 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
         }
         Id::NoCryptoSetTransformSet => {
             map_entry(c)?.transform_set = None;
+            Ok(String::new())
+        }
+        Id::IpsecSaLifetime | Id::NoIpsecSaLifetime | Id::CryptoSetSaLifetime | Id::NoCryptoSetSaLifetime => {
+            let seconds = match arg(0).to_ascii_lowercase().as_str() {
+                "seconds" => true,
+                "kilobytes" => false,
+                _ => return Err("% seconds or kilobytes".into()),
+            };
+            let value = if matches!(id, Id::IpsecSaLifetime | Id::CryptoSetSaLifetime) {
+                let (range, what) =
+                    if seconds { (netlabcraft_model::vpn::SA_SECONDS, "seconds") } else { (netlabcraft_model::vpn::SA_KILOBYTES, "kilobytes") };
+                let n: u32 = arg(1)
+                    .parse()
+                    .ok()
+                    .filter(|n| range.contains(n))
+                    .ok_or_else(|| format!("% The lifetime is {}-{} {what}", range.start(), range.end()))?;
+                Some(n)
+            } else {
+                None
+            };
+            let life =
+                if matches!(id, Id::IpsecSaLifetime | Id::NoIpsecSaLifetime) { &mut c.dm()?.crypto.sa_lifetime } else { &mut map_entry(c)?.lifetime };
+            if seconds {
+                life.seconds = value;
+            } else {
+                life.kilobytes = value;
+            }
             Ok(String::new())
         }
         Id::CryptoMatchAddress => {

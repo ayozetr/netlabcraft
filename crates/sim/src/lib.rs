@@ -39,6 +39,7 @@ pub mod eigrp6;
 pub mod fhrp;
 pub mod firewall;
 pub mod hsrp;
+pub mod ikev1;
 pub mod ikev2;
 pub mod iot;
 pub mod l2sec;
@@ -829,6 +830,8 @@ pub struct DevState {
     pub dhcp6_leases: BTreeMap<std::net::Ipv6Addr, (MacAddr, String)>,
     /// Routers: IPsec security associations, by peer address.
     pub ipsec: BTreeMap<Ipv4Addr, vpn::IpsecSa>,
+    /// Path MTUs learnt from "fragmentation needed" (RFC 1191), and the TCP state PMTUD needs.
+    pub(crate) pmtu: mtu::Pmtu,
     /// Routers and multilayer switches: QoS class counters and policer buckets.
     pub(crate) qos: qos::QosCounters,
     /// Output queuing: when each interface's queues last drained (simulated µs).
@@ -2486,7 +2489,7 @@ impl Sim {
         let marked;
         let mut payload = payload;
         // The reply of a session classic inspection opened passes the access lists.
-        let inspected = d.routes_ip() && self.cbac_return(d, &ip, payload);
+        let inspected = d.routes_ip() && self.cbac_return(d, &ip, payload)?;
         if d.routes_ip() {
             if !inspected {
                 self.acl_check(t, d, ifc, &ip, payload, true)?;
@@ -2729,6 +2732,9 @@ impl Sim {
                 if let Some((id, seq)) = Icmp::quoted_echo(&original) {
                     note(id, seq, IcmpKind::Unreachable(code));
                 }
+                if code == netlabcraft_wire::ipfrag::UNREACH_FRAG_NEEDED {
+                    self.pmtu_learn(t, d, &ip.payload);
+                }
                 Ok(())
             }
         }
@@ -2772,10 +2778,10 @@ impl Sim {
         if loopback::is_loopback(out.port) {
             return Err(format!("{nh} is not on {} (a loopback reaches no other address)", out.name));
         }
-        // `ip mtu`: larger datagrams are fragmented, or refused when they say "don't fragment".
-        if let Some(mtu) = d.security.ip_mtu.get(&out.name).copied()
-            && datagram.len() > usize::from(mtu)
-        {
+        // The IP MTU (`ip mtu`, else the default): larger datagrams are fragmented, or refused
+        // when they say "don't fragment".
+        let mtu = mtu::ip_mtu(d, out);
+        if datagram.len() > usize::from(mtu) {
             return self.transmit_mtu(t, d, out, nh, datagram, mtu);
         }
         // Into a GRE tunnel: encapsulated and routed again.
@@ -2785,9 +2791,10 @@ impl Sim {
         }
         // Protected by a crypto map on this interface: sent to the IPsec peer as ESP.
         if !d.crypto.applied.is_empty()
-            && let Some((esp, peer)) = self.crypto_out(t, d, out, &datagram)?
+            && let Some((mut esp, peer)) = self.crypto_out(t, d, out, &datagram)?
         {
             let (o2, nh2) = self.route(t, d, peer).ok_or_else(|| format!("no route to IPsec peer {peer}"))?;
+            self.esp_fits(t, d, &o2, &datagram, &mut esp)?;
             return self.transmit(t, d, &o2, nh2, esp);
         }
         // An output service policy, on the packet as it goes on the wire.
@@ -3186,6 +3193,7 @@ impl Sim {
         } else {
             seg.encode(src, dst)
         };
+        self.note_sent(d.id, src, dst, seg);
         let out = Ipv4 { id: self.ip_id(), ttl: default_ttl(d.kind), protocol: PROTO_TCP, src, dst, payload };
         self.send_ip(t, d, out)
     }
@@ -3201,6 +3209,7 @@ impl Sim {
             return Err("the web service is off".into());
         }
         if seg.flags & tcp::SYN != 0 {
+            self.note_peer_mss(d.id, ip);
             return self.tcp_send(t, d, ip.dst, ip.src, &reply(tcp::SYN | tcp::ACK, isn, seg.seq.wrapping_add(1), Vec::new()));
         }
         if !seg.payload.is_empty() {
@@ -3223,7 +3232,8 @@ impl Sim {
             let ack = seg.seq.wrapping_add(seg.payload.len() as u32);
             let mut seq = isn.wrapping_add(1);
             let bytes = response.into_bytes();
-            let chunks: Vec<&[u8]> = bytes.chunks(1460).collect();
+            // Segments within the MSS the client announced and the path MTU.
+            let chunks: Vec<&[u8]> = bytes.chunks(self.send_mss(d.id, ip.src, seg.src_port)).collect();
             let last = chunks.len().saturating_sub(1);
             for (i, c) in chunks.into_iter().enumerate() {
                 let flags = if i == last { tcp::PSH | tcp::ACK | tcp::FIN } else { tcp::ACK };
@@ -3401,9 +3411,17 @@ impl Sim {
             let req_len = request.len() as u32;
             let _ = self.tcp_send(t, d, src, server, &seg(tcp::PSH | tcp::ACK, isn + 1, srv_seq, request));
             let mut body = Vec::new();
-            let mut last_seq;
+            let mut last_seq = srv_seq;
             loop {
-                let Some(s) = self.tcp_wait(t, dev, |s| s.dst_port == port && (!s.payload.is_empty() || s.flags & tcp::FIN != 0)) else {
+                // The next segment in sequence (one sent again in pieces after "fragmentation
+                // needed" may come after later ones); any, when that one never comes.
+                let next = last_seq;
+                let any = |s: &Tcp| s.dst_port == port && (!s.payload.is_empty() || s.flags & tcp::FIN != 0);
+                let s = match self.tcp_wait(t, dev, |s| any(s) && s.seq == next) {
+                    Some(s) => Some(s),
+                    None => self.tcp_wait(t, dev, any),
+                };
+                let Some(s) = s else {
                     return Err(SimError::NoSource("the server stopped answering".into()));
                 };
                 last_seq = s.seq.wrapping_add(s.payload.len() as u32);

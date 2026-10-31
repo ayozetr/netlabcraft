@@ -596,14 +596,19 @@ fn session_line(sim: &Sim, s: &Session) -> String {
     let ports = s.protocol != 1;
     let at = |a: std::net::Ipv4Addr, p: u16| if ports { format!("{a}:{p}") } else { a.to_string() };
     format!(
-        "{:<5} {:<22} → {:<22} up {} s, idle {} s, {}/{} packets{}",
+        "{:<5} {:<22} → {:<22} up {} s, idle {} s, {}/{} packets{}{}",
         s.protocol_name(),
-        at(s.src, s.src_port),
+        if s.expected { format!("{}:any", s.src) } else { at(s.src, s.src_port) },
         at(s.dst, s.dst_port),
         now.saturating_sub(s.started_us) / 1_000_000,
         now.saturating_sub(s.last_us) / 1_000_000,
         s.packets.0,
         s.packets.1,
+        match (s.app, s.expected) {
+            (_, true) => ", FTP data connection expected".to_string(),
+            (Some(app), _) => format!(", {} inspected", app.name().to_uppercase()),
+            _ => String::new(),
+        },
         if s.closing { ", closing" } else { "" }
     )
 }

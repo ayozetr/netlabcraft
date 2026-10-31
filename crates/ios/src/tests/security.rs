@@ -402,7 +402,7 @@ fn ikev2_site_to_site_by_typing() {
     assert!(sa.contains("Peer 198.51.100.1 (local 203.0.113.1), this router started it, established"), "{sa}");
     assert!(sa.contains("AES-CBC-256") && sa.contains("PRF HMAC-SHA256") && sa.contains("DH group 14") && sa.contains("Profile: PROF"), "{sa}");
     assert!(lab.run(r2, "show crypto ikev2 sa").contains("the peer started it, established"));
-    assert!(sa.contains("ESP: AES-128-CBC with HMAC-SHA1-96 (real ciphers)"), "{sa}");
+    assert!(sa.contains("ESP: AES-CBC-128 / HMAC-SHA1-96 (real ciphers)"), "{sa}");
     let ipsec = lab.run(r1, "show crypto ipsec sa");
     assert!(ipsec.contains("Outbound ESP SPI 0x") && count_after(&ipsec, "decapsulated ") >= 3, "{ipsec}");
     assert!(lab.run(r1, "show logging").contains("IKEv2 with 198.51.100.1: IKE_SA_INIT and IKE_AUTH complete"));

@@ -93,6 +93,7 @@ impl Sim {
             dst,
             payload: seg.encode(src, dst),
         };
+        self.note_sent(d.id, src, dst, &seg);
         self.send_ip(t, d, ip)
     }
 
@@ -261,7 +262,8 @@ impl Sim {
         let Some(data) = self.state.get(&d.id).and_then(|s| s.ftp.data.get(&port)).cloned() else { return Ok(()) };
         let (Job::Send(bytes), Some(client_port)) = (&data.job, self.ftp_data_peer.get(&(d.id, port)).copied()) else { return Ok(()) };
         let mut seq = data.seq.wrapping_add(1);
-        let chunks: Vec<&[u8]> = if bytes.is_empty() { vec![&[][..]] } else { bytes.chunks(1460).collect() };
+        let mss = self.send_mss(d.id, data.client, client_port);
+        let chunks: Vec<&[u8]> = if bytes.is_empty() { vec![&[][..]] } else { bytes.chunks(mss).collect() };
         let last = chunks.len().saturating_sub(1);
         for (i, c) in chunks.into_iter().enumerate() {
             let flags = if i == last { tcp::PSH | tcp::ACK | tcp::FIN } else { tcp::ACK };
@@ -385,7 +387,8 @@ impl Sim {
 
     pub(crate) fn conn_send(&mut self, t: &Topology, c: &mut Conn, data: &[u8]) {
         let Some(d) = t.device(c.dev) else { return };
-        let chunks: Vec<&[u8]> = data.chunks(1460).collect();
+        let mss = self.send_mss(c.dev, c.dst, c.remote);
+        let chunks: Vec<&[u8]> = data.chunks(mss).collect();
         for chunk in chunks {
             let seg = Tcp {
                 src_port: c.local,
@@ -407,7 +410,14 @@ impl Sim {
         let mut got = Vec::new();
         let local = c.local;
         loop {
-            let Some(s) = self.tcp_wait(t, c.dev, |s| s.dst_port == local && (!s.payload.is_empty() || s.flags & tcp::FIN != 0)) else {
+            // In sequence when it can be (see `http_get`).
+            let next = c.ack;
+            let any = |s: &Tcp| s.dst_port == local && (!s.payload.is_empty() || s.flags & tcp::FIN != 0);
+            let s = match self.tcp_wait(t, c.dev, |s| any(s) && s.seq == next) {
+                Some(s) => Some(s),
+                None => self.tcp_wait(t, c.dev, any),
+            };
+            let Some(s) = s else {
                 return (got, false);
             };
             got.extend_from_slice(&s.payload);
