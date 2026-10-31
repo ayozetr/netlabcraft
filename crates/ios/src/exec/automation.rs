@@ -44,7 +44,7 @@ fn status(d: &Device) -> String {
     let on = |b: bool| if b { "on" } else { "off" };
     let mut s = String::new();
     let _ = writeln!(s, "Web server, port 80 (ip http server) .......... {}", on(a.http));
-    let _ = writeln!(s, "Web server, port 443 (ip http secure-server) .. {} (the simulator carries no TLS)", on(a.https));
+    let _ = writeln!(s, "Web server, port 443 (ip http secure-server) .. {} (TLS 1.2, anonymous DH, no certificate)", on(a.https));
     let _ = writeln!(s, "RESTCONF (restconf) ........................... {}", on(a.restconf));
     let _ = writeln!(s, "NETCONF, port 830 (netconf-yang) .............. {}", on(a.netconf));
     let admins = admins(d);

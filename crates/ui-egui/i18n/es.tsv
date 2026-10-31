@@ -1344,3 +1344,5 @@ Session {} is open: the next operations run on it	La sesión {} está abierta: l
 Close the session	Cerrar la sesión
 Keep the session open	Mantener la sesión abierta
 Leave the session open after these operations, to hold a lock or work with the candidate	Deja la sesión abierta tras estas operaciones, para mantener un bloqueo o trabajar con el candidato
+Carried by SSH: key exchange {}, cipher {}	Transportado por SSH: intercambio de claves {}, cifrado {}
+Encrypted with TLS 1.2: {} (no certificate)	Cifrado con TLS 1.2: {} (sin certificado)

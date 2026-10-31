@@ -534,11 +534,12 @@ fn messages(buf: &[u8], eom_first: usize, framing: Framing) -> (Vec<String>, usi
     (out, used)
 }
 
-/// Sends RPCs on an open session (each wrapped in an `<rpc>` if given bare) and collects
-/// their replies; `then_close` adds a `<close-session>`. Whether the server closed.
-fn run_rpcs(s: &mut Session, c: &mut OpenClient, rpcs: &[String], then_close: bool) -> (Vec<Value>, bool) {
+/// Sends RPCs on an open session (each wrapped in an `<rpc>` if given bare) after `prefix`
+/// (the client's hello, on a new session), and collects their replies; `then_close` adds a
+/// `<close-session>`. Whether the server closed.
+fn run_rpcs(s: &mut Session, c: &mut OpenClient, prefix: &[u8], rpcs: &[String], then_close: bool) -> (Vec<Value>, bool) {
     let framing = if c.chunked { Framing::Chunked } else { Framing::EndOfMessage };
-    let mut stream = Vec::new();
+    let mut stream = prefix.to_vec();
     for r in rpcs {
         let t = r.trim();
         let wrapped = if t.starts_with("<rpc") || t.starts_with("<?xml") || t.starts_with("<nc:rpc") {
@@ -554,20 +555,27 @@ fn run_rpcs(s: &mut Session, c: &mut OpenClient, rpcs: &[String], then_close: bo
         stream.extend(netconf::encode(&format!("<rpc message-id=\"{}\" xmlns=\"{NS}\"><close-session/></rpc>", c.next_id), framing));
     }
     let want = rpcs.len() + usize::from(then_close);
-    let before = c.buf.clone();
-    let got = s
-        .sim
-        .tcp_exchange(&s.topology, &mut c.tcp, &stream, &|b: &[u8]| messages(&[&before[..], b].concat(), 0, framing).0.len() >= want)
-        .unwrap_or_default();
-    c.buf.extend(got);
+    if want == 0 {
+        if !stream.is_empty() {
+            s.sim.ssh_push(&s.topology, c, &stream);
+        }
+        return (Vec::new(), c.tcp.closed);
+    }
+    let _ = s.sim.ssh_exchange(&s.topology, c, &stream, &|b: &[u8]| messages(b, 0, framing).0.len() >= want);
     let (msgs, used) = messages(&c.buf, 0, framing);
     c.buf.drain(..used.min(c.buf.len()));
     (msgs.into_iter().map(Value::String).collect(), c.tcp.closed)
 }
 
+/// What the session's SSH transport is, for the answer.
+fn ssh_info() -> Value {
+    use netlabcraft_wire::ssh;
+    json!({"version": ssh::IDENT, "kex": ssh::KEX, "cipher": ssh::CIPHER, "mac": ssh::MAC, "host_key": ssh::HOST_KEY})
+}
+
 /// `netconf.session`: opens a session (or goes on with one kept open), sends the RPCs and
 /// returns what the router answered. Without `keep_open` the session ends with a
-/// `<close-session>`.
+/// `<close-session>`. It runs as the `netconf` subsystem of an SSH session on port 830.
 pub(crate) fn session(s: &mut Session, p: &Value) -> Result<Value> {
     let d = crate::cmd::device_param(s, p, "pc")?;
     if s.topology.device(d).is_none_or(|x| !x.kind.is_host()) {
@@ -595,18 +603,18 @@ pub(crate) fn session(s: &mut Session, p: &Value) -> Result<Value> {
             return Err(bad(format!("session {h} belongs to another host")));
         }
         let close = p.get("close").and_then(Value::as_bool).unwrap_or(false);
-        let (replies, closed) = run_rpcs(s, &mut c, &rpcs, close);
+        let (replies, closed) = run_rpcs(s, &mut c, &[], &rpcs, close);
         let session_id = c.session_id;
         let open = !closed && !close;
         if open {
             s.sim.return_client(h, c);
         } else {
-            s.sim.tcp_close(&s.topology, &c.tcp);
+            s.sim.ssh_close(&s.topology, &mut c);
         }
         let applied = rc::apply_changes(s);
         s.revision += 1;
         return Ok(
-            json!({"connected": true, "session": if open { json!(h) } else { Value::Null }, "session_id": session_id, "replies": replies, "applied": applied}),
+            json!({"connected": true, "session": if open { json!(h) } else { Value::Null }, "session_id": session_id, "replies": replies, "applied": applied, "ssh": ssh_info()}),
         );
     }
     let host = p.get("target").and_then(Value::as_str).ok_or_else(|| bad("`target` (the router's address or name) is required"))?.trim().to_string();
@@ -621,49 +629,37 @@ pub(crate) fn session(s: &mut Session, p: &Value) -> Result<Value> {
         other => return Err(bad(format!("framing `{other}`: 1.1 (chunked) or 1.0 (end-of-message)"))),
     };
     let server = rc::resolve(s, d, &host)?;
-    let tcp = s.sim.tcp_open(&s.topology, d, server, netconf::PORT).map_err(|e| EngineError::Failed(e.to_string()))?;
-    let mut c = OpenClient { tcp, buf: Vec::new(), chunked, session_id: 0, next_id: 100 };
-    let mut stream = netconf::auth_line(user, password).into_bytes();
-    stream.extend(netconf::encode(&client_hello(chunked), Framing::EndOfMessage));
-    // The server's identification line, then (if the login worked) its hello.
-    let opened = |b: &[u8]| {
-        let start = b.windows(2).position(|w| w == b"\r\n").map_or(b.len(), |i| i + 2);
-        let rest = b.get(start..).unwrap_or_default();
-        (!rest.is_empty() && !rest.starts_with(b"<")) || !messages(rest, 1, Framing::EndOfMessage).0.is_empty()
-    };
-    let got = s.sim.tcp_exchange(&s.topology, &mut c.tcp, &stream, &opened);
-    let got = match got {
-        Ok(g) => g,
-        Err(e) => {
-            s.sim.tcp_close(&s.topology, &c.tcp);
-            return Err(EngineError::Failed(e.to_string()));
+    let mut c = match s.sim.ssh_open(&s.topology, d, server, netconf::PORT, user, password) {
+        Ok(c) => c,
+        Err(e) if e.to_string().contains("Permission denied") => {
+            let applied = rc::apply_changes(s);
+            return Ok(json!({"connected": false, "error": e.to_string(), "hello": null, "replies": [], "applied": applied}));
         }
+        Err(e) => return Err(EngineError::Failed(e.to_string())),
     };
-    let text_start = got.windows(2).position(|w| w == b"\r\n").map_or(0, |i| i + 2);
-    let rest = got.get(text_start..).unwrap_or_default();
-    let (hello, used) = messages(rest, 1, Framing::EndOfMessage);
+    c.chunked = chunked;
+    // The server's hello came with the subsystem's start.
+    let (hello, used) = messages(&c.buf, 1, Framing::EndOfMessage);
     let Some(hello) = hello.into_iter().next() else {
-        s.sim.tcp_close(&s.topology, &c.tcp);
+        s.sim.ssh_close(&s.topology, &mut c);
         let applied = rc::apply_changes(s);
-        let why = String::from_utf8_lossy(rest).trim().to_string();
-        return Ok(
-            json!({"connected": false, "error": if why.is_empty() { "the server closed the session".to_string() } else { why }, "hello": null, "replies": [], "applied": applied}),
-        );
+        return Ok(json!({"connected": false, "error": "the server sent no <hello>", "hello": null, "replies": [], "applied": applied}));
     };
-    c.buf = rest.get(used..).unwrap_or_default().to_vec();
+    c.buf.drain(..used.min(c.buf.len()));
     c.session_id = xml::parse(&hello).ok().and_then(|h| h.text_of("session-id").and_then(|x| x.parse().ok())).unwrap_or(0);
-    let (replies, closed) = run_rpcs(s, &mut c, &rpcs, !keep);
+    let mine = netconf::encode(&client_hello(chunked), Framing::EndOfMessage);
+    let (replies, closed) = run_rpcs(s, &mut c, &mine, &rpcs, !keep);
     let session_id = c.session_id;
     let handle = if keep && !closed {
         Some(s.sim.keep_client(c))
     } else {
-        s.sim.tcp_close(&s.topology, &c.tcp);
+        s.sim.ssh_close(&s.topology, &mut c);
         None
     };
     let applied = rc::apply_changes(s);
     s.revision += 1;
     Ok(
-        json!({"connected": true, "framing": if chunked { "1.1" } else { "1.0" }, "session": handle, "session_id": session_id, "hello": hello, "replies": replies, "applied": applied}),
+        json!({"connected": true, "framing": if chunked { "1.1" } else { "1.0" }, "session": handle, "session_id": session_id, "hello": hello, "replies": replies, "applied": applied, "ssh": ssh_info()}),
     )
 }
 
@@ -711,7 +707,8 @@ mod tests {
             assert!(g0.child("oper-status").is_none(), "get-config has no state");
             assert!(replies[1].as_str().unwrap().contains("<ok/>"));
             // Real NETCONF segments crossed the lab on port 830.
-            assert!(s.sim.trace().iter().any(|e| e.summary.starts_with("NETCONF") && e.summary.contains("<hello>")), "{framing}");
+            assert!(s.sim.trace().iter().any(|e| e.protocol == netlabcraft_wire::Protocol::Ssh && e.summary.contains("KEXINIT")), "{framing}");
+            assert!(s.sim.trace().iter().all(|e| !e.summary.contains("<hello")), "NETCONF is inside encrypted SSH packets");
             assert!(s.execute("cli.exec", json!({"device": "R1", "line": "enable"})).is_ok());
             let out = s.execute("cli.exec", json!({"device": "R1", "line": "show netconf-yang sessions"})).unwrap();
             assert!(out["output"].as_str().unwrap().contains(if framing == "1.1" { "chunked" } else { "end-mark" }), "{out}");
@@ -870,6 +867,33 @@ mod tests {
         assert!(r["replies"][0].as_str().unwrap().contains("<ok/>"));
         let r = nc(&mut s, &["<lock><target><candidate/></target></lock>"], "1.1");
         assert!(r["replies"][0].as_str().unwrap().contains("lock-denied"), "{r}");
+    }
+
+    #[test]
+    fn netconf_runs_inside_encrypted_ssh() {
+        let mut s = lab();
+        let r = nc(&mut s, &["<get-config><source><running/></source></get-config>"], "1.1");
+        assert_eq!(r["ssh"]["kex"], netlabcraft_wire::ssh::KEX, "{r}");
+        let mut kinds = Vec::new();
+        for e in s.sim.trace() {
+            for secret in [&b"NetLab2026"[..], b"get-config", b"GigabitEthernet"] {
+                assert!(!e.frame.windows(secret.len()).any(|w| w == secret), "{}", e.summary);
+            }
+            if e.protocol == netlabcraft_wire::Protocol::Ssh {
+                kinds.push(e.summary.clone());
+            }
+        }
+        for want in ["identification SSH-2.0-", "KEXINIT", "KEXDH_INIT", "KEXDH_REPLY", "NEWKEYS", "encrypted packets"] {
+            assert!(kinds.iter().any(|k| k.contains(want)), "{want}: {kinds:?}");
+        }
+        // The old clear-text login, or any non-SSH bytes, is refused.
+        let pc1 = s.topology.resolve("PC1").unwrap();
+        let got = s.sim.tcp_session(&s.topology, pc1, "192.168.1.1".parse().unwrap(), netconf::PORT, b"user admin NetLab2026\r\n").unwrap();
+        assert_eq!(got, b"Protocol mismatch.\r\n");
+        // A wrong password ends the session before any NETCONF.
+        let r = s.execute("netconf.session", json!({"pc": "PC1", "target": "192.168.1.1", "user": "admin", "password": "nope"})).unwrap();
+        assert_eq!(r["connected"], false);
+        assert!(r["error"].as_str().unwrap().contains("Permission denied"), "{r}");
     }
 
     #[test]

@@ -52,6 +52,11 @@ pub mod tcp;
 pub mod vpn;
 pub mod wlan;
 pub mod xml;
+// Secure transports for automation (TLS under RESTCONF, SSH under NETCONF).
+pub mod modp;
+pub mod sha256;
+pub mod ssh;
+pub mod tls;
 
 /// Why bytes didn't decode.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -480,6 +485,10 @@ pub enum Protocol {
     Capwap,
     /// SIP call control between IP phones and their router (UDP 5060).
     Sip,
+    /// TLS records (HTTPS: RESTCONF on port 443).
+    Tls,
+    /// SSH packets (NETCONF on port 830).
+    Ssh,
     Other,
 }
 
@@ -520,6 +529,8 @@ impl Protocol {
             Protocol::Eapol => "EAPOL",
             Protocol::Capwap => "CAPWAP",
             Protocol::Sip => "SIP",
+            Protocol::Tls => "TLS",
+            Protocol::Ssh => "SSH",
             Protocol::Other => "Other",
         }
     }
@@ -533,11 +544,10 @@ fn automation_summary(s: &tcp::Tcp, route: &str, tag: &str) -> Option<(Protocol,
     }
     let on = |p: u16| s.dst_port == p || s.src_port == p;
     if on(http::TLS_PORT) {
-        let first = String::from_utf8_lossy(&s.payload).lines().next().unwrap_or("").chars().take(60).collect::<String>();
-        return Some((Protocol::Http, format!("HTTPS (TLS not simulated) {first} {route}{tag}")));
+        return Some((Protocol::Tls, format!("TLS {} (HTTPS) {route}{tag}", tls::describe(&s.payload))));
     }
     if on(netconf::PORT) {
-        return Some((Protocol::Tcp, format!("NETCONF {} {route}{tag}", netconf::describe(&s.payload))));
+        return Some((Protocol::Ssh, format!("SSH {} (NETCONF) {route}{tag}", ssh::describe(&s.payload))));
     }
     if on(http::PORT) {
         let first = String::from_utf8_lossy(&s.payload).lines().next().unwrap_or("").chars().take(60).collect::<String>();

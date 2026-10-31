@@ -17,7 +17,7 @@ pub struct Automation {
     /// `ip http server`: HTTP on port 80.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub http: bool,
-    /// `ip http secure-server`: HTTP on port 443 (the simulator carries no TLS).
+    /// `ip http secure-server`: HTTP over TLS on port 443.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub https: bool,
     /// `ip http authentication local`.

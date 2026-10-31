@@ -370,6 +370,9 @@ fn answer(ui: &mut egui::Ui, dev: &Device, f: &mut Form) {
         egui::CollapsingHeader::new(tl("The router's hello")).id_salt(("nc_hello", dev.id.0)).show(ui, |ui| {
             ui.add(egui::Label::new(RichText::new(a["hello"].as_str().unwrap_or("")).monospace()).wrap());
         });
+        if let Some(k) = a["ssh"]["kex"].as_str() {
+            ui.weak(trf("Carried by SSH: key exchange {}, cipher {}", &[&k, &a["ssh"]["cipher"].as_str().unwrap_or("")]));
+        }
         applied(ui, &a);
         return;
     }
@@ -379,6 +382,9 @@ fn answer(ui: &mut egui::Ui, dev: &Device, f: &mut Form) {
         ui.label(RichText::new(format!("{status} {}", a["reason"].as_str().unwrap_or(""))).color(colour).strong());
         ui.label(RichText::new(a["url"].as_str().unwrap_or("")).weak());
     });
+    if let Some(c) = a["tls"]["cipher"].as_str() {
+        ui.weak(trf("Encrypted with TLS 1.2: {} (no certificate)", &[&c]));
+    }
     egui::CollapsingHeader::new(tl("Response headers")).id_salt(("http_headers", dev.id.0)).show(ui, |ui| {
         for h in a["headers"].as_array().into_iter().flatten() {
             ui.monospace(format!("{}: {}", h[0].as_str().unwrap_or(""), h[1].as_str().unwrap_or("")));

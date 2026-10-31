@@ -1,9 +1,8 @@
 //! NETCONF message framing (RFC 6242 §4): the end-of-message marker `]]>]]>` of base:1.0, used
 //! for the `<hello>` exchange, and the chunked framing of base:1.1 (`\n#LEN\n…\n##\n`).
 //!
-//! NETCONF normally runs as an SSH subsystem on port 830. The simulator carries no SSH
-//! encryption: the TCP stream starts with an SSH-style identification line (RFC 4253 §4.2) and a
-//! one-line stand-in for SSH user authentication ([`auth_line`]), then the framed messages.
+//! NETCONF runs as the `netconf` subsystem of an SSH session on port 830 (RFC 6242 §3); the
+//! framed messages are that channel's data (see [`crate::ssh`]).
 
 use crate::{Result, WireError};
 
@@ -109,42 +108,6 @@ pub fn decode(buf: &[u8], framing: Framing) -> Result<Option<(String, usize)>> {
     }
 }
 
-/// The client's stand-in for SSH user authentication: one line naming the user and password.
-pub fn auth_line(user: &str, password: &str) -> String {
-    format!("SSH-2.0-NetLabCraft\r\nuser {user} {password}\r\n")
-}
-
-/// Reads the two preamble lines a client sends: `Ok(None)` until both arrived, else the user,
-/// the password and the bytes used.
-pub fn parse_auth(buf: &[u8]) -> Result<Option<(String, String, usize)>> {
-    let mut lines = Vec::new();
-    let mut start = 0;
-    while lines.len() < 2 {
-        let Some(end) = buf.get(start..).and_then(|b| b.windows(2).position(|w| w == b"\r\n")) else {
-            if buf.len() > 512 {
-                return Err(bad("the session preamble is too long"));
-            }
-            return Ok(None);
-        };
-        let line = std::str::from_utf8(buf.get(start..start + end).unwrap_or_default()).map_err(|_| bad("a preamble that is not text"))?;
-        lines.push(line.to_string());
-        start += end + 2;
-        if start > 512 {
-            return Err(bad("the session preamble is too long"));
-        }
-    }
-    let ident = lines.first().map(String::as_str).unwrap_or("");
-    if !ident.starts_with("SSH-2.0-") {
-        return Err(bad("the session does not start with an SSH-2.0 identification"));
-    }
-    let auth = lines.get(1).map(String::as_str).unwrap_or("");
-    let mut w = auth.splitn(3, ' ');
-    match (w.next(), w.next(), w.next()) {
-        (Some("user"), Some(u), Some(p)) if !u.is_empty() => Ok(Some((u.to_string(), p.to_string(), start))),
-        _ => Err(bad("the session's user line is malformed")),
-    }
-}
-
 /// A short description of a segment's NETCONF content, for the event list (passwords hidden).
 pub fn describe(payload: &[u8]) -> String {
     let text = String::from_utf8_lossy(payload);
@@ -208,21 +171,6 @@ mod tests {
         assert!(decode(huge.as_bytes(), Framing::Chunked).is_err());
         assert!(decode(&vec![b'a'; MAX_MESSAGE + 1], Framing::EndOfMessage).is_err());
         assert!(decode(b"\xff\xfe]]>]]>", Framing::EndOfMessage).is_err());
-    }
-
-    #[test]
-    fn the_preamble_names_the_user() {
-        let line = auth_line("admin", "cisco 123");
-        let b = line.as_bytes();
-        for cut in 0..b.len() {
-            assert!(matches!(parse_auth(&b[..cut]), Ok(None)), "cut {cut}");
-        }
-        assert_eq!(parse_auth(b).unwrap(), Some(("admin".into(), "cisco 123".into(), b.len())));
-        assert!(parse_auth(b"HELLO\r\nuser a b\r\n").is_err());
-        assert!(parse_auth(b"SSH-2.0-x\r\npass a\r\n").is_err());
-        assert!(parse_auth(&vec![b'a'; 600]).is_err());
-        assert!(describe(b).contains("session start"));
-        assert!(!describe(b).contains("cisco"));
         assert!(describe(b"<rpc-reply><ok/></rpc-reply>").contains("rpc-reply"));
     }
 }

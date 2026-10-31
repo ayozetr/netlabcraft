@@ -8,8 +8,7 @@
 
 use crate::{Result, WireError};
 
-/// The well-known ports: plain HTTP and HTTP over TLS (the simulator carries no TLS: see
-/// `docs/architecture.md`, port 443 carries the same plain messages).
+/// The well-known ports: plain HTTP and HTTP over TLS (`crate::tls` carries the latter).
 pub const PORT: u16 = 80;
 pub const TLS_PORT: u16 = 443;
 /// Most bytes of a request or status line plus headers.
@@ -125,6 +124,11 @@ impl Request {
 
     /// Parses a request from the bytes received so far: `Ok(None)` if more are needed.
     pub fn parse(buf: &[u8]) -> Result<Option<(Request, usize)>> {
+        // A method is upper-case letters: anything else (a TLS ClientHello, for one) can never
+        // become a request, so it is refused at once instead of waiting for a blank line.
+        if buf.first().is_some_and(|b| !b.is_ascii_uppercase()) {
+            return Err(bad("a malformed request line (is this TLS sent to a plain HTTP port?)"));
+        }
         let Some((head, rest)) = split_head(buf)? else { return Ok(None) };
         let mut lines = head.split("\r\n");
         let first = lines.next().unwrap_or("");
@@ -362,10 +366,11 @@ mod tests {
             b"POST / HTTP/1.1\r\nContent-Length: -1\r\n\r\n",
             b"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n",
             b"\xff\xfe / HTTP/1.1\r\n\r\n",
+            b"\x16\x03\x01\x00\x2f\x01",
         ] {
             assert!(Request::parse(junk).is_err(), "{}", String::from_utf8_lossy(junk));
         }
-        let big = vec![b'a'; MAX_HEAD + 10];
+        let big = vec![b'A'; MAX_HEAD + 10];
         assert!(Request::parse(&big).is_err_and(|e| too_large(&e)));
         let huge = format!("POST / HTTP/1.1\r\nContent-Length: {}\r\n\r\n", MAX_BODY + 1);
         assert!(Request::parse(huge.as_bytes()).is_err_and(|e| too_large(&e)));

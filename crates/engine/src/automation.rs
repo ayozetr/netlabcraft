@@ -1268,12 +1268,17 @@ pub(crate) fn http_request(s: &mut Session, p: &Value) -> Result<Value> {
     }
     let req = Request { method: method.clone(), target: path.clone(), headers: all, body };
     let server = resolve(s, d, &host)?;
-    let got = s.sim.tcp_session(&s.topology, d, server, port, &req.encode());
+    let got =
+        if tls { s.sim.https(&s.topology, d, server, port, &req.encode()) } else { s.sim.tcp_session(&s.topology, d, server, port, &req.encode()) };
     let applied = apply_changes(s);
     s.revision += 1;
     let got = got.map_err(|e| EngineError::Failed(e.to_string()))?;
     let resp = match http::Response::parse(&got) {
         Ok(Some(r)) => r,
+        // A TLS alert record: this port wants TLS.
+        _ if !tls && got.first() == Some(&netlabcraft_wire::tls::ALERT) && got.get(1) == Some(&3) => {
+            return Err(EngineError::Failed(format!("{host} port {port} speaks TLS and refused plain HTTP: use https://")));
+        }
         Ok(None) => return Err(EngineError::Failed("the server closed the connection before a full answer".into())),
         Err(e) => return Err(EngineError::Failed(format!("the answer is not HTTP: {e}"))),
     };
@@ -1288,6 +1293,7 @@ pub(crate) fn http_request(s: &mut Session, p: &Value) -> Result<Value> {
         "body": text,
         "json": parsed,
         "applied": applied,
+        "tls": if tls { json!({"version": "TLS 1.2", "cipher": netlabcraft_wire::tls::SUITE_NAME, "certificate": null}) } else { Value::Null },
     }))
 }
 
@@ -1390,8 +1396,11 @@ mod tests {
         assert_eq!(g0["oper-status"], "up");
         assert!(list.iter().any(|i| i["name"] == "Loopback0" && i["type"] == "iana-if-type:softwareLoopback"));
         assert!(r["headers"].as_array().unwrap().iter().any(|h| h[0] == "Content-Type" && h[1] == YANG_JSON));
-        // The request crossed the lab as real TCP on port 443.
-        assert!(s.sim.trace().iter().any(|e| e.summary.contains("HTTPS") && e.summary.contains("GET /restconf")));
+        // The request crossed the lab as TLS on port 443: a handshake, then encrypted data.
+        let trace = s.sim.trace();
+        assert!(trace.iter().any(|e| e.protocol == netlabcraft_wire::Protocol::Tls && e.summary.contains("ClientHello")));
+        assert!(trace.iter().any(|e| e.summary.contains("Application Data (encrypted")));
+        assert!(trace.iter().all(|e| !e.summary.contains("GET /restconf")), "nothing readable");
 
         let r = req(
             &mut s,
@@ -1741,6 +1750,44 @@ mod tests {
         for bad in ["https://2001:db8::1/", "https://[2001:db8::1/", "https://[nope]/", "https://[::1]x/", "https://[::1]:/"] {
             assert!(split_url(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn https_is_real_tls_and_plain_text_is_refused_on_443() {
+        let mut s = lab();
+        let r = req(&mut s, "GET", "/restconf/data/ietf-system:system", None);
+        assert_eq!(r["status"], 200, "{r}");
+        assert_eq!(r["tls"]["cipher"], netlabcraft_wire::tls::SUITE_NAME);
+        // Every frame on port 443 is TLS, and neither the request nor the password shows.
+        let auth = http::base64_encode(b"admin:NetLab2026");
+        let mut kinds = Vec::new();
+        for e in s.sim.trace() {
+            assert!(!e.frame.windows(8).any(|w| w == b"restconf"), "{}", e.summary);
+            assert!(!e.frame.windows(auth.len()).any(|w| w == auth.as_bytes()));
+            if e.protocol == netlabcraft_wire::Protocol::Tls {
+                kinds.push(e.summary.clone());
+            }
+        }
+        for want in ["ClientHello", "ServerHello", "ServerKeyExchange", "ClientKeyExchange", "ChangeCipherSpec", "Application Data", "Alert"] {
+            assert!(kinds.iter().any(|k| k.contains(want)), "{want}: {kinds:?}");
+        }
+        // Plain HTTP to the TLS port gets a TLS alert, and the client says why.
+        let e = s
+            .execute(
+                "pc.http_request",
+                json!({"pc": "PC1", "url": "http://192.168.1.1:443/restconf/data", "user": "admin", "password": "NetLab2026"}),
+            )
+            .unwrap_err();
+        assert!(e.to_string().contains("speaks TLS"), "{e}");
+        assert!(s.sim.trace().iter().any(|e| e.summary.contains("Alert (unexpected_message)")));
+        // TLS to the plain web server is refused too.
+        s.execute("device.configure", json!({"device": "R1", "lines": "ip http server"})).unwrap();
+        let e = s.execute("pc.http_request", json!({"pc": "PC1", "url": "https://192.168.1.1:80/restconf"})).unwrap_err();
+        assert!(e.to_string().contains("plain text"), "{e}");
+        let r = s
+            .execute("pc.http_request", json!({"pc": "PC1", "url": "http://192.168.1.1/restconf", "user": "admin", "password": "NetLab2026"}))
+            .unwrap();
+        assert_eq!((r["status"].clone(), r["tls"].clone()), (json!(200), Value::Null));
     }
 
     #[test]

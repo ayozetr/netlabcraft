@@ -11,9 +11,11 @@
 //! Client connections can stay open between commands ([`Sim::tcp_open`], [`Sim::tcp_exchange`],
 //! [`Sim::keep_client`]), so two NETCONF sessions can be open at once and contend for a lock.
 //!
-//! Not simulated: TLS on port 443 and SSH under NETCONF. The bytes cross the wire in clear; a
-//! NETCONF session opens with an SSH-style identification line and a user line instead of the
-//! SSH handshake (see `netlabcraft_wire::netconf`).
+//! Port 443 speaks TLS 1.2 (`netlabcraft_wire::tls`) with HTTP inside; port 80 plain HTTP.
+//! NETCONF on port 830 runs as the `netconf` subsystem of an SSH session
+//! (`netlabcraft_wire::ssh`, RFC 6242), logged in with the router's local privilege-15 users.
+//! Both do real key exchanges and encrypt what they carry; what is a stand-in (no certificate,
+//! an unauthenticated host key, seeded randomness) is listed in those modules.
 
 use std::collections::{BTreeMap, VecDeque};
 use std::net::{IpAddr, Ipv6Addr};
@@ -22,7 +24,9 @@ use netlabcraft_core::DeviceId;
 use netlabcraft_model::{Device, DeviceKind, Topology};
 use netlabcraft_wire::ipv6::Ipv6;
 use netlabcraft_wire::netconf::{self, Framing};
+use netlabcraft_wire::ssh::Ssh;
 use netlabcraft_wire::tcp::{self, Tcp};
+use netlabcraft_wire::tls::Tls;
 use netlabcraft_wire::{PROTO_TCP, http};
 
 use crate::v6::{l3_ifaces6, route6};
@@ -108,7 +112,12 @@ pub struct SessionInfo {
 
 #[derive(Debug, Clone, Default)]
 struct Conn {
+    /// Bytes received and not yet used (TLS records, SSH packets, or plain HTTP).
     buf: Vec<u8>,
+    /// Decrypted application bytes not yet used (HTTP inside TLS, NETCONF inside SSH).
+    app: Vec<u8>,
+    tls: Option<Box<Tls>>,
+    ssh: Option<Box<Ssh>>,
     /// The server's next sequence number.
     seq: u32,
     authed: bool,
@@ -159,6 +168,10 @@ pub struct OpenClient {
     pub session_id: u32,
     /// The next message id the client uses.
     pub next_id: u32,
+    /// The SSH session the channel data runs in.
+    pub ssh: Option<Box<Ssh>>,
+    /// Received SSH bytes not yet decrypted.
+    pub raw: Vec<u8>,
 }
 
 /// Whether a router serves this TCP port now.
@@ -280,35 +293,23 @@ impl Sim {
         let fin = seg.flags & tcp::FIN != 0;
         let ack = seg.seq.wrapping_add(seg.payload.len() as u32).wrapping_add(u32::from(fin));
         let (mut out, mut close) = (Vec::new(), false);
-        if conn.buf.len().saturating_add(seg.payload.len()) > MAX_CONN_BYTES {
+        if conn.buf.len().saturating_add(conn.app.len()).saturating_add(seg.payload.len()) > MAX_CONN_BYTES {
             close = true;
-            if seg.dst_port != netconf::PORT {
+            if seg.dst_port == http::PORT {
                 out = error_page(413, "The request is larger than this server accepts.").encode();
             }
         } else {
             conn.buf.extend_from_slice(&seg.payload);
             if !seg.payload.is_empty() {
-                if seg.dst_port == netconf::PORT {
-                    close = self.netconf_feed(t, d, src, seg.src_port, &mut conn, &mut out);
-                } else {
-                    match http::Request::parse(&conn.buf) {
-                        Ok(Some((req, _))) => {
-                            let served = match self.auto.restconf {
-                                Some(f) => f(t, d.id, &req),
-                                None => Served { response: error_page(503, "RESTCONF is not available."), lines: Vec::new() },
-                            };
-                            if !served.lines.is_empty() {
-                                self.auto.changes.push((d.id, served.lines));
-                            }
-                            out = served.response.encode();
-                            close = true;
-                        }
-                        Ok(None) => {}
-                        Err(e) => {
-                            let status = if http::too_large(&e) { 413 } else { 400 };
-                            out = error_page(status, &e.to_string()).encode();
-                            close = true;
-                        }
+                match seg.dst_port {
+                    netconf::PORT => close = self.ssh_feed(t, d, src, seg.src_port, &mut conn, &mut out),
+                    http::TLS_PORT => close = self.tls_feed(t, d, &mut conn, &mut out),
+                    _ => {
+                        let raw = std::mem::take(&mut conn.buf);
+                        let (answer, done) = self.http_answer(t, d, &raw);
+                        conn.buf = raw;
+                        out = answer;
+                        close = done;
                     }
                 }
             }
@@ -334,6 +335,152 @@ impl Sim {
         Ok(())
     }
 
+    /// A seed for one endpoint's random values: the simulator's own counter and clock, so a
+    /// lab replays the same bytes.
+    fn seed(&mut self, what: &str, d: DeviceId) -> Vec<u8> {
+        self.seq += 1;
+        format!("netlabcraft {what} {} {} {}", d.0, self.now, self.seq).into_bytes()
+    }
+
+    /// An HTTP request in `raw` (plain, or decrypted from TLS) answered by the RESTCONF
+    /// handler: (the response bytes, whether the request was complete or broken).
+    fn http_answer(&mut self, t: &Topology, d: &Device, raw: &[u8]) -> (Vec<u8>, bool) {
+        match http::Request::parse(raw) {
+            Ok(Some((req, _))) => {
+                let served = match self.auto.restconf {
+                    Some(f) => f(t, d.id, &req),
+                    None => Served { response: error_page(503, "RESTCONF is not available."), lines: Vec::new() },
+                };
+                if !served.lines.is_empty() {
+                    self.auto.changes.push((d.id, served.lines));
+                }
+                (served.response.encode(), true)
+            }
+            Ok(None) => (Vec::new(), false),
+            Err(e) => {
+                let status = if http::too_large(&e) { 413 } else { 400 };
+                (error_page(status, &e.to_string()).encode(), true)
+            }
+        }
+    }
+
+    /// TLS on port 443: the handshake, then the request decrypted and the answer encrypted,
+    /// with a close_notify after it. Plain text here gets a fatal alert. Whether to close.
+    fn tls_feed(&mut self, t: &Topology, d: &Device, conn: &mut Conn, out: &mut Vec<u8>) -> bool {
+        if conn.tls.is_none() {
+            let seed = self.seed("tls", d.id);
+            conn.tls = Some(Box::new(Tls::server(&seed)));
+        }
+        let Some(tls) = conn.tls.as_mut() else { return true };
+        let o = match tls.feed(&mut conn.buf) {
+            Ok(o) => o,
+            Err(e) => {
+                out.extend(tls.alert(&e));
+                return true;
+            }
+        };
+        out.extend(o.send);
+        conn.app.extend(o.app);
+        if o.closed {
+            return true;
+        }
+        if !tls.established() || conn.app.is_empty() {
+            return false;
+        }
+        let app = std::mem::take(&mut conn.app);
+        let (answer, done) = self.http_answer(t, d, &app);
+        let Some(tls) = conn.tls.as_mut() else { return true };
+        if !done {
+            conn.app = app;
+            return false;
+        }
+        out.extend(tls.send(&answer));
+        out.extend(tls.close());
+        true
+    }
+
+    /// SSH on port 830: the transport and password login, then the `netconf` subsystem's
+    /// channel data through the NETCONF handler. Whether the session ends.
+    fn ssh_feed(&mut self, t: &Topology, d: &Device, peer: IpAddr, port: u16, conn: &mut Conn, out: &mut Vec<u8>) -> bool {
+        let Some(handler) = self.auto.netconf else { return true };
+        if conn.ssh.is_none() {
+            let seed = self.seed("ssh", d.id);
+            conn.ssh = Some(Box::new(Ssh::server(&seed, format!("{} {}", d.id.0, d.name).as_bytes())));
+        }
+        let Some(ssh) = conn.ssh.as_mut() else { return true };
+        let was_ready = ssh.ready();
+        let check = |u: &str, p: &str| d.access.users.iter().any(|x| x.name == u && x.privilege >= 15 && x.matches(p));
+        let o = match ssh.feed(&mut conn.buf, &check) {
+            Ok(o) => o,
+            Err(e) => {
+                out.extend(ssh.disconnect(&e));
+                return true;
+            }
+        };
+        out.extend(o.send);
+        if o.closed {
+            return true;
+        }
+        if let Some(user) = o.logged_in {
+            conn.authed = true;
+            self.auto.next_session = self.auto.next_session.wrapping_add(1).max(1);
+            conn.session = NetconfSession { id: self.auto.next_session, user, ..NetconfSession::default() };
+        }
+        conn.app.extend(o.app);
+        let mut plain = Vec::new();
+        let mut end = false;
+        if o.ready && !was_ready {
+            // The subsystem started: the server's <hello> goes first (RFC 6241 §8.1).
+            let ds = self.auto.stores.entry(d.id).or_default();
+            let step = handler(t, d.id, &mut conn.session, ds, NetconfEvent::Open);
+            if let Some(r) = step.reply {
+                plain.extend(netconf::encode(&r, Framing::EndOfMessage));
+            }
+            self.remember(d.id, peer, port, &conn.session);
+        }
+        if o.ready {
+            end = self.netconf_messages(t, d, peer, port, conn, &mut plain);
+        }
+        let Some(ssh) = conn.ssh.as_mut() else { return true };
+        if !plain.is_empty() {
+            out.extend(ssh.send(&plain));
+        }
+        if end {
+            out.extend(ssh.close());
+        }
+        end
+    }
+
+    /// The complete NETCONF messages in a session's channel data, through the handler; whether
+    /// the session ends.
+    fn netconf_messages(&mut self, t: &Topology, d: &Device, peer: IpAddr, port: u16, conn: &mut Conn, out: &mut Vec<u8>) -> bool {
+        let Some(handler) = self.auto.netconf else { return true };
+        // One by one; framing is end-of-message until both hellos are done.
+        for _ in 0..256 {
+            let framing = if conn.session.hello_done && conn.session.chunked { Framing::Chunked } else { Framing::EndOfMessage };
+            let (msg, used) = match netconf::decode(&conn.app, framing) {
+                Ok(Some(m)) => m,
+                Ok(None) => return false,
+                Err(_) => return true,
+            };
+            conn.app.drain(..used.min(conn.app.len()));
+            let ds = self.auto.stores.entry(d.id).or_default();
+            let step = handler(t, d.id, &mut conn.session, ds, NetconfEvent::Message(&msg));
+            if !step.lines.is_empty() {
+                self.auto.changes.push((d.id, step.lines));
+            }
+            let framing = if conn.session.hello_done && conn.session.chunked { Framing::Chunked } else { Framing::EndOfMessage };
+            if let Some(r) = step.reply {
+                out.extend_from_slice(&netconf::encode(&r, framing));
+            }
+            self.remember(d.id, peer, port, &conn.session);
+            if step.close {
+                return true;
+            }
+        }
+        false
+    }
+
     /// A server connection is gone: its NETCONF session's locks are released, and a candidate
     /// it held locked loses its uncommitted changes (RFC 6241 §7.5).
     fn conn_ended(&mut self, d: DeviceId, c: &Conn) {
@@ -351,62 +498,6 @@ impl Sim {
     /// A router's NETCONF datastores as its sessions share them.
     pub fn datastores(&self, d: DeviceId) -> Datastores {
         self.auto.stores.get(&d).cloned().unwrap_or_default()
-    }
-
-    /// Feeds a NETCONF connection's buffer through the handler; whether the session ends.
-    fn netconf_feed(&mut self, t: &Topology, d: &Device, peer: IpAddr, port: u16, conn: &mut Conn, out: &mut Vec<u8>) -> bool {
-        let Some(handler) = self.auto.netconf else { return true };
-        if !conn.authed {
-            match netconf::parse_auth(&conn.buf) {
-                Ok(None) => return false,
-                Err(_) => {
-                    out.extend_from_slice(b"SSH-2.0-NetLabCraft\r\nProtocol mismatch.\r\n");
-                    return true;
-                }
-                Ok(Some((user, password, used))) => {
-                    conn.buf.drain(..used.min(conn.buf.len()));
-                    out.extend_from_slice(b"SSH-2.0-NetLabCraft\r\n");
-                    let ok = d.access.users.iter().any(|u| u.name == user && u.privilege >= 15 && u.matches(&password));
-                    if !ok {
-                        out.extend_from_slice(b"Permission denied (password).\r\n");
-                        return true;
-                    }
-                    conn.authed = true;
-                    self.auto.next_session = self.auto.next_session.wrapping_add(1).max(1);
-                    conn.session = NetconfSession { id: self.auto.next_session, user, ..NetconfSession::default() };
-                    let ds = self.auto.stores.entry(d.id).or_default();
-                    let step = handler(t, d.id, &mut conn.session, ds, NetconfEvent::Open);
-                    if let Some(r) = step.reply {
-                        out.extend_from_slice(&netconf::encode(&r, Framing::EndOfMessage));
-                    }
-                    self.remember(d.id, peer, port, &conn.session);
-                }
-            }
-        }
-        // Messages so far, one by one; framing is end-of-message until both hellos are done.
-        for _ in 0..256 {
-            let framing = if conn.session.hello_done && conn.session.chunked { Framing::Chunked } else { Framing::EndOfMessage };
-            let (msg, used) = match netconf::decode(&conn.buf, framing) {
-                Ok(Some(m)) => m,
-                Ok(None) => return false,
-                Err(_) => return true,
-            };
-            conn.buf.drain(..used.min(conn.buf.len()));
-            let ds = self.auto.stores.entry(d.id).or_default();
-            let step = handler(t, d.id, &mut conn.session, ds, NetconfEvent::Message(&msg));
-            if !step.lines.is_empty() {
-                self.auto.changes.push((d.id, step.lines));
-            }
-            let framing = if conn.session.hello_done && conn.session.chunked { Framing::Chunked } else { Framing::EndOfMessage };
-            if let Some(r) = step.reply {
-                out.extend_from_slice(&netconf::encode(&r, framing));
-            }
-            self.remember(d.id, peer, port, &conn.session);
-            if step.close {
-                return true;
-            }
-        }
-        false
     }
 
     fn remember(&mut self, d: DeviceId, peer: IpAddr, port: u16, s: &NetconfSession) {
@@ -555,6 +646,192 @@ impl Sim {
         let got = self.tcp_exchange(t, &mut c, data, &|_| false);
         self.tcp_close(t, &c);
         got
+    }
+
+    /// Sends bytes on an open connection without waiting for an answer.
+    pub fn tcp_push(&mut self, t: &Topology, c: &mut TcpClient, data: &[u8]) {
+        let Some(d) = t.device(c.dev) else { return };
+        for chunk in data.chunks(MSS) {
+            let seg = Tcp {
+                src_port: c.local,
+                dst_port: c.port,
+                seq: c.seq,
+                ack: c.ack,
+                flags: tcp::PSH | tcp::ACK,
+                window: 65_535,
+                payload: chunk.to_vec(),
+            };
+            let _ = self.tcp_send_ip(t, d, c.src, c.server, &seg);
+            c.seq = c.seq.wrapping_add(chunk.len() as u32);
+        }
+    }
+
+    /// An HTTPS exchange: TCP, the TLS handshake, `request` encrypted, and the server's answer
+    /// decrypted (it closes after one answer). An error says what went wrong: a refused or
+    /// silent port, a server that doesn't speak TLS, a failed handshake.
+    pub fn https(&mut self, t: &Topology, dev: DeviceId, server: IpAddr, port: u16, request: &[u8]) -> Result<Vec<u8>, SimError> {
+        let fail = |why: String| SimError::NoSource(why);
+        let mut c = self.tcp_open(t, dev, server, port)?;
+        let seed = self.seed("tls client", dev);
+        let (mut tls, mut out) = Tls::client(&seed);
+        let mut raw = Vec::new();
+        let result = (|| {
+            for _ in 0..4 {
+                let probe = tls.clone();
+                let before = raw.clone();
+                let got = self.tcp_exchange(t, &mut c, &out, &|b: &[u8]| probe.flight_done(&[&before[..], b].concat()))?;
+                raw.extend(got);
+                let o = match tls.feed(&mut raw) {
+                    Ok(o) => o,
+                    Err(e) => {
+                        let alert = tls.alert(&e);
+                        self.tcp_push(t, &mut c, &alert);
+                        let plain = raw.first().is_some_and(|b| b.is_ascii_alphabetic());
+                        return Err(fail(if plain {
+                            format!("{server} answered port {port} in plain text, not TLS (use http:// for it)")
+                        } else {
+                            format!("the TLS handshake with {server} failed: {}", e.why)
+                        }));
+                    }
+                };
+                if let Some(a) = o.peer_alert {
+                    return Err(fail(format!("{server} ended the TLS handshake with a {} alert", netlabcraft_wire::tls::alert_name(a))));
+                }
+                if o.established {
+                    let data = tls.send(request);
+                    let got = self.tcp_exchange(t, &mut c, &data, &|_| false)?;
+                    raw.extend(got);
+                    let o = tls.feed(&mut raw).map_err(|e| fail(format!("{server}'s TLS answer is broken: {}", e.why)))?;
+                    return Ok(o.app);
+                }
+                if c.closed {
+                    break;
+                }
+                out = o.send;
+            }
+            Err(fail(format!("{server} closed the connection during the TLS handshake")))
+        })();
+        self.tcp_close(t, &c);
+        result
+    }
+
+    /// Opens an SSH session to `server:port` as `user` and starts the `netconf` subsystem.
+    /// `Err` with "Permission denied" when the login is refused.
+    pub fn ssh_open(&mut self, t: &Topology, dev: DeviceId, server: IpAddr, port: u16, user: &str, password: &str) -> Result<OpenClient, SimError> {
+        let fail = |why: String| SimError::NoSource(why);
+        let tcp = self.tcp_open(t, dev, server, port)?;
+        let seed = self.seed("ssh client", dev);
+        let (ssh, first) = Ssh::client(&seed, user, password, "netconf");
+        let mut c = OpenClient { tcp, buf: Vec::new(), chunked: false, session_id: 0, next_id: 100, ssh: Some(Box::new(ssh)), raw: Vec::new() };
+        let mut out = first;
+        let result = (|| {
+            for _ in 0..12 {
+                let Some(ssh) = c.ssh.as_mut() else { break };
+                let probe = ssh.clone();
+                let before = c.raw.clone();
+                // Done once the bytes so far move the session on (something to send, or an end).
+                let progress = |b: &[u8]| {
+                    let mut p = probe.clone();
+                    let mut r = [&before[..], b].concat();
+                    p.feed(&mut r, &|_, _| false).map_or(true, |o| !o.send.is_empty() || o.ready || o.closed)
+                };
+                let got = self.tcp_exchange(t, &mut c.tcp, &out, &progress)?;
+                c.raw.extend(got);
+                let Some(ssh) = c.ssh.as_mut() else { break };
+                let o = match ssh.feed(&mut c.raw, &|_, _| false) {
+                    Ok(o) => o,
+                    Err(e) => {
+                        let bye = ssh.disconnect(&e);
+                        self.tcp_push(t, &mut c.tcp, &bye);
+                        let plain = c.raw.starts_with(b"Protocol mismatch") || e.reason == netlabcraft_wire::ssh::MISMATCH;
+                        return Err(fail(if plain {
+                            format!("{server} port {port} does not speak SSH")
+                        } else {
+                            format!("SSH with {server}: {}", e.why)
+                        }));
+                    }
+                };
+                if o.auth_failed {
+                    self.tcp_push(t, &mut c.tcp, &o.send);
+                    return Err(fail("Permission denied (password).".into()));
+                }
+                if o.closed {
+                    return Err(fail(format!("{server} ended the SSH session{}", o.peer_reason.map(|r| format!(": {r}")).unwrap_or_default())));
+                }
+                c.buf.extend(o.app);
+                if o.ready {
+                    if !o.send.is_empty() {
+                        self.tcp_push(t, &mut c.tcp, &o.send);
+                    }
+                    return Ok(());
+                }
+                if c.tcp.closed {
+                    break;
+                }
+                out = o.send;
+            }
+            Err(fail(format!("{server} closed the connection during the SSH handshake")))
+        })();
+        match result {
+            Ok(()) => Ok(c),
+            Err(e) => {
+                self.tcp_close(t, &c.tcp);
+                Err(e)
+            }
+        }
+    }
+
+    /// Sends channel data on an open SSH session and collects the server's channel data until
+    /// `done` says the data so far (with what was already buffered) is enough, or the session
+    /// ends. The new data is appended to `c.buf`.
+    pub fn ssh_exchange(&mut self, t: &Topology, c: &mut OpenClient, data: &[u8], done: &dyn Fn(&[u8]) -> bool) -> Result<(), SimError> {
+        let Some(ssh) = c.ssh.as_mut() else { return Err(SimError::NoSource("not an SSH session".into())) };
+        let out = ssh.send(data);
+        let probe = ssh.clone();
+        let (before, have) = (c.raw.clone(), c.buf.clone());
+        let enough = |b: &[u8]| {
+            let mut p = probe.clone();
+            let mut r = [&before[..], b].concat();
+            p.feed(&mut r, &|_, _| false).map_or(true, |o| o.closed || done(&[&have[..], &o.app[..]].concat()))
+        };
+        let got = self.tcp_exchange(t, &mut c.tcp, &out, &enough)?;
+        c.raw.extend(got);
+        let Some(ssh) = c.ssh.as_mut() else { return Ok(()) };
+        match ssh.feed(&mut c.raw, &|_, _| false) {
+            Ok(o) => {
+                c.buf.extend(o.app);
+                if !o.send.is_empty() {
+                    self.tcp_push(t, &mut c.tcp, &o.send);
+                }
+                if o.closed {
+                    c.tcp.closed = true;
+                }
+                Ok(())
+            }
+            Err(e) => {
+                c.tcp.closed = true;
+                Err(SimError::NoSource(format!("SSH: {}", e.why)))
+            }
+        }
+    }
+
+    /// Sends channel data on an open SSH session without waiting for an answer.
+    pub fn ssh_push(&mut self, t: &Topology, c: &mut OpenClient, data: &[u8]) {
+        if let Some(ssh) = c.ssh.as_mut() {
+            let out = ssh.send(data);
+            self.tcp_push(t, &mut c.tcp, &out);
+        }
+    }
+
+    /// Ends an SSH session (channel close) and its connection.
+    pub fn ssh_close(&mut self, t: &Topology, c: &mut OpenClient) {
+        if let Some(ssh) = c.ssh.as_mut()
+            && !c.tcp.closed
+        {
+            let bye = ssh.close();
+            self.tcp_push(t, &mut c.tcp, &bye);
+        }
+        self.tcp_close(t, &c.tcp);
     }
 
     /// Keeps a client connection open between commands; its handle.
