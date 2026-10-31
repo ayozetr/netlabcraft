@@ -1190,6 +1190,20 @@ fn the_programming_app_sends_restconf_and_netconf() {
     h.run_steps(3);
     assert!(h.query_all_by_label_contains("Reply 1").next().is_some());
     assert!(h.query_all_by_label_contains("rpc-reply").next().is_some());
+    // A kept session: it stays open between runs until closed.
+    h.get_by_label("Keep the session open").click();
+    h.run_steps(1);
+    h.get_by_role_and_label(Role::Button, "Run session").click();
+    h.run_steps(3);
+    assert!(h.query_all_by_label_contains("is open: the next operations run on it").next().is_some());
+    assert_eq!(h.state().session.sim.open_clients().len(), 1);
+    h.get_by_role_and_label(Role::Button, "Run session").click();
+    h.run_steps(3);
+    assert_eq!(h.state().session.sim.open_clients().len(), 1, "the second run used the kept session");
+    h.get_by_role_and_label(Role::Button, "Close the session").click();
+    h.run_steps(3);
+    assert!(h.state().session.sim.open_clients().is_empty());
+    assert!(h.query_by_label("Keep the session open").is_some());
 }
 
 /// The controller mode lists the managed routers and pushes a template to them.

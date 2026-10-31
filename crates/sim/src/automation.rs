@@ -83,7 +83,17 @@ pub struct NetconfSession {
 }
 
 pub type RestconfFn = fn(&Topology, DeviceId, &http::Request) -> Served;
-pub type NetconfFn = fn(&Topology, DeviceId, &mut NetconfSession, NetconfEvent<'_>) -> NetconfStep;
+pub type NetconfFn = fn(&Topology, DeviceId, &mut NetconfSession, &mut Datastores, NetconfEvent<'_>) -> NetconfStep;
+
+/// The configuration datastores a router's NETCONF sessions share (RFC 6241 §5): the
+/// candidate, as the edits made to it and not yet committed (configuration lines on top of
+/// running), and the locks (RFC 6241 §7.5).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Datastores {
+    pub candidate: Vec<String>,
+    /// Datastore name (`running`, `candidate`) → the session holding its lock.
+    pub locks: BTreeMap<String, u32>,
+}
 
 /// A NETCONF session as `show netconf-yang sessions` lists it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -118,6 +128,7 @@ pub(crate) struct AutoState {
     changes: Vec<(DeviceId, Vec<String>)>,
     next_session: u32,
     history: BTreeMap<DeviceId, VecDeque<SessionInfo>>,
+    stores: BTreeMap<DeviceId, Datastores>,
     clients: BTreeMap<u32, OpenClient>,
     next_client: u32,
 }
@@ -243,8 +254,9 @@ impl Sim {
             let mine: Vec<_> = self.auto.conns.iter().filter(|(k, _)| k.0 == d.id).map(|(k, c)| (*k, c.opened_at)).collect();
             if mine.len() >= MAX_CONNS
                 && let Some((old, _)) = mine.iter().min_by_key(|(_, at)| *at)
+                && let Some(c) = self.auto.conns.remove(old)
             {
-                self.auto.conns.remove(old);
+                self.conn_ended(old.0, &c);
             }
             self.auto.conns.insert(key, Conn { seq: SERVER_ISN.wrapping_add(1), opened_at: self.now, ..Conn::default() });
             if let (IpAddr::V4(a), IpAddr::V4(b)) = (dst, src) {
@@ -253,7 +265,9 @@ impl Sim {
             return self.tcp_send_ip(t, d, dst, src, &reply(tcp::SYN | tcp::ACK, SERVER_ISN, seg.seq.wrapping_add(1), Vec::new()));
         }
         if seg.flags & tcp::RST != 0 {
-            self.auto.conns.remove(&key);
+            if let Some(c) = self.auto.conns.remove(&key) {
+                self.conn_ended(d.id, &c);
+            }
             return Ok(());
         }
         let Some(mut conn) = self.auto.conns.remove(&key) else {
@@ -312,10 +326,31 @@ impl Sim {
             self.tcp_send_ip(t, d, dst, src, &reply(tcp::FIN | tcp::ACK, seq, ack, Vec::new()))?;
         }
         conn.seq = seq;
-        if !close {
+        if close {
+            self.conn_ended(d.id, &conn);
+        } else {
             self.auto.conns.insert(key, conn);
         }
         Ok(())
+    }
+
+    /// A server connection is gone: its NETCONF session's locks are released, and a candidate
+    /// it held locked loses its uncommitted changes (RFC 6241 §7.5).
+    fn conn_ended(&mut self, d: DeviceId, c: &Conn) {
+        if !c.authed || c.session.id == 0 {
+            return;
+        }
+        if let Some(ds) = self.auto.stores.get_mut(&d) {
+            if ds.locks.get("candidate") == Some(&c.session.id) {
+                ds.candidate.clear();
+            }
+            ds.locks.retain(|_, s| *s != c.session.id);
+        }
+    }
+
+    /// A router's NETCONF datastores as its sessions share them.
+    pub fn datastores(&self, d: DeviceId) -> Datastores {
+        self.auto.stores.get(&d).cloned().unwrap_or_default()
     }
 
     /// Feeds a NETCONF connection's buffer through the handler; whether the session ends.
@@ -339,7 +374,8 @@ impl Sim {
                     conn.authed = true;
                     self.auto.next_session = self.auto.next_session.wrapping_add(1).max(1);
                     conn.session = NetconfSession { id: self.auto.next_session, user, ..NetconfSession::default() };
-                    let step = handler(t, d.id, &mut conn.session, NetconfEvent::Open);
+                    let ds = self.auto.stores.entry(d.id).or_default();
+                    let step = handler(t, d.id, &mut conn.session, ds, NetconfEvent::Open);
                     if let Some(r) = step.reply {
                         out.extend_from_slice(&netconf::encode(&r, Framing::EndOfMessage));
                     }
@@ -356,7 +392,8 @@ impl Sim {
                 Err(_) => return true,
             };
             conn.buf.drain(..used.min(conn.buf.len()));
-            let step = handler(t, d.id, &mut conn.session, NetconfEvent::Message(&msg));
+            let ds = self.auto.stores.entry(d.id).or_default();
+            let step = handler(t, d.id, &mut conn.session, ds, NetconfEvent::Message(&msg));
             if !step.lines.is_empty() {
                 self.auto.changes.push((d.id, step.lines));
             }

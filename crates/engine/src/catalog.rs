@@ -671,7 +671,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "NETCONF session",
         "",
         None,
-        r#"{"pc": "PC, laptop or server", "target": "router address or name", "user", "password", "framing"?: "1.1"|"1.0", "rpcs"?: ["<get-config><source><running/></source></get-config>", …] (bare operations are wrapped in <rpc message-id=…>)} → {"connected", "error"?, "framing", "hello", "replies": [XML], "applied": [{"device", "lines", "failed"}]}: TCP port 830 with RFC 6242 framing; a <close-session> ends it"#,
+        r#"{"pc": "PC, laptop or server", "target": "router address (IPv4 or IPv6) or name", "user", "password", "framing"?: "1.1"|"1.0", "rpcs"?: ["<get-config><source><running/></source></get-config>", …] (bare operations are wrapped in <rpc message-id=…>), "keep_open"?: true (the session stays open: its number comes back as "session"), "session"?: number (go on with a kept session: no target or login), "close"?: true (end a kept session)} → {"connected", "error"?, "framing", "session", "session_id", "hello", "replies": [XML], "applied": [{"device", "lines", "failed"}]}: TCP port 830 with RFC 6242 framing; running and candidate datastores, locks"#,
         true
     ),
     c!(

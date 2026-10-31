@@ -86,6 +86,13 @@ pub(super) fn command(c: &mut Ctx<'_>, id: Id, _args: &[String]) -> R {
                     if x.chunked { "chunked" } else { "end-mark" }
                 );
             }
+            let ds = c.sim.datastores(c.dev);
+            for (store, holder) in &ds.locks {
+                let _ = writeln!(s, "The {store} datastore is locked by session {holder}.");
+            }
+            if !ds.candidate.is_empty() {
+                let _ = writeln!(s, "The candidate holds {} uncommitted configuration line(s).", ds.candidate.len());
+            }
             Ok(s.trim_end().to_string())
         }
         _ => {

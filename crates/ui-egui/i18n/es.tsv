@@ -1340,3 +1340,7 @@ Power supply {}: empty bay (click to fit one)	Fuente de alimentación {}: bahía
 No power supply fitted: the device has no power. Fit one, then switch it on.	Sin fuente de alimentación: el equipo no tiene corriente. Pon una y enciéndelo.
 One supply fitted: taking it out cuts the power. Fit the second for a spare.	Una fuente puesta: quitarla corta la corriente. Pon la segunda como reserva.
 {} has no power supply fitted: fit one in its Physical tab (device.psu) first	{} no tiene fuente de alimentación: pon una primero en su pestaña Físico (device.psu)
+Session {} is open: the next operations run on it	La sesión {} está abierta: las próximas operaciones van por ella
+Close the session	Cerrar la sesión
+Keep the session open	Mantener la sesión abierta
+Leave the session open after these operations, to hold a lock or work with the candidate	Deja la sesión abierta tras estas operaciones, para mantener un bloqueo o trabajar con el candidato

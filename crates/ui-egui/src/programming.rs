@@ -48,6 +48,9 @@ struct Form {
     target: String,
     rpcs: String,
     chunked: bool,
+    keep_open: bool,
+    /// The kept NETCONF session the next operations go to.
+    nc_session: Option<u64>,
 }
 
 impl Default for Form {
@@ -76,6 +79,8 @@ impl Default for Form {
             target: "192.168.1.1".into(),
             rpcs: "<get-config><source><running/></source></get-config>".into(),
             chunked: true,
+            keep_open: false,
+            nc_session: None,
         }
     }
 }
@@ -220,11 +225,36 @@ fn netconf_form(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, f: &mut Fo
         let l = form_label(ui, tl("Operations (one per blank-line block)"), LABEL_W);
         ui.add(egui::TextEdit::multiline(&mut f.rpcs).desired_rows(6).desired_width(420.0).code_editor()).labelled_by(l.id);
     });
+    // A kept session goes on with the next operations; it may be closed any time.
+    let open = f.nc_session.filter(|h| app.session.sim.open_clients().iter().any(|c| u64::from(c.0) == *h && c.1 == dev.id));
+    if open.is_none() {
+        f.nc_session = None;
+    }
+    ui.horizontal(|ui| match open {
+        Some(h) => {
+            ui.label(trf("Session {} is open: the next operations run on it", &[&h]));
+            if ui.button(tl("Close the session")).clicked() {
+                f.answer = app.run("netconf.session", json!({"pc": dev.id.0, "session": h, "rpcs": [], "close": true}));
+                f.netconf = true;
+                f.nc_session = None;
+            }
+        }
+        None => {
+            ui.checkbox(&mut f.keep_open, tl("Keep the session open"))
+                .on_hover_text(tl("Leave the session open after these operations, to hold a lock or work with the candidate"));
+        }
+    });
     if ui.button(RichText::new(tl("Run session")).strong()).clicked() {
         let rpcs: Vec<String> = f.rpcs.split("\n\n").map(str::trim).filter(|x| !x.is_empty()).map(str::to_string).collect();
-        let p = json!({"pc": dev.id.0, "target": f.target.trim(), "user": f.user.trim(), "password": f.password, "framing": if f.chunked { "1.1" } else { "1.0" }, "rpcs": rpcs});
+        let p = match open {
+            Some(h) => json!({"pc": dev.id.0, "session": h, "rpcs": rpcs}),
+            None => {
+                json!({"pc": dev.id.0, "target": f.target.trim(), "user": f.user.trim(), "password": f.password, "framing": if f.chunked { "1.1" } else { "1.0" }, "rpcs": rpcs, "keep_open": f.keep_open})
+            }
+        };
         f.answer = app.run("netconf.session", p);
         f.netconf = true;
+        f.nc_session = f.answer.as_ref().and_then(|a| a["session"].as_u64());
         f.error = if f.answer.is_some() { None } else { failed(app) };
     }
 }
