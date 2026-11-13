@@ -18,7 +18,6 @@ use crate::{Sim, l3_ifaces, port_up};
 /// Hello time of spanning tree.
 pub const BPDU_EVERY_US: u64 = 2_000_000;
 pub const OSPF_HELLO_EVERY_US: u64 = 10_000_000;
-pub const RIP_UPDATE_EVERY_US: u64 = 30_000_000;
 /// EIGRP hellos are considered every second; each interface sends at its own hello interval.
 pub const EIGRP_HELLO_EVERY_US: u64 = 1_000_000;
 pub const HSRP_HELLO_EVERY_US: u64 = 3_000_000;
@@ -357,13 +356,11 @@ impl Sim {
         }
     }
 
-    /// RIP updates at each router's update timer (RIPng's every 30 s): its other networks,
+    /// RIP updates at each router's update timer (and RIPng's, `send_ripng`): its other networks,
     /// its routes (poisoned reverse for those learned through the interface) and the routes
     /// possibly down, at metric 16.
     fn send_rip_updates(&mut self, t: &Topology, at: u64) {
-        if at.is_multiple_of(RIP_UPDATE_EVERY_US) {
-            self.send_ripng(t, at);
-        }
+        self.send_ripng(t, at);
         if !t.devices.iter().any(|d| d.rip.is_some()) {
             return;
         }

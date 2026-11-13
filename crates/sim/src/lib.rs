@@ -1022,6 +1022,9 @@ pub struct Sim {
     rip_down: Vec<rip::RipDown>,
     rip6_for: u64,
     rip6: Option<rip6::Rip6State>,
+    /// RIPng neighbours no longer heard, kept until their invalid time; routes possibly down.
+    rip6_held: Vec<rip6::Held6>,
+    rip6_down: Vec<rip6::Rip6Down>,
     eigrp_for: u64,
     eigrp: Option<eigrp::EigrpState>,
     /// EIGRP neighbours no longer heard, kept until their hold time runs out.
@@ -1439,6 +1442,20 @@ impl Sim {
                     self.rip_held.retain(|x| x.until > h);
                     self.rip_down.retain(|x| x.flush_at > h);
                     for x in &mut self.rip_down {
+                        x.hold_done |= x.holddown_until <= h;
+                    }
+                }
+                continue;
+            }
+            // And RIPng's.
+            if let Some(h) = self.rip6_next_expiry().filter(|h| *h <= deadline && next.is_none_or(|q| *h <= q)) {
+                self.now = self.now.max(h);
+                let _ = self.rip6_state(t);
+                if self.rip6_next_expiry().is_some_and(|x| x <= h) {
+                    // Never spin on a timer a refresh didn't clear.
+                    self.rip6_held.retain(|x| x.until > h);
+                    self.rip6_down.retain(|x| x.flush_at > h);
+                    for x in &mut self.rip6_down {
                         x.hold_done |= x.holddown_until <= h;
                     }
                 }
@@ -1934,9 +1951,10 @@ impl Sim {
     /// RIPng's view of the lab, recomputed when what it depends on changes.
     pub fn rip6_state(&mut self, t: &Topology) -> rip6::Rip6State {
         let f = rip6::fingerprint(t);
-        if self.rip6.is_none() || self.rip6_for != f {
+        let due = self.rip6_next_expiry().is_some_and(|u| u <= self.now);
+        if self.rip6.is_none() || self.rip6_for != f || due {
             self.rip6_for = f;
-            self.rip6 = Some(rip6::compute(t));
+            self.rip6_refresh(t);
         }
         self.rip6.clone().unwrap_or_default()
     }

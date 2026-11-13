@@ -113,6 +113,21 @@ impl EigrpSummaries {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Rip6 {
     pub name: String,
+    /// `timers basic UPDATE INVALID HOLDDOWN FLUSH` (seconds; 30 180 180 300 when not set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timers: Option<[u32; 4]>,
+}
+
+/// RIPng's timers when not set (RFC 2080 §2.3: update 30 s, timeout 180 s, garbage collection
+/// 120 s after the timeout, so flush at 300 s from the last update; the hold-down as in RIP).
+pub const RIP6_TIMERS: [u32; 4] = [30, 180, 180, 300];
+
+impl Rip6 {
+    /// Update, invalid, hold-down and flush times (seconds).
+    pub fn timers(&self) -> (u32, u32, u32, u32) {
+        let [u, i, h, f] = self.timers.unwrap_or(RIP6_TIMERS);
+        (u.max(1), i.max(1), h, f.max(1))
+    }
 }
 
 /// Longest RIPng process name.

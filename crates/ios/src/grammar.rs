@@ -3647,7 +3647,7 @@ pub static SPECS: &[Spec] = &[
         [K("timers"), K("basic"), Arg("<1-65535>"), Arg("<1-65535>"), Arg("<0-65535>"), Arg("<1-65535>")],
         "Update, invalid, hold-down and flush times (seconds)"
     ),
-    spec!(SrNoRipTimers, Modes::RIP, Modes::BOTH, [K("no"), K("timers"), K("basic")], "Timers 30 180 180 240 again"),
+    spec!(SrNoRipTimers, Modes::RIP, Modes::BOTH, [K("no"), K("timers"), K("basic")], "The default timers again"),
     spec!(SrIpv6RouterRip, Modes::CONFIG, Modes::BOTH, [K("ipv6"), K("router"), K("rip"), Arg("WORD")], "Start or configure RIPng"),
     spec!(SrNoIpv6RouterRip, Modes::CONFIG, Modes::BOTH, [K("no"), K("ipv6"), K("router"), K("rip"), Arg("WORD")], "Stop RIPng"),
     spec!(
