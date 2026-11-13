@@ -4618,8 +4618,12 @@ impl Ctx<'_> {
         if list.extended != extended {
             return Err(format!("% {name} is a{} list", if list.extended { "n extended" } else { " standard" }));
         }
-        list.insert(entry)?;
-        Ok(String::new())
+        Ok(match list.insert(entry)? {
+            Some(seq) => {
+                format!("Line {seq} already holds this rule, so nothing was added (type it with a sequence number to repeat it)")
+            }
+            None => String::new(),
+        })
     }
 
     /// Adds (or with `add` false removes) a remark on a list, creating the list if needed.

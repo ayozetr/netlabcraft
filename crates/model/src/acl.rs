@@ -340,14 +340,16 @@ impl Acl {
         }
     }
 
-    /// Inserts a line in sequence order (an identical line is kept once). Errors: the number
-    /// is taken.
-    pub fn insert(&mut self, mut e: AclEntry) -> Result<(), String> {
-        if self.entries.iter().any(|x| x.same_rule(&e)) {
-            return Ok(());
-        }
+    /// Inserts a line in sequence order. A line typed without a number that repeats a rule
+    /// already in the list is not added again: the answer is the number of the line that has it.
+    /// A line typed with its own number is added whatever the list holds (a second line of the
+    /// same rule has counters of its own). Errors: the number is taken.
+    pub fn insert(&mut self, mut e: AclEntry) -> Result<Option<u32>, String> {
         self.number_lines();
         if e.seq == 0 {
+            if let Some(x) = self.entries.iter().find(|x| x.same_rule(&e)) {
+                return Ok(Some(x.seq));
+            }
             e.seq = self.next_seq();
         }
         if self.entries.iter().any(|x| x.seq == e.seq) {
@@ -355,7 +357,7 @@ impl Acl {
         }
         let at = self.entries.iter().position(|x| x.seq > e.seq).unwrap_or(self.entries.len());
         self.entries.insert(at, e);
-        Ok(())
+        Ok(None)
     }
 
     /// Removes the line numbered `seq`; whether there was one.
@@ -537,6 +539,13 @@ mod tests {
         a.insert(AclEntry { seq: 15, ..AclEntry::new(false, AclProto::Ip, AclAddr::ANY, AclAddr::ANY) }).unwrap();
         assert_eq!(a.entries[1].proto, AclProto::Ip);
         assert!(a.insert(AclEntry { seq: 15, ..AclEntry::new(false, AclProto::Icmp, AclAddr::ANY, AclAddr::ANY) }).is_err());
+        // The same rule typed with no number is not added again; with a number it is.
+        let udp = AclEntry::new(true, AclProto::Udp, AclAddr::ANY, AclAddr::ANY);
+        assert_eq!(a.insert(udp.clone()), Ok(Some(10)));
+        assert_eq!(a.entries.len(), 3);
+        assert_eq!(a.insert(AclEntry { seq: 12, ..udp }), Ok(None));
+        assert_eq!(a.entries.len(), 4);
+        assert!(a.remove_seq(12));
         assert!(a.remove_seq(20) && !a.remove_seq(20));
         a.resequence(u32::MAX, u32::MAX);
         assert_eq!((a.entries[0].seq, a.entries[1].seq), (MAX_SEQ, MAX_SEQ));

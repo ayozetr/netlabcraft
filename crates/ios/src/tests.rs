@@ -6,6 +6,7 @@ use crate::grammar::{SPECS, Tok};
 use crate::*;
 
 mod acl_counters;
+mod acl_duplicates;
 mod acl_icmp;
 mod console_depth;
 mod families;
