@@ -36,6 +36,10 @@ fn ok_color() -> Color32 {
     Color32::from_rgb(0x2e, 0x8b, 0x3e)
 }
 
+fn warn_color() -> Color32 {
+    Color32::from_rgb(0xb2, 0x7a, 0x12)
+}
+
 fn bad_color() -> Color32 {
     Color32::from_rgb(0xc8, 0x3a, 0x2e)
 }
@@ -439,20 +443,38 @@ pub fn wizard_sections(
             run.push(("activity.verify_results", json!({"text": app_tools.verify_text})));
         }
         if let Some(v) = &app_tools.verify {
-            let (text, color) = if v["valid"] == true {
+            let (text, color) = if v["valid"] == true && v["replayed"] == true {
                 (
                     trf(
-                        "Genuine: {} scored {}% ({} of {} points).",
+                        "Genuine: {} scored {}% ({} of {} points), and the score was replayed against their network.",
                         &[&v["student"].as_str().unwrap_or(""), &v["percent"], &v["score"], &v["total"]],
                     ),
                     ok_color(),
                 )
+            } else if v["valid"] == true {
+                (
+                    trf(
+                        "Not edited: {} scored {}% ({} of {} points). It was not replayed, so a forged score cannot be ruled out.",
+                        &[&v["student"].as_str().unwrap_or(""), &v["percent"], &v["score"], &v["total"]],
+                    ),
+                    warn_color(),
+                )
             } else if v["same_activity"] == false {
                 (tl("This results file is from another activity.").to_string(), bad_color())
+            } else if v["signature_ok"] == true {
+                (tl("The score does not match what the embedded network earns: this file is forged or damaged.").to_string(), bad_color())
             } else {
                 (tl("This results file was changed after it was saved.").to_string(), bad_color())
             };
             ui.label(RichText::new(text).color(color).strong());
+            if let Some(list) = v["mismatches"].as_array() {
+                for m in list.iter().filter_map(|m| m.as_str()) {
+                    ui.label(RichText::new(m).color(bad_color()));
+                }
+            }
+            if let Some(m) = v["message"].as_str() {
+                ui.label(RichText::new(m).weak());
+            }
         }
     });
 }
