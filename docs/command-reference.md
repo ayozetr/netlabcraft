@@ -176,7 +176,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show startup-config` | privileged | router, switch, firewall | Saved configuration |
 | `show ip interface brief` | user, privileged | router, switch | Interface addresses and status |
 | `show ip route` | user, privileged | router, switch | Routing table |
-| `show ip route {connected\|static\|eigrp\|ospf\|rip}` | user, privileged | router, switch | Only the routes one source gave |
+| `show ip route {connected\|static\|eigrp\|ospf\|rip\|summary}` | user, privileged | router, switch | Only the routes one source gave |
 | `show ip route A.B.C.D A.B.C.D` | user, privileged | router, switch | The route for exactly this network and mask |
 | `show ip arp` | user, privileged | router, switch | ARP cache |
 | `show arp` | user, privileged | router, switch, firewall | ARP cache |
@@ -245,6 +245,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `ip nat pool WORD START END {netmask M \| prefix-length N}` | config | router, switch | Addresses to translate to |
 | `no ip nat pool WORD` | config | router, switch | Delete a NAT pool |
 | `show ip nat translations` | user, privileged | router, switch | Translations in use |
+| `show ip nat translations verbose` | user, privileged | router, switch | Translations in use, with their age, last use and packet count |
 | `clear ip nat statistics` | privileged | router, switch | Reset the NAT hit and miss counts |
 | `clear ip nat translation *` | privileged | router, switch | Forget dynamic translations |
 | `ip address A.B.C.D MASK` |  | router, switch | Set the loopback's address |
@@ -276,6 +277,14 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip ospf dead-interval` | interface, subinterface | router, switch | Four hello intervals again |
 | `ip ospf network {point-to-point\|broadcast}` | interface, subinterface | router, switch | Link type: point-to-point elects no DR |
 | `no ip ospf network` | interface, subinterface | router, switch | The link type its medium has |
+| `ip ospf authentication` | interface, subinterface | router, switch | Authenticate OSPF packets here with a clear-text password |
+| `no ip ospf authentication` | interface, subinterface | router, switch | Use the area's authentication again |
+| `ip ospf authentication [message-digest\|null]` | interface, subinterface | router, switch | Authenticate OSPF packets here: a password, or message digests |
+| `no ip ospf authentication [message-digest\|null]` | interface, subinterface | router, switch | Use the area's authentication again |
+| `ip ospf authentication-key KEY` | interface, subinterface | router, switch | The clear-text password (eight characters count) |
+| `no ip ospf authentication-key` | interface, subinterface | router, switch | Forget the password |
+| `ip ospf message-digest-key <1-255> md5 KEY` | interface, subinterface | router, switch | A message-digest key, by id |
+| `no ip ospf message-digest-key <1-255>` | interface, subinterface | router, switch | Remove a message-digest key |
 | `redistribute static` |  | router, switch | Advertise static routes as external |
 | `redistribute static [subnets]` |  | router, switch | Advertise static routes as external |
 | `no redistribute static` |  | router, switch | Stop advertising static routes |
@@ -283,6 +292,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `clear ip ospf process` | privileged | router, switch | Restart OSPF: neighbours and DR elections anew |
 | `clear ip ospf <1-65535> process` | privileged | router, switch | Restart this OSPF process |
 | `show ip ospf database` | user, privileged | router, switch | OSPF link-state database |
+| `show ip ospf database {router\|network\|summary\|external} [A.B.C.D]` | user, privileged | router, switch | One kind of LSA in full: router, network, summary or external |
 | `show ip ospf neighbor detail` | user, privileged | router, switch | OSPF neighbours in full |
 | `ip address A.B.C.D MASK` |  | router | Set the tunnel's address |
 | `no ip address` |  | router | Remove the tunnel's address |
@@ -470,9 +480,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `debug ip dhcp server packet` | privileged | router, switch | Report every DHCP message this server receives and sends |
 | `no debug ip dhcp server packet` | privileged | router, switch | Stop reporting DHCP messages |
 | `no debug ip rip` | privileged | router, switch | Stop reporting RIP updates |
-| `debug ip ospf adj\|events\|hello` | privileged | router | Report the OSPF hellos this router hears |
-| `no debug ip ospf adj\|events\|hello` | privileged | router | Stop reporting OSPF hellos |
-| `no debug ip ospf` | privileged | router | Stop reporting OSPF hellos |
+| `debug ip ospf adj\|events\|hello` | privileged | router | Report OSPF: hellos heard, adjacency states, or events |
+| `no debug ip ospf adj\|events\|hello` | privileged | router | Stop one kind of OSPF report |
+| `no debug ip ospf` | privileged | router | Stop every OSPF report |
 | `show debugging` | user, privileged | router, switch | Which debugs are on |
 | `standby <0-255> ip A.B.C.D` | interface, subinterface | router | HSRP: the group's virtual gateway address |
 | `standby ip A.B.C.D` | interface, subinterface | router | HSRP group 0's virtual gateway address |
@@ -516,6 +526,10 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no area <0-4294967295> stub no-summary` |  | router, switch | Let routes from other areas in again |
 | `area <0-4294967295> range A.B.C.D A.B.C.D` |  | router, switch | Border router: advertise one summary for the area's networks inside it |
 | `no area <0-4294967295> range A.B.C.D A.B.C.D` |  | router, switch | Stop summarising |
+| `area <0-4294967295> authentication` |  | router, switch | Authenticate OSPF packets on every interface of this area with a password |
+| `no area <0-4294967295> authentication` |  | router, switch | No area-wide authentication |
+| `area <0-4294967295> authentication [message-digest]` |  | router, switch | Authenticate OSPF packets on every interface of this area |
+| `no area <0-4294967295> authentication [message-digest]` |  | router, switch | No area-wide authentication |
 | `show ip ospf` | user, privileged | router, switch | OSPF process summary |
 | `show ip ospf interface` | user, privileged | router, switch | OSPF interfaces: area, cost, state |
 | `show ip ospf interface brief` | user, privileged | router, switch | OSPF interfaces: area, cost, state |
@@ -649,6 +663,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show glbp {brief}` | user, privileged | router, switch | GLBP groups, one line each |
 | `show ipv6 ospf` | user, privileged | router, switch | OSPFv3 process |
 | `show ip protocols` | user, privileged | router, switch | Routing protocols running |
+| `show ip protocols summary` | user, privileged | router, switch | One line per routing protocol: router ID, interfaces, neighbours, routes |
 | `ip helper-address A.B.C.D` | interface, subinterface | router | Relay DHCP requests to this server |
 | `no ip helper-address [A.B.C.D]` | interface, subinterface | router | Stop relaying (to one server) |
 | `no ip helper-address` | interface, subinterface | router | Stop relaying DHCP requests |
@@ -882,6 +897,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no spanning-tree vlan <1-4094>[,-] port-priority` | interface | switch | Port priority back to 128 in these VLANs |
 | `show spanning-tree summary` | user, privileged | switch | Spanning-tree settings and port states per VLAN |
 | `show spanning-tree vlan <1-4094> detail` | user, privileged | switch | One VLAN's tree, port by port |
+| `show spanning-tree brief` | user, privileged | switch | One line per VLAN: the root, its cost, the root port and how many ports forward, learn or block |
+| `show spanning-tree detail` | user, privileged | switch | Every VLAN's tree, port by port |
+| `show spanning-tree interface <interface>` | user, privileged | switch | One port's role and state in every VLAN, and its protection settings |
 | `errdisable recovery cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|all}` | config | switch | Bring ports shut for this reason back by themselves |
 | `no errdisable recovery cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|all}` | config | switch | Ports shut for this reason wait for shutdown / no shutdown |
 | `errdisable recovery interval <30-86400>` | config | switch | Seconds before an err-disabled port comes back |

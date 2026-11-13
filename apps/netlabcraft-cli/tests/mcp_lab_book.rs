@@ -144,3 +144,18 @@ fn ensa_troubleshooting_acls_through_mcp() {
 fn ensa_troubleshooting_nat_through_mcp() {
     check("26-troubleshoot-nat.md");
 }
+
+#[test]
+fn ensa_troubleshooting_ospf_authentication_through_mcp() {
+    check("28-troubleshoot-ospf-authentication.md");
+}
+
+#[test]
+fn ensa_troubleshooting_acl_icmp_through_mcp() {
+    check("29-troubleshoot-acl-icmp.md");
+}
+
+#[test]
+fn srwe_inspecting_spanning_tree_through_mcp() {
+    check("30-inspect-spanning-tree.md");
+}
