@@ -81,90 +81,40 @@
 
 ## What it simulates
 
-- **Devices:** 51 models with our own names: fixed and modular routers (serial, Gigabit, Fast
-  Ethernet, fiber and 4-port switch cards fitted while switched off), a stateful firewall, access
-  switches (also with fiber uplinks or power over Ethernet) and a multilayer switch, a home
-  wireless router and a home IoT gateway, a Wi-Fi access point, a wireless LAN controller with
-  lightweight APs, a provider cloud with DSL and cable modems, a hub, PCs, laptops (also with
-  Wi-Fi), tablets and smartphones (Wi-Fi, or mobile data through cell towers and a central office server) with a touch home screen, servers, a printer, IP
-  phones with their own Settings screen, eighteen IoT things (temperature sensor, fan, motion and
-  smoke detectors, light, door lock, siren, webcam, and over Wi-Fi a thermostat, heater, air
-  conditioner, humidity sensor, smart window, soil moisture sensor, lawn sprinkler, CO detector,
-  smart plug and garage door; switch on a small simulated room and a heater really warms the
-  thermostat's reading), and two programmable boards. Routers and switches have
-  power-supply bays: take out the last supply and the device switches off.
-  [docs/model-equivalents.md](docs/model-equivalents.md) says which one to place when a course lab
-  names a vendor model.
-- **Cables:** automatic, straight-through and cross-over copper (a wrong one leaves the link down
-  and says why, unless auto-MDIX fixes it), fiber, console, serial DCE/DTE, coaxial and phone
-  lines, and IoT custom cables from a board's pin to a smart thing; the physical view has cities,
-  buildings and closets, copper longer than 100 m goes down, and once a lab has a layout, Wi-Fi
-  reaches only the access points in the same building.
-- **Switching:** MAC learning, VLANs, access and 802.1Q trunk ports, DTP, per-VLAN spanning tree
-  with its timers, rapid-pvst with the proposal/agreement handshake, cost and port priority,
-  PortFast, BPDU guard and filter, root and loop guard, EtherChannel (LACP, PAgP, static) with load
-  balancing, VTP with pruning, port security with aging, DHCP snooping with option 82, dynamic ARP
-  inspection, errdisable recovery, switch VLAN interfaces, CDP and LLDP, 802.1p CoS from IP phones
-  with trust and CoS-to-DSCP maps; power over Ethernet with a budget per switch; switch cards that
-  make a router switch too.
-- **Routing:** static and floating static routes, loopbacks, RIP with its timers, hold-down,
-  triggered updates and poisoned reverse, OSPF as the courses teach it
-  (network statements or interface areas, timers, DR/BDR, point-to-point, several areas, stub
-  areas, the link-state database), EIGRP with equal and unequal-cost load balancing and
-  summaries, router-on-a-stick, multilayer switching, HSRP versions 1 and 2 with tracking, VRRP
-  versions 2 and 3 with timers and tracking, GLBP; serial links with HDLC or PPP (PAP, CHAP).
-- **IPv6:** global, EUI-64 and link-local addresses on ports, subinterfaces and VLAN interfaces,
-  neighbour discovery, router advertisements, SLAAC, DHCPv6 (stateless, stateful, relay), routers
-  as SLAAC and DHCPv6 clients, static routes, OSPFv3, EIGRP for IPv6 (updates, queries and
-  replies on the wire, variance, summaries), RIPng, VRRPv3, IPv6 ACLs.
-- **Security:** standard, extended and named ACLs with sequence numbers, `established` and ICMP
-  types, IPv6 ACLs, `access-class`, NAT and PAT, passwords and password recovery, SSH, AAA with
-  RADIUS and TACACS+, GRE tunnels, site-to-site IPsec with IKEv1 or IKEv2 on the wire with a real
-  Diffie-Hellman exchange (MODP groups 1, 2, 5, 14, 15, 16 and elliptic-curve groups 19 and 20), real AES-128/192/256, DES, 3DES, AH and SHA-1,
-  SHA-256 or MD5 HMACs, SA lifetimes and rekeying, a zone-based firewall and `ip inspect` (FTP,
-  DNS and HTTP too) on routers, a default MTU of 1500 bytes with path MTU discovery, `ip mtu`
-  with fragmentation and `ip tcp adjust-mss`, and a stateful firewall with object groups and
-  twice NAT.
-- **QoS:** class maps, policy maps, DSCP marking, policing, shaping and output queues on congested
-  links; `mls qos trust`, CoS-to-DSCP maps and `priority extend` on switches.
-- **Automation:** routers answer RESTCONF (JSON or XML, over IPv4 or IPv6, over TLS 1.2 on port
-  443, presenting a real certificate when the router has a trustpoint) and NETCONF over SSH 2.0 (running and candidate datastores, commit, validate, locks); PCs
-  have a Programming app with saved requests and a controller mode that discovers routers over
-  CDP and LLDP, keeps an inventory and pushes templates with per-router variables.
-- **Services:** servers with HTTP (and a web browser on the PCs), DNS, DHCP, email (SMTP and POP3,
-  with an Email app on the PCs), FTP, TFTP, NTP (with authentication), syslog, AAA and IoT; DHCP
-  servers on routers with leases, domain names and statistics; SNMP v2c and v3 agents with traps
-  and a MIB Browser on the PCs.
-- **Wireless:** home routers, access points and a controller with lightweight APs; WPA2-PSK and
-  WPA2-Enterprise through a real PEAP tunnel with EAP over RADIUS, group keys, a VLAN per WLAN,
-  local or central switching (CAPWAP data to the controller), roaming, and real 802.11 frames in
-  a separate capture.
-- **Voice and IoT:** IP phones on voice VLANs, powered over Ethernet or by their adapter, that
-  register with call control on a router (its own signalling or SIP) and call each other; smart
-  things that report on a timer to a server's IoT service or a home gateway, whose rules join
-  several conditions with AND or OR; Wi-Fi things join the home gateway's network by
-  themselves; programmable boards run BoardScript, a small language of our own, reading and
-  switching the things wired to their pins.
-- **Simulation mode:** an event list replayed on the canvas, simple and complex PDUs (ping, DNS,
-  HTTP, Telnet, SSH, FTP, email, DHCP, TFTP, SNMP, ARP, raw UDP and TCP; once or periodically),
-  start times relative or absolute, PDU details in OSI layers with what the sender and each
-  receiver decided, scenarios saved with the lab, Constant Delay, capturing only chosen
-  protocols, drop reasons and pcap export.
-- **Console:** every mode a CCNA course uses, `?` help with a `^` marker on errors, Tab completion,
-  history, `do`, `interface range`, output filters, `running-config` / `startup-config` / `write` /
-  `reload`, `copy` to and from TFTP and FTP (images too), timestamps, logging levels, debugs,
-  extended ping: 1003 grammar entries in all ([`docs/command-reference.md`](docs/command-reference.md)).
-- **PC Command Prompt:** `ipconfig` (static or DHCP, `/all`), `ipv6config` (static or automatic,
-  `/all`), `ping` (`-n`, `-l`, `-t`), `tracert`, `nslookup`, `telnet`, `ssh`, `ftp`, `netstat`,
-  `dir`, `arp -a` and `-d`; also a Terminal app over a console cable.
-- **Activities:** a lab can carry instructions (in several languages) and checks worth points
-  (configuration lines, pings, addresses, cables, command output), with sections, hints, values
-  per student, a time limit, a password lock, Check Results, a comparison with the answer, Reset
-  Activity and an Activity Wizard. Instructors keep the answer network in the activity (sealed
-  under the lock password when locked), weigh an assessment tree built from it, set an initial
-  network, run connectivity tests, export signed results and lock devices, cables or
-  configurations.
+- **Devices:** 53 models with our own names ([which one to place for a vendor model](docs/model-equivalents.md)):
+  fixed and modular routers, a stateful firewall, access and multilayer switches (some with fiber
+  or power over Ethernet), home routers and gateways, access points and a wireless controller, a
+  provider cloud, hubs, PCs, laptops, tablets and phones (Wi-Fi or mobile data through cell
+  towers), servers, a printer, IP phones, eighteen IoT things and two programmable boards.
+- **Cables:** automatic, straight-through, cross-over, fiber, console, serial, coaxial, phone and
+  IoT cables; a wrong one leaves the link down and says why. The physical view has cities,
+  buildings and closets, with copper limits and Wi-Fi range by building.
+- **Switching:** VLANs, trunks, DTP, spanning tree (including rapid-pvst and its guards),
+  EtherChannel, VTP, port security, DHCP snooping, dynamic ARP inspection, CDP and LLDP, 802.1p
+  CoS and power over Ethernet.
+- **Routing:** static and floating routes, RIP, OSPF (several areas, stub, authentication),
+  EIGRP, router-on-a-stick, multilayer switching, HSRP, VRRP v2 and v3, GLBP, HDLC and PPP.
+- **IPv6:** addressing, neighbour discovery, SLAAC, DHCPv6, static routes, OSPFv3, EIGRP for IPv6,
+  RIPng and ACLs.
+- **Security:** ACLs, NAT and PAT, AAA with RADIUS and TACACS+, SSH, GRE, site-to-site IPsec
+  (IKEv1 and IKEv2 with real Diffie-Hellman, AES, DES, 3DES, AH and HMACs), zone-based and
+  stateful firewalls, certificates (RSA, X.509) in TLS and SSH, and path MTU discovery.
+- **Services and automation:** HTTP, DNS, DHCP, email, FTP, TFTP, NTP, syslog, SNMP v2c and v3;
+  RESTCONF and NETCONF on routers; a Programming app and a controller mode on PCs.
+- **Wireless, voice and IoT:** WPA2-PSK and WPA2-Enterprise (PEAP), controller with lightweight
+  APs, roaming, real 802.11 frames; IP phones that register and call each other (SIP or the
+  router's own signalling); smart things, home gateway rules and boards running BoardScript.
+- **Simulation mode:** an event list replayed on the canvas, simple and complex PDUs, OSI layer
+  details, scenarios, capture filters, drop reasons and pcap export.
+- **Console and PC prompt:** every mode a CCNA course uses, with `?` help, Tab completion and
+  output filters (1065 grammar entries in all; see
+  [`docs/command-reference.md`](docs/command-reference.md)); on PCs `ipconfig`, `ping`,
+  `tracert`, `nslookup`, `telnet`, `ssh`, `ftp`, `netstat` and more.
+- **Activities:** checks worth points, sections, hints, values per student, time limits, password
+  locks, an Activity Wizard, and instructor tools (answer network, assessment tree, signed
+  results).
 
+The full protocol-by-protocol list is in [`docs/protocol-parity.md`](docs/protocol-parity.md).
 What it doesn't do yet is listed, ranked, in [`docs/gaps.md`](docs/gaps.md).
 
 ## The CCNA lab book
