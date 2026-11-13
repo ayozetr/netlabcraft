@@ -40,6 +40,7 @@ pub const PT_SK: u8 = 46;
 pub const PT_DELETE: u8 = 42;
 /// Security protocol ids in proposals.
 pub const PROTO_IKE: u8 = 1;
+pub const PROTO_AH: u8 = 2;
 pub const PROTO_ESP: u8 = 3;
 /// Transform types and the ids used here.
 pub const TT_ENCR: u8 = 1;

@@ -2716,7 +2716,7 @@ impl Sim {
         if d.kind == DeviceKind::Router && ip.protocol == netlabcraft_wire::vpn::PROTO_GRE {
             return self.gre_in(t, d, &ip);
         }
-        if d.kind == DeviceKind::Router && ip.protocol == netlabcraft_wire::vpn::PROTO_ESP {
+        if d.kind == DeviceKind::Router && (ip.protocol == netlabcraft_wire::vpn::PROTO_ESP || ip.protocol == netlabcraft_wire::ah::PROTO_AH) {
             return self.esp_in(t, d, ifc, &ip);
         }
         if ip.protocol == PROTO_TCP {

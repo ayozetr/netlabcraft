@@ -197,9 +197,19 @@ fn describe(p: &Proposal) -> String {
     parts.join(", ")
 }
 
-/// The ESP proposal from a transform set (RFC 7296 §3.3.2 transform ids).
+/// The child SA proposal from a transform set (RFC 7296 §3.3.2 transform ids): ESP, or AH for
+/// a set of AH transforms only.
 fn esp_proposal(d: &Device, e: &CryptoMapEntry, spi: u32) -> Proposal {
     let ts = e.transform_set.as_deref().and_then(|n| d.crypto.transform_set(n));
+    if let Some(integ) = ts.and_then(crate::vpn::ah_integ) {
+        let id = match integ {
+            Integ::HmacMd5_96 => ikev2::AUTH_HMAC_MD5_96,
+            Integ::HmacSha256_128 => ikev2::AUTH_HMAC_SHA2_256_128,
+            _ => ikev2::AUTH_HMAC_SHA1_96,
+        };
+        let transforms = vec![Transform { kind: ikev2::TT_INTEG, id, key_len: None }, Transform { kind: ikev2::TT_ESN, id: 0, key_len: None }];
+        return Proposal { number: 1, protocol: ikev2::PROTO_AH, spi: spi.to_be_bytes().to_vec(), transforms };
+    }
     let has = |w: &str| ts.is_some_and(|t| t.transforms.iter().any(|x| x.split_whitespace().next() == Some(w)));
     let bits = ts.and_then(|t| t.transforms.iter().find_map(|x| x.strip_prefix("esp-aes ").and_then(|b| b.parse().ok()))).unwrap_or(128);
     let mut transforms = Vec::new();
@@ -264,6 +274,11 @@ fn esp_keys(keys: &Keys, suite: Option<EspSuite>, ni: &[u8], nr: &[u8]) -> (Vec<
     (m.get(..one).unwrap_or_default().to_vec(), m.get(one..).unwrap_or_default().to_vec())
 }
 
+/// The IKEv2 protocol id of a child SA: AH for an AH suite, ESP otherwise.
+fn child_protocol(suite: Option<EspSuite>) -> u8 {
+    if suite.is_some_and(|s| s.encr == netlabcraft_wire::vpn::EspEncr::Ah) { ikev2::PROTO_AH } else { ikev2::PROTO_ESP }
+}
+
 /// Seals a datagram as ESP with an association's outbound keys.
 pub(crate) fn esp_seal(suite: Option<EspSuite>, key: &[u8], spi: u32, seq: u32, datagram: &[u8]) -> netlabcraft_wire::vpn::Esp {
     match suite.and_then(|s| EspSa::from_keymat(s, key)) {
@@ -272,6 +287,53 @@ pub(crate) fn esp_seal(suite: Option<EspSuite>, key: &[u8], spi: u32, seq: u32, 
             netlabcraft_wire::vpn::Esp::seal_with(&sa, spi, seq, netlabcraft_wire::vpn::NEXT_IPV4, datagram, iv)
         }
         None => netlabcraft_wire::vpn::Esp::seal(key, spi, seq, netlabcraft_wire::vpn::NEXT_IPV4, datagram),
+    }
+}
+
+/// The finished outer IPv4 packet (protocol 50 or 51, source `local`, destination `peer`) that
+/// protects `datagram` with an association's outbound keys: ESP, AH in tunnel mode when the
+/// suite is an AH one, or the stand-in cipher when there is no suite.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn ipsec_seal(
+    suite: Option<EspSuite>,
+    key: &[u8],
+    spi: u32,
+    seq: u32,
+    id: u16,
+    local: Ipv4Addr,
+    peer: Ipv4Addr,
+    datagram: &[u8],
+) -> Vec<u8> {
+    let outer = Ipv4 { id, ttl: 255, protocol: netlabcraft_wire::vpn::PROTO_ESP, src: local, dst: peer, payload: Vec::new() };
+    let mut packet = match suite {
+        Some(EspSuite { encr: netlabcraft_wire::vpn::EspEncr::Ah, integ }) => {
+            netlabcraft_wire::ah::Ah::protect(integ, key, outer, spi, seq, netlabcraft_wire::vpn::NEXT_IPV4, datagram).encode()
+        }
+        _ => Ipv4 { payload: esp_seal(suite, key, spi, seq, datagram).encode(), ..outer }.encode(),
+    };
+    crate::qos::copy_ds(datagram, &mut packet);
+    packet
+}
+
+/// The SPI of an ESP or AH packet.
+pub(crate) fn inbound_spi(ip: &Ipv4) -> netlabcraft_wire::Result<u32> {
+    if ip.protocol == netlabcraft_wire::ah::PROTO_AH {
+        Ok(netlabcraft_wire::ah::Ah::decode(&ip.payload)?.spi)
+    } else {
+        Ok(netlabcraft_wire::vpn::Esp::decode(&ip.payload)?.spi)
+    }
+}
+
+/// Opens a received ESP or AH packet with an association's inbound keys: the next header and
+/// the inner packet. An ESP packet on an AH association (or the other way round) fails.
+pub(crate) fn ipsec_open(suite: Option<EspSuite>, key: &[u8], ip: &Ipv4) -> netlabcraft_wire::Result<(u8, Vec<u8>)> {
+    use netlabcraft_wire::WireError;
+    match suite {
+        Some(EspSuite { encr: netlabcraft_wire::vpn::EspEncr::Ah, integ }) => {
+            netlabcraft_wire::ah::Ah::open_tunnel(ip, integ, key).map(|inner| (netlabcraft_wire::vpn::NEXT_IPV4, inner))
+        }
+        _ if ip.protocol != netlabcraft_wire::vpn::PROTO_ESP => Err(WireError::Unsupported("ipsec", "not an ESP packet".into())),
+        _ => esp_open(suite, key, &netlabcraft_wire::vpn::Esp::decode(&ip.payload)?),
     }
 }
 
@@ -369,11 +431,8 @@ impl Sim {
             let key = sa.v2.as_ref().map(|v| v.esp_out.clone()).unwrap_or_default();
             let suite = sa.v2.as_ref().and_then(|v| v.esp_suite);
             let spi = sa.spi_out;
-            let esp = esp_seal(suite, &key, spi, seq, datagram);
             let id = self.ip_id();
-            let mut outer = Ipv4 { id, ttl: 255, protocol: netlabcraft_wire::vpn::PROTO_ESP, src: local, dst: peer, payload: esp.encode() }.encode();
-            crate::qos::copy_ds(datagram, &mut outer);
-            return Ok(Some((outer, peer)));
+            return Ok(Some((ipsec_seal(suite, &key, spi, seq, id, local, peer, datagram), peer)));
         }
         sa.drops = sa.drops.saturating_add(1);
         let busy = matches!(sa.phase, IkePhase::V2Init | IkePhase::V2Auth | IkePhase::Failed) && now.saturating_sub(sa.started_us) < RETRY_US;
@@ -725,7 +784,7 @@ impl Sim {
             (_, None) => Err((ikev2::NO_PROPOSAL_CHOSEN, "IKE_AUTH carries no ESP proposal".to_string())),
             (Some(e), Some(o)) => {
                 let mine = esp_proposal(d, e, spi_in);
-                if mine.transforms != o.transforms {
+                if (mine.protocol, &mine.transforms) != (o.protocol, &o.transforms) {
                     Err((ikev2::NO_PROPOSAL_CHOSEN, "the ESP transforms differ from this router's transform set".to_string()))
                 } else {
                     let tsi = inner.iter().find_map(|p| if let Payload::TsI(v) = p { v.first().copied() } else { None });
@@ -890,7 +949,12 @@ impl Sim {
         let id = v2.next_req;
         let Some((tsi, tsr)) = selectors(d, entry) else { return };
         let payloads = vec![
-            Payload::Notify { protocol: ikev2::PROTO_ESP, spi: sa.spi_in.to_be_bytes().to_vec(), kind: ikev2::REKEY_SA, data: Vec::new() },
+            Payload::Notify {
+                protocol: child_protocol(v2.esp_suite),
+                spi: sa.spi_in.to_be_bytes().to_vec(),
+                kind: ikev2::REKEY_SA,
+                data: Vec::new(),
+            },
             Payload::Sa(vec![esp_proposal(d, entry, new_in)]),
             Payload::Nonce(ni.clone()),
             Payload::TsI(vec![tsi]),
@@ -952,7 +1016,11 @@ impl Sim {
                 let verdict = match (rekeyed, &entry, &esp, &nonce) {
                     (Some(s), _, _, _) if s != sa.spi_out => Err(ikev2::CHILD_SA_NOT_FOUND),
                     (None, _, _, _) => Err(ikev2::NO_PROPOSAL_CHOSEN),
-                    (_, Some(e), Some(o), Some(_)) if esp_proposal(d, e, 0).transforms == o.transforms => Ok(()),
+                    (_, Some(e), Some(o), Some(_))
+                        if (esp_proposal(d, e, 0).protocol, esp_proposal(d, e, 0).transforms) == (o.protocol, o.transforms.clone()) =>
+                    {
+                        Ok(())
+                    }
                     _ => Err(ikev2::NO_PROPOSAL_CHOSEN),
                 };
                 if let Err(kind) = verdict {
@@ -994,7 +1062,7 @@ impl Sim {
                 self.ike2_install(d, local, peer, v2.clone(), (new_in, spi_u32(&o.spi)), (k_req, k_resp));
                 let _ = id;
                 self.log(d.id, &format!("IKEv2 with {peer}: CREATE_CHILD_SA complete, the child SA has new keys; deleting the old one"));
-                let del = vec![Payload::Delete { protocol: ikev2::PROTO_ESP, spis: vec![old_in.to_be_bytes().to_vec()] }];
+                let del = vec![Payload::Delete { protocol: child_protocol(v2.esp_suite), spis: vec![old_in.to_be_bytes().to_vec()] }];
                 let v2 = self.state.get(&d.id).and_then(|s| s.ipsec.get(&peer)).and_then(|s| s.v2.as_deref().cloned()).unwrap_or(v2);
                 self.ike2_sa_send(t, d, local, peer, &v2, me_initiator, ikev2::INFORMATIONAL, del_id, false, del);
             }
@@ -1004,7 +1072,11 @@ impl Sim {
                 let deletes: Vec<u32> = inner
                     .iter()
                     .filter_map(|p| {
-                        if let Payload::Delete { protocol: ikev2::PROTO_ESP, spis } = p { Some(spis.iter().map(|s| spi_u32(s))) } else { None }
+                        if let Payload::Delete { protocol: ikev2::PROTO_ESP | ikev2::PROTO_AH, spis } = p {
+                            Some(spis.iter().map(|s| spi_u32(s)))
+                        } else {
+                            None
+                        }
                     })
                     .flatten()
                     .collect();
@@ -1013,7 +1085,7 @@ impl Sim {
                     && let Some(s) = self.st(d.id).ipsec.get_mut(&peer)
                     && let Some(prev) = s.prev_in.take()
                 {
-                    reply.push(Payload::Delete { protocol: ikev2::PROTO_ESP, spis: vec![prev.0.to_be_bytes().to_vec()] });
+                    reply.push(Payload::Delete { protocol: child_protocol(prev.1), spis: vec![prev.0.to_be_bytes().to_vec()] });
                     self.log(d.id, &format!("IKEv2 with {peer}: the old child SA (inbound SPI 0x{:08x}) is deleted", prev.0));
                 }
                 self.ike2_sa_send(t, d, local, peer, &v2, me_initiator, ikev2::INFORMATIONAL, m.message_id, true, reply);
@@ -1031,28 +1103,21 @@ impl Sim {
     }
 
     /// ESP for a peer whose association IKEv2 set up: `None` when it isn't one.
-    pub(crate) fn esp_in_v2(
-        &mut self,
-        t: &Topology,
-        d: &Device,
-        ifc: &L3If,
-        ip: &Ipv4,
-        esp: &netlabcraft_wire::vpn::Esp,
-    ) -> Option<Result<(), String>> {
+    pub(crate) fn esp_in_v2(&mut self, t: &Topology, d: &Device, ifc: &L3If, ip: &Ipv4, spi: u32) -> Option<Result<(), String>> {
         let sa = self.state.get(&d.id).and_then(|s| s.ipsec.get(&ip.src))?;
         let v2 = sa.v2.as_ref()?;
         if sa.phase != IkePhase::Established {
             return None;
         }
-        let prev = sa.prev_in.clone().filter(|p| p.0 == esp.spi);
-        let opened = if esp.spi != sa.spi_in && prev.is_none() {
-            Err(format!("ESP SPI 0x{:08x} from {} matches no security association", esp.spi, ip.src))
+        let prev = sa.prev_in.clone().filter(|p| p.0 == spi);
+        let opened = if spi != sa.spi_in && prev.is_none() {
+            Err(format!("IPsec SPI 0x{spi:08x} from {} matches no security association", ip.src))
         } else {
             let (suite, key) = prev.map_or((v2.esp_suite, v2.esp_in.clone()), |p| (p.1, p.2));
-            match esp_open(suite, &key, esp) {
+            match ipsec_open(suite, &key, ip) {
                 Ok((netlabcraft_wire::vpn::NEXT_IPV4, inner)) => Ok(inner),
-                Ok((next, _)) => Err(format!("ESP carrying next header {next} is not understood")),
-                Err(_) => Err(format!("ESP from {} failed its integrity check", ip.src)),
+                Ok((next, _)) => Err(format!("IPsec packet carrying next header {next} is not understood")),
+                Err(_) => Err(format!("IPsec packet from {} failed its integrity check", ip.src)),
             }
         };
         let sa = self.st(d.id).ipsec.entry(ip.src).or_default();

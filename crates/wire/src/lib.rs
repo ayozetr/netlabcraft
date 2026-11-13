@@ -14,6 +14,7 @@ use netlabcraft_core::MacAddr;
 
 pub mod aes;
 pub mod aes256;
+pub mod ah;
 pub mod capwap;
 pub mod cipher;
 pub mod control;
@@ -478,6 +479,8 @@ pub enum Protocol {
     Gre,
     /// IPsec Encapsulating Security Payload.
     Esp,
+    /// IPsec Authentication Header.
+    Ah,
     /// ISAKMP / IKEv1 key exchange (UDP 500).
     Isakmp,
     /// IEEE 802.11 management frames over the air (probe, authentication, association).
@@ -527,6 +530,7 @@ impl Protocol {
             Protocol::Ipv6 => "IPv6",
             Protocol::Gre => "GRE",
             Protocol::Esp => "ESP",
+            Protocol::Ah => "AH",
             Protocol::Isakmp => "ISAKMP",
             Protocol::Wlan => "802.11",
             Protocol::Eapol => "EAPOL",
@@ -876,6 +880,19 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                     vpn::PROTO_ESP => match vpn::Esp::decode(&ip.payload) {
                         Ok(e) => (Protocol::Esp, format!("ESP SPI 0x{:08x} seq {} {route}, {} bytes protected{tag}", e.spi, e.seq, e.data.len())),
                         Err(e) => (Protocol::Esp, format!("ESP ({e}) {route}{tag}")),
+                    },
+                    ah::PROTO_AH => match ah::Ah::decode(&ip.payload) {
+                        Ok(a) => (
+                            Protocol::Ah,
+                            format!(
+                                "AH SPI 0x{:08x} seq {} {route}, {} bytes authenticated, ICV {} bytes{tag}",
+                                a.spi,
+                                a.seq,
+                                a.payload.len(),
+                                a.icv.len()
+                            ),
+                        ),
+                        Err(e) => (Protocol::Ah, format!("AH ({e}) {route}{tag}")),
                     },
                     p => (Protocol::Ipv4, format!("IPv4 protocol {p} {route}{tag}")),
                 }

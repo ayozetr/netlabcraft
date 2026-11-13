@@ -3,7 +3,7 @@
 //! GRE is the real wire format. ESP has the real header and trailer layout (SPI, sequence
 //! number, padding, pad length, next header, integrity check value). Associations IKEv2 set
 //! up with `esp-aes esp-sha-hmac` use the real transforms: AES-128-CBC with an explicit IV
-//! (RFC 3602) and HMAC-SHA1-96 (RFC 2404), see [`Esp::seal_aes`]. Otherwise the "cipher" is
+//! (RFC 3602) and HMAC-SHA1-96 (RFC 2404), see [`Esp::seal_aes`]; every real suite is in [`Esp::seal_with`], AH is in [`crate::ah`]. Only a transform set mixing AH with ESP is left with a stand-in, where the "cipher" is
 //! **not real encryption**: the payload is XORed with a keystream made from MD5 over the
 //! pre-shared key, the SPI, the sequence number and a block counter, and the integrity value
 //! is a truncated MD5 over the key and the packet. That is enough for a teaching simulator to
@@ -216,12 +216,16 @@ pub enum EspEncr {
     Des,
     /// Three-key 3DES-CBC (RFC 2451): 24 bytes of key and an 8-byte IV.
     Des3,
+    /// Not ESP at all: the suite of an Authentication Header association (RFC 4302, see
+    /// [`crate::ah`]), integrity only, carried as IP protocol 51. It rides in this type so one
+    /// "suite and keys" value describes every IPsec association the simulator sets up.
+    Ah,
 }
 
 impl EspEncr {
     pub fn key_len(self) -> usize {
         match self {
-            EspEncr::Null => 0,
+            EspEncr::Null | EspEncr::Ah => 0,
             EspEncr::AesCbc(bits) => usize::from(bits) / 8,
             EspEncr::Des => 8,
             EspEncr::Des3 => 24,
@@ -231,7 +235,7 @@ impl EspEncr {
     /// The block cipher behind it (`None` for NULL).
     fn kind(self) -> Option<crate::cipher::CipherKind> {
         match self {
-            EspEncr::Null => None,
+            EspEncr::Null | EspEncr::Ah => None,
             EspEncr::AesCbc(_) => Some(crate::cipher::CipherKind::Aes),
             EspEncr::Des => Some(crate::cipher::CipherKind::Des),
             EspEncr::Des3 => Some(crate::cipher::CipherKind::Tdes),
@@ -256,6 +260,7 @@ impl EspSuite {
     pub fn describe(self) -> String {
         let e = match self.encr {
             EspEncr::Null => "NULL".to_string(),
+            EspEncr::Ah => "AH".to_string(),
             EspEncr::AesCbc(b) => format!("AES-CBC-{b}"),
             EspEncr::Des => "DES-CBC".to_string(),
             EspEncr::Des3 => "3DES-CBC".to_string(),
@@ -481,7 +486,7 @@ mod tests {
                 let back = Esp::decode(&e.encode()).unwrap();
                 assert_eq!(back.open_with(&sa).unwrap(), (NEXT_IPV4, inner.clone()), "{}", suite.describe());
                 let ivlen = match encr {
-                    EspEncr::Null => 0,
+                    EspEncr::Null | EspEncr::Ah => 0,
                     EspEncr::Des | EspEncr::Des3 => 8,
                     EspEncr::AesCbc(_) => 16,
                 };

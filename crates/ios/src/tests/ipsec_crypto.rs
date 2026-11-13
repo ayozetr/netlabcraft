@@ -280,3 +280,87 @@ fn ikev2_renews_the_child_sa_and_deletes_the_old_one() {
     assert!(ping_settled(&mut lab, a, "192.168.2.10").contains("4 answered"));
     assert!(lab.sim.trace().iter().any(|e| e.summary.contains("IKE_SA_INIT")));
 }
+
+#[test]
+fn ah_runs_for_real_under_ikev1_and_ikev2() {
+    for (v2, ts, ah) in [
+        (false, "ah-sha-hmac", "AH / HMAC-SHA1-96"),
+        (false, "ah-md5-hmac", "AH / HMAC-MD5-96"),
+        (false, "ah-sha256-hmac", "AH / HMAC-SHA256-128"),
+        (true, "ah-sha-hmac", "AH / HMAC-SHA1-96"),
+        (true, "ah-sha256-hmac", "AH / HMAC-SHA256-128"),
+    ] {
+        let (mut lab, r1, isp, r2, a) = two_sites();
+        for (r, site) in [(r1, SITE1), (r2, SITE2)] {
+            let cfg = if v2 {
+                v2_config(site.0, site.1, "aes-cbc-256", "sha256", "14", ts)
+            } else {
+                v1_config(site.0, site.1, "k", "aes 256", "sha", 14, ts)
+            };
+            lab.run(r, &cfg);
+        }
+        lab.sim.clear_trace();
+        let ping = ping_settled(&mut lab, a, "192.168.2.10");
+        assert!(ping.contains("4 answered"), "{ts} v2={v2}: {ping}");
+        let sa = lab.run(r1, if v2 { "show crypto ikev2 sa" } else { "show crypto ipsec sa" });
+        assert!(sa.contains(&format!("ESP: {ah} (real ciphers)")), "{sa}");
+        // The ISP carries protocol 51, with the SPI, a sequence number and the ICV; no ESP. AH
+        // authenticates but does not hide.
+        let on_isp: Vec<String> = lab.sim.trace().iter().filter(|e| e.to.device == isp).map(|e| e.summary.clone()).collect();
+        assert!(on_isp.iter().any(|s| s.starts_with("AH SPI 0x") && s.contains("authenticated, ICV ")), "{on_isp:#?}");
+        assert!(!on_isp.iter().any(|s| s.starts_with("ESP")), "{on_isp:#?}");
+        assert!(lab.run(r2, "show crypto ipsec sa").contains(&format!("{ah} (real ciphers)")));
+    }
+}
+
+#[test]
+fn ah_and_esp_transform_sets_do_not_match_each_other() {
+    // One side asks for AH, the other for ESP: refused where the transforms are compared.
+    let (mut lab, r1, _isp, r2, a) = two_sites();
+    lab.run(r1, &v1_config(SITE1.0, SITE1.1, "k", "aes", "sha", 14, "ah-sha-hmac"));
+    lab.run(r2, &v1_config(SITE2.0, SITE2.1, "k", "aes", "sha", 14, "esp-aes esp-sha-hmac"));
+    assert!(ping_settled(&mut lab, a, "192.168.2.10").contains(" 0 answered"));
+    assert!(lab.run(r2, "show crypto isakmp sa").contains("refused quick mode message 1"));
+    // Different AH algorithms too.
+    let (mut lab, r1, _isp, r2, a) = two_sites();
+    lab.run(r1, &v2_config(SITE1.0, SITE1.1, "aes-cbc-256", "sha256", "14", "ah-sha-hmac"));
+    lab.run(r2, &v2_config(SITE2.0, SITE2.1, "aes-cbc-256", "sha256", "14", "ah-md5-hmac"));
+    assert!(ping_settled(&mut lab, a, "192.168.2.10").contains(" 0 answered"));
+    assert!(lab.run(r1, "show crypto ikev2 sa").contains("NO_PROPOSAL_CHOSEN"));
+    let _ = r2;
+}
+
+#[test]
+fn ah_associations_renew_their_keys() {
+    let (mut lab, r1, _isp, r2, a) = two_sites();
+    for (r, site) in [(r1, SITE1), (r2, SITE2)] {
+        lab.run(r, &v1_config(site.0, site.1, "k", "aes 256", "sha", 14, "ah-sha256-hmac"));
+        lab.run(r, "conf t\ncrypto ipsec security-association lifetime seconds 120\nend");
+    }
+    assert!(ping_settled(&mut lab, a, "192.168.2.10").contains("4 answered"));
+    let first = spi_out(&mut lab, r1);
+    assert!(ping_after(&mut lab, a, 110).contains("4 answered"));
+    assert_ne!(spi_out(&mut lab, r1), first);
+    assert!(lab.run(r2, "show crypto ipsec sa").contains("keys renewed 1 time"));
+    let (mut lab, r1, _isp, r2, a) = two_sites();
+    for (r, site) in [(r1, SITE1), (r2, SITE2)] {
+        lab.run(r, &v2_config(site.0, site.1, "aes-cbc-256", "sha256", "14", "ah-sha-hmac"));
+        lab.run(r, "conf t\ncrypto map VPN 10 ipsec-isakmp\nset security-association lifetime seconds 120\nend");
+    }
+    assert!(ping_settled(&mut lab, a, "192.168.2.10").contains("4 answered"));
+    let first = spi_out(&mut lab, r1);
+    assert!(ping_after(&mut lab, a, 110).contains("4 answered"));
+    assert_ne!(spi_out(&mut lab, r1), first);
+    assert!(lab.run(r1, "show logging").contains("the old child SA (inbound SPI 0x"));
+    let _ = r2;
+}
+
+#[test]
+fn ah_next_to_esp_in_one_set_keeps_the_stand_in() {
+    let (mut lab, r1, _isp, r2, a) = two_sites();
+    for (r, site) in [(r1, SITE1), (r2, SITE2)] {
+        lab.run(r, &v1_config(site.0, site.1, "k", "aes", "sha", 14, "ah-sha-hmac esp-aes esp-sha-hmac"));
+    }
+    assert!(ping_settled(&mut lab, a, "192.168.2.10").contains("4 answered"));
+    assert!(lab.run(r1, "show crypto ipsec sa").contains("stand-in cipher"));
+}

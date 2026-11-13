@@ -228,7 +228,7 @@ impl V1State {
     /// KEYMAT for the SA whose (inbound) SPI is `spi` (§5.5): K1 = prf(SKEYID_d, protocol |
     /// SPI | Ni_b | Nr_b), Kn = prf(SKEYID_d, Kn−1 | protocol | SPI | Ni_b | Nr_b).
     pub fn keymat(&self, spi: u32, len: usize) -> Vec<u8> {
-        let seed = [&[ike::PROTO_ESP][..], &spi.to_be_bytes()[..], &self.qm_ni[..], &self.qm_nr[..]].concat();
+        let seed = [&[crate::vpn::proto_of(self.esp_suite)][..], &spi.to_be_bytes()[..], &self.qm_ni[..], &self.qm_nr[..]].concat();
         let prf = self.prf();
         let mut k = prf.prf(&self.skeyid_d, &seed);
         let mut out = k.clone();

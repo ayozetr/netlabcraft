@@ -1,6 +1,6 @@
 # Target-app parity: NetLabCraft vs Cisco Packet Tracer
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (DES and 3DES are real) · earlier: minor (packaged-build gate met) · earlier: major (the lab book run end to end, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers: areas and course topics re-scored, the untested-labs deduction cut; counts measured again) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (AH is real) · earlier: minor (DES and 3DES are real) · earlier: minor (packaged-build gate met) · earlier: major (the lab book run end to end, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers: areas and course topics re-scored, the untested-labs deduction cut; counts measured again) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summarizes it,
 [`gaps.md`](gaps.md) lists every shortfall, and the area checklists hold the detail:
@@ -35,7 +35,7 @@ to end is in [`labs/`](labs/README.md).
 | Full target (the weighted total) | ~91% | ~55–110 (sum of the area rows) | Console depth beyond the lab book, workspace, device families (cellular), the remaining crypto stand-ins |
 | CCNA 1 student | ~93% | ~2–5 | More labs walked; small console and host-app details they turn up |
 | CCNA 2 student | ~94% | ~3–8 | More labs walked; VRRPv3 router advertisements, RIPng and EIGRP for IPv6 timers |
-| CCNA 3 student | ~90% | ~8–16 | AH for real, certificates, IKE SA rekeying, a controller closer to the course's, virtualization |
+| CCNA 3 student | ~90% | ~8–16 | certificates, IKE SA rekeying, a controller closer to the course's, virtualization |
 | Instructor | ~90% | ~4–8 | More interface languages, results signatures that resist forgery |
 
 Each student tier is mostly a superset of the one before. Hours are wall-clock for one agent;
@@ -144,7 +144,7 @@ first estimate) counted topics as present without weighing their depth or the un
 - **CCNA 3 (ENSA):** seven labs of the book run (OSPF, ACLs, NAT, GRE over IPsec, QoS, network
   management, RESTCONF). IPsec runs a real Diffie-Hellman exchange and real AES, DES and
   3DES with SHA-1, SHA-256 or MD5 HMACs under IKEv1 and IKEv2, with lifetimes and child-SA
-  rekeying; AH keeps a stand-in cipher, and the IKE SA itself is not rekeyed. Automation scores 80%:
+  rekeying, and AH on its own is real (tunnel mode); AH bundled with ESP keeps a stand-in cipher, and the IKE SA itself is not rekeyed. Automation scores 80%:
   RESTCONF in JSON and XML over TLS 1.2, NETCONF with a candidate datastore over SSH 2.0, and a
   controller that discovers routers over CDP and LLDP and pushes templates; TLS has no
   certificate, the SSH host key is a stand-in, and the controller is still smaller than the
@@ -176,7 +176,7 @@ Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-11-13 | minor | DES and 3DES run for real (IKEv1, IKEv2, ESP); the CCNA 3 notes say AH is what is left of the cipher stand-ins. |
+| 2026-11-13 | minor | DES, 3DES and AH run for real (IKEv1, IKEv2, ESP, AH in tunnel mode); the CCNA 3 notes say the elliptic-curve groups and IKE SA rekeying are what is left of the crypto stand-ins. |
 | 2026-10-31 | major | The lab book (20 labs, run end to end and 8 over MCP), real Diffie-Hellman, AES-192/256, SHA-256, IKEv1 ciphers and rekeying, default MTU, more inspections; instructor tools; Simulation-mode leftovers; a real PEAP tunnel and central switching; tablets, smartphones, ten Wi-Fi IoT things, programmable boards, the phone's settings, power supplies; XML, IPv6, TLS and SSH in automation, NETCONF candidate and locks, controller discovery; CoS, VRRP timers and VRRPv3, EIGRP for IPv6 on the wire, RIP timers and RIPng, VTP pruning. Console 84% → 86%, layer 2 95% → 97%, layer 3 94% → 96%, services 95% → 97%, security 90% → 94%, WAN/cabling/wireless 90% → 93%, Simulation mode 85% → 90%, workspace 83% → 85%, teaching 80% → 88%, device families 70% → 82%; total 87.5 → 90.94; hours to ~95% ~90–165 → ~55–110. Method: the untested-labs deduction goes from 5 to 2 points now that the lab book runs. CCNA 1 ~88% → ~93%, CCNA 2 ~88% → ~94%, CCNA 3 ~84% → ~90% (automation 60% → 80%, VPN 88% → 94%, wireless 85% → 92%), instructor ~78% → ~90%. Counts measured again (138 commands, 1003 grammar entries across 37 modes, 51 models, 31 samples, 20 lab-book labs, 591 tests). |
 | 2026-10-30 | major | Complex PDUs, OSI view and scenarios; RESTCONF, NETCONF, the Programming app and a controller; zone-based firewall, `ip inspect`, `ip mtu`, `adjust-mss`, IKEv2 and real ESP; switch, QoS, routing and wireless leftovers; switch card, PoE, SIP phones, IoT things and gateway, cloud and modems. Console 82% → 84%, layer 2 90% → 95%, layer 3 92% → 94%, services 94% → 95%, security 86% → 90%, WAN/cabling/wireless 87% → 90%, Simulation mode 70% → 85%, workspace 80% → 83%, device families 60% → 70%; total 83.6 → 87.5; hours to ~95% ~150–250 → ~90–165. Course topics re-scored with the same method: CCNA 1 ~86% → ~88%, CCNA 2 ~85% → ~88%, CCNA 3 ~79% → ~84% (automation 15% → 60%, QoS 60% → 82%, VPN 75% → 88%). Counts measured again (114 commands, 958 grammar entries across 37 modes, 37 models, 28 samples, 443 tests). |
 | 2026-10-30 | major | Audiences re-estimated per course with a written method (topics weighted by their share of the Packet Tracer activities, depth scored, 5 points off until a lab book runs): CCNA 1 ~86%, CCNA 2 ~92% → ~85%, CCNA 3 ~91% → ~79%. Console 74% → 82%, layer 2 85% → 90%, layer 3 90% → 92%, services 92% → 94%, security 85% → 86%, WAN/cabling/wireless 85% → 87% (fibre was done), workspace 78% → 80%; total 80.6 → 83.6. Hours per area redone so the total is their sum (~150–250); the separate full-parity figure dropped. Counts measured again (94 commands, 802 grammar entries across 26 modes, 25 models, 23 samples). |

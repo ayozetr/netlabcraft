@@ -39,6 +39,7 @@ pub const P_NOTIFY: u8 = 11;
 pub const P_DELETE: u8 = 12;
 /// Protocol identifiers in proposals.
 pub const PROTO_ISAKMP: u8 = 1;
+pub const PROTO_AH: u8 = 2;
 pub const PROTO_ESP: u8 = 3;
 /// Notify message types.
 pub const NO_PROPOSAL_CHOSEN: u16 = 14;
