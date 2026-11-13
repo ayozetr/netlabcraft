@@ -83,6 +83,7 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `note.add` | Place note or drawing | Insert |  | `{"x", "y", "text"?, "shape"?: "text\|rectangle\|ellipse\|line\|freehand\|polygon", "w"?, "h"?, "points": [[x, y], …] (freehand: simplified, at most 512 kept; polygon: 3-64 corners), "color"?: "#rrggbb"} → {"id"} (placed in the cluster being viewed)` |
 | `note.edit` | Edit note |  |  | `{"id", "text"}` |
 | `note.move` | Move note |  |  | `{"id", "x", "y", "transient"?: false}` |
+| `note.resize` | Resize drawing |  |  | `{"id", "x", "y", "w", "h", "transient"?: false}: rectangle and ellipse: top-left corner and size (normalised, sides kept between 4 and 100000); line: start and the offset to its far end (at least 4 long); text, freehand and polygon are refused` |
 | `note.remove` | Delete note |  |  | `{"id"}` |
 | `note.color` | Drawing colour |  |  | `{"id", "color": "#rrggbb"}` |
 | `cluster.create` | Group into a cluster | Edit | Ctrl+G | `{"devices": ["name or id", …], "clusters"?: [cluster ids to nest], "name"?} → {"id", "name"} (all from the same view; the network is unchanged)` |

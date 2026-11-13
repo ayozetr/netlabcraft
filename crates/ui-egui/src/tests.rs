@@ -1395,3 +1395,105 @@ fn the_wlan_page_sets_central_switching() {
     let wlans = &h.state().session.topology.device(wlc).unwrap().wlan.wlans;
     assert!(wlans.iter().any(|w| w.id == 3 && w.central) && wlans.iter().filter(|w| w.central).count() == 1, "{wlans:?}");
 }
+
+#[test]
+fn a_selected_drawing_is_resized_with_its_handles_and_undone() {
+    let mut h = harness(None);
+    h.run_steps(2);
+    h.state_mut().run("note.add", json!({"shape": "rectangle", "x": 200, "y": 150, "w": 100, "h": 80}));
+    h.state_mut().run("note.add", json!({"shape": "line", "x": 400, "y": 150, "w": 100, "h": 0}));
+    h.run_steps(2);
+    let geo = |h: &Harness<'static, PacketApp>, i: usize| {
+        let a = &h.state().session.topology.annotations[i];
+        (a.x, a.y, a.w, a.h)
+    };
+    // Clicking the drawing selects it; handles then exist.
+    let at = on_screen(&h, 250.0, 190.0);
+    click(&mut h, at);
+    assert_eq!(h.state().ui.selected_note, Some(1));
+    // Drag the south-east handle.
+    let from = on_screen(&h, 300.0, 230.0);
+    press(&mut h, from, true, egui::Modifiers::NONE);
+    h.run_steps(1);
+    for i in 1..=5 {
+        h.input_mut().events.push(egui::Event::PointerMoved(from + egui::vec2(8.0 * i as f32, 4.0 * i as f32)));
+        h.run_steps(1);
+    }
+    press(&mut h, from + egui::vec2(40.0, 20.0), false, egui::Modifiers::NONE);
+    h.run_steps(2);
+    let zoom = h.state().ui.zoom;
+    let (x, y, w, hh) = geo(&h, 0);
+    assert_eq!((x, y), (200.0, 150.0));
+    assert!((w - (100.0 + 40.0 / zoom)).abs() < 0.5 && (hh - (80.0 + 20.0 / zoom)).abs() < 0.5, "{w} {hh}");
+    // One undo step for the whole drag.
+    h.state_mut().run("edit.undo", json!({}));
+    assert_eq!(geo(&h, 0), (200.0, 150.0, 100.0, 80.0));
+    // A line shows two handles: dragging its end moves only that end.
+    let at = on_screen(&h, 450.0, 150.0);
+    click(&mut h, at);
+    assert_eq!(h.state().ui.selected_note, Some(2));
+    let end = on_screen(&h, 500.0, 150.0);
+    press(&mut h, end, true, egui::Modifiers::NONE);
+    h.run_steps(1);
+    for i in 1..=5 {
+        h.input_mut().events.push(egui::Event::PointerMoved(end + egui::vec2(0.0, 10.0 * i as f32)));
+        h.run_steps(1);
+    }
+    press(&mut h, end + egui::vec2(0.0, 50.0), false, egui::Modifiers::NONE);
+    h.run_steps(2);
+    let (x, y, w, hh) = geo(&h, 1);
+    assert_eq!((x, y), (400.0, 150.0));
+    assert!((w - 100.0).abs() < 0.5 && (hh - 50.0 / zoom).abs() < 0.5, "{w} {hh}");
+    // Clicking empty workspace drops the handles.
+    let at = on_screen(&h, 600.0, 400.0);
+    click(&mut h, at);
+    assert_eq!(h.state().ui.selected_note, None);
+}
+
+#[test]
+fn handle_geometry_follows_the_dragged_handle() {
+    use netlabcraft_model::Shape;
+    let from = (10.0, 20.0, 100.0, 50.0);
+    assert_eq!(crate::canvas::dragged_handle(Shape::Rectangle, 0, from, (0.0, 0.0)), (0.0, 0.0, 110.0, 70.0));
+    assert_eq!(crate::canvas::dragged_handle(Shape::Ellipse, 3, from, (200.0, 99.0)), (10.0, 20.0, 190.0, 50.0));
+    assert_eq!(crate::canvas::dragged_handle(Shape::Rectangle, 5, from, (0.0, 90.0)), (10.0, 20.0, 100.0, 70.0));
+    assert_eq!(crate::canvas::dragged_handle(Shape::Line, 0, from, (0.0, 0.0)), (0.0, 0.0, 110.0, 70.0));
+    assert_eq!(crate::canvas::dragged_handle(Shape::Line, 1, from, (0.0, 0.0)), (10.0, 20.0, -10.0, -20.0));
+}
+
+#[test]
+fn canvas_devices_are_accessible_nodes_found_by_label_and_driven_by_keyboard() {
+    let mut h = harness(Some("vlans"));
+    h.run_steps(3);
+    let t = &h.state().session.topology;
+    let mut ids: Vec<_> = t.devices.iter().map(|d| d.id).collect();
+    ids.sort_by_key(|d| d.0);
+    let (first, second) = (ids[0], ids[1]);
+    let label = |h: &Harness<'static, PacketApp>, d: DeviceId| {
+        let t = &h.state().session.topology;
+        let d = t.device(d).unwrap();
+        format!("{}, {}", d.display_name(), d.catalogue_model().label)
+    };
+    let (l1, l2) = (label(&h, first), label(&h, second));
+    // Every device is a node with the project's own model name; none says selected yet.
+    assert!(h.query_by_label(&l1).is_some() && h.query_by_label(&l2).is_some());
+    assert!(h.query_by_label(&format!("{l1}, selected")).is_none());
+    // A screen reader's click on the node opens the device and selects it.
+    h.get_by_label(&l1).click();
+    h.run_steps(2);
+    assert_eq!(h.state().ui.selected, Some(first));
+    assert!(h.state().ui.windows.contains_key(&first));
+    assert!(h.query_by_label(&format!("{l1}, selected")).is_some());
+    // Focus on a node selects it, and the arrow keys step to the next device in id order.
+    h.get_by_label(&format!("{l1}, selected")).focus();
+    h.run_steps(2);
+    key(&mut h, egui::Key::ArrowRight, egui::Modifiers::NONE);
+    assert_eq!(h.state().ui.selected, Some(second));
+    assert!(h.query_by_label(&format!("{l2}, selected")).is_some());
+    key(&mut h, egui::Key::ArrowLeft, egui::Modifiers::NONE);
+    assert_eq!(h.state().ui.selected, Some(first));
+    // Mouse use is unchanged: clicking empty workspace deselects.
+    let at = canvas_origin(&h) + egui::vec2(30.0, 30.0);
+    click_at(&mut h, at);
+    assert_eq!(h.state().ui.selected, None);
+}
