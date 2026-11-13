@@ -29,7 +29,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Engine commands | 138 | measured: `c!(` entries in `crates/engine/src/catalog.rs` |
 | Console grammar entries | 1055 across 39 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
 | Device models · sample labs · lab-book labs | 51 · 31 · 31 | measured: `MODELS` in `crates/model/src/models.rs` (the fallback model and the 7 router cards in `MODULES` not counted), `SAMPLES` in `crates/engine/src/sample.rs`, numbered labs in `docs/labs/` |
-| Tests | 685 | measured: sum of "passed" from `cargo test --workspace -q` (unit, console scripts, sample labs and the lab book end to end, the lab book over MCP, UI harness, fuzz of every command) |
+| Tests | 750 | measured: sum of "passed" from `cargo test --workspace -q` (unit, console scripts, sample labs and the lab book end to end, the lab book over MCP, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **met** | every alpha gate is met: the lab book's CCNA 1 labs run as written and `release.yml` builds the packages (v0.1.0, not code-signed) ([roadmap.md](docs/roadmap.md#alpha-gates)) |
 | Remaining to **beta** | **met** | every beta gate is met ([roadmap.md](docs/roadmap.md#beta-gates)) |
 | Remaining to **~95% everywhere** | **~55–110 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
