@@ -447,6 +447,7 @@ pub enum Id {
     NoNatPool,
     ShowNat,
     ClearNat,
+    ClearNatStats,
     // ---- site-to-site VPN: GRE tunnels and IPsec ----
     TunnelSource,
     NoTunnelSource,
@@ -1229,6 +1230,7 @@ pub static SPECS: &[Spec] = &[
     ),
     spec!(NoNatPool, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("nat"), K("pool"), Arg("WORD")], "Delete a NAT pool"),
     spec!(ShowNat, EXECS, Modes::BOTH, [K("show"), K("ip"), K("nat"), K("translations")], "Translations in use"),
+    spec!(ClearNatStats, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("nat"), K("statistics")], "Reset the NAT hit and miss counts"),
     spec!(ClearNat, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("nat"), K("translation"), Rest("*")], "Forget dynamic translations"),
     // ---- loopback interfaces (`interface Loopback N`) ----
     spec!(IpAddress, Modes::LOOPBACK, Modes::BOTH, [K("ip"), K("address"), Arg("A.B.C.D"), Arg("MASK")], "Set the loopback's address"),
@@ -2593,6 +2595,7 @@ pub static SPECS: &[Spec] = &[
     spec!(NoDhcpDomain, Modes::DHCP, Modes::BOTH, [K("no"), K("domain-name")], "Give clients no domain name"),
     spec!(ShowDhcpBinding, EXECS, Modes::BOTH, [K("show"), K("ip"), K("dhcp"), K("binding")], "Addresses DHCP handed out"),
     spec!(ShowDhcpPool, EXECS, Modes::BOTH, [K("show"), K("ip"), K("dhcp"), K("pool")], "DHCP pools"),
+    spec!(ShowDhcpPool, EXECS, Modes::BOTH, [K("show"), K("ip"), K("dhcp"), K("pool"), Arg("NAME")], "One DHCP pool and how many addresses are left"),
     spec!(ClearDhcpBinding, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("dhcp"), K("binding"), Rest("{* | A.B.C.D}")], "Forget DHCP leases"),
     spec!(ShowDhcpConflict, EXECS, Modes::BOTH, [K("show"), K("ip"), K("dhcp"), K("conflict")], "Pool addresses found in use by others"),
     spec!(ShowDhcpStats, EXECS, Modes::BOTH, [K("show"), K("ip"), K("dhcp"), K("server"), K("statistics")], "DHCP messages counted"),

@@ -377,6 +377,8 @@ fn nat_statistics(c: &Ctx<'_>) -> String {
         list(&inside),
         list(&outside)
     );
+    let (hits, misses) = c.sim.state(c.dev).map_or((0, 0), |st| (st.nat_hits, st.nat_misses));
+    let _ = writeln!(s, "Hits: {hits} (found a translation)  Misses: {misses} (needed a new one)");
     if d.nat.rules.is_empty() {
         s.push_str("Dynamic rules: none\n");
     }

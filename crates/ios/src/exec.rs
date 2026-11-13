@@ -2354,7 +2354,12 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let d = c.dm()?;
             let before = d.acls.len();
             d.acls.retain(|a| a.name != arg(0));
-            if d.acls.len() == before { Err(format!("% No access list {}", arg(0))) } else { Ok(String::new()) }
+            if d.acls.len() == before {
+                return Err(format!("% No access list {}", arg(0)));
+            }
+            // A list written again under the same name starts counting from zero.
+            c.sim.clear_acl_hits(c.dev, Some(arg(0)));
+            Ok(String::new())
         }
         Id::IpAccessListStandard | Id::IpAccessListExtended => {
             let name: String = arg(0).chars().take(32).collect();
@@ -2379,7 +2384,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let d = c.dm()?;
             let before = d.acls.len();
             d.acls.retain(|a| a.name != arg(1));
-            if d.acls.len() == before { Err(format!("% No access list {}", arg(1))) } else { Ok(String::new()) }
+            if d.acls.len() == before {
+                return Err(format!("% No access list {}", arg(1)));
+            }
+            c.sim.clear_acl_hits(c.dev, Some(arg(1)));
+            Ok(String::new())
         }
         Id::AclEntryLine | Id::NoAclEntryLine => {
             let Mode::Acl(name) = c.cli.mode.clone() else { return Err("% Not in access-list mode".into()) };
@@ -3303,6 +3312,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             if n.pools.len() == before { Err(format!("% No pool {}", arg(0))) } else { Ok(String::new()) }
         }
         Id::ShowNat => Ok(render::nat_translations(c.sim, c.d()?)),
+        Id::ClearNatStats => {
+            c.sim.clear_nat_counts(c.dev);
+            Ok(String::new())
+        }
         Id::ClearNat => {
             c.sim.clear_nat(c.dev);
             Ok(String::new())
@@ -4218,7 +4231,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(render::spanning_tree(c.t, c.sim, &d, v, &tree))
         }
         Id::ShowDhcpBinding => Ok(render::dhcp_bindings(c.sim, c.d()?)),
-        Id::ShowDhcpPool => Ok(render::dhcp_pools(c.sim, c.d()?)),
+        Id::ShowDhcpPool => {
+            let name = arg(0).trim();
+            render::dhcp_pools(c.sim, c.d()?, Some(name).filter(|n| !n.is_empty()))
+        }
         Id::ClearDhcpBinding => match arg(0).trim() {
             "*" => {
                 c.sim.clear_leases(c.dev);

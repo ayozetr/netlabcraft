@@ -240,6 +240,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `ip nat pool WORD START END {netmask M \| prefix-length N}` | config | router, switch | Addresses to translate to |
 | `no ip nat pool WORD` | config | router, switch | Delete a NAT pool |
 | `show ip nat translations` | user, privileged | router, switch | Translations in use |
+| `clear ip nat statistics` | privileged | router, switch | Reset the NAT hit and miss counts |
 | `clear ip nat translation *` | privileged | router, switch | Forget dynamic translations |
 | `ip address A.B.C.D MASK` |  | router, switch | Set the loopback's address |
 | `no ip address` |  | router, switch | Remove the loopback's address |
@@ -812,6 +813,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no domain-name` |  | router, switch | Give clients no domain name |
 | `show ip dhcp binding` | user, privileged | router, switch | Addresses DHCP handed out |
 | `show ip dhcp pool` | user, privileged | router, switch | DHCP pools |
+| `show ip dhcp pool NAME` | user, privileged | router, switch | One DHCP pool and how many addresses are left |
 | `clear ip dhcp binding {* \| A.B.C.D}` | privileged | router, switch | Forget DHCP leases |
 | `show ip dhcp conflict` | user, privileged | router, switch | Pool addresses found in use by others |
 | `show ip dhcp server statistics` | user, privileged | router, switch | DHCP messages counted |

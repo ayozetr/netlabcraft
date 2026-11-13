@@ -859,6 +859,10 @@ pub struct DevState {
     pub fw: firewall::FwState,
     /// Routers: DHCP server message counts and address conflicts.
     pub dhcp_srv: dhcpsrv::ServerStats,
+    /// NAT: packets that found a translation already there, and packets that needed a new one
+    /// (`show ip nat statistics`).
+    pub nat_hits: u64,
+    pub nat_misses: u64,
     /// IPv4 packets counted by what happened to them (`show ip traffic`).
     pub ip_traffic: BTreeMap<&'static str, u64>,
     /// TCP connections set up to or from this device, newest last.
@@ -1596,7 +1600,9 @@ impl Sim {
         if let Some(e) = st.nat.iter().find(|e| {
             e.inside_local == ip.src && e.protocol == ip.protocol && (e.local_id.is_none() || e.local_id == id) && (e.fixed || e.outside == ip.dst)
         }) {
-            return Ok(Some(rewrite(ip, true, e.inside_global, e.global_id)));
+            let out = rewrite(ip, true, e.inside_global, e.global_id);
+            st.nat_hits = st.nat_hits.saturating_add(1);
+            return Ok(Some(out));
         }
         let entry = if let Some((_, global)) = d.nat.statics.iter().find(|(l, _)| *l == ip.src) {
             NatEntry {
@@ -1610,16 +1616,29 @@ impl Sim {
             }
         } else {
             let key = netlabcraft_model::acl::PacketKey::bare(ip.protocol, ip.src, ip.dst);
-            let Some(rule) = d.nat.rules.iter().find(|r| d.acls.iter().find(|a| a.name == r.acl).is_some_and(|a| a.evaluate(&key).0)) else {
+            let Some((rule, acl_name, line)) = d.nat.rules.iter().find_map(|r| {
+                let a = d.acls.iter().find(|a| a.name == r.acl)?;
+                let (permit, line) = a.evaluate(&key);
+                permit.then(|| (r, a.name.clone(), line.unwrap_or(usize::MAX)))
+            }) else {
                 return Ok(None);
             };
+            // The line of the list that picked this packet counts a match, as it does for an
+            // interface's access group.
+            let st = self.st(d.id);
+            *st.acl_hits.entry((acl_name, line)).or_insert(0) += 1;
+            st.nat_misses = st.nat_misses.saturating_add(1);
             let (global, pat) = match &rule.target {
                 netlabcraft_model::NatTarget::Interface(name) => {
                     let ifc = l3_ifaces(d)
                         .into_iter()
                         .find(|i| netlabcraft_model::ifname::parse(name).is_some_and(|n| n.to_string() == i.name))
                         .ok_or_else(|| format!("NAT interface {name} has no address"))?;
-                    (ifc.net.addr, true)
+                    // Without `overload` the one address goes to one inside host at a time.
+                    if !rule.overload && self.st(d.id).nat.iter().any(|e| e.inside_global == ifc.net.addr && !e.fixed && e.inside_local != ip.src) {
+                        return Err(format!("NAT: the address of {name} already stands for another host (add `overload` to share it)"));
+                    }
+                    (ifc.net.addr, rule.overload)
                 }
                 netlabcraft_model::NatTarget::Pool(name) => {
                     let pool = d.nat.pools.iter().find(|p| &p.name == name).ok_or_else(|| format!("NAT pool {name} doesn't exist"))?;
@@ -1734,6 +1753,14 @@ impl Sim {
     pub fn clear_nat(&mut self, d: DeviceId) {
         if let Some(st) = self.state.get_mut(&d) {
             st.nat.clear();
+        }
+    }
+
+    /// Forgets the NAT hit and miss counts (`clear ip nat statistics`).
+    pub fn clear_nat_counts(&mut self, d: DeviceId) {
+        if let Some(st) = self.state.get_mut(&d) {
+            st.nat_hits = 0;
+            st.nat_misses = 0;
         }
     }
 

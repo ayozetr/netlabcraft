@@ -64,6 +64,8 @@ labs! {
     lab_22_troubleshoot_routing => "22-troubleshoot-routing.md",
     lab_23_troubleshoot_ospf => "23-troubleshoot-ospf.md",
     lab_24_troubleshoot_acls => "24-troubleshoot-acls.md",
+    lab_25_troubleshoot_dhcp => "25-troubleshoot-dhcp.md",
+    lab_26_troubleshoot_nat => "26-troubleshoot-nat.md",
 }
 
 #[test]

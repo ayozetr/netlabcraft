@@ -1059,12 +1059,17 @@ pub fn dhcp_stats(sim: &Sim, d: &Device) -> String {
 }
 
 /// `show ip dhcp pool`.
-pub fn dhcp_pools(sim: &Sim, d: &Device) -> String {
+pub fn dhcp_pools(sim: &Sim, d: &Device, only: Option<&str>) -> Result<String, String> {
     if d.dhcp_pools.is_empty() {
-        return "No DHCP pools configured.".into();
+        return Ok("No DHCP pools configured.".into());
+    }
+    if let Some(name) = only
+        && !d.dhcp_pools.iter().any(|p| p.name == name)
+    {
+        return Err(format!("% No DHCP pool {name}"));
     }
     let mut s = String::new();
-    for p in &d.dhcp_pools {
+    for p in d.dhcp_pools.iter().filter(|p| only.is_none_or(|n| p.name == n)) {
         let leased = sim.state(d.id).map_or(0, |st| st.leases.values().filter(|l| l.pool == p.name).count());
         let _ = writeln!(s, "Pool {}", p.name);
         let _ = writeln!(s, "  Network          {}", p.network.map_or("not set (the pool hands out nothing)".to_string(), |n| n.to_string()));
@@ -1073,12 +1078,41 @@ pub fn dhcp_pools(sim: &Sim, d: &Device) -> String {
         let _ = writeln!(s, "  Domain name      {}", p.domain.as_deref().unwrap_or("-"));
         let _ = writeln!(s, "  Lease time       {}", netlabcraft_model::mgmt::lease_text(p.lease_secs.unwrap_or(86_400)));
         let _ = writeln!(s, "  Leased addresses {leased}");
+        if let Some(n) = p.network {
+            let (usable, excluded) = pool_addresses(n, &d.dhcp_excluded);
+            let free = usable.saturating_sub(excluded).saturating_sub(u64::try_from(leased).unwrap_or(u64::MAX));
+            let _ = writeln!(s, "  Addresses        {usable} usable, {excluded} excluded, {free} free");
+        }
     }
     if !d.dhcp_excluded.is_empty() {
         let ranges: Vec<String> = d.dhcp_excluded.iter().map(|(a, b)| if a == b { a.to_string() } else { format!("{a}-{b}") }).collect();
         let _ = writeln!(s, "Excluded: {}", ranges.join(", "));
     }
-    s.trim_end().to_string()
+    Ok(s.trim_end().to_string())
+}
+
+/// How many host addresses a DHCP pool's network has, and how many of them the excluded ranges
+/// take (overlapping ranges counted once).
+fn pool_addresses(net: Ipv4Net, excluded: &[(std::net::Ipv4Addr, std::net::Ipv4Addr)]) -> (u64, u64) {
+    let n = net.network();
+    let first = u64::from(u32::from(n.addr));
+    let last = u64::from(u32::from(n.broadcast()));
+    // /31 and /32 have no network or broadcast address to skip.
+    let (lo, hi) = if net.prefix >= 31 { (first, last) } else { (first.saturating_add(1), last.saturating_sub(1)) };
+    let usable = if hi >= lo { hi - lo + 1 } else { 0 };
+    let mut spans: Vec<(u64, u64)> =
+        excluded.iter().map(|(a, b)| (u64::from(u32::from(*a)).max(lo), u64::from(u32::from(*b)).min(hi))).filter(|(a, b)| a <= b).collect();
+    spans.sort_unstable();
+    let mut taken = 0u64;
+    let mut reach = 0u64;
+    for (a, b) in spans {
+        let a = a.max(reach);
+        if a <= b {
+            taken = taken.saturating_add(b - a + 1);
+            reach = b.saturating_add(1);
+        }
+    }
+    (usable, taken)
 }
 
 /// `show spanning-tree` for one VLAN.

@@ -63,6 +63,32 @@ fn an_acl_line_keeps_its_log_keyword_and_counters_clear_per_list() {
 }
 
 #[test]
+fn a_dhcp_pool_shows_how_many_addresses_are_left_and_can_be_asked_for_by_name() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    lab.run(
+        r,
+        "en\nconf t\nip dhcp excluded-address 10.0.0.1 10.0.0.10\nip dhcp excluded-address 10.0.0.5 10.0.0.20\nip dhcp pool A\nnetwork 10.0.0.0 255.255.255.0\nexit\nip dhcp pool B\nnetwork 10.9.0.0 255.255.255.252\nend",
+    );
+    let a = lab.run(r, "show ip dhcp pool A");
+    assert!(a.contains("Pool A") && !a.contains("Pool B"), "{a}");
+    // 254 usable; 1-20 excluded once even though the ranges overlap.
+    assert!(a.contains("254 usable, 20 excluded, 234 free"), "{a}");
+    assert!(lab.run(r, "show ip dhcp pool").contains("2 usable, 0 excluded, 2 free"));
+    assert!(lab.try_run(r, "show ip dhcp pool NOPE").starts_with("% No DHCP pool NOPE"));
+}
+
+#[test]
+fn nat_statistics_count_hits_and_misses_and_clear() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let before = lab.run(r, "show ip nat statistics");
+    assert!(before.contains("Hits: 0 (found a translation)  Misses: 0"), "{before}");
+    lab.run(r, "en\nclear ip nat statistics");
+    assert!(lab.run(r, "show ip nat statistics").contains("Hits: 0"));
+}
+
+#[test]
 fn proxy_arp_can_be_turned_off_per_interface_and_shows_in_the_config() {
     let mut lab = Lab::new();
     let r = lab.add(DeviceKind::Router);
