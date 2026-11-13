@@ -11,7 +11,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::net::Ipv4Addr;
 
 use netlabcraft_core::{DeviceId, Ipv4Net};
-use netlabcraft_model::{Device, DeviceKind, End, NextHop, Topology};
+use netlabcraft_model::{Device, DeviceKind, End, NextHop, OspfAuthKind, Topology};
+use netlabcraft_wire::control::{OspfAuth, OspfAuthSend};
 
 use crate::{L3If, port_up, up_ifaces};
 
@@ -72,7 +73,7 @@ pub struct Mismatch {
 
 /// An interface's OSPF settings (defaults when none were typed).
 pub fn if_conf(d: &Device, name: &str) -> netlabcraft_model::OspfIf {
-    d.ospf_if.get(name).copied().unwrap_or_default()
+    d.ospf_if.get(name).cloned().unwrap_or_default()
 }
 
 /// An interface's hello and dead intervals, in seconds (10 and 40 unless configured; the dead
@@ -149,6 +150,97 @@ pub fn hello_problem(d: &Device, ifc: &L3If, h: &netlabcraft_wire::control::Ospf
     }
     let area = area_of(d, ifc);
     (h.area != area).then(|| format!("area {} in the hello, here area {area}", h.area))
+}
+
+/// The authentication type an interface uses: its own setting, else its area's, else none.
+pub fn auth_kind(d: &Device, ifc: &L3If) -> OspfAuthKind {
+    if_conf(d, &ifc.name)
+        .auth
+        .or_else(|| d.ospf.as_ref().and_then(|o| o.areas.get(&area_of(d, ifc))).and_then(|a| a.auth))
+        .unwrap_or(OspfAuthKind::Null)
+}
+
+fn kind_name(k: OspfAuthKind) -> &'static str {
+    match k {
+        OspfAuthKind::Null => "none",
+        OspfAuthKind::Simple => "simple password",
+        OspfAuthKind::Md5 => "message digest",
+    }
+}
+
+/// What this interface signs its OSPF packets with, `at` being the simulated time in
+/// microseconds (the digest's sequence number counts seconds and never goes back). An
+/// interface set to message digests with no key sends unsigned packets, which no neighbour
+/// accepts.
+pub fn auth_send<'a>(d: &'a Device, ifc: &L3If, at: u64) -> OspfAuthSend<'a> {
+    let c = d.ospf_if.get(&ifc.name);
+    match auth_kind(d, ifc) {
+        OspfAuthKind::Null => OspfAuthSend::Null,
+        OspfAuthKind::Simple => OspfAuthSend::Simple(c.and_then(|c| c.auth_key.as_deref()).unwrap_or("")),
+        OspfAuthKind::Md5 => match c.and_then(|c| c.md5_keys.iter().next_back()) {
+            Some((id, key)) => OspfAuthSend::Md5 { key_id: *id, key, seq: u32::try_from(at / 1_000_000).unwrap_or(u32::MAX).max(1) },
+            None => OspfAuthSend::Null,
+        },
+    }
+}
+
+/// Why an OSPF packet that arrived on `ifc` fails this router's authentication, if it does:
+/// the type differs from the interface's, the password differs, or the digest does not verify
+/// under the key the packet names (the digest is recomputed over the packet).
+pub fn auth_problem(d: &Device, ifc: &L3If, packet: &[u8]) -> Option<String> {
+    let want = auth_kind(d, ifc);
+    let c = if_conf(d, &ifc.name);
+    let Some(got) = netlabcraft_wire::control::ospf_auth_of(packet) else { return Some("unknown authentication type in the packet".into()) };
+    match (want, got) {
+        (OspfAuthKind::Null, OspfAuth::Null) => None,
+        (OspfAuthKind::Simple, OspfAuth::Simple(pw)) => {
+            let mut mine = [0u8; 8];
+            for (m, b) in mine.iter_mut().zip(c.auth_key.as_deref().unwrap_or("").bytes()) {
+                *m = b;
+            }
+            (mine != pw).then(|| "the clear-text password differs".to_string())
+        }
+        (OspfAuthKind::Md5, OspfAuth::Md5 { key_id, .. }) => match c.md5_keys.get(&key_id) {
+            None => Some(format!("no message-digest key {key_id} here")),
+            Some(key) => {
+                (!netlabcraft_wire::control::ospf_md5_verify(packet, key)).then(|| format!("the message digest does not verify under key {key_id}"))
+            }
+        },
+        (w, g) => {
+            let theirs = match g {
+                OspfAuth::Null => OspfAuthKind::Null,
+                OspfAuth::Simple(_) => OspfAuthKind::Simple,
+                OspfAuth::Md5 { .. } => OspfAuthKind::Md5,
+            };
+            Some(format!("the packet uses {} authentication, this interface expects {}", kind_name(theirs), kind_name(w)))
+        }
+    }
+}
+
+/// Why two routers on one link can't form an adjacency over authentication: a hello of each,
+/// signed as its sender would sign it, is checked the way the other end checks it.
+fn auth_mismatch(a: &Device, ia: &L3If, b: &Device, ib: &L3If) -> Option<String> {
+    if auth_kind(a, ia) == OspfAuthKind::Null && auth_kind(b, ib) == OspfAuthKind::Null {
+        return None;
+    }
+    let probe = netlabcraft_wire::control::OspfHello {
+        router_id: Ipv4Addr::UNSPECIFIED,
+        area: 0,
+        mask: Ipv4Addr::UNSPECIFIED,
+        hello_secs: 10,
+        dead_secs: 40,
+        priority: 1,
+        dr: Ipv4Addr::UNSPECIFIED,
+        bdr: Ipv4Addr::UNSPECIFIED,
+        neighbors: Vec::new(),
+    }
+    .encode();
+    let there = netlabcraft_wire::control::ospf_authenticate(probe.clone(), &auth_send(a, ia, 1_000_000));
+    if let Some(why) = auth_problem(b, ib, &there) {
+        return Some(format!("authentication fails ({why})"));
+    }
+    let here = netlabcraft_wire::control::ospf_authenticate(probe, &auth_send(b, ib, 1_000_000));
+    auth_problem(a, ia, &here).map(|why| format!("authentication fails ({why})"))
 }
 
 /// The network an interface puts in its router's LSA: a loopback stands for one host (a /32
@@ -297,7 +389,7 @@ pub fn compute(t: &Topology) -> OspfState {
                     } else if stub_here(a, ia) != stub_here(b, ib) {
                         Some("one end is a stub area and the other is not".to_string())
                     } else {
-                        None
+                        auth_mismatch(a, ia, b, ib)
                     };
                     if let Some(why) = why {
                         st.mismatches.entry(a.id).or_default().push(Mismatch { iface: ia.name.clone(), address: ib.net.addr, why });

@@ -213,6 +213,34 @@ fn each_ospf_if(c: &mut Ctx, f: impl Fn(&mut netlabcraft_model::OspfIf)) -> R {
     Ok(String::new())
 }
 
+/// The authentication type a typed word names: none given means a clear-text password.
+fn auth_kind_word(text: &str, allow_null: bool) -> Result<netlabcraft_model::OspfAuthKind, String> {
+    use netlabcraft_model::OspfAuthKind as K;
+    let w = text.trim().to_ascii_lowercase();
+    if w.is_empty() {
+        Ok(K::Simple)
+    } else if "message-digest".starts_with(&w) {
+        Ok(K::Md5)
+    } else if allow_null && "null".starts_with(&w) {
+        Ok(K::Null)
+    } else {
+        Err(format!("% Authentication here is {}", if allow_null { "message-digest or null" } else { "message-digest" }))
+    }
+}
+
+/// `area N authentication [message-digest]` and its `no` form, in router OSPF mode.
+pub(super) fn ospf_area_auth(c: &mut Ctx, on: bool, args: &[String]) -> R {
+    let area: u32 = args.first().and_then(|a| a.trim().parse().ok()).ok_or("% Area number 0-4294967295")?;
+    let kind = auth_kind_word(args.get(1).map(String::as_str).unwrap_or(""), false)?;
+    let o = c.dm()?.ospf.as_mut().ok_or("% Not in OSPF mode")?;
+    let a = o.areas.entry(area).or_default();
+    a.auth = on.then_some(kind);
+    if a.is_default() {
+        o.areas.remove(&area);
+    }
+    Ok(String::new())
+}
+
 /// Interface-mode OSPF commands: `ip ospf N area A`, the hello and dead intervals and the
 /// network type.
 pub(super) fn ospf_if_command(c: &mut Ctx, id: Id, args: &[String]) -> R {
@@ -246,6 +274,42 @@ pub(super) fn ospf_if_command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             each_ospf_if(c, |e| e.dead = Some(s))
         }
         Id::NoIpOspfDead => each_ospf_if(c, |e| e.dead = None),
+        Id::IpOspfAuth => {
+            let kind = auth_kind_word(arg(0), true)?;
+            each_ospf_if(c, |e| e.auth = Some(kind))
+        }
+        Id::NoIpOspfAuth => each_ospf_if(c, |e| e.auth = None),
+        Id::IpOspfAuthKey => {
+            let key = arg(0).to_string();
+            if key.chars().count() > 8 {
+                return Err("% The clear-text password is at most 8 characters".into());
+            }
+            each_ospf_if(c, |e| e.auth_key = Some(key.clone()))
+        }
+        Id::NoIpOspfAuthKey => each_ospf_if(c, |e| e.auth_key = None),
+        Id::IpOspfMd5Key => {
+            let n: u8 = arg(0).parse().ok().filter(|n| *n >= 1).ok_or("% The key id is 1-255")?;
+            if arg(1).is_empty() || arg(1).chars().count() > 16 {
+                return Err("% The key is 1-16 characters".into());
+            }
+            let key = arg(1).to_string();
+            let names = if_names(c)?;
+            let d = c.dm()?;
+            if names.iter().any(|name| {
+                d.ospf_if.get(name).is_some_and(|e| !e.md5_keys.contains_key(&n) && e.md5_keys.len() >= netlabcraft_model::MAX_OSPF_MD5_KEYS)
+            }) {
+                return Err("% Too many message-digest keys on this interface".into());
+            }
+            each_ospf_if(c, |e| {
+                e.md5_keys.insert(n, key.clone());
+            })
+        }
+        Id::NoIpOspfMd5Key => {
+            let n: u8 = arg(0).parse().ok().filter(|n| *n >= 1).ok_or("% The key id is 1-255")?;
+            each_ospf_if(c, |e| {
+                e.md5_keys.remove(&n);
+            })
+        }
         Id::IpOspfNetwork => {
             let kind = arg(0).to_ascii_lowercase();
             let p2p = if !kind.is_empty() && "point-to-point".starts_with(&kind) {

@@ -164,7 +164,110 @@ impl Bpdu {
     }
 }
 
-/// An OSPFv2 hello (no authentication).
+/// The authentication field of an OSPF packet (RFC 2328 Appendix D).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OspfAuth {
+    /// Type 0.
+    Null,
+    /// Type 1: the clear-text password, padded with zeros to eight bytes.
+    Simple([u8; 8]),
+    /// Type 2: the key id, the cryptographic sequence number and the digest after the packet.
+    Md5 { key_id: u8, seq: u32, digest: [u8; 16] },
+}
+
+/// What to sign an OSPF packet with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OspfAuthSend<'a> {
+    Null,
+    Simple(&'a str),
+    Md5 { key_id: u8, key: &'a str, seq: u32 },
+}
+
+/// A key as the digest uses it: at most 16 bytes, padded with zeros (RFC 2328 D.4.3).
+fn md5_key(key: &str) -> [u8; 16] {
+    let mut k = [0u8; 16];
+    for (d, s) in k.iter_mut().zip(key.bytes()) {
+        *d = s;
+    }
+    k
+}
+
+fn md5_digest(packet: &[u8], key: &str) -> [u8; 16] {
+    let mut msg = packet.to_vec();
+    msg.extend_from_slice(&md5_key(key));
+    crate::md5::md5(&msg)
+}
+
+/// Signs an encoded OSPF packet (one made with no authentication): type 1 writes the password
+/// in the packet and keeps the checksum, type 2 zeroes the checksum, fills in the key id, the
+/// digest length and the sequence number, and appends the digest of the packet and the key.
+pub fn ospf_authenticate(mut packet: Vec<u8>, auth: &OspfAuthSend) -> Vec<u8> {
+    if packet.len() < 24 {
+        return packet;
+    }
+    match *auth {
+        OspfAuthSend::Null => {}
+        OspfAuthSend::Simple(key) => {
+            if let Some(f) = packet.get_mut(14..16) {
+                f.copy_from_slice(&1u16.to_be_bytes());
+            }
+            if let Some(f) = packet.get_mut(16..24) {
+                for (d, s) in f.iter_mut().zip(key.bytes().chain(std::iter::repeat(0))) {
+                    *d = s;
+                }
+            }
+            // The old checksum is zeroed first: the new one is computed over the changed packet.
+            if let Some(f) = packet.get_mut(12..14) {
+                f.copy_from_slice(&[0, 0]);
+            }
+            let c = checksum(&[packet.get(..16).unwrap_or_default(), packet.get(24..).unwrap_or_default()]);
+            if let Some(f) = packet.get_mut(12..14) {
+                f.copy_from_slice(&c.to_be_bytes());
+            }
+        }
+        OspfAuthSend::Md5 { key_id, key, seq } => {
+            if let Some(f) = packet.get_mut(12..24) {
+                f.copy_from_slice(&[0, 0, 0, 2, 0, 0, key_id, 16, 0, 0, 0, 0]);
+            }
+            if let Some(f) = packet.get_mut(20..24) {
+                f.copy_from_slice(&seq.to_be_bytes());
+            }
+            let d = md5_digest(&packet, key);
+            packet.extend_from_slice(&d);
+        }
+    }
+    packet
+}
+
+/// The authentication field of an OSPF packet, `None` for a truncated one or an unknown type.
+pub fn ospf_auth_of(packet: &[u8]) -> Option<OspfAuth> {
+    match be16(packet, 14)? {
+        0 => Some(OspfAuth::Null),
+        1 => Some(OspfAuth::Simple(packet.get(16..24)?.try_into().ok()?)),
+        2 => {
+            let len = usize::from(be16(packet, 2)?);
+            Some(OspfAuth::Md5 {
+                key_id: *packet.get(18)?,
+                seq: u32::from_be_bytes(packet.get(20..24)?.try_into().ok()?),
+                digest: packet.get(len..len.checked_add(16)?)?.try_into().ok()?,
+            })
+        }
+        _ => None,
+    }
+}
+
+/// Whether the digest at the end of a type-2 packet is the digest of the packet under `key`.
+pub fn ospf_md5_verify(packet: &[u8], key: &str) -> bool {
+    let (Some(OspfAuth::Md5 { digest, .. }), Some(len)) = (ospf_auth_of(packet), be16(packet, 2)) else { return false };
+    packet.get(..usize::from(len)).is_some_and(|body| md5_digest(body, key) == digest)
+}
+
+/// The checksum of a packet whose authentication is not a digest (type 2 carries none).
+fn ospf_checksum_ok(p: &[u8]) -> bool {
+    be16(p, 14) == Some(2) || checksum(&[p.get(..16).unwrap_or_default(), p.get(24..).unwrap_or_default()]) == 0
+}
+
+/// An OSPFv2 hello (authentication is applied afterwards, by [`ospf_authenticate`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OspfHello {
     pub router_id: Ipv4Addr,
@@ -215,7 +318,7 @@ impl OspfHello {
         }
         let len = usize::from(be16(b, 2).ok_or_else(t)?);
         let p = b.get(..len).filter(|_| len >= 44).ok_or_else(t)?;
-        if checksum(&[p.get(..16).unwrap_or_default(), p.get(24..).unwrap_or_default()]) != 0 {
+        if !ospf_checksum_ok(p) {
             return Err(WireError::Checksum("ospf"));
         }
         let neighbors = (44..len).step_by(4).filter_map(|at| ip_at(p, at)).collect();
@@ -320,6 +423,56 @@ pub fn rip_decode(b: &[u8]) -> Result<(u8, Vec<RipEntry>)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sample_hello() -> OspfHello {
+        OspfHello {
+            router_id: Ipv4Addr::new(1, 1, 1, 1),
+            area: 0,
+            mask: Ipv4Addr::new(255, 255, 255, 0),
+            hello_secs: 10,
+            dead_secs: 40,
+            priority: 1,
+            dr: Ipv4Addr::UNSPECIFIED,
+            bdr: Ipv4Addr::UNSPECIFIED,
+            neighbors: vec![Ipv4Addr::new(2, 2, 2, 2)],
+        }
+    }
+
+    #[test]
+    fn ospf_md5_digest_is_computed_over_the_packet_and_the_padded_key() {
+        let plain = sample_hello().encode();
+        let signed = ospf_authenticate(plain.clone(), &OspfAuthSend::Md5 { key_id: 7, key: "sk-test", seq: 99 });
+        // Appendix D.3: type 2, no checksum, key id, digest length 16, sequence number, digest after the packet.
+        assert_eq!(signed.len(), plain.len() + 16);
+        assert_eq!(&signed[12..24], &[0, 0, 0, 2, 0, 0, 7, 16, 0, 0, 0, 99]);
+        // The digest is MD5 of the packet followed by the key padded with zeros to 16 bytes.
+        let mut msg = signed[..plain.len()].to_vec();
+        msg.extend_from_slice(b"sk-test\0\0\0\0\0\0\0\0\0");
+        assert_eq!(&signed[plain.len()..], &crate::md5::md5(&msg));
+        assert!(ospf_md5_verify(&signed, "sk-test"));
+        assert!(!ospf_md5_verify(&signed, "sk-other"));
+        let mut tampered = signed.clone();
+        tampered[30] ^= 1;
+        assert!(!ospf_md5_verify(&tampered, "sk-test"));
+        assert_eq!(ospf_auth_of(&signed), Some(OspfAuth::Md5 { key_id: 7, seq: 99, digest: signed[plain.len()..].try_into().unwrap() }));
+        // A hello still decodes, with no checksum to check.
+        assert_eq!(OspfHello::decode(&signed).unwrap(), sample_hello());
+        for n in 0..signed.len() {
+            let _ = OspfHello::decode(&signed[..n]);
+            let _ = ospf_auth_of(&signed[..n]);
+            let _ = ospf_md5_verify(&signed[..n], "sk-test");
+        }
+    }
+
+    #[test]
+    fn ospf_simple_password_is_in_the_packet_and_the_checksum_holds() {
+        let signed = ospf_authenticate(sample_hello().encode(), &OspfAuthSend::Simple("sk-test-long-key"));
+        assert_eq!(ospf_auth_of(&signed), Some(OspfAuth::Simple(*b"sk-test-")));
+        assert_eq!(OspfHello::decode(&signed).unwrap(), sample_hello());
+        let null = ospf_authenticate(sample_hello().encode(), &OspfAuthSend::Null);
+        assert_eq!(ospf_auth_of(&null), Some(OspfAuth::Null));
+        assert!(!ospf_md5_verify(&null, "x"));
+    }
 
     #[test]
     fn bpdu_round_trips() {

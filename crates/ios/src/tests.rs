@@ -5,6 +5,7 @@ use netlabcraft_sim::Sim;
 use crate::grammar::{SPECS, Tok};
 use crate::*;
 
+mod console_depth;
 mod families;
 mod inspections;
 mod ipsec_crypto;

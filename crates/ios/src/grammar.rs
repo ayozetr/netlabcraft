@@ -417,6 +417,14 @@ pub enum Id {
     NoIpOspfDead,
     IpOspfNetwork,
     NoIpOspfNetwork,
+    IpOspfAuth,
+    NoIpOspfAuth,
+    IpOspfAuthKey,
+    NoIpOspfAuthKey,
+    IpOspfMd5Key,
+    NoIpOspfMd5Key,
+    AreaAuth,
+    NoAreaAuth,
     OspfRedistributeStatic,
     NoOspfRedistributeStatic,
     Ipv6RouterOspf,
@@ -1307,6 +1315,44 @@ pub static SPECS: &[Spec] = &[
         "Link type: point-to-point elects no DR"
     ),
     spec!(NoIpOspfNetwork, OSPF_IFS, Modes::BOTH, [K("no"), K("ip"), K("ospf"), K("network")], "The link type its medium has"),
+    spec!(IpOspfAuth, OSPF_IFS, Modes::BOTH, [K("ip"), K("ospf"), K("authentication")], "Authenticate OSPF packets here with a clear-text password"),
+    spec!(NoIpOspfAuth, OSPF_IFS, Modes::BOTH, [K("no"), K("ip"), K("ospf"), K("authentication")], "Use the area's authentication again"),
+    spec!(
+        IpOspfAuth,
+        OSPF_IFS,
+        Modes::BOTH,
+        [K("ip"), K("ospf"), K("authentication"), Rest("[message-digest|null]")],
+        "Authenticate OSPF packets here: a password, or message digests"
+    ),
+    spec!(
+        NoIpOspfAuth,
+        OSPF_IFS,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("ospf"), K("authentication"), Rest("[message-digest|null]")],
+        "Use the area's authentication again"
+    ),
+    spec!(
+        IpOspfAuthKey,
+        OSPF_IFS,
+        Modes::BOTH,
+        [K("ip"), K("ospf"), K("authentication-key"), Arg("KEY")],
+        "The clear-text password (eight characters count)"
+    ),
+    spec!(NoIpOspfAuthKey, OSPF_IFS, Modes::BOTH, [K("no"), K("ip"), K("ospf"), K("authentication-key")], "Forget the password"),
+    spec!(
+        IpOspfMd5Key,
+        OSPF_IFS,
+        Modes::BOTH,
+        [K("ip"), K("ospf"), K("message-digest-key"), Arg("<1-255>"), K("md5"), Arg("KEY")],
+        "A message-digest key, by id"
+    ),
+    spec!(
+        NoIpOspfMd5Key,
+        OSPF_IFS,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("ospf"), K("message-digest-key"), Arg("<1-255>")],
+        "Remove a message-digest key"
+    ),
     spec!(OspfRedistributeStatic, Modes::OSPF, Modes::BOTH, [K("redistribute"), K("static")], "Advertise static routes as external"),
     spec!(
         OspfRedistributeStatic,
@@ -1938,6 +1984,28 @@ pub static SPECS: &[Spec] = &[
         Modes::BOTH,
         [K("no"), K("area"), Arg("<0-4294967295>"), K("range"), Arg("A.B.C.D"), Arg("A.B.C.D")],
         "Stop summarising"
+    ),
+    spec!(
+        AreaAuth,
+        Modes::OSPF,
+        Modes::BOTH,
+        [K("area"), Arg("<0-4294967295>"), K("authentication")],
+        "Authenticate OSPF packets on every interface of this area with a password"
+    ),
+    spec!(NoAreaAuth, Modes::OSPF, Modes::BOTH, [K("no"), K("area"), Arg("<0-4294967295>"), K("authentication")], "No area-wide authentication"),
+    spec!(
+        AreaAuth,
+        Modes::OSPF,
+        Modes::BOTH,
+        [K("area"), Arg("<0-4294967295>"), K("authentication"), Rest("[message-digest]")],
+        "Authenticate OSPF packets on every interface of this area"
+    ),
+    spec!(
+        NoAreaAuth,
+        Modes::OSPF,
+        Modes::BOTH,
+        [K("no"), K("area"), Arg("<0-4294967295>"), K("authentication"), Rest("[message-digest]")],
+        "No area-wide authentication"
     ),
     spec!(ShowIpOspf, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf")], "OSPF process summary"),
     spec!(ShowIpOspfInterface, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf"), K("interface")], "OSPF interfaces: area, cost, state"),

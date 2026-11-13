@@ -1897,7 +1897,14 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::IpOspfDead
         | Id::NoIpOspfDead
         | Id::IpOspfNetwork
-        | Id::NoIpOspfNetwork => routing::ospf_if_command(&mut c, spec.id, &args),
+        | Id::NoIpOspfNetwork
+        | Id::IpOspfAuth
+        | Id::NoIpOspfAuth
+        | Id::IpOspfAuthKey
+        | Id::NoIpOspfAuthKey
+        | Id::IpOspfMd5Key
+        | Id::NoIpOspfMd5Key => routing::ospf_if_command(&mut c, spec.id, &args),
+        Id::AreaAuth | Id::NoAreaAuth => routing::ospf_area_auth(&mut c, spec.id == Id::AreaAuth, &args),
         Id::OspfRedistributeStatic | Id::NoOspfRedistributeStatic => {
             routing::ospf_redistribute(&mut c, spec.id == Id::OspfRedistributeStatic, arg(0))
         }

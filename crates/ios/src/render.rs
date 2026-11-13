@@ -513,6 +513,15 @@ pub fn running_config(d: &Device) -> String {
             for r in &a.ranges {
                 let _ = writeln!(s, " area {n} range {} {}", r.addr, r.mask());
             }
+            match a.auth {
+                Some(netlabcraft_model::OspfAuthKind::Md5) => {
+                    let _ = writeln!(s, " area {n} authentication message-digest");
+                }
+                Some(_) => {
+                    let _ = writeln!(s, " area {n} authentication");
+                }
+                None => {}
+            }
         }
         let _ = writeln!(s, "!");
     }
@@ -1523,6 +1532,18 @@ pub(crate) fn ospf_if_lines(s: &mut String, d: &Device, name: &str) {
         }
         if let Some((p, a)) = o.area {
             let _ = writeln!(s, " ip ospf {p} area {a}");
+        }
+        match o.auth {
+            Some(netlabcraft_model::OspfAuthKind::Simple) => s.push_str(" ip ospf authentication\n"),
+            Some(netlabcraft_model::OspfAuthKind::Md5) => s.push_str(" ip ospf authentication message-digest\n"),
+            Some(netlabcraft_model::OspfAuthKind::Null) => s.push_str(" ip ospf authentication null\n"),
+            None => {}
+        }
+        if let Some(k) = &o.auth_key {
+            let _ = writeln!(s, " ip ospf authentication-key {k}");
+        }
+        for (id, k) in &o.md5_keys {
+            let _ = writeln!(s, " ip ospf message-digest-key {id} md5 {k}");
         }
     }
 }
@@ -2546,6 +2567,17 @@ pub fn ospf_interface(d: &Device, st: &netlabcraft_sim::ospf::OspfState, typed: 
         None => {}
     }
     let _ = writeln!(s, "  Hello every {hello} s, dead after {dead} s");
+    if let Some(ifc) = netlabcraft_sim::l3_ifaces(d).into_iter().find(|i| i.name == name) {
+        let auth = match netlabcraft_sim::ospf::auth_kind(d, &ifc) {
+            netlabcraft_model::OspfAuthKind::Null => "none".to_string(),
+            netlabcraft_model::OspfAuthKind::Simple => "clear-text password".to_string(),
+            netlabcraft_model::OspfAuthKind::Md5 => match d.ospf_if.get(&name).and_then(|o| o.md5_keys.keys().next_back()) {
+                Some(k) => format!("message digest, signing with key {k}"),
+                None => "message digest, no key configured".to_string(),
+            },
+        };
+        let _ = writeln!(s, "  Authentication: {auth}");
+    }
     let _ = write!(s, "  Neighbours on this interface: {neighbours}");
     Ok(s)
 }

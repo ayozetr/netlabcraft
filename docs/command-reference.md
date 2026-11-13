@@ -271,6 +271,14 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip ospf dead-interval` | interface, subinterface | router, switch | Four hello intervals again |
 | `ip ospf network {point-to-point\|broadcast}` | interface, subinterface | router, switch | Link type: point-to-point elects no DR |
 | `no ip ospf network` | interface, subinterface | router, switch | The link type its medium has |
+| `ip ospf authentication` | interface, subinterface | router, switch | Authenticate OSPF packets here with a clear-text password |
+| `no ip ospf authentication` | interface, subinterface | router, switch | Use the area's authentication again |
+| `ip ospf authentication [message-digest\|null]` | interface, subinterface | router, switch | Authenticate OSPF packets here: a password, or message digests |
+| `no ip ospf authentication [message-digest\|null]` | interface, subinterface | router, switch | Use the area's authentication again |
+| `ip ospf authentication-key KEY` | interface, subinterface | router, switch | The clear-text password (eight characters count) |
+| `no ip ospf authentication-key` | interface, subinterface | router, switch | Forget the password |
+| `ip ospf message-digest-key <1-255> md5 KEY` | interface, subinterface | router, switch | A message-digest key, by id |
+| `no ip ospf message-digest-key <1-255>` | interface, subinterface | router, switch | Remove a message-digest key |
 | `redistribute static` |  | router, switch | Advertise static routes as external |
 | `redistribute static [subnets]` |  | router, switch | Advertise static routes as external |
 | `no redistribute static` |  | router, switch | Stop advertising static routes |
@@ -505,6 +513,10 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no area <0-4294967295> stub no-summary` |  | router, switch | Let routes from other areas in again |
 | `area <0-4294967295> range A.B.C.D A.B.C.D` |  | router, switch | Border router: advertise one summary for the area's networks inside it |
 | `no area <0-4294967295> range A.B.C.D A.B.C.D` |  | router, switch | Stop summarising |
+| `area <0-4294967295> authentication` |  | router, switch | Authenticate OSPF packets on every interface of this area with a password |
+| `no area <0-4294967295> authentication` |  | router, switch | No area-wide authentication |
+| `area <0-4294967295> authentication [message-digest]` |  | router, switch | Authenticate OSPF packets on every interface of this area |
+| `no area <0-4294967295> authentication [message-digest]` |  | router, switch | No area-wide authentication |
 | `show ip ospf` | user, privileged | router, switch | OSPF process summary |
 | `show ip ospf interface` | user, privileged | router, switch | OSPF interfaces: area, cost, state |
 | `show ip ospf interface brief` | user, privileged | router, switch | OSPF interfaces: area, cost, state |

@@ -251,8 +251,8 @@ impl Sim {
                     bdr: elected(seg.and_then(|s| s.bdr)),
                     neighbors: heard.clone(),
                 };
-                let ip =
-                    Ipv4 { id: 0, ttl: 1, protocol: control::PROTO_OSPF, src: ifc.net.addr, dst: control::OSPF_ALL_ROUTERS, payload: hello.encode() };
+                let payload = control::ospf_authenticate(hello.encode(), &crate::ospf::auth_send(d, &ifc, at));
+                let ip = Ipv4 { id: 0, ttl: 1, protocol: control::PROTO_OSPF, src: ifc.net.addr, dst: control::OSPF_ALL_ROUTERS, payload };
                 self.queue_l3(t, d, &ifc, ifc.mac, control::ipv4_multicast_mac(control::OSPF_ALL_ROUTERS), ip.encode(), at);
             }
         }
@@ -313,7 +313,7 @@ impl Sim {
                     protocol: control::PROTO_OSPF,
                     src: ifc.net.addr,
                     dst: control::OSPF_ALL_ROUTERS,
-                    payload: p.encode(rid, area),
+                    payload: control::ospf_authenticate(p.encode(rid, area), &crate::ospf::auth_send(d, &ifc, at)),
                 };
                 // A millisecond apart, so the event list shows them in order.
                 self.queue_l3(t, d, &ifc, ifc.mac, control::ipv4_multicast_mac(control::OSPF_ALL_ROUTERS), ip.encode(), at + k * 1_000);

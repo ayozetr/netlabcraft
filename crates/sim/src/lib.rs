@@ -2628,7 +2628,9 @@ impl Sim {
                     if h.neighbors.len() == 1 { "" } else { "s" }
                 );
                 self.log(d.id, &msg);
-                if let Some(why) = ospf::hello_problem(d, ifc, &h) {
+                if let Some(why) = ospf::auth_problem(d, ifc, &ip.payload) {
+                    self.log(d.id, &format!("OSPF debug: authentication of the hello from {} on {} fails: {why}", ip.src, ifc.name));
+                } else if let Some(why) = ospf::hello_problem(d, ifc, &h) {
                     self.log(d.id, &format!("OSPF debug: no adjacency with {} on {}: {why}", ip.src, ifc.name));
                 }
             }

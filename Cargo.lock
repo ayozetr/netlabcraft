@@ -1837,6 +1837,7 @@ dependencies = [
  "netlabcraft-core",
  "netlabcraft-model",
  "netlabcraft-sim",
+ "netlabcraft-wire",
 ]
 
 [[package]]
