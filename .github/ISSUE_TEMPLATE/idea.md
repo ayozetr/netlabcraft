@@ -1,10 +1,12 @@
 ---
-name: Idea
-about: A feature or a gap against the reference app
+name: An idea
+about: Something NetLabCraft should simulate, show or do
+labels: idea
 ---
 
-**What is missing or could be better**
+**What you'd like to do:** <!-- in your words: the network you'd build, and what you'd want to see -->
 
-**Who needs it** (student, teacher, lab author, agent…)
+**Why:** <!-- what it would help you learn or teach -->
 
-**Public standard or observed behaviour it follows** (an RFC, an IEEE standard, or a black-box observation; never vendor material)
+<!-- Known gaps live in docs/gaps.md; if your idea fits an item there, say which. Behaviour should
+follow a public standard (an RFC, an IEEE standard) or your own observation, never vendor material. -->

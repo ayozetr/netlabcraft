@@ -1,15 +1,14 @@
-## What changed
+<!-- The title is the commit message: plain English, what changed for the person or developer,
+with the task id, e.g. "OSPF hello and dead timers (M6.41)". -->
 
-<!-- For the person or developer, in plain English. -->
+**Task:** <!-- M6.41… the item from docs/gaps.md, and the draft PR that claims it -->
 
-## Task
+**What changed:**
 
-<!-- The id from docs/gaps.md, e.g. M6.41 -->
+**Verified:** <!-- tests run, and anything tried for real (a sample lab, a pcap opened in a capture tool) -->
 
-## Checked
+**Not verified:** <!-- what you couldn't try, so the docs say so -->
 
-- [ ] `cargo xtask ci` passes
-- [ ] New behaviour has tests; a crash fix has a regression test
-- [ ] Docs updated (review line, revision history, `ROADMAP.md` numbers and progress log)
-- [ ] No vendor artwork or wording, no secrets, every new asset has an `ATTRIBUTION.md` row
-- [ ] What I verified, and what I did not:
+- [ ] `cargo xtask ci` passes (fmt, clippy -D warnings, tests, doctests, assets, layers, secrets, wasm, parity)
+- [ ] Docs in this PR: the page's review line and revision history, `docs/gaps.md`, the numbers and progress log in `ROADMAP.md`
+- [ ] No vendor artwork, help text or wording copied, no GPL/LGPL/AGPL code read or copied (behaviour only; AGENTS.md)

@@ -1,14 +1,16 @@
 ---
-name: Bug report
-about: Something crashes, hangs or behaves wrongly
+name: Something doesn't work
+about: A crash, a hang, a wrong result, or a build that goes wrong
+labels: bug
 ---
 
-**What happened**
+<!-- A security problem? Don't open an issue: use the Security tab's "Report a vulnerability"
+(SECURITY.md). Don't paste API keys, tokens or private files here. -->
 
-**What you expected**
+**What you did:** <!-- the screen, console lines or `netlabcraft-cli` command, and the lab (a `.nlcraft` file or `--sample` name) -->
 
-**How to reproduce** (a `.nlcraft` lab, a `netlabcraft-cli` command or the console lines you typed)
+**What happened:** <!-- and what you expected instead -->
 
-**Version or commit, and platform**
+**Version and system:** <!-- `netlabcraft-cli --version`, and Windows / macOS / Linux / FreeBSD / browser -->
 
-Security problems: do not file them here, see SECURITY.md.
+**Output:** <!-- the error, the console's last lines, or the failing test -->
