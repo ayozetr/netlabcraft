@@ -2112,6 +2112,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::L2NoStpVlanPortPriority
         | Id::L2ShowStpSummary
         | Id::L2ShowStpDetail
+        | Id::L2ShowStpBrief
+        | Id::L2ShowStpDetailAll
+        | Id::L2ShowStpInterface
         | Id::L2LoadBalance
         | Id::L2NoLoadBalance
         | Id::L2ShowLoadBalance

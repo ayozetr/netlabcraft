@@ -322,6 +322,9 @@ pub enum Id {
     L2NoStpVlanPortPriority,
     L2ShowStpSummary,
     L2ShowStpDetail,
+    L2ShowStpBrief,
+    L2ShowStpDetailAll,
+    L2ShowStpInterface,
     L2LoadBalance,
     L2NoLoadBalance,
     L2ShowLoadBalance,
@@ -2941,6 +2944,21 @@ pub static SPECS: &[Spec] = &[
         Modes::SWITCH,
         [K("show"), K("spanning-tree"), K("vlan"), Arg("<1-4094>"), K("detail")],
         "One VLAN's tree, port by port"
+    ),
+    spec!(
+        L2ShowStpBrief,
+        EXECS,
+        Modes::SWITCH,
+        [K("show"), K("spanning-tree"), K("brief")],
+        "One line per VLAN: the root, its cost, the root port and how many ports forward, learn or block"
+    ),
+    spec!(L2ShowStpDetailAll, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree"), K("detail")], "Every VLAN's tree, port by port"),
+    spec!(
+        L2ShowStpInterface,
+        EXECS,
+        Modes::SWITCH,
+        [K("show"), K("spanning-tree"), K("interface"), Rest("<interface>")],
+        "One port's role and state in every VLAN, and its protection settings"
     ),
     spec!(
         L2RecoveryCause,

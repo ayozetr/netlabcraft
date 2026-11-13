@@ -16,6 +16,7 @@ mod protocols_summary;
 mod route_summary;
 mod routing;
 mod security;
+mod stp_views;
 mod swroute;
 mod troubleshoot;
 
