@@ -1015,6 +1015,8 @@ pub struct Sim {
     ospf6: Option<ospf6::Ospf6State>,
     eigrp6_for: u64,
     eigrp6: Option<eigrp6::Eigrp6State>,
+    /// EIGRP for IPv6 neighbours no longer heard, kept until their hold time runs out.
+    eigrp6_held: Vec<eigrp6::Held>,
     rip_for: u64,
     rip: Option<rip::RipState>,
     /// RIP neighbours no longer heard, kept until their invalid time; routes possibly down.
@@ -1431,6 +1433,14 @@ impl Sim {
                 self.eigrp_refresh(t);
                 // Expired holds are gone after a refresh; never spin on one that isn't.
                 self.eigrp_held.retain(|x| x.until > h);
+                continue;
+            }
+            // So is an EIGRP for IPv6 neighbour's.
+            if let Some(h) = self.eigrp6_next_expiry().filter(|h| *h <= deadline && next.is_none_or(|q| *h <= q)) {
+                self.now = self.now.max(h);
+                self.eigrp6_refresh(t);
+                // Expired holds are gone after a refresh; never spin on one that isn't.
+                self.eigrp6_held.retain(|x| x.until > h);
                 continue;
             }
             // So are RIP's timers.
@@ -1972,15 +1982,7 @@ impl Sim {
 
     /// EIGRP for IPv6's view of the lab, recomputed when what it depends on changes.
     pub fn eigrp6_state(&mut self, t: &Topology) -> eigrp6::Eigrp6State {
-        let f = eigrp6::fingerprint(t);
-        if self.eigrp6.is_none() || self.eigrp6_for != f {
-            self.eigrp6_for = f;
-            let new = eigrp6::compute(t);
-            if let Some(old) = self.eigrp6.take() {
-                self.eigrp6_packets(t, &old, &new);
-            }
-            self.eigrp6 = Some(new);
-        }
+        self.eigrp6_refresh(t);
         self.eigrp6.clone().unwrap_or_default()
     }
 

@@ -1,6 +1,6 @@
 # Gaps
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (RIPng timers, hold-down and triggered updates) · earlier: minor (code health: one modular-exponentiation engine) · earlier: major (the lab book, automation depth, security, instructor, Simulation-mode, switching and routing, wireless and device-family items closed; what is honestly left re-ranked) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (EIGRP for IPv6 hello and hold timers) · earlier: minor (RIPng timers, hold-down and triggered updates) · earlier: minor (code health: one modular-exponentiation engine) · earlier: major (the lab book, automation depth, security, instructor, Simulation-mode, switching and routing, wireless and device-family items closed; what is honestly left re-ranked) · **Target:** Cisco Packet Tracer 9.0
 
 Every known shortfall against the reference app, ranked: the work list. Pick from the top; each
 item lands with tests and doc updates. The weights behind the ranking are in
@@ -17,7 +17,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 | 2 | **Crypto stand-ins:** DES and 3DES (IKE and ESP) and AH keep a stand-in cipher, the elliptic-curve groups (such as 19 and 20) a stand-in exchange, and the IKE SA itself is never rekeyed (child SAs are) | CCNA 3 and security courses | 4–8 h |
 | 3 | **Certificates and PKI:** TLS under RESTCONF uses an anonymous Diffie-Hellman suite with no certificate, the SSH host key is an HMAC stand-in for a signature, PEAP names its server instead of showing a certificate and uses a toy 61-bit group; no `crypto pki`, trustpoints or RSA signatures | CCNA 3 automation and security labs | 6–10 h |
 | 4 | **Cellular network:** smartphones are Wi-Fi only; no cell towers, central office server or mobile data | IoT and mobile-device labs | 6–10 h |
-| 5 | **Routing leftovers:** EIGRP for IPv6 without per-interface hello and hold timers; VRRPv3 for IPv6 sends no router advertisements for the virtual router; GLBP hellos not on the wire (format not public, not planned) | CCNA 2 and 3 extras | 2–4 h |
+| 5 | **Routing leftovers:** VRRPv3 for IPv6 sends no router advertisements for the virtual router; GLBP hellos not on the wire (format not public, not planned) | CCNA 2 and 3 extras | 1–3 h |
 | 6 | **IoT and boards depth:** the climate things have no physics (a heater or air conditioner doesn't change a thermostat's reading), BoardScript's compile and run messages are English only, and boards run BoardScript rather than Python or JavaScript ([decisions.md](decisions.md)) | IoT labs | 4–8 h |
 | 7 | **Workspace leftovers:** Resize Shape, device windows as native OS windows, canvas devices as accessible nodes | Everyone, screen-reader users | 8–14 h |
 | 8 | **More end devices:** TVs, a sniffer, more router models | Specialised labs | 4–8 h |
@@ -28,6 +28,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | Done (part of item 5): EIGRP for IPv6 per-interface timers (M9.2): `ipv6 hello-interval eigrp AS S` and `ipv6 hold-time eigrp AS S`, hellos at the interface's interval announcing its hold time, a silent neighbour kept until its hold time runs out and then dropped with a log line and DUAL's queries. Still open in item 5: VRRPv3 router advertisements, GLBP hellos. |
 | 2026-11-13 | minor | Done (part of item 5): RIPng timers, hold-down and triggered updates (M9.2): `timers basic` under `ipv6 router rip`, silent neighbours kept until the invalid time, possibly-down routes at metric 16 with hold-down and flush, triggered responses a second after a change. Still open in item 5: EIGRP for IPv6 hello and hold timers, VRRPv3 router advertisements, GLBP hellos. |
 | 2026-11-13 | minor | Done: code health (old item 11): one modular-exponentiation engine. `wire/src/modp.rs` (TLS and SSH, group 14) is now a thin layer over `wire/src/dh.rs`, which also builds the prime, so the duplicate Montgomery code and the hard-coded prime are gone. |
 | 2026-11-13 | minor | Done: packaging and first release: Linux (AppImage, deb, rpm, tar.gz), Windows (MSI, portable zip), macOS (dmg) and web packages built by `release.yml`, SHA256SUMS and a draft release; builds are not signed yet ([releasing.md](releasing.md)). |

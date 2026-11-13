@@ -1394,6 +1394,12 @@ pub(crate) fn ospf_if_lines(s: &mut String, d: &Device, name: &str) {
         if let Some((asn, secs)) = e.hold {
             let _ = writeln!(s, " ip hold-time eigrp {asn} {secs}");
         }
+        if let Some((asn, secs)) = e.hello6 {
+            let _ = writeln!(s, " ipv6 hello-interval eigrp {asn} {secs}");
+        }
+        if let Some((asn, secs)) = e.hold6 {
+            let _ = writeln!(s, " ipv6 hold-time eigrp {asn} {secs}");
+        }
     }
     if let Some(o) = d.ospf_if.get(name) {
         if let Some(c) = o.cost {

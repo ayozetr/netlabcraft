@@ -573,6 +573,10 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip hello-interval eigrp <1-65535>` | interface, subinterface | router, switch | Hellos every 5 seconds again |
 | `ip hold-time eigrp <1-65535> <1-65535> seconds` | interface, subinterface | router, switch | How long neighbours wait for this router's hellos |
 | `no ip hold-time eigrp <1-65535>` | interface, subinterface | router, switch | A 15-second hold time again |
+| `ipv6 hello-interval eigrp <1-65535> <1-65535> seconds` | interface, subinterface | router, switch | How often EIGRP for IPv6 says hello on this interface |
+| `no ipv6 hello-interval eigrp <1-65535>` | interface, subinterface | router, switch | Hellos every 5 seconds again |
+| `ipv6 hold-time eigrp <1-65535> <1-65535> seconds` | interface, subinterface | router, switch | How long neighbours wait for this router's EIGRP for IPv6 hellos |
+| `no ipv6 hold-time eigrp <1-65535>` | interface, subinterface | router, switch | A 15-second hold time again |
 | `show ip eigrp neighbors` | user, privileged | router, switch | EIGRP neighbours |
 | `show ip eigrp topology` | user, privileged | router, switch | Successors and feasible successors |
 | `show ip eigrp interfaces` | user, privileged | router, switch | Interfaces running EIGRP |

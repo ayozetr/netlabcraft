@@ -928,7 +928,10 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                 Ok(p) if p.opcode == eigrp::OPCODE_HELLO && p.ack != 0 && p.tlvs.is_empty() => {
                     (Protocol::Eigrp, format!("EIGRPv6 acknowledgement of {}, AS {} {} → {}{tag}", p.ack, p.asn, ip.src, ip.dst))
                 }
-                Ok(p) if p.opcode == eigrp::OPCODE_HELLO => (Protocol::Eigrp, format!("EIGRPv6 hello, AS {} {} → {}{tag}", p.asn, ip.src, ip.dst)),
+                Ok(p) if p.opcode == eigrp::OPCODE_HELLO => {
+                    let hold = eigrp::EigrpHello::decode(&ip.payload).map(|h| format!(" (hold {} s)", h.hold_secs)).unwrap_or_default();
+                    (Protocol::Eigrp, format!("EIGRPv6 hello, AS {}{hold} {} → {}{tag}", p.asn, ip.src, ip.dst))
+                }
                 Ok(p) => {
                     let n = p.routes6().count();
                     let first = p.routes6().next().map(|r| format!(": {}{}", r.net, if n > 1 { ", …" } else { "" })).unwrap_or_default();

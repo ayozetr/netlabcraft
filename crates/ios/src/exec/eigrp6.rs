@@ -172,7 +172,8 @@ fn neighbors(t: &Topology, d: &Device, st: &Eigrp6State) -> String {
     let _ = writeln!(s, "{:<3} {:<28} {:<12} {:<9} Device", "#", "Link-local address", "Interface", "Hold (s)");
     for (k, n) in list.iter().enumerate() {
         let name = t.device(n.device).map_or("?".to_string(), |x| x.name.clone());
-        let _ = writeln!(s, "{:<3} {:<28} {:<12} {:<9} {name}", k, n.address.to_string(), ifname::short(&n.iface), n.hold_secs);
+        let silent = if n.held_until.is_some() { "  (no longer heard; kept until its hold time runs out)" } else { "" };
+        let _ = writeln!(s, "{:<3} {:<28} {:<12} {:<9} {name}{silent}", k, n.address.to_string(), ifname::short(&n.iface), n.hold_secs);
     }
     s.trim_end().to_string()
 }
@@ -218,16 +219,18 @@ fn interfaces(d: &Device, st: &Eigrp6State) -> String {
         return format!("No interface runs EIGRP for IPv6 in AS {} (`ipv6 eigrp {}` on an interface that is up).", e.asn, e.asn);
     }
     let mut s = format!("EIGRP for IPv6 interfaces, AS {}\n", e.asn);
-    let _ = writeln!(s, "{:<12} {:<6} {:<12} {:<12} Passive", "Interface", "Peers", "Bandwidth", "Delay (µs)");
+    let _ = writeln!(s, "{:<12} {:<6} {:<12} {:<12} {:<8} {:<8} Passive", "Interface", "Peers", "Bandwidth", "Delay (µs)", "Hello", "Hold");
     for i in &ifs {
         let peers = st.neighbors.get(&d.id).into_iter().flatten().filter(|n| n.iface == i.name).count();
         let _ = writeln!(
             s,
-            "{:<12} {:<6} {:<12} {:<12} {}",
+            "{:<12} {:<6} {:<12} {:<12} {:<8} {:<8} {}",
             ifname::short(&i.name),
             peers,
             format!("{} kbit/s", i.bandwidth),
             u64::from(i.delay) * 10,
+            format!("{} s", i.hello_secs),
+            format!("{} s", i.hold_secs),
             if i.passive { "yes" } else { "no" }
         );
     }
