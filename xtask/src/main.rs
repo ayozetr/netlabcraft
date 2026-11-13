@@ -3,6 +3,9 @@
 //! Pure Rust (std + serde_json, plus the engine and console grammar for `parity`). External tools (`cargo`, `git`)
 //! are invoked through `std::process::Command`.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
+// Developer tooling that runs trusted `cargo` and `git` on the developer's own machine; it does not link the
+// product crates, so it cannot use `netlabcraft_core::process`.
+#![allow(clippy::disallowed_methods)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
 mod assets;

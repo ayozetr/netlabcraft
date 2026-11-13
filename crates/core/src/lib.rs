@@ -4,9 +4,13 @@
 //! - [`Ipv4Net`]: an IPv4 address with its prefix length (an interface address or a route).
 //! - [`VlanId`] and [`VlanSet`]: IEEE 802.1Q VLAN ids (1–4094) and sets of them.
 //! - [`DeviceId`]: a device's stable id in a topology.
+//! - [`sync::Mutex`] and [`process`]: the only mutex and the only way to start other programs.
 //!
 //! Everything here parses hostile input (files, commands, MCP parameters) without panicking.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
+
+pub mod process;
+pub mod sync;
 
 use std::fmt;
 use std::net::{Ipv4Addr, Ipv6Addr};

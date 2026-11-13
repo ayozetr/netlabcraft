@@ -220,7 +220,7 @@ fn exporting_the_workspace_crops_the_screenshot_to_a_png() {
         }
     }
     h.state_mut().ui.image_pending = true;
-    *h.state().ui.shot.lock().unwrap() = Some(std::sync::Arc::new(img));
+    *h.state().ui.shot.lock() = Some(std::sync::Arc::new(img));
     h.run_steps(1);
     let png = h.state_mut().take_requests().into_iter().find_map(|r| match r {
         UiRequest::ExportImage(b) => Some(b),
@@ -240,7 +240,7 @@ fn printing_makes_a_one_page_pdf_of_the_workspace() {
     let img = egui::ColorImage::filled([1200, 800], egui::Color32::LIGHT_BLUE);
     h.state_mut().ui.image_pending = true;
     h.state_mut().ui.print_pending = true;
-    *h.state().ui.shot.lock().unwrap() = Some(std::sync::Arc::new(img));
+    *h.state().ui.shot.lock() = Some(std::sync::Arc::new(img));
     h.run_steps(1);
     let pdf = h.state_mut().take_requests().into_iter().find_map(|r| match r {
         UiRequest::Print(b) => Some(b),

@@ -267,14 +267,12 @@ fn main() -> eframe::Result {
 
 /// Opens a file with the system's default application.
 fn open_with_system(path: &std::path::Path) -> Result<(), String> {
-    let mut cmd = if cfg!(target_os = "windows") {
-        let mut c = std::process::Command::new("cmd");
-        c.args(["/C", "start", ""]);
-        c
+    let path = path.to_string_lossy();
+    if cfg!(target_os = "windows") {
+        netlabcraft_core::process::spawn_detached("cmd", &["/C", "start", "", &path])
     } else if cfg!(target_os = "macos") {
-        std::process::Command::new("open")
+        netlabcraft_core::process::spawn_detached("open", &[&path])
     } else {
-        std::process::Command::new("xdg-open")
-    };
-    cmd.arg(path).spawn().map(|_| ()).map_err(|e| e.to_string())
+        netlabcraft_core::process::spawn_detached("xdg-open", &[&path])
+    }
 }
