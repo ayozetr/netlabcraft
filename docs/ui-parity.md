@@ -1,11 +1,11 @@
 # UI parity
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (M9.10: the cellular network in the UI) · earlier: minor (Resize Shape; canvas devices as accessible nodes, M9.8) · earlier: minor (Constant Delay, the capture filter, origin decisions and absolute start times; instructor windows; touch screens, the phone's Settings, power supplies, the board Programming tab; Programming app and WLC page additions; figures aligned with ROADMAP.md) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (re-scored 2026-11-13; M9.10: the cellular network in the UI) · earlier: minor (Resize Shape; canvas devices as accessible nodes, M9.8) · earlier: minor (Constant Delay, the capture filter, origin decisions and absolute start times; instructor windows; touch screens, the phone's Settings, power supplies, the board Programming tab; Programming app and WLC page additions; figures aligned with ROADMAP.md) · **Target:** Cisco Packet Tracer 9.0
 
 The window, element by element, against the reference app. Part of
 [target-app-parity.md](target-app-parity.md). The arrangement was observed black-box (local
 `plan/packet-tracer/observed-ui.md`); artwork and wording are ours. **Workspace and windows:
-~85% ready, 10–18 h; Simulation mode: ~90% ready, 3–6 h** (estimated; the same figures as
+~88% ready, 8–14 h; Simulation mode: ~90% ready, 3–6 h** (estimated; the same figures as
 [`ROADMAP.md`](../ROADMAP.md#dimensions)).
 
 | Element | Reference app | NetLabCraft |
@@ -44,6 +44,7 @@ The window, element by element, against the reference app. Part of
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | Workspace and windows re-scored from ~85% to ~88% (Resize Shape, accessible devices); 8–14 h left. |
 | 2026-11-13 | minor | Cellular network (M9.10): a Cellular group in the device box, tower and central office pictures, coverage circles, signal bars and attach lines, Config > Cellular pages, the Settings app on tablets and smartphones, the status bar's active connection. |
 | 2026-11-13 | minor | Canvas devices as accessible nodes with keyboard navigation (M9.8). |
 | 2026-11-13 | minor | Resize Shape (M9.8): handles on a selected rectangle, ellipse or line, backed by `note.resize`. |

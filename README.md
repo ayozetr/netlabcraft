@@ -1,292 +1,190 @@
-<p align="center">
-  <img src="assets/app-icon/hicolor/256x256/apps/netlabcraft.png" width="128" height="128" alt="NetLabCraft icon: a laptop and a desktop PC cabled to a switch, with a server below it, on a teal tile">
-</p>
+# Protocol and command parity
 
-<h1 align="center">NetLabCraft</h1>
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (re-scored 2026-11-13; M9.10: cellular data and the attach exchange) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (M9.7: OSPF authentication, database and summary views, ICMP types and codes in ACLs, per-line ACL counters, separate OSPF debugs, the line protocol wording) · also merged with M9.5, M9.6, M9.8 and M9.11 · earlier: minor (the `show` views and options the troubleshooting labs turned up) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: major (real Diffie-Hellman and ciphers, rekeying, MTU and inspections; TLS, SSH, XML, IPv6 and the candidate datastore in automation; CoS, VTP pruning, VRRP timers and VRRPv3, EIGRP for IPv6 on the wire, RIP timers and RIPng; the lab-book fixes; section figures aligned with ROADMAP.md) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
-<p align="center">
-  <b>Network labs for learning and teaching; an open-source, clean-room network simulator built in pure Rust.</b>
-</p>
+What the simulated devices do, protocol by protocol, against the reference app. Part of
+[target-app-parity.md](target-app-parity.md). Behaviour comes from the standards named in each
+row and from black-box observation; console wording and table layouts are our own. Every
+console command is listed in [`command-reference.md`](command-reference.md) (generated).
 
-<p align="center">
-  Build a network, configure routers and switches by typing the commands you learn in class,
-  and watch every frame cross it. It runs natively on Linux, Windows, macOS and BSD, and in the
-  browser via WebAssembly.
-</p>
+**Status:** ✅ works · 🟡 partly · ❌ not yet.
 
-<p align="center">
-  <img alt="Written in Rust" src="https://img.shields.io/badge/written%20in-Rust-2f6f85?style=flat-square&logo=rust&logoColor=white">
-  <img alt="Runs on Linux, Windows, macOS, BSD and the web" src="https://img.shields.io/badge/runs%20on-Linux%20%C2%B7%20Windows%20%C2%B7%20macOS%20%C2%B7%20BSD%20%C2%B7%20Web-4f95ad?style=flat-square">
-  <img alt="License: MIT OR Apache-2.0" src="https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-2f6f85?style=flat-square">
-  <img alt="Agent-drivable over MCP" src="https://img.shields.io/badge/agents-MCP-4f95ad?style=flat-square">
-  <img alt="Interface in English and Spanish" src="https://img.shields.io/badge/interface-English%20%C2%B7%20Espa%C3%B1ol-2f6f85?style=flat-square">
-</p>
+## Layer 2
 
-<br>
+**Layer 2: ~97% ready, 1–2 h** (estimated; the same figures as the Layer 2 row of [`ROADMAP.md`](../ROADMAP.md#dimensions)).
 
-<p align="center">
-  <img src="docs/images/hero-multilayer.png" alt="NetLabCraft's main window: a multilayer switch in the middle routes between four PCs in two VLANs and reaches a router and a server above it; menus and two toolbars on top, the device box, scenario list and PDU table at the bottom" width="100%">
-  <br><sub><b>Inter-VLAN routing on a multilayer switch</b>: one of the thirty-one sample labs (<code>File → New → Sample</code>), built entirely from NetLabCraft commands.</sub>
-</p>
+| Feature | Standard | Status | Notes and gap |
+|---|---|---|---|
+| Ethernet II and 802.1Q frames | IEEE 802.3, 802.1Q | ✅ | Real encoded frames, padded to 64 bytes. |
+| MAC learning and aging | IEEE 802.1D | ✅ | Per (VLAN, MAC); flushed when the topology changes. `show mac address-table`, `clear mac address-table`. |
+| VLANs, access and trunk ports | IEEE 802.1Q | ✅ | Native VLAN, allowed lists, `show vlan brief`, `show vlan id N`, `show vlan summary`, `show interfaces trunk` (an EtherChannel trunk listed once, as `Po<n>`; with VTP pruning, the eligible and pruned VLANs); `switchport trunk encapsulation dot1q` kept on multilayer switches and refused with an explanation on access switches (ISL refused). |
+| Spanning tree (per VLAN) | IEEE 802.1D, 802.1w | ✅ | Roles, priorities, `root primary/secondary`, portfast, amber lights; computed at once; configuration BPDUs (IEEE format, tagged per VLAN on trunks) every 2 s from designated ports; a port that starts forwarding listens 15 s and learns 15 s (LIS/LRN in `show spanning-tree`, amber light) unless portfast or `spanning-tree mode rapid-pvst`. `spanning-tree [vlan N] cost` and `port-priority` change the election (the priority travels in the BPDU's port id); `spanning-tree portfast default`; BPDU guard per port or `portfast bpduguard default` (a BPDU or a cabled switch err-disables the port with a log line); root guard (a better root makes the port root-inconsistent); `link-type` kept and shown; `show spanning-tree summary`, `show spanning-tree vlan N detail`. Loop guard (`spanning-tree guard loop`, `spanning-tree loopguard default`): a guarded port that stops hearing BPDUs goes loop-inconsistent (`show spanning-tree inconsistentports`); `spanning-tree bpdufilter enable\|disable` (the port neither sends nor takes BPDUs). Between rapid switches on point-to-point links the proposal/agreement handshake makes a port forward at once (shared links wait out the timers), with RST BPDUs carrying role, proposal, agreement, learning and forwarding flags. No max-age wait: 1–2 h. |
+| EtherChannel | IEEE 802.1AX (LACP); PAgP | ✅ | `on`, `active/passive`, `desirable/auto`; suspended members; one STP port per bundle; traffic spread by address; `interface port-channel`, `port-channel load-balance src\|dst\|src-dst mac\|ip` (picks the member a flow takes), `lacp port-priority`, `show etherchannel summary\|load-balance\|port-channel`, `show lacp neighbor`; LACPDUs every 30 s (actor and partner, sync state) in Simulation mode and captures. PAgP has no frames: its format isn't public. |
+| VTP | — | 🟡 | Server/client/transparent, domain, password, versions 1/2, revisions. `vtp pruning` on a server is shared with the domain: a trunk stops flooding a VLAN when the switch beyond has no port in it and no trunk leading to one that needs it; `switchport trunk pruning vlan LIST\|add\|remove\|except\|none`; `show vtp status` says when pruning is on. Pruning is computed, like the advertisements: the join message format is not public, so no VTP frames are drawn. No version 3: 2–3 h. |
+| DTP | — | ✅ | `switchport mode dynamic auto/desirable`, `switchport nonegotiate`; the working mode is negotiated from both ends and shown in `show interfaces X switchport`, `show interfaces trunk`, `show vlan brief`, `show dtp`. Ports default to access (real access switches default to dynamic auto). No DTP frames. |
+| Port security | — | ✅ | Maximum, violation shutdown/restrict/protect, sticky and static addresses, `aging time` and `aging type absolute\|inactivity`, `show port-security`. |
+| Errdisable recovery | — | ✅ | `errdisable recovery cause bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|all` and `interval N` bring ports back on simulated time; `show errdisable recovery`, `show interfaces status err-disabled`. |
+| DHCP snooping | RFC 3046 (option 82) | ✅ | `ip dhcp snooping [vlan …]`, `ip dhcp snooping trust`, `limit rate` (over the limit err-disables the port); untrusted ports drop server answers (OFFER, ACK, NAK) with a drop reason; ACKs through trusted ports build the binding table; `show ip dhcp snooping [binding]`, `clear ip dhcp snooping binding`. With `ip dhcp snooping information option` the switch inserts option 82 into requests from untrusted ports and strips it from answers; a router drops requests that carry option 82 with no relay address unless `ip dhcp relay information trusted` (per interface) or `trust-all`. |
+| Switch QoS (`mls qos`, 802.1p CoS) | IEEE 802.1Q (PCP) | ✅ | `mls qos` and `mls qos trust dscp\|cos` per port; tagged ports carry the 802.1p priority; IP phones tag voice CoS 5 / EF and signalling CoS 3 / CS3 in the voice VLAN; `trust cos` maps the CoS through `mls qos map cos-dscp D0 … D7` (CoS × 8 by default), `trust dscp` derives the CoS from the DSCP; `mls qos cos N` for untagged frames, `switchport priority extend cos N` for the PC behind a phone; `show mls qos [interface]`, `show mls qos maps`; the event list shows the CoS of tagged frames. |
+| Dynamic ARP inspection | — | ✅ | `ip arp inspection vlan`, `trust`, `validate src-mac\|dst-mac\|ip`, `limit rate`; ARP from untrusted ports checked against the snooping bindings, with a drop reason; `show ip arp inspection`. |
+| Hubs | IEEE 802.3 | ✅ | Repeat every frame. |
+| Switch management (SVI, default gateway) | — | ✅ | `interface vlan N`, `ip default-gateway`, `show interfaces counters` (bytes and unicast, multicast and broadcast frames per port), `sdm prefer` (takes effect after a reload, `show sdm prefer`). |
+| Power over Ethernet | IEEE 802.3af/at (budget only) | ✅ | Switch 8FE PoE (65 W) and Switch 24FE PoE (370 W); `power inline auto\|never` per port, `show power inline` with the draw per port and the budget left; IP phones and lightweight APs boot only on a PoE port or with their adapter plugged in, and a dark device says why. No power negotiation frames. |
+| Switch card in routers | — | ✅ | The 4-port switch card (`Card-4SW`) gives a modular router layer-2 ports: VLAN database, `switchport access\|trunk`, `interface vlan N` routed by the router; spanning tree counts the card. |
 
-<p align="center">
-  <a href="#a-look-around">A look around</a> ·
-  <a href="#why-netlabcraft">Why NetLabCraft</a> ·
-  <a href="#what-it-simulates">What it simulates</a> ·
-  <a href="#the-ccna-lab-book">Lab book</a> ·
-  <a href="#quick-start">Quick start</a> ·
-  <a href="#for-agents-mcp-and-cli">For agents</a> ·
-  <a href="#architecture">Architecture</a> ·
-  <a href="#roadmap">Roadmap</a> ·
-  <a href="#downloads">Downloads</a> ·
-  <a href="#license-and-credits">License and credits</a>
-</p>
+## Layer 3
 
-## A look around
+**Layer 3: ~97% ready, 2–3 h** (estimated; the Layer 3 row of [`ROADMAP.md`](../ROADMAP.md#dimensions)).
 
-<table>
-<tr>
-<td width="50%" valign="top"><img src="docs/images/router-cli.png" alt="A router window on its CLI tab: enable, show ip ospf neighbor listing two neighbours in FULL state, and show ip route ospf listing three OSPF routes" width="100%"><p align="center"><sub><b>The console.</b> User, privileged and configuration modes, abbreviations, <code>?</code> help, Tab completion, history and debugs.</sub></p></td>
-<td width="50%" valign="top"><img src="docs/images/simulation-mode.png" alt="Simulation mode: an envelope travels along the cable between a switch and a router, and the Simulation Panel on the right lists ARP events with their time, last device, device and type" width="100%"><p align="center"><sub><b>Simulation mode.</b> Every frame in an event list, replayed on the canvas, decoded layer by layer and exportable to pcap.</sub></p></td>
-</tr>
-<tr>
-<td width="50%" valign="top"><img src="docs/images/home-router.png" alt="A home router's window on its Home Router page: LAN address and DHCP range, static Internet settings and the Wi-Fi network; beside it the router, a PC, two Wi-Fi laptops linked by dashed lines and an ISP router" width="100%"><p align="center"><sub><b>Wireless.</b> Home routers with DHCP, NAT and Wi-Fi out of the box, access points, Wi-Fi laptops with WPA2.</sub></p></td>
-<td width="50%" valign="top"><img src="docs/images/activity.png" alt="The Instructions window of a graded activity: the title Your first router, numbered steps, Completion 0% of 9 points, the time left and the Check Results and Reset Activity buttons" width="100%"><p align="center"><sub><b>Activities.</b> Instructions, checks worth points, hints, a time limit and a password lock, built with the Activity Wizard.</sub></p></td>
-</tr>
-<tr>
-<td width="50%" valign="top"><img src="docs/images/pc-ip-configuration.png" alt="A PC's Desktop with the IP Configuration app open: IPv4 settings on top, and IPv6 set to Automatic with an address learned from the router, the link-local address and the router's link-local address as gateway" width="100%"><p align="center"><sub><b>PC desktop.</b> IP Configuration with DHCP, static and IPv6 autoconfiguration; Command Prompt and Web Browser.</sub></p></td>
-<td width="50%" valign="top"><img src="docs/images/serial-wan.png" alt="Two routers joined by a red serial cable with a zigzag in the middle and a small clock next to the DCE end, each with a PC below it" width="100%"><p align="center"><sub><b>Serial WAN links.</b> DCE and DTE ends, clock rate, HDLC or PPP with PAP and CHAP; the clock marks the DCE end.</sub></p></td>
-</tr>
-</table>
+| Feature | Standard | Status | Notes and gap |
+|---|---|---|---|
+| IPv4, ARP, ICMP | RFC 791, 826, 792 | ✅ | TTL, time exceeded, unreachable (net, host, port, admin), proxy ARP. Routers drop the packet that starts ARP, as real ones do. |
+| Static routes | — | ✅ | Next hop or exit interface, default route, longest prefix match; an administrative distance after the route makes it a floating static that waits behind a dynamic route and takes over when that disappears (floating defaults too; typing the route again changes its distance); `show ip route` shows `[distance/metric]`. |
+| Loopback interfaces | — | ✅ | `interface loopback N` (created on first use, `no interface loopback N`) with IPv4 and IPv6 addresses, `shutdown`, `description`; always up unless shut; pings to it answer; OSPF advertises it as a /32 (or its subnet with `ip ospf network point-to-point`), RIP and EIGRP when a network statement covers it; the highest loopback address is the default OSPF, OSPFv3 and EIGRP router ID. |
+| Router-on-a-stick | IEEE 802.1Q | ✅ | Subinterfaces with `encapsulation dot1Q`. |
+| Multilayer switching | — | ✅ | `ip routing`, VLAN interfaces, routed ports (`no switchport`), static routes, RIP, OSPF, EIGRP; `ip helper-address` and access lists on VLAN interfaces. |
+| RIP | RFC 1058, RFC 2453 | ✅ | Versions 1/2 (both classless here), classful `network`, passive interfaces, split horizon with poisoned reverse in every update, 15 hops, default origination; also on multilayer switches. Timers in simulated time (`timers basic UPDATE INVALID HOLDDOWN FLUSH`, 30 180 180 240): a silent neighbour's routes stay until the invalid timer, are then held down at metric 16 until flushed; triggered updates a second after a change (RFC 2453 §3.10.1), withdrawn routes at metric 16; `show ip rip database` lists possibly-down routes, `show ip protocols` the timers and silent neighbours. No auto-summary: 1–2 h. |
+| OSPFv2 | RFC 2328 | 🟡 | Neighbours, SPF, router id, `network` statements or `ip ospf N area A` on interfaces (which also starts the process), passive interfaces and `passive-interface default` with `no passive-interface` exceptions, default origination, `redistribute static` (E2 routes), cost 1 on Ethernet and 64 on serial, `maximum-paths` with equal-cost paths installed. `ip ospf hello-interval` and `dead-interval` travel in the hellos, and a mismatch blocks the adjacency and is named in `show ip ospf neighbor` and `debug ip ospf`; `ip ospf network point-to-point` (no DR/BDR on the link); the DR election is not preemptive, and `clear ip ospf process` elects again; `show ip ospf database` (router, network, summary and external LSAs, one line each; `show ip ospf database router|network|summary|external [A.B.C.D]` lists each kind in full: the links of a router-LSA with their types and metrics, the routers attached to a segment, the metrics of summary and external LSAs) and `show ip ospf neighbor detail`. Hellos every 10 s; `ip ospf cost`, `ip ospf priority` with DR/BDR election (priority 0 never DR, none on serial links), `auto-cost reference-bandwidth`, several areas with inter-area routes shown as `O IA`, `show ip ospf`, `show ip ospf interface [brief]`, DR/BDR in `show ip ospf neighbor`; also on multilayer switches. When neighbours meet, each sends its database description, a link-state request, a link-state update with its router-LSA (with a valid Fletcher checksum) and an acknowledgement, visible in Simulation mode and captures. `area N stub` (both ends must agree, or no neighbours; the border router sends `O*IA` default routes in place of external ones), `area N stub no-summary`, `area N range` on border routers. A network-type mismatch (point-to-point at one end only) still forms neighbours, as RFC 2328 §10.5 allows, but SPF routes nothing across the link, and `show ip ospf neighbor` says why. Authentication as in RFC 2328 Appendix D: `ip ospf authentication [message-digest|null]`, `ip ospf authentication-key`, `ip ospf message-digest-key N md5 KEY` and `area N authentication [message-digest]` (an interface's own setting wins); type 2 packets carry a real MD5 digest (key id, sequence number, the digest of the packet and the zero-padded key after it, in hellos and in the database exchange), neighbours whose type, password, key id or digest differ never form an adjacency, and `show ip ospf interface X` and `debug ip ospf` say why. No NSSA (beyond CCNA), virtual links, or network/summary LSAs on the wire: 6–10 h. |
+| EIGRP | RFC 7868 | 🟡 | `router eigrp N` (one AS per router), `network` with or without wildcard, `passive-interface`, `eigrp router-id`, `bandwidth` and `delay`; composite metric; DUAL successors and feasible successors; `maximum-paths` and `variance` with per-flow load balancing (every path in `show ip route`); hellos and hold time per interface (`ip hello-interval\|hold-time eigrp`), silent neighbours dropped after the hold time, goodbyes; updates, queries, replies and acks on the wire; `ip summary-address eigrp AS NET MASK` replaces what it covers out of that interface, with a discard route to Null0 on the summarising router; `show ip eigrp neighbors\|topology\|interfaces`, distance 90; `debug eigrp packets`. No stuck-in-active timer or auto-summary: 2–3 h. |
+| EIGRP for IPv6 | RFC 7868 | ✅ | `ipv6 router eigrp N` (`eigrp router-id`, `passive-interface`, `maximum-paths`, `variance`, `shutdown`) and `ipv6 eigrp N` on interfaces; neighbours over link-local addresses; DUAL distances, successors and feasible successors as for IPv4; `D` routes at distance 90; hellos to FF02::A; initial updates to new neighbours, updates, queries and replies on the wire, each acknowledged; `ipv6 summary-address eigrp AS PREFIX` with a Null0 discard route; `show ipv6 eigrp neighbors\|topology\|interfaces`, `show ipv6 route eigrp`. Per-interface `ipv6 hello-interval eigrp AS S` and `ipv6 hold-time eigrp AS S`: hellos at that interval announce the hold time, a silent neighbour keeps its routes until the hold time runs out and is then dropped (log line, queries); `show ipv6 eigrp interfaces` lists both timers. |
+| IPv6 addressing | RFC 8200, RFC 4291 | ✅ | Global, EUI-64 and link-local addresses, `ipv6 enable`. |
+| NDP and SLAAC | RFC 4861, RFC 4862 | ✅ | Neighbour solicitation/advertisement, router solicitation/advertisement with the M/O flags (see DHCPv6), host autoconfiguration; routers take SLAAC addresses too (`ipv6 address autoconfig [default]`, the default adding an ND ::/0 route at distance 2). No duplicate address detection. |
+| ICMPv6 | RFC 4443 | ✅ | Echo, time exceeded, unreachable; ping and traceroute. |
+| IPv6 static routes | — | ✅ | Next hop, interface, or link-local next hop with its interface. |
+| DHCPv6 | RFC 8415 | ✅ | `ipv6 dhcp pool` (address prefix, DNS, domain), `ipv6 dhcp server`, `ipv6 nd managed-config-flag` / `other-config-flag`; hosts follow the router: SLAAC, SLAAC with stateless DHCPv6, or stateful DHCPv6 (Solicit, Advertise, Request, Reply on the wire); `show ipv6 dhcp pool/binding`; `ipv6 dhcp relay destination` (Relay-forward and Relay-reply on the wire; the server picks the pool from the relay's link address); routers as stateful clients (`ipv6 address dhcp`, asked for again after `no shutdown` and reloads). Router clients install their address as a /128, with no connected /64, as real ones do. |
+| RIPng | RFC 2080 | ✅ | `ipv6 router rip NAME`, `ipv6 rip NAME enable` on interfaces; neighbours over link-local addresses, split horizon with poisoned reverse, 15 hops; `R` routes in `show ipv6 route`; responses every UPDATE seconds to FF02::9 on UDP 521 on the wire; `show ipv6 rip [database]`. Timers in simulated time as for RIP (`timers basic UPDATE INVALID HOLDDOWN FLUSH`, 30 180 180 300, RFC 2080 §2.3): a silent neighbour's routes stay until the invalid timer, are then held down at metric 16 until flushed; triggered responses a second after a change (§2.5.1), withdrawn prefixes at metric 16; `show ipv6 rip` lists the timers and silent neighbours, the database the possibly-down prefixes. |
+| OSPFv3 | RFC 5340 | ✅ | `ipv6 router ospf N` (router ID, passive interfaces, default origination), `ipv6 ospf N area A` on ports, subinterfaces and VLAN interfaces; neighbours over link-local addresses, several areas (`OI`), external default (`OE2`); hellos to ff02::5 every 10 s on the wire; `show ipv6 ospf [neighbor]`. No DR election shown, LSAs on the wire or area types. |
+| IPv6 on subinterfaces and VLAN interfaces | — | ✅ | Router-on-a-stick subinterfaces (tagged), VLAN interfaces and routed ports of multilayer switches (`ipv6 unicast-routing` with `ip routing`), with addresses, SLAAC, DHCPv6 server and traffic filters; `show ipv6 interface brief` lists them. |
+| FHRP (HSRP) | RFC 2281 | ✅ | `standby N ip/priority/preempt` on router interfaces, subinterfaces and multilayer VLAN interfaces; active answers ARP with the virtual MAC; hellos every 3 s; `standby version 2` (virtual MAC 0000.0c9f.fXXX, hellos to 224.0.0.102); `standby N track INTERFACE [decrement D]` (the priority drops while the interface is down, so the other router takes over, and `show standby` says why); `show standby [brief]`. Preempt is honoured: the active router keeps the role until a better router with preempt takes it. Election computed (no coup/resign messages). |
+| VRRP | RFC 5798, RFC 3768 | 🟡 | `vrrp N ip\|priority\|preempt` on interfaces; the address owner takes priority 255; preempt on by default; the master answers ARP with 0000.5e00.01XX; no accept mode for addresses it doesn't own; `vrrp N timers advertise S` (`msec M`); the master-down interval and skew time (RFC 5798) run in simulated time: a silent master is replaced only after them, a goodbye after the skew, and preemption waits too; `vrrp N track INTERFACE [decrement D]`; VRRPv2 advertisements to 224.0.0.18, VRRPv3 with `fhrp version vrrp v3`; `vrrp N ipv6 FE80::X` for IPv6 (MAC 00-00-5E-00-02-XX, neighbour advertisements, advertisements to FF02::12); `show vrrp [brief]` with intervals, tracking and the wait. The IPv6 master announces the virtual router with router advertisements (RFC 5798 §3.4, RFC 4861): from the virtual link-local address and virtual MAC when it takes the role and every 200 s, and alone in answering router solicitations on a link with a group, so autoconfiguring hosts take the virtual address as their router. |
+| GLBP | — | 🟡 | `glbp N ip\|priority\|preempt\|load-balancing`; the active gateway answers ARP with each forwarder's 0007.b4XX.XXYY in turn (or per host), and forwarders take their own MAC; `show glbp [brief]`. Computed: GLBP hellos are not on the wire, because its message format is not public (so none are planned). |
 
-## Why NetLabCraft
+## Services
 
-- **Familiar.** The window is arranged like the network simulator learners already know: menus and
-  toolbars, the device box, Realtime and Simulation modes, device windows with Physical, Config,
-  CLI, Desktop and Services tabs. Every picture and message is our own work.
-- **Real frames.** Devices exchange encoded Ethernet, 802.11, ARP, IPv4, IPv6, ICMP, NDP, TCP, UDP,
-  DHCP, DHCPv6, DNS, HTTP, TLS 1.2, SSH 2.0, RESTCONF, NETCONF, FTP, SMTP, POP3, NTP, syslog,
-  TFTP, SNMP, RADIUS with EAP, PEAP, CAPWAP, TACACS+, SIP, STP and RSTP, OSPF, RIP, RIPng, EIGRP,
-  HSRP, VRRP, LLDP, LACP, GRE, IKEv1, IKEv2 and ESP frames, IPv4 fragments included; their
-  Diffie-Hellman exchanges and AES encryption are computed for real. Captures open in any
-  packet analyser, and a dropped frame says why.
-- **Open.** Labs are readable JSON ([`.nlcraft`](docs/file-format.md)); the code is MIT or Apache-2.0.
-- **Agent-native.** Every action is a command that agents can run through an **MCP server** or the
-  CLI, including typing at any device's console.
-- **In your language.** The interface comes in English and Spanish (Options → Language), the
-  system's language by default; the consoles stay in English, as on real equipment.
-- **Everywhere.** One Rust codebase for the desktop and the web. No account, no sign-in, no telemetry.
-- **Never loses your work.** No panics in product code, every input treated as hostile, every
-  command fuzzed, and a last-resort guard that restores the lab.
+**Services: ~97% ready, 1–3 h** (estimated; the Services row of [`ROADMAP.md`](../ROADMAP.md#dimensions)).
 
-## What it simulates
+| Feature | Standard | Status | Notes and gap |
+|---|---|---|---|
+| DHCPv4 server on routers | RFC 2131 | ✅ | Pools, exclusions, bindings, conflicts; `lease DAYS [HOURS [MIN]] \| infinite` and `domain-name` (options 51 and 15, shown by PCs in `ipconfig /all`); `show ip dhcp binding/pool/conflict/server statistics`, `clear ip dhcp binding`, `clear ip dhcp conflict *`, `clear ip dhcp server statistics`, `debug ip dhcp server packet`; clients send a second DISCOVER when the first goes unanswered. |
+| DHCPv4 relay | RFC 2131 | ✅ | `ip helper-address` on router interfaces, subinterfaces and multilayer VLAN interfaces. |
+| DHCPv4 on servers | RFC 2131 | ✅ | Services tab pools. |
+| DHCP client | RFC 2131 | ✅ | Hosts: `ipconfig /renew`, IP Configuration DHCP option. Routers and routed ports: `ip address dhcp` (leased at `no shutdown` or at once when up; the lease's router becomes a default route that any static default overrides); the home router's Internet port. |
+| DNS | RFC 1035 | ✅ | A records on servers; `nslookup`, names in ping/tracert/browser. |
+| HTTP and TLS | RFC 9110 over TCP (RFC 9293); TLS 1.2 (RFC 5246) | ✅ | Server file manager, PC web browser; on routers `ip http server`, `ip http secure-server` and `ip http authentication local` (Basic login against privilege 15 users), `show ip http server status`. Port 443 speaks TLS 1.2: the record layer and a full handshake over the RFC 3526 2048-bit group with `TLS_DHE_RSA_WITH_AES_128_CBC_SHA` when the router has `ip http secure-trustpoint` (a Certificate message, a ServerKeyExchange signed with the certificate's RSA key; clients verify the signature and, given trust anchors, the chain) and `TLS_DH_anon_WITH_AES_128_CBC_SHA` otherwise, the P_SHA256 PRF, Finished checks, AES-128-CBC records with explicit IVs and HMAC-SHA1; plain HTTP to 443 gets an unexpected_message alert, TLS to port 80 a 400. Without a trustpoint the suite is anonymous and shows no certificate; no revocation checking, host-name matching or client certificates ([decisions.md](decisions.md)). |
+| RESTCONF | RFC 8040, RFC 7951 (JSON), RFC 7950 (XML) | ✅ | `restconf` on routers with the web server on; `ietf-system` hostname and `system-state/platform` (RFC 7317), `ietf-interfaces` with `ietf-ip` IPv4 and IPv6 address lists, a small `netlabcraft-routing` module for static routes and `netlabcraft-discovery:neighbors` (CDP and LLDP, read-only); GET, HEAD, OPTIONS, PUT, PATCH, POST and DELETE with RFC 8040 error bodies; `application/yang-data+json` or `+xml`: Content-Type picks the body's codec, Accept the answer's (q-values, 406 when neither), errors in the encoding asked for. Served on the router's IPv4 and IPv6 addresses, over TLS on 443. Edits become console lines, checked on a copy of the router and applied through the console grammar, so `show running-config` shows them. Sent from the PC Programming app or `pc.http_request`. |
+| NETCONF | RFC 6241, RFC 6242, RFC 4253 | ✅ | `netconf-yang` on routers: port 830 as the `netconf` subsystem of SSH 2.0 (identification, KEXINIT, `diffie-hellman-group14-sha256`, `aes128-cbc` with `hmac-sha1`, password login, a session channel), on IPv4 or IPv6; hello with capabilities (writable-running, candidate, validate:1.1); `get-config` and `get` with subtree filters from running or candidate, `edit-config` (merge, replace, create, delete, remove) to either, `commit`, `discard-changes`, `validate`; per-session locks on running and candidate (lock-denied with the holder's session id, in-use for others' edits and commits, no candidate lock over someone's uncommitted changes, released and discarded when the holder unlocks or its session ends); `close-session`; sessions can stay open between commands (`netconf.session` `keep_open`, `session`, `close`); end-of-message and chunked framing; edits through the console grammar; `show netconf-yang sessions` lists sessions, locks and pending candidate changes; a strict XML reader (no DOCTYPE, size and depth caps). The host key is a real `ssh-rsa` key signing the exchange hash with `rsa-sha2-256` (RFC 8332) when the router has its `NAME.DOMAIN` RSA key; without one it is the old stand-in, an HMAC in place of a signature ([decisions.md](decisions.md)). |
+| Controller | — | 🟡 | A PC, laptop or server can act as a controller: `controller.discover` walks CDP and LLDP neighbours breadth first from a seed router, inventories and manages every router that answers RESTCONF with the login, and returns the links it saw and the addresses it couldn't use; managed routers (IPv4 or IPv6 address, login, template variables) kept in the lab; `controller.devices` reads hostname, model, software and interfaces; `controller.push` fills `{{name}}` per router from stored and per-call variables (`{{address}}` and `{{hostname}}` built in); the Programming app's Controller mode with Discover, the topology found and a variables box. The managed routers' passwords are kept in clear in the lab file. Still smaller than the course's network controller (no policies or assurance pages): 3–6 h. |
+| SIP | RFC 3261, RFC 3455 | 🟡 | IP phones set to SIP register over UDP 5060 (REGISTER; the user part is the phone's MAC) with a router's `voice register global` (`mode cme`, `source-address`, `max-dn`, `max-pool`), `voice register dn` and `voice register pool` (`id mac`, `number 1 dn`); the router answers with the phone's number in `P-Associated-URI` and proxies INVITE, 100/180/200, ACK, BYE, CANCEL and 603 with SDP; `show voice register all`; real SIP text in the event list and captures. A subset: the messages a basic call needs, no digest authentication. |
+| Telnet and SSH | RFC 854, RFC 4253 | ✅ | Local users, `login local`, `transport input`, RSA keys, `ip ssh version`; `show users` names the user a remote session logged in as. Console SSH sessions are simulated, not encrypted (NETCONF's SSH transport is real). |
+| TFTP | RFC 1350 | ✅ | Server TFTP service with a file list; `copy running-config\|startup-config tftp: <address> [file]`, `copy tftp: running-config\|startup-config <address> <file>` (typed without the address and file, the copy asks for them, as on routers); IOS image backups and restores with `copy flash: tftp:` and `copy tftp: flash:`, `boot system flash:NAME`; 512-byte blocks and acknowledgements on the wire (the server answers from port 69). |
+| FTP | RFC 959 | ✅ | Server FTP service with accounts (read, write, delete, list) and files; the PC `ftp` client (`put`, `get`, `dir`, `delete`, `quit`) and `dir` for the PC's own files; `copy running-config\|startup-config ftp:` and back with `ip ftp username/password`. Control and passive data connections over TCP on the wire (each command is its own session); the password is never shown in the event list. No active mode or `rename`. |
+| Email (SMTP/POP3) | RFC 5321, RFC 1939 | ✅ | The server's EMAIL service (domain, users, mailboxes saved with the lab); the PC Desktop Email app (account, inbox, compose, receive); SMTP and POP3 sessions over TCP on the wire (the password masked); fetched mail leaves the server. A server relays mail for its own users to another domain's server, found through its DNS server's A record for the domain (no MX records); failed deliveries come back as a bounce; it refuses to relay for anyone else. |
+| NTP | RFC 5905 | ✅ | Server NTP service; `ntp server` syncs at once and every 64 s; `ntp master [stratum]` on routers and switches; `ntp authenticate`, `ntp authentication-key N md5 KEY`, `ntp trusted-key N`, `ntp server A key N` with MD5 signatures (a wrong or untrusted key keeps the client unsynchronised); `ntp update-calendar`; `show ntp status/associations`. |
+| Syslog | RFC 5424 | ✅ | `logging host` sends log messages to the server, whose SYSLOG page lists them (and `server.syslog` returns them); `show logging` lists the syslog servers; `logging trap\|console\|buffered <level>` filter by severity; `service timestamps log\|debug datetime [msec]` stamps them with the device clock. |
+| AAA with RADIUS | RFC 2865 | ✅ | `aaa new-model`, `aaa authentication login default group radius local`, `radius-server host X key K`, `login authentication default`; vty logins (Telnet, SSH) ask the server; Access-Request with the password hidden and signed answers on the wire (MD5, RFC 1321), retransmitted; a wrong secret or no answer falls back to the next method; the Server's AAA service holds clients and users. Console logins keep their line settings. |
+| TACACS+ | RFC 8907 | ✅ | `tacacs-server host X key K`, `group tacacs+` in the login method list; the Server's AAA service answers on TCP 49 with the same clients and users; a PAP login per exchange with the body encrypted by the key's MD5 pad; an answer that doesn't read with the key falls back to the next method. |
+| SNMP | RFC 3416 | ✅ | SNMPv2c agents on routers and switches (`snmp-server community NAME ro\|rw`, `location`, `contact`, `show snmp`): get, get-next and set on the system group and the interfaces table; a set of sysName, sysContact or sysLocation with a read-write community changes the device; a wrong community gets no answer. The PC's MIB Browser (get, get-next, set, walk, v2c or v3). v2c traps (`snmp-server host`, `snmp-server enable traps` linkdown, linkup, coldstart) received and listed by PCs and servers (MIB Browser ▸ Traps, `snmp.traps`). SNMPv3 with users and groups, noAuthNoPriv and authNoPriv (HMAC-MD5/SHA-96, engine discovery, Report PDUs). No v3 privacy, v3 or v1 traps, informs: 3–5 h. |
 
-- **Devices:** 51 models with our own names: fixed and modular routers (serial, Gigabit, Fast
-  Ethernet, fiber and 4-port switch cards fitted while switched off), a stateful firewall, access
-  switches (also with fiber uplinks or power over Ethernet) and a multilayer switch, a home
-  wireless router and a home IoT gateway, a Wi-Fi access point, a wireless LAN controller with
-  lightweight APs, a provider cloud with DSL and cable modems, a hub, PCs, laptops (also with
-  Wi-Fi), tablets and smartphones (Wi-Fi, or mobile data through cell towers and a central office server) with a touch home screen, servers, a printer, IP
-  phones with their own Settings screen, eighteen IoT things (temperature sensor, fan, motion and
-  smoke detectors, light, door lock, siren, webcam, and over Wi-Fi a thermostat, heater, air
-  conditioner, humidity sensor, smart window, soil moisture sensor, lawn sprinkler, CO detector,
-  smart plug and garage door; switch on a small simulated room and a heater really warms the
-  thermostat's reading), and two programmable boards. Routers and switches have
-  power-supply bays: take out the last supply and the device switches off.
-  [docs/model-equivalents.md](docs/model-equivalents.md) says which one to place when a course lab
-  names a vendor model.
-- **Cables:** automatic, straight-through and cross-over copper (a wrong one leaves the link down
-  and says why, unless auto-MDIX fixes it), fiber, console, serial DCE/DTE, coaxial and phone
-  lines, and IoT custom cables from a board's pin to a smart thing; the physical view has cities,
-  buildings and closets, copper longer than 100 m goes down, and once a lab has a layout, Wi-Fi
-  reaches only the access points in the same building.
-- **Switching:** MAC learning, VLANs, access and 802.1Q trunk ports, DTP, per-VLAN spanning tree
-  with its timers, rapid-pvst with the proposal/agreement handshake, cost and port priority,
-  PortFast, BPDU guard and filter, root and loop guard, EtherChannel (LACP, PAgP, static) with load
-  balancing, VTP with pruning, port security with aging, DHCP snooping with option 82, dynamic ARP
-  inspection, errdisable recovery, switch VLAN interfaces, CDP and LLDP, 802.1p CoS from IP phones
-  with trust and CoS-to-DSCP maps; power over Ethernet with a budget per switch; switch cards that
-  make a router switch too.
-- **Routing:** static and floating static routes, loopbacks, RIP with its timers, hold-down,
-  triggered updates and poisoned reverse, OSPF as the courses teach it
-  (network statements or interface areas, timers, DR/BDR, point-to-point, several areas, stub
-  areas, the link-state database), EIGRP with equal and unequal-cost load balancing and
-  summaries, router-on-a-stick, multilayer switching, HSRP versions 1 and 2 with tracking, VRRP
-  versions 2 and 3 with timers and tracking, GLBP; serial links with HDLC or PPP (PAP, CHAP).
-- **IPv6:** global, EUI-64 and link-local addresses on ports, subinterfaces and VLAN interfaces,
-  neighbour discovery, router advertisements, SLAAC, DHCPv6 (stateless, stateful, relay), routers
-  as SLAAC and DHCPv6 clients, static routes, OSPFv3, EIGRP for IPv6 (updates, queries and
-  replies on the wire, variance, summaries), RIPng, VRRPv3, IPv6 ACLs.
-- **Security:** standard, extended and named ACLs with sequence numbers, `established` and ICMP
-  types, IPv6 ACLs, `access-class`, NAT and PAT, passwords and password recovery, SSH, AAA with
-  RADIUS and TACACS+, GRE tunnels, site-to-site IPsec with IKEv1 or IKEv2 on the wire with a real
-  Diffie-Hellman exchange (MODP groups 1, 2, 5, 14, 15, 16 and elliptic-curve groups 19 and 20), real AES-128/192/256, DES, 3DES, AH and SHA-1,
-  SHA-256 or MD5 HMACs, SA lifetimes and rekeying, a zone-based firewall and `ip inspect` (FTP,
-  DNS and HTTP too) on routers, a default MTU of 1500 bytes with path MTU discovery, `ip mtu`
-  with fragmentation and `ip tcp adjust-mss`, and a stateful firewall with object groups and
-  twice NAT.
-- **QoS:** class maps, policy maps, DSCP marking, policing, shaping and output queues on congested
-  links; `mls qos trust`, CoS-to-DSCP maps and `priority extend` on switches.
-- **Automation:** routers answer RESTCONF (JSON or XML, over IPv4 or IPv6, over TLS 1.2 on port
-  443, presenting a real certificate when the router has a trustpoint) and NETCONF over SSH 2.0 (running and candidate datastores, commit, validate, locks); PCs
-  have a Programming app with saved requests and a controller mode that discovers routers over
-  CDP and LLDP, keeps an inventory and pushes templates with per-router variables.
-- **Services:** servers with HTTP (and a web browser on the PCs), DNS, DHCP, email (SMTP and POP3,
-  with an Email app on the PCs), FTP, TFTP, NTP (with authentication), syslog, AAA and IoT; DHCP
-  servers on routers with leases, domain names and statistics; SNMP v2c and v3 agents with traps
-  and a MIB Browser on the PCs.
-- **Wireless:** home routers, access points and a controller with lightweight APs; WPA2-PSK and
-  WPA2-Enterprise through a real PEAP tunnel with EAP over RADIUS, group keys, a VLAN per WLAN,
-  local or central switching (CAPWAP data to the controller), roaming, and real 802.11 frames in
-  a separate capture.
-- **Voice and IoT:** IP phones on voice VLANs, powered over Ethernet or by their adapter, that
-  register with call control on a router (its own signalling or SIP) and call each other; smart
-  things that report on a timer to a server's IoT service or a home gateway, whose rules join
-  several conditions with AND or OR; Wi-Fi things join the home gateway's network by
-  themselves; programmable boards run BoardScript, a small language of our own, reading and
-  switching the things wired to their pins.
-- **Simulation mode:** an event list replayed on the canvas, simple and complex PDUs (ping, DNS,
-  HTTP, Telnet, SSH, FTP, email, DHCP, TFTP, SNMP, ARP, raw UDP and TCP; once or periodically),
-  start times relative or absolute, PDU details in OSI layers with what the sender and each
-  receiver decided, scenarios saved with the lab, Constant Delay, capturing only chosen
-  protocols, drop reasons and pcap export.
-- **Console:** every mode a CCNA course uses, `?` help with a `^` marker on errors, Tab completion,
-  history, `do`, `interface range`, output filters, `running-config` / `startup-config` / `write` /
-  `reload`, `copy` to and from TFTP and FTP (images too), timestamps, logging levels, debugs,
-  extended ping: 1003 grammar entries in all ([`docs/command-reference.md`](docs/command-reference.md)).
-- **PC Command Prompt:** `ipconfig` (static or DHCP, `/all`), `ipv6config` (static or automatic,
-  `/all`), `ping` (`-n`, `-l`, `-t`), `tracert`, `nslookup`, `telnet`, `ssh`, `ftp`, `netstat`,
-  `dir`, `arp -a` and `-d`; also a Terminal app over a console cable.
-- **Activities:** a lab can carry instructions (in several languages) and checks worth points
-  (configuration lines, pings, addresses, cables, command output), with sections, hints, values
-  per student, a time limit, a password lock, Check Results, a comparison with the answer, Reset
-  Activity and an Activity Wizard. Instructors keep the answer network in the activity (sealed
-  under the lock password when locked), weigh an assessment tree built from it, set an initial
-  network, run connectivity tests, export signed results and lock devices, cables or
-  configurations.
+## Security
 
-What it doesn't do yet is listed, ranked, in [`docs/gaps.md`](docs/gaps.md).
+**Security: ~96% ready, 4–8 h** (estimated; the Security row of [`ROADMAP.md`](../ROADMAP.md#dimensions)).
 
-## The CCNA lab book
+| Feature | Status | Notes and gap |
+|---|---|---|
+| Standard and extended ACLs, numbered and named | ✅ | `ip access-group in/out` (also on multilayer VLAN interfaces), match counters kept per line (they follow their line when others are inserted, removed or renumbered), implicit deny, TCP/UDP ports, and the `gre`, `esp`, `ahp` and `ospf` protocols (crypto ACLs for GRE over IPsec); sequence numbers (`10 permit …`, `no 10`, shown in `show access-lists`; a rule typed again with no number is not added twice and the answer names the line that has it, with its own number it is added as a line of its own), `show access-lists NAME\|NUMBER` and `show ip access-lists NAME\|NUMBER`, `ip access-list resequence NAME START STEP`, `established` on TCP lines, ICMP types and codes (`permit icmp any any 3 4`, or the names echo, echo-reply, unreachable, net-, host-, protocol- and port-unreachable, packet-too-big, redirect, time-exceeded, ttl-exceeded, reassembly-timeout, parameter-problem), remarks kept with the list. |
+| `access-class` on vty lines | ✅ | Telnet/SSH logins refused (TCP reset) when the list denies the source; counted in `show access-lists`. |
+| IPv6 ACLs | ✅ | `ipv6 access-list` with `permit\|deny ipv6\|icmp\|tcp\|udp` and any/host/prefix addresses and ports, `ipv6 traffic-filter in\|out`, neighbour discovery passes implicitly, `show ipv6 access-list` with matches; denied packets get an administratively-prohibited unreachable. |
+| NAT: static, pool, PAT (overload) | ✅ | ICMP, UDP and TCP; `show ip nat translations`, `show ip nat statistics`. ICMP errors about translated packets are translated back (traceroute works through PAT). |
+| Passwords and lines | ✅ | `enable secret/password`, console and vty passwords with real prompts, `banner motd`, `service password-encryption`, `security passwords min-length`, `login block-for … attempts … within …` (`show login`), `username … privilege 15` (logs in to privileged mode), `ip ssh time-out` and `authentication-retries`; password recovery with `config-register 0x2142` (the startup configuration is skipped at reload) and `copy startup-config running-config`. |
+| PPP authentication (PAP/CHAP) | ✅ | `ppp authentication chap\|pap` (one or both, in order), `ppp pap sent-username`, checked against `username` entries (CHAP: both routers name each other with the same secret); failure keeps the line protocol down and `show interfaces` says why. No LCP/CHAP frames on the wire. |
+| GRE tunnels | 🟡 | `interface tunnel N` with `tunnel source\|destination`, `tunnel mode gre ip`; RFC 2784 headers; the line protocol follows the source and a route to the destination, connected, static or learned by OSPF, RIP or EIGRP; a destination learned through the tunnel itself takes it down (recursive routing); static routes and routing protocols over the tunnel; an IP MTU of 1476 bytes by default, `ip mtu` and zone membership on tunnels; GRE copies DF from the inner packet. No keepalives, ACLs or NAT on tunnels, or IPv6: 3–5 h. |
+| IPsec site-to-site (IKEv1) | ✅ | `crypto isakmp policy` and `key`, transform sets, crypto maps applied to interfaces; the first interesting packet starts IKEv1 main mode (6 messages) and quick mode (3) on UDP 500, each router deciding from its own configuration: a real Diffie-Hellman exchange over MODP group 1, 2, 5, 14, 15 or 16 or the P-256 and P-384 curves (groups 19 and 20, RFC 5903; group 24, RFC 5114 §2.3, a 2048-bit prime with a 256-bit prime-order subgroup, with the peer's value checked to be in it), SKEYID and its children from the pre-shared key (RFC 2409 §5), HASH_I and HASH_R, AES-CBC (128, 192 or 256 bits), DES-CBC or 3DES-CBC (8-byte blocks and IVs, RFC 2409 appendix B key expansion) for main and quick mode with chained IVs, KEYMAT for ESP; a mismatch stops at the message where it shows (policies, keys, transform sets) with a notify and the reason in `show crypto isakmp sa`; SA lifetimes in seconds and kilobytes (`crypto ipsec security-association lifetime`, per crypto map with `set security-association lifetime`) and quick-mode rekeying near the end, shown in `show crypto ipsec sa`. The ISAKMP SA has a lifetime of its own (`lifetime` under `crypto isakmp policy`, negotiated to the shorter of the two ends, from the end of main mode): past 90 % of it the router that started the SA runs a new main mode under new cookies next to the old SA and, when it completes, the new keys replace the old ones while the IPsec SAs carry on; `show crypto isakmp sa` shows the cookies, age, time left and replacements. AH-only transform sets (`ah-sha-hmac`, `ah-md5-hmac`, `ah-sha256-hmac`) negotiate an AH SA in quick mode and send IP protocol 51 for real (below); a set with AH next to ESP proposes both protocols under one proposal number, gets an SPI and KEYMAT per protocol and direction, and sends AH outside ESP. No transport mode. |
+| IKEv2 and real ESP | 🟡 | `crypto ikev2 proposal`, `policy`, `keyring` and `profile`, `set ikev2-profile` in crypto map entries; IKE_SA_INIT and IKE_AUTH on UDP 500 in the RFC 7296 layout, each router deciding from its own configuration; a real Diffie-Hellman exchange for the MODP groups and the P-256 and P-384 curves, peer points validated (INVALID_KE_PAYLOAD and a retry when the group differs), SK payloads sealed with the negotiated AES-CBC key size or 3DES-CBC, PRF and integrity (SHA-1, SHA-256, MD5); NO_PROPOSAL_CHOSEN, AUTHENTICATION_FAILED and TS_UNACCEPTABLE on the wire; child-SA rekeying with CREATE_CHILD_SA near the end of the lifetime and an INFORMATIONAL delete of the old SA; IKE SA lifetime (`lifetime` in the profile) and IKE SA rekeying by CREATE_CHILD_SA with an IKE-protocol SA payload, nonce and fresh Diffie-Hellman value (RFC 7296 §1.3.2), keys from the old SK_d (§2.18), child SAs inherited and the old IKE SA deleted with an INFORMATIONAL Delete; `show crypto ikev2 sa\|proposal\|profile`. ESP (both IKE versions) runs `esp-aes` 128/192/256, `esp-des`, `esp-3des` and `esp-null` with `esp-sha-hmac` (HMAC-SHA1-96), `esp-sha256-hmac` (HMAC-SHA-256-128, RFC 4868) or `esp-md5-hmac` (HMAC-MD5-96) for real; `show crypto ipsec sa` says which. AH runs for real (RFC 4302: ICV over the IPv4 header with mutable fields zeroed, the AH header and the payload; HMAC-SHA1-96, HMAC-MD5-96 or HMAC-SHA-256-128): on its own in tunnel mode (an AH child SA in CREATE_CHILD_SA and quick mode), and next to ESP in one transform set as a bundle with AH outside ESP (RFC 4301 §4.5: ESP in tunnel mode, AH in transport mode over it, next header 50); IKEv2 negotiates the AH child SA separately, right after IKE_AUTH, and renews it after the ESP one. Stand-in: a transform set with no cipher (`esp-sha-hmac` alone): under 1 h. |
+| IP MTU and TCP MSS (RFC 791, RFC 1191) | ✅ | Interfaces default to an IP MTU of 1500 bytes and GRE tunnels to 1476; `ip mtu` changes it on routed ports, subinterfaces and tunnels: larger packets are fragmented, reassembled at the destination (order, timeout and overlaps handled), or answered with ICMP fragmentation needed and the next-hop MTU when DF is set; ESP honours DF; hosts run path MTU discovery and send lost TCP segments again at the smaller size; TCP segments stay within the peer's MSS. `ip tcp adjust-mss` rewrites the MSS of passing SYNs and fixes the checksum; TCP SYNs announce an MSS of 1460. Pings are sent without DF unless asked (`ping -f` on hosts, `df-bit` in a router's extended ping). |
+| QoS (MQC) | ✅ | `class-map`, `policy-map` with `set dscp\|precedence`, `police`, `priority`, `bandwidth`, `shape average`; `service-policy input\|output`; DSCP marking in the IPv4 header; policing on simulated time; output queues on congested links (priority first within its rate, the rest by weight, tail drop with a reason, queuing delay); shaping delays traffic with a token bucket per class; `show policy-map interface` with counters, queue depth and drops. Switch trust (`mls qos trust`) is under [Layer 2](#layer-2). |
+| Firewall appliance | 🟡 | The Firewall 5GE model: security levels, a stateful connection table, access rules with object groups, object and twice NAT, a DHCP server, `inspect icmp` ([hardware-parity.md](hardware-parity.md)). More inspections: 4–6 h. |
+| Zone-based firewall on routers | ✅ | `zone security`, `zone-member security` on interfaces and tunnels, `class-map type inspect` (match protocol, access-group or another class; match-any or match-all), `policy-map type inspect` (inspect, pass, drop, with log), `zone-pair security` with `service-policy type inspect`; inspected sessions let replies back (FTP data connections, DNS answers and HTTP sessions inspected by protocol too), traffic between a zone and no zone or between unpaired zones is dropped with a reason, the self zone passes unless a pair names it; `show zone security`, `show zone-pair security`, `show policy-map type inspect zone-pair [sessions]`, clear commands. |
+| Classic inspection (CBAC) | ✅ | `ip inspect name NAME PROTOCOL` (ICMP, TCP, UDP, FTP with its data connections, DNS, HTTP) and `ip inspect NAME in\|out`: replies of inspected sessions pass interface access lists; `show ip inspect sessions\|all`. |
 
-[`docs/labs/`](docs/labs/README.md) holds thirty-one hands-on labs written for NetLabCraft over the
-topics of the three CCNA courses (four for the first, fourteen for the second and thirteen for
-the third), plus one on mobile data. Nine of them are troubleshooting labs where you find and
-fix deliberate faults (VLANs and trunks, routing, OSPF, ACLs, DHCP, NAT, spanning tree), and two
-teach you to read the OSPF database and spanning-tree views. Each lab lists its topology, addressing, every command to
-type and what to check. Every lab is also a test: the suite runs each one end to end as
-written, and eight of them through the MCP server, so a lab that passes there works when typed
-by hand.
+## WAN
 
-## Quick start
+| Feature | Status | Notes and gap |
+|---|---|---|
+| Serial links (DCE/DTE, clock rate) | ✅ | The first end cabled is the DCE; no clock or mismatched framing keeps the line protocol down; `show controllers`. |
+| HDLC and PPP framing | ✅ | On the wire; listed and captured as the equivalent Ethernet II frame (a capture has one link type). |
+| DSL and cable modems, cloud | ✅ | A DSL modem bridges its phone line to its Ethernet port, a cable modem its coaxial port; the Cloud joins its Ethernet, coaxial and phone ports in pairs (`cloud.map`, coaxial to phone by default), so a home behind a cable modem reaches an office behind a DSL modem; coaxial (500 m) and phone (5 km) cables. No DSL or DOCSIS signalling: the modems are bridges. |
+| Cellular data (cell towers, central office) | 🟡 | A model of our own, not 3GPP (no SIM, authentication, bearers or handover; [decisions.md](decisions.md)): smartphones and tablets attach to the nearest tower in range with a free sector (six per tower), the Cell Tower bridges its sectors to its backhaul, and the Central Office Server admits them (address pool, APN, data plan) and routes them to the lab. The attach request, accept and reject are real frames of our own (ethertype 0x88B5, protocol `CELL`) in the event list and captures; data follows as ordinary Ethernet/IPv4 through the tower. Wi-Fi is preferred when up. Backhaul VLANs are not looked at; no DNS or NAT is handed out. Real signalling: not planned. |
+| Frame Relay | ❌ | Not in current courses; not planned. |
 
-```sh
-cargo run --release -p netlabcraft                            # desktop app
-cargo run --release -p netlabcraft -- --sample vlans          # open a sample lab
-cargo run --release -p netlabcraft -- lab.nlcraft              # open a lab
-cargo run --release -p netlabcraft-cli -- samples             # list the sample labs
-cargo xtask ci                                                # fmt, clippy, tests, assets, layering, wasm, parity
-```
+## Console
 
-Click a device to open its window; drag to move it; scroll to pan and Ctrl+scroll to zoom.
-Choose Español under Options → Language for the Spanish interface.
+**Device console: ~88% ready, 5–10 h** (estimated; the Device console row of [`ROADMAP.md`](../ROADMAP.md#dimensions)).
 
-### Install on Linux (your user only)
+| Feature | Status | Notes and gap |
+|---|---|---|
+| Modes: user, privileged, global, interface, subinterface, range, loopback, tunnel, VLAN, line, DHCP and DHCPv6 pools, router OSPF/RIP/EIGRP, OSPFv3, IPv4 and IPv6 ACLs, VLAN interface, ISAKMP policy, crypto map, transform set, class map, policy map and its classes, telephony and ephone (also `voice register`), firewall and its objects, security zone, zone pair, inspect class and policy maps and their classes, IKEv2 proposal, policy, keyring, peer and profile (37 in all) | ✅ | Prompts follow the usual `name>`, `name#`, `name(config)#` convention. |
+| Abbreviations, `?` help, Tab completion, history, `do` | ✅ | Ambiguity and unknown-word errors point at the word with a `^` marker that counts the prompt; `?` after a first word summarises it; `history size N` on lines and `terminal history size N`; extended `ping A [repeat N] [size S] [source IF\|A.B.C.D] [timeout T]`. |
+| Running/startup config, `write`, `copy`, `erase`, `reload` | ✅ | Configuration round-trips through the same dispatcher (tested); `show file systems`, `dir`, `boot system`, `config-register`. |
+| `show` coverage | 🟡 | Interfaces (the first line gives the status and `line protocol is up|down` for ports, subinterfaces, VLAN interfaces and tunnels; also `status`, `switchport` for every port, `X switchport`, `X trunk`), IP/IPv6 interface and routes (default routes starred: `S*`, `R*`, `D*`), ARP, MAC table, VLANs, trunks, STP, EtherChannel, VTP, port security, OSPF (also `interface`), RIP, DHCP, NAT, ACLs, SSH, controllers (Ethernet and serial), CDP, LLDP, HSRP (`standby`), logging, version, flash, clock, users, history, processes, memory, protocols (also `ip protocols summary`), `interfaces description`, `interfaces vlan N`, `ipv6 interface X`, `ip route A.B.C.D` and by source, login, privilege, ssh, sessions, hosts, boot, environment, inventory, tech-support, `running-config interface X`, `ip traffic`, `tcp brief`, `interfaces counters`, `vlan id\|summary`, `dtp`, `spanning-tree summary\|brief\|detail\|interface X\|root\|bridge\|blockedports`, `etherchannel load-balance\|port-channel`, `lacp neighbor`, `ip ospf database`, `ip ospf neighbor detail`, `ip dhcp conflict\|server statistics`, `ip dhcp pool [NAME]` (with the addresses left), `ip route A.B.C.D M.M.M.M`, `ip route summary`, `ip ospf neighbor [A.B.C.D\|interface]`, `ip dhcp snooping`, `ip arp inspection`, `ip nat translations [verbose]` (age, last use and packets per translation), `ip nat statistics` (with hits and misses), `clear ip nat statistics`, `clear (ip) access-list counters [NAME]`, ACL `log`, `no ip proxy-arp`, `errdisable recovery`, `sdm prefer`, `file systems`, `spanning-tree inconsistentports`, `mls qos [interface]`, `power inline`, `vrrp`, `glbp`, `ipv6 eigrp`, `ipv6 route eigrp`, `zone security`, `zone-pair security`, `policy-map type inspect zone-pair [sessions]`, `ip inspect`, `crypto ikev2 sa\|proposal\|profile`, `voice register all`, `ip http server status`, `netconf-yang sessions`, `ip ospf interface X` (role, priority, DR and BDR, timers), `access-lists NAME`, `mls qos maps`, `ipv6 rip [database]`, `vtp status` with pruning; output filters `\| include`, `exclude`, `begin`, `section`, `count`. The lab book's 31 labs (nine of them troubleshooting labs and two inspection labs) run with what is here; what more labs turn up is [gaps.md](gaps.md), item 1. |
+| CDP | 🟡 | `cdp run`, `cdp enable`, `show cdp`, `show cdp neighbors [detail]`; computed, no advertisement frames (the CDP frame format is proprietary). |
+| LLDP (IEEE 802.1AB) | ✅ | `lldp run`, `lldp transmit`/`receive` per port, `show lldp`, `show lldp neighbors [detail]`, `show lldp entry *`; real LLDP frames every 30 s in Simulation mode and captures. |
+| `clock set`, `terminal`, `debug` | 🟡 | `clock set` and `show clock` (per device, advances with simulated time, lost on reload); `terminal length/width/monitor` accepted (output is never paged); `debug ip icmp`, `debug ip rip`, `debug ip ospf hello` (the hellos heard, and why one cannot make a neighbour), `debug ip ospf adj` (each neighbour's walk from Down to Full, and the reason a hello keeps it Down) and `debug ip ospf events` (DR elections, SPF runs, neighbours removed, hellos rejected), `debug ip packet` (each routed or dropped packet), `debug ip nat` (new translations), `debug ip dhcp server events` (leases given and released), `debug ip dhcp server packet`, `undebug all`, `show debugging`; `terminal history size`. |
+| Logging and console messages | ✅ | A logging buffer per device (`show logging`, `clear logging`): link up/down, port-security and BPDU-guard shutdowns, configuration changes, debug output; the same messages appear on the device's console after the prompt, and go to syslog servers (`logging host`, listed in `show logging`); each destination filtered by severity, with optional timestamps. |
+| Host shell (PC Command Prompt) | ✅ | `cellular [on\|off\|apn NAME]` on phones and tablets, `ipconfig [/all\|/renew\|/release]`, `ipv6config [/all\|auto\|off]`, `ping [-n N] [-l SIZE] [-t]`, `tracert`, `nslookup`, `telnet`, `ssh`, `ftp`, `netstat`, `dir`, `arp -a\|-d`, `hostname`, `cls`, with aligned help. |
 
-```sh
-packaging/linux/install.sh            # builds, then installs to ~/.local: menu entry, icon, .nlcraft files
-packaging/linux/install.sh --remove   # uninstalls
-```
+## Revision history
 
-### Web
-
-```sh
-cd apps/netlabcraft-web && trunk build --release     # → dist/web (serve it with any static server)
-cd apps/netlabcraft-web && trunk serve --release     # http://127.0.0.1:8781  (?sample=vlans opens a sample)
-```
-
-You need [trunk](https://trunk-rs.github.io/trunk/) and the `wasm32-unknown-unknown` target. Open
-uses the browser's file picker and Save downloads the lab; the browser asks before a tab with
-unsaved changes closes.
-
-## For agents: MCP and CLI
-
-```sh
-claude mcp add netlabcraft -- netlabcraft-cli mcp                       # headless MCP server
-netlabcraft-cli exec --sample two-subnets R1 enable 'show ip route'     # type at a console
-netlabcraft-cli run --sample lan --cmd 'net.ping={"from":"PC1","to":"192.168.1.13"}'
-netlabcraft-cli pcap --sample vlans --ping PC1:192.168.20.10 --out vlans.pcap
-netlabcraft-cli commands                                                 # every command and its params
-```
-
-The MCP server offers `netlabcraft_run` (any engine command), `netlabcraft_cli` (type lines at a
-device), `netlabcraft_lab` (devices, ports, addresses and cables) and `netlabcraft_commands`. See
-[`docs/mcp.md`](docs/mcp.md) and [`docs/cli.md`](docs/cli.md).
-
-## Architecture
-
-NetLabCraft is an engine-first Cargo workspace with enforced layering (`cargo xtask layers`). The
-egui frontend is a separate crate, so the UI can be swapped without touching the simulator.
-
-| Layer | Crates |
-|---|---|
-| L0 | `core` (MAC and IP addresses, networks, VLAN ids) |
-| L1 | `wire` (frame formats, checksums, pcap) |
-| L2 | `model` (the lab: devices, ports, configuration, cables; the `.nlcraft` format) |
-| L3 | `sim` (discrete-event simulator: switching, switch security, routing, STP, OSPF, RIP, RIPng, EIGRP, HSRP, VRRP, GLBP, IPv6, VPN with IKEv1 and IKEv2, QoS, firewalls, MTU, wireless with PEAP and central switching, voice and SIP, IoT, boards and BoardScript, PoE, automation over TLS and SSH, services, complex PDUs, Simulation-mode options) |
-| L4 | `ios` (device consoles: grammar, configuration, `show` output, host shell) |
-| L5 | `engine` (session, command catalog, undo, sample labs, activities and instructor tools, RESTCONF, NETCONF and the controller, boards) |
-| L6 | `ui-egui` (the interface and its translations) · `mcp` (MCP server) |
-| L7 | `apps/netlabcraft`, `apps/netlabcraft-cli`, `apps/netlabcraft-web` |
-
-- **Contributor and agent rules** (clean room, asset policy, never-crash, quality gates): [`AGENTS.md`](AGENTS.md); how to contribute: [`CONTRIBUTING.md`](CONTRIBUTING.md); security reports: [`SECURITY.md`](SECURITY.md)
-- **How it is built:** [`docs/architecture.md`](docs/architecture.md); decisions in [`docs/decisions.md`](docs/decisions.md)
-- **Bundled assets:** each one is listed with its licence in [`ATTRIBUTION.md`](ATTRIBUTION.md)
-- **Releases:** installers for Linux, Windows, macOS and the browser on the [Releases page](https://github.com/ayozetr/netlabcraft/releases) (not code-signed yet); how they are built: [`docs/releasing.md`](docs/releasing.md)
-
-## Roadmap
-
-NetLabCraft is **pre-alpha**: every core workflow works end to end (build a lab, configure it by
-typing, ping, watch the frames, grade an activity, save), the [CCNA lab book](docs/labs/README.md)
-runs as written, and every alpha and beta gate is met. Weighted by what CCNA labs rely on, we
-estimated it at about 91% ready for real work: about 93% for the first CCNA course, 94% for the
-second and 90% for the third (estimated before the latest additions and not re-scored since; the
-method is in [`docs/target-app-parity.md`](docs/target-app-parity.md#audiences)). Next up: more
-labs walked to find console gaps, the last crypto and certificate details (IKE signatures, PEAP,
-a transform set with no cipher), TVs, a sniffer and more router models, device windows as native
-windows, and more interface languages. Stage, numbers and estimates are in
-[ROADMAP.md](ROADMAP.md); the ranked work list is [`docs/gaps.md`](docs/gaps.md).
-
-## Downloads
-
-Installers for Linux (AppImage, `.deb`, `.rpm`, `.tar.gz`; x86_64 and aarch64), Windows (`.msi` and
-a portable zip), macOS (a universal `.dmg`) and the browser (a static site) are on the
-[Releases page](https://github.com/ayozetr/netlabcraft/releases), with a `SHA256SUMS.txt` to check
-them against. They are **not code-signed yet**, so Windows and macOS warn you the first time you
-run them; each release's notes say what to click. You can also build from source with the
-[Quick start](#quick-start), or install for your user on Linux with `packaging/linux/install.sh`.
-How releases are built is in [`docs/releasing.md`](docs/releasing.md).
-
-## Clean room
-
-NetLabCraft is built from public standards (IEEE, IETF RFCs) and black-box observation of how
-network simulators behave. Nobody working on it reads, disassembles or decompiles any vendor's
-software or file formats, and no vendor artwork, icons, sample labs or wording is used. Protocols
-whose formats aren't public (CDP, DTP, PAgP) are simulated without their frames. For the same
-reason it does not open `.pkt` files; see [`docs/decisions.md`](docs/decisions.md).
-
-## License and credits
-
-NetLabCraft is dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your
-option. Copyright (c) 2026 the NetLabCraft contributors. Required notices are in [NOTICE](NOTICE).
-
-Bundled icons, images and other assets keep their own open licences; each one is listed with its
-author, source and licence in [ATTRIBUTION.md](ATTRIBUTION.md).
-
-The app icon ([`assets/app-icon/`](assets/app-icon/)) was supplied by the project owner. Every
-other icon and device picture is drawn in code and is original; the sample labs and every
-screenshot in this README were made with NetLabCraft itself. NetLabCraft bundles no fonts beyond
-the ones its UI toolkit ships with. Contributors: [`docs/contributors.md`](docs/contributors.md).
-
-Cisco, Cisco IOS and Packet Tracer are trademarks of Cisco Systems, Inc. NetLabCraft is an
-independent project, not affiliated with or endorsed by Cisco.
+| Date | Change | Summary |
+|---|---|---|
+| 2026-11-13 | minor | Area scores re-scored with the roadmap: Device console ~88%, Layer 3 ~97%, Security ~96%; the hours follow the open items in gaps.md. |
+| 2026-11-13 | minor | Cellular data (M9.10): the attach exchange of our own, cell towers, the central office server (`cellular pool\|apn\|data-plan`, `show cellular`) and the phone's `cellular` command. |
+| 2026-11-13 | minor | TLS under RESTCONF presents a certificate and signs its key exchange (`TLS_DHE_RSA_WITH_AES_128_CBC_SHA`); SSH hosts keys sign the exchange hash (M9.9). |
+| 2026-11-13 | minor | `crypto key`, `crypto pki trustpoint|enroll|authenticate|server` and their `show` commands (M9.9): real RSA keys, self-signed and CA-signed X.509 certificates, a CA that signs PKCS #10 requests over HTTP on the simulated network; no protocol uses the certificates yet. |
+| 2026-11-13 | minor | X.509 v3 certificates (RFC 5280), PKCS #10 requests (RFC 2986) and chain verification over a strict DER codec in `wire` (M9.9); not used by the console, TLS, SSH or IKE yet. |
+| 2026-11-13 | minor | RSA (RFC 8017): seeded key generation and PKCS#1 v1.5 signatures with SHA-256 and SHA-1 in `wire` (M9.9); not wired into TLS, SSH or IKE yet. |
+| 2026-11-13 | minor | M9.7: OSPF authentication (MD5 digests per RFC 2328 Appendix D), `show ip ospf database router\|network\|summary\|external` in full, `show ip route summary`, `show ip nat translations verbose`, `show ip protocols summary`, `show spanning-tree brief\|detail\|interface X`, ICMP type and code in ACLs, per-line ACL counters, `debug ip ospf adj\|events\|hello` apart, `line protocol is up\|down` in `show interfaces`, a repeated ACL line answered, and an OSPF database that follows flooding. |
+| 2026-11-13 | minor | IKEv1 group 24 (RFC 5114 §2.3) is a real MODP group with subgroup validation (M9.5); no crypto stand-in is left but the no-cipher transform set. |
+| 2026-11-13 | minor | AH bundled with ESP (M9.5): quick mode proposes both protocols, IKEv2 negotiates the AH child SA separately and renews it with the ESP one, and packets leave with AH outside ESP. |
+| 2026-11-13 | minor | IKE SA lifetime and rekeying (M9.5): ISAKMP policy lifetime negotiated and enforced with a new main mode replacing the SA under the IPsec SAs; IKEv2 profile `lifetime` and the RFC 7296 §1.3.2 IKE SA rekey with §2.18 keys. |
+| 2026-11-13 | minor | Console views and options from the troubleshooting labs: `show interfaces switchport` (all ports) and `X trunk`, `no ip proxy-arp`, `show ip ospf neighbor` by ID or interface, `show ip route NET MASK`, ACL `log` with log messages, `clear (ip) access-list counters NAME`, `show ip dhcp pool NAME`, NAT without `overload` sharing one address, NAT hits and misses, `show spanning-tree root\|bridge\|blockedports`. |
+| 2026-11-13 | minor | VRRPv3 for IPv6: the master sends router advertisements for the virtual router; a backup stays quiet (M9.2). |
+| 2026-11-13 | minor | EIGRP for IPv6: per-interface hello and hold timers, silent neighbours dropped on the hold time (M9.2). |
+| 2026-11-13 | minor | RIPng: `timers basic`, invalid, hold-down and flush in simulated time, triggered responses, possibly-down prefixes in the database (M9.2). |
+| 2026-11-13 | minor | Real elliptic-curve Diffie-Hellman for groups 19 (P-256) and 20 (P-384), RFC 5903 vectors in the tests, for IKEv1 and IKEv2. |
+| 2026-11-13 | minor | Real AH (RFC 4302, tunnel mode) for AH-only transform sets under IKEv1 and IKEv2: `AH SPI … ICV …` in the event list and captures. |
+| 2026-11-13 | minor | Real DES-CBC and 3DES-CBC for IKEv1 policies, IKEv2 proposals (3DES) and ESP (`esp-des`, `esp-3des`), tested against FIPS 81 and SP 800-67 vectors. |
+| 2026-10-31 | major | Real Diffie-Hellman (MODP 1, 2, 5, 14, 15, 16), AES-192/256, SHA-256, IKEv1 keys and AES-CBC, real ESP for AES with SHA-1, SHA-256 or MD5, lifetimes and rekeying, default MTU 1500 and GRE 1476 with path MTU discovery, FTP, DNS and HTTP inspection; TLS 1.2 under RESTCONF, SSH 2.0 under NETCONF, XML and IPv6 in RESTCONF, the NETCONF candidate datastore and locks, controller discovery and templates; CoS, VTP pruning, VRRP timers and VRRPv3 for IPv6, EIGRP for IPv6 on the wire with variance and summaries, IPv4 EIGRP summaries, RIP timers and triggered updates, RIPng; the lab-book fixes (starred defaults, `show users`, `Po<n>` trunks, `show access-lists NAME`, `show ip ospf interface X`, ACL protocols, TFTP prompts, syslog servers). Section figures aligned with ROADMAP.md. |
+| 2026-10-30 | major | RESTCONF, NETCONF, the controller; zone-based firewall, classic inspection, `ip mtu` and `adjust-mss`, IKEv2 with real ESP; `mls qos trust`, shaping, loop guard and BPDU filter, the RSTP handshake, option 82; HSRP preempt, EIGRP for IPv6, VRRP, GLBP, DHCPv6 /128, OSPF network-type mismatch; PoE, the switch card, SIP; cloud and modems; the console's 37 modes and new `show` commands. Section figures aligned with ROADMAP.md. |
+| 2026-10-30 | minor | Loopbacks; OSPF as the courses teach it; floating static routes; routers as IPv6 clients; DHCP snooping and ARP inspection; edge protection and errdisable recovery; STP tuning and EtherChannel views; small switch commands; ACL editing; DHCP server details; network management; HSRP v2 and tracking; console and PC prompt fixes. Section figures aligned with ROADMAP.md; the multilayer, OSPFv2, NDP, firewall and host-shell rows corrected. |
+| 2026-10-30 | minor | EIGRP timers, packets and load balancing; OSPF equal-cost paths; tunnels over learned routes; IKE on the wire; QoS queuing. |
+| 2026-10-30 | minor | QoS: class maps, policy maps, DSCP marking, policing. |
+| 2026-10-30 | minor | SNMP traps and SNMPv3 (no privacy); mail relay between domains with bounces. |
+| 2026-10-30 | minor | EIGRP; GRE tunnels; IPsec site-to-site. |
+| 2026-10-30 | minor | Spanning-tree listening/learning timers and `spanning-tree mode rapid-pvst`. |
+| 2026-10-30 | minor | NTP, syslog and TFTP. |
+| 2026-10-30 | minor | DHCPv6 and router advertisement flags. |
+| 2026-10-30 | minor | OSPF depth: cost, priority and DR/BDR, reference bandwidth, inter-area routes, interface and process views, multilayer switches. |
+| 2026-10-30 | minor | access-class, IPv6 ACLs, NAT for ICMP errors. |
+| 2026-10-30 | minor | PPP PAP and CHAP authentication. |
+| 2026-10-30 | minor | DTP. |
+| 2026-10-30 | minor | HSRP. |
+| 2026-10-30 | minor | Logging buffer and console messages; `debug ip icmp`. |
+| 2026-10-30 | minor | BPDUs, OSPF hellos and RIP updates on the wire, so Simulation mode and captures show them. |
+| 2026-10-30 | minor | SNMP agent and the MIB Browser. |
+| 2026-10-30 | minor | TACACS+. |
+| 2026-10-30 | minor | `ip address dhcp` on routers, routed ports and the home router's Internet port. |
+| 2026-10-30 | minor | Email: SMTP, POP3, the server's EMAIL service and the PC Email app; TCP retries a SYN four times. |
+| 2026-10-30 | minor | CCNA 1 lab commands: output filters, password rules, login blocking, privilege 15 users, speed/duplex/mdix (a speed mismatch takes the link down), many `show` commands, `delete vlan.dat`; VLANs live in the VLAN database, not the configuration (except VTP transparent). |
+| 2026-10-30 | minor | `debug ip packet`, `debug ip nat`, `debug ip dhcp server events`. |
+| 2026-10-30 | minor | FTP. |
+| 2026-10-30 | minor | AAA with RADIUS. |
+| 2026-10-30 | minor | OSPFv3. |
+| 2026-10-30 | minor | DHCPv6 relay. |
+| 2026-10-30 | minor | IPv6 on subinterfaces, VLAN interfaces and multilayer switches. |
+| 2026-10-30 | minor | OSPF stub and totally stubby areas, `area range`; RIP on multilayer switches. |
+| 2026-10-30 | minor | OSPF database exchange (DBD, LSR, LSU, LSAck) on the wire. |
+| 2026-10-30 | minor | LACPDUs on the wire. |
+| 2026-10-30 | minor | `debug ip rip`, `debug ip ospf`. |
+| 2026-10-30 | minor | LLDP with frames on the wire, `show processes`, `show memory`. |
+| 2026-10-30 | minor | Console: CDP, clock, flash, users, terminal, show ip interface, show interfaces status and switchport, show running-config interface, richer show version. |
+| 2026-10-30 | major | Created: every protocol and console area with its standard, status and estimate. |
