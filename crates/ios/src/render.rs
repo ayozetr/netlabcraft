@@ -513,6 +513,15 @@ pub fn running_config(d: &Device) -> String {
             for r in &a.ranges {
                 let _ = writeln!(s, " area {n} range {} {}", r.addr, r.mask());
             }
+            match a.auth {
+                Some(netlabcraft_model::OspfAuthKind::Md5) => {
+                    let _ = writeln!(s, " area {n} authentication message-digest");
+                }
+                Some(_) => {
+                    let _ = writeln!(s, " area {n} authentication");
+                }
+                None => {}
+            }
         }
         let _ = writeln!(s, "!");
     }
@@ -673,6 +682,37 @@ pub fn ip_int_brief(t: &Topology, d: &Device) -> String {
 
 /// The routing table, from the rows the simulation has (a row per path when several share the
 /// traffic).
+/// `show ip route summary`: how many routes each source gave, and how many there are in all.
+pub fn ip_route_summary(table: &[netlabcraft_sim::RouteEntry]) -> String {
+    let count = |codes: &[char]| table.iter().filter(|r| codes.contains(&r.code)).count();
+    let rows = [
+        ("connected", count(&['C']), String::new()),
+        ("local", count(&['L']), String::new()),
+        ("static", count(&['S']), String::new()),
+        ("RIP", count(&['R']), String::new()),
+        ("EIGRP", count(&['D']), String::new()),
+        ("OSPF", count(&['O', 'I', 'E']), format!("intra-area {}, inter-area {}, external {}", count(&['O']), count(&['I']), count(&['E']))),
+    ];
+    let other = table.len().saturating_sub(rows.iter().map(|r| r.1).sum::<usize>());
+    let mut s = format!("{:<10} {:<7} Detail\n", "Source", "Routes");
+    for (name, n, detail) in rows.iter().filter(|r| r.1 > 0) {
+        let _ = writeln!(s, "{name:<10} {n:<7} {detail}");
+    }
+    if other > 0 {
+        let _ = writeln!(s, "{:<10} {other:<7}", "other");
+    }
+    let prefixes: std::collections::BTreeSet<_> = table.iter().map(|r| r.net.to_string()).collect();
+    let _ = writeln!(s, "{:<10} {:<7} {} distinct prefix{}", "total", table.len(), prefixes.len(), if prefixes.len() == 1 { "" } else { "es" });
+    match table.iter().find(|r| r.net.prefix == 0) {
+        Some(r) => {
+            let via = r.via.map(|v| format!("via {v}")).or_else(|| r.iface.as_ref().map(|i| format!("out {i}"))).unwrap_or_default();
+            let _ = write!(s, "Default route: {via}");
+        }
+        None => s.push_str("No default route"),
+    }
+    s
+}
+
 pub fn ip_route_table(d: &Device, table: &[netlabcraft_sim::RouteEntry]) -> String {
     let mut s = String::from(
         "Codes: C connected, L local, S static, R RIP, D EIGRP, O OSPF, O IA OSPF other area, O E2 OSPF external, O*E2 OSPF external default, O*IA default into a stub area, * the default route\n\n",
@@ -731,25 +771,27 @@ pub fn interfaces(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
             continue;
         }
         let end = End { device: d.id, port: i };
-        let link = if p.err_disabled {
-            format!("down (err-disabled by {})", crate::exec::l2sec::cause_words(p.l2.err_cause))
+        // The port's status (what the cable and the administrator say) and its line protocol
+        // (whether frames can be exchanged): the two words students filter on.
+        let (status, proto) = if p.err_disabled {
+            (format!("down (err-disabled by {})", crate::exec::l2sec::cause_words(p.l2.err_cause)), "down (err-disabled)".to_string())
         } else if p.shutdown {
-            "administratively down".to_string()
+            ("administratively down".to_string(), "down".to_string())
         } else if port_up(t, end) {
-            "up".to_string()
+            ("up".to_string(), "up".to_string())
         } else if t.peer(end).is_none() {
-            "down (no cable)".to_string()
+            ("down (no cable)".to_string(), "down".to_string())
         } else if let Some(why) = netlabcraft_sim::serial_problem(t, end) {
-            format!("up, line protocol down ({why})")
+            ("up".to_string(), format!("down ({why})"))
         } else if let Some(why) = netlabcraft_sim::cable_problem(t, end) {
-            format!("down ({why})")
+            (format!("down ({why})"), "down".to_string())
         } else if netlabcraft_sim::speed_mismatch(t, end) {
-            "down (speed mismatch with the far end)".to_string()
+            ("down (speed mismatch with the far end)".to_string(), "down".to_string())
         } else {
-            "down (far end shut down)".to_string()
+            ("down (far end shut down)".to_string(), "down".to_string())
         };
         if only.is_none_or(|r| r.sub.is_none()) {
-            let _ = writeln!(s, "{} is {link}", p.name);
+            let _ = writeln!(s, "{} is {status}, line protocol is {proto}", p.name);
             if netlabcraft_model::ifname::is_serial(&p.name) {
                 let _ = writeln!(s, "  Encapsulation {}, serial", p.serial.encapsulation.name());
             } else {
@@ -781,14 +823,14 @@ pub fn interfaces(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
             if only.is_some_and(|r| r.sub.is_some_and(|n| n != sub.number)) {
                 continue;
             }
-            let state = if sub.shutdown || p.shutdown {
-                "administratively down"
+            let (state, proto) = if sub.shutdown || p.shutdown {
+                ("administratively down", "down")
             } else if port_up(t, end) {
-                "up"
+                ("up", "up")
             } else {
-                "down"
+                ("down", "down")
             };
-            let _ = writeln!(s, "{}.{} is {state}", p.name, sub.number);
+            let _ = writeln!(s, "{}.{} is {state}, line protocol is {proto}", p.name, sub.number);
             match sub.vlan {
                 Some(v) => {
                     let _ = writeln!(s, "  802.1Q VLAN {v}");
@@ -1342,6 +1384,61 @@ pub fn ip_protocols(
     parts.join("\n\n")
 }
 
+/// `show ip protocols summary`: one line for each routing protocol the router runs.
+pub fn ip_protocols_summary(
+    d: &Device,
+    st: &netlabcraft_sim::ospf::OspfState,
+    rs: &netlabcraft_sim::rip::RipState,
+    es: &netlabcraft_sim::eigrp::EigrpState,
+) -> String {
+    let mut rows: Vec<String> = Vec::new();
+    let row = |name: &str, id: String, rid: String, ifs: usize, passive: usize, nbrs: usize, routes: usize| {
+        format!("{name:<8} {id:<8} {rid:<16} {ifs:<11} {passive:<8} {nbrs:<11} {routes}")
+    };
+    if let Some(o) = &d.ospf {
+        let ifs = st.interfaces.get(&d.id).map_or(&[][..], Vec::as_slice);
+        rows.push(row(
+            "OSPF",
+            o.process.to_string(),
+            st.router_ids.get(&d.id).map_or("-".to_string(), ToString::to_string),
+            ifs.len(),
+            ifs.iter().filter(|i| i.3).count(),
+            st.neighbors.get(&d.id).map_or(0, Vec::len),
+            st.routes.get(&d.id).map_or(0, Vec::len),
+        ));
+    }
+    if let Some(e) = &d.eigrp {
+        let ifs = es.interfaces.get(&d.id).map_or(&[][..], Vec::as_slice);
+        rows.push(row(
+            "EIGRP",
+            format!("AS {}", e.asn),
+            es.router_ids.get(&d.id).map_or("-".to_string(), ToString::to_string),
+            ifs.len(),
+            ifs.iter().filter(|i| i.passive).count(),
+            es.neighbors.get(&d.id).map_or(0, Vec::len),
+            es.routes.get(&d.id).map_or(0, Vec::len),
+        ));
+    }
+    if let Some(r) = &d.rip {
+        let ifs = rs.interfaces.get(&d.id).map_or(&[][..], Vec::as_slice);
+        rows.push(row(
+            "RIP",
+            format!("v{}", r.version),
+            "-".to_string(),
+            ifs.len(),
+            ifs.iter().filter(|i| i.2).count(),
+            rs.neighbors.get(&d.id).map_or(0, Vec::len),
+            rs.routes.get(&d.id).map_or(0, Vec::len),
+        ));
+    }
+    if rows.is_empty() {
+        return "No routing protocol is running (static routes only).".into();
+    }
+    let mut s = format!("{:<8} {:<8} {:<16} {:<11} {:<8} {:<11} Routes\n", "Protocol", "ID", "Router ID", "Interfaces", "Passive", "Neighbours");
+    s.push_str(&rows.join("\n"));
+    s
+}
+
 fn eigrp_protocol(d: &Device, st: &netlabcraft_sim::eigrp::EigrpState) -> String {
     let Some(e) = &d.eigrp else { return String::new() };
     let mut s = format!("Routing protocol: EIGRP, autonomous system {}\n", e.asn);
@@ -1524,6 +1621,18 @@ pub(crate) fn ospf_if_lines(s: &mut String, d: &Device, name: &str) {
         if let Some((p, a)) = o.area {
             let _ = writeln!(s, " ip ospf {p} area {a}");
         }
+        match o.auth {
+            Some(netlabcraft_model::OspfAuthKind::Simple) => s.push_str(" ip ospf authentication\n"),
+            Some(netlabcraft_model::OspfAuthKind::Md5) => s.push_str(" ip ospf authentication message-digest\n"),
+            Some(netlabcraft_model::OspfAuthKind::Null) => s.push_str(" ip ospf authentication null\n"),
+            None => {}
+        }
+        if let Some(k) = &o.auth_key {
+            let _ = writeln!(s, " ip ospf authentication-key {k}");
+        }
+        for (id, k) in &o.md5_keys {
+            let _ = writeln!(s, " ip ospf message-digest-key {id} md5 {k}");
+        }
     }
 }
 
@@ -1574,22 +1683,28 @@ pub fn access_lists(sim: &Sim, d: &Device, only: Option<&str>) -> String {
     for a in d.acls.iter().filter(|a| only.is_none_or(|n| a.name.eq_ignore_ascii_case(n))) {
         let _ = writeln!(s, "{} access list {}", if a.extended { "Extended" } else { "Standard" }, a.name);
         for (i, e) in a.entries.iter().enumerate() {
-            let n = hits.get(&(a.name.clone(), i)).copied().unwrap_or(0);
+            let n = hits.get(&(a.name.clone(), a.hit_key(Some(i)))).copied().unwrap_or(0);
             let m = if n > 0 { format!(" ({n} match{})", if n == 1 { "" } else { "es" }) } else { String::new() };
             let _ = writeln!(s, "    {} {}{m}", a.seq_of(i), e.text(a.extended));
         }
-        let implicit = hits.get(&(a.name.clone(), usize::MAX)).copied().unwrap_or(0);
+        let implicit = hits.get(&(a.name.clone(), a.hit_key(None))).copied().unwrap_or(0);
         let _ = writeln!(s, "    (implicit) deny everything else{}", if implicit > 0 { format!(" ({implicit} matches)") } else { String::new() });
     }
     s.trim_end().to_string()
 }
 
 /// `show ip nat translations`.
-pub fn nat_translations(sim: &Sim, d: &Device) -> String {
+pub fn nat_translations(sim: &Sim, d: &Device, verbose: bool) -> String {
     let fmt = |a: Ipv4Addr, id: Option<u16>| id.map_or(a.to_string(), |i| format!("{a}:{i}"));
+    let now = sim.now_us();
+    let ago = |t: u64| format!("{} s ago", now.saturating_sub(t) / 1_000_000);
     let mut rows: Vec<String> = Vec::new();
     for (l, g) in &d.nat.statics {
-        rows.push(format!("{:<6} {:<22} {:<22} {}", "---", g.to_string(), l.to_string(), "---"));
+        let mut row = format!("{:<6} {:<22} {:<22} {}", "---", g.to_string(), l.to_string(), "---");
+        if verbose {
+            row.push_str("\n    static entry from the configuration, never ages out");
+        }
+        rows.push(row);
     }
     if let Some(st) = sim.state(d.id) {
         for e in st.nat.iter().filter(|e| !e.fixed || e.local_id.is_some()) {
@@ -1599,7 +1714,23 @@ pub fn nat_translations(sim: &Sim, d: &Device) -> String {
                 6 => "tcp",
                 _ => "ip",
             };
-            rows.push(format!("{proto:<6} {:<22} {:<22} {}", fmt(e.inside_global, e.global_id), fmt(e.inside_local, e.local_id), e.outside));
+            let mut row = format!("{proto:<6} {:<22} {:<22} {}", fmt(e.inside_global, e.global_id), fmt(e.inside_local, e.local_id), e.outside);
+            if verbose {
+                let kind = match (e.fixed, e.local_id.is_some()) {
+                    (true, _) => "static, with a flow of its own",
+                    (false, true) => "dynamic, translated per flow (port or identifier)",
+                    (false, false) => "dynamic, address only",
+                };
+                let _ = write!(
+                    row,
+                    "\n    {kind}; created {}, last used {}, {} packet{} translated",
+                    ago(e.created_us),
+                    ago(e.last_us),
+                    e.uses,
+                    if e.uses == 1 { "" } else { "s" }
+                );
+            }
+            rows.push(row);
         }
     }
     if rows.is_empty() {
@@ -1879,14 +2010,14 @@ pub fn ip_interface(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
             }
         }
         for (name, ip, acl, helpers, nat, down) in rows {
-            let state = if down {
-                "administratively down"
+            let (state, proto) = if down {
+                ("administratively down", "down")
             } else if port_up(t, end) {
-                "up"
+                ("up", "up")
             } else {
-                "down"
+                ("down", "down")
             };
-            let mut s = format!("{name} is {state}\n");
+            let mut s = format!("{name} is {state}, line protocol is {proto}\n");
             match ip {
                 Some(ip) => {
                     let _ = writeln!(s, "  Address {ip}, broadcast {}", ip.broadcast());
@@ -1910,7 +2041,11 @@ pub fn ip_interface(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
         }
     }
     for svi in d.svis.iter().filter(|_| only.is_none()) {
-        let mut s = format!("Vlan{} is {}\n", svi.vlan, if svi.shutdown { "administratively down" } else { "up" });
+        let mut s = if svi.shutdown {
+            format!("Vlan{} is administratively down, line protocol is down\n", svi.vlan)
+        } else {
+            format!("Vlan{} is up, line protocol is up\n", svi.vlan)
+        };
         match svi.ip {
             Some(ip) => {
                 let _ = write!(s, "  Address {ip}, broadcast {}", ip.broadcast());
@@ -1992,14 +2127,14 @@ pub fn flash(d: &Device) -> String {
 pub fn svi_interface(t: &Topology, d: &Device, vlan: u16) -> Result<String, String> {
     let svi = d.svis.iter().find(|s| s.vlan.get() == vlan).ok_or(format!("% No interface Vlan{vlan} (create it with `interface vlan {vlan}`)"))?;
     let up = netlabcraft_sim::up_ifaces(t, d).iter().any(|i| i.name == format!("Vlan{vlan}"));
-    let state = if svi.shutdown {
-        "administratively down"
+    let (state, proto) = if svi.shutdown {
+        ("administratively down", "down")
     } else if up {
-        "up"
+        ("up", "up")
     } else {
-        "down (no port of the VLAN is up)"
+        ("down (no port of the VLAN is up)", "down")
     };
-    let mut s = format!("Vlan{vlan} is {state}\n  Hardware address {}\n", netlabcraft_sim::svi_mac(d));
+    let mut s = format!("Vlan{vlan} is {state}, line protocol is {proto}\n  Hardware address {}\n", netlabcraft_sim::svi_mac(d));
     if !svi.description.is_empty() {
         let _ = writeln!(s, "  Description: {}", svi.description);
     }
@@ -2546,6 +2681,17 @@ pub fn ospf_interface(d: &Device, st: &netlabcraft_sim::ospf::OspfState, typed: 
         None => {}
     }
     let _ = writeln!(s, "  Hello every {hello} s, dead after {dead} s");
+    if let Some(ifc) = netlabcraft_sim::l3_ifaces(d).into_iter().find(|i| i.name == name) {
+        let auth = match netlabcraft_sim::ospf::auth_kind(d, &ifc) {
+            netlabcraft_model::OspfAuthKind::Null => "none".to_string(),
+            netlabcraft_model::OspfAuthKind::Simple => "clear-text password".to_string(),
+            netlabcraft_model::OspfAuthKind::Md5 => match d.ospf_if.get(&name).and_then(|o| o.md5_keys.keys().next_back()) {
+                Some(k) => format!("message digest, signing with key {k}"),
+                None => "message digest, no key configured".to_string(),
+            },
+        };
+        let _ = writeln!(s, "  Authentication: {auth}");
+    }
     let _ = write!(s, "  Neighbours on this interface: {neighbours}");
     Ok(s)
 }
@@ -2693,9 +2839,9 @@ fn crypto_map_line(s: &mut String, d: &Device, name: &str) {
 fn tunnel_block(t: &Topology, d: &Device, tun: &netlabcraft_model::vpn::Tunnel) -> String {
     let mut s = String::new();
     let state = match netlabcraft_sim::vpn::tunnel_status(t, d, tun.number) {
-        Ok(_) => "up, line protocol up".to_string(),
-        Err(_) if tun.shutdown => "administratively down".to_string(),
-        Err(why) => format!("up, line protocol down ({why})"),
+        Ok(_) => "up, line protocol is up".to_string(),
+        Err(_) if tun.shutdown => "administratively down, line protocol is down".to_string(),
+        Err(why) => format!("up, line protocol is down ({why})"),
     };
     let _ = writeln!(s, "{} is {state}", tun.name());
     if !tun.description.is_empty() {

@@ -372,6 +372,39 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             }
             Ok(show_stp_summary(c.t, c.sim, &d, &trees))
         }
+        L2ShowStpBrief | L2ShowStpDetailAll => {
+            let d = c.d()?.clone();
+            let mut trees = Vec::new();
+            for v in d.vlans.keys().copied() {
+                let tree = c.sim.spanning_tree(c.t, v).clone();
+                if tree.bridges.contains_key(&d.id) {
+                    trees.push((v, tree));
+                }
+            }
+            if trees.is_empty() {
+                return Ok("No VLAN has a port in a spanning tree yet.".into());
+            }
+            if id == L2ShowStpBrief {
+                return Ok(show_stp_brief(c.t, c.sim, &d, &trees));
+            }
+            let all: Vec<String> = trees.iter().map(|(v, tree)| show_stp_detail(c.t, c.sim, &d, *v, tree)).collect();
+            Ok(all.join("\n\n"))
+        }
+        L2ShowStpInterface => {
+            let d = c.d()?.clone();
+            let r = c.iface_ref(arg(0).trim())?;
+            if r.sub.is_some() || !d.is_switchport(r.port) {
+                return Err("% That is not a switch port: it takes no part in spanning tree".into());
+            }
+            let mut trees = Vec::new();
+            for v in d.vlans.keys().copied() {
+                let tree = c.sim.spanning_tree(c.t, v).clone();
+                if tree.bridges.contains_key(&d.id) {
+                    trees.push((v, tree));
+                }
+            }
+            Ok(show_stp_interface(c.t, c.sim, &d, r.port, &trees))
+        }
         L2ShowStpDetail => {
             let v: VlanId = arg(0).parse().map_err(|e| format!("% {e}"))?;
             let d = c.d()?.clone();
@@ -853,6 +886,91 @@ fn show_stp_detail(t: &Topology, sim: &Sim, d: &Device, vlan: VlanId, tree: &net
             on_off(netlabcraft_sim::stp::loop_guard_on(t, d.id, *p)),
             on_off(netlabcraft_sim::stp::bpdufilter_on(d, *p))
         );
+    }
+    s.trim_end().to_string()
+}
+
+/// `show spanning-tree brief`: a row per VLAN.
+fn show_stp_brief(t: &Topology, sim: &Sim, d: &Device, trees: &[(VlanId, netlabcraft_sim::stp::VlanTree)]) -> String {
+    let mut s = format!("{:<10} {:<31} {:<7} {:<10} {:<4} {:<4} Blk\n", "VLAN", "Root bridge", "Cost", "Root port", "Fwd", "Lrn");
+    for (v, tree) in trees {
+        let Some(me) = tree.bridges.get(&d.id) else { continue };
+        let (mut fwd, mut lrn, mut blk) = (0usize, 0usize, 0usize);
+        for ((_, p), info) in tree.ports.iter().filter(|((dev, _), i)| *dev == d.id && i.role != Role::Disabled) {
+            match port_state(sim, d, *p, *v, info.role) {
+                "BLK" => blk += 1,
+                "LIS" | "LRN" => lrn += 1,
+                _ => fwd += 1,
+            }
+        }
+        let root = if me.root == me.id {
+            format!("{} {} (this switch)", me.root.priority, me.root.mac.dotted())
+        } else {
+            format!("{} {}", me.root.priority, me.root.mac.dotted())
+        };
+        let via = if me.root == me.id {
+            "-".to_string()
+        } else {
+            me.root_port.filter(|p| d.ports.get(*p).is_some()).map_or("-".to_string(), |p| netlabcraft_sim::channel::port_label(t, d, p, true))
+        };
+        let _ = writeln!(s, "VLAN{:04}   {root:<31} {:<7} {via:<10} {fwd:<4} {lrn:<4} {blk}", v.get(), me.root_cost);
+    }
+    s.trim_end().to_string()
+}
+
+/// `show spanning-tree interface X`: the port's settings, then its role and state in each VLAN.
+fn show_stp_interface(t: &Topology, sim: &Sim, d: &Device, port: usize, trees: &[(VlanId, netlabcraft_sim::stp::VlanTree)]) -> String {
+    let Some(p) = d.ports.get(port) else { return "% No such port".into() };
+    let label = netlabcraft_sim::channel::port_label(t, d, port, false);
+    let edge = netlabcraft_sim::l2sec::edge_port(t, d, port);
+    let mut s = format!(
+        "{label}: edge port {}; BPDU guard {}; root guard {}; loop guard {}; BPDU filter {}\n",
+        if edge { "yes" } else { "no" },
+        on_off(netlabcraft_sim::l2sec::bpduguard_on(t, d, port)),
+        on_off(p.l2.root_guard),
+        on_off(netlabcraft_sim::stp::loop_guard_on(t, d.id, port)),
+        on_off(netlabcraft_sim::stp::bpdufilter_on(d, port))
+    );
+    let mut rows = 0usize;
+    let _ = writeln!(s, "{:<10} {:<11} {:<17} {:<7} {:<8} Type", "VLAN", "Role", "State", "Cost", "Port ID");
+    for (v, tree) in trees {
+        let Some(info) = tree.ports.get(&(d.id, port)).filter(|i| i.role != Role::Disabled) else { continue };
+        rows += 1;
+        let role = match info.role {
+            Role::Root => "root",
+            Role::Designated => "designated",
+            Role::Alternate => "alternate",
+            Role::Disabled => "disabled",
+        };
+        let state = if tree.inconsistent.contains(&(d.id, port)) {
+            "blocked (root guard)"
+        } else if tree.loop_inconsistent.contains(&(d.id, port)) {
+            "blocked (loop guard)"
+        } else {
+            match port_state(sim, d, port, *v, info.role) {
+                "LIS" => "listening",
+                "LRN" => "learning",
+                "BLK" => "blocking",
+                _ => "forwarding",
+            }
+        };
+        let kind = if edge {
+            "edge"
+        } else if t.peer(End { device: d.id, port }).and_then(|q| t.device(q.device)).is_some_and(|x| x.kind == DeviceKind::Switch) {
+            "point-to-point"
+        } else {
+            "point-to-point (host)"
+        };
+        let _ = writeln!(
+            s,
+            "VLAN{:04}   {role:<11} {state:<17} {:<7} {:<8} {kind}",
+            v.get(),
+            info.cost,
+            format!("{}.{}", info.port_id / 1000, info.port_id % 1000)
+        );
+    }
+    if rows == 0 {
+        s.push_str("(this port is in no spanning tree: it is down, or its VLANs have no tree)");
     }
     s.trim_end().to_string()
 }

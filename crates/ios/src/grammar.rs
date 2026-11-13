@@ -322,6 +322,9 @@ pub enum Id {
     L2NoStpVlanPortPriority,
     L2ShowStpSummary,
     L2ShowStpDetail,
+    L2ShowStpBrief,
+    L2ShowStpDetailAll,
+    L2ShowStpInterface,
     L2LoadBalance,
     L2NoLoadBalance,
     L2ShowLoadBalance,
@@ -417,6 +420,14 @@ pub enum Id {
     NoIpOspfDead,
     IpOspfNetwork,
     NoIpOspfNetwork,
+    IpOspfAuth,
+    NoIpOspfAuth,
+    IpOspfAuthKey,
+    NoIpOspfAuthKey,
+    IpOspfMd5Key,
+    NoIpOspfMd5Key,
+    AreaAuth,
+    NoAreaAuth,
     OspfRedistributeStatic,
     NoOspfRedistributeStatic,
     Ipv6RouterOspf,
@@ -1084,7 +1095,7 @@ pub static SPECS: &[Spec] = &[
         ShowIpRoute,
         EXECS,
         Modes::BOTH,
-        [K("show"), K("ip"), K("route"), Arg("{connected|static|eigrp|ospf|rip}")],
+        [K("show"), K("ip"), K("route"), Arg("{connected|static|eigrp|ospf|rip|summary}")],
         "Only the routes one source gave"
     ),
     spec!(
@@ -1239,6 +1250,13 @@ pub static SPECS: &[Spec] = &[
     ),
     spec!(NoNatPool, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("nat"), K("pool"), Arg("WORD")], "Delete a NAT pool"),
     spec!(ShowNat, EXECS, Modes::BOTH, [K("show"), K("ip"), K("nat"), K("translations")], "Translations in use"),
+    spec!(
+        ShowNat,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("nat"), K("translations"), Arg("verbose")],
+        "Translations in use, with their age, last use and packet count"
+    ),
     spec!(ClearNatStats, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("nat"), K("statistics")], "Reset the NAT hit and miss counts"),
     spec!(ClearNat, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("nat"), K("translation"), Rest("*")], "Forget dynamic translations"),
     // ---- loopback interfaces (`interface Loopback N`) ----
@@ -1309,6 +1327,44 @@ pub static SPECS: &[Spec] = &[
         "Link type: point-to-point elects no DR"
     ),
     spec!(NoIpOspfNetwork, OSPF_IFS, Modes::BOTH, [K("no"), K("ip"), K("ospf"), K("network")], "The link type its medium has"),
+    spec!(IpOspfAuth, OSPF_IFS, Modes::BOTH, [K("ip"), K("ospf"), K("authentication")], "Authenticate OSPF packets here with a clear-text password"),
+    spec!(NoIpOspfAuth, OSPF_IFS, Modes::BOTH, [K("no"), K("ip"), K("ospf"), K("authentication")], "Use the area's authentication again"),
+    spec!(
+        IpOspfAuth,
+        OSPF_IFS,
+        Modes::BOTH,
+        [K("ip"), K("ospf"), K("authentication"), Rest("[message-digest|null]")],
+        "Authenticate OSPF packets here: a password, or message digests"
+    ),
+    spec!(
+        NoIpOspfAuth,
+        OSPF_IFS,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("ospf"), K("authentication"), Rest("[message-digest|null]")],
+        "Use the area's authentication again"
+    ),
+    spec!(
+        IpOspfAuthKey,
+        OSPF_IFS,
+        Modes::BOTH,
+        [K("ip"), K("ospf"), K("authentication-key"), Arg("KEY")],
+        "The clear-text password (eight characters count)"
+    ),
+    spec!(NoIpOspfAuthKey, OSPF_IFS, Modes::BOTH, [K("no"), K("ip"), K("ospf"), K("authentication-key")], "Forget the password"),
+    spec!(
+        IpOspfMd5Key,
+        OSPF_IFS,
+        Modes::BOTH,
+        [K("ip"), K("ospf"), K("message-digest-key"), Arg("<1-255>"), K("md5"), Arg("KEY")],
+        "A message-digest key, by id"
+    ),
+    spec!(
+        NoIpOspfMd5Key,
+        OSPF_IFS,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("ospf"), K("message-digest-key"), Arg("<1-255>")],
+        "Remove a message-digest key"
+    ),
     spec!(OspfRedistributeStatic, Modes::OSPF, Modes::BOTH, [K("redistribute"), K("static")], "Advertise static routes as external"),
     spec!(
         OspfRedistributeStatic,
@@ -1328,6 +1384,13 @@ pub static SPECS: &[Spec] = &[
     spec!(ClearIpOspf, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("ospf"), K("process")], "Restart OSPF: neighbours and DR elections anew"),
     spec!(ClearIpOspf, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("ospf"), Arg("<1-65535>"), K("process")], "Restart this OSPF process"),
     spec!(ShowIpOspfDatabase, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf"), K("database")], "OSPF link-state database"),
+    spec!(
+        ShowIpOspfDatabase,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("ospf"), K("database"), Rest("{router|network|summary|external} [A.B.C.D]")],
+        "One kind of LSA in full: router, network, summary or external"
+    ),
     spec!(ShowOspfNeighborDetail, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf"), K("neighbor"), K("detail")], "OSPF neighbours in full"),
     // ---- site-to-site VPN: GRE tunnels (`interface Tunnel N`) and IPsec ----
     spec!(IpAddress, Modes::TUNNEL, Modes::ROUTER, [K("ip"), K("address"), Arg("A.B.C.D"), Arg("MASK")], "Set the tunnel's address"),
@@ -1780,16 +1843,16 @@ pub static SPECS: &[Spec] = &[
         Modes::EXEC,
         Modes::ROUTER,
         [K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello")],
-        "Report the OSPF hellos this router hears"
+        "Report OSPF: hellos heard, adjacency states, or events"
     ),
     spec!(
         NoDebugIpOspf,
         Modes::EXEC,
         Modes::ROUTER,
         [K("no"), K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello")],
-        "Stop reporting OSPF hellos"
+        "Stop one kind of OSPF report"
     ),
-    spec!(NoDebugIpOspf, Modes::EXEC, Modes::ROUTER, [K("no"), K("debug"), K("ip"), K("ospf")], "Stop reporting OSPF hellos"),
+    spec!(NoDebugIpOspf, Modes::EXEC, Modes::ROUTER, [K("no"), K("debug"), K("ip"), K("ospf")], "Stop every OSPF report"),
     spec!(ShowDebugging, EXECS, Modes::BOTH, [K("show"), K("debugging")], "Which debugs are on"),
     spec!(StandbyIp, IFS, Modes::ROUTER, [K("standby"), Arg("<0-255>"), K("ip"), Arg("A.B.C.D")], "HSRP: the group's virtual gateway address"),
     spec!(StandbyIpGroup0, IFS, Modes::ROUTER, [K("standby"), K("ip"), Arg("A.B.C.D")], "HSRP group 0's virtual gateway address"),
@@ -1940,6 +2003,28 @@ pub static SPECS: &[Spec] = &[
         Modes::BOTH,
         [K("no"), K("area"), Arg("<0-4294967295>"), K("range"), Arg("A.B.C.D"), Arg("A.B.C.D")],
         "Stop summarising"
+    ),
+    spec!(
+        AreaAuth,
+        Modes::OSPF,
+        Modes::BOTH,
+        [K("area"), Arg("<0-4294967295>"), K("authentication")],
+        "Authenticate OSPF packets on every interface of this area with a password"
+    ),
+    spec!(NoAreaAuth, Modes::OSPF, Modes::BOTH, [K("no"), K("area"), Arg("<0-4294967295>"), K("authentication")], "No area-wide authentication"),
+    spec!(
+        AreaAuth,
+        Modes::OSPF,
+        Modes::BOTH,
+        [K("area"), Arg("<0-4294967295>"), K("authentication"), Rest("[message-digest]")],
+        "Authenticate OSPF packets on every interface of this area"
+    ),
+    spec!(
+        NoAreaAuth,
+        Modes::OSPF,
+        Modes::BOTH,
+        [K("no"), K("area"), Arg("<0-4294967295>"), K("authentication"), Rest("[message-digest]")],
+        "No area-wide authentication"
     ),
     spec!(ShowIpOspf, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf")], "OSPF process summary"),
     spec!(ShowIpOspfInterface, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf"), K("interface")], "OSPF interfaces: area, cost, state"),
@@ -2261,6 +2346,13 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowGlbp, EXECS, Modes::BOTH, [K("show"), K("glbp"), Arg("{brief}")], "GLBP groups, one line each"),
     spec!(ShowIpv6Ospf, EXECS, Modes::BOTH, [K("show"), K("ipv6"), K("ospf")], "OSPFv3 process"),
     spec!(ShowIpProtocols, EXECS, Modes::BOTH, [K("show"), K("ip"), K("protocols")], "Routing protocols running"),
+    spec!(
+        ShowIpProtocols,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("protocols"), Arg("summary")],
+        "One line per routing protocol: router ID, interfaces, neighbours, routes"
+    ),
     spec!(HelperAddress, IFS, Modes::ROUTER, [K("ip"), K("helper-address"), Arg("A.B.C.D")], "Relay DHCP requests to this server"),
     spec!(NoHelperAddress, IFS, Modes::ROUTER, [K("no"), K("ip"), K("helper-address"), Rest("[A.B.C.D]")], "Stop relaying (to one server)"),
     spec!(NoHelperAddress, IFS, Modes::ROUTER, [K("no"), K("ip"), K("helper-address")], "Stop relaying DHCP requests"),
@@ -2854,6 +2946,21 @@ pub static SPECS: &[Spec] = &[
         Modes::SWITCH,
         [K("show"), K("spanning-tree"), K("vlan"), Arg("<1-4094>"), K("detail")],
         "One VLAN's tree, port by port"
+    ),
+    spec!(
+        L2ShowStpBrief,
+        EXECS,
+        Modes::SWITCH,
+        [K("show"), K("spanning-tree"), K("brief")],
+        "One line per VLAN: the root, its cost, the root port and how many ports forward, learn or block"
+    ),
+    spec!(L2ShowStpDetailAll, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree"), K("detail")], "Every VLAN's tree, port by port"),
+    spec!(
+        L2ShowStpInterface,
+        EXECS,
+        Modes::SWITCH,
+        [K("show"), K("spanning-tree"), K("interface"), Rest("<interface>")],
+        "One port's role and state in every VLAN, and its protection settings"
     ),
     spec!(
         L2RecoveryCause,
