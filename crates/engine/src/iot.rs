@@ -4,6 +4,7 @@
 
 use netlabcraft_core::parse_ip;
 use netlabcraft_model::DeviceKind;
+use netlabcraft_model::environment::{MAX_CO, MAX_TEMP, MIN_TEMP, QUANTITIES};
 use netlabcraft_model::iot::{Condition, IotRule, MAX_CONDITIONS, MAX_INTERVAL, MAX_RULES, MAX_VALUE, MIN_VALUE, Op, can_serve, is_sensor, thing};
 use serde_json::{Value, json};
 
@@ -22,13 +23,104 @@ pub(crate) fn thing_page(s: &Session, d: netlabcraft_core::DeviceId) -> Value {
         "kind": if is_sensor(dev) { "sensor" } else { "device" },
         "what": thing(dev).map(|t| t.what),
         "server": dev.iot.server.map(|a| a.to_string()),
-        "value": is_sensor(dev).then_some(dev.iot.value),
+        "value": is_sensor(dev).then(|| s.sim.iot_reading(&s.topology, dev)),
         "interval": dev.iot.interval,
         "registered": st.registered.map(|a| a.to_string()),
         "on": (!is_sensor(dev)).then_some(st.on),
         "image": st.image,
         "message": st.message,
     })
+}
+
+/// The room: its settings, and its values now while the physics runs.
+pub(crate) fn environment(s: &Session) -> Value {
+    let e = &s.topology.environment;
+    let room = s.sim.environment().map(|c| {
+        let mut m = serde_json::Map::new();
+        for q in QUANTITIES {
+            m.insert(q.into(), json!(c.reading(q)));
+        }
+        m.insert("light".into(), json!(c.light));
+        Value::Object(m)
+    });
+    json!({
+        "enabled": e.enabled,
+        "outside": {"temperature": e.outside_temperature, "humidity": e.outside_humidity, "light": e.outside_light},
+        "start": {"temperature": e.temperature, "humidity": e.humidity, "soil": e.soil, "smoke": e.smoke, "co": e.co, "motion": e.motion},
+        "room": room,
+    })
+}
+
+/// `iot.environment`: reads or changes the shared room.
+fn set_environment(s: &mut Session, p: &Value) -> Result<Value> {
+    let whole = |k: &str, lo: i32, hi: i32| -> Result<Option<i32>> {
+        match p.get(k) {
+            None => Ok(None),
+            Some(v) => v
+                .as_i64()
+                .filter(|v| (i64::from(lo)..=i64::from(hi)).contains(v))
+                .and_then(|v| i32::try_from(v).ok())
+                .map(Some)
+                .ok_or_else(|| bad(format!("`{k}` is a whole number from {lo} to {hi}"))),
+        }
+    };
+    let flag = |k: &str| -> Result<Option<bool>> {
+        match p.get(k) {
+            None => Ok(None),
+            Some(Value::Bool(b)) => Ok(Some(*b)),
+            Some(_) => Err(bad(format!("`{k}` is true or false"))),
+        }
+    };
+    let enabled = flag("enabled")?;
+    let reset = flag("reset")?.unwrap_or(false);
+    let temperature = whole("temperature", MIN_TEMP, MAX_TEMP)?;
+    let humidity = whole("humidity", 0, 100)?;
+    let soil = whole("soil", 0, 100)?;
+    let smoke = whole("smoke", 0, 100)?;
+    let co = whole("co", 0, MAX_CO)?;
+    let motion = whole("motion", 0, 1)?;
+    let out_t = whole("outside_temperature", MIN_TEMP, MAX_TEMP)?;
+    let out_h = whole("outside_humidity", 0, 100)?;
+    let out_l = whole("outside_light", 0, 100)?;
+    let touched = [temperature, humidity, soil, smoke, co, motion, out_t, out_h, out_l].iter().any(Option::is_some);
+    if enabled.is_some() || touched || reset {
+        s.checkpoint();
+        let e = &mut s.topology.environment;
+        let was = e.enabled;
+        if let Some(v) = enabled {
+            e.enabled = v;
+        }
+        let set = |slot: &mut i32, v: Option<i32>| {
+            if let Some(v) = v {
+                *slot = v;
+            }
+        };
+        set(&mut e.temperature, temperature);
+        set(&mut e.humidity, humidity);
+        set(&mut e.soil, soil);
+        set(&mut e.smoke, smoke);
+        set(&mut e.co, co);
+        set(&mut e.motion, motion);
+        set(&mut e.outside_temperature, out_t);
+        set(&mut e.outside_humidity, out_h);
+        set(&mut e.outside_light, out_l);
+        if reset || was != e.enabled {
+            s.sim.env_reset();
+        }
+        s.changed();
+        // The values given now are also the room's values now.
+        if s.topology.environment.enabled {
+            s.sim.env_step(&s.topology);
+            for (q, v) in [("temperature", temperature), ("humidity", humidity), ("soil", soil), ("smoke", smoke), ("co", co), ("motion", motion)] {
+                if let Some(v) = v {
+                    s.sim.env_set(&s.topology, q, v);
+                }
+            }
+        }
+        s.sim.iot_sync(&s.topology);
+    }
+    s.revision += 1;
+    Ok(environment(s))
 }
 
 /// A rule as the commands give it back.
@@ -101,6 +193,7 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
             let things: Vec<Value> = s.topology.devices.iter().filter(|d| thing(d).is_some()).map(|d| thing_page(s, d.id)).collect();
             Ok(json!({"things": things}))
         }
+        "iot.environment" => set_environment(s, p),
         "iot.configure" => {
             let d = crate::cmd::device_param(s, p, "device")?;
             if s.topology.device(d).is_none_or(|x| x.kind != DeviceKind::Iot) {
@@ -146,6 +239,12 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
                 }
             }
             s.changed();
+            // With the physics on, a sensor's new reading is the room's new quantity.
+            if let (Some(v), true, Some(w)) = (value, s.topology.environment.enabled, s.topology.device(d).and_then(thing).map(|t| t.what)) {
+                let q = if w == "thermostat" { "temperature" } else { w };
+                s.sim.env_step(&s.topology);
+                s.sim.env_set(&s.topology, q, v);
+            }
             // A new reading goes to the server at once, and the devices hear what it decided.
             s.sim.iot_sync(&s.topology);
             Ok(thing_page(s, d))
@@ -232,5 +331,61 @@ mod tests {
         assert!(s.execute("iot.configure", json!({"device": "PC1", "value": 3})).is_err());
         assert!(s.execute("iot.server", json!({"device": "IoT-Server", "rules": [{"sensor": "x"}]})).is_err());
         assert!(s.execute("iot.server", json!({"device": "Sensor1", "service": true})).is_err());
+    }
+
+    fn temp(s: &mut Session) -> i64 {
+        s.execute("iot.environment", json!({})).unwrap()["room"]["temperature"].as_i64().unwrap()
+    }
+
+    #[test]
+    fn a_thermostat_rule_closes_the_loop_in_simulated_time() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"sample": "iot-climate"})).unwrap();
+        s.execute("iot.sync", json!({})).unwrap();
+        assert_eq!(temp(&mut s), 15);
+        // The first window lets the rule settle on the heater; the room then warms.
+        s.execute("sim.advance", json!({"seconds": 600})).unwrap();
+        let warm = temp(&mut s);
+        assert!(warm >= 18, "ten minutes of heating from 15: {warm}");
+        s.execute("sim.advance", json!({"seconds": 1200})).unwrap();
+        let t = temp(&mut s);
+        assert!((18..=21).contains(&t), "it holds near the 19 degree threshold: {t}");
+        // The same run again gives the same number: the model is deterministic.
+        let mut again = Session::new();
+        again.execute("file.new", json!({"sample": "iot-climate"})).unwrap();
+        again.execute("iot.sync", json!({})).unwrap();
+        again.execute("sim.advance", json!({"seconds": 600})).unwrap();
+        again.execute("sim.advance", json!({"seconds": 1200})).unwrap();
+        assert_eq!(temp(&mut again), t);
+        // A hot afternoon: the air conditioner cools it back down.
+        s.execute("iot.environment", json!({"temperature": 30})).unwrap();
+        s.execute("sim.advance", json!({"seconds": 600})).unwrap();
+        assert!(temp(&mut s) < 30);
+        let page = s.execute("iot.configure", json!({"device": "Thermo1"})).unwrap();
+        assert_eq!(page["value"].as_i64().unwrap(), temp(&mut s));
+    }
+
+    #[test]
+    fn environment_command_validates_and_old_labs_keep_their_own_numbers() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"sample": "iot"})).unwrap();
+        let e = s.execute("iot.environment", json!({})).unwrap();
+        assert_eq!(e["enabled"], false);
+        assert!(e["room"].is_null());
+        for bad in [json!({"temperature": 500}), json!({"humidity": -1}), json!({"enabled": "yes"}), json!({"co": 2000}), json!({"motion": 2})] {
+            assert!(s.execute("iot.environment", bad).is_err());
+        }
+        // Off: the sensor still reads its own number.
+        let r = s.execute("iot.configure", json!({"device": "Sensor1", "value": 31})).unwrap();
+        assert_eq!(r["value"], 31);
+        // On: a sensor's new reading sets the room, and the room is what it reads.
+        s.execute("iot.environment", json!({"enabled": true, "temperature": 22})).unwrap();
+        assert_eq!(s.execute("iot.configure", json!({"device": "Sensor1"})).unwrap()["value"], 22);
+        s.execute("iot.configure", json!({"device": "Sensor1", "value": 35})).unwrap();
+        assert_eq!(temp(&mut s), 35);
+        // The settings survive a save and load.
+        let json = netlabcraft_model::file::to_json(&s.topology).unwrap();
+        let back = netlabcraft_model::file::from_json(&json).unwrap();
+        assert!(back.environment.enabled && back.environment.temperature == 22);
     }
 }

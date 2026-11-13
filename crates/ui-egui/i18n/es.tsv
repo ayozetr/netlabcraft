@@ -1356,3 +1356,52 @@ Topology: {} links	Topología: {} enlaces
 Software	Versión de software
 Variables (address: name=value, …)	Variables (dirección: nombre=valor, …)
 {{name}} in the template takes each router's value; {{address}} and {{hostname}} are built in.	{{name}} en la plantilla toma el valor de cada router; {{address}} y {{hostname}} vienen incluidas.
+Environment	Entorno
+Physics on (sensors read the room)	Física activa (los sensores leen la sala)
+Heaters, coolers, fans, windows and sprinklers change the room over simulated time	Calefactores, aires, ventiladores, ventanas y aspersores cambian la sala con el tiempo simulado
+Room: {} degrees, {} % humidity, {} % soil, smoke {} %, CO {} ppm, light {} %	Sala: {} grados, {} % de humedad, {} % de suelo, humo {} %, CO {} ppm, luz {} %
+Outside: {} degrees	Exterior: {} grados
+Change the outside temperature	Cambiar la temperatura exterior
+Reset room	Reiniciar la sala
+Start the room again from its starting values	Volver a empezar la sala desde sus valores iniciales
+IoT climate: rules close the loop in a room with physics	IoT con clima: las reglas cierran el bucle en una sala con física
+A room with physics: a thermostat, a heater, an air conditioner, a window and a sprinkler join the Home gateway; its rules heat below 19 degrees, cool above 26 and water dry soil, and the room changes in simulated time.	Una sala con física: un termostato, un calefactor, un aire acondicionado, una ventana y un aspersor se unen a la pasarela Home; sus reglas calientan por debajo de 19 grados, enfrían por encima de 26 y riegan el suelo seco, y la sala cambia en tiempo simulado.
+A room with physics (iot.environment): it starts at 15 degrees with 8 outside, and the sensors read it. The Home gateway's rules switch Heater1 on below 19 degrees, AC1 on above 26 and Sprinkler1 on below 30 % soil moisture. Advance the time a few minutes (Play, or sim.advance): the heater warms the room until Thermo1 reads 19, then it switches off and the room cools slowly again; the soil dries until the sprinkler waters it. Open Window1 from Home > IoT to couple the room to the cold outside, or set the outside temperature with iot.environment.	Una sala con física (iot.environment): empieza a 15 grados con 8 fuera, y los sensores la leen. Las reglas de la pasarela Home encienden Heater1 por debajo de 19 grados, AC1 por encima de 26 y Sprinkler1 con menos de 30 % de humedad del suelo. Avanza el tiempo unos minutos (Play, o sim.advance): el calefactor calienta la sala hasta que Thermo1 lee 19, luego se apaga y la sala se enfría despacio otra vez; el suelo se seca hasta que el aspersor lo riega. Abre Window1 desde Home > IoT para acoplar la sala al frío de fuera, o fija la temperatura exterior con iot.environment.
+"{}" is text, not a number (number(...) reads one)	"{}" es texto, no un número (number(...) lee uno)
+number too large	número demasiado grande
+text without its closing "	texto sin su comilla de cierre
+`{}` is not part of the language	`{}` no forma parte del lenguaje
+`{}` expected	se esperaba `{}`
+a pin name (D0, A1…) expected	se esperaba el nombre de un pin (D0, A1…)
+a value expected	se esperaba un valor
+`{}` is a word of the language, not a value	`{}` es una palabra del lenguaje, no un valor
+no function `{}` (there are read, get, time and number)	no existe la función `{}` (hay read, get, time y number)
+`{}` where a value was expected	`{}` donde se esperaba un valor
+the program is longer than {} characters	el programa tiene más de {} caracteres
+the program has more than {} lines	el programa tiene más de {} líneas
+a line starts with a word (let, if, while, write, sleep…) or a variable	una línea empieza con una palabra (let, if, while, write, sleep…) o una variable
+blocks nested deeper than {}	bloques anidados a más de {} niveles
+`{}` without its `if`	`{}` sin su `if`
+`{}` after the `else`	`{}` después del `else`
+`end` without an `if` or `while`	`end` sin un `if` o `while`
+`let NAME = value`	`let NOMBRE = valor`
+`{}` can't start a line	`{}` no puede empezar una línea
+`{}` is not a statement: did you mean `{} = …`?	`{}` no es una instrucción: ¿querías decir `{} = …`?
+more than one statement on the line	más de una instrucción en la línea
+{} block(s) without their `end`	{} bloque(s) sin su `end`
+`{}` is a word of the language, not a variable	`{}` es una palabra del lenguaje, no una variable
+the board has no pin {}	la placa no tiene el pin {}
+more than {} requests without a `sleep`	más de {} peticiones sin un `sleep`
+`{}` has no value yet	`{}` aún no tiene valor
+division by zero	división entre cero
+unknown operator {}	operador desconocido {}
+{} steps without a `sleep`: a loop needs a `sleep` in it	{} pasos sin un `sleep`: un bucle necesita un `sleep`
+more than {} variables	más de {} variables
+line {}: {}	línea {}: {}
+stopped: {}	parado: {}
+stopped by hand	parado a mano
+stopped by `stop`	parado por `stop`
+the board is switched off	la placa está apagada
+no IoT server set on the board (Programming tab)	la placa no tiene servidor IoT (pestaña Programación)
+{} is wired to {}, a sensor: read it instead	{} está cableado a {}, un sensor: léelo en su lugar
+a program is at most {} characters	un programa tiene como máximo {} caracteres
