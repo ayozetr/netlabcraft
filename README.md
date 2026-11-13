@@ -86,7 +86,7 @@
   switches (also with fiber uplinks or power over Ethernet) and a multilayer switch, a home
   wireless router and a home IoT gateway, a Wi-Fi access point, a wireless LAN controller with
   lightweight APs, a provider cloud with DSL and cable modems, a hub, PCs, laptops (also with
-  Wi-Fi), tablets and smartphones (Wi-Fi only) with a touch home screen, servers, a printer, IP
+  Wi-Fi), tablets and smartphones (Wi-Fi, or mobile data through cell towers and a central office server) with a touch home screen, servers, a printer, IP
   phones with their own Settings screen, eighteen IoT things (temperature sensor, fan, motion and
   smoke detectors, light, door lock, siren, webcam, and over Wi-Fi a thermostat, heater, air
   conditioner, humidity sensor, smart window, soil moisture sensor, lawn sprinkler, CO detector,
@@ -168,12 +168,11 @@ What it doesn't do yet is listed, ranked, in [`docs/gaps.md`](docs/gaps.md).
 
 ## The CCNA lab book
 
-[`docs/labs/`](docs/labs/README.md) holds twenty hands-on labs written for NetLabCraft over the
-topics of the three CCNA courses: four for the first (device basics and SSH, dual-stack
-addressing, VLSM, ARP, ICMP and DHCP in Simulation mode), nine for the second (VLANs and trunks,
-inter-VLAN routing, STP, EtherChannel, DHCPv4 and DHCPv6, HSRP, switch security, a wireless
-controller, floating static routes) and seven for the third (OSPF, ACLs, NAT, GRE over IPsec,
-QoS, network management, RESTCONF). Each lab lists its topology, addressing, every command to
+[`docs/labs/`](docs/labs/README.md) holds thirty-one hands-on labs written for NetLabCraft over the
+topics of the three CCNA courses (four for the first, fourteen for the second and thirteen for
+the third), plus one on mobile data. Nine of them are troubleshooting labs where you find and
+fix deliberate faults (VLANs and trunks, routing, OSPF, ACLs, DHCP, NAT, spanning tree), and two
+teach you to read the OSPF database and spanning-tree views. Each lab lists its topology, addressing, every command to
 type and what to check. Every lab is also a test: the suite runs each one end to end as
 written, and eight of them through the MCP server, so a lab that passes there works when typed
 by hand.
@@ -246,23 +245,26 @@ egui frontend is a separate crate, so the UI can be swapped without touching the
 
 ## Roadmap
 
-NetLabCraft is **pre-alpha** only because releases are on hold: every core workflow works end
-to end (build a lab, configure it by typing, ping, watch the frames, grade an activity, save),
-the twenty-lab [CCNA lab book](docs/labs/README.md) runs as written, and every alpha and beta
-gate but the packaged build is met. Weighted by what CCNA labs rely on, we estimate it is about
-91% ready for real work: about 93% for the first CCNA course, 94% for the second and 90% for the
-third (estimated; the method is in
-[`docs/target-app-parity.md`](docs/target-app-parity.md#audiences)). Next up: more labs walked
-to find console gaps, the last crypto stand-in (a transform set with no cipher) and certificates, and a
-cellular network for the mobile devices. Stage, numbers and estimates are in
+NetLabCraft is **pre-alpha**: every core workflow works end to end (build a lab, configure it by
+typing, ping, watch the frames, grade an activity, save), the [CCNA lab book](docs/labs/README.md)
+runs as written, and every alpha and beta gate is met. Weighted by what CCNA labs rely on, we
+estimated it at about 91% ready for real work: about 93% for the first CCNA course, 94% for the
+second and 90% for the third (estimated before the latest additions and not re-scored since; the
+method is in [`docs/target-app-parity.md`](docs/target-app-parity.md#audiences)). Next up: more
+labs walked to find console gaps, the last crypto and certificate details (IKE signatures, PEAP,
+a transform set with no cipher), TVs, a sniffer and more router models, device windows as native
+windows, and more interface languages. Stage, numbers and estimates are in
 [ROADMAP.md](ROADMAP.md); the ranked work list is [`docs/gaps.md`](docs/gaps.md).
 
 ## Downloads
 
-There is no release, and releases are on hold for now: build from source with the
+Installers for Linux (AppImage, `.deb`, `.rpm`, `.tar.gz`; x86_64 and aarch64), Windows (`.msi` and
+a portable zip), macOS (a universal `.dmg`) and the browser (a static site) are on the
+[Releases page](https://github.com/ayozetr/netlabcraft/releases), with a `SHA256SUMS.txt` to check
+them against. They are **not code-signed yet**, so Windows and macOS warn you the first time you
+run them; each release's notes say what to click. You can also build from source with the
 [Quick start](#quick-start), or install for your user on Linux with `packaging/linux/install.sh`.
-How releases would work (versions, installers for Linux, Windows, macOS, FreeBSD and the web,
-file names) is in [`docs/releasing.md`](docs/releasing.md).
+How releases are built is in [`docs/releasing.md`](docs/releasing.md).
 
 ## Clean room
 
