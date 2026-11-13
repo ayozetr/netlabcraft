@@ -127,6 +127,9 @@ fn a_towers_sectors_do_not_see_each_others_frames() {
     let second_end = End { device: second, port: cp(second) };
     assert!(!sim.trace().iter().any(|e| e.to == second_end && e.protocol == Protocol::Icmp), "ICMP leaked to another sector");
     assert_eq!(l.t.core_clients(l.core).len(), 2);
+    // They reach each other through the central office server, which answers ARP for them.
+    assert!(marks(&sim.ping(&l.t, l.phone, ip("10.64.0.3"), PingOptions::default()).unwrap()).contains('!'));
+    assert!(sim.trace().iter().any(|e| e.to == second_end && e.protocol == Protocol::Icmp));
 }
 
 #[test]

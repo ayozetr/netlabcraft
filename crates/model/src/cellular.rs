@@ -23,7 +23,7 @@ use crate::physical::{CITY_UNIT_M, PlaceKind};
 use crate::{Device, DeviceKind, End, Topology, ifname};
 
 /// How far a tower reaches on the logical map, when the lab has no physical layout.
-pub const CELL_RANGE: f32 = 600.0;
+pub const CELL_RANGE: f32 = 400.0;
 /// How far a tower reaches in the physical view: metres on a city map.
 pub const CELL_RANGE_M: u32 = 600;
 /// Longest access point name.

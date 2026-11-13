@@ -69,6 +69,13 @@ labs! {
     lab_27_troubleshoot_stp_root => "27-troubleshoot-stp-root.md",
 }
 
+/// The cellular lab is not part of a CCNA course, so it has no number (the numbered labs 21 and up
+/// are listed above, and `every_lab_file_has_a_test` counts only numbered files).
+#[test]
+fn lab_cellular_mobile_data() {
+    check("cellular-mobile-data.md");
+}
+
 #[test]
 fn every_lab_file_has_a_test() {
     assert_eq!(labbook::files(), LISTED.iter().map(|s| s.to_string()).collect::<Vec<_>>());

@@ -2587,7 +2587,14 @@ impl Sim {
                 && d.ports.get(ifc.port).is_some_and(|p| !p.proxy_arp_off)
                 && !ifc.net.contains(a.target_ip)
                 && self.route(t, d, a.target_ip).is_some_and(|(out, _)| out.name != ifc.name);
-            if !proxied {
+            // A central office server also answers for the mobile devices it admitted: they share
+            // its pool's network, but a tower never carries one device's frames to another's
+            // sector, so they reach each other through the server.
+            let cell_proxy = a.op == ArpOp::Request
+                && d.is_central_office()
+                && a.target_ip != a.sender_ip
+                && t.core_clients(d.id).iter().any(|(_, _, lease)| lease.address.addr == a.target_ip && ifc.net.contains(a.target_ip));
+            if !proxied && !cell_proxy {
                 return Err(format!("ARP for {}, not this device", a.target_ip));
             }
         }
