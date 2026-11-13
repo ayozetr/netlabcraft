@@ -121,6 +121,11 @@ pub static SAMPLES: &[Sample] = &[
         description: "A smart sensor and a smart fan register with the IoT server over HTTP; the server's rule switches the fan on when the sensor reads above 30.",
     },
     Sample {
+        id: "iot-climate",
+        title: "IoT climate: rules close the loop in a room with physics",
+        description: "A room with physics: a thermostat, a heater, an air conditioner, a window and a sprinkler join the Home gateway; its rules heat below 19 degrees, cool above 26 and water dry soil, and the room changes in simulated time.",
+    },
+    Sample {
         id: "modular",
         title: "Modular routers: serial cards for a WAN link",
         description: "Two modular routers got a 2-port serial card each (fitted while switched off) and are joined over Serial0/1/0; their configurations are saved, so a power cycle keeps them.",
@@ -1286,6 +1291,53 @@ pub fn build(id: &str) -> Result<Topology> {
                 }
             }
             b.t.notes = "Sensor1 reads 25 degrees and Fan1 is off. Open Sensor1 > IoT and raise the reading above 30: the server's rule (IoT-Server > IoT) switches Fan1 on. Every report is an HTTP request to the server (see the events in Simulation mode).".into();
+        }
+        "iot-climate" => {
+            use netlabcraft_model::iot::{Condition, IotRule, Op};
+            b.add_model("Home-Gateway", "Home", 360.0, 40.0)?;
+            for (i, (name, model)) in [
+                ("Thermo1", "IoT-Thermostat"),
+                ("Heater1", "IoT-Heater"),
+                ("AC1", "IoT-AC"),
+                ("Window1", "IoT-Window"),
+                ("Humid1", "IoT-Humidity"),
+                ("Soil1", "IoT-Soil"),
+                ("Sprinkler1", "IoT-Sprinkler"),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                b.add_model(model, name, 140.0 + 110.0 * (i % 5) as f32, if i < 5 { 160.0 } else { 300.0 } + if i % 2 == 0 { 0.0 } else { 25.0 })?;
+                b.type_in(name, "ipconfig /renew")?;
+                let d = b.t.resolve(name)?;
+                if let Some(dev) = b.t.device_mut(d) {
+                    dev.iot.server = Some(Ipv4Addr::new(192, 168, 0, 1));
+                }
+            }
+            let rule = |sensor: &str, op: Op, value: i32, actuator: &str| IotRule {
+                sensor: String::new(),
+                above: 0,
+                actuator: actuator.into(),
+                conditions: vec![Condition { sensor: sensor.into(), op, value }],
+                any: false,
+                on: true,
+            };
+            let gw = b.t.resolve("Home")?;
+            if let Some(d) = b.t.device_mut(gw) {
+                d.iot.rules = vec![
+                    rule("Thermo1", Op::Below, 19, "Heater1"),
+                    rule("Thermo1", Op::Above, 26, "AC1"),
+                    rule("Soil1", Op::Below, 30, "Sprinkler1"),
+                ];
+            }
+            b.t.environment = netlabcraft_model::environment::Environment {
+                enabled: true,
+                temperature: 15,
+                soil: 35,
+                outside_temperature: 8,
+                ..Default::default()
+            };
+            b.t.notes = "A room with physics (iot.environment): it starts at 15 degrees with 8 outside, and the sensors read it. The Home gateway's rules switch Heater1 on below 19 degrees, AC1 on above 26 and Sprinkler1 on below 30 % soil moisture. Advance the time a few minutes (Play, or sim.advance): the heater warms the room until Thermo1 reads 19, then it switches off and the room cools slowly again; the soil dries until the sprinkler waters it. Open Window1 from Home > IoT to couple the room to the cold outside, or set the outside temperature with iot.environment.".into();
         }
         "ip-phones" => {
             b.add(DeviceKind::Router, "R1", 360.0, 40.0)?;

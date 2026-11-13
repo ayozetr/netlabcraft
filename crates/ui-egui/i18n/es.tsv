@@ -1356,3 +1356,14 @@ Topology: {} links	Topología: {} enlaces
 Software	Versión de software
 Variables (address: name=value, …)	Variables (dirección: nombre=valor, …)
 {{name}} in the template takes each router's value; {{address}} and {{hostname}} are built in.	{{name}} en la plantilla toma el valor de cada router; {{address}} y {{hostname}} vienen incluidas.
+Environment	Entorno
+Physics on (sensors read the room)	Física activa (los sensores leen la sala)
+Heaters, coolers, fans, windows and sprinklers change the room over simulated time	Calefactores, aires, ventiladores, ventanas y aspersores cambian la sala con el tiempo simulado
+Room: {} degrees, {} % humidity, {} % soil, smoke {} %, CO {} ppm, light {} %	Sala: {} grados, {} % de humedad, {} % de suelo, humo {} %, CO {} ppm, luz {} %
+Outside: {} degrees	Exterior: {} grados
+Change the outside temperature	Cambiar la temperatura exterior
+Reset room	Reiniciar la sala
+Start the room again from its starting values	Volver a empezar la sala desde sus valores iniciales
+IoT climate: rules close the loop in a room with physics	IoT con clima: las reglas cierran el bucle en una sala con física
+A room with physics: a thermostat, a heater, an air conditioner, a window and a sprinkler join the Home gateway; its rules heat below 19 degrees, cool above 26 and water dry soil, and the room changes in simulated time.	Una sala con física: un termostato, un calefactor, un aire acondicionado, una ventana y un aspersor se unen a la pasarela Home; sus reglas calientan por debajo de 19 grados, enfrían por encima de 26 y riegan el suelo seco, y la sala cambia en tiempo simulado.
+A room with physics (iot.environment): it starts at 15 degrees with 8 outside, and the sensors read it. The Home gateway's rules switch Heater1 on below 19 degrees, AC1 on above 26 and Sprinkler1 on below 30 % soil moisture. Advance the time a few minutes (Play, or sim.advance): the heater warms the room until Thermo1 reads 19, then it switches off and the room cools slowly again; the soil dries until the sprinkler waters it. Open Window1 from Home > IoT to couple the room to the cold outside, or set the outside temperature with iot.environment.	Una sala con física (iot.environment): empieza a 15 grados con 8 fuera, y los sensores la leen. Las reglas de la pasarela Home encienden Heater1 por debajo de 19 grados, AC1 por encima de 26 y Sprinkler1 con menos de 30 % de humedad del suelo. Avanza el tiempo unos minutos (Play, o sim.advance): el calefactor calienta la sala hasta que Thermo1 lee 19, luego se apaga y la sala se enfría despacio otra vez; el suelo se seca hasta que el aspersor lo riega. Abre Window1 desde Home > IoT para acoplar la sala al frío de fuera, o fija la temperatura exterior con iot.environment.

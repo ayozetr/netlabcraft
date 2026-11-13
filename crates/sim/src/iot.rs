@@ -17,6 +17,7 @@ use std::collections::BTreeMap;
 use std::net::Ipv4Addr;
 
 use netlabcraft_core::DeviceId;
+use netlabcraft_model::environment::{Climate, Effects, MAX_STEP_SECONDS};
 use netlabcraft_model::iot::{is_actuator, is_sensor, thing};
 use netlabcraft_model::{Device, DeviceKind, Topology};
 
@@ -61,8 +62,17 @@ pub struct ThingState {
     pub last_report_us: Option<u64>,
 }
 
+/// The room at run time and the simulated time it was last stepped to.
+#[derive(Debug, Clone, Copy)]
+pub struct EnvRun {
+    pub climate: Climate,
+    pub last_us: u64,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct IotState {
+    /// The shared room, once the physics has started.
+    pub(crate) env: Option<EnvRun>,
     servers: BTreeMap<DeviceId, Vec<IotEntry>>,
     pub(crate) things: BTreeMap<DeviceId, ThingState>,
     /// Programmable boards' runs (see the `board` module).
@@ -100,6 +110,79 @@ fn apply_rules(d: &Device, list: &mut [IotEntry], sensor: Option<&str>) {
 }
 
 impl Sim {
+    /// What the running smart devices do to the room right now.
+    fn env_effects(&self, t: &Topology) -> Effects {
+        let mut fx = Effects::default();
+        for d in t.devices.iter().filter(|d| is_actuator(d) && !t.is_dark(d.id)) {
+            if !self.iot.things.get(&d.id).is_some_and(|s| s.on) {
+                continue;
+            }
+            let n = match thing(d).map(|x| x.what) {
+                Some("heater") => &mut fx.heaters,
+                Some("ac") => &mut fx.coolers,
+                Some("fan") => &mut fx.fans,
+                Some("sprinkler") => &mut fx.sprinklers,
+                Some("window") | Some("garage") => &mut fx.windows_open,
+                Some("light") => &mut fx.lamps,
+                _ => continue,
+            };
+            *n = n.saturating_add(1);
+        }
+        fx
+    }
+
+    /// Steps the room up to the present, a second at a time, with the devices as they are.
+    /// Does nothing while the physics is off.
+    pub fn env_step(&mut self, t: &Topology) {
+        if !t.environment.enabled {
+            self.iot.env = None;
+            return;
+        }
+        let now = self.now;
+        let fx = self.env_effects(t);
+        let run = self.iot.env.get_or_insert_with(|| EnvRun { climate: Climate::from_settings(&t.environment), last_us: now });
+        let seconds = (now.saturating_sub(run.last_us) / 1_000_000).min(MAX_STEP_SECONDS);
+        for _ in 0..seconds {
+            run.climate.step_second(&t.environment, &fx);
+        }
+        // Keep the sub-second remainder for the next step.
+        run.last_us = if now.saturating_sub(run.last_us) / 1_000_000 > MAX_STEP_SECONDS {
+            now
+        } else {
+            run.last_us.saturating_add(seconds.saturating_mul(1_000_000))
+        };
+    }
+
+    /// The room as it is (`None`: the physics is off or hasn't started).
+    pub fn environment(&self) -> Option<&Climate> {
+        self.iot.env.as_ref().map(|r| &r.climate)
+    }
+
+    /// Forgets the room's state: it starts again from the settings.
+    pub fn env_reset(&mut self) {
+        self.iot.env = None;
+    }
+
+    /// Sets one quantity of the running room (starting it first), by name.
+    pub fn env_set(&mut self, t: &Topology, what: &str, value: i32) -> bool {
+        let now = self.now;
+        let run = self.iot.env.get_or_insert_with(|| EnvRun { climate: Climate::from_settings(&t.environment), last_us: now });
+        run.climate.set(what, value)
+    }
+
+    /// What a smart sensor reads: the room's quantity while the physics is on, else its own
+    /// number.
+    pub fn iot_reading(&self, t: &Topology, d: &Device) -> i32 {
+        if t.environment.enabled
+            && let Some(x) = thing(d)
+            && let Some(c) = self.environment()
+            && let Some(v) = c.reading(x.what)
+        {
+            return v;
+        }
+        d.iot.value
+    }
+
     /// The things a server's IoT service lists.
     pub fn iot_registry(&self, server: DeviceId) -> &[IotEntry] {
         self.iot.servers.get(&server).map_or(&[], Vec::as_slice)
@@ -206,7 +289,9 @@ impl Sim {
         if d.kind != DeviceKind::Iot {
             return Err(SimError::NoSource(format!("{} is not a smart thing", d.name)));
         }
+        self.env_step(t);
         let now = self.now;
+        let reading = self.iot_reading(t, d);
         // A device wired to a board follows the board's program, not the server.
         let wired = t.board_of(dev).is_some();
         let before = self.iot.things.get(&dev).is_some_and(|s| s.on);
@@ -217,7 +302,7 @@ impl Sim {
             let server = d.iot.server.ok_or_else(|| SimError::NoSource("no IoT server set".into()))?;
             let what = thing(d).map_or("thing", |x| x.what);
             let path = if is_sensor(d) {
-                format!("/iot/register?name={}&kind=sensor&type={what}&value={}", d.name, d.iot.value)
+                format!("/iot/register?name={}&kind=sensor&type={what}&value={reading}", d.name)
             } else {
                 format!("/iot/register?name={}&kind=device&type={what}", d.name)
             };
@@ -307,6 +392,7 @@ impl Sim {
                     }
                     // Each report stamps its time and each program slice sets its next wake,
                     // so the next due time moves on.
+                    self.env_step(t);
                     self.iot_timed(t);
                     self.board_timed(t);
                 }
@@ -316,6 +402,7 @@ impl Sim {
         if deadline > self.now {
             self.advance(t, deadline, |_| false);
         }
+        self.env_step(t);
     }
 }
 

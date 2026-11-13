@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::{ModelError, Result, Topology};
 
 pub const FORMAT: &str = "netlabcraft";
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 pub const EXTENSION: &str = "nlcraft";
 
 /// Largest lab file accepted (hostile input).

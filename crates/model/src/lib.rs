@@ -18,6 +18,7 @@ pub mod board;
 pub mod cable;
 pub mod cloud;
 pub mod drawing;
+pub mod environment;
 pub mod fhrp;
 pub mod file;
 pub mod firewall;
@@ -2016,6 +2017,9 @@ pub struct Topology {
     /// Simulation scenarios and their PDU lists.
     #[serde(default, skip_serializing_if = "scenario::Scenarios::is_default")]
     pub scenarios: scenario::Scenarios,
+    /// The smart things' shared room: its physics settings and starting values.
+    #[serde(default, skip_serializing_if = "environment::Environment::is_default")]
+    pub environment: environment::Environment,
 }
 
 /// A note or drawing placed on the workspace.
@@ -2102,6 +2106,7 @@ impl Topology {
             annotations: Vec::new(),
             clusters: Vec::new(),
             activity: None,
+            environment: environment::Environment::default(),
             physical: physical::Physical::default(),
             scenarios: scenario::Scenarios::default(),
         }
@@ -2358,6 +2363,7 @@ impl Topology {
     /// Repairs what a hand-edited or hostile file could break: dangling or duplicate cables,
     /// duplicate names and ids, non-finite positions, missing VLAN 1, oversized lists.
     pub fn sanitize(&mut self) {
+        self.environment.sanitize();
         if let Some(a) = &mut self.activity {
             a.sanitize();
         }

@@ -165,15 +165,16 @@ fn thing_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut I
             app.run("iot.configure", json!({"device": d.0, "server": form.server.trim(), "interval": interval}));
         }
     });
+    let reading = app.session.sim.iot_reading(&app.session.topology, dev);
     if is_sensor(dev) {
         ui.horizontal(|ui| {
-            ui.label(RichText::new(trf("Reading: {}", &[&dev.iot.value])).size(18.0).strong());
+            ui.label(RichText::new(trf("Reading: {}", &[&reading])).size(18.0).strong());
             if let Some(t) = what {
                 ui.label(RichText::new(tl(t.unit)).color(tk.muted));
             }
             for (label, step) in [("-5", -5), ("-1", -1), ("+1", 1), ("+5", 5)] {
                 if ui.button(label).on_hover_text(tl("Change the reading")).clicked() {
-                    app.run("iot.configure", json!({"device": d.0, "value": dev.iot.value.saturating_add(step)}));
+                    app.run("iot.configure", json!({"device": d.0, "value": reading.saturating_add(step)}));
                 }
             }
         });
@@ -209,6 +210,8 @@ fn server_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut 
     if ui.button(tl("Refresh")).on_hover_text(tl("Let the smart things report, then list them")).clicked() {
         app.run("iot.server", json!({"device": d.0}));
     }
+    ui.add_space(4.0);
+    environment_section(app, ui);
     ui.add_space(4.0);
     ui.label(RichText::new(tl("Registered things")).strong());
     let things = app.session.sim.iot_registry(d).to_vec();
@@ -311,6 +314,42 @@ fn server_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut 
             if app.run("iot.server", json!({"device": d.0, "rules": all})).is_some() {
                 *form = IotForm { filled: form.filled, ..IotForm::default() };
             }
+        }
+    });
+}
+
+/// The shared room: the physics switch, the room's values now and the outside temperature.
+fn environment_section(app: &mut PacketApp, ui: &mut egui::Ui) {
+    let e = app.session.topology.environment.clone();
+    ui.label(RichText::new(tl("Environment")).strong());
+    let mut on = e.enabled;
+    if ui
+        .checkbox(&mut on, tl("Physics on (sensors read the room)"))
+        .on_hover_text(tl("Heaters, coolers, fans, windows and sprinklers change the room over simulated time"))
+        .changed()
+    {
+        app.run("iot.environment", json!({"enabled": on}));
+    }
+    if !e.enabled {
+        return;
+    }
+    if let Some(c) = app.session.sim.environment() {
+        let r = |q: &str| c.reading(q).unwrap_or(0);
+        let line = trf(
+            "Room: {} degrees, {} % humidity, {} % soil, smoke {} %, CO {} ppm, light {} %",
+            &[&r("temperature"), &r("humidity"), &r("soil"), &r("smoke"), &r("co"), &c.light],
+        );
+        ui.label(line);
+    }
+    ui.horizontal(|ui| {
+        ui.label(trf("Outside: {} degrees", &[&e.outside_temperature]));
+        for (label, step) in [("-5", -5), ("-1", -1), ("+1", 1), ("+5", 5)] {
+            if ui.button(label).on_hover_text(tl("Change the outside temperature")).clicked() {
+                app.run("iot.environment", json!({"outside_temperature": e.outside_temperature.saturating_add(step).clamp(-50, 100)}));
+            }
+        }
+        if ui.button(tl("Reset room")).on_hover_text(tl("Start the room again from its starting values")).clicked() {
+            app.run("iot.environment", json!({"reset": true}));
         }
     });
 }
