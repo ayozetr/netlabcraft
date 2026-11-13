@@ -185,6 +185,9 @@ pub struct AclEntry {
     /// An ICMP message type (`echo`, `echo-reply`, `unreachable`, `time-exceeded` or a number).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icmp_type: Option<u8>,
+    /// `log`: a match leaves a message in the device's log.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub log: bool,
 }
 
 fn is_zero(v: &u32) -> bool {
@@ -194,7 +197,7 @@ fn is_zero(v: &u32) -> bool {
 impl AclEntry {
     /// A line matching `proto` from `src` to `dst`, with no ports or options.
     pub fn new(permit: bool, proto: AclProto, src: AclAddr, dst: AclAddr) -> AclEntry {
-        AclEntry { permit, proto, src, src_port: None, dst, dst_port: None, seq: 0, established: false, icmp_type: None }
+        AclEntry { permit, proto, src, src_port: None, dst, dst_port: None, seq: 0, established: false, icmp_type: None, log: false }
     }
 
     /// Whether two lines match the same packets the same way (sequence numbers aside).
@@ -252,8 +255,9 @@ impl AclEntry {
     /// The entry as configuration words after `permit`/`deny`.
     pub fn text(&self, extended: bool) -> String {
         let action = if self.permit { "permit" } else { "deny" };
+        let log = if self.log { " log" } else { "" };
         if !extended {
-            return format!("{action} {}", self.src);
+            return format!("{action} {}{log}", self.src);
         }
         let mut s = format!("{action} {} {}", self.proto.name(), self.src);
         if let Some(p) = self.src_port {
@@ -269,6 +273,7 @@ impl AclEntry {
         if self.established && self.proto == AclProto::Tcp {
             s.push_str(" established");
         }
+        s.push_str(log);
         s
     }
 }

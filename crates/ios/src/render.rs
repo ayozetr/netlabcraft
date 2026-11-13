@@ -255,6 +255,9 @@ pub fn running_config(d: &Device) -> String {
         if p.mdix_off {
             let _ = writeln!(s, " no mdix auto");
         }
+        if p.proxy_arp_off {
+            let _ = writeln!(s, " no ip proxy-arp");
+        }
         if p.lldp_tx_off {
             let _ = writeln!(s, " no lldp transmit");
         }
@@ -807,11 +810,15 @@ pub fn interfaces(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
 }
 
 /// Trunk ports and what they carry.
-pub fn trunks(t: &Topology, d: &Device) -> String {
+/// `show interfaces trunk`; with a port, only that port's row (`show interfaces gi0/1 trunk`).
+pub fn trunks(t: &Topology, d: &Device, only: Option<usize>) -> String {
     let mut s = format!("{:<10} {:<10} {:<8} {}\n", "Port", "Status", "Native", "Allowed (and existing)");
     let mut any = false;
     let mut channels_shown = Vec::new();
     for (i, p) in d.ports.iter().enumerate() {
+        if only.is_some_and(|o| o != i && !(p.channel.is_some() && d.ports.get(o).is_some_and(|q| q.channel == p.channel))) {
+            continue;
+        }
         if !t.is_trunk(End { device: d.id, port: i }) {
             continue;
         }
@@ -838,7 +845,7 @@ pub fn trunks(t: &Topology, d: &Device) -> String {
         let _ = writeln!(s, "{:<10} {:<10} {:<8} {} ({})", name, status, p.switchport.native_vlan, p.switchport.allowed, active);
     }
     if !any {
-        s.push_str("(no trunk ports)");
+        s.push_str(if only.is_some() { "(not a trunk port)" } else { "(no trunk ports)" });
     } else if d.vtp.pruning {
         let _ = writeln!(s, "\n{:<10} {:<24} Pruned by VTP", "Port", "Pruning eligible");
         for (i, p) in d.ports.iter().enumerate().filter(|(i, _)| t.is_trunk(End { device: d.id, port: *i })) {
@@ -1794,7 +1801,7 @@ pub fn ip_interface(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
                 None => {}
             }
             if d.kind == DeviceKind::Router {
-                s.push_str("  Proxy ARP: on\n");
+                s.push_str(if p.proxy_arp_off { "  Proxy ARP: off\n" } else { "  Proxy ARP: on\n" });
             }
             blocks.push(s.trim_end().to_string());
         }

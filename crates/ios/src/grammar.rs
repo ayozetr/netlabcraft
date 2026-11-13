@@ -627,6 +627,8 @@ pub enum Id {
     IfSpeed,
     IfDuplex,
     IfMdix,
+    IfProxyArp,
+    NoIfProxyArp,
     NoIfMdix,
     SshTimeout,
     SshRetries,
@@ -1075,6 +1077,13 @@ pub static SPECS: &[Spec] = &[
         [K("show"), K("ip"), K("route"), Arg("{connected|static|eigrp|ospf|rip}")],
         "Only the routes one source gave"
     ),
+    spec!(
+        ShowIpRoute,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("route"), Arg("A.B.C.D"), Arg("A.B.C.D")],
+        "The route for exactly this network and mask"
+    ),
     spec!(ShowArp, EXECS, Modes::BOTH, [K("show"), K("ip"), K("arp")], "ARP cache"),
     spec!(ShowArp, EXECS, BOTH_FW, [K("show"), K("arp")], "ARP cache"),
     spec!(ShowInterfaces, EXECS, BOTH_FW, [K("show"), K("interfaces")], "Interface details"),
@@ -1186,6 +1195,21 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowAccessLists, EXECS, Modes::BOTH, [K("show"), K("access-lists"), Arg("WORD")], "One access list and its matches"),
     spec!(ShowAccessLists, EXECS, Modes::BOTH, [K("show"), K("ip"), K("access-lists"), Arg("WORD")], "One access list and its matches"),
     spec!(ClearAclCounters, Modes::EXEC, Modes::BOTH, [K("clear"), K("access-list"), K("counters")], "Reset the match counts"),
+    spec!(ClearAclCounters, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("access-list"), K("counters")], "Reset the match counts"),
+    spec!(
+        ClearAclCounters,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("clear"), K("access-list"), K("counters"), Arg("NAME")],
+        "Reset the match counts of one list"
+    ),
+    spec!(
+        ClearAclCounters,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("clear"), K("ip"), K("access-list"), K("counters"), Arg("NAME")],
+        "Reset the match counts of one list"
+    ),
     spec!(NatSideCmd, ANY_IF, Modes::BOTH, [K("ip"), K("nat"), Arg("{inside|outside}")], "Mark this interface inside or outside NAT"),
     spec!(NoNatSide, ANY_IF, Modes::BOTH, [K("no"), K("ip"), K("nat"), Arg("{inside|outside}")], "Take this interface out of NAT"),
     spec!(
@@ -2120,6 +2144,13 @@ pub static SPECS: &[Spec] = &[
         "Stop advertising the default route"
     ),
     spec!(ShowOspfNeighbor, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf"), K("neighbor")], "OSPF neighbours"),
+    spec!(
+        ShowOspfNeighbor,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("ospf"), K("neighbor"), Rest("{A.B.C.D | <interface>}")],
+        "OSPF neighbours with one router ID, or on one interface"
+    ),
     spec!(Ipv6RouterOspf, Modes::CONFIG, Modes::BOTH, [K("ipv6"), K("router"), K("ospf"), Arg("<1-65535>")], "Start or configure OSPFv3"),
     spec!(NoIpv6RouterOspf, Modes::CONFIG, Modes::BOTH, [K("no"), K("ipv6"), K("router"), K("ospf"), Arg("<1-65535>")], "Stop OSPFv3"),
     spec!(
@@ -2500,6 +2531,8 @@ pub static SPECS: &[Spec] = &[
     spec!(IfDuplex, Modes::IF, Modes::BOTH, [K("duplex"), Arg("{full|half|auto}")], "Fix the port's duplex (auto negotiates)"),
     spec!(IfDuplex, Modes::IF, Modes::BOTH, [K("no"), K("duplex")], "Negotiate the duplex"),
     spec!(IfMdix, Modes::IF, Modes::BOTH, [K("mdix"), K("auto")], "Work with straight-through or crossover cables"),
+    spec!(IfProxyArp, IFS, Modes::ROUTER, [K("ip"), K("proxy-arp")], "Answer ARP for hosts that are reached through this router"),
+    spec!(NoIfProxyArp, IFS, Modes::ROUTER, [K("no"), K("ip"), K("proxy-arp")], "Answer ARP only for this interface's own address"),
     spec!(NoIfMdix, Modes::IF, Modes::BOTH, [K("no"), K("mdix"), K("auto")], "Expect the right cable type"),
     spec!(ShowProtocols, EXECS, Modes::BOTH, [K("show"), K("protocols")], "Interface status and addresses"),
     spec!(ShowIntDescription, EXECS, Modes::BOTH, [K("show"), K("interfaces"), K("description")], "Interface status and descriptions"),

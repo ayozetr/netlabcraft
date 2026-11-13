@@ -861,7 +861,7 @@ pub(super) fn command(c: &mut Ctx<'_>, id: Id, args: &[String], line: &str) -> R
             Ok(String::new())
         }
         Id::FwClearAclCounters => {
-            c.sim.clear_acl_hits(c.dev);
+            c.sim.clear_acl_hits(c.dev, None);
             Ok(String::new())
         }
         _ => Err("% Not a firewall command".into()),

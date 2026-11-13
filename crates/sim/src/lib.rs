@@ -1758,6 +1758,27 @@ impl Sim {
         let (permit, entry) = acl.evaluate(&key);
         let st = self.st(d.id);
         *st.acl_hits.entry((acl.name.clone(), entry.unwrap_or(usize::MAX))).or_insert(0) += 1;
+        // `log` on the matching line: a message for the device's log.
+        if let Some((i, e)) = entry.and_then(|i| acl.entries.get(i).map(|e| (i, e))).filter(|(_, e)| e.log) {
+            let proto = match key.protocol {
+                1 => "icmp".to_string(),
+                6 => "tcp".to_string(),
+                17 => "udp".to_string(),
+                n => format!("ip protocol {n}"),
+            };
+            let port = |p: Option<u16>| p.map(|p| format!(":{p}")).unwrap_or_default();
+            let msg = format!(
+                "access list {} line {}: {} {proto} {}{} -> {}{}",
+                acl.name,
+                acl.seq_of(i),
+                if e.permit { "permitted" } else { "denied" },
+                key.src,
+                port(key.src_port),
+                key.dst,
+                port(key.dst_port)
+            );
+            self.log(d.id, &msg);
+        }
         if permit {
             return Ok(());
         }
@@ -1766,9 +1787,12 @@ impl Sim {
     }
 
     /// Forgets access-list match counts (`clear access-list counters`).
-    pub fn clear_acl_hits(&mut self, d: DeviceId) {
+    pub fn clear_acl_hits(&mut self, d: DeviceId, only: Option<&str>) {
         if let Some(st) = self.state.get_mut(&d) {
-            st.acl_hits.clear();
+            match only {
+                Some(name) => st.acl_hits.retain(|(n, _), _| n != name),
+                None => st.acl_hits.clear(),
+            }
         }
     }
 
@@ -2490,6 +2514,7 @@ impl Sim {
             // out of another interface.
             let proxied = a.op == ArpOp::Request
                 && d.kind == DeviceKind::Router
+                && d.ports.get(ifc.port).is_some_and(|p| !p.proxy_arp_off)
                 && !ifc.net.contains(a.target_ip)
                 && self.route(t, d, a.target_ip).is_some_and(|(out, _)| out.name != ifc.name);
             if !proxied {

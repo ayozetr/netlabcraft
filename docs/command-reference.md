@@ -172,6 +172,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ip interface brief` | user, privileged | router, switch | Interface addresses and status |
 | `show ip route` | user, privileged | router, switch | Routing table |
 | `show ip route {connected\|static\|eigrp\|ospf\|rip}` | user, privileged | router, switch | Only the routes one source gave |
+| `show ip route A.B.C.D A.B.C.D` | user, privileged | router, switch | The route for exactly this network and mask |
 | `show ip arp` | user, privileged | router, switch | ARP cache |
 | `show arp` | user, privileged | router, switch, firewall | ARP cache |
 | `show interfaces` | user, privileged | router, switch, firewall | Interface details |
@@ -229,6 +230,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show access-lists WORD` | user, privileged | router, switch | One access list and its matches |
 | `show ip access-lists WORD` | user, privileged | router, switch | One access list and its matches |
 | `clear access-list counters` | privileged | router, switch | Reset the match counts |
+| `clear ip access-list counters` | privileged | router, switch | Reset the match counts |
+| `clear access-list counters NAME` | privileged | router, switch | Reset the match counts of one list |
+| `clear ip access-list counters NAME` | privileged | router, switch | Reset the match counts of one list |
 | `ip nat {inside\|outside}` | interface, subinterface | router, switch | Mark this interface inside or outside NAT |
 | `no ip nat {inside\|outside}` | interface, subinterface | router, switch | Take this interface out of NAT |
 | `ip nat inside source {static A B \| list ACL {interface IF \| pool NAME} [overload]}` | config | router, switch | Translate inside addresses |
@@ -593,6 +597,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `default-information originate` |  | router, switch | Advertise this router's default route |
 | `no default-information originate` |  | router, switch | Stop advertising the default route |
 | `show ip ospf neighbor` | user, privileged | router, switch | OSPF neighbours |
+| `show ip ospf neighbor {A.B.C.D \| <interface>}` | user, privileged | router, switch | OSPF neighbours with one router ID, or on one interface |
 | `ipv6 router ospf <1-65535>` | config | router, switch | Start or configure OSPFv3 |
 | `no ipv6 router ospf <1-65535>` | config | router, switch | Stop OSPFv3 |
 | `ipv6 ospf <1-65535> area <0-4294967295>` | interface, subinterface | router, switch | Run OSPFv3 on this interface |
@@ -769,6 +774,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `duplex {full\|half\|auto}` | interface | router, switch | Fix the port's duplex (auto negotiates) |
 | `no duplex` | interface | router, switch | Negotiate the duplex |
 | `mdix auto` | interface | router, switch | Work with straight-through or crossover cables |
+| `ip proxy-arp` | interface, subinterface | router | Answer ARP for hosts that are reached through this router |
+| `no ip proxy-arp` | interface, subinterface | router | Answer ARP only for this interface's own address |
 | `no mdix auto` | interface | router, switch | Expect the right cable type |
 | `show protocols` | user, privileged | router, switch | Interface status and addresses |
 | `show interfaces description` | user, privileged | router, switch | Interface status and descriptions |
