@@ -243,7 +243,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Export results…",
         "",
         None,
-        r#"{"format"?: "json"|"csv", "path"?, "time"?, "elapsed_s"?} → {"text", "file_name", "score", "total", "percent"}: a results file with the student, the time, the score per section, signed with HMAC-SHA1 under a key from the activity's salt"#,
+        r#"{"format"?: "json"|"csv", "path"?, "time"?, "elapsed_s"?} → {"text", "file_name", "score", "total", "percent", "replayable", "replay_agrees"}: a results file with the student, the time, the score per section, signed with HMAC-SHA1 under a key from the activity's salt; a JSON file also embeds the student's final network (lab file format) so the score can be replayed"#,
         false
     ),
     c!(
@@ -251,7 +251,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Verify a results file",
         "",
         None,
-        r#"{"text" or "path"} → {"valid", "same_activity", "student", "score", "total", "percent"}"#,
+        r#"{"text" or "path"} → {"valid", "same_activity", "signature_ok", "replayed", "replay_matches", "replay_score", "replay_total", "mismatches", "message", "student", "score", "total", "percent"}: checks the signature (hand edits) and, for a file with an embedded network, runs the activity's checks again and compares (forgery); a CSV or older file is not replayed and says so"#,
         false
     ),
     c!(

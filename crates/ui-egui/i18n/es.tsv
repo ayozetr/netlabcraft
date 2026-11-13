@@ -1200,7 +1200,9 @@ Devices whose configuration is locked:	Dispositivos con la configuración bloque
 Check a student's results file	Comprobar el archivo de resultados de un alumno
 Paste the results file	Pega el archivo de resultados
 Verify	Verificar
-Genuine: {} scored {}% ({} of {} points).	Auténtico: {} obtuvo un {}% ({} de {} puntos).
+Genuine: {} scored {}% ({} of {} points), and the score was replayed against their network.	Auténtico: {} obtuvo un {}% ({} de {} puntos), y la nota se repitió sobre su red.
+Not edited: {} scored {}% ({} of {} points). It was not replayed, so a forged score cannot be ruled out.	Sin editar: {} obtuvo un {}% ({} de {} puntos). No se repitió, así que no se descarta una nota falsificada.
+The score does not match what the embedded network earns: this file is forged or damaged.	La nota no coincide con la que obtiene la red incluida: el archivo está falsificado o dañado.
 This results file is from another activity.	Este archivo de resultados es de otra actividad.
 This results file was changed after it was saved.	Este archivo de resultados se modificó después de guardarse.
 the activity doesn't let you add or remove devices	la actividad no permite añadir ni quitar dispositivos
