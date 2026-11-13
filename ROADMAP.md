@@ -30,8 +30,8 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Console grammar entries | 1003 across 37 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
 | Device models · sample labs · lab-book labs | 51 · 31 · 20 | measured: `MODELS` in `crates/model/src/models.rs` (the fallback model and the 7 router cards in `MODULES` not counted), `SAMPLES` in `crates/engine/src/sample.rs`, numbered labs in `docs/labs/` |
 | Tests | 592 | measured: sum of "passed" from `cargo test --workspace -q` (unit, console scripts, sample labs and the lab book end to end, the lab book over MCP, UI harness, fuzz of every command) |
-| Remaining to **alpha** | **on hold** | gates 1 and 2 met (the lab book's CCNA 1 labs run as written); gate 3, a packaged build, is on hold and not estimated ([roadmap.md](docs/roadmap.md#alpha-gates)) |
-| Remaining to **beta** | **on hold** | every beta gate is met; beta follows alpha, so it waits on the same hold ([roadmap.md](docs/roadmap.md#beta-gates)) |
+| Remaining to **alpha** | **met** | every alpha gate is met: the lab book's CCNA 1 labs run as written and `release.yml` builds the packages (v0.1.0, not code-signed) ([roadmap.md](docs/roadmap.md#alpha-gates)) |
+| Remaining to **beta** | **met** | every beta gate is met ([roadmap.md](docs/roadmap.md#beta-gates)) |
 | Remaining to **~95% everywhere** | **~55–110 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
 
 | Audience | Ready % | Opus 5.5 agent wall-clock hours to ~95% | Work that dominates |
@@ -57,7 +57,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Teaching | 8 | 88% | 6–12 | Activities with checks, points, sections, hints, values per student, a time limit, a password lock; an answer network sealed in the file, an assessment tree, an initial network, instructions per language, connectivity tests, signed results, locks; the lab book; Spanish interface checked by tests |
 | Device families | 5 | 82% | 8–14 | 51 models of our own: modular routers with cards, PoE switches, a firewall, IP phones, tablets and smartphones (Wi-Fi only), 18 IoT things and a home gateway, two programmable boards running BoardScript, a cloud with modems, power-supply bays; no cellular, TVs or sniffer, and the climate things have no physics |
 | Files | — | — | — | Own open `.nlcraft` JSON; no `.pkt` (out of scope: [decisions.md](docs/decisions.md)) |
-| Platforms and agents | — | — | — | Linux, Windows, macOS, BSD, web; MCP server and CLI over the full command catalog (the lab book runs over MCP too); no installers (on hold) |
+| Platforms and agents | — | — | — | Linux, Windows, macOS, BSD, web; MCP server and CLI over the full command catalog (the lab book runs over MCP too); installers for Linux, Windows, macOS and the web (not code-signed yet) |
 
 ## Progress log
 
