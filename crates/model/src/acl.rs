@@ -240,7 +240,7 @@ impl AclEntry {
             return false;
         }
         // ACK (0x10) or RST (0x04): part of a connection already under way.
-        if self.established && self.proto == AclProto::Tcp && !p.tcp_flags.is_some_and(|f| f & 0x14 != 0) {
+        if self.established && self.proto == AclProto::Tcp && p.tcp_flags.is_none_or(|f| f & 0x14 == 0) {
             return false;
         }
         if self.proto == AclProto::Icmp && self.icmp_type.is_some_and(|t| p.icmp_type != Some(t)) {

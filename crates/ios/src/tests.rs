@@ -437,7 +437,7 @@ fn dhcp_by_typing() {
     assert!(lab.run(a, "ping 192.168.10.11").contains("answered"));
     lab.run(r, "clear ip dhcp binding *");
     assert!(lab.run(r, "show ip dhcp binding").contains("0 bindings"));
-    assert!(lab.try_run(r, "conf t").is_empty() || true);
+    let _ = lab.try_run(r, "conf t");
     assert!(lab.try_run(r, "no ip dhcp pool NOPE").contains("No pool"));
 }
 
@@ -584,7 +584,7 @@ fn spanning_tree_by_typing() {
     assert!(lab.run(s1, "show spanning-tree").contains("Altn BLK"));
     let run = lab.run(s2, "show run");
     assert!(run.contains("spanning-tree vlan 1 priority 24576") && run.contains(" spanning-tree portfast"), "{run}");
-    assert!(lab.try_run(s2, "conf t").is_empty() || true);
+    let _ = lab.try_run(s2, "conf t");
     assert!(lab.try_run(s2, "spanning-tree vlan 1 priority 1000").contains("multiple of 4096"));
 }
 
@@ -734,7 +734,7 @@ fn access_lists_by_typing() {
     assert!(lab.run(r, "show ip access-lists 10").contains("Standard access list 10"));
     assert!(lab.try_run(r, "show access-lists NOPE").starts_with('%'));
     lab.try_run(r, "conf t");
-    assert!(lab.try_run(r, "access-list 10 permit tcp any any").contains("not an IPv4 address") || true);
+    let _ = lab.try_run(r, "access-list 10 permit tcp any any");
     assert!(lab.try_run(r, "access-list 150 permit tcp any any eq www").is_empty());
     // GRE, ESP, AH and OSPF are protocols lists can name (GRE over IPsec, found by the lab book).
     for p in ["gre", "esp", "ahp", "ospf"] {

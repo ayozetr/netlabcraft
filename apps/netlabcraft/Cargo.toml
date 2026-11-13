@@ -11,6 +11,7 @@ description = "NetLabCraft desktop app"
 workspace = true
 
 [dependencies]
+netlabcraft-core = { workspace = true }
 netlabcraft-engine = { workspace = true }
 netlabcraft-ui-egui = { workspace = true }
 eframe = { workspace = true, features = ["default_fonts", "wgpu", "accesskit", "wayland", "x11"] }

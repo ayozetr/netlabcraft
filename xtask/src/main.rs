@@ -3,12 +3,16 @@
 //! Pure Rust (std + serde_json, plus the engine and console grammar for `parity`). External tools (`cargo`, `git`)
 //! are invoked through `std::process::Command`.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
+// Developer tooling that runs trusted `cargo` and `git` on the developer's own machine; it does not link the
+// product crates, so it cannot use `netlabcraft_core::process`.
+#![allow(clippy::disallowed_methods)]
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
 mod assets;
 mod contributors;
 mod layers;
 mod parity;
+mod secrets;
 mod version;
 
 use std::path::{Path, PathBuf};
@@ -18,11 +22,13 @@ const USAGE: &str = "\
 usage: cargo xtask <command>
 
 commands:
-  ci              fmt --check, clippy -D warnings, test, doctest, assets, layers, wasm, parity --check
+  ci              fmt --check, clippy -D warnings, test, doctest, assets, layers, secrets, wasm, parity --check
                   (stops at the first failure)
   test            workspace tests (cargo nextest when installed, else cargo test), then doctests
   assets          check that every icon/image/font/sample file is attributed in ATTRIBUTION.md
   layers          enforce the crate dependency layering (AGENTS.md \"Layering\")
+  secrets [--history]
+                  no keys, tokens, private keys or personal paths in what git would commit (or in any commit)
   wasm            cargo check --target wasm32-unknown-unknown for the L0-L5 crates (+ netlabcraft-web), one call
   parity [--check] [--out PATH]
                   write docs/command-reference.md from the engine catalog and the console grammar
@@ -38,6 +44,7 @@ fn main() -> ExitCode {
     let result = match args.first().map(String::as_str) {
         Some("assets") => assets::run(&root()),
         Some("layers") => cmd_layers(),
+        Some("secrets") => secrets::run(&root(), &rest),
         Some("wasm") => cmd_wasm(),
         Some("test") => cmd_test().and_then(|()| cmd_doctest()),
         Some("ci") => cmd_ci(),
@@ -205,6 +212,7 @@ fn cmd_ci() -> Result<(), String> {
         ("doctest", Box::new(cmd_doctest)),
         ("assets", Box::new(|| assets::run(&root()))),
         ("layers", Box::new(cmd_layers)),
+        ("secrets", Box::new(|| secrets::run(&root(), &[]))),
         ("wasm", Box::new(cmd_wasm)),
         ("parity", Box::new(|| parity::run(&root(), &["--check"]))),
     ];

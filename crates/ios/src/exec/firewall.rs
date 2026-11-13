@@ -259,14 +259,14 @@ fn parse_twice(d: &Device, pair: &str, words: &[&str]) -> Result<TwiceNat, Strin
     if interface && !dynamic {
         return Err("% `interface` is for dynamic rules: the interface's address is shared by port translation".into());
     }
-    if !interface && !f.object(src_mapped).is_some_and(|o| o.addr.is_some()) {
+    if !interface && f.object(src_mapped).is_none_or(|o| o.addr.is_none()) {
         return Err(format!("% {src_mapped} is not a network object with an address"));
     }
     let dst = match rest {
         [] => None,
         [dw, sw, m, r] if dw.eq_ignore_ascii_case("destination") && sw.eq_ignore_ascii_case("static") => {
             for n in [m, r] {
-                if !f.object(n).is_some_and(|o| o.addr.is_some()) {
+                if f.object(n).is_none_or(|o| o.addr.is_none()) {
                     return Err(format!("% {n} is not a network object with an address"));
                 }
             }

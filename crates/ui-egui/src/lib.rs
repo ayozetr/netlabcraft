@@ -145,7 +145,7 @@ pub struct UiState {
     /// The pending screenshot is for File ▸ Print (a PDF), not for the PNG export.
     pub print_pending: bool,
     /// Where the screenshot lands when it is ready.
-    pub shot: std::sync::Arc<std::sync::Mutex<Option<std::sync::Arc<egui::ColorImage>>>>,
+    pub shot: std::sync::Arc<netlabcraft_core::sync::Mutex<Option<std::sync::Arc<egui::ColorImage>>>>,
     /// Activity instructions and wizard.
     pub activity: activity::ActivityView,
     canvas: canvas::CanvasState,
@@ -868,9 +868,7 @@ impl PacketApp {
                     let slot = self.ui.shot.clone();
                     let ctx = ui.ctx().clone();
                     ui.ctx().request_screenshot(move |image| {
-                        if let Ok(mut s) = slot.lock() {
-                            *s = Some(image);
-                        }
+                        *slot.lock() = Some(image);
                         ctx.request_repaint();
                     });
                 }
@@ -1316,7 +1314,7 @@ impl PacketApp {
         if !self.ui.image_pending {
             return;
         }
-        let shot = self.ui.shot.lock().ok().and_then(|mut s| s.take());
+        let shot = self.ui.shot.lock().take();
         let Some(image) = shot else { return };
         self.ui.image_pending = false;
         let ppp = ctx.pixels_per_point();

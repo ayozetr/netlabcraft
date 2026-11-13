@@ -1,7 +1,8 @@
 //! The browser shell: file picker, downloads and the eframe web runner.
 
+use netlabcraft_core::sync::Mutex;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
 
 use netlabcraft_engine::Session;
 use netlabcraft_ui_egui::{PacketApp, UiRequest};
@@ -67,7 +68,7 @@ fn download(name: &str, bytes: &[u8], mime: &str) {
 
 impl eframe::App for WebShell {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        let pending = std::mem::take(&mut *self.inbox.lock().unwrap_or_else(|e| e.into_inner()));
+        let pending = std::mem::take(&mut *self.inbox.lock());
         for (name, text, target) in pending {
             match target {
                 Target::Config(device, merge) => self.app.text_opened(device, merge, &text),
@@ -85,11 +86,7 @@ impl eframe::App for WebShell {
                     wasm_bindgen_futures::spawn_local(async move {
                         if let Some(f) = rfd::AsyncFileDialog::new().add_filter("NetLabCraft lab", &["nlcraft"]).pick_file().await {
                             let bytes = f.read().await;
-                            inbox.lock().unwrap_or_else(|e| e.into_inner()).push((
-                                f.file_name(),
-                                String::from_utf8_lossy(&bytes).to_string(),
-                                Target::Lab,
-                            ));
+                            inbox.lock().push((f.file_name(), String::from_utf8_lossy(&bytes).to_string(), Target::Lab));
                             ctx.request_repaint();
                         }
                     });
@@ -109,11 +106,7 @@ impl eframe::App for WebShell {
                     wasm_bindgen_futures::spawn_local(async move {
                         if let Some(f) = rfd::AsyncFileDialog::new().add_filter("Text", &["txt", "cfg", "conf"]).pick_file().await {
                             let bytes = f.read().await;
-                            inbox.lock().unwrap_or_else(|e| e.into_inner()).push((
-                                f.file_name(),
-                                String::from_utf8_lossy(&bytes).to_string(),
-                                Target::Config(device, merge),
-                            ));
+                            inbox.lock().push((f.file_name(), String::from_utf8_lossy(&bytes).to_string(), Target::Config(device, merge)));
                             ctx.request_repaint();
                         }
                     });
@@ -124,11 +117,7 @@ impl eframe::App for WebShell {
                     wasm_bindgen_futures::spawn_local(async move {
                         if let Some(f) = rfd::AsyncFileDialog::new().add_filter("Web page", &["html", "htm", "txt"]).pick_file().await {
                             let bytes = f.read().await;
-                            inbox.lock().unwrap_or_else(|e| e.into_inner()).push((
-                                f.file_name(),
-                                String::from_utf8_lossy(&bytes).to_string(),
-                                Target::WebFile(device),
-                            ));
+                            inbox.lock().push((f.file_name(), String::from_utf8_lossy(&bytes).to_string(), Target::WebFile(device)));
                             ctx.request_repaint();
                         }
                     });

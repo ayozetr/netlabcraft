@@ -1,6 +1,9 @@
 //! Labs of the lab book (`docs/labs/`) driven through the MCP server, as an agent would: the
 //! test starts `netlabcraft-cli mcp` and speaks JSON-RPC to it over stdin/stdout.
 
+// The test starts the CLI binary under test and speaks to it over pipes, in a test only.
+#![allow(clippy::disallowed_methods)]
+
 #[path = "../../../crates/engine/tests/labbook/mod.rs"]
 mod labbook;
 
