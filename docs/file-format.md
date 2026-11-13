@@ -1,12 +1,12 @@
 # The `.nlcraft` lab file
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (results file version 2 with the embedded network (M9.6)) · earlier: minor (instructor fields in `activity`, absolute PDU starts, boards and the IoT custom cable, power supplies, SA lifetimes, VRRP timers and IPv6, CoS, VTP pruning, EIGRP summaries and variance, RIP timers, RIPng, central WLANs, controller variables)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (file version 2: the cellular radio, `cell` settings (M9.10)) · earlier: minor (results file version 2 with the embedded network (M9.6)) · earlier: minor (instructor fields in `activity`, absolute PDU starts, boards and the IoT custom cable, power supplies, SA lifetimes, VRRP timers and IPv6, CoS, VTP pruning, EIGRP summaries and variance, RIP timers, RIPng, central WLANs, controller variables)
 
-A lab is one UTF-8 JSON file. It is the serde form of `netlabcraft_model::Topology`
+A lab is one UTF-8 JSON file (file version 2; version 1 files still open, and version 2 adds only the cellular radio below). It is the serde form of `netlabcraft_model::Topology`
 (`crates/model/src/lib.rs`), wrapped with a format tag and version (`crates/model/src/file.rs`):
 
 ```json
-{"format": "netlabcraft", "version": 1, "topology": {"devices": [...], "links": [...], "next_id": 7, "notes": "...", "annotations": [...]}}
+{"format": "netlabcraft", "version": 2, "topology": {"devices": [...], "links": [...], "next_id": 7, "notes": "...", "annotations": [...]}}
 ```
 
 Fields that hold their default value are left out when saving, so a small lab stays small and an
@@ -29,7 +29,7 @@ older file without a newer field still opens.
 
 | Field | Holds |
 |---|---|
-| `id`, `kind`, `model`, `name`, `label`, `x`, `y` | Identity (`kind`: `router`, `switch`, `hub`, `pc`, `laptop`, `server`, `printer`, `phone`, `iot`; the Home Gateway is a `switch`, the Cloud and the modems are `hub`s, tablets and smartphones are `laptop`s, the boards are `iot`; `model`: catalogue id such as `Switch-ML-24`, empty in old files means the kind's default), workspace label and position. |
+| `id`, `kind`, `model`, `name`, `label`, `x`, `y` | Identity (`kind`: `router`, `switch`, `hub`, `pc`, `laptop`, `server`, `printer`, `phone`, `iot`; the Home Gateway is a `switch`, the Cloud, the modems and the Cell Tower are `hub`s, the Central Office Server is a `router`, tablets and smartphones are `laptop`s, the boards are `iot`; `model`: catalogue id such as `Switch-ML-24`, empty in old files means the kind's default), workspace label and position. |
 | `ports` | The ports (below), in catalogue order. |
 | `gateway`, `gateway6`, `dns`, `dhcp_client` | Hosts: default gateways, DNS server, whether the address came from DHCP. |
 | `routes`, `routes6` | Static IPv4 and IPv6 routes; `distance` when one was typed (a floating static). |
@@ -55,6 +55,7 @@ older file without a newer field still opens.
 | `psu` | Routers and switches: which power-supply bays hold a supply, bay 1 first (`[true, false]`); left out as from the factory, with one supply in bay 1. A device with none is switched off. |
 | `adapter` | IP phones and lightweight APs: whether the power adapter is plugged in. Left out on every other device; a powered device in an older file has none and counts as plugged in. |
 | `bridges` | Clouds: the port pairs joined to each other, such as `["Coaxial0", "Phone0"]`. |
+| `cell` | Smartphones and tablets: `data_off` (Cellular Data switched off) and `apn` (the access point name asked for). Central office servers: `pool` (the network the devices' addresses come from; the server's own interface in it is their gateway), `apn` (the one it admits; left out admits any) and `plan_off`. Left out when default. Which tower a device is attached to, its signal and its address are worked out from the lab on load and are not saved (the address sits on the device's `Cellular0` port as `ip`, rewritten on load); a phone or tablet in an older file gets its `Cellular0` port when opened. |
 | `voice` | Routers: `telephony-service`, `ephone-dn`s and `ephone`s, option 150 per pool, and for SIP `register` (`voice register global`: `cme`, `source`, `port`, `max_dn`, `max_pool`), `reg_dns` and `pools` (`tag`, `mac`, `dn`). Phones: the TFTP server DHCP gave, `sip` (signal with SIP) and `sip_server`. |
 | `iot` | Smart things: `server`, `value` (a sensor's reading) and `interval` (report every N seconds of simulated time; 0 only on change). Servers and home gateways: `service` and `rules`, each with `conditions` (`sensor`, `op` `>`/`<`/`=`, `value`), `any` (joined with OR, else AND), `actuator` and `on` (what the rule does when it holds; true when left out). Older rules keep `sensor` and `above` and still read. |
 | `mgmt` | Routers and switches: timestamps, logging levels, NTP master, keys and trusted keys, `boot system` lines, history size, HSRP version 2 interfaces. |
@@ -88,6 +89,7 @@ events) is not saved.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | File version 2 (M9.10): smartphones and tablets gain a `Cellular0` port (older files get it on open), devices may carry `cell` settings, and the Cell Tower and Central Office Server models exist; version 1 files read as before. |
 | 2026-11-13 | minor | Results file: version 2 embeds `network`; version 1 still reads (M9.6). |
 | 2026-10-31 | minor | `activity`: `translations`, `language`, `answer` (sealed), `initial`, `assessment`, `locks`, and `link`/`link-hashed` checks; scenario PDUs' `start_at_s`; `board` and IoT custom cables; `psu`; crypto `sa_lifetime` and map `lifetime`; VRRP `advertise_cs`, `track`, `ipv6`; `vtp.pruning`; switch `cos_dscp`, port `qos_cos`, `priority_extend`, `prune_eligible`; `eigrp_summary`, `eigrp6.variance`, `rip.timers`, `rip6` and the port `ipv6.rip`; controller `vars`; kinds of the new models. |
 | 2026-10-30 | minor | `scenarios`; `automation` (managed passwords stored in clear); `security`; `fhrp`; `eigrp6` and the port `ipv6.eigrp`; `crypto.ikev2`; switch and port `l2` additions; `modules` with `Card-4SW`; `adapter`, `bridges`, `poe_never`; `voice` SIP fields; `iot.interval` and rules with `conditions`, `any`, `on`; `coaxial` and `phone` cables; the `phone` and `iot` kinds listed. |

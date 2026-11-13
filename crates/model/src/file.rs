@@ -1,4 +1,4 @@
-//! The `.nlcraft` lab file: UTF-8 JSON, `{"format":"netlabcraft","version":1,"topology":{…}}`.
+//! The `.nlcraft` lab file: UTF-8 JSON, `{"format":"netlabcraft","version":2,"topology":{…}}`.
 //! Readers accept older versions and refuse newer ones; loading always sanitizes.
 
 use serde::{Deserialize, Serialize};
@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 use crate::{ModelError, Result, Topology};
 
 pub const FORMAT: &str = "netlabcraft";
-pub const VERSION: u32 = 1;
+/// 2: smartphones and tablets have a `Cellular0` port, and devices may carry `cell` settings.
+/// A version 1 file still opens (its phones get the port).
+pub const VERSION: u32 = 2;
 pub const EXTENSION: &str = "nlcraft";
 
 /// Largest lab file accepted (hostile input).
@@ -66,5 +68,26 @@ mod tests {
         assert!(from_json(r#"{"format":"other","version":1,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_err());
         assert!(from_json(r#"{"format":"netlabcraft","version":99,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_err());
         assert!(from_json(r#"{"format":"netlabcraft","version":1,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
+        assert!(from_json(r#"{"format":"netlabcraft","version":2,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
+    }
+
+    #[test]
+    fn a_version_1_phone_opens_with_a_cellular_port_and_cell_settings_round_trip() {
+        let mut t = Topology::new();
+        let ph = t.add_model(crate::models::find("Smartphone").unwrap(), None, 0.0, 0.0).unwrap();
+        // As saved before the cellular radio: version 1, one port.
+        let mut v: serde_json::Value = serde_json::from_str(&to_json(&t).unwrap()).unwrap();
+        v["version"] = 1.into();
+        v["topology"]["devices"][0]["ports"].as_array_mut().unwrap().truncate(1);
+        let old = v.to_string();
+        assert!(!old.contains("Cellular0"), "{old}");
+        let back = from_json(&old).unwrap();
+        assert_eq!(back.device(ph).unwrap().ports.len(), 2);
+        assert_eq!(back.device(ph).unwrap().ports[1].name, "Cellular0");
+        let mut t2 = back;
+        t2.device_mut(ph).unwrap().cell.apn = "internet".into();
+        t2.device_mut(ph).unwrap().cell.data_off = true;
+        let again = from_json(&to_json(&t2).unwrap()).unwrap();
+        assert_eq!(again.device(ph).unwrap().cell, t2.device(ph).unwrap().cell);
     }
 }

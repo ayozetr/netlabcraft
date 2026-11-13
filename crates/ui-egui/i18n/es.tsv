@@ -1241,8 +1241,8 @@ Central switching (through the controller)	Conmutación central (a través del c
 The access points tunnel the hosts' traffic to the controller over CAPWAP, and the controller bridges it into the VLAN	Los puntos de acceso envían por túnel el tráfico de los equipos al controlador mediante CAPWAP, y el controlador lo pasa a la VLAN
 Tablet	Tableta
 Smartphone	Smartphone
-Touch-screen tablet with Wi-Fi: browser, email, command prompt and programming apps; no battery to look after	Tableta táctil con Wi-Fi: navegador, correo, símbolo del sistema y programación; sin batería de la que preocuparse
-Touch-screen smartphone with Wi-Fi: browser, email, command prompt and programming apps; no battery to look after	Smartphone táctil con Wi-Fi: navegador, correo, símbolo del sistema y programación; sin batería de la que preocuparse
+Touch-screen tablet with Wi-Fi and a cellular radio: browser, email, command prompt and programming apps; no battery to look after	Tableta táctil con Wi-Fi y radio celular: navegador, correo, símbolo del sistema y programación; sin batería de la que preocuparse
+Touch-screen smartphone with Wi-Fi and a cellular radio: browser, email, command prompt and programming apps; no battery to look after	Smartphone táctil con Wi-Fi y radio celular: navegador, correo, símbolo del sistema y programación; sin batería de la que preocuparse
 Wi-Fi {} · {}	Wi-Fi {} · {}
 Wi-Fi {} · no address yet	Wi-Fi {} · aún sin dirección
 Looking for {}	Buscando {}
@@ -1356,3 +1356,7 @@ Topology: {} links	Topología: {} enlaces
 Software	Versión de software
 Variables (address: name=value, …)	Variables (dirección: nombre=valor, …)
 {{name}} in the template takes each router's value; {{address}} and {{hostname}} are built in.	{{name}} en la plantilla toma el valor de cada router; {{address}} y {{hostname}} vienen incluidas.
+Cell Tower	Torre celular
+Cell tower: a radio with six sectors (Cellular0-5) that mobile devices in range attach to, and one backhaul port (Ethernet0) cabled to the provider network	Torre celular: una radio con seis sectores (Cellular0-5) a los que se conectan los dispositivos móviles en su alcance, y un puerto de retorno (Ethernet0) cableado a la red del operador
+Central Office Server	Servidor de central
+The provider's data service: admits mobile devices that attach through a cell tower, gives each an address from its pool and routes them to the lab (3 Gigabit Ethernet ports)	El servicio de datos del operador: admite los dispositivos móviles que se conectan por una torre celular, da a cada uno una dirección de su pool y los enruta hacia el laboratorio (3 puertos Gigabit Ethernet)

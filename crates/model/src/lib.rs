@@ -16,6 +16,7 @@ pub mod activity;
 pub mod automation;
 pub mod board;
 pub mod cable;
+pub mod cellular;
 pub mod cloud;
 pub mod drawing;
 pub mod fhrp;
@@ -994,6 +995,10 @@ pub struct Device {
     /// Clouds: the ports joined to each other (`("Coaxial0", "Phone0")`); see [`Topology::cloud_map`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub bridges: Vec<(String, String)>,
+    /// Smartphones and tablets: Cellular Data and the APN; central office servers: the address
+    /// pool, the APN accepted and the data plan (see [`cellular`]).
+    #[serde(default, skip_serializing_if = "cellular::CellConf::is_default")]
+    pub cell: cellular::CellConf,
     /// Routers: call control for IP phones; phones: where they register (see [`voice`]).
     #[serde(default, skip_serializing_if = "voice::Voice::is_default")]
     pub voice: voice::Voice,
@@ -1844,6 +1849,7 @@ impl Device {
             } else {
                 Vec::new()
             },
+            cell: cellular::CellConf::default(),
             voice: voice::Voice::default(),
             iot: if kind == DeviceKind::Iot { iot::Iot { interval: iot::DEFAULT_INTERVAL, ..iot::Iot::default() } } else { iot::Iot::default() },
             l2: l2sec::SwitchL2::default(),
@@ -2016,6 +2022,13 @@ pub struct Topology {
     /// Simulation scenarios and their PDU lists.
     #[serde(default, skip_serializing_if = "scenario::Scenarios::is_default")]
     pub scenarios: scenario::Scenarios,
+    /// Worked out from the lab by [`Topology::cell_refresh`], never saved: each cellular
+    /// device's link to its tower and what the central office made of its attach.
+    #[serde(skip)]
+    pub cell_links: BTreeMap<DeviceId, cellular::CellLink>,
+    /// Why a cellular device has no link (data off, out of range, tower full).
+    #[serde(skip)]
+    pub cell_none: BTreeMap<DeviceId, cellular::NoLink>,
 }
 
 /// A note or drawing placed on the workspace.
@@ -2104,6 +2117,8 @@ impl Topology {
             activity: None,
             physical: physical::Physical::default(),
             scenarios: scenario::Scenarios::default(),
+            cell_links: BTreeMap::new(),
+            cell_none: BTreeMap::new(),
         }
     }
 
@@ -2271,7 +2286,7 @@ impl Topology {
     /// The far end of the cable plugged into a port.
     /// The port at the other end: of the cable, or for a Wi-Fi host the access point's radio.
     pub fn peer(&self, end: End) -> Option<End> {
-        self.link_at(end).map(|l| if l.a == end { l.b } else { l.a }).or_else(|| self.wifi_ap_of(end))
+        self.link_at(end).map(|l| if l.a == end { l.b } else { l.a }).or_else(|| self.wifi_ap_of(end)).or_else(|| self.cell_peer(end))
     }
 
     /// The first port of a device with no cable.
@@ -2402,6 +2417,7 @@ impl Topology {
                 d.iot.sanitize();
                 d.sanitize_board();
                 d.sanitize_psu();
+                d.sanitize_cellular();
                 for p in &mut d.ports {
                     p.subifs.truncate(MAX_SUBIFS);
                     p.subifs.sort_by_key(|s| s.number);
@@ -2448,6 +2464,7 @@ impl Topology {
         self.sanitize_consoles();
         self.sanitize_wires();
         self.sanitize_physical();
+        self.cell_refresh();
         let ids: Vec<DeviceId> = self.devices.iter().map(|d| d.id).collect();
         self.scenarios.sanitize(&ids);
     }
