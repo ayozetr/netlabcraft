@@ -1064,6 +1064,8 @@ pub struct Sim {
     fhrp_held: fhrp::Held,
     /// VRRP groups waiting out a master down interval, and who acts as each group's master.
     vrrp_waits: Vec<fhrp::VrrpWait>,
+    /// The VRRPv3 IPv6 groups whose master has announced itself with a router advertisement.
+    vrrp6_ra: std::collections::BTreeSet<(DeviceId, String, u8)>,
     vrrp_acting: BTreeMap<String, fhrp::Acting>,
     /// GLBP round-robin: the forwarder the next ARP answer names, by (gateway, group).
     glbp_next: BTreeMap<(DeviceId, u16), usize>,

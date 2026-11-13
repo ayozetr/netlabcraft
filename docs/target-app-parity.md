@@ -1,6 +1,6 @@
 # Target-app parity: NetLabCraft vs Cisco Packet Tracer
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (EIGRP for IPv6 timers; no figure changed) · earlier: minor (RIPng timers; no figure changed) · earlier: minor (packaged-build gate met) · earlier: major (the lab book run end to end, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers: areas and course topics re-scored, the untested-labs deduction cut; counts measured again) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (VRRPv3 router advertisements; no figure changed) · earlier: minor (EIGRP for IPv6 timers; no figure changed) · earlier: minor (RIPng timers; no figure changed) · earlier: minor (packaged-build gate met) · earlier: major (the lab book run end to end, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers: areas and course topics re-scored, the untested-labs deduction cut; counts measured again) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summarizes it,
 [`gaps.md`](gaps.md) lists every shortfall, and the area checklists hold the detail:
@@ -34,7 +34,7 @@ to end is in [`labs/`](labs/README.md).
 |---|---|---|---|
 | Full target (the weighted total) | ~91% | ~55–110 (sum of the area rows) | Console depth beyond the lab book, workspace, device families (cellular), the remaining crypto stand-ins |
 | CCNA 1 student | ~93% | ~2–5 | More labs walked; small console and host-app details they turn up |
-| CCNA 2 student | ~94% | ~3–8 | More labs walked; VRRPv3 router advertisements |
+| CCNA 2 student | ~94% | ~3–8 | More labs walked |
 | CCNA 3 student | ~90% | ~8–16 | DES, 3DES and AH for real, certificates, IKE SA rekeying, a controller closer to the course's, virtualization |
 | Instructor | ~90% | ~4–8 | More interface languages, results signatures that resist forgery |
 
@@ -176,6 +176,7 @@ Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | VRRPv3 router advertisements for IPv6 (M9.2): the routing leftovers (old gaps item 5) are done; no percentage changed. |
 | 2026-11-13 | minor | EIGRP for IPv6 per-interface hello and hold timers (M9.2); the CCNA 2 student leftovers lose them; no percentage changed. |
 | 2026-11-13 | minor | RIPng timers, hold-down and triggered updates (M9.2): the CCNA 2 student leftovers lose RIPng; no percentage changed (the remaining routing leftovers are 2–4 h in gaps.md). |
 | 2026-10-31 | major | The lab book (20 labs, run end to end and 8 over MCP), real Diffie-Hellman, AES-192/256, SHA-256, IKEv1 ciphers and rekeying, default MTU, more inspections; instructor tools; Simulation-mode leftovers; a real PEAP tunnel and central switching; tablets, smartphones, ten Wi-Fi IoT things, programmable boards, the phone's settings, power supplies; XML, IPv6, TLS and SSH in automation, NETCONF candidate and locks, controller discovery; CoS, VRRP timers and VRRPv3, EIGRP for IPv6 on the wire, RIP timers and RIPng, VTP pruning. Console 84% → 86%, layer 2 95% → 97%, layer 3 94% → 96%, services 95% → 97%, security 90% → 94%, WAN/cabling/wireless 90% → 93%, Simulation mode 85% → 90%, workspace 83% → 85%, teaching 80% → 88%, device families 70% → 82%; total 87.5 → 90.94; hours to ~95% ~90–165 → ~55–110. Method: the untested-labs deduction goes from 5 to 2 points now that the lab book runs. CCNA 1 ~88% → ~93%, CCNA 2 ~88% → ~94%, CCNA 3 ~84% → ~90% (automation 60% → 80%, VPN 88% → 94%, wireless 85% → 92%), instructor ~78% → ~90%. Counts measured again (138 commands, 1003 grammar entries across 37 modes, 51 models, 31 samples, 20 lab-book labs, 591 tests). |

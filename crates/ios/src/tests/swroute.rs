@@ -163,6 +163,89 @@ fn vrrp_version_3_shares_an_ipv6_link_local_gateway() {
     assert!(!lab.run(r2, "show vrrp").contains("IPv6 group 1"));
 }
 
+#[test]
+fn vrrp_version_3_master_advertises_the_virtual_router() {
+    let (mut lab, r1, r2, _s1, pc) = pair();
+    for (r, n, prio) in [(r1, 2, 120), (r2, 3, 100)] {
+        lab.run(
+            r,
+            &format!(
+                "conf t\nipv6 unicast-routing\nfhrp version vrrp v3\nint g0/0\nipv6 address 2001:db8:1::{n}/64\nvrrp 1 ipv6 FE80::1\nvrrp 1 priority {prio}\nend"
+            ),
+        );
+    }
+    // An unsolicited advertisement the moment the master takes the role: from the virtual
+    // link-local address, with the virtual MAC, and nothing from either router's own address.
+    lab.sim.clear_trace();
+    secs(&mut lab, 2.0);
+    let ras: Vec<(DeviceId, String, Vec<u8>)> = lab
+        .sim
+        .trace()
+        .iter()
+        .filter(|e| e.summary.starts_with("NDP router advertisement") && (e.from.device == r1 || e.from.device == r2))
+        .map(|e| (e.from.device, e.summary.clone(), e.frame.clone()))
+        .collect();
+    assert!(!ras.is_empty(), "the master announces itself");
+    assert!(
+        ras.iter()
+            .all(|(d, s, f)| *d == r1 && s.contains("from fe80::1 (prefix 2001:db8:1::/64)") && f.get(6..12) == Some(&[0, 0, 0x5e, 0, 2, 1][..])),
+        "{ras:?}"
+    );
+    // A host asking gets the virtual router, answered by the master alone.
+    lab.sim.clear_trace();
+    let auto = lab.run(pc, "ipv6config auto");
+    assert!(auto.contains("2001:db8:1::") && auto.contains("fe80::1"), "{auto}");
+    let answers: Vec<DeviceId> =
+        lab.sim.trace().iter().filter(|e| e.summary.starts_with("NDP router advertisement") && e.from.device != pc).map(|e| e.from.device).collect();
+    assert!(!answers.is_empty() && !answers.contains(&r2), "{answers:?}");
+    // It repeats on its own every 200 s.
+    lab.sim.clear_trace();
+    secs(&mut lab, 200.0);
+    let repeats = lab.sim.trace().iter().filter(|e| e.from.device == r1 && e.summary.starts_with("NDP router advertisement from fe80::1")).count();
+    assert!(repeats >= 1, "periodic advertisements");
+    // The master goes away: the new master announces the same virtual router, once.
+    lab.run(r1, "conf t\nint g0/0\nshutdown\nend");
+    secs(&mut lab, 5.0);
+    assert!(lab.run(r2, "show vrrp").contains(": master"));
+    lab.sim.clear_trace();
+    secs(&mut lab, 3.0);
+    let from_r2 = lab.sim.trace().iter().filter(|e| e.from.device == r2 && e.summary.starts_with("NDP router advertisement from fe80::1")).count();
+    assert!(from_r2 >= 1, "the new master announces itself");
+    let from_r1 = lab.sim.trace().iter().filter(|e| e.from.device == r1 && e.summary.starts_with("NDP router advertisement")).count();
+    assert_eq!(from_r1, 0, "the old master is quiet");
+}
+
+#[test]
+fn a_vrrp_backup_stays_quiet_and_a_link_without_vrrp_is_unchanged() {
+    let (mut lab, r1, r2, _s1, pc) = pair();
+    // R1 and R2 on VRRP in IPv6 on g0/0, with R2 as backup; R1's g0/1 has no group.
+    for (r, n, prio) in [(r1, 2, 120), (r2, 3, 100)] {
+        lab.run(
+            r,
+            &format!(
+                "conf t\nipv6 unicast-routing\nfhrp version vrrp v3\nint g0/0\nipv6 address 2001:db8:1::{n}/64\nvrrp 1 ipv6 FE80::1\nvrrp 1 priority {prio}\n\
+                 int g0/1\nipv6 address 2001:db8:2::{n}/64\nend"
+            ),
+        );
+    }
+    secs(&mut lab, 2.0);
+    assert!(lab.run(r2, "show vrrp brief").contains("backup"));
+    // A router solicitation on the VRRP link reaches both; only the master answers.
+    lab.sim.clear_trace();
+    lab.run(pc, "ipv6config auto");
+    let answers: Vec<DeviceId> =
+        lab.sim.trace().iter().filter(|e| e.summary.starts_with("NDP router advertisement")).map(|e| e.from.device).collect();
+    assert!(!answers.contains(&r2), "the backup never answers: {answers:?}");
+    // Without a group on the link a router answers from its own address, as before.
+    lab.run(r1, "conf t\nint g0/0\nno vrrp 1 ipv6\nend");
+    lab.run(r2, "conf t\nint g0/0\nno vrrp 1 ipv6\nend");
+    secs(&mut lab, 3.0);
+    lab.sim.clear_trace();
+    lab.run(pc, "ipv6config auto");
+    let own: Vec<String> = lab.sim.trace().iter().filter(|e| e.summary.starts_with("NDP router advertisement")).map(|e| e.summary.clone()).collect();
+    assert!(own.iter().any(|s| s.contains("from fe80::")) && !own.iter().any(|s| s.contains("from fe80::1 ")), "{own:?}");
+}
+
 /// R1 — R2 — R3 in a line (and R1 — R3 over a slow link), R3 with two loopback networks.
 /// `v6` picks EIGRP for IPv6 (AS 10) or for IPv4 (AS 1).
 fn eigrp_line(v6: bool) -> (Lab, DeviceId, DeviceId, DeviceId) {

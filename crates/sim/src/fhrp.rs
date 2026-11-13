@@ -542,6 +542,23 @@ impl Sim {
             .collect()
     }
 
+    /// Every VRRPv3 IPv6 group this router has on an interface, master or not: (virtual
+    /// address, virtual MAC, whether it is master).
+    pub(crate) fn vrrp6_roles(&mut self, t: &Topology, d: &Device, iface: &str) -> Vec<(Ipv6Addr, MacAddr, bool)> {
+        if d.fhrp.vrrp.is_empty() {
+            return Vec::new();
+        }
+        let roles = self.fhrp_roles(t);
+        roles
+            .vrrp6
+            .get(&d.id)
+            .into_iter()
+            .flatten()
+            .filter(|r| r.iface == iface)
+            .map(|r| (r.virtual_ip, r.virtual_mac(), r.state == VrrpState::Master))
+            .collect()
+    }
+
     /// When the next VRRP wait ends.
     pub(crate) fn vrrp_next_expiry(&self) -> Option<u64> {
         self.vrrp_waits.iter().map(|w| w.until).min()

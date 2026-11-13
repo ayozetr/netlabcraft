@@ -2,7 +2,7 @@
 
 **Stage: pre-alpha** · every alpha and beta gate is met, packages are built by `release.yml` (not code-signed yet); the owner decides when the stage label changes
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (EIGRP for IPv6 timers) · earlier: minor (RIPng timers) · earlier: minor (releases and packaging) · earlier: major (the CCNA lab book, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers landed; numbers measured again, readiness re-estimated, gaps re-ranked) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (VRRPv3 router advertisements) · earlier: minor (EIGRP for IPv6 timers) · earlier: minor (RIPng timers) · earlier: minor (releases and packaging) · earlier: major (the CCNA lab book, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers landed; numbers measured again, readiness re-estimated, gaps re-ranked) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 NetLabCraft aims at Cisco Packet Tracer parity for teaching and lab work, and at being better
 in places: real frames you can open in any packet analyser, an open lab format, agent control
@@ -61,6 +61,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-11-13 — VRRPv3 router advertisements for IPv6.** The master of a VRRPv3 IPv6 group now announces the virtual router the way RFC 5798 asks: a router advertisement from the virtual link-local address with the virtual MAC when it takes the role and every 200 s, and it alone answers router solicitations (a backup stays quiet), so a host that autoconfigures takes the virtual address as its router and follows it when the master changes. The routing leftovers are done (GLBP hellos stay off the wire: the format is not public).
 - **2026-11-13 — EIGRP for IPv6 timers.** `ipv6 hello-interval eigrp AS S` and `ipv6 hold-time eigrp AS S` on interfaces (in the running configuration): hellos go out at each interface's own interval announcing its hold time, a neighbour that falls silent keeps its routes until that hold time runs out and is then dropped (a syslog line, DUAL's queries and updates), and `show ipv6 eigrp interfaces` lists the timers and `neighbors` the silent ones.
 - **2026-11-13 — RIPng timers.** RIPng now behaves like RIPv2 in simulated time: `timers basic UPDATE INVALID HOLDDOWN FLUSH` under `ipv6 router rip` (30 180 180 300 by default, in the running configuration), a silent neighbour's routes kept until the invalid time, then possibly down at metric 16 with a hold-down and a flush, and triggered responses a second after a change with withdrawn prefixes at metric 16; `show ipv6 rip` shows the timers and silent neighbours, `show ipv6 rip database` the possibly-down prefixes.
 - **2026-11-13 — One modular-exponentiation engine.** TLS and SSH's group 14 now run on the same Diffie-Hellman code as IKE (`wire/src/dh.rs`); the duplicate Montgomery arithmetic and the hard-coded prime in `wire/src/modp.rs` are gone.
