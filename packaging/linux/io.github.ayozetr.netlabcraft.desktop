@@ -9,4 +9,4 @@ Terminal=false
 Categories=Education;ComputerScience;
 MimeType=application/x-netlabcraft+json;
 Keywords=network;simulator;router;switch;lab;ccna;
-StartupWMClass=netlabcraft
+StartupWMClass=io.github.ayozetr.netlabcraft

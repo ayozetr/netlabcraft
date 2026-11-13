@@ -251,7 +251,7 @@ fn main() -> eframe::Result {
             .with_title(title.clone())
             .with_inner_size([1280.0, 820.0])
             .with_min_inner_size([720.0, 480.0])
-            .with_app_id("netlabcraft")
+            .with_app_id("io.github.ayozetr.netlabcraft")
             .with_icon(icon()),
         ..Default::default()
     };
