@@ -1,6 +1,6 @@
 # Roadmap
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (M9.7: four more labs, console depth second round) · earlier: minor (M9.4: seven troubleshooting labs) · earlier: minor (M7 first release done: packages and the release workflow), major (alpha gate 1 met through the lab book; every beta gate met; milestone states and estimates after the security, instructor, Simulation-mode, wireless, end-device, automation and routing rounds) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (focus paragraph updated for release 0.2.0; M9.7: four more labs, console depth second round) · earlier: minor (M9.4: seven troubleshooting labs) · earlier: minor (M7 first release done: packages and the release workflow), major (alpha gate 1 met through the lab book; every beta gate met; milestone states and estimates after the security, instructor, Simulation-mode, wireless, end-device, automation and routing rounds) · **Target:** Cisco Packet Tracer 9.0
 
 Milestones, the current focus and what comes next. The summary is in
 [`ROADMAP.md`](../ROADMAP.md); the ranked work list is [gaps.md](gaps.md).
@@ -10,8 +10,9 @@ Milestones, the current focus and what comes next. The summary is in
 The CCNA lab book runs end to end, by the engine and over MCP, and the leftovers of the
 earlier rounds landed (security, instructor tools, Simulation mode, wireless, end devices,
 automation, switching and routing). The focus now is depth where it is honestly thin: more labs
-walked to find console gaps (gap 1), the remaining crypto stand-ins and certificates (gaps 2
-and 3), and a cellular network for the mobile devices (gap 4).
+walked to find console gaps (gap 1), the last crypto and certificate details (gaps 2 and 3),
+the room's depth for the IoT things (gap 4), device windows as native windows (gap 5), more end
+devices (gap 6) and more interface languages (gap 7).
 
 ## Milestones
 
@@ -66,6 +67,7 @@ hold.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | Focus paragraph updated for release 0.2.0 (the open gaps). |
 | 2026-11-13 | minor | M9.7: four more labs (28 to 31) join the lab book (31 labs, 14 over MCP) and the console gaps the first round left are fixed; the gaps table's item 1 narrowed again. |
 | 2026-11-13 | minor | M9.4: seven troubleshooting labs (21 to 27) join the lab book (27 labs, 11 over MCP); the gaps table's item 1 narrowed. |
 | 2026-11-13 | minor | M7 done: the release workflow and packages for Linux, Windows, macOS and the web, tested end to end; the packaged-build gate is met. |

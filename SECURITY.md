@@ -20,4 +20,4 @@ it, and what an attacker gains. We'll reply within a week and tell you what we'l
 
 ## Supported versions
 
-There is no release yet; fixes go to `main`, and into the latest release once there is one.
+Fixes go to `main` and into the next release; the latest release is the supported one. Older releases are not patched.

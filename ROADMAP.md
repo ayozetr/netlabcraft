@@ -32,14 +32,14 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Tests | 770 | measured: sum of "passed" from the CI run on `main` after the last of the nine M9 merges (`cargo test --workspace --lib --bins --tests`) (unit, console scripts, sample labs and the lab book end to end, the lab book over MCP, UI harness, fuzz of every command) |
 | Remaining to **alpha** | **met** | every alpha gate is met: the lab book's CCNA 1 labs run as written and `release.yml` builds the packages (v0.1.0, not code-signed) ([roadmap.md](docs/roadmap.md#alpha-gates)) |
 | Remaining to **beta** | **met** | every beta gate is met ([roadmap.md](docs/roadmap.md#beta-gates)) |
-| Remaining to **~95% everywhere** | **~55–110 Opus 5.5 agent-hours** | estimated; sum of the dimension rows below |
+| Remaining to **~95% everywhere** | **~28–54 Opus 5.5 agent-hours** | estimated; the sum of the open items in [docs/gaps.md](docs/gaps.md), which is current. The percentages and the per-dimension hours below were last scored on 2026-10-31 and are not re-scored yet |
 
 | Audience | Ready % | Opus 5.5 agent wall-clock hours to ~95% | Work that dominates |
 |---|---|---|---|
-| Full target (the weighted total) | ~91% | ~55–110 (sum of the dimension rows) | Console depth beyond the lab book, workspace, device families (cellular), the remaining crypto stand-ins |
+| Full target (the weighted total) | ~91% | ~28–54 (sum of the open items in gaps.md) | Console depth beyond the lab book, device windows as native windows, more end devices, more interface languages |
 | CCNA 1 student | ~93% | ~2–5 | More labs walked; small console and host-app details they turn up |
-| CCNA 2 student | ~94% | ~3–8 | More labs walked; VRRPv3 router advertisements, RIPng and EIGRP for IPv6 timers |
-| CCNA 3 student | ~90% | ~8–16 | certificates, IKE SA rekeying, a controller closer to the course's, virtualization |
+| CCNA 2 student | ~94% | ~3–8 | More labs walked (EIGRP, IPv6, EtherChannel, port security) |
+| CCNA 3 student | ~90% | ~8–16 | IKE signatures and PEAP certificates, a controller closer to the course's, virtualization |
 | Instructor | ~90% | ~4–8 | More interface languages |
 
 ## Dimensions
