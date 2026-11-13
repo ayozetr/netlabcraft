@@ -1,6 +1,6 @@
 # Gaps
 
-> **Last reviewed:** 2026-10-31 · **Last updated:** 2026-10-31 · **Change:** major (the lab book, automation depth, security, instructor, Simulation-mode, switching and routing, wireless and device-family items closed; what is honestly left re-ranked) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (packaging and first release done) · earlier: major (the lab book, automation depth, security, instructor, Simulation-mode, switching and routing, wireless and device-family items closed; what is honestly left re-ranked) · **Target:** Cisco Packet Tracer 9.0
 
 Every known shortfall against the reference app, ranked: the work list. Pick from the top; each
 item lands with tests and doc updates. The weights behind the ranking are in
@@ -24,12 +24,12 @@ Hours are Opus 5.5 agent wall-clock estimates.
 | 9 | **Results that resist forgery:** results files are signed under a key from the salt in the activity, so they catch hand edits but not someone who reads the open code and the file; a key the instructor keeps outside the file would close it | Instructors | 2–4 h |
 | 10 | **More languages:** interface languages beyond English and Spanish (catalogs in the same format) | Non-English students | 3–6 h each |
 | 11 | **Code health:** two independent modular-exponentiation implementations (`wire/src/dh.rs` for IKE, `wire/src/modp.rs` for TLS and SSH) to merge into one | Contributors | 1–2 h |
-| — | **Packaging and first release:** next: CI runs in GitHub Actions; the release workflow and per-platform packaging are not written yet and not estimated; see [releasing.md](releasing.md) | Everyone who isn't a developer | next |
 
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | Done: packaging and first release: Linux (AppImage, deb, rpm, tar.gz), Windows (MSI, portable zip), macOS (dmg) and web packages built by `release.yml`, SHA256SUMS and a draft release; builds are not signed yet ([releasing.md](releasing.md)). |
 | 2026-10-31 | major | Re-ranked after the round below: console depth beyond the lab book first, then the crypto stand-ins, certificates, a cellular network, routing, IoT, workspace, end-device, instructor and language leftovers, and the duplicated modular exponentiation. |
 | 2026-10-31 | minor | Done: switching and routing leftovers (old item 6): CoS 802.1p with trust and maps, VRRP timers, master-down, skew and tracking, VRRPv3 for IPv6, EIGRP for IPv6 updates, queries and replies on the wire with variance and summaries (IPv4 summaries too), RIP timers, hold-down, triggered updates and poisoned reverse, RIPng, VTP pruning (computed). What is left is the new item 5. |
 | 2026-10-31 | minor | Done: device families (old item 8): Tablet and Smartphone (Wi-Fi only), ten Wi-Fi IoT things, Board SBC and Board MCU with BoardScript and the IoT Custom cable, the phone's Settings screen, power supplies. What is left is the new items 4, 6 and 8. |

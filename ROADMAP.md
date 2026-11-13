@@ -1,8 +1,8 @@
 # NetLabCraft roadmap
 
-**Stage: pre-alpha** · alpha gates 1 and 2 and every beta gate met; what keeps the stage is the packaged-build gate, on hold by the owner's decision
+**Stage: pre-alpha** · every alpha and beta gate is met, packages are built by `release.yml` (not code-signed yet); the owner decides when the stage label changes
 
-> **Last reviewed:** 2026-10-31 · **Last updated:** 2026-10-31 · **Change:** major (the CCNA lab book, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers landed; numbers measured again, readiness re-estimated, gaps re-ranked) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (releases and packaging) · earlier: major (the CCNA lab book, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers landed; numbers measured again, readiness re-estimated, gaps re-ranked) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 NetLabCraft aims at Cisco Packet Tracer parity for teaching and lab work, and at being better
 in places: real frames you can open in any packet analyser, an open lab format, agent control
@@ -61,6 +61,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-11-13 — Releases.** `release.yml` builds Linux (AppImage, deb, rpm, tar.gz; x86_64 and aarch64), Windows (MSI and portable zip), macOS (universal dmg and CLI zip) and the web build, with SHA256SUMS, and creates a draft GitHub Release; CI runs `cargo xtask ci` on every pull request; Dependabot, issue and pull request templates, `CONTRIBUTING.md` and `SECURITY.md` are in. Builds are not code-signed yet.
 - **2026-10-31 — Switching and routing leftovers.** IP phones mark voice CoS 5 (EF) and signalling CoS 3, switches carry 802.1p priorities on tagged ports and map them with `mls qos map cos-dscp`, `mls qos cos` and `switchport priority extend cos`; VRRP advertisement timers, master-down interval and skew, `vrrp N track`, and VRRPv3 for IPv6; EIGRP for IPv6 sends its updates, queries and replies on the wire, with `variance` and `ipv6 summary-address eigrp` (and `ip summary-address eigrp` with a Null0 route); RIP timers with hold-down, triggered updates and poisoned reverse, and RIPng; VTP pruning.
 - **2026-10-31 — Automation depth.** RESTCONF speaks XML as well as JSON (Accept and Content-Type) and IPv6 addresses and transport; NETCONF has a candidate datastore with commit, discard and validate, locks between sessions, and sessions kept open between commands; `https://` runs a real TLS 1.2 handshake and NETCONF runs over SSH 2.0; the controller discovers routers over CDP and LLDP from a seed, keeps an inventory with model and software, and pushes templates with per-router variables.
 - **2026-10-31 — Phone settings and power supplies.** The IP phone's Settings screen (protocol, call server, extension, MAC, voice VLAN, TFTP server, DHCP or static address); routers and switches have one or two power-supply bays, drawn in the Physical tab, and taking out the last supply switches the device off.

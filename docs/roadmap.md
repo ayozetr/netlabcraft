@@ -1,6 +1,6 @@
 # Roadmap
 
-> **Last reviewed:** 2026-10-31 · **Last updated:** 2026-10-31 · **Change:** major (alpha gate 1 met through the lab book; every beta gate met; milestone states and estimates after the security, instructor, Simulation-mode, wireless, end-device, automation and routing rounds) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (M7 first release done: packages and the release workflow) · earlier: major (alpha gate 1 met through the lab book; every beta gate met; milestone states and estimates after the security, instructor, Simulation-mode, wireless, end-device, automation and routing rounds) · **Target:** Cisco Packet Tracer 9.0
 
 Milestones, the current focus and what comes next. The summary is in
 [`ROADMAP.md`](../ROADMAP.md); the ranked work list is [gaps.md](gaps.md).
@@ -24,7 +24,7 @@ and 3), and a cellular network for the mobile devices (gap 4).
 | **M4 — Teaching** | ✅ 2026-10-31 (activities, wizard, variables, the comparison with the answer, the Spanish interface, and M4.5–M4.9: answer network, assessment tree, initial network, instructions per language, connectivity tests, signed results, locks) | Activities with expected results and a score, instructions panel, translations (Spanish first). |
 | **M5 — CCNA 2 complete** | ✅ 2026-10-31 (wireless with group keys, a real PEAP tunnel and central switching, HSRP, VRRP with timers and VRRPv3, GLBP, DTP, RSTP, loop guard, DHCPv6, switch security, CoS, VTP pruning, routing leftovers, and the end devices of M5.85–M5.88; the lab book's nine CCNA 2 labs run) | Wireless LANs, FHRP, DTP, STP, LAN security, DHCPv6, static routing. |
 | **M6 — CCNA 3 complete** | ✅ 2026-10-31 (OSPF as taught, PPP authentication, ACL depth, network management, GRE/IPsec with IKEv1 and IKEv2 on a real Diffie-Hellman with real AES and rekeying, QoS, zone-based firewall, MTU, RESTCONF and NETCONF over TLS and SSH, a controller with discovery; the lab book's seven CCNA 3 labs run; DES, 3DES, AH and certificates left, in [gaps.md](gaps.md)) | OSPF depth, PPP authentication, ACL depth, network services, VPN basics, QoS, automation. |
-| **M7 — First release** | **next** (icon, Linux user install, About window and CI done) | GitHub Actions works again and CI runs. The release workflow and per-platform packaging are the next step; not estimated yet ([releasing.md](releasing.md)). |
+| **M7 — First release** | **done** (icon, Linux user install, About window, CI, packaging and the release workflow) | Linux, Windows, macOS and web packages, SHA256SUMS and a draft release, built by `release.yml` and tested end to end; builds are not signed or notarized yet ([releasing.md](releasing.md)). |
 | **M8 — CCNA lab book** | ✅ 2026-10-31 | M8.1 fixes the book turned up · M8.2 CCNA 1 labs and the runner · M8.3 CCNA 2 labs · M8.4 CCNA 3 labs and the MCP run ([labs/](labs/README.md)). |
 
 ## Alpha gates
@@ -40,11 +40,11 @@ the reference app:
 2. Simulation mode shows the frames those labs talk about: met (ARP, ICMP, DHCP, DNS, TCP,
    BPDUs, OSPF, RIP and more, with pcap export), with complex PDUs, PDU details in OSI layers,
    Constant Delay and a capture filter.
-3. A packaged build exists for Linux, Windows and macOS: **next** (CI is in place; the release workflow and packaging are not written).
+3. A packaged build exists for Linux, Windows and macOS: **met** (`release.yml` builds them; not signed yet).
    Until it is lifted, Linux users install from source with `packaging/linux/install.sh`, and
    everyone else builds with Cargo.
 
-**Total to alpha:** gates 1 and 2 are met; gate 3 is not estimated yet.
+**Total to alpha:** gates 1 and 2 are met; every alpha gate is met.
 
 ## Beta gates
 
@@ -66,6 +66,7 @@ hold.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | M7 done: the release workflow and packages for Linux, Windows, macOS and the web, tested end to end; the packaged-build gate is met. |
 | 2026-10-31 | major | M3–M6 and M8 done; alpha gate 1 met through the lab book; totals to alpha and beta now wait only on the packaging hold; current focus on depth (more labs, crypto stand-ins, certificates, cellular). |
 | 2026-10-30 | minor | Beta gate 1 met: 20-lab book in `docs/labs/`, run as written by the engine and over MCP. |
 | 2026-10-30 | minor | Current focus and milestone states after Simulation-mode depth, automation, security, leftovers and device families landed; beta gate 1 (the lab book) in progress; grammar count 958. |

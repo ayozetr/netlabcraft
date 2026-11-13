@@ -1,6 +1,6 @@
 # Target-app parity: NetLabCraft vs Cisco Packet Tracer
 
-> **Last reviewed:** 2026-10-31 · **Last updated:** 2026-10-31 · **Change:** major (the lab book run end to end, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers: areas and course topics re-scored, the untested-labs deduction cut; counts measured again) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (packaged-build gate met) · earlier: major (the lab book run end to end, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers: areas and course topics re-scored, the untested-labs deduction cut; counts measured again) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summarizes it,
 [`gaps.md`](gaps.md) lists every shortfall, and the area checklists hold the detail:
@@ -25,7 +25,7 @@ to end is in [`labs/`](labs/README.md).
 | **CCNA 3 student** (Enterprise Networking, Security and Automation) | **~90%** | estimated; [method](#audiences) |
 | **Instructor** (builds graded activities) | **~90%** | estimated; activities with checks, points, sections, hints, values per student, a time limit and a password lock, plus an answer network, an assessment tree, an initial network, instructions per language, connectivity tests, signed results and locks |
 | Stage | **pre-alpha** | see [Stage](#stage) |
-| Remaining to alpha | **next** | gates 1 and 2 met; the packaged-build gate is on hold and not estimated ([roadmap.md](roadmap.md#alpha-gates)) |
+| Remaining to alpha | **met** | every alpha gate is met, the packaged-build gate through `release.yml` ([roadmap.md](roadmap.md#alpha-gates)) |
 | Remaining to ~95% in every area | **~55–110 Opus 5.5 agent-hours** | estimated; sum of the area rows below |
 
 ### Readiness by audience
@@ -158,8 +158,7 @@ first estimate) counted topics as present without weighing their depth or the un
 
 **Pre-alpha:** every core workflow works end to end (build a lab, configure by typing, ping,
 watch frames, grade an activity, save), and the 20-lab book runs as written, by the engine and
-over MCP. Alpha gates 1 and 2 are met and every beta gate is met; what keeps the stage at
-pre-alpha is the packaged-build gate (CI is in place; the release workflow and packaging come next).
+over MCP. Every alpha gate and every beta gate is met; packages are built by `release.yml`.
 Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 
 ## Better than the reference
