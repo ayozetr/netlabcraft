@@ -771,25 +771,27 @@ pub fn interfaces(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
             continue;
         }
         let end = End { device: d.id, port: i };
-        let link = if p.err_disabled {
-            format!("down (err-disabled by {})", crate::exec::l2sec::cause_words(p.l2.err_cause))
+        // The port's status (what the cable and the administrator say) and its line protocol
+        // (whether frames can be exchanged): the two words students filter on.
+        let (status, proto) = if p.err_disabled {
+            (format!("down (err-disabled by {})", crate::exec::l2sec::cause_words(p.l2.err_cause)), "down (err-disabled)".to_string())
         } else if p.shutdown {
-            "administratively down".to_string()
+            ("administratively down".to_string(), "down".to_string())
         } else if port_up(t, end) {
-            "up".to_string()
+            ("up".to_string(), "up".to_string())
         } else if t.peer(end).is_none() {
-            "down (no cable)".to_string()
+            ("down (no cable)".to_string(), "down".to_string())
         } else if let Some(why) = netlabcraft_sim::serial_problem(t, end) {
-            format!("up, line protocol down ({why})")
+            ("up".to_string(), format!("down ({why})"))
         } else if let Some(why) = netlabcraft_sim::cable_problem(t, end) {
-            format!("down ({why})")
+            (format!("down ({why})"), "down".to_string())
         } else if netlabcraft_sim::speed_mismatch(t, end) {
-            "down (speed mismatch with the far end)".to_string()
+            ("down (speed mismatch with the far end)".to_string(), "down".to_string())
         } else {
-            "down (far end shut down)".to_string()
+            ("down (far end shut down)".to_string(), "down".to_string())
         };
         if only.is_none_or(|r| r.sub.is_none()) {
-            let _ = writeln!(s, "{} is {link}", p.name);
+            let _ = writeln!(s, "{} is {status}, line protocol is {proto}", p.name);
             if netlabcraft_model::ifname::is_serial(&p.name) {
                 let _ = writeln!(s, "  Encapsulation {}, serial", p.serial.encapsulation.name());
             } else {
@@ -821,14 +823,14 @@ pub fn interfaces(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
             if only.is_some_and(|r| r.sub.is_some_and(|n| n != sub.number)) {
                 continue;
             }
-            let state = if sub.shutdown || p.shutdown {
-                "administratively down"
+            let (state, proto) = if sub.shutdown || p.shutdown {
+                ("administratively down", "down")
             } else if port_up(t, end) {
-                "up"
+                ("up", "up")
             } else {
-                "down"
+                ("down", "down")
             };
-            let _ = writeln!(s, "{}.{} is {state}", p.name, sub.number);
+            let _ = writeln!(s, "{}.{} is {state}, line protocol is {proto}", p.name, sub.number);
             match sub.vlan {
                 Some(v) => {
                     let _ = writeln!(s, "  802.1Q VLAN {v}");
@@ -2008,14 +2010,14 @@ pub fn ip_interface(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
             }
         }
         for (name, ip, acl, helpers, nat, down) in rows {
-            let state = if down {
-                "administratively down"
+            let (state, proto) = if down {
+                ("administratively down", "down")
             } else if port_up(t, end) {
-                "up"
+                ("up", "up")
             } else {
-                "down"
+                ("down", "down")
             };
-            let mut s = format!("{name} is {state}\n");
+            let mut s = format!("{name} is {state}, line protocol is {proto}\n");
             match ip {
                 Some(ip) => {
                     let _ = writeln!(s, "  Address {ip}, broadcast {}", ip.broadcast());
@@ -2039,7 +2041,11 @@ pub fn ip_interface(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
         }
     }
     for svi in d.svis.iter().filter(|_| only.is_none()) {
-        let mut s = format!("Vlan{} is {}\n", svi.vlan, if svi.shutdown { "administratively down" } else { "up" });
+        let mut s = if svi.shutdown {
+            format!("Vlan{} is administratively down, line protocol is down\n", svi.vlan)
+        } else {
+            format!("Vlan{} is up, line protocol is up\n", svi.vlan)
+        };
         match svi.ip {
             Some(ip) => {
                 let _ = write!(s, "  Address {ip}, broadcast {}", ip.broadcast());
@@ -2121,14 +2127,14 @@ pub fn flash(d: &Device) -> String {
 pub fn svi_interface(t: &Topology, d: &Device, vlan: u16) -> Result<String, String> {
     let svi = d.svis.iter().find(|s| s.vlan.get() == vlan).ok_or(format!("% No interface Vlan{vlan} (create it with `interface vlan {vlan}`)"))?;
     let up = netlabcraft_sim::up_ifaces(t, d).iter().any(|i| i.name == format!("Vlan{vlan}"));
-    let state = if svi.shutdown {
-        "administratively down"
+    let (state, proto) = if svi.shutdown {
+        ("administratively down", "down")
     } else if up {
-        "up"
+        ("up", "up")
     } else {
-        "down (no port of the VLAN is up)"
+        ("down (no port of the VLAN is up)", "down")
     };
-    let mut s = format!("Vlan{vlan} is {state}\n  Hardware address {}\n", netlabcraft_sim::svi_mac(d));
+    let mut s = format!("Vlan{vlan} is {state}, line protocol is {proto}\n  Hardware address {}\n", netlabcraft_sim::svi_mac(d));
     if !svi.description.is_empty() {
         let _ = writeln!(s, "  Description: {}", svi.description);
     }
@@ -2833,9 +2839,9 @@ fn crypto_map_line(s: &mut String, d: &Device, name: &str) {
 fn tunnel_block(t: &Topology, d: &Device, tun: &netlabcraft_model::vpn::Tunnel) -> String {
     let mut s = String::new();
     let state = match netlabcraft_sim::vpn::tunnel_status(t, d, tun.number) {
-        Ok(_) => "up, line protocol up".to_string(),
-        Err(_) if tun.shutdown => "administratively down".to_string(),
-        Err(why) => format!("up, line protocol down ({why})"),
+        Ok(_) => "up, line protocol is up".to_string(),
+        Err(_) if tun.shutdown => "administratively down, line protocol is down".to_string(),
+        Err(why) => format!("up, line protocol is down ({why})"),
     };
     let _ = writeln!(s, "{} is {state}", tun.name());
     if !tun.description.is_empty() {

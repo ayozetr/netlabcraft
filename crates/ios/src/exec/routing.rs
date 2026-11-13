@@ -148,7 +148,7 @@ pub(crate) fn loopback_brief(s: &mut String, d: &netlabcraft_model::Device) {
 pub(crate) fn loopback_block(l: &netlabcraft_model::routing::Loopback) -> String {
     use std::fmt::Write as _;
     let mut s = String::new();
-    let state = if l.shutdown { "administratively down, line protocol down" } else { "up, line protocol up" };
+    let state = if l.shutdown { "administratively down, line protocol is down" } else { "up, line protocol is up" };
     let _ = writeln!(s, "{} is {state}", l.name());
     if !l.description.is_empty() {
         let _ = writeln!(s, "  Description: {}", l.description);
