@@ -133,11 +133,105 @@ pub fn phone_line(p: &Painter, a: Pos2, b: Pos2, width: f32, tk: &Tokens) {
     }
 }
 
+/// Whether a model is drawn whole by [`cellular_icon`] (the cell tower and the central office).
+pub fn is_cellular_net(model_id: &str) -> bool {
+    matches!(model_id, "Cell-Tower" | "Central-Office")
+}
+
+/// The orange the cellular network is drawn in (waves, signal, coverage).
+pub const CELL_ORANGE: Color32 = Color32::from_rgb(0xc2, 0x5b, 0x2a);
+
+/// Radio waves leaving `c` to the left and to the right, three arcs each.
+fn radio_waves(p: &Painter, c: Pos2, w: f32, color: Color32) {
+    let s = Stroke::new((w / 26.0).max(1.0), color);
+    for side in [-1.0f32, 1.0] {
+        for r in [0.09f32, 0.16, 0.23] {
+            let pts: Vec<Pos2> = (0..=8)
+                .map(|k| {
+                    let a = -0.65 + k as f32 * 1.3 / 8.0;
+                    c + vec2(side * a.cos(), a.sin()) * w * r
+                })
+                .collect();
+            p.add(Shape::line(pts, s));
+        }
+    }
+}
+
+/// The cell tower (a lattice mast with radio waves) and the central office server (a squat
+/// building with a roof antenna).
+pub fn cellular_icon(p: &Painter, rect: Rect, model_id: &str, tk: &Tokens) {
+    let w = rect.width();
+    let steel = Color32::from_rgb(0x55, 0x6b, 0x82);
+    if model_id == "Cell-Tower" {
+        let top = pos2(rect.center().x, rect.top() + w * 0.22);
+        let base_l = pos2(rect.center().x - w * 0.2, rect.bottom() - w * 0.08);
+        let base_r = pos2(rect.center().x + w * 0.2, rect.bottom() - w * 0.08);
+        let s = Stroke::new((w / 20.0).max(1.2), steel);
+        p.line_segment([top, base_l], s);
+        p.line_segment([top, base_r], s);
+        p.line_segment([base_l, base_r], s);
+        // Cross bracing: a rung and a diagonal at each of three heights.
+        for k in 1..4 {
+            let f = k as f32 / 4.0;
+            let l = top + (base_l - top) * f;
+            let r = top + (base_r - top) * f;
+            p.line_segment([l, r], Stroke::new((w / 32.0).max(1.0), steel));
+            let next = f + 0.25;
+            if next <= 1.0 {
+                let r2 = top + (base_r - top) * next;
+                p.line_segment([l, r2], Stroke::new((w / 40.0).max(1.0), steel));
+            }
+        }
+        p.circle_filled(top, w * 0.045, CELL_ORANGE);
+        radio_waves(p, top, w, CELL_ORANGE);
+        return;
+    }
+    // The central office: a flat-roofed building, a door, two rows of windows, an antenna.
+    let body = Rect::from_center_size(rect.center() + vec2(0.0, w * 0.1), vec2(w * 0.74, w * 0.46));
+    p.rect_filled(body.translate(vec2(0.0, w * 0.04)), w * 0.03, crate::theme::shade(steel, 0.6));
+    p.rect_filled(body, w * 0.03, steel);
+    p.rect_stroke(body, w * 0.03, Stroke::new(1.0, crate::theme::shade(steel, 0.5)), StrokeKind::Inside);
+    for row in 0..2 {
+        for col in 0..4 {
+            let at = body.left_top() + vec2(w * (0.1 + 0.15 * col as f32), w * (0.07 + 0.12 * row as f32));
+            p.rect_filled(
+                Rect::from_min_size(at, vec2(w * 0.09, w * 0.07)),
+                1.0,
+                if (row + col) % 3 == 0 { tk.link_up } else { Color32::from_rgb(0xdc, 0xe8, 0xf2) },
+            );
+        }
+    }
+    p.rect_filled(
+        Rect::from_center_size(pos2(body.right() - w * 0.12, body.bottom() - w * 0.07), vec2(w * 0.1, w * 0.14)),
+        1.0,
+        Color32::from_rgb(0x2a, 0x2a, 0x2a),
+    );
+    let mast_base = pos2(body.center().x, body.top());
+    let mast_top = mast_base + vec2(0.0, -w * 0.26);
+    p.line_segment([mast_base, mast_top], Stroke::new((w / 24.0).max(1.0), steel));
+    p.circle_filled(mast_top, w * 0.04, CELL_ORANGE);
+    radio_waves(p, mast_top, w * 0.8, CELL_ORANGE);
+}
+
+/// Four rising signal bars with `lit` of them filled, `h` pixels tall, from `at` (their
+/// bottom-left corner).
+pub fn signal_bars(p: &Painter, at: Pos2, h: f32, lit: u8, on: Color32, off: Color32) {
+    let bar_w = h * 0.22;
+    for k in 0..4u8 {
+        let bh = h * (0.3 + 0.7 * f32::from(k + 1) / 4.0);
+        let x = at.x + f32::from(k) * bar_w * 1.5;
+        let r = Rect::from_min_max(pos2(x, at.y - bh), pos2(x + bar_w, at.y));
+        p.rect_filled(r, 0.5, if k < lit { on } else { off });
+    }
+}
+
 /// A device's icon: the cloud and the modems drawn whole, every other model as its kind with
 /// its marks.
 pub fn model_icon(p: &Painter, rect: Rect, kind: netlabcraft_model::DeviceKind, model_id: &str, multilayer: bool, tk: &Tokens) {
     if is_wan(model_id) {
         wan_icon(p, rect, model_id, tk);
+    } else if is_cellular_net(model_id) {
+        cellular_icon(p, rect, model_id, tk);
     } else if matches!(model_id, "Board-SBC" | "Board-MCU") {
         board_icon(p, rect, model_id == "Board-SBC");
     } else if matches!(model_id, "Tablet" | "Smartphone") {

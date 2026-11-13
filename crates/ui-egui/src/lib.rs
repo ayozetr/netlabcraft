@@ -20,6 +20,7 @@ pub mod activity;
 mod board_page;
 mod bottom;
 mod canvas;
+mod cell_page;
 mod cloud_page;
 mod console;
 mod credits;
@@ -218,6 +219,7 @@ pub fn open_desktop_app(app: &mut PacketApp, d: DeviceId, which: &str) {
             "mib" => Some(console::DesktopApp::MibBrowser),
             "terminal" => Some(console::DesktopApp::Terminal),
             "programming" => Some(console::DesktopApp::Programming),
+            "settings" => Some(console::DesktopApp::Settings),
             _ => None,
         };
     }
@@ -310,7 +312,7 @@ pub fn open_tab(app: &mut PacketApp, d: DeviceId, name: &str) {
 }
 
 /// Opens a device's Config tab on one page: `settings`, `home`, `vlans`, `routes`, `wireless`
-/// or `port:N` (the N-th port, from 0).
+/// `cellular` (a central office server or a cell tower) or `port:N` (the N-th port, from 0).
 pub fn open_config_page(app: &mut PacketApp, d: DeviceId, page: &str) {
     use console::ConfigPage;
     open_config_tab(app, d);
@@ -319,6 +321,7 @@ pub fn open_config_page(app: &mut PacketApp, d: DeviceId, page: &str) {
         "vlans" => ConfigPage::Vlans,
         "routes" => ConfigPage::Routes,
         "wireless" => ConfigPage::Wireless,
+        "cellular" => ConfigPage::Cellular,
         other => match other.strip_prefix("port:").and_then(|n| n.parse().ok()) {
             Some(n) => ConfigPage::Port(n),
             None => ConfigPage::Settings,

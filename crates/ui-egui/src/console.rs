@@ -39,6 +39,8 @@ pub enum ConfigPage {
     Routes,
     /// A wireless LAN controller's WLANs and RADIUS server, or a lightweight AP's controller.
     Wireless,
+    /// A central office server's pool, APN and plan, or a cell tower's sectors.
+    Cellular,
     Port(usize),
 }
 
@@ -54,6 +56,8 @@ pub enum DesktopApp {
     Terminal,
     /// RESTCONF requests and NETCONF sessions, with a JSON viewer.
     Programming,
+    /// A tablet's or smartphone's settings: Cellular Data and the APN.
+    Settings,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -587,6 +591,9 @@ fn config(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                     {
                         page = ConfigPage::Wireless;
                     }
+                    if dev.catalogue_model().cellular() && list_item(ui, tl("Cellular"), page == ConfigPage::Cellular, false).clicked() {
+                        page = ConfigPage::Cellular;
+                    }
                     match dev.kind {
                         DeviceKind::Switch => {
                             list_item(ui, tl("SWITCHING"), false, true);
@@ -632,6 +639,7 @@ fn config(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                     ConfigPage::Vlans => vlan_page(app, ui, dev),
                     ConfigPage::Routes => routes_page(app, ui, dev),
                     ConfigPage::Wireless => crate::wlan_page::show(app, ui, dev),
+                    ConfigPage::Cellular => crate::cell_page::service_page(app, ui, dev),
                     ConfigPage::Port(i) => port_page(app, ui, dev, i),
                 }
             });
@@ -948,6 +956,11 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
     let d = dev.id;
     let Some(port) = dev.ports.get(i).cloned() else { return };
     ui.heading(&port.name);
+    // A phone's cellular port has no address to type: its page is Cellular Data, the APN and the status.
+    if dev.cell_port() == Some(i) {
+        crate::cell_page::phone_page(app, ui, dev);
+        return;
+    }
     let mut on = !port.shutdown;
     let mut lines: Option<Vec<String>> = None;
     let iface = format!("interface {}", port.name);
@@ -1153,6 +1166,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 DesktopApp::MibBrowser => "MIB Browser",
                 DesktopApp::Terminal => "Terminal",
                 DesktopApp::Programming => "Programming",
+                DesktopApp::Settings => "Settings",
             };
             let mut close = false;
             egui::Frame::new().fill(tk.bar).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
@@ -1292,6 +1306,12 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 DesktopApp::Email => crate::mail::app(app, ui, dev),
                 DesktopApp::MibBrowser => crate::mib::app(app, ui, dev),
                 DesktopApp::Programming => crate::programming::app(app, ui, dev),
+                DesktopApp::Settings => {
+                    egui::ScrollArea::vertical().id_salt(("settings_scroll", d.0)).auto_shrink([false, true]).show(ui, |ui| {
+                        ui.add_space(6.0);
+                        crate::cell_page::phone_page(app, ui, dev);
+                    });
+                }
                 DesktopApp::Browser => {
                     let mut forms = app.ui.windows.get_mut(&d).map(|w| std::mem::take(&mut w.svc)).unwrap_or_default();
                     crate::services::browser(app, ui, d, &mut forms);
@@ -1394,6 +1414,16 @@ pub(crate) fn draw_app_icon(p: &egui::Painter, r: egui::Rect, app: DesktopApp) {
             let stroke = egui::Stroke::new(2.0, dark);
             p.line_segment([env.left_top(), env.center() + vec2(0.0, env.height() * 0.08)], stroke);
             p.line_segment([env.right_top(), env.center() + vec2(0.0, env.height() * 0.08)], stroke);
+        }
+        DesktopApp::Settings => {
+            // Three sliders: a bar with a round knob each, at different places.
+            for (i, at) in [0.3_f32, 0.7, 0.45].into_iter().enumerate() {
+                let y = r.top() + r.height() * (0.2 + 0.3 * i as f32);
+                p.line_segment([egui::pos2(r.left(), y), egui::pos2(r.right(), y)], egui::Stroke::new(3.0, dark));
+                let knob = egui::pos2(r.left() + r.width() * at, y);
+                p.circle_filled(knob, r.height() * 0.11, light);
+                p.circle_stroke(knob, r.height() * 0.11, egui::Stroke::new(2.0, dark));
+            }
         }
         DesktopApp::Terminal => {
             // A small screen with a device prompt and a light blue console cable hanging below.

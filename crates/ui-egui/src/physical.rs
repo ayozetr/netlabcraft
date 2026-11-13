@@ -368,6 +368,20 @@ fn draw_places(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Token
 
 fn draw_devices(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Tokens) {
     let t = &app.session.topology;
+    // Cell towers: the coverage circle, in metres on a city map (workspace units on the implicit layout).
+    let range = if t.implicit_layout() { netlabcraft_model::cellular::CELL_RANGE } else { netlabcraft_model::cellular::CELL_RANGE_M as f32 };
+    for (id, x, y) in &view.devices {
+        if t.device(*id).is_some_and(|d| d.is_tower()) {
+            let c = view.screen(*x, *y);
+            let r = range * view.zoom;
+            let col = crate::icons_families::CELL_ORANGE;
+            painter.circle_filled(c, r, col.gamma_multiply(0.1));
+            let pts: Vec<Pos2> = (0..=96)
+                .map(|i| c + vec2((i as f32 / 96.0 * std::f32::consts::TAU).cos(), (i as f32 / 96.0 * std::f32::consts::TAU).sin()) * r)
+                .collect();
+            painter.add(egui::Shape::dashed_line(&pts, Stroke::new(1.2, col.gamma_multiply(0.55)), 10.0, 8.0));
+        }
+    }
     for (id, x, y) in &view.devices {
         let Some(d) = t.device(*id) else { continue };
         let r = view.device_rect(*x, *y);
