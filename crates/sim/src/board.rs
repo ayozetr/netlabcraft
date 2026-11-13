@@ -54,7 +54,8 @@ impl Io for Pins<'_> {
         if self.t.is_dark(d.id) {
             return Ok(0);
         }
-        let level = if is_sensor(d) { i64::from(d.iot.value) } else { i64::from(self.sim.iot.things.get(&d.id).is_some_and(|s| s.on)) };
+        let level =
+            if is_sensor(d) { i64::from(self.sim.iot_reading(self.t, d)) } else { i64::from(self.sim.iot.things.get(&d.id).is_some_and(|s| s.on)) };
         Ok(if analog(pin) { level } else { i64::from(level > 0) })
     }
 

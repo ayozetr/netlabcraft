@@ -1,4 +1,4 @@
-//! The `.nlcraft` lab file: UTF-8 JSON, `{"format":"netlabcraft","version":2,"topology":{…}}`.
+//! The `.nlcraft` lab file: UTF-8 JSON, `{"format":"netlabcraft","version":3,"topology":{…}}`.
 //! Readers accept older versions and refuse newer ones; loading always sanitizes.
 
 use serde::{Deserialize, Serialize};
@@ -6,9 +6,10 @@ use serde::{Deserialize, Serialize};
 use crate::{ModelError, Result, Topology};
 
 pub const FORMAT: &str = "netlabcraft";
-/// 2: smartphones and tablets have a `Cellular0` port, and devices may carry `cell` settings.
-/// A version 1 file still opens (its phones get the port).
-pub const VERSION: u32 = 2;
+/// 2: the lab-level `environment` (the smart things' shared room).
+/// 3: smartphones and tablets have a `Cellular0` port, and devices may carry `cell` settings.
+/// Older files still open (their phones get the port).
+pub const VERSION: u32 = 3;
 pub const EXTENSION: &str = "nlcraft";
 
 /// Largest lab file accepted (hostile input).
@@ -69,6 +70,8 @@ mod tests {
         assert!(from_json(r#"{"format":"netlabcraft","version":99,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_err());
         assert!(from_json(r#"{"format":"netlabcraft","version":1,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
         assert!(from_json(r#"{"format":"netlabcraft","version":2,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
+        assert!(from_json(r#"{"format":"netlabcraft","version":3,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
+        assert!(from_json(r#"{"format":"netlabcraft","version":4,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_err());
     }
 
     #[test]

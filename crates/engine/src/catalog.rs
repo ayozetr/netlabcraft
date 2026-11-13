@@ -399,6 +399,14 @@ pub static CATALOG: &[CommandInfo] = &[
         r#"{"device": programmable board, "pin": "D0"|"A0"…, "thing"?: smart thing (none: unplug the pin)} → the board's status. Also link.add with "cable": "iot-custom""#,
         true
     ),
+    c!(
+        "iot.environment",
+        "IoT environment",
+        "",
+        None,
+        r#"{"enabled"?: true|false, "temperature"?: -50..100, "humidity"?: 0..100, "soil"?: 0..100, "smoke"?: 0..100, "co"?: 0..1000, "motion"?: 0|1, "outside_temperature"?, "outside_humidity"?, "outside_light"?: 0..100, "reset"?: true} → {"enabled", "outside", "start", "room"}: the smart things' shared room; while enabled, heaters, air conditioners, fans, sprinklers, windows, garages and lamps change it over simulated time and the sensors read it (given values are set now and become the starting values)"#,
+        true
+    ),
     c!("iot.sync", "IoT reports", "", None, r#"{} → {"things": [...]}: every smart thing reports to its server over HTTP (sensors first)"#, false),
     c!(
         "iot.server",
