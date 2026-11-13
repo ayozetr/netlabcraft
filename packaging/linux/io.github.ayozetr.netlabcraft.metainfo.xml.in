@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata (software centres). Template: package.sh substitutes @VERSION@ and @DATE@
+     from Cargo.toml and the build date. -->
+<component type="desktop-application">
+  <id>io.github.ayozetr.netlabcraft</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT OR Apache-2.0</project_license>
+  <name>NetLabCraft</name>
+  <summary>Network labs for learning and teaching</summary>
+  <developer id="io.github.ayozetr">
+    <name>NetLabCraft contributors</name>
+  </developer>
+  <description>
+    <p>
+      NetLabCraft is an open-source, clean-room network simulator. Build a network, configure
+      routers and switches by typing the commands you learn in class, and watch every frame cross it.
+    </p>
+    <ul>
+      <li>Routers, switches, hosts, wireless, IoT things and more, with a console that speaks the usual commands</li>
+      <li>Real Ethernet frames, so captures open as valid pcap files</li>
+      <li>Simulation mode to follow a packet hop by hop</li>
+      <li>Every action is a command, scriptable from a CLI and an MCP server</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.ayozetr.netlabcraft.desktop</launchable>
+  <icon type="stock">netlabcraft</icon>
+  <url type="homepage">https://github.com/ayozetr/netlabcraft</url>
+  <url type="bugtracker">https://github.com/ayozetr/netlabcraft/issues</url>
+  <url type="help">https://github.com/ayozetr/netlabcraft</url>
+  <categories>
+    <category>Education</category>
+    <category>ComputerScience</category>
+  </categories>
+  <keywords>
+    <keyword>network</keyword>
+    <keyword>simulator</keyword>
+    <keyword>router</keyword>
+    <keyword>switch</keyword>
+    <keyword>ccna</keyword>
+  </keywords>
+  <branding>
+    <color type="primary" scheme_preference="light">#a9d0de</color>
+    <color type="primary" scheme_preference="dark">#2c5a6b</color>
+  </branding>
+  <requires>
+    <display_length compare="ge">760</display_length>
+  </requires>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+  <provides>
+    <binary>netlabcraft</binary>
+  </provides>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="@VERSION@" date="@DATE@"/>
+  </releases>
+</component>

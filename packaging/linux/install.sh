@@ -10,7 +10,7 @@ DATA="${XDG_DATA_HOME:-$HOME/.local/share}"
 BIN="$HOME/.local/bin"
 
 if [[ "${1:-}" == "--remove" ]]; then
-  rm -f "$BIN/netlabcraft" "$BIN/netlabcraft-cli" "$DATA/applications/netlabcraft.desktop" "$DATA/mime/packages/netlabcraft-mime.xml"
+  rm -f "$BIN/netlabcraft" "$BIN/netlabcraft-cli" "$DATA/applications/io.github.ayozetr.netlabcraft.desktop" "$DATA/mime/packages/netlabcraft-mime.xml"
   find "$DATA/icons/hicolor" -name 'netlabcraft.*' -delete 2>/dev/null || true
   command -v update-mime-database >/dev/null && update-mime-database "$DATA/mime" || true
   command -v update-desktop-database >/dev/null && update-desktop-database "$DATA/applications" || true
@@ -23,7 +23,7 @@ if [[ ! -x "$ROOT/target/release/netlabcraft" || ! -x "$ROOT/target/release/netl
 fi
 install -Dm755 "$ROOT/target/release/netlabcraft" "$BIN/netlabcraft"
 install -Dm755 "$ROOT/target/release/netlabcraft-cli" "$BIN/netlabcraft-cli"
-install -Dm644 "$ROOT/packaging/linux/netlabcraft.desktop" "$DATA/applications/netlabcraft.desktop"
+install -Dm644 "$ROOT/packaging/linux/io.github.ayozetr.netlabcraft.desktop" "$DATA/applications/io.github.ayozetr.netlabcraft.desktop"
 install -Dm644 "$ROOT/packaging/linux/netlabcraft-mime.xml" "$DATA/mime/packages/netlabcraft-mime.xml"
 for d in "$ROOT"/assets/app-icon/hicolor/*/apps; do
   size="$(basename "$(dirname "$d")")"

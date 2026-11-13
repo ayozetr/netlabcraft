@@ -1,0 +1,248 @@
+name: Release
+
+# A release is whatever is on the `release` branch: pushing to it builds every platform and
+# creates or updates a DRAFT GitHub Release, which a maintainer publishes once every job is green
+# (docs/releasing.md). Pull requests and manual runs with dry-run build everything but publish
+# nothing. Builds are not code-signed or notarized yet.
+on:
+  push:
+    branches: [release]
+  # A pull request that touches the packaging builds every package as a dry run (no draft release).
+  pull_request:
+    paths:
+      - "packaging/**"
+      - ".github/workflows/release.yml"
+      - "rust-toolchain.toml"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version override for a test run, e.g. 0.2.0-rc.1 (empty: Cargo.toml)"
+        type: string
+        default: ""
+      dry-run:
+        description: "Build and check every package without creating a draft release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 1
+
+jobs:
+  version:
+    name: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      date: ${{ steps.v.outputs.date }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: v
+        name: Resolve version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          version="${INPUT_VERSION#v}"
+          if [ -z "$version" ]; then
+            version="$(awk '/^\[/ { p = ($0 == "[workspace.package]"); next } p && $1 == "version" { gsub(/[" ]/, "", $3); print $3; exit }' Cargo.toml)"
+          fi
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "::error::\"$version\" is not a version (X.Y.Z or X.Y.Z-pre)"; exit 1; }
+          case "$version" in *-*) pre=true ;; *) pre=false ;; esac
+          { echo "version=$version"; echo "date=$(date -u +%Y-%m-%d)"; echo "prerelease=$pre"; } >> "$GITHUB_OUTPUT"
+          echo "Releasing NetLabCraft $version (prerelease: $pre)"
+
+  linux:
+    name: Linux ${{ matrix.arch }}
+    needs: version
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Built on the oldest runner image so the binaries run on newer distros (glibc 2.35).
+          - { arch: x86_64, runner: ubuntu-22.04, nfpm: nfpm_2.47.0_Linux_x86_64.tar.gz, nfpm_sha256: 0660ca602b2d2d2ae4781a06c692b3eeb9d437ffea05b831d76e41f4a3188783 }
+          - { arch: aarch64, runner: ubuntu-22.04-arm, nfpm: nfpm_2.47.0_Linux_arm64.tar.gz, nfpm_sha256: 1c0f5f2999b9a974bfb04fdb0cc3306096de530ac5dbb25d739cc5f5219c919c }
+    runs-on: ${{ matrix.runner }}
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      INPUT_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Packaging tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends desktop-file-utils appstream zsync rpm
+          curl --proto '=https' -fsSL -o nfpm.tgz "https://github.com/goreleaser/nfpm/releases/download/v2.47.0/${{ matrix.nfpm }}"
+          echo "${{ matrix.nfpm_sha256 }}  nfpm.tgz" | sha256sum -c -
+          sudo tar -xzf nfpm.tgz -C /usr/local/bin nfpm
+      - name: Rust toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: release-${{ matrix.arch }}
+      - name: Apply version override
+        if: inputs.version != ''
+        run: cargo xtask version set "$VERSION"
+      - name: Test the AppImage launcher
+        run: packaging/linux/apprun-test.sh
+      - name: Package
+        run: packaging/linux/package.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-${{ matrix.arch }}
+          path: dist/release/*
+          if-no-files-found: error
+
+  windows:
+    name: Windows x64
+    needs: version
+    timeout-minutes: 90
+    runs-on: windows-latest
+    env:
+      NETLABCRAFT_VERSION: ${{ needs.version.outputs.version }}
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Rust toolchain
+        shell: bash
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: release-windows
+      - name: Apply version override
+        if: inputs.version != ''
+        run: cargo xtask version set "$env:VERSION"
+      - name: WiX
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          wix extension add -g WixToolset.UI.wixext/5.0.2 WixToolset.Util.wixext/5.0.2
+      - name: Package
+        run: ./packaging/windows/package.ps1 -Arch x64
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-x64
+          path: dist/release/*
+          if-no-files-found: error
+
+  macos:
+    name: macOS universal
+    needs: version
+    timeout-minutes: 90
+    runs-on: macos-15
+    env:
+      NETLABCRAFT_VERSION: ${{ needs.version.outputs.version }}
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Rust toolchain
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: release-macos
+      - name: Apply version override
+        if: inputs.version != ''
+        run: cargo xtask version set "$VERSION"
+      - name: Package
+        run: packaging/macos/package.sh --arch universal
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos-universal
+          path: dist/release/*
+          if-no-files-found: error
+
+  web:
+    name: Web
+    needs: version
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    env:
+      NETLABCRAFT_VERSION: ${{ needs.version.outputs.version }}
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Rust toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: release-web
+      - name: trunk
+        run: |
+          set -euo pipefail
+          curl --proto '=https' -fsSL -o trunk.tgz https://github.com/trunk-rs/trunk/releases/download/v0.21.14/trunk-x86_64-unknown-linux-gnu.tar.gz
+          echo "f2b4680cd239693a646a2795e4633c625328d7b2a044fbe749fa3a2fe9e7036b  trunk.tgz" | sha256sum -c -
+          sudo tar -xzf trunk.tgz -C /usr/local/bin trunk
+      - name: Apply version override
+        if: inputs.version != ''
+        run: cargo xtask version set "$VERSION"
+      - name: Package
+        run: packaging/web/package.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: web
+          path: dist/release/*
+          if-no-files-found: error
+
+  release:
+    name: Draft release
+    needs: [version, linux, windows, macos, web]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      PRERELEASE: ${{ needs.version.outputs.prerelease }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: release-files
+          merge-multiple: true
+      - name: Checksums
+        working-directory: release-files
+        run: |
+          set -euo pipefail
+          ls -lh
+          find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -printf '%f\n' | sort | xargs sha256sum > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - name: Draft release
+        if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry-run) }}
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          title="NetLabCraft v$VERSION"
+          flags=(--draft)
+          [ "$PRERELEASE" = true ] && flags+=(--prerelease)
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" release-files/* --clobber
+          else
+            gh release create "$tag" release-files/* "${flags[@]}" --target "$GITHUB_SHA" --title "$title" --generate-notes
+          fi
+          echo "Draft release $title is ready for review."
