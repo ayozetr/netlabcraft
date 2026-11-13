@@ -57,7 +57,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | Teaching | 8 | 88% | 6–12 | Activities with checks, points, sections, hints, values per student, a time limit, a password lock; an answer network sealed in the file, an assessment tree, an initial network, instructions per language, connectivity tests, signed results, locks; the lab book; Spanish interface checked by tests |
 | Device families | 5 | 82% | 8–14 | 51 models of our own: modular routers with cards, PoE switches, a firewall, IP phones, tablets and smartphones (Wi-Fi only), 18 IoT things and a home gateway, two programmable boards running BoardScript, a cloud with modems, power-supply bays; no cellular, TVs or sniffer, and the climate things have no physics |
 | Files | — | — | — | Own open `.nlcraft` JSON; no `.pkt` (out of scope: [decisions.md](docs/decisions.md)) |
-| Platforms and agents | — | — | — | Linux, Windows, macOS, BSD, web; MCP server and CLI over the full command catalog (the lab book runs over MCP too); no installers (on hold) |
+| Platforms and agents | — | — | — | Linux, Windows, macOS, BSD, web; MCP server and CLI over the full command catalog (the lab book runs over MCP too); installers for Linux, Windows, macOS and the web (not code-signed yet) |
 
 ## Progress log
 
