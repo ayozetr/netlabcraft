@@ -253,7 +253,7 @@ gate but the packaged build is met. Weighted by what CCNA labs rely on, we estim
 91% ready for real work: about 93% for the first CCNA course, 94% for the second and 90% for the
 third (estimated; the method is in
 [`docs/target-app-parity.md`](docs/target-app-parity.md#audiences)). Next up: more labs walked
-to find console gaps, the remaining crypto stand-ins (IKE SA rekeying) and certificates, and a
+to find console gaps, the last crypto stand-in (a transform set with no cipher) and certificates, and a
 cellular network for the mobile devices. Stage, numbers and estimates are in
 [ROADMAP.md](ROADMAP.md); the ranked work list is [`docs/gaps.md`](docs/gaps.md).
 

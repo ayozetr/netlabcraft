@@ -336,8 +336,25 @@ fn csv_field(s: &str) -> String {
     if s.contains([',', '"', '\n', '\r']) { format!("\"{}\"", s.replace('"', "\"\"")) } else { s.to_string() }
 }
 
-/// A results file (`json` or `csv`) from `activity.check`'s answer, signed.
-pub fn results_file(a: &Activity, report: &Value, format: &str, time: &str, elapsed: Option<u64>) -> Res<String> {
+/// The version of the results file (JSON). Version 2 embeds the student's final network so
+/// `verify_results` can replay the checks; version 1 files (no network) still verify, without replay.
+pub const RESULTS_VERSION: u64 = 2;
+
+/// The largest embedded network a results file may carry, as compact JSON.
+const MAX_NETWORK_BYTES: usize = 4 * 1024 * 1024;
+
+/// The most mismatches a verification lists.
+const MAX_MISMATCHES: usize = 20;
+
+/// The student's lab as it goes into a results file: the lab file format, compact, without the
+/// activity (the verifier already has that).
+pub fn network_value(t: &Topology) -> Res<Value> {
+    serde_json::from_str(&lab_json(t)?).map_err(|e| e.to_string())
+}
+
+/// A results file (`json` or `csv`) from `activity.check`'s answer, signed. A JSON file also
+/// embeds `network`, the student's final lab, so the score can be replayed.
+pub fn results_file(a: &Activity, report: &Value, format: &str, time: &str, elapsed: Option<u64>, network: Option<Value>) -> Res<String> {
     let student = a.student.clone().unwrap_or_default();
     let id = activity_id(a);
     let results = report.get("results").and_then(Value::as_array).cloned().unwrap_or_default();
@@ -346,7 +363,7 @@ pub fn results_file(a: &Activity, report: &Value, format: &str, time: &str, elap
         "json" => {
             let mut m = serde_json::Map::new();
             m.insert("format".into(), "netlabcraft-results".into());
-            m.insert("version".into(), 1.into());
+            m.insert("version".into(), RESULTS_VERSION.into());
             m.insert("activity_id".into(), id.into());
             m.insert("title".into(), a.title.clone().into());
             m.insert("student".into(), student.into());
@@ -359,6 +376,9 @@ pub fn results_file(a: &Activity, report: &Value, format: &str, time: &str, elap
             let results: Vec<Value> =
                 results.iter().map(|r| json!({"label": r["label"], "section": r["section"], "points": r["points"], "passed": r["passed"]})).collect();
             m.insert("results".into(), results.into());
+            if let Some(n) = network {
+                m.insert("network".into(), n);
+            }
             let body = Value::Object(m.clone()).to_string();
             // Last, so taking it out again leaves the rest in the same order.
             m.insert("hmac".into(), sign(a, &body).into());
@@ -400,43 +420,124 @@ pub fn results_file(a: &Activity, report: &Value, format: &str, time: &str, elap
     }
 }
 
-/// What a results file says, and whether its signature holds for this activity.
+/// What a results file says, and whether it holds for this activity.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Verified {
+    /// The file is for this activity, its signature holds and, when it was replayed, the replay
+    /// agrees with what it claims.
     pub valid: bool,
     pub same_activity: bool,
+    /// The HMAC holds (it catches hand edits only).
+    pub signature_ok: bool,
+    /// The checks were run again against the embedded network.
+    pub replayed: bool,
+    /// `Some(true)`: the replay agrees; `Some(false)`: it does not, or the network was refused;
+    /// `None`: not replayed.
+    pub replay_matches: Option<bool>,
+    /// The score the replay earned (equal to `score` when the file is honest).
+    pub replay_score: Option<u64>,
+    pub replay_total: Option<u64>,
+    /// What differed (or why the embedded network was refused), at most [`MAX_MISMATCHES`].
+    pub mismatches: Vec<String>,
+    /// One plain sentence on what was and was not checked.
+    pub message: String,
     pub student: String,
     pub score: u64,
     pub total: u64,
     pub percent: u64,
 }
 
-/// Checks a results file against this activity.
+/// Runs the activity's checks against an embedded network, on a fresh simulator as a reopened
+/// lab has, and compares with what the file claims. Never trusts the file: the network is
+/// size-capped, sanitized like any lab file, and the simulator's own caps bound the work.
+fn replay(a: &Activity, network: &Value, claimed: &serde_json::Map<String, Value>, out: &mut Verified) {
+    let text = network.to_string();
+    if text.len() > MAX_NETWORK_BYTES {
+        out.replay_matches = Some(false);
+        out.mismatches.push(format!("the embedded network is too large ({} bytes, at most {MAX_NETWORK_BYTES})", text.len()));
+        return;
+    }
+    let t = match lab_from_json(&text) {
+        Ok(t) => t,
+        Err(e) => {
+            out.replay_matches = Some(false);
+            out.mismatches.push(format!("the embedded network is not a lab: {e}"));
+            return;
+        }
+    };
+    let mut sim = netlabcraft_sim::Sim::new();
+    sim.topology_changed(&t);
+    let results = crate::activity::evaluate(&t, &sim, &a.resolved_checks(), &a.salt, a.hidden);
+    let total: u64 = results.iter().map(|r| u64::from(r.points)).sum();
+    let score: u64 = results.iter().filter(|r| r.passed).map(|r| u64::from(r.points)).sum();
+    let percent = (score * 100).checked_div(total).unwrap_or(0);
+    out.replayed = true;
+    out.replay_score = Some(score);
+    out.replay_total = Some(total);
+    let mut diffs: Vec<String> = Vec::new();
+    for (k, want) in [("score", score), ("total", total), ("percent", percent)] {
+        let said = claimed.get(k).and_then(Value::as_u64);
+        if said != Some(want) {
+            diffs.push(format!(
+                "{k}: the file says {}, the embedded network earns {want}",
+                said.map_or_else(|| "nothing".to_string(), |v| v.to_string())
+            ));
+        }
+    }
+    // Points per item, when the file lists them (a score-only activity lists none).
+    let listed = claimed.get("results").and_then(Value::as_array).map(Vec::as_slice).unwrap_or_default();
+    if !listed.is_empty() {
+        if listed.len() != results.len() {
+            diffs.push(format!("the file lists {} items, the activity has {}", listed.len(), results.len()));
+        }
+        for (i, (r, c)) in results.iter().zip(listed).enumerate() {
+            let same = c.get("label").and_then(Value::as_str) == Some(r.label.as_str())
+                && c.get("points").and_then(Value::as_u64) == Some(u64::from(r.points))
+                && c.get("passed").and_then(Value::as_bool) == Some(r.passed);
+            if !same {
+                diffs.push(format!(
+                    "item {} (`{}`): the file says {}, the embedded network {}",
+                    i + 1,
+                    r.label,
+                    if c.get("passed").and_then(Value::as_bool) == Some(true) { "passed" } else { "not passed" },
+                    if r.passed { "passes" } else { "does not pass" }
+                ));
+            }
+        }
+    }
+    out.replay_matches = Some(diffs.is_empty());
+    diffs.truncate(MAX_MISMATCHES);
+    out.mismatches = diffs;
+}
+
+/// Checks a results file against this activity: that it is this activity's, that the signature
+/// holds (hand edits), and, for a JSON file that embeds the student's network, that running the
+/// checks again earns the claimed score (forgery). Time claims are not replayable.
 pub fn verify_results(a: &Activity, text: &str) -> Res<Verified> {
     if text.len() > 8 * 1024 * 1024 {
         return Err("that is too large to be a results file".into());
     }
     let id = activity_id(a);
-    if text.trim_start().starts_with('{') {
-        let v: Value = serde_json::from_str(text).map_err(|e| format!("not a results file: {e}"))?;
-        let mut m = v.as_object().cloned().ok_or("not a results file")?;
-        let mac = m.remove("hmac").and_then(|x| x.as_str().map(str::to_string)).unwrap_or_default();
-        let body = Value::Object(m.clone()).to_string();
-        let same_activity = m.get("activity_id").and_then(Value::as_str) == Some(id.as_str());
-        let get = |k: &str| m.get(k).and_then(Value::as_u64).unwrap_or(0);
-        Ok(Verified {
-            valid: same_activity && sign(a, &body) == mac,
-            same_activity,
-            student: m.get("student").and_then(Value::as_str).unwrap_or("").to_string(),
-            score: get("score"),
-            total: get("total"),
-            percent: get("percent"),
-        })
-    } else {
+    let mut out = Verified {
+        valid: false,
+        same_activity: false,
+        signature_ok: false,
+        replayed: false,
+        replay_matches: None,
+        replay_score: None,
+        replay_total: None,
+        mismatches: Vec::new(),
+        message: String::new(),
+        student: String::new(),
+        score: 0,
+        total: 0,
+        percent: 0,
+    };
+    let csv = !text.trim_start().starts_with('{');
+    if csv {
         let at = text.rfind("hmac,").ok_or("not a results file: it has no signature")?;
         let (body, tail) = text.split_at(at);
         let mac = tail.trim_start_matches("hmac,").trim();
-        let mut out = Verified { valid: false, same_activity: false, student: String::new(), score: 0, total: 0, percent: 0 };
         for line in body.lines() {
             let (k, v) = line.split_once(',').unwrap_or((line, ""));
             match k {
@@ -448,9 +549,45 @@ pub fn verify_results(a: &Activity, text: &str) -> Res<Verified> {
                 _ => {}
             }
         }
-        out.valid = out.same_activity && sign(a, body) == mac;
-        Ok(out)
+        out.signature_ok = out.same_activity && sign(a, body) == mac;
+    } else {
+        let v: Value = serde_json::from_str(text).map_err(|e| format!("not a results file: {e}"))?;
+        let mut m = v.as_object().cloned().ok_or("not a results file")?;
+        if m.get("version").and_then(Value::as_u64).is_some_and(|v| v > RESULTS_VERSION) {
+            return Err("this results file was written by a newer NetLabCraft".into());
+        }
+        let mac = m.remove("hmac").and_then(|x| x.as_str().map(str::to_string)).unwrap_or_default();
+        let body = Value::Object(m.clone()).to_string();
+        out.same_activity = m.get("activity_id").and_then(Value::as_str) == Some(id.as_str());
+        out.signature_ok = out.same_activity && sign(a, &body) == mac;
+        let get = |k: &str| m.get(k).and_then(Value::as_u64).unwrap_or(0);
+        out.student = m.get("student").and_then(Value::as_str).unwrap_or("").to_string();
+        out.score = get("score");
+        out.total = get("total");
+        out.percent = get("percent");
+        // A file of another activity would be replayed against the wrong checks.
+        if out.same_activity
+            && let Some(n) = m.get("network").filter(|n| !n.is_null())
+        {
+            replay(a, n, &m, &mut out);
+        }
     }
+    out.valid = out.signature_ok && out.replay_matches != Some(false);
+    out.message = if !out.same_activity {
+        "This file belongs to another activity."
+    } else if !out.signature_ok {
+        "The signature does not hold: the file was changed after it was saved."
+    } else if out.replay_matches == Some(false) {
+        "The score was replayed against the embedded network and does not match, or the network was refused: this file is forged or damaged."
+    } else if out.replayed {
+        "The signature holds and the score, replayed against the student's embedded network, matches. Time and elapsed-time claims are not checked."
+    } else if csv {
+        "Not replayed: a CSV file cannot carry the student's network, so it is only checked for hand edits, not forgery."
+    } else {
+        "Not replayed: this file has no embedded network (an older export), so it is only checked for hand edits, not forgery."
+    }
+    .to_string();
+    Ok(out)
 }
 
 /// A device's settings as a lock compares them (where it stands is not configuration).
@@ -758,12 +895,17 @@ fn export_results(s: &mut Session, p: &Value) -> Result<Value> {
         None => now_utc(),
     };
     let elapsed = p.get("elapsed_s").and_then(Value::as_u64);
-    let text = results_file(a, &report, format, &time, elapsed).map_err(failed)?;
+    let network = if format == "json" { Some(network_value(&s.topology).map_err(failed)?) } else { None };
+    let text = results_file(a, &report, format, &time, elapsed, network).map_err(failed)?;
+    // Replayed as the verifier will, so the student hears now if the file would not match.
+    let replay_agrees = verify_results(a, &text).ok().map(|v| v.replay_matches != Some(false));
     if let Some(path) = p.get("path").and_then(Value::as_str) {
         crate::cmd::write_file(path, text.as_bytes())?;
     }
     let name = format!("results-{}.{format}", a.student.as_deref().unwrap_or("student").replace(|c: char| !c.is_alphanumeric(), "_"));
-    Ok(json!({"text": text, "file_name": name, "score": report["score"], "total": report["total"], "percent": report["percent"]}))
+    Ok(
+        json!({"text": text, "file_name": name, "score": report["score"], "total": report["total"], "percent": report["percent"], "replayable": format == "json", "replay_agrees": replay_agrees}),
+    )
 }
 
 fn verify(s: &Session, p: &Value) -> Result<Value> {
@@ -773,7 +915,12 @@ fn verify(s: &Session, p: &Value) -> Result<Value> {
         _ => return Err(bad("give `text` (the results file) or `path`")),
     };
     let v = verify_results(activity(s)?, &text).map_err(failed)?;
-    Ok(json!({"valid": v.valid, "same_activity": v.same_activity, "student": v.student, "score": v.score, "total": v.total, "percent": v.percent}))
+    Ok(json!({
+        "valid": v.valid, "same_activity": v.same_activity, "signature_ok": v.signature_ok, "replayed": v.replayed,
+        "replay_matches": v.replay_matches, "replay_score": v.replay_score, "replay_total": v.replay_total,
+        "mismatches": v.mismatches, "message": v.message,
+        "student": v.student, "score": v.score, "total": v.total, "percent": v.percent
+    }))
 }
 
 /// Instructions in one language: `lang` and `text` (empty removes the translation); `default`

@@ -243,7 +243,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Export results…",
         "",
         None,
-        r#"{"format"?: "json"|"csv", "path"?, "time"?, "elapsed_s"?} → {"text", "file_name", "score", "total", "percent"}: a results file with the student, the time, the score per section, signed with HMAC-SHA1 under a key from the activity's salt"#,
+        r#"{"format"?: "json"|"csv", "path"?, "time"?, "elapsed_s"?} → {"text", "file_name", "score", "total", "percent", "replayable", "replay_agrees"}: a results file with the student, the time, the score per section, signed with HMAC-SHA1 under a key from the activity's salt; a JSON file also embeds the student's final network (lab file format) so the score can be replayed"#,
         false
     ),
     c!(
@@ -251,7 +251,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Verify a results file",
         "",
         None,
-        r#"{"text" or "path"} → {"valid", "same_activity", "student", "score", "total", "percent"}"#,
+        r#"{"text" or "path"} → {"valid", "same_activity", "signature_ok", "replayed", "replay_matches", "replay_score", "replay_total", "mismatches", "message", "student", "score", "total", "percent"}: checks the signature (hand edits) and, for a file with an embedded network, runs the activity's checks again and compares (forgery); a CSV or older file is not replayed and says so"#,
         false
     ),
     c!(
@@ -375,6 +375,14 @@ pub static CATALOG: &[CommandInfo] = &[
         r#"{"device": programmable board, "pin": "D0"|"A0"…, "thing"?: smart thing (none: unplug the pin)} → the board's status. Also link.add with "cable": "iot-custom""#,
         true
     ),
+    c!(
+        "iot.environment",
+        "IoT environment",
+        "",
+        None,
+        r#"{"enabled"?: true|false, "temperature"?: -50..100, "humidity"?: 0..100, "soil"?: 0..100, "smoke"?: 0..100, "co"?: 0..1000, "motion"?: 0|1, "outside_temperature"?, "outside_humidity"?, "outside_light"?: 0..100, "reset"?: true} → {"enabled", "outside", "start", "room"}: the smart things' shared room; while enabled, heaters, air conditioners, fans, sprinklers, windows, garages and lamps change it over simulated time and the sensors read it (given values are set now and become the starting values)"#,
+        true
+    ),
     c!("iot.sync", "IoT reports", "", None, r#"{} → {"things": [...]}: every smart thing reports to its server over HTTP (sensors first)"#, false),
     c!(
         "iot.server",
@@ -468,6 +476,14 @@ pub static CATALOG: &[CommandInfo] = &[
     ),
     c!("note.edit", "Edit note", "", None, r#"{"id", "text"}"#, true),
     c!("note.move", "Move note", "", None, r#"{"id", "x", "y", "transient"?: false}"#, true),
+    c!(
+        "note.resize",
+        "Resize drawing",
+        "",
+        None,
+        r#"{"id", "x", "y", "w", "h", "transient"?: false}: rectangle and ellipse: top-left corner and size (normalised, sides kept between 4 and 100000); line: start and the offset to its far end (at least 4 long); text, freehand and polygon are refused"#,
+        true
+    ),
     c!("note.remove", "Delete note", "", None, r#"{"id"}"#, true),
     c!("note.color", "Drawing colour", "", None, r##"{"id", "color": "#rrggbb"}"##, true),
     c!(

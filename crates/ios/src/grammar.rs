@@ -957,6 +957,8 @@ pub enum Id {
     Ikev2AuthLocal,
     Ikev2AuthRemote,
     Ikev2ProfileKeyring,
+    Ikev2ProfileLifetime,
+    NoIkev2ProfileLifetime,
     CryptoSetIkev2Profile,
     NoCryptoSetIkev2Profile,
     ShowCryptoIkev2Sa,
@@ -3687,6 +3689,8 @@ pub static SPECS: &[Spec] = &[
         "How the peer proves who it is"
     ),
     spec!(Ikev2ProfileKeyring, Modes::IKEV2_PROFILE, Modes::ROUTER, [K("keyring"), K("local"), Arg("NAME")], "The keyring holding the keys"),
+    spec!(Ikev2ProfileLifetime, Modes::IKEV2_PROFILE, Modes::ROUTER, [K("lifetime"), Arg("<120-86400>")], "Seconds before the IKE SA is replaced"),
+    spec!(NoIkev2ProfileLifetime, Modes::IKEV2_PROFILE, Modes::ROUTER, [K("no"), K("lifetime")], "Back to the default IKE SA lifetime"),
     spec!(CryptoSetIkev2Profile, Modes::CRYPTO_MAP, Modes::ROUTER, [K("set"), K("ikev2-profile"), Arg("NAME")], "Negotiate this entry with IKEv2"),
     spec!(NoCryptoSetIkev2Profile, Modes::CRYPTO_MAP, Modes::ROUTER, [K("no"), K("set"), K("ikev2-profile")], "Back to IKEv1"),
     spec!(ShowCryptoIkev2Sa, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("ikev2"), K("sa")], "IKEv2 security associations"),

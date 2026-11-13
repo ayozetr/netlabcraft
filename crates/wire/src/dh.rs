@@ -399,6 +399,11 @@ pub struct ModpGroup {
     pub id: u16,
     pub bits: usize,
     p: Big,
+    /// The generator (2 for the groups of RFC 2409 and RFC 3526).
+    g: Big,
+    /// The order of the subgroup the generator lives in, for the groups that have a small one
+    /// (RFC 5114): peers' values are checked to be in it (RFC 2631 §2.2, SP 800-56A §5.6.2.3.1).
+    q: Option<Big>,
     mont: Mont,
 }
 
@@ -420,12 +425,39 @@ fn build(id: u16, n: usize, k: u64) -> Option<ModpGroup> {
     let mid = pi_bits(n - 130).add(&Big::from_u64(k)).shl(64);
     let p = Big::from_u64(1).shl(n).add(&mid).sub(&Big::from_u64(1).shl(n - 64))?.sub(&Big::from_u64(1))?;
     let mont = Mont::new(&p)?;
-    Some(ModpGroup { id, bits: n, p, mont })
+    Some(ModpGroup { id, bits: n, p, g: Big::from_u64(2), q: None, mont })
 }
 
-/// The MODP group with this number (1, 2, 5, 14, 15 or 16), built the first time it is asked
-/// for; `None` for any other number (the elliptic-curve groups among them).
+/// Group 24 (RFC 5114 §2.3): a 2048-bit prime with a 256-bit prime-order subgroup, the prime, the
+/// generator and the subgroup order as the RFC prints them.
+const G24_P: &str = "87A8E61DB4B6663CFFBBD19C651959998CEEF608660DD0F25D2CEED4435E3B00E00DF8F1D61957D4FAF7DF4561B2AA3016C3D91134096FAA3BF4296D830E9A7C209E0C6497517ABD5A8A9D306BCF67ED91F9E6725B4758C022E0B1EF4275BF7B6C5BFC11D45F9088B941F54EB1E59BB8BC39A0BF12307F5C4FDB70C581B23F76B63ACAE1CAA6B7902D52526735488A0EF13C6D9A51BFA4AB3AD8347796524D8EF6A167B5A41825D967E144E5140564251CCACB83E6B486F6B3CA3F7971506026C0B857F689962856DED4010ABD0BE621C3A3960A54E710C375F26375D7014103A4B54330C198AF126116D2276E11715F693877FAD7EF09CADB094AE91E1A1597";
+const G24_G: &str = "3FB32C9B73134D0B2E77506660EDBD484CA7B18F21EF205407F4793A1A0BA12510DBC15077BE463FFF4FED4AAC0BB555BE3A6C1B0C6B47B1BC3773BF7E8C6F62901228F8C28CBB18A55AE31341000A650196F931C77A57F2DDF463E5E9EC144B777DE62AAAB8A8628AC376D282D6ED3864E67982428EBC831D14348F6F2F9193B5045AF2767164E1DFC967C1FB3F2E55A4BD1BFFE83B9C80D052B985D182EA0ADB2A3B7313D3FE14C8484B1E052588B9B7D2BBD2DF016199ECD06E1557CD0915B3353BBB64E0EC377FD028370DF92B52C7891428CDC67EB6184B523D1DB246C32F63078490F00EF8D647D148D47954515E2327CFEF98C582664B4C0F6CC41659";
+const G24_Q: &str = "8CF83642A709A097B447997640129DA299B1A47D1EB3750BA308B0FE64F5FBD3";
+
+/// A big integer from hexadecimal digits; `None` for anything else.
+fn from_hex(h: &str) -> Option<Big> {
+    let mut bytes = Vec::with_capacity(h.len() / 2);
+    for pair in h.as_bytes().chunks(2) {
+        let text = std::str::from_utf8(pair).ok()?;
+        bytes.push(u8::from_str_radix(text, 16).ok()?);
+    }
+    Some(Big::from_be_bytes(&bytes))
+}
+
+fn build_group24() -> Option<ModpGroup> {
+    let p = from_hex(G24_P)?;
+    let mont = Mont::new(&p)?;
+    Some(ModpGroup { id: 24, bits: 2048, p, g: from_hex(G24_G)?, q: Some(from_hex(G24_Q)?), mont })
+}
+
+static GROUP24: OnceLock<Option<ModpGroup>> = OnceLock::new();
+
+/// The MODP group with this number (1, 2, 5, 14, 15, 16 or 24), built the first time it is
+/// asked for; `None` for any other number (the elliptic-curve groups among them).
 pub fn modp(id: u16) -> Option<&'static ModpGroup> {
+    if id == 24 {
+        return GROUP24.get_or_init(build_group24).as_ref();
+    }
     let at = GROUPS.iter().position(|g| g.0 == id)?;
     let (_, n, k) = *GROUPS.get(at)?;
     BUILT.get(at)?.get_or_init(|| build(id, n, k)).as_ref()
@@ -433,7 +465,7 @@ pub fn modp(id: u16) -> Option<&'static ModpGroup> {
 
 /// Whether a group number is one of the MODP groups computed for real.
 pub fn is_modp(id: u16) -> bool {
-    GROUPS.iter().any(|g| g.0 == id)
+    id == 24 || GROUPS.iter().any(|g| g.0 == id)
 }
 
 impl ModpGroup {
@@ -453,7 +485,7 @@ impl ModpGroup {
 
     /// The public value g^x mod p for a private value `x` (big-endian bytes).
     pub fn public(&self, private: &[u8]) -> Vec<u8> {
-        self.mont.pow(&Big::from_u64(2), &Big::from_be_bytes(private)).to_be_bytes(self.len())
+        self.mont.pow(&self.g, &Big::from_be_bytes(private)).to_be_bytes(self.len())
     }
 
     /// The shared secret (g^y)^x mod p, as many bytes as the prime (RFC 7296 §2.14 keeps the
@@ -466,14 +498,16 @@ impl ModpGroup {
         Some(self.mont.pow(&Big::from_be_bytes(peer), &Big::from_be_bytes(private)).to_be_bytes(self.len()))
     }
 
-    /// Whether a peer's public value is usable: as many bytes as the prime and between 2 and
-    /// p − 2 (RFC 2631 §2.1.5, NIST SP 800-56A).
+    /// Whether a peer's public value is usable: as many bytes as the prime, between 2 and
+    /// p − 2 (RFC 2631 §2.1.5, NIST SP 800-56A) and, for a group with a prime-order subgroup,
+    /// inside it: y^q ≡ 1 (mod p), so a value of small order cannot leak the private one.
     pub fn valid_peer(&self, peer: &[u8]) -> bool {
         if peer.len() != self.len() {
             return false;
         }
         let y = Big::from_be_bytes(peer);
-        self.p.sub(&Big::from_u64(1)).is_some_and(|top| y > Big::from_u64(1) && y < top)
+        let in_range = self.p.sub(&Big::from_u64(1)).is_some_and(|top| y > Big::from_u64(1) && y < top);
+        in_range && self.q.as_ref().is_none_or(|q| self.mont.pow(&y, q) == Big::from_u64(1))
     }
 
     /// Whether the prime passes Fermat's test to base 3 (3^(p−1) ≡ 1).
@@ -582,8 +616,64 @@ mod tests {
     }
 
     #[test]
+    fn group_24_matches_the_rfc_5114_test_data() {
+        // RFC 5114 appendix A.3: both public values and the shared secret.
+        let h = |s: &str| from_hex(s).unwrap().to_be_bytes(s.len() / 2);
+        let g = modp(24).unwrap();
+        assert_eq!((g.bits, g.len()), (2048, 256));
+        assert_eq!(
+            hex(&g.prime()),
+            "87A8E61DB4B6663CFFBBD19C651959998CEEF608660DD0F25D2CEED4435E3B00E00DF8F1D61957D4FAF7DF4561B2AA3016C3D91134096FAA3BF4296D830E9A7C209E0C6497517ABD5A8A9D306BCF67ED91F9E6725B4758C022E0B1EF4275BF7B6C5BFC11D45F9088B941F54EB1E59BB8BC39A0BF12307F5C4FDB70C581B23F76B63ACAE1CAA6B7902D52526735488A0EF13C6D9A51BFA4AB3AD8347796524D8EF6A167B5A41825D967E144E5140564251CCACB83E6B486F6B3CA3F7971506026C0B857F689962856DED4010ABD0BE621C3A3960A54E710C375F26375D7014103A4B54330C198AF126116D2276E11715F693877FAD7EF09CADB094AE91E1A1597"
+        );
+        let (xa, xb) = (
+            h("0881382CDB87660C6DC13E614938D5B9C8B2F248581CC5E31B35454397FCE50E"),
+            h("7D62A7E3EF36DE617B13D1AFB82C780D83A23BD4EE6705645121F371F546A53D"),
+        );
+        let (ya, yb, z) = (
+            h(
+                "2E9380C8323AF97545BC4941DEB0EC3742C62FE0ECE824A6ABDBE66C59BEE0242911BFB967235CEBA35AE13E4EC752BE630B92DC4BDE2847A9C62CB8152745421FB7EB60A63C0FE9159FCCE726CE7CD8523D7450667EF840E4919121EB5F01C8C9B0D3D648A93BFB75689E8244AC134AF544711CE79A02DCC34226684780DDDCB498594106C37F5BC79856487AF5AB022A2E5E42F09897C1A85A11EA0212AF04D9B4CEBC937C3C1A3E15A8A0342E337615C84E7FE3B8B9B87FB1E73A15AF12A30D746E06DFC34F290D797CE51AA13AA785BF6658AFF5E4B093003CBEAF665B3C2E113A3A4E905269341DC0711426685F4EF37E868A8126FF3F2279B57CA67E29",
+            ),
+            h(
+                "575F0351BD2B1B817448BDF87A6C362C1E289D3903A30B9832C5741FA250363E7ACBC7F77F3DACBC1F131ADD8E03367EFF8FBBB3E1C5784424809B25AFE4D2262A1A6FD2FAB64105CA30A674E07F7809852088632FC049233791AD4EDD083A978B883EE618BC5E0DD047415F2D95E683CF14826B5FBE10D3CE41C6C120C78AB20008C698BF7F0BCAB9D7F407BED0F43AFB2970F57F8D12043963E66DDD320D599AD9936C8F44137C08B180EC5E985CEBE186F3D549677E80607331EE17AF3380A725B0782317D7DD43F59D7AF9568A9BB63A84D365F92244ED120988219302F42924C7CA90B89D24F71B0AB697823D7DEB1AFF5B0E8E4A45D49F7F53757E1913",
+            ),
+            h(
+                "86C70BF8D0BB81BB01078A17219CB7D27203DB2A19C877F1D1F19FD7D77EF22546A68F005AD52DC84553B78FC60330BE51EA7C0672CAC1515E4B35C047B9A551B88F39DC26DA14A09EF74774D47C762DD177F9ED5BC2F11E52C879BD95098504CD9EECD8A8F9B3EFBD1F008AC5853097D9D1837F2B18F77CD7BE01AF80A7C7B5EA3CA54CC02D0C116FEE3F95BB87399385875D7E86747E676E728938ACBFF7098E05BE4DCFB24052B83AEFFB14783F029ADBDE7F53FAE92084224090E007CEE94D4BF2BACE9FFD4B57D2AF7C724D0CAA19BF0501F6F17B4AA10F425E3EA76080B4B9D6B3CEFEA115B2CEB8789BB8A3B0EA87FEBE63B6C8F846EC6DB0C26C5D7C",
+            ),
+        );
+        assert_eq!(g.public(&xa), ya);
+        assert_eq!(g.public(&xb), yb);
+        assert_eq!(g.shared(&xa, &yb).unwrap(), z);
+        assert_eq!(g.shared(&xb, &ya).unwrap(), z);
+        // The prime passes Fermat's test, and the generator has the order q: g^q = 1, g != 1.
+        assert!(g.fermat_ok());
+        let q = from_hex(G24_Q).unwrap();
+        assert_eq!(g.mont.pow(&g.g, &q), Big::from_u64(1));
+        assert_ne!(g.g, Big::from_u64(1));
+        assert_eq!(q.bits(), 256);
+    }
+
+    #[test]
+    fn group_24_refuses_values_outside_its_subgroup() {
+        let g = modp(24).unwrap();
+        let x = [0x33u8; 32];
+        let mine = g.public(&x);
+        assert!(g.valid_peer(&mine));
+        // 2 is in range but, in this group, not in the subgroup of order q; p − 1 has order 2.
+        let mut two = vec![0u8; 256];
+        two[255] = 2;
+        assert!(!g.valid_peer(&two) && g.shared(&x, &two).is_none());
+        let p = from_hex(G24_P).unwrap();
+        let pm1 = p.sub(&Big::from_u64(1)).unwrap().to_be_bytes(256);
+        assert!(g.shared(&x, &pm1).is_none());
+        // Zero, one, p, a short value: refused as in the other groups.
+        assert!(g.shared(&x, &vec![0; 256]).is_none() && g.shared(&x, &g.prime()).is_none() && g.shared(&x, &mine[1..]).is_none());
+        // A value that is in the subgroup but a power of g with another exponent is fine.
+        assert!(g.valid_peer(&g.public(&[7; 32])));
+    }
+
+    #[test]
     fn both_sides_agree_in_every_group() {
-        for id in [1u16, 2, 5, 14, 15, 16] {
+        for id in [1u16, 2, 5, 14, 15, 16, 24] {
             let g = modp(id).unwrap();
             let a = [0x5au8; 32];
             let mut b = [0u8; 32];

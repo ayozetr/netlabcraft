@@ -1,6 +1,6 @@
 # Pitfalls
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (four pitfalls from M9.7: counters keyed by position, a stale checksum, a database that lists unreachable routers, a `Rest` that needs a word) · earlier: minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (four pitfalls from M9.7: counters keyed by position, a stale checksum, a database that lists unreachable routers, a `Rest` that needs a word) · also merged with M9.5, M9.6, M9.8 and M9.11 · earlier: minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
 
 Mistakes already made here, and the rule that stops each one. Read this before your first change; when you make a
 new mistake worth not repeating, add it in the same change.
@@ -56,6 +56,12 @@ new mistake worth not repeating, add it in the same change.
   listed the LSAs of every router with a segment in an area, so a router cut off by a passive interface kept its router,
   summary and external LSAs for ever. A database view starts from the viewer and follows adjacencies
   (`ospf_lsdb::flooding_domain`).
+## Instructor
+
+- **A key the student's app holds is not a secret from the student.** The results HMAC key comes from the salt in the
+  file, so a signature never proved the score; what does is running the checks again against the network the file
+  embeds (`activity.verify_results`). Do not add another "secret" to a file the student has: replay or move the check
+  to the instructor.
 
 ## Wasm
 

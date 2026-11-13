@@ -42,8 +42,8 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `activity.translate` | Instructions in a language |  |  | `{"lang": "es", "text"?: the instructions in it (empty removes them), "default"?: true makes it the main language} → {"languages", "default"}` |
 | `activity.edit_check` | Edit check |  |  | `{"index": n, "points"?, "feedback"?, "label"?, "section"?}` |
 | `activity.connectivity` | Connectivity Tests | Extensions |  | `{} → {"tests": [{"label", "from", "to", "expect", "passed", "actual"}], "passed", "total", "detail"}: the activity's ping checks, run now` |
-| `activity.export_results` | Export results… |  |  | `{"format"?: "json"\|"csv", "path"?, "time"?, "elapsed_s"?} → {"text", "file_name", "score", "total", "percent"}: a results file with the student, the time, the score per section, signed with HMAC-SHA1 under a key from the activity's salt` |
-| `activity.verify_results` | Verify a results file |  |  | `{"text" or "path"} → {"valid", "same_activity", "student", "score", "total", "percent"}` |
+| `activity.export_results` | Export results… |  |  | `{"format"?: "json"\|"csv", "path"?, "time"?, "elapsed_s"?} → {"text", "file_name", "score", "total", "percent", "replayable", "replay_agrees"}: a results file with the student, the time, the score per section, signed with HMAC-SHA1 under a key from the activity's salt; a JSON file also embeds the student's final network (lab file format) so the score can be replayed` |
+| `activity.verify_results` | Verify a results file |  |  | `{"text" or "path"} → {"valid", "same_activity", "signature_ok", "replayed", "replay_matches", "replay_score", "replay_total", "mismatches", "message", "student", "score", "total", "percent"}: checks the signature (hand edits) and, for a file with an embedded network, runs the activity's checks again and compares (forgery); a CSV or older file is not replayed and says so` |
 | `activity.locks` | Activity locks |  |  | `{"devices"?: true (no adding or removing devices), "cables"?: true (no cable changes), "config"?: ["R1", …] (devices whose configuration can't change)}: they hold while the activity is locked` |
 | `file.new` | New lab | File | Ctrl+N | `{"sample"?: "sample id (see sample.list)"}` |
 | `file.open` | Open lab… | File | Ctrl+O | `{"json": "lab file contents"} or {"path": "file (desktop/CLI)"}` |
@@ -67,6 +67,7 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `board.program` | Board program |  |  | `{"device": programmable board, "source"?: "BoardScript program", "run"?: true\|false, "server"?: "IoT server address for get() and report (empty: none)"} → the board's status: run starts it from the top, false stops it; a program that doesn't compile is refused with its line` |
 | `board.status` | Board status |  |  | `{"device": programmable board} → {"program", "run", "state": "not started"\|"running"\|"stopped", "line", "message", "log": [...], "vars": {...}, "pins": [{"pin", "analog", "wired", "what", "level"}], "server"}` |
 | `board.wire` | Wire a board pin |  |  | `{"device": programmable board, "pin": "D0"\|"A0"…, "thing"?: smart thing (none: unplug the pin)} → the board's status. Also link.add with "cable": "iot-custom"` |
+| `iot.environment` | IoT environment |  |  | `{"enabled"?: true\|false, "temperature"?: -50..100, "humidity"?: 0..100, "soil"?: 0..100, "smoke"?: 0..100, "co"?: 0..1000, "motion"?: 0\|1, "outside_temperature"?, "outside_humidity"?, "outside_light"?: 0..100, "reset"?: true} → {"enabled", "outside", "start", "room"}: the smart things' shared room; while enabled, heaters, air conditioners, fans, sprinklers, windows, garages and lamps change it over simulated time and the sensors read it (given values are set now and become the starting values)` |
 | `iot.sync` | IoT reports |  |  | `{} → {"things": [...]}: every smart thing reports to its server over HTTP (sensors first)` |
 | `iot.server` | IoT service |  |  | `{"device": server, "service"?: true\|false, "rules"?: [{"sensor", "above", "actuator"}]} → {"service", "rules", "things": [{"name", "kind", "address", "value", "on"}]}` |
 | `iot.switch` | Switch a smart device |  |  | `{"device": server, "name": registered smart device, "on": true\|false} → the server's IoT page` |
@@ -83,6 +84,7 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `note.add` | Place note or drawing | Insert |  | `{"x", "y", "text"?, "shape"?: "text\|rectangle\|ellipse\|line\|freehand\|polygon", "w"?, "h"?, "points": [[x, y], …] (freehand: simplified, at most 512 kept; polygon: 3-64 corners), "color"?: "#rrggbb"} → {"id"} (placed in the cluster being viewed)` |
 | `note.edit` | Edit note |  |  | `{"id", "text"}` |
 | `note.move` | Move note |  |  | `{"id", "x", "y", "transient"?: false}` |
+| `note.resize` | Resize drawing |  |  | `{"id", "x", "y", "w", "h", "transient"?: false}: rectangle and ellipse: top-left corner and size (normalised, sides kept between 4 and 100000); line: start and the offset to its far end (at least 4 long); text, freehand and polygon are refused` |
 | `note.remove` | Delete note |  |  | `{"id"}` |
 | `note.color` | Drawing colour |  |  | `{"id", "color": "#rrggbb"}` |
 | `cluster.create` | Group into a cluster | Edit | Ctrl+G | `{"devices": ["name or id", …], "clusters"?: [cluster ids to nest], "name"?} → {"id", "name"} (all from the same view; the network is unchanged)` |
@@ -1138,6 +1140,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `authentication local pre-share` |  | router | How this router proves who it is |
 | `authentication remote pre-share` |  | router | How the peer proves who it is |
 | `keyring local NAME` |  | router | The keyring holding the keys |
+| `lifetime <120-86400>` |  | router | Seconds before the IKE SA is replaced |
+| `no lifetime` |  | router | Back to the default IKE SA lifetime |
 | `set ikev2-profile NAME` |  | router | Negotiate this entry with IKEv2 |
 | `no set ikev2-profile` |  | router | Back to IKEv1 |
 | `show crypto ikev2 sa` | user, privileged | router | IKEv2 security associations |

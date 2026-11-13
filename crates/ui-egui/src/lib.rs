@@ -135,6 +135,8 @@ pub struct UiState {
     pub clipboard: Option<DeviceId>,
     /// The workspace note being edited, and its text.
     pub editing_note: Option<(u32, String)>,
+    /// The rectangle, ellipse or line showing its resize handles.
+    pub selected_note: Option<u32>,
     /// Labs opened or saved recently, newest first (the desktop shell fills it).
     pub recent: Vec<String>,
     /// The person picked another interface language (the shell saves the choice).
@@ -179,6 +181,7 @@ impl Default for UiState {
             pointer: None,
             clipboard: None,
             editing_note: None,
+            selected_note: None,
             recent: Vec::new(),
             lang_changed: false,
             canvas_rect: None,

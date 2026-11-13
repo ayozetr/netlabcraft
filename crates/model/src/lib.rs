@@ -18,6 +18,7 @@ pub mod board;
 pub mod cable;
 pub mod cloud;
 pub mod drawing;
+pub mod environment;
 pub mod fhrp;
 pub mod file;
 pub mod firewall;
@@ -2044,6 +2045,9 @@ pub struct Topology {
     /// Simulation scenarios and their PDU lists.
     #[serde(default, skip_serializing_if = "scenario::Scenarios::is_default")]
     pub scenarios: scenario::Scenarios,
+    /// The smart things' shared room: its physics settings and starting values.
+    #[serde(default, skip_serializing_if = "environment::Environment::is_default")]
+    pub environment: environment::Environment,
 }
 
 /// A note or drawing placed on the workspace.
@@ -2114,6 +2118,10 @@ pub fn parse_color(s: &str) -> Option<[u8; 3]> {
 /// Most workspace notes, and the longest note.
 pub const MAX_ANNOTATIONS: usize = 1_000;
 pub const MAX_ANNOTATION_TEXT: usize = 4_000;
+/// Smallest side of a resized rectangle or ellipse, and shortest reach of a resized line (workspace units).
+pub const MIN_DRAWING_SIZE: f32 = 4.0;
+/// Largest side of a resized drawing (workspace units).
+pub const MAX_DRAWING_SIZE: f32 = 100_000.0;
 
 impl Topology {
     pub fn new() -> Topology {
@@ -2126,6 +2134,7 @@ impl Topology {
             annotations: Vec::new(),
             clusters: Vec::new(),
             activity: None,
+            environment: environment::Environment::default(),
             physical: physical::Physical::default(),
             scenarios: scenario::Scenarios::default(),
         }
@@ -2252,6 +2261,37 @@ impl Topology {
         Ok(id)
     }
 
+    /// Resizes a rectangle, ellipse or line. A box is normalised (positive width and height, corner at the
+    /// top left) and kept between `MIN_DRAWING_SIZE` and `MAX_DRAWING_SIZE` on each side; a line keeps its
+    /// direction and must reach at least `MIN_DRAWING_SIZE` (`w`, `h` are the offset to its far end).
+    /// Text, freehand strokes and polygons are not resizable.
+    pub fn resize_drawing(&mut self, id: u32, x: f32, y: f32, w: f32, h: f32) -> Result<()> {
+        let a = self.annotation_mut(id)?;
+        let (x, y, w, h) = (finite(x), finite(y), w.clamp(-MAX_DRAWING_SIZE, MAX_DRAWING_SIZE), h.clamp(-MAX_DRAWING_SIZE, MAX_DRAWING_SIZE));
+        let (w, h) = (if w.is_finite() { w } else { 0.0 }, if h.is_finite() { h } else { 0.0 });
+        match a.shape {
+            Shape::Rectangle | Shape::Ellipse => {
+                let (left, right) = (x.min(x + w), x.max(x + w));
+                let (top, bottom) = (y.min(y + h), y.max(y + h));
+                a.x = finite(left);
+                a.y = finite(top);
+                a.w = (right - left).clamp(MIN_DRAWING_SIZE, MAX_DRAWING_SIZE);
+                a.h = (bottom - top).clamp(MIN_DRAWING_SIZE, MAX_DRAWING_SIZE);
+            }
+            Shape::Line => {
+                if w.abs().max(h.abs()) < MIN_DRAWING_SIZE {
+                    return Err(ModelError::Invalid(format!("a line must reach at least {MIN_DRAWING_SIZE} units")));
+                }
+                a.x = x;
+                a.y = y;
+                a.w = w;
+                a.h = h;
+            }
+            _ => return Err(ModelError::Invalid("only rectangles, ellipses and lines can be resized".into())),
+        }
+        Ok(())
+    }
+
     pub fn annotation_mut(&mut self, id: u32) -> Result<&mut Annotation> {
         self.annotations.iter_mut().find(|a| a.id == id).ok_or_else(|| ModelError::Invalid(format!("no note {id}")))
     }
@@ -2351,6 +2391,7 @@ impl Topology {
     /// Repairs what a hand-edited or hostile file could break: dangling or duplicate cables,
     /// duplicate names and ids, non-finite positions, missing VLAN 1, oversized lists.
     pub fn sanitize(&mut self) {
+        self.environment.sanitize();
         if let Some(a) = &mut self.activity {
             a.sanitize();
         }

@@ -2037,6 +2037,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::Ikev2AuthLocal
         | Id::Ikev2AuthRemote
         | Id::Ikev2ProfileKeyring
+        | Id::Ikev2ProfileLifetime
+        | Id::NoIkev2ProfileLifetime
         | Id::CryptoSetIkev2Profile
         | Id::NoCryptoSetIkev2Profile
         | Id::ShowCryptoIkev2Sa

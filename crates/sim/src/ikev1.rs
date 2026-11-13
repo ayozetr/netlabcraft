@@ -6,14 +6,15 @@
 //! Policies encrypt for real with AES-CBC (`encryption aes [128|192|256]`), DES-CBC (`des`) or
 //! three-key 3DES-CBC (`3des`), keyed from SKEYID_e as RFC 2409 appendix B has it (8-byte
 //! blocks and IVs for DES and 3DES). SHA-384 and SHA-512 policies run HMAC-SHA-256 in their
-//! place; groups 19 and 20 run the elliptic-curve exchange of RFC 5903 (`netlabcraft_wire::ec`), and
-//! only group 24, which no MODP code here covers, keeps a stand-in exchange.
+//! place; groups 19 and 20 run the elliptic-curve exchange of RFC 5903 (`netlabcraft_wire::ec`),
+//! and group 24 (RFC 5114 §2.3: a 2048-bit prime with a 256-bit prime-order subgroup) the modular
+//! one with the peer's value checked to lie in that subgroup.
 
 use netlabcraft_wire::cipher::{Cipher, CipherKind};
 use netlabcraft_wire::dh;
 use netlabcraft_wire::ec;
 use netlabcraft_wire::ike::{self, Isakmp, Payload, Transform};
-use netlabcraft_wire::suite::Prf;
+use netlabcraft_wire::suite::{Integ, Prf};
 use netlabcraft_wire::vpn::EspSuite;
 
 /// The phase-1 cipher.
@@ -90,7 +91,8 @@ impl P1Suite {
         let dh = if dh::is_modp(self.group) || ec::is_curve(self.group) {
             format!("DH group {}", self.group)
         } else {
-            format!("DH group {} (stand-in)", self.group)
+            // A group number no policy can configure: no exchange is computed for it.
+            format!("DH group {} (not computed)", self.group)
         };
         format!("{c}, {}, {dh}", self.prf.name())
     }
@@ -137,11 +139,16 @@ pub struct V1State {
     /// The inbound SPI this router chose and the peer's.
     pub spi_mine: u32,
     pub spi_peer: u32,
-    /// The ESP algorithms (`None` for a transform set this simulator has no code for: AH, or
-    /// nothing implemented), and the keys.
+    /// The ESP (or AH-only) algorithms (`None` for a transform set with no cipher, which keeps
+    /// the stand-in cipher), and the keys.
     pub esp_suite: Option<EspSuite>,
     pub esp_out: Vec<u8>,
     pub esp_in: Vec<u8>,
+    /// The AH half of an AH-and-ESP bundle: its integrity algorithm and the SPIs of the two
+    /// directions (its keys go straight to the association).
+    pub ah_integ: Option<Integ>,
+    pub ah_spi_mine: u32,
+    pub ah_spi_peer: u32,
 }
 
 /// Why opening a message failed.
@@ -237,7 +244,13 @@ impl V1State {
     /// KEYMAT for the SA whose (inbound) SPI is `spi` (§5.5): K1 = prf(SKEYID_d, protocol |
     /// SPI | Ni_b | Nr_b), Kn = prf(SKEYID_d, Kn−1 | protocol | SPI | Ni_b | Nr_b).
     pub fn keymat(&self, spi: u32, len: usize) -> Vec<u8> {
-        let seed = [&[crate::vpn::proto_of(self.esp_suite)][..], &spi.to_be_bytes()[..], &self.qm_ni[..], &self.qm_nr[..]].concat();
+        self.keymat_for(crate::vpn::proto_of(self.esp_suite), spi, len)
+    }
+
+    /// [`V1State::keymat`] for an SA of a given protocol (an AH-and-ESP bundle has one of each,
+    /// with their own SPIs).
+    pub fn keymat_for(&self, protocol: u8, spi: u32, len: usize) -> Vec<u8> {
+        let seed = [&[protocol][..], &spi.to_be_bytes()[..], &self.qm_ni[..], &self.qm_nr[..]].concat();
         let prf = self.prf();
         let mut k = prf.prf(&self.skeyid_d, &seed);
         let mut out = k.clone();
@@ -335,7 +348,7 @@ mod tests {
 
     #[test]
     fn both_ends_derive_the_same_keys_and_hashes() {
-        for (cipher, hash, group) in [((7, 128), 2, 14), ((7, 256), 4, 5), ((7, 192), 1, 2), ((1, 0), 2, 1), ((5, 0), 2, 19)] {
+        for (cipher, hash, group) in [((7, 128), 2, 14), ((7, 256), 4, 5), ((7, 192), 1, 2), ((1, 0), 2, 1), ((5, 0), 2, 19), ((7, 128), 2, 24)] {
             let (mut i, mut r) = pair(cipher, hash, group);
             let (ci, cr) = ([1; 8], [2; 8]);
             assert!(i.derive(b"psk", &ci, &cr, true) && r.derive(b"psk", &ci, &cr, false));
@@ -376,6 +389,11 @@ mod tests {
         let (mut i, _) = pair((7, 128), 2, 14);
         i.ke_r = vec![0; 256];
         assert!(!i.derive(b"psk", &[1; 8], &[2; 8], true));
+        // Group 24: a value outside the order-q subgroup (2) is refused.
+        let (mut i, _) = pair((7, 128), 2, 24);
+        i.ke_r = vec![0; 256];
+        i.ke_r[255] = 2;
+        assert!(!i.derive(b"psk", &[1; 8], &[2; 8], true));
         // The curve groups run for real: both ends agree, and a value off the curve is refused.
         for group in [19, 20] {
             let (mut i, mut r) = pair((7, 128), 2, group);
@@ -398,7 +416,8 @@ mod tests {
         assert_eq!((s.cipher, s.prf, s.group, s.lifetime), (P1Cipher::Aes(32), Prf::HmacSha1, 14, 3600));
         assert_eq!(s.describe(), "AES-CBC-256, HMAC-SHA1, DH group 14");
         assert_eq!(P1Suite::from_transform(&tr(vec![(1, 5), (2, 1), (4, 20)])).describe(), "3DES-CBC, HMAC-MD5, DH group 20");
-        assert_eq!(P1Suite::from_transform(&tr(vec![(1, 5), (2, 1), (4, 24)])).describe(), "3DES-CBC, HMAC-MD5, DH group 24 (stand-in)");
+        assert_eq!(P1Suite::from_transform(&tr(vec![(1, 5), (2, 1), (4, 24)])).describe(), "3DES-CBC, HMAC-MD5, DH group 24");
+        assert_eq!(P1Suite::from_transform(&tr(vec![(1, 5), (2, 1), (4, 3)])).describe(), "3DES-CBC, HMAC-MD5, DH group 3 (not computed)");
         assert_eq!(P1Suite::from_transform(&tr(vec![(1, 1), (2, 2), (4, 2)])).describe(), "DES-CBC, HMAC-SHA1, DH group 2");
     }
 }

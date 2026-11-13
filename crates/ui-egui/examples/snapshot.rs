@@ -28,6 +28,7 @@ fn main() {
     let mut url: Option<String> = None;
     let mut physical = false;
     let mut place: Option<u32> = None;
+    let mut select_note: Option<u32> = None;
     let mut connections: Option<Option<String>> = None;
     let mut tab: Option<String> = None;
     let mut config_page: Option<String> = None;
@@ -41,6 +42,7 @@ fn main() {
                 session.execute("file.new", json!({"sample": it.next().expect("sample id")})).expect("sample");
             }
             "--dark" => dark = true,
+            "--select-note" => select_note = it.next().and_then(|s| s.parse().ok()),
             "--simulation" => simulation = true,
             "--physical" => physical = true,
             "--place" => place = Some(it.next().and_then(|s| s.parse().ok()).expect("place number")),
@@ -143,6 +145,9 @@ fn main() {
         if let Some(p) = place {
             app.enter_place(p);
         }
+    }
+    if let Some(n) = select_note {
+        harness.state_mut().ui.selected_note = Some(n);
     }
     if compare {
         // After the first frames: opening an activity clears earlier results.

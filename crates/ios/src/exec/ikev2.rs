@@ -113,7 +113,15 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
                 &mut v2.profiles,
                 &name,
                 |p| &p.name,
-                || Ikev2Profile { name: name.clone(), remote: Vec::new(), local_id: None, auth_local: None, auth_remote: None, keyring: None },
+                || Ikev2Profile {
+                    name: name.clone(),
+                    remote: Vec::new(),
+                    local_id: None,
+                    auth_local: None,
+                    auth_remote: None,
+                    keyring: None,
+                    lifetime: None,
+                },
                 "IKEv2 profiles",
             )?;
             c.cli.mode = Mode::Ikev2Profile(name);
@@ -277,6 +285,15 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             profile(c)?.keyring = Some(k);
             Ok(note)
         }
+        Id::Ikev2ProfileLifetime => {
+            let s: u32 = arg(0).parse().ok().filter(|s| netlabcraft_model::vpn::IKE_SECONDS.contains(s)).ok_or("% Lifetime is 120-86400 seconds")?;
+            profile(c)?.lifetime = Some(s);
+            Ok(String::new())
+        }
+        Id::NoIkev2ProfileLifetime => {
+            profile(c)?.lifetime = None;
+            Ok(String::new())
+        }
         Id::CryptoSetIkev2Profile | Id::NoCryptoSetIkev2Profile => {
             let Mode::CryptoMap(name, seq) = c.cli.mode.clone() else { return Err("% Not in crypto map mode".into()) };
             let prof = if id == Id::CryptoSetIkev2Profile { Some(name_ok(&arg(0))?) } else { None };
@@ -369,6 +386,9 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
         if let Some(k) = &p.keyring {
             let _ = writeln!(s, " keyring local {k}");
         }
+        if let Some(l) = p.lifetime {
+            let _ = writeln!(s, " lifetime {l}");
+        }
         let _ = writeln!(s, "!");
     }
 }
@@ -397,6 +417,9 @@ pub(crate) fn ikev2_sas(sim: &Sim, d: &Device) -> String {
             }
         );
         let _ = writeln!(s, "  SPIs: initiator {} responder {}", hex(&v2.spi_i), hex(&v2.spi_r));
+        if sa.phase == IkePhase::Established {
+            let _ = writeln!(s, "  Lifetime: {}", crate::render::ike_sa_life(sim, &sa));
+        }
         if !v2.algorithms.is_empty() {
             let _ = writeln!(s, "  Algorithms: {}", v2.algorithms);
         }
@@ -406,9 +429,12 @@ pub(crate) fn ikev2_sas(sim: &Sim, d: &Device) -> String {
         if sa.phase == IkePhase::Established {
             let esp = match v2.esp_suite {
                 Some(suite) => format!("{} (real ciphers)", suite.describe()),
-                None => "the simulator's stand-in cipher (AH next to ESP in one transform set is not implemented)".to_string(),
+                None => "the simulator's stand-in cipher (the transform set has no cipher)".to_string(),
             };
             let _ = writeln!(s, "  ESP: {esp}");
+            if let Some(line) = crate::render::ah_half_line(&sa) {
+                let _ = writeln!(s, "  {line}");
+            }
         }
         if let Some(why) = &sa.failed {
             let _ = writeln!(s, "  Last failure: {why}");
@@ -458,6 +484,7 @@ pub(crate) fn profiles(d: &Device) -> String {
             p.auth_remote.as_deref().unwrap_or("not set")
         );
         let _ = writeln!(s, "  Keyring: {}", p.keyring.as_deref().unwrap_or("none"));
+        let _ = writeln!(s, "  IKE SA lifetime: {} seconds{}", p.ike_lifetime(), if p.lifetime.is_none() { " (the default)" } else { "" });
     }
     s.trim_end().to_string()
 }

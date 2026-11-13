@@ -1547,3 +1547,34 @@ fn a_centrally_switched_wlan_tunnels_its_hosts_through_the_controller_into_its_v
     assert!(marks.ends_with("!!"), "{marks}");
     assert!(!trace_text(&s).contains("central switching) carrying"));
 }
+
+#[test]
+fn resizing_a_drawing_is_bounded_normalised_and_undone() {
+    let mut s = Session::new();
+    let id = s.execute("note.add", json!({"shape": "rectangle", "x": 10, "y": 10, "w": 50, "h": 40})).unwrap()["id"].as_u64().unwrap();
+    let get = |s: &Session| s.topology.annotations.iter().find(|a| a.id as u64 == id).map(|a| (a.x, a.y, a.w, a.h)).unwrap();
+    s.execute("note.resize", json!({"id": id, "x": 0, "y": 0, "w": 120, "h": 90})).unwrap();
+    assert_eq!(get(&s), (0.0, 0.0, 120.0, 90.0));
+    // Dragged past the opposite corner: flipped and normalised.
+    s.execute("note.resize", json!({"id": id, "x": 100, "y": 100, "w": -60, "h": -30})).unwrap();
+    assert_eq!(get(&s), (40.0, 70.0, 60.0, 30.0));
+    // Minimum and maximum size.
+    s.execute("note.resize", json!({"id": id, "x": 5, "y": 5, "w": 0, "h": 0.5})).unwrap();
+    assert_eq!(get(&s), (5.0, 5.0, 4.0, 4.0));
+    s.execute("note.resize", json!({"id": id, "x": 0, "y": 0, "w": 1e300, "h": 1e9})).unwrap();
+    assert_eq!(get(&s), (0.0, 0.0, 100_000.0, 100_000.0));
+    for bad in [json!({"id": id}), json!({"id": id, "x": "a", "y": 0, "w": 1, "h": 1}), json!({"id": 999, "x": 0, "y": 0, "w": 9, "h": 9})] {
+        assert!(s.execute("note.resize", bad).is_err());
+    }
+    // A transient resize adds no undo step.
+    s.execute("note.resize", json!({"id": id, "x": 1, "y": 1, "w": 20, "h": 20, "transient": true})).unwrap();
+    s.execute("edit.undo", json!({})).unwrap();
+    assert_eq!(get(&s), (5.0, 5.0, 4.0, 4.0));
+    // Lines keep direction and need some reach.
+    let line = s.execute("note.add", json!({"shape": "line", "x": 0, "y": 0, "w": 30, "h": -30})).unwrap()["id"].as_u64().unwrap();
+    s.execute("note.resize", json!({"id": line, "x": 10, "y": 10, "w": -50, "h": 0})).unwrap();
+    assert!(s.execute("note.resize", json!({"id": line, "x": 0, "y": 0, "w": 1, "h": 1})).is_err());
+    // Text and paths are refused.
+    let text = s.execute("note.add", json!({"x": 0, "y": 0, "text": "hi"})).unwrap()["id"].as_u64().unwrap();
+    assert!(s.execute("note.resize", json!({"id": text, "x": 0, "y": 0, "w": 10, "h": 10})).is_err());
+}
