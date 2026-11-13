@@ -13,6 +13,4 @@ workspace = true
 netlabcraft-core = { workspace = true }
 netlabcraft-model = { workspace = true }
 netlabcraft-sim = { workspace = true }
-
-[dev-dependencies]
 netlabcraft-wire = { workspace = true }

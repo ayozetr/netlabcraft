@@ -14,8 +14,11 @@
 //! Port 443 speaks TLS 1.2 (`netlabcraft_wire::tls`) with HTTP inside; port 80 plain HTTP.
 //! NETCONF on port 830 runs as the `netconf` subsystem of an SSH session
 //! (`netlabcraft_wire::ssh`, RFC 6242), logged in with the router's local privilege-15 users.
-//! Both do real key exchanges and encrypt what they carry; what is a stand-in (no certificate,
-//! an unauthenticated host key, seeded randomness) is listed in those modules.
+//! Both do real key exchanges and encrypt what they carry. With `ip http secure-trustpoint` the
+//! HTTPS server shows a real certificate and signs its key exchange with the trustpoint's key;
+//! an SSH server with a `NAME.DOMAIN` RSA key signs with it. What is a stand-in is listed in
+//! those modules: the anonymous TLS suite and the HMAC host key remain for routers with no
+//! trustpoint or key, so existing labs run as they did.
 
 use std::collections::{BTreeMap, VecDeque};
 use std::net::{IpAddr, Ipv6Addr};
@@ -26,7 +29,8 @@ use netlabcraft_wire::ipv6::Ipv6;
 use netlabcraft_wire::netconf::{self, Framing};
 use netlabcraft_wire::ssh::Ssh;
 use netlabcraft_wire::tcp::{self, Tcp};
-use netlabcraft_wire::tls::Tls;
+use netlabcraft_wire::tls::{Tls, Trust};
+use netlabcraft_wire::x509::Certificate;
 use netlabcraft_wire::{PROTO_TCP, http};
 
 use crate::v6::{l3_ifaces6, route6};
@@ -154,6 +158,17 @@ pub struct TcpClient {
     ack: u32,
     /// The server closed (or reset) the connection.
     pub closed: bool,
+}
+
+/// What a TLS handshake showed the client.
+#[derive(Debug, Clone, Default)]
+pub struct TlsInfo {
+    /// The suite in use.
+    pub suite: &'static str,
+    /// The certificates the server sent, its own first (empty for the anonymous suite).
+    pub chain: Vec<Certificate>,
+    /// The chain was checked against trust anchors and passed.
+    pub verified: bool,
 }
 
 /// A client connection kept open between commands, with what its protocol needs to go on.
@@ -346,6 +361,10 @@ impl Sim {
     /// handler: (the response bytes, whether the request was complete or broken).
     fn http_answer(&mut self, t: &Topology, d: &Device, raw: &[u8]) -> (Vec<u8>, bool) {
         match http::Request::parse(raw) {
+            Ok(Some((req, _))) if crate::pki::is_pki_request(&req) => {
+                let now = self.clock(d.id).0;
+                (crate::pki::serve(d, now, &req).encode(), true)
+            }
             Ok(Some((req, _))) => {
                 let served = match self.auto.restconf {
                     Some(f) => f(t, d.id, &req),
@@ -369,7 +388,7 @@ impl Sim {
     fn tls_feed(&mut self, t: &Topology, d: &Device, conn: &mut Conn, out: &mut Vec<u8>) -> bool {
         if conn.tls.is_none() {
             let seed = self.seed("tls", d.id);
-            conn.tls = Some(Box::new(Tls::server(&seed)));
+            conn.tls = Some(Box::new(Tls::server_with(&seed, crate::pki::tls_identity(d))));
         }
         let Some(tls) = conn.tls.as_mut() else { return true };
         let o = match tls.feed(&mut conn.buf) {
@@ -405,7 +424,7 @@ impl Sim {
         let Some(handler) = self.auto.netconf else { return true };
         if conn.ssh.is_none() {
             let seed = self.seed("ssh", d.id);
-            conn.ssh = Some(Box::new(Ssh::server(&seed, format!("{} {}", d.id.0, d.name).as_bytes())));
+            conn.ssh = Some(Box::new(Ssh::server_with(&seed, format!("{} {}", d.id.0, d.name).as_bytes(), crate::pki::ssh_host_key(d))));
         }
         let Some(ssh) = conn.ssh.as_mut() else { return true };
         let was_ready = ssh.ready();
@@ -670,11 +689,26 @@ impl Sim {
     /// decrypted (it closes after one answer). An error says what went wrong: a refused or
     /// silent port, a server that doesn't speak TLS, a failed handshake.
     pub fn https(&mut self, t: &Topology, dev: DeviceId, server: IpAddr, port: u16, request: &[u8]) -> Result<Vec<u8>, SimError> {
+        self.https_with(t, dev, server, port, request, None).map(|(data, _)| data)
+    }
+
+    /// [`Sim::https`] with the server's certificate checked against `trust`, and what the
+    /// handshake showed: the suite, the certificate chain and whether it was verified.
+    pub fn https_with(
+        &mut self,
+        t: &Topology,
+        dev: DeviceId,
+        server: IpAddr,
+        port: u16,
+        request: &[u8],
+        trust: Option<Trust>,
+    ) -> Result<(Vec<u8>, TlsInfo), SimError> {
         let fail = |why: String| SimError::NoSource(why);
         let mut c = self.tcp_open(t, dev, server, port)?;
         let seed = self.seed("tls client", dev);
-        let (mut tls, mut out) = Tls::client(&seed);
+        let (mut tls, mut out) = Tls::client_with(&seed, trust);
         let mut raw = Vec::new();
+        let mut info = TlsInfo::default();
         let result = (|| {
             for _ in 0..4 {
                 let probe = tls.clone();
@@ -698,6 +732,7 @@ impl Sim {
                     return Err(fail(format!("{server} ended the TLS handshake with a {} alert", netlabcraft_wire::tls::alert_name(a))));
                 }
                 if o.established {
+                    info = TlsInfo { suite: tls.suite_name(), chain: tls.peer_chain().to_vec(), verified: tls.verified() };
                     let data = tls.send(request);
                     let got = self.tcp_exchange(t, &mut c, &data, &|_| false)?;
                     raw.extend(got);
@@ -712,7 +747,7 @@ impl Sim {
             Err(fail(format!("{server} closed the connection during the TLS handshake")))
         })();
         self.tcp_close(t, &c);
-        result
+        result.map(|data| (data, info))
     }
 
     /// Opens an SSH session to `server:port` as `user` and starts the `netconf` subsystem.

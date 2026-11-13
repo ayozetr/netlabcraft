@@ -611,6 +611,7 @@ pub fn running_config(d: &Device) -> String {
         let _ = writeln!(s, "!");
     }
     crate::exec::automation::running_config(&mut s, d);
+    crate::exec::pki::running_config(&mut s, d);
     if !a.banner_motd.is_empty() {
         let _ = writeln!(s, "banner motd ^{}^\n!", a.banner_motd.replace('^', ""));
     }

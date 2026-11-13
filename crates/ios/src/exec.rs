@@ -21,6 +21,7 @@ pub(crate) mod firewall;
 pub(crate) mod ikev2;
 pub(crate) mod l2sec;
 pub(crate) mod mgmt;
+pub(crate) mod pki;
 pub(crate) mod qos;
 pub(crate) mod routing;
 pub(crate) mod security;
@@ -132,6 +133,10 @@ pub enum Mode {
     Ikev2Peer(String, String),
     /// `R1(config-ikev2-profile)#`
     Ikev2Profile(String),
+    /// `R1(ca-trustpoint)#`: the trustpoint's name.
+    PkiTrustpoint(String),
+    /// `R1(cs-server)#`: the certificate authority's name.
+    PkiServer(String),
 }
 
 impl Mode {
@@ -174,6 +179,8 @@ impl Mode {
             Mode::Ikev2Keyring(_) => Modes::IKEV2_KEYRING,
             Mode::Ikev2Peer(..) => Modes::IKEV2_PEER,
             Mode::Ikev2Profile(_) => Modes::IKEV2_PROFILE,
+            Mode::PkiTrustpoint(_) => Modes::PKI_TRUSTPOINT,
+            Mode::PkiServer(_) => Modes::PKI_SERVER,
         }
     }
 }
@@ -232,7 +239,7 @@ pub enum LoginStage {
 }
 
 /// The prompt asking for the RSA key size.
-pub const MODULUS_PROMPT: &str = "Key size in bits (360-4096) [1024]: ";
+pub const MODULUS_PROMPT: &str = "Key size in bits (512-2048, a multiple of 64) [1024]: ";
 
 /// Opens a Telnet or SSH session from `dev` to the device at `dst`.
 pub fn connect(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, proto: RemoteProto, dst: Ipv4Addr, user: Option<String>) -> String {
@@ -535,6 +542,8 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::Ikev2Keyring(_) => format!("{n}(config-ikev2-keyring)#"),
         Mode::Ikev2Peer(..) => format!("{n}(config-ikev2-keyring-peer)#"),
         Mode::Ikev2Profile(_) => format!("{n}(config-ikev2-profile)#"),
+        Mode::PkiTrustpoint(_) => format!("{n}(ca-trustpoint)#"),
+        Mode::PkiServer(_) => format!("{n}(cs-server)#"),
         Mode::VoiceRegGlobal => format!("{n}(config-register-global)#"),
         Mode::VoiceRegDn(_) => format!("{n}(config-register-dn)#"),
         Mode::VoiceRegPool(_) => format!("{n}(config-register-pool)#"),
@@ -573,15 +582,14 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, li
     }
     if cli.modulus_prompt {
         cli.modulus_prompt = false;
-        let n: u16 = if line.trim().is_empty() { 1024 } else { line.trim().parse().unwrap_or(0) };
-        if !(360..=4096).contains(&n) {
-            return Outcome { output: "% The key size is 360-4096 bits; no keys generated".into(), ..Outcome::default() };
-        }
-        if let Some(dm) = t.device_mut(dev) {
-            dm.access.rsa_bits = Some(n);
-        }
-        sim.topology_changed(t);
-        return Outcome { output: format!("RSA keys generated ({n} bits). SSH is available."), changed: true, clear: false };
+        let n: usize = if line.trim().is_empty() { 1024 } else { line.trim().parse().unwrap_or(0) };
+        return match pki::generate(t, dev, None, n) {
+            Ok(output) => {
+                sim.topology_changed(t);
+                Outcome { output, changed: true, clear: false }
+            }
+            Err(output) => Outcome { output, ..Outcome::default() },
+        };
     }
     // The answers to a TFTP copy's questions: the server, then the file.
     if let Some(mut p) = cli.copy_prompt.take() {
@@ -836,6 +844,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Ikev2Keyring(_)
                 | Mode::Ikev2Peer(..)
                 | Mode::Ikev2Profile(_)
+                | Mode::PkiTrustpoint(_)
+                | Mode::PkiServer(_)
                 | Mode::VoiceRegGlobal
                 | Mode::VoiceRegDn(_)
                 | Mode::VoiceRegPool(_)
@@ -907,6 +917,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Ikev2Policy(_)
                 | Mode::Ikev2Keyring(_)
                 | Mode::Ikev2Profile(_)
+                | Mode::PkiTrustpoint(_)
+                | Mode::PkiServer(_)
                 | Mode::VoiceRegGlobal
                 | Mode::VoiceRegDn(_)
                 | Mode::VoiceRegPool(_) => Mode::Config,
@@ -2044,6 +2056,27 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ShowCryptoIkev2Sa
         | Id::ShowCryptoIkev2Proposal
         | Id::ShowCryptoIkev2Profile => ikev2::command(&mut c, spec.id, &args),
+        Id::CryptoKey
+        | Id::CryptoKeyZeroize
+        | Id::ShowCryptoKeyMypubkey
+        | Id::CryptoPkiTrustpoint
+        | Id::NoCryptoPkiTrustpoint
+        | Id::CryptoPkiEnroll
+        | Id::CryptoPkiAuthenticate
+        | Id::CryptoPkiServer
+        | Id::NoCryptoPkiServer
+        | Id::PkiEnrollment
+        | Id::PkiSubjectName
+        | Id::PkiRsakeypair
+        | Id::PkiRevocationCheck
+        | Id::PkiServerIssuer
+        | Id::PkiServerGrant
+        | Id::PkiServerLifetime
+        | Id::PkiServerShutdown
+        | Id::NoPkiServerShutdown
+        | Id::ShowCryptoPkiTrustpoints
+        | Id::ShowCryptoPkiCertificates
+        | Id::ShowCryptoPkiServer => pki::command(&mut c, spec.id, &args),
         Id::ClassMap
         | Id::NoClassMap
         | Id::PolicyMap
@@ -2302,6 +2335,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::NoIpHttpServer
         | Id::IpHttpSecureServer
         | Id::NoIpHttpSecureServer
+        | Id::IpHttpSecureTrustpoint
+        | Id::NoIpHttpSecureTrustpoint
         | Id::IpHttpAuthLocal
         | Id::NoIpHttpAuthLocal
         | Id::Restconf
@@ -2567,26 +2602,6 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let v = (spec.id == Id::DomainName).then(|| arg(0).chars().take(64).collect::<String>());
             c.dm()?.access.domain_name = v;
             Ok(String::new())
-        }
-        Id::CryptoKey => {
-            if c.d()?.access.domain_name.is_none() {
-                return Err("% Set `ip domain-name` first: the keys are named after it".into());
-            }
-            match args.first().and_then(|a| a.split_whitespace().last()).map(|n| n.parse::<u16>()) {
-                None => {
-                    c.cli.modulus_prompt = true;
-                    Ok(format!("The key name will be {}.{}", c.d()?.name, c.d()?.access.domain_name.clone().unwrap_or_default()))
-                }
-                Some(Ok(n)) if (360..=4096).contains(&n) => {
-                    c.dm()?.access.rsa_bits = Some(n);
-                    Ok(format!("RSA keys generated ({n} bits). SSH is available."))
-                }
-                Some(_) => Err("% The key size is 360-4096 bits".into()),
-            }
-        }
-        Id::CryptoKeyZeroize => {
-            c.dm()?.access.rsa_bits = None;
-            Ok("RSA keys deleted; SSH is off.".into())
         }
         Id::SshVersion => {
             let v: u8 = arg(0).parse().ok().filter(|v| *v == 1 || *v == 2).ok_or("% The version is 1 or 2")?;

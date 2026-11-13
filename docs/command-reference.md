@@ -142,7 +142,7 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `scenario.delete` | Delete scenario |  |  | `{"index"?: the one in use} → the scenarios (the last one is only emptied)` |
 | `scenario.select` | Switch scenario |  |  | `{"index"} → its PDU list` |
 | `sim.event` | PDU details |  |  | `{"id": event} → {id, at_us, from, to, protocol, summary, dropped, cause, "explain": [what the receiver decided], "osi": {"in": [{layer, lines}], "out": [...]}, "sent": [events it caused]}` |
-| `pc.http_request` | HTTP request (Programming) |  |  | `{"pc": "PC, laptop or server", "method"?: "GET"\|"PUT"\|"PATCH"\|"POST"\|"DELETE"\|…, "url": "https://10.0.0.1/restconf/data/ietf-interfaces:interfaces", "headers"?: {"Accept": "application/yang-data+json" or "application/yang-data+xml"} or [["Name", "value"]], "body"?: text, JSON or XML text (Content-Type follows it unless given), "user"?, "password"?: Basic login} → {"status", "reason", "headers", "body", "json", "applied": [{"device", "lines", "failed"}], "tls"?: {"version", "cipher"}}: over TCP through the lab, IPv4 or IPv6 ([2001:db8::1] in the URL); https:// runs a TLS 1.2 handshake (anonymous Diffie-Hellman, AES-128-CBC) first` |
+| `pc.http_request` | HTTP request (Programming) |  |  | `{"pc": "PC, laptop or server", "method"?: "GET"\|"PUT"\|"PATCH"\|"POST"\|"DELETE"\|…, "url": "https://10.0.0.1/restconf/data/ietf-interfaces:interfaces", "headers"?: {"Accept": "application/yang-data+json" or "application/yang-data+xml"} or [["Name", "value"]], "body"?: text, JSON or XML text (Content-Type follows it unless given), "user"?, "password"?: Basic login, "trust"?: "R1" or ["R1", …] (https only: the client trusts the CA certificates held in those routers' trustpoints and refuses a server whose certificate chain does not verify against them, at the client's clock)} → {"status", "reason", "headers", "body", "json", "applied": [{"device", "lines", "failed"}], "tls"?: {"version", "cipher", "certificate": null \| {"subject", "issuer", "serial", "not_before", "not_after", "key_bits", "chain_length"}, "verified": bool}}: over TCP through the lab, IPv4 or IPv6 ([2001:db8::1] in the URL); https:// runs a TLS 1.2 handshake first: DHE-RSA with the server's certificate when the router has `ip http secure-trustpoint`, otherwise anonymous Diffie-Hellman (AES-128-CBC either way)` |
 | `netconf.session` | NETCONF session |  |  | `{"pc": "PC, laptop or server", "target": "router address (IPv4 or IPv6) or name", "user", "password", "framing"?: "1.1"\|"1.0", "rpcs"?: ["<get-config><source><running/></source></get-config>", …] (bare operations are wrapped in <rpc message-id=…>), "keep_open"?: true (the session stays open: its number comes back as "session"), "session"?: number (go on with a kept session: no target or login), "close"?: true (end a kept session)} → {"connected", "error"?, "framing", "session", "session_id", "hello", "replies": [XML], "applied": [{"device", "lines", "failed"}]}: TCP port 830 with RFC 6242 framing; running and candidate datastores, locks` |
 | `controller.devices` | Controller: managed routers |  |  | `{"host": "the controller (PC, laptop or server)", "add"?: {"address" (IPv4 or IPv6), "user", "password", "vars"?: {"name": "value"}}, "remove"?: address, "set_vars"?: {"address", "vars": {"name": "value"}}, "refresh"?: true (read each router's hostname, model, software and interfaces over RESTCONF)} → {"devices": [{"address", "user", "vars", "reachable"?, "hostname"?, "model"?, "os"?, "interfaces"?, "up"?, "error"?}]}` |
 | `controller.push` | Controller: push a template |  |  | `{"host", "path": "/restconf/data/…", "method"?: "PATCH"\|"PUT"\|"POST"\|"DELETE", "body": JSON template with {{name}} variables ({{address}} and {{hostname}} built in), "variables"?: {"router address": {"name": "value"}} (on top of each router's stored vars), "devices"?: [addresses] (all managed routers when left out)} → {"results": [{"address", "status", "error"?, "applied"}]}` |
@@ -742,8 +742,10 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `ip domain-name WORD` | config | router, switch | The domain name (SSH keys need one) |
 | `no ip domain-name` | config | router, switch | Remove the domain name |
 | `crypto key generate rsa` | config | router, switch | Generate the SSH keys (asks for the size) |
-| `crypto key generate rsa [general-keys] modulus <360-4096>` | config | router, switch | Generate the SSH keys |
-| `crypto key zeroize rsa` | config | router, switch | Delete the SSH keys |
+| `crypto key generate rsa [general-keys] [modulus <512-2048>] [label NAME]` | config | router, switch | Generate an RSA key pair (the SSH keys when it has the default name) |
+| `crypto key zeroize rsa` | config | router, switch | Delete every RSA key pair |
+| `crypto key zeroize rsa LABEL` | config | router, switch | Delete one RSA key pair |
+| `show crypto key mypubkey rsa` | user, privileged | router, switch | This device's RSA public keys |
 | `ip ssh version {1\|2}` | config | router, switch | SSH protocol version |
 | `ipv6 unicast-routing` | config | router, switch | Forward IPv6 and advertise prefixes |
 | `no ipv6 unicast-routing` | config | router, switch | Stop forwarding IPv6 |
@@ -1053,6 +1055,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip http server` | config | router | Stop the web server on port 80 |
 | `ip http secure-server` | config | router | Run the web server on port 443 (HTTPS) |
 | `no ip http secure-server` | config | router | Stop the web server on port 443 |
+| `ip http secure-trustpoint NAME` | config | router | The trustpoint whose certificate the HTTPS server shows |
+| `no ip http secure-trustpoint` | config | router | Show no certificate (anonymous TLS) |
 | `ip http authentication local` | config | router | Web requests log in with the local usernames |
 | `no ip http authentication` | config | router | Default web authentication |
 | `restconf` | config | router | Answer RESTCONF requests (RFC 8040) on the web server |
@@ -1145,6 +1149,24 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `set ikev2-profile NAME` |  | router | Negotiate this entry with IKEv2 |
 | `no set ikev2-profile` |  | router | Back to IKEv1 |
 | `show crypto ikev2 sa` | user, privileged | router | IKEv2 security associations |
+| `crypto pki trustpoint NAME` | config | router | Define or edit a trustpoint |
+| `no crypto pki trustpoint NAME` | config | router | Delete a trustpoint |
+| `crypto pki enroll NAME` | config | router | Get a certificate for a trustpoint |
+| `crypto pki authenticate NAME` | config | router | Fetch and trust the CA's certificate |
+| `crypto pki server NAME` | config | router | Define or edit the certificate authority |
+| `no crypto pki server NAME` | config | router | Delete the certificate authority |
+| `enrollment {selfsigned\|url http://A.B.C.D[:PORT]}` |  | router | Where the certificate comes from |
+| `subject-name CN=NAME[, O=ORG][, OU=UNIT][, C=XX]` |  | router | The name in the certificate |
+| `rsakeypair LABEL` |  | router | The key pair the certificate is for |
+| `revocation-check none` |  | router | Do not check for revoked certificates |
+| `issuer-name CN=NAME[, O=ORG]` |  | router | The CA's name |
+| `grant auto` |  | router | Sign requests as they arrive |
+| `lifetime certificate DAYS` |  | router | How long issued certificates last |
+| `shutdown` |  | router | Stop the certificate authority |
+| `no shutdown` |  | router | Start the certificate authority |
+| `show crypto pki trustpoints` | user, privileged | router | Trustpoints and their certificates' state |
+| `show crypto pki certificates` | user, privileged | router | The certificates this router holds |
+| `show crypto pki server` | user, privileged | router | The certificate authority |
 | `show crypto ikev2 proposal` | user, privileged | router | IKEv2 proposals |
 | `show crypto ikev2 profile` | user, privileged | router | IKEv2 profiles |
 | `power inline {auto\|never}` | interface | switch | Power over Ethernet on this port (PoE switches) |

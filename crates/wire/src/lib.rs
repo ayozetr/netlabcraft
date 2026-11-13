@@ -18,6 +18,7 @@ pub mod ah;
 pub mod capwap;
 pub mod cipher;
 pub mod control;
+pub mod der;
 pub mod des;
 pub mod dh;
 pub mod dhcp;
@@ -34,6 +35,7 @@ pub mod lacp;
 pub mod lldp;
 pub mod md5;
 pub mod ripng;
+pub mod rsa;
 pub mod vrrp;
 
 pub mod mgmt;
@@ -56,6 +58,7 @@ pub mod suite;
 pub mod tcp;
 pub mod vpn;
 pub mod wlan;
+pub mod x509;
 pub mod xml;
 // Secure transports for automation (TLS under RESTCONF, SSH under NETCONF).
 pub mod modp;

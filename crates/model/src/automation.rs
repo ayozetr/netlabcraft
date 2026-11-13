@@ -23,6 +23,9 @@ pub struct Automation {
     /// `ip http authentication local`.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub http_auth_local: bool,
+    /// `ip http secure-trustpoint NAME`: the trustpoint whose certificate the HTTPS server shows.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub https_trustpoint: Option<String>,
     /// `restconf`: the web server answers under `/restconf`.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub restconf: bool,

@@ -1278,6 +1278,31 @@ fn header_param(p: &Value) -> Result<Vec<(String, String)>> {
     Ok(pairs)
 }
 
+/// The trust a `pc.http_request` asks for: the CA certificates held by the named routers.
+fn trust_param(s: &Session, client: DeviceId, p: &Value, tls: bool) -> Result<Option<netlabcraft_wire::tls::Trust>> {
+    let names: Vec<String> = match p.get("trust") {
+        None | Some(Value::Null) => return Ok(None),
+        Some(Value::String(n)) => vec![n.clone()],
+        Some(Value::Array(a)) => a.iter().filter_map(|x| x.as_str().map(str::to_string)).take(16).collect(),
+        Some(_) => return Err(bad("`trust` is a router name or a list of router names")),
+    };
+    if !tls {
+        return Err(bad("`trust` applies to https:// URLs"));
+    }
+    let mut anchors = Vec::new();
+    for n in &names {
+        let id = s.topology.resolve(n).map_err(|_| bad(format!("`trust`: no device named {n}")))?;
+        let dev = s.topology.device(id).ok_or_else(|| bad(format!("`trust`: no device named {n}")))?;
+        let found = netlabcraft_sim::pki::trust_anchors(dev);
+        if found.is_empty() {
+            return Err(bad(format!("`trust`: {n} holds no CA certificate (authenticate or enroll a trustpoint, or run `crypto pki server`)")));
+        }
+        anchors.extend(found);
+    }
+    let now = u64::try_from(s.sim.clock(client).0).unwrap_or(0);
+    Ok(Some(netlabcraft_wire::tls::Trust { anchors, now, required: true }))
+}
+
 /// `pc.http_request`.
 pub(crate) fn http_request(s: &mut Session, p: &Value) -> Result<Value> {
     let d = crate::cmd::device_param(s, p, "pc")?;
@@ -1317,8 +1342,16 @@ pub(crate) fn http_request(s: &mut Session, p: &Value) -> Result<Value> {
     }
     let req = Request { method: method.clone(), target: path.clone(), headers: all, body };
     let server = resolve(s, d, &host)?;
-    let got =
-        if tls { s.sim.https(&s.topology, d, server, port, &req.encode()) } else { s.sim.tcp_session(&s.topology, d, server, port, &req.encode()) };
+    let trust = trust_param(s, d, p, tls)?;
+    let mut tls_info = None;
+    let got = if tls {
+        s.sim.https_with(&s.topology, d, server, port, &req.encode(), trust).map(|(data, info)| {
+            tls_info = Some(info);
+            data
+        })
+    } else {
+        s.sim.tcp_session(&s.topology, d, server, port, &req.encode())
+    };
     let applied = apply_changes(s);
     s.revision += 1;
     let got = got.map_err(|e| EngineError::Failed(e.to_string()))?;
@@ -1342,7 +1375,23 @@ pub(crate) fn http_request(s: &mut Session, p: &Value) -> Result<Value> {
         "body": text,
         "json": parsed,
         "applied": applied,
-        "tls": if tls { json!({"version": "TLS 1.2", "cipher": netlabcraft_wire::tls::SUITE_NAME, "certificate": null}) } else { Value::Null },
+        "tls": match &tls_info {
+            Some(i) => json!({
+                "version": "TLS 1.2",
+                "cipher": i.suite,
+                "certificate": i.chain.first().map(|c| json!({
+                    "subject": c.subject.text(),
+                    "issuer": c.issuer.text(),
+                    "serial": c.serial.iter().map(|b| format!("{b:02X}")).collect::<String>(),
+                    "not_before": c.not_before,
+                    "not_after": c.not_after,
+                    "key_bits": c.key.bits(),
+                    "chain_length": i.chain.len(),
+                })),
+                "verified": i.verified,
+            }),
+            None => Value::Null,
+        },
     }))
 }
 
@@ -1837,6 +1886,87 @@ mod tests {
             .execute("pc.http_request", json!({"pc": "PC1", "url": "http://192.168.1.1/restconf", "user": "admin", "password": "NetLab2026"}))
             .unwrap();
         assert_eq!((r["status"].clone(), r["tls"].clone()), (json!(200), Value::Null));
+    }
+
+    fn configure(s: &mut Session, lines: &str) {
+        s.execute("device.configure", json!({"device": "R1", "lines": lines})).unwrap();
+    }
+
+    fn trustpoint_lines(subject: &str) -> String {
+        format!(
+            "crypto pki trustpoint WEB\nenrollment selfsigned\nsubject-name {subject}\nexit\ncrypto pki enroll WEB\nip http secure-trustpoint WEB"
+        )
+    }
+
+    #[test]
+    fn https_shows_a_certificate_and_the_client_verifies_it() {
+        let mut s = lab();
+        // Without a trustpoint: anonymous, as before, and nothing is verified.
+        let r = req(&mut s, "GET", "/restconf/data/ietf-system:system", None);
+        assert_eq!((r["tls"]["certificate"].clone(), r["tls"]["verified"].clone()), (Value::Null, json!(false)));
+        configure(&mut s, &trustpoint_lines("CN=r1.lab.test, O=NetLab"));
+        assert!(run(&mut s).contains("ip http secure-trustpoint WEB"));
+        // The router now shows a real certificate: the suite changes and the subject comes back.
+        let r = req(&mut s, "GET", "/restconf/data/ietf-system:system", None);
+        assert_eq!(r["status"], 200, "{r}");
+        assert_eq!(r["tls"]["cipher"], netlabcraft_wire::tls::SUITE_RSA_NAME);
+        assert_eq!(r["tls"]["certificate"]["subject"], "CN=r1.lab.test, O=NetLab");
+        assert_eq!((r["tls"]["certificate"]["key_bits"].clone(), r["tls"]["verified"].clone()), (json!(1024), json!(false)));
+        // The wire carries a Certificate message, and the key exchange is signed.
+        assert!(s.sim.trace().iter().any(|e| e.protocol == netlabcraft_wire::Protocol::Tls && e.summary.contains("Certificate")));
+        // A client that trusts R1's certificate checks it and says so.
+        let r = s
+            .execute(
+                "pc.http_request",
+                json!({"pc": "PC1", "url": "https://192.168.1.1/restconf/data/ietf-system:system", "user": "admin", "password": "NetLab2026", "trust": "R1"}),
+            )
+            .unwrap();
+        assert_eq!((r["status"].clone(), r["tls"]["verified"].clone()), (json!(200), json!(true)), "{r}");
+        // Trusting a device with no CA certificate is an error, not a silent pass.
+        let e = s.execute("pc.http_request", json!({"pc": "PC1", "url": "https://192.168.1.1/restconf", "trust": "S1"})).unwrap_err();
+        assert!(e.to_string().contains("holds no CA certificate"), "{e}");
+        let e = s.execute("pc.http_request", json!({"pc": "PC1", "url": "http://192.168.1.1/restconf", "trust": "R1"})).unwrap_err();
+        assert!(e.to_string().contains("https://"), "{e}");
+        // Dropping the trustpoint returns to anonymous TLS; a client that demands a verified
+        // server then refuses it.
+        configure(&mut s, "no ip http secure-trustpoint");
+        let e = s
+            .execute(
+                "pc.http_request",
+                json!({"pc": "PC1", "url": "https://192.168.1.1/restconf", "trust": "R1", "user": "admin", "password": "NetLab2026"}),
+            )
+            .unwrap_err();
+        assert!(e.to_string().contains("handshake") || e.to_string().contains("TLS"), "{e}");
+    }
+
+    #[test]
+    fn a_certificate_that_is_not_valid_at_the_clients_clock_is_refused() {
+        let mut s = lab();
+        // R1's clock is in 2030 when it makes its certificate; PC1's is in 2026.
+        s.execute("cli.exec", json!({"device": "R1", "line": "enable"})).unwrap();
+        s.execute("cli.exec", json!({"device": "R1", "line": "clock set 10:00:00 1 Jan 2030"})).unwrap();
+        configure(&mut s, &trustpoint_lines("CN=future.lab.test"));
+        let e = s
+            .execute(
+                "pc.http_request",
+                json!({"pc": "PC1", "url": "https://192.168.1.1/restconf", "user": "admin", "password": "NetLab2026", "trust": "R1"}),
+            )
+            .unwrap_err();
+        assert!(e.to_string().contains("certificate_expired") || e.to_string().contains("not valid yet"), "{e}");
+        // Without asking for verification the same server still answers.
+        let r = req(&mut s, "GET", "/restconf/data/ietf-system:system", None);
+        assert_eq!((r["status"].clone(), r["tls"]["verified"].clone()), (json!(200), json!(false)));
+    }
+
+    #[test]
+    fn a_trustpoint_without_a_matching_key_falls_back_to_anonymous_tls() {
+        let mut s = lab();
+        configure(&mut s, &trustpoint_lines("CN=r1"));
+        configure(&mut s, "crypto key zeroize rsa");
+        let r = req(&mut s, "GET", "/restconf/data/ietf-system:system", None);
+        assert_eq!(r["tls"]["cipher"], netlabcraft_wire::tls::SUITE_NAME, "{r}");
+        let status = s.execute("cli.exec", json!({"device": "R1", "line": "show ip http server status"})).unwrap();
+        assert!(status.to_string().contains("no usable certificate"), "{status}");
     }
 
     #[test]
