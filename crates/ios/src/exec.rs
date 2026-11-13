@@ -2309,6 +2309,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::NoIpHttpServer
         | Id::IpHttpSecureServer
         | Id::NoIpHttpSecureServer
+        | Id::IpHttpSecureTrustpoint
+        | Id::NoIpHttpSecureTrustpoint
         | Id::IpHttpAuthLocal
         | Id::NoIpHttpAuthLocal
         | Id::Restconf

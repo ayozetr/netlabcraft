@@ -689,6 +689,23 @@ mod tests {
     }
 
     #[test]
+    fn netconf_over_ssh_uses_a_real_host_key_once_the_router_has_one() {
+        let mut s = lab();
+        let hostkey = |s: &Session| s.sim.trace().iter().any(|e| e.frame.windows(7).any(|w| w == b"ssh-rsa"));
+        let r = nc(&mut s, &["<get-config><source><running/></source></get-config>"], "1.1");
+        assert_eq!(r["connected"], true, "{r}");
+        assert!(!hostkey(&s), "the stand-in host key is not an ssh-rsa blob");
+        s.sim.clear_trace();
+        for line in ["enable", "configure terminal", "ip domain-name lab.test", "crypto key generate rsa general-keys modulus 1024", "end"] {
+            s.execute("cli.exec", json!({"device": "R1", "line": line})).unwrap();
+        }
+        let r = nc(&mut s, &["<get-config><source><running/></source></get-config>"], "1.1");
+        assert_eq!(r["connected"], true, "{r}");
+        assert!(hostkey(&s), "the server sends an ssh-rsa host key blob in KEXDH_REPLY");
+        assert!(s.sim.trace().iter().any(|e| e.protocol == netlabcraft_wire::Protocol::Ssh));
+    }
+
+    #[test]
     fn hello_get_config_and_close_in_both_framings() {
         for framing in ["1.1", "1.0"] {
             let mut s = lab();

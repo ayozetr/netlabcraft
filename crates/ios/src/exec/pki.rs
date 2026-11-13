@@ -267,6 +267,11 @@ pub(super) fn command(c: &mut Ctx<'_>, id: Id, args: &[String]) -> R {
                         );
                         let _ = writeln!(s, "  Modulus size : {} bits, public exponent {}", key.bits(), key.public().exponent());
                         let _ = writeln!(s, "  Fingerprint  : {}", hex(&sha256(&key.public().modulus())));
+                        let _ = writeln!(
+                            s,
+                            "  SSH          : {}",
+                            netlabcraft_wire::ssh::fingerprint(&netlabcraft_wire::ssh::host_key_blob(key.public()))
+                        );
                         let m = hex(&key.public().modulus());
                         for line in m.as_bytes().chunks(64) {
                             let _ = writeln!(s, "    {}", String::from_utf8_lossy(line));

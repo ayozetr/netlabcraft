@@ -876,6 +876,8 @@ pub enum Id {
     NoIpHttpServer,
     IpHttpSecureServer,
     NoIpHttpSecureServer,
+    IpHttpSecureTrustpoint,
+    NoIpHttpSecureTrustpoint,
     IpHttpAuthLocal,
     NoIpHttpAuthLocal,
     Restconf,
@@ -3325,6 +3327,20 @@ pub static SPECS: &[Spec] = &[
     spec!(NoIpHttpServer, Modes::CONFIG, Modes::ROUTER, [K("no"), K("ip"), K("http"), K("server")], "Stop the web server on port 80"),
     spec!(IpHttpSecureServer, Modes::CONFIG, Modes::ROUTER, [K("ip"), K("http"), K("secure-server")], "Run the web server on port 443 (HTTPS)"),
     spec!(NoIpHttpSecureServer, Modes::CONFIG, Modes::ROUTER, [K("no"), K("ip"), K("http"), K("secure-server")], "Stop the web server on port 443"),
+    spec!(
+        IpHttpSecureTrustpoint,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("ip"), K("http"), K("secure-trustpoint"), Arg("NAME")],
+        "The trustpoint whose certificate the HTTPS server shows"
+    ),
+    spec!(
+        NoIpHttpSecureTrustpoint,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("no"), K("ip"), K("http"), K("secure-trustpoint")],
+        "Show no certificate (anonymous TLS)"
+    ),
     spec!(
         IpHttpAuthLocal,
         Modes::CONFIG,

@@ -210,3 +210,22 @@ fn keys_and_certificates_survive_saving_and_loading() {
     assert_eq!(back.device(ca).unwrap().pki, before);
     assert!(netlabcraft_sim::pki::load_key(lab.t.device(ca).unwrap(), "LABCA").is_some());
 }
+
+#[test]
+fn the_https_server_takes_its_certificate_from_a_trustpoint() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    lab.run(r, "en\nconf t\nhostname R1\nip http secure-server");
+    assert!(lab.try_run(r, "ip http secure-trustpoint NOPE").contains("% No trustpoint named NOPE"));
+    lab.run(r, "crypto pki trustpoint WEB\nenrollment selfsigned\nexit");
+    lab.run(r, "ip http secure-trustpoint WEB");
+    let status = lab.run(r, "end\nshow ip http server status");
+    assert!(status.contains("trustpoint WEB has no usable certificate and key"), "{status}");
+    lab.run(r, "conf t\ncrypto pki enroll WEB\nend");
+    let status = lab.run(r, "show ip http server status");
+    assert!(status.contains("DHE-RSA with the certificate of trustpoint WEB"), "{status}");
+    assert!(lab.run(r, "show running-config").contains("ip http secure-trustpoint WEB"));
+    lab.run(r, "conf t\nno ip http secure-trustpoint\nend");
+    assert!(lab.run(r, "show ip http server status").contains("anonymous DH, no certificate"));
+    assert!(lab.run(r, "show crypto key mypubkey rsa").contains("SSH          : SHA256:"));
+}

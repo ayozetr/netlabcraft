@@ -20,6 +20,9 @@ pub fn running_config(s: &mut String, d: &Device) {
     if a.https {
         let _ = writeln!(s, "ip http secure-server");
     }
+    if let Some(t) = &a.https_trustpoint {
+        let _ = writeln!(s, "ip http secure-trustpoint {t}");
+    }
     if a.http_auth_local {
         let _ = writeln!(s, "ip http authentication local");
     }
@@ -44,7 +47,12 @@ fn status(d: &Device) -> String {
     let on = |b: bool| if b { "on" } else { "off" };
     let mut s = String::new();
     let _ = writeln!(s, "Web server, port 80 (ip http server) .......... {}", on(a.http));
-    let _ = writeln!(s, "Web server, port 443 (ip http secure-server) .. {} (TLS 1.2, anonymous DH, no certificate)", on(a.https));
+    let tls = match (&a.https_trustpoint, netlabcraft_sim::pki::tls_identity(d).is_some()) {
+        (Some(t), true) => format!("TLS 1.2, DHE-RSA with the certificate of trustpoint {t}"),
+        (Some(t), false) => format!("TLS 1.2, anonymous DH: trustpoint {t} has no usable certificate and key"),
+        (None, _) => "TLS 1.2, anonymous DH, no certificate".to_string(),
+    };
+    let _ = writeln!(s, "Web server, port 443 (ip http secure-server) .. {} ({tls})", on(a.https));
     let _ = writeln!(s, "RESTCONF (restconf) ........................... {}", on(a.restconf));
     let _ = writeln!(s, "NETCONF, port 830 (netconf-yang) .............. {}", on(a.netconf));
     let admins = admins(d);
@@ -63,7 +71,7 @@ fn status(d: &Device) -> String {
     s.trim_end().to_string()
 }
 
-pub(super) fn command(c: &mut Ctx<'_>, id: Id, _args: &[String]) -> R {
+pub(super) fn command(c: &mut Ctx<'_>, id: Id, args: &[String]) -> R {
     match id {
         Id::ShowIpHttpServerStatus => Ok(status(c.d()?)),
         Id::ShowNetconfYang => {
@@ -96,11 +104,20 @@ pub(super) fn command(c: &mut Ctx<'_>, id: Id, _args: &[String]) -> R {
             Ok(s.trim_end().to_string())
         }
         _ => {
+            let d_has_trustpoint = args.first().is_some_and(|n| c.d().is_ok_and(|d| d.pki.trustpoint(n.trim()).is_some()));
             let a = &mut c.dm()?.automation;
             let mut note = String::new();
             match id {
                 Id::IpHttpServer | Id::NoIpHttpServer => a.http = id == Id::IpHttpServer,
                 Id::IpHttpSecureServer | Id::NoIpHttpSecureServer => a.https = id == Id::IpHttpSecureServer,
+                Id::IpHttpSecureTrustpoint => {
+                    let name = args.first().map(|n| n.trim().to_string()).unwrap_or_default();
+                    if !d_has_trustpoint {
+                        return Err(format!("% No trustpoint named {name}: define it with `crypto pki trustpoint`"));
+                    }
+                    a.https_trustpoint = Some(name);
+                }
+                Id::NoIpHttpSecureTrustpoint => a.https_trustpoint = None,
                 Id::IpHttpAuthLocal | Id::NoIpHttpAuthLocal => a.http_auth_local = id == Id::IpHttpAuthLocal,
                 Id::Restconf => {
                     a.restconf = true;

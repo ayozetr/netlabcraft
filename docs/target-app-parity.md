@@ -1,6 +1,6 @@
 # Target-app parity: NetLabCraft vs Cisco Packet Tracer
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (M9.9: keys, trustpoints, certificates and a small CA on the console; grammar counts measured again) · earlier: minor (M9.5: IKEv1 group 24 is a real Diffie-Hellman group) · also merged with M9.6 and M9.8 (results replay; Resize Shape and accessible devices) · earlier: minor (M9.5: AH next to ESP in one transform set is a real bundle), minor (M9.5: the IKE SA has a lifetime and is replaced before it runs out), minor (counts measured again after seven troubleshooting labs; percentages not re-scored) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman), minor (packaged-build gate met), major (the lab book run end to end, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers: areas and course topics re-scored, the untested-labs deduction cut; counts measured again) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (M9.9: TLS and SSH use the certificates and keys) · earlier: minor (M9.9: keys, trustpoints, certificates and a small CA on the console; grammar counts measured again) · earlier: minor (M9.5: IKEv1 group 24 is a real Diffie-Hellman group) · also merged with M9.6 and M9.8 (results replay; Resize Shape and accessible devices) · earlier: minor (M9.5: AH next to ESP in one transform set is a real bundle), minor (M9.5: the IKE SA has a lifetime and is replaced before it runs out), minor (counts measured again after seven troubleshooting labs; percentages not re-scored) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman), minor (packaged-build gate met), major (the lab book run end to end, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers: areas and course topics re-scored, the untested-labs deduction cut; counts measured again) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summarizes it,
 [`gaps.md`](gaps.md) lists every shortfall, and the area checklists hold the detail:
@@ -146,8 +146,8 @@ first estimate) counted topics as present without weighing their depth or the un
   3DES with SHA-1, SHA-256 or MD5 HMACs under IKEv1 and IKEv2, with lifetimes and child-SA
   rekeying, and AH on its own is real (tunnel mode); AH bundles with ESP (AH outside ESP) run for real; the IKE SA has a lifetime and is replaced before it runs out. Automation scores 80%:
   RESTCONF in JSON and XML over TLS 1.2, NETCONF with a candidate datastore over SSH 2.0, and a
-  controller that discovers routers over CDP and LLDP and pushes templates; TLS has no
-  certificate, the SSH host key is a stand-in, and the controller is still smaller than the
+  controller that discovers routers over CDP and LLDP and pushes templates; TLS shows a real
+  certificate and SSH a real host key once the router has a trustpoint or an RSA key (the anonymous suite and the HMAC host key remain without them), and the controller is still smaller than the
   course's network controller (no policies, no assurance pages). QoS gained 802.1p CoS.
 - **Instructor:** the answer network, assessment tree, initial network, instructions per
   language, connectivity tests, signed results and locks landed. A JSON results
@@ -177,6 +177,7 @@ Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | TLS under RESTCONF shows a certificate and SSH has a real host key (M9.9, stage 4); PEAP's toy group and IKE signatures are what is left of the PKI gap; no percentage changed. |
 | 2026-11-13 | minor | Keys, trustpoints, X.509 certificates and a small certificate authority on the console (M9.9, stages 1-3); no protocol uses the certificates yet, so no percentage changed. Counts measured again: 1035 grammar entries across 39 modes. |
 | 2026-11-13 | minor | IKEv1 group 24 runs for real (M9.5); only a no-cipher transform set keeps a crypto stand-in; no percentage changed. |
 | 2026-11-13 | minor | AH bundled with ESP in one transform set runs for real (M9.5); IKEv1 group 24 is what is left of the crypto stand-ins; no percentage changed. |

@@ -9,7 +9,7 @@ use netlabcraft_model::Device;
 use netlabcraft_model::pki::{CaServer, KeyPair};
 use netlabcraft_wire::rsa::{RsaKey, SigHash};
 use netlabcraft_wire::sha256::sha256;
-use netlabcraft_wire::tls::Drbg;
+use netlabcraft_wire::tls::{Drbg, Identity};
 use netlabcraft_wire::x509::{self, Certificate, Issue, MAX_TIME, Name, Request};
 use netlabcraft_wire::{http, rsa};
 
@@ -184,4 +184,42 @@ pub fn serve(d: &Device, now: i64, req: &http::Request) -> http::Response {
 /// A fingerprint to show for a certificate: SHA-256 of its DER, as hex pairs.
 pub fn fingerprint(c: &Certificate) -> String {
     sha256(c.der()).chunks(2).map(|p| p.iter().map(|b| format!("{b:02X}")).collect::<String>()).collect::<Vec<_>>().join(" ")
+}
+
+/// What a router's HTTPS server shows: the certificate of the trustpoint `ip http
+/// secure-trustpoint` names (and the CA's, when different), with the key that goes with it.
+/// `None` when nothing is configured or the pieces are missing, damaged or do not match: the
+/// server then falls back to the anonymous suite, as before.
+pub fn tls_identity(d: &Device) -> Option<Identity> {
+    let tp = d.pki.trustpoint(d.automation.https_trustpoint.as_deref()?)?;
+    let leaf = Certificate::from_pem(&tp.certificate).ok()?;
+    let key = load_key(d, &tp.rsakeypair)?;
+    if &leaf.key != key.public() {
+        return None;
+    }
+    let mut chain = vec![leaf.der().to_vec()];
+    if let Ok(ca) = Certificate::from_pem(&tp.ca_certificate)
+        && ca.der() != leaf.der()
+    {
+        chain.push(ca.der().to_vec());
+    }
+    Some(Identity { chain, key })
+}
+
+/// The CA certificates a device holds in its trustpoints, and its own CA's certificate: what its
+/// clients trust.
+pub fn trust_anchors(d: &Device) -> Vec<Certificate> {
+    let mut out: Vec<Certificate> = d.pki.trustpoints.iter().filter_map(|t| Certificate::from_pem(&t.ca_certificate).ok()).collect();
+    if let Some(c) = d.pki.server.as_ref().and_then(|s| Certificate::from_pem(&s.certificate).ok()) {
+        out.push(c);
+    }
+    out
+}
+
+/// The key an SSH server signs with: the key pair named `NAME.DOMAIN` (what `crypto key
+/// generate rsa` makes by default), when the device has one. Without it the server keeps the
+/// stand-in host key.
+pub fn ssh_host_key(d: &Device) -> Option<RsaKey> {
+    d.access.rsa_bits?;
+    load_key(d, &format!("{}.{}", d.name, d.access.domain_name.as_ref()?))
 }
