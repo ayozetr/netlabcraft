@@ -12,8 +12,8 @@ use crate::grammar::Id;
 use crate::render;
 
 /// The transforms a transform set accepts (`esp-aes` may be followed by a key size).
-const TRANSFORMS: [&str; 9] =
-    ["esp-aes", "esp-des", "esp-3des", "esp-null", "esp-sha-hmac", "esp-md5-hmac", "esp-sha256-hmac", "ah-sha-hmac", "ah-md5-hmac"];
+const TRANSFORMS: [&str; 10] =
+    ["esp-aes", "esp-des", "esp-3des", "esp-null", "esp-sha-hmac", "esp-md5-hmac", "esp-sha256-hmac", "ah-sha-hmac", "ah-md5-hmac", "ah-sha256-hmac"];
 
 fn router_only(c: &Ctx) -> Result<(), String> {
     if c.d()?.kind != DeviceKind::Router {

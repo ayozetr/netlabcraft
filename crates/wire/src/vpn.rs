@@ -3,7 +3,7 @@
 //! GRE is the real wire format. ESP has the real header and trailer layout (SPI, sequence
 //! number, padding, pad length, next header, integrity check value). Associations IKEv2 set
 //! up with `esp-aes esp-sha-hmac` use the real transforms: AES-128-CBC with an explicit IV
-//! (RFC 3602) and HMAC-SHA1-96 (RFC 2404), see [`Esp::seal_aes`]. Otherwise the "cipher" is
+//! (RFC 3602) and HMAC-SHA1-96 (RFC 2404), see [`Esp::seal_aes`]; every real suite is in [`Esp::seal_with`], AH is in [`crate::ah`]. Only a transform set mixing AH with ESP is left with a stand-in, where the "cipher" is
 //! **not real encryption**: the payload is XORed with a keystream made from MD5 over the
 //! pre-shared key, the SPI, the sequence number and a block counter, and the integrity value
 //! is a truncated MD5 over the key and the packet. That is enough for a teaching simulator to
@@ -212,13 +212,33 @@ pub enum EspEncr {
     Null,
     /// AES-CBC (RFC 3602) with a 128-, 192- or 256-bit key.
     AesCbc(u16),
+    /// DES-CBC (RFC 2405): a 56-bit key in 8 bytes and an 8-byte IV.
+    Des,
+    /// Three-key 3DES-CBC (RFC 2451): 24 bytes of key and an 8-byte IV.
+    Des3,
+    /// Not ESP at all: the suite of an Authentication Header association (RFC 4302, see
+    /// [`crate::ah`]), integrity only, carried as IP protocol 51. It rides in this type so one
+    /// "suite and keys" value describes every IPsec association the simulator sets up.
+    Ah,
 }
 
 impl EspEncr {
     pub fn key_len(self) -> usize {
         match self {
-            EspEncr::Null => 0,
+            EspEncr::Null | EspEncr::Ah => 0,
             EspEncr::AesCbc(bits) => usize::from(bits) / 8,
+            EspEncr::Des => 8,
+            EspEncr::Des3 => 24,
+        }
+    }
+
+    /// The block cipher behind it (`None` for NULL).
+    fn kind(self) -> Option<crate::cipher::CipherKind> {
+        match self {
+            EspEncr::Null | EspEncr::Ah => None,
+            EspEncr::AesCbc(_) => Some(crate::cipher::CipherKind::Aes),
+            EspEncr::Des => Some(crate::cipher::CipherKind::Des),
+            EspEncr::Des3 => Some(crate::cipher::CipherKind::Tdes),
         }
     }
 }
@@ -240,7 +260,10 @@ impl EspSuite {
     pub fn describe(self) -> String {
         let e = match self.encr {
             EspEncr::Null => "NULL".to_string(),
+            EspEncr::Ah => "AH".to_string(),
             EspEncr::AesCbc(b) => format!("AES-CBC-{b}"),
+            EspEncr::Des => "DES-CBC".to_string(),
+            EspEncr::Des3 => "3DES-CBC".to_string(),
         };
         format!("{e} / {}", self.integ.name())
     }
@@ -256,12 +279,12 @@ pub struct EspSa {
 
 impl EspSa {
     /// The keys from keying material (encryption key first); `None` when it is too short or
-    /// the key size is not one AES has.
+    /// the key size is not one the cipher has.
     pub fn from_keymat(suite: EspSuite, m: &[u8]) -> Option<EspSa> {
         let e = suite.encr.key_len();
         let enc = m.get(..e)?.to_vec();
-        if suite.encr != EspEncr::Null {
-            crate::aes256::Aes::new(&enc)?;
+        if let Some(kind) = suite.encr.kind() {
+            crate::cipher::Cipher::new(kind, &enc)?;
         }
         let auth = m.get(e..e + suite.integ.key_len())?.to_vec();
         Some(EspSa { suite, enc, auth })
@@ -269,20 +292,24 @@ impl EspSa {
 }
 
 impl Esp {
-    /// ESP with real algorithms: AES-CBC with an explicit IV (RFC 3602) or NULL (RFC 2410),
-    /// then the integrity check over SPI, sequence number, IV and ciphertext (RFC 4303 §2.8).
+    /// ESP with real algorithms: AES-, DES- or 3DES-CBC with an explicit IV (RFC 3602,
+    /// RFC 2405, RFC 2451; one block of `iv` is used: 16 bytes for AES, 8 for DES) or NULL
+    /// (RFC 2410), then the integrity check over SPI, sequence number, IV and ciphertext
+    /// (RFC 4303 §2.8).
     pub fn seal_with(sa: &EspSa, spi: u32, seq: u32, next: u8, inner: &[u8], iv: [u8; 16]) -> Esp {
-        let block = if sa.suite.encr == EspEncr::Null { 4 } else { 16 };
+        let cipher = sa.suite.encr.kind().and_then(|k| crate::cipher::Cipher::new(k, &sa.enc));
+        let block = cipher.as_ref().map_or(4, crate::cipher::Cipher::block_len);
         let mut body = inner.to_vec();
         let pad = (block - (body.len() + 2) % block) % block;
         body.extend((1..=pad).map(|i| u8::try_from(i).unwrap_or(0)));
         body.push(u8::try_from(pad).unwrap_or(0));
         body.push(next);
         let mut data = Vec::with_capacity(body.len() + 32);
-        match crate::aes256::Aes::new(&sa.enc).filter(|_| sa.suite.encr != EspEncr::Null) {
-            Some(aes) => {
-                data.extend_from_slice(&iv);
-                data.extend(crate::aes256::cbc_encrypt(&aes, &iv, &body));
+        match cipher {
+            Some(c) => {
+                let iv = iv.get(..block).unwrap_or_default();
+                data.extend_from_slice(iv);
+                data.extend(c.cbc_encrypt(iv, &body));
             }
             None => data.extend(body),
         }
@@ -306,16 +333,18 @@ impl Esp {
         if !sa.suite.integ.verify(&sa.auth, &signed, got) {
             return Err(WireError::Checksum("esp integrity"));
         }
-        let mut plain = if sa.suite.encr == EspEncr::Null {
-            body.to_vec()
-        } else {
-            let aes = crate::aes256::Aes::new(&sa.enc).ok_or(WireError::Unsupported("esp", "key size".into()))?;
-            let iv: [u8; 16] = body.get(..16).and_then(|s| s.try_into().ok()).ok_or_else(t)?;
-            let cipher = body.get(16..).ok_or_else(t)?;
-            if cipher.is_empty() || cipher.len() % 16 != 0 {
-                return Err(t());
+        let mut plain = match sa.suite.encr.kind() {
+            None => body.to_vec(),
+            Some(kind) => {
+                let c = crate::cipher::Cipher::new(kind, &sa.enc).ok_or(WireError::Unsupported("esp", "key size".into()))?;
+                let block = c.block_len();
+                let iv = body.get(..block).ok_or_else(t)?;
+                let cipher = body.get(block..).ok_or_else(t)?;
+                if cipher.is_empty() || cipher.len() % block != 0 {
+                    return Err(t());
+                }
+                c.cbc_decrypt(iv, cipher)
             }
-            crate::aes256::cbc_decrypt(&aes, &iv, cipher)
         };
         let next = plain.pop().ok_or_else(t)?;
         let pad = usize::from(plain.pop().ok_or_else(t)?);
@@ -448,7 +477,7 @@ mod tests {
     fn real_esp_with_every_suite() {
         use crate::suite::Integ;
         let inner: Vec<u8> = (0..77).collect();
-        for encr in [EspEncr::AesCbc(128), EspEncr::AesCbc(192), EspEncr::AesCbc(256), EspEncr::Null] {
+        for encr in [EspEncr::AesCbc(128), EspEncr::AesCbc(192), EspEncr::AesCbc(256), EspEncr::Des, EspEncr::Des3, EspEncr::Null] {
             for integ in [Integ::HmacSha1_96, Integ::HmacSha256_128, Integ::HmacMd5_96, Integ::None] {
                 let suite = EspSuite { encr, integ };
                 let km: Vec<u8> = (0..suite.keymat_len() as u8).collect();
@@ -456,7 +485,11 @@ mod tests {
                 let e = Esp::seal_with(&sa, 0x4321, 9, NEXT_IPV4, &inner, [3; 16]);
                 let back = Esp::decode(&e.encode()).unwrap();
                 assert_eq!(back.open_with(&sa).unwrap(), (NEXT_IPV4, inner.clone()), "{}", suite.describe());
-                let ivlen = if encr == EspEncr::Null { 0 } else { 16 };
+                let ivlen = match encr {
+                    EspEncr::Null | EspEncr::Ah => 0,
+                    EspEncr::Des | EspEncr::Des3 => 8,
+                    EspEncr::AesCbc(_) => 16,
+                };
                 assert_eq!(e.data.len() - ivlen - integ.icv_len(), 80);
                 if encr != EspEncr::Null {
                     assert!(!e.data.windows(8).any(|w| w == &inner[..8]), "hidden");
@@ -488,5 +521,36 @@ mod tests {
         assert_ne!(e.open_with(&other).ok(), e.open_with(&mine).ok());
         assert!(EspSa::from_keymat(suite, &[0; 47]).is_none());
         assert!(EspSa::from_keymat(EspSuite { encr: EspEncr::AesCbc(100), integ: Integ::None }, &[0; 64]).is_none());
+    }
+
+    #[test]
+    fn esp_des_and_3des_follow_rfc_2405_and_2451() {
+        use crate::suite::Integ;
+        // Body = IV (8 bytes) | CBC ciphertext, padding 1, 2, 3… to a whole 8-byte block.
+        let inner = [0x45u8, 1, 2, 3];
+        let km: Vec<u8> = (0..48u8).collect();
+        for (encr, key_len) in [(EspEncr::Des, 8), (EspEncr::Des3, 24)] {
+            let suite = EspSuite { encr, integ: Integ::HmacSha1_96 };
+            assert_eq!(suite.keymat_len(), key_len + 20);
+            let sa = EspSa::from_keymat(suite, &km).unwrap();
+            let iv = [0xa5u8; 16];
+            let e = Esp::seal_with(&sa, 0x777, 2, NEXT_IPV4, &inner, iv);
+            let mut plain = inner.to_vec();
+            plain.extend_from_slice(&[1, 2]); // pad
+            plain.extend_from_slice(&[2, NEXT_IPV4]); // pad length, next header
+            assert_eq!(plain.len() % 8, 0);
+            let want = if encr == EspEncr::Des {
+                crate::des::cbc_encrypt(&crate::des::Des::new(&km[..8]).unwrap(), &[0xa5; 8], &plain)
+            } else {
+                crate::des::tdes_cbc_encrypt(&crate::des::Tdes::new(&km[..24]).unwrap(), &[0xa5; 8], &plain)
+            };
+            assert_eq!(&e.data[..8], &[0xa5; 8]);
+            assert_eq!(&e.data[8..8 + want.len()], &want[..]);
+            assert_eq!(e.data.len(), 8 + want.len() + 12);
+            assert_eq!(Esp::decode(&e.encode()).unwrap().open_with(&sa).unwrap(), (NEXT_IPV4, inner.to_vec()));
+        }
+        // Keys of another cipher's length are refused.
+        assert!(EspSa::from_keymat(EspSuite { encr: EspEncr::Des3, integ: Integ::None }, &[0; 8]).is_none());
+        assert_eq!(EspSuite { encr: EspEncr::Des3, integ: Integ::HmacMd5_96 }.describe(), "3DES-CBC / HMAC-MD5-96");
     }
 }
