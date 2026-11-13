@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping. The rules every change follows (people and AI agents alike) are in [AGENTS.md](AGENTS.md); the
+Thanks for helping. The rules every change follows are in [AGENTS.md](AGENTS.md); the
 mistakes they come from are in [docs/pitfalls.md](docs/pitfalls.md). In short:
 
 - **Pick work from [docs/gaps.md](docs/gaps.md)** (ranked; pick from the top). Say what you are taking by opening a
