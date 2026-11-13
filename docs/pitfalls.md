@@ -1,6 +1,6 @@
 # Pitfalls
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (a results-signature pitfall (M9.6)) · earlier: minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
 
 Mistakes already made here, and the rule that stops each one. Read this before your first change; when you make a
 new mistake worth not repeating, add it in the same change.
@@ -36,6 +36,13 @@ new mistake worth not repeating, add it in the same change.
   tick of the window at once, so a sender that reads a role or a state (a VRRP master, a held neighbour) sees it as of
   the start of the window, not as of the tick. A test that changes something and expects the new behaviour on the wire
   must run a first window for the change to settle, clear the trace, and look in a second window.
+
+## Instructor
+
+- **A key the student's app holds is not a secret from the student.** The results HMAC key comes from the salt in the
+  file, so a signature never proved the score; what does is running the checks again against the network the file
+  embeds (`activity.verify_results`). Do not add another "secret" to a file the student has: replay or move the check
+  to the instructor.
 
 ## Wasm
 

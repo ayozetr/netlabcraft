@@ -235,6 +235,117 @@ fn connectivity_tests_run_the_pings() {
     assert!(r["passed"].is_null() && r["tests"][0]["passed"].is_null(), "{r}");
 }
 
+/// Re-signs a results file after the test changed it, as a forger who read the code would.
+fn resign(s: &Session, v: &serde_json::Value) -> String {
+    let mut m = v.as_object().unwrap().clone();
+    m.remove("hmac");
+    let body = serde_json::Value::Object(m.clone()).to_string();
+    m.insert("hmac".into(), crate::instructor::sign(s.topology.activity.as_ref().unwrap(), &body).into());
+    serde_json::to_string(&serde_json::Value::Object(m)).unwrap()
+}
+
+fn export_json(student: &mut Session) -> serde_json::Value {
+    student.topology.activity.as_mut().unwrap().student = Some("Ana".into());
+    let r = student.execute("activity.export_results", json!({"format": "json", "time": "2026-11-13T10:00:00Z"})).unwrap();
+    serde_json::from_str(r["text"].as_str().unwrap()).unwrap()
+}
+
+#[test]
+fn a_replayed_results_file_matches_and_a_forged_score_fails() {
+    let mut teacher = sample();
+    let mut honest = teacher.clone();
+    honest.execute("cli.script", json!({"device": "Router0", "lines": SOLVE})).unwrap();
+    let file = export_json(&mut honest);
+    assert_eq!(file["version"], 2);
+    assert!(file["network"].is_object());
+    let v = teacher.execute("activity.verify_results", json!({"text": file.to_string()})).unwrap();
+    assert_eq!((v["valid"].clone(), v["replayed"].clone(), v["replay_matches"].clone()), (true.into(), true.into(), true.into()), "{v}");
+    assert_eq!(v["replay_score"], v["score"]);
+
+    // A student who did nothing forges a perfect score and re-signs it.
+    let mut lazy = teacher.clone();
+    let honest_lazy = export_json(&mut lazy);
+    assert!(honest_lazy["percent"].as_u64().unwrap() < 100);
+    let mut forged = honest_lazy.clone();
+    forged["score"] = file["score"].clone();
+    forged["total"] = file["total"].clone();
+    forged["percent"] = 100.into();
+    let items = forged["results"].as_array_mut().unwrap();
+    for i in items.iter_mut() {
+        i["passed"] = true.into();
+    }
+    let text = resign(&teacher, &forged);
+    let v = teacher.execute("activity.verify_results", json!({"text": text})).unwrap();
+    assert_eq!(v["signature_ok"], true, "the forger's signature is good: {v}");
+    assert_eq!(v["replayed"], true);
+    assert_eq!(v["valid"], false, "{v}");
+    assert_eq!(v["replay_matches"], false);
+    assert!(!v["mismatches"].as_array().unwrap().is_empty());
+    assert!(v["replay_score"].as_u64().unwrap() < 100 || v["replay_score"] != forged["score"]);
+
+    // The network swapped for the honest one without re-signing: the signature catches it.
+    let mut swapped = honest_lazy.clone();
+    swapped["network"] = file["network"].clone();
+    let v = teacher.execute("activity.verify_results", json!({"text": swapped.to_string()})).unwrap();
+    assert_eq!(v["valid"], false);
+    assert_eq!(v["signature_ok"], false);
+    // Re-signed, the honest network earns more than the file claims: still a mismatch.
+    let v = teacher.execute("activity.verify_results", json!({"text": resign(&teacher, &swapped)})).unwrap();
+    assert_eq!(v["valid"], false, "{v}");
+    // A network edited to earn the points is just solving it: it verifies.
+    let mut earned = file.clone();
+    earned["student"] = "Someone".into();
+    let v = teacher.execute("activity.verify_results", json!({"text": resign(&teacher, &earned)})).unwrap();
+    assert_eq!(v["valid"], true, "{v}");
+}
+
+#[test]
+fn csv_and_old_format_files_say_they_were_not_replayed() {
+    let mut teacher = sample();
+    let mut student = teacher.clone();
+    student.topology.activity.as_mut().unwrap().student = Some("Ana".into());
+    let csv = student.execute("activity.export_results", json!({"format": "csv"})).unwrap();
+    assert_eq!(csv["replayable"], false);
+    let v = teacher.execute("activity.verify_results", json!({"text": csv["text"]})).unwrap();
+    assert_eq!((v["valid"].clone(), v["replayed"].clone(), v["replay_matches"].clone()), (true.into(), false.into(), serde_json::Value::Null), "{v}");
+    assert!(v["message"].as_str().unwrap().contains("CSV"), "{v}");
+    // A version 1 file: no network.
+    let mut old = export_json(&mut student);
+    old.as_object_mut().unwrap().remove("network");
+    old["version"] = 1.into();
+    let v = teacher.execute("activity.verify_results", json!({"text": resign(&teacher, &old)})).unwrap();
+    assert_eq!((v["valid"].clone(), v["replayed"].clone()), (true.into(), false.into()), "{v}");
+    assert!(v["message"].as_str().unwrap().contains("older export"), "{v}");
+    // A newer version is refused.
+    old["version"] = 99.into();
+    assert!(teacher.execute("activity.verify_results", json!({"text": resign(&teacher, &old)})).is_err());
+}
+
+#[test]
+fn a_hostile_embedded_network_is_refused_never_a_crash() {
+    let mut teacher = sample();
+    let mut student = teacher.clone();
+    let file = export_json(&mut student);
+    let big = "x".repeat(5 * 1024 * 1024);
+    let cases = [
+        json!("garbage"),
+        json!(12),
+        json!([1, 2, 3]),
+        json!({"format": "netlabcraft", "version": 1, "topology": 5}),
+        json!({"format": "other", "version": 1, "topology": {}}),
+        json!({"pad": big}),
+    ];
+    for n in cases {
+        let mut f = file.clone();
+        f["network"] = n;
+        let v = teacher.execute("activity.verify_results", json!({"text": resign(&teacher, &f)})).unwrap();
+        assert_eq!(v["valid"], false, "{v}");
+        assert_eq!(v["replayed"], false);
+        assert_eq!(v["replay_matches"], false);
+        assert!(!v["mismatches"].as_array().unwrap().is_empty());
+    }
+}
+
 #[test]
 fn results_files_are_signed_and_tampering_shows() {
     let mut s = sample();
