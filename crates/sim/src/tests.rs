@@ -603,6 +603,7 @@ fn access_lists_filter_forwarded_traffic() {
                     seq: 0,
                     established: false,
                     icmp_type: None,
+                    icmp_code: None,
                     log: false,
                 },
                 AclEntry {
@@ -615,6 +616,7 @@ fn access_lists_filter_forwarded_traffic() {
                     seq: 0,
                     established: false,
                     icmp_type: None,
+                    icmp_code: None,
                     log: false,
                 },
             ],
@@ -643,6 +645,7 @@ fn access_lists_filter_forwarded_traffic() {
                 seq: 0,
                 established: false,
                 icmp_type: None,
+                icmp_code: None,
                 log: false,
             }],
         });
@@ -695,6 +698,7 @@ fn nat_translates_both_ways() {
                 seq: 0,
                 established: false,
                 icmp_type: None,
+                icmp_code: None,
                 log: false,
             }],
         });
@@ -848,6 +852,7 @@ fn a_server_answers_dns_http_and_dhcp() {
                     seq: 0,
                     established: false,
                     icmp_type: None,
+                    icmp_code: None,
                     log: false,
                 },
                 AclEntry {
@@ -860,6 +865,7 @@ fn a_server_answers_dns_http_and_dhcp() {
                     seq: 0,
                     established: false,
                     icmp_type: None,
+                    icmp_code: None,
                     log: false,
                 },
             ],

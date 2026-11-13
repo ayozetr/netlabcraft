@@ -4460,13 +4460,23 @@ fn parse_acl_entry(words: &[&str], extended: bool) -> Result<acl::AclEntry, Stri
         (acl::AclAddr::ANY, None)
     };
     let mut entry = acl::AclEntry { src_port, dst_port, ..acl::AclEntry::new(permit, proto, src, dst) };
-    for w in it {
+    while let Some(w) = it.next() {
         let lw = w.to_ascii_lowercase();
         match lw.as_str() {
             "log" => entry.log = true,
             "established" if extended && proto == acl::AclProto::Tcp => entry.established = true,
-            _ if extended && proto == acl::AclProto::Icmp && entry.icmp_type.is_none() && acl::icmp_type_from_name(w).is_some() => {
-                entry.icmp_type = acl::icmp_type_from_name(w);
+            _ if extended && proto == acl::AclProto::Icmp && entry.icmp_type.is_none() && acl::icmp_spec_from_name(w).is_some() => {
+                let (ty, code) = acl::icmp_spec_from_name(w).unwrap_or((0, None));
+                entry.icmp_type = Some(ty);
+                entry.icmp_code = code;
+                // `permit icmp any any 3 4`: a number type may be followed by a code.
+                if code.is_none()
+                    && w.parse::<u8>().is_ok()
+                    && let Some(c) = it.peek().and_then(|n| n.parse::<u8>().ok())
+                {
+                    entry.icmp_code = Some(c);
+                    it.next();
+                }
             }
             _ => return Err(format!("% Unexpected `{w}` at the end of the line")),
         }

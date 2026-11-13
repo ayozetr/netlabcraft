@@ -3899,7 +3899,10 @@ pub(crate) fn acl_key(ip: &Ipv4) -> netlabcraft_model::acl::PacketKey {
                 key.tcp_flags = Some(u.flags);
             }
         }
-        PROTO_ICMP => key.icmp_type = ip.payload.first().copied(),
+        PROTO_ICMP => {
+            key.icmp_type = ip.payload.first().copied();
+            key.icmp_code = ip.payload.get(1).copied();
+        }
         _ => {}
     }
     key

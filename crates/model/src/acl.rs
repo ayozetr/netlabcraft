@@ -25,18 +25,36 @@ pub const MAX_REMARKS: usize = 64;
 /// The highest sequence number a line can have.
 pub const MAX_SEQ: u32 = 2_147_483_647;
 
-/// The ICMP message types an extended entry can name.
-pub const ICMP_TYPES: &[(&str, u8)] = &[("echo-reply", 0), ("unreachable", 3), ("echo", 8), ("time-exceeded", 11)];
+/// The ICMP messages an extended entry can name: the name, the type, and the code when the name
+/// stands for one code only (`host-unreachable` is type 3, code 1; `unreachable` is every code).
+pub const ICMP_NAMES: &[(&str, u8, Option<u8>)] = &[
+    ("echo-reply", 0, None),
+    ("unreachable", 3, None),
+    ("net-unreachable", 3, Some(0)),
+    ("host-unreachable", 3, Some(1)),
+    ("protocol-unreachable", 3, Some(2)),
+    ("port-unreachable", 3, Some(3)),
+    ("packet-too-big", 3, Some(4)),
+    ("redirect", 5, None),
+    ("echo", 8, None),
+    ("time-exceeded", 11, None),
+    ("ttl-exceeded", 11, Some(0)),
+    ("reassembly-timeout", 11, Some(1)),
+    ("parameter-problem", 12, None),
+];
 
-/// The ICMP type a name stands for (a number is taken as is).
-pub fn icmp_type_from_name(w: &str) -> Option<u8> {
+/// The ICMP type (and code) a word stands for: a name, or a number taken as a type.
+pub fn icmp_spec_from_name(w: &str) -> Option<(u8, Option<u8>)> {
     let lw = w.to_ascii_lowercase();
-    ICMP_TYPES.iter().find(|(n, _)| *n == lw).map(|(_, t)| *t).or_else(|| w.parse().ok())
+    ICMP_NAMES.iter().find(|(n, ..)| *n == lw).map(|(_, t, c)| (*t, *c)).or_else(|| w.parse().ok().map(|t| (t, None)))
 }
 
-/// The name an ICMP type is written with (its number when it has none).
-pub fn icmp_type_name(t: u8) -> String {
-    ICMP_TYPES.iter().find(|(_, v)| *v == t).map_or_else(|| t.to_string(), |(n, _)| (*n).to_string())
+/// How a type and code are written: the name that stands for exactly that, else the numbers.
+pub fn icmp_spec_name(t: u8, code: Option<u8>) -> String {
+    match ICMP_NAMES.iter().find(|(_, v, c)| *v == t && *c == code) {
+        Some((n, ..)) => (*n).to_string(),
+        None => code.map_or_else(|| t.to_string(), |c| format!("{t} {c}")),
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -185,6 +203,9 @@ pub struct AclEntry {
     /// An ICMP message type (`echo`, `echo-reply`, `unreachable`, `time-exceeded` or a number).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icmp_type: Option<u8>,
+    /// An ICMP message code, with the type (`permit icmp any any 3 4`, `host-unreachable`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icmp_code: Option<u8>,
     /// `log`: a match leaves a message in the device's log.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub log: bool,
@@ -197,7 +218,7 @@ fn is_zero(v: &u32) -> bool {
 impl AclEntry {
     /// A line matching `proto` from `src` to `dst`, with no ports or options.
     pub fn new(permit: bool, proto: AclProto, src: AclAddr, dst: AclAddr) -> AclEntry {
-        AclEntry { permit, proto, src, src_port: None, dst, dst_port: None, seq: 0, established: false, icmp_type: None, log: false }
+        AclEntry { permit, proto, src, src_port: None, dst, dst_port: None, seq: 0, established: false, icmp_type: None, icmp_code: None, log: false }
     }
 
     /// Whether two lines match the same packets the same way (sequence numbers aside).
@@ -214,8 +235,9 @@ pub struct PacketKey {
     pub dst: Ipv4Addr,
     pub src_port: Option<u16>,
     pub dst_port: Option<u16>,
-    /// The ICMP message type, for ICMP packets.
+    /// The ICMP message type and code, for ICMP packets.
     pub icmp_type: Option<u8>,
+    pub icmp_code: Option<u8>,
     /// The TCP flags byte, for TCP segments.
     pub tcp_flags: Option<u8>,
 }
@@ -223,7 +245,7 @@ pub struct PacketKey {
 impl PacketKey {
     /// A key with only protocol and addresses (no ports, type or flags).
     pub fn bare(protocol: u8, src: Ipv4Addr, dst: Ipv4Addr) -> PacketKey {
-        PacketKey { protocol, src, dst, src_port: None, dst_port: None, icmp_type: None, tcp_flags: None }
+        PacketKey { protocol, src, dst, src_port: None, dst_port: None, icmp_type: None, icmp_code: None, tcp_flags: None }
     }
 }
 
@@ -246,7 +268,9 @@ impl AclEntry {
         if self.established && self.proto == AclProto::Tcp && p.tcp_flags.is_none_or(|f| f & 0x14 == 0) {
             return false;
         }
-        if self.proto == AclProto::Icmp && self.icmp_type.is_some_and(|t| p.icmp_type != Some(t)) {
+        if self.proto == AclProto::Icmp
+            && (self.icmp_type.is_some_and(|t| p.icmp_type != Some(t)) || self.icmp_code.is_some_and(|c| p.icmp_code != Some(c)))
+        {
             return false;
         }
         true
@@ -268,7 +292,7 @@ impl AclEntry {
             s.push_str(&format!(" {p}"));
         }
         if let Some(t) = self.icmp_type.filter(|_| self.proto == AclProto::Icmp) {
-            s.push_str(&format!(" {}", icmp_type_name(t)));
+            s.push_str(&format!(" {}", icmp_spec_name(t, self.icmp_code)));
         }
         if self.established && self.proto == AclProto::Tcp {
             s.push_str(" established");
@@ -388,6 +412,7 @@ mod tests {
                     seq: 0,
                     established: false,
                     icmp_type: None,
+                    icmp_code: None,
                     log: false,
                 },
                 AclEntry {
@@ -400,6 +425,7 @@ mod tests {
                     seq: 0,
                     established: false,
                     icmp_type: None,
+                    icmp_code: None,
                     log: false,
                 },
             ],
@@ -422,6 +448,7 @@ mod tests {
                     seq: 0,
                     established: false,
                     icmp_type: None,
+                    icmp_code: None,
                     log: false,
                 },
                 AclEntry {
@@ -434,6 +461,7 @@ mod tests {
                     seq: 0,
                     established: false,
                     icmp_type: None,
+                    icmp_code: None,
                     log: false,
                 },
                 AclEntry {
@@ -446,6 +474,7 @@ mod tests {
                     seq: 0,
                     established: false,
                     icmp_type: None,
+                    icmp_code: None,
                     log: false,
                 },
             ],
@@ -471,14 +500,29 @@ mod tests {
         k.tcp_flags = Some(0x04);
         assert!(est.matches(true, &k));
         assert_eq!(est.text(true), "permit tcp any any established");
-        let echo = AclEntry { icmp_type: icmp_type_from_name("echo"), ..AclEntry::new(false, AclProto::Icmp, AclAddr::ANY, AclAddr::ANY) };
+        let echo =
+            AclEntry { icmp_type: icmp_spec_from_name("echo").map(|x| x.0), ..AclEntry::new(false, AclProto::Icmp, AclAddr::ANY, AclAddr::ANY) };
         let mut k = key(1, "1.1.1.1", "2.2.2.2", None);
         k.icmp_type = Some(8);
         assert!(echo.matches(true, &k));
         k.icmp_type = Some(0);
         assert!(!echo.matches(true, &k));
         assert_eq!(echo.text(true), "deny icmp any any echo");
-        assert_eq!(icmp_type_name(42), "42");
+        assert_eq!(icmp_spec_name(42, None), "42");
+        assert_eq!(icmp_spec_name(3, Some(4)), "packet-too-big");
+        assert_eq!(icmp_spec_name(3, Some(9)), "3 9");
+        assert_eq!(icmp_spec_name(3, None), "unreachable");
+        assert_eq!(icmp_spec_from_name("host-unreachable"), Some((3, Some(1))));
+        assert_eq!(icmp_spec_from_name("17"), Some((17, None)));
+        assert_eq!(icmp_spec_from_name("bogus"), None);
+        let frag = AclEntry { icmp_type: Some(3), icmp_code: Some(4), ..AclEntry::new(true, AclProto::Icmp, AclAddr::ANY, AclAddr::ANY) };
+        let unreach = |code| PacketKey {
+            icmp_type: Some(3),
+            icmp_code: Some(code),
+            ..PacketKey::bare(1, "1.1.1.1".parse().unwrap(), "2.2.2.2".parse().unwrap())
+        };
+        assert!(frag.matches(true, &unreach(4)) && !frag.matches(true, &unreach(1)));
+        assert_eq!(frag.text(true), "permit icmp any any packet-too-big");
         let mut a = Acl::new("X", true);
         a.entries.push(AclEntry::new(true, AclProto::Udp, AclAddr::ANY, AclAddr::ANY));
         a.entries.push(AclEntry::new(true, AclProto::Tcp, AclAddr::ANY, AclAddr::ANY));
