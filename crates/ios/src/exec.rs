@@ -1146,13 +1146,26 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(if on { "EIGRP debugging is on: the hellos this router hears are reported." } else { "EIGRP debugging is off." }.into())
         }
         Id::DebugIpOspf | Id::NoDebugIpOspf => {
-            let what = arg(0).trim();
-            if !what.is_empty() && !["adj", "events", "hello"].iter().any(|w| w.starts_with(what)) {
+            let what = arg(0).trim().to_ascii_lowercase();
+            let pick = ["adj", "events", "hello"].into_iter().find(|w| !what.is_empty() && w.starts_with(what.as_str()));
+            if !what.is_empty() && pick.is_none() {
                 return Err("% debug ip ospf adj, events or hello".into());
             }
             let on = spec.id == Id::DebugIpOspf;
-            c.sim.set_debug(c.dev, DebugKind::Ospf, on);
-            Ok(if on { "OSPF debugging is on: the hellos this router hears are reported." } else { "OSPF debugging is off." }.into())
+            let (kinds, note): (&[DebugKind], &str) = match pick {
+                Some("adj") => (&[DebugKind::OspfAdj], "each neighbour's adjacency states are reported"),
+                Some("events") => (&[DebugKind::OspfEvents], "interface, DR election and SPF events are reported"),
+                Some(_) => (&[DebugKind::OspfHello], "the hellos this router hears are reported"),
+                None => (&[DebugKind::OspfHello, DebugKind::OspfAdj, DebugKind::OspfEvents], "all of it"),
+            };
+            for k in kinds {
+                c.sim.set_debug(c.dev, *k, on);
+            }
+            Ok(if on {
+                format!("OSPF debugging is on: {note}.")
+            } else {
+                format!("OSPF debugging is off ({}).", pick.unwrap_or("hello, adj and events"))
+            })
         }
         Id::UndebugAll => {
             for k in DebugKind::ALL {

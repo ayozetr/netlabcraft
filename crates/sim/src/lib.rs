@@ -684,7 +684,12 @@ struct Pending {
 pub enum DebugKind {
     Icmp,
     Rip,
-    Ospf,
+    /// `debug ip ospf hello`: the hellos this router hears.
+    OspfHello,
+    /// `debug ip ospf adj`: each neighbour's walk through the adjacency states.
+    OspfAdj,
+    /// `debug ip ospf events`: interface, DR election, SPF and timer events.
+    OspfEvents,
     Eigrp,
     Packet,
     Nat,
@@ -692,8 +697,17 @@ pub enum DebugKind {
 }
 
 impl DebugKind {
-    pub const ALL: [DebugKind; 7] =
-        [DebugKind::Icmp, DebugKind::Rip, DebugKind::Ospf, DebugKind::Eigrp, DebugKind::Packet, DebugKind::Nat, DebugKind::Dhcp];
+    pub const ALL: [DebugKind; 9] = [
+        DebugKind::Icmp,
+        DebugKind::Rip,
+        DebugKind::OspfHello,
+        DebugKind::OspfAdj,
+        DebugKind::OspfEvents,
+        DebugKind::Eigrp,
+        DebugKind::Packet,
+        DebugKind::Nat,
+        DebugKind::Dhcp,
+    ];
 }
 
 /// What came back for one of our echo requests.
@@ -808,7 +822,9 @@ pub struct DevState {
     /// `debug ip rip`.
     pub debug_rip: bool,
     /// `debug ip ospf adj|events|hello`.
-    pub debug_ospf: bool,
+    pub debug_ospf_hello: bool,
+    pub debug_ospf_adj: bool,
+    pub debug_ospf_events: bool,
     /// `debug eigrp packets`.
     pub debug_eigrp: bool,
     /// `debug ip packet`.
@@ -1208,7 +1224,9 @@ impl Sim {
         match what {
             DebugKind::Icmp => st.debug_icmp = on,
             DebugKind::Rip => st.debug_rip = on,
-            DebugKind::Ospf => st.debug_ospf = on,
+            DebugKind::OspfHello => st.debug_ospf_hello = on,
+            DebugKind::OspfAdj => st.debug_ospf_adj = on,
+            DebugKind::OspfEvents => st.debug_ospf_events = on,
             DebugKind::Eigrp => st.debug_eigrp = on,
             DebugKind::Packet => st.debug_packet = on,
             DebugKind::Nat => st.debug_nat = on,
@@ -1222,7 +1240,9 @@ impl Sim {
         [
             (s.debug_icmp, "ICMP"),
             (s.debug_rip, "RIP"),
-            (s.debug_ospf, "OSPF"),
+            (s.debug_ospf_hello, "OSPF hellos"),
+            (s.debug_ospf_adj, "OSPF adjacencies"),
+            (s.debug_ospf_events, "OSPF events"),
             (s.debug_eigrp, "EIGRP"),
             (s.debug_packet, "IP packets"),
             (s.debug_nat, "NAT"),
@@ -2660,26 +2680,42 @@ impl Sim {
             if d.kind.is_host() {
                 return Ok(());
             }
-            let debug = self.state.get(&d.id).map_or((false, false), |s| (s.debug_rip, s.debug_ospf));
-            if debug.1
+            let debug = self
+                .state
+                .get(&d.id)
+                .map_or((false, false, false, false), |s| (s.debug_rip, s.debug_ospf_hello, s.debug_ospf_adj, s.debug_ospf_events));
+            if (debug.1 || debug.2 || debug.3)
                 && ip.protocol == netlabcraft_wire::control::PROTO_OSPF
                 && d.ospf.is_some()
                 && let Ok(h) = netlabcraft_wire::control::OspfHello::decode(&ip.payload)
             {
-                let msg = format!(
-                    "OSPF debug: hello from {} (router ID {}, area {}) on {}, {} neighbour{} listed",
-                    ip.src,
-                    h.router_id,
-                    h.area,
-                    ifc.name,
-                    h.neighbors.len(),
-                    if h.neighbors.len() == 1 { "" } else { "s" }
-                );
-                self.log(d.id, &msg);
-                if let Some(why) = ospf::auth_problem(d, ifc, &ip.payload) {
-                    self.log(d.id, &format!("OSPF debug: authentication of the hello from {} on {} fails: {why}", ip.src, ifc.name));
-                } else if let Some(why) = ospf::hello_problem(d, ifc, &h) {
-                    self.log(d.id, &format!("OSPF debug: no adjacency with {} on {}: {why}", ip.src, ifc.name));
+                if debug.1 {
+                    let msg = format!(
+                        "OSPF hello: from {} (router ID {}, area {}) on {}, {} neighbour{} listed",
+                        ip.src,
+                        h.router_id,
+                        h.area,
+                        ifc.name,
+                        h.neighbors.len(),
+                        if h.neighbors.len() == 1 { "" } else { "s" }
+                    );
+                    self.log(d.id, &msg);
+                }
+                // Why the sender can't become a neighbour: an adjacency matter, and (when the
+                // hello was rejected) an event too.
+                let problem = ospf::auth_problem(d, ifc, &ip.payload)
+                    .map(|why| format!("authentication fails: {why}"))
+                    .or_else(|| ospf::hello_problem(d, ifc, &h));
+                if let Some(why) = problem {
+                    if debug.1 {
+                        self.log(d.id, &format!("OSPF hello: no adjacency with {} on {}: {why}", ip.src, ifc.name));
+                    }
+                    if debug.2 {
+                        self.log(d.id, &format!("OSPF adjacency: {} on {} stays Down: {why}", h.router_id, ifc.name));
+                    }
+                    if debug.3 {
+                        self.log(d.id, &format!("OSPF event: hello from {} on {} rejected, no neighbour state is created", ip.src, ifc.name));
+                    }
                 }
             }
             if ip.protocol == netlabcraft_wire::eigrp::PROTO_EIGRP

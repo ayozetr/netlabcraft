@@ -14,6 +14,7 @@ mod ipsec_crypto;
 mod leftovers;
 mod nat_verbose;
 mod ospf_database;
+mod ospf_debug;
 mod protocols_summary;
 mod route_summary;
 mod routing;
@@ -670,7 +671,7 @@ fn ospf_by_typing() {
     lab.run(r1, "debug ip ospf hello");
     lab.sim.run_for(&lab.t, 11_000_000);
     let log = lab.run(r1, "show logging");
-    assert!(log.contains("OSPF debug: hello from 10.0.0.2 (router ID 172.16.2.1, area 0) on GigabitEthernet0/1, 1 neighbour listed"), "{log}");
+    assert!(log.contains("OSPF hello: from 10.0.0.2 (router ID 172.16.2.1, area 0) on GigabitEthernet0/1, 1 neighbour listed"), "{log}");
     // The neighbours exchanged their databases once, when they met.
     let db: Vec<String> =
         lab.sim.trace().iter().filter(|e| e.summary.starts_with("OSPF") && !e.summary.contains("hello")).map(|e| e.summary.clone()).collect();

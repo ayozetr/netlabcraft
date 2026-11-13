@@ -1841,16 +1841,16 @@ pub static SPECS: &[Spec] = &[
         Modes::EXEC,
         Modes::ROUTER,
         [K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello")],
-        "Report the OSPF hellos this router hears"
+        "Report OSPF: hellos heard, adjacency states, or events"
     ),
     spec!(
         NoDebugIpOspf,
         Modes::EXEC,
         Modes::ROUTER,
         [K("no"), K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello")],
-        "Stop reporting OSPF hellos"
+        "Stop one kind of OSPF report"
     ),
-    spec!(NoDebugIpOspf, Modes::EXEC, Modes::ROUTER, [K("no"), K("debug"), K("ip"), K("ospf")], "Stop reporting OSPF hellos"),
+    spec!(NoDebugIpOspf, Modes::EXEC, Modes::ROUTER, [K("no"), K("debug"), K("ip"), K("ospf")], "Stop every OSPF report"),
     spec!(ShowDebugging, EXECS, Modes::BOTH, [K("show"), K("debugging")], "Which debugs are on"),
     spec!(StandbyIp, IFS, Modes::ROUTER, [K("standby"), Arg("<0-255>"), K("ip"), Arg("A.B.C.D")], "HSRP: the group's virtual gateway address"),
     spec!(StandbyIpGroup0, IFS, Modes::ROUTER, [K("standby"), K("ip"), Arg("A.B.C.D")], "HSRP group 0's virtual gateway address"),

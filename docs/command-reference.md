@@ -469,9 +469,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `debug ip dhcp server packet` | privileged | router, switch | Report every DHCP message this server receives and sends |
 | `no debug ip dhcp server packet` | privileged | router, switch | Stop reporting DHCP messages |
 | `no debug ip rip` | privileged | router, switch | Stop reporting RIP updates |
-| `debug ip ospf adj\|events\|hello` | privileged | router | Report the OSPF hellos this router hears |
-| `no debug ip ospf adj\|events\|hello` | privileged | router | Stop reporting OSPF hellos |
-| `no debug ip ospf` | privileged | router | Stop reporting OSPF hellos |
+| `debug ip ospf adj\|events\|hello` | privileged | router | Report OSPF: hellos heard, adjacency states, or events |
+| `no debug ip ospf adj\|events\|hello` | privileged | router | Stop one kind of OSPF report |
+| `no debug ip ospf` | privileged | router | Stop every OSPF report |
 | `show debugging` | user, privileged | router, switch | Which debugs are on |
 | `standby <0-255> ip A.B.C.D` | interface, subinterface | router | HSRP: the group's virtual gateway address |
 | `standby ip A.B.C.D` | interface, subinterface | router | HSRP group 0's virtual gateway address |

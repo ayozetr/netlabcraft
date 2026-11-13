@@ -277,6 +277,73 @@ impl Sim {
         Some(RouterLsa { router_id: rid, seq: 0x8000_0001, links })
     }
 
+    /// What `debug ip ospf adj` and `debug ip ospf events` report when adjacencies come or go:
+    /// the adjacency states a neighbour walks through, the DR election, and the SPF run.
+    fn ospf_debug_changes(
+        &mut self,
+        t: &Topology,
+        st: &crate::ospf::OspfState,
+        fresh: &[(DeviceId, String, Ipv4Addr)],
+        gone: &[(DeviceId, String, Ipv4Addr)],
+    ) {
+        let flags = |s: &Self, id: DeviceId| s.state.get(&id).map_or((false, false), |x| (x.debug_ospf_adj, x.debug_ospf_events));
+        for (id, iface, nbr) in fresh {
+            let (adj, events) = flags(self, *id);
+            let Some(d) = t.device(*id) else { continue };
+            let seg = st.segments.get(&(*id, iface.clone())).copied();
+            let mine = st.router_ids.get(id).copied();
+            if adj {
+                let master = mine.is_some_and(|m| m > *nbr);
+                let steps = [
+                    "Down -> Init: first hello heard".to_string(),
+                    "Init -> 2-Way: this router is listed in the neighbour's hello".to_string(),
+                    format!(
+                        "2-Way -> ExStart: {}",
+                        if seg.is_some_and(|s| s.dr.is_none()) {
+                            "point-to-point link, adjacency is always needed"
+                        } else {
+                            "adjacency is needed with the DR or BDR"
+                        }
+                    ),
+                    format!(
+                        "ExStart -> Exchange: master is {} (higher router ID), database descriptions follow",
+                        if master { "this router" } else { "the neighbour" }
+                    ),
+                    "Exchange -> Loading: requesting the neighbour's router LSA".to_string(),
+                    "Loading -> Full: databases are synchronised".to_string(),
+                ];
+                for s in steps {
+                    self.log(*id, &format!("OSPF adjacency: neighbour {nbr} on {iface}: {s}"));
+                }
+            }
+            if events {
+                if let Some(g) = seg.filter(|g| g.dr.is_some()) {
+                    let a = |x: Option<Ipv4Addr>| x.map_or("none".to_string(), |x| x.to_string());
+                    self.log(*id, &format!("OSPF event: neighbour change on {iface}: DR election gives DR {}, BDR {}", a(g.dr), a(g.bdr)));
+                }
+                let routes = st.routes.get(id).map_or(0, Vec::len);
+                self.log(
+                    *id,
+                    &format!("OSPF event: SPF run after the adjacency with {nbr} came up: {routes} OSPF route{}", if routes == 1 { "" } else { "s" }),
+                );
+            }
+            let _ = d;
+        }
+        for (id, iface, nbr) in gone {
+            let (adj, events) = flags(self, *id);
+            let Some(d) = t.device(*id) else { continue };
+            let (_, dead) = crate::ospf::timers(d, iface);
+            if adj {
+                self.log(*id, &format!("OSPF adjacency: neighbour {nbr} on {iface}: Full -> Down: no hello within {dead} s, or the link is gone"));
+            }
+            if events {
+                self.log(*id, &format!("OSPF event: neighbour {nbr} on {iface} removed; its LSAs are no longer used"));
+                let routes = st.routes.get(id).map_or(0, Vec::len);
+                self.log(*id, &format!("OSPF event: SPF run after the loss: {routes} OSPF route{}", if routes == 1 { "" } else { "s" }));
+            }
+        }
+    }
+
     /// Database exchange for adjacencies that weren't there at the last hello: each side sends
     /// its first description, its LSA headers, a request for the neighbour's router-LSA, an
     /// update with its own, and an acknowledgement.
@@ -284,7 +351,9 @@ impl Sim {
         let now: std::collections::BTreeSet<(DeviceId, String, Ipv4Addr)> =
             st.neighbors.iter().flat_map(|(id, ns)| ns.iter().map(|n| (*id, n.iface.clone(), n.router_id))).collect();
         let fresh: Vec<_> = now.difference(&self.ospf_adjacent).cloned().collect();
+        let gone: Vec<_> = self.ospf_adjacent.difference(&now).cloned().collect();
         self.ospf_adjacent = now;
+        self.ospf_debug_changes(t, st, &fresh, &gone);
         for (id, iface, nbr) in fresh {
             let (Some(d), Some(rid)) = (t.device(id), st.router_ids.get(&id).copied()) else { continue };
             let Some(ifc) = l3_ifaces(d).into_iter().find(|i| i.name == iface) else { continue };
