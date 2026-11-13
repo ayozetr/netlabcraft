@@ -2,10 +2,17 @@ name: Release
 
 # A release is whatever is on the `release` branch: pushing to it builds every platform and
 # creates or updates a DRAFT GitHub Release, which a maintainer publishes once every job is green
-# (docs/releasing.md). Builds are not code-signed or notarized yet.
+# (docs/releasing.md). Pull requests and manual runs with dry-run build everything but publish
+# nothing. Builds are not code-signed or notarized yet.
 on:
   push:
     branches: [release]
+  # A pull request that touches the packaging builds every package as a dry run (no draft release).
+  pull_request:
+    paths:
+      - "packaging/**"
+      - ".github/workflows/release.yml"
+      - "rust-toolchain.toml"
   workflow_dispatch:
     inputs:
       version:
@@ -226,7 +233,7 @@ jobs:
           sha256sum -- * > SHA256SUMS.txt
           cat SHA256SUMS.txt
       - name: Draft release
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry-run) }}
+        if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry-run) }}
         run: |
           set -euo pipefail
           tag="v$VERSION"
