@@ -14,6 +14,7 @@ use crate::grammar::{self, Id, Modes, ParseError};
 use crate::{host, render};
 
 pub(crate) mod automation;
+pub(crate) mod cellular;
 pub(crate) mod eigrp6;
 pub(crate) mod families;
 pub(crate) mod fhrp;
@@ -2285,6 +2286,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ShowIpHttpServerStatus
         | Id::ShowNetconfYang => automation::command(&mut c, spec.id, &args),
         Id::PowerInline | Id::ShowPowerInline => families::command(&mut c, spec.id, &args),
+        Id::CellularPool | Id::NoCellularPool | Id::CellularApn | Id::NoCellularApn | Id::CellularPlan | Id::ShowCellular => {
+            cellular::command(&mut c, spec.id, &args)
+        }
         Id::WlanAdd | Id::NoWlan | Id::CapwapController | Id::NoCapwapController | Id::ShowWlan | Id::ShowCapwap => {
             wlan::command(&mut c, spec.id, &args)
         }

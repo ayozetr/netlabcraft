@@ -26,6 +26,7 @@ Commands:
   telnet <address>                       log in to a router or switch
   ssh -l <user> <address>                log in securely
   ftp <address>                          send and fetch files on an FTP server
+  cellular [on|off|apn <name|none>]      phones and tablets: cellular status, data and APN
   netstat                                TCP connections this host set up
   dir                                    list this host's files
   arp -a                                 show the ARP cache
@@ -158,6 +159,7 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut crate::
         "cls" | "clear" => Outcome { clear: true, ..Outcome::default() },
         "hostname" => out(t.device(dev).map(|d| d.name.clone()).unwrap_or_default()),
         "ipconfig" | "ifconfig" => ipconfig(t, sim, dev, words.get(1..).unwrap_or_default()),
+        "cellular" => out(crate::exec::cellular::host_command(t, sim, dev, words.get(1..).unwrap_or_default())),
         "ping" => out(host_ping(t, sim, dev, words.get(1..).unwrap_or_default())),
         "ipv6config" => ipv6config(t, sim, dev, words.get(1..).unwrap_or_default()),
         "tracert" | "traceroute" => {
@@ -279,9 +281,9 @@ fn ipconfig(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Ou
                 l.server.map_or("unknown".to_string(), |a| a.to_string())
             );
         }
-        s + &ipv6_lines(d)
+        s + &ipv6_lines(d) + &crate::exec::cellular::ipconfig_lines(d)
     };
-    let show = |d: &Device| show_basic(d) + &ipv6_lines(d);
+    let show = |d: &Device| show_basic(d) + &ipv6_lines(d) + &crate::exec::cellular::ipconfig_lines(d);
     let Some(d) = t.device(dev) else { return Outcome::default() };
     let result: Result<String, String> = match args {
         [] => return Outcome { output: show(d), ..Outcome::default() },

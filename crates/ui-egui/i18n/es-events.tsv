@@ -62,3 +62,7 @@ encrypted bytes	bytes cifrados
 client hello	saludo del cliente
 server hello	saludo del servidor
 central switching	conmutación central
+Cell attach request	CELL solicitud de conexión
+Cell attach accept	CELL conexión aceptada
+Cell attach reject	CELL conexión rechazada
+no APN	sin APN

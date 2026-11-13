@@ -231,6 +231,7 @@ pub fn running_config(d: &Device) -> String {
     vpn_config(&mut s, d);
     crate::exec::security::running_config(&mut s, d);
     wlan_config(&mut s, d);
+    crate::exec::cellular::running_config(&mut s, d);
     crate::exec::routing::loopback_config(&mut s, d);
     for p in &d.ports {
         let _ = writeln!(s, "interface {}", p.name);

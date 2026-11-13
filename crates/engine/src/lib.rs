@@ -20,6 +20,7 @@ pub mod activity;
 pub mod automation;
 mod board;
 pub mod catalog;
+mod cellular;
 mod cmd;
 mod controller;
 mod families;
@@ -35,6 +36,8 @@ pub mod sample;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_cell;
 #[cfg(test)]
 mod tests_families;
 #[cfg(test)]
