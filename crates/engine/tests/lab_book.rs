@@ -66,6 +66,7 @@ labs! {
     lab_24_troubleshoot_acls => "24-troubleshoot-acls.md",
     lab_25_troubleshoot_dhcp => "25-troubleshoot-dhcp.md",
     lab_26_troubleshoot_nat => "26-troubleshoot-nat.md",
+    lab_27_troubleshoot_stp_root => "27-troubleshoot-stp-root.md",
 }
 
 #[test]

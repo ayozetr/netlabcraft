@@ -383,6 +383,9 @@ pub enum Id {
     ShowGlbp,
     ShowStp,
     ShowStpVlan,
+    ShowStpRoot,
+    ShowStpBridge,
+    ShowStpBlocked,
     NoInterfaceVlan,
     DefaultGateway,
     NoDefaultGateway,
@@ -2976,6 +2979,9 @@ pub static SPECS: &[Spec] = &[
         "Drop DHCP requests with relay information but no relay address here"
     ),
     spec!(ShowStp, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree")], "Spanning trees of every VLAN"),
+    spec!(ShowStpRoot, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree"), K("root")], "Who the root is in each VLAN, and the way to it"),
+    spec!(ShowStpBridge, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree"), K("bridge")], "This switch's own bridge ID in each VLAN"),
+    spec!(ShowStpBlocked, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree"), K("blockedports")], "Ports that are not forwarding, per VLAN"),
     spec!(ShowStpVlan, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree"), K("vlan"), Arg("<1-4094>")], "One VLAN's spanning tree"),
     // ---- the firewall appliance ----
     spec!(FwNameif, IFS, FW, [K("nameif"), Arg("NAME")], "Name the interface (rules, routes and NAT refer to it by this name)"),

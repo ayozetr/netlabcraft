@@ -4221,6 +4221,22 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             }
             Ok(if out.is_empty() { "No VLAN has a port in a spanning tree yet.".into() } else { out.join("\n\n") })
         }
+        Id::ShowStpRoot | Id::ShowStpBridge | Id::ShowStpBlocked => {
+            let d = c.d()?.clone();
+            let vlans: Vec<VlanId> = d.vlans.keys().copied().collect();
+            let mut trees = Vec::new();
+            for v in vlans {
+                let tree = c.sim.spanning_tree(c.t, v).clone();
+                if tree.bridges.contains_key(&d.id) {
+                    trees.push((v, tree));
+                }
+            }
+            Ok(match spec.id {
+                Id::ShowStpRoot => render::stp_root(c.t, &d, &trees),
+                Id::ShowStpBridge => render::stp_bridge(&d, &trees),
+                _ => render::stp_blocked(c.t, &d, &trees),
+            })
+        }
         Id::ShowStpVlan => {
             let v: VlanId = arg(0).parse().map_err(|e| format!("% {e}"))?;
             let d = c.d()?.clone();

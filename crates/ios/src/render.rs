@@ -1157,6 +1157,69 @@ pub fn spanning_tree(t: &Topology, sim: &Sim, d: &Device, vlan: VlanId, tree: &n
     s.trim_end().to_string()
 }
 
+/// `show spanning-tree root`: for each VLAN the root's bridge ID, and the cost and port that lead to it.
+pub fn stp_root(t: &Topology, d: &Device, trees: &[(VlanId, netlabcraft_sim::stp::VlanTree)]) -> String {
+    if trees.is_empty() {
+        return "No VLAN has a port in a spanning tree yet.".into();
+    }
+    let mut s = format!("{:<10} {:<28} {:<6} Root port\n", "VLAN", "Root bridge ID", "Cost");
+    for (v, tree) in trees {
+        let Some(me) = tree.bridges.get(&d.id) else { continue };
+        let via = if me.root == me.id {
+            "this switch is the root".to_string()
+        } else {
+            me.root_port.filter(|p| d.ports.get(*p).is_some()).map_or("-".to_string(), |p| netlabcraft_sim::channel::port_label(t, d, p, true))
+        };
+        let _ = writeln!(s, "VLAN{:04}   {:<28} {:<6} {via}", v.get(), format!("{} {}", me.root.priority, me.root.mac.dotted()), me.root_cost);
+    }
+    s.trim_end().to_string()
+}
+
+/// `show spanning-tree bridge`: this switch's own bridge ID in each VLAN, and whether it is the root.
+pub fn stp_bridge(d: &Device, trees: &[(VlanId, netlabcraft_sim::stp::VlanTree)]) -> String {
+    if trees.is_empty() {
+        return "No VLAN has a port in a spanning tree yet.".into();
+    }
+    let mut s = format!("{:<10} {:<28} Root?\n", "VLAN", "Bridge ID");
+    for (v, tree) in trees {
+        let Some(me) = tree.bridges.get(&d.id) else { continue };
+        let _ = writeln!(
+            s,
+            "VLAN{:04}   {:<28} {}",
+            v.get(),
+            format!("{} {}", me.id.priority, me.id.mac.dotted()),
+            if me.root == me.id { "yes" } else { "no" }
+        );
+    }
+    s.trim_end().to_string()
+}
+
+/// `show spanning-tree blockedports`: the ports that are not forwarding, per VLAN.
+pub fn stp_blocked(t: &Topology, d: &Device, trees: &[(VlanId, netlabcraft_sim::stp::VlanTree)]) -> String {
+    let mut s = format!("{:<10} Blocked ports\n", "VLAN");
+    let mut total = 0usize;
+    for (v, tree) in trees {
+        let ports: Vec<String> = tree
+            .ports
+            .iter()
+            .filter(|((dev, p), info)| {
+                *dev == d.id && d.ports.get(*p).is_some() && !info.role.forwards() && info.role != netlabcraft_sim::stp::Role::Disabled
+            })
+            .map(|((_, p), _)| netlabcraft_sim::channel::port_label(t, d, *p, true))
+            .collect();
+        if !ports.is_empty() {
+            total = total.saturating_add(ports.len());
+            let _ = writeln!(s, "VLAN{:04}   {}", v.get(), ports.join(", "));
+        }
+    }
+    if total == 0 {
+        s.push_str("(none: every port in the tree forwards)");
+    } else {
+        let _ = write!(s, "{total} blocked port{}", if total == 1 { "" } else { "s" });
+    }
+    s.trim_end().to_string()
+}
+
 /// `show ip ospf neighbor`.
 pub fn ospf_neighbors(t: &Topology, d: &Device, st: &netlabcraft_sim::ospf::OspfState) -> String {
     if d.ospf.is_none() {

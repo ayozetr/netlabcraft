@@ -911,6 +911,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `ip dhcp relay information trusted` | interface, subinterface | router, switch | Take DHCP requests with relay information but no relay address here |
 | `no ip dhcp relay information trusted` | interface, subinterface | router, switch | Drop DHCP requests with relay information but no relay address here |
 | `show spanning-tree` | user, privileged | switch | Spanning trees of every VLAN |
+| `show spanning-tree root` | user, privileged | switch | Who the root is in each VLAN, and the way to it |
+| `show spanning-tree bridge` | user, privileged | switch | This switch's own bridge ID in each VLAN |
+| `show spanning-tree blockedports` | user, privileged | switch | Ports that are not forwarding, per VLAN |
 | `show spanning-tree vlan <1-4094>` | user, privileged | switch | One VLAN's spanning tree |
 | `nameif NAME` | interface, subinterface | firewall | Name the interface (rules, routes and NAT refer to it by this name) |
 | `no nameif` | interface, subinterface | firewall | Take the name away: the interface stops passing traffic |

@@ -89,6 +89,32 @@ fn nat_statistics_count_hits_and_misses_and_clear() {
 }
 
 #[test]
+fn spanning_tree_root_bridge_and_blockedports_views() {
+    let mut lab = Lab::new();
+    let s1 = lab.add(DeviceKind::Switch);
+    let s2 = lab.add(DeviceKind::Switch);
+    let s3 = lab.add(DeviceKind::Switch);
+    lab.cable(s1, "g0/1", s2, "g0/1");
+    lab.cable(s1, "g0/2", s3, "g0/1");
+    lab.cable(s2, "g0/2", s3, "g0/2");
+    for s in [s1, s2, s3] {
+        lab.run(s, "en\nconf t\ninterface range g0/1 - 2\nswitchport mode trunk\nend");
+    }
+    lab.run(s2, "conf t\nspanning-tree vlan 1 root primary\nend");
+    lab.sim.run_for(&lab.t, 60_000_000);
+    assert!(lab.run(s2, "show spanning-tree root").contains("this switch is the root"));
+    assert!(lab.run(s2, "show spanning-tree bridge").contains("24577") && lab.run(s2, "show spanning-tree bridge").contains("yes"));
+    assert!(lab.run(s1, "show spanning-tree root").contains("24577") && lab.run(s1, "show spanning-tree root").contains("Gi0/1"));
+    assert!(lab.run(s2, "show spanning-tree blockedports").contains("none"));
+    // The ring has one blocked port, on a switch that is not the root.
+    let blocked: Vec<String> = [s1, s3].iter().map(|s| lab.run(*s, "show spanning-tree blockedports")).collect();
+    assert_eq!(blocked.iter().filter(|b| b.contains("1 blocked port")).count(), 1, "{blocked:?}");
+    // Hosts and routers have no spanning tree to show.
+    let r = lab.add(DeviceKind::Router);
+    assert!(lab.try_run(r, "show spanning-tree root").starts_with("% ") || lab.try_run(r, "show spanning-tree root").contains("Not understood"));
+}
+
+#[test]
 fn proxy_arp_can_be_turned_off_per_interface_and_shows_in_the_config() {
     let mut lab = Lab::new();
     let r = lab.add(DeviceKind::Router);
