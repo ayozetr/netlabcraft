@@ -242,7 +242,7 @@ egui frontend is a separate crate, so the UI can be swapped without touching the
 - **Contributor and agent rules** (clean room, asset policy, never-crash, quality gates): [`AGENTS.md`](AGENTS.md); how to contribute: [`CONTRIBUTING.md`](CONTRIBUTING.md); security reports: [`SECURITY.md`](SECURITY.md)
 - **How it is built:** [`docs/architecture.md`](docs/architecture.md); decisions in [`docs/decisions.md`](docs/decisions.md)
 - **Bundled assets:** each one is listed with its licence in [`ATTRIBUTION.md`](ATTRIBUTION.md)
-- **Releases:** none yet; the plan is in [`docs/releasing.md`](docs/releasing.md)
+- **Releases:** installers for Linux, Windows, macOS and the browser on the [Releases page](https://github.com/ayozetr/netlabcraft/releases) (not code-signed yet); how they are built: [`docs/releasing.md`](docs/releasing.md)
 
 ## Roadmap
 

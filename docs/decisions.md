@@ -92,9 +92,9 @@ Trees are still computed at once, but a port that starts forwarding waits 30 s (
 
 Every page carries a review line and a revision history; parity is assessed with written weights and labelled estimates.
 
-## No release for now
+## Releases are unsigned for now
 
-The owner's hold on releases is lifted: GitHub Actions works again and CI runs `cargo xtask ci`. There is still no release; Linux users can install from source with `packaging/linux/install.sh`, and the release workflow and per-platform packaging are the next step ([releasing.md](releasing.md)). The alpha gate that asks for a packaged build waits for them.
+The owner's hold on releases is lifted: GitHub Actions works and `release.yml` builds the packages ([releasing.md](releasing.md)). They are not code-signed or notarized, because the project has no certificates: Windows and macOS warn on first run. Linux users can also install from source with `packaging/linux/install.sh`.
 
 ## Powered devices start without an adapter
 
