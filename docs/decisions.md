@@ -151,3 +151,8 @@ Routers and switches leave the factory with one supply in bay 1 of their one or 
 ## IoT custom cables are not network links
 
 An IoT custom cable joins a board's pin to a smart thing. It is drawn on the workspace and listed with the cables, but it is stored with the board (`board.wires`), not in the lab's links: no frames cross it, nothing routes over it, and the board's program reads or switches the thing through it directly.
+
+## Follow the Crafting Apps rules, except where the owner decided otherwise
+
+NetLabCraft follows the storytold Crafting Apps rules (`craft-anything`'s `AGENTS.md`): never crash, safe Rust, other programs through one runner, one mutex type, no secrets, branches and pull requests, pitfalls and extending guides. Two differences are deliberate: there is **no CI workflow** while GitHub Actions is unavailable (see `docs/releasing.md`), so `cargo xtask ci` is the gate and runs locally; and work is picked from `docs/gaps.md` with task ids (`M6.41`), not from roadmap items with claim lines, because the project has one maintainer.
+
