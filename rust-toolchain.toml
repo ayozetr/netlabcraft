@@ -1,0 +1,7 @@
+# The compiler the project is built and checked with, locally and in CI. Matches `rust-version` in
+# Cargo.toml. Bump both together, and fix the lints a newer clippy adds in the same change.
+[toolchain]
+channel = "1.95.0"
+profile = "minimal"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]

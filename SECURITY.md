@@ -1,26 +1,23 @@
-# Security policy
+# Security
+
+NetLabCraft opens lab files, decodes frames, parses console lines and serves an MCP server, all of it
+untrusted input, so we take reports seriously.
 
 ## Reporting a vulnerability
 
-Please report security problems privately, not in a public issue: use **Report a vulnerability** under the
-repository's **Security** tab on GitHub (private vulnerability reporting). Include what you did, what you expected,
-what happened, and the version or commit.
+Please report it privately: on GitHub, open the repository's **Security** tab and choose
+**Report a vulnerability**. Don't open a public issue for it. Say what's affected, how to reproduce
+it, and what an attacker gains. We'll reply within a week and tell you what we'll do.
 
-NetLabCraft opens lab files, parses frames and console lines, and serves an MCP server, so crashes and hangs on
-hostile input are in scope: a lab file, a frame, a console line or an MCP parameter that panics, loops forever or
-allocates without bound is a bug we want to hear about.
+## What counts
 
-## What to expect
-
-You will get an acknowledgement, and a fix or an explanation once the report has been looked at. Please give us a
-reasonable time to fix it before disclosing it publicly.
+- A crash, hang or runaway memory use on any lab file, frame, console line or MCP parameter
+  (never-crash is a hard rule: [AGENTS.md](AGENTS.md)).
+- An MCP tool or command that does more than its documented effect, or touches files outside the ones
+  it was given.
+- A key, token or other secret reaching a log, a lab file, a capture or the repository
+  (`cargo xtask secrets` checks what git would commit, `--history` every commit).
 
 ## Supported versions
 
-There is no release yet; fixes go to `main`.
-
-## Secrets
-
-The repository is public and must never hold keys, tokens or personal data. `cargo xtask secrets` checks what git
-would commit (`--history` checks every commit), and `.githooks/pre-commit` runs it. If you find a credential in the
-history, report it the same private way.
+There is no release yet; fixes go to `main`, and into the latest release once there is one.

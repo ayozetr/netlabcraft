@@ -24,7 +24,7 @@ and 3), and a cellular network for the mobile devices (gap 4).
 | **M4 — Teaching** | ✅ 2026-10-31 (activities, wizard, variables, the comparison with the answer, the Spanish interface, and M4.5–M4.9: answer network, assessment tree, initial network, instructions per language, connectivity tests, signed results, locks) | Activities with expected results and a score, instructions panel, translations (Spanish first). |
 | **M5 — CCNA 2 complete** | ✅ 2026-10-31 (wireless with group keys, a real PEAP tunnel and central switching, HSRP, VRRP with timers and VRRPv3, GLBP, DTP, RSTP, loop guard, DHCPv6, switch security, CoS, VTP pruning, routing leftovers, and the end devices of M5.85–M5.88; the lab book's nine CCNA 2 labs run) | Wireless LANs, FHRP, DTP, STP, LAN security, DHCPv6, static routing. |
 | **M6 — CCNA 3 complete** | ✅ 2026-10-31 (OSPF as taught, PPP authentication, ACL depth, network management, GRE/IPsec with IKEv1 and IKEv2 on a real Diffie-Hellman with real AES and rekeying, QoS, zone-based firewall, MTU, RESTCONF and NETCONF over TLS and SSH, a controller with discovery; the lab book's seven CCNA 3 labs run; DES, 3DES, AH and certificates left, in [gaps.md](gaps.md)) | OSPF depth, PPP authentication, ACL depth, network services, VPN basics, QoS, automation. |
-| **M7 — First release** | **on hold** (icon, Linux user install and About window done) | The owner has decided there is no release for now, and GitHub Actions is not available for the release workflow. Installers and workflows are not planned until the hold is lifted ([releasing.md](releasing.md)). |
+| **M7 — First release** | **next** (icon, Linux user install, About window and CI done) | GitHub Actions works again and CI runs. The release workflow and per-platform packaging are the next step; not estimated yet ([releasing.md](releasing.md)). |
 | **M8 — CCNA lab book** | ✅ 2026-10-31 | M8.1 fixes the book turned up · M8.2 CCNA 1 labs and the runner · M8.3 CCNA 2 labs · M8.4 CCNA 3 labs and the MCP run ([labs/](labs/README.md)). |
 
 ## Alpha gates
@@ -40,11 +40,11 @@ the reference app:
 2. Simulation mode shows the frames those labs talk about: met (ARP, ICMP, DHCP, DNS, TCP,
    BPDUs, OSPF, RIP and more, with pcap export), with complex PDUs, PDU details in OSI layers,
    Constant Delay and a capture filter.
-3. A packaged build exists for Linux, Windows and macOS: **on hold** by the owner's decision.
+3. A packaged build exists for Linux, Windows and macOS: **next** (CI is in place; the release workflow and packaging are not written).
    Until it is lifted, Linux users install from source with `packaging/linux/install.sh`, and
    everyone else builds with Cargo.
 
-**Total to alpha:** gates 1 and 2 are met; gate 3 is on hold and not estimated.
+**Total to alpha:** gates 1 and 2 are met; gate 3 is not estimated yet.
 
 ## Beta gates
 

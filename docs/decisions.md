@@ -94,7 +94,7 @@ Every page carries a review line and a revision history; parity is assessed with
 
 ## No release for now
 
-The owner has put releases on hold: no installers or published builds for now, and GitHub Actions is not available to run release workflows. The quality gates run locally with `cargo xtask ci`, Linux users can install from source with `packaging/linux/install.sh`, and the release plan in [releasing.md](releasing.md) waits until the hold is lifted. The alpha gate that asks for a packaged build waits with it.
+The owner's hold on releases is lifted: GitHub Actions works again and CI runs `cargo xtask ci`. There is still no release; Linux users can install from source with `packaging/linux/install.sh`, and the release workflow and per-platform packaging are the next step ([releasing.md](releasing.md)). The alpha gate that asks for a packaged build waits for them.
 
 ## Powered devices start without an adapter
 
@@ -154,5 +154,4 @@ An IoT custom cable joins a board's pin to a smart thing. It is drawn on the wor
 
 ## Follow the Crafting Apps rules, except where the owner decided otherwise
 
-NetLabCraft follows the storytold Crafting Apps rules (`craft-anything`'s `AGENTS.md`): never crash, safe Rust, other programs through one runner, one mutex type, no secrets, branches and pull requests, pitfalls and extending guides. Two differences are deliberate: there is **no CI workflow** while GitHub Actions is unavailable (see `docs/releasing.md`), so `cargo xtask ci` is the gate and runs locally; and work is picked from `docs/gaps.md` with task ids (`M6.41`), not from roadmap items with claim lines, because the project has one maintainer.
-
+NetLabCraft follows the storytold Crafting Apps rules (`craft-anything`'s `AGENTS.md`): never crash, safe Rust, other programs through one runner, one mutex type, no secrets, branches and pull requests, pitfalls and extending guides. One difference is deliberate: work is picked from `docs/gaps.md` with task ids (`M6.41`), not from roadmap items with claim lines, because the project has one maintainer. CI runs `cargo xtask ci` in GitHub Actions (`.github/workflows/ci.yml`) and locally.

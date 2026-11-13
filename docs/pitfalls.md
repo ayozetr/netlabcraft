@@ -20,7 +20,8 @@ new mistake worth not repeating, add it in the same change.
 - **`assert!(x.contains("…") || true)` asserts nothing.** It was written to "just run the command" and passed
   forever. If you only need the command to run, write `let _ = x;`; if the result matters, assert it.
 - **A new toolchain adds lints.** Clippy gates run with `-D warnings`, so a compiler bump can turn a green tree red
-  (`nonminimal_bool` did). Fix the code, not the gate.
+  (`nonminimal_bool` did, and CI on a rolling `stable` failed on `needless_range_loop`). The compiler is pinned in
+  `rust-toolchain.toml`; bump it together with `rust-version`, and fix the code, not the gate.
 
 ## Wasm
 

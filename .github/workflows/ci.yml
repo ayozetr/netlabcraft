@@ -1,0 +1,38 @@
+name: CI
+
+# The same gates as `cargo xtask ci` (fmt, clippy -D warnings, tests, doctests, assets, layers, secrets,
+# wasm, parity), on every push to main and every pull request.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to a PR branch cancels its older run; every push to main runs to the end.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the secrets scan and the contributors check read the history
+      - name: Software Vulkan driver
+        # The runner has no GPU; a few UI tests render with wgpu, which falls back to this.
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1
+      - name: Rust toolchain
+        # The version, components and wasm target come from rust-toolchain.toml.
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: cargo xtask ci
+        run: cargo xtask ci
