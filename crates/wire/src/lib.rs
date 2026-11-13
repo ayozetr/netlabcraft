@@ -34,6 +34,7 @@ pub mod lacp;
 pub mod lldp;
 pub mod md5;
 pub mod ripng;
+pub mod rsa;
 pub mod vrrp;
 
 pub mod mgmt;

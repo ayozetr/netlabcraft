@@ -1,6 +1,6 @@
 # Protocol and command parity
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (M9.5: IKEv1 group 24 is a real Diffie-Hellman group) · earlier: minor (M9.5: AH next to ESP in one transform set is a real bundle), minor (M9.5: the IKE SA has a lifetime and is replaced before it runs out), minor (the `show` views and options the troubleshooting labs turned up) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman), major (real Diffie-Hellman and ciphers, rekeying, MTU and inspections; TLS, SSH, XML, IPv6 and the candidate datastore in automation; CoS, VTP pruning, VRRP timers and VRRPv3, EIGRP for IPv6 on the wire, RIP timers and RIPng; the lab-book fixes; section figures aligned with ROADMAP.md) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (M9.9: RSA key generation and PKCS#1 v1.5 signatures in wire) · earlier: minor (M9.5: IKEv1 group 24 is a real Diffie-Hellman group) · earlier: minor (M9.5: AH next to ESP in one transform set is a real bundle), minor (M9.5: the IKE SA has a lifetime and is replaced before it runs out), minor (the `show` views and options the troubleshooting labs turned up) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman), major (real Diffie-Hellman and ciphers, rekeying, MTU and inspections; TLS, SSH, XML, IPv6 and the candidate datastore in automation; CoS, VTP pruning, VRRP timers and VRRPv3, EIGRP for IPv6 on the wire, RIP timers and RIPng; the lab-book fixes; section figures aligned with ROADMAP.md) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 What the simulated devices do, protocol by protocol, against the reference app. Part of
 [target-app-parity.md](target-app-parity.md). Behaviour comes from the standards named in each
@@ -135,6 +135,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | RSA (RFC 8017): seeded key generation and PKCS#1 v1.5 signatures with SHA-256 and SHA-1 in `wire` (M9.9); not wired into TLS, SSH or IKE yet. |
 | 2026-11-13 | minor | IKEv1 group 24 (RFC 5114 §2.3) is a real MODP group with subgroup validation (M9.5); no crypto stand-in is left but the no-cipher transform set. |
 | 2026-11-13 | minor | AH bundled with ESP (M9.5): quick mode proposes both protocols, IKEv2 negotiates the AH child SA separately and renews it with the ESP one, and packets leave with AH outside ESP. |
 | 2026-11-13 | minor | IKE SA lifetime and rekeying (M9.5): ISAKMP policy lifetime negotiated and enforced with a new main mode replacing the SA under the IPsec SAs; IKEv2 profile `lifetime` and the RFC 7296 §1.3.2 IKE SA rekey with §2.18 keys. |
