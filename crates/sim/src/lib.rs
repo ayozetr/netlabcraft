@@ -749,6 +749,11 @@ pub struct NatEntry {
     pub outside: Ipv4Addr,
     /// From an `ip nat inside source static` line.
     pub fixed: bool,
+    /// Simulated time (microseconds) the translation was made, and last used.
+    pub created_us: u64,
+    pub last_us: u64,
+    /// Packets translated through it, in both directions.
+    pub uses: u64,
 }
 
 const MAX_NAT_ENTRIES: usize = 4_096;
@@ -1625,10 +1630,13 @@ impl Sim {
     /// Inside to outside: the translated packet (`None`: no rule applies, sent as is).
     fn nat_translate(&mut self, d: &Device, ip: &Ipv4) -> Result<Option<Ipv4>, String> {
         let id = flow_id(ip, true);
+        let now = self.now;
         let st = self.st(d.id);
-        if let Some(e) = st.nat.iter().find(|e| {
+        if let Some(e) = st.nat.iter_mut().find(|e| {
             e.inside_local == ip.src && e.protocol == ip.protocol && (e.local_id.is_none() || e.local_id == id) && (e.fixed || e.outside == ip.dst)
         }) {
+            e.uses = e.uses.saturating_add(1);
+            e.last_us = now;
             let out = rewrite(ip, true, e.inside_global, e.global_id);
             st.nat_hits = st.nat_hits.saturating_add(1);
             return Ok(Some(out));
@@ -1642,6 +1650,9 @@ impl Sim {
                 global_id: None,
                 outside: ip.dst,
                 fixed: true,
+                created_us: self.now,
+                last_us: self.now,
+                uses: 1,
             }
         } else {
             let key = netlabcraft_model::acl::PacketKey::bare(ip.protocol, ip.src, ip.dst);
@@ -1699,6 +1710,9 @@ impl Sim {
                 global_id,
                 outside: ip.dst,
                 fixed: false,
+                created_us: self.now,
+                last_us: self.now,
+                uses: 1,
             }
         };
         let out = rewrite(ip, true, entry.inside_global, entry.global_id);
@@ -1720,10 +1734,13 @@ impl Sim {
             return Some(back);
         }
         let id = flow_id(ip, false);
-        let st = self.state.get(&d.id);
-        if let Some(e) = st.and_then(|s| {
-            s.nat.iter().find(|e| e.inside_global == ip.dst && e.protocol == ip.protocol && (e.global_id.is_none() || e.global_id == id))
-        }) {
+        let now = self.now;
+        let found = self.state.get_mut(&d.id).and_then(|s| {
+            s.nat.iter_mut().find(|e| e.inside_global == ip.dst && e.protocol == ip.protocol && (e.global_id.is_none() || e.global_id == id))
+        });
+        if let Some(e) = found {
+            e.uses = e.uses.saturating_add(1);
+            e.last_us = now;
             return Some(rewrite(ip, false, e.inside_local, e.local_id));
         }
         d.nat.statics.iter().find(|(_, g)| *g == ip.dst).map(|(l, _)| rewrite(ip, false, *l, None))
@@ -1763,6 +1780,9 @@ impl Sim {
                     global_id: None,
                     outside: ip.src,
                     fixed: true,
+                    created_us: 0,
+                    last_us: 0,
+                    uses: 0,
                 })
             })?;
         original.get_mut(12..16)?.copy_from_slice(&e.inside_local.octets());

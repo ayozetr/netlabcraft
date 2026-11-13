@@ -3321,7 +3321,13 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             n.pools.retain(|p| p.name != arg(0));
             if n.pools.len() == before { Err(format!("% No pool {}", arg(0))) } else { Ok(String::new()) }
         }
-        Id::ShowNat => Ok(render::nat_translations(c.sim, c.d()?)),
+        Id::ShowNat => {
+            let w = arg(0).trim().to_ascii_lowercase();
+            if !w.is_empty() && !"verbose".starts_with(&w) {
+                return Err("% show ip nat translations, or show ip nat translations verbose".into());
+            }
+            Ok(render::nat_translations(c.sim, c.d()?, !w.is_empty()))
+        }
         Id::ClearNatStats => {
             c.sim.clear_nat_counts(c.dev);
             Ok(String::new())

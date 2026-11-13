@@ -1637,11 +1637,17 @@ pub fn access_lists(sim: &Sim, d: &Device, only: Option<&str>) -> String {
 }
 
 /// `show ip nat translations`.
-pub fn nat_translations(sim: &Sim, d: &Device) -> String {
+pub fn nat_translations(sim: &Sim, d: &Device, verbose: bool) -> String {
     let fmt = |a: Ipv4Addr, id: Option<u16>| id.map_or(a.to_string(), |i| format!("{a}:{i}"));
+    let now = sim.now_us();
+    let ago = |t: u64| format!("{} s ago", now.saturating_sub(t) / 1_000_000);
     let mut rows: Vec<String> = Vec::new();
     for (l, g) in &d.nat.statics {
-        rows.push(format!("{:<6} {:<22} {:<22} {}", "---", g.to_string(), l.to_string(), "---"));
+        let mut row = format!("{:<6} {:<22} {:<22} {}", "---", g.to_string(), l.to_string(), "---");
+        if verbose {
+            row.push_str("\n    static entry from the configuration, never ages out");
+        }
+        rows.push(row);
     }
     if let Some(st) = sim.state(d.id) {
         for e in st.nat.iter().filter(|e| !e.fixed || e.local_id.is_some()) {
@@ -1651,7 +1657,23 @@ pub fn nat_translations(sim: &Sim, d: &Device) -> String {
                 6 => "tcp",
                 _ => "ip",
             };
-            rows.push(format!("{proto:<6} {:<22} {:<22} {}", fmt(e.inside_global, e.global_id), fmt(e.inside_local, e.local_id), e.outside));
+            let mut row = format!("{proto:<6} {:<22} {:<22} {}", fmt(e.inside_global, e.global_id), fmt(e.inside_local, e.local_id), e.outside);
+            if verbose {
+                let kind = match (e.fixed, e.local_id.is_some()) {
+                    (true, _) => "static, with a flow of its own",
+                    (false, true) => "dynamic, translated per flow (port or identifier)",
+                    (false, false) => "dynamic, address only",
+                };
+                let _ = write!(
+                    row,
+                    "\n    {kind}; created {}, last used {}, {} packet{} translated",
+                    ago(e.created_us),
+                    ago(e.last_us),
+                    e.uses,
+                    if e.uses == 1 { "" } else { "s" }
+                );
+            }
+            rows.push(row);
         }
     }
     if rows.is_empty() {

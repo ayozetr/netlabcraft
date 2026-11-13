@@ -1245,6 +1245,13 @@ pub static SPECS: &[Spec] = &[
     ),
     spec!(NoNatPool, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("nat"), K("pool"), Arg("WORD")], "Delete a NAT pool"),
     spec!(ShowNat, EXECS, Modes::BOTH, [K("show"), K("ip"), K("nat"), K("translations")], "Translations in use"),
+    spec!(
+        ShowNat,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("nat"), K("translations"), Arg("verbose")],
+        "Translations in use, with their age, last use and packet count"
+    ),
     spec!(ClearNatStats, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("nat"), K("statistics")], "Reset the NAT hit and miss counts"),
     spec!(ClearNat, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("nat"), K("translation"), Rest("*")], "Forget dynamic translations"),
     // ---- loopback interfaces (`interface Loopback N`) ----

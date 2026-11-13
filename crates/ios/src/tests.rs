@@ -10,6 +10,7 @@ mod families;
 mod inspections;
 mod ipsec_crypto;
 mod leftovers;
+mod nat_verbose;
 mod ospf_database;
 mod route_summary;
 mod routing;

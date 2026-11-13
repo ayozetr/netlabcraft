@@ -240,6 +240,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `ip nat pool WORD START END {netmask M \| prefix-length N}` | config | router, switch | Addresses to translate to |
 | `no ip nat pool WORD` | config | router, switch | Delete a NAT pool |
 | `show ip nat translations` | user, privileged | router, switch | Translations in use |
+| `show ip nat translations verbose` | user, privileged | router, switch | Translations in use, with their age, last use and packet count |
 | `clear ip nat statistics` | privileged | router, switch | Reset the NAT hit and miss counts |
 | `clear ip nat translation *` | privileged | router, switch | Forget dynamic translations |
 | `ip address A.B.C.D MASK` |  | router, switch | Set the loopback's address |
