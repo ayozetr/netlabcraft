@@ -314,7 +314,7 @@ pub fn compute_with(t: &Topology, held: &[Held]) -> EigrpState {
     let offer = |from: &BTreeMap<Ipv4Net, Best>, me: DeviceId, (_, bw, delay, addr, dev): &Adj| -> Vec<(Ipv4Net, Best, u32)> {
         // Split horizon: nothing offered back to the neighbour it goes through.
         let mut view: BTreeMap<Ipv4Net, Best> =
-            from.iter().filter(|(_, b)| !b.via.as_ref().is_some_and(|(_, _, d)| *d == me)).map(|(n, b)| (*n, b.clone())).collect();
+            from.iter().filter(|(_, b)| b.via.as_ref().is_none_or(|(_, _, d)| *d != me)).map(|(n, b)| (*n, b.clone())).collect();
         // A summary that covers something replaces it, with the best metric under it.
         for s in sums_of(*dev, *addr) {
             let covered: Vec<Ipv4Net> = view.keys().filter(|n| n.prefix >= s.prefix && s.contains(n.addr)).copied().collect();
