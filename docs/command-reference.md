@@ -1120,6 +1120,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `authentication local pre-share` |  | router | How this router proves who it is |
 | `authentication remote pre-share` |  | router | How the peer proves who it is |
 | `keyring local NAME` |  | router | The keyring holding the keys |
+| `lifetime <120-86400>` |  | router | Seconds before the IKE SA is replaced |
+| `no lifetime` |  | router | Back to the default IKE SA lifetime |
 | `set ikev2-profile NAME` |  | router | Negotiate this entry with IKEv2 |
 | `no set ikev2-profile` |  | router | Back to IKEv1 |
 | `show crypto ikev2 sa` | user, privileged | router | IKEv2 security associations |

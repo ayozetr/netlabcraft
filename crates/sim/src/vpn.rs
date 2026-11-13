@@ -318,6 +318,22 @@ pub struct IpsecSa {
     /// The inbound SA before the last rekey, still accepted until the peer deletes it: SPI,
     /// algorithms and key.
     pub prev_in: Option<(u32, Option<netlabcraft_wire::vpn::EspSuite>, Vec<u8>)>,
+    /// The ISAKMP (IKEv1) or IKE (IKEv2) SA's own lifetime in seconds (0 until it is up).
+    pub ike_life: u32,
+    /// When that SA came up, simulated µs.
+    pub ike_up_us: u64,
+    /// Times it was replaced by a new one since the first came up.
+    pub ike_rekeys: u32,
+    /// When the exchange that replaces it started (0: none under way).
+    pub ike_rekey_us: u64,
+    /// The cookies (IKEv1) or SPIs (IKEv2) of the SA it replaced.
+    pub ike_prev: Option<([u8; 8], [u8; 8])>,
+    /// IKEv1: the ISAKMP SA being negotiated to replace this one, while main mode runs.
+    pub(crate) ike_next: Option<Box<IpsecSa>>,
+    /// IKEv1: this exchange only renews the ISAKMP SA, so it stops after main mode.
+    pub(crate) p1_only: bool,
+    /// IKEv2: the IKE SA this one replaced, until the peer's Delete (or its answer) arrives.
+    pub(crate) v2_old: Option<Box<crate::ikev2::V2State>>,
 }
 
 /// Where an IPsec SA stands in its lifetime.
@@ -347,6 +363,41 @@ impl IpsecSa {
         if used_us >= life_us || self.bytes >= life_b {
             Life::Expired
         } else if used_us >= life_us / 10 * 9 || self.bytes >= life_b / 10 * 9 {
+            Life::Soft
+        } else {
+            Life::Fresh
+        }
+    }
+
+    /// The cookies (IKEv1) or SPIs (IKEv2) that name the ISAKMP or IKE SA: initiator's and
+    /// responder's.
+    pub fn icookie_or_spi(&self) -> ([u8; 8], [u8; 8]) {
+        match &self.v2 {
+            Some(v2) => (v2.spi_i, v2.spi_r),
+            None => (self.icookie, self.rcookie),
+        }
+    }
+
+    /// Where the exchange that replaces the ISAKMP SA stands, while one runs.
+    pub fn next_phase(&self) -> Option<String> {
+        self.ike_next.as_ref().map(|n| n.phase.describe())
+    }
+
+    /// Seconds left of the ISAKMP or IKE SA's lifetime.
+    pub fn ike_remaining(&self, now: u64) -> u64 {
+        u64::from(self.ike_life).saturating_sub(now.saturating_sub(self.ike_up_us) / 1_000_000)
+    }
+
+    /// Where the ISAKMP or IKE SA stands in its lifetime (fresh until it is up).
+    pub fn ike_life_state(&self, now: u64) -> Life {
+        if self.ike_life == 0 {
+            return Life::Fresh;
+        }
+        let used_us = now.saturating_sub(self.ike_up_us);
+        let life_us = u64::from(self.ike_life).saturating_mul(1_000_000);
+        if used_us >= life_us {
+            Life::Expired
+        } else if used_us >= life_us / 10 * 9 {
             Life::Soft
         } else {
             Life::Fresh
@@ -425,6 +476,14 @@ impl Default for IpsecSa {
             rekeys: 0,
             rekey_us: 0,
             prev_in: None,
+            ike_life: 0,
+            ike_up_us: 0,
+            ike_rekeys: 0,
+            ike_rekey_us: 0,
+            ike_prev: None,
+            ike_next: None,
+            p1_only: false,
+            v2_old: None,
         }
     }
 }
@@ -507,6 +566,21 @@ fn negotiate(t: &Topology, d: &Device, local: Ipv4Addr, e: &CryptoMapEntry) -> R
     policy_check(d, p)?;
     auth_check(d, local, p, peer)?;
     quick_check(d, local, e, p, peer)
+}
+
+/// The lifetime of this router's ISAKMP policy that matches a transform, in seconds (the
+/// default of a day when none is configured).
+fn own_p1_life(d: &Device, t: &Transform) -> u32 {
+    d.crypto.policies.iter().find(|p| crate::ikev1::same_policy(&policy_transform(0, Some(p)), t)).and_then(|p| p.lifetime).unwrap_or(86_400)
+}
+
+/// The lifetime a transform proposes. The attribute is 16 bits wide, so 65535 (what a default
+/// day is clamped to) and an absent attribute both mean "as long as you like".
+fn wire_life(t: &Transform) -> u32 {
+    match t.attrs.iter().find(|(k, _)| *k == 12) {
+        Some((_, v)) if *v != u16::MAX => u32::from(*v),
+        _ => u32::MAX,
+    }
 }
 
 /// ISAKMP attribute values for a policy (RFC 2409 appendix A).
@@ -742,7 +816,31 @@ impl Sim {
             self.ike_start(t, d, local, peer);
             return Err(format!("IPsec: no security association with {peer} yet: IKE main mode started"));
         }
-        // Established: renew the keys near the end of the lifetime, start over after it.
+        // Established: the ISAKMP SA is replaced near the end of its lifetime (a new main mode
+        // under the old one), and everything starts over when it ran out.
+        match sa.ike_life_state(now) {
+            Life::Expired => {
+                let why = format!("the ISAKMP SA with {peer} reached the end of its lifetime; negotiating a new one");
+                *sa = IpsecSa {
+                    local,
+                    peer,
+                    iface: out.name.clone(),
+                    map: entry.map.clone(),
+                    seq: entry.seq,
+                    drops: sa.drops.saturating_add(1),
+                    ..IpsecSa::default()
+                };
+                self.log(d.id, &why);
+                self.ike_start(t, d, local, peer);
+                return Err(format!("IPsec: {why}"));
+            }
+            Life::Soft if sa.initiator && (sa.ike_rekey_us == 0 || now.saturating_sub(sa.ike_rekey_us) >= IKE_RETRY_US) => {
+                self.ike_rekey_p1(t, d, local, peer);
+            }
+            _ => {}
+        }
+        let sa = self.st(d.id).ipsec.entry(peer).or_default();
+        // Renew the keys near the end of the lifetime, start over after it.
         match sa.life_state(now) {
             Life::Expired => {
                 let why = format!("IPsec SA with {peer} reached the end of its lifetime; negotiating new keys");
@@ -813,6 +911,7 @@ impl Sim {
         let sa = self.st(d.id).ipsec.entry(peer).or_default();
         sa.phase = IkePhase::Main(1);
         sa.initiator = true;
+        (sa.ike_life, sa.ike_next, sa.ike_rekey_us, sa.p1_only) = (0, None, 0, false);
         sa.icookie = icookie;
         sa.rcookie = [0; 8];
         sa.started_us = now;
@@ -842,6 +941,11 @@ impl Sim {
     fn set_v1(&mut self, d: &Device, peer: Ipv4Addr, v1: V1State, phase: IkePhase) {
         let now = self.now;
         let sa = self.st(d.id).ipsec.entry(peer).or_default();
+        // The ISAKMP SA is up once main mode is done: its lifetime starts there.
+        if sa.ike_life == 0 && (phase == IkePhase::Main(6) || matches!(phase, IkePhase::Quick(_))) {
+            sa.ike_life = v1.suite.map_or(0, |s| s.lifetime);
+            sa.ike_up_us = now;
+        }
         sa.v1 = Some(Box::new(v1));
         if sa.phase == IkePhase::Established {
             if sa.rekey_us == 0 {
@@ -864,6 +968,78 @@ impl Sim {
             s.rekey_us = now.max(1);
         }
         self.qm1(t, d, local, peer, v1, &seed, &entry, sa.icookie, sa.rcookie);
+    }
+
+    /// Renews the ISAKMP SA (RFC 2409): a new main mode exchange under a new pair of cookies,
+    /// run next to the old SA, which stays in use (and so do the IPsec SAs it set up, which
+    /// don't depend on it) until the new one replaces it.
+    fn ike_rekey_p1(&mut self, t: &Topology, d: &Device, local: Ipv4Addr, peer: Ipv4Addr) {
+        let now = self.now;
+        let Some(old_cookie) = self.state.get(&d.id).and_then(|s| s.ipsec.get(&peer)).map(|s| s.icookie) else { return };
+        let seed = [&local.octets()[..], &peer.octets()[..], &now.to_be_bytes()[..], &old_cookie[..], b"p1-rekey"].concat();
+        let icookie: [u8; 8] = ike::filler(&seed, 8).try_into().unwrap_or([3; 8]);
+        let mut transforms: Vec<Transform> = d.crypto.policies.iter().take(16).zip(1u8..).map(|(p, n)| policy_transform(n, Some(p))).collect();
+        if transforms.is_empty() {
+            transforms.push(policy_transform(1, None));
+        }
+        let proposal = Proposal { number: 1, protocol: ike::PROTO_ISAKMP, spi: Vec::new(), transforms };
+        let sa_payload = Payload::Sa(vec![proposal]);
+        let next = IpsecSa {
+            local,
+            peer,
+            phase: IkePhase::Main(1),
+            initiator: true,
+            icookie,
+            started_us: now,
+            p1_only: true,
+            v1: Some(Box::new(V1State::new(None, sa_payload.body()))),
+            ..IpsecSa::default()
+        };
+        if let Some(sa) = self.st(d.id).ipsec.get_mut(&peer) {
+            sa.ike_next = Some(Box::new(next));
+            sa.ike_rekey_us = now.max(1);
+        }
+        self.log(d.id, &format!("IKE with {peer}: the ISAKMP SA nears the end of its lifetime; a new main mode renews it"));
+        self.ike_send(t, d, local, peer, &Isakmp::clear(icookie, [0; 8], ike::EXCH_MAIN, 0, vec![sa_payload]));
+    }
+
+    /// Puts a finished or abandoned phase-1 rekey back together with the SA it renews: the new
+    /// keys and cookies replace the old ones, the IPsec SA's SPIs, keys and counters stay.
+    fn settle_p1(&mut self, d: &Device, peer: Ipv4Addr, mut old: IpsecSa, next: IpsecSa) -> IpsecSa {
+        let now = self.now;
+        if next.phase == IkePhase::Failed {
+            old.ike_next = None;
+            old.ike_rekey_us = 0;
+            return old;
+        }
+        let Some(mut v1) = next.v1.as_deref().cloned().filter(|_| next.phase == IkePhase::Main(6)) else {
+            old.ike_next = Some(Box::new(next));
+            if old.ike_rekey_us == 0 {
+                old.ike_rekey_us = now.max(1);
+            }
+            return old;
+        };
+        if let Some(ov) = old.v1.as_deref() {
+            v1.esp_suite = ov.esp_suite;
+            v1.esp_in.clone_from(&ov.esp_in);
+            v1.esp_out.clone_from(&ov.esp_out);
+            v1.spi_mine = ov.spi_mine;
+            v1.spi_peer = ov.spi_peer;
+        }
+        old.ike_prev = Some((old.icookie, old.rcookie));
+        old.icookie = next.icookie;
+        old.rcookie = next.rcookie;
+        old.initiator = next.initiator;
+        old.started_us = next.started_us;
+        old.ike_life = next.ike_life;
+        old.ike_up_us = next.ike_up_us;
+        old.ike_rekeys = old.ike_rekeys.saturating_add(1);
+        old.ike_rekey_us = 0;
+        old.ike_next = None;
+        old.rekey_us = 0;
+        old.v1 = Some(Box::new(v1));
+        self.log(d.id, &format!("IKE with {peer}: a new ISAKMP SA replaces the old one; the IPsec SAs carry on"));
+        old
     }
 
     /// Quick mode message 1: the ESP proposal from the crypto map entry, HASH(1) over it.
@@ -898,11 +1074,42 @@ impl Sim {
         self.ike_send(t, d, local, peer, &out);
     }
 
-    /// An ISAKMP message to this router: the next step of the exchange it belongs to.
+    /// An ISAKMP message to this router. One that belongs to a main mode renewing the ISAKMP
+    /// SA of a peer that is up (a new first message, or a message of the exchange this router
+    /// started) runs against that exchange's own state, which is merged into the SA when main
+    /// mode completes; anything else goes straight to its exchange.
     pub(crate) fn ike_in(&mut self, t: &Topology, d: &Device, ip: &Ipv4, payload: &[u8]) -> Result<(), String> {
         if payload.get(17).is_some_and(|v| v >> 4 == 2) {
             return self.ike2_in(t, d, ip, payload);
         }
+        let peer = ip.src;
+        let rekey = Isakmp::decode(payload).ok().is_some_and(|m| {
+            self.state.get(&d.id).and_then(|s| s.ipsec.get(&peer)).is_some_and(|c| {
+                c.phase == IkePhase::Established
+                    && c.v1.is_some()
+                    && c.v2.is_none()
+                    && match m.exchange {
+                        ike::EXCH_MAIN if m.rcookie == [0; 8] => m.icookie != c.icookie,
+                        ike::EXCH_MAIN | ike::EXCH_INFO => c.ike_next.as_ref().is_some_and(|n| n.icookie == m.icookie),
+                        _ => false,
+                    }
+            })
+        });
+        if !rekey {
+            return self.ike_in_inner(t, d, ip, payload);
+        }
+        let Some(mut old) = self.st(d.id).ipsec.remove(&peer) else { return self.ike_in_inner(t, d, ip, payload) };
+        let fresh = Isakmp::decode(payload).is_ok_and(|m| m.rcookie == [0; 8]);
+        let next = if fresh { IpsecSa::default() } else { old.ike_next.take().map(|b| *b).unwrap_or_default() };
+        self.st(d.id).ipsec.insert(peer, next);
+        let r = self.ike_in_inner(t, d, ip, payload);
+        let next = self.st(d.id).ipsec.remove(&peer).unwrap_or_default();
+        let merged = self.settle_p1(d, peer, old, next);
+        self.st(d.id).ipsec.insert(peer, merged);
+        r
+    }
+
+    fn ike_in_inner(&mut self, t: &Topology, d: &Device, ip: &Ipv4, payload: &[u8]) -> Result<(), String> {
         let m = Isakmp::decode(payload).map_err(|e| e.to_string())?;
         let (peer, local) = (ip.src, ip.dst);
         if d.crypto.applied.is_empty() && d.crypto.key_for(peer).is_none() {
@@ -977,7 +1184,9 @@ impl Sim {
                     self.ike_fail(d, peer, "the peer chose an ISAKMP policy this router did not offer".into());
                     return Ok(());
                 };
-                v1.suite = Some(P1Suite::from_transform(chosen));
+                let mut suite = P1Suite::from_transform(chosen);
+                suite.lifetime = own_p1_life(d, chosen).min(wire_life(chosen));
+                v1.suite = Some(suite);
                 v1.ke_i = v1.make_ke(&seed);
                 v1.ni = ike::filler(&[&seed[..], b"ni"].concat(), 16);
                 let out = Isakmp::clear(ic, m.rcookie, ike::EXCH_MAIN, 0, ke_nonce(v1.ke_i.clone(), v1.ni.clone()));
@@ -1055,6 +1264,11 @@ impl Sim {
                 });
                 if !ok {
                     self.ike_fail(d, peer, format!("main mode message 6 {}", crate::ikev1::OPEN_FAILED));
+                    return Ok(());
+                }
+                if cur.p1_only {
+                    // Only the ISAKMP SA is being renewed: the IPsec SAs stay as they are.
+                    self.set_v1(d, peer, v1, IkePhase::Main(6));
                     return Ok(());
                 }
                 self.qm1(t, d, local, peer, v1, &seed, &my_entry, ic, rc);
@@ -1181,7 +1395,15 @@ impl Sim {
         } else {
             offered.iter().find(|t| mine.iter().any(|(x, psk)| *psk && crate::ikev1::same_policy(x, t))).cloned()
         };
-        let Some(chosen) = chosen else {
+        // The shorter of the two lifetimes applies (RFC 2409 §5.5 leaves the choice to the
+        // responder); the answer carries it.
+        let chosen = chosen.map(|mut c| {
+            let life = own_p1_life(d, &c).min(wire_life(&c));
+            c.attrs.retain(|(k, _)| *k != 12);
+            c.attrs.push((12, u16::try_from(life).unwrap_or(u16::MAX)));
+            (c, life)
+        });
+        let Some((chosen, life)) = chosen else {
             let why = other.and_then(|o| policy_check(o, d).err()).unwrap_or_else(|| "no ISAKMP policy matches the peer's".to_string());
             self.ike_fail(d, peer, format!("{why}; refused main mode message 1"));
             let n = Isakmp::clear(
@@ -1195,7 +1417,9 @@ impl Sim {
             return Ok(());
         };
         let sa_b = m.payloads.iter().find(|p| matches!(p, Payload::Sa(_))).map(Payload::body).unwrap_or_default();
-        let v1 = V1State::new(Some(P1Suite::from_transform(&chosen)), sa_b);
+        let mut suite = P1Suite::from_transform(&chosen);
+        suite.lifetime = life;
+        let v1 = V1State::new(Some(suite), sa_b);
         self.set_v1(d, peer, v1, IkePhase::Main(2));
         let proposal = Proposal { number: 1, protocol: ike::PROTO_ISAKMP, spi: Vec::new(), transforms: vec![chosen] };
         self.ike_send(t, d, local, peer, &Isakmp::clear(m.icookie, rcookie, ike::EXCH_MAIN, 0, vec![Payload::Sa(vec![proposal])]));

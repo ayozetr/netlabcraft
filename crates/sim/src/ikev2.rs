@@ -27,6 +27,14 @@
 //! prf+(SK_d, Ni | Nr)), switches to the new SA and deletes the old one with an INFORMATIONAL
 //! exchange carrying a Delete payload (§1.4.1), which the peer answers with its own. A child
 //! SA past its lifetime is dropped and negotiated again from IKE_SA_INIT.
+//!
+//! The IKE SA has a lifetime of its own (`lifetime` in the IKEv2 profile, a day by default).
+//! Near its end the router that started it replaces it with a CREATE_CHILD_SA exchange that has
+//! no REKEY_SA notification but an SA payload for the IKE protocol with the new initiator SPI,
+//! a nonce and a fresh Diffie-Hellman value (RFC 7296 §1.3.2); the keys of the new SA come from
+//! SKEYSEED = prf(SK_d of the old SA, g^ir | Ni | Nr) (§2.18). The child SAs are inherited by the
+//! new IKE SA (their keys and SPIs do not change), and the old IKE SA is deleted with an
+//! INFORMATIONAL exchange sent on it.
 
 use std::net::Ipv4Addr;
 
@@ -77,6 +85,25 @@ pub struct V2State {
     /// A child SA rekey this router asked for: its nonce, its new inbound SPI and the request's
     /// message ID.
     child: Option<(Vec<u8>, u32, u32)>,
+    /// An IKE SA rekey this router asked for.
+    ike_new: Option<IkeRekey>,
+}
+
+/// An IKE SA rekey request in flight: the new SPI, nonce and Diffie-Hellman value this router
+/// sent and the message ID of the request.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct IkeRekey {
+    spi: [u8; 8],
+    ni: Vec<u8>,
+    group: u16,
+    dh_priv: Vec<u8>,
+    ke: Vec<u8>,
+    id: u32,
+}
+
+/// The lifetime of an IKE SA made under a profile, in seconds.
+fn ike_life_for(d: &Device, profile: Option<&str>) -> u32 {
+    profile.and_then(|n| d.crypto.ikev2.profile(n)).map_or(netlabcraft_model::vpn::DEFAULT_IKE_SECONDS, |p| p.ike_lifetime())
 }
 
 /// The ESP algorithms of a crypto map entry's transform set, when they are implemented.
@@ -416,6 +443,25 @@ impl Sim {
             return Err(format!("IPsec: no security association with {peer}: {why}"));
         }
         if sa.phase == IkePhase::Established && sa.v2.is_some() {
+            match sa.ike_life_state(now) {
+                crate::vpn::Life::Expired => {
+                    let why = format!("the IKE SA with {peer} reached the end of its lifetime; negotiating a new one");
+                    let drops = sa.drops.saturating_add(1);
+                    *sa = IpsecSa { local, peer, iface: out.name.clone(), map: entry.map.clone(), seq: entry.seq, drops, ..IpsecSa::default() };
+                    self.log(d.id, &why);
+                    self.ike2_start(t, d, local, peer, entry, None);
+                    return Err(format!("IPsec: {why}"));
+                }
+                crate::vpn::Life::Soft
+                    if sa.initiator
+                        && (sa.ike_rekey_us == 0 || now.saturating_sub(sa.ike_rekey_us) >= RETRY_US)
+                        && sa.v2.as_ref().is_some_and(|v| v.child.is_none()) =>
+                {
+                    self.ike2_rekey_ike(t, d, local, peer);
+                }
+                _ => {}
+            }
+            let sa = self.st(d.id).ipsec.entry(peer).or_default();
             match sa.life_state(now) {
                 crate::vpn::Life::Expired => {
                     let why = format!("IPsec SA with {peer} reached the end of its lifetime; negotiating new keys");
@@ -530,7 +576,14 @@ impl Sim {
                 self.ike2_auth_response(d, local, peer, raw, *v2)
             }
             (ikev2::CREATE_CHILD_SA | ikev2::INFORMATIONAL, _) => {
-                let Some(v2) = cur.v2.filter(|v| cur.phase == IkePhase::Established && v.spi_i == m.spi_i && v.spi_r == m.spi_r) else {
+                let live = cur.v2.clone().filter(|v| cur.phase == IkePhase::Established && v.spi_i == m.spi_i && v.spi_r == m.spi_r);
+                let Some(v2) = live else {
+                    // The deletion of the IKE SA a new one replaced is sent on the old one.
+                    if m.exchange == ikev2::INFORMATIONAL
+                        && let Some(old) = cur.v2_old.as_deref().filter(|o| o.spi_i == m.spi_i && o.spi_r == m.spi_r)
+                    {
+                        return self.ike2_old_sa(t, d, local, peer, &m, raw, old.clone(), response);
+                    }
                     return Err(format!("IKEv2 {} from {peer} for no IKE SA here", ikev2::exchange_name(m.exchange)));
                 };
                 self.ike2_on_sa(t, d, local, peer, &m, raw, *v2, response)
@@ -850,12 +903,14 @@ impl Sim {
         v2.next_req = 0;
         let spi_out = offer.as_ref().map_or(0, |o| spi_u32(&o.spi));
         let (now, life) = (self.now, entry.as_ref().map_or((0, 0), |e| d.crypto.lifetime(e)));
+        let ike_life = ike_life_for(d, Some(&profile.name));
         let sa = self.st(d.id).ipsec.entry(peer).or_default();
         sa.rekeyed(now, life, true);
         sa.phase = IkePhase::Established;
         sa.failed = None;
         sa.spi_in = spi_in;
         sa.spi_out = spi_out;
+        (sa.ike_life, sa.ike_up_us) = (ike_life, now);
         sa.v2 = Some(Box::new(v2));
         self.log(d.id, &format!("IKEv2 with {peer}: IKE_SA_INIT and IKE_AUTH complete, IKE and IPsec security associations up"));
         self.ike2_send(t, d, local, peer, reply.encode_sealed(keys.suite, &keys.sk_er, &keys.sk_ar, iv));
@@ -906,8 +961,10 @@ impl Sim {
         v2.esp_suite = suite;
         v2.next_req = 2;
         let (now, life) = (self.now, entry.as_ref().map_or((0, 0), |e| d.crypto.lifetime(e)));
+        let ike_life = ike_life_for(d, v2.profile.as_deref());
         let sa = self.st(d.id).ipsec.entry(peer).or_default();
         sa.rekeyed(now, life, true);
+        (sa.ike_life, sa.ike_up_us) = (ike_life, now);
         sa.phase = IkePhase::Established;
         sa.failed = None;
         sa.spi_out = esp.as_ref().map_or(0, |e| spi_u32(&e.spi));
@@ -1012,6 +1069,12 @@ impl Sim {
         let nonce = inner.iter().find_map(|p| if let Payload::Nonce(n) = p { Some(n.clone()) } else { None });
         let esp = inner.iter().find_map(|p| if let Payload::Sa(v) = p { v.first().cloned() } else { None });
         match (m.exchange, response) {
+            (ikev2::CREATE_CHILD_SA, false) if esp.as_ref().is_some_and(|o| o.protocol == ikev2::PROTO_IKE) => {
+                return self.ike2_rekey_ike_request(t, d, local, peer, m.message_id, &inner, v2, keys);
+            }
+            (ikev2::CREATE_CHILD_SA, true) if v2.ike_new.as_ref().is_some_and(|r| r.id == m.message_id) => {
+                return self.ike2_rekey_ike_response(t, d, local, peer, &inner, v2, keys);
+            }
             (ikev2::CREATE_CHILD_SA, false) => {
                 let refuse = |kind: u16| vec![Payload::Notify { protocol: 0, spi: Vec::new(), kind, data: Vec::new() }];
                 let rekeyed = inner.iter().find_map(|p| match p {
@@ -1108,6 +1171,213 @@ impl Sim {
         Ok(())
     }
 
+    /// CREATE_CHILD_SA request replacing the IKE SA (RFC 7296 §1.3.2): a new IKE SA with its
+    /// own SPIs, nonce and Diffie-Hellman value, which also means the algorithms of this
+    /// router's policies. The answer goes out on the old SA; the new one takes its place.
+    #[allow(clippy::too_many_arguments)]
+    fn ike2_rekey_ike(&mut self, t: &Topology, d: &Device, local: Ipv4Addr, peer: Ipv4Addr) {
+        let now = self.now;
+        let Some(sa) = self.state.get(&d.id).and_then(|s| s.ipsec.get(&peer)).cloned() else { return };
+        let Some(mut v2) = sa.v2.as_deref().cloned() else { return };
+        let offered = d.crypto.ikev2.offered(local);
+        let group = if offered.iter().any(|p| p.group.iter().any(|g| u16::from(*g) == v2.group)) {
+            v2.group
+        } else {
+            offered.first().and_then(|p| p.group.first()).copied().map_or(14, u16::from)
+        };
+        let seed = [&v2.spi_i[..], &v2.spi_r[..], &now.to_be_bytes()[..], b"ike-rekey"].concat();
+        let spi: [u8; 8] = filler(&[&seed[..], b"spi"].concat(), 8).try_into().unwrap_or([5; 8]);
+        let dh_priv = dh_private(&seed, group);
+        let ke = ke_public(group, &dh_priv, &seed);
+        let ni = filler(&[&seed[..], b"ni"].concat(), 32);
+        let proposals: Vec<Proposal> =
+            offered.iter().take(16).zip(1u8..).map(|(p, n)| Proposal { spi: spi.to_vec(), ..wire_proposal(n, p) }).collect();
+        let id = v2.next_req;
+        let payloads = vec![Payload::Sa(proposals), Payload::Nonce(ni.clone()), Payload::Ke { group, data: ke.clone() }];
+        v2.next_req = id.wrapping_add(1);
+        v2.ike_new = Some(IkeRekey { spi, ni, group, dh_priv, ke, id });
+        self.log(d.id, &format!("IKEv2 with {peer}: the IKE SA nears the end of its lifetime; CREATE_CHILD_SA sets up a new one"));
+        self.ike2_sa_send(t, d, local, peer, &v2, sa.initiator, ikev2::CREATE_CHILD_SA, id, false, payloads);
+        if let Some(s) = self.st(d.id).ipsec.get_mut(&peer) {
+            s.ike_rekey_us = now.max(1);
+            s.v2 = Some(Box::new(v2));
+        }
+    }
+
+    /// The responder's side of an IKE SA rekey.
+    #[allow(clippy::too_many_arguments)]
+    fn ike2_rekey_ike_request(
+        &mut self,
+        t: &Topology,
+        d: &Device,
+        local: Ipv4Addr,
+        peer: Ipv4Addr,
+        id: u32,
+        inner: &[Payload],
+        v2: V2State,
+        keys: Keys,
+    ) -> Result<(), String> {
+        let now = self.now;
+        let me_initiator = self.state.get(&d.id).and_then(|s| s.ipsec.get(&peer)).is_some_and(|s| s.initiator);
+        let refuse = |kind: u16, data: Vec<u8>| vec![Payload::Notify { protocol: 0, spi: Vec::new(), kind, data }];
+        let offers: Vec<&Proposal> = inner.iter().filter_map(|p| if let Payload::Sa(v) = p { Some(v) } else { None }).flatten().collect();
+        let (ke_group, ke_i) =
+            inner.iter().find_map(|p| if let Payload::Ke { group, data } = p { Some((*group, data.clone())) } else { None }).unwrap_or_default();
+        let ni = inner.iter().find_map(|p| if let Payload::Nonce(n) = p { Some(n.clone()) } else { None });
+        let mine: Vec<Proposal> = d.crypto.ikev2.offered(local).iter().zip(1u8..).map(|(p, n)| wire_proposal(n, p)).collect();
+        let chosen = offers.iter().find_map(|o| mine.iter().find_map(|x| choose(o, x, ke_group)).map(|c| (c, o.spi.clone())));
+        let (Some((mut chosen, peer_spi)), Some(ni)) = (chosen, ni) else {
+            self.log(d.id, &format!("IKEv2 with {peer}: refused to replace the IKE SA (NO_PROPOSAL_CHOSEN)"));
+            self.ike2_sa_send(t, d, local, peer, &v2, me_initiator, ikev2::CREATE_CHILD_SA, id, true, refuse(ikev2::NO_PROPOSAL_CHOSEN, Vec::new()));
+            return Ok(());
+        };
+        let group = chosen.of(ikev2::TT_DH).next().map_or(14, |g| g.id);
+        let spi_i: [u8; 8] = peer_spi.as_slice().try_into().unwrap_or([0; 8]);
+        let seed = [&spi_i[..], &local.octets()[..], &now.to_be_bytes()[..], b"ike-rekey-r"].concat();
+        let dh_priv = dh_private(&seed, group);
+        let ke_r = ke_public(group, &dh_priv, &seed);
+        let nr = filler(&[&seed[..], b"nr"].concat(), 32);
+        let shared = if group == ke_group { dh_shared(group, &dh_priv, &ke_i, &ke_r, false) } else { None };
+        let Some(shared) = shared else {
+            self.log(d.id, &format!("IKEv2 with {peer}: refused to replace the IKE SA (INVALID_KE_PAYLOAD)"));
+            let data = group.to_be_bytes().to_vec();
+            self.ike2_sa_send(t, d, local, peer, &v2, me_initiator, ikev2::CREATE_CHILD_SA, id, true, refuse(ikev2::INVALID_KE_PAYLOAD, data));
+            return Ok(());
+        };
+        let spi_r: [u8; 8] = filler(&[&seed[..], b"spi"].concat(), 8).try_into().unwrap_or([6; 8]);
+        let new_keys = Keys::rekey_with(ike_suite(&chosen), &keys.sk_d, &shared, &ni, &nr, &spi_i, &spi_r);
+        chosen.spi = spi_r.to_vec();
+        let reply = vec![Payload::Sa(vec![chosen.clone()]), Payload::Nonce(nr.clone()), Payload::Ke { group, data: ke_r.clone() }];
+        self.ike2_sa_send(t, d, local, peer, &v2, me_initiator, ikev2::CREATE_CHILD_SA, id, true, reply);
+        let new = V2State {
+            spi_i,
+            spi_r,
+            algorithms: describe(&chosen),
+            ni,
+            nr,
+            ke_i,
+            ke_r,
+            dh_priv,
+            group,
+            keys: Some(new_keys),
+            next_req: 0,
+            child: None,
+            ike_new: None,
+            ..v2.clone()
+        };
+        self.ike2_install_ike(d, peer, v2, new, false);
+        Ok(())
+    }
+
+    /// The initiator's side: the answer to its IKE SA rekey request.
+    #[allow(clippy::too_many_arguments)]
+    fn ike2_rekey_ike_response(
+        &mut self,
+        t: &Topology,
+        d: &Device,
+        local: Ipv4Addr,
+        peer: Ipv4Addr,
+        inner: &[Payload],
+        mut v2: V2State,
+        keys: Keys,
+    ) -> Result<(), String> {
+        let Some(req) = v2.ike_new.take() else { return Ok(()) };
+        let fail = |this: &mut Sim, v2: V2State, why: String| {
+            this.log(d.id, &format!("IKEv2 with {peer}: replacing the IKE SA failed: {why}"));
+            if let Some(s) = this.st(d.id).ipsec.get_mut(&peer) {
+                s.ike_rekey_us = 0;
+                s.v2 = Some(Box::new(v2));
+            }
+        };
+        if let Some(kind) = Message::notify(inner) {
+            fail(self, v2, format!("the peer answered {}", ikev2::notify_name(kind)));
+            return Ok(());
+        }
+        let chosen = inner.iter().find_map(|p| if let Payload::Sa(v) = p { v.first().cloned() } else { None });
+        let nr = inner.iter().find_map(|p| if let Payload::Nonce(n) = p { Some(n.clone()) } else { None });
+        let ke_r = inner.iter().find_map(|p| if let Payload::Ke { group, data } = p { Some((*group, data.clone())) } else { None });
+        let (Some(chosen), Some(nr), Some((group, ke_r))) = (chosen, nr, ke_r) else {
+            fail(self, v2, "the answer lacks the SA, the nonce or the key exchange".into());
+            return Ok(());
+        };
+        let Some(shared) = (group == req.group).then(|| dh_shared(group, &req.dh_priv, &req.ke, &ke_r, true)).flatten() else {
+            fail(self, v2, format!("the peer's Diffie-Hellman value is not valid for group {}", req.group));
+            return Ok(());
+        };
+        let spi_r: [u8; 8] = chosen.spi.as_slice().try_into().unwrap_or([0; 8]);
+        let new_keys = Keys::rekey_with(ike_suite(&chosen), &keys.sk_d, &shared, &req.ni, &nr, &req.spi, &spi_r);
+        let new = V2State {
+            spi_i: req.spi,
+            spi_r,
+            algorithms: describe(&chosen),
+            ni: req.ni,
+            nr,
+            ke_i: req.ke,
+            ke_r,
+            dh_priv: req.dh_priv,
+            group,
+            keys: Some(new_keys),
+            next_req: 0,
+            child: None,
+            ike_new: None,
+            ..v2.clone()
+        };
+        // The old IKE SA is deleted with a request on it, once the new one is in place.
+        let del_id = v2.next_req;
+        v2.next_req = del_id.wrapping_add(1);
+        let del = vec![Payload::Delete { protocol: ikev2::PROTO_IKE, spis: Vec::new() }];
+        self.ike2_sa_send(t, d, local, peer, &v2, true, ikev2::INFORMATIONAL, del_id, false, del);
+        self.ike2_install_ike(d, peer, v2, new, true);
+        Ok(())
+    }
+
+    /// The new IKE SA takes over: the child SAs, which live in the state it copies, go with it;
+    /// the old one is kept until its deletion is acknowledged.
+    fn ike2_install_ike(&mut self, d: &Device, peer: Ipv4Addr, old: V2State, new: V2State, initiator: bool) {
+        let now = self.now;
+        let life = ike_life_for(d, new.profile.as_deref());
+        let Some(sa) = self.st(d.id).ipsec.get_mut(&peer) else { return };
+        sa.ike_prev = Some((old.spi_i, old.spi_r));
+        sa.v2_old = Some(Box::new(old));
+        sa.v2 = Some(Box::new(new));
+        sa.initiator = initiator;
+        sa.ike_life = life;
+        sa.ike_up_us = now;
+        sa.ike_rekeys = sa.ike_rekeys.saturating_add(1);
+        sa.ike_rekey_us = 0;
+        self.log(d.id, &format!("IKEv2 with {peer}: a new IKE SA replaces the old one; the child SAs move to it"));
+    }
+
+    /// An INFORMATIONAL exchange on the IKE SA that a new one replaced: the deletion of that SA.
+    #[allow(clippy::too_many_arguments)]
+    fn ike2_old_sa(
+        &mut self,
+        t: &Topology,
+        d: &Device,
+        local: Ipv4Addr,
+        peer: Ipv4Addr,
+        m: &Message,
+        raw: &[u8],
+        old: V2State,
+        response: bool,
+    ) -> Result<(), String> {
+        let Some(keys) = old.keys.clone() else { return Err("IKEv2 keys missing".into()) };
+        let from_initiator = m.flags & ikev2::FLAG_INITIATOR != 0;
+        let (ek, ak) = if from_initiator { (&keys.sk_ei, &keys.sk_ai) } else { (&keys.sk_er, &keys.sk_ar) };
+        let inner = Message::open(raw, keys.suite, ek, ak).map_err(|e| format!("IKEv2 INFORMATIONAL from {peer} does not open ({e})"))?;
+        let deletes_ike = inner.iter().any(|p| matches!(p, Payload::Delete { protocol: ikev2::PROTO_IKE, .. }));
+        if !response && deletes_ike {
+            self.ike2_sa_send(t, d, local, peer, &old, !from_initiator, ikev2::INFORMATIONAL, m.message_id, true, Vec::new());
+        }
+        if response || deletes_ike {
+            if let Some(s) = self.st(d.id).ipsec.get_mut(&peer) {
+                s.v2_old = None;
+            }
+            self.log(d.id, &format!("IKEv2 with {peer}: the old IKE SA (SPIs {}/{}) is deleted", hex8(&old.spi_i), hex8(&old.spi_r)));
+        }
+        Ok(())
+    }
+
     /// ESP for a peer whose association IKEv2 set up: `None` when it isn't one.
     pub(crate) fn esp_in_v2(&mut self, t: &Topology, d: &Device, ifc: &L3If, ip: &Ipv4, spi: u32) -> Option<Result<(), String>> {
         let sa = self.state.get(&d.id).and_then(|s| s.ipsec.get(&ip.src))?;
@@ -1139,6 +1409,10 @@ impl Sim {
             }
         })
     }
+}
+
+fn hex8(b: &[u8; 8]) -> String {
+    b.iter().map(|x| format!("{x:02x}")).collect()
 }
 
 /// The KE data length for a group (bytes of its public value).

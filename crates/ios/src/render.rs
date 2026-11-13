@@ -2744,8 +2744,40 @@ pub fn crypto_isakmp_sa(sim: &Sim, d: &Device) -> String {
             (None, phase) => format!("negotiating: {}", phase.describe()),
         };
         let _ = writeln!(s, "{:<16} {:<16} {state}", sa.peer, sa.local);
+        if sa.phase == netlabcraft_sim::vpn::IkePhase::Established && sa.v1.is_some() {
+            let (i, r) = sa.icookie_or_spi();
+            let _ = writeln!(s, "{:34}cookies {}/{}; {}", "", hex8(&i), hex8(&r), ike_sa_life(sim, sa));
+            if let Some(next) = sa.next_phase() {
+                let _ = writeln!(s, "{:34}replacement under way: {next}", "");
+            }
+        }
     }
     s.trim_end().to_string()
+}
+
+fn hex8(b: &[u8; 8]) -> String {
+    b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
+/// The age, lifetime and history of an ISAKMP or IKE SA, for `show crypto isakmp sa` and
+/// `show crypto ikev2 sa`.
+pub(crate) fn ike_sa_life(sim: &Sim, sa: &netlabcraft_sim::vpn::IpsecSa) -> String {
+    let now = sim.now_us();
+    let age = now.saturating_sub(sa.ike_up_us) / 1_000_000;
+    let mut line = String::new();
+    if sa.ike_life != 0 {
+        let state = match sa.ike_life_state(now) {
+            netlabcraft_sim::vpn::Life::Expired => ", expired",
+            netlabcraft_sim::vpn::Life::Soft if sa.ike_rekey_us != 0 => ", replacement being negotiated",
+            _ => "",
+        };
+        let _ = write!(line, "age {age} s, {} of {} s left{state}; ", sa.ike_remaining(now), sa.ike_life);
+    }
+    let _ = write!(line, "replaced {} time{}", sa.ike_rekeys, if sa.ike_rekeys == 1 { "" } else { "s" });
+    if let Some((i, r)) = &sa.ike_prev {
+        let _ = write!(line, " (previous {}/{})", hex8(i), hex8(r));
+    }
+    line
 }
 
 /// `show crypto ipsec sa`: per peer, the SPIs and packet counts.

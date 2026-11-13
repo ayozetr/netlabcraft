@@ -237,9 +237,21 @@ pub struct Ikev2Profile {
     /// `keyring local NAME`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub keyring: Option<String>,
+    /// `lifetime SECONDS`: how long an IKE SA made under this profile lives (a day otherwise).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lifetime: Option<u32>,
 }
 
+/// The IKE SA lifetime when a profile sets none, and the range it accepts.
+pub const DEFAULT_IKE_SECONDS: u32 = 86_400;
+pub const IKE_SECONDS: std::ops::RangeInclusive<u32> = 120..=86_400;
+
 impl Ikev2Profile {
+    /// The lifetime an IKE SA made under this profile gets, in seconds.
+    pub fn ike_lifetime(&self) -> u32 {
+        self.lifetime.filter(|s| IKE_SECONDS.contains(s)).unwrap_or(DEFAULT_IKE_SECONDS)
+    }
+
     /// Whether a peer's identity (its address) matches this profile.
     pub fn matches(&self, peer: Ipv4Addr) -> bool {
         self.remote.iter().any(|(a, m)| u32::from(*a) & u32::from(*m) == u32::from(peer) & u32::from(*m))
