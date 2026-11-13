@@ -48,6 +48,8 @@ fn ikev1_runs_every_cipher_combination_for_real() {
         ("3des", "sha256", 14, "esp-3des esp-sha256-hmac", "3DES-CBC / HMAC-SHA256-128"),
         ("aes 128", "sha", 19, "esp-aes esp-sha-hmac", "AES-CBC-128 / HMAC-SHA1-96"),
         ("aes 256", "sha256", 20, "esp-aes 256 esp-sha256-hmac", "AES-CBC-256 / HMAC-SHA256-128"),
+        ("aes 128", "sha", 24, "esp-aes esp-sha-hmac", "AES-CBC-128 / HMAC-SHA1-96"),
+        ("3des", "md5", 24, "esp-3des esp-md5-hmac", "3DES-CBC / HMAC-MD5-96"),
     ] {
         let (mut lab, r1, isp, r2, a) = two_sites();
         lab.run(r1, &v1_config(SITE1.0, SITE1.1, "s3cret", enc, hash, group, ts));
@@ -90,6 +92,12 @@ fn ikev1_mismatches_fail_where_the_exchange_finds_them() {
     assert!(ping_settled(&mut lab, a, "192.168.2.10").contains(" 0 answered"));
     assert!(lab.run(r2, "show crypto isakmp sa").contains("refused main mode message 1"));
     assert!(lab.run(r1, "show crypto isakmp sa").contains("NO-PROPOSAL-CHOSEN"));
+    // Group 24 against group 14: no proposal chosen, as for any two groups.
+    let (mut lab, r1, _isp, r2, a) = two_sites();
+    lab.run(r1, &v1_config(SITE1.0, SITE1.1, "k", "aes 256", "sha", 24, "esp-aes esp-sha-hmac"));
+    lab.run(r2, &v1_config(SITE2.0, SITE2.1, "k", "aes 256", "sha", 14, "esp-aes esp-sha-hmac"));
+    assert!(ping_settled(&mut lab, a, "192.168.2.10").contains(" 0 answered"));
+    assert!(lab.run(r2, "show crypto isakmp sa").contains("refused main mode message 1"));
     // ESP key sizes that differ: refused at quick mode.
     let (mut lab, r1, _isp, r2, a) = two_sites();
     lab.run(r1, &v1_config(SITE1.0, SITE1.1, "k", "aes", "sha", 14, "esp-aes 256 esp-sha-hmac"));
