@@ -1,6 +1,6 @@
 # Target-app parity: NetLabCraft vs Cisco Packet Tracer
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (M9.11: BoardScript messages in the interface language) · earlier: minor (M9.11: the smart things share a room with physics) · earlier: minor (M9.5: IKEv1 group 24 is a real Diffie-Hellman group) · also merged with M9.6 and M9.8 (results replay; Resize Shape and accessible devices) · earlier: minor (M9.5: AH next to ESP in one transform set is a real bundle), minor (M9.5: the IKE SA has a lifetime and is replaced before it runs out), minor (counts measured again after seven troubleshooting labs; percentages not re-scored) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman), minor (packaged-build gate met), major (the lab book run end to end, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers: areas and course topics re-scored, the untested-labs deduction cut; counts measured again) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (M9.10: the cellular network: tablets and smartphones get mobile data, cell towers and a central office server) · earlier: minor (M9.11: BoardScript messages in the interface language) · earlier: minor (M9.11: the smart things share a room with physics) · earlier: minor (M9.5: IKEv1 group 24 is a real Diffie-Hellman group) · also merged with M9.6 and M9.8 (results replay; Resize Shape and accessible devices) · earlier: minor (M9.5: AH next to ESP in one transform set is a real bundle), minor (M9.5: the IKE SA has a lifetime and is replaced before it runs out), minor (counts measured again after seven troubleshooting labs; percentages not re-scored) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman), minor (packaged-build gate met), major (the lab book run end to end, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers: areas and course topics re-scored, the untested-labs deduction cut; counts measured again) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summarizes it,
 [`gaps.md`](gaps.md) lists every shortfall, and the area checklists hold the detail:
@@ -13,12 +13,12 @@ to end is in [`labs/`](labs/README.md).
 
 | Number | Value | Kind |
 |---|---|---|
-| Engine commands | **138** | measured: `c!(` entries in `crates/engine/src/catalog.rs` |
-| Console grammar entries | **1015** across 37 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
-| Device models | **51** | measured: `MODELS` in `crates/model/src/models.rs` (the fallback model not counted; the 7 router cards are in `MODULES`) |
-| Sample labs | **31** | measured: `SAMPLES` in `crates/engine/src/sample.rs` |
-| Lab-book labs | **27** | measured: numbered labs in `docs/labs/` (4 CCNA 1, 13 CCNA 2, 10 CCNA 3; labs 21 to 27 are troubleshooting labs), all run by `crates/engine/tests/lab_book.rs`, 11 also over MCP by `apps/netlabcraft-cli/tests/mcp_lab_book.rs` |
-| Tests | **620** | measured: sum of "passed" from `cargo test --workspace -q` |
+| Engine commands | **143** | measured: `c!(` entries in `crates/engine/src/catalog.rs` |
+| Console grammar entries | **1027** across 37 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
+| Device models | **53** | measured: `MODELS` in `crates/model/src/models.rs` (the fallback model not counted; the 7 router cards are in `MODULES`) |
+| Sample labs | **32** | measured: `SAMPLES` in `crates/engine/src/sample.rs` |
+| Lab-book labs | **27** (+1 unnumbered) | measured: numbered labs in `docs/labs/` (the cellular lab has no number) (4 CCNA 1, 13 CCNA 2, 10 CCNA 3; labs 21 to 27 are troubleshooting labs), all run by `crates/engine/tests/lab_book.rs`, 11 also over MCP by `apps/netlabcraft-cli/tests/mcp_lab_book.rs` |
+| Tests | **693** | measured: sum of "passed" from `cargo test --workspace -q` |
 | **Ready for real work** (weighted) | **~91%** | estimated; written weights below (90.9 computed) |
 | **CCNA 1 student** (Introduction to Networks) | **~93%** | estimated; [method](#audiences) |
 | **CCNA 2 student** (Switching, Routing and Wireless Essentials) | **~94%** | estimated; [method](#audiences) |
@@ -177,6 +177,7 @@ Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | Cellular network (M9.10): the Tablets and smartphones row is whole and cell towers and a central office server join the catalogue; scores not re-estimated. Counts re-measured the way they were counted before (`c!(` entries 143, `spec!(` rows 1027, `MODELS` 53, `SAMPLES` 32, numbered labs 27 plus the unnumbered cellular lab, and the sum of "passed" from `cargo test --workspace -q` 693; the earlier figures of other changes already in the tree are included). |
 | 2026-11-13 | minor | BoardScript compile and run messages in Spanish (M9.11). The IoT and boards gap keeps one room per lab and BoardScript instead of Python or JavaScript. Scores unchanged. |
 | 2026-11-13 | minor | The smart things share a room with physics (M9.11): a heater or air conditioner changes the thermostat's reading in simulated time (`iot.environment`, `iot-climate` sample); the IoT gap keeps BoardScript's English-only messages and the lack of rooms. Scores unchanged. |
 | 2026-11-13 | minor | IKEv1 group 24 runs for real (M9.5); only a no-cipher transform set keeps a crypto stand-in; no percentage changed. |
