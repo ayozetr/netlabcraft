@@ -1,12 +1,12 @@
 # Hardware parity
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (M9.10: cell towers, the central office server and the cellular radio on tablets and smartphones) · earlier: minor (tablets and smartphones, ten Wi-Fi IoT things, programmable boards and the IoT custom cable, the phone's settings, power supplies, a real PEAP tunnel and central switching; figures aligned) · **Target:** Cisco Packet Tracer 9.0 · also merged with M9.11 (minor (M9.11: BoardScript messages in the interface language))
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (re-scored 2026-11-13; M9.10: cell towers, the central office server and the cellular radio on tablets and smartphones) · earlier: minor (tablets and smartphones, ten Wi-Fi IoT things, programmable boards and the IoT custom cable, the phone's settings, power supplies, a real PEAP tunnel and central switching; figures aligned) · **Target:** Cisco Packet Tracer 9.0 · also merged with M9.11 (minor (M9.11: BoardScript messages in the interface language))
 
 Two kinds of hardware matter here: the **simulated** hardware (device models, ports, cables,
 modules) and the **real** hardware the app runs on. Part of
 [target-app-parity.md](target-app-parity.md). **Simulated hardware:** the Device families row of
-[`ROADMAP.md`](../ROADMAP.md#dimensions) (~82% ready, 8–14 h) and the cabling part of its WAN,
-cabling and wireless row (~93%); **host hardware: ~80% ready, 8–14 h** (estimated).
+[`ROADMAP.md`](../ROADMAP.md#dimensions) (~86% ready, 8–16 h) and the cabling part of its WAN,
+cabling and wireless row (~95%); **host hardware: ~80% ready, 8–14 h** (estimated).
 
 ## Simulated devices and cables
 
@@ -50,6 +50,7 @@ cabling and wireless row (~93%); **host hardware: ~80% ready, 8–14 h** (estima
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | Device families re-scored from ~82% to ~86% (cellular devices, a room with physics) and WAN, cabling and wireless from ~93% to ~95%. |
 | 2026-11-13 | minor | Cellular network (M9.10): the Tablets and smartphones row is whole (Wi-Fi and cellular); a row for cell towers and the central office server. |
 | 2026-11-13 | minor | BoardScript compile and run messages in Spanish (M9.11). |
 | 2026-11-13 | minor | The smart things share a room with physics (M9.11): heaters, air conditioners, fans, sprinklers, windows, garages and lamps change its temperature, humidity, soil moisture, smoke, CO and light in simulated time and the sensors read them; `iot.environment`; the `iot-climate` sample. |
