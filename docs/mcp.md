@@ -1,6 +1,6 @@
 # MCP server
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (eleven lab-book labs over MCP, was eight) · earlier: minor (the lab book over MCP; sessions for Simulation-mode options, automation depth, boards, power supplies and instructor tools)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (results replay fields (M9.6)) · earlier: minor (eleven lab-book labs over MCP, was eight) · earlier: minor (the lab book over MCP; sessions for Simulation-mode options, automation depth, boards, power supplies and instructor tools)
 
 `netlabcraft-cli mcp [--in LAB] [--sample ID]` speaks the Model Context Protocol (JSON-RPC 2.0, one message per line) on stdin/stdout.
 
@@ -47,7 +47,7 @@ Other sessions, all through `netlabcraft_run`:
   `activity.tree_checks` build checks from it; `activity.save_initial`, `activity.load_initial`
   and `activity.clear_initial` set where the student starts; `activity.translate` adds
   instructions in a language; `activity.connectivity` runs the ping checks;
-  `activity.export_results` and `activity.verify_results` write and check signed results;
+  `activity.export_results` and `activity.verify_results` write and check signed results (a JSON file embeds the student's network, and verifying it replays the checks: read `replayed`, `replay_matches`, `mismatches` and `message`; a CSV or an older file is checked for hand edits only);
   `activity.edit_check` changes a check's points or hint; `activity.locks` limits what a student
   may change while the activity is locked.
 - **Services:** `server.syslog` returns the messages a server's syslog service received.
@@ -56,6 +56,7 @@ Other sessions, all through `netlabcraft_run`:
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | `activity.export_results` embeds the network and `activity.verify_results` replays it (M9.6). |
 | 2026-11-13 | minor | Three troubleshooting labs (22, 24, 26) also run over MCP: eleven in all. |
 | 2026-10-31 | minor | The lab book over MCP; Simulation-mode options, kept NETCONF sessions, discovery and templates, boards, power supplies, phone addresses, `server.syslog` and the instructor commands. |
 | 2026-10-30 | minor | Sessions for PDUs, scenarios and the OSI view, RESTCONF, NETCONF and the controller, powered devices and clouds. |

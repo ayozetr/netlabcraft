@@ -2,7 +2,7 @@
 
 **Stage: pre-alpha** · every alpha and beta gate is met, packages are built by `release.yml` (not code-signed yet); the owner decides when the stage label changes
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (seven troubleshooting labs and the console views they turned up) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (releases and packaging), major (the CCNA lab book, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers landed; numbers measured again, readiness re-estimated, gaps re-ranked) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (results files are replayed to catch forged scores) · earlier: minor (seven troubleshooting labs and the console views they turned up) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (releases and packaging), major (the CCNA lab book, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers landed; numbers measured again, readiness re-estimated, gaps re-ranked) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 NetLabCraft aims at Cisco Packet Tracer parity for teaching and lab work, and at being better
 in places: real frames you can open in any packet analyser, an open lab format, agent control
@@ -40,7 +40,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | CCNA 1 student | ~93% | ~2–5 | More labs walked; small console and host-app details they turn up |
 | CCNA 2 student | ~94% | ~3–8 | More labs walked; VRRPv3 router advertisements, RIPng and EIGRP for IPv6 timers |
 | CCNA 3 student | ~90% | ~8–16 | certificates, IKE SA rekeying, a controller closer to the course's, virtualization |
-| Instructor | ~90% | ~4–8 | More interface languages, results signatures that resist forgery |
+| Instructor | ~90% | ~4–8 | More interface languages |
 
 ## Dimensions
 
@@ -61,6 +61,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 
 ## Progress log
 
+- **2026-11-13 — Results that resist forgery.** A JSON results file (version 2) now embeds the student's final network, and `activity.verify_results` runs the activity's checks again against it and compares the score, the points per item and which items passed with what the file claims, in addition to the signature and the same-activity check. A forged score fails unless the network really earns it. The result says `replayed` and `replay_matches` and lists what differed; a CSV or an older file is checked for hand edits only and says so, and time claims are not checked. The Activity window shows the three outcomes (replayed, not replayed, forged). A hostile or oversized embedded network is refused, never a crash.
 - **2026-11-13 — Troubleshooting labs.** Seven new labs (21 to 27) in the lab book build a working network, break it with commands and walk the diagnosis: VLAN and trunk faults, static routes and host masks, OSPF neighbours that will not form, an ACL in the wrong place, DHCP relay and pool faults, NAT overload faults and the spanning-tree root. Walking them turned up console gaps that are now fixed: `show interfaces switchport` for every port and `show interfaces X trunk`, `no ip proxy-arp`, `show ip ospf neighbor` by router ID or interface, `show ip route NET MASK`, the ACL `log` keyword with log messages, `clear (ip) access-list counters NAME`, `show ip dhcp pool NAME` with the addresses left, NAT to an interface without `overload` serving one host at a time, NAT hits and misses and `clear ip nat statistics`, NAT rules counting matches on their ACL, `show spanning-tree root`, `bridge` and `blockedports`. The book's console numbers are measured again.
 - **2026-11-13 — VRRPv3 router advertisements for IPv6.** The master of a VRRPv3 IPv6 group now announces the virtual router the way RFC 5798 asks: a router advertisement from the virtual link-local address with the virtual MAC when it takes the role and every 200 s, and it alone answers router solicitations (a backup stays quiet), so a host that autoconfigures takes the virtual address as its router and follows it when the master changes. The routing leftovers are done (GLBP hellos stay off the wire: the format is not public).
 - **2026-11-13 — EIGRP for IPv6 timers.** `ipv6 hello-interval eigrp AS S` and `ipv6 hold-time eigrp AS S` on interfaces (in the running configuration): hellos go out at each interface's own interval announcing its hold time, a neighbour that falls silent keeps its routes until that hold time runs out and is then dropped (a syslog line, DUAL's queries and updates), and `show ipv6 eigrp interfaces` lists the timers and `neighbors` the silent ones.
