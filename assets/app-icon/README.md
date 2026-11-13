@@ -32,7 +32,7 @@ Apple's grid: an 824/1024 body with a transparent margin.
 | `hicolor/<size>/apps/netlabcraft.png` | Linux icon theme, 16–512 px; the 256 px one is also the runtime window icon on Windows and Linux, and the web favicon |
 | `LICENSE.txt` | MIT OR Apache-2.0 |
 
-The icon name is `netlabcraft`, as used by `packaging/linux/netlabcraft.desktop` and the
+The icon name is `netlabcraft`, as used by `packaging/linux/io.github.ayozetr.netlabcraft.desktop` and the
 `.nlcraft` file type. A `.icns` for a macOS bundle comes with the macOS packaging (it needs
 `iconutil`).
 

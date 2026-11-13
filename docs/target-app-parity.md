@@ -1,6 +1,6 @@
 # Target-app parity: NetLabCraft vs Cisco Packet Tracer
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (test count measured on main, 770; M9.10: the cellular network: tablets and smartphones get mobile data, cell towers and a central office server) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (counts measured again after M9.7's four labs and console views; percentages not re-scored) · also merged with M9.5, M9.6, M9.8 and M9.11 · earlier: minor (counts measured again after seven troubleshooting labs; percentages not re-scored) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (packaged-build gate met), major (the lab book run end to end, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers: areas and course topics re-scored, the untested-labs deduction cut; counts measured again) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (lab-book count in the stage text; test count measured on main, 770; M9.10: the cellular network: tablets and smartphones get mobile data, cell towers and a central office server) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (counts measured again after M9.7's four labs and console views; percentages not re-scored) · also merged with M9.5, M9.6, M9.8 and M9.11 · earlier: minor (counts measured again after seven troubleshooting labs; percentages not re-scored) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (packaged-build gate met), major (the lab book run end to end, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers: areas and course topics re-scored, the untested-labs deduction cut; counts measured again) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summarizes it,
 [`gaps.md`](gaps.md) lists every shortfall, and the area checklists hold the detail:
@@ -158,7 +158,7 @@ first estimate) counted topics as present without weighing their depth or the un
 ## Stage
 
 **Pre-alpha:** every core workflow works end to end (build a lab, configure by typing, ping,
-watch frames, grade an activity, save), and the 20-lab book runs as written, by the engine and
+watch frames, grade an activity, save), and the 31-lab book (and the cellular lab) runs as written, by the engine and
 over MCP. Every alpha gate and every beta gate is met; packages are built by `release.yml`.
 Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 
@@ -177,6 +177,7 @@ Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | Stage text counts the 31-lab book. |
 | 2026-11-13 | minor | Cellular network (M9.10): the Tablets and smartphones row is whole and cell towers and a central office server join the catalogue; scores not re-estimated. Counts re-measured the way they were counted before: 3 engine commands, 6 grammar entries, 2 models, 1 sample lab and 1 unnumbered lab added (`c!(` entries 141, `spec!(` rows 1043, `MODELS` 53, `SAMPLES` 32, numbered labs 31), and the sum of "passed" from `cargo test --workspace -q` is 731 (the rest is the other merged changes). |
 | 2026-11-13 | minor | TLS under RESTCONF shows a certificate and SSH has a real host key (M9.9, stage 4); PEAP's toy group and IKE signatures are what is left of the PKI gap; no percentage changed. |
 | 2026-11-13 | minor | Keys, trustpoints, X.509 certificates and a small certificate authority on the console (M9.9, stages 1-3); no protocol uses the certificates yet, so no percentage changed. Counts measured again: 1035 grammar entries across 39 modes. |

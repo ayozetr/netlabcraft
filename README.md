@@ -90,7 +90,8 @@
   phones with their own Settings screen, eighteen IoT things (temperature sensor, fan, motion and
   smoke detectors, light, door lock, siren, webcam, and over Wi-Fi a thermostat, heater, air
   conditioner, humidity sensor, smart window, soil moisture sensor, lawn sprinkler, CO detector,
-  smart plug and garage door), and two programmable boards. Routers and switches have
+  smart plug and garage door; switch on a small simulated room and a heater really warms the
+  thermostat's reading), and two programmable boards. Routers and switches have
   power-supply bays: take out the last supply and the device switches off.
   [docs/model-equivalents.md](docs/model-equivalents.md) says which one to place when a course lab
   names a vendor model.
@@ -127,7 +128,7 @@
 - **QoS:** class maps, policy maps, DSCP marking, policing, shaping and output queues on congested
   links; `mls qos trust`, CoS-to-DSCP maps and `priority extend` on switches.
 - **Automation:** routers answer RESTCONF (JSON or XML, over IPv4 or IPv6, over TLS 1.2 on port
-  443) and NETCONF over SSH 2.0 (running and candidate datastores, commit, validate, locks); PCs
+  443, presenting a real certificate when the router has a trustpoint) and NETCONF over SSH 2.0 (running and candidate datastores, commit, validate, locks); PCs
   have a Programming app with saved requests and a controller mode that discovers routers over
   CDP and LLDP, keeps an inventory and pushes templates with per-router variables.
 - **Services:** servers with HTTP (and a web browser on the PCs), DNS, DHCP, email (SMTP and POP3,
