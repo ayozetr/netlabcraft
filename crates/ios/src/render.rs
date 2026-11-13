@@ -1382,6 +1382,61 @@ pub fn ip_protocols(
     parts.join("\n\n")
 }
 
+/// `show ip protocols summary`: one line for each routing protocol the router runs.
+pub fn ip_protocols_summary(
+    d: &Device,
+    st: &netlabcraft_sim::ospf::OspfState,
+    rs: &netlabcraft_sim::rip::RipState,
+    es: &netlabcraft_sim::eigrp::EigrpState,
+) -> String {
+    let mut rows: Vec<String> = Vec::new();
+    let row = |name: &str, id: String, rid: String, ifs: usize, passive: usize, nbrs: usize, routes: usize| {
+        format!("{name:<8} {id:<8} {rid:<16} {ifs:<11} {passive:<8} {nbrs:<11} {routes}")
+    };
+    if let Some(o) = &d.ospf {
+        let ifs = st.interfaces.get(&d.id).map_or(&[][..], Vec::as_slice);
+        rows.push(row(
+            "OSPF",
+            o.process.to_string(),
+            st.router_ids.get(&d.id).map_or("-".to_string(), ToString::to_string),
+            ifs.len(),
+            ifs.iter().filter(|i| i.3).count(),
+            st.neighbors.get(&d.id).map_or(0, Vec::len),
+            st.routes.get(&d.id).map_or(0, Vec::len),
+        ));
+    }
+    if let Some(e) = &d.eigrp {
+        let ifs = es.interfaces.get(&d.id).map_or(&[][..], Vec::as_slice);
+        rows.push(row(
+            "EIGRP",
+            format!("AS {}", e.asn),
+            es.router_ids.get(&d.id).map_or("-".to_string(), ToString::to_string),
+            ifs.len(),
+            ifs.iter().filter(|i| i.passive).count(),
+            es.neighbors.get(&d.id).map_or(0, Vec::len),
+            es.routes.get(&d.id).map_or(0, Vec::len),
+        ));
+    }
+    if let Some(r) = &d.rip {
+        let ifs = rs.interfaces.get(&d.id).map_or(&[][..], Vec::as_slice);
+        rows.push(row(
+            "RIP",
+            format!("v{}", r.version),
+            "-".to_string(),
+            ifs.len(),
+            ifs.iter().filter(|i| i.2).count(),
+            rs.neighbors.get(&d.id).map_or(0, Vec::len),
+            rs.routes.get(&d.id).map_or(0, Vec::len),
+        ));
+    }
+    if rows.is_empty() {
+        return "No routing protocol is running (static routes only).".into();
+    }
+    let mut s = format!("{:<8} {:<8} {:<16} {:<11} {:<8} {:<11} Routes\n", "Protocol", "ID", "Router ID", "Interfaces", "Passive", "Neighbours");
+    s.push_str(&rows.join("\n"));
+    s
+}
+
 fn eigrp_protocol(d: &Device, st: &netlabcraft_sim::eigrp::EigrpState) -> String {
     let Some(e) = &d.eigrp else { return String::new() };
     let mut s = format!("Routing protocol: EIGRP, autonomous system {}\n", e.asn);

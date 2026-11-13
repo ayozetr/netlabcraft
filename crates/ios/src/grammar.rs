@@ -2341,6 +2341,13 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowGlbp, EXECS, Modes::BOTH, [K("show"), K("glbp"), Arg("{brief}")], "GLBP groups, one line each"),
     spec!(ShowIpv6Ospf, EXECS, Modes::BOTH, [K("show"), K("ipv6"), K("ospf")], "OSPFv3 process"),
     spec!(ShowIpProtocols, EXECS, Modes::BOTH, [K("show"), K("ip"), K("protocols")], "Routing protocols running"),
+    spec!(
+        ShowIpProtocols,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("protocols"), Arg("summary")],
+        "One line per routing protocol: router ID, interfaces, neighbours, routes"
+    ),
     spec!(HelperAddress, IFS, Modes::ROUTER, [K("ip"), K("helper-address"), Arg("A.B.C.D")], "Relay DHCP requests to this server"),
     spec!(NoHelperAddress, IFS, Modes::ROUTER, [K("no"), K("ip"), K("helper-address"), Rest("[A.B.C.D]")], "Stop relaying (to one server)"),
     spec!(NoHelperAddress, IFS, Modes::ROUTER, [K("no"), K("ip"), K("helper-address")], "Stop relaying DHCP requests"),

@@ -652,6 +652,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show glbp {brief}` | user, privileged | router, switch | GLBP groups, one line each |
 | `show ipv6 ospf` | user, privileged | router, switch | OSPFv3 process |
 | `show ip protocols` | user, privileged | router, switch | Routing protocols running |
+| `show ip protocols summary` | user, privileged | router, switch | One line per routing protocol: router ID, interfaces, neighbours, routes |
 | `ip helper-address A.B.C.D` | interface, subinterface | router | Relay DHCP requests to this server |
 | `no ip helper-address [A.B.C.D]` | interface, subinterface | router | Stop relaying (to one server) |
 | `no ip helper-address` | interface, subinterface | router | Stop relaying DHCP requests |

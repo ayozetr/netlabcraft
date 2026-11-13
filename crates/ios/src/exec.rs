@@ -3878,6 +3878,13 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let st = c.sim.ospf_state(c.t);
             let rs = c.sim.rip_state(c.t);
             let es = c.sim.eigrp_state(c.t);
+            let w = arg(0).trim().to_ascii_lowercase();
+            if !w.is_empty() {
+                if !"summary".starts_with(&w) {
+                    return Err("% show ip protocols, or show ip protocols summary".into());
+                }
+                return Ok(render::ip_protocols_summary(c.d()?, &st, &rs, &es));
+            }
             Ok(render::ip_protocols(c.d()?, &st, &rs, &es))
         }
         Id::HelperAddress | Id::NoHelperAddress => {

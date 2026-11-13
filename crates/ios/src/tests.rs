@@ -12,6 +12,7 @@ mod ipsec_crypto;
 mod leftovers;
 mod nat_verbose;
 mod ospf_database;
+mod protocols_summary;
 mod route_summary;
 mod routing;
 mod security;
