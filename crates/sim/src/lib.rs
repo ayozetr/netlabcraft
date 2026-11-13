@@ -25,6 +25,7 @@ use netlabcraft_wire::{Arp, ArpOp, ETHERTYPE_ARP, ETHERTYPE_IPV4, Frame, Icmp, I
 pub mod automation;
 pub mod board;
 pub mod cdp;
+pub mod cell;
 mod central;
 pub mod email;
 pub mod explain;
@@ -64,6 +65,8 @@ pub mod snmp;
 pub mod stp;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_cell;
 pub mod v6;
 pub mod voice;
 pub mod vpn;
@@ -542,6 +545,15 @@ fn pick_path<T: Clone>(paths: &[(u32, T)], flow: u32) -> Option<T> {
     paths.last().map(|(_, p)| p.clone())
 }
 
+/// The default gateway a host uses out of an interface: the one the central office named on a
+/// cellular port, else its own.
+pub(crate) fn host_gateway(d: &Device, i: &L3If) -> Option<Ipv4Addr> {
+    match d.ports.get(i.port) {
+        Some(p) if ifname::is_cellular(&p.name) => p.dhcp_router,
+        _ => d.gateway,
+    }
+}
+
 /// [`route`] with the routing protocols' routes for this device given (at equal prefix length
 /// connected beats static beats EIGRP beats OSPF beats RIP, as their administrative distances say).
 /// Among several paths to the most specific destination, `flow` picks one.
@@ -561,7 +573,7 @@ pub fn route_with(
         if i.net.contains(dst) || dst == Ipv4Addr::BROADCAST {
             return Some((i, dst));
         }
-        let gw = d.gateway.filter(|g| i.net.contains(*g))?;
+        let gw = host_gateway(d, &i).filter(|g| i.net.contains(*g))?;
         return Some((i, gw));
     }
     if d.kind == DeviceKind::Switch && !d.ip_routing {
@@ -1101,6 +1113,9 @@ pub struct Sim {
     links_seen: BTreeMap<(DeviceId, usize), bool>,
     /// Lab changes waiting for the engine.
     events: Vec<PortEvent>,
+    /// Cellular attach exchanges started (by device cellular port) and their answers.
+    cell_seen: BTreeMap<End, String>,
+    cell_state: BTreeMap<End, cell::CellSession>,
     /// Wi-Fi associations as the air has shown them, by host radio.
     assoc: BTreeMap<End, wlan::Assoc>,
     /// Access point radios: the packet number of the last group-addressed frame protected.
@@ -1386,6 +1401,7 @@ impl Sim {
             .filter(|Reverse(q)| t.peer(q.from) == Some(q.to) || (wlan::air_hop(t, q.from, q.to) && (joining(q.from, q.to) || joining(q.to, q.from))))
             .collect();
         self.wlan_sync(t);
+        self.cell_sync(t);
         if self.eigrp.is_some() || t.devices.iter().any(|d| d.eigrp.is_some()) {
             self.eigrp_refresh(t);
         }
@@ -1453,6 +1469,7 @@ impl Sim {
         self.send_rstp_handshakes(t);
         self.l2_tick(t);
         self.wlan_sync(t);
+        self.cell_sync(t);
         self.flush_syslog(t);
         self.flush_traps(t);
         self.voice_tick(t);
@@ -1642,6 +1659,7 @@ impl Sim {
             DeviceKind::Switch => self.switch_in(t, d, at.port, f, pcp, hops),
             // A router's switch card switches like a switch.
             DeviceKind::Router if d.is_switchport(at.port) => self.switch_in(t, d, at.port, f, pcp, hops),
+            DeviceKind::Hub if d.is_tower() => self.tower_in(t, d, at.port, bytes, hops),
             DeviceKind::Hub => self.hub_in(t, d, at.port, bytes, hops),
             DeviceKind::Phone => self.phone_in(t, d, at.port, f, hops),
             _ => self.l3_in(t, d, at.port, f),
@@ -2556,6 +2574,9 @@ impl Sim {
     // ---- hosts and routers ----
 
     fn l3_in(&mut self, t: &Topology, d: &Device, in_port: usize, f: Frame) -> Result<(), String> {
+        if f.ethertype == netlabcraft_wire::cell::ETHERTYPE_CELL {
+            return self.cell_in(t, d, in_port, &f);
+        }
         if f.ethertype == netlabcraft_wire::ipv6::ETHERTYPE_IPV6 {
             return self.ip6_in(t, d, in_port, &f);
         }
@@ -2635,7 +2656,14 @@ impl Sim {
                 && d.ports.get(ifc.port).is_some_and(|p| !p.proxy_arp_off)
                 && !ifc.net.contains(a.target_ip)
                 && self.route(t, d, a.target_ip).is_some_and(|(out, _)| out.name != ifc.name);
-            if !proxied {
+            // A central office server also answers for the mobile devices it admitted: they share
+            // its pool's network, but a tower never carries one device's frames to another's
+            // sector, so they reach each other through the server.
+            let cell_proxy = a.op == ArpOp::Request
+                && d.is_central_office()
+                && a.target_ip != a.sender_ip
+                && t.core_clients(d.id).iter().any(|(_, _, lease)| lease.address.addr == a.target_ip && ifc.net.contains(a.target_ip));
+            if !proxied && !cell_proxy {
                 return Err(format!("ARP for {}, not this device", a.target_ip));
             }
         }
@@ -3740,11 +3768,13 @@ impl Sim {
     /// The address a device sources its own traffic to `dst` from.
     pub fn source_for(&mut self, t: &Topology, d: &Device, dst: Ipv4Addr) -> Result<Ipv4Addr, SimError> {
         let ifs = l3_ifaces(d);
-        let Some(first) = ifs.first() else {
+        // A host with two radios (Wi-Fi and cellular) uses the one that is up, Wi-Fi first.
+        let up = if d.kind.is_host() { up_ifaces(t, d) } else { Vec::new() };
+        let Some(first) = up.first().or(ifs.first()) else {
             return Err(SimError::NoSource(format!("{} has no IP address configured", d.name)));
         };
         // A host always sources from its one address; with its cable out the echo just times out.
-        if d.kind.is_host() && (first.net.contains(dst) || d.gateway.is_some_and(|g| first.net.contains(g))) {
+        if d.kind.is_host() && (first.net.contains(dst) || host_gateway(d, first).is_some_and(|g| first.net.contains(g))) {
             return Ok(first.net.addr);
         }
         self.route(t, d, dst).map(|(i, _)| i.net.addr).ok_or_else(|| SimError::NoSource(format!("{} has no route to {dst}", d.name)))

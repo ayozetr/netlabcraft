@@ -40,6 +40,14 @@ ip nat inside source list 1 interface Internet0 overload
 
 /// Applies the factory settings to a home router just added; anything else is left alone.
 pub fn factory(t: &mut Topology, id: DeviceId) {
+    // A central office server leaves the factory with its interfaces up: it is the provider's
+    // equipment, and what students set is the pool.
+    if let Some(d) = t.device_mut(id).filter(|d| d.is_central_office()) {
+        for p in &mut d.ports {
+            p.shutdown = false;
+        }
+        return;
+    }
     if !t.device(id).is_some_and(|d| d.catalogue_model().home_router()) {
         return;
     }

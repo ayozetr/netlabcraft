@@ -1,6 +1,6 @@
 # NetLabCraft lab book
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (four more labs, 28 to 31: OSPF authentication, ICMP in ACLs, spanning-tree views, the OSPF database) · earlier: minor (seven troubleshooting labs, 21 to 27) · earlier: major (created: 20 labs over the three CCNA courses) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (an unnumbered cellular lab, M9.10) · earlier: minor (four more labs, 28 to 31: OSPF authentication, ICMP in ACLs, spanning-tree views, the OSPF database) · earlier: minor (seven troubleshooting labs, 21 to 27) · earlier: major (created: 20 labs over the three CCNA courses) · **Target:** Cisco Packet Tracer 9.0
 
 Thirty-one hands-on labs over the topics of the three CCNA courses, written for NetLabCraft
 from scratch. Labs 1 to 20 each build one topic; labs 21 to 29 are troubleshooting labs: they
@@ -33,6 +33,8 @@ Times in Realtime mode pass by themselves; `sim.advance` stands for waiting (spa
 30 seconds, OSPF's dead interval, NTP's first poll).
 
 ## The labs
+
+One more lab has no number because it belongs to no CCNA course: [Mobile data over a cell tower](cellular-mobile-data.md) (cell tower, central office server, APN and data plan, coverage; run by `lab_cellular_mobile_data`).
 
 | # | Lab | Course | Topics |
 |---|---|---|---|
@@ -90,6 +92,7 @@ A failing step names its line in the lab's Markdown.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | An unnumbered lab, [Mobile data over a cell tower](cellular-mobile-data.md) (M9.10), run end to end by the engine (`lab_cellular_mobile_data`); it takes no number, because numbers 28 and up went to the troubleshooting and inspection labs. |
 | 2026-11-13 | minor | Four more labs (28 to 31): OSPF authentication faults (a mistyped MD5 key, a different key ID, a different type), an ACL that drops ICMP time-exceeded so traceroute breaks and ping does not, spanning-tree inspection with the new `brief`, `detail` and `interface` views, and reading the OSPF database; 28 to 30 also run over MCP. The engine gaps they turned up are in [gaps.md](../gaps.md)' history. |
 | 2026-11-13 | minor | Seven troubleshooting labs (21 to 27: 4 SRWE, 3 ENSA), run end to end by the engine, three of them also over MCP; the console views and options they turned up are in [gaps.md](../gaps.md)' history. |
 | 2026-10-30 | major | Created: 20 labs (4 ITN, 9 SRWE, 7 ENSA), run end to end by the engine and over MCP. |

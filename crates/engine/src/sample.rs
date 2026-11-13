@@ -161,6 +161,11 @@ pub static SAMPLES: &[Sample] = &[
         description: "A tablet and a smartphone join the home router's Wi-Fi, take their addresses by DHCP and open the web server's pages from their touch screens.",
     },
     Sample {
+        id: "cellular",
+        title: "Cell towers, a central office and mobile data",
+        description: "A smartphone and a tablet attach to cell towers, take their addresses from the central office server and open the web server's pages over mobile data.",
+    },
+    Sample {
         id: "wifi-things",
         title: "Wi-Fi smart things: climate, garden and safety",
         description: "Ten Wi-Fi things join the home gateway: a thermostat drives a heater and an air conditioner, humidity and carbon monoxide open a window, a soil sensor waters the lawn.",
@@ -1494,6 +1499,28 @@ pub fn build(id: &str) -> Result<Topology> {
                 b.type_in(name, "ipconfig /renew")?;
             }
             b.t.notes = "Tablet1 and Smartphone1 are on the Home router's Wi-Fi (HomeNetwork) and took their addresses by DHCP. Open one, tap Web Browser and go to 192.168.0.10; the Command Prompt pings, IP Configuration shows the lease.".into();
+        }
+        "cellular" => {
+            b.add_model("Cell-Tower", "Tower1", 120.0, 90.0)?;
+            b.add_model("Cell-Tower", "Tower2", 640.0, 90.0)?;
+            b.add_model("Switch-8", "S1", 380.0, 100.0)?;
+            b.add_model("Central-Office", "CO1", 380.0, 230.0)?;
+            b.add(DeviceKind::Server, "Web", 600.0, 330.0)?;
+            b.cable("Tower1", "e0", "S1", "fa0/1")?;
+            b.cable("Tower2", "e0", "S1", "fa0/2")?;
+            b.cable("S1", "g0/1", "CO1", "g0/0")?;
+            b.cable("CO1", "g0/1", "Web", "g0")?;
+            b.type_in(
+                "CO1",
+                "enable\nconfigure terminal\ninterface g0/0\nip address 10.64.0.1 255.255.255.0\nno shutdown\ninterface g0/1\nip address 192.168.60.1 255.255.255.0\nno shutdown\nexit\ncellular pool 10.64.0.0 255.255.255.0\ncellular apn internet\nend",
+            )?;
+            b.type_in("Web", "ipconfig 192.168.60.10 255.255.255.0 192.168.60.1")?;
+            for (name, model, x) in [("Smartphone1", "Smartphone", 100.0), ("Tablet1", "Tablet", 660.0)] {
+                b.add_model(model, name, x, 260.0)?;
+                b.type_in(name, "cellular apn internet")?;
+            }
+            b.t.cell_refresh();
+            b.t.notes = "Smartphone1 sits under Tower1 and Tablet1 under Tower2; both towers reach CO1 (the central office server) through S1. CO1 admits devices that ask for the APN `internet` and gives them addresses from 10.64.0.0/24. Open a phone, tap Command Prompt and run `cellular`, then `ping 192.168.60.10`; or tap Web Browser and open 192.168.60.10. Try `cellular off`, drag a phone far from its tower, change the APN, or run `cellular data-plan off` on CO1, and watch the CELL frames in Simulation mode.".into();
         }
         "wifi-things" => {
             use netlabcraft_model::iot::{Condition, IotRule, Op};

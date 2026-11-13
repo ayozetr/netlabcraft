@@ -342,4 +342,41 @@ mod setup_and_supplies {
         h.run_steps(2);
         assert!(!h.state().session.topology.device(r1).unwrap().no_psu());
     }
+
+    #[test]
+    fn the_cellular_tiles_are_in_the_device_box_and_a_phones_settings_switch_cellular_data() {
+        let mut h = harness("cellular");
+        h.state_mut().ui.show_notes = false;
+        h.run_steps(2);
+        h.get_by_label("Cellular").click();
+        h.run_steps(2);
+        for tile in ["Cell Tower", "Central Office Server"] {
+            assert!(h.query_by_label(tile).is_some(), "{tile}");
+        }
+        let ph = h.state().session.topology.resolve("Smartphone1").unwrap();
+        crate::open_desktop_app(h.state_mut(), ph, "settings");
+        h.run_steps(3);
+        assert!(h.query_by_label("Apply APN").is_some() && h.query_by_label("APN (access point name)").is_some());
+        assert!(h.state().session.topology.cell_link(ph).is_some_and(|l| l.outcome.is_ok()));
+        h.get_by_label("Cellular Data").click();
+        h.run_steps(2);
+        let d = h.state().session.topology.device(ph).unwrap();
+        assert!(d.cell.data_off && h.state().session.topology.cell_link(ph).is_none(), "off: no link, no address");
+    }
+
+    #[test]
+    fn the_central_office_page_turns_the_data_plan_off_and_the_phones_are_refused() {
+        let mut h = harness("cellular");
+        h.state_mut().ui.show_notes = false;
+        let co = h.state().session.topology.resolve("CO1").unwrap();
+        crate::open_config_page(h.state_mut(), co, "cellular");
+        h.run_steps(3);
+        assert!(h.query_by_label("Apply pool").is_some() && h.query_by_label("Devices admitted").is_some());
+        h.get_by_label("Data plan on").click();
+        h.run_steps(2);
+        let t = &h.state().session.topology;
+        assert!(t.device(co).unwrap().cell.plan_off);
+        let ph = t.resolve("Smartphone1").unwrap();
+        assert!(t.cell_link(ph).is_some_and(|l| l.outcome.is_err()), "refused while the plan is off");
+    }
 }

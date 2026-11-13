@@ -2,7 +2,7 @@
 //! `Fa0/1.10`. A name is a type word followed by slot/port numbers and an optional `.sub`.
 
 /// The interface types NetLabCraft devices have, with their full spelling.
-pub const TYPES: [&str; 8] = ["GigabitEthernet", "FastEthernet", "Ethernet", "Serial", "Wireless", "Internet", "Coaxial", "Phone"];
+pub const TYPES: [&str; 9] = ["GigabitEthernet", "FastEthernet", "Ethernet", "Serial", "Wireless", "Internet", "Coaxial", "Phone", "Cellular"];
 
 /// A parsed interface name.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,6 +70,11 @@ pub fn parse(input: &str) -> Option<IfName> {
 /// Whether a port name is a radio (Wi-Fi) interface.
 pub fn is_wireless(full: &str) -> bool {
     full.starts_with("Wireless")
+}
+
+/// Whether a port name is a cellular radio (a phone's modem or a tower's sector).
+pub fn is_cellular(full: &str) -> bool {
+    full.starts_with("Cellular")
 }
 
 /// Whether a port name is a serial interface.

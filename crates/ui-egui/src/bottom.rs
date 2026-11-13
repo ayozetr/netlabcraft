@@ -25,6 +25,8 @@ pub enum Sub {
     Hubs,
     /// The cloud and the modems.
     Wan,
+    /// The cell tower and the central office server.
+    Cellular,
     Hosts,
     Cables,
 }
@@ -63,7 +65,13 @@ fn tiles() -> Vec<Tile> {
     let mut t: Vec<Tile> = models::MODELS
         .iter()
         .map(|m| Tile {
-            sub: if m.wan() { Sub::Wan } else { sub_of(m.kind) },
+            sub: if m.wan() {
+                Sub::Wan
+            } else if m.cellular() {
+                Sub::Cellular
+            } else {
+                sub_of(m.kind)
+            },
             kind: Some(m.kind),
             tool: Tool::Place(m.id),
             short: m.label,
@@ -135,9 +143,13 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
             ui.horizontal(|ui| {
                 let b = &mut app.ui.bottom;
                 let subs: &[(Sub, &str)] = match b.category {
-                    Category::NetworkDevices => {
-                        &[(Sub::Routers, "Routers"), (Sub::Switches, "Switches"), (Sub::Hubs, "Hubs"), (Sub::Wan, "WAN Emulation")]
-                    }
+                    Category::NetworkDevices => &[
+                        (Sub::Routers, "Routers"),
+                        (Sub::Switches, "Switches"),
+                        (Sub::Hubs, "Hubs"),
+                        (Sub::Wan, "WAN Emulation"),
+                        (Sub::Cellular, "Cellular"),
+                    ],
                     Category::EndDevices => &[(Sub::Hosts, "End Devices")],
                     Category::Connections => &[(Sub::Cables, "Connections")],
                 };
@@ -148,6 +160,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                         Sub::Switches => icons::device(p, r, DeviceKind::Switch, &tk),
                         Sub::Hubs => icons::device(p, r, DeviceKind::Hub, &tk),
                         Sub::Wan => crate::icons_families::wan_icon(p, r, "Cloud", &tk),
+                        Sub::Cellular => crate::icons_families::cellular_icon(p, r, "Cell-Tower", &tk),
                         Sub::Hosts => icons::device(p, r, DeviceKind::Pc, &tk),
                         Sub::Cables => icons::glyph(p, r, Glyph::Cable, tk.glyph),
                     };

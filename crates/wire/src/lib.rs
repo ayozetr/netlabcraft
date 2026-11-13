@@ -16,6 +16,7 @@ pub mod aes;
 pub mod aes256;
 pub mod ah;
 pub mod capwap;
+pub mod cell;
 pub mod cipher;
 pub mod control;
 pub mod der;
@@ -499,6 +500,8 @@ pub enum Protocol {
     Tls,
     /// SSH packets (NETCONF on port 830).
     Ssh,
+    /// The cellular attach exchange between a mobile device and the central office server.
+    Cell,
     Other,
 }
 
@@ -542,6 +545,7 @@ impl Protocol {
             Protocol::Sip => "SIP",
             Protocol::Tls => "TLS",
             Protocol::Ssh => "SSH",
+            Protocol::Cell => "CELL",
             Protocol::Other => "Other",
         }
     }
@@ -1038,6 +1042,10 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                 format!("LLDP {} on {}, keep {} s{tag}", if l.system_name.is_empty() { l.chassis.to_string() } else { l.system_name }, l.port, l.ttl),
             ),
             Err(e) => (Protocol::Lldp, format!("LLDP ({e}){tag}")),
+        },
+        cell::ETHERTYPE_CELL => match cell::Attach::decode(&f.payload) {
+            Ok(a) => (Protocol::Cell, format!("{}{tag}", a.describe())),
+            Err(e) => (Protocol::Cell, format!("Cell attach ({e}){tag}")),
         },
         wlan::ETHERTYPE_EAPOL => match wlan::Eapol::decode(&f.payload) {
             Ok(e) => (Protocol::Eapol, format!("{}{tag}", e.describe())),

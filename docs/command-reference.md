@@ -9,6 +9,9 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | Id | Label | Menu | Shortcut | Parameters |
 |---|---|---|---|---|
 | `device.wireless` | Wi-Fi settings |  |  | `{"device", "port"?: "Wireless0", "ssid": "network name (empty: radio off)", "key"?: "WPA2-PSK passphrase, 8-63 characters (none: open)", "channel"?: 1-13, "user"?: "WPA2-Enterprise username (hosts)", "password"?} → {associated_with, problem}` |
+| `cell.settings` | Cellular settings |  |  | `{"device": smartphone or tablet, "data"?: true\|false (Cellular Data), "apn"?: "access point name, up to 32 characters (empty: none)"} → the phone's status as cell.status` |
+| `cell.core` | Central office service |  |  | `{"device": Central Office Server, "pool"?: "10.64.0.0/24" (the network the devices' addresses come from; null: none), "apn"?: "the one APN it admits (empty or null: any)", "plan"?: true\|false (the data plan)} → the server's status as cell.status` |
+| `cell.status` | Cellular status |  |  | `{"device": phone, tablet, tower or central office} → phone: {data, apn, active: "wifi"\|"cellular"\|"none", tower, bars: 0-4, attached, address, gateway, refused, attach_answer}; tower: {clients}; central office: {pool, apn, plan, admitted, refused}` |
 | `snmp.request` | SNMP request |  |  | `{"device": manager, "target": agent address, "version"?: "2c"\|"3", "community"?: "public" (2c), "user"? (3), "auth"?: "none"\|"md5"\|"sha" (3), "password"? (3, 8+ characters), "operation"?: "get"\|"get-next"\|"set", "oid": "1.3.6.1.2.1.1.5.0", "value"?: for a set} → {"bindings": [{"oid", "value"}], "error"}` |
 | `snmp.traps` | SNMP traps received |  |  | `{"device": a host, "clear"?: true} → {"traps": [{"at_ms", "from", "community", "trap": "linkDown"\|"linkUp"\|"coldStart"\|OID, "bindings": [{"oid", "value"}]}]}` |
 | `server.syslog` | Syslog messages received |  |  | `{"device": server, "clear"?: true} → {"messages": [{"at_ms", "from", "text"}]} (what devices sent its Syslog service, oldest first)` |
@@ -386,6 +389,12 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no capwap controller` | config | switch | Join a controller in this subnet |
 | `show wlan` | user, privileged | switch | WLANs and the hosts on them |
 | `show capwap` | user, privileged | switch | Access points joined to this controller, or this AP's controller |
+| `cellular pool NETWORK MASK` | config | router | The network mobile devices' addresses come from (this server's own interface in it is their gateway) |
+| `no cellular pool` | config | router | Stop admitting mobile devices |
+| `cellular apn NAME` | config | router | Admit only devices asking for this access point name |
+| `no cellular apn` | config | router | Admit any access point name |
+| `cellular data-plan {on\|off}` | config | router | Switch the data plan on or off for every device |
+| `show cellular` | user, privileged | router | The cellular service: pool, APN, plan and the devices admitted |
 | `clear crypto sa` | privileged | router | Forget IPsec associations and counters |
 | `encapsulation {hdlc\|ppp}` | interface | router | Framing on a serial link |
 | `clock rate <1200-2000000>` | interface | router | Clock a serial link from its DCE end |
@@ -1236,6 +1245,7 @@ Commands:
   telnet <address>                       log in to a router or switch
   ssh -l <user> <address>                log in securely
   ftp <address>                          send and fetch files on an FTP server
+  cellular [on|off|apn <name|none>]      phones and tablets: cellular status, data and APN
   netstat                                TCP connections this host set up
   dir                                    list this host's files
   arp -a                                 show the ARP cache

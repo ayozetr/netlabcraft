@@ -1241,8 +1241,8 @@ Central switching (through the controller)	Conmutación central (a través del c
 The access points tunnel the hosts' traffic to the controller over CAPWAP, and the controller bridges it into the VLAN	Los puntos de acceso envían por túnel el tráfico de los equipos al controlador mediante CAPWAP, y el controlador lo pasa a la VLAN
 Tablet	Tableta
 Smartphone	Smartphone
-Touch-screen tablet with Wi-Fi: browser, email, command prompt and programming apps; no battery to look after	Tableta táctil con Wi-Fi: navegador, correo, símbolo del sistema y programación; sin batería de la que preocuparse
-Touch-screen smartphone with Wi-Fi: browser, email, command prompt and programming apps; no battery to look after	Smartphone táctil con Wi-Fi: navegador, correo, símbolo del sistema y programación; sin batería de la que preocuparse
+Touch-screen tablet with Wi-Fi and a cellular radio: browser, email, command prompt and programming apps; no battery to look after	Tableta táctil con Wi-Fi y radio celular: navegador, correo, símbolo del sistema y programación; sin batería de la que preocuparse
+Touch-screen smartphone with Wi-Fi and a cellular radio: browser, email, command prompt and programming apps; no battery to look after	Smartphone táctil con Wi-Fi y radio celular: navegador, correo, símbolo del sistema y programación; sin batería de la que preocuparse
 Wi-Fi {} · {}	Wi-Fi {} · {}
 Wi-Fi {} · no address yet	Wi-Fi {} · aún sin dirección
 Looking for {}	Buscando {}
@@ -1405,3 +1405,50 @@ the board is switched off	la placa está apagada
 no IoT server set on the board (Programming tab)	la placa no tiene servidor IoT (pestaña Programación)
 {} is wired to {}, a sensor: read it instead	{} está cableado a {}, un sensor: léelo en su lugar
 a program is at most {} characters	un programa tiene como máximo {} caracteres
+Cell Tower	Torre celular
+Cell tower: a radio with six sectors (Cellular0-5) that mobile devices in range attach to, and one backhaul port (Ethernet0) cabled to the provider network	Torre celular: una radio con seis sectores (Cellular0-5) a los que se conectan los dispositivos móviles en su alcance, y un puerto de retorno (Ethernet0) cableado a la red del operador
+Central Office Server	Servidor de central
+The provider's data service: admits mobile devices that attach through a cell tower, gives each an address from its pool and routes them to the lab (3 Gigabit Ethernet ports)	El servicio de datos del operador: admite los dispositivos móviles que se conectan por una torre celular, da a cada uno una dirección de su pool y los enruta hacia el laboratorio (3 puertos Gigabit Ethernet)
+Cell towers, a central office and mobile data	Torres celulares, una central y datos móviles
+A smartphone and a tablet attach to cell towers, take their addresses from the central office server and open the web server's pages over mobile data.	Un smartphone y una tableta se conectan a torres celulares, reciben su dirección del servidor de la central y abren las páginas del servidor web por datos móviles.
+Smartphone1 sits under Tower1 and Tablet1 under Tower2; both towers reach CO1 (the central office server) through S1. CO1 admits devices that ask for the APN `internet` and gives them addresses from 10.64.0.0/24. Open a phone, tap Command Prompt and run `cellular`, then `ping 192.168.60.10`; or tap Web Browser and open 192.168.60.10. Try `cellular off`, drag a phone far from its tower, change the APN, or run `cellular data-plan off` on CO1, and watch the CELL frames in Simulation mode.	Smartphone1 está bajo Tower1 y Tablet1 bajo Tower2; las dos torres llegan a CO1 (el servidor de la central) a través de S1. CO1 admite los dispositivos que piden el APN `internet` y les da direcciones de 10.64.0.0/24. Abre un teléfono, toca Command Prompt y ejecuta `cellular`, luego `ping 192.168.60.10`; o toca Web Browser y abre 192.168.60.10. Prueba `cellular off`, aleja un teléfono de su torre, cambia el APN o ejecuta `cellular data-plan off` en CO1, y mira las tramas CELL en el modo Simulación.
+Cellular	Celular
+Cellular Data	Datos móviles
+Switch the cellular radio's data connection on or off	Activa o desactiva la conexión de datos de la radio celular
+APN (access point name)	APN (nombre del punto de acceso)
+Apply APN	Aplicar APN
+Signal {} of 4	Señal {} de 4
+Signal {} of 4 from {}	Señal {} de 4 de {}
+Address {} · gateway {}	Dirección {} · puerta de enlace {}
+Refused by the central office: {}	Rechazado por la central: {}
+Active connection: {}	Conexión activa: {}
+Wi-Fi	Wi-Fi
+The radio attaches to the nearest cell tower in range; the central office server behind it gives the address. Wi-Fi is preferred when it is connected.	La radio se conecta a la torre celular más cercana en su alcance; el servidor de la central que hay detrás le da la dirección. Si el Wi-Fi está conectado, se prefiere.
+Cell tower	Torre celular
+Coverage: {} workspace units around it (a circle on the workspace); {} sectors	Cobertura: {} unidades del área de trabajo a su alrededor (un círculo en el área de trabajo); {} sectores
+No device is attached to this tower.	Ningún dispositivo está conectado a esta torre.
+Cellular service	Servicio celular
+The network the devices' addresses come from; this server's own interface in it is their gateway.	La red de la que salen las direcciones de los dispositivos; la interfaz de este servidor en ella es su puerta de enlace.
+Address pool (network/prefix)	Pool de direcciones (red/prefijo)
+Apply pool	Aplicar pool
+APN accepted (empty: any)	APN admitido (vacío: cualquiera)
+Data plan on	Plan de datos activo
+With the plan off the server refuses every attach	Con el plan desactivado el servidor rechaza toda conexión
+Devices admitted	Dispositivos admitidos
+None yet.	Ninguno todavía.
+via {}	por {}
+{}: refused: {}	{}: rechazado: {}
+Cellular via {} · {}	Celular por {} · {}
+Cellular via {} · refused: {}	Celular por {} · rechazado: {}
+No service	Sin servicio
+Cellular: signal {} of 4 from {}	Celular: señal {} de 4 de {}
+Cellular: no service (set Cellular Data and the APN in Config > Cellular0; move it near a cell tower)	Celular: sin servicio (activa Datos móviles y el APN en Config > Cellular0; acércalo a una torre celular)
+no central office server answers behind this tower	ningún servidor de central responde tras esta torre
+the central office server has no address pool (or no interface in it)	el servidor de la central no tiene pool de direcciones (o ninguna interfaz en él)
+the data plan is off	el plan de datos está desactivado
+the APN is not accepted	el APN no se admite
+the address pool is exhausted	el pool de direcciones está agotado
+the cellular radio is not available	la radio celular no está disponible
+Cellular Data is off	Los datos móviles están desactivados
+no service: no cell tower in range	sin servicio: no hay ninguna torre celular en su alcance
+no service: every tower in range is full	sin servicio: todas las torres en su alcance están llenas

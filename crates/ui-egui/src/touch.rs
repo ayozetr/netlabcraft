@@ -11,12 +11,13 @@ use crate::i18n::{tl, trf};
 use crate::{PacketApp, theme};
 
 /// The apps a touch device has, in the order its home screen shows them.
-pub(crate) const APPS: [(DesktopApp, &str); 5] = [
+pub(crate) const APPS: [(DesktopApp, &str); 6] = [
     (DesktopApp::Browser, "Web Browser"),
     (DesktopApp::Email, "Email"),
     (DesktopApp::IpConfig, "IP Configuration"),
     (DesktopApp::Prompt, "Command Prompt"),
     (DesktopApp::Programming, "Programming"),
+    (DesktopApp::Settings, "Settings"),
 ];
 
 /// Whether a device is a tablet (else a smartphone): the tablet lies wide, the phone stands.
@@ -37,10 +38,16 @@ pub(crate) fn home(app: &PacketApp, ui: &mut egui::Ui, dev: &Device) -> Option<D
     let screen = outer.shrink2(if wide(dev) { vec2(34.0, 22.0) } else { vec2(14.0, 40.0) });
     p.rect_filled(screen, 10.0, tk.bar);
     // The status bar: the network it is on and its address.
-    let wifi = wifi_line(app, dev);
-    let status = p.layout(wifi, egui::FontId::proportional(12.0), tk.bar_text, screen.width() - 60.0);
+    let line = status_line(app, dev);
+    let status = p.layout(line, egui::FontId::proportional(12.0), tk.bar_text, screen.width() - 60.0);
     p.galley(screen.left_top() + vec2(12.0, 10.0), status, tk.bar_text);
-    signal_bars(&p, screen.right_top() + vec2(-30.0, 10.0), associated(app, dev), &tk);
+    // Wi-Fi bars when associated; otherwise the cellular bars (none lit with no service).
+    if associated(app, dev) {
+        signal_bars(&p, screen.right_top() + vec2(-30.0, 10.0), true, &tk);
+    } else {
+        let bars = app.session.topology.cell_link(dev.id).map_or(0, |l| l.bars);
+        crate::icons_families::signal_bars(&p, screen.right_top() + vec2(-30.0, 22.0), 14.0, bars, crate::icons_families::CELL_ORANGE, tk.muted);
+    }
     let mut tapped = None;
     let cols = if wide(dev) { 5 } else { 3 };
     let cell = vec2((screen.width() - 24.0) / cols as f32, 110.0);
@@ -87,6 +94,25 @@ fn wifi_line(app: &PacketApp, dev: &Device) -> String {
         (Some(s), false, _) => trf("Looking for {}", &[&s]),
         (None, _, _) => tl("Wi-Fi off: pick a network in Config").to_string(),
     }
+}
+
+/// The status bar's text: Wi-Fi when it is connected, else the cellular connection, else what
+/// the Wi-Fi radio is looking for.
+fn status_line(app: &PacketApp, dev: &Device) -> String {
+    let t = &app.session.topology;
+    if !associated(app, dev) {
+        if let Some(l) = t.cell_link(dev.id) {
+            let tower = t.device(l.tower).map_or("?", |x| x.name.as_str());
+            return match &l.outcome {
+                Ok(lease) => trf("Cellular via {} · {}", &[&tower, &lease.address.addr]),
+                Err(r) => trf("Cellular via {} · refused: {}", &[&tower, &crate::i18n::tr_any(r.text())]),
+            };
+        }
+        if dev.ports.first().and_then(|p| p.wifi.as_ref()).is_none_or(|w| w.ssid.is_empty()) && !dev.cell.data_off {
+            return tl("No service").to_string();
+        }
+    }
+    wifi_line(app, dev)
 }
 
 /// Four rising bars, lit when associated.
@@ -143,6 +169,18 @@ pub(crate) fn physical(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
             };
             ui.label(RichText::new(tl("Always charged here: there is no battery to look after.")).color(tk.muted));
             ui.label(RichText::new(tl("Set its Wi-Fi network in Config > Wireless0; move it near an access point to join.")).color(tk.muted));
+            match app.session.topology.cell_link(dev.id) {
+                Some(l) => {
+                    let tower = app.session.topology.device(l.tower).map_or("?", |x| x.name.as_str());
+                    ui.label(trf("Cellular: signal {} of 4 from {}", &[&l.bars, &tower]));
+                }
+                None => {
+                    ui.label(
+                        RichText::new(tl("Cellular: no service (set Cellular Data and the APN in Config > Cellular0; move it near a cell tower)"))
+                            .color(tk.muted),
+                    );
+                }
+            }
         });
     });
 }

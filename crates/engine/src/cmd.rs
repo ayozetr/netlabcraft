@@ -47,6 +47,9 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
     if let Some(r) = crate::instructor::run(s, id, p) {
         return r;
     }
+    if let Some(r) = crate::cellular::run(s, id, p) {
+        return r;
+    }
     let cmd = id;
     match id {
         "file.new" => {
@@ -963,6 +966,12 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             if let Some(dev) = s.topology.device_mut(d) {
                 dev.x = x;
                 dev.y = y;
+            }
+            // Coverage follows the device: a phone that walks out of range loses its tower.
+            let before = s.topology.cell_links.clone();
+            s.topology.cell_refresh();
+            if s.topology.cell_links != before {
+                s.sim.topology_changed(&s.topology);
             }
             s.dirty = true;
             s.revision += 1;

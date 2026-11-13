@@ -523,6 +523,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
         };
         paint_shape(&painter, &view, &preview, &tk);
     }
+    draw_coverage(app, &painter, &view);
     draw_links(app, &painter, &view, &tk);
     draw_notes(app, &painter, &view, &tk);
     draw_handles(app, &painter, &view, &tk);
@@ -579,6 +580,22 @@ fn stp_blocked(app: &mut PacketApp, end: End) -> bool {
     let tree = c.stp.entry(vlan.get()).or_insert_with(|| netlabcraft_sim::stp::compute(t, vlan));
     // Amber while blocked, and while listening or learning after coming up.
     !tree.forwards(end.device, end.port) || app.session.sim.stp_converging(end.device, end.port)
+}
+
+/// What a cell tower covers: a faint orange disc with a dashed rim, one per tower, drawn
+/// under the cables. (With a physical layout the coverage is in metres on a city map: see the
+/// Physical view.)
+fn draw_coverage(app: &PacketApp, painter: &egui::Painter, view: &View) {
+    for d in app.session.topology.devices.iter().filter(|d| d.is_tower() && view.visible(d.id)) {
+        let c = view.screen(d.x, d.y);
+        let r = netlabcraft_model::cellular::CELL_RANGE * view.zoom;
+        painter.circle_filled(c, r, crate::icons_families::CELL_ORANGE.gamma_multiply(0.1));
+        let rim = Stroke::new((1.2 * view.zoom).max(1.0), crate::icons_families::CELL_ORANGE.gamma_multiply(0.55));
+        let pts: Vec<Pos2> = (0..=96)
+            .map(|i| c + vec2((i as f32 / 96.0 * std::f32::consts::TAU).cos(), (i as f32 / 96.0 * std::f32::consts::TAU).sin()) * r)
+            .collect();
+        painter.add(egui::Shape::dashed_line(&pts, rim, 10.0 * view.zoom.max(0.5), 8.0 * view.zoom.max(0.5)));
+    }
 }
 
 fn draw_links(app: &mut PacketApp, painter: &egui::Painter, view: &View, tk: &Tokens) {
@@ -744,6 +761,22 @@ fn draw_links(app: &mut PacketApp, painter: &egui::Painter, view: &View, tk: &To
             painter.add(egui::Shape::dashed_line(&[a, b], stroke, 8.0 * view.zoom, 6.0 * view.zoom));
         }
     }
+    // Cellular attachments: a dashed orange line from each phone to its tower, solid green
+    // while the central office admits it, grey while it refuses.
+    for (id, l) in &t.cell_links {
+        let (Some(d), Some(tw)) = (t.device(*id), t.device(l.tower)) else { continue };
+        if !view.visible(d.id) || !view.visible(tw.id) {
+            continue;
+        }
+        let color = if l.outcome.is_ok() { crate::icons_families::CELL_ORANGE } else { tk.muted };
+        let stroke = Stroke::new((1.6 * view.zoom).max(1.0), color);
+        painter.add(egui::Shape::dashed_line(
+            &[view.screen(d.x, d.y), view.screen(tw.x, tw.y)],
+            stroke,
+            3.0 * view.zoom.max(0.5),
+            5.0 * view.zoom.max(0.5),
+        ));
+    }
     // An EtherChannel: a ring around its bundled cables, next to each switch.
     for d in t.devices.iter().filter(|d| d.kind == netlabcraft_model::DeviceKind::Switch && view.visible(d.id)) {
         for c in netlabcraft_sim::channel::channels(t, d) {
@@ -778,6 +811,13 @@ fn draw_devices(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Toke
         if d.powered_off || app.session.topology.power_problem(d.id).is_some() {
             icons::powered_off_mark(painter, r);
         }
+        if d.cell_port().is_some() && !d.powered_off {
+            // The cellular radio's signal, top right of the icon: grey bars with no service or data off.
+            let bars = app.session.topology.cell_link(d.id).map_or(0, |l| l.bars);
+            let h = (r.width() * 0.3).max(8.0);
+            let at = pos2(r.right() - h * 0.9, r.top() + h * 0.9);
+            icons_families_bars(painter, at, h, bars, tk);
+        }
         // Two centred lines under the icon: model, then name, on a soft plate of the workspace
         // colour so cables running under them don't cross the letters.
         let block = name_block(painter, view, d);
@@ -791,6 +831,10 @@ fn draw_devices(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Toke
             painter.galley(label.min, galley, tk.text);
         }
     }
+}
+
+fn icons_families_bars(painter: &egui::Painter, at: Pos2, h: f32, bars: u8, tk: &Tokens) {
+    crate::icons_families::signal_bars(painter, at, h, bars, crate::icons_families::CELL_ORANGE, tk.muted.gamma_multiply(0.6));
 }
 
 fn name_font(view: &View) -> FontId {

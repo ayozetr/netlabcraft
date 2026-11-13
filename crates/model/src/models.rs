@@ -39,6 +39,10 @@ impl Model {
     }
 }
 
+/// The cell tower and central office model ids.
+pub const CELL_TOWER: &str = "Cell-Tower";
+pub const CENTRAL_OFFICE: &str = "Central-Office";
+
 const fn run(prefix: &'static str, first: u32, last: u32) -> PortRun {
     PortRun { prefix, first, last, medium: None }
 }
@@ -209,6 +213,20 @@ pub static MODELS: &[Model] = &[
         ports: &[run("Coaxial", 0, 0), run("Ethernet", 1, 1)],
     },
     Model {
+        id: "Cell-Tower",
+        kind: DeviceKind::Hub,
+        label: "Cell Tower",
+        description: "Cell tower: a radio with six sectors (Cellular0-5) that mobile devices in range attach to, and one backhaul port (Ethernet0) cabled to the provider network",
+        ports: &[run("Ethernet", 0, 0), run("Cellular", 0, 5)],
+    },
+    Model {
+        id: "Central-Office",
+        kind: DeviceKind::Router,
+        label: "Central Office Server",
+        description: "The provider's data service: admits mobile devices that attach through a cell tower, gives each an address from its pool and routes them to the lab (3 Gigabit Ethernet ports)",
+        ports: &[run("GigabitEthernet0/", 0, 2)],
+    },
+    Model {
         id: "Hub-8",
         kind: DeviceKind::Hub,
         label: "Hub 8",
@@ -234,15 +252,15 @@ pub static MODELS: &[Model] = &[
         id: "Tablet",
         kind: DeviceKind::Laptop,
         label: "Tablet",
-        description: "Touch-screen tablet with Wi-Fi: browser, email, command prompt and programming apps; no battery to look after",
-        ports: &[run("Wireless", 0, 0)],
+        description: "Touch-screen tablet with Wi-Fi and a cellular radio: browser, email, command prompt and programming apps; no battery to look after",
+        ports: &[run("Wireless", 0, 0), run("Cellular", 0, 0)],
     },
     Model {
         id: "Smartphone",
         kind: DeviceKind::Laptop,
         label: "Smartphone",
-        description: "Touch-screen smartphone with Wi-Fi: browser, email, command prompt and programming apps; no battery to look after",
-        ports: &[run("Wireless", 0, 0)],
+        description: "Touch-screen smartphone with Wi-Fi and a cellular radio: browser, email, command prompt and programming apps; no battery to look after",
+        ports: &[run("Wireless", 0, 0), run("Cellular", 0, 0)],
     },
     Model {
         id: "Server",
@@ -527,12 +545,29 @@ impl Model {
         matches!(self.id, "Cloud" | "DSL-Modem" | "Cable-Modem")
     }
 
+    /// A cell tower: a hub-kind device that carries mobile devices' frames to its backhaul port.
+    pub fn tower(&self) -> bool {
+        self.id == CELL_TOWER
+    }
+
+    /// A central office server: the router that admits and addresses mobile devices.
+    pub fn central_office(&self) -> bool {
+        self.id == CENTRAL_OFFICE
+    }
+
+    /// A device of the cellular network, listed apart in the device list.
+    pub fn cellular(&self) -> bool {
+        self.tower() || self.central_office()
+    }
+
     /// The name new devices of this model get (`Cloud1`, `Modem1`), when not the kind's.
     pub fn name_prefix(&self) -> Option<&'static str> {
         match self.id {
             "Cloud" => Some("Cloud"),
             "DSL-Modem" | "Cable-Modem" => Some("Modem"),
             "Home-Gateway" => Some("Gateway"),
+            "Cell-Tower" => Some("Tower"),
+            "Central-Office" => Some("CO"),
             "Tablet" => Some("Tablet"),
             "Smartphone" => Some("Smartphone"),
             "Board-SBC" | "Board-MCU" => Some("Board"),
@@ -573,7 +608,7 @@ pub fn medium_by_name(name: &str) -> Medium {
         Medium::Phone
     } else if crate::ifname::is_serial(name) {
         Medium::Serial
-    } else if crate::ifname::is_wireless(name) {
+    } else if crate::ifname::is_wireless(name) || crate::ifname::is_cellular(name) {
         Medium::Wireless
     } else {
         Medium::Copper
@@ -673,8 +708,9 @@ mod tests {
         for id in ["Tablet", "Smartphone"] {
             let m = find(id).unwrap();
             assert!(m.touch() && !m.has_rs232() && !m.has_console(), "{id}");
-            assert_eq!(m.port_names(), ["Wireless0"]);
+            assert_eq!(m.port_names(), ["Wireless0", "Cellular0"]);
             assert_eq!(m.port_medium("Wireless0"), Some(Medium::Wireless));
+            assert_eq!(m.port_medium("Cellular0"), Some(Medium::Wireless));
             assert_eq!(m.name_prefix(), Some(id));
         }
         assert!(!find("Laptop-WiFi").unwrap().touch() && find("Laptop-WiFi").unwrap().has_rs232());

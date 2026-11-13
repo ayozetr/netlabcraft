@@ -36,7 +36,12 @@ fn every_sample_builds_and_its_hosts_reach_each_other() {
             .iter()
             // Things wired only to a board's pins are on no network.
             .filter(|d| d.kind.is_host() && s.topology.board_of(d.id).is_none())
-            .map(|d| (d.name.clone(), d.ports[0].ip.map(|a| a.addr.to_string()).unwrap_or_else(|| d.ports[0].ipv6.addresses[0].addr.to_string())))
+            .map(|d| {
+                (
+                    d.name.clone(),
+                    d.ports.iter().find_map(|p| p.ip).map(|a| a.addr.to_string()).unwrap_or_else(|| d.ports[0].ipv6.addresses[0].addr.to_string()),
+                )
+            })
             .collect();
         for (from, _) in &hosts {
             for (to, ip) in &hosts {

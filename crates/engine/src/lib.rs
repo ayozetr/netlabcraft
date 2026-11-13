@@ -20,6 +20,7 @@ pub mod activity;
 pub mod automation;
 mod board;
 pub mod catalog;
+mod cellular;
 mod cmd;
 mod controller;
 mod families;
@@ -35,6 +36,8 @@ pub mod sample;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_cell;
 #[cfg(test)]
 mod tests_families;
 #[cfg(test)]
@@ -229,6 +232,8 @@ impl Session {
     pub fn changed(&mut self) {
         self.dirty = true;
         self.revision += 1;
+        // Cellular links and addresses follow the lab (coverage, towers, the central office).
+        self.topology.cell_refresh();
         self.sim.topology_changed(&self.topology);
         let ids: Vec<DeviceId> = self.topology.devices.iter().map(|d| d.id).collect();
         self.consoles.retain(|id, _| ids.contains(id));
@@ -267,6 +272,8 @@ impl Session {
     /// Replaces the lab (open / new): history, consoles and simulation start over.
     pub fn replace(&mut self, t: Topology, path: Option<String>) {
         let start = t.activity.is_some().then(|| t.clone());
+        let mut t = t;
+        t.cell_refresh();
         *self = Session { topology: t, path, revision: self.revision + 1, activity_start: start, ..Session::default() };
         // The links as they are now are the starting point for link messages.
         self.sim.topology_changed(&self.topology);

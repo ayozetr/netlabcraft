@@ -31,6 +31,30 @@ pub static CATALOG: &[CommandInfo] = &[
         true
     ),
     c!(
+        "cell.settings",
+        "Cellular settings",
+        "",
+        None,
+        r#"{"device": smartphone or tablet, "data"?: true|false (Cellular Data), "apn"?: "access point name, up to 32 characters (empty: none)"} → the phone's status as cell.status"#,
+        true
+    ),
+    c!(
+        "cell.core",
+        "Central office service",
+        "",
+        None,
+        r#"{"device": Central Office Server, "pool"?: "10.64.0.0/24" (the network the devices' addresses come from; null: none), "apn"?: "the one APN it admits (empty or null: any)", "plan"?: true|false (the data plan)} → the server's status as cell.status"#,
+        true
+    ),
+    c!(
+        "cell.status",
+        "Cellular status",
+        "",
+        None,
+        r#"{"device": phone, tablet, tower or central office} → phone: {data, apn, active: "wifi"|"cellular"|"none", tower, bars: 0-4, attached, address, gateway, refused, attach_answer}; tower: {clients}; central office: {pool, apn, plan, admitted, refused}"#,
+        false
+    ),
+    c!(
         "snmp.request",
         "SNMP request",
         "",
