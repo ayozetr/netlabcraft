@@ -1,12 +1,12 @@
 # The `.nlcraft` lab file
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (M9.9: keys, trustpoints, certificates and a small CA on the console) · earlier: minor (results file version 2 with the embedded network (M9.6)) · earlier: minor (instructor fields in `activity`, absolute PDU starts, boards and the IoT custom cable, power supplies, SA lifetimes, VRRP timers and IPv6, CoS, VTP pruning, EIGRP summaries and variance, RIP timers, RIPng, central WLANs, controller variables)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (M9.9: keys, trustpoints, certificates and a small CA on the console) · also merged with main · earlier: minor (M9.11: `environment`, file version 2) · earlier: minor (results file version 2 with the embedded network (M9.6)) · earlier: minor (instructor fields in `activity`, absolute PDU starts, boards and the IoT custom cable, power supplies, SA lifetimes, VRRP timers and IPv6, CoS, VTP pruning, EIGRP summaries and variance, RIP timers, RIPng, central WLANs, controller variables)
 
 A lab is one UTF-8 JSON file. It is the serde form of `netlabcraft_model::Topology`
 (`crates/model/src/lib.rs`), wrapped with a format tag and version (`crates/model/src/file.rs`):
 
 ```json
-{"format": "netlabcraft", "version": 1, "topology": {"devices": [...], "links": [...], "next_id": 7, "notes": "...", "annotations": [...]}}
+{"format": "netlabcraft", "version": 2, "topology": {"devices": [...], "links": [...], "next_id": 7, "notes": "...", "annotations": [...]}}
 ```
 
 Fields that hold their default value are left out when saving, so a small lab stays small and an
@@ -56,6 +56,7 @@ older file without a newer field still opens.
 | `adapter` | IP phones and lightweight APs: whether the power adapter is plugged in. Left out on every other device; a powered device in an older file has none and counts as plugged in. |
 | `bridges` | Clouds: the port pairs joined to each other, such as `["Coaxial0", "Phone0"]`. |
 | `voice` | Routers: `telephony-service`, `ephone-dn`s and `ephone`s, option 150 per pool, and for SIP `register` (`voice register global`: `cme`, `source`, `port`, `max_dn`, `max_pool`), `reg_dns` and `pools` (`tag`, `mac`, `dn`). Phones: the TFTP server DHCP gave, `sip` (signal with SIP) and `sip_server`. |
+| `environment` (lab level) | The smart things' shared room, left out when it is the default: `enabled` (the physics is on: sensors read the room), the starting `temperature` (degrees), `humidity`, `soil`, `smoke` (percent), `co` (ppm), `motion` (0 or 1), and what lies outside: `outside_temperature`, `outside_humidity`, `outside_light`. The values reached while a lab runs are not saved: a loaded lab starts from these. Every value is clamped on load. |
 | `iot` | Smart things: `server`, `value` (a sensor's reading) and `interval` (report every N seconds of simulated time; 0 only on change). Servers and home gateways: `service` and `rules`, each with `conditions` (`sensor`, `op` `>`/`<`/`=`, `value`), `any` (joined with OR, else AND), `actuator` and `on` (what the rule does when it holds; true when left out). Older rules keep `sensor` and `above` and still read. |
 | `mgmt` | Routers and switches: timestamps, logging levels, NTP master, keys and trusted keys, `boot system` lines, history size, HSRP version 2 interfaces. |
 | `pki` | Routers and switches: `keys` (each `label` and the two primes `p` and `q` in hex), `trustpoints` (each `name`, `enrollment` (`None`, `SelfSigned` or `{"Url": "http://A.B.C.D"}`), `subject_name`, `rsakeypair`, `revocation_none`, `certificate` and `ca_certificate` in PEM), `server` (the certificate authority: `name`, `issuer_name`, `lifetime_days`, `grant_auto`, `enabled`, `certificate`) and `generated` (keys made so far, part of the key seed). Left out when empty. Loading keeps names printable and short, primes as hex, certificates as PEM blocks within 16 KiB, at most 8 keys and 8 trustpoints; whether a prime is prime or a certificate parses is checked when it is used, so a damaged entry is unusable and never a crash. Additive: no version bump. |
@@ -90,6 +91,7 @@ events) is not saved.
 | Date | Change | Summary |
 |---|---|---|
 | 2026-11-13 | minor | `pki` on routers and switches: keys, trustpoints, certificates, the CA (M9.9). |
+| 2026-11-13 | minor | Lab file version 2: the lab-level `environment` (M9.11). Version 1 files have none and read as the default (physics off), so they behave as before; newer versions are still refused. |
 | 2026-11-13 | minor | Results file: version 2 embeds `network`; version 1 still reads (M9.6). |
 | 2026-10-31 | minor | `activity`: `translations`, `language`, `answer` (sealed), `initial`, `assessment`, `locks`, and `link`/`link-hashed` checks; scenario PDUs' `start_at_s`; `board` and IoT custom cables; `psu`; crypto `sa_lifetime` and map `lifetime`; VRRP `advertise_cs`, `track`, `ipv6`; `vtp.pruning`; switch `cos_dscp`, port `qos_cos`, `priority_extend`, `prune_eligible`; `eigrp_summary`, `eigrp6.variance`, `rip.timers`, `rip6` and the port `ipv6.rip`; controller `vars`; kinds of the new models. |
 | 2026-10-30 | minor | `scenarios`; `automation` (managed passwords stored in clear); `security`; `fhrp`; `eigrp6` and the port `ipv6.eigrp`; `crypto.ikev2`; switch and port `l2` additions; `modules` with `Card-4SW`; `adapter`, `bridges`, `poe_never`; `voice` SIP fields; `iot.interval` and rules with `conditions`, `any`, `on`; `coaxial` and `phone` cables; the `phone` and `iot` kinds listed. |

@@ -35,7 +35,7 @@ fn loopbacks_by_typing() {
     assert!(brief.contains("Loopback0                1.1.1.1/32         up      up"), "{brief}");
     assert!(brief.contains("Loopback1                172.16.1.1/24      up      up"), "{brief}");
     let shown = lab.run(r1, "show interfaces loopback 0");
-    assert!(shown.contains("Loopback0 is up, line protocol up") && shown.contains("Description: router id"), "{shown}");
+    assert!(shown.contains("Loopback0 is up, line protocol is up") && shown.contains("Description: router id"), "{shown}");
     assert!(lab.run(r1, "show interfaces").contains("Loopback1 is up"));
     let routes = lab.run(r1, "show ip route");
     assert!(routes.contains("1.1.1.1/32") && routes.contains("Loopback0"), "{routes}");

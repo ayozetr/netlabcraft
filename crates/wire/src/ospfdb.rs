@@ -209,7 +209,7 @@ impl OspfDb {
         }
         let len = usize::from(be16(b, 2).ok_or_else(t)?);
         let p = b.get(..len).filter(|_| len >= 24).ok_or_else(t)?;
-        if checksum(&[p.get(..16).unwrap_or_default(), p.get(24..).unwrap_or_default()]) != 0 {
+        if be16(p, 14) != Some(2) && checksum(&[p.get(..16).unwrap_or_default(), p.get(24..).unwrap_or_default()]) != 0 {
             return Err(WireError::Checksum("ospf"));
         }
         let router = ip_at(p, 4).ok_or_else(t)?;

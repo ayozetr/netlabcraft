@@ -685,7 +685,12 @@ struct Pending {
 pub enum DebugKind {
     Icmp,
     Rip,
-    Ospf,
+    /// `debug ip ospf hello`: the hellos this router hears.
+    OspfHello,
+    /// `debug ip ospf adj`: each neighbour's walk through the adjacency states.
+    OspfAdj,
+    /// `debug ip ospf events`: interface, DR election, SPF and timer events.
+    OspfEvents,
     Eigrp,
     Packet,
     Nat,
@@ -693,8 +698,17 @@ pub enum DebugKind {
 }
 
 impl DebugKind {
-    pub const ALL: [DebugKind; 7] =
-        [DebugKind::Icmp, DebugKind::Rip, DebugKind::Ospf, DebugKind::Eigrp, DebugKind::Packet, DebugKind::Nat, DebugKind::Dhcp];
+    pub const ALL: [DebugKind; 9] = [
+        DebugKind::Icmp,
+        DebugKind::Rip,
+        DebugKind::OspfHello,
+        DebugKind::OspfAdj,
+        DebugKind::OspfEvents,
+        DebugKind::Eigrp,
+        DebugKind::Packet,
+        DebugKind::Nat,
+        DebugKind::Dhcp,
+    ];
 }
 
 /// What came back for one of our echo requests.
@@ -750,6 +764,11 @@ pub struct NatEntry {
     pub outside: Ipv4Addr,
     /// From an `ip nat inside source static` line.
     pub fixed: bool,
+    /// Simulated time (microseconds) the translation was made, and last used.
+    pub created_us: u64,
+    pub last_us: u64,
+    /// Packets translated through it, in both directions.
+    pub uses: u64,
 }
 
 const MAX_NAT_ENTRIES: usize = 4_096;
@@ -766,6 +785,8 @@ pub struct DevState {
     /// DHCP servers: addresses handed out.
     pub leases: BTreeMap<Ipv4Addr, Lease>,
     /// Access-list matches: (list, entry index or `usize::MAX` for the implicit deny) → count.
+    /// How often each access-list line matched, by list name and the line's sequence number
+    /// (`usize::MAX`: the implicit deny). Firewall rules count under their position.
     pub acl_hits: BTreeMap<(String, usize), u64>,
     /// NAT translations in use.
     pub nat: Vec<NatEntry>,
@@ -802,7 +823,9 @@ pub struct DevState {
     /// `debug ip rip`.
     pub debug_rip: bool,
     /// `debug ip ospf adj|events|hello`.
-    pub debug_ospf: bool,
+    pub debug_ospf_hello: bool,
+    pub debug_ospf_adj: bool,
+    pub debug_ospf_events: bool,
     /// `debug eigrp packets`.
     pub debug_eigrp: bool,
     /// `debug ip packet`.
@@ -1202,7 +1225,9 @@ impl Sim {
         match what {
             DebugKind::Icmp => st.debug_icmp = on,
             DebugKind::Rip => st.debug_rip = on,
-            DebugKind::Ospf => st.debug_ospf = on,
+            DebugKind::OspfHello => st.debug_ospf_hello = on,
+            DebugKind::OspfAdj => st.debug_ospf_adj = on,
+            DebugKind::OspfEvents => st.debug_ospf_events = on,
             DebugKind::Eigrp => st.debug_eigrp = on,
             DebugKind::Packet => st.debug_packet = on,
             DebugKind::Nat => st.debug_nat = on,
@@ -1216,7 +1241,9 @@ impl Sim {
         [
             (s.debug_icmp, "ICMP"),
             (s.debug_rip, "RIP"),
-            (s.debug_ospf, "OSPF"),
+            (s.debug_ospf_hello, "OSPF hellos"),
+            (s.debug_ospf_adj, "OSPF adjacencies"),
+            (s.debug_ospf_events, "OSPF events"),
             (s.debug_eigrp, "EIGRP"),
             (s.debug_packet, "IP packets"),
             (s.debug_nat, "NAT"),
@@ -1626,10 +1653,13 @@ impl Sim {
     /// Inside to outside: the translated packet (`None`: no rule applies, sent as is).
     fn nat_translate(&mut self, d: &Device, ip: &Ipv4) -> Result<Option<Ipv4>, String> {
         let id = flow_id(ip, true);
+        let now = self.now;
         let st = self.st(d.id);
-        if let Some(e) = st.nat.iter().find(|e| {
+        if let Some(e) = st.nat.iter_mut().find(|e| {
             e.inside_local == ip.src && e.protocol == ip.protocol && (e.local_id.is_none() || e.local_id == id) && (e.fixed || e.outside == ip.dst)
         }) {
+            e.uses = e.uses.saturating_add(1);
+            e.last_us = now;
             let out = rewrite(ip, true, e.inside_global, e.global_id);
             st.nat_hits = st.nat_hits.saturating_add(1);
             return Ok(Some(out));
@@ -1643,13 +1673,16 @@ impl Sim {
                 global_id: None,
                 outside: ip.dst,
                 fixed: true,
+                created_us: self.now,
+                last_us: self.now,
+                uses: 1,
             }
         } else {
             let key = netlabcraft_model::acl::PacketKey::bare(ip.protocol, ip.src, ip.dst);
             let Some((rule, acl_name, line)) = d.nat.rules.iter().find_map(|r| {
                 let a = d.acls.iter().find(|a| a.name == r.acl)?;
                 let (permit, line) = a.evaluate(&key);
-                permit.then(|| (r, a.name.clone(), line.unwrap_or(usize::MAX)))
+                permit.then(|| (r, a.name.clone(), a.hit_key(line)))
             }) else {
                 return Ok(None);
             };
@@ -1700,6 +1733,9 @@ impl Sim {
                 global_id,
                 outside: ip.dst,
                 fixed: false,
+                created_us: self.now,
+                last_us: self.now,
+                uses: 1,
             }
         };
         let out = rewrite(ip, true, entry.inside_global, entry.global_id);
@@ -1721,10 +1757,13 @@ impl Sim {
             return Some(back);
         }
         let id = flow_id(ip, false);
-        let st = self.state.get(&d.id);
-        if let Some(e) = st.and_then(|s| {
-            s.nat.iter().find(|e| e.inside_global == ip.dst && e.protocol == ip.protocol && (e.global_id.is_none() || e.global_id == id))
-        }) {
+        let now = self.now;
+        let found = self.state.get_mut(&d.id).and_then(|s| {
+            s.nat.iter_mut().find(|e| e.inside_global == ip.dst && e.protocol == ip.protocol && (e.global_id.is_none() || e.global_id == id))
+        });
+        if let Some(e) = found {
+            e.uses = e.uses.saturating_add(1);
+            e.last_us = now;
             return Some(rewrite(ip, false, e.inside_local, e.local_id));
         }
         d.nat.statics.iter().find(|(_, g)| *g == ip.dst).map(|(l, _)| rewrite(ip, false, *l, None))
@@ -1764,6 +1803,9 @@ impl Sim {
                     global_id: None,
                     outside: ip.src,
                     fixed: true,
+                    created_us: 0,
+                    last_us: 0,
+                    uses: 0,
                 })
             })?;
         original.get_mut(12..16)?.copy_from_slice(&e.inside_local.octets());
@@ -1814,7 +1856,7 @@ impl Sim {
         let key = acl_key(ip);
         let (permit, entry) = acl.evaluate(&key);
         let st = self.st(d.id);
-        *st.acl_hits.entry((acl.name.clone(), entry.unwrap_or(usize::MAX))).or_insert(0) += 1;
+        *st.acl_hits.entry((acl.name.clone(), acl.hit_key(entry))).or_insert(0) += 1;
         // `log` on the matching line: a message for the device's log.
         if let Some((i, e)) = entry.and_then(|i| acl.entries.get(i).map(|e| (i, e))).filter(|(_, e)| e.log) {
             let proto = match key.protocol {
@@ -1844,6 +1886,32 @@ impl Sim {
     }
 
     /// Forgets access-list match counts (`clear access-list counters`).
+    /// A list's counters after its lines were renumbered: each `(old, new)` sequence number
+    /// moves its count with it.
+    pub fn remap_acl_hits(&mut self, d: DeviceId, list: &str, moves: &[(u32, u32)]) {
+        let Some(st) = self.state.get_mut(&d) else { return };
+        // Take every moving counter out first, so a new number that is another line's old one
+        // cannot be overwritten.
+        let mut moved: Vec<(usize, u64)> = Vec::new();
+        for (old, new) in moves {
+            if let (Ok(o), Ok(n)) = (usize::try_from(*old), usize::try_from(*new))
+                && let Some(count) = st.acl_hits.remove(&(list.to_string(), o))
+            {
+                moved.push((n, count));
+            }
+        }
+        for (n, count) in moved {
+            st.acl_hits.insert((list.to_string(), n), count);
+        }
+    }
+
+    /// Forgets the counter of one removed line.
+    pub fn forget_acl_hit(&mut self, d: DeviceId, list: &str, seq: u32) {
+        if let (Some(st), Ok(k)) = (self.state.get_mut(&d), usize::try_from(seq)) {
+            st.acl_hits.remove(&(list.to_string(), k));
+        }
+    }
+
     pub fn clear_acl_hits(&mut self, d: DeviceId, only: Option<&str>) {
         if let Some(st) = self.state.get_mut(&d) {
             match only {
@@ -2613,24 +2681,42 @@ impl Sim {
             if d.kind.is_host() {
                 return Ok(());
             }
-            let debug = self.state.get(&d.id).map_or((false, false), |s| (s.debug_rip, s.debug_ospf));
-            if debug.1
+            let debug = self
+                .state
+                .get(&d.id)
+                .map_or((false, false, false, false), |s| (s.debug_rip, s.debug_ospf_hello, s.debug_ospf_adj, s.debug_ospf_events));
+            if (debug.1 || debug.2 || debug.3)
                 && ip.protocol == netlabcraft_wire::control::PROTO_OSPF
                 && d.ospf.is_some()
                 && let Ok(h) = netlabcraft_wire::control::OspfHello::decode(&ip.payload)
             {
-                let msg = format!(
-                    "OSPF debug: hello from {} (router ID {}, area {}) on {}, {} neighbour{} listed",
-                    ip.src,
-                    h.router_id,
-                    h.area,
-                    ifc.name,
-                    h.neighbors.len(),
-                    if h.neighbors.len() == 1 { "" } else { "s" }
-                );
-                self.log(d.id, &msg);
-                if let Some(why) = ospf::hello_problem(d, ifc, &h) {
-                    self.log(d.id, &format!("OSPF debug: no adjacency with {} on {}: {why}", ip.src, ifc.name));
+                if debug.1 {
+                    let msg = format!(
+                        "OSPF hello: from {} (router ID {}, area {}) on {}, {} neighbour{} listed",
+                        ip.src,
+                        h.router_id,
+                        h.area,
+                        ifc.name,
+                        h.neighbors.len(),
+                        if h.neighbors.len() == 1 { "" } else { "s" }
+                    );
+                    self.log(d.id, &msg);
+                }
+                // Why the sender can't become a neighbour: an adjacency matter, and (when the
+                // hello was rejected) an event too.
+                let problem = ospf::auth_problem(d, ifc, &ip.payload)
+                    .map(|why| format!("authentication fails: {why}"))
+                    .or_else(|| ospf::hello_problem(d, ifc, &h));
+                if let Some(why) = problem {
+                    if debug.1 {
+                        self.log(d.id, &format!("OSPF hello: no adjacency with {} on {}: {why}", ip.src, ifc.name));
+                    }
+                    if debug.2 {
+                        self.log(d.id, &format!("OSPF adjacency: {} on {} stays Down: {why}", h.router_id, ifc.name));
+                    }
+                    if debug.3 {
+                        self.log(d.id, &format!("OSPF event: hello from {} on {} rejected, no neighbour state is created", ip.src, ifc.name));
+                    }
                 }
             }
             if ip.protocol == netlabcraft_wire::eigrp::PROTO_EIGRP
@@ -3480,7 +3566,7 @@ impl Sim {
                     ..netlabcraft_model::acl::PacketKey::bare(PROTO_TCP, ip.src, ip.dst)
                 };
                 let (permit, hit) = acl.evaluate(&key);
-                *self.st(d.id).acl_hits.entry((name.clone(), hit.unwrap_or(usize::MAX))).or_insert(0) += 1;
+                *self.st(d.id).acl_hits.entry((name.clone(), acl.hit_key(hit))).or_insert(0) += 1;
                 if !permit {
                     self.tcp_send(t, d, ip.dst, ip.src, &reply(tcp::RST | tcp::ACK, 0, seg.seq.wrapping_add(1)))?;
                     return Err(format!("login from {} refused by access-class {name}", ip.src));
@@ -3878,7 +3964,10 @@ pub(crate) fn acl_key(ip: &Ipv4) -> netlabcraft_model::acl::PacketKey {
                 key.tcp_flags = Some(u.flags);
             }
         }
-        PROTO_ICMP => key.icmp_type = ip.payload.first().copied(),
+        PROTO_ICMP => {
+            key.icmp_type = ip.payload.first().copied();
+            key.icmp_code = ip.payload.get(1).copied();
+        }
         _ => {}
     }
     key

@@ -148,7 +148,7 @@ pub(crate) fn loopback_brief(s: &mut String, d: &netlabcraft_model::Device) {
 pub(crate) fn loopback_block(l: &netlabcraft_model::routing::Loopback) -> String {
     use std::fmt::Write as _;
     let mut s = String::new();
-    let state = if l.shutdown { "administratively down, line protocol down" } else { "up, line protocol up" };
+    let state = if l.shutdown { "administratively down, line protocol is down" } else { "up, line protocol is up" };
     let _ = writeln!(s, "{} is {state}", l.name());
     if !l.description.is_empty() {
         let _ = writeln!(s, "  Description: {}", l.description);
@@ -213,6 +213,34 @@ fn each_ospf_if(c: &mut Ctx, f: impl Fn(&mut netlabcraft_model::OspfIf)) -> R {
     Ok(String::new())
 }
 
+/// The authentication type a typed word names: none given means a clear-text password.
+fn auth_kind_word(text: &str, allow_null: bool) -> Result<netlabcraft_model::OspfAuthKind, String> {
+    use netlabcraft_model::OspfAuthKind as K;
+    let w = text.trim().to_ascii_lowercase();
+    if w.is_empty() {
+        Ok(K::Simple)
+    } else if "message-digest".starts_with(&w) {
+        Ok(K::Md5)
+    } else if allow_null && "null".starts_with(&w) {
+        Ok(K::Null)
+    } else {
+        Err(format!("% Authentication here is {}", if allow_null { "message-digest or null" } else { "message-digest" }))
+    }
+}
+
+/// `area N authentication [message-digest]` and its `no` form, in router OSPF mode.
+pub(super) fn ospf_area_auth(c: &mut Ctx, on: bool, args: &[String]) -> R {
+    let area: u32 = args.first().and_then(|a| a.trim().parse().ok()).ok_or("% Area number 0-4294967295")?;
+    let kind = auth_kind_word(args.get(1).map(String::as_str).unwrap_or(""), false)?;
+    let o = c.dm()?.ospf.as_mut().ok_or("% Not in OSPF mode")?;
+    let a = o.areas.entry(area).or_default();
+    a.auth = on.then_some(kind);
+    if a.is_default() {
+        o.areas.remove(&area);
+    }
+    Ok(String::new())
+}
+
 /// Interface-mode OSPF commands: `ip ospf N area A`, the hello and dead intervals and the
 /// network type.
 pub(super) fn ospf_if_command(c: &mut Ctx, id: Id, args: &[String]) -> R {
@@ -246,6 +274,42 @@ pub(super) fn ospf_if_command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             each_ospf_if(c, |e| e.dead = Some(s))
         }
         Id::NoIpOspfDead => each_ospf_if(c, |e| e.dead = None),
+        Id::IpOspfAuth => {
+            let kind = auth_kind_word(arg(0), true)?;
+            each_ospf_if(c, |e| e.auth = Some(kind))
+        }
+        Id::NoIpOspfAuth => each_ospf_if(c, |e| e.auth = None),
+        Id::IpOspfAuthKey => {
+            let key = arg(0).to_string();
+            if key.chars().count() > 8 {
+                return Err("% The clear-text password is at most 8 characters".into());
+            }
+            each_ospf_if(c, |e| e.auth_key = Some(key.clone()))
+        }
+        Id::NoIpOspfAuthKey => each_ospf_if(c, |e| e.auth_key = None),
+        Id::IpOspfMd5Key => {
+            let n: u8 = arg(0).parse().ok().filter(|n| *n >= 1).ok_or("% The key id is 1-255")?;
+            if arg(1).is_empty() || arg(1).chars().count() > 16 {
+                return Err("% The key is 1-16 characters".into());
+            }
+            let key = arg(1).to_string();
+            let names = if_names(c)?;
+            let d = c.dm()?;
+            if names.iter().any(|name| {
+                d.ospf_if.get(name).is_some_and(|e| !e.md5_keys.contains_key(&n) && e.md5_keys.len() >= netlabcraft_model::MAX_OSPF_MD5_KEYS)
+            }) {
+                return Err("% Too many message-digest keys on this interface".into());
+            }
+            each_ospf_if(c, |e| {
+                e.md5_keys.insert(n, key.clone());
+            })
+        }
+        Id::NoIpOspfMd5Key => {
+            let n: u8 = arg(0).parse().ok().filter(|n| *n >= 1).ok_or("% The key id is 1-255")?;
+            each_ospf_if(c, |e| {
+                e.md5_keys.remove(&n);
+            })
+        }
         Id::IpOspfNetwork => {
             let kind = arg(0).to_ascii_lowercase();
             let p2p = if !kind.is_empty() && "point-to-point".starts_with(&kind) {
@@ -320,7 +384,73 @@ pub(super) fn clear_ospf(c: &mut Ctx, process: &str) -> R {
 }
 
 /// `show ip ospf database`: the LSAs this router holds, by area and kind.
-pub(super) fn ospf_database(c: &mut Ctx) -> R {
+/// One LSA kind in full (`show ip ospf database router`): every LSA of the kind, per area,
+/// with its links, attached routers or metric, optionally only the one with a link-state ID.
+fn ospf_database_detail(d: &netlabcraft_model::Device, process: u16, rid: &str, lsas: &[netlabcraft_sim::ospf_lsdb::Lsa], words: &[&str]) -> R {
+    use netlabcraft_sim::ospf_lsdb::{LinkKind, LsaKind};
+    use std::fmt::Write as _;
+    let word = words.first().map(|w| w.to_ascii_lowercase()).unwrap_or_default();
+    let kind = [("router", LsaKind::Router), ("network", LsaKind::Network), ("summary", LsaKind::Summary), ("external", LsaKind::External)]
+        .into_iter()
+        .find(|(n, _)| !word.is_empty() && n.starts_with(&word))
+        .map(|(_, k)| k)
+        .ok_or("% show ip ospf database router, network, summary or external, then an optional link-state ID")?;
+    let only: Option<std::net::Ipv4Addr> = match words.get(1) {
+        Some(w) => Some(w.parse().map_err(|_| format!("% `{w}` is not a link-state ID (A.B.C.D)"))?),
+        None => None,
+    };
+    if words.len() > 2 {
+        return Err("% Too many words: the kind, then an optional link-state ID".into());
+    }
+    let mut s = String::new();
+    let mut last: Option<Option<u32>> = None;
+    for l in lsas.iter().filter(|l| l.kind == kind && only.is_none_or(|o| o == l.id)) {
+        if last != Some(l.area) {
+            let title = match kind {
+                LsaKind::Router => "Router link states",
+                LsaKind::Network => "Network link states",
+                LsaKind::Summary => "Summary link states",
+                LsaKind::External => "External link states",
+            };
+            let area = l.area.map_or(String::new(), |a| format!(", area {a}"));
+            let _ = writeln!(s, "{}{title}{area} (process {process}, router {rid})", if last.is_some() { "\n" } else { "" });
+            last = Some(l.area);
+        }
+        let seq = "0x80000001";
+        match kind {
+            LsaKind::Router => {
+                let _ = writeln!(s, "Router {}, sequence {seq}, {} link{}", l.id, l.count, if l.count == 1 { "" } else { "s" });
+                for k in &l.links {
+                    let line = match k.kind {
+                        LinkKind::PointToPoint => format!("point-to-point to router {} through {}", k.id, k.data),
+                        LinkKind::Transit => format!("transit network, designated router {} (this router {})", k.id, k.data),
+                        LinkKind::Stub => format!("stub network {}/{}", k.id, netlabcraft_core::mask_to_prefix(k.data).unwrap_or(0)),
+                    };
+                    let _ = writeln!(s, "  {line}, metric {}", k.metric);
+                }
+            }
+            LsaKind::Network => {
+                let net = netlabcraft_core::Ipv4Net::new(l.id, u8::try_from(l.count).unwrap_or(32)).network();
+                let _ = writeln!(s, "Network {}/{}, designated router {}, sequence {seq}, advertised by {}", net.addr, net.prefix, l.id, l.adv);
+                let list: Vec<String> = l.attached.iter().map(ToString::to_string).collect();
+                let _ = writeln!(s, "  attached routers: {}", list.join(", "));
+            }
+            LsaKind::Summary => {
+                let _ = writeln!(s, "Network {}/{}, sequence {seq}, advertised by {}, metric {}", l.id, l.count, l.adv, l.metric);
+            }
+            LsaKind::External => {
+                let _ = writeln!(s, "Network {}/{}, sequence {seq}, advertised by {}, type 2 metric {}", l.id, l.count, l.adv, l.metric);
+            }
+        }
+    }
+    if s.is_empty() {
+        let what = only.map_or(String::new(), |o| format!(" with link-state ID {o}"));
+        return Ok(format!("No {word} LSAs{what} in the database of {}.", d.name));
+    }
+    Ok(s.trim_end().to_string())
+}
+
+pub(super) fn ospf_database(c: &mut Ctx, what: &str) -> R {
     use netlabcraft_sim::ospf_lsdb::LsaKind;
     use std::fmt::Write as _;
     let d = c.d()?.clone();
@@ -328,6 +458,10 @@ pub(super) fn ospf_database(c: &mut Ctx) -> R {
     let st = c.sim.ospf_state(c.t);
     let rid = st.router_ids.get(&d.id).map_or("unset".to_string(), ToString::to_string);
     let lsas = netlabcraft_sim::ospf_lsdb::database(c.t, &st, d.id);
+    let words: Vec<&str> = what.split_whitespace().collect();
+    if !words.is_empty() {
+        return ospf_database_detail(&d, o.process, &rid, &lsas, &words);
+    }
     let mut s = format!("OSPF link-state database of router {rid} (process {})\n", o.process);
     if lsas.is_empty() {
         s.push_str("\n(empty: no interface runs OSPF yet)");

@@ -18,6 +18,7 @@ pub mod board;
 pub mod cable;
 pub mod cloud;
 pub mod drawing;
+pub mod environment;
 pub mod fhrp;
 pub mod file;
 pub mod firewall;
@@ -1249,6 +1250,10 @@ pub struct OspfArea {
     /// inside them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub ranges: Vec<Ipv4Net>,
+    /// `area N authentication [message-digest]`: the type every interface in the area uses
+    /// unless it sets its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth: Option<OspfAuthKind>,
 }
 
 impl OspfArea {
@@ -1266,7 +1271,7 @@ impl Ospf {
 
 /// OSPF settings of one interface (`ip ospf cost`, `ip ospf priority`), kept apart from the
 /// process as on real routers.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct OspfIf {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost: Option<u32>,
@@ -1285,7 +1290,31 @@ pub struct OspfIf {
     /// `ip ospf PROCESS area AREA`: (process, area), alongside or instead of `network`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub area: Option<(u16, u32)>,
+    /// `ip ospf authentication [message-digest|null]`: the interface's own type, which wins over
+    /// the area's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth: Option<OspfAuthKind>,
+    /// `ip ospf authentication-key KEY`: the simple password (eight characters count).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth_key: Option<String>,
+    /// `ip ospf message-digest-key N md5 KEY`, by key id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub md5_keys: BTreeMap<u8, String>,
 }
+
+/// How OSPF packets are authenticated (RFC 2328 Appendix D).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum OspfAuthKind {
+    /// Authentication type 0: nothing.
+    Null,
+    /// Authentication type 1: a clear-text password.
+    Simple,
+    /// Authentication type 2: a keyed MD5 digest.
+    Md5,
+}
+
+/// Most message-digest keys one interface keeps.
+pub const MAX_OSPF_MD5_KEYS: usize = 16;
 
 /// `router rip`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2023,6 +2052,9 @@ pub struct Topology {
     /// Simulation scenarios and their PDU lists.
     #[serde(default, skip_serializing_if = "scenario::Scenarios::is_default")]
     pub scenarios: scenario::Scenarios,
+    /// The smart things' shared room: its physics settings and starting values.
+    #[serde(default, skip_serializing_if = "environment::Environment::is_default")]
+    pub environment: environment::Environment,
 }
 
 /// A note or drawing placed on the workspace.
@@ -2109,6 +2141,7 @@ impl Topology {
             annotations: Vec::new(),
             clusters: Vec::new(),
             activity: None,
+            environment: environment::Environment::default(),
             physical: physical::Physical::default(),
             scenarios: scenario::Scenarios::default(),
         }
@@ -2365,6 +2398,7 @@ impl Topology {
     /// Repairs what a hand-edited or hostile file could break: dangling or duplicate cables,
     /// duplicate names and ids, non-finite positions, missing VLAN 1, oversized lists.
     pub fn sanitize(&mut self) {
+        self.environment.sanitize();
         if let Some(a) = &mut self.activity {
             a.sanitize();
         }

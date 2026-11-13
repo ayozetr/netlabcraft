@@ -21,6 +21,25 @@ pub enum LsaKind {
     External = 5,
 }
 
+/// What a link in a router-LSA connects to (RFC 2328 §12.4.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum LinkKind {
+    PointToPoint,
+    Transit,
+    Stub,
+}
+
+/// One link of a router-LSA.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct LsaLink {
+    pub kind: LinkKind,
+    /// The neighbour's router ID (point to point), the DR's address (transit), the network (stub).
+    pub id: Ipv4Addr,
+    /// This router's interface address (point to point and transit), the mask (stub).
+    pub data: Ipv4Addr,
+    pub metric: u32,
+}
+
 /// One LSA as the database lists it.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Lsa {
@@ -33,11 +52,53 @@ pub struct Lsa {
     pub adv: Ipv4Addr,
     /// Router-LSA: its links. Others: the network's prefix length.
     pub count: u32,
+    /// Router-LSA: the links themselves.
+    pub links: Vec<LsaLink>,
+    /// Summary and external LSAs: the metric the originator advertises.
+    pub metric: u32,
+    /// Network-LSA: the routers on the segment (the DR included).
+    pub attached: Vec<Ipv4Addr>,
+}
+
+impl Lsa {
+    fn new(kind: LsaKind, area: Option<u32>, id: Ipv4Addr, adv: Ipv4Addr, count: u32) -> Lsa {
+        Lsa { kind, area, id, adv, count, links: Vec::new(), metric: 0, attached: Vec::new() }
+    }
+}
+
+/// The metric an area border router advertises for a network: the cost of its own interface
+/// when it is attached, else the cost of its route to it.
+fn metric_to(st: &OspfState, abr: DeviceId, net: &Ipv4Net) -> u32 {
+    st.interfaces
+        .get(&abr)
+        .into_iter()
+        .flatten()
+        .find(|x| x.1.network() == net.network())
+        .map(|x| x.2)
+        .or_else(|| st.routes.get(&abr).into_iter().flatten().find(|r| r.net == net.network()).map(|r| r.cost))
+        .unwrap_or(1)
+}
+
+/// The routers whose advertisements reach `me` by flooding: itself and every router joined to
+/// it through a chain of adjacencies. A router with no adjacency back to it has aged out.
+fn flooding_domain(st: &OspfState, me: DeviceId) -> BTreeSet<DeviceId> {
+    let mut seen = BTreeSet::from([me]);
+    let mut todo = vec![me];
+    while let Some(d) = todo.pop() {
+        for n in st.neighbors.get(&d).into_iter().flatten() {
+            if seen.insert(n.device) {
+                todo.push(n.device);
+            }
+        }
+    }
+    seen
 }
 
 /// The database a router holds: the LSAs of every area it has an interface in, and the
-/// external ones.
+/// external ones. Only routers that flooding reaches count: one cut off from this router by a
+/// missing adjacency has no LSA here any more (its advertisements age out).
 pub fn database(t: &Topology, st: &OspfState, me: DeviceId) -> Vec<Lsa> {
+    let flood = flooding_domain(st, me);
     let my_areas: BTreeSet<u32> = st.segments.iter().filter(|((d, _), _)| *d == me).map(|(_, s)| s.area).collect();
     let rid = |d: DeviceId| st.router_ids.get(&d).copied();
     let heard = |d: DeviceId, iface: &str| st.neighbors.get(&d).into_iter().flatten().filter(|n| n.iface == iface).count();
@@ -45,7 +106,7 @@ pub fn database(t: &Topology, st: &OspfState, me: DeviceId) -> Vec<Lsa> {
     // Areas each router is in, and the networks of each area.
     let mut areas_of: BTreeMap<DeviceId, BTreeSet<u32>> = BTreeMap::new();
     let mut nets_in: BTreeMap<u32, BTreeSet<Ipv4Net>> = BTreeMap::new();
-    for ((d, iface), seg) in &st.segments {
+    for ((d, iface), seg) in st.segments.iter().filter(|((d, _), _)| flood.contains(d)) {
         areas_of.entry(*d).or_default().insert(seg.area);
         if let Some((_, net, _, _)) = st.interfaces.get(d).into_iter().flatten().find(|x| x.0 == *iface) {
             nets_in.entry(seg.area).or_default().insert(*net);
@@ -56,20 +117,37 @@ pub fn database(t: &Topology, st: &OspfState, me: DeviceId) -> Vec<Lsa> {
             let Some(r) = rid(*d) else { continue };
             // Router-LSA: point-to-point links count twice (the neighbour and the subnet), a
             // segment with neighbours once (its transit network), anything else once (a stub).
-            let mut links = 0u32;
-            for (name, ..) in st.interfaces.get(d).into_iter().flatten() {
+            let mut links: Vec<LsaLink> = Vec::new();
+            for (name, net, cost, _) in st.interfaces.get(d).into_iter().flatten() {
                 let Some(seg) = st.segments.get(&(*d, name.clone())).filter(|s| s.area == *area) else { continue };
-                let n = u32::try_from(heard(*d, name)).unwrap_or(u32::MAX);
-                links = links.saturating_add(if seg.dr.is_none() { n.saturating_add(1) } else { 1 });
+                let mine = st.addresses.get(&(*d, name.clone())).copied().unwrap_or(net.addr);
+                let stub = LsaLink { kind: LinkKind::Stub, id: net.network().addr, data: net.mask(), metric: *cost };
+                if seg.dr.is_none() {
+                    for n in st.neighbors.get(d).into_iter().flatten().filter(|n| n.iface == *name) {
+                        links.push(LsaLink { kind: LinkKind::PointToPoint, id: n.router_id, data: mine, metric: *cost });
+                    }
+                    links.push(stub);
+                } else if let (Some(dr), true) = (seg.dr, heard(*d, name) > 0) {
+                    links.push(LsaLink { kind: LinkKind::Transit, id: dr, data: mine, metric: *cost });
+                } else {
+                    links.push(stub);
+                }
             }
-            out.insert(Lsa { kind: LsaKind::Router, area: Some(*area), id: r, adv: r, count: links });
+            let mut lsa = Lsa::new(LsaKind::Router, Some(*area), r, r, u32::try_from(links.len()).unwrap_or(u32::MAX));
+            lsa.links = links;
+            out.insert(lsa);
             // Network-LSAs: from the DR of each segment that has one and neighbours on it.
             for ((dev, name), seg) in st.segments.iter().filter(|((dev, _), s)| dev == d && s.area == *area) {
                 if let (Some(dr), true) = (seg.dr, heard(*dev, name) > 0) {
                     let owner = owner_of(t, st, dr).and_then(rid);
                     if let Some(adv) = owner {
                         let prefix = st.interfaces.get(dev).into_iter().flatten().find(|x| x.0 == *name).map_or(0, |x| x.1.prefix);
-                        out.insert(Lsa { kind: LsaKind::Network, area: Some(*area), id: dr, adv, count: u32::from(prefix) });
+                        let mut lsa = Lsa::new(LsaKind::Network, Some(*area), dr, adv, u32::from(prefix));
+                        let mut members: BTreeSet<Ipv4Addr> =
+                            st.neighbors.get(dev).into_iter().flatten().filter(|n| n.iface == *name).map(|n| n.router_id).collect();
+                        members.extend(rid(*dev));
+                        lsa.attached = members.into_iter().collect();
+                        out.insert(lsa);
                     }
                 }
             }
@@ -81,16 +159,20 @@ pub fn database(t: &Topology, st: &OspfState, me: DeviceId) -> Vec<Lsa> {
                         if nets_in.get(area).is_some_and(|mine| mine.contains(n)) {
                             continue;
                         }
-                        out.insert(Lsa { kind: LsaKind::Summary, area: Some(*area), id: n.addr, adv: r, count: u32::from(n.prefix) });
+                        let mut lsa = Lsa::new(LsaKind::Summary, Some(*area), n.addr, r, u32::from(n.prefix));
+                        lsa.metric = metric_to(st, *d, n);
+                        out.insert(lsa);
                     }
                 }
             }
         }
     }
-    for (d, nets) in &st.externals {
+    for (d, nets) in st.externals.iter().filter(|(d, _)| flood.contains(d)) {
         let Some(r) = rid(*d) else { continue };
         for n in nets {
-            out.insert(Lsa { kind: LsaKind::External, area: None, id: n.addr, adv: r, count: u32::from(n.prefix) });
+            let mut lsa = Lsa::new(LsaKind::External, None, n.addr, r, u32::from(n.prefix));
+            lsa.metric = if n.prefix == 0 { 1 } else { 20 };
+            out.insert(lsa);
         }
     }
     out.into_iter().collect()

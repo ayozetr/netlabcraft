@@ -1,6 +1,6 @@
 # Architecture
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (M9.9: TLS and SSH use the certificates and keys) · earlier: minor (M9.9: keys, trustpoints, certificates and a small CA on the console) · earlier: minor (M9.9: X.509 certificates and a strict DER codec in wire) · earlier: minor (M9.9: RSA key generation and PKCS#1 v1.5 signatures in wire) · earlier: minor (M9.5: IKEv1 group 24 is a real Diffie-Hellman group) · earlier: minor (M9.5: AH next to ESP in one transform set is a real bundle), minor (M9.5: the IKE SA has a lifetime and is replaced before it runs out), minor (eleven lab-book labs over MCP) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman), minor (one modular-exponentiation engine), minor (modules for Diffie-Hellman, AES-256, SHA-256, TLS, SSH, PEAP, RIPng, IKEv1 keys, central switching, boards and BoardScript, power supplies, Simulation-mode options, instructor tools and the lab book; the duplicated modular exponentiation noted)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (M9.9: TLS and SSH use the certificates and keys) · also merged with main · earlier: minor (M9.11: BoardScript messages in the interface language) · earlier: minor (M9.11: the smart things share a room with physics) · earlier: minor (M9.5: IKEv1 group 24 is a real Diffie-Hellman group) · earlier: minor (M9.5: AH next to ESP in one transform set is a real bundle), minor (M9.5: the IKE SA has a lifetime and is replaced before it runs out), minor (eleven lab-book labs over MCP) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman), minor (one modular-exponentiation engine), minor (modules for Diffie-Hellman, AES-256, SHA-256, TLS, SSH, PEAP, RIPng, IKEv1 keys, central switching, boards and BoardScript, power supplies, Simulation-mode options, instructor tools and the lab book; the duplicated modular exponentiation noted)
 
 How NetLabCraft is built. Rules for contributors and agents are in [`AGENTS.md`](../AGENTS.md);
 the reasons behind the choices are in [decisions.md](decisions.md).
@@ -58,7 +58,7 @@ L6 depends on a UI toolkit.
 - **Ping/traceroute** send echo requests and run the event loop until the answer arrives or the
   timeout passes; DHCP, DNS, HTTP, Telnet/SSH, RESTCONF, NETCONF, IKEv2 and SIP do the same with
   their own exchanges. User PDUs (`pdu.rs`) are built field by field and sent once or
-  periodically as `sim.advance` moves simulated time; IoT things report on their timers the
+  periodically as `sim.advance` moves simulated time; IoT things report on their timers (and the shared room of `model::environment` is stepped a simulated second at a time) the
   same way.
 - **Power.** IP phones and lightweight APs come up only when a PoE switch port within its
   budget (`poe.rs`) or their adapter powers them; a router or switch without a power supply in
@@ -107,6 +107,8 @@ None known. (Modular exponentiation used to exist twice, in `wire/src/dh.rs` for
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | BoardScript messages are English in `sim` and `engine` and translated at the edge (M9.11): the interface's `tr_any` matches catalog rows, the wrapper rows `line {}: {}` and `stopped: {}` are tried first and translate the message inside them. |
+| 2026-11-13 | minor | The smart things' room (M9.11): `model/src/environment.rs` holds the settings and the exact integer physics, `sim/src/iot.rs` steps it from the devices that are on (`env_step`) before each report and gives the sensors their readings (`iot_reading`), `iot.environment` is the command. |
 | 2026-11-13 | minor | `wire/src/dh.rs` gains MODP group 24 (explicit generator and subgroup order). |
 | 2026-11-13 | minor | AH bundled with ESP (M9.5): `sim/src/vpn.rs` keeps the AH half of a bundle (`AhHalf`) next to the ESP one and unwraps AH before ESP on the way in; `sim/src/ikev2.rs` negotiates its child SA; `wire/src/ah.rs` gains `open_transport`. |
 | 2026-11-13 | minor | IKE SA lifetimes and rekeying (M9.5): `sim/src/vpn.rs` keeps an ISAKMP or IKE SA's age and replacement next to the IPsec SA (a phase-1 rekey runs against its own exchange state and is merged when main mode completes); `sim/src/ikev2.rs` rekeys the IKE SA with CREATE_CHILD_SA; `wire/src/ikev2.rs` gains `Keys::rekey_with`. |

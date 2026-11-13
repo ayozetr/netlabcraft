@@ -108,6 +108,14 @@ A SIP phone registers with its MAC address as the user part, and the router find
 
 Things report on their interval only as simulated time advances (`sim.advance`, the play controls, waiting for a ping), never by the wall clock, so runs stay deterministic and a paused lab stays still. A thing also reports at once when its reading changes, so rules react without waiting for the timer.
 
+## The smart things share one room with simple physics
+
+The IoT things share one room per lab (`Topology::environment`), with its temperature, humidity, soil moisture, smoke, CO and light. While `enabled`, the devices that are on change it and the sensors read it, so a rule such as "thermostat below 19: heater on" closes a loop in simulated time. It is off by default: older labs and samples set each sensor's reading by hand and must keep behaving that way, and a teacher can set it up as an exercise. When it is on, setting a sensor's reading sets the room's quantity instead.
+
+The model is meant to be explainable and exact, not a thermal simulation. Every quantity is an integer number of thousandths and a step is one second of simulated time, so results are identical on every platform and nothing drifts; leaks toward the outside move at least a thousandth a step, so a room arrives at the outside value exactly. A heater adds 1.2 degrees a minute only below 40 degrees, an air conditioner removes 1.5 only above 10, an open window or garage makes the leak six times faster and lets 3/4 of the daylight in, a sprinkler wets the air and the soil, a fan clears smoke and CO. Light follows at once (no inertia). A long stretch is stepped at most a day at a time.
+
+Honest limits: one room per lab (the physical view's buildings and closets are not rooms), no heat capacity, no day and night cycle or weather, no humidity-temperature coupling, no light sensor model, a door lock does nothing, and the values reached while running are not saved with the lab (a loaded lab starts from its starting values).
+
 ## Pings don't set "don't fragment" unless asked
 
 Host and router pings go out without DF, as on common operating systems and router software; `ping -f` on hosts and the `df-bit` option of a router's extended ping set it. Echo replies carry no DF, and GRE copies DF from the inner packet. With `ip mtu` in the path, a plain ping is fragmented and a DF ping gets "fragmentation needed", which is what MTU labs show.

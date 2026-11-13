@@ -966,6 +966,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             if which.is_empty() {
                 return Ok(full);
             }
+            if args.len() == 1 && !which.is_empty() && "summary".starts_with(&which) && which.len() >= 2 {
+                return Ok(render::ip_route_summary(&table));
+            }
             // `show ip route A.B.C.D M.M.M.M`: the entry for exactly that network.
             if args.len() == 2 {
                 let net = parse_ip(&which).map_err(|e| format!("% {e}"))?;
@@ -1155,13 +1158,26 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(if on { "EIGRP debugging is on: the hellos this router hears are reported." } else { "EIGRP debugging is off." }.into())
         }
         Id::DebugIpOspf | Id::NoDebugIpOspf => {
-            let what = arg(0).trim();
-            if !what.is_empty() && !["adj", "events", "hello"].iter().any(|w| w.starts_with(what)) {
+            let what = arg(0).trim().to_ascii_lowercase();
+            let pick = ["adj", "events", "hello"].into_iter().find(|w| !what.is_empty() && w.starts_with(what.as_str()));
+            if !what.is_empty() && pick.is_none() {
                 return Err("% debug ip ospf adj, events or hello".into());
             }
             let on = spec.id == Id::DebugIpOspf;
-            c.sim.set_debug(c.dev, DebugKind::Ospf, on);
-            Ok(if on { "OSPF debugging is on: the hellos this router hears are reported." } else { "OSPF debugging is off." }.into())
+            let (kinds, note): (&[DebugKind], &str) = match pick {
+                Some("adj") => (&[DebugKind::OspfAdj], "each neighbour's adjacency states are reported"),
+                Some("events") => (&[DebugKind::OspfEvents], "interface, DR election and SPF events are reported"),
+                Some(_) => (&[DebugKind::OspfHello], "the hellos this router hears are reported"),
+                None => (&[DebugKind::OspfHello, DebugKind::OspfAdj, DebugKind::OspfEvents], "all of it"),
+            };
+            for k in kinds {
+                c.sim.set_debug(c.dev, *k, on);
+            }
+            Ok(if on {
+                format!("OSPF debugging is on: {note}.")
+            } else {
+                format!("OSPF debugging is off ({}).", pick.unwrap_or("hello, adj and events"))
+            })
         }
         Id::UndebugAll => {
             for k in DebugKind::ALL {
@@ -1909,7 +1925,14 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::IpOspfDead
         | Id::NoIpOspfDead
         | Id::IpOspfNetwork
-        | Id::NoIpOspfNetwork => routing::ospf_if_command(&mut c, spec.id, &args),
+        | Id::NoIpOspfNetwork
+        | Id::IpOspfAuth
+        | Id::NoIpOspfAuth
+        | Id::IpOspfAuthKey
+        | Id::NoIpOspfAuthKey
+        | Id::IpOspfMd5Key
+        | Id::NoIpOspfMd5Key => routing::ospf_if_command(&mut c, spec.id, &args),
+        Id::AreaAuth | Id::NoAreaAuth => routing::ospf_area_auth(&mut c, spec.id == Id::AreaAuth, &args),
         Id::OspfRedistributeStatic | Id::NoOspfRedistributeStatic => {
             routing::ospf_redistribute(&mut c, spec.id == Id::OspfRedistributeStatic, arg(0))
         }
@@ -1917,7 +1940,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::Ipv6AddressAutoconfig | Id::NoIpv6AddressAutoconfig | Id::Ipv6AddressDhcp | Id::NoIpv6AddressDhcp => {
             routing::ipv6_client(&mut c, spec.id, spec.path.len() == 4)
         }
-        Id::ShowIpOspfDatabase => routing::ospf_database(&mut c),
+        Id::ShowIpOspfDatabase => routing::ospf_database(&mut c, arg(0)),
         Id::ShowOspfNeighborDetail => routing::ospf_neighbor_detail(&mut c),
         // ---- site-to-site VPN: GRE tunnels and IPsec (see exec/vpn.rs) ----
         Id::IpAddress | Id::NoIpAddress | Id::Shutdown | Id::NoShutdown | Id::Description | Id::NoDescription
@@ -2137,6 +2160,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::L2NoStpVlanPortPriority
         | Id::L2ShowStpSummary
         | Id::L2ShowStpDetail
+        | Id::L2ShowStpBrief
+        | Id::L2ShowStpDetailAll
+        | Id::L2ShowStpInterface
         | Id::L2LoadBalance
         | Id::L2NoLoadBalance
         | Id::L2ShowLoadBalance
@@ -2384,7 +2410,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::AclResequence => {
             let (start, step) = (parse_seq(arg(1))?, parse_seq(arg(2))?);
             let list = c.dm()?.acls.iter_mut().find(|a| a.name == arg(0)).ok_or_else(|| format!("% No access list {}", arg(0)))?;
+            let before: Vec<u32> = (0..list.entries.len()).map(|i| list.seq_of(i)).collect();
             list.resequence(start, step);
+            // Counters move with their lines to the new numbers.
+            let moves: Vec<(u32, u32)> = before.into_iter().zip(list.entries.iter().map(|e| e.seq)).collect();
+            c.sim.remap_acl_hits(c.dev, arg(0), &moves);
             Ok(String::new())
         }
         Id::NoAccessList => {
@@ -2437,7 +2467,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             {
                 let seq = parse_seq(w)?;
                 let list = c.dm()?.acls.iter_mut().find(|a| a.name == name).ok_or("% The list was deleted")?;
-                return if list.remove_seq(seq) { Ok(String::new()) } else { Err(format!("% {name} has no line {seq}")) };
+                if !list.remove_seq(seq) {
+                    return Err(format!("% {name} has no line {seq}"));
+                }
+                c.sim.forget_acl_hit(c.dev, &name, seq);
+                return Ok(String::new());
             }
             let entry = parse_acl_entry(&words, extended)?;
             if spec.id == Id::AclEntryLine {
@@ -2445,8 +2479,16 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             } else {
                 let list = c.dm()?.acls.iter_mut().find(|a| a.name == name).ok_or("% The list was deleted")?;
                 let before = list.entries.len();
+                list.number_lines();
+                let gone: Vec<u32> = list.entries.iter().filter(|e| e.same_rule(&entry)).map(|e| e.seq).collect();
                 list.entries.retain(|e| !e.same_rule(&entry));
-                if list.entries.len() == before { Err("% No such line".into()) } else { Ok(String::new()) }
+                if list.entries.len() == before {
+                    return Err("% No such line".into());
+                }
+                for seq in gone {
+                    c.sim.forget_acl_hit(c.dev, &name, seq);
+                }
+                Ok(String::new())
             }
         }
         Id::AccessGroup | Id::NoAccessGroup => {
@@ -3328,7 +3370,13 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             n.pools.retain(|p| p.name != arg(0));
             if n.pools.len() == before { Err(format!("% No pool {}", arg(0))) } else { Ok(String::new()) }
         }
-        Id::ShowNat => Ok(render::nat_translations(c.sim, c.d()?)),
+        Id::ShowNat => {
+            let w = arg(0).trim().to_ascii_lowercase();
+            if !w.is_empty() && !"verbose".starts_with(&w) {
+                return Err("% show ip nat translations, or show ip nat translations verbose".into());
+            }
+            Ok(render::nat_translations(c.sim, c.d()?, !w.is_empty()))
+        }
         Id::ClearNatStats => {
             c.sim.clear_nat_counts(c.dev);
             Ok(String::new())
@@ -3879,6 +3927,13 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let st = c.sim.ospf_state(c.t);
             let rs = c.sim.rip_state(c.t);
             let es = c.sim.eigrp_state(c.t);
+            let w = arg(0).trim().to_ascii_lowercase();
+            if !w.is_empty() {
+                if !"summary".starts_with(&w) {
+                    return Err("% show ip protocols, or show ip protocols summary".into());
+                }
+                return Ok(render::ip_protocols_summary(c.d()?, &st, &rs, &es));
+            }
             Ok(render::ip_protocols(c.d()?, &st, &rs, &es))
         }
         Id::HelperAddress | Id::NoHelperAddress => {
@@ -4451,13 +4506,23 @@ fn parse_acl_entry(words: &[&str], extended: bool) -> Result<acl::AclEntry, Stri
         (acl::AclAddr::ANY, None)
     };
     let mut entry = acl::AclEntry { src_port, dst_port, ..acl::AclEntry::new(permit, proto, src, dst) };
-    for w in it {
+    while let Some(w) = it.next() {
         let lw = w.to_ascii_lowercase();
         match lw.as_str() {
             "log" => entry.log = true,
             "established" if extended && proto == acl::AclProto::Tcp => entry.established = true,
-            _ if extended && proto == acl::AclProto::Icmp && entry.icmp_type.is_none() && acl::icmp_type_from_name(w).is_some() => {
-                entry.icmp_type = acl::icmp_type_from_name(w);
+            _ if extended && proto == acl::AclProto::Icmp && entry.icmp_type.is_none() && acl::icmp_spec_from_name(w).is_some() => {
+                let (ty, code) = acl::icmp_spec_from_name(w).unwrap_or((0, None));
+                entry.icmp_type = Some(ty);
+                entry.icmp_code = code;
+                // `permit icmp any any 3 4`: a number type may be followed by a code.
+                if code.is_none()
+                    && w.parse::<u8>().is_ok()
+                    && let Some(c) = it.peek().and_then(|n| n.parse::<u8>().ok())
+                {
+                    entry.icmp_code = Some(c);
+                    it.next();
+                }
             }
             _ => return Err(format!("% Unexpected `{w}` at the end of the line")),
         }
@@ -4570,8 +4635,12 @@ impl Ctx<'_> {
         if list.extended != extended {
             return Err(format!("% {name} is a{} list", if list.extended { "n extended" } else { " standard" }));
         }
-        list.insert(entry)?;
-        Ok(String::new())
+        Ok(match list.insert(entry)? {
+            Some(seq) => {
+                format!("Line {seq} already holds this rule, so nothing was added (type it with a sequence number to repeat it)")
+            }
+            None => String::new(),
+        })
     }
 
     /// Adds (or with `add` false removes) a remark on a list, creating the list if needed.

@@ -5,13 +5,24 @@ use netlabcraft_sim::Sim;
 use crate::grammar::{SPECS, Tok};
 use crate::*;
 
+mod acl_counters;
+mod acl_duplicates;
+mod acl_icmp;
+mod console_depth;
 mod families;
 mod inspections;
 mod ipsec_crypto;
 mod leftovers;
+mod line_protocol;
+mod nat_verbose;
+mod ospf_database;
+mod ospf_debug;
 mod pki;
+mod protocols_summary;
+mod route_summary;
 mod routing;
 mod security;
+mod stp_views;
 mod swroute;
 mod troubleshoot;
 
@@ -665,7 +676,7 @@ fn ospf_by_typing() {
     lab.run(r1, "debug ip ospf hello");
     lab.sim.run_for(&lab.t, 11_000_000);
     let log = lab.run(r1, "show logging");
-    assert!(log.contains("OSPF debug: hello from 10.0.0.2 (router ID 172.16.2.1, area 0) on GigabitEthernet0/1, 1 neighbour listed"), "{log}");
+    assert!(log.contains("OSPF hello: from 10.0.0.2 (router ID 172.16.2.1, area 0) on GigabitEthernet0/1, 1 neighbour listed"), "{log}");
     // The neighbours exchanged their databases once, when they met.
     let db: Vec<String> =
         lab.sim.trace().iter().filter(|e| e.summary.starts_with("OSPF") && !e.summary.contains("hello")).map(|e| e.summary.clone()).collect();
@@ -1321,7 +1332,7 @@ fn serial_link_by_typing() {
     lab.run(r2, "en\nconf t\nint g0/0\nip address 192.168.2.1 255.255.255.0\nno shut\nint s0/0/0\nip address 10.0.0.2 255.255.255.252\nno shut\nexit\nip route 192.168.1.0 255.255.255.0 10.0.0.1\nend");
     // No clock on the DCE end: the line protocol stays down.
     let si = lab.run(r1, "show interfaces s0/0/0");
-    assert!(si.contains("line protocol down (no clock rate on the DCE end)"), "{si}");
+    assert!(si.contains("line protocol is down (no clock rate on the DCE end)"), "{si}");
     assert!(lab.run(r1, "show controllers s0/0/0").contains("DCE end"));
     assert!(lab.run(r2, "show controllers serial 0/0/0").contains("DTE end"));
     lab.run(r2, "conf t\nint s0/0/0");
@@ -2739,7 +2750,7 @@ fn gre_tunnel_by_typing() {
     assert!(brief.lines().any(|l| l.starts_with("Tunnel0") && l.contains("10.0.0.1") && l.ends_with("up")), "{brief}");
     let tun = lab.run(r1, "show interfaces tunnel 0");
     assert!(
-        tun.contains("Tunnel0 is up, line protocol up") && tun.contains("source GigabitEthernet0/1 (203.0.113.1), destination 198.51.100.1"),
+        tun.contains("Tunnel0 is up, line protocol is up") && tun.contains("source GigabitEthernet0/1 (203.0.113.1), destination 198.51.100.1"),
         "{tun}"
     );
     assert!(lab.run(r1, "show interfaces").contains("Tunnel0 is up"));
@@ -2771,7 +2782,7 @@ fn gre_tunnel_by_typing() {
     assert_eq!(lab.t.device(r3).unwrap().tunnels, lab.t.device(r1).unwrap().tunnels);
     // No destination: line protocol down, with the reason.
     lab.run(r1, "conf t\nint tunnel 0\nno tunnel destination\nend");
-    assert!(lab.run(r1, "show interfaces tunnel 0").contains("line protocol down (no tunnel destination)"));
+    assert!(lab.run(r1, "show interfaces tunnel 0").contains("line protocol is down (no tunnel destination)"));
     assert!(lab.run(r1, "show ip interface brief").lines().any(|l| l.starts_with("Tunnel0") && l.ends_with("down")));
     assert!(ping_settled(&mut lab, a, "192.168.2.10").contains(" 0 answered"));
     // Recursive routing: the destination routed into the tunnel itself is never encapsulated
@@ -4215,11 +4226,11 @@ fn a_gre_tunnel_rides_on_learned_routes_but_not_on_itself() {
         "conf t\nint tunnel 0\nip address 10.0.0.2 255.255.255.252\ntunnel source g0/1\ntunnel destination 203.0.113.1\nexit\nip route 192.168.1.0 255.255.255.0 10.0.0.1\nend",
     );
     // The ISP doesn't run OSPF yet: nothing reaches the far end, the tunnel stays down.
-    assert!(lab.run(r1, "show interfaces tunnel 0").contains("line protocol down (no route to the tunnel destination)"));
+    assert!(lab.run(r1, "show interfaces tunnel 0").contains("line protocol is down (no route to the tunnel destination)"));
     lab.run(isp, "conf t\nrouter ospf 1\nnetwork 0.0.0.0 255.255.255.255 area 0\nend");
     assert!(lab.run(r1, "show ip route ospf").contains("198.51.100.0/30"));
     let tun = lab.run(r1, "show interfaces tunnel 0");
-    assert!(tun.contains("Tunnel0 is up, line protocol up"), "{tun}");
+    assert!(tun.contains("Tunnel0 is up, line protocol is up"), "{tun}");
     let ping = ping_settled(&mut lab, a, "192.168.2.10");
     assert!(ping.contains("4 answered"), "{ping}");
     // OSPF over the tunnel too, with the tunnel the cheaper way to the far end's public
@@ -4227,14 +4238,14 @@ fn a_gre_tunnel_rides_on_learned_routes_but_not_on_itself() {
     lab.run(r1, "conf t\nint g0/1\nip ospf cost 10\nint tunnel 0\nip ospf cost 1\nexit\nrouter ospf 1\nnetwork 10.0.0.0 0.0.0.3 area 0\nend");
     lab.run(r2, "conf t\nint tunnel 0\nip ospf cost 1\nexit\nrouter ospf 1\nnetwork 10.0.0.0 0.0.0.3 area 0\nend");
     let tun = lab.run(r1, "show interfaces tunnel 0");
-    assert!(tun.contains("line protocol down (recursive routing"), "{tun}");
+    assert!(tun.contains("line protocol is down (recursive routing"), "{tun}");
     assert!(lab.run(r1, "show ip interface brief").lines().any(|l| l.starts_with("Tunnel0") && l.ends_with("down")));
     // The far end's own way back is still physical: its tunnel stays up.
-    assert!(lab.run(r2, "show interfaces tunnel 0").contains("line protocol up"));
+    assert!(lab.run(r2, "show interfaces tunnel 0").contains("line protocol is up"));
     // The physical way cheaper again: up again.
     lab.run(r1, "conf t\nint g0/1\nno ip ospf cost\nint tunnel 0\nno ip ospf cost\nend");
     lab.run(r2, "conf t\nint tunnel 0\nno ip ospf cost\nend");
-    assert!(lab.run(r1, "show interfaces tunnel 0").contains("line protocol up"));
+    assert!(lab.run(r1, "show interfaces tunnel 0").contains("line protocol is up"));
     assert!(ping_settled(&mut lab, a, "192.168.2.10").contains("4 answered"));
 }
 
