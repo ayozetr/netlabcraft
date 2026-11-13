@@ -25,7 +25,7 @@ to end is in [`labs/`](labs/README.md).
 | **CCNA 3 student** (Enterprise Networking, Security and Automation) | **~90%** | estimated; [method](#audiences) |
 | **Instructor** (builds graded activities) | **~90%** | estimated; activities with checks, points, sections, hints, values per student, a time limit and a password lock, plus an answer network, an assessment tree, an initial network, instructions per language, connectivity tests, signed results and locks |
 | Stage | **pre-alpha** | see [Stage](#stage) |
-| Remaining to alpha | **on hold** | gates 1 and 2 met; the packaged-build gate is on hold and not estimated ([roadmap.md](roadmap.md#alpha-gates)) |
+| Remaining to alpha | **next** | gates 1 and 2 met; the packaged-build gate is on hold and not estimated ([roadmap.md](roadmap.md#alpha-gates)) |
 | Remaining to ~95% in every area | **~55–110 Opus 5.5 agent-hours** | estimated; sum of the area rows below |
 
 ### Readiness by audience
@@ -159,7 +159,7 @@ first estimate) counted topics as present without weighing their depth or the un
 **Pre-alpha:** every core workflow works end to end (build a lab, configure by typing, ping,
 watch frames, grade an activity, save), and the 20-lab book runs as written, by the engine and
 over MCP. Alpha gates 1 and 2 are met and every beta gate is met; what keeps the stage at
-pre-alpha is the packaged-build gate, on hold by the owner's decision (no release for now).
+pre-alpha is the packaged-build gate (CI is in place; the release workflow and packaging come next).
 Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 
 ## Better than the reference

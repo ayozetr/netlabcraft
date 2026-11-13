@@ -24,7 +24,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 | 9 | **Results that resist forgery:** results files are signed under a key from the salt in the activity, so they catch hand edits but not someone who reads the open code and the file; a key the instructor keeps outside the file would close it | Instructors | 2–4 h |
 | 10 | **More languages:** interface languages beyond English and Spanish (catalogs in the same format) | Non-English students | 3–6 h each |
 | 11 | **Code health:** two independent modular-exponentiation implementations (`wire/src/dh.rs` for IKE, `wire/src/modp.rs` for TLS and SSH) to merge into one | Contributors | 1–2 h |
-| — | **Packaging and first release:** on hold by the owner's decision (no release for now; GitHub Actions is not available). Not planned or estimated until the hold is lifted; see [releasing.md](releasing.md) | Everyone who isn't a developer | on hold |
+| — | **Packaging and first release:** next: CI runs in GitHub Actions; the release workflow and per-platform packaging are not written yet and not estimated; see [releasing.md](releasing.md) | Everyone who isn't a developer | next |
 
 ## Revision history
 
