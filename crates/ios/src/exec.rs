@@ -3555,10 +3555,19 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             c.dm()?.eigrp.as_mut().ok_or("% Not in EIGRP mode")?.variance = n.filter(|n| *n > 1);
             Ok(String::new())
         }
-        Id::IpHelloEigrp | Id::NoIpHelloEigrp | Id::IpHoldEigrp | Id::NoIpHoldEigrp => {
+        Id::IpHelloEigrp
+        | Id::NoIpHelloEigrp
+        | Id::IpHoldEigrp
+        | Id::NoIpHoldEigrp
+        | Id::Ipv6HelloEigrp
+        | Id::NoIpv6HelloEigrp
+        | Id::Ipv6HoldEigrp
+        | Id::NoIpv6HoldEigrp => {
             let asn: u16 = arg(0).parse().ok().filter(|n| *n >= 1).ok_or("% The autonomous system number is 1-65535")?;
             let secs = match spec.id {
-                Id::IpHelloEigrp | Id::IpHoldEigrp => Some(arg(1).parse::<u16>().ok().filter(|n| *n >= 1).ok_or("% Seconds are 1-65535")?),
+                Id::IpHelloEigrp | Id::IpHoldEigrp | Id::Ipv6HelloEigrp | Id::Ipv6HoldEigrp => {
+                    Some(arg(1).parse::<u16>().ok().filter(|n| *n >= 1).ok_or("% Seconds are 1-65535")?)
+                }
                 _ => None,
             };
             let names: Vec<String> = match &c.cli.mode {
@@ -3575,7 +3584,12 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let d = c.dm()?;
             for n in names {
                 let e = d.eigrp_if.entry(n.clone()).or_default();
-                let slot = if matches!(id, Id::IpHelloEigrp | Id::NoIpHelloEigrp) { &mut e.hello } else { &mut e.hold };
+                let slot = match id {
+                    Id::IpHelloEigrp | Id::NoIpHelloEigrp => &mut e.hello,
+                    Id::IpHoldEigrp | Id::NoIpHoldEigrp => &mut e.hold,
+                    Id::Ipv6HelloEigrp | Id::NoIpv6HelloEigrp => &mut e.hello6,
+                    _ => &mut e.hold6,
+                };
                 match secs {
                     Some(v) => *slot = Some((asn, v)),
                     None => {

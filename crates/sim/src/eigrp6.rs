@@ -13,8 +13,11 @@
 //! times the feasible distance too. `ipv6 summary-address eigrp N PREFIX` on an interface
 //! advertises the summary there instead of the prefixes under it (with the best of their
 //! metrics), and puts a route to Null0 for it in the router's own table. Hellos go to
-//! `FF02::A` every 5 s (`control`); each change puts DUAL's updates, queries and replies on the
-//! wire, acknowledged ([`Sim::eigrp6_packets`]).
+//! `FF02::A` every hello interval (5 s; `ipv6 hello-interval eigrp N S` per interface) announcing
+//! the hold time (15 s; `ipv6 hold-time eigrp N S`) (`control`); a neighbour that falls silent
+//! while both interfaces stay up keeps its routes until its hold time runs out
+//! ([`Sim::eigrp6_refresh`]); each change puts DUAL's updates, queries and replies on the wire,
+//! acknowledged ([`Sim::eigrp6_packets`]).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::{Ipv4Addr, Ipv6Addr};
@@ -25,9 +28,13 @@ use netlabcraft_wire::eigrp::{
     EIGRP_ROUTERS6, EigrpPacket, FLAG_EOT, FLAG_INIT, InternalRoute6, OPCODE_QUERY, OPCODE_REPLY, OPCODE_UPDATE, PROTO_EIGRP, Tlv,
 };
 
+use crate::eigrp::{HELLO_SECS, HOLD_SECS};
 use crate::eigrp::{default_metrics, metric};
-use crate::v6::{L3If6, conf6, routes6, up_ifaces6};
+use crate::v6::{L3If6, conf6, l3_ifaces6, routes6, up_ifaces6};
 use crate::{SVI_PORT, Sim, port_up};
+
+/// Most neighbours held at once.
+const MAX_HELD: usize = 1_024;
 
 /// A neighbour heard on one interface.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,7 +44,44 @@ pub struct Neighbor6 {
     pub address: Ipv6Addr,
     /// Our interface towards them.
     pub iface: String,
+    /// The hold time and hello interval the neighbour announces on its interface.
     pub hold_secs: u16,
+    pub hello_secs: u16,
+    /// No longer heard: kept until this simulated time (µs), then dropped.
+    pub held_until: Option<u64>,
+}
+
+/// A neighbour no longer heard, kept until its hold time runs out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Held {
+    pub router: DeviceId,
+    pub iface: String,
+    pub address: Ipv6Addr,
+    pub peer: DeviceId,
+    /// The neighbour's interface towards us.
+    pub peer_iface: String,
+    pub until: u64,
+}
+
+/// An interface's hello interval and hold time (seconds) for the router's EIGRP for IPv6 process.
+pub fn timers(d: &Device, iface: &str) -> (u16, u16) {
+    let asn = d.eigrp6.as_ref().map_or(0, |e| e.asn);
+    let conf = d.eigrp_if.get(iface);
+    let pick = |v: Option<(u16, u16)>, def: u16| v.filter(|(a, _)| *a == asn).map_or(def, |(_, s)| s.max(1));
+    (pick(conf.and_then(|c| c.hello6), HELLO_SECS), pick(conf.and_then(|c| c.hold6), HOLD_SECS))
+}
+
+fn is_passive(d: &Device, name: &str) -> bool {
+    d.eigrp6.as_ref().is_some_and(|e| e.passive.iter().any(|p| netlabcraft_model::ifname::parse(p).is_some_and(|n| n.to_string() == name)))
+}
+
+/// Whether a neighbour that is no longer reachable said goodbye (its interface was shut down or
+/// its EIGRP stopped there) rather than just falling silent.
+fn said_goodbye(t: &Topology, me: &Device, n: &Neighbor6) -> bool {
+    let Some(b) = t.device(n.device) else { return true };
+    let same_as = matches!((&b.eigrp6, &me.eigrp6), (Some(x), Some(y)) if x.asn == y.asn);
+    let Some(ib) = l3_ifaces6(b).into_iter().find(|i| i.link_local == n.address) else { return true };
+    !same_as || !running(b) || conf6(b, &ib).and_then(|c| c.eigrp) != b.eigrp6.as_ref().map(|e| e.asn) || is_passive(b, &ib.name)
 }
 
 /// One way to a destination in the topology table.
@@ -77,6 +121,9 @@ pub struct Iface6 {
     pub passive: bool,
     pub bandwidth: u32,
     pub delay: u32,
+    /// Hello interval and the hold time it announces (seconds).
+    pub hello_secs: u16,
+    pub hold_secs: u16,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -118,9 +165,10 @@ fn ifaces(t: &Topology, d: &Device) -> Vec<(L3If6, Iface6)> {
         .into_iter()
         .filter(|i| conf6(d, i).and_then(|c| c.eigrp) == Some(e.asn))
         .map(|i| {
-            let passive = e.passive.iter().any(|p| netlabcraft_model::ifname::parse(p).is_some_and(|n| n.to_string() == i.name));
+            let passive = is_passive(d, &i.name);
             let (bandwidth, delay) = if_metrics(d, &i);
-            let info = Iface6 { name: i.name.clone(), passive, bandwidth, delay };
+            let (hello_secs, hold_secs) = timers(d, &i.name);
+            let info = Iface6 { name: i.name.clone(), passive, bandwidth, delay, hello_secs, hold_secs };
             (i, info)
         })
         .collect()
@@ -154,7 +202,13 @@ fn summarize(table: &BTreeMap<Ipv6Net, Vector>, sums: &[Ipv6Net]) -> BTreeMap<Ip
     out
 }
 
+/// EIGRP for IPv6 converged over the lab as it is now, every neighbour heard.
 pub fn compute(t: &Topology) -> Eigrp6State {
+    compute_with(t, &[])
+}
+
+/// [`compute`] with neighbours that are no longer heard but still within their hold time.
+pub fn compute_with(t: &Topology, held: &[Held]) -> Eigrp6State {
     let mut st = Eigrp6State::default();
     let routers: Vec<&Device> = t.devices.iter().filter(|d| running(d)).collect();
     let mut ifs: BTreeMap<DeviceId, Vec<(L3If6, Iface6)>> = BTreeMap::new();
@@ -172,7 +226,7 @@ pub fn compute(t: &Topology) -> Eigrp6State {
         for (ia, info_a) in ifs.get(&a.id).into_iter().flatten().filter(|(_, x)| !x.passive) {
             let r = crate::ospf6::reach(t, a, ia);
             for b in routers.iter().filter(|b| b.id != a.id && b.eigrp6.as_ref().is_some_and(|e| e.asn == asn)) {
-                for (ib, _) in ifs.get(&b.id).into_iter().flatten().filter(|(_, x)| !x.passive) {
+                for (ib, info_b) in ifs.get(&b.id).into_iter().flatten().filter(|(_, x)| !x.passive) {
                     let same_vlan = ib.vlan == ia.vlan || ia.port == SVI_PORT || ib.port == SVI_PORT;
                     if same_vlan && crate::ospf6::reaches(t, &r, b, ib) {
                         adj.entry(a.id).or_default().push((b.id, ia.clone(), info_a.clone(), ib.link_local, ib.name.clone()));
@@ -180,12 +234,34 @@ pub fn compute(t: &Topology) -> Eigrp6State {
                             device: b.id,
                             address: ib.link_local,
                             iface: ia.name.clone(),
-                            hold_secs: netlabcraft_wire::eigrp::HOLD_SECS,
+                            hold_secs: info_b.hold_secs,
+                            hello_secs: info_b.hello_secs,
+                            held_until: None,
                         });
                     }
                 }
             }
         }
+    }
+    // Neighbours still within their hold time: as if heard.
+    for h in held {
+        let Some((ia, info_a)) = ifs.get(&h.router).into_iter().flatten().find(|(i, x)| i.name == h.iface && !x.passive) else { continue };
+        if adj.get(&h.router).is_some_and(|l| l.iter().any(|x| x.1.name == h.iface && x.3 == h.address)) {
+            continue;
+        }
+        let (hello_secs, hold_secs) = t
+            .device(h.peer)
+            .and_then(|b| l3_ifaces6(b).into_iter().find(|i| i.link_local == h.address).map(|i| timers(b, &i.name)))
+            .unwrap_or((HELLO_SECS, HOLD_SECS));
+        adj.entry(h.router).or_default().push((h.peer, ia.clone(), info_a.clone(), h.address, h.peer_iface.clone()));
+        st.neighbors.entry(h.router).or_default().push(Neighbor6 {
+            device: h.peer,
+            address: h.address,
+            iface: h.iface.clone(),
+            hold_secs,
+            hello_secs,
+            held_until: Some(h.until),
+        });
     }
     // Connected prefixes each router advertises, with the interface's own metric.
     let connected: BTreeMap<DeviceId, BTreeMap<Ipv6Net, Vector>> = ifs
@@ -308,6 +384,7 @@ pub fn fingerprint(t: &Topology) -> u64 {
         d.id.hash(&mut h);
         format!("{:?}{}{}", d.eigrp6, d.ipv6_routing, d.ip_routing).hash(&mut h);
         d.eigrp_summary.hash(&mut h);
+        d.eigrp_if.hash(&mut h);
         for (i, p) in d.ports.iter().enumerate() {
             (p.shutdown, port_up(t, End { device: d.id, port: i }), format!("{:?}", p.ipv6), p.routed, p.ip, p.bandwidth, p.delay).hash(&mut h);
             for s in &p.subifs {
@@ -336,6 +413,99 @@ fn announced(st: &Eigrp6State, d: &Device, iface: &str) -> BTreeMap<Ipv6Net, Int
 }
 
 impl Sim {
+    /// Brings EIGRP for IPv6's state up to date at the current simulated time: recomputes after
+    /// the lab changed, keeps neighbours that fell silent until their hold time runs out, drops
+    /// them when it does, logs neighbour changes and puts the resulting updates, queries and
+    /// replies on the wire (as `eigrp_refresh` does for IPv4).
+    pub(crate) fn eigrp6_refresh(&mut self, t: &Topology) {
+        if !t.devices.iter().any(|d| d.eigrp6.is_some()) {
+            self.eigrp6 = Some(Eigrp6State::default());
+            self.eigrp6_held.clear();
+            return;
+        }
+        let now = self.now;
+        let f = fingerprint(t);
+        let expired: Vec<Held> = self.eigrp6_held.iter().filter(|h| h.until <= now).cloned().collect();
+        if self.eigrp6.is_some() && self.eigrp6_for == f && expired.is_empty() {
+            return;
+        }
+        self.eigrp6_held.retain(|h| h.until > now);
+        self.eigrp6_for = f;
+        let old = self.eigrp6.take();
+        let raw = compute(t);
+        let heard = |st: &Eigrp6State, r: DeviceId, iface: &str, a: Ipv6Addr| {
+            st.neighbors.get(&r).is_some_and(|l| l.iter().any(|n| n.iface == iface && n.address == a))
+        };
+        let iface_up =
+            |st: &Eigrp6State, r: DeviceId, iface: &str| st.interfaces.get(&r).is_some_and(|l| l.iter().any(|i| i.name == iface && !i.passive));
+        // Neighbours heard again, or whose interface here is down, are no longer held.
+        self.eigrp6_held.retain(|h| !heard(&raw, h.router, &h.iface, h.address) && iface_up(&raw, h.router, &h.iface));
+        let mut down: Vec<(DeviceId, Ipv6Addr, String, &'static str)> =
+            expired.iter().map(|h| (h.router, h.address, h.iface.clone(), "hold time expired")).collect();
+        if let Some(old) = &old {
+            for (me, list) in &old.neighbors {
+                let Some(d) = t.device(*me) else { continue };
+                for n in list {
+                    if heard(&raw, *me, &n.iface, n.address)
+                        || self.eigrp6_held.iter().any(|x| x.router == *me && x.iface == n.iface && x.address == n.address)
+                        || expired.iter().any(|x| x.router == *me && x.iface == n.iface && x.address == n.address)
+                    {
+                        continue;
+                    }
+                    if !iface_up(&raw, *me, &n.iface) || d.eigrp6.is_none() {
+                        down.push((*me, n.address, n.iface.clone(), "interface down"));
+                    } else if said_goodbye(t, d, n) {
+                        down.push((*me, n.address, n.iface.clone(), "goodbye received"));
+                    } else {
+                        // Silent: kept from its last hello for the hold time it announced.
+                        let hello = u64::from(n.hello_secs.max(1)) * 1_000_000;
+                        let last = now - now % hello;
+                        let until = last.saturating_add(u64::from(n.hold_secs) * 1_000_000);
+                        let peer_iface = t
+                            .device(n.device)
+                            .and_then(|b| l3_ifaces6(b).into_iter().find(|i| i.link_local == n.address).map(|i| i.name))
+                            .unwrap_or_default();
+                        if until > now && self.eigrp6_held.len() < MAX_HELD {
+                            self.eigrp6_held.push(Held {
+                                router: *me,
+                                iface: n.iface.clone(),
+                                address: n.address,
+                                peer: n.device,
+                                peer_iface,
+                                until,
+                            });
+                        } else {
+                            down.push((*me, n.address, n.iface.clone(), "hold time expired"));
+                        }
+                    }
+                }
+            }
+        }
+        let new = if self.eigrp6_held.is_empty() { raw } else { compute_with(t, &self.eigrp6_held) };
+        let asn_of = |id: DeviceId| t.device(id).and_then(|d| d.eigrp6.as_ref()).map_or(0, |e| e.asn);
+        for (me, addr, iface, why) in down {
+            if t.device(me).is_some_and(|d| d.eigrp6.is_some()) {
+                self.log(me, &format!("EIGRP-IPv6 AS {}: neighbour {addr} ({iface}) is down: {why}", asn_of(me)));
+            }
+        }
+        if let Some(old) = &old {
+            for (me, list) in &new.neighbors {
+                for n in
+                    list.iter().filter(|n| !old.neighbors.get(me).is_some_and(|o| o.iter().any(|x| x.iface == n.iface && x.address == n.address)))
+                {
+                    self.log(*me, &format!("EIGRP-IPv6 AS {}: neighbour {} ({}) is up: new adjacency", asn_of(*me), n.address, n.iface));
+                }
+            }
+            self.eigrp6_packets(t, old, &new);
+        }
+        self.eigrp6 = Some(new);
+    }
+
+    /// When the next held neighbour's hold time runs out.
+    pub(crate) fn eigrp6_next_expiry(&self) -> Option<u64> {
+        self.eigrp6_held.iter().map(|h| h.until).min()
+    }
+
     /// The packets DUAL sends going from `old` to `new` (as for IPv4, `eigrp`): the whole table
     /// to each new neighbour (an initial update, unicast to its link-local address); a query
     /// for each destination a router lost altogether, answered by every neighbour there; an
@@ -348,7 +518,7 @@ impl Sim {
         let mut out: Vec<Out> = Vec::new();
         for (me, ifs) in &new.interfaces {
             let Some(d) = t.device(*me) else { continue };
-            let nbrs = new.neighbors.get(me).cloned().unwrap_or_default();
+            let nbrs: Vec<Neighbor6> = new.neighbors.get(me).into_iter().flatten().filter(|n| n.held_until.is_none()).cloned().collect();
             let known = |st: &Eigrp6State, net: &Ipv6Net| st.best.get(me).is_some_and(|b| b.contains_key(net));
             for ifc in ifs.iter().filter(|i| !i.passive) {
                 let here: Vec<&Neighbor6> = nbrs.iter().filter(|n| n.iface == ifc.name).collect();
@@ -382,7 +552,10 @@ impl Sim {
                     // Every neighbour there answers with what it has for them.
                     for n in &here {
                         let Some(b) = t.device(n.device) else { continue };
-                        let Some(back) = new.neighbors.get(&n.device).and_then(|l| l.iter().find(|x| x.device == *me)) else { continue };
+                        let Some(back) = new.neighbors.get(&n.device).and_then(|l| l.iter().find(|x| x.device == *me && x.held_until.is_none()))
+                        else {
+                            continue;
+                        };
                         let theirs = announced(new, b, &back.iface);
                         let routes = lost.iter().map(|net| theirs.get(net).copied().unwrap_or(InternalRoute6::unreachable(*net))).collect();
                         out.push((3_000, n.device, back.iface.clone(), Some(back.address), OPCODE_REPLY, 0, routes));
@@ -409,7 +582,7 @@ impl Sim {
                     .get(&dev)
                     .into_iter()
                     .flatten()
-                    .filter(|n| n.iface == iface && to.is_none_or(|a| a == n.address))
+                    .filter(|n| n.iface == iface && n.held_until.is_none() && to.is_none_or(|a| a == n.address))
                     .map(|n| (n.device, n.address))
                     .collect();
                 for (rd, raddr) in receivers {

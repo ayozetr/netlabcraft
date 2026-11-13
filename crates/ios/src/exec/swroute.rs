@@ -93,20 +93,22 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             })
         }
         SrRipTimers | SrNoRipTimers => {
-            if c.cli.mode == Mode::Rip6 {
-                return Err("% RIPng here keeps RIP's usual timers (30 s updates)".into());
-            }
+            let ng = c.cli.mode == Mode::Rip6;
             let timers = if id == SrRipTimers {
                 let n = |i: usize, lo: u32| number(arg(i), lo, 65_535, "Each time");
                 let v = [n(0, 1)?, n(1, 1)?, n(2, 0)?, n(3, 1)?];
                 if v[1] < v[0] || v[3] < v[1] {
                     return Err("% The invalid time must be at least the update time, and the flush time at least the invalid time".into());
                 }
-                Some(v).filter(|v| *v != netlabcraft_model::RIP_TIMERS)
+                Some(v).filter(|v| *v != if ng { netlabcraft_model::routing::RIP6_TIMERS } else { netlabcraft_model::RIP_TIMERS })
             } else {
                 None
             };
-            c.dm()?.rip.as_mut().ok_or("% Not in RIP mode")?.timers = timers;
+            if ng {
+                c.dm()?.rip6.as_mut().ok_or("% Not in RIPng mode")?.timers = timers;
+            } else {
+                c.dm()?.rip.as_mut().ok_or("% Not in RIP mode")?.timers = timers;
+            }
             Ok(String::new())
         }
         SrIpv6RouterRip | SrNoIpv6RouterRip => {
@@ -124,7 +126,7 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
                     return Err(format!("% RIPng already runs here as {}; NetLabCraft runs one RIPng process per router", r.name));
                 }
                 Some(_) => {}
-                None => d.rip6 = Some(netlabcraft_model::routing::Rip6 { name }),
+                None => d.rip6 = Some(netlabcraft_model::routing::Rip6 { name, timers: None }),
             }
             let note = if d.ipv6_routing { String::new() } else { "IPv6 routing is off: RIPng waits for `ipv6 unicast-routing`.".into() };
             c.cli.mode = Mode::Rip6;
@@ -279,9 +281,14 @@ fn show_rip6(t: &netlabcraft_model::Topology, d: &Device, st: &netlabcraft_sim::
         for x in st.routes.get(&d.id).into_iter().flatten() {
             let _ = writeln!(s, "{:<28} {:<7} {:<28} {}", x.net.to_string(), x.metric, x.via.to_string(), ifname::short(&x.iface));
         }
+        for x in st.down.get(&d.id).into_iter().flatten() {
+            let _ = writeln!(s, "{:<28} {:<7} {:<28} {}  possibly down", x.net.to_string(), 16, x.via.to_string(), ifname::short(&x.iface));
+        }
         return s.trim_end().to_string();
     }
-    let _ = writeln!(s, "RIPng process {}: UDP port 521, group FF02::9, updates every 30 s, administrative distance 120", r.name);
+    let (u, i, h, f) = r.timers();
+    let _ = writeln!(s, "RIPng process {}: UDP port 521, group FF02::9, administrative distance 120", r.name);
+    let _ = writeln!(s, "  Updates every {u} s; a route is invalid after {i} s, held down {h} s, flushed after {f} s");
     let names: Vec<String> = ifs.iter().map(|(n, _)| ifname::short(n)).collect();
     let _ = writeln!(
         s,
@@ -296,18 +303,21 @@ fn show_rip6(t: &netlabcraft_model::Topology, d: &Device, st: &netlabcraft_sim::
         .map(|(dev, a, i)| format!("{a} on {} ({})", ifname::short(i), t.device(*dev).map_or("?", |x| x.name.as_str())))
         .collect();
     let _ = write!(s, "  Neighbours: {}", if heard.is_empty() { "none".to_string() } else { heard.join(", ") });
+    let silent: Vec<String> = st.held.iter().filter(|x| x.router == d.id).map(|x| format!("{} on {}", x.address, ifname::short(&x.iface))).collect();
+    if !silent.is_empty() {
+        let _ = write!(s, "\n  Neighbours no longer heard (routes kept until invalid): {}", silent.join(", "));
+    }
     s
 }
 
 /// The `ipv6 router rip` block of the running configuration.
 pub(crate) fn rip6_running_config(s: &mut String, d: &Device) {
     if let Some(r) = &d.rip6 {
-        let _ = writeln!(
-            s,
-            "ipv6 router rip {}
-!",
-            r.name
-        );
+        let _ = writeln!(s, "ipv6 router rip {}", r.name);
+        if let Some([u, i, h, f]) = r.timers {
+            let _ = writeln!(s, " timers basic {u} {i} {h} {f}");
+        }
+        let _ = writeln!(s, "!");
     }
 }
 

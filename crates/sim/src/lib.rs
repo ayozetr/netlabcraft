@@ -1015,6 +1015,8 @@ pub struct Sim {
     ospf6: Option<ospf6::Ospf6State>,
     eigrp6_for: u64,
     eigrp6: Option<eigrp6::Eigrp6State>,
+    /// EIGRP for IPv6 neighbours no longer heard, kept until their hold time runs out.
+    eigrp6_held: Vec<eigrp6::Held>,
     rip_for: u64,
     rip: Option<rip::RipState>,
     /// RIP neighbours no longer heard, kept until their invalid time; routes possibly down.
@@ -1022,6 +1024,9 @@ pub struct Sim {
     rip_down: Vec<rip::RipDown>,
     rip6_for: u64,
     rip6: Option<rip6::Rip6State>,
+    /// RIPng neighbours no longer heard, kept until their invalid time; routes possibly down.
+    rip6_held: Vec<rip6::Held6>,
+    rip6_down: Vec<rip6::Rip6Down>,
     eigrp_for: u64,
     eigrp: Option<eigrp::EigrpState>,
     /// EIGRP neighbours no longer heard, kept until their hold time runs out.
@@ -1059,6 +1064,8 @@ pub struct Sim {
     fhrp_held: fhrp::Held,
     /// VRRP groups waiting out a master down interval, and who acts as each group's master.
     vrrp_waits: Vec<fhrp::VrrpWait>,
+    /// The VRRPv3 IPv6 groups whose master has announced itself with a router advertisement.
+    vrrp6_ra: std::collections::BTreeSet<(DeviceId, String, u8)>,
     vrrp_acting: BTreeMap<String, fhrp::Acting>,
     /// GLBP round-robin: the forwarder the next ARP answer names, by (gateway, group).
     glbp_next: BTreeMap<(DeviceId, u16), usize>,
@@ -1430,6 +1437,14 @@ impl Sim {
                 self.eigrp_held.retain(|x| x.until > h);
                 continue;
             }
+            // So is an EIGRP for IPv6 neighbour's.
+            if let Some(h) = self.eigrp6_next_expiry().filter(|h| *h <= deadline && next.is_none_or(|q| *h <= q)) {
+                self.now = self.now.max(h);
+                self.eigrp6_refresh(t);
+                // Expired holds are gone after a refresh; never spin on one that isn't.
+                self.eigrp6_held.retain(|x| x.until > h);
+                continue;
+            }
             // So are RIP's timers.
             if let Some(h) = self.rip_next_expiry().filter(|h| *h <= deadline && next.is_none_or(|q| *h <= q)) {
                 self.now = self.now.max(h);
@@ -1439,6 +1454,20 @@ impl Sim {
                     self.rip_held.retain(|x| x.until > h);
                     self.rip_down.retain(|x| x.flush_at > h);
                     for x in &mut self.rip_down {
+                        x.hold_done |= x.holddown_until <= h;
+                    }
+                }
+                continue;
+            }
+            // And RIPng's.
+            if let Some(h) = self.rip6_next_expiry().filter(|h| *h <= deadline && next.is_none_or(|q| *h <= q)) {
+                self.now = self.now.max(h);
+                let _ = self.rip6_state(t);
+                if self.rip6_next_expiry().is_some_and(|x| x <= h) {
+                    // Never spin on a timer a refresh didn't clear.
+                    self.rip6_held.retain(|x| x.until > h);
+                    self.rip6_down.retain(|x| x.flush_at > h);
+                    for x in &mut self.rip6_down {
                         x.hold_done |= x.holddown_until <= h;
                     }
                 }
@@ -1934,9 +1963,10 @@ impl Sim {
     /// RIPng's view of the lab, recomputed when what it depends on changes.
     pub fn rip6_state(&mut self, t: &Topology) -> rip6::Rip6State {
         let f = rip6::fingerprint(t);
-        if self.rip6.is_none() || self.rip6_for != f {
+        let due = self.rip6_next_expiry().is_some_and(|u| u <= self.now);
+        if self.rip6.is_none() || self.rip6_for != f || due {
             self.rip6_for = f;
-            self.rip6 = Some(rip6::compute(t));
+            self.rip6_refresh(t);
         }
         self.rip6.clone().unwrap_or_default()
     }
@@ -1954,15 +1984,7 @@ impl Sim {
 
     /// EIGRP for IPv6's view of the lab, recomputed when what it depends on changes.
     pub fn eigrp6_state(&mut self, t: &Topology) -> eigrp6::Eigrp6State {
-        let f = eigrp6::fingerprint(t);
-        if self.eigrp6.is_none() || self.eigrp6_for != f {
-            self.eigrp6_for = f;
-            let new = eigrp6::compute(t);
-            if let Some(old) = self.eigrp6.take() {
-                self.eigrp6_packets(t, &old, &new);
-            }
-            self.eigrp6 = Some(new);
-        }
+        self.eigrp6_refresh(t);
         self.eigrp6.clone().unwrap_or_default()
     }
 
