@@ -111,6 +111,22 @@ impl Ah {
         want.len() == self.icv.len() && want.iter().zip(&self.icv).fold(0u8, |acc, (a, b)| acc | (a ^ b)) == 0
     }
 
+    /// Opens a received transport-mode AH packet (§3.1.1): the packet it wraps, with the next
+    /// header as its protocol, once the ICV checks out. A bundle that puts AH outside ESP
+    /// (RFC 4303 §3.3 and RFC 4301 §4.5) has ESP (50) as that next header, and `want_next`
+    /// says which one is acceptable, so a header that claims AH again is not unwrapped over and
+    /// over.
+    pub fn open_transport(ip: &Ipv4, integ: Integ, key: &[u8], want_next: u8) -> Result<Ipv4> {
+        let ah = Ah::decode(&ip.payload)?;
+        if !ah.verify(integ, key, ip) {
+            return Err(WireError::Checksum("ah integrity"));
+        }
+        if ah.next != want_next {
+            return Err(WireError::Unsupported("ah", format!("next header {}", ah.next)));
+        }
+        Ok(Ipv4 { protocol: ah.next, payload: ah.payload, ..ip.clone() })
+    }
+
     /// Opens a received tunnel-mode AH packet: the inner packet when the ICV checks out and
     /// the next header says IPv4.
     pub fn open_tunnel(ip: &Ipv4, integ: Integ, key: &[u8]) -> Result<Vec<u8>> {
@@ -228,6 +244,39 @@ mod tests {
         assert!(!Ah::decode(&forged.payload).unwrap().verify(Integ::HmacSha1_96, &key[..20], &forged));
         // Tunnel opening refuses a transport-mode packet (next header 47).
         assert!(Ah::open_tunnel(&t, Integ::HmacSha1_96, &key[..20]).is_err());
+    }
+
+    #[test]
+    fn ah_outside_esp_wraps_the_esp_packet_in_transport_mode_and_opens_it_again() {
+        // The bundle of RFC 4301 §4.5: ESP in tunnel mode makes the packet, AH in transport mode
+        // goes between its header and the ESP header, with next header 50.
+        let key = [7u8; 20];
+        let esp = Ipv4 {
+            id: 0x55,
+            ttl: 255,
+            protocol: 50,
+            src: Ipv4Addr::new(198, 51, 100, 1),
+            dst: Ipv4Addr::new(203, 0, 113, 1),
+            payload: vec![0, 0, 1, 7, 0, 0, 0, 3, 9, 9, 9, 9, 9, 9, 9, 9],
+        };
+        let wrapped = Ah::protect_transport(Integ::HmacSha1_96, &key, &esp, 0x600, 3);
+        assert_eq!(wrapped.protocol, PROTO_AH);
+        let raw = wrapped.encode();
+        let back = Ipv4::decode(&raw).unwrap();
+        // AH header (next 50, 24 bytes), then the untouched ESP packet.
+        assert_eq!(&back.payload[..2], &[50, 4]);
+        assert_eq!(&back.payload[24..], &esp.payload[..]);
+        let inner = Ah::open_transport(&back, Integ::HmacSha1_96, &key, 50).unwrap();
+        assert_eq!(inner, esp);
+        // Other key, tampered ESP bytes, or an unexpected next header: refused.
+        assert!(Ah::open_transport(&back, Integ::HmacSha1_96, &[8; 20], 50).is_err());
+        let mut bad = back.clone();
+        *bad.payload.last_mut().unwrap() ^= 1;
+        assert!(Ah::open_transport(&bad, Integ::HmacSha1_96, &key, 50).is_err());
+        assert!(Ah::open_transport(&back, Integ::HmacSha1_96, &key, 4).is_err());
+        for n in 0..back.payload.len() {
+            let _ = Ah::open_transport(&Ipv4 { payload: back.payload[..n].to_vec(), ..back.clone() }, Integ::HmacSha1_96, &key, 50);
+        }
     }
 
     #[test]

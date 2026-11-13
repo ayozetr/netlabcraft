@@ -429,9 +429,12 @@ pub(crate) fn ikev2_sas(sim: &Sim, d: &Device) -> String {
         if sa.phase == IkePhase::Established {
             let esp = match v2.esp_suite {
                 Some(suite) => format!("{} (real ciphers)", suite.describe()),
-                None => "the simulator's stand-in cipher (AH next to ESP in one transform set is not implemented)".to_string(),
+                None => "the simulator's stand-in cipher (the transform set has no cipher)".to_string(),
             };
             let _ = writeln!(s, "  ESP: {esp}");
+            if let Some(line) = crate::render::ah_half_line(&sa) {
+                let _ = writeln!(s, "  {line}");
+            }
         }
         if let Some(why) = &sa.failed {
             let _ = writeln!(s, "  Last failure: {why}");

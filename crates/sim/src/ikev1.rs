@@ -13,7 +13,7 @@ use netlabcraft_wire::cipher::{Cipher, CipherKind};
 use netlabcraft_wire::dh;
 use netlabcraft_wire::ec;
 use netlabcraft_wire::ike::{self, Isakmp, Payload, Transform};
-use netlabcraft_wire::suite::Prf;
+use netlabcraft_wire::suite::{Integ, Prf};
 use netlabcraft_wire::vpn::EspSuite;
 
 /// The phase-1 cipher.
@@ -137,11 +137,16 @@ pub struct V1State {
     /// The inbound SPI this router chose and the peer's.
     pub spi_mine: u32,
     pub spi_peer: u32,
-    /// The ESP algorithms (`None` for a transform set this simulator has no code for: AH, or
-    /// nothing implemented), and the keys.
+    /// The ESP (or AH-only) algorithms (`None` for a transform set with no cipher, which keeps
+    /// the stand-in cipher), and the keys.
     pub esp_suite: Option<EspSuite>,
     pub esp_out: Vec<u8>,
     pub esp_in: Vec<u8>,
+    /// The AH half of an AH-and-ESP bundle: its integrity algorithm and the SPIs of the two
+    /// directions (its keys go straight to the association).
+    pub ah_integ: Option<Integ>,
+    pub ah_spi_mine: u32,
+    pub ah_spi_peer: u32,
 }
 
 /// Why opening a message failed.
@@ -237,7 +242,13 @@ impl V1State {
     /// KEYMAT for the SA whose (inbound) SPI is `spi` (§5.5): K1 = prf(SKEYID_d, protocol |
     /// SPI | Ni_b | Nr_b), Kn = prf(SKEYID_d, Kn−1 | protocol | SPI | Ni_b | Nr_b).
     pub fn keymat(&self, spi: u32, len: usize) -> Vec<u8> {
-        let seed = [&[crate::vpn::proto_of(self.esp_suite)][..], &spi.to_be_bytes()[..], &self.qm_ni[..], &self.qm_nr[..]].concat();
+        self.keymat_for(crate::vpn::proto_of(self.esp_suite), spi, len)
+    }
+
+    /// [`V1State::keymat`] for an SA of a given protocol (an AH-and-ESP bundle has one of each,
+    /// with their own SPIs).
+    pub fn keymat_for(&self, protocol: u8, spi: u32, len: usize) -> Vec<u8> {
+        let seed = [&[protocol][..], &spi.to_be_bytes()[..], &self.qm_ni[..], &self.qm_nr[..]].concat();
         let prf = self.prf();
         let mut k = prf.prf(&self.skeyid_d, &seed);
         let mut out = k.clone();

@@ -2755,6 +2755,17 @@ pub fn crypto_isakmp_sa(sim: &Sim, d: &Device) -> String {
     s.trim_end().to_string()
 }
 
+/// The AH half of an AH-and-ESP bundle, for the `show crypto` reports: the algorithm, the SPIs
+/// of both directions and the one before the last rekey.
+pub(crate) fn ah_half_line(sa: &netlabcraft_sim::vpn::IpsecSa) -> Option<String> {
+    let ah = sa.ah.as_ref()?;
+    let mut line = format!("AH: {} outside ESP (real); outbound AH SPI 0x{:08x}, inbound AH SPI 0x{:08x}", ah.integ.name(), ah.spi_out, ah.spi_in);
+    if let Some(prev) = &ah.prev_in {
+        let _ = write!(line, "; previous inbound AH SPI 0x{:08x} (accepted until the peer deletes it)", prev.0);
+    }
+    Some(line)
+}
+
 fn hex8(b: &[u8; 8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
@@ -2830,9 +2841,12 @@ pub fn crypto_ipsec_sa(sim: &Sim, d: &Device) -> String {
             let suite = sa.v1.as_deref().map(|v| v.esp_suite).or_else(|| sa.v2.as_deref().map(|v| v.esp_suite)).flatten();
             let esp = match suite {
                 Some(suite) => format!("{} (real ciphers)", suite.describe()),
-                None => "the simulator's stand-in cipher (AH next to ESP in one transform set is not implemented)".to_string(),
+                None => "the simulator's stand-in cipher (the transform set has no cipher)".to_string(),
             };
             let _ = writeln!(s, "  ESP: {esp}");
+            if let Some(line) = ah_half_line(sa) {
+                let _ = writeln!(s, "  {line}");
+            }
         }
         let _ = writeln!(s, "  Packets encapsulated {}, decapsulated {}, dropped {}", sa.encaps, sa.decaps, sa.drops);
         let _ = writeln!(s);

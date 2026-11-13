@@ -359,13 +359,98 @@ fn ah_associations_renew_their_keys() {
 }
 
 #[test]
-fn ah_next_to_esp_in_one_set_keeps_the_stand_in() {
+fn ah_next_to_esp_makes_two_associations_with_ah_outside_esp() {
+    for (v2, ts, esp, ah) in [
+        (false, "ah-sha-hmac esp-aes 256 esp-sha256-hmac", "AES-CBC-256 / HMAC-SHA256-128", "HMAC-SHA1-96"),
+        (false, "esp-3des esp-md5-hmac ah-sha256-hmac", "3DES-CBC / HMAC-MD5-96", "HMAC-SHA256-128"),
+        (true, "ah-md5-hmac esp-aes esp-sha-hmac", "AES-CBC-128 / HMAC-SHA1-96", "HMAC-MD5-96"),
+        (true, "esp-des esp-sha256-hmac ah-sha-hmac", "DES-CBC / HMAC-SHA256-128", "HMAC-SHA1-96"),
+    ] {
+        let (mut lab, r1, isp, r2, a) = two_sites();
+        for (r, site) in [(r1, SITE1), (r2, SITE2)] {
+            let cfg = if v2 {
+                v2_config(site.0, site.1, "aes-cbc-256", "sha256", "14", ts)
+            } else {
+                v1_config(site.0, site.1, "k", "aes 256", "sha", 14, ts)
+            };
+            lab.run(r, &cfg);
+        }
+        lab.sim.clear_trace();
+        let ping = ping_settled(&mut lab, a, "192.168.2.10");
+        assert!(ping.contains("4 answered"), "{ts} v2={v2}: {ping}");
+        for r in [r1, r2] {
+            let sa = lab.run(r, "show crypto ipsec sa");
+            assert!(sa.contains(&format!("ESP: {esp} (real ciphers)")), "{sa}");
+            assert!(sa.contains(&format!("AH: {ah} outside ESP (real); outbound AH SPI 0x")), "{sa}");
+            assert!(!sa.contains("stand-in"), "{sa}");
+        }
+        // On the ISP's links every protected packet is AH (protocol 51) wrapping an ESP packet,
+        // never a bare ESP one, and none shows the private addresses.
+        let on_isp: Vec<String> = lab
+            .sim
+            .trace()
+            .iter()
+            .filter(|e| e.to.device == isp && (e.summary.starts_with("AH") || e.summary.starts_with("ESP")))
+            .map(|e| e.summary.clone())
+            .collect();
+        assert!(on_isp.iter().any(|s| s.starts_with("AH SPI 0x") && s.contains(", wrapping ESP SPI 0x")), "{on_isp:#?}");
+        assert!(!on_isp.iter().any(|s| s.starts_with("ESP")), "{on_isp:#?}");
+        assert!(lab.sim.trace().iter().filter(|e| e.to.device == isp).all(|e| !(e.summary.starts_with("ICMP") && e.summary.contains("192.168."))));
+        // Each protocol has its own SPI in each direction: four in all.
+        let sa = lab.run(r1, "show crypto ipsec sa");
+        let spis = sa.matches("SPI 0x").count();
+        assert_eq!(spis, 4, "{sa}");
+    }
+}
+
+#[test]
+fn ah_and_esp_bundles_need_both_halves_to_match() {
+    // One side has the bundle, the other ESP alone: refused where the transforms are compared.
+    let (mut lab, r1, _isp, r2, a) = two_sites();
+    lab.run(r1, &v1_config(SITE1.0, SITE1.1, "k", "aes", "sha", 14, "ah-sha-hmac esp-aes esp-sha-hmac"));
+    lab.run(r2, &v1_config(SITE2.0, SITE2.1, "k", "aes", "sha", 14, "esp-aes esp-sha-hmac"));
+    assert!(ping_settled(&mut lab, a, "192.168.2.10").contains(" 0 answered"));
+    assert!(lab.run(r2, "show crypto isakmp sa").contains("refused quick mode message 1"));
+    // IKEv2: the AH child SA is refused when the AH algorithms differ.
+    let (mut lab, r1, _isp, r2, a) = two_sites();
+    lab.run(r1, &v2_config(SITE1.0, SITE1.1, "aes-cbc-256", "sha256", "14", "ah-sha-hmac esp-aes esp-sha-hmac"));
+    lab.run(r2, &v2_config(SITE2.0, SITE2.1, "aes-cbc-256", "sha256", "14", "ah-md5-hmac esp-aes esp-sha-hmac"));
+    assert!(ping_settled(&mut lab, a, "192.168.2.10").contains(" 0 answered"));
+    let log = lab.run(r1, "show logging");
+    assert!(log.contains("the AH child SA failed: the peer answered NO_PROPOSAL_CHOSEN"), "{log}");
+}
+
+#[test]
+fn ah_esp_bundles_renew_both_halves() {
     let (mut lab, r1, _isp, r2, a) = two_sites();
     for (r, site) in [(r1, SITE1), (r2, SITE2)] {
-        lab.run(r, &v1_config(site.0, site.1, "k", "aes", "sha", 14, "ah-sha-hmac esp-aes esp-sha-hmac"));
+        lab.run(r, &v1_config(site.0, site.1, "k", "aes 256", "sha", 14, "ah-sha256-hmac esp-aes esp-sha-hmac"));
+        lab.run(r, "conf t\ncrypto ipsec security-association lifetime seconds 120\nend");
     }
     assert!(ping_settled(&mut lab, a, "192.168.2.10").contains("4 answered"));
-    assert!(lab.run(r1, "show crypto ipsec sa").contains("stand-in cipher"));
+    let first = lab.run(r1, "show crypto ipsec sa");
+    let ah_of = |sa: &str| sa.split("outbound AH SPI ").nth(1).and_then(|t| t.get(..10)).unwrap_or_default().to_string();
+    let ah_first = ah_of(&first);
+    assert!(ah_first.starts_with("0x"), "{first}");
+    let ping = ping_after(&mut lab, a, 110);
+    assert!(ping.contains("4 answered"), "{ping}");
+    let sa = lab.run(r2, "show crypto ipsec sa");
+    assert!(sa.contains("keys renewed 1 time") && sa.contains("previous inbound AH SPI 0x"), "{sa}");
+    assert_ne!(ah_of(&lab.run(r1, "show crypto ipsec sa")), ah_first);
+    // IKEv2: the AH child SA is renewed right after the ESP one and deleted with its own exchange.
+    let (mut lab, r1, _isp, r2, a) = two_sites();
+    for (r, site) in [(r1, SITE1), (r2, SITE2)] {
+        lab.run(r, &v2_config(site.0, site.1, "aes-cbc-256", "sha256", "14", "ah-sha-hmac esp-aes esp-sha-hmac"));
+        lab.run(r, "conf t\ncrypto map VPN 10 ipsec-isakmp\nset security-association lifetime seconds 120\nend");
+    }
+    assert!(ping_settled(&mut lab, a, "192.168.2.10").contains("4 answered"));
+    let ping = ping_after(&mut lab, a, 110);
+    assert!(ping.contains("4 answered"), "{ping}");
+    for r in [r1, r2] {
+        let log = lab.run(r, "show logging");
+        assert!(log.contains("the old child SA (inbound SPI 0x") && log.contains("the old AH child SA (inbound SPI 0x"), "{log}");
+        assert!(lab.run(r, "show crypto ipsec sa").contains("keys renewed 1 time"));
+    }
 }
 
 /// The cookies or SPIs `show crypto isakmp sa` / `show crypto ikev2 sa` report for the IKE SA.

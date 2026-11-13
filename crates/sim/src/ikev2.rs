@@ -18,8 +18,11 @@
 //! own access list (TS_UNACCEPTABLE), then answers with its own identity and AUTH value, which
 //! the initiator checks the same way. ESP keys come from SK_d (§2.17); a transform set of
 //! `esp-aes` (128, 192 or 256 bits) or `esp-null` with `esp-sha-hmac`, `esp-sha256-hmac` or
-//! `esp-md5-hmac` then runs those algorithms for real, as do `esp-des` and `esp-3des`; AH keeps
-//! the stand-in cipher of `netlabcraft_wire::vpn`.
+//! `esp-md5-hmac` then runs those algorithms for real, as do `esp-des` and `esp-3des`. AH runs for
+//! real too (`netlabcraft_wire::ah`): as the child SA of a transform set made of `ah-*`
+//! transforms, or, next to ESP in one set, as a second child SA (a Child SA has one protocol,
+//! RFC 7296 §1.3) negotiated by a CREATE_CHILD_SA right after IKE_AUTH, with AH outside ESP.
+//! Only a transform set with no cipher keeps the stand-in cipher of `netlabcraft_wire::vpn`.
 //!
 //! Rekeying: near the end of the child SA's lifetime (90 % of its seconds or kilobytes) the
 //! router that started the IKE SA renews it with a CREATE_CHILD_SA exchange (RFC 7296 §1.3.3:
@@ -50,7 +53,7 @@ use netlabcraft_wire::suite::{Integ, Prf};
 use netlabcraft_wire::vpn::{EspSa, EspSuite};
 use netlabcraft_wire::{Ipv4, PROTO_UDP, Udp};
 
-use crate::vpn::{IkePhase, IpsecSa, acl_permits, same_name};
+use crate::vpn::{AhHalf, IkePhase, IpsecSa, acl_permits, same_name};
 use crate::{L3If, Sim};
 
 /// An exchange that hasn't finished (or failed) this long is started again by the next packet.
@@ -78,7 +81,7 @@ pub struct V2State {
     /// ESP keys: what this router sends with and what it receives with.
     pub esp_out: Vec<u8>,
     pub esp_in: Vec<u8>,
-    /// The ESP algorithms, or `None` for the stand-in cipher (AH).
+    /// The ESP (or AH-only) algorithms, or `None` for the stand-in cipher (no cipher in the set).
     pub esp_suite: Option<EspSuite>,
     /// The message ID of this router's next request on the IKE SA.
     next_req: u32,
@@ -87,6 +90,9 @@ pub struct V2State {
     child: Option<(Vec<u8>, u32, u32)>,
     /// An IKE SA rekey this router asked for.
     ike_new: Option<IkeRekey>,
+    /// The AH child SA of a bundle this router asked for (a new one, or the renewal of the
+    /// old): its nonce, its new inbound SPI, the request's message ID and whether it renews.
+    ah_pending: Option<(Vec<u8>, u32, u32, bool)>,
 }
 
 /// An IKE SA rekey request in flight: the new SPI, nonce and Diffie-Hellman value this router
@@ -235,13 +241,7 @@ fn describe(p: &Proposal) -> String {
 fn esp_proposal(d: &Device, e: &CryptoMapEntry, spi: u32) -> Proposal {
     let ts = e.transform_set.as_deref().and_then(|n| d.crypto.transform_set(n));
     if let Some(integ) = ts.and_then(crate::vpn::ah_integ) {
-        let id = match integ {
-            Integ::HmacMd5_96 => ikev2::AUTH_HMAC_MD5_96,
-            Integ::HmacSha256_128 => ikev2::AUTH_HMAC_SHA2_256_128,
-            _ => ikev2::AUTH_HMAC_SHA1_96,
-        };
-        let transforms = vec![Transform { kind: ikev2::TT_INTEG, id, key_len: None }, Transform { kind: ikev2::TT_ESN, id: 0, key_len: None }];
-        return Proposal { number: 1, protocol: ikev2::PROTO_AH, spi: spi.to_be_bytes().to_vec(), transforms };
+        return ah_child_proposal(integ, spi);
     }
     let has = |w: &str| ts.is_some_and(|t| t.transforms.iter().any(|x| x.split_whitespace().next() == Some(w)));
     let bits = ts.and_then(|t| t.transforms.iter().find_map(|x| x.strip_prefix("esp-aes ").and_then(|b| b.parse().ok()))).unwrap_or(128);
@@ -264,6 +264,19 @@ fn esp_proposal(d: &Device, e: &CryptoMapEntry, spi: u32) -> Proposal {
     }
     transforms.push(Transform { kind: ikev2::TT_ESN, id: 0, key_len: None });
     Proposal { number: 1, protocol: ikev2::PROTO_ESP, spi: spi.to_be_bytes().to_vec(), transforms }
+}
+
+/// An AH child SA proposal (RFC 7296 §3.3.2): the integrity transform and ESN off. Also the
+/// second child SA of an AH-and-ESP bundle, which IKEv2 negotiates separately (§1.3: one
+/// protocol per Child SA).
+fn ah_child_proposal(integ: Integ, spi: u32) -> Proposal {
+    let id = match integ {
+        Integ::HmacMd5_96 => ikev2::AUTH_HMAC_MD5_96,
+        Integ::HmacSha256_128 => ikev2::AUTH_HMAC_SHA2_256_128,
+        _ => ikev2::AUTH_HMAC_SHA1_96,
+    };
+    let transforms = vec![Transform { kind: ikev2::TT_INTEG, id, key_len: None }, Transform { kind: ikev2::TT_ESN, id: 0, key_len: None }];
+    Proposal { number: 1, protocol: ikev2::PROTO_AH, spi: spi.to_be_bytes().to_vec(), transforms }
 }
 
 /// The traffic selectors of a crypto map entry: the first permit line of its access list
@@ -346,6 +359,28 @@ pub(crate) fn ipsec_seal(
     };
     crate::qos::copy_ds(datagram, &mut packet);
     packet
+}
+
+/// [`ipsec_seal`], and for an AH-and-ESP bundle the AH header around the ESP packet: AH outside
+/// ESP (RFC 4301 §4.5), in transport mode over the ESP packet, with the next header ESP.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn ipsec_seal_bundle(
+    suite: Option<EspSuite>,
+    key: &[u8],
+    spi: u32,
+    seq: u32,
+    id: u16,
+    local: Ipv4Addr,
+    peer: Ipv4Addr,
+    datagram: &[u8],
+    ah: Option<&AhHalf>,
+) -> Vec<u8> {
+    let esp = ipsec_seal(suite, key, spi, seq, id, local, peer, datagram);
+    let Some(ah) = ah else { return esp };
+    let Ok(esp_ip) = Ipv4::decode(&esp) else { return esp };
+    let mut wrapped = netlabcraft_wire::ah::Ah::protect_transport(ah.integ, &ah.key_out, &esp_ip, ah.spi_out, seq).encode();
+    crate::qos::copy_ds(datagram, &mut wrapped);
+    wrapped
 }
 
 /// The SPI of an ESP or AH packet.
@@ -477,14 +512,20 @@ impl Sim {
                 _ => {}
             }
             let sa = self.st(d.id).ipsec.entry(peer).or_default();
+            if crate::vpn::entry_bundle(d, entry).is_some() && sa.ah.is_none() {
+                // The AH child SA of the bundle is still being negotiated.
+                sa.drops = sa.drops.saturating_add(1);
+                return Err(format!("IPsec: no security association with {peer} yet: the AH child SA is still being negotiated"));
+            }
             sa.encaps = sa.encaps.saturating_add(1);
             sa.bytes = sa.bytes.saturating_add(u64::try_from(datagram.len()).unwrap_or(u64::MAX));
             let seq = u32::try_from(sa.encaps).unwrap_or(u32::MAX);
             let key = sa.v2.as_ref().map(|v| v.esp_out.clone()).unwrap_or_default();
             let suite = sa.v2.as_ref().and_then(|v| v.esp_suite);
             let spi = sa.spi_out;
+            let ah = sa.ah.clone();
             let id = self.ip_id();
-            return Ok(Some((ipsec_seal(suite, &key, spi, seq, id, local, peer, datagram), peer)));
+            return Ok(Some((ipsec_seal_bundle(suite, &key, spi, seq, id, local, peer, datagram, ah.as_ref()), peer)));
         }
         sa.drops = sa.drops.saturating_add(1);
         let busy = matches!(sa.phase, IkePhase::V2Init | IkePhase::V2Auth | IkePhase::Failed) && now.saturating_sub(sa.started_us) < RETRY_US;
@@ -573,7 +614,7 @@ impl Sim {
                 let Some(v2) = cur.v2.filter(|v| cur.initiator && cur.phase == IkePhase::V2Auth && v.spi_i == m.spi_i && v.spi_r == m.spi_r) else {
                     return Err(format!("IKEv2 IKE_AUTH response from {peer} for no exchange in progress"));
                 };
-                self.ike2_auth_response(d, local, peer, raw, *v2)
+                self.ike2_auth_response(t, d, local, peer, raw, *v2)
             }
             (ikev2::CREATE_CHILD_SA | ikev2::INFORMATIONAL, _) => {
                 let live = cur.v2.clone().filter(|v| cur.phase == IkePhase::Established && v.spi_i == m.spi_i && v.spi_r == m.spi_r);
@@ -917,7 +958,7 @@ impl Sim {
         Ok(())
     }
 
-    fn ike2_auth_response(&mut self, d: &Device, local: Ipv4Addr, peer: Ipv4Addr, raw: &[u8], mut v2: V2State) -> Result<(), String> {
+    fn ike2_auth_response(&mut self, t: &Topology, d: &Device, local: Ipv4Addr, peer: Ipv4Addr, raw: &[u8], mut v2: V2State) -> Result<(), String> {
         let Some(keys) = v2.keys.clone() else { return Err("IKEv2 keys missing".into()) };
         let inner = match Message::open(raw, keys.suite, &keys.sk_er, &keys.sk_ar) {
             Ok(p) => p,
@@ -971,6 +1012,10 @@ impl Sim {
         sa.local = local;
         sa.v2 = Some(Box::new(v2));
         self.log(d.id, &format!("IKEv2 with {peer}: IKE_SA_INIT and IKE_AUTH complete, IKE and IPsec security associations up"));
+        // A transform set with AH next to ESP is two child SAs in IKEv2: the AH one follows.
+        if let Some(e) = entry.as_ref().filter(|e| crate::vpn::entry_bundle(d, e).is_some()) {
+            self.ike2_ah_child(t, d, local, peer, e, None);
+        }
         Ok(())
     }
 
@@ -1075,6 +1120,15 @@ impl Sim {
             (ikev2::CREATE_CHILD_SA, true) if v2.ike_new.as_ref().is_some_and(|r| r.id == m.message_id) => {
                 return self.ike2_rekey_ike_response(t, d, local, peer, &inner, v2, keys);
             }
+            (ikev2::CREATE_CHILD_SA, false)
+                if esp.as_ref().is_some_and(|o| o.protocol == ikev2::PROTO_AH)
+                    && entry_for(d, local, peer).is_some_and(|e| crate::vpn::entry_bundle(d, &e).is_some()) =>
+            {
+                return self.ike2_ah_child_request(t, d, local, peer, m.message_id, &inner, v2, keys);
+            }
+            (ikev2::CREATE_CHILD_SA, true) if v2.ah_pending.as_ref().is_some_and(|p| p.2 == m.message_id) => {
+                return self.ike2_ah_child_response(t, d, local, peer, &inner, v2, keys);
+            }
             (ikev2::CREATE_CHILD_SA, false) => {
                 let refuse = |kind: u16| vec![Payload::Notify { protocol: 0, spi: Vec::new(), kind, data: Vec::new() }];
                 let rekeyed = inner.iter().find_map(|p| match p {
@@ -1134,39 +1188,193 @@ impl Sim {
                 let del = vec![Payload::Delete { protocol: child_protocol(v2.esp_suite), spis: vec![old_in.to_be_bytes().to_vec()] }];
                 let v2 = self.state.get(&d.id).and_then(|s| s.ipsec.get(&peer)).and_then(|s| s.v2.as_deref().cloned()).unwrap_or(v2);
                 self.ike2_sa_send(t, d, local, peer, &v2, me_initiator, ikev2::INFORMATIONAL, del_id, false, del);
+                // The AH child SA of a bundle is renewed right after its ESP partner.
+                let old_ah = self.state.get(&d.id).and_then(|s| s.ipsec.get(&peer)).and_then(|s| s.ah.as_ref().map(|a| a.spi_in));
+                if let (Some(old_ah), Some(e)) = (old_ah, entry_for(d, local, peer))
+                    && crate::vpn::entry_bundle(d, &e).is_some()
+                {
+                    self.ike2_ah_child(t, d, local, peer, &e, Some(old_ah));
+                }
             }
             (ikev2::INFORMATIONAL, false) => {
                 // A Delete for the peer's old inbound SA (this router's old outbound one): the
                 // answer deletes this router's old inbound SA in turn.
-                let deletes: Vec<u32> = inner
-                    .iter()
-                    .filter_map(|p| {
-                        if let Payload::Delete { protocol: ikev2::PROTO_ESP | ikev2::PROTO_AH, spis } = p {
-                            Some(spis.iter().map(|s| spi_u32(s)))
-                        } else {
-                            None
-                        }
-                    })
-                    .flatten()
-                    .collect();
                 let mut reply = Vec::new();
-                if !deletes.is_empty()
-                    && let Some(s) = self.st(d.id).ipsec.get_mut(&peer)
-                    && let Some(prev) = s.prev_in.take()
-                {
-                    reply.push(Payload::Delete { protocol: child_protocol(prev.1), spis: vec![prev.0.to_be_bytes().to_vec()] });
-                    self.log(d.id, &format!("IKEv2 with {peer}: the old child SA (inbound SPI 0x{:08x}) is deleted", prev.0));
+                for p in &inner {
+                    let Payload::Delete { protocol: protocol @ (ikev2::PROTO_ESP | ikev2::PROTO_AH), .. } = p else { continue };
+                    let Some(s) = self.st(d.id).ipsec.get_mut(&peer) else { break };
+                    // In a bundle a Delete for AH is for the AH child SA, the ESP one's partner.
+                    if *protocol == ikev2::PROTO_AH && s.ah.is_some() {
+                        if let Some(prev) = s.ah.as_mut().and_then(|a| a.prev_in.take()) {
+                            reply.push(Payload::Delete { protocol: ikev2::PROTO_AH, spis: vec![prev.0.to_be_bytes().to_vec()] });
+                            self.log(d.id, &format!("IKEv2 with {peer}: the old AH child SA (inbound SPI 0x{:08x}) is deleted", prev.0));
+                        }
+                    } else if let Some(prev) = s.prev_in.take() {
+                        reply.push(Payload::Delete { protocol: child_protocol(prev.1), spis: vec![prev.0.to_be_bytes().to_vec()] });
+                        self.log(d.id, &format!("IKEv2 with {peer}: the old child SA (inbound SPI 0x{:08x}) is deleted", prev.0));
+                    }
                 }
                 self.ike2_sa_send(t, d, local, peer, &v2, me_initiator, ikev2::INFORMATIONAL, m.message_id, true, reply);
             }
             _ => {
                 // The answer to this router's Delete: the old inbound SA goes too.
-                if let Some(s) = self.st(d.id).ipsec.get_mut(&peer)
-                    && let Some(prev) = s.prev_in.take()
-                {
-                    self.log(d.id, &format!("IKEv2 with {peer}: the old child SA (inbound SPI 0x{:08x}) is deleted", prev.0));
+                if let Some(s) = self.st(d.id).ipsec.get_mut(&peer) {
+                    let gone_ah = s.ah.as_mut().and_then(|a| a.prev_in.take());
+                    let gone = s.prev_in.take();
+                    if let Some(prev) = gone {
+                        self.log(d.id, &format!("IKEv2 with {peer}: the old child SA (inbound SPI 0x{:08x}) is deleted", prev.0));
+                    }
+                    if let Some(prev) = gone_ah {
+                        self.log(d.id, &format!("IKEv2 with {peer}: the old AH child SA (inbound SPI 0x{:08x}) is deleted", prev.0));
+                    }
                 }
             }
+        }
+        Ok(())
+    }
+
+    /// CREATE_CHILD_SA for the AH child SA of an AH-and-ESP bundle (a new one right after
+    /// IKE_AUTH, or the renewal of the old one, named by REKEY_SA with protocol AH).
+    fn ike2_ah_child(&mut self, t: &Topology, d: &Device, local: Ipv4Addr, peer: Ipv4Addr, entry: &CryptoMapEntry, renew: Option<u32>) {
+        let now = self.now;
+        let Some(integ) = crate::vpn::entry_bundle(d, entry) else { return };
+        let Some(sa) = self.state.get(&d.id).and_then(|s| s.ipsec.get(&peer)).cloned() else { return };
+        let Some(mut v2) = sa.v2.as_deref().cloned() else { return };
+        let Some((tsi, tsr)) = selectors(d, entry) else { return };
+        let seed = [&v2.spi_i[..], &v2.spi_r[..], &now.to_be_bytes()[..], b"ah-child"].concat();
+        let ni = filler(&[&seed[..], b"ni"].concat(), 32);
+        let new_in = spi_of(&ni, local, peer);
+        let id = v2.next_req;
+        let mut payloads = Vec::new();
+        if let Some(old) = renew {
+            payloads.push(Payload::Notify { protocol: ikev2::PROTO_AH, spi: old.to_be_bytes().to_vec(), kind: ikev2::REKEY_SA, data: Vec::new() });
+        }
+        payloads.extend([
+            Payload::Sa(vec![ah_child_proposal(integ, new_in)]),
+            Payload::Nonce(ni.clone()),
+            Payload::TsI(vec![tsi]),
+            Payload::TsR(vec![tsr]),
+        ]);
+        v2.next_req = id.wrapping_add(1);
+        v2.ah_pending = Some((ni, new_in, id, renew.is_some()));
+        self.ike2_sa_send(t, d, local, peer, &v2, sa.initiator, ikev2::CREATE_CHILD_SA, id, false, payloads);
+        if let Some(s) = self.st(d.id).ipsec.get_mut(&peer) {
+            s.v2 = Some(Box::new(v2));
+        }
+    }
+
+    /// Installs the AH child SA's keys (the old inbound SA kept until it is deleted). `keys` are
+    /// (the one this router sends with, the one it receives with).
+    fn ah_install(&mut self, d: &Device, peer: Ipv4Addr, integ: Integ, spis: (u32, u32), keys: (Vec<u8>, Vec<u8>)) {
+        let Some(sa) = self.st(d.id).ipsec.get_mut(&peer) else { return };
+        let prev_in = sa.ah.as_ref().map(|a| (a.spi_in, a.key_in.clone()));
+        sa.ah = Some(AhHalf { integ, spi_in: spis.0, spi_out: spis.1, key_out: keys.0, key_in: keys.1, prev_in });
+    }
+
+    /// The responder's side of an AH child SA request.
+    #[allow(clippy::too_many_arguments)]
+    fn ike2_ah_child_request(
+        &mut self,
+        t: &Topology,
+        d: &Device,
+        local: Ipv4Addr,
+        peer: Ipv4Addr,
+        id: u32,
+        inner: &[Payload],
+        v2: V2State,
+        keys: Keys,
+    ) -> Result<(), String> {
+        let sa = self.state.get(&d.id).and_then(|s| s.ipsec.get(&peer)).cloned().unwrap_or_default();
+        let refuse = |kind: u16| vec![Payload::Notify { protocol: 0, spi: Vec::new(), kind, data: Vec::new() }];
+        let integ = entry_for(d, local, peer).and_then(|e| crate::vpn::entry_bundle(d, &e));
+        let offer = inner.iter().find_map(|p| if let Payload::Sa(v) = p { v.first().cloned() } else { None });
+        let ni = inner.iter().find_map(|p| if let Payload::Nonce(n) = p { Some(n.clone()) } else { None });
+        let renew = inner.iter().find_map(|p| match p {
+            Payload::Notify { kind: ikev2::REKEY_SA, spi, .. } => Some(spi_u32(spi)),
+            _ => None,
+        });
+        let verdict = match (integ, offer, ni) {
+            (Some(i), Some(o), Some(ni)) => {
+                let mine = ah_child_proposal(i, 0);
+                if (mine.protocol, &mine.transforms) != (o.protocol, &o.transforms) {
+                    Err(ikev2::NO_PROPOSAL_CHOSEN)
+                } else if renew.is_some_and(|s| sa.ah.as_ref().map(|a| a.spi_out) != Some(s)) {
+                    Err(ikev2::CHILD_SA_NOT_FOUND)
+                } else {
+                    Ok((i, o, ni))
+                }
+            }
+            _ => Err(ikev2::NO_PROPOSAL_CHOSEN),
+        };
+        let (integ, o, ni) = match verdict {
+            Ok(v) => v,
+            Err(kind) => {
+                self.log(d.id, &format!("IKEv2 with {peer}: refused the AH child SA ({})", ikev2::notify_name(kind)));
+                self.ike2_sa_send(t, d, local, peer, &v2, sa.initiator, ikev2::CREATE_CHILD_SA, id, true, refuse(kind));
+                return Ok(());
+            }
+        };
+        let nr = filler(&[&ni[..], &local.octets()[..], b"ah-nr"].concat(), 32);
+        let new_in = spi_of(&nr, local, peer);
+        let suite = EspSuite { encr: netlabcraft_wire::vpn::EspEncr::Ah, integ };
+        // The requester's direction first (§2.17).
+        let (k_req, k_resp) = esp_keys(&keys, Some(suite), &ni, &nr);
+        let ts_i = inner.iter().find_map(|p| if let Payload::TsI(v) = p { Some(v.clone()) } else { None }).unwrap_or_default();
+        let ts_r = inner.iter().find_map(|p| if let Payload::TsR(v) = p { Some(v.clone()) } else { None }).unwrap_or_default();
+        let mut mine = ah_child_proposal(integ, new_in);
+        mine.number = o.number;
+        let reply = vec![Payload::Sa(vec![mine]), Payload::Nonce(nr), Payload::TsI(ts_i), Payload::TsR(ts_r)];
+        self.ike2_sa_send(t, d, local, peer, &v2, sa.initiator, ikev2::CREATE_CHILD_SA, id, true, reply);
+        self.ah_install(d, peer, integ, (new_in, spi_u32(&o.spi)), (k_resp, k_req));
+        let what = if renew.is_some() { "the AH child SA has new keys" } else { "the AH child SA is up" };
+        self.log(d.id, &format!("IKEv2 with {peer}: CREATE_CHILD_SA complete, {what}"));
+        Ok(())
+    }
+
+    /// The initiator's side: the answer to its AH child SA request. A renewal deletes the old
+    /// AH child SA with its own INFORMATIONAL exchange.
+    #[allow(clippy::too_many_arguments)]
+    fn ike2_ah_child_response(
+        &mut self,
+        t: &Topology,
+        d: &Device,
+        local: Ipv4Addr,
+        peer: Ipv4Addr,
+        inner: &[Payload],
+        mut v2: V2State,
+        keys: Keys,
+    ) -> Result<(), String> {
+        let Some((ni, new_in, _id, renewed)) = v2.ah_pending.take() else { return Ok(()) };
+        let sa = self.state.get(&d.id).and_then(|s| s.ipsec.get(&peer)).cloned().unwrap_or_default();
+        let save = |this: &mut Sim, v2: &V2State| {
+            if let Some(s) = this.st(d.id).ipsec.get_mut(&peer) {
+                s.v2 = Some(Box::new(v2.clone()));
+            }
+        };
+        let nr = inner.iter().find_map(|p| if let Payload::Nonce(n) = p { Some(n.clone()) } else { None });
+        let answer = inner.iter().find_map(|p| if let Payload::Sa(v) = p { v.first().cloned() } else { None });
+        let integ = entry_for(d, local, peer).and_then(|e| crate::vpn::entry_bundle(d, &e));
+        let (Some(nr), Some(o), Some(integ), None) = (nr, answer, integ, Message::notify(inner)) else {
+            let why = Message::notify(inner)
+                .map_or("the answer lacks the SA or the nonce".to_string(), |k| format!("the peer answered {}", ikev2::notify_name(k)));
+            self.log(d.id, &format!("IKEv2 with {peer}: the AH child SA failed: {why}"));
+            save(self, &v2);
+            return Ok(());
+        };
+        let suite = EspSuite { encr: netlabcraft_wire::vpn::EspEncr::Ah, integ };
+        let (k_req, k_resp) = esp_keys(&keys, Some(suite), &ni, &nr);
+        let old_in = sa.ah.as_ref().map(|a| a.spi_in);
+        self.ah_install(d, peer, integ, (new_in, spi_u32(&o.spi)), (k_req, k_resp));
+        if renewed && let Some(old_in) = old_in {
+            self.log(d.id, &format!("IKEv2 with {peer}: CREATE_CHILD_SA complete, the AH child SA has new keys; deleting the old one"));
+            let del_id = v2.next_req;
+            v2.next_req = del_id.wrapping_add(1);
+            save(self, &v2);
+            let del = vec![Payload::Delete { protocol: ikev2::PROTO_AH, spis: vec![old_in.to_be_bytes().to_vec()] }];
+            self.ike2_sa_send(t, d, local, peer, &v2, sa.initiator, ikev2::INFORMATIONAL, del_id, false, del);
+        } else {
+            self.log(d.id, &format!("IKEv2 with {peer}: CREATE_CHILD_SA complete, the AH child SA is up"));
+            save(self, &v2);
         }
         Ok(())
     }

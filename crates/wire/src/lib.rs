@@ -883,16 +883,23 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                         Err(e) => (Protocol::Esp, format!("ESP ({e}) {route}{tag}")),
                     },
                     ah::PROTO_AH => match ah::Ah::decode(&ip.payload) {
-                        Ok(a) => (
-                            Protocol::Ah,
-                            format!(
-                                "AH SPI 0x{:08x} seq {} {route}, {} bytes authenticated, ICV {} bytes{tag}",
-                                a.spi,
-                                a.seq,
-                                a.payload.len(),
-                                a.icv.len()
-                            ),
-                        ),
+                        Ok(a) => {
+                            // AH outside ESP (a bundle): say which ESP packet it wraps.
+                            let inner = match vpn::Esp::decode(&a.payload) {
+                                Ok(e) if a.next == vpn::PROTO_ESP => format!(", wrapping ESP SPI 0x{:08x}", e.spi),
+                                _ => String::new(),
+                            };
+                            (
+                                Protocol::Ah,
+                                format!(
+                                    "AH SPI 0x{:08x} seq {} {route}, {} bytes authenticated, ICV {} bytes{inner}{tag}",
+                                    a.spi,
+                                    a.seq,
+                                    a.payload.len(),
+                                    a.icv.len()
+                                ),
+                            )
+                        }
                         Err(e) => (Protocol::Ah, format!("AH ({e}) {route}{tag}")),
                     },
                     p => (Protocol::Ipv4, format!("IPv4 protocol {p} {route}{tag}")),
