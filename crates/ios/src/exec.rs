@@ -954,6 +954,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             if which.is_empty() {
                 return Ok(full);
             }
+            if args.len() == 1 && !which.is_empty() && "summary".starts_with(&which) && which.len() >= 2 {
+                return Ok(render::ip_route_summary(&table));
+            }
             // `show ip route A.B.C.D M.M.M.M`: the entry for exactly that network.
             if args.len() == 2 {
                 let net = parse_ip(&which).map_err(|e| format!("% {e}"))?;

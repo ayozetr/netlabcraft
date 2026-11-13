@@ -682,6 +682,37 @@ pub fn ip_int_brief(t: &Topology, d: &Device) -> String {
 
 /// The routing table, from the rows the simulation has (a row per path when several share the
 /// traffic).
+/// `show ip route summary`: how many routes each source gave, and how many there are in all.
+pub fn ip_route_summary(table: &[netlabcraft_sim::RouteEntry]) -> String {
+    let count = |codes: &[char]| table.iter().filter(|r| codes.contains(&r.code)).count();
+    let rows = [
+        ("connected", count(&['C']), String::new()),
+        ("local", count(&['L']), String::new()),
+        ("static", count(&['S']), String::new()),
+        ("RIP", count(&['R']), String::new()),
+        ("EIGRP", count(&['D']), String::new()),
+        ("OSPF", count(&['O', 'I', 'E']), format!("intra-area {}, inter-area {}, external {}", count(&['O']), count(&['I']), count(&['E']))),
+    ];
+    let other = table.len().saturating_sub(rows.iter().map(|r| r.1).sum::<usize>());
+    let mut s = format!("{:<10} {:<7} Detail\n", "Source", "Routes");
+    for (name, n, detail) in rows.iter().filter(|r| r.1 > 0) {
+        let _ = writeln!(s, "{name:<10} {n:<7} {detail}");
+    }
+    if other > 0 {
+        let _ = writeln!(s, "{:<10} {other:<7}", "other");
+    }
+    let prefixes: std::collections::BTreeSet<_> = table.iter().map(|r| r.net.to_string()).collect();
+    let _ = writeln!(s, "{:<10} {:<7} {} distinct prefix{}", "total", table.len(), prefixes.len(), if prefixes.len() == 1 { "" } else { "es" });
+    match table.iter().find(|r| r.net.prefix == 0) {
+        Some(r) => {
+            let via = r.via.map(|v| format!("via {v}")).or_else(|| r.iface.as_ref().map(|i| format!("out {i}"))).unwrap_or_default();
+            let _ = write!(s, "Default route: {via}");
+        }
+        None => s.push_str("No default route"),
+    }
+    s
+}
+
 pub fn ip_route_table(d: &Device, table: &[netlabcraft_sim::RouteEntry]) -> String {
     let mut s = String::from(
         "Codes: C connected, L local, S static, R RIP, D EIGRP, O OSPF, O IA OSPF other area, O E2 OSPF external, O*E2 OSPF external default, O*IA default into a stub area, * the default route\n\n",

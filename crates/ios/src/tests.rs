@@ -11,6 +11,7 @@ mod inspections;
 mod ipsec_crypto;
 mod leftovers;
 mod ospf_database;
+mod route_summary;
 mod routing;
 mod security;
 mod swroute;

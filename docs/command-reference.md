@@ -171,7 +171,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show startup-config` | privileged | router, switch, firewall | Saved configuration |
 | `show ip interface brief` | user, privileged | router, switch | Interface addresses and status |
 | `show ip route` | user, privileged | router, switch | Routing table |
-| `show ip route {connected\|static\|eigrp\|ospf\|rip}` | user, privileged | router, switch | Only the routes one source gave |
+| `show ip route {connected\|static\|eigrp\|ospf\|rip\|summary}` | user, privileged | router, switch | Only the routes one source gave |
 | `show ip route A.B.C.D A.B.C.D` | user, privileged | router, switch | The route for exactly this network and mask |
 | `show ip arp` | user, privileged | router, switch | ARP cache |
 | `show arp` | user, privileged | router, switch, firewall | ARP cache |

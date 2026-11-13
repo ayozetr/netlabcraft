@@ -1090,7 +1090,7 @@ pub static SPECS: &[Spec] = &[
         ShowIpRoute,
         EXECS,
         Modes::BOTH,
-        [K("show"), K("ip"), K("route"), Arg("{connected|static|eigrp|ospf|rip}")],
+        [K("show"), K("ip"), K("route"), Arg("{connected|static|eigrp|ospf|rip|summary}")],
         "Only the routes one source gave"
     ),
     spec!(
