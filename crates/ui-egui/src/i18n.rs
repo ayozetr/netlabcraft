@@ -134,14 +134,29 @@ pub fn tr_any(message: &str) -> String {
     if let Some(t) = spanish().get(message) {
         return (*t).to_string();
     }
-    for (key, value) in spanish().iter().filter(|(k, _)| k.contains("{}")) {
+    // The rows that wrap another message come first (`line 3: {} steps without...` would
+    // otherwise fit a row that begins with `{}`), and the wrapped message is translated too.
+    // Any other part (an address, a name) stays as it is.
+    const WRAPPERS: [&str; 2] = ["line {}: {}", "stopped: {}"];
+    let wrappers = WRAPPERS.iter().filter_map(|k| spanish().get_key_value(*k));
+    let others = spanish().iter().filter(|(k, _)| k.contains("{}") && !WRAPPERS.contains(*k));
+    for (key, value) in wrappers.chain(others) {
         if let Some(parts) = match_template(key, message) {
             let mut out = String::new();
             let mut rest: &str = value;
             let mut it = parts.iter();
+            let wraps = WRAPPERS.contains(key);
+            let last = parts.len().saturating_sub(1);
+            let mut n = 0;
             while let Some(at) = rest.find("{}") {
                 out.push_str(rest.get(..at).unwrap_or_default());
-                out.push_str(it.next().map_or("", |s| s.as_str()));
+                let part = it.next().map_or("", |s| s.as_str());
+                if wraps && n == last {
+                    out.push_str(&tr_any(part))
+                } else {
+                    out.push_str(part)
+                }
+                n += 1;
                 rest = rest.get(at + 2..).unwrap_or_default();
             }
             out.push_str(rest);
@@ -243,6 +258,86 @@ mod tests {
                 assert!(spanish().contains_key(a.title.as_str()) && spanish().contains_key(a.instructions.as_str()), "activity of {}", s.id);
             }
         }
+    }
+
+    /// Every BoardScript compile error reads in Spanish, with its line number and the wrapped
+    /// message both translated, and the English text is untouched in English.
+    #[test]
+    fn boardscript_compile_messages_read_in_spanish() {
+        let mut s = netlabcraft_engine::Session::new();
+        s.execute("file.new", serde_json::json!({"sample": "board"})).unwrap();
+        let long = "x = 1\n".repeat(400);
+        let cases: Vec<(&str, String)> = [
+            "let x = 99999999999999999999",
+            "let x = \"abc",
+            "let x = 3 $",
+            "let x = (3",
+            "write(5, 1)",
+            "let x =",
+            "let x = if",
+            "let x = foo(1)",
+            "let x = )",
+            "5 = 3",
+            "else",
+            "end",
+            "let",
+            "x",
+            "if 1\nwrite(D0, 1)",
+            "let if = 3",
+            "while 1\nelse\nend",
+            "if 1\nend\nelse\nend",
+            "sleep 1 sleep 2",
+            "if 1\nelse\nelse\nend",
+        ]
+        .iter()
+        .map(|p| (*p, (*p).to_string()))
+        .chain([("a long program", long), ("a huge one", "x".repeat(20_000))])
+        .collect();
+        let mut refused = 0;
+        for (what, src) in cases {
+            let e = s.execute("board.program", serde_json::json!({"device": "Board1", "source": src})).err();
+            let Some(e) = e else { continue };
+            refused += 1;
+            let english = e.to_string();
+            assert_eq!(tr_any(&english), english, "English stays as it is");
+            set_thread_lang(Some(Lang::Spanish));
+            let spanish = tr_any(&english);
+            set_thread_lang(None);
+            assert_ne!(spanish, english, "no Spanish row for the message of `{what}`: {english}");
+            if english.starts_with("line ") {
+                assert!(spanish.starts_with("línea "), "{spanish}");
+            }
+        }
+        assert!(refused >= 18, "most of the broken programs are refused: {refused}");
+        // The line number and the wrapped message are both translated.
+        set_thread_lang(Some(Lang::Spanish));
+        let t = tr_any("line 3: `end` without an `if` or `while`");
+        let stop = tr_any("stopped: line 2: the board has no pin D9");
+        let wired = tr_any("D0 is wired to Temp1, a sensor: read it instead");
+        set_thread_lang(None);
+        assert_eq!(t, "línea 3: `end` sin un `if` o `while`");
+        assert_eq!(stop, "parado: línea 2: la placa no tiene el pin D9");
+        assert_eq!(wired, "D0 está cableado a Temp1, un sensor: léelo en su lugar");
+    }
+
+    /// A program that stops at run time leaves a message in the machine, translated the same way.
+    #[test]
+    fn boardscript_run_messages_read_in_spanish() {
+        let mut s = netlabcraft_engine::Session::new();
+        s.execute("file.new", serde_json::json!({"sample": "board"})).unwrap();
+        let mut seen = 0;
+        for src in ["write(D9, 1)", "let x = 1 / 0", "let y = z", "let a = \"x\"\nwrite(D0, a)", "while 1\nlet q = 1\nend"] {
+            let st = s.execute("board.program", serde_json::json!({"device": "Board1", "source": src, "run": true})).unwrap();
+            let Some(m) = st["message"].as_str() else { continue };
+            seen += 1;
+            set_thread_lang(Some(Lang::Spanish));
+            let es = tr_any(m);
+            let log = st["log"].as_array().and_then(|l| l.last()).and_then(|v| v.as_str()).map(tr_any).unwrap_or_default();
+            set_thread_lang(None);
+            assert_ne!(es, m, "no Spanish row for `{m}`");
+            assert!(es.starts_with("línea ") && log.starts_with("parado: línea "), "{es} / {log}");
+        }
+        assert!(seen >= 3, "the runtime errors were reached: {seen}");
     }
 
     #[test]

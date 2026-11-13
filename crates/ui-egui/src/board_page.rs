@@ -103,7 +103,11 @@ pub(crate) fn tab(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &m
             ui.set_min_width(ui.available_width());
             egui::ScrollArea::vertical().id_salt(("board_log", d.0)).max_height(120.0).stick_to_bottom(true).show(ui, |ui| {
                 for l in st["log"].as_array().cloned().unwrap_or_default() {
-                    ui.label(RichText::new(l.as_str().unwrap_or_default()).monospace().color(tk.console_text));
+                    // What the program printed stays as it is; the machine's own notes (a stop, an
+                    // error) are in the interface language.
+                    let line = l.as_str().unwrap_or_default();
+                    let shown = if line.starts_with("stopped") { tr_any(line) } else { line.to_string() };
+                    ui.label(RichText::new(shown).monospace().color(tk.console_text));
                 }
             });
         });
