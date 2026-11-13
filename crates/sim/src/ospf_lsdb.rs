@@ -79,9 +79,26 @@ fn metric_to(st: &OspfState, abr: DeviceId, net: &Ipv4Net) -> u32 {
         .unwrap_or(1)
 }
 
+/// The routers whose advertisements reach `me` by flooding: itself and every router joined to
+/// it through a chain of adjacencies. A router with no adjacency back to it has aged out.
+fn flooding_domain(st: &OspfState, me: DeviceId) -> BTreeSet<DeviceId> {
+    let mut seen = BTreeSet::from([me]);
+    let mut todo = vec![me];
+    while let Some(d) = todo.pop() {
+        for n in st.neighbors.get(&d).into_iter().flatten() {
+            if seen.insert(n.device) {
+                todo.push(n.device);
+            }
+        }
+    }
+    seen
+}
+
 /// The database a router holds: the LSAs of every area it has an interface in, and the
-/// external ones.
+/// external ones. Only routers that flooding reaches count: one cut off from this router by a
+/// missing adjacency has no LSA here any more (its advertisements age out).
 pub fn database(t: &Topology, st: &OspfState, me: DeviceId) -> Vec<Lsa> {
+    let flood = flooding_domain(st, me);
     let my_areas: BTreeSet<u32> = st.segments.iter().filter(|((d, _), _)| *d == me).map(|(_, s)| s.area).collect();
     let rid = |d: DeviceId| st.router_ids.get(&d).copied();
     let heard = |d: DeviceId, iface: &str| st.neighbors.get(&d).into_iter().flatten().filter(|n| n.iface == iface).count();
@@ -89,7 +106,7 @@ pub fn database(t: &Topology, st: &OspfState, me: DeviceId) -> Vec<Lsa> {
     // Areas each router is in, and the networks of each area.
     let mut areas_of: BTreeMap<DeviceId, BTreeSet<u32>> = BTreeMap::new();
     let mut nets_in: BTreeMap<u32, BTreeSet<Ipv4Net>> = BTreeMap::new();
-    for ((d, iface), seg) in &st.segments {
+    for ((d, iface), seg) in st.segments.iter().filter(|((d, _), _)| flood.contains(d)) {
         areas_of.entry(*d).or_default().insert(seg.area);
         if let Some((_, net, _, _)) = st.interfaces.get(d).into_iter().flatten().find(|x| x.0 == *iface) {
             nets_in.entry(seg.area).or_default().insert(*net);
@@ -150,7 +167,7 @@ pub fn database(t: &Topology, st: &OspfState, me: DeviceId) -> Vec<Lsa> {
             }
         }
     }
-    for (d, nets) in &st.externals {
+    for (d, nets) in st.externals.iter().filter(|(d, _)| flood.contains(d)) {
         let Some(r) = rid(*d) else { continue };
         for n in nets {
             let mut lsa = Lsa::new(LsaKind::External, None, n.addr, r, u32::from(n.prefix));

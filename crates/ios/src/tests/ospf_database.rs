@@ -71,3 +71,20 @@ fn database_router_view_lists_point_to_point_and_stub_links() {
     assert!(router.contains("stub network 10.0.0.0/24, metric 1"), "{router}");
     assert!(router.contains("2 links"), "{router}");
 }
+
+#[test]
+fn a_router_cut_off_by_a_missing_adjacency_leaves_the_database() {
+    let (mut lab, r1, r2, _r3) = three_routers();
+    assert!(lab.run(r1, "show ip ospf database summary").contains("Network 10.1.0.0/24"));
+    assert!(lab.run(r1, "show ip ospf database external").contains("192.168.50.0"));
+    assert!(lab.run(r2, "show ip ospf database router").contains("Router 3.3.3.3"));
+    // R2's link to R3 goes passive: R3 stops being a neighbour and its advertisements age out.
+    lab.run(r2, "conf t\nrouter ospf 1\npassive-interface g0/1\nend");
+    lab.sim.run_for(&lab.t, 60_000_000);
+    assert!(!lab.run(r2, "show ip ospf database router").contains("Router 3.3.3.3"));
+    // R2 still advertises the passive link's own network; nothing else of area 1 is left.
+    let summary = lab.run(r1, "show ip ospf database summary");
+    assert!(summary.contains("Network 10.1.0.0/24") && !summary.contains("192.168"), "{summary}");
+    assert!(lab.run(r1, "show ip ospf database external").starts_with("No external LSAs"));
+    assert!(!lab.run(r1, "show ip ospf database").contains("192.168.50.0"));
+}
