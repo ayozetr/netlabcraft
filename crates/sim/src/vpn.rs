@@ -28,10 +28,10 @@
 //! differ leave message 5 undecryptable and its HASH_I wrong (AUTHENTICATION-FAILED); quick
 //! mode, encrypted and hashed with those keys, is refused at message 2 when the transform sets
 //! or crypto map entries don't match. The refusing side sends a notification (in the clear
-//! here, so the event list shows it). AES policies encrypt for real, DES and 3DES with a
-//! stand-in (`crate::ikev1`). ESP keys come from quick mode's KEYMAT; `esp-aes` (any key size)
-//! and `esp-null` with HMAC integrity run for real, DES, 3DES and AH with the stand-in cipher of
-//! `netlabcraft_wire::vpn`.
+//! here, so the event list shows it). AES, DES and 3DES policies encrypt for real
+//! (`crate::ikev1`). ESP keys come from quick mode's KEYMAT; `esp-aes` (any key size),
+//! `esp-des`, `esp-3des` and `esp-null` with HMAC integrity run for real, AH with the stand-in
+//! cipher of `netlabcraft_wire::vpn`.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -570,10 +570,10 @@ fn is_isakmp(ip: &Ipv4) -> bool {
         && Udp::decode(&ip.payload, ip.src, ip.dst).is_ok_and(|u| u.dst_port == ike::ISAKMP_PORT && u.src_port == ike::ISAKMP_PORT)
 }
 
-/// The ESP algorithms a transform set asks for, when every one of them is implemented for real
-/// (AES-CBC of any key size or NULL, with HMAC-SHA1-96, HMAC-SHA-256-128, HMAC-MD5-96 or no
-/// integrity check). `None` for DES, 3DES, AH or a set with neither cipher nor integrity: those
-/// keep the stand-in cipher of `netlabcraft_wire::vpn`.
+/// The ESP algorithms a transform set asks for, when every one of them is implemented (AES-CBC
+/// of any key size, DES-CBC, 3DES-CBC or NULL, with HMAC-SHA1-96, HMAC-SHA-256-128,
+/// HMAC-MD5-96 or no integrity check). `None` for AH or a set with neither cipher nor
+/// integrity: those keep the stand-in cipher of `netlabcraft_wire::vpn`.
 pub(crate) fn esp_suite(ts: &netlabcraft_model::vpn::TransformSet) -> Option<netlabcraft_wire::vpn::EspSuite> {
     use netlabcraft_wire::suite::Integ;
     use netlabcraft_wire::vpn::{EspEncr, EspSuite};
@@ -589,6 +589,8 @@ pub(crate) fn esp_suite(ts: &netlabcraft_model::vpn::TransformSet) -> Option<net
                 }
                 encr = Some(EspEncr::AesCbc(bits));
             }
+            "esp-des" => encr = Some(EspEncr::Des),
+            "esp-3des" => encr = Some(EspEncr::Des3),
             "esp-null" => encr = Some(EspEncr::Null),
             "esp-sha-hmac" => integ = Integ::HmacSha1_96,
             "esp-sha256-hmac" => integ = Integ::HmacSha256_128,

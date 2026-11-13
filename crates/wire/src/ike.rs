@@ -5,13 +5,13 @@
 //! notification.
 //!
 //! Messages after the keys are agreed (main mode 5 and 6, quick mode) travel encrypted: their
-//! payloads follow the header as one opaque block. With an AES policy that block is AES-CBC
-//! (RFC 2409 appendix B: the payloads padded to whole blocks, the last pad byte counting the
-//! others, the IV chained from message to message), see [`Isakmp::sealed_cbc`]. For DES and
-//! 3DES, which aren't implemented, the cipher is a keyed XOR made from MD5, **not real
-//! encryption** ([`Isakmp::sealed`]) — enough to show that the payloads are unreadable on the
-//! wire and that peers with different keys cannot read each other, and nothing more.
+//! payloads follow the header as one opaque block: AES-, DES- or 3DES-CBC (RFC 2409
+//! appendix B: the payloads padded to whole blocks, the last pad byte counting the others, the
+//! IV chained from message to message), see [`Isakmp::sealed_cbc`]. [`Isakmp::sealed`] is an
+//! older keyed XOR made from MD5, **not real encryption**, that nothing in the simulator uses
+//! for IKE any more.
 
+use crate::cipher::Cipher;
 use crate::md5::md5;
 use crate::{Result, WireError, be16};
 
@@ -290,42 +290,36 @@ impl Isakmp {
         Isakmp { icookie, rcookie, exchange, flags: FLAG_ENCRYPTED, message_id, payloads: Vec::new(), encrypted, next: 0 }
     }
 
-    /// A message whose payloads are encrypted with AES-CBC under `aes` from `iv` (RFC 2409
-    /// appendix B); the next message's IV is its [`Isakmp::last_block`].
-    pub fn sealed_cbc(
-        icookie: [u8; 8],
-        rcookie: [u8; 8],
-        exchange: u8,
-        message_id: u32,
-        payloads: &[Payload],
-        aes: &crate::aes256::Aes,
-        iv: &[u8; 16],
-    ) -> Isakmp {
+    /// A message whose payloads are encrypted with a block cipher in CBC mode (AES, DES or 3DES)
+    /// under `cipher` from `iv` (RFC 2409 appendix B); the next message's IV is its
+    /// [`Isakmp::last_block`].
+    pub fn sealed_cbc(icookie: [u8; 8], rcookie: [u8; 8], exchange: u8, message_id: u32, payloads: &[Payload], cipher: &Cipher, iv: &[u8]) -> Isakmp {
+        let block = cipher.block_len();
         let mut plain = chain(payloads);
         // Always some padding: zeros, then a byte counting them.
-        let pad = 15 - plain.len() % 16;
+        let pad = block - 1 - plain.len() % block;
         plain.extend(std::iter::repeat_n(0u8, pad));
         plain.push(u8::try_from(pad).unwrap_or(0));
-        let encrypted = crate::aes256::cbc_encrypt(aes, iv, &plain);
+        let encrypted = cipher.cbc_encrypt(iv, &plain);
         let next = payloads.first().map_or(0, Payload::kind);
         Isakmp { icookie, rcookie, exchange, flags: FLAG_ENCRYPTED, message_id, payloads: Vec::new(), encrypted, next }
     }
 
     /// The payloads of a message [`Isakmp::sealed_cbc`] made; an error when what comes out
     /// doesn't parse (the wrong key or IV). The caller checks the HASH payload.
-    pub fn open_cbc(&self, aes: &crate::aes256::Aes, iv: &[u8; 16]) -> Result<Vec<Payload>> {
-        if self.encrypted.is_empty() || !self.encrypted.len().is_multiple_of(16) {
+    pub fn open_cbc(&self, cipher: &Cipher, iv: &[u8]) -> Result<Vec<Payload>> {
+        if self.encrypted.is_empty() || !self.encrypted.len().is_multiple_of(cipher.block_len()) {
             return Err(WireError::Truncated("isakmp"));
         }
-        let plain = crate::aes256::cbc_decrypt(aes, iv, &self.encrypted);
+        let plain = cipher.cbc_decrypt(iv, &self.encrypted);
         let pad = usize::from(*plain.last().ok_or(WireError::Truncated("isakmp"))?);
         let body = plain.get(..plain.len().checked_sub(pad + 1).ok_or(WireError::Truncated("isakmp"))?).ok_or(WireError::Truncated("isakmp"))?;
         parse_chain(self.next, body)
     }
 
-    /// The last cipher block of an encrypted message (the IV of the next one).
-    pub fn last_block(&self) -> Option<[u8; 16]> {
-        self.encrypted.get(self.encrypted.len().checked_sub(16)?..).and_then(|b| b.try_into().ok())
+    /// The last cipher block (`block` bytes) of an encrypted message: the IV of the next one.
+    pub fn last_block(&self, block: usize) -> Option<Vec<u8>> {
+        self.encrypted.get(self.encrypted.len().checked_sub(block)?..).map(<[u8]>::to_vec)
     }
 
     /// The payloads of a message [`Isakmp::sealed`] made, without the check [`Isakmp::open`]
@@ -478,6 +472,7 @@ pub fn filler(seed: &[u8], len: usize) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cipher::CipherKind;
 
     fn main_1() -> Isakmp {
         let t = Transform { number: 1, id: 1, attrs: vec![(1, 7), (14, 256), (2, 2), (3, 1), (4, 14), (11, 1), (12, 28_800)] };
@@ -521,7 +516,7 @@ mod tests {
 
     #[test]
     fn cbc_messages_chain_their_iv_and_open_only_with_the_right_key() {
-        let aes = crate::aes256::Aes::new(&[5; 32]).unwrap();
+        let aes = Cipher::new(CipherKind::Aes, &[5; 32]).unwrap();
         let payloads = [Payload::Id { kind: 1, protocol: 17, port: 500, data: vec![10, 0, 0, 1] }, Payload::Hash(filler(b"h", 32))];
         let m = Isakmp::sealed_cbc([3; 8], [4; 8], EXCH_MAIN, 0, &payloads, &aes, &[9; 16]);
         assert_eq!(m.encrypted.len() % 16, 0);
@@ -532,9 +527,9 @@ mod tests {
         assert_eq!(back, m);
         assert_eq!(back.open_cbc(&aes, &[9; 16]).unwrap(), payloads.to_vec());
         assert!(!v.windows(4).any(|w| w == [10, 0, 0, 1]));
-        assert_eq!(back.last_block().unwrap().to_vec(), v[v.len() - 16..].to_vec());
+        assert_eq!(back.last_block(16).unwrap(), v[v.len() - 16..].to_vec());
         // Another key or IV gives garbage that doesn't parse back to the payloads.
-        let other = crate::aes256::Aes::new(&[6; 32]).unwrap();
+        let other = Cipher::new(CipherKind::Aes, &[6; 32]).unwrap();
         assert_ne!(back.open_cbc(&other, &[9; 16]).ok(), Some(payloads.to_vec()));
         assert_ne!(back.open_cbc(&aes, &[8; 16]).ok(), Some(payloads.to_vec()));
         for n in 0..v.len() {
@@ -545,5 +540,26 @@ mod tests {
         let st = Isakmp::sealed([3; 8], [4; 8], EXCH_MAIN, 0, &payloads, b"k");
         assert_eq!(st.open_unchecked(b"k").unwrap(), payloads.to_vec());
         assert!(Isakmp { encrypted: vec![1; 7], ..m.clone() }.open_cbc(&aes, &[0; 16]).is_err());
+    }
+
+    #[test]
+    fn des_and_3des_messages_pad_to_eight_byte_blocks_and_chain() {
+        let payloads = [Payload::Id { kind: 1, protocol: 17, port: 500, data: vec![10, 0, 0, 1] }, Payload::Hash(filler(b"h", 20))];
+        for (kind, key) in [(CipherKind::Des, vec![5u8; 8]), (CipherKind::Tdes, vec![6u8; 24])] {
+            let c = Cipher::new(kind, &key).unwrap();
+            let m = Isakmp::sealed_cbc([3; 8], [4; 8], EXCH_MAIN, 0, &payloads, &c, &[9; 8]);
+            assert_eq!(m.encrypted.len() % 8, 0);
+            let v = m.encode();
+            assert!(!v.windows(4).any(|w| w == [10, 0, 0, 1]));
+            let back = Isakmp::decode(&v).unwrap();
+            assert_eq!(back.open_cbc(&c, &[9; 8]).unwrap(), payloads.to_vec());
+            assert_eq!(back.last_block(8).unwrap(), v[v.len() - 8..].to_vec());
+            assert_ne!(back.open_cbc(&c, &[8; 8]).ok(), Some(payloads.to_vec()));
+            for n in 0..v.len() {
+                if let Ok(x) = Isakmp::decode(&v[..n]) {
+                    let _ = x.open_cbc(&c, &[9; 8]);
+                }
+            }
+        }
     }
 }

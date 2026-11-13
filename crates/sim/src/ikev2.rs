@@ -7,7 +7,8 @@
 //! when the value is for a group it didn't pick, and answers with its own value. Both work out
 //! the shared secret (a real modular exponentiation for the MODP groups, `netlabcraft_wire::dh`;
 //! a stand-in for the elliptic-curve groups) and derive the IKE SA's keys from it with the
-//! negotiated PRF (RFC 7296 §2.14). IKE_AUTH, encrypted with the negotiated AES-CBC key size and
+//! negotiated PRF (RFC 7296 §2.14). IKE_AUTH, encrypted with the negotiated AES-CBC key size (or
+//! 3DES-CBC) and
 //! protected with the negotiated integrity check: the initiator sends
 //! its identity, the AUTH value made with its pre-shared key over the first message (§2.15),
 //! the ESP proposal from its transform set and the traffic selectors from its crypto map's
@@ -17,8 +18,8 @@
 //! own access list (TS_UNACCEPTABLE), then answers with its own identity and AUTH value, which
 //! the initiator checks the same way. ESP keys come from SK_d (§2.17); a transform set of
 //! `esp-aes` (128, 192 or 256 bits) or `esp-null` with `esp-sha-hmac`, `esp-sha256-hmac` or
-//! `esp-md5-hmac` then runs those algorithms for real; DES, 3DES and AH keep the stand-in cipher
-//! of `netlabcraft_wire::vpn`.
+//! `esp-md5-hmac` then runs those algorithms for real, as do `esp-des` and `esp-3des`; AH keeps
+//! the stand-in cipher of `netlabcraft_wire::vpn`.
 //!
 //! Rekeying: near the end of the child SA's lifetime (90 % of its seconds or kilobytes) the
 //! router that started the IKE SA renews it with a CREATE_CHILD_SA exchange (RFC 7296 §1.3.3:
@@ -32,6 +33,7 @@ use std::net::Ipv4Addr;
 use netlabcraft_model::Device;
 use netlabcraft_model::Topology;
 use netlabcraft_model::vpn::{CryptoMapEntry, Ikev2Proposal};
+use netlabcraft_wire::cipher::CipherKind;
 use netlabcraft_wire::dh;
 use netlabcraft_wire::ike::filler;
 use netlabcraft_wire::ikev2::{self, Keys, Message, Payload, Proposal, TrafficSelector, Transform};
@@ -67,7 +69,7 @@ pub struct V2State {
     /// ESP keys: what this router sends with and what it receives with.
     pub esp_out: Vec<u8>,
     pub esp_in: Vec<u8>,
-    /// The ESP algorithms run for real, or `None` for the stand-in cipher.
+    /// The ESP algorithms, or `None` for the stand-in cipher (AH).
     pub esp_suite: Option<EspSuite>,
     /// The message ID of this router's next request on the IKE SA.
     next_req: u32,
@@ -81,17 +83,21 @@ fn esp_suite_for(d: &Device, e: &CryptoMapEntry) -> Option<EspSuite> {
     e.transform_set.as_deref().and_then(|n| d.crypto.transform_set(n)).and_then(crate::vpn::esp_suite)
 }
 
-/// The IKE SA's algorithms from the chosen proposal (3DES runs as AES-CBC-128, see
-/// `netlabcraft_wire::ikev2`).
+/// The IKE SA's algorithms from the chosen proposal: AES-CBC with the key size it names, or
+/// three-key 3DES-CBC.
 fn ike_suite(p: &Proposal) -> ikev2::Suite {
-    let enc_len = p
-        .of(ikev2::TT_ENCR)
-        .next()
-        .filter(|t| t.id == ikev2::ENCR_AES_CBC)
-        .and_then(|t| t.key_len)
-        .map(|b| usize::from(b) / 8)
-        .filter(|n| [16, 24, 32].contains(n))
-        .unwrap_or(16);
+    let encr = p.of(ikev2::TT_ENCR).next();
+    let (cipher, enc_len) = if encr.is_some_and(|t| t.id == ikev2::ENCR_3DES) {
+        (CipherKind::Tdes, 24)
+    } else {
+        let n = encr
+            .filter(|t| t.id == ikev2::ENCR_AES_CBC)
+            .and_then(|t| t.key_len)
+            .map(|b| usize::from(b) / 8)
+            .filter(|n| [16, 24, 32].contains(n))
+            .unwrap_or(16);
+        (CipherKind::Aes, n)
+    };
     let prf = match p.of(ikev2::TT_PRF).next().map(|t| t.id) {
         Some(ikev2::PRF_HMAC_SHA2_256) => Prf::HmacSha256,
         Some(ikev2::PRF_HMAC_MD5) => Prf::HmacMd5,
@@ -102,7 +108,7 @@ fn ike_suite(p: &Proposal) -> ikev2::Suite {
         Some(ikev2::AUTH_HMAC_MD5_96) => Integ::HmacMd5_96,
         _ => Integ::HmacSha1_96,
     };
-    ikev2::Suite { enc_len, prf, integ }
+    ikev2::Suite { cipher, enc_len, prf, integ }
 }
 
 /// A Diffie-Hellman private value (256 bits) from a seed.
@@ -636,7 +642,7 @@ impl Sim {
                 Payload::TsR(vec![tsr]),
             ],
         };
-        let sealed = req.encode_sealed(keys.suite.integ, &keys.sk_ei, &keys.sk_ai, iv_for(&[&v2.ni[..], b"auth-i"].concat()));
+        let sealed = req.encode_sealed(keys.suite, &keys.sk_ei, &keys.sk_ai, iv_for(&[&v2.ni[..], b"auth-i"].concat()));
         v2.spi_r = m.spi_r;
         v2.algorithms = describe(&chosen);
         v2.nr = nr;
@@ -663,7 +669,7 @@ impl Sim {
         mut v2: V2State,
     ) -> Result<(), String> {
         let Some(keys) = v2.keys.clone() else { return Err("IKEv2 keys missing".into()) };
-        let inner = match Message::open(raw, keys.suite.integ, &keys.sk_ei, &keys.sk_ai) {
+        let inner = match Message::open(raw, keys.suite, &keys.sk_ei, &keys.sk_ai) {
             Ok(p) => p,
             Err(e) => {
                 self.ike2_fail(d, peer, format!("IKE_AUTH from {peer} does not open ({e})"));
@@ -683,7 +689,7 @@ impl Sim {
         let auth = inner.iter().find_map(|p| if let Payload::Auth { data, .. } = p { Some(data.clone()) } else { None });
         let (Some((id_kind, id_data)), Some(auth)) = (idi, auth) else {
             self.ike2_fail(d, peer, "IKE_AUTH without identity or AUTH".into());
-            self.ike2_send(t, d, local, peer, refuse(ikev2::AUTHENTICATION_FAILED).encode_sealed(keys.suite.integ, &keys.sk_er, &keys.sk_ar, iv));
+            self.ike2_send(t, d, local, peer, refuse(ikev2::AUTHENTICATION_FAILED).encode_sealed(keys.suite, &keys.sk_er, &keys.sk_ar, iv));
             return Ok(());
         };
         let their_id = <[u8; 4]>::try_from(id_data.as_slice()).map(Ipv4Addr::from).unwrap_or(Ipv4Addr::UNSPECIFIED);
@@ -694,7 +700,7 @@ impl Sim {
                 peer,
                 format!("no IKEv2 profile here matches identity {their_id} with a key for {peer}; answered AUTHENTICATION_FAILED"),
             );
-            self.ike2_send(t, d, local, peer, refuse(ikev2::AUTHENTICATION_FAILED).encode_sealed(keys.suite.integ, &keys.sk_er, &keys.sk_ar, iv));
+            self.ike2_send(t, d, local, peer, refuse(ikev2::AUTHENTICATION_FAILED).encode_sealed(keys.suite, &keys.sk_er, &keys.sk_ar, iv));
             return Ok(());
         };
         let (my_key, their_key) = d.crypto.ikev2.keys_for(profile, peer).unwrap_or_default();
@@ -706,7 +712,7 @@ impl Sim {
                 peer,
                 "the peer's AUTH value does not match this router's pre-shared key (the keys differ); answered AUTHENTICATION_FAILED".into(),
             );
-            self.ike2_send(t, d, local, peer, refuse(ikev2::AUTHENTICATION_FAILED).encode_sealed(keys.suite.integ, &keys.sk_er, &keys.sk_ar, iv));
+            self.ike2_send(t, d, local, peer, refuse(ikev2::AUTHENTICATION_FAILED).encode_sealed(keys.suite, &keys.sk_er, &keys.sk_ar, iv));
             return Ok(());
         }
         // The child SA: a crypto map entry back to the peer with the same ESP transforms, and
@@ -741,7 +747,7 @@ impl Sim {
         };
         if let Err((kind, why)) = verdict {
             self.ike2_fail(d, peer, format!("{why}; answered {}", ikev2::notify_name(kind)));
-            self.ike2_send(t, d, local, peer, refuse(kind).encode_sealed(keys.suite.integ, &keys.sk_er, &keys.sk_ar, iv));
+            self.ike2_send(t, d, local, peer, refuse(kind).encode_sealed(keys.suite, &keys.sk_er, &keys.sk_ar, iv));
             return Ok(());
         }
         let my_id = profile.local_id.unwrap_or(local);
@@ -787,13 +793,13 @@ impl Sim {
         sa.spi_out = spi_out;
         sa.v2 = Some(Box::new(v2));
         self.log(d.id, &format!("IKEv2 with {peer}: IKE_SA_INIT and IKE_AUTH complete, IKE and IPsec security associations up"));
-        self.ike2_send(t, d, local, peer, reply.encode_sealed(keys.suite.integ, &keys.sk_er, &keys.sk_ar, iv));
+        self.ike2_send(t, d, local, peer, reply.encode_sealed(keys.suite, &keys.sk_er, &keys.sk_ar, iv));
         Ok(())
     }
 
     fn ike2_auth_response(&mut self, d: &Device, local: Ipv4Addr, peer: Ipv4Addr, raw: &[u8], mut v2: V2State) -> Result<(), String> {
         let Some(keys) = v2.keys.clone() else { return Err("IKEv2 keys missing".into()) };
-        let inner = match Message::open(raw, keys.suite.integ, &keys.sk_er, &keys.sk_ar) {
+        let inner = match Message::open(raw, keys.suite, &keys.sk_er, &keys.sk_ar) {
             Ok(p) => p,
             Err(e) => {
                 self.ike2_fail(d, peer, format!("the IKE_AUTH response does not open ({e})"));
@@ -869,7 +875,7 @@ impl Sim {
         let m = Message { spi_i: v2.spi_i, spi_r: v2.spi_r, exchange, flags, message_id: id, payloads };
         let (ek, ak) = if initiator { (&keys.sk_ei, &keys.sk_ai) } else { (&keys.sk_er, &keys.sk_ar) };
         let iv = iv_for(&[&ek[..], &id.to_be_bytes()[..], &[exchange, u8::from(response)][..], &self.now.to_be_bytes()[..]].concat());
-        let raw = m.encode_sealed(keys.suite.integ, ek, ak, iv);
+        let raw = m.encode_sealed(keys.suite, ek, ak, iv);
         self.ike2_send(t, d, local, peer, raw);
     }
 
@@ -929,7 +935,7 @@ impl Sim {
         let Some(keys) = v2.keys.clone() else { return Err("IKEv2 keys missing".into()) };
         let from_initiator = m.flags & ikev2::FLAG_INITIATOR != 0;
         let (ek, ak) = if from_initiator { (&keys.sk_ei, &keys.sk_ai) } else { (&keys.sk_er, &keys.sk_ar) };
-        let inner = Message::open(raw, keys.suite.integ, ek, ak)
+        let inner = Message::open(raw, keys.suite, ek, ak)
             .map_err(|e| format!("IKEv2 {} from {peer} does not open ({e})", ikev2::exchange_name(m.exchange)))?;
         let sa = self.state.get(&d.id).and_then(|s| s.ipsec.get(&peer)).cloned().unwrap_or_default();
         let me_initiator = sa.initiator;

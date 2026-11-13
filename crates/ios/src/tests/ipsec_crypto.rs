@@ -43,7 +43,9 @@ fn ikev1_runs_every_cipher_combination_for_real() {
         ("aes", "sha256", 5, "esp-aes esp-sha-hmac", "AES-CBC-128 / HMAC-SHA1-96"),
         ("aes 192", "md5", 2, "esp-aes 192 esp-md5-hmac", "AES-CBC-192 / HMAC-MD5-96"),
         ("aes 128", "sha", 1, "esp-null esp-sha256-hmac", "NULL / HMAC-SHA256-128"),
-        ("3des", "sha", 2, "esp-3des esp-sha-hmac", "stand-in"),
+        ("3des", "sha", 2, "esp-3des esp-sha-hmac", "3DES-CBC / HMAC-SHA1-96"),
+        ("des", "md5", 1, "esp-des esp-md5-hmac", "DES-CBC / HMAC-MD5-96"),
+        ("3des", "sha256", 14, "esp-3des esp-sha256-hmac", "3DES-CBC / HMAC-SHA256-128"),
     ] {
         let (mut lab, r1, isp, r2, a) = two_sites();
         lab.run(r1, &v1_config(SITE1.0, SITE1.1, "s3cret", enc, hash, group, ts));
@@ -54,6 +56,12 @@ fn ikev1_runs_every_cipher_combination_for_real() {
         let isakmp = lab.run(r1, "show crypto isakmp sa");
         assert!(isakmp.contains("established (pre-shared key; "), "{isakmp}");
         assert!(isakmp.contains(&format!("DH group {group}")), "{isakmp}");
+        let cipher = match enc {
+            "des" => "DES-CBC",
+            "3des" => "3DES-CBC",
+            _ => "AES-CBC",
+        };
+        assert!(isakmp.contains(cipher), "{enc}: {isakmp}");
         let sa = lab.run(r1, "show crypto ipsec sa");
         assert!(sa.contains(esp), "{ts}: {sa}");
         assert!(sa.contains("Lifetime left: ") && sa.contains("of 3600 seconds, ") && sa.contains("of 4608000 kilobytes"), "{sa}");
@@ -141,6 +149,8 @@ fn ikev2_runs_every_cipher_combination_for_real() {
         ("aes-cbc-128", "sha1", "2", "esp-aes esp-sha-hmac", "AES-CBC-128, PRF HMAC-SHA1, HMAC-SHA1-96, DH group 2", "AES-CBC-128 / HMAC-SHA1-96"),
         ("aes-cbc-192", "md5", "5", "esp-aes 192 esp-md5-hmac", "AES-CBC-192, PRF HMAC-MD5, HMAC-MD5-96, DH group 5", "AES-CBC-192 / HMAC-MD5-96"),
         ("aes-cbc-256", "sha256", "19", "esp-null esp-sha256-hmac", "DH group 19", "NULL / HMAC-SHA256-128"),
+        ("3des", "sha1", "14", "esp-3des esp-sha-hmac", "3DES, PRF HMAC-SHA1, HMAC-SHA1-96, DH group 14", "3DES-CBC / HMAC-SHA1-96"),
+        ("3des", "sha256", "5", "esp-des esp-md5-hmac", "3DES, PRF HMAC-SHA256, HMAC-SHA256-128, DH group 5", "DES-CBC / HMAC-MD5-96"),
     ] {
         let (mut lab, r1, _isp, r2, a) = two_sites();
         lab.run(r1, &v2_config(SITE1.0, SITE1.1, enc, integ, group, ts));

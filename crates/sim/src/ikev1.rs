@@ -3,11 +3,12 @@
 //! pre-shared key (§5, §5.4), HASH_I and HASH_R, the quick-mode hashes and KEYMAT (§5.5), the
 //! encryption key and IVs of appendix B, and sealing or opening a message with them.
 //!
-//! AES policies (`encryption aes [128|192|256]`) encrypt with AES-CBC for real; DES and 3DES,
-//! not implemented, use the stand-in keystream of `netlabcraft_wire::ike` keyed with the real
-//! SKEYID_e. SHA-384 and SHA-512 policies run HMAC-SHA-256 in their place.
+//! Policies encrypt for real with AES-CBC (`encryption aes [128|192|256]`), DES-CBC (`des`) or
+//! three-key 3DES-CBC (`3des`), keyed from SKEYID_e as RFC 2409 appendix B has it (8-byte
+//! blocks and IVs for DES and 3DES). SHA-384 and SHA-512 policies run HMAC-SHA-256 in their
+//! place; the elliptic-curve groups still use a stand-in exchange.
 
-use netlabcraft_wire::aes256::Aes;
+use netlabcraft_wire::cipher::{Cipher, CipherKind};
 use netlabcraft_wire::dh;
 use netlabcraft_wire::ike::{self, Isakmp, Payload, Transform};
 use netlabcraft_wire::suite::Prf;
@@ -18,8 +19,29 @@ use netlabcraft_wire::vpn::EspSuite;
 pub enum P1Cipher {
     /// AES-CBC with a key of this many bytes.
     Aes(usize),
-    /// DES or 3DES: the stand-in keystream.
-    Standin,
+    /// DES-CBC (attribute value 1).
+    Des,
+    /// Three-key 3DES-CBC (attribute value 5).
+    Des3,
+}
+
+impl P1Cipher {
+    fn kind(self) -> CipherKind {
+        match self {
+            P1Cipher::Aes(_) => CipherKind::Aes,
+            P1Cipher::Des => CipherKind::Des,
+            P1Cipher::Des3 => CipherKind::Tdes,
+        }
+    }
+
+    /// Bytes of key.
+    fn key_len(self) -> usize {
+        match self {
+            P1Cipher::Aes(n) => n,
+            P1Cipher::Des => 8,
+            P1Cipher::Des3 => 24,
+        }
+    }
 }
 
 /// What a phase-1 transform stands for.
@@ -44,7 +66,10 @@ impl P1Suite {
                 let bits = attr(t, 14).unwrap_or(128);
                 if [128, 192, 256].contains(&bits) { P1Cipher::Aes(usize::from(bits) / 8) } else { P1Cipher::Aes(16) }
             }
-            _ => P1Cipher::Standin,
+            Some(1) => P1Cipher::Des,
+            // 3DES-CBC (5), and any cipher this simulator has no code for: the routers never
+            // offer another, and a peer that does is refused by the policy match before keys.
+            _ => P1Cipher::Des3,
         };
         let prf = match attr(t, 2) {
             Some(1) => Prf::HmacMd5,
@@ -57,7 +82,8 @@ impl P1Suite {
     pub fn describe(&self) -> String {
         let c = match self.cipher {
             P1Cipher::Aes(n) => format!("AES-CBC-{}", n * 8),
-            P1Cipher::Standin => "DES/3DES (stand-in cipher)".to_string(),
+            P1Cipher::Des => "DES-CBC".to_string(),
+            P1Cipher::Des3 => "3DES-CBC".to_string(),
         };
         let dh = if dh::is_modp(self.group) { format!("DH group {}", self.group) } else { format!("DH group {} (stand-in)", self.group) };
         format!("{c}, {}, {dh}", self.prf.name())
@@ -105,7 +131,8 @@ pub struct V1State {
     /// The inbound SPI this router chose and the peer's.
     pub spi_mine: u32,
     pub spi_peer: u32,
-    /// The ESP algorithms run for real (`None`: the stand-in cipher), and the keys.
+    /// The ESP algorithms (`None` for a transform set this simulator has no code for: AH, or
+    /// nothing implemented), and the keys.
     pub esp_suite: Option<EspSuite>,
     pub esp_out: Vec<u8>,
     pub esp_in: Vec<u8>,
@@ -156,10 +183,8 @@ impl V1State {
         self.skeyid_d = prf.prf(&self.skeyid, &tail(0));
         self.skeyid_a = prf.prf(&self.skeyid, &[&self.skeyid_d[..], &tail(1)].concat());
         let skeyid_e = prf.prf(&self.skeyid, &[&self.skeyid_a[..], &tail(2)].concat());
-        let want = match self.suite.map(|s| s.cipher) {
-            Some(P1Cipher::Aes(n)) => n,
-            _ => skeyid_e.len(),
-        };
+        let block = self.cipher_kind().block_len();
+        let want = self.suite.map_or(skeyid_e.len(), |s| s.cipher.key_len());
         // Appendix B: a key longer than SKEYID_e is K1 | K2 | …, K1 = prf(SKEYID_e, 0),
         // Kn = prf(SKEYID_e, Kn−1).
         self.enc_key = if skeyid_e.len() >= want {
@@ -174,7 +199,7 @@ impl V1State {
             out.truncate(want);
             out
         };
-        self.iv = prf.hash(&[&self.ke_i[..], &self.ke_r[..]].concat()).get(..16).unwrap_or_default().to_vec();
+        self.iv = prf.hash(&[&self.ke_i[..], &self.ke_r[..]].concat()).get(..block).unwrap_or_default().to_vec();
         true
     }
 
@@ -215,52 +240,52 @@ impl V1State {
         out
     }
 
-    fn iv16(v: &[u8]) -> [u8; 16] {
-        v.get(..16).and_then(|s| s.try_into().ok()).unwrap_or([0; 16])
+    fn cipher_kind(&self) -> CipherKind {
+        self.suite.map_or(CipherKind::Aes, |s| s.cipher.kind())
+    }
+
+    /// The phase-1 cipher keyed with SKEYID_e's expansion.
+    fn cipher(&self) -> Option<Cipher> {
+        Cipher::new(self.cipher_kind(), &self.enc_key)
     }
 
     /// Seals a message with the phase-1 cipher; quick mode (`qm`) chains its own IV.
     pub fn seal(&mut self, icookie: [u8; 8], rcookie: [u8; 8], exchange: u8, message_id: u32, payloads: &[Payload], qm: bool) -> Isakmp {
-        match (self.suite.map(|s| s.cipher), Aes::new(&self.enc_key)) {
-            (Some(P1Cipher::Aes(_)), Some(aes)) => {
-                let iv = V1State::iv16(if qm { &self.qm_iv } else { &self.iv });
-                let m = Isakmp::sealed_cbc(icookie, rcookie, exchange, message_id, payloads, &aes, &iv);
-                self.chain_iv(&m, qm);
-                m
-            }
-            _ => Isakmp::sealed(icookie, rcookie, exchange, message_id, payloads, &self.enc_key),
-        }
+        let iv = if qm { self.qm_iv.clone() } else { self.iv.clone() };
+        let m = match self.cipher() {
+            Some(c) => Isakmp::sealed_cbc(icookie, rcookie, exchange, message_id, payloads, &c, &iv),
+            // No keys yet (derive never ran): nothing can be sealed.
+            None => Isakmp::clear(icookie, rcookie, exchange, message_id, Vec::new()),
+        };
+        self.chain_iv(&m, qm);
+        m
     }
 
     fn chain_iv(&mut self, m: &Isakmp, qm: bool) {
-        if let Some(last) = m.last_block() {
+        if let Some(last) = m.last_block(self.cipher_kind().block_len()) {
             if qm {
-                self.qm_iv = last.to_vec();
+                self.qm_iv = last;
             } else {
-                self.iv = last.to_vec();
-                self.p1_last = last.to_vec();
+                self.p1_last.clone_from(&last);
+                self.iv = last;
             }
         }
     }
 
     /// Opens a message sealed with the phase-1 cipher.
     pub fn open(&mut self, m: &Isakmp, qm: bool) -> Result<Vec<Payload>, String> {
-        let opened = match (self.suite.map(|s| s.cipher), Aes::new(&self.enc_key)) {
-            (Some(P1Cipher::Aes(_)), Some(aes)) => {
-                let iv = V1State::iv16(if qm { &self.qm_iv } else { &self.iv });
-                let r = m.open_cbc(&aes, &iv);
-                self.chain_iv(m, qm);
-                r
-            }
-            _ => m.open_unchecked(&self.enc_key),
-        };
-        opened.map_err(|_| OPEN_FAILED.to_string())
+        let cipher = self.cipher().ok_or_else(|| OPEN_FAILED.to_string())?;
+        let iv = if qm { self.qm_iv.clone() } else { self.iv.clone() };
+        let r = m.open_cbc(&cipher, &iv);
+        self.chain_iv(m, qm);
+        r.map_err(|_| OPEN_FAILED.to_string())
     }
 
     /// Starts quick mode's IV: hash(last phase-1 block | M-ID).
     pub fn start_qm(&mut self, message_id: u32) {
         let last = if self.p1_last.is_empty() { self.iv.clone() } else { self.p1_last.clone() };
-        self.qm_iv = self.prf().hash(&[&last[..], &message_id.to_be_bytes()[..]].concat()).get(..16).unwrap_or_default().to_vec();
+        self.qm_iv =
+            self.prf().hash(&[&last[..], &message_id.to_be_bytes()[..]].concat()).get(..self.cipher_kind().block_len()).unwrap_or_default().to_vec();
     }
 }
 
@@ -306,8 +331,11 @@ mod tests {
             let (ci, cr) = ([1; 8], [2; 8]);
             assert!(i.derive(b"psk", &ci, &cr, true) && r.derive(b"psk", &ci, &cr, false));
             assert_eq!(i.enc_key, r.enc_key);
-            if let Some(P1Cipher::Aes(n)) = i.suite.map(|s| s.cipher) {
-                assert_eq!(i.enc_key.len(), n);
+            if let Some(c) = i.suite.map(|s| s.cipher) {
+                // RFC 2409 appendix B: 8 bytes for DES, 24 for 3DES (longer than a SHA-1 or
+                // MD5 SKEYID_e, so expanded), the AES key size otherwise; IVs are one block.
+                assert_eq!(i.enc_key.len(), c.key_len());
+                assert_eq!(i.iv.len(), c.kind().block_len());
             }
             assert_eq!(i.hash_p1(true, &ci, &cr, b"id"), r.hash_p1(true, &ci, &cr, b"id"));
             assert_ne!(i.hash_p1(true, &ci, &cr, b"id"), i.hash_p1(false, &ci, &cr, b"id"));
@@ -350,9 +378,7 @@ mod tests {
         let s = P1Suite::from_transform(&a);
         assert_eq!((s.cipher, s.prf, s.group, s.lifetime), (P1Cipher::Aes(32), Prf::HmacSha1, 14, 3600));
         assert_eq!(s.describe(), "AES-CBC-256, HMAC-SHA1, DH group 14");
-        assert_eq!(
-            P1Suite::from_transform(&tr(vec![(1, 5), (2, 1), (4, 20)])).describe(),
-            "DES/3DES (stand-in cipher), HMAC-MD5, DH group 20 (stand-in)"
-        );
+        assert_eq!(P1Suite::from_transform(&tr(vec![(1, 5), (2, 1), (4, 20)])).describe(), "3DES-CBC, HMAC-MD5, DH group 20 (stand-in)");
+        assert_eq!(P1Suite::from_transform(&tr(vec![(1, 1), (2, 2), (4, 2)])).describe(), "DES-CBC, HMAC-SHA1, DH group 2");
     }
 }
