@@ -1,6 +1,6 @@
 # Target-app parity: NetLabCraft vs Cisco Packet Tracer
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (counts measured again after seven troubleshooting labs; percentages not re-scored) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (packaged-build gate met), major (the lab book run end to end, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers: areas and course topics re-scored, the untested-labs deduction cut; counts measured again) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (counts measured again after M9.7's four labs and console views; percentages not re-scored) · earlier: minor (counts measured again after seven troubleshooting labs; percentages not re-scored) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (packaged-build gate met), major (the lab book run end to end, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers: areas and course topics re-scored, the untested-labs deduction cut; counts measured again) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summarizes it,
 [`gaps.md`](gaps.md) lists every shortfall, and the area checklists hold the detail:
@@ -14,11 +14,11 @@ to end is in [`labs/`](labs/README.md).
 | Number | Value | Kind |
 |---|---|---|
 | Engine commands | **138** | measured: `c!(` entries in `crates/engine/src/catalog.rs` |
-| Console grammar entries | **1015** across 37 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
+| Console grammar entries | **1037** across 37 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
 | Device models | **51** | measured: `MODELS` in `crates/model/src/models.rs` (the fallback model not counted; the 7 router cards are in `MODULES`) |
 | Sample labs | **31** | measured: `SAMPLES` in `crates/engine/src/sample.rs` |
-| Lab-book labs | **27** | measured: numbered labs in `docs/labs/` (4 CCNA 1, 13 CCNA 2, 10 CCNA 3; labs 21 to 27 are troubleshooting labs), all run by `crates/engine/tests/lab_book.rs`, 11 also over MCP by `apps/netlabcraft-cli/tests/mcp_lab_book.rs` |
-| Tests | **620** | measured: sum of "passed" from `cargo test --workspace -q` |
+| Lab-book labs | **31** | measured: numbered labs in `docs/labs/` (4 CCNA 1, 14 CCNA 2, 13 CCNA 3; labs 21 to 29 are troubleshooting labs, 30 and 31 inspection labs), all run by `crates/engine/tests/lab_book.rs`, 14 also over MCP by `apps/netlabcraft-cli/tests/mcp_lab_book.rs` |
+| Tests | **685** | measured: sum of "passed" from `cargo test --workspace -q` |
 | **Ready for real work** (weighted) | **~91%** | estimated; written weights below (90.9 computed) |
 | **CCNA 1 student** (Introduction to Networks) | **~93%** | estimated; [method](#audiences) |
 | **CCNA 2 student** (Switching, Routing and Wireless Essentials) | **~94%** | estimated; [method](#audiences) |
@@ -85,7 +85,7 @@ Packet Tracer activities (estimated from the public course outlines). Each topic
 how much of what its labs do works here, depth included: a command that is accepted but not
 simulated scores low. The weighted sum then loses points for labs nobody has run: **5 points**
 while no lab book had been run end to end (beta gate 1), and **2 points** now that the
-[lab book](labs/README.md) runs. The 2 points stay because the book is our own (27 labs, not
+[lab book](labs/README.md) runs. The 2 points stay because the book is our own (31 labs, not
 the course's own activities, which can't be copied), so the topics it doesn't exercise can
 still hide surprises. Topics the book exercises are scored from what its labs showed; the
 others from the features and tests alone. The earlier figures (CCNA 2 ~92%, CCNA 3 ~91% in the
@@ -176,6 +176,7 @@ Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | M9.7: four labs (28 to 31) join the book: 31 labs, 14 over MCP. Counts measured again the same way (1037 grammar entries, 138 commands, 685 tests); the percentages are not re-scored: the console gaps the earlier labs left are fixed (OSPF authentication, database and summary views, ICMP types and codes in ACLs, counters that follow their lines, separate OSPF debugs) and the new labs turned up one more (an OSPF database that kept the LSAs of a router no adjacency reached), fixed; what is left is in [gaps.md](gaps.md), item 1. |
 | 2026-11-13 | minor | Seven troubleshooting labs (21 to 27) join the book: 27 labs, 11 over MCP. Counts measured again (1015 grammar entries, 138 commands, 620 tests); the percentages are not re-scored: the new labs found 12 small console gaps, fixed, and the estimate that more labs would turn up more is unchanged. |
 | 2026-11-13 | minor | VRRPv3 router advertisements for IPv6 (M9.2): the routing leftovers (old gaps item 5) are done; no percentage changed. |
 | 2026-11-13 | minor | EIGRP for IPv6 per-interface hello and hold timers (M9.2); the CCNA 2 student leftovers lose them; no percentage changed. |

@@ -1,6 +1,6 @@
 # Pitfalls
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (four pitfalls from M9.7: counters keyed by position, a stale checksum, a database that lists unreachable routers, a `Rest` that needs a word) · earlier: minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
 
 Mistakes already made here, and the rule that stops each one. Read this before your first change; when you make a
 new mistake worth not repeating, add it in the same change.
@@ -30,12 +30,32 @@ new mistake worth not repeating, add it in the same change.
   (`nonminimal_bool` did, and CI on a rolling `stable` failed on `needless_range_loop`). The compiler is pinned in
   `rust-toolchain.toml`; bump it together with `rust-version`, and fix the code, not the gate.
 
+## Console grammar
+
+- **A `Rest(..)` token needs at least one word.** `spec!(X, .., [K("ip"), K("ospf"), K("authentication"), Rest("[message-digest|null]")])`
+  makes the bare `ip ospf authentication` an "Incomplete command". Give a command whose last word is optional two
+  specs: one without the `Rest`, one with it (as `area N stub` and `area N stub no-summary` do), and read the optional
+  word with `arg(i)`, which is empty when it was not typed.
+- **State kept per line is keyed by what identifies the line, never by its position.** ACL hit counters were keyed by
+  the index in the list, so inserting `5 deny …` above the others moved every count onto the wrong line. They are keyed
+  by the line's sequence number (`Acl::hit_key`), and a command that renumbers (`resequence`) or removes lines has to
+  move or drop the counters with them (`Sim::remap_acl_hits`, `Sim::forget_acl_hit`).
+
 ## Simulator
 
 - **Periodic control traffic is scheduled for the whole `run_for` window up front.** `schedule_control` walks every
   tick of the window at once, so a sender that reads a role or a state (a VRRP master, a held neighbour) sees it as of
   the start of the window, not as of the tick. A test that changes something and expects the new behaviour on the wire
   must run a first window for the change to settle, clear the trace, and look in a second window.
+
+- **A packet changed after it was encoded needs its checksum zeroed before the new one is computed.** Signing an OSPF
+  packet with a clear-text password rewrote the authentication field and summed the packet again with the old checksum
+  still in it, so the packet failed its own checksum, and no test noticed because nothing decoded it. A signer gets a
+  test that decodes what it signed (`wire/src/control.rs`).
+- **A view of "what this router knows" must follow what reaches it, not what is configured.** `show ip ospf database`
+  listed the LSAs of every router with a segment in an area, so a router cut off by a passive interface kept its router,
+  summary and external LSAs for ever. A database view starts from the viewer and follows adjacencies
+  (`ospf_lsdb::flooding_domain`).
 
 ## Wasm
 
