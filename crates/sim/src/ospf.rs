@@ -201,7 +201,7 @@ pub fn auth_problem(d: &Device, ifc: &L3If, packet: &[u8]) -> Option<String> {
             (mine != pw).then(|| "the clear-text password differs".to_string())
         }
         (OspfAuthKind::Md5, OspfAuth::Md5 { key_id, .. }) => match c.md5_keys.get(&key_id) {
-            None => Some(format!("no message-digest key {key_id} here")),
+            None => Some(format!("no message-digest key {key_id} on the receiving interface")),
             Some(key) => {
                 (!netlabcraft_wire::control::ospf_md5_verify(packet, key)).then(|| format!("the message digest does not verify under key {key_id}"))
             }
@@ -212,7 +212,7 @@ pub fn auth_problem(d: &Device, ifc: &L3If, packet: &[u8]) -> Option<String> {
                 OspfAuth::Simple(_) => OspfAuthKind::Simple,
                 OspfAuth::Md5 { .. } => OspfAuthKind::Md5,
             };
-            Some(format!("the packet uses {} authentication, this interface expects {}", kind_name(theirs), kind_name(w)))
+            Some(format!("the packet uses {} authentication, the receiving interface expects {}", kind_name(theirs), kind_name(w)))
         }
     }
 }
@@ -237,10 +237,10 @@ fn auth_mismatch(a: &Device, ia: &L3If, b: &Device, ib: &L3If) -> Option<String>
     .encode();
     let there = netlabcraft_wire::control::ospf_authenticate(probe.clone(), &auth_send(a, ia, 1_000_000));
     if let Some(why) = auth_problem(b, ib, &there) {
-        return Some(format!("authentication fails ({why})"));
+        return Some(format!("authentication fails: the neighbour rejects this router's packets ({why})"));
     }
     let here = netlabcraft_wire::control::ospf_authenticate(probe, &auth_send(b, ib, 1_000_000));
-    auth_problem(a, ia, &here).map(|why| format!("authentication fails ({why})"))
+    auth_problem(a, ia, &here).map(|why| format!("authentication fails: this router rejects the neighbour's packets ({why})"))
 }
 
 /// The network an interface puts in its router's LSA: a loopback stands for one host (a /32
