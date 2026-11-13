@@ -1,6 +1,6 @@
 # Target-app parity: NetLabCraft vs Cisco Packet Tracer
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (M9.5: IKEv1 group 24 is a real Diffie-Hellman group) · earlier: minor (M9.5: AH next to ESP in one transform set is a real bundle), minor (M9.5: the IKE SA has a lifetime and is replaced before it runs out), minor (counts measured again after seven troubleshooting labs; percentages not re-scored) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman), minor (packaged-build gate met), major (the lab book run end to end, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers: areas and course topics re-scored, the untested-labs deduction cut; counts measured again) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (M9.5: IKEv1 group 24 is a real Diffie-Hellman group) · also merged with M9.6 and M9.8 (results replay; Resize Shape and accessible devices) · earlier: minor (M9.5: AH next to ESP in one transform set is a real bundle), minor (M9.5: the IKE SA has a lifetime and is replaced before it runs out), minor (counts measured again after seven troubleshooting labs; percentages not re-scored) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman), minor (packaged-build gate met), major (the lab book run end to end, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers: areas and course topics re-scored, the untested-labs deduction cut; counts measured again) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summarizes it,
 [`gaps.md`](gaps.md) lists every shortfall, and the area checklists hold the detail:
@@ -36,7 +36,7 @@ to end is in [`labs/`](labs/README.md).
 | CCNA 1 student | ~93% | ~2–5 | More labs walked; small console and host-app details they turn up |
 | CCNA 2 student | ~94% | ~3–8 | More labs walked |
 | CCNA 3 student | ~90% | ~8–16 | certificates, IKE SA rekeying, a controller closer to the course's, virtualization |
-| Instructor | ~90% | ~4–8 | More interface languages, results signatures that resist forgery |
+| Instructor | ~90% | ~4–8 | More interface languages |
 
 Each student tier is mostly a superset of the one before. Hours are wall-clock for one agent;
 the protocol work splits well across 3–4 agents by crate (`sim`, `ios`, `ui-egui`). The audience
@@ -150,9 +150,10 @@ first estimate) counted topics as present without weighing their depth or the un
   certificate, the SSH host key is a stand-in, and the controller is still smaller than the
   course's network controller (no policies, no assurance pages). QoS gained 802.1p CoS.
 - **Instructor:** the answer network, assessment tree, initial network, instructions per
-  language, connectivity tests, signed results and locks landed. Results signatures catch hand
-  edits, not a determined forger (the key comes from the salt in the file), and the interface
-  comes in two languages.
+  language, connectivity tests, signed results and locks landed. A JSON results
+  file embeds the student's network and is replayed to check the claimed score, so a forged
+  score fails (time claims and CSV files are not replayed), and the interface comes in two
+  languages.
 
 ## Stage
 
@@ -179,6 +180,7 @@ Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 | 2026-11-13 | minor | IKEv1 group 24 runs for real (M9.5); only a no-cipher transform set keeps a crypto stand-in; no percentage changed. |
 | 2026-11-13 | minor | AH bundled with ESP in one transform set runs for real (M9.5); IKEv1 group 24 is what is left of the crypto stand-ins; no percentage changed. |
 | 2026-11-13 | minor | IKE SA lifetimes and rekeying (M9.5); the crypto stand-ins left are AH bundled with ESP and IKEv1 group 24; no percentage changed. |
+| 2026-11-13 | minor | Results replay (M9.6): the forgery gap is closed for JSON results; no percentage changed. |
 | 2026-11-13 | minor | Seven troubleshooting labs (21 to 27) join the book: 27 labs, 11 over MCP. Counts measured again (1015 grammar entries, 138 commands, 620 tests); the percentages are not re-scored: the new labs found 12 small console gaps, fixed, and the estimate that more labs would turn up more is unchanged. |
 | 2026-11-13 | minor | VRRPv3 router advertisements for IPv6 (M9.2): the routing leftovers (old gaps item 5) are done; no percentage changed. |
 | 2026-11-13 | minor | EIGRP for IPv6 per-interface hello and hold timers (M9.2); the CCNA 2 student leftovers lose them; no percentage changed. |

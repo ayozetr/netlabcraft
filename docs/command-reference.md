@@ -42,8 +42,8 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `activity.translate` | Instructions in a language |  |  | `{"lang": "es", "text"?: the instructions in it (empty removes them), "default"?: true makes it the main language} → {"languages", "default"}` |
 | `activity.edit_check` | Edit check |  |  | `{"index": n, "points"?, "feedback"?, "label"?, "section"?}` |
 | `activity.connectivity` | Connectivity Tests | Extensions |  | `{} → {"tests": [{"label", "from", "to", "expect", "passed", "actual"}], "passed", "total", "detail"}: the activity's ping checks, run now` |
-| `activity.export_results` | Export results… |  |  | `{"format"?: "json"\|"csv", "path"?, "time"?, "elapsed_s"?} → {"text", "file_name", "score", "total", "percent"}: a results file with the student, the time, the score per section, signed with HMAC-SHA1 under a key from the activity's salt` |
-| `activity.verify_results` | Verify a results file |  |  | `{"text" or "path"} → {"valid", "same_activity", "student", "score", "total", "percent"}` |
+| `activity.export_results` | Export results… |  |  | `{"format"?: "json"\|"csv", "path"?, "time"?, "elapsed_s"?} → {"text", "file_name", "score", "total", "percent", "replayable", "replay_agrees"}: a results file with the student, the time, the score per section, signed with HMAC-SHA1 under a key from the activity's salt; a JSON file also embeds the student's final network (lab file format) so the score can be replayed` |
+| `activity.verify_results` | Verify a results file |  |  | `{"text" or "path"} → {"valid", "same_activity", "signature_ok", "replayed", "replay_matches", "replay_score", "replay_total", "mismatches", "message", "student", "score", "total", "percent"}: checks the signature (hand edits) and, for a file with an embedded network, runs the activity's checks again and compares (forgery); a CSV or older file is not replayed and says so` |
 | `activity.locks` | Activity locks |  |  | `{"devices"?: true (no adding or removing devices), "cables"?: true (no cable changes), "config"?: ["R1", …] (devices whose configuration can't change)}: they hold while the activity is locked` |
 | `file.new` | New lab | File | Ctrl+N | `{"sample"?: "sample id (see sample.list)"}` |
 | `file.open` | Open lab… | File | Ctrl+O | `{"json": "lab file contents"} or {"path": "file (desktop/CLI)"}` |
@@ -83,6 +83,7 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `note.add` | Place note or drawing | Insert |  | `{"x", "y", "text"?, "shape"?: "text\|rectangle\|ellipse\|line\|freehand\|polygon", "w"?, "h"?, "points": [[x, y], …] (freehand: simplified, at most 512 kept; polygon: 3-64 corners), "color"?: "#rrggbb"} → {"id"} (placed in the cluster being viewed)` |
 | `note.edit` | Edit note |  |  | `{"id", "text"}` |
 | `note.move` | Move note |  |  | `{"id", "x", "y", "transient"?: false}` |
+| `note.resize` | Resize drawing |  |  | `{"id", "x", "y", "w", "h", "transient"?: false}: rectangle and ellipse: top-left corner and size (normalised, sides kept between 4 and 100000); line: start and the offset to its far end (at least 4 long); text, freehand and polygon are refused` |
 | `note.remove` | Delete note |  |  | `{"id"}` |
 | `note.color` | Drawing colour |  |  | `{"id", "color": "#rrggbb"}` |
 | `cluster.create` | Group into a cluster | Edit | Ctrl+G | `{"devices": ["name or id", …], "clusters"?: [cluster ids to nest], "name"?} → {"id", "name"} (all from the same view; the network is unchanged)` |

@@ -1,6 +1,6 @@
 # netlabcraft-cli
 
-> **Last reviewed:** 2026-10-31 · **Last updated:** 2026-10-31 · **Change:** minor (examples for Simulation-mode options, controller discovery, kept NETCONF sessions, boards, power supplies and the instructor commands; the lab book from the command line)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (results replay: the JSON export and verify example (M9.6)) · earlier: minor (examples for Simulation-mode options, controller discovery, kept NETCONF sessions, boards, power supplies and the instructor commands; the lab book from the command line)
 
 The headless command line: run engine commands, type at consoles, write captures and serve MCP, with no window.
 
@@ -55,6 +55,8 @@ netlabcraft-cli run --sample board --cmd 'sim.advance={"ms":10000}' --cmd 'board
 netlabcraft-cli run --sample two-subnets --cmd 'device.psu={"device":"R1","bay":2,"fitted":true}'
 # an activity's connectivity tests and a signed results file
 netlabcraft-cli run --sample activity-first-router --cmd 'activity.connectivity={}' --cmd 'activity.export_results={"format":"csv"}'
+# a JSON results file embeds the student's network; verifying it replays the checks (`replayed`, `replay_matches`)
+netlabcraft-cli run --sample activity-first-router --cmd 'activity.export_results={"format":"json","path":"results.json"}' --cmd 'activity.verify_results={"path":"results.json"}'
 ```
 
 The lab book ([labs/](labs/README.md)) is written so its `lab` blocks paste into `run --cmd`
@@ -82,6 +84,7 @@ Every command id and its parameters: [`command-reference.md`](command-reference.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | Example of a replayed results file (M9.6). |
 | 2026-10-31 | minor | Examples for Constant Delay and the capture filter, controller discovery, a kept NETCONF session, a board, power supplies and the instructor commands; the commands added since listed; the lab book from the command line. |
 | 2026-10-30 | minor | Examples and the list of new commands: PDUs and scenarios, `sim.event`, RESTCONF, NETCONF, the controller, power and clouds. |
 | 2026-10-30 | trivial | Shared format. |

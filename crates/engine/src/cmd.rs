@@ -841,7 +841,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             s.changed();
             Ok(json!({"id": id}))
         }
-        "note.edit" | "note.move" | "note.remove" | "note.color" => {
+        "note.edit" | "note.move" | "note.resize" | "note.remove" | "note.color" => {
             let id = p.get("id").and_then(Value::as_u64).and_then(|v| u32::try_from(v).ok()).ok_or_else(|| bad("`id` (note number) is required"))?;
             let mut t = s.topology.clone();
             t.annotation_mut(id)?;
@@ -853,6 +853,11 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                     let a = t.annotation_mut(id)?;
                     a.x = x;
                     a.y = y;
+                    transient = p.get("transient").and_then(Value::as_bool).unwrap_or(false);
+                }
+                "note.resize" => {
+                    let need = |k: &str| f32_param(p, k).ok_or_else(|| bad(format!("`{k}` is required")));
+                    t.resize_drawing(id, need("x")?, need("y")?, need("w")?, need("h")?)?;
                     transient = p.get("transient").and_then(Value::as_bool).unwrap_or(false);
                 }
                 "note.color" => {

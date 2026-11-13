@@ -1,6 +1,6 @@
 # UI parity
 
-> **Last reviewed:** 2026-10-31 · **Last updated:** 2026-10-31 · **Change:** minor (Constant Delay, the capture filter, origin decisions and absolute start times; instructor windows; touch screens, the phone's Settings, power supplies, the board Programming tab; Programming app and WLC page additions; figures aligned with ROADMAP.md) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (Resize Shape; canvas devices as accessible nodes, M9.8) · earlier: minor (Constant Delay, the capture filter, origin decisions and absolute start times; instructor windows; touch screens, the phone's Settings, power supplies, the board Programming tab; Programming app and WLC page additions; figures aligned with ROADMAP.md) · **Target:** Cisco Packet Tracer 9.0
 
 The window, element by element, against the reference app. Part of
 [target-app-parity.md](target-app-parity.md). The arrangement was observed black-box (local
@@ -12,7 +12,7 @@ The window, element by element, against the reference app. Part of
 |---|---|---|
 | Menu bar | File, Edit, Options, View, Tools, Extensions, Window, Help | same menus, our items; File ▸ Open Recent on the desktop; File ▸ Print… makes an A4 PDF of the workspace and opens it in the system's PDF viewer to print (the web build downloads it); the web build asks before closing a tab with unsaved changes |
 | Main toolbar | file, print, info, copy/paste, undo/redo, zoom, palette… ; help at right | new, open, save, network information, copy/paste devices, undo, redo, zoom in/reset/out, capture export; help at right |
-| Second toolbar | select, inspect, delete, resize, note, drawing, simple/complex PDU | select, inspect, delete, place note, line, rectangle, ellipse, freehand, polygon, simple PDU, complex PDU (also under Tools), group into a cluster; resize shown but not available yet |
+| Second toolbar | select, inspect, delete, resize, note, drawing, simple/complex PDU | select, inspect, delete, place note, line, rectangle, ellipse, freehand, polygon, simple PDU, complex PDU (also under Tools), group into a cluster; resize works on rectangles, ellipses and lines (click the drawing with Select: eight handles on a box, two on a line; the `note.resize` command, one undo step per drag, sides kept between 4 and 100000 units) |
 | Workspace bar | Logical / Physical, coordinates, Root, navigation, clock | Logical / Physical, coordinates, a clickable Root › cluster › … path with back, clock |
 | Opening a lab | the view as saved | a lab that opens or is created is fitted to the workspace: centred and zoomed out (never past 1:1) with room for labels and notes; opening a cluster and switching views fit the same way |
 | Workspace | white, icons with model + name, port labels, link triangles; red serial cables with a clock at the DCE; EtherChannel marks | same arrangement, icons drawn in code; device names on a soft plate, port labels kept clear of name blocks and of each other; parallel cables side by side, a ring around each EtherChannel, red zigzag serial cables with a clock at the DCE end, a router mark on multilayer switches |
@@ -36,12 +36,15 @@ The window, element by element, against the reference app. Part of
 | Connections | cable types in the device box | Automatic, Console, Copper Straight-Through, Copper Cross-Over, Fiber, Serial DCE, Serial DTE, Coaxial, Phone and IoT Custom tiles with drawn glyphs; the port menu greys out ports a cable doesn't fit and says why; each kind drawn its own way; the PC's Terminal app over a console cable |
 | Dialogs | open over the workspace | About, Compare with the Answer, PDU information and the Activity Wizard open below the toolbars; IP Configuration and Global Settings laid out on a grid |
 | Language | English plus community files | English and Spanish; every window, tab, page and mode is swept by a test that fails on English text left untranslated ([localization-parity.md](localization-parity.md)) |
-| Not yet | — | Resize Shape, scripts in the PC Programming app, device windows as native OS windows |
+| Accessibility | — | each device on the workspace is an accessible node (`Name, model` and `, selected`, role button): Tab or the arrow keys (device id order) move between them and select, Enter, Space or a screen reader's click opens the device; links and cables are not nodes yet |
+| Not yet | — | scripts in the PC Programming app, device windows as native OS windows |
 
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | Canvas devices as accessible nodes with keyboard navigation (M9.8). |
+| 2026-11-13 | minor | Resize Shape (M9.8): handles on a selected rectangle, ellipse or line, backed by `note.resize`. |
 | 2026-10-31 | minor | Constant Delay, "Capture only the visible events", the sender's decisions in the OSI view, absolute PDU start times; the instructor windows (Answer Network, Initial Network, assessment tree, languages, Connectivity Tests, results, Locks); tablet and smartphone touch screens, the phone's Settings screen, power-supply bays, the board Programming tab, the IoT Custom cable tile; Controller Discover and the NETCONF keep-open box; central switching on the WLC page; 51 models; figures aligned with ROADMAP.md. |
 | 2026-10-30 | minor | Create Complex PDU window, scenario menu, OSI Model view of PDU details, the Programming app (RESTCONF, NETCONF, Controller), IoT tab depth, the Home Gateway, Phone tab SIP box, PoE, switch-card and cloud Physical tabs, coaxial and phone cables, Wi-Fi range by building; 37 models; figures aligned with ROADMAP.md. |
 | 2026-10-30 | minor | UI fixes from the audit: fit to view on open, time bar without overlaps, Spanish coverage with tests, dialogs below the toolbars, label placement, event list columns. Stale rows corrected: model count, cables (under Connections), protocol frames in the event list (done), server services and PC apps listed in full; figures aligned with ROADMAP.md. |
