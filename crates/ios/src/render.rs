@@ -1498,6 +1498,12 @@ pub(crate) fn ospf_if_lines(s: &mut String, d: &Device, name: &str) {
         if let Some((asn, secs)) = e.hold {
             let _ = writeln!(s, " ip hold-time eigrp {asn} {secs}");
         }
+        if let Some((asn, secs)) = e.hello6 {
+            let _ = writeln!(s, " ipv6 hello-interval eigrp {asn} {secs}");
+        }
+        if let Some((asn, secs)) = e.hold6 {
+            let _ = writeln!(s, " ipv6 hold-time eigrp {asn} {secs}");
+        }
     }
     if let Some(o) = d.ospf_if.get(name) {
         if let Some(c) = o.cost {
@@ -2792,7 +2798,7 @@ pub fn crypto_ipsec_sa(sim: &Sim, d: &Device) -> String {
             let suite = sa.v1.as_deref().map(|v| v.esp_suite).or_else(|| sa.v2.as_deref().map(|v| v.esp_suite)).flatten();
             let esp = match suite {
                 Some(suite) => format!("{} (real ciphers)", suite.describe()),
-                None => "the simulator's stand-in cipher (DES, 3DES and AH are not implemented)".to_string(),
+                None => "the simulator's stand-in cipher (AH next to ESP in one transform set is not implemented)".to_string(),
             };
             let _ = writeln!(s, "  ESP: {esp}");
         }

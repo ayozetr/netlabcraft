@@ -18,14 +18,16 @@ use crate::{Sim, l3_ifaces, port_up};
 /// Hello time of spanning tree.
 pub const BPDU_EVERY_US: u64 = 2_000_000;
 pub const OSPF_HELLO_EVERY_US: u64 = 10_000_000;
-pub const RIP_UPDATE_EVERY_US: u64 = 30_000_000;
 /// EIGRP hellos are considered every second; each interface sends at its own hello interval.
 pub const EIGRP_HELLO_EVERY_US: u64 = 1_000_000;
 pub const HSRP_HELLO_EVERY_US: u64 = 3_000_000;
-/// EIGRP for IPv6 hellos, at the default hello interval.
-pub const EIGRP6_HELLO_EVERY_US: u64 = 5_000_000;
+/// EIGRP for IPv6 hellos are considered every second; each interface sends at its own hello interval.
+pub const EIGRP6_HELLO_EVERY_US: u64 = 1_000_000;
 /// VRRP masters advertise every second (RFC 5798's default).
 pub const VRRP_EVERY_US: u64 = 1_000_000;
+/// A VRRPv3 IPv6 master repeats its router advertisement this often (RFC 4861 allows 198 to 600
+/// s; the simulator keeps one fixed value in range).
+pub const VRRP6_RA_EVERY_US: u64 = 200_000_000;
 /// NTP clients poll every 64 s.
 pub const NTP_POLL_EVERY_US: u64 = 64_000_000;
 /// A long run only replays the last ten minutes of control traffic.
@@ -357,13 +359,11 @@ impl Sim {
         }
     }
 
-    /// RIP updates at each router's update timer (RIPng's every 30 s): its other networks,
+    /// RIP updates at each router's update timer (and RIPng's, `send_ripng`): its other networks,
     /// its routes (poisoned reverse for those learned through the interface) and the routes
     /// possibly down, at metric 16.
     fn send_rip_updates(&mut self, t: &Topology, at: u64) {
-        if at.is_multiple_of(RIP_UPDATE_EVERY_US) {
-            self.send_ripng(t, at);
-        }
+        self.send_ripng(t, at);
         if !t.devices.iter().any(|d| d.rip.is_some()) {
             return;
         }
@@ -476,11 +476,44 @@ impl Sim {
         use netlabcraft_wire::ipv6::{ETHERTYPE_IPV6, Ipv6, multicast_mac};
         use netlabcraft_wire::vrrp::{PROTO_VRRP, VRRP_GROUP, VRRP_GROUP6, Vrrp, Vrrp6};
         if !t.devices.iter().any(|d| !d.fhrp.vrrp.is_empty()) {
+            self.vrrp6_ra.clear();
             return;
         }
         // Due when a whole number of intervals (rounded up to seconds) has passed.
         let due = |cs: u16| (at / 1_000_000).is_multiple_of(u64::from(cs).div_ceil(100).max(1));
         let roles = self.fhrp_roles(t);
+        // The master of an IPv6 group announces the virtual router with a router advertisement
+        // (RFC 5798 §3.4.2, RFC 4861): when it takes the role, then every `VRRP6_RA_EVERY_US`.
+        let mut masters = std::collections::BTreeSet::new();
+        for (id, list) in &roles.vrrp6 {
+            let Some(d) = t.device(*id) else { continue };
+            let up = crate::v6::up_ifaces6(t, d);
+            for r in list.iter().filter(|r| r.state == crate::fhrp::VrrpState::Master) {
+                let key = (*id, r.iface.clone(), r.group);
+                let fresh = !self.vrrp6_ra.contains(&key);
+                masters.insert(key);
+                let Some(ifc) = up.iter().find(|i| i.name == r.iface) else { continue };
+                if fresh || at.is_multiple_of(VRRP6_RA_EVERY_US) {
+                    let ra = crate::v6::router_advert(d, ifc, r.virtual_mac());
+                    let ip = Ipv6 {
+                        hop_limit: 255,
+                        next_header: netlabcraft_wire::ipv6::PROTO_ICMPV6,
+                        src: r.virtual_ip,
+                        dst: netlabcraft_wire::ipv6::ALL_NODES,
+                        payload: ra.encode(r.virtual_ip, netlabcraft_wire::ipv6::ALL_NODES),
+                    };
+                    let frame = Frame {
+                        dst: multicast_mac(netlabcraft_wire::ipv6::ALL_NODES),
+                        src: r.virtual_mac(),
+                        vlan: ifc.vlan,
+                        ethertype: ETHERTYPE_IPV6,
+                        payload: ip.encode(),
+                    };
+                    self.queue_frame(t, d, ifc.port, frame, at);
+                }
+            }
+        }
+        self.vrrp6_ra = masters;
         for (id, list) in &roles.vrrp6 {
             let Some(d) = t.device(*id) else { continue };
             let up = crate::v6::up_ifaces6(t, d);
@@ -530,12 +563,12 @@ impl Sim {
             let Some(d) = t.device(*id) else { continue };
             let asn = d.eigrp6.as_ref().map_or(0, |e| e.asn);
             let up = crate::v6::up_ifaces6(t, d);
-            for info in ifs.iter().filter(|x| !x.passive) {
+            for info in ifs.iter().filter(|x| !x.passive && at.is_multiple_of(u64::from(x.hello_secs.max(1)) * 1_000_000)) {
                 let Some(ifc) = up.iter().find(|i| i.name == info.name) else { continue };
                 if crate::loopback::is_loopback(ifc.port) {
                     continue;
                 }
-                let hello = EigrpHello::new(asn);
+                let hello = EigrpHello::with_hold(asn, info.hold_secs);
                 let ip = Ipv6 { hop_limit: 1, next_header: PROTO_EIGRP, src: ifc.link_local, dst: EIGRP_ROUTERS6, payload: hello.encode() };
                 let frame =
                     Frame { dst: multicast_mac(EIGRP_ROUTERS6), src: ifc.mac, vlan: ifc.vlan, ethertype: ETHERTYPE_IPV6, payload: ip.encode() };

@@ -1380,6 +1380,11 @@ pub struct EigrpIfConf {
     pub hello: Option<(u16, u16)>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hold: Option<(u16, u16)>,
+    /// The same for EIGRP for IPv6 (`ipv6 hello-interval eigrp AS N`, `ipv6 hold-time eigrp AS N`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hello6: Option<(u16, u16)>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hold6: Option<(u16, u16)>,
 }
 
 impl Eigrp {

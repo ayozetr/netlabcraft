@@ -724,6 +724,10 @@ pub enum Id {
     NoIpHelloEigrp,
     IpHoldEigrp,
     NoIpHoldEigrp,
+    Ipv6HelloEigrp,
+    NoIpv6HelloEigrp,
+    Ipv6HoldEigrp,
+    NoIpv6HoldEigrp,
     ShowIpEigrpNeighbors,
     ShowIpEigrpTopology,
     ShowIpEigrpInterfaces,
@@ -2103,6 +2107,34 @@ pub static SPECS: &[Spec] = &[
         IFS.or(Modes::SVI).or(Modes::TUNNEL),
         Modes::BOTH,
         [K("no"), K("ip"), K("hold-time"), K("eigrp"), Arg("<1-65535>")],
+        "A 15-second hold time again"
+    ),
+    spec!(
+        Ipv6HelloEigrp,
+        IFS.or(Modes::SVI).or(Modes::TUNNEL),
+        Modes::BOTH,
+        [K("ipv6"), K("hello-interval"), K("eigrp"), Arg("<1-65535>"), Arg("<1-65535> seconds")],
+        "How often EIGRP for IPv6 says hello on this interface"
+    ),
+    spec!(
+        NoIpv6HelloEigrp,
+        IFS.or(Modes::SVI).or(Modes::TUNNEL),
+        Modes::BOTH,
+        [K("no"), K("ipv6"), K("hello-interval"), K("eigrp"), Arg("<1-65535>")],
+        "Hellos every 5 seconds again"
+    ),
+    spec!(
+        Ipv6HoldEigrp,
+        IFS.or(Modes::SVI).or(Modes::TUNNEL),
+        Modes::BOTH,
+        [K("ipv6"), K("hold-time"), K("eigrp"), Arg("<1-65535>"), Arg("<1-65535> seconds")],
+        "How long neighbours wait for this router's EIGRP for IPv6 hellos"
+    ),
+    spec!(
+        NoIpv6HoldEigrp,
+        IFS.or(Modes::SVI).or(Modes::TUNNEL),
+        Modes::BOTH,
+        [K("no"), K("ipv6"), K("hold-time"), K("eigrp"), Arg("<1-65535>")],
         "A 15-second hold time again"
     ),
     spec!(ShowIpEigrpNeighbors, EXECS, Modes::BOTH, [K("show"), K("ip"), K("eigrp"), K("neighbors")], "EIGRP neighbours"),
@@ -3689,7 +3721,7 @@ pub static SPECS: &[Spec] = &[
         [K("timers"), K("basic"), Arg("<1-65535>"), Arg("<1-65535>"), Arg("<0-65535>"), Arg("<1-65535>")],
         "Update, invalid, hold-down and flush times (seconds)"
     ),
-    spec!(SrNoRipTimers, Modes::RIP, Modes::BOTH, [K("no"), K("timers"), K("basic")], "Timers 30 180 180 240 again"),
+    spec!(SrNoRipTimers, Modes::RIP, Modes::BOTH, [K("no"), K("timers"), K("basic")], "The default timers again"),
     spec!(SrIpv6RouterRip, Modes::CONFIG, Modes::BOTH, [K("ipv6"), K("router"), K("rip"), Arg("WORD")], "Start or configure RIPng"),
     spec!(SrNoIpv6RouterRip, Modes::CONFIG, Modes::BOTH, [K("no"), K("ipv6"), K("router"), K("rip"), Arg("WORD")], "Stop RIPng"),
     spec!(

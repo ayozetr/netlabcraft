@@ -163,6 +163,89 @@ fn vrrp_version_3_shares_an_ipv6_link_local_gateway() {
     assert!(!lab.run(r2, "show vrrp").contains("IPv6 group 1"));
 }
 
+#[test]
+fn vrrp_version_3_master_advertises_the_virtual_router() {
+    let (mut lab, r1, r2, _s1, pc) = pair();
+    for (r, n, prio) in [(r1, 2, 120), (r2, 3, 100)] {
+        lab.run(
+            r,
+            &format!(
+                "conf t\nipv6 unicast-routing\nfhrp version vrrp v3\nint g0/0\nipv6 address 2001:db8:1::{n}/64\nvrrp 1 ipv6 FE80::1\nvrrp 1 priority {prio}\nend"
+            ),
+        );
+    }
+    // An unsolicited advertisement the moment the master takes the role: from the virtual
+    // link-local address, with the virtual MAC, and nothing from either router's own address.
+    lab.sim.clear_trace();
+    secs(&mut lab, 2.0);
+    let ras: Vec<(DeviceId, String, Vec<u8>)> = lab
+        .sim
+        .trace()
+        .iter()
+        .filter(|e| e.summary.starts_with("NDP router advertisement") && (e.from.device == r1 || e.from.device == r2))
+        .map(|e| (e.from.device, e.summary.clone(), e.frame.clone()))
+        .collect();
+    assert!(!ras.is_empty(), "the master announces itself");
+    assert!(
+        ras.iter()
+            .all(|(d, s, f)| *d == r1 && s.contains("from fe80::1 (prefix 2001:db8:1::/64)") && f.get(6..12) == Some(&[0, 0, 0x5e, 0, 2, 1][..])),
+        "{ras:?}"
+    );
+    // A host asking gets the virtual router, answered by the master alone.
+    lab.sim.clear_trace();
+    let auto = lab.run(pc, "ipv6config auto");
+    assert!(auto.contains("2001:db8:1::") && auto.contains("fe80::1"), "{auto}");
+    let answers: Vec<DeviceId> =
+        lab.sim.trace().iter().filter(|e| e.summary.starts_with("NDP router advertisement") && e.from.device != pc).map(|e| e.from.device).collect();
+    assert!(!answers.is_empty() && !answers.contains(&r2), "{answers:?}");
+    // It repeats on its own every 200 s.
+    lab.sim.clear_trace();
+    secs(&mut lab, 200.0);
+    let repeats = lab.sim.trace().iter().filter(|e| e.from.device == r1 && e.summary.starts_with("NDP router advertisement from fe80::1")).count();
+    assert!(repeats >= 1, "periodic advertisements");
+    // The master goes away: the new master announces the same virtual router, once.
+    lab.run(r1, "conf t\nint g0/0\nshutdown\nend");
+    secs(&mut lab, 5.0);
+    assert!(lab.run(r2, "show vrrp").contains(": master"));
+    lab.sim.clear_trace();
+    secs(&mut lab, 3.0);
+    let from_r2 = lab.sim.trace().iter().filter(|e| e.from.device == r2 && e.summary.starts_with("NDP router advertisement from fe80::1")).count();
+    assert!(from_r2 >= 1, "the new master announces itself");
+    let from_r1 = lab.sim.trace().iter().filter(|e| e.from.device == r1 && e.summary.starts_with("NDP router advertisement")).count();
+    assert_eq!(from_r1, 0, "the old master is quiet");
+}
+
+#[test]
+fn a_vrrp_backup_stays_quiet_and_a_link_without_vrrp_is_unchanged() {
+    let (mut lab, r1, r2, _s1, pc) = pair();
+    // R1 and R2 on VRRP in IPv6 on g0/0, with R2 as backup; R1's g0/1 has no group.
+    for (r, n, prio) in [(r1, 2, 120), (r2, 3, 100)] {
+        lab.run(
+            r,
+            &format!(
+                "conf t\nipv6 unicast-routing\nfhrp version vrrp v3\nint g0/0\nipv6 address 2001:db8:1::{n}/64\nvrrp 1 ipv6 FE80::1\nvrrp 1 priority {prio}\n\
+                 int g0/1\nipv6 address 2001:db8:2::{n}/64\nend"
+            ),
+        );
+    }
+    secs(&mut lab, 2.0);
+    assert!(lab.run(r2, "show vrrp brief").contains("backup"));
+    // A router solicitation on the VRRP link reaches both; only the master answers.
+    lab.sim.clear_trace();
+    lab.run(pc, "ipv6config auto");
+    let answers: Vec<DeviceId> =
+        lab.sim.trace().iter().filter(|e| e.summary.starts_with("NDP router advertisement")).map(|e| e.from.device).collect();
+    assert!(!answers.contains(&r2), "the backup never answers: {answers:?}");
+    // Without a group on the link a router answers from its own address, as before.
+    lab.run(r1, "conf t\nint g0/0\nno vrrp 1 ipv6\nend");
+    lab.run(r2, "conf t\nint g0/0\nno vrrp 1 ipv6\nend");
+    secs(&mut lab, 3.0);
+    lab.sim.clear_trace();
+    lab.run(pc, "ipv6config auto");
+    let own: Vec<String> = lab.sim.trace().iter().filter(|e| e.summary.starts_with("NDP router advertisement")).map(|e| e.summary.clone()).collect();
+    assert!(own.iter().any(|s| s.contains("from fe80::")) && !own.iter().any(|s| s.contains("from fe80::1 ")), "{own:?}");
+}
+
 /// R1 — R2 — R3 in a line (and R1 — R3 over a slow link), R3 with two loopback networks.
 /// `v6` picks EIGRP for IPv6 (AS 10) or for IPv4 (AS 1).
 fn eigrp_line(v6: bool) -> (Lab, DeviceId, DeviceId, DeviceId) {
@@ -362,6 +445,98 @@ fn rip_sends_triggered_updates_and_poisons_withdrawn_routes() {
     assert!(!lab.run(r1, "show running-config").contains("timers basic"));
 }
 
+/// R1 and R2 on a switch (2001:db8:10::/64), R2 with a loopback prefix; RIPng on both.
+fn ripng_pair() -> (Lab, DeviceId, DeviceId, DeviceId) {
+    let mut lab = Lab::new();
+    let r1 = lab.add(DeviceKind::Router);
+    let r2 = lab.add(DeviceKind::Router);
+    let s = lab.add(DeviceKind::Switch);
+    lab.cable(r1, "g0/0", s, "fa0/1");
+    lab.cable(r2, "g0/0", s, "fa0/2");
+    let base = "en\nconf t\nipv6 unicast-routing\nipv6 router rip LAB\nexit\n";
+    lab.run(r1, &format!("{base}int g0/0\nipv6 address 2001:db8:10::1/64\nipv6 rip LAB enable\nno shut\nend"));
+    lab.run(
+        r2,
+        &format!(
+            "{base}int g0/0\nipv6 address 2001:db8:10::2/64\nipv6 rip LAB enable\nno shut\nint lo0\nipv6 address 2001:db8:2::1/64\nipv6 rip LAB enable\nend"
+        ),
+    );
+    lab.run(s, "en");
+    (lab, r1, r2, s)
+}
+
+#[test]
+fn ripng_keeps_a_silent_neighbours_routes_until_they_time_out() {
+    let (mut lab, r1, _r2, s) = ripng_pair();
+    assert!(lab.run(r1, "show ipv6 route").contains("R  2001:db8:2::/64"));
+    let rip = lab.run(r1, "show ipv6 rip");
+    assert!(rip.contains("Updates every 30 s; a route is invalid after 180 s, held down 180 s, flushed after 300 s"), "{rip}");
+    // R2 falls silent (its switch port shut): R1 keeps the route until it is invalid.
+    lab.run(s, "conf t\nint fa0/2\nshutdown\nend");
+    let rip = lab.run(r1, "show ipv6 rip");
+    assert!(rip.contains("no longer heard") && rip.contains("fe80::"), "{rip}");
+    lab.sim.run_for(&lab.t, 120_000_000);
+    assert!(lab.run(r1, "show ipv6 route").contains("2001:db8:2::/64"), "still within the invalid time");
+    lab.sim.run_for(&lab.t, 70_000_000);
+    assert!(!lab.run(r1, "show ipv6 route").contains("2001:db8:2::/64"), "invalid after 180 s");
+    let db = lab.run(r1, "show ipv6 rip database");
+    assert!(db.contains("2001:db8:2::/64") && db.contains("possibly down"), "{db}");
+    // Flushed 300 s after the last response.
+    lab.sim.run_for(&lab.t, 130_000_000);
+    assert!(!lab.run(r1, "show ipv6 rip database").contains("2001:db8:2::/64"));
+    // Back: learned again at once.
+    lab.run(s, "conf t\nint fa0/2\nno shutdown\nend");
+    lab.sim.run_for(&lab.t, 31_000_000);
+    assert!(lab.run(r1, "show ipv6 route").contains("R  2001:db8:2::/64"));
+}
+
+#[test]
+fn ripng_sends_triggered_responses_and_poisons_withdrawn_prefixes() {
+    let (mut lab, r1, r2, _s) = ripng_pair();
+    lab.sim.run_for(&lab.t, 31_000_000);
+    // Regular responses: R1 offers R2's prefix back to it at metric 16 (poisoned reverse).
+    let regular: Vec<String> = lab.sim.trace().iter().filter(|e| e.summary.starts_with("RIPng response")).map(|e| e.summary.clone()).collect();
+    assert!(regular.iter().any(|u| u.contains("2001:db8:2::/64 (16)")), "{regular:?}");
+    // R2's prefix goes down: a triggered response a second later, withdrawing it.
+    lab.sim.clear_trace();
+    lab.run(r2, "conf t\nint lo0\nshutdown\nend");
+    let _ = lab.run(r2, "show ipv6 rip database");
+    lab.sim.run_for(&lab.t, 2_000_000);
+    let trig: Vec<String> = lab.sim.trace().iter().filter(|e| e.summary.starts_with("RIPng response")).map(|e| e.summary.clone()).collect();
+    assert!(trig.iter().any(|u| u.contains("1 route") && u.contains("2001:db8:2::/64 (16)")), "{trig:?}");
+    // R1 takes it at once; the route is possibly down and held down.
+    assert!(!lab.run(r1, "show ipv6 route").contains("2001:db8:2::/64"));
+    assert!(lab.run(r1, "show ipv6 rip database").contains("possibly down"));
+}
+
+#[test]
+fn ripng_timers_are_configurable_and_persist() {
+    let (mut lab, r1, _r2, s) = ripng_pair();
+    lab.run(r1, "conf t\nipv6 router rip LAB\ntimers basic 10 30 30 40\nend");
+    let rip = lab.run(r1, "show ipv6 rip");
+    assert!(rip.contains("Updates every 10 s; a route is invalid after 30 s, held down 30 s, flushed after 40 s"), "{rip}");
+    let run = lab.run(r1, "show running-config");
+    assert!(run.contains("ipv6 router rip LAB\n timers basic 10 30 30 40\n!"), "{run}");
+    lab.run(r1, "copy run start\nreload\nen");
+    assert_eq!(lab.run(r1, "show running-config"), run);
+    // Faster updates on the wire: R1 answers every 10 s now.
+    lab.sim.clear_trace();
+    lab.sim.run_for(&lab.t, 21_000_000);
+    let n = lab.sim.trace().iter().filter(|e| e.summary.starts_with("RIPng response")).count();
+    assert!(n >= 4, "more than the 30 s rhythm gives: {n}");
+    // And a silent neighbour times out after 30 s instead of 180 s.
+    lab.run(s, "conf t\nint fa0/2\nshutdown\nend");
+    lab.sim.run_for(&lab.t, 31_000_000);
+    assert!(!lab.run(r1, "show ipv6 route").contains("2001:db8:2::/64"), "invalid after the shorter time");
+    // Validation, and back to the defaults.
+    lab.run(r1, "conf t\nipv6 router rip LAB");
+    assert!(lab.try_run(r1, "timers basic 30 10 10 40").contains("at least the update time"));
+    assert!(lab.try_run(r1, "timers basic 0 180 180 300").contains("1 to 65535"));
+    lab.run(r1, "no timers basic\nend");
+    assert!(!lab.run(r1, "show running-config").contains("timers basic"));
+    assert!(lab.run(r1, "show ipv6 rip").contains("flushed after 300 s"));
+}
+
 #[test]
 fn ripng_by_typing() {
     let mut lab = Lab::new();
@@ -407,7 +582,8 @@ fn ripng_by_typing() {
     lab.run(r1, "conf t\nipv6 router rip LAB");
     assert_eq!(lab.prompt(r1), "R1(config-rtr)#");
     assert!(lab.try_run(r1, "network 10.0.0.0").contains("Not part of RIPng"));
-    assert!(lab.try_run(r1, "timers basic 10 30 30 40").contains("RIPng"));
+    // `timers basic` is RIPng's own now (see `ripng_timers_*`).
+    assert!(lab.try_run(r1, "timers basic 30 10 10 40").contains("at least the update time"));
     lab.run(r1, "exit");
     assert!(lab.try_run(r1, "ipv6 router rip OTHER").contains("already runs here as LAB"));
     assert!(lab.try_run(r1, "ipv6 router rip bad!name").contains("letters"));

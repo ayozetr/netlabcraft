@@ -436,11 +436,19 @@ impl Sim {
                 if !ip.src.is_unspecified() {
                     self.learn_nd(t, d, ifc, ip.src, mac.unwrap_or(src_mac));
                 }
-                let prefixes: Vec<PrefixInfo> =
-                    ifc.addresses.iter().filter(|n| n.prefix == 64).map(|n| PrefixInfo { prefix: n.network().addr, len: 64 }).collect();
-                let conf = conf6(d, ifc).cloned().unwrap_or_default();
-                let flags = (if conf.nd_managed { RA_MANAGED } else { 0 }) | (if conf.nd_other { RA_OTHER } else { 0 });
-                let ra = Icmp6::RouterAdvert { hop_limit: 64, flags, lifetime: 1_800, mac: Some(ifc.mac), prefixes };
+                // Where VRRPv3 runs the link's router is the virtual one (RFC 5798 §3.4): only the
+                // master answers, from the virtual link-local address and the virtual MAC, and a
+                // backup stays quiet.
+                let groups = self.vrrp6_roles(t, d, &ifc.name);
+                if !groups.is_empty() {
+                    for (vip, vmac, _) in groups.into_iter().filter(|g| g.2) {
+                        let ra = router_advert(d, ifc, vmac);
+                        let packet = Ipv6 { hop_limit: 255, next_header: PROTO_ICMPV6, src: vip, dst: ALL_NODES, payload: ra.encode(vip, ALL_NODES) };
+                        self.emit6_from(t, d, ifc, vmac, multicast_mac(ALL_NODES), packet.encode());
+                    }
+                    return Ok(());
+                }
+                let ra = router_advert(d, ifc, ifc.mac);
                 let packet = Ipv6 {
                     hop_limit: 255,
                     next_header: PROTO_ICMPV6,
@@ -502,17 +510,22 @@ impl Sim {
     /// Sends a packet out of an interface: tagged on a subinterface, through the switch on a
     /// VLAN interface.
     fn emit6(&mut self, t: &Topology, d: &Device, ifc: &L3If6, to: MacAddr, packet: Vec<u8>) {
+        self.emit6_from(t, d, ifc, ifc.mac, to, packet);
+    }
+
+    /// [`Sim::emit6`] from a given source MAC (a VRRP virtual router's).
+    fn emit6_from(&mut self, t: &Topology, d: &Device, ifc: &L3If6, from: MacAddr, to: MacAddr, packet: Vec<u8>) {
         if crate::loopback::is_loopback(ifc.port) {
             return;
         }
         if ifc.port == SVI_PORT {
-            let frame = Frame { dst: to, src: ifc.mac, vlan: None, ethertype: ETHERTYPE_IPV6, payload: packet };
+            let frame = Frame { dst: to, src: from, vlan: None, ethertype: ETHERTYPE_IPV6, payload: packet };
             if let Some(v) = ifc.vlan.and_then(VlanId::new) {
                 let _ = self.switch_forward(t, d, None, v, frame, 0);
             }
             return;
         }
-        let frame = Frame { dst: to, src: ifc.mac, vlan: ifc.vlan, ethertype: ETHERTYPE_IPV6, payload: packet };
+        let frame = Frame { dst: to, src: from, vlan: ifc.vlan, ethertype: ETHERTYPE_IPV6, payload: packet };
         self.emit_frame(t, d, ifc.port, &frame);
     }
 
@@ -897,4 +910,15 @@ impl Sim {
         // IA_NA addresses carry no prefix length (RFC 8415 §21.6): the router installs a /128.
         Ok(Ipv6Net::new(rep.ia.and_then(|(_, a)| a).unwrap_or(offered), 128))
     }
+}
+
+/// The router advertisement an interface sends: its /64 prefixes, the managed and other-config
+/// flags it is set to, a router lifetime of 30 minutes, and `mac` as the source link-layer
+/// address (the virtual MAC for a VRRP virtual router).
+pub(crate) fn router_advert(d: &Device, ifc: &L3If6, mac: MacAddr) -> Icmp6 {
+    let prefixes: Vec<PrefixInfo> =
+        ifc.addresses.iter().filter(|n| n.prefix == 64).map(|n| PrefixInfo { prefix: n.network().addr, len: 64 }).collect();
+    let conf = conf6(d, ifc).cloned().unwrap_or_default();
+    let flags = (if conf.nd_managed { RA_MANAGED } else { 0 }) | (if conf.nd_other { RA_OTHER } else { 0 });
+    Icmp6::RouterAdvert { hop_limit: 64, flags, lifetime: 1_800, mac: Some(mac), prefixes }
 }

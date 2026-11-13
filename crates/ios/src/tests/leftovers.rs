@@ -343,7 +343,7 @@ fn eigrp_for_ipv6_by_typing() {
     // Hellos on the wire, to FF02::A from link-local addresses.
     lab.sim.clear_trace();
     lab.sim.run_for(&lab.t, 6_000_000);
-    assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("EIGRPv6 hello, AS 10 fe80::") && e.summary.contains("ff02::a")));
+    assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("EIGRPv6 hello, AS 10 (hold 15 s) fe80::") && e.summary.contains("ff02::a")));
     // Running configuration and its round trip.
     let run = lab.run(r1, "show running-config");
     assert!(run.contains("ipv6 router eigrp 10\n eigrp router-id 1.1.1.1\n!"), "{run}");
@@ -533,4 +533,94 @@ fn ospf_network_type_mismatch_forms_neighbours_but_routes_nothing() {
     lab.run(r2, "conf t\nint g0/1\nip ospf network point-to-point\nend");
     assert!(lab.run(r1, "show ip route").contains("192.168.2.1/32"));
     assert!(!lab.run(r1, "show ip ospf neighbor").contains("network type differs"));
+}
+
+/// R1 and R3 on one switch (2001:db8:13::/64), R2 as the way round (R1–R2 and R2–R3 by cable);
+/// R3 has a loopback prefix. EIGRP for IPv6 AS 10 everywhere, router ids by hand.
+fn eigrp6_switched() -> (Lab, DeviceId, DeviceId, DeviceId, DeviceId) {
+    let mut lab = Lab::new();
+    let r1 = lab.add(DeviceKind::Router);
+    let r2 = lab.add(DeviceKind::Router);
+    let r3 = lab.add(DeviceKind::Router);
+    let sw = lab.add(DeviceKind::Switch);
+    lab.cable(r1, "g0/1", sw, "fa0/1");
+    lab.cable(r3, "g0/1", sw, "fa0/2");
+    lab.cable(r1, "g0/2", r2, "g0/1");
+    lab.cable(r2, "g0/2", r3, "g0/2");
+    let cfg = |n: u8, links: &[(&str, &str)], extra: &str| {
+        let mut s = format!("en\nconf t\nipv6 unicast-routing\nipv6 router eigrp 10\neigrp router-id {n}.{n}.{n}.{n}\nexit\n");
+        for (ifc, addr) in links {
+            s.push_str(&format!("int {ifc}\nipv6 address {addr}\nipv6 eigrp 10\nno shut\n"));
+        }
+        s.push_str(extra);
+        s.push_str("end");
+        s
+    };
+    lab.run(r1, &cfg(1, &[("g0/1", "2001:db8:13::1/64"), ("g0/2", "2001:db8:12::1/64")], ""));
+    lab.run(r2, &cfg(2, &[("g0/1", "2001:db8:12::2/64"), ("g0/2", "2001:db8:23::2/64")], ""));
+    lab.run(r3, &cfg(3, &[("g0/1", "2001:db8:13::3/64"), ("g0/2", "2001:db8:23::3/64")], "int lo0\nipv6 address 2001:db8:3::1/64\nipv6 eigrp 10\n"));
+    lab.run(sw, "en");
+    (lab, r1, r2, r3, sw)
+}
+
+#[test]
+fn a_silent_eigrp6_neighbour_is_dropped_after_its_hold_time() {
+    let (mut lab, r1, _r2, r3, sw) = eigrp6_switched();
+    // The defaults first: hellos every 5 s, a 15 s hold time.
+    let ifs = lab.run(r3, "show ipv6 eigrp interfaces");
+    assert!(ifs.lines().any(|l| l.starts_with("Gi0/1") && l.contains(" 5 s ") && l.contains(" 15 s ")), "{ifs}");
+    // R3 announces a 30-second hold time and says hello every 10 seconds.
+    lab.run(r3, "conf t\nint g0/1\nipv6 hello-interval eigrp 10 10\nipv6 hold-time eigrp 10 30\nend");
+    let ifs = lab.run(r3, "show ipv6 eigrp interfaces");
+    assert!(ifs.lines().any(|l| l.starts_with("Gi0/1") && l.contains(" 10 s ") && l.contains(" 30 s ")), "{ifs}");
+    lab.sim.clear_trace();
+    lab.sim.run_for(&lab.t, 21_000_000);
+    let summaries: Vec<String> = lab.sim.trace().iter().map(|e| e.summary.clone()).collect();
+    // Each hello shows twice (leaving R3, leaving the switch towards R1): two hellos in 21 s,
+    // not the four of the default interval, announcing the longer hold time.
+    let from_gi01: Vec<&String> = summaries.iter().filter(|s| s.contains("EIGRPv6 hello") && s.contains("fe80::ff:fe03:1 ")).collect();
+    assert_eq!(from_gi01.len(), 4, "{summaries:?}");
+    assert!(from_gi01.iter().all(|s| s.contains("(hold 30 s)")), "{from_gi01:?}");
+    assert!(summaries.iter().any(|s| s.contains("fe80::ff:fe03:2 ") && s.contains("(hold 15 s)")), "Gi0/2 keeps the defaults");
+    let nb = lab.run(r1, "show ipv6 eigrp neighbors");
+    assert!(nb.lines().any(|l| l.contains("Gi0/1") && l.contains(" 30 ")), "R1 knows R3's hold time: {nb}");
+    assert_eq!(lab.run(r1, "show ipv6 route eigrp").matches("2001:db8:3::/64").count(), 1);
+    lab.run(r1, "show logging");
+    lab.sim.take_console(r1);
+    // The switch port towards R3 goes down: R1's own link stays up, so it only notices that
+    // the hellos stopped, and keeps the route meanwhile.
+    lab.run(sw, "conf t\nint fa0/2\nshutdown\nend");
+    let nb = lab.run(r1, "show ipv6 eigrp neighbors");
+    assert!(nb.contains("no longer heard"), "{nb}");
+    lab.sim.run_for(&lab.t, 15_000_000);
+    assert!(lab.run(r1, "show ipv6 eigrp neighbors").contains("no longer heard"), "still within the hold time");
+    assert!(lab.run(r1, "show ipv6 route").contains("2001:db8:3::/64"));
+    lab.sim.clear_trace();
+    lab.sim.run_for(&lab.t, 16_000_000);
+    let nb = lab.run(r1, "show ipv6 eigrp neighbors");
+    assert!(!nb.contains("no longer heard") && !nb.contains("Gi0/1"), "{nb}");
+    let log = lab.run(r1, "show logging");
+    assert!(log.contains("EIGRP-IPv6 AS 10: neighbour fe80::") && log.contains("is down: hold time expired"), "{log}");
+    // Reconverged the long way round, and R1 told R2.
+    let rt = lab.run(r1, "show ipv6 route eigrp");
+    assert_eq!(rt.matches("2001:db8:3::/64").count(), 1, "{rt}");
+    assert!(lab.sim.trace().iter().any(|e| e.summary.starts_with("EIGRPv6 update") && e.summary.contains("ff02::a")), "an update after the drop");
+    // The neighbour comes back as soon as it is heard again.
+    lab.run(sw, "conf t\nint fa0/2\nno shutdown\nend");
+    assert!(lab.run(r1, "show ipv6 eigrp neighbors").contains("Gi0/1"));
+    assert!(lab.run(r1, "show logging").contains("is up: new adjacency"));
+    // The timers are part of the interface's configuration.
+    let run = lab.run(r3, "show running-config");
+    assert!(run.contains(" ipv6 hello-interval eigrp 10 10\n ipv6 hold-time eigrp 10 30\n"), "{run}");
+    lab.run(r3, "copy run start\nreload\nen");
+    assert_eq!(lab.run(r3, "show running-config"), run);
+    // They are the IPv6 process's: the IPv4 timers don't change them, and bad values are refused.
+    lab.run(r3, "conf t\nint g0/1");
+    assert!(lab.try_run(r3, "ipv6 hold-time eigrp 10 0").starts_with("% "));
+    assert!(lab.try_run(r3, "ipv6 hello-interval eigrp 0 5").starts_with("% "));
+    lab.run(r3, "ip hello-interval eigrp 10 2\nend");
+    let ifs = lab.run(r3, "show ipv6 eigrp interfaces");
+    assert!(ifs.lines().any(|l| l.starts_with("Gi0/1") && l.contains(" 10 s ")), "{ifs}");
+    lab.run(r3, "conf t\nint g0/1\nno ip hello-interval eigrp 10\nno ipv6 hold-time eigrp 10\nno ipv6 hello-interval eigrp 10\nend");
+    assert!(!lab.run(r3, "show running-config").contains("eigrp 10 "));
 }

@@ -406,7 +406,7 @@ pub(crate) fn ikev2_sas(sim: &Sim, d: &Device) -> String {
         if sa.phase == IkePhase::Established {
             let esp = match v2.esp_suite {
                 Some(suite) => format!("{} (real ciphers)", suite.describe()),
-                None => "the simulator's stand-in cipher (DES, 3DES and AH are not implemented; esp-aes and esp-null run for real)".to_string(),
+                None => "the simulator's stand-in cipher (AH next to ESP in one transform set is not implemented)".to_string(),
             };
             let _ = writeln!(s, "  ESP: {esp}");
         }
