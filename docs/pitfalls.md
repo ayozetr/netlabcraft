@@ -1,6 +1,6 @@
 # Pitfalls
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (a derived-state pitfall (M9.10)) · earlier: minor (four pitfalls from M9.7: counters keyed by position, a stale checksum, a database that lists unreachable routers, a `Rest` that needs a word) · also merged with M9.5, M9.6, M9.8 and M9.11 · earlier: minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (a derived-state pitfall (M9.10)) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (four pitfalls from M9.7: counters keyed by position, a stale checksum, a database that lists unreachable routers, a `Rest` that needs a word) · also merged with M9.5, M9.6, M9.8 and M9.11 · earlier: minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
 
 Mistakes already made here, and the rule that stops each one. Read this before your first change; when you make a
 new mistake worth not repeating, add it in the same change.
@@ -40,6 +40,11 @@ new mistake worth not repeating, add it in the same change.
   the index in the list, so inserting `5 deny …` above the others moved every count onto the wrong line. They are keyed
   by the line's sequence number (`Acl::hit_key`), and a command that renumbers (`resequence`) or removes lines has to
   move or drop the counters with them (`Sim::remap_acl_hits`, `Sim::forget_acl_hit`).
+- **A new console mode is edited in five places, and the tests only find some of them.** A `Mode` variant needs its
+  bit in `Modes` and in `ANY_MODE`, its prompt, both lists of sub-modes in `exec.rs` (the `exit` list and the
+  fall-back to configuration mode), the `every_spec_is_reachable_by_its_full_words` mode list in `grammar.rs`, and a
+  setup line in `every_command_survives_hostile_arguments` so the fuzzer reaches the commands inside it. A
+  `try_run` takes one line: a `\n` inside it is not a second command, it is a parse error.
 
 ## Simulator
 

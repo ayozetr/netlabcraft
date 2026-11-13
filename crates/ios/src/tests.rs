@@ -17,6 +17,7 @@ mod line_protocol;
 mod nat_verbose;
 mod ospf_database;
 mod ospf_debug;
+mod pki;
 mod protocols_summary;
 mod route_summary;
 mod routing;
@@ -392,6 +393,8 @@ fn every_command_survives_hostile_arguments() {
                     "en\nconf t\ncrypto ikev2 proposal P",
                     "en\nconf t\ncrypto ikev2 keyring K\npeer X",
                     "en\nconf t\ncrypto ikev2 profile F",
+                    "en\nconf t\ncrypto pki trustpoint T",
+                    "en\nconf t\ncrypto pki server S",
                     "en\nconf t\nrouter rip",
                     "en\nconf t\nipv6 router rip R",
                 ] {

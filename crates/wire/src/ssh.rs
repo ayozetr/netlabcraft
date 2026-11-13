@@ -6,14 +6,18 @@
 //!
 //! What is real: the identification strings, every packet's format, the key exchange and its
 //! exchange hash, the derived keys and the encryption, so a capture shows SSH and nothing of
-//! NETCONF can be read in it. What is a stand-in: the server's host key. A real server signs
-//! the exchange hash with RSA, ECDSA or Ed25519; this one sends a key blob of the private
-//! algorithm `netlabcraft-sim-hostkey@netlabcraft` and an HMAC of the exchange hash as its
-//! "signature", which proves nothing about who answers (the client only checks it is
-//! consistent). Random values come from the caller's seed.
+//! NETCONF can be read in it. The host key is real when the router has an RSA key pair under
+//! its `NAME.DOMAIN` label (`crypto key generate rsa`): the server sends an `ssh-rsa` key blob and
+//! signs the exchange hash with `rsa-sha2-256` (RFC 8332, RFC 4253 §8), and the client checks
+//! the signature against the key it was sent, so whoever answers proves it holds that key (the
+//! client has no known-hosts list to compare the key with; its fingerprint is available to show).
+//! A router with no key keeps the old stand-in: a key blob of the private algorithm
+//! `netlabcraft-sim-hostkey@netlabcraft` and an HMAC of the exchange hash as its "signature",
+//! which proves nothing about who answers. Random values come from the caller's seed.
 
 use crate::aes::{Aes128, cbc_decrypt, cbc_encrypt};
 use crate::modp;
+use crate::rsa::{RsaKey, RsaPublicKey, SigHash};
 use crate::sha1::hmac_sha1;
 use crate::sha256::{hmac_sha256, sha256};
 use crate::tls::Drbg;
@@ -21,6 +25,9 @@ use crate::tls::Drbg;
 pub const IDENT: &str = "SSH-2.0-NetLabCraft_1.0";
 pub const KEX: &str = "diffie-hellman-group14-sha256";
 pub const HOST_KEY: &str = "netlabcraft-sim-hostkey@netlabcraft";
+/// The host key algorithm of RFC 8332: an `ssh-rsa` key blob, `rsa-sha2-256` signatures.
+pub const HOST_KEY_RSA: &str = "rsa-sha2-256";
+const KEY_TYPE_RSA: &str = "ssh-rsa";
 pub const CIPHER: &str = "aes128-cbc";
 pub const MAC: &str = "hmac-sha1";
 
@@ -136,6 +143,21 @@ pub fn mpint(be: &[u8]) -> Vec<u8> {
     let mut out = Vec::new();
     put_str(&mut out, &v);
     out
+}
+
+/// An `ssh-rsa` public key blob (RFC 4253 §6.6): the type, the exponent and the modulus.
+pub fn host_key_blob(key: &RsaPublicKey) -> Vec<u8> {
+    let mut blob = Vec::new();
+    put_str(&mut blob, KEY_TYPE_RSA.as_bytes());
+    blob.extend(mpint(&key.exponent().to_be_bytes()));
+    blob.extend(mpint(&key.modulus()));
+    blob
+}
+
+/// A host key's fingerprint as OpenSSH-style tools print it: `SHA256:` and the unpadded base64
+/// of the SHA-256 of the key blob (RFC 4716 §3.2 describes fingerprints of the blob).
+pub fn fingerprint(blob: &[u8]) -> String {
+    format!("SHA256:{}", crate::http::base64_encode(&sha256(blob)).trim_end_matches('='))
 }
 
 /// One direction's packet protection.
@@ -263,6 +285,7 @@ pub struct Ssh {
     rng: Drbg,
     private: Vec<u8>,
     host_key: Vec<u8>,
+    rsa: Option<RsaKey>,
     v_c: Vec<u8>,
     v_s: Vec<u8>,
     i_c: Vec<u8>,
@@ -279,10 +302,10 @@ pub struct Ssh {
     tries: u8,
 }
 
-fn kexinit(rng: &mut Drbg) -> Vec<u8> {
+fn kexinit(rng: &mut Drbg, host_algs: &str) -> Vec<u8> {
     let mut p = vec![KEXINIT];
     p.extend(rng.bytes(16));
-    for list in [KEX, HOST_KEY, CIPHER, CIPHER, MAC, MAC, "none", "none", "", ""] {
+    for list in [KEX, host_algs, CIPHER, CIPHER, MAC, MAC, "none", "none", "", ""] {
         put_str(&mut p, list.as_bytes());
     }
     p.push(0);
@@ -291,23 +314,23 @@ fn kexinit(rng: &mut Drbg) -> Vec<u8> {
 }
 
 /// Checks a peer's KEXINIT offers what this side speaks (one algorithm of each kind).
-fn negotiate(payload: &[u8]) -> R<()> {
+fn negotiate(payload: &[u8], own_host: &[&str]) -> R<()> {
     let mut rd = Rd(payload);
     rd.u8()?;
     rd.take(16)?;
-    for (want, what) in [
-        (KEX, "key exchange"),
-        (HOST_KEY, "host key"),
-        (CIPHER, "cipher"),
-        (CIPHER, "cipher"),
-        (MAC, "MAC"),
-        (MAC, "MAC"),
-        ("none", "compression"),
-        ("none", "compression"),
+    for (wants, what) in [
+        (&[KEX][..], "key exchange"),
+        (own_host, "host key"),
+        (&[CIPHER][..], "cipher"),
+        (&[CIPHER][..], "cipher"),
+        (&[MAC][..], "MAC"),
+        (&[MAC][..], "MAC"),
+        (&["none"][..], "compression"),
+        (&["none"][..], "compression"),
     ] {
         let list = rd.text()?;
-        if !list.split(',').any(|a| a == want) {
-            return Err(fail(KEY_EXCHANGE_FAILED, format!("no common {what} algorithm (this side has {want}, the peer offers {list})")));
+        if !list.split(',').any(|a| wants.contains(&a)) {
+            return Err(fail(KEY_EXCHANGE_FAILED, format!("no common {what} algorithm (this side has {}, the peer offers {list})", wants.join(","))));
         }
     }
     Ok(())
@@ -323,6 +346,7 @@ impl Ssh {
             rng,
             private,
             host_key: Vec::new(),
+            rsa: None,
             v_c: Vec::new(),
             v_s: Vec::new(),
             i_c: Vec::new(),
@@ -342,12 +366,24 @@ impl Ssh {
 
     /// A server; `host_id` names its stand-in host key (stable per router).
     pub fn server(seed: &[u8], host_id: &[u8]) -> Ssh {
+        Ssh::server_with(seed, host_id, None)
+    }
+
+    /// A server whose host key is `key` (a real `ssh-rsa` key) when there is one.
+    pub fn server_with(seed: &[u8], host_id: &[u8], key: Option<RsaKey>) -> Ssh {
         let mut s = Ssh::new(true, seed);
         s.v_s = IDENT.as_bytes().to_vec();
-        let mut blob = Vec::new();
-        put_str(&mut blob, HOST_KEY.as_bytes());
-        put_str(&mut blob, &sha256(host_id));
+        let blob = match &key {
+            Some(k) => host_key_blob(k.public()),
+            None => {
+                let mut blob = Vec::new();
+                put_str(&mut blob, HOST_KEY.as_bytes());
+                put_str(&mut blob, &sha256(host_id));
+                blob
+            }
+        };
         s.host_key = blob;
+        s.rsa = key;
         s.subsystem = "netconf".into();
         s
     }
@@ -361,9 +397,14 @@ impl Ssh {
         c.password = password.to_string();
         c.subsystem = subsystem.to_string();
         let mut out = format!("{IDENT}\r\n").into_bytes();
-        c.i_c = kexinit(&mut c.rng);
+        c.i_c = kexinit(&mut c.rng, &format!("{HOST_KEY_RSA},{HOST_KEY}"));
         out.extend(c.write.seal(&c.i_c.clone(), &mut c.rng));
         (c, out)
+    }
+
+    /// The fingerprint of the server's host key (a client, once the key exchange is done).
+    pub fn host_key_fingerprint(&self) -> Option<String> {
+        (!self.host_key.is_empty() && !self.server).then(|| fingerprint(&self.host_key))
     }
 
     pub fn ready(&self) -> bool {
@@ -487,7 +528,7 @@ impl Ssh {
             }
             if self.server {
                 out.send.extend(format!("{IDENT}\r\n").into_bytes());
-                self.i_s = kexinit(&mut self.rng);
+                self.i_s = kexinit(&mut self.rng, if self.rsa.is_some() { HOST_KEY_RSA } else { HOST_KEY });
                 let k = self.i_s.clone();
                 out.send.extend(self.packet(&k));
             }
@@ -521,7 +562,10 @@ impl Ssh {
         }
         match (self.server, self.stage, kind) {
             (_, Stage::KexInit, KEXINIT) => {
-                negotiate(payload)?;
+                negotiate(
+                    payload,
+                    if self.server { if self.rsa.is_some() { &[HOST_KEY_RSA] } else { &[HOST_KEY] } } else { &[HOST_KEY_RSA, HOST_KEY] },
+                )?;
                 if self.server {
                     self.i_c = payload.to_vec();
                 } else {
@@ -540,8 +584,18 @@ impl Ssh {
                 let h = self.exchange_hash(&self.host_key.clone(), &e, &f, &k);
                 self.session_id = h.clone();
                 let mut sig = Vec::new();
-                put_str(&mut sig, HOST_KEY.as_bytes());
-                put_str(&mut sig, &hmac_sha256(&self.host_key, &h));
+                match &self.rsa {
+                    Some(key) => {
+                        let signed =
+                            key.sign(SigHash::Sha256, &h).ok_or_else(|| fail(KEY_EXCHANGE_FAILED, "the host key is too small to sign with"))?;
+                        put_str(&mut sig, HOST_KEY_RSA.as_bytes());
+                        put_str(&mut sig, &signed);
+                    }
+                    None => {
+                        put_str(&mut sig, HOST_KEY.as_bytes());
+                        put_str(&mut sig, &hmac_sha256(&self.host_key, &h));
+                    }
+                }
                 let mut p = vec![KEXDH_REPLY];
                 put_str(&mut p, &self.host_key.clone());
                 p.extend(mpint(&f));
@@ -560,15 +614,26 @@ impl Ssh {
                 let f = rd.string()?.to_vec();
                 let sig = rd.string()?.to_vec();
                 let mut ks = Rd(&k_s);
-                if ks.string()? != HOST_KEY.as_bytes() {
-                    return Err(fail(KEY_EXCHANGE_FAILED, "the server's host key is of an unknown kind"));
-                }
+                let key_type = ks.string()?.to_vec();
                 let k = modp::shared(&f, &self.private).ok_or_else(|| fail(KEY_EXCHANGE_FAILED, "the server's public value is unusable"))?;
                 let h = self.exchange_hash(&k_s, &self.e.clone(), &f, &k);
                 let mut sr = Rd(&sig);
-                if sr.string()? != HOST_KEY.as_bytes() || sr.string()? != hmac_sha256(&k_s, &h) {
-                    return Err(fail(KEY_EXCHANGE_FAILED, "the server's exchange-hash check does not match"));
+                if key_type == KEY_TYPE_RSA.as_bytes() {
+                    let (e, n) = (ks.string()?.to_vec(), ks.string()?.to_vec());
+                    let exponent = e.iter().skip_while(|b| **b == 0).fold(0u64, |a, b| (a << 8) | u64::from(*b));
+                    let public = RsaPublicKey::new(&n, exponent)
+                        .map_err(|e| fail(KEY_EXCHANGE_FAILED, format!("the server's RSA host key is unusable: {e}")))?;
+                    if e.len() > 9 || sr.string()? != HOST_KEY_RSA.as_bytes() || !public.verify(SigHash::Sha256, &h, sr.string()?) {
+                        return Err(fail(KEY_EXCHANGE_FAILED, "the server's signature over the exchange hash does not match its host key"));
+                    }
+                } else if key_type == HOST_KEY.as_bytes() {
+                    if sr.string()? != HOST_KEY.as_bytes() || sr.string()? != hmac_sha256(&k_s, &h) {
+                        return Err(fail(KEY_EXCHANGE_FAILED, "the server's exchange-hash check does not match"));
+                    }
+                } else {
+                    return Err(fail(KEY_EXCHANGE_FAILED, "the server's host key is of an unknown kind"));
                 }
+                self.host_key = k_s.clone();
                 self.session_id = h.clone();
                 self.pending = Some(self.keys(&k, &h));
                 self.stage = Stage::NewKeys;
@@ -806,6 +871,51 @@ mod tests {
         let mut wire = client.close();
         let o = server.feed(&mut wire, &|_, _| false).unwrap();
         assert!(o.closed);
+    }
+
+    #[test]
+    fn a_real_rsa_host_key_signs_the_exchange_hash_and_the_client_checks_it() {
+        let key = RsaKey::generate(1024, &mut Drbg::new(b"ssh host")).unwrap();
+        let mut server = Ssh::server_with(b"srv", b"R1", Some(key.clone()));
+        let (mut client, first) = Ssh::client(b"cli", "admin", "pw", "netconf");
+        let (_, c) = run(&mut server, &mut client, first, &|u, p| u == "admin" && p == "pw");
+        assert!(client.ready() && server.ready() && c.ready);
+        // The client saw an ssh-rsa key and can show its fingerprint; the server does not have one.
+        let want = fingerprint(&host_key_blob(key.public()));
+        assert_eq!(client.host_key_fingerprint(), Some(want.clone()));
+        assert!(want.starts_with("SHA256:") && !want.ends_with('=') && want.len() == 7 + 43);
+        assert_eq!(server.host_key_fingerprint(), None);
+        // The blob has the layout of RFC 4253 §6.6: "ssh-rsa", e, n.
+        let blob = host_key_blob(key.public());
+        assert_eq!(&blob[..11], &[0, 0, 0, 7, b's', b's', b'h', b'-', b'r', b's', b'a']);
+        // Without a key, the stand-in still works as before.
+        let mut server = Ssh::server_with(b"srv", b"R1", None);
+        let (mut client, first) = Ssh::client(b"cli", "admin", "pw", "netconf");
+        run(&mut server, &mut client, first, &|_, _| true);
+        assert!(client.ready());
+    }
+
+    #[test]
+    fn a_host_key_signature_that_does_not_match_the_key_is_refused() {
+        // A server that sends one key's blob but signs with another key.
+        let (real, other) = (RsaKey::generate(1024, &mut Drbg::new(b"a")).unwrap(), RsaKey::generate(1024, &mut Drbg::new(b"b")).unwrap());
+        let mut server = Ssh::server_with(b"srv", b"R1", Some(other));
+        server.host_key = host_key_blob(real.public());
+        let (mut client, mut to_server) = Ssh::client(b"cli", "admin", "pw", "netconf");
+        let mut refused = false;
+        for _ in 0..6 {
+            let s = server.feed(&mut to_server, &|_, _| true).unwrap();
+            let mut to_client = s.send;
+            match client.feed(&mut to_client, &|_, _| false) {
+                Ok(c) => to_server = c.send,
+                Err(e) => {
+                    assert_eq!(e.reason, KEY_EXCHANGE_FAILED);
+                    refused = true;
+                    break;
+                }
+            }
+        }
+        assert!(refused && !client.ready());
     }
 
     #[test]

@@ -1,6 +1,6 @@
 # Target-app parity: NetLabCraft vs Cisco Packet Tracer
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (M9.10: the cellular network: tablets and smartphones get mobile data, cell towers and a central office server) · earlier: minor (counts measured again after M9.7's four labs and console views; percentages not re-scored) · also merged with M9.5, M9.6, M9.8 and M9.11 · earlier: minor (counts measured again after seven troubleshooting labs; percentages not re-scored) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (packaged-build gate met), major (the lab book run end to end, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers: areas and course topics re-scored, the untested-labs deduction cut; counts measured again) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (M9.10: the cellular network: tablets and smartphones get mobile data, cell towers and a central office server) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (counts measured again after M9.7's four labs and console views; percentages not re-scored) · also merged with M9.5, M9.6, M9.8 and M9.11 · earlier: minor (counts measured again after seven troubleshooting labs; percentages not re-scored) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (packaged-build gate met), major (the lab book run end to end, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers: areas and course topics re-scored, the untested-labs deduction cut; counts measured again) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summarizes it,
 [`gaps.md`](gaps.md) lists every shortfall, and the area checklists hold the detail:
@@ -14,11 +14,11 @@ to end is in [`labs/`](labs/README.md).
 | Number | Value | Kind |
 |---|---|---|
 | Engine commands | **141** | measured: `c!(` entries in `crates/engine/src/catalog.rs` |
-| Console grammar entries | **1043** across 37 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
+| Console grammar entries | **1065** across 39 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
 | Device models | **53** | measured: `MODELS` in `crates/model/src/models.rs` (the fallback model not counted; the 7 router cards are in `MODULES`) |
 | Sample labs | **32** | measured: `SAMPLES` in `crates/engine/src/sample.rs` |
-| Lab-book labs | **31** (+1 unnumbered) | measured: numbered labs in `docs/labs/` (the cellular lab has no number and is run by `lab_cellular_mobile_data`) (4 CCNA 1, 14 CCNA 2, 13 CCNA 3; labs 21 to 29 are troubleshooting labs, 30 and 31 inspection labs), all run by `crates/engine/tests/lab_book.rs`, 14 also over MCP by `apps/netlabcraft-cli/tests/mcp_lab_book.rs` |
-| Tests | **731** | measured: sum of "passed" from `cargo test --workspace -q` |
+| Lab-book labs | **31** (+1 unnumbered: the cellular lab) | measured: numbered labs in `docs/labs/` (4 CCNA 1, 14 CCNA 2, 13 CCNA 3; labs 21 to 29 are troubleshooting labs, 30 and 31 inspection labs), all run by `crates/engine/tests/lab_book.rs`, 14 also over MCP by `apps/netlabcraft-cli/tests/mcp_lab_book.rs` |
+| Tests | **~796** | estimated: the two branches measured 750 and 731 after 685 on the base, so +65 and +46; to be re-measured with `cargo test --workspace -q` |
 | **Ready for real work** (weighted) | **~91%** | estimated; written weights below (90.9 computed) |
 | **CCNA 1 student** (Introduction to Networks) | **~93%** | estimated; [method](#audiences) |
 | **CCNA 2 student** (Switching, Routing and Wireless Essentials) | **~94%** | estimated; [method](#audiences) |
@@ -146,8 +146,8 @@ first estimate) counted topics as present without weighing their depth or the un
   3DES with SHA-1, SHA-256 or MD5 HMACs under IKEv1 and IKEv2, with lifetimes and child-SA
   rekeying, and AH on its own is real (tunnel mode); AH bundles with ESP (AH outside ESP) run for real; the IKE SA has a lifetime and is replaced before it runs out. Automation scores 80%:
   RESTCONF in JSON and XML over TLS 1.2, NETCONF with a candidate datastore over SSH 2.0, and a
-  controller that discovers routers over CDP and LLDP and pushes templates; TLS has no
-  certificate, the SSH host key is a stand-in, and the controller is still smaller than the
+  controller that discovers routers over CDP and LLDP and pushes templates; TLS shows a real
+  certificate and SSH a real host key once the router has a trustpoint or an RSA key (the anonymous suite and the HMAC host key remain without them), and the controller is still smaller than the
   course's network controller (no policies, no assurance pages). QoS gained 802.1p CoS.
 - **Instructor:** the answer network, assessment tree, initial network, instructions per
   language, connectivity tests, signed results and locks landed. A JSON results
@@ -178,6 +178,8 @@ Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 | Date | Change | Summary |
 |---|---|---|
 | 2026-11-13 | minor | Cellular network (M9.10): the Tablets and smartphones row is whole and cell towers and a central office server join the catalogue; scores not re-estimated. Counts re-measured the way they were counted before: 3 engine commands, 6 grammar entries, 2 models, 1 sample lab and 1 unnumbered lab added (`c!(` entries 141, `spec!(` rows 1043, `MODELS` 53, `SAMPLES` 32, numbered labs 31), and the sum of "passed" from `cargo test --workspace -q` is 731 (the rest is the other merged changes). |
+| 2026-11-13 | minor | TLS under RESTCONF shows a certificate and SSH has a real host key (M9.9, stage 4); PEAP's toy group and IKE signatures are what is left of the PKI gap; no percentage changed. |
+| 2026-11-13 | minor | Keys, trustpoints, X.509 certificates and a small certificate authority on the console (M9.9, stages 1-3); no protocol uses the certificates yet, so no percentage changed. Counts measured again: 1035 grammar entries across 39 modes. |
 | 2026-11-13 | minor | M9.7: four labs (28 to 31) join the book: 31 labs, 14 over MCP. Counts measured again the same way (1037 grammar entries, 138 commands, 685 tests); the percentages are not re-scored: the console gaps the earlier labs left are fixed (OSPF authentication, database and summary views, ICMP types and codes in ACLs, counters that follow their lines, separate OSPF debugs) and the new labs turned up one more (an OSPF database that kept the LSAs of a router no adjacency reached), fixed; what is left is in [gaps.md](gaps.md), item 1. |
 | 2026-11-13 | minor | BoardScript compile and run messages in Spanish (M9.11). The IoT and boards gap keeps one room per lab and BoardScript instead of Python or JavaScript. Scores unchanged. |
 | 2026-11-13 | minor | The smart things share a room with physics (M9.11): a heater or air conditioner changes the thermostat's reading in simulated time (`iot.environment`, `iot-climate` sample); the IoT gap keeps BoardScript's English-only messages and the lack of rooms. Scores unchanged. |

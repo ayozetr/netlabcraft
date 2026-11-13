@@ -190,6 +190,23 @@ impl Big {
         b
     }
 
+    /// The remainder of a division by a small divisor (`0` for a zero divisor).
+    pub fn rem_small(&self, d: u64) -> u64 {
+        if d == 0 {
+            return 0;
+        }
+        let mut rem = 0u128;
+        for w in self.0.iter().rev() {
+            rem = ((rem << 64) | u128::from(*w)) % u128::from(d);
+        }
+        rem as u64
+    }
+
+    /// Whether the number is even (zero is).
+    pub fn is_even(&self) -> bool {
+        self.0.first().is_none_or(|w| w & 1 == 0)
+    }
+
     /// `self mod m` by shift-and-subtract (slow; for numbers that aren't already reduced).
     pub fn rem(&self, m: &Big) -> Big {
         if m.is_zero() {

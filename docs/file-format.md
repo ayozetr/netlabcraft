@@ -1,6 +1,6 @@
 # The `.nlcraft` lab file
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (file version 3: the cellular radio, `cell` settings (M9.10)) · earlier: minor (results file version 2 with the embedded network (M9.6)) · earlier: minor (instructor fields in `activity`, absolute PDU starts, boards and the IoT custom cable, power supplies, SA lifetimes, VRRP timers and IPv6, CoS, VTP pruning, EIGRP summaries and variance, RIP timers, RIPng, central WLANs, controller variables) · also merged with M9.11 (minor (M9.11: `environment`, file version 2))
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (file version 3: the cellular radio, `cell` settings (M9.10)) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (results file version 2 with the embedded network (M9.6)) · earlier: minor (instructor fields in `activity`, absolute PDU starts, boards and the IoT custom cable, power supplies, SA lifetimes, VRRP timers and IPv6, CoS, VTP pruning, EIGRP summaries and variance, RIP timers, RIPng, central WLANs, controller variables) · also merged with M9.11 (minor (M9.11: `environment`, file version 2))
 
 A lab is one UTF-8 JSON file (file version 3; versions 1 and 2 still open: version 2 added the lab's `environment`, version 3 adds the cellular radio below). It is the serde form of `netlabcraft_model::Topology`
 (`crates/model/src/lib.rs`), wrapped with a format tag and version (`crates/model/src/file.rs`):
@@ -60,6 +60,7 @@ older file without a newer field still opens.
 | `environment` (lab level) | The smart things' shared room, left out when it is the default: `enabled` (the physics is on: sensors read the room), the starting `temperature` (degrees), `humidity`, `soil`, `smoke` (percent), `co` (ppm), `motion` (0 or 1), and what lies outside: `outside_temperature`, `outside_humidity`, `outside_light`. The values reached while a lab runs are not saved: a loaded lab starts from these. Every value is clamped on load. |
 | `iot` | Smart things: `server`, `value` (a sensor's reading) and `interval` (report every N seconds of simulated time; 0 only on change). Servers and home gateways: `service` and `rules`, each with `conditions` (`sensor`, `op` `>`/`<`/`=`, `value`), `any` (joined with OR, else AND), `actuator` and `on` (what the rule does when it holds; true when left out). Older rules keep `sensor` and `above` and still read. |
 | `mgmt` | Routers and switches: timestamps, logging levels, NTP master, keys and trusted keys, `boot system` lines, history size, HSRP version 2 interfaces. |
+| `pki` | Routers and switches: `keys` (each `label` and the two primes `p` and `q` in hex), `trustpoints` (each `name`, `enrollment` (`None`, `SelfSigned` or `{"Url": "http://A.B.C.D"}`), `subject_name`, `rsakeypair`, `revocation_none`, `certificate` and `ca_certificate` in PEM), `server` (the certificate authority: `name`, `issuer_name`, `lifetime_days`, `grant_auto`, `enabled`, `certificate`) and `generated` (keys made so far, part of the key seed). Left out when empty. Loading keeps names printable and short, primes as hex, certificates as PEM blocks within 16 KiB, at most 8 keys and 8 trustpoints; whether a prime is prime or a certificate parses is checked when it is used, so a damaged entry is unusable and never a crash. Additive: no version bump. |
 | `nvram` | Routers and switches: the configuration register and files copied into flash (kept across reloads). |
 
 ## Port
@@ -91,6 +92,7 @@ events) is not saved.
 | Date | Change | Summary |
 |---|---|---|
 | 2026-11-13 | minor | File version 3 (M9.10): smartphones and tablets gain a `Cellular0` port (older files get it on open), devices may carry `cell` settings, and the Cell Tower and Central Office Server models exist; files of versions 1 and 2 read as before. |
+| 2026-11-13 | minor | `pki` on routers and switches: keys, trustpoints, certificates, the CA (M9.9). |
 | 2026-11-13 | minor | Lab file version 2: the lab-level `environment` (M9.11). Version 1 files have none and read as the default (physics off), so they behave as before; newer versions are still refused. |
 | 2026-11-13 | minor | Results file: version 2 embeds `network`; version 1 still reads (M9.6). |
 | 2026-10-31 | minor | `activity`: `translations`, `language`, `answer` (sealed), `initial`, `assessment`, `locks`, and `link`/`link-hashed` checks; scenario PDUs' `start_at_s`; `board` and IoT custom cables; `psu`; crypto `sa_lifetime` and map `lifetime`; VRRP `advertise_cs`, `track`, `ipv6`; `vtp.pruning`; switch `cos_dscp`, port `qos_cos`, `priority_extend`, `prune_eligible`; `eigrp_summary`, `eigrp6.variance`, `rip.timers`, `rip6` and the port `ipv6.rip`; controller `vars`; kinds of the new models. |
