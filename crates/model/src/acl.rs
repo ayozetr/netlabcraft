@@ -388,6 +388,7 @@ mod tests {
                     seq: 0,
                     established: false,
                     icmp_type: None,
+                    log: false,
                 },
                 AclEntry {
                     permit: true,
@@ -399,6 +400,7 @@ mod tests {
                     seq: 0,
                     established: false,
                     icmp_type: None,
+                    log: false,
                 },
             ],
         };
@@ -420,6 +422,7 @@ mod tests {
                     seq: 0,
                     established: false,
                     icmp_type: None,
+                    log: false,
                 },
                 AclEntry {
                     permit: false,
@@ -431,6 +434,7 @@ mod tests {
                     seq: 0,
                     established: false,
                     icmp_type: None,
+                    log: false,
                 },
                 AclEntry {
                     permit: true,
@@ -442,6 +446,7 @@ mod tests {
                     seq: 0,
                     established: false,
                     icmp_type: None,
+                    log: false,
                 },
             ],
         };

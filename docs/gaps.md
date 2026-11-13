@@ -1,6 +1,6 @@
 # Gaps
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (code health: one modular-exponentiation engine) · earlier: major (the lab book, automation depth, security, instructor, Simulation-mode, switching and routing, wireless and device-family items closed; what is honestly left re-ranked) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (item 1 narrowed after seven troubleshooting labs) · earlier: minor (code health: one modular-exponentiation engine), major (the lab book, automation depth, security, instructor, Simulation-mode, switching and routing, wireless and device-family items closed; what is honestly left re-ranked) · **Target:** Cisco Packet Tracer 9.0
 
 Every known shortfall against the reference app, ranked: the work list. Pick from the top; each
 item lands with tests and doc updates. The weights behind the ranking are in
@@ -13,7 +13,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 
 | # | Gap | Who notices | Estimate |
 |---|---|---|---|
-| 1 | **Console depth beyond the lab book:** the lab book's 20 labs run, but the courses have many more activities; walking more labs of our own (troubleshooting labs especially) and adding the `show` views, options and messages they turn up | Every student | 10–20 h |
+| 1 | **Console depth beyond the lab book:** the book's 27 labs run (7 of them troubleshooting labs), but the courses have many more activities. Left: more labs of our own on the topics the troubleshooting labs did not touch (EIGRP, IPv6 routing, EtherChannel, port security, VPN and wireless faults, voice, `debug` output), and the details already seen but not done: OSPF authentication (`ip ospf authentication`, message-digest keys), `show ip ospf database router\|network\|summary`, `show ip route summary`, `show ip nat translations verbose`, `show ip protocols summary`, `show spanning-tree brief\|detail\|interface`, ICMP type and code in ACLs (`permit icmp any any 3 4`), ACL counters following their line when lines are edited (they are keyed by position), `debug ip ospf adj\|events` printing the same text as `hello`, and `show interfaces` lacking the `line protocol` wording students filter on | Every student | 8–16 h |
 | 2 | **Crypto stand-ins:** DES and 3DES (IKE and ESP) and AH keep a stand-in cipher, the elliptic-curve groups (such as 19 and 20) a stand-in exchange, and the IKE SA itself is never rekeyed (child SAs are) | CCNA 3 and security courses | 4–8 h |
 | 3 | **Certificates and PKI:** TLS under RESTCONF uses an anonymous Diffie-Hellman suite with no certificate, the SSH host key is an HMAC stand-in for a signature, PEAP names its server instead of showing a certificate and uses a toy 61-bit group; no `crypto pki`, trustpoints or RSA signatures | CCNA 3 automation and security labs | 6–10 h |
 | 4 | **Cellular network:** smartphones are Wi-Fi only; no cell towers, central office server or mobile data | IoT and mobile-device labs | 6–10 h |
@@ -28,6 +28,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | Item 1 narrowed (M9.4): seven troubleshooting labs (21 to 27) walked and run as written; 12 gaps found and fixed (`show interfaces switchport` for all ports and `show interfaces X trunk`, `no ip proxy-arp`, `show ip ospf neighbor` by router ID or interface, `show ip route NET MASK`, the ACL `log` keyword and its messages, `clear (ip) access-list counters NAME`, `show ip dhcp pool NAME` with the addresses left, NAT without `overload` sharing one address, NAT hits and misses with `clear ip nat statistics`, NAT rules counting matches on their ACL, a deleted ACL's counters reset, `show spanning-tree root\|bridge\|blockedports`). What is left is in the item. |
 | 2026-11-13 | minor | Done: code health (old item 11): one modular-exponentiation engine. `wire/src/modp.rs` (TLS and SSH, group 14) is now a thin layer over `wire/src/dh.rs`, which also builds the prime, so the duplicate Montgomery code and the hard-coded prime are gone. |
 | 2026-11-13 | minor | Done: packaging and first release: Linux (AppImage, deb, rpm, tar.gz), Windows (MSI, portable zip), macOS (dmg) and web packages built by `release.yml`, SHA256SUMS and a draft release; builds are not signed yet ([releasing.md](releasing.md)). |
 | 2026-10-31 | major | Re-ranked after the round below: console depth beyond the lab book first, then the crypto stand-ins, certificates, a cellular network, routing, IoT, workspace, end-device, instructor and language leftovers, and the duplicated modular exponentiation. |

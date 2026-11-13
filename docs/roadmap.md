@@ -1,6 +1,6 @@
 # Roadmap
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (M7 first release done: packages and the release workflow) · earlier: major (alpha gate 1 met through the lab book; every beta gate met; milestone states and estimates after the security, instructor, Simulation-mode, wireless, end-device, automation and routing rounds) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (M9.4: seven troubleshooting labs) · earlier: minor (M7 first release done: packages and the release workflow), major (alpha gate 1 met through the lab book; every beta gate met; milestone states and estimates after the security, instructor, Simulation-mode, wireless, end-device, automation and routing rounds) · **Target:** Cisco Packet Tracer 9.0
 
 Milestones, the current focus and what comes next. The summary is in
 [`ROADMAP.md`](../ROADMAP.md); the ranked work list is [gaps.md](gaps.md).
@@ -50,9 +50,9 @@ the reference app:
 
 1. A CCNA-style lab book (VLANs, inter-VLAN routing, DHCP, OSPF, ACLs, NAT, IPv6, WAN, switch
    security, HSRP) runs end to end by hand and through MCP (gaps table, item 1): **met**.
-   [docs/labs/](labs/README.md) holds 20 original labs (4 for CCNA 1, 9 for CCNA 2, 7 for
-   CCNA 3); each one's blocks run as written in `crates/engine/tests/lab_book.rs`, and 8 of them
-   over `netlabcraft-cli mcp` in `apps/netlabcraft-cli/tests/mcp_lab_book.rs`. The fixes they
+   [docs/labs/](labs/README.md) holds 27 original labs (4 for CCNA 1, 13 for CCNA 2, 10 for
+   CCNA 3; labs 21 to 27 are troubleshooting labs, added in M9.4); each one's blocks run as
+   written in `crates/engine/tests/lab_book.rs`, and 11 of them over `netlabcraft-cli mcp` in `apps/netlabcraft-cli/tests/mcp_lab_book.rs`. The fixes they
    turned up landed with regression tests (M8.1).
 2. Activities with scoring: met.
 3. Spanish interface: met (every window, tab and page, checked by tests).
@@ -66,6 +66,7 @@ hold.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | M9.4: seven troubleshooting labs (21 to 27) join the lab book (27 labs, 11 over MCP); the gaps table's item 1 narrowed. |
 | 2026-11-13 | minor | M7 done: the release workflow and packages for Linux, Windows, macOS and the web, tested end to end; the packaged-build gate is met. |
 | 2026-10-31 | major | M3–M6 and M8 done; alpha gate 1 met through the lab book; totals to alpha and beta now wait only on the packaging hold; current focus on depth (more labs, crypto stand-ins, certificates, cellular). |
 | 2026-10-30 | minor | Beta gate 1 met: 20-lab book in `docs/labs/`, run as written by the engine and over MCP. |

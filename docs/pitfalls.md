@@ -1,6 +1,6 @@
 # Pitfalls
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (first version)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (two test pitfalls from M9.4) · earlier: minor (first version)
 
 Mistakes already made here, and the rule that stops each one. Read this before your first change; when you make a
 new mistake worth not repeating, add it in the same change.
@@ -17,6 +17,13 @@ new mistake worth not repeating, add it in the same change.
 
 ## Tests
 
+- **A new field on a model struct breaks other crates' tests, and `cargo test -p one-crate` hides it.** Adding
+  `log` to `AclEntry` compiled the library and the `ios` tests, while struct literals in `model`'s and `sim`'s own
+  tests no longer compiled. Run `cargo test --workspace --no-run` after changing a shared struct, and build test
+  literals from the constructor (`AclEntry::new(..)`) where one exists.
+- **A lab-book `expect:` is a substring of NetLabCraft's own wording.** A lab walked for the first time fails on
+  text (`Gi0/1` against `GigabitEthernet0/1`, `DISCOVER` against `Discover`); read the trace with
+  `LAB_BOOK_TRACE=1` and fix the lab unless the output is what is wrong.
 - **`assert!(x.contains("…") || true)` asserts nothing.** It was written to "just run the command" and passed
   forever. If you only need the command to run, write `let _ = x;`; if the result matters, assert it.
 - **A new toolchain adds lints.** Clippy gates run with `-D warnings`, so a compiler bump can turn a green tree red

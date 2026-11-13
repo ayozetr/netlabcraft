@@ -1,6 +1,6 @@
 # Target-app parity: NetLabCraft vs Cisco Packet Tracer
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (packaged-build gate met) · earlier: major (the lab book run end to end, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers: areas and course topics re-scored, the untested-labs deduction cut; counts measured again) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (counts measured again after seven troubleshooting labs; percentages not re-scored) · earlier: minor (packaged-build gate met), major (the lab book run end to end, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers: areas and course topics re-scored, the untested-labs deduction cut; counts measured again) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summarizes it,
 [`gaps.md`](gaps.md) lists every shortfall, and the area checklists hold the detail:
@@ -14,11 +14,11 @@ to end is in [`labs/`](labs/README.md).
 | Number | Value | Kind |
 |---|---|---|
 | Engine commands | **138** | measured: `c!(` entries in `crates/engine/src/catalog.rs` |
-| Console grammar entries | **1003** across 37 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
+| Console grammar entries | **1015** across 37 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
 | Device models | **51** | measured: `MODELS` in `crates/model/src/models.rs` (the fallback model not counted; the 7 router cards are in `MODULES`) |
 | Sample labs | **31** | measured: `SAMPLES` in `crates/engine/src/sample.rs` |
-| Lab-book labs | **20** | measured: numbered labs in `docs/labs/` (4 CCNA 1, 9 CCNA 2, 7 CCNA 3), all run by `crates/engine/tests/lab_book.rs`, 8 also over MCP by `apps/netlabcraft-cli/tests/mcp_lab_book.rs` |
-| Tests | **592** | measured: sum of "passed" from `cargo test --workspace -q` |
+| Lab-book labs | **27** | measured: numbered labs in `docs/labs/` (4 CCNA 1, 13 CCNA 2, 10 CCNA 3; labs 21 to 27 are troubleshooting labs), all run by `crates/engine/tests/lab_book.rs`, 11 also over MCP by `apps/netlabcraft-cli/tests/mcp_lab_book.rs` |
+| Tests | **620** | measured: sum of "passed" from `cargo test --workspace -q` |
 | **Ready for real work** (weighted) | **~91%** | estimated; written weights below (90.9 computed) |
 | **CCNA 1 student** (Introduction to Networks) | **~93%** | estimated; [method](#audiences) |
 | **CCNA 2 student** (Switching, Routing and Wireless Essentials) | **~94%** | estimated; [method](#audiences) |
@@ -85,7 +85,7 @@ Packet Tracer activities (estimated from the public course outlines). Each topic
 how much of what its labs do works here, depth included: a command that is accepted but not
 simulated scores low. The weighted sum then loses points for labs nobody has run: **5 points**
 while no lab book had been run end to end (beta gate 1), and **2 points** now that the
-[lab book](labs/README.md) runs. The 2 points stay because the book is our own (20 labs, not
+[lab book](labs/README.md) runs. The 2 points stay because the book is our own (27 labs, not
 the course's own activities, which can't be copied), so the topics it doesn't exercise can
 still hide surprises. Topics the book exercises are scored from what its labs showed; the
 others from the features and tests alone. The earlier figures (CCNA 2 ~92%, CCNA 3 ~91% in the
@@ -136,12 +136,12 @@ first estimate) counted topics as present without weighing their depth or the un
   Simulation mode has every option the course uses: Constant Delay, capturing only chosen
   protocols, absolute start times and the sender's own decisions in the OSI view. What is left
   is walking more labs and the host-app details they turn up.
-- **CCNA 2 (SRWE):** nine labs of the book run (VLANs, inter-VLAN routing, STP, EtherChannel,
+- **CCNA 2 (SRWE):** thirteen labs of the book run, four of them troubleshooting labs (VLANs, inter-VLAN routing, STP, EtherChannel,
   DHCP, HSRP, switch security, a WLC, static routes). Wireless is no longer far behind:
   WPA2-Enterprise runs a real PEAP tunnel with EAP over RADIUS, and WLANs can be centrally
   switched; the PEAP key exchange is a toy size and there are no certificates. VRRP follows its
   timers now; GLBP hellos are still not on the wire (their format isn't public).
-- **CCNA 3 (ENSA):** seven labs of the book run (OSPF, ACLs, NAT, GRE over IPsec, QoS, network
+- **CCNA 3 (ENSA):** ten labs of the book run, three of them troubleshooting labs (OSPF, ACLs, NAT, GRE over IPsec, QoS, network
   management, RESTCONF). IPsec runs a real Diffie-Hellman exchange and real AES with SHA-1,
   SHA-256 or MD5 HMACs under IKEv1 and IKEv2, with lifetimes and child-SA rekeying; DES, 3DES
   and AH keep a stand-in cipher, and the IKE SA itself is not rekeyed. Automation scores 80%:
@@ -176,6 +176,7 @@ Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | Seven troubleshooting labs (21 to 27) join the book: 27 labs, 11 over MCP. Counts measured again (1015 grammar entries, 138 commands, 620 tests); the percentages are not re-scored: the new labs found 12 small console gaps, fixed, and the estimate that more labs would turn up more is unchanged. |
 | 2026-10-31 | major | The lab book (20 labs, run end to end and 8 over MCP), real Diffie-Hellman, AES-192/256, SHA-256, IKEv1 ciphers and rekeying, default MTU, more inspections; instructor tools; Simulation-mode leftovers; a real PEAP tunnel and central switching; tablets, smartphones, ten Wi-Fi IoT things, programmable boards, the phone's settings, power supplies; XML, IPv6, TLS and SSH in automation, NETCONF candidate and locks, controller discovery; CoS, VRRP timers and VRRPv3, EIGRP for IPv6 on the wire, RIP timers and RIPng, VTP pruning. Console 84% → 86%, layer 2 95% → 97%, layer 3 94% → 96%, services 95% → 97%, security 90% → 94%, WAN/cabling/wireless 90% → 93%, Simulation mode 85% → 90%, workspace 83% → 85%, teaching 80% → 88%, device families 70% → 82%; total 87.5 → 90.94; hours to ~95% ~90–165 → ~55–110. Method: the untested-labs deduction goes from 5 to 2 points now that the lab book runs. CCNA 1 ~88% → ~93%, CCNA 2 ~88% → ~94%, CCNA 3 ~84% → ~90% (automation 60% → 80%, VPN 88% → 94%, wireless 85% → 92%), instructor ~78% → ~90%. Counts measured again (138 commands, 1003 grammar entries across 37 modes, 51 models, 31 samples, 20 lab-book labs, 591 tests). |
 | 2026-10-30 | major | Complex PDUs, OSI view and scenarios; RESTCONF, NETCONF, the Programming app and a controller; zone-based firewall, `ip inspect`, `ip mtu`, `adjust-mss`, IKEv2 and real ESP; switch, QoS, routing and wireless leftovers; switch card, PoE, SIP phones, IoT things and gateway, cloud and modems. Console 82% → 84%, layer 2 90% → 95%, layer 3 92% → 94%, services 94% → 95%, security 86% → 90%, WAN/cabling/wireless 87% → 90%, Simulation mode 70% → 85%, workspace 80% → 83%, device families 60% → 70%; total 83.6 → 87.5; hours to ~95% ~150–250 → ~90–165. Course topics re-scored with the same method: CCNA 1 ~86% → ~88%, CCNA 2 ~85% → ~88%, CCNA 3 ~79% → ~84% (automation 15% → 60%, QoS 60% → 82%, VPN 75% → 88%). Counts measured again (114 commands, 958 grammar entries across 37 modes, 37 models, 28 samples, 443 tests). |
 | 2026-10-30 | major | Audiences re-estimated per course with a written method (topics weighted by their share of the Packet Tracer activities, depth scored, 5 points off until a lab book runs): CCNA 1 ~86%, CCNA 2 ~92% → ~85%, CCNA 3 ~91% → ~79%. Console 74% → 82%, layer 2 85% → 90%, layer 3 90% → 92%, services 92% → 94%, security 85% → 86%, WAN/cabling/wireless 85% → 87% (fibre was done), workspace 78% → 80%; total 80.6 → 83.6. Hours per area redone so the total is their sum (~150–250); the separate full-parity figure dropped. Counts measured again (94 commands, 802 grammar entries across 26 modes, 25 models, 23 samples). |

@@ -1,6 +1,6 @@
 # Architecture
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (one modular-exponentiation engine) · earlier: minor (modules for Diffie-Hellman, AES-256, SHA-256, TLS, SSH, PEAP, RIPng, IKEv1 keys, central switching, boards and BoardScript, power supplies, Simulation-mode options, instructor tools and the lab book; the duplicated modular exponentiation noted)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (eleven lab-book labs over MCP) · earlier: minor (one modular-exponentiation engine), minor (modules for Diffie-Hellman, AES-256, SHA-256, TLS, SSH, PEAP, RIPng, IKEv1 keys, central switching, boards and BoardScript, power supplies, Simulation-mode options, instructor tools and the lab book; the duplicated modular exponentiation noted)
 
 How NetLabCraft is built. Rules for contributors and agents are in [`AGENTS.md`](../AGENTS.md);
 the reasons behind the choices are in [decisions.md](decisions.md).
@@ -19,7 +19,7 @@ L6 depends on a UI toolkit.
 | L4 | `netlabcraft-ios` | Device consoles: the command grammar (`grammar.rs`), dispatch and modes (`exec.rs`), `show` output and running-config (`render.rs`), the PC/server shell (`host.rs`), output filters (`pipe.rs`); `exec/` holds the dispatch for routing, EIGRP for IPv6 (`eigrp6.rs`), VRRP and GLBP (`fhrp.rs`), switch security and QoS trust, management, VPN, IKEv2 (`ikev2.rs`), QoS, firewall, router security (`security.rs`: zones, inspection, MTU, MSS), automation (`automation.rs`), wireless, voice, the device families (`families.rs`: PoE, the switch card, SIP) and the switching and routing leftovers (`swroute.rs`: CoS, EIGRP summaries, RIP timers, RIPng, VTP pruning). |
 | L5 | `netlabcraft-engine` | `Session` (lab + simulator + consoles + undo), the command catalog (`catalog.rs`, `cmd.rs`), sample labs (`sample.rs`); RESTCONF data and edits (`automation.rs`), NETCONF operations (`netconf.rs`) and the controller (`controller.rs`), all applying changes as console lines through the grammar; scenarios and PDUs (`pdu.rs`); power adapters and sources (`families.rs`); programmable boards (`board.rs`); instructor tools (`instructor.rs`: sealing the answer network, the assessment tree, the initial network, translations, connectivity tests, signed results, locks the engine enforces). The lab book runs through the engine in `tests/lab_book.rs`, whose runner (`tests/labbook/`) reads each `docs/labs/*.md` file's `lab`, `console` and `verify` blocks. |
 | L6 | `netlabcraft-ui-egui` | The egui interface. |
-| L6 | `netlabcraft-mcp` | MCP server over stdio; `apps/netlabcraft-cli/tests/mcp_lab_book.rs` runs eight lab-book labs through it over JSON-RPC. |
+| L6 | `netlabcraft-mcp` | MCP server over stdio; `apps/netlabcraft-cli/tests/mcp_lab_book.rs` runs eleven lab-book labs through it over JSON-RPC. |
 | L7 | `apps/netlabcraft`, `apps/netlabcraft-cli`, `apps/netlabcraft-web` | Shells: desktop window and file dialogs, headless CLI, browser. |
 
 ## The simulator
@@ -107,6 +107,7 @@ None known. (Modular exponentiation used to exist twice, in `wire/src/dh.rs` for
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | The MCP lab-book test runs eleven labs, three of them troubleshooting labs. |
 | 2026-11-13 | minor | One modular-exponentiation engine: `modp.rs` is a thin layer over `dh.rs`; the duplication note is removed. |
 | 2026-10-31 | minor | Modules added: wire `dh`, `modp`, `suite`, `aes256`, `sha256`, `tls`, `ssh`, `peap`, `ripng`; model `board`, `psu`; sim `ikev1`, `rip6`, `peap`, `central`, `script`, `board`, `simmode`; ios `exec/swroute`; engine `instructor`, `board`; the lab-book runner and MCP test; ui `instructor`, `touch`, `board_page`. Boards and power supplies in the simulator; the duplicated modular exponentiation recorded. |
 | 2026-10-30 | minor | Modules added: wire `http`, `netconf`, `xml`, `ipfrag`, `ikev2`, `vrrp`, `sip`; model `scenario`, `security`, `fhrp`, `automation`, `poe`, `cloud`; sim `pdu`, `explain`, `automation`, `zfw`, `mtu`, `ikev2`, `eigrp6`, `fhrp`, `sip`; ios `exec/` for EIGRP for IPv6, FHRP, IKEv2, router security, automation and device families; engine RESTCONF, NETCONF, controller, PDUs and power. Events record their decisions; forwarding applies zones, inspection and the IP MTU; power and clouds. |
