@@ -726,8 +726,10 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `ip domain-name WORD` | config | router, switch | The domain name (SSH keys need one) |
 | `no ip domain-name` | config | router, switch | Remove the domain name |
 | `crypto key generate rsa` | config | router, switch | Generate the SSH keys (asks for the size) |
-| `crypto key generate rsa [general-keys] modulus <360-4096>` | config | router, switch | Generate the SSH keys |
-| `crypto key zeroize rsa` | config | router, switch | Delete the SSH keys |
+| `crypto key generate rsa [general-keys] [modulus <512-2048>] [label NAME]` | config | router, switch | Generate an RSA key pair (the SSH keys when it has the default name) |
+| `crypto key zeroize rsa` | config | router, switch | Delete every RSA key pair |
+| `crypto key zeroize rsa LABEL` | config | router, switch | Delete one RSA key pair |
+| `show crypto key mypubkey rsa` | user, privileged | router, switch | This device's RSA public keys |
 | `ip ssh version {1\|2}` | config | router, switch | SSH protocol version |
 | `ipv6 unicast-routing` | config | router, switch | Forward IPv6 and advertise prefixes |
 | `no ipv6 unicast-routing` | config | router, switch | Stop forwarding IPv6 |
@@ -1126,6 +1128,24 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `set ikev2-profile NAME` |  | router | Negotiate this entry with IKEv2 |
 | `no set ikev2-profile` |  | router | Back to IKEv1 |
 | `show crypto ikev2 sa` | user, privileged | router | IKEv2 security associations |
+| `crypto pki trustpoint NAME` | config | router | Define or edit a trustpoint |
+| `no crypto pki trustpoint NAME` | config | router | Delete a trustpoint |
+| `crypto pki enroll NAME` | config | router | Get a certificate for a trustpoint |
+| `crypto pki authenticate NAME` | config | router | Fetch and trust the CA's certificate |
+| `crypto pki server NAME` | config | router | Define or edit the certificate authority |
+| `no crypto pki server NAME` | config | router | Delete the certificate authority |
+| `enrollment {selfsigned\|url http://A.B.C.D[:PORT]}` |  | router | Where the certificate comes from |
+| `subject-name CN=NAME[, O=ORG][, OU=UNIT][, C=XX]` |  | router | The name in the certificate |
+| `rsakeypair LABEL` |  | router | The key pair the certificate is for |
+| `revocation-check none` |  | router | Do not check for revoked certificates |
+| `issuer-name CN=NAME[, O=ORG]` |  | router | The CA's name |
+| `grant auto` |  | router | Sign requests as they arrive |
+| `lifetime certificate DAYS` |  | router | How long issued certificates last |
+| `shutdown` |  | router | Stop the certificate authority |
+| `no shutdown` |  | router | Start the certificate authority |
+| `show crypto pki trustpoints` | user, privileged | router | Trustpoints and their certificates' state |
+| `show crypto pki certificates` | user, privileged | router | The certificates this router holds |
+| `show crypto pki server` | user, privileged | router | The certificate authority |
 | `show crypto ikev2 proposal` | user, privileged | router | IKEv2 proposals |
 | `show crypto ikev2 profile` | user, privileged | router | IKEv2 profiles |
 | `power inline {auto\|never}` | interface | switch | Power over Ethernet on this port (PoE switches) |

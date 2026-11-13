@@ -1,6 +1,6 @@
 # Pitfalls
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (a results-signature pitfall (M9.6)) · earlier: minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (a new console mode needs five edits, M9.9) · earlier: minor (a results-signature pitfall (M9.6)) · earlier: minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
 
 Mistakes already made here, and the rule that stops each one. Read this before your first change; when you make a
 new mistake worth not repeating, add it in the same change.
@@ -29,6 +29,14 @@ new mistake worth not repeating, add it in the same change.
 - **A new toolchain adds lints.** Clippy gates run with `-D warnings`, so a compiler bump can turn a green tree red
   (`nonminimal_bool` did, and CI on a rolling `stable` failed on `needless_range_loop`). The compiler is pinned in
   `rust-toolchain.toml`; bump it together with `rust-version`, and fix the code, not the gate.
+
+## Console
+
+- **A new console mode is edited in five places, and the tests only find some of them.** A `Mode` variant needs its
+  bit in `Modes` and in `ANY_MODE`, its prompt, both lists of sub-modes in `exec.rs` (the `exit` list and the
+  fall-back to configuration mode), the `every_spec_is_reachable_by_its_full_words` mode list in `grammar.rs`, and a
+  setup line in `every_command_survives_hostile_arguments` so the fuzzer reaches the commands inside it. A
+  `try_run` takes one line: a `\n` inside it is not a second command, it is a parse error.
 
 ## Simulator
 

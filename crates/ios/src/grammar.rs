@@ -87,6 +87,10 @@ impl Modes {
     pub const IKEV2_PEER: Modes = Modes(1 << 48);
     /// `crypto ikev2 profile NAME`.
     pub const IKEV2_PROFILE: Modes = Modes(1 << 49);
+    /// `crypto pki trustpoint NAME`.
+    pub const PKI_TRUSTPOINT: Modes = Modes(1 << 50);
+    /// `crypto pki server NAME`.
+    pub const PKI_SERVER: Modes = Modes(1 << 51);
     /// Every command mode, either device.
     pub const ANY_MODE: Modes = Modes(
         63 | 256
@@ -119,7 +123,9 @@ impl Modes {
             | (1 << 46)
             | (1 << 47)
             | (1 << 48)
-            | (1 << 49),
+            | (1 << 49)
+            | (1 << 50)
+            | (1 << 51),
     );
     pub const BOTH: Modes = Modes(192);
     /// A router with a switch card (a device flag): the VLAN database and the switching
@@ -953,6 +959,25 @@ pub enum Id {
     ShowCryptoIkev2Sa,
     ShowCryptoIkev2Proposal,
     ShowCryptoIkev2Profile,
+    ShowCryptoKeyMypubkey,
+    CryptoPkiTrustpoint,
+    NoCryptoPkiTrustpoint,
+    CryptoPkiEnroll,
+    CryptoPkiAuthenticate,
+    CryptoPkiServer,
+    NoCryptoPkiServer,
+    PkiEnrollment,
+    PkiSubjectName,
+    PkiRsakeypair,
+    PkiRevocationCheck,
+    PkiServerIssuer,
+    PkiServerGrant,
+    PkiServerLifetime,
+    PkiServerShutdown,
+    NoPkiServerShutdown,
+    ShowCryptoPkiTrustpoints,
+    ShowCryptoPkiCertificates,
+    ShowCryptoPkiServer,
     PowerInline,
     ShowPowerInline,
     VoiceRegGlobal,
@@ -1031,7 +1056,10 @@ const SUBMODES: Modes = Modes::IF
 const SEC_MODES: Modes =
     Modes::ZONE.or(Modes::INSPECT_CLASS).or(Modes::INSPECT_POLICY).or(Modes::INSPECT_PCLASS).or(Modes::ZONE_PAIR).or(IKEV2_MODES);
 /// The IKEv2 sub-modes.
-const IKEV2_MODES: Modes = Modes::IKEV2_PROPOSAL.or(Modes::IKEV2_POLICY).or(Modes::IKEV2_KEYRING).or(Modes::IKEV2_PEER).or(Modes::IKEV2_PROFILE);
+const IKEV2_MODES: Modes =
+    Modes::IKEV2_PROPOSAL.or(Modes::IKEV2_POLICY).or(Modes::IKEV2_KEYRING).or(Modes::IKEV2_PEER).or(Modes::IKEV2_PROFILE).or(PKI_MODES);
+/// The certificate sub-modes.
+const PKI_MODES: Modes = Modes::PKI_TRUSTPOINT.or(Modes::PKI_SERVER);
 /// Where zones, inspection, IP MTU and MSS clamping are set: routed ports, subinterfaces, tunnels.
 const SEC_IFS: Modes = IFS.or(Modes::TUNNEL);
 /// Routers, switches and the firewall.
@@ -2472,10 +2500,12 @@ pub static SPECS: &[Spec] = &[
         CryptoKey,
         Modes::CONFIG,
         Modes::BOTH,
-        [K("crypto"), K("key"), K("generate"), K("rsa"), Rest("[general-keys] modulus <360-4096>")],
-        "Generate the SSH keys"
+        [K("crypto"), K("key"), K("generate"), K("rsa"), Rest("[general-keys] [modulus <512-2048>] [label NAME]")],
+        "Generate an RSA key pair (the SSH keys when it has the default name)"
     ),
-    spec!(CryptoKeyZeroize, Modes::CONFIG, Modes::BOTH, [K("crypto"), K("key"), K("zeroize"), K("rsa")], "Delete the SSH keys"),
+    spec!(CryptoKeyZeroize, Modes::CONFIG, Modes::BOTH, [K("crypto"), K("key"), K("zeroize"), K("rsa")], "Delete every RSA key pair"),
+    spec!(CryptoKeyZeroize, Modes::CONFIG, Modes::BOTH, [K("crypto"), K("key"), K("zeroize"), K("rsa"), Rest("LABEL")], "Delete one RSA key pair"),
+    spec!(ShowCryptoKeyMypubkey, EXECS, Modes::BOTH, [K("show"), K("crypto"), K("key"), K("mypubkey"), K("rsa")], "This device's RSA public keys"),
     spec!(SshVersion, Modes::CONFIG, Modes::BOTH, [K("ip"), K("ssh"), K("version"), Arg("{1|2}")], "SSH protocol version"),
     spec!(Ipv6UnicastRouting, Modes::CONFIG, Modes::BOTH, [K("ipv6"), K("unicast-routing")], "Forward IPv6 and advertise prefixes"),
     spec!(NoIpv6UnicastRouting, Modes::CONFIG, Modes::BOTH, [K("no"), K("ipv6"), K("unicast-routing")], "Stop forwarding IPv6"),
@@ -3587,6 +3617,66 @@ pub static SPECS: &[Spec] = &[
     spec!(CryptoSetIkev2Profile, Modes::CRYPTO_MAP, Modes::ROUTER, [K("set"), K("ikev2-profile"), Arg("NAME")], "Negotiate this entry with IKEv2"),
     spec!(NoCryptoSetIkev2Profile, Modes::CRYPTO_MAP, Modes::ROUTER, [K("no"), K("set"), K("ikev2-profile")], "Back to IKEv1"),
     spec!(ShowCryptoIkev2Sa, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("ikev2"), K("sa")], "IKEv2 security associations"),
+    spec!(CryptoPkiTrustpoint, Modes::CONFIG, Modes::ROUTER, [K("crypto"), K("pki"), K("trustpoint"), Arg("NAME")], "Define or edit a trustpoint"),
+    spec!(NoCryptoPkiTrustpoint, Modes::CONFIG, Modes::ROUTER, [K("no"), K("crypto"), K("pki"), K("trustpoint"), Arg("NAME")], "Delete a trustpoint"),
+    spec!(CryptoPkiEnroll, Modes::CONFIG, Modes::ROUTER, [K("crypto"), K("pki"), K("enroll"), Arg("NAME")], "Get a certificate for a trustpoint"),
+    spec!(
+        CryptoPkiAuthenticate,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("crypto"), K("pki"), K("authenticate"), Arg("NAME")],
+        "Fetch and trust the CA's certificate"
+    ),
+    spec!(
+        CryptoPkiServer,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("crypto"), K("pki"), K("server"), Arg("NAME")],
+        "Define or edit the certificate authority"
+    ),
+    spec!(
+        NoCryptoPkiServer,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("no"), K("crypto"), K("pki"), K("server"), Arg("NAME")],
+        "Delete the certificate authority"
+    ),
+    spec!(
+        PkiEnrollment,
+        Modes::PKI_TRUSTPOINT,
+        Modes::ROUTER,
+        [K("enrollment"), Rest("{selfsigned|url http://A.B.C.D[:PORT]}")],
+        "Where the certificate comes from"
+    ),
+    spec!(
+        PkiSubjectName,
+        Modes::PKI_TRUSTPOINT,
+        Modes::ROUTER,
+        [K("subject-name"), Rest("CN=NAME[, O=ORG][, OU=UNIT][, C=XX]")],
+        "The name in the certificate"
+    ),
+    spec!(PkiRsakeypair, Modes::PKI_TRUSTPOINT, Modes::ROUTER, [K("rsakeypair"), Arg("LABEL")], "The key pair the certificate is for"),
+    spec!(PkiRevocationCheck, Modes::PKI_TRUSTPOINT, Modes::ROUTER, [K("revocation-check"), Arg("none")], "Do not check for revoked certificates"),
+    spec!(PkiServerIssuer, Modes::PKI_SERVER, Modes::ROUTER, [K("issuer-name"), Rest("CN=NAME[, O=ORG]")], "The CA's name"),
+    spec!(PkiServerGrant, Modes::PKI_SERVER, Modes::ROUTER, [K("grant"), Arg("auto")], "Sign requests as they arrive"),
+    spec!(PkiServerLifetime, Modes::PKI_SERVER, Modes::ROUTER, [K("lifetime"), K("certificate"), Arg("DAYS")], "How long issued certificates last"),
+    spec!(PkiServerShutdown, Modes::PKI_SERVER, Modes::ROUTER, [K("shutdown")], "Stop the certificate authority"),
+    spec!(NoPkiServerShutdown, Modes::PKI_SERVER, Modes::ROUTER, [K("no"), K("shutdown")], "Start the certificate authority"),
+    spec!(
+        ShowCryptoPkiTrustpoints,
+        EXECS,
+        Modes::ROUTER,
+        [K("show"), K("crypto"), K("pki"), K("trustpoints")],
+        "Trustpoints and their certificates' state"
+    ),
+    spec!(
+        ShowCryptoPkiCertificates,
+        EXECS,
+        Modes::ROUTER,
+        [K("show"), K("crypto"), K("pki"), K("certificates")],
+        "The certificates this router holds"
+    ),
+    spec!(ShowCryptoPkiServer, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("pki"), K("server")], "The certificate authority"),
     spec!(ShowCryptoIkev2Proposal, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("ikev2"), K("proposal")], "IKEv2 proposals"),
     spec!(ShowCryptoIkev2Profile, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("ikev2"), K("profile")], "IKEv2 profiles"),
     spec!(PowerInline, Modes::IF, Modes::SWITCH, [K("power"), K("inline"), Arg("{auto|never}")], "Power over Ethernet on this port (PoE switches)"),
@@ -4042,6 +4132,8 @@ mod tests {
                 Modes::IKEV2_KEYRING,
                 Modes::IKEV2_PEER,
                 Modes::IKEV2_PROFILE,
+                Modes::PKI_TRUSTPOINT,
+                Modes::PKI_SERVER,
             ]
             .into_iter()
             .find(|m| s.modes.has(*m))

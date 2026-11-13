@@ -9,6 +9,7 @@ mod families;
 mod inspections;
 mod ipsec_crypto;
 mod leftovers;
+mod pki;
 mod routing;
 mod security;
 mod swroute;
@@ -381,6 +382,8 @@ fn every_command_survives_hostile_arguments() {
                     "en\nconf t\ncrypto ikev2 proposal P",
                     "en\nconf t\ncrypto ikev2 keyring K\npeer X",
                     "en\nconf t\ncrypto ikev2 profile F",
+                    "en\nconf t\ncrypto pki trustpoint T",
+                    "en\nconf t\ncrypto pki server S",
                     "en\nconf t\nrouter rip",
                     "en\nconf t\nipv6 router rip R",
                 ] {

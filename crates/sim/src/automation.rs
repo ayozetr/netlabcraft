@@ -346,6 +346,10 @@ impl Sim {
     /// handler: (the response bytes, whether the request was complete or broken).
     fn http_answer(&mut self, t: &Topology, d: &Device, raw: &[u8]) -> (Vec<u8>, bool) {
         match http::Request::parse(raw) {
+            Ok(Some((req, _))) if crate::pki::is_pki_request(&req) => {
+                let now = self.clock(d.id).0;
+                (crate::pki::serve(d, now, &req).encode(), true)
+            }
             Ok(Some((req, _))) => {
                 let served = match self.auto.restconf {
                     Some(f) => f(t, d.id, &req),
