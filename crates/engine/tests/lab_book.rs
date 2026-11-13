@@ -60,6 +60,13 @@ labs! {
     lab_18_qos => "18-qos.md",
     lab_19_network_management => "19-network-management.md",
     lab_20_restconf => "20-restconf.md",
+    lab_21_troubleshoot_vlans_trunks => "21-troubleshoot-vlans-trunks.md",
+    lab_22_troubleshoot_routing => "22-troubleshoot-routing.md",
+    lab_23_troubleshoot_ospf => "23-troubleshoot-ospf.md",
+    lab_24_troubleshoot_acls => "24-troubleshoot-acls.md",
+    lab_25_troubleshoot_dhcp => "25-troubleshoot-dhcp.md",
+    lab_26_troubleshoot_nat => "26-troubleshoot-nat.md",
+    lab_27_troubleshoot_stp_root => "27-troubleshoot-stp-root.md",
 }
 
 #[test]

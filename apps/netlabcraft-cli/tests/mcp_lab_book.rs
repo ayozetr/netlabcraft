@@ -129,3 +129,18 @@ fn ensa_nat_through_mcp() {
 fn ensa_restconf_through_mcp() {
     check("20-restconf.md");
 }
+
+#[test]
+fn srwe_troubleshooting_routing_through_mcp() {
+    check("22-troubleshoot-routing.md");
+}
+
+#[test]
+fn ensa_troubleshooting_acls_through_mcp() {
+    check("24-troubleshoot-acls.md");
+}
+
+#[test]
+fn ensa_troubleshooting_nat_through_mcp() {
+    check("26-troubleshoot-nat.md");
+}

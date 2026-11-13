@@ -603,6 +603,7 @@ fn access_lists_filter_forwarded_traffic() {
                     seq: 0,
                     established: false,
                     icmp_type: None,
+                    log: false,
                 },
                 AclEntry {
                     permit: true,
@@ -614,6 +615,7 @@ fn access_lists_filter_forwarded_traffic() {
                     seq: 0,
                     established: false,
                     icmp_type: None,
+                    log: false,
                 },
             ],
         });
@@ -641,6 +643,7 @@ fn access_lists_filter_forwarded_traffic() {
                 seq: 0,
                 established: false,
                 icmp_type: None,
+                log: false,
             }],
         });
         r.ports[1].access.outbound = Some("5".into());
@@ -692,6 +695,7 @@ fn nat_translates_both_ways() {
                 seq: 0,
                 established: false,
                 icmp_type: None,
+                log: false,
             }],
         });
         r.nat.rules.push(NatRule { acl: "1".into(), target: NatTarget::Interface("GigabitEthernet0/1".into()), overload: true });
@@ -713,6 +717,55 @@ fn nat_translates_both_ways() {
     sim.clear_nat(r1);
     sim.ping(&t, srv, ip("200.0.0.5"), PingOptions::default()).unwrap();
     assert_eq!(marks(&sim.ping(&t, srv, ip("200.0.0.5"), PingOptions { count: 3, ..Default::default() }).unwrap()), "!!!");
+}
+
+#[test]
+fn nat_to_an_interface_without_overload_serves_one_inside_host_at_a_time() {
+    use netlabcraft_model::acl::{Acl, AclAddr, AclEntry, AclProto};
+    use netlabcraft_model::{NatRule, NatSide, NatTarget};
+    let mut t = Topology::new();
+    let r1 = add(&mut t, DeviceKind::Router);
+    let isp = add(&mut t, DeviceKind::Router);
+    let s = add(&mut t, DeviceKind::Switch);
+    let a = host(&mut t, "192.168.1.10/24", Some("192.168.1.1"));
+    let b = host(&mut t, "192.168.1.11/24", Some("192.168.1.1"));
+    let srv = host(&mut t, "8.8.8.8/24", Some("8.8.8.1"));
+    router_if(&mut t, r1, 0, "192.168.1.1/24");
+    router_if(&mut t, r1, 1, "200.0.0.1/29");
+    router_if(&mut t, isp, 1, "200.0.0.2/29");
+    router_if(&mut t, isp, 0, "8.8.8.1/24");
+    cable(&mut t, r1, 0, s, 0);
+    cable(&mut t, a, 0, s, 1);
+    cable(&mut t, b, 0, s, 2);
+    cable(&mut t, r1, 1, isp, 1);
+    cable(&mut t, srv, 0, isp, 0);
+    {
+        let r = t.device_mut(r1).unwrap();
+        r.ports[0].nat = Some(NatSide::Inside);
+        r.ports[1].nat = Some(NatSide::Outside);
+        r.routes.push(StaticRoute { net: net("0.0.0.0/0"), via: NextHop::Address(ip("200.0.0.2")), distance: None });
+        r.acls.push(Acl {
+            name: "1".into(),
+            extended: false,
+            remarks: Vec::new(),
+            entries: vec![AclEntry::new(true, AclProto::Ip, AclAddr { addr: ip("192.168.1.0"), wildcard: ip("0.0.0.255") }, AclAddr::ANY)],
+        });
+        r.nat.rules.push(NatRule { acl: "1".into(), target: NatTarget::Interface("GigabitEthernet0/1".into()), overload: false });
+    }
+    let mut sim = Sim::new();
+    let ping = |sim: &mut Sim, h| {
+        let _ = sim.ping(&t, h, ip("8.8.8.8"), PingOptions::default());
+        sim.ping(&t, h, ip("8.8.8.8"), PingOptions { count: 3, ..Default::default() }).map(|r| marks(&r)).unwrap_or_default()
+    };
+    // The first host gets the address (without a port rewrite); the second finds it taken.
+    assert_eq!(ping(&mut sim, a), "!!!");
+    assert!(!ping(&mut sim, b).contains('!'));
+    assert!(sim.state(r1).unwrap().nat.iter().all(|e| e.inside_local == ip("192.168.1.10") && e.local_id.is_none()));
+    // Once the first translation is cleared, the second host can have it.
+    sim.clear_nat(r1);
+    assert_eq!(ping(&mut sim, b), "!!!");
+    assert!(!ping(&mut sim, a).contains('!'));
+    let _ = srv;
 }
 
 #[test]
@@ -795,6 +848,7 @@ fn a_server_answers_dns_http_and_dhcp() {
                     seq: 0,
                     established: false,
                     icmp_type: None,
+                    log: false,
                 },
                 AclEntry {
                     permit: true,
@@ -806,6 +860,7 @@ fn a_server_answers_dns_http_and_dhcp() {
                     seq: 0,
                     established: false,
                     icmp_type: None,
+                    log: false,
                 },
             ],
         });

@@ -1,16 +1,18 @@
 # NetLabCraft lab book
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** major (created: 20 labs over the three CCNA courses) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (seven troubleshooting labs, 21 to 27) · earlier: major (created: 20 labs over the three CCNA courses) · **Target:** Cisco Packet Tracer 9.0
 
-Twenty hands-on labs over the topics of the three CCNA courses, written for NetLabCraft from
-scratch. Each lab starts from an empty lab and lists its objectives, the topology with device
-models and an addressing table, the steps with every command to type, and what to check with
-which command.
+Twenty-seven hands-on labs over the topics of the three CCNA courses, written for NetLabCraft
+from scratch. Labs 1 to 20 each build one topic; labs 21 to 27 are troubleshooting labs: they
+build a working network, break it with commands, and walk the symptoms, the `show` commands
+that tell the faults apart, and the repairs. Each lab starts from an empty lab and lists its
+objectives, the topology with device models and an addressing table, the steps with every
+command to type, and what to check with which command.
 
 Every lab is also a script: its `lab`, `console` and `verify` blocks are run end to end, as
 written, by `crates/engine/tests/lab_book.rs` (straight through the engine) and, for several
 labs, by `apps/netlabcraft-cli/tests/mcp_lab_book.rs` (through `netlabcraft-cli mcp`, the way an
-agent drives it). A lab that passes there works when typed by hand.
+agent drives it; 11 of the 27). A lab that passes there works when typed by hand.
 
 ## How to read a lab
 
@@ -52,6 +54,13 @@ Times in Realtime mode pass by themselves; `sim.advance` stands for waiting (spa
 | 18 | [QoS marking and policing](18-qos.md) | CCNA 3 | class maps, DSCP marking, policing |
 | 19 | [Network management](19-network-management.md) | CCNA 3 | CDP, LLDP, NTP, syslog, SNMP, TFTP backups |
 | 20 | [RESTCONF from the Programming tab](20-restconf.md) | CCNA 3 | RESTCONF GET, PATCH, POST, DELETE |
+| 21 | [Troubleshooting: VLAN and trunk faults](21-troubleshoot-vlans-trunks.md) | CCNA 2 | wrong access VLAN, trunk allowed list, `show interfaces switchport` and `trunk`, MAC table |
+| 22 | [Troubleshooting: static routes and host settings](22-troubleshoot-routing.md) | CCNA 2 | missing route, next hop off the link, wrong mask, proxy ARP, `traceroute` |
+| 23 | [Troubleshooting: OSPF neighbours that will not form](23-troubleshoot-ospf.md) | CCNA 3 | passive interface, Hello interval, area mismatch, `show ip ospf neighbor` and `interface` |
+| 24 | [Troubleshooting: an access list in the wrong place](24-troubleshoot-acls.md) | CCNA 3 | wrong direction, entry order, wrong port, match counters, `log` |
+| 25 | [Troubleshooting: hosts that get no address, or the wrong one](25-troubleshoot-dhcp.md) | CCNA 2 | missing helper address, excluded range, wrong gateway, `show ip dhcp pool` |
+| 26 | [Troubleshooting: NAT overload that does not translate](26-troubleshoot-nat.md) | CCNA 3 | inside and outside swapped, NAT ACL, missing `overload`, hits and misses |
+| 27 | [Troubleshooting: the wrong switch is the spanning-tree root](27-troubleshoot-stp-root.md) | CCNA 2 | root election, `root primary`, blocked ports, root guard |
 
 ## Running the scripts
 
@@ -75,4 +84,5 @@ A failing step names its line in the lab's Markdown.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | Seven troubleshooting labs (21 to 27: 4 SRWE, 3 ENSA), run end to end by the engine, three of them also over MCP; the console views and options they turned up are in [gaps.md](../gaps.md)' history. |
 | 2026-10-30 | major | Created: 20 labs (4 ITN, 9 SRWE, 7 ENSA), run end to end by the engine and over MCP. |

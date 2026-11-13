@@ -1,6 +1,6 @@
 # Architecture
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (elliptic-curve Diffie-Hellman) · earlier: minor (AH) · earlier: minor (DES, 3DES and a cipher wrapper) · earlier: minor (one modular-exponentiation engine); minor (modules for Diffie-Hellman, AES-256, SHA-256, TLS, SSH, PEAP, RIPng, IKEv1 keys, central switching, boards and BoardScript, power supplies, Simulation-mode options, instructor tools and the lab book; the duplicated modular exponentiation noted)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (eleven lab-book labs over MCP) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (one modular-exponentiation engine), minor (modules for Diffie-Hellman, AES-256, SHA-256, TLS, SSH, PEAP, RIPng, IKEv1 keys, central switching, boards and BoardScript, power supplies, Simulation-mode options, instructor tools and the lab book; the duplicated modular exponentiation noted)
 
 How NetLabCraft is built. Rules for contributors and agents are in [`AGENTS.md`](../AGENTS.md);
 the reasons behind the choices are in [decisions.md](decisions.md).
@@ -19,7 +19,7 @@ L6 depends on a UI toolkit.
 | L4 | `netlabcraft-ios` | Device consoles: the command grammar (`grammar.rs`), dispatch and modes (`exec.rs`), `show` output and running-config (`render.rs`), the PC/server shell (`host.rs`), output filters (`pipe.rs`); `exec/` holds the dispatch for routing, EIGRP for IPv6 (`eigrp6.rs`), VRRP and GLBP (`fhrp.rs`), switch security and QoS trust, management, VPN, IKEv2 (`ikev2.rs`), QoS, firewall, router security (`security.rs`: zones, inspection, MTU, MSS), automation (`automation.rs`), wireless, voice, the device families (`families.rs`: PoE, the switch card, SIP) and the switching and routing leftovers (`swroute.rs`: CoS, EIGRP summaries, RIP timers, RIPng, VTP pruning). |
 | L5 | `netlabcraft-engine` | `Session` (lab + simulator + consoles + undo), the command catalog (`catalog.rs`, `cmd.rs`), sample labs (`sample.rs`); RESTCONF data and edits (`automation.rs`), NETCONF operations (`netconf.rs`) and the controller (`controller.rs`), all applying changes as console lines through the grammar; scenarios and PDUs (`pdu.rs`); power adapters and sources (`families.rs`); programmable boards (`board.rs`); instructor tools (`instructor.rs`: sealing the answer network, the assessment tree, the initial network, translations, connectivity tests, signed results, locks the engine enforces). The lab book runs through the engine in `tests/lab_book.rs`, whose runner (`tests/labbook/`) reads each `docs/labs/*.md` file's `lab`, `console` and `verify` blocks. |
 | L6 | `netlabcraft-ui-egui` | The egui interface. |
-| L6 | `netlabcraft-mcp` | MCP server over stdio; `apps/netlabcraft-cli/tests/mcp_lab_book.rs` runs eight lab-book labs through it over JSON-RPC. |
+| L6 | `netlabcraft-mcp` | MCP server over stdio; `apps/netlabcraft-cli/tests/mcp_lab_book.rs` runs eleven lab-book labs through it over JSON-RPC. |
 | L7 | `apps/netlabcraft`, `apps/netlabcraft-cli`, `apps/netlabcraft-web` | Shells: desktop window and file dialogs, headless CLI, browser. |
 
 ## The simulator
@@ -107,6 +107,7 @@ None known. (Modular exponentiation used to exist twice, in `wire/src/dh.rs` for
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | The MCP lab-book test runs eleven labs, three of them troubleshooting labs. |
 | 2026-11-13 | minor | Module added: wire `ec` (ECDH over P-256 and P-384, RFC 5903). |
 | 2026-11-13 | minor | Module added: wire `ah` (the Authentication Header, RFC 4302). |
 | 2026-11-13 | minor | Modules added: wire `des` (DES, 3DES, CBC) and `cipher` (AES, DES or 3DES behind one CBC interface). |

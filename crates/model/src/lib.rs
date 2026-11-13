@@ -607,6 +607,9 @@ pub struct Port {
     /// `no mdix auto`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub mdix_off: bool,
+    /// Routers: `no ip proxy-arp` (the interface and its subinterfaces answer ARP only for their own addresses).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub proxy_arp_off: bool,
     /// Routers and routed ports: `ip address dhcp` (the address comes from a DHCP server).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub dhcp: bool,
@@ -1758,6 +1761,7 @@ impl Device {
                 speed: None,
                 duplex: None,
                 mdix_off: false,
+                proxy_arp_off: false,
                 dhcp: false,
                 dhcp_router: None,
                 bandwidth: None,

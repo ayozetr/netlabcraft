@@ -383,6 +383,9 @@ pub enum Id {
     ShowGlbp,
     ShowStp,
     ShowStpVlan,
+    ShowStpRoot,
+    ShowStpBridge,
+    ShowStpBlocked,
     NoInterfaceVlan,
     DefaultGateway,
     NoDefaultGateway,
@@ -447,6 +450,7 @@ pub enum Id {
     NoNatPool,
     ShowNat,
     ClearNat,
+    ClearNatStats,
     // ---- site-to-site VPN: GRE tunnels and IPsec ----
     TunnelSource,
     NoTunnelSource,
@@ -627,6 +631,8 @@ pub enum Id {
     IfSpeed,
     IfDuplex,
     IfMdix,
+    IfProxyArp,
+    NoIfProxyArp,
     NoIfMdix,
     SshTimeout,
     SshRetries,
@@ -1079,6 +1085,13 @@ pub static SPECS: &[Spec] = &[
         [K("show"), K("ip"), K("route"), Arg("{connected|static|eigrp|ospf|rip}")],
         "Only the routes one source gave"
     ),
+    spec!(
+        ShowIpRoute,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("route"), Arg("A.B.C.D"), Arg("A.B.C.D")],
+        "The route for exactly this network and mask"
+    ),
     spec!(ShowArp, EXECS, Modes::BOTH, [K("show"), K("ip"), K("arp")], "ARP cache"),
     spec!(ShowArp, EXECS, BOTH_FW, [K("show"), K("arp")], "ARP cache"),
     spec!(ShowInterfaces, EXECS, BOTH_FW, [K("show"), K("interfaces")], "Interface details"),
@@ -1190,6 +1203,21 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowAccessLists, EXECS, Modes::BOTH, [K("show"), K("access-lists"), Arg("WORD")], "One access list and its matches"),
     spec!(ShowAccessLists, EXECS, Modes::BOTH, [K("show"), K("ip"), K("access-lists"), Arg("WORD")], "One access list and its matches"),
     spec!(ClearAclCounters, Modes::EXEC, Modes::BOTH, [K("clear"), K("access-list"), K("counters")], "Reset the match counts"),
+    spec!(ClearAclCounters, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("access-list"), K("counters")], "Reset the match counts"),
+    spec!(
+        ClearAclCounters,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("clear"), K("access-list"), K("counters"), Arg("NAME")],
+        "Reset the match counts of one list"
+    ),
+    spec!(
+        ClearAclCounters,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("clear"), K("ip"), K("access-list"), K("counters"), Arg("NAME")],
+        "Reset the match counts of one list"
+    ),
     spec!(NatSideCmd, ANY_IF, Modes::BOTH, [K("ip"), K("nat"), Arg("{inside|outside}")], "Mark this interface inside or outside NAT"),
     spec!(NoNatSide, ANY_IF, Modes::BOTH, [K("no"), K("ip"), K("nat"), Arg("{inside|outside}")], "Take this interface out of NAT"),
     spec!(
@@ -1209,6 +1237,7 @@ pub static SPECS: &[Spec] = &[
     ),
     spec!(NoNatPool, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("nat"), K("pool"), Arg("WORD")], "Delete a NAT pool"),
     spec!(ShowNat, EXECS, Modes::BOTH, [K("show"), K("ip"), K("nat"), K("translations")], "Translations in use"),
+    spec!(ClearNatStats, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("nat"), K("statistics")], "Reset the NAT hit and miss counts"),
     spec!(ClearNat, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("nat"), K("translation"), Rest("*")], "Forget dynamic translations"),
     // ---- loopback interfaces (`interface Loopback N`) ----
     spec!(IpAddress, Modes::LOOPBACK, Modes::BOTH, [K("ip"), K("address"), Arg("A.B.C.D"), Arg("MASK")], "Set the loopback's address"),
@@ -2152,6 +2181,13 @@ pub static SPECS: &[Spec] = &[
         "Stop advertising the default route"
     ),
     spec!(ShowOspfNeighbor, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf"), K("neighbor")], "OSPF neighbours"),
+    spec!(
+        ShowOspfNeighbor,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("ospf"), K("neighbor"), Rest("{A.B.C.D | <interface>}")],
+        "OSPF neighbours with one router ID, or on one interface"
+    ),
     spec!(Ipv6RouterOspf, Modes::CONFIG, Modes::BOTH, [K("ipv6"), K("router"), K("ospf"), Arg("<1-65535>")], "Start or configure OSPFv3"),
     spec!(NoIpv6RouterOspf, Modes::CONFIG, Modes::BOTH, [K("no"), K("ipv6"), K("router"), K("ospf"), Arg("<1-65535>")], "Stop OSPFv3"),
     spec!(
@@ -2532,6 +2568,8 @@ pub static SPECS: &[Spec] = &[
     spec!(IfDuplex, Modes::IF, Modes::BOTH, [K("duplex"), Arg("{full|half|auto}")], "Fix the port's duplex (auto negotiates)"),
     spec!(IfDuplex, Modes::IF, Modes::BOTH, [K("no"), K("duplex")], "Negotiate the duplex"),
     spec!(IfMdix, Modes::IF, Modes::BOTH, [K("mdix"), K("auto")], "Work with straight-through or crossover cables"),
+    spec!(IfProxyArp, IFS, Modes::ROUTER, [K("ip"), K("proxy-arp")], "Answer ARP for hosts that are reached through this router"),
+    spec!(NoIfProxyArp, IFS, Modes::ROUTER, [K("no"), K("ip"), K("proxy-arp")], "Answer ARP only for this interface's own address"),
     spec!(NoIfMdix, Modes::IF, Modes::BOTH, [K("no"), K("mdix"), K("auto")], "Expect the right cable type"),
     spec!(ShowProtocols, EXECS, Modes::BOTH, [K("show"), K("protocols")], "Interface status and addresses"),
     spec!(ShowIntDescription, EXECS, Modes::BOTH, [K("show"), K("interfaces"), K("description")], "Interface status and descriptions"),
@@ -2592,6 +2630,7 @@ pub static SPECS: &[Spec] = &[
     spec!(NoDhcpDomain, Modes::DHCP, Modes::BOTH, [K("no"), K("domain-name")], "Give clients no domain name"),
     spec!(ShowDhcpBinding, EXECS, Modes::BOTH, [K("show"), K("ip"), K("dhcp"), K("binding")], "Addresses DHCP handed out"),
     spec!(ShowDhcpPool, EXECS, Modes::BOTH, [K("show"), K("ip"), K("dhcp"), K("pool")], "DHCP pools"),
+    spec!(ShowDhcpPool, EXECS, Modes::BOTH, [K("show"), K("ip"), K("dhcp"), K("pool"), Arg("NAME")], "One DHCP pool and how many addresses are left"),
     spec!(ClearDhcpBinding, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("dhcp"), K("binding"), Rest("{* | A.B.C.D}")], "Forget DHCP leases"),
     spec!(ShowDhcpConflict, EXECS, Modes::BOTH, [K("show"), K("ip"), K("dhcp"), K("conflict")], "Pool addresses found in use by others"),
     spec!(ShowDhcpStats, EXECS, Modes::BOTH, [K("show"), K("ip"), K("dhcp"), K("server"), K("statistics")], "DHCP messages counted"),
@@ -2972,6 +3011,9 @@ pub static SPECS: &[Spec] = &[
         "Drop DHCP requests with relay information but no relay address here"
     ),
     spec!(ShowStp, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree")], "Spanning trees of every VLAN"),
+    spec!(ShowStpRoot, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree"), K("root")], "Who the root is in each VLAN, and the way to it"),
+    spec!(ShowStpBridge, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree"), K("bridge")], "This switch's own bridge ID in each VLAN"),
+    spec!(ShowStpBlocked, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree"), K("blockedports")], "Ports that are not forwarding, per VLAN"),
     spec!(ShowStpVlan, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree"), K("vlan"), Arg("<1-4094>")], "One VLAN's spanning tree"),
     // ---- the firewall appliance ----
     spec!(FwNameif, IFS, FW, [K("nameif"), Arg("NAME")], "Name the interface (rules, routes and NAT refer to it by this name)"),

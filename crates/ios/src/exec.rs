@@ -954,6 +954,18 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             if which.is_empty() {
                 return Ok(full);
             }
+            // `show ip route A.B.C.D M.M.M.M`: the entry for exactly that network.
+            if args.len() == 2 {
+                let net = parse_ip(&which).map_err(|e| format!("% {e}"))?;
+                let mask = parse_ip(arg(1).trim()).map_err(|e| format!("% {e}"))?;
+                let prefix = netlabcraft_core::mask_to_prefix(mask).ok_or("% The mask must be contiguous, like 255.255.255.0")?;
+                let want = format!("{}/{prefix}", Ipv4Net::new(net, prefix).network().addr);
+                let line = full.lines().filter(|l| l.len() > 5).find(|l| l.get(5..).and_then(|r| r.split_whitespace().next()) == Some(want.as_str()));
+                return Ok(match line {
+                    Some(l) => format!("Routing entry for {want}\n  {l}"),
+                    None => format!("% Network {want} is not in the routing table"),
+                });
+            }
             // `show ip route A.B.C.D`: the route that address follows.
             if let Ok(a) = parse_ip(&which) {
                 let d = c.d()?.clone();
@@ -996,6 +1008,25 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             if let Some(v) = lower.strip_prefix("vlan").map(str::trim) {
                 let v: u16 = v.parse().map_err(|_| "% show interfaces vlan <1-4094>")?;
                 return render::svi_interface(c.t, c.d()?, v);
+            }
+            // `show interfaces switchport`: every switch port, one after the other.
+            if lower == "switchport" {
+                let d = c.d()?;
+                if !d.switches_frames() {
+                    return Err("% Only switch ports have switchport settings".into());
+                }
+                let blocks: Vec<String> =
+                    (0..d.ports.len()).filter(|i| d.is_switchport(*i)).filter_map(|i| render::switchport(c.t, d, i).ok()).collect();
+                return Ok(blocks.join("\n\n"));
+            }
+            // `show interfaces gi0/1 trunk`: the trunk table, one port.
+            if let Some(name) = lower.strip_suffix("trunk").filter(|n| !n.trim().is_empty()) {
+                let d = c.d()?;
+                if !d.switches_frames() {
+                    return Err("% Only switch ports can trunk".into());
+                }
+                let r = c.iface_ref(name.trim())?;
+                return Ok(render::trunks(c.t, d, Some(r.port)));
             }
             // `show interfaces fa0/1 switchport`
             if let Some(name) = arg(0).trim().strip_suffix("switchport").filter(|n| !n.trim().is_empty()) {
@@ -1194,7 +1225,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::ShowMemory => Ok(render::memory(c.d()?)),
         Id::ShowCdp => Ok(render::cdp(c.d()?)),
         Id::ShowCdpNeighbors | Id::ShowCdpNeighborsDetail => Ok(render::cdp_neighbors(c.t, c.sim, c.d()?, spec.id == Id::ShowCdpNeighborsDetail)),
-        Id::ShowIntTrunk => Ok(render::trunks(c.t, c.d()?)),
+        Id::ShowIntTrunk => Ok(render::trunks(c.t, c.d()?, None)),
         Id::ShowVlan | Id::ShowVlanBrief => Ok(render::vlans(c.t, c.d()?)),
         Id::ShowMac => Ok(render::mac_table(c.t, c.sim, c.d()?)),
         Id::ShowArp => Ok(render::arp(c.t, c.sim, c.d()?)),
@@ -2323,7 +2354,12 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let d = c.dm()?;
             let before = d.acls.len();
             d.acls.retain(|a| a.name != arg(0));
-            if d.acls.len() == before { Err(format!("% No access list {}", arg(0))) } else { Ok(String::new()) }
+            if d.acls.len() == before {
+                return Err(format!("% No access list {}", arg(0)));
+            }
+            // A list written again under the same name starts counting from zero.
+            c.sim.clear_acl_hits(c.dev, Some(arg(0)));
+            Ok(String::new())
         }
         Id::IpAccessListStandard | Id::IpAccessListExtended => {
             let name: String = arg(0).chars().take(32).collect();
@@ -2348,7 +2384,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let d = c.dm()?;
             let before = d.acls.len();
             d.acls.retain(|a| a.name != arg(1));
-            if d.acls.len() == before { Err(format!("% No access list {}", arg(1))) } else { Ok(String::new()) }
+            if d.acls.len() == before {
+                return Err(format!("% No access list {}", arg(1)));
+            }
+            c.sim.clear_acl_hits(c.dev, Some(arg(1)));
+            Ok(String::new())
         }
         Id::AclEntryLine | Id::NoAclEntryLine => {
             let Mode::Acl(name) = c.cli.mode.clone() else { return Err("% Not in access-list mode".into()) };
@@ -2421,7 +2461,14 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             }
         }
         Id::ClearAclCounters => {
-            c.sim.clear_acl_hits(c.dev);
+            let name = arg(0).trim();
+            if name.is_empty() {
+                c.sim.clear_acl_hits(c.dev, None);
+            } else if c.d()?.acls.iter().any(|a| a.name == name) {
+                c.sim.clear_acl_hits(c.dev, Some(name));
+            } else {
+                return Err(format!("% No access list {name}"));
+            }
             Ok(String::new())
         }
         Id::Username => {
@@ -3087,6 +3134,13 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 Ok(())
             })
         }
+        Id::IfProxyArp | Id::NoIfProxyArp => {
+            let off = spec.id == Id::NoIfProxyArp;
+            c.each_if(|p, _| {
+                p.proxy_arp_off = off;
+                Ok(())
+            })
+        }
         Id::IfMdix | Id::NoIfMdix => {
             let off = spec.id == Id::NoIfMdix;
             c.each_if(|p, _| {
@@ -3258,6 +3312,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             if n.pools.len() == before { Err(format!("% No pool {}", arg(0))) } else { Ok(String::new()) }
         }
         Id::ShowNat => Ok(render::nat_translations(c.sim, c.d()?)),
+        Id::ClearNatStats => {
+            c.sim.clear_nat_counts(c.dev);
+            Ok(String::new())
+        }
         Id::ClearNat => {
             c.sim.clear_nat(c.dev);
             Ok(String::new())
@@ -3775,7 +3833,30 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::ShowOspfNeighbor => {
             let st = c.sim.ospf_state(c.t);
-            Ok(render::ospf_neighbors(c.t, c.d()?, &st))
+            let all = render::ospf_neighbors(c.t, c.d()?, &st);
+            let want = arg(0).trim();
+            if want.is_empty() {
+                return Ok(all);
+            }
+            // `show ip ospf neighbor 2.2.2.2` or `… gi0/1`: the header and the matching rows.
+            let key = match parse_ip(want) {
+                Ok(_) => want.to_string(),
+                Err(_) => {
+                    let r = c.iface_ref(want)?;
+                    let d = c.d()?;
+                    d.ports.get(r.port).map(|p| ifname::short(&p.name)).ok_or("% No such interface")?
+                }
+            };
+            let rows: Vec<&str> = all
+                .lines()
+                .filter(|l| {
+                    l.starts_with("Neighbour ID") || l.split_whitespace().any(|w| w == key) || (l.starts_with("Not a neighbour") && l.contains(&key))
+                })
+                .collect();
+            if rows.iter().all(|l| l.starts_with("Neighbour ID")) {
+                return Ok(format!("% No OSPF neighbour matches {want}"));
+            }
+            Ok(rows.join("\n"))
         }
         Id::ShowIpProtocols => {
             let st = c.sim.ospf_state(c.t);
@@ -4154,6 +4235,22 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             }
             Ok(if out.is_empty() { "No VLAN has a port in a spanning tree yet.".into() } else { out.join("\n\n") })
         }
+        Id::ShowStpRoot | Id::ShowStpBridge | Id::ShowStpBlocked => {
+            let d = c.d()?.clone();
+            let vlans: Vec<VlanId> = d.vlans.keys().copied().collect();
+            let mut trees = Vec::new();
+            for v in vlans {
+                let tree = c.sim.spanning_tree(c.t, v).clone();
+                if tree.bridges.contains_key(&d.id) {
+                    trees.push((v, tree));
+                }
+            }
+            Ok(match spec.id {
+                Id::ShowStpRoot => render::stp_root(c.t, &d, &trees),
+                Id::ShowStpBridge => render::stp_bridge(&d, &trees),
+                _ => render::stp_blocked(c.t, &d, &trees),
+            })
+        }
         Id::ShowStpVlan => {
             let v: VlanId = arg(0).parse().map_err(|e| format!("% {e}"))?;
             let d = c.d()?.clone();
@@ -4164,7 +4261,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(render::spanning_tree(c.t, c.sim, &d, v, &tree))
         }
         Id::ShowDhcpBinding => Ok(render::dhcp_bindings(c.sim, c.d()?)),
-        Id::ShowDhcpPool => Ok(render::dhcp_pools(c.sim, c.d()?)),
+        Id::ShowDhcpPool => {
+            let name = arg(0).trim();
+            render::dhcp_pools(c.sim, c.d()?, Some(name).filter(|n| !n.is_empty()))
+        }
         Id::ClearDhcpBinding => match arg(0).trim() {
             "*" => {
                 c.sim.clear_leases(c.dev);
@@ -4337,7 +4437,7 @@ fn parse_acl_entry(words: &[&str], extended: bool) -> Result<acl::AclEntry, Stri
     for w in it {
         let lw = w.to_ascii_lowercase();
         match lw.as_str() {
-            "log" => {}
+            "log" => entry.log = true,
             "established" if extended && proto == acl::AclProto::Tcp => entry.established = true,
             _ if extended && proto == acl::AclProto::Icmp && entry.icmp_type.is_none() && acl::icmp_type_from_name(w).is_some() => {
                 entry.icmp_type = acl::icmp_type_from_name(w);

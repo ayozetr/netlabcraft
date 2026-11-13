@@ -255,6 +255,9 @@ pub fn running_config(d: &Device) -> String {
         if p.mdix_off {
             let _ = writeln!(s, " no mdix auto");
         }
+        if p.proxy_arp_off {
+            let _ = writeln!(s, " no ip proxy-arp");
+        }
         if p.lldp_tx_off {
             let _ = writeln!(s, " no lldp transmit");
         }
@@ -807,11 +810,15 @@ pub fn interfaces(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
 }
 
 /// Trunk ports and what they carry.
-pub fn trunks(t: &Topology, d: &Device) -> String {
+/// `show interfaces trunk`; with a port, only that port's row (`show interfaces gi0/1 trunk`).
+pub fn trunks(t: &Topology, d: &Device, only: Option<usize>) -> String {
     let mut s = format!("{:<10} {:<10} {:<8} {}\n", "Port", "Status", "Native", "Allowed (and existing)");
     let mut any = false;
     let mut channels_shown = Vec::new();
     for (i, p) in d.ports.iter().enumerate() {
+        if only.is_some_and(|o| o != i && !(p.channel.is_some() && d.ports.get(o).is_some_and(|q| q.channel == p.channel))) {
+            continue;
+        }
         if !t.is_trunk(End { device: d.id, port: i }) {
             continue;
         }
@@ -838,7 +845,7 @@ pub fn trunks(t: &Topology, d: &Device) -> String {
         let _ = writeln!(s, "{:<10} {:<10} {:<8} {} ({})", name, status, p.switchport.native_vlan, p.switchport.allowed, active);
     }
     if !any {
-        s.push_str("(no trunk ports)");
+        s.push_str(if only.is_some() { "(not a trunk port)" } else { "(no trunk ports)" });
     } else if d.vtp.pruning {
         let _ = writeln!(s, "\n{:<10} {:<24} Pruned by VTP", "Port", "Pruning eligible");
         for (i, p) in d.ports.iter().enumerate().filter(|(i, _)| t.is_trunk(End { device: d.id, port: *i })) {
@@ -1052,12 +1059,17 @@ pub fn dhcp_stats(sim: &Sim, d: &Device) -> String {
 }
 
 /// `show ip dhcp pool`.
-pub fn dhcp_pools(sim: &Sim, d: &Device) -> String {
+pub fn dhcp_pools(sim: &Sim, d: &Device, only: Option<&str>) -> Result<String, String> {
     if d.dhcp_pools.is_empty() {
-        return "No DHCP pools configured.".into();
+        return Ok("No DHCP pools configured.".into());
+    }
+    if let Some(name) = only
+        && !d.dhcp_pools.iter().any(|p| p.name == name)
+    {
+        return Err(format!("% No DHCP pool {name}"));
     }
     let mut s = String::new();
-    for p in &d.dhcp_pools {
+    for p in d.dhcp_pools.iter().filter(|p| only.is_none_or(|n| p.name == n)) {
         let leased = sim.state(d.id).map_or(0, |st| st.leases.values().filter(|l| l.pool == p.name).count());
         let _ = writeln!(s, "Pool {}", p.name);
         let _ = writeln!(s, "  Network          {}", p.network.map_or("not set (the pool hands out nothing)".to_string(), |n| n.to_string()));
@@ -1066,12 +1078,41 @@ pub fn dhcp_pools(sim: &Sim, d: &Device) -> String {
         let _ = writeln!(s, "  Domain name      {}", p.domain.as_deref().unwrap_or("-"));
         let _ = writeln!(s, "  Lease time       {}", netlabcraft_model::mgmt::lease_text(p.lease_secs.unwrap_or(86_400)));
         let _ = writeln!(s, "  Leased addresses {leased}");
+        if let Some(n) = p.network {
+            let (usable, excluded) = pool_addresses(n, &d.dhcp_excluded);
+            let free = usable.saturating_sub(excluded).saturating_sub(u64::try_from(leased).unwrap_or(u64::MAX));
+            let _ = writeln!(s, "  Addresses        {usable} usable, {excluded} excluded, {free} free");
+        }
     }
     if !d.dhcp_excluded.is_empty() {
         let ranges: Vec<String> = d.dhcp_excluded.iter().map(|(a, b)| if a == b { a.to_string() } else { format!("{a}-{b}") }).collect();
         let _ = writeln!(s, "Excluded: {}", ranges.join(", "));
     }
-    s.trim_end().to_string()
+    Ok(s.trim_end().to_string())
+}
+
+/// How many host addresses a DHCP pool's network has, and how many of them the excluded ranges
+/// take (overlapping ranges counted once).
+fn pool_addresses(net: Ipv4Net, excluded: &[(std::net::Ipv4Addr, std::net::Ipv4Addr)]) -> (u64, u64) {
+    let n = net.network();
+    let first = u64::from(u32::from(n.addr));
+    let last = u64::from(u32::from(n.broadcast()));
+    // /31 and /32 have no network or broadcast address to skip.
+    let (lo, hi) = if net.prefix >= 31 { (first, last) } else { (first.saturating_add(1), last.saturating_sub(1)) };
+    let usable = if hi >= lo { hi - lo + 1 } else { 0 };
+    let mut spans: Vec<(u64, u64)> =
+        excluded.iter().map(|(a, b)| (u64::from(u32::from(*a)).max(lo), u64::from(u32::from(*b)).min(hi))).filter(|(a, b)| a <= b).collect();
+    spans.sort_unstable();
+    let mut taken = 0u64;
+    let mut reach = 0u64;
+    for (a, b) in spans {
+        let a = a.max(reach);
+        if a <= b {
+            taken = taken.saturating_add(b - a + 1);
+            reach = b.saturating_add(1);
+        }
+    }
+    (usable, taken)
 }
 
 /// `show spanning-tree` for one VLAN.
@@ -1112,6 +1153,69 @@ pub fn spanning_tree(t: &Topology, sim: &Sim, d: &Device, vlan: VlanId, tree: &n
             info.cost,
             format!("{}.{}", info.port_id / 1000, info.port_id % 1000)
         );
+    }
+    s.trim_end().to_string()
+}
+
+/// `show spanning-tree root`: for each VLAN the root's bridge ID, and the cost and port that lead to it.
+pub fn stp_root(t: &Topology, d: &Device, trees: &[(VlanId, netlabcraft_sim::stp::VlanTree)]) -> String {
+    if trees.is_empty() {
+        return "No VLAN has a port in a spanning tree yet.".into();
+    }
+    let mut s = format!("{:<10} {:<28} {:<6} Root port\n", "VLAN", "Root bridge ID", "Cost");
+    for (v, tree) in trees {
+        let Some(me) = tree.bridges.get(&d.id) else { continue };
+        let via = if me.root == me.id {
+            "this switch is the root".to_string()
+        } else {
+            me.root_port.filter(|p| d.ports.get(*p).is_some()).map_or("-".to_string(), |p| netlabcraft_sim::channel::port_label(t, d, p, true))
+        };
+        let _ = writeln!(s, "VLAN{:04}   {:<28} {:<6} {via}", v.get(), format!("{} {}", me.root.priority, me.root.mac.dotted()), me.root_cost);
+    }
+    s.trim_end().to_string()
+}
+
+/// `show spanning-tree bridge`: this switch's own bridge ID in each VLAN, and whether it is the root.
+pub fn stp_bridge(d: &Device, trees: &[(VlanId, netlabcraft_sim::stp::VlanTree)]) -> String {
+    if trees.is_empty() {
+        return "No VLAN has a port in a spanning tree yet.".into();
+    }
+    let mut s = format!("{:<10} {:<28} Root?\n", "VLAN", "Bridge ID");
+    for (v, tree) in trees {
+        let Some(me) = tree.bridges.get(&d.id) else { continue };
+        let _ = writeln!(
+            s,
+            "VLAN{:04}   {:<28} {}",
+            v.get(),
+            format!("{} {}", me.id.priority, me.id.mac.dotted()),
+            if me.root == me.id { "yes" } else { "no" }
+        );
+    }
+    s.trim_end().to_string()
+}
+
+/// `show spanning-tree blockedports`: the ports that are not forwarding, per VLAN.
+pub fn stp_blocked(t: &Topology, d: &Device, trees: &[(VlanId, netlabcraft_sim::stp::VlanTree)]) -> String {
+    let mut s = format!("{:<10} Blocked ports\n", "VLAN");
+    let mut total = 0usize;
+    for (v, tree) in trees {
+        let ports: Vec<String> = tree
+            .ports
+            .iter()
+            .filter(|((dev, p), info)| {
+                *dev == d.id && d.ports.get(*p).is_some() && !info.role.forwards() && info.role != netlabcraft_sim::stp::Role::Disabled
+            })
+            .map(|((_, p), _)| netlabcraft_sim::channel::port_label(t, d, *p, true))
+            .collect();
+        if !ports.is_empty() {
+            total = total.saturating_add(ports.len());
+            let _ = writeln!(s, "VLAN{:04}   {}", v.get(), ports.join(", "));
+        }
+    }
+    if total == 0 {
+        s.push_str("(none: every port in the tree forwards)");
+    } else {
+        let _ = write!(s, "{total} blocked port{}", if total == 1 { "" } else { "s" });
     }
     s.trim_end().to_string()
 }
@@ -1800,7 +1904,7 @@ pub fn ip_interface(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
                 None => {}
             }
             if d.kind == DeviceKind::Router {
-                s.push_str("  Proxy ARP: on\n");
+                s.push_str(if p.proxy_arp_off { "  Proxy ARP: off\n" } else { "  Proxy ARP: on\n" });
             }
             blocks.push(s.trim_end().to_string());
         }

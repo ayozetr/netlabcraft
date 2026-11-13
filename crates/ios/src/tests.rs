@@ -12,6 +12,7 @@ mod leftovers;
 mod routing;
 mod security;
 mod swroute;
+mod troubleshoot;
 
 struct Lab {
     t: Topology,
