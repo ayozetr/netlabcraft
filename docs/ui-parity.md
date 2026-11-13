@@ -1,6 +1,6 @@
 # UI parity
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (Resize Shape, M9.8) · earlier: minor (Constant Delay, the capture filter, origin decisions and absolute start times; instructor windows; touch screens, the phone's Settings, power supplies, the board Programming tab; Programming app and WLC page additions; figures aligned with ROADMAP.md) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (Resize Shape; canvas devices as accessible nodes, M9.8) · earlier: minor (Constant Delay, the capture filter, origin decisions and absolute start times; instructor windows; touch screens, the phone's Settings, power supplies, the board Programming tab; Programming app and WLC page additions; figures aligned with ROADMAP.md) · **Target:** Cisco Packet Tracer 9.0
 
 The window, element by element, against the reference app. Part of
 [target-app-parity.md](target-app-parity.md). The arrangement was observed black-box (local
@@ -36,12 +36,14 @@ The window, element by element, against the reference app. Part of
 | Connections | cable types in the device box | Automatic, Console, Copper Straight-Through, Copper Cross-Over, Fiber, Serial DCE, Serial DTE, Coaxial, Phone and IoT Custom tiles with drawn glyphs; the port menu greys out ports a cable doesn't fit and says why; each kind drawn its own way; the PC's Terminal app over a console cable |
 | Dialogs | open over the workspace | About, Compare with the Answer, PDU information and the Activity Wizard open below the toolbars; IP Configuration and Global Settings laid out on a grid |
 | Language | English plus community files | English and Spanish; every window, tab, page and mode is swept by a test that fails on English text left untranslated ([localization-parity.md](localization-parity.md)) |
+| Accessibility | — | each device on the workspace is an accessible node (`Name, model` and `, selected`, role button): Tab or the arrow keys (device id order) move between them and select, Enter, Space or a screen reader's click opens the device; links and cables are not nodes yet |
 | Not yet | — | scripts in the PC Programming app, device windows as native OS windows |
 
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | Canvas devices as accessible nodes with keyboard navigation (M9.8). |
 | 2026-11-13 | minor | Resize Shape (M9.8): handles on a selected rectangle, ellipse or line, backed by `note.resize`. |
 | 2026-10-31 | minor | Constant Delay, "Capture only the visible events", the sender's decisions in the OSI view, absolute PDU start times; the instructor windows (Answer Network, Initial Network, assessment tree, languages, Connectivity Tests, results, Locks); tablet and smartphone touch screens, the phone's Settings screen, power-supply bays, the board Programming tab, the IoT Custom cable tile; Controller Discover and the NETCONF keep-open box; central switching on the WLC page; 51 models; figures aligned with ROADMAP.md. |
 | 2026-10-30 | minor | Create Complex PDU window, scenario menu, OSI Model view of PDU details, the Programming app (RESTCONF, NETCONF, Controller), IoT tab depth, the Home Gateway, Phone tab SIP box, PoE, switch-card and cloud Physical tabs, coaxial and phone cables, Wi-Fi range by building; 37 models; figures aligned with ROADMAP.md. |

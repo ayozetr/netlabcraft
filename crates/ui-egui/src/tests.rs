@@ -1460,3 +1460,40 @@ fn handle_geometry_follows_the_dragged_handle() {
     assert_eq!(crate::canvas::dragged_handle(Shape::Line, 0, from, (0.0, 0.0)), (0.0, 0.0, 110.0, 70.0));
     assert_eq!(crate::canvas::dragged_handle(Shape::Line, 1, from, (0.0, 0.0)), (10.0, 20.0, -10.0, -20.0));
 }
+
+#[test]
+fn canvas_devices_are_accessible_nodes_found_by_label_and_driven_by_keyboard() {
+    let mut h = harness(Some("vlans"));
+    h.run_steps(3);
+    let t = &h.state().session.topology;
+    let mut ids: Vec<_> = t.devices.iter().map(|d| d.id).collect();
+    ids.sort_by_key(|d| d.0);
+    let (first, second) = (ids[0], ids[1]);
+    let label = |h: &Harness<'static, PacketApp>, d: DeviceId| {
+        let t = &h.state().session.topology;
+        let d = t.device(d).unwrap();
+        format!("{}, {}", d.display_name(), d.catalogue_model().label)
+    };
+    let (l1, l2) = (label(&h, first), label(&h, second));
+    // Every device is a node with the project's own model name; none says selected yet.
+    assert!(h.query_by_label(&l1).is_some() && h.query_by_label(&l2).is_some());
+    assert!(h.query_by_label(&format!("{l1}, selected")).is_none());
+    // A screen reader's click on the node opens the device and selects it.
+    h.get_by_label(&l1).click();
+    h.run_steps(2);
+    assert_eq!(h.state().ui.selected, Some(first));
+    assert!(h.state().ui.windows.contains_key(&first));
+    assert!(h.query_by_label(&format!("{l1}, selected")).is_some());
+    // Focus on a node selects it, and the arrow keys step to the next device in id order.
+    h.get_by_label(&format!("{l1}, selected")).focus();
+    h.run_steps(2);
+    key(&mut h, egui::Key::ArrowRight, egui::Modifiers::NONE);
+    assert_eq!(h.state().ui.selected, Some(second));
+    assert!(h.query_by_label(&format!("{l2}, selected")).is_some());
+    key(&mut h, egui::Key::ArrowLeft, egui::Modifiers::NONE);
+    assert_eq!(h.state().ui.selected, Some(first));
+    // Mouse use is unchanged: clicking empty workspace deselects.
+    let at = canvas_origin(&h) + egui::vec2(30.0, 30.0);
+    click_at(&mut h, at);
+    assert_eq!(h.state().ui.selected, None);
+}

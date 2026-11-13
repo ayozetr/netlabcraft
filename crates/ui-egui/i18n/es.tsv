@@ -388,6 +388,7 @@ User name	Nombre de usuario
 To	Para
 Subject	Asunto
 Send	Enviar
+selected	seleccionado
 Sent to {}	Enviado a {}
 No messages. Press Receive to fetch new mail.	No hay mensajes. Pulsa Recibir para traer el correo nuevo.
 From {} to {}	De {} para {}

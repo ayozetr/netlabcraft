@@ -461,6 +461,10 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
     if std::mem::take(&mut app.ui.canvas.fit_pending) && !app.session.physical {
         fit_view(app);
     }
+    // The devices as accessible nodes. They come first so the workspace, added after them, takes
+    // the pointer; they answer the keyboard and assistive technology (Tab, Enter, arrows, a click
+    // action from a screen reader).
+    device_nodes(app, ui, rect);
     let resp = ui.allocate_rect(rect, Sense::click_and_drag());
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 0.0, tk.canvas);
@@ -758,6 +762,9 @@ fn draw_links(app: &mut PacketApp, painter: &egui::Painter, view: &View, tk: &To
 fn draw_devices(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Tokens) {
     for d in app.session.topology.devices.iter().filter(|d| view.visible(d.id)) {
         let r = view.device_rect(d);
+        if painter.ctx().memory(|m| m.has_focus(node_id(d.id))) {
+            painter.rect_stroke(r.expand(9.0), 10.0, Stroke::new(2.0, tk.text), StrokeKind::Outside);
+        }
         if app.ui.selected == Some(d.id) || app.ui.picked.contains(&d.id) {
             painter.rect_filled(r.expand(6.0), 8.0, tk.selection.gamma_multiply(0.15));
             painter.rect_stroke(r.expand(6.0), 8.0, Stroke::new(1.5, tk.selection), StrokeKind::Outside);
@@ -1008,6 +1015,83 @@ fn draw_handles(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Toke
         let r = Rect::from_center_size(h, vec2(8.0, 8.0));
         painter.rect_filled(r, 1.0, tk.chrome);
         painter.rect_stroke(r, 1.0, Stroke::new(1.5, tk.selection), egui::StrokeKind::Inside);
+    }
+}
+
+/// The widget id of a device's accessible node.
+fn node_id(d: DeviceId) -> egui::Id {
+    egui::Id::unique(("canvas-device", d.0))
+}
+
+/// What a screen reader says about a device: its name, its model and whether it is selected.
+fn device_label(app: &PacketApp, d: &Device) -> String {
+    let mut label = format!("{}, {}", d.display_name(), crate::i18n::tr(d.catalogue_model().label));
+    if app.ui.selected == Some(d.id) || app.ui.picked.contains(&d.id) {
+        label.push_str(", ");
+        label.push_str(tl("selected"));
+    }
+    label
+}
+
+/// Registers each device shown in this view as a focusable, labelled node and handles keyboard
+/// use: Tab moves between them and selects, the arrow keys step to the previous or next device
+/// (in device id order) and Enter, Space or a screen reader's click opens the device like a click.
+fn device_nodes(app: &mut PacketApp, ui: &mut Ui, canvas: Rect) {
+    let level = app.session.view;
+    let view = View { origin: canvas.min.to_vec2() + app.ui.pan, zoom: app.ui.zoom, level, shown: app.session.topology.shown_map(level) };
+    let mut shown: Vec<(DeviceId, Rect, String, bool)> = app
+        .session
+        .topology
+        .devices
+        .iter()
+        .filter(|d| view.visible(d.id))
+        .map(|d| (d.id, view.device_rect(d), device_label(app, d), app.ui.selected == Some(d.id) || app.ui.picked.contains(&d.id)))
+        .collect();
+    shown.sort_by_key(|(id, ..)| id.0);
+    let mut select = None;
+    let mut open = None;
+    for (i, (id, rect, label, selected)) in shown.iter().enumerate() {
+        let r = ui.interact(rect.intersect(canvas), node_id(*id), Sense::click());
+        r.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, *selected, label.clone()));
+        if r.gained_focus() {
+            select = Some(*id);
+        }
+        if r.clicked() {
+            open = Some(*id);
+        }
+        if r.has_focus() {
+            // The arrows are ours (device id order), not egui's spatial focus move.
+            ui.memory_mut(|m| {
+                m.set_focus_lock_filter(r.id, egui::EventFilter { horizontal_arrows: true, vertical_arrows: true, ..Default::default() })
+            });
+            let (next, prev) = ui.input_mut(|inp| {
+                let next =
+                    inp.consume_key(egui::Modifiers::NONE, egui::Key::ArrowRight) | inp.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown);
+                let prev = inp.consume_key(egui::Modifiers::NONE, egui::Key::ArrowLeft) | inp.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp);
+                (next, prev)
+            });
+            let target = if next {
+                shown.get(i + 1)
+            } else if prev {
+                i.checked_sub(1).and_then(|j| shown.get(j))
+            } else {
+                None
+            };
+            if let Some((t, ..)) = target {
+                ui.memory_mut(|m| m.request_focus(node_id(*t)));
+                select = Some(*t);
+            }
+        }
+    }
+    if let Some(d) = select {
+        app.ui.picked.clear();
+        app.ui.picked_clusters.clear();
+        app.ui.selected_note = None;
+        app.ui.selected = Some(d);
+    }
+    if let Some(d) = open {
+        app.ui.selected = Some(d);
+        console::open(app, d);
     }
 }
 
