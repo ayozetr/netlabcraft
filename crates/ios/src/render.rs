@@ -2694,7 +2694,7 @@ pub fn crypto_ipsec_sa(sim: &Sim, d: &Device) -> String {
             let suite = sa.v1.as_deref().map(|v| v.esp_suite).or_else(|| sa.v2.as_deref().map(|v| v.esp_suite)).flatten();
             let esp = match suite {
                 Some(suite) => format!("{} (real ciphers)", suite.describe()),
-                None => "the simulator's stand-in cipher (DES, 3DES and AH are not implemented)".to_string(),
+                None => "the simulator's stand-in cipher (AH next to ESP in one transform set is not implemented)".to_string(),
             };
             let _ = writeln!(s, "  ESP: {esp}");
         }

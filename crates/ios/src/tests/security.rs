@@ -456,7 +456,7 @@ fn ikev2_mismatches_are_refused_on_the_wire() {
     assert!(ping_settled(&mut lab, a, "192.168.2.10").contains(" 0 answered"));
     assert!(lab.run(r1, "show crypto ikev2 sa").contains("TS_UNACCEPTABLE"));
     let _ = r2;
-    // Transforms without a real implementation fall back to the stand-in cipher, both ends alike.
+    // 3DES transforms run for real, both ends alike.
     let (mut lab2, s1, _isp, s2, pc) = super::two_sites();
     for (r, cfg) in [
         (s1, ikev2_config("192.168.1.0 0.0.0.255 192.168.2.0 0.0.0.255", "198.51.100.1", "k")),
@@ -466,7 +466,7 @@ fn ikev2_mismatches_are_refused_on_the_wire() {
         lab2.run(r, "conf t\ncrypto ipsec transform-set TS esp-3des esp-md5-hmac\nend");
     }
     assert!(ping_settled(&mut lab2, pc, "192.168.2.10").contains("4 answered"));
-    assert!(lab2.run(s1, "show crypto ikev2 sa").contains("stand-in cipher"));
+    assert!(lab2.run(s1, "show crypto ikev2 sa").contains("ESP: 3DES-CBC / HMAC-MD5-96 (real ciphers)"));
     // Configuration mistakes explain themselves.
     lab.run(r1, "conf t\ncrypto ikev2 proposal P2");
     assert!(lab.try_run(r1, "encryption rot13").contains("not a cipher"));

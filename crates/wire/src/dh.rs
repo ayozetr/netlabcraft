@@ -79,7 +79,8 @@ impl Big {
         }
     }
 
-    fn bit(&self, i: usize) -> bool {
+    /// Bit `i` (0 is the least significant).
+    pub fn bit(&self, i: usize) -> bool {
         self.0.get(i / 64).is_some_and(|w| (w >> (i % 64)) & 1 == 1)
     }
 
@@ -328,6 +329,32 @@ impl Mont {
             }
         }
         let mut out = Big(self.mul(&acc, &one));
+        out.trim();
+        out
+    }
+}
+
+/// Modular multiplication in a fixed odd modulus (two Montgomery products), for the
+/// elliptic-curve fields of [`crate::ec`].
+pub struct ModMul {
+    mont: Mont,
+    modulus: Big,
+}
+
+impl ModMul {
+    /// `None` for an even or zero modulus.
+    pub fn new(m: &Big) -> Option<ModMul> {
+        Some(ModMul { mont: Mont::new(m)?, modulus: m.clone() })
+    }
+
+    /// a·b mod m for `a` and `b` of any size (reduced first when they are not below m).
+    pub fn mul(&self, a: &Big, b: &Big) -> Big {
+        let s = self.mont.n.len();
+        let a = Mont::pad(&if a < &self.modulus { a.clone() } else { a.rem(&self.modulus) }, s);
+        let b = Mont::pad(&if b < &self.modulus { b.clone() } else { b.rem(&self.modulus) }, s);
+        // (a·b·R⁻¹) · R² · R⁻¹ = a·b.
+        let ab = self.mont.mul(&a, &b);
+        let mut out = Big(self.mont.mul(&ab, &self.mont.r2));
         out.trim();
         out
     }

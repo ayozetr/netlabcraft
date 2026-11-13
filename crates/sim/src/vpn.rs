@@ -28,10 +28,10 @@
 //! differ leave message 5 undecryptable and its HASH_I wrong (AUTHENTICATION-FAILED); quick
 //! mode, encrypted and hashed with those keys, is refused at message 2 when the transform sets
 //! or crypto map entries don't match. The refusing side sends a notification (in the clear
-//! here, so the event list shows it). AES policies encrypt for real, DES and 3DES with a
-//! stand-in (`crate::ikev1`). ESP keys come from quick mode's KEYMAT; `esp-aes` (any key size)
-//! and `esp-null` with HMAC integrity run for real, DES, 3DES and AH with the stand-in cipher of
-//! `netlabcraft_wire::vpn`.
+//! here, so the event list shows it). AES, DES and 3DES policies encrypt for real
+//! (`crate::ikev1`). ESP keys come from quick mode's KEYMAT; `esp-aes` (any key size),
+//! `esp-des`, `esp-3des` and `esp-null` with HMAC integrity run for real, AH with the stand-in
+//! cipher of `netlabcraft_wire::vpn`.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -42,8 +42,9 @@ use netlabcraft_core::DeviceId;
 use netlabcraft_core::MacAddr;
 use netlabcraft_model::vpn::{CryptoMapEntry, Tunnel, TunnelSource};
 use netlabcraft_model::{Device, DeviceKind, End, NextHop, Topology, ifname};
+use netlabcraft_wire::ah::PROTO_AH;
 use netlabcraft_wire::ike::{self, Isakmp, Payload, Proposal, Transform};
-use netlabcraft_wire::vpn::{Esp, Gre, NEXT_IPV4, PROTO_ESP, PROTO_GRE};
+use netlabcraft_wire::vpn::{Gre, NEXT_IPV4, PROTO_ESP, PROTO_GRE};
 use netlabcraft_wire::{ETHERTYPE_IPV4, Ipv4, PROTO_UDP, Udp};
 
 use crate::ikev1::{P1Suite, V1State};
@@ -533,6 +534,46 @@ fn policy_transform(number: u8, p: Option<&netlabcraft_model::vpn::IsakmpPolicy>
     Transform { number, id: 1, attrs }
 }
 
+/// The integrity algorithm of a transform set made only of AH transforms (`ah-sha-hmac`,
+/// `ah-md5-hmac`, `ah-sha256-hmac`: the last one wins), the case that runs as a real AH
+/// association. `None` for anything else, including AH next to ESP transforms in one set.
+pub(crate) fn ah_integ(ts: &netlabcraft_model::vpn::TransformSet) -> Option<netlabcraft_wire::suite::Integ> {
+    use netlabcraft_wire::suite::Integ;
+    let mut integ = None;
+    for t in &ts.transforms {
+        integ = Some(match t.split_whitespace().next()? {
+            "ah-sha-hmac" => Integ::HmacSha1_96,
+            "ah-md5-hmac" => Integ::HmacMd5_96,
+            "ah-sha256-hmac" => Integ::HmacSha256_128,
+            _ => return None,
+        });
+    }
+    integ
+}
+
+/// The security protocol a quick-mode or child-SA exchange carries for a suite.
+pub(crate) fn proto_of(suite: Option<netlabcraft_wire::vpn::EspSuite>) -> u8 {
+    if suite.is_some_and(|s| s.encr == netlabcraft_wire::vpn::EspEncr::Ah) { ike::PROTO_AH } else { ike::PROTO_ESP }
+}
+
+/// The proposal of quick mode for a transform set: the protocol (AH for a set of AH transforms
+/// only, ESP otherwise) and its transform (RFC 2407 §4.4.3, §4.4.4 and §4.5).
+fn child_proposal(ts: Option<&netlabcraft_model::vpn::TransformSet>) -> (u8, Transform) {
+    use netlabcraft_wire::suite::Integ;
+    let mode = if ts.is_some_and(|t| t.transport) { 2 } else { 1 };
+    if let Some(integ) = ts.and_then(ah_integ) {
+        // AH_MD5 = 2, AH_SHA = 3, AH_SHA2_256 = 5; the authentication algorithm attribute
+        // names the same HMAC (HMAC-MD5 = 1, HMAC-SHA = 2, HMAC-SHA2-256 = 5).
+        let (id, auth) = match integ {
+            Integ::HmacMd5_96 => (2, 1),
+            Integ::HmacSha256_128 => (5, 5),
+            _ => (3, 2),
+        };
+        return (ike::PROTO_AH, Transform { number: 1, id, attrs: vec![(1, 1), (2, 3_600), (4, mode), (5, auth)] });
+    }
+    (ike::PROTO_ESP, esp_transform(ts))
+}
+
 /// ESP transform from a transform set (RFC 2407 §4.4.4 and §4.5).
 fn esp_transform(ts: Option<&netlabcraft_model::vpn::TransformSet>) -> Transform {
     let has = |w: &str| ts.is_some_and(|t| t.transforms.iter().any(|x| x.split_whitespace().next() == Some(w)));
@@ -570,13 +611,17 @@ fn is_isakmp(ip: &Ipv4) -> bool {
         && Udp::decode(&ip.payload, ip.src, ip.dst).is_ok_and(|u| u.dst_port == ike::ISAKMP_PORT && u.src_port == ike::ISAKMP_PORT)
 }
 
-/// The ESP algorithms a transform set asks for, when every one of them is implemented for real
-/// (AES-CBC of any key size or NULL, with HMAC-SHA1-96, HMAC-SHA-256-128, HMAC-MD5-96 or no
-/// integrity check). `None` for DES, 3DES, AH or a set with neither cipher nor integrity: those
-/// keep the stand-in cipher of `netlabcraft_wire::vpn`.
+/// The IPsec algorithms a transform set asks for, when every one of them is implemented: ESP
+/// (AES-CBC of any key size, DES-CBC, 3DES-CBC or NULL, with HMAC-SHA1-96, HMAC-SHA-256-128,
+/// HMAC-MD5-96 or no integrity check) or AH on its own (HMAC-SHA1-96, HMAC-MD5-96 or
+/// HMAC-SHA-256-128). `None` for AH next to ESP in one set or a set with neither cipher nor
+/// integrity: those keep the stand-in cipher of `netlabcraft_wire::vpn`.
 pub(crate) fn esp_suite(ts: &netlabcraft_model::vpn::TransformSet) -> Option<netlabcraft_wire::vpn::EspSuite> {
     use netlabcraft_wire::suite::Integ;
     use netlabcraft_wire::vpn::{EspEncr, EspSuite};
+    if let Some(integ) = ah_integ(ts) {
+        return Some(EspSuite { encr: EspEncr::Ah, integ });
+    }
     let mut encr = None;
     let mut integ = Integ::None;
     for t in &ts.transforms {
@@ -589,6 +634,8 @@ pub(crate) fn esp_suite(ts: &netlabcraft_model::vpn::TransformSet) -> Option<net
                 }
                 encr = Some(EspEncr::AesCbc(bits));
             }
+            "esp-des" => encr = Some(EspEncr::Des),
+            "esp-3des" => encr = Some(EspEncr::Des3),
             "esp-null" => encr = Some(EspEncr::Null),
             "esp-sha-hmac" => integ = Integ::HmacSha1_96,
             "esp-sha256-hmac" => integ = Integ::HmacSha256_128,
@@ -655,7 +702,7 @@ impl Sim {
     pub(crate) fn crypto_out(&mut self, t: &Topology, d: &Device, out: &L3If, datagram: &[u8]) -> Result<Option<(Vec<u8>, Ipv4Addr)>, String> {
         let Some(map) = d.crypto.applied.iter().find(|(n, _)| same_name(n, &out.name)).map(|(_, m)| m.clone()) else { return Ok(None) };
         let Ok(ip) = Ipv4::decode(datagram) else { return Ok(None) };
-        if ip.protocol == PROTO_ESP || is_isakmp(&ip) {
+        if ip.protocol == PROTO_ESP || ip.protocol == PROTO_AH || is_isakmp(&ip) {
             return Ok(None);
         }
         let Some(entry) = d.crypto.map(&map).find(|e| e.acl.as_deref().is_some_and(|a| acl_permits(d, a, &ip))).cloned() else { return Ok(None) };
@@ -733,11 +780,9 @@ impl Sim {
                 sa.bytes = sa.bytes.saturating_add(u64::try_from(datagram.len()).unwrap_or(u64::MAX));
                 let seq = u32::try_from(sa.encaps).unwrap_or(u32::MAX);
                 let (suite, key) = sa.v1.as_deref().map(|v| (v.esp_suite, v.esp_out.clone())).unwrap_or_default();
-                let esp = crate::ikev2::esp_seal(suite, &key, sa.spi_out, seq, datagram);
+                let spi = sa.spi_out;
                 let id = self.ip_id();
-                let mut outer = Ipv4 { id, ttl: 255, protocol: PROTO_ESP, src: local, dst: peer, payload: esp.encode() }.encode();
-                crate::qos::copy_ds(datagram, &mut outer);
-                Ok(Some((outer, peer)))
+                Ok(Some((crate::ikev2::ipsec_seal(suite, &key, spi, seq, id, local, peer, datagram), peer)))
             }
         }
     }
@@ -841,7 +886,8 @@ impl Sim {
         v1.esp_suite = ts.and_then(esp_suite);
         v1.qm_ni = ike::filler(&[seed, b"qm-ni"].concat(), 16);
         v1.start_qm(qm_id);
-        let proposal = Proposal { number: 1, protocol: ike::PROTO_ESP, spi: v1.spi_mine.to_be_bytes().to_vec(), transforms: vec![esp_transform(ts)] };
+        let (protocol, transform) = child_proposal(ts);
+        let proposal = Proposal { number: 1, protocol, spi: v1.spi_mine.to_be_bytes().to_vec(), transforms: vec![transform] };
         let rest = vec![Payload::Sa(vec![proposal]), Payload::Nonce(v1.qm_ni.clone()), id_payload(local), id_payload(peer)];
         let mut payloads = vec![Payload::Hash(v1.hash_qm(qm_id, None, &rest))];
         payloads.extend(rest);
@@ -1029,7 +1075,7 @@ impl Sim {
                 let verdict = match (&my_entry, &offer) {
                     (None, _) => Err(format!("no crypto map entry here for {peer}")),
                     (_, None) => Err("quick mode message 1 carries no ESP proposal".to_string()),
-                    (Some(_), Some(o)) if o.transforms.first() != Some(&esp_transform(ts)) => {
+                    (Some(_), Some(o)) if (o.protocol, o.transforms.first()) != (child_proposal(ts).0, Some(&child_proposal(ts).1)) => {
                         // The configurations say how they differ, when the peer is known.
                         let why = other.and_then(|o| {
                             let oe = crate::l3_ifaces(o)
@@ -1053,8 +1099,8 @@ impl Sim {
                 v1.spi_mine = fresh_spi(&[&seed[..], b"spi-r"].concat());
                 v1.qm_nr = ike::filler(&[&seed[..], b"qm-nr"].concat(), 16);
                 v1.esp_suite = ts.and_then(esp_suite);
-                let proposal =
-                    Proposal { number: 1, protocol: ike::PROTO_ESP, spi: v1.spi_mine.to_be_bytes().to_vec(), transforms: vec![esp_transform(ts)] };
+                let (protocol, transform) = child_proposal(ts);
+                let proposal = Proposal { number: 1, protocol, spi: v1.spi_mine.to_be_bytes().to_vec(), transforms: vec![transform] };
                 let rest = vec![Payload::Sa(vec![proposal]), Payload::Nonce(v1.qm_nr.clone()), id_payload(peer), id_payload(local)];
                 let mut payloads = vec![Payload::Hash(v1.hash_qm(m.message_id, Some(&v1.qm_ni), &rest))];
                 payloads.extend(rest);
@@ -1181,14 +1227,14 @@ impl Sim {
     /// An ESP packet addressed to this router: checked, opened, and the inner packet handled as
     /// if it had arrived on `ifc`.
     pub(crate) fn esp_in(&mut self, t: &Topology, d: &Device, ifc: &L3If, ip: &Ipv4) -> Result<(), String> {
-        let esp = Esp::decode(&ip.payload).map_err(|e| e.to_string())?;
-        if let Some(r) = self.esp_in_v2(t, d, ifc, ip, &esp) {
+        let spi = crate::ikev2::inbound_spi(ip).map_err(|e| e.to_string())?;
+        if let Some(r) = self.esp_in_v2(t, d, ifc, ip, spi) {
             return r;
         }
         let expects = d.crypto.applied.values().any(|m| d.crypto.map(m).any(|e| e.peer == Some(ip.src)));
         let sa = self.state.get(&d.id).and_then(|s| s.ipsec.get(&ip.src));
         let keys = sa.filter(|sa| sa.phase == IkePhase::Established).and_then(|sa| {
-            let prev = sa.prev_in.clone().filter(|p| p.0 == esp.spi);
+            let prev = sa.prev_in.clone().filter(|p| p.0 == spi);
             sa.v1.as_deref().map(|v| prev.unwrap_or((sa.spi_in, v.esp_suite, v.esp_in.clone())))
         });
         let Some((spi_in, suite, key)) = keys else {
@@ -1201,10 +1247,10 @@ impl Sim {
                 format!("ESP from {}, which is not an IPsec peer here", ip.src)
             });
         };
-        let opened = if esp.spi != spi_in {
-            Err(format!("ESP SPI 0x{:08x} from {} matches no security association", esp.spi, ip.src))
+        let opened = if spi != spi_in {
+            Err(format!("IPsec SPI 0x{spi:08x} from {} matches no security association", ip.src))
         } else {
-            match crate::ikev2::esp_open(suite, &key, &esp) {
+            match crate::ikev2::ipsec_open(suite, &key, ip) {
                 Ok((NEXT_IPV4, inner)) => Ok(inner),
                 Ok((next, _)) => Err(format!("ESP carrying next header {next} is not understood")),
                 Err(_) => Err(format!("ESP from {} failed its integrity check (the keys differ?)", ip.src)),
