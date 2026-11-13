@@ -1,6 +1,6 @@
 # Releasing NetLabCraft
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** major (the release pipeline exists and ran end to end; first release)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (second release, 0.2.0) · earlier: major (the release pipeline exists and ran end to end; first release)
 
 The recipe follows the shared Crafting Apps playbook (`release/playbook.md` in craftrules): a
 release is whatever is on the `release` branch. Pushing to it makes `.github/workflows/release.yml`
@@ -60,6 +60,7 @@ distributions.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | Second release, 0.2.0, cut with the flow above. |
 | 2026-11-13 | major | Release pipeline written and run end to end: Linux, Windows, macOS and web packages, SHA256SUMS and a draft release; first release. |
 | 2026-11-13 | minor | GitHub Actions back: CI workflow and Dependabot added. |
 | 2026-10-30 | minor | Releases on hold by the owner's decision; About window lists contributors; app icon and Linux per-user installer. |
