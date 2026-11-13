@@ -1,0 +1,4 @@
+#!/bin/sh
+# Refuses a commit that carries a key, a token or a personal path.
+# Enable once per clone: git config core.hooksPath .githooks
+exec cargo xtask secrets
