@@ -485,9 +485,21 @@ impl Keys {
     /// prf+(SKEYSEED, Ni | Nr | SPIi | SPIr), each as long as its algorithm needs.
     pub fn derive_with(suite: Suite, shared: &[u8], ni: &[u8], nr: &[u8], spi_i: &[u8; 8], spi_r: &[u8; 8]) -> Keys {
         let skeyseed = suite.prf.prf(&[ni, nr].concat(), shared);
+        Keys::from_seed(suite, &skeyseed, ni, nr, spi_i, spi_r)
+    }
+
+    /// The keys of an IKE SA that replaces another (RFC 7296 §2.18): SKEYSEED = prf(SK_d of
+    /// the old SA, g^ir (new) | Ni | Nr), then the same expansion as the first SA, with the new
+    /// SPIs.
+    pub fn rekey_with(suite: Suite, old_sk_d: &[u8], shared: &[u8], ni: &[u8], nr: &[u8], spi_i: &[u8; 8], spi_r: &[u8; 8]) -> Keys {
+        let skeyseed = suite.prf.prf(old_sk_d, &[shared, ni, nr].concat());
+        Keys::from_seed(suite, &skeyseed, ni, nr, spi_i, spi_r)
+    }
+
+    fn from_seed(suite: Suite, skeyseed: &[u8], ni: &[u8], nr: &[u8], spi_i: &[u8; 8], spi_r: &[u8; 8]) -> Keys {
         let seed = [ni, nr, &spi_i[..], &spi_r[..]].concat();
         let (p, a, e) = (suite.prf.len(), suite.integ.key_len(), suite.enc_len);
-        let m = suite.prf.plus(&skeyseed, &seed, 3 * p + 2 * a + 2 * e);
+        let m = suite.prf.plus(skeyseed, &seed, 3 * p + 2 * a + 2 * e);
         let mut at = 0;
         let mut take = |n: usize| {
             let v = m.get(at..at + n).unwrap_or_default().to_vec();
@@ -734,6 +746,26 @@ mod tests {
         let t2 = crate::sha1::hmac_sha1(b"key", &[&t1[..], b"seed\x02"].concat());
         assert_eq!(&out[..20], &t1);
         assert_eq!(&out[20..], &t2[..20]);
+    }
+
+    #[test]
+    fn a_replacement_ike_sa_is_keyed_from_the_old_sk_d() {
+        // RFC 7296 §2.18: SKEYSEED = prf(SK_d (old), g^ir (new) | Ni | Nr), then the expansion of
+        // §2.14 with the new SPIs.
+        let suite = Suite { cipher: CipherKind::Aes, enc_len: 32, prf: Prf::HmacSha256, integ: Integ::HmacSha256_128 };
+        let old = Keys::derive_with(suite, &[7; 64], &[3; 32], &[4; 32], &[1; 8], &[2; 8]);
+        let (shared, ni, nr) = ([9u8; 64], [5u8; 32], [6u8; 32]);
+        let new = Keys::rekey_with(suite, &old.sk_d, &shared, &ni, &nr, &[11; 8], &[12; 8]);
+        let skeyseed = crate::sha256::hmac_sha256(&old.sk_d, &[&shared[..], &ni, &nr].concat());
+        let m = Prf::HmacSha256.plus(&skeyseed, &[&ni[..], &nr, &[11; 8], &[12; 8]].concat(), 224);
+        assert_eq!(new.sk_d, m[..32].to_vec());
+        assert_eq!(new.sk_pr, m[192..224].to_vec());
+        // Another old SA, other nonces or other SPIs give other keys; the first SA's formula
+        // (SKEYSEED from the nonces) is not the one used.
+        let other = Keys::rekey_with(suite, &[0; 32], &shared, &ni, &nr, &[11; 8], &[12; 8]);
+        assert_ne!(other.sk_d, new.sk_d);
+        assert_ne!(Keys::derive_with(suite, &shared, &ni, &nr, &[11; 8], &[12; 8]).sk_d, new.sk_d);
+        assert_ne!(Keys::rekey_with(suite, &old.sk_d, &shared, &ni, &nr, &[11; 8], &[13; 8]).sk_d, new.sk_d);
     }
 
     #[test]

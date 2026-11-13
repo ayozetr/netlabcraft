@@ -1,6 +1,6 @@
 # Target-app parity: NetLabCraft vs Cisco Packet Tracer
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (results replay (M9.6); no percentage re-scored) · earlier: minor (counts measured again after seven troubleshooting labs; percentages not re-scored) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (packaged-build gate met), major (the lab book run end to end, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers: areas and course topics re-scored, the untested-labs deduction cut; counts measured again) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (M9.5: IKEv1 group 24 is a real Diffie-Hellman group) · also merged with M9.6 and M9.8 (results replay; Resize Shape and accessible devices) · earlier: minor (M9.5: AH next to ESP in one transform set is a real bundle), minor (M9.5: the IKE SA has a lifetime and is replaced before it runs out), minor (counts measured again after seven troubleshooting labs; percentages not re-scored) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman), minor (packaged-build gate met), major (the lab book run end to end, security leftovers, instructor tools, Simulation-mode and wireless leftovers, end devices, automation depth and routing leftovers: areas and course topics re-scored, the untested-labs deduction cut; counts measured again) · **Target:** Cisco Packet Tracer 9.0 (as used in CCNA courses)
 
 This is the authoritative parity assessment. [`ROADMAP.md`](../ROADMAP.md) summarizes it,
 [`gaps.md`](gaps.md) lists every shortfall, and the area checklists hold the detail:
@@ -142,9 +142,9 @@ first estimate) counted topics as present without weighing their depth or the un
   switched; the PEAP key exchange is a toy size and there are no certificates. VRRP follows its
   timers now; GLBP hellos are still not on the wire (their format isn't public).
 - **CCNA 3 (ENSA):** ten labs of the book run, three of them troubleshooting labs (OSPF, ACLs, NAT, GRE over IPsec, QoS, network
-  management, RESTCONF). IPsec runs a real Diffie-Hellman exchange (MODP and the P-256 and P-384 curves) and real AES, DES and
+  management, RESTCONF). IPsec runs a real Diffie-Hellman exchange (MODP groups 1 to 16 and 24, and the P-256 and P-384 curves) and real AES, DES and
   3DES with SHA-1, SHA-256 or MD5 HMACs under IKEv1 and IKEv2, with lifetimes and child-SA
-  rekeying, and AH on its own is real (tunnel mode); AH bundled with ESP keeps a stand-in cipher, and the IKE SA itself is not rekeyed. Automation scores 80%:
+  rekeying, and AH on its own is real (tunnel mode); AH bundles with ESP (AH outside ESP) run for real; the IKE SA has a lifetime and is replaced before it runs out. Automation scores 80%:
   RESTCONF in JSON and XML over TLS 1.2, NETCONF with a candidate datastore over SSH 2.0, and a
   controller that discovers routers over CDP and LLDP and pushes templates; TLS has no
   certificate, the SSH host key is a stand-in, and the controller is still smaller than the
@@ -177,6 +177,9 @@ Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | IKEv1 group 24 runs for real (M9.5); only a no-cipher transform set keeps a crypto stand-in; no percentage changed. |
+| 2026-11-13 | minor | AH bundled with ESP in one transform set runs for real (M9.5); IKEv1 group 24 is what is left of the crypto stand-ins; no percentage changed. |
+| 2026-11-13 | minor | IKE SA lifetimes and rekeying (M9.5); the crypto stand-ins left are AH bundled with ESP and IKEv1 group 24; no percentage changed. |
 | 2026-11-13 | minor | Results replay (M9.6): the forgery gap is closed for JSON results; no percentage changed. |
 | 2026-11-13 | minor | Seven troubleshooting labs (21 to 27) join the book: 27 labs, 11 over MCP. Counts measured again (1015 grammar entries, 138 commands, 620 tests); the percentages are not re-scored: the new labs found 12 small console gaps, fixed, and the estimate that more labs would turn up more is unchanged. |
 | 2026-11-13 | minor | VRRPv3 router advertisements for IPv6 (M9.2): the routing leftovers (old gaps item 5) are done; no percentage changed. |

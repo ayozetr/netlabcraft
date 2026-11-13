@@ -3,7 +3,7 @@
 //! GRE is the real wire format. ESP has the real header and trailer layout (SPI, sequence
 //! number, padding, pad length, next header, integrity check value). Associations IKEv2 set
 //! up with `esp-aes esp-sha-hmac` use the real transforms: AES-128-CBC with an explicit IV
-//! (RFC 3602) and HMAC-SHA1-96 (RFC 2404), see [`Esp::seal_aes`]; every real suite is in [`Esp::seal_with`], AH is in [`crate::ah`]. Only a transform set mixing AH with ESP is left with a stand-in, where the "cipher" is
+//! (RFC 3602) and HMAC-SHA1-96 (RFC 2404), see [`Esp::seal_aes`]; every real suite is in [`Esp::seal_with`], AH is in [`crate::ah`] (alone, or outside ESP in a bundle). Only a transform set with no cipher at all is left with a stand-in, where the "cipher" is
 //! **not real encryption**: the payload is XORed with a keystream made from MD5 over the
 //! pre-shared key, the SPI, the sequence number and a block counter, and the integrity value
 //! is a truncated MD5 over the key and the packet. That is enough for a teaching simulator to
