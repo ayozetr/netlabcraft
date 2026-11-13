@@ -2360,7 +2360,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::AclResequence => {
             let (start, step) = (parse_seq(arg(1))?, parse_seq(arg(2))?);
             let list = c.dm()?.acls.iter_mut().find(|a| a.name == arg(0)).ok_or_else(|| format!("% No access list {}", arg(0)))?;
+            let before: Vec<u32> = (0..list.entries.len()).map(|i| list.seq_of(i)).collect();
             list.resequence(start, step);
+            // Counters move with their lines to the new numbers.
+            let moves: Vec<(u32, u32)> = before.into_iter().zip(list.entries.iter().map(|e| e.seq)).collect();
+            c.sim.remap_acl_hits(c.dev, arg(0), &moves);
             Ok(String::new())
         }
         Id::NoAccessList => {
@@ -2413,7 +2417,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             {
                 let seq = parse_seq(w)?;
                 let list = c.dm()?.acls.iter_mut().find(|a| a.name == name).ok_or("% The list was deleted")?;
-                return if list.remove_seq(seq) { Ok(String::new()) } else { Err(format!("% {name} has no line {seq}")) };
+                if !list.remove_seq(seq) {
+                    return Err(format!("% {name} has no line {seq}"));
+                }
+                c.sim.forget_acl_hit(c.dev, &name, seq);
+                return Ok(String::new());
             }
             let entry = parse_acl_entry(&words, extended)?;
             if spec.id == Id::AclEntryLine {
@@ -2421,8 +2429,16 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             } else {
                 let list = c.dm()?.acls.iter_mut().find(|a| a.name == name).ok_or("% The list was deleted")?;
                 let before = list.entries.len();
+                list.number_lines();
+                let gone: Vec<u32> = list.entries.iter().filter(|e| e.same_rule(&entry)).map(|e| e.seq).collect();
                 list.entries.retain(|e| !e.same_rule(&entry));
-                if list.entries.len() == before { Err("% No such line".into()) } else { Ok(String::new()) }
+                if list.entries.len() == before {
+                    return Err("% No such line".into());
+                }
+                for seq in gone {
+                    c.sim.forget_acl_hit(c.dev, &name, seq);
+                }
+                Ok(String::new())
             }
         }
         Id::AccessGroup | Id::NoAccessGroup => {

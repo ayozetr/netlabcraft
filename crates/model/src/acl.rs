@@ -317,6 +317,13 @@ impl Acl {
         }
     }
 
+    /// The key a hit counter is kept under for the line at `idx` (`None`: the implicit deny):
+    /// the line's sequence number, so counters follow their lines when others are added or
+    /// removed. `usize::MAX` stands for the implicit deny.
+    pub fn hit_key(&self, idx: Option<usize>) -> usize {
+        idx.map_or(usize::MAX, |i| usize::try_from(self.seq_of(i)).unwrap_or(usize::MAX - 1))
+    }
+
     /// Gives every line its effective sequence number, so explicit numbers can be added.
     pub fn number_lines(&mut self) {
         let seqs: Vec<u32> = (0..self.entries.len()).map(|i| self.seq_of(i)).collect();

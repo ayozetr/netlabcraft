@@ -1681,11 +1681,11 @@ pub fn access_lists(sim: &Sim, d: &Device, only: Option<&str>) -> String {
     for a in d.acls.iter().filter(|a| only.is_none_or(|n| a.name.eq_ignore_ascii_case(n))) {
         let _ = writeln!(s, "{} access list {}", if a.extended { "Extended" } else { "Standard" }, a.name);
         for (i, e) in a.entries.iter().enumerate() {
-            let n = hits.get(&(a.name.clone(), i)).copied().unwrap_or(0);
+            let n = hits.get(&(a.name.clone(), a.hit_key(Some(i)))).copied().unwrap_or(0);
             let m = if n > 0 { format!(" ({n} match{})", if n == 1 { "" } else { "es" }) } else { String::new() };
             let _ = writeln!(s, "    {} {}{m}", a.seq_of(i), e.text(a.extended));
         }
-        let implicit = hits.get(&(a.name.clone(), usize::MAX)).copied().unwrap_or(0);
+        let implicit = hits.get(&(a.name.clone(), a.hit_key(None))).copied().unwrap_or(0);
         let _ = writeln!(s, "    (implicit) deny everything else{}", if implicit > 0 { format!(" ({implicit} matches)") } else { String::new() });
     }
     s.trim_end().to_string()

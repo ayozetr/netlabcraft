@@ -624,7 +624,7 @@ fn access_lists_filter_forwarded_traffic() {
         r.ports[0].access.inbound = Some("110".into());
     }
     assert_eq!(marks(&sim.ping(&t, a, ip("10.2.0.10"), PingOptions { count: 3, ..Default::default() }).unwrap()), "UUU");
-    assert_eq!(sim.state(r1).unwrap().acl_hits.get(&("110".to_string(), 0)), Some(&3));
+    assert_eq!(sim.state(r1).unwrap().acl_hits.get(&("110".to_string(), 10)), Some(&3));
     // Other destinations still pass (the router itself, through the permit entry).
     assert_eq!(marks(&sim.ping(&t, a, ip("172.16.0.1"), PingOptions { count: 2, ..Default::default() }).unwrap()), "!!");
     // A standard list outbound towards R2: only 10.9.0.0/16 may leave, so PC1 is cut.

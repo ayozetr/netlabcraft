@@ -770,6 +770,8 @@ pub struct DevState {
     /// DHCP servers: addresses handed out.
     pub leases: BTreeMap<Ipv4Addr, Lease>,
     /// Access-list matches: (list, entry index or `usize::MAX` for the implicit deny) → count.
+    /// How often each access-list line matched, by list name and the line's sequence number
+    /// (`usize::MAX`: the implicit deny). Firewall rules count under their position.
     pub acl_hits: BTreeMap<(String, usize), u64>,
     /// NAT translations in use.
     pub nat: Vec<NatEntry>,
@@ -1659,7 +1661,7 @@ impl Sim {
             let Some((rule, acl_name, line)) = d.nat.rules.iter().find_map(|r| {
                 let a = d.acls.iter().find(|a| a.name == r.acl)?;
                 let (permit, line) = a.evaluate(&key);
-                permit.then(|| (r, a.name.clone(), line.unwrap_or(usize::MAX)))
+                permit.then(|| (r, a.name.clone(), a.hit_key(line)))
             }) else {
                 return Ok(None);
             };
@@ -1833,7 +1835,7 @@ impl Sim {
         let key = acl_key(ip);
         let (permit, entry) = acl.evaluate(&key);
         let st = self.st(d.id);
-        *st.acl_hits.entry((acl.name.clone(), entry.unwrap_or(usize::MAX))).or_insert(0) += 1;
+        *st.acl_hits.entry((acl.name.clone(), acl.hit_key(entry))).or_insert(0) += 1;
         // `log` on the matching line: a message for the device's log.
         if let Some((i, e)) = entry.and_then(|i| acl.entries.get(i).map(|e| (i, e))).filter(|(_, e)| e.log) {
             let proto = match key.protocol {
@@ -1863,6 +1865,32 @@ impl Sim {
     }
 
     /// Forgets access-list match counts (`clear access-list counters`).
+    /// A list's counters after its lines were renumbered: each `(old, new)` sequence number
+    /// moves its count with it.
+    pub fn remap_acl_hits(&mut self, d: DeviceId, list: &str, moves: &[(u32, u32)]) {
+        let Some(st) = self.state.get_mut(&d) else { return };
+        // Take every moving counter out first, so a new number that is another line's old one
+        // cannot be overwritten.
+        let mut moved: Vec<(usize, u64)> = Vec::new();
+        for (old, new) in moves {
+            if let (Ok(o), Ok(n)) = (usize::try_from(*old), usize::try_from(*new))
+                && let Some(count) = st.acl_hits.remove(&(list.to_string(), o))
+            {
+                moved.push((n, count));
+            }
+        }
+        for (n, count) in moved {
+            st.acl_hits.insert((list.to_string(), n), count);
+        }
+    }
+
+    /// Forgets the counter of one removed line.
+    pub fn forget_acl_hit(&mut self, d: DeviceId, list: &str, seq: u32) {
+        if let (Some(st), Ok(k)) = (self.state.get_mut(&d), usize::try_from(seq)) {
+            st.acl_hits.remove(&(list.to_string(), k));
+        }
+    }
+
     pub fn clear_acl_hits(&mut self, d: DeviceId, only: Option<&str>) {
         if let Some(st) = self.state.get_mut(&d) {
             match only {
@@ -3501,7 +3529,7 @@ impl Sim {
                     ..netlabcraft_model::acl::PacketKey::bare(PROTO_TCP, ip.src, ip.dst)
                 };
                 let (permit, hit) = acl.evaluate(&key);
-                *self.st(d.id).acl_hits.entry((name.clone(), hit.unwrap_or(usize::MAX))).or_insert(0) += 1;
+                *self.st(d.id).acl_hits.entry((name.clone(), acl.hit_key(hit))).or_insert(0) += 1;
                 if !permit {
                     self.tcp_send(t, d, ip.dst, ip.src, &reply(tcp::RST | tcp::ACK, 0, seg.seq.wrapping_add(1)))?;
                     return Err(format!("login from {} refused by access-class {name}", ip.src));
