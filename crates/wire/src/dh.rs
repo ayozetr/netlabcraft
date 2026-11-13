@@ -433,15 +433,20 @@ impl ModpGroup {
     /// leading zeros). `None` when the peer's value is not of the group's size or is not
     /// between 2 and p − 2 (RFC 2631 §2.1.5).
     pub fn shared(&self, private: &[u8], peer: &[u8]) -> Option<Vec<u8>> {
-        if peer.len() != self.len() {
+        if !self.valid_peer(peer) {
             return None;
+        }
+        Some(self.mont.pow(&Big::from_be_bytes(peer), &Big::from_be_bytes(private)).to_be_bytes(self.len()))
+    }
+
+    /// Whether a peer's public value is usable: as many bytes as the prime and between 2 and
+    /// p − 2 (RFC 2631 §2.1.5, NIST SP 800-56A).
+    pub fn valid_peer(&self, peer: &[u8]) -> bool {
+        if peer.len() != self.len() {
+            return false;
         }
         let y = Big::from_be_bytes(peer);
-        let top = self.p.sub(&Big::from_u64(1))?;
-        if y <= Big::from_u64(1) || y >= top {
-            return None;
-        }
-        Some(self.mont.pow(&y, &Big::from_be_bytes(private)).to_be_bytes(self.len()))
+        self.p.sub(&Big::from_u64(1)).is_some_and(|top| y > Big::from_u64(1) && y < top)
     }
 
     /// Whether the prime passes Fermat's test to base 3 (3^(p−1) ≡ 1).
