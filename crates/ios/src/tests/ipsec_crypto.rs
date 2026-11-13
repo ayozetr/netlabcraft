@@ -46,6 +46,8 @@ fn ikev1_runs_every_cipher_combination_for_real() {
         ("3des", "sha", 2, "esp-3des esp-sha-hmac", "3DES-CBC / HMAC-SHA1-96"),
         ("des", "md5", 1, "esp-des esp-md5-hmac", "DES-CBC / HMAC-MD5-96"),
         ("3des", "sha256", 14, "esp-3des esp-sha256-hmac", "3DES-CBC / HMAC-SHA256-128"),
+        ("aes 128", "sha", 19, "esp-aes esp-sha-hmac", "AES-CBC-128 / HMAC-SHA1-96"),
+        ("aes 256", "sha256", 20, "esp-aes 256 esp-sha256-hmac", "AES-CBC-256 / HMAC-SHA256-128"),
     ] {
         let (mut lab, r1, isp, r2, a) = two_sites();
         lab.run(r1, &v1_config(SITE1.0, SITE1.1, "s3cret", enc, hash, group, ts));
@@ -149,6 +151,7 @@ fn ikev2_runs_every_cipher_combination_for_real() {
         ("aes-cbc-128", "sha1", "2", "esp-aes esp-sha-hmac", "AES-CBC-128, PRF HMAC-SHA1, HMAC-SHA1-96, DH group 2", "AES-CBC-128 / HMAC-SHA1-96"),
         ("aes-cbc-192", "md5", "5", "esp-aes 192 esp-md5-hmac", "AES-CBC-192, PRF HMAC-MD5, HMAC-MD5-96, DH group 5", "AES-CBC-192 / HMAC-MD5-96"),
         ("aes-cbc-256", "sha256", "19", "esp-null esp-sha256-hmac", "DH group 19", "NULL / HMAC-SHA256-128"),
+        ("aes-cbc-128", "sha1", "20", "esp-aes esp-sha-hmac", "AES-CBC-128, PRF HMAC-SHA1, HMAC-SHA1-96, DH group 20", "AES-CBC-128 / HMAC-SHA1-96"),
         ("3des", "sha1", "14", "esp-3des esp-sha-hmac", "3DES, PRF HMAC-SHA1, HMAC-SHA1-96, DH group 14", "3DES-CBC / HMAC-SHA1-96"),
         ("3des", "sha256", "5", "esp-des esp-md5-hmac", "3DES, PRF HMAC-SHA256, HMAC-SHA256-128, DH group 5", "DES-CBC / HMAC-MD5-96"),
     ] {

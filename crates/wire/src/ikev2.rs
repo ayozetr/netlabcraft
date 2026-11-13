@@ -5,14 +5,12 @@
 //! (HMAC-SHA1-96, HMAC-SHA-256-128 of RFC 4868, HMAC-MD5-96), with the key derivation of
 //! RFC 7296 §2.13–2.15 (prf+ with the negotiated PRF, the pre-shared key AUTH value).
 //!
-//! The Diffie-Hellman exchange is real for the MODP groups ([`crate::dh`]); for the
-//! elliptic-curve groups (19, 20) the KE payloads carry filler of the group's size and
-//! [`standin_shared`] stands in for the shared secret.
+//! The Diffie-Hellman exchange is real for the MODP groups ([`crate::dh`]) and for the
+//! elliptic-curve groups 19 and 20 ([`crate::ec`]).
 
 use std::net::Ipv4Addr;
 
 use crate::cipher::{Cipher, CipherKind};
-use crate::sha1::sha1;
 use crate::suite::{Integ, Prf};
 use crate::{Result, WireError};
 
@@ -500,11 +498,6 @@ impl Keys {
     }
 }
 
-/// The stand-in Diffie-Hellman result: a hash of both public KE values, in a fixed order.
-pub fn standin_shared(ke_i: &[u8], ke_r: &[u8]) -> Vec<u8> {
-    sha1(&[ke_i, ke_r].concat()).to_vec()
-}
-
 /// The AUTH value for a pre-shared key (RFC 7296 §2.15) with HMAC-SHA1.
 pub fn psk_auth(psk: &[u8], message: &[u8], peer_nonce: &[u8], sk_p: &[u8], id_body: &[u8]) -> Vec<u8> {
     psk_auth_with(Prf::HmacSha1, psk, message, peer_nonce, sk_p, id_body)
@@ -692,7 +685,7 @@ mod tests {
 
     #[test]
     fn sealed_messages_open_only_with_the_right_keys() {
-        let shared = standin_shared(&[1; 256], &[2; 256]);
+        let shared = crate::sha1::sha1(b"a shared secret").to_vec();
         let k = Keys::derive(&shared, &[3; 32], &[4; 32], &[1; 8], &[2; 8]);
         assert_ne!(k.sk_ei, k.sk_er);
         let ts = TrafficSelector {

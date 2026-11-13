@@ -6,7 +6,7 @@
 //! too (or answers NO_PROPOSAL_CHOSEN), asks for another key exchange with INVALID_KE_PAYLOAD
 //! when the value is for a group it didn't pick, and answers with its own value. Both work out
 //! the shared secret (a real modular exponentiation for the MODP groups, `netlabcraft_wire::dh`;
-//! a stand-in for the elliptic-curve groups) and derive the IKE SA's keys from it with the
+//! a real point multiplication for groups 19 and 20, `netlabcraft_wire::ec`) and derive the IKE SA's keys from it with the
 //! negotiated PRF (RFC 7296 §2.14). IKE_AUTH, encrypted with the negotiated AES-CBC key size (or
 //! 3DES-CBC) and
 //! protected with the negotiated integrity check: the initiator sends
@@ -35,6 +35,7 @@ use netlabcraft_model::Topology;
 use netlabcraft_model::vpn::{CryptoMapEntry, Ikev2Proposal};
 use netlabcraft_wire::cipher::CipherKind;
 use netlabcraft_wire::dh;
+use netlabcraft_wire::ec;
 use netlabcraft_wire::ike::filler;
 use netlabcraft_wire::ikev2::{self, Keys, Message, Payload, Proposal, TrafficSelector, Transform};
 use netlabcraft_wire::suite::{Integ, Prf};
@@ -111,25 +112,30 @@ fn ike_suite(p: &Proposal) -> ikev2::Suite {
     ikev2::Suite { cipher, enc_len, prf, integ }
 }
 
-/// A Diffie-Hellman private value (256 bits) from a seed.
-fn dh_private(seed: &[u8]) -> Vec<u8> {
-    filler(&[seed, b"dh-x"].concat(), 32)
+/// A Diffie-Hellman private value from a seed: 256 bits, or as wide as a curve's coordinates
+/// for groups 19 and 20.
+fn dh_private(seed: &[u8], group: u16) -> Vec<u8> {
+    filler(&[seed, b"dh-x"].concat(), ec::curve(group).map_or(32, |c| c.len()))
 }
 
-/// The public value for a group: g^x mod p for a MODP group, filler of the group's size
-/// otherwise.
+/// The public value for a group: g^x mod p for a MODP group, the curve point for groups 19
+/// and 20, filler of the group's size for any other group (none can be configured).
 fn ke_public(group: u16, private: &[u8], seed: &[u8]) -> Vec<u8> {
-    match dh::modp(group) {
-        Some(g) => g.public(private),
-        None => filler(&[seed, b"ke"].concat(), ke_len(u8::try_from(group).unwrap_or(14))),
+    match (dh::modp(group), ec::curve(group)) {
+        (Some(g), _) => g.public(private),
+        (None, Some(c)) => c.public(private),
+        (None, None) => filler(&[seed, b"ke"].concat(), ke_len(u8::try_from(group).unwrap_or(14))),
     }
 }
 
-/// The shared secret, or `None` when the peer's public value isn't valid for the group.
+/// The shared secret, or `None` when the peer's public value isn't valid for the group (for
+/// the curves: not a point on it) or the group is not one that is computed.
 fn dh_shared(group: u16, private: &[u8], ke_i: &[u8], ke_r: &[u8], initiator: bool) -> Option<Vec<u8>> {
-    match dh::modp(group) {
-        Some(g) => g.shared(private, if initiator { ke_r } else { ke_i }),
-        None => Some(ikev2::standin_shared(ke_i, ke_r)),
+    let peer = if initiator { ke_r } else { ke_i };
+    match (dh::modp(group), ec::curve(group)) {
+        (Some(g), _) => g.shared(private, peer),
+        (None, Some(c)) => c.shared(private, peer),
+        (None, None) => None,
     }
 }
 
@@ -456,7 +462,7 @@ impl Sim {
         let offered = d.crypto.ikev2.offered(local);
         let proposals: Vec<Proposal> = offered.iter().take(16).zip(1u8..).map(|(p, n)| wire_proposal(n, p)).collect();
         let group = group.unwrap_or_else(|| offered.first().and_then(|p| p.group.first()).copied().map_or(14, u16::from));
-        let dh_priv = dh_private(&seed);
+        let dh_priv = dh_private(&seed, group);
         let ke = ke_public(group, &dh_priv, &seed);
         let ni = filler(&[&seed[..], b"ni"].concat(), 32);
         let m = Message {
@@ -588,7 +594,7 @@ impl Sim {
             self.ike2_send(t, d, local, peer, reply.encode());
             return Ok(());
         }
-        let dh_priv = dh_private(&seed);
+        let dh_priv = dh_private(&seed, group);
         let ke_r = ke_public(group, &dh_priv, &seed);
         let nr = filler(&[&seed[..], b"nr"].concat(), 32);
         let Some(shared) = dh_shared(group, &dh_priv, &ke_i, &ke_r, false) else {

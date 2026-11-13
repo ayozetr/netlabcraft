@@ -6,10 +6,12 @@
 //! Policies encrypt for real with AES-CBC (`encryption aes [128|192|256]`), DES-CBC (`des`) or
 //! three-key 3DES-CBC (`3des`), keyed from SKEYID_e as RFC 2409 appendix B has it (8-byte
 //! blocks and IVs for DES and 3DES). SHA-384 and SHA-512 policies run HMAC-SHA-256 in their
-//! place; the elliptic-curve groups still use a stand-in exchange.
+//! place; groups 19 and 20 run the elliptic-curve exchange of RFC 5903 (`netlabcraft_wire::ec`), and
+//! only group 24, which no MODP code here covers, keeps a stand-in exchange.
 
 use netlabcraft_wire::cipher::{Cipher, CipherKind};
 use netlabcraft_wire::dh;
+use netlabcraft_wire::ec;
 use netlabcraft_wire::ike::{self, Isakmp, Payload, Transform};
 use netlabcraft_wire::suite::Prf;
 use netlabcraft_wire::vpn::EspSuite;
@@ -85,7 +87,11 @@ impl P1Suite {
             P1Cipher::Des => "DES-CBC".to_string(),
             P1Cipher::Des3 => "3DES-CBC".to_string(),
         };
-        let dh = if dh::is_modp(self.group) { format!("DH group {}", self.group) } else { format!("DH group {} (stand-in)", self.group) };
+        let dh = if dh::is_modp(self.group) || ec::is_curve(self.group) {
+            format!("DH group {}", self.group)
+        } else {
+            format!("DH group {} (stand-in)", self.group)
+        };
         format!("{c}, {}, {dh}", self.prf.name())
     }
 }
@@ -147,14 +153,16 @@ impl V1State {
         V1State { suite, sa_b, ..V1State::default() }
     }
 
-    /// Picks the private value and makes the public one (g^x mod p, or filler for a group that
-    /// isn't computed for real); the public value.
+    /// Picks the private value and makes the public one (g^x mod p for a MODP group, the
+    /// generator times the scalar for the curves of groups 19 and 20, or filler for a group
+    /// that isn't computed for real); the public value.
     pub fn make_ke(&mut self, seed: &[u8]) -> Vec<u8> {
         let group = self.suite.map_or(1, |s| s.group);
-        self.dh_priv = ike::filler(&[seed, b"dh-x"].concat(), 32);
-        match dh::modp(group) {
-            Some(g) => g.public(&self.dh_priv),
-            None => ike::filler(&[seed, b"ke"].concat(), 128),
+        self.dh_priv = ike::filler(&[seed, b"dh-x"].concat(), ec::curve(group).map_or(32, |c| c.len()));
+        match (dh::modp(group), ec::curve(group)) {
+            (Some(g), _) => g.public(&self.dh_priv),
+            (None, Some(c)) => c.public(&self.dh_priv),
+            (None, None) => ike::filler(&[seed, b"ke"].concat(), 128),
         }
     }
 
@@ -162,9 +170,10 @@ impl V1State {
     fn shared(&self, initiator: bool) -> Option<Vec<u8>> {
         let group = self.suite.map_or(1, |s| s.group);
         let peer = if initiator { &self.ke_r } else { &self.ke_i };
-        match dh::modp(group) {
-            Some(g) => g.shared(&self.dh_priv, peer),
-            None => Some(netlabcraft_wire::sha1::sha1(&[&self.ke_i[..], &self.ke_r[..]].concat()).to_vec()),
+        match (dh::modp(group), ec::curve(group)) {
+            (Some(g), _) => g.shared(&self.dh_priv, peer),
+            (None, Some(c)) => c.shared(&self.dh_priv, peer),
+            (None, None) => Some(netlabcraft_wire::sha1::sha1(&[&self.ke_i[..], &self.ke_r[..]].concat()).to_vec()),
         }
     }
 
@@ -367,6 +376,16 @@ mod tests {
         let (mut i, _) = pair((7, 128), 2, 14);
         i.ke_r = vec![0; 256];
         assert!(!i.derive(b"psk", &[1; 8], &[2; 8], true));
+        // The curve groups run for real: both ends agree, and a value off the curve is refused.
+        for group in [19, 20] {
+            let (mut i, mut r) = pair((7, 128), 2, group);
+            assert_eq!(i.ke_i.len(), if group == 19 { 64 } else { 96 });
+            assert!(i.derive(b"psk", &[1; 8], &[2; 8], true) && r.derive(b"psk", &[1; 8], &[2; 8], false));
+            assert_eq!(i.enc_key, r.enc_key);
+            let (mut bad, _) = pair((7, 128), 2, group);
+            bad.ke_r = vec![1; bad.ke_i.len()];
+            assert!(!bad.derive(b"psk", &[1; 8], &[2; 8], true));
+        }
     }
 
     #[test]
@@ -378,7 +397,8 @@ mod tests {
         let s = P1Suite::from_transform(&a);
         assert_eq!((s.cipher, s.prf, s.group, s.lifetime), (P1Cipher::Aes(32), Prf::HmacSha1, 14, 3600));
         assert_eq!(s.describe(), "AES-CBC-256, HMAC-SHA1, DH group 14");
-        assert_eq!(P1Suite::from_transform(&tr(vec![(1, 5), (2, 1), (4, 20)])).describe(), "3DES-CBC, HMAC-MD5, DH group 20 (stand-in)");
+        assert_eq!(P1Suite::from_transform(&tr(vec![(1, 5), (2, 1), (4, 20)])).describe(), "3DES-CBC, HMAC-MD5, DH group 20");
+        assert_eq!(P1Suite::from_transform(&tr(vec![(1, 5), (2, 1), (4, 24)])).describe(), "3DES-CBC, HMAC-MD5, DH group 24 (stand-in)");
         assert_eq!(P1Suite::from_transform(&tr(vec![(1, 1), (2, 2), (4, 2)])).describe(), "DES-CBC, HMAC-SHA1, DH group 2");
     }
 }

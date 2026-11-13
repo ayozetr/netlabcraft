@@ -23,6 +23,7 @@ pub mod dh;
 pub mod dhcp;
 pub mod dhcp6;
 pub mod dns;
+pub mod ec;
 pub mod eigrp;
 pub mod http;
 pub mod ike;

@@ -119,7 +119,7 @@
 - **Security:** standard, extended and named ACLs with sequence numbers, `established` and ICMP
   types, IPv6 ACLs, `access-class`, NAT and PAT, passwords and password recovery, SSH, AAA with
   RADIUS and TACACS+, GRE tunnels, site-to-site IPsec with IKEv1 or IKEv2 on the wire with a real
-  Diffie-Hellman exchange (MODP groups 1, 2, 5, 14, 15, 16), real AES-128/192/256, DES, 3DES, AH and SHA-1,
+  Diffie-Hellman exchange (MODP groups 1, 2, 5, 14, 15, 16 and elliptic-curve groups 19 and 20), real AES-128/192/256, DES, 3DES, AH and SHA-1,
   SHA-256 or MD5 HMACs, SA lifetimes and rekeying, a zone-based firewall and `ip inspect` (FTP,
   DNS and HTTP too) on routers, a default MTU of 1500 bytes with path MTU discovery, `ip mtu`
   with fragmentation and `ip tcp adjust-mss`, and a stateful firewall with object groups and
@@ -253,7 +253,7 @@ gate but the packaged build is met. Weighted by what CCNA labs rely on, we estim
 91% ready for real work: about 93% for the first CCNA course, 94% for the second and 90% for the
 third (estimated; the method is in
 [`docs/target-app-parity.md`](docs/target-app-parity.md#audiences)). Next up: more labs walked
-to find console gaps, the remaining crypto stand-ins (elliptic-curve groups) and certificates, and a
+to find console gaps, the remaining crypto stand-ins (IKE SA rekeying) and certificates, and a
 cellular network for the mobile devices. Stage, numbers and estimates are in
 [ROADMAP.md](ROADMAP.md); the ranked work list is [`docs/gaps.md`](docs/gaps.md).
 

@@ -1,6 +1,6 @@
 # Gaps
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (AH is real) · earlier: minor (DES and 3DES are real); minor (code health: one modular-exponentiation engine); major (the lab book, automation depth, security, instructor, Simulation-mode, switching and routing, wireless and device-family items closed; what is honestly left re-ranked) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (the elliptic-curve groups are real) · earlier: minor (AH is real) · earlier: minor (DES and 3DES are real); minor (code health: one modular-exponentiation engine); major (the lab book, automation depth, security, instructor, Simulation-mode, switching and routing, wireless and device-family items closed; what is honestly left re-ranked) · **Target:** Cisco Packet Tracer 9.0
 
 Every known shortfall against the reference app, ranked: the work list. Pick from the top; each
 item lands with tests and doc updates. The weights behind the ranking are in
@@ -14,7 +14,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 | # | Gap | Who notices | Estimate |
 |---|---|---|---|
 | 1 | **Console depth beyond the lab book:** the lab book's 20 labs run, but the courses have many more activities; walking more labs of our own (troubleshooting labs especially) and adding the `show` views, options and messages they turn up | Every student | 10–20 h |
-| 2 | **Crypto stand-ins:** the elliptic-curve groups (such as 19 and 20) keep a stand-in exchange, AH next to ESP in one transform set keeps the stand-in cipher (AH on its own is real, in tunnel mode), and the IKE SA itself is never rekeyed (child SAs are) | CCNA 3 and security courses | 3–6 h |
+| 2 | **Crypto stand-ins:** the IKE SA itself is never rekeyed (child SAs are), AH next to ESP in one transform set keeps the stand-in cipher (AH on its own is real, in tunnel mode), and IKEv1 group 24 keeps a stand-in exchange | CCNA 3 and security courses | 2–4 h |
 | 3 | **Certificates and PKI:** TLS under RESTCONF uses an anonymous Diffie-Hellman suite with no certificate, the SSH host key is an HMAC stand-in for a signature, PEAP names its server instead of showing a certificate and uses a toy 61-bit group; no `crypto pki`, trustpoints or RSA signatures | CCNA 3 automation and security labs | 6–10 h |
 | 4 | **Cellular network:** smartphones are Wi-Fi only; no cell towers, central office server or mobile data | IoT and mobile-device labs | 6–10 h |
 | 5 | **Routing leftovers:** RIPng without timers, hold-down or triggered updates (RIPv2 has them); EIGRP for IPv6 without per-interface hello and hold timers; VRRPv3 for IPv6 sends no router advertisements for the virtual router; GLBP hellos not on the wire (format not public, not planned) | CCNA 2 and 3 extras | 3–6 h |
@@ -28,6 +28,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | Narrowed: the elliptic-curve groups 19 (P-256) and 20 (P-384) (item 2) are real: ECDH of RFC 5903 in `wire/src/ec.rs` over the existing big integers, checked against the RFC 5903 section 8 vectors (both curves, both directions), peer points validated (on the curve, below the prime, not infinity). IKEv1 and IKEv2 use it. Left: IKE SA rekeying, AH bundled with ESP, IKEv1 group 24 (a stand-in exchange; the console accepts it), transport mode in the data path. |
 | 2026-11-13 | minor | Narrowed: AH (item 2) is real: RFC 4302 in `wire/src/ah.rs` (header, ICV over the IPv4 header with its mutable fields zeroed per §3.3.3, tunnel and transport framing) with HMAC-SHA1-96, HMAC-MD5-96 and HMAC-SHA-256-128, negotiated by IKEv1 quick mode and IKEv2 child SAs (protocol 2) and carried as IP protocol 51 in tunnel mode when a transform set holds only `ah-*` transforms. Left: AH bundled with ESP in one set, and transport mode in the data path (the simulator tunnels everything it protects). |
 | 2026-11-13 | minor | Narrowed: DES and 3DES (item 2) are real: FIPS 46-3 and SP 800-67 in `wire/src/des.rs`, CBC for IKEv1 (`encryption des\|3des`), IKEv2 (ENCR_3DES) and ESP (`esp-des`, `esp-3des`), tested against published known-answer vectors. AH, the elliptic-curve groups and IKE SA rekeying are left. |
 | 2026-11-13 | minor | Done: code health (old item 11): one modular-exponentiation engine. `wire/src/modp.rs` (TLS and SSH, group 14) is now a thin layer over `wire/src/dh.rs`, which also builds the prime, so the duplicate Montgomery code and the hard-coded prime are gone. |
