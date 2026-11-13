@@ -1,6 +1,6 @@
 # Gaps
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (item 1 narrowed after seven troubleshooting labs) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (code health: one modular-exponentiation engine), major (the lab book, automation depth, security, instructor, Simulation-mode, switching and routing, wireless and device-family items closed; what is honestly left re-ranked) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (Resize Shape done, M9.8) · earlier: minor (item 1 narrowed after seven troubleshooting labs) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (code health: one modular-exponentiation engine), major (the lab book, automation depth, security, instructor, Simulation-mode, switching and routing, wireless and device-family items closed; what is honestly left re-ranked) · **Target:** Cisco Packet Tracer 9.0
 
 Every known shortfall against the reference app, ranked: the work list. Pick from the top; each
 item lands with tests and doc updates. The weights behind the ranking are in
@@ -18,7 +18,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 | 3 | **Certificates and PKI:** TLS under RESTCONF uses an anonymous Diffie-Hellman suite with no certificate, the SSH host key is an HMAC stand-in for a signature, PEAP names its server instead of showing a certificate and uses a toy 61-bit group; no `crypto pki`, trustpoints or RSA signatures | CCNA 3 automation and security labs | 6–10 h |
 | 4 | **Cellular network:** smartphones are Wi-Fi only; no cell towers, central office server or mobile data | IoT and mobile-device labs | 6–10 h |
 | 5 | **IoT and boards depth:** the climate things have no physics (a heater or air conditioner doesn't change a thermostat's reading), BoardScript's compile and run messages are English only, and boards run BoardScript rather than Python or JavaScript ([decisions.md](decisions.md)) | IoT labs | 4–8 h |
-| 6 | **Workspace leftovers:** Resize Shape, device windows as native OS windows, canvas devices as accessible nodes | Everyone, screen-reader users | 8–14 h |
+| 6 | **Workspace leftovers:** device windows as native OS windows, canvas devices as accessible nodes | Everyone, screen-reader users | 8–14 h |
 | 7 | **More end devices:** TVs, a sniffer, more router models | Specialised labs | 4–8 h |
 | 8 | **Results that resist forgery:** results files are signed under a key from the salt in the activity, so they catch hand edits but not someone who reads the open code and the file; a key the instructor keeps outside the file would close it | Instructors | 2–4 h |
 | 9 | **More languages:** interface languages beyond English and Spanish (catalogs in the same format) | Non-English students | 3–6 h each |
@@ -27,6 +27,7 @@ Hours are Opus 5.5 agent wall-clock estimates.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-13 | minor | Item 6 narrowed (M9.8): Resize Shape is done (`note.resize`, handles on a selected rectangle, ellipse or line, bounded, one undo step per drag). Left: canvas devices as accessible nodes, device windows as native OS windows. |
 | 2026-11-13 | minor | Item 1 narrowed (M9.4): seven troubleshooting labs (21 to 27) walked and run as written; 12 gaps found and fixed (`show interfaces switchport` for all ports and `show interfaces X trunk`, `no ip proxy-arp`, `show ip ospf neighbor` by router ID or interface, `show ip route NET MASK`, the ACL `log` keyword and its messages, `clear (ip) access-list counters NAME`, `show ip dhcp pool NAME` with the addresses left, NAT without `overload` sharing one address, NAT hits and misses with `clear ip nat statistics`, NAT rules counting matches on their ACL, a deleted ACL's counters reset, `show spanning-tree root\|bridge\|blockedports`). What is left is in the item. |
 | 2026-11-13 | minor | Done: routing leftovers (old item 5), last part (M9.2): the master of a VRRPv3 IPv6 group announces the virtual router with router advertisements (from the virtual link-local address and virtual MAC, when it takes the role and every 200 s, and in answer to router solicitations; a backup stays quiet). GLBP hellos on the wire are dropped from the list: the format is not public, so none are planned ([protocol-parity.md](protocol-parity.md)). Later items move up one place. |
 | 2026-11-13 | minor | Done (part of old item 5): EIGRP for IPv6 per-interface timers (M9.2): `ipv6 hello-interval eigrp AS S` and `ipv6 hold-time eigrp AS S`, hellos at the interface's interval announcing its hold time, a silent neighbour kept until its hold time runs out and then dropped with a log line and DUAL's queries. Still open in item 5: VRRPv3 router advertisements, GLBP hellos. |

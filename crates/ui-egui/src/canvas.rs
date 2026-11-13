@@ -30,6 +30,8 @@ enum Pending {
 pub struct CanvasState {
     drag: Option<DeviceId>,
     drag_note: Option<u32>,
+    /// A resize handle being dragged: the drawing, the handle and the drawing as it was (x, y, w, h).
+    resize: Option<(u32, usize, (f32, f32, f32, f32))>,
     /// Where a drawing being dragged out started (workspace units).
     draw_from: Option<(f32, f32)>,
     panning: bool,
@@ -519,6 +521,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
     }
     draw_links(app, &painter, &view, &tk);
     draw_notes(app, &painter, &view, &tk);
+    draw_handles(app, &painter, &view, &tk);
     draw_in_progress(app, &painter, &view, ui.input(|i| i.pointer.hover_pos()));
     draw_packet(app, ui, &painter, &view, &tk);
     draw_clusters(app, &painter, &view, &tk);
@@ -920,6 +923,94 @@ fn box_shape(t: Tool) -> Option<Shape> {
     }
 }
 
+/// Screen distance within which a handle is grabbed.
+const HANDLE_GRAB: f32 = 8.0;
+
+/// A resizable drawing: rectangle, ellipse or line.
+fn resizable(a: &netlabcraft_model::Annotation) -> bool {
+    matches!(a.shape, Shape::Rectangle | Shape::Ellipse | Shape::Line)
+}
+
+/// The selected drawing, when it is resizable and shown in this view.
+fn selected_drawing<'a>(app: &'a PacketApp, view: &View) -> Option<&'a netlabcraft_model::Annotation> {
+    let n = app.ui.selected_note?;
+    app.session.topology.annotations.iter().find(|a| a.id == n && a.cluster == view.level && resizable(a))
+}
+
+/// Handle positions on screen. A box has eight (clockwise from the top left corner: NW, N, NE, E,
+/// SE, S, SW, W); a line has two (start, end).
+fn handle_points(view: &View, a: &netlabcraft_model::Annotation) -> Vec<Pos2> {
+    if a.shape == Shape::Line {
+        return vec![view.screen(a.x, a.y), view.screen(a.x + a.w, a.y + a.h)];
+    }
+    let r = shape_rect(view, a);
+    let c = r.center();
+    vec![
+        r.left_top(),
+        pos2(c.x, r.top()),
+        r.right_top(),
+        pos2(r.right(), c.y),
+        r.right_bottom(),
+        pos2(c.x, r.bottom()),
+        r.left_bottom(),
+        pos2(r.left(), c.y),
+    ]
+}
+
+/// The handle under `p`, if any.
+fn hit_handle(view: &View, a: &netlabcraft_model::Annotation, p: Pos2) -> Option<usize> {
+    handle_points(view, a).iter().position(|h| h.distance(p) <= HANDLE_GRAB)
+}
+
+/// The drawing `(x, y, w, h)` after handle `h` is dragged to the workspace point `to`, from the drawing
+/// as it was when the drag started (`from`). The command normalises a flipped box.
+pub(crate) fn dragged_handle(shape: Shape, h: usize, from: (f32, f32, f32, f32), to: (f32, f32)) -> (f32, f32, f32, f32) {
+    let (x, y, w, hh) = from;
+    if shape == Shape::Line {
+        return if h == 0 { (to.0, to.1, x + w - to.0, y + hh - to.1) } else { (x, y, to.0 - x, to.1 - y) };
+    }
+    let (mut l, mut t, mut r, mut b) = (x.min(x + w), y.min(y + hh), x.max(x + w), y.max(y + hh));
+    if matches!(h, 0 | 6 | 7) {
+        l = to.0;
+    }
+    if matches!(h, 2..=4) {
+        r = to.0;
+    }
+    if matches!(h, 0..=2) {
+        t = to.1;
+    }
+    if matches!(h, 4..=6) {
+        b = to.1;
+    }
+    (l, t, r - l, b - t)
+}
+
+fn handle_cursor(shape: Shape, h: usize) -> egui::CursorIcon {
+    use egui::CursorIcon as C;
+    if shape == Shape::Line {
+        return C::Crosshair;
+    }
+    match h {
+        0 | 4 => C::ResizeNwSe,
+        2 | 6 => C::ResizeNeSw,
+        1 | 5 => C::ResizeVertical,
+        _ => C::ResizeHorizontal,
+    }
+}
+
+/// Resize handles on the selected drawing.
+fn draw_handles(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Tokens) {
+    let Some(a) = selected_drawing(app, view) else { return };
+    if a.shape != Shape::Line {
+        painter.rect_stroke(shape_rect(view, a), 0.0, Stroke::new(1.0, tk.selection), egui::StrokeKind::Outside);
+    }
+    for h in handle_points(view, a) {
+        let r = Rect::from_center_size(h, vec2(8.0, 8.0));
+        painter.rect_filled(r, 1.0, tk.chrome);
+        painter.rect_stroke(r, 1.0, Stroke::new(1.5, tk.selection), egui::StrokeKind::Inside);
+    }
+}
+
 fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
     let pointer = resp.interact_pointer_pos().or_else(|| resp.hover_pos());
     let middle = ui.input(|i| i.pointer.middle_down());
@@ -970,6 +1061,44 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
                 c.poly.push((x, y));
             }
             return;
+        }
+    }
+
+    // Resize handles of the selected drawing.
+    if app.ui.tool == Tool::Select && !middle {
+        // The drag starts a few pixels after the press: the handle is where the button went down.
+        if resp.drag_started()
+            && let Some(p) = ui.input(|i| i.pointer.press_origin()).or(pointer)
+            && let Some(a) = selected_drawing(app, view)
+            && let Some(h) = hit_handle(view, a, p)
+        {
+            let from = (a.x, a.y, a.w, a.h);
+            let id = a.id;
+            app.run("edit.checkpoint", json!({}));
+            let c = &mut app.ui.canvas;
+            c.resize = Some((id, h, from));
+            c.panning = false;
+            return;
+        }
+        if let Some((id, h, from)) = app.ui.canvas.resize {
+            if resp.dragged()
+                && let Some(p) = pointer
+                && let Some(shape) = app.session.topology.annotations.iter().find(|a| a.id == id).map(|a| a.shape)
+            {
+                let (x, y, w, hh) = dragged_handle(shape, h, from, view.world(p));
+                ui.ctx().set_cursor_icon(handle_cursor(shape, h));
+                app.run("note.resize", json!({"id": id, "x": x, "y": y, "w": w, "h": hh, "transient": true}));
+            }
+            if resp.drag_stopped() {
+                app.ui.canvas.resize = None;
+            }
+            return;
+        }
+        if let Some(p) = resp.hover_pos()
+            && let Some(a) = selected_drawing(app, view)
+            && let Some(h) = hit_handle(view, a, p)
+        {
+            ui.ctx().set_cursor_icon(handle_cursor(a.shape, h));
         }
     }
 
@@ -1161,10 +1290,15 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
             app.ui.picked.clear();
             app.ui.picked_clusters.clear();
             app.ui.selected = hit;
+            app.ui.selected_note = None;
             if let Some(d) = hit {
                 console::open(app, d);
             } else if let Some(c) = hit_cluster(app, view, p) {
                 app.ui.picked_clusters.insert(c);
+            } else if let Some(n) = hit_note(app, view, p)
+                && app.session.topology.annotations.iter().any(|a| a.id == n && resizable(a))
+            {
+                app.ui.selected_note = Some(n);
             }
         }
         Tool::Draw(_) => {}

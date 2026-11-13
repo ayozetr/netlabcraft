@@ -468,6 +468,14 @@ pub static CATALOG: &[CommandInfo] = &[
     ),
     c!("note.edit", "Edit note", "", None, r#"{"id", "text"}"#, true),
     c!("note.move", "Move note", "", None, r#"{"id", "x", "y", "transient"?: false}"#, true),
+    c!(
+        "note.resize",
+        "Resize drawing",
+        "",
+        None,
+        r#"{"id", "x", "y", "w", "h", "transient"?: false}: rectangle and ellipse: top-left corner and size (normalised, sides kept between 4 and 100000); line: start and the offset to its far end (at least 4 long); text, freehand and polygon are refused"#,
+        true
+    ),
     c!("note.remove", "Delete note", "", None, r#"{"id"}"#, true),
     c!("note.color", "Drawing colour", "", None, r##"{"id", "color": "#rrggbb"}"##, true),
     c!(
