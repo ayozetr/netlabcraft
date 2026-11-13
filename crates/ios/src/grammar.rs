@@ -1372,6 +1372,13 @@ pub static SPECS: &[Spec] = &[
     spec!(ClearIpOspf, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("ospf"), K("process")], "Restart OSPF: neighbours and DR elections anew"),
     spec!(ClearIpOspf, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("ospf"), Arg("<1-65535>"), K("process")], "Restart this OSPF process"),
     spec!(ShowIpOspfDatabase, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf"), K("database")], "OSPF link-state database"),
+    spec!(
+        ShowIpOspfDatabase,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("ospf"), K("database"), Rest("{router|network|summary|external} [A.B.C.D]")],
+        "One kind of LSA in full: router, network, summary or external"
+    ),
     spec!(ShowOspfNeighborDetail, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf"), K("neighbor"), K("detail")], "OSPF neighbours in full"),
     // ---- site-to-site VPN: GRE tunnels (`interface Tunnel N`) and IPsec ----
     spec!(IpAddress, Modes::TUNNEL, Modes::ROUTER, [K("ip"), K("address"), Arg("A.B.C.D"), Arg("MASK")], "Set the tunnel's address"),

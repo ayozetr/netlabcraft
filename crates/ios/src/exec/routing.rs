@@ -384,7 +384,73 @@ pub(super) fn clear_ospf(c: &mut Ctx, process: &str) -> R {
 }
 
 /// `show ip ospf database`: the LSAs this router holds, by area and kind.
-pub(super) fn ospf_database(c: &mut Ctx) -> R {
+/// One LSA kind in full (`show ip ospf database router`): every LSA of the kind, per area,
+/// with its links, attached routers or metric, optionally only the one with a link-state ID.
+fn ospf_database_detail(d: &netlabcraft_model::Device, process: u16, rid: &str, lsas: &[netlabcraft_sim::ospf_lsdb::Lsa], words: &[&str]) -> R {
+    use netlabcraft_sim::ospf_lsdb::{LinkKind, LsaKind};
+    use std::fmt::Write as _;
+    let word = words.first().map(|w| w.to_ascii_lowercase()).unwrap_or_default();
+    let kind = [("router", LsaKind::Router), ("network", LsaKind::Network), ("summary", LsaKind::Summary), ("external", LsaKind::External)]
+        .into_iter()
+        .find(|(n, _)| !word.is_empty() && n.starts_with(&word))
+        .map(|(_, k)| k)
+        .ok_or("% show ip ospf database router, network, summary or external, then an optional link-state ID")?;
+    let only: Option<std::net::Ipv4Addr> = match words.get(1) {
+        Some(w) => Some(w.parse().map_err(|_| format!("% `{w}` is not a link-state ID (A.B.C.D)"))?),
+        None => None,
+    };
+    if words.len() > 2 {
+        return Err("% Too many words: the kind, then an optional link-state ID".into());
+    }
+    let mut s = String::new();
+    let mut last: Option<Option<u32>> = None;
+    for l in lsas.iter().filter(|l| l.kind == kind && only.is_none_or(|o| o == l.id)) {
+        if last != Some(l.area) {
+            let title = match kind {
+                LsaKind::Router => "Router link states",
+                LsaKind::Network => "Network link states",
+                LsaKind::Summary => "Summary link states",
+                LsaKind::External => "External link states",
+            };
+            let area = l.area.map_or(String::new(), |a| format!(", area {a}"));
+            let _ = writeln!(s, "{}{title}{area} (process {process}, router {rid})", if last.is_some() { "\n" } else { "" });
+            last = Some(l.area);
+        }
+        let seq = "0x80000001";
+        match kind {
+            LsaKind::Router => {
+                let _ = writeln!(s, "Router {}, sequence {seq}, {} link{}", l.id, l.count, if l.count == 1 { "" } else { "s" });
+                for k in &l.links {
+                    let line = match k.kind {
+                        LinkKind::PointToPoint => format!("point-to-point to router {} through {}", k.id, k.data),
+                        LinkKind::Transit => format!("transit network, designated router {} (this router {})", k.id, k.data),
+                        LinkKind::Stub => format!("stub network {}/{}", k.id, netlabcraft_core::mask_to_prefix(k.data).unwrap_or(0)),
+                    };
+                    let _ = writeln!(s, "  {line}, metric {}", k.metric);
+                }
+            }
+            LsaKind::Network => {
+                let net = netlabcraft_core::Ipv4Net::new(l.id, u8::try_from(l.count).unwrap_or(32)).network();
+                let _ = writeln!(s, "Network {}/{}, designated router {}, sequence {seq}, advertised by {}", net.addr, net.prefix, l.id, l.adv);
+                let list: Vec<String> = l.attached.iter().map(ToString::to_string).collect();
+                let _ = writeln!(s, "  attached routers: {}", list.join(", "));
+            }
+            LsaKind::Summary => {
+                let _ = writeln!(s, "Network {}/{}, sequence {seq}, advertised by {}, metric {}", l.id, l.count, l.adv, l.metric);
+            }
+            LsaKind::External => {
+                let _ = writeln!(s, "Network {}/{}, sequence {seq}, advertised by {}, type 2 metric {}", l.id, l.count, l.adv, l.metric);
+            }
+        }
+    }
+    if s.is_empty() {
+        let what = only.map_or(String::new(), |o| format!(" with link-state ID {o}"));
+        return Ok(format!("No {word} LSAs{what} in the database of {}.", d.name));
+    }
+    Ok(s.trim_end().to_string())
+}
+
+pub(super) fn ospf_database(c: &mut Ctx, what: &str) -> R {
     use netlabcraft_sim::ospf_lsdb::LsaKind;
     use std::fmt::Write as _;
     let d = c.d()?.clone();
@@ -392,6 +458,10 @@ pub(super) fn ospf_database(c: &mut Ctx) -> R {
     let st = c.sim.ospf_state(c.t);
     let rid = st.router_ids.get(&d.id).map_or("unset".to_string(), ToString::to_string);
     let lsas = netlabcraft_sim::ospf_lsdb::database(c.t, &st, d.id);
+    let words: Vec<&str> = what.split_whitespace().collect();
+    if !words.is_empty() {
+        return ospf_database_detail(&d, o.process, &rid, &lsas, &words);
+    }
     let mut s = format!("OSPF link-state database of router {rid} (process {})\n", o.process);
     if lsas.is_empty() {
         s.push_str("\n(empty: no interface runs OSPF yet)");

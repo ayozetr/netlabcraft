@@ -1912,7 +1912,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::Ipv6AddressAutoconfig | Id::NoIpv6AddressAutoconfig | Id::Ipv6AddressDhcp | Id::NoIpv6AddressDhcp => {
             routing::ipv6_client(&mut c, spec.id, spec.path.len() == 4)
         }
-        Id::ShowIpOspfDatabase => routing::ospf_database(&mut c),
+        Id::ShowIpOspfDatabase => routing::ospf_database(&mut c, arg(0)),
         Id::ShowOspfNeighborDetail => routing::ospf_neighbor_detail(&mut c),
         // ---- site-to-site VPN: GRE tunnels and IPsec (see exec/vpn.rs) ----
         Id::IpAddress | Id::NoIpAddress | Id::Shutdown | Id::NoShutdown | Id::Description | Id::NoDescription
