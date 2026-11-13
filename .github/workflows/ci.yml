@@ -27,6 +27,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # the secrets scan and the contributors check read the history
+      - name: Software Vulkan driver
+        # The runner has no GPU; a few UI tests render with wgpu, which falls back to this.
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1
       - name: Rust toolchain
         # The version, components and wasm target come from rust-toolchain.toml.
         run: rustup show active-toolchain || rustup toolchain install
