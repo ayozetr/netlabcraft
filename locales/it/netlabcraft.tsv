@@ -1,0 +1,1539 @@
+# Italiano (it) interface catalog for NetLabCraft.
+# Columns, separated by a TAB:  context <TAB> English source text <TAB> translation
+#   context  usually empty. `@plural`, `@id` and `@msg` mean something to the app; any other
+#            word is a label that tells apart two meanings of the same English (`event` marks
+#            the phrases replaced inside the simulator's event summaries).
+#   escapes  \n  \t  \\  inside a column. `{}` placeholders (messages with parts) must appear
+#            the same number of times in both columns, in the order the language wants, and a
+#            trailing "…" in one needs one in the other.
+#   @plural  English `one|other`; the translation lists this language's plural forms, `|`-separated.
+#   Lines starting with # and blank lines are ignored. A missing entry shows in English.
+#
+# Clean room: every entry was written from the plain meaning of the English text in ordinary
+# computing vocabulary. No other product's localisation, string table or translated UI was
+# consulted or copied; add entries the same way.
+
+@id	language.name	Italiano
+
+	 and 	 e
+	 or 	 o
+	"{}" is text, not a number (number(...) reads one)	"{}" è testo, non un numero (number(...) ne legge uno)
+	% humidity	% umidità
+	% moisture	% umidità
+	% smoke	% fumo
+	% The device is switched off: switch it on in its Physical tab (device.power).	% Il dispositivo è spento: accendilo nella scheda Fisico (device.power).
+	(broadcast)	(broadcast)
+	(choose)	(scegli)
+	(delete)	(elimina)
+	(edit)	(modifica)
+	(hidden)	(nascosto)
+	(IPv6 off)	(IPv6 disattivato)
+	(no body)	(nessun corpo)
+	(no devices)	(nessun dispositivo)
+	(no instructions)	(nessuna istruzione)
+	(none yet)	(ancora nessuno)
+	(none)	(nessuno)
+	(not read yet)	(non ancora letto)
+	(nothing)	(niente)
+	(the rest is hidden: show it as text)	(il resto è nascosto: mostralo come testo)
+	+Bin	+Bin
+	+LOC	+LOC
+	1 = movement	1 = movimento
+	1 device	1 dispositivo
+	1-port Fast Ethernet card	Scheda Fast Ethernet a 1 porta
+	1-port Gigabit card	Scheda Gigabit a 1 porta
+	1-port Gigabit fiber card	Scheda Gigabit in fibra a 1 porta
+	1.0 (end-of-message)	1.0 (fine messaggio)
+	1.1 (chunked)	1.1 (chunked)
+	2-port Gigabit card	Scheda Gigabit a 2 porte
+	2-port Serial card	Scheda Serial a 2 porte
+	4-port Serial card	Scheda Serial a 4 porte
+	4-port switch card	Scheda switch a 4 porte
+	802.1Q tag: VLAN {}.	Tag 802.1Q: VLAN {}.
+	802.1X login refused	Accesso 802.1X rifiutato
+	`end` without an `if` or `while`	`end` senza un `if` o `while`
+	`let NAME = value`	`let NOME = valore`
+	`{}` (device name or id) is required	`{}` (nome o id del dispositivo) è obbligatorio
+	`{}` (text) is required	`{}` (testo) è obbligatorio
+	`{}` after the `else`	`{}` dopo l'`else`
+	`{}` can't start a line	`{}` non può iniziare una riga
+	`{}` expected	atteso `{}`
+	`{}` has no value yet	`{}` non ha ancora un valore
+	`{}` is a word of the language, not a value	`{}` è una parola del linguaggio, non un valore
+	`{}` is a word of the language, not a variable	`{}` è una parola del linguaggio, non una variabile
+	`{}` is not a directory number (digits only)	`{}` non è un numero di interno (solo cifre)
+	`{}` is not a statement: did you mean `{} = …`?	`{}` non è un'istruzione: intendevi `{} = …`?
+	`{}` is not an address	`{}` non è un indirizzo
+	`{}` is not an IPv4 address	`{}` non è un indirizzo IPv4
+	`{}` is not part of the language	`{}` non fa parte del linguaggio
+	`{}` where a value was expected	`{}` dove era atteso un valore
+	`{}` without its `if`	`{}` senza il suo `if`
+	A board reads a sensor and drives a fan	Una scheda legge un sensore e comanda una ventola
+	A broadcast: the switch floods it out the other {} ports of VLAN {}.	Un broadcast: lo switch lo inoltra sulle altre {} porte della VLAN {}.
+	A chain of routers with static and default routes between two LANs.	Una catena di router con route statiche e di default tra due LAN.
+	a console cable joins a PC's RS-232 port to a router's or switch's Console port: {} and {}	un cavo console collega la porta RS-232 di un PC alla porta Console di un router o switch: {} e {}
+	A firewall with inside, outside and DMZ	Un firewall con zone inside, outside e DMZ
+	A flat LAN: ping between the PCs and watch the switch learn their addresses.	Una LAN piatta: fai ping tra i PC e osserva lo switch imparare i loro indirizzi.
+	A frame circled the network; there is no spanning tree yet, so avoid redundant switch links	Un frame ha girato in cerchio nella rete; non c'è ancora lo spanning tree, quindi evita collegamenti ridondanti tra switch
+	A graded activity: address the router's two interfaces, set its name and a secret, and make the two LANs reach each other. Check Results shows the score.	Un'attività valutata: assegna gli indirizzi alle due interfacce del router, imposta nome e secret e fai in modo che le due LAN si raggiungano. Verifica risultati mostra il punteggio.
+	A graded activity: follow the Instructions window and press Check Results.	Un'attività valutata: segui la finestra Istruzioni e premi Verifica risultati.
+	A home PC reaches an office web server: home router, cable modem, the provider's cloud (coaxial to phone line), DSL modem, office router.	Un PC di casa raggiunge un web server d'ufficio: router di casa, cable modem, il cloud del provider (da coassiale a linea telefonica), modem DSL, router d'ufficio.
+	a lab keeps at least one city	un laboratorio mantiene almeno una città
+	A lightweight AP offers the WLANs of its controller: see its Controller page.	Un AP leggero offre le WLAN del suo controller: vedi la sua pagina Controller.
+	a line starts with a word (let, if, while, write, sleep…) or a variable	una riga inizia con una parola (let, if, while, write, sleep…) o una variabile
+	A microcontroller board on the home gateway's Wi-Fi runs a BoardScript program: it reads a temperature sensor on a pin, switches a fan and blinks a light on others, and reports to the IoT service.	Una scheda a microcontrollore sul Wi-Fi del gateway di casa esegue un programma BoardScript: legge un sensore di temperatura su un pin, accende una ventola e fa lampeggiare una luce su altri, e riferisce al servizio IoT.
+	A microcontroller board seen from above	Una scheda a microcontrollore vista dall'alto
+	A multilayer switch routes between VLAN 10 and 20 with its VLAN interfaces, and reaches a router through a routed port.	Uno switch multilayer instrada tra la VLAN 10 e la 20 con le sue interfacce VLAN e raggiunge un router tramite una porta instradata.
+	A periodic PDU needs its interval	Un PDU periodico richiede il suo intervallo
+	a pin name (D0, A1…) expected	atteso il nome di un pin (D0, A1…)
+	a place needs a name	un luogo ha bisogno di un nome
+	A polygon needs at least three corners.	Un poligono richiede almeno tre vertici.
+	a program is at most {} characters	un programma può avere al massimo {} caratteri
+	A provider's network (WAN): 2 Ethernet, 2 coaxial and 2 phone (DSL) ports, each joined to the port it is mapped to (by default coaxial to phone: a cable modem reaches a DSL modem)	La rete di un provider (WAN): 2 porte Ethernet, 2 coassiali e 2 telefoniche (DSL), ciascuna collegata alla porta a cui è associata (di default da coassiale a telefonica: un cable modem raggiunge un modem DSL)
+	A Record	Record A
+	A room with physics (iot.environment): it starts at 15 degrees with 8 outside, and the sensors read it. The Home gateway's rules switch Heater1 on below 19 degrees, AC1 on above 26 and Sprinkler1 on below 30 % soil moisture. Advance the time a few minutes (Play, or sim.advance): the heater warms the room until Thermo1 reads 19, then it switches off and the room cools slowly again; the soil dries until the sprinkler waters it. Open Window1 from Home > IoT to couple the room to the cold outside, or set the outside temperature with iot.environment.	Una stanza con fisica (iot.environment): parte a 15 gradi con 8 all'esterno e i sensori la leggono. Le regole del Home gateway accendono Heater1 sotto i 19 gradi, AC1 sopra i 26 e Sprinkler1 sotto il 30 % di umidità del suolo. Fai avanzare il tempo di qualche minuto (Play o sim.advance): il riscaldamento scalda la stanza finché Thermo1 non legge 19, poi si spegne e la stanza si raffredda lentamente; il suolo si asciuga finché l'irrigatore non lo bagna. Apri Window1 da Home > IoT per collegare la stanza al freddo esterno, oppure imposta la temperatura esterna con iot.environment.
+	A room with physics: a thermostat, a heater, an air conditioner, a window and a sprinkler join the Home gateway; its rules heat below 19 degrees, cool above 26 and water dry soil, and the room changes in simulated time.	Una stanza con fisica: un termostato, un riscaldamento, un condizionatore, una finestra e un irrigatore si collegano al Home gateway; le sue regole riscaldano sotto i 19 gradi, raffreddano sopra i 26 e irrigano il suolo secco, e la stanza cambia nel tempo simulato.
+	A router hands out addresses with DHCP; console, vty and enable are password protected (console: cisco, enable: class).	Un router distribuisce indirizzi con DHCP; console, vty ed enable sono protetti da password (console: cisco, enable: class).
+	A server with DHCP, DNS and a web site	Un server con DHCP, DNS e un sito web
+	A signed file with your name, the time and your score, to hand in	Un file firmato con il tuo nome, l'ora e il tuo punteggio, da consegnare
+	A single-board computer seen from above	Un computer a scheda singola visto dall'alto
+	A smart home with an IoT gateway	Una casa intelligente con un gateway IoT
+	A smart sensor and a smart fan register with the IoT server over HTTP; the server's rule switches the fan on when the sensor reads above 30.	Un sensore intelligente e una ventola intelligente si registrano sul server IoT via HTTP; la regola del server accende la ventola quando il sensore legge più di 30.
+	A smartphone and a tablet attach to cell towers, take their addresses from the central office server and open the web server's pages over mobile data.	Uno smartphone e un tablet si agganciano alle celle, ricevono l'indirizzo dal server della centrale e aprono le pagine del web server tramite dati mobili.
+	A smartphone seen from the front	Uno smartphone visto di fronte
+	A switch card in a router	Una scheda switch in un router
+	A tablet and a smartphone join the home router's Wi-Fi, take their addresses by DHCP and open the web server's pages from their touch screens.	Un tablet e uno smartphone si collegano al Wi-Fi del router di casa, ricevono l'indirizzo via DHCP e aprono le pagine del web server dal touch screen.
+	A tablet seen from the front	Un tablet visto di fronte
+	a value expected	atteso un valore
+	a WPA2 passphrase has 8-63 characters	una passphrase WPA2 ha da 8 a 63 caratteri
+	A WPA2-Enterprise WLAN needs a RADIUS server.	Una WLAN WPA2-Enterprise richiede un server RADIUS.
+	a {} cable needs a {} port on both ends: {} is {}	un cavo {} richiede una porta {} a entrambe le estremità: {} è {}
+	AAA Service (RADIUS, TACACS+)	Servizio AAA (RADIUS, TACACS+)
+	About	Informazioni
+	About NetLabCraft	Informazioni su NetLabCraft
+	Access	Access
+	Access list {} on {} (in) permits the packet.	L'access list {} su {} (in) permette il pacchetto.
+	Access list {} on {} (out) permits the packet.	L'access list {} su {} (out) permette il pacchetto.
+	Access Point	Access Point
+	Access points joined: {}	Access point collegati: {}
+	Access VLAN	VLAN di accesso
+	Account	Account
+	Active connection: {}	Connessione attiva: {}
+	Activity Instructions	Istruzioni dell'attività
+	Activity reset to how it was opened.	Attività ripristinata allo stato di apertura.
+	Activity Wizard	Procedura guidata attività
+	Activity Wizard…	Procedura guidata attività…
+	Activity: your first router	Attività: il tuo primo router
+	Add	Aggiungi
+	Add a command check	Aggiungi una verifica di comando
+	Add a configuration check	Aggiungi una verifica di configurazione
+	Add a ping check	Aggiungi una verifica ping
+	Add an .html file from your computer	Aggiungi un file .html dal tuo computer
+	Add client	Aggiungi client
+	Add Complex PDU	Aggiungi PDU complesso
+	Add or change a WLAN	Aggiungi o modifica una WLAN
+	Add RADIUS server	Aggiungi server RADIUS
+	Add rule	Aggiungi regola
+	Add Simple PDU	Aggiungi PDU semplice
+	Add Simple PDU (P)	Aggiungi PDU semplice (P)
+	Add user	Aggiungi utente
+	Added {} to the web site.	{} aggiunto al sito web.
+	Added {}. Double-click it to open it.	{} aggiunto. Fai doppio clic per aprirlo.
+	Address	Indirizzo
+	address	indirizzo
+	address or device name	indirizzo o nome del dispositivo
+	Address pool (network/prefix)	Pool di indirizzi (rete/prefisso)
+	Address {} · gateway {}	Indirizzo {} · gateway {}
+	Adds a place to the map shown; drag it into position	Aggiunge un luogo alla mappa mostrata; trascinalo in posizione
+	After a delay	Dopo un ritardo
+	Agent address	Indirizzo dell'agent
+	Agents and scripts drive NetLabCraft through	Agenti e script pilotano NetLabCraft tramite
+	Air Conditioner	Condizionatore
+	All protocols	Tutti i protocolli
+	Always charged here: there is no battery to look after.	Sempre carico qui: non c'è nessuna batteria da curare.
+	An access point offers the network Aula with WPA2; two Wi-Fi laptops join it and get addresses from the router's DHCP pool.	Un access point offre la rete Aula con WPA2; due laptop Wi-Fi vi si collegano e ricevono gli indirizzi dal pool DHCP del router.
+	an ARP request needs the address to ask for	una richiesta ARP richiede l'indirizzo da interrogare
+	An ICMP message.	Un messaggio ICMP.
+	An office reaches an Internet server through PAT on its router; an access list keeps one PC from pinging the server.	Un ufficio raggiunge un server Internet tramite PAT sul suo router; una access list impedisce a un PC di fare ping al server.
+	An open-source network simulator: build labs, configure routers and switches, and watch every frame.	Un simulatore di rete open source: costruisci laboratori, configura router e switch e osserva ogni frame.
+	and	e
+	Answer	Risposta
+	Answer and initial networks	Risposta e reti iniziali
+	Answer Network	Rete di risposta
+	Answer network: {}	Rete di risposta: {}
+	any	qualsiasi
+	AP1 offers Aula (WPA2, passphrase clase1234). Open a laptop's Config › Wireless0 to change its network, or move it far from AP1 and watch it drop.	AP1 offre Aula (WPA2, passphrase clase1234). Apri Config › Wireless0 di un laptop per cambiare la sua rete, oppure allontanalo da AP1 e guarda come si disconnette.
+	APN (access point name)	APN (access point name)
+	APN accepted (empty: any)	APN accettato (vuoto: qualsiasi)
+	Application	Applicazione
+	Application: {} connection (no data in this segment).	Applicazione: connessione {} (nessun dato in questo segmento).
+	Application: {} data.	Applicazione: dati {}.
+	Application: {} message.	Applicazione: messaggio {}.
+	Apply	Applica
+	Apply address	Applica indirizzo
+	Apply APN	Applica APN
+	Apply IPv6	Applica IPv6
+	Apply pool	Applica pool
+	Apply Wi-Fi	Applica Wi-Fi
+	ARP for {}, not this device	ARP per {}, non per questo dispositivo
+	ARP from {} is not on {}	L'ARP di {} non è su {}
+	ARP reply: {} is at {}.	Risposta ARP: {} si trova a {}.
+	ARP request	Richiesta ARP
+	ARP request: who has {}? (asked by {})	Richiesta ARP: chi ha {}? (chiede {})
+	Ascending	Crescente
+	Ask every managed router for its hostname, model, software and interfaces over RESTCONF	Chiedi a ogni router gestito nome host, modello, software e interfacce tramite RESTCONF
+	Assessment Tree	Albero di valutazione
+	Associated with {}	Associato a {}
+	At a simulated time	A un tempo simulato
+	At Device	Su dispositivo
+	at line {}	alla riga {}
+	At time	All'istante
+	Attributes	Attributi
+	Authentication	Autenticazione
+	Auto (by route)	Auto (per route)
+	Automatic	Automatico
+	Automatic: picks the right cable for the two ports you choose	Automatico: sceglie il cavo giusto per le due porte selezionate
+	Automation: RESTCONF from a PC	Automazione: RESTCONF da un PC
+	Back	Indietro
+	Back to the call screen	Torna alla schermata di chiamata
+	Back to the enclosing place (Intercity is the top)	Torna al luogo contenitore (Intercity è il livello superiore)
+	Back to the Intercity map	Torna alla mappa Intercity
+	Back to the parent cluster (Root is the top)	Torna al cluster padre (Root è il livello superiore)
+	Back to the top level	Torna al livello superiore
+	Base MAC address	Indirizzo MAC di base
+	bay {} of {} already holds a {}	lo slot {} di {} contiene già {}
+	bay {} of {} is empty	lo slot {} di {} è vuoto
+	Bay {}: empty	Slot {}: vuoto
+	Bay {}: {} (click to take it out)	Slot {}: {} (clic per rimuoverlo)
+	Binary assets added	Risorse binarie aggiunte
+	Binary assets removed	Risorse binarie rimosse
+	blocks nested deeper than {}	blocchi annidati oltre {}
+	Blue	Blu
+	Board MCU	MCU della scheda
+	Board SBC	SBC della scheda
+	Board1 runs a BoardScript program (Board1 > Programming): it reads Temp1 on pin A0, switches Fan1 on pin D0 above 28 degrees, blinks Light1 on D1 and reports the reading to the Home gateway's IoT service every 2 s of simulated time. Raise Temp1's reading (Temp1 > IoT), then advance the time. Wire more things with the IoT Custom cable.	Board1 esegue un programma BoardScript (Board1 > Programmazione): legge Temp1 sul pin A0, accende Fan1 sul pin D0 sopra i 28 gradi, fa lampeggiare Light1 su D1 e riferisce la lettura al servizio IoT del Home gateway ogni 2 s di tempo simulato. Alza la lettura di Temp1 (Temp1 > IoT), poi fai avanzare il tempo. Collega altri oggetti con il cavo IoT Custom.
+	Body (JSON or XML)	Corpo (JSON o XML)
+	Both router interfaces need their address and `no shutdown`.	Entrambe le interfacce del router richiedono l'indirizzo e `no shutdown`.
+	Build the finished network, capture its configuration as the answers, then put the lab back in its starting state and save it.	Costruisci la rete finita, acquisisci la sua configurazione come risposte, poi riporta il laboratorio allo stato iniziale e salvalo.
+	Building	Edificio
+	Bytes	Byte
+	bytes	byte
+	cable	cavo
+	Cable Length	Lunghezza cavo
+	Cable Length…	Lunghezza cavo…
+	Cable Modem	Cable Modem
+	Cable modem: bridges its coaxial port (Coaxial0) to its Ethernet port (Ethernet1)	Cable modem: collega in bridge la porta coassiale (Coaxial0) alla porta Ethernet (Ethernet1)
+	cable too long: {} m copper, max 100 m	cavo troppo lungo: {} m in rame, max 100 m
+	cabled	cablato
+	Cabled ports	Porte cablate
+	Call	Chiama
+	call ended: {}	chiamata terminata: {}
+	Call server	Server di chiamata
+	Cancel	Annulla
+	Capture answers from this lab	Acquisisci le risposte da questo laboratorio
+	Capture only the visible events	Acquisisci solo gli eventi visibili
+	Cards are fitted and removed with the device switched off.	Le schede si montano e si rimuovono a dispositivo spento.
+	Cards:	Schede:
+	Carried by SSH: key exchange {}, cipher {}	Trasportato da SSH: scambio di chiavi {}, cifratura {}
+	Cell Tower	Cell Tower
+	Cell tower	Cella radio
+	Cell tower: a radio with six sectors (Cellular0-5) that mobile devices in range attach to, and one backhaul port (Ethernet0) cabled to the provider network	Cella radio: una radio con sei settori (Cellular0-5) a cui si agganciano i dispositivi mobili nel raggio, e una porta di backhaul (Ethernet0) collegata alla rete del provider
+	Cell towers, a central office and mobile data	Celle radio, una centrale e dati mobili
+	Cellular	Cellulare
+	Cellular Data	Dati cellulari
+	Cellular Data is off	I dati cellulari sono disattivati
+	Cellular service	Servizio cellulare
+	Cellular via {} · refused: {}	Cellulare tramite {} · rifiutato: {}
+	Cellular via {} · {}	Cellulare tramite {} · {}
+	Cellular: no service (set Cellular Data and the APN in Config > Cellular0; move it near a cell tower)	Cellulare: nessun servizio (attiva i dati cellulari e imposta l'APN in Config > Cellular0; avvicinalo a una cella radio)
+	Cellular: signal {} of 4 from {}	Cellulare: segnale {} su 4 da {}
+	Central	Centrale
+	Central Office Server	Server della centrale
+	Central switching (through the controller)	Commutazione centrale (tramite il controller)
+	Change the outside temperature	Cambia la temperatura esterna
+	Change the reading	Cambia la lettura
+	Channel	Canale
+	Check	Verifica
+	Check a student's results file	Verifica il file dei risultati di uno studente
+	Check Results	Verifica risultati
+	Choose the source device	Scegli il dispositivo di origine
+	City	Città
+	Clear	Cancella
+	Clear the event list	Svuota l'elenco eventi
+	Click a device or a cable to delete it.	Fai clic su un dispositivo o un cavo per eliminarlo.
+	Click a device to configure it · drag to move · Shift+drag or Shift+click to pick several · scroll to pan	Fai clic su un dispositivo per configurarlo · trascina per spostare · Shift+trascina o Shift+clic per sceglierne più d'uno · scorri per spostare la vista
+	Click the corners of the polygon; double-click or Enter to finish, Esc to cancel.	Fai clic sui vertici del poligono; doppio clic o Invio per finire, Esc per annullare.
+	Click the first device and pick a port.	Fai clic sul primo dispositivo e scegli una porta.
+	Click the workspace to place a note. Drag notes to move them; double-click to edit.	Fai clic sull'area di lavoro per inserire una nota. Trascina le note per spostarle; doppio clic per modificarle.
+	Click the workspace to place a {}. Esc to stop.	Fai clic sull'area di lavoro per inserire un elemento {}. Esc per fermarti.
+	Client address	Indirizzo del client
+	Client name	Nome del client
+	Clients	Client
+	Close	Chiudi
+	Close the session	Chiudi la sessione
+	closed	chiuso
+	Cloud	Cloud
+	Cluster name:	Nome del cluster:
+	CO Detector	Rilevatore di CO
+	Coaxial	Coassiale
+	Coaxial: joins coaxial ports (a cable modem to the cable provider's cloud); carries a signal up to 500 m here	Coassiale: collega porte coassiali (un cable modem al cloud del provider via cavo); trasporta un segnale fino a 500 m qui
+	Code	Codice
+	Color	Colore
+	Colour	Colore
+	Command	Comando
+	Command Line Interface	Interfaccia a riga di comando
+	Command Prompt	Prompt dei comandi
+	Commits	Commit
+	Community	Community
+	Compare	Confronta
+	Compare with the Answer	Confronta con la risposta
+	Comparison	Confronto
+	Completion	Completamento
+	Complex PDU {}: {}	PDU complesso {}: {}
+	Compose	Componi
+	Config	Config
+	configuration	configurazione
+	Configuration applied on {}	Configurazione applicata su {}
+	Configuration merged; {} line(s) were not understood.	Configurazione unita; {} righe non sono state comprese.
+	Connections	Connessioni
+	Connectivity Tests	Test di connettività
+	Console	Console
+	Console (rollover): a PC's RS-232 port to a router's or switch's Console port, for the PC's Terminal	Console (rollover): dalla porta RS-232 di un PC alla porta Console di un router o switch, per il Terminal del PC
+	Console cable: click a PC (RS-232) and a router or switch (Console).	Cavo console: fai clic su un PC (RS-232) e su un router o switch (Console).
+	Console of {} over the console cable	Console di {} tramite il cavo console
+	Constant Delay	Ritardo costante
+	contains "{}"	contiene "{}"
+	Contributors	Collaboratori
+	Controller	Controller
+	Controller address (empty: any in this subnet)	Indirizzo del controller (vuoto: uno qualsiasi in questa sottorete)
+	cooling	raffreddamento
+	Copied {}	{} copiato
+	Copies leave on {} ports: {}.	Le copie escono sulle porte {} di {}.
+	Copper Cross-Over	Rame incrociato
+	Copper cross-over: joins like ports (switch to switch, router to router, PC to PC, router to PC)	Rame incrociato: collega porte uguali (switch con switch, router con router, PC con PC, router con PC)
+	Copper Ethernet carries a signal up to 100 m.	Ethernet in rame trasporta un segnale fino a 100 m.
+	Copper Straight-Through	Rame diretto
+	Copper straight-through: joins unlike ports (a PC or router to a switch or hub)	Rame diretto: collega porte diverse (un PC o un router a uno switch o hub)
+	Copy	Copia
+	Copy (Ctrl+C): the selected device	Copia (Ctrl+C): il dispositivo selezionato
+	Coverage: {} workspace units around it (a circle on the workspace); {} sectors	Copertura: {} unità dell'area di lavoro intorno (un cerchio sull'area di lavoro); {} settori
+	Create Complex PDU	Crea PDU complesso
+	Create PDU	Crea PDU
+	dark	scuro
+	Dark interface	Interfaccia scura
+	Data	Dati
+	data from a host that is not associated	dati da un host non associato
+	Data plan on	Piano dati attivo
+	Data VLAN 10 untagged, voice VLAN 100 tagged	VLAN dati 10 senza tag, VLAN voce 100 con tag
+	Decline	Rifiuta
+	Default Gateway	Gateway predefinito
+	degrees	gradi
+	Delete	Elimina
+	delete	elimina
+	Delete Note	Elimina nota
+	Delete this scenario and its PDUs	Elimina questo scenario e i suoi PDU
+	denied by access list {} ({})	negato dall'access list {} ({})
+	denied by IPv6 access list {} ({})	negato dall'access list IPv6 {} ({})
+	Descending	Decrescente
+	Desktop	Desktop
+	Desktop PC with one Fast Ethernet port	PC desktop con una porta Fast Ethernet
+	Destination	Destinazione
+	destination is on the arrival port (filtered)	la destinazione è sulla porta di arrivo (filtrato)
+	Destination port	Porta di destinazione
+	Detail	Dettaglio
+	Details	Dettagli
+	Device	Dispositivo
+	device	dispositivo
+	device default	predefinito del dispositivo
+	Devices admitted	Dispositivi ammessi
+	Devices power-cycled: dynamic tables cleared.	Dispositivi riavviati: tabelle dinamiche svuotate.
+	Devices stand in wiring closets and buildings: open one first.	I dispositivi stanno in armadi di cablaggio ed edifici: aprine prima uno.
+	Devices whose configuration is locked:	Dispositivi la cui configurazione è bloccata:
+	DHCP and basic device security	DHCP e sicurezza di base dei dispositivi
+	DHCP answer for another client	Risposta DHCP per un altro client
+	DHCP discover	DHCP discover
+	Dialing {}	Chiamata a {}
+	differs	diverso
+	Disconnect	Disconnetti
+	Discover	Rileva
+	Display Name	Nome visualizzato
+	Display name	Nome visualizzato
+	division by zero	divisione per zero
+	DNS answer nobody asked for	Risposta DNS che nessuno ha richiesto
+	DNS query	Query DNS
+	DNS Server	Server DNS
+	DNS Service	Servizio DNS
+	Domain Name	Nome di dominio
+	done	fatto
+	door	porta
+	Double-click a place to open it · drag to arrange · right-click for more (move devices, cable lengths)	Fai doppio clic su un luogo per aprirlo · trascina per disporre · clic destro per altro (sposta dispositivi, lunghezze dei cavi)
+	Drag on the workspace to draw freehand.	Trascina sull'area di lavoro per disegnare a mano libera.
+	Drag on the workspace to draw. Drawings sit behind devices; move them with Select.	Trascina sull'area di lavoro per disegnare. I disegni stanno dietro ai dispositivi; spostali con Seleziona.
+	Draw Ellipse	Disegna ellisse
+	Draw Freehand (drag on the workspace)	Disegna a mano libera (trascina sull'area di lavoro)
+	Draw Line	Disegna linea
+	Draw Polygon (click the corners)	Disegna poligono (fai clic sui vertici)
+	Draw Rectangle	Disegna rettangolo
+	Drawing of the answer network	Disegno della rete di risposta
+	Dropped: {}	Scartato: {}
+	DSL Modem	Modem DSL
+	DSL modem: bridges its phone line (Phone0, RJ-11) to its Ethernet port (Ethernet1)	Modem DSL: collega in bridge la linea telefonica (Phone0, RJ-11) alla porta Ethernet (Ethernet1)
+	Each check's answer next to what your lab has	La risposta di ogni verifica accanto a ciò che ha il tuo laboratorio
+	Each PC's gateway is the router's address in its LAN.	Il gateway di ogni PC è l'indirizzo del router nella sua LAN.
+	Each phone takes an address in voice VLAN 100 and learns from DHCP option 150 where to register (R1); its PC, plugged into the phone, gets an address in data VLAN 10. Open Phone1 > Phone, dial 1002 and press Call; on Phone2 press Pick up. `show ephone` and `show ephone-dn` on R1 show the registrations and the call.	Ogni telefono riceve un indirizzo nella VLAN voce 100 e impara da DHCP option 150 dove registrarsi (R1); il suo PC, collegato al telefono, riceve un indirizzo nella VLAN dati 10. Apri Phone1 > Telefono, componi 1002 e premi Chiama; su Phone2 premi Rispondi. `show ephone` e `show ephone-dn` su R1 mostrano le registrazioni e la chiamata.
+	Each subnet on its own switch; the router joins them. Try ping and tracert across.	Ogni sottorete sul proprio switch; il router le collega. Prova ping e tracert attraverso.
+	Each test pings from a device to an address; it passes when the replies come (or don't, when blocking is the point).	Ogni test fa un ping da un dispositivo a un indirizzo; riesce quando arrivano le risposte (o non arrivano, quando il punto è il blocco).
+	Edit	Modifica
+	Edit file	Modifica file
+	Edit Filters	Modifica filtri
+	Edit it in the workspace	Modificalo nell'area di lavoro
+	Edit the initial network	Modifica la rete iniziale
+	Eight smart things report every few seconds to the home gateway's IoT service, whose rules light the hall when someone moves, sound the siren on smoke and unlock the door on smoke or heat.	Otto oggetti intelligenti riferiscono ogni pochi secondi al servizio IoT del gateway di casa, le cui regole accendono la luce del corridoio quando qualcuno si muove, fanno suonare la sirena in caso di fumo e sbloccano la porta con fumo o calore.
+	Ellipse	Ellisse
+	EMAIL	EMAIL
+	Email	Email
+	Email address	Indirizzo email
+	empty	vuoto
+	empty: click to fit	vuoto: clic per adattare
+	Empty: the TFTP server DHCP gave (option 150)	Vuoto: il server TFTP che DHCP ha fornito (option 150)
+	encrypted with the password	cifrato con la password
+	Encrypted with TLS 1.2: {} (no certificate)	Cifrato con TLS 1.2: {} (nessun certificato)
+	End Devices	Dispositivi finali
+	Environment	Ambiente
+	Equivalent console commands	Comandi console equivalenti
+	Erase	Cancella
+	EtherChannel between two switches	EtherChannel tra due switch
+	Ethernet frame from {} to {}.	Frame Ethernet da {} a {}.
+	Event List	Elenco eventi
+	Event List Filters - Visible Events	Filtri elenco eventi - Eventi visibili
+	Event {} at {} s, from {} to {}	Evento {} a {} s, da {} a {}
+	Event {}, from {} to {}	Evento {}, da {} a {}
+	events	eventi
+	Events of hidden protocols are neither recorded nor exported to pcap; turning it on also removes them from the list	Gli eventi dei protocolli nascosti non vengono né registrati né esportati in pcap; attivandolo si tolgono anche dall'elenco
+	Every configuration line of the routers and switches, and every PC address, becomes a check	Ogni riga di configurazione dei router e degli switch, e ogni indirizzo dei PC, diventa una verifica
+	Every hop takes the same simulated time (1 ms), whatever queues would add	Ogni hop richiede lo stesso tempo simulato (1 ms), qualunque cosa aggiungerebbero le code
+	Every router runs RIPv2. Compare `show ip route` (R routes, hop counts in `show ip rip database`) on R1 and R3, then shut R2's g0/1 and watch the routes go.	Ogni router esegue RIPv2. Confronta `show ip route` (route R, numero di hop in `show ip rip database`) su R1 e R3, poi spegni g0/1 di R2 e guarda sparire le route.
+	Every smart thing reports to its server over HTTP	Ogni oggetto intelligente riferisce al suo server via HTTP
+	Every smart thing reports to the Home gateway's IoT service (192.168.0.1) every 5 s of simulated time. Open Home > IoT to see them live and the rules. Set Motion1's reading to 1: Light1 and Cam1 switch on (Cam1 takes a still image). Raise Smoke1 above 20: Siren1 sounds and Door1 unlocks. Advance the time (or press Report now) to let the things report.	Ogni oggetto intelligente riferisce al servizio IoT del Home gateway (192.168.0.1) ogni 5 s di tempo simulato. Apri Home > IoT per vederli in diretta e le regole. Imposta la lettura di Motion1 a 1: Light1 e Cam1 si accendono (Cam1 scatta un'immagine). Alza Smoke1 sopra 20: Siren1 suona e Door1 si sblocca. Fai avanzare il tempo (o premi Riferisci ora) per farli riferire.
+	every {} s	ogni {} s
+	Example	Esempio
+	Exit	Esci
+	Expected	Atteso
+	Export Capture (pcap)	Esporta acquisizione (pcap)
+	Export Capture (pcap)...	Esporta acquisizione (pcap)...
+	Export Workspace Image (PNG)...	Esporta immagine dell'area di lavoro (PNG)...
+	Export...	Esporta...
+	Extension	Estensione
+	Extensions	Estensioni
+	Fa0/23 and Fa0/24 form Port-channel1 (LACP: S1 active, S2 passive). Try `show etherchannel summary` and `show spanning-tree`, then shut one member down and ping again.	Fa0/23 e Fa0/24 formano Port-channel1 (LACP: S1 active, S2 passive). Prova `show etherchannel summary` e `show spanning-tree`, poi spegni un membro e rifai il ping.
+	fail	non riuscito
+	Failed	Fallito
+	fan	ventola
+	Fast Forward Time (30 s)	Avanza veloce (30 s)
+	Fiber	Fibra
+	Fiber: joins fiber ports (SFP uplinks and fiber cards); carries a signal up to 2 km here	Fibra: collega porte in fibra (uplink SFP e schede in fibra); trasporta un segnale fino a 2 km qui
+	File	File
+	File Manager	Gestione file
+	File Name	Nome file
+	Files	File
+	Fill	Riempimento
+	Fill colour	Colore di riempimento
+	Fire	Invia
+	Fire again	Invia di nuovo
+	Fire All	Invia tutti
+	Fire PDU {}	Invia PDU {}
+	First	Primo
+	First address	Primo indirizzo
+	First commit	Primo commit
+	First port	Prima porta
+	for get(...) and report	per get(...) e report
+	Forget the traps received	Dimentica i trap ricevuti
+	Format JSON	Formatta JSON
+	Forward	Avanti
+	Four layer-2 switch ports inside the router: VLAN membership and trunks as on a switch, routed through the router's VLAN interfaces	Quattro porte switch di livello 2 dentro il router: appartenenza alle VLAN e trunk come su uno switch, instradate tramite le interfacce VLAN del router
+	Four synchronous serial WAN ports	Quattro porte WAN seriali sincrone
+	Framing	Delimitazione
+	Freeform	A mano libera
+	From	Da
+	From device	Dal dispositivo
+	from DHCP	da DHCP
+	From PC1: `ping 10.0.2.10` (the first request times out while R1 resolves PC3), then `tracert 10.0.2.10`.	Da PC1: `ping 10.0.2.10` (la prima richiesta va in timeout mentre R1 risolve PC3), poi `tracert 10.0.2.10`.
+	From {} to {}	Da {} a {}
+	From {}: click the second device and pick a port. Esc cancels.	Da {}: fai clic sul secondo dispositivo e scegli una porta. Esc annulla.
+	From {}: click the second device. Esc cancels.	Da {}: fai clic sul secondo dispositivo. Esc annulla.
+	FTP Service	Servizio FTP
+	FW1 has three named interfaces: inside (level 100), dmz (50) and outside (0). The office and the DMZ reach the Internet through the outside address (`show xlate`, `show conn`); Home can't start anything towards them, except the web server, published as 203.0.113.10 by a static rule and one access rule (`show access-list` counts the hits). From Home, browse http://203.0.113.10 and ping PC1 to see the difference; `show logging` on FW1 tells why a packet was dropped. The global policy inspects ICMP, so pings from the office come back without a rule; FW1 is not a hop, so a traceroute from PC1 starts at the ISP router; and FW1 ignores pings to its outside address (`icmp deny any outside`).	FW1 ha tre interfacce con nome: inside (livello 100), dmz (50) e outside (0). L'ufficio e la DMZ raggiungono Internet tramite l'indirizzo outside (`show xlate`, `show conn`); Home non può avviare nulla verso di loro, tranne il web server, pubblicato come 203.0.113.10 da una regola statica e una regola di accesso (`show access-list` conta le corrispondenze). Da Home, apri http://203.0.113.10 e fai ping a PC1 per vedere la differenza; `show logging` su FW1 dice perché un pacchetto è stato scartato. La policy globale ispeziona ICMP, quindi i ping dall'ufficio tornano indietro senza una regola; FW1 non è un hop, quindi un traceroute da PC1 parte dal router dell'ISP; e FW1 ignora i ping al suo indirizzo outside (`icmp deny any outside`).
+	FW1 lets the office out (sharing its outside address), keeps the Internet out of the office, and publishes the DMZ web server through a fixed address and one access rule.	FW1 lascia uscire l'ufficio (condividendo il suo indirizzo outside), tiene Internet fuori dall'ufficio e pubblica il web server della DMZ tramite un indirizzo fisso e una regola di accesso.
+	Garage Door	Porta del garage
+	Genuine: {} scored {}% ({} of {} points), and the score was replayed against their network.	Autentico: {} ha ottenuto {}% ({} di {} punti) e il punteggio è stato rieseguito sulla sua rete.
+	get-next from the OID until its branch ends	get-next dall'OID fino alla fine del suo ramo
+	Give the pool a name	Dai un nome al pool
+	Give the record a name, such as www.example.lab	Dai un nome al record, per esempio www.example.lab
+	Give the secret the router has in `radius-server host ... key`	Inserisci il secret che il router ha in `radius-server host ... key`
+	give the student's name	indica il nome dello studente
+	GLOBAL	GLOBALE
+	Global Settings	Impostazioni globali
+	Go	Vai
+	Got	Ottenuto
+	Grab bag	Varie
+	graded	valutato
+	Green	Verde
+	Grey	Grigio
+	Group into Cluster	Raggruppa in cluster
+	Group into Cluster (Ctrl+G): the picked devices	Raggruppa in cluster (Ctrl+G): i dispositivi scelti
+	Grouped into {}: double-click it to open it.	Raggruppati in {}: fai doppio clic per aprirlo.
+	Hand out addresses (DHCP)	Distribuisci indirizzi (DHCP)
+	Hang up	Riaggancia
+	Headers (Name: value)	Header (Nome: valore)
+	Heater	Riscaldamento
+	Heaters, coolers, fans, windows and sprinklers change the room over simulated time	Riscaldamenti, condizionatori, ventole, finestre e irrigatori cambiano la stanza nel tempo simulato
+	heating	riscaldamento
+	Help	Aiuto
+	hidden from a casual look (not encryption: the key is in the file)	nascosto a un'occhiata distratta (non è cifratura: la chiave è nel file)
+	Hide answers in the file	Nascondi le risposte nel file
+	Hint	Suggerimento
+	Hint when it fails	Suggerimento in caso di errore
+	Home City	Città di casa
+	Home Gateway	Home Gateway
+	Home Internet over cable and DSL	Internet di casa via cavo e DSL
+	Home IoT gateway: Internet port, 4 LAN ports and Wi-Fi with DHCP and NAT like a home router, plus a built-in IoT service that smart things register with	Gateway IoT di casa: porta Internet, 4 porte LAN e Wi-Fi con DHCP e NAT come un router di casa, più un servizio IoT integrato a cui si registrano gli oggetti intelligenti
+	Home Router	Home Router
+	Home wireless router: Internet port, 4 LAN ports and Wi-Fi, with DHCP and NAT set up	Router wireless di casa: porta Internet, 4 porte LAN e Wi-Fi, con DHCP e NAT già impostati
+	hop limit expired in transit	limite di hop esaurito durante il transito
+	Host ports are always on.	Le porte host sono sempre attive.
+	Hostname	Nome host
+	HQ has a 2-port serial card in bay 0/1 and a Gigabit card in bay 0/0; Branch a serial card in bay 0/1 (see each router's Physical tab). To change a card, switch the router off there first: the cable on a card that comes out is unplugged. Both configurations are saved, so switching a router off and on keeps them (try it: `show ip interface brief` before and after).	HQ ha una scheda seriale a 2 porte nello slot 0/1 e una scheda Gigabit nello slot 0/0; Branch una scheda seriale nello slot 0/1 (vedi la scheda Fisico di ogni router). Per cambiare una scheda, spegni prima il router da lì: il cavo di una scheda rimossa viene scollegato. Entrambe le configurazioni sono salvate, quindi spegnere e riaccendere un router le mantiene (provalo: `show ip interface brief` prima e dopo).
+	HSRP: a gateway that survives a router	HSRP: un gateway che sopravvive a un router
+	HTTP GET	HTTP GET
+	Hub ports have nothing to configure: every frame is repeated out of every other port.	Le porte dell'hub non hanno nulla da configurare: ogni frame viene ripetuto su tutte le altre porte.
+	Hub: repeats every frame out of its other 8 ports	Hub: ripete ogni frame sulle altre 8 porte
+	Hubs	Hub
+	Humidity Sensor	Sensore di umidità
+	ICMP destination unreachable (code {}).	ICMP destinazione irraggiungibile (codice {}).
+	ICMP echo reply, sequence number {}.	ICMP risposta echo, numero di sequenza {}.
+	ICMP echo request, sequence number {}.	ICMP richiesta echo, numero di sequenza {}.
+	ICMP time exceeded: a TTL ran out.	ICMP tempo scaduto: un TTL è scaduto.
+	Identification	Identificazione
+	Identifier	Identificatore
+	If	Se
+	If {}, switch {} off	Se {}, spegni {}
+	If {}, switch {} on	Se {}, accendi {}
+	Import	Importa
+	In Layers	Per livelli
+	Inbound PDU Details	Dettagli PDU in ingresso
+	Inbox	Posta in arrivo
+	Incoming (POP3) server	Server in entrata (POP3)
+	Incoming call from {}	Chiamata in arrivo da {}
+	Independent clean-room project; not affiliated with any network equipment vendor.	Progetto indipendente clean-room; non affiliato a nessun produttore di apparati di rete.
+	Info	Info
+	Initial network: {}	Rete iniziale: {}
+	Inside a block: interface g0/0 | ip address 10.0.0.1 255.255.255.0	Dentro un blocco: interface g0/0 | ip address 10.0.0.1 255.255.255.0
+	Inspect	Ispeziona
+	Inspect {}	Ispeziona {}
+	Inspect: click a device to see its ARP, MAC and routing tables.	Ispeziona: fai clic su un dispositivo per vedere le sue tabelle ARP, MAC e di routing.
+	Instructions	Istruzioni
+	Instructions in	Istruzioni in
+	Instructions or notes	Istruzioni o note
+	Inter-VLAN routing on a multilayer switch	Routing inter-VLAN su uno switch multilayer
+	Intercity	Intercity
+	Intercity: the cities of the lab	Intercity: le città del laboratorio
+	INTERFACE	INTERFACCIA
+	Interface	Interfaccia
+	Interface {}	Interfaccia {}
+	Interfaces up	Interfacce attive
+	Interval	Intervallo
+	IoT	IoT
+	IoT climate: rules close the loop in a room with physics	Clima IoT: le regole chiudono il ciclo in una stanza con fisica
+	IoT Custom	IoT Custom
+	IoT custom cable: click a programmable board and a smart thing.	Cavo IoT custom: fai clic su una scheda programmabile e su un oggetto intelligente.
+	IoT custom cable: joins a programmable board's pin to a smart thing, which the board's program then reads or switches	Cavo IoT custom: collega un pin di una scheda programmabile a un oggetto intelligente, che il programma della scheda poi legge o comanda
+	IoT server:	Server IoT:
+	IoT service	Servizio IoT
+	IoT: a sensor, a fan and a rule	IoT: un sensore, una ventola e una regola
+	IP Configuration	Configurazione IP
+	IP packet from {} to {}, TTL {}.	Pacchetto IP da {} a {}, TTL {}.
+	IP Phone	Telefono IP
+	IP phone with a built-in switch: FastEthernet0 goes to the network, FastEthernet1 to a computer behind it; takes its address and its call server by DHCP	Telefono IP con switch integrato: FastEthernet0 va alla rete, FastEthernet1 a un computer dietro di esso; riceve indirizzo e call server via DHCP
+	IP phones with a voice VLAN	Telefoni IP con una VLAN voce
+	IP protocol {}.	Protocollo IP {}.
+	IPv4 Address	Indirizzo IPv4
+	IPv6 Address	Indirizzo IPv6
+	IPv6 Configuration	Configurazione IPv6
+	IPv6 Gateway	Gateway IPv6
+	IPv6 next header {} not understood	IPv6 next header {} non compreso
+	IPv6 with two routers	IPv6 con due router
+	Join	Collega
+	Join a pin to a smart thing with the IoT Custom cable (Connections), or pick the thing for each pin in the Programming tab.	Collega un pin a un oggetto intelligente con il cavo IoT Custom (Connessioni), oppure scegli l'oggetto per ogni pin nella scheda Programmazione.
+	Join the conditions with	Unisci le condizioni con
+	Joined to {}: offers {} WLAN(s) on channel {}	Collegato a {}: offre {} WLAN sul canale {}
+	Keep the program without running it	Tieni il programma senza eseguirlo
+	Keep the session open	Tieni aperta la sessione
+	kept in the clear	conservato in chiaro
+	Key information	Informazioni sulla chiave
+	Key {}	Chiave {}
+	L3 Switch 24	L3 Switch 24
+	Lab Notes	Note del laboratorio
+	LAN	LAN
+	Language	Lingua
+	Laptop	Laptop
+	Laptop with a Wi-Fi card instead of an Ethernet port	Laptop con una scheda Wi-Fi al posto della porta Ethernet
+	Laptop with one Fast Ethernet port	Laptop con una porta Fast Ethernet
+	Last	Ultimo
+	Last commit	Ultimo commit
+	Last Device	Ult. disp.
+	Last Status	Ultimo stato
+	Lawn Sprinkler	Irrigatore del prato
+	Layer 1: Physical	Livello 1: Fisico
+	Layer 2: Data Link	Livello 2: Collegamento dati
+	Layer 3: Network	Livello 3: Rete
+	Layer 4: Transport	Livello 4: Trasporto
+	Layer 5: Session	Livello 5: Sessione
+	Layer 6: Presentation	Livello 6: Presentazione
+	Layer 7: Application	Livello 7: Applicazione
+	Leased: {}	Assegnato: {}
+	Leave the session open after these operations, to hold a lock or work with the candidate	Lascia aperta la sessione dopo queste operazioni, per mantenere un lock o lavorare con il candidate
+	Length	Lunghezza
+	Length (m):	Lunghezza (m):
+	Length from the places	Lunghezza dai luoghi
+	Let the phone register and update its screen	Lascia che il telefono si registri e aggiorni lo schermo
+	Let the smart things report, then list them	Lascia che gli oggetti intelligenti riferiscano, poi elencali
+	let x = 1 · x = read(A0) · write(D0, 1) · if / elif / else / end · while / end · sleep 2 · print x · report x · get(path) · stop	let x = 1 · x = read(A0) · write(D0, 1) · if / elif / else / end · while / end · sleep 2 · print x · report x · get(path) · stop
+	Licensed under MIT or Apache-2.0.	Con licenza MIT o Apache-2.0.
+	light	luce
+	Light AP	AP leggero
+	Lightweight access point: joins a wireless LAN controller over its Ethernet port and offers the controller's WLANs	Access point leggero: si collega a un controller wireless tramite la porta Ethernet e offre le WLAN del controller
+	Line	Riga
+	Line delta	Differenza di righe
+	Line {} (registered with {})	Riga {} (registrato con {})
+	line {}: {}	riga {}: {}
+	Lines added	Righe aggiunte
+	Lines deleted	Righe eliminate
+	link down	link inattivo
+	Link Local Address	Indirizzo link-local
+	Link Local Address: {}	Indirizzo link-local: {}
+	link up	link attivo
+	link-local packets never leave their link	i pacchetti link-local non lasciano mai il loro link
+	List	Elenco
+	lit	accesa
+	Load...	Carica...
+	Load…	Carica…
+	Local	Locale
+	Lock the activity	Blocca l'attività
+	Lock the activity so students can't open the answer network; with a password it is encrypted in the file.	Blocca l'attività perché gli studenti non possano aprire la rete di risposta; con una password viene cifrata nel file.
+	locked	bloccata
+	Logical	Logico
+	Logical Workspace	Area di lavoro logica
+	login from {} refused by access-class {}	accesso da {} rifiutato dall'access-class {}
+	Looking for {}	Ricerca di {}
+	loop: the frame crossed {} hubs or switches	loop: il frame ha attraversato {} hub o switch
+	MAC address	Indirizzo MAC
+	MAC Address: {}	Indirizzo MAC: {}
+	Main Building	Edificio principale
+	Main Wiring Closet	Armadio di cablaggio principale
+	Make checks from the tree	Crea verifiche dall'albero
+	Malformed frame	Frame malformato
+	Managed routers	Router gestiti
+	Management address: {}	Indirizzo di gestione: {}
+	Mask	Maschera
+	Max User	Utenti max
+	Maximum Number of Users	Numero massimo di utenti
+	Maximum Number of Users: a number	Numero massimo di utenti: un numero
+	Merge...	Unisci...
+	Merged PRs	PR uniti
+	Message	Messaggio
+	Messages received: {}	Messaggi ricevuti: {}
+	MIB Browser	Browser MIB
+	Microcontroller board with Wi-Fi, 6 digital and 2 analog pins: runs a BoardScript program that reads and switches the smart things wired to its pins	Scheda a microcontrollore con Wi-Fi, 6 pin digitali e 2 analogici: esegue un programma BoardScript che legge e comanda gli oggetti intelligenti collegati ai suoi pin
+	missing	mancante
+	MLS1 routes between VLAN 10 and VLAN 20 (`ip routing`, interfaces Vlan10 and Vlan20) and sends everything else to R1 over a routed port (`no switchport`). Try `show ip route` on MLS1 and a ping from PC1 to PC4 or to SRV1.	MLS1 instrada tra la VLAN 10 e la VLAN 20 (`ip routing`, interfacce Vlan10 e Vlan20) e manda tutto il resto a R1 tramite una porta instradata (`no switchport`). Prova `show ip route` su MLS1 e un ping da PC1 a PC4 o a SRV1.
+	Mode	Modalità
+	Model	Modello
+	Modular Router 2GE	Router modulare 2GE
+	Modular Router 3GE	Router modulare 3GE
+	Modular router with 2 Gigabit Ethernet ports and 2 empty module bays (serial and Gigabit cards, fitted while powered off)	Router modulare con 2 porte Gigabit Ethernet e 2 slot per moduli vuoti (schede seriali e Gigabit, da montare a dispositivo spento)
+	Modular router with 3 Gigabit Ethernet ports and 4 empty module bays (serial and Gigabit cards, fitted while powered off)	Router modulare con 3 porte Gigabit Ethernet e 4 slot per moduli vuoti (schede seriali e Gigabit, da montare a dispositivo spento)
+	Modular routers: serial cards for a WAN link	Router modulari: schede seriali per un collegamento WAN
+	more than one statement on the line	più di un'istruzione sulla riga
+	more than {} requests without a `sleep`	più di {} richieste senza uno `sleep`
+	more than {} variables	più di {} variabili
+	motion	movimento
+	Motion Detector	Rilevatore di movimento
+	Move to	Sposta in
+	Multilayer switch with 24 Fast Ethernet + 2 Gigabit Ethernet ports (copper or fiber): switches, and routes with `ip routing`	Switch multilayer con 24 porte Fast Ethernet + 2 Gigabit Ethernet (rame o fibra): fa switching e routing con `ip routing`
+	Must fail (an access list should block it)	Deve fallire (una access list dovrebbe bloccarlo)
+	Name	Nome
+	Name (A–Z)	Nome (A–Z)
+	Name to look up	Nome da cercare
+	NAT to the Internet, with an access list	NAT verso Internet, con una access list
+	NAT translates the destination {} back to the inside address {}.	Il NAT traduce la destinazione {} di nuovo nell'indirizzo interno {}.
+	NAT translates the inside source {} to {}.	Il NAT traduce l'origine interna {} in {}.
+	Native VLAN {} · allowed {}	VLAN nativa {} · ammesse {}
+	Navigation: back to the start of the workspace	Navigazione: torna all'inizio dell'area di lavoro
+	Network	Rete
+	Network Address	Indirizzo di rete
+	Network Devices	Dispositivi di rete
+	Network Information (the lab's notes)	Informazioni di rete (le note del laboratorio)
+	Network printer with one Fast Ethernet port	Stampante di rete con una porta Fast Ethernet
+	New	Nuovo
+	New (Ctrl+N)	Nuovo (Ctrl+N)
+	New Building	Nuovo edificio
+	New City	Nuova città
+	New File	Nuovo file
+	New from sample	Nuovo da esempio
+	New Wiring Closet	Nuovo armadio di cablaggio
+	Next Hop	Next hop
+	No	No
+	No adding or removing devices	Niente aggiunta o rimozione di dispositivi
+	No address yet: give interface Vlan1 an address.	Ancora nessun indirizzo: assegna un indirizzo all'interfaccia Vlan1.
+	No address: take one by DHCP (Config tab)	Nessun indirizzo: ottienine uno via DHCP (scheda Config)
+	no answer from {}	nessuna risposta da {}
+	No cable changes	Niente modifiche ai cavi
+	No call server: DHCP gave no TFTP server (option 150)	Nessun call server: DHCP non ha fornito un server TFTP (option 150)
+	no call to hang up	nessuna chiamata da riagganciare
+	no central office server answers behind this tower	nessun server della centrale risponde dietro questa cella
+	No console cable. Join this computer's RS-232 port to a router's or switch's Console port with the Console cable (Connections), then open the Terminal again.	Nessun cavo console. Collega la porta RS-232 di questo computer alla porta Console di un router o switch con il cavo Console (Connessioni), poi riapri il Terminal.
+	No contributor data was built into this copy.	In questa copia non sono stati inclusi dati sui collaboratori.
+	No device is attached to this tower.	Nessun dispositivo è collegato a questa cella.
+	No device matches.	Nessun dispositivo corrisponde.
+	no device {}	nessun dispositivo {}
+	no DHCP server answered	nessun server DHCP ha risposto
+	No events yet. Add a simple PDU (envelope tool) or ping from a console.	Ancora nessun evento. Aggiungi un PDU semplice (strumento busta) o fai un ping da una console.
+	No files yet: `copy running-config tftp: <this address>` on a router saves one here.	Ancora nessun file: `copy running-config tftp: <questo indirizzo>` su un router ne salva uno qui.
+	No fill	Nessun riempimento
+	no function `{}` (there are read, get, time and number)	nessuna funzione `{}` (esistono read, get, time e number)
+	no IoT server set	nessun server IoT impostato
+	no IoT server set on the board (Programming tab)	nessun server IoT impostato sulla scheda (scheda Programmazione)
+	no IPv6 route to {}	nessuna route IPv6 verso {}
+	No management address yet: give interface Vlan1 an address.	Ancora nessun indirizzo di gestione: assegna un indirizzo all'interfaccia Vlan1.
+	No messages. Press Receive to fetch new mail.	Nessun messaggio. Premi Ricevi per scaricare la nuova posta.
+	no other port is up	nessun'altra porta è attiva
+	No port is joined: the cloud passes nothing.	Nessuna porta collegata: il cloud non fa passare nulla.
+	No power adapter	Nessun alimentatore
+	No power supply fitted: the device has no power. Fit one, then switch it on.	Nessun alimentatore montato: il dispositivo non ha corrente. Montane uno, poi accendilo.
+	no power: plug in its power adapter (Physical tab) or cable it to a PoE switch	nessuna alimentazione: collega il suo alimentatore (scheda Fisico) o cablalo a uno switch PoE
+	no power: {} has `power inline never`	nessuna alimentazione: {} ha `power inline never`
+	no power: {} is a {}, which gives no power over Ethernet; use a PoE switch or plug in the power adapter	nessuna alimentazione: {} è un {}, che non fornisce corrente via Ethernet; usa uno switch PoE o collega l'alimentatore
+	no power: {} is shut down	nessuna alimentazione: {} è in shutdown
+	no power: {} is switched off	nessuna alimentazione: {} è spento
+	no power: {}'s power budget is used up	nessuna alimentazione: il budget di potenza di {} è esaurito
+	no replies	nessuna risposta
+	no route to {}	nessuna route verso {}
+	No routers yet: discover them from a seed router, or add one with its address and an admin login.	Ancora nessun router: scoprili da un router seed, oppure aggiungine uno con il suo indirizzo e un login amministratore.
+	No service	Nessun servizio
+	no service for IP protocol {}	nessun servizio per il protocollo IP {}
+	no service on TCP port {}	nessun servizio sulla porta TCP {}
+	no service on UDP port {}	nessun servizio sulla porta UDP {}
+	no service: every tower in range is full	nessun servizio: ogni cella in portata è piena
+	no service: no cell tower in range	nessun servizio: nessuna cella in portata
+	No static routes: OSPF finds every network. Try `show ip ospf neighbor` and `show ip route` on R1, then shut down R1 g0/2 and watch the route to 192.168.3.0 move to R2.	Nessuna route statica: OSPF trova ogni rete. Prova `show ip ospf neighbor` e `show ip route` su R1, poi spegni g0/2 di R1 e guarda la route verso 192.168.3.0 passare a R2.
+	no such cable	cavo inesistente
+	no such device	dispositivo inesistente
+	No traps yet. Routers and switches send them with snmp-server host and snmp-server enable traps.	Ancora nessun trap. Router e switch li inviano con snmp-server host e snmp-server enable traps.
+	no up port in VLAN {} to forward to	nessuna porta attiva nella VLAN {} a cui inoltrare
+	No.	N.
+	nobody answered for {}	nessuno ha risposto per {}
+	None	Nessuno
+	none learned (untagged)	nessuna appresa (senza tag)
+	none yet	ancora nessuno
+	none yet (not registered)	ancora nessuno (non registrato)
+	None yet.	Ancora nessuno.
+	None yet: smart things register when they report (Refresh).	Ancora nessuno: gli oggetti intelligenti si registrano quando riferiscono (Aggiorna).
+	none: Reset Activity returns to the lab as it was opened	nessuno: Ripristina attività riporta al laboratorio com'era all'apertura
+	not a results file: it has no signature	non è un file di risultati: non ha firma
+	not addressed to this device	non indirizzato a questo dispositivo
+	not an IPv6 router (no `ipv6 unicast-routing`)	non è un router IPv6 (manca `ipv6 unicast-routing`)
+	Not associated	Non associato
+	Not associated with any access point	Non associato ad alcun access point
+	Not associated: check the SSID, the passphrase and the distance	Non associato: controlla SSID, passphrase e distanza
+	Not associated: {}	Non associato: {}
+	Not edited: {} scored {}% ({} of {} points). It was not replayed, so a forged score cannot be ruled out.	Non modificato: {} ha ottenuto {}% ({} di {} punti). Non è stato rieseguito, quindi non si può escludere un punteggio falsificato.
+	Not joined: no controller answers (check both addresses, the cabling and the default gateways).	Non collegato: nessun controller risponde (controlla i due indirizzi, il cablaggio e i gateway predefiniti).
+	not listening to {}	non in ascolto su {}
+	Not registered	Non registrato
+	Not registered yet	Non ancora registrato
+	Not simulated yet	Non ancora simulato
+	Not started	Non avviato
+	Note	Nota
+	Notes saved with the lab:	Note salvate con il laboratorio:
+	NTP Service	Servizio NTP
+	Num	N.
+	number too large	numero troppo grande
+	Objects	Oggetti
+	Obtain the address from the provider (DHCP)	Ottieni l'indirizzo dal provider (DHCP)
+	of	di
+	Off	Off
+	off	spento
+	OID	OID
+	OK	OK
+	On	On
+	on	acceso
+	Once	Una volta
+	One routed Fast Ethernet port	Una porta Fast Ethernet instradata
+	One routed Gigabit Ethernet fiber (SFP) port	Una porta Gigabit Ethernet in fibra (SFP) instradata
+	One routed Gigabit Ethernet port	Una porta Gigabit Ethernet instradata
+	One supply fitted: taking it out cuts the power. Fit the second for a spare.	Un alimentatore montato: rimuoverlo toglie la corrente. Montane un secondo come riserva.
+	One switch split into VLAN 10 and 20, routed by subinterfaces over an 802.1Q trunk.	Uno switch diviso nelle VLAN 10 e 20, instradate con sottointerfacce su un trunk 802.1Q.
+	One switch, three PCs	Uno switch, tre PC
+	Open	Apri
+	open	aperto
+	Open (Ctrl+O)	Apri (Ctrl+O)
+	Open (no passphrase)	Aperta (senza passphrase)
+	Open Cluster	Apri cluster
+	Open console	Apri console
+	Open Device	Apri dispositivo
+	Open PC1 > Desktop > Web Browser and go to www.netlabcraft.lab. Edit the pages in Server0 > Services > HTTP. Try `ping www.netlabcraft.lab` and `nslookup www.netlabcraft.lab` in a Command Prompt.	Apri PC1 > Desktop > Web Browser e vai a www.netlabcraft.lab. Modifica le pagine in Server0 > Services > HTTP. Prova `ping www.netlabcraft.lab` e `nslookup www.netlabcraft.lab` in un Prompt dei comandi.
+	Open Recent	Apri recenti
+	Open...	Apri...
+	Opened the page in the PDF viewer: print it from there.	Pagina aperta nel visualizzatore PDF: stampala da lì.
+	Opened {}	{} aperto
+	Operation	Operazione
+	Operations (one per blank-line block)	Operazioni (una per blocco separato da riga vuota)
+	optional	facoltativo
+	Options	Opzioni
+	or	o
+	OSI Model	Modello OSI
+	OSPF is not running here	OSPF non è in esecuzione qui
+	OSPF on three routers	OSPF su tre router
+	other cable type	altro tipo di cavo
+	Other language code	Altro codice lingua
+	Out Layers	Per livelli (uscita)
+	Outbound PDU Details	Dettagli PDU in uscita
+	Outgoing (SMTP) server	Server in uscita (SMTP)
+	Outgoing port	Porta in uscita
+	Outline	Contorno
+	Outline colour	Colore del contorno
+	Output	Output
+	Output shows	L'output mostra
+	Outside: {} degrees	Esterno: {} gradi
+	Own call control	Controllo chiamata proprio
+	Packet	Pacchetto
+	Page	Pagina
+	Palette	Tavolozza
+	Part	Separa
+	Part {} from {}	Parte {} di {}
+	pass	riuscito
+	Password	Password
+	Password (WPA2-Enterprise)	Password (WPA2-Enterprise)
+	Paste	Incolla
+	Paste (Ctrl+V): a copy of the copied device	Incolla (Ctrl+V): una copia del dispositivo copiato
+	Paste the results file	Incolla il file dei risultati
+	Pause	Pausa
+	Payload	Payload
+	PC1 and PC2 autoconfigure from R1's router advertisements (ipv6config). Try `ping 2001:db8:2::10` from PC1, `show ipv6 route` and `show ipv6 neighbors` on the routers, and watch NDP in Simulation mode.	PC1 e PC2 si autoconfigurano dai router advertisement di R1 (ipv6config). Prova `ping 2001:db8:2::10` da PC1, `show ipv6 route` e `show ipv6 neighbors` sui router, e osserva NDP in modalità Simulazione.
+	PC1 and PC2 share VLAN 10; PC3 and PC4 VLAN 20. Ping across VLANs and watch the 802.1Q tags in the event list.	PC1 e PC2 condividono la VLAN 10; PC3 e PC4 la VLAN 20. Fai ping tra le VLAN e osserva i tag 802.1Q nell'elenco eventi.
+	PC1 and PC2 take their IPv6 addresses from R1 (autoconfiguration); PC3 is set by hand behind R2; static routes join the two.	PC1 e PC2 ricevono i loro indirizzi IPv6 da R1 (autoconfigurazione); PC3 è impostato a mano dietro R2; route statiche collegano i due.
+	PC1 gets its address from the Home router, which translates it to 203.0.113.2. Its packets cross the cable modem, the provider's cloud (coaxial joined to the phone line, see ISP's Physical tab) and the DSL modem to the Office router and the Web server (ping 10.0.0.10). Try another cable between the modems and the cloud: only coaxial fits a coaxial port.	PC1 riceve il suo indirizzo dal Home router, che lo traduce in 203.0.113.2. I suoi pacchetti attraversano il cable modem, il cloud del provider (coassiale collegato alla linea telefonica, vedi la scheda Fisico di ISP) e il modem DSL fino al router Office e al Web server (ping 10.0.0.10). Prova un altro cavo tra i modem e il cloud: in una porta coassiale entra solo il coassiale.
+	PC1 pings the Web server through PAT (`show ip nat translations` on Office). PC2 is blocked by the GUESTS access list (`show access-lists`). The ISP has no route to 192.168.0.0/24: only NAT makes the replies come back.	PC1 fa ping al Web server tramite PAT (`show ip nat translations` su Office). PC2 è bloccato dalla access list GUESTS (`show access-lists`). L'ISP non ha una route verso 192.168.0.0/24: solo il NAT fa tornare le risposte.
+	PC1 reaches PC2	PC1 raggiunge PC2
+	PC1 reaches SRV1 through three routers. Remove a static route on R2 and watch `tracert` stop there.	PC1 raggiunge SRV1 attraverso tre router. Rimuovi una route statica su R2 e guarda `tracert` fermarsi lì.
+	PC2 reaches PC1	PC2 raggiunge PC1
+	PCs get their addresses from R1 by DHCP (Desktop > IP Configuration > DHCP, or `ipconfig /renew`). R1's console asks for `cisco`; `enable` asks for `class`. Try `show ip dhcp binding` on R1.	I PC ricevono l'indirizzo da R1 via DHCP (Desktop > IP Configuration > DHCP, oppure `ipconfig /renew`). La console di R1 chiede `cisco`; `enable` chiede `class`. Prova `show ip dhcp binding` su R1.
+	PCs get their addresses from the server, resolve www.netlabcraft.lab with its DNS service and open its web pages.	I PC ricevono l'indirizzo dal server, risolvono www.netlabcraft.lab con il suo servizio DNS e aprono le sue pagine web.
+	PDU Information at Device: {}	Informazioni PDU sul dispositivo: {}
+	Periodic	Periodico
+	Periodically	Periodicamente
+	Permissions	Permessi
+	Phone	Telefono
+	Phone (RJ-11)	Telefono (RJ-11)
+	phone commands run on IP phones	i comandi del telefono funzionano sui telefoni IP
+	Phone line (RJ-11): joins phone ports (a DSL modem to the phone company's cloud); carries a signal up to 5 km here	Linea telefonica (RJ-11): collega porte telefoniche (un modem DSL al cloud della compagnia telefonica); trasporta un segnale fino a 5 km qui
+	Phone settings	Impostazioni del telefono
+	Physical	Fisico
+	Physical Workspace	Area di lavoro fisica
+	Physical workspace	Area di lavoro fisica
+	Physics on (sensors read the room)	Fisica attiva (i sensori leggono la stanza)
+	Pick a card in the list first, then click an empty bay.	Scegli prima una scheda nell'elenco, poi fai clic su uno slot vuoto.
+	Pick a card, then click an empty bay to fit it; click a fitted card to take it out.	Scegli una scheda, poi fai clic su uno slot vuoto per montarla; fai clic su una scheda montata per rimuoverla.
+	Pick a device in the palette and click the canvas to place it, or open a sample from File.	Scegli un dispositivo nella palette e fai clic sull'area per posizionarlo, oppure apri un esempio da File.
+	Pick devices first: Shift+click them or Shift+drag a box around them.	Scegli prima i dispositivi: Shift+clic su di essi o Shift+trascina un riquadro intorno.
+	Pick up	Rispondi
+	Pin {} wired to	Pin {} collegato a
+	Ping (ICMP echo)	Ping (ICMP echo)
+	Ping PC3 from PC1 (`ping 192.168.1.13`), then look at `show mac address-table` on S1.	Fai ping a PC3 da PC1 (`ping 192.168.1.13`), poi guarda `show mac address-table` su S1.
+	Pins	Pin
+	Place name:	Nome del luogo:
+	Place Note (N)	Inserisci nota (N)
+	Play Controls	Controlli di riproduzione
+	PLAY CONTROLS:	CONTROLLI DI RIPRODUZIONE:
+	Play speed	Velocità di riproduzione
+	Play: replay the frames on the workspace	Riproduci: rivedi i frame sull'area di lavoro
+	Playing...	Riproduzione...
+	Point at a port to see what is plugged in. Cables are made with the Connections tool.	Punta su una porta per vedere cosa è collegato. I cavi si creano con lo strumento Connessioni.
+	points	punti
+	Polygon	Poligono
+	Pool Name	Nome del pool
+	POP3	POP3
+	port blocked by spanning tree (VLAN {})	porta bloccata dallo spanning tree (VLAN {})
+	port is shut down	la porta è in shutdown
+	Port pairs (a frame in one port leaves by the other):	Coppie di porte (un frame in una porta esce dall'altra):
+	port security violation from {}: the port is shut down (err-disabled)	violazione di port security da {}: la porta è in shutdown (err-disabled)
+	port security: {} is one address too many (dropped and counted)	port security: {} è un indirizzo di troppo (scartato e contato)
+	port security: {} is one address too many (dropped)	port security: {} è un indirizzo di troppo (scartato)
+	Port Status	Stato delle porte
+	port still {} (spanning tree, VLAN {}): it forwards 30 s after coming up	porta ancora {} (spanning tree, VLAN {}): inoltra 30 s dopo l'attivazione
+	port suspended: it can't join its EtherChannel	porta sospesa: non può unirsi al suo EtherChannel
+	Ports	Porte
+	Position	Posizione
+	Power adapter plugged in	Alimentatore collegato
+	Power adapter: plugged in (click to unplug)	Alimentatore: collegato (clic per scollegare)
+	Power adapter: unplugged (click to plug in)	Alimentatore: scollegato (clic per collegare)
+	Power Cycle Devices (forget ARP and MAC tables)	Riavvia i dispositivi (dimentica le tabelle ARP e MAC)
+	Power over Ethernet: {} W of {} W in use	Power over Ethernet: {} W di {} W in uso
+	Power supplies:	Alimentatori:
+	Power supply {}: empty bay (click to fit one)	Alimentatore {}: slot vuoto (clic per montarne uno)
+	Power supply {}: fitted (click to take it out)	Alimentatore {}: montato (clic per rimuoverlo)
+	Power: off (click to switch on)	Alimentazione: spento (clic per accendere)
+	Power: on (click to switch off)	Alimentazione: acceso (clic per spegnere)
+	powered	alimentato
+	Powered by its adapter	Alimentato dal suo alimentatore
+	Powered over Ethernet by {} ({} W)	Alimentato via Ethernet da {} ({} W)
+	ppm CO	ppm CO
+	Print...	Stampa...
+	Printer	Stampante
+	Program (BoardScript)	Programma (BoardScript)
+	Program text	Testo del programma
+	Programming	Programmazione
+	Protocol	Protocollo
+	PRs	PR
+	Purple	Viola
+	Push	Invia
+	Push a template to every router	Invia un template a ogni router
+	Put a short example program in the editor	Inserisci un breve programma di esempio nell'editor
+	Puts it in the workspace; save it again when done	Lo inserisce nell'area di lavoro; salvalo di nuovo al termine
+	quiet	silenzioso
+	Quoted	Tra virgolette
+	R1 answers RESTCONF over HTTPS and NETCONF on port 830 for its admin user; PC1's Programming tab holds ready-made requests to read and change R1's interfaces and routes.	R1 risponde a RESTCONF su HTTPS e a NETCONF sulla porta 830 per il suo utente admin; la scheda Programmazione di PC1 contiene richieste già pronte per leggere e modificare le interfacce e le route di R1.
+	R1 has a 4-port switch card: its ports are VLAN members (10 and 20) and a trunk to S1, and the router routes between its VLAN interfaces.	R1 ha una scheda switch a 4 porte: le sue porte sono membri di VLAN (10 e 20) e un trunk verso S1, e il router instrada tra le sue interfacce VLAN.
+	R1 is active for both virtual gateways (`show standby`). Watch the HSRP hellos in Simulation mode, then shut R1's interfaces and ping from PC1 again.	R1 è attivo per entrambi i gateway virtuali (`show standby`). Osserva gli hello HSRP in modalità Simulazione, poi spegni le interfacce di R1 e rifai il ping da PC1.
+	R1 joins two LANs.\n\n1. Name the router R1.\n2. Protect privileged mode with the secret class.\n3. Give GigabitEthernet0/0 the address 192.168.10.1/24 and GigabitEthernet0/1 192.168.20.1/24, and turn both on.\n4. Check that PC1 reaches PC2.\n\nPress Check Results at any time.	R1 collega due LAN.\n\n1. Chiama il router R1.\n2. Proteggi la modalità privilegiata con il secret class.\n3. Assegna a GigabitEthernet0/0 l'indirizzo 192.168.10.1/24 e a GigabitEthernet0/1 192.168.20.1/24, e attiva entrambe.\n4. Verifica che PC1 raggiunga PC2.\n\nPremi Verifica risultati in qualsiasi momento.
+	R1's 4-port switch card (bay 0/1, see its Physical tab) switches like a switch: `show vlan brief` and `show interfaces trunk` on R1. PC1 and PC3 share VLAN 10 across the trunk; PC1 reaches PC2 and PC4 through R1's VLAN interfaces (`show ip route`).	La scheda switch a 4 porte di R1 (slot 0/1, vedi la sua scheda Fisico) fa switching come uno switch: `show vlan brief` e `show interfaces trunk` su R1. PC1 e PC3 condividono la VLAN 10 attraverso il trunk; PC1 raggiunge PC2 e PC4 tramite le interfacce VLAN di R1 (`show ip route`).
+	R1's user admin (password NetLab2026) may use RESTCONF over HTTPS and NETCONF on port 830. On PC1 open Desktop > Programming, pick a saved request, give the user and password and press Send; then look at `show running-config` on R1.	L'utente admin di R1 (password NetLab2026) può usare RESTCONF su HTTPS e NETCONF sulla porta 830. Su PC1 apri Desktop > Programmazione, scegli una richiesta salvata, indica utente e password e premi Invia; poi guarda `show running-config` su R1.
+	RADIUS server (WPA2-Enterprise logins)	Server RADIUS (accessi WPA2-Enterprise)
+	Raw TCP connection	Connessione TCP raw
+	Raw UDP packet	Pacchetto UDP raw
+	Read	Lettura
+	Read the inventory	Leggi l'inventario
+	reading {}	lettura {}
+	Reading: {}	Lettura: {}
+	Real name	Nome reale
+	Realtime	Tempo reale
+	Receive	Ricevi
+	recording	registrazione
+	Rectangle	Rettangolo
+	Red	Rosso
+	Redo	Ripeti
+	Redo (Ctrl+Y)	Ripeti (Ctrl+Y)
+	Refresh	Aggiorna
+	Refused by the central office: {}	Rifiutato dalla centrale: {}
+	Registered things	Oggetti registrati
+	Registered with {}	Registrato con {}
+	registration refused: {}	registrazione rifiutata: {}
+	Remove	Rimuovi
+	Remove Place	Rimuovi luogo
+	Remove the activity	Rimuovi l'attività
+	Remove the initial network	Rimuovi la rete iniziale
+	Rename Cluster	Rinomina cluster
+	Rename Cluster…	Rinomina cluster…
+	Rename Place	Rinomina luogo
+	Rename Place…	Rinomina luogo…
+	Replay counter	Contatore di riproduzioni
+	replies	risposte
+	reply from {}	risposta da {}
+	Reply {}	Risposta {}
+	Report every (s):	Riferisci ogni (s):
+	Report now	Riferisci ora
+	Request	Richiesta
+	Request timed out or failed: {}	Richiesta scaduta o non riuscita: {}
+	Request timed out.	Richiesta scaduta.
+	Reset Activity	Ripristina attività
+	Reset room	Ripristina stanza
+	Reset Simulation	Ripristina simulazione
+	Resize Shape (not available yet)	Ridimensiona forma (non ancora disponibile)
+	Resource Records	Record di risorsa
+	Response headers	Header della risposta
+	RESTCONF (HTTP)	RESTCONF (HTTP)
+	Result	Risultato
+	Reverse the order	Inverti l'ordine
+	Right-click a device to move it to another place.	Fai clic destro su un dispositivo per spostarlo in un altro luogo.
+	Ringing {}	Squillo {}
+	RIP is not running here	RIP non è in esecuzione qui
+	RIP version 2 on three routers	RIP versione 2 su tre router
+	Room: {} degrees, {} % humidity, {} % soil, smoke {} %, CO {} ppm, light {} %	Stanza: {} gradi, {} % di umidità, {} % di suolo, fumo {} %, CO {} ppm, luce {} %
+	Root	Root
+	Router (port 830)	Router (porta 830)
+	Router address	Indirizzo del router
+	Router with 2 Gigabit Ethernet ports	Router con 2 porte Gigabit Ethernet
+	Router with 2 Gigabit Ethernet ports and 2 serial WAN ports	Router con 2 porte Gigabit Ethernet e 2 porte WAN seriali
+	Router with 3 Gigabit Ethernet ports	Router con 3 porte Gigabit Ethernet
+	Router with 4 Gigabit Ethernet ports	Router con 4 porte Gigabit Ethernet
+	Routers	Router
+	Routers and switches with `ntp server <this address>` take this time.	Router e switch con `ntp server <questo indirizzo>` prendono quest'ora.
+	ROUTING	ROUTING
+	Rules	Regole
+	Run	Esegui
+	Run session	Esegui sessione
+	Run the tests	Esegui i test
+	Running	In esecuzione
+	running	in esecuzione
+	Running (switched on by the server)	In esecuzione (acceso dal server)
+	Running Config	Running Config
+	S1 creates VLANs 10 and 20; the clients S2 and S3 learn them (`show vtp status`, `show vlan brief`). Add `vlan 30` on S1 and look again on a client. PC1 reaches PC3 (VLAN 10), PC2 reaches PC4 (VLAN 20).	S1 crea le VLAN 10 e 20; i client S2 e S3 le imparano (`show vtp status`, `show vlan brief`). Aggiungi `vlan 30` su S1 e guarda di nuovo su un client. PC1 raggiunge PC3 (VLAN 10), PC2 raggiunge PC4 (VLAN 20).
+	S1 is the root bridge. One port on the S2-S3 link blocks (amber). Compare `show spanning-tree` on each switch, then unplug S1-S3 and watch the blocked port start forwarding.	S1 è il root bridge. Una porta sul collegamento S2-S3 è in blocco (ambra). Confronta `show spanning-tree` su ogni switch, poi scollega S1-S3 e guarda la porta bloccata iniziare a inoltrare.
+	S1 is the VTP server of domain LAB; S2 and S3 are clients and learn its VLANs over the trunks.	S1 è il server VTP del dominio LAB; S2 e S3 sono client e imparano le sue VLAN tramite i trunk.
+	same	uguale
+	Save	Salva
+	Save (Ctrl+S)	Salva (Ctrl+S)
+	Save as	Salva con nome
+	Save As...	Salva con nome...
+	Save Internet	Salva Internet
+	Save LAN	Salva LAN
+	Save results (CSV)	Salva risultati (CSV)
+	Save results (JSON)	Salva risultati (JSON)
+	Save the program and run it from the top	Salva il programma ed eseguilo dall'inizio
+	Save this lab as the answer	Salva questo laboratorio come risposta
+	Save this lab as the initial network	Salva questo laboratorio come rete iniziale
+	Save title and instructions	Salva titolo e istruzioni
+	Save Wireless	Salva wireless
+	Save WLAN	Salva WLAN
+	Saved configuration	Configurazione salvata
+	Saved requests	Richieste salvate
+	Saved the request {}	Richiesta {} salvata
+	Saved {}	{} salvato
+	saved: Reset Activity returns to it	salvato: Ripristina attività vi ritorna
+	Scenario	Scenario
+	Scenario information	Informazioni sullo scenario
+	Scenario {}	Scenario {}
+	Scenarios hold the PDUs you send, so a lab can be re-tested	Gli scenari contengono i PDU che invii, così un laboratorio si può ritestare
+	Search for device	Cerca dispositivo
+	Second port	Seconda porta
+	second sensor	secondo sensore
+	second value	secondo valore
+	seconds	secondi
+	seconds from now	secondi da adesso
+	seconds of simulated time	secondi di tempo simulato
+	Secret	Secret
+	Section	Sezione
+	Security	Sicurezza
+	Seed router	Router seed
+	selected	selezionato
+	Send	Invia
+	Send every PDU in the list again	Invia di nuovo ogni PDU dell'elenco
+	Sender IP	IP mittente
+	Sender MAC	MAC mittente
+	sensor	sensore
+	Sensor1 reads 25 degrees and Fan1 is off. Open Sensor1 > IoT and raise the reading above 30: the server's rule (IoT-Server > IoT) switches Fan1 on. Every report is an HTTP request to the server (see the events in Simulation mode).	Sensor1 legge 25 gradi e Fan1 è spenta. Apri Sensor1 > IoT e alza la lettura sopra 30: la regola del server (IoT-Server > IoT) accende Fan1. Ogni report è una richiesta HTTP al server (vedi gli eventi in modalità Simulazione).
+	Sent to {}	Inviato a {}
+	Sequence	Sequenza
+	Sequence number	Numero di sequenza
+	Serial DCE	Serial DCE
+	Serial DCE: joins serial ports; the end you click first is the DCE and gives the clock	Serial DCE: collega porte seriali; l'estremità su cui fai clic per prima è il DCE e fornisce il clock
+	Serial DTE	Serial DTE
+	Serial DTE: joins serial ports; the end you click first is the DTE, the other end gives the clock	Serial DTE: collega porte seriali; l'estremità su cui fai clic per prima è il DTE, l'altra fornisce il clock
+	Server	Server
+	Server address	Indirizzo del server
+	Server with one Gigabit Ethernet port	Server con una porta Gigabit Ethernet
+	Service	Servizio
+	SERVICES	SERVIZI
+	Services	Servizi
+	services run on Server devices	i servizi funzionano sui dispositivi Server
+	Session {} is open: the next operations run on it	La sessione {} è aperta: le prossime operazioni si eseguono su di essa
+	Set Background (not available yet)	Imposta sfondo (non ancora disponibile)
+	Set Gateway	Imposta gateway
+	Set its Wi-Fi network in Config > Wireless0; move it near an access point to join.	Imposta la sua rete Wi-Fi in Config > Wireless0; avvicinalo a un access point per collegarlo.
+	set up the Email app first (mail.configure)	configura prima l'app Email (mail.configure)
+	Settings	Impostazioni
+	Several picked: drag one to move them all · Ctrl+G groups them into a cluster	Più dispositivi scelti: trascinane uno per spostarli tutti · Ctrl+G li raggruppa in un cluster
+	Shared secret	Secret condiviso
+	Show	Mostra
+	Show All/None	Mostra tutto/niente
+	Show as text	Mostra come testo
+	Show grid	Mostra griglia
+	shown when it fails	mostrato in caso di errore
+	Signal with SIP	Segnalazione con SIP
+	Signal {} of 4	Segnale {} su 4
+	Signal {} of 4 from {}	Segnale {} su 4 da {}
+	Simple PDU: click the source device.	PDU semplice: fai clic sul dispositivo di origine.
+	Simple PDU: now click the destination device.	PDU semplice: ora fai clic sul dispositivo di destinazione.
+	Simulation	Simulazione
+	Simulation Panel	Pannello simulazione
+	Single-board computer with one Fast Ethernet port, 8 digital and 4 analog pins: runs a BoardScript program that reads and switches the smart things wired to its pins	Computer a scheda singola con una porta Fast Ethernet, 8 pin digitali e 4 analogici: esegue un programma BoardScript che legge e comanda gli oggetti intelligenti collegati ai suoi pin
+	SIP	SIP
+	SIP phones on a PoE switch	Telefoni SIP su uno switch PoE
+	Siren	Sirena
+	siren	sirena
+	Size	Dimensione
+	Smart Device	Dispositivo intelligente
+	Smart Door Lock	Serratura intelligente
+	Smart door lock with one Fast Ethernet port: the IoT server unlocks it (on) and locks it (off)	Serratura intelligente con una porta Fast Ethernet: il server IoT la sblocca (on) e la blocca (off)
+	Smart fan with one Fast Ethernet port: registers with an IoT server, which switches it on and off	Ventola intelligente con una porta Fast Ethernet: si registra su un server IoT, che la accende e la spegne
+	Smart lamp with one Fast Ethernet port: the IoT server switches it on and off	Lampada intelligente con una porta Fast Ethernet: il server IoT la accende e la spegne
+	Smart Light	Luce intelligente
+	Smart motion detector with one Fast Ethernet port: reports 1 while something moves in front of it, else 0	Rilevatore di movimento intelligente con una porta Fast Ethernet: riferisce 1 mentre qualcosa si muove davanti a lui, altrimenti 0
+	Smart Plug	Presa intelligente
+	Smart Sensor	Sensore intelligente
+	Smart siren with one Fast Ethernet port: sounds while the IoT server keeps it on	Sirena intelligente con una porta Fast Ethernet: suona finché il server IoT la tiene accesa
+	Smart smoke detector with one Fast Ethernet port: reports how much smoke it senses (0-100 %)	Rilevatore di fumo intelligente con una porta Fast Ethernet: riferisce quanto fumo rileva (0-100 %)
+	Smart temperature sensor with one Fast Ethernet port: reports its reading to an IoT server	Sensore di temperatura intelligente con una porta Fast Ethernet: riferisce la sua lettura a un server IoT
+	Smart webcam with one Fast Ethernet port: while on, it takes a still image each time it reports and the IoT server keeps the latest	Webcam intelligente con una porta Fast Ethernet: da accesa, scatta un'immagine a ogni report e il server IoT conserva l'ultima
+	Smart Window	Finestra intelligente
+	Smartphone	Smartphone
+	Smartphone1 sits under Tower1 and Tablet1 under Tower2; both towers reach CO1 (the central office server) through S1. CO1 admits devices that ask for the APN `internet` and gives them addresses from 10.64.0.0/24. Open a phone, tap Command Prompt and run `cellular`, then `ping 192.168.60.10`; or tap Web Browser and open 192.168.60.10. Try `cellular off`, drag a phone far from its tower, change the APN, or run `cellular data-plan off` on CO1, and watch the CELL frames in Simulation mode.	Smartphone1 sta sotto Tower1 e Tablet1 sotto Tower2; entrambe le celle raggiungono CO1 (il server della centrale) tramite S1. CO1 ammette i dispositivi che chiedono l'APN `internet` e dà loro indirizzi da 10.64.0.0/24. Apri un telefono, tocca Prompt dei comandi ed esegui `cellular`, poi `ping 192.168.60.10`; oppure tocca Web Browser e apri 192.168.60.10. Prova `cellular off`, trascina un telefono lontano dalla sua cella, cambia l'APN o esegui `cellular data-plan off` su CO1, e osserva i frame CELL in modalità Simulazione.
+	smoke	fumo
+	Smoke Detector	Rilevatore di fumo
+	SMTP	SMTP
+	SMTP and POP3 Service	Servizio SMTP e POP3
+	SNMP get	SNMP get
+	Software	Software
+	Soil Moisture Sensor	Sensore di umidità del suolo
+	Sort: {}	Ordina: {}
+	sounding	in funzione
+	Source	Origine
+	Source port	Porta di origine
+	Spanning tree on a switch triangle	Spanning tree su un triangolo di switch
+	SSH	SSH
+	SSID	SSID
+	Start	Avvia
+	Start a new scenario with an empty PDU list	Avvia un nuovo scenario con un elenco PDU vuoto
+	Start IP Address	Indirizzo IP iniziale
+	Start IP Address: four numbers 0-255	Indirizzo IP iniziale: quattro numeri 0-255
+	start the activity first: `activity.start` with the student's name	avvia prima l'attività: `activity.start` con il nome dello studente
+	Start the room again from its starting values	Riavvia la stanza dai suoi valori iniziali
+	Start time	Ora di inizio
+	Startup Config	Startup Config
+	Startup configuration loaded: `reload` the device to use it.	Configurazione di avvio caricata: esegui `reload` sul dispositivo per usarla.
+	Stateful firewall with 5 Gigabit Ethernet ports: named interfaces with security levels, access rules, object NAT and a DHCP server	Firewall stateful con 5 porte Gigabit Ethernet: interfacce con nome e livelli di sicurezza, regole di accesso, NAT a oggetti e un server DHCP
+	Static	Statico
+	Static Routes	Route statiche
+	still image {}: nobody in view	immagine {}: nessuno in vista
+	still image {}: someone in view	immagine {}: qualcuno in vista
+	Stop	Stop
+	Stopped	Fermato
+	stopped	fermato
+	stopped by `stop`	fermato da `stop`
+	stopped by hand	fermato a mano
+	Stopped.	Fermato.
+	stopped: {}	fermato: {}
+	Student: {}	Studente: {}
+	Students can't change the activity or see its checks until it is unlocked	Gli studenti non possono cambiare l'attività né vedere le sue verifiche finché non viene sbloccata
+	Students see the score only	Gli studenti vedono solo il punteggio
+	Subject	Oggetto
+	Subnet Mask	Subnet mask
+	Subnet Mask: four numbers 0-255	Subnet mask: quattro numeri 0-255
+	Successful	Riuscito
+	Switch 24FE PoE	Switch 24FE PoE
+	Switch 8FE PoE	Switch 8FE PoE
+	Switch off	Spegni
+	switch off	spegni
+	Switch on	Accendi
+	switch on	accendi
+	Switch the cellular radio's data connection on or off	Attiva o disattiva la connessione dati della radio cellulare
+	Switch with 24 Fast Ethernet + 2 Gigabit Ethernet ports (the Gigabit uplinks take copper or fiber)	Switch con 24 porte Fast Ethernet + 2 Gigabit Ethernet (gli uplink Gigabit accettano rame o fibra)
+	Switch with 24 Fast Ethernet ports and 2 Gigabit fiber (SFP) uplinks	Switch con 24 porte Fast Ethernet e 2 uplink Gigabit in fibra (SFP)
+	Switch with 24 Fast Ethernet ports that give power over Ethernet (370 W in all) + 2 Gigabit Ethernet uplinks: powers IP phones and lightweight access points	Switch con 24 porte Fast Ethernet che erogano Power over Ethernet (370 W in tutto) + 2 uplink Gigabit Ethernet: alimenta telefoni IP e access point leggeri
+	Switch with 48 Fast Ethernet + 2 Gigabit Ethernet ports (the Gigabit uplinks take copper or fiber)	Switch con 48 porte Fast Ethernet + 2 Gigabit Ethernet (gli uplink Gigabit accettano rame o fibra)
+	Switch with 8 Fast Ethernet + 1 Gigabit Ethernet ports (the Gigabit uplink takes copper or fiber)	Switch con 8 porte Fast Ethernet + 1 Gigabit Ethernet (l'uplink Gigabit accetta rame o fibra)
+	Switch with 8 Fast Ethernet ports that give power over Ethernet (65 W in all) + 1 Gigabit Ethernet uplink: powers IP phones and lightweight access points	Switch con 8 porte Fast Ethernet che erogano Power over Ethernet (65 W in tutto) + 1 uplink Gigabit Ethernet: alimenta telefoni IP e access point leggeri
+	Switched off	Spento
+	switched off	spento
+	Switched on	Acceso
+	Switches	Switch
+	SWITCHING	SWITCHING
+	Switching	Switching
+	Switching loop detected	Rilevato loop di switching
+	switching loop: the frame crossed {} switches (no spanning tree)	loop di switching: il frame ha attraversato {} switch (nessuno spanning tree)
+	Switching on boots from the saved configuration.	L'accensione avvia dalla configurazione salvata.
+	Syslog Service	Servizio Syslog
+	Table	Tabella
+	Tablet	Tablet
+	Tablet1 and Smartphone1 are on the Home router's Wi-Fi (HomeNetwork) and took their addresses by DHCP. Open one, tap Web Browser and go to 192.168.0.10; the Command Prompt pings, IP Configuration shows the lease.	Tablet1 e Smartphone1 sono sul Wi-Fi del Home router (HomeNetwork) e hanno ricevuto l'indirizzo via DHCP. Aprine uno, tocca Web Browser e vai a 192.168.0.10; il Prompt dei comandi fa ping, IP Configuration mostra il lease.
+	Tablets and smartphones on Wi-Fi	Tablet e smartphone sul Wi-Fi
+	tagged frame on an access port	frame con tag su una porta access
+	Talking to {} (voice packets sent {}, received {})	In conversazione con {} (pacchetti voce inviati {}, ricevuti {})
+	Target IP	IP di destinazione
+	Target MAC	MAC di destinazione
+	TCP from port {} to port {}, flags {}, sequence number {}.	TCP dalla porta {} alla porta {}, flag {}, numero di sequenza {}.
+	Telnet	Telnet
+	temperature	temperatura
+	Template (JSON)	Template (JSON)
+	Ten Wi-Fi things join the home gateway: a thermostat drives a heater and an air conditioner, humidity and carbon monoxide open a window, a soil sensor waters the lawn.	Dieci oggetti Wi-Fi si collegano al gateway di casa: un termostato comanda un riscaldamento e un condizionatore, umidità e monossido di carbonio aprono una finestra, un sensore del suolo irriga il prato.
+	Ten Wi-Fi things joined the Home gateway's network (HomeNetwork), took addresses by DHCP and report to its IoT service every 5 s. Lower Thermo1 below 18: Heater1 heats; raise it above 26: AC1 cools. Humid1 above 70 or CO1 above 50 opens Window1; CO1 above 50 also opens Garage1; Soil1 below 30 waters the lawn. Switch Plug1 by hand on Home > IoT.	Dieci oggetti Wi-Fi si sono collegati alla rete del Home gateway (HomeNetwork), hanno ricevuto indirizzi via DHCP e riferiscono al suo servizio IoT ogni 5 s. Abbassa Thermo1 sotto 18: Heater1 scalda; alzalo sopra 26: AC1 raffredda. Humid1 sopra 70 o CO1 sopra 50 apre Window1; CO1 sopra 50 apre anche Garage1; Soil1 sotto 30 irriga il prato. Accendi Plug1 a mano da Home > IoT.
+	Terminal	Terminal
+	Text shown on the workspace:	Testo mostrato sull'area di lavoro:
+	text without its closing "	testo senza il " di chiusura
+	TFTP read	Lettura TFTP
+	TFTP server	Server TFTP
+	TFTP Service	Servizio TFTP
+	that port has no IP address	quella porta non ha un indirizzo IP
+	that port is not a radio	quella porta non è una radio
+	The access points tunnel the hosts' traffic to the controller over CAPWAP, and the controller bridges it into the VLAN	Gli access point incapsulano il traffico degli host verso il controller con CAPWAP, e il controller lo inoltra nella VLAN
+	the activity doesn't let you add or remove devices	l'attività non permette di aggiungere o rimuovere dispositivi
+	the activity doesn't let you change the cables	l'attività non permette di cambiare i cavi
+	the activity doesn't let you change {}'s configuration	l'attività non permette di cambiare la configurazione di {}
+	the activity is locked: `activity.unlock` with the instructor's password first	l'attività è bloccata: esegui prima `activity.unlock` con la password dell'istruttore
+	the address pool is exhausted	il pool di indirizzi è esaurito
+	the answer network doesn't open: wrong password or a damaged file	la rete di risposta non si apre: password errata o file danneggiato
+	the answer network is damaged	la rete di risposta è danneggiata
+	the answer network is locked with the instructor's password	la rete di risposta è bloccata con la password dell'istruttore
+	the APN is not accepted	l'APN non è accettato
+	the ARP reply says {} is at {}	la risposta ARP dice che {} si trova a {}
+	The ARP table gives {} for {}: the frame is addressed to it.	La tabella ARP dà {} per {}: il frame è indirizzato a lui.
+	the board has no pin {}	la scheda non ha il pin {}
+	the board is switched off	la scheda è spenta
+	The body is not valid JSON: {}	Il corpo non è JSON valido: {}
+	the call server did not answer	il call server non ha risposto
+	the cellular radio is not available	la radio cellulare non è disponibile
+	the central office server has no address pool (or no interface in it)	il server della centrale non ha un pool di indirizzi (o un'interfaccia al suo interno)
+	the data plan is off	il piano dati è disattivato
+	The destination MAC is not in the MAC table: the switch floods the frame out the other {} ports of VLAN {}.	Il MAC di destinazione non è nella tabella MAC: lo switch inoltra il frame sulle altre {} porte della VLAN {}.
+	The device accepted it.	Il dispositivo l'ha accettato.
+	The device dropped it: {}	Il dispositivo l'ha scartato: {}
+	The device drops the frame: {}	Il dispositivo scarta il frame: {}
+	The device drops the frame: {}.	Il dispositivo scarta il frame: {}.
+	the device is switched off	il dispositivo è spento
+	The device looks up {} in its routing table: directly connected, out {}. TTL drops to {}.	Il dispositivo cerca {} nella sua tabella di routing: direttamente connessa, uscita {}. Il TTL scende a {}.
+	The device looks up {} in its routing table: next hop {}, out {}. TTL drops to {}.	Il dispositivo cerca {} nella sua tabella di routing: next hop {}, uscita {}. Il TTL scende a {}.
+	The device sends a packet to {}: its routing table gives next hop {}, out {}, with TTL {}.	Il dispositivo invia un pacchetto a {}: la sua tabella di routing dà next hop {}, uscita {}, con TTL {}.
+	The device sends a packet to {}: its routing table says it is directly connected, out {}, with TTL {}.	Il dispositivo invia un pacchetto a {}: la sua tabella di routing dice che è direttamente connessa, uscita {}, con TTL {}.
+	The device sent nothing on because of this frame.	Il dispositivo non ha inoltrato nulla a causa di questo frame.
+	the email address needs an @ (ana@lab.local)	l'indirizzo email richiede una @ (ana@lab.local)
+	the Email app runs on PCs, laptops and servers	L'app Email funziona su PC, laptop e server
+	The event list as a capture any packet analyser opens	L'elenco eventi come acquisizione che qualsiasi analizzatore di pacchetti apre
+	The frame arrives on {}.	Il frame arriva su {}.
+	The frame is a broadcast, so {} takes it.	Il frame è un broadcast, quindi {} lo accetta.
+	The frame leaves on {}.	Il frame esce su {}.
+	The frame's destination MAC is the MAC of {}, so the device takes it.	Il MAC di destinazione del frame è il MAC di {}, quindi il dispositivo lo accetta.
+	The graded items replace the configuration, address and cable checks	Gli elementi valutati sostituiscono le verifiche di configurazione, indirizzo e cavo
+	The instructor shows the score only.	L'istruttore mostra solo il punteggio.
+	The MAC table has {} in VLAN {} on {}: the frame goes out that port only.	La tabella MAC ha {} nella VLAN {} su {}: il frame esce solo da quella porta.
+	the network cable is not connected	il cavo di rete non è collegato
+	the network is open but the host has a key or login set	la rete è aperta ma l'host ha una chiave o un login impostato
+	the network needs a username and password (WPA2-Enterprise)	la rete richiede nome utente e password (WPA2-Enterprise)
+	the network needs a WPA2 passphrase	la rete richiede una passphrase WPA2
+	The network the devices' addresses come from; this server's own interface in it is their gateway.	La rete da cui provengono gli indirizzi dei dispositivi; l'interfaccia di questo server al suo interno è il loro gateway.
+	the password can't be empty	la password non può essere vuota
+	the PDU needs a destination address	il PDU richiede un indirizzo di destinazione
+	the phone is already in a call: hang up first	il telefono è già in chiamata: riaggancia prima
+	the phone is not registered with a call server	il telefono non è registrato su un call server
+	the phone is not ringing	il telefono non sta squillando
+	The phone's own settings: protocol, call server, extension, address and voice VLAN	Le impostazioni proprie del telefono: protocollo, call server, interno, indirizzo e VLAN voce
+	The phones take their addresses by DHCP and register over SIP (UDP 5060) with R1, which knows them by MAC address (voice register pool). Open Phone1 > Phone, dial 2002 and press Call; on Phone2 press Pick up. In Simulation mode the event list shows REGISTER, INVITE, 180 Ringing, 200 OK, ACK and BYE. `show voice register all` on R1, `show power inline` on S1.	I telefoni ricevono l'indirizzo via DHCP e si registrano via SIP (UDP 5060) su R1, che li riconosce dal MAC (voice register pool). Apri Phone1 > Telefono, componi 2002 e premi Chiama; su Phone2 premi Rispondi. In modalità Simulazione l'elenco eventi mostra REGISTER, INVITE, 180 Ringing, 200 OK, ACK e BYE. `show voice register all` su R1, `show power inline` su S1.
+	the port is down	la porta è inattiva
+	the program has more than {} lines	il programma ha più di {} righe
+	the program is longer than {} characters	il programma è più lungo di {} caratteri
+	The provider's data service: admits mobile devices that attach through a cell tower, gives each an address from its pool and routes them to the lab (3 Gigabit Ethernet ports)	Il servizio dati del provider: ammette i dispositivi mobili che si agganciano tramite una cella, dà a ciascuno un indirizzo dal suo pool e li instrada verso il laboratorio (3 porte Gigabit Ethernet)
+	The radio attaches to the nearest cell tower in range; the central office server behind it gives the address. Wi-Fi is preferred when it is connected.	La radio si aggancia alla cella più vicina in portata; il server della centrale dietro di essa assegna l'indirizzo. Il Wi-Fi è preferito quando è connesso.
+	The red cable is serial; the clock marks R1's DCE end (`show controllers s0/0/0`). Remove the clock rate on R1, or change one end to `encapsulation hdlc`, and the link goes down.	Il cavo rosso è seriale; il clock segna l'estremità DCE di R1 (`show controllers s0/0/0`). Rimuovi il clock rate su R1, o cambia un'estremità in `encapsulation hdlc`, e il collegamento va giù.
+	The router ended the session: {}	Il router ha chiuso la sessione: {}
+	the router refused a setting: {}	il router ha rifiutato un'impostazione: {}
+	The router's hello	L'hello del router
+	The score does not match what the embedded network earns: this file is forged or damaged.	Il punteggio non corrisponde a quello che ottiene la rete incorporata: questo file è falsificato o danneggiato.
+	the server answered {}	il server ha risposto {}
+	the web service is off	il servizio web è disattivato
+	The workspace and a report of the devices on A4 pages, opened in the system's PDF viewer to print	L'area di lavoro e un report dei dispositivi su pagine A4, aperti nel visualizzatore PDF del sistema per stamparli
+	The workspace as a picture, for a report	L'area di lavoro come immagine, per una relazione
+	There is no startup configuration to export yet (Save first).	Non c'è ancora nessuna configurazione di avvio da esportare (prima Salva).
+	Thermostat	Termostato
+	These locks hold while the activity is locked with the password.	Questi blocchi valgono finché l'attività è bloccata con la password.
+	This access point's address: {}	Indirizzo di questo access point: {}
+	This activity gives each student their own values. Type your name to start.	Questa attività assegna a ogni studente valori propri. Scrivi il tuo nome per iniziare.
+	this activity has no answer network: `activity.save_answer` first	questa attività non ha una rete di risposta: esegui prima `activity.save_answer`
+	this activity has no initial network: `activity.save_initial` first	questa attività non ha una rete iniziale: esegui prima `activity.save_initial`
+	This activity has no ping checks.	Questa attività non ha verifiche ping.
+	This activity is locked. The instructor's password unlocks it.	Questa attività è bloccata. La password dell'istruttore la sblocca.
+	this activity was already started	questa attività è già stata avviata
+	this lab has no activity	questo laboratorio non ha un'attività
+	This lab has notes: open them with the notes button.	Questo laboratorio ha delle note: aprile con il pulsante note.
+	This results file is from another activity.	Questo file di risultati appartiene a un'altra attività.
+	This results file was changed after it was saved.	Questo file di risultati è stato modificato dopo il salvataggio.
+	This server's time: {} UTC (day {} of the Unix era)	Ora di questo server: {} UTC (giorno {} dell'epoca Unix)
+	Three routers in a line learn each other's networks with RIPv2; R3 hands out a default route.	Tre router in fila imparano le reti l'uno dell'altro con RIPv2; R3 distribuisce una route di default.
+	Three routers in a triangle learn each other's networks with OSPF; cut a link and the routes move.	Tre router in triangolo imparano le reti l'uno dell'altro con OSPF; interrompi un collegamento e le route si spostano.
+	Three routers, static routes	Tre router, route statiche
+	Three switches wired in a loop: spanning tree blocks one port (amber light) and traffic still flows.	Tre switch collegati in un anello: lo spanning tree blocca una porta (luce ambra) e il traffico continua a passare.
+	Time	Ora
+	Time (s)	Tempo (s)
+	Time is up	Tempo scaduto
+	Time is up: these are your results.	Tempo scaduto: questi sono i tuoi risultati.
+	Time left	Tempo rimanente
+	Time limit (minutes, 0: none)	Limite di tempo (minuti, 0: nessuno)
+	Time(sec)	Tempo (s)
+	Title	Titolo
+	To	A
+	To address	All'indirizzo
+	to {}: {}	a {}: {}
+	Toggle PDU List Window	Mostra/nascondi finestra elenco PDU
+	too many checks	troppe verifiche
+	Tools	Strumenti
+	Topology: {} links	Topologia: {} collegamenti
+	TOS	TOS
+	Touch-screen smartphone with Wi-Fi and a cellular radio: browser, email, command prompt and programming apps; no battery to look after	Smartphone touch screen con Wi-Fi e radio cellulare: app di browser, email, prompt dei comandi e programmazione; nessuna batteria da curare
+	Touch-screen tablet with Wi-Fi and a cellular radio: browser, email, command prompt and programming apps; no battery to look after	Tablet touch screen con Wi-Fi e radio cellulare: app di browser, email, prompt dei comandi e programmazione; nessuna batteria da curare
+	Trap	Trap
+	Traps	Trap
+	Trunk	Trunk
+	TTL	TTL
+	TTL expired in transit	TTL scaduto durante il transito
+	TTL ran out at {}	TTL esaurito su {}
+	Two cables bundled with LACP into one logical link: spanning tree blocks nothing, and one cable can fail without a break.	Due cavi uniti con LACP in un unico collegamento logico: lo spanning tree non blocca nulla e un cavo può guastarsi senza interruzioni.
+	Two IP phones, each with a PC plugged into it, share switch ports: the phones talk in voice VLAN 100, the PCs in data VLAN 10. R1 hands out addresses and registers the phones; dial 1002 from Phone1.	Due telefoni IP, ciascuno con un PC collegato, condividono porte dello switch: i telefoni parlano nella VLAN voce 100, i PC nella VLAN dati 10. R1 distribuisce gli indirizzi e registra i telefoni; componi 1002 da Phone1.
+	Two lightweight access points join the controller WLC1, which offers Staff (WPA2-Enterprise, logins checked by a RADIUS server) and Guest (WPA2-PSK).	Due access point leggeri si collegano al controller WLC1, che offre Staff (WPA2-Enterprise, accessi verificati da un server RADIUS) e Guest (WPA2-PSK).
+	Two modular routers got a 2-port serial card each (fitted while switched off) and are joined over Serial0/1/0; their configurations are saved, so a power cycle keeps them.	Due router modulari hanno ricevuto una scheda seriale a 2 porte ciascuno (montata a router spento) e sono collegati tramite Serial0/1/0; le loro configurazioni sono salvate, quindi un riavvio le mantiene.
+	Two routed Gigabit Ethernet ports	Due porte Gigabit Ethernet instradate
+	Two routers joined by a serial cable with PPP; R1 holds the DCE end and sets the clock rate. OSPF carries the routes.	Due router collegati da un cavo seriale con PPP; R1 ha l'estremità DCE e imposta il clock rate. OSPF trasporta le route.
+	Two routers share the virtual gateway 192.168.1.254; R1 is active. Shut R1 down and PC1 keeps reaching the server through R2.	Due router condividono il gateway virtuale 192.168.1.254; R1 è attivo. Spegni R1 e PC1 continua a raggiungere il server tramite R2.
+	Two SIP phones, powered by a PoE switch, register with R1's SIP call control (voice register) and call each other; dial 2002 from Phone1.	Due telefoni SIP, alimentati da uno switch PoE, si registrano al call control SIP di R1 (voice register) e si chiamano a vicenda; componi 2002 da Phone1.
+	Two sites over a serial WAN link	Due sedi su un collegamento WAN seriale
+	Two subnets and a router	Due sottoreti e un router
+	Two synchronous serial WAN ports	Due porte WAN seriali sincrone
+	Type	Tipo
+	Type the destination address or device	Scrivi l'indirizzo o il dispositivo di destinazione
+	Type the simulated time to send it at	Scrivi il tempo simulato a cui inviarlo
+	UDP from port {} to port {}, {} bytes of data.	UDP dalla porta {} alla porta {}, {} byte di dati.
+	UDP port {} not open here	porta UDP {} non aperta qui
+	Uncluster	Separa cluster
+	Undo	Annulla
+	Undo (Ctrl+Z)	Annulla (Ctrl+Z)
+	unknown card `{}` (cards: {})	scheda `{}` sconosciuta (schede: {})
+	unknown command `{}`	comando `{}` sconosciuto
+	unknown operator {}	operatore {} sconosciuto
+	Unlock	Sblocca
+	unlocked	sbloccata
+	Use SIP (UDP 5060) instead of NetLabCraft's own call-control protocol	Usa SIP (UDP 5060) al posto del protocollo di call control di NetLabCraft
+	User	Utente
+	User name	Nome utente
+	Username	Nome utente
+	Username (WPA2-Enterprise)	Nome utente (WPA2-Enterprise)
+	Users	Utenti
+	Value	Valore
+	value	valore
+	Values per student, one variable per line (net = 10, 20, 30); write {net} in the instructions and checks	Valori per studente, una variabile per riga (net = 10, 20, 30); scrivi {net} nelle istruzioni e nelle verifiche
+	Variables	Variabili
+	Variables (address: name=value, …)	Variabili (indirizzo: nome=valore, …)
+	Verify	Verifica
+	Version	Versione
+	Version {}	Versione {}
+	via {}	tramite {}
+	View	Visualizza
+	View the answer network	Visualizza la rete di risposta
+	Vis.	Vis.
+	Visible	Visibile
+	VLAN	VLAN
+	VLAN (optional)	VLAN (facoltativa)
+	VLAN Database	Database VLAN
+	VLAN Name	Nome VLAN
+	VLAN Number	Numero VLAN
+	VLAN {} does not exist on this switch	La VLAN {} non esiste su questo switch
+	VLAN {} not allowed on this trunk	La VLAN {} non è ammessa su questo trunk
+	VLANs and router-on-a-stick	VLAN e router-on-a-stick
+	Voice VLAN	VLAN voce
+	VTP: VLANs from one server	VTP: VLAN da un unico server
+	Waiting	In attesa
+	waiting for ARP of {}; packet dropped	in attesa dell'ARP di {}; pacchetto scartato
+	Walk	Walk
+	Walk the CDP and LLDP neighbours from this router and manage every router that answers RESTCONF	Percorri i vicini CDP e LLDP da questo router e gestisci ogni router che risponde a RESTCONF
+	WAN 172.16.0.0/30 over the serial cards	WAN 172.16.0.0/30 sulle schede seriali
+	WAN Emulation	Emulazione WAN
+	watering	irrigazione
+	Web Browser	Web Browser
+	Webcam	Webcam
+	webcam	webcam
+	What the answer network holds, device by device. Untick what isn't graded, set the points and a hint, then make the checks.	Cosa contiene la rete di risposta, dispositivo per dispositivo. Deseleziona ciò che non viene valutato, imposta i punti e un suggerimento, poi crea le verifiche.
+	What the rule does	Cosa fa la regola
+	What the student may change	Cosa può cambiare lo studente
+	What {} decided before sending it	Cosa ha deciso {} prima di inviarlo
+	When to send it	Quando inviarlo
+	While locked, Check Results doesn't say which checks passed	Finché è bloccata, Verifica risultati non dice quali verifiche sono riuscite
+	Wi-Fi	Wi-Fi
+	Wi-Fi access point: bridges its radio and its Ethernet port (SSID, WPA2-PSK)	Access point Wi-Fi: collega in bridge la sua radio e la porta Ethernet (SSID, WPA2-PSK)
+	Wi-Fi air conditioner: cools the room while the IoT service keeps it on	Condizionatore Wi-Fi: raffredda la stanza finché il servizio IoT lo tiene acceso
+	Wi-Fi carbon-monoxide detector: reports the CO level in parts per million	Rilevatore di monossido di carbonio Wi-Fi: riferisce il livello di CO in parti per milione
+	Wi-Fi garage door opener: the IoT service opens the door (on) and closes it (off)	Apriporta del garage Wi-Fi: il servizio IoT apre la porta (on) e la chiude (off)
+	Wi-Fi heater: warms the room while the IoT service keeps it on	Riscaldamento Wi-Fi: scalda la stanza finché il servizio IoT lo tiene acceso
+	Wi-Fi humidity sensor: reports the air's relative humidity (0-100 %)	Sensore di umidità Wi-Fi: riferisce l'umidità relativa dell'aria (0-100 %)
+	Wi-Fi Laptop	Laptop Wi-Fi
+	Wi-Fi lawn sprinkler: waters the garden while the IoT service keeps it on	Irrigatore del prato Wi-Fi: annaffia il giardino finché il servizio IoT lo tiene acceso
+	Wi-Fi off: pick a network in Config	Wi-Fi spento: scegli una rete in Config
+	Wi-Fi settings applied	Impostazioni Wi-Fi applicate
+	Wi-Fi smart plug: powers what is plugged into it while the IoT service keeps it on	Presa intelligente Wi-Fi: alimenta ciò che vi è collegato finché il servizio IoT la tiene accesa
+	Wi-Fi smart things: climate, garden and safety	Oggetti intelligenti Wi-Fi: clima, giardino e sicurezza
+	Wi-Fi soil moisture sensor: reports how wet the ground is (0-100 %)	Sensore di umidità del suolo Wi-Fi: riferisce quanto è bagnato il terreno (0-100 %)
+	Wi-Fi thermostat: reports the room temperature to its IoT service, so rules can switch a heater or an air conditioner	Termostato Wi-Fi: riferisce la temperatura della stanza al suo servizio IoT, così le regole possono accendere un riscaldamento o un condizionatore
+	Wi-Fi window opener: the IoT service opens the window (on) and closes it (off)	Apriporta della finestra Wi-Fi: il servizio IoT apre la finestra (on) e la chiude (off)
+	Wi-Fi with a controller: lightweight APs and WPA2-Enterprise	Wi-Fi con un controller: AP leggeri e WPA2-Enterprise
+	Wi-Fi {} · no address yet	Wi-Fi {} · ancora nessun indirizzo
+	Wi-Fi {} · {}	Wi-Fi {} · {}
+	Wi-Fi: laptops on an access point	Wi-Fi: laptop su un access point
+	Width	Larghezza
+	Window	Finestra
+	Wired to {} (its program reads it)	Collegato a {} (il suo programma lo legge)
+	Wired to {} (its program switches it)	Collegato a {} (il suo programma lo comanda)
+	Wireless	Wireless
+	Wireless LAN controller: holds the WLANs (SSID, WPA2-PSK or WPA2-Enterprise) and pushes them to the lightweight APs that join it	Wireless LAN controller: contiene le WLAN (SSID, WPA2-PSK o WPA2-Enterprise) e le invia agli AP leggeri che vi si collegano
+	Wireless LANs	WLAN
+	Wiring closet	Armadio di cablaggio
+	With the plan off the server refuses every attach	Con il piano disattivato il server rifiuta ogni aggancio
+	WLAN	WLAN
+	WLAN number	Numero WLAN
+	WLC1 holds two WLANs (`show wlan`, `show capwap`): Staff checks logins with RADIUS1 (users ana/ana12345 and luis/luis1234) and lands in VLAN 10 (192.168.10.0/24); Guest uses the passphrase invitado123 and lands in VLAN 30 (192.168.30.0/24). The access points tag each WLAN on their trunk to S1, and R1 routes and hands out addresses per VLAN. In Simulation mode, reset and ping from Laptop1 to watch the 802.11 association, the EAP login, the RADIUS exchange, the 4-way handshake and then CCMP-protected data; move Laptop1 next to LAP2 and watch it reassociate, keeping its address.	WLC1 contiene due WLAN (`show wlan`, `show capwap`): Staff verifica gli accessi con RADIUS1 (utenti ana/ana12345 e luis/luis1234) e finisce nella VLAN 10 (192.168.10.0/24); Guest usa la passphrase invitado123 e finisce nella VLAN 30 (192.168.30.0/24). Gli access point applicano il tag a ogni WLAN sul loro trunk verso S1, e R1 instrada e assegna gli indirizzi per VLAN. In modalità Simulazione, ripristina e fai ping da Laptop1 per osservare l'associazione 802.11, l'accesso EAP, lo scambio RADIUS, il 4-way handshake e poi i dati protetti da CCMP; sposta Laptop1 vicino a LAP2 e osserva la riassociazione, con l'indirizzo mantenuto.
+	WPA2 passphrase	Passphrase WPA2
+	WPA2 passphrase (empty: open)	Passphrase WPA2 (vuota: aperta)
+	Write	Scrittura
+	wrong cable: {} and {} need a {} cable, a {} one is plugged in and neither end has auto-MDIX	cavo sbagliato: {} e {} richiedono un cavo {}, ne è collegato uno {} e nessuna estremità ha auto-MDIX
+	wrong password	password errata
+	wrong WPA2 passphrase	passphrase WPA2 errata
+	Yellow	Giallo
+	yes	sì
+	Your account	Il tuo account
+	Your first router	Il tuo primo router
+	Your lab	Il tuo laboratorio
+	Your name	Il tuo nome
+	Zoom In	Ingrandisci
+	Zoom Out	Riduci
+	Zoom Reset	Ripristina zoom
+	{{name}} in the template takes each router's value; {{address}} and {{hostname}} are built in.	{{name}} nel template prende il valore di ciascun router; {{address}} e {{hostname}} sono incorporati.
+	{} (drag on the workspace)	{} (trascina sull'area di lavoro)
+	{} (learned from the switch)	{} (appreso dallo switch)
+	{} (main)	{} (principale)
+	{} ({}) has no module bays	{} ({}) non ha slot per moduli
+	{} accepted the connection to TCP port {}	{} ha accettato la connessione alla porta TCP {}
+	{} answered from UDP port {}	{} ha risposto dalla porta UDP {}
+	{} answered with DHCP {}	{} ha risposto con DHCP {}
+	{} block(s) without their `end`	{} blocchi senza il loro `end`
+	{} cabled	{} cablati
+	{} cables	{} cavi
+	{} cables, up to {}	{} cavi, fino a {}
+	{} can't reach {}	{} non raggiunge {}
+	{} checks captured. Now put the lab in its starting state and save it.	{} verifiche acquisite. Ora riporta il laboratorio allo stato iniziale e salvalo.
+	{} checks made, {} points.	{} verifiche create, {} punti.
+	{} checks, {} points	{} verifiche, {} punti
+	{} contributors · {} commits	{} collaboratori · {} commit
+	{} devices	{} dispositivi
+	{} devices, {} cables. Read only: edit it from the Activity Wizard.	{} dispositivi, {} cavi. Sola lettura: modificalo dalla Procedura guidata attività.
+	{} did not answer (connection timed out)	{} non ha risposto (connessione scaduta)
+	{} did not answer on TCP port {}	{} non ha risposto sulla porta TCP {}
+	{} entries	{} voci
+	{} has no bay {} (bays: {})	{} non ha lo slot {} (slot: {})
+	{} has no console cable: join its RS-232 port to a router's or switch's Console port (link.add with "cable": "console")	{} non ha un cavo console: collega la sua porta RS-232 alla porta Console di un router o switch (link.add con "cable": "console")
+	{} has no Console or RS-232 port.	{} non ha una porta Console o RS-232.
+	{} has no IP address configured	{} non ha un indirizzo IP configurato
+	{} has no IP address to send a PDU to	{} non ha un indirizzo IP da cui inviare un PDU
+	{} has no power supply fitted: fit one in its Physical tab (device.psu) first	{} non ha un alimentatore montato: montane uno nella sua scheda Fisico (device.psu) prima
+	{} has no radio	{} non ha radio
+	{} has no route to {}	{} non ha una route verso {}
+	{} host(s) associated	{} host associati
+	{} is a radio: it takes no cable	{} è una radio: non accetta cavi
+	{} is neither a programmable board nor a smart thing.	{} non è né una scheda programmabile né un oggetto intelligente.
+	{} is network equipment: it goes in a wiring closet, not in a building's rooms	{} è un apparato di rete: va in un armadio di cablaggio, non nelle stanze di un edificio
+	{} is not a number	{} non è un numero
+	{} is not a registered smart device	{} non è un dispositivo intelligente registrato
+	{} is not in the ARP table: an ARP request for it goes out {} first.	{} non è nella tabella ARP: prima esce una richiesta ARP per lui su {}.
+	{} is not this device's address	{} non è l'indirizzo di questo dispositivo
+	{} is switched on: switch it off before fitting or removing a card	{} è acceso: spegnilo prima di montare o rimuovere una scheda
+	{} is this device's own address	{} è l'indirizzo di questo dispositivo
+	{} is this device's own address: the packet is for it.	{} è l'indirizzo di questo dispositivo: il pacchetto è per lui.
+	{} is wired to {}, a sensor: read it instead	{} è collegato a {}, un sensore: leggilo invece
+	{} is {} and {} is {}: no cable joins them	{} è {} e {} è {}: nessun cavo li collega
+	{} joined to {}	{} collegato a {}
+	{} logins are not accepted here	Qui gli accessi {} non sono accettati
+	{} members	{} membri
+	{} new message(s)	{} nuovi messaggi
+	{} of {} checks differ from the answer	{} verifiche su {} differiscono dalla risposta
+	{} of {} items graded, {} points	{} elementi su {} valutati, {} punti
+	{} of {} pass	{} su {} riuscite
+	{} offered the address {}	{} ha offerto l'indirizzo {}
+	{} PRs, {} commits, +{} / −{} lines (Δ {}), +{} / −{} binary assets, {} – {}	{} PR, {} commit, +{} / −{} righe (Δ {}), +{} / −{} risorse binarie, {} – {}
+	{} reaches {}	{} raggiunge {}
+	{} refused the connection (is its FTP service on?)	{} ha rifiutato la connessione (il suo servizio FTP è attivo?)
+	{} refused the connection to TCP port {}	{} ha rifiutato la connessione alla porta TCP {}
+	{} says destination unreachable (code {})	{} dice destinazione irraggiungibile (codice {})
+	{} steps without a `sleep`: a loop needs a `sleep` in it	{} passi senza uno `sleep`: un ciclo richiede uno `sleep`
+	{} to {} ({}): failed, destination unreachable	{} a {} ({}): non riuscito, destinazione irraggiungibile
+	{} to {} ({}): failed, no answer	{} a {} ({}): non riuscito, nessuna risposta
+	{} to {} ({}): failed, TTL ran out	{} a {} ({}): non riuscito, TTL esaurito
+	{} to {} ({}): successful	{} a {} ({}): riuscito
+	{} via {}	{} tramite {}
+	{} waiting	{} in attesa
+	{}: `{}` is not an address	{}: `{}` non è un indirizzo
+	{}: `{}` shows "{}"	{}: `{}` mostra "{}"
+	{}: address	{}: indirizzo
+	{}: address {}	{}: indirizzo {}
+	{}: cable	{}: cavo
+	{}: cable {}	{}: cavo {}
+	{}: choose a port	{}: scegli una porta
+	{}: configuration item {}	{}: elemento di configurazione {}
+	{}: refused: {}	{}: rifiutato: {}
+	{}: the DNS server doesn't know this name	{}: il server DNS non conosce questo nome
+	{}: this host has no DNS server configured	{}: questo host non ha un server DNS configurato
+	{}: Wi-Fi radio (Wireless0)	{}: radio Wi-Fi (Wireless0)
+	{}: {} items, {} points	{}: {} elementi, {} punti
+	{}: {} pins	{}: {} pin
+	{}: {} ports	{}: {} porte
+	{}: {} · cabled to {}	{}: {} · cablato a {}
+	ΔLOC	ΔLOC
+	−Bin	−Bin
+	−LOC	−LOC
+event	answer	risposta
+event	body encrypted	corpo cifrato
+event	bytes protected	byte protetti
+event	carrying	che trasporta
+event	carrying protocol type	che trasporta il tipo di protocollo
+event	Cell attach accept	CELL accettazione aggancio
+event	Cell attach reject	CELL rifiuto aggancio
+event	Cell attach request	CELL richiesta aggancio
+event	central switching	commutazione centrale
+event	client hello	client hello
+event	cost	costo
+event	data block	blocco di dati
+event	database description	descrizione del database
+event	destination unreachable	destinazione irraggiungibile
+event	echo reply	risposta echo
+event	echo request	richiesta echo
+event	encrypted bytes	byte cifrati
+event	end of the MIB	fine della MIB
+event	error	errore
+event	first	prima
+event	from	da
+event	from router	dal router
+event	FTP data	dati FTP
+event	header length	lunghezza header
+event	hold	attesa
+event	is at	si trova a
+event	keep	validità
+event	key	chiave
+event	length	lunghezza
+event	link-state acknowledgement	acknowledgement dello stato dei link
+event	link-state request	richiesta dello stato dei link
+event	link-state update	aggiornamento dello stato dei link
+event	message	messaggio
+event	missing	manca
+event	no APN	senza APN
+event	no such object	oggetto inesistente
+event	NTP time	ora NTP
+event	on	su
+event	operation	operazione
+event	packet	pacchetto
+event	port	porta
+event	protocol	protocollo
+event	query	query
+event	read request for	richiesta di lettura di
+event	reply	risposta
+event	request	richiesta
+event	response	risposta
+event	root	root
+event	route	route
+event	routes	route
+event	seq	seq
+event	server hello	server hello
+event	SIA query	query SIA
+event	SIA reply	risposta SIA
+event	stratum	stratum
+event	tell	comunicalo a
+event	time exceeded	tempo scaduto
+event	time request	richiesta dell'ora
+event	TLS application data	dati applicativi TLS
+event	TLS handshake	handshake TLS
+event	type	tipo
+event	update	aggiornamento
+event	version	versione
+event	who has	chi ha
+event	write request for	richiesta di scrittura di

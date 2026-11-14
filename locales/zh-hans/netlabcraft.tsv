@@ -1,0 +1,1539 @@
+# 简体中文 (zh-hans) interface catalog for NetLabCraft.
+# Columns, separated by a TAB:  context <TAB> English source text <TAB> translation
+#   context  usually empty. `@plural`, `@id` and `@msg` mean something to the app; any other
+#            word is a label that tells apart two meanings of the same English (`event` marks
+#            the phrases replaced inside the simulator's event summaries).
+#   escapes  \n  \t  \\  inside a column. `{}` placeholders (messages with parts) must appear
+#            the same number of times in both columns, in the order the language wants, and a
+#            trailing "…" in one needs one in the other.
+#   @plural  English `one|other`; the translation lists this language's plural forms, `|`-separated.
+#   Lines starting with # and blank lines are ignored. A missing entry shows in English.
+#
+# Clean room: every entry was written from the plain meaning of the English text in ordinary
+# computing vocabulary. No other product's localisation, string table or translated UI was
+# consulted or copied; add entries the same way.
+
+@id	language.name	简体中文
+
+	 and 	 和
+	 or 	 或
+	"{}" is text, not a number (number(...) reads one)	“{}”是文本，不是数字（number(...) 可读取数字）
+	% humidity	% 湿度
+	% moisture	% 含水量
+	% smoke	% 烟雾
+	% The device is switched off: switch it on in its Physical tab (device.power).	% 设备已关机：请在其“物理”选项卡中开机 (device.power)。
+	(broadcast)	（广播）
+	(choose)	（请选择）
+	(delete)	（删除）
+	(edit)	（编辑）
+	(hidden)	（已隐藏）
+	(IPv6 off)	（IPv6 已关闭）
+	(no body)	（无正文）
+	(no devices)	（无设备）
+	(no instructions)	（无说明）
+	(none yet)	（暂无）
+	(none)	（无）
+	(not read yet)	（尚未读取）
+	(nothing)	（无）
+	(the rest is hidden: show it as text)	（其余部分已隐藏：以文本形式显示）
+	+Bin	+二进制
+	+LOC	+LOC
+	1 = movement	1 = 有移动
+	1 device	1 台设备
+	1-port Fast Ethernet card	1 端口快速以太网卡
+	1-port Gigabit card	1 端口千兆网卡
+	1-port Gigabit fiber card	1 端口千兆光纤卡
+	1.0 (end-of-message)	1.0（消息结束）
+	1.1 (chunked)	1.1（分块）
+	2-port Gigabit card	2 端口千兆网卡
+	2-port Serial card	2 端口串行卡
+	4-port Serial card	4 端口串行卡
+	4-port switch card	4 端口交换机卡
+	802.1Q tag: VLAN {}.	802.1Q 标记：VLAN {}。
+	802.1X login refused	802.1X 登录被拒绝
+	`end` without an `if` or `while`	`end` 前没有 `if` 或 `while`
+	`let NAME = value`	`let NAME = value`
+	`{}` (device name or id) is required	需要 `{}`（设备名称或 ID）
+	`{}` (text) is required	需要 `{}`（文本）
+	`{}` after the `else`	`else` 之后的 `{}`
+	`{}` can't start a line	`{}` 不能作为一行的开头
+	`{}` expected	应为 `{}`
+	`{}` has no value yet	`{}` 尚无值
+	`{}` is a word of the language, not a value	`{}` 是语言的关键字，不是值
+	`{}` is a word of the language, not a variable	`{}` 是语言的关键字，不是变量
+	`{}` is not a directory number (digits only)	`{}` 不是分机号码（只能是数字）
+	`{}` is not a statement: did you mean `{} = …`?	`{}` 不是语句：您是想写 `{} = …` 吗？
+	`{}` is not an address	`{}` 不是地址
+	`{}` is not an IPv4 address	`{}` 不是 IPv4 地址
+	`{}` is not part of the language	`{}` 不属于该语言
+	`{}` where a value was expected	此处应为值，却是 `{}`
+	`{}` without its `if`	`{}` 缺少对应的 `if`
+	A board reads a sensor and drives a fan	开发板读取传感器并驱动风扇
+	A broadcast: the switch floods it out the other {} ports of VLAN {}.	广播：交换机将其从 VLAN {} 的其他 {} 个端口泛洪出去。
+	A chain of routers with static and default routes between two LANs.	一串路由器，在两个局域网之间使用静态路由和默认路由。
+	a console cable joins a PC's RS-232 port to a router's or switch's Console port: {} and {}	控制台线将 PC 的 RS-232 端口连接到路由器或交换机的 Console 端口：{} 和 {}
+	A firewall with inside, outside and DMZ	带有内网、外网和 DMZ 的防火墙
+	A flat LAN: ping between the PCs and watch the switch learn their addresses.	单一局域网：在 PC 之间 ping，观察交换机学习它们的地址。
+	A frame circled the network; there is no spanning tree yet, so avoid redundant switch links	有帧在网络中循环；尚未启用生成树，请避免交换机之间的冗余链路
+	A graded activity: address the router's two interfaces, set its name and a secret, and make the two LANs reach each other. Check Results shows the score.	评分练习：为路由器的两个接口配置地址，设置其名称和密码，并使两个局域网互通。“检查结果”会显示得分。
+	A graded activity: follow the Instructions window and press Check Results.	评分练习：按照“说明”窗口操作，然后点击“检查结果”。
+	A home PC reaches an office web server: home router, cable modem, the provider's cloud (coaxial to phone line), DSL modem, office router.	家庭 PC 访问办公室的 Web 服务器：家庭路由器、线缆调制解调器、运营商云（同轴电缆到电话线）、DSL 调制解调器、办公室路由器。
+	a lab keeps at least one city	实验室至少要保留一个城市
+	A lightweight AP offers the WLANs of its controller: see its Controller page.	轻量级 AP 提供其控制器的 WLAN：见其“控制器”页面。
+	a line starts with a word (let, if, while, write, sleep…) or a variable	一行以关键字（let、if、while、write、sleep…）或变量开头
+	A microcontroller board on the home gateway's Wi-Fi runs a BoardScript program: it reads a temperature sensor on a pin, switches a fan and blinks a light on others, and reports to the IoT service.	家庭网关 Wi-Fi 上的一块微控制器开发板运行 BoardScript 程序：它读取某个引脚上的温度传感器，控制风扇，让指示灯在其他引脚上闪烁，并向 IoT 服务报告。
+	A microcontroller board seen from above	微控制器开发板俯视图
+	A multilayer switch routes between VLAN 10 and 20 with its VLAN interfaces, and reaches a router through a routed port.	多层交换机通过其 VLAN 接口在 VLAN 10 和 20 之间路由，并通过路由端口连接路由器。
+	A periodic PDU needs its interval	周期性 PDU 需要设置间隔
+	a pin name (D0, A1…) expected	应为引脚名称（D0、A1…）
+	a place needs a name	地点需要一个名称
+	A polygon needs at least three corners.	多边形至少需要三个顶点。
+	a program is at most {} characters	程序最多 {} 个字符
+	A provider's network (WAN): 2 Ethernet, 2 coaxial and 2 phone (DSL) ports, each joined to the port it is mapped to (by default coaxial to phone: a cable modem reaches a DSL modem)	运营商网络 (WAN)：2 个以太网口、2 个同轴口和 2 个电话 (DSL) 口，各自连接到与其映射的端口（默认同轴对电话：线缆调制解调器可连通 DSL 调制解调器）
+	A Record	A 记录
+	A room with physics (iot.environment): it starts at 15 degrees with 8 outside, and the sensors read it. The Home gateway's rules switch Heater1 on below 19 degrees, AC1 on above 26 and Sprinkler1 on below 30 % soil moisture. Advance the time a few minutes (Play, or sim.advance): the heater warms the room until Thermo1 reads 19, then it switches off and the room cools slowly again; the soil dries until the sprinkler waters it. Open Window1 from Home > IoT to couple the room to the cold outside, or set the outside temperature with iot.environment.	带物理模型的房间 (iot.environment)：起始温度 15 度，室外 8 度，传感器读取的就是房间温度。家庭网关的规则是：低于 19 度时打开 Heater1，高于 26 度时打开 AC1，土壤含水量低于 30 % 时打开 Sprinkler1。将时间推进几分钟（播放，或 sim.advance）：加热器使房间升温，直到 Thermo1 读数达到 19，然后关闭，房间再缓慢降温；土壤变干，直到喷灌器浇水。在“家庭 > IoT”中打开 Window1，可使房间与寒冷的室外相通，也可用 iot.environment 设置室外温度。
+	A room with physics: a thermostat, a heater, an air conditioner, a window and a sprinkler join the Home gateway; its rules heat below 19 degrees, cool above 26 and water dry soil, and the room changes in simulated time.	带物理模型的房间：恒温器、加热器、空调、窗户和喷灌器连接到家庭网关；其规则是低于 19 度制热、高于 26 度制冷、土壤干燥时浇水，房间随模拟时间变化。
+	A router hands out addresses with DHCP; console, vty and enable are password protected (console: cisco, enable: class).	路由器通过 DHCP 分配地址；控制台、vty 和 enable 都有密码保护（控制台：cisco，enable：class）。
+	A server with DHCP, DNS and a web site	带 DHCP、DNS 和网站的服务器
+	A signed file with your name, the time and your score, to hand in	带有您的姓名、时间和得分的已签名文件，用于提交
+	A single-board computer seen from above	单板计算机俯视图
+	A smart home with an IoT gateway	带 IoT 网关的智能家居
+	A smart sensor and a smart fan register with the IoT server over HTTP; the server's rule switches the fan on when the sensor reads above 30.	智能传感器和智能风扇通过 HTTP 向 IoT 服务器注册；传感器读数高于 30 时，服务器规则会打开风扇。
+	A smartphone and a tablet attach to cell towers, take their addresses from the central office server and open the web server's pages over mobile data.	智能手机和平板电脑连接到基站，从中心局服务器获取地址，并通过移动数据打开 Web 服务器的页面。
+	A smartphone seen from the front	智能手机正面图
+	A switch card in a router	路由器中的交换机卡
+	A tablet and a smartphone join the home router's Wi-Fi, take their addresses by DHCP and open the web server's pages from their touch screens.	平板电脑和智能手机加入家庭路由器的 Wi-Fi，通过 DHCP 获取地址，并在触摸屏上打开 Web 服务器的页面。
+	A tablet seen from the front	平板电脑正面图
+	a value expected	应为值
+	a WPA2 passphrase has 8-63 characters	WPA2 密码为 8-63 个字符
+	A WPA2-Enterprise WLAN needs a RADIUS server.	WPA2 企业级 WLAN 需要 RADIUS 服务器。
+	a {} cable needs a {} port on both ends: {} is {}	{} 线缆两端都需要 {} 端口：{} 是 {}
+	AAA Service (RADIUS, TACACS+)	AAA 服务 (RADIUS, TACACS+)
+	About	关于
+	About NetLabCraft	关于 NetLabCraft
+	Access	接入
+	Access list {} on {} (in) permits the packet.	{} 上的访问列表 {}（入向）允许该数据包。
+	Access list {} on {} (out) permits the packet.	{} 上的访问列表 {}（出向）允许该数据包。
+	Access Point	无线接入点
+	Access points joined: {}	已加入的接入点：{}
+	Access VLAN	接入 VLAN
+	Account	账户
+	Active connection: {}	活动连接：{}
+	Activity Instructions	练习说明
+	Activity reset to how it was opened.	练习已恢复到打开时的状态。
+	Activity Wizard	练习向导
+	Activity Wizard…	练习向导…
+	Activity: your first router	练习：您的第一台路由器
+	Add	添加
+	Add a command check	添加命令检查
+	Add a configuration check	添加配置检查
+	Add a ping check	添加 ping 检查
+	Add an .html file from your computer	从计算机添加 .html 文件
+	Add client	添加客户端
+	Add Complex PDU	添加复杂 PDU
+	Add or change a WLAN	添加或更改 WLAN
+	Add RADIUS server	添加 RADIUS 服务器
+	Add rule	添加规则
+	Add Simple PDU	添加简单 PDU
+	Add Simple PDU (P)	添加简单 PDU (P)
+	Add user	添加用户
+	Added {} to the web site.	已将 {} 添加到网站。
+	Added {}. Double-click it to open it.	已添加 {}。双击即可打开。
+	Address	地址
+	address	地址
+	address or device name	地址或设备名称
+	Address pool (network/prefix)	地址池（网络/前缀）
+	Address {} · gateway {}	地址 {} · 网关 {}
+	Adds a place to the map shown; drag it into position	在显示的地图上添加一个地点；将其拖到合适位置
+	After a delay	延迟后
+	Agent address	代理地址
+	Agents and scripts drive NetLabCraft through	代理和脚本通过以下方式控制 NetLabCraft
+	Air Conditioner	空调
+	All protocols	所有协议
+	Always charged here: there is no battery to look after.	此处始终有电：无需关注电池。
+	An access point offers the network Aula with WPA2; two Wi-Fi laptops join it and get addresses from the router's DHCP pool.	接入点提供采用 WPA2 的 Aula 网络；两台 Wi-Fi 笔记本电脑加入后，从路由器的 DHCP 地址池获取地址。
+	an ARP request needs the address to ask for	ARP 请求需要指定要查询的地址
+	An ICMP message.	ICMP 消息。
+	An office reaches an Internet server through PAT on its router; an access list keeps one PC from pinging the server.	办公室通过路由器上的 PAT 访问 Internet 服务器；访问列表阻止其中一台 PC ping 该服务器。
+	An open-source network simulator: build labs, configure routers and switches, and watch every frame.	开源网络模拟器：搭建实验、配置路由器和交换机，并观察每一个帧。
+	and	和
+	Answer	答案
+	Answer and initial networks	答案与初始网络
+	Answer Network	答案网络
+	Answer network: {}	答案网络：{}
+	any	任意
+	AP1 offers Aula (WPA2, passphrase clase1234). Open a laptop's Config › Wireless0 to change its network, or move it far from AP1 and watch it drop.	AP1 提供 Aula（WPA2，密码 clase1234）。打开笔记本电脑的“配置 › Wireless0”可更改其网络，或将其移到远离 AP1 的位置，观察它掉线。
+	APN (access point name)	APN（接入点名称）
+	APN accepted (empty: any)	接受的 APN（留空：任意）
+	Application	应用层
+	Application: {} connection (no data in this segment).	应用层：{} 连接（此报文段无数据）。
+	Application: {} data.	应用层：{} 数据。
+	Application: {} message.	应用层：{} 消息。
+	Apply	应用
+	Apply address	应用地址
+	Apply APN	应用 APN
+	Apply IPv6	应用 IPv6
+	Apply pool	应用地址池
+	Apply Wi-Fi	应用 Wi-Fi
+	ARP for {}, not this device	对 {} 的 ARP，不是本设备
+	ARP from {} is not on {}	来自 {} 的 ARP 不在 {} 上
+	ARP reply: {} is at {}.	ARP 应答：{} 位于 {}。
+	ARP request	ARP 请求
+	ARP request: who has {}? (asked by {})	ARP 请求：谁有 {}？（由 {} 询问）
+	Ascending	升序
+	Ask every managed router for its hostname, model, software and interfaces over RESTCONF	通过 RESTCONF 向每台受管路由器询问其主机名、型号、软件和接口
+	Assessment Tree	评估树
+	Associated with {}	已关联 {}
+	At a simulated time	在模拟时间
+	At Device	在设备上
+	at line {}	第 {} 行
+	At time	在时间
+	Attributes	属性
+	Authentication	认证
+	Auto (by route)	自动（按路由）
+	Automatic	自动
+	Automatic: picks the right cable for the two ports you choose	自动：为您选择的两个端口选取合适的线缆
+	Automation: RESTCONF from a PC	自动化：从 PC 使用 RESTCONF
+	Back	返回
+	Back to the call screen	返回通话界面
+	Back to the enclosing place (Intercity is the top)	返回上一级地点（城际为最顶层）
+	Back to the Intercity map	返回城际地图
+	Back to the parent cluster (Root is the top)	返回上级群集（Root 为最顶层）
+	Back to the top level	返回顶层
+	Base MAC address	基本 MAC 地址
+	bay {} of {} already holds a {}	{} 的插槽 {} 已装有 {}
+	bay {} of {} is empty	{} 的插槽 {} 为空
+	Bay {}: empty	插槽 {}：空
+	Bay {}: {} (click to take it out)	插槽 {}：{}（点击取出）
+	Binary assets added	已添加二进制资源
+	Binary assets removed	已移除二进制资源
+	blocks nested deeper than {}	块嵌套超过 {} 层
+	Blue	蓝色
+	Board MCU	开发板 MCU
+	Board SBC	开发板 SBC
+	Board1 runs a BoardScript program (Board1 > Programming): it reads Temp1 on pin A0, switches Fan1 on pin D0 above 28 degrees, blinks Light1 on D1 and reports the reading to the Home gateway's IoT service every 2 s of simulated time. Raise Temp1's reading (Temp1 > IoT), then advance the time. Wire more things with the IoT Custom cable.	Board1 运行 BoardScript 程序（Board1 > 编程）：它读取引脚 A0 上的 Temp1，温度高于 28 度时打开引脚 D0 上的 Fan1，让 D1 上的 Light1 闪烁，并每隔 2 秒模拟时间向家庭网关的 IoT 服务报告读数。调高 Temp1 的读数（Temp1 > IoT），然后推进时间。可用 IoT 自定义线缆连接更多设备。
+	Body (JSON or XML)	正文（JSON 或 XML）
+	Both router interfaces need their address and `no shutdown`.	两个路由器接口都需要配置地址和 `no shutdown`。
+	Build the finished network, capture its configuration as the answers, then put the lab back in its starting state and save it.	搭建完成的网络，将其配置保存为答案，然后让实验恢复到起始状态并保存。
+	Building	建筑物
+	Bytes	字节
+	bytes	字节
+	cable	线缆
+	Cable Length	线缆长度
+	Cable Length…	线缆长度…
+	Cable Modem	线缆调制解调器
+	Cable modem: bridges its coaxial port (Coaxial0) to its Ethernet port (Ethernet1)	线缆调制解调器：将其同轴口 (Coaxial0) 桥接到以太网口 (Ethernet1)
+	cable too long: {} m copper, max 100 m	线缆过长：铜缆 {} 米，最长 100 米
+	cabled	已连线
+	Cabled ports	已连线的端口
+	Call	呼叫
+	call ended: {}	通话已结束：{}
+	Call server	呼叫服务器
+	Cancel	取消
+	Capture answers from this lab	从此实验中获取答案
+	Capture only the visible events	仅捕获可见事件
+	Cards are fitted and removed with the device switched off.	安装和拆卸板卡须在设备关机时进行。
+	Cards:	板卡：
+	Carried by SSH: key exchange {}, cipher {}	由 SSH 承载：密钥交换 {}，加密算法 {}
+	Cell Tower	基站
+	Cell tower	基站
+	Cell tower: a radio with six sectors (Cellular0-5) that mobile devices in range attach to, and one backhaul port (Ethernet0) cabled to the provider network	基站：一个具有六个扇区 (Cellular0-5) 的无线电，范围内的移动设备会接入其中，另有一个回程端口 (Ethernet0) 连接到运营商网络
+	Cell towers, a central office and mobile data	基站、中心局和移动数据
+	Cellular	蜂窝
+	Cellular Data	蜂窝数据
+	Cellular Data is off	蜂窝数据已关闭
+	Cellular service	蜂窝服务
+	Cellular via {} · refused: {}	经 {} 的蜂窝网络 · 被拒绝：{}
+	Cellular via {} · {}	经 {} 的蜂窝网络 · {}
+	Cellular: no service (set Cellular Data and the APN in Config > Cellular0; move it near a cell tower)	蜂窝：无服务（请在“配置 > Cellular0”中设置蜂窝数据和 APN；将其移到基站附近）
+	Cellular: signal {} of 4 from {}	蜂窝：来自 {} 的信号为 {}/4
+	Central	中心
+	Central Office Server	中心局服务器
+	Central switching (through the controller)	集中交换（经由控制器）
+	Change the outside temperature	更改室外温度
+	Change the reading	更改读数
+	Channel	信道
+	Check	检查
+	Check a student's results file	检查学生的结果文件
+	Check Results	检查结果
+	Choose the source device	选择源设备
+	City	城市
+	Clear	清除
+	Clear the event list	清除事件列表
+	Click a device or a cable to delete it.	点击设备或线缆即可将其删除。
+	Click a device to configure it · drag to move · Shift+drag or Shift+click to pick several · scroll to pan	点击设备进行配置 · 拖动以移动 · Shift+拖动或 Shift+点击可多选 · 滚动以平移
+	Click the corners of the polygon; double-click or Enter to finish, Esc to cancel.	点击多边形的各个顶点；双击或按 Enter 完成，按 Esc 取消。
+	Click the first device and pick a port.	点击第一台设备并选择端口。
+	Click the workspace to place a note. Drag notes to move them; double-click to edit.	点击工作区放置注释。拖动注释可移动；双击可编辑。
+	Click the workspace to place a {}. Esc to stop.	点击工作区放置 {}。按 Esc 停止。
+	Client address	客户端地址
+	Client name	客户端名称
+	Clients	客户端
+	Close	关闭
+	Close the session	关闭会话
+	closed	已关闭
+	Cloud	云
+	Cluster name:	群集名称：
+	CO Detector	CO 探测器
+	Coaxial	同轴
+	Coaxial: joins coaxial ports (a cable modem to the cable provider's cloud); carries a signal up to 500 m here	同轴：连接同轴端口（线缆调制解调器到线缆运营商的云）；此处信号可传输 500 米
+	Code	代码
+	Color	颜色
+	Colour	颜色
+	Command	命令
+	Command Line Interface	命令行界面
+	Command Prompt	命令提示符
+	Commits	提交
+	Community	团体字
+	Compare	比较
+	Compare with the Answer	与答案比较
+	Comparison	比较
+	Completion	完成度
+	Complex PDU {}: {}	复杂 PDU {}：{}
+	Compose	撰写
+	Config	配置
+	configuration	配置
+	Configuration applied on {}	已在 {} 上应用配置
+	Configuration merged; {} line(s) were not understood.	配置已合并；有 {} 行未被识别。
+	Connections	连接
+	Connectivity Tests	连通性测试
+	Console	控制台
+	Console (rollover): a PC's RS-232 port to a router's or switch's Console port, for the PC's Terminal	控制台（反转线）：PC 的 RS-232 端口到路由器或交换机的 Console 端口，供 PC 的终端使用
+	Console cable: click a PC (RS-232) and a router or switch (Console).	控制台线：点击一台 PC (RS-232) 和一台路由器或交换机 (Console)。
+	Console of {} over the console cable	通过控制台线访问 {} 的控制台
+	Constant Delay	固定延迟
+	contains "{}"	包含“{}”
+	Contributors	贡献者
+	Controller	控制器
+	Controller address (empty: any in this subnet)	控制器地址（留空：此子网中的任意控制器）
+	cooling	制冷
+	Copied {}	已复制 {}
+	Copies leave on {} ports: {}.	副本从 {} 个端口发出：{}。
+	Copper Cross-Over	铜缆交叉线
+	Copper cross-over: joins like ports (switch to switch, router to router, PC to PC, router to PC)	铜缆交叉线：连接同类端口（交换机到交换机、路由器到路由器、PC 到 PC、路由器到 PC）
+	Copper Ethernet carries a signal up to 100 m.	铜缆以太网的信号可传输 100 米。
+	Copper Straight-Through	铜缆直通线
+	Copper straight-through: joins unlike ports (a PC or router to a switch or hub)	铜缆直通线：连接不同类端口（PC 或路由器到交换机或集线器）
+	Copy	复制
+	Copy (Ctrl+C): the selected device	复制 (Ctrl+C)：所选设备
+	Coverage: {} workspace units around it (a circle on the workspace); {} sectors	覆盖范围：周围 {} 个工作区单位（工作区上的一个圆）；{} 个扇区
+	Create Complex PDU	创建复杂 PDU
+	Create PDU	创建 PDU
+	dark	深色
+	Dark interface	深色界面
+	Data	数据
+	data from a host that is not associated	来自未关联主机的数据
+	Data plan on	已开启流量套餐
+	Data VLAN 10 untagged, voice VLAN 100 tagged	数据 VLAN 10 不打标记，语音 VLAN 100 打标记
+	Decline	拒绝
+	Default Gateway	默认网关
+	degrees	度
+	Delete	删除
+	delete	删除
+	Delete Note	删除注释
+	Delete this scenario and its PDUs	删除此场景及其 PDU
+	denied by access list {} ({})	被访问列表 {} 拒绝（{}）
+	denied by IPv6 access list {} ({})	被 IPv6 访问列表 {} 拒绝（{}）
+	Descending	降序
+	Desktop	桌面
+	Desktop PC with one Fast Ethernet port	带一个快速以太网端口的台式 PC
+	Destination	目的
+	destination is on the arrival port (filtered)	目的地址位于到达端口上（已过滤）
+	Destination port	目的端口
+	Detail	详情
+	Details	详情
+	Device	设备
+	device	设备
+	device default	设备默认值
+	Devices admitted	已放行的设备
+	Devices power-cycled: dynamic tables cleared.	设备已重新通电：动态表已清空。
+	Devices stand in wiring closets and buildings: open one first.	设备放在配线间和建筑物中：请先打开其中一个。
+	Devices whose configuration is locked:	配置已锁定的设备：
+	DHCP and basic device security	DHCP 与基本设备安全
+	DHCP answer for another client	发给其他客户端的 DHCP 应答
+	DHCP discover	DHCP 发现
+	Dialing {}	正在拨号 {}
+	differs	不同
+	Disconnect	断开连接
+	Discover	发现
+	Display Name	显示名称
+	Display name	显示名称
+	division by zero	除以零
+	DNS answer nobody asked for	无人请求的 DNS 应答
+	DNS query	DNS 查询
+	DNS Server	DNS 服务器
+	DNS Service	DNS 服务
+	Domain Name	域名
+	done	完成
+	door	门
+	Double-click a place to open it · drag to arrange · right-click for more (move devices, cable lengths)	双击地点可打开 · 拖动以排列 · 右键查看更多（移动设备、线缆长度）
+	Drag on the workspace to draw freehand.	在工作区上拖动即可手绘。
+	Drag on the workspace to draw. Drawings sit behind devices; move them with Select.	在工作区上拖动即可绘制。图形位于设备下方；用“选择”移动它们。
+	Draw Ellipse	绘制椭圆
+	Draw Freehand (drag on the workspace)	手绘（在工作区上拖动）
+	Draw Line	绘制直线
+	Draw Polygon (click the corners)	绘制多边形（点击各顶点）
+	Draw Rectangle	绘制矩形
+	Drawing of the answer network	答案网络示意图
+	Dropped: {}	已丢弃：{}
+	DSL Modem	DSL 调制解调器
+	DSL modem: bridges its phone line (Phone0, RJ-11) to its Ethernet port (Ethernet1)	DSL 调制解调器：将其电话线口 (Phone0, RJ-11) 桥接到以太网口 (Ethernet1)
+	Each check's answer next to what your lab has	每项检查的答案与您的实验结果对照
+	Each PC's gateway is the router's address in its LAN.	每台 PC 的网关是路由器在其局域网中的地址。
+	Each phone takes an address in voice VLAN 100 and learns from DHCP option 150 where to register (R1); its PC, plugged into the phone, gets an address in data VLAN 10. Open Phone1 > Phone, dial 1002 and press Call; on Phone2 press Pick up. `show ephone` and `show ephone-dn` on R1 show the registrations and the call.	每部电话在语音 VLAN 100 中获取地址，并通过 DHCP 选项 150 得知到哪里注册 (R1)；插在电话上的 PC 在数据 VLAN 10 中获取地址。打开 Phone1 > 电话，拨 1002 并按“呼叫”；在 Phone2 上按“接听”。在 R1 上执行 `show ephone` 和 `show ephone-dn` 可查看注册情况和通话。
+	Each subnet on its own switch; the router joins them. Try ping and tracert across.	每个子网接在各自的交换机上，由路由器连接它们。试试跨网段的 ping 和 tracert。
+	Each test pings from a device to an address; it passes when the replies come (or don't, when blocking is the point).	每项测试从某台设备向某个地址 ping；收到应答即通过（若以阻断为目的，则未收到应答才通过）。
+	Edit	编辑
+	Edit file	编辑文件
+	Edit Filters	编辑过滤器
+	Edit it in the workspace	在工作区中编辑
+	Edit the initial network	编辑初始网络
+	Eight smart things report every few seconds to the home gateway's IoT service, whose rules light the hall when someone moves, sound the siren on smoke and unlock the door on smoke or heat.	八个智能设备每隔几秒向家庭网关的 IoT 服务报告，其规则是：有人移动时点亮大厅灯，有烟雾时鸣响警报器，有烟雾或高温时解锁门。
+	Ellipse	椭圆
+	EMAIL	EMAIL
+	Email	电子邮件
+	Email address	电子邮件地址
+	empty	空
+	empty: click to fit	空：点击以适配
+	Empty: the TFTP server DHCP gave (option 150)	留空：DHCP 给出的 TFTP 服务器（选项 150）
+	encrypted with the password	已用密码加密
+	Encrypted with TLS 1.2: {} (no certificate)	已用 TLS 1.2 加密：{}（无证书）
+	End Devices	终端设备
+	Environment	环境
+	Equivalent console commands	等效的控制台命令
+	Erase	擦除
+	EtherChannel between two switches	两台交换机之间的 EtherChannel
+	Ethernet frame from {} to {}.	以太网帧，从 {} 到 {}。
+	Event List	事件列表
+	Event List Filters - Visible Events	事件列表过滤器 - 可见事件
+	Event {} at {} s, from {} to {}	事件 {}，时间 {} 秒，从 {} 到 {}
+	Event {}, from {} to {}	事件 {}，从 {} 到 {}
+	events	事件
+	Events of hidden protocols are neither recorded nor exported to pcap; turning it on also removes them from the list	隐藏协议的事件既不会被记录，也不会导出到 pcap；开启此项还会将它们从列表中移除
+	Every configuration line of the routers and switches, and every PC address, becomes a check	路由器和交换机的每一行配置以及每台 PC 的地址，都会成为一项检查
+	Every hop takes the same simulated time (1 ms), whatever queues would add	无论队列会增加多少延迟，每一跳都耗用相同的模拟时间 (1 ms)
+	Every router runs RIPv2. Compare `show ip route` (R routes, hop counts in `show ip rip database`) on R1 and R3, then shut R2's g0/1 and watch the routes go.	每台路由器都运行 RIPv2。比较 R1 和 R3 上的 `show ip route`（R 路由，跳数见 `show ip rip database`），然后关闭 R2 的 g0/1，观察路由消失。
+	Every smart thing reports to its server over HTTP	每个智能设备都通过 HTTP 向其服务器报告
+	Every smart thing reports to the Home gateway's IoT service (192.168.0.1) every 5 s of simulated time. Open Home > IoT to see them live and the rules. Set Motion1's reading to 1: Light1 and Cam1 switch on (Cam1 takes a still image). Raise Smoke1 above 20: Siren1 sounds and Door1 unlocks. Advance the time (or press Report now) to let the things report.	每个智能设备每隔 5 秒模拟时间向家庭网关的 IoT 服务 (192.168.0.1) 报告一次。打开“家庭 > IoT”可实时查看它们和规则。将 Motion1 的读数设为 1：Light1 和 Cam1 打开（Cam1 拍一张静态图像）。将 Smoke1 调到 20 以上：Siren1 鸣响，Door1 解锁。推进时间（或点击“立即报告”）让设备报告。
+	every {} s	每 {} 秒
+	Example	示例
+	Exit	退出
+	Expected	预期
+	Export Capture (pcap)	导出捕获 (pcap)
+	Export Capture (pcap)...	导出捕获 (pcap)...
+	Export Workspace Image (PNG)...	导出工作区图像 (PNG)...
+	Export...	导出...
+	Extension	扩展名
+	Extensions	扩展
+	Fa0/23 and Fa0/24 form Port-channel1 (LACP: S1 active, S2 passive). Try `show etherchannel summary` and `show spanning-tree`, then shut one member down and ping again.	Fa0/23 和 Fa0/24 组成 Port-channel1（LACP：S1 主动，S2 被动）。试试 `show etherchannel summary` 和 `show spanning-tree`，然后关闭一个成员再 ping 一次。
+	fail	失败
+	Failed	失败
+	fan	风扇
+	Fast Forward Time (30 s)	快进时间（30 秒）
+	Fiber	光纤
+	Fiber: joins fiber ports (SFP uplinks and fiber cards); carries a signal up to 2 km here	光纤：连接光纤端口（SFP 上行链路和光纤卡）；此处信号可传输 2 公里
+	File	文件
+	File Manager	文件管理器
+	File Name	文件名
+	Files	文件
+	Fill	填充
+	Fill colour	填充颜色
+	Fire	发送
+	Fire again	再次发送
+	Fire All	全部发送
+	Fire PDU {}	发送 PDU {}
+	First	首个
+	First address	首个地址
+	First commit	首次提交
+	First port	第一个端口
+	for get(...) and report	用于 get(...) 和 report
+	Forget the traps received	忘记已收到的 Trap
+	Format JSON	格式化 JSON
+	Forward	前进
+	Four layer-2 switch ports inside the router: VLAN membership and trunks as on a switch, routed through the router's VLAN interfaces	路由器内的四个二层交换端口：VLAN 成员和中继与交换机相同，通过路由器的 VLAN 接口进行路由
+	Four synchronous serial WAN ports	四个同步串行 WAN 端口
+	Framing	分帧
+	Freeform	自由形状
+	From	来自
+	From device	来自设备
+	from DHCP	来自 DHCP
+	From PC1: `ping 10.0.2.10` (the first request times out while R1 resolves PC3), then `tracert 10.0.2.10`.	在 PC1 上：`ping 10.0.2.10`（R1 解析 PC3 时第一个请求会超时），然后 `tracert 10.0.2.10`。
+	From {} to {}	从 {} 到 {}
+	From {}: click the second device and pick a port. Esc cancels.	从 {}：点击第二台设备并选择端口。按 Esc 取消。
+	From {}: click the second device. Esc cancels.	从 {}：点击第二台设备。按 Esc 取消。
+	FTP Service	FTP 服务
+	FW1 has three named interfaces: inside (level 100), dmz (50) and outside (0). The office and the DMZ reach the Internet through the outside address (`show xlate`, `show conn`); Home can't start anything towards them, except the web server, published as 203.0.113.10 by a static rule and one access rule (`show access-list` counts the hits). From Home, browse http://203.0.113.10 and ping PC1 to see the difference; `show logging` on FW1 tells why a packet was dropped. The global policy inspects ICMP, so pings from the office come back without a rule; FW1 is not a hop, so a traceroute from PC1 starts at the ISP router; and FW1 ignores pings to its outside address (`icmp deny any outside`).	FW1 有三个命名接口：inside（级别 100）、dmz（50）和 outside（0）。办公室和 DMZ 通过 outside 地址访问 Internet (`show xlate`, `show conn`)；Home 不能向它们发起任何连接，只有 Web 服务器例外，它由一条静态规则发布为 203.0.113.10，并有一条访问规则（`show access-list` 统计命中次数）。在 Home 上浏览 http://203.0.113.10 并 ping PC1，可看出区别；FW1 上的 `show logging` 会说明数据包为何被丢弃。全局策略会检查 ICMP，所以办公室发出的 ping 无需规则即可返回；FW1 不是一跳，因此 PC1 的 traceroute 从 ISP 路由器开始；FW1 会忽略对其 outside 地址的 ping (`icmp deny any outside`)。
+	FW1 lets the office out (sharing its outside address), keeps the Internet out of the office, and publishes the DMZ web server through a fixed address and one access rule.	FW1 放行办公室访问外部（共用其 outside 地址），阻止 Internet 进入办公室，并通过固定地址和一条访问规则发布 DMZ 的 Web 服务器。
+	Garage Door	车库门
+	Genuine: {} scored {}% ({} of {} points), and the score was replayed against their network.	真实：{} 得分 {}%（{} / {} 分），并已针对其网络重新验证得分。
+	get-next from the OID until its branch ends	从该 OID 开始 get-next，直到其分支结束
+	Give the pool a name	请为地址池命名
+	Give the record a name, such as www.example.lab	请为记录命名，例如 www.example.lab
+	Give the secret the router has in `radius-server host ... key`	填写路由器在 `radius-server host ... key` 中使用的密钥
+	give the student's name	请填写学生姓名
+	GLOBAL	全局
+	Global Settings	全局设置
+	Go	执行
+	Got	实际
+	Grab bag	杂项
+	graded	已评分
+	Green	绿色
+	Grey	灰色
+	Group into Cluster	归入群集
+	Group into Cluster (Ctrl+G): the picked devices	归入群集 (Ctrl+G)：所选设备
+	Grouped into {}: double-click it to open it.	已归入 {}：双击即可打开。
+	Hand out addresses (DHCP)	分配地址 (DHCP)
+	Hang up	挂断
+	Headers (Name: value)	标头（名称: 值）
+	Heater	加热器
+	Heaters, coolers, fans, windows and sprinklers change the room over simulated time	加热器、制冷设备、风扇、窗户和喷灌器会随模拟时间改变房间状态
+	heating	制热
+	Help	帮助
+	hidden from a casual look (not encryption: the key is in the file)	不易被随意看到（不是加密：密钥就在文件中）
+	Hide answers in the file	在文件中隐藏答案
+	Hint	提示
+	Hint when it fails	失败时的提示
+	Home City	主城市
+	Home Gateway	家庭网关
+	Home Internet over cable and DSL	通过线缆和 DSL 接入家庭 Internet
+	Home IoT gateway: Internet port, 4 LAN ports and Wi-Fi with DHCP and NAT like a home router, plus a built-in IoT service that smart things register with	家庭 IoT 网关：像家用路由器一样提供 Internet 端口、4 个局域网端口以及带 DHCP 和 NAT 的 Wi-Fi，另有内置的 IoT 服务供智能设备注册
+	Home Router	家用路由器
+	Home wireless router: Internet port, 4 LAN ports and Wi-Fi, with DHCP and NAT set up	家用无线路由器：Internet 端口、4 个局域网端口和 Wi-Fi，已设置好 DHCP 和 NAT
+	hop limit expired in transit	跳数限制在传输中耗尽
+	Host ports are always on.	主机端口始终开启。
+	Hostname	主机名
+	HQ has a 2-port serial card in bay 0/1 and a Gigabit card in bay 0/0; Branch a serial card in bay 0/1 (see each router's Physical tab). To change a card, switch the router off there first: the cable on a card that comes out is unplugged. Both configurations are saved, so switching a router off and on keeps them (try it: `show ip interface brief` before and after).	HQ 的插槽 0/1 装有 2 端口串行卡，插槽 0/0 装有千兆网卡；Branch 的插槽 0/1 装有串行卡（见各路由器的“物理”选项卡）。要更换板卡，请先在那里将路由器关机：取出板卡后，其上的线缆会被拔掉。两份配置都已保存，因此将路由器关机再开机后配置仍在（试试：前后各执行一次 `show ip interface brief`）。
+	HSRP: a gateway that survives a router	HSRP：路由器故障后依然可用的网关
+	HTTP GET	HTTP GET
+	Hub ports have nothing to configure: every frame is repeated out of every other port.	集线器端口无需配置：每个帧都会从其他所有端口转发出去。
+	Hub: repeats every frame out of its other 8 ports	集线器：将每个帧从其他 8 个端口转发出去
+	Hubs	集线器
+	Humidity Sensor	湿度传感器
+	ICMP destination unreachable (code {}).	ICMP 目的不可达（代码 {}）。
+	ICMP echo reply, sequence number {}.	ICMP 回显应答，序号 {}。
+	ICMP echo request, sequence number {}.	ICMP 回显请求，序号 {}。
+	ICMP time exceeded: a TTL ran out.	ICMP 超时：TTL 已耗尽。
+	Identification	标识
+	Identifier	标识符
+	If	如果
+	If {}, switch {} off	如果 {}，则关闭 {}
+	If {}, switch {} on	如果 {}，则打开 {}
+	Import	导入
+	In Layers	分层显示
+	Inbound PDU Details	入站 PDU 详情
+	Inbox	收件箱
+	Incoming (POP3) server	接收 (POP3) 服务器
+	Incoming call from {}	来电：{}
+	Independent clean-room project; not affiliated with any network equipment vendor.	独立的洁净室项目；与任何网络设备厂商均无关联。
+	Info	信息
+	Initial network: {}	初始网络：{}
+	Inside a block: interface g0/0 | ip address 10.0.0.1 255.255.255.0	块内：interface g0/0 | ip address 10.0.0.1 255.255.255.0
+	Inspect	查看
+	Inspect {}	查看 {}
+	Inspect: click a device to see its ARP, MAC and routing tables.	查看：点击设备可查看其 ARP 表、MAC 表和路由表。
+	Instructions	说明
+	Instructions in	说明语言
+	Instructions or notes	说明或备注
+	Inter-VLAN routing on a multilayer switch	多层交换机上的 VLAN 间路由
+	Intercity	城际
+	Intercity: the cities of the lab	城际：实验中的各个城市
+	INTERFACE	接口
+	Interface	接口
+	Interface {}	接口 {}
+	Interfaces up	接口已启用
+	Interval	间隔
+	IoT	IoT
+	IoT climate: rules close the loop in a room with physics	IoT 气候：规则在带物理模型的房间中形成闭环
+	IoT Custom	IoT 自定义
+	IoT custom cable: click a programmable board and a smart thing.	IoT 自定义线缆：点击一块可编程开发板和一个智能设备。
+	IoT custom cable: joins a programmable board's pin to a smart thing, which the board's program then reads or switches	IoT 自定义线缆：将可编程开发板的引脚连接到智能设备，开发板的程序随后即可读取或控制它
+	IoT server:	IoT 服务器：
+	IoT service	IoT 服务
+	IoT: a sensor, a fan and a rule	IoT：一个传感器、一个风扇和一条规则
+	IP Configuration	IP 配置
+	IP packet from {} to {}, TTL {}.	IP 数据包，从 {} 到 {}，TTL {}。
+	IP Phone	IP 电话
+	IP phone with a built-in switch: FastEthernet0 goes to the network, FastEthernet1 to a computer behind it; takes its address and its call server by DHCP	内置交换机的 IP 电话：FastEthernet0 接网络，FastEthernet1 接其后的计算机；通过 DHCP 获取地址和呼叫服务器
+	IP phones with a voice VLAN	带语音 VLAN 的 IP 电话
+	IP protocol {}.	IP 协议 {}。
+	IPv4 Address	IPv4 地址
+	IPv6 Address	IPv6 地址
+	IPv6 Configuration	IPv6 配置
+	IPv6 Gateway	IPv6 网关
+	IPv6 next header {} not understood	无法识别 IPv6 下一个头部 {}
+	IPv6 with two routers	两台路由器的 IPv6
+	Join	加入
+	Join a pin to a smart thing with the IoT Custom cable (Connections), or pick the thing for each pin in the Programming tab.	用 IoT 自定义线缆（连接）将引脚与智能设备相连，或在“编程”选项卡中为每个引脚选择设备。
+	Join the conditions with	条件之间用
+	Joined to {}: offers {} WLAN(s) on channel {}	已加入 {}：在信道 {} 上提供 {} 个 WLAN
+	Keep the program without running it	保存程序但不运行
+	Keep the session open	保持会话打开
+	kept in the clear	明文保存
+	Key information	关键信息
+	Key {}	键 {}
+	L3 Switch 24	三层交换机 24
+	Lab Notes	实验备注
+	LAN	LAN
+	Language	语言
+	Laptop	笔记本电脑
+	Laptop with a Wi-Fi card instead of an Ethernet port	使用 Wi-Fi 网卡而非以太网口的笔记本电脑
+	Laptop with one Fast Ethernet port	带一个快速以太网端口的笔记本电脑
+	Last	末个
+	Last commit	最近提交
+	Last Device	最后设备
+	Last Status	最后状态
+	Lawn Sprinkler	草坪喷灌器
+	Layer 1: Physical	第 1 层：物理层
+	Layer 2: Data Link	第 2 层：数据链路层
+	Layer 3: Network	第 3 层：网络层
+	Layer 4: Transport	第 4 层：传输层
+	Layer 5: Session	第 5 层：会话层
+	Layer 6: Presentation	第 6 层：表示层
+	Layer 7: Application	第 7 层：应用层
+	Leased: {}	已租用：{}
+	Leave the session open after these operations, to hold a lock or work with the candidate	这些操作之后保持会话打开，以持有锁或操作候选配置
+	Length	长度
+	Length (m):	长度（米）：
+	Length from the places	来自各地点的长度
+	Let the phone register and update its screen	让电话注册并更新其屏幕
+	Let the smart things report, then list them	让智能设备报告，然后列出它们
+	let x = 1 · x = read(A0) · write(D0, 1) · if / elif / else / end · while / end · sleep 2 · print x · report x · get(path) · stop	let x = 1 · x = read(A0) · write(D0, 1) · if / elif / else / end · while / end · sleep 2 · print x · report x · get(path) · stop
+	Licensed under MIT or Apache-2.0.	采用 MIT 或 Apache-2.0 许可。
+	light	灯
+	Light AP	轻量级 AP
+	Lightweight access point: joins a wireless LAN controller over its Ethernet port and offers the controller's WLANs	轻量级接入点：通过其以太网口加入无线局域网控制器，并提供控制器的 WLAN
+	Line	行
+	Line delta	行变化
+	Line {} (registered with {})	线路 {}（已向 {} 注册）
+	line {}: {}	第 {} 行：{}
+	Lines added	新增行数
+	Lines deleted	删除行数
+	link down	链路断开
+	Link Local Address	链路本地地址
+	Link Local Address: {}	链路本地地址：{}
+	link up	链路连通
+	link-local packets never leave their link	链路本地数据包不会离开其所在链路
+	List	列表
+	lit	亮
+	Load...	加载...
+	Load…	加载…
+	Local	本地
+	Lock the activity	锁定练习
+	Lock the activity so students can't open the answer network; with a password it is encrypted in the file.	锁定练习，使学生无法打开答案网络；设置密码后，文件中的内容会被加密。
+	locked	已锁定
+	Logical	逻辑
+	Logical Workspace	逻辑工作区
+	login from {} refused by access-class {}	来自 {} 的登录被 access-class {} 拒绝
+	Looking for {}	正在查找 {}
+	loop: the frame crossed {} hubs or switches	环路：帧经过了 {} 台集线器或交换机
+	MAC address	MAC 地址
+	MAC Address: {}	MAC 地址：{}
+	Main Building	主楼
+	Main Wiring Closet	主配线间
+	Make checks from the tree	根据树创建检查
+	Malformed frame	格式错误的帧
+	Managed routers	受管路由器
+	Management address: {}	管理地址：{}
+	Mask	掩码
+	Max User	最大用户数
+	Maximum Number of Users	最大用户数
+	Maximum Number of Users: a number	最大用户数：一个数字
+	Merge...	合并...
+	Merged PRs	已合并的 PR
+	Message	消息
+	Messages received: {}	已收到消息：{}
+	MIB Browser	MIB 浏览器
+	Microcontroller board with Wi-Fi, 6 digital and 2 analog pins: runs a BoardScript program that reads and switches the smart things wired to its pins	带 Wi-Fi、6 个数字引脚和 2 个模拟引脚的微控制器开发板：运行 BoardScript 程序，读取和控制接在其引脚上的智能设备
+	missing	缺失
+	MLS1 routes between VLAN 10 and VLAN 20 (`ip routing`, interfaces Vlan10 and Vlan20) and sends everything else to R1 over a routed port (`no switchport`). Try `show ip route` on MLS1 and a ping from PC1 to PC4 or to SRV1.	MLS1 在 VLAN 10 和 VLAN 20 之间路由（`ip routing`，接口 Vlan10 和 Vlan20），并通过路由端口 (`no switchport`) 将其余流量发往 R1。在 MLS1 上试试 `show ip route`，并从 PC1 ping PC4 或 SRV1。
+	Mode	模式
+	Model	型号
+	Modular Router 2GE	模块化路由器 2GE
+	Modular Router 3GE	模块化路由器 3GE
+	Modular router with 2 Gigabit Ethernet ports and 2 empty module bays (serial and Gigabit cards, fitted while powered off)	带 2 个千兆以太网口和 2 个空模块插槽的模块化路由器（串行卡和千兆网卡，须在关机时安装）
+	Modular router with 3 Gigabit Ethernet ports and 4 empty module bays (serial and Gigabit cards, fitted while powered off)	带 3 个千兆以太网口和 4 个空模块插槽的模块化路由器（串行卡和千兆网卡，须在关机时安装）
+	Modular routers: serial cards for a WAN link	模块化路由器：用于 WAN 链路的串行卡
+	more than one statement on the line	一行中有多条语句
+	more than {} requests without a `sleep`	超过 {} 个请求而没有 `sleep`
+	more than {} variables	超过 {} 个变量
+	motion	移动
+	Motion Detector	移动探测器
+	Move to	移到
+	Multilayer switch with 24 Fast Ethernet + 2 Gigabit Ethernet ports (copper or fiber): switches, and routes with `ip routing`	带 24 个快速以太网口 + 2 个千兆以太网口（铜缆或光纤）的多层交换机：可交换，并可用 `ip routing` 进行路由
+	Must fail (an access list should block it)	必须失败（应被访问列表阻断）
+	Name	名称
+	Name (A–Z)	名称 (A–Z)
+	Name to look up	要查询的名称
+	NAT to the Internet, with an access list	通过 NAT 访问 Internet，并配合访问列表
+	NAT translates the destination {} back to the inside address {}.	NAT 将目的地址 {} 转换回内部地址 {}。
+	NAT translates the inside source {} to {}.	NAT 将内部源地址 {} 转换为 {}。
+	Native VLAN {} · allowed {}	本征 VLAN {} · 允许 {}
+	Navigation: back to the start of the workspace	导航：返回工作区的起点
+	Network	网络
+	Network Address	网络地址
+	Network Devices	网络设备
+	Network Information (the lab's notes)	网络信息（实验备注）
+	Network printer with one Fast Ethernet port	带一个快速以太网端口的网络打印机
+	New	新建
+	New (Ctrl+N)	新建 (Ctrl+N)
+	New Building	新建建筑物
+	New City	新建城市
+	New File	新建文件
+	New from sample	从示例新建
+	New Wiring Closet	新建配线间
+	Next Hop	下一跳
+	No	否
+	No adding or removing devices	不能添加或移除设备
+	No address yet: give interface Vlan1 an address.	尚无地址：请为接口 Vlan1 设置地址。
+	No address: take one by DHCP (Config tab)	无地址：通过 DHCP 获取（“配置”选项卡）
+	no answer from {}	{} 无应答
+	No cable changes	不能更改线缆
+	No call server: DHCP gave no TFTP server (option 150)	无呼叫服务器：DHCP 未给出 TFTP 服务器（选项 150）
+	no call to hang up	没有可挂断的通话
+	no central office server answers behind this tower	此基站后面没有中心局服务器应答
+	No console cable. Join this computer's RS-232 port to a router's or switch's Console port with the Console cable (Connections), then open the Terminal again.	没有控制台线。请用控制台线（连接）将此计算机的 RS-232 端口连接到路由器或交换机的 Console 端口，然后重新打开终端。
+	No contributor data was built into this copy.	此副本中未内置贡献者数据。
+	No device is attached to this tower.	没有设备连接到此基站。
+	No device matches.	没有匹配的设备。
+	no device {}	没有设备 {}
+	no DHCP server answered	没有 DHCP 服务器应答
+	No events yet. Add a simple PDU (envelope tool) or ping from a console.	暂无事件。请添加简单 PDU（信封工具）或在控制台中 ping。
+	No files yet: `copy running-config tftp: <this address>` on a router saves one here.	暂无文件：在路由器上执行 `copy running-config tftp: <此地址>` 即可在此保存一份。
+	No fill	无填充
+	no function `{}` (there are read, get, time and number)	没有函数 `{}`（可用的有 read、get、time 和 number）
+	no IoT server set	未设置 IoT 服务器
+	no IoT server set on the board (Programming tab)	开发板上未设置 IoT 服务器（“编程”选项卡）
+	no IPv6 route to {}	没有到 {} 的 IPv6 路由
+	No management address yet: give interface Vlan1 an address.	尚无管理地址：请为接口 Vlan1 设置地址。
+	No messages. Press Receive to fetch new mail.	没有消息。点击“接收”获取新邮件。
+	no other port is up	没有其他端口处于连通状态
+	No port is joined: the cloud passes nothing.	没有连接任何端口：云不会传递任何数据。
+	No power adapter	无电源适配器
+	No power supply fitted: the device has no power. Fit one, then switch it on.	未安装电源：设备没有供电。请先安装电源，再开机。
+	no power: plug in its power adapter (Physical tab) or cable it to a PoE switch	无电：请接上电源适配器（“物理”选项卡），或将其连接到 PoE 交换机
+	no power: {} has `power inline never`	无电：{} 设置了 `power inline never`
+	no power: {} is a {}, which gives no power over Ethernet; use a PoE switch or plug in the power adapter	无电：{} 是 {}，不通过以太网供电；请使用 PoE 交换机或接上电源适配器
+	no power: {} is shut down	无电：{} 已关闭
+	no power: {} is switched off	无电：{} 已关机
+	no power: {}'s power budget is used up	无电：{} 的功率预算已用完
+	no replies	无应答
+	no route to {}	没有到 {} 的路由
+	No routers yet: discover them from a seed router, or add one with its address and an admin login.	尚无路由器：请从种子路由器发现它们，或输入地址和管理员登录信息来添加。
+	No service	无服务
+	no service for IP protocol {}	没有 IP 协议 {} 的服务
+	no service on TCP port {}	TCP 端口 {} 上没有服务
+	no service on UDP port {}	UDP 端口 {} 上没有服务
+	no service: every tower in range is full	无服务：范围内的所有基站都已满载
+	no service: no cell tower in range	无服务：范围内没有基站
+	No static routes: OSPF finds every network. Try `show ip ospf neighbor` and `show ip route` on R1, then shut down R1 g0/2 and watch the route to 192.168.3.0 move to R2.	没有静态路由：OSPF 会发现每个网络。在 R1 上试试 `show ip ospf neighbor` 和 `show ip route`，然后关闭 R1 的 g0/2，观察到 192.168.3.0 的路由改走 R2。
+	no such cable	没有这条线缆
+	no such device	没有这台设备
+	No traps yet. Routers and switches send them with snmp-server host and snmp-server enable traps.	尚无 Trap。路由器和交换机通过 snmp-server host 和 snmp-server enable traps 发送它们。
+	no up port in VLAN {} to forward to	VLAN {} 中没有可转发的连通端口
+	No.	序号
+	nobody answered for {}	没有人应答 {}
+	None	无
+	none learned (untagged)	未学到（不打标记）
+	none yet	暂无
+	none yet (not registered)	暂无（未注册）
+	None yet.	暂无。
+	None yet: smart things register when they report (Refresh).	暂无：智能设备在报告时注册（刷新）。
+	none: Reset Activity returns to the lab as it was opened	无：“重置练习”会让实验恢复到打开时的样子
+	not a results file: it has no signature	不是结果文件：它没有签名
+	not addressed to this device	不是发给本设备的
+	not an IPv6 router (no `ipv6 unicast-routing`)	不是 IPv6 路由器（没有 `ipv6 unicast-routing`）
+	Not associated	未关联
+	Not associated with any access point	未关联任何接入点
+	Not associated: check the SSID, the passphrase and the distance	未关联：请检查 SSID、密码和距离
+	Not associated: {}	未关联：{}
+	Not edited: {} scored {}% ({} of {} points). It was not replayed, so a forged score cannot be ruled out.	未编辑：{} 得分 {}%（{} / {} 分）。未重新验证，因此不能排除分数被伪造。
+	Not joined: no controller answers (check both addresses, the cabling and the default gateways).	未加入：没有控制器应答（请检查两个地址、线缆连接和默认网关）。
+	not listening to {}	未监听 {}
+	Not registered	未注册
+	Not registered yet	尚未注册
+	Not simulated yet	尚未模拟
+	Not started	未开始
+	Note	注释
+	Notes saved with the lab:	随实验保存的备注：
+	NTP Service	NTP 服务
+	Num	编号
+	number too large	数字过大
+	Objects	对象
+	Obtain the address from the provider (DHCP)	从运营商获取地址 (DHCP)
+	of	共
+	Off	关
+	off	关
+	OID	OID
+	OK	确定
+	On	开
+	on	开
+	Once	一次
+	One routed Fast Ethernet port	一个路由快速以太网端口
+	One routed Gigabit Ethernet fiber (SFP) port	一个路由千兆以太网光纤 (SFP) 端口
+	One routed Gigabit Ethernet port	一个路由千兆以太网端口
+	One supply fitted: taking it out cuts the power. Fit the second for a spare.	已安装一个电源：取出它将断电。安装第二个可作备用。
+	One switch split into VLAN 10 and 20, routed by subinterfaces over an 802.1Q trunk.	一台交换机划分为 VLAN 10 和 20，通过 802.1Q 中继上的子接口进行路由。
+	One switch, three PCs	一台交换机，三台 PC
+	Open	打开
+	open	开
+	Open (Ctrl+O)	打开 (Ctrl+O)
+	Open (no passphrase)	开放（无密码）
+	Open Cluster	打开群集
+	Open console	打开控制台
+	Open Device	打开设备
+	Open PC1 > Desktop > Web Browser and go to www.netlabcraft.lab. Edit the pages in Server0 > Services > HTTP. Try `ping www.netlabcraft.lab` and `nslookup www.netlabcraft.lab` in a Command Prompt.	打开 PC1 > 桌面 > Web 浏览器，访问 www.netlabcraft.lab。在 Server0 > 服务 > HTTP 中编辑页面。在命令提示符中试试 `ping www.netlabcraft.lab` 和 `nslookup www.netlabcraft.lab`。
+	Open Recent	最近打开
+	Open...	打开...
+	Opened the page in the PDF viewer: print it from there.	已在 PDF 查看器中打开该页面：请从那里打印。
+	Opened {}	已打开 {}
+	Operation	操作
+	Operations (one per blank-line block)	操作（每个空行分隔的块为一项）
+	optional	可选
+	Options	选项
+	or	或
+	OSI Model	OSI 模型
+	OSPF is not running here	此处未运行 OSPF
+	OSPF on three routers	三台路由器上的 OSPF
+	other cable type	其他线缆类型
+	Other language code	其他语言代码
+	Out Layers	分层显示（出）
+	Outbound PDU Details	出站 PDU 详情
+	Outgoing (SMTP) server	发送 (SMTP) 服务器
+	Outgoing port	出站端口
+	Outline	轮廓
+	Outline colour	轮廓颜色
+	Output	输出
+	Output shows	输出显示
+	Outside: {} degrees	室外：{} 度
+	Own call control	自有呼叫控制
+	Packet	数据包
+	Page	页面
+	Palette	调色板
+	Part	拆分
+	Part {} from {}	第 {} 部分，共 {}
+	pass	通过
+	Password	密码
+	Password (WPA2-Enterprise)	密码（WPA2 企业级）
+	Paste	粘贴
+	Paste (Ctrl+V): a copy of the copied device	粘贴 (Ctrl+V)：已复制设备的副本
+	Paste the results file	粘贴结果文件
+	Pause	暂停
+	Payload	负载
+	PC1 and PC2 autoconfigure from R1's router advertisements (ipv6config). Try `ping 2001:db8:2::10` from PC1, `show ipv6 route` and `show ipv6 neighbors` on the routers, and watch NDP in Simulation mode.	PC1 和 PC2 根据 R1 的路由器通告自动配置 (ipv6config)。在 PC1 上试试 `ping 2001:db8:2::10`，在路由器上试试 `show ipv6 route` 和 `show ipv6 neighbors`，并在模拟模式下观察 NDP。
+	PC1 and PC2 share VLAN 10; PC3 and PC4 VLAN 20. Ping across VLANs and watch the 802.1Q tags in the event list.	PC1 和 PC2 同属 VLAN 10；PC3 和 PC4 属于 VLAN 20。跨 VLAN ping，并在事件列表中观察 802.1Q 标记。
+	PC1 and PC2 take their IPv6 addresses from R1 (autoconfiguration); PC3 is set by hand behind R2; static routes join the two.	PC1 和 PC2 从 R1 获取 IPv6 地址（自动配置）；PC3 在 R2 后面手动设置；静态路由将两者连接起来。
+	PC1 gets its address from the Home router, which translates it to 203.0.113.2. Its packets cross the cable modem, the provider's cloud (coaxial joined to the phone line, see ISP's Physical tab) and the DSL modem to the Office router and the Web server (ping 10.0.0.10). Try another cable between the modems and the cloud: only coaxial fits a coaxial port.	PC1 从家用路由器获取地址，路由器将其转换为 203.0.113.2。其数据包经过线缆调制解调器、运营商的云（同轴连接到电话线，见 ISP 的“物理”选项卡）和 DSL 调制解调器，到达办公室路由器和 Web 服务器（ping 10.0.0.10）。试着在调制解调器和云之间换用另一种线缆：同轴端口只能接同轴线缆。
+	PC1 pings the Web server through PAT (`show ip nat translations` on Office). PC2 is blocked by the GUESTS access list (`show access-lists`). The ISP has no route to 192.168.0.0/24: only NAT makes the replies come back.	PC1 通过 PAT ping Web 服务器（在 Office 上执行 `show ip nat translations`）。PC2 被 GUESTS 访问列表阻断（`show access-lists`）。ISP 没有到 192.168.0.0/24 的路由：只有 NAT 才能让应答返回。
+	PC1 reaches PC2	PC1 可到达 PC2
+	PC1 reaches SRV1 through three routers. Remove a static route on R2 and watch `tracert` stop there.	PC1 通过三台路由器到达 SRV1。删除 R2 上的一条静态路由，观察 `tracert` 在那里中断。
+	PC2 reaches PC1	PC2 可到达 PC1
+	PCs get their addresses from R1 by DHCP (Desktop > IP Configuration > DHCP, or `ipconfig /renew`). R1's console asks for `cisco`; `enable` asks for `class`. Try `show ip dhcp binding` on R1.	PC 通过 DHCP 从 R1 获取地址（桌面 > IP 配置 > DHCP，或 `ipconfig /renew`）。R1 的控制台要求 `cisco`；`enable` 要求 `class`。在 R1 上试试 `show ip dhcp binding`。
+	PCs get their addresses from the server, resolve www.netlabcraft.lab with its DNS service and open its web pages.	PC 从服务器获取地址，通过其 DNS 服务解析 www.netlabcraft.lab，并打开其网页。
+	PDU Information at Device: {}	设备 {} 上的 PDU 信息
+	Periodic	周期性
+	Periodically	定期
+	Permissions	权限
+	Phone	电话
+	Phone (RJ-11)	电话 (RJ-11)
+	phone commands run on IP phones	电话命令在 IP 电话上运行
+	Phone line (RJ-11): joins phone ports (a DSL modem to the phone company's cloud); carries a signal up to 5 km here	电话线 (RJ-11)：连接电话端口（DSL 调制解调器到电话公司的云）；此处信号可传输 5 公里
+	Phone settings	电话设置
+	Physical	物理
+	Physical Workspace	物理工作区
+	Physical workspace	物理工作区
+	Physics on (sensors read the room)	已开启物理模型（传感器读取房间状态）
+	Pick a card in the list first, then click an empty bay.	请先在列表中选择一张板卡，然后点击空插槽。
+	Pick a card, then click an empty bay to fit it; click a fitted card to take it out.	选择一张板卡，然后点击空插槽即可安装；点击已安装的板卡可将其取出。
+	Pick a device in the palette and click the canvas to place it, or open a sample from File.	在面板中选择设备并点击画布放置，或从“文件”中打开示例。
+	Pick devices first: Shift+click them or Shift+drag a box around them.	请先选择设备：按住 Shift 点击它们，或按住 Shift 拖出方框框住它们。
+	Pick up	接听
+	Pin {} wired to	引脚 {} 连接到
+	Ping (ICMP echo)	Ping（ICMP 回显）
+	Ping PC3 from PC1 (`ping 192.168.1.13`), then look at `show mac address-table` on S1.	从 PC1 ping PC3 (`ping 192.168.1.13`)，然后查看 S1 上的 `show mac address-table`。
+	Pins	引脚
+	Place name:	地点名称：
+	Place Note (N)	放置注释 (N)
+	Play Controls	播放控制
+	PLAY CONTROLS:	播放控制：
+	Play speed	播放速度
+	Play: replay the frames on the workspace	播放：重放工作区上的帧
+	Playing...	正在播放...
+	Point at a port to see what is plugged in. Cables are made with the Connections tool.	指向端口可查看所连接的设备。线缆用“连接”工具创建。
+	points	点
+	Polygon	多边形
+	Pool Name	地址池名称
+	POP3	POP3
+	port blocked by spanning tree (VLAN {})	端口被生成树阻塞 (VLAN {})
+	port is shut down	端口已关闭
+	Port pairs (a frame in one port leaves by the other):	端口对（一个端口收到的帧从另一个端口发出）：
+	port security violation from {}: the port is shut down (err-disabled)	来自 {} 的端口安全违规：端口已关闭 (err-disabled)
+	port security: {} is one address too many (dropped and counted)	端口安全：{} 超出一个地址（已丢弃并计数）
+	port security: {} is one address too many (dropped)	端口安全：{} 超出一个地址（已丢弃）
+	Port Status	端口状态
+	port still {} (spanning tree, VLAN {}): it forwards 30 s after coming up	端口仍处于 {}（生成树，VLAN {}）：启动后 30 秒开始转发
+	port suspended: it can't join its EtherChannel	端口已挂起：无法加入其 EtherChannel
+	Ports	端口
+	Position	位置
+	Power adapter plugged in	已接上电源适配器
+	Power adapter: plugged in (click to unplug)	电源适配器：已接上（点击拔下）
+	Power adapter: unplugged (click to plug in)	电源适配器：已拔下（点击接上）
+	Power Cycle Devices (forget ARP and MAC tables)	重新通电设备（忘记 ARP 表和 MAC 表）
+	Power over Ethernet: {} W of {} W in use	以太网供电：已用 {} W，共 {} W
+	Power supplies:	电源：
+	Power supply {}: empty bay (click to fit one)	电源 {}：空插槽（点击安装）
+	Power supply {}: fitted (click to take it out)	电源 {}：已安装（点击取出）
+	Power: off (click to switch on)	电源：关（点击开机）
+	Power: on (click to switch off)	电源：开（点击关机）
+	powered	已通电
+	Powered by its adapter	由其适配器供电
+	Powered over Ethernet by {} ({} W)	由 {} 通过以太网供电（{} W）
+	ppm CO	ppm CO
+	Print...	打印...
+	Printer	打印机
+	Program (BoardScript)	程序 (BoardScript)
+	Program text	程序文本
+	Programming	编程
+	Protocol	协议
+	PRs	PR
+	Purple	紫色
+	Push	推送
+	Push a template to every router	向每台路由器推送模板
+	Put a short example program in the editor	在编辑器中放入一个简短的示例程序
+	Puts it in the workspace; save it again when done	将其放入工作区；完成后请再次保存
+	quiet	安静
+	Quoted	已加引号
+	R1 answers RESTCONF over HTTPS and NETCONF on port 830 for its admin user; PC1's Programming tab holds ready-made requests to read and change R1's interfaces and routes.	R1 为其管理员用户提供基于 HTTPS 的 RESTCONF 和 830 端口上的 NETCONF；PC1 的“编程”选项卡中有现成的请求，可读取和更改 R1 的接口和路由。
+	R1 has a 4-port switch card: its ports are VLAN members (10 and 20) and a trunk to S1, and the router routes between its VLAN interfaces.	R1 有一块 4 端口交换机卡：其端口是 VLAN 成员（10 和 20）以及到 S1 的中继，路由器在其 VLAN 接口之间进行路由。
+	R1 is active for both virtual gateways (`show standby`). Watch the HSRP hellos in Simulation mode, then shut R1's interfaces and ping from PC1 again.	R1 是两个虚拟网关的活动设备 (`show standby`)。在模拟模式下观察 HSRP hello，然后关闭 R1 的接口，再从 PC1 ping 一次。
+	R1 joins two LANs.\n\n1. Name the router R1.\n2. Protect privileged mode with the secret class.\n3. Give GigabitEthernet0/0 the address 192.168.10.1/24 and GigabitEthernet0/1 192.168.20.1/24, and turn both on.\n4. Check that PC1 reaches PC2.\n\nPress Check Results at any time.	R1 连接两个局域网。\n\n1. 将路由器命名为 R1。\n2. 用密码 class 保护特权模式。\n3. 为 GigabitEthernet0/0 设置地址 192.168.10.1/24，为 GigabitEthernet0/1 设置 192.168.20.1/24，并启用两者。\n4. 检查 PC1 能否到达 PC2。\n\n可随时点击“检查结果”。
+	R1's 4-port switch card (bay 0/1, see its Physical tab) switches like a switch: `show vlan brief` and `show interfaces trunk` on R1. PC1 and PC3 share VLAN 10 across the trunk; PC1 reaches PC2 and PC4 through R1's VLAN interfaces (`show ip route`).	R1 的 4 端口交换机卡（插槽 0/1，见其“物理”选项卡）像交换机一样交换：在 R1 上执行 `show vlan brief` 和 `show interfaces trunk`。PC1 和 PC3 通过中继共用 VLAN 10；PC1 通过 R1 的 VLAN 接口到达 PC2 和 PC4 (`show ip route`)。
+	R1's user admin (password NetLab2026) may use RESTCONF over HTTPS and NETCONF on port 830. On PC1 open Desktop > Programming, pick a saved request, give the user and password and press Send; then look at `show running-config` on R1.	R1 的用户 admin（密码 NetLab2026）可使用基于 HTTPS 的 RESTCONF 和 830 端口上的 NETCONF。在 PC1 上打开“桌面 > 编程”，选择一个已保存的请求，填写用户和密码并点击“发送”；然后在 R1 上查看 `show running-config`。
+	RADIUS server (WPA2-Enterprise logins)	RADIUS 服务器（WPA2 企业级登录）
+	Raw TCP connection	原始 TCP 连接
+	Raw UDP packet	原始 UDP 数据包
+	Read	读取
+	Read the inventory	读取清单
+	reading {}	读取 {}
+	Reading: {}	读数：{}
+	Real name	真实姓名
+	Realtime	实时
+	Receive	接收
+	recording	录制中
+	Rectangle	矩形
+	Red	红色
+	Redo	重做
+	Redo (Ctrl+Y)	重做 (Ctrl+Y)
+	Refresh	刷新
+	Refused by the central office: {}	被中心局拒绝：{}
+	Registered things	已注册设备
+	Registered with {}	已向 {} 注册
+	registration refused: {}	注册被拒绝：{}
+	Remove	移除
+	Remove Place	移除地点
+	Remove the activity	移除练习
+	Remove the initial network	移除初始网络
+	Rename Cluster	重命名群集
+	Rename Cluster…	重命名群集…
+	Rename Place	重命名地点
+	Rename Place…	重命名地点…
+	Replay counter	重放计数器
+	replies	应答
+	reply from {}	来自 {} 的应答
+	Reply {}	应答 {}
+	Report every (s):	报告间隔（秒）：
+	Report now	立即报告
+	Request	请求
+	Request timed out or failed: {}	请求超时或失败：{}
+	Request timed out.	请求超时。
+	Reset Activity	重置练习
+	Reset room	重置房间
+	Reset Simulation	重置模拟
+	Resize Shape (not available yet)	调整形状大小（暂不可用）
+	Resource Records	资源记录
+	Response headers	响应头
+	RESTCONF (HTTP)	RESTCONF (HTTP)
+	Result	结果
+	Reverse the order	反转顺序
+	Right-click a device to move it to another place.	右键点击设备可将其移到另一个地点。
+	Ringing {}	正在响铃 {}
+	RIP is not running here	此处未运行 RIP
+	RIP version 2 on three routers	三台路由器上的 RIP 版本 2
+	Room: {} degrees, {} % humidity, {} % soil, smoke {} %, CO {} ppm, light {} %	房间：{} 度，湿度 {} %，土壤 {} %，烟雾 {} %，CO {} ppm，光照 {} %
+	Root	Root
+	Router (port 830)	路由器（830 端口）
+	Router address	路由器地址
+	Router with 2 Gigabit Ethernet ports	带 2 个千兆以太网口的路由器
+	Router with 2 Gigabit Ethernet ports and 2 serial WAN ports	带 2 个千兆以太网口和 2 个串行 WAN 口的路由器
+	Router with 3 Gigabit Ethernet ports	带 3 个千兆以太网口的路由器
+	Router with 4 Gigabit Ethernet ports	带 4 个千兆以太网口的路由器
+	Routers	路由器
+	Routers and switches with `ntp server <this address>` take this time.	带有 `ntp server <此地址>` 的路由器和交换机将使用此时间。
+	ROUTING	路由
+	Rules	规则
+	Run	运行
+	Run session	运行会话
+	Run the tests	运行测试
+	Running	运行中
+	running	运行中
+	Running (switched on by the server)	运行中（由服务器开启）
+	Running Config	运行配置
+	S1 creates VLANs 10 and 20; the clients S2 and S3 learn them (`show vtp status`, `show vlan brief`). Add `vlan 30` on S1 and look again on a client. PC1 reaches PC3 (VLAN 10), PC2 reaches PC4 (VLAN 20).	S1 创建 VLAN 10 和 20；客户端 S2 和 S3 学到它们 (`show vtp status`, `show vlan brief`)。在 S1 上添加 `vlan 30`，再到客户端上查看。PC1 可到达 PC3 (VLAN 10)，PC2 可到达 PC4 (VLAN 20)。
+	S1 is the root bridge. One port on the S2-S3 link blocks (amber). Compare `show spanning-tree` on each switch, then unplug S1-S3 and watch the blocked port start forwarding.	S1 是根网桥。S2-S3 链路上有一个端口被阻塞（琥珀色）。比较每台交换机上的 `show spanning-tree`，然后拔掉 S1-S3，观察被阻塞的端口开始转发。
+	S1 is the VTP server of domain LAB; S2 and S3 are clients and learn its VLANs over the trunks.	S1 是域 LAB 的 VTP 服务器；S2 和 S3 是客户端，通过中继学到它的 VLAN。
+	same	相同
+	Save	保存
+	Save (Ctrl+S)	保存 (Ctrl+S)
+	Save as	另存为
+	Save As...	另存为...
+	Save Internet	保存 Internet
+	Save LAN	保存 LAN
+	Save results (CSV)	保存结果 (CSV)
+	Save results (JSON)	保存结果 (JSON)
+	Save the program and run it from the top	保存程序并从头运行
+	Save this lab as the answer	将此实验保存为答案
+	Save this lab as the initial network	将此实验保存为初始网络
+	Save title and instructions	保存标题和说明
+	Save Wireless	保存无线设置
+	Save WLAN	保存 WLAN
+	Saved configuration	已保存的配置
+	Saved requests	已保存的请求
+	Saved the request {}	已保存请求 {}
+	Saved {}	已保存 {}
+	saved: Reset Activity returns to it	已保存：“重置练习”会恢复到此状态
+	Scenario	场景
+	Scenario information	场景信息
+	Scenario {}	场景 {}
+	Scenarios hold the PDUs you send, so a lab can be re-tested	场景保存您发送的 PDU，因此可以重新测试实验
+	Search for device	搜索设备
+	Second port	第二个端口
+	second sensor	第二个传感器
+	second value	第二个值
+	seconds	秒
+	seconds from now	从现在起的秒数
+	seconds of simulated time	模拟时间的秒数
+	Secret	密码
+	Section	章节
+	Security	安全
+	Seed router	种子路由器
+	selected	已选择
+	Send	发送
+	Send every PDU in the list again	再次发送列表中的每个 PDU
+	Sender IP	发送方 IP
+	Sender MAC	发送方 MAC
+	sensor	传感器
+	Sensor1 reads 25 degrees and Fan1 is off. Open Sensor1 > IoT and raise the reading above 30: the server's rule (IoT-Server > IoT) switches Fan1 on. Every report is an HTTP request to the server (see the events in Simulation mode).	Sensor1 读数为 25 度，Fan1 关闭。打开 Sensor1 > IoT，将读数调到 30 以上：服务器的规则 (IoT-Server > IoT) 会打开 Fan1。每次报告都是向服务器发出的一个 HTTP 请求（见模拟模式中的事件）。
+	Sent to {}	已发送到 {}
+	Sequence	序列
+	Sequence number	序号
+	Serial DCE	串行 DCE
+	Serial DCE: joins serial ports; the end you click first is the DCE and gives the clock	串行 DCE：连接串行端口；先点击的一端是 DCE，提供时钟
+	Serial DTE	串行 DTE
+	Serial DTE: joins serial ports; the end you click first is the DTE, the other end gives the clock	串行 DTE：连接串行端口；先点击的一端是 DTE，另一端提供时钟
+	Server	服务器
+	Server address	服务器地址
+	Server with one Gigabit Ethernet port	带一个千兆以太网口的服务器
+	Service	服务
+	SERVICES	服务
+	Services	服务
+	services run on Server devices	服务在服务器设备上运行
+	Session {} is open: the next operations run on it	会话 {} 已打开：接下来的操作将在其上运行
+	Set Background (not available yet)	设置背景（暂不可用）
+	Set Gateway	设置网关
+	Set its Wi-Fi network in Config > Wireless0; move it near an access point to join.	在“配置 > Wireless0”中设置其 Wi-Fi 网络；将其移到接入点附近即可加入。
+	set up the Email app first (mail.configure)	请先设置电子邮件应用 (mail.configure)
+	Settings	设置
+	Several picked: drag one to move them all · Ctrl+G groups them into a cluster	已选择多项：拖动其中一项即可全部移动 · Ctrl+G 将它们归入群集
+	Shared secret	共享密钥
+	Show	显示
+	Show All/None	全部显示/全部隐藏
+	Show as text	以文本显示
+	Show grid	显示网格
+	shown when it fails	失败时显示
+	Signal with SIP	使用 SIP 的信令
+	Signal {} of 4	信号 {}/4
+	Signal {} of 4 from {}	来自 {} 的信号为 {}/4
+	Simple PDU: click the source device.	简单 PDU：点击源设备。
+	Simple PDU: now click the destination device.	简单 PDU：现在点击目的设备。
+	Simulation	模拟
+	Simulation Panel	模拟面板
+	Single-board computer with one Fast Ethernet port, 8 digital and 4 analog pins: runs a BoardScript program that reads and switches the smart things wired to its pins	带一个快速以太网口、8 个数字引脚和 4 个模拟引脚的单板计算机：运行 BoardScript 程序，读取和控制接在其引脚上的智能设备
+	SIP	SIP
+	SIP phones on a PoE switch	PoE 交换机上的 SIP 电话
+	Siren	警报器
+	siren	警报器
+	Size	大小
+	Smart Device	智能设备
+	Smart Door Lock	智能门锁
+	Smart door lock with one Fast Ethernet port: the IoT server unlocks it (on) and locks it (off)	带一个快速以太网口的智能门锁：IoT 服务器可将其开锁（开）和上锁（关）
+	Smart fan with one Fast Ethernet port: registers with an IoT server, which switches it on and off	带一个快速以太网口的智能风扇：向 IoT 服务器注册，由服务器将其开关
+	Smart lamp with one Fast Ethernet port: the IoT server switches it on and off	带一个快速以太网口的智能灯：由 IoT 服务器将其开关
+	Smart Light	智能灯
+	Smart motion detector with one Fast Ethernet port: reports 1 while something moves in front of it, else 0	带一个快速以太网口的智能移动探测器：有物体在其前方移动时报告 1，否则报告 0
+	Smart Plug	智能插座
+	Smart Sensor	智能传感器
+	Smart siren with one Fast Ethernet port: sounds while the IoT server keeps it on	带一个快速以太网口的智能警报器：IoT 服务器使其保持开启时就会鸣响
+	Smart smoke detector with one Fast Ethernet port: reports how much smoke it senses (0-100 %)	带一个快速以太网口的智能烟雾探测器：报告其感知到的烟雾量 (0-100 %)
+	Smart temperature sensor with one Fast Ethernet port: reports its reading to an IoT server	带一个快速以太网口的智能温度传感器：向 IoT 服务器报告其读数
+	Smart webcam with one Fast Ethernet port: while on, it takes a still image each time it reports and the IoT server keeps the latest	带一个快速以太网口的智能摄像头：开启时每次报告都会拍一张静态图像，IoT 服务器保留最新的一张
+	Smart Window	智能窗户
+	Smartphone	智能手机
+	Smartphone1 sits under Tower1 and Tablet1 under Tower2; both towers reach CO1 (the central office server) through S1. CO1 admits devices that ask for the APN `internet` and gives them addresses from 10.64.0.0/24. Open a phone, tap Command Prompt and run `cellular`, then `ping 192.168.60.10`; or tap Web Browser and open 192.168.60.10. Try `cellular off`, drag a phone far from its tower, change the APN, or run `cellular data-plan off` on CO1, and watch the CELL frames in Simulation mode.	Smartphone1 位于 Tower1 之下，Tablet1 位于 Tower2 之下；两座基站都通过 S1 连到 CO1（中心局服务器）。CO1 接纳请求 APN `internet` 的设备，并从 10.64.0.0/24 给它们分配地址。打开一部手机，点击“命令提示符”并运行 `cellular`，然后 `ping 192.168.60.10`；或者点击“Web 浏览器”并打开 192.168.60.10。试试 `cellular off`，将手机拖离其基站，更改 APN，或在 CO1 上运行 `cellular data-plan off`，并在模拟模式下观察 CELL 帧。
+	smoke	烟雾
+	Smoke Detector	烟雾探测器
+	SMTP	SMTP
+	SMTP and POP3 Service	SMTP 和 POP3 服务
+	SNMP get	SNMP get
+	Software	软件
+	Soil Moisture Sensor	土壤湿度传感器
+	Sort: {}	排序：{}
+	sounding	鸣响
+	Source	源
+	Source port	源端口
+	Spanning tree on a switch triangle	交换机三角形上的生成树
+	SSH	SSH
+	SSID	SSID
+	Start	开始
+	Start a new scenario with an empty PDU list	用空的 PDU 列表开始新场景
+	Start IP Address	起始 IP 地址
+	Start IP Address: four numbers 0-255	起始 IP 地址：四个 0-255 的数字
+	start the activity first: `activity.start` with the student's name	请先开始练习：使用 `activity.start` 并给出学生姓名
+	Start the room again from its starting values	从起始值重新开始房间
+	Start time	开始时间
+	Startup Config	启动配置
+	Startup configuration loaded: `reload` the device to use it.	已加载启动配置：请 `reload` 设备以使用它。
+	Stateful firewall with 5 Gigabit Ethernet ports: named interfaces with security levels, access rules, object NAT and a DHCP server	带 5 个千兆以太网口的状态防火墙：带安全级别的命名接口、访问规则、对象 NAT 和 DHCP 服务器
+	Static	静态
+	Static Routes	静态路由
+	still image {}: nobody in view	静态图像 {}：画面中没有人
+	still image {}: someone in view	静态图像 {}：画面中有人
+	Stop	停止
+	Stopped	已停止
+	stopped	已停止
+	stopped by `stop`	被 `stop` 停止
+	stopped by hand	被手动停止
+	Stopped.	已停止。
+	stopped: {}	已停止：{}
+	Student: {}	学生：{}
+	Students can't change the activity or see its checks until it is unlocked	解锁之前，学生无法更改练习或查看其检查项
+	Students see the score only	学生只能看到得分
+	Subject	主题
+	Subnet Mask	子网掩码
+	Subnet Mask: four numbers 0-255	子网掩码：四个 0-255 的数字
+	Successful	成功
+	Switch 24FE PoE	交换机 24FE PoE
+	Switch 8FE PoE	交换机 8FE PoE
+	Switch off	关机
+	switch off	关机
+	Switch on	开机
+	switch on	开机
+	Switch the cellular radio's data connection on or off	开启或关闭蜂窝无线电的数据连接
+	Switch with 24 Fast Ethernet + 2 Gigabit Ethernet ports (the Gigabit uplinks take copper or fiber)	带 24 个快速以太网口 + 2 个千兆以太网口的交换机（千兆上行口可用铜缆或光纤）
+	Switch with 24 Fast Ethernet ports and 2 Gigabit fiber (SFP) uplinks	带 24 个快速以太网口和 2 个千兆光纤 (SFP) 上行口的交换机
+	Switch with 24 Fast Ethernet ports that give power over Ethernet (370 W in all) + 2 Gigabit Ethernet uplinks: powers IP phones and lightweight access points	带 24 个以太网供电的快速以太网口（共 370 W）+ 2 个千兆以太网上行口的交换机：可为 IP 电话和轻量级接入点供电
+	Switch with 48 Fast Ethernet + 2 Gigabit Ethernet ports (the Gigabit uplinks take copper or fiber)	带 48 个快速以太网口 + 2 个千兆以太网口的交换机（千兆上行口可用铜缆或光纤）
+	Switch with 8 Fast Ethernet + 1 Gigabit Ethernet ports (the Gigabit uplink takes copper or fiber)	带 8 个快速以太网口 + 1 个千兆以太网口的交换机（千兆上行口可用铜缆或光纤）
+	Switch with 8 Fast Ethernet ports that give power over Ethernet (65 W in all) + 1 Gigabit Ethernet uplink: powers IP phones and lightweight access points	带 8 个以太网供电的快速以太网口（共 65 W）+ 1 个千兆以太网上行口的交换机：可为 IP 电话和轻量级接入点供电
+	Switched off	已关机
+	switched off	已关机
+	Switched on	已开机
+	Switches	交换机
+	SWITCHING	交换
+	Switching	交换
+	Switching loop detected	检测到交换环路
+	switching loop: the frame crossed {} switches (no spanning tree)	交换环路：帧经过了 {} 台交换机（无生成树）
+	Switching on boots from the saved configuration.	开机时从已保存的配置启动。
+	Syslog Service	Syslog 服务
+	Table	表
+	Tablet	平板电脑
+	Tablet1 and Smartphone1 are on the Home router's Wi-Fi (HomeNetwork) and took their addresses by DHCP. Open one, tap Web Browser and go to 192.168.0.10; the Command Prompt pings, IP Configuration shows the lease.	Tablet1 和 Smartphone1 连在家用路由器的 Wi-Fi (HomeNetwork) 上，并通过 DHCP 获取了地址。打开其中一台，点击“Web 浏览器”并访问 192.168.0.10；命令提示符可 ping，IP 配置会显示租约。
+	Tablets and smartphones on Wi-Fi	Wi-Fi 上的平板电脑和智能手机
+	tagged frame on an access port	接入端口上出现带标记的帧
+	Talking to {} (voice packets sent {}, received {})	正在与 {} 通话（已发送语音包 {}，已接收 {}）
+	Target IP	目标 IP
+	Target MAC	目标 MAC
+	TCP from port {} to port {}, flags {}, sequence number {}.	TCP，从端口 {} 到端口 {}，标志 {}，序号 {}。
+	Telnet	Telnet
+	temperature	温度
+	Template (JSON)	模板 (JSON)
+	Ten Wi-Fi things join the home gateway: a thermostat drives a heater and an air conditioner, humidity and carbon monoxide open a window, a soil sensor waters the lawn.	十个 Wi-Fi 设备加入家庭网关：恒温器控制加热器和空调，湿度和一氧化碳使窗户打开，土壤传感器给草坪浇水。
+	Ten Wi-Fi things joined the Home gateway's network (HomeNetwork), took addresses by DHCP and report to its IoT service every 5 s. Lower Thermo1 below 18: Heater1 heats; raise it above 26: AC1 cools. Humid1 above 70 or CO1 above 50 opens Window1; CO1 above 50 also opens Garage1; Soil1 below 30 waters the lawn. Switch Plug1 by hand on Home > IoT.	十个 Wi-Fi 设备加入了家庭网关的网络 (HomeNetwork)，通过 DHCP 获取地址，并每隔 5 秒向其 IoT 服务报告。将 Thermo1 降到 18 以下：Heater1 制热；调到 26 以上：AC1 制冷。Humid1 高于 70 或 CO1 高于 50 时 Window1 打开；CO1 高于 50 时 Garage1 也会打开；Soil1 低于 30 时给草坪浇水。可在“家庭 > IoT”中手动开关 Plug1。
+	Terminal	终端
+	Text shown on the workspace:	工作区上显示的文字：
+	text without its closing "	文本缺少结尾的 "
+	TFTP read	TFTP 读取
+	TFTP server	TFTP 服务器
+	TFTP Service	TFTP 服务
+	that port has no IP address	该端口没有 IP 地址
+	that port is not a radio	该端口不是无线端口
+	The access points tunnel the hosts' traffic to the controller over CAPWAP, and the controller bridges it into the VLAN	接入点通过 CAPWAP 将主机的流量隧道传送到控制器，控制器再将其桥接进 VLAN
+	the activity doesn't let you add or remove devices	此练习不允许添加或移除设备
+	the activity doesn't let you change the cables	此练习不允许更改线缆
+	the activity doesn't let you change {}'s configuration	此练习不允许更改 {} 的配置
+	the activity is locked: `activity.unlock` with the instructor's password first	练习已锁定：请先使用 `activity.unlock` 并输入教师密码
+	the address pool is exhausted	地址池已耗尽
+	the answer network doesn't open: wrong password or a damaged file	答案网络无法打开：密码错误或文件已损坏
+	the answer network is damaged	答案网络已损坏
+	the answer network is locked with the instructor's password	答案网络已用教师密码锁定
+	the APN is not accepted	APN 不被接受
+	the ARP reply says {} is at {}	ARP 应答说 {} 位于 {}
+	The ARP table gives {} for {}: the frame is addressed to it.	ARP 表中 {} 对应 {}：帧将发给它。
+	the board has no pin {}	开发板没有引脚 {}
+	the board is switched off	开发板已关机
+	The body is not valid JSON: {}	正文不是有效的 JSON：{}
+	the call server did not answer	呼叫服务器未应答
+	the cellular radio is not available	蜂窝无线电不可用
+	the central office server has no address pool (or no interface in it)	中心局服务器没有地址池（或没有位于其中的接口）
+	the data plan is off	流量套餐已关闭
+	The destination MAC is not in the MAC table: the switch floods the frame out the other {} ports of VLAN {}.	目的 MAC 不在 MAC 表中：交换机将帧从 VLAN {} 的其他 {} 个端口泛洪出去。
+	The device accepted it.	设备接受了它。
+	The device dropped it: {}	设备丢弃了它：{}
+	The device drops the frame: {}	设备丢弃了该帧：{}
+	The device drops the frame: {}.	设备丢弃了该帧：{}。
+	the device is switched off	设备已关机
+	The device looks up {} in its routing table: directly connected, out {}. TTL drops to {}.	设备在路由表中查找 {}：直连，从 {} 发出。TTL 降为 {}。
+	The device looks up {} in its routing table: next hop {}, out {}. TTL drops to {}.	设备在路由表中查找 {}：下一跳 {}，从 {} 发出。TTL 降为 {}。
+	The device sends a packet to {}: its routing table gives next hop {}, out {}, with TTL {}.	设备向 {} 发送数据包：其路由表给出下一跳 {}，从 {} 发出，TTL 为 {}。
+	The device sends a packet to {}: its routing table says it is directly connected, out {}, with TTL {}.	设备向 {} 发送数据包：其路由表显示它是直连的，从 {} 发出，TTL 为 {}。
+	The device sent nothing on because of this frame.	设备没有因此帧而继续发送任何内容。
+	the email address needs an @ (ana@lab.local)	电子邮件地址需要包含 @（ana@lab.local）
+	the Email app runs on PCs, laptops and servers	电子邮件应用在 PC、笔记本电脑和服务器上运行
+	The event list as a capture any packet analyser opens	将事件列表保存为任何抓包分析软件都能打开的捕获文件
+	The frame arrives on {}.	帧到达 {}。
+	The frame is a broadcast, so {} takes it.	该帧是广播，因此 {} 接收它。
+	The frame leaves on {}.	帧从 {} 发出。
+	The frame's destination MAC is the MAC of {}, so the device takes it.	该帧的目的 MAC 是 {} 的 MAC，因此设备接收它。
+	The graded items replace the configuration, address and cable checks	评分项将取代配置、地址和线缆检查
+	The instructor shows the score only.	教师只显示得分。
+	The MAC table has {} in VLAN {} on {}: the frame goes out that port only.	MAC 表中 {} 在 VLAN {} 上对应 {}：该帧只从该端口发出。
+	the network cable is not connected	网线未连接
+	the network is open but the host has a key or login set	网络是开放的，但主机设置了密钥或登录信息
+	the network needs a username and password (WPA2-Enterprise)	该网络需要用户名和密码（WPA2 企业级）
+	the network needs a WPA2 passphrase	该网络需要 WPA2 密码
+	The network the devices' addresses come from; this server's own interface in it is their gateway.	设备地址所属的网络；此服务器在其中的接口就是它们的网关。
+	the password can't be empty	密码不能为空
+	the PDU needs a destination address	PDU 需要目的地址
+	the phone is already in a call: hang up first	电话正在通话：请先挂断
+	the phone is not registered with a call server	电话未向呼叫服务器注册
+	the phone is not ringing	电话没有响铃
+	The phone's own settings: protocol, call server, extension, address and voice VLAN	电话自身的设置：协议、呼叫服务器、分机号码、地址和语音 VLAN
+	The phones take their addresses by DHCP and register over SIP (UDP 5060) with R1, which knows them by MAC address (voice register pool). Open Phone1 > Phone, dial 2002 and press Call; on Phone2 press Pick up. In Simulation mode the event list shows REGISTER, INVITE, 180 Ringing, 200 OK, ACK and BYE. `show voice register all` on R1, `show power inline` on S1.	电话通过 DHCP 获取地址，并通过 SIP (UDP 5060) 向 R1 注册，R1 按 MAC 地址识别它们 (voice register pool)。打开 Phone1 > 电话，拨 2002 并按“呼叫”；在 Phone2 上按“接听”。在模拟模式下，事件列表会显示 REGISTER、INVITE、180 Ringing、200 OK、ACK 和 BYE。在 R1 上执行 `show voice register all`，在 S1 上执行 `show power inline`。
+	the port is down	端口已关闭
+	the program has more than {} lines	程序超过 {} 行
+	the program is longer than {} characters	程序长度超过 {} 个字符
+	The provider's data service: admits mobile devices that attach through a cell tower, gives each an address from its pool and routes them to the lab (3 Gigabit Ethernet ports)	运营商的数据服务：接纳通过基站接入的移动设备，从其地址池为每台设备分配地址，并将它们路由到实验网络（3 个千兆以太网口）
+	The radio attaches to the nearest cell tower in range; the central office server behind it gives the address. Wi-Fi is preferred when it is connected.	无线电接入范围内最近的基站；其后的中心局服务器分配地址。连接 Wi-Fi 时优先使用 Wi-Fi。
+	The red cable is serial; the clock marks R1's DCE end (`show controllers s0/0/0`). Remove the clock rate on R1, or change one end to `encapsulation hdlc`, and the link goes down.	红色线缆是串行线；时钟标明 R1 的 DCE 端 (`show controllers s0/0/0`)。删除 R1 上的 clock rate，或将一端改为 `encapsulation hdlc`，链路就会断开。
+	The router ended the session: {}	路由器结束了会话：{}
+	the router refused a setting: {}	路由器拒绝了一项设置：{}
+	The router's hello	路由器的 hello
+	The score does not match what the embedded network earns: this file is forged or damaged.	得分与内嵌网络应得的分数不符：此文件被伪造或已损坏。
+	the server answered {}	服务器应答 {}
+	the web service is off	Web 服务已关闭
+	The workspace and a report of the devices on A4 pages, opened in the system's PDF viewer to print	工作区和设备报告，按 A4 页面排版，在系统的 PDF 查看器中打开后打印
+	The workspace as a picture, for a report	以图片形式导出工作区，用于报告
+	There is no startup configuration to export yet (Save first).	尚无可导出的启动配置（请先保存）。
+	Thermostat	恒温器
+	These locks hold while the activity is locked with the password.	练习用密码锁定时，这些锁定一直有效。
+	This access point's address: {}	此接入点的地址：{}
+	This activity gives each student their own values. Type your name to start.	此练习为每位学生提供各自的数值。请输入您的姓名开始。
+	this activity has no answer network: `activity.save_answer` first	此练习没有答案网络：请先执行 `activity.save_answer`
+	this activity has no initial network: `activity.save_initial` first	此练习没有初始网络：请先执行 `activity.save_initial`
+	This activity has no ping checks.	此练习没有 ping 检查。
+	This activity is locked. The instructor's password unlocks it.	此练习已锁定。教师的密码可将其解锁。
+	this activity was already started	此练习已经开始
+	this lab has no activity	此实验没有练习
+	This lab has notes: open them with the notes button.	此实验有备注：用备注按钮打开。
+	This results file is from another activity.	此结果文件来自另一个练习。
+	This results file was changed after it was saved.	此结果文件在保存后被更改过。
+	This server's time: {} UTC (day {} of the Unix era)	此服务器的时间：{} UTC（Unix 纪元第 {} 天）
+	Three routers in a line learn each other's networks with RIPv2; R3 hands out a default route.	一条线上的三台路由器通过 RIPv2 互相学习网络；R3 下发默认路由。
+	Three routers in a triangle learn each other's networks with OSPF; cut a link and the routes move.	三角形连接的三台路由器通过 OSPF 互相学习网络；断开一条链路，路由会随之改变。
+	Three routers, static routes	三台路由器，静态路由
+	Three switches wired in a loop: spanning tree blocks one port (amber light) and traffic still flows.	三台交换机接成环：生成树阻塞一个端口（琥珀色指示灯），流量依然通畅。
+	Time	时间
+	Time (s)	时间 (秒)
+	Time is up	时间到
+	Time is up: these are your results.	时间到：这是您的结果。
+	Time left	剩余时间
+	Time limit (minutes, 0: none)	时间限制（分钟，0：不限）
+	Time(sec)	时间 (秒)
+	Title	标题
+	To	到
+	To address	收件地址
+	to {}: {}	到 {}：{}
+	Toggle PDU List Window	切换 PDU 列表窗口
+	too many checks	检查项过多
+	Tools	工具
+	Topology: {} links	拓扑：{} 条链路
+	TOS	TOS
+	Touch-screen smartphone with Wi-Fi and a cellular radio: browser, email, command prompt and programming apps; no battery to look after	带 Wi-Fi 和蜂窝无线电的触屏智能手机：有浏览器、电子邮件、命令提示符和编程应用；无需关注电池
+	Touch-screen tablet with Wi-Fi and a cellular radio: browser, email, command prompt and programming apps; no battery to look after	带 Wi-Fi 和蜂窝无线电的触屏平板电脑：有浏览器、电子邮件、命令提示符和编程应用；无需关注电池
+	Trap	Trap
+	Traps	Trap
+	Trunk	中继
+	TTL	TTL
+	TTL expired in transit	TTL 在传输中过期
+	TTL ran out at {}	TTL 在 {} 处耗尽
+	Two cables bundled with LACP into one logical link: spanning tree blocks nothing, and one cable can fail without a break.	两条线缆用 LACP 捆绑成一条逻辑链路：生成树不阻塞任何端口，其中一条线缆故障也不会中断。
+	Two IP phones, each with a PC plugged into it, share switch ports: the phones talk in voice VLAN 100, the PCs in data VLAN 10. R1 hands out addresses and registers the phones; dial 1002 from Phone1.	两部 IP 电话各接一台 PC，共用交换机端口：电话在语音 VLAN 100 中通信，PC 在数据 VLAN 10 中通信。R1 分配地址并为电话注册；在 Phone1 上拨 1002。
+	Two lightweight access points join the controller WLC1, which offers Staff (WPA2-Enterprise, logins checked by a RADIUS server) and Guest (WPA2-PSK).	两个轻量级接入点加入控制器 WLC1，它提供 Staff（WPA2 企业级，登录由 RADIUS 服务器检查）和 Guest (WPA2-PSK)。
+	Two modular routers got a 2-port serial card each (fitted while switched off) and are joined over Serial0/1/0; their configurations are saved, so a power cycle keeps them.	两台模块化路由器各装了一块 2 端口串行卡（关机时安装），并通过 Serial0/1/0 相连；它们的配置已保存，因此重新通电后仍会保留。
+	Two routed Gigabit Ethernet ports	两个路由千兆以太网端口
+	Two routers joined by a serial cable with PPP; R1 holds the DCE end and sets the clock rate. OSPF carries the routes.	两台路由器通过使用 PPP 的串行线缆相连；R1 是 DCE 端并设置时钟速率。路由由 OSPF 传递。
+	Two routers share the virtual gateway 192.168.1.254; R1 is active. Shut R1 down and PC1 keeps reaching the server through R2.	两台路由器共用虚拟网关 192.168.1.254；R1 为活动设备。关闭 R1 后，PC1 仍可通过 R2 访问服务器。
+	Two SIP phones, powered by a PoE switch, register with R1's SIP call control (voice register) and call each other; dial 2002 from Phone1.	两部 SIP 电话由 PoE 交换机供电，向 R1 的 SIP 呼叫控制 (voice register) 注册并互相呼叫；在 Phone1 上拨 2002。
+	Two sites over a serial WAN link	通过串行 WAN 链路连接的两个站点
+	Two subnets and a router	两个子网和一台路由器
+	Two synchronous serial WAN ports	两个同步串行 WAN 端口
+	Type	类型
+	Type the destination address or device	输入目的地址或设备
+	Type the simulated time to send it at	输入发送它的模拟时间
+	UDP from port {} to port {}, {} bytes of data.	UDP，从端口 {} 到端口 {}，{} 字节数据。
+	UDP port {} not open here	UDP 端口 {} 在此处未开放
+	Uncluster	取消群集
+	Undo	撤销
+	Undo (Ctrl+Z)	撤销 (Ctrl+Z)
+	unknown card `{}` (cards: {})	未知板卡 `{}`（板卡：{}）
+	unknown command `{}`	未知命令 `{}`
+	unknown operator {}	未知运算符 {}
+	Unlock	解锁
+	unlocked	已解锁
+	Use SIP (UDP 5060) instead of NetLabCraft's own call-control protocol	使用 SIP (UDP 5060)，而不是 NetLabCraft 自有的呼叫控制协议
+	User	用户
+	User name	用户名
+	Username	用户名
+	Username (WPA2-Enterprise)	用户名（WPA2 企业级）
+	Users	用户
+	Value	值
+	value	值
+	Values per student, one variable per line (net = 10, 20, 30); write {net} in the instructions and checks	每位学生的数值，每行一个变量（net = 10, 20, 30）；在说明和检查中写 {net}
+	Variables	变量
+	Variables (address: name=value, …)	变量（地址：名称=值，…）
+	Verify	校验
+	Version	版本
+	Version {}	版本 {}
+	via {}	经由 {}
+	View	查看
+	View the answer network	查看答案网络
+	Vis.	可见
+	Visible	可见
+	VLAN	VLAN
+	VLAN (optional)	VLAN（可选）
+	VLAN Database	VLAN 数据库
+	VLAN Name	VLAN 名称
+	VLAN Number	VLAN 编号
+	VLAN {} does not exist on this switch	此交换机上不存在 VLAN {}
+	VLAN {} not allowed on this trunk	此中继不允许 VLAN {}
+	VLANs and router-on-a-stick	VLAN 与单臂路由
+	Voice VLAN	语音 VLAN
+	VTP: VLANs from one server	VTP：由一台服务器统一分发 VLAN
+	Waiting	等待中
+	waiting for ARP of {}; packet dropped	正在等待 {} 的 ARP；数据包已丢弃
+	Walk	遍历
+	Walk the CDP and LLDP neighbours from this router and manage every router that answers RESTCONF	从此路由器遍历 CDP 和 LLDP 邻居，并管理每一台应答 RESTCONF 的路由器
+	WAN 172.16.0.0/30 over the serial cards	通过串行卡的 WAN 172.16.0.0/30
+	WAN Emulation	WAN 仿真
+	watering	浇水中
+	Web Browser	Web 浏览器
+	Webcam	摄像头
+	webcam	摄像头
+	What the answer network holds, device by device. Untick what isn't graded, set the points and a hint, then make the checks.	答案网络的内容，逐台设备列出。取消勾选不评分的项，设置分值和提示，然后创建检查。
+	What the rule does	规则的作用
+	What the student may change	学生可以更改的内容
+	What {} decided before sending it	{} 在发送前的决定
+	When to send it	何时发送
+	While locked, Check Results doesn't say which checks passed	锁定时，“检查结果”不会说明哪些检查通过
+	Wi-Fi	Wi-Fi
+	Wi-Fi access point: bridges its radio and its Ethernet port (SSID, WPA2-PSK)	Wi-Fi 接入点：桥接其无线电和以太网口 (SSID, WPA2-PSK)
+	Wi-Fi air conditioner: cools the room while the IoT service keeps it on	Wi-Fi 空调：IoT 服务使其保持开启时为房间制冷
+	Wi-Fi carbon-monoxide detector: reports the CO level in parts per million	Wi-Fi 一氧化碳探测器：以百万分率报告 CO 浓度
+	Wi-Fi garage door opener: the IoT service opens the door (on) and closes it (off)	Wi-Fi 车库门开启器：IoT 服务将门打开（开）和关闭（关）
+	Wi-Fi heater: warms the room while the IoT service keeps it on	Wi-Fi 加热器：IoT 服务使其保持开启时为房间加热
+	Wi-Fi humidity sensor: reports the air's relative humidity (0-100 %)	Wi-Fi 湿度传感器：报告空气的相对湿度 (0-100 %)
+	Wi-Fi Laptop	Wi-Fi 笔记本电脑
+	Wi-Fi lawn sprinkler: waters the garden while the IoT service keeps it on	Wi-Fi 草坪喷灌器：IoT 服务使其保持开启时给花园浇水
+	Wi-Fi off: pick a network in Config	Wi-Fi 已关闭：请在“配置”中选择网络
+	Wi-Fi settings applied	Wi-Fi 设置已应用
+	Wi-Fi smart plug: powers what is plugged into it while the IoT service keeps it on	Wi-Fi 智能插座：IoT 服务使其保持开启时为插在上面的设备供电
+	Wi-Fi smart things: climate, garden and safety	Wi-Fi 智能设备：气候、花园和安全
+	Wi-Fi soil moisture sensor: reports how wet the ground is (0-100 %)	Wi-Fi 土壤湿度传感器：报告土地的湿润程度 (0-100 %)
+	Wi-Fi thermostat: reports the room temperature to its IoT service, so rules can switch a heater or an air conditioner	Wi-Fi 恒温器：向其 IoT 服务报告室温，以便规则控制加热器或空调
+	Wi-Fi window opener: the IoT service opens the window (on) and closes it (off)	Wi-Fi 窗户开启器：IoT 服务将窗户打开（开）和关闭（关）
+	Wi-Fi with a controller: lightweight APs and WPA2-Enterprise	带控制器的 Wi-Fi：轻量级 AP 和 WPA2 企业级
+	Wi-Fi {} · no address yet	Wi-Fi {} · 尚无地址
+	Wi-Fi {} · {}	Wi-Fi {} · {}
+	Wi-Fi: laptops on an access point	Wi-Fi：接入点上的笔记本电脑
+	Width	宽度
+	Window	窗户
+	Wired to {} (its program reads it)	已连接到 {}（其程序读取它）
+	Wired to {} (its program switches it)	已连接到 {}（其程序控制它）
+	Wireless	无线
+	Wireless LAN controller: holds the WLANs (SSID, WPA2-PSK or WPA2-Enterprise) and pushes them to the lightweight APs that join it	无线局域网控制器：保存 WLAN (SSID, WPA2-PSK 或 WPA2 企业级)，并将其推送给加入它的轻量级 AP
+	Wireless LANs	无线局域网
+	Wiring closet	配线间
+	With the plan off the server refuses every attach	套餐关闭后，服务器会拒绝所有接入
+	WLAN	WLAN
+	WLAN number	WLAN 编号
+	WLC1 holds two WLANs (`show wlan`, `show capwap`): Staff checks logins with RADIUS1 (users ana/ana12345 and luis/luis1234) and lands in VLAN 10 (192.168.10.0/24); Guest uses the passphrase invitado123 and lands in VLAN 30 (192.168.30.0/24). The access points tag each WLAN on their trunk to S1, and R1 routes and hands out addresses per VLAN. In Simulation mode, reset and ping from Laptop1 to watch the 802.11 association, the EAP login, the RADIUS exchange, the 4-way handshake and then CCMP-protected data; move Laptop1 next to LAP2 and watch it reassociate, keeping its address.	WLC1 保存两个 WLAN (`show wlan`, `show capwap`)：Staff 通过 RADIUS1 检查登录（用户 ana/ana12345 和 luis/luis1234），并进入 VLAN 10 (192.168.10.0/24)；Guest 使用密码 invitado123，进入 VLAN 30 (192.168.30.0/24)。接入点在其到 S1 的中继上为每个 WLAN 打标记，R1 按 VLAN 路由并分配地址。在模拟模式下，重置后从 Laptop1 ping，可观察 802.11 关联、EAP 登录、RADIUS 交互、四次握手，以及随后受 CCMP 保护的数据；将 Laptop1 移到 LAP2 旁边，观察它重新关联并保留其地址。
+	WPA2 passphrase	WPA2 密码
+	WPA2 passphrase (empty: open)	WPA2 密码（留空：开放）
+	Write	写入
+	wrong cable: {} and {} need a {} cable, a {} one is plugged in and neither end has auto-MDIX	线缆错误：{} 和 {} 需要 {} 线缆，但接的是 {}，且两端都没有 auto-MDIX
+	wrong password	密码错误
+	wrong WPA2 passphrase	WPA2 密码错误
+	Yellow	黄色
+	yes	是
+	Your account	您的账户
+	Your first router	您的第一台路由器
+	Your lab	您的实验
+	Your name	您的姓名
+	Zoom In	放大
+	Zoom Out	缩小
+	Zoom Reset	重置缩放
+	{{name}} in the template takes each router's value; {{address}} and {{hostname}} are built in.	模板中的 {{name}} 取每台路由器各自的值；{{address}} 和 {{hostname}} 为内置变量。
+	{} (drag on the workspace)	{}（在工作区上拖动）
+	{} (learned from the switch)	{}（从交换机学到）
+	{} (main)	{}（主）
+	{} ({}) has no module bays	{} ({}) 没有模块插槽
+	{} accepted the connection to TCP port {}	{} 接受了到 TCP 端口 {} 的连接
+	{} answered from UDP port {}	{} 从 UDP 端口 {} 应答
+	{} answered with DHCP {}	{} 以 DHCP {} 应答
+	{} block(s) without their `end`	{} 个块缺少对应的 `end`
+	{} cabled	{} 已连线
+	{} cables	{} 条线缆
+	{} cables, up to {}	{} 条线缆，最多 {}
+	{} can't reach {}	{} 无法到达 {}
+	{} checks captured. Now put the lab in its starting state and save it.	已获取 {} 项检查。现在请将实验恢复到起始状态并保存。
+	{} checks made, {} points.	已创建 {} 项检查，共 {} 分。
+	{} checks, {} points	{} 项检查，共 {} 分
+	{} contributors · {} commits	{} 位贡献者 · {} 次提交
+	{} devices	{} 台设备
+	{} devices, {} cables. Read only: edit it from the Activity Wizard.	{} 台设备，{} 条线缆。只读：请在练习向导中编辑。
+	{} did not answer (connection timed out)	{} 没有应答（连接超时）
+	{} did not answer on TCP port {}	{} 在 TCP 端口 {} 上没有应答
+	{} entries	{} 条记录
+	{} has no bay {} (bays: {})	{} 没有插槽 {}（插槽：{}）
+	{} has no console cable: join its RS-232 port to a router's or switch's Console port (link.add with "cable": "console")	{} 没有控制台线：请将其 RS-232 端口连接到路由器或交换机的 Console 端口 (link.add，"cable": "console")
+	{} has no Console or RS-232 port.	{} 没有 Console 或 RS-232 端口。
+	{} has no IP address configured	{} 未配置 IP 地址
+	{} has no IP address to send a PDU to	{} 没有可发送 PDU 的 IP 地址
+	{} has no power supply fitted: fit one in its Physical tab (device.psu) first	{} 没有安装电源：请先在其“物理”选项卡中安装一个 (device.psu)
+	{} has no radio	{} 没有无线电
+	{} has no route to {}	{} 没有到 {} 的路由
+	{} host(s) associated	{} 台主机已关联
+	{} is a radio: it takes no cable	{} 是无线电：不接线缆
+	{} is neither a programmable board nor a smart thing.	{} 既不是可编程开发板，也不是智能设备。
+	{} is network equipment: it goes in a wiring closet, not in a building's rooms	{} 是网络设备：应放在配线间，而不是建筑物的房间里
+	{} is not a number	{} 不是数字
+	{} is not a registered smart device	{} 不是已注册的智能设备
+	{} is not in the ARP table: an ARP request for it goes out {} first.	{} 不在 ARP 表中：会先从 {} 发出对它的 ARP 请求。
+	{} is not this device's address	{} 不是本设备的地址
+	{} is switched on: switch it off before fitting or removing a card	{} 已开机：请先关机再安装或取出板卡
+	{} is this device's own address	{} 是本设备自己的地址
+	{} is this device's own address: the packet is for it.	{} 是本设备自己的地址：该数据包是发给它的。
+	{} is wired to {}, a sensor: read it instead	{} 连接到 {}，这是一个传感器：请改为读取它
+	{} is {} and {} is {}: no cable joins them	{} 是 {}，{} 是 {}：没有线缆连接它们
+	{} joined to {}	{} 已加入 {}
+	{} logins are not accepted here	此处不接受 {} 登录
+	{} members	{} 名成员
+	{} new message(s)	{} 封新邮件
+	{} of {} checks differ from the answer	{} 项检查中有 {} 项与答案不同
+	{} of {} items graded, {} points	{} 项中已评分 {} 项，共 {} 分
+	{} of {} pass	{} 项中通过 {} 项
+	{} offered the address {}	{} 提供了地址 {}
+	{} PRs, {} commits, +{} / −{} lines (Δ {}), +{} / −{} binary assets, {} – {}	{} 个 PR，{} 次提交，+{} / −{} 行 (Δ {})，+{} / −{} 个二进制资源，{} – {}
+	{} reaches {}	{} 可到达 {}
+	{} refused the connection (is its FTP service on?)	{} 拒绝了连接（其 FTP 服务是否已开启？）
+	{} refused the connection to TCP port {}	{} 拒绝了到 TCP 端口 {} 的连接
+	{} says destination unreachable (code {})	{} 报告目的不可达（代码 {}）
+	{} steps without a `sleep`: a loop needs a `sleep` in it	有 {} 步没有 `sleep`：循环中需要有 `sleep`
+	{} to {} ({}): failed, destination unreachable	{} 到 {} ({})：失败，目的不可达
+	{} to {} ({}): failed, no answer	{} 到 {} ({})：失败，无应答
+	{} to {} ({}): failed, TTL ran out	{} 到 {} ({})：失败，TTL 耗尽
+	{} to {} ({}): successful	{} 到 {} ({})：成功
+	{} via {}	{} 经由 {}
+	{} waiting	{} 个等待中
+	{}: `{}` is not an address	{}：`{}` 不是地址
+	{}: `{}` shows "{}"	{}：`{}` 显示“{}”
+	{}: address	{}：地址
+	{}: address {}	{}：地址 {}
+	{}: cable	{}：线缆
+	{}: cable {}	{}：线缆 {}
+	{}: choose a port	{}：请选择端口
+	{}: configuration item {}	{}：配置项 {}
+	{}: refused: {}	{}：被拒绝：{}
+	{}: the DNS server doesn't know this name	{}：DNS 服务器不认识此名称
+	{}: this host has no DNS server configured	{}：此主机未配置 DNS 服务器
+	{}: Wi-Fi radio (Wireless0)	{}：Wi-Fi 无线电 (Wireless0)
+	{}: {} items, {} points	{}：{} 项，{} 分
+	{}: {} pins	{}：{} 个引脚
+	{}: {} ports	{}：{} 个端口
+	{}: {} · cabled to {}	{}：{} · 已连线到 {}
+	ΔLOC	ΔLOC
+	−Bin	−Bin
+	−LOC	−LOC
+event	answer	应答
+event	body encrypted	正文已加密
+event	bytes protected	受保护的字节
+event	carrying	携带
+event	carrying protocol type	携带的协议类型
+event	Cell attach accept	CELL 接入接受
+event	Cell attach reject	CELL 接入拒绝
+event	Cell attach request	CELL 接入请求
+event	central switching	集中交换
+event	client hello	客户端问候
+event	cost	开销
+event	data block	数据块
+event	database description	数据库描述
+event	destination unreachable	目的不可达
+event	echo reply	回显应答
+event	echo request	回显请求
+event	encrypted bytes	加密字节
+event	end of the MIB	MIB 结束
+event	error	错误
+event	first	首个
+event	from	来自
+event	from router	来自路由器
+event	FTP data	FTP 数据
+event	header length	头部长度
+event	hold	保持
+event	is at	位于
+event	keep	存活
+event	key	密钥
+event	length	长度
+event	link-state acknowledgement	链路状态确认
+event	link-state request	链路状态请求
+event	link-state update	链路状态更新
+event	message	消息
+event	missing	缺失
+event	no APN	无 APN
+event	no such object	无此对象
+event	NTP time	NTP 时间
+event	on	于
+event	operation	操作
+event	packet	数据包
+event	port	端口
+event	protocol	协议
+event	query	查询
+event	read request for	读请求
+event	reply	回复
+event	request	请求
+event	response	响应
+event	root	根
+event	route	路由
+event	routes	路由
+event	seq	序号
+event	server hello	服务器问候
+event	SIA query	SIA 查询
+event	SIA reply	SIA 应答
+event	stratum	层级
+event	tell	告知
+event	time exceeded	超时
+event	time request	时间请求
+event	TLS application data	TLS 应用数据
+event	TLS handshake	TLS 握手
+event	type	类型
+event	update	更新
+event	version	版本
+event	who has	谁有
+event	write request for	写请求

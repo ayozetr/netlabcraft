@@ -29,3 +29,8 @@ Interface catalogs are text, not assets, so `cargo xtask assets` does not check 
 | Catalog | Written by | Native-speaker review |
 |---|---|---|
 | `locales/es/netlabcraft.tsv` (Español) | NetLabCraft contributors, clean room (written from the English text, no other product's translations consulted) | Not recorded |
+| `locales/pt-br/netlabcraft.tsv` (Português (Brasil)) | NetLabCraft contributors, clean room (written from the English text, no other product's translations consulted). | Not recorded |
+| `locales/fr/netlabcraft.tsv` (Français) | NetLabCraft contributors, clean room (written from the English text, no other product's translations consulted). Short generic words (File, Cancel, Save, Open, Help…) came out the same as in storytold/craft-i18n's French catalog (MIT OR Apache-2.0), which was read for them: 113 rows coincide. | Not recorded |
+| `locales/it/netlabcraft.tsv` (Italiano) | NetLabCraft contributors, clean room (written from the English text, no other product's translations consulted). | Not recorded |
+| `locales/de/netlabcraft.tsv` (Deutsch) | NetLabCraft contributors, clean room (written from the English text, no other product's translations consulted). | Not recorded |
+| `locales/zh-hans/netlabcraft.tsv` (简体中文) | NetLabCraft contributors, clean room (written from the English text, no other product's translations consulted). | Not recorded |
