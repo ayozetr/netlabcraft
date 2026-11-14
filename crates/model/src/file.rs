@@ -1,4 +1,4 @@
-//! The `.nlcraft` lab file: UTF-8 JSON, `{"format":"netlabcraft","version":3,"topology":{…}}`.
+//! The `.nlcraft` lab file: UTF-8 JSON, `{"format":"netlabcraft","version":4,"topology":{…}}`.
 //! Readers accept older versions and refuse newer ones; loading always sanitizes.
 
 use serde::{Deserialize, Serialize};
@@ -8,8 +8,9 @@ use crate::{ModelError, Result, Topology};
 pub const FORMAT: &str = "netlabcraft";
 /// 2: the lab-level `environment` (the smart things' shared room).
 /// 3: smartphones and tablets have a `Cellular0` port, and devices may carry `cell` settings.
-/// Older files still open (their phones get the port).
-pub const VERSION: u32 = 3;
+/// 4: drawings have separate outline and fill settings (`outline`, `outline_color`, `outline_width`, `no_fill`).
+/// Older files still open (their phones get the port; a drawing with only `color` draws as it always did).
+pub const VERSION: u32 = 4;
 pub const EXTENSION: &str = "nlcraft";
 
 /// Largest lab file accepted (hostile input).
@@ -63,6 +64,58 @@ mod tests {
     }
 
     #[test]
+    fn legacy_drawing_keeps_its_single_colour_and_styles_round_trip() {
+        let old = r##"{"format":"netlabcraft","version":3,"topology":{"devices":[],"links":[],"next_id":1,
+            "annotations":[{"id":1,"x":0,"y":0,"shape":"rectangle","w":10,"h":10,"color":"#aabbcc"}]}}"##;
+        let t = from_json(old).unwrap();
+        let a = &t.annotations[0];
+        assert_eq!(a.color.as_deref(), Some("#aabbcc"));
+        assert!(a.has_outline() && !a.no_fill && a.outline_color.is_none() && a.outline_px() == 1);
+        // A legacy drawing is saved without the new keys.
+        assert!(!to_json(&t).unwrap().contains("outline"));
+
+        let mut t = Topology::new();
+        let id = t.add_drawing(crate::Shape::Ellipse, 0.0, 0.0, 30.0, 20.0, None).unwrap();
+        let patch = crate::StylePatch { outline: Some(true), outline_color: Some("#112233".into()), outline_width: Some(5), fill: Some(None) };
+        t.annotation_mut(id).unwrap().apply_style(&patch).unwrap();
+        let back = from_json(&to_json(&t).unwrap()).unwrap();
+        assert_eq!(back, t);
+        assert!(back.annotations[0].no_fill);
+        assert_eq!(back.annotations[0].outline_px(), 5);
+    }
+
+    #[test]
+    fn hostile_style_values_are_cleaned_on_load() {
+        let bad = r##"{"format":"netlabcraft","version":4,"topology":{"devices":[],"links":[],"next_id":1,
+            "annotations":[{"id":1,"x":0,"y":0,"shape":"line","w":10,"h":10,"outline_color":"red","outline_width":200}]}}"##;
+        let t = from_json(bad).unwrap();
+        assert_eq!(t.annotations[0].outline_color, None);
+        assert_eq!(t.annotations[0].outline_px(), crate::MAX_OUTLINE_WIDTH);
+    }
+
+    #[test]
+    fn refuses_bad_styles_without_changing_anything() {
+        let mut t = Topology::new();
+        let r = t.add_drawing(crate::Shape::Rectangle, 0.0, 0.0, 30.0, 20.0, Some("#aabbcc")).unwrap();
+        let l = t.add_drawing(crate::Shape::Line, 0.0, 0.0, 30.0, 20.0, None).unwrap();
+        let n = t.add_annotation(0.0, 0.0, "hi").unwrap();
+        let before = t.clone();
+        let with = |f: fn(&mut crate::StylePatch)| {
+            let mut p = crate::StylePatch::default();
+            f(&mut p);
+            p
+        };
+        assert!(t.annotation_mut(r).unwrap().apply_style(&with(|p| p.outline_width = Some(0))).is_err());
+        assert!(t.annotation_mut(r).unwrap().apply_style(&with(|p| p.outline_width = Some(9))).is_err());
+        assert!(t.annotation_mut(r).unwrap().apply_style(&with(|p| p.outline_color = Some("red".into()))).is_err());
+        assert!(t.annotation_mut(r).unwrap().apply_style(&with(|p| p.fill = Some(Some("#12".into())))).is_err());
+        assert!(t.annotation_mut(l).unwrap().apply_style(&with(|p| p.fill = Some(None))).is_err());
+        assert!(t.annotation_mut(l).unwrap().apply_style(&with(|p| p.outline = Some(false))).is_err());
+        assert!(t.annotation_mut(n).unwrap().apply_style(&with(|p| p.outline = Some(true))).is_err());
+        assert_eq!(t, before);
+    }
+
+    #[test]
     fn refuses_foreign_and_future_files() {
         assert!(from_json("{}").is_err());
         assert!(from_json("not json").is_err());
@@ -71,7 +124,8 @@ mod tests {
         assert!(from_json(r#"{"format":"netlabcraft","version":1,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
         assert!(from_json(r#"{"format":"netlabcraft","version":2,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
         assert!(from_json(r#"{"format":"netlabcraft","version":3,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
-        assert!(from_json(r#"{"format":"netlabcraft","version":4,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_err());
+        assert!(from_json(r#"{"format":"netlabcraft","version":4,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
+        assert!(from_json(r#"{"format":"netlabcraft","version":5,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_err());
     }
 
     #[test]

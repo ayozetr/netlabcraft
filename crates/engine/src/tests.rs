@@ -852,6 +852,63 @@ fn freehand_and_polygon_drawings_are_simplified_moved_and_undone() {
 }
 
 #[test]
+fn drawing_outline_and_fill_are_set_validated_undone_and_saved() {
+    let mut s = Session::new();
+    let find = |s: &Session, id: u64| s.topology.annotations.iter().find(|a| a.id as u64 == id).cloned().unwrap();
+    // The old single `color` still works and leaves the new settings alone.
+    let old = s.execute("note.add", json!({"shape": "rectangle", "x": 0, "y": 0, "color": "#aabbcc"})).unwrap()["id"].as_u64().unwrap();
+    let a = find(&s, old);
+    assert_eq!(a.color.as_deref(), Some("#aabbcc"));
+    assert!((a.outline, a.outline_color.clone(), a.outline_width, a.no_fill) == (None, None, None, false));
+    // New keys on creation.
+    let id = s
+        .execute(
+            "note.add",
+            json!({"shape": "ellipse", "x": 0, "y": 0, "outline": true, "outline_color": "#102030", "outline_width": 4, "fill": "none"}),
+        )
+        .unwrap()["id"]
+        .as_u64()
+        .unwrap();
+    let a = find(&s, id);
+    assert!(a.no_fill && a.outline_px() == 4 && a.outline_color.as_deref() == Some("#102030"));
+    // Editing, with a fill colour turning the fill back on.
+    s.execute("note.style", json!({"id": id, "fill": "#ffeedd", "outline": false})).unwrap();
+    let a = find(&s, id);
+    assert!(!a.no_fill && !a.has_outline() && a.color.as_deref() == Some("#ffeedd"));
+    s.execute("edit.undo", json!({})).unwrap();
+    assert!(find(&s, id).no_fill);
+    // Refusals change nothing (not even a valid key sent with a bad one).
+    let before = s.topology.clone();
+    for bad in [
+        json!({"id": id}),
+        json!({"id": id, "outline_width": 0}),
+        json!({"id": id, "outline_width": 9}),
+        json!({"id": id, "outline_width": -1}),
+        json!({"id": id, "outline_width": "x"}),
+        json!({"id": id, "outline": "yes"}),
+        json!({"id": id, "outline": false, "outline_color": "blue"}),
+        json!({"id": id, "fill": "pink"}),
+        json!({"id": id, "fill": 5}),
+    ] {
+        assert!(s.execute("note.style", bad.clone()).is_err(), "{bad}");
+    }
+    assert!(s.execute("note.add", json!({"shape": "rectangle", "outline_width": 99})).is_err());
+    let line = s.execute("note.add", json!({"shape": "line", "w": 30, "h": 0, "outline_color": "#ff0000", "outline_width": 6})).unwrap()["id"]
+        .as_u64()
+        .unwrap();
+    assert_eq!(find(&s, line).outline_px(), 6);
+    assert!(s.execute("note.style", json!({"id": line, "fill": "none"})).is_err());
+    let text = s.execute("note.add", json!({"x": 0, "y": 0, "text": "hi"})).unwrap()["id"].as_u64().unwrap();
+    assert!(s.execute("note.style", json!({"id": text, "outline": true})).is_err());
+    assert_eq!(s.topology.annotations.len(), before.annotations.len() + 2);
+    // Saved and read back.
+    let json = s.execute("file.save", json!({})).unwrap()["json"].as_str().unwrap().to_string();
+    let mut b = Session::new();
+    b.execute("file.open", json!({"json": json})).unwrap();
+    assert_eq!(b.topology.annotations, s.topology.annotations);
+}
+
+#[test]
 fn clusters_group_devices_for_the_view_only() {
     let mut s = Session::new();
     s.execute("file.new", json!({"sample": "vlans"})).unwrap();

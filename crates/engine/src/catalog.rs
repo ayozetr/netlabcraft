@@ -495,7 +495,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Place note or drawing",
         "Insert",
         None,
-        r##"{"x", "y", "text"?, "shape"?: "text|rectangle|ellipse|line|freehand|polygon", "w"?, "h"?, "points": [[x, y], …] (freehand: simplified, at most 512 kept; polygon: 3-64 corners), "color"?: "#rrggbb"} → {"id"} (placed in the cluster being viewed)"##,
+        r##"{"x", "y", "text"?, "shape"?: "text|rectangle|ellipse|line|freehand|polygon", "w"?, "h"?, "points": [[x, y], …] (freehand: simplified, at most 512 kept; polygon: 3-64 corners), "color"?: "#rrggbb" (the fill; a line's colour), "outline"?: true|false, "outline_color"?: "#rrggbb", "outline_width"?: 1-8, "fill"?: "none"|"#rrggbb" (rectangle, ellipse, polygon)} → {"id"} (placed in the cluster being viewed); without the style keys a drawing keeps the single-colour look of older labs"##,
         true
     ),
     c!("note.edit", "Edit note", "", None, r#"{"id", "text"}"#, true),
@@ -510,6 +510,14 @@ pub static CATALOG: &[CommandInfo] = &[
     ),
     c!("note.remove", "Delete note", "", None, r#"{"id"}"#, true),
     c!("note.color", "Drawing colour", "", None, r##"{"id", "color": "#rrggbb"}"##, true),
+    c!(
+        "note.style",
+        "Drawing style",
+        "",
+        None,
+        r##"{"id", "outline"?: true|false, "outline_color"?: "#rrggbb", "outline_width"?: 1-8, "fill"?: "none"|"#rrggbb", "color"?: "#rrggbb" (same as a fill colour)}: at least one key; a rectangle, ellipse or polygon takes all of them; a line or freehand stroke takes the outline colour and width (it is all outline: `fill` only sets its base colour like `color`, and `none` is refused); a text note is refused; a refused style changes nothing"##,
+        true
+    ),
     c!(
         "cluster.create",
         "Group into a cluster",
