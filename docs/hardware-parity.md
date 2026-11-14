@@ -35,7 +35,7 @@ cabling and wireless row (~95%); **host hardware: ~80% ready, 8–14 h** (estima
 
 ## Host hardware
 
-| Hardware feature | Reference app | NetLabCraft (Linux · Windows · macOS · BSD · web) | Gap and estimate |
+| Hardware feature | Reference app | NetLabCraft (Linux · Windows · macOS · web) | Gap and estimate |
 |---|---|---|---|
 | GPU rendering | Desktop toolkit | wgpu through eframe: Vulkan/GL · DirectX 12 · Metal · Vulkan/GL · WebGPU or WebGL2 | At parity in kind; verify on each platform: 2–4 h |
 | High-DPI and display scaling | yes | yes (egui scales with the display) | — |
