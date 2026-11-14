@@ -19,7 +19,7 @@
   <img alt="Runs on Linux, Windows, macOS, BSD and the web" src="https://img.shields.io/badge/runs%20on-Linux%20%C2%B7%20Windows%20%C2%B7%20macOS%20%C2%B7%20BSD%20%C2%B7%20Web-4f95ad?style=flat-square">
   <img alt="License: MIT OR Apache-2.0" src="https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-2f6f85?style=flat-square">
   <img alt="Agent-drivable over MCP" src="https://img.shields.io/badge/agents-MCP-4f95ad?style=flat-square">
-  <img alt="Interface in English and Spanish" src="https://img.shields.io/badge/interface-English%20%C2%B7%20Espa%C3%B1ol-2f6f85?style=flat-square">
+  <img alt="Interface in 7 languages" src="https://img.shields.io/badge/interface-7%20languages-2f6f85?style=flat-square">
 </p>
 
 <br>
@@ -73,8 +73,8 @@
 - **Open.** Labs are readable JSON ([`.nlcraft`](docs/file-format.md)); the code is MIT or Apache-2.0.
 - **Agent-native.** Every action is a command that agents can run through an **MCP server** or the
   CLI, including typing at any device's console.
-- **In your language.** The interface comes in English and Spanish (Options → Language), the
-  system's language by default; the consoles stay in English, as on real equipment. Adding a
+- **In your language.** The interface comes in English, Spanish, Brazilian Portuguese, French, Italian,
+  German and Simplified Chinese (Options → Language), the system's language by default; the consoles stay in English, as on real equipment. Adding a
   language is adding a text file: [docs/translating.md](docs/translating.md).
 - **Everywhere.** One Rust codebase for the desktop and the web. No account, no sign-in, no telemetry.
 - **Never loses your work.** No panics in product code, every input treated as hostile, every
@@ -140,7 +140,7 @@ cargo xtask ci                                                # fmt, clippy, tes
 ```
 
 Click a device to open its window; drag to move it; scroll to pan and Ctrl+scroll to zoom.
-Choose Español under Options → Language for the Spanish interface.
+Choose your language under Options → Language.
 
 ### Install on Linux (your user only)
 
