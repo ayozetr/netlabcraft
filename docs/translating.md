@@ -117,6 +117,9 @@ an activity's instructions are separate: instructors write them per language wit
 4. Check: `cargo test -p netlabcraft-ui-egui i18n` runs the checker and explains any row it
    rejects by file and line. `cargo test -p netlabcraft-ui-egui coverage_report -- --nocapture`
    prints each catalog's rows against the largest.
+5. Add a row for the catalog to the Translations list in [ATTRIBUTION.md](../ATTRIBUTION.md): your
+   name or handle, and whether a native speaker reviewed it.
+6. A language with its own script needs a font that has the glyphs: see "Fonts" below.
 
 ## The checker
 
@@ -140,3 +143,17 @@ Spanish sweep tests fail on interface text that has a row but is shown in Englis
   natively. Corrections are welcome as pull requests.
 - **Spanish is the reference** for coverage: a test sweeps every window, tab, page and mode in
   Spanish and fails on text with no row.
+
+## Fonts
+
+egui's built-in fonts cover Latin, Greek and Cyrillic. Chinese glyphs come from
+`assets/fonts/NotoSansCJKsc-Regular-subset.otf`, a subset of Noto Sans CJK SC (SIL OFL 1.1, row
+in ATTRIBUTION.md) with Basic Latin, common punctuation and all of GB2312 (about 6,700 hanzi), so
+a `zh-hans` catalog rarely needs a glyph that is missing. `fonts::install` registers it as the
+last fallback of the proportional and monospace families, in the desktop app, the web build and
+the snapshot example: it is asked only for a character no other font has, so Latin text renders
+exactly as before. The font is embedded in every build: the native binary grows by 1.6 MB (46.6 to 48.2 MB, release), the wasm by 1.6 MB (30.4 to 32.0 MB; 8.1 to 9.4 MB gzipped, measured before `wasm-opt`). A test checks that the font has the glyphs of a Chinese sample. If a catalog
+uses a character outside the subset, it shows as a missing-glyph box: add the character to the
+subset (regenerate it from the pinned source file with the command in ATTRIBUTION.md, never edit
+the font by hand). A language that needs other scripts (Arabic, Hebrew, Devanagari…) needs its
+own font added the same way before its catalog is useful.

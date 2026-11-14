@@ -25,6 +25,7 @@ mod cloud_page;
 mod console;
 mod credits;
 mod events;
+pub mod fonts;
 mod hardware;
 pub mod i18n;
 pub mod icons;
