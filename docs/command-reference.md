@@ -84,12 +84,13 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `cloud.map` | Cloud port pairs |  |  | `{"device": cloud, "a"?: "Coaxial0", "b"?: "Phone0", "remove"?: true} → {"pairs": [[a, b]…], "ports"}: joins two ports (a frame in one leaves by the other), parts them, or lists the pairs` |
 | `device.power.source` | Power source |  |  | `{"device"} → {"powered_device", "adapter", "source": "mains"\|"adapter"\|"poe"\|"none"\|"off", "detail" (the PoE port, or why there is no power), "draw_w"}` |
 | `device.module.list` | Card catalogue |  |  | `{"device"?} → {"modules": [{id, label, description, ports, type}], "device": {"power", "slots": [{slot, module, label, ports}]}}` |
-| `note.add` | Place note or drawing | Insert |  | `{"x", "y", "text"?, "shape"?: "text\|rectangle\|ellipse\|line\|freehand\|polygon", "w"?, "h"?, "points": [[x, y], …] (freehand: simplified, at most 512 kept; polygon: 3-64 corners), "color"?: "#rrggbb"} → {"id"} (placed in the cluster being viewed)` |
+| `note.add` | Place note or drawing | Insert |  | `{"x", "y", "text"?, "shape"?: "text\|rectangle\|ellipse\|line\|freehand\|polygon", "w"?, "h"?, "points": [[x, y], …] (freehand: simplified, at most 512 kept; polygon: 3-64 corners), "color"?: "#rrggbb" (the fill; a line's colour), "outline"?: true\|false, "outline_color"?: "#rrggbb", "outline_width"?: 1-8, "fill"?: "none"\|"#rrggbb" (rectangle, ellipse, polygon)} → {"id"} (placed in the cluster being viewed); without the style keys a drawing keeps the single-colour look of older labs` |
 | `note.edit` | Edit note |  |  | `{"id", "text"}` |
 | `note.move` | Move note |  |  | `{"id", "x", "y", "transient"?: false}` |
 | `note.resize` | Resize drawing |  |  | `{"id", "x", "y", "w", "h", "transient"?: false}: rectangle and ellipse: top-left corner and size (normalised, sides kept between 4 and 100000); line: start and the offset to its far end (at least 4 long); text, freehand and polygon are refused` |
 | `note.remove` | Delete note |  |  | `{"id"}` |
 | `note.color` | Drawing colour |  |  | `{"id", "color": "#rrggbb"}` |
+| `note.style` | Drawing style |  |  | `{"id", "outline"?: true\|false, "outline_color"?: "#rrggbb", "outline_width"?: 1-8, "fill"?: "none"\|"#rrggbb", "color"?: "#rrggbb" (same as a fill colour)}: at least one key; a rectangle, ellipse or polygon takes all of them; a line or freehand stroke takes the outline colour and width (it is all outline: `fill` only sets its base colour like `color`, and `none` is refused); a text note is refused; a refused style changes nothing` |
 | `cluster.create` | Group into a cluster | Edit | Ctrl+G | `{"devices": ["name or id", …], "clusters"?: [cluster ids to nest], "name"?} → {"id", "name"} (all from the same view; the network is unchanged)` |
 | `cluster.rename` | Rename cluster |  |  | `{"id", "name"}` |
 | `cluster.move` | Move cluster |  |  | `{"id", "x", "y", "transient"?: false}` |

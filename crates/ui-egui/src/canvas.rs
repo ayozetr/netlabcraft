@@ -266,17 +266,22 @@ fn triangulate(pts: &[Pos2]) -> Vec<[u32; 3]> {
     out
 }
 
-const DRAW_COLORS: [&str; 5] = ["#bcd9f2", "#c8ecc0", "#fde9a8", "#f6c6c6", "#d9cff2"];
-
-fn next_color(app: &PacketApp) -> &'static str {
-    let n = app.session.topology.annotations.iter().filter(|a| a.shape != netlabcraft_model::Shape::Text).count();
-    DRAW_COLORS.get(n % DRAW_COLORS.len()).copied().unwrap_or("#bcd9f2")
-}
-
 fn paint_shape(painter: &egui::Painter, view: &View, a: &netlabcraft_model::Annotation, tk: &Tokens) {
     let [r, g, b] = a.color.as_deref().and_then(netlabcraft_model::parse_color).unwrap_or([0xbc, 0xd9, 0xf2]);
-    let fill = crate::theme::drawing_fill(egui::Color32::from_rgb(r, g, b), tk);
-    let edge = Stroke::new(1.0, crate::theme::shade(fill, 0.7));
+    let base = crate::theme::drawing_fill(egui::Color32::from_rgb(r, g, b), tk);
+    let line = matches!(a.shape, Shape::Line | Shape::Freehand);
+    // A drawing with no outline settings is drawn as it always was: a darker shade of its colour.
+    let outline_color = match a.outline_color.as_deref().and_then(netlabcraft_model::parse_color) {
+        Some([r, g, b]) => egui::Color32::from_rgb(r, g, b),
+        None => crate::theme::shade(base, if line { 0.6 } else { 0.7 }),
+    };
+    let width = match (a.outline_width, line) {
+        (Some(_), _) => (f32::from(a.outline_px()) * view.zoom).max(1.0),
+        (None, true) => (3.0 * view.zoom).max(1.5),
+        (None, false) => 1.0,
+    };
+    let edge = if a.has_outline() || line { Stroke::new(width, outline_color) } else { Stroke::NONE };
+    let fill = if a.no_fill { egui::Color32::TRANSPARENT } else { base };
     match a.shape {
         netlabcraft_model::Shape::Rectangle => {
             let rect = shape_rect(view, a);
@@ -292,26 +297,26 @@ fn paint_shape(painter: &egui::Painter, view: &View, a: &netlabcraft_model::Anno
             painter.add(egui::Shape::convex_polygon(pts, fill, edge));
         }
         netlabcraft_model::Shape::Line => {
-            painter.line_segment(
-                [view.screen(a.x, a.y), view.screen(a.x + a.w, a.y + a.h)],
-                Stroke::new((3.0 * view.zoom).max(1.5), crate::theme::shade(fill, 0.6)),
-            );
+            painter.line_segment([view.screen(a.x, a.y), view.screen(a.x + a.w, a.y + a.h)], edge);
         }
         Shape::Freehand => {
-            let stroke = Stroke::new((3.0 * view.zoom).max(1.5), crate::theme::shade(fill, 0.6));
-            painter.add(egui::Shape::line(path_points(view, a), stroke));
+            painter.add(egui::Shape::line(path_points(view, a), edge));
         }
         Shape::Polygon => {
             let pts = path_points(view, a);
-            let mut mesh = egui::Mesh::default();
-            for p in &pts {
-                mesh.colored_vertex(*p, fill);
+            if !a.no_fill {
+                let mut mesh = egui::Mesh::default();
+                for p in &pts {
+                    mesh.colored_vertex(*p, fill);
+                }
+                for [i, j, k] in triangulate(&pts) {
+                    mesh.add_triangle(i, j, k);
+                }
+                painter.add(mesh);
             }
-            for [i, j, k] in triangulate(&pts) {
-                mesh.add_triangle(i, j, k);
+            if a.has_outline() {
+                painter.add(egui::Shape::closed_line(pts, edge));
             }
-            painter.add(mesh);
-            painter.add(egui::Shape::closed_line(pts, edge));
         }
         netlabcraft_model::Shape::Text => {}
     }
@@ -326,9 +331,9 @@ fn draw_shapes(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Token
 /// A drawing in progress: the freehand stroke so far, or the polygon's corners and the pointer.
 fn draw_in_progress(app: &PacketApp, painter: &egui::Painter, view: &View, pointer: Option<Pos2>) {
     let c = &app.ui.canvas;
-    let [r, g, b] = netlabcraft_model::parse_color(next_color(app)).unwrap_or([0xbc, 0xd9, 0xf2]);
-    let color = crate::theme::shade(egui::Color32::from_rgb(r, g, b), 0.6);
-    let stroke = Stroke::new((3.0 * view.zoom).max(1.5), color);
+    let [r, g, b] = app.ui.palette.style.outline_color;
+    let color = egui::Color32::from_rgb(r, g, b);
+    let stroke = Stroke::new((f32::from(app.ui.palette.style.outline_width) * view.zoom).max(1.5), color);
     if c.stroke.len() > 1 {
         painter.add(egui::Shape::line(c.stroke.iter().map(|(x, y)| view.screen(*x, *y)).collect(), stroke));
     }
@@ -517,7 +522,11 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
             shape,
             w: x1 - x0,
             h: y1 - y0,
-            color: Some(next_color(app).to_string()),
+            color: Some(app.ui.palette.style.fill_hex()),
+            outline: Some(app.ui.palette.style.outline),
+            outline_color: Some(app.ui.palette.style.outline_hex()),
+            outline_width: Some(app.ui.palette.style.outline_width),
+            no_fill: !app.ui.palette.style.fill,
             points: Vec::new(),
             cluster: None,
         };
@@ -962,8 +971,10 @@ pub(crate) fn finish_polygon(app: &mut PacketApp) {
         app.info(tl("A polygon needs at least three corners."));
         return;
     }
-    let color = next_color(app);
-    app.run("note.add", json!({"shape": "polygon", "points": pts, "color": color}));
+    let mut params = app.ui.palette.style.params(Shape::Polygon);
+    params["shape"] = json!("polygon");
+    params["points"] = json!(pts);
+    app.run("note.add", params);
 }
 
 /// Shapes dragged out from corner to corner.
@@ -1155,8 +1166,10 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
         if resp.drag_stopped() && !app.ui.canvas.stroke.is_empty() {
             let pts: Vec<[f32; 2]> = std::mem::take(&mut app.ui.canvas.stroke).into_iter().map(|(x, y)| [x, y]).collect();
             if pts.len() >= 2 {
-                let color = next_color(app);
-                app.run("note.add", json!({"shape": "freehand", "points": pts, "color": color}));
+                let mut params = app.ui.palette.style.params(Shape::Freehand);
+                params["shape"] = json!("freehand");
+                params["points"] = json!(pts);
+                app.run("note.add", params);
             }
             return;
         }
@@ -1249,8 +1262,13 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
                 Shape::Ellipse => "ellipse",
                 _ => "line",
             };
-            let color = next_color(app);
-            app.run("note.add", json!({"shape": id, "x": x0, "y": y0, "w": w, "h": h, "color": color}));
+            let mut params = app.ui.palette.style.params(shape);
+            params["shape"] = json!(id);
+            params["x"] = json!(x0);
+            params["y"] = json!(y0);
+            params["w"] = json!(w);
+            params["h"] = json!(h);
+            app.run("note.add", params);
         }
         return;
     }
@@ -1424,7 +1442,7 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
             } else if let Some(c) = hit_cluster(app, view, p) {
                 app.ui.picked_clusters.insert(c);
             } else if let Some(n) = hit_note(app, view, p)
-                && app.session.topology.annotations.iter().any(|a| a.id == n && resizable(a))
+                && app.session.topology.annotations.iter().any(|a| a.id == n && a.shape != Shape::Text)
             {
                 app.ui.selected_note = Some(n);
             }

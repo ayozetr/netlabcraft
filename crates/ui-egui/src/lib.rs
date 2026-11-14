@@ -33,6 +33,7 @@ pub mod instructor;
 mod iot_page;
 mod mail;
 mod mib;
+mod palette;
 pub mod pdf;
 pub mod pdu_dialog;
 mod phone;
@@ -138,6 +139,8 @@ pub struct UiState {
     pub editing_note: Option<(u32, String)>,
     /// The rectangle, ellipse or line showing its resize handles.
     pub selected_note: Option<u32>,
+    /// The Palette window: the default look of new drawings.
+    pub(crate) palette: palette::State,
     /// Labs opened or saved recently, newest first (the desktop shell fills it).
     pub recent: Vec<String>,
     /// The person picked another interface language (the shell saves the choice).
@@ -183,6 +186,7 @@ impl Default for UiState {
             clipboard: None,
             editing_note: None,
             selected_note: None,
+            palette: palette::State::default(),
             recent: Vec::new(),
             lang_changed: false,
             canvas_rect: None,
@@ -820,6 +824,7 @@ impl PacketApp {
         console::windows(self, &ctx);
         canvas::inspect_window(self, &ctx);
         canvas::note_editor(self, &ctx);
+        palette::window(self, &ctx);
         canvas::cluster_rename_window(self, &ctx);
         events::pdu_window(self, &ctx);
         pdu_dialog::window(self, &ctx);

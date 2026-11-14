@@ -2085,15 +2085,107 @@ pub struct Annotation {
     pub w: f32,
     #[serde(default)]
     pub h: f32,
-    /// Fill or stroke colour, `#rrggbb`.
+    /// Fill colour (rectangle, ellipse, polygon) or the base colour of a line or stroke, `#rrggbb`.
+    /// Files from before the separate outline settings only have this one, and draw as they always did.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
+    /// Whether the outline is drawn (none: it is). Lines and strokes are all outline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outline: Option<bool>,
+    /// Outline colour, `#rrggbb` (none: a darker shade of `color`, as before).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outline_color: Option<String>,
+    /// Outline width, 1 to [`MAX_OUTLINE_WIDTH`] (none: 1 on a box or polygon, 3 on a line or stroke).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outline_width: Option<u8>,
+    /// A rectangle, ellipse or polygon left unfilled.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub no_fill: bool,
     /// The corners of a polygon or the path of a freehand stroke, relative to `x`, `y`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub points: Vec<[f32; 2]>,
     /// The cluster whose view shows it (none: the top level).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cluster: Option<u32>,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
+/// Widest outline a drawing may have.
+pub const MAX_OUTLINE_WIDTH: u8 = 8;
+
+/// A change to a drawing's look; `None` leaves a setting as it is. `fill` is `Some(None)` for no fill.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct StylePatch {
+    pub outline: Option<bool>,
+    pub outline_color: Option<String>,
+    pub outline_width: Option<u8>,
+    pub fill: Option<Option<String>>,
+}
+
+impl StylePatch {
+    pub fn is_empty(&self) -> bool {
+        *self == StylePatch::default()
+    }
+}
+
+impl Annotation {
+    /// Whether the outline is drawn.
+    pub fn has_outline(&self) -> bool {
+        self.outline.unwrap_or(true)
+    }
+
+    /// The outline width: what was set, else 1 on a box or polygon and 3 on a line or stroke.
+    pub fn outline_px(&self) -> u8 {
+        let default = if matches!(self.shape, Shape::Line | Shape::Freehand) { 3 } else { 1 };
+        self.outline_width.map_or(default, |w| w.clamp(1, MAX_OUTLINE_WIDTH))
+    }
+
+    /// Applies a style after checking all of it, so a refused patch changes nothing.
+    pub fn apply_style(&mut self, patch: &StylePatch) -> Result<()> {
+        let check = |c: &str| parse_color(c).map(|_| ()).ok_or_else(|| ModelError::Invalid(format!("`{c}` is not a #rrggbb colour")));
+        if self.shape == Shape::Text {
+            return Err(ModelError::Invalid("a text note has no outline or fill".into()));
+        }
+        let line = matches!(self.shape, Shape::Line | Shape::Freehand);
+        if let Some(c) = &patch.outline_color {
+            check(c)?;
+        }
+        if let Some(Some(c)) = &patch.fill {
+            check(c)?;
+        }
+        if let Some(w) = patch.outline_width
+            && !(1..=MAX_OUTLINE_WIDTH).contains(&w)
+        {
+            return Err(ModelError::Invalid(format!("the outline width is 1 to {MAX_OUTLINE_WIDTH}")));
+        }
+        if line && matches!(patch.fill, Some(None)) {
+            return Err(ModelError::Invalid("a line has no fill".into()));
+        }
+        if line && patch.outline == Some(false) {
+            return Err(ModelError::Invalid("a line is all outline".into()));
+        }
+        if let Some(o) = patch.outline {
+            self.outline = Some(o);
+        }
+        if let Some(c) = &patch.outline_color {
+            self.outline_color = Some(c.clone());
+        }
+        if let Some(w) = patch.outline_width {
+            self.outline_width = Some(w);
+        }
+        match &patch.fill {
+            Some(None) => self.no_fill = true,
+            Some(Some(c)) => {
+                self.no_fill = false;
+                self.color = Some(c.clone());
+            }
+            None => {}
+        }
+        Ok(())
+    }
 }
 
 /// What an annotation draws.
@@ -2264,6 +2356,10 @@ impl Topology {
             w: 0.0,
             h: 0.0,
             color: None,
+            outline: None,
+            outline_color: None,
+            outline_width: None,
+            no_fill: false,
             points: Vec::new(),
             cluster: None,
         });
@@ -2488,6 +2584,10 @@ impl Topology {
             if a.color.as_deref().is_some_and(|c| parse_color(c).is_none()) {
                 a.color = None;
             }
+            if a.outline_color.as_deref().is_some_and(|c| parse_color(c).is_none()) {
+                a.outline_color = None;
+            }
+            a.outline_width = a.outline_width.map(|w| w.clamp(1, MAX_OUTLINE_WIDTH));
             a.text = a.text.chars().take(MAX_ANNOTATION_TEXT).collect();
         }
         self.sanitize_workspace();

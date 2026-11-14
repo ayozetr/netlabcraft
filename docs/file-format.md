@@ -1,12 +1,12 @@
 # The `.nlcraft` lab file
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (file version 3: the cellular radio, `cell` settings (M9.10)) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (results file version 2 with the embedded network (M9.6)) · earlier: minor (instructor fields in `activity`, absolute PDU starts, boards and the IoT custom cable, power supplies, SA lifetimes, VRRP timers and IPv6, CoS, VTP pruning, EIGRP summaries and variance, RIP timers, RIPng, central WLANs, controller variables) · also merged with M9.11 (minor (M9.11: `environment`, file version 2))
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-14 · **Change:** minor (file version 4: drawing outline and fill settings) · earlier: minor (file version 3: the cellular radio, `cell` settings (M9.10)) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (results file version 2 with the embedded network (M9.6)) · earlier: minor (instructor fields in `activity`, absolute PDU starts, boards and the IoT custom cable, power supplies, SA lifetimes, VRRP timers and IPv6, CoS, VTP pruning, EIGRP summaries and variance, RIP timers, RIPng, central WLANs, controller variables) · also merged with M9.11 (minor (M9.11: `environment`, file version 2))
 
-A lab is one UTF-8 JSON file (file version 3; versions 1 and 2 still open: version 2 added the lab's `environment`, version 3 adds the cellular radio below). It is the serde form of `netlabcraft_model::Topology`
+A lab is one UTF-8 JSON file (file version 4; versions 1 to 3 still open: version 2 added the lab's `environment`, version 3 the cellular radio below, version 4 the outline and fill of drawings). It is the serde form of `netlabcraft_model::Topology`
 (`crates/model/src/lib.rs`), wrapped with a format tag and version (`crates/model/src/file.rs`):
 
 ```json
-{"format": "netlabcraft", "version": 3, "topology": {"devices": [...], "links": [...], "next_id": 7, "notes": "...", "annotations": [...]}}
+{"format": "netlabcraft", "version": 4, "topology": {"devices": [...], "links": [...], "next_id": 7, "notes": "...", "annotations": [...]}}
 ```
 
 Fields that hold their default value are left out when saving, so a small lab stays small and an
@@ -21,7 +21,7 @@ older file without a newer field still opens.
 | `consoles` | Console cables: `{"pc": id, "device": id}` (the PC's RS-232 port to the device's Console port); left out when there are none. |
 | `next_id` | The next device id (ids are never reused). |
 | `notes` | The lab's notes text. |
-| `annotations` | Notes and drawings on the workspace: text, rectangle, ellipse, line, each with position and size. |
+| `annotations` | Notes and drawings on the workspace: text, rectangle, ellipse, line, freehand, polygon, each with position and size. A drawing's `color` is its fill (a line's base colour); `outline` (false hides it), `outline_color`, `outline_width` (1-8) and `no_fill` (true) are left out while unset, and a drawing with only `color` (every file before version 4) draws as it always did: a darker shade of the colour as outline, 1 wide (3 for a line or stroke). |
 | `activity` | A graded activity: `title`, `instructions` (in `language`, `en` when left out) and `translations` (language code → text), `checks` (each `label`, `points`, `type`: `config`, `config-hashed`, `ping`, `host-address`, `output`, `link` (`a`, `a_port`, `b`, `b_port`), `link-hashed`, with its fields), `hidden`, `salt`; `answer`, the answer network sealed as `scheme` (`plain`: `data` is the lab's JSON; `salt`: AES-128-CTR with an HMAC-SHA1 tag under a PBKDF2 key from the salt, which hides it from a casual look only; `password`: the same under a key from the lock password) and `data`; `initial`, the lab the student starts from (a lab file's JSON without its activity); `assessment`, the assessment tree's weights (an item's hashed key → `points` and `feedback`); `locks` (`devices`, `cables`, `config`: device ids). Lock passwords set now are kept as PBKDF2 hashes (`p2$…`). |
 | `scenarios` | Simulation scenarios: `list` (each `description` and `pdus`) and `current`, the one in use. A PDU holds `num`, `source` (device id), `port`, `destination` (address or name) and `target`, `app` (`ping`, `dns`, `http`, `telnet`, `ssh`, `ftp`, `smtp`, `pop3`, `dhcp`, `tftp`, `snmp`, `arp`, `udp`, `tcp`), `simple`, `src_port`, `dst_port`, `ttl`, `tos`, `seq`, `size`, `text` (DNS name, page, file or community), `period_s` (periodic), `start_s` (seconds from when it was made) or `start_at_s` (an absolute simulated time), and what happened last: `status`, `last_s`, `fired`, `note`, `next_us`. Left out while the only scenario is empty. |
 
@@ -91,6 +91,7 @@ events) is not saved.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | minor | File version 4: drawings gain `outline`, `outline_color`, `outline_width` and `no_fill`; files of versions 1 to 3 read as before (a lone `color` renders exactly as it did) and bad colours or widths are cleaned on load. |
 | 2026-11-13 | minor | File version 3 (M9.10): smartphones and tablets gain a `Cellular0` port (older files get it on open), devices may carry `cell` settings, and the Cell Tower and Central Office Server models exist; files of versions 1 and 2 read as before. |
 | 2026-11-13 | minor | `pki` on routers and switches: keys, trustpoints, certificates, the CA (M9.9). |
 | 2026-11-13 | minor | Lab file version 2: the lab-level `environment` (M9.11). Version 1 files have none and read as the default (physics off), so they behave as before; newer versions are still refused. |

@@ -341,6 +341,51 @@ fn drawing_a_polygon_and_a_freehand_stroke_with_the_mouse() {
 }
 
 #[test]
+fn the_palette_styles_new_drawings_and_the_selected_one() {
+    let mut h = harness(None);
+    h.run_steps(2);
+    // No palette without a drawing tool or a selected drawing.
+    assert!(h.query_by_label("No fill").is_none());
+    h.state_mut().set_tool(Tool::Draw(netlabcraft_model::Shape::Rectangle));
+    h.run_steps(2);
+    h.get_by_label("No fill").click();
+    h.run_steps(2);
+    h.get_by_label("Outline").click();
+    h.run_steps(2);
+    assert!(!h.state().ui.palette.style.fill && !h.state().ui.palette.style.outline);
+    // The next rectangle carries both choices.
+    let from = on_screen(&h, 100.0, 100.0);
+    press(&mut h, from, true, egui::Modifiers::NONE);
+    h.run_steps(1);
+    for i in 1..=5 {
+        h.input_mut().events.push(egui::Event::PointerMoved(from + egui::vec2(20.0 * i as f32, 14.0 * i as f32)));
+        h.run_steps(1);
+    }
+    press(&mut h, from + egui::vec2(100.0, 70.0), false, egui::Modifiers::NONE);
+    h.run_steps(2);
+    let a = h.state().session.topology.annotations[0].clone();
+    assert!(a.no_fill && !a.has_outline(), "{a:?}");
+    // Selecting it shows its own settings; the palette edits it, one undo step per change.
+    h.state_mut().set_tool(Tool::Select);
+    h.run_steps(2);
+    let at = on_screen(&h, 150.0, 135.0);
+    click(&mut h, at);
+    assert_eq!(h.state().ui.selected_note, Some(a.id));
+    h.get_by_label("Outline").click();
+    h.run_steps(2);
+    assert!(h.state().session.topology.annotations[0].has_outline());
+    h.get_by_label("Fill").click();
+    h.run_steps(2);
+    assert!(!h.state().session.topology.annotations[0].no_fill);
+    h.state_mut().run("edit.undo", json!({}));
+    assert!(h.state().session.topology.annotations[0].no_fill);
+    // A saved lab keeps the look.
+    let saved = h.state_mut().session.execute("file.save", json!({})).unwrap()["json"].as_str().unwrap().to_string();
+    let t = netlabcraft_model::file::from_json(&saved).unwrap();
+    assert_eq!(t.annotations, h.state().session.topology.annotations);
+}
+
+#[test]
 fn picking_devices_grouping_them_and_opening_the_cluster() {
     let mut s = Session::new();
     for (x, y) in [(100.0, 100.0), (220.0, 100.0), (500.0, 300.0)] {

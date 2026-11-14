@@ -833,18 +833,22 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                 None => netlabcraft_model::Shape::Text,
             };
             let mut t = s.topology.clone();
+            let style = style_patch(p)?;
             let id = match shape {
                 Shape::Text => t.add_annotation(x, y, opt_str(p, "text").unwrap_or("Note"))?,
                 Shape::Freehand | Shape::Polygon => t.add_path(shape, &points_param(p)?, opt_str(p, "color"), s.view)?,
                 _ => t.add_drawing(shape, x, y, f32_param(p, "w").unwrap_or(80.0), f32_param(p, "h").unwrap_or(60.0), opt_str(p, "color"))?,
             };
             t.annotation_mut(id)?.cluster = s.view;
+            if !style.is_empty() && shape != Shape::Text {
+                t.annotation_mut(id)?.apply_style(&style)?;
+            }
             s.checkpoint();
             s.topology = t;
             s.changed();
             Ok(json!({"id": id}))
         }
-        "note.edit" | "note.move" | "note.resize" | "note.remove" | "note.color" => {
+        "note.edit" | "note.move" | "note.resize" | "note.remove" | "note.color" | "note.style" => {
             let id = p.get("id").and_then(Value::as_u64).and_then(|v| u32::try_from(v).ok()).ok_or_else(|| bad("`id` (note number) is required"))?;
             let mut t = s.topology.clone();
             t.annotation_mut(id)?;
@@ -866,7 +870,14 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                 "note.color" => {
                     let c = str_param(p, "color")?;
                     netlabcraft_model::parse_color(c).ok_or_else(|| bad(format!("`{c}` is not a #rrggbb colour")))?;
-                    t.annotation_mut(id)?.color = Some(c.to_string());
+                    t.annotation_mut(id)?.apply_style(&netlabcraft_model::StylePatch { fill: Some(Some(c.to_string())), ..Default::default() })?;
+                }
+                "note.style" => {
+                    let style = style_patch(p)?;
+                    if style.is_empty() {
+                        return Err(bad("give at least one of `outline`, `outline_color`, `outline_width`, `fill`, `color`"));
+                    }
+                    t.annotation_mut(id)?.apply_style(&style)?;
                 }
                 _ => t.annotations.retain(|a| a.id != id),
             }
@@ -1669,4 +1680,30 @@ fn apply_mail_changes(s: &mut Session) {
         }
     }
     s.changed();
+}
+
+/// Reads the drawing style parameters: `outline` (bool), `outline_color`, `outline_width` (1-8), `fill`
+/// (`none` or `#rrggbb`) and the older `color` (the fill, or a line's base colour). Values are checked when applied.
+fn style_patch(p: &Value) -> Result<netlabcraft_model::StylePatch> {
+    let mut patch = netlabcraft_model::StylePatch::default();
+    if let Some(v) = p.get("outline").filter(|v| !v.is_null()) {
+        patch.outline = Some(v.as_bool().ok_or_else(|| bad("`outline` is true or false"))?);
+    }
+    if let Some(v) = p.get("outline_color").filter(|v| !v.is_null()) {
+        patch.outline_color = Some(v.as_str().ok_or_else(|| bad("`outline_color` is a #rrggbb colour"))?.to_string());
+    }
+    if let Some(v) = p.get("outline_width").filter(|v| !v.is_null()) {
+        let w = v.as_u64().ok_or_else(|| bad("`outline_width` is a whole number from 1 to 8"))?;
+        patch.outline_width = Some(u8::try_from(w).map_err(|_| bad("`outline_width` is a whole number from 1 to 8"))?);
+    }
+    if let Some(v) = p.get("fill").filter(|v| !v.is_null()) {
+        let f = v.as_str().ok_or_else(|| bad("`fill` is `none` or a #rrggbb colour"))?;
+        patch.fill = Some(if f.eq_ignore_ascii_case("none") { None } else { Some(f.to_string()) });
+    }
+    if patch.fill.is_none()
+        && let Some(c) = opt_str(p, "color")
+    {
+        patch.fill = Some(Some(c.to_string()));
+    }
+    Ok(patch)
 }
