@@ -1452,3 +1452,14 @@ the cellular radio is not available	la radio celular no está disponible
 Cellular Data is off	Los datos móviles están desactivados
 no service: no cell tower in range	sin servicio: no hay ninguna torre celular en su alcance
 no service: every tower in range is full	sin servicio: todas las torres en su alcance están llenas
+Palette	Paleta
+Outline	Contorno
+Outline colour	Color del contorno
+Width	Grosor
+No fill	Sin relleno
+Fill	Relleno
+Fill colour	Color de relleno
+Rectangle	Rectángulo
+Ellipse	Elipse
+Freeform	Mano alzada
+Polygon	Polígono
