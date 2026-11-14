@@ -102,10 +102,18 @@ an activity's instructions are separate: instructors write them per language wit
 
 1. Pick the code: lowercase BCP 47, the language and a script or region only when it matters
    (`pt-br`, `zh-hans`). Look in `locales/` first.
-2. Make `locales/<code>/netlabcraft.tsv`: copy the header and the `@id` row from
-   `locales/es/netlabcraft.tsv` (change the language names), then add rows as `\t<English>\t<translation>`.
-3. Translate. Rows you have not done are simply left out and show English, so a partial
-   catalog is fine and welcome.
+2. Make the starter file:
+
+   ```sh
+   cargo xtask new-locale fr "Français"
+   ```
+
+   It writes `locales/fr/netlabcraft.tsv`: the header, `@id language.name`, and every English
+   string the existing catalogs have, commented out as `#<context><TAB><English><TAB>`. It never
+   overwrites a catalog. Without Rust, create the file by hand: copy the header from
+   `locales/es/netlabcraft.tsv`, change its first line, and add the `@id` row.
+3. Translate: delete the `#` of a row and type the translation after the last TAB. Rows left
+   commented or deleted show English, so a partial catalog is fine and welcome.
 4. Check: `cargo test -p netlabcraft-ui-egui i18n` runs the checker and explains any row it
    rejects by file and line. `cargo test -p netlabcraft-ui-egui coverage_report -- --nocapture`
    prints each catalog's rows against the largest.

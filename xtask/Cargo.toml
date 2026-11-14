@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "NetLabCraft workspace tooling: cargo xtask ci | test | layers | assets | wasm | parity | version"
+description = "NetLabCraft workspace tooling: cargo xtask ci | test | layers | assets | wasm | parity | new-locale | version"
 
 [lints]
 workspace = true
