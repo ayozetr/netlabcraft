@@ -866,8 +866,10 @@ impl PacketApp {
                     self.requests.push(UiRequest::ExportPcap(self.session.pcap()));
                 }
                 let png = ui.button(tl("Export Workspace Image (PNG)...")).on_hover_text(tl("The workspace as a picture, for a report")).clicked();
-                let print =
-                    ui.button(tl("Print...")).on_hover_text(tl("The workspace on an A4 page, opened in the system's PDF viewer to print")).clicked();
+                let print = ui
+                    .button(tl("Print..."))
+                    .on_hover_text(tl("The workspace and a report of the devices on A4 pages, opened in the system's PDF viewer to print"))
+                    .clicked();
                 if png || print {
                     self.ui.image_pending = true;
                     self.ui.print_pending = print;
@@ -1341,7 +1343,10 @@ impl PacketApp {
         let (w, h) = (u32::try_from(x1 - x0).unwrap_or(0), u32::try_from(y1 - y0).unwrap_or(0));
         if std::mem::take(&mut self.ui.print_pending) {
             let rgb: Vec<u8> = rgba.as_chunks::<4>().0.iter().flat_map(|[r, g, b, _]| [*r, *g, *b]).collect();
-            self.requests.push(UiRequest::Print(pdf::page(&self.title(), w, h, &rgb)));
+            let title = self.session.title();
+            let title = title.trim_end_matches(" •");
+            let created = netlabcraft_engine::instructor::now_utc();
+            self.requests.push(UiRequest::Print(pdf::document(title, &created, &self.session.topology, w, h, &rgb)));
         } else {
             self.requests.push(UiRequest::ExportImage(png::encode(w, h, &rgba)));
         }

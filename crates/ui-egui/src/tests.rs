@@ -247,7 +247,7 @@ fn printing_makes_a_one_page_pdf_of_the_workspace() {
         _ => None,
     });
     let pdf = pdf.expect("a page to print");
-    assert!(pdf.starts_with(b"%PDF-1.4") && pdf.windows(9).any(|w| w == b"/Count 1 "));
+    assert!(pdf.starts_with(b"%PDF-1.4") && pdf.windows(7).any(|w| w == b"/Count "));
     assert!(!h.state().ui.print_pending && !h.state().ui.image_pending);
 }
 
