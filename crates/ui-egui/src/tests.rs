@@ -681,7 +681,7 @@ struct InSpanish;
 
 impl InSpanish {
     fn new() -> InSpanish {
-        i18n::set_thread_lang(Some(i18n::Lang::Spanish));
+        i18n::set_thread_lang(Some(i18n::spanish_lang()));
         InSpanish
     }
 }
@@ -913,7 +913,7 @@ fn every_translated_literal_has_a_spanish_row() {
     let mut seen = 0;
     for entry in std::fs::read_dir(dir).unwrap() {
         let path = entry.unwrap().path();
-        if path.file_name().is_some_and(|n| n == "tests.rs") {
+        if path.is_dir() || path.file_name().is_some_and(|n| n == "tests.rs") {
             continue;
         }
         let text = std::fs::read_to_string(&path).unwrap();
@@ -946,7 +946,7 @@ fn source_literals() -> std::collections::BTreeSet<String> {
     let mut out = std::collections::BTreeSet::new();
     for entry in std::fs::read_dir(dir).unwrap() {
         let path = entry.unwrap().path();
-        if path.file_name().is_some_and(|n| n == "tests.rs") {
+        if path.is_dir() || path.file_name().is_some_and(|n| n == "tests.rs") {
             continue;
         }
         let text = std::fs::read_to_string(&path).unwrap();
@@ -1353,7 +1353,7 @@ fn the_instructor_tools_open_from_the_wizard_and_the_instructions() {
 
 #[test]
 fn the_instructions_show_the_students_language() {
-    i18n::set_thread_lang(Some(i18n::Lang::Spanish));
+    i18n::set_thread_lang(Some(i18n::spanish_lang()));
     let mut h = harness(Some("activity-first-router"));
     h.run_steps(2);
     assert!(h.query_by_label_contains("R1 une dos LAN").is_some());

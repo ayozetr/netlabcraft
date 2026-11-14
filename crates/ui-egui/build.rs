@@ -8,6 +8,11 @@
 //!   JSON says the entry was verified (`people_entry`).
 //!
 //! A missing or malformed file gives empty tables (or no names) and a warning.
+//!
+//! It also embeds the interface catalogs: every `locales/<locale>/netlabcraft.tsv` at the repository
+//! root becomes one `(locale, text)` entry of a static table (`include_str!`), sorted by locale.
+//! Catalogs are always embedded, so a release stays a single self-contained binary; adding a
+//! language is adding a directory (docs/translating.md).
 
 use std::fmt::Write as _;
 
@@ -23,10 +28,40 @@ fn main() {
     .unwrap_or(Value::Null);
     let people = read(&dir.join("people.toml"), "contributors are shown by username only", |t| t.parse::<toml::Table>().map_err(|e| e.to_string()))
         .unwrap_or_default();
-    let out = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap_or_default()).join("credits.rs");
+    let out_dir = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap_or_default());
+    let out = out_dir.join("credits.rs");
     if let Err(e) = std::fs::write(&out, generate(&json, &people)) {
         println!("cargo::warning=writing {}: {e}", out.display());
     }
+    let out = out_dir.join("locales.rs");
+    if let Err(e) = std::fs::write(&out, generate_locales(&manifest.join("../../locales"))) {
+        println!("cargo::warning=writing {}: {e}", out.display());
+    }
+}
+
+/// `pub static CATALOGS: &[(&str, &str)]`: (locale code, catalog text) for every
+/// `<dir>/<locale>/netlabcraft.tsv`, sorted by locale. Paths are written with `{:?}` so Windows
+/// backslashes are escaped.
+fn generate_locales(dir: &std::path::Path) -> String {
+    println!("cargo::rerun-if-changed={}", dir.display());
+    let mut found: Vec<(String, std::path::PathBuf)> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| {
+            let code = e.file_name().to_string_lossy().into_owned();
+            let file = e.path().join("netlabcraft.tsv");
+            (!code.starts_with('.') && file.is_file()).then_some((code, file))
+        })
+        .collect();
+    found.sort();
+    let mut o = String::from("pub static CATALOGS: &[(&str, &str)] = &[\n");
+    for (code, file) in found {
+        println!("cargo::rerun-if-changed={}", file.display());
+        let _ = writeln!(o, "    ({code:?}, include_str!({:?})),", file.display().to_string());
+    }
+    o.push_str("];\n");
+    o
 }
 
 fn read<T>(path: &std::path::Path, fallback: &str, parse: impl Fn(&str) -> Result<T, String>) -> Option<T> {

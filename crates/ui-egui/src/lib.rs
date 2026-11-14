@@ -917,7 +917,7 @@ impl PacketApp {
                 }
                 ui.checkbox(&mut self.ui.show_grid, tl("Show grid"));
                 ui.menu_button(tl("Language"), |ui| {
-                    for l in i18n::Lang::ALL {
+                    for l in i18n::Lang::all() {
                         if ui.radio(i18n::lang() == l, l.name()).clicked() {
                             i18n::set_lang(l);
                             self.ui.lang_changed = true;

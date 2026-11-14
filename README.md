@@ -74,7 +74,8 @@
 - **Agent-native.** Every action is a command that agents can run through an **MCP server** or the
   CLI, including typing at any device's console.
 - **In your language.** The interface comes in English and Spanish (Options → Language), the
-  system's language by default; the consoles stay in English, as on real equipment.
+  system's language by default; the consoles stay in English, as on real equipment. Adding a
+  language is adding a text file: [docs/translating.md](docs/translating.md).
 - **Everywhere.** One Rust codebase for the desktop and the web. No account, no sign-in, no telemetry.
 - **Never loses your work.** No panics in product code, every input treated as hostile, every
   command fuzzed, and a last-resort guard that restores the lab.
