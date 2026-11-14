@@ -259,6 +259,7 @@ fn main() -> eframe::Result {
         "NetLabCraft",
         options,
         Box::new(move |cc| {
+            netlabcraft_ui_egui::fonts::install(&cc.egui_ctx);
             app.apply_theme(&cc.egui_ctx);
             Ok(Box::new(App { app, title, closing: Closing::No, last_path }))
         }),

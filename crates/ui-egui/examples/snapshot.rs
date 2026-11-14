@@ -84,6 +84,7 @@ fn main() {
     }
     let mut harness = egui_kittest::Harness::builder().with_size(egui::vec2(size.0, size.1)).with_max_steps(12).wgpu().build_ui_state(
         |ui, app: &mut PacketApp| {
+            netlabcraft_ui_egui::fonts::install(ui.ctx());
             app.apply_theme(ui.ctx());
             app.ui(ui);
         },

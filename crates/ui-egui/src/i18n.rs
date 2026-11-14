@@ -1,50 +1,136 @@
 //! Interface translations.
 //!
-//! Catalogs use the craft-i18n row format: one `English<TAB>translation` per line, `#` comments;
-//! `\n` in a row stands for a line break (for texts of several lines).
-//! The English text is the key, so a string with no translation simply shows in English. The
-//! device consoles stay in English on purpose: commands and their output are what students
-//! meet on real equipment.
+//! Catalogs are `locales/<locale>/netlabcraft.tsv` at the repository root, in the craft-i18n row
+//! format (`context<TAB>English<TAB>translation`; see `docs/translating.md`), embedded at build
+//! time by `build.rs`: a release is one self-contained binary. The English text is the key, so a
+//! string with no translation simply shows in English. The device consoles stay in English on
+//! purpose: commands and their output are what students meet on real equipment.
+//!
+//! The languages on offer are the embedded catalogs, plus English. A locale looks its text up in
+//! its own catalog, then in its base language's (`pt-br` then `pt`), then falls back to English.
 
-use std::collections::HashMap;
+mod catalog;
+#[cfg(test)]
+mod check;
+
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-/// An interface language.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Lang {
-    English,
-    Spanish,
+use catalog::Catalog;
+
+mod embedded {
+    include!(concat!(env!("OUT_DIR"), "/locales.rs"));
 }
+
+/// One language on offer.
+struct Locale {
+    code: &'static str,
+    name: &'static str,
+    catalog: Catalog,
+    /// The catalog tried next (`pt` for `pt-br`), as an index into [`locales`].
+    fallback: Option<usize>,
+}
+
+/// English (index 0, no catalog) and then every embedded catalog, by locale code.
+fn locales() -> &'static [Locale] {
+    static LOCALES: OnceLock<Vec<Locale>> = OnceLock::new();
+    LOCALES.get_or_init(|| {
+        let mut v = vec![Locale { code: "en", name: "English", catalog: Catalog::default(), fallback: None }];
+        for (code, text) in embedded::CATALOGS {
+            let catalog = Catalog::parse(text);
+            v.push(Locale { code, name: catalog.name().unwrap_or(code), catalog, fallback: None });
+        }
+        // `pt-br` falls back to `pt` when that exists; a script variant (`zh-hans`) never falls back.
+        let codes: Vec<&str> = v.iter().map(|l| l.code).collect();
+        for l in &mut v {
+            l.fallback = l.code.rsplit_once('-').filter(|(_, last)| is_region(last)).and_then(|(base, _)| codes.iter().position(|c| *c == base));
+        }
+        v
+    })
+}
+
+/// A region subtag: two letters or three digits.
+fn is_region(tag: &str) -> bool {
+    (tag.len() == 2 && tag.bytes().all(|b| b.is_ascii_lowercase())) || (tag.len() == 3 && tag.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// A script subtag: four letters.
+fn is_script(tag: &str) -> bool {
+    tag.len() == 4 && tag.bytes().all(|b| b.is_ascii_lowercase())
+}
+
+/// An interface language: English or one of the embedded catalogs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Lang(usize);
 
 impl Lang {
-    pub const ALL: [Lang; 2] = [Lang::English, Lang::Spanish];
+    pub const ENGLISH: Lang = Lang(0);
 
-    /// The language's own name, as the language menu shows it.
+    /// Every language on offer, English first, then by locale code.
+    pub fn all() -> impl Iterator<Item = Lang> {
+        (0..locales().len()).map(Lang)
+    }
+
+    fn locale(self) -> Option<&'static Locale> {
+        locales().get(self.0)
+    }
+
+    /// The language's own name, as the language menu shows it (`@id language.name`).
     pub fn name(self) -> &'static str {
-        match self {
-            Lang::English => "English",
-            Lang::Spanish => "Español",
-        }
+        self.locale().map_or("English", |l| l.name)
     }
 
+    /// The locale code (`en`, `es`, `pt-br`), what is remembered between runs.
     pub fn code(self) -> &'static str {
-        match self {
-            Lang::English => "en",
-            Lang::Spanish => "es",
-        }
+        self.locale().map_or("en", |l| l.code)
     }
 
-    /// The language for a locale name such as `es_ES.UTF-8`, `es-419` or `en-GB`.
+    /// The language with exactly this code.
+    pub fn from_code(code: &str) -> Option<Lang> {
+        locales().iter().position(|l| l.code == code).map(Lang)
+    }
+
+    /// The language for a locale name such as `es_ES.UTF-8`, `pt_BR`, `zh-Hans-CN`, `zh_TW` or
+    /// `fr-CA`: the catalog of the region, else of the language. A script decides first (`zh_TW`
+    /// is Traditional Chinese, `zh_CN` Simplified) and never falls back to another script's
+    /// catalog. English when nothing fits.
     pub fn from_locale(locale: &str) -> Lang {
-        if locale.to_ascii_lowercase().starts_with("es") { Lang::Spanish } else { Lang::English }
+        let codes: Vec<&str> = locales().iter().map(|l| l.code).collect();
+        resolve(&codes, locale).map_or(Lang::ENGLISH, Lang)
     }
 }
 
-static CURRENT: AtomicU8 = AtomicU8::new(0);
+/// The index in `have` (locale codes) of the catalog a system locale name maps to.
+fn resolve(have: &[&str], locale: &str) -> Option<usize> {
+    let lowered = locale.split(['.', '@']).next().unwrap_or_default().to_ascii_lowercase().replace('_', "-");
+    let tags: Vec<&str> = lowered.split('-').filter(|t| !t.is_empty()).collect();
+    let language = *tags.first()?;
+    let script = tags.iter().skip(1).copied().find(|t| is_script(t));
+    let region = tags.iter().skip(1).copied().find(|t| is_region(t));
+    // Languages with more than one script on offer: the script a region implies.
+    let script = script.or(match (language, region) {
+        ("zh", Some("tw" | "hk" | "mo")) => Some("hant"),
+        ("zh", _) => Some("hans"),
+        _ => None,
+    });
+    let find = |code: &str| have.iter().position(|h| *h == code);
+    if let Some(script) = script {
+        if let Some(i) = find(&format!("{language}-{script}")) {
+            return Some(i);
+        }
+        // A language that has script variants never shows another script's text.
+        let prefix = format!("{language}-");
+        if have.iter().any(|h| h.strip_prefix(prefix.as_str()).is_some_and(|r| r.split('-').next().is_some_and(is_script))) {
+            return None;
+        }
+    }
+    region.and_then(|r| find(&format!("{language}-{r}"))).or_else(|| find(language))
+}
+
+static CURRENT: AtomicUsize = AtomicUsize::new(0);
 
 pub fn set_lang(l: Lang) {
-    CURRENT.store(if l == Lang::Spanish { 1 } else { 0 }, Ordering::Relaxed);
+    CURRENT.store(l.0, Ordering::Relaxed);
 }
 
 pub fn lang() -> Lang {
@@ -52,7 +138,7 @@ pub fn lang() -> Lang {
     if let Some(l) = THREAD_LANG.with(std::cell::Cell::get) {
         return l;
     }
-    if CURRENT.load(Ordering::Relaxed) == 1 { Lang::Spanish } else { Lang::English }
+    Lang(CURRENT.load(Ordering::Relaxed))
 }
 
 #[cfg(test)]
@@ -68,48 +154,52 @@ pub(crate) fn set_thread_lang(l: Option<Lang>) {
     THREAD_LANG.with(|c| c.set(l));
 }
 
-const ES: &str = include_str!("../i18n/es.tsv");
-
-/// A row's text with its `\n` escapes turned into line breaks (kept for the program's life: the
-/// catalog is built once).
-fn unescape(s: &'static str) -> &'static str {
-    if s.contains("\\n") { Box::leak(s.replace("\\n", "\n").into_boxed_str()) } else { s }
+/// The catalogs to look in for the current language, own first.
+fn chain(l: Lang) -> impl Iterator<Item = &'static Catalog> {
+    let first = l.locale().filter(|_| l != Lang::ENGLISH);
+    let second = first.and_then(|f| f.fallback).and_then(|i| locales().get(i));
+    first.into_iter().chain(second).map(|l| &l.catalog)
 }
 
-fn parse(text: &'static str) -> HashMap<&'static str, &'static str> {
-    text.lines()
-        .filter(|l| !l.trim_start().starts_with('#') && !l.trim().is_empty())
-        .filter_map(|l| l.split_once('\t'))
-        .filter(|(_, v)| !v.trim().is_empty())
-        .map(|(k, v)| (unescape(k), unescape(v)))
-        .collect()
+fn lookup(english: &str) -> Option<&'static str> {
+    chain(lang()).find_map(|c| c.plain.get(english).copied())
 }
 
-pub(crate) fn spanish() -> &'static HashMap<&'static str, &'static str> {
-    static ES_MAP: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::new();
-    ES_MAP.get_or_init(|| parse(ES))
+/// The Spanish catalog's plain rows (tests that sweep the interface in Spanish).
+#[cfg(test)]
+pub(crate) fn spanish() -> &'static std::collections::HashMap<&'static str, &'static str> {
+    Lang::from_code("es").and_then(Lang::locale).map(|l| &l.catalog.plain).unwrap_or_else(|| panic!("no es catalog"))
+}
+
+/// Spanish, for tests.
+#[cfg(test)]
+pub(crate) fn spanish_lang() -> Lang {
+    Lang::from_code("es").unwrap_or_else(|| panic!("no es catalog"))
 }
 
 /// The interface text in the current language (English when there is no translation).
 pub fn tl(english: &'static str) -> &'static str {
-    match lang() {
-        Lang::English => english,
-        Lang::Spanish => spanish().get(english).copied().unwrap_or(english),
-    }
+    lookup(english).unwrap_or(english)
 }
 
 /// [`tl`] for text that isn't a literal (labels passed through helpers).
 pub fn tr(english: &str) -> &str {
-    match lang() {
-        Lang::English => english,
-        Lang::Spanish => spanish().get(english).copied().unwrap_or(english),
-    }
+    lookup(english).unwrap_or(english)
+}
+
+/// [`tl`] with a context that tells apart two meanings of the same English; the plain row when
+/// the language has no row for the context.
+pub fn tlc(context: &str, english: &'static str) -> &'static str {
+    chain(lang()).find_map(|c| c.context.get(&(context, english)).copied()).or_else(|| lookup(english)).unwrap_or(english)
 }
 
 /// A message with parts: the catalog key is the English template with `{}` for each part, and
 /// the translation puts the same number of `{}` where its language wants them.
 pub fn trf(template: &'static str, args: &[&dyn std::fmt::Display]) -> String {
-    let t = tl(template);
+    fill(tl(template), args)
+}
+
+fn fill(t: &str, args: &[&dyn std::fmt::Display]) -> String {
     let mut out = String::with_capacity(t.len() + 16);
     let mut parts = args.iter();
     let mut rest = t;
@@ -124,28 +214,43 @@ pub fn trf(template: &'static str, args: &[&dyn std::fmt::Display]) -> String {
     out
 }
 
+/// A message chosen by a count: `one` and `other` are the English forms (`{} page`, `{} pages`,
+/// each with `{}` for the count), and the catalog's `@plural` row for `one|other` lists the
+/// language's forms. English picks `one` for 1.
+pub fn trn(one: &'static str, other: &'static str, n: u64) -> String {
+    let l = lang();
+    let key = format!("{one}|{other}");
+    let forms = (l != Lang::ENGLISH).then(|| chain(l).find_map(|c| c.plural.get(key.as_str()))).flatten();
+    let text = match forms {
+        Some(f) => f.get(catalog::plural_index(l.code(), n)).or(f.last()).copied().unwrap_or(other),
+        None if n == 1 => one,
+        None => other,
+    };
+    fill(text, &[&n])
+}
+
 /// A message from the engine or the simulator, whole or built from parts: an exact row, else a
 /// row whose `{}` stand for the parts (`no route to {}` matches `no route to 10.0.0.1`). The
 /// parts are kept as they are; English when nothing matches.
 pub fn tr_any(message: &str) -> String {
-    if lang() == Lang::English {
+    if lang() == Lang::ENGLISH {
         return message.to_string();
     }
-    if let Some(t) = spanish().get(message) {
-        return (*t).to_string();
+    if let Some(t) = lookup(message) {
+        return t.to_string();
     }
     // The rows that wrap another message come first (`line 3: {} steps without...` would
     // otherwise fit a row that begins with `{}`), and the wrapped message is translated too.
     // Any other part (an address, a name) stays as it is.
     const WRAPPERS: [&str; 2] = ["line {}: {}", "stopped: {}"];
-    let wrappers = WRAPPERS.iter().filter_map(|k| spanish().get_key_value(*k));
-    let others = spanish().iter().filter(|(k, _)| k.contains("{}") && !WRAPPERS.contains(*k));
-    for (key, value) in wrappers.chain(others) {
+    let wrappers = WRAPPERS.iter().filter_map(|k| chain(lang()).find_map(|c| c.plain.get_key_value(*k)));
+    let others = templates(lang()).iter().filter(|(k, _)| !WRAPPERS.contains(k));
+    for (key, value) in wrappers.map(|(k, v)| (*k, *v)).chain(others.map(|(k, v)| (*k, *v))) {
         if let Some(parts) = match_template(key, message) {
             let mut out = String::new();
             let mut rest: &str = value;
             let mut it = parts.iter();
-            let wraps = WRAPPERS.contains(key);
+            let wraps = WRAPPERS.contains(&key);
             let last = parts.len().saturating_sub(1);
             let mut n = 0;
             while let Some(at) = rest.find("{}") {
@@ -166,13 +271,39 @@ pub fn tr_any(message: &str) -> String {
     message.to_string()
 }
 
-const ES_EVENTS: &str = include_str!("../i18n/es-events.tsv");
+type Rows = Vec<(&'static str, &'static str)>;
 
-/// The event-list phrases, longest first.
-fn event_phrases() -> &'static [(&'static str, &'static str)] {
-    static PHRASES: OnceLock<Vec<(&'static str, &'static str)>> = OnceLock::new();
-    PHRASES.get_or_init(|| {
-        let mut v: Vec<_> = parse(ES_EVENTS).into_iter().collect();
+/// The rows with `{}` for a language, most literal text first (so the most specific template
+/// wins), own rows before its base language's.
+fn templates(l: Lang) -> &'static Rows {
+    static CACHE: OnceLock<Vec<OnceLock<Rows>>> = OnceLock::new();
+    let all = CACHE.get_or_init(|| locales().iter().map(|_| OnceLock::new()).collect());
+    static EMPTY: Rows = Vec::new();
+    let Some(slot) = all.get(l.0) else { return &EMPTY };
+    slot.get_or_init(|| {
+        let mut seen = std::collections::HashSet::new();
+        let mut v: Rows = Vec::new();
+        for c in chain(l) {
+            v.extend(c.plain.iter().filter(|(k, _)| k.contains("{}") && seen.insert(**k)).map(|(k, t)| (*k, *t)));
+        }
+        let literal = |k: &str| k.replace("{}", "").len();
+        v.sort_by(|a, b| literal(b.0).cmp(&literal(a.0)).then(a.0.cmp(b.0)));
+        v
+    })
+}
+
+/// The event-list phrases of a language, longest first.
+fn event_phrases(l: Lang) -> &'static Rows {
+    static CACHE: OnceLock<Vec<OnceLock<Rows>>> = OnceLock::new();
+    let all = CACHE.get_or_init(|| locales().iter().map(|_| OnceLock::new()).collect());
+    static EMPTY: Rows = Vec::new();
+    let Some(slot) = all.get(l.0) else { return &EMPTY };
+    slot.get_or_init(|| {
+        let mut seen = std::collections::HashSet::new();
+        let mut v: Rows = Vec::new();
+        for c in chain(l) {
+            v.extend(c.context.iter().filter(|((ctx, k), _)| *ctx == "event" && seen.insert(*k)).map(|((_, k), t)| (*k, *t)));
+        }
         v.sort_by(|a, b| b.0.len().cmp(&a.0.len()).then(a.0.cmp(b.0)));
         v
     })
@@ -181,10 +312,14 @@ fn event_phrases() -> &'static [(&'static str, &'static str)] {
 /// An event summary in the interface language: known phrases replaced where they stand as
 /// whole words, everything else (addresses, names, numbers, payload text) left as it is.
 pub fn tr_event(summary: &str) -> String {
-    if lang() == Lang::English { summary.to_string() } else { spanish_event(summary) }
+    translate_event(lang(), summary)
 }
 
-fn spanish_event(summary: &str) -> String {
+fn translate_event(l: Lang, summary: &str) -> String {
+    let phrases = event_phrases(l);
+    if phrases.is_empty() {
+        return summary.to_string();
+    }
     let word = |c: Option<char>| c.is_some_and(|c| c.is_alphanumeric() || c == '-' || c == '_');
     let mut out = String::with_capacity(summary.len() + 16);
     let mut i = 0;
@@ -192,11 +327,11 @@ fn spanish_event(summary: &str) -> String {
         let Some(ch) = rest.chars().next() else { break };
         let before = summary.get(..i).and_then(|b| b.chars().next_back());
         let hit = (!word(before))
-            .then(|| event_phrases().iter().find(|(en, _)| rest.starts_with(en) && !word(rest.get(en.len()..).and_then(|r| r.chars().next()))))
+            .then(|| phrases.iter().find(|(en, _)| rest.starts_with(en) && !word(rest.get(en.len()..).and_then(|r| r.chars().next()))))
             .flatten();
         match hit {
-            Some((en, es)) => {
-                out.push_str(es);
+            Some((en, tr)) => {
+                out.push_str(tr);
                 i += en.len();
             }
             None => {
@@ -235,10 +370,7 @@ fn match_template(template: &str, message: &str) -> Option<Vec<String>> {
 
 /// How many catalog rows a language has (for the localization report).
 pub fn catalog_size(l: Lang) -> usize {
-    match l {
-        Lang::English => 0,
-        Lang::Spanish => spanish().len(),
-    }
+    l.locale().map_or(0, |l| l.catalog.len())
 }
 
 #[cfg(test)]
@@ -300,7 +432,7 @@ mod tests {
             refused += 1;
             let english = e.to_string();
             assert_eq!(tr_any(&english), english, "English stays as it is");
-            set_thread_lang(Some(Lang::Spanish));
+            set_thread_lang(Some(spanish_lang()));
             let spanish = tr_any(&english);
             set_thread_lang(None);
             assert_ne!(spanish, english, "no Spanish row for the message of `{what}`: {english}");
@@ -310,7 +442,7 @@ mod tests {
         }
         assert!(refused >= 18, "most of the broken programs are refused: {refused}");
         // The line number and the wrapped message are both translated.
-        set_thread_lang(Some(Lang::Spanish));
+        set_thread_lang(Some(spanish_lang()));
         let t = tr_any("line 3: `end` without an `if` or `while`");
         let stop = tr_any("stopped: line 2: the board has no pin D9");
         let wired = tr_any("D0 is wired to Temp1, a sensor: read it instead");
@@ -330,7 +462,7 @@ mod tests {
             let st = s.execute("board.program", serde_json::json!({"device": "Board1", "source": src, "run": true})).unwrap();
             let Some(m) = st["message"].as_str() else { continue };
             seen += 1;
-            set_thread_lang(Some(Lang::Spanish));
+            set_thread_lang(Some(spanish_lang()));
             let es = tr_any(m);
             let log = st["log"].as_array().and_then(|l| l.last()).and_then(|v| v.as_str()).map(tr_any).unwrap_or_default();
             set_thread_lang(None);
@@ -340,21 +472,21 @@ mod tests {
         assert!(seen >= 3, "the runtime errors were reached: {seen}");
     }
 
+    fn es_event(summary: &str) -> String {
+        translate_event(spanish_lang(), summary)
+    }
+
     #[test]
     fn event_summaries_read_in_spanish() {
         // (The language itself is global and other tests run alongside: this checks the
         // Spanish path directly.)
-        assert_eq!(spanish_event("ARP who has 10.0.0.1? tell 10.0.0.2"), "ARP quién tiene 10.0.0.1? responde a 10.0.0.2");
-        assert_eq!(spanish_event("ICMP echo request seq 1 10.0.0.1 → 10.0.0.2 ttl 64"), "ICMP solicitud de eco sec 1 10.0.0.1 → 10.0.0.2 ttl 64");
+        assert_eq!(es_event("ARP who has 10.0.0.1? tell 10.0.0.2"), "ARP quién tiene 10.0.0.1? responde a 10.0.0.2");
+        assert_eq!(es_event("ICMP echo request seq 1 10.0.0.1 → 10.0.0.2 ttl 64"), "ICMP solicitud de eco sec 1 10.0.0.1 → 10.0.0.2 ttl 64");
         // Only whole words: "Rootbridge" and "online" keep their letters.
-        assert_eq!(spanish_event("Rootbridge online from R1"), "Rootbridge online de R1");
-        assert_eq!(spanish_event(""), "");
-        assert_eq!(spanish_event("ñ on ñ"), "ñ en ñ");
-        let mut seen = std::collections::BTreeSet::new();
-        for l in ES_EVENTS.lines().filter(|l| !l.trim_start().starts_with('#') && !l.trim().is_empty()) {
-            let (k, v) = l.split_once('\t').unwrap_or_else(|| panic!("row without a tab: {l}"));
-            assert!(!v.trim().is_empty() && seen.insert(k), "{l}");
-        }
+        assert_eq!(es_event("Rootbridge online from R1"), "Rootbridge online de R1");
+        assert_eq!(es_event(""), "");
+        assert_eq!(es_event("ñ on ñ"), "ñ en ñ");
+        assert_eq!(translate_event(Lang::ENGLISH, "ARP who has 10.0.0.1?"), "ARP who has 10.0.0.1?");
     }
 
     /// No row outlives its text: every key is still written somewhere in the workspace's code
@@ -376,9 +508,16 @@ mod tests {
         rust_files(&root.join("crates"), &mut code);
         rust_files(&root.join("apps"), &mut code);
         let mut stale = Vec::new();
-        for l in ES.lines().filter(|l| !l.trim_start().starts_with('#') && !l.trim().is_empty()) {
-            let Some((key, _)) = l.split_once('\t') else { continue };
-            if code.contains(key) || code.contains(unescape(key)) {
+        let keys: std::collections::BTreeSet<&'static str> = embedded::CATALOGS
+            .iter()
+            .flat_map(|(_, text)| catalog::lines(text))
+            .filter_map(|l| match l.cols[..] {
+                ["" | "@msg", key, _] => Some(key),
+                _ => None,
+            })
+            .collect();
+        for key in keys {
+            if code.contains(key) || code.contains(catalog::unescape(key)) {
                 continue;
             }
             // `{} via {}` written as `{} via {via}`.
@@ -410,18 +549,12 @@ mod tests {
 
     #[test]
     fn lookup_falls_back_to_english() {
-        assert_eq!(Lang::from_locale("es_ES.UTF-8"), Lang::Spanish);
-        assert_eq!(Lang::from_locale("en-GB"), Lang::English);
-        // Every row has a key and a translation, and no key repeats.
-        let mut seen = std::collections::BTreeSet::new();
-        for l in ES.lines().filter(|l| !l.trim_start().starts_with('#') && !l.trim().is_empty()) {
-            let (k, v) = l.split_once('\t').unwrap_or_else(|| panic!("row without a tab: {l}"));
-            assert!(!v.trim().is_empty(), "empty translation for {k}");
-            assert!(seen.insert(k), "duplicate key {k}");
-        }
-        assert!(catalog_size(Lang::Spanish) > 100);
-        assert_eq!(parse("a\tb\n# c\td\nx\t\n").get("a"), Some(&"b"));
-        assert_eq!(parse("one\\ntwo\tuno\\ndos\n").get("one\ntwo"), Some(&"uno\ndos"));
+        assert_eq!(Lang::from_locale("es_ES.UTF-8"), spanish_lang());
+        assert_eq!(Lang::from_locale("en-GB"), Lang::ENGLISH);
+        assert_eq!(Lang::from_locale(""), Lang::ENGLISH);
+        assert_eq!(Lang::from_locale("C"), Lang::ENGLISH);
+        assert!(catalog_size(spanish_lang()) > 1000);
+        assert_eq!(catalog_size(Lang::ENGLISH), 0);
         // Templates keep their parts, in order, and a translation keeps their number.
         assert_eq!(trf("Opened {}", &[&"lab.nlcraft"]), "Opened lab.nlcraft");
         assert_eq!(trf("{} of {}", &[&1, &2]), "1 of 2");
@@ -429,8 +562,56 @@ mod tests {
         assert_eq!(match_template("denied by access list {} ({})", "denied by access list 10 (in)"), Some(vec!["10".into(), "in".into()]));
         assert_eq!(match_template("no route to {}", "no route"), None);
         assert_eq!(match_template("ARP for {}, not this device", "ARP for 1.2.3.4, not this device!"), None);
-        for (k, v) in spanish() {
-            assert_eq!(k.matches("{}").count(), v.matches("{}").count(), "placeholders differ in {k}");
+    }
+
+    /// English plurals pick `one` for 1.
+    #[test]
+    fn counts_choose_a_plural_form() {
+        assert_eq!(trn("{} item", "{} items", 1), "1 item");
+        assert_eq!(trn("{} item", "{} items", 0), "0 items");
+        assert_eq!(trn("{} item", "{} items", 3), "3 items");
+    }
+
+    /// The names, codes and menu list come from the catalogs; the saved `en` and `es` still work.
+    #[test]
+    fn languages_come_from_the_catalogs() {
+        let codes: Vec<&str> = Lang::all().map(Lang::code).collect();
+        assert_eq!(codes.first(), Some(&"en"));
+        assert!(codes.contains(&"es"));
+        assert_eq!(spanish_lang().name(), "Español");
+        assert_eq!(Lang::ENGLISH.name(), "English");
+        assert_eq!(Lang::from_code("en"), Some(Lang::ENGLISH));
+        assert_eq!(Lang::from_locale("en"), Lang::ENGLISH);
+        assert_eq!(Lang::from_locale("es"), spanish_lang());
+        assert_eq!(Lang::from_locale("es-419"), spanish_lang());
+        assert_eq!(Lang::from_locale("es_MX.UTF-8@euro"), spanish_lang());
+    }
+
+    /// System locales map onto the catalogs that exist; a script with no catalog is English, never
+    /// another script's text.
+    #[test]
+    fn system_locales_map_onto_catalogs() {
+        let have = ["en", "es", "fr", "it", "de", "pt-br", "zh-hans"];
+        let pick = |l: &str| resolve(&have, l).and_then(|i| have.get(i)).copied();
+        for (locale, want) in [
+            ("pt_BR.UTF-8", Some("pt-br")),
+            ("pt-PT", None),
+            ("zh_CN", Some("zh-hans")),
+            ("zh-Hans-CN", Some("zh-hans")),
+            ("zh_TW", None),
+            ("zh-Hant", None),
+            ("zh", Some("zh-hans")),
+            ("fr_CA", Some("fr")),
+            ("de_AT", Some("de")),
+            ("es_ES.UTF-8", Some("es")),
+            ("es-Latn", Some("es")),
+            ("en_US.UTF-8", Some("en")),
+            ("C", None),
+        ] {
+            assert_eq!(pick(locale), want, "{locale}");
         }
+        // With a Portuguese base catalog too, `pt-br` falls back to it and `pt_PT` finds it.
+        let with_pt = ["en", "pt", "pt-br"];
+        assert_eq!(resolve(&with_pt, "pt_PT").and_then(|i| with_pt.get(i)), Some(&"pt"));
     }
 }

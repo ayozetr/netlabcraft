@@ -153,6 +153,7 @@ pub fn start() {
                     let sample = q.trim_start_matches('?').split('&').find_map(|kv| kv.strip_prefix("sample=")).unwrap_or("two-subnets").to_string();
                     let _ = session.execute("file.new", serde_json::json!({"sample": sample}));
                     let app = PacketApp::new(session);
+                    netlabcraft_ui_egui::fonts::install(&cc.egui_ctx);
                     app.apply_theme(&cc.egui_ctx);
                     let dirty = Arc::new(AtomicBool::new(false));
                     guard_unsaved_changes(dirty.clone());

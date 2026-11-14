@@ -11,6 +11,7 @@
 mod assets;
 mod contributors;
 mod layers;
+mod new_locale;
 mod parity;
 mod secrets;
 mod version;
@@ -34,6 +35,8 @@ commands:
                   write docs/command-reference.md from the engine catalog and the console grammar
   contributors [--check]
                   regenerate contributors/contributors.json (About ▸ Contributors) from git history
+  new-locale <code> \"<native name>\"
+                  start locales/<code>/netlabcraft.tsv: the header, the language name, every English string commented out
   version [set X.Y.Z[-pre]]
                   print or set the workspace version ([workspace.package] in Cargo.toml)
 ";
@@ -50,6 +53,7 @@ fn main() -> ExitCode {
         Some("ci") => cmd_ci(),
         Some("parity") => parity::run(&root(), &rest),
         Some("contributors") => contributors::run(&root(), &rest),
+        Some("new-locale") => new_locale::run(&root(), &rest),
         Some("version") => version::run(&root(), &rest),
         Some("-h" | "--help" | "help") | None => {
             print!("{USAGE}");
