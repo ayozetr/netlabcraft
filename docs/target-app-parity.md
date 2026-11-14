@@ -168,7 +168,7 @@ Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
   Wireshark or any analyser.
 - **Open lab format:** `.nlcraft` is readable JSON ([`file-format.md`](file-format.md)).
 - **Agent control:** every action is a command, reachable from the CLI and an MCP server.
-- **Runs everywhere:** Linux, Windows, macOS, BSD and the browser, with no account or sign-in.
+- **Runs everywhere:** Linux, Windows, macOS and the browser, with no account or sign-in.
 - **Drop reasons:** a dropped frame says why (ACL, VLAN not allowed, blocked by STP…).
 - **Labs as scripts:** every lab in the lab book is also a test, so a change that breaks a
   course topic fails the build.

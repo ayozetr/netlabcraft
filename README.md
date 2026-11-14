@@ -10,13 +10,13 @@
 
 <p align="center">
   Build a network, configure routers and switches by typing the commands you learn in class,
-  and watch every frame cross it. It runs natively on Linux, Windows, macOS and BSD, and in the
+  and watch every frame cross it. It runs natively on Linux, Windows and macOS, and in the
   browser via WebAssembly.
 </p>
 
 <p align="center">
   <img alt="Written in Rust" src="https://img.shields.io/badge/written%20in-Rust-2f6f85?style=flat-square&logo=rust&logoColor=white">
-  <img alt="Runs on Linux, Windows, macOS, BSD and the web" src="https://img.shields.io/badge/runs%20on-Linux%20%C2%B7%20Windows%20%C2%B7%20macOS%20%C2%B7%20BSD%20%C2%B7%20Web-4f95ad?style=flat-square">
+  <img alt="Runs on Linux, Windows, macOS and the web" src="https://img.shields.io/badge/runs%20on-Linux%20%C2%B7%20Windows%20%C2%B7%20macOS%20%C2%B7%20Web-4f95ad?style=flat-square">
   <img alt="License: MIT OR Apache-2.0" src="https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-2f6f85?style=flat-square">
   <img alt="Agent-drivable over MCP" src="https://img.shields.io/badge/agents-MCP-4f95ad?style=flat-square">
   <img alt="Interface in English and Spanish" src="https://img.shields.io/badge/interface-English%20%C2%B7%20Espa%C3%B1ol-2f6f85?style=flat-square">
