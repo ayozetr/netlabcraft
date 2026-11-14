@@ -1,6 +1,6 @@
 # Hardware parity
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (re-scored 2026-11-13; M9.10: cell towers, the central office server and the cellular radio on tablets and smartphones) · earlier: minor (tablets and smartphones, ten Wi-Fi IoT things, programmable boards and the IoT custom cable, the phone's settings, power supplies, a real PEAP tunnel and central switching; figures aligned) · **Target:** Cisco Packet Tracer 9.0 · also merged with M9.11 (minor (M9.11: BoardScript messages in the interface language))
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-14 · **Change:** minor (printing: a report after the picture) · earlier: minor (re-scored 2026-11-13; M9.10: cell towers, the central office server and the cellular radio on tablets and smartphones) · earlier: minor (tablets and smartphones, ten Wi-Fi IoT things, programmable boards and the IoT custom cable, the phone's settings, power supplies, a real PEAP tunnel and central switching; figures aligned) · **Target:** Cisco Packet Tracer 9.0 · also merged with M9.11 (minor (M9.11: BoardScript messages in the interface language))
 
 Two kinds of hardware matter here: the **simulated** hardware (device models, ports, cables,
 modules) and the **real** hardware the app runs on. Part of
@@ -44,12 +44,13 @@ cabling and wireless row (~95%); **host hardware: ~80% ready, 8–14 h** (estima
 | Touch and pen | Limited | egui's touch handling, untested | Verify on a touch screen: 1–2 h |
 | Multi-core | Single simulation thread | Single-threaded discrete-event simulator (deterministic) | Not needed at lab sizes |
 | Accessibility (screen readers) | Partial | AccessKit tree; every widget has an accessible name (checked by the UI tests) | Canvas devices as accessible nodes: 3–5 h |
-| Printing | Print the workspace | ✅ File ▸ Print… makes an A4 PDF of the workspace with the lab's name and opens it in the system's PDF viewer to print (the web build downloads it); File ▸ Export Workspace Image (PNG) for reports | Printing straight to a printer without the PDF viewer is not planned |
+| Printing | Print the workspace | ✅ File ▸ Print… makes an A4 PDF: the workspace with the lab's name, then a report of every device, its interfaces and the cables (real text, page numbers, compressed), and opens it in the system's PDF viewer to print (the web build downloads it); File ▸ Export Workspace Image (PNG) for reports | Printing straight to a printer without the PDF viewer is not planned |
 
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-14 | minor | Printing: the PDF gains a device, interface and cable report and the picture is compressed. |
 | 2026-11-13 | minor | Device families re-scored from ~82% to ~86% (cellular devices, a room with physics) and WAN, cabling and wireless from ~93% to ~95%. |
 | 2026-11-13 | minor | Cellular network (M9.10): the Tablets and smartphones row is whole (Wi-Fi and cellular); a row for cell towers and the central office server. |
 | 2026-11-13 | minor | BoardScript compile and run messages in Spanish (M9.11). |

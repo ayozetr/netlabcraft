@@ -1875,6 +1875,7 @@ dependencies = [
  "egui",
  "egui_kittest",
  "log",
+ "miniz_oxide 0.9.1",
  "netlabcraft-core",
  "netlabcraft-engine",
  "netlabcraft-ios",
