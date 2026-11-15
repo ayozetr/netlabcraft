@@ -16,7 +16,10 @@
 //! neighbour (no route reflectors). A path whose AS path holds the receiver's AS is dropped.
 //! A path is usable only while its next hop resolves in the routing table.
 //!
-//! Left out on purpose (see `docs/gaps.md`): route maps, prefix lists and filtering, communities,
+//! Policy: a neighbour's `prefix-list` and `route-map` (inbound and outbound) and the route map of
+//! a `redistribute` are applied where paths are exported, imported and originated.
+//!
+//! Left out on purpose (see `docs/gaps.md`): `match` on AS paths and communities, communities,
 //! route reflectors and confederations, aggregation, several equal paths in the routing table
 //! (`maximum-paths`), the IGP metric to the next hop in the best-path order, timers other than
 //! the defaults, and IPv6 address families.
@@ -27,6 +30,7 @@ use std::net::Ipv4Addr;
 
 use netlabcraft_core::{DeviceId, Ipv4Net};
 use netlabcraft_model::bgp::{self as conf, Source};
+use netlabcraft_model::policy::{self, Sets, Subject};
 use netlabcraft_model::{Device, Topology};
 use netlabcraft_wire::Ipv4;
 use netlabcraft_wire::bgp as msg;
@@ -448,10 +452,11 @@ fn rank(cands: Vec<Path>) -> Vec<Path> {
 /// it redistributes.
 fn originate(d: &Device, base: &[RouteEntry]) -> Vec<Path> {
     let Some(b) = &d.bgp else { return Vec::new() };
-    let mut nets: Vec<(Ipv4Net, u8)> = Vec::new();
+    let mut nets: Vec<(Ipv4Net, u8, Sets)> = Vec::new();
     for n in &b.networks {
-        if base.iter().any(|r| r.code != 'L' && r.net == *n && r.iface.as_deref() != Some(crate::eigrp::NULL0)) && !nets.iter().any(|(x, _)| x == n) {
-            nets.push((*n, msg::ORIGIN_IGP));
+        if base.iter().any(|r| r.code != 'L' && r.net == *n && r.iface.as_deref() != Some(crate::eigrp::NULL0)) && !nets.iter().any(|(x, ..)| x == n)
+        {
+            nets.push((*n, msg::ORIGIN_IGP, Sets::default()));
         }
     }
     for s in &b.redistribute {
@@ -460,22 +465,26 @@ fn originate(d: &Device, base: &[RouteEntry]) -> Vec<Path> {
             Source::Static => &['S'],
             Source::Ospf => &['O', 'I', 'E'],
         };
+        let map = b.redistribute_maps.get(s.word()).map(String::as_str);
         for r in base.iter().filter(|r| codes.contains(&r.code)) {
-            if !nets.iter().any(|(x, _)| *x == r.net) {
-                nets.push((r.net, msg::ORIGIN_INCOMPLETE));
+            if nets.iter().any(|(x, ..)| *x == r.net) {
+                continue;
+            }
+            if let Some(sets) = policy::apply(d, None, map, &Subject { net: r.net, metric: r.metric }) {
+                nets.push((r.net, msg::ORIGIN_INCOMPLETE, sets));
             }
         }
     }
     nets.truncate(MAX_LOCAL);
     nets.into_iter()
-        .map(|(net, origin)| Path {
+        .map(|(net, origin, sets)| Path {
             net,
-            next_hop: Ipv4Addr::UNSPECIFIED,
-            as_path: Vec::new(),
-            origin,
-            med: 0,
-            local_pref: b.local_pref(),
-            weight: WEIGHT_LOCAL,
+            next_hop: sets.next_hop.unwrap_or(Ipv4Addr::UNSPECIFIED),
+            as_path: sets.prepend.clone(),
+            origin: sets.origin.unwrap_or(origin),
+            med: sets.metric.unwrap_or(0),
+            local_pref: sets.local_pref.unwrap_or_else(|| b.local_pref()),
+            weight: sets.weight.unwrap_or(WEIGHT_LOCAL),
             from: None,
             from_id: Ipv4Addr::UNSPECIFIED,
             ebgp: false,
@@ -486,50 +495,71 @@ fn originate(d: &Device, base: &[RouteEntry]) -> Vec<Path> {
         .collect()
 }
 
-/// What a router tells a neighbour about one of its best paths, if it tells it at all.
-fn export(ab: &conf::Bgp, n: &conf::Neighbor, p: &Peering, path: &Path) -> Option<msg::PathAttrs> {
+/// What a router tells a neighbour about one of its best paths, if it tells it at all: the
+/// neighbour's outbound prefix list and route map decide, and the map's `set` lines change what
+/// is told (the weight stays here: it is never sent).
+fn export(a: &Device, ab: &conf::Bgp, n: &conf::Neighbor, p: &Peering, path: &Path) -> Option<msg::PathAttrs> {
     // Never back to where it came from.
     if path.from == Some(n.addr) {
         return None;
     }
+    // A path that already crossed the neighbour's AS would only be dropped there.
+    if p.ebgp && n.remote_as.is_some_and(|r| path.as_path.contains(&r)) {
+        return None;
+    }
+    // Between internal neighbours a path learned from an internal neighbour is not passed on.
+    if !p.ebgp && path.from.is_some() && !path.ebgp {
+        return None;
+    }
+    let sets = policy::apply(a, n.prefix_list_out.as_deref(), n.route_map_out.as_deref(), &Subject { net: path.net, metric: path.med })?;
+    let mut tail = sets.prepend.clone();
+    tail.extend(path.as_path.iter().copied());
+    let origin = sets.origin.unwrap_or(path.origin);
+    // A path this router originates names its own address, unless a map named another next hop.
+    let own = if path.from.is_none() && !path.next_hop.is_unspecified() { path.next_hop } else { p.local };
     if p.ebgp {
-        // A path that already crossed the neighbour's AS would only be dropped there.
-        if n.remote_as.is_some_and(|r| path.as_path.contains(&r)) {
-            return None;
-        }
         let mut as_path = vec![ab.asn];
-        as_path.extend(path.as_path.iter().copied());
+        as_path.extend(tail);
         return Some(msg::PathAttrs {
-            origin: path.origin,
+            origin,
             as_path,
-            next_hop: p.local,
-            // The MED goes only as far as the next AS, and only for what this router originates.
-            med: path.from.is_none().then_some(path.med),
+            next_hop: sets.next_hop.unwrap_or(own),
+            // The MED goes only as far as the next AS, and only for what this router originates
+            // (or what a map gave a metric).
+            med: sets.metric.or_else(|| path.from.is_none().then_some(path.med)),
             local_pref: None,
         });
     }
-    // Between internal neighbours a path learned from an internal neighbour is not passed on.
-    if path.from.is_some() && !path.ebgp {
-        return None;
-    }
-    let next_hop = if n.next_hop_self || path.from.is_none() { p.local } else { path.next_hop };
-    Some(msg::PathAttrs { origin: path.origin, as_path: path.as_path.clone(), next_hop, med: Some(path.med), local_pref: Some(path.local_pref) })
+    let next_hop = if n.next_hop_self || path.from.is_none() { own } else { path.next_hop };
+    Some(msg::PathAttrs {
+        origin,
+        as_path: tail,
+        next_hop: sets.next_hop.unwrap_or(next_hop),
+        med: Some(sets.metric.unwrap_or(path.med)),
+        local_pref: Some(sets.local_pref.unwrap_or(path.local_pref)),
+    })
 }
 
-/// What a router makes of what a neighbour told it: `None` when it drops it.
-fn import(bb: &conf::Bgp, m: &conf::Neighbor, p: &Peering, attrs: &msg::PathAttrs, from_id: Ipv4Addr, net: Ipv4Net, own: &[L3If]) -> Option<Path> {
+/// What a router makes of what a neighbour told it: `None` when it drops it, by the loop checks
+/// or by the neighbour's inbound prefix list and route map.
+fn import(b: &Device, m: &conf::Neighbor, p: &Peering, attrs: &msg::PathAttrs, from_id: Ipv4Addr, net: Ipv4Net, own: &[L3If]) -> Option<Path> {
+    let bb = b.bgp.as_ref()?;
     if attrs.as_path.contains(&bb.asn) || own.iter().any(|i| i.net.addr == attrs.next_hop) {
         return None;
     }
-    let local_pref = if p.ebgp { bb.local_pref() } else { attrs.local_pref.unwrap_or_else(|| bb.local_pref()) };
+    let med = attrs.med.unwrap_or(0);
+    let sets = policy::apply(b, m.prefix_list_in.as_deref(), m.route_map_in.as_deref(), &Subject { net, metric: med })?;
+    let local_pref = sets.local_pref.unwrap_or_else(|| if p.ebgp { bb.local_pref() } else { attrs.local_pref.unwrap_or_else(|| bb.local_pref()) });
+    let mut as_path = sets.prepend.clone();
+    as_path.extend(attrs.as_path.iter().copied());
     Some(Path {
         net,
-        next_hop: attrs.next_hop,
-        as_path: attrs.as_path.clone(),
-        origin: attrs.origin,
-        med: attrs.med.unwrap_or(0),
+        next_hop: sets.next_hop.unwrap_or(attrs.next_hop),
+        as_path,
+        origin: sets.origin.unwrap_or(attrs.origin),
+        med: sets.metric.unwrap_or(med),
         local_pref,
-        weight: u32::from(m.weight.unwrap_or(0)),
+        weight: sets.weight.unwrap_or_else(|| u32::from(m.weight.unwrap_or(0))),
         from: Some(m.addr),
         from_id,
         ebgp: p.ebgp,
@@ -579,8 +609,8 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
                 let Some(m) = bb.neighbor(p.local) else { continue };
                 let own = ifs.get(&b.id).map_or(&[][..], Vec::as_slice);
                 for path in &best {
-                    let Some(attrs) = export(ab, n, p, path) else { continue };
-                    let Some(got) = import(bb, m, p, &attrs, from_id, path.net, own) else { continue };
+                    let Some(attrs) = export(a, ab, n, p, path) else { continue };
+                    let Some(got) = import(b, m, p, &attrs, from_id, path.net, own) else { continue };
                     let slot = next.entry(b.id).or_default();
                     if slot.len() < MAX_PATHS {
                         slot.insert((m.addr, path.net), got);
@@ -621,7 +651,7 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
             let sent = match active {
                 Some(p) => {
                     let list: Vec<(Ipv4Net, msg::PathAttrs)> =
-                        paths.iter().filter(|x| x.best).filter_map(|x| export(ab, n, p, x).map(|a| (x.net, a))).collect();
+                        paths.iter().filter(|x| x.best).filter_map(|x| export(d, ab, n, p, x).map(|a| (x.net, a))).collect();
                     let count = list.len();
                     adv.insert(n.addr, list);
                     count
@@ -964,6 +994,15 @@ impl Sim {
 mod tests {
     use super::*;
 
+    /// A router that runs BGP in `asn`.
+    fn speaker(asn: u32) -> Device {
+        let mut t = Topology::new();
+        let id = t.add_device(netlabcraft_model::DeviceKind::Router, None, 0.0, 0.0).unwrap();
+        let mut d = t.device(id).unwrap().clone();
+        d.bgp = Some(conf::Bgp::new(asn));
+        d
+    }
+
     fn path(net: &str, as_path: &[u32]) -> Path {
         Path {
             net: net.parse().unwrap(),
@@ -1028,6 +1067,7 @@ mod tests {
 
     #[test]
     fn exports_follow_the_ibgp_and_ebgp_rules() {
+        let a = speaker(65_001);
         let ab = conf::Bgp::new(65_001);
         let n_ext = {
             let mut n = conf::Neighbor::new(Ipv4Addr::new(10, 0, 0, 2));
@@ -1045,33 +1085,33 @@ mod tests {
         };
         let mut learned = path("10.9.0.0/16", &[65_005]);
         learned.from = Some(Ipv4Addr::new(10, 0, 9, 9));
-        let sent = export(&ab, &n_ext, &ext, &learned).unwrap();
+        let sent = export(&a, &ab, &n_ext, &ext, &learned).unwrap();
         // External: our AS in front, ourselves as the next hop, no local preference.
         assert_eq!(sent.as_path, vec![65_001, 65_005]);
         assert_eq!(sent.next_hop, ext.local);
         assert_eq!((sent.med, sent.local_pref), (None, None));
         // Never back to the neighbour it came from, nor to an AS already in the path.
         let back = Path { from: Some(n_ext.addr), ..learned.clone() };
-        assert!(export(&ab, &n_ext, &ext, &back).is_none());
+        assert!(export(&a, &ab, &n_ext, &ext, &back).is_none());
         let looped = Path { as_path: vec![65_002], ..learned.clone() };
-        assert!(export(&ab, &n_ext, &ext, &looped).is_none());
+        assert!(export(&a, &ab, &n_ext, &ext, &looped).is_none());
         // Internal: a path learned from an internal neighbour is not passed on; an external one is, unchanged.
         let n_int = conf::Neighbor { remote_as: Some(65_001), ..conf::Neighbor::new(Ipv4Addr::new(10, 0, 5, 2)) };
         let int = Peering { ebgp: false, ttl: 255, local: Ipv4Addr::new(10, 0, 5, 1), peer_addr: n_int.addr, ..ext.clone() };
         let from_internal = Path { ebgp: false, ..learned.clone() };
-        assert!(export(&ab, &n_int, &int, &from_internal).is_none());
-        let kept = export(&ab, &n_int, &int, &learned).unwrap();
+        assert!(export(&a, &ab, &n_int, &int, &from_internal).is_none());
+        let kept = export(&a, &ab, &n_int, &int, &learned).unwrap();
         assert_eq!((kept.as_path.clone(), kept.next_hop, kept.local_pref), (vec![65_005], learned.next_hop, Some(100)));
         // `next-hop-self` and a locally originated path use our own address.
         let nhs = conf::Neighbor { next_hop_self: true, ..n_int.clone() };
-        assert_eq!(export(&ab, &nhs, &int, &learned).unwrap().next_hop, int.local);
+        assert_eq!(export(&a, &ab, &nhs, &int, &learned).unwrap().next_hop, int.local);
         let own = Path { from: None, ebgp: false, next_hop: Ipv4Addr::UNSPECIFIED, as_path: Vec::new(), ..learned };
-        assert_eq!(export(&ab, &n_int, &int, &own).unwrap().next_hop, int.local);
+        assert_eq!(export(&a, &ab, &n_int, &int, &own).unwrap().next_hop, int.local);
     }
 
     #[test]
     fn imports_drop_a_path_through_our_own_as() {
-        let bb = conf::Bgp::new(65_002);
+        let b = speaker(65_002);
         let m = conf::Neighbor::new(Ipv4Addr::new(10, 0, 0, 1));
         let p = Peering {
             peer: DeviceId(1),
@@ -1084,11 +1124,57 @@ mod tests {
         };
         let attrs = msg::PathAttrs { origin: 0, as_path: vec![65_001], next_hop: m.addr, med: None, local_pref: Some(300) };
         let net: Ipv4Net = "10.1.0.0/16".parse().unwrap();
-        let got = import(&bb, &m, &p, &attrs, Ipv4Addr::new(1, 1, 1, 1), net, &[]).unwrap();
+        let got = import(&b, &m, &p, &attrs, Ipv4Addr::new(1, 1, 1, 1), net, &[]).unwrap();
         // The local preference of an external neighbour is ours, whatever it said.
         assert_eq!((got.local_pref, got.weight, got.ebgp), (100, 0, true));
         let looped = msg::PathAttrs { as_path: vec![65_001, 65_002], ..attrs };
-        assert!(import(&bb, &m, &p, &looped, Ipv4Addr::new(1, 1, 1, 1), net, &[]).is_none());
+        assert!(import(&b, &m, &p, &looped, Ipv4Addr::new(1, 1, 1, 1), net, &[]).is_none());
+    }
+
+    #[test]
+    fn neighbour_policy_filters_and_changes_what_is_imported_and_exported() {
+        use netlabcraft_model::policy::{PrefixEntry, PrefixList, RouteMap};
+        let mut d = speaker(65_002);
+        let mut list = PrefixList::new("ten");
+        list.add(PrefixEntry { seq: 5, permit: true, net: "10.0.0.0/8".parse().unwrap(), ge: None, le: Some(24) }).unwrap();
+        d.prefix_lists.push(list);
+        let mut map = RouteMap::new("pref");
+        let c = map.clause_mut(10, true).unwrap();
+        c.sets.local_pref = Some(250);
+        c.sets.weight = Some(9);
+        c.sets.prepend = vec![65_002, 65_002];
+        d.route_maps.push(map);
+        let mut m = conf::Neighbor::new(Ipv4Addr::new(10, 0, 0, 1));
+        m.prefix_list_in = Some("ten".into());
+        m.route_map_in = Some("pref".into());
+        let p = Peering {
+            peer: DeviceId(1),
+            peer_addr: m.addr,
+            local: Ipv4Addr::new(10, 0, 0, 2),
+            out_iface: "g0/0".into(),
+            next_hop: m.addr,
+            ebgp: true,
+            ttl: 1,
+        };
+        let attrs = msg::PathAttrs { origin: 0, as_path: vec![65_001], next_hop: m.addr, med: None, local_pref: None };
+        let rid = Ipv4Addr::new(1, 1, 1, 1);
+        let inside: Ipv4Net = "10.1.0.0/16".parse().unwrap();
+        let outside: Ipv4Net = "192.168.1.0/24".parse().unwrap();
+        let got = import(&d, &m, &p, &attrs, rid, inside, &[]).unwrap();
+        assert_eq!((got.local_pref, got.weight, got.as_path.clone()), (250, 9, vec![65_002, 65_002, 65_001]));
+        assert!(import(&d, &m, &p, &attrs, rid, outside, &[]).is_none(), "the prefix list denies it");
+        // Outbound: the list and the map of the neighbour decide what is sent.
+        let mut n = conf::Neighbor::new(Ipv4Addr::new(10, 0, 0, 1));
+        n.remote_as = Some(65_001);
+        n.prefix_list_out = Some("ten".into());
+        n.route_map_out = Some("pref".into());
+        let ab = conf::Bgp::new(65_002);
+        let mut sent = path("10.1.0.0/16", &[65_005]);
+        sent.from = Some(Ipv4Addr::new(10, 0, 9, 9));
+        let told = export(&d, &ab, &n, &p, &sent).unwrap();
+        assert_eq!(told.as_path, vec![65_002, 65_002, 65_002, 65_005]);
+        let hidden = Path { net: outside, ..sent };
+        assert!(export(&d, &ab, &n, &p, &hidden).is_none());
     }
 
     #[test]

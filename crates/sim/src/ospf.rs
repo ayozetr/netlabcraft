@@ -457,7 +457,15 @@ pub fn compute(t: &Topology) -> OspfState {
     let redistributed: BTreeMap<DeviceId, Vec<Ipv4Net>> = routers
         .iter()
         .filter(|d| d.ospf.as_ref().is_some_and(|o| o.redistribute_static))
-        .map(|d| (d.id, crate::installed_statics(t, d).into_iter().filter(|n| n.prefix > 0).collect()))
+        .map(|d| {
+            let map = d.ospf.as_ref().and_then(|o| o.redistribute_map.as_deref());
+            let nets: Vec<Ipv4Net> = crate::installed_statics(t, d)
+                .into_iter()
+                .filter(|n| n.prefix > 0)
+                .filter(|n| netlabcraft_model::policy::apply(d, None, map, &netlabcraft_model::policy::Subject { net: *n, metric: 0 }).is_some())
+                .collect();
+            (d.id, nets)
+        })
         .collect();
     for (d, nets) in &redistributed {
         st.externals.entry(*d).or_default().extend(nets.iter().copied());
@@ -622,6 +630,10 @@ pub fn fingerprint(t: &Topology) -> u64 {
                 d.ospf, d.rip, d.eigrp, d.routes, d.access.users, d.ospf_if, d.eigrp_if, d.ip_routing, d.bgp
             )
             .hash(&mut h);
+            if !d.route_maps.is_empty() || !d.prefix_lists.is_empty() {
+                // Policy decides what is redistributed and what BGP accepts, so edits count.
+                format!("{:?}{:?}{:?}", d.prefix_lists, d.route_maps, d.acls).hash(&mut h);
+            }
             d.eigrp_summary.hash(&mut h);
             d.tunnels.hash(&mut h);
             format!("{:?}", d.loopbacks).hash(&mut h);
