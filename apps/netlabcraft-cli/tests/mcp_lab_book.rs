@@ -159,3 +159,8 @@ fn ensa_troubleshooting_acl_icmp_through_mcp() {
 fn srwe_inspecting_spanning_tree_through_mcp() {
     check("30-inspect-spanning-tree.md");
 }
+
+#[test]
+fn ensa_eigrp_through_mcp() {
+    check("32-eigrp.md");
+}
