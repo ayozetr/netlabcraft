@@ -1123,49 +1123,54 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
             let mut open = None;
             egui::Frame::new().fill(tk.bar).inner_margin(16.0).show(ui, |ui| {
                 ui.set_min_size(vec2(640.0, 380.0));
-                ui.horizontal_wrapped(|ui| {
-                    ui.spacing_mut().item_spacing = vec2(28.0, 20.0);
-                    let terminal = dev.has_rs232().then_some((DesktopApp::Terminal, "Terminal"));
-                    // PCs, laptops and servers have the computer apps; printers do not.
-                    let computer = dev.has_desktop_apps().then_some([
-                        (DesktopApp::TelnetSsh, "Telnet/SSH Client"),
-                        (DesktopApp::TextEditor, "Text Editor"),
-                        (DesktopApp::Firewall, "Firewall"),
-                        (DesktopApp::Firewall6, "IPv6 Firewall"),
-                    ]);
-                    for (app_id, label) in [
-                        (DesktopApp::IpConfig, "IP Configuration"),
-                        (DesktopApp::Prompt, "Command Prompt"),
-                        (DesktopApp::Browser, "Web Browser"),
-                        (DesktopApp::Email, "Email"),
-                        (DesktopApp::MibBrowser, "MIB Browser"),
-                        (DesktopApp::Programming, "Programming"),
-                    ]
-                    .into_iter()
-                    .chain(computer.into_iter().flatten())
-                    .chain(terminal)
-                    {
-                        let (rect, resp) = ui.allocate_exact_size(vec2(130.0, 150.0), Sense::click());
-                        let label = tl(label);
-                        resp.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, label));
-                        let p = ui.painter_at(rect);
-                        let tile = egui::Rect::from_center_size(rect.center_top() + vec2(0.0, 52.0), vec2(100.0, 100.0));
-                        let teal = egui::Color32::from_rgb(0x58, 0xbf, 0xd2);
-                        p.rect_filled(tile, 0.0, if resp.hovered() { theme::shade(teal, 1.15) } else { teal });
-                        draw_app_icon(&p, tile.shrink(14.0), app_id);
-                        // The name under the tile, smaller when it is long (it may overhang the tile).
-                        let room = rect.width() + 24.0;
-                        let galley = [16.0, 15.0, 14.0, 13.0]
-                            .into_iter()
-                            .map(|size| ui.painter().layout_no_wrap(label.to_string(), egui::FontId::proportional(size), egui::Color32::WHITE))
-                            .find(|g| g.size().x <= room)
-                            .unwrap_or_else(|| ui.painter().layout(label.to_string(), egui::FontId::proportional(13.0), egui::Color32::WHITE, room));
-                        let at = egui::Align2::CENTER_CENTER.anchor_size(rect.center_bottom() - vec2(0.0, 22.0), galley.size());
-                        ui.painter().galley(at.min, galley, egui::Color32::WHITE);
-                        if resp.clicked() {
-                            open = Some(app_id);
+                // More tiles than fit: the window keeps its height and the desktop scrolls.
+                egui::ScrollArea::vertical().id_salt(("desktop_tiles", d.0)).max_height(380.0).auto_shrink([false, true]).show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.spacing_mut().item_spacing = vec2(28.0, 20.0);
+                        let terminal = dev.has_rs232().then_some((DesktopApp::Terminal, "Terminal"));
+                        // PCs, laptops and servers have the computer apps; printers do not.
+                        let computer = dev.has_desktop_apps().then_some([
+                            (DesktopApp::TelnetSsh, "Telnet/SSH Client"),
+                            (DesktopApp::TextEditor, "Text Editor"),
+                            (DesktopApp::Firewall, "Firewall"),
+                            (DesktopApp::Firewall6, "IPv6 Firewall"),
+                        ]);
+                        for (app_id, label) in [
+                            (DesktopApp::IpConfig, "IP Configuration"),
+                            (DesktopApp::Prompt, "Command Prompt"),
+                            (DesktopApp::Browser, "Web Browser"),
+                            (DesktopApp::Email, "Email"),
+                            (DesktopApp::MibBrowser, "MIB Browser"),
+                            (DesktopApp::Programming, "Programming"),
+                        ]
+                        .into_iter()
+                        .chain(computer.into_iter().flatten())
+                        .chain(terminal)
+                        {
+                            let (rect, resp) = ui.allocate_exact_size(vec2(130.0, 150.0), Sense::click());
+                            let label = tl(label);
+                            resp.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, label));
+                            let p = ui.painter_at(rect);
+                            let tile = egui::Rect::from_center_size(rect.center_top() + vec2(0.0, 52.0), vec2(100.0, 100.0));
+                            let teal = egui::Color32::from_rgb(0x58, 0xbf, 0xd2);
+                            p.rect_filled(tile, 0.0, if resp.hovered() { theme::shade(teal, 1.15) } else { teal });
+                            draw_app_icon(&p, tile.shrink(14.0), app_id);
+                            // The name under the tile, smaller when it is long (it may overhang the tile).
+                            let room = rect.width() + 24.0;
+                            let galley = [16.0, 15.0, 14.0, 13.0]
+                                .into_iter()
+                                .map(|size| ui.painter().layout_no_wrap(label.to_string(), egui::FontId::proportional(size), egui::Color32::WHITE))
+                                .find(|g| g.size().x <= room)
+                                .unwrap_or_else(|| {
+                                    ui.painter().layout(label.to_string(), egui::FontId::proportional(13.0), egui::Color32::WHITE, room)
+                                });
+                            let at = egui::Align2::CENTER_CENTER.anchor_size(rect.center_bottom() - vec2(0.0, 22.0), galley.size());
+                            ui.painter().galley(at.min, galley, egui::Color32::WHITE);
+                            if resp.clicked() {
+                                open = Some(app_id);
+                            }
                         }
-                    }
+                    });
                 });
             });
             if let Some(a) = open {

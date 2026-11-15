@@ -244,7 +244,7 @@ pub(crate) fn firewall(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, v6:
         ui.label(RichText::new(tl("No rules yet. While the firewall is on, everything that is not allowed is blocked.")).color(tk.muted));
     } else {
         let count = list.rules.len();
-        egui::ScrollArea::vertical().id_salt(("firewall_rules", v6, dev.id.0)).auto_shrink([false, true]).show(ui, |ui| {
+        egui::ScrollArea::vertical().id_salt(("firewall_rules", v6, dev.id.0)).max_height(150.0).auto_shrink([false, true]).show(ui, |ui| {
             egui::Grid::new(("firewall_table", v6, dev.id.0)).striped(true).spacing(egui::vec2(14.0, 4.0)).show(ui, |ui| {
                 for h in ["No.", "Action", "Protocol", "Remote address", "Port", "Direction"] {
                     ui.strong(tl(h));

@@ -890,6 +890,7 @@ const SAME_IN_SPANISH: &[&str] = &[
     "HTTP",
     "HTTPS",
     "ICMP",
+    "ICMPv6",
     "Internet",
     "NTP",
     "SNMPv2c",
@@ -901,6 +902,7 @@ const SAME_IN_SPANISH: &[&str] = &[
     "Wi-Fi",
     "get",
     "get-next",
+    "host",
     "no",
     "set",
 ];
