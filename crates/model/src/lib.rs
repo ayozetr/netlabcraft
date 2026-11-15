@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 pub mod acl;
 pub mod activity;
 pub mod automation;
+pub mod bgp;
 pub mod board;
 pub mod cable;
 pub mod cellular;
@@ -931,6 +932,9 @@ pub struct Device {
     /// Routers: EIGRP (`router eigrp N`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub eigrp: Option<Eigrp>,
+    /// Routers: BGP (`router bgp N`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bgp: Option<bgp::Bgp>,
     /// Per-interface EIGRP timers, by interface name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub eigrp_if: BTreeMap<String, EigrpIfConf>,
@@ -1920,6 +1924,7 @@ impl Device {
             dns6: None,
             rip: None,
             eigrp: None,
+            bgp: None,
             eigrp_if: BTreeMap::new(),
             eigrp_summary: BTreeMap::new(),
             rip6: None,
@@ -2015,6 +2020,7 @@ impl Device {
         self.ospf = None;
         self.rip = None;
         self.eigrp = None;
+        self.bgp = None;
         self.acls6.clear();
         self.ospf_if.clear();
         self.eigrp_if.clear();
@@ -2638,6 +2644,9 @@ impl Topology {
                 }
                 if let Some(e) = &mut d.eigrp6 {
                     e.passive.truncate(MAX_NETWORKS);
+                }
+                if let Some(b) = &mut d.bgp {
+                    b.sanitize();
                 }
                 d.fhrp.sanitize();
                 d.ensure_default_vlan();
