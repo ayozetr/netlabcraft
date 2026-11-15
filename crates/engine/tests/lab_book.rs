@@ -75,6 +75,7 @@ labs! {
     lab_33_ipv6_routing => "33-ipv6-routing.md",
     lab_34_troubleshoot_etherchannel => "34-troubleshoot-etherchannel.md",
     lab_35_troubleshoot_port_security => "35-troubleshoot-port-security.md",
+    lab_36_bgp => "36-bgp.md",
 }
 
 /// The cellular lab is not part of a CCNA course, so it has no number (the numbered labs 21 and up
