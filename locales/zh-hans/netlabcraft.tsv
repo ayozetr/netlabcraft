@@ -1590,3 +1590,32 @@ event	write request for	写请求
 	Pool size	地址池大小
 	The pool must be on the subnet of the server's port that the cable reaches.	地址池必须位于网线所连服务器端口所在的子网内。
 	The pool size is a whole number.	地址池大小必须是整数。
+	Modular Router 2FE	模块化路由器 2FE
+	Smart TV	智能电视
+	Wired Smart TV	有线智能电视
+	Smart Speaker	智能音箱
+	Water Level Sensor	水位传感器
+	2-port Fast Ethernet card	2 端口快速以太网卡
+	Router with 2 Fast Ethernet ports	带 2 个快速以太网口的路由器
+	Router with 2 Fast Ethernet ports and 2 serial WAN ports	带 2 个快速以太网口和 2 个串行 WAN 口的路由器
+	Router with 3 Gigabit Ethernet ports and 2 serial WAN ports	带 3 个千兆以太网口和 2 个串行 WAN 口的路由器
+	Modular router with 2 Fast Ethernet ports and 2 empty module bays (serial, Gigabit and Fast Ethernet cards, fitted while powered off)	带 2 个快速以太网口和 2 个空模块插槽的模块化路由器（串行、千兆和快速以太网卡，需在断电时安装）
+	Sniffer with one Fast Ethernet port: records every frame that reaches its port (all the traffic behind a hub; broadcasts, multicasts and flooded frames behind a switch) and never answers	带 1 个快速以太网口的嗅探器：记录到达其端口的每一帧（集线器后面的全部流量；交换机后面的广播、多播和被泛洪的帧），从不应答
+	Wi-Fi smart TV: registers with the IoT service, which switches it on (playing) and off (standby)	Wi-Fi 智能电视：向 IoT 服务注册，由该服务将其开启（播放）和关闭（待机）
+	Smart TV with one Fast Ethernet port: registers with an IoT server, which switches it on (playing) and off (standby)	带 1 个快速以太网口的智能电视：向 IoT 服务器注册，由该服务器将其开启（播放）和关闭（待机）
+	Wi-Fi smart speaker: plays while the IoT service keeps it on	Wi-Fi 智能音箱：IoT 服务使其保持开启时播放
+	Wi-Fi water level sensor: reports how full a tank is (0-100 %)	Wi-Fi 水位传感器：报告水箱有多满（0-100 %）
+	Two routed Fast Ethernet ports	两个路由快速以太网端口
+	playing	播放
+	standby	待机
+	% level	% 水位
+	Capture	捕获
+	A sniffer records every frame that reaches its port and answers none of them. Behind a hub it hears all the traffic; behind a switch, only broadcasts, multicasts and the frames the switch floods.	嗅探器记录到达其端口的每一帧，并且不应答任何一帧。在集线器后面它能听到全部流量；在交换机后面，只能听到广播、多播和交换机泛洪的帧。
+	Frames captured: {}	已捕获的帧：{}
+	Nothing captured yet. Cable the sniffer to a hub or a switch and send some traffic (a ping, or a simple PDU).	尚未捕获任何内容。把嗅探器接到集线器或交换机上并发送一些流量（一次 ping 或一个简单 PDU）。
+	Showing the last {} frames	显示最近 {} 帧
+	Addressed to	目标
+	Summary	摘要
+	This port	本端口
+	Everyone (broadcast or multicast)	所有设备（广播或多播）
+	Another device (overheard)	其他设备（旁听到的）

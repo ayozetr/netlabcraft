@@ -326,6 +326,29 @@ fn a_hub_repeats_to_everyone_and_hosts_ignore_what_is_not_theirs() {
 }
 
 #[test]
+fn a_sniffer_behind_a_hub_records_what_it_overhears_and_answers_nothing() {
+    let mut t = Topology::new();
+    let h = add(&mut t, DeviceKind::Hub);
+    let a = host(&mut t, "10.0.0.1/24", None);
+    let b = host(&mut t, "10.0.0.2/24", None);
+    let sn = t.add_model(netlabcraft_model::models::find("Sniffer").unwrap(), None, 0.0, 0.0).unwrap();
+    // Even with an address of its own the sniffer stays silent.
+    t.device_mut(sn).unwrap().ports[0].ip = Some(net("10.0.0.3/24"));
+    for (i, d) in [a, b, sn].into_iter().enumerate() {
+        cable(&mut t, d, 0, h, i);
+    }
+    let mut sim = Sim::new();
+    assert_eq!(marks(&sim.ping(&t, a, ip("10.0.0.2"), PingOptions { count: 2, ..Default::default() }).unwrap()), "!!");
+    let heard: Vec<_> = sim.trace().iter().filter(|e| e.to.device == sn).collect();
+    assert!(heard.iter().any(|e| e.protocol == Protocol::Arp), "the sniffer heard the ARP broadcast");
+    assert!(heard.iter().any(|e| e.protocol == Protocol::Icmp), "and the echo between the two others");
+    assert!(heard.iter().all(|e| e.dropped.is_none()), "it records everything and drops nothing");
+    // Asked for by address, it does not answer either.
+    let _ = sim.ping(&t, a, ip("10.0.0.3"), PingOptions { count: 1, ..Default::default() });
+    assert!(sim.trace().iter().all(|e| e.from.device != sn), "the sniffer sent nothing");
+}
+
+#[test]
 fn dhcp_hands_out_addresses_from_a_pool() {
     use netlabcraft_model::DhcpPool;
     let mut t = Topology::new();

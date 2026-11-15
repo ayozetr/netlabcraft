@@ -25,6 +25,10 @@ mod t {
         "Router 3GE",
         "Router 4GE",
         "Router 2GE+2S",
+        "Router 2FE",
+        "Router 2FE+2S",
+        "Router 3GE+2S",
+        "Sniffer",
         "Firewall 5GE",
         "Switch 8FE",
         "Switch 24FE",
@@ -267,6 +271,32 @@ mod boards {
     use serde_json::json;
 
     use crate::PacketApp;
+
+    #[test]
+    fn a_sniffer_opens_on_its_capture_tab_and_lists_what_it_heard() {
+        let mut s = Session::new();
+        for (model, name) in [("Hub-8", "Hub1"), ("PC", "PC1"), ("PC", "PC2"), ("Sniffer", "Sniffer1")] {
+            s.execute("device.add", json!({"model": model, "name": name})).unwrap();
+        }
+        for (a, port) in [("PC1", "Ethernet0"), ("PC2", "Ethernet1"), ("Sniffer1", "Ethernet2")] {
+            s.execute("link.add", json!({"a": a, "a_port": "FastEthernet0", "b": "Hub1", "b_port": port})).unwrap();
+        }
+        s.execute("cli.exec", json!({"device": "PC1", "line": "ipconfig 10.0.0.1 255.255.255.0"})).unwrap();
+        s.execute("cli.exec", json!({"device": "PC2", "line": "ipconfig 10.0.0.2 255.255.255.0"})).unwrap();
+        s.execute("net.ping", json!({"from": "PC1", "to": "10.0.0.2", "count": 2})).unwrap();
+        let sn = s.topology.resolve("Sniffer1").unwrap();
+        let mut h = Harness::builder().with_size(egui::vec2(1300.0, 860.0)).build_ui_state(|ui, app: &mut PacketApp| app.ui(ui), PacketApp::new(s));
+        h.state_mut().ui.show_notes = false;
+        crate::open_console(h.state_mut(), sn);
+        h.run_steps(3);
+        assert_eq!(h.state().ui.windows.get(&sn).map(|w| w.tab), Some(crate::console::Tab::Capture), "a sniffer opens on what it recorded");
+        assert!(h.query_all_by_label_contains("Frames captured").count() >= 1);
+        assert!(
+            h.query_by_label("Nothing captured yet. Cable the sniffer to a hub or a switch and send some traffic (a ping, or a simple PDU).")
+                .is_none()
+        );
+        assert!(h.query_all_by_label("Capture").count() >= 1, "the tab is listed");
+    }
 
     #[test]
     fn the_programming_tab_runs_and_stops_the_board_and_shows_its_pins() {

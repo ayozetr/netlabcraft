@@ -82,11 +82,12 @@
 
 ## What it simulates
 
-- **Devices:** 53 models with our own names ([which one to place for a vendor model](docs/model-equivalents.md)):
+- **Devices:** 62 models with our own names ([which one to place for a vendor model](docs/model-equivalents.md)):
   fixed and modular routers, a stateful firewall, access and multilayer switches (some with fiber
   or power over Ethernet), home routers and gateways, access points and a wireless controller, a
   provider cloud, hubs, PCs, laptops, tablets and phones (Wi-Fi or mobile data through cell
-  towers), servers, a printer, IP phones, eighteen IoT things and two programmable boards.
+  towers), servers, a printer, a sniffer, IP phones, twenty-two IoT things (smart TVs among them) and two
+  programmable boards.
 - **Cables:** automatic, straight-through, cross-over, fiber, console, serial, coaxial, phone and
   IoT cables; a wrong one leaves the link down and says why. The physical view has cities,
   buildings and closets, with copper limits and Wi-Fi range by building.
@@ -213,7 +214,7 @@ estimated it at about 92% ready for real work: about 93% for the first CCNA cour
 second and 91% for the third (re-scored on 2026-11-13 after the 0.2.0 work; the
 method is in [`docs/target-app-parity.md`](docs/target-app-parity.md#audiences)). Next up: more
 labs walked to find console gaps, the last crypto and certificate details (IKE signatures, PEAP,
-a transform set with no cipher), TVs, a sniffer and more router models, device windows as native
+a transform set with no cipher), port mirroring for the sniffer and more end devices, device windows as native
 windows, and more interface languages. Stage, numbers and estimates are in
 [ROADMAP.md](ROADMAP.md); the ranked work list is [`docs/gaps.md`](docs/gaps.md).
 

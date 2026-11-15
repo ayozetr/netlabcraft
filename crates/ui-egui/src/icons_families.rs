@@ -51,6 +51,7 @@ pub fn iot_mark(p: &Painter, rect: Rect, model_id: &str) {
             ));
             p.rect_filled(Rect::from_center_size(c + vec2(0.0, w * 0.18), vec2(w * 0.34, w * 0.05)), 1.0, white);
         }
+        "IoT-TVE" => tv_screen(p, c, w),
         _ => {
             // A webcam: a round lens on a small stand.
             p.circle_filled(c - vec2(0.0, w * 0.04), w * 0.15, white);
@@ -59,6 +60,26 @@ pub fn iot_mark(p: &Painter, rect: Rect, model_id: &str) {
             p.rect_filled(Rect::from_center_size(c + vec2(0.0, w * 0.17), vec2(w * 0.2, w * 0.04)), 1.0, white);
         }
     }
+}
+
+/// A television: a screen on a short stand, centred on `c`.
+fn tv_screen(p: &Painter, c: Pos2, w: f32) {
+    let dark = Color32::from_rgb(0x2a, 0x33, 0x40);
+    let screen = Rect::from_center_size(c - vec2(0.0, w * 0.02), vec2(w * 0.36, w * 0.24));
+    p.rect_filled(screen, w * 0.02, Color32::from_rgb(0x4b, 0x83, 0xb5));
+    p.rect_stroke(screen, w * 0.02, Stroke::new((w / 24.0).max(1.0), dark), StrokeKind::Inside);
+    p.rect_filled(Rect::from_center_size(pos2(c.x, screen.bottom() + w * 0.045), vec2(w * 0.1, w * 0.03)), 1.0, Color32::WHITE);
+    p.rect_filled(Rect::from_center_size(pos2(c.x, screen.bottom() + w * 0.075), vec2(w * 0.2, w * 0.025)), 1.0, Color32::WHITE);
+}
+
+/// A sniffer's mark over the computer's icon: a magnifying glass.
+pub fn sniffer_mark(p: &Painter, rect: Rect) {
+    let w = rect.width();
+    let c = pos2(rect.right() - w * 0.3, rect.bottom() - w * 0.34);
+    let rim = Color32::from_rgb(0xd9, 0xb2, 0x4c);
+    p.line_segment([c + vec2(w * 0.1, w * 0.1), c + vec2(w * 0.24, w * 0.24)], Stroke::new((w / 12.0).max(2.0), Color32::from_rgb(0x2a, 0x33, 0x40)));
+    p.circle_filled(c, w * 0.15, Color32::from_rgba_unmultiplied(0xdc, 0xef, 0xff, 0xe0));
+    p.circle_stroke(c, w * 0.15, Stroke::new((w / 16.0).max(1.5), rim));
 }
 
 /// A home gateway's mark: a small house over the access-point box.
@@ -353,6 +374,22 @@ pub fn wifi_thing_mark(p: &Painter, rect: Rect, model_id: &str) {
             p.circle_filled(c, w * 0.17, white);
             p.circle_stroke(c, w * 0.17, Stroke::new((w / 28.0).max(1.0), red));
             p.text(c, egui::Align2::CENTER_CENTER, "CO", egui::FontId::proportional(w * 0.16), dark);
+        }
+        "IoT-TV" => tv_screen(p, c, w),
+        "IoT-Speaker" => {
+            // A speaker cabinet: a small tweeter over a big woofer.
+            let cabinet = Rect::from_center_size(c, vec2(w * 0.24, w * 0.34));
+            p.rect_filled(cabinet, w * 0.03, white);
+            p.rect_stroke(cabinet, w * 0.03, thin, StrokeKind::Inside);
+            p.circle_filled(c - vec2(0.0, w * 0.1), w * 0.04, dark);
+            p.circle_filled(c + vec2(0.0, w * 0.06), w * 0.08, dark);
+        }
+        "IoT-Water" => {
+            // A tank, half full.
+            let tank = Rect::from_center_size(c, vec2(w * 0.26, w * 0.34));
+            p.rect_filled(tank, w * 0.02, white);
+            p.rect_filled(Rect::from_min_max(pos2(tank.left(), tank.center().y), tank.right_bottom()), w * 0.02, blue);
+            p.rect_stroke(tank, w * 0.02, thin, StrokeKind::Inside);
         }
         "IoT-Plug" => {
             // A socket: a rounded face with two holes.

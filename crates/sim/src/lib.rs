@@ -1696,6 +1696,11 @@ impl Sim {
         if port.shutdown {
             return Err("port is shut down".into());
         }
+        // A sniffer only listens: the frame is in the event list (its Capture tab reads it from
+        // there) and the sniffer answers nothing, whoever the frame was for.
+        if d.catalogue_model().sniffer() {
+            return Ok(());
+        }
         if ifname::is_serial(&port.name) {
             let (got, ethertype, payload) = netlabcraft_wire::serial::decode(bytes).map_err(|e| e.to_string())?;
             if got != framing(port) {
