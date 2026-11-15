@@ -1,6 +1,6 @@
 # MCP server
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (results replay fields (M9.6)) · earlier: minor (eleven lab-book labs over MCP, was eight) · earlier: minor (the lab book over MCP; sessions for Simulation-mode options, automation depth, boards, power supplies and instructor tools)
+> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (two more lab-book labs over MCP, 16 in all) · earlier: minor (results replay fields (M9.6)) · earlier: minor (eleven lab-book labs over MCP, was eight) · earlier: minor (the lab book over MCP; sessions for Simulation-mode options, automation depth, boards, power supplies and instructor tools)
 
 `netlabcraft-cli mcp [--in LAB] [--sample ID]` speaks the Model Context Protocol (JSON-RPC 2.0, one message per line) on stdin/stdout.
 
@@ -56,6 +56,7 @@ Other sessions, all through `netlabcraft_run`:
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-15 | minor | Labs 32 (EIGRP) and 34 (an EtherChannel that will not bundle) also run over MCP: 16 in all. |
 | 2026-11-13 | minor | `activity.export_results` embeds the network and `activity.verify_results` replays it (M9.6). |
 | 2026-11-13 | minor | Three troubleshooting labs (22, 24, 26) also run over MCP: eleven in all. |
 | 2026-10-31 | minor | The lab book over MCP; Simulation-mode options, kept NETCONF sessions, discovery and templates, boards, power supplies, phone addresses, `server.syslog` and the instructor commands. |

@@ -71,6 +71,10 @@ labs! {
     lab_29_troubleshoot_acl_icmp => "29-troubleshoot-acl-icmp.md",
     lab_30_inspect_spanning_tree => "30-inspect-spanning-tree.md",
     lab_31_read_the_ospf_database => "31-read-the-ospf-database.md",
+    lab_32_eigrp => "32-eigrp.md",
+    lab_33_ipv6_routing => "33-ipv6-routing.md",
+    lab_34_troubleshoot_etherchannel => "34-troubleshoot-etherchannel.md",
+    lab_35_troubleshoot_port_security => "35-troubleshoot-port-security.md",
 }
 
 /// The cellular lab is not part of a CCNA course, so it has no number (the numbered labs 21 and up
