@@ -71,3 +71,56 @@ fn interface_view_gives_a_ports_role_and_state_per_vlan() {
     let r = lab.add(DeviceKind::Router);
     assert!(!lab.try_run(r, "show spanning-tree interface g0/0").contains("Role"));
 }
+
+#[test]
+fn summary_totals_keeps_the_settings_and_the_total_row_only() {
+    let (mut lab, s1, _s2, _s3) = ring();
+    let full = lab.run(s1, "show spanning-tree summary");
+    let totals = lab.run(s1, "show spanning-tree summary totals");
+    assert!(totals.contains("Mode:") && totals.contains("Root bridge of:"), "{totals}");
+    assert!(!totals.lines().any(|l| l.starts_with("VLAN00")), "{totals}");
+    // The same total row as the long form, the same counts.
+    assert!(totals.lines().last().unwrap_or("").contains(" VLANs"), "{totals}");
+    assert_eq!(totals.lines().last(), full.lines().last());
+    assert!(full.lines().any(|l| l.starts_with("VLAN0001")) && full.lines().any(|l| l.starts_with("VLAN0020")), "{full}");
+}
+
+#[test]
+fn a_vlan_brief_is_one_vlans_row_of_the_brief_table() {
+    let (mut lab, s1, _s2, _s3) = ring();
+    let all = lab.run(s1, "show spanning-tree brief");
+    let one = lab.run(s1, "show spanning-tree vlan 1 brief");
+    assert_eq!(one.lines().count(), 2, "{one}");
+    assert_eq!(one.lines().next(), all.lines().next());
+    assert_eq!(one.lines().nth(1), all.lines().find(|l| l.starts_with("VLAN0001")));
+    assert!(lab.run(s1, "show spanning-tree vlan 20 brief").contains("VLAN0020"));
+    assert!(lab.try_run(s1, "show spanning-tree vlan 77 brief").starts_with("% "));
+    assert!(lab.try_run(s1, "show spanning-tree vlan 0 brief").starts_with("% "));
+    // The other forms of the command are still there.
+    assert!(lab.run(s1, "show spanning-tree vlan 1").contains("VLAN"));
+}
+
+#[test]
+fn interface_detail_gives_each_vlan_the_roots_the_designated_bridge_and_the_cost() {
+    let (mut lab, s1, s2, _s3) = ring();
+    let detail = lab.run(s1, "show spanning-tree interface g0/1 detail");
+    assert!(detail.starts_with("GigabitEthernet0/1: edge port no"), "{detail}");
+    assert!(detail.contains("of VLAN0001 is root, forwarding") && detail.contains("of VLAN0020 is"), "{detail}");
+    assert!(detail.contains("Path cost 4 (from speed), port priority 128, port id 128."), "{detail}");
+    // S2 is the root of VLAN 1: it is the designated bridge across this cable, at no cost to itself.
+    let s2_brief = lab.run(s2, "show spanning-tree vlan 1 brief");
+    assert!(s2_brief.contains("(this switch)"), "{s2_brief}");
+    let vlan1 = detail.split("of VLAN0020").next().unwrap_or("");
+    assert!(vlan1.contains("Designated bridge: priority 24577") && vlan1.contains("path cost to the root 0"), "{detail}");
+    assert!(vlan1.contains("Link type point-to-point (from duplex)"), "{detail}");
+    // The root's own port is designated here, and says so.
+    assert!(lab.run(s2, "show spanning-tree interface g0/1 detail").contains("of VLAN0001 is designated, forwarding"));
+    assert!(lab.run(s2, "show spanning-tree interface g0/1 detail").contains("Designated bridge: this switch"));
+    // A set cost is marked; the short form is unchanged; bad names are refused.
+    lab.run(s1, "conf t\ninterface g0/1\nspanning-tree cost 30\nend");
+    assert!(lab.run(s1, "show spanning-tree interface g0/1 detail").contains("Path cost 30 (set)"));
+    assert!(lab.run(s1, "show spanning-tree interface g0/1").contains("VLAN0001"));
+    assert!(lab.run(s1, "show spanning-tree interface fa0/5 detail").contains("in no spanning tree"));
+    assert!(lab.try_run(s1, "show spanning-tree interface bogus detail").starts_with("% "));
+    assert!(lab.try_run(s1, "show spanning-tree interface detail").starts_with("% "));
+}

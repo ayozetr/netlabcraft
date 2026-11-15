@@ -1017,7 +1017,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 body.lines().filter(|l| codes.iter().any(|c| l.starts_with(c) || l.starts_with(&format!("{}*", c.trim_end())))).collect();
             Ok(format!("{head}\n\n{}", if lines.is_empty() { "(no such routes)".to_string() } else { lines.join("\n") }))
         }
-        Id::ShowInterfaces => Ok(render::interfaces(c.t, c.d()?, None)),
+        Id::ShowInterfaces => Ok(render::interfaces(c.t, c.sim, c.d()?, None)),
         Id::ShowInterface => {
             // `show interfaces vlan 1`
             let lower = arg(0).trim().to_ascii_lowercase();
@@ -1057,7 +1057,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             }
             let d = c.d()?;
             let r = c.iface_ref(arg(0))?;
-            Ok(render::interfaces(c.t, d, Some(r)))
+            Ok(render::interfaces(c.t, c.sim, d, Some(r)))
         }
         Id::ShowIntStatus => Ok(render::interface_status(c.t, c.d()?)),
         Id::ShowIpInterface => {
@@ -2164,6 +2164,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::L2ShowStpBrief
         | Id::L2ShowStpDetailAll
         | Id::L2ShowStpInterface
+        | Id::L2ShowStpSummaryTotals
+        | Id::L2ShowStpVlanBrief
         | Id::L2LoadBalance
         | Id::L2NoLoadBalance
         | Id::L2ShowLoadBalance
@@ -3222,7 +3224,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 render::version(c.sim, d),
                 render::running_config(d),
                 render::ip_int_brief(c.t, d),
-                render::interfaces(c.t, d, None)
+                render::interfaces(c.t, c.sim, d, None)
             ))
         }
         Id::ShowBoot => {
@@ -3261,6 +3263,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::ClearCounters => {
             c.sim.clear_qos(c.dev);
+            c.sim.clear_port_counters(c.dev);
             Ok("Interface counters cleared.".into())
         }
         Id::ShowSessions => Ok(match &c.cli.remote {
@@ -3366,6 +3369,24 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let n = &mut c.dm()?.nat;
             n.pools.retain(|p| p.name != name);
             n.pools.push(NatPool { name, start, end, prefix });
+            Ok(String::new())
+        }
+        Id::NatTimeout | Id::NoNatTimeout => {
+            let value = if spec.id == Id::NatTimeout {
+                let n = arg(1).trim().parse::<u32>().ok().filter(|n| (1..=netlabcraft_model::NAT_MAX_TIMEOUT_SECS).contains(n));
+                Some(n.ok_or(format!("% The timeout is 1-{} seconds", netlabcraft_model::NAT_MAX_TIMEOUT_SECS))?)
+            } else {
+                None
+            };
+            let to = &mut c.dm()?.nat.timeouts;
+            let slot = match arg(0).to_ascii_lowercase().as_str() {
+                "timeout" => &mut to.all,
+                "udp-timeout" => &mut to.udp,
+                "icmp-timeout" => &mut to.icmp,
+                "tcp-timeout" => &mut to.tcp,
+                _ => return Err("% timeout, udp-timeout, icmp-timeout or tcp-timeout".into()),
+            };
+            *slot = value;
             Ok(String::new())
         }
         Id::NoNatPool => {

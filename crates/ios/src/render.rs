@@ -475,6 +475,12 @@ pub fn running_config(d: &Device) -> String {
     for (l, g) in &d.nat.statics {
         let _ = writeln!(s, "ip nat inside source static {l} {g}");
     }
+    let to = &d.nat.timeouts;
+    for (word, v) in [("timeout", to.all), ("udp-timeout", to.udp), ("icmp-timeout", to.icmp), ("tcp-timeout", to.tcp)] {
+        if let Some(v) = v {
+            let _ = writeln!(s, "ip nat translation {word} {v}");
+        }
+    }
     if !d.nat.is_empty() {
         let _ = writeln!(s, "!");
     }
@@ -684,7 +690,10 @@ pub fn ip_int_brief(t: &Topology, d: &Device) -> String {
 
 /// The routing table, from the rows the simulation has (a row per path when several share the
 /// traffic).
-/// `show ip route summary`: how many routes each source gave, and how many there are in all.
+/// Bytes `show ip route summary` counts for one route in its memory estimate.
+const ROUTE_ENTRY_BYTES: usize = 160;
+
+/// `show ip route summary`: how many routes each source gave, how many there are in all and per mask length, and an estimate of the memory they take.
 pub fn ip_route_summary(table: &[netlabcraft_sim::RouteEntry]) -> String {
     let count = |codes: &[char]| table.iter().filter(|r| codes.contains(&r.code)).count();
     let rows = [
@@ -705,6 +714,22 @@ pub fn ip_route_summary(table: &[netlabcraft_sim::RouteEntry]) -> String {
     }
     let prefixes: std::collections::BTreeSet<_> = table.iter().map(|r| r.net.to_string()).collect();
     let _ = writeln!(s, "{:<10} {:<7} {} distinct prefix{}", "total", table.len(), prefixes.len(), if prefixes.len() == 1 { "" } else { "es" });
+    // How many routes each mask length has.
+    let mut by_mask: std::collections::BTreeMap<u8, usize> = std::collections::BTreeMap::new();
+    for r in table {
+        *by_mask.entry(r.net.prefix).or_insert(0) += 1;
+    }
+    s.push_str("Routes by mask:\n");
+    for (prefix, n) in &by_mask {
+        let _ = writeln!(s, "  /{prefix:<3} {n}");
+    }
+    // Not a measurement: the simulator keeps no memory pool, so the figure is a count times a fixed size.
+    let _ = writeln!(
+        s,
+        "Memory: {} routes x {ROUTE_ENTRY_BYTES} bytes = {} bytes (simulated estimate, not a measurement)",
+        table.len(),
+        table.len().saturating_mul(ROUTE_ENTRY_BYTES)
+    );
     match table.iter().find(|r| r.net.prefix == 0) {
         Some(r) => {
             let via = r.via.map(|v| format!("via {v}")).or_else(|| r.iface.as_ref().map(|i| format!("out {i}"))).unwrap_or_default();
@@ -765,8 +790,30 @@ pub fn ip_route_table(d: &Device, table: &[netlabcraft_sim::RouteEntry]) -> Stri
     s.trim_end().to_string()
 }
 
+/// A port's bandwidth (kbit/s) and delay (µs): what the port was told, else what its type usually has.
+fn port_metrics(p: &netlabcraft_model::Port) -> (u32, u64) {
+    let (bw, delay) = netlabcraft_sim::eigrp::default_metrics(&p.name);
+    (p.bandwidth.unwrap_or(bw).max(1), u64::from(p.delay.unwrap_or(delay)).saturating_mul(10))
+}
+
+/// Load out of 255 (1 when idle): the average bit rate since the counters began against the bandwidth.
+fn load_of(octets: u64, elapsed_us: u64, bw_kbit: u32) -> u64 {
+    if elapsed_us == 0 {
+        return 1;
+    }
+    let num = u128::from(octets).saturating_mul(8).saturating_mul(1_000_000).saturating_mul(255);
+    let den = u128::from(elapsed_us).saturating_mul(u128::from(bw_kbit.max(1))).saturating_mul(1_000);
+    u64::try_from(num / den.max(1)).unwrap_or(255).clamp(1, 255)
+}
+
+/// Simulated microseconds as `h:mm:ss`.
+fn hms(us: u64) -> String {
+    let s = us / 1_000_000;
+    format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60)
+}
+
 /// Interface details: all of them, or one.
-pub fn interfaces(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
+pub fn interfaces(t: &Topology, sim: &Sim, d: &Device, only: Option<IfRef>) -> String {
     let mut s = String::new();
     for (i, p) in d.ports.iter().enumerate() {
         if only.is_some_and(|r| r.port != i) {
@@ -805,6 +852,24 @@ pub fn interfaces(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
             if let Some(ip) = p.ip {
                 let _ = writeln!(s, "  Internet address {ip}");
             }
+            let (bw, delay_us) = port_metrics(p);
+            let cnt = sim.port_counters(d.id, i);
+            let cleared = sim.port_counters_cleared_at(d.id);
+            let elapsed = sim.now_us().saturating_sub(cleared.unwrap_or(0));
+            s.push_str("  MTU 1500 bytes");
+            if let Some(m) = d.security.ip_mtu.get(&p.name) {
+                let _ = write!(s, " (IP MTU {m})");
+            }
+            let _ = writeln!(s, ", BW {bw} Kbit/sec, DLY {delay_us} usec");
+            let _ = writeln!(
+                s,
+                "  Reliability 255/255, txload {}/255, rxload {}/255 (averaged since the counters began)",
+                load_of(cnt.out_octets, elapsed, bw),
+                load_of(cnt.in_octets, elapsed, bw)
+            );
+            if netlabcraft_sim::port_max_speed(&p.name).is_some() {
+                let _ = writeln!(s, "  Encapsulation ARPA");
+            }
             if let Some((speed, duplex)) = netlabcraft_sim::link_speed(t, end) {
                 let half = duplex == netlabcraft_model::Duplex::Half;
                 let _ = writeln!(s, "  {}-duplex, {speed} Mb/s", if half { "Half" } else { "Full" });
@@ -820,6 +885,28 @@ pub fn interfaces(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
                     let _ = writeln!(s, "  Switchport: access ({}), VLAN {}", sp.mode.name(), sp.access_vlan);
                 }
             }
+            match cleared {
+                None => s.push_str("  Counters: never cleared\n"),
+                Some(at) => {
+                    let _ = writeln!(s, "  Counters: cleared {} ago", hms(sim.now_us().saturating_sub(at)));
+                }
+            }
+            let _ = writeln!(
+                s,
+                "  {} packets input, {} bytes, {} broadcasts, {} multicasts",
+                cnt.in_packets(),
+                cnt.in_octets,
+                cnt.in_bcast,
+                cnt.in_mcast
+            );
+            let _ = writeln!(
+                s,
+                "  {} packets output, {} bytes, {} broadcasts, {} multicasts",
+                cnt.out_packets(),
+                cnt.out_octets,
+                cnt.out_bcast,
+                cnt.out_mcast
+            );
         }
         for sub in &p.subifs {
             if only.is_some_and(|r| r.sub.is_some_and(|n| n != sub.number)) {
@@ -1709,7 +1796,7 @@ pub fn nat_translations(sim: &Sim, d: &Device, verbose: bool) -> String {
         rows.push(row);
     }
     if let Some(st) = sim.state(d.id) {
-        for e in st.nat.iter().filter(|e| !e.fixed || e.local_id.is_some()) {
+        for e in st.nat.iter().filter(|e| (!e.fixed || e.local_id.is_some()) && e.alive(d, now)) {
             let proto = match e.protocol {
                 1 => "icmp",
                 17 => "udp",
@@ -1723,9 +1810,13 @@ pub fn nat_translations(sim: &Sim, d: &Device, verbose: bool) -> String {
                     (false, true) => "dynamic, translated per flow (port or identifier)",
                     (false, false) => "dynamic, address only",
                 };
+                let expiry = match e.lifetime_us(d) {
+                    Some(life) => format!("expires in {} s", life.saturating_sub(now.saturating_sub(e.last_us)) / 1_000_000),
+                    None => "does not expire".to_string(),
+                };
                 let _ = write!(
                     row,
-                    "\n    {kind}; created {}, last used {}, {} packet{} translated",
+                    "\n    {kind}; created {}, last used {}, {} packet{} translated; {expiry}",
                     ago(e.created_us),
                     ago(e.last_us),
                     e.uses,

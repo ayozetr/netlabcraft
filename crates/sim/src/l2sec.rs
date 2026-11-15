@@ -71,6 +71,18 @@ pub struct PortCounters {
     pub out_bcast: u64,
 }
 
+impl PortCounters {
+    /// Frames received on the port, whoever they were for.
+    pub fn in_packets(&self) -> u64 {
+        self.in_ucast.saturating_add(self.in_mcast).saturating_add(self.in_bcast)
+    }
+
+    /// Frames sent out of the port.
+    pub fn out_packets(&self) -> u64 {
+        self.out_ucast.saturating_add(self.out_mcast).saturating_add(self.out_bcast)
+    }
+}
+
 /// The simulator's state for all of the above.
 #[derive(Debug, Clone, Default)]
 pub struct L2State {
@@ -84,6 +96,8 @@ pub struct L2State {
     /// Port security: when each learned address was learned and last seen.
     psec_seen: BTreeMap<(DeviceId, usize, MacAddr), (u64, u64)>,
     counters: BTreeMap<(DeviceId, usize), PortCounters>,
+    /// When `clear counters` last ran on a device (simulated µs); absent: never.
+    counters_cleared: BTreeMap<DeviceId, u64>,
 }
 
 impl L2State {
@@ -94,6 +108,7 @@ impl L2State {
         self.rate.retain(|k, _| k.0 != d);
         self.psec_seen.retain(|k, _| k.0 != d);
         self.counters.retain(|k, _| k.0 != d);
+        self.counters_cleared.remove(&d);
     }
 }
 
@@ -363,6 +378,20 @@ impl Sim {
     /// Traffic counted through a port.
     pub fn port_counters(&self, d: DeviceId, port: usize) -> PortCounters {
         self.l2.counters.get(&(d, port)).copied().unwrap_or_default()
+    }
+
+    /// Zeroes a device's port counters and notes when (`clear counters`).
+    pub fn clear_port_counters(&mut self, d: DeviceId) {
+        self.l2.counters.retain(|k, _| k.0 != d);
+        let now = self.now;
+        if self.l2.counters_cleared.len() < crate::MAX_MAC_ENTRIES || self.l2.counters_cleared.contains_key(&d) {
+            self.l2.counters_cleared.insert(d, now);
+        }
+    }
+
+    /// When a device's port counters were last cleared (simulated µs); `None`: never.
+    pub fn port_counters_cleared_at(&self, d: DeviceId) -> Option<u64> {
+        self.l2.counters_cleared.get(&d).copied()
     }
 
     /// When an err-disabled port went down (simulated µs), if the simulator saw it.

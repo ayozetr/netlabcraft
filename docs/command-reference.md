@@ -255,6 +255,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip nat inside source ...` | config | router, switch | Remove a translation rule |
 | `ip nat pool WORD START END {netmask M \| prefix-length N}` | config | router, switch | Addresses to translate to |
 | `no ip nat pool WORD` | config | router, switch | Delete a NAT pool |
+| `ip nat translation {timeout\|udp-timeout\|icmp-timeout\|tcp-timeout} <1-2147483>` | config | router, switch | Seconds a dynamic translation lives without traffic |
+| `no ip nat translation {timeout\|udp-timeout\|icmp-timeout\|tcp-timeout}` | config | router, switch | The default lifetime of dynamic translations again |
 | `show ip nat translations` | user, privileged | router, switch | Translations in use |
 | `show ip nat translations verbose` | user, privileged | router, switch | Translations in use, with their age, last use and packet count |
 | `clear ip nat statistics` | privileged | router, switch | Reset the NAT hit and miss counts |
@@ -303,7 +305,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `clear ip ospf process` | privileged | router, switch | Restart OSPF: neighbours and DR elections anew |
 | `clear ip ospf <1-65535> process` | privileged | router, switch | Restart this OSPF process |
 | `show ip ospf database` | user, privileged | router, switch | OSPF link-state database |
-| `show ip ospf database {router\|network\|summary\|external} [A.B.C.D]` | user, privileged | router, switch | One kind of LSA in full: router, network, summary or external |
+| `show ip ospf database {router\|network\|summary\|asbr-summary\|external\|nssa-external} [A.B.C.D\|self-originate\|adv-router A.B.C.D] \| self-originate \| adv-router A.B.C.D` | user, privileged | router, switch | LSAs in full: one kind, the ones this router originated, or the ones a router advertised |
 | `show ip ospf neighbor detail` | user, privileged | router, switch | OSPF neighbours in full |
 | `ip address A.B.C.D MASK` |  | router | Set the tunnel's address |
 | `no ip address` |  | router | Remove the tunnel's address |
@@ -909,10 +911,12 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `spanning-tree vlan <1-4094>[,-] port-priority <0-240>` | interface | switch | Port priority in these VLANs |
 | `no spanning-tree vlan <1-4094>[,-] port-priority` | interface | switch | Port priority back to 128 in these VLANs |
 | `show spanning-tree summary` | user, privileged | switch | Spanning-tree settings and port states per VLAN |
+| `show spanning-tree summary totals` | user, privileged | switch | The settings and one total row of port states, without a row per VLAN |
 | `show spanning-tree vlan <1-4094> detail` | user, privileged | switch | One VLAN's tree, port by port |
+| `show spanning-tree vlan <1-4094> brief` | user, privileged | switch | One VLAN's line: the root, its cost, the root port and how many ports forward, learn or block |
 | `show spanning-tree brief` | user, privileged | switch | One line per VLAN: the root, its cost, the root port and how many ports forward, learn or block |
 | `show spanning-tree detail` | user, privileged | switch | Every VLAN's tree, port by port |
-| `show spanning-tree interface <interface>` | user, privileged | switch | One port's role and state in every VLAN, and its protection settings |
+| `show spanning-tree interface <interface>` | user, privileged | switch | One port's role and state in every VLAN, and its protection settings (`detail` after the port: each VLAN in full) |
 | `errdisable recovery cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|all}` | config | switch | Bring ports shut for this reason back by themselves |
 | `no errdisable recovery cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|all}` | config | switch | Ports shut for this reason wait for shutdown / no shutdown |
 | `errdisable recovery interval <30-86400>` | config | switch | Seconds before an err-disabled port comes back |

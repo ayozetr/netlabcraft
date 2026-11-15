@@ -383,41 +383,88 @@ pub(super) fn clear_ospf(c: &mut Ctx, process: &str) -> R {
     Ok(format!("OSPF process {p} restarted: neighbours form again and each segment elects its DR and BDR anew"))
 }
 
-/// `show ip ospf database`: the LSAs this router holds, by area and kind.
-/// One LSA kind in full (`show ip ospf database router`): every LSA of the kind, per area,
-/// with its links, attached routers or metric, optionally only the one with a link-state ID.
-fn ospf_database_detail(d: &netlabcraft_model::Device, process: u16, rid: &str, lsas: &[netlabcraft_sim::ospf_lsdb::Lsa], words: &[&str]) -> R {
+/// What `show ip ospf database` keeps of the LSAs it lists.
+#[derive(Clone, Copy)]
+enum DbFilter {
+    All,
+    /// The link-state ID.
+    Id(std::net::Ipv4Addr),
+    /// The advertising router.
+    Adv(std::net::Ipv4Addr),
+}
+
+/// LSAs in full (`show ip ospf database router`): every LSA of a kind, or of every kind, per area,
+/// with its links, attached routers or metric, optionally only the one with a link-state ID, the
+/// ones this router originated (`self-originate`) or the ones an `adv-router` advertised.
+fn ospf_database_detail(
+    d: &netlabcraft_model::Device,
+    process: u16,
+    rid: &str,
+    my_rid: Option<std::net::Ipv4Addr>,
+    lsas: &[netlabcraft_sim::ospf_lsdb::Lsa],
+    words: &[&str],
+) -> R {
     use netlabcraft_sim::ospf_lsdb::{LinkKind, LsaKind};
     use std::fmt::Write as _;
-    let word = words.first().map(|w| w.to_ascii_lowercase()).unwrap_or_default();
-    let kind = [("router", LsaKind::Router), ("network", LsaKind::Network), ("summary", LsaKind::Summary), ("external", LsaKind::External)]
-        .into_iter()
-        .find(|(n, _)| !word.is_empty() && n.starts_with(&word))
-        .map(|(_, k)| k)
-        .ok_or("% show ip ospf database router, network, summary or external, then an optional link-state ID")?;
-    let only: Option<std::net::Ipv4Addr> = match words.get(1) {
-        Some(w) => Some(w.parse().map_err(|_| format!("% `{w}` is not a link-state ID (A.B.C.D)"))?),
-        None => None,
+    const USAGE: &str =
+        "% show ip ospf database [router|network|summary|asbr-summary|external|nssa-external] [A.B.C.D | self-originate | adv-router A.B.C.D]";
+    let kw = |w: &str, k: &str| !w.is_empty() && k.starts_with(w);
+    let first = words.first().map(|w| w.to_ascii_lowercase()).unwrap_or_default();
+    let named = [
+        ("router", LsaKind::Router),
+        ("network", LsaKind::Network),
+        ("summary", LsaKind::Summary),
+        ("asbr-summary", LsaKind::AsbrSummary),
+        ("external", LsaKind::External),
+    ]
+    .into_iter()
+    .find(|(n, _)| kw(&first, n));
+    if named.is_none() && kw(&first, "nssa-external") {
+        // Type 7 LSAs exist only in an NSSA, and the simulator has stub areas, not NSSAs.
+        return Ok(format!("No NSSA external LSAs in the database of {}: no area here is an NSSA (the simulator has stub areas only).", d.name));
+    }
+    if named.is_none() && !kw(&first, "self-originate") && !kw(&first, "adv-router") {
+        return Err(USAGE.into());
+    }
+    let kind = named.map(|(_, k)| k);
+    let rest = if named.is_some() { words.get(1..).unwrap_or(&[]) } else { words };
+    let filter = match rest {
+        [] => DbFilter::All,
+        [w] if kw(&w.to_ascii_lowercase(), "self-originate") => DbFilter::Adv(my_rid.ok_or("% This router has no router ID yet")?),
+        [w] => DbFilter::Id(w.parse::<std::net::Ipv4Addr>().map_err(|_| format!("% `{w}` is not a link-state ID (A.B.C.D) or self-originate"))?),
+        [w, a] if kw(&w.to_ascii_lowercase(), "adv-router") => {
+            DbFilter::Adv(a.parse::<std::net::Ipv4Addr>().map_err(|_| format!("% `{a}` is not a router ID (A.B.C.D)"))?)
+        }
+        _ => return Err(USAGE.into()),
     };
-    if words.len() > 2 {
-        return Err("% Too many words: the kind, then an optional link-state ID".into());
+    if kind.is_none() && !matches!(filter, DbFilter::Adv(_)) {
+        return Err(USAGE.into());
     }
     let mut s = String::new();
-    let mut last: Option<Option<u32>> = None;
-    for l in lsas.iter().filter(|l| l.kind == kind && only.is_none_or(|o| o == l.id)) {
-        if last != Some(l.area) {
-            let title = match kind {
+    let mut last: Option<(LsaKind, Option<u32>)> = None;
+    let shown = |l: &netlabcraft_sim::ospf_lsdb::Lsa| {
+        kind.is_none_or(|k| l.kind == k)
+            && match filter {
+                DbFilter::All => true,
+                DbFilter::Id(i) => l.id == i,
+                DbFilter::Adv(a) => l.adv == a,
+            }
+    };
+    for l in lsas.iter().filter(|l| shown(l)) {
+        if last != Some((l.kind, l.area)) {
+            let title = match l.kind {
                 LsaKind::Router => "Router link states",
                 LsaKind::Network => "Network link states",
                 LsaKind::Summary => "Summary link states",
+                LsaKind::AsbrSummary => "ASBR summary link states",
                 LsaKind::External => "External link states",
             };
             let area = l.area.map_or(String::new(), |a| format!(", area {a}"));
             let _ = writeln!(s, "{}{title}{area} (process {process}, router {rid})", if last.is_some() { "\n" } else { "" });
-            last = Some(l.area);
+            last = Some((l.kind, l.area));
         }
         let seq = "0x80000001";
-        match kind {
+        match l.kind {
             LsaKind::Router => {
                 let _ = writeln!(s, "Router {}, sequence {seq}, {} link{}", l.id, l.count, if l.count == 1 { "" } else { "s" });
                 for k in &l.links {
@@ -438,14 +485,29 @@ fn ospf_database_detail(d: &netlabcraft_model::Device, process: u16, rid: &str, 
             LsaKind::Summary => {
                 let _ = writeln!(s, "Network {}/{}, sequence {seq}, advertised by {}, metric {}", l.id, l.count, l.adv, l.metric);
             }
+            LsaKind::AsbrSummary => {
+                let _ = writeln!(s, "AS boundary router {}, sequence {seq}, advertised by {}, metric {}", l.id, l.adv, l.metric);
+            }
             LsaKind::External => {
                 let _ = writeln!(s, "Network {}/{}, sequence {seq}, advertised by {}, type 2 metric {}", l.id, l.count, l.adv, l.metric);
             }
         }
     }
     if s.is_empty() {
-        let what = only.map_or(String::new(), |o| format!(" with link-state ID {o}"));
-        return Ok(format!("No {word} LSAs{what} in the database of {}.", d.name));
+        let name = match kind {
+            Some(LsaKind::Router) => "router ",
+            Some(LsaKind::Network) => "network ",
+            Some(LsaKind::Summary) => "summary ",
+            Some(LsaKind::AsbrSummary) => "ASBR summary ",
+            Some(LsaKind::External) => "external ",
+            None => "",
+        };
+        let what = match filter {
+            DbFilter::All => String::new(),
+            DbFilter::Id(i) => format!(" with link-state ID {i}"),
+            DbFilter::Adv(a) => format!(" advertised by {a}"),
+        };
+        return Ok(format!("No {name}LSAs{what} in the database of {}.", d.name));
     }
     Ok(s.trim_end().to_string())
 }
@@ -460,7 +522,7 @@ pub(super) fn ospf_database(c: &mut Ctx, what: &str) -> R {
     let lsas = netlabcraft_sim::ospf_lsdb::database(c.t, &st, d.id);
     let words: Vec<&str> = what.split_whitespace().collect();
     if !words.is_empty() {
-        return ospf_database_detail(&d, o.process, &rid, &lsas, &words);
+        return ospf_database_detail(&d, o.process, &rid, st.router_ids.get(&d.id).copied(), &lsas, &words);
     }
     let mut s = format!("OSPF link-state database of router {rid} (process {})\n", o.process);
     if lsas.is_empty() {
@@ -474,14 +536,23 @@ pub(super) fn ospf_database(c: &mut Ctx, what: &str) -> R {
                 LsaKind::Router => "Router LSAs (type 1)",
                 LsaKind::Network => "Network LSAs (type 2)",
                 LsaKind::Summary => "Summary network LSAs (type 3)",
+                LsaKind::AsbrSummary => "ASBR summary LSAs (type 4)",
                 LsaKind::External => "AS external LSAs (type 5)",
             };
             let area = l.area.map_or(String::new(), |a| format!(", area {a}"));
-            let last_col = if l.kind == LsaKind::Router { "Links" } else { "Prefix" };
+            let last_col = match l.kind {
+                LsaKind::Router => "Links",
+                LsaKind::AsbrSummary => "Metric",
+                _ => "Prefix",
+            };
             let _ = write!(s, "\n{title}{area}\n{:<16} {:<16} {}\n", "Link ID", "Advertised by", last_col);
             last = Some((l.kind, l.area));
         }
-        let count = if l.kind == LsaKind::Router { l.count.to_string() } else { format!("/{}", l.count) };
+        let count = match l.kind {
+            LsaKind::Router => l.count.to_string(),
+            LsaKind::AsbrSummary => l.metric.to_string(),
+            _ => format!("/{}", l.count),
+        };
         let _ = writeln!(s, "{:<16} {:<16} {count}", l.id.to_string(), l.adv.to_string());
     }
     Ok(s.trim_end().to_string())

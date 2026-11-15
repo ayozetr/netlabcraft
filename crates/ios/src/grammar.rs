@@ -331,6 +331,8 @@ pub enum Id {
     L2ShowStpBrief,
     L2ShowStpDetailAll,
     L2ShowStpInterface,
+    L2ShowStpSummaryTotals,
+    L2ShowStpVlanBrief,
     L2LoadBalance,
     L2NoLoadBalance,
     L2ShowLoadBalance,
@@ -465,6 +467,8 @@ pub enum Id {
     NoNatSource,
     NatPool,
     NoNatPool,
+    NatTimeout,
+    NoNatTimeout,
     ShowNat,
     ClearNat,
     ClearNatStats,
@@ -1285,6 +1289,20 @@ pub static SPECS: &[Spec] = &[
         "Addresses to translate to"
     ),
     spec!(NoNatPool, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("nat"), K("pool"), Arg("WORD")], "Delete a NAT pool"),
+    spec!(
+        NatTimeout,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ip"), K("nat"), K("translation"), Arg("{timeout|udp-timeout|icmp-timeout|tcp-timeout}"), Arg("<1-2147483>")],
+        "Seconds a dynamic translation lives without traffic"
+    ),
+    spec!(
+        NoNatTimeout,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("nat"), K("translation"), Arg("{timeout|udp-timeout|icmp-timeout|tcp-timeout}")],
+        "The default lifetime of dynamic translations again"
+    ),
     spec!(ShowNat, EXECS, Modes::BOTH, [K("show"), K("ip"), K("nat"), K("translations")], "Translations in use"),
     spec!(
         ShowNat,
@@ -1424,8 +1442,16 @@ pub static SPECS: &[Spec] = &[
         ShowIpOspfDatabase,
         EXECS,
         Modes::BOTH,
-        [K("show"), K("ip"), K("ospf"), K("database"), Rest("{router|network|summary|external} [A.B.C.D]")],
-        "One kind of LSA in full: router, network, summary or external"
+        [
+            K("show"),
+            K("ip"),
+            K("ospf"),
+            K("database"),
+            Rest(
+                "{router|network|summary|asbr-summary|external|nssa-external} [A.B.C.D|self-originate|adv-router A.B.C.D] | self-originate | adv-router A.B.C.D"
+            )
+        ],
+        "LSAs in full: one kind, the ones this router originated, or the ones a router advertised"
     ),
     spec!(ShowOspfNeighborDetail, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf"), K("neighbor"), K("detail")], "OSPF neighbours in full"),
     // ---- site-to-site VPN: GRE tunnels (`interface Tunnel N`) and IPsec ----
@@ -2997,11 +3023,25 @@ pub static SPECS: &[Spec] = &[
     ),
     spec!(L2ShowStpSummary, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree"), K("summary")], "Spanning-tree settings and port states per VLAN"),
     spec!(
+        L2ShowStpSummaryTotals,
+        EXECS,
+        Modes::SWITCH,
+        [K("show"), K("spanning-tree"), K("summary"), K("totals")],
+        "The settings and one total row of port states, without a row per VLAN"
+    ),
+    spec!(
         L2ShowStpDetail,
         EXECS,
         Modes::SWITCH,
         [K("show"), K("spanning-tree"), K("vlan"), Arg("<1-4094>"), K("detail")],
         "One VLAN's tree, port by port"
+    ),
+    spec!(
+        L2ShowStpVlanBrief,
+        EXECS,
+        Modes::SWITCH,
+        [K("show"), K("spanning-tree"), K("vlan"), Arg("<1-4094>"), K("brief")],
+        "One VLAN's line: the root, its cost, the root port and how many ports forward, learn or block"
     ),
     spec!(
         L2ShowStpBrief,
@@ -3016,7 +3056,7 @@ pub static SPECS: &[Spec] = &[
         EXECS,
         Modes::SWITCH,
         [K("show"), K("spanning-tree"), K("interface"), Rest("<interface>")],
-        "One port's role and state in every VLAN, and its protection settings"
+        "One port's role and state in every VLAN, and its protection settings (`detail` after the port: each VLAN in full)"
     ),
     spec!(
         L2RecoveryCause,

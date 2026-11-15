@@ -1058,11 +1058,66 @@ pub struct Nat {
     /// `ip nat pool …`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pools: Vec<NatPool>,
+    /// `ip nat translation [udp-|icmp-|tcp-]timeout N`.
+    #[serde(default, skip_serializing_if = "NatTimeouts::is_default")]
+    pub timeouts: NatTimeouts,
 }
 
 impl Nat {
     pub fn is_empty(&self) -> bool {
-        self.statics.is_empty() && self.rules.is_empty() && self.pools.is_empty()
+        self.statics.is_empty() && self.rules.is_empty() && self.pools.is_empty() && self.timeouts.is_default()
+    }
+}
+
+/// Seconds a dynamic translation lives after the last packet through it, when the timeout is not set.
+pub const NAT_DEFAULT_TIMEOUT_SECS: u32 = 86_400;
+/// The default for translations kept per UDP flow.
+pub const NAT_UDP_TIMEOUT_SECS: u32 = 300;
+/// The default for translations kept per ICMP flow (an echo identifier).
+pub const NAT_ICMP_TIMEOUT_SECS: u32 = 60;
+/// The longest timeout the console takes.
+pub const NAT_MAX_TIMEOUT_SECS: u32 = 2_147_483;
+
+/// How long dynamic NAT translations live without traffic; `None` is the default of the kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct NatTimeouts {
+    /// `timeout`: translations of an address alone (no port or identifier), and other protocols.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub all: Option<u32>,
+    /// `udp-timeout`: UDP flows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub udp: Option<u32>,
+    /// `tcp-timeout`: TCP flows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tcp: Option<u32>,
+    /// `icmp-timeout`: ICMP flows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icmp: Option<u32>,
+}
+
+impl NatTimeouts {
+    pub fn is_default(&self) -> bool {
+        *self == NatTimeouts::default()
+    }
+
+    /// Seconds a translation of this IP protocol lives idle; `per_flow` is whether it keeps a port or identifier.
+    pub fn secs(&self, protocol: u8, per_flow: bool) -> u32 {
+        if !per_flow {
+            return self.all.unwrap_or(NAT_DEFAULT_TIMEOUT_SECS);
+        }
+        match protocol {
+            1 => self.icmp.unwrap_or(NAT_ICMP_TIMEOUT_SECS),
+            17 => self.udp.unwrap_or(NAT_UDP_TIMEOUT_SECS),
+            6 => self.tcp.unwrap_or(NAT_DEFAULT_TIMEOUT_SECS),
+            _ => self.all.unwrap_or(NAT_DEFAULT_TIMEOUT_SECS),
+        }
+    }
+
+    /// Drops values outside what the console accepts (a hostile file).
+    pub fn sanitize(&mut self) {
+        for v in [&mut self.all, &mut self.udp, &mut self.tcp, &mut self.icmp] {
+            *v = v.filter(|s| (1..=NAT_MAX_TIMEOUT_SECS).contains(s));
+        }
     }
 }
 
@@ -2570,6 +2625,7 @@ impl Topology {
                 d.sanitize_board();
                 d.sanitize_psu();
                 d.sanitize_cellular();
+                d.nat.timeouts.sanitize();
                 for p in &mut d.ports {
                     p.subifs.truncate(MAX_SUBIFS);
                     p.subifs.sort_by_key(|s| s.number);
