@@ -127,6 +127,31 @@ fn draw_state(ui: &mut egui::Ui, what: &str, on: bool, tk: &theme::Tokens) {
                 }
             }
         }
+        "tv" => {
+            // A screen on a stand; bars of light while it plays.
+            let screen = egui::Rect::from_center_size(c - vec2(0.0, 4.0), vec2(58.0, 36.0));
+            p.rect_filled(screen, 3.0, if on { egui::Color32::from_rgb(0x4b, 0x83, 0xb5) } else { tk.chrome_line });
+            p.rect_stroke(screen, 3.0, egui::Stroke::new(3.0, tk.muted), egui::StrokeKind::Inside);
+            p.rect_filled(egui::Rect::from_center_size(c + vec2(0.0, 21.0), vec2(24.0, 4.0)), 1.0, tk.muted);
+            if on {
+                for (k, h) in [10.0f32, 18.0, 14.0].into_iter().enumerate() {
+                    let x = screen.left() + 12.0 + k as f32 * 14.0;
+                    let bar = egui::Rect::from_min_max(egui::pos2(x, screen.bottom() - 6.0 - h), egui::pos2(x + 8.0, screen.bottom() - 6.0));
+                    p.rect_filled(bar, 1.0, egui::Color32::from_rgb(0x9a, 0xe6, 0xf2));
+                }
+            }
+        }
+        "speaker" => {
+            // A cabinet with a tweeter and a woofer; a ring round the woofer while it plays.
+            let cabinet = egui::Rect::from_center_size(c, vec2(36.0, 54.0));
+            p.rect_filled(cabinet, 5.0, tk.chrome_line);
+            p.rect_stroke(cabinet, 5.0, s, egui::StrokeKind::Inside);
+            p.circle_filled(c - vec2(0.0, 15.0), 5.0, tk.muted);
+            p.circle_filled(c + vec2(0.0, 8.0), 11.0, tk.muted);
+            if on {
+                p.circle_stroke(c + vec2(0.0, 8.0), 15.0, egui::Stroke::new(2.0, col));
+            }
+        }
         "plug" => {
             let face = egui::Rect::from_center_size(c, vec2(44.0, 44.0));
             p.rect_filled(face, 10.0, tk.chrome_line);

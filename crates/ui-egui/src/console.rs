@@ -25,6 +25,8 @@ pub enum Tab {
     Iot,
     /// A programmable board's program, pins and output.
     Board,
+    /// What a sniffer has recorded.
+    Capture,
     Attributes,
 }
 
@@ -156,6 +158,7 @@ pub fn open(app: &mut PacketApp, d: DeviceId) {
     if dev.kind.is_host() && w.tab == Tab::Cli {
         w.tab = match dev.kind {
             DeviceKind::Phone => Tab::Phone,
+            DeviceKind::Pc if dev.catalogue_model().sniffer() => Tab::Capture,
             DeviceKind::Iot if netlabcraft_model::board::is_board(&dev) => Tab::Board,
             DeviceKind::Iot => Tab::Iot,
             _ => Tab::Desktop,
@@ -205,6 +208,8 @@ pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
                 ui.horizontal(|ui| {
                     let tabs: &[(Tab, &str)] = if dev.kind == DeviceKind::Hub {
                         &[(Tab::Physical, "Physical"), (Tab::Attributes, "Attributes")]
+                    } else if dev.catalogue_model().sniffer() {
+                        &[(Tab::Physical, "Physical"), (Tab::Capture, "Capture"), (Tab::Attributes, "Attributes")]
                     } else if dev.kind == DeviceKind::Server {
                         &[
                             (Tab::Physical, "Physical"),
@@ -259,6 +264,7 @@ pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
                             w.board = form;
                         }
                     }
+                    Tab::Capture => crate::sniffer_page::tab(app, ui, &dev),
                     Tab::Services => {
                         let mut forms = app.ui.windows.get_mut(&d).map(|w| std::mem::take(&mut w.svc)).unwrap_or_default();
                         crate::services::tab(app, ui, &dev, &mut forms);

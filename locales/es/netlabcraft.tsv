@@ -1593,3 +1593,32 @@ event	no APN	sin APN
 	Pool size	Tamaño del grupo
 	The pool must be on the subnet of the server's port that the cable reaches.	El grupo debe estar en la subred del puerto del servidor al que llega el cable.
 	The pool size is a whole number.	El tamaño del grupo es un número entero.
+	Modular Router 2FE	Router modular 2FE
+	Smart TV	Televisor inteligente
+	Wired Smart TV	Televisor inteligente por cable
+	Smart Speaker	Altavoz inteligente
+	Water Level Sensor	Sensor de nivel de agua
+	2-port Fast Ethernet card	Tarjeta Fast Ethernet de 2 puertos
+	Router with 2 Fast Ethernet ports	Router con 2 puertos Fast Ethernet
+	Router with 2 Fast Ethernet ports and 2 serial WAN ports	Router con 2 puertos Fast Ethernet y 2 puertos WAN serie
+	Router with 3 Gigabit Ethernet ports and 2 serial WAN ports	Router con 3 puertos Gigabit Ethernet y 2 puertos WAN serie
+	Modular router with 2 Fast Ethernet ports and 2 empty module bays (serial, Gigabit and Fast Ethernet cards, fitted while powered off)	Router modular con 2 puertos Fast Ethernet y 2 bahías vacías (tarjetas serie, Gigabit y Fast Ethernet, que se montan con el equipo apagado)
+	Sniffer with one Fast Ethernet port: records every frame that reaches its port (all the traffic behind a hub; broadcasts, multicasts and flooded frames behind a switch) and never answers	Sniffer con un puerto Fast Ethernet: registra todas las tramas que llegan a su puerto (todo el tráfico detrás de un hub; difusiones, multidifusiones y tramas inundadas detrás de un switch) y nunca responde
+	Wi-Fi smart TV: registers with the IoT service, which switches it on (playing) and off (standby)	Televisor inteligente Wi-Fi: se registra en el servicio IoT, que lo enciende (reproduciendo) y lo apaga (en espera)
+	Smart TV with one Fast Ethernet port: registers with an IoT server, which switches it on (playing) and off (standby)	Televisor inteligente con un puerto Fast Ethernet: se registra en un servidor IoT, que lo enciende (reproduciendo) y lo apaga (en espera)
+	Wi-Fi smart speaker: plays while the IoT service keeps it on	Altavoz inteligente Wi-Fi: suena mientras el servicio IoT lo mantiene encendido
+	Wi-Fi water level sensor: reports how full a tank is (0-100 %)	Sensor de nivel de agua Wi-Fi: informa de lo lleno que está un depósito (0-100 %)
+	Two routed Fast Ethernet ports	Dos puertos Fast Ethernet enrutados
+	playing	reproduciendo
+	standby	en espera
+	% level	% de nivel
+	Capture	Captura
+	A sniffer records every frame that reaches its port and answers none of them. Behind a hub it hears all the traffic; behind a switch, only broadcasts, multicasts and the frames the switch floods.	Un sniffer registra todas las tramas que llegan a su puerto y no responde a ninguna. Detrás de un hub oye todo el tráfico; detrás de un switch, solo las difusiones, las multidifusiones y las tramas que el switch inunda.
+	Frames captured: {}	Tramas capturadas: {}
+	Nothing captured yet. Cable the sniffer to a hub or a switch and send some traffic (a ping, or a simple PDU).	Aún no se ha capturado nada. Conecta el sniffer a un hub o a un switch y envía tráfico (un ping o una PDU simple).
+	Showing the last {} frames	Se muestran las últimas {} tramas
+	Addressed to	Destinada a
+	Summary	Resumen
+	This port	Este puerto
+	Everyone (broadcast or multicast)	Todos (difusión o multidifusión)
+	Another device (overheard)	Otro equipo (captada al paso)

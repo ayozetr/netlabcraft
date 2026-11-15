@@ -374,3 +374,83 @@ fn the_phone_settings_set_its_protocol_server_and_address() {
     assert!(s.execute("phone.configure", json!({"device": "Phone1", "address": "10.0.0.1", "mask": "x"})).is_err());
     assert!(s.execute("phone.configure", json!({"device": "PC1", "address": "dhcp"})).is_err());
 }
+
+#[test]
+fn the_newer_routers_route_over_serial_take_a_fast_ethernet_card_and_save_with_the_lab() {
+    let mut s = Session::new();
+    for (model, name, x) in [("Router 2FE+2S", "R1", 0), ("Router-FE2S", "R2", 200)] {
+        s.execute("device.add", json!({"model": model, "name": name, "x": x, "y": 0})).unwrap();
+    }
+    s.execute("link.add", json!({"a": "R1", "a_port": "Serial0/0/0", "b": "R2", "b_port": "Serial0/0/0"})).unwrap();
+    for (r, addr, clock) in [("R1", "10.0.0.1", true), ("R2", "10.0.0.2", false)] {
+        let mut lines: Vec<String> =
+            vec!["enable".into(), "configure terminal".into(), "interface s0/0/0".into(), format!("ip address {addr} 255.255.255.252")];
+        if clock {
+            lines.push("clock rate 64000".into());
+        }
+        lines.extend(["no shutdown".to_string(), "end".to_string()]);
+        for l in lines {
+            cli(&mut s, r, &l);
+        }
+    }
+    assert_eq!(marks(&mut s, "R1", "10.0.0.2"), "!!!", "the serial link between the two routers carries the pings");
+    // A modular router with Fast Ethernet ports takes a Fast Ethernet card while switched off.
+    s.execute("device.add", json!({"model": "Modular Router 2FE", "name": "R3"})).unwrap();
+    s.execute("device.power", json!({"device": "R3", "on": false})).unwrap();
+    let r = s.execute("device.module.add", json!({"device": "R3", "slot": "0/1", "module": "Card-2FE"})).unwrap();
+    assert_eq!(r["added"], json!(["FastEthernet0/1/0", "FastEthernet0/1/1"]));
+    s.execute("device.power", json!({"device": "R3", "on": true})).unwrap();
+    assert!(cli(&mut s, "R3", "show ip interface brief").contains("FastEthernet0/1/1"));
+    let s2 = round_trip(&mut s);
+    assert_eq!(s2.topology.find("R3").unwrap().catalogue_model().id, "Router-MF2");
+    assert_eq!(s2.topology.find("R2").unwrap().ports.len(), 4);
+}
+
+#[test]
+fn smart_tvs_over_wifi_and_ethernet_register_and_are_switched_by_the_gateway() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "wifi-things"})).unwrap();
+    s.execute("device.add", json!({"model": "Smart TV", "name": "TV1", "x": 500, "y": 200})).unwrap();
+    s.execute("device.add", json!({"model": "Wired Smart TV", "name": "TV2", "x": 650, "y": 200})).unwrap();
+    s.execute("link.add", json!({"a": "TV2", "a_port": "FastEthernet0", "b": "Home", "b_port": "Ethernet2"})).unwrap();
+    assert_eq!(s.topology.find("TV1").unwrap().ports[0].wifi.as_ref().map(|w| w.ssid.as_str()), Some("HomeNetwork"));
+    // The radio associates with the gateway in simulated time.
+    s.execute("sim.advance", json!({"seconds": 5})).unwrap();
+    for tv in ["TV1", "TV2"] {
+        let out = cli(&mut s, tv, "ipconfig /renew");
+        assert!(!out.contains("failed"), "{tv}: {out}");
+        s.execute("iot.configure", json!({"device": tv, "server": "192.168.0.1"})).unwrap();
+    }
+    let r = s.execute("iot.sync", json!({})).unwrap();
+    for tv in ["TV1", "TV2"] {
+        let thing = r["things"].as_array().unwrap().iter().find(|t| t["device"] == tv).unwrap();
+        assert_eq!(thing["registered"], "192.168.0.1", "{tv}: {r}");
+        s.execute("iot.switch", json!({"device": "Home", "name": tv, "on": true})).unwrap();
+        assert_eq!(s.execute("iot.configure", json!({"device": tv})).unwrap()["on"], true, "{tv} plays once the gateway switches it on");
+    }
+    let s2 = round_trip(&mut s);
+    assert_eq!(s2.topology.find("TV2").unwrap().catalogue_model().id, "IoT-TVE");
+}
+
+#[test]
+fn a_sniffer_on_a_hub_lists_the_frames_between_two_pcs_and_sends_nothing() {
+    let mut s = Session::new();
+    for (model, name) in [("Hub-8", "Hub1"), ("PC", "PC1"), ("PC", "PC2"), ("Sniffer", "Sniffer1")] {
+        s.execute("device.add", json!({"model": model, "name": name})).unwrap();
+    }
+    for (a, a_port, b_port) in
+        [("PC1", "FastEthernet0", "Ethernet0"), ("PC2", "FastEthernet0", "Ethernet1"), ("Sniffer1", "FastEthernet0", "Ethernet2")]
+    {
+        s.execute("link.add", json!({"a": a, "a_port": a_port, "b": "Hub1", "b_port": b_port})).unwrap();
+    }
+    cli(&mut s, "PC1", "ipconfig 10.0.0.1 255.255.255.0");
+    cli(&mut s, "PC2", "ipconfig 10.0.0.2 255.255.255.0");
+    assert_eq!(marks(&mut s, "PC1", "10.0.0.2"), "!!!");
+    let sn = s.topology.resolve("Sniffer1").unwrap();
+    let heard = s.sim.trace().iter().filter(|e| e.to.device == sn).count();
+    assert!(heard >= 6, "the sniffer heard the ARP exchange and the echoes ({heard} frames)");
+    assert!(s.sim.trace().iter().all(|e| e.from.device != sn), "nothing asked it to send, and it sent nothing");
+    assert!(s.execute("pc.terminal", json!({"pc": "Sniffer1"})).is_err(), "no RS-232 port for a Terminal");
+    let s2 = round_trip(&mut s);
+    assert_eq!(s2.topology.find("Sniffer1").unwrap().catalogue_model().id, "Sniffer");
+}

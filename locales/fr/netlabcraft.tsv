@@ -1590,3 +1590,32 @@ event	write request for	demande d'écriture de
 	Pool size	Taille du pool
 	The pool must be on the subnet of the server's port that the cable reaches.	Le pool doit être dans le sous-réseau du port du serveur que le câble atteint.
 	The pool size is a whole number.	La taille du pool est un nombre entier.
+	Modular Router 2FE	Routeur modulaire 2FE
+	Smart TV	Téléviseur connecté
+	Wired Smart TV	Téléviseur connecté filaire
+	Smart Speaker	Enceinte connectée
+	Water Level Sensor	Capteur de niveau d'eau
+	2-port Fast Ethernet card	Carte Fast Ethernet 2 ports
+	Router with 2 Fast Ethernet ports	Routeur avec 2 ports Fast Ethernet
+	Router with 2 Fast Ethernet ports and 2 serial WAN ports	Routeur avec 2 ports Fast Ethernet et 2 ports WAN série
+	Router with 3 Gigabit Ethernet ports and 2 serial WAN ports	Routeur avec 3 ports Gigabit Ethernet et 2 ports WAN série
+	Modular router with 2 Fast Ethernet ports and 2 empty module bays (serial, Gigabit and Fast Ethernet cards, fitted while powered off)	Routeur modulaire avec 2 ports Fast Ethernet et 2 baies de module vides (cartes série, Gigabit et Fast Ethernet, à monter appareil éteint)
+	Sniffer with one Fast Ethernet port: records every frame that reaches its port (all the traffic behind a hub; broadcasts, multicasts and flooded frames behind a switch) and never answers	Sniffer avec un port Fast Ethernet : enregistre chaque trame qui arrive à son port (tout le trafic derrière un hub ; diffusions, multidiffusions et trames inondées derrière un switch) et ne répond jamais
+	Wi-Fi smart TV: registers with the IoT service, which switches it on (playing) and off (standby)	Téléviseur connecté Wi-Fi : s'enregistre auprès du service IoT, qui l'allume (lecture) et l'éteint (veille)
+	Smart TV with one Fast Ethernet port: registers with an IoT server, which switches it on (playing) and off (standby)	Téléviseur connecté avec un port Fast Ethernet : s'enregistre auprès d'un serveur IoT, qui l'allume (lecture) et l'éteint (veille)
+	Wi-Fi smart speaker: plays while the IoT service keeps it on	Enceinte connectée Wi-Fi : joue tant que le service IoT la garde allumée
+	Wi-Fi water level sensor: reports how full a tank is (0-100 %)	Capteur de niveau d'eau Wi-Fi : indique à quel point un réservoir est plein (0-100 %)
+	Two routed Fast Ethernet ports	Deux ports Fast Ethernet routés
+	playing	en lecture
+	standby	en veille
+	% level	% de niveau
+	Capture	Capture
+	A sniffer records every frame that reaches its port and answers none of them. Behind a hub it hears all the traffic; behind a switch, only broadcasts, multicasts and the frames the switch floods.	Un sniffer enregistre chaque trame qui arrive à son port et ne répond à aucune. Derrière un hub, il entend tout le trafic ; derrière un switch, seulement les diffusions, les multidiffusions et les trames que le switch inonde.
+	Frames captured: {}	Trames capturées : {}
+	Nothing captured yet. Cable the sniffer to a hub or a switch and send some traffic (a ping, or a simple PDU).	Rien n'a encore été capturé. Branchez le sniffer à un hub ou à un switch et envoyez du trafic (un ping ou une PDU simple).
+	Showing the last {} frames	Affichage des {} dernières trames
+	Addressed to	Destinée à
+	Summary	Résumé
+	This port	Ce port
+	Everyone (broadcast or multicast)	Tous (diffusion ou multidiffusion)
+	Another device (overheard)	Autre appareil (entendue au passage)

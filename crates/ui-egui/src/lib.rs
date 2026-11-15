@@ -43,6 +43,7 @@ mod physical;
 pub mod png;
 mod programming;
 mod services;
+mod sniffer_page;
 pub mod theme;
 mod touch;
 mod wlan_page;
@@ -298,7 +299,7 @@ pub fn open_config_tab(app: &mut PacketApp, d: DeviceId) {
 }
 
 /// Opens a device window on a tab by name: `physical`, `config`, `cli`, `services`, `desktop`,
-/// `phone`, `iot` or `attributes` (anything else keeps the default).
+/// `phone`, `iot`, `capture` (a sniffer) or `attributes` (anything else keeps the default).
 pub fn open_tab(app: &mut PacketApp, d: DeviceId, name: &str) {
     use console::Tab;
     console::open(app, d);
@@ -317,6 +318,7 @@ pub fn open_tab(app: &mut PacketApp, d: DeviceId, name: &str) {
         }
         "iot" => Tab::Iot,
         "programming" | "board" => Tab::Board,
+        "capture" => Tab::Capture,
         "attributes" => Tab::Attributes,
         _ => return,
     };
