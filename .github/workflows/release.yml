@@ -11,6 +11,7 @@ on:
   pull_request:
     paths:
       - "packaging/**"
+      - "packaging/freebsd/**"
       - ".github/workflows/release.yml"
       - "rust-toolchain.toml"
   workflow_dispatch:
@@ -206,9 +207,63 @@ jobs:
           path: dist/release/*
           if-no-files-found: error
 
+  freebsd:
+    name: FreeBSD x86_64
+    needs: version
+    # GitHub has no FreeBSD runners, so the build runs inside a FreeBSD VM on a Linux runner. It
+    # follows the pattern of the storytold Crafting Apps' FreeBSD packaging. Release pushes, manual
+    # runs and packaging pull requests only: there is no nightly build.
+    timeout-minutes: 120
+    runs-on: ubuntu-latest
+    env:
+      NETLABCRAFT_VERSION: ${{ needs.version.outputs.version }}
+      VERSION: ${{ needs.version.outputs.version }}
+      INPUT_VERSION: ${{ inputs.version }}
+      # Outside the synced checkout, so the VM does not copy gigabytes of build output back.
+      CARGO_TARGET_DIR: /var/tmp/netlabcraft-target
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build and package in FreeBSD
+        uses: vmactions/freebsd-vm@811efaaac0668df8bfb8308c3ec997b5ab50037b # v1.6.0
+        with:
+          release: "14.3"
+          arch: x86_64
+          usesh: true
+          mem: 12288
+          cpu: 4
+          envs: "NETLABCRAFT_VERSION VERSION INPUT_VERSION CARGO_TARGET_DIR"
+          prepare: |
+            set -eu
+            pkg install -y bash git curl cmake pkgconf ca_root_nss rust \
+              libxkbcommon wayland vulkan-loader mesa-dri mesa-libs libX11 libxcb libXcursor libXrandr libXi \
+              shared-mime-info desktop-file-utils
+          run: |
+            set -eu
+            # The pinned toolchain in rust-toolchain.toml; use pkg's rust only if it is new enough.
+            want="$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)"
+            have="$(rustc --version | cut -d' ' -f2)"
+            if [ "$(printf '%s\n%s\n' "$want" "$have" | sort -V | head -n 1)" != "$want" ]; then
+              echo "pkg's rust $have is older than $want: installing it with rustup"
+              pkg install -y rustup-init
+              rustup-init -y --profile minimal --default-toolchain "$want"
+              . "$HOME/.cargo/env"
+              export RUSTUP_TOOLCHAIN="$want"
+            fi
+            rustc --version
+            cargo --version
+            if [ -n "$INPUT_VERSION" ]; then cargo xtask version set "$VERSION"; fi
+            bash packaging/freebsd/package.sh --install-test
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: freebsd-x86_64
+          path: dist/release/*
+          if-no-files-found: error
+
   release:
     name: Draft release
-    needs: [version, linux, windows, macos, web]
+    needs: [version, linux, windows, macos, freebsd, web]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

@@ -1,6 +1,6 @@
 # Releasing NetLabCraft
 
-> **Last reviewed:** 2026-11-14 · **Last updated:** 2026-11-14 · **Change:** minor (third release, 0.3.0) · earlier: major (the release pipeline exists and ran end to end; first release)
+> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (a FreeBSD package) · earlier: minor (third release, 0.3.0) · earlier: major (the release pipeline exists and ran end to end; first release)
 
 The recipe follows the shared Crafting Apps playbook (`release/playbook.md` in craftrules): a
 release is whatever is on the `release` branch. Pushing to it makes `.github/workflows/release.yml`
@@ -36,6 +36,7 @@ then delete the draft with `gh release delete v0.0.0-test.1 --cleanup-tag`.
 |---|---|
 | Linux | `netlabcraft-<v>-linux-{x86_64,aarch64}.{AppImage,AppImage.zsync,deb,rpm,tar.gz}` |
 | Windows | `netlabcraft-<v>-windows-x64.msi` and `netlabcraft-<v>-windows-x64-portable.zip` |
+| FreeBSD | `netlabcraft-<v>-freebsd-x86_64.{pkg,tar.gz}` (built in a FreeBSD 14 VM; `pkg add ./<file>.pkg`) |
 | macOS | `netlabcraft-<v>-macos-universal.dmg` (`NetLabCraft.app`), `netlabcraft-cli-<v>-macos-universal.zip` |
 | Web | `netlabcraft-web-<v>.zip` (the browser build, `apps/netlabcraft-web`) |
 
@@ -52,7 +53,8 @@ distributions.
 - **File type:** `.nlcraft` (`application/x-netlabcraft+json`) is registered on Linux (MIME XML) and
   macOS (`Info.plist`). The Windows installer does not claim it yet.
 - **The WiX UpgradeCode** `901628DA-E212-4FAE-A025-505251BFCFA7` belongs to NetLabCraft for good.
-- **Not shipped yet:** FreeBSD, Flatpak, riscv64, Windows ARM64 and the Arch package.
+- **FreeBSD:** built by the `freebsd` job inside a FreeBSD 14 VM (`vmactions/freebsd-vm`, pinned by SHA) on a Linux runner, by `packaging/freebsd/package.sh`; it runs on release pushes, manual runs and packaging pull requests, never on a schedule. The `.pkg` is unsigned and has been built and install-tested in CI only, not run on real hardware.
+- **Not shipped yet:** Flatpak, riscv64, Windows ARM64 and the Arch package.
 - **Fonts and icons:** the app uses egui's default fonts (listed in `ATTRIBUTION.md`, which every
   package ships) and original icons; nothing is downloaded at build time.
 
@@ -60,6 +62,7 @@ distributions.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-15 | minor | FreeBSD package (`.pkg` and `.tar.gz`) built in CI and added to the release. |
 | 2026-11-14 | minor | Third release, 0.3.0, cut with the flow above. |
 | 2026-11-13 | minor | Second release, 0.2.0, cut with the flow above. |
 | 2026-11-13 | major | Release pipeline written and run end to end: Linux, Windows, macOS and web packages, SHA256SUMS and a draft release; first release. |
