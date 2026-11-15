@@ -207,6 +207,40 @@ mod tests {
     }
 
     #[test]
+    fn prefix_lists_and_route_maps_round_trip_and_an_older_router_has_none() {
+        use crate::policy::{PrefixEntry, PrefixList, RouteMap};
+        let mut t = Topology::new();
+        let r = t.add_device(DeviceKind::Router, None, 0.0, 0.0).unwrap();
+        let json = to_json(&t).unwrap();
+        assert!(!json.contains("prefix_lists") && !json.contains("route_maps"), "a router with no policy leaves the keys out");
+        let mut l = PrefixList::new("L");
+        l.add(PrefixEntry { seq: 5, permit: true, net: "10.0.0.0/8".parse().unwrap(), ge: None, le: Some(24) }).unwrap();
+        let mut m = RouteMap::new("M");
+        m.clause_mut(10, true).unwrap().sets.local_pref = Some(200);
+        {
+            let d = t.device_mut(r).unwrap();
+            d.prefix_lists.push(l);
+            d.route_maps.push(m);
+            let mut b = crate::bgp::Bgp::new(65_001);
+            let n = b.neighbor_mut("10.0.0.2".parse().unwrap()).unwrap();
+            n.remote_as = Some(65_002);
+            n.route_map_in = Some("M".into());
+            n.prefix_list_out = Some("L".into());
+            b.redistribute.push(crate::bgp::Source::Connected);
+            b.redistribute_maps.insert("connected".into(), "M".into());
+            d.bgp = Some(b);
+            d.ospf = Some(crate::Ospf { process: 1, redistribute_static: true, redistribute_map: Some("M".into()), ..crate::Ospf::default() });
+        }
+        let back = from_json(&to_json(&t).unwrap()).unwrap();
+        assert_eq!(back, t);
+        // A hostile file is cleaned: a list with an impossible range loses that line.
+        let mut v: serde_json::Value = serde_json::from_str(&to_json(&t).unwrap()).unwrap();
+        v["topology"]["devices"][0]["prefix_lists"][0]["entries"][0]["ge"] = 2.into();
+        let clean = from_json(&v.to_string()).unwrap();
+        assert!(clean.device(r).unwrap().prefix_lists.first().is_some_and(|l| l.entries.is_empty()));
+    }
+
+    #[test]
     fn a_version_1_phone_opens_with_a_cellular_port_and_cell_settings_round_trip() {
         let mut t = Topology::new();
         let ph = t.add_model(crate::models::find("Smartphone").unwrap(), None, 0.0, 0.0).unwrap();

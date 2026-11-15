@@ -24,6 +24,7 @@ pub(crate) mod ikev2;
 pub(crate) mod l2sec;
 pub(crate) mod mgmt;
 pub(crate) mod pki;
+pub(crate) mod policy;
 pub(crate) mod qos;
 pub(crate) mod routing;
 pub(crate) mod security;
@@ -74,6 +75,8 @@ pub enum Mode {
     Eigrp,
     /// `R1(config-router)#` under `router bgp N`.
     Bgp,
+    /// `R1(config-route-map)#`: the route map's name and the clause's sequence number.
+    RouteMap(String, u32),
     /// `R1(config-rtr)#` under `ipv6 router eigrp N` (the EIGRP command bits, checked apart).
     Eigrp6,
     /// `R1(config-rtr)#` under `ipv6 router rip NAME` (the RIP command bits, checked apart).
@@ -160,6 +163,7 @@ impl Mode {
             Mode::Ospf6 => Modes::OSPF6,
             Mode::Eigrp | Mode::Eigrp6 => Modes::EIGRP,
             Mode::Bgp => Modes::BGP,
+            Mode::RouteMap(..) => Modes::ROUTE_MAP,
             Mode::Acl6(_) => Modes::ACL6,
             Mode::Dhcp6(_) => Modes::DHCP6,
             Mode::Acl(_) => Modes::ACL,
@@ -517,6 +521,7 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::DhcpPool(_) => format!("{n}(dhcp-config)#"),
         Mode::Svi(_) => format!("{n}(config-if)#"),
         Mode::Ospf | Mode::Rip | Mode::Eigrp | Mode::Bgp => format!("{n}(config-router)#"),
+        Mode::RouteMap(..) => format!("{n}(config-route-map)#"),
         Mode::Ospf6 | Mode::Eigrp6 | Mode::Rip6 => format!("{n}(config-rtr)#"),
         Mode::Acl6(_) => format!("{n}(config-ipv6-acl)#"),
         Mode::Dhcp6(_) => format!("{n}(config-dhcpv6)#"),
@@ -822,6 +827,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Rip
                 | Mode::Eigrp
                 | Mode::Bgp
+                | Mode::RouteMap(..)
                 | Mode::Eigrp6
                 | Mode::Rip6
                 | Mode::Acl(_)
@@ -899,6 +905,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Rip
                 | Mode::Eigrp
                 | Mode::Bgp
+                | Mode::RouteMap(..)
                 | Mode::Eigrp6
                 | Mode::Rip6
                 | Mode::Acl(_)
@@ -3807,7 +3814,35 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ShowIpBgpNeighbors
         | Id::ClearIpBgp
         | Id::DebugIpBgp
-        | Id::NoDebugIpBgp => bgp::command(&mut c, spec.id, &args),
+        | Id::NoDebugIpBgp
+        | Id::ClearIpBgpSoft
+        | Id::BgpNeighborPrefixList
+        | Id::NoBgpNeighborPrefixList
+        | Id::BgpNeighborRouteMap
+        | Id::NoBgpNeighborRouteMap => bgp::command(&mut c, spec.id, &args),
+        Id::PrefixListLine
+        | Id::NoPrefixList
+        | Id::NoPrefixListLine
+        | Id::ShowIpPrefixList
+        | Id::ShowRouteMap
+        | Id::RouteMapEnter
+        | Id::NoRouteMap
+        | Id::RmMatchAddress
+        | Id::NoRmMatchAddress
+        | Id::RmMatchMetric
+        | Id::NoRmMatchMetric
+        | Id::RmSetLocalPref
+        | Id::NoRmSetLocalPref
+        | Id::RmSetMetric
+        | Id::NoRmSetMetric
+        | Id::RmSetWeight
+        | Id::NoRmSetWeight
+        | Id::RmSetPrepend
+        | Id::NoRmSetPrepend
+        | Id::RmSetNextHop
+        | Id::NoRmSetNextHop
+        | Id::RmSetOrigin
+        | Id::NoRmSetOrigin => policy::command(&mut c, spec.id, &args),
         Id::Bandwidth | Id::NoBandwidth => {
             let bw = if spec.id == Id::Bandwidth {
                 Some(arg(0).parse::<u32>().ok().filter(|b| (1..=10_000_000).contains(b)).ok_or("% Bandwidth is 1-10000000 kbit/s")?)

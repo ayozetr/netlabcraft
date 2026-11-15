@@ -21,6 +21,7 @@ mod nat_verbose;
 mod ospf_database;
 mod ospf_debug;
 mod pki;
+mod policy;
 mod protocols_summary;
 mod route_summary;
 mod routing;
@@ -411,6 +412,7 @@ fn every_command_survives_hostile_arguments() {
                     "en\nconf t\nvlan 5",
                     "en\nconf t\nrouter eigrp 1",
                     "en\nconf t\nrouter bgp 65001",
+                    "en\nconf t\nroute-map RM permit 10",
                     "en\nconf t\nint lo0",
                     "en\nconf t\nrouter ospf 1",
                     "en\nconf t\nip access-list extended X",

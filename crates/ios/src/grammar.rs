@@ -93,6 +93,8 @@ impl Modes {
     pub const PKI_SERVER: Modes = Modes(1 << 51);
     /// `router bgp N`.
     pub const BGP: Modes = Modes(1 << 52);
+    /// `route-map NAME [permit|deny] [N]`.
+    pub const ROUTE_MAP: Modes = Modes(1 << 53);
     /// Every command mode, either device.
     pub const ANY_MODE: Modes = Modes(
         63 | 256
@@ -128,7 +130,8 @@ impl Modes {
             | (1 << 49)
             | (1 << 50)
             | (1 << 51)
-            | (1 << 52),
+            | (1 << 52)
+            | (1 << 53),
     );
     pub const BOTH: Modes = Modes(192);
     /// A router with a switch card (a device flag): the VLAN database and the switching
@@ -797,6 +800,35 @@ pub enum Id {
     ClearIpBgp,
     DebugIpBgp,
     NoDebugIpBgp,
+    ClearIpBgpSoft,
+    BgpNeighborPrefixList,
+    NoBgpNeighborPrefixList,
+    BgpNeighborRouteMap,
+    NoBgpNeighborRouteMap,
+    // ---- prefix lists and route maps (exec/policy.rs) ----
+    PrefixListLine,
+    NoPrefixList,
+    NoPrefixListLine,
+    ShowIpPrefixList,
+    ShowRouteMap,
+    RouteMapEnter,
+    NoRouteMap,
+    RmMatchAddress,
+    NoRmMatchAddress,
+    RmMatchMetric,
+    NoRmMatchMetric,
+    RmSetLocalPref,
+    NoRmSetLocalPref,
+    RmSetMetric,
+    NoRmSetMetric,
+    RmSetWeight,
+    NoRmSetWeight,
+    RmSetPrepend,
+    NoRmSetPrepend,
+    RmSetNextHop,
+    NoRmSetNextHop,
+    RmSetOrigin,
+    NoRmSetOrigin,
     Bandwidth,
     NoBandwidth,
     Delay,
@@ -1106,6 +1138,7 @@ const SUBMODES: Modes = Modes::IF
     .or(Modes::OSPF6)
     .or(Modes::EIGRP)
     .or(Modes::BGP)
+    .or(Modes::ROUTE_MAP)
     .or(VPN_MODES)
     .or(QOS_MODES)
     .or(Modes::OBJECT)
@@ -1462,7 +1495,7 @@ pub static SPECS: &[Spec] = &[
         OspfRedistributeStatic,
         Modes::OSPF,
         Modes::BOTH,
-        [K("redistribute"), K("static"), Rest("[subnets]")],
+        [K("redistribute"), K("static"), Rest("[subnets] [route-map NAME]")],
         "Advertise static routes as external"
     ),
     spec!(NoOspfRedistributeStatic, Modes::OSPF, Modes::BOTH, [K("no"), K("redistribute"), K("static")], "Stop advertising static routes"),
@@ -2463,7 +2496,7 @@ pub static SPECS: &[Spec] = &[
         BgpRedistribute,
         Modes::BGP,
         Modes::BOTH,
-        [K("redistribute"), Rest("{connected|static|ospf <1-65535>}")],
+        [K("redistribute"), Rest("{connected|static|ospf <1-65535>} [route-map NAME]")],
         "Advertise the routes another source gave"
     ),
     spec!(NoBgpRedistribute, Modes::BGP, Modes::BOTH, [K("no"), K("redistribute"), Rest("{connected|static|ospf}")], "Stop advertising them"),
@@ -2476,6 +2509,124 @@ pub static SPECS: &[Spec] = &[
     spec!(ClearIpBgp, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("bgp"), Arg("{*|A.B.C.D}")], "Reset BGP sessions so they start again"),
     spec!(DebugIpBgp, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("bgp")], "Report the BGP messages this router hears and its session changes"),
     spec!(NoDebugIpBgp, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("bgp")], "Stop reporting BGP"),
+    spec!(
+        ClearIpBgpSoft,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("clear"), K("ip"), K("bgp"), Arg("{*|A.B.C.D}"), K("soft")],
+        "Apply the neighbour policy again without resetting sessions"
+    ),
+    spec!(
+        ClearIpBgpSoft,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("clear"), K("ip"), K("bgp"), Arg("{*|A.B.C.D}"), K("soft"), Arg("{in|out}")],
+        "Apply the neighbour policy again in one direction"
+    ),
+    spec!(
+        BgpNeighborPrefixList,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D"), K("prefix-list"), Arg("NAME"), Arg("{in|out}")],
+        "Filter the prefixes this neighbour sends or is sent with a prefix list"
+    ),
+    spec!(
+        NoBgpNeighborPrefixList,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D"), K("prefix-list"), Arg("NAME"), Arg("{in|out}")],
+        "Stop filtering this neighbour with the prefix list"
+    ),
+    spec!(
+        BgpNeighborRouteMap,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D"), K("route-map"), Arg("NAME"), Arg("{in|out}")],
+        "Filter and change the paths this neighbour sends or is sent with a route map"
+    ),
+    spec!(
+        NoBgpNeighborRouteMap,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D"), K("route-map"), Arg("NAME"), Arg("{in|out}")],
+        "Stop applying the route map to this neighbour"
+    ),
+    spec!(
+        PrefixListLine,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ip"), K("prefix-list"), Arg("NAME"), Rest("[seq <1-4294967294>] {permit|deny} A.B.C.D/LEN [ge <0-32>] [le <0-32>]")],
+        "Add a line to a prefix list"
+    ),
+    spec!(NoPrefixList, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("prefix-list"), Arg("NAME")], "Delete a prefix list"),
+    spec!(
+        NoPrefixListLine,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("prefix-list"), Arg("NAME"), Rest("{seq <1-4294967294>|{permit|deny} A.B.C.D/LEN [ge <0-32>] [le <0-32>]}")],
+        "Delete one line of a prefix list"
+    ),
+    spec!(ShowIpPrefixList, EXECS, Modes::BOTH, [K("show"), K("ip"), K("prefix-list")], "Every prefix list"),
+    spec!(ShowIpPrefixList, EXECS, Modes::BOTH, [K("show"), K("ip"), K("prefix-list"), Arg("NAME")], "One prefix list"),
+    spec!(ShowRouteMap, EXECS, Modes::BOTH, [K("show"), K("route-map")], "Every route map"),
+    spec!(ShowRouteMap, EXECS, Modes::BOTH, [K("show"), K("route-map"), Arg("NAME")], "One route map"),
+    spec!(RouteMapEnter, Modes::CONFIG, Modes::BOTH, [K("route-map"), Arg("NAME")], "Create or edit a route map clause"),
+    spec!(
+        RouteMapEnter,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("route-map"), Arg("NAME"), Rest("{permit|deny} [<1-4294967294>]")],
+        "Create or edit a route map clause that permits or denies"
+    ),
+    spec!(NoRouteMap, Modes::CONFIG, Modes::BOTH, [K("no"), K("route-map"), Arg("NAME")], "Delete a route map"),
+    spec!(
+        NoRouteMap,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("route-map"), Arg("NAME"), Rest("{permit|deny} [<1-4294967294>]")],
+        "Delete one clause of a route map"
+    ),
+    spec!(
+        RmMatchAddress,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("match"), K("ip"), K("address"), Rest("[prefix-list] <name> [<name>...]")],
+        "Match prefixes that prefix lists or access lists permit"
+    ),
+    spec!(NoRmMatchAddress, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("match"), K("ip"), K("address")], "Remove every address match"),
+    spec!(
+        NoRmMatchAddress,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("no"), K("match"), K("ip"), K("address"), Rest("[prefix-list] <name> [<name>...]")],
+        "Remove these names from the address match"
+    ),
+    spec!(RmMatchMetric, Modes::ROUTE_MAP, Modes::BOTH, [K("match"), K("metric"), Arg("<0-4294967295>")], "Match routes with this metric"),
+    spec!(NoRmMatchMetric, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("match"), K("metric")], "Remove the metric match"),
+    spec!(
+        RmSetLocalPref,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("set"), K("local-preference"), Arg("<0-4294967295>")],
+        "Give the paths this local preference"
+    ),
+    spec!(NoRmSetLocalPref, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("local-preference")], "Leave the local preference alone"),
+    spec!(RmSetMetric, Modes::ROUTE_MAP, Modes::BOTH, [K("set"), K("metric"), Arg("<0-4294967295>")], "Give the routes this metric"),
+    spec!(NoRmSetMetric, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("metric")], "Leave the metric alone"),
+    spec!(RmSetWeight, Modes::ROUTE_MAP, Modes::BOTH, [K("set"), K("weight"), Arg("<0-65535>")], "Give the paths this weight"),
+    spec!(NoRmSetWeight, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("weight")], "Leave the weight alone"),
+    spec!(
+        RmSetPrepend,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("set"), K("as-path"), K("prepend"), Rest("<AS> [<AS>...]")],
+        "Put these AS numbers in front of the AS path"
+    ),
+    spec!(NoRmSetPrepend, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("as-path"), K("prepend")], "Leave the AS path alone"),
+    spec!(RmSetNextHop, Modes::ROUTE_MAP, Modes::BOTH, [K("set"), K("ip"), K("next-hop"), Arg("A.B.C.D")], "Give the paths this next hop"),
+    spec!(NoRmSetNextHop, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("ip"), K("next-hop")], "Leave the next hop alone"),
+    spec!(RmSetOrigin, Modes::ROUTE_MAP, Modes::BOTH, [K("set"), K("origin"), Arg("{igp|egp|incomplete}")], "Give the paths this origin"),
+    spec!(NoRmSetOrigin, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("origin")], "Leave the origin alone"),
     spec!(Bandwidth, Modes::IF, Modes::BOTH, [K("bandwidth"), Arg("<1-10000000>")], "The bandwidth EIGRP's metric uses (kbit/s)"),
     spec!(NoBandwidth, Modes::IF, Modes::BOTH, [K("no"), K("bandwidth")], "Bandwidth from the port's speed again"),
     spec!(Delay, Modes::IF, Modes::BOTH, [K("delay"), Arg("<1-16777215>")], "The delay EIGRP's metric adds (tens of microseconds)"),
@@ -4489,6 +4640,7 @@ mod tests {
                 Modes::PKI_TRUSTPOINT,
                 Modes::PKI_SERVER,
                 Modes::BGP,
+                Modes::ROUTE_MAP,
             ]
             .into_iter()
             .find(|m| s.modes.has(*m))
