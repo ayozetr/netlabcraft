@@ -331,6 +331,8 @@ pub enum Id {
     L2ShowStpBrief,
     L2ShowStpDetailAll,
     L2ShowStpInterface,
+    L2ShowStpSummaryTotals,
+    L2ShowStpVlanBrief,
     L2LoadBalance,
     L2NoLoadBalance,
     L2ShowLoadBalance,
@@ -2997,11 +2999,25 @@ pub static SPECS: &[Spec] = &[
     ),
     spec!(L2ShowStpSummary, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree"), K("summary")], "Spanning-tree settings and port states per VLAN"),
     spec!(
+        L2ShowStpSummaryTotals,
+        EXECS,
+        Modes::SWITCH,
+        [K("show"), K("spanning-tree"), K("summary"), K("totals")],
+        "The settings and one total row of port states, without a row per VLAN"
+    ),
+    spec!(
         L2ShowStpDetail,
         EXECS,
         Modes::SWITCH,
         [K("show"), K("spanning-tree"), K("vlan"), Arg("<1-4094>"), K("detail")],
         "One VLAN's tree, port by port"
+    ),
+    spec!(
+        L2ShowStpVlanBrief,
+        EXECS,
+        Modes::SWITCH,
+        [K("show"), K("spanning-tree"), K("vlan"), Arg("<1-4094>"), K("brief")],
+        "One VLAN's line: the root, its cost, the root port and how many ports forward, learn or block"
     ),
     spec!(
         L2ShowStpBrief,
@@ -3016,7 +3032,7 @@ pub static SPECS: &[Spec] = &[
         EXECS,
         Modes::SWITCH,
         [K("show"), K("spanning-tree"), K("interface"), Rest("<interface>")],
-        "One port's role and state in every VLAN, and its protection settings"
+        "One port's role and state in every VLAN, and its protection settings (`detail` after the port: each VLAN in full)"
     ),
     spec!(
         L2RecoveryCause,

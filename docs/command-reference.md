@@ -909,10 +909,12 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `spanning-tree vlan <1-4094>[,-] port-priority <0-240>` | interface | switch | Port priority in these VLANs |
 | `no spanning-tree vlan <1-4094>[,-] port-priority` | interface | switch | Port priority back to 128 in these VLANs |
 | `show spanning-tree summary` | user, privileged | switch | Spanning-tree settings and port states per VLAN |
+| `show spanning-tree summary totals` | user, privileged | switch | The settings and one total row of port states, without a row per VLAN |
 | `show spanning-tree vlan <1-4094> detail` | user, privileged | switch | One VLAN's tree, port by port |
+| `show spanning-tree vlan <1-4094> brief` | user, privileged | switch | One VLAN's line: the root, its cost, the root port and how many ports forward, learn or block |
 | `show spanning-tree brief` | user, privileged | switch | One line per VLAN: the root, its cost, the root port and how many ports forward, learn or block |
 | `show spanning-tree detail` | user, privileged | switch | Every VLAN's tree, port by port |
-| `show spanning-tree interface <interface>` | user, privileged | switch | One port's role and state in every VLAN, and its protection settings |
+| `show spanning-tree interface <interface>` | user, privileged | switch | One port's role and state in every VLAN, and its protection settings (`detail` after the port: each VLAN in full) |
 | `errdisable recovery cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|all}` | config | switch | Bring ports shut for this reason back by themselves |
 | `no errdisable recovery cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|all}` | config | switch | Ports shut for this reason wait for shutdown / no shutdown |
 | `errdisable recovery interval <30-86400>` | config | switch | Seconds before an err-disabled port comes back |
