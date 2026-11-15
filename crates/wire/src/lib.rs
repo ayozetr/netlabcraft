@@ -42,6 +42,7 @@ pub mod vrrp;
 
 pub mod mgmt;
 pub mod netconf;
+pub mod netflow;
 pub mod ospf6;
 pub mod ospfdb;
 
