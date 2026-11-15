@@ -1,6 +1,6 @@
 # NetLabCraft — instructions for agents
 
-NetLabCraft is a clean-room, open-source, pure-Rust network simulator targeting Cisco Packet Tracer parity for teaching and lab work — and superiority (real wire-format frames, pcap export, speed, openness, agent control). It runs natively on Linux, Windows, macOS and BSD, and on the web via WASM. It follows the conventions of the storytold Crafting Apps (`../gridcraft`, `../cadcraft`, `../filmcraft`, `../soundcraft`…).
+NetLabCraft is a clean-room, open-source, pure-Rust network simulator targeting Cisco Packet Tracer parity for teaching and lab work — and superiority (real wire-format frames, pcap export, speed, openness, agent control). It runs natively on Linux, Windows, macOS and FreeBSD, and on the web via WASM. It follows the conventions of the storytold Crafting Apps (`../gridcraft`, `../cadcraft`, `../filmcraft`, `../soundcraft`…).
 
 Standards and learnings shared across the crafting apps live in `storytold/craftrules`. Follow its standards where they apply.
 

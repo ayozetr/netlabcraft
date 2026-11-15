@@ -10,13 +10,13 @@
 
 <p align="center">
   Build a network, configure routers and switches by typing the commands you learn in class,
-  and watch every frame cross it. It runs natively on Linux, Windows and macOS, and in the
+  and watch every frame cross it. It runs natively on Linux, Windows, macOS and FreeBSD, and in the
   browser via WebAssembly.
 </p>
 
 <p align="center">
   <img alt="Written in Rust" src="https://img.shields.io/badge/written%20in-Rust-2f6f85?style=flat-square&logo=rust&logoColor=white">
-  <img alt="Runs on Linux, Windows, macOS and the web" src="https://img.shields.io/badge/runs%20on-Linux%20%C2%B7%20Windows%20%C2%B7%20macOS%20%C2%B7%20Web-4f95ad?style=flat-square">
+  <img alt="Runs on Linux, Windows, macOS, FreeBSD and the web" src="https://img.shields.io/badge/runs%20on-Linux%20%C2%B7%20Windows%20%C2%B7%20macOS%20%C2%B7%20FreeBSD%20%C2%B7%20Web-4f95ad?style=flat-square">
   <img alt="License: MIT OR Apache-2.0" src="https://img.shields.io/badge/license-MIT%20%2F%20Apache--2.0-2f6f85?style=flat-square">
   <img alt="Agent-drivable over MCP" src="https://img.shields.io/badge/agents-MCP-4f95ad?style=flat-square">
   <img alt="Interface in 7 languages" src="https://img.shields.io/badge/interface-7%20languages-2f6f85?style=flat-square">
@@ -149,6 +149,15 @@ packaging/linux/install.sh            # builds, then installs to ~/.local: menu 
 packaging/linux/install.sh --remove   # uninstalls
 ```
 
+### Install on FreeBSD
+
+The release has a `netlabcraft-<version>-freebsd-x86_64.pkg` (built in CI, not signed, and not yet
+run on real hardware by the maintainer):
+
+```sh
+pkg add ./netlabcraft-<version>-freebsd-x86_64.pkg    # as root; pulls in the libraries it loads (Wayland/X11, Vulkan, Mesa)
+```
+
 ### Web
 
 ```sh
@@ -193,7 +202,7 @@ egui frontend is a separate crate, so the UI can be swapped without touching the
 - **Contributor and agent rules** (clean room, asset policy, never-crash, quality gates): [`AGENTS.md`](AGENTS.md); how to contribute: [`CONTRIBUTING.md`](CONTRIBUTING.md); security reports: [`SECURITY.md`](SECURITY.md)
 - **How it is built:** [`docs/architecture.md`](docs/architecture.md); decisions in [`docs/decisions.md`](docs/decisions.md)
 - **Bundled assets:** each one is listed with its licence in [`ATTRIBUTION.md`](ATTRIBUTION.md)
-- **Releases:** installers for Linux, Windows, macOS and the browser on the [Releases page](https://github.com/ayozetr/netlabcraft/releases) (not code-signed yet); how they are built: [`docs/releasing.md`](docs/releasing.md)
+- **Releases:** installers for Linux, Windows, macOS, FreeBSD and the browser on the [Releases page](https://github.com/ayozetr/netlabcraft/releases) (not code-signed yet); how they are built: [`docs/releasing.md`](docs/releasing.md)
 
 ## Roadmap
 
@@ -211,7 +220,7 @@ windows, and more interface languages. Stage, numbers and estimates are in
 ## Downloads
 
 Installers for Linux (AppImage, `.deb`, `.rpm`, `.tar.gz`; x86_64 and aarch64), Windows (`.msi` and
-a portable zip), macOS (a universal `.dmg`) and the browser (a static site) are on the
+a portable zip), macOS (a universal `.dmg`), FreeBSD (a `.pkg` and a `.tar.gz`, x86_64) and the browser (a static site) are on the
 [Releases page](https://github.com/ayozetr/netlabcraft/releases), with a `SHA256SUMS.txt` to check
 them against. They are **not code-signed yet**, so Windows and macOS warn you the first time you
 run them; each release's notes say what to click. You can also build from source with the

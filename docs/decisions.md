@@ -12,6 +12,10 @@ Reading the reference app's encrypted, compressed lab format would mean either r
 
 Command names and configuration syntax are kept (they are what students learn and what configs are made of); prompts follow the usual `name>` / `name#` / `name(config)#` convention. All output text, table layouts and help strings are original.
 
+## The FreeBSD package is unsigned and untested on hardware
+
+The release ships a FreeBSD `.pkg` and `.tar.gz` built by the `freebsd` CI job inside a FreeBSD 14 VM (no FreeBSD runners exist). The VM has no GPU, so CI proves that it builds, packages, installs with `pkg add` and that the CLI runs, not that the window opens. The package is not signed (no package repository, no signing key), and the maintainer has not yet run it on real FreeBSD hardware. The README says so; it counts as supported once someone has run it.
+
 ## Real frames, simulated time
 
 Devices exchange encoded frames over a discrete-event queue in microseconds. Deterministic, wasm-safe, and captures are valid pcap.
