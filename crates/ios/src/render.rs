@@ -753,7 +753,7 @@ pub fn ip_route_summary(table: &[netlabcraft_sim::RouteEntry]) -> String {
 
 pub fn ip_route_table(d: &Device, table: &[netlabcraft_sim::RouteEntry]) -> String {
     let mut s = String::from(
-        "Codes: C connected, L local, S static, R RIP, D EIGRP, D EX EIGRP external, B BGP, O OSPF, O IA OSPF other area, O E1 and O E2 OSPF external, O*E2 OSPF external default, O*IA default into a stub area, * the default route\n\n",
+        "Codes: C connected, L local, S static, R RIP, D EIGRP, B BGP, D EX EIGRP external, O OSPF, O IA OSPF other area, O E1 and O E2 OSPF external, O*E2 OSPF external default, O*IA default into a stub area, * the default route\n\n",
     );
     if d.kind == DeviceKind::Switch && !d.ip_routing {
         let _ = writeln!(
