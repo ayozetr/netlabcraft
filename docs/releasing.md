@@ -1,6 +1,6 @@
 # Releasing NetLabCraft
 
-> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (a FreeBSD package) · earlier: minor (third release, 0.3.0) · earlier: major (the release pipeline exists and ran end to end; first release)
+> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (fourth release, 0.4.0) · earlier: minor (a FreeBSD package) · earlier: minor (third release, 0.3.0) · earlier: major (the release pipeline exists and ran end to end; first release)
 
 The recipe follows the shared Crafting Apps playbook (`release/playbook.md` in craftrules): a
 release is whatever is on the `release` branch. Pushing to it makes `.github/workflows/release.yml`
@@ -63,6 +63,7 @@ distributions.
 | Date | Change | Summary |
 |---|---|---|
 | 2026-11-15 | minor | FreeBSD package (`.pkg` and `.tar.gz`) built in CI and added to the release. |
+| 2026-11-15 | minor | Fourth release, 0.4.0, cut with the flow above; the first with a FreeBSD package. |
 | 2026-11-14 | minor | Third release, 0.3.0, cut with the flow above. |
 | 2026-11-13 | minor | Second release, 0.2.0, cut with the flow above. |
 | 2026-11-13 | major | Release pipeline written and run end to end: Linux, Windows, macOS and web packages, SHA256SUMS and a draft release; first release. |
