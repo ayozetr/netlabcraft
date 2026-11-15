@@ -1,9 +1,9 @@
 # NetLabCraft lab book
 
-> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (lab 37: filter routes with a prefix list and a route map) · earlier: minor (lab 36: BGP between two autonomous systems) · earlier: minor (four more labs, 32 to 35: EIGRP, IPv6 routing, EtherChannel faults, port-security faults) · earlier: minor (an unnumbered cellular lab, M9.10) · earlier: minor (four more labs, 28 to 31: OSPF authentication, ICMP in ACLs, spanning-tree views, the OSPF database) · earlier: minor (seven troubleshooting labs, 21 to 27) · earlier: major (created: 20 labs over the three CCNA courses) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (lab 38: capture traffic with port mirroring) · earlier: minor (lab 37: filter routes with a prefix list and a route map) · earlier: minor (lab 36: BGP between two autonomous systems) · earlier: minor (four more labs, 32 to 35: EIGRP, IPv6 routing, EtherChannel faults, port-security faults) · earlier: minor (an unnumbered cellular lab, M9.10) · earlier: minor (four more labs, 28 to 31: OSPF authentication, ICMP in ACLs, spanning-tree views, the OSPF database) · earlier: minor (seven troubleshooting labs, 21 to 27) · earlier: major (created: 20 labs over the three CCNA courses) · **Target:** Cisco Packet Tracer 9.0
 
-Thirty-seven hands-on labs over the topics of the three CCNA courses, written for NetLabCraft
-from scratch. Labs 1 to 20, 32, 33, 36 and 37 each build one topic; labs 21 to 29, 34 and 35 are troubleshooting labs: they
+Thirty-eight hands-on labs over the topics of the three CCNA courses, written for NetLabCraft
+from scratch. Labs 1 to 20, 32, 33, 36, 37 and 38 each build one topic; labs 21 to 29, 34 and 35 are troubleshooting labs: they
 build a working network, break it with commands, and walk the symptoms, the `show` commands
 that tell the faults apart, and the repairs; labs 30 and 31 are inspection labs that teach
 reading a protocol's own views (spanning-tree roles and states, the OSPF database), the second
@@ -14,7 +14,7 @@ command to type, and what to check with which command.
 Every lab is also a script: its `lab`, `console` and `verify` blocks are run end to end, as
 written, by `crates/engine/tests/lab_book.rs` (straight through the engine) and, for several
 labs, by `apps/netlabcraft-cli/tests/mcp_lab_book.rs` (through `netlabcraft-cli mcp`, the way an
-agent drives it; 16 of the 37). A lab that passes there works when typed by hand.
+agent drives it; 16 of the 38). A lab that passes there works when typed by hand.
 
 ## How to read a lab
 
@@ -75,6 +75,7 @@ One more lab has no number because it belongs to no CCNA course: [Mobile data ov
 | 35 | [Troubleshooting: port security that shuts the wrong port](35-troubleshoot-port-security.md) | CCNA 2 | err-disabled ports, a hand-typed address, `restrict`, sticky, `show port-security`, `errdisable recovery` |
 | 36 | [BGP between two autonomous systems](36-bgp.md) | CCNA 3 follow-up | `router bgp`, eBGP and iBGP sessions, `network` and the routing table, `next-hop-self`, `show ip bgp`, `clear ip bgp` |
 | 37 | [Filter routes with a prefix list and a route map](37-bgp-prefix-lists-route-maps.md) | CCNA 3 follow-up | `ip prefix-list` with `ge` and `le`, `neighbor … prefix-list`, `route-map` with `match` and `set`, local preference, the two implicit denies, a name with no list |
+| 38 | [Capture traffic with port mirroring](38-port-mirroring.md) | CCNA 2 follow-up | `monitor session` with `source interface`, `source vlan` and `destination interface`, `rx` and `tx`, ranges, the checks a session refuses, a Sniffer on the destination |
 
 ## Running the scripts
 
