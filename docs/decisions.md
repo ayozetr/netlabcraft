@@ -199,3 +199,7 @@ Every frame that crosses a cable is counted at both ends (`Sim::l2_count`, bytes
 ## NAT translations age out when the next packet is translated, by kind
 
 A dynamic translation lives until it has been idle for its timeout: 86,400 s for an address alone (and TCP flows), 300 s for UDP flows and 60 s for ICMP flows, the usual defaults, changed with `ip nat translation timeout`, `udp-timeout`, `icmp-timeout` and `tcp-timeout`. The simulator has no timer per translation: an expired one is dropped from the table when the next packet is translated (either direction) and is left out of `show ip nat translations`, `show ip nat statistics` and the ICMP-error lookup from then on, so what a person sees never depends on whether a packet came by. Static entries never expire. TCP's `finrst-timeout` and `syn-timeout` are not there: no translation follows its connection's state.
+
+## `show ip route summary` prints a memory estimate that is a count times a fixed size
+
+The simulator keeps no routing-table memory pool, so the line at the end of `show ip route summary` is the number of routes times 160 bytes, and says it is a simulated estimate and not a measurement. It is the same on every run and moves with the table, which is what a lab asks of it (compare before and after a summary or a filter); it is not comparable with a real router's figure.

@@ -690,7 +690,10 @@ pub fn ip_int_brief(t: &Topology, d: &Device) -> String {
 
 /// The routing table, from the rows the simulation has (a row per path when several share the
 /// traffic).
-/// `show ip route summary`: how many routes each source gave, and how many there are in all.
+/// Bytes `show ip route summary` counts for one route in its memory estimate.
+const ROUTE_ENTRY_BYTES: usize = 160;
+
+/// `show ip route summary`: how many routes each source gave, how many there are in all and per mask length, and an estimate of the memory they take.
 pub fn ip_route_summary(table: &[netlabcraft_sim::RouteEntry]) -> String {
     let count = |codes: &[char]| table.iter().filter(|r| codes.contains(&r.code)).count();
     let rows = [
@@ -711,6 +714,22 @@ pub fn ip_route_summary(table: &[netlabcraft_sim::RouteEntry]) -> String {
     }
     let prefixes: std::collections::BTreeSet<_> = table.iter().map(|r| r.net.to_string()).collect();
     let _ = writeln!(s, "{:<10} {:<7} {} distinct prefix{}", "total", table.len(), prefixes.len(), if prefixes.len() == 1 { "" } else { "es" });
+    // How many routes each mask length has.
+    let mut by_mask: std::collections::BTreeMap<u8, usize> = std::collections::BTreeMap::new();
+    for r in table {
+        *by_mask.entry(r.net.prefix).or_insert(0) += 1;
+    }
+    s.push_str("Routes by mask:\n");
+    for (prefix, n) in &by_mask {
+        let _ = writeln!(s, "  /{prefix:<3} {n}");
+    }
+    // Not a measurement: the simulator keeps no memory pool, so the figure is a count times a fixed size.
+    let _ = writeln!(
+        s,
+        "Memory: {} routes x {ROUTE_ENTRY_BYTES} bytes = {} bytes (simulated estimate, not a measurement)",
+        table.len(),
+        table.len().saturating_mul(ROUTE_ENTRY_BYTES)
+    );
     match table.iter().find(|r| r.net.prefix == 0) {
         Some(r) => {
             let via = r.via.map(|v| format!("via {v}")).or_else(|| r.iface.as_ref().map(|i| format!("out {i}"))).unwrap_or_default();
