@@ -26,6 +26,7 @@ pub(crate) mod mgmt;
 pub(crate) mod pki;
 pub(crate) mod policy;
 pub(crate) mod qos;
+pub(crate) mod redist;
 pub(crate) mod routing;
 pub(crate) mod security;
 pub(crate) mod swroute;
@@ -1954,9 +1955,20 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::IpOspfMd5Key
         | Id::NoIpOspfMd5Key => routing::ospf_if_command(&mut c, spec.id, &args),
         Id::AreaAuth | Id::NoAreaAuth => routing::ospf_area_auth(&mut c, spec.id == Id::AreaAuth, &args),
-        Id::OspfRedistributeStatic | Id::NoOspfRedistributeStatic => {
-            routing::ospf_redistribute(&mut c, spec.id == Id::OspfRedistributeStatic, arg(0))
-        }
+        Id::OspfRedistribute
+        | Id::NoOspfRedistribute
+        | Id::RipRedistribute
+        | Id::NoRipRedistribute
+        | Id::EigrpRedistribute
+        | Id::NoEigrpRedistribute
+        | Id::RipDefaultMetric
+        | Id::NoRipDefaultMetric
+        | Id::OspfDefaultMetric
+        | Id::NoOspfDefaultMetric
+        | Id::EigrpDefaultMetric
+        | Id::NoEigrpDefaultMetric
+        | Id::DistList
+        | Id::NoDistList => redist::command(&mut c, spec.id, spec.path, &args),
         Id::ClearIpOspf => routing::clear_ospf(&mut c, arg(0)),
         Id::Ipv6AddressAutoconfig | Id::NoIpv6AddressAutoconfig | Id::Ipv6AddressDhcp | Id::NoIpv6AddressDhcp => {
             routing::ipv6_client(&mut c, spec.id, spec.path.len() == 4)
@@ -3858,6 +3870,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::NoRmSetLocalPref
         | Id::RmSetMetric
         | Id::NoRmSetMetric
+        | Id::RmSetMetricType
+        | Id::NoRmSetMetricType
         | Id::RmSetWeight
         | Id::NoRmSetWeight
         | Id::RmSetPrepend

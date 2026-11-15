@@ -38,6 +38,7 @@ pub mod policy;
 pub mod pppoe;
 pub mod psu;
 pub mod qos;
+pub mod redist;
 pub mod routing;
 pub mod scenario;
 pub mod security;
@@ -1214,6 +1215,39 @@ pub struct Ospf {
     /// `redistribute static route-map NAME`: only the static routes the map permits.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub redistribute_map: Option<String>,
+    /// `redistribute SOURCE …` lines. (`redistribute_static` and `redistribute_map` above are
+    /// what older lab files held; [`Ospf::sanitize`] moves them here on load.)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub redistribute: Vec<redist::Redist>,
+    /// `default-metric N`: the metric of redistributed routes that name none (20 when not set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_metric: Option<u32>,
+    /// `distribute-list … in|out`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub distribute: Vec<redist::DistList>,
+}
+
+impl Ospf {
+    /// Cleans what a lab file holds: the old static-only settings become a `redistribute`
+    /// line, and the lists are bounded.
+    pub fn sanitize(&mut self) {
+        if self.redistribute_static {
+            if !self.redistribute.iter().any(|r| r.source == redist::RedistSource::Static) {
+                let mut r = redist::Redist::new(redist::RedistSource::Static);
+                r.route_map = self.redistribute_map.take();
+                self.redistribute.push(r);
+            }
+            self.redistribute_static = false;
+        }
+        self.redistribute_map = None;
+        redist::sanitize_redistribute(&mut self.redistribute);
+        redist::sanitize_dist_lists(&mut self.distribute);
+    }
+
+    /// The `redistribute` line for a source, if there is one.
+    pub fn redistributes(&self, source: redist::RedistSource) -> Option<&redist::Redist> {
+        self.redistribute.iter().find(|r| r.source == source)
+    }
 }
 
 /// The SNMP agent's settings.
@@ -1419,11 +1453,30 @@ pub struct Rip {
     /// `timers basic UPDATE INVALID HOLDDOWN FLUSH` (seconds; 30 180 180 240 when not set).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timers: Option<[u32; 4]>,
+    /// `redistribute SOURCE [metric N] [route-map NAME]`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub redistribute: Vec<redist::Redist>,
+    /// `default-metric N`: the hop count of redistributed routes that name none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_metric: Option<u8>,
+    /// `distribute-list … in|out`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub distribute: Vec<redist::DistList>,
 }
 
 impl Default for Rip {
     fn default() -> Self {
-        Rip { version: 1, networks: Vec::new(), passive: Vec::new(), default_originate: false, auto_summary: false, timers: None }
+        Rip {
+            version: 1,
+            networks: Vec::new(),
+            passive: Vec::new(),
+            default_originate: false,
+            auto_summary: false,
+            timers: None,
+            redistribute: Vec::new(),
+            default_metric: None,
+            distribute: Vec::new(),
+        }
     }
 }
 
@@ -1482,6 +1535,15 @@ pub struct Eigrp {
     /// are installed too (1 when not set: equal cost only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub variance: Option<u8>,
+    /// `redistribute SOURCE [metric BW DELAY REL LOAD MTU] [route-map NAME]`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub redistribute: Vec<redist::Redist>,
+    /// `default-metric BW DELAY REL LOAD MTU`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_metric: Option<redist::EigrpMetric>,
+    /// `distribute-list … in|out`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub distribute: Vec<redist::DistList>,
 }
 
 impl Eigrp {
@@ -2661,6 +2723,19 @@ impl Topology {
                 if let Some(e) = &mut d.eigrp {
                     e.networks.truncate(MAX_NETWORKS);
                     e.passive.truncate(MAX_NETWORKS);
+                    redist::sanitize_redistribute(&mut e.redistribute);
+                    redist::sanitize_dist_lists(&mut e.distribute);
+                    if let Some(m) = &mut e.default_metric {
+                        m.sanitize();
+                    }
+                }
+                if let Some(o) = &mut d.ospf {
+                    o.sanitize();
+                }
+                if let Some(r) = &mut d.rip {
+                    redist::sanitize_redistribute(&mut r.redistribute);
+                    redist::sanitize_dist_lists(&mut r.distribute);
+                    r.default_metric = r.default_metric.map(|m| m.clamp(1, 16));
                 }
                 if let Some(e) = &mut d.eigrp6 {
                     e.passive.truncate(MAX_NETWORKS);

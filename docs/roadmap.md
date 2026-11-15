@@ -1,6 +1,6 @@
 # Roadmap
 
-> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (prefix lists, route maps and lab 37) · earlier: minor (BGP and lab 36) · earlier: minor (labs 32 to 35) · earlier: minor (focus paragraph updated for release 0.2.0; M9.7: four more labs, console depth second round) · earlier: minor (M9.4: seven troubleshooting labs) · earlier: minor (M7 first release done: packages and the release workflow), major (alpha gate 1 met through the lab book; every beta gate met; milestone states and estimates after the security, instructor, Simulation-mode, wireless, end-device, automation and routing rounds) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (redistribution, distribute lists and lab 39) · earlier: minor (prefix lists, route maps and lab 37) · earlier: minor (BGP and lab 36) · earlier: minor (labs 32 to 35) · earlier: minor (focus paragraph updated for release 0.2.0; M9.7: four more labs, console depth second round) · earlier: minor (M9.4: seven troubleshooting labs) · earlier: minor (M7 first release done: packages and the release workflow), major (alpha gate 1 met through the lab book; every beta gate met; milestone states and estimates after the security, instructor, Simulation-mode, wireless, end-device, automation and routing rounds) · **Target:** Cisco Packet Tracer 9.0
 
 Milestones, the current focus and what comes next. The summary is in
 [`ROADMAP.md`](../ROADMAP.md); the ranked work list is [gaps.md](gaps.md).
@@ -18,6 +18,7 @@ devices (gap 6) and more interface languages (gap 7).
 
 | Milestone | State | What it holds |
 |---|---|---|
+| 2026-11-15 | minor | Redistribution between RIP, EIGRP and OSPF, distribute lists and lab 39 (redistribute between routing protocols and filter with a distribute list) join the lab book (lab 38 belongs to another change, so the numbered labs are 1 to 37 and 39); the gaps table's item 9 narrowed again. |
 | **M0 — Foundations** | ✅ 2026-10-29 | Workspace and gates, wire formats, lab model and file format, discrete-event simulator, console, engine with undo and panic guard, egui app in the reference app's arrangement, CLI, MCP, web build. |
 | **M1 — Services and security** | ✅ 2026-10-29 (in the first commit, with M0) | DHCP (server, relay, client), STP, switch VLAN interfaces, OSPF, ACLs, NAT/PAT, passwords and lines, Telnet/SSH, server HTTP/DHCP/DNS and the PC web browser, port security. |
 | **M2 — Layer 2 depth, IPv6 and WAN** | ✅ 2026-10-29 | M2.1 EtherChannel and VTP · M2.2 IPv6 · M2.3 multilayer switch · M2.4 RIP · M2.5 serial WAN links. |

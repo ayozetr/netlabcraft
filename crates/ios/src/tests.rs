@@ -23,6 +23,7 @@ mod ospf_debug;
 mod pki;
 mod policy;
 mod protocols_summary;
+mod redistribute;
 mod route_summary;
 mod routing;
 mod security;

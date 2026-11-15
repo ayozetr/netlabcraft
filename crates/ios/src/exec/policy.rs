@@ -279,6 +279,19 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             clause(c)?.sets.metric = None;
             Ok(String::new())
         }
+        Id::RmSetMetricType => {
+            let t = match arg(0).to_ascii_lowercase().as_str() {
+                "type-1" => 1,
+                "type-2" => 2,
+                _ => return Err("% type-1 or type-2".into()),
+            };
+            clause(c)?.sets.metric_type = Some(t);
+            Ok(String::new())
+        }
+        Id::NoRmSetMetricType => {
+            clause(c)?.sets.metric_type = None;
+            Ok(String::new())
+        }
         Id::RmSetWeight => {
             let v = number(arg(0), "weight", 65_535)?;
             clause(c)?.sets.weight = Some(v);
@@ -397,6 +410,9 @@ fn set_lines(c: &Clause) -> Vec<String> {
     }
     if let Some(x) = c.sets.metric {
         v.push(format!("metric {x}"));
+    }
+    if let Some(x) = c.sets.metric_type {
+        v.push(format!("metric-type type-{x}"));
     }
     if let Some(x) = c.sets.weight {
         v.push(format!("weight {x}"));

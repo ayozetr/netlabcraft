@@ -301,10 +301,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip ospf authentication-key` | interface, subinterface | router, switch | Forget the password |
 | `ip ospf message-digest-key <1-255> md5 KEY` | interface, subinterface | router, switch | A message-digest key, by id |
 | `no ip ospf message-digest-key <1-255>` | interface, subinterface | router, switch | Remove a message-digest key |
-| `redistribute static` |  | router, switch | Advertise static routes as external |
-| `redistribute static [subnets] [route-map NAME]` |  | router, switch | Advertise static routes as external |
-| `no redistribute static` |  | router, switch | Stop advertising static routes |
-| `no redistribute static [subnets]` |  | router, switch | Stop advertising static routes |
+| `redistribute {connected\|static\|rip\|eigrp <1-65535>\|bgp <1-4294967295>} [metric <0-16777214>] [metric-type {1\|2}] [subnets] [route-map NAME]` |  | router, switch | Advertise the routes another source gave as external routes |
+| `no redistribute {connected\|static\|rip\|eigrp <1-65535>\|bgp <1-4294967295>}` |  | router, switch | Stop advertising the routes of a source |
 | `clear ip ospf process` | privileged | router, switch | Restart OSPF: neighbours and DR elections anew |
 | `clear ip ospf <1-65535> process` | privileged | router, switch | Restart this OSPF process |
 | `show ip ospf database` | user, privileged | router, switch | OSPF link-state database |
@@ -614,6 +612,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no default-information originate` |  | router, switch | Stop advertising the default route |
 | `auto-summary` |  | router, switch | Summarise at classful boundaries (kept, not simulated) |
 | `no auto-summary` |  | router, switch | Advertise subnets as they are |
+| `redistribute {connected\|static\|ospf <1-65535>\|eigrp <1-65535>\|bgp <1-4294967295>} [metric <1-16>] [route-map NAME]` |  | router, switch | Advertise the routes another source gave as RIP routes |
+| `no redistribute {connected\|static\|ospf <1-65535>\|eigrp <1-65535>\|bgp <1-4294967295>}` |  | router, switch | Stop advertising the routes of a source |
 | `show ip rip database` | user, privileged | router, switch | Routes RIP knows |
 | `router eigrp <1-65535>` | config | router, switch | Start or configure EIGRP in this autonomous system |
 | `no router eigrp <1-65535>` | config | router, switch | Stop EIGRP |
@@ -627,12 +627,32 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no eigrp router-id` |  | router, switch | Use the highest interface address |
 | `auto-summary` |  | router, switch | Summarise at classful boundaries (kept, not simulated) |
 | `no auto-summary` |  | router, switch | Advertise subnets as they are |
+| `redistribute {connected\|static\|rip\|ospf <1-65535>\|bgp <1-4294967295>} [metric <1-4294967295> <0-4294967295> <0-255> <1-255> <1-65535>] [route-map NAME]` |  | router, switch | Advertise the routes another source gave as external EIGRP routes |
+| `no redistribute {connected\|static\|rip\|ospf <1-65535>\|bgp <1-4294967295>}` |  | router, switch | Stop advertising the routes of a source |
 | `maximum-paths <1-16>` |  | router, switch | Paths installed per destination |
 | `no maximum-paths` |  | router, switch | Four paths per destination again |
 | `variance <1-128>` |  | router, switch | Also use feasible successors up to N times the best metric |
 | `no variance` |  | router, switch | Equal-cost paths only |
 | `maximum-paths <1-16>` |  | router, switch | Equal-cost paths installed per destination |
 | `no maximum-paths` |  | router, switch | Four paths per destination again |
+| `default-metric <1-16>` |  | router, switch | The hop count of redistributed routes that name none |
+| `no default-metric` |  | router, switch | Redistributed routes name their own metric again |
+| `default-metric <1-16777214>` |  | router, switch | The metric of redistributed routes that name none |
+| `no default-metric` |  | router, switch | Redistributed routes get metric 20 again |
+| `default-metric <1-4294967295> <0-4294967295> <0-255> <1-255> <1-65535>` |  | router, switch | Bandwidth, delay, reliability, load and MTU of redistributed routes that name none |
+| `no default-metric` |  | router, switch | Redistributed routes name their own metric again |
+| `distribute-list prefix NAME {in\|out}` |  | router, switch | Filter the routes installed or advertised with a prefix list |
+| `distribute-list prefix NAME {in\|out} <interface>` |  | router, switch | Filter the routes installed or advertised with a prefix list on one interface |
+| `distribute-list <ACL> {in\|out}` |  | router, switch | Filter the routes installed or advertised with an access list |
+| `distribute-list <ACL> {in\|out} <interface>` |  | router, switch | Filter the routes installed or advertised with an access list on one interface |
+| `distribute-list route-map NAME in` |  | router, switch | Filter the routes installed or advertised with a route map |
+| `distribute-list route-map NAME in <interface>` |  | router, switch | Filter the routes installed or advertised with a route map on one interface |
+| `no distribute-list prefix NAME {in\|out}` |  | router, switch | Stop filtering with a prefix list |
+| `no distribute-list prefix NAME {in\|out} <interface>` |  | router, switch | Stop filtering with a prefix list on one interface |
+| `no distribute-list <ACL> {in\|out}` |  | router, switch | Stop filtering with an access list |
+| `no distribute-list <ACL> {in\|out} <interface>` |  | router, switch | Stop filtering with an access list on one interface |
+| `no distribute-list route-map NAME in` |  | router, switch | Stop filtering with a route map |
+| `no distribute-list route-map NAME in <interface>` |  | router, switch | Stop filtering with a route map on one interface |
 | `ip hello-interval eigrp <1-65535> <1-65535> seconds` | interface, subinterface | router, switch | How often EIGRP says hello on this interface |
 | `no ip hello-interval eigrp <1-65535>` | interface, subinterface | router, switch | Hellos every 5 seconds again |
 | `ip hold-time eigrp <1-65535> <1-65535> seconds` | interface, subinterface | router, switch | How long neighbours wait for this router's hellos |
@@ -713,6 +733,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no set metric` |  | router, switch | Leave the metric alone |
 | `set weight <0-65535>` |  | router, switch | Give the paths this weight |
 | `no set weight` |  | router, switch | Leave the weight alone |
+| `set metric-type {type-1\|type-2}` |  | router, switch | Give the redistributed OSPF routes this external type |
+| `no set metric-type` |  | router, switch | Leave the external type alone |
 | `set as-path prepend <AS> [<AS>...]` |  | router, switch | Put these AS numbers in front of the AS path |
 | `no set as-path prepend` |  | router, switch | Leave the AS path alone |
 | `set ip next-hop A.B.C.D` |  | router, switch | Give the paths this next hop |
