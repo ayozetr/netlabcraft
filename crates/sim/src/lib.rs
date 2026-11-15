@@ -34,6 +34,7 @@ pub mod lldp;
 pub mod loopback;
 mod mtu;
 
+pub mod bgp;
 pub mod channel;
 pub mod control;
 pub mod dhcpsrv;
@@ -355,13 +356,13 @@ pub(crate) fn phys_up_ifaces(t: &Topology, d: &Device) -> Vec<L3If> {
 /// A routing-table row, as `show ip route` prints it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RouteEntry {
-    /// `C` connected, `L` local address, `S` static.
+    /// `C` connected, `L` local address, `S` static, `B` BGP (the protocols' own letters otherwise).
     pub code: char,
     pub net: Ipv4Net,
     pub via: Option<Ipv4Addr>,
     pub iface: Option<String>,
-    /// Administrative distance: 0 connected, 1 static (or as configured), 90 EIGRP, 110 OSPF,
-    /// 120 RIP, 254 a default from DHCP.
+    /// Administrative distance: 0 connected, 1 static (or as configured), 20 external BGP, 90 EIGRP,
+    /// 110 OSPF, 120 RIP, 200 internal BGP, 254 a default from DHCP.
     pub distance: u8,
     /// The protocol's metric (OSPF cost, EIGRP metric, RIP hops; 0 for static routes).
     pub metric: u32,
@@ -375,7 +376,8 @@ pub fn routing_table(t: &Topology, d: &Device) -> Vec<RouteEntry> {
     let e = if d.eigrp.is_some() { eigrp::compute(t).routes.remove(&d.id).unwrap_or_default() } else { Vec::new() };
     let o = if d.ospf.is_some() { ospf::compute(t).routes.remove(&d.id).unwrap_or_default() } else { Vec::new() };
     let r = if d.rip.is_some() { rip::compute(t).routes.remove(&d.id).unwrap_or_default() } else { Vec::new() };
-    routing_table_with(t, d, &e, &o, &r)
+    let b = if d.bgp.is_some() { bgp::standalone_routes(t, d) } else { Vec::new() };
+    routing_table_with(t, d, &e, &o, &r, &b)
 }
 
 /// [`routing_table`] with the routing protocols' routes for this device given. A destination
@@ -386,6 +388,7 @@ pub fn routing_table_with(
     eigrp_routes: &[eigrp::EigrpRoute],
     ospf_routes: &[ospf::OspfRoute],
     rip_routes: &[rip::RipRoute],
+    bgp_routes: &[bgp::BgpRoute],
 ) -> Vec<RouteEntry> {
     // Connected and local routes always; for any other network, the candidates with the lowest
     // administrative distance (static routes, a DHCP default, then what the protocols learned).
@@ -430,6 +433,16 @@ pub fn routing_table_with(
                 metric: u32::from(r.hops),
             });
         }
+    }
+    for r in bgp_routes {
+        learned.push(RouteEntry {
+            code: 'B',
+            net: r.net,
+            via: Some(r.next_hop),
+            iface: Some(r.iface.clone()),
+            distance: r.distance,
+            metric: r.metric,
+        });
     }
     let have: Vec<Ipv4Net> = out.iter().map(|r| r.net).collect();
     for r in &learned {
@@ -505,6 +518,7 @@ pub fn route(t: &Topology, d: &Device, dst: Ipv4Addr) -> Option<(L3If, Ipv4Addr)
     let st = if d.ospf.is_some() { Some(ospf::compute(t)) } else { None };
     let rp = if d.rip.is_some() { Some(rip::compute(t)) } else { None };
     let ep = if d.eigrp.is_some() { Some(eigrp::compute(t)) } else { None };
+    let bp = if d.bgp.is_some() { bgp::standalone_routes(t, d) } else { Vec::new() };
     route_with(
         t,
         d,
@@ -513,6 +527,7 @@ pub fn route(t: &Topology, d: &Device, dst: Ipv4Addr) -> Option<(L3If, Ipv4Addr)
         ep.as_ref().and_then(|s| s.routes.get(&d.id)).map_or(&[][..], Vec::as_slice),
         st.as_ref().and_then(|s| s.routes.get(&d.id)).map_or(&[][..], Vec::as_slice),
         rp.as_ref().and_then(|s| s.routes.get(&d.id)).map_or(&[][..], Vec::as_slice),
+        &bp,
     )
 }
 
@@ -567,6 +582,7 @@ pub fn route_with(
     eigrp_routes: &[eigrp::EigrpRoute],
     ospf_routes: &[ospf::OspfRoute],
     rip_routes: &[rip::RipRoute],
+    bgp_routes: &[bgp::BgpRoute],
 ) -> Option<(L3If, Ipv4Addr)> {
     let ifs = up_ifaces(t, d);
     if d.kind.is_host() {
@@ -650,6 +666,12 @@ pub fn route_with(
             consider_ad(r.net.prefix, 120, i, r.via);
         }
     }
+    // BGP: external paths (distance 20) beat the other protocols, internal ones (200) lose to them.
+    for r in bgp_routes.iter().filter(|r| r.net.contains(dst)) {
+        if let Some(i) = ifs.iter().find(|i| i.name == r.iface) {
+            consider_ad(r.net.prefix, r.distance, i, r.via);
+        }
+    }
     // A default from a DHCP lease (distance 254): considered last, so any other route to the
     // same length wins.
     for (i, p) in d.ports.iter().enumerate() {
@@ -705,19 +727,22 @@ pub enum DebugKind {
     /// `debug ip ospf events`: interface, DR election, SPF and timer events.
     OspfEvents,
     Eigrp,
+    /// `debug ip bgp`: the messages a BGP speaker hears and its session changes.
+    Bgp,
     Packet,
     Nat,
     Dhcp,
 }
 
 impl DebugKind {
-    pub const ALL: [DebugKind; 9] = [
+    pub const ALL: [DebugKind; 10] = [
         DebugKind::Icmp,
         DebugKind::Rip,
         DebugKind::OspfHello,
         DebugKind::OspfAdj,
         DebugKind::OspfEvents,
         DebugKind::Eigrp,
+        DebugKind::Bgp,
         DebugKind::Packet,
         DebugKind::Nat,
         DebugKind::Dhcp,
@@ -853,6 +878,8 @@ pub struct DevState {
     pub debug_ospf_events: bool,
     /// `debug eigrp packets`.
     pub debug_eigrp: bool,
+    /// `debug ip bgp`.
+    pub debug_bgp: bool,
     /// `debug ip packet`.
     pub debug_packet: bool,
     /// `debug ip nat`.
@@ -1086,6 +1113,8 @@ pub struct Sim {
     eigrp_held: Vec<eigrp::Held>,
     /// The last EIGRP sequence number each router used.
     eigrp_seqs: BTreeMap<DeviceId, u32>,
+    /// BGP: sessions, paths and the messages they carried.
+    bgp: bgp::Runtime,
     /// The flags of the last router advertisement a host autoconfigured from.
     last_ra_flags: u8,
     /// Control frames (BPDUs, hellos, updates) are queued up to this time.
@@ -1257,6 +1286,7 @@ impl Sim {
             DebugKind::OspfAdj => st.debug_ospf_adj = on,
             DebugKind::OspfEvents => st.debug_ospf_events = on,
             DebugKind::Eigrp => st.debug_eigrp = on,
+            DebugKind::Bgp => st.debug_bgp = on,
             DebugKind::Packet => st.debug_packet = on,
             DebugKind::Nat => st.debug_nat = on,
             DebugKind::Dhcp => st.debug_dhcp = on,
@@ -1273,6 +1303,7 @@ impl Sim {
             (s.debug_ospf_adj, "OSPF adjacencies"),
             (s.debug_ospf_events, "OSPF events"),
             (s.debug_eigrp, "EIGRP"),
+            (s.debug_bgp, "BGP"),
             (s.debug_packet, "IP packets"),
             (s.debug_nat, "NAT"),
             (s.debug_dhcp, "DHCP server"),
@@ -1418,6 +1449,7 @@ impl Sim {
         if self.eigrp.is_some() || t.devices.iter().any(|d| d.eigrp.is_some()) {
             self.eigrp_refresh(t);
         }
+        self.bgp_refresh(t);
         // VRRP's master down interval counts from the change.
         if t.devices.iter().any(|d| !d.fhrp.vrrp.is_empty()) {
             let _ = self.fhrp_roles(t);
@@ -1486,6 +1518,7 @@ impl Sim {
         self.flush_syslog(t);
         self.flush_traps(t);
         self.voice_tick(t);
+        self.bgp_refresh(t);
         self.schedule_control(t, deadline);
         self.schedule_beacons(t, deadline);
         let mut count = 0usize;
@@ -1497,6 +1530,16 @@ impl Sim {
                 self.eigrp_refresh(t);
                 // Expired holds are gone after a refresh; never spin on one that isn't.
                 self.eigrp_held.retain(|x| x.until > h);
+                continue;
+            }
+            // A BGP session finishing its setup is one too.
+            if let Some(h) = self.bgp_next_expiry().filter(|h| *h <= deadline && next.is_none_or(|q| *h <= q)) {
+                self.now = self.now.max(h);
+                self.bgp_refresh(t);
+                // Never spin on a timer a refresh didn't clear.
+                if self.bgp_next_expiry().is_some_and(|x| x <= h) {
+                    self.bgp.up_at.retain(|_, at| at.saturating_add(bgp::SETUP_US) > h);
+                }
                 continue;
             }
             // So is an EIGRP for IPv6 neighbour's.
@@ -1987,7 +2030,8 @@ impl Sim {
         let e = self.eigrp_routes(t, d);
         let o = self.ospf_routes(t, d);
         let r = self.rip_routes(t, d);
-        route_with(t, d, dst, flow_hash(src, dst), &e, &o, &r)
+        let b = self.bgp_routes(t, d);
+        route_with(t, d, dst, flow_hash(src, dst), &e, &o, &r, &b)
     }
 
     /// The routing table as the simulation has it now (EIGRP neighbours within their hold time
@@ -1996,7 +2040,8 @@ impl Sim {
         let e = self.eigrp_routes(t, d);
         let o = self.ospf_routes(t, d);
         let r = self.rip_routes(t, d);
-        routing_table_with(t, d, &e, &o, &r)
+        let b = self.bgp_routes(t, d);
+        routing_table_with(t, d, &e, &o, &r, &b)
     }
 
     /// EIGRP's routes for a device (cached per topology and hold timers).
@@ -3487,6 +3532,9 @@ impl Sim {
     /// segment for one of this host's client connections.
     fn tcp_in(&mut self, t: &Topology, d: &Device, ip: &Ipv4) -> Result<(), String> {
         let seg = Tcp::decode(&ip.payload, ip.src, ip.dst).map_err(|e| e.to_string())?;
+        if let Some(r) = self.bgp_in(d, ip, &seg) {
+            return r;
+        }
         if let Some(r) = self.ftp_server_in(t, d, ip, &seg) {
             return r;
         }

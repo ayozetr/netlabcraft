@@ -60,6 +60,7 @@ impl Sim {
             (EIGRP_HELLO_EVERY_US, 8),
             (EIGRP6_HELLO_EVERY_US, 9),
             (VRRP_EVERY_US, 10),
+            (crate::bgp::KEEPALIVE_EVERY_US, 11),
         ] {
             let mut at = (from / every + 1) * every;
             while at <= deadline {
@@ -74,6 +75,7 @@ impl Sim {
                     8 => self.send_eigrp_hellos(t, at),
                     9 => self.send_eigrp6_hellos(t, at),
                     10 => self.send_vrrp(t, at),
+                    11 => self.send_bgp_keepalives(t, at),
                     _ => self.send_rip_updates(t, at),
                 }
                 at += every;
