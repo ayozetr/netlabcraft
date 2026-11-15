@@ -414,6 +414,8 @@ fn smart_tvs_over_wifi_and_ethernet_register_and_are_switched_by_the_gateway() {
     s.execute("device.add", json!({"model": "Wired Smart TV", "name": "TV2", "x": 500, "y": 450})).unwrap();
     s.execute("link.add", json!({"a": "TV2", "a_port": "FastEthernet0", "b": "Home", "b_port": "Ethernet2"})).unwrap();
     assert_eq!(s.topology.find("TV1").unwrap().ports[0].wifi.as_ref().map(|w| w.ssid.as_str()), Some("HomeNetwork"));
+    // The radio associates with the gateway in simulated time.
+    s.execute("sim.advance", json!({"seconds": 5})).unwrap();
     for tv in ["TV1", "TV2"] {
         let out = cli(&mut s, tv, "ipconfig /renew");
         assert!(!out.contains("failed"), "{tv}: {out}");
