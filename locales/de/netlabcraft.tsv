@@ -1564,3 +1564,29 @@ event	write request for	Schreibanfrage für
 	Any, one port or a range such as 1000-2000	Beliebig, ein Port oder ein Bereich wie 1000-2000
 	No rules yet. While the firewall is on, everything that is not allowed is blocked.	Noch keine Regeln. Solange die Firewall eingeschaltet ist, wird alles blockiert, was nicht erlaubt ist.
 	With the firewall on, the first rule that matches decides and what no rule matches is blocked. Replies to what this computer sent always get through.	Bei eingeschalteter Firewall entscheidet die erste passende Regel; was auf keine Regel passt, wird blockiert. Antworten auf das, was dieser Computer gesendet hat, kommen immer durch.
+	Traffic Generator	Verkehrsgenerator
+	PPPoE Dialer	PPPoE-Einwahl
+	Destination address or name	Zieladresse oder -name
+	Packet size (bytes)	Paketgröße (Bytes)
+	Number of packets	Anzahl der Pakete
+	Interval (seconds)	Intervall (Sekunden)
+	Each packet is sent like a PDU: the same path, firewalls and access lists apply.	Jedes Paket wird wie eine PDU gesendet: derselbe Weg, Firewalls und Zugriffslisten gelten.
+	Enter a destination address or device name.	Gib eine Zieladresse oder den Namen eines Zielgeräts ein.
+	Enter whole numbers for the port, size and number of packets, and seconds for the interval.	Gib ganze Zahlen für Port, Größe und Paketanzahl ein und Sekunden für das Intervall.
+	Nothing sent yet. Fill in the destination and press Send.	Noch nichts gesendet. Gib das Ziel ein und drücke auf Senden.
+	Sent {}, received {}, lost {}	Gesendet {}, empfangen {}, verloren {}
+	Answered	Beantwortet
+	Lost	Verloren
+	Connect	Verbinden
+	The first network port must be cabled straight to a server whose PPPoE service is on.	Der erste Netzwerkport muss direkt mit einem Server verbunden sein, dessen PPPoE-Dienst aktiv ist.
+	Disconnected	Getrennt
+	Enter the account and press Connect.	Gib das Konto ein und drücke auf Verbinden.
+	Connected	Verbunden
+	Connection lost: the cable or the server is gone.	Verbindung verloren: Das Kabel oder der Server ist weg.
+	Enter a user name.	Gib einen Benutzernamen ein.
+	Connected to {}	Verbunden mit {}
+	PPPoE Service	PPPoE-Dienst
+	Pool start address	Erste Adresse des Pools
+	Pool size	Größe des Pools
+	The pool must be on the subnet of the server's port that the cable reaches.	Der Pool muss im Subnetz des Serverports liegen, den das Kabel erreicht.
+	The pool size is a whole number.	Die Größe des Pools ist eine ganze Zahl.

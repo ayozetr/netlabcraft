@@ -1564,3 +1564,29 @@ event	write request for	demande d'écriture de
 	Any, one port or a range such as 1000-2000	Quelconque, un port ou une plage comme 1000-2000
 	No rules yet. While the firewall is on, everything that is not allowed is blocked.	Aucune règle pour l'instant. Tant que le pare-feu est activé, tout ce qui n'est pas autorisé est bloqué.
 	With the firewall on, the first rule that matches decides and what no rule matches is blocked. Replies to what this computer sent always get through.	Lorsque le pare-feu est activé, la première règle qui correspond décide et ce qui ne correspond à aucune est bloqué. Les réponses à ce que cet ordinateur a envoyé passent toujours.
+	Traffic Generator	Générateur de trafic
+	PPPoE Dialer	Numéroteur PPPoE
+	Destination address or name	Adresse ou nom de destination
+	Packet size (bytes)	Taille du paquet (octets)
+	Number of packets	Nombre de paquets
+	Interval (seconds)	Intervalle (secondes)
+	Each packet is sent like a PDU: the same path, firewalls and access lists apply.	Chaque paquet est envoyé comme une PDU : même chemin, avec les pare-feu et les listes d'accès appliqués.
+	Enter a destination address or device name.	Saisissez une adresse ou le nom d'un appareil de destination.
+	Enter whole numbers for the port, size and number of packets, and seconds for the interval.	Saisissez des nombres entiers pour le port, la taille et le nombre de paquets, et des secondes pour l'intervalle.
+	Nothing sent yet. Fill in the destination and press Send.	Rien n'a encore été envoyé. Renseignez la destination et appuyez sur Envoyer.
+	Sent {}, received {}, lost {}	Envoyés {}, reçus {}, perdus {}
+	Answered	Répondu
+	Lost	Perdu
+	Connect	Se connecter
+	The first network port must be cabled straight to a server whose PPPoE service is on.	Le premier port réseau doit être relié directement à un serveur dont le service PPPoE est activé.
+	Disconnected	Déconnecté
+	Enter the account and press Connect.	Saisissez le compte et appuyez sur Se connecter.
+	Connected	Connecté
+	Connection lost: the cable or the server is gone.	Connexion perdue : le câble ou le serveur a disparu.
+	Enter a user name.	Saisissez un nom d'utilisateur.
+	Connected to {}	Connecté à {}
+	PPPoE Service	Service PPPoE
+	Pool start address	Première adresse du pool
+	Pool size	Taille du pool
+	The pool must be on the subnet of the server's port that the cable reaches.	Le pool doit être dans le sous-réseau du port du serveur que le câble atteint.
+	The pool size is a whole number.	La taille du pool est un nombre entier.

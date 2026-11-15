@@ -1567,3 +1567,29 @@ event	no APN	sin APN
 	Any, one port or a range such as 1000-2000	Cualquiera, un puerto o un rango como 1000-2000
 	No rules yet. While the firewall is on, everything that is not allowed is blocked.	Aún no hay reglas. Mientras el cortafuegos esté activado, se bloquea todo lo que no esté permitido.
 	With the firewall on, the first rule that matches decides and what no rule matches is blocked. Replies to what this computer sent always get through.	Con el cortafuegos activado, decide la primera regla que coincida y se bloquea lo que no coincide con ninguna. Las respuestas a lo que envió este equipo siempre pasan.
+	Traffic Generator	Generador de tráfico
+	PPPoE Dialer	Marcador PPPoE
+	Destination address or name	Dirección o nombre de destino
+	Packet size (bytes)	Tamaño del paquete (bytes)
+	Number of packets	Número de paquetes
+	Interval (seconds)	Intervalo (segundos)
+	Each packet is sent like a PDU: the same path, firewalls and access lists apply.	Cada paquete se envía como una PDU: el mismo camino, y se aplican los cortafuegos y las listas de acceso.
+	Enter a destination address or device name.	Escribe una dirección o el nombre de un dispositivo de destino.
+	Enter whole numbers for the port, size and number of packets, and seconds for the interval.	Escribe números enteros para el puerto, el tamaño y el número de paquetes, y segundos para el intervalo.
+	Nothing sent yet. Fill in the destination and press Send.	Aún no se ha enviado nada. Rellena el destino y pulsa Enviar.
+	Sent {}, received {}, lost {}	Enviados {}, recibidos {}, perdidos {}
+	Answered	Respondido
+	Lost	Perdido
+	Connect	Conectar
+	The first network port must be cabled straight to a server whose PPPoE service is on.	El primer puerto de red debe estar conectado directamente a un servidor con el servicio PPPoE activado.
+	Disconnected	Desconectado
+	Enter the account and press Connect.	Escribe la cuenta y pulsa Conectar.
+	Connected	Conectado
+	Connection lost: the cable or the server is gone.	Conexión perdida: el cable o el servidor ya no están.
+	Enter a user name.	Escribe un nombre de usuario.
+	Connected to {}	Conectado a {}
+	PPPoE Service	Servicio PPPoE
+	Pool start address	Dirección inicial del grupo
+	Pool size	Tamaño del grupo
+	The pool must be on the subnet of the server's port that the cable reaches.	El grupo debe estar en la subred del puerto del servidor al que llega el cable.
+	The pool size is a whole number.	El tamaño del grupo es un número entero.

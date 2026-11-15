@@ -796,6 +796,7 @@ fn spanish_shows_no_text_that_has_a_translation_in_english() {
                     services::Page::Aaa,
                     services::Page::Ftp,
                     services::Page::Email,
+                    services::Page::Pppoe,
                 ] {
                     let w = h.state_mut().ui.windows.get_mut(&d).unwrap();
                     w.tab = console::Tab::Services;
@@ -805,9 +806,22 @@ fn spanish_shows_no_text_that_has_a_translation_in_english() {
                 }
             }
             if kind.is_host() {
-                for which in
-                    ["home", "ip", "prompt", "email", "mib", "terminal", "browser", "programming", "telnet", "editor", "firewall", "firewall6"]
-                {
+                for which in [
+                    "home",
+                    "ip",
+                    "prompt",
+                    "email",
+                    "mib",
+                    "terminal",
+                    "browser",
+                    "programming",
+                    "telnet",
+                    "editor",
+                    "firewall",
+                    "firewall6",
+                    "traffic",
+                    "pppoe",
+                ] {
                     if which == "browser" {
                         open_browser(h.state_mut(), d, "www.netlabcraft.lab");
                     } else {
@@ -893,6 +907,7 @@ const SAME_IN_SPANISH: &[&str] = &[
     "ICMPv6",
     "Internet",
     "NTP",
+    "PPPoE",
     "SNMPv2c",
     "SNMPv3",
     "Syslog",
@@ -1228,7 +1243,7 @@ fn the_computer_apps_are_on_the_desktop_of_computers_only() {
     for (dev, shown) in [(pc, true), (printer, false)] {
         open_desktop_app(h.state_mut(), dev, "tiles");
         h.run_steps(3);
-        for name in ["Telnet/SSH Client", "Text Editor", "Firewall", "IPv6 Firewall"] {
+        for name in ["Telnet/SSH Client", "Text Editor", "Firewall", "IPv6 Firewall", "Traffic Generator", "PPPoE Dialer"] {
             assert_eq!(h.query_by_label(name).is_some(), shown, "{name} on device {dev:?}");
         }
         assert!(h.query_by_label("Command Prompt").is_some());
@@ -1320,6 +1335,82 @@ fn the_firewall_apps_edit_their_own_rule_lists() {
     h.run_steps(2);
     let fw = &h.state().session.topology.device(pc).unwrap().host_fw;
     assert!(fw.v6.on && fw.v4.on);
+}
+
+/// The Traffic Generator sends a burst from its form and lists the result of each packet.
+#[test]
+fn the_traffic_generator_sends_a_burst_and_lists_each_packet() {
+    use egui::accesskit::Role;
+    let mut h = harness(Some("lan"));
+    h.state_mut().ui.show_notes = false;
+    let pc = h.state().session.topology.resolve("PC1").unwrap();
+    open_desktop_app(h.state_mut(), pc, "traffic");
+    h.run_steps(3);
+    assert!(h.query_all_by_label_contains("Nothing sent yet").next().is_some());
+    // No destination: nothing is sent.
+    h.get_by_role_and_label(Role::Button, "Send").click();
+    h.run_steps(2);
+    assert!(h.query_all_by_label_contains("Nothing sent yet").next().is_some());
+    type_into(&mut h, "Destination address or name", "192.168.1.12");
+    h.get_by_role_and_label(Role::Button, "Send").click();
+    h.run_steps(3);
+    assert!(h.query_all_by_label_contains("Sent 4, received").next().is_some());
+    assert!(h.query_all_by_label_contains("reply from 192.168.1.12").next().is_some());
+}
+
+/// The PPPoE Dialer connects to the server on its cable with the saved account, shows what the
+/// session gave, and disconnects.
+#[test]
+fn the_pppoe_dialer_connects_and_disconnects_from_its_buttons() {
+    use egui::accesskit::Role;
+    let mut h = harness(Some("lan"));
+    h.state_mut().ui.show_notes = false;
+    let pc = {
+        let s = &mut h.state_mut().session;
+        s.execute("device.add", json!({"kind": "pc"})).unwrap();
+        s.execute("device.add", json!({"kind": "server"})).unwrap();
+        s.execute("link.add", json!({"a": "PC4", "b": "SRV1"})).unwrap();
+        s.execute("cli.exec", json!({"device": "SRV1", "line": "ipconfig 10.9.0.1 255.255.255.0"})).unwrap();
+        let service = json!({"pppoe": {"on": true, "pool_start": "10.9.0.100", "pool_size": 3, "users": [{"name": "ann", "password": "pw-test"}]}});
+        s.execute("server.services", json!({"device": "SRV1", "services": service})).unwrap();
+        let pc = s.topology.resolve("PC4").unwrap();
+        let d = s.topology.device_mut(pc).unwrap();
+        d.pppoe.username = "ann".into();
+        d.pppoe.password = "pw-test".into();
+        pc
+    };
+    open_desktop_app(h.state_mut(), pc, "pppoe");
+    h.run_steps(3);
+    assert!(h.query_by_label("Disconnected").is_some());
+    h.get_by_role_and_label(Role::Button, "Connect").click();
+    h.run_steps(3);
+    let session = h.state().session.topology.device(pc).unwrap().pppoe.session.clone().unwrap();
+    assert_eq!(session.address.to_string(), "10.9.0.100");
+    assert!(h.query_by_label("Connected").is_some());
+    assert!(h.query_by_label("10.9.0.100").is_some());
+    h.get_by_role_and_label(Role::Button, "Disconnect").click();
+    h.run_steps(3);
+    assert!(h.state().session.topology.device(pc).unwrap().pppoe.session.is_none());
+}
+
+/// A server's PPPoE page switches the service on and keeps its pool and accounts.
+#[test]
+fn the_server_pppoe_page_edits_the_service() {
+    use egui::accesskit::Role;
+    let mut h = harness(Some("services"));
+    h.state_mut().ui.show_notes = false;
+    let srv = h.state().session.topology.devices.iter().find(|d| d.kind == netlabcraft_model::DeviceKind::Server).map(|d| d.id).unwrap();
+    open_services_page(h.state_mut(), srv, "pppoe");
+    h.run_steps(3);
+    h.get_by_label("On").click();
+    h.run_steps(2);
+    assert!(h.state().session.topology.device(srv).unwrap().services.pppoe.on);
+    type_into(&mut h, "Pool start address", "10.5.0.20");
+    type_into(&mut h, "Pool size", "7");
+    h.get_by_role_and_label(Role::Button, "Save").click();
+    h.run_steps(3);
+    let p = h.state().session.topology.device(srv).unwrap().services.pppoe.clone();
+    assert_eq!((p.pool_start.to_string(), p.pool_size), ("10.5.0.20".to_string(), 7));
 }
 
 /// The Programming app sends RESTCONF requests (a login refused, then the interfaces as a JSON
