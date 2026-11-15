@@ -51,7 +51,8 @@ pub(crate) fn tab(app: &mut PacketApp, ui: &mut Ui, dev: &Device) {
                 ui.label(from);
                 ui.label(name);
                 ui.label(to);
-                ui.label(tr_event(&e.summary));
+                // The arrow in a summary has no glyph in the built-in fonts.
+                ui.label(tr_event(&e.summary).replace('→', "->"));
                 ui.end_row();
             }
         });
