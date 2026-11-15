@@ -1017,7 +1017,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 body.lines().filter(|l| codes.iter().any(|c| l.starts_with(c) || l.starts_with(&format!("{}*", c.trim_end())))).collect();
             Ok(format!("{head}\n\n{}", if lines.is_empty() { "(no such routes)".to_string() } else { lines.join("\n") }))
         }
-        Id::ShowInterfaces => Ok(render::interfaces(c.t, c.d()?, None)),
+        Id::ShowInterfaces => Ok(render::interfaces(c.t, c.sim, c.d()?, None)),
         Id::ShowInterface => {
             // `show interfaces vlan 1`
             let lower = arg(0).trim().to_ascii_lowercase();
@@ -1057,7 +1057,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             }
             let d = c.d()?;
             let r = c.iface_ref(arg(0))?;
-            Ok(render::interfaces(c.t, d, Some(r)))
+            Ok(render::interfaces(c.t, c.sim, d, Some(r)))
         }
         Id::ShowIntStatus => Ok(render::interface_status(c.t, c.d()?)),
         Id::ShowIpInterface => {
@@ -3222,7 +3222,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 render::version(c.sim, d),
                 render::running_config(d),
                 render::ip_int_brief(c.t, d),
-                render::interfaces(c.t, d, None)
+                render::interfaces(c.t, c.sim, d, None)
             ))
         }
         Id::ShowBoot => {
@@ -3261,6 +3261,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::ClearCounters => {
             c.sim.clear_qos(c.dev);
+            c.sim.clear_port_counters(c.dev);
             Ok("Interface counters cleared.".into())
         }
         Id::ShowSessions => Ok(match &c.cli.remote {

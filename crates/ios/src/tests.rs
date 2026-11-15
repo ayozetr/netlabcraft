@@ -11,6 +11,7 @@ mod acl_icmp;
 mod console_depth;
 mod families;
 mod inspections;
+mod interface_counters;
 mod ipsec_crypto;
 mod leftovers;
 mod line_protocol;

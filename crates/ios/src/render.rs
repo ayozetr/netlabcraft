@@ -765,8 +765,30 @@ pub fn ip_route_table(d: &Device, table: &[netlabcraft_sim::RouteEntry]) -> Stri
     s.trim_end().to_string()
 }
 
+/// A port's bandwidth (kbit/s) and delay (µs): what the port was told, else what its type usually has.
+fn port_metrics(p: &netlabcraft_model::Port) -> (u32, u64) {
+    let (bw, delay) = netlabcraft_sim::eigrp::default_metrics(&p.name);
+    (p.bandwidth.unwrap_or(bw).max(1), u64::from(p.delay.unwrap_or(delay)).saturating_mul(10))
+}
+
+/// Load out of 255 (1 when idle): the average bit rate since the counters began against the bandwidth.
+fn load_of(octets: u64, elapsed_us: u64, bw_kbit: u32) -> u64 {
+    if elapsed_us == 0 {
+        return 1;
+    }
+    let num = u128::from(octets).saturating_mul(8).saturating_mul(1_000_000).saturating_mul(255);
+    let den = u128::from(elapsed_us).saturating_mul(u128::from(bw_kbit.max(1))).saturating_mul(1_000);
+    u64::try_from(num / den.max(1)).unwrap_or(255).clamp(1, 255)
+}
+
+/// Simulated microseconds as `h:mm:ss`.
+fn hms(us: u64) -> String {
+    let s = us / 1_000_000;
+    format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60)
+}
+
 /// Interface details: all of them, or one.
-pub fn interfaces(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
+pub fn interfaces(t: &Topology, sim: &Sim, d: &Device, only: Option<IfRef>) -> String {
     let mut s = String::new();
     for (i, p) in d.ports.iter().enumerate() {
         if only.is_some_and(|r| r.port != i) {
@@ -805,6 +827,24 @@ pub fn interfaces(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
             if let Some(ip) = p.ip {
                 let _ = writeln!(s, "  Internet address {ip}");
             }
+            let (bw, delay_us) = port_metrics(p);
+            let cnt = sim.port_counters(d.id, i);
+            let cleared = sim.port_counters_cleared_at(d.id);
+            let elapsed = sim.now_us().saturating_sub(cleared.unwrap_or(0));
+            s.push_str("  MTU 1500 bytes");
+            if let Some(m) = d.security.ip_mtu.get(&p.name) {
+                let _ = write!(s, " (IP MTU {m})");
+            }
+            let _ = writeln!(s, ", BW {bw} Kbit/sec, DLY {delay_us} usec");
+            let _ = writeln!(
+                s,
+                "  Reliability 255/255, txload {}/255, rxload {}/255 (averaged since the counters began)",
+                load_of(cnt.out_octets, elapsed, bw),
+                load_of(cnt.in_octets, elapsed, bw)
+            );
+            if netlabcraft_sim::port_max_speed(&p.name).is_some() {
+                let _ = writeln!(s, "  Encapsulation ARPA");
+            }
             if let Some((speed, duplex)) = netlabcraft_sim::link_speed(t, end) {
                 let half = duplex == netlabcraft_model::Duplex::Half;
                 let _ = writeln!(s, "  {}-duplex, {speed} Mb/s", if half { "Half" } else { "Full" });
@@ -820,6 +860,28 @@ pub fn interfaces(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
                     let _ = writeln!(s, "  Switchport: access ({}), VLAN {}", sp.mode.name(), sp.access_vlan);
                 }
             }
+            match cleared {
+                None => s.push_str("  Counters: never cleared\n"),
+                Some(at) => {
+                    let _ = writeln!(s, "  Counters: cleared {} ago", hms(sim.now_us().saturating_sub(at)));
+                }
+            }
+            let _ = writeln!(
+                s,
+                "  {} packets input, {} bytes, {} broadcasts, {} multicasts",
+                cnt.in_packets(),
+                cnt.in_octets,
+                cnt.in_bcast,
+                cnt.in_mcast
+            );
+            let _ = writeln!(
+                s,
+                "  {} packets output, {} bytes, {} broadcasts, {} multicasts",
+                cnt.out_packets(),
+                cnt.out_octets,
+                cnt.out_bcast,
+                cnt.out_mcast
+            );
         }
         for sub in &p.subifs {
             if only.is_some_and(|r| r.sub.is_some_and(|n| n != sub.number)) {
