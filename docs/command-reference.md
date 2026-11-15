@@ -187,7 +187,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show startup-config` | privileged | router, switch, firewall | Saved configuration |
 | `show ip interface brief` | user, privileged | router, switch | Interface addresses and status |
 | `show ip route` | user, privileged | router, switch | Routing table |
-| `show ip route {connected\|static\|eigrp\|ospf\|rip\|summary}` | user, privileged | router, switch | Only the routes one source gave |
+| `show ip route {connected\|static\|eigrp\|ospf\|rip\|bgp\|summary}` | user, privileged | router, switch | Only the routes one source gave |
 | `show ip route A.B.C.D A.B.C.D` | user, privileged | router, switch | The route for exactly this network and mask |
 | `show ip arp` | user, privileged | router, switch | ARP cache |
 | `show arp` | user, privileged | router, switch, firewall | ARP cache |
@@ -625,6 +625,45 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ip eigrp interfaces` | user, privileged | router, switch | Interfaces running EIGRP |
 | `debug eigrp packets` | privileged | router, switch | Report the EIGRP hellos this router hears |
 | `no debug eigrp packets` | privileged | router, switch | Stop reporting EIGRP hellos |
+| `router bgp <1-4294967295>` | config | router, switch | Start or configure BGP in this autonomous system |
+| `no router bgp <1-4294967295>` | config | router, switch | Stop BGP |
+| `bgp router-id A.B.C.D` |  | router, switch | Set the BGP router id |
+| `no bgp router-id` |  | router, switch | Take the router id from the interfaces again |
+| `bgp log-neighbor-changes` |  | router, switch | Log each neighbour session that comes up or goes down |
+| `no bgp log-neighbor-changes` |  | router, switch | Stop logging session changes |
+| `bgp default local-preference <0-4294967295>` |  | router, switch | The local preference paths get when nothing else sets it |
+| `no bgp default local-preference` |  | router, switch | Local preference 100 again |
+| `neighbor A.B.C.D remote-as <1-4294967295>` |  | router, switch | Name a neighbour and the autonomous system it is in |
+| `no neighbor A.B.C.D` |  | router, switch | Remove a neighbour and every setting it had |
+| `no neighbor A.B.C.D remote-as <1-4294967295>` |  | router, switch | Remove a neighbour and every setting it had |
+| `neighbor A.B.C.D update-source <interface>` |  | router, switch | Send the session from the address of this interface |
+| `no neighbor A.B.C.D update-source` |  | router, switch | Send the session from the interface towards the neighbour again |
+| `neighbor A.B.C.D next-hop-self` |  | router, switch | Name this router as the next hop of the paths it sends this neighbour |
+| `no neighbor A.B.C.D next-hop-self` |  | router, switch | Keep the next hop a path came with |
+| `neighbor A.B.C.D shutdown` |  | router, switch | Close the session and keep the neighbour configured |
+| `no neighbor A.B.C.D shutdown` |  | router, switch | Open the session again |
+| `neighbor A.B.C.D description <text>` |  | router, switch | A note about this neighbour |
+| `no neighbor A.B.C.D description` |  | router, switch | Remove the note |
+| `neighbor A.B.C.D ebgp-multihop` |  | router, switch | Let an external neighbour be up to 255 routers away |
+| `neighbor A.B.C.D ebgp-multihop <1-255>` |  | router, switch | Let an external neighbour be this many routers away |
+| `no neighbor A.B.C.D ebgp-multihop` |  | router, switch | An external neighbour must be directly connected again |
+| `neighbor A.B.C.D weight <0-65535>` |  | router, switch | The weight of every path learned from this neighbour |
+| `no neighbor A.B.C.D weight` |  | router, switch | Weight 0 again |
+| `network A.B.C.D` |  | router, switch | Advertise this classful network while it is in the routing table |
+| `network A.B.C.D mask A.B.C.D` |  | router, switch | Advertise this prefix while it is in the routing table |
+| `no network A.B.C.D` |  | router, switch | Stop advertising this classful network |
+| `no network A.B.C.D mask A.B.C.D` |  | router, switch | Stop advertising this prefix |
+| `redistribute {connected\|static\|ospf <1-65535>}` |  | router, switch | Advertise the routes another source gave |
+| `no redistribute {connected\|static\|ospf}` |  | router, switch | Stop advertising them |
+| `show ip bgp` | user, privileged | router, switch | Every path BGP knows, the best of each prefix marked |
+| `show ip bgp A.B.C.D` | user, privileged | router, switch | The paths to one destination |
+| `show ip bgp A.B.C.D A.B.C.D` | user, privileged | router, switch | The paths to exactly one prefix |
+| `show ip bgp summary` | user, privileged | router, switch | Each neighbour's session state and prefix count |
+| `show ip bgp neighbors` | user, privileged | router, switch | Every neighbour in detail |
+| `show ip bgp neighbors A.B.C.D` | user, privileged | router, switch | One neighbour in detail |
+| `clear ip bgp {*\|A.B.C.D}` | privileged | router, switch | Reset BGP sessions so they start again |
+| `debug ip bgp` | privileged | router, switch | Report the BGP messages this router hears and its session changes |
+| `no debug ip bgp` | privileged | router, switch | Stop reporting BGP |
 | `bandwidth <1-10000000>` | interface | router, switch | The bandwidth EIGRP's metric uses (kbit/s) |
 | `no bandwidth` | interface | router, switch | Bandwidth from the port's speed again |
 | `delay <1-16777215>` | interface | router, switch | The delay EIGRP's metric adds (tens of microseconds) |

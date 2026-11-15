@@ -169,7 +169,7 @@ fn learned_out(t: &Topology, d: &Device, dst: Ipv4Addr) -> Option<L3If> {
     let e = if d.eigrp.is_some() { crate::eigrp::compute(t).routes.remove(&d.id).unwrap_or_default() } else { Vec::new() };
     let o = if d.ospf.is_some() { crate::ospf::compute(t).routes.remove(&d.id).unwrap_or_default() } else { Vec::new() };
     let r = if d.rip.is_some() { crate::rip::compute(t).routes.remove(&d.id).unwrap_or_default() } else { Vec::new() };
-    crate::route_with(t, d, dst, crate::flow_hash(Ipv4Addr::UNSPECIFIED, dst), &e, &o, &r).map(|(i, _)| i)
+    crate::route_with(t, d, dst, crate::flow_hash(Ipv4Addr::UNSPECIFIED, dst), &e, &o, &r, &[]).map(|(i, _)| i)
 }
 
 /// Every tunnel that depends on learned routes: first with all of them down, the ones whose

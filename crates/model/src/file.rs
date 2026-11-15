@@ -178,6 +178,35 @@ mod tests {
     }
 
     #[test]
+    fn a_bgp_process_round_trips_and_an_older_router_has_none() {
+        use crate::bgp::{Bgp, Source};
+        let mut t = Topology::new();
+        let r = t.add_device(DeviceKind::Router, None, 0.0, 0.0).unwrap();
+        // A lab saved before BGP: no `bgp` key, and the router opens with no process.
+        assert!(!to_json(&t).unwrap().contains("bgp"));
+        let mut b = Bgp::new(4_200_000_001);
+        b.log_neighbor_changes = true;
+        b.networks.push("10.1.0.0/16".parse().unwrap());
+        b.redistribute.push(Source::Connected);
+        let n = b.neighbor_mut("10.0.0.2".parse().unwrap()).unwrap();
+        n.remote_as = Some(65_002);
+        n.update_source = Some("Loopback0".into());
+        n.ebgp_multihop = Some(2);
+        t.device_mut(r).unwrap().bgp = Some(b);
+        let back = from_json(&to_json(&t).unwrap()).unwrap();
+        assert_eq!(back, t);
+        assert!(back.device(r).unwrap().bgp.as_ref().is_some_and(|b| b.asn == 4_200_000_001));
+        // A hostile file is cleaned on load: no AS 0, no duplicate neighbours.
+        let mut v: serde_json::Value = serde_json::from_str(&to_json(&t).unwrap()).unwrap();
+        v["topology"]["devices"][0]["bgp"]["asn"] = 0.into();
+        let dup = v["topology"]["devices"][0]["bgp"]["neighbors"][0].clone();
+        v["topology"]["devices"][0]["bgp"]["neighbors"].as_array_mut().unwrap().push(dup);
+        let clean = from_json(&v.to_string()).unwrap();
+        let b = clean.device(r).unwrap().bgp.as_ref().unwrap();
+        assert_eq!((b.asn, b.neighbors.len()), (1, 1));
+    }
+
+    #[test]
     fn a_version_1_phone_opens_with_a_cellular_port_and_cell_settings_round_trip() {
         let mut t = Topology::new();
         let ph = t.add_model(crate::models::find("Smartphone").unwrap(), None, 0.0, 0.0).unwrap();

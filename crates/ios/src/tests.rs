@@ -8,6 +8,7 @@ use crate::*;
 mod acl_counters;
 mod acl_duplicates;
 mod acl_icmp;
+mod bgp;
 mod console_depth;
 mod families;
 mod inspections;
@@ -409,6 +410,7 @@ fn every_command_survives_hostile_arguments() {
                     "en\nconf t\nint fa0/1",
                     "en\nconf t\nvlan 5",
                     "en\nconf t\nrouter eigrp 1",
+                    "en\nconf t\nrouter bgp 65001",
                     "en\nconf t\nint lo0",
                     "en\nconf t\nrouter ospf 1",
                     "en\nconf t\nip access-list extended X",

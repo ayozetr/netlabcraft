@@ -15,6 +15,7 @@ use netlabcraft_core::MacAddr;
 pub mod aes;
 pub mod aes256;
 pub mod ah;
+pub mod bgp;
 pub mod capwap;
 pub mod cell;
 pub mod cipher;
@@ -873,6 +874,9 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                         Ok(s) if !s.payload.is_empty() && (FTP_DATA_PORTS.contains(&s.dst_port) || FTP_DATA_PORTS.contains(&s.src_port)) => {
                             (Protocol::Ftp, format!("FTP data, {} bytes {route}{tag}", s.payload.len()))
                         }
+                        Ok(s) if !s.payload.is_empty() && (s.dst_port == bgp::PORT || s.src_port == bgp::PORT) => {
+                            (Protocol::Tcp, format!("BGP {} {route}{tag}", bgp::describe(&s.payload)))
+                        }
                         Ok(s) => (Protocol::Tcp, format!("TCP [{}] {}:{} → {}:{}{tag}", s.flag_names(), ip.src, s.src_port, ip.dst, s.dst_port)),
                         Err(e) => (Protocol::Tcp, format!("TCP ({e}) {route}{tag}")),
                     },
@@ -1187,6 +1191,28 @@ mod tests {
         let (proto, text) = summarize(&frame);
         assert_eq!(proto, Protocol::Eigrp);
         assert_eq!(text, "EIGRP hello, AS 7 (hold 15 s) 10.0.12.1 → 224.0.0.10");
+        for n in 0..frame.len() {
+            let _ = summarize(&frame[..n]);
+        }
+    }
+
+    #[test]
+    fn bgp_messages_in_tcp_are_summarized() {
+        let (a, b) = (Ipv4Addr::new(10, 0, 12, 1), Ipv4Addr::new(10, 0, 12, 2));
+        let seg = tcp::Tcp {
+            src_port: 40_000,
+            dst_port: bgp::PORT,
+            seq: 1,
+            ack: 1,
+            flags: tcp::ACK | tcp::PSH,
+            window: 16_384,
+            payload: bgp::Message::Keepalive.encode(),
+        };
+        let ip = Ipv4 { id: 0, ttl: 1, protocol: PROTO_TCP, src: a, dst: b, payload: seg.encode(a, b) };
+        let frame = Frame { dst: mac(2), src: mac(1), vlan: None, ethertype: ETHERTYPE_IPV4, payload: ip.encode() }.encode();
+        let (proto, text) = summarize(&frame);
+        assert_eq!(proto, Protocol::Tcp);
+        assert_eq!(text, "BGP KEEPALIVE 10.0.12.1 → 10.0.12.2");
         for n in 0..frame.len() {
             let _ = summarize(&frame[..n]);
         }

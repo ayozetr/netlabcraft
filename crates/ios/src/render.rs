@@ -559,6 +559,7 @@ pub fn running_config(d: &Device) -> String {
         let _ = writeln!(s, "{}", if e.auto_summary { " auto-summary" } else { " no auto-summary" });
         let _ = writeln!(s, "!");
     }
+    crate::exec::bgp::running_config(&mut s, d);
     if let Some(r) = &d.rip {
         let _ = writeln!(s, "router rip");
         if r.version != 1 {
@@ -702,6 +703,7 @@ pub fn ip_route_summary(table: &[netlabcraft_sim::RouteEntry]) -> String {
         ("static", count(&['S']), String::new()),
         ("RIP", count(&['R']), String::new()),
         ("EIGRP", count(&['D']), String::new()),
+        ("BGP", count(&['B']), String::new()),
         ("OSPF", count(&['O', 'I', 'E']), format!("intra-area {}, inter-area {}, external {}", count(&['O']), count(&['I']), count(&['E']))),
     ];
     let other = table.len().saturating_sub(rows.iter().map(|r| r.1).sum::<usize>());
@@ -742,7 +744,7 @@ pub fn ip_route_summary(table: &[netlabcraft_sim::RouteEntry]) -> String {
 
 pub fn ip_route_table(d: &Device, table: &[netlabcraft_sim::RouteEntry]) -> String {
     let mut s = String::from(
-        "Codes: C connected, L local, S static, R RIP, D EIGRP, O OSPF, O IA OSPF other area, O E2 OSPF external, O*E2 OSPF external default, O*IA default into a stub area, * the default route\n\n",
+        "Codes: C connected, L local, S static, R RIP, D EIGRP, B BGP, O OSPF, O IA OSPF other area, O E2 OSPF external, O*E2 OSPF external default, O*IA default into a stub area, * the default route\n\n",
     );
     if d.kind == DeviceKind::Switch && !d.ip_routing {
         let _ = writeln!(
@@ -770,6 +772,7 @@ pub fn ip_route_table(d: &Device, table: &[netlabcraft_sim::RouteEntry]) -> Stri
             ('O' | 'E' | 'I', Some(v), Some(i)) => format!("via {v}, {i} (OSPF)"),
             ('D', Some(v), Some(i)) => format!("via {v}, {i} (EIGRP)"),
             ('D', None, Some(i)) => format!("summary, discarded on {i} (EIGRP)"),
+            ('B', Some(v), Some(i)) => format!("via {v}, {i} (BGP)"),
             (_, Some(v), _) => format!("via {v}"),
             (_, None, Some(i)) => format!("out {i}"),
             _ => String::new(),

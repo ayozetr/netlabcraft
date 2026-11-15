@@ -1,6 +1,6 @@
 # Pitfalls
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (a derived-state pitfall (M9.10)) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (four pitfalls from M9.7: counters keyed by position, a stale checksum, a database that lists unreachable routers, a `Rest` that needs a word) · also merged with M9.5, M9.6, M9.8 and M9.11 · earlier: minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
+> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (BGP needs simulated time) · earlier: minor (a derived-state pitfall (M9.10)) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (four pitfalls from M9.7: counters keyed by position, a stale checksum, a database that lists unreachable routers, a `Rest` that needs a word) · also merged with M9.5, M9.6, M9.8 and M9.11 · earlier: minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
 
 Mistakes already made here, and the rule that stops each one. Read this before your first change; when you make a
 new mistake worth not repeating, add it in the same change.
@@ -59,6 +59,10 @@ new mistake worth not repeating, add it in the same change.
   where a device is or what it is set to must end in `cell_refresh` (`Session::changed` does it), and a test that
   edits a `Topology` directly must call it before it asks for a link.
 
+- **A BGP session needs simulated time before it carries a route.** A session takes 3 simulated seconds to reach
+  Established, and the clock does not move while commands are typed, so a test or a lab that configures BGP and looks
+  at the routing table at once finds nothing. Run `sim.advance` (`Sim::run_for` in a test) first. Keepalives follow
+  the window rule above: one due at the 60 s tick is sent only if the session was up when the window began.
 - **A packet changed after it was encoded needs its checksum zeroed before the new one is computed.** Signing an OSPF
   packet with a clear-text password rewrote the authentication field and summed the packet again with the old checksum
   still in it, so the packet failed its own checksum, and no test noticed because nothing decoded it. A signer gets a

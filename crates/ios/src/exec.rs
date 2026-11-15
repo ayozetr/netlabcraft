@@ -14,6 +14,7 @@ use crate::grammar::{self, Id, Modes, ParseError};
 use crate::{host, render};
 
 pub(crate) mod automation;
+pub(crate) mod bgp;
 pub(crate) mod cellular;
 pub(crate) mod eigrp6;
 pub(crate) mod families;
@@ -71,6 +72,8 @@ pub enum Mode {
     Ospf6,
     /// `R1(config-router)#` under `router eigrp N`.
     Eigrp,
+    /// `R1(config-router)#` under `router bgp N`.
+    Bgp,
     /// `R1(config-rtr)#` under `ipv6 router eigrp N` (the EIGRP command bits, checked apart).
     Eigrp6,
     /// `R1(config-rtr)#` under `ipv6 router rip NAME` (the RIP command bits, checked apart).
@@ -156,6 +159,7 @@ impl Mode {
             Mode::Rip | Mode::Rip6 => Modes::RIP,
             Mode::Ospf6 => Modes::OSPF6,
             Mode::Eigrp | Mode::Eigrp6 => Modes::EIGRP,
+            Mode::Bgp => Modes::BGP,
             Mode::Acl6(_) => Modes::ACL6,
             Mode::Dhcp6(_) => Modes::DHCP6,
             Mode::Acl(_) => Modes::ACL,
@@ -512,7 +516,7 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::Line(_) => format!("{n}(config-line)#"),
         Mode::DhcpPool(_) => format!("{n}(dhcp-config)#"),
         Mode::Svi(_) => format!("{n}(config-if)#"),
-        Mode::Ospf | Mode::Rip | Mode::Eigrp => format!("{n}(config-router)#"),
+        Mode::Ospf | Mode::Rip | Mode::Eigrp | Mode::Bgp => format!("{n}(config-router)#"),
         Mode::Ospf6 | Mode::Eigrp6 | Mode::Rip6 => format!("{n}(config-rtr)#"),
         Mode::Acl6(_) => format!("{n}(config-ipv6-acl)#"),
         Mode::Dhcp6(_) => format!("{n}(config-dhcpv6)#"),
@@ -817,6 +821,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Ospf6
                 | Mode::Rip
                 | Mode::Eigrp
+                | Mode::Bgp
                 | Mode::Eigrp6
                 | Mode::Rip6
                 | Mode::Acl(_)
@@ -893,6 +898,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Ospf6
                 | Mode::Rip
                 | Mode::Eigrp
+                | Mode::Bgp
                 | Mode::Eigrp6
                 | Mode::Rip6
                 | Mode::Acl(_)
@@ -1009,7 +1015,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 _ if "eigrp".starts_with(&which) => &["D "],
                 _ if "ospf".starts_with(&which) => &["O "],
                 _ if "rip".starts_with(&which) => &["R "],
-                _ => return Err("% connected, static, eigrp, ospf or rip".into()),
+                _ if "bgp".starts_with(&which) => &["B "],
+                _ => return Err("% connected, static, eigrp, ospf, rip or bgp".into()),
             };
             let (head, body) = full.split_once("\n\n").unwrap_or(("", full.as_str()));
             // A starred default (S*, O*E2…) belongs to its source too.
@@ -3768,6 +3775,39 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let st = c.sim.eigrp_state(c.t);
             Ok(render::eigrp_interfaces(c.d()?, &st))
         }
+        Id::BgpRouter
+        | Id::NoBgpRouter
+        | Id::BgpRouterId
+        | Id::NoBgpRouterId
+        | Id::BgpLogChanges
+        | Id::NoBgpLogChanges
+        | Id::BgpDefaultLocalPref
+        | Id::NoBgpDefaultLocalPref
+        | Id::BgpNeighborRemoteAs
+        | Id::NoBgpNeighbor
+        | Id::BgpNeighborUpdateSource
+        | Id::NoBgpNeighborUpdateSource
+        | Id::BgpNeighborNextHopSelf
+        | Id::NoBgpNeighborNextHopSelf
+        | Id::BgpNeighborShutdown
+        | Id::NoBgpNeighborShutdown
+        | Id::BgpNeighborDescription
+        | Id::NoBgpNeighborDescription
+        | Id::BgpNeighborMultihop
+        | Id::NoBgpNeighborMultihop
+        | Id::BgpNeighborWeight
+        | Id::NoBgpNeighborWeight
+        | Id::BgpNetwork
+        | Id::NoBgpNetwork
+        | Id::BgpRedistribute
+        | Id::NoBgpRedistribute
+        | Id::ShowIpBgp
+        | Id::ShowIpBgpPrefix
+        | Id::ShowIpBgpSummary
+        | Id::ShowIpBgpNeighbors
+        | Id::ClearIpBgp
+        | Id::DebugIpBgp
+        | Id::NoDebugIpBgp => bgp::command(&mut c, spec.id, &args),
         Id::Bandwidth | Id::NoBandwidth => {
             let bw = if spec.id == Id::Bandwidth {
                 Some(arg(0).parse::<u32>().ok().filter(|b| (1..=10_000_000).contains(b)).ok_or("% Bandwidth is 1-10000000 kbit/s")?)
@@ -3957,9 +3997,13 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 if !"summary".starts_with(&w) {
                     return Err("% show ip protocols, or show ip protocols summary".into());
                 }
-                return Ok(render::ip_protocols_summary(c.d()?, &st, &rs, &es));
+                let text = render::ip_protocols_summary(c.d()?, &st, &rs, &es);
+                let view = c.sim.bgp_state(c.t);
+                return Ok(bgp::with_protocol(c.d()?, &view, text));
             }
-            Ok(render::ip_protocols(c.d()?, &st, &rs, &es))
+            let text = render::ip_protocols(c.d()?, &st, &rs, &es);
+            let view = c.sim.bgp_state(c.t);
+            Ok(bgp::with_protocol(c.d()?, &view, text))
         }
         Id::HelperAddress | Id::NoHelperAddress => {
             let target =
