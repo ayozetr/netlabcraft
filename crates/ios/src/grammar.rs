@@ -91,6 +91,8 @@ impl Modes {
     pub const PKI_TRUSTPOINT: Modes = Modes(1 << 50);
     /// `crypto pki server NAME`.
     pub const PKI_SERVER: Modes = Modes(1 << 51);
+    /// `router bgp N`.
+    pub const BGP: Modes = Modes(1 << 52);
     /// Every command mode, either device.
     pub const ANY_MODE: Modes = Modes(
         63 | 256
@@ -125,7 +127,8 @@ impl Modes {
             | (1 << 48)
             | (1 << 49)
             | (1 << 50)
-            | (1 << 51),
+            | (1 << 51)
+            | (1 << 52),
     );
     pub const BOTH: Modes = Modes(192);
     /// A router with a switch card (a device flag): the VLAN database and the switching
@@ -760,6 +763,40 @@ pub enum Id {
     ShowIpEigrpInterfaces,
     DebugEigrpPackets,
     NoDebugEigrpPackets,
+    // ---- BGP (exec/bgp.rs) ----
+    BgpRouter,
+    NoBgpRouter,
+    BgpRouterId,
+    NoBgpRouterId,
+    BgpLogChanges,
+    NoBgpLogChanges,
+    BgpDefaultLocalPref,
+    NoBgpDefaultLocalPref,
+    BgpNeighborRemoteAs,
+    NoBgpNeighbor,
+    BgpNeighborUpdateSource,
+    NoBgpNeighborUpdateSource,
+    BgpNeighborNextHopSelf,
+    NoBgpNeighborNextHopSelf,
+    BgpNeighborShutdown,
+    NoBgpNeighborShutdown,
+    BgpNeighborDescription,
+    NoBgpNeighborDescription,
+    BgpNeighborMultihop,
+    NoBgpNeighborMultihop,
+    BgpNeighborWeight,
+    NoBgpNeighborWeight,
+    BgpNetwork,
+    NoBgpNetwork,
+    BgpRedistribute,
+    NoBgpRedistribute,
+    ShowIpBgp,
+    ShowIpBgpPrefix,
+    ShowIpBgpSummary,
+    ShowIpBgpNeighbors,
+    ClearIpBgp,
+    DebugIpBgp,
+    NoDebugIpBgp,
     Bandwidth,
     NoBandwidth,
     Delay,
@@ -1068,6 +1105,7 @@ const SUBMODES: Modes = Modes::IF
     .or(Modes::DHCP6)
     .or(Modes::OSPF6)
     .or(Modes::EIGRP)
+    .or(Modes::BGP)
     .or(VPN_MODES)
     .or(QOS_MODES)
     .or(Modes::OBJECT)
@@ -1135,7 +1173,7 @@ pub static SPECS: &[Spec] = &[
         ShowIpRoute,
         EXECS,
         Modes::BOTH,
-        [K("show"), K("ip"), K("route"), Arg("{connected|static|eigrp|ospf|rip|summary}")],
+        [K("show"), K("ip"), K("route"), Arg("{connected|static|eigrp|ospf|rip|bgp|summary}")],
         "Only the routes one source gave"
     ),
     spec!(
@@ -2309,6 +2347,135 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowIpEigrpInterfaces, EXECS, Modes::BOTH, [K("show"), K("ip"), K("eigrp"), K("interfaces")], "Interfaces running EIGRP"),
     spec!(DebugEigrpPackets, Modes::EXEC, Modes::BOTH, [K("debug"), K("eigrp"), K("packets")], "Report the EIGRP hellos this router hears"),
     spec!(NoDebugEigrpPackets, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("eigrp"), K("packets")], "Stop reporting EIGRP hellos"),
+    spec!(BgpRouter, Modes::CONFIG, Modes::BOTH, [K("router"), K("bgp"), Arg("<1-4294967295>")], "Start or configure BGP in this autonomous system"),
+    spec!(NoBgpRouter, Modes::CONFIG, Modes::BOTH, [K("no"), K("router"), K("bgp"), Arg("<1-4294967295>")], "Stop BGP"),
+    spec!(BgpRouterId, Modes::BGP, Modes::BOTH, [K("bgp"), K("router-id"), Arg("A.B.C.D")], "Set the BGP router id"),
+    spec!(NoBgpRouterId, Modes::BGP, Modes::BOTH, [K("no"), K("bgp"), K("router-id")], "Take the router id from the interfaces again"),
+    spec!(BgpLogChanges, Modes::BGP, Modes::BOTH, [K("bgp"), K("log-neighbor-changes")], "Log each neighbour session that comes up or goes down"),
+    spec!(NoBgpLogChanges, Modes::BGP, Modes::BOTH, [K("no"), K("bgp"), K("log-neighbor-changes")], "Stop logging session changes"),
+    spec!(
+        BgpDefaultLocalPref,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("bgp"), K("default"), K("local-preference"), Arg("<0-4294967295>")],
+        "The local preference paths get when nothing else sets it"
+    ),
+    spec!(NoBgpDefaultLocalPref, Modes::BGP, Modes::BOTH, [K("no"), K("bgp"), K("default"), K("local-preference")], "Local preference 100 again"),
+    spec!(
+        BgpNeighborRemoteAs,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D"), K("remote-as"), Arg("<1-4294967295>")],
+        "Name a neighbour and the autonomous system it is in"
+    ),
+    spec!(NoBgpNeighbor, Modes::BGP, Modes::BOTH, [K("no"), K("neighbor"), Arg("A.B.C.D")], "Remove a neighbour and every setting it had"),
+    spec!(
+        NoBgpNeighbor,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D"), K("remote-as"), Arg("<1-4294967295>")],
+        "Remove a neighbour and every setting it had"
+    ),
+    spec!(
+        BgpNeighborUpdateSource,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D"), K("update-source"), Rest("<interface>")],
+        "Send the session from the address of this interface"
+    ),
+    spec!(
+        NoBgpNeighborUpdateSource,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D"), K("update-source")],
+        "Send the session from the interface towards the neighbour again"
+    ),
+    spec!(
+        BgpNeighborNextHopSelf,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D"), K("next-hop-self")],
+        "Name this router as the next hop of the paths it sends this neighbour"
+    ),
+    spec!(
+        NoBgpNeighborNextHopSelf,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D"), K("next-hop-self")],
+        "Keep the next hop a path came with"
+    ),
+    spec!(
+        BgpNeighborShutdown,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D"), K("shutdown")],
+        "Close the session and keep the neighbour configured"
+    ),
+    spec!(NoBgpNeighborShutdown, Modes::BGP, Modes::BOTH, [K("no"), K("neighbor"), Arg("A.B.C.D"), K("shutdown")], "Open the session again"),
+    spec!(
+        BgpNeighborDescription,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D"), K("description"), Rest("<text>")],
+        "A note about this neighbour"
+    ),
+    spec!(NoBgpNeighborDescription, Modes::BGP, Modes::BOTH, [K("no"), K("neighbor"), Arg("A.B.C.D"), K("description")], "Remove the note"),
+    spec!(
+        BgpNeighborMultihop,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D"), K("ebgp-multihop")],
+        "Let an external neighbour be up to 255 routers away"
+    ),
+    spec!(
+        BgpNeighborMultihop,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D"), K("ebgp-multihop"), Arg("<1-255>")],
+        "Let an external neighbour be this many routers away"
+    ),
+    spec!(
+        NoBgpNeighborMultihop,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D"), K("ebgp-multihop")],
+        "An external neighbour must be directly connected again"
+    ),
+    spec!(
+        BgpNeighborWeight,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D"), K("weight"), Arg("<0-65535>")],
+        "The weight of every path learned from this neighbour"
+    ),
+    spec!(NoBgpNeighborWeight, Modes::BGP, Modes::BOTH, [K("no"), K("neighbor"), Arg("A.B.C.D"), K("weight")], "Weight 0 again"),
+    spec!(BgpNetwork, Modes::BGP, Modes::BOTH, [K("network"), Arg("A.B.C.D")], "Advertise this classful network while it is in the routing table"),
+    spec!(
+        BgpNetwork,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("network"), Arg("A.B.C.D"), K("mask"), Arg("A.B.C.D")],
+        "Advertise this prefix while it is in the routing table"
+    ),
+    spec!(NoBgpNetwork, Modes::BGP, Modes::BOTH, [K("no"), K("network"), Arg("A.B.C.D")], "Stop advertising this classful network"),
+    spec!(NoBgpNetwork, Modes::BGP, Modes::BOTH, [K("no"), K("network"), Arg("A.B.C.D"), K("mask"), Arg("A.B.C.D")], "Stop advertising this prefix"),
+    spec!(
+        BgpRedistribute,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("redistribute"), Rest("{connected|static|ospf <1-65535>}")],
+        "Advertise the routes another source gave"
+    ),
+    spec!(NoBgpRedistribute, Modes::BGP, Modes::BOTH, [K("no"), K("redistribute"), Rest("{connected|static|ospf}")], "Stop advertising them"),
+    spec!(ShowIpBgp, EXECS, Modes::BOTH, [K("show"), K("ip"), K("bgp")], "Every path BGP knows, the best of each prefix marked"),
+    spec!(ShowIpBgpPrefix, EXECS, Modes::BOTH, [K("show"), K("ip"), K("bgp"), Arg("A.B.C.D")], "The paths to one destination"),
+    spec!(ShowIpBgpPrefix, EXECS, Modes::BOTH, [K("show"), K("ip"), K("bgp"), Arg("A.B.C.D"), Arg("A.B.C.D")], "The paths to exactly one prefix"),
+    spec!(ShowIpBgpSummary, EXECS, Modes::BOTH, [K("show"), K("ip"), K("bgp"), K("summary")], "Each neighbour's session state and prefix count"),
+    spec!(ShowIpBgpNeighbors, EXECS, Modes::BOTH, [K("show"), K("ip"), K("bgp"), K("neighbors")], "Every neighbour in detail"),
+    spec!(ShowIpBgpNeighbors, EXECS, Modes::BOTH, [K("show"), K("ip"), K("bgp"), K("neighbors"), Arg("A.B.C.D")], "One neighbour in detail"),
+    spec!(ClearIpBgp, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("bgp"), Arg("{*|A.B.C.D}")], "Reset BGP sessions so they start again"),
+    spec!(DebugIpBgp, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("bgp")], "Report the BGP messages this router hears and its session changes"),
+    spec!(NoDebugIpBgp, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("bgp")], "Stop reporting BGP"),
     spec!(Bandwidth, Modes::IF, Modes::BOTH, [K("bandwidth"), Arg("<1-10000000>")], "The bandwidth EIGRP's metric uses (kbit/s)"),
     spec!(NoBandwidth, Modes::IF, Modes::BOTH, [K("no"), K("bandwidth")], "Bandwidth from the port's speed again"),
     spec!(Delay, Modes::IF, Modes::BOTH, [K("delay"), Arg("<1-16777215>")], "The delay EIGRP's metric adds (tens of microseconds)"),
@@ -4321,6 +4488,7 @@ mod tests {
                 Modes::IKEV2_PROFILE,
                 Modes::PKI_TRUSTPOINT,
                 Modes::PKI_SERVER,
+                Modes::BGP,
             ]
             .into_iter()
             .find(|m| s.modes.has(*m))

@@ -66,7 +66,7 @@
   CLI, Desktop and Services tabs. Every picture and message is our own work.
 - **Real frames.** Devices exchange encoded Ethernet, 802.11, ARP, IPv4, IPv6, ICMP, NDP, TCP, UDP,
   DHCP, DHCPv6, DNS, HTTP, TLS 1.2, SSH 2.0, RESTCONF, NETCONF, FTP, SMTP, POP3, NTP, syslog,
-  TFTP, SNMP, RADIUS with EAP, PEAP, CAPWAP, TACACS+, SIP, STP and RSTP, OSPF, RIP, RIPng, EIGRP,
+  TFTP, SNMP, RADIUS with EAP, PEAP, CAPWAP, TACACS+, SIP, STP and RSTP, OSPF, RIP, RIPng, EIGRP, BGP,
   HSRP, VRRP, LLDP, LACP, GRE, IKEv1, IKEv2 and ESP frames, IPv4 fragments included; their
   Diffie-Hellman exchanges and AES encryption are computed for real. Captures open in any
   packet analyser, and a dropped frame says why.
@@ -94,7 +94,7 @@
   EtherChannel, VTP, port security, DHCP snooping, dynamic ARP inspection, CDP and LLDP, 802.1p
   CoS and power over Ethernet.
 - **Routing:** static and floating routes, RIP, OSPF (several areas, stub, authentication),
-  EIGRP, router-on-a-stick, multilayer switching, HSRP, VRRP v2 and v3, GLBP, HDLC and PPP.
+  EIGRP, BGP (eBGP and iBGP), router-on-a-stick, multilayer switching, HSRP, VRRP v2 and v3, GLBP, HDLC and PPP.
 - **IPv6:** addressing, neighbour discovery, SLAAC, DHCPv6, static routes, OSPFv3, EIGRP for IPv6,
   RIPng and ACLs.
 - **Security:** ACLs, NAT and PAT, AAA with RADIUS and TACACS+, SSH, GRE, site-to-site IPsec
@@ -108,7 +108,7 @@
 - **Simulation mode:** an event list replayed on the canvas, simple and complex PDUs, OSI layer
   details, scenarios, capture filters, drop reasons and pcap export.
 - **Console and PC prompt:** every mode a CCNA course uses, with `?` help, Tab completion and
-  output filters (1071 grammar entries in all; see
+  output filters (1110 grammar entries in all; see
   [`docs/command-reference.md`](docs/command-reference.md)); on PCs `ipconfig`, `ping`,
   `tracert`, `nslookup`, `telnet`, `ssh`, `ftp`, `netstat` and more.
 - **Activities:** checks worth points, sections, hints, values per student, time limits, password
@@ -120,9 +120,9 @@ What it doesn't do yet is listed, ranked, in [`docs/gaps.md`](docs/gaps.md).
 
 ## The CCNA lab book
 
-[`docs/labs/`](docs/labs/README.md) holds thirty-five hands-on labs written for NetLabCraft over the
-topics of the three CCNA courses (four for the first, sixteen for the second and fifteen for
-the third), plus one on mobile data. Eleven of them are troubleshooting labs where you find and
+[`docs/labs/`](docs/labs/README.md) holds thirty-six hands-on labs written for NetLabCraft over the
+topics of the three CCNA courses (four for the first, sixteen for the second and sixteen for
+the third, the last of them a BGP lab that goes a step past the course), plus one on mobile data. Eleven of them are troubleshooting labs where you find and
 fix deliberate faults (VLANs and trunks, routing, OSPF, ACLs, DHCP, NAT, spanning tree, EtherChannel, port security), and two
 teach you to read the OSPF database and spanning-tree views. Each lab lists its topology, addressing, every command to
 type and what to check. Every lab is also a test: the suite runs each one end to end as
@@ -193,7 +193,7 @@ egui frontend is a separate crate, so the UI can be swapped without touching the
 | L0 | `core` (MAC and IP addresses, networks, VLAN ids) |
 | L1 | `wire` (frame formats, checksums, pcap) |
 | L2 | `model` (the lab: devices, ports, configuration, cables; the `.nlcraft` format) |
-| L3 | `sim` (discrete-event simulator: switching, switch security, routing, STP, OSPF, RIP, RIPng, EIGRP, HSRP, VRRP, GLBP, IPv6, VPN with IKEv1 and IKEv2, QoS, firewalls, MTU, wireless with PEAP and central switching, voice and SIP, IoT, boards and BoardScript, PoE, automation over TLS and SSH, services, complex PDUs, Simulation-mode options) |
+| L3 | `sim` (discrete-event simulator: switching, switch security, routing, STP, OSPF, RIP, RIPng, EIGRP, BGP, HSRP, VRRP, GLBP, IPv6, VPN with IKEv1 and IKEv2, QoS, firewalls, MTU, wireless with PEAP and central switching, voice and SIP, IoT, boards and BoardScript, PoE, automation over TLS and SSH, services, complex PDUs, Simulation-mode options) |
 | L4 | `ios` (device consoles: grammar, configuration, `show` output, host shell) |
 | L5 | `engine` (session, command catalog, undo, sample labs, activities and instructor tools, RESTCONF, NETCONF and the controller, boards) |
 | L6 | `ui-egui` (the interface and its translations) · `mcp` (MCP server) |
