@@ -1,6 +1,6 @@
 # Pitfalls
 
-> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (policy edits must reach the routing fingerprint) · earlier: minor (BGP needs simulated time) · earlier: minor (a derived-state pitfall (M9.10)) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (four pitfalls from M9.7: counters keyed by position, a stale checksum, a database that lists unreachable routers, a `Rest` that needs a word) · also merged with M9.5, M9.6, M9.8 and M9.11 · earlier: minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
+> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (a lost path does not end a BGP session at once) · earlier: minor (policy edits must reach the routing fingerprint) · earlier: minor (BGP needs simulated time) · earlier: minor (a derived-state pitfall (M9.10)) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (four pitfalls from M9.7: counters keyed by position, a stale checksum, a database that lists unreachable routers, a `Rest` that needs a word) · also merged with M9.5, M9.6, M9.8 and M9.11 · earlier: minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
 
 Mistakes already made here, and the rule that stops each one. Read this before your first change; when you make a
 new mistake worth not repeating, add it in the same change.
@@ -76,6 +76,14 @@ new mistake worth not repeating, add it in the same change.
   name decide what BGP accepts and OSPF redistributes, so they are hashed there (only when a router has policy); a new
   setting that changes a computed result needs its line in the fingerprint, or the old result is shown until something
   else changes.
+- **A BGP session whose path is lost is not down yet.** With a hold timer, a test that cuts a link and looks at once
+  finds the session still Established (and its routes while their next hops resolve); it drops when the hold time runs
+  out, so run `Sim::run_for` past it. A directly connected external neighbour whose interface goes down, a shutdown, a
+  removed neighbour and `clear ip bgp` still end the session at once. A test of the hold timer needs a session that is
+  not directly connected (`ebgp-multihop`, or an internal one) so the cut is not a fast fall-over.
+- **Community lists and AS-path lists are read by the simulator, so they are in the routing fingerprint too.**
+  `ospf::fingerprint` hashes them next to the prefix lists and route maps; a new list-like setting needs its line there.
+
 ## Instructor
 
 - **A key the student's app holds is not a secret from the student.** The results HMAC key comes from the salt in the

@@ -850,6 +850,33 @@ pub enum Id {
     NoRmSetNextHop,
     RmSetOrigin,
     NoRmSetOrigin,
+    // ---- BGP communities, AS-path lists, aggregation and timers (exec/bgp.rs, exec/policy.rs) ----
+    CommunityListLine,
+    NoCommunityList,
+    AsPathListLine,
+    NoAsPathList,
+    BgpCommunityNewFormat,
+    NoBgpCommunityNewFormat,
+    ShowIpCommunityList,
+    ShowIpAsPathList,
+    RmMatchCommunity,
+    NoRmMatchCommunity,
+    RmMatchAsPath,
+    NoRmMatchAsPath,
+    RmSetCommunity,
+    NoRmSetCommunity,
+    BgpNeighborSendCommunity,
+    NoBgpNeighborSendCommunity,
+    BgpNeighborTimers,
+    NoBgpNeighborTimers,
+    BgpNeighborFilterList,
+    NoBgpNeighborFilterList,
+    BgpAggregate,
+    NoBgpAggregate,
+    BgpMaximumPaths,
+    NoBgpMaximumPaths,
+    ShowIpBgpCommunity,
+    ShowIpBgpCommunityList,
     Bandwidth,
     NoBandwidth,
     Delay,
@@ -2732,6 +2759,172 @@ pub static SPECS: &[Spec] = &[
     spec!(NoRmSetNextHop, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("ip"), K("next-hop")], "Leave the next hop alone"),
     spec!(RmSetOrigin, Modes::ROUTE_MAP, Modes::BOTH, [K("set"), K("origin"), Arg("{igp|egp|incomplete}")], "Give the paths this origin"),
     spec!(NoRmSetOrigin, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("origin")], "Leave the origin alone"),
+    spec!(
+        CommunityListLine,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ip"), K("community-list"), Rest("{standard|expanded} NAME {permit|deny} <community>...|<regular expression>")],
+        "Add a line to a community list"
+    ),
+    spec!(
+        NoCommunityList,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("community-list"), Rest("{standard|expanded} NAME [{permit|deny} <community>...|<regular expression>]")],
+        "Delete a community list, or one line of it"
+    ),
+    spec!(
+        AsPathListLine,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ip"), K("as-path"), K("access-list"), Rest("<1-500> {permit|deny} <regular expression>")],
+        "Add a line to an AS-path list"
+    ),
+    spec!(
+        NoAsPathList,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("as-path"), K("access-list"), Rest("<1-500> [{permit|deny} <regular expression>]")],
+        "Delete an AS-path list, or one line of it"
+    ),
+    spec!(
+        BgpCommunityNewFormat,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ip"), K("bgp-community"), K("new-format")],
+        "Show communities as AA:NN instead of one number"
+    ),
+    spec!(
+        NoBgpCommunityNewFormat,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("bgp-community"), K("new-format")],
+        "Show communities as one number again"
+    ),
+    spec!(ShowIpCommunityList, EXECS, Modes::BOTH, [K("show"), K("ip"), K("community-list")], "Every community list"),
+    spec!(ShowIpCommunityList, EXECS, Modes::BOTH, [K("show"), K("ip"), K("community-list"), Arg("NAME")], "One community list"),
+    spec!(ShowIpAsPathList, EXECS, Modes::BOTH, [K("show"), K("ip"), K("as-path-access-list")], "Every AS-path list"),
+    spec!(ShowIpAsPathList, EXECS, Modes::BOTH, [K("show"), K("ip"), K("as-path-access-list"), Arg("<1-500>")], "One AS-path list"),
+    spec!(
+        RmMatchCommunity,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("match"), K("community"), Rest("<list> [<list>...]")],
+        "Match paths that community lists permit"
+    ),
+    spec!(NoRmMatchCommunity, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("match"), K("community")], "Remove every community match"),
+    spec!(
+        NoRmMatchCommunity,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("no"), K("match"), K("community"), Rest("<list> [<list>...]")],
+        "Remove these lists from the community match"
+    ),
+    spec!(
+        RmMatchAsPath,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("match"), K("as-path"), Rest("<1-500> [<1-500>...]")],
+        "Match paths that AS-path lists permit"
+    ),
+    spec!(NoRmMatchAsPath, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("match"), K("as-path")], "Remove every AS-path match"),
+    spec!(
+        NoRmMatchAsPath,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("no"), K("match"), K("as-path"), Rest("<1-500> [<1-500>...]")],
+        "Remove these lists from the AS-path match"
+    ),
+    spec!(
+        RmSetCommunity,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("set"), K("community"), Rest("{none | <community>... [additive]}")],
+        "Give the paths these communities"
+    ),
+    spec!(NoRmSetCommunity, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("community")], "Leave the communities alone"),
+    spec!(
+        BgpNeighborSendCommunity,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D"), K("send-community")],
+        "Send the communities a path carries to this neighbour"
+    ),
+    spec!(
+        BgpNeighborSendCommunity,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D"), K("send-community"), Arg("{both|standard}")],
+        "Send the communities a path carries to this neighbour"
+    ),
+    spec!(
+        NoBgpNeighborSendCommunity,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D"), K("send-community")],
+        "Stop sending communities to this neighbour"
+    ),
+    spec!(
+        NoBgpNeighborSendCommunity,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D"), K("send-community"), Arg("{both|standard}")],
+        "Stop sending communities to this neighbour"
+    ),
+    spec!(
+        BgpNeighborTimers,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D"), K("timers"), Arg("<0-65535>"), Arg("<0|3-65535>")],
+        "Keepalive interval and hold time for this neighbour (seconds)"
+    ),
+    spec!(NoBgpNeighborTimers, Modes::BGP, Modes::BOTH, [K("no"), K("neighbor"), Arg("A.B.C.D"), K("timers")], "Keepalive 60 and hold time 180 again"),
+    spec!(
+        BgpNeighborFilterList,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D"), K("filter-list"), Arg("<1-500>"), Arg("{in|out}")],
+        "Filter this neighbour's paths with an AS-path list"
+    ),
+    spec!(
+        NoBgpNeighborFilterList,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D"), K("filter-list"), Arg("<1-500>"), Arg("{in|out}")],
+        "Stop filtering with that AS-path list"
+    ),
+    spec!(
+        BgpAggregate,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("aggregate-address"), Arg("A.B.C.D"), Arg("A.B.C.D")],
+        "Advertise one summary while a more specific path exists"
+    ),
+    spec!(
+        BgpAggregate,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("aggregate-address"), Arg("A.B.C.D"), Arg("A.B.C.D"), Rest("[summary-only] [as-set]")],
+        "Advertise one summary while a more specific path exists"
+    ),
+    spec!(NoBgpAggregate, Modes::BGP, Modes::BOTH, [K("no"), K("aggregate-address"), Arg("A.B.C.D"), Arg("A.B.C.D")], "Stop summarising"),
+    spec!(
+        NoBgpAggregate,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("aggregate-address"), Arg("A.B.C.D"), Arg("A.B.C.D"), Rest("[summary-only] [as-set]")],
+        "Stop summarising"
+    ),
+    spec!(BgpMaximumPaths, Modes::BGP, Modes::BOTH, [K("maximum-paths"), Arg("<1-32>")], "Put up to this many equal external paths in the routing table"),
+    spec!(NoBgpMaximumPaths, Modes::BGP, Modes::BOTH, [K("no"), K("maximum-paths")], "One path per prefix again"),
+    spec!(
+        ShowIpBgpCommunity,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("bgp"), K("community"), Rest("<community>... [exact-match]")],
+        "The paths that carry these communities"
+    ),
+    spec!(ShowIpBgpCommunityList, EXECS, Modes::BOTH, [K("show"), K("ip"), K("bgp"), K("community-list"), Arg("NAME")], "The paths a community list permits"),
     spec!(Bandwidth, Modes::IF, Modes::BOTH, [K("bandwidth"), Arg("<1-10000000>")], "The bandwidth EIGRP's metric uses (kbit/s)"),
     spec!(NoBandwidth, Modes::IF, Modes::BOTH, [K("no"), K("bandwidth")], "Bandwidth from the port's speed again"),
     spec!(Delay, Modes::IF, Modes::BOTH, [K("delay"), Arg("<1-16777215>")], "The delay EIGRP's metric adds (tens of microseconds)"),

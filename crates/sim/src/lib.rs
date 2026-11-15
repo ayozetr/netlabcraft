@@ -668,9 +668,16 @@ pub fn route_with(
         }
     }
     // BGP: external paths (distance 20) beat the other protocols, internal ones (200) lose to them.
-    for r in bgp_routes.iter().filter(|r| r.net.contains(dst)) {
-        if let Some(i) = ifs.iter().find(|i| i.name == r.iface) {
-            consider_ad(r.net.prefix, r.distance, i, r.via);
+    // Equal external paths (`maximum-paths`) share the traffic flow by flow.
+    let mut nets: Vec<Ipv4Net> = bgp_routes.iter().filter(|r| r.net.contains(dst)).map(|r| r.net).collect();
+    nets.dedup();
+    for net in nets {
+        let rows: Vec<&bgp::BgpRoute> = bgp_routes.iter().filter(|r| r.net == net).collect();
+        let ad = rows.iter().map(|r| r.distance).min().unwrap_or(bgp::DISTANCE_EBGP);
+        let usable: Vec<(u32, (L3If, Ipv4Addr))> =
+            rows.iter().filter_map(|r| ifs.iter().find(|i| i.name == r.iface).map(|i| (1, (i.clone(), r.via)))).collect();
+        if let Some((i, nh)) = pick_path(&usable, flow) {
+            consider_ad(net.prefix, ad, &i, nh);
         }
     }
     // A default from a DHCP lease (distance 254): considered last, so any other route to the

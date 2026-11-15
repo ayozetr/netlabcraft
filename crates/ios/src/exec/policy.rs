@@ -8,9 +8,11 @@ use std::net::Ipv4Addr;
 use netlabcraft_core::{Ipv4Net, parse_ip};
 use netlabcraft_model::Device;
 use netlabcraft_model::policy::{
-    Clause, FIRST_CLAUSE, MAX_MATCH_NAMES, MAX_NAME, MAX_PREFIX_LISTS, MAX_PREPEND, MAX_ROUTE_MAPS, MAX_SEQ, PrefixEntry, PrefixList, RouteMap,
-    origin_word,
+    AsPathEntry, AsPathList, Clause, CommunityEntry, CommunityList, FIRST_CLAUSE, MAX_AS_PATH_LISTS, MAX_COMMUNITIES, MAX_COMMUNITY_LISTS,
+    MAX_LIST_LINES, MAX_MATCH_NAMES, MAX_NAME, MAX_PREFIX_LISTS, MAX_PREPEND, MAX_ROUTE_MAPS, MAX_SEQ, PrefixEntry, PrefixList, RouteMap,
+    community_text, origin_word, parse_community,
 };
+use netlabcraft_model::textmatch;
 
 use super::{Ctx, Mode, R};
 use crate::grammar::Id;
@@ -118,6 +120,61 @@ fn clause<'a>(c: &'a mut Ctx<'_>) -> Result<&'a mut Clause, String> {
         .find(|m| m.name == name)
         .and_then(|m| m.clauses.iter_mut().find(|x| x.seq == seq))
         .ok_or_else(|| "% This route map clause no longer exists".to_string())
+}
+
+/// A community as typed, with a message that teaches the forms.
+fn community_word(w: &str) -> Result<u32, String> {
+    parse_community(w).ok_or_else(|| format!("% `{w}` is not a community: write AA:NN, a number, or no-export, no-advertise, local-AS or internet"))
+}
+
+fn permit_word(w: &str) -> Result<bool, String> {
+    match w.to_ascii_lowercase().as_str() {
+        "permit" => Ok(true),
+        "deny" => Ok(false),
+        _ => Err("% Expected permit or deny".into()),
+    }
+}
+
+/// `standard NAME …`, `expanded NAME …` or `NUMBER …`: whether the list is expanded, its name and
+/// the words after it.
+fn community_list_head<'a>(words: &'a [&'a str]) -> Result<(bool, String, &'a [&'a str]), String> {
+    let first = words.first().map(|w| w.to_ascii_lowercase()).unwrap_or_default();
+    match first.as_str() {
+        "standard" | "expanded" => {
+            let name = name_ok(words.get(1).copied().unwrap_or(""))?;
+            Ok((first == "expanded", name, words.get(2..).unwrap_or(&[])))
+        }
+        _ => {
+            let n = first
+                .parse::<u32>()
+                .ok()
+                .filter(|n| (1..=500).contains(n))
+                .ok_or("% ip community-list {standard|expanded} NAME ..., or a list number 1-500")?;
+            Ok((n >= 100, n.to_string(), words.get(1..).unwrap_or(&[])))
+        }
+    }
+}
+
+/// An AS-path list name: a number 1-500.
+fn as_path_name(w: &str) -> Result<String, String> {
+    w.trim()
+        .parse::<u32>()
+        .ok()
+        .filter(|n| (1..=500).contains(n))
+        .map(|n| n.to_string())
+        .ok_or_else(|| "% An AS-path list is numbered 1-500".to_string())
+}
+
+/// The names after `match community` or `match as-path`.
+fn list_names(text: &str, numbers: bool) -> Result<Vec<String>, String> {
+    let mut names = Vec::new();
+    for w in text.split_whitespace() {
+        if w.eq_ignore_ascii_case("exact-match") {
+            return Err("% exact-match is not simulated: a list matches when any of its lines permits the path".into());
+        }
+        names.push(if numbers { as_path_name(w)? } else { name_ok(w)? });
+    }
+    Ok(names)
 }
 
 /// Runs one of this module's commands.
@@ -332,8 +389,240 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             clause(c)?.sets.origin = None;
             Ok(String::new())
         }
+        Id::CommunityListLine => {
+            let words: Vec<&str> = arg(0).split_whitespace().collect();
+            let (expanded, name, rest) = community_list_head(&words)?;
+            let permit = permit_word(rest.first().copied().unwrap_or(""))?;
+            let body = rest.get(1..).unwrap_or(&[]);
+            let entry = if expanded {
+                let regex = body.join(" ");
+                if !textmatch::valid(&regex) {
+                    return Err(format!("% `{regex}` is not a usable regular expression (at most {} characters)", textmatch::MAX_PATTERN));
+                }
+                CommunityEntry { permit, communities: Vec::new(), regex }
+            } else {
+                if body.is_empty() {
+                    return Err("% Name at least one community".into());
+                }
+                if body.len() > MAX_COMMUNITIES {
+                    return Err(format!("% At most {MAX_COMMUNITIES} communities on a line"));
+                }
+                let communities = body.iter().map(|w| community_word(w)).collect::<Result<Vec<u32>, String>>()?;
+                CommunityEntry { permit, communities, regex: String::new() }
+            };
+            let d = c.dm()?;
+            if let Some(l) = d.community_lists.iter_mut().find(|l| l.name == name) {
+                if l.expanded != expanded {
+                    return Err(format!("% {name} is already a{} list", if l.expanded { "n expanded" } else { " standard" }));
+                }
+                if l.entries.contains(&entry) {
+                    return Ok(String::new());
+                }
+                if l.entries.len() >= MAX_LIST_LINES {
+                    return Err(format!("% A community list holds at most {MAX_LIST_LINES} lines"));
+                }
+                l.entries.push(entry);
+            } else {
+                if d.community_lists.len() >= MAX_COMMUNITY_LISTS {
+                    return Err(format!("% At most {MAX_COMMUNITY_LISTS} community lists"));
+                }
+                let mut l = CommunityList::new(name, expanded);
+                l.entries.push(entry);
+                d.community_lists.push(l);
+            }
+            Ok(String::new())
+        }
+        Id::NoCommunityList => {
+            let words: Vec<&str> = arg(0).split_whitespace().collect();
+            let (expanded, name, rest) = community_list_head(&words)?;
+            let d = c.dm()?;
+            let at = d.community_lists.iter().position(|l| l.name == name).ok_or_else(|| format!("% No community list named {name}"))?;
+            if rest.is_empty() {
+                d.community_lists.remove(at);
+                return Ok(String::new());
+            }
+            let permit = permit_word(rest.first().copied().unwrap_or(""))?;
+            let body: Vec<&str> = rest.get(1..).unwrap_or(&[]).to_vec();
+            let l = d.community_lists.get_mut(at).ok_or("% No such community list")?;
+            let before = l.entries.len();
+            l.entries.retain(|e| {
+                let same = if expanded {
+                    e.regex == body.join(" ")
+                } else {
+                    let want: Vec<u32> = body.iter().filter_map(|w| parse_community(w)).collect();
+                    e.communities == want
+                };
+                !(e.permit == permit && same)
+            });
+            let removed = l.entries.len() != before;
+            d.community_lists.retain(|l| !l.entries.is_empty());
+            if removed { Ok(String::new()) } else { Err(format!("% No such line in community list {name}")) }
+        }
+        Id::AsPathListLine => {
+            let words: Vec<&str> = arg(0).split_whitespace().collect();
+            let name = as_path_name(words.first().copied().unwrap_or(""))?;
+            let permit = permit_word(words.get(1).copied().unwrap_or(""))?;
+            let regex = words.get(2..).unwrap_or(&[]).join(" ");
+            if !textmatch::valid(&regex) {
+                return Err(format!("% `{regex}` is not a usable regular expression (at most {} characters)", textmatch::MAX_PATTERN));
+            }
+            let entry = AsPathEntry { permit, regex };
+            let d = c.dm()?;
+            if let Some(l) = d.as_path_lists.iter_mut().find(|l| l.name == name) {
+                if l.entries.contains(&entry) {
+                    return Ok(String::new());
+                }
+                if l.entries.len() >= MAX_LIST_LINES {
+                    return Err(format!("% An AS-path list holds at most {MAX_LIST_LINES} lines"));
+                }
+                l.entries.push(entry);
+            } else {
+                if d.as_path_lists.len() >= MAX_AS_PATH_LISTS {
+                    return Err(format!("% At most {MAX_AS_PATH_LISTS} AS-path lists"));
+                }
+                let mut l = AsPathList::new(name);
+                l.entries.push(entry);
+                d.as_path_lists.push(l);
+            }
+            Ok(String::new())
+        }
+        Id::NoAsPathList => {
+            let words: Vec<&str> = arg(0).split_whitespace().collect();
+            let name = as_path_name(words.first().copied().unwrap_or(""))?;
+            let d = c.dm()?;
+            let at = d.as_path_lists.iter().position(|l| l.name == name).ok_or_else(|| format!("% No AS-path list numbered {name}"))?;
+            if words.len() == 1 {
+                d.as_path_lists.remove(at);
+                return Ok(String::new());
+            }
+            let permit = permit_word(words.get(1).copied().unwrap_or(""))?;
+            let regex = words.get(2..).unwrap_or(&[]).join(" ");
+            let l = d.as_path_lists.get_mut(at).ok_or("% No such AS-path list")?;
+            let before = l.entries.len();
+            l.entries.retain(|e| !(e.permit == permit && e.regex == regex));
+            let removed = l.entries.len() != before;
+            d.as_path_lists.retain(|l| !l.entries.is_empty());
+            if removed { Ok(String::new()) } else { Err(format!("% No such line in AS-path list {name}")) }
+        }
+        Id::BgpCommunityNewFormat | Id::NoBgpCommunityNewFormat => {
+            c.dm()?.bgp_community_new_format = id == Id::BgpCommunityNewFormat;
+            Ok(String::new())
+        }
+        Id::ShowIpCommunityList => show_community_lists(c.d()?, args.first().map(String::as_str)),
+        Id::ShowIpAsPathList => show_as_path_lists(c.d()?, args.first().map(String::as_str)),
+        Id::RmMatchCommunity | Id::NoRmMatchCommunity | Id::RmMatchAsPath | Id::NoRmMatchAsPath => {
+            let add = matches!(id, Id::RmMatchCommunity | Id::RmMatchAsPath);
+            let communities = matches!(id, Id::RmMatchCommunity | Id::NoRmMatchCommunity);
+            let names = list_names(arg(0), !communities)?;
+            if add && names.is_empty() {
+                return Err("% Name at least one list".into());
+            }
+            let cl = clause(c)?;
+            let target = if communities { &mut cl.community_lists } else { &mut cl.as_path_lists };
+            if !add && names.is_empty() {
+                target.clear();
+                return Ok(String::new());
+            }
+            for n in names {
+                if add {
+                    if !target.contains(&n) {
+                        if target.len() >= MAX_MATCH_NAMES {
+                            return Err(format!("% A match line holds at most {MAX_MATCH_NAMES} names"));
+                        }
+                        target.push(n);
+                    }
+                } else {
+                    target.retain(|x| *x != n);
+                }
+            }
+            Ok(String::new())
+        }
+        Id::RmSetCommunity => {
+            let mut words: Vec<&str> = arg(0).split_whitespace().collect();
+            let additive = words.last().is_some_and(|w| w.eq_ignore_ascii_case("additive"));
+            if additive {
+                words.pop();
+            }
+            let none = words.len() == 1 && words.first().is_some_and(|w| w.eq_ignore_ascii_case("none"));
+            if none && additive {
+                return Err("% `none` cannot be additive".into());
+            }
+            let mut list: Vec<u32> = if none { Vec::new() } else { words.iter().map(|w| community_word(w)).collect::<Result<_, _>>()? };
+            list.sort_unstable();
+            list.dedup();
+            if list.is_empty() && !none {
+                return Err("% Name at least one community, or none".into());
+            }
+            if list.len() > MAX_COMMUNITIES {
+                return Err(format!("% At most {MAX_COMMUNITIES} communities"));
+            }
+            let cl = clause(c)?;
+            cl.sets.community = Some(list);
+            cl.sets.community_additive = additive;
+            Ok(String::new())
+        }
+        Id::NoRmSetCommunity => {
+            let cl = clause(c)?;
+            cl.sets.community = None;
+            cl.sets.community_additive = false;
+            Ok(String::new())
+        }
         _ => Err("% Not a prefix-list or route-map command".into()),
     }
+}
+
+fn show_community_lists(d: &Device, only: Option<&str>) -> R {
+    let lists: Vec<&CommunityList> = d.community_lists.iter().filter(|l| only.is_none_or(|n| l.name == n)).collect();
+    if lists.is_empty() {
+        return match only {
+            Some(n) => Err(format!("% No community list named {n}")),
+            None => Ok("(no community lists: add one with `ip community-list standard NAME permit AA:NN`)".into()),
+        };
+    }
+    let mut s = String::new();
+    for l in lists {
+        let _ = writeln!(
+            s,
+            "Community list {} ({}): {} line{}",
+            l.name,
+            if l.expanded { "expanded" } else { "standard" },
+            l.entries.len(),
+            if l.entries.len() == 1 { "" } else { "s" }
+        );
+        for e in &l.entries {
+            let _ = writeln!(s, "  {}", community_entry_text(e, l.expanded, d.bgp_community_new_format));
+        }
+        s.push_str("  (a path no line matches is denied)\n");
+    }
+    Ok(s.trim_end().to_string())
+}
+
+fn community_entry_text(e: &CommunityEntry, expanded: bool, new_format: bool) -> String {
+    let word = if e.permit { "permit" } else { "deny" };
+    if expanded {
+        format!("{word} {}", e.regex)
+    } else {
+        format!("{word} {}", e.communities.iter().map(|c| community_text(*c, new_format)).collect::<Vec<_>>().join(" "))
+    }
+}
+
+fn show_as_path_lists(d: &Device, only: Option<&str>) -> R {
+    let lists: Vec<&AsPathList> = d.as_path_lists.iter().filter(|l| only.is_none_or(|n| l.name == n)).collect();
+    if lists.is_empty() {
+        return match only {
+            Some(n) => Err(format!("% No AS-path list numbered {n}")),
+            None => Ok("(no AS-path lists: add one with `ip as-path access-list 1 permit ^65001_`)".into()),
+        };
+    }
+    let mut s = String::new();
+    for l in lists {
+        let _ = writeln!(s, "AS-path list {}: {} line{}", l.name, l.entries.len(), if l.entries.len() == 1 { "" } else { "s" });
+        for e in &l.entries {
+            let _ = writeln!(s, "  {} {}", if e.permit { "permit" } else { "deny" }, e.regex);
+        }
+        s.push_str("  (a path no line matches is denied)\n");
+    }
+    Ok(s.trim_end().to_string())
 }
 
 fn show_prefix_lists(d: &Device, only: Option<&str>) -> R {
@@ -374,13 +663,19 @@ fn show_route_maps(d: &Device, only: Option<&str>) -> R {
             if !c.acls.is_empty() {
                 let _ = writeln!(s, "    match access list: {}", c.acls.join(", "));
             }
+            if !c.community_lists.is_empty() {
+                let _ = writeln!(s, "    match community list: {}", c.community_lists.join(", "));
+            }
+            if !c.as_path_lists.is_empty() {
+                let _ = writeln!(s, "    match AS-path list: {}", c.as_path_lists.join(", "));
+            }
             if let Some(v) = c.metric {
                 let _ = writeln!(s, "    match metric: {v}");
             }
-            for line in set_lines(c) {
+            for line in set_lines(c, d.bgp_community_new_format) {
                 let _ = writeln!(s, "    set {line}");
             }
-            if c.prefix_lists.is_empty() && c.acls.is_empty() && c.metric.is_none() {
+            if c.prefix_lists.is_empty() && c.acls.is_empty() && c.metric.is_none() && c.community_lists.is_empty() && c.as_path_lists.is_empty() {
                 s.push_str("    (no match lines: every route matches)\n");
             }
         }
@@ -390,7 +685,7 @@ fn show_route_maps(d: &Device, only: Option<&str>) -> R {
 }
 
 /// The `set` lines of a clause, as the configuration writes them (after `set `).
-fn set_lines(c: &Clause) -> Vec<String> {
+fn set_lines(c: &Clause, new_format: bool) -> Vec<String> {
     let mut v = Vec::new();
     if let Some(x) = c.sets.local_pref {
         v.push(format!("local-preference {x}"));
@@ -410,11 +705,41 @@ fn set_lines(c: &Clause) -> Vec<String> {
     if let Some(x) = c.sets.origin {
         v.push(format!("origin {}", origin_word(x)));
     }
+    if let Some(list) = &c.sets.community {
+        if list.is_empty() {
+            v.push("community none".to_string());
+        } else {
+            let words = list.iter().map(|x| community_text(*x, new_format)).collect::<Vec<_>>().join(" ");
+            v.push(format!("community {words}{}", if c.sets.community_additive { " additive" } else { "" }));
+        }
+    }
     v
 }
 
 /// The prefix lists and route maps of `show running-config`.
 pub(crate) fn running_config(s: &mut String, d: &Device) {
+    if d.bgp_community_new_format {
+        let _ = writeln!(s, "ip bgp-community new-format");
+    }
+    for l in &d.community_lists {
+        for e in &l.entries {
+            let _ = writeln!(
+                s,
+                "ip community-list {} {} {}",
+                if l.expanded { "expanded" } else { "standard" },
+                l.name,
+                community_entry_text(e, l.expanded, d.bgp_community_new_format)
+            );
+        }
+    }
+    for l in &d.as_path_lists {
+        for e in &l.entries {
+            let _ = writeln!(s, "ip as-path access-list {} {} {}", l.name, if e.permit { "permit" } else { "deny" }, e.regex);
+        }
+    }
+    if d.bgp_community_new_format || !d.community_lists.is_empty() || !d.as_path_lists.is_empty() {
+        let _ = writeln!(s, "!");
+    }
     for l in &d.prefix_lists {
         for e in &l.entries {
             let _ = writeln!(s, "ip prefix-list {} seq {} {}", l.name, e.seq, e.text());
@@ -432,10 +757,16 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
             if !c.acls.is_empty() {
                 let _ = writeln!(s, " match ip address {}", c.acls.join(" "));
             }
+            if !c.community_lists.is_empty() {
+                let _ = writeln!(s, " match community {}", c.community_lists.join(" "));
+            }
+            if !c.as_path_lists.is_empty() {
+                let _ = writeln!(s, " match as-path {}", c.as_path_lists.join(" "));
+            }
             if let Some(v) = c.metric {
                 let _ = writeln!(s, " match metric {v}");
             }
-            for line in set_lines(c) {
+            for line in set_lines(c, d.bgp_community_new_format) {
                 let _ = writeln!(s, " set {line}");
             }
             let _ = writeln!(s, "!");

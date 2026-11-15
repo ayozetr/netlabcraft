@@ -3842,7 +3842,19 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::BgpNeighborPrefixList
         | Id::NoBgpNeighborPrefixList
         | Id::BgpNeighborRouteMap
-        | Id::NoBgpNeighborRouteMap => bgp::command(&mut c, spec.id, &args),
+        | Id::NoBgpNeighborRouteMap
+        | Id::BgpNeighborSendCommunity
+        | Id::NoBgpNeighborSendCommunity
+        | Id::BgpNeighborTimers
+        | Id::NoBgpNeighborTimers
+        | Id::BgpNeighborFilterList
+        | Id::NoBgpNeighborFilterList
+        | Id::BgpAggregate
+        | Id::NoBgpAggregate
+        | Id::BgpMaximumPaths
+        | Id::NoBgpMaximumPaths
+        | Id::ShowIpBgpCommunity
+        | Id::ShowIpBgpCommunityList => bgp::command(&mut c, spec.id, &args),
         Id::PrefixListLine
         | Id::NoPrefixList
         | Id::NoPrefixListLine
@@ -3865,7 +3877,21 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::RmSetNextHop
         | Id::NoRmSetNextHop
         | Id::RmSetOrigin
-        | Id::NoRmSetOrigin => policy::command(&mut c, spec.id, &args),
+        | Id::NoRmSetOrigin
+        | Id::CommunityListLine
+        | Id::NoCommunityList
+        | Id::AsPathListLine
+        | Id::NoAsPathList
+        | Id::BgpCommunityNewFormat
+        | Id::NoBgpCommunityNewFormat
+        | Id::ShowIpCommunityList
+        | Id::ShowIpAsPathList
+        | Id::RmMatchCommunity
+        | Id::NoRmMatchCommunity
+        | Id::RmMatchAsPath
+        | Id::NoRmMatchAsPath
+        | Id::RmSetCommunity
+        | Id::NoRmSetCommunity => policy::command(&mut c, spec.id, &args),
         Id::Bandwidth | Id::NoBandwidth => {
             let bw = if spec.id == Id::Bandwidth {
                 Some(arg(0).parse::<u32>().ok().filter(|b| (1..=10_000_000).contains(b)).ok_or("% Bandwidth is 1-10000000 kbit/s")?)

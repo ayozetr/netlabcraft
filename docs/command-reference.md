@@ -719,6 +719,40 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no set ip next-hop` |  | router, switch | Leave the next hop alone |
 | `set origin {igp\|egp\|incomplete}` |  | router, switch | Give the paths this origin |
 | `no set origin` |  | router, switch | Leave the origin alone |
+| `ip community-list {standard\|expanded} NAME {permit\|deny} <community>...\|<regular expression>` | config | router, switch | Add a line to a community list |
+| `no ip community-list {standard\|expanded} NAME [{permit\|deny} <community>...\|<regular expression>]` | config | router, switch | Delete a community list, or one line of it |
+| `ip as-path access-list <1-500> {permit\|deny} <regular expression>` | config | router, switch | Add a line to an AS-path list |
+| `no ip as-path access-list <1-500> [{permit\|deny} <regular expression>]` | config | router, switch | Delete an AS-path list, or one line of it |
+| `ip bgp-community new-format` | config | router, switch | Show communities as AA:NN instead of one number |
+| `no ip bgp-community new-format` | config | router, switch | Show communities as one number again |
+| `show ip community-list` | user, privileged | router, switch | Every community list |
+| `show ip community-list NAME` | user, privileged | router, switch | One community list |
+| `show ip as-path-access-list` | user, privileged | router, switch | Every AS-path list |
+| `show ip as-path-access-list <1-500>` | user, privileged | router, switch | One AS-path list |
+| `match community <list> [<list>...]` |  | router, switch | Match paths that community lists permit |
+| `no match community` |  | router, switch | Remove every community match |
+| `no match community <list> [<list>...]` |  | router, switch | Remove these lists from the community match |
+| `match as-path <1-500> [<1-500>...]` |  | router, switch | Match paths that AS-path lists permit |
+| `no match as-path` |  | router, switch | Remove every AS-path match |
+| `no match as-path <1-500> [<1-500>...]` |  | router, switch | Remove these lists from the AS-path match |
+| `set community {none \| <community>... [additive]}` |  | router, switch | Give the paths these communities |
+| `no set community` |  | router, switch | Leave the communities alone |
+| `neighbor A.B.C.D send-community` |  | router, switch | Send the communities a path carries to this neighbour |
+| `neighbor A.B.C.D send-community {both\|standard}` |  | router, switch | Send the communities a path carries to this neighbour |
+| `no neighbor A.B.C.D send-community` |  | router, switch | Stop sending communities to this neighbour |
+| `no neighbor A.B.C.D send-community {both\|standard}` |  | router, switch | Stop sending communities to this neighbour |
+| `neighbor A.B.C.D timers <0-65535> <0\|3-65535>` |  | router, switch | Keepalive interval and hold time for this neighbour (seconds) |
+| `no neighbor A.B.C.D timers` |  | router, switch | Keepalive 60 and hold time 180 again |
+| `neighbor A.B.C.D filter-list <1-500> {in\|out}` |  | router, switch | Filter this neighbour's paths with an AS-path list |
+| `no neighbor A.B.C.D filter-list <1-500> {in\|out}` |  | router, switch | Stop filtering with that AS-path list |
+| `aggregate-address A.B.C.D A.B.C.D` |  | router, switch | Advertise one summary while a more specific path exists |
+| `aggregate-address A.B.C.D A.B.C.D [summary-only] [as-set]` |  | router, switch | Advertise one summary while a more specific path exists |
+| `no aggregate-address A.B.C.D A.B.C.D` |  | router, switch | Stop summarising |
+| `no aggregate-address A.B.C.D A.B.C.D [summary-only] [as-set]` |  | router, switch | Stop summarising |
+| `maximum-paths <1-32>` |  | router, switch | Put up to this many equal external paths in the routing table |
+| `no maximum-paths` |  | router, switch | One path per prefix again |
+| `show ip bgp community <community>... [exact-match]` | user, privileged | router, switch | The paths that carry these communities |
+| `show ip bgp community-list NAME` | user, privileged | router, switch | The paths a community list permits |
 | `bandwidth <1-10000000>` | interface | router, switch | The bandwidth EIGRP's metric uses (kbit/s) |
 | `no bandwidth` | interface | router, switch | Bandwidth from the port's speed again |
 | `delay <1-16777215>` | interface | router, switch | The delay EIGRP's metric adds (tens of microseconds) |

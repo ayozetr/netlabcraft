@@ -1,6 +1,7 @@
 //! BGP-4 messages (RFC 4271): the 19-byte header, OPEN with the four-octet AS number capability
 //! (RFC 6793), UPDATE with the path attributes a lab needs (ORIGIN, AS_PATH, NEXT_HOP,
-//! MULTI_EXIT_DISC, LOCAL_PREF), NOTIFICATION and KEEPALIVE. Messages travel in TCP segments to
+//! MULTI_EXIT_DISC, LOCAL_PREF, COMMUNITIES (RFC 1997), and the AS_SET segment an aggregate
+//! carries), NOTIFICATION and KEEPALIVE. Messages travel in TCP segments to
 //! or from port 179. AS numbers are always written with four octets in AS_PATH, the way two
 //! speakers that announced the capability exchange them.
 //!
@@ -42,6 +43,9 @@ const ATTR_AS_PATH: u8 = 2;
 const ATTR_NEXT_HOP: u8 = 3;
 const ATTR_MED: u8 = 4;
 const ATTR_LOCAL_PREF: u8 = 5;
+const ATTR_COMMUNITIES: u8 = 8;
+/// Most communities read from one attribute (hostile input).
+const MAX_COMMUNITIES: usize = 64;
 const FLAG_OPTIONAL: u8 = 0x80;
 const FLAG_TRANSITIVE: u8 = 0x40;
 const FLAG_EXTENDED: u8 = 0x10;
@@ -76,6 +80,11 @@ pub struct PathAttrs {
     pub next_hop: Ipv4Addr,
     pub med: Option<u32>,
     pub local_pref: Option<u32>,
+    /// The AS numbers of an AS_SET segment after the sequence (what an aggregate with `as-set`
+    /// carries); it counts as one hop in the path length.
+    pub as_set: Vec<u32>,
+    /// The COMMUNITIES attribute (RFC 1997), each community as one 32-bit value.
+    pub communities: Vec<u32>,
 }
 
 /// An UPDATE: routes withdrawn, and routes announced with one set of attributes.
@@ -183,12 +192,14 @@ impl Message {
                 if let Some(a) = &u.attrs {
                     attrs.extend(attribute(FLAG_TRANSITIVE, ATTR_ORIGIN, &[a.origin]));
                     let mut path = Vec::new();
-                    if !a.as_path.is_empty() {
-                        let list: Vec<u32> = a.as_path.iter().copied().take(255).collect();
-                        path.push(SEG_AS_SEQUENCE);
-                        path.push(u8::try_from(list.len()).unwrap_or(u8::MAX));
-                        for asn in list {
-                            path.extend_from_slice(&asn.to_be_bytes());
+                    for (kind, members) in [(SEG_AS_SEQUENCE, &a.as_path), (SEG_AS_SET, &a.as_set)] {
+                        if !members.is_empty() {
+                            let list: Vec<u32> = members.iter().copied().take(255).collect();
+                            path.push(kind);
+                            path.push(u8::try_from(list.len()).unwrap_or(u8::MAX));
+                            for asn in list {
+                                path.extend_from_slice(&asn.to_be_bytes());
+                            }
                         }
                     }
                     attrs.extend(attribute(FLAG_TRANSITIVE, ATTR_AS_PATH, &path));
@@ -198,6 +209,10 @@ impl Message {
                     }
                     if let Some(l) = a.local_pref {
                         attrs.extend(attribute(FLAG_TRANSITIVE, ATTR_LOCAL_PREF, &l.to_be_bytes()));
+                    }
+                    if !a.communities.is_empty() {
+                        let value: Vec<u8> = a.communities.iter().take(MAX_COMMUNITIES).flat_map(|c| c.to_be_bytes()).collect();
+                        attrs.extend(attribute(FLAG_OPTIONAL | FLAG_TRANSITIVE, ATTR_COMMUNITIES, &value));
                     }
                 }
                 let mut body = Vec::new();
@@ -284,7 +299,15 @@ impl Message {
 
 fn read_attrs(b: &[u8]) -> Result<PathAttrs> {
     let t = || WireError::Truncated("bgp");
-    let mut a = PathAttrs { origin: ORIGIN_INCOMPLETE, as_path: Vec::new(), next_hop: Ipv4Addr::UNSPECIFIED, med: None, local_pref: None };
+    let mut a = PathAttrs {
+        origin: ORIGIN_INCOMPLETE,
+        as_path: Vec::new(),
+        next_hop: Ipv4Addr::UNSPECIFIED,
+        med: None,
+        local_pref: None,
+        as_set: Vec::new(),
+        communities: Vec::new(),
+    };
     let mut at = 0usize;
     // Every attribute takes at least three bytes, so this loop is bounded by the input.
     while at < b.len() {
@@ -307,7 +330,12 @@ fn read_attrs(b: &[u8]) -> Result<PathAttrs> {
                     if seg == SEG_AS_SEQUENCE || seg == SEG_AS_SET {
                         for c in asns.chunks_exact(4) {
                             let raw: [u8; 4] = c.try_into().map_err(|_| t())?;
-                            a.as_path.push(u32::from_be_bytes(raw));
+                            let asn = u32::from_be_bytes(raw);
+                            if seg == SEG_AS_SET {
+                                a.as_set.push(asn);
+                            } else {
+                                a.as_path.push(asn);
+                            }
                         }
                     }
                     s += 2 + n * 4;
@@ -321,6 +349,12 @@ fn read_attrs(b: &[u8]) -> Result<PathAttrs> {
             ATTR_LOCAL_PREF => {
                 let raw: [u8; 4] = value.get(..4).ok_or_else(t)?.try_into().map_err(|_| t())?;
                 a.local_pref = Some(u32::from_be_bytes(raw));
+            }
+            ATTR_COMMUNITIES => {
+                for c in value.chunks_exact(4).take(MAX_COMMUNITIES) {
+                    let raw: [u8; 4] = c.try_into().map_err(|_| t())?;
+                    a.communities.push(u32::from_be_bytes(raw));
+                }
             }
             _ => {}
         }
@@ -426,6 +460,8 @@ mod tests {
                 next_hop: Ipv4Addr::new(10, 0, 12, 2),
                 med: Some(20),
                 local_pref: Some(150),
+                as_set: vec![65_010, 65_011],
+                communities: vec![0x0001_0064, 0xFFFF_FF01],
             }),
             nlri: vec![net("10.2.0.0/16"), net("192.168.5.0/24"), net("0.0.0.0/0"), net("203.0.113.7/32")],
         });
@@ -441,7 +477,15 @@ mod tests {
         let path: Vec<u32> = (1..=200).collect();
         let u = Message::Update(Update {
             withdrawn: Vec::new(),
-            attrs: Some(PathAttrs { origin: ORIGIN_EGP, as_path: path, next_hop: Ipv4Addr::new(10, 0, 0, 1), med: None, local_pref: None }),
+            attrs: Some(PathAttrs {
+                origin: ORIGIN_EGP,
+                as_path: path,
+                next_hop: Ipv4Addr::new(10, 0, 0, 1),
+                med: None,
+                local_pref: None,
+                as_set: Vec::new(),
+                communities: Vec::new(),
+            }),
             nlri: vec![net("10.9.0.0/16")],
         });
         assert_eq!(Message::decode(&u.encode()), Ok(u));
@@ -461,6 +505,8 @@ mod tests {
                     next_hop: Ipv4Addr::new(10, 0, 0, 1),
                     med: Some(1),
                     local_pref: Some(100),
+                    as_set: vec![65_002],
+                    communities: vec![1, 2, 3],
                 }),
                 nlri: vec![net("10.2.0.0/16")],
             }),
@@ -487,6 +533,33 @@ mod tests {
         bad_len[16] = 0xff;
         bad_len[17] = 0xff;
         assert!(Message::decode(&bad_len).is_err());
+    }
+
+    #[test]
+    fn communities_and_an_as_set_survive_the_wire_and_an_update_without_them_decodes_empty() {
+        let attrs = PathAttrs {
+            origin: ORIGIN_IGP,
+            as_path: vec![65_001],
+            next_hop: Ipv4Addr::new(10, 0, 0, 1),
+            med: None,
+            local_pref: None,
+            as_set: vec![65_005, 65_006],
+            communities: vec![0xFFFF_FF02, 0x0064_00C8],
+        };
+        let u = Message::Update(Update { withdrawn: Vec::new(), attrs: Some(attrs.clone()), nlri: vec![net("10.0.0.0/8")] });
+        let bytes = u.encode();
+        let Ok(Message::Update(back)) = Message::decode(&bytes) else { panic!("did not decode") };
+        assert_eq!(back.attrs, Some(attrs.clone()));
+        // The attribute is optional and transitive (flags 0xC0), type 8, and four octets per community.
+        let at = bytes.windows(3).position(|w| w == [0xC0, ATTR_COMMUNITIES, 8]);
+        assert!(at.is_some(), "{bytes:?}");
+        let plain = Message::Update(Update {
+            withdrawn: Vec::new(),
+            attrs: Some(PathAttrs { as_set: Vec::new(), communities: Vec::new(), ..attrs }),
+            nlri: vec![net("10.0.0.0/8")],
+        });
+        let Ok(Message::Update(back)) = Message::decode(&plain.encode()) else { panic!("did not decode") };
+        assert!(back.attrs.is_some_and(|a| a.communities.is_empty() && a.as_set.is_empty()));
     }
 
     #[test]

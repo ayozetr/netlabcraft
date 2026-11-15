@@ -16,13 +16,21 @@
 //! neighbour (no route reflectors). A path whose AS path holds the receiver's AS is dropped.
 //! A path is usable only while its next hop resolves in the routing table.
 //!
-//! Policy: a neighbour's `prefix-list` and `route-map` (inbound and outbound) and the route map of
-//! a `redistribute` are applied where paths are exported, imported and originated.
+//! Policy: a neighbour's `prefix-list`, `filter-list` and `route-map` (inbound and outbound) and
+//! the route map of a `redistribute` are applied where paths are exported, imported and
+//! originated; a route map can match communities and AS paths and set communities.
 //!
-//! Left out on purpose (see `docs/gaps.md`): `match` on AS paths and communities, communities,
-//! route reflectors and confederations, aggregation, several equal paths in the routing table
-//! (`maximum-paths`), the IGP metric to the next hop in the best-path order, timers other than
-//! the defaults, and IPv6 address families.
+//! Communities (RFC 1997) ride in the UPDATE only when the neighbour has `send-community`; the
+//! well-known ones are honoured when a path is advertised (`no-advertise` goes to nobody,
+//! `no-export` and `local-AS` to no external neighbour). An `aggregate-address` makes a path of
+//! its own while a more specific path exists in the BGP table, and `summary-only` keeps the more
+//! specific ones from being advertised. `maximum-paths N` puts up to N equal external paths in the
+//! routing table. Neighbours may have their own timers: the hold time is the smaller of the two
+//! sides, and a session whose path is lost (without an administrative change or a directly
+//! connected interface going down) stays up until its hold time runs out.
+//!
+//! Left out on purpose (see `docs/gaps.md`): route reflectors and confederations, a discard route
+//! for an aggregate, `maximum-paths ibgp`, and IPv6 address families.
 
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
@@ -46,8 +54,10 @@ pub const DISTANCE_IBGP: u8 = 200;
 pub const WEIGHT_LOCAL: u32 = 32_768;
 /// How long a session takes to go from a first connection attempt to Established.
 pub const SETUP_US: u64 = 3_000_000;
-/// Keepalives go out this often.
+/// Keepalives are due on the whole minute (the default interval) ...
 pub const KEEPALIVE_EVERY_US: u64 = 60_000_000;
+/// ... and on every second when some neighbour has its own timers.
+pub const KEEPALIVE_TICK_US: u64 = 1_000_000;
 /// Rounds of advertisements at most.
 const MAX_ROUNDS: usize = 64;
 /// Most paths a router keeps from its neighbours, and most it originates.
@@ -55,6 +65,8 @@ const MAX_PATHS: usize = 4_096;
 const MAX_LOCAL: usize = 1_024;
 /// Most routers a TCP connection is followed through.
 const MAX_HOPS: u8 = 16;
+/// Most AS numbers in the AS set of an aggregate.
+const MAX_AS_SET: usize = 32;
 /// Most prefixes in one UPDATE.
 const PER_UPDATE: usize = 200;
 /// The TCP port the side that opened the connection uses.
@@ -135,6 +147,23 @@ pub struct Path {
     pub best: bool,
     /// The interface and next hop the next hop resolves to.
     pub resolved: Option<(String, Ipv4Addr)>,
+    /// The communities the path carries.
+    pub communities: Vec<u32>,
+    /// The AS set of an aggregate made with `as-set`.
+    pub as_set: Vec<u32>,
+    /// The metric of the route that resolves the next hop (0 for a connected one).
+    pub igp: u32,
+    /// One of the equal paths `maximum-paths` puts in the routing table besides the best.
+    pub multi: bool,
+    /// An aggregate with `summary-only` keeps this path from being advertised.
+    pub suppressed: bool,
+}
+
+impl Path {
+    /// The AS path length best-path selection compares: an AS set counts as one.
+    pub fn path_len(&self) -> usize {
+        self.as_path.len() + usize::from(!self.as_set.is_empty())
+    }
 }
 
 /// A route BGP gives the routing table.
@@ -164,6 +193,9 @@ pub struct NeighborView {
     pub error: Option<String>,
     pub received: usize,
     pub sent: usize,
+    /// The keepalive interval and hold time in force (negotiated when a session exists).
+    pub keepalive_secs: u16,
+    pub hold_secs: u16,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -232,6 +264,11 @@ pub struct Runtime {
     pub counters: BTreeMap<SessKey, Counters>,
     /// What each Established session was last told.
     pub adv_sent: BTreeMap<SessKey, Vec<(Ipv4Net, msg::PathAttrs)>>,
+    /// Established sessions whose path is lost, waiting for the hold time: when it runs out (µs)
+    /// and the peering as it was.
+    pub held: BTreeMap<SessKey, (u64, Peering)>,
+    /// Why a session went down when it was not the lab that said so.
+    pub down_why: BTreeMap<SessKey, &'static str>,
 }
 
 /// What `show ip bgp …` reads: states refined by the time spent, counters and uptimes.
@@ -251,6 +288,12 @@ pub fn router_id(d: &Device) -> Ipv4Addr {
 /// Where a datagram to `ip` goes out of a router, from its routing table without BGP's routes:
 /// the interface and the address to send to.
 fn resolve(base: &[RouteEntry], ifs: &[L3If], ip: Ipv4Addr) -> Option<(String, Ipv4Addr)> {
+    resolve_metric(base, ifs, ip).map(|(i, v, _)| (i, v))
+}
+
+/// [`resolve`] with the metric of the route it went through (0 for a connected network): the IGP
+/// metric to a next hop.
+fn resolve_metric(base: &[RouteEntry], ifs: &[L3If], ip: Ipv4Addr) -> Option<(String, Ipv4Addr, u32)> {
     if ifs.iter().any(|i| i.net.addr == ip) {
         return None;
     }
@@ -258,11 +301,12 @@ fn resolve(base: &[RouteEntry], ifs: &[L3If], ip: Ipv4Addr) -> Option<(String, I
         .iter()
         .filter(|r| r.code != 'L' && r.net.contains(ip) && r.iface.as_deref() != Some(crate::eigrp::NULL0))
         .max_by_key(|r| (r.net.prefix, Reverse(r.distance)))?;
+    let metric = if r.code == 'C' { 0 } else { r.metric };
     match (r.code, r.via, &r.iface) {
-        ('C', _, Some(i)) => Some((i.clone(), ip)),
-        (_, Some(v), Some(i)) => Some((i.clone(), v)),
-        (_, Some(v), None) => ifs.iter().find(|i| i.net.contains(v)).map(|i| (i.name.clone(), v)),
-        (_, None, Some(i)) => Some((i.clone(), ip)),
+        ('C', _, Some(i)) => Some((i.clone(), ip, metric)),
+        (_, Some(v), Some(i)) => Some((i.clone(), v, metric)),
+        (_, Some(v), None) => ifs.iter().find(|i| i.net.contains(v)).map(|i| (i.name.clone(), v, metric)),
+        (_, None, Some(i)) => Some((i.clone(), ip, metric)),
         _ => None,
     }
 }
@@ -406,8 +450,8 @@ fn better(a: &Path, b: &Path) -> bool {
     if a.from.is_none() != b.from.is_none() {
         return a.from.is_none();
     }
-    if a.as_path.len() != b.as_path.len() {
-        return a.as_path.len() < b.as_path.len();
+    if a.path_len() != b.path_len() {
+        return a.path_len() < b.path_len();
     }
     if a.origin != b.origin {
         return a.origin < b.origin;
@@ -419,14 +463,38 @@ fn better(a: &Path, b: &Path) -> bool {
     if a.ebgp != b.ebgp {
         return a.ebgp;
     }
+    // The nearer next hop by the IGP's metric.
+    if a.igp != b.igp {
+        return a.igp < b.igp;
+    }
     if a.from_id != b.from_id {
         return a.from_id < b.from_id;
     }
     a.from < b.from
 }
 
-/// Groups paths by prefix, marks the best of each (when its next hop resolves) and puts it first.
-fn rank(cands: Vec<Path>) -> Vec<Path> {
+/// Whether `b` is as good as the best path `a` in every step before the router id and comes from
+/// the same neighbouring AS: the two can share the load under `maximum-paths`.
+fn equal_cost(a: &Path, b: &Path) -> bool {
+    a.valid
+        && b.valid
+        && a.from.is_some()
+        && b.from.is_some()
+        && a.ebgp
+        && b.ebgp
+        && a.weight == b.weight
+        && a.local_pref == b.local_pref
+        && a.as_path.first() == b.as_path.first()
+        && a.path_len() == b.path_len()
+        && a.origin == b.origin
+        && a.med == b.med
+        && a.igp == b.igp
+}
+
+/// Groups paths by prefix, marks the best of each (when its next hop resolves) and puts it first;
+/// up to `multipath - 1` more external paths as good as the best, through a different first hop,
+/// are marked to share the load.
+fn rank(cands: Vec<Path>, multipath: usize) -> Vec<Path> {
     let mut groups: BTreeMap<Ipv4Net, Vec<Path>> = BTreeMap::new();
     for c in cands {
         groups.entry(c.net).or_default().push(c);
@@ -442,6 +510,17 @@ fn rank(cands: Vec<Path>) -> Vec<Path> {
         }
         if let Some(p) = g.first_mut() {
             p.best = p.valid;
+        }
+        if multipath > 1
+            && let Some(top) = g.first().filter(|p| p.best).cloned()
+        {
+            let mut used: Vec<Option<(String, Ipv4Addr)>> = vec![top.resolved.clone()];
+            for p in g.iter_mut().skip(1) {
+                if used.len() < multipath && equal_cost(&top, p) && !used.contains(&p.resolved) {
+                    p.multi = true;
+                    used.push(p.resolved.clone());
+                }
+            }
         }
         out.extend(g);
     }
@@ -491,8 +570,60 @@ fn originate(d: &Device, base: &[RouteEntry]) -> Vec<Path> {
             valid: true,
             best: false,
             resolved: None,
+            communities: policy::merge_communities(&sets, &[]),
+            as_set: Vec::new(),
+            igp: 0,
+            multi: false,
+            suppressed: false,
         })
         .collect()
+}
+
+/// The paths an `aggregate-address` makes: one per statement that has a more specific usable path
+/// under it (and no path of its own for the same prefix from a `network` statement).
+fn aggregate_paths(ab: &conf::Bgp, paths: &[Path]) -> Vec<Path> {
+    let mut out = Vec::new();
+    for g in &ab.aggregates {
+        let under = |p: &&Path| p.valid && p.net.prefix > g.net.prefix && g.net.contains(p.net.addr);
+        if !paths.iter().any(|p| under(&p)) || paths.iter().any(|p| p.net == g.net && p.from.is_none()) {
+            continue;
+        }
+        let mut set: Vec<u32> = Vec::new();
+        if g.as_set {
+            for p in paths.iter().filter(under) {
+                set.extend(p.as_path.iter().chain(p.as_set.iter()).copied());
+            }
+            set.sort_unstable();
+            set.dedup();
+            set.truncate(MAX_AS_SET);
+        }
+        out.push(Path {
+            net: g.net,
+            next_hop: Ipv4Addr::UNSPECIFIED,
+            as_path: Vec::new(),
+            origin: msg::ORIGIN_IGP,
+            med: 0,
+            local_pref: ab.local_pref(),
+            weight: WEIGHT_LOCAL,
+            from: None,
+            from_id: Ipv4Addr::UNSPECIFIED,
+            ebgp: false,
+            valid: true,
+            best: false,
+            resolved: None,
+            communities: Vec::new(),
+            as_set: set,
+            igp: 0,
+            multi: false,
+            suppressed: false,
+        });
+    }
+    out
+}
+
+/// A `summary-only` aggregate covers this prefix with a shorter one.
+fn summarised(ab: &conf::Bgp, net: Ipv4Net) -> bool {
+    ab.aggregates.iter().any(|g| g.summary_only && g.net.prefix < net.prefix && g.net.contains(net.addr))
 }
 
 /// What a router tells a neighbour about one of its best paths, if it tells it at all: the
@@ -504,14 +635,34 @@ fn export(a: &Device, ab: &conf::Bgp, n: &conf::Neighbor, p: &Peering, path: &Pa
         return None;
     }
     // A path that already crossed the neighbour's AS would only be dropped there.
-    if p.ebgp && n.remote_as.is_some_and(|r| path.as_path.contains(&r)) {
+    if p.ebgp && n.remote_as.is_some_and(|r| path.as_path.contains(&r) || path.as_set.contains(&r)) {
+        return None;
+    }
+    // Well-known communities: no-advertise goes to nobody, no-export and local-AS stay inside the AS
+    // (without confederations that is every internal neighbour and no external one).
+    if path.communities.contains(&policy::NO_ADVERTISE) {
+        return None;
+    }
+    if p.ebgp && (path.communities.contains(&policy::NO_EXPORT) || path.communities.contains(&policy::LOCAL_AS)) {
+        return None;
+    }
+    // A summary-only aggregate covers this prefix.
+    if summarised(ab, path.net) {
+        return None;
+    }
+    if let Some(l) = n.filter_list_out.as_deref().and_then(|x| a.as_path_list(x))
+        && !l.permits(&path.as_path, &path.as_set)
+    {
         return None;
     }
     // Between internal neighbours a path learned from an internal neighbour is not passed on.
     if !p.ebgp && path.from.is_some() && !path.ebgp {
         return None;
     }
-    let sets = policy::apply(a, n.prefix_list_out.as_deref(), n.route_map_out.as_deref(), &Subject { net: path.net, metric: path.med })?;
+    let seen = policy::Attrs { communities: &path.communities, as_path: &path.as_path, as_set: &path.as_set };
+    let sets = policy::apply_with(a, n.prefix_list_out.as_deref(), n.route_map_out.as_deref(), &Subject { net: path.net, metric: path.med }, &seen)?;
+    // Communities travel only to a neighbour with `send-community`.
+    let communities = if n.send_community { policy::merge_communities(&sets, &path.communities) } else { Vec::new() };
     let mut tail = sets.prepend.clone();
     tail.extend(path.as_path.iter().copied());
     let origin = sets.origin.unwrap_or(path.origin);
@@ -528,6 +679,8 @@ fn export(a: &Device, ab: &conf::Bgp, n: &conf::Neighbor, p: &Peering, path: &Pa
             // (or what a map gave a metric).
             med: sets.metric.or_else(|| path.from.is_none().then_some(path.med)),
             local_pref: None,
+            as_set: path.as_set.clone(),
+            communities,
         });
     }
     let next_hop = if n.next_hop_self || path.from.is_none() { own } else { path.next_hop };
@@ -537,6 +690,8 @@ fn export(a: &Device, ab: &conf::Bgp, n: &conf::Neighbor, p: &Peering, path: &Pa
         next_hop: sets.next_hop.unwrap_or(next_hop),
         med: Some(sets.metric.unwrap_or(path.med)),
         local_pref: Some(sets.local_pref.unwrap_or(path.local_pref)),
+        as_set: path.as_set.clone(),
+        communities,
     })
 }
 
@@ -544,11 +699,17 @@ fn export(a: &Device, ab: &conf::Bgp, n: &conf::Neighbor, p: &Peering, path: &Pa
 /// or by the neighbour's inbound prefix list and route map.
 fn import(b: &Device, m: &conf::Neighbor, p: &Peering, attrs: &msg::PathAttrs, from_id: Ipv4Addr, net: Ipv4Net, own: &[L3If]) -> Option<Path> {
     let bb = b.bgp.as_ref()?;
-    if attrs.as_path.contains(&bb.asn) || own.iter().any(|i| i.net.addr == attrs.next_hop) {
+    if attrs.as_path.contains(&bb.asn) || attrs.as_set.contains(&bb.asn) || own.iter().any(|i| i.net.addr == attrs.next_hop) {
+        return None;
+    }
+    if let Some(l) = m.filter_list_in.as_deref().and_then(|x| b.as_path_list(x))
+        && !l.permits(&attrs.as_path, &attrs.as_set)
+    {
         return None;
     }
     let med = attrs.med.unwrap_or(0);
-    let sets = policy::apply(b, m.prefix_list_in.as_deref(), m.route_map_in.as_deref(), &Subject { net, metric: med })?;
+    let seen = policy::Attrs { communities: &attrs.communities, as_path: &attrs.as_path, as_set: &attrs.as_set };
+    let sets = policy::apply_with(b, m.prefix_list_in.as_deref(), m.route_map_in.as_deref(), &Subject { net, metric: med }, &seen)?;
     let local_pref = sets.local_pref.unwrap_or_else(|| if p.ebgp { bb.local_pref() } else { attrs.local_pref.unwrap_or_else(|| bb.local_pref()) });
     let mut as_path = sets.prepend.clone();
     as_path.extend(attrs.as_path.iter().copied());
@@ -566,6 +727,11 @@ fn import(b: &Device, m: &conf::Neighbor, p: &Peering, attrs: &msg::PathAttrs, f
         valid: false,
         best: false,
         resolved: None,
+        communities: policy::merge_communities(&sets, &attrs.communities),
+        as_set: attrs.as_set.clone(),
+        igp: 0,
+        multi: false,
+        suppressed: false,
     })
 }
 
@@ -589,11 +755,19 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
         let mut v: Vec<Path> = local.get(&d.id).cloned().unwrap_or_default();
         for p in rib.get(&d.id).into_iter().flat_map(|m| m.values()) {
             let mut p = p.clone();
-            p.resolved = resolve(table, mine, p.next_hop);
-            p.valid = p.resolved.is_some();
+            let hop = resolve_metric(table, mine, p.next_hop);
+            p.valid = hop.is_some();
+            p.igp = hop.as_ref().map_or(0, |h| h.2);
+            p.resolved = hop.map(|h| (h.0, h.1));
             v.push(p);
         }
-        rank(v)
+        let Some(ab) = &d.bgp else { return rank(v, 1) };
+        let made = aggregate_paths(ab, &v);
+        v.extend(made);
+        for p in &mut v {
+            p.suppressed = summarised(ab, p.net);
+        }
+        rank(v, ab.multipath())
     };
     let mut rib: RibIn = BTreeMap::new();
     for _ in 0..MAX_ROUNDS {
@@ -629,7 +803,7 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
         let paths = candidates(d, &rib);
         let routes: Vec<BgpRoute> = paths
             .iter()
-            .filter(|p| p.best && p.from.is_some())
+            .filter(|p| (p.best || p.multi) && p.from.is_some())
             .filter_map(|p| {
                 let (iface, via) = p.resolved.clone()?;
                 Some(BgpRoute {
@@ -657,6 +831,12 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
                     count
                 }
                 None => 0,
+            };
+            let theirs =
+                peering.and_then(|p| routers.iter().find(|x| x.id == p.peer).and_then(|x| x.bgp.as_ref()).and_then(|bb| bb.neighbor(p.local)));
+            let (keepalive_secs, hold_secs) = match theirs {
+                Some(m) => conf::negotiate(conf::timers_of(n), conf::timers_of(m)),
+                None => conf::timers_of(n),
             };
             let state = if n.shutdown || n.remote_as.is_none() {
                 SessionState::Idle
@@ -690,6 +870,8 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
                 error,
                 received: rib.get(&d.id).map_or(0, |m| m.keys().filter(|(a, _)| *a == n.addr).count()),
                 sent,
+                keepalive_secs,
+                hold_secs,
             });
         }
         st.routers.insert(
@@ -716,6 +898,13 @@ pub fn standalone_routes(t: &Topology, d: &Device) -> Vec<BgpRoute> {
     compute(t, &base, &an, &settled).routers.remove(&d.id).map(|v| v.routes).unwrap_or_default()
 }
 
+/// One end of a session as the lab configures it now: the neighbour statement, when it is still
+/// there, not shut down and has a remote AS.
+fn end_config(t: &Topology, key: SessKey) -> Option<conf::Neighbor> {
+    let n = t.device(key.0)?.bgp.as_ref()?.neighbor(key.1)?;
+    (!n.shutdown && n.remote_as.is_some()).then(|| n.clone())
+}
+
 impl Sim {
     /// BGP's routes for a device, for its routing table and for forwarding.
     pub(crate) fn bgp_routes(&mut self, t: &Topology, d: &Device) -> Vec<BgpRoute> {
@@ -738,7 +927,16 @@ impl Sim {
         }
         let now = self.now;
         let f = crate::ospf::fingerprint(t);
-        let fresh = self.bgp.state.is_none() || self.bgp.for_fp != f;
+        // A session whose hold time has run out is over: each end sends a hold-timer NOTIFICATION
+        // (which only arrives if the path still works one way) and forgets it.
+        let expired: Vec<SessKey> = self.bgp.held.iter().filter(|(_, (until, _))| *until <= now).map(|(k, _)| *k).collect();
+        for k in &expired {
+            let n = msg::Message::Notification(msg::Notification { code: msg::ERR_HOLD_TIMER, subcode: 0 });
+            self.bgp_send(t, *k, &n, now);
+            self.bgp.held.remove(k);
+            self.bgp.down_why.insert(*k, "hold timer expired");
+        }
+        let fresh = self.bgp.state.is_none() || self.bgp.for_fp != f || !expired.is_empty();
         let mut started: Vec<SessKey> = Vec::new();
         if fresh {
             self.bgp.for_fp = f;
@@ -749,7 +947,8 @@ impl Sim {
                 let r = self.rip_routes(t, d);
                 base.insert(d.id, crate::routing_table_with(t, d, &e, &o, &r, &[]));
             }
-            let an = analyse(t, &base);
+            let mut an = analyse(t, &base);
+            self.bgp_hold_lost(t, &mut an, &expired);
             self.bgp.up_at.retain(|k, _| an.peerings.contains_key(k));
             for k in an.peerings.keys() {
                 if !self.bgp.up_at.contains_key(k) {
@@ -773,9 +972,65 @@ impl Sim {
         self.bgp_transitions(t, &new);
     }
 
-    /// When the next session finishes its setup.
+    /// An Established session that no longer has a path keeps going, both ends, until its hold
+    /// time runs out, unless something ends it at once: the neighbour was shut down, removed or
+    /// changed on either side, the hold time is 0, or a directly connected external neighbour's
+    /// interface went down at either end (fast external fall-over). The sessions that wait are put
+    /// back into the analysis so their routes stay; one whose path came back stops waiting.
+    fn bgp_hold_lost(&mut self, t: &Topology, an: &mut Analysis, expired: &[SessKey]) {
+        self.bgp.held.retain(|k, _| !an.peerings.contains_key(k));
+        let was_up: Vec<SessKey> = self.bgp.since.keys().copied().collect();
+        for k in was_up {
+            if an.peerings.contains_key(&k) || self.bgp.held.contains_key(&k) || expired.contains(&k) {
+                continue;
+            }
+            let Some(old) = self.bgp.analysis.peerings.get(&k).cloned() else { continue };
+            let peer_key = (old.peer, old.local);
+            let Some(old_peer) = self.bgp.analysis.peerings.get(&peer_key).cloned() else { continue };
+            let (Some(n), Some(m)) = (end_config(t, k), end_config(t, peer_key)) else { continue };
+            let hold = conf::negotiate(conf::timers_of(&n), conf::timers_of(&m)).1;
+            let fast = |side: &conf::Neighbor, key: SessKey, p: &Peering| {
+                let down = t.device(key.0).is_none_or(|d| !up_ifaces(t, d).iter().any(|i| i.name == p.out_iface));
+                p.ebgp && multihop(side) == 1 && down
+            };
+            if hold == 0 || fast(&n, k, &old) || fast(&m, peer_key, &old_peer) {
+                continue;
+            }
+            let until = self.now.saturating_add(u64::from(hold).saturating_mul(1_000_000));
+            self.bgp.held.insert(k, (until, old));
+            self.bgp.held.entry(peer_key).or_insert((until, old_peer));
+        }
+        for (k, (_, p)) in &self.bgp.held {
+            an.peerings.entry(*k).or_insert_with(|| p.clone());
+        }
+    }
+
+    /// When the next session finishes its setup, or runs out of hold time.
     pub(crate) fn bgp_next_expiry(&self) -> Option<u64> {
-        self.bgp.up_at.iter().filter(|(k, _)| !self.bgp.settled.contains(*k)).map(|(_, at)| at.saturating_add(SETUP_US)).min()
+        let setup = self.bgp.up_at.iter().filter(|(k, _)| !self.bgp.settled.contains(*k)).map(|(_, at)| at.saturating_add(SETUP_US)).min();
+        let hold = self.bgp.held.values().map(|(until, _)| *until).min();
+        match (setup, hold) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        }
+    }
+
+    /// How often keepalives are due: every second when some neighbour has its own timers, else
+    /// every minute.
+    pub(crate) fn bgp_tick_us(&self, t: &Topology) -> u64 {
+        let custom = t.devices.iter().filter_map(|d| d.bgp.as_ref()).any(|b| b.neighbors.iter().any(|n| n.timers.is_some()));
+        if custom { KEEPALIVE_TICK_US } else { KEEPALIVE_EVERY_US }
+    }
+
+    /// The keepalive interval a session uses on this side (0: none).
+    fn bgp_keepalive_secs(&self, t: &Topology, key: SessKey) -> u16 {
+        let Some(p) = self.bgp.analysis.peerings.get(&key) else { return 0 };
+        let mine = t.device(key.0).and_then(|d| d.bgp.as_ref()).and_then(|b| b.neighbor(key.1));
+        let theirs = t.device(p.peer).and_then(|d| d.bgp.as_ref()).and_then(|b| b.neighbor(p.local));
+        match (mine, theirs) {
+            (Some(a), Some(b)) => conf::negotiate(conf::timers_of(a), conf::timers_of(b)).0,
+            _ => conf::KEEPALIVE_SECS,
+        }
     }
 
     /// A session starts its setup: new counters, and the OPEN and the KEEPALIVE that confirms it.
@@ -785,7 +1040,8 @@ impl Sim {
             return;
         }
         let Some(d) = t.device(key.0) else { return };
-        let open = msg::Message::Open(msg::Open { asn: d.bgp.as_ref().map_or(0, |x| x.asn), hold_secs: conf::HOLD_SECS, bgp_id: router_id(d) });
+        let hold_secs = d.bgp.as_ref().and_then(|b| b.neighbor(key.1)).map_or(conf::HOLD_SECS, |n| conf::timers_of(n).1);
+        let open = msg::Message::Open(msg::Open { asn: d.bgp.as_ref().map_or(0, |x| x.asn), hold_secs, bgp_id: router_id(d) });
         let now = self.now;
         self.bgp_send(t, key, &open, now.saturating_add(1_000_000));
         self.bgp_send(t, key, &msg::Message::Keepalive, now.saturating_add(2_000_000));
@@ -809,10 +1065,11 @@ impl Sim {
             self.bgp.since.remove(&key);
             self.bgp.adv_sent.remove(&key);
             let Some(d) = t.device(key.0) else { continue };
-            let why = match d.bgp.as_ref().and_then(|b| b.neighbor(key.1)) {
-                None => "neighbor deleted",
-                Some(n) if n.shutdown => "admin. shutdown",
-                Some(_) => "session lost (the neighbour is unreachable or was reconfigured)",
+            let why = match (self.bgp.down_why.remove(&key), d.bgp.as_ref().and_then(|b| b.neighbor(key.1))) {
+                (Some(w), _) => w,
+                (None, None) => "neighbor deleted",
+                (None, Some(n)) if n.shutdown => "admin. shutdown",
+                (None, Some(_)) => "session lost (the neighbour is unreachable or was reconfigured)",
             };
             if d.bgp.as_ref().is_some_and(|b| b.log_neighbor_changes) {
                 self.log(key.0, &format!("%BGP-5-ADJCHANGE: neighbor {} Down {why}", key.1));
@@ -906,8 +1163,12 @@ impl Sim {
         }
         self.bgp_refresh(t);
         let keys: Vec<SessKey> = self.bgp.since.keys().copied().collect();
+        let secs = at / 1_000_000;
         for k in keys {
-            self.bgp_send(t, k, &msg::Message::Keepalive, at);
+            let every = u64::from(self.bgp_keepalive_secs(t, k));
+            if every != 0 && secs % every == 0 {
+                self.bgp_send(t, k, &msg::Message::Keepalive, at);
+            }
         }
     }
 
@@ -952,6 +1213,7 @@ impl Sim {
                         self.log(k.0, &format!("%BGP-5-ADJCHANGE: neighbor {} Down User reset", k.1));
                     }
                     self.bgp.since.remove(&k);
+                    self.bgp.held.remove(&k);
                     self.bgp.adv_sent.remove(&k);
                 }
             }
@@ -959,6 +1221,8 @@ impl Sim {
             self.bgp.up_at.insert(peer_key, now);
             self.bgp.settled.remove(&key);
             self.bgp.settled.remove(&peer_key);
+            self.bgp.held.remove(&key);
+            self.bgp.held.remove(&peer_key);
             self.bgp_start(t, key);
             self.bgp_start(t, peer_key);
         }
@@ -1018,6 +1282,11 @@ mod tests {
             valid: true,
             best: false,
             resolved: Some(("g0/0".into(), Ipv4Addr::new(10, 0, 0, 2))),
+            communities: Vec::new(),
+            as_set: Vec::new(),
+            igp: 0,
+            multi: false,
+            suppressed: false,
         }
     }
 
@@ -1056,13 +1325,13 @@ mod tests {
         let a = path("10.9.0.0/16", &[65_002, 65_009]);
         let b = Path { as_path: vec![65_003], from: Some(Ipv4Addr::new(10, 0, 0, 6)), ..a.clone() };
         let other = path("10.8.0.0/16", &[65_002]);
-        let ranked = rank(vec![a.clone(), b.clone(), other]);
+        let ranked = rank(vec![a.clone(), b.clone(), other], 1);
         assert_eq!(ranked.len(), 3);
         let first = ranked.iter().find(|p| p.net == a.net).unwrap();
         assert_eq!(first.as_path, vec![65_003]);
         assert_eq!(ranked.iter().filter(|p| p.best).count(), 2);
         let dead = Path { valid: false, ..a };
-        assert!(rank(vec![dead]).iter().all(|p| !p.best));
+        assert!(rank(vec![dead], 1).iter().all(|p| !p.best));
     }
 
     #[test]
@@ -1122,7 +1391,15 @@ mod tests {
             ebgp: true,
             ttl: 1,
         };
-        let attrs = msg::PathAttrs { origin: 0, as_path: vec![65_001], next_hop: m.addr, med: None, local_pref: Some(300) };
+        let attrs = msg::PathAttrs {
+            origin: 0,
+            as_path: vec![65_001],
+            next_hop: m.addr,
+            med: None,
+            local_pref: Some(300),
+            as_set: Vec::new(),
+            communities: Vec::new(),
+        };
         let net: Ipv4Net = "10.1.0.0/16".parse().unwrap();
         let got = import(&b, &m, &p, &attrs, Ipv4Addr::new(1, 1, 1, 1), net, &[]).unwrap();
         // The local preference of an external neighbour is ours, whatever it said.
@@ -1156,7 +1433,15 @@ mod tests {
             ebgp: true,
             ttl: 1,
         };
-        let attrs = msg::PathAttrs { origin: 0, as_path: vec![65_001], next_hop: m.addr, med: None, local_pref: None };
+        let attrs = msg::PathAttrs {
+            origin: 0,
+            as_path: vec![65_001],
+            next_hop: m.addr,
+            med: None,
+            local_pref: None,
+            as_set: Vec::new(),
+            communities: Vec::new(),
+        };
         let rid = Ipv4Addr::new(1, 1, 1, 1);
         let inside: Ipv4Net = "10.1.0.0/16".parse().unwrap();
         let outside: Ipv4Net = "192.168.1.0/24".parse().unwrap();
@@ -1175,6 +1460,145 @@ mod tests {
         assert_eq!(told.as_path, vec![65_002, 65_002, 65_002, 65_005]);
         let hidden = Path { net: outside, ..sent };
         assert!(export(&d, &ab, &n, &p, &hidden).is_none());
+    }
+
+    fn ext_peering() -> (conf::Neighbor, Peering) {
+        let mut n = conf::Neighbor::new(Ipv4Addr::new(10, 0, 0, 2));
+        n.remote_as = Some(65_002);
+        let p = Peering {
+            peer: DeviceId(2),
+            peer_addr: n.addr,
+            local: Ipv4Addr::new(10, 0, 0, 1),
+            out_iface: "g0/0".into(),
+            next_hop: n.addr,
+            ebgp: true,
+            ttl: 1,
+        };
+        (n, p)
+    }
+
+    #[test]
+    fn communities_travel_only_with_send_community_and_well_known_ones_limit_where_a_path_goes() {
+        let a = speaker(65_001);
+        let ab = conf::Bgp::new(65_001);
+        let (mut n, p) = ext_peering();
+        let tagged = Path { communities: vec![100, 200], from: Some(Ipv4Addr::new(10, 0, 9, 9)), ..path("10.9.0.0/16", &[65_005]) };
+        assert!(export(&a, &ab, &n, &p, &tagged).unwrap().communities.is_empty(), "no send-community: stripped");
+        n.send_community = true;
+        assert_eq!(export(&a, &ab, &n, &p, &tagged).unwrap().communities, vec![100, 200]);
+        // no-export stays inside the AS; no-advertise goes nowhere; local-AS acts like no-export.
+        let no_export = Path { communities: vec![policy::NO_EXPORT], ..tagged.clone() };
+        assert!(export(&a, &ab, &n, &p, &no_export).is_none());
+        let local_as = Path { communities: vec![policy::LOCAL_AS], ..tagged.clone() };
+        assert!(export(&a, &ab, &n, &p, &local_as).is_none());
+        let n_int = conf::Neighbor { remote_as: Some(65_001), send_community: true, ..conf::Neighbor::new(Ipv4Addr::new(10, 0, 5, 2)) };
+        let int = Peering { ebgp: false, ttl: 255, peer_addr: n_int.addr, ..p.clone() };
+        assert_eq!(export(&a, &ab, &n_int, &int, &no_export).unwrap().communities, vec![policy::NO_EXPORT]);
+        let no_adv = Path { communities: vec![policy::NO_ADVERTISE], ..tagged };
+        assert!(export(&a, &ab, &n_int, &int, &no_adv).is_none());
+        assert!(export(&a, &ab, &n, &p, &no_adv).is_none());
+    }
+
+    #[test]
+    fn an_outbound_map_sets_communities_and_an_inbound_map_matches_them() {
+        use netlabcraft_model::policy::{CommunityEntry, CommunityList, RouteMap};
+        let mut d = speaker(65_002);
+        let mut map = RouteMap::new("tag");
+        let c = map.clause_mut(10, true).unwrap();
+        c.sets.community = Some(vec![(65_002 << 16) | 7]);
+        c.sets.community_additive = true;
+        d.route_maps.push(map);
+        let mut list = CommunityList::new("seven", false);
+        list.entries.push(CommunityEntry { permit: true, communities: vec![(65_002 << 16) | 7], regex: String::new() });
+        d.community_lists.push(list);
+        let mut pick = RouteMap::new("pick");
+        let c = pick.clause_mut(10, true).unwrap();
+        c.community_lists = vec!["seven".into()];
+        c.sets.local_pref = Some(400);
+        d.route_maps.push(pick);
+        let (mut n, p) = ext_peering();
+        n.send_community = true;
+        n.route_map_out = Some("tag".into());
+        let ab = conf::Bgp::new(65_002);
+        let mut held = path("10.9.0.0/16", &[65_005]);
+        held.from = Some(Ipv4Addr::new(10, 0, 9, 9));
+        held.communities = vec![5];
+        let sent = export(&d, &ab, &n, &p, &held).unwrap();
+        assert_eq!(sent.communities, vec![5, (65_002 << 16) | 7]);
+        // The receiver's inbound map only matches paths that carry the community.
+        let mut rx = speaker(65_003);
+        rx.route_maps = d.route_maps.clone();
+        rx.community_lists = d.community_lists.clone();
+        let mut m = conf::Neighbor::new(Ipv4Addr::new(10, 0, 0, 1));
+        m.route_map_in = Some("pick".into());
+        let q = Peering { peer_addr: m.addr, local: Ipv4Addr::new(10, 0, 0, 2), ..p };
+        let net: Ipv4Net = "10.9.0.0/16".parse().unwrap();
+        let rid = Ipv4Addr::new(1, 1, 1, 1);
+        let got = import(&rx, &m, &q, &sent, rid, net, &[]).unwrap();
+        assert_eq!((got.local_pref, got.communities.clone()), (400, sent.communities.clone()));
+        let bare = msg::PathAttrs { communities: Vec::new(), ..sent };
+        assert!(import(&rx, &m, &q, &bare, rid, net, &[]).is_none(), "the map has no clause for a path without it");
+    }
+
+    #[test]
+    fn an_aggregate_exists_while_a_more_specific_path_does_and_summary_only_hides_the_rest() {
+        let mut ab = conf::Bgp::new(65_001);
+        ab.aggregates.push(conf::Aggregate { net: "10.0.0.0/8".parse().unwrap(), summary_only: true, as_set: true });
+        let inside = Path { from: Some(Ipv4Addr::new(10, 0, 9, 9)), ..path("10.9.0.0/16", &[65_005, 65_006]) };
+        let outside = path("172.16.0.0/16", &[65_007]);
+        assert!(aggregate_paths(&ab, std::slice::from_ref(&outside)).is_empty());
+        let made = aggregate_paths(&ab, &[inside.clone(), outside]);
+        assert_eq!(made.len(), 1);
+        assert_eq!((made[0].net, made[0].from, made[0].as_set.clone()), ("10.0.0.0/8".parse().unwrap(), None, vec![65_005, 65_006]));
+        assert_eq!(made[0].path_len(), 1, "an AS set counts as one hop");
+        // A path that does not resolve makes nothing; a path of the same prefix of our own wins.
+        assert!(aggregate_paths(&ab, &[Path { valid: false, ..inside.clone() }]).is_empty());
+        let own = Path { net: "10.0.0.0/8".parse().unwrap(), from: None, ..inside.clone() };
+        assert!(aggregate_paths(&ab, &[inside.clone(), own]).is_empty());
+        // summary-only keeps the covered prefixes (not the aggregate) from being advertised.
+        assert!(summarised(&ab, inside.net) && !summarised(&ab, made[0].net));
+        let a = speaker(65_001);
+        let (n, p) = ext_peering();
+        assert!(export(&a, &ab, &n, &p, &inside).is_none());
+        let told = export(&a, &ab, &n, &p, &made[0]).unwrap();
+        assert_eq!((told.as_path, told.as_set), (vec![65_001], vec![65_005, 65_006]));
+        // Without summary-only the specific one is advertised too.
+        ab.aggregates[0].summary_only = false;
+        assert!(export(&a, &ab, &n, &p, &inside).is_some());
+    }
+
+    #[test]
+    fn equal_external_paths_share_the_routing_table_up_to_maximum_paths() {
+        let a = path("10.9.0.0/16", &[65_002]);
+        let via = |last: u8, from: u8| Path {
+            from: Some(Ipv4Addr::new(10, 0, last, 2)),
+            from_id: Ipv4Addr::new(from, from, from, from),
+            next_hop: Ipv4Addr::new(10, 0, last, 2),
+            resolved: Some((format!("g0/{last}"), Ipv4Addr::new(10, 0, last, 2))),
+            ..a.clone()
+        };
+        let paths = vec![via(1, 1), via(2, 2), via(3, 3)];
+        let one = rank(paths.clone(), 1);
+        assert_eq!(one.iter().filter(|p| p.multi).count(), 0);
+        let two = rank(paths.clone(), 2);
+        assert_eq!((two.iter().filter(|p| p.best).count(), two.iter().filter(|p| p.multi).count()), (1, 1));
+        let all = rank(paths.clone(), 8);
+        assert_eq!(all.iter().filter(|p| p.multi).count(), 2);
+        // A longer path, an internal path or a different MED is not equal.
+        let longer = Path { as_path: vec![65_002, 65_009], ..via(4, 4) };
+        let internal = Path { ebgp: false, ..via(5, 5) };
+        let other_med = Path { med: 9, ..via(6, 6) };
+        let other_as = Path { as_path: vec![65_009], ..via(7, 7) };
+        let mixed = rank(vec![via(1, 1), longer, internal, other_med, other_as], 8);
+        assert_eq!(mixed.iter().filter(|p| p.multi).count(), 0);
+    }
+
+    #[test]
+    fn the_igp_metric_to_the_next_hop_breaks_a_tie_before_the_router_id() {
+        let base = path("10.9.0.0/16", &[65_002]);
+        let far = Path { igp: 30, from_id: Ipv4Addr::new(1, 1, 1, 1), from: Some(Ipv4Addr::new(10, 0, 8, 8)), ..base.clone() };
+        let near = Path { igp: 10, from_id: Ipv4Addr::new(9, 9, 9, 9), from: Some(Ipv4Addr::new(10, 0, 9, 9)), ..base };
+        assert!(better(&near, &far) && !better(&far, &near));
     }
 
     #[test]
@@ -1206,6 +1630,7 @@ mod tests {
         assert_eq!(resolve(&table, &ifs, "172.16.1.1".parse().unwrap()), Some(("g0/0".to_string(), "10.0.0.9".parse().unwrap())));
         assert_eq!(resolve(&table, &ifs, "172.16.5.1".parse().unwrap()), Some(("g0/0".to_string(), "10.0.0.7".parse().unwrap())));
         // Our own address and an address nothing routes are not next hops.
+        assert_eq!(resolve_metric(&table, &ifs, "172.16.5.1".parse().unwrap()).map(|r| r.2), Some(0));
         assert_eq!(resolve(&table, &ifs, "10.0.0.1".parse().unwrap()), None);
         assert_eq!(resolve(&table, &ifs, "8.8.8.8".parse().unwrap()), None);
     }

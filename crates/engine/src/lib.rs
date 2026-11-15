@@ -41,6 +41,8 @@ pub mod sample;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod tests_bgp;
+#[cfg(test)]
 mod tests_cell;
 #[cfg(test)]
 mod tests_families;
