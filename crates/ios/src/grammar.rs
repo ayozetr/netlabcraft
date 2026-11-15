@@ -467,6 +467,8 @@ pub enum Id {
     NoNatSource,
     NatPool,
     NoNatPool,
+    NatTimeout,
+    NoNatTimeout,
     ShowNat,
     ClearNat,
     ClearNatStats,
@@ -1287,6 +1289,20 @@ pub static SPECS: &[Spec] = &[
         "Addresses to translate to"
     ),
     spec!(NoNatPool, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("nat"), K("pool"), Arg("WORD")], "Delete a NAT pool"),
+    spec!(
+        NatTimeout,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ip"), K("nat"), K("translation"), Arg("{timeout|udp-timeout|icmp-timeout|tcp-timeout}"), Arg("<1-2147483>")],
+        "Seconds a dynamic translation lives without traffic"
+    ),
+    spec!(
+        NoNatTimeout,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("nat"), K("translation"), Arg("{timeout|udp-timeout|icmp-timeout|tcp-timeout}")],
+        "The default lifetime of dynamic translations again"
+    ),
     spec!(ShowNat, EXECS, Modes::BOTH, [K("show"), K("ip"), K("nat"), K("translations")], "Translations in use"),
     spec!(
         ShowNat,

@@ -3371,6 +3371,24 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             n.pools.push(NatPool { name, start, end, prefix });
             Ok(String::new())
         }
+        Id::NatTimeout | Id::NoNatTimeout => {
+            let value = if spec.id == Id::NatTimeout {
+                let n = arg(1).trim().parse::<u32>().ok().filter(|n| (1..=netlabcraft_model::NAT_MAX_TIMEOUT_SECS).contains(n));
+                Some(n.ok_or(format!("% The timeout is 1-{} seconds", netlabcraft_model::NAT_MAX_TIMEOUT_SECS))?)
+            } else {
+                None
+            };
+            let to = &mut c.dm()?.nat.timeouts;
+            let slot = match arg(0).to_ascii_lowercase().as_str() {
+                "timeout" => &mut to.all,
+                "udp-timeout" => &mut to.udp,
+                "icmp-timeout" => &mut to.icmp,
+                "tcp-timeout" => &mut to.tcp,
+                _ => return Err("% timeout, udp-timeout, icmp-timeout or tcp-timeout".into()),
+            };
+            *slot = value;
+            Ok(String::new())
+        }
         Id::NoNatPool => {
             let n = &mut c.dm()?.nat;
             let before = n.pools.len();

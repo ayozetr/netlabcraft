@@ -475,6 +475,12 @@ pub fn running_config(d: &Device) -> String {
     for (l, g) in &d.nat.statics {
         let _ = writeln!(s, "ip nat inside source static {l} {g}");
     }
+    let to = &d.nat.timeouts;
+    for (word, v) in [("timeout", to.all), ("udp-timeout", to.udp), ("icmp-timeout", to.icmp), ("tcp-timeout", to.tcp)] {
+        if let Some(v) = v {
+            let _ = writeln!(s, "ip nat translation {word} {v}");
+        }
+    }
     if !d.nat.is_empty() {
         let _ = writeln!(s, "!");
     }
@@ -1771,7 +1777,7 @@ pub fn nat_translations(sim: &Sim, d: &Device, verbose: bool) -> String {
         rows.push(row);
     }
     if let Some(st) = sim.state(d.id) {
-        for e in st.nat.iter().filter(|e| !e.fixed || e.local_id.is_some()) {
+        for e in st.nat.iter().filter(|e| (!e.fixed || e.local_id.is_some()) && e.alive(d, now)) {
             let proto = match e.protocol {
                 1 => "icmp",
                 17 => "udp",
@@ -1785,9 +1791,13 @@ pub fn nat_translations(sim: &Sim, d: &Device, verbose: bool) -> String {
                     (false, true) => "dynamic, translated per flow (port or identifier)",
                     (false, false) => "dynamic, address only",
                 };
+                let expiry = match e.lifetime_us(d) {
+                    Some(life) => format!("expires in {} s", life.saturating_sub(now.saturating_sub(e.last_us)) / 1_000_000),
+                    None => "does not expire".to_string(),
+                };
                 let _ = write!(
                     row,
-                    "\n    {kind}; created {}, last used {}, {} packet{} translated",
+                    "\n    {kind}; created {}, last used {}, {} packet{} translated; {expiry}",
                     ago(e.created_us),
                     ago(e.last_us),
                     e.uses,

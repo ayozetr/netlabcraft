@@ -784,6 +784,18 @@ pub struct NatEntry {
     pub uses: u64,
 }
 
+impl NatEntry {
+    /// Microseconds a dynamic translation survives without traffic (`None`: it never ages out).
+    pub fn lifetime_us(&self, d: &Device) -> Option<u64> {
+        (!self.fixed).then(|| u64::from(d.nat.timeouts.secs(self.protocol, self.local_id.is_some())).saturating_mul(1_000_000))
+    }
+
+    /// Whether the translation is still there at `now`: static ones always, dynamic ones until their timeout runs out.
+    pub fn alive(&self, d: &Device, now: u64) -> bool {
+        self.lifetime_us(d).is_none_or(|life| now.saturating_sub(self.last_us) < life)
+    }
+}
+
 const MAX_NAT_ENTRIES: usize = 4_096;
 
 /// Addresses a pool may scan for a free one.
@@ -1671,6 +1683,7 @@ impl Sim {
 
     /// Inside to outside: the translated packet (`None`: no rule applies, sent as is).
     fn nat_translate(&mut self, d: &Device, ip: &Ipv4) -> Result<Option<Ipv4>, String> {
+        self.nat_purge(d);
         let id = flow_id(ip, true);
         let now = self.now;
         let st = self.st(d.id);
@@ -1775,6 +1788,7 @@ impl Sim {
         if let Some(back) = self.nat_untranslate_error(d, ip) {
             return Some(back);
         }
+        self.nat_purge(d);
         let id = flow_id(ip, false);
         let now = self.now;
         let found = self.state.get_mut(&d.id).and_then(|s| {
@@ -1811,6 +1825,7 @@ impl Sim {
             .get(&d.id)?
             .nat
             .iter()
+            .filter(|e| e.alive(d, self.now))
             .find(|e| e.inside_global == src && e.protocol == proto && e.global_id.is_none_or(|g| g == quoted_id))
             .cloned()
             .or_else(|| {
@@ -1838,6 +1853,14 @@ impl Sim {
     /// Whether NAT makes this router answer for an address (static or pool globals).
     fn nat_owns(d: &Device, a: Ipv4Addr) -> bool {
         d.nat.statics.iter().any(|(_, g)| *g == a) || d.nat.pools.iter().any(|p| (u32::from(p.start)..=u32::from(p.end)).contains(&u32::from(a)))
+    }
+
+    /// Forgets the dynamic translations whose timeout has run out.
+    fn nat_purge(&mut self, d: &Device) {
+        let now = self.now;
+        if let Some(st) = self.state.get_mut(&d.id) {
+            st.nat.retain(|e| e.alive(d, now));
+        }
     }
 
     /// Forgets dynamic translations (`clear ip nat translation *`).

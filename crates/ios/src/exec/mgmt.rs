@@ -342,7 +342,9 @@ pub(super) fn command(c: &mut Ctx<'_>, id: Id, args: &[String]) -> R {
 /// `show ip nat statistics`.
 fn nat_statistics(c: &Ctx<'_>) -> String {
     let Ok(d) = c.d() else { return String::new() };
-    let entries = c.sim.state(c.dev).map(|st| st.nat.clone()).unwrap_or_default();
+    let now = c.sim.now_us();
+    let entries: Vec<netlabcraft_sim::NatEntry> =
+        c.sim.state(c.dev).map(|st| st.nat.iter().filter(|e| e.alive(d, now)).cloned().collect::<Vec<_>>()).unwrap_or_default();
     let dynamic = entries.iter().filter(|e| !e.fixed).count();
     let extended = entries.iter().filter(|e| e.local_id.is_some()).count();
     let statics = d.nat.statics.len();

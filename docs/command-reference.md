@@ -255,6 +255,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip nat inside source ...` | config | router, switch | Remove a translation rule |
 | `ip nat pool WORD START END {netmask M \| prefix-length N}` | config | router, switch | Addresses to translate to |
 | `no ip nat pool WORD` | config | router, switch | Delete a NAT pool |
+| `ip nat translation {timeout\|udp-timeout\|icmp-timeout\|tcp-timeout} <1-2147483>` | config | router, switch | Seconds a dynamic translation lives without traffic |
+| `no ip nat translation {timeout\|udp-timeout\|icmp-timeout\|tcp-timeout}` | config | router, switch | The default lifetime of dynamic translations again |
 | `show ip nat translations` | user, privileged | router, switch | Translations in use |
 | `show ip nat translations verbose` | user, privileged | router, switch | Translations in use, with their age, last use and packet count |
 | `clear ip nat statistics` | privileged | router, switch | Reset the NAT hit and miss counts |
