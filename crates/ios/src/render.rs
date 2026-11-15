@@ -38,6 +38,7 @@ pub fn running_config(d: &Device) -> String {
     for a in &d.log_hosts {
         let _ = writeln!(s, "logging host {a}");
     }
+    crate::exec::netflow::running_config(&mut s, d);
     let before = s.len();
     crate::exec::mgmt::running_config(&mut s, d);
     if !d.ntp_servers.is_empty() || !d.log_hosts.is_empty() || s.len() != before {
@@ -361,6 +362,7 @@ pub fn running_config(d: &Device) -> String {
         crypto_map_line(&mut s, d, &p.name);
         crate::exec::qos::service_policy_lines(&mut s, d, &p.name);
         crate::exec::security::iface_lines(&mut s, d, &p.name);
+        crate::exec::netflow::iface_lines(&mut s, d, &p.name);
         // Routers write both states: their ports start shut, so a replay must say which are up.
         if p.shutdown {
             let _ = writeln!(s, " shutdown");
@@ -391,6 +393,7 @@ pub fn running_config(d: &Device) -> String {
             crypto_map_line(&mut s, d, &format!("{}.{}", p.name, sub.number));
             crate::exec::qos::service_policy_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
             crate::exec::security::iface_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
+            crate::exec::netflow::iface_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
             if sub.shutdown {
                 let _ = writeln!(s, " shutdown");
             }
