@@ -25,7 +25,7 @@ fn session_id(text: &str) -> Result<u8, String> {
 /// `fa0/1 - 3, fa0/5 rx` into the list and the direction (`both` when none is typed).
 fn split_direction(text: &str) -> Result<(String, SpanDir), String> {
     let mut words: Vec<&str> = text.split_whitespace().collect();
-    let dir = match words.last().and_then(|w| SpanDir::parse(*w)) {
+    let dir = match words.last().and_then(|w| SpanDir::parse(w)) {
         Some(d) => {
             words.pop();
             d
@@ -215,7 +215,7 @@ fn port_list(d: &Device, idx: &[usize], full: bool) -> String {
         let mut last = 0;
         if let Some((pre, n0)) = numbered(first) {
             last = n0;
-            while let Some((p, n)) = names.get(end + 1).and_then(|x| numbered(*x))
+            while let Some((p, n)) = names.get(end + 1).and_then(|x| numbered(x))
                 && p == pre
                 && n == last.saturating_add(1)
             {
