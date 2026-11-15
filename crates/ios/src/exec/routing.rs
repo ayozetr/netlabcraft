@@ -362,13 +362,28 @@ pub(super) fn ospf_passive(c: &mut Ctx, add: bool, text: &str) -> R {
     Ok(String::new())
 }
 
-/// `[no] redistribute static [subnets]` under `router ospf`.
+/// `[no] redistribute static [subnets] [route-map NAME]` under `router ospf`.
 pub(super) fn ospf_redistribute(c: &mut Ctx, on: bool, rest: &str) -> R {
     let words: Vec<String> = rest.split_whitespace().map(str::to_ascii_lowercase).collect();
-    if words.iter().any(|w| !"subnets".starts_with(w.as_str())) {
-        return Err("% Only `redistribute static [subnets]` is simulated".into());
+    let mut map: Option<String> = None;
+    let mut i = 0usize;
+    while let Some(w) = words.get(i) {
+        if "subnets".starts_with(w.as_str()) {
+            i += 1;
+        } else if w == "route-map" {
+            let name = rest.split_whitespace().nth(i + 1).ok_or("% route-map needs a name")?;
+            if name.chars().count() > netlabcraft_model::policy::MAX_NAME || name.chars().any(char::is_control) {
+                return Err(format!("% A name is 1-{} characters", netlabcraft_model::policy::MAX_NAME));
+            }
+            map = Some(name.to_string());
+            i += 2;
+        } else {
+            return Err("% Only `redistribute static [subnets] [route-map NAME]` is simulated".into());
+        }
     }
-    c.dm()?.ospf.as_mut().ok_or("% Not in OSPF mode")?.redistribute_static = on;
+    let o = c.dm()?.ospf.as_mut().ok_or("% Not in OSPF mode")?;
+    o.redistribute_static = on;
+    o.redistribute_map = if on { map } else { None };
     Ok(if on { "Static routes go to the other OSPF routers as external type-2 routes (metric 20).".into() } else { String::new() })
 }
 

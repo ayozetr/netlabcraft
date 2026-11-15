@@ -34,6 +34,7 @@ pub mod models;
 pub mod physical;
 pub mod pki;
 pub mod poe;
+pub mod policy;
 pub mod pppoe;
 pub mod psu;
 pub mod qos;
@@ -936,6 +937,12 @@ pub struct Device {
     /// Routers: BGP (`router bgp N`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bgp: Option<bgp::Bgp>,
+    /// Routers: prefix lists (`ip prefix-list`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prefix_lists: Vec<policy::PrefixList>,
+    /// Routers: route maps (`route-map`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub route_maps: Vec<policy::RouteMap>,
     /// Per-interface EIGRP timers, by interface name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub eigrp_if: BTreeMap<String, EigrpIfConf>,
@@ -1204,6 +1211,9 @@ pub struct Ospf {
     /// routes.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub redistribute_static: bool,
+    /// `redistribute static route-map NAME`: only the static routes the map permits.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub redistribute_map: Option<String>,
 }
 
 /// The SNMP agent's settings.
@@ -1929,6 +1939,8 @@ impl Device {
             rip: None,
             eigrp: None,
             bgp: None,
+            prefix_lists: Vec::new(),
+            route_maps: Vec::new(),
             eigrp_if: BTreeMap::new(),
             eigrp_summary: BTreeMap::new(),
             rip6: None,
@@ -2026,6 +2038,8 @@ impl Device {
         self.rip = None;
         self.eigrp = None;
         self.bgp = None;
+        self.prefix_lists.clear();
+        self.route_maps.clear();
         self.acls6.clear();
         self.ospf_if.clear();
         self.eigrp_if.clear();
@@ -2654,6 +2668,8 @@ impl Topology {
                 if let Some(b) = &mut d.bgp {
                     b.sanitize();
                 }
+                policy::sanitize_prefix_lists(&mut d.prefix_lists);
+                policy::sanitize_route_maps(&mut d.route_maps);
                 d.fhrp.sanitize();
                 d.ensure_default_vlan();
             }

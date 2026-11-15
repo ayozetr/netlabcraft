@@ -502,7 +502,12 @@ pub fn running_config(d: &Device) -> String {
             let _ = writeln!(s, " network {} {} area {}", n.address, n.wildcard, n.area);
         }
         if o.redistribute_static {
-            s.push_str(" redistribute static subnets\n");
+            match &o.redistribute_map {
+                Some(m) => {
+                    let _ = writeln!(s, " redistribute static subnets route-map {m}");
+                }
+                None => s.push_str(" redistribute static subnets\n"),
+            }
         }
         if o.default_originate {
             let _ = writeln!(s, " default-information originate");
@@ -560,6 +565,7 @@ pub fn running_config(d: &Device) -> String {
         let _ = writeln!(s, "!");
     }
     crate::exec::bgp::running_config(&mut s, d);
+    crate::exec::policy::running_config(&mut s, d);
     if let Some(r) = &d.rip {
         let _ = writeln!(s, "router rip");
         if r.version != 1 {

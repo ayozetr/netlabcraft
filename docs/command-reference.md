@@ -302,7 +302,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `ip ospf message-digest-key <1-255> md5 KEY` | interface, subinterface | router, switch | A message-digest key, by id |
 | `no ip ospf message-digest-key <1-255>` | interface, subinterface | router, switch | Remove a message-digest key |
 | `redistribute static` |  | router, switch | Advertise static routes as external |
-| `redistribute static [subnets]` |  | router, switch | Advertise static routes as external |
+| `redistribute static [subnets] [route-map NAME]` |  | router, switch | Advertise static routes as external |
 | `no redistribute static` |  | router, switch | Stop advertising static routes |
 | `no redistribute static [subnets]` |  | router, switch | Stop advertising static routes |
 | `clear ip ospf process` | privileged | router, switch | Restart OSPF: neighbours and DR elections anew |
@@ -674,7 +674,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `network A.B.C.D mask A.B.C.D` |  | router, switch | Advertise this prefix while it is in the routing table |
 | `no network A.B.C.D` |  | router, switch | Stop advertising this classful network |
 | `no network A.B.C.D mask A.B.C.D` |  | router, switch | Stop advertising this prefix |
-| `redistribute {connected\|static\|ospf <1-65535>}` |  | router, switch | Advertise the routes another source gave |
+| `redistribute {connected\|static\|ospf <1-65535>} [route-map NAME]` |  | router, switch | Advertise the routes another source gave |
 | `no redistribute {connected\|static\|ospf}` |  | router, switch | Stop advertising them |
 | `show ip bgp` | user, privileged | router, switch | Every path BGP knows, the best of each prefix marked |
 | `show ip bgp A.B.C.D` | user, privileged | router, switch | The paths to one destination |
@@ -685,6 +685,40 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `clear ip bgp {*\|A.B.C.D}` | privileged | router, switch | Reset BGP sessions so they start again |
 | `debug ip bgp` | privileged | router, switch | Report the BGP messages this router hears and its session changes |
 | `no debug ip bgp` | privileged | router, switch | Stop reporting BGP |
+| `clear ip bgp {*\|A.B.C.D} soft` | privileged | router, switch | Apply the neighbour policy again without resetting sessions |
+| `clear ip bgp {*\|A.B.C.D} soft {in\|out}` | privileged | router, switch | Apply the neighbour policy again in one direction |
+| `neighbor A.B.C.D prefix-list NAME {in\|out}` |  | router, switch | Filter the prefixes this neighbour sends or is sent with a prefix list |
+| `no neighbor A.B.C.D prefix-list NAME {in\|out}` |  | router, switch | Stop filtering this neighbour with the prefix list |
+| `neighbor A.B.C.D route-map NAME {in\|out}` |  | router, switch | Filter and change the paths this neighbour sends or is sent with a route map |
+| `no neighbor A.B.C.D route-map NAME {in\|out}` |  | router, switch | Stop applying the route map to this neighbour |
+| `ip prefix-list NAME [seq <1-4294967294>] {permit\|deny} A.B.C.D/LEN [ge <0-32>] [le <0-32>]` | config | router, switch | Add a line to a prefix list |
+| `no ip prefix-list NAME` | config | router, switch | Delete a prefix list |
+| `no ip prefix-list NAME {seq <1-4294967294>\|{permit\|deny} A.B.C.D/LEN [ge <0-32>] [le <0-32>]}` | config | router, switch | Delete one line of a prefix list |
+| `show ip prefix-list` | user, privileged | router, switch | Every prefix list |
+| `show ip prefix-list NAME` | user, privileged | router, switch | One prefix list |
+| `show route-map` | user, privileged | router, switch | Every route map |
+| `show route-map NAME` | user, privileged | router, switch | One route map |
+| `route-map NAME` | config | router, switch | Create or edit a route map clause |
+| `route-map NAME {permit\|deny} [<1-4294967294>]` | config | router, switch | Create or edit a route map clause that permits or denies |
+| `no route-map NAME` | config | router, switch | Delete a route map |
+| `no route-map NAME {permit\|deny} [<1-4294967294>]` | config | router, switch | Delete one clause of a route map |
+| `match ip address [prefix-list] <name> [<name>...]` |  | router, switch | Match prefixes that prefix lists or access lists permit |
+| `no match ip address` |  | router, switch | Remove every address match |
+| `no match ip address [prefix-list] <name> [<name>...]` |  | router, switch | Remove these names from the address match |
+| `match metric <0-4294967295>` |  | router, switch | Match routes with this metric |
+| `no match metric` |  | router, switch | Remove the metric match |
+| `set local-preference <0-4294967295>` |  | router, switch | Give the paths this local preference |
+| `no set local-preference` |  | router, switch | Leave the local preference alone |
+| `set metric <0-4294967295>` |  | router, switch | Give the routes this metric |
+| `no set metric` |  | router, switch | Leave the metric alone |
+| `set weight <0-65535>` |  | router, switch | Give the paths this weight |
+| `no set weight` |  | router, switch | Leave the weight alone |
+| `set as-path prepend <AS> [<AS>...]` |  | router, switch | Put these AS numbers in front of the AS path |
+| `no set as-path prepend` |  | router, switch | Leave the AS path alone |
+| `set ip next-hop A.B.C.D` |  | router, switch | Give the paths this next hop |
+| `no set ip next-hop` |  | router, switch | Leave the next hop alone |
+| `set origin {igp\|egp\|incomplete}` |  | router, switch | Give the paths this origin |
+| `no set origin` |  | router, switch | Leave the origin alone |
 | `bandwidth <1-10000000>` | interface | router, switch | The bandwidth EIGRP's metric uses (kbit/s) |
 | `no bandwidth` | interface | router, switch | Bandwidth from the port's speed again |
 | `delay <1-16777215>` | interface | router, switch | The delay EIGRP's metric adds (tens of microseconds) |

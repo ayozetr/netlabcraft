@@ -2,6 +2,7 @@
 //! originates and what it redistributes. The sessions and the routes are worked out by the
 //! simulator; nothing derived is kept here.
 
+use std::collections::BTreeMap;
 use std::net::Ipv4Addr;
 
 use netlabcraft_core::Ipv4Net;
@@ -60,6 +61,16 @@ pub struct Neighbor {
     /// `weight N`: given to every path learned from this neighbour (0 when not set).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub weight: Option<u16>,
+    /// `prefix-list NAME in` / `out`: what the neighbour may send and what it is sent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prefix_list_in: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prefix_list_out: Option<String>,
+    /// `route-map NAME in` / `out`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub route_map_in: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub route_map_out: Option<String>,
 }
 
 impl Neighbor {
@@ -73,6 +84,10 @@ impl Neighbor {
             description: None,
             ebgp_multihop: None,
             weight: None,
+            prefix_list_in: None,
+            prefix_list_out: None,
+            route_map_in: None,
+            route_map_out: None,
         }
     }
 }
@@ -97,6 +112,9 @@ pub struct Bgp {
     pub networks: Vec<Ipv4Net>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub redistribute: Vec<Source>,
+    /// `redistribute SOURCE route-map NAME`: the map, by the source's word (`connected`, …).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub redistribute_maps: BTreeMap<String, String>,
 }
 
 impl Bgp {
@@ -137,6 +155,9 @@ impl Bgp {
             if let Some(d) = &mut n.description {
                 *d = d.chars().filter(|c| !c.is_control()).take(MAX_TEXT).collect();
             }
+            for name in [&mut n.prefix_list_in, &mut n.prefix_list_out, &mut n.route_map_in, &mut n.route_map_out] {
+                *name = name.take().map(|x| crate::policy::clean_name(&x)).filter(|x| !x.is_empty());
+            }
             if let Some(u) = &mut n.update_source {
                 *u = u.chars().filter(|c| !c.is_control()).take(MAX_TEXT).collect();
             }
@@ -147,6 +168,12 @@ impl Bgp {
         self.networks.truncate(MAX_NETWORKS);
         self.redistribute.sort();
         self.redistribute.dedup();
+        let kept: Vec<String> = self.redistribute.iter().map(|r| r.word().to_string()).collect();
+        self.redistribute_maps.retain(|k, _| kept.contains(k));
+        for v in self.redistribute_maps.values_mut() {
+            *v = crate::policy::clean_name(v);
+        }
+        self.redistribute_maps.retain(|_, v| !v.is_empty());
     }
 }
 

@@ -72,6 +72,39 @@ fn source_of(text: &str, needs_process: bool) -> Result<Source, String> {
     Err("% redistribute connected, static or ospf <process>".into())
 }
 
+/// `redistribute SOURCE … [route-map NAME]`: the words before `route-map` and the map's name.
+fn split_map(text: &str) -> Result<(String, Option<String>), String> {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let Some(at) = words.iter().position(|w| w.eq_ignore_ascii_case("route-map")) else {
+        return Ok((words.join(" "), None));
+    };
+    let name = match (words.get(at + 1), words.len() == at + 2) {
+        (Some(n), true) => *n,
+        _ => return Err("% route-map takes one name, and it ends the line".into()),
+    };
+    if name.chars().count() > netlabcraft_model::policy::MAX_NAME || name.chars().any(char::is_control) {
+        return Err(format!("% A name is 1-{} characters", netlabcraft_model::policy::MAX_NAME));
+    }
+    Ok((words.get(..at).unwrap_or(&[]).join(" "), Some(name.to_string())))
+}
+
+/// `in` or `out`.
+fn direction(text: &str) -> Result<bool, String> {
+    match text.to_ascii_lowercase().as_str() {
+        "in" => Ok(true),
+        "out" => Ok(false),
+        _ => Err("% Say in or out".into()),
+    }
+}
+
+fn policy_name(text: &str) -> Result<String, String> {
+    let t = text.trim();
+    if t.is_empty() || t.chars().count() > netlabcraft_model::policy::MAX_NAME || t.chars().any(char::is_control) {
+        return Err(format!("% A name is 1-{} characters", netlabcraft_model::policy::MAX_NAME));
+    }
+    Ok(t.to_string())
+}
+
 /// Runs one of this module's commands.
 pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
     let arg = |i: usize| args.get(i).map(String::as_str).unwrap_or("");
@@ -208,14 +241,53 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
         }
         Id::BgpRedistribute | Id::NoBgpRedistribute => {
             let add = id == Id::BgpRedistribute;
-            let src = source_of(arg(0), add)?;
+            let (head, map) = split_map(arg(0))?;
+            let src = source_of(&head, add)?;
             let b = process(c)?;
             b.redistribute.retain(|s| *s != src);
+            b.redistribute_maps.remove(src.word());
             if add {
                 b.redistribute.push(src);
                 b.redistribute.sort();
+                if let Some(m) = map {
+                    b.redistribute_maps.insert(src.word().to_string(), m);
+                }
             }
             Ok(String::new())
+        }
+        Id::BgpNeighborPrefixList | Id::NoBgpNeighborPrefixList | Id::BgpNeighborRouteMap | Id::NoBgpNeighborRouteMap => {
+            let a = peer_address(arg(0))?;
+            let name = policy_name(arg(1))?;
+            let inbound = direction(arg(2))?;
+            let set = matches!(id, Id::BgpNeighborPrefixList | Id::BgpNeighborRouteMap);
+            let lists = matches!(id, Id::BgpNeighborPrefixList | Id::NoBgpNeighborPrefixList);
+            let n = existing(process(c)?, a)?;
+            let slot = match (lists, inbound) {
+                (true, true) => &mut n.prefix_list_in,
+                (true, false) => &mut n.prefix_list_out,
+                (false, true) => &mut n.route_map_in,
+                (false, false) => &mut n.route_map_out,
+            };
+            if set {
+                *slot = Some(name);
+            } else if slot.as_deref() == Some(name.as_str()) {
+                *slot = None;
+            } else {
+                return Err(format!("% {name} is not applied to {a} in that direction"));
+            }
+            Ok(String::new())
+        }
+        Id::ClearIpBgpSoft => {
+            let which = arg(0).trim();
+            if !arg(1).is_empty() {
+                direction(arg(1))?;
+            }
+            let d = c.d()?;
+            let Some(b) = &d.bgp else { return Err("% BGP is not running on this router".into()) };
+            if which != "*" && b.neighbor(address(which)?).is_none() {
+                return Err(format!("% No neighbour {which}"));
+            }
+            Ok("No session was reset: prefix lists and route maps apply as soon as they change, so the paths already follow the policy.".into())
         }
         Id::DebugIpBgp | Id::NoDebugIpBgp => {
             let on = id == Id::DebugIpBgp;
@@ -281,6 +353,16 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
         if let Some(w) = n.weight {
             let _ = writeln!(s, " neighbor {} weight {w}", n.addr);
         }
+        for (word, dir, name) in [
+            ("prefix-list", "in", &n.prefix_list_in),
+            ("prefix-list", "out", &n.prefix_list_out),
+            ("route-map", "in", &n.route_map_in),
+            ("route-map", "out", &n.route_map_out),
+        ] {
+            if let Some(name) = name {
+                let _ = writeln!(s, " neighbor {} {word} {name} {dir}", n.addr);
+            }
+        }
         if n.shutdown {
             let _ = writeln!(s, " neighbor {} shutdown", n.addr);
         }
@@ -289,12 +371,13 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
         let _ = writeln!(s, " network {} mask {}", n.addr, n.mask());
     }
     for r in &b.redistribute {
+        let map = b.redistribute_maps.get(r.word()).map_or(String::new(), |m| format!(" route-map {m}"));
         match r {
             Source::Ospf => {
-                let _ = writeln!(s, " redistribute ospf 1");
+                let _ = writeln!(s, " redistribute ospf 1{map}");
             }
             other => {
-                let _ = writeln!(s, " redistribute {}", other.word());
+                let _ = writeln!(s, " redistribute {}{map}", other.word());
             }
         }
     }
@@ -501,6 +584,19 @@ fn neighbors(d: &Device, v: &BgpView, only: Option<&str>) -> Result<String, Stri
         }
         if !options.is_empty() {
             let _ = writeln!(s, "  Options: {}", options.join(", "));
+        }
+        if let Some(c) = conf {
+            for (what, dir, name) in [
+                ("prefix list", "inbound", &c.prefix_list_in),
+                ("prefix list", "outbound", &c.prefix_list_out),
+                ("route map", "inbound", &c.route_map_in),
+                ("route map", "outbound", &c.route_map_out),
+            ] {
+                if let Some(name) = name {
+                    let known = if what == "prefix list" { d.prefix_list(name).is_some() } else { d.route_map(name).is_some() };
+                    let _ = writeln!(s, "  Policy: {dir} {what} {name}{}", if known { "" } else { " (not defined: lets everything through)" });
+                }
+            }
         }
         let _ = writeln!(
             s,
