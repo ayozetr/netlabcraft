@@ -617,7 +617,7 @@ impl Sim {
         st.ra_inbox.clear();
         // A reply: the magic, its type, the status, then the nonce of the request.
         let want = |b: &Vec<u8>| b.get(6..22) == Some(&ni[..]);
-        let have = |s: &Sim| s.state.get(&dev).is_some_and(|st| st.ra_inbox.iter().any(|b| want(b)));
+        let have = |s: &Sim| s.state.get(&dev).is_some_and(|st| st.ra_inbox.iter().any(&want));
         // Sent up to three times: the first may wait for ARP on the way.
         for _ in 0..3 {
             let start = self.now;
