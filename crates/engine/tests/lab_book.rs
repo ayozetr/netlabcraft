@@ -72,6 +72,7 @@ labs! {
     lab_30_inspect_spanning_tree => "30-inspect-spanning-tree.md",
     lab_31_read_the_ospf_database => "31-read-the-ospf-database.md",
     lab_32_eigrp => "32-eigrp.md",
+    lab_33_ipv6_routing => "33-ipv6-routing.md",
 }
 
 /// The cellular lab is not part of a CCNA course, so it has no number (the numbered labs 21 and up
