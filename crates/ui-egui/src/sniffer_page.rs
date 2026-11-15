@@ -17,7 +17,7 @@ pub(crate) fn tab(app: &mut PacketApp, ui: &mut Ui, dev: &Device) {
     let t = &app.session.topology;
     let seen: Vec<_> = app.session.sim.trace().iter().filter(|e| e.to.device == dev.id).collect();
     ui.label(tl(
-        "A sniffer records every frame that reaches its port and answers none of them. Behind a hub it hears all the traffic; behind a switch, only broadcasts, multicasts and the frames the switch floods.",
+        "A sniffer records every frame that reaches its port and answers none of them. Behind a hub it hears all the traffic; behind a switch, only broadcasts, multicasts and the frames the switch floods, plus whatever a monitor session on the switch copies to its port.",
     ));
     ui.label(RichText::new(trf("Frames captured: {}", &[&seen.len()])).strong());
     if seen.is_empty() {

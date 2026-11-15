@@ -1600,7 +1600,7 @@ event	write request for	Schreibanfrage für
 	Router with 2 Fast Ethernet ports and 2 serial WAN ports	Router mit 2 Fast-Ethernet-Ports und 2 seriellen WAN-Ports
 	Router with 3 Gigabit Ethernet ports and 2 serial WAN ports	Router mit 3 Gigabit-Ethernet-Ports und 2 seriellen WAN-Ports
 	Modular router with 2 Fast Ethernet ports and 2 empty module bays (serial, Gigabit and Fast Ethernet cards, fitted while powered off)	Modularer Router mit 2 Fast-Ethernet-Ports und 2 leeren Modulschächten (serielle, Gigabit- und Fast-Ethernet-Karten, bei ausgeschaltetem Gerät einzusetzen)
-	Sniffer with one Fast Ethernet port: records every frame that reaches its port (all the traffic behind a hub; broadcasts, multicasts and flooded frames behind a switch) and never answers	Sniffer mit einem Fast-Ethernet-Port: zeichnet jeden Frame auf, der seinen Port erreicht (hinter einem Hub den gesamten Verkehr; hinter einem Switch Broadcasts, Multicasts und gefluteten Frames) und antwortet nie
+	Sniffer with one Fast Ethernet port: records every frame that reaches its port (all the traffic behind a hub; behind a switch, broadcasts, multicasts and flooded frames, or whatever a monitor session copies to its port) and never answers	Sniffer mit einem Fast-Ethernet-Port: zeichnet jeden Frame auf, der seinen Port erreicht (hinter einem Hub den gesamten Verkehr; hinter einem Switch Broadcasts, Multicasts und gefluteten Frames, oder was eine Monitor-Session auf seinen Port kopiert) und antwortet nie
 	Wi-Fi smart TV: registers with the IoT service, which switches it on (playing) and off (standby)	WLAN-Smart-TV: meldet sich beim IoT-Dienst an, der ihn ein- (Wiedergabe) und ausschaltet (Standby)
 	Smart TV with one Fast Ethernet port: registers with an IoT server, which switches it on (playing) and off (standby)	Smart-TV mit einem Fast-Ethernet-Port: meldet sich bei einem IoT-Server an, der ihn ein- (Wiedergabe) und ausschaltet (Standby)
 	Wi-Fi smart speaker: plays while the IoT service keeps it on	WLAN-Lautsprecher: spielt, solange der IoT-Dienst ihn eingeschaltet lässt
@@ -1610,7 +1610,7 @@ event	write request for	Schreibanfrage für
 	standby	Standby
 	% level	% Füllstand
 	Capture	Mitschnitt
-	A sniffer records every frame that reaches its port and answers none of them. Behind a hub it hears all the traffic; behind a switch, only broadcasts, multicasts and the frames the switch floods.	Ein Sniffer zeichnet jeden Frame auf, der seinen Port erreicht, und antwortet auf keinen. Hinter einem Hub hört er den gesamten Verkehr; hinter einem Switch nur Broadcasts, Multicasts und die Frames, die der Switch flutet.
+	A sniffer records every frame that reaches its port and answers none of them. Behind a hub it hears all the traffic; behind a switch, only broadcasts, multicasts and the frames the switch floods, plus whatever a monitor session on the switch copies to its port.	Ein Sniffer zeichnet jeden Frame auf, der seinen Port erreicht, und antwortet auf keinen. Hinter einem Hub hört er den gesamten Verkehr; hinter einem Switch nur Broadcasts, Multicasts und die Frames, die der Switch flutet, dazu das, was eine Monitor-Session des Switches auf seinen Port kopiert.
 	Frames captured: {}	Aufgezeichnete Frames: {}
 	Nothing captured yet. Cable the sniffer to a hub or a switch and send some traffic (a ping, or a simple PDU).	Noch nichts aufgezeichnet. Verbinde den Sniffer mit einem Hub oder einem Switch und sende Verkehr (einen Ping oder eine einfache PDU).
 	Showing the last {} frames	Angezeigt werden die letzten {} Frames
