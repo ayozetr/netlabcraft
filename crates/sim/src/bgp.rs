@@ -570,7 +570,7 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
         let mut next: RibIn = BTreeMap::new();
         for a in &routers {
             let Some(ab) = &a.bgp else { continue };
-            let best: Vec<Path> = candidates(*a, &rib).into_iter().filter(|p| p.best).collect();
+            let best: Vec<Path> = candidates(a, &rib).into_iter().filter(|p| p.best).collect();
             let from_id = rids.get(&a.id).copied().unwrap_or(Ipv4Addr::UNSPECIFIED);
             for n in &ab.neighbors {
                 let Some(p) = live(an, settled, &(a.id, n.addr)) else { continue };
@@ -596,7 +596,7 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
     let mut st = BgpState::default();
     for d in &routers {
         let Some(ab) = &d.bgp else { continue };
-        let paths = candidates(*d, &rib);
+        let paths = candidates(d, &rib);
         let routes: Vec<BgpRoute> = paths
             .iter()
             .filter(|p| p.best && p.from.is_some())
