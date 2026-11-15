@@ -936,3 +936,105 @@ fn fiber_reaches_two_kilometres_and_copper_a_hundred_metres() {
     t.set_cable_length(ca, Some(150)).unwrap();
     assert!(cable_problem(&t, ca).unwrap().contains("copper, max 100 m"));
 }
+
+/// A PC and a server on one switch, for the end-device firewall tests.
+fn firewall_lab() -> (Topology, DeviceId, DeviceId) {
+    let mut t = Topology::new();
+    let s = add(&mut t, DeviceKind::Switch);
+    let srv = add(&mut t, DeviceKind::Server);
+    let a = host(&mut t, "192.168.5.10/24", None);
+    cable(&mut t, srv, 0, s, 0);
+    cable(&mut t, a, 0, s, 1);
+    let d = t.device_mut(srv).unwrap();
+    d.ports[0].ip = Some(net("192.168.5.2/24"));
+    d.ports[0].ipv6.addresses = vec!["2001:db8:5::2/64".parse().unwrap()];
+    t.device_mut(a).unwrap().ports[0].ipv6.addresses = vec!["2001:db8:5::10/64".parse().unwrap()];
+    (t, a, srv)
+}
+
+fn fw_rule(allow: bool, proto: netlabcraft_model::hostfw::FwProto, ports: Option<(u16, u16)>) -> netlabcraft_model::hostfw::HostFwRule {
+    netlabcraft_model::hostfw::HostFwRule { allow, proto, remote: None, ports }
+}
+
+fn can_get(t: &Topology, from: DeviceId) -> bool {
+    Sim::new().http_get(t, from, ip("192.168.5.2"), "www.lab.test", "/").is_ok()
+}
+
+fn can_ping(t: &Topology, from: DeviceId) -> bool {
+    marks(&Sim::new().ping(t, from, ip("192.168.5.2"), PingOptions::default()).unwrap()).contains('!')
+}
+
+fn can_ping6(t: &Topology, from: DeviceId) -> bool {
+    marks(&Sim::new().ping6(t, from, "2001:db8:5::2".parse().unwrap(), PingOptions::default()).unwrap()).contains('!')
+}
+
+#[test]
+fn an_end_device_firewall_filters_ipv4_pings_and_tcp_service_ports() {
+    use netlabcraft_model::hostfw::FwProto;
+    let (mut t, a, srv) = firewall_lab();
+    // Off (the default): everything is let in.
+    assert!(can_ping(&t, a) && can_get(&t, a));
+    // On with no rule: nothing that starts a conversation gets in, and the server stays silent.
+    t.device_mut(srv).unwrap().host_fw.v4.on = true;
+    assert!(!can_ping(&t, a));
+    assert!(!can_get(&t, a));
+    // Allow the web port only: the page loads, the ping gets no reply.
+    t.device_mut(srv).unwrap().host_fw.v4.rules.push(fw_rule(true, FwProto::Tcp, Some((80, 80))));
+    assert!(can_get(&t, a));
+    assert!(!can_ping(&t, a));
+    // Allow ICMP too: replies come back.
+    t.device_mut(srv).unwrap().host_fw.v4.rules.push(fw_rule(true, FwProto::Icmp, None));
+    assert!(can_ping(&t, a));
+    // Rules are ordered: a deny above the allow wins.
+    t.device_mut(srv).unwrap().host_fw.v4.rules.insert(0, fw_rule(false, FwProto::Tcp, Some((70, 90))));
+    assert!(!can_get(&t, a));
+    // The firewall guards what arrives: the server's own pings still work, because replies pass.
+    let back = Sim::new().ping(&t, srv, ip("192.168.5.10"), PingOptions::default()).unwrap();
+    assert!(marks(&back).contains('!'));
+    // Switching it off lets everything in again.
+    t.device_mut(srv).unwrap().host_fw.v4.on = false;
+    assert!(can_get(&t, a) && can_ping(&t, a));
+    // The event list says why a packet went nowhere.
+    t.device_mut(srv).unwrap().host_fw.v4.on = true;
+    let mut sim = Sim::new();
+    let _ = sim.http_get(&t, a, ip("192.168.5.2"), "www.lab.test", "/");
+    assert!(sim.trace().iter().any(|e| e.dropped.as_ref().is_some_and(|why| why.contains("firewall"))));
+}
+
+#[test]
+fn an_end_device_firewall_keeps_ipv4_and_ipv6_apart() {
+    use netlabcraft_model::hostfw::FwProto;
+    let (mut t, a, srv) = firewall_lab();
+    assert!(can_ping6(&t, a));
+    // The IPv6 list on, with no rule: IPv6 pings stop, IPv4 is untouched.
+    t.device_mut(srv).unwrap().host_fw.v6.on = true;
+    assert!(!can_ping6(&t, a));
+    assert!(can_ping(&t, a));
+    // Allow ICMP over IPv6.
+    t.device_mut(srv).unwrap().host_fw.v6.rules.push(fw_rule(true, FwProto::Icmp, None));
+    assert!(can_ping6(&t, a));
+    // An IPv4 list on does not stop IPv6, and the IPv6 list does not stop IPv4.
+    t.device_mut(srv).unwrap().host_fw.v6.on = false;
+    t.device_mut(srv).unwrap().host_fw.v4.on = true;
+    assert!(can_ping6(&t, a));
+    assert!(!can_ping(&t, a));
+}
+
+#[test]
+fn an_end_device_firewall_matches_the_remote_address() {
+    use netlabcraft_model::hostfw::{FwProto, HostFwRule};
+    let (mut t, a, srv) = firewall_lab();
+    let d = t.device_mut(srv).unwrap();
+    d.host_fw.v4.on = true;
+    // Allow ICMP from another network only.
+    d.host_fw.v4.rules.push(HostFwRule { allow: true, proto: FwProto::Icmp, remote: Some((ip("10.9.0.0").into(), 24)), ports: None });
+    assert!(!can_ping(&t, a));
+    // Then from the PC's network.
+    t.device_mut(srv).unwrap().host_fw.v4.rules.push(HostFwRule {
+        allow: true,
+        proto: FwProto::Icmp,
+        remote: Some((ip("192.168.5.0").into(), 24)),
+        ports: None,
+    });
+    assert!(can_ping(&t, a));
+}

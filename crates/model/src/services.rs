@@ -7,6 +7,36 @@ use serde::{Deserialize, Serialize};
 /// Most files, records and pools per service, and the largest file.
 pub const MAX_ITEMS: usize = 256;
 pub const MAX_FILE: usize = 60_000;
+/// Most files a host keeps (the Text Editor's and `ftp`'s), and the most bytes one holds.
+pub const MAX_HOST_FILES: usize = 32;
+pub const MAX_HOST_FILE_BYTES: usize = 16 * 1024;
+/// Longest file name on a host.
+pub const MAX_HOST_FILE_NAME: usize = 64;
+
+/// Whether a host accepts `name` for a file: 1 to 64 characters, no spaces, no slashes, no control
+/// characters.
+pub fn valid_host_file_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.chars().count() <= MAX_HOST_FILE_NAME
+        && name.chars().all(|c| !c.is_whitespace() && !c.is_control() && c != '/' && c != '\\')
+}
+
+/// Keeps a hostile file's host files within bounds: valid unique names, at most
+/// [`MAX_HOST_FILES`] of them, each at most [`MAX_HOST_FILE_BYTES`] long (cut on a character).
+pub fn sanitize_host_files(files: &mut Vec<WebFile>) {
+    let mut seen = std::collections::BTreeSet::new();
+    files.retain(|f| valid_host_file_name(&f.name) && seen.insert(f.name.clone()));
+    files.truncate(MAX_HOST_FILES);
+    for f in files.iter_mut() {
+        if f.content.len() > MAX_HOST_FILE_BYTES {
+            let mut end = MAX_HOST_FILE_BYTES;
+            while end > 0 && !f.content.is_char_boundary(end) {
+                end -= 1;
+            }
+            f.content.truncate(end);
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Services {
@@ -261,5 +291,23 @@ mod tests {
         assert_eq!(d.lookup("WWW.lab"), Some(Ipv4Addr::new(1, 2, 3, 4)));
         assert_eq!(d.lookup("ftp.lab"), None);
         assert!(Services::server_defaults().http.on);
+    }
+
+    #[test]
+    fn host_files_are_kept_within_bounds() {
+        assert!(valid_host_file_name("notes.txt"));
+        assert!(!valid_host_file_name(""));
+        assert!(!valid_host_file_name("my notes"));
+        assert!(!valid_host_file_name("a/b"));
+        assert!(!valid_host_file_name(&"x".repeat(MAX_HOST_FILE_NAME + 1)));
+        let file = |n: &str, c: String| WebFile { name: n.into(), content: c };
+        let mut files = vec![file("a.txt", "é".repeat(MAX_HOST_FILE_BYTES)), file("a.txt", "dup".into()), file("bad name", "x".into())];
+        files.extend((0..MAX_HOST_FILES + 5).map(|i| file(&format!("f{i}"), String::new())));
+        sanitize_host_files(&mut files);
+        assert_eq!(files.len(), MAX_HOST_FILES);
+        assert_eq!(files[0].name, "a.txt");
+        assert!(files[0].content.len() <= MAX_HOST_FILE_BYTES);
+        assert!(files[0].content.chars().all(|c| c == 'é'), "cut on a character boundary");
+        assert!(files.iter().all(|f| f.name != "bad name"));
     }
 }

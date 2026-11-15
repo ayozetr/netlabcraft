@@ -55,6 +55,32 @@ pub static CATALOG: &[CommandInfo] = &[
         false
     ),
     c!(
+        "editor.list",
+        "Text Editor files",
+        "",
+        None,
+        r#"{"device": PC, laptop or server} → {"files": [{"name", "bytes"}], "max_files": 32, "max_bytes": 16384}"#,
+        false
+    ),
+    c!("editor.read", "Open text file", "", None, r#"{"device", "name"} → {"name", "text", "bytes"}"#, false),
+    c!(
+        "editor.write",
+        "Save text file",
+        "",
+        None,
+        r#"{"device": PC, laptop or server, "name": "up to 64 characters, no spaces or slashes", "text": "up to 16384 bytes"} → {"name", "bytes", "created"}: replaces the file of that name, else adds one (at most 32 files; the dir and ftp commands of the Command Prompt see them too)"#,
+        true
+    ),
+    c!("editor.delete", "Delete text file", "", None, r#"{"device", "name"}"#, true),
+    c!(
+        "host.firewall",
+        "Firewall",
+        "",
+        None,
+        r#"{"device": PC, laptop or server, "version"?: 4 or 6 (default 4: each has its own list and switch), "on"?: true or false, "add"?: {"action": "allow" or "deny", "protocol"?: "any", "tcp", "udp" or "icmp", "remote"?: "10.0.0.0/24" or "any", "port"?: 80 or "1000-2000" (tcp and udp), "at"?: position from 1 (default: last)}, "remove"?: rule number from 1, "clear"?: true} → {"version", "on", "rules": [{"n", "action", "protocol", "remote", "port"}]}. Off: everything is let in. On: the first matching rule decides and no match is dropped; echo requests, new TCP connections and UDP datagrams are matched, answers to what the device sent always pass; at most 32 rules"#,
+        true
+    ),
+    c!(
         "snmp.request",
         "SNMP request",
         "",

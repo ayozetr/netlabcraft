@@ -41,6 +41,7 @@ pub mod eigrp;
 pub mod eigrp6;
 pub mod fhrp;
 pub mod firewall;
+pub mod hostfw;
 pub mod hsrp;
 pub mod ikev1;
 pub mod ikev2;
@@ -2902,6 +2903,10 @@ impl Sim {
                 _ => "delivered: other",
             },
         );
+        if hostfw::blocks4(d, &ip) {
+            self.bump(d.id, "dropped by the firewall");
+            return Err(format!("dropped by this device's firewall (from {})", ip.src));
+        }
         if d.kind == DeviceKind::Router && ip.protocol == netlabcraft_wire::vpn::PROTO_GRE {
             return self.gre_in(t, d, &ip);
         }

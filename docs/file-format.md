@@ -1,12 +1,12 @@
 # The `.nlcraft` lab file
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-14 · **Change:** minor (file version 4: drawing outline and fill settings) · earlier: minor (file version 3: the cellular radio, `cell` settings (M9.10)) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (results file version 2 with the embedded network (M9.6)) · earlier: minor (instructor fields in `activity`, absolute PDU starts, boards and the IoT custom cable, power supplies, SA lifetimes, VRRP timers and IPv6, CoS, VTP pruning, EIGRP summaries and variance, RIP timers, RIPng, central WLANs, controller variables) · also merged with M9.11 (minor (M9.11: `environment`, file version 2))
+> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (file version 5: the end-device firewall, `host_fw`) · earlier: minor (file version 4: drawing outline and fill settings) · earlier: minor (file version 3: the cellular radio, `cell` settings (M9.10)) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (results file version 2 with the embedded network (M9.6)) · earlier: minor (instructor fields in `activity`, absolute PDU starts, boards and the IoT custom cable, power supplies, SA lifetimes, VRRP timers and IPv6, CoS, VTP pruning, EIGRP summaries and variance, RIP timers, RIPng, central WLANs, controller variables) · also merged with M9.11 (minor (M9.11: `environment`, file version 2))
 
-A lab is one UTF-8 JSON file (file version 4; versions 1 to 3 still open: version 2 added the lab's `environment`, version 3 the cellular radio below, version 4 the outline and fill of drawings). It is the serde form of `netlabcraft_model::Topology`
+A lab is one UTF-8 JSON file (file version 5; versions 1 to 4 still open: version 2 added the lab's `environment`, version 3 the cellular radio below, version 4 the outline and fill of drawings, version 5 the firewall of end devices). It is the serde form of `netlabcraft_model::Topology`
 (`crates/model/src/lib.rs`), wrapped with a format tag and version (`crates/model/src/file.rs`):
 
 ```json
-{"format": "netlabcraft", "version": 4, "topology": {"devices": [...], "links": [...], "next_id": 7, "notes": "...", "annotations": [...]}}
+{"format": "netlabcraft", "version": 5, "topology": {"devices": [...], "links": [...], "next_id": 7, "notes": "...", "annotations": [...]}}
 ```
 
 Fields that hold their default value are left out when saving, so a small lab stays small and an
@@ -56,6 +56,8 @@ older file without a newer field still opens.
 | `adapter` | IP phones and lightweight APs: whether the power adapter is plugged in. Left out on every other device; a powered device in an older file has none and counts as plugged in. |
 | `bridges` | Clouds: the port pairs joined to each other, such as `["Coaxial0", "Phone0"]`. |
 | `cell` | Smartphones and tablets: `data_off` (Cellular Data switched off) and `apn` (the access point name asked for). Central office servers: `pool` (the network the devices' addresses come from; the server's own interface in it is their gateway), `apn` (the one it admits; left out admits any) and `plan_off`. Left out when default. Which tower a device is attached to, its signal and its address are worked out from the lab on load and are not saved (the address sits on the device's `Cellular0` port as `ip`, rewritten on load); a phone or tablet in an older file gets its `Cellular0` port when opened. |
+| `host_fw` | PCs, laptops and servers: the Firewall app's two lists, `v4` and `v6`, each `{"on": bool, "rules": [{"allow": bool, "proto": "any"\|"tcp"\|"udp"\|"icmp", "remote"?: [address, prefix length], "ports"?: [first, last]}]}`. Left out while both lists are off and empty (every file before version 5), which means everything is let in; at most 32 rules a list, and rules that make no sense (an address of the other family, a prefix too long, ports out of order, ports on ICMP) are dropped on load. |
+| `files` | Hosts: the files the Text Editor, `ftp` and `dir` share, `{"name", "content"}`. At most 32 a device, a name of 1 to 64 characters without spaces or slashes, 16 KiB of text each; longer files are cut and bad names dropped on load. |
 | `voice` | Routers: `telephony-service`, `ephone-dn`s and `ephone`s, option 150 per pool, and for SIP `register` (`voice register global`: `cme`, `source`, `port`, `max_dn`, `max_pool`), `reg_dns` and `pools` (`tag`, `mac`, `dn`). Phones: the TFTP server DHCP gave, `sip` (signal with SIP) and `sip_server`. |
 | `environment` (lab level) | The smart things' shared room, left out when it is the default: `enabled` (the physics is on: sensors read the room), the starting `temperature` (degrees), `humidity`, `soil`, `smoke` (percent), `co` (ppm), `motion` (0 or 1), and what lies outside: `outside_temperature`, `outside_humidity`, `outside_light`. The values reached while a lab runs are not saved: a loaded lab starts from these. Every value is clamped on load. |
 | `iot` | Smart things: `server`, `value` (a sensor's reading) and `interval` (report every N seconds of simulated time; 0 only on change). Servers and home gateways: `service` and `rules`, each with `conditions` (`sensor`, `op` `>`/`<`/`=`, `value`), `any` (joined with OR, else AND), `actuator` and `on` (what the rule does when it holds; true when left out). Older rules keep `sensor` and `above` and still read. |
@@ -91,6 +93,7 @@ events) is not saved.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-15 | minor | File version 5: end devices gain `host_fw` (the Firewall and IPv6 Firewall apps' rule lists); files of versions 1 to 4 read as before, with the firewall off. Host `files` are bounded on load (32 files, 16 KiB each). |
 | 2026-11-14 | minor | File version 4: drawings gain `outline`, `outline_color`, `outline_width` and `no_fill`; files of versions 1 to 3 read as before (a lone `color` renders exactly as it did) and bad colours or widths are cleaned on load. |
 | 2026-11-13 | minor | File version 3 (M9.10): smartphones and tablets gain a `Cellular0` port (older files get it on open), devices may carry `cell` settings, and the Cell Tower and Central Office Server models exist; files of versions 1 and 2 read as before. |
 | 2026-11-13 | minor | `pki` on routers and switches: keys, trustpoints, certificates, the CA (M9.9). |

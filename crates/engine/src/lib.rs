@@ -25,6 +25,7 @@ mod cmd;
 mod controller;
 mod families;
 mod hardware;
+mod hostapps;
 pub mod home;
 pub mod instructor;
 mod iot;
@@ -40,6 +41,8 @@ mod tests;
 mod tests_cell;
 #[cfg(test)]
 mod tests_families;
+#[cfg(test)]
+mod tests_hostapps;
 #[cfg(test)]
 mod tests_instructor;
 #[cfg(test)]

@@ -47,6 +47,9 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
     if let Some(r) = crate::instructor::run(s, id, p) {
         return r;
     }
+    if let Some(r) = crate::hostapps::run(s, id, p) {
+        return r;
+    }
     if let Some(r) = crate::cellular::run(s, id, p) {
         return r;
     }

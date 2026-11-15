@@ -1,4 +1,4 @@
-//! The `.nlcraft` lab file: UTF-8 JSON, `{"format":"netlabcraft","version":4,"topology":{…}}`.
+//! The `.nlcraft` lab file: UTF-8 JSON, `{"format":"netlabcraft","version":5,"topology":{…}}`.
 //! Readers accept older versions and refuse newer ones; loading always sanitizes.
 
 use serde::{Deserialize, Serialize};
@@ -9,8 +9,10 @@ pub const FORMAT: &str = "netlabcraft";
 /// 2: the lab-level `environment` (the smart things' shared room).
 /// 3: smartphones and tablets have a `Cellular0` port, and devices may carry `cell` settings.
 /// 4: drawings have separate outline and fill settings (`outline`, `outline_color`, `outline_width`, `no_fill`).
-/// Older files still open (their phones get the port; a drawing with only `color` draws as it always did).
-pub const VERSION: u32 = 4;
+/// 5: end devices may carry a `host_fw` (the Firewall app's IPv4 and IPv6 rule lists).
+/// Older files still open (their phones get the port; a drawing with only `color` draws as it always did;
+/// a device without `host_fw` has its firewall off).
+pub const VERSION: u32 = 5;
 pub const EXTENSION: &str = "nlcraft";
 
 /// Largest lab file accepted (hostile input).
@@ -125,7 +127,27 @@ mod tests {
         assert!(from_json(r#"{"format":"netlabcraft","version":2,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
         assert!(from_json(r#"{"format":"netlabcraft","version":3,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
         assert!(from_json(r#"{"format":"netlabcraft","version":4,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
-        assert!(from_json(r#"{"format":"netlabcraft","version":5,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_err());
+        assert!(from_json(r#"{"format":"netlabcraft","version":5,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
+        assert!(from_json(r#"{"format":"netlabcraft","version":6,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_err());
+    }
+
+    #[test]
+    fn a_host_firewall_and_host_files_round_trip_and_older_files_open_with_it_off() {
+        use crate::hostfw::{FwProto, HostFwRule};
+        let mut t = Topology::new();
+        let pc = t.add_device(DeviceKind::Pc, None, 0.0, 0.0).unwrap();
+        // A lab saved before the firewall: no `host_fw` key.
+        assert!(!to_json(&t).unwrap().contains("host_fw"));
+        let mut v: serde_json::Value = serde_json::from_str(&to_json(&t).unwrap()).unwrap();
+        v["version"] = 4.into();
+        assert!(from_json(&v.to_string()).unwrap().device(pc).unwrap().host_fw.is_default());
+        let d = t.device_mut(pc).unwrap();
+        d.host_fw.v4.on = true;
+        d.host_fw.v4.rules.push(HostFwRule { allow: true, proto: FwProto::Tcp, remote: None, ports: Some((80, 80)) });
+        d.files.push(crate::services::WebFile { name: "notes.txt".into(), content: "hello".into() });
+        let back = from_json(&to_json(&t).unwrap()).unwrap();
+        assert_eq!(back, t);
+        assert!(back.device(pc).unwrap().host_fw.v4.on);
     }
 
     #[test]
