@@ -410,8 +410,8 @@ fn the_newer_routers_route_over_serial_take_a_fast_ethernet_card_and_save_with_t
 fn smart_tvs_over_wifi_and_ethernet_register_and_are_switched_by_the_gateway() {
     let mut s = Session::new();
     s.execute("file.new", json!({"sample": "wifi-things"})).unwrap();
-    s.execute("device.add", json!({"model": "Smart TV", "name": "TV1", "x": 300, "y": 450})).unwrap();
-    s.execute("device.add", json!({"model": "Wired Smart TV", "name": "TV2", "x": 500, "y": 450})).unwrap();
+    s.execute("device.add", json!({"model": "Smart TV", "name": "TV1", "x": 500, "y": 200})).unwrap();
+    s.execute("device.add", json!({"model": "Wired Smart TV", "name": "TV2", "x": 650, "y": 200})).unwrap();
     s.execute("link.add", json!({"a": "TV2", "a_port": "FastEthernet0", "b": "Home", "b_port": "Ethernet2"})).unwrap();
     assert_eq!(s.topology.find("TV1").unwrap().ports[0].wifi.as_ref().map(|w| w.ssid.as_str()), Some("HomeNetwork"));
     // The radio associates with the gateway in simulated time.
