@@ -805,7 +805,9 @@ fn spanish_shows_no_text_that_has_a_translation_in_english() {
                 }
             }
             if kind.is_host() {
-                for which in ["home", "ip", "prompt", "email", "mib", "terminal", "browser", "programming"] {
+                for which in
+                    ["home", "ip", "prompt", "email", "mib", "terminal", "browser", "programming", "telnet", "editor", "firewall", "firewall6"]
+                {
                     if which == "browser" {
                         open_browser(h.state_mut(), d, "www.netlabcraft.lab");
                     } else {
@@ -1201,6 +1203,121 @@ fn scenarios_switch_from_the_bottom_box() {
     h.run_steps(2);
     assert_eq!(h.state().session.topology.scenarios.count(), 1);
     assert!(h.query_by_label("Fire PDU 1").is_none());
+}
+
+/// Types `text` into the text field named `label`.
+fn type_into(h: &mut Harness<'static, PacketApp>, label: &str, text: &str) {
+    use egui::accesskit::Role;
+    h.get_by_role_and_label(Role::TextInput, label).click();
+    h.run_steps(1);
+    h.input_mut().events.push(egui::Event::Text(text.into()));
+    h.run_steps(1);
+}
+
+/// PCs, laptops and servers show the computer apps on their Desktop; a printer does not.
+#[test]
+fn the_computer_apps_are_on_the_desktop_of_computers_only() {
+    let mut h = harness(Some("lan"));
+    h.state_mut().ui.show_notes = false;
+    let (pc, printer) = {
+        let t = &h.state().session.topology;
+        (t.resolve("PC1").unwrap(), t.resolve("Printer1").unwrap())
+    };
+    for (dev, shown) in [(pc, true), (printer, false)] {
+        open_desktop_app(h.state_mut(), dev, "tiles");
+        h.run_steps(3);
+        for name in ["Telnet/SSH Client", "Text Editor", "Firewall", "IPv6 Firewall"] {
+            assert_eq!(h.query_by_label(name).is_some(), shown, "{name} on device {dev:?}");
+        }
+        assert!(h.query_by_label("Command Prompt").is_some());
+        h.state_mut().ui.windows.clear();
+    }
+}
+
+/// The Telnet/SSH Client types `telnet` and `ssh` into the Command Prompt, so the session is the
+/// prompt's own.
+#[test]
+fn the_telnet_client_opens_a_session_from_its_form() {
+    use egui::accesskit::Role;
+    let mut h = harness(Some("two-subnets"));
+    h.state_mut().ui.show_notes = false;
+    let (pc, r1) = {
+        let t = &h.state().session.topology;
+        (t.resolve("PC1").unwrap(), t.resolve("R1").unwrap())
+    };
+    for line in ["enable", "configure terminal", "line vty 0 4", "password remote", "login", "end"] {
+        h.state_mut().session.execute("cli.exec", json!({"device": r1.0, "line": line})).unwrap();
+    }
+    open_desktop_app(h.state_mut(), pc, "telnet");
+    h.run_steps(3);
+    // Nothing typed: nothing is sent.
+    h.get_by_role_and_label(Role::Button, "Open").click();
+    h.run_steps(2);
+    assert!(!h.state_mut().session.console(pc).log.contains("telnet"));
+    type_into(&mut h, "Host address or name", "10.0.1.1");
+    h.get_by_role_and_label(Role::Button, "Open").click();
+    h.run_steps(3);
+    let log = h.state_mut().session.console(pc).log.clone();
+    assert!(log.contains("telnet 10.0.1.1") && log.contains("Open"), "{log}");
+    assert!(h.state_mut().session.console(pc).cli.remote.is_some());
+}
+
+/// The Text Editor saves what is typed as a file of the device, and the file survives in the lab.
+#[test]
+fn the_text_editor_saves_a_file_on_the_device() {
+    use egui::accesskit::Role;
+    let mut h = harness(Some("lan"));
+    h.state_mut().ui.show_notes = false;
+    let pc = h.state().session.topology.resolve("PC1").unwrap();
+    open_desktop_app(h.state_mut(), pc, "editor");
+    h.run_steps(3);
+    assert!(h.query_all_by_label_contains("No files yet").next().is_some());
+    type_into(&mut h, "File name", "notes.txt");
+    h.get_by_role(Role::MultilineTextInput).click();
+    h.run_steps(1);
+    h.input_mut().events.push(egui::Event::Text("remember the VLANs".into()));
+    h.run_steps(1);
+    h.get_by_role_and_label(Role::Button, "Save").click();
+    h.run_steps(3);
+    let files = h.state().session.topology.device(pc).unwrap().files.clone();
+    assert_eq!(files.len(), 1);
+    assert_eq!((files[0].name.as_str(), files[0].content.as_str()), ("notes.txt", "remember the VLANs"));
+    assert!(h.query_all_by_label("notes.txt").next().is_some(), "the new file is listed");
+}
+
+/// The Firewall's switch and rule form edit the device's list; the IPv6 app edits the other one.
+#[test]
+fn the_firewall_apps_edit_their_own_rule_lists() {
+    use egui::accesskit::Role;
+    let mut h = harness(Some("lan"));
+    h.state_mut().ui.show_notes = false;
+    let pc = h.state().session.topology.resolve("PC2").unwrap();
+    open_desktop_app(h.state_mut(), pc, "firewall");
+    h.run_steps(3);
+    assert!(h.query_all_by_label_contains("No rules yet").next().is_some());
+    h.get_by_label("On").click();
+    h.run_steps(2);
+    assert!(h.state().session.topology.device(pc).unwrap().host_fw.v4.on);
+    h.get_by_label("Deny").click();
+    h.get_by_label("TCP").click();
+    h.run_steps(1);
+    type_into(&mut h, "Port", "80-90");
+    h.get_by_role_and_label(Role::Button, "Add rule").click();
+    h.run_steps(3);
+    let fw = h.state().session.topology.device(pc).unwrap().host_fw.clone();
+    assert_eq!(fw.v4.rules.len(), 1);
+    assert!(!fw.v4.rules[0].allow && fw.v4.rules[0].ports == Some((80, 90)));
+    assert!(fw.v6.is_default(), "the IPv6 list is untouched");
+    h.get_by_role_and_label(Role::Button, "Remove").click();
+    h.run_steps(3);
+    assert!(h.state().session.topology.device(pc).unwrap().host_fw.v4.rules.is_empty());
+    // The IPv6 Firewall has its own switch and list.
+    open_desktop_app(h.state_mut(), pc, "firewall6");
+    h.run_steps(3);
+    h.get_by_label("On").click();
+    h.run_steps(2);
+    let fw = &h.state().session.topology.device(pc).unwrap().host_fw;
+    assert!(fw.v6.on && fw.v4.on);
 }
 
 /// The Programming app sends RESTCONF requests (a login refused, then the interfaces as a JSON

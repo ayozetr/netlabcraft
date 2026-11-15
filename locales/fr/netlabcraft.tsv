@@ -1537,3 +1537,30 @@ event	update	mise à jour
 event	version	version
 event	who has	qui a
 event	write request for	demande d'écriture de
+	Telnet/SSH Client	Client Telnet/SSH
+	Text Editor	Éditeur de texte
+	Firewall	Pare-feu
+	IPv6 Firewall	Pare-feu IPv6
+	Host address or name	Adresse ou nom de l'hôte
+	Enter a host address or name.	Saisissez l'adresse ou le nom d'un hôte.
+	Enter a user name for SSH.	Saisissez un nom d'utilisateur pour SSH.
+	A session is open: type exit in the window below to close it.	Une session est ouverte : tapez exit dans la fenêtre ci-dessous pour la fermer.
+	File name	Nom du fichier
+	{} of {} bytes	{} sur {} octets
+	No files yet. Type a name and some text, then press Save.	Aucun fichier pour l'instant. Saisissez un nom et un texte, puis appuyez sur Enregistrer.
+	Deleted {}	{} supprimé
+	Direction	Sens
+	Inbound	Entrant
+	Action	Action
+	Allow	Autoriser
+	Deny	Refuser
+	Port	Port
+	Any	Quelconque
+	Remote address	Adresse distante
+	Move up	Monter
+	Move down	Descendre
+	Any, or an address such as 2001:db8::/32	Quelconque, ou une adresse comme 2001:db8::/32
+	Any, or an address such as 10.0.0.0/24	Quelconque, ou une adresse comme 10.0.0.0/24
+	Any, one port or a range such as 1000-2000	Quelconque, un port ou une plage comme 1000-2000
+	No rules yet. While the firewall is on, everything that is not allowed is blocked.	Aucune règle pour l'instant. Tant que le pare-feu est activé, tout ce qui n'est pas autorisé est bloqué.
+	With the firewall on, the first rule that matches decides and what no rule matches is blocked. Replies to what this computer sent always get through.	Lorsque le pare-feu est activé, la première règle qui correspond décide et ce qui ne correspond à aucune est bloqué. Les réponses à ce que cet ordinateur a envoyé passent toujours.

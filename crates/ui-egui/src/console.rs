@@ -58,6 +58,14 @@ pub enum DesktopApp {
     Programming,
     /// A tablet's or smartphone's settings: Cellular Data and the APN.
     Settings,
+    /// A Telnet or SSH session to a device in the lab, typed into the Command Prompt.
+    TelnetSsh,
+    /// Simple text files kept on the device.
+    TextEditor,
+    /// The device's IPv4 firewall rules.
+    Firewall,
+    /// The device's IPv6 firewall rules.
+    Firewall6,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -265,7 +273,7 @@ pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
 
 /// The console: scrollback, prompt and input line. `dark`: the black command-prompt look of a
 /// host; otherwise the white device CLI.
-fn console(app: &mut PacketApp, ui: &mut egui::Ui, d: DeviceId, dark: bool) {
+pub(crate) fn console(app: &mut PacketApp, ui: &mut egui::Ui, d: DeviceId, dark: bool) {
     console_in(app, ui, d, d, dark);
 }
 
@@ -1118,6 +1126,13 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing = vec2(28.0, 20.0);
                     let terminal = dev.has_rs232().then_some((DesktopApp::Terminal, "Terminal"));
+                    // PCs, laptops and servers have the computer apps; printers do not.
+                    let computer = dev.has_desktop_apps().then_some([
+                        (DesktopApp::TelnetSsh, "Telnet/SSH Client"),
+                        (DesktopApp::TextEditor, "Text Editor"),
+                        (DesktopApp::Firewall, "Firewall"),
+                        (DesktopApp::Firewall6, "IPv6 Firewall"),
+                    ]);
                     for (app_id, label) in [
                         (DesktopApp::IpConfig, "IP Configuration"),
                         (DesktopApp::Prompt, "Command Prompt"),
@@ -1127,6 +1142,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                         (DesktopApp::Programming, "Programming"),
                     ]
                     .into_iter()
+                    .chain(computer.into_iter().flatten())
                     .chain(terminal)
                     {
                         let (rect, resp) = ui.allocate_exact_size(vec2(130.0, 150.0), Sense::click());
@@ -1167,6 +1183,10 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 DesktopApp::Terminal => "Terminal",
                 DesktopApp::Programming => "Programming",
                 DesktopApp::Settings => "Settings",
+                DesktopApp::TelnetSsh => "Telnet/SSH Client",
+                DesktopApp::TextEditor => "Text Editor",
+                DesktopApp::Firewall => "Firewall",
+                DesktopApp::Firewall6 => "IPv6 Firewall",
             };
             let mut close = false;
             egui::Frame::new().fill(tk.bar).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
@@ -1306,6 +1326,18 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 DesktopApp::Email => crate::mail::app(app, ui, dev),
                 DesktopApp::MibBrowser => crate::mib::app(app, ui, dev),
                 DesktopApp::Programming => crate::programming::app(app, ui, dev),
+                DesktopApp::TelnetSsh => {
+                    // The form on top; the session itself is the Command Prompt's console below.
+                    if crate::host_apps::telnet_form(app, ui, dev)
+                        && let Some(w) = app.ui.windows.get_mut(&d)
+                    {
+                        w.focus = true;
+                    }
+                    console(app, ui, d, true);
+                }
+                DesktopApp::TextEditor => crate::host_apps::text_editor(app, ui, dev),
+                DesktopApp::Firewall => crate::host_apps::firewall(app, ui, dev, false),
+                DesktopApp::Firewall6 => crate::host_apps::firewall(app, ui, dev, true),
                 DesktopApp::Settings => {
                     egui::ScrollArea::vertical().id_salt(("settings_scroll", d.0)).auto_shrink([false, true]).show(ui, |ui| {
                         ui.add_space(6.0);
@@ -1446,6 +1478,61 @@ pub(crate) fn draw_app_icon(p: &egui::Painter, r: egui::Rect, app: DesktopApp) {
             p.add(egui::Shape::line(pts, egui::Stroke::new(3.0, blue)));
             let plug = egui::Rect::from_center_size(egui::pos2(start.x, r.bottom() - r.height() * 0.04), vec2(r.width() * 0.2, r.height() * 0.12));
             p.rect_filled(plug, 2.0, blue);
+        }
+        DesktopApp::TelnetSsh => {
+            // A black screen with the letters SSH, and a link line to a second, smaller screen.
+            let screen = egui::Rect::from_min_size(r.min, vec2(r.width(), r.height() * 0.62));
+            p.rect_filled(screen, 4.0, light);
+            p.rect_filled(screen.shrink(r.width() * 0.07), 2.0, egui::Color32::BLACK);
+            p.text(
+                screen.center(),
+                egui::Align2::CENTER_CENTER,
+                "SSH",
+                egui::FontId::monospace(r.height() * 0.24),
+                egui::Color32::from_rgb(0x7c, 0xf0, 0x7c),
+            );
+            let blue = egui::Color32::from_rgb(0x2c, 0x7c, 0xc0);
+            p.line_segment([screen.center_bottom(), egui::pos2(screen.center().x, r.bottom() - r.height() * 0.12)], egui::Stroke::new(3.0, blue));
+            let far =
+                egui::Rect::from_center_size(egui::pos2(screen.center().x, r.bottom() - r.height() * 0.08), vec2(r.width() * 0.5, r.height() * 0.16));
+            p.rect_filled(far, 2.0, light);
+            p.rect_stroke(far, 2.0, egui::Stroke::new(2.0, dark), egui::StrokeKind::Inside);
+        }
+        DesktopApp::TextEditor => {
+            // A sheet of text lines with a pencil across its corner.
+            let sheet = egui::Rect::from_center_size(r.center() - vec2(r.width() * 0.08, 0.0), vec2(r.width() * 0.7, r.height()));
+            p.rect_filled(sheet, 3.0, light);
+            p.rect_stroke(sheet, 3.0, egui::Stroke::new(2.0, dark), egui::StrokeKind::Inside);
+            for i in 0..4 {
+                let y = sheet.top() + r.height() * (0.2 + 0.18 * i as f32);
+                let x = sheet.left() + r.width() * 0.1;
+                let w = if i == 3 { 0.25 } else { 0.5 };
+                p.line_segment([egui::pos2(x, y), egui::pos2(x + r.width() * w, y)], egui::Stroke::new(2.0, dark));
+            }
+            let tip = egui::pos2(sheet.right() - r.width() * 0.05, r.bottom() - r.height() * 0.05);
+            p.line_segment([tip, tip + vec2(r.width() * 0.2, -r.height() * 0.4)], egui::Stroke::new(5.0, egui::Color32::from_rgb(0xe8, 0xb0, 0x2c)));
+            p.circle_filled(tip, r.width() * 0.03, dark);
+        }
+        DesktopApp::Firewall | DesktopApp::Firewall6 => {
+            // A brick wall, with a 6 on it for IPv6.
+            let brick = egui::Color32::from_rgb(0xd9, 0x6a, 0x3c);
+            let top = r.top() + r.height() * 0.11;
+            let h = r.height() * 0.78 / 4.0;
+            for row in 0..4 {
+                let y = top + h * row as f32;
+                let shift = if row % 2 == 0 { 0.0 } else { r.width() * 0.25 };
+                for col in -1..2 {
+                    let x = r.left() + shift + r.width() * 0.5 * col as f32;
+                    let cell = egui::Rect::from_min_size(egui::pos2(x, y), vec2(r.width() * 0.5, h)).intersect(r);
+                    if cell.width() > 4.0 {
+                        p.rect_filled(cell.shrink(1.5), 1.0, brick);
+                    }
+                }
+            }
+            if app == DesktopApp::Firewall6 {
+                p.circle_filled(r.center(), r.height() * 0.22, dark);
+                p.text(r.center(), egui::Align2::CENTER_CENTER, "6", egui::FontId::proportional(r.height() * 0.3), light);
+            }
         }
         DesktopApp::Prompt => {
             // A monitor with a prompt on a black screen.
