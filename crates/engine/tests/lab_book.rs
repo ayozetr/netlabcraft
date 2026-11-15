@@ -77,6 +77,7 @@ labs! {
     lab_35_troubleshoot_port_security => "35-troubleshoot-port-security.md",
     lab_36_bgp => "36-bgp.md",
     lab_37_bgp_prefix_lists_route_maps => "37-bgp-prefix-lists-route-maps.md",
+    lab_40_bgp_communities_aggregation => "40-bgp-communities-aggregation.md",
 }
 
 /// The cellular lab is not part of a CCNA course, so it has no number (the numbered labs 21 and up
