@@ -88,3 +88,66 @@ fn a_router_cut_off_by_a_missing_adjacency_leaves_the_database() {
     assert!(lab.run(r1, "show ip ospf database external").starts_with("No external LSAs"));
     assert!(!lab.run(r1, "show ip ospf database").contains("192.168.50.0"));
 }
+
+#[test]
+fn self_originate_and_adv_router_narrow_the_database_to_one_routers_lsas() {
+    let (mut lab, r1, r2, _r3) = three_routers();
+    // R2 is the border router and the DR of area 0's segment: it originates router LSAs in both areas.
+    let own = lab.run(r2, "show ip ospf database self-originate");
+    assert!(own.contains("Router 2.2.2.2") && !own.contains("Router 1.1.1.1") && !own.contains("Router 3.3.3.3"), "{own}");
+    assert!(own.contains("Network 10.0.0.0/24, designated router 10.0.0.2"), "{own}");
+    assert!(own.contains("Summary link states"), "{own}");
+    assert!(own.lines().filter(|l| l.contains("advertised by")).all(|l| l.contains("advertised by 2.2.2.2")), "{own}");
+    assert!(!own.contains("type 2 metric"), "{own}");
+    // A kind first, then the filter.
+    let own_router = lab.run(r2, "show ip ospf database router self-originate");
+    assert!(own_router.contains("Router 2.2.2.2") && !own_router.contains("Network 10.0.0.0/24"), "{own_router}");
+    let theirs = lab.run(r2, "show ip ospf database router adv-router 1.1.1.1");
+    assert!(theirs.contains("Router 1.1.1.1") && !theirs.contains("Router 2.2.2.2"), "{theirs}");
+    // R1 learns of R3's route as an external LSA, advertised by R3; R3's router LSA is in area 1 and not here.
+    let r3 = lab.run(r1, "show ip ospf database adv-router 3.3.3.3");
+    assert!(r3.contains("192.168.50.0/24") && r3.contains("advertised by 3.3.3.3") && !r3.contains("Router 3.3.3.3"), "{r3}");
+    assert!(lab.run(r1, "show ip ospf database adv-router 9.9.9.9").starts_with("No LSAs advertised by 9.9.9.9"));
+    assert!(lab.run(r1, "show ip ospf database summary adv-router 9.9.9.9").starts_with("No summary LSAs advertised by 9.9.9.9"));
+    // Short forms and bad words.
+    assert_eq!(lab.run(r2, "show ip ospf database self"), own);
+    for bad in [
+        "show ip ospf database adv-router",
+        "show ip ospf database adv-router x.x",
+        "show ip ospf database self-originate 1.1.1.1",
+        "show ip ospf database 1.1.1.1",
+        "show ip ospf database router adv-router 1.1.1.1 2.2.2.2",
+    ] {
+        assert!(lab.try_run(r1, bad).starts_with("% "), "{bad}");
+    }
+}
+
+#[test]
+fn the_asbr_summary_view_shows_how_an_area_reaches_an_as_boundary_router() {
+    let (mut lab, r1, r2, r3) = three_routers();
+    // R3 redistributes in area 1; R2, the border router, tells area 0 how far R3 is.
+    let v = lab.run(r1, "show ip ospf database asbr-summary");
+    assert!(v.contains("ASBR summary link states, area 0"), "{v}");
+    assert!(v.contains("AS boundary router 3.3.3.3, sequence 0x80000001, advertised by 2.2.2.2, metric 1"), "{v}");
+    assert!(lab.run(r1, "show ip ospf database asbr-summary 3.3.3.3").contains("AS boundary router 3.3.3.3"));
+    assert!(lab.run(r1, "show ip ospf database asbr-summary 9.9.9.9").starts_with("No ASBR summary LSAs with link-state ID 9.9.9.9"));
+    // The one-line table has a section for it, with the metric.
+    let table = lab.run(r1, "show ip ospf database");
+    assert!(table.contains("ASBR summary LSAs (type 4), area 0") && table.contains("3.3.3.3          2.2.2.2          1"), "{table}");
+    // R3 is in the area the ASBR is in: nothing to tell it. The summary view is not mixed up with this one.
+    assert!(lab.run(r3, "show ip ospf database asbr-summary").starts_with("No ASBR summary LSAs"));
+    assert!(!lab.run(r1, "show ip ospf database summary").contains("AS boundary router"));
+    // Without the redistribution R3 is no AS boundary router and the LSA is gone.
+    lab.run(r3, "conf t\nrouter ospf 1\nno redistribute static\nend");
+    lab.sim.run_for(&lab.t, 60_000_000);
+    assert!(lab.run(r1, "show ip ospf database asbr-summary").starts_with("No ASBR summary LSAs"));
+    assert!(!lab.run(r2, "show ip ospf database").contains("ASBR summary"));
+}
+
+#[test]
+fn the_nssa_view_says_no_area_is_an_nssa() {
+    let (mut lab, r1, _r2, _r3) = three_routers();
+    let v = lab.run(r1, "show ip ospf database nssa-external");
+    assert!(v.contains("no area here is an NSSA"), "{v}");
+    assert_eq!(lab.run(r1, "show ip ospf database nssa"), v);
+}

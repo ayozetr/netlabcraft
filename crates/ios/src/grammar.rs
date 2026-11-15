@@ -1442,8 +1442,16 @@ pub static SPECS: &[Spec] = &[
         ShowIpOspfDatabase,
         EXECS,
         Modes::BOTH,
-        [K("show"), K("ip"), K("ospf"), K("database"), Rest("{router|network|summary|external} [A.B.C.D]")],
-        "One kind of LSA in full: router, network, summary or external"
+        [
+            K("show"),
+            K("ip"),
+            K("ospf"),
+            K("database"),
+            Rest(
+                "{router|network|summary|asbr-summary|external|nssa-external} [A.B.C.D|self-originate|adv-router A.B.C.D] | self-originate | adv-router A.B.C.D"
+            )
+        ],
+        "LSAs in full: one kind, the ones this router originated, or the ones a router advertised"
     ),
     spec!(ShowOspfNeighborDetail, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ospf"), K("neighbor"), K("detail")], "OSPF neighbours in full"),
     // ---- site-to-site VPN: GRE tunnels (`interface Tunnel N`) and IPsec ----

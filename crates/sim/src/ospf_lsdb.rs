@@ -18,6 +18,8 @@ pub enum LsaKind {
     Router = 1,
     Network = 2,
     Summary = 3,
+    /// A summary-LSA for an AS boundary router (type 4).
+    AsbrSummary = 4,
     External = 5,
 }
 
@@ -77,6 +79,32 @@ fn metric_to(st: &OspfState, abr: DeviceId, net: &Ipv4Net) -> u32 {
         .map(|x| x.2)
         .or_else(|| st.routes.get(&abr).into_iter().flatten().find(|r| r.net == net.network()).map(|r| r.cost))
         .unwrap_or(1)
+}
+
+/// What an area border router advertises as the metric to an AS boundary router: the cost of its
+/// path to it through an area both are in (other than `into`, the area being told). A router on a
+/// segment the border router is on costs the border router's interface; a farther one, the cost
+/// of the route to one of its networks less the cost of its own interface on that network.
+fn asbr_distance(st: &OspfState, abr: DeviceId, asbr: DeviceId, into: u32, abr_areas: &BTreeSet<u32>) -> Option<u32> {
+    let mut best: Option<u32> = None;
+    for (name, net, cost, _) in st.interfaces.get(&asbr).into_iter().flatten() {
+        let Some(area) = st.segments.get(&(asbr, name.clone())).map(|s| s.area) else { continue };
+        if area == into || !abr_areas.contains(&area) {
+            continue;
+        }
+        let shared = st
+            .interfaces
+            .get(&abr)
+            .into_iter()
+            .flatten()
+            .find(|x| x.1.network() == net.network() && st.segments.get(&(abr, x.0.clone())).is_some_and(|s| s.area == area))
+            .map(|x| x.2);
+        let farther = || st.routes.get(&abr).into_iter().flatten().find(|r| r.net == net.network()).map(|r| r.cost.saturating_sub(*cost).max(1));
+        if let Some(m) = shared.or_else(farther) {
+            best = Some(best.map_or(m, |b| b.min(m)));
+        }
+    }
+    best
 }
 
 /// The routers whose advertisements reach `me` by flooding: itself and every router joined to
@@ -149,6 +177,18 @@ pub fn database(t: &Topology, st: &OspfState, me: DeviceId) -> Vec<Lsa> {
                         lsa.attached = members.into_iter().collect();
                         out.insert(lsa);
                     }
+                }
+            }
+            // ASBR-summary-LSAs (§12.4.3): an area border router tells this area how to reach an
+            // AS boundary router that sits in another of its areas.
+            if areas.len() > 1 {
+                for (asbr, nets) in st.externals.iter().filter(|(a, nets)| **a != *d && !nets.is_empty() && flood.contains(*a)) {
+                    let _ = nets;
+                    let Some(ar) = rid(*asbr) else { continue };
+                    let Some(dist) = asbr_distance(st, *d, *asbr, *area, areas) else { continue };
+                    let mut lsa = Lsa::new(LsaKind::AsbrSummary, Some(*area), ar, r, 0);
+                    lsa.metric = dist;
+                    out.insert(lsa);
                 }
             }
             // Summary-LSAs: an area border router tells this area about the others' networks.

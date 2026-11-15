@@ -305,7 +305,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `clear ip ospf process` | privileged | router, switch | Restart OSPF: neighbours and DR elections anew |
 | `clear ip ospf <1-65535> process` | privileged | router, switch | Restart this OSPF process |
 | `show ip ospf database` | user, privileged | router, switch | OSPF link-state database |
-| `show ip ospf database {router\|network\|summary\|external} [A.B.C.D]` | user, privileged | router, switch | One kind of LSA in full: router, network, summary or external |
+| `show ip ospf database {router\|network\|summary\|asbr-summary\|external\|nssa-external} [A.B.C.D\|self-originate\|adv-router A.B.C.D] \| self-originate \| adv-router A.B.C.D` | user, privileged | router, switch | LSAs in full: one kind, the ones this router originated, or the ones a router advertised |
 | `show ip ospf neighbor detail` | user, privileged | router, switch | OSPF neighbours in full |
 | `ip address A.B.C.D MASK` |  | router | Set the tunnel's address |
 | `no ip address` |  | router | Remove the tunnel's address |

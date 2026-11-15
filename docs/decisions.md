@@ -203,3 +203,7 @@ A dynamic translation lives until it has been idle for its timeout: 86,400 s for
 ## `show ip route summary` prints a memory estimate that is a count times a fixed size
 
 The simulator keeps no routing-table memory pool, so the line at the end of `show ip route summary` is the number of routes times 160 bytes, and says it is a simulated estimate and not a measurement. It is the same on every run and moves with the table, which is what a lab asks of it (compare before and after a summary or a filter); it is not comparable with a real router's figure.
+
+## The OSPF database is derived, so its sequence numbers stay fixed and it shows no ages
+
+`show ip ospf database` is computed from the converged state (`ospf_lsdb::database`): there is no flooding of single LSAs, so nothing is ever originated again or aged, and a sequence number or an age printed for an LSA would be made up. They stay at the first sequence number and are not shown. What the database can say truthfully it does: which router originates which LSA (`self-originate`, `adv-router`) and the type 4 LSAs an area border router would originate for an AS boundary router, with the metric from its own interface or route costs. Real ages and sequence numbers need an LSA history (a record per LSA of when its content last changed), which the derivation does not keep.
