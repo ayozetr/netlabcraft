@@ -1,9 +1,9 @@
 # NetLabCraft lab book
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (an unnumbered cellular lab, M9.10) · earlier: minor (four more labs, 28 to 31: OSPF authentication, ICMP in ACLs, spanning-tree views, the OSPF database) · earlier: minor (seven troubleshooting labs, 21 to 27) · earlier: major (created: 20 labs over the three CCNA courses) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (four more labs, 32 to 35: EIGRP, IPv6 routing, EtherChannel faults, port-security faults) · earlier: minor (an unnumbered cellular lab, M9.10) · earlier: minor (four more labs, 28 to 31: OSPF authentication, ICMP in ACLs, spanning-tree views, the OSPF database) · earlier: minor (seven troubleshooting labs, 21 to 27) · earlier: major (created: 20 labs over the three CCNA courses) · **Target:** Cisco Packet Tracer 9.0
 
-Thirty-one hands-on labs over the topics of the three CCNA courses, written for NetLabCraft
-from scratch. Labs 1 to 20 each build one topic; labs 21 to 29 are troubleshooting labs: they
+Thirty-five hands-on labs over the topics of the three CCNA courses, written for NetLabCraft
+from scratch. Labs 1 to 20, 32 and 33 each build one topic; labs 21 to 29, 34 and 35 are troubleshooting labs: they
 build a working network, break it with commands, and walk the symptoms, the `show` commands
 that tell the faults apart, and the repairs; labs 30 and 31 are inspection labs that teach
 reading a protocol's own views (spanning-tree roles and states, the OSPF database), the second
@@ -14,7 +14,7 @@ command to type, and what to check with which command.
 Every lab is also a script: its `lab`, `console` and `verify` blocks are run end to end, as
 written, by `crates/engine/tests/lab_book.rs` (straight through the engine) and, for several
 labs, by `apps/netlabcraft-cli/tests/mcp_lab_book.rs` (through `netlabcraft-cli mcp`, the way an
-agent drives it; 14 of the 31). A lab that passes there works when typed by hand.
+agent drives it; 16 of the 35). A lab that passes there works when typed by hand.
 
 ## How to read a lab
 
@@ -69,6 +69,10 @@ One more lab has no number because it belongs to no CCNA course: [Mobile data ov
 | 29 | [Troubleshooting: an ACL that breaks traceroute but not ping](29-troubleshoot-acl-icmp.md) | CCNA 3 | ICMP type and code in ACLs, match counters, inserting by sequence number, `traceroute` |
 | 30 | [Inspecting spanning tree: roles, states and the blocked port per VLAN](30-inspect-spanning-tree.md) | CCNA 2 | `show spanning-tree brief`, `detail` and `interface`, per-VLAN roots, path cost |
 | 31 | [Reading the OSPF database and the routing summaries](31-read-the-ospf-database.md) | CCNA 3 | router, network, summary and external LSAs, `show ip route summary`, `show ip protocols summary` |
+| 32 | [EIGRP: neighbours, metrics, passive interfaces, variance and summaries](32-eigrp.md) | CCNA 3 | `network` and router ID, composite metric, feasible successors, `variance`, `passive-interface`, `ip summary-address eigrp` |
+| 33 | [IPv6 routing: static routes, OSPFv3 and a default route](33-ipv6-routing.md) | CCNA 3 | `ipv6 route`, OSPFv3 with link-local next hops, `default-information originate`, `show ipv6 route`, IPv6 `tracert` |
+| 34 | [Troubleshooting: an EtherChannel that will not bundle](34-troubleshoot-etherchannel.md) | CCNA 2 | passive/passive, `on` against LACP, a member with different settings, `show etherchannel summary` |
+| 35 | [Troubleshooting: port security that shuts the wrong port](35-troubleshoot-port-security.md) | CCNA 2 | err-disabled ports, a hand-typed address, `restrict`, sticky, `show port-security`, `errdisable recovery` |
 
 ## Running the scripts
 
@@ -92,6 +96,7 @@ A failing step names its line in the lab's Markdown.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-15 | minor | Four more labs (32 to 35): EIGRP (metrics, passive interfaces, feasible successors, variance, summaries), IPv6 routing (static routes, OSPFv3, a default route), an EtherChannel that will not bundle (three faults) and port security that shuts the wrong port; 32 and 34 also run over MCP. |
 | 2026-11-13 | minor | An unnumbered lab, [Mobile data over a cell tower](cellular-mobile-data.md) (M9.10), run end to end by the engine (`lab_cellular_mobile_data`); it takes no number, because numbers 28 and up went to the troubleshooting and inspection labs. |
 | 2026-11-13 | minor | Four more labs (28 to 31): OSPF authentication faults (a mistyped MD5 key, a different key ID, a different type), an ACL that drops ICMP time-exceeded so traceroute breaks and ping does not, spanning-tree inspection with the new `brief`, `detail` and `interface` views, and reading the OSPF database; 28 to 30 also run over MCP. The engine gaps they turned up are in [gaps.md](../gaps.md)' history. |
 | 2026-11-13 | minor | Seven troubleshooting labs (21 to 27: 4 SRWE, 3 ENSA), run end to end by the engine, three of them also over MCP; the console views and options they turned up are in [gaps.md](../gaps.md)' history. |
