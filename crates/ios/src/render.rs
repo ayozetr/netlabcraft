@@ -212,6 +212,7 @@ pub fn running_config(d: &Device) -> String {
     }
     crate::exec::l2sec::global_lines(&mut s, d);
     crate::exec::l2sec::relay_global_lines(&mut s, d);
+    crate::exec::span::global_lines(&mut s, d);
     crate::exec::fhrp::global_lines(&mut s, d);
     // VLANs live in the VLAN database (vlan.dat), not in the configuration: only a VTP
     // transparent switch writes them there.

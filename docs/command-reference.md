@@ -1017,6 +1017,15 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no errdisable recovery interval` | config | switch | Back to 300 seconds |
 | `show interfaces status err-disabled` | user, privileged | switch | Err-disabled ports and why |
 | `show errdisable recovery` | user, privileged | switch | Which causes recover by themselves, and when |
+| `monitor session <1-66> source interface <interfaces> [both\|rx\|tx]` | config | switch | Copy the frames that enter or leave these ports (ranges such as `fa0/1 - 3, fa0/5` work) to the session's destination |
+| `monitor session <1-66> source vlan <1-4094>[,-] [both\|rx\|tx]` | config | switch | Copy the frames of these VLANs, on every port, to the session's destination |
+| `monitor session <1-66> destination interface <interface>` | config | switch | The port that receives the copies: it forwards no other traffic |
+| `no monitor session {<1-66>\|all\|local}` | config | switch | Delete one monitor session, or every one |
+| `no monitor session <1-66> source interface <interfaces>` | config | switch | Stop copying these ports |
+| `no monitor session <1-66> source vlan <1-4094>[,-]` | config | switch | Stop copying these VLANs |
+| `no monitor session <1-66> destination interface <interface>` | config | switch | The port goes back to forwarding normal traffic |
+| `show monitor` | user, privileged | switch | Every monitor session: its sources, its destination and whether it copies |
+| `show monitor session {<1-66>\|all}` | user, privileged | switch | One monitor session, or all of them |
 | `switchport port-security aging time <0-1440>` | interface | switch | Minutes before a learned address is forgotten |
 | `no switchport port-security aging time` | interface | switch | Learned addresses never age |
 | `switchport port-security aging type {absolute\|inactivity}` | interface | switch | Age from learning, or from the last frame |

@@ -1,6 +1,6 @@
 # Pitfalls
 
-> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (policy edits must reach the routing fingerprint) · earlier: minor (BGP needs simulated time) · earlier: minor (a derived-state pitfall (M9.10)) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (four pitfalls from M9.7: counters keyed by position, a stale checksum, a database that lists unreachable routers, a `Rest` that needs a word) · also merged with M9.5, M9.6, M9.8 and M9.11 · earlier: minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
+> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (a rule that acts at a switch port must cover the timed control frames too) · earlier: minor (policy edits must reach the routing fingerprint) · earlier: minor (BGP needs simulated time) · earlier: minor (a derived-state pitfall (M9.10)) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (four pitfalls from M9.7: counters keyed by position, a stale checksum, a database that lists unreachable routers, a `Rest` that needs a word) · also merged with M9.5, M9.6, M9.8 and M9.11 · earlier: minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
 
 Mistakes already made here, and the rule that stops each one. Read this before your first change; when you make a
 new mistake worth not repeating, add it in the same change.
@@ -76,6 +76,11 @@ new mistake worth not repeating, add it in the same change.
   name decide what BGP accepts and OSPF redistributes, so they are hashed there (only when a router has policy); a new
   setting that changes a computed result needs its line in the fingerprint, or the old result is shown until something
   else changes.
+- **A rule at a switch port has to cover the timed control frames, which skip `emit_hops_in`.** BPDUs, LLDP and the
+  routing hellos are queued by `control::queue_at`, straight into `push_hop`. Port mirroring first hooked only
+  `emit_hops_in`, so a monitor destination kept sending BPDUs and a source port never copied them. Anything that decides
+  what leaves a port (a mirror, a block, a counter) goes in both `emit_hops_in` and `queue_at`.
+
 ## Instructor
 
 - **A key the student's app holds is not a secret from the student.** The results HMAC key comes from the salt in the

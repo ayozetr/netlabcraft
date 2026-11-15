@@ -28,6 +28,7 @@ pub(crate) mod policy;
 pub(crate) mod qos;
 pub(crate) mod routing;
 pub(crate) mod security;
+pub(crate) mod span;
 pub(crate) mod swroute;
 pub(crate) mod voice;
 mod vpn;
@@ -2234,6 +2235,15 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::L2NoRelayTrustAll
         | Id::L2RelayTrusted
         | Id::L2NoRelayTrusted => l2sec::command(&mut c, spec.id, &args),
+        Id::MonitorSource
+        | Id::MonitorSourceVlan
+        | Id::MonitorDestination
+        | Id::NoMonitorSession
+        | Id::NoMonitorSource
+        | Id::NoMonitorSourceVlan
+        | Id::NoMonitorDestination
+        | Id::ShowMonitor
+        | Id::ShowMonitorSession => span::command(&mut c, spec.id, &args),
         Id::FwNameif
         | Id::FwNoNameif
         | Id::FwSecurityLevel
