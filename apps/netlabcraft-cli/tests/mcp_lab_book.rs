@@ -164,3 +164,8 @@ fn srwe_inspecting_spanning_tree_through_mcp() {
 fn ensa_eigrp_through_mcp() {
     check("32-eigrp.md");
 }
+
+#[test]
+fn srwe_troubleshooting_etherchannel_through_mcp() {
+    check("34-troubleshoot-etherchannel.md");
+}

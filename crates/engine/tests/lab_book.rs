@@ -73,6 +73,7 @@ labs! {
     lab_31_read_the_ospf_database => "31-read-the-ospf-database.md",
     lab_32_eigrp => "32-eigrp.md",
     lab_33_ipv6_routing => "33-ipv6-routing.md",
+    lab_34_troubleshoot_etherchannel => "34-troubleshoot-etherchannel.md",
 }
 
 /// The cellular lab is not part of a CCNA course, so it has no number (the numbered labs 21 and up
