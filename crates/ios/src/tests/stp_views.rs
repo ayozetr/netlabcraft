@@ -78,11 +78,11 @@ fn summary_totals_keeps_the_settings_and_the_total_row_only() {
     let full = lab.run(s1, "show spanning-tree summary");
     let totals = lab.run(s1, "show spanning-tree summary totals");
     assert!(totals.contains("Mode:") && totals.contains("Root bridge of:"), "{totals}");
-    assert!(!totals.contains("VLAN0001") && !totals.contains("VLAN0020"), "{totals}");
+    assert!(!totals.lines().any(|l| l.starts_with("VLAN00")), "{totals}");
     // The same total row as the long form, the same counts.
     assert!(totals.lines().last().unwrap_or("").contains(" VLANs"), "{totals}");
     assert_eq!(totals.lines().last(), full.lines().last());
-    assert!(full.contains("VLAN0001") && full.contains("VLAN0020"), "{full}");
+    assert!(full.lines().any(|l| l.starts_with("VLAN0001")) && full.lines().any(|l| l.starts_with("VLAN0020")), "{full}");
 }
 
 #[test]
