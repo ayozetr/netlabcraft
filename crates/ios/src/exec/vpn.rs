@@ -352,7 +352,7 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             };
             let crypto = &mut c.dm()?.crypto;
             let before = crypto.maps.len();
-            crypto.maps.retain(|e| e.template || !(e.map == name && seq.is_none_or(|s| s == e.seq)));
+            crypto.maps.retain(|e| e.template || e.map != name || seq.is_some_and(|s| s != e.seq));
             if crypto.maps.len() == before { Err(format!("% No such crypto map entry: {name}")) } else { Ok(String::new()) }
         }
         Id::CryptoDynamicMap => {
@@ -370,7 +370,7 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             };
             let crypto = &mut c.dm()?.crypto;
             let before = crypto.maps.len();
-            crypto.maps.retain(|e| !e.template || !(e.map == name && seq.is_none_or(|s| s == e.seq)));
+            crypto.maps.retain(|e| !e.template || e.map != name || seq.is_some_and(|s| s != e.seq));
             if crypto.maps.len() == before { Err(format!("% No such dynamic map entry: {name}")) } else { Ok(String::new()) }
         }
         Id::CryptoReverseRoute | Id::NoCryptoReverseRoute => {
