@@ -1627,6 +1627,7 @@ impl Sim {
     pub fn clear_ipsec(&mut self, d: netlabcraft_core::DeviceId) {
         if let Some(st) = self.state.get_mut(&d) {
             st.ipsec.clear();
+            st.ra_sessions.clear();
         }
     }
 }

@@ -445,6 +445,84 @@ fn every_command_survives_hostile_arguments() {
 }
 
 #[test]
+fn a_remote_access_server_is_configured_by_typing_shows_and_replays() {
+    let mut lab = Lab::new();
+    let r1 = lab.add(DeviceKind::Router);
+    lab.run(r1, "en\nconf t\ncrypto isakmp client configuration group team");
+    assert_eq!(lab.prompt(r1), "R1(config-isakmp-group)#");
+    lab.run(
+        r1,
+        "key key-test
+        pool VPNPOOL
+        exit
+        interface g0/0
+        ip address 203.0.113.1 255.255.255.0
+        no shutdown
+        exit
+        username ann password pw-test
+        aaa authentication login vpn-auth local
+        aaa authorization network vpn-auth local
+        ip local pool VPNPOOL 10.9.9.1 10.9.9.5
+        crypto ipsec transform-set TS esp-aes esp-sha-hmac
+        exit
+        crypto dynamic-map DM 10
+        set transform-set TS
+        reverse-route
+        exit
+        crypto map CM client authentication list vpn-auth
+        crypto map CM isakmp authorization list vpn-auth
+        crypto map CM client configuration address respond
+        crypto map CM 10 ipsec-isakmp dynamic DM
+        interface g0/0
+        crypto map CM
+        end",
+    );
+    let run = lab.run(r1, "show running-config");
+    for want in [
+        "aaa authentication login vpn-auth local",
+        "aaa authorization network vpn-auth local",
+        "ip local pool VPNPOOL 10.9.9.1 10.9.9.5",
+        "crypto isakmp client configuration group team\n key key-test\n pool VPNPOOL\n!",
+        "crypto dynamic-map DM 10\n reverse-route\n set transform-set TS",
+        "crypto map CM client authentication list vpn-auth",
+        "crypto map CM isakmp authorization list vpn-auth",
+        "crypto map CM client configuration address respond",
+        "crypto map CM 10 ipsec-isakmp dynamic DM",
+        " crypto map CM\n",
+    ] {
+        assert!(run.contains(want), "{want}\n{run}");
+    }
+    let r2 = lab.add(DeviceKind::Router);
+    lab.run(r2, "en\nconf t");
+    for l in run.lines().filter(|l| !l.starts_with('!') && !l.starts_with("hostname")) {
+        lab.try_run(r2, l);
+    }
+    assert_eq!(lab.t.device(r2).unwrap().crypto, lab.t.device(r1).unwrap().crypto);
+    let maps = lab.run(r1, "show crypto map");
+    assert!(
+        maps.contains("dynamic map DM") && maps.contains("Client authentication list: vpn-auth") && maps.contains("Dynamic map DM entry 10"),
+        "{maps}"
+    );
+    assert!(lab.run(r1, "show ip local pool").contains("VPNPOOL"));
+    // A map and a dynamic map never share a name; reverse-route is for dynamic maps; pools are bounded.
+    lab.run(r1, "conf t");
+    assert!(lab.try_run(r1, "crypto map DM 20 ipsec-isakmp").contains("already"));
+    assert!(lab.try_run(r1, "crypto dynamic-map CM 20").contains("already"));
+    lab.run(r1, "crypto map PLAIN 10 ipsec-isakmp");
+    assert!(lab.try_run(r1, "reverse-route").contains("dynamic map"));
+    assert!(lab.try_run(r1, "ip local pool BIG 10.0.0.0 10.255.255.255").contains("at most"));
+    assert!(lab.try_run(r1, "ip local pool BACK 10.0.0.9 10.0.0.1").contains("below"));
+    // The deletes.
+    lab.run(r1, "no crypto dynamic-map DM\nno ip local pool VPNPOOL\nno crypto isakmp client configuration group team");
+    let c = &lab.t.device(r1).unwrap().crypto;
+    assert!(c.ra.pools.is_empty() && c.ra.groups.is_empty() && c.maps.iter().all(|e| !e.template));
+    // Routers only.
+    let s1 = lab.add(DeviceKind::Switch);
+    lab.run(s1, "en\nconf t");
+    assert!(lab.try_run(s1, "ip local pool P 10.0.0.1 10.0.0.2").contains('%'));
+}
+
+#[test]
 fn dhcp_by_typing() {
     let mut lab = Lab::new();
     let r = lab.add(DeviceKind::Router);

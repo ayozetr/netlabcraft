@@ -72,6 +72,8 @@ pub enum DesktopApp {
     TrafficGenerator,
     /// A PPPoE login to a server on the cable, which gives the device its address.
     PppoeDialer,
+    /// A remote-access VPN to a router: group, key and account, then the address it gave.
+    VpnClient,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1146,6 +1148,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                             (DesktopApp::Firewall6, "IPv6 Firewall"),
                             (DesktopApp::TrafficGenerator, "Traffic Generator"),
                             (DesktopApp::PppoeDialer, "PPPoE Dialer"),
+                            (DesktopApp::VpnClient, "VPN Client"),
                         ]);
                         for (app_id, label) in [
                             (DesktopApp::IpConfig, "IP Configuration"),
@@ -1206,6 +1209,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 DesktopApp::Firewall6 => "IPv6 Firewall",
                 DesktopApp::TrafficGenerator => "Traffic Generator",
                 DesktopApp::PppoeDialer => "PPPoE Dialer",
+                DesktopApp::VpnClient => "VPN Client",
             };
             let mut close = false;
             egui::Frame::new().fill(tk.bar).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
@@ -1359,6 +1363,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 DesktopApp::Firewall6 => crate::host_apps::firewall(app, ui, dev, true),
                 DesktopApp::TrafficGenerator => crate::host_apps::traffic_generator(app, ui, dev),
                 DesktopApp::PppoeDialer => crate::host_apps::pppoe_dialer(app, ui, dev),
+                DesktopApp::VpnClient => crate::host_apps::vpn_client(app, ui, dev),
                 DesktopApp::Settings => {
                     egui::ScrollArea::vertical().id_salt(("settings_scroll", d.0)).auto_shrink([false, true]).show(ui, |ui| {
                         ui.add_space(6.0);
@@ -1570,6 +1575,30 @@ pub(crate) fn draw_app_icon(p: &egui::Painter, r: egui::Rect, app: DesktopApp) {
             p.line_segment([tip - vec2(r.width() * 0.16, 0.0), tip], egui::Stroke::new(3.0, light));
             p.line_segment([tip, tip + vec2(-r.width() * 0.08, -r.height() * 0.1)], egui::Stroke::new(3.0, light));
             p.line_segment([tip, tip + vec2(-r.width() * 0.08, r.height() * 0.1)], egui::Stroke::new(3.0, light));
+        }
+        DesktopApp::VpnClient => {
+            // A padlock: a body, a shackle over it and a keyhole.
+            let body = egui::Rect::from_min_size(
+                egui::pos2(r.left() + r.width() * 0.14, r.center().y - r.height() * 0.02),
+                vec2(r.width() * 0.72, r.height() * 0.5),
+            );
+            let blue = egui::Color32::from_rgb(0x2c, 0x7c, 0xc0);
+            let top = body.top();
+            let (l, rt) = (body.left() + body.width() * 0.22, body.right() - body.width() * 0.22);
+            let high = r.top() + r.height() * 0.1;
+            p.line_segment([egui::pos2(l, top), egui::pos2(l, high + r.height() * 0.12)], egui::Stroke::new(4.0, blue));
+            p.line_segment([egui::pos2(rt, top), egui::pos2(rt, high + r.height() * 0.12)], egui::Stroke::new(4.0, blue));
+            p.line_segment([egui::pos2(l, high + r.height() * 0.12), egui::pos2(l + (rt - l) * 0.25, high)], egui::Stroke::new(4.0, blue));
+            p.line_segment([egui::pos2(l + (rt - l) * 0.25, high), egui::pos2(rt - (rt - l) * 0.25, high)], egui::Stroke::new(4.0, blue));
+            p.line_segment([egui::pos2(rt - (rt - l) * 0.25, high), egui::pos2(rt, high + r.height() * 0.12)], egui::Stroke::new(4.0, blue));
+            p.rect_filled(body, 5.0, light);
+            p.rect_stroke(body, 5.0, egui::Stroke::new(2.0, dark), egui::StrokeKind::Inside);
+            p.circle_filled(body.center() - vec2(0.0, body.height() * 0.08), r.width() * 0.07, dark);
+            p.rect_filled(
+                egui::Rect::from_center_size(body.center() + vec2(0.0, body.height() * 0.15), vec2(r.width() * 0.05, body.height() * 0.28)),
+                1.0,
+                dark,
+            );
         }
         DesktopApp::PppoeDialer => {
             // A handset on a coiled line: a rounded plug with the letters PPP.

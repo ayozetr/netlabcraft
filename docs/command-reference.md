@@ -22,6 +22,9 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `pppoe.connect` | PPPoE connect |  |  | `{"device": PC, laptop or server, "username"?: account name, "password"?: text (both default to the ones last used)} → {"state", "connected", "server", "address", "mask", "gateway", "auth", …}: the device's first port must be cabled straight to a server whose PPPoE service is on; the server checks the account with PAP or CHAP and gives the first free address of its pool, with its own address as the default gateway. Fails when no server answers, the account is refused or the pool is empty; no PPPoE frames are put on the wire` |
 | `pppoe.disconnect` | PPPoE disconnect |  |  | `{"device": PC, laptop or server} → the status: the address and the gateway the session gave are removed` |
 | `pppoe.status` | PPPoE status |  |  | `{"device": PC, laptop or server} → {"state": "disconnected"\|"connected"\|"lost", "connected", "username", "server_found", "server", "address", "mask", "gateway", "auth": "pap"\|"chap"}` |
+| `vpnclient.connect` | VPN Client connect |  |  | `{"device": PC, laptop or server, "host"?: the VPN concentrator's address, "group"?: group name, "key"?: group key, "username"?: text, "password"?: text (each defaults to the one last used)} → {"state", "connected", "server", "address", "transforms", "esp", …}: sends a request to UDP port 10000 of the concentrator, a router set up as a remote-access server (a client group with its key and pool, a dynamic map, a crypto map with its authentication and authorization lists on the interface the host reaches). The router checks the group key and the user and gives the first free address of the group's pool; from then on the device's traffic beyond its own subnet goes through an ESP tunnel to the router. Fails when nothing answers or the router refuses; the simulator's own exchange, not IKE with Xauth and mode-config` |
+| `vpnclient.disconnect` | VPN Client disconnect |  |  | `{"device": PC, laptop or server} → the status: the router is told and the tunnel and the VPN address are gone` |
+| `vpnclient.status` | VPN Client status |  |  | `{"device": PC, laptop or server} → {"state": "disconnected"\|"connected", "connected", "host", "group", "username", "server", "address", "transforms", "esp", "encapsulated", "decapsulated"} (the key and the password are never returned)` |
 | `snmp.request` | SNMP request |  |  | `{"device": manager, "target": agent address, "version"?: "2c"\|"3", "community"?: "public" (2c), "user"? (3), "auth"?: "none"\|"md5"\|"sha" (3), "password"? (3, 8+ characters), "operation"?: "get"\|"get-next"\|"set", "oid": "1.3.6.1.2.1.1.5.0", "value"?: for a set} → {"bindings": [{"oid", "value"}], "error"}` |
 | `snmp.traps` | SNMP traps received |  |  | `{"device": a host, "clear"?: true} → {"traps": [{"at_ms", "from", "community", "trap": "linkDown"\|"linkUp"\|"coldStart"\|OID, "bindings": [{"oid", "value"}]}]}` |
 | `server.syslog` | Syslog messages received |  |  | `{"device": server, "clear"?: true} → {"messages": [{"at_ms", "from", "text"}]} (what devices sent its Syslog service, oldest first)` |
@@ -349,6 +352,24 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `crypto map WORD` | interface, subinterface | router | Protect traffic leaving this interface |
 | `no crypto map` | interface, subinterface | router | Stop protecting traffic here |
 | `no crypto map WORD` | interface, subinterface | router | Stop protecting traffic here |
+| `ip local pool WORD FIRST LAST` | config | router | Addresses for remote-access VPN clients |
+| `no ip local pool WORD` | config | router | Delete a local address pool |
+| `show ip local pool` | user, privileged | router | Local address pools and who holds what |
+| `crypto isakmp client configuration group WORD` | config | router | Define or edit a remote-access client group |
+| `no crypto isakmp client configuration group WORD` | config | router | Delete a client group |
+| `key KEY` |  | router | The group's pre-shared key |
+| `pool WORD` |  | router | The local pool the clients' addresses come from |
+| `crypto dynamic-map WORD <1-65535>` | config | router | Define or edit a dynamic map entry |
+| `no crypto dynamic-map WORD [<1-65535>]` | config | router | Delete a dynamic map (or one entry) |
+| `no crypto dynamic-map WORD` | config | router | Delete a whole dynamic map |
+| `reverse-route` |  | router | Note routes to the clients' addresses |
+| `no reverse-route` |  | router | Stop noting routes to the clients |
+| `crypto map WORD <1-65535> ipsec-isakmp dynamic WORD` | config | router | Let remote-access clients use a dynamic map |
+| `crypto map WORD client authentication list WORD` | config | router | The AAA list that checks a client's user name |
+| `crypto map WORD isakmp authorization list WORD` | config | router | The AAA list that hands a group's settings out |
+| `crypto map WORD client configuration address {respond\|initiate}` | config | router | Who starts the exchange of the client's address |
+| `aaa authentication login WORD local` | config | router | A named list that checks users with the local user names |
+| `aaa authorization network WORD local` | config | router | A named list that hands network settings out locally |
 | `show crypto isakmp sa` | user, privileged | router | IKE peers and their state |
 | `show crypto isakmp policy` | user, privileged | router | IKE policies |
 | `show crypto ipsec sa` | user, privileged | router | IPsec associations and packet counts |

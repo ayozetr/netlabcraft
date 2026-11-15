@@ -4,7 +4,9 @@
 use std::net::Ipv4Addr;
 
 use netlabcraft_core::{Ipv4Net, parse_ip};
-use netlabcraft_model::vpn::{CryptoMapEntry, IsakmpPolicy, MAX_CRYPTO, MAX_CRYPTO_TEXT, TransformSet, TunnelSource, tunnel_number};
+use netlabcraft_model::vpn::{
+    ClientGroup, CryptoMapEntry, IsakmpPolicy, LocalPool, MAX_CRYPTO, MAX_CRYPTO_TEXT, MAX_POOL_ADDRESSES, TransformSet, TunnelSource, tunnel_number,
+};
 use netlabcraft_model::{DeviceKind, MAX_DESCRIPTION, ifname};
 
 use super::{Ctx, Mode, R};
@@ -111,6 +113,56 @@ fn key_words(text: &str) -> Result<(String, Ipv4Addr), String> {
 fn map_entry<'a>(c: &'a mut Ctx) -> Result<&'a mut CryptoMapEntry, String> {
     let Mode::CryptoMap(name, seq) = c.cli.mode.clone() else { return Err("% Not in crypto map mode".into()) };
     c.dm()?.crypto.maps.iter_mut().find(|e| e.map == name && e.seq == seq).ok_or_else(|| "% The crypto map entry was deleted".to_string())
+}
+
+/// A new crypto map or dynamic map entry, empty.
+fn new_entry(map: &str, seq: u32, template: bool, dynamic_ref: Option<String>) -> CryptoMapEntry {
+    CryptoMapEntry {
+        map: map.to_string(),
+        seq,
+        peer: None,
+        transform_set: None,
+        acl: None,
+        ikev2_profile: None,
+        lifetime: Default::default(),
+        template,
+        dynamic_ref,
+        reverse_route: false,
+    }
+}
+
+/// Adds the entry `map seq` when it does not exist yet (the list stays sorted). A map and a
+/// dynamic map never share a name.
+fn ensure_entry(c: &mut Ctx, map: &str, seq: u32, template: bool, dynamic_ref: Option<String>) -> Result<(), String> {
+    let crypto = &mut c.dm()?.crypto;
+    if crypto.maps.iter().any(|e| e.map == map && e.template != template) {
+        return Err(format!("% {map} is already {} name", if template { "a crypto map" } else { "a dynamic map" }));
+    }
+    match crypto.maps.iter_mut().find(|e| e.map == map && e.seq == seq) {
+        Some(e) => {
+            if dynamic_ref.is_some() {
+                e.dynamic_ref = dynamic_ref;
+            }
+        }
+        None => {
+            if crypto.maps.len() >= MAX_CRYPTO {
+                return Err(format!("% At most {MAX_CRYPTO} crypto map entries"));
+            }
+            crypto.maps.push(new_entry(map, seq, template, dynamic_ref));
+            crypto.maps.sort_by(|a, b| (&a.map, a.seq).cmp(&(&b.map, b.seq)));
+        }
+    }
+    Ok(())
+}
+
+fn seq_ok(text: &str) -> Result<u32, String> {
+    text.parse().ok().filter(|s| (1..=65_535).contains(s)).ok_or_else(|| "% Sequence number is 1-65535".to_string())
+}
+
+/// The current remote-access client group (client group mode).
+fn group<'a>(c: &'a mut Ctx) -> Result<&'a mut ClientGroup, String> {
+    let Mode::ClientGroup(name) = c.cli.mode.clone() else { return Err("% Not in client group mode".into()) };
+    c.dm()?.crypto.ra.groups.iter_mut().find(|g| g.name == name).ok_or_else(|| "% The group was deleted".to_string())
 }
 
 /// The current ISAKMP policy (isakmp mode).
@@ -287,23 +339,8 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
         }
         Id::CryptoMap => {
             let name = name_ok(arg(0))?;
-            let seq: u32 = arg(1).parse().ok().filter(|s| (1..=65_535).contains(s)).ok_or("% Sequence number is 1-65535")?;
-            let crypto = &mut c.dm()?.crypto;
-            if !crypto.maps.iter().any(|e| e.map == name && e.seq == seq) {
-                if crypto.maps.len() >= MAX_CRYPTO {
-                    return Err(format!("% At most {MAX_CRYPTO} crypto map entries"));
-                }
-                crypto.maps.push(CryptoMapEntry {
-                    map: name.clone(),
-                    seq,
-                    peer: None,
-                    transform_set: None,
-                    acl: None,
-                    ikev2_profile: None,
-                    lifetime: Default::default(),
-                });
-                crypto.maps.sort_by(|a, b| (&a.map, a.seq).cmp(&(&b.map, b.seq)));
-            }
+            let seq = seq_ok(arg(1))?;
+            ensure_entry(c, &name, seq, false, None)?;
             c.cli.mode = Mode::CryptoMap(name, seq);
             Ok(String::new())
         }
@@ -315,8 +352,144 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             };
             let crypto = &mut c.dm()?.crypto;
             let before = crypto.maps.len();
-            crypto.maps.retain(|e| !(e.map == name && seq.is_none_or(|s| s == e.seq)));
+            crypto.maps.retain(|e| e.template || e.map != name || seq.is_some_and(|s| s != e.seq));
             if crypto.maps.len() == before { Err(format!("% No such crypto map entry: {name}")) } else { Ok(String::new()) }
+        }
+        Id::CryptoDynamicMap => {
+            let name = name_ok(arg(0))?;
+            let seq = seq_ok(arg(1))?;
+            ensure_entry(c, &name, seq, true, None)?;
+            c.cli.mode = Mode::CryptoMap(name, seq);
+            Ok(String::new())
+        }
+        Id::NoCryptoDynamicMap => {
+            let name = arg(0).to_string();
+            let seq = match arg(1) {
+                "" => None,
+                s => Some(s.parse::<u32>().map_err(|_| "% Sequence number is 1-65535")?),
+            };
+            let crypto = &mut c.dm()?.crypto;
+            let before = crypto.maps.len();
+            crypto.maps.retain(|e| !e.template || e.map != name || seq.is_some_and(|s| s != e.seq));
+            if crypto.maps.len() == before { Err(format!("% No such dynamic map entry: {name}")) } else { Ok(String::new()) }
+        }
+        Id::CryptoReverseRoute | Id::NoCryptoReverseRoute => {
+            let on = id == Id::CryptoReverseRoute;
+            let e = map_entry(c)?;
+            if !e.template {
+                return Err("% reverse-route belongs in a dynamic map (`crypto dynamic-map NAME SEQ`)".into());
+            }
+            e.reverse_route = on;
+            Ok(String::new())
+        }
+        Id::CryptoMapDynamic => {
+            let name = name_ok(arg(0))?;
+            let seq = seq_ok(arg(1))?;
+            let dynamic = name_ok(arg(2))?;
+            ensure_entry(c, &name, seq, false, Some(dynamic.clone()))?;
+            let missing = !c.d()?.crypto.maps.iter().any(|e| e.template && e.map == dynamic);
+            Ok(if missing { format!("Note: dynamic map {dynamic} does not exist yet") } else { String::new() })
+        }
+        Id::CryptoMapClientAuth | Id::CryptoMapIsakmpAuthz => {
+            let map = name_ok(arg(0))?;
+            let list = name_ok(arg(1))?;
+            let ra = &mut c.dm()?.crypto.ra;
+            let table = if id == Id::CryptoMapClientAuth { &mut ra.client_auth } else { &mut ra.isakmp_authz };
+            if !table.contains_key(&map) && table.len() >= MAX_CRYPTO {
+                return Err(format!("% At most {MAX_CRYPTO} crypto maps"));
+            }
+            table.insert(map, list);
+            Ok(String::new())
+        }
+        Id::CryptoMapClientAddress => {
+            let map = name_ok(arg(0))?;
+            let how = arg(1).to_ascii_lowercase();
+            if how != "respond" && how != "initiate" {
+                return Err("% respond or initiate".into());
+            }
+            let ra = &mut c.dm()?.crypto.ra;
+            if !ra.client_address.contains_key(&map) && ra.client_address.len() >= MAX_CRYPTO {
+                return Err(format!("% At most {MAX_CRYPTO} crypto maps"));
+            }
+            ra.client_address.insert(map, how);
+            Ok(String::new())
+        }
+        Id::AaaLoginList | Id::AaaAuthzNetwork => {
+            let name = name_ok(arg(0))?;
+            let ra = &mut c.dm()?.crypto.ra;
+            let lists = if id == Id::AaaLoginList { &mut ra.login_lists } else { &mut ra.authz_lists };
+            if !lists.contains(&name) {
+                if lists.len() >= MAX_CRYPTO {
+                    return Err(format!("% At most {MAX_CRYPTO} lists"));
+                }
+                lists.push(name);
+            }
+            Ok(String::new())
+        }
+        Id::IpLocalPool => {
+            let name = name_ok(arg(0))?;
+            let start = parse_ip(arg(1)).map_err(|e| format!("% {e}"))?;
+            let end = parse_ip(arg(2)).map_err(|e| format!("% {e}"))?;
+            if u32::from(end) < u32::from(start) {
+                return Err("% The last address is below the first".into());
+            }
+            let pool = LocalPool { name: name.clone(), start, end };
+            if pool.size() > MAX_POOL_ADDRESSES {
+                return Err(format!("% A pool holds at most {MAX_POOL_ADDRESSES} addresses"));
+            }
+            let ra = &mut c.dm()?.crypto.ra;
+            match ra.pools.iter_mut().find(|p| p.name == name) {
+                Some(p) => *p = pool,
+                None => {
+                    if ra.pools.len() >= MAX_CRYPTO {
+                        return Err(format!("% At most {MAX_CRYPTO} pools"));
+                    }
+                    ra.pools.push(pool);
+                }
+            }
+            Ok(String::new())
+        }
+        Id::NoIpLocalPool => {
+            let name = arg(0).to_string();
+            let ra = &mut c.dm()?.crypto.ra;
+            let before = ra.pools.len();
+            ra.pools.retain(|p| p.name != name);
+            if ra.pools.len() == before { Err(format!("% There is no pool {name}")) } else { Ok(String::new()) }
+        }
+        Id::ShowIpLocalPool => Ok(render::local_pools(c.sim, c.d()?)),
+        Id::ClientGroup => {
+            let name = name_ok(arg(0))?;
+            let ra = &mut c.dm()?.crypto.ra;
+            if !ra.groups.iter().any(|g| g.name == name) {
+                if ra.groups.len() >= MAX_CRYPTO {
+                    return Err(format!("% At most {MAX_CRYPTO} groups"));
+                }
+                ra.groups.push(ClientGroup { name: name.clone(), key: String::new(), pool: None });
+            }
+            c.cli.mode = Mode::ClientGroup(name);
+            Ok(String::new())
+        }
+        Id::NoClientGroup => {
+            let name = arg(0).to_string();
+            let ra = &mut c.dm()?.crypto.ra;
+            let before = ra.groups.len();
+            ra.groups.retain(|g| g.name != name);
+            if ra.groups.len() == before { Err(format!("% There is no group {name}")) } else { Ok(String::new()) }
+        }
+        Id::ClientGroupKey => {
+            let key = name_ok(arg(0))?;
+            group(c)?.key = key;
+            Ok(String::new())
+        }
+        Id::ClientGroupPool => {
+            let pool = name_ok(arg(0))?;
+            let note = if c.d()?.crypto.ra.pool(&pool).is_none() {
+                format!("Note: pool {pool} does not exist yet (`ip local pool`)")
+            } else {
+                String::new()
+            };
+            group(c)?.pool = Some(pool);
+            Ok(note)
         }
         Id::CryptoSetPeer => {
             let a = parse_ip(arg(0)).map_err(|e| format!("% {e}"))?;
@@ -378,7 +551,7 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
         }
         Id::CryptoMapIf => {
             let map = arg(0).to_string();
-            if c.d()?.crypto.map(&map).next().is_none() {
+            if c.d()?.crypto.map(&map).all(|e| e.template) {
                 return Err(format!("% There is no crypto map {map}: define it with `crypto map {map} 10 ipsec-isakmp`"));
             }
             let names = iface_names(c)?;

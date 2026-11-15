@@ -1619,3 +1619,13 @@ event	write request for	写请求
 	This port	本端口
 	Everyone (broadcast or multicast)	所有设备（广播或多播）
 	Another device (overheard)	其他设备（旁听到的）
+	VPN Client	VPN 客户端
+	Group name	组名
+	Group key	组密钥
+	Host IP address	主机 IP 地址
+	The host is a router set up as a remote-access VPN server; type the address this computer reaches it at.	主机是配置为远程访问 VPN 服务器的路由器；请输入这台电脑访问它所用的地址。
+	Enter the host address, the group name and the group key.	请输入主机地址、组名和组密钥。
+	VPN address	VPN 地址
+	Encryption	加密
+	Tunnel packets: {} sent, {} received	隧道数据包：已发送 {}，已接收 {}
+	Fill in the form and press Connect.	填写表单并点击连接。

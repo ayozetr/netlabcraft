@@ -821,6 +821,7 @@ fn spanish_shows_no_text_that_has_a_translation_in_english() {
                     "firewall6",
                     "traffic",
                     "pppoe",
+                    "vpn",
                 ] {
                     if which == "browser" {
                         open_browser(h.state_mut(), d, "www.netlabcraft.lab");
@@ -1243,7 +1244,7 @@ fn the_computer_apps_are_on_the_desktop_of_computers_only() {
     for (dev, shown) in [(pc, true), (printer, false)] {
         open_desktop_app(h.state_mut(), dev, "tiles");
         h.run_steps(3);
-        for name in ["Telnet/SSH Client", "Text Editor", "Firewall", "IPv6 Firewall", "Traffic Generator", "PPPoE Dialer"] {
+        for name in ["Telnet/SSH Client", "Text Editor", "Firewall", "IPv6 Firewall", "Traffic Generator", "PPPoE Dialer", "VPN Client"] {
             assert_eq!(h.query_by_label(name).is_some(), shown, "{name} on device {dev:?}");
         }
         assert!(h.query_by_label("Command Prompt").is_some());
@@ -1391,6 +1392,67 @@ fn the_pppoe_dialer_connects_and_disconnects_from_its_buttons() {
     h.get_by_role_and_label(Role::Button, "Disconnect").click();
     h.run_steps(3);
     assert!(h.state().session.topology.device(pc).unwrap().pppoe.session.is_none());
+}
+
+/// The VPN Client connects to a router set up as a remote-access server from its Connect button,
+/// shows the address it was given, and disconnects.
+#[test]
+fn the_vpn_client_connects_and_disconnects_from_its_buttons() {
+    use egui::accesskit::Role;
+    let mut h = harness(None);
+    h.state_mut().ui.show_notes = false;
+    let pc = {
+        let s = &mut h.state_mut().session;
+        s.execute("device.add", json!({"kind": "pc"})).unwrap();
+        s.execute("device.add", json!({"kind": "router"})).unwrap();
+        s.execute("link.add", json!({"a": "PC1", "b": "R1", "b_port": "g0/0"})).unwrap();
+        s.execute("cli.exec", json!({"device": "PC1", "line": "ipconfig 203.0.113.2 255.255.255.0 203.0.113.1"})).unwrap();
+        let lines = [
+            "interface g0/0",
+            "ip address 203.0.113.1 255.255.255.0",
+            "no shutdown",
+            "exit",
+            "username ann password pw-test",
+            "aaa authentication login vpn-auth local",
+            "aaa authorization network vpn-auth local",
+            "ip local pool VPNPOOL 10.9.9.1 10.9.9.5",
+            "crypto isakmp client configuration group team",
+            "key key-test",
+            "pool VPNPOOL",
+            "exit",
+            "crypto ipsec transform-set TS esp-aes esp-sha-hmac",
+            "exit",
+            "crypto dynamic-map DM 10",
+            "set transform-set TS",
+            "exit",
+            "crypto map CM client authentication list vpn-auth",
+            "crypto map CM isakmp authorization list vpn-auth",
+            "crypto map CM 10 ipsec-isakmp dynamic DM",
+            "interface g0/0",
+            "crypto map CM",
+            "exit",
+        ];
+        s.execute("device.configure", json!({"device": "R1", "lines": lines})).unwrap();
+        let pc = s.topology.resolve("PC1").unwrap();
+        let d = s.topology.device_mut(pc).unwrap();
+        d.vpn_client.host = "203.0.113.1".into();
+        d.vpn_client.group = "team".into();
+        d.vpn_client.key = "key-test".into();
+        d.vpn_client.username = "ann".into();
+        d.vpn_client.password = "pw-test".into();
+        pc
+    };
+    open_desktop_app(h.state_mut(), pc, "vpn");
+    h.run_steps(3);
+    assert!(h.query_by_label("Disconnected").is_some());
+    h.get_by_role_and_label(Role::Button, "Connect").click();
+    h.run_steps(3);
+    assert_eq!(h.state().session.sim.ra_client(pc).map(|x| x.assigned.to_string()), Some("10.9.9.1".to_string()));
+    assert!(h.query_by_label("Connected").is_some());
+    assert!(h.query_by_label("10.9.9.1").is_some());
+    h.get_by_role_and_label(Role::Button, "Disconnect").click();
+    h.run_steps(3);
+    assert!(h.state().session.sim.ra_client(pc).is_none());
 }
 
 /// A server's PPPoE page switches the service on and keeps its pool and accounts.

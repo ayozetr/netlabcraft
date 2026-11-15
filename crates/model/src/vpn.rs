@@ -110,6 +110,16 @@ pub struct CryptoMapEntry {
     /// `set security-association lifetime seconds|kilobytes N` (the global values otherwise).
     #[serde(default, skip_serializing_if = "SaLifetime::is_unset")]
     pub lifetime: SaLifetime,
+    /// A `crypto dynamic-map` entry: a template for the clients of remote-access VPNs, not a
+    /// site-to-site entry (it has no peer and protects nothing by itself).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub template: bool,
+    /// `crypto map NAME SEQ ipsec-isakmp dynamic DYNAMIC`: the entry hands clients the template.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dynamic_ref: Option<String>,
+    /// `reverse-route` in a dynamic map entry.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub reverse_route: bool,
 }
 
 /// An IPsec SA lifetime: seconds, kilobytes, or neither set (the defaults then apply).
@@ -162,6 +172,102 @@ pub struct Crypto {
     /// `crypto ipsec security-association lifetime seconds|kilobytes N`.
     #[serde(default, skip_serializing_if = "SaLifetime::is_unset")]
     pub sa_lifetime: SaLifetime,
+    /// The remote-access (Easy VPN style) server: client groups, address pools, AAA lists.
+    #[serde(default, skip_serializing_if = "RemoteAccess::is_empty")]
+    pub ra: RemoteAccess,
+}
+
+/// Most addresses one `ip local pool` may hold.
+pub const MAX_POOL_ADDRESSES: u32 = 1_024;
+
+/// `ip local pool NAME FIRST LAST`: the addresses remote-access clients are given.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocalPool {
+    pub name: String,
+    pub start: Ipv4Addr,
+    pub end: Ipv4Addr,
+}
+
+impl LocalPool {
+    /// How many addresses the pool holds (at least one for a valid pool).
+    pub fn size(&self) -> u32 {
+        u32::from(self.end).saturating_sub(u32::from(self.start)).saturating_add(1)
+    }
+
+    /// The addresses in order, at most [`MAX_POOL_ADDRESSES`].
+    pub fn addresses(&self) -> impl Iterator<Item = Ipv4Addr> {
+        let first = u32::from(self.start);
+        let count = if u32::from(self.end) >= first { self.size().min(MAX_POOL_ADDRESSES) } else { 0 };
+        (0..count).map(move |i| Ipv4Addr::from(first.saturating_add(i)))
+    }
+}
+
+/// `crypto isakmp client configuration group NAME`: what a remote client that names the group
+/// and knows its key is given.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClientGroup {
+    pub name: String,
+    /// `key KEY`: the group pre-shared key.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub key: String,
+    /// `pool NAME`: the local pool the client's address comes from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pool: Option<String>,
+}
+
+/// The server side of remote-access VPN clients.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct RemoteAccess {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pools: Vec<LocalPool>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<ClientGroup>,
+    /// `aaa authentication login NAME local`: the names of the lists that check a user locally.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub login_lists: Vec<String>,
+    /// `aaa authorization network NAME local`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub authz_lists: Vec<String>,
+    /// `crypto map NAME client authentication list LIST`: map name → list name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub client_auth: BTreeMap<String, String>,
+    /// `crypto map NAME isakmp authorization list LIST`: map name → list name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub isakmp_authz: BTreeMap<String, String>,
+    /// `crypto map NAME client configuration address respond|initiate`: map name → word.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub client_address: BTreeMap<String, String>,
+}
+
+impl RemoteAccess {
+    pub fn is_empty(&self) -> bool {
+        *self == RemoteAccess::default()
+    }
+
+    pub fn pool(&self, name: &str) -> Option<&LocalPool> {
+        self.pools.iter().find(|p| p.name == name)
+    }
+
+    pub fn group(&self, name: &str) -> Option<&ClientGroup> {
+        self.groups.iter().find(|g| g.name == name)
+    }
+
+    /// Caps every list and drops pools that make no sense (hostile files).
+    pub fn sanitize(&mut self) {
+        self.pools.retain(|p| u32::from(p.end) >= u32::from(p.start) && p.size() <= MAX_POOL_ADDRESSES);
+        self.pools.truncate(MAX_CRYPTO);
+        self.groups.truncate(MAX_CRYPTO);
+        self.login_lists.truncate(MAX_CRYPTO);
+        self.authz_lists.truncate(MAX_CRYPTO);
+        for m in [&mut self.client_auth, &mut self.isakmp_authz, &mut self.client_address] {
+            while m.len() > MAX_CRYPTO {
+                m.pop_last();
+            }
+        }
+        for g in &mut self.groups {
+            g.key = g.key.chars().take(MAX_CRYPTO_TEXT).collect();
+        }
+    }
 }
 
 /// `crypto ikev2 proposal NAME`: the IKE SA algorithms offered (RFC 7296 §3.3).
@@ -374,6 +480,7 @@ impl Crypto {
             self.applied.pop_last();
         }
         self.ikev2.sanitize();
+        self.ra.sanitize();
     }
 }
 
@@ -391,6 +498,22 @@ mod tests {
         assert_eq!(tunnel_number("tunnel"), None);
         assert_eq!(tunnel_number("tunnel 99999999999"), None);
         assert_eq!(tunnel_number("tunnel 1/2"), None);
+    }
+
+    #[test]
+    fn a_local_pool_lists_its_addresses_and_is_bounded() {
+        let pool = |a: [u8; 4], b: [u8; 4]| LocalPool { name: "P".into(), start: Ipv4Addr::from(a), end: Ipv4Addr::from(b) };
+        let p = pool([10, 9, 9, 1], [10, 9, 9, 3]);
+        assert_eq!(p.size(), 3);
+        assert_eq!(p.addresses().last(), Some(Ipv4Addr::new(10, 9, 9, 3)));
+        assert_eq!(pool([10, 0, 0, 0], [10, 255, 255, 255]).addresses().count(), MAX_POOL_ADDRESSES as usize);
+        assert_eq!(pool([10, 9, 9, 5], [10, 9, 9, 1]).addresses().count(), 0);
+        let mut ra = RemoteAccess {
+            pools: vec![pool([10, 0, 0, 0], [10, 255, 255, 255]), p.clone(), pool([10, 9, 9, 5], [10, 9, 9, 1])],
+            ..RemoteAccess::default()
+        };
+        ra.sanitize();
+        assert_eq!(ra.pools, vec![p]);
     }
 
     #[test]

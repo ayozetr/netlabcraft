@@ -34,6 +34,7 @@ mod pdu;
 mod pppoe;
 mod traffic;
 mod voice;
+mod vpnclient;
 
 pub mod sample;
 
@@ -53,6 +54,8 @@ mod tests_pppoe;
 mod tests_swroute;
 #[cfg(test)]
 mod tests_traffic;
+#[cfg(test)]
+mod tests_vpnclient;
 
 pub use catalog::{CATALOG, CommandInfo};
 pub use netlabcraft_core::DeviceId;

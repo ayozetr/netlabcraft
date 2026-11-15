@@ -1622,3 +1622,13 @@ event	no APN	sin APN
 	This port	Este puerto
 	Everyone (broadcast or multicast)	Todos (difusión o multidifusión)
 	Another device (overheard)	Otro equipo (captada al paso)
+	VPN Client	Cliente VPN
+	Group name	Nombre del grupo
+	Group key	Clave del grupo
+	Host IP address	Dirección IP del host
+	The host is a router set up as a remote-access VPN server; type the address this computer reaches it at.	El host es un router configurado como servidor VPN de acceso remoto; escribe la dirección con la que este equipo lo alcanza.
+	Enter the host address, the group name and the group key.	Escribe la dirección del host, el nombre del grupo y la clave del grupo.
+	VPN address	Dirección VPN
+	Encryption	Cifrado
+	Tunnel packets: {} sent, {} received	Paquetes del túnel: {} enviados, {} recibidos
+	Fill in the form and press Connect.	Rellena el formulario y pulsa Conectar.

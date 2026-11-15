@@ -1619,3 +1619,13 @@ event	write request for	requisição de escrita de
 	This port	Esta porta
 	Everyone (broadcast or multicast)	Todos (broadcast ou multicast)
 	Another device (overheard)	Outro dispositivo (captado de passagem)
+	VPN Client	Cliente VPN
+	Group name	Nome do grupo
+	Group key	Chave do grupo
+	Host IP address	Endereço IP do host
+	The host is a router set up as a remote-access VPN server; type the address this computer reaches it at.	O host é um roteador configurado como servidor VPN de acesso remoto; digite o endereço pelo qual este computador o alcança.
+	Enter the host address, the group name and the group key.	Digite o endereço do host, o nome do grupo e a chave do grupo.
+	VPN address	Endereço VPN
+	Encryption	Criptografia
+	Tunnel packets: {} sent, {} received	Pacotes do túnel: {} enviados, {} recebidos
+	Fill in the form and press Connect.	Preencha o formulário e pressione Conectar.
