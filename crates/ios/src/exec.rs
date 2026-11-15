@@ -94,6 +94,8 @@ pub enum Mode {
     Transform(String),
     /// `R1(config-crypto-map)#`: the map's name and sequence number.
     CryptoMap(String, u32),
+    /// `R1(config-isakmp-group)#`: the remote-access client group's name.
+    ClientGroup(String),
     /// `R1(config-cmap)#`: the class map's name.
     ClassMap(String),
     /// `R1(config-pmap)#`: the policy map's name.
@@ -168,6 +170,7 @@ impl Mode {
             Mode::Isakmp(_) => Modes::ISAKMP,
             Mode::Transform(_) => Modes::TRANSFORM,
             Mode::CryptoMap(..) => Modes::CRYPTO_MAP,
+            Mode::ClientGroup(_) => Modes::CLIENT_GROUP,
             Mode::ClassMap(_) => Modes::CLASS_MAP,
             Mode::PolicyMap(_) => Modes::POLICY_MAP,
             Mode::PolicyClass(..) => Modes::POLICY_CLASS,
@@ -528,6 +531,7 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::Isakmp(_) => format!("{n}(config-isakmp)#"),
         Mode::Transform(_) => format!("{n}(cfg-crypto-trans)#"),
         Mode::CryptoMap(..) => format!("{n}(config-crypto-map)#"),
+        Mode::ClientGroup(_) => format!("{n}(config-isakmp-group)#"),
         Mode::ClassMap(_) => format!("{n}(config-cmap)#"),
         Mode::PolicyMap(_) => format!("{n}(config-pmap)#"),
         Mode::PolicyClass(..) => format!("{n}(config-pmap-c)#"),
@@ -832,6 +836,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Isakmp(_)
                 | Mode::Transform(_)
                 | Mode::CryptoMap(..)
+                | Mode::ClientGroup(_)
                 | Mode::ClassMap(_)
                 | Mode::PolicyMap(_)
                 | Mode::PolicyClass(..)
@@ -909,6 +914,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Isakmp(_)
                 | Mode::Transform(_)
                 | Mode::CryptoMap(..)
+                | Mode::ClientGroup(_)
                 | Mode::ClassMap(_)
                 | Mode::PolicyMap(_)
                 | Mode::Object(_)
@@ -1991,6 +1997,23 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ShowCryptoIpsecSa
         | Id::ShowCryptoIsakmpPolicy
         | Id::ShowCryptoMap
+        | Id::IpLocalPool
+        | Id::NoIpLocalPool
+        | Id::ShowIpLocalPool
+        | Id::ClientGroup
+        | Id::NoClientGroup
+        | Id::ClientGroupKey
+        | Id::ClientGroupPool
+        | Id::CryptoDynamicMap
+        | Id::NoCryptoDynamicMap
+        | Id::CryptoReverseRoute
+        | Id::NoCryptoReverseRoute
+        | Id::CryptoMapDynamic
+        | Id::CryptoMapClientAuth
+        | Id::CryptoMapIsakmpAuthz
+        | Id::CryptoMapClientAddress
+        | Id::AaaLoginList
+        | Id::AaaAuthzNetwork
         | Id::ClearCryptoSa => vpn::command(&mut c, spec.id, &args),
         Id::ZoneSecurity
         | Id::NoZoneSecurity

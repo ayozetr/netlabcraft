@@ -1,7 +1,7 @@
 //! The computer apps of an end device's Desktop beside the older ones: the Telnet/SSH Client's
-//! form, the Text Editor, the Firewall and IPv6 Firewall, the Traffic Generator and the PPPoE
-//! Dialer. They act through engine commands (`cli.exec` for the client, `editor.*`, `host.firewall`,
-//! `traffic.*`, `pppoe.*`), like every other panel.
+//! form, the Text Editor, the Firewall and IPv6 Firewall, the Traffic Generator, the PPPoE
+//! Dialer and the VPN Client. They act through engine commands (`cli.exec` for the client,
+//! `editor.*`, `host.firewall`, `traffic.*`, `pppoe.*`, `vpnclient.*`), like every other panel.
 
 use egui::RichText;
 use netlabcraft_model::hostfw::{FwProto, HostFwRule};
@@ -525,6 +525,95 @@ pub(crate) fn pppoe_dialer(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device)
         }
     }
     if disconnect && app.run("pppoe.disconnect", json!({"device": device})).is_some() {
+        app.info(tl("Disconnected"));
+    }
+    ui.data_mut(|m| m.insert_temp(id, f));
+}
+
+/// The VPN Client's fields, kept between frames.
+#[derive(Debug, Clone, Default)]
+struct VpnForm {
+    group: String,
+    key: String,
+    host: String,
+    user: String,
+    password: String,
+    /// The fields were filled from the device's saved settings.
+    loaded: bool,
+}
+
+/// The VPN Client: group, key, the concentrator's address and the account, Connect and
+/// Disconnect, and what the session gave the computer.
+pub(crate) fn vpn_client(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
+    let id = egui::Id::unique(("vpn_form", dev.id.0));
+    let mut f: VpnForm = ui.data_mut(|m| m.get_temp(id)).unwrap_or_default();
+    let tk = theme::tokens(app.ui.dark);
+    if !f.loaded {
+        f.loaded = true;
+        f.group.clone_from(&dev.vpn_client.group);
+        f.key.clone_from(&dev.vpn_client.key);
+        f.host.clone_from(&dev.vpn_client.host);
+        f.user.clone_from(&dev.vpn_client.username);
+        f.password.clone_from(&dev.vpn_client.password);
+    }
+    let session = app.session.sim.ra_client(dev.id).cloned();
+    let (mut connect, mut disconnect) = (false, false);
+    ui.add_space(6.0);
+    form_grid(ui, ("vpn_fields", dev.id.0), |ui| {
+        grid_field(ui, tl("Group name"), &mut f.group);
+        let l = ui.label(tl("Group key"));
+        ui.add(egui::TextEdit::singleline(&mut f.key).password(true).desired_width(300.0)).labelled_by(l.id);
+        ui.end_row();
+        grid_field(ui, tl("Host IP address"), &mut f.host);
+        grid_field(ui, tl("Username"), &mut f.user);
+        let l = ui.label(tl("Password"));
+        ui.add(egui::TextEdit::singleline(&mut f.password).password(true).desired_width(300.0)).labelled_by(l.id);
+        ui.end_row();
+        ui.label("");
+        ui.horizontal(|ui| {
+            connect = ui.add_enabled(session.is_none(), egui::Button::new(tl("Connect"))).clicked();
+            disconnect = ui.add_enabled(session.is_some(), egui::Button::new(tl("Disconnect"))).clicked();
+        });
+        ui.end_row();
+    });
+    ui.label(
+        RichText::new(tl("The host is a router set up as a remote-access VPN server; type the address this computer reaches it at.")).color(tk.muted),
+    );
+    ui.separator();
+    match &session {
+        None => {
+            ui.label(RichText::new(tl("Disconnected")).strong());
+            ui.label(RichText::new(tl("Fill in the form and press Connect.")).color(tk.muted));
+        }
+        Some(x) => {
+            ui.label(RichText::new(tl("Connected")).strong().color(tk.ok));
+            form_grid(ui, ("vpn_session", dev.id.0), |ui| {
+                ui.label(tl("Server"));
+                ui.label(x.peer.to_string());
+                ui.end_row();
+                ui.label(tl("VPN address"));
+                ui.label(x.assigned.to_string());
+                ui.end_row();
+                ui.label(tl("Encryption"));
+                ui.label(x.suite.map_or_else(|| x.transforms.clone(), |su| su.describe()));
+                ui.end_row();
+            });
+            ui.label(RichText::new(trf("Tunnel packets: {} sent, {} received", &[&x.encaps, &x.decaps])).color(tk.muted));
+        }
+    }
+    let device = dev.id.0;
+    if connect {
+        if f.host.trim().is_empty() || f.group.trim().is_empty() || f.key.is_empty() {
+            app.ui.status = Some((tl("Enter the host address, the group name and the group key.").to_string(), true));
+        } else if let Some(r) = app.run(
+            "vpnclient.connect",
+            json!({"device": device, "host": f.host.trim(), "group": f.group.trim(), "key": f.key, "username": f.user.trim(), "password": f.password}),
+        ) {
+            let server = r.get("server").and_then(Value::as_str).unwrap_or("?").to_string();
+            app.info(trf("Connected to {}", &[&server]));
+        }
+    }
+    if disconnect && app.run("vpnclient.disconnect", json!({"device": device})).is_some() {
         app.info(tl("Disconnected"));
     }
     ui.data_mut(|m| m.insert_temp(id, f));

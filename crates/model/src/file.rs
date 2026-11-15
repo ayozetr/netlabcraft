@@ -1,4 +1,4 @@
-//! The `.nlcraft` lab file: UTF-8 JSON, `{"format":"netlabcraft","version":6,"topology":{…}}`.
+//! The `.nlcraft` lab file: UTF-8 JSON, `{"format":"netlabcraft","version":7,"topology":{…}}`.
 //! Readers accept older versions and refuse newer ones; loading always sanitizes.
 
 use serde::{Deserialize, Serialize};
@@ -11,9 +11,11 @@ pub const FORMAT: &str = "netlabcraft";
 /// 4: drawings have separate outline and fill settings (`outline`, `outline_color`, `outline_width`, `no_fill`).
 /// 5: end devices may carry a `host_fw` (the Firewall app's IPv4 and IPv6 rule lists).
 /// 6: end devices may carry a `pppoe` account and session, and servers a `pppoe` service in `services`.
+/// 7: end devices may carry the VPN Client's settings (`vpn_client`), and routers a remote-access VPN server in `crypto.ra`.
 /// Older files still open (their phones get the port; a drawing with only `color` draws as it always did;
-/// a device without `host_fw` has its firewall off; one without `pppoe` has no account and no session).
-pub const VERSION: u32 = 6;
+/// a device without `host_fw` has its firewall off; one without `pppoe` has no account and no session;
+/// one without `vpn_client` or `crypto.ra` has no VPN client settings and no remote-access server).
+pub const VERSION: u32 = 7;
 pub const EXTENSION: &str = "nlcraft";
 
 /// Largest lab file accepted (hostile input).
@@ -130,7 +132,31 @@ mod tests {
         assert!(from_json(r#"{"format":"netlabcraft","version":4,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
         assert!(from_json(r#"{"format":"netlabcraft","version":5,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
         assert!(from_json(r#"{"format":"netlabcraft","version":6,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
-        assert!(from_json(r#"{"format":"netlabcraft","version":7,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_err());
+        assert!(from_json(r#"{"format":"netlabcraft","version":7,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
+        assert!(from_json(r#"{"format":"netlabcraft","version":8,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_err());
+    }
+
+    #[test]
+    fn the_vpn_client_and_a_remote_access_server_round_trip_and_older_files_open_without_them() {
+        use crate::vpn::{ClientGroup, LocalPool};
+        let mut t = Topology::new();
+        let pc = t.add_device(DeviceKind::Pc, None, 0.0, 0.0).unwrap();
+        let r = t.add_device(DeviceKind::Router, None, 0.0, 0.0).unwrap();
+        // Nothing set: no `vpn_client` and no `ra` key at all, so files stay as before.
+        let plain = to_json(&t).unwrap();
+        assert!(!plain.contains("vpn_client") && !plain.contains("\"ra\""));
+        t.device_mut(pc).unwrap().vpn_client.group = "team".into();
+        t.device_mut(pc).unwrap().vpn_client.host = "203.0.113.1".into();
+        let d = t.device_mut(r).unwrap();
+        d.crypto.ra.pools.push(LocalPool { name: "P".into(), start: "10.9.9.1".parse().unwrap(), end: "10.9.9.9".parse().unwrap() });
+        d.crypto.ra.groups.push(ClientGroup { name: "team".into(), key: "key-test".into(), pool: Some("P".into()) });
+        let back = from_json(&to_json(&t).unwrap()).unwrap();
+        assert_eq!(back, t);
+        assert_eq!(back.device(pc).unwrap().vpn_client.group, "team");
+        // A file saved before version 7 has neither.
+        let mut v: serde_json::Value = serde_json::from_str(&plain).unwrap();
+        v["version"] = 6.into();
+        assert!(from_json(&v.to_string()).is_ok());
     }
 
     #[test]

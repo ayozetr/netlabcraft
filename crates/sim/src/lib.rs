@@ -57,6 +57,7 @@ pub mod pdu;
 pub mod peap;
 pub mod pki;
 pub mod qos;
+pub mod ravpn;
 
 pub mod rip;
 pub mod rip6;
@@ -923,6 +924,13 @@ pub struct DevState {
     pub dhcp6_leases: BTreeMap<std::net::Ipv6Addr, (MacAddr, String)>,
     /// Routers: IPsec security associations, by peer address.
     pub ipsec: BTreeMap<Ipv4Addr, vpn::IpsecSa>,
+    /// A PC's remote-access VPN session with its concentrator.
+    pub(crate) ra_client: Option<ravpn::RaSa>,
+    /// A router's remote-access VPN clients, by the client's outer address.
+    pub(crate) ra_sessions: BTreeMap<Ipv4Addr, ravpn::RaSa>,
+    /// The local port a VPN Client waits on, and the answers that came.
+    ra_port: Option<u16>,
+    ra_inbox: Vec<Vec<u8>>,
     /// Path MTUs learnt from "fragmentation needed" (RFC 1191), and the TCP state PMTUD needs.
     pub(crate) pmtu: mtu::Pmtu,
     /// Routers and multilayer switches: QoS class counters and policer buckets.
@@ -2896,7 +2904,9 @@ impl Sim {
                 from_outside = true;
             }
         }
-        let mine = l3_ifaces(d).iter().any(|i| i.net.addr == ip.dst) || self.hsrp_active(t, d, None).iter().any(|(v, _)| *v == ip.dst);
+        let mine = l3_ifaces(d).iter().any(|i| i.net.addr == ip.dst)
+            || self.hsrp_active(t, d, None).iter().any(|(v, _)| *v == ip.dst)
+            || self.ra_owns(d, ip.dst);
         if mine || ip.dst == Ipv4Addr::BROADCAST || (ifc.net.prefix < 31 && ip.dst == ifc.net.broadcast()) {
             if mine {
                 self.zfw_check(d, Some(ifc), None, &ip, payload)?;
@@ -2918,6 +2928,13 @@ impl Sim {
             return Err("TTL expired in transit".into());
         }
         let fwd = Ipv4 { ttl: ip.ttl - 1, ..ip.clone() };
+        // For a remote-access VPN client's address: sealed into its tunnel instead of routed.
+        if d.kind == DeviceKind::Router
+            && let Some(r) = self.ra_forward(t, d, &fwd)
+        {
+            self.bump(d.id, "forwarded");
+            return r;
+        }
         let debug = self.state.get(&d.id).is_some_and(|s| s.debug_packet);
         match self.route_flow(t, d, ip.src, ip.dst) {
             Some((out, nh)) => {
@@ -2980,6 +2997,11 @@ impl Sim {
             self.bump(d.id, "dropped by the firewall");
             return Err(format!("dropped by this device's firewall (from {})", ip.src));
         }
+        if ip.protocol == netlabcraft_wire::vpn::PROTO_ESP
+            && let Some(r) = if d.kind == DeviceKind::Router { self.ra_server_in(t, d, ifc, &ip) } else { self.ra_client_in(t, d, ifc, &ip) }
+        {
+            return r;
+        }
         if d.kind == DeviceKind::Router && ip.protocol == netlabcraft_wire::vpn::PROTO_GRE {
             return self.gre_in(t, d, &ip);
         }
@@ -3001,6 +3023,9 @@ impl Sim {
                 return r;
             }
             if let Some(r) = self.mgmt_udp_in(t, d, ifc, &ip, &u) {
+                return r;
+            }
+            if let Some(r) = self.ra_udp_in(t, d, ifc, &ip, &u) {
                 return r;
             }
             return match (u.dst_port, d.kind) {
@@ -3161,6 +3186,9 @@ impl Sim {
 
     fn send_ip_df_now(&mut self, t: &Topology, d: &Device, ip: Ipv4, df: bool) -> Result<(), String> {
         self.bump(d.id, "sent");
+        if let Some(r) = self.ra_out(t, d, &ip, df) {
+            return r;
+        }
         let (out, nh) = self.route_flow(t, d, ip.src, ip.dst).ok_or_else(|| format!("no route to {}", ip.dst))?;
         self.note_sends(ip.dst, &out, nh, ip.ttl);
         let mut raw = ip.encode();
@@ -3848,6 +3876,10 @@ impl Sim {
 
     /// The address a device sources its own traffic to `dst` from.
     pub fn source_for(&mut self, t: &Topology, d: &Device, dst: Ipv4Addr) -> Result<Ipv4Addr, SimError> {
+        // A PC with its VPN Client connected sends what goes through the tunnel from its VPN address.
+        if let Some(a) = self.ra_source(d, dst) {
+            return Ok(a);
+        }
         let ifs = l3_ifaces(d);
         // A host with two radios (Wi-Fi and cellular) uses the one that is up, Wi-Fi first.
         let up = if d.kind.is_host() { up_ifaces(t, d) } else { Vec::new() };

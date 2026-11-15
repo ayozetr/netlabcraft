@@ -93,6 +93,8 @@ impl Modes {
     pub const PKI_SERVER: Modes = Modes(1 << 51);
     /// `router bgp N`.
     pub const BGP: Modes = Modes(1 << 52);
+    /// `crypto isakmp client configuration group NAME`.
+    pub const CLIENT_GROUP: Modes = Modes(1 << 55);
     /// Every command mode, either device.
     pub const ANY_MODE: Modes = Modes(
         63 | 256
@@ -128,7 +130,8 @@ impl Modes {
             | (1 << 49)
             | (1 << 50)
             | (1 << 51)
-            | (1 << 52),
+            | (1 << 52)
+            | (1 << 55),
     );
     pub const BOTH: Modes = Modes(192);
     /// A router with a switch card (a device flag): the VLAN database and the switching
@@ -512,6 +515,24 @@ pub enum Id {
     ShowCryptoIsakmpPolicy,
     ShowCryptoMap,
     ClearCryptoSa,
+    // ---- remote-access VPN server ----
+    IpLocalPool,
+    NoIpLocalPool,
+    ClientGroup,
+    NoClientGroup,
+    ClientGroupKey,
+    ClientGroupPool,
+    CryptoDynamicMap,
+    NoCryptoDynamicMap,
+    CryptoReverseRoute,
+    NoCryptoReverseRoute,
+    CryptoMapDynamic,
+    CryptoMapClientAuth,
+    CryptoMapIsakmpAuthz,
+    CryptoMapClientAddress,
+    AaaLoginList,
+    AaaAuthzNetwork,
+    ShowIpLocalPool,
     // ---- QoS: class maps, policy maps, service policies ----
     ClassMap,
     NoClassMap,
@@ -1127,7 +1148,7 @@ const SEC_IFS: Modes = IFS.or(Modes::TUNNEL);
 const BOTH_FW: Modes = Modes::BOTH.or(Modes::FIREWALL);
 const FW: Modes = Modes::FIREWALL;
 /// The site-to-site VPN sub-modes.
-const VPN_MODES: Modes = Modes::TUNNEL.or(Modes::ISAKMP).or(Modes::CRYPTO_MAP).or(Modes::TRANSFORM);
+const VPN_MODES: Modes = Modes::TUNNEL.or(Modes::ISAKMP).or(Modes::CRYPTO_MAP).or(Modes::TRANSFORM).or(Modes::CLIENT_GROUP);
 /// The QoS sub-modes.
 const QOS_MODES: Modes = Modes::CLASS_MAP.or(Modes::POLICY_MAP).or(Modes::POLICY_CLASS);
 /// Where a service policy can be applied: routed interfaces, VLAN interfaces and tunnels.
@@ -1595,6 +1616,90 @@ pub static SPECS: &[Spec] = &[
     spec!(CryptoMapIf, Modes::IF.or(Modes::SUBIF), Modes::ROUTER, [K("crypto"), K("map"), Arg("WORD")], "Protect traffic leaving this interface"),
     spec!(NoCryptoMapIf, Modes::IF.or(Modes::SUBIF), Modes::ROUTER, [K("no"), K("crypto"), K("map")], "Stop protecting traffic here"),
     spec!(NoCryptoMapIf, Modes::IF.or(Modes::SUBIF), Modes::ROUTER, [K("no"), K("crypto"), K("map"), Arg("WORD")], "Stop protecting traffic here"),
+    spec!(
+        IpLocalPool,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("ip"), K("local"), K("pool"), Arg("WORD"), Arg("FIRST"), Arg("LAST")],
+        "Addresses for remote-access VPN clients"
+    ),
+    spec!(NoIpLocalPool, Modes::CONFIG, Modes::ROUTER, [K("no"), K("ip"), K("local"), K("pool"), Arg("WORD")], "Delete a local address pool"),
+    spec!(ShowIpLocalPool, EXECS, Modes::ROUTER, [K("show"), K("ip"), K("local"), K("pool")], "Local address pools and who holds what"),
+    spec!(
+        ClientGroup,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("crypto"), K("isakmp"), K("client"), K("configuration"), K("group"), Arg("WORD")],
+        "Define or edit a remote-access client group"
+    ),
+    spec!(
+        NoClientGroup,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("no"), K("crypto"), K("isakmp"), K("client"), K("configuration"), K("group"), Arg("WORD")],
+        "Delete a client group"
+    ),
+    spec!(ClientGroupKey, Modes::CLIENT_GROUP, Modes::ROUTER, [K("key"), Arg("KEY")], "The group's pre-shared key"),
+    spec!(ClientGroupPool, Modes::CLIENT_GROUP, Modes::ROUTER, [K("pool"), Arg("WORD")], "The local pool the clients' addresses come from"),
+    spec!(
+        CryptoDynamicMap,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("crypto"), K("dynamic-map"), Arg("WORD"), Arg("<1-65535>")],
+        "Define or edit a dynamic map entry"
+    ),
+    spec!(
+        NoCryptoDynamicMap,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("no"), K("crypto"), K("dynamic-map"), Arg("WORD"), Rest("[<1-65535>]")],
+        "Delete a dynamic map (or one entry)"
+    ),
+    spec!(NoCryptoDynamicMap, Modes::CONFIG, Modes::ROUTER, [K("no"), K("crypto"), K("dynamic-map"), Arg("WORD")], "Delete a whole dynamic map"),
+    spec!(CryptoReverseRoute, Modes::CRYPTO_MAP, Modes::ROUTER, [K("reverse-route")], "Note routes to the clients' addresses"),
+    spec!(NoCryptoReverseRoute, Modes::CRYPTO_MAP, Modes::ROUTER, [K("no"), K("reverse-route")], "Stop noting routes to the clients"),
+    spec!(
+        CryptoMapDynamic,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("crypto"), K("map"), Arg("WORD"), Arg("<1-65535>"), K("ipsec-isakmp"), K("dynamic"), Arg("WORD")],
+        "Let remote-access clients use a dynamic map"
+    ),
+    spec!(
+        CryptoMapClientAuth,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("crypto"), K("map"), Arg("WORD"), K("client"), K("authentication"), K("list"), Arg("WORD")],
+        "The AAA list that checks a client's user name"
+    ),
+    spec!(
+        CryptoMapIsakmpAuthz,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("crypto"), K("map"), Arg("WORD"), K("isakmp"), K("authorization"), K("list"), Arg("WORD")],
+        "The AAA list that hands a group's settings out"
+    ),
+    spec!(
+        CryptoMapClientAddress,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("crypto"), K("map"), Arg("WORD"), K("client"), K("configuration"), K("address"), Arg("{respond|initiate}")],
+        "Who starts the exchange of the client's address"
+    ),
+    spec!(
+        AaaLoginList,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("aaa"), K("authentication"), K("login"), Arg("WORD"), K("local")],
+        "A named list that checks users with the local user names"
+    ),
+    spec!(
+        AaaAuthzNetwork,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("aaa"), K("authorization"), K("network"), Arg("WORD"), K("local")],
+        "A named list that hands network settings out locally"
+    ),
     spec!(ShowCryptoIsakmpSa, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("isakmp"), K("sa")], "IKE peers and their state"),
     spec!(ShowCryptoIsakmpPolicy, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("isakmp"), K("policy")], "IKE policies"),
     spec!(ShowCryptoIpsecSa, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("ipsec"), K("sa")], "IPsec associations and packet counts"),
@@ -4489,6 +4594,7 @@ mod tests {
                 Modes::PKI_TRUSTPOINT,
                 Modes::PKI_SERVER,
                 Modes::BGP,
+                Modes::CLIENT_GROUP,
             ]
             .into_iter()
             .find(|m| s.modes.has(*m))

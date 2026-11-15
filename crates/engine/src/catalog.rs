@@ -121,6 +121,30 @@ pub static CATALOG: &[CommandInfo] = &[
         false
     ),
     c!(
+        "vpnclient.connect",
+        "VPN Client connect",
+        "",
+        None,
+        r#"{"device": PC, laptop or server, "host"?: the VPN concentrator's address, "group"?: group name, "key"?: group key, "username"?: text, "password"?: text (each defaults to the one last used)} → {"state", "connected", "server", "address", "transforms", "esp", …}: sends a request to UDP port 10000 of the concentrator, a router set up as a remote-access server (a client group with its key and pool, a dynamic map, a crypto map with its authentication and authorization lists on the interface the host reaches). The router checks the group key and the user and gives the first free address of the group's pool; from then on the device's traffic beyond its own subnet goes through an ESP tunnel to the router. Fails when nothing answers or the router refuses; the simulator's own exchange, not IKE with Xauth and mode-config"#,
+        true
+    ),
+    c!(
+        "vpnclient.disconnect",
+        "VPN Client disconnect",
+        "",
+        None,
+        r#"{"device": PC, laptop or server} → the status: the router is told and the tunnel and the VPN address are gone"#,
+        false
+    ),
+    c!(
+        "vpnclient.status",
+        "VPN Client status",
+        "",
+        None,
+        r#"{"device": PC, laptop or server} → {"state": "disconnected"|"connected", "connected", "host", "group", "username", "server", "address", "transforms", "esp", "encapsulated", "decapsulated"} (the key and the password are never returned)"#,
+        false
+    ),
+    c!(
         "snmp.request",
         "SNMP request",
         "",

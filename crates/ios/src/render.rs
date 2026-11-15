@@ -2867,8 +2867,20 @@ fn vpn_config(s: &mut String, d: &Device) {
         let _ = writeln!(s, "!");
     }
     crate::exec::ikev2::running_config(s, d);
+    remote_access_config(s, d);
     for e in &c.maps {
-        let _ = writeln!(s, "crypto map {} {} ipsec-isakmp", e.map, e.seq);
+        if let Some(dynamic) = &e.dynamic_ref {
+            let _ = writeln!(s, "crypto map {} {} ipsec-isakmp dynamic {dynamic}", e.map, e.seq);
+            continue;
+        }
+        if e.template {
+            let _ = writeln!(s, "crypto dynamic-map {} {}", e.map, e.seq);
+            if e.reverse_route {
+                let _ = writeln!(s, " reverse-route");
+            }
+        } else {
+            let _ = writeln!(s, "crypto map {} {} ipsec-isakmp", e.map, e.seq);
+        }
         if let Some(p) = e.peer {
             let _ = writeln!(s, " set peer {p}");
         }
@@ -2924,6 +2936,57 @@ fn vpn_config(s: &mut String, d: &Device) {
     }
 }
 
+/// The remote-access server's part of the running configuration: pools, client groups, the AAA
+/// lists and the crypto map settings that name them.
+fn remote_access_config(s: &mut String, d: &Device) {
+    let ra = &d.crypto.ra;
+    for l in &ra.login_lists {
+        let _ = writeln!(s, "aaa authentication login {l} local");
+    }
+    for l in &ra.authz_lists {
+        let _ = writeln!(s, "aaa authorization network {l} local");
+    }
+    for p in &ra.pools {
+        let _ = writeln!(s, "ip local pool {} {} {}", p.name, p.start, p.end);
+    }
+    for g in &ra.groups {
+        let _ = writeln!(s, "crypto isakmp client configuration group {}", g.name);
+        if !g.key.is_empty() {
+            let _ = writeln!(s, " key {}", g.key);
+        }
+        if let Some(p) = &g.pool {
+            let _ = writeln!(s, " pool {p}");
+        }
+        let _ = writeln!(s, "!");
+    }
+    for (m, l) in &ra.client_auth {
+        let _ = writeln!(s, "crypto map {m} client authentication list {l}");
+    }
+    for (m, l) in &ra.isakmp_authz {
+        let _ = writeln!(s, "crypto map {m} isakmp authorization list {l}");
+    }
+    for (m, w) in &ra.client_address {
+        let _ = writeln!(s, "crypto map {m} client configuration address {w}");
+    }
+}
+
+/// `show ip local pool`: each pool and the clients that hold its addresses.
+pub fn local_pools(sim: &Sim, d: &Device) -> String {
+    let ra = &d.crypto.ra;
+    if ra.pools.is_empty() {
+        return "No local address pools configured".into();
+    }
+    let held = sim.ra_sessions(d.id);
+    let mut s = format!("{:<16} {:<16} {:<16} {:<6} {}\n", "Pool", "First", "Last", "Free", "In use");
+    for p in &ra.pools {
+        let users: Vec<String> =
+            held.iter().filter(|x| p.addresses().any(|a| a == x.assigned)).map(|x| format!("{} ({})", x.assigned, x.peer)).collect();
+        let free = usize::try_from(p.size().min(netlabcraft_model::vpn::MAX_POOL_ADDRESSES)).unwrap_or(0).saturating_sub(users.len());
+        let _ = writeln!(s, "{:<16} {:<16} {:<16} {:<6} {}", p.name, p.start.to_string(), p.end.to_string(), free, users.join(", "));
+    }
+    s.trim_end().to_string()
+}
+
 /// ` crypto map NAME` under an interface that has one.
 fn crypto_map_line(s: &mut String, d: &Device, name: &str) {
     if let Some(m) = d.crypto.applied.get(name) {
@@ -2972,10 +3035,14 @@ pub fn tunnel_interface(t: &Topology, d: &Device, n: u32) -> Result<String, Stri
 /// `show crypto isakmp sa`: one row per IPsec peer traffic has tried to reach.
 pub fn crypto_isakmp_sa(sim: &Sim, d: &Device) -> String {
     let sas = sim.ipsec_sas(d.id);
-    if sas.is_empty() {
+    let ra = sim.ra_sessions(d.id);
+    if sas.is_empty() && ra.is_empty() {
         return "No IKE peers yet (an association is set up when traffic matches a crypto map)".into();
     }
     let mut s = format!("{:<16} {:<16} {}\n", "Peer", "Local", "State");
+    for x in &ra {
+        let _ = writeln!(s, "{:<16} {:<16} remote-access client: group {}, user {}, address {}", x.peer, x.local, x.group, x.user, x.assigned);
+    }
     for sa in &sas {
         let state = match (&sa.failed, sa.phase) {
             (_, netlabcraft_sim::vpn::IkePhase::Established) => match sa.v1.as_deref().and_then(|v| v.suite) {
@@ -3036,10 +3103,23 @@ pub(crate) fn ike_sa_life(sim: &Sim, sa: &netlabcraft_sim::vpn::IpsecSa) -> Stri
 /// `show crypto ipsec sa`: per peer, the SPIs and packet counts.
 pub fn crypto_ipsec_sa(sim: &Sim, d: &Device) -> String {
     let sas = sim.ipsec_sas(d.id);
-    if sas.is_empty() {
+    let ra = sim.ra_sessions(d.id);
+    if sas.is_empty() && ra.is_empty() {
         return "No IPsec security associations".into();
     }
     let mut s = String::new();
+    for x in &ra {
+        let _ = writeln!(s, "Remote-access client {} (local {}), interface {}", x.peer, x.local, x.iface);
+        let _ = writeln!(s, "  Group {}, user {}, VPN address {}", x.group, x.user, x.assigned);
+        let _ = writeln!(s, "  Outbound ESP SPI 0x{:08x}, inbound ESP SPI 0x{:08x}", x.spi_out, x.spi_in);
+        let esp = match x.suite {
+            Some(suite) => format!("{} (real ciphers)", suite.describe()),
+            None => "the simulator's stand-in cipher (the transform set has no cipher)".to_string(),
+        };
+        let _ = writeln!(s, "  ESP: {esp}");
+        let _ = writeln!(s, "  Packets encapsulated {}, decapsulated {}, dropped {}", x.encaps, x.decaps, x.drops);
+        let _ = writeln!(s);
+    }
     for sa in &sas {
         let _ = writeln!(
             s,
@@ -3125,6 +3205,19 @@ pub fn crypto_maps(d: &Device) -> String {
     }
     let mut s = String::new();
     for e in &c.maps {
+        if let Some(dynamic) = &e.dynamic_ref {
+            let _ = writeln!(s, "Crypto map {} entry {} (remote-access clients, dynamic map {dynamic})", e.map, e.seq);
+            let _ = writeln!(s, "  Client authentication list: {}", c.ra.client_auth.get(&e.map).map_or("none", String::as_str));
+            let _ = writeln!(s, "  ISAKMP authorization list: {}", c.ra.isakmp_authz.get(&e.map).map_or("none", String::as_str));
+            let on: Vec<&str> = c.applied.iter().filter(|(_, m)| **m == e.map).map(|(i, _)| i.as_str()).collect();
+            let _ = writeln!(s, "  Applied to: {}", if on.is_empty() { "no interface".to_string() } else { on.join(", ") });
+            continue;
+        }
+        if e.template {
+            let ts = e.transform_set.as_deref().unwrap_or("not set");
+            let _ = writeln!(s, "Dynamic map {} entry {}: transform set {ts}{}", e.map, e.seq, if e.reverse_route { ", reverse-route" } else { "" });
+            continue;
+        }
         let _ = writeln!(s, "Crypto map {} entry {} (IPsec with IKE)", e.map, e.seq);
         let _ = writeln!(s, "  Peer: {}", e.peer.map_or("not set".to_string(), |p| p.to_string()));
         let ts = e.transform_set.as_deref().map_or("not set".to_string(), |n| match c.transform_set(n) {
