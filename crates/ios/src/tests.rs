@@ -301,6 +301,33 @@ fn host_shell() {
 }
 
 #[test]
+fn ipconfig_names_a_pppoe_address_and_hand_typed_or_released_addresses_end_the_session() {
+    let mut lab = Lab::new();
+    let a = lab.add(DeviceKind::Pc);
+    let srv = lab.add(DeviceKind::Server);
+    lab.run(a, "ipconfig 10.0.0.5 255.255.255.0 10.0.0.1");
+    assert!(lab.try_run(a, "ipconfig").contains("by hand (static)"));
+    let session = || netlabcraft_model::pppoe::PppoeSession {
+        server: srv,
+        address: "10.0.0.5".parse().unwrap(),
+        gateway: "10.0.0.1".parse().unwrap(),
+        auth: netlabcraft_model::PppAuth::Pap,
+    };
+    lab.t.device_mut(a).unwrap().pppoe.username = "ann".into();
+    lab.t.device_mut(a).unwrap().pppoe.session = Some(session());
+    let out = lab.try_run(a, "ipconfig");
+    assert!(out.contains("by PPPoE") && !out.contains("by hand"), "{out}");
+    let all = lab.try_run(a, "ipconfig /all");
+    assert!(all.contains("PPPoE login ann") && all.contains("PPP auth    pap"), "{all}");
+    // Typing an address, or releasing it, ends the session.
+    lab.run(a, "ipconfig 10.0.0.6 255.255.255.0 10.0.0.1");
+    assert!(lab.t.device(a).unwrap().pppoe.session.is_none());
+    lab.t.device_mut(a).unwrap().pppoe.session = Some(session());
+    lab.run(a, "ipconfig /release");
+    assert!(lab.t.device(a).unwrap().pppoe.session.is_none());
+}
+
+#[test]
 fn pc_prompt_options_by_typing() {
     let mut lab = Lab::new();
     let r = lab.add(DeviceKind::Router);

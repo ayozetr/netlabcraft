@@ -266,12 +266,21 @@ fn ipconfig(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Ou
             p.and_then(|p| p.ip).map_or("not set".to_string(), |ip| ip.mask().to_string()),
             d.gateway.map_or("not set".to_string(), |g| g.to_string()),
             d.dns.map_or("not set".to_string(), |g| g.to_string()),
-            if d.dhcp_client { "by DHCP" } else { "by hand (static)" },
+            if d.pppoe.session.is_some() {
+                "by PPPoE"
+            } else if d.dhcp_client {
+                "by DHCP"
+            } else {
+                "by hand (static)"
+            },
         )
     };
     let show_all = |d: &Device| {
         let l = d.dhcp_lease.clone().unwrap_or_default();
         let mut s = show_basic(d);
+        if let Some(x) = &d.pppoe.session {
+            let _ = write!(s, "\nPPPoE login {}\nPPP auth    {}\nPPPoE gate  {}", d.pppoe.username, x.auth.name(), x.gateway);
+        }
         if d.dhcp_client {
             let _ = write!(
                 s,
@@ -297,6 +306,7 @@ fn ipconfig(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Ou
                 d.dns = None;
                 d.dhcp_client = false;
                 d.dhcp_lease = None;
+                d.pppoe.session = None;
             }
             Ok("Address released.".into())
         }
@@ -309,6 +319,7 @@ fn ipconfig(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Ou
                     d.gateway = lease.router;
                     d.dns = lease.dns;
                     d.dhcp_client = true;
+                    d.pppoe.session = None;
                     d.voice.tftp = lease.tftp;
                     d.dhcp_lease =
                         Some(netlabcraft_model::mgmt::HostLease { domain: lease.domain.clone(), lease_secs: lease.lease_secs, server: lease.server });
@@ -352,6 +363,7 @@ fn ipconfig(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Ou
             d.gateway = gw;
             d.dhcp_client = false;
             d.dhcp_lease = None;
+            d.pppoe.session = None;
             Ok(format!("Address set to {net}{}.", gw.map(|g| format!(", gateway {g}")).unwrap_or_default()))
         })(),
         _ => Err("Usage: ipconfig [<address> <mask> [<gateway> [<dns>]]] | /renew | /release".into()),

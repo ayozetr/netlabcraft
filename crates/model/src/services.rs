@@ -64,6 +64,9 @@ pub struct Services {
     /// Email: SMTP takes messages for the domain's users, POP3 hands them out.
     #[serde(default)]
     pub email: Email,
+    /// PPPoE: the server answers a dialer with a user name and password and gives it an address.
+    #[serde(default, skip_serializing_if = "crate::pppoe::PppoeServer::is_default")]
+    pub pppoe: crate::pppoe::PppoeServer,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -200,6 +203,7 @@ impl Services {
                         aaa: Aaa::default(),
             ftp: Ftp { on: true, users: Vec::new(), files: Vec::new() },
             email: Email { on: true, ..Email::default() },
+            pppoe: crate::pppoe::PppoeServer::default(),
             dhcp: ServerDhcp { on: false, pools: vec![ServerPool { name: "defaultPool".into(), gateway: Ipv4Addr::UNSPECIFIED, dns: Ipv4Addr::UNSPECIFIED, start: Ipv4Addr::new(192, 168, 0, 10), mask: Ipv4Addr::new(255, 255, 255, 0), max_users: 50 }] },
         }
     }
