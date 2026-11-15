@@ -1,6 +1,6 @@
 # Pitfalls
 
-> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (BGP needs simulated time) · earlier: minor (a derived-state pitfall (M9.10)) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (four pitfalls from M9.7: counters keyed by position, a stale checksum, a database that lists unreachable routers, a `Rest` that needs a word) · also merged with M9.5, M9.6, M9.8 and M9.11 · earlier: minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
+> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (policy edits must reach the routing fingerprint) · earlier: minor (BGP needs simulated time) · earlier: minor (a derived-state pitfall (M9.10)) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (four pitfalls from M9.7: counters keyed by position, a stale checksum, a database that lists unreachable routers, a `Rest` that needs a word) · also merged with M9.5, M9.6, M9.8 and M9.11 · earlier: minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
 
 Mistakes already made here, and the rule that stops each one. Read this before your first change; when you make a
 new mistake worth not repeating, add it in the same change.
@@ -71,6 +71,11 @@ new mistake worth not repeating, add it in the same change.
   listed the LSAs of every router with a segment in an area, so a router cut off by a passive interface kept its router,
   summary and external LSAs for ever. A database view starts from the viewer and follows adjacencies
   (`ospf_lsdb::flooding_domain`).
+- **A setting the simulator reads must be part of the fingerprint it recomputes on.** BGP and OSPF results are cached
+  against `ospf::fingerprint`, which hashes the routers' configuration. Prefix lists, route maps and the access lists they
+  name decide what BGP accepts and OSPF redistributes, so they are hashed there (only when a router has policy); a new
+  setting that changes a computed result needs its line in the fingerprint, or the old result is shown until something
+  else changes.
 ## Instructor
 
 - **A key the student's app holds is not a secret from the student.** The results HMAC key comes from the salt in the
