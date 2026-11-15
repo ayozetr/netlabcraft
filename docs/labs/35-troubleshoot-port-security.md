@@ -154,6 +154,13 @@ no shutdown
 end
 ```
 
+The port starts again through spanning tree's listening and learning states, so wait before
+testing:
+
+```lab
+sim.advance {"seconds": 35}
+```
+
 ```verify
 ping PC1 192.168.35.10 => success
 S1# show port-security
