@@ -1,4 +1,11 @@
 #!/bin/sh
 # Refuses a commit that carries a key, a token or a personal path.
 # Enable once per clone: git config core.hooksPath .githooks
-exec cargo xtask secrets
+# It never compiles: it runs an xtask that is already built, and otherwise leaves the scan to CI
+# (the `gate` job runs `cargo xtask secrets` on every pull request).
+for bin in "${CARGO_TARGET_DIR:-target}/debug/xtask" "${CARGO_TARGET_DIR:-target}/release/xtask"; do
+    if [ -x "$bin" ]; then
+        exec "$bin" secrets
+    fi
+done
+echo "pre-commit: secret scan skipped (xtask is not built; build it with 'cargo build -p xtask' to scan before committing; CI scans every pull request)" >&2

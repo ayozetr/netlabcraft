@@ -20,7 +20,7 @@ Before you ask for review:
 cargo xtask ci        # fmt, clippy -D warnings, tests, doctests, assets, layers, secrets, wasm, parity
 ```
 
-Enable the secret-scan hook once per clone: `git config core.hooksPath .githooks`.
+Enable the secret-scan hook once per clone: `git config core.hooksPath .githooks` (it runs an xtask that is already built and never compiles; CI scans every pull request).
 
 Code is dual-licensed under MIT or Apache-2.0 ([LICENSE-MIT](LICENSE-MIT), [LICENSE-APACHE](LICENSE-APACHE)); by
 contributing you agree your work is licensed the same way.
