@@ -2,7 +2,7 @@
 //!
 //! `cargo run -p netlabcraft-ui-egui --example snapshot -- --sample vlans [--dark] [--simulation] [--size 1280x820]
 //!  [--cmd 'id={json}']... [--console DEVICE]... [--event N] [--physical [--place N]] [--physical-tab]
-//!  [--tab physical|config|cli|services|desktop|phone|iot|attributes] [--config-page settings|vlans|routes|wireless|port:N]
+//!  [--tab physical|config|cli|services|desktop|phone|iot|capture|attributes] [--config-page settings|vlans|routes|wireless|port:N]
 //!  [--instructions] [--wizard] [--answer] [--tree] [--connectivity] [--info N] out.png`
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 

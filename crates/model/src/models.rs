@@ -87,11 +87,39 @@ pub static MODELS: &[Model] = &[
         ports: &[run("GigabitEthernet0/", 0, 1), run("Serial0/0/", 0, 1)],
     },
     Model {
+        id: "Router-FE2",
+        kind: DeviceKind::Router,
+        label: "Router 2FE",
+        description: "Router with 2 Fast Ethernet ports",
+        ports: &[run("FastEthernet0/", 0, 1)],
+    },
+    Model {
+        id: "Router-FE2S",
+        kind: DeviceKind::Router,
+        label: "Router 2FE+2S",
+        description: "Router with 2 Fast Ethernet ports and 2 serial WAN ports",
+        ports: &[run("FastEthernet0/", 0, 1), run("Serial0/0/", 0, 1)],
+    },
+    Model {
+        id: "Router-WAN3",
+        kind: DeviceKind::Router,
+        label: "Router 3GE+2S",
+        description: "Router with 3 Gigabit Ethernet ports and 2 serial WAN ports",
+        ports: &[run("GigabitEthernet0/", 0, 2), run("Serial0/0/", 0, 1)],
+    },
+    Model {
         id: "Router-M2",
         kind: DeviceKind::Router,
         label: "Modular Router 2GE",
         description: "Modular router with 2 Gigabit Ethernet ports and 2 empty module bays (serial and Gigabit cards, fitted while powered off)",
         ports: &[run("GigabitEthernet0/", 0, 1)],
+    },
+    Model {
+        id: "Router-MF2",
+        kind: DeviceKind::Router,
+        label: "Modular Router 2FE",
+        description: "Modular router with 2 Fast Ethernet ports and 2 empty module bays (serial, Gigabit and Fast Ethernet cards, fitted while powered off)",
+        ports: &[run("FastEthernet0/", 0, 1)],
     },
     Model {
         id: "Router-M3",
@@ -277,6 +305,13 @@ pub static MODELS: &[Model] = &[
         ports: &[run("FastEthernet", 0, 0)],
     },
     Model {
+        id: "Sniffer",
+        kind: DeviceKind::Pc,
+        label: "Sniffer",
+        description: "Sniffer with one Fast Ethernet port: records every frame that reaches its port (all the traffic behind a hub; broadcasts, multicasts and flooded frames behind a switch) and never answers",
+        ports: &[run("FastEthernet", 0, 0)],
+    },
+    Model {
         id: "IP-Phone",
         kind: DeviceKind::Phone,
         label: "IP Phone",
@@ -403,6 +438,34 @@ pub static MODELS: &[Model] = &[
         ports: &[run("Wireless", 0, 0)],
     },
     Model {
+        id: "IoT-TV",
+        kind: DeviceKind::Iot,
+        label: "Smart TV",
+        description: "Wi-Fi smart TV: registers with the IoT service, which switches it on (playing) and off (standby)",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-TVE",
+        kind: DeviceKind::Iot,
+        label: "Wired Smart TV",
+        description: "Smart TV with one Fast Ethernet port: registers with an IoT server, which switches it on (playing) and off (standby)",
+        ports: &[run("FastEthernet", 0, 0)],
+    },
+    Model {
+        id: "IoT-Speaker",
+        kind: DeviceKind::Iot,
+        label: "Smart Speaker",
+        description: "Wi-Fi smart speaker: plays while the IoT service keeps it on",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-Water",
+        kind: DeviceKind::Iot,
+        label: "Water Level Sensor",
+        description: "Wi-Fi water level sensor: reports how full a tank is (0-100 %)",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
         id: "Board-SBC",
         kind: DeviceKind::Iot,
         label: "Board SBC",
@@ -492,6 +555,15 @@ pub static MODULES: &[Module] = &[
         switched: false,
     },
     Module {
+        id: "Card-2FE",
+        label: "2-port Fast Ethernet card",
+        description: "Two routed Fast Ethernet ports",
+        port_type: "FastEthernet",
+        port_count: 2,
+        medium: None,
+        switched: false,
+    },
+    Module {
         id: "Card-1GF",
         label: "1-port Gigabit fiber card",
         description: "One routed Gigabit Ethernet fiber (SFP) port",
@@ -527,7 +599,7 @@ impl Model {
     /// The module bays of a modular router, in order (`0/0`, `0/1`…); empty for fixed models.
     pub fn slots(&self) -> &'static [&'static str] {
         match self.id {
-            "Router-M2" => &["0/0", "0/1"],
+            "Router-M2" | "Router-MF2" => &["0/0", "0/1"],
             "Router-M3" => &["0/0", "0/1", "0/2", "0/3"],
             _ => &[],
         }
@@ -568,6 +640,8 @@ impl Model {
             "Home-Gateway" => Some("Gateway"),
             "Cell-Tower" => Some("Tower"),
             "Central-Office" => Some("CO"),
+            "Sniffer" => Some("Sniffer"),
+            "IoT-TV" | "IoT-TVE" => Some("TV"),
             "Tablet" => Some("Tablet"),
             "Smartphone" => Some("Smartphone"),
             "Board-SBC" | "Board-MCU" => Some("Board"),
@@ -634,7 +708,12 @@ impl Model {
 
     /// Whether the model has an RS-232 serial port for a console cable (PCs and laptops).
     pub fn has_rs232(&self) -> bool {
-        matches!(self.kind, DeviceKind::Pc | DeviceKind::Laptop) && !self.touch()
+        matches!(self.kind, DeviceKind::Pc | DeviceKind::Laptop) && !self.touch() && !self.sniffer()
+    }
+
+    /// A sniffer: a host-kind device that only records the frames reaching its port.
+    pub fn sniffer(&self) -> bool {
+        self.id == "Sniffer"
     }
 
     /// A touch-screen device (a tablet or a smartphone): Wi-Fi only, a touch desktop, no serial
@@ -714,5 +793,25 @@ mod tests {
             assert_eq!(m.name_prefix(), Some(id));
         }
         assert!(!find("Laptop-WiFi").unwrap().touch() && find("Laptop-WiFi").unwrap().has_rs232());
+    }
+
+    #[test]
+    fn the_newer_routers_and_end_devices_have_the_ports_a_lab_expects() {
+        assert_eq!(find("Router 2FE").unwrap().port_names(), ["FastEthernet0/0", "FastEthernet0/1"]);
+        assert_eq!(find("Router-FE2S").unwrap().port_names(), ["FastEthernet0/0", "FastEthernet0/1", "Serial0/0/0", "Serial0/0/1"]);
+        assert_eq!(find("Router 3GE+2S").unwrap().port_names().len(), 5);
+        assert_eq!(find("Router-FE2S").unwrap().port_medium("Serial0/0/1"), Some(Medium::Serial));
+        assert_eq!(find("Modular Router 2FE").unwrap().slots(), ["0/0", "0/1"]);
+        assert_eq!(module("Card-2FE").unwrap().port_names("0/1"), ["FastEthernet0/1/0", "FastEthernet0/1/1"]);
+        let sniffer = find("Sniffer").unwrap();
+        assert!(sniffer.sniffer() && !sniffer.has_rs232() && !sniffer.has_console());
+        assert_eq!(sniffer.kind, DeviceKind::Pc);
+        assert_eq!(find("Smart TV").unwrap().port_medium("Wireless0"), Some(Medium::Wireless));
+        assert_eq!(find("Wired Smart TV").unwrap().port_medium("FastEthernet0"), Some(Medium::Copper));
+        for id in ["IoT-TV", "IoT-TVE", "IoT-Speaker"] {
+            assert!(crate::iot::thing_of(id).is_some_and(|t| !t.sensor), "{id} is switched on and off");
+            assert_eq!(find(id).map(|m| m.kind), Some(DeviceKind::Iot));
+        }
+        assert!(crate::iot::thing_of("IoT-Water").is_some_and(|t| t.sensor), "the water level sensor reports a reading");
     }
 }

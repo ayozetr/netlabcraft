@@ -1,6 +1,6 @@
 # Model equivalents
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (cellular radio on Tablet and Smartphone, Cell Tower and Central Office Server) · earlier: minor (Tablet, Smartphone, ten Wi-Fi IoT things, Board SBC and Board MCU; power-supply bays) · **Target:** CCNA course labs
+> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (smart TVs, a sniffer, a smart speaker, a water level sensor and four more router models) · earlier: minor (cellular radio on Tablet and Smartphone, Cell Tower and Central Office Server) · earlier: minor (Tablet, Smartphone, ten Wi-Fi IoT things, Board SBC and Board MCU; power-supply bays) · **Target:** CCNA course labs
 
 Course labs name specific vendor models. NetLabCraft's models are its own, named after their
 ports (`GE` Gigabit Ethernet, `FE` Fast Ethernet, `S` serial), and never carry vendor names
@@ -13,7 +13,7 @@ Lab files keep the stable model id (second column); the workspace shows the name
 column). Commands accept either: `device.add {"model": "Router 3GE"}` or `{"model": "Router-3"}`.
 
 Routers and switches have one or two power-supply bays at the back with one supply fitted from
-the factory (`device.psu`; the Router 2GE, Router 2GE+2S, Modular Router 2GE, Firewall 5GE,
+the factory (`device.psu`; the Router 2GE, Router 2GE+2S, Router 2FE, Router 2FE+2S, Modular Router 2GE, Modular Router 2FE, Firewall 5GE,
 Switch 8FE, Switch 8FE PoE and WLC have one bay, the other routers and switches two). Where a
 lab has students fit a redundant supply, use a two-bay model.
 
@@ -22,12 +22,17 @@ lab has students fit a redundant supply, use a two-bay model.
 | Router 2GE | `Router-2` | 1941, 2901, ISR 4321 | `GigabitEthernet0/0–0/1` | A 4321 names its ports `0/0/0–0/0/1`. |
 | Router 3GE | `Router-3` | 2911, ISR 4331 | `GigabitEthernet0/0–0/2` | The usual CCNA router. A 4331 names its ports `0/0/0–0/0/2`. |
 | Router 4GE | `Router-4` | Routers with four Gigabit ports | `GigabitEthernet0/0–0/3` | |
+| Router 2FE | `Router-FE2` | 2621XM; 1841 or 2811 with no card fitted | `FastEthernet0/0–0/1` | The Fast Ethernet routers of older CCNA labs. |
+| Router 2FE+2S | `Router-FE2S` | 1841 or 2811 with a 2-port serial card (HWIC-2T) | `FastEthernet0/0–0/1`, `Serial0/0/0–0/0/1` | Serial ports are fitted from the start. |
+| Router 3GE+2S | `Router-WAN3` | 2911 with a 2-port serial card (HWIC-2T) | `GigabitEthernet0/0–0/2`, `Serial0/0/0–0/0/1` | Serial ports are fitted from the start. |
 | Firewall 5GE | `Firewall-5` | ASA 5506-X | `GigabitEthernet1/1–1/5` | Firewall commands (`nameif`, `security-level`, object NAT). A 5506-X has eight ports (`1/1–1/8`): use the first five. |
 | Modular Router 2GE | `Router-M2` | 1941 with its module bays | `GigabitEthernet0/0–0/1`, cards in bays `0/0–0/1` | Fit cards in its Physical tab with the power off. |
+| Modular Router 2FE | `Router-MF2` | 1841 with its card slots | `FastEthernet0/0–0/1`, cards in bays `0/0–0/1` | Fit cards in its Physical tab with the power off. |
 | Modular Router 3GE | `Router-M3` | 2911 with its module bays | `GigabitEthernet0/0–0/2`, cards in bays `0/0–0/3` | |
 | 2-port Serial card | `Card-2S` | HWIC-2T | `Serial0/B/0–0/B/1` (B = bay) | |
 | 4-port Serial card | `Card-4S` | HWIC-4T | `Serial0/B/0–0/B/3` | |
 | 1-port Gigabit card | `Card-1GE` | EHWIC-1GE-SFP-CU | `GigabitEthernet0/B/0` | |
+| 2-port Fast Ethernet card | `Card-2FE` | HWIC-2FE | `FastEthernet0/B/0–0/B/1` | Two routed ports. |
 | 1-port Gigabit fiber card | `Card-1GF` | SFP-based Gigabit cards | `GigabitEthernet0/B/0` (fiber) | |
 | 1-port Fast Ethernet card | `Card-1FE` | HWIC-1FE | `FastEthernet0/B/0` | |
 | 4-port switch card | `Card-4SW` | HWIC-4ESW, EHWIC-4ESG | `FastEthernet0/B/0–0/B/3` | Layer-2 ports inside the router: VLANs, `switchport access\|trunk`, routed through `interface vlan N`. |
@@ -54,6 +59,7 @@ lab has students fit a redundant supply, use a two-bay model.
 | Smartphone | `Smartphone` | SMARTPHONE-PT | `Wireless0`, `Cellular0` | Wi-Fi, or mobile data through a cell tower (Wi-Fi is preferred when connected); a touch home screen with the Desktop's apps. |
 | Cell Tower | `Cell-Tower` | Cell Tower | `Cellular0–5` (sectors), `Ethernet0` (backhaul) | A radio with a coverage range; mobile devices in range attach to it. |
 | Central Office Server | `Central-Office` | Central Office Server | `GigabitEthernet0/0–2` | The provider's data service: admits attached mobile devices, gives each an address from its pool and routes them to the lab (`cellular pool\|apn\|data-plan`). |
+| Sniffer | `Sniffer` | Sniffer | `FastEthernet0` | Records every frame that reaches its port and shows them in its Capture tab; answers nothing. Behind a hub it hears everything; behind a switch only broadcasts, multicasts and flooded frames (no port mirroring yet). |
 | Wi-Fi Laptop | `Laptop-WiFi` | Laptop-PT with a wireless card | `Wireless0` | |
 | IP Phone | `IP-Phone` | 7960 | `FastEthernet0` (network), `FastEthernet1` (PC) | Registers with `telephony-service` on a router, or, set to SIP (Signal with SIP, `phone.configure`), with `voice register`. Needs a PoE switch port or its power adapter. |
 | Smart Sensor | `IoT-Sensor` | The temperature monitor among the course's IoT things | `FastEthernet0` | Reports to a server's IoT service or a Home Gateway. |
@@ -72,6 +78,10 @@ lab has students fit a redundant supply, use a two-bay model.
 | Soil Moisture Sensor | `IoT-Soil` | The course's soil moisture sensor | `Wireless0` | Reports % moisture. |
 | Lawn Sprinkler | `IoT-Sprinkler` | The course's lawn sprinkler | `Wireless0` | Waters while on. |
 | CO Detector | `IoT-CO` | The course's carbon monoxide detector | `Wireless0` | Reports ppm CO. |
+| Smart TV | `IoT-TV` | TV-PT, over Wi-Fi | `Wireless0` | Registers with the IoT service, which switches it on (playing) and off (standby). Joins the home gateway's `HomeNetwork` when placed. |
+| Wired Smart TV | `IoT-TVE` | TV-PT, on a cable | `FastEthernet0` | As the Smart TV, on Ethernet. |
+| Smart Speaker | `IoT-Speaker` | The course's home speaker | `Wireless0` | Plays while on. |
+| Water Level Sensor | `IoT-Water` | The course's water level monitor | `Wireless0` | Reports % of a tank filled. |
 | Smart Plug | `IoT-Plug` | The course's power outlet | `Wireless0` | Powered while on. |
 | Garage Door | `IoT-Garage` | The course's garage door | `Wireless0` | On opens, off closes. |
 | Board SBC | `Board-SBC` | SBC boards | `FastEthernet0`, pins `D0–D7`, `A0–A3` | Runs BoardScript, not Python or JavaScript: course programs have to be written again in it. IoT custom cables join pins to things. |
@@ -79,9 +89,8 @@ lab has students fit a redundant supply, use a two-bay model.
 | Server | `Server` | Server-PT | `GigabitEthernet0` | |
 | Printer | `Printer` | Printer-PT | `FastEthernet0` | |
 
-Models a lab names that have no equivalent yet (the cellular network for smartphones, cell
-towers and the central office; TVs, a sniffer and other end devices) are listed in
-[hardware-parity.md](hardware-parity.md).
+Models a lab names that have no equivalent yet (analog phones and PDAs, routers with other port
+mixes or built-in radios) are listed in [hardware-parity.md](hardware-parity.md).
 
 Cisco, Catalyst, ISR and Packet Tracer are trademarks of Cisco Systems, Inc. NetLabCraft is an
 independent project, not affiliated with or endorsed by Cisco.
@@ -90,6 +99,7 @@ independent project, not affiliated with or endorsed by Cisco.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-15 | minor | Router 2FE, Router 2FE+2S, Router 3GE+2S, Modular Router 2FE and the 2-port Fast Ethernet card; Sniffer; Smart TV, Wired Smart TV, Smart Speaker and Water Level Sensor; the "no equivalent yet" list brought up to date. |
 | 2026-11-13 | minor | Cellular radio on Tablet and Smartphone; Cell Tower and Central Office Server rows. |
 | 2026-10-31 | minor | Tablet and Smartphone, ten Wi-Fi IoT things, Board SBC and Board MCU (BoardScript, not Python or JavaScript); power-supply bays per model; the "no equivalent yet" list now names cellular, TVs and the sniffer. |
 | 2026-10-30 | minor | 4-port switch card, the two PoE switches, Home Gateway, Cloud, DSL and cable modems, six more IoT things; IP Phone with SIP and power; the "no equivalent yet" list brought up to date. |

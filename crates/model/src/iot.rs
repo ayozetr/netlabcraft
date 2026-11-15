@@ -232,6 +232,9 @@ pub fn thing_of(model_id: &str) -> Option<Thing> {
         "IoT-CO" => t("co", true, "ppm CO", "", ""),
         "IoT-Plug" => t("plug", false, "", "powered", "off"),
         "IoT-Garage" => t("garage", false, "", "open", "closed"),
+        "IoT-TV" | "IoT-TVE" => t("tv", false, "", "playing", "standby"),
+        "IoT-Speaker" => t("speaker", false, "", "playing", "quiet"),
+        "IoT-Water" => t("water level", true, "% level", "", ""),
         _ => None,
     }
 }
