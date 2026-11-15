@@ -27,6 +27,7 @@ mod credits;
 mod events;
 pub mod fonts;
 mod hardware;
+mod host_apps;
 pub mod i18n;
 pub mod icons;
 pub mod icons_families;
@@ -212,7 +213,8 @@ pub fn open_console(app: &mut PacketApp, d: DeviceId) {
 }
 
 /// Opens a host's Desktop: `"prompt"`, `"ip"` (IP Configuration), `"email"`, `"mib"`, `"terminal"`,
-/// `"programming"` or the tiles (anything else).
+/// `"programming"`, `"telnet"` (Telnet/SSH Client), `"editor"` (Text Editor), `"firewall"`, `"firewall6"` or the tiles
+/// (anything else).
 pub fn open_desktop_app(app: &mut PacketApp, d: DeviceId, which: &str) {
     console::open(app, d);
     if let Some(w) = app.ui.windows.get_mut(&d) {
@@ -225,6 +227,10 @@ pub fn open_desktop_app(app: &mut PacketApp, d: DeviceId, which: &str) {
             "terminal" => Some(console::DesktopApp::Terminal),
             "programming" => Some(console::DesktopApp::Programming),
             "settings" => Some(console::DesktopApp::Settings),
+            "telnet" => Some(console::DesktopApp::TelnetSsh),
+            "editor" => Some(console::DesktopApp::TextEditor),
+            "firewall" => Some(console::DesktopApp::Firewall),
+            "firewall6" => Some(console::DesktopApp::Firewall6),
             _ => None,
         };
     }

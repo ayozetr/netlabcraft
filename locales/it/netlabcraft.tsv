@@ -1537,3 +1537,30 @@ event	update	aggiornamento
 event	version	versione
 event	who has	chi ha
 event	write request for	richiesta di scrittura di
+	Telnet/SSH Client	Client Telnet/SSH
+	Text Editor	Editor di testo
+	Firewall	Firewall
+	IPv6 Firewall	Firewall IPv6
+	Host address or name	Indirizzo o nome dell'host
+	Enter a host address or name.	Inserisci l'indirizzo o il nome di un host.
+	Enter a user name for SSH.	Inserisci un nome utente per SSH.
+	A session is open: type exit in the window below to close it.	Una sessione è aperta: digita exit nella finestra sotto per chiuderla.
+	File name	Nome del file
+	{} of {} bytes	{} di {} byte
+	No files yet. Type a name and some text, then press Save.	Ancora nessun file. Scrivi un nome e un testo, poi premi Salva.
+	Deleted {}	{} eliminato
+	Direction	Direzione
+	Inbound	In entrata
+	Action	Azione
+	Allow	Consenti
+	Deny	Nega
+	Port	Porta
+	Any	Qualsiasi
+	Remote address	Indirizzo remoto
+	Move up	Sposta su
+	Move down	Sposta giù
+	Any, or an address such as 2001:db8::/32	Qualsiasi, o un indirizzo come 2001:db8::/32
+	Any, or an address such as 10.0.0.0/24	Qualsiasi, o un indirizzo come 10.0.0.0/24
+	Any, one port or a range such as 1000-2000	Qualsiasi, una porta o un intervallo come 1000-2000
+	No rules yet. While the firewall is on, everything that is not allowed is blocked.	Ancora nessuna regola. Con il firewall attivo, tutto ciò che non è consentito viene bloccato.
+	With the firewall on, the first rule that matches decides and what no rule matches is blocked. Replies to what this computer sent always get through.	Con il firewall attivo decide la prima regola che corrisponde, e ciò che non corrisponde a nessuna viene bloccato. Le risposte a ciò che questo computer ha inviato passano sempre.

@@ -26,6 +26,7 @@ mod controller;
 mod families;
 mod hardware;
 pub mod home;
+mod hostapps;
 pub mod instructor;
 mod iot;
 mod netconf;
@@ -40,6 +41,8 @@ mod tests;
 mod tests_cell;
 #[cfg(test)]
 mod tests_families;
+#[cfg(test)]
+mod tests_hostapps;
 #[cfg(test)]
 mod tests_instructor;
 #[cfg(test)]

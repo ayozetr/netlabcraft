@@ -1537,3 +1537,30 @@ event	update	更新
 event	version	版本
 event	who has	谁有
 event	write request for	写请求
+	Telnet/SSH Client	Telnet/SSH 客户端
+	Text Editor	文本编辑器
+	Firewall	防火墙
+	IPv6 Firewall	IPv6 防火墙
+	Host address or name	主机地址或名称
+	Enter a host address or name.	请输入主机地址或名称。
+	Enter a user name for SSH.	请输入 SSH 的用户名。
+	A session is open: type exit in the window below to close it.	会话已打开：在下方窗口中输入 exit 可将其关闭。
+	File name	文件名
+	{} of {} bytes	{} / {} 字节
+	No files yet. Type a name and some text, then press Save.	还没有文件。输入名称和文本，然后点击“保存”。
+	Deleted {}	已删除 {}
+	Direction	方向
+	Inbound	入站
+	Action	动作
+	Allow	允许
+	Deny	拒绝
+	Port	端口
+	Any	任意
+	Remote address	远程地址
+	Move up	上移
+	Move down	下移
+	Any, or an address such as 2001:db8::/32	任意，或如 2001:db8::/32 的地址
+	Any, or an address such as 10.0.0.0/24	任意，或如 10.0.0.0/24 的地址
+	Any, one port or a range such as 1000-2000	任意，单个端口或如 1000-2000 的范围
+	No rules yet. While the firewall is on, everything that is not allowed is blocked.	还没有规则。防火墙开启时，所有未被允许的流量都会被阻止。
+	With the firewall on, the first rule that matches decides and what no rule matches is blocked. Replies to what this computer sent always get through.	防火墙开启时，由第一条匹配的规则决定，未匹配任何规则的流量会被阻止。对本机所发数据的回复始终放行。

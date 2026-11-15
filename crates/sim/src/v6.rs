@@ -344,6 +344,10 @@ impl Sim {
     }
 
     fn local6_in(&mut self, t: &Topology, d: &Device, ifc: &L3If6, src_mac: MacAddr, ip: Ipv6) -> Result<(), String> {
+        if crate::hostfw::blocks6(d, &ip) {
+            self.bump(d.id, "dropped by the firewall");
+            return Err(format!("dropped by this device's firewall (from {})", ip.src));
+        }
         if ip.next_header == netlabcraft_wire::PROTO_UDP {
             return self.udp6_in(t, d, ifc, ip);
         }

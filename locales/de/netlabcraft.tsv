@@ -1537,3 +1537,30 @@ event	update	Update
 event	version	Version
 event	who has	wer hat
 event	write request for	Schreibanfrage für
+	Telnet/SSH Client	Telnet/SSH-Client
+	Text Editor	Texteditor
+	Firewall	Firewall
+	IPv6 Firewall	IPv6-Firewall
+	Host address or name	Hostadresse oder -name
+	Enter a host address or name.	Gib eine Hostadresse oder einen Hostnamen ein.
+	Enter a user name for SSH.	Gib einen Benutzernamen für SSH ein.
+	A session is open: type exit in the window below to close it.	Eine Sitzung ist geöffnet: Gib im Fenster darunter exit ein, um sie zu beenden.
+	File name	Dateiname
+	{} of {} bytes	{} von {} Bytes
+	No files yet. Type a name and some text, then press Save.	Noch keine Dateien. Gib einen Namen und einen Text ein und drücke auf Speichern.
+	Deleted {}	{} gelöscht
+	Direction	Richtung
+	Inbound	Eingehend
+	Action	Aktion
+	Allow	Zulassen
+	Deny	Verweigern
+	Port	Port
+	Any	Beliebig
+	Remote address	Remote-Adresse
+	Move up	Nach oben
+	Move down	Nach unten
+	Any, or an address such as 2001:db8::/32	Beliebig oder eine Adresse wie 2001:db8::/32
+	Any, or an address such as 10.0.0.0/24	Beliebig oder eine Adresse wie 10.0.0.0/24
+	Any, one port or a range such as 1000-2000	Beliebig, ein Port oder ein Bereich wie 1000-2000
+	No rules yet. While the firewall is on, everything that is not allowed is blocked.	Noch keine Regeln. Solange die Firewall eingeschaltet ist, wird alles blockiert, was nicht erlaubt ist.
+	With the firewall on, the first rule that matches decides and what no rule matches is blocked. Replies to what this computer sent always get through.	Bei eingeschalteter Firewall entscheidet die erste passende Regel; was auf keine Regel passt, wird blockiert. Antworten auf das, was dieser Computer gesendet hat, kommen immer durch.

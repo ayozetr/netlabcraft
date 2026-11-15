@@ -24,6 +24,7 @@ pub mod fhrp;
 pub mod file;
 pub mod firewall;
 pub mod hardware;
+pub mod hostfw;
 pub mod ifname;
 pub mod iot;
 pub mod l2sec;
@@ -982,6 +983,9 @@ pub struct Device {
     /// The firewall appliance: named interfaces, security levels, objects, rules and NAT.
     #[serde(default, skip_serializing_if = "firewall::Firewall::is_default")]
     pub firewall: firewall::Firewall,
+    /// End devices: the Firewall app's IPv4 and IPv6 rule lists (see [`hostfw`]).
+    #[serde(default, skip_serializing_if = "hostfw::HostFw::is_default")]
+    pub host_fw: hostfw::HostFw,
     /// Modular routers: the card in each bay (bay `0/1` → module id), see [`hardware`].
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub modules: BTreeMap<String, String>,
@@ -1875,6 +1879,7 @@ impl Device {
             qos: qos::Qos::default(),
             wlan: wlan::WlanConf::default(),
             firewall: firewall::Firewall::default(),
+            host_fw: hostfw::HostFw::default(),
             modules: BTreeMap::new(),
             powered_off: false,
             adapter: poe::needs_power(model).then_some(false),
@@ -2549,6 +2554,8 @@ impl Topology {
                 d.qos.sanitize();
                 d.security.sanitize();
                 d.firewall.sanitize();
+                d.host_fw.sanitize();
+                services::sanitize_host_files(&mut d.files);
                 d.sanitize_modules();
                 d.sanitize_bridges();
                 d.voice.sanitize();

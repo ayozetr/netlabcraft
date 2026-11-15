@@ -1540,3 +1540,30 @@ event	Cell attach request	CELL solicitud de conexión
 event	Cell attach accept	CELL conexión aceptada
 event	Cell attach reject	CELL conexión rechazada
 event	no APN	sin APN
+	Telnet/SSH Client	Cliente Telnet/SSH
+	Text Editor	Editor de texto
+	Firewall	Cortafuegos
+	IPv6 Firewall	Cortafuegos IPv6
+	Host address or name	Dirección o nombre del host
+	Enter a host address or name.	Escribe la dirección o el nombre de un host.
+	Enter a user name for SSH.	Escribe un nombre de usuario para SSH.
+	A session is open: type exit in the window below to close it.	Hay una sesión abierta: escribe exit en la ventana de abajo para cerrarla.
+	File name	Nombre del archivo
+	{} of {} bytes	{} de {} bytes
+	No files yet. Type a name and some text, then press Save.	Aún no hay archivos. Escribe un nombre y un texto y pulsa Guardar.
+	Deleted {}	Eliminado {}
+	Direction	Dirección
+	Inbound	Entrante
+	Action	Acción
+	Allow	Permitir
+	Deny	Denegar
+	Port	Puerto
+	Any	Cualquiera
+	Remote address	Dirección remota
+	Move up	Subir
+	Move down	Bajar
+	Any, or an address such as 2001:db8::/32	Cualquiera, o una dirección como 2001:db8::/32
+	Any, or an address such as 10.0.0.0/24	Cualquiera, o una dirección como 10.0.0.0/24
+	Any, one port or a range such as 1000-2000	Cualquiera, un puerto o un rango como 1000-2000
+	No rules yet. While the firewall is on, everything that is not allowed is blocked.	Aún no hay reglas. Mientras el cortafuegos esté activado, se bloquea todo lo que no esté permitido.
+	With the firewall on, the first rule that matches decides and what no rule matches is blocked. Replies to what this computer sent always get through.	Con el cortafuegos activado, decide la primera regla que coincida y se bloquea lo que no coincide con ninguna. Las respuestas a lo que envió este equipo siempre pasan.
