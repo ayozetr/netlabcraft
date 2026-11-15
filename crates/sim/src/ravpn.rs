@@ -414,10 +414,9 @@ impl Sim {
             .find(|(n, _)| crate::vpn::same_name(n, &ifc.name))
             .map(|(_, m)| m.clone())
             .ok_or_else(|| (4u8, format!("no crypto map is applied to {}", ifc.name)))?;
-        let dynamic = crypto
-            .map(&map)
-            .find_map(|e| e.dynamic_ref.clone())
-            .ok_or_else(|| (4u8, format!("crypto map {map} has no entry that uses a dynamic map (`crypto map {map} 10 ipsec-isakmp dynamic NAME`)")))?;
+        let dynamic = crypto.map(&map).find_map(|e| e.dynamic_ref.clone()).ok_or_else(|| {
+            (4u8, format!("crypto map {map} has no entry that uses a dynamic map (`crypto map {map} 10 ipsec-isakmp dynamic NAME`)"))
+        })?;
         let ts_name = crypto
             .map(&dynamic)
             .find(|e| e.template)
