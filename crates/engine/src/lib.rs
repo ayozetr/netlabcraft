@@ -31,6 +31,8 @@ pub mod instructor;
 mod iot;
 mod netconf;
 mod pdu;
+mod pppoe;
+mod traffic;
 mod voice;
 
 pub mod sample;
@@ -46,7 +48,11 @@ mod tests_hostapps;
 #[cfg(test)]
 mod tests_instructor;
 #[cfg(test)]
+mod tests_pppoe;
+#[cfg(test)]
 mod tests_swroute;
+#[cfg(test)]
+mod tests_traffic;
 
 pub use catalog::{CATALOG, CommandInfo};
 pub use netlabcraft_core::DeviceId;
@@ -118,6 +124,8 @@ pub struct Session {
     pub physical: bool,
     /// The place the physical view shows (none: the Intercity map). A view.
     pub place_view: Option<u32>,
+    /// The last burst each device's Traffic Generator sent (not part of the lab).
+    pub(crate) traffic: BTreeMap<DeviceId, traffic::TrafficRun>,
 }
 
 impl Session {

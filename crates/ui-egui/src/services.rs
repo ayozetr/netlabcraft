@@ -24,6 +24,7 @@ pub enum Page {
     Aaa,
     Ftp,
     Email,
+    Pppoe,
 }
 
 /// Form state of the Services tab and the browser, per device window.
@@ -52,6 +53,12 @@ pub struct ServiceForms {
     ftp_perms: [bool; 4],
     mail_user: String,
     mail_password: String,
+    pppoe_start: String,
+    pppoe_size: String,
+    pppoe_user: String,
+    pppoe_password: String,
+    /// The pool fields hold what the server has (filled in when the page first shows).
+    pppoe_synced: bool,
     // Browser.
     pub url: String,
     /// Press Go on the next frame.
@@ -129,6 +136,7 @@ pub fn tab(app: &mut PacketApp, ui: &mut Ui, dev: &Device, forms: &mut ServiceFo
                     (Page::Aaa, "AAA"),
                     (Page::Ftp, "FTP"),
                     (Page::Email, "EMAIL"),
+                    (Page::Pppoe, "PPPOE"),
                 ] {
                     if crate::console::list_item(ui, name, forms.page == p, false).clicked() {
                         forms.page = p;
@@ -149,6 +157,7 @@ pub fn tab(app: &mut PacketApp, ui: &mut Ui, dev: &Device, forms: &mut ServiceFo
                 Page::Aaa => aaa(app, ui, d, &dev.services, forms),
                 Page::Ftp => ftp(app, ui, d, &dev.services, forms),
                 Page::Email => email(app, ui, d, &dev.services, forms),
+                Page::Pppoe => pppoe(app, ui, d, &dev.services, forms),
             });
         });
     });
@@ -756,6 +765,77 @@ fn aaa(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mut
         }
         if let Some(i) = remove {
             new.aaa.users.remove(i);
+            changed = true;
+        }
+    });
+    if changed {
+        apply(app, d, &new);
+    }
+}
+
+fn pppoe(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mut ServiceForms) {
+    use netlabcraft_model::PppAuth;
+    use netlabcraft_model::pppoe::PppoeUser;
+    let tk = theme::tokens(app.ui.dark);
+    ui.vertical_centered(|ui| ui.label(RichText::new(tl("PPPoE")).size(16.0)));
+    ui.separator();
+    if !forms.pppoe_synced {
+        forms.pppoe_synced = true;
+        if !sv.pppoe.pool_start.is_unspecified() {
+            forms.pppoe_start = sv.pppoe.pool_start.to_string();
+        }
+        if sv.pppoe.pool_size > 0 {
+            forms.pppoe_size = sv.pppoe.pool_size.to_string();
+        }
+    }
+    let mut new = sv.clone();
+    let mut changed = on_off(ui, tl("PPPoE Service"), &mut new.pppoe.on);
+    ui.horizontal(|ui| {
+        crate::console::form_label(ui, tl("Authentication"), crate::console::LABEL_W);
+        changed |= ui.radio_value(&mut new.pppoe.auth, PppAuth::Chap, "CHAP").changed();
+        changed |= ui.radio_value(&mut new.pppoe.auth, PppAuth::Pap, "PAP").changed();
+    });
+    ui.separator();
+    field(ui, tl("Pool start address"), &mut forms.pppoe_start);
+    field(ui, tl("Pool size"), &mut forms.pppoe_size);
+    ui.label(RichText::new(tl("The pool must be on the subnet of the server's port that the cable reaches.")).color(tk.muted));
+    if ui.button(tl("Save")).clicked() {
+        match (forms.pppoe_start.trim().parse::<Ipv4Addr>(), forms.pppoe_size.trim().parse::<u32>()) {
+            (Ok(start), Ok(size)) => {
+                new.pppoe.pool_start = start;
+                new.pppoe.pool_size = size;
+                changed = true;
+            }
+            (Err(_), _) => app.ui.status = Some((crate::i18n::trf("`{}` is not an IPv4 address", &[&forms.pppoe_start.trim()]), true)),
+            (_, Err(_)) => app.ui.status = Some((tl("The pool size is a whole number.").into(), true)),
+        }
+    }
+    ui.separator();
+    ui.label(RichText::new(tl("Users")).strong());
+    field(ui, tl("Username"), &mut forms.pppoe_user);
+    field(ui, tl("Password"), &mut forms.pppoe_password);
+    if ui.button(tl("Add user")).clicked() && !forms.pppoe_user.trim().is_empty() {
+        let name = forms.pppoe_user.trim().to_string();
+        new.pppoe.users.retain(|u| u.name != name);
+        new.pppoe.users.push(PppoeUser { name, password: forms.pppoe_password.clone() });
+        changed = true;
+    }
+    egui::Grid::new(("pppoe_users", d.0)).striped(true).show(ui, |ui| {
+        for h in ["Username", "Password", ""] {
+            ui.strong(crate::i18n::tr(h));
+        }
+        ui.end_row();
+        let mut remove = None;
+        for (i, u) in new.pppoe.users.iter().enumerate() {
+            ui.label(&u.name);
+            ui.label(&u.password);
+            if ui.small_button(tl("Remove")).clicked() {
+                remove = Some(i);
+            }
+            ui.end_row();
+        }
+        if let Some(i) = remove {
+            new.pppoe.users.remove(i);
             changed = true;
         }
     });

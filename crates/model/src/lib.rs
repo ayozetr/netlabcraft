@@ -33,6 +33,7 @@ pub mod models;
 pub mod physical;
 pub mod pki;
 pub mod poe;
+pub mod pppoe;
 pub mod psu;
 pub mod qos;
 pub mod routing;
@@ -986,6 +987,9 @@ pub struct Device {
     /// End devices: the Firewall app's IPv4 and IPv6 rule lists (see [`hostfw`]).
     #[serde(default, skip_serializing_if = "hostfw::HostFw::is_default")]
     pub host_fw: hostfw::HostFw,
+    /// End devices: the PPPoE Dialer's account and session (see [`pppoe`]).
+    #[serde(default, skip_serializing_if = "pppoe::PppoeClient::is_default")]
+    pub pppoe: pppoe::PppoeClient,
     /// Modular routers: the card in each bay (bay `0/1` → module id), see [`hardware`].
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub modules: BTreeMap<String, String>,
@@ -1880,6 +1884,7 @@ impl Device {
             wlan: wlan::WlanConf::default(),
             firewall: firewall::Firewall::default(),
             host_fw: hostfw::HostFw::default(),
+            pppoe: pppoe::PppoeClient::default(),
             modules: BTreeMap::new(),
             powered_off: false,
             adapter: poe::needs_power(model).then_some(false),
@@ -2555,6 +2560,8 @@ impl Topology {
                 d.security.sanitize();
                 d.firewall.sanitize();
                 d.host_fw.sanitize();
+                d.pppoe.sanitize();
+                d.services.pppoe.sanitize();
                 services::sanitize_host_files(&mut d.files);
                 d.sanitize_modules();
                 d.sanitize_bridges();

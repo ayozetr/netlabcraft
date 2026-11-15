@@ -213,8 +213,8 @@ pub fn open_console(app: &mut PacketApp, d: DeviceId) {
 }
 
 /// Opens a host's Desktop: `"prompt"`, `"ip"` (IP Configuration), `"email"`, `"mib"`, `"terminal"`,
-/// `"programming"`, `"telnet"` (Telnet/SSH Client), `"editor"` (Text Editor), `"firewall"`, `"firewall6"` or the tiles
-/// (anything else).
+/// `"programming"`, `"telnet"` (Telnet/SSH Client), `"editor"` (Text Editor), `"firewall"`, `"firewall6"`,
+/// `"traffic"` (Traffic Generator), `"pppoe"` (PPPoE Dialer) or the tiles (anything else).
 pub fn open_desktop_app(app: &mut PacketApp, d: DeviceId, which: &str) {
     console::open(app, d);
     if let Some(w) = app.ui.windows.get_mut(&d) {
@@ -231,6 +231,8 @@ pub fn open_desktop_app(app: &mut PacketApp, d: DeviceId, which: &str) {
             "editor" => Some(console::DesktopApp::TextEditor),
             "firewall" => Some(console::DesktopApp::Firewall),
             "firewall6" => Some(console::DesktopApp::Firewall6),
+            "traffic" => Some(console::DesktopApp::TrafficGenerator),
+            "pppoe" => Some(console::DesktopApp::PppoeDialer),
             _ => None,
         };
     }
@@ -256,7 +258,7 @@ pub fn open_services_tab(app: &mut PacketApp, d: DeviceId) {
 }
 
 /// Opens a server's Services tab on one page (`http`, `dhcp`, `dns`, `syslog`, `ntp`, `tftp`,
-/// `aaa`).
+/// `aaa`, `ftp`, `email`, `pppoe`).
 pub fn open_services_page(app: &mut PacketApp, d: DeviceId, page: &str) {
     use services::Page;
     open_services_tab(app, d);
@@ -269,6 +271,7 @@ pub fn open_services_page(app: &mut PacketApp, d: DeviceId, page: &str) {
         "aaa" => Page::Aaa,
         "ftp" => Page::Ftp,
         "email" => Page::Email,
+        "pppoe" => Page::Pppoe,
         _ => Page::Http,
     };
     if let Some(w) = app.ui.windows.get_mut(&d) {

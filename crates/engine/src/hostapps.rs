@@ -29,7 +29,7 @@ pub(crate) fn run(s: &mut Session, id: &str, p: &Value) -> Option<Result<Value>>
 }
 
 /// The device the app runs on: a PC, laptop or server.
-fn desktop_device(s: &Session, p: &Value) -> Result<netlabcraft_core::DeviceId> {
+pub(crate) fn desktop_device(s: &Session, p: &Value) -> Result<netlabcraft_core::DeviceId> {
     let d = device_param(s, p, "device")?;
     if !s.topology.device(d).is_some_and(|x| x.has_desktop_apps()) {
         return Err(bad("this app runs on PCs, laptops and servers"));

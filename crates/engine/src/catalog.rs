@@ -81,6 +81,46 @@ pub static CATALOG: &[CommandInfo] = &[
         true
     ),
     c!(
+        "traffic.send",
+        "Send traffic",
+        "",
+        None,
+        r#"{"device": PC, laptop or server, "to": "address or device name", "protocol"?: "icmp" (default), "udp" or "tcp", "port"?: 1-65535 (required for udp and tcp), "size"?: 0-1400 bytes (icmp and udp payload; default 32), "count"?: 1-100 (default 4), "interval"?: 0-5 simulated seconds between packets (default 1)} → {"sent", "received", "lost", "results": [{"n", "ok", "note", "at"}], …}: sends the packets one after another as PDUs (the same path, firewalls and access lists as pdu.complex) and returns when the last one is answered or has timed out; no packet is answered for a closed port or a blocked path"#,
+        false
+    ),
+    c!(
+        "traffic.status",
+        "Traffic Generator results",
+        "",
+        None,
+        r#"{"device": PC, laptop or server} → the last burst the device sent, as traffic.send answers, or {"ran": false, "max_count", "max_interval", "max_size"} when it has sent none"#,
+        false
+    ),
+    c!(
+        "pppoe.connect",
+        "PPPoE connect",
+        "",
+        None,
+        r#"{"device": PC, laptop or server, "username"?: account name, "password"?: text (both default to the ones last used)} → {"state", "connected", "server", "address", "mask", "gateway", "auth", …}: the device's first port must be cabled straight to a server whose PPPoE service is on; the server checks the account with PAP or CHAP and gives the first free address of its pool, with its own address as the default gateway. Fails when no server answers, the account is refused or the pool is empty; no PPPoE frames are put on the wire"#,
+        true
+    ),
+    c!(
+        "pppoe.disconnect",
+        "PPPoE disconnect",
+        "",
+        None,
+        r#"{"device": PC, laptop or server} → the status: the address and the gateway the session gave are removed"#,
+        true
+    ),
+    c!(
+        "pppoe.status",
+        "PPPoE status",
+        "",
+        None,
+        r#"{"device": PC, laptop or server} → {"state": "disconnected"|"connected"|"lost", "connected", "username", "server_found", "server", "address", "mask", "gateway", "auth": "pap"|"chap"}"#,
+        false
+    ),
+    c!(
         "snmp.request",
         "SNMP request",
         "",
@@ -348,7 +388,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Server services",
         "",
         None,
-        r#"{"device", "services": {"http": {"on", "files": [{"name", "content"}]}, "dns": {"on", "records": [{"name", "address"}]}, "dhcp": {"on", "pools": [{"name", "gateway", "dns", "start", "mask", "max_users"}]}}}"#,
+        r#"{"device", "services": {"http": {"on", "files": [{"name", "content"}]}, "dns": {"on", "records": [{"name", "address"}]}, "dhcp": {"on", "pools": [{"name", "gateway", "dns", "start", "mask", "max_users"}]}, "pppoe": {"on", "auth": "pap"|"chap", "pool_start": address, "pool_size": 0-250, "users": [{"name", "password"}]}}}"#,
         true
     ),
     c!(

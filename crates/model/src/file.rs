@@ -1,4 +1,4 @@
-//! The `.nlcraft` lab file: UTF-8 JSON, `{"format":"netlabcraft","version":5,"topology":{…}}`.
+//! The `.nlcraft` lab file: UTF-8 JSON, `{"format":"netlabcraft","version":6,"topology":{…}}`.
 //! Readers accept older versions and refuse newer ones; loading always sanitizes.
 
 use serde::{Deserialize, Serialize};
@@ -10,9 +10,10 @@ pub const FORMAT: &str = "netlabcraft";
 /// 3: smartphones and tablets have a `Cellular0` port, and devices may carry `cell` settings.
 /// 4: drawings have separate outline and fill settings (`outline`, `outline_color`, `outline_width`, `no_fill`).
 /// 5: end devices may carry a `host_fw` (the Firewall app's IPv4 and IPv6 rule lists).
+/// 6: end devices may carry a `pppoe` account and session, and servers a `pppoe` service in `services`.
 /// Older files still open (their phones get the port; a drawing with only `color` draws as it always did;
-/// a device without `host_fw` has its firewall off).
-pub const VERSION: u32 = 5;
+/// a device without `host_fw` has its firewall off; one without `pppoe` has no account and no session).
+pub const VERSION: u32 = 6;
 pub const EXTENSION: &str = "nlcraft";
 
 /// Largest lab file accepted (hostile input).
@@ -128,7 +129,33 @@ mod tests {
         assert!(from_json(r#"{"format":"netlabcraft","version":3,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
         assert!(from_json(r#"{"format":"netlabcraft","version":4,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
         assert!(from_json(r#"{"format":"netlabcraft","version":5,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
-        assert!(from_json(r#"{"format":"netlabcraft","version":6,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_err());
+        assert!(from_json(r#"{"format":"netlabcraft","version":6,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
+        assert!(from_json(r#"{"format":"netlabcraft","version":7,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_err());
+    }
+
+    #[test]
+    fn a_pppoe_account_and_service_round_trip_and_older_files_open_without_them() {
+        use crate::pppoe::{PppoeSession, PppoeUser};
+        let mut t = Topology::new();
+        let pc = t.add_device(DeviceKind::Pc, None, 0.0, 0.0).unwrap();
+        let srv = t.add_device(DeviceKind::Server, None, 0.0, 0.0).unwrap();
+        // Nothing set: no `pppoe` key at all, so files stay as before.
+        assert!(!to_json(&t).unwrap().contains("pppoe"));
+        let d = t.device_mut(srv).unwrap();
+        d.services.pppoe.on = true;
+        d.services.pppoe.pool_size = 5;
+        d.services.pppoe.users.push(PppoeUser { name: "ann".into(), password: "pw-test".into() });
+        let d = t.device_mut(pc).unwrap();
+        d.pppoe.username = "ann".into();
+        d.pppoe.session =
+            Some(PppoeSession { server: srv, address: "10.0.0.5".parse().unwrap(), gateway: "10.0.0.1".parse().unwrap(), auth: crate::PppAuth::Pap });
+        let back = from_json(&to_json(&t).unwrap()).unwrap();
+        assert_eq!(back, t);
+        assert!(back.device(pc).unwrap().pppoe.session.is_some());
+        // A file saved before version 6 has neither.
+        let mut v: serde_json::Value = serde_json::from_str(&to_json(&Topology::new()).unwrap()).unwrap();
+        v["version"] = 5.into();
+        assert!(from_json(&v.to_string()).is_ok());
     }
 
     #[test]

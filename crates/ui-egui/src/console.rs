@@ -66,6 +66,10 @@ pub enum DesktopApp {
     Firewall,
     /// The device's IPv6 firewall rules.
     Firewall6,
+    /// A burst of ICMP, UDP or TCP packets sent to a destination, counted.
+    TrafficGenerator,
+    /// A PPPoE login to a server on the cable, which gives the device its address.
+    PppoeDialer,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1134,6 +1138,8 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                             (DesktopApp::TextEditor, "Text Editor"),
                             (DesktopApp::Firewall, "Firewall"),
                             (DesktopApp::Firewall6, "IPv6 Firewall"),
+                            (DesktopApp::TrafficGenerator, "Traffic Generator"),
+                            (DesktopApp::PppoeDialer, "PPPoE Dialer"),
                         ]);
                         for (app_id, label) in [
                             (DesktopApp::IpConfig, "IP Configuration"),
@@ -1192,6 +1198,8 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 DesktopApp::TextEditor => "Text Editor",
                 DesktopApp::Firewall => "Firewall",
                 DesktopApp::Firewall6 => "IPv6 Firewall",
+                DesktopApp::TrafficGenerator => "Traffic Generator",
+                DesktopApp::PppoeDialer => "PPPoE Dialer",
             };
             let mut close = false;
             egui::Frame::new().fill(tk.bar).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
@@ -1343,6 +1351,8 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 DesktopApp::TextEditor => crate::host_apps::text_editor(app, ui, dev),
                 DesktopApp::Firewall => crate::host_apps::firewall(app, ui, dev, false),
                 DesktopApp::Firewall6 => crate::host_apps::firewall(app, ui, dev, true),
+                DesktopApp::TrafficGenerator => crate::host_apps::traffic_generator(app, ui, dev),
+                DesktopApp::PppoeDialer => crate::host_apps::pppoe_dialer(app, ui, dev),
                 DesktopApp::Settings => {
                     egui::ScrollArea::vertical().id_salt(("settings_scroll", d.0)).auto_shrink([false, true]).show(ui, |ui| {
                         ui.add_space(6.0);
@@ -1538,6 +1548,32 @@ pub(crate) fn draw_app_icon(p: &egui::Painter, r: egui::Rect, app: DesktopApp) {
                 p.circle_filled(r.center(), r.height() * 0.22, dark);
                 p.text(r.center(), egui::Align2::CENTER_CENTER, "6", egui::FontId::proportional(r.height() * 0.3), light);
             }
+        }
+        DesktopApp::TrafficGenerator => {
+            // Packets leaving a box: three small squares in a row and an arrow after them.
+            let src = egui::Rect::from_min_size(egui::pos2(r.left(), r.center().y - r.height() * 0.28), vec2(r.width() * 0.22, r.height() * 0.56));
+            p.rect_filled(src, 3.0, light);
+            p.rect_stroke(src, 3.0, egui::Stroke::new(2.0, dark), egui::StrokeKind::Inside);
+            let amber = egui::Color32::from_rgb(0xe8, 0xb0, 0x2c);
+            for i in 0..3 {
+                let x = r.left() + r.width() * (0.33 + 0.17 * i as f32);
+                let cell = egui::Rect::from_center_size(egui::pos2(x, r.center().y), vec2(r.width() * 0.11, r.width() * 0.11));
+                p.rect_filled(cell, 1.0, amber);
+            }
+            let tip = egui::pos2(r.right(), r.center().y);
+            p.line_segment([tip - vec2(r.width() * 0.16, 0.0), tip], egui::Stroke::new(3.0, light));
+            p.line_segment([tip, tip + vec2(-r.width() * 0.08, -r.height() * 0.1)], egui::Stroke::new(3.0, light));
+            p.line_segment([tip, tip + vec2(-r.width() * 0.08, r.height() * 0.1)], egui::Stroke::new(3.0, light));
+        }
+        DesktopApp::PppoeDialer => {
+            // A handset on a coiled line: a rounded plug with the letters PPP.
+            let body = egui::Rect::from_center_size(r.center(), vec2(r.width(), r.height() * 0.5));
+            p.rect_filled(body, 6.0, light);
+            p.rect_stroke(body, 6.0, egui::Stroke::new(2.0, dark), egui::StrokeKind::Inside);
+            p.text(body.center(), egui::Align2::CENTER_CENTER, "PPP", egui::FontId::proportional(r.height() * 0.28), dark);
+            let blue = egui::Color32::from_rgb(0x2c, 0x7c, 0xc0);
+            p.line_segment([body.center_top(), egui::pos2(body.center().x, r.top())], egui::Stroke::new(3.0, blue));
+            p.line_segment([body.center_bottom(), egui::pos2(body.center().x, r.bottom())], egui::Stroke::new(3.0, blue));
         }
         DesktopApp::Prompt => {
             // A monitor with a prompt on a black screen.

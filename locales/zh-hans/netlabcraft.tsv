@@ -1564,3 +1564,29 @@ event	write request for	写请求
 	Any, one port or a range such as 1000-2000	任意，单个端口或如 1000-2000 的范围
 	No rules yet. While the firewall is on, everything that is not allowed is blocked.	还没有规则。防火墙开启时，所有未被允许的流量都会被阻止。
 	With the firewall on, the first rule that matches decides and what no rule matches is blocked. Replies to what this computer sent always get through.	防火墙开启时，由第一条匹配的规则决定，未匹配任何规则的流量会被阻止。对本机所发数据的回复始终放行。
+	Traffic Generator	流量生成器
+	PPPoE Dialer	PPPoE 拨号器
+	Destination address or name	目标地址或名称
+	Packet size (bytes)	数据包大小（字节）
+	Number of packets	数据包数量
+	Interval (seconds)	间隔（秒）
+	Each packet is sent like a PDU: the same path, firewalls and access lists apply.	每个数据包都像 PDU 一样发送：走同样的路径，防火墙和访问列表同样生效。
+	Enter a destination address or device name.	请输入目标地址或设备名称。
+	Enter whole numbers for the port, size and number of packets, and seconds for the interval.	请为端口、大小和数据包数量输入整数，为间隔输入秒数。
+	Nothing sent yet. Fill in the destination and press Send.	尚未发送任何数据。请填写目标，然后点击“发送”。
+	Sent {}, received {}, lost {}	已发送 {}，已接收 {}，已丢失 {}
+	Answered	已应答
+	Lost	丢失
+	Connect	连接
+	The first network port must be cabled straight to a server whose PPPoE service is on.	第一个网络端口必须用网线直接连到已开启 PPPoE 服务的服务器。
+	Disconnected	未连接
+	Enter the account and press Connect.	请输入账号，然后点击“连接”。
+	Connected	已连接
+	Connection lost: the cable or the server is gone.	连接已断开：网线或服务器不见了。
+	Enter a user name.	请输入用户名。
+	Connected to {}	已连接到 {}
+	PPPoE Service	PPPoE 服务
+	Pool start address	地址池起始地址
+	Pool size	地址池大小
+	The pool must be on the subnet of the server's port that the cable reaches.	地址池必须位于网线所连服务器端口所在的子网内。
+	The pool size is a whole number.	地址池大小必须是整数。

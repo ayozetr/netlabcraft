@@ -1,14 +1,15 @@
 //! The computer apps of an end device's Desktop beside the older ones: the Telnet/SSH Client's
-//! form, the Text Editor, and the Firewall and IPv6 Firewall. They act through engine commands
-//! (`cli.exec` for the client, `editor.*`, `host.firewall`), like every other panel.
+//! form, the Text Editor, the Firewall and IPv6 Firewall, the Traffic Generator and the PPPoE
+//! Dialer. They act through engine commands (`cli.exec` for the client, `editor.*`, `host.firewall`,
+//! `traffic.*`, `pppoe.*`), like every other panel.
 
 use egui::RichText;
-use netlabcraft_model::Device;
 use netlabcraft_model::hostfw::{FwProto, HostFwRule};
 use netlabcraft_model::services::MAX_HOST_FILE_BYTES;
+use netlabcraft_model::{Device, End};
 use serde_json::{Value, json};
 
-use crate::console::{LABEL_W, form_grid, form_label};
+use crate::console::{LABEL_W, form_grid, form_label, grid_field};
 use crate::i18n::{tl, trf};
 use crate::{PacketApp, theme};
 
@@ -307,6 +308,224 @@ pub(crate) fn firewall(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, v6:
         let mut params = rule_params(rule);
         params["at"] = json!(to + 1);
         app.run("host.firewall", json!({"device": device, "version": version, "add": params}));
+    }
+    ui.data_mut(|m| m.insert_temp(id, f));
+}
+
+/// The Traffic Generator's fields and the last burst it sent, kept between frames.
+#[derive(Debug, Clone)]
+struct TrafficForm {
+    /// 0 ICMP, 1 UDP, 2 TCP.
+    proto: usize,
+    to: String,
+    port: String,
+    size: String,
+    count: String,
+    interval: String,
+    /// What `traffic.send` or `traffic.status` last answered.
+    last: Option<Value>,
+    /// The engine's last burst was looked up (once, when the app opened).
+    seeded: bool,
+}
+
+impl Default for TrafficForm {
+    fn default() -> Self {
+        TrafficForm {
+            proto: 0,
+            to: String::new(),
+            port: "80".into(),
+            size: "32".into(),
+            count: "4".into(),
+            interval: "1".into(),
+            last: None,
+            seeded: false,
+        }
+    }
+}
+
+/// The parameters of `traffic.send` for the form, or none when a number is not a number.
+fn traffic_params(f: &TrafficForm, device: u32) -> Option<Value> {
+    let number = |t: &str| t.trim().parse::<u64>().ok();
+    let protocol = ["icmp", "udp", "tcp"].get(f.proto).copied()?;
+    let mut v = json!({
+        "device": device,
+        "to": f.to.trim(),
+        "protocol": protocol,
+        "size": number(&f.size)?,
+        "count": number(&f.count)?,
+        "interval": f.interval.trim().parse::<f64>().ok()?,
+    });
+    if f.proto != 0 {
+        v["port"] = json!(number(&f.port)?);
+    }
+    Some(v)
+}
+
+/// The Traffic Generator: where to, which protocol, how many packets of what size and how far
+/// apart, then the counts and the result of each packet.
+pub(crate) fn traffic_generator(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
+    let id = egui::Id::unique(("traffic_form", dev.id.0));
+    let mut f: TrafficForm = ui.data_mut(|m| m.get_temp(id)).unwrap_or_default();
+    let tk = theme::tokens(app.ui.dark);
+    if !f.seeded {
+        f.seeded = true;
+        if dev.has_desktop_apps()
+            && let Some(r) = app.run("traffic.status", json!({"device": dev.id.0}))
+            && r.get("ran").and_then(Value::as_bool) == Some(true)
+        {
+            f.last = Some(r);
+        }
+    }
+    let mut send = false;
+    ui.add_space(6.0);
+    form_grid(ui, ("traffic_fields", dev.id.0), |ui| {
+        grid_field(ui, tl("Destination address or name"), &mut f.to);
+        ui.label(tl("Protocol"));
+        ui.horizontal(|ui| {
+            for (i, name) in ["ICMP", "UDP", "TCP"].into_iter().enumerate() {
+                ui.radio_value(&mut f.proto, i, name);
+            }
+        });
+        ui.end_row();
+        let l = ui.label(tl("Port"));
+        ui.add_enabled(f.proto != 0, egui::TextEdit::singleline(&mut f.port).desired_width(120.0)).labelled_by(l.id);
+        ui.end_row();
+        let l = ui.label(tl("Packet size (bytes)"));
+        ui.add(egui::TextEdit::singleline(&mut f.size).desired_width(120.0)).labelled_by(l.id);
+        ui.end_row();
+        let l = ui.label(tl("Number of packets"));
+        ui.add(egui::TextEdit::singleline(&mut f.count).desired_width(120.0)).labelled_by(l.id);
+        ui.end_row();
+        let l = ui.label(tl("Interval (seconds)"));
+        ui.add(egui::TextEdit::singleline(&mut f.interval).desired_width(120.0)).labelled_by(l.id);
+        ui.end_row();
+        ui.label("");
+        send = ui.button(tl("Send")).clicked();
+        ui.end_row();
+    });
+    ui.label(RichText::new(tl("Each packet is sent like a PDU: the same path, firewalls and access lists apply.")).color(tk.muted));
+    if send {
+        if f.to.trim().is_empty() {
+            app.ui.status = Some((tl("Enter a destination address or device name.").to_string(), true));
+        } else if let Some(params) = traffic_params(&f, dev.id.0) {
+            if let Some(r) = app.run("traffic.send", params) {
+                f.last = Some(r);
+            }
+        } else {
+            app.ui.status =
+                Some((tl("Enter whole numbers for the port, size and number of packets, and seconds for the interval.").to_string(), true));
+        }
+    }
+    ui.separator();
+    match &f.last {
+        None => {
+            ui.label(RichText::new(tl("Nothing sent yet. Fill in the destination and press Send.")).color(tk.muted));
+        }
+        Some(r) => {
+            let count = |key: &str| r.get(key).and_then(Value::as_u64).unwrap_or(0);
+            ui.label(RichText::new(trf("Sent {}, received {}, lost {}", &[&count("sent"), &count("received"), &count("lost")])).strong());
+            let results = r.get("results").and_then(Value::as_array).cloned().unwrap_or_default();
+            egui::ScrollArea::vertical().id_salt(("traffic_results", dev.id.0)).max_height(170.0).auto_shrink([false, true]).show(ui, |ui| {
+                egui::Grid::new(("traffic_table", dev.id.0)).striped(true).spacing(egui::vec2(14.0, 4.0)).show(ui, |ui| {
+                    for h in ["No.", "Result", "Time", "Detail"] {
+                        ui.strong(tl(h));
+                    }
+                    ui.end_row();
+                    for x in &results {
+                        ui.label(x.get("n").and_then(Value::as_u64).unwrap_or(0).to_string());
+                        if x.get("ok").and_then(Value::as_bool) == Some(true) {
+                            ui.label(RichText::new(tl("Answered")).color(tk.ok));
+                        } else {
+                            ui.label(RichText::new(tl("Lost")).color(tk.error));
+                        }
+                        ui.label(format!("{:.3}", x.get("at").and_then(Value::as_f64).unwrap_or(0.0)));
+                        ui.label(crate::i18n::tr_any(x.get("note").and_then(Value::as_str).unwrap_or_default()));
+                        ui.end_row();
+                    }
+                });
+            });
+        }
+    }
+    ui.data_mut(|m| m.insert_temp(id, f));
+}
+
+/// The PPPoE Dialer's account fields, kept between frames.
+#[derive(Debug, Clone, Default)]
+struct PppoeForm {
+    user: String,
+    password: String,
+    /// The fields were filled from the device's saved account.
+    loaded: bool,
+}
+
+/// The PPPoE Dialer: the account, Connect and Disconnect, and what the session gave the device.
+pub(crate) fn pppoe_dialer(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
+    let id = egui::Id::unique(("pppoe_form", dev.id.0));
+    let mut f: PppoeForm = ui.data_mut(|m| m.get_temp(id)).unwrap_or_default();
+    let tk = theme::tokens(app.ui.dark);
+    if !f.loaded {
+        f.loaded = true;
+        f.user.clone_from(&dev.pppoe.username);
+        f.password.clone_from(&dev.pppoe.password);
+    }
+    let session = dev.pppoe.session.clone();
+    let (mut connect, mut disconnect) = (false, false);
+    ui.add_space(6.0);
+    form_grid(ui, ("pppoe_fields", dev.id.0), |ui| {
+        grid_field(ui, tl("Username"), &mut f.user);
+        let l = ui.label(tl("Password"));
+        ui.add(egui::TextEdit::singleline(&mut f.password).password(true).desired_width(300.0)).labelled_by(l.id);
+        ui.end_row();
+        ui.label("");
+        ui.horizontal(|ui| {
+            connect = ui.add_enabled(session.is_none(), egui::Button::new(tl("Connect"))).clicked();
+            disconnect = ui.add_enabled(session.is_some(), egui::Button::new(tl("Disconnect"))).clicked();
+        });
+        ui.end_row();
+    });
+    ui.label(RichText::new(tl("The first network port must be cabled straight to a server whose PPPoE service is on.")).color(tk.muted));
+    ui.separator();
+    // The cable still reaches the server the session came from?
+    let live = session.as_ref().is_some_and(|x| app.session.topology.peer(End { device: dev.id, port: 0 }).is_some_and(|p| p.device == x.server));
+    match &session {
+        None => {
+            ui.label(RichText::new(tl("Disconnected")).strong());
+            ui.label(RichText::new(tl("Enter the account and press Connect.")).color(tk.muted));
+        }
+        Some(x) => {
+            let server = app.session.topology.device(x.server).map_or_else(|| "?".to_string(), |s| s.name.clone());
+            if live {
+                ui.label(RichText::new(tl("Connected")).strong().color(tk.ok));
+            } else {
+                ui.label(RichText::new(tl("Connection lost: the cable or the server is gone.")).strong().color(tk.error));
+            }
+            form_grid(ui, ("pppoe_session", dev.id.0), |ui| {
+                ui.label(tl("Server"));
+                ui.label(server);
+                ui.end_row();
+                ui.label(tl("Address"));
+                ui.label(x.address.to_string());
+                ui.end_row();
+                ui.label(tl("Default Gateway"));
+                ui.label(x.gateway.to_string());
+                ui.end_row();
+                ui.label(tl("Authentication"));
+                ui.label(x.auth.name().to_ascii_uppercase());
+                ui.end_row();
+            });
+        }
+    }
+    let device = dev.id.0;
+    if connect {
+        if f.user.trim().is_empty() {
+            app.ui.status = Some((tl("Enter a user name.").to_string(), true));
+        } else if let Some(r) = app.run("pppoe.connect", json!({"device": device, "username": f.user.trim(), "password": f.password})) {
+            let server = r.get("server").and_then(Value::as_str).unwrap_or("?").to_string();
+            app.info(trf("Connected to {}", &[&server]));
+        }
+    }
+    if disconnect && app.run("pppoe.disconnect", json!({"device": device})).is_some() {
+        app.info(tl("Disconnected"));
     }
     ui.data_mut(|m| m.insert_temp(id, f));
 }

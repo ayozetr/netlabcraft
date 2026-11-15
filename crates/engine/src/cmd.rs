@@ -50,6 +50,12 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
     if let Some(r) = crate::hostapps::run(s, id, p) {
         return r;
     }
+    if let Some(r) = crate::traffic::run(s, id, p) {
+        return r;
+    }
+    if let Some(r) = crate::pppoe::run(s, id, p) {
+        return r;
+    }
     if let Some(r) = crate::cellular::run(s, id, p) {
         return r;
     }
@@ -184,6 +190,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                 u.name = u.name.chars().take(64).collect();
                 u.password = u.password.chars().take(64).collect();
             }
+            sv.pppoe.sanitize();
             sv.tftp.files.truncate(MAX_ITEMS);
             for f in &mut sv.tftp.files {
                 f.content = f.content.chars().take(MAX_FILE).collect();

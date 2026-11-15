@@ -76,7 +76,7 @@ fn list_json(s: &Session) -> Value {
 }
 
 /// The destination: an address, or a device whose first address is used.
-fn destination(s: &Session, to: &str) -> Result<(String, Option<DeviceId>)> {
+pub(crate) fn destination(s: &Session, to: &str) -> Result<(String, Option<DeviceId>)> {
     let to = to.trim();
     if let Ok(a) = parse_ip(to) {
         let owner = s.topology.devices.iter().find(|d| netlabcraft_sim::l3_ifaces(d).iter().any(|i| i.net.addr == a)).map(|d| d.id);
