@@ -228,7 +228,10 @@ pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
 fn native_window(app: &mut PacketApp, ctx: &egui::Context, d: DeviceId, dev: &Device) {
     // The geometry the window opens with is fixed while it is open: feeding the live geometry
     // back into the builder every frame would fight the person resizing it.
-    let (size, pos) = *app.ui.native_start.entry(d).or_insert_with(|| app.ui.native_geometry.get(&d).copied().unwrap_or(([680.0, 470.0], None)));
+    let (size, pos) = *app.ui.native_start.entry(d).or_insert_with(|| {
+        // This session's geometry first, else the one kept for the device's name, else the default.
+        app.ui.native_geometry.get(&d).or_else(|| app.ui.native_remembered.get(&dev.name)).copied().unwrap_or(([680.0, 470.0], None))
+    });
     let mut builder = egui::ViewportBuilder::default()
         .with_title(dev.display_name())
         .with_inner_size(size)
@@ -254,6 +257,11 @@ fn native_window(app: &mut PacketApp, ctx: &egui::Context, d: DeviceId, dev: &De
     if let Some((size, pos)) = seen {
         let pos = pos.or_else(|| app.ui.native_geometry.get(&d).and_then(|g| g.1));
         app.ui.native_geometry.insert(d, (size, pos));
+        let known = app.ui.native_remembered.contains_key(&dev.name);
+        if app.ui.native_remembered.get(&dev.name) != Some(&(size, pos)) && (known || app.ui.native_remembered.len() < crate::MAX_REMEMBERED_WINDOWS)
+        {
+            app.ui.native_remembered.insert(dev.name.clone(), (size, pos));
+        }
     }
     if closed {
         app.ui.windows.remove(&d);

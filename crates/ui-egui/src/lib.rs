@@ -108,7 +108,62 @@ pub enum Mode {
 }
 
 /// A native window's inner size and, when the platform tells, its position (points).
-pub(crate) type NativeGeometry = ([f32; 2], Option<[f32; 2]>);
+pub type NativeGeometry = ([f32; 2], Option<[f32; 2]>);
+
+/// Most native-window geometries remembered across sessions (one per device name).
+pub const MAX_REMEMBERED_WINDOWS: usize = 256;
+
+/// A remembered geometry made safe to use: finite numbers, a size no smaller than the window
+/// takes and no larger than 8192 points, a position within 32768 points of the origin (a
+/// position outside that is dropped, the size kept). `None` when the size is not usable.
+fn clean_geometry(g: NativeGeometry) -> Option<NativeGeometry> {
+    let ok = |v: f32, lo: f32, hi: f32| v.is_finite() && (lo..=hi).contains(&v);
+    let ([w, h], pos) = g;
+    if !(ok(w, 320.0, 8192.0) && ok(h, 240.0, 8192.0)) {
+        return None;
+    }
+    Some(([w, h], pos.filter(|p| ok(p[0], -32768.0, 32768.0) && ok(p[1], -32768.0, 32768.0))))
+}
+
+/// The remembered native-window geometries as text, one line per device: `W H X Y NAME`, with
+/// `-` for an unknown position. The desktop shell keeps it between sessions.
+pub fn native_geometry_to_text(map: &BTreeMap<String, NativeGeometry>) -> String {
+    use std::fmt::Write as _;
+    let mut s = String::new();
+    for (name, g) in map.iter().take(MAX_REMEMBERED_WINDOWS) {
+        let Some(([w, h], pos)) = clean_geometry(*g) else { continue };
+        if name.trim().is_empty() || name.contains(['\n', '\r']) {
+            continue;
+        }
+        let (x, y) = pos.map_or(("-".to_string(), "-".to_string()), |p| (format!("{:.0}", p[0]), format!("{:.0}", p[1])));
+        let _ = writeln!(s, "{w:.0} {h:.0} {x} {y} {name}");
+    }
+    s
+}
+
+/// The geometries `native_geometry_to_text` wrote. Hostile or damaged text gives fewer entries,
+/// never an error: a line that does not read, or whose numbers are not usable, is skipped.
+pub fn native_geometry_from_text(text: &str) -> BTreeMap<String, NativeGeometry> {
+    let mut out = BTreeMap::new();
+    for line in text.lines().take(MAX_REMEMBERED_WINDOWS * 2) {
+        let mut it = line.splitn(5, ' ');
+        let (Some(w), Some(h), Some(x), Some(y), Some(name)) = (it.next(), it.next(), it.next(), it.next(), it.next()) else { continue };
+        let num = |s: &str| s.parse::<f32>().ok();
+        let (Some(w), Some(h)) = (num(w), num(h)) else { continue };
+        let pos = match (num(x), num(y)) {
+            (Some(x), Some(y)) => Some([x, y]),
+            _ => None,
+        };
+        let name = name.trim();
+        if name.is_empty() || out.len() >= MAX_REMEMBERED_WINDOWS {
+            continue;
+        }
+        if let Some(g) = clean_geometry(([w, h], pos)) {
+            out.insert(name.to_string(), g);
+        }
+    }
+    out
+}
 
 /// View state that isn't part of the lab.
 #[derive(Debug, Clone)]
@@ -131,6 +186,13 @@ pub struct UiState {
     pub native_windows: bool,
     /// Size and position a device's native window had last, kept for the session.
     pub(crate) native_geometry: BTreeMap<DeviceId, NativeGeometry>,
+    /// Size and position by device name, for the next session: the desktop shell loads it at
+    /// start and saves it when it changes (see `native_geometry_to_text`). A window with no
+    /// geometry of its own this session opens with the one under its device's name.
+    pub native_remembered: BTreeMap<String, NativeGeometry>,
+    /// The cable whose accessible node has the keyboard focus (named by its first end), drawn
+    /// highlighted.
+    pub cable_focus: Option<netlabcraft_model::End>,
     /// The geometry each open native window was opened with (fixed while it is open).
     pub(crate) native_start: BTreeMap<DeviceId, NativeGeometry>,
     /// Native windows to bring to the front on their next frame.
@@ -175,6 +237,13 @@ pub struct UiState {
     pub physical: physical::PhysState,
 }
 
+impl UiState {
+    /// Whether a device window is open as an operating-system window of its own.
+    pub fn native_window_open(&self) -> bool {
+        !self.native_start.is_empty()
+    }
+}
+
 impl Default for UiState {
     fn default() -> Self {
         UiState {
@@ -192,6 +261,8 @@ impl Default for UiState {
             native_windows: false,
             native_geometry: BTreeMap::new(),
             native_start: BTreeMap::new(),
+            native_remembered: BTreeMap::new(),
+            cable_focus: None,
             raise: Default::default(),
             inspect: None,
             show_notes: false,

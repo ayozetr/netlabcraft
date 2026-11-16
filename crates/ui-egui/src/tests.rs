@@ -909,6 +909,7 @@ fn spanish_shows_no_text_that_has_a_translation_in_english() {
 
 /// Interface text that reads the same in Spanish.
 const SAME_IN_SPANISH: &[&str] = &[
+    "Cable",
     "Español",
     "AAA",
     "DHCP",
@@ -1932,6 +1933,80 @@ fn canvas_devices_are_accessible_nodes_found_by_label_and_driven_by_keyboard() {
     key(&mut h, egui::Key::ArrowLeft, egui::Modifiers::NONE);
     assert_eq!(h.state().ui.selected, Some(first));
     // Mouse use is unchanged: clicking empty workspace deselects.
+    let at = canvas_origin(&h) + egui::vec2(30.0, 30.0);
+    click_at(&mut h, at);
+    assert_eq!(h.state().ui.selected, None);
+}
+
+#[test]
+fn native_window_geometry_round_trips_as_text_and_survives_hostile_text() {
+    let mut map = BTreeMap::new();
+    map.insert("R1".to_string(), ([700.0, 480.0], Some([120.0, -30.0])));
+    map.insert("Core switch 2".to_string(), ([900.0, 600.0], None));
+    let text = native_geometry_to_text(&map);
+    assert_eq!(text, "900 600 - - Core switch 2\n700 480 120 -30 R1\n");
+    assert_eq!(native_geometry_from_text(&text), map);
+    // Damaged lines are skipped one by one; the rest still reads.
+    let hostile =
+        "700 480 1 2 R1\nNaN 480 1 2 R2\n700 480\n10 10 1 2 Tiny\n99999 480 1 2 Huge\ninf 480 1 2 R3\n700 480 NaN 5 R4\n\n640 400 1e9 2 R5\n";
+    let got = native_geometry_from_text(hostile);
+    assert_eq!(got.keys().map(String::as_str).collect::<Vec<_>>(), ["R1", "R4", "R5"], "{got:?}");
+    // A position that is not a number or is far away is dropped, the size kept.
+    assert_eq!(got["R4"], ([700.0, 480.0], None));
+    assert_eq!(got["R5"], ([640.0, 400.0], None));
+    // A name with a line break never reaches the file, and the list is capped.
+    let mut many = BTreeMap::new();
+    many.insert("bad\nname".to_string(), ([700.0, 480.0], None));
+    for i in 0..(MAX_REMEMBERED_WINDOWS + 40) {
+        many.insert(format!("D{i}"), ([700.0, 480.0], None));
+    }
+    let text = native_geometry_to_text(&many);
+    assert!(!text.contains("bad"));
+    assert_eq!(text.lines().count(), MAX_REMEMBERED_WINDOWS);
+    assert!(native_geometry_from_text(&text).len() <= MAX_REMEMBERED_WINDOWS);
+    assert!(native_geometry_from_text("").is_empty());
+}
+
+#[test]
+fn a_native_window_with_no_geometry_this_session_opens_where_its_device_was_last() {
+    // The headless harness embeds viewports, so no native window opens here; what is checked is
+    // the remembered map the shell loads and saves, and that embedded windows leave it alone.
+    let mut h = harness(Some("vlans"));
+    h.state_mut().ui.show_notes = false;
+    h.state_mut().ui.native_remembered.insert("R1".into(), ([800.0, 500.0], Some([40.0, 60.0])));
+    h.state_mut().ui.native_windows = true;
+    let d = h.state().session.topology.resolve("R1").unwrap();
+    open_console(h.state_mut(), d);
+    h.run_steps(3);
+    assert!(h.state().ui.windows.contains_key(&d));
+    assert!(!h.state().ui.native_window_open());
+    assert_eq!(h.state().ui.native_remembered.get("R1"), Some(&([800.0, 500.0], Some([40.0, 60.0]))));
+}
+
+#[test]
+fn cables_are_accessible_nodes_found_by_label_and_open_their_first_device() {
+    let mut h = harness(Some("vlans"));
+    h.run_steps(3);
+    let (label, first) = {
+        let t = &h.state().session.topology;
+        let mut links: Vec<_> = t.links.iter().collect();
+        links.sort_by_key(|l| (l.a.device.0, l.a.port));
+        let l = links[0];
+        let end = |e: netlabcraft_model::End| {
+            let d = t.device(e.device).unwrap();
+            format!("{} {}", d.display_name(), d.ports[e.port].name)
+        };
+        (format!("Cable, {}, {} - {}", t.resolved_cable(l).label(), end(l.a), end(l.b)), l.a.device)
+    };
+    assert!(h.query_by_label(&label).is_some(), "no node labelled {label}");
+    // Focus on a cable node highlights it, and Enter opens the device at its first end.
+    h.get_by_label(&label).focus();
+    h.run_steps(2);
+    assert_eq!(h.state().ui.cable_focus.map(|e| e.device), Some(first));
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    assert_eq!(h.state().ui.selected, Some(first));
+    assert!(h.state().ui.windows.contains_key(&first));
+    // Mouse use is unchanged: clicking empty workspace still deselects.
     let at = canvas_origin(&h) + egui::vec2(30.0, 30.0);
     click_at(&mut h, at);
     assert_eq!(h.state().ui.selected, None);
