@@ -921,14 +921,7 @@ fn default_route(
 
 /// Everything a router tells one neighbour: its best paths that [`export`] lets through, and the
 /// default route when the neighbour has `default-originate` (unless a path for 0.0.0.0/0 is sent anyway).
-fn export_all(
-    a: &Device,
-    ab: &conf::Bgp,
-    n: &conf::Neighbor,
-    p: &Peering,
-    table: &[RouteEntry],
-    best: &[&Path],
-) -> Vec<(Ipv4Net, msg::PathAttrs)> {
+fn export_all(a: &Device, ab: &conf::Bgp, n: &conf::Neighbor, p: &Peering, table: &[RouteEntry], best: &[&Path]) -> Vec<(Ipv4Net, msg::PathAttrs)> {
     let mut out: Vec<(Ipv4Net, msg::PathAttrs)> = best.iter().filter_map(|x| export(a, ab, n, p, x).map(|at| (x.net, at))).collect();
     if n.default_originate && !out.iter().any(|(net, _)| net.prefix == 0) {
         out.extend(default_route(a, ab, n, p, table, best));

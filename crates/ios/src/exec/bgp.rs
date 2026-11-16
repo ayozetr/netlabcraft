@@ -7,8 +7,8 @@ use std::net::Ipv4Addr;
 
 use netlabcraft_core::{Ipv4Net, parse_ip};
 use netlabcraft_model::bgp::{
-    Aggregate, Bgp, HOLD_SECS, KEEPALIVE_SECS, MAX_AGGREGATES, MAX_CONFED_PEERS, MAX_MULTIPATH, MAX_NETWORKS, MAX_PASSWORD, MAX_PEER_GROUPS, MAX_TEXT,
-    Neighbor, PeerGroup, Source, follow,
+    Aggregate, Bgp, HOLD_SECS, KEEPALIVE_SECS, MAX_AGGREGATES, MAX_CONFED_PEERS, MAX_MULTIPATH, MAX_NETWORKS, MAX_PASSWORD, MAX_PEER_GROUPS,
+    MAX_TEXT, Neighbor, PeerGroup, Source, follow,
 };
 use netlabcraft_model::policy::{self, community_text, parse_community};
 use netlabcraft_model::{Device, DeviceKind, Rip, ifname, routing};
