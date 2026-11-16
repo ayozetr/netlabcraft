@@ -751,6 +751,9 @@ pub struct StaticRoute {
     /// out of the routing table while a protocol with a lower distance knows the network.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub distance: Option<u8>,
+    /// `tag N`: a label the route carries (0: none) that route maps and redistribution can read.
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub tag: u32,
 }
 
 /// An IPv6 static route: out of an interface, towards a next hop, or both (a link-local next
@@ -766,6 +769,9 @@ pub struct StaticRoute6 {
     /// Administrative distance (1 when not set); see [`StaticRoute::distance`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub distance: Option<u8>,
+    /// `tag N`, as on [`StaticRoute::tag`].
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub tag: u32,
 }
 
 /// Most IPv6 addresses on one interface.
@@ -2333,6 +2339,10 @@ pub struct Annotation {
 
 fn is_false(b: &bool) -> bool {
     !*b
+}
+
+fn is_zero_u32(n: &u32) -> bool {
+    *n == 0
 }
 
 /// Widest outline a drawing may have.

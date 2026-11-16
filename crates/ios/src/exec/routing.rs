@@ -22,6 +22,19 @@ pub(super) fn split_distance(text: &str) -> Result<(String, Option<u8>), String>
     }
 }
 
+/// A static route's words with a trailing `tag N` taken off: the words before it and the tag
+/// (0 when none was typed).
+pub(super) fn split_tag(text: &str) -> Result<(String, u32), String> {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    match words.as_slice() {
+        [rest @ .., kw, n] if kw.eq_ignore_ascii_case("tag") => {
+            let tag = n.parse::<u32>().ok().filter(|t| *t >= 1).ok_or("% The tag is 1-4294967295")?;
+            Ok((rest.join(" "), tag))
+        }
+        _ => Ok((words.join(" "), 0)),
+    }
+}
+
 /// The loopback number an interface name gives, if it names a loopback.
 pub(super) fn loopback(name: &str) -> Option<u32> {
     loopback_number(name)
@@ -479,7 +492,8 @@ fn ospf_database_detail(
                 let _ = writeln!(s, "AS boundary router {}, sequence {seq}, advertised by {}, metric {}", l.id, l.adv, l.metric);
             }
             LsaKind::External => {
-                let _ = writeln!(s, "Network {}/{}, sequence {seq}, advertised by {}, type 2 metric {}", l.id, l.count, l.adv, l.metric);
+                let _ =
+                    writeln!(s, "Network {}/{}, sequence {seq}, advertised by {}, type 2 metric {}, tag {}", l.id, l.count, l.adv, l.metric, l.tag);
             }
         }
     }

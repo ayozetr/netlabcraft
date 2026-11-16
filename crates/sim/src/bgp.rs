@@ -786,7 +786,7 @@ fn export(a: &Device, ab: &conf::Bgp, n: &conf::Neighbor, p: &Peering, path: &Pa
             return None;
         }
     }
-    let seen = policy::Attrs { communities: &path.communities, as_path: &path.as_path, as_set: &path.as_set };
+    let seen = policy::Attrs { communities: &path.communities, as_path: &path.as_path, as_set: &path.as_set, tag: 0 };
     let sets = policy::apply_with(a, n.prefix_list_out.as_deref(), n.route_map_out.as_deref(), &Subject { net: path.net, metric: path.med }, &seen)?;
     // Communities travel only to a neighbour with `send-community`.
     let communities = if n.send_community { policy::merge_communities(&sets, &path.communities) } else { Vec::new() };
@@ -904,7 +904,7 @@ fn import(b: &Device, m: &conf::Neighbor, p: &Peering, attrs: &msg::PathAttrs, f
     }
     let external = p.ebgp && !p.confed;
     let med = attrs.med.unwrap_or(0);
-    let seen = policy::Attrs { communities: &attrs.communities, as_path: &attrs.as_path, as_set: &attrs.as_set };
+    let seen = policy::Attrs { communities: &attrs.communities, as_path: &attrs.as_path, as_set: &attrs.as_set, tag: 0 };
     let sets = policy::apply_with(b, m.prefix_list_in.as_deref(), m.route_map_in.as_deref(), &Subject { net, metric: med }, &seen)?;
     // An external neighbour's local preference is ignored; internal and confederation neighbours carry it.
     let local_pref = sets.local_pref.unwrap_or_else(|| if external { bb.local_pref() } else { attrs.local_pref.unwrap_or_else(|| bb.local_pref()) });
@@ -2078,6 +2078,7 @@ mod tests {
             iface: iface.map(String::from),
             distance,
             metric: 0,
+            tag: 0,
         };
         let table = vec![
             row('C', "10.0.0.0/24", None, Some("g0/0"), 0),

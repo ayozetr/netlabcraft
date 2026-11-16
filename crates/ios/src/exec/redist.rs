@@ -125,6 +125,10 @@ fn parse_line(p: Proto, text: &str) -> Result<Redist, String> {
         } else if lw == "metric-type" && p == Proto::Ospf {
             line.metric_type = Some(number(rest.get(i + 1), 1, 2, "The external type")? as u8);
             i += 2;
+        } else if lw == "tag" && p == Proto::Ospf {
+            let tag = number(rest.get(i + 1), 0, u64::from(u32::MAX), "The tag")?;
+            line.tag = u32::try_from(tag).ok().filter(|t| *t != 0);
+            i += 2;
         } else if lw == "subnets" && p == Proto::Ospf {
             i += 1;
         } else if lw == "route-map" {

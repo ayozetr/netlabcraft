@@ -126,6 +126,8 @@ pub struct EigrpRoute {
     pub metric: u32,
     /// An external route: another protocol gave it to EIGRP (`D EX`, distance 170).
     pub external: bool,
+    /// The tag an external route carries (0: none).
+    pub tag: u32,
 }
 
 impl EigrpRoute {
@@ -218,6 +220,8 @@ struct Best {
     via: Option<(String, Ipv4Addr, DeviceId)>,
     /// Given to EIGRP by `redistribute`, here or on the router that advertised it.
     ext: bool,
+    /// The tag of an external route.
+    tag: u32,
 }
 
 /// A router's EIGRP distribute lists.
@@ -322,7 +326,7 @@ pub fn compute_seeded(t: &Topology, held: &[Held], seeds: &crate::redist::Seeds)
         let mut tbl: BTreeMap<Ipv4Net, Best> = BTreeMap::new();
         for (i, _) in ifs.get(&d.id).into_iter().flatten() {
             let (bw, delay) = if_metrics(d, i);
-            let b = Best { bw, delay: u64::from(delay), metric: metric(bw, u64::from(delay)), hops: 0, via: None, ext: false };
+            let b = Best { bw, delay: u64::from(delay), metric: metric(bw, u64::from(delay)), hops: 0, via: None, ext: false, tag: 0 };
             if tbl.get(&i.net.network()).is_none_or(|old| b.metric < old.metric) {
                 tbl.insert(i.net.network(), b);
             }
@@ -336,6 +340,7 @@ pub fn compute_seeded(t: &Topology, held: &[Held], seeds: &crate::redist::Seeds)
                 hops: 0,
                 via: None,
                 ext: true,
+                tag: sd.tag,
             });
         }
         connected.insert(d.id, tbl);
@@ -367,7 +372,11 @@ pub fn compute_seeded(t: &Topology, held: &[Held], seeds: &crate::redist::Seeds)
             .map(|(net, b)| {
                 let nbw = b.bw.min(*bw);
                 let nd = b.delay.saturating_add(u64::from(*delay));
-                (*net, Best { bw: nbw, delay: nd, metric: metric(nbw, nd), hops: b.hops.saturating_add(1), via: None, ext: b.ext }, b.metric)
+                (
+                    *net,
+                    Best { bw: nbw, delay: nd, metric: metric(nbw, nd), hops: b.hops.saturating_add(1), via: None, ext: b.ext, tag: b.tag },
+                    b.metric,
+                )
             })
             .collect()
     };
@@ -451,7 +460,14 @@ pub fn compute_seeded(t: &Topology, held: &[Held], seeds: &crate::redist::Seeds)
                             p.installed = true;
                             used += 1;
                             if let Some(v) = p.via {
-                                routes.push(EigrpRoute { net: *net, via: v, iface: p.iface.clone(), metric: p.distance, external: best.ext });
+                                routes.push(EigrpRoute {
+                                    net: *net,
+                                    via: v,
+                                    iface: p.iface.clone(),
+                                    metric: p.distance,
+                                    external: best.ext,
+                                    tag: best.tag,
+                                });
                             }
                         }
                     }
@@ -468,7 +484,7 @@ pub fn compute_seeded(t: &Topology, held: &[Held], seeds: &crate::redist::Seeds)
                     && !sums.iter().any(|(x, _)| *x == s)
                 {
                     sums.push((s, m));
-                    routes.push(EigrpRoute { net: s, via: Ipv4Addr::UNSPECIFIED, iface: NULL0.to_string(), metric: m, external: false });
+                    routes.push(EigrpRoute { net: s, via: Ipv4Addr::UNSPECIFIED, iface: NULL0.to_string(), metric: m, external: false, tag: 0 });
                 }
             }
         }

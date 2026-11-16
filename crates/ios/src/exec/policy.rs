@@ -318,6 +318,36 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             clause(c)?.metric = None;
             Ok(String::new())
         }
+        Id::RmMatchTag => {
+            let mut tags = Vec::new();
+            for w in arg(0).split_whitespace() {
+                tags.push(number(w, "tag", u64::from(u32::MAX))?);
+            }
+            let cl = clause(c)?;
+            for t in tags {
+                if !cl.tags.contains(&t) {
+                    if cl.tags.len() >= MAX_MATCH_NAMES {
+                        return Err(format!("% A match line holds at most {MAX_MATCH_NAMES} tags"));
+                    }
+                    cl.tags.push(t);
+                }
+            }
+            cl.tags.sort_unstable();
+            Ok(String::new())
+        }
+        Id::NoRmMatchTag => {
+            clause(c)?.tags.clear();
+            Ok(String::new())
+        }
+        Id::RmSetTag => {
+            let v = number(arg(0), "tag", u64::from(u32::MAX))?;
+            clause(c)?.sets.tag = Some(v);
+            Ok(String::new())
+        }
+        Id::NoRmSetTag => {
+            clause(c)?.sets.tag = None;
+            Ok(String::new())
+        }
         Id::RmSetLocalPref => {
             let v = number(arg(0), "local preference", u64::from(u32::MAX))?;
             clause(c)?.sets.local_pref = Some(v);
@@ -685,10 +715,19 @@ fn show_route_maps(d: &Device, only: Option<&str>) -> R {
             if let Some(v) = c.metric {
                 let _ = writeln!(s, "    match metric: {v}");
             }
+            if !c.tags.is_empty() {
+                let _ = writeln!(s, "    match tag: {}", c.tags.iter().map(u32::to_string).collect::<Vec<_>>().join(", "));
+            }
             for line in set_lines(c, d.bgp_community_new_format) {
                 let _ = writeln!(s, "    set {line}");
             }
-            if c.prefix_lists.is_empty() && c.acls.is_empty() && c.metric.is_none() && c.community_lists.is_empty() && c.as_path_lists.is_empty() {
+            if c.prefix_lists.is_empty()
+                && c.acls.is_empty()
+                && c.metric.is_none()
+                && c.community_lists.is_empty()
+                && c.as_path_lists.is_empty()
+                && c.tags.is_empty()
+            {
                 s.push_str("    (no match lines: every route matches)\n");
             }
         }
@@ -708,6 +747,9 @@ fn set_lines(c: &Clause, new_format: bool) -> Vec<String> {
     }
     if let Some(x) = c.sets.metric_type {
         v.push(format!("metric-type type-{x}"));
+    }
+    if let Some(x) = c.sets.tag {
+        v.push(format!("tag {x}"));
     }
     if let Some(x) = c.sets.weight {
         v.push(format!("weight {x}"));
@@ -781,6 +823,9 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
             }
             if let Some(v) = c.metric {
                 let _ = writeln!(s, " match metric {v}");
+            }
+            if !c.tags.is_empty() {
+                let _ = writeln!(s, " match tag {}", c.tags.iter().map(u32::to_string).collect::<Vec<_>>().join(" "));
             }
             for line in set_lines(c, d.bgp_community_new_format) {
                 let _ = writeln!(s, " set {line}");

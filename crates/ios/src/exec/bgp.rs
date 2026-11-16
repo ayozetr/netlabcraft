@@ -7,7 +7,8 @@ use std::net::Ipv4Addr;
 
 use netlabcraft_core::{Ipv4Net, parse_ip};
 use netlabcraft_model::bgp::{
-    Aggregate, Bgp, HOLD_SECS, KEEPALIVE_SECS, MAX_AGGREGATES, MAX_CONFED_PEERS, MAX_MULTIPATH, MAX_NETWORKS, MAX_TEXT, Neighbor, Source,
+    Aggregate, Bgp, HOLD_SECS, KEEPALIVE_SECS, MAX_AGGREGATES, MAX_CONFED_PEERS, MAX_MULTIPATH, MAX_NETWORKS, MAX_PEER_GROUPS, MAX_TEXT, Neighbor,
+    PeerGroup, Source, follow,
 };
 use netlabcraft_model::policy::{self, community_text, parse_community};
 use netlabcraft_model::{Device, DeviceKind, Rip, ifname, routing};
@@ -40,6 +41,33 @@ fn process<'a>(c: &'a mut Ctx<'_>) -> Result<&'a mut Bgp, String> {
 /// A neighbour that was named with `remote-as` before.
 fn existing(b: &mut Bgp, addr: Ipv4Addr) -> Result<&mut Neighbor, String> {
     b.neighbors.iter_mut().find(|n| n.addr == addr).ok_or_else(|| format!("% Name the neighbour first: neighbor {addr} remote-as <AS>"))
+}
+
+/// Changes what `neighbor WHO …` sets: one neighbour (WHO is its address) or a peer group (its name).
+/// A change to a group reaches the members that follow it; after a change to a member, the settings
+/// it left unset (a `no` form) come from its group again.
+fn edit(b: &mut Bgp, who: &str, f: impl FnOnce(&mut Neighbor) -> Result<(), String>) -> Result<(), String> {
+    let who = who.trim();
+    if who.parse::<Ipv4Addr>().is_ok() {
+        let a = peer_address(who)?;
+        let conf = b.neighbor(a).and_then(|n| n.peer_group.as_deref()).and_then(|g| b.group(g)).map(|g| g.conf.clone());
+        let n = existing(b, a)?;
+        f(n)?;
+        if let Some(conf) = conf {
+            follow(n, &Neighbor::new(a), &conf);
+        }
+        return Ok(());
+    }
+    b.edit_group(who, f).unwrap_or_else(|| Err(format!("% No neighbour or peer group named {who}")))
+}
+
+/// A peer group's name: a policy-style name that cannot be mistaken for an address.
+fn group_name(text: &str) -> Result<String, String> {
+    let t = policy_name(text)?;
+    if t.parse::<Ipv4Addr>().is_ok() {
+        return Err("% A peer group's name cannot be an address".into());
+    }
+    Ok(t)
 }
 
 /// An interface name as the simulator spells it.
@@ -156,10 +184,18 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             Ok(String::new())
         }
         Id::BgpNeighborRemoteAs => {
-            let a = peer_address(arg(0))?;
-            let n = asn(arg(1))?;
+            let who = arg(0).trim();
+            let remote = asn(arg(1))?;
             let b = process(c)?;
-            b.neighbor_mut(a).ok_or_else(|| format!("% At most {} neighbours", netlabcraft_model::bgp::MAX_NEIGHBORS))?.remote_as = Some(n);
+            if who.parse::<Ipv4Addr>().is_ok() {
+                // A neighbour is named by this line: it exists from here on.
+                let a = peer_address(who)?;
+                b.neighbor_mut(a).ok_or_else(|| format!("% At most {} neighbours", netlabcraft_model::bgp::MAX_NEIGHBORS))?;
+            }
+            edit(b, who, |n| {
+                n.remote_as = Some(remote);
+                Ok(())
+            })?;
             Ok(String::new())
         }
         Id::NoBgpNeighbor => {
@@ -170,14 +206,19 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             if b.neighbors.len() == before { Err(format!("% No neighbour {a}")) } else { Ok(String::new()) }
         }
         Id::BgpNeighborUpdateSource | Id::NoBgpNeighborUpdateSource => {
-            let a = peer_address(arg(0))?;
             let name = if id == Id::BgpNeighborUpdateSource { Some(source_name(arg(1))?) } else { None };
-            existing(process(c)?, a)?.update_source = name;
+            edit(process(c)?, arg(0), |n| {
+                n.update_source = name;
+                Ok(())
+            })?;
             Ok(String::new())
         }
         Id::BgpNeighborNextHopSelf | Id::NoBgpNeighborNextHopSelf => {
-            let a = peer_address(arg(0))?;
-            existing(process(c)?, a)?.next_hop_self = id == Id::BgpNeighborNextHopSelf;
+            let on = id == Id::BgpNeighborNextHopSelf;
+            edit(process(c)?, arg(0), |n| {
+                n.next_hop_self = on;
+                Ok(())
+            })?;
             Ok(String::new())
         }
         Id::BgpNeighborShutdown | Id::NoBgpNeighborShutdown => {
@@ -197,23 +238,27 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             Ok(String::new())
         }
         Id::BgpNeighborMultihop | Id::NoBgpNeighborMultihop => {
-            let a = peer_address(arg(0))?;
             let hops = if id == Id::BgpNeighborMultihop {
                 if args.len() > 1 { Some(arg(1).trim().parse::<u8>().ok().filter(|h| *h >= 1).ok_or("% The hop count is 1-255")?) } else { Some(255) }
             } else {
                 None
             };
-            existing(process(c)?, a)?.ebgp_multihop = hops.filter(|h| *h > 1);
+            edit(process(c)?, arg(0), |n| {
+                n.ebgp_multihop = hops.filter(|h| *h > 1);
+                Ok(())
+            })?;
             Ok(String::new())
         }
         Id::BgpNeighborWeight | Id::NoBgpNeighborWeight => {
-            let a = peer_address(arg(0))?;
             let w = if id == Id::BgpNeighborWeight {
                 Some(arg(1).trim().parse::<u16>().map_err(|_| "% The weight is 0-65535".to_string())?)
             } else {
                 None
             };
-            existing(process(c)?, a)?.weight = w.filter(|w| *w > 0);
+            edit(process(c)?, arg(0), |n| {
+                n.weight = w.filter(|w| *w > 0);
+                Ok(())
+            })?;
             Ok(String::new())
         }
         Id::BgpNetwork | Id::NoBgpNetwork => {
@@ -259,37 +304,41 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             Ok(String::new())
         }
         Id::BgpNeighborPrefixList | Id::NoBgpNeighborPrefixList | Id::BgpNeighborRouteMap | Id::NoBgpNeighborRouteMap => {
-            let a = peer_address(arg(0))?;
+            let who = arg(0).trim().to_string();
             let name = policy_name(arg(1))?;
             let inbound = direction(arg(2))?;
             let set = matches!(id, Id::BgpNeighborPrefixList | Id::BgpNeighborRouteMap);
             let lists = matches!(id, Id::BgpNeighborPrefixList | Id::NoBgpNeighborPrefixList);
-            let n = existing(process(c)?, a)?;
-            let slot = match (lists, inbound) {
-                (true, true) => &mut n.prefix_list_in,
-                (true, false) => &mut n.prefix_list_out,
-                (false, true) => &mut n.route_map_in,
-                (false, false) => &mut n.route_map_out,
-            };
-            if set {
-                *slot = Some(name);
-            } else if slot.as_deref() == Some(name.as_str()) {
-                *slot = None;
-            } else {
-                return Err(format!("% {name} is not applied to {a} in that direction"));
-            }
+            edit(process(c)?, &who, |n| {
+                let slot = match (lists, inbound) {
+                    (true, true) => &mut n.prefix_list_in,
+                    (true, false) => &mut n.prefix_list_out,
+                    (false, true) => &mut n.route_map_in,
+                    (false, false) => &mut n.route_map_out,
+                };
+                if set {
+                    *slot = Some(name);
+                } else if slot.as_deref() == Some(name.as_str()) {
+                    *slot = None;
+                } else {
+                    return Err(format!("% {name} is not applied to {who} in that direction"));
+                }
+                Ok(())
+            })?;
             Ok(String::new())
         }
         Id::BgpNeighborSendCommunity | Id::NoBgpNeighborSendCommunity => {
-            let a = peer_address(arg(0))?;
             if !arg(1).is_empty() && !matches!(arg(1).to_ascii_lowercase().as_str(), "both" | "standard") {
                 return Err("% Only standard communities exist here: say both or standard".into());
             }
-            existing(process(c)?, a)?.send_community = id == Id::BgpNeighborSendCommunity;
+            let on = id == Id::BgpNeighborSendCommunity;
+            edit(process(c)?, arg(0), |n| {
+                n.send_community = on;
+                Ok(())
+            })?;
             Ok(String::new())
         }
         Id::BgpNeighborTimers | Id::NoBgpNeighborTimers => {
-            let a = peer_address(arg(0))?;
             let timers = if id == Id::BgpNeighborTimers {
                 let keepalive = arg(1).trim().parse::<u16>().map_err(|_| "% The keepalive interval is 0-65535 seconds".to_string())?;
                 let hold = arg(2)
@@ -302,11 +351,14 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             } else {
                 None
             };
-            existing(process(c)?, a)?.timers = timers;
+            edit(process(c)?, arg(0), |n| {
+                n.timers = timers;
+                Ok(())
+            })?;
             Ok(String::new())
         }
         Id::BgpNeighborFilterList | Id::NoBgpNeighborFilterList => {
-            let a = peer_address(arg(0))?;
+            let who = arg(0).trim().to_string();
             let name = arg(1)
                 .trim()
                 .parse::<u32>()
@@ -315,15 +367,18 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
                 .map(|n| n.to_string())
                 .ok_or("% An AS-path list is numbered 1-500")?;
             let inbound = direction(arg(2))?;
-            let n = existing(process(c)?, a)?;
-            let slot = if inbound { &mut n.filter_list_in } else { &mut n.filter_list_out };
-            if id == Id::BgpNeighborFilterList {
-                *slot = Some(name);
-            } else if slot.as_deref() == Some(name.as_str()) {
-                *slot = None;
-            } else {
-                return Err(format!("% AS-path list {name} is not applied to {a} in that direction"));
-            }
+            let set = id == Id::BgpNeighborFilterList;
+            edit(process(c)?, &who, |n| {
+                let slot = if inbound { &mut n.filter_list_in } else { &mut n.filter_list_out };
+                if set {
+                    *slot = Some(name);
+                } else if slot.as_deref() == Some(name.as_str()) {
+                    *slot = None;
+                } else {
+                    return Err(format!("% AS-path list {name} is not applied to {who} in that direction"));
+                }
+                Ok(())
+            })?;
             Ok(String::new())
         }
         Id::BgpAggregate | Id::NoBgpAggregate => {
@@ -368,17 +423,20 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             Ok(String::new())
         }
         Id::BgpNeighborRrClient | Id::NoBgpNeighborRrClient => {
-            let a = peer_address(arg(0))?;
+            let who = arg(0).trim().to_string();
+            let on = id == Id::BgpNeighborRrClient;
             let b = process(c)?;
             let own = b.asn;
-            let n = existing(b, a)?;
-            if id == Id::BgpNeighborRrClient && n.remote_as.is_some_and(|r| r != own) {
-                return Err(format!(
-                    "% A route reflector client is an internal neighbour: {a} is in AS {}, not in AS {own}",
-                    n.remote_as.unwrap_or(0)
-                ));
-            }
-            n.route_reflector_client = id == Id::BgpNeighborRrClient;
+            edit(b, &who, |n| {
+                if on && n.remote_as.is_some_and(|r| r != own) {
+                    return Err(format!(
+                        "% A route reflector client is an internal neighbour: {who} is in AS {}, not in AS {own}",
+                        n.remote_as.unwrap_or(0)
+                    ));
+                }
+                n.route_reflector_client = on;
+                Ok(())
+            })?;
             Ok(String::new())
         }
         Id::BgpClusterId | Id::NoBgpClusterId => {
@@ -432,25 +490,62 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             Ok(String::new())
         }
         Id::BgpNeighborDefaultOriginate | Id::NoBgpNeighborDefaultOriginate => {
-            let a = peer_address(arg(0))?;
-            existing(process(c)?, a)?.default_originate = id == Id::BgpNeighborDefaultOriginate;
+            let on = id == Id::BgpNeighborDefaultOriginate;
+            edit(process(c)?, arg(0), |n| {
+                n.default_originate = on;
+                Ok(())
+            })?;
             Ok(String::new())
         }
         Id::BgpNeighborRemovePrivate | Id::NoBgpNeighborRemovePrivate => {
-            let a = peer_address(arg(0))?;
             let on = id == Id::BgpNeighborRemovePrivate;
             if !arg(1).is_empty() && !arg(1).eq_ignore_ascii_case("all") {
                 return Err("% Only `all` may follow remove-private-as".into());
             }
-            let n = existing(process(c)?, a)?;
-            n.remove_private_as = on;
-            n.remove_private_all = on && !arg(1).is_empty();
+            let all = on && !arg(1).is_empty();
+            edit(process(c)?, arg(0), |n| {
+                n.remove_private_as = on;
+                n.remove_private_all = all;
+                Ok(())
+            })?;
             Ok(String::new())
         }
         Id::BgpNeighborSoftReconf | Id::NoBgpNeighborSoftReconf => {
-            let a = peer_address(arg(0))?;
-            existing(process(c)?, a)?.soft_reconfiguration_in = id == Id::BgpNeighborSoftReconf;
+            let on = id == Id::BgpNeighborSoftReconf;
+            edit(process(c)?, arg(0), |n| {
+                n.soft_reconfiguration_in = on;
+                Ok(())
+            })?;
             Ok(String::new())
+        }
+        Id::BgpPeerGroup => {
+            let name = group_name(arg(0))?;
+            process(c)?.group_mut(&name).ok_or_else(|| format!("% At most {MAX_PEER_GROUPS} peer groups"))?;
+            Ok(String::new())
+        }
+        Id::NoBgpPeerGroup => {
+            let name = arg(0).trim().to_string();
+            if process(c)?.remove_group(&name) { Ok(String::new()) } else { Err(format!("% No peer group named {name}")) }
+        }
+        Id::BgpNeighborPeerGroup => {
+            let a = peer_address(arg(0))?;
+            let name = group_name(arg(1))?;
+            process(c)?.join_group(a, &name).map_err(|e| format!("% {e}"))?;
+            Ok(String::new())
+        }
+        Id::NoBgpNeighborPeerGroup => {
+            let a = peer_address(arg(0))?;
+            let name = arg(1).trim().to_string();
+            let b = process(c)?;
+            if b.neighbor(a).and_then(|n| n.peer_group.as_deref()) != Some(name.as_str()) {
+                return Err(format!("% {a} is not in peer group {name}"));
+            }
+            b.leave_group(a);
+            Ok(String::new())
+        }
+        Id::ShowIpBgpPeerGroup => {
+            let view = c.sim.bgp_state(c.t);
+            peer_groups(c.d()?, &view, args.first().map(String::as_str))
         }
         Id::BgpAlwaysCompareMed | Id::NoBgpAlwaysCompareMed => {
             process(c)?.always_compare_med = id == Id::BgpAlwaysCompareMed;
@@ -532,6 +627,61 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
     }
 }
 
+/// The `neighbor WHO remote-as N` line, when the settings have one that `base` does not.
+fn remote_as_line(who: &str, n: &Neighbor, base: &Neighbor) -> Option<String> {
+    n.remote_as.filter(|r| base.remote_as != Some(*r)).map(|r| format!("neighbor {who} remote-as {r}"))
+}
+
+/// The configuration lines (`neighbor WHO …`, without the leading space) for what `n` sets that
+/// `base` does not already give it: the unconfigured neighbour for a neighbour or a group, the
+/// group's settings for a member. The remote AS, the description and the shutdown are written apart.
+fn neighbor_lines(who: &str, n: &Neighbor, base: &Neighbor) -> Vec<String> {
+    let mut v = Vec::new();
+    if let Some(u) = n.update_source.as_ref().filter(|u| base.update_source.as_ref() != Some(*u)) {
+        v.push(format!("neighbor {who} update-source {u}"));
+    }
+    if let Some(h) = n.ebgp_multihop.filter(|h| base.ebgp_multihop != Some(*h)) {
+        v.push(format!("neighbor {who} ebgp-multihop {h}"));
+    }
+    if n.next_hop_self && !base.next_hop_self {
+        v.push(format!("neighbor {who} next-hop-self"));
+    }
+    if let Some(w) = n.weight.filter(|w| base.weight != Some(*w)) {
+        v.push(format!("neighbor {who} weight {w}"));
+    }
+    if let Some((k, h)) = n.timers.filter(|t| base.timers != Some(*t)) {
+        v.push(format!("neighbor {who} timers {k} {h}"));
+    }
+    if n.send_community && !base.send_community {
+        v.push(format!("neighbor {who} send-community"));
+    }
+    if n.route_reflector_client && !base.route_reflector_client {
+        v.push(format!("neighbor {who} route-reflector-client"));
+    }
+    if n.default_originate && !base.default_originate {
+        v.push(format!("neighbor {who} default-originate"));
+    }
+    if n.remove_private_as && (!base.remove_private_as || n.remove_private_all != base.remove_private_all) {
+        v.push(format!("neighbor {who} remove-private-as{}", if n.remove_private_all { " all" } else { "" }));
+    }
+    if n.soft_reconfiguration_in && !base.soft_reconfiguration_in {
+        v.push(format!("neighbor {who} soft-reconfiguration inbound"));
+    }
+    for (word, dir, mine, theirs) in [
+        ("prefix-list", "in", &n.prefix_list_in, &base.prefix_list_in),
+        ("prefix-list", "out", &n.prefix_list_out, &base.prefix_list_out),
+        ("filter-list", "in", &n.filter_list_in, &base.filter_list_in),
+        ("filter-list", "out", &n.filter_list_out, &base.filter_list_out),
+        ("route-map", "in", &n.route_map_in, &base.route_map_in),
+        ("route-map", "out", &n.route_map_out, &base.route_map_out),
+    ] {
+        if let Some(name) = mine.as_ref().filter(|m| theirs.as_ref() != Some(*m)) {
+            v.push(format!("neighbor {who} {word} {name} {dir}"));
+        }
+    }
+    v
+}
+
 /// The BGP section of `show running-config`.
 pub(crate) fn running_config(s: &mut String, d: &Device) {
     let Some(b) = &d.bgp else { return };
@@ -560,57 +710,34 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
     if b.as_path_ignore {
         let _ = writeln!(s, " bgp bestpath as-path ignore");
     }
+    for g in &b.peer_groups {
+        let base = Neighbor::new(Ipv4Addr::UNSPECIFIED);
+        let _ = writeln!(s, " neighbor {} peer-group", g.name);
+        for line in remote_as_line(&g.name, &g.conf, &base).into_iter().chain(neighbor_lines(&g.name, &g.conf, &base)) {
+            let _ = writeln!(s, " {line}");
+        }
+    }
     for n in &b.neighbors {
-        if let Some(r) = n.remote_as {
-            let _ = writeln!(s, " neighbor {} remote-as {r}", n.addr);
+        let who = n.addr.to_string();
+        // A member says which group it is in and then only what differs from the group.
+        let base = match n.peer_group.as_deref().and_then(|g| b.group(g)) {
+            Some(g) => {
+                let _ = writeln!(s, " neighbor {who} peer-group {}", g.name);
+                g.conf.clone()
+            }
+            None => Neighbor::new(n.addr),
+        };
+        if let Some(line) = remote_as_line(&who, n, &base) {
+            let _ = writeln!(s, " {line}");
         }
         if let Some(text) = &n.description {
-            let _ = writeln!(s, " neighbor {} description {text}", n.addr);
+            let _ = writeln!(s, " neighbor {who} description {text}");
         }
-        if let Some(u) = &n.update_source {
-            let _ = writeln!(s, " neighbor {} update-source {u}", n.addr);
-        }
-        if let Some(h) = n.ebgp_multihop {
-            let _ = writeln!(s, " neighbor {} ebgp-multihop {h}", n.addr);
-        }
-        if n.next_hop_self {
-            let _ = writeln!(s, " neighbor {} next-hop-self", n.addr);
-        }
-        if let Some(w) = n.weight {
-            let _ = writeln!(s, " neighbor {} weight {w}", n.addr);
-        }
-        if let Some((k, h)) = n.timers {
-            let _ = writeln!(s, " neighbor {} timers {k} {h}", n.addr);
-        }
-        if n.send_community {
-            let _ = writeln!(s, " neighbor {} send-community", n.addr);
-        }
-        if n.route_reflector_client {
-            let _ = writeln!(s, " neighbor {} route-reflector-client", n.addr);
-        }
-        if n.default_originate {
-            let _ = writeln!(s, " neighbor {} default-originate", n.addr);
-        }
-        if n.remove_private_as {
-            let _ = writeln!(s, " neighbor {} remove-private-as{}", n.addr, if n.remove_private_all { " all" } else { "" });
-        }
-        if n.soft_reconfiguration_in {
-            let _ = writeln!(s, " neighbor {} soft-reconfiguration inbound", n.addr);
-        }
-        for (word, dir, name) in [
-            ("prefix-list", "in", &n.prefix_list_in),
-            ("prefix-list", "out", &n.prefix_list_out),
-            ("filter-list", "in", &n.filter_list_in),
-            ("filter-list", "out", &n.filter_list_out),
-            ("route-map", "in", &n.route_map_in),
-            ("route-map", "out", &n.route_map_out),
-        ] {
-            if let Some(name) = name {
-                let _ = writeln!(s, " neighbor {} {word} {name} {dir}", n.addr);
-            }
+        for line in neighbor_lines(&who, n, &base) {
+            let _ = writeln!(s, " {line}");
         }
         if n.shutdown {
-            let _ = writeln!(s, " neighbor {} shutdown", n.addr);
+            let _ = writeln!(s, " neighbor {who} shutdown");
         }
     }
     for n in &b.networks {
@@ -968,6 +1095,48 @@ fn entry(d: &Device, v: &BgpView, addr: &str, mask: Option<&str>) -> Result<Stri
     Ok(s.trim_end().to_string())
 }
 
+/// What a configuration line sets, without its `neighbor WHO ` start.
+fn settings_of(who: &str, n: &Neighbor, base: &Neighbor) -> Vec<String> {
+    let start = format!("neighbor {who} ");
+    remote_as_line(who, n, base).into_iter().chain(neighbor_lines(who, n, base)).map(|l| l.strip_prefix(&start).unwrap_or(&l).to_string()).collect()
+}
+
+/// `show ip bgp peer-group [NAME]`.
+fn peer_groups(d: &Device, v: &BgpView, only: Option<&str>) -> Result<String, String> {
+    let (Some(b), Some(r)) = (d.bgp.as_ref(), running(d, v)) else { return Ok(not_running()) };
+    let list: Vec<&PeerGroup> = b.peer_groups.iter().filter(|g| only.is_none_or(|n| g.name == n)).collect();
+    if list.is_empty() {
+        return match only {
+            Some(n) => Err(format!("% No peer group named {n}")),
+            None => Ok("(no peer groups: create one with `neighbor NAME peer-group`)".to_string()),
+        };
+    }
+    let none = Neighbor::new(Ipv4Addr::UNSPECIFIED);
+    let mut blocks = Vec::new();
+    for g in list {
+        let mut s = format!("BGP peer group {}\n", g.name);
+        let settings = settings_of(&g.name, &g.conf, &none);
+        if settings.is_empty() {
+            s.push_str("  Settings: none yet\n");
+        } else {
+            s.push_str("  Settings:\n");
+            for l in &settings {
+                let _ = writeln!(s, "    {l}");
+            }
+        }
+        let members: Vec<&Neighbor> = b.members(&g.name).collect();
+        let _ = writeln!(s, "  Members: {}", members.len());
+        for m in members {
+            let state = r.neighbors.iter().find(|x| x.addr == m.addr).map_or("-".to_string(), state_text);
+            let own = settings_of(&m.addr.to_string(), m, &g.conf);
+            let own = if own.is_empty() { String::new() } else { format!(" (its own: {})", own.join("; ")) };
+            let _ = writeln!(s, "    {} {state}{own}", m.addr);
+        }
+        blocks.push(s.trim_end().to_string());
+    }
+    Ok(blocks.join("\n\n"))
+}
+
 /// `show ip bgp neighbors [A.B.C.D]`.
 fn neighbors(d: &Device, v: &BgpView, only: Option<&str>) -> Result<String, String> {
     let (Some(r), Some(b)) = (running(d, v), d.bgp.as_ref()) else { return Ok(not_running()) };
@@ -994,6 +1163,9 @@ fn neighbors(d: &Device, v: &BgpView, only: Option<&str>) -> Result<String, Stri
         let mut s = format!("BGP neighbour {}, remote AS {} ({link})\n", n.addr, n.remote_as.map_or("-".to_string(), |a| a.to_string()));
         if let Some(text) = conf.and_then(|c| c.description.as_ref()) {
             let _ = writeln!(s, "  Description: {text}");
+        }
+        if let Some(group) = conf.and_then(|c| c.peer_group.as_ref()) {
+            let _ = writeln!(s, "  Member of peer group {group}");
         }
         let c = v.counters.get(&(d.id, n.addr)).copied().unwrap_or_default();
         match v.since.get(&(d.id, n.addr)) {

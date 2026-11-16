@@ -374,6 +374,9 @@ pub struct RouteEntry {
     pub distance: u8,
     /// The protocol's metric (OSPF cost, EIGRP metric, RIP hops; 0 for static routes).
     pub metric: u32,
+    /// The route's tag (0: none): set on a static route, carried by what redistribution gave a
+    /// protocol (an OSPF external route, an EIGRP external route, a RIP route).
+    pub tag: u32,
 }
 
 /// The device's routing table: connected and local routes of up interfaces, static routes
@@ -405,7 +408,7 @@ pub fn routing_table_with(
     if d.eigrp.is_some() {
         for r in eigrp_routes.iter().filter(|r| r.iface == eigrp::NULL0) {
             // A summary this router advertises: a discard route (distance 5).
-            learned.push(RouteEntry { code: 'D', net: r.net, via: None, iface: Some(r.iface.clone()), distance: 5, metric: r.metric });
+            learned.push(RouteEntry { code: 'D', net: r.net, via: None, iface: Some(r.iface.clone()), distance: 5, metric: r.metric, tag: 0 });
         }
         for r in eigrp_routes.iter().filter(|r| r.iface != eigrp::NULL0) {
             learned.push(RouteEntry {
@@ -415,6 +418,7 @@ pub fn routing_table_with(
                 iface: Some(r.iface.clone()),
                 distance: r.distance(),
                 metric: r.metric,
+                tag: r.tag,
             });
         }
     }
@@ -429,7 +433,7 @@ pub fn routing_table_with(
             } else {
                 'O'
             };
-            learned.push(RouteEntry { code, net: r.net, via: Some(r.via), iface: Some(r.iface.clone()), distance: 110, metric: r.cost });
+            learned.push(RouteEntry { code, net: r.net, via: Some(r.via), iface: Some(r.iface.clone()), distance: 110, metric: r.cost, tag: r.tag });
         }
     }
     if d.rip.is_some() {
@@ -441,6 +445,7 @@ pub fn routing_table_with(
                 iface: Some(r.iface.clone()),
                 distance: 120,
                 metric: u32::from(r.hops),
+                tag: r.tag,
             });
         }
     }
@@ -454,6 +459,7 @@ pub fn routing_table_with(
             iface: Some(r.iface.clone()),
             distance: r.distance,
             metric: r.metric,
+            tag: 0,
         });
     }
     let have: Vec<Ipv4Net> = out.iter().map(|r| r.net).collect();
@@ -475,21 +481,37 @@ fn routing_table_static(t: &Topology, d: &Device) -> Vec<RouteEntry> {
         if i.name.starts_with("Virtual-Access") && out.iter().any(|r: &RouteEntry| r.net == i.net.network()) {
             continue;
         }
-        out.push(RouteEntry { code: 'C', net: i.net.network(), via: None, iface: Some(i.name.clone()), distance: 0, metric: 0 });
+        out.push(RouteEntry { code: 'C', net: i.net.network(), via: None, iface: Some(i.name.clone()), distance: 0, metric: 0, tag: 0 });
         if i.net.prefix < 32 {
-            out.push(RouteEntry { code: 'L', net: Ipv4Net::new(i.net.addr, 32), via: None, iface: Some(i.name.clone()), distance: 0, metric: 0 });
+            out.push(RouteEntry {
+                code: 'L',
+                net: Ipv4Net::new(i.net.addr, 32),
+                via: None,
+                iface: Some(i.name.clone()),
+                distance: 0,
+                metric: 0,
+                tag: 0,
+            });
         }
     }
     // PPPoE: a host route for each address a session holds.
     for (net, name) in pppoe::host_routes(t, d, &ifs) {
-        out.push(RouteEntry { code: 'C', net, via: None, iface: Some(name), distance: 0, metric: 0 });
+        out.push(RouteEntry { code: 'C', net, via: None, iface: Some(name), distance: 0, metric: 0, tag: 0 });
     }
     if d.routes_ip() {
         for (i, p) in d.ports.iter().enumerate() {
             if let Some(gw) = p.dhcp_router
                 && ifs.iter().any(|x| x.port == i && x.net.contains(gw))
             {
-                out.push(RouteEntry { code: 'S', net: Ipv4Net::new(Ipv4Addr::UNSPECIFIED, 0), via: Some(gw), iface: None, distance: 254, metric: 0 });
+                out.push(RouteEntry {
+                    code: 'S',
+                    net: Ipv4Net::new(Ipv4Addr::UNSPECIFIED, 0),
+                    via: Some(gw),
+                    iface: None,
+                    distance: 254,
+                    metric: 0,
+                    tag: 0,
+                });
             }
         }
     }
@@ -498,7 +520,15 @@ fn routing_table_static(t: &Topology, d: &Device) -> Vec<RouteEntry> {
             match &r.via {
                 NextHop::Address(a) => {
                     if ifs.iter().any(|i| i.net.contains(*a)) {
-                        out.push(RouteEntry { code: 'S', net: r.net, via: Some(*a), iface: None, distance: r.distance.unwrap_or(1), metric: 0 });
+                        out.push(RouteEntry {
+                            code: 'S',
+                            net: r.net,
+                            via: Some(*a),
+                            iface: None,
+                            distance: r.distance.unwrap_or(1),
+                            metric: 0,
+                            tag: r.tag,
+                        });
                     }
                 }
                 NextHop::Interface(n) => {
@@ -510,6 +540,7 @@ fn routing_table_static(t: &Topology, d: &Device) -> Vec<RouteEntry> {
                             iface: Some(i.name.clone()),
                             distance: r.distance.unwrap_or(1),
                             metric: 0,
+                            tag: r.tag,
                         });
                     }
                 }
@@ -2302,6 +2333,7 @@ impl Sim {
                 iface: Some(r.iface.clone()),
                 next_hop: Some(r.via),
                 distance: eigrp::DISTANCE,
+                tag: 0,
             }));
             out.extend(st.summaries.get(&d.id).into_iter().flatten().map(|(net, _)| v6::Route6Entry {
                 code: 'D',
@@ -2309,6 +2341,7 @@ impl Sim {
                 iface: Some(eigrp::NULL0.to_string()),
                 next_hop: None,
                 distance: 5,
+                tag: 0,
             }));
         }
         if rip6::running(d) {
@@ -2320,6 +2353,7 @@ impl Sim {
                 iface: Some(r.iface.clone()),
                 next_hop: Some(r.via),
                 distance: 120,
+                tag: 0,
             }));
         }
         if d.ospf6.is_none() {
@@ -2341,6 +2375,7 @@ impl Sim {
             iface: Some(r.iface.clone()),
             next_hop: Some(r.via),
             distance: 110,
+            tag: 0,
         }));
         out
     }
@@ -2968,7 +3003,10 @@ impl Sim {
                     let listed: Vec<String> = routes
                         .iter()
                         .take(8)
-                        .map(|r| format!("{}/{} metric {}", r.net, netlabcraft_core::mask_to_prefix(r.mask).unwrap_or(0), r.metric))
+                        .map(|r| {
+                            let tag = if r.tag == 0 { String::new() } else { format!(" tag {}", r.tag) };
+                            format!("{}/{} metric {}{tag}", r.net, netlabcraft_core::mask_to_prefix(r.mask).unwrap_or(0), r.metric)
+                        })
                         .collect();
                     let more = if routes.len() > 8 { format!(" and {} more", routes.len() - 8) } else { String::new() };
                     self.log(d.id, &format!("RIP debug: version {v} update from {} on {}: {}{more}", ip.src, ifc.name, listed.join(", ")));
