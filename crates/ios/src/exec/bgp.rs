@@ -6,7 +6,9 @@ use std::fmt::Write as _;
 use std::net::Ipv4Addr;
 
 use netlabcraft_core::{Ipv4Net, parse_ip};
-use netlabcraft_model::bgp::{Aggregate, Bgp, HOLD_SECS, KEEPALIVE_SECS, MAX_AGGREGATES, MAX_MULTIPATH, MAX_NETWORKS, MAX_TEXT, Neighbor, Source};
+use netlabcraft_model::bgp::{
+    Aggregate, Bgp, HOLD_SECS, KEEPALIVE_SECS, MAX_AGGREGATES, MAX_CONFED_PEERS, MAX_MULTIPATH, MAX_NETWORKS, MAX_TEXT, Neighbor, Source,
+};
 use netlabcraft_model::policy::{self, community_text, parse_community};
 use netlabcraft_model::{Device, DeviceKind, Rip, ifname, routing};
 use netlabcraft_sim::DebugKind;
@@ -365,6 +367,122 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             process(c)?.maximum_paths = Some(n).filter(|n| *n > 1);
             Ok(String::new())
         }
+        Id::BgpNeighborRrClient | Id::NoBgpNeighborRrClient => {
+            let a = peer_address(arg(0))?;
+            let b = process(c)?;
+            let own = b.asn;
+            let n = existing(b, a)?;
+            if id == Id::BgpNeighborRrClient && n.remote_as.is_some_and(|r| r != own) {
+                return Err(format!(
+                    "% A route reflector client is an internal neighbour: {a} is in AS {}, not in AS {own}",
+                    n.remote_as.unwrap_or(0)
+                ));
+            }
+            n.route_reflector_client = id == Id::BgpNeighborRrClient;
+            Ok(String::new())
+        }
+        Id::BgpClusterId | Id::NoBgpClusterId => {
+            let v = if id == Id::BgpClusterId {
+                let text = arg(0).trim();
+                let a = if text.contains('.') {
+                    address(text)?
+                } else {
+                    Ipv4Addr::from(text.parse::<u32>().ok().filter(|n| *n >= 1).ok_or("% The cluster id is A.B.C.D or 1-4294967295")?)
+                };
+                Some(a)
+            } else {
+                None
+            };
+            process(c)?.cluster_id = v;
+            Ok(String::new())
+        }
+        Id::BgpConfedId | Id::NoBgpConfedId => {
+            let v = if id == Id::BgpConfedId { Some(asn(arg(0))?) } else { None };
+            let b = process(c)?;
+            if v == Some(b.asn) {
+                return Err("% The confederation identifier must differ from this router's member AS".into());
+            }
+            b.confed_id = v;
+            Ok(String::new())
+        }
+        Id::BgpConfedPeers | Id::NoBgpConfedPeers => {
+            let mut list = Vec::new();
+            for w in arg(0).split_whitespace() {
+                list.push(asn(w)?);
+            }
+            let b = process(c)?;
+            if id == Id::BgpConfedPeers {
+                if list.contains(&b.asn) {
+                    return Err("% This router's own member AS is not a confederation peer".into());
+                }
+                for a in list {
+                    if !b.confed_peers.contains(&a) {
+                        if b.confed_peers.len() >= MAX_CONFED_PEERS {
+                            return Err(format!("% At most {MAX_CONFED_PEERS} confederation peers"));
+                        }
+                        b.confed_peers.push(a);
+                    }
+                }
+                b.confed_peers.sort_unstable();
+            } else if list.is_empty() {
+                b.confed_peers.clear();
+            } else {
+                b.confed_peers.retain(|a| !list.contains(a));
+            }
+            Ok(String::new())
+        }
+        Id::BgpNeighborDefaultOriginate | Id::NoBgpNeighborDefaultOriginate => {
+            let a = peer_address(arg(0))?;
+            existing(process(c)?, a)?.default_originate = id == Id::BgpNeighborDefaultOriginate;
+            Ok(String::new())
+        }
+        Id::BgpNeighborRemovePrivate | Id::NoBgpNeighborRemovePrivate => {
+            let a = peer_address(arg(0))?;
+            let on = id == Id::BgpNeighborRemovePrivate;
+            if !arg(1).is_empty() && !arg(1).eq_ignore_ascii_case("all") {
+                return Err("% Only `all` may follow remove-private-as".into());
+            }
+            let n = existing(process(c)?, a)?;
+            n.remove_private_as = on;
+            n.remove_private_all = on && !arg(1).is_empty();
+            Ok(String::new())
+        }
+        Id::BgpNeighborSoftReconf | Id::NoBgpNeighborSoftReconf => {
+            let a = peer_address(arg(0))?;
+            existing(process(c)?, a)?.soft_reconfiguration_in = id == Id::BgpNeighborSoftReconf;
+            Ok(String::new())
+        }
+        Id::BgpAlwaysCompareMed | Id::NoBgpAlwaysCompareMed => {
+            process(c)?.always_compare_med = id == Id::BgpAlwaysCompareMed;
+            Ok(String::new())
+        }
+        Id::BgpAsPathIgnore | Id::NoBgpAsPathIgnore => {
+            process(c)?.as_path_ignore = id == Id::BgpAsPathIgnore;
+            Ok(String::new())
+        }
+        Id::BgpMaximumPathsIbgp | Id::NoBgpMaximumPathsIbgp => {
+            let n = if id == Id::BgpMaximumPathsIbgp {
+                arg(0)
+                    .trim()
+                    .parse::<u8>()
+                    .ok()
+                    .filter(|n| (1..=MAX_MULTIPATH).contains(n))
+                    .ok_or_else(|| format!("% The number of paths is 1-{MAX_MULTIPATH}"))?
+            } else {
+                1
+            };
+            process(c)?.maximum_paths_ibgp = Some(n).filter(|n| *n > 1);
+            Ok(String::new())
+        }
+        Id::ShowIpBgpReceived => {
+            let view = c.sim.bgp_state(c.t);
+            received_routes(c.d()?, &view, arg(0))
+        }
+        Id::ShowIpBgpRegexp | Id::ShowIpBgpFilterList => {
+            let view = c.sim.bgp_state(c.t);
+            let d = c.d()?;
+            if id == Id::ShowIpBgpRegexp { regexp_table(d, &view, arg(0)) } else { filter_list_table(d, &view, arg(0)) }
+        }
         Id::ShowIpBgpCommunity | Id::ShowIpBgpCommunityList => {
             let view = c.sim.bgp_state(c.t);
             let d = c.d()?;
@@ -427,6 +545,21 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
     if let Some(l) = b.default_local_pref {
         let _ = writeln!(s, " bgp default local-preference {l}");
     }
+    if let Some(c) = b.cluster_id {
+        let _ = writeln!(s, " bgp cluster-id {c}");
+    }
+    if let Some(i) = b.confed_id {
+        let _ = writeln!(s, " bgp confederation identifier {i}");
+    }
+    if !b.confed_peers.is_empty() {
+        let _ = writeln!(s, " bgp confederation peers {}", b.confed_peers.iter().map(u32::to_string).collect::<Vec<_>>().join(" "));
+    }
+    if b.always_compare_med {
+        let _ = writeln!(s, " bgp always-compare-med");
+    }
+    if b.as_path_ignore {
+        let _ = writeln!(s, " bgp bestpath as-path ignore");
+    }
     for n in &b.neighbors {
         if let Some(r) = n.remote_as {
             let _ = writeln!(s, " neighbor {} remote-as {r}", n.addr);
@@ -451,6 +584,18 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
         }
         if n.send_community {
             let _ = writeln!(s, " neighbor {} send-community", n.addr);
+        }
+        if n.route_reflector_client {
+            let _ = writeln!(s, " neighbor {} route-reflector-client", n.addr);
+        }
+        if n.default_originate {
+            let _ = writeln!(s, " neighbor {} default-originate", n.addr);
+        }
+        if n.remove_private_as {
+            let _ = writeln!(s, " neighbor {} remove-private-as{}", n.addr, if n.remove_private_all { " all" } else { "" });
+        }
+        if n.soft_reconfiguration_in {
+            let _ = writeln!(s, " neighbor {} soft-reconfiguration inbound", n.addr);
         }
         for (word, dir, name) in [
             ("prefix-list", "in", &n.prefix_list_in),
@@ -483,6 +628,9 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
     }
     if let Some(m) = b.maximum_paths {
         let _ = writeln!(s, " maximum-paths {m}");
+    }
+    if let Some(m) = b.maximum_paths_ibgp {
+        let _ = writeln!(s, " maximum-paths ibgp {m}");
     }
     for r in &b.redistribute {
         let map = b.redistribute_maps.get(r.word()).map_or(String::new(), |m| format!(" route-map {m}"));
@@ -522,6 +670,18 @@ fn summary(d: &Device, v: &BgpView) -> String {
     let best = r.paths.iter().filter(|p| p.best).count();
     let prefixes: std::collections::BTreeSet<Ipv4Net> = r.paths.iter().map(|p| p.net).collect();
     let mut s = format!("BGP router id {}, local AS {}\n", r.router_id, r.asn);
+    if let Some(b) = d.bgp.as_ref() {
+        if let Some(id) = b.confed_id {
+            let peers =
+                if b.confed_peers.is_empty() { "none".to_string() } else { b.confed_peers.iter().map(u32::to_string).collect::<Vec<_>>().join(" ") };
+            let _ = writeln!(s, "Confederation identifier {id}, member AS {}, member peers: {peers}", b.asn);
+        }
+        let clients = b.neighbors.iter().filter(|n| n.route_reflector_client).count();
+        if clients > 0 {
+            let cluster = b.cluster_id.unwrap_or(r.router_id);
+            let _ = writeln!(s, "Route reflector for cluster {cluster}, {clients} client{}", if clients == 1 { "" } else { "s" });
+        }
+    }
     let _ = writeln!(
         s,
         "Paths in the table: {} ({best} best) for {} prefix{}",
@@ -556,19 +716,37 @@ fn origin_char(o: u8) -> char {
 }
 
 fn as_path_text(p: &Path) -> String {
-    let mut s = p.as_path.iter().map(u32::to_string).collect::<Vec<_>>().join(" ");
-    if !p.as_set.is_empty() {
+    path_text(&p.confed_path, &p.as_path, &p.as_set, p.origin)
+}
+
+/// An AS path as `show ip bgp` writes it: the member autonomous systems of a confederation in
+/// parentheses first, then the path, an AS set in braces, and the origin letter.
+fn path_text(confed: &[u32], as_path: &[u32], as_set: &[u32], origin: u8) -> String {
+    let mut s = String::new();
+    if !confed.is_empty() {
+        s.push('(');
+        s.push_str(&confed.iter().map(u32::to_string).collect::<Vec<_>>().join(" "));
+        s.push(')');
+    }
+    let plain = as_path.iter().map(u32::to_string).collect::<Vec<_>>().join(" ");
+    if !plain.is_empty() {
+        if !s.is_empty() {
+            s.push(' ');
+        }
+        s.push_str(&plain);
+    }
+    if !as_set.is_empty() {
         if !s.is_empty() {
             s.push(' ');
         }
         s.push('{');
-        s.push_str(&p.as_set.iter().map(u32::to_string).collect::<Vec<_>>().join(","));
+        s.push_str(&as_set.iter().map(u32::to_string).collect::<Vec<_>>().join(","));
         s.push('}');
     }
     if !s.is_empty() {
         s.push(' ');
     }
-    s.push(origin_char(p.origin));
+    s.push(origin_char(origin));
     s
 }
 
@@ -586,7 +764,9 @@ fn table_of(d: &Device, v: &BgpView, keep: impl Fn(&Path) -> bool, none: &str) -
         return format!("BGP router id {}, local AS {}\n({none})", r.router_id, r.asn);
     }
     let mut s = format!("BGP router id {}, local AS {}\n", r.router_id, r.asn);
-    s.push_str("Status: * usable, > best, m shares the load, i from an internal neighbour    Origin: i IGP, e EGP, ? incomplete\n\n");
+    s.push_str(
+        "Status: * usable, > best, m shares the load, i from an internal neighbour, c from another member AS    Origin: i IGP, e EGP, ? incomplete\n\n",
+    );
     let _ = writeln!(s, "    {:<18} {:<16} {:>6} {:>6} {:>6}  Path", "Network", "Next hop", "Metric", "LocPrf", "Weight");
     let mut last: Option<Ipv4Net> = None;
     for p in shown {
@@ -600,7 +780,13 @@ fn table_of(d: &Device, v: &BgpView, keep: impl Fn(&Path) -> bool, none: &str) -
             } else {
                 ' '
             },
-            if p.from.is_some() && !p.ebgp { 'i' } else { ' ' }
+            if p.confed {
+                'c'
+            } else if p.internal() {
+                'i'
+            } else {
+                ' '
+            }
         );
         let net = if last == Some(p.net) { String::new() } else { p.net.to_string() };
         last = Some(p.net);
@@ -643,6 +829,61 @@ fn community_list_table(d: &Device, v: &BgpView, name: &str) -> Result<String, S
     Ok(table_of(d, v, |p| list.permits(&p.communities), &format!("the community list {name} permits no path")))
 }
 
+fn cluster_text(list: &[Ipv4Addr]) -> String {
+    if list.is_empty() { "empty".to_string() } else { list.iter().map(Ipv4Addr::to_string).collect::<Vec<_>>().join(" ") }
+}
+
+/// `show ip bgp regexp EXPRESSION`: the paths whose AS path the expression matches.
+fn regexp_table(d: &Device, v: &BgpView, text: &str) -> Result<String, String> {
+    let re = text.trim();
+    if !netlabcraft_model::textmatch::valid(re) {
+        return Err(format!("% `{re}` is not an expression the matcher reads (it knows . * + ? [] ^ $ and _, not alternation or groups)"));
+    }
+    Ok(table_of(
+        d,
+        v,
+        |p| netlabcraft_model::textmatch::is_match(re, &policy::as_path_for_regex(&p.as_path, &p.as_set)),
+        &format!("no AS path matches {re}"),
+    ))
+}
+
+/// `show ip bgp filter-list N`: the paths an AS-path list permits.
+fn filter_list_table(d: &Device, v: &BgpView, text: &str) -> Result<String, String> {
+    let name =
+        text.trim().parse::<u32>().ok().filter(|n| (1..=500).contains(n)).map(|n| n.to_string()).ok_or("% An AS-path list is numbered 1-500")?;
+    let list = d.as_path_list(&name).ok_or_else(|| format!("% No AS-path list {name}"))?;
+    Ok(table_of(d, v, |p| list.permits(&p.as_path, &p.as_set), &format!("the AS-path list {name} permits no path")))
+}
+
+/// `show ip bgp neighbors A.B.C.D received-routes`: what the neighbour sent, before the inbound
+/// policy.
+fn received_routes(d: &Device, v: &BgpView, addr: &str) -> Result<String, String> {
+    let a = address(addr)?;
+    let (Some(r), Some(b)) = (running(d, v), d.bgp.as_ref()) else { return Ok(not_running()) };
+    let Some(conf) = b.neighbor(a) else { return Err(format!("% No neighbour {a}")) };
+    if !conf.soft_reconfiguration_in {
+        return Err(format!("% Nothing is kept for {a}: add `neighbor {a} soft-reconfiguration inbound` first"));
+    }
+    let list = r.received.get(&a).map_or(&[][..], Vec::as_slice);
+    if list.is_empty() {
+        return Ok(format!("BGP router id {}, local AS {}\n(nothing received from {a} yet)", r.router_id, r.asn));
+    }
+    let mut s = format!("BGP router id {}, local AS {}\nReceived from {a}, before the inbound policy:\n\n", r.router_id, r.asn);
+    let _ = writeln!(s, "{:<18} {:<16} {:>6} {:>6}  Path", "Network", "Next hop", "Metric", "LocPrf");
+    for (net, at) in list {
+        let lp = at.local_pref.map_or("-".to_string(), |l| l.to_string());
+        let _ = writeln!(
+            s,
+            "{:<18} {:<16} {:>6} {lp:>6}  {}",
+            net.to_string(),
+            at.next_hop.to_string(),
+            at.med.unwrap_or(0),
+            path_text(&at.confed_path, &at.as_path, &at.as_set, at.origin)
+        );
+    }
+    Ok(s.trim_end().to_string())
+}
+
 /// `show ip bgp A.B.C.D [M.M.M.M]`.
 fn entry(d: &Device, v: &BgpView, addr: &str, mask: Option<&str>) -> Result<String, String> {
     let Some(r) = running(d, v) else { return Ok(not_running()) };
@@ -679,10 +920,11 @@ fn entry(d: &Device, v: &BgpView, addr: &str, mask: Option<&str>) -> Result<Stri
             None => "originated here".to_string(),
         };
         let _ = writeln!(s, "  Path {}{}: AS path {path}, next hop {}, {source}", i + 1, if p.best { " (best)" } else { "" }, p.next_hop);
-        let kind = match (p.from.is_some(), p.ebgp) {
-            (false, _) => "local",
-            (true, true) => "external",
-            (true, false) => "internal",
+        let kind = match (p.from.is_some(), p.ebgp, p.confed) {
+            (false, ..) => "local",
+            (true, true, _) => "external",
+            (true, false, true) => "confederation",
+            (true, false, false) => "internal",
         };
         let origin = match p.origin {
             0 => "IGP",
@@ -699,6 +941,12 @@ fn entry(d: &Device, v: &BgpView, addr: &str, mask: Option<&str>) -> Result<Stri
         );
         if !p.as_set.is_empty() {
             let _ = writeln!(s, "    AS set {{{}}}", p.as_set.iter().map(u32::to_string).collect::<Vec<_>>().join(","));
+        }
+        if !p.confed_path.is_empty() {
+            let _ = writeln!(s, "    confederation path: {}", p.confed_path.iter().map(u32::to_string).collect::<Vec<_>>().join(" "));
+        }
+        if let Some(o) = p.originator_id {
+            let _ = writeln!(s, "    originator {o}, cluster list: {}", cluster_text(&p.cluster_list));
         }
         if !p.communities.is_empty() {
             let _ = writeln!(
@@ -738,6 +986,7 @@ fn neighbors(d: &Device, v: &BgpView, only: Option<&str>) -> Result<String, Stri
     for n in list {
         let conf = b.neighbor(n.addr);
         let link = match n.remote_as {
+            Some(_) if n.confed => "confederation link",
             Some(a) if a == r.asn => "internal link",
             Some(_) => "external link",
             None => "no remote AS",
@@ -783,6 +1032,18 @@ fn neighbors(d: &Device, v: &BgpView, only: Option<&str>) -> Result<String, Stri
         if let Some(w) = conf.and_then(|c| c.weight) {
             options.push(format!("weight {w}"));
         }
+        if conf.is_some_and(|c| c.route_reflector_client) {
+            options.push("route-reflector-client".to_string());
+        }
+        if conf.is_some_and(|c| c.default_originate) {
+            options.push("default-originate".to_string());
+        }
+        if let Some(c) = conf.filter(|c| c.remove_private_as) {
+            options.push(format!("remove-private-as{}", if c.remove_private_all { " all" } else { "" }));
+        }
+        if conf.is_some_and(|c| c.soft_reconfiguration_in) {
+            options.push("soft-reconfiguration inbound".to_string());
+        }
         if !options.is_empty() {
             let _ = writeln!(s, "  Options: {}", options.join(", "));
         }
@@ -824,6 +1085,10 @@ fn neighbors(d: &Device, v: &BgpView, only: Option<&str>) -> Result<String, Stri
             c.rcvd.get(3).copied().unwrap_or(0)
         );
         let _ = writeln!(s, "  Prefixes received {}, sent {}", n.received, n.sent);
+        if conf.is_some_and(|c| c.soft_reconfiguration_in) {
+            let kept = r.received.get(&n.addr).map_or(0, Vec::len);
+            let _ = writeln!(s, "  Kept before the inbound policy: {kept} (show ip bgp neighbors {} received-routes)", n.addr);
+        }
         if let Some(e) = &n.error {
             let _ = writeln!(s, "  Last error: {e}");
         }

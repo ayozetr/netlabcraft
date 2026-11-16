@@ -13,7 +13,13 @@
 //! Established neighbours: external neighbours see the router's AS added to the AS path and
 //! the router's own address as the next hop; internal neighbours get the path as it is (the
 //! next hop too, unless `next-hop-self`), and never a path learned from another internal
-//! neighbour (no route reflectors). A path whose AS path holds the receiver's AS is dropped.
+//! neighbour unless the router is a route reflector (RFC 4456: a path from a client goes to every
+//! internal neighbour, one from a non-client only to the clients, with ORIGINATOR_ID and the
+//! CLUSTER_LIST for loop prevention). A path whose AS path holds the receiver's AS is dropped.
+//! In a confederation (RFC 5065) the member autonomous systems are linked by confederation
+//! eBGP: the member AS goes into the AS_CONFED_SEQUENCE, the next hop and local preference are
+//! kept, and the segment is stripped (the confederation identifier takes its place) where the path
+//! leaves the confederation.
 //! A path is usable only while its next hop resolves in the routing table.
 //!
 //! Policy: a neighbour's `prefix-list`, `filter-list` and `route-map` (inbound and outbound) and
@@ -29,8 +35,13 @@
 //! sides, and a session whose path is lost (without an administrative change or a directly
 //! connected interface going down) stays up until its hold time runs out.
 //!
-//! Left out on purpose (see `docs/gaps.md`): route reflectors and confederations, a discard route
-//! for an aggregate, `maximum-paths ibgp`, and IPv6 address families.
+//! Also here: `neighbor default-originate`, `remove-private-as`, `soft-reconfiguration inbound`
+//! (what the neighbour sent before the inbound policy), `bgp always-compare-med`,
+//! `bgp bestpath as-path ignore`, `maximum-paths ibgp` and the discard route an aggregate puts in
+//! the routing table.
+//!
+//! Left out on purpose (see `docs/gaps.md`): AS_CONFED_SET paths (nothing here makes one), route
+//! tags, and IPv6 address families.
 
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
@@ -67,6 +78,8 @@ const MAX_LOCAL: usize = 1_024;
 const MAX_HOPS: u8 = 16;
 /// Most AS numbers in the AS set of an aggregate.
 const MAX_AS_SET: usize = 32;
+/// Most member autonomous systems kept in a confederation path.
+const MAX_CONFED_PATH: usize = 32;
 /// Most prefixes in one UPDATE.
 const PER_UPDATE: usize = 200;
 /// The TCP port the side that opened the connection uses.
@@ -111,6 +124,9 @@ pub struct Peering {
     pub out_iface: String,
     pub next_hop: Ipv4Addr,
     pub ebgp: bool,
+    /// Both routers are members of one confederation and in different member autonomous systems
+    /// (`ebgp` is also true for such a session: it is external to the member AS only).
+    pub confed: bool,
     /// The TTL of what this router sends.
     pub ttl: u8,
 }
@@ -157,9 +173,24 @@ pub struct Path {
     pub multi: bool,
     /// An aggregate with `summary-only` keeps this path from being advertised.
     pub suppressed: bool,
+    /// ORIGINATOR_ID: the router id that first told this AS about the path (a reflected path).
+    pub originator_id: Option<Ipv4Addr>,
+    /// CLUSTER_LIST: the clusters a reflected path went through, the latest first.
+    pub cluster_list: Vec<Ipv4Addr>,
+    /// The member autonomous systems of the confederation the path crossed, nearest first.
+    pub confed_path: Vec<u32>,
+    /// Learned from a neighbour in another member AS of the confederation.
+    pub confed: bool,
+    /// Made by an `aggregate-address`.
+    pub aggregate: bool,
 }
 
 impl Path {
+    /// Learned from an internal neighbour (same AS, or same member AS of a confederation).
+    pub fn internal(&self) -> bool {
+        self.from.is_some() && !self.ebgp && !self.confed
+    }
+
     /// The AS path length best-path selection compares: an AS set counts as one.
     pub fn path_len(&self) -> usize {
         self.as_path.len() + usize::from(!self.as_set.is_empty())
@@ -190,6 +221,8 @@ pub struct NeighborView {
     pub peer_router_id: Option<Ipv4Addr>,
     pub local: Option<Ipv4Addr>,
     pub ebgp: bool,
+    /// The session joins two member autonomous systems of a confederation.
+    pub confed: bool,
     pub error: Option<String>,
     pub received: usize,
     pub sent: usize,
@@ -208,6 +241,8 @@ pub struct RouterView {
     pub routes: Vec<BgpRoute>,
     /// What this router advertises to each Established neighbour.
     pub adv: BTreeMap<Ipv4Addr, Vec<(Ipv4Net, msg::PathAttrs)>>,
+    /// What each neighbour with `soft-reconfiguration inbound` sent, before the inbound policy.
+    pub received: BTreeMap<Ipv4Addr, Vec<(Ipv4Net, msg::PathAttrs)>>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -377,10 +412,21 @@ fn attempt(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, a: &Device,
     let Some(m) = bb.neighbor(src).filter(|m| !m.shutdown && m.remote_as.is_some()) else { return Attempt::No };
     let Some(back) = path_to(t, base, b, src).filter(|h| h.owner == a.id) else { return Attempt::No };
     let bkey = (b.id, m.addr);
-    if n.remote_as != Some(bb.asn) || m.remote_as != Some(ab.asn) {
-        return Attempt::BadAs(bkey, n.remote_as != Some(bb.asn));
+    // Inside a confederation each side names the other's member AS; from outside, a confederation is
+    // known by its identifier.
+    let same_confed = ab.confed_id.is_some() && ab.confed_id == bb.confed_id;
+    let (their_as, my_as) = if same_confed { (bb.asn, ab.asn) } else { (bb.outer_as(), ab.outer_as()) };
+    if n.remote_as != Some(their_as) || m.remote_as != Some(my_as) {
+        return Attempt::BadAs(bkey, n.remote_as != Some(their_as));
     }
-    let ebgp = ab.asn != bb.asn;
+    let confed = same_confed && ab.asn != bb.asn;
+    if confed && !(ab.confed_peers.contains(&bb.asn) && bb.confed_peers.contains(&ab.asn)) {
+        return Attempt::No;
+    }
+    let ebgp = if same_confed { confed } else { ab.outer_as() != bb.outer_as() };
+    if !same_confed && !ebgp && (ab.confed_id.is_some() || bb.confed_id.is_some()) {
+        return Attempt::No;
+    }
     if ebgp {
         let near = |d: &Device, addr: Ipv4Addr| up_ifaces(t, d).iter().any(|i| !crate::loopback::is_loopback(i.port) && i.net.contains(addr));
         if to.hops > multihop(n) || (multihop(n) == 1 && !near(a, n.addr)) {
@@ -391,8 +437,16 @@ fn attempt(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, a: &Device,
         }
     }
     let ttl = |h: u8| if ebgp { h } else { 255 };
-    let mine =
-        Peering { peer: b.id, peer_addr: n.addr, local: src, out_iface: to.out_iface.clone(), next_hop: to.next_hop, ebgp, ttl: ttl(multihop(n)) };
+    let mine = Peering {
+        peer: b.id,
+        peer_addr: n.addr,
+        local: src,
+        out_iface: to.out_iface.clone(),
+        next_hop: to.next_hop,
+        ebgp,
+        confed,
+        ttl: ttl(multihop(n)),
+    };
     let theirs = Peering {
         peer: a.id,
         peer_addr: src,
@@ -400,6 +454,7 @@ fn attempt(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, a: &Device,
         out_iface: back.out_iface.clone(),
         next_hop: back.next_hop,
         ebgp,
+        confed,
         ttl: ttl(multihop(m)),
     };
     Attempt::Ok(Box::new(mine), Box::new(theirs), bkey)
@@ -436,8 +491,26 @@ pub fn analyse(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>) -> Anal
     an
 }
 
+/// What a router's settings change in the choice of the best path and in how many paths share the
+/// load.
+#[derive(Debug, Clone, Copy, Default)]
+struct Rank {
+    /// `maximum-paths N`: equal external paths in the routing table.
+    multi: usize,
+    /// `maximum-paths ibgp N`: equal internal paths in the routing table.
+    multi_ibgp: usize,
+    /// `bgp always-compare-med`.
+    always_med: bool,
+    /// `bgp bestpath as-path ignore`.
+    ignore_len: bool,
+}
+
+fn rank_of(ab: &conf::Bgp) -> Rank {
+    Rank { multi: ab.multipath(), multi_ibgp: ab.multipath_ibgp(), always_med: ab.always_compare_med, ignore_len: ab.as_path_ignore }
+}
+
 /// `a` is a better path than `b` to the same prefix.
-fn better(a: &Path, b: &Path) -> bool {
+fn better(a: &Path, b: &Path, o: &Rank) -> bool {
     if a.valid != b.valid {
         return a.valid;
     }
@@ -450,14 +523,14 @@ fn better(a: &Path, b: &Path) -> bool {
     if a.from.is_none() != b.from.is_none() {
         return a.from.is_none();
     }
-    if a.path_len() != b.path_len() {
+    if !o.ignore_len && a.path_len() != b.path_len() {
         return a.path_len() < b.path_len();
     }
     if a.origin != b.origin {
         return a.origin < b.origin;
     }
-    // The MED only compares paths that come from the same neighbouring AS.
-    if a.as_path.first() == b.as_path.first() && a.med != b.med {
+    // The MED only compares paths that come from the same neighbouring AS (unless told to always).
+    if (o.always_med || a.as_path.first() == b.as_path.first()) && a.med != b.med {
         return a.med < b.med;
     }
     if a.ebgp != b.ebgp {
@@ -467,34 +540,42 @@ fn better(a: &Path, b: &Path) -> bool {
     if a.igp != b.igp {
         return a.igp < b.igp;
     }
-    if a.from_id != b.from_id {
-        return a.from_id < b.from_id;
+    // A reflected path is known by the router that first told the AS about it (RFC 4456), and the
+    // one that went through fewer clusters wins a tie after that.
+    let (ra, rb) = (a.originator_id.unwrap_or(a.from_id), b.originator_id.unwrap_or(b.from_id));
+    if ra != rb {
+        return ra < rb;
+    }
+    if a.cluster_list.len() != b.cluster_list.len() {
+        return a.cluster_list.len() < b.cluster_list.len();
     }
     a.from < b.from
 }
 
 /// Whether `b` is as good as the best path `a` in every step before the router id and comes from
-/// the same neighbouring AS: the two can share the load under `maximum-paths`.
-fn equal_cost(a: &Path, b: &Path) -> bool {
+/// the same neighbouring AS, both being external or both internal: the two can share the load under
+/// `maximum-paths` (`maximum-paths ibgp` for internal ones).
+fn equal_cost(a: &Path, b: &Path, o: &Rank) -> bool {
     a.valid
         && b.valid
         && a.from.is_some()
         && b.from.is_some()
-        && a.ebgp
-        && b.ebgp
+        && !a.confed
+        && !b.confed
+        && a.ebgp == b.ebgp
         && a.weight == b.weight
         && a.local_pref == b.local_pref
         && a.as_path.first() == b.as_path.first()
-        && a.path_len() == b.path_len()
+        && (o.ignore_len || a.path_len() == b.path_len())
         && a.origin == b.origin
         && a.med == b.med
         && a.igp == b.igp
 }
 
 /// Groups paths by prefix, marks the best of each (when its next hop resolves) and puts it first;
-/// up to `multipath - 1` more external paths as good as the best, through a different first hop,
-/// are marked to share the load.
-fn rank(cands: Vec<Path>, multipath: usize) -> Vec<Path> {
+/// up to `multi - 1` more external paths (`multi_ibgp - 1` internal ones, when the best is internal)
+/// as good as the best, through a different first hop, are marked to share the load.
+fn rank(cands: Vec<Path>, o: &Rank) -> Vec<Path> {
     let mut groups: BTreeMap<Ipv4Net, Vec<Path>> = BTreeMap::new();
     for c in cands {
         groups.entry(c.net).or_default().push(c);
@@ -502,7 +583,7 @@ fn rank(cands: Vec<Path>, multipath: usize) -> Vec<Path> {
     let mut out = Vec::new();
     for mut g in groups.into_values() {
         let best = g.iter().enumerate().fold(0usize, |b, (i, c)| match g.get(b) {
-            Some(x) if !better(c, x) => b,
+            Some(x) if !better(c, x, o) => b,
             _ => i,
         });
         if best < g.len() {
@@ -511,12 +592,17 @@ fn rank(cands: Vec<Path>, multipath: usize) -> Vec<Path> {
         if let Some(p) = g.first_mut() {
             p.best = p.valid;
         }
-        if multipath > 1
-            && let Some(top) = g.first().filter(|p| p.best).cloned()
-        {
+        if let Some(top) = g.first().filter(|p| p.best).cloned() {
+            let multipath = if top.ebgp {
+                o.multi
+            } else if top.internal() {
+                o.multi_ibgp
+            } else {
+                1
+            };
             let mut used: Vec<Option<(String, Ipv4Addr)>> = vec![top.resolved.clone()];
             for p in g.iter_mut().skip(1) {
-                if used.len() < multipath && equal_cost(&top, p) && !used.contains(&p.resolved) {
+                if multipath > 1 && used.len() < multipath && equal_cost(&top, p, o) && !used.contains(&p.resolved) {
                     p.multi = true;
                     used.push(p.resolved.clone());
                 }
@@ -575,6 +661,11 @@ fn originate(d: &Device, base: &[RouteEntry]) -> Vec<Path> {
             igp: 0,
             multi: false,
             suppressed: false,
+            originator_id: None,
+            cluster_list: Vec::new(),
+            confed_path: Vec::new(),
+            confed: false,
+            aggregate: false,
         })
         .collect()
 }
@@ -616,6 +707,11 @@ fn aggregate_paths(ab: &conf::Bgp, paths: &[Path]) -> Vec<Path> {
             igp: 0,
             multi: false,
             suppressed: false,
+            originator_id: None,
+            cluster_list: Vec::new(),
+            confed_path: Vec::new(),
+            confed: false,
+            aggregate: true,
         });
     }
     out
@@ -626,6 +722,23 @@ fn summarised(ab: &conf::Bgp, net: Ipv4Net) -> bool {
     ab.aggregates.iter().any(|g| g.summary_only && g.net.prefix < net.prefix && g.net.contains(net.addr))
 }
 
+/// The cluster a route reflector serves: its `bgp cluster-id`, else its router id.
+fn cluster_of(d: &Device, b: &conf::Bgp) -> Ipv4Addr {
+    b.cluster_id.unwrap_or_else(|| router_id(d))
+}
+
+/// `remove-private-as` on a path sent to an external neighbour: the private AS numbers go, but
+/// without `all` only when the whole path is private.
+fn strip_private(path: Vec<u32>, n: &conf::Neighbor) -> Vec<u32> {
+    if !n.remove_private_as {
+        return path;
+    }
+    if n.remove_private_all {
+        return path.into_iter().filter(|a| !conf::is_private_as(*a)).collect();
+    }
+    if path.iter().all(|a| conf::is_private_as(*a)) { Vec::new() } else { path }
+}
+
 /// What a router tells a neighbour about one of its best paths, if it tells it at all: the
 /// neighbour's outbound prefix list and route map decide, and the map's `set` lines change what
 /// is told (the weight stays here: it is never sent).
@@ -634,16 +747,24 @@ fn export(a: &Device, ab: &conf::Bgp, n: &conf::Neighbor, p: &Peering, path: &Pa
     if path.from == Some(n.addr) {
         return None;
     }
+    // A session that leaves the confederation (or the AS, outside any confederation).
+    let external = p.ebgp && !p.confed;
     // A path that already crossed the neighbour's AS would only be dropped there.
-    if p.ebgp && n.remote_as.is_some_and(|r| path.as_path.contains(&r) || path.as_set.contains(&r)) {
+    if external && n.remote_as.is_some_and(|r| path.as_path.contains(&r) || path.as_set.contains(&r)) {
         return None;
     }
-    // Well-known communities: no-advertise goes to nobody, no-export and local-AS stay inside the AS
-    // (without confederations that is every internal neighbour and no external one).
+    if p.confed && n.remote_as.is_some_and(|r| path.confed_path.contains(&r)) {
+        return None;
+    }
+    // Well-known communities: no-advertise goes to nobody, no-export stays inside the AS (or the
+    // confederation), local-AS inside the member AS.
     if path.communities.contains(&policy::NO_ADVERTISE) {
         return None;
     }
-    if p.ebgp && (path.communities.contains(&policy::NO_EXPORT) || path.communities.contains(&policy::LOCAL_AS)) {
+    if external && path.communities.contains(&policy::NO_EXPORT) {
+        return None;
+    }
+    if p.ebgp && path.communities.contains(&policy::LOCAL_AS) {
         return None;
     }
     // A summary-only aggregate covers this prefix.
@@ -655,9 +776,15 @@ fn export(a: &Device, ab: &conf::Bgp, n: &conf::Neighbor, p: &Peering, path: &Pa
     {
         return None;
     }
-    // Between internal neighbours a path learned from an internal neighbour is not passed on.
-    if !p.ebgp && path.from.is_some() && !path.ebgp {
-        return None;
+    // Between internal neighbours a path learned from an internal neighbour is not passed on, unless
+    // this router is a route reflector: a path from a client goes to every internal neighbour, one
+    // from a non-client to the clients only (RFC 4456).
+    let reflect = !p.ebgp && path.internal();
+    if reflect {
+        let from_client = path.from.and_then(|f| ab.neighbor(f)).is_some_and(|s| s.route_reflector_client);
+        if !from_client && !n.route_reflector_client {
+            return None;
+        }
     }
     let seen = policy::Attrs { communities: &path.communities, as_path: &path.as_path, as_set: &path.as_set };
     let sets = policy::apply_with(a, n.prefix_list_out.as_deref(), n.route_map_out.as_deref(), &Subject { net: path.net, metric: path.med }, &seen)?;
@@ -668,9 +795,9 @@ fn export(a: &Device, ab: &conf::Bgp, n: &conf::Neighbor, p: &Peering, path: &Pa
     let origin = sets.origin.unwrap_or(path.origin);
     // A path this router originates names its own address, unless a map named another next hop.
     let own = if path.from.is_none() && !path.next_hop.is_unspecified() { path.next_hop } else { p.local };
-    if p.ebgp {
-        let mut as_path = vec![ab.asn];
-        as_path.extend(tail);
+    if external {
+        let mut as_path = vec![ab.outer_as()];
+        as_path.extend(strip_private(tail, n));
         return Some(msg::PathAttrs {
             origin,
             as_path,
@@ -681,9 +808,30 @@ fn export(a: &Device, ab: &conf::Bgp, n: &conf::Neighbor, p: &Peering, path: &Pa
             local_pref: None,
             as_set: path.as_set.clone(),
             communities,
+            ..msg::PathAttrs::default()
         });
     }
-    let next_hop = if n.next_hop_self || path.from.is_none() { own } else { path.next_hop };
+    // Inside the AS, and between the member autonomous systems of a confederation: the next hop, the
+    // MED and the local preference go along; across a confederation link our member AS joins the
+    // confederation path and the AS path is left as it is.
+    let confed_path = if p.confed {
+        let mut v = vec![ab.asn];
+        v.extend(path.confed_path.iter().copied());
+        v.truncate(MAX_CONFED_PATH);
+        v
+    } else {
+        path.confed_path.clone()
+    };
+    let (originator_id, cluster_list) = if reflect {
+        let mut clusters = vec![cluster_of(a, ab)];
+        clusters.extend(path.cluster_list.iter().copied());
+        clusters.truncate(msg::MAX_CLUSTERS);
+        (Some(path.originator_id.unwrap_or(path.from_id)), clusters)
+    } else {
+        (None, Vec::new())
+    };
+    // A reflected path keeps its next hop, `next-hop-self` or not.
+    let next_hop = if !reflect && (n.next_hop_self || path.from.is_none()) { own } else { path.next_hop };
     Some(msg::PathAttrs {
         origin,
         as_path: tail,
@@ -692,14 +840,61 @@ fn export(a: &Device, ab: &conf::Bgp, n: &conf::Neighbor, p: &Peering, path: &Pa
         local_pref: Some(sets.local_pref.unwrap_or(path.local_pref)),
         as_set: path.as_set.clone(),
         communities,
+        originator_id,
+        cluster_list,
+        confed_path,
+        confed_set: Vec::new(),
     })
+}
+
+/// The default route `neighbor … default-originate` sends: this router as the next hop, whether or not
+/// it has a default route of its own.
+fn default_attrs(ab: &conf::Bgp, p: &Peering) -> msg::PathAttrs {
+    let external = p.ebgp && !p.confed;
+    msg::PathAttrs {
+        origin: msg::ORIGIN_IGP,
+        as_path: if external { vec![ab.outer_as()] } else { Vec::new() },
+        next_hop: p.local,
+        med: if external { None } else { Some(0) },
+        local_pref: if external { None } else { Some(ab.local_pref()) },
+        confed_path: if p.confed { vec![ab.asn] } else { Vec::new() },
+        ..msg::PathAttrs::default()
+    }
+}
+
+/// Everything a router tells one neighbour: its best paths that [`export`] lets through, and the
+/// default route when the neighbour has `default-originate` (unless a path for 0.0.0.0/0 is sent anyway).
+fn export_all(a: &Device, ab: &conf::Bgp, n: &conf::Neighbor, p: &Peering, best: &[&Path]) -> Vec<(Ipv4Net, msg::PathAttrs)> {
+    let mut out: Vec<(Ipv4Net, msg::PathAttrs)> = best.iter().filter_map(|x| export(a, ab, n, p, x).map(|at| (x.net, at))).collect();
+    if n.default_originate && !out.iter().any(|(net, _)| net.prefix == 0) {
+        out.push((Ipv4Net::new(Ipv4Addr::UNSPECIFIED, 0), default_attrs(ab, p)));
+    }
+    out
+}
+
+/// What a received path must pass before any policy: it must not loop through this router's AS (the
+/// confederation identifier from outside, the member AS inside), through this member AS, through this
+/// router (ORIGINATOR_ID) or this cluster (CLUSTER_LIST), nor name one of this router's addresses as
+/// its next hop.
+fn loop_free(b: &Device, bb: &conf::Bgp, p: &Peering, attrs: &msg::PathAttrs, own: &[L3If]) -> bool {
+    let outer = bb.outer_as();
+    if attrs.as_path.contains(&outer) || attrs.as_set.contains(&outer) || own.iter().any(|i| i.net.addr == attrs.next_hop) {
+        return false;
+    }
+    if attrs.confed_path.contains(&bb.asn) || attrs.confed_set.contains(&bb.asn) {
+        return false;
+    }
+    if !p.ebgp && (attrs.originator_id == Some(router_id(b)) || attrs.cluster_list.contains(&cluster_of(b, bb))) {
+        return false;
+    }
+    true
 }
 
 /// What a router makes of what a neighbour told it: `None` when it drops it, by the loop checks
 /// or by the neighbour's inbound prefix list and route map.
 fn import(b: &Device, m: &conf::Neighbor, p: &Peering, attrs: &msg::PathAttrs, from_id: Ipv4Addr, net: Ipv4Net, own: &[L3If]) -> Option<Path> {
     let bb = b.bgp.as_ref()?;
-    if attrs.as_path.contains(&bb.asn) || attrs.as_set.contains(&bb.asn) || own.iter().any(|i| i.net.addr == attrs.next_hop) {
+    if !loop_free(b, bb, p, attrs, own) {
         return None;
     }
     if let Some(l) = m.filter_list_in.as_deref().and_then(|x| b.as_path_list(x))
@@ -707,10 +902,12 @@ fn import(b: &Device, m: &conf::Neighbor, p: &Peering, attrs: &msg::PathAttrs, f
     {
         return None;
     }
+    let external = p.ebgp && !p.confed;
     let med = attrs.med.unwrap_or(0);
     let seen = policy::Attrs { communities: &attrs.communities, as_path: &attrs.as_path, as_set: &attrs.as_set };
     let sets = policy::apply_with(b, m.prefix_list_in.as_deref(), m.route_map_in.as_deref(), &Subject { net, metric: med }, &seen)?;
-    let local_pref = sets.local_pref.unwrap_or_else(|| if p.ebgp { bb.local_pref() } else { attrs.local_pref.unwrap_or_else(|| bb.local_pref()) });
+    // An external neighbour's local preference is ignored; internal and confederation neighbours carry it.
+    let local_pref = sets.local_pref.unwrap_or_else(|| if external { bb.local_pref() } else { attrs.local_pref.unwrap_or_else(|| bb.local_pref()) });
     let mut as_path = sets.prepend.clone();
     as_path.extend(attrs.as_path.iter().copied());
     Some(Path {
@@ -723,7 +920,7 @@ fn import(b: &Device, m: &conf::Neighbor, p: &Peering, attrs: &msg::PathAttrs, f
         weight: sets.weight.unwrap_or_else(|| u32::from(m.weight.unwrap_or(0))),
         from: Some(m.addr),
         from_id,
-        ebgp: p.ebgp,
+        ebgp: external,
         valid: false,
         best: false,
         resolved: None,
@@ -732,10 +929,17 @@ fn import(b: &Device, m: &conf::Neighbor, p: &Peering, attrs: &msg::PathAttrs, f
         igp: 0,
         multi: false,
         suppressed: false,
+        originator_id: if p.ebgp { None } else { attrs.originator_id },
+        cluster_list: if p.ebgp { Vec::new() } else { attrs.cluster_list.clone() },
+        confed_path: attrs.confed_path.clone(),
+        confed: p.confed,
+        aggregate: false,
     })
 }
 
 type RibIn = BTreeMap<DeviceId, BTreeMap<(Ipv4Addr, Ipv4Net), Path>>;
+/// What neighbours with `soft-reconfiguration inbound` sent, before the inbound policy.
+type RibRaw = BTreeMap<DeviceId, BTreeMap<(Ipv4Addr, Ipv4Net), msg::PathAttrs>>;
 
 /// A session that is up: both ends are past their setup time.
 fn live<'a>(an: &'a Analysis, settled: &BTreeSet<SessKey>, key: &SessKey) -> Option<&'a Peering> {
@@ -761,17 +965,19 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
             p.resolved = hop.map(|h| (h.0, h.1));
             v.push(p);
         }
-        let Some(ab) = &d.bgp else { return rank(v, 1) };
+        let Some(ab) = &d.bgp else { return rank(v, &Rank::default()) };
         let made = aggregate_paths(ab, &v);
         v.extend(made);
         for p in &mut v {
             p.suppressed = summarised(ab, p.net);
         }
-        rank(v, ab.multipath())
+        rank(v, &rank_of(ab))
     };
     let mut rib: RibIn = BTreeMap::new();
+    let mut raw: RibRaw = BTreeMap::new();
     for _ in 0..MAX_ROUNDS {
         let mut next: RibIn = BTreeMap::new();
+        let mut next_raw: RibRaw = BTreeMap::new();
         for a in &routers {
             let Some(ab) = &a.bgp else { continue };
             let best: Vec<Path> = candidates(a, &rib).into_iter().filter(|p| p.best).collect();
@@ -782,16 +988,24 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
                 let Some(bb) = &b.bgp else { continue };
                 let Some(m) = bb.neighbor(p.local) else { continue };
                 let own = ifs.get(&b.id).map_or(&[][..], Vec::as_slice);
-                for path in &best {
-                    let Some(attrs) = export(a, ab, n, p, path) else { continue };
-                    let Some(got) = import(b, m, p, &attrs, from_id, path.net, own) else { continue };
+                let best_refs: Vec<&Path> = best.iter().collect();
+                for (net, attrs) in export_all(a, ab, n, p, &best_refs) {
+                    // What the neighbour sent, before the inbound policy, for `received-routes`.
+                    if m.soft_reconfiguration_in && loop_free(b, bb, p, &attrs, own) {
+                        let slot = next_raw.entry(b.id).or_default();
+                        if slot.len() < MAX_PATHS {
+                            slot.insert((m.addr, net), attrs.clone());
+                        }
+                    }
+                    let Some(got) = import(b, m, p, &attrs, from_id, net, own) else { continue };
                     let slot = next.entry(b.id).or_default();
                     if slot.len() < MAX_PATHS {
-                        slot.insert((m.addr, path.net), got);
+                        slot.insert((m.addr, net), got);
                     }
                 }
             }
         }
+        raw = next_raw;
         if next == rib {
             break;
         }
@@ -801,7 +1015,7 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
     for d in &routers {
         let Some(ab) = &d.bgp else { continue };
         let paths = candidates(d, &rib);
-        let routes: Vec<BgpRoute> = paths
+        let mut routes: Vec<BgpRoute> = paths
             .iter()
             .filter(|p| (p.best || p.multi) && p.from.is_some())
             .filter_map(|p| {
@@ -816,6 +1030,17 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
                 })
             })
             .collect();
+        // An aggregate leaves a discard route behind: what no more specific route covers is dropped
+        // here instead of following a default route back towards the sender.
+        routes.extend(paths.iter().filter(|p| p.aggregate && p.best).map(|p| BgpRoute {
+            net: p.net,
+            next_hop: Ipv4Addr::UNSPECIFIED,
+            via: Ipv4Addr::UNSPECIFIED,
+            iface: crate::eigrp::NULL0.to_string(),
+            distance: DISTANCE_IBGP,
+            metric: 0,
+        }));
+        let best_paths: Vec<&Path> = paths.iter().filter(|x| x.best).collect();
         let mut adv = BTreeMap::new();
         let mut neighbors = Vec::new();
         for n in &ab.neighbors {
@@ -824,8 +1049,7 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
             let active = live(an, settled, &key);
             let sent = match active {
                 Some(p) => {
-                    let list: Vec<(Ipv4Net, msg::PathAttrs)> =
-                        paths.iter().filter(|x| x.best).filter_map(|x| export(d, ab, n, p, x).map(|a| (x.net, a))).collect();
+                    let list = export_all(d, ab, n, p, &best_paths);
                     let count = list.len();
                     adv.insert(n.addr, list);
                     count
@@ -867,6 +1091,7 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
                 peer_router_id: peering.and_then(|p| rids.get(&p.peer).copied()),
                 local: peering.map(|p| p.local),
                 ebgp: peering.is_some_and(|p| p.ebgp),
+                confed: peering.is_some_and(|p| p.confed),
                 error,
                 received: rib.get(&d.id).map_or(0, |m| m.keys().filter(|(a, _)| *a == n.addr).count()),
                 sent,
@@ -874,9 +1099,13 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
                 hold_secs,
             });
         }
+        let mut received: BTreeMap<Ipv4Addr, Vec<(Ipv4Net, msg::PathAttrs)>> = BTreeMap::new();
+        for ((addr, net), at) in raw.get(&d.id).into_iter().flatten() {
+            received.entry(*addr).or_default().push((*net, at.clone()));
+        }
         st.routers.insert(
             d.id,
-            RouterView { asn: ab.asn, router_id: rids.get(&d.id).copied().unwrap_or(Ipv4Addr::UNSPECIFIED), neighbors, paths, routes, adv },
+            RouterView { asn: ab.asn, router_id: rids.get(&d.id).copied().unwrap_or(Ipv4Addr::UNSPECIFIED), neighbors, paths, routes, adv, received },
         );
     }
     st
@@ -1264,6 +1493,14 @@ impl Sim {
 mod tests {
     use super::*;
 
+    fn better_std(a: &Path, b: &Path) -> bool {
+        better(a, b, &Rank::default())
+    }
+
+    fn rank_n(cands: Vec<Path>, multi: usize) -> Vec<Path> {
+        rank(cands, &Rank { multi, ..Rank::default() })
+    }
+
     /// A router that runs BGP in `asn`.
     fn speaker(asn: u32) -> Device {
         let mut t = Topology::new();
@@ -1293,6 +1530,11 @@ mod tests {
             igp: 0,
             multi: false,
             suppressed: false,
+            originator_id: None,
+            cluster_list: Vec::new(),
+            confed_path: Vec::new(),
+            confed: false,
+            aggregate: false,
         }
     }
 
@@ -1301,29 +1543,29 @@ mod tests {
         let base = path("10.9.0.0/16", &[65_002, 65_009]);
         // Shorter AS path wins when nothing before it differs.
         let short = Path { from: Some(Ipv4Addr::new(10, 0, 0, 6)), as_path: vec![65_003], ..base.clone() };
-        assert!(better(&short, &base) && !better(&base, &short));
+        assert!(better_std(&short, &base) && !better_std(&base, &short));
         // A higher local preference beats a shorter path.
         let pref = Path { local_pref: 200, ..base.clone() };
-        assert!(better(&pref, &short));
+        assert!(better_std(&pref, &short));
         // A higher weight beats a higher local preference.
         let heavy = Path { weight: 10, ..base.clone() };
-        assert!(better(&heavy, &pref));
+        assert!(better_std(&heavy, &pref));
         // A locally originated path beats one learned, other things equal.
         let local = Path { from: None, ebgp: false, ..base.clone() };
-        assert!(better(&local, &base));
+        assert!(better_std(&local, &base));
         // Lower origin, then lower MED (same neighbouring AS), then external, then lowest router id.
         let egp = Path { origin: msg::ORIGIN_EGP, ..base.clone() };
-        assert!(better(&base, &egp));
+        assert!(better_std(&base, &egp));
         let low_med = Path { med: 5, ..base.clone() };
         let high_med = Path { med: 50, from: Some(Ipv4Addr::new(10, 0, 0, 6)), ..base.clone() };
-        assert!(better(&low_med, &high_med));
+        assert!(better_std(&low_med, &high_med));
         let internal = Path { ebgp: false, ..base.clone() };
-        assert!(better(&base, &internal));
+        assert!(better_std(&base, &internal));
         let low_id = Path { from_id: Ipv4Addr::new(1, 1, 1, 1), from: Some(Ipv4Addr::new(10, 0, 0, 6)), ..base.clone() };
-        assert!(better(&low_id, &base));
+        assert!(better_std(&low_id, &base));
         // A path whose next hop does not resolve loses to anything that does.
         let dead = Path { valid: false, weight: 99, ..base.clone() };
-        assert!(better(&base, &dead));
+        assert!(better_std(&base, &dead));
     }
 
     #[test]
@@ -1331,13 +1573,13 @@ mod tests {
         let a = path("10.9.0.0/16", &[65_002, 65_009]);
         let b = Path { as_path: vec![65_003], from: Some(Ipv4Addr::new(10, 0, 0, 6)), ..a.clone() };
         let other = path("10.8.0.0/16", &[65_002]);
-        let ranked = rank(vec![a.clone(), b.clone(), other], 1);
+        let ranked = rank_n(vec![a.clone(), b.clone(), other], 1);
         assert_eq!(ranked.len(), 3);
         let first = ranked.iter().find(|p| p.net == a.net).unwrap();
         assert_eq!(first.as_path, vec![65_003]);
         assert_eq!(ranked.iter().filter(|p| p.best).count(), 2);
         let dead = Path { valid: false, ..a };
-        assert!(rank(vec![dead], 1).iter().all(|p| !p.best));
+        assert!(rank_n(vec![dead], 1).iter().all(|p| !p.best));
     }
 
     #[test]
@@ -1356,6 +1598,7 @@ mod tests {
             out_iface: "g0/0".into(),
             next_hop: n_ext.addr,
             ebgp: true,
+            confed: false,
             ttl: 1,
         };
         let mut learned = path("10.9.0.0/16", &[65_005]);
@@ -1395,6 +1638,7 @@ mod tests {
             out_iface: "g0/0".into(),
             next_hop: m.addr,
             ebgp: true,
+            confed: false,
             ttl: 1,
         };
         let attrs = msg::PathAttrs {
@@ -1405,6 +1649,7 @@ mod tests {
             local_pref: Some(300),
             as_set: Vec::new(),
             communities: Vec::new(),
+            ..msg::PathAttrs::default()
         };
         let net: Ipv4Net = "10.1.0.0/16".parse().unwrap();
         let got = import(&b, &m, &p, &attrs, Ipv4Addr::new(1, 1, 1, 1), net, &[]).unwrap();
@@ -1437,6 +1682,7 @@ mod tests {
             out_iface: "g0/0".into(),
             next_hop: m.addr,
             ebgp: true,
+            confed: false,
             ttl: 1,
         };
         let attrs = msg::PathAttrs {
@@ -1447,6 +1693,7 @@ mod tests {
             local_pref: None,
             as_set: Vec::new(),
             communities: Vec::new(),
+            ..msg::PathAttrs::default()
         };
         let rid = Ipv4Addr::new(1, 1, 1, 1);
         let inside: Ipv4Net = "10.1.0.0/16".parse().unwrap();
@@ -1478,6 +1725,7 @@ mod tests {
             out_iface: "g0/0".into(),
             next_hop: n.addr,
             ebgp: true,
+            confed: false,
             ttl: 1,
         };
         (n, p)
@@ -1584,18 +1832,18 @@ mod tests {
             ..a.clone()
         };
         let paths = vec![via(1, 1), via(2, 2), via(3, 3)];
-        let one = rank(paths.clone(), 1);
+        let one = rank_n(paths.clone(), 1);
         assert_eq!(one.iter().filter(|p| p.multi).count(), 0);
-        let two = rank(paths.clone(), 2);
+        let two = rank_n(paths.clone(), 2);
         assert_eq!((two.iter().filter(|p| p.best).count(), two.iter().filter(|p| p.multi).count()), (1, 1));
-        let all = rank(paths.clone(), 8);
+        let all = rank_n(paths.clone(), 8);
         assert_eq!(all.iter().filter(|p| p.multi).count(), 2);
         // A longer path, an internal path or a different MED is not equal.
         let longer = Path { as_path: vec![65_002, 65_009], ..via(4, 4) };
         let internal = Path { ebgp: false, ..via(5, 5) };
         let other_med = Path { med: 9, ..via(6, 6) };
         let other_as = Path { as_path: vec![65_009], ..via(7, 7) };
-        let mixed = rank(vec![via(1, 1), longer, internal, other_med, other_as], 8);
+        let mixed = rank_n(vec![via(1, 1), longer, internal, other_med, other_as], 8);
         assert_eq!(mixed.iter().filter(|p| p.multi).count(), 0);
     }
 
@@ -1604,7 +1852,213 @@ mod tests {
         let base = path("10.9.0.0/16", &[65_002]);
         let far = Path { igp: 30, from_id: Ipv4Addr::new(1, 1, 1, 1), from: Some(Ipv4Addr::new(10, 0, 8, 8)), ..base.clone() };
         let near = Path { igp: 10, from_id: Ipv4Addr::new(9, 9, 9, 9), from: Some(Ipv4Addr::new(10, 0, 9, 9)), ..base };
-        assert!(better(&near, &far) && !better(&far, &near));
+        assert!(better_std(&near, &far) && !better_std(&far, &near));
+    }
+
+    #[test]
+    fn a_route_reflector_passes_internal_paths_by_the_client_rules() {
+        let a = speaker(65_001);
+        let mut ab = conf::Bgp::new(65_001);
+        ab.cluster_id = Some(Ipv4Addr::new(100, 0, 0, 1));
+        let (client, other_client, non_client, other_non) =
+            (Ipv4Addr::new(10, 0, 5, 2), Ipv4Addr::new(10, 0, 6, 2), Ipv4Addr::new(10, 0, 7, 2), Ipv4Addr::new(10, 0, 8, 2));
+        for (addr, is_client) in [(client, true), (other_client, true), (non_client, false), (other_non, false)] {
+            if let Some(n) = ab.neighbor_mut(addr) {
+                n.remote_as = Some(65_001);
+                n.route_reflector_client = is_client;
+            }
+        }
+        let (_, ext) = ext_peering();
+        let int = Peering { ebgp: false, ttl: 255, ..ext };
+        let from = |addr: Ipv4Addr| Path { from: Some(addr), ebgp: false, from_id: Ipv4Addr::new(7, 7, 7, 7), ..path("10.9.0.0/16", &[65_005]) };
+        let to = |addr: Ipv4Addr| ab.neighbor(addr).cloned().unwrap();
+        // A path from a client goes to the other clients and to the non-clients, with the originator
+        // and this cluster added and the next hop left alone, `next-hop-self` or not.
+        let reflected = export(&a, &ab, &to(other_client), &int, &from(client)).unwrap();
+        assert_eq!(reflected.originator_id, Some(Ipv4Addr::new(7, 7, 7, 7)));
+        assert_eq!(reflected.cluster_list, vec![Ipv4Addr::new(100, 0, 0, 1)]);
+        assert_eq!(reflected.next_hop, from(client).next_hop);
+        let nhs = conf::Neighbor { next_hop_self: true, ..to(non_client) };
+        assert_eq!(export(&a, &ab, &nhs, &int, &from(client)).unwrap().next_hop, from(client).next_hop);
+        assert!(export(&a, &ab, &to(non_client), &int, &from(client)).is_some());
+        // A path from a non-client goes to the clients only.
+        assert!(export(&a, &ab, &to(client), &int, &from(non_client)).is_some());
+        assert!(export(&a, &ab, &to(other_non), &int, &from(non_client)).is_none());
+        // Never back to the neighbour it came from, even a client.
+        assert!(export(&a, &ab, &to(client), &int, &from(client)).is_none());
+        // A path that was reflected before keeps its originator and grows the cluster list.
+        let again = Path { originator_id: Some(Ipv4Addr::new(4, 4, 4, 4)), cluster_list: vec![Ipv4Addr::new(200, 0, 0, 1)], ..from(client) };
+        let out = export(&a, &ab, &to(other_client), &int, &again).unwrap();
+        assert_eq!(out.originator_id, Some(Ipv4Addr::new(4, 4, 4, 4)));
+        assert_eq!(out.cluster_list, vec![Ipv4Addr::new(100, 0, 0, 1), Ipv4Addr::new(200, 0, 0, 1)]);
+        // A path learned from an external neighbour is not reflected, so it carries neither attribute.
+        let outside = Path { ebgp: true, ..from(client) };
+        let plain = export(&a, &ab, &to(non_client), &int, &outside).unwrap();
+        assert_eq!((plain.originator_id, plain.cluster_list.len()), (None, 0));
+        // Neither attribute leaves the AS.
+        let (n_ext, ext) = ext_peering();
+        let told = export(&a, &ab, &n_ext, &ext, &from(client)).unwrap();
+        assert_eq!((told.originator_id, told.cluster_list.len()), (None, 0));
+    }
+
+    #[test]
+    fn a_reflected_path_is_dropped_by_its_originator_and_by_its_cluster() {
+        let mut d = speaker(65_001);
+        if let Some(b) = d.bgp.as_mut() {
+            b.router_id = Some(Ipv4Addr::new(1, 1, 1, 1));
+        }
+        let m = {
+            let mut m = conf::Neighbor::new(Ipv4Addr::new(10, 0, 5, 1));
+            m.remote_as = Some(65_001);
+            m
+        };
+        let (_, ext) = ext_peering();
+        let int = Peering { ebgp: false, ttl: 255, ..ext };
+        let attrs = msg::PathAttrs {
+            as_path: vec![65_005],
+            next_hop: Ipv4Addr::new(10, 0, 9, 9),
+            local_pref: Some(100),
+            originator_id: Some(Ipv4Addr::new(3, 3, 3, 3)),
+            cluster_list: vec![Ipv4Addr::new(100, 0, 0, 1)],
+            ..msg::PathAttrs::default()
+        };
+        let net: Ipv4Net = "10.9.0.0/16".parse().unwrap();
+        let rid = Ipv4Addr::new(2, 2, 2, 2);
+        let got = import(&d, &m, &int, &attrs, rid, net, &[]).unwrap();
+        assert_eq!((got.originator_id, got.cluster_list.clone()), (attrs.originator_id, attrs.cluster_list.clone()));
+        // Our own router id as the originator: the path came from here.
+        let mine = msg::PathAttrs { originator_id: Some(Ipv4Addr::new(1, 1, 1, 1)), ..attrs.clone() };
+        assert!(import(&d, &m, &int, &mine, rid, net, &[]).is_none());
+        // Our cluster id (the router id when none is set, else `bgp cluster-id`) in the list.
+        let ours = msg::PathAttrs { cluster_list: vec![Ipv4Addr::new(100, 0, 0, 1), Ipv4Addr::new(1, 1, 1, 1)], ..attrs.clone() };
+        assert!(import(&d, &m, &int, &ours, rid, net, &[]).is_none());
+        if let Some(b) = d.bgp.as_mut() {
+            b.cluster_id = Some(Ipv4Addr::new(100, 0, 0, 1));
+        }
+        assert!(import(&d, &m, &int, &attrs, rid, net, &[]).is_none(), "the cluster id is the configured one now");
+        assert!(import(&d, &m, &int, &ours, rid, net, &[]).is_none());
+        // The tie-break uses the originator in place of the router that told us.
+        let direct = Path { from_id: Ipv4Addr::new(5, 5, 5, 5), ebgp: false, ..path("10.9.0.0/16", &[65_005]) };
+        let reflected = Path {
+            from: Some(Ipv4Addr::new(10, 0, 0, 3)),
+            from_id: Ipv4Addr::new(9, 9, 9, 9),
+            originator_id: Some(Ipv4Addr::new(3, 3, 3, 3)),
+            ..direct.clone()
+        };
+        assert!(better_std(&reflected, &direct) && !better_std(&direct, &reflected));
+        let longer = Path {
+            cluster_list: vec![Ipv4Addr::new(1, 0, 0, 1), Ipv4Addr::new(1, 0, 0, 2)],
+            from: Some(Ipv4Addr::new(10, 0, 0, 4)),
+            ..reflected.clone()
+        };
+        assert!(better_std(&reflected, &longer), "fewer clusters wins once the originators are equal");
+    }
+
+    #[test]
+    fn a_confederation_keeps_the_as_path_inside_and_names_the_identifier_outside() {
+        let a = speaker(65_001);
+        let mut ab = conf::Bgp::new(65_001);
+        ab.confed_id = Some(100);
+        ab.confed_peers = vec![65_002];
+        let (n, ext) = ext_peering();
+        let across = Peering { confed: true, ..ext.clone() };
+        let learned =
+            Path { from: Some(Ipv4Addr::new(10, 0, 9, 9)), local_pref: 250, med: 7, confed_path: vec![65_003], ..path("10.9.0.0/16", &[65_005]) };
+        // Across a member link: the AS path is left as it is, our member AS joins the confederation
+        // path, the next hop, MED and local preference go along.
+        let sent = export(&a, &ab, &n, &across, &learned).unwrap();
+        assert_eq!(sent.as_path, vec![65_005]);
+        assert_eq!(sent.confed_path, vec![65_001, 65_003]);
+        assert_eq!((sent.local_pref, sent.med, sent.next_hop), (Some(250), Some(7), learned.next_hop));
+        // Out of the confederation: the identifier in front, the confederation path gone.
+        let outside = export(&a, &ab, &n, &ext, &learned).unwrap();
+        assert_eq!(outside.as_path, vec![100, 65_005]);
+        assert!(outside.confed_path.is_empty());
+        // Not back through a member AS it already crossed.
+        let seen = Path { confed_path: vec![65_002], ..learned.clone() };
+        assert!(export(&a, &ab, &n, &across, &seen).is_none());
+        // no-export crosses a member link (it stays in the confederation), local-AS does not.
+        let no_export = Path { communities: vec![policy::NO_EXPORT], ..learned.clone() };
+        assert!(export(&a, &ab, &n, &across, &no_export).is_some() && export(&a, &ab, &n, &ext, &no_export).is_none());
+        let local_as = Path { communities: vec![policy::LOCAL_AS], ..learned };
+        assert!(export(&a, &ab, &n, &across, &local_as).is_none());
+        // What a member receives over a member link is kept as internal: local preference and all.
+        let mut b = speaker(65_002);
+        if let Some(bb) = b.bgp.as_mut() {
+            bb.confed_id = Some(100);
+            bb.confed_peers = vec![65_001];
+        }
+        let m = conf::Neighbor::new(Ipv4Addr::new(10, 0, 0, 1));
+        let there = Peering { peer_addr: m.addr, local: Ipv4Addr::new(10, 0, 0, 2), ..across };
+        let net: Ipv4Net = "10.9.0.0/16".parse().unwrap();
+        let rid = Ipv4Addr::new(1, 1, 1, 1);
+        let got = import(&b, &m, &there, &sent, rid, net, &[]).unwrap();
+        assert_eq!((got.confed, got.ebgp, got.local_pref, got.confed_path.clone()), (true, false, 250, vec![65_001, 65_003]));
+        assert!(!got.internal(), "a path from a member link may be passed to internal neighbours");
+        // The member AS in the confederation path, or the identifier in the AS path, is a loop.
+        let again = msg::PathAttrs { confed_path: vec![65_003, 65_002], ..sent.clone() };
+        assert!(import(&b, &m, &there, &again, rid, net, &[]).is_none());
+        let outer = msg::PathAttrs { as_path: vec![100, 65_005], ..sent };
+        assert!(import(&b, &m, &there, &outer, rid, net, &[]).is_none());
+    }
+
+    #[test]
+    fn private_as_numbers_are_removed_and_a_default_route_can_be_originated() {
+        let a = speaker(65_001);
+        let ab = conf::Bgp::new(65_001);
+        let (mut n, p) = ext_peering();
+        let learned = Path { from: Some(Ipv4Addr::new(10, 0, 9, 9)), ..path("10.9.0.0/16", &[64_512, 64_513]) };
+        assert_eq!(export(&a, &ab, &n, &p, &learned).unwrap().as_path, vec![65_001, 64_512, 64_513]);
+        n.remove_private_as = true;
+        assert_eq!(export(&a, &ab, &n, &p, &learned).unwrap().as_path, vec![65_001], "an all-private path loses them all");
+        let mixed = Path { as_path: vec![64_512, 200, 64_513], ..learned.clone() };
+        assert_eq!(export(&a, &ab, &n, &p, &mixed).unwrap().as_path, vec![65_001, 64_512, 200, 64_513], "a mixed path is left alone");
+        n.remove_private_all = true;
+        assert_eq!(export(&a, &ab, &n, &p, &mixed).unwrap().as_path, vec![65_001, 200]);
+        // Inside the AS nothing is removed.
+        let n_int = conf::Neighbor { remote_as: Some(65_001), remove_private_as: true, ..conf::Neighbor::new(Ipv4Addr::new(10, 0, 5, 2)) };
+        let int = Peering { ebgp: false, ttl: 255, ..p.clone() };
+        assert_eq!(export(&a, &ab, &n_int, &int, &learned).unwrap().as_path, vec![64_512, 64_513]);
+        // default-originate sends 0.0.0.0/0 with this router as the next hop, once.
+        assert!(export_all(&a, &ab, &n, &p, &[]).is_empty());
+        n.default_originate = true;
+        let sent = export_all(&a, &ab, &n, &p, &[]);
+        assert_eq!(sent.len(), 1);
+        assert_eq!((sent[0].0.prefix, sent[0].1.as_path.clone(), sent[0].1.next_hop), (0, vec![65_001], p.local));
+        let own_default = Path { net: "0.0.0.0/0".parse().unwrap(), ..learned.clone() };
+        assert_eq!(export_all(&a, &ab, &n, &p, &[&own_default]).len(), 1, "a default route already sent is not sent twice");
+        let n_int = conf::Neighbor { default_originate: true, ..n_int };
+        let inside = export_all(&a, &ab, &n_int, &int, &[]);
+        assert_eq!((inside[0].1.as_path.len(), inside[0].1.local_pref), (0, Some(100)));
+    }
+
+    #[test]
+    fn always_compare_med_as_path_ignore_and_internal_multipath_change_the_choice() {
+        let a = Path { med: 50, ..path("10.9.0.0/16", &[65_002]) };
+        let b = Path { as_path: vec![65_003], med: 5, from: Some(Ipv4Addr::new(10, 0, 0, 6)), from_id: Ipv4Addr::new(9, 9, 9, 9), ..a.clone() };
+        // The MED of paths from different neighbouring ASes is not compared unless told to.
+        assert!(better_std(&a, &b));
+        let always = Rank { always_med: true, ..Rank::default() };
+        assert!(better(&b, &a, &always) && !better(&a, &b, &always));
+        // The AS-path length counts unless told to leave it out.
+        let longer = Path { as_path: vec![65_002, 65_009], from_id: Ipv4Addr::new(1, 1, 1, 1), from: Some(Ipv4Addr::new(10, 0, 0, 7)), ..a.clone() };
+        assert!(better_std(&a, &longer));
+        let ignore = Rank { ignore_len: true, ..Rank::default() };
+        assert!(better(&longer, &a, &ignore));
+        // Internal paths share the routing table only under `maximum-paths ibgp`.
+        let via = |last: u8| Path {
+            ebgp: false,
+            from: Some(Ipv4Addr::new(10, 0, last, 2)),
+            from_id: Ipv4Addr::new(last, last, last, last),
+            next_hop: Ipv4Addr::new(10, 0, last, 2),
+            resolved: Some((format!("g0/{last}"), Ipv4Addr::new(10, 0, last, 2))),
+            ..path("10.9.0.0/16", &[65_002])
+        };
+        let paths = vec![via(1), via(2), via(3)];
+        let count = |o: Rank| rank(paths.clone(), &o).iter().filter(|p| p.multi).count();
+        assert_eq!(count(Rank { multi: 8, ..Rank::default() }), 0, "maximum-paths is for external paths");
+        assert_eq!(count(Rank { multi_ibgp: 2, ..Rank::default() }), 1);
+        assert_eq!(count(Rank { multi_ibgp: 8, ..Rank::default() }), 2);
     }
 
     #[test]

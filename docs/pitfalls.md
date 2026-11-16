@@ -1,6 +1,6 @@
 # Pitfalls
 
-> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (a lost path does not end a BGP session at once) · earlier: minor (a rule that acts at a switch port must cover the timed control frames too) · earlier: minor (redistribution is part of every protocol's computation) · earlier: minor (policy edits must reach the routing fingerprint) · earlier: minor (BGP needs simulated time) · earlier: minor (a derived-state pitfall (M9.10)) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (four pitfalls from M9.7: counters keyed by position, a stale checksum, a database that lists unreachable routers, a `Rest` that needs a word) · also merged with M9.5, M9.6, M9.8 and M9.11 · earlier: minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
+> **Last reviewed:** 2026-11-16 · **Last updated:** 2026-11-16 · **Change:** minor (in BGP a confederation session is external for the session and internal for the path) · earlier: minor (a lost path does not end a BGP session at once) · earlier: minor (a rule that acts at a switch port must cover the timed control frames too) · earlier: minor (redistribution is part of every protocol's computation) · earlier: minor (policy edits must reach the routing fingerprint) · earlier: minor (BGP needs simulated time) · earlier: minor (a derived-state pitfall (M9.10)) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (four pitfalls from M9.7: counters keyed by position, a stale checksum, a database that lists unreachable routers, a `Rest` that needs a word) · also merged with M9.5, M9.6, M9.8 and M9.11 · earlier: minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
 
 Mistakes already made here, and the rule that stops each one. Read this before your first change; when you make a
 new mistake worth not repeating, add it in the same change.
@@ -93,6 +93,13 @@ new mistake worth not repeating, add it in the same change.
   not directly connected (`ebgp-multihop`, or an internal one) so the cut is not a fast fall-over.
 - **Community lists and AS-path lists are read by the simulator, so they are in the routing fingerprint too.**
   `ospf::fingerprint` hashes them next to the prefix lists and route maps; a new list-like setting needs its line there.
+
+- **A BGP confederation session is `Peering::ebgp` but its paths are not `Path::ebgp`.** Between two member ASes the
+  session is external to the member AS (it needs a directly connected neighbour, or `ebgp-multihop`, and a TTL of the
+  hop count), but a path learned over it keeps its local preference and MED, counts as internal in the decision and
+  has distance 200. `Path::ebgp` means learned from a neighbour outside the confederation, `Path::confed` from another
+  member AS and `Path::internal()` from the same member AS. Testing `!path.ebgp` for "internal" lets a route reflector
+  or an iBGP rule treat a confederation path wrongly; use `internal()`.
 
 ## Instructor
 

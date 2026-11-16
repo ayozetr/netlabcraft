@@ -1,7 +1,8 @@
 //! BGP-4 messages (RFC 4271): the 19-byte header, OPEN with the four-octet AS number capability
 //! (RFC 6793), UPDATE with the path attributes a lab needs (ORIGIN, AS_PATH, NEXT_HOP,
-//! MULTI_EXIT_DISC, LOCAL_PREF, COMMUNITIES (RFC 1997), and the AS_SET segment an aggregate
-//! carries), NOTIFICATION and KEEPALIVE. Messages travel in TCP segments to
+//! MULTI_EXIT_DISC, LOCAL_PREF, COMMUNITIES (RFC 1997), the AS_SET segment an aggregate
+//! carries, ORIGINATOR_ID and CLUSTER_LIST (RFC 4456, route reflection) and the AS_CONFED_SEQUENCE
+//! and AS_CONFED_SET segments of a confederation (RFC 5065)), NOTIFICATION and KEEPALIVE. Messages travel in TCP segments to
 //! or from port 179. AS numbers are always written with four octets in AS_PATH, the way two
 //! speakers that announced the capability exchange them.
 //!
@@ -44,13 +45,19 @@ const ATTR_NEXT_HOP: u8 = 3;
 const ATTR_MED: u8 = 4;
 const ATTR_LOCAL_PREF: u8 = 5;
 const ATTR_COMMUNITIES: u8 = 8;
+const ATTR_ORIGINATOR_ID: u8 = 9;
+const ATTR_CLUSTER_LIST: u8 = 10;
 /// Most communities read from one attribute (hostile input).
 const MAX_COMMUNITIES: usize = 64;
+/// Most cluster ids read from, or written to, one CLUSTER_LIST (hostile input).
+pub const MAX_CLUSTERS: usize = 32;
 const FLAG_OPTIONAL: u8 = 0x80;
 const FLAG_TRANSITIVE: u8 = 0x40;
 const FLAG_EXTENDED: u8 = 0x10;
 const SEG_AS_SET: u8 = 1;
 const SEG_AS_SEQUENCE: u8 = 2;
+const SEG_CONFED_SEQUENCE: u8 = 3;
+const SEG_CONFED_SET: u8 = 4;
 const CAP_FOUR_OCTET_AS: u8 = 65;
 
 /// NOTIFICATION error codes (RFC 4271 §4.5).
@@ -72,7 +79,7 @@ pub struct Open {
 }
 
 /// The path attributes of the routes an UPDATE announces.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PathAttrs {
     pub origin: u8,
     /// The AS_PATH as one sequence, nearest AS first.
@@ -85,6 +92,16 @@ pub struct PathAttrs {
     pub as_set: Vec<u32>,
     /// The COMMUNITIES attribute (RFC 1997), each community as one 32-bit value.
     pub communities: Vec<u32>,
+    /// ORIGINATOR_ID (RFC 4456): the router id of the speaker that first told the AS about the
+    /// route, set by the first route reflector. Never leaves the AS.
+    pub originator_id: Option<Ipv4Addr>,
+    /// CLUSTER_LIST (RFC 4456): the clusters a reflected route went through, the latest first.
+    pub cluster_list: Vec<Ipv4Addr>,
+    /// The AS_CONFED_SEQUENCE segment at the front of the AS_PATH (RFC 5065): the member
+    /// autonomous systems of a confederation the route crossed, nearest first.
+    pub confed_path: Vec<u32>,
+    /// The AS_CONFED_SET segment (RFC 5065).
+    pub confed_set: Vec<u32>,
 }
 
 /// An UPDATE: routes withdrawn, and routes announced with one set of attributes.
@@ -192,7 +209,13 @@ impl Message {
                 if let Some(a) = &u.attrs {
                     attrs.extend(attribute(FLAG_TRANSITIVE, ATTR_ORIGIN, &[a.origin]));
                     let mut path = Vec::new();
-                    for (kind, members) in [(SEG_AS_SEQUENCE, &a.as_path), (SEG_AS_SET, &a.as_set)] {
+                    // The confederation segments come first, as RFC 5065 puts them.
+                    for (kind, members) in [
+                        (SEG_CONFED_SEQUENCE, &a.confed_path),
+                        (SEG_CONFED_SET, &a.confed_set),
+                        (SEG_AS_SEQUENCE, &a.as_path),
+                        (SEG_AS_SET, &a.as_set),
+                    ] {
                         if !members.is_empty() {
                             let list: Vec<u32> = members.iter().copied().take(255).collect();
                             path.push(kind);
@@ -213,6 +236,13 @@ impl Message {
                     if !a.communities.is_empty() {
                         let value: Vec<u8> = a.communities.iter().take(MAX_COMMUNITIES).flat_map(|c| c.to_be_bytes()).collect();
                         attrs.extend(attribute(FLAG_OPTIONAL | FLAG_TRANSITIVE, ATTR_COMMUNITIES, &value));
+                    }
+                    if let Some(o) = a.originator_id {
+                        attrs.extend(attribute(FLAG_OPTIONAL, ATTR_ORIGINATOR_ID, &o.octets()));
+                    }
+                    if !a.cluster_list.is_empty() {
+                        let value: Vec<u8> = a.cluster_list.iter().take(MAX_CLUSTERS).flat_map(|c| c.octets()).collect();
+                        attrs.extend(attribute(FLAG_OPTIONAL, ATTR_CLUSTER_LIST, &value));
                     }
                 }
                 let mut body = Vec::new();
@@ -307,6 +337,10 @@ fn read_attrs(b: &[u8]) -> Result<PathAttrs> {
         local_pref: None,
         as_set: Vec::new(),
         communities: Vec::new(),
+        originator_id: None,
+        cluster_list: Vec::new(),
+        confed_path: Vec::new(),
+        confed_set: Vec::new(),
     };
     let mut at = 0usize;
     // Every attribute takes at least three bytes, so this loop is bounded by the input.
@@ -327,14 +361,15 @@ fn read_attrs(b: &[u8]) -> Result<PathAttrs> {
                     let seg = *value.get(s).ok_or_else(t)?;
                     let n = usize::from(*value.get(s + 1).ok_or_else(t)?);
                     let asns = value.get(s + 2..s + 2 + n * 4).ok_or_else(t)?;
-                    if seg == SEG_AS_SEQUENCE || seg == SEG_AS_SET {
+                    if matches!(seg, SEG_AS_SEQUENCE | SEG_AS_SET | SEG_CONFED_SEQUENCE | SEG_CONFED_SET) {
                         for c in asns.chunks_exact(4) {
                             let raw: [u8; 4] = c.try_into().map_err(|_| t())?;
                             let asn = u32::from_be_bytes(raw);
-                            if seg == SEG_AS_SET {
-                                a.as_set.push(asn);
-                            } else {
-                                a.as_path.push(asn);
+                            match seg {
+                                SEG_AS_SET => a.as_set.push(asn),
+                                SEG_CONFED_SEQUENCE => a.confed_path.push(asn),
+                                SEG_CONFED_SET => a.confed_set.push(asn),
+                                _ => a.as_path.push(asn),
                             }
                         }
                     }
@@ -354,6 +389,13 @@ fn read_attrs(b: &[u8]) -> Result<PathAttrs> {
                 for c in value.chunks_exact(4).take(MAX_COMMUNITIES) {
                     let raw: [u8; 4] = c.try_into().map_err(|_| t())?;
                     a.communities.push(u32::from_be_bytes(raw));
+                }
+            }
+            ATTR_ORIGINATOR_ID => a.originator_id = Some(ip_at(value, 0).ok_or_else(t)?),
+            ATTR_CLUSTER_LIST => {
+                for c in value.chunks_exact(4).take(MAX_CLUSTERS) {
+                    let raw: [u8; 4] = c.try_into().map_err(|_| t())?;
+                    a.cluster_list.push(Ipv4Addr::from(raw));
                 }
             }
             _ => {}
@@ -462,6 +504,10 @@ mod tests {
                 local_pref: Some(150),
                 as_set: vec![65_010, 65_011],
                 communities: vec![0x0001_0064, 0xFFFF_FF01],
+                originator_id: Some(Ipv4Addr::new(1, 1, 1, 1)),
+                cluster_list: vec![Ipv4Addr::new(2, 2, 2, 2), Ipv4Addr::new(3, 3, 3, 3)],
+                confed_path: vec![65_010, 65_011],
+                confed_set: vec![65_012],
             }),
             nlri: vec![net("10.2.0.0/16"), net("192.168.5.0/24"), net("0.0.0.0/0"), net("203.0.113.7/32")],
         });
@@ -485,6 +531,7 @@ mod tests {
                 local_pref: None,
                 as_set: Vec::new(),
                 communities: Vec::new(),
+                ..PathAttrs::default()
             }),
             nlri: vec![net("10.9.0.0/16")],
         });
@@ -507,6 +554,10 @@ mod tests {
                     local_pref: Some(100),
                     as_set: vec![65_002],
                     communities: vec![1, 2, 3],
+                    originator_id: Some(Ipv4Addr::new(9, 9, 9, 9)),
+                    cluster_list: vec![Ipv4Addr::new(8, 8, 8, 8)],
+                    confed_path: vec![65_003],
+                    confed_set: vec![65_004],
                 }),
                 nlri: vec![net("10.2.0.0/16")],
             }),
@@ -545,6 +596,7 @@ mod tests {
             local_pref: None,
             as_set: vec![65_005, 65_006],
             communities: vec![0xFFFF_FF02, 0x0064_00C8],
+            ..PathAttrs::default()
         };
         let u = Message::Update(Update { withdrawn: Vec::new(), attrs: Some(attrs.clone()), nlri: vec![net("10.0.0.0/8")] });
         let bytes = u.encode();
@@ -560,6 +612,51 @@ mod tests {
         });
         let Ok(Message::Update(back)) = Message::decode(&plain.encode()) else { panic!("did not decode") };
         assert!(back.attrs.is_some_and(|a| a.communities.is_empty() && a.as_set.is_empty()));
+    }
+
+    #[test]
+    fn route_reflection_and_confederation_attributes_have_their_own_codes() {
+        let attrs = PathAttrs {
+            origin: ORIGIN_IGP,
+            as_path: vec![65_001],
+            next_hop: Ipv4Addr::new(10, 0, 0, 1),
+            originator_id: Some(Ipv4Addr::new(1, 2, 3, 4)),
+            cluster_list: vec![Ipv4Addr::new(10, 10, 10, 10), Ipv4Addr::new(20, 20, 20, 20)],
+            confed_path: vec![65_010, 65_011],
+            confed_set: vec![65_012],
+            ..PathAttrs::default()
+        };
+        let u = Message::Update(Update { withdrawn: Vec::new(), attrs: Some(attrs.clone()), nlri: vec![net("10.0.0.0/8")] });
+        let bytes = u.encode();
+        let Ok(Message::Update(back)) = Message::decode(&bytes) else { panic!("did not decode") };
+        assert_eq!(back.attrs, Some(attrs));
+        // ORIGINATOR_ID (9) and CLUSTER_LIST (10) are optional and not transitive (flags 0x80).
+        assert!(bytes.windows(7).any(|w| w == [0x80, ATTR_ORIGINATOR_ID, 4, 1, 2, 3, 4]), "{bytes:?}");
+        assert!(bytes.windows(3).any(|w| w == [0x80, ATTR_CLUSTER_LIST, 8]), "{bytes:?}");
+        // The confederation segments (types 3 and 4) come before the AS_SEQUENCE (type 2).
+        let confed = bytes.windows(2).position(|w| w == [SEG_CONFED_SEQUENCE, 2]);
+        let seq = bytes.windows(2).position(|w| w == [SEG_AS_SEQUENCE, 1]);
+        assert!(confed.is_some() && seq.is_some() && confed < seq, "{bytes:?}");
+        assert!(bytes.windows(2).any(|w| w == [SEG_CONFED_SET, 1]));
+    }
+
+    #[test]
+    fn a_hostile_cluster_list_and_originator_are_bounded_and_checked() {
+        // A CLUSTER_LIST of 40 identifiers keeps the first MAX_CLUSTERS.
+        let long: Vec<Ipv4Addr> = (1..=40).map(|i| Ipv4Addr::new(10, 0, 0, i)).collect();
+        let u = Message::Update(Update {
+            withdrawn: Vec::new(),
+            attrs: Some(PathAttrs { cluster_list: long, ..PathAttrs::default() }),
+            nlri: vec![net("10.0.0.0/8")],
+        });
+        let Ok(Message::Update(back)) = Message::decode(&u.encode()) else { panic!("did not decode") };
+        assert_eq!(back.attrs.map(|a| a.cluster_list.len()), Some(MAX_CLUSTERS));
+        // An ORIGINATOR_ID with fewer than four octets is truncated, not read past its end.
+        let mut attrs = attribute(FLAG_OPTIONAL, ATTR_ORIGINATOR_ID, &[1, 2]);
+        assert!(read_attrs(&attrs).is_err());
+        // A CLUSTER_LIST whose length is not a multiple of four ignores the odd bytes.
+        attrs = attribute(FLAG_OPTIONAL, ATTR_CLUSTER_LIST, &[1, 2, 3, 4, 5]);
+        assert_eq!(read_attrs(&attrs).map(|a| a.cluster_list), Ok(vec![Ipv4Addr::new(1, 2, 3, 4)]));
     }
 
     #[test]

@@ -131,3 +131,59 @@ fn a_hostile_file_has_its_communities_and_lists_cleaned() {
     let b = again.topology.find("R1").unwrap().bgp.as_ref().unwrap();
     assert_eq!((b.aggregates.len(), b.maximum_paths), (1, Some(32)));
 }
+
+#[test]
+fn reflection_confederation_and_neighbour_options_survive_a_save() {
+    let mut s = pair();
+    configure(
+        &mut s,
+        "R1",
+        &[
+            "router bgp 65001",
+            "bgp cluster-id 7.7.7.7",
+            "bgp confederation identifier 100",
+            "bgp confederation peers 65002 65003",
+            "bgp always-compare-med",
+            "bgp bestpath as-path ignore",
+            "maximum-paths ibgp 3",
+            "neighbor 10.0.12.2 default-originate",
+            "neighbor 10.0.12.2 remove-private-as all",
+            "neighbor 10.0.12.2 soft-reconfiguration inbound",
+        ],
+    );
+    let saved = s.execute("file.save", json!({})).unwrap();
+    let mut again = Session::new();
+    again.execute("file.open", json!({"json": saved["json"]})).unwrap();
+    assert_eq!(again.topology, s.topology);
+    cli(&mut again, "R1", "enable");
+    let run = cli(&mut again, "R1", "show running-config");
+    for line in [
+        " bgp cluster-id 7.7.7.7\n",
+        " bgp confederation identifier 100\n",
+        " bgp confederation peers 65002 65003\n",
+        " bgp always-compare-med\n",
+        " bgp bestpath as-path ignore\n",
+        " maximum-paths ibgp 3\n",
+        " neighbor 10.0.12.2 default-originate\n",
+        " neighbor 10.0.12.2 remove-private-as all\n",
+        " neighbor 10.0.12.2 soft-reconfiguration inbound\n",
+    ] {
+        assert!(run.contains(line), "{line}: {run}");
+    }
+}
+
+#[test]
+fn a_hostile_file_has_its_confederation_and_reflection_settings_cleaned() {
+    let mut s = pair();
+    let saved = s.execute("file.save", json!({})).unwrap();
+    let mut hostile: Value = serde_json::from_str(saved["json"].as_str().unwrap()).unwrap();
+    hostile["topology"]["devices"][0]["bgp"]["confed_id"] = json!(0);
+    hostile["topology"]["devices"][0]["bgp"]["confed_peers"] = json!([0, 65001, 65003, 65003]);
+    hostile["topology"]["devices"][0]["bgp"]["maximum_paths_ibgp"] = json!(200);
+    hostile["topology"]["devices"][0]["bgp"]["neighbors"][0]["remove_private_all"] = json!(true);
+    let mut again = Session::new();
+    again.execute("file.open", json!({"json": hostile.to_string()})).unwrap();
+    let b = again.topology.find("R1").unwrap().bgp.as_ref().unwrap();
+    assert_eq!((b.confed_id, b.confed_peers.clone(), b.maximum_paths_ibgp), (None, vec![65_003], Some(32)));
+    assert!(!b.neighbors[0].remove_private_all, "`all` means nothing without remove-private-as");
+}
