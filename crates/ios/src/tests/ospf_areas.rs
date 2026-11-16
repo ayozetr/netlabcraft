@@ -32,7 +32,7 @@ fn chain() -> (Lab, DeviceId, DeviceId, DeviceId) {
 
 #[test]
 fn a_stub_area_gets_a_default_with_the_configured_cost_and_no_type_5_lsas() {
-    let (mut lab, r1, r2, r3) = chain();
+    let (mut lab, _r1, r2, r3) = chain();
     lab.run(r2, "conf t\nrouter ospf 1\narea 1 stub\narea 1 default-cost 7\nend");
     lab.run(r3, "conf t\nrouter ospf 1\narea 1 stub\nend");
     let rt = lab.run(r3, "show ip route");
