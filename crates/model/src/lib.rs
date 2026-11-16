@@ -1087,6 +1087,9 @@ pub struct Device {
     /// Clouds: the ports joined to each other (`("Coaxial0", "Phone0")`); see [`Topology::cloud_map`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub bridges: Vec<(String, String)>,
+    /// Telephone clouds: the number of each phone port (`"Phone0"` to `"5551001"`); see [`Topology::cloud_number`].
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub phone_numbers: BTreeMap<String, String>,
     /// Smartphones and tablets: Cellular Data and the APN; central office servers: the address
     /// pool, the APN accepted and the data plan (see [`cellular`]).
     #[serde(default, skip_serializing_if = "cellular::CellConf::is_default")]
@@ -2127,7 +2130,8 @@ impl Device {
             modules: BTreeMap::new(),
             powered_off: false,
             adapter: poe::needs_power(model).then_some(false),
-            bridges: if model.cloud() {
+            phone_numbers: BTreeMap::new(),
+            bridges: if model.id == "Cloud" {
                 vec![("Coaxial0".into(), "Phone0".into()), ("Coaxial1".into(), "Phone1".into()), ("Ethernet0".into(), "Ethernet1".into())]
             } else {
                 Vec::new()
@@ -2818,6 +2822,7 @@ impl Topology {
                 services::sanitize_host_files(&mut d.files);
                 d.sanitize_modules();
                 d.sanitize_bridges();
+                d.sanitize_phone_numbers();
                 d.voice.sanitize();
                 d.iot.sanitize();
                 d.sanitize_board();
