@@ -1166,7 +1166,7 @@ impl Sim {
         let secs = at / 1_000_000;
         for k in keys {
             let every = u64::from(self.bgp_keepalive_secs(t, k));
-            if every != 0 && secs % every == 0 {
+            if every != 0 && secs.is_multiple_of(every) {
                 self.bgp_send(t, k, &msg::Message::Keepalive, at);
             }
         }
