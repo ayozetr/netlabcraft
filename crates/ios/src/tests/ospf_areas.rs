@@ -134,7 +134,7 @@ fn an_nssa_originates_type_7_lsas_and_its_border_router_translates_them() {
     // no-summary replaces it with a type 3 default and keeps the other areas' routes out.
     lab.run(r2, "conf t\nrouter ospf 1\narea 1 nssa no-summary\nend");
     let rt = lab.run(r3, "show ip route");
-    assert!(rt.contains("O*IA 0.0.0.0/0") && !rt.contains("O*N2") && !rt.contains("10.0.0.0/24"), "{rt}");
+    assert!(rt.contains("O*IA 0.0.0.0/0") && !rt.contains("O*N2 0.0.0.0") && !rt.contains("10.0.0.0/24"), "{rt}");
     assert!(lab.run(r2, "show running-config").contains(" area 1 nssa no-summary\n"));
     // The two kinds of area exclude each other, and the options are checked.
     lab.run(r2, "conf t\nrouter ospf 1");

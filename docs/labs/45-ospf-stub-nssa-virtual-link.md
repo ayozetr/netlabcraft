@@ -408,7 +408,7 @@ end
 ping PC5 192.168.1.10 => success
 R5# show ip route
   expect: O*IA 0.0.0.0/0
-  reject: O*N2
+  reject: O*N2 0.0.0.0/0
   reject: 192.168.1.0
 R1# show ip route
   expect: O E2 172.20.0.0/16
