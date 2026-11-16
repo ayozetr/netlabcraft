@@ -86,6 +86,7 @@ pub(super) fn delete_template(c: &mut Ctx, n: u32) -> R {
             g.template = None;
         }
     }
+    settle(c.t, c.sim, c.dev);
     Ok(String::new())
 }
 
@@ -153,8 +154,30 @@ fn end_port_session(c: &mut Ctx, port_name: &str) {
     end_session(c, n);
 }
 
-/// Runs the commands of this feature.
+/// Runs the commands of this feature. A change to what the router answers ends the sessions it
+/// no longer answers, at once (the lab's `device.configure` replays lines without going through
+/// `execute`).
 pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
+    let r = command_inner(c, id, args);
+    let changes_service = matches!(
+        id,
+        Id::NoPppoeEnable
+            | Id::PppoeEnable
+            | Id::NoBbaGroup
+            | Id::BbaTemplate
+            | Id::NoBbaTemplate
+            | Id::VtIpAddress
+            | Id::VtIpUnnumbered
+            | Id::VtNoIpAddress
+            | Id::VtNoIpUnnumbered
+    );
+    if r.is_ok() && changes_service {
+        settle(c.t, c.sim, c.dev);
+    }
+    r
+}
+
+fn command_inner(c: &mut Ctx, id: Id, args: &[String]) -> R {
     let arg = |i: usize| args.get(i).map(String::as_str).unwrap_or("");
     router_only(c)?;
     match id {
