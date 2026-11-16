@@ -96,6 +96,20 @@ pub struct RegisterPool {
 /// The SIP port.
 pub const SIP_PORT: u16 = 5060;
 
+/// The Softphone app of a PC, laptop or server: present when the app is switched on. It
+/// registers with a call manager like an IP phone does (by its MAC address), with the
+/// extension that call manager gives it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Softphone {
+    /// The call manager to register with (none: the TFTP server DHCP option 150 gave).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server: Option<Ipv4Addr>,
+    /// Signal with SIP instead of NetLabCraft's own call-control protocol.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub sip: bool,
+}
+
 /// A device's voice settings.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -128,6 +142,9 @@ pub struct Voice {
     /// Phones: the SIP registrar (none: the TFTP server DHCP option 150 gave).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sip_server: Option<Ipv4Addr>,
+    /// PCs, laptops and servers: the Softphone app (none: switched off).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub softphone: Option<Softphone>,
 }
 
 impl Voice {
@@ -196,6 +213,40 @@ pub fn is_phone(d: &Device) -> bool {
     d.kind == DeviceKind::Phone
 }
 
+impl Device {
+    /// Whether the device has a Softphone app (switched on or not): PCs, laptops and servers
+    /// with the full Desktop, not tablets, smartphones, printers or IP phones.
+    pub fn can_softphone(&self) -> bool {
+        self.has_desktop_apps()
+    }
+
+    /// Whether the device takes part in voice calls: an IP phone, or a computer with its
+    /// Softphone switched on.
+    pub fn voice_endpoint(&self) -> bool {
+        self.kind == DeviceKind::Phone || (self.voice.softphone.is_some() && self.can_softphone())
+    }
+
+    /// Whether the device signals with SIP instead of NetLabCraft's own call control.
+    pub fn voice_sip(&self) -> bool {
+        match (&self.voice.softphone, self.kind) {
+            (_, DeviceKind::Phone) => self.voice.sip,
+            (Some(s), _) => s.sip,
+            _ => false,
+        }
+    }
+
+    /// Where the device registers: a phone with SIP, its registrar (else the TFTP server DHCP
+    /// option 150 named); a Softphone, its call manager (else that TFTP server).
+    pub fn voice_server(&self) -> Option<Ipv4Addr> {
+        match (&self.voice.softphone, self.kind) {
+            (_, DeviceKind::Phone) if self.voice.sip => self.voice.sip_server.or(self.voice.tftp),
+            (_, DeviceKind::Phone) => self.voice.tftp,
+            (Some(s), _) => s.server.or(self.voice.tftp),
+            _ => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -215,5 +266,27 @@ mod tests {
         assert_eq!(v.ephones.len(), 1);
         assert_eq!(v.dn(2).unwrap().number, None);
         assert!(valid_number("2001") && !valid_number("") && !valid_number("12345678901234567"));
+    }
+
+    #[test]
+    fn a_softphone_registers_with_its_call_manager_else_the_tftp_server() {
+        let mut t = crate::Topology::new();
+        let pc = t.add_device(DeviceKind::Pc, None, 0.0, 0.0).unwrap();
+        let printer = t.add_device(DeviceKind::Printer, None, 0.0, 0.0).unwrap();
+        let tftp: Ipv4Addr = "10.0.0.1".parse().unwrap();
+        let cm: Ipv4Addr = "10.0.0.9".parse().unwrap();
+        let d = t.device_mut(pc).unwrap();
+        assert!(d.can_softphone() && !d.voice_endpoint() && d.voice_server().is_none());
+        d.voice.tftp = Some(tftp);
+        d.voice.softphone = Some(Softphone::default());
+        assert!(d.voice_endpoint() && !d.voice_sip());
+        assert_eq!(d.voice_server(), Some(tftp));
+        d.voice.softphone = Some(Softphone { server: Some(cm), sip: true });
+        assert!(d.voice_sip());
+        assert_eq!(d.voice_server(), Some(cm));
+        // A printer cannot run one, even if a file says so.
+        let p = t.device_mut(printer).unwrap();
+        p.voice.softphone = Some(Softphone::default());
+        assert!(!p.can_softphone() && !p.voice_endpoint());
     }
 }

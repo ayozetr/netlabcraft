@@ -1,9 +1,10 @@
 //! An IP phone's Phone tab: the phone drawn in code, its screen (registration, number, call)
 //! and a dial pad. Every action is an engine command (`phone.dial`, `phone.answer`,
-//! `phone.hangup`, `phone.status`).
+//! `phone.hangup`, `phone.status`). The same screen and dial pad serve the Softphone app of a
+//! PC's Desktop (`softphone.*` commands).
 
 use egui::{RichText, Sense, vec2};
-use netlabcraft_model::Device;
+use netlabcraft_model::{Device, DeviceKind};
 use netlabcraft_sim::voice::CallState;
 use serde_json::json;
 
@@ -17,6 +18,9 @@ fn screen_lines(app: &PacketApp, dev: &Device) -> Vec<String> {
     match (&st.number, st.agent) {
         (Some(n), Some(a)) => lines.push(trf("Line {} (registered with {})", &[n, &a])),
         _ if dev.ports.first().and_then(|p| p.ip).is_none() => lines.push(tl("No address: take one by DHCP (Config tab)").to_string()),
+        _ if dev.voice_server().is_none() && dev.kind != DeviceKind::Phone => {
+            lines.push(tl("No call server: type its address above, or give option 150 in DHCP").to_string());
+        }
         _ if dev.voice.tftp.is_none() => lines.push(tl("No call server: DHCP gave no TFTP server (option 150)").to_string()),
         _ => lines.push(tl("Not registered").to_string()),
     }
@@ -34,7 +38,6 @@ fn screen_lines(app: &PacketApp, dev: &Device) -> Vec<String> {
 }
 
 pub(crate) fn tab(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
-    let tk = theme::tokens(app.ui.dark);
     let d = dev.id;
     let mut form = app.ui.windows.get_mut(&d).map(|w| std::mem::take(&mut w.phone)).unwrap_or_default();
     if form.open {
@@ -50,6 +53,15 @@ pub(crate) fn tab(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     if let Some(w) = app.ui.windows.get_mut(&d) {
         w.phone = form;
     }
+    call_screen(app, ui, dev);
+}
+
+/// The phone's screen and dial pad, for an IP phone and for a PC's Softphone alike.
+pub(crate) fn call_screen(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
+    let tk = theme::tokens(app.ui.dark);
+    let d = dev.id;
+    let soft = dev.kind != DeviceKind::Phone;
+    let cmd = |verb: &str| format!("{}.{verb}", if soft { "softphone" } else { "phone" });
     let call = app.session.sim.phone(d).and_then(|s| s.call.clone());
     let dialled = app.ui.windows.get(&d).map(|w| w.dialled.clone()).unwrap_or_default();
     ui.horizontal_top(|ui| {
@@ -107,20 +119,20 @@ pub(crate) fn tab(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 match call.as_ref().map(|c| c.state) {
                     Some(CallState::Ringing) => {
                         if ui.button(tl("Pick up")).clicked() {
-                            app.run("phone.answer", json!({"device": d.0}));
+                            app.run(&cmd("answer"), json!({"device": d.0}));
                         }
                         if ui.button(tl("Decline")).clicked() {
-                            app.run("phone.hangup", json!({"device": d.0}));
+                            app.run(&cmd("hangup"), json!({"device": d.0}));
                         }
                     }
                     Some(_) => {
                         if ui.button(tl("Hang up")).clicked() {
-                            app.run("phone.hangup", json!({"device": d.0}));
+                            app.run(&cmd("hangup"), json!({"device": d.0}));
                         }
                     }
                     None => {
                         if ui.add_enabled(!dialled.is_empty(), egui::Button::new(tl("Call"))).clicked() {
-                            app.run("phone.dial", json!({"device": d.0, "number": dialled}));
+                            app.run(&cmd("dial"), json!({"device": d.0, "number": dialled}));
                             if let Some(w) = app.ui.windows.get_mut(&d) {
                                 w.dialled.clear();
                             }
@@ -133,19 +145,56 @@ pub(crate) fn tab(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                     }
                 }
                 if ui.button(tl("Refresh")).on_hover_text(tl("Let the phone register and update its screen")).clicked() {
-                    app.run("phone.status", json!({"device": d.0}));
+                    app.run(&cmd("status"), json!({"device": d.0}));
                 }
             });
-            let mut sip = dev.voice.sip;
+            let mut sip = dev.voice_sip();
             if ui
                 .checkbox(&mut sip, tl("Signal with SIP"))
                 .on_hover_text(tl("Use SIP (UDP 5060) instead of NetLabCraft's own call-control protocol"))
                 .changed()
             {
-                app.run("phone.configure", json!({"device": d.0, "protocol": if sip { "sip" } else { "own" }}));
+                let id = if soft { "softphone.config" } else { "phone.configure" };
+                app.run(id, json!({"device": d.0, "protocol": if sip { "sip" } else { "own" }}));
             }
         });
     });
+}
+
+/// The Softphone app of a PC's Desktop: the switch, the call server, and the phone's own screen
+/// and dial pad once it is on.
+pub(crate) fn softphone(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
+    let tk = theme::tokens(app.ui.dark);
+    let d = dev.id;
+    let on = dev.voice.softphone.is_some();
+    ui.add_space(6.0);
+    let mut want = on;
+    if ui.checkbox(&mut want, tl("Switch the Softphone on")).changed() {
+        app.run("softphone.config", json!({"device": d.0, "enabled": want}));
+        return;
+    }
+    if !on {
+        ui.label(RichText::new(tl("The Softphone is off. Switch it on to register with a call server and make calls.")).color(tk.muted));
+        return;
+    }
+    let id = egui::Id::unique(("softphone_server", d.0));
+    let mut server: Option<String> = ui.data_mut(|m| m.get_temp::<String>(id));
+    let text = server.get_or_insert_with(|| dev.voice.softphone.as_ref().and_then(|x| x.server).map(|a| a.to_string()).unwrap_or_default());
+    ui.horizontal(|ui| {
+        ui.label(tl("Call server"));
+        ui.add(egui::TextEdit::singleline(text).desired_width(130.0).hint_text(tl("from DHCP")))
+            .widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::TextInput, true, tl("Call server")));
+        if ui.button(tl("Apply")).on_hover_text(tl("Empty: the TFTP server DHCP gave (option 150)")).clicked() {
+            app.run("softphone.config", json!({"device": d.0, "server": text.trim()}));
+        }
+        let mac = dev.ports.first().map_or_else(String::new, |p| p.mac.to_string());
+        ui.label(RichText::new(format!("{}: {mac}", tl("MAC address"))).color(tk.muted));
+    });
+    if let Some(v) = server {
+        ui.data_mut(|m| m.insert_temp(id, v));
+    }
+    ui.add_space(4.0);
+    call_screen(app, ui, dev);
 }
 
 /// The phone's own settings screen: its fields.
@@ -283,5 +332,49 @@ mod tests {
         h.get_by_label("Hang up").click();
         h.run_steps(2);
         assert!(h.state().session.sim.phone(p1).is_some_and(|x| x.call.is_none()));
+    }
+
+    #[test]
+    fn the_softphone_app_on_a_pcs_desktop_calls_an_ip_phone() {
+        use egui::accesskit::Role;
+        let mut s = Session::new();
+        s.execute("file.new", json!({"sample": "ip-phones"})).unwrap();
+        for l in ["enable", "configure terminal", "ephone-dn 3", "number 1003", "end"] {
+            s.execute("cli.exec", json!({"device": "R1", "line": l})).unwrap();
+        }
+        s.execute("phone.status", json!({"device": "Phone2"})).unwrap();
+        let n2 = s.execute("phone.status", json!({"device": "Phone2"})).unwrap()["number"].as_str().unwrap().to_string();
+        let (pc1, p2) = (s.topology.resolve("PC1").unwrap(), s.topology.resolve("Phone2").unwrap());
+        let mut h = Harness::builder().with_size(egui::vec2(1200.0, 800.0)).build_ui_state(|ui, app: &mut PacketApp| app.ui(ui), PacketApp::new(s));
+        h.state_mut().ui.show_notes = false;
+        crate::open_desktop_app(h.state_mut(), pc1, "softphone");
+        h.run_steps(3);
+        assert!(h.query_by_label("The Softphone is off. Switch it on to register with a call server and make calls.").is_some());
+        h.get_by_label("Switch the Softphone on").click();
+        h.run_steps(3);
+        assert!(h.state().session.topology.device(pc1).unwrap().voice.softphone.is_some());
+        assert!(h.query_by_label("No call server: type its address above, or give option 150 in DHCP").is_some());
+        h.state_mut().session.execute("softphone.config", json!({"device": "PC1", "server": "192.168.100.1"})).unwrap();
+        h.run_steps(2);
+        h.get_by_role_and_label(Role::Button, "Refresh").click();
+        h.run_steps(2);
+        for k in n2.chars() {
+            h.get_by_label(&k.to_string()).click();
+            h.run_steps(1);
+        }
+        h.get_by_role_and_label(Role::Button, "Call").click();
+        h.run_steps(2);
+        let state = |h: &Harness<'_, PacketApp>, d| h.state().session.sim.phone(d).and_then(|x| x.call.as_ref()).map(|c| c.state);
+        assert_eq!(state(&h, p2), Some(netlabcraft_sim::voice::CallState::Ringing));
+        assert_eq!(state(&h, pc1), Some(netlabcraft_sim::voice::CallState::Ringback));
+        h.state_mut().session.execute("phone.answer", json!({"device": "Phone2"})).unwrap();
+        // The call manager's CONNECT reaches the softphone a moment later.
+        h.state_mut().session.execute("softphone.status", json!({"device": "PC1"})).unwrap();
+        h.run_steps(3);
+        assert_eq!(state(&h, pc1), Some(netlabcraft_sim::voice::CallState::Connected));
+        h.get_by_role_and_label(Role::Button, "Hang up").click();
+        h.run_steps(2);
+        assert_eq!(state(&h, pc1), None);
+        assert_eq!(state(&h, p2), None);
     }
 }

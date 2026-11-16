@@ -1643,3 +1643,7 @@ event	write request for	写请求
 	No flows received yet. Routers send a flow once it has been quiet for 15 seconds.	尚未收到任何流。路由器会在某个流静默 15 秒后发送它。
 	Enter a port from 1 to 65535.	请输入 1 到 65535 之间的端口。
 	Set routers to export here with: ip flow-export destination ADDRESS PORT	将路由器设置为导出到这里：ip flow-export destination ADDRESS PORT
+	Softphone	软电话
+	Switch the Softphone on	打开软电话
+	The Softphone is off. Switch it on to register with a call server and make calls.	软电话已关闭。打开后可向呼叫服务器注册并拨打电话。
+	No call server: type its address above, or give option 150 in DHCP	无呼叫服务器：请在上方输入其地址，或在 DHCP 中提供选项 150

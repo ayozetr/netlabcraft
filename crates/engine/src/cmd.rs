@@ -957,7 +957,8 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         | "place.remove" | "place.list" | "device.place" | "link.length" => physical(s, cmd, p),
         "device.power" | "device.module.add" | "device.module.remove" | "device.module.list" => crate::hardware::run(s, cmd, p),
         "device.adapter" | "device.power.source" | "phone.configure" | "cloud.map" | "device.psu" => crate::families::run(s, cmd, p),
-        "phone.status" | "phone.dial" | "phone.answer" | "phone.hangup" => crate::voice::run(s, cmd, p),
+        "phone.status" | "phone.dial" | "phone.answer" | "phone.hangup" | "softphone.config" | "softphone.status" | "softphone.dial" | "softphone.answer"
+        | "softphone.hangup" => crate::voice::run(s, cmd, p),
         "iot.sync" | "iot.environment" | "iot.configure" | "iot.server" | "iot.switch" => crate::iot::run(s, cmd, p),
         "board.program" | "board.status" | "board.wire" => crate::board::run(s, cmd, p),
         "pdu.simple" | "pdu.complex" | "pdu.fire" | "pdu.fire_all" | "pdu.delete" | "pdu.list" | "scenario.list" | "scenario.new" | "scenario.delete"
