@@ -157,6 +157,9 @@ pub fn open(app: &mut PacketApp, d: DeviceId) {
         w.page = ConfigPage::Wireless;
     }
     w.focus = true;
+    if app.ui.native_windows {
+        app.ui.raise.insert(d);
+    }
     w.name = dev.name.clone();
     w.label = dev.display_name().to_string();
     if dev.kind.is_host() && w.tab == Tab::Cli {
@@ -195,11 +198,17 @@ fn fill_port(w: &mut DeviceWindow, dev: &Device, port: usize) {
 
 pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
     let ids: Vec<DeviceId> = app.ui.windows.keys().copied().collect();
+    // Native windows need a backend with viewports: never on the web, never headless.
+    let native = app.ui.native_windows && !ctx.embed_viewports();
     for d in ids {
         let Some(dev) = app.session.topology.device(d).cloned() else {
             app.ui.windows.remove(&d);
             continue;
         };
+        if native {
+            native_window(app, ctx, d, &dev);
+            continue;
+        }
         let mut open = true;
         let pos = [180.0 + 26.0 * (d.0 % 8) as f32, crate::BELOW_VIEW_BAR + 16.0 * (d.0 % 8) as f32];
         egui::Window::new(dev.display_name())
@@ -207,81 +216,124 @@ pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
             .open(&mut open)
             .default_size([680.0, 470.0])
             .default_pos(pos)
-            .show(ctx, |ui| {
-                let Some(w) = app.ui.windows.get_mut(&d) else { return };
-                ui.horizontal(|ui| {
-                    let tabs: &[(Tab, &str)] = if dev.kind == DeviceKind::Hub {
-                        &[(Tab::Physical, "Physical"), (Tab::Attributes, "Attributes")]
-                    } else if dev.catalogue_model().sniffer() {
-                        &[(Tab::Physical, "Physical"), (Tab::Capture, "Capture"), (Tab::Attributes, "Attributes")]
-                    } else if dev.kind == DeviceKind::Server {
-                        &[
-                            (Tab::Physical, "Physical"),
-                            (Tab::Config, "Config"),
-                            (Tab::Services, "Services"),
-                            (Tab::Desktop, "Desktop"),
-                            (Tab::Iot, "IoT"),
-                            (Tab::Attributes, "Attributes"),
-                        ]
-                    } else if netlabcraft_model::iot::can_serve(&dev) && dev.kind != DeviceKind::Server {
-                        &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Iot, "IoT"), (Tab::Cli, "CLI"), (Tab::Attributes, "Attributes")]
-                    } else if netlabcraft_model::board::is_board(&dev) {
-                        &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Board, "Programming"), (Tab::Attributes, "Attributes")]
-                    } else if dev.kind == DeviceKind::Iot {
-                        &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Iot, "IoT"), (Tab::Attributes, "Attributes")]
-                    } else if dev.kind == DeviceKind::Phone {
-                        &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Phone, "Phone"), (Tab::Attributes, "Attributes")]
-                    } else if dev.kind.is_host() {
-                        &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Desktop, "Desktop"), (Tab::Attributes, "Attributes")]
-                    } else {
-                        &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Cli, "CLI"), (Tab::Attributes, "Attributes")]
-                    };
-                    for (t, label) in tabs {
-                        if ui.selectable_label(w.tab == *t, RichText::new(crate::i18n::tr(label)).size(15.0)).clicked() {
-                            w.tab = *t;
-                            w.focus = true;
-                        }
-                    }
-                });
-                ui.separator();
-                let tab = w.tab;
-                match tab {
-                    Tab::Physical => physical(app, ui, &dev),
-                    Tab::Config => config(app, ui, &dev),
-                    Tab::Cli => {
-                        ui.vertical_centered(|ui| ui.strong(tl("Command Line Interface")));
-                        console(app, ui, d, false);
-                    }
-                    Tab::Desktop => desktop(app, ui, &dev),
-                    Tab::Phone => crate::phone::tab(app, ui, &dev),
-                    Tab::Iot => {
-                        let mut form = app.ui.windows.get_mut(&d).map(|w| std::mem::take(&mut w.iot)).unwrap_or_default();
-                        crate::iot_page::tab(app, ui, &dev, &mut form);
-                        if let Some(w) = app.ui.windows.get_mut(&d) {
-                            w.iot = form;
-                        }
-                    }
-                    Tab::Board => {
-                        let mut form = app.ui.windows.get_mut(&d).map(|w| std::mem::take(&mut w.board)).unwrap_or_default();
-                        crate::board_page::tab(app, ui, &dev, &mut form);
-                        if let Some(w) = app.ui.windows.get_mut(&d) {
-                            w.board = form;
-                        }
-                    }
-                    Tab::Capture => crate::sniffer_page::tab(app, ui, &dev),
-                    Tab::Services => {
-                        let mut forms = app.ui.windows.get_mut(&d).map(|w| std::mem::take(&mut w.svc)).unwrap_or_default();
-                        crate::services::tab(app, ui, &dev, &mut forms);
-                        if let Some(w) = app.ui.windows.get_mut(&d) {
-                            w.svc = forms;
-                        }
-                    }
-                    Tab::Attributes => attributes(app, ui, &dev),
-                }
-            });
+            .show(ctx, |ui| contents(app, ui, d, &dev));
         if !open {
             app.ui.windows.remove(&d);
         }
+    }
+}
+
+/// A device's window as its own operating-system window (an immediate viewport, so it can
+/// borrow the app like the in-window one). Its size and position are remembered for the session,
+/// closing it closes the device window, and its title names the device.
+fn native_window(app: &mut PacketApp, ctx: &egui::Context, d: DeviceId, dev: &Device) {
+    // The geometry the window opens with is fixed while it is open: feeding the live geometry
+    // back into the builder every frame would fight the person resizing it.
+    let (size, pos) = *app.ui.native_start.entry(d).or_insert_with(|| app.ui.native_geometry.get(&d).copied().unwrap_or(([680.0, 470.0], None)));
+    let mut builder = egui::ViewportBuilder::default()
+        .with_title(dev.display_name())
+        .with_inner_size(size)
+        .with_min_inner_size([320.0, 240.0])
+        .with_app_id("io.github.ayozetr.netlabcraft");
+    if let Some(p) = pos {
+        builder = builder.with_position(p);
+    }
+    let raise = app.ui.raise.remove(&d);
+    let mut closed = false;
+    let mut seen = None;
+    ctx.show_viewport_immediate(egui::ViewportId::from_hash_of(("device-window", d.0)), builder, |ui, _class| {
+        if ui.input(|i| i.viewport().close_requested()) {
+            closed = true;
+            return;
+        }
+        if raise {
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Focus);
+        }
+        seen = ui.input(|i| i.viewport().inner_rect).map(|r| ([r.width(), r.height()], Some([r.min.x, r.min.y])));
+        egui::CentralPanel::default().show(ui, |ui| contents(app, ui, d, dev));
+    });
+    if let Some((size, pos)) = seen {
+        let pos = pos.or_else(|| app.ui.native_geometry.get(&d).and_then(|g| g.1));
+        app.ui.native_geometry.insert(d, (size, pos));
+    }
+    if closed {
+        app.ui.windows.remove(&d);
+        app.ui.native_start.remove(&d);
+    }
+}
+
+/// What a device window holds: the tab strip and the page it picks. The same in an in-window
+/// window and in a native one.
+fn contents(app: &mut PacketApp, ui: &mut egui::Ui, d: DeviceId, dev: &Device) {
+    let Some(w) = app.ui.windows.get_mut(&d) else { return };
+    ui.horizontal(|ui| {
+        let tabs: &[(Tab, &str)] = if dev.kind == DeviceKind::Hub {
+            &[(Tab::Physical, "Physical"), (Tab::Attributes, "Attributes")]
+        } else if dev.catalogue_model().sniffer() {
+            &[(Tab::Physical, "Physical"), (Tab::Capture, "Capture"), (Tab::Attributes, "Attributes")]
+        } else if dev.kind == DeviceKind::Server {
+            &[
+                (Tab::Physical, "Physical"),
+                (Tab::Config, "Config"),
+                (Tab::Services, "Services"),
+                (Tab::Desktop, "Desktop"),
+                (Tab::Iot, "IoT"),
+                (Tab::Attributes, "Attributes"),
+            ]
+        } else if netlabcraft_model::iot::can_serve(dev) && dev.kind != DeviceKind::Server {
+            &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Iot, "IoT"), (Tab::Cli, "CLI"), (Tab::Attributes, "Attributes")]
+        } else if netlabcraft_model::board::is_board(dev) {
+            &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Board, "Programming"), (Tab::Attributes, "Attributes")]
+        } else if dev.kind == DeviceKind::Iot {
+            &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Iot, "IoT"), (Tab::Attributes, "Attributes")]
+        } else if dev.kind == DeviceKind::Phone {
+            &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Phone, "Phone"), (Tab::Attributes, "Attributes")]
+        } else if dev.kind.is_host() {
+            &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Desktop, "Desktop"), (Tab::Attributes, "Attributes")]
+        } else {
+            &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Cli, "CLI"), (Tab::Attributes, "Attributes")]
+        };
+        for (t, label) in tabs {
+            if ui.selectable_label(w.tab == *t, RichText::new(crate::i18n::tr(label)).size(15.0)).clicked() {
+                w.tab = *t;
+                w.focus = true;
+            }
+        }
+    });
+    ui.separator();
+    let tab = w.tab;
+    match tab {
+        Tab::Physical => physical(app, ui, dev),
+        Tab::Config => config(app, ui, dev),
+        Tab::Cli => {
+            ui.vertical_centered(|ui| ui.strong(tl("Command Line Interface")));
+            console(app, ui, d, false);
+        }
+        Tab::Desktop => desktop(app, ui, dev),
+        Tab::Phone => crate::phone::tab(app, ui, dev),
+        Tab::Iot => {
+            let mut form = app.ui.windows.get_mut(&d).map(|w| std::mem::take(&mut w.iot)).unwrap_or_default();
+            crate::iot_page::tab(app, ui, dev, &mut form);
+            if let Some(w) = app.ui.windows.get_mut(&d) {
+                w.iot = form;
+            }
+        }
+        Tab::Board => {
+            let mut form = app.ui.windows.get_mut(&d).map(|w| std::mem::take(&mut w.board)).unwrap_or_default();
+            crate::board_page::tab(app, ui, dev, &mut form);
+            if let Some(w) = app.ui.windows.get_mut(&d) {
+                w.board = form;
+            }
+        }
+        Tab::Capture => crate::sniffer_page::tab(app, ui, dev),
+        Tab::Services => {
+            let mut forms = app.ui.windows.get_mut(&d).map(|w| std::mem::take(&mut w.svc)).unwrap_or_default();
+            crate::services::tab(app, ui, dev, &mut forms);
+            if let Some(w) = app.ui.windows.get_mut(&d) {
+                w.svc = forms;
+            }
+        }
+        Tab::Attributes => attributes(app, ui, dev),
     }
 }
 
