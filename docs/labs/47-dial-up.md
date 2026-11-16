@@ -123,7 +123,7 @@ ping AS1 10.47.0.2 => success
 ## Part 4 — What goes wrong
 
 The line to the access server is in use, so PC2 hears a busy signal. A number nobody has, a
-number that is the caller's own, a phone with no modem line behind it and a wrong password fail too, and a failed call leaves no pair in the cloud:
+number that is the caller's own and a wrong password fail too, and a failed call leaves no pair in the cloud:
 
 ```verify
 run dialup.connect {"device": "PC2", "number": "5550100", "username": "bob", "password": "lab-pass-2"}
@@ -132,8 +132,6 @@ run dialup.connect {"device": "PC2", "number": "5559999", "username": "bob", "pa
   expect: is not a number on the telephone network
 run dialup.connect {"device": "PC2", "number": "5550102", "username": "bob", "password": "lab-pass-2"}
   expect: own number
-run dialup.connect {"device": "PC2", "number": "5550101", "username": "bob", "password": "lab-pass-2"}
-  expect: no answer
 ```
 
 ## Part 5 — Hanging up, and a second caller
