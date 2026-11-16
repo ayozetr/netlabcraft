@@ -87,8 +87,16 @@ impl Sim {
         if !port_up(t, from) {
             return;
         }
+        // A monitor destination sends copies only, and a source port copies what leaves it.
+        if t.device(from.device).is_some_and(|d| Sim::span_destination(d, from.port)) {
+            return;
+        }
         let Some(to) = t.peer(from) else { return };
+        let mirrored = t.device(from.device).filter(|d| Sim::span_active(d)).map(|_| frame.clone());
         self.push_hop(t, at + self.hop_delay(), from, to, frame, 0);
+        if let (Some(copy), Some(d)) = (mirrored, t.device(from.device)) {
+            self.span_copy(t, d, from.port, &copy, false, 0, at);
+        }
     }
 
     fn send_lldp(&mut self, t: &Topology, at: u64) {

@@ -257,6 +257,30 @@ mod tests {
     }
 
     #[test]
+    fn monitor_sessions_round_trip_and_a_switch_without_any_leaves_the_key_out() {
+        use crate::span::{SpanDir, SpanSession};
+        let mut t = Topology::new();
+        let s = t.add_device(DeviceKind::Switch, None, 0.0, 0.0).unwrap();
+        let json = to_json(&t).unwrap();
+        assert!(!json.contains("\"span\""), "a switch with no session leaves the key out");
+        let mut one = SpanSession::new(1);
+        one.ports.insert("FastEthernet0/1".into(), SpanDir::Rx);
+        one.destination = Some("FastEthernet0/24".into());
+        let mut two = SpanSession::new(2);
+        two.vlans.insert(netlabcraft_core::VlanId::new(10).unwrap(), SpanDir::Tx);
+        t.device_mut(s).unwrap().l2.span = vec![one, two];
+        let back = from_json(&to_json(&t).unwrap()).unwrap();
+        assert_eq!(back, t);
+        // A hostile file is cleaned: a third session and a session number past 66 are dropped.
+        let mut v: serde_json::Value = serde_json::from_str(&to_json(&t).unwrap()).unwrap();
+        let list = v["topology"]["devices"][0]["l2"]["span"].as_array_mut().unwrap();
+        list.push(serde_json::json!({"id": 3, "destination": "FastEthernet0/3"}));
+        list.push(serde_json::json!({"id": 200, "destination": "FastEthernet0/4"}));
+        let clean = from_json(&v.to_string()).unwrap();
+        assert_eq!(clean.device(s).unwrap().l2.span.len(), 2);
+    }
+
+    #[test]
     fn prefix_lists_and_route_maps_round_trip_and_an_older_router_has_none() {
         use crate::policy::{PrefixEntry, PrefixList, RouteMap};
         let mut t = Topology::new();

@@ -323,6 +323,15 @@ pub enum Id {
     L2NoRecoveryInterval,
     L2ShowErrDisabled,
     L2ShowRecovery,
+    MonitorSource,
+    MonitorSourceVlan,
+    MonitorDestination,
+    NoMonitorSession,
+    NoMonitorSource,
+    NoMonitorSourceVlan,
+    NoMonitorDestination,
+    ShowMonitor,
+    ShowMonitorSession,
     L2PsecAgingTime,
     L2NoPsecAgingTime,
     L2PsecAgingType,
@@ -3924,6 +3933,63 @@ pub static SPECS: &[Spec] = &[
     spec!(L2NoRecoveryInterval, Modes::CONFIG, Modes::SWITCH, [K("no"), K("errdisable"), K("recovery"), K("interval")], "Back to 300 seconds"),
     spec!(L2ShowErrDisabled, EXECS, Modes::SWITCH, [K("show"), K("interfaces"), K("status"), K("err-disabled")], "Err-disabled ports and why"),
     spec!(L2ShowRecovery, EXECS, Modes::SWITCH, [K("show"), K("errdisable"), K("recovery")], "Which causes recover by themselves, and when"),
+    spec!(
+        MonitorSource,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("monitor"), K("session"), Arg("<1-66>"), K("source"), K("interface"), Rest("<interfaces> [both|rx|tx]")],
+        "Copy the frames that enter or leave these ports (ranges such as `fa0/1 - 3, fa0/5` work) to the session's destination"
+    ),
+    spec!(
+        MonitorSourceVlan,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("monitor"), K("session"), Arg("<1-66>"), K("source"), K("vlan"), Rest("<1-4094>[,-] [both|rx|tx]")],
+        "Copy the frames of these VLANs, on every port, to the session's destination"
+    ),
+    spec!(
+        MonitorDestination,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("monitor"), K("session"), Arg("<1-66>"), K("destination"), K("interface"), Arg("<interface>")],
+        "The port that receives the copies: it forwards no other traffic"
+    ),
+    spec!(
+        NoMonitorSession,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("monitor"), K("session"), Arg("{<1-66>|all|local}")],
+        "Delete one monitor session, or every one"
+    ),
+    spec!(
+        NoMonitorSource,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("monitor"), K("session"), Arg("<1-66>"), K("source"), K("interface"), Rest("<interfaces>")],
+        "Stop copying these ports"
+    ),
+    spec!(
+        NoMonitorSourceVlan,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("monitor"), K("session"), Arg("<1-66>"), K("source"), K("vlan"), Rest("<1-4094>[,-]")],
+        "Stop copying these VLANs"
+    ),
+    spec!(
+        NoMonitorDestination,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("monitor"), K("session"), Arg("<1-66>"), K("destination"), K("interface"), Arg("<interface>")],
+        "The port goes back to forwarding normal traffic"
+    ),
+    spec!(ShowMonitor, EXECS, Modes::SWITCH, [K("show"), K("monitor")], "Every monitor session: its sources, its destination and whether it copies"),
+    spec!(
+        ShowMonitorSession,
+        EXECS,
+        Modes::SWITCH,
+        [K("show"), K("monitor"), K("session"), Arg("{<1-66>|all}")],
+        "One monitor session, or all of them"
+    ),
     spec!(
         L2PsecAgingTime,
         Modes::IF,
