@@ -47,7 +47,7 @@ fn text_param(p: &Value, key: &str) -> Result<Option<String>> {
     }
 }
 
-fn connect(s: &mut Session, p: &Value) -> Result<Value> {
+pub(crate) fn connect(s: &mut Session, p: &Value) -> Result<Value> {
     let d = crate::hostapps::desktop_device(s, p)?;
     let (saved_user, saved_password, connected) = s
         .topology
@@ -88,7 +88,7 @@ fn connect(s: &mut Session, p: &Value) -> Result<Value> {
     status(s, p)
 }
 
-fn disconnect(s: &mut Session, p: &Value) -> Result<Value> {
+pub(crate) fn disconnect(s: &mut Session, p: &Value) -> Result<Value> {
     let d = crate::hostapps::desktop_device(s, p)?;
     if s.topology.device(d).is_none_or(|x| x.pppoe.session.is_none()) {
         return Err(EngineError::Failed("this computer is not connected".into()));
@@ -108,7 +108,7 @@ fn disconnect(s: &mut Session, p: &Value) -> Result<Value> {
     status(s, p)
 }
 
-fn status(s: &mut Session, p: &Value) -> Result<Value> {
+pub(crate) fn status(s: &mut Session, p: &Value) -> Result<Value> {
     let d = crate::hostapps::desktop_device(s, p)?;
     let has_session = s.topology.device(d).is_some_and(|x| x.pppoe.session.is_some());
     // A session holds while its server still answers a keep-alive over it.

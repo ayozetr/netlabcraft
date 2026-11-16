@@ -594,6 +594,8 @@ pub enum Id {
     DlNoShutdown,
     PppoeEnable,
     NoPppoeEnable,
+    ModemInout,
+    NoModemInout,
     PppoeClientDial,
     NoPppoeClientDial,
     ShowPppoeSession,
@@ -5386,6 +5388,9 @@ pub static SPECS: &[Spec] = &[
     spec!(PppoeEnable, Modes::IF, Modes::ROUTER, [K("pppoe"), K("enable"), K("group"), Arg("NAME")], "Answer PPPoE on this port with a group"),
     spec!(NoPppoeEnable, Modes::IF, Modes::ROUTER, [K("no"), K("pppoe"), K("enable")], "Stop answering PPPoE on this port"),
     spec!(NoPppoeEnable, Modes::IF, Modes::ROUTER, [K("no"), K("pppoe"), K("enable"), K("group"), Arg("NAME")], "Stop answering PPPoE on this port"),
+    spec!(ModemInout, Modes::IF, Modes::ROUTER, [K("modem"), K("inout")], "Answer calls on this modem line with the global group"),
+    spec!(ModemInout, Modes::IF, Modes::ROUTER, [K("modem"), K("inout"), K("group"), Arg("NAME")], "Answer calls on this modem line with a group"),
+    spec!(NoModemInout, Modes::IF, Modes::ROUTER, [K("no"), K("modem"), K("inout")], "Stop answering calls on this modem line"),
     spec!(
         PppoeClientDial,
         Modes::IF,

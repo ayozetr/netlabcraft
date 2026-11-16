@@ -163,6 +163,8 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
         id,
         Id::NoPppoeEnable
             | Id::PppoeEnable
+            | Id::NoModemInout
+            | Id::ModemInout
             | Id::NoBbaGroup
             | Id::BbaTemplate
             | Id::NoBbaTemplate
@@ -299,9 +301,9 @@ fn command_inner(c: &mut Ctx, id: Id, args: &[String]) -> R {
         | Id::DlNoDescription
         | Id::DlShutdown
         | Id::DlNoShutdown => dialer_command(c, id, args),
-        Id::PppoeEnable => {
+        Id::PppoeEnable | Id::ModemInout => {
             let group = if args.is_empty() { GLOBAL_GROUP.to_string() } else { name_ok(arg(0))? };
-            let names = ethernet_ports(c)?;
+            let names = if id == Id::ModemInout { modem_lines(c)? } else { ethernet_ports(c)? };
             let known = c.d()?.pppoe_router.group(&group).is_some();
             let r = &mut c.dm()?.pppoe_router;
             for n in names {
@@ -312,8 +314,8 @@ fn command_inner(c: &mut Ctx, id: Id, args: &[String]) -> R {
             }
             Ok(if known { String::new() } else { format!("Note: PPPoE group {group} does not exist yet (`bba-group pppoe {group}`)") })
         }
-        Id::NoPppoeEnable => {
-            let names = ethernet_ports(c)?;
+        Id::NoPppoeEnable | Id::NoModemInout => {
+            let names = if id == Id::NoModemInout { modem_lines(c)? } else { ethernet_ports(c)? };
             let r = &mut c.dm()?.pppoe_router;
             for n in names {
                 r.enabled.remove(&n);
@@ -364,6 +366,17 @@ fn ethernet_ports(c: &Ctx) -> Result<Vec<String>, String> {
         let ethernet = ["GigabitEthernet", "FastEthernet", "Ethernet"].iter().any(|p| n.starts_with(p));
         if plain || !ethernet {
             return Err(format!("% PPPoE runs on Ethernet ports, not on {n}"));
+        }
+    }
+    Ok(names)
+}
+
+/// The modem lines (phone ports) the mode is on: a call answers there, as PPP in session frames.
+fn modem_lines(c: &Ctx) -> Result<Vec<String>, String> {
+    let names = c.mode_iface_names()?;
+    for n in &names {
+        if n.contains('.') || !n.starts_with("Phone") {
+            return Err(format!("% `modem inout` is for modem lines (Phone ports), not {n}"));
         }
     }
     Ok(names)
@@ -635,10 +648,11 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
 /// A physical port's PPPoE lines in the running configuration.
 pub(crate) fn port_lines(s: &mut String, d: &Device, port: &str) {
     if let Some(g) = d.pppoe_router.enabled.get(port) {
+        let word = if port.starts_with("Phone") { "modem inout" } else { "pppoe enable" };
         if g == GLOBAL_GROUP {
-            let _ = writeln!(s, " pppoe enable");
+            let _ = writeln!(s, " {word}");
         } else {
-            let _ = writeln!(s, " pppoe enable group {g}");
+            let _ = writeln!(s, " {word} group {g}");
         }
     }
     if let Some(p) = d.pppoe_router.dial_ports.get(port) {

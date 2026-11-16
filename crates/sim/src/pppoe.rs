@@ -189,6 +189,12 @@ fn concentrator(d: &Device, port: usize) -> Option<Concentrator> {
     }
 }
 
+/// Whether the device answers PPP calls on this port: a server with the service on, or a router
+/// whose port enabled it with a group that has a template (a modem line's `modem inout`).
+pub fn answers(d: &Device, port: usize) -> bool {
+    concentrator(d, port).is_some()
+}
+
 /// Whether a caller's PAP request is right for this concentrator's accounts.
 fn pap_ok(d: &Device, user: &str, password: &str) -> bool {
     if d.kind == DeviceKind::Server {

@@ -32,6 +32,7 @@ mod iot;
 mod netconf;
 mod netflow;
 mod pdu;
+mod dialup;
 mod pppoe;
 mod traffic;
 mod voice;
@@ -54,6 +55,7 @@ mod tests_instructor;
 #[cfg(test)]
 mod tests_netflow;
 #[cfg(test)]
+mod tests_dialup;
 mod tests_pppoe;
 #[cfg(test)]
 mod tests_pppoe_router;
