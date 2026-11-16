@@ -1,9 +1,9 @@
 # NetLabCraft lab book
 
-> **Last reviewed:** 2026-11-16 · **Last updated:** 2026-11-16 · **Change:** minor (lab 43: PPPoE with routers) · also merged with minor (lab 44: secure a wireless network) · earlier: minor (lab 41: PPPoE client and access concentrator) · earlier: minor (lab 42: BGP route reflectors) · earlier: minor (BGP communities, aggregation, timers and lab 40) · earlier: minor (lab 38: capture traffic with port mirroring) · earlier: minor (lab 39: redistribute between routing protocols and filter with a distribute list) · earlier: minor (lab 37: filter routes with a prefix list and a route map) · earlier: minor (lab 36: BGP between two autonomous systems) · earlier: minor (four more labs, 32 to 35: EIGRP, IPv6 routing, EtherChannel faults, port-security faults) · earlier: minor (an unnumbered cellular lab, M9.10) · earlier: minor (four more labs, 28 to 31: OSPF authentication, ICMP in ACLs, spanning-tree views, the OSPF database) · earlier: minor (seven troubleshooting labs, 21 to 27) · earlier: major (created: 20 labs over the three CCNA courses) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-11-16 · **Last updated:** 2026-11-16 · **Change:** minor (lab 45: OSPF stub, NSSA and virtual-link areas) · also merged with minor (lab 43: PPPoE with routers) · also merged with minor (lab 44: secure a wireless network) · earlier: minor (lab 41: PPPoE client and access concentrator) · earlier: minor (lab 42: BGP route reflectors) · earlier: minor (BGP communities, aggregation, timers and lab 40) · earlier: minor (lab 38: capture traffic with port mirroring) · earlier: minor (lab 39: redistribute between routing protocols and filter with a distribute list) · earlier: minor (lab 37: filter routes with a prefix list and a route map) · earlier: minor (lab 36: BGP between two autonomous systems) · earlier: minor (four more labs, 32 to 35: EIGRP, IPv6 routing, EtherChannel faults, port-security faults) · earlier: minor (an unnumbered cellular lab, M9.10) · earlier: minor (four more labs, 28 to 31: OSPF authentication, ICMP in ACLs, spanning-tree views, the OSPF database) · earlier: minor (seven troubleshooting labs, 21 to 27) · earlier: major (created: 20 labs over the three CCNA courses) · **Target:** Cisco Packet Tracer 9.0
 
-Forty-four hands-on labs over the topics of the three CCNA courses, written for NetLabCraft
-from scratch. Labs 1 to 20, 32, 33, 36 to 44 each build one topic; labs 21 to 29, 34 and 35 are troubleshooting labs: they
+Forty-five hands-on labs over the topics of the three CCNA courses, written for NetLabCraft
+from scratch. Labs 1 to 20, 32, 33, 36 to 45 each build one topic; labs 21 to 29, 34 and 35 are troubleshooting labs: they
 build a working network, break it with commands, and walk the symptoms, the `show` commands
 that tell the faults apart, and the repairs; labs 30 and 31 are inspection labs that teach
 reading a protocol's own views (spanning-tree roles and states, the OSPF database), the second
@@ -14,7 +14,7 @@ command to type, and what to check with which command.
 Every lab is also a script: its `lab`, `console` and `verify` blocks are run end to end, as
 written, by `crates/engine/tests/lab_book.rs` (straight through the engine) and, for several
 labs, by `apps/netlabcraft-cli/tests/mcp_lab_book.rs` (through `netlabcraft-cli mcp`, the way an
-agent drives it; 16 of the 44). A lab that passes there works when typed by hand.
+agent drives it; 16 of the 45). A lab that passes there works when typed by hand.
 
 ## How to read a lab
 
@@ -82,6 +82,7 @@ One more lab has no number because it belongs to no CCNA course: [Mobile data ov
 | 42 | [BGP route reflectors](42-bgp-route-reflectors.md) | CCNA 3 follow-up | why iBGP needs a full mesh, `neighbor … route-reflector-client`, the client and non-client rules, ORIGINATOR_ID and CLUSTER_LIST, `bgp cluster-id`, the loop checks |
 | 43 | [PPPoE with routers: an access concentrator and two clients](43-pppoe-with-routers.md) | CCNA 3 follow-up | `bba-group pppoe`, `interface virtual-template`, `peer default ip address pool`, `pppoe enable`, `interface dialer`, `ip address negotiated`, `pppoe-client dial-pool-number`, `show pppoe session` and `summary`, `clear pppoe all` |
 | 44 | [Secure a wireless network](44-secure-a-wireless-network.md) | CCNA 1 and 2 follow-up | WEP, WPA2-PSK and WPA2 with a RADIUS server on an access point, matching the host's mode and encryption type, reading why a client does not associate, the coverage range |
+| 45 | [OSPF stub, NSSA and virtual-link areas](45-ospf-stub-nssa-virtual-link.md) | CCNA 3 follow-up | `area N stub [no-summary]`, `area N default-cost`, the hello options that must match, `area N nssa [no-summary] [default-information-originate]`, type 7 and type 5 LSAs and the translator, `O N2` against `O E2`, `area N virtual-link`, `show ip ospf virtual-links`, LSA sequence numbers and ages |
 
 ## Running the scripts
 
@@ -105,6 +106,7 @@ A failing step names its line in the lab's Markdown.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-16 | minor | Lab 45 (OSPF stub, NSSA and virtual-link areas) joins the book: 45 numbered labs. |
 | 2026-11-16 | minor | Lab 43 (PPPoE with routers) joins the book: 43 labs. |
 | 2026-11-16 | minor | Lab 44 (secure a wireless network) joins the book: 43 numbered labs. |
 | 2026-11-16 | minor | Lab 41: PPPoE client and access concentrator (discovery, LCP, CHAP and PAP, IPCP, IP in session frames, PADT), run end to end by the engine. |

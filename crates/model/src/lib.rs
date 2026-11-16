@@ -1298,6 +1298,13 @@ impl Ospf {
         self.redistribute_map = None;
         redist::sanitize_redistribute(&mut self.redistribute);
         redist::sanitize_dist_lists(&mut self.distribute);
+        for a in self.areas.values_mut() {
+            a.virtual_links.truncate(MAX_VIRTUAL_LINKS);
+            // A stub area and an NSSA exclude each other; the stub setting wins in a hostile file.
+            if a.stub {
+                a.nssa = false;
+            }
+        }
     }
 
     /// The `redistribute` line for a source, if there is one.
@@ -1413,15 +1420,36 @@ pub struct Ospf6 {
 /// Most `area range` lines per area.
 pub const MAX_AREA_RANGES: usize = 64;
 
+/// Most `area N virtual-link` lines per area.
+pub const MAX_VIRTUAL_LINKS: usize = 16;
+
 /// One area's settings on a router.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct OspfArea {
     /// `area N stub`: no external routes come in; the border router sends a default instead.
     #[serde(default)]
     pub stub: bool,
-    /// `area N stub no-summary` (on the border router): routes from other areas stay out too.
+    /// `area N nssa`: a not-so-stubby area. External routes of its own routers travel as type 7
+    /// LSAs and the border router translates them to type 5 for the rest of the network; no
+    /// external routes come in. Exclusive with `stub`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub nssa: bool,
+    /// `area N stub no-summary` or `area N nssa no-summary` (on the border router): routes from
+    /// other areas stay out too, a default route comes in instead.
     #[serde(default)]
     pub no_summary: bool,
+    /// `area N nssa default-information-originate` (on the border router): a type 7 default
+    /// route goes into the NSSA.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub nssa_default: bool,
+    /// `area N default-cost C` (on the border router): the metric of the default route the
+    /// border router sends into a stub area or an NSSA (1 when not set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_cost: Option<u32>,
+    /// `area N virtual-link ROUTER-ID`: the area carries a virtual link to that area border
+    /// router, which joins a disconnected area (or the other end) to the backbone.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub virtual_links: Vec<Ipv4Addr>,
     /// `area N range`: the border router advertises these instead of the area's networks
     /// inside them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

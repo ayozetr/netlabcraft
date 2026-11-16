@@ -521,6 +521,20 @@ pub fn running_config(d: &Device) -> String {
             if a.stub {
                 let _ = writeln!(s, " area {n} stub{}", if a.no_summary { " no-summary" } else { "" });
             }
+            if a.nssa {
+                let _ = writeln!(
+                    s,
+                    " area {n} nssa{}{}",
+                    if a.no_summary { " no-summary" } else { "" },
+                    if a.nssa_default { " default-information-originate" } else { "" }
+                );
+            }
+            if let Some(cost) = a.default_cost {
+                let _ = writeln!(s, " area {n} default-cost {cost}");
+            }
+            for peer in &a.virtual_links {
+                let _ = writeln!(s, " area {n} virtual-link {peer}");
+            }
             for r in &a.ranges {
                 let _ = writeln!(s, " area {n} range {} {}", r.addr, r.mask());
             }
@@ -718,8 +732,8 @@ pub fn ip_route_summary(table: &[netlabcraft_sim::RouteEntry]) -> String {
         ("BGP", count(&['B']), String::new()),
         (
             "OSPF",
-            count(&['O', 'I', 'E', 'F']),
-            format!("intra-area {}, inter-area {}, external {}", count(&['O']), count(&['I']), count(&['E', 'F'])),
+            count(&['O', 'I', 'E', 'F', 'N', 'M']),
+            format!("intra-area {}, inter-area {}, external {}", count(&['O']), count(&['I']), count(&['E', 'F', 'N', 'M'])),
         ),
     ];
     let other = table.len().saturating_sub(rows.iter().map(|r| r.1).sum::<usize>());
@@ -760,7 +774,7 @@ pub fn ip_route_summary(table: &[netlabcraft_sim::RouteEntry]) -> String {
 
 pub fn ip_route_table(d: &Device, table: &[netlabcraft_sim::RouteEntry]) -> String {
     let mut s = String::from(
-        "Codes: C connected, L local, S static, R RIP, D EIGRP, B BGP, D EX EIGRP external, O OSPF, O IA OSPF other area, O E1 and O E2 OSPF external, O*E2 OSPF external default, O*IA default into a stub area, * the default route\n\n",
+        "Codes: C connected, L local, S static, R RIP, D EIGRP, B BGP, D EX EIGRP external, O OSPF, O IA OSPF other area, O E1 and O E2 OSPF external, O N1 and O N2 OSPF external from a not-so-stubby area, O*E2 OSPF external default, O*N2 default into a not-so-stubby area, O*IA default into a stub area, * the default route\n\n",
     );
     if d.kind == DeviceKind::Switch && !d.ip_routing {
         let _ = writeln!(
@@ -785,7 +799,7 @@ pub fn ip_route_table(d: &Device, table: &[netlabcraft_sim::RouteEntry]) -> Stri
         let what = match (r.code, r.via, &r.iface) {
             ('C', _, Some(i)) => format!("connected, {i}"),
             ('L', _, Some(i)) => format!("local address, {i}"),
-            ('O' | 'E' | 'F' | 'I', Some(v), Some(i)) => format!("via {v}, {i} (OSPF)"),
+            ('O' | 'E' | 'F' | 'I' | 'N' | 'M', Some(v), Some(i)) => format!("via {v}, {i} (OSPF)"),
             ('D' | 'X', Some(v), Some(i)) => format!("via {v}, {i} (EIGRP)"),
             ('D', None, Some(i)) => format!("summary, discarded on {i} (EIGRP)"),
             ('B', Some(v), Some(i)) => format!("via {v}, {i} (BGP)"),
@@ -798,6 +812,9 @@ pub fn ip_route_table(d: &Device, table: &[netlabcraft_sim::RouteEntry]) -> Stri
             'E' if r.net.prefix == 0 => "O*E2".to_string(),
             'E' => "O E2".to_string(),
             'F' => "O E1".to_string(),
+            'N' if r.net.prefix == 0 => "O*N2".to_string(),
+            'N' => "O N2".to_string(),
+            'M' => "O N1".to_string(),
             'X' if r.net.prefix == 0 => "D*EX".to_string(),
             'X' => "D EX".to_string(),
             'I' if r.net.prefix == 0 => "O*IA".to_string(),
@@ -2706,7 +2723,8 @@ pub fn ipv6_access_lists(sim: &Sim, d: &Device) -> String {
 /// `show ip ospf`.
 pub fn ospf_summary(d: &Device, st: &netlabcraft_sim::ospf::OspfState) -> String {
     let Some(o) = &d.ospf else { return "OSPF is not running here.".into() };
-    let areas: std::collections::BTreeSet<u32> = o.networks.iter().map(|n| n.area).collect();
+    let mut areas: std::collections::BTreeSet<u32> = o.networks.iter().map(|n| n.area).collect();
+    areas.extend(st.segments.iter().filter(|((dev, _), _)| *dev == d.id).map(|(_, seg)| seg.area));
     let ifs = st.interfaces.get(&d.id).map_or(0, Vec::len);
     let mut s = format!("OSPF process {}\n", o.process);
     let _ = writeln!(s, "  Router id {}", st.router_ids.get(&d.id).map_or("none (no interface address)".to_string(), |r| r.to_string()));
@@ -2722,8 +2740,61 @@ pub fn ospf_summary(d: &Device, st: &netlabcraft_sim::ospf::OspfState) -> String
     if areas.len() > 1 {
         s.push_str("  Joins several areas: an area border router\n");
     }
+    for a in &areas {
+        let kind = netlabcraft_sim::ospf::kind_of(o, *a);
+        let conf = o.area(*a);
+        let mut line = format!("  Area {a}: {}", if *a == 0 { "backbone" } else { kind.word() });
+        if kind != netlabcraft_sim::ospf::AreaKind::Normal {
+            if conf.no_summary {
+                line.push_str(", totally stubby (no summary routes from other areas, a default instead)");
+            }
+            if conf.nssa_default {
+                line.push_str(", sends a type 7 default route into the area");
+            }
+            if let Some(c) = conf.default_cost {
+                line.push_str(&format!(", default route cost {c}"));
+            }
+        }
+        if let Some(tr) = st.translators.get(a).filter(|_| kind == netlabcraft_sim::ospf::AreaKind::Nssa) {
+            let who = if *tr == d.id {
+                "this router".to_string()
+            } else {
+                st.router_ids.get(tr).map_or("another router".to_string(), |r| format!("router {r}"))
+            };
+            line.push_str(&format!(", type 7 to type 5 translator: {who}"));
+        }
+        let _ = writeln!(s, "{line}");
+    }
+    let links = st.virtual_links.get(&d.id).map_or(0, Vec::len);
+    if links > 0 {
+        let up = st.virtual_links.get(&d.id).map_or(0, |l| l.iter().filter(|v| v.up).count());
+        let _ = writeln!(s, "  {links} virtual link{} configured, {up} up (show ip ospf virtual-links)", if links == 1 { "" } else { "s" });
+    }
     let _ = write!(s, "  Routes are computed at once (no SPF timers)");
     s
+}
+
+/// `show ip ospf virtual-links`: each virtual link the router is configured with, and whether it works.
+pub fn ospf_virtual_links(t: &Topology, d: &Device, st: &netlabcraft_sim::ospf::OspfState) -> String {
+    if d.ospf.is_none() {
+        return "OSPF is not running here.".into();
+    }
+    let list = st.virtual_links.get(&d.id).map(Vec::as_slice).unwrap_or_default();
+    if list.is_empty() {
+        return "No virtual links are configured here (area N virtual-link ROUTER-ID, under router ospf).".into();
+    }
+    let mut s = String::new();
+    for (n, v) in list.iter().enumerate() {
+        let name = v.peer.and_then(|p| t.device(p)).map_or(String::new(), |p| format!(" ({})", p.name));
+        if v.up {
+            let _ = writeln!(s, "Virtual link VL{n} to router {}{name} is up", v.peer_id);
+            let _ = writeln!(s, "  Transit area {}, cost {} across it; the link joins this router to the backbone", v.area, v.cost);
+        } else {
+            let _ = writeln!(s, "Virtual link VL{n} to router {}{name} is down", v.peer_id);
+            let _ = writeln!(s, "  Transit area {}: {}", v.area, v.why);
+        }
+    }
+    s.trim_end().to_string()
 }
 
 /// `show ip ospf interface [brief]`.

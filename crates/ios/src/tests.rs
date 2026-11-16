@@ -20,6 +20,7 @@ mod leftovers;
 mod line_protocol;
 mod nat_timeouts;
 mod nat_verbose;
+mod ospf_areas;
 mod ospf_database;
 mod ospf_debug;
 mod pki;

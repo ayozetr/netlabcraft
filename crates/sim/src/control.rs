@@ -260,6 +260,7 @@ impl Sim {
                     dr: elected(seg.and_then(|s| s.dr)),
                     bdr: elected(seg.and_then(|s| s.bdr)),
                     neighbors: heard.clone(),
+                    options: crate::ospf::hello_options(d, &ifc),
                 };
                 let payload = control::ospf_authenticate(hello.encode(), &crate::ospf::auth_send(d, &ifc, at));
                 let ip = Ipv4 { id: 0, ttl: 1, protocol: control::PROTO_OSPF, src: ifc.net.addr, dst: control::OSPF_ALL_ROUTERS, payload };
@@ -271,7 +272,7 @@ impl Sim {
 
     /// A router-LSA as the computed state describes the router in one area: a stub link per
     /// OSPF network, a point-to-point link per neighbour.
-    fn router_lsa(st: &crate::ospf::OspfState, id: DeviceId, area: u32) -> Option<RouterLsa> {
+    fn router_lsa(st: &crate::ospf::OspfState, stamps: &crate::ospf_lsdb::Stamps, at: u64, id: DeviceId, area: u32) -> Option<RouterLsa> {
         let rid = *st.router_ids.get(&id)?;
         let mut links = Vec::new();
         for (name, net, cost, _) in st.interfaces.get(&id).into_iter().flatten() {
@@ -284,7 +285,7 @@ impl Sim {
             }
             links.push(RouterLink { kind: 3, id: net.network().addr, data: net.mask(), metric });
         }
-        Some(RouterLsa { router_id: rid, seq: 0x8000_0001, links })
+        Some(RouterLsa { router_id: rid, seq: crate::ospf_lsdb::router_lsa_seq(stamps, at, area, rid), links })
     }
 
     /// What `debug ip ospf adj` and `debug ip ospf events` report when adjacencies come or go:
@@ -370,8 +371,8 @@ impl Sim {
             let area = st.segments.get(&(id, iface.clone())).map_or(0, |s| s.area);
             let in_area: Vec<DeviceId> =
                 st.router_ids.keys().copied().filter(|r| st.segments.iter().any(|((dev, _), s)| dev == r && s.area == area)).collect();
-            let headers: Vec<_> = in_area.iter().filter_map(|r| Self::router_lsa(st, *r, area)).map(|l| l.header()).collect();
-            let theirs = st.router_ids.iter().find(|(_, r)| **r == nbr).and_then(|(dev, _)| Self::router_lsa(st, *dev, area));
+            let headers: Vec<_> = in_area.iter().filter_map(|r| Self::router_lsa(st, &self.lsa_stamps, at, *r, area)).map(|l| l.header()).collect();
+            let theirs = st.router_ids.iter().find(|(_, r)| **r == nbr).and_then(|(dev, _)| Self::router_lsa(st, &self.lsa_stamps, at, *dev, area));
             let master = if rid > nbr { DBD_MASTER } else { 0 };
             let seq = u32::from(rid) & 0xffff;
             let mut packets = vec![
@@ -379,7 +380,7 @@ impl Sim {
                 OspfDb::Dbd { flags: master, seq: seq + 1, headers },
                 OspfDb::Request(vec![(1, nbr, nbr)]),
             ];
-            if let Some(mine) = Self::router_lsa(st, id, area) {
+            if let Some(mine) = Self::router_lsa(st, &self.lsa_stamps, at, id, area) {
                 packets.push(OspfDb::Update(vec![mine]));
             }
             if let Some(l) = theirs {

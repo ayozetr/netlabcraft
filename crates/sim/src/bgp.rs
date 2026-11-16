@@ -628,7 +628,7 @@ fn originate(d: &Device, base: &[RouteEntry]) -> Vec<Path> {
         let codes: &[char] = match s {
             Source::Connected => &['C'],
             Source::Static => &['S'],
-            Source::Ospf => &['O', 'I', 'E', 'F'],
+            Source::Ospf => &['O', 'I', 'E', 'F', 'N', 'M'],
         };
         let map = b.redistribute_maps.get(s.word()).map(String::as_str);
         for r in base.iter().filter(|r| codes.contains(&r.code)) {

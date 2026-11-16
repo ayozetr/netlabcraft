@@ -280,14 +280,22 @@ pub struct OspfHello {
     pub dr: Ipv4Addr,
     pub bdr: Ipv4Addr,
     pub neighbors: Vec<Ipv4Addr>,
+    /// The options byte: [`OSPF_OPT_E`] is set in a normal area, clear in a stub area and in an
+    /// NSSA, and [`OSPF_OPT_N`] is set only in an NSSA (RFC 2328 §A.2, RFC 3101 §2.1).
+    pub options: u8,
 }
+
+/// Hello option bit E: the area carries AS-external LSAs (a normal area).
+pub const OSPF_OPT_E: u8 = 0x02;
+/// Hello option bit N/P: the area is a not-so-stubby area.
+pub const OSPF_OPT_N: u8 = 0x08;
 
 impl OspfHello {
     pub fn encode(&self) -> Vec<u8> {
         let mut body = Vec::new();
         body.extend_from_slice(&self.mask.octets());
         body.extend_from_slice(&self.hello_secs.to_be_bytes());
-        body.push(0x02); // options: E bit
+        body.push(self.options);
         body.push(self.priority);
         body.extend_from_slice(&self.dead_secs.to_be_bytes());
         body.extend_from_slice(&self.dr.octets());
@@ -332,6 +340,7 @@ impl OspfHello {
             dr: ip_at(p, 36).ok_or_else(t)?,
             bdr: ip_at(p, 40).ok_or_else(t)?,
             neighbors,
+            options: *p.get(30).ok_or_else(t)?,
         })
     }
 }
@@ -435,6 +444,7 @@ mod tests {
             dr: Ipv4Addr::UNSPECIFIED,
             bdr: Ipv4Addr::UNSPECIFIED,
             neighbors: vec![Ipv4Addr::new(2, 2, 2, 2)],
+            options: OSPF_OPT_E,
         }
     }
 
@@ -531,6 +541,7 @@ mod tests {
             dr: Ipv4Addr::new(10, 0, 0, 2),
             bdr: Ipv4Addr::new(10, 0, 0, 1),
             neighbors: vec![Ipv4Addr::new(2, 2, 2, 2)],
+            options: OSPF_OPT_N,
         };
         let mut v = h.encode();
         assert_eq!(OspfHello::decode(&v).unwrap(), h);

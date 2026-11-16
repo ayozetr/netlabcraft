@@ -241,6 +241,85 @@ pub(super) fn ospf_area_auth(c: &mut Ctx, on: bool, args: &[String]) -> R {
     Ok(String::new())
 }
 
+/// `area N nssa [no-summary] [default-information-originate]`, `area N default-cost C` and
+/// `area N virtual-link ROUTER-ID`, and their `no` forms, in router OSPF mode.
+pub(super) fn ospf_area_type(c: &mut Ctx, id: Id, args: &[String]) -> R {
+    let area: u32 = args.first().and_then(|a| a.trim().parse().ok()).ok_or("% Area number 1-4294967295")?;
+    let rest = args.get(1).map(|a| a.trim()).unwrap_or("");
+    if area == 0 {
+        return Err("% The backbone (area 0) can't be a stub area, an NSSA or the transit area of a virtual link".into());
+    }
+    let o = c.dm()?.ospf.as_mut().ok_or("% Not in OSPF mode")?;
+    match id {
+        Id::AreaNssa | Id::NoAreaNssa => {
+            let (mut no_summary, mut originate) = (false, false);
+            for w in rest.split_whitespace() {
+                let w = w.to_ascii_lowercase();
+                if w.starts_with("no-") && "no-summary".starts_with(&w) {
+                    no_summary = true;
+                } else if w.starts_with('d') && "default-information-originate".starts_with(&w) {
+                    originate = true;
+                } else {
+                    return Err(format!("% `{w}` is not an NSSA option: no-summary or default-information-originate"));
+                }
+            }
+            if id == Id::AreaNssa {
+                if o.areas.get(&area).is_some_and(|a| a.stub) {
+                    return Err(format!("% Area {area} is a stub area: take that off first with `no area {area} stub`"));
+                }
+                let a = o.areas.entry(area).or_default();
+                a.nssa = true;
+                a.no_summary = no_summary;
+                a.nssa_default = originate;
+            } else if let Some(a) = o.areas.get_mut(&area).filter(|a| a.nssa) {
+                if rest.is_empty() {
+                    a.nssa = false;
+                    a.no_summary = false;
+                    a.nssa_default = false;
+                    a.default_cost = None;
+                } else {
+                    a.no_summary &= !no_summary;
+                    a.nssa_default &= !originate;
+                }
+            }
+        }
+        Id::AreaDefaultCost => {
+            let cost: u32 = rest.parse().ok().filter(|v| *v <= 16_777_215).ok_or("% The cost is 0-16777215")?;
+            let a = o
+                .areas
+                .get_mut(&area)
+                .filter(|a| a.stub || a.nssa)
+                .ok_or_else(|| format!("% Area {area} is not a stub area or an NSSA: set that first"))?;
+            a.default_cost = (cost != 1).then_some(cost);
+        }
+        Id::NoAreaDefaultCost => {
+            if let Some(a) = o.areas.get_mut(&area) {
+                a.default_cost = None;
+            }
+        }
+        Id::AreaVirtualLink => {
+            let peer = parse_ip(rest).map_err(|e| format!("% {e}"))?;
+            let a = o.areas.entry(area).or_default();
+            if !a.virtual_links.contains(&peer) {
+                if a.virtual_links.len() >= netlabcraft_model::MAX_VIRTUAL_LINKS {
+                    return Err("% Too many virtual links in this area".into());
+                }
+                a.virtual_links.push(peer);
+            }
+        }
+        _ => {
+            let peer = parse_ip(rest).map_err(|e| format!("% {e}"))?;
+            if let Some(a) = o.areas.get_mut(&area) {
+                a.virtual_links.retain(|p| *p != peer);
+            }
+        }
+    }
+    if o.areas.get(&area).is_some_and(netlabcraft_model::OspfArea::is_default) {
+        o.areas.remove(&area);
+    }
+    Ok(String::new())
+}
+
 /// Interface-mode OSPF commands: `ip ospf N area A`, the hello and dead intervals and the
 /// network type.
 pub(super) fn ospf_if_command(c: &mut Ctx, id: Id, args: &[String]) -> R {
@@ -406,13 +485,10 @@ fn ospf_database_detail(
         ("summary", LsaKind::Summary),
         ("asbr-summary", LsaKind::AsbrSummary),
         ("external", LsaKind::External),
+        ("nssa-external", LsaKind::Nssa),
     ]
     .into_iter()
     .find(|(n, _)| kw(&first, n));
-    if named.is_none() && kw(&first, "nssa-external") {
-        // Type 7 LSAs exist only in an NSSA, and the simulator has stub areas, not NSSAs.
-        return Ok(format!("No NSSA external LSAs in the database of {}: no area here is an NSSA (the simulator has stub areas only).", d.name));
-    }
     if named.is_none() && !kw(&first, "self-originate") && !kw(&first, "adv-router") {
         return Err(USAGE.into());
     }
@@ -448,15 +524,17 @@ fn ospf_database_detail(
                 LsaKind::Summary => "Summary link states",
                 LsaKind::AsbrSummary => "ASBR summary link states",
                 LsaKind::External => "External link states",
+                LsaKind::Nssa => "Type 7 external link states",
             };
             let area = l.area.map_or(String::new(), |a| format!(", area {a}"));
             let _ = writeln!(s, "{}{title}{area} (process {process}, router {rid})", if last.is_some() { "\n" } else { "" });
             last = Some((l.kind, l.area));
         }
-        let seq = "0x80000001";
+        let seq = format!("0x{:08x}", l.seq);
+        let age = format!("age {} s", l.age);
         match l.kind {
             LsaKind::Router => {
-                let _ = writeln!(s, "Router {}, sequence {seq}, {} link{}", l.id, l.count, if l.count == 1 { "" } else { "s" });
+                let _ = writeln!(s, "Router {}, sequence {seq}, {} link{}, {age}", l.id, l.count, if l.count == 1 { "" } else { "s" });
                 for k in &l.links {
                     let line = match k.kind {
                         LinkKind::PointToPoint => format!("point-to-point to router {} through {}", k.id, k.data),
@@ -468,18 +546,32 @@ fn ospf_database_detail(
             }
             LsaKind::Network => {
                 let net = netlabcraft_core::Ipv4Net::new(l.id, u8::try_from(l.count).unwrap_or(32)).network();
-                let _ = writeln!(s, "Network {}/{}, designated router {}, sequence {seq}, advertised by {}", net.addr, net.prefix, l.id, l.adv);
+                let _ =
+                    writeln!(s, "Network {}/{}, designated router {}, sequence {seq}, advertised by {}, {age}", net.addr, net.prefix, l.id, l.adv);
                 let list: Vec<String> = l.attached.iter().map(ToString::to_string).collect();
                 let _ = writeln!(s, "  attached routers: {}", list.join(", "));
             }
             LsaKind::Summary => {
-                let _ = writeln!(s, "Network {}/{}, sequence {seq}, advertised by {}, metric {}", l.id, l.count, l.adv, l.metric);
+                let _ = writeln!(s, "Network {}/{}, sequence {seq}, advertised by {}, metric {}, {age}", l.id, l.count, l.adv, l.metric);
             }
             LsaKind::AsbrSummary => {
-                let _ = writeln!(s, "AS boundary router {}, sequence {seq}, advertised by {}, metric {}", l.id, l.adv, l.metric);
+                let _ = writeln!(s, "AS boundary router {}, sequence {seq}, advertised by {}, metric {}, {age}", l.id, l.adv, l.metric);
             }
             LsaKind::External => {
-                let _ = writeln!(s, "Network {}/{}, sequence {seq}, advertised by {}, type 2 metric {}", l.id, l.count, l.adv, l.metric);
+                let t = if l.type1 { 1 } else { 2 };
+                let _ = writeln!(s, "Network {}/{}, sequence {seq}, advertised by {}, type {t} metric {}, {age}", l.id, l.count, l.adv, l.metric);
+            }
+            LsaKind::Nssa => {
+                let t = if l.type1 { 1 } else { 2 };
+                let _ = writeln!(s, "Network {}/{}, sequence {seq}, advertised by {}, type {t} metric {}, {age}", l.id, l.count, l.adv, l.metric);
+                match l.translator {
+                    Some(tr) => {
+                        let _ = writeln!(s, "  the border router {tr} translates it into a type 5 LSA for the other areas");
+                    }
+                    None => {
+                        let _ = writeln!(s, "  stays inside the area (not translated)");
+                    }
+                }
             }
         }
     }
@@ -490,6 +582,7 @@ fn ospf_database_detail(
             Some(LsaKind::Summary) => "summary ",
             Some(LsaKind::AsbrSummary) => "ASBR summary ",
             Some(LsaKind::External) => "external ",
+            Some(LsaKind::Nssa) => "NSSA external ",
             None => "",
         };
         let what = match filter {
@@ -509,7 +602,7 @@ pub(super) fn ospf_database(c: &mut Ctx, what: &str) -> R {
     let Some(o) = &d.ospf else { return Ok("OSPF is not running here.".into()) };
     let st = c.sim.ospf_state(c.t);
     let rid = st.router_ids.get(&d.id).map_or("unset".to_string(), ToString::to_string);
-    let lsas = netlabcraft_sim::ospf_lsdb::database(c.t, &st, d.id);
+    let lsas = c.sim.lsdb(c.t, d.id);
     let words: Vec<&str> = what.split_whitespace().collect();
     if !words.is_empty() {
         return ospf_database_detail(&d, o.process, &rid, st.router_ids.get(&d.id).copied(), &lsas, &words);
@@ -528,6 +621,7 @@ pub(super) fn ospf_database(c: &mut Ctx, what: &str) -> R {
                 LsaKind::Summary => "Summary network LSAs (type 3)",
                 LsaKind::AsbrSummary => "ASBR summary LSAs (type 4)",
                 LsaKind::External => "AS external LSAs (type 5)",
+                LsaKind::Nssa => "NSSA external LSAs (type 7)",
             };
             let area = l.area.map_or(String::new(), |a| format!(", area {a}"));
             let last_col = match l.kind {
@@ -535,7 +629,7 @@ pub(super) fn ospf_database(c: &mut Ctx, what: &str) -> R {
                 LsaKind::AsbrSummary => "Metric",
                 _ => "Prefix",
             };
-            let _ = write!(s, "\n{title}{area}\n{:<16} {:<16} {}\n", "Link ID", "Advertised by", last_col);
+            let _ = write!(s, "\n{title}{area}\n{:<16} {:<16} {:>5} {:<11} {}\n", "Link ID", "Advertised by", "Age", "Seq#", last_col);
             last = Some((l.kind, l.area));
         }
         let count = match l.kind {
@@ -543,7 +637,7 @@ pub(super) fn ospf_database(c: &mut Ctx, what: &str) -> R {
             LsaKind::AsbrSummary => l.metric.to_string(),
             _ => format!("/{}", l.count),
         };
-        let _ = writeln!(s, "{:<16} {:<16} {count}", l.id.to_string(), l.adv.to_string());
+        let _ = writeln!(s, "{:<16} {:<16} {:>5} {:<11} {count}", l.id.to_string(), l.adv.to_string(), l.age, format!("0x{:08x}", l.seq));
     }
     Ok(s.trim_end().to_string())
 }

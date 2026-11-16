@@ -138,7 +138,7 @@ fn from_source(d: &Device, src: RedistSource, r: &RouteEntry) -> bool {
         RedistSource::Connected => r.code == 'C',
         RedistSource::Static => r.code == 'S' && r.distance != 254,
         RedistSource::Rip => r.code == 'R',
-        RedistSource::Ospf(n) => matches!(r.code, 'O' | 'I' | 'E' | 'F') && d.ospf.as_ref().is_some_and(|o| o.process == n),
+        RedistSource::Ospf(n) => matches!(r.code, 'O' | 'I' | 'E' | 'F' | 'N' | 'M') && d.ospf.as_ref().is_some_and(|o| o.process == n),
         RedistSource::Eigrp(n) => matches!(r.code, 'D' | 'X') && d.eigrp.as_ref().is_some_and(|e| e.asn == n),
         RedistSource::Bgp(n) => r.code == 'B' && d.bgp.as_ref().is_some_and(|b| b.asn == n),
     }
