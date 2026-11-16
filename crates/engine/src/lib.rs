@@ -23,6 +23,7 @@ pub mod catalog;
 mod cellular;
 mod cmd;
 mod controller;
+mod dialup;
 mod families;
 mod hardware;
 pub mod home;
@@ -32,7 +33,6 @@ mod iot;
 mod netconf;
 mod netflow;
 mod pdu;
-mod dialup;
 mod pppoe;
 mod traffic;
 mod voice;
@@ -47,6 +47,8 @@ mod tests_bgp;
 #[cfg(test)]
 mod tests_cell;
 #[cfg(test)]
+mod tests_dialup;
+#[cfg(test)]
 mod tests_families;
 #[cfg(test)]
 mod tests_hostapps;
@@ -55,7 +57,6 @@ mod tests_instructor;
 #[cfg(test)]
 mod tests_netflow;
 #[cfg(test)]
-mod tests_dialup;
 mod tests_pppoe;
 #[cfg(test)]
 mod tests_pppoe_router;
