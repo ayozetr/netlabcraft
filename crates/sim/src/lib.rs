@@ -443,10 +443,12 @@ pub fn routing_table_with(
         }
     }
     for r in bgp_routes {
+        // An aggregate's discard route has no next hop.
+        let discard = r.iface == eigrp::NULL0;
         learned.push(RouteEntry {
             code: 'B',
             net: r.net,
-            via: Some(r.next_hop),
+            via: if discard { None } else { Some(r.next_hop) },
             iface: Some(r.iface.clone()),
             distance: r.distance,
             metric: r.metric,
@@ -671,7 +673,7 @@ pub fn route_with(
     }
     // BGP: external paths (distance 20) beat the other protocols, internal ones (200) lose to them.
     // Equal external paths (`maximum-paths`) share the traffic flow by flow.
-    let mut nets: Vec<Ipv4Net> = bgp_routes.iter().filter(|r| r.net.contains(dst)).map(|r| r.net).collect();
+    let mut nets: Vec<Ipv4Net> = bgp_routes.iter().filter(|r| r.iface != eigrp::NULL0 && r.net.contains(dst)).map(|r| r.net).collect();
     nets.dedup();
     for net in nets {
         let rows: Vec<&bgp::BgpRoute> = bgp_routes.iter().filter(|r| r.net == net).collect();
@@ -691,8 +693,13 @@ pub fn route_with(
             consider_ad(0, 254, ifc, gw);
         }
     }
-    // An EIGRP summary's route to Null0 discards what nothing more specific takes.
-    let discard = eigrp_routes.iter().filter(|r| r.iface == eigrp::NULL0 && r.net.contains(dst)).map(|r| r.net.prefix).max();
+    // An EIGRP summary's or a BGP aggregate's route to Null0 discards what nothing more specific takes.
+    let discard = eigrp_routes
+        .iter()
+        .filter(|r| r.iface == eigrp::NULL0 && r.net.contains(dst))
+        .map(|r| r.net.prefix)
+        .chain(bgp_routes.iter().filter(|r| r.iface == eigrp::NULL0 && r.net.contains(dst)).map(|r| r.net.prefix))
+        .max();
     if let (Some(p), Some((bp, ..))) = (discard, &best)
         && p > *bp
     {

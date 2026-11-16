@@ -95,7 +95,7 @@
   EtherChannel, VTP, port security, DHCP snooping, dynamic ARP inspection, CDP and LLDP, 802.1p
   CoS, port mirroring (SPAN) and power over Ethernet.
 - **Routing:** static and floating routes, RIP, OSPF (several areas, stub, authentication),
-  EIGRP, BGP (eBGP and iBGP, with prefix lists, route maps, communities, aggregation and timers), redistribution between RIP, EIGRP, OSPF and BGP with distribute lists, router-on-a-stick, multilayer switching, HSRP, VRRP v2 and v3, GLBP, HDLC and PPP.
+  EIGRP, BGP (eBGP and iBGP, with prefix lists, route maps, communities, aggregation, timers, route reflectors and confederations), redistribution between RIP, EIGRP, OSPF and BGP with distribute lists, router-on-a-stick, multilayer switching, HSRP, VRRP v2 and v3, GLBP, HDLC and PPP.
 - **IPv6:** addressing, neighbour discovery, SLAAC, DHCPv6, static routes, OSPFv3, EIGRP for IPv6,
   RIPng and ACLs.
 - **Security:** ACLs, NAT and PAT, AAA with RADIUS and TACACS+, SSH, GRE, site-to-site IPsec
@@ -109,7 +109,7 @@
 - **Simulation mode:** an event list replayed on the canvas, simple and complex PDUs, OSI layer
   details, scenarios, capture filters, drop reasons and pcap export.
 - **Console and PC prompt:** every mode a CCNA course uses, with `?` help, Tab completion and
-  output filters (1238 grammar entries in all; see
+  output filters (1263 grammar entries in all; see
   [`docs/command-reference.md`](docs/command-reference.md)); on PCs `ipconfig`, `ping`,
   `tracert`, `nslookup`, `telnet`, `ssh`, `ftp`, `netstat` and more.
 - **Activities:** checks worth points, sections, hints, values per student, time limits, password
@@ -121,9 +121,9 @@ What it doesn't do yet is listed, ranked, in [`docs/gaps.md`](docs/gaps.md).
 
 ## The CCNA lab book
 
-[`docs/labs/`](docs/labs/README.md) holds forty-one hands-on labs written for NetLabCraft over the
-topics of the three CCNA courses (four for the first, seventeen for the second and twenty for
-the third, the last five of them (BGP, route filtering, redistribution, communities and timers, PPPoE) going a step past the course), plus one on mobile data. Eleven of them are troubleshooting labs where you find and
+[`docs/labs/`](docs/labs/README.md) holds forty-two hands-on labs written for NetLabCraft over the
+topics of the three CCNA courses (four for the first, seventeen for the second and twenty-one for
+the third, the last six of them (BGP, route filtering, redistribution, communities and timers, route reflectors, PPPoE) going a step past the course), plus one on mobile data. Eleven of them are troubleshooting labs where you find and
 fix deliberate faults (VLANs and trunks, routing, OSPF, ACLs, DHCP, NAT, spanning tree, EtherChannel, port security), and two
 teach you to read the OSPF database and spanning-tree views. Each lab lists its topology, addressing, every command to
 type and what to check. Every lab is also a test: the suite runs each one end to end as

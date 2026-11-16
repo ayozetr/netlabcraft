@@ -279,7 +279,14 @@ R2# show running-config
 ```
 
 R2 still has both specific prefixes in its own table; only what it tells its neighbours changed.
-R2 installs no discard route for the aggregate (see the gaps list), so the summary itself never drops traffic for an address that no specific prefix covers.
+R2 also puts a discard route for the aggregate in its routing table, so traffic to an address that
+no more specific prefix covers is dropped there instead of following a default route:
+
+```verify
+R2# show ip route
+  expect: 172.16.0.0/22
+  expect: summary, discarded on Null0 (BGP)
+```
 
 ## Part 6 — Timers
 

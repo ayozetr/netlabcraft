@@ -900,6 +900,29 @@ pub enum Id {
     NoBgpMaximumPaths,
     ShowIpBgpCommunity,
     ShowIpBgpCommunityList,
+    BgpNeighborRrClient,
+    NoBgpNeighborRrClient,
+    BgpClusterId,
+    NoBgpClusterId,
+    BgpConfedId,
+    NoBgpConfedId,
+    BgpConfedPeers,
+    NoBgpConfedPeers,
+    BgpNeighborDefaultOriginate,
+    NoBgpNeighborDefaultOriginate,
+    BgpNeighborRemovePrivate,
+    NoBgpNeighborRemovePrivate,
+    BgpNeighborSoftReconf,
+    NoBgpNeighborSoftReconf,
+    BgpAlwaysCompareMed,
+    NoBgpAlwaysCompareMed,
+    BgpAsPathIgnore,
+    NoBgpAsPathIgnore,
+    BgpMaximumPathsIbgp,
+    NoBgpMaximumPathsIbgp,
+    ShowIpBgpReceived,
+    ShowIpBgpRegexp,
+    ShowIpBgpFilterList,
     Bandwidth,
     NoBandwidth,
     Delay,
@@ -3159,6 +3182,157 @@ pub static SPECS: &[Spec] = &[
         Modes::BOTH,
         [K("show"), K("ip"), K("bgp"), K("community-list"), Arg("NAME")],
         "The paths a community list permits"
+    ),
+    spec!(
+        BgpNeighborRrClient,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D"), K("route-reflector-client")],
+        "Make this internal neighbour a client of this route reflector"
+    ),
+    spec!(
+        NoBgpNeighborRrClient,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D"), K("route-reflector-client")],
+        "This neighbour is an ordinary internal neighbour again"
+    ),
+    spec!(
+        BgpClusterId,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("bgp"), K("cluster-id"), Arg("{A.B.C.D|<1-4294967295>}")],
+        "Name the cluster this route reflector serves"
+    ),
+    spec!(NoBgpClusterId, Modes::BGP, Modes::BOTH, [K("no"), K("bgp"), K("cluster-id")], "The cluster id is the router id again"),
+    spec!(
+        BgpConfedId,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("bgp"), K("confederation"), K("identifier"), Arg("<1-4294967295>")],
+        "The autonomous system the confederation shows to the outside"
+    ),
+    spec!(NoBgpConfedId, Modes::BGP, Modes::BOTH, [K("no"), K("bgp"), K("confederation"), K("identifier")], "Leave the confederation"),
+    spec!(
+        BgpConfedPeers,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("bgp"), K("confederation"), K("peers"), Rest("<1-4294967295>...")],
+        "Name the other member autonomous systems of the confederation"
+    ),
+    spec!(NoBgpConfedPeers, Modes::BGP, Modes::BOTH, [K("no"), K("bgp"), K("confederation"), K("peers")], "Forget every confederation peer"),
+    spec!(
+        NoBgpConfedPeers,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("bgp"), K("confederation"), K("peers"), Rest("<1-4294967295>...")],
+        "Forget these confederation peers"
+    ),
+    spec!(
+        BgpNeighborDefaultOriginate,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D"), K("default-originate")],
+        "Send this neighbour a default route whether or not there is one here"
+    ),
+    spec!(
+        NoBgpNeighborDefaultOriginate,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D"), K("default-originate")],
+        "Stop sending the default route"
+    ),
+    spec!(
+        BgpNeighborRemovePrivate,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D"), K("remove-private-as")],
+        "Take private AS numbers out of the paths sent to this external neighbour"
+    ),
+    spec!(
+        BgpNeighborRemovePrivate,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D"), K("remove-private-as"), Arg("all")],
+        "Take every private AS number out, even from a path that has public ones"
+    ),
+    spec!(
+        NoBgpNeighborRemovePrivate,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D"), K("remove-private-as")],
+        "Send the AS numbers as they are"
+    ),
+    spec!(
+        BgpNeighborSoftReconf,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D"), K("soft-reconfiguration"), K("inbound")],
+        "Keep what this neighbour sends before the inbound policy, to list it"
+    ),
+    spec!(
+        NoBgpNeighborSoftReconf,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D"), K("soft-reconfiguration"), K("inbound")],
+        "Stop keeping what this neighbour sends"
+    ),
+    spec!(
+        BgpAlwaysCompareMed,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("bgp"), K("always-compare-med")],
+        "Compare the MED of paths from different neighbouring autonomous systems too"
+    ),
+    spec!(
+        NoBgpAlwaysCompareMed,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("bgp"), K("always-compare-med")],
+        "Compare the MED only within one neighbouring AS"
+    ),
+    spec!(
+        BgpAsPathIgnore,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("bgp"), K("bestpath"), K("as-path"), K("ignore")],
+        "Leave the AS-path length out of the best-path choice"
+    ),
+    spec!(
+        NoBgpAsPathIgnore,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("bgp"), K("bestpath"), K("as-path"), K("ignore")],
+        "Count the AS-path length again"
+    ),
+    spec!(
+        BgpMaximumPathsIbgp,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("maximum-paths"), K("ibgp"), Arg("<1-32>")],
+        "Put up to this many equal internal paths in the routing table"
+    ),
+    spec!(NoBgpMaximumPathsIbgp, Modes::BGP, Modes::BOTH, [K("no"), K("maximum-paths"), K("ibgp")], "One internal path per prefix again"),
+    spec!(
+        ShowIpBgpReceived,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("bgp"), K("neighbors"), Arg("A.B.C.D"), K("received-routes")],
+        "What a neighbour sent before the inbound policy (needs soft-reconfiguration inbound)"
+    ),
+    spec!(
+        ShowIpBgpRegexp,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("bgp"), K("regexp"), Rest("<regular expression>")],
+        "The paths whose AS path matches a regular expression"
+    ),
+    spec!(
+        ShowIpBgpFilterList,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("bgp"), K("filter-list"), Arg("<1-500>")],
+        "The paths an AS-path list permits"
     ),
     spec!(Bandwidth, Modes::IF, Modes::BOTH, [K("bandwidth"), Arg("<1-10000000>")], "The bandwidth EIGRP's metric uses (kbit/s)"),
     spec!(NoBandwidth, Modes::IF, Modes::BOTH, [K("no"), K("bandwidth")], "Bandwidth from the port's speed again"),

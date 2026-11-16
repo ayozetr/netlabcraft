@@ -22,6 +22,8 @@ pub const KEEPALIVE_SECS: u16 = 60;
 /// Most `aggregate-address` statements, and the most paths `maximum-paths` accepts.
 pub const MAX_AGGREGATES: usize = 64;
 pub const MAX_MULTIPATH: u8 = 32;
+/// Most member autonomous systems listed in `bgp confederation peers`.
+pub const MAX_CONFED_PEERS: usize = 32;
 
 /// `aggregate-address A.B.C.D M.M.M.M [summary-only] [as-set]`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -115,6 +117,28 @@ pub struct Neighbor {
     pub filter_list_in: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filter_list_out: Option<String>,
+    /// `route-reflector-client`: this internal neighbour is a client of the route reflector.
+    #[serde(default)]
+    pub route_reflector_client: bool,
+    /// `default-originate`: send this neighbour a default route whether or not there is one here.
+    #[serde(default)]
+    pub default_originate: bool,
+    /// `remove-private-as`: take private AS numbers out of the path sent to an external neighbour
+    /// (only when the whole path is private, unless `remove_private_all`).
+    #[serde(default)]
+    pub remove_private_as: bool,
+    /// `remove-private-as all`: take every private AS number out.
+    #[serde(default)]
+    pub remove_private_all: bool,
+    /// `soft-reconfiguration inbound`: keep what the neighbour sent before the inbound policy, so
+    /// `show ip bgp neighbors A.B.C.D received-routes` can list it.
+    #[serde(default)]
+    pub soft_reconfiguration_in: bool,
+}
+
+/// Whether an AS number is one of the private ranges (RFC 6996).
+pub fn is_private_as(asn: u32) -> bool {
+    (64_512..=65_534).contains(&asn) || (4_200_000_000..=4_294_967_294).contains(&asn)
 }
 
 impl Neighbor {
@@ -136,6 +160,11 @@ impl Neighbor {
             timers: None,
             filter_list_in: None,
             filter_list_out: None,
+            route_reflector_client: false,
+            default_originate: false,
+            remove_private_as: false,
+            remove_private_all: false,
+            soft_reconfiguration_in: false,
         }
     }
 }
@@ -169,6 +198,25 @@ pub struct Bgp {
     /// `maximum-paths N`: how many equal external paths enter the routing table (1 when not set).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub maximum_paths: Option<u8>,
+    /// `maximum-paths ibgp N`: how many equal internal paths enter the routing table.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximum_paths_ibgp: Option<u8>,
+    /// `bgp cluster-id A.B.C.D`: the cluster this route reflector serves (the router id when not set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cluster_id: Option<Ipv4Addr>,
+    /// `bgp confederation identifier N`: the autonomous system the outside world sees.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confed_id: Option<u32>,
+    /// `bgp confederation peers N ...`: the other member autonomous systems of the confederation
+    /// this router has sessions with.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub confed_peers: Vec<u32>,
+    /// `bgp always-compare-med`: compare the MED of paths from different neighbouring ASes too.
+    #[serde(default)]
+    pub always_compare_med: bool,
+    /// `bgp bestpath as-path ignore`: leave the AS-path length out of the best-path choice.
+    #[serde(default)]
+    pub as_path_ignore: bool,
 }
 
 impl Bgp {
@@ -196,6 +244,17 @@ impl Bgp {
     /// How many equal paths per prefix the routing table takes.
     pub fn multipath(&self) -> usize {
         usize::from(self.maximum_paths.unwrap_or(1).clamp(1, MAX_MULTIPATH))
+    }
+
+    /// How many equal internal paths per prefix the routing table takes.
+    pub fn multipath_ibgp(&self) -> usize {
+        usize::from(self.maximum_paths_ibgp.unwrap_or(1).clamp(1, MAX_MULTIPATH))
+    }
+
+    /// The autonomous system a router outside the confederation sees: the confederation
+    /// identifier when there is one, else the router's own.
+    pub fn outer_as(&self) -> u32 {
+        self.confed_id.unwrap_or(self.asn)
     }
 
     pub fn local_pref(&self) -> u32 {
@@ -242,6 +301,16 @@ impl Bgp {
         self.aggregates.dedup_by_key(|a| a.net);
         self.aggregates.truncate(MAX_AGGREGATES);
         self.maximum_paths = self.maximum_paths.map(|m| m.clamp(1, MAX_MULTIPATH)).filter(|m| *m > 1);
+        self.maximum_paths_ibgp = self.maximum_paths_ibgp.map(|m| m.clamp(1, MAX_MULTIPATH)).filter(|m| *m > 1);
+        self.confed_id = self.confed_id.filter(|a| *a >= 1);
+        let own = self.asn;
+        self.confed_peers.retain(|a| *a >= 1 && *a != own);
+        self.confed_peers.sort_unstable();
+        self.confed_peers.dedup();
+        self.confed_peers.truncate(MAX_CONFED_PEERS);
+        for n in &mut self.neighbors {
+            n.remove_private_all &= n.remove_private_as;
+        }
         self.redistribute.sort();
         self.redistribute.dedup();
         let kept: Vec<String> = self.redistribute.iter().map(|r| r.word().to_string()).collect();
@@ -312,6 +381,30 @@ mod tests {
         assert_eq!((b.maximum_paths, b.multipath()), (Some(MAX_MULTIPATH), usize::from(MAX_MULTIPATH)));
         assert_eq!(b.neighbors[0].timers, Some((5, 3)));
         assert_eq!(Bgp::new(1).multipath(), 1);
+    }
+
+    #[test]
+    fn reflection_confederation_and_neighbour_options_are_cleaned_and_kept() {
+        let mut b = Bgp::new(65_001);
+        b.confed_id = Some(0);
+        b.confed_peers = vec![65_001, 65_003, 0, 65_002, 65_003];
+        b.maximum_paths_ibgp = Some(200);
+        b.cluster_id = Some(Ipv4Addr::new(9, 9, 9, 9));
+        b.neighbors = vec![Neighbor { remove_private_all: true, ..Neighbor::new(Ipv4Addr::new(10, 0, 0, 2)) }];
+        b.sanitize();
+        assert_eq!(b.confed_id, None);
+        assert_eq!(b.confed_peers, vec![65_002, 65_003], "no zero, not our own AS, sorted, no duplicates");
+        assert_eq!((b.maximum_paths_ibgp, b.multipath_ibgp()), (Some(MAX_MULTIPATH), usize::from(MAX_MULTIPATH)));
+        assert!(!b.neighbors[0].remove_private_all, "`all` means nothing without remove-private-as");
+        b.confed_id = Some(100);
+        assert_eq!(b.outer_as(), 100);
+        assert_eq!(Bgp::new(7).outer_as(), 7);
+        assert!(is_private_as(64_512) && is_private_as(65_534) && !is_private_as(65_535) && !is_private_as(64_511));
+        assert!(is_private_as(4_200_000_000) && !is_private_as(4_294_967_295));
+        let json = serde_json::to_string(&b).unwrap();
+        assert_eq!(serde_json::from_str::<Bgp>(&json).unwrap(), b);
+        let plain = serde_json::to_string(&Bgp::new(1)).unwrap();
+        assert!(!plain.contains("cluster_id") && !plain.contains("confed") && !plain.contains("maximum_paths_ibgp"), "{plain}");
     }
 
     #[test]
