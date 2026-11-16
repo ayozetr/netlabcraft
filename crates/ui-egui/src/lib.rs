@@ -236,6 +236,7 @@ pub fn open_desktop_app(app: &mut PacketApp, d: DeviceId, which: &str) {
             "pppoe" => Some(console::DesktopApp::PppoeDialer),
             "vpn" => Some(console::DesktopApp::VpnClient),
             "netflow" => Some(console::DesktopApp::NetflowCollector),
+            "softphone" => Some(console::DesktopApp::Softphone),
             _ => None,
         };
     }

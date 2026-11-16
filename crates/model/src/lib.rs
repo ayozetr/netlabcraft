@@ -2140,7 +2140,7 @@ impl Device {
         self.crypto = vpn::Crypto::default();
         self.qos = qos::Qos::default();
         self.firewall = firewall::Firewall::default();
-        self.voice = voice::Voice { tftp: self.voice.tftp, ..voice::Voice::default() };
+        self.voice = voice::Voice { tftp: self.voice.tftp, softphone: self.voice.softphone.take(), ..voice::Voice::default() };
         self.services = fresh.services;
         self.l2.reload();
         self.automation = automation::Automation {

@@ -1641,3 +1641,7 @@ event	write request for	requisição de escrita de
 	No flows received yet. Routers send a flow once it has been quiet for 15 seconds.	Nenhum fluxo recebido ainda. Os roteadores enviam um fluxo quando ele fica 15 segundos em silêncio.
 	Enter a port from 1 to 65535.	Digite uma porta de 1 a 65535.
 	Set routers to export here with: ip flow-export destination ADDRESS PORT	Configure os roteadores para exportar para cá com: ip flow-export destination ADDRESS PORT
+	Softphone	Softphone
+	Switch the Softphone on	Ligar o softphone
+	The Softphone is off. Switch it on to register with a call server and make calls.	O softphone está desligado. Ligue-o para se registrar em um servidor de chamadas e fazer chamadas.
+	No call server: type its address above, or give option 150 in DHCP	Sem servidor de chamadas: digite o endereço acima ou informe a opção 150 no DHCP

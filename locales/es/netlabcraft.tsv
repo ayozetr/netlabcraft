@@ -1644,3 +1644,7 @@ event	no APN	sin APN
 	No flows received yet. Routers send a flow once it has been quiet for 15 seconds.	Aún no se han recibido flujos. Los routers envían un flujo cuando lleva 15 segundos en silencio.
 	Enter a port from 1 to 65535.	Escribe un puerto del 1 al 65535.
 	Set routers to export here with: ip flow-export destination ADDRESS PORT	Configura los routers para exportar aquí con: ip flow-export destination ADDRESS PORT
+	Softphone	Softphone
+	Switch the Softphone on	Activar el softphone
+	The Softphone is off. Switch it on to register with a call server and make calls.	El softphone está apagado. Actívalo para registrarte en un servidor de llamadas y hacer llamadas.
+	No call server: type its address above, or give option 150 in DHCP	Sin servidor de llamadas: escribe su dirección arriba o da la opción 150 en DHCP
