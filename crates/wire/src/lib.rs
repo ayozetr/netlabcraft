@@ -45,6 +45,7 @@ pub mod netconf;
 pub mod netflow;
 pub mod ospf6;
 pub mod ospfdb;
+pub mod pppoe;
 
 pub mod pcap;
 pub mod peap;
@@ -504,6 +505,8 @@ pub enum Protocol {
     Ssh,
     /// The cellular attach exchange between a mobile device and the central office server.
     Cell,
+    /// PPP over Ethernet: discovery and the PPP session it carries.
+    Pppoe,
     Other,
 }
 
@@ -548,6 +551,7 @@ impl Protocol {
             Protocol::Tls => "TLS",
             Protocol::Ssh => "SSH",
             Protocol::Cell => "CELL",
+            Protocol::Pppoe => "PPPoE",
             Protocol::Other => "Other",
         }
     }
@@ -1051,6 +1055,19 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
         cell::ETHERTYPE_CELL => match cell::Attach::decode(&f.payload) {
             Ok(a) => (Protocol::Cell, format!("{}{tag}", a.describe())),
             Err(e) => (Protocol::Cell, format!("Cell attach ({e}){tag}")),
+        },
+        pppoe::ETHERTYPE_DISCOVERY => match pppoe::Discovery::decode(&f.payload) {
+            Ok(d) => (Protocol::Pppoe, format!("{}{tag}", d.describe())),
+            Err(e) => (Protocol::Pppoe, format!("PPPoE discovery ({e}){tag}")),
+        },
+        pppoe::ETHERTYPE_SESSION => match pppoe::SessionPacket::decode(&f.payload) {
+            Ok(s) if s.protocol == pppoe::PPP_IP && depth < 4 => {
+                let inner = Frame { dst: f.dst, src: f.src, vlan: None, ethertype: ETHERTYPE_IPV4, payload: s.data }.encode();
+                let (_, what) = summarize_depth(&inner, depth + 1);
+                (Protocol::Pppoe, format!("PPPoE session 0x{:04x} carrying {what}{tag}", s.session_id))
+            }
+            Ok(s) => (Protocol::Pppoe, format!("{}{tag}", s.describe())),
+            Err(e) => (Protocol::Pppoe, format!("PPPoE session ({e}){tag}")),
         },
         wlan::ETHERTYPE_EAPOL => match wlan::Eapol::decode(&f.payload) {
             Ok(e) => (Protocol::Eapol, format!("{}{tag}", e.describe())),
