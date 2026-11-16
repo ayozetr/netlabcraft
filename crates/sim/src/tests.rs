@@ -382,6 +382,7 @@ fn a_sniffer_on_a_monitor_destination_hears_the_source_port_both_ways() {
     let mut sim = Sim::new();
     // PC1 and PC2 talk: the sniffer on a switch port would hear nothing but for the mirror.
     assert_eq!(marks(&sim.ping(&t, a, ip("10.0.0.2"), PingOptions { count: 2, ..Default::default() }).unwrap()), "!!");
+    sim.run_for(&t, 1_000_000);
     let heard: Vec<_> = sim.trace().iter().filter(|e| e.to.device == sn).collect();
     assert!(heard.iter().all(|e| e.from == End { device: s, port: 3 } && e.dropped.is_none()), "copies leave the destination port and are all taken");
     let from_a = heard.iter().filter(|e| e.frame.get(6..12) == Some(a_mac.as_slice())).count();
@@ -393,6 +394,7 @@ fn a_sniffer_on_a_monitor_destination_hears_the_source_port_both_ways() {
     // the source port too (and copied once), but the unicast echoes are not.
     sim.clear_trace();
     assert_eq!(marks(&sim.ping(&t, b, ip("10.0.0.3"), PingOptions { count: 2, ..Default::default() }).unwrap()), "!!");
+    sim.run_for(&t, 1_000_000);
     let heard: Vec<_> = sim.trace().iter().filter(|e| e.to.device == sn).collect();
     assert_eq!(heard.iter().filter(|e| e.protocol == Protocol::Icmp).count(), 0, "no echo between PC2 and PC3 reaches the sniffer");
     assert_eq!(
@@ -413,6 +415,8 @@ fn a_monitor_session_copies_only_the_direction_it_was_given() {
         mirror(&mut t, s, 0, dir, 3);
         let mut sim = Sim::new();
         assert_eq!(marks(&sim.ping(&t, a, ip("10.0.0.2"), PingOptions { count: 2, ..Default::default() }).unwrap()), "!!");
+        sim.run_for(&t, 1_000_000);
+        sim.run_for(&t, 1_000_000);
         let heard: Vec<_> = sim.trace().iter().filter(|e| e.to.device == sn).collect();
         assert!(!heard.is_empty(), "{dir:?} copies something");
         for e in heard {
@@ -433,6 +437,7 @@ fn a_vlan_source_copies_the_frames_of_that_vlan_and_nothing_else() {
     let mut sim = Sim::new();
     // Every port is in VLAN 1: nothing in VLAN 10 moves, so nothing is copied.
     assert_eq!(marks(&sim.ping(&t, a, ip("10.0.0.2"), PingOptions { count: 2, ..Default::default() }).unwrap()), "!!");
+    sim.run_for(&t, 1_000_000);
     assert_eq!(sim.trace().iter().filter(|e| e.to.device == sn).count(), 0);
     // Watching VLAN 1 copies what PC1 and PC2 say, however many ports it crosses.
     let mut session = SpanSession::new(2);
@@ -441,6 +446,7 @@ fn a_vlan_source_copies_the_frames_of_that_vlan_and_nothing_else() {
     t.device_mut(s).unwrap().l2.span = vec![session];
     let mut sim = Sim::new();
     assert_eq!(marks(&sim.ping(&t, a, ip("10.0.0.2"), PingOptions { count: 2, ..Default::default() }).unwrap()), "!!");
+    sim.run_for(&t, 1_000_000);
     let heard = sim.trace().iter().filter(|e| e.to.device == sn && e.protocol == Protocol::Icmp).count();
     assert_eq!(heard, 4, "two echo requests and two replies, each copied when it arrives");
 }

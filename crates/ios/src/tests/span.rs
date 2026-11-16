@@ -133,6 +133,7 @@ fn a_sniffer_behind_the_destination_hears_the_mirrored_traffic_and_the_destinati
     }
     // Without a mirror the sniffer behind a switch hears only the flooded ARP request.
     lab.run(a, "ping 10.0.0.2");
+    lab.sim.run_for(&lab.t, 1_000_000);
     let heard = |lab: &Lab| lab.sim.trace().iter().filter(|e| e.to.device == sn).count();
     let icmp = |lab: &Lab| lab.sim.trace().iter().filter(|e| e.to.device == sn && e.protocol == Protocol::Icmp).count();
     assert!(heard(&lab) >= 1 && icmp(&lab) == 0, "the flooded broadcast, and no echo");
@@ -141,11 +142,14 @@ fn a_sniffer_behind_the_destination_hears_the_mirrored_traffic_and_the_destinati
     assert!(lab.run(s, "show monitor").contains("Destination:   Fa0/4 (link up)"));
     lab.sim.clear_trace();
     lab.run(a, "ping 10.0.0.2");
+    lab.sim.run_for(&lab.t, 1_000_000);
     assert!(icmp(&lab) >= 8, "four echo requests and four replies, copied: {}", icmp(&lab));
     // PC2 and PC3 talk where the mirror does not reach: nothing of it comes out of the destination.
     lab.sim.clear_trace();
     lab.run(b, "ping 10.0.0.3");
+    lab.sim.run_for(&lab.t, 1_000_000);
     lab.run(b, "ping 10.0.0.3");
+    lab.sim.run_for(&lab.t, 1_000_000);
     assert_eq!(icmp(&lab), 0, "unicast between the other ports is not copied");
     // The sniffer sends nothing, whatever it hears.
     assert!(lab.sim.trace().iter().all(|e| e.from.device != sn));
@@ -153,5 +157,6 @@ fn a_sniffer_behind_the_destination_hears_the_mirrored_traffic_and_the_destinati
     lab.run(s, "conf t\nno monitor session 1\nend");
     lab.sim.clear_trace();
     lab.run(a, "ping 10.0.0.2");
+    lab.sim.run_for(&lab.t, 1_000_000);
     assert_eq!(icmp(&lab), 0);
 }

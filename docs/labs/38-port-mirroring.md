@@ -96,10 +96,11 @@ S1# show monitor
   expect: State:         copying
 ```
 
-Clear the event list, and let PC1 and PC2 talk again. The sniffer now hears the echo requests
+Let the last copies arrive (`sim.advance`), clear the event list, and let PC1 and PC2 talk again. The sniffer now hears the echo requests
 PC1 sends (they enter the switch on Fa0/1) and the replies PC2 answers (they leave it on Fa0/1):
 
 ```lab
+sim.advance {"seconds": 1}
 sim.clear_events {}
 ```
 
@@ -114,6 +115,7 @@ The first line is a request (to PC2), the second a reply (back to PC1). Traffic 
 touch Fa0/1 is not copied. Clear the events and let PC2 and PC3 talk:
 
 ```lab
+sim.advance {"seconds": 1}
 sim.clear_events {}
 ```
 
@@ -139,6 +141,7 @@ end
 ```
 
 ```lab
+sim.advance {"seconds": 1}
 sim.clear_events {}
 ```
 
@@ -159,6 +162,7 @@ end
 ```
 
 ```lab
+sim.advance {"seconds": 1}
 sim.clear_events {}
 ```
 
@@ -180,6 +184,7 @@ end
 ```
 
 ```lab
+sim.advance {"seconds": 1}
 sim.clear_events {}
 ```
 
@@ -251,6 +256,7 @@ end
 ```
 
 ```lab
+sim.advance {"seconds": 1}
 sim.clear_events {}
 ```
 
@@ -274,6 +280,7 @@ end
 ```
 
 ```lab
+sim.advance {"seconds": 1}
 sim.clear_events {}
 ```
 
