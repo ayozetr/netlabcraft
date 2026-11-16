@@ -11,7 +11,7 @@ The CCNA lab book runs end to end, by the engine and over MCP, and the leftovers
 earlier rounds landed (security, instructor tools, Simulation mode, wireless, end devices,
 automation, switching and routing). The focus now is depth where it is honestly thin: more labs
 walked to find console gaps (gap 1), the last crypto and certificate details (gaps 2 and 3),
-the room's depth for the IoT things (gap 4), device windows as native windows (gap 5), more end
+the room's depth for the IoT things (gap 4), cables as accessible nodes (gap 5), more end
 devices (gap 6) and more interface languages (gap 7).
 
 ## Milestones

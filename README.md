@@ -214,8 +214,8 @@ estimated it at about 92% ready for real work: about 93% for the first CCNA cour
 second and 91% for the third (re-scored on 2026-11-13 after the 0.2.0 work; the
 method is in [`docs/target-app-parity.md`](docs/target-app-parity.md#audiences)). Next up: more
 labs walked to find console gaps, the last crypto and certificate details (IKE signatures, PEAP,
-a transform set with no cipher), more end devices, device windows as native
-windows, and more interface languages. Stage, numbers and estimates are in
+a transform set with no cipher), more end devices, cables as accessible nodes,
+and more interface languages. Stage, numbers and estimates are in
 [ROADMAP.md](ROADMAP.md); the ranked work list is [`docs/gaps.md`](docs/gaps.md).
 
 ## Downloads
