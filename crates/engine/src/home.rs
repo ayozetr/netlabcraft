@@ -105,7 +105,7 @@ pub(crate) fn wifi_from_params(is_host: bool, p: &Value, old: Option<&Wifi>) -> 
     if let Some(k) = &key
         && !(8..=63).contains(&k.chars().count())
     {
-        return Err("a WPA passphrase has 8-63 characters".into());
+        return Err("a WPA2 passphrase has 8-63 characters".into());
     }
     let mut security = WifiSecurity { mode, ..WifiSecurity::default() };
     match mode {
