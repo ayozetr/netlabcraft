@@ -14,9 +14,9 @@ to end is in [`labs/`](labs/README.md).
 | Number | Value | Kind |
 |---|---|---|
 | Engine commands | **170** | measured: `c!(` entries in `crates/engine/src/catalog.rs` |
-| Console grammar entries | **1338** across 45 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
+| Console grammar entries | **1341** across 45 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
 | Device models | **53** | measured: `MODELS` in `crates/model/src/models.rs` (the fallback model not counted; the 7 router cards are in `MODULES`) |
-| Console grammar entries | **1338** across 45 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
+| Console grammar entries | **1341** across 45 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
 | Device models | **65** | measured: `MODELS` in `crates/model/src/models.rs` (the fallback model not counted; the 8 router cards are in `MODULES`) |
 | Sample labs | **32** | measured: `SAMPLES` in `crates/engine/src/sample.rs` |
 | Lab-book labs | **48** (+1 unnumbered: the cellular lab) | measured: numbered labs in `docs/labs/` (4 CCNA 1, 17 CCNA 2, 26 CCNA 3 with the BGP, redistribution, PPPoE and OSPF-area labs, and one wireless-security follow-up; labs 21 to 29, 34 and 35 are troubleshooting labs, 30 and 31 inspection labs), all run by `crates/engine/tests/lab_book.rs`, 16 also over MCP by `apps/netlabcraft-cli/tests/mcp_lab_book.rs` |
