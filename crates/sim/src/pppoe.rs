@@ -675,11 +675,7 @@ impl Sim {
                     self.pppoe_ppp(t, d, 0, ac, sid, pppoe::PPP_LCP, Control::new(pppoe::CONF_ACK, c.id, c.data.clone()));
                     theirs = true;
                 }
-                (pppoe::PPP_LCP, pppoe::CONF_ACK) => {
-                    if c.id == 1 {
-                        ours = true;
-                    }
-                }
+                (pppoe::PPP_LCP, pppoe::CONF_ACK) if c.id == 1 => ours = true,
                 (pppoe::PPP_LCP, pppoe::CONF_NAK | pppoe::CONF_REJ) => return Err(err("the access concentrator did not accept the link settings")),
                 (pppoe::PPP_LCP, pppoe::TERM_REQ) => {
                     self.pppoe_ppp(t, d, 0, ac, sid, pppoe::PPP_LCP, Control::new(pppoe::TERM_ACK, c.id, Vec::new()));
@@ -714,11 +710,7 @@ impl Sim {
                         self.pppoe_ppp(t, d, 0, ac, sid, pppoe::PPP_IPCP, req);
                     }
                 }
-                (pppoe::PPP_IPCP, pppoe::CONF_ACK) => {
-                    if c.id == ip_id && !my_addr.is_unspecified() {
-                        ip_ours = true;
-                    }
-                }
+                (pppoe::PPP_IPCP, pppoe::CONF_ACK) if c.id == ip_id && !my_addr.is_unspecified() => ip_ours = true,
                 (pppoe::PPP_IPCP, pppoe::CONF_REJ) => return Err(err("the access concentrator did not accept the address request")),
                 _ => {}
             }
