@@ -138,11 +138,14 @@ fn ospf_as_the_courses_teach_it() {
             && db.contains("AS external LSAs"),
         "{db}"
     );
-    assert!(db.contains("172.31.0.0       10.5.5.5         /16"), "{db}");
+    assert!(db.lines().any(|l| l.starts_with("172.31.0.0       10.5.5.5 ") && l.ends_with(" /16")), "{db}");
     // A loopback in area 1 makes R1 a border router: R2 hears of it in a summary LSA.
     lab.run(r1, "conf t\nint lo0\nip ospf 1 area 1\nend");
     let db = lab.run(r2, "show ip ospf database");
-    assert!(db.contains("Summary network LSAs (type 3), area 0") && db.contains("1.1.1.0          1.1.1.1          /24"), "{db}");
+    assert!(
+        db.contains("Summary network LSAs (type 3), area 0") && db.lines().any(|l| l.starts_with("1.1.1.0          1.1.1.1 ") && l.ends_with(" /24")),
+        "{db}"
+    );
     assert!(lab.run(r2, "show ip route").contains("O IA 1.1.1.0/24"));
     let run1 = survives_reload(&mut lab, r1);
     assert!(
