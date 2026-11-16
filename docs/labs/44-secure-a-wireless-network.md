@@ -137,6 +137,7 @@ run device.wireless {"device": "Laptop1", "ssid": "Office", "mode": "wpa-enterpr
 ```
 
 ```lab
+sim.advance {"seconds": 5}
 device.wireless {"device": "Laptop1", "ssid": "Office", "mode": "wpa2-enterprise", "user": "ana", "password": "ana-lab44"}
 ```
 

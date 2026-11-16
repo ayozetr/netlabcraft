@@ -108,8 +108,11 @@ fn an_enterprise_access_point_asks_its_radius_server() {
     let login = |u: &str, p: &str, mode: &str| json!({"ssid": "Corp", "mode": mode, "user": u, "password": p});
     let r = wifi(&mut s, &lt, login("ana", "bad-pw", "wpa2-enterprise"));
     assert!(!joined(&r) && problem(&r).contains("refused"), "{r}");
+    // (Time passes between attempts, as it does for a person typing the settings.)
+    s.execute("sim.advance", json!({"seconds": 5})).unwrap();
     let r = wifi(&mut s, &lt, login("ana", "ana-test-pw", "wpa-enterprise"));
     assert!(!joined(&r) && problem(&r).contains("uses WPA2-Enterprise"), "{r}");
+    s.execute("sim.advance", json!({"seconds": 5})).unwrap();
     let r = wifi(&mut s, &lt, login("ana", "ana-test-pw", "wpa2-enterprise"));
     assert!(joined(&r), "{r}");
     // The login really runs on the air and on the wire: RADIUS request, answer, then the handshake.
