@@ -284,8 +284,11 @@ pub fn database(t: &Topology, st: &OspfState, me: DeviceId) -> Vec<Lsa> {
     let mut type7: Vec<(u32, DeviceId, Ipv4Net, DeviceId, bool)> = Vec::new();
     for (x, nets) in st.externals.iter().filter(|(x, _)| flood.contains(x)) {
         let xa: Vec<u32> = areas_of.get(x).map(|s| s.iter().copied().collect()).unwrap_or_default();
-        let nssa_areas: Vec<u32> = xa.iter().copied().filter(|a| kind_at(*x, *a) == AreaKind::Nssa).collect();
-        let outside = xa.len() > nssa_areas.len() || xa.is_empty();
+        let all_nssa: Vec<u32> = xa.iter().copied().filter(|a| kind_at(*x, *a) == AreaKind::Nssa).collect();
+        let outside = xa.len() > all_nssa.len() || xa.is_empty();
+        // A border router set to `no-redistribution` keeps its own routes out of the NSSA.
+        let xo = t.device(*x).and_then(|d| d.ospf.as_ref());
+        let nssa_areas: Vec<u32> = all_nssa.into_iter().filter(|a| !(outside && xo.is_some_and(|o| o.area(*a).nssa_no_redist))).collect();
         for n in nets {
             if outside {
                 type5.push((*x, *x, *n));

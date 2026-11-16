@@ -533,8 +533,9 @@ pub fn running_config(d: &Device) -> String {
             if a.nssa {
                 let _ = writeln!(
                     s,
-                    " area {n} nssa{}{}",
+                    " area {n} nssa{}{}{}",
                     if a.no_summary { " no-summary" } else { "" },
+                    if a.nssa_no_redist { " no-redistribution" } else { "" },
                     if a.nssa_default { " default-information-originate" } else { "" }
                 );
             }
@@ -542,7 +543,34 @@ pub fn running_config(d: &Device) -> String {
                 let _ = writeln!(s, " area {n} default-cost {cost}");
             }
             for peer in &a.virtual_links {
-                let _ = writeln!(s, " area {n} virtual-link {peer}");
+                let mut line = format!(" area {n} virtual-link {peer}");
+                if let Some(v) = a.vlink_opts.iter().find(|v| v.peer == *peer) {
+                    if let Some(x) = v.hello {
+                        let _ = write!(line, " hello-interval {x}");
+                    }
+                    if let Some(x) = v.retransmit {
+                        let _ = write!(line, " retransmit-interval {x}");
+                    }
+                    if let Some(x) = v.transmit_delay {
+                        let _ = write!(line, " transmit-delay {x}");
+                    }
+                    if let Some(x) = v.dead {
+                        let _ = write!(line, " dead-interval {x}");
+                    }
+                    match v.auth {
+                        Some(netlabcraft_model::OspfAuthKind::Simple) => line.push_str(" authentication"),
+                        Some(netlabcraft_model::OspfAuthKind::Md5) => line.push_str(" authentication message-digest"),
+                        Some(netlabcraft_model::OspfAuthKind::Null) => line.push_str(" authentication null"),
+                        None => {}
+                    }
+                    if let Some(k) = &v.auth_key {
+                        let _ = write!(line, " authentication-key {k}");
+                    }
+                    for (id, k) in &v.md5_keys {
+                        let _ = write!(line, " message-digest-key {id} md5 {k}");
+                    }
+                }
+                let _ = writeln!(s, "{line}");
             }
             for r in &a.ranges {
                 let _ = writeln!(s, " area {n} range {} {}", r.addr, r.mask());
@@ -2850,6 +2878,9 @@ pub fn ospf_summary(d: &Device, st: &netlabcraft_sim::ospf::OspfState) -> String
             if conf.nssa_default {
                 line.push_str(", sends a type 7 default route into the area");
             }
+            if conf.nssa_no_redist {
+                line.push_str(", keeps its own redistributed routes out of the area (no-redistribution)");
+            }
             if let Some(c) = conf.default_cost {
                 line.push_str(&format!(", default route cost {c}"));
             }
@@ -2873,6 +2904,16 @@ pub fn ospf_summary(d: &Device, st: &netlabcraft_sim::ospf::OspfState) -> String
     s
 }
 
+/// The timers and authentication of a virtual link, on one line.
+fn vlink_detail(v: &netlabcraft_sim::ospf::VirtualLink) -> String {
+    let auth = match v.auth {
+        netlabcraft_model::OspfAuthKind::Null => "no authentication",
+        netlabcraft_model::OspfAuthKind::Simple => "simple password authentication",
+        netlabcraft_model::OspfAuthKind::Md5 => "message-digest authentication",
+    };
+    format!("Hello {} s, dead {} s, retransmit {} s, transmit delay {} s, {auth}", v.hello, v.dead, v.retransmit, v.delay)
+}
+
 /// `show ip ospf virtual-links`: each virtual link the router is configured with, and whether it works.
 pub fn ospf_virtual_links(t: &Topology, d: &Device, st: &netlabcraft_sim::ospf::OspfState) -> String {
     if d.ospf.is_none() {
@@ -2888,9 +2929,11 @@ pub fn ospf_virtual_links(t: &Topology, d: &Device, st: &netlabcraft_sim::ospf::
         if v.up {
             let _ = writeln!(s, "Virtual link VL{n} to router {}{name} is up", v.peer_id);
             let _ = writeln!(s, "  Transit area {}, cost {} across it; the link joins this router to the backbone", v.area, v.cost);
+            let _ = writeln!(s, "  {}", vlink_detail(v));
         } else {
             let _ = writeln!(s, "Virtual link VL{n} to router {}{name} is down", v.peer_id);
             let _ = writeln!(s, "  Transit area {}: {}", v.area, v.why);
+            let _ = writeln!(s, "  {}", vlink_detail(v));
         }
     }
     s.trim_end().to_string()
