@@ -121,7 +121,7 @@ What it doesn't do yet is listed, ranked, in [`docs/gaps.md`](docs/gaps.md).
 
 ## The CCNA lab book
 
-[`docs/labs/`](docs/labs/README.md) holds forty-six hands-on labs written for NetLabCraft over the
+[`docs/labs/`](docs/labs/README.md) holds forty-seven hands-on labs written for NetLabCraft over the
 topics of the three CCNA courses (four for the first, seventeen for the second and twenty-four for
 the third, the last nine of them (BGP, route filtering, redistribution, communities and timers, route reflectors, PPPoE, PPPoE with routers, OSPF stub, NSSA and virtual-link areas, route tags and BGP peer groups) going a step past the course; one more, on wireless security, follows the first two), plus one on mobile data. Eleven of them are troubleshooting labs where you find and
 fix deliberate faults (VLANs and trunks, routing, OSPF, ACLs, DHCP, NAT, spanning tree, EtherChannel, port security), and two

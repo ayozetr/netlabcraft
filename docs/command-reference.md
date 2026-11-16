@@ -825,7 +825,11 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no bgp confederation peers` |  | router, switch | Forget every confederation peer |
 | `no bgp confederation peers <1-4294967295>...` |  | router, switch | Forget these confederation peers |
 | `neighbor A.B.C.D\|NAME default-originate` |  | router, switch | Send this neighbour a default route whether or not there is one here |
+| `neighbor A.B.C.D\|NAME default-originate route-map NAME` |  | router, switch | Send this neighbour a default route only while a route passes the route map, with the map's changes |
 | `no neighbor A.B.C.D\|NAME default-originate` |  | router, switch | Stop sending the default route |
+| `no neighbor A.B.C.D\|NAME default-originate route-map NAME` |  | router, switch | Stop sending the default route |
+| `neighbor A.B.C.D\|NAME password [0\|7] PASSWORD` |  | router, switch | Protect the session with a TCP MD5 password; the session comes up only when both ends have the same one |
+| `no neighbor A.B.C.D\|NAME password` |  | router, switch | Remove the session's password |
 | `neighbor A.B.C.D\|NAME remove-private-as` |  | router, switch | Take private AS numbers out of the paths sent to this external neighbour |
 | `neighbor A.B.C.D\|NAME remove-private-as all` |  | router, switch | Take every private AS number out, even from a path that has public ones |
 | `no neighbor A.B.C.D\|NAME remove-private-as` |  | router, switch | Send the AS numbers as they are |

@@ -57,6 +57,9 @@ use netlabcraft_wire::tcp::{self, Tcp};
 
 use crate::{L3If, RouteEntry, Sim, up_ifaces};
 
+/// Why a session whose two ends have different MD5 passwords stays down.
+pub const AUTH_FAILED: &str = "TCP MD5 authentication failed: the password differs or is missing at one end";
+
 /// Administrative distance of a path learned from an external neighbour.
 pub const DISTANCE_EBGP: u8 = 20;
 /// Administrative distance of a path learned from an internal neighbour.
@@ -140,6 +143,8 @@ pub struct Analysis {
     pub routed: BTreeSet<SessKey>,
     /// The connection works but the OPEN messages are refused.
     pub errors: BTreeMap<SessKey, String>,
+    /// The connection is refused before any OPEN: the two ends do not have the same `password`.
+    pub auth_failed: BTreeSet<SessKey>,
 }
 
 /// A path to a prefix.
@@ -391,6 +396,8 @@ enum Attempt {
     /// The connection works but the OPEN messages are refused: the other end's key, and whether
     /// this end is the one that refuses.
     BadAs(SessKey, bool),
+    /// The two ends' MD5 passwords differ (or only one end has one): the other end's key.
+    BadAuth(SessKey),
     Ok(Box<Peering>, Box<Peering>, SessKey),
 }
 
@@ -412,6 +419,11 @@ fn attempt(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, a: &Device,
     let Some(m) = bb.neighbor(src).filter(|m| !m.shutdown && m.remote_as.is_some()) else { return Attempt::No };
     let Some(back) = path_to(t, base, b, src).filter(|h| h.owner == a.id) else { return Attempt::No };
     let bkey = (b.id, m.addr);
+    // TCP MD5 (RFC 2385): a segment that does not carry the right signature is dropped, so the
+    // connection never opens unless both ends have the same password or neither has one.
+    if n.password != m.password {
+        return Attempt::BadAuth(bkey);
+    }
     // Inside a confederation each side names the other's member AS; from outside, a confederation is
     // known by its identifier.
     let same_confed = ab.confed_id.is_some() && ab.confed_id == bb.confed_id;
@@ -483,6 +495,10 @@ pub fn analyse(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>) -> Anal
                     let why = msg::notification_text(msg::ERR_OPEN, msg::OPEN_BAD_PEER_AS);
                     an.errors.entry(key).or_insert_with(|| format!("{here} NOTIFICATION: {why}"));
                     an.errors.entry(bkey).or_insert_with(|| format!("{there} NOTIFICATION: {why}"));
+                }
+                Attempt::BadAuth(bkey) => {
+                    an.auth_failed.insert(key);
+                    an.auth_failed.insert(bkey);
                 }
                 Attempt::No => {}
             }
@@ -862,12 +878,60 @@ fn default_attrs(ab: &conf::Bgp, p: &Peering) -> msg::PathAttrs {
     }
 }
 
+/// The default route `neighbor … default-originate` sends. Without a route map it is always sent.
+/// With one, it is sent only while some route this router has (its routing table without BGP's
+/// routes, and its best BGP paths) passes the map, and the map's `set` lines change it.
+fn default_route(
+    a: &Device,
+    ab: &conf::Bgp,
+    n: &conf::Neighbor,
+    p: &Peering,
+    table: &[RouteEntry],
+    best: &[&Path],
+) -> Option<(Ipv4Net, msg::PathAttrs)> {
+    let net = Ipv4Net::new(Ipv4Addr::UNSPECIFIED, 0);
+    let mut at = default_attrs(ab, p);
+    // A map that is named but not defined lets the default through, as everywhere else.
+    if let Some(map) = n.default_originate_map.as_deref().filter(|m| a.route_map(m).is_some()) {
+        let routes = table.iter().map(|r| (r.net, r.metric, r.tag)).chain(best.iter().map(|x| (x.net, x.med, 0)));
+        let sets = routes.filter(|(net, ..)| net.prefix != 0).find_map(|(net, metric, tag)| {
+            policy::apply_with(a, None, Some(map), &Subject { net, metric }, &policy::Attrs { tag, ..policy::Attrs::default() })
+        })?;
+        let external = p.ebgp && !p.confed;
+        if external {
+            at.as_path.extend(sets.prepend.iter().copied());
+            at.med = sets.metric.or(at.med);
+        } else {
+            at.as_path = sets.prepend.clone();
+            at.med = Some(sets.metric.unwrap_or(0));
+            at.local_pref = Some(sets.local_pref.unwrap_or(ab.local_pref()));
+        }
+        if let Some(h) = sets.next_hop {
+            at.next_hop = h;
+        }
+        if let Some(o) = sets.origin {
+            at.origin = o;
+        }
+        if n.send_community {
+            at.communities = policy::merge_communities(&sets, &[]);
+        }
+    }
+    Some((net, at))
+}
+
 /// Everything a router tells one neighbour: its best paths that [`export`] lets through, and the
 /// default route when the neighbour has `default-originate` (unless a path for 0.0.0.0/0 is sent anyway).
-fn export_all(a: &Device, ab: &conf::Bgp, n: &conf::Neighbor, p: &Peering, best: &[&Path]) -> Vec<(Ipv4Net, msg::PathAttrs)> {
+fn export_all(
+    a: &Device,
+    ab: &conf::Bgp,
+    n: &conf::Neighbor,
+    p: &Peering,
+    table: &[RouteEntry],
+    best: &[&Path],
+) -> Vec<(Ipv4Net, msg::PathAttrs)> {
     let mut out: Vec<(Ipv4Net, msg::PathAttrs)> = best.iter().filter_map(|x| export(a, ab, n, p, x).map(|at| (x.net, at))).collect();
     if n.default_originate && !out.iter().any(|(net, _)| net.prefix == 0) {
-        out.push((Ipv4Net::new(Ipv4Addr::UNSPECIFIED, 0), default_attrs(ab, p)));
+        out.extend(default_route(a, ab, n, p, table, best));
     }
     out
 }
@@ -989,7 +1053,7 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
                 let Some(m) = bb.neighbor(p.local) else { continue };
                 let own = ifs.get(&b.id).map_or(&[][..], Vec::as_slice);
                 let best_refs: Vec<&Path> = best.iter().collect();
-                for (net, attrs) in export_all(a, ab, n, p, &best_refs) {
+                for (net, attrs) in export_all(a, ab, n, p, base.get(&a.id).map_or(&[][..], Vec::as_slice), &best_refs) {
                     // What the neighbour sent, before the inbound policy, for `received-routes`.
                     if m.soft_reconfiguration_in && loop_free(b, bb, p, &attrs, own) {
                         let slot = next_raw.entry(b.id).or_default();
@@ -1049,7 +1113,7 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
             let active = live(an, settled, &key);
             let sent = match active {
                 Some(p) => {
-                    let list = export_all(d, ab, n, p, &best_paths);
+                    let list = export_all(d, ab, n, p, base.get(&d.id).map_or(&[][..], Vec::as_slice), &best_paths);
                     let count = list.len();
                     adv.insert(n.addr, list);
                     count
@@ -1079,6 +1143,8 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
                 None
             } else if n.remote_as.is_none() {
                 Some("no remote AS configured".to_string())
+            } else if an.auth_failed.contains(&key) {
+                Some(AUTH_FAILED.to_string())
             } else {
                 an.errors.get(&key).cloned()
             };
@@ -2020,15 +2086,15 @@ mod tests {
         let int = Peering { ebgp: false, ttl: 255, ..p.clone() };
         assert_eq!(export(&a, &ab, &n_int, &int, &learned).unwrap().as_path, vec![64_512, 64_513]);
         // default-originate sends 0.0.0.0/0 with this router as the next hop, once.
-        assert!(export_all(&a, &ab, &n, &p, &[]).is_empty());
+        assert!(export_all(&a, &ab, &n, &p, &[], &[]).is_empty());
         n.default_originate = true;
-        let sent = export_all(&a, &ab, &n, &p, &[]);
+        let sent = export_all(&a, &ab, &n, &p, &[], &[]);
         assert_eq!(sent.len(), 1);
         assert_eq!((sent[0].0.prefix, sent[0].1.as_path.clone(), sent[0].1.next_hop), (0, vec![65_001], p.local));
         let own_default = Path { net: "0.0.0.0/0".parse().unwrap(), ..learned.clone() };
-        assert_eq!(export_all(&a, &ab, &n, &p, &[&own_default]).len(), 1, "a default route already sent is not sent twice");
+        assert_eq!(export_all(&a, &ab, &n, &p, &[], &[&own_default]).len(), 1, "a default route already sent is not sent twice");
         let n_int = conf::Neighbor { default_originate: true, ..n_int };
-        let inside = export_all(&a, &ab, &n_int, &int, &[]);
+        let inside = export_all(&a, &ab, &n_int, &int, &[], &[]);
         assert_eq!((inside[0].1.as_path.len(), inside[0].1.local_pref), (0, Some(100)));
     }
 
