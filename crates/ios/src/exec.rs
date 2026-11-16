@@ -26,6 +26,7 @@ pub(crate) mod mgmt;
 pub(crate) mod netflow;
 pub(crate) mod pki;
 pub(crate) mod policy;
+pub(crate) mod pppoe;
 pub(crate) mod qos;
 pub(crate) mod redist;
 pub(crate) mod routing;
@@ -102,6 +103,12 @@ pub enum Mode {
     CryptoMap(String, u32),
     /// `R1(config-isakmp-group)#`: the remote-access client group's name.
     ClientGroup(String),
+    /// `R1(config-bba-group)#`: the PPPoE group's name.
+    BbaGroup(String),
+    /// `R1(config-if)#` on `interface Virtual-Template N`.
+    VirtualTemplate(u32),
+    /// `R1(config-if)#` on `interface Dialer N`.
+    Dialer(u32),
     /// `R1(config-cmap)#`: the class map's name.
     ClassMap(String),
     /// `R1(config-pmap)#`: the policy map's name.
@@ -178,6 +185,9 @@ impl Mode {
             Mode::Transform(_) => Modes::TRANSFORM,
             Mode::CryptoMap(..) => Modes::CRYPTO_MAP,
             Mode::ClientGroup(_) => Modes::CLIENT_GROUP,
+            Mode::BbaGroup(_) => Modes::BBA_GROUP,
+            Mode::VirtualTemplate(_) => Modes::VTEMPLATE,
+            Mode::Dialer(_) => Modes::DIALER,
             Mode::ClassMap(_) => Modes::CLASS_MAP,
             Mode::PolicyMap(_) => Modes::POLICY_MAP,
             Mode::PolicyClass(..) => Modes::POLICY_CLASS,
@@ -540,6 +550,8 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::Transform(_) => format!("{n}(cfg-crypto-trans)#"),
         Mode::CryptoMap(..) => format!("{n}(config-crypto-map)#"),
         Mode::ClientGroup(_) => format!("{n}(config-isakmp-group)#"),
+        Mode::BbaGroup(_) => format!("{n}(config-bba-group)#"),
+        Mode::VirtualTemplate(_) | Mode::Dialer(_) => format!("{n}(config-if)#"),
         Mode::ClassMap(_) => format!("{n}(config-cmap)#"),
         Mode::PolicyMap(_) => format!("{n}(config-pmap)#"),
         Mode::PolicyClass(..) => format!("{n}(config-pmap-c)#"),
@@ -697,6 +709,17 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, li
             output = if output.is_empty() { line } else { format!("{output}\n{line}") };
         }
     }
+    // PPPoE: a router dials when its port comes up, and ends the sessions it no longer answers.
+    if t.device(dev).is_some_and(|d| d.kind == DeviceKind::Router && d.pppoe_router.active()) {
+        if lower.starts_with("no sh") {
+            for line in pppoe::dial_ready(t, sim, dev) {
+                output = if output.is_empty() { line } else { format!("{output}\n{line}") };
+            }
+        }
+        if before.as_ref().is_some_and(|b| b.pppoe_router != t.device(dev).map(|d| d.pppoe_router.clone()).unwrap_or_default()) {
+            pppoe::settle(t, sim, dev);
+        }
+    }
     let changed = t.device(dev).cloned() != before;
     if changed {
         // VLAN or VTP changes reach the rest of the domain at once.
@@ -846,6 +869,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Transform(_)
                 | Mode::CryptoMap(..)
                 | Mode::ClientGroup(_)
+                | Mode::BbaGroup(_)
+                | Mode::VirtualTemplate(_)
+                | Mode::Dialer(_)
                 | Mode::ClassMap(_)
                 | Mode::PolicyMap(_)
                 | Mode::PolicyClass(..)
@@ -925,6 +951,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Transform(_)
                 | Mode::CryptoMap(..)
                 | Mode::ClientGroup(_)
+                | Mode::BbaGroup(_)
+                | Mode::VirtualTemplate(_)
+                | Mode::Dialer(_)
                 | Mode::ClassMap(_)
                 | Mode::PolicyMap(_)
                 | Mode::Object(_)
@@ -1329,6 +1358,12 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             if let Some(n) = routing::loopback(arg(0)) {
                 return routing::enter_loopback(&mut c, n);
             }
+            if let Some(n) = netlabcraft_model::pppoe::dialer_number(arg(0)) {
+                return pppoe::enter_dialer(&mut c, n);
+            }
+            if let Some(n) = netlabcraft_model::pppoe::template_number(arg(0)) {
+                return pppoe::enter_template(&mut c, n);
+            }
             if let Some(v) = vlan_iface(arg(0)) {
                 let v = v?;
                 if !c.d()?.switches_frames() {
@@ -1358,6 +1393,12 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             }
             if let Some(n) = routing::loopback(arg(0)) {
                 return routing::delete_loopback(&mut c, n);
+            }
+            if let Some(n) = netlabcraft_model::pppoe::dialer_number(arg(0)) {
+                return pppoe::delete_dialer(&mut c, n);
+            }
+            if let Some(n) = netlabcraft_model::pppoe::template_number(arg(0)) {
+                return pppoe::delete_template(&mut c, n);
             }
             let r = c.iface_ref(arg(0))?;
             let n = r.sub.ok_or("% Only subinterfaces can be deleted")?;
@@ -2108,6 +2149,47 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ShowCryptoIkev2Sa
         | Id::ShowCryptoIkev2Proposal
         | Id::ShowCryptoIkev2Profile => ikev2::command(&mut c, spec.id, &args),
+        Id::BbaGroup
+        | Id::NoBbaGroup
+        | Id::BbaTemplate
+        | Id::NoBbaTemplate
+        | Id::VtIpAddress
+        | Id::VtNoIpAddress
+        | Id::VtIpUnnumbered
+        | Id::VtNoIpUnnumbered
+        | Id::VtPeerPool
+        | Id::VtNoPeerPool
+        | Id::VtPppAuth
+        | Id::VtNoPppAuth
+        | Id::VtMtu
+        | Id::VtNoMtu
+        | Id::VtDescription
+        | Id::VtNoDescription
+        | Id::DlEncapsulation
+        | Id::DlNoEncapsulation
+        | Id::DlIpNegotiated
+        | Id::DlNoIpAddress
+        | Id::DlChapHostname
+        | Id::DlNoChapHostname
+        | Id::DlChapPassword
+        | Id::DlNoChapPassword
+        | Id::DlPapSent
+        | Id::DlNoPapSent
+        | Id::DlPool
+        | Id::DlNoPool
+        | Id::DlMtu
+        | Id::DlNoMtu
+        | Id::DlDescription
+        | Id::DlNoDescription
+        | Id::DlShutdown
+        | Id::DlNoShutdown
+        | Id::PppoeEnable
+        | Id::NoPppoeEnable
+        | Id::PppoeClientDial
+        | Id::NoPppoeClientDial
+        | Id::ShowPppoeSession
+        | Id::ShowPppoeSummary
+        | Id::ClearPppoeAll => pppoe::command(&mut c, spec.id, &args),
         Id::CryptoKey
         | Id::CryptoKeyZeroize
         | Id::ShowCryptoKeyMypubkey
@@ -5123,6 +5205,13 @@ impl Ctx<'_> {
             None => None,
             Some(t) => Some(match t.parse::<Ipv4Addr>() {
                 Ok(a) => NextHop::Address(a),
+                Err(_) if netlabcraft_model::pppoe::dialer_number(t).is_some() => {
+                    let n = netlabcraft_model::pppoe::dialer_number(t).unwrap_or(0);
+                    if self.d()?.kind != DeviceKind::Router {
+                        return Err("% Dialer interfaces exist only on routers".into());
+                    }
+                    NextHop::Interface(format!("Dialer{n}"))
+                }
                 Err(_) if netlabcraft_model::vpn::tunnel_number(t).is_some() => {
                     let n = netlabcraft_model::vpn::tunnel_number(t).unwrap_or(0);
                     if self.d()?.kind != DeviceKind::Router {

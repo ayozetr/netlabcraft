@@ -1,6 +1,6 @@
 # Pitfalls
 
-> **Last reviewed:** 2026-11-16 · **Last updated:** 2026-11-16 · **Change:** minor (a wait for frames must look at what already arrived) · earlier: minor (in BGP a confederation session is external for the session and internal for the path) · earlier: minor (a lost path does not end a BGP session at once) · earlier: minor (a rule that acts at a switch port must cover the timed control frames too) · earlier: minor (redistribution is part of every protocol's computation) · earlier: minor (policy edits must reach the routing fingerprint) · earlier: minor (BGP needs simulated time) · earlier: minor (a derived-state pitfall (M9.10)) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (four pitfalls from M9.7: counters keyed by position, a stale checksum, a database that lists unreachable routers, a `Rest` that needs a word) · also merged with M9.5, M9.6, M9.8 and M9.11 · earlier: minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
+> **Last reviewed:** 2026-11-16 · **Last updated:** 2026-11-16 · **Change:** minor (an interface derived from a session record cannot depend on state the device does not hold) · earlier: minor (a wait for frames must look at what already arrived) · earlier: minor (in BGP a confederation session is external for the session and internal for the path) · earlier: minor (a lost path does not end a BGP session at once) · earlier: minor (a rule that acts at a switch port must cover the timed control frames too) · earlier: minor (redistribution is part of every protocol's computation) · earlier: minor (policy edits must reach the routing fingerprint) · earlier: minor (BGP needs simulated time) · earlier: minor (a derived-state pitfall (M9.10)) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (four pitfalls from M9.7: counters keyed by position, a stale checksum, a database that lists unreachable routers, a `Rest` that needs a word) · also merged with M9.5, M9.6, M9.8 and M9.11 · earlier: minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
 
 Mistakes already made here, and the rule that stops each one. Read this before your first change; when you make a
 new mistake worth not repeating, add it in the same change.
@@ -106,6 +106,13 @@ new mistake worth not repeating, add it in the same change.
   has distance 200. `Path::ebgp` means learned from a neighbour outside the confederation, `Path::confed` from another
   member AS and `Path::internal()` from the same member AS. Testing `!path.ebgp` for "internal" lets a route reflector
   or an iBGP rule treat a confederation path wrongly; use `internal()`.
+
+- **A layer-3 interface that exists because of a PPPoE session must be derivable from the data that is asked.**
+  `l3_ifaces(device)` has no topology, so a router's `Dialer` interface comes from the dialer's own session record,
+  and a concentrator's `Virtual-Access` interface from its configuration (the template's address); what a concentrator
+  holds per session is derived from the callers' records (`sim::pppoe::calls`) wherever the topology is in hand
+  (`up_ifaces`, `route_with`, `routing_table_static`). Do not keep a second copy of a session on the concentrator: it
+  would go stale on undo and on a PADT.
 
 ## Instructor
 

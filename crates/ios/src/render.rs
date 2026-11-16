@@ -235,6 +235,7 @@ pub fn running_config(d: &Device) -> String {
     wlan_config(&mut s, d);
     crate::exec::cellular::running_config(&mut s, d);
     crate::exec::routing::loopback_config(&mut s, d);
+    crate::exec::pppoe::running_config(&mut s, d);
     for p in &d.ports {
         let _ = writeln!(s, "interface {}", p.name);
         if !p.description.is_empty() {
@@ -328,6 +329,7 @@ pub fn running_config(d: &Device) -> String {
             }
             None => {}
         }
+        crate::exec::pppoe::port_lines(&mut s, d, &p.name);
         standby_lines(&mut s, d, &p.name, &p.standby);
         crate::exec::fhrp::iface_lines(&mut s, d, &p.name);
         ospf_if_lines(&mut s, d, &p.name);
@@ -691,6 +693,7 @@ pub fn ip_int_brief(t: &Topology, d: &Device) -> String {
         let _ = writeln!(s, "{:<24} {:<18} {:<7} {}", tun.name(), addr, yes(!tun.shutdown), yes(up));
     }
     crate::exec::routing::loopback_brief(&mut s, d);
+    crate::exec::pppoe::brief(&mut s, d);
     s.trim_end().to_string()
 }
 

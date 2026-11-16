@@ -56,6 +56,8 @@ mod tests_netflow;
 #[cfg(test)]
 mod tests_pppoe;
 #[cfg(test)]
+mod tests_pppoe_router;
+#[cfg(test)]
 mod tests_swroute;
 #[cfg(test)]
 mod tests_traffic;

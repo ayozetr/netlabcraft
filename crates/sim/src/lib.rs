@@ -184,6 +184,8 @@ pub fn l3_ifaces(d: &Device) -> Vec<L3If> {
     // GRE tunnels (routers).
     out.extend(vpn::tunnel_ifaces(d));
     out.extend(loopback::loopback_ifaces(d));
+    // PPPoE: a router's dialer interfaces and the virtual accesses of its concentrator ports.
+    out.extend(pppoe::router_ifaces(d));
     out
 }
 
@@ -469,10 +471,18 @@ fn routing_table_static(t: &Topology, d: &Device) -> Vec<RouteEntry> {
     let ifs = up_ifaces(t, d);
     let mut out = Vec::new();
     for i in &ifs {
+        // A virtual access that borrows the address of another interface adds no second row for it.
+        if i.name.starts_with("Virtual-Access") && out.iter().any(|r: &RouteEntry| r.net == i.net.network()) {
+            continue;
+        }
         out.push(RouteEntry { code: 'C', net: i.net.network(), via: None, iface: Some(i.name.clone()), distance: 0, metric: 0 });
         if i.net.prefix < 32 {
             out.push(RouteEntry { code: 'L', net: Ipv4Net::new(i.net.addr, 32), via: None, iface: Some(i.name.clone()), distance: 0, metric: 0 });
         }
+    }
+    // PPPoE: a host route for each address a session holds.
+    for (net, name) in pppoe::host_routes(t, d, &ifs) {
+        out.push(RouteEntry { code: 'C', net, via: None, iface: Some(name), distance: 0, metric: 0 });
     }
     if d.routes_ip() {
         for (i, p) in d.ports.iter().enumerate() {
@@ -511,6 +521,10 @@ fn routing_table_static(t: &Topology, d: &Device) -> Vec<RouteEntry> {
 }
 
 fn find_iface<'a>(ifs: &'a [L3If], name: &str) -> Option<&'a L3If> {
+    if let Some(n) = netlabcraft_model::pppoe::dialer_number(name) {
+        let want = format!("Dialer{n}");
+        return ifs.iter().find(|i| i.name == want);
+    }
     if netlabcraft_model::vpn::tunnel_number(name).is_some() {
         return ifs.iter().find(|i| vpn::same_name(&i.name, name));
     }
@@ -620,6 +634,14 @@ pub fn route_with(
     for i in &ifs {
         if i.net.contains(dst) {
             consider_ad(i.net.prefix, 0, i, dst);
+        }
+    }
+    // PPPoE: the addresses of the sessions are host routes out of their interfaces.
+    for (net, name) in pppoe::host_routes(t, d, &ifs) {
+        if net.contains(dst)
+            && let Some(i) = ifs.iter().find(|i| i.name == name)
+        {
+            consider_ad(net.prefix, 0, i, dst);
         }
     }
     for r in &d.routes {
@@ -3252,7 +3274,10 @@ impl Sim {
         // when they say "don't fragment".
         let mtu = mtu::ip_mtu(d, out);
         // A PPPoE session carries at most 1,492 bytes of IP.
-        let mtu = if self.pppoe_peer(t, d, out, nh).is_some() { mtu.min(netlabcraft_wire::pppoe::MRU) } else { mtu };
+        let mtu = match self.pppoe_peer(t, d, out, nh) {
+            Some(p) => mtu.min(p.mtu),
+            None => mtu,
+        };
         if datagram.len() > usize::from(mtu) {
             return self.transmit_mtu(t, d, out, nh, datagram, mtu);
         }
