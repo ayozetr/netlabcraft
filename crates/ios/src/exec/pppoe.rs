@@ -627,7 +627,7 @@ pub(crate) fn port_lines(s: &mut String, d: &Device, port: &str) {
 pub(crate) fn brief(s: &mut String, d: &Device) {
     for t in &d.pppoe_router.templates {
         let addr = netlabcraft_sim::pppoe::template_address(d, t).map_or("unassigned".to_string(), |a| a.to_string());
-        let _ = writeln!(s, "{:<24} {:<18} {:<7} {}", t.name(), addr, "up", "up");
+        let _ = writeln!(s, "{:<24} {:<18} up      up", t.name(), addr);
     }
     for x in &d.pppoe_router.dialers {
         let addr = x.session.as_ref().map_or("unassigned".to_string(), |s| s.session.address.to_string());
