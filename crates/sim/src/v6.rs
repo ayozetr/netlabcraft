@@ -144,6 +144,8 @@ pub struct Route6Entry {
     pub next_hop: Option<Ipv6Addr>,
     /// Administrative distance: 0 connected, 1 static (or as configured), 110 OSPFv3.
     pub distance: u8,
+    /// The tag of a static route (0: none).
+    pub tag: u32,
 }
 
 /// A device's IPv6 routing table: connected and local routes of its up interfaces, the static
@@ -156,9 +158,9 @@ pub fn routing_table6(t: &Topology, d: &Device, dynamic: &[Route6Entry]) -> Vec<
         let leased: Vec<Ipv6Net> = conf6(d, i).filter(|c| c.dhcp_client).map(|c| c.learned.clone()).unwrap_or_default();
         for a in &i.addresses {
             if !(a.prefix == 128 && leased.contains(a)) {
-                out.push(Route6Entry { code: 'C', net: a.network(), iface: Some(i.name.clone()), next_hop: None, distance: 0 });
+                out.push(Route6Entry { code: 'C', net: a.network(), iface: Some(i.name.clone()), next_hop: None, distance: 0, tag: 0 });
             }
-            out.push(Route6Entry { code: 'L', net: Ipv6Net::new(a.addr, 128), iface: Some(i.name.clone()), next_hop: None, distance: 0 });
+            out.push(Route6Entry { code: 'L', net: Ipv6Net::new(a.addr, 128), iface: Some(i.name.clone()), next_hop: None, distance: 0, tag: 0 });
         }
     }
     for r in &d.routes6 {
@@ -169,7 +171,14 @@ pub fn routing_table6(t: &Topology, d: &Device, dynamic: &[Route6Entry]) -> Vec<
             (None, None) => false,
         };
         if reachable {
-            out.push(Route6Entry { code: 'S', net: r.net, iface: r.iface.clone(), next_hop: r.next_hop, distance: r.distance.unwrap_or(1) });
+            out.push(Route6Entry {
+                code: 'S',
+                net: r.net,
+                iface: r.iface.clone(),
+                next_hop: r.next_hop,
+                distance: r.distance.unwrap_or(1),
+                tag: r.tag,
+            });
         }
     }
     out.extend(dynamic.iter().cloned());
@@ -184,6 +193,7 @@ pub fn routing_table6(t: &Topology, d: &Device, dynamic: &[Route6Entry]) -> Vec<
                 iface: Some(i.name.clone()),
                 next_hop: Some(r),
                 distance: 2,
+                tag: 0,
             });
         }
     }

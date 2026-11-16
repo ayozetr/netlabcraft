@@ -109,7 +109,7 @@
 - **Simulation mode:** an event list replayed on the canvas, simple and complex PDUs, OSI layer
   details, scenarios, capture filters, drop reasons and pcap export.
 - **Console and PC prompt:** every mode a CCNA course uses, with `?` help, Tab completion and
-  output filters (1307 grammar entries in all; see
+  output filters (1318 grammar entries in all; see
   [`docs/command-reference.md`](docs/command-reference.md)); on PCs `ipconfig`, `ping`,
   `tracert`, `nslookup`, `telnet`, `ssh`, `ftp`, `netstat` and more.
 - **Activities:** checks worth points, sections, hints, values per student, time limits, password
@@ -121,7 +121,7 @@ What it doesn't do yet is listed, ranked, in [`docs/gaps.md`](docs/gaps.md).
 
 ## The CCNA lab book
 
-[`docs/labs/`](docs/labs/README.md) holds forty-four hands-on labs written for NetLabCraft over the
+[`docs/labs/`](docs/labs/README.md) holds forty-five hands-on labs written for NetLabCraft over the
 topics of the three CCNA courses (four for the first, seventeen for the second and twenty-two for
 the third, the last seven of them (BGP, route filtering, redistribution, communities and timers, route reflectors, PPPoE, PPPoE with routers) going a step past the course; one more, on wireless security, follows the first two), plus one on mobile data. Eleven of them are troubleshooting labs where you find and
 topics of the three CCNA courses (four for the first, seventeen for the second and twenty-one for

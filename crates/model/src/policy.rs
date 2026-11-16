@@ -302,6 +302,8 @@ pub struct Attrs<'a> {
     pub communities: &'a [u32],
     pub as_path: &'a [u32],
     pub as_set: &'a [u32],
+    /// The route tag (0: none), for `match tag`.
+    pub tag: u32,
 }
 
 /// The communities a route carries after a `set community`: the new ones replace the old ones, or
@@ -344,6 +346,9 @@ pub struct Sets {
     /// `additive`: keep the communities the route already has.
     #[serde(default, skip_serializing_if = "crate::is_false")]
     pub community_additive: bool,
+    /// `set tag N`: the tag a redistributed route is given.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag: Option<u32>,
 }
 
 impl Sets {
@@ -381,6 +386,9 @@ pub struct Clause {
     /// `match as-path NAME…`: any of these AS-path lists permitting the route matches.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub as_path_lists: Vec<String>,
+    /// `match tag N…`: the route's tag is one of these.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<u32>,
     #[serde(default, skip_serializing_if = "Sets::is_empty")]
     pub sets: Sets,
 }
@@ -395,6 +403,7 @@ impl Clause {
             metric: None,
             community_lists: Vec::new(),
             as_path_lists: Vec::new(),
+            tags: Vec::new(),
             sets: Sets::default(),
         }
     }
@@ -423,6 +432,9 @@ impl Clause {
             return false;
         }
         if !self.as_path_lists.is_empty() && !self.as_path_lists.iter().any(|n| d.as_path_list(n).is_some_and(|l| l.permits(a.as_path, a.as_set))) {
+            return false;
+        }
+        if !self.tags.is_empty() && !self.tags.contains(&a.tag) {
             return false;
         }
         true
@@ -594,6 +606,9 @@ pub fn sanitize_route_maps(maps: &mut Vec<RouteMap>) {
                 v.dedup();
                 v.truncate(MAX_COMMUNITIES);
             }
+            c.tags.sort_unstable();
+            c.tags.dedup();
+            c.tags.truncate(MAX_MATCH_NAMES);
             c.sets.prepend.truncate(MAX_PREPEND);
             c.sets.origin = c.sets.origin.map(|o| o.min(2));
             c.sets.metric_type = c.sets.metric_type.filter(|t| (1..=2).contains(t));
@@ -841,6 +856,40 @@ mod tests {
         assert!(c.matches_with(&d, &s, &Attrs { communities: &have, ..Attrs::default() }));
         assert!(!c.matches_with(&d, &s, &Attrs::default()));
         assert!(!c.matches(&d, &s), "the plain match sees no communities");
+    }
+
+    #[test]
+    fn match_tag_reads_the_route_tag_and_set_tag_comes_back_from_the_map() {
+        let d = router();
+        let s = Subject { net: net("10.0.0.0/8"), metric: 0 };
+        let tagged = |tag| Attrs { tag, ..Attrs::default() };
+        let mut m = RouteMap::new("T");
+        let c = m.clause_mut(10, true).unwrap();
+        c.tags = vec![7, 8];
+        c.sets.tag = Some(70);
+        assert_eq!(m.run_with(&d, &s, &tagged(7)).and_then(|x| x.tag), Some(70));
+        assert_eq!(m.run_with(&d, &s, &tagged(8)).and_then(|x| x.tag), Some(70));
+        assert!(m.run_with(&d, &s, &tagged(9)).is_none(), "no clause matches tag 9: dropped");
+        assert!(m.run(&d, &s).is_none(), "the plain run sees tag 0");
+        // A clause with no tag match takes every tag.
+        m.clause_mut(10, true).unwrap().tags.clear();
+        assert!(m.run_with(&d, &s, &tagged(9)).is_some());
+        assert!(!Sets { tag: Some(1), ..Sets::default() }.is_empty());
+    }
+
+    #[test]
+    fn tags_are_cleaned_and_left_out_of_a_plain_file() {
+        let mut maps = vec![RouteMap::new("m")];
+        let c = maps[0].clause_mut(10, true).unwrap();
+        c.tags = (0..100).rev().chain([5, 5]).collect();
+        sanitize_route_maps(&mut maps);
+        let tags = &maps[0].clauses[0].tags;
+        assert!(tags.len() <= MAX_MATCH_NAMES && tags.windows(2).all(|w| w[0] < w[1]), "{tags:?}");
+        let plain = serde_json::to_string(&RouteMap::new("P")).unwrap();
+        let mut m = RouteMap::new("P");
+        m.clause_mut(10, true).unwrap().sets.local_pref = Some(1);
+        let json = serde_json::to_string(&m).unwrap();
+        assert!(!json.contains("tag") && !plain.contains("tag"), "{json}");
     }
 
     #[test]

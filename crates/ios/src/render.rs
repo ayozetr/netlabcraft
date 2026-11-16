@@ -597,7 +597,8 @@ pub fn running_config(d: &Device) -> String {
     for r in &d.routes6 {
         let via = [r.iface.clone(), r.next_hop.map(|a| a.to_string())].into_iter().flatten().collect::<Vec<_>>().join(" ");
         let distance = r.distance.map_or(String::new(), |a| format!(" {a}"));
-        let _ = writeln!(s, "ipv6 route {} {via}{distance}", r.net);
+        let tag = if r.tag == 0 { String::new() } else { format!(" tag {}", r.tag) };
+        let _ = writeln!(s, "ipv6 route {} {via}{distance}{tag}", r.net);
     }
     crate::exec::eigrp6::running_config(&mut s, d);
     crate::exec::swroute::rip6_running_config(&mut s, d);
@@ -620,7 +621,8 @@ pub fn running_config(d: &Device) -> String {
             NextHop::Interface(n) => n.clone(),
         };
         let distance = r.distance.map_or(String::new(), |a| format!(" {a}"));
-        let _ = writeln!(s, "ip route {} {} {via}{distance}", r.net.addr, r.net.mask());
+        let tag = if r.tag == 0 { String::new() } else { format!(" tag {}", r.tag) };
+        let _ = writeln!(s, "ip route {} {} {via}{distance}{tag}", r.net.addr, r.net.mask());
     }
     if !d.routes.is_empty() {
         let _ = writeln!(s, "!");
@@ -782,35 +784,50 @@ pub fn ip_route_table(d: &Device, table: &[netlabcraft_sim::RouteEntry]) -> Stri
         return s;
     }
     for r in table {
-        let what = match (r.code, r.via, &r.iface) {
-            ('C', _, Some(i)) => format!("connected, {i}"),
-            ('L', _, Some(i)) => format!("local address, {i}"),
-            ('O' | 'E' | 'F' | 'I', Some(v), Some(i)) => format!("via {v}, {i} (OSPF)"),
-            ('D' | 'X', Some(v), Some(i)) => format!("via {v}, {i} (EIGRP)"),
-            ('D', None, Some(i)) => format!("summary, discarded on {i} (EIGRP)"),
-            ('B', Some(v), Some(i)) => format!("via {v}, {i} (BGP)"),
-            ('B', None, Some(i)) => format!("summary, discarded on {i} (BGP)"),
-            (_, Some(v), _) => format!("via {v}"),
-            (_, None, Some(i)) => format!("out {i}"),
-            _ => String::new(),
-        };
-        let code = match r.code {
-            'E' if r.net.prefix == 0 => "O*E2".to_string(),
-            'E' => "O E2".to_string(),
-            'F' => "O E1".to_string(),
-            'X' if r.net.prefix == 0 => "D*EX".to_string(),
-            'X' => "D EX".to_string(),
-            'I' if r.net.prefix == 0 => "O*IA".to_string(),
-            'I' => "O IA".to_string(),
-            // The default route is starred whoever put it there (S*, R*, D*).
-            c if r.net.prefix == 0 => format!("{c}*  "),
-            c => format!("{c}   "),
-        };
-        // Distance and metric, for every route a protocol or a person put there.
-        let ad = if matches!(r.code, 'C' | 'L') { String::new() } else { format!(" [{}/{}]", r.distance, r.metric) };
-        let _ = writeln!(s, "{code} {:<20} {what}{ad}", r.net.to_string());
+        let _ = writeln!(s, "{}", route_line(r));
     }
     s.trim_end().to_string()
+}
+
+/// One row of `show ip route`.
+fn route_line(r: &netlabcraft_sim::RouteEntry) -> String {
+    let what = match (r.code, r.via, &r.iface) {
+        ('C', _, Some(i)) => format!("connected, {i}"),
+        ('L', _, Some(i)) => format!("local address, {i}"),
+        ('O' | 'E' | 'F' | 'I', Some(v), Some(i)) => format!("via {v}, {i} (OSPF)"),
+        ('D' | 'X', Some(v), Some(i)) => format!("via {v}, {i} (EIGRP)"),
+        ('D', None, Some(i)) => format!("summary, discarded on {i} (EIGRP)"),
+        ('B', Some(v), Some(i)) => format!("via {v}, {i} (BGP)"),
+        ('B', None, Some(i)) => format!("summary, discarded on {i} (BGP)"),
+        (_, Some(v), _) => format!("via {v}"),
+        (_, None, Some(i)) => format!("out {i}"),
+        _ => String::new(),
+    };
+    let code = match r.code {
+        'E' if r.net.prefix == 0 => "O*E2".to_string(),
+        'E' => "O E2".to_string(),
+        'F' => "O E1".to_string(),
+        'X' if r.net.prefix == 0 => "D*EX".to_string(),
+        'X' => "D EX".to_string(),
+        'I' if r.net.prefix == 0 => "O*IA".to_string(),
+        'I' => "O IA".to_string(),
+        // The default route is starred whoever put it there (S*, R*, D*).
+        c if r.net.prefix == 0 => format!("{c}*  "),
+        c => format!("{c}   "),
+    };
+    // Distance and metric, for every route a protocol or a person put there.
+    let ad = if matches!(r.code, 'C' | 'L') { String::new() } else { format!(" [{}/{}]", r.distance, r.metric) };
+    let tag = if r.tag == 0 { String::new() } else { format!(" tag {}", r.tag) };
+    format!("{code} {:<20} {what}{ad}{tag}", r.net.to_string())
+}
+
+/// `show ip route tag N`: the rows of the table that carry this tag.
+pub fn ip_route_tagged(table: &[netlabcraft_sim::RouteEntry], tag: u32) -> String {
+    let rows: Vec<String> = table.iter().filter(|r| r.tag == tag).map(route_line).collect();
+    if rows.is_empty() {
+        return format!("No route carries tag {tag}");
+    }
+    format!("Routes with tag {tag}:\n{}", rows.join("\n"))
 }
 
 /// A port's bandwidth (kbit/s) and delay (µs): what the port was told, else what its type usually has.
@@ -2045,7 +2062,8 @@ pub fn ipv6_route(t: &Topology, sim: &mut Sim, d: &Device) -> String {
             c => c.to_string(),
         };
         let ad = if matches!(r.code, 'C' | 'L') { String::new() } else { format!(" [{}]", r.distance) };
-        let _ = writeln!(s, "{code:<2} {:<28} {via}{ad}", r.net.to_string());
+        let tag = if r.tag == 0 { String::new() } else { format!(" tag {}", r.tag) };
+        let _ = writeln!(s, "{code:<2} {:<28} {via}{ad}{tag}", r.net.to_string());
     }
     if table.is_empty() {
         s.push_str("(no IPv6 routes)");

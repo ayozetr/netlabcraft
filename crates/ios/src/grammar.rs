@@ -185,6 +185,7 @@ pub enum Id {
     ShowStartup,
     ShowIpIntBrief,
     ShowIpRoute,
+    ShowIpRouteTag,
     ShowInterfaces,
     ShowInterface,
     ShowIntTrunk,
@@ -909,6 +910,10 @@ pub enum Id {
     NoRmMatchAddress,
     RmMatchMetric,
     NoRmMatchMetric,
+    RmMatchTag,
+    NoRmMatchTag,
+    RmSetTag,
+    NoRmSetTag,
     RmSetLocalPref,
     NoRmSetLocalPref,
     RmSetMetric,
@@ -973,6 +978,11 @@ pub enum Id {
     ShowIpBgpReceived,
     ShowIpBgpRegexp,
     ShowIpBgpFilterList,
+    BgpPeerGroup,
+    NoBgpPeerGroup,
+    BgpNeighborPeerGroup,
+    NoBgpNeighborPeerGroup,
+    ShowIpBgpPeerGroup,
     Bandwidth,
     NoBandwidth,
     Delay,
@@ -1372,6 +1382,7 @@ pub static SPECS: &[Spec] = &[
         [K("show"), K("ip"), K("route"), Arg("A.B.C.D"), Arg("A.B.C.D")],
         "The route for exactly this network and mask"
     ),
+    spec!(ShowIpRouteTag, EXECS, Modes::BOTH, [K("show"), K("ip"), K("route"), K("tag"), Arg("<0-4294967295>")], "The routes that carry this tag"),
     spec!(ShowArp, EXECS, Modes::BOTH, [K("show"), K("ip"), K("arp")], "ARP cache"),
     spec!(ShowArp, EXECS, BOTH_FW, [K("show"), K("arp")], "ARP cache"),
     spec!(ShowInterfaces, EXECS, BOTH_FW, [K("show"), K("interfaces")], "Interface details"),
@@ -1397,8 +1408,8 @@ pub static SPECS: &[Spec] = &[
         IpRoute,
         Modes::CONFIG,
         Modes::BOTH,
-        [K("ip"), K("route"), Arg("A.B.C.D"), Arg("MASK"), Rest("<next hop or interface> [distance]")],
-        "Add a static route (a distance above the protocol's makes it a backup)"
+        [K("ip"), K("route"), Arg("A.B.C.D"), Arg("MASK"), Rest("<next hop or interface> [distance] [tag <1-4294967295>]")],
+        "Add a static route (a distance above the protocol's makes it a backup, a tag labels it)"
     ),
     spec!(
         NoIpRoute,
@@ -1652,7 +1663,9 @@ pub static SPECS: &[Spec] = &[
         Modes::BOTH,
         [
             K("redistribute"),
-            Rest("{connected|static|rip|eigrp <1-65535>|bgp <1-4294967295>} [metric <0-16777214>] [metric-type {1|2}] [subnets] [route-map NAME]")
+            Rest(
+                "{connected|static|rip|eigrp <1-65535>|bgp <1-4294967295>} [metric <0-16777214>] [metric-type {1|2}] [tag <0-4294967295>] [subnets] [route-map NAME]"
+            )
         ],
         "Advertise the routes another source gave as external routes"
     ),
@@ -2815,7 +2828,7 @@ pub static SPECS: &[Spec] = &[
         BgpNeighborRemoteAs,
         Modes::BGP,
         Modes::BOTH,
-        [K("neighbor"), Arg("A.B.C.D"), K("remote-as"), Arg("<1-4294967295>")],
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("remote-as"), Arg("<1-4294967295>")],
         "Name a neighbour and the autonomous system it is in"
     ),
     spec!(NoBgpNeighbor, Modes::BGP, Modes::BOTH, [K("no"), K("neighbor"), Arg("A.B.C.D")], "Remove a neighbour and every setting it had"),
@@ -2830,28 +2843,28 @@ pub static SPECS: &[Spec] = &[
         BgpNeighborUpdateSource,
         Modes::BGP,
         Modes::BOTH,
-        [K("neighbor"), Arg("A.B.C.D"), K("update-source"), Rest("<interface>")],
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("update-source"), Rest("<interface>")],
         "Send the session from the address of this interface"
     ),
     spec!(
         NoBgpNeighborUpdateSource,
         Modes::BGP,
         Modes::BOTH,
-        [K("no"), K("neighbor"), Arg("A.B.C.D"), K("update-source")],
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("update-source")],
         "Send the session from the interface towards the neighbour again"
     ),
     spec!(
         BgpNeighborNextHopSelf,
         Modes::BGP,
         Modes::BOTH,
-        [K("neighbor"), Arg("A.B.C.D"), K("next-hop-self")],
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("next-hop-self")],
         "Name this router as the next hop of the paths it sends this neighbour"
     ),
     spec!(
         NoBgpNeighborNextHopSelf,
         Modes::BGP,
         Modes::BOTH,
-        [K("no"), K("neighbor"), Arg("A.B.C.D"), K("next-hop-self")],
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("next-hop-self")],
         "Keep the next hop a path came with"
     ),
     spec!(
@@ -2874,31 +2887,59 @@ pub static SPECS: &[Spec] = &[
         BgpNeighborMultihop,
         Modes::BGP,
         Modes::BOTH,
-        [K("neighbor"), Arg("A.B.C.D"), K("ebgp-multihop")],
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("ebgp-multihop")],
         "Let an external neighbour be up to 255 routers away"
     ),
     spec!(
         BgpNeighborMultihop,
         Modes::BGP,
         Modes::BOTH,
-        [K("neighbor"), Arg("A.B.C.D"), K("ebgp-multihop"), Arg("<1-255>")],
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("ebgp-multihop"), Arg("<1-255>")],
         "Let an external neighbour be this many routers away"
     ),
     spec!(
         NoBgpNeighborMultihop,
         Modes::BGP,
         Modes::BOTH,
-        [K("no"), K("neighbor"), Arg("A.B.C.D"), K("ebgp-multihop")],
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("ebgp-multihop")],
         "An external neighbour must be directly connected again"
     ),
     spec!(
         BgpNeighborWeight,
         Modes::BGP,
         Modes::BOTH,
-        [K("neighbor"), Arg("A.B.C.D"), K("weight"), Arg("<0-65535>")],
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("weight"), Arg("<0-65535>")],
         "The weight of every path learned from this neighbour"
     ),
-    spec!(NoBgpNeighborWeight, Modes::BGP, Modes::BOTH, [K("no"), K("neighbor"), Arg("A.B.C.D"), K("weight")], "Weight 0 again"),
+    spec!(NoBgpNeighborWeight, Modes::BGP, Modes::BOTH, [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("weight")], "Weight 0 again"),
+    spec!(
+        BgpPeerGroup,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("NAME"), K("peer-group")],
+        "Create a peer group: settings its members take unless they set their own"
+    ),
+    spec!(
+        NoBgpPeerGroup,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("NAME"), K("peer-group")],
+        "Delete a peer group; its members stay with what they set themselves"
+    ),
+    spec!(
+        BgpNeighborPeerGroup,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D"), K("peer-group"), Arg("NAME")],
+        "Put a neighbour in a peer group (it is added when missing)"
+    ),
+    spec!(
+        NoBgpNeighborPeerGroup,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D"), K("peer-group"), Arg("NAME")],
+        "Take a neighbour out of its peer group"
+    ),
     spec!(BgpNetwork, Modes::BGP, Modes::BOTH, [K("network"), Arg("A.B.C.D")], "Advertise this classful network while it is in the routing table"),
     spec!(
         BgpNetwork,
@@ -2923,6 +2964,14 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowIpBgpSummary, EXECS, Modes::BOTH, [K("show"), K("ip"), K("bgp"), K("summary")], "Each neighbour's session state and prefix count"),
     spec!(ShowIpBgpNeighbors, EXECS, Modes::BOTH, [K("show"), K("ip"), K("bgp"), K("neighbors")], "Every neighbour in detail"),
     spec!(ShowIpBgpNeighbors, EXECS, Modes::BOTH, [K("show"), K("ip"), K("bgp"), K("neighbors"), Arg("A.B.C.D")], "One neighbour in detail"),
+    spec!(ShowIpBgpPeerGroup, EXECS, Modes::BOTH, [K("show"), K("ip"), K("bgp"), K("peer-group")], "Every peer group, its settings and its members"),
+    spec!(
+        ShowIpBgpPeerGroup,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("bgp"), K("peer-group"), Arg("NAME")],
+        "One peer group, its settings and its members"
+    ),
     spec!(ClearIpBgp, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("bgp"), Arg("{*|A.B.C.D}")], "Reset BGP sessions so they start again"),
     spec!(DebugIpBgp, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("bgp")], "Report the BGP messages this router hears and its session changes"),
     spec!(NoDebugIpBgp, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("bgp")], "Stop reporting BGP"),
@@ -2944,28 +2993,28 @@ pub static SPECS: &[Spec] = &[
         BgpNeighborPrefixList,
         Modes::BGP,
         Modes::BOTH,
-        [K("neighbor"), Arg("A.B.C.D"), K("prefix-list"), Arg("NAME"), Arg("{in|out}")],
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("prefix-list"), Arg("NAME"), Arg("{in|out}")],
         "Filter the prefixes this neighbour sends or is sent with a prefix list"
     ),
     spec!(
         NoBgpNeighborPrefixList,
         Modes::BGP,
         Modes::BOTH,
-        [K("no"), K("neighbor"), Arg("A.B.C.D"), K("prefix-list"), Arg("NAME"), Arg("{in|out}")],
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("prefix-list"), Arg("NAME"), Arg("{in|out}")],
         "Stop filtering this neighbour with the prefix list"
     ),
     spec!(
         BgpNeighborRouteMap,
         Modes::BGP,
         Modes::BOTH,
-        [K("neighbor"), Arg("A.B.C.D"), K("route-map"), Arg("NAME"), Arg("{in|out}")],
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("route-map"), Arg("NAME"), Arg("{in|out}")],
         "Filter and change the paths this neighbour sends or is sent with a route map"
     ),
     spec!(
         NoBgpNeighborRouteMap,
         Modes::BGP,
         Modes::BOTH,
-        [K("no"), K("neighbor"), Arg("A.B.C.D"), K("route-map"), Arg("NAME"), Arg("{in|out}")],
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("route-map"), Arg("NAME"), Arg("{in|out}")],
         "Stop applying the route map to this neighbour"
     ),
     spec!(
@@ -3020,6 +3069,8 @@ pub static SPECS: &[Spec] = &[
     ),
     spec!(RmMatchMetric, Modes::ROUTE_MAP, Modes::BOTH, [K("match"), K("metric"), Arg("<0-4294967295>")], "Match routes with this metric"),
     spec!(NoRmMatchMetric, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("match"), K("metric")], "Remove the metric match"),
+    spec!(RmMatchTag, Modes::ROUTE_MAP, Modes::BOTH, [K("match"), K("tag"), Rest("<tag> [<tag>...]")], "Match routes that carry one of these tags"),
+    spec!(NoRmMatchTag, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("match"), K("tag")], "Remove the tag match"),
     spec!(
         RmSetLocalPref,
         Modes::ROUTE_MAP,
@@ -3040,6 +3091,8 @@ pub static SPECS: &[Spec] = &[
         "Give the redistributed OSPF routes this external type"
     ),
     spec!(NoRmSetMetricType, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("metric-type")], "Leave the external type alone"),
+    spec!(RmSetTag, Modes::ROUTE_MAP, Modes::BOTH, [K("set"), K("tag"), Arg("<0-4294967295>")], "Give the redistributed routes this tag"),
+    spec!(NoRmSetTag, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("tag")], "Leave the tag alone"),
     spec!(
         RmSetPrepend,
         Modes::ROUTE_MAP,
@@ -3140,56 +3193,56 @@ pub static SPECS: &[Spec] = &[
         BgpNeighborSendCommunity,
         Modes::BGP,
         Modes::BOTH,
-        [K("neighbor"), Arg("A.B.C.D"), K("send-community")],
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("send-community")],
         "Send the communities a path carries to this neighbour"
     ),
     spec!(
         BgpNeighborSendCommunity,
         Modes::BGP,
         Modes::BOTH,
-        [K("neighbor"), Arg("A.B.C.D"), K("send-community"), Arg("{both|standard}")],
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("send-community"), Arg("{both|standard}")],
         "Send the communities a path carries to this neighbour"
     ),
     spec!(
         NoBgpNeighborSendCommunity,
         Modes::BGP,
         Modes::BOTH,
-        [K("no"), K("neighbor"), Arg("A.B.C.D"), K("send-community")],
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("send-community")],
         "Stop sending communities to this neighbour"
     ),
     spec!(
         NoBgpNeighborSendCommunity,
         Modes::BGP,
         Modes::BOTH,
-        [K("no"), K("neighbor"), Arg("A.B.C.D"), K("send-community"), Arg("{both|standard}")],
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("send-community"), Arg("{both|standard}")],
         "Stop sending communities to this neighbour"
     ),
     spec!(
         BgpNeighborTimers,
         Modes::BGP,
         Modes::BOTH,
-        [K("neighbor"), Arg("A.B.C.D"), K("timers"), Arg("<0-65535>"), Arg("<0|3-65535>")],
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("timers"), Arg("<0-65535>"), Arg("<0|3-65535>")],
         "Keepalive interval and hold time for this neighbour (seconds)"
     ),
     spec!(
         NoBgpNeighborTimers,
         Modes::BGP,
         Modes::BOTH,
-        [K("no"), K("neighbor"), Arg("A.B.C.D"), K("timers")],
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("timers")],
         "Keepalive 60 and hold time 180 again"
     ),
     spec!(
         BgpNeighborFilterList,
         Modes::BGP,
         Modes::BOTH,
-        [K("neighbor"), Arg("A.B.C.D"), K("filter-list"), Arg("<1-500>"), Arg("{in|out}")],
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("filter-list"), Arg("<1-500>"), Arg("{in|out}")],
         "Filter this neighbour's paths with an AS-path list"
     ),
     spec!(
         NoBgpNeighborFilterList,
         Modes::BGP,
         Modes::BOTH,
-        [K("no"), K("neighbor"), Arg("A.B.C.D"), K("filter-list"), Arg("<1-500>"), Arg("{in|out}")],
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("filter-list"), Arg("<1-500>"), Arg("{in|out}")],
         "Stop filtering with that AS-path list"
     ),
     spec!(
@@ -3240,14 +3293,14 @@ pub static SPECS: &[Spec] = &[
         BgpNeighborRrClient,
         Modes::BGP,
         Modes::BOTH,
-        [K("neighbor"), Arg("A.B.C.D"), K("route-reflector-client")],
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("route-reflector-client")],
         "Make this internal neighbour a client of this route reflector"
     ),
     spec!(
         NoBgpNeighborRrClient,
         Modes::BGP,
         Modes::BOTH,
-        [K("no"), K("neighbor"), Arg("A.B.C.D"), K("route-reflector-client")],
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("route-reflector-client")],
         "This neighbour is an ordinary internal neighbour again"
     ),
     spec!(
@@ -3285,49 +3338,49 @@ pub static SPECS: &[Spec] = &[
         BgpNeighborDefaultOriginate,
         Modes::BGP,
         Modes::BOTH,
-        [K("neighbor"), Arg("A.B.C.D"), K("default-originate")],
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("default-originate")],
         "Send this neighbour a default route whether or not there is one here"
     ),
     spec!(
         NoBgpNeighborDefaultOriginate,
         Modes::BGP,
         Modes::BOTH,
-        [K("no"), K("neighbor"), Arg("A.B.C.D"), K("default-originate")],
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("default-originate")],
         "Stop sending the default route"
     ),
     spec!(
         BgpNeighborRemovePrivate,
         Modes::BGP,
         Modes::BOTH,
-        [K("neighbor"), Arg("A.B.C.D"), K("remove-private-as")],
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("remove-private-as")],
         "Take private AS numbers out of the paths sent to this external neighbour"
     ),
     spec!(
         BgpNeighborRemovePrivate,
         Modes::BGP,
         Modes::BOTH,
-        [K("neighbor"), Arg("A.B.C.D"), K("remove-private-as"), Arg("all")],
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("remove-private-as"), Arg("all")],
         "Take every private AS number out, even from a path that has public ones"
     ),
     spec!(
         NoBgpNeighborRemovePrivate,
         Modes::BGP,
         Modes::BOTH,
-        [K("no"), K("neighbor"), Arg("A.B.C.D"), K("remove-private-as")],
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("remove-private-as")],
         "Send the AS numbers as they are"
     ),
     spec!(
         BgpNeighborSoftReconf,
         Modes::BGP,
         Modes::BOTH,
-        [K("neighbor"), Arg("A.B.C.D"), K("soft-reconfiguration"), K("inbound")],
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("soft-reconfiguration"), K("inbound")],
         "Keep what this neighbour sends before the inbound policy, to list it"
     ),
     spec!(
         NoBgpNeighborSoftReconf,
         Modes::BGP,
         Modes::BOTH,
-        [K("no"), K("neighbor"), Arg("A.B.C.D"), K("soft-reconfiguration"), K("inbound")],
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("soft-reconfiguration"), K("inbound")],
         "Stop keeping what this neighbour sends"
     ),
     spec!(
@@ -3735,7 +3788,7 @@ pub static SPECS: &[Spec] = &[
         Ipv6Route,
         Modes::CONFIG,
         Modes::BOTH,
-        [K("ipv6"), K("route"), Arg("X:X::X/<0-128>"), Rest("<next hop and/or interface> [distance]")],
+        [K("ipv6"), K("route"), Arg("X:X::X/<0-128>"), Rest("<next hop and/or interface> [distance] [tag <1-4294967295>]")],
         "Add an IPv6 static route (with a distance: a backup route)"
     ),
     spec!(NoIpv6Route, Modes::CONFIG, Modes::BOTH, [K("no"), K("ipv6"), K("route"), Arg("X:X::X/<0-128>")], "Remove IPv6 static routes"),

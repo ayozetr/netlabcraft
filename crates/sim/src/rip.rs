@@ -42,6 +42,8 @@ pub struct RipRoute {
     pub via: Ipv4Addr,
     pub iface: String,
     pub hops: u8,
+    /// The route tag RIP carried with it (0: none).
+    pub tag: u32,
 }
 
 /// A route that went away and is advertised with metric 16 until it is flushed.
@@ -71,6 +73,9 @@ pub struct RipState {
     pub originated: BTreeMap<DeviceId, Vec<(Ipv4Net, u8)>>,
     /// Networks a router's `distribute-list out` keeps out of its updates on an interface.
     pub suppressed: BTreeMap<(DeviceId, String), Vec<Ipv4Net>>,
+    /// The route tag of each route a router knows from another protocol or learned from a
+    /// neighbour (0 is left out); RIP's tag field is 16 bits.
+    pub tags: BTreeMap<(DeviceId, Ipv4Net), u32>,
     /// Interfaces running RIP per router: (name, network, passive).
     pub interfaces: BTreeMap<DeviceId, Vec<(String, Ipv4Net, bool)>>,
     /// Routes possibly down per router.
@@ -174,6 +179,7 @@ pub fn compute_seeded(t: &Topology, held: &[Held], seeds: &crate::redist::Seeds)
     st.held = held.to_vec();
     // Start: connected networks, and the default route where originated.
     let mut tables: BTreeMap<DeviceId, BTreeMap<Ipv4Net, Entry>> = BTreeMap::new();
+    let mut tags: BTreeMap<(DeviceId, Ipv4Net), u32> = BTreeMap::new();
     for d in &routers {
         let mut tbl: BTreeMap<Ipv4Net, Entry> = BTreeMap::new();
         for (i, _) in ifs.get(&d.id).into_iter().flatten() {
@@ -188,6 +194,9 @@ pub fn compute_seeded(t: &Topology, held: &[Held], seeds: &crate::redist::Seeds)
             if !tbl.contains_key(net) {
                 tbl.insert(*net, (*hops, None));
                 st.originated.entry(d.id).or_default().push((*net, *hops));
+                if let Some(t) = seeds.rip_tags.get(&d.id).and_then(|m| m.get(net)) {
+                    tags.insert((d.id, *net), *t);
+                }
             }
         }
         tables.insert(d.id, tbl);
@@ -196,6 +205,7 @@ pub fn compute_seeded(t: &Topology, held: &[Held], seeds: &crate::redist::Seeds)
     // Rounds of updates until nothing changes (at most 16: hop counts stop there).
     for _ in 0..=INFINITY {
         let snapshot = tables.clone();
+        let tag_snapshot = tags.clone();
         let mut changed = false;
         for d in &routers {
             let Some(tbl) = tables.get_mut(&d.id) else { continue };
@@ -230,6 +240,10 @@ pub fn compute_seeded(t: &Topology, held: &[Held], seeds: &crate::redist::Seeds)
                     };
                     if better {
                         tbl.insert(*net, cand);
+                        match tag_snapshot.get(&(*from, *net)) {
+                            Some(t) => tags.insert((d.id, *net), *t),
+                            None => tags.remove(&(d.id, *net)),
+                        };
                         changed = true;
                     }
                 }
@@ -240,10 +254,16 @@ pub fn compute_seeded(t: &Topology, held: &[Held], seeds: &crate::redist::Seeds)
         }
     }
     for (id, tbl) in tables {
-        let routes =
-            tbl.into_iter().filter_map(|(net, (hops, via))| via.map(|(ifc, addr, _)| RipRoute { net, via: addr, iface: ifc.name, hops })).collect();
+        let routes = tbl
+            .into_iter()
+            .filter_map(|(net, (hops, via))| {
+                let tag = tags.get(&(id, net)).copied().unwrap_or(0);
+                via.map(|(ifc, addr, _)| RipRoute { net, via: addr, iface: ifc.name, hops, tag })
+            })
+            .collect();
         st.routes.insert(id, routes);
     }
+    st.tags = tags;
     st
 }
 
@@ -252,20 +272,21 @@ pub fn compute_seeded(t: &Topology, held: &[Held], seeds: &crate::redist::Seeds)
 /// reverse) and the routes possibly down (16).
 pub fn update_entries(st: &RipState, me: DeviceId, out: &str) -> Vec<RipEntry> {
     let ifs = st.interfaces.get(&me).cloned().unwrap_or_default();
+    let tag_of = |net: Ipv4Net| u16::try_from(st.tags.get(&(me, net)).copied().unwrap_or(0) & 0xFFFF).unwrap_or(0);
     let mut entries: Vec<RipEntry> =
-        ifs.iter().filter(|(n, ..)| n != out).map(|(_, net, _)| RipEntry { net: net.addr, mask: net.mask(), metric: 1 }).collect();
+        ifs.iter().filter(|(n, ..)| n != out).map(|(_, net, _)| RipEntry { net: net.addr, mask: net.mask(), metric: 1, tag: 0 }).collect();
     for r in st.routes.get(&me).into_iter().flatten() {
         let metric = if r.iface == out { u32::from(INFINITY) } else { u32::from(r.hops) + 1 };
-        entries.push(RipEntry { net: r.net.addr, mask: r.net.mask(), metric });
+        entries.push(RipEntry { net: r.net.addr, mask: r.net.mask(), metric, tag: tag_of(r.net) });
     }
     for (net, hops) in st.originated.get(&me).into_iter().flatten() {
         if !entries.iter().any(|e| e.net == net.addr && e.mask == net.mask()) {
-            entries.push(RipEntry { net: net.addr, mask: net.mask(), metric: u32::from(*hops) + 1 });
+            entries.push(RipEntry { net: net.addr, mask: net.mask(), metric: u32::from(*hops) + 1, tag: tag_of(*net) });
         }
     }
     for x in st.down.get(&me).into_iter().flatten() {
         if !entries.iter().any(|e| e.net == x.net.addr && e.mask == x.net.mask()) {
-            entries.push(RipEntry { net: x.net.addr, mask: x.net.mask(), metric: u32::from(INFINITY) });
+            entries.push(RipEntry { net: x.net.addr, mask: x.net.mask(), metric: u32::from(INFINITY), tag: 0 });
         }
     }
     if let Some(sup) = st.suppressed.get(&(me, out.to_string())) {
@@ -384,7 +405,7 @@ impl Sim {
                 let now_entries = update_entries(new, *me, name);
                 let mut changed: Vec<RipEntry> = now_entries.iter().filter(|e| was.get(&(e.net, e.mask)) != Some(&e.metric)).copied().collect();
                 for ((net, mask), _) in was.iter().filter(|(k, _)| !now_entries.iter().any(|e| (e.net, e.mask) == **k)) {
-                    changed.push(RipEntry { net: *net, mask: *mask, metric: u32::from(INFINITY) });
+                    changed.push(RipEntry { net: *net, mask: *mask, metric: u32::from(INFINITY), tag: 0 });
                 }
                 if !changed.is_empty() && known_before {
                     out.push((*me, name.clone(), changed));

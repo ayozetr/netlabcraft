@@ -187,8 +187,8 @@ fn chain() -> (Topology, DeviceId, DeviceId, DeviceId, DeviceId) {
     cable(&mut t, a, 0, r1, 0);
     cable(&mut t, r1, 1, r2, 1);
     cable(&mut t, b, 0, r2, 0);
-    t.device_mut(r1).unwrap().routes.push(StaticRoute { net: net("10.2.0.0/24"), via: NextHop::Address(ip("172.16.0.2")), distance: None });
-    t.device_mut(r2).unwrap().routes.push(StaticRoute { net: net("0.0.0.0/0"), via: NextHop::Interface("g0/1".into()), distance: None });
+    t.device_mut(r1).unwrap().routes.push(StaticRoute { net: net("10.2.0.0/24"), via: NextHop::Address(ip("172.16.0.2")), distance: None, tag: 0 });
+    t.device_mut(r2).unwrap().routes.push(StaticRoute { net: net("0.0.0.0/0"), via: NextHop::Interface("g0/1".into()), distance: None, tag: 0 });
     (t, r1, r2, a, b)
 }
 
@@ -638,7 +638,7 @@ fn a_relay_forwards_dhcp_to_a_server_on_another_subnet() {
             dns: None,
             ..Default::default()
         });
-        r.routes.push(StaticRoute { net: net("192.168.20.0/24"), via: NextHop::Address(ip("10.0.0.1")), distance: None });
+        r.routes.push(StaticRoute { net: net("192.168.20.0/24"), via: NextHop::Address(ip("10.0.0.1")), distance: None, tag: 0 });
     }
     cable(&mut t, r1, 0, s, 0);
     cable(&mut t, a, 0, s, 1);
@@ -709,14 +709,14 @@ fn ospf_routes_around_a_triangle() {
     let hops = sim.traceroute(&t, a, ip("192.168.3.10"), 30, 2_000_000).unwrap();
     assert_eq!(hops.len(), 4);
     // A static route beats OSPF for the same network.
-    t.device_mut(r1).unwrap().routes.push(StaticRoute { net: net("192.168.3.0/24"), via: NextHop::Address(ip("10.0.12.2")), distance: None });
+    t.device_mut(r1).unwrap().routes.push(StaticRoute { net: net("192.168.3.0/24"), via: NextHop::Address(ip("10.0.12.2")), distance: None, tag: 0 });
     let table = routing_table(&t, t.device(r1).unwrap());
     assert!(table.iter().any(|r| r.code == 'S' && r.net.to_string() == "192.168.3.0/24"));
     assert!(!table.iter().any(|r| r.code == 'O' && r.net.to_string() == "192.168.3.0/24"));
     // R3 originates its default route.
     {
         let d = t.device_mut(r3).unwrap();
-        d.routes.push(StaticRoute { net: net("0.0.0.0/0"), via: NextHop::Interface("GigabitEthernet0/0".into()), distance: None });
+        d.routes.push(StaticRoute { net: net("0.0.0.0/0"), via: NextHop::Interface("GigabitEthernet0/0".into()), distance: None, tag: 0 });
         d.ospf.as_mut().unwrap().default_originate = true;
     }
     assert!(routing_table(&t, t.device(r2).unwrap()).iter().any(|r| r.code == 'E' && r.net.prefix == 0 && r.via == Some(ip("10.0.23.2"))));
@@ -828,7 +828,7 @@ fn nat_translates_both_ways() {
         let r = t.device_mut(r1).unwrap();
         r.ports[0].nat = Some(NatSide::Inside);
         r.ports[1].nat = Some(NatSide::Outside);
-        r.routes.push(StaticRoute { net: net("0.0.0.0/0"), via: NextHop::Address(ip("200.0.0.2")), distance: None });
+        r.routes.push(StaticRoute { net: net("0.0.0.0/0"), via: NextHop::Address(ip("200.0.0.2")), distance: None, tag: 0 });
         r.acls.push(Acl {
             name: "1".into(),
             extended: false,
@@ -892,7 +892,7 @@ fn nat_to_an_interface_without_overload_serves_one_inside_host_at_a_time() {
         let r = t.device_mut(r1).unwrap();
         r.ports[0].nat = Some(NatSide::Inside);
         r.ports[1].nat = Some(NatSide::Outside);
-        r.routes.push(StaticRoute { net: net("0.0.0.0/0"), via: NextHop::Address(ip("200.0.0.2")), distance: None });
+        r.routes.push(StaticRoute { net: net("0.0.0.0/0"), via: NextHop::Address(ip("200.0.0.2")), distance: None, tag: 0 });
         r.acls.push(Acl {
             name: "1".into(),
             extended: false,

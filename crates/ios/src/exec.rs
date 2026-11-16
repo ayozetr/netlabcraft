@@ -1010,6 +1010,12 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::ShowRun => Ok(render::running_config(c.d()?)),
         Id::ShowStartup => c.d()?.startup.clone().ok_or_else(|| "% No saved configuration (use `copy running-config startup-config`)".into()),
         Id::ShowIpIntBrief => Ok(render::ip_int_brief(c.t, c.d()?)),
+        Id::ShowIpRouteTag => {
+            let tag = arg(0).trim().parse::<u32>().map_err(|_| "% The tag is 0-4294967295".to_string())?;
+            let d = c.d()?.clone();
+            let table = c.sim.routing_table(c.t, &d);
+            Ok(render::ip_route_tagged(&table, tag))
+        }
         Id::ShowIpRoute => {
             let d = c.d()?.clone();
             let table = c.sim.routing_table(c.t, &d);
@@ -1028,8 +1034,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 let prefix = netlabcraft_core::mask_to_prefix(mask).ok_or("% The mask must be contiguous, like 255.255.255.0")?;
                 let want = format!("{}/{prefix}", Ipv4Net::new(net, prefix).network().addr);
                 let line = full.lines().filter(|l| l.len() > 5).find(|l| l.get(5..).and_then(|r| r.split_whitespace().next()) == Some(want.as_str()));
+                let tag = table.iter().find(|r| r.net == Ipv4Net::new(net, prefix).network()).map_or(0, |r| r.tag);
+                let tag = if tag == 0 { String::new() } else { format!("\n  Tag {tag}") };
                 return Ok(match line {
-                    Some(l) => format!("Routing entry for {want}\n  {l}"),
+                    Some(l) => format!("Routing entry for {want}\n  {l}{tag}"),
                     None => format!("% Network {want} is not in the routing table"),
                 });
             }
@@ -1048,7 +1056,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                             .max_by_key(|x| x.0)
                             .map_or(String::new(), |x| x.1.to_string());
                         let via = if nh == a { "directly connected".to_string() } else { format!("via {nh}") };
-                        format!("Routing entry for {a}\n  {line}\n  Out {}, {via}", out.name)
+                        let tag = table.iter().filter(|r| r.net.contains(a)).max_by_key(|r| r.net.prefix).map_or(0, |r| r.tag);
+                        let tag = if tag == 0 { String::new() } else { format!("\n  Tag {tag}") };
+                        format!("Routing entry for {a}\n  {line}\n  Out {}, {via}{tag}", out.name)
                     }
                     None => format!("% {a} is not in the routing table"),
                 });
@@ -1455,7 +1465,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::Ipv6Route | Id::NoIpv6Route => {
             let net: netlabcraft_core::Ipv6Net = arg(0).parse().map_err(|e| format!("% {e}"))?;
             let net = net.network();
-            let (rest, distance) = routing::split_distance(args.get(1).map_or("", String::as_str))?;
+            let (words, tag) = routing::split_tag(args.get(1).map_or("", String::as_str))?;
+            let (rest, distance) = routing::split_distance(&words)?;
             let via = if rest.is_empty() { None } else { Some(c.route6_via(&rest)?) };
             let d = c.dm()?;
             if spec.id == Id::NoIpv6Route {
@@ -1464,7 +1475,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 return if d.routes6.len() == before { Err("% No such IPv6 route".into()) } else { Ok(String::new()) };
             }
             let (iface, next_hop) = via.ok_or("% Give a next hop, an interface, or both")?;
-            let r = netlabcraft_model::StaticRoute6 { net, iface, next_hop, distance };
+            let r = netlabcraft_model::StaticRoute6 { net, iface, next_hop, distance, tag };
+            // One route per network and next hop: typing it again changes its distance or its tag.
+            d.routes6.retain(|x| !(x.net == r.net && x.iface == r.iface && x.next_hop == r.next_hop));
             if !d.routes6.contains(&r) {
                 if d.routes6.len() >= netlabcraft_model::MAX_ROUTES {
                     return Err("% Too many routes".into());
@@ -3982,7 +3995,12 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::NoBgpMaximumPathsIbgp
         | Id::ShowIpBgpReceived
         | Id::ShowIpBgpRegexp
-        | Id::ShowIpBgpFilterList => bgp::command(&mut c, spec.id, &args),
+        | Id::ShowIpBgpFilterList
+        | Id::BgpPeerGroup
+        | Id::NoBgpPeerGroup
+        | Id::BgpNeighborPeerGroup
+        | Id::NoBgpNeighborPeerGroup
+        | Id::ShowIpBgpPeerGroup => bgp::command(&mut c, spec.id, &args),
         Id::FlowExportDestination
         | Id::NoFlowExportDestination
         | Id::FlowExportVersion
@@ -4003,6 +4021,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::NoRmMatchAddress
         | Id::RmMatchMetric
         | Id::NoRmMatchMetric
+        | Id::RmMatchTag
+        | Id::NoRmMatchTag
+        | Id::RmSetTag
+        | Id::NoRmSetTag
         | Id::RmSetLocalPref
         | Id::NoRmSetLocalPref
         | Id::RmSetMetric
@@ -5194,12 +5216,13 @@ impl Ctx<'_> {
         if n.network() != n {
             return Err(format!("% {n} has host bits set; the network is {}", n.network()));
         }
-        let (target, distance) = match target {
+        let (target, distance, tag) = match target {
             Some(t) => {
-                let (rest, distance) = routing::split_distance(t)?;
-                (Some(rest).filter(|r| !r.is_empty()), distance)
+                let (t, tag) = routing::split_tag(t)?;
+                let (rest, distance) = routing::split_distance(&t)?;
+                (Some(rest).filter(|r| !r.is_empty()), distance, tag)
             }
-            None => (None, None),
+            None => (None, None, 0),
         };
         let via = match target.as_deref() {
             None => None,
@@ -5230,7 +5253,7 @@ impl Ctx<'_> {
         let d = self.dm()?;
         if add {
             let Some(via) = via else { return Err("% Give a next-hop address or an exit interface".into()) };
-            let route = StaticRoute { net: n, via, distance };
+            let route = StaticRoute { net: n, via, distance, tag };
             // One route per network and next hop: typing it again changes its distance.
             d.routes.retain(|r| !(r.net == route.net && r.via == route.via));
             if !d.routes.contains(&route) {

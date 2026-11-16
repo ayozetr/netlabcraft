@@ -60,11 +60,13 @@ pub struct Lsa {
     pub metric: u32,
     /// Network-LSA: the routers on the segment (the DR included).
     pub attached: Vec<Ipv4Addr>,
+    /// External LSA: the route tag it carries (0: none).
+    pub tag: u32,
 }
 
 impl Lsa {
     fn new(kind: LsaKind, area: Option<u32>, id: Ipv4Addr, adv: Ipv4Addr, count: u32) -> Lsa {
-        Lsa { kind, area, id, adv, count, links: Vec::new(), metric: 0, attached: Vec::new() }
+        Lsa { kind, area, id, adv, count, links: Vec::new(), metric: 0, attached: Vec::new(), tag: 0 }
     }
 }
 
@@ -212,6 +214,7 @@ pub fn database(t: &Topology, st: &OspfState, me: DeviceId) -> Vec<Lsa> {
         for n in nets {
             let mut lsa = Lsa::new(LsaKind::External, None, n.addr, r, u32::from(n.prefix));
             lsa.metric = st.external_metrics.get(&(*d, *n)).map_or(if n.prefix == 0 { 1 } else { 20 }, |m| m.0);
+            lsa.tag = st.external_tags.get(&(*d, *n)).copied().unwrap_or(0);
             out.insert(lsa);
         }
     }
