@@ -2229,6 +2229,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::DlNoShutdown
         | Id::PppoeEnable
         | Id::NoPppoeEnable
+        | Id::ModemInout
+        | Id::NoModemInout
         | Id::PppoeClientDial
         | Id::NoPppoeClientDial
         | Id::ShowPppoeSession

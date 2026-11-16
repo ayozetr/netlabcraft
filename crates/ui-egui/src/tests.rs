@@ -1409,6 +1409,61 @@ fn the_pppoe_dialer_connects_and_disconnects_from_its_buttons() {
     assert!(h.state().session.topology.device(pc).unwrap().pppoe.session.is_none());
 }
 
+/// The Dial-up app calls the access server's number from its Dial button, shows what the call
+/// gave, and hangs up.
+#[test]
+fn the_dial_up_app_dials_and_hangs_up_from_its_buttons() {
+    use egui::accesskit::Role;
+    let mut h = harness(Some("lan"));
+    h.state_mut().ui.show_notes = false;
+    let pc = {
+        let s = &mut h.state_mut().session;
+        for model in ["Telephone Cloud", "Dial-up PC", "Access Server"] {
+            s.execute("device.add", json!({"model": model, "name": model.replace(' ', "")})).unwrap();
+        }
+        s.execute("link.add", json!({"a": "Dial-upPC", "a_port": "ph0", "b": "TelephoneCloud", "b_port": "ph1"})).unwrap();
+        s.execute("link.add", json!({"a": "AccessServer", "a_port": "ph0", "b": "TelephoneCloud", "b_port": "ph0"})).unwrap();
+        s.execute("cloud.number", json!({"device": "TelephoneCloud", "port": "ph0", "number": "5550100"})).unwrap();
+        let lines = [
+            "username ann password pw-test",
+            "ip local pool CALLERS 10.9.0.2 10.9.0.9",
+            "interface loopback 0",
+            "ip address 10.9.0.1 255.255.255.255",
+            "exit",
+            "bba-group pppoe LINES",
+            "virtual-template 1",
+            "exit",
+            "interface virtual-template 1",
+            "ip unnumbered loopback 0",
+            "peer default ip address pool CALLERS",
+            "ppp authentication chap",
+            "exit",
+            "interface ph0",
+            "no shutdown",
+            "modem inout group LINES",
+            "exit",
+        ];
+        s.execute("device.configure", json!({"device": "AccessServer", "lines": lines})).unwrap();
+        let pc = s.topology.resolve("Dial-upPC").unwrap();
+        let d = s.topology.device_mut(pc).unwrap();
+        d.pppoe.number = "5550100".into();
+        d.pppoe.username = "ann".into();
+        d.pppoe.password = "pw-test".into();
+        pc
+    };
+    open_desktop_app(h.state_mut(), pc, "dialup");
+    h.run_steps(3);
+    assert!(h.query_by_label("Not connected").is_some());
+    h.get_by_role_and_label(Role::Button, "Dial").click();
+    h.run_steps(3);
+    let session = h.state().session.topology.device(pc).unwrap().pppoe.session.clone().unwrap();
+    assert_eq!(session.address.to_string(), "10.9.0.2");
+    assert!(h.query_by_label("Connected").is_some());
+    h.get_by_role_and_label(Role::Button, "Hang up").click();
+    h.run_steps(3);
+    assert!(h.state().session.topology.device(pc).unwrap().pppoe.session.is_none());
+}
+
 /// The VPN Client connects to a router set up as a remote-access server from its Connect button,
 /// shows the address it was given, and disconnects.
 #[test]

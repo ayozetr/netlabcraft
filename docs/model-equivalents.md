@@ -1,6 +1,6 @@
 # Model equivalents
 
-> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (the sniffer and port mirroring) · earlier: minor (smart TVs, a sniffer, a smart speaker, a water level sensor and four more router models) · earlier: minor (cellular radio on Tablet and Smartphone, Cell Tower and Central Office Server) · earlier: minor (Tablet, Smartphone, ten Wi-Fi IoT things, Board SBC and Board MCU; power-supply bays) · **Target:** CCNA course labs
+> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (the Telephone Cloud, the Dial-up PC and the Access Server) · also merged with minor (the sniffer and port mirroring) · earlier: minor (smart TVs, a sniffer, a smart speaker, a water level sensor and four more router models) · earlier: minor (cellular radio on Tablet and Smartphone, Cell Tower and Central Office Server) · earlier: minor (Tablet, Smartphone, ten Wi-Fi IoT things, Board SBC and Board MCU; power-supply bays) · **Target:** CCNA course labs
 
 Course labs name specific vendor models. NetLabCraft's models are its own, named after their
 ports (`GE` Gigabit Ethernet, `FE` Fast Ethernet, `S` serial), and never carry vendor names
@@ -50,10 +50,13 @@ lab has students fit a redundant supply, use a two-bay model.
 | Home Router | `Home-Router` | WRT300N, HomeRouter-PT | `Internet0`, `Ethernet1–4`, `Wireless0` | |
 | Home Gateway | `Home-Gateway` | The home gateway in the course's IoT labs | `Internet0`, `Ethernet1–4`, `Wireless0` | A home router with a built-in IoT service and an IoT tab. |
 | Cloud | `Cloud` | Cloud-PT | `Ethernet0–1`, `Coaxial0–1`, `Phone0–1` | Ports joined in pairs (`cloud.map`; coaxial to phone by default), shown in its Physical tab. |
+| Telephone Cloud | `PSTN` | the telephone network in dial-up labs | `Phone0–7` | A number per port (`cloud.number`); a call pairs two ports until it ends. |
 | DSL Modem | `DSL-Modem` | DSL-Modem-PT | `Phone0`, `Ethernet1` | Bridges the phone line to Ethernet. |
 | Cable Modem | `Cable-Modem` | Cable-Modem-PT | `Coaxial0`, `Ethernet1` | Bridges the coaxial cable to Ethernet. |
 | Hub 8 | `Hub-8` | Hub-PT | `Ethernet0–7` | |
 | PC | `PC` | PC-PT | `FastEthernet0` | |
+| Dial-up PC | `PC-Modem` | a PC with a modem module | `Phone0` | The Dial-up app dials from it. |
+| Access Server | `Access-Server` | an access server router with modem lines | `FastEthernet0/0–0/1`, `Phone0–3` | `modem inout` on a line answers calls. |
 | Laptop | `Laptop` | Laptop-PT | `FastEthernet0` | |
 | Tablet | `Tablet` | TabletPC-PT | `Wireless0`, `Cellular0` | Wi-Fi, or mobile data through a cell tower; a touch home screen with the Desktop's apps. |
 | Smartphone | `Smartphone` | SMARTPHONE-PT | `Wireless0`, `Cellular0` | Wi-Fi, or mobile data through a cell tower (Wi-Fi is preferred when connected); a touch home screen with the Desktop's apps. |
@@ -99,6 +102,7 @@ independent project, not affiliated with or endorsed by Cisco.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-16 | minor | Telephone Cloud, Dial-up PC and Access Server rows. |
 | 2026-11-15 | minor | The Sniffer row: a switch's monitor session can copy traffic to it. |
 | 2026-11-15 | minor | Router 2FE, Router 2FE+2S, Router 3GE+2S, Modular Router 2FE and the 2-port Fast Ethernet card; Sniffer; Smart TV, Wired Smart TV, Smart Speaker and Water Level Sensor; the "no equivalent yet" list brought up to date. |
 | 2026-11-13 | minor | Cellular radio on Tablet and Smartphone; Cell Tower and Central Office Server rows. |

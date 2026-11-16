@@ -119,6 +119,10 @@ pub struct PppoeClient {
     pub password: String,
     #[serde(default)]
     pub session: Option<PppoeSession>,
+    /// The Dial-up app's telephone number (digits): the same account and session are used, over
+    /// a phone line instead of an Ethernet cable.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub number: String,
 }
 
 impl PppoeClient {
@@ -129,6 +133,9 @@ impl PppoeClient {
     pub fn sanitize(&mut self) {
         self.username = self.username.chars().take(MAX_CREDENTIAL).collect();
         self.password = self.password.chars().take(MAX_CREDENTIAL).collect();
+        if crate::cloud::normalize_number(&self.number).as_deref() != Some(self.number.as_str()) {
+            self.number.clear();
+        }
     }
 }
 

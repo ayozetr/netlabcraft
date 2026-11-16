@@ -1662,3 +1662,18 @@ event	write request for	Schreibanfrage für
 	no server answers at the access point's RADIUS address	unter der RADIUS-Adresse des Access Points antwortet kein Server
 	the access point can't reach its RADIUS server	der Access Point erreicht seinen RADIUS-Server nicht
 	the RADIUS server doesn't know the access point (check the AAA service and its client entry and secret)	der RADIUS-Server kennt den Access Point nicht (prüfe den AAA-Dienst, seinen Client-Eintrag und das Geheimnis)
+	Telephone Cloud	Telefonwolke
+	The telephone network (PSTN): 8 phone ports, each with a telephone number you give it; a call joins the port that dials to the port whose number it dialled until one hangs up	Das Telefonnetz (PSTN): 8 Telefonanschlüsse, jeder mit einer Rufnummer, die Sie vergeben; ein Anruf verbindet den wählenden Anschluss mit dem Anschluss der gewählten Nummer, bis einer auflegt
+	Dial-up PC	PC mit Modem
+	Desktop PC with a modem and no network card: its phone port (Phone0) dials an access server through the telephone network, from the Dial-up app	Desktop-PC mit Modem und ohne Netzwerkkarte: Sein Telefonanschluss (Phone0) wählt über das Telefonnetz einen Zugangsserver an, in der App Einwahl
+	Access Server	Zugangsserver
+	Router that answers dial-up calls: 2 Fast Ethernet ports and 4 modem lines (Phone0-3) that take calls from the telephone network and run PPP with a user name and password	Router, der Einwahlanrufe annimmt: 2 Fast-Ethernet-Anschlüsse und 4 Modemleitungen (Phone0-3), die Anrufe aus dem Telefonnetz annehmen und PPP mit Benutzername und Kennwort ausführen
+	Dial-up	Einwahl
+	Phone Number	Rufnummer
+	Dial	Wählen
+	Not connected	Nicht verbunden
+	Enter the number and the account and press Dial.	Geben Sie die Nummer und das Konto ein und drücken Sie Wählen.
+	Enter a phone number.	Geben Sie eine Rufnummer ein.
+	The modem's phone cable must go to a telephone cloud, and the number must be one of its ports.	Das Telefonkabel des Modems muss zu einer Telefonwolke führen, und die Nummer muss die eines ihrer Anschlüsse sein.
+	Telephone numbers (one per port):	Rufnummern (eine pro Anschluss):
+	Set	Festlegen

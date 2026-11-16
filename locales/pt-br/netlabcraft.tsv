@@ -1662,3 +1662,18 @@ event	write request for	requisição de escrita de
 	no server answers at the access point's RADIUS address	nenhum servidor responde no endereço RADIUS do ponto de acesso
 	the access point can't reach its RADIUS server	o ponto de acesso não alcança seu servidor RADIUS
 	the RADIUS server doesn't know the access point (check the AAA service and its client entry and secret)	o servidor RADIUS não conhece o ponto de acesso (verifique o serviço AAA, sua entrada de cliente e o segredo)
+	Telephone Cloud	Nuvem telefônica
+	The telephone network (PSTN): 8 phone ports, each with a telephone number you give it; a call joins the port that dials to the port whose number it dialled until one hangs up	A rede telefônica (RTPC): 8 portas de telefone, cada uma com o número que você der; uma chamada liga a porta que disca à porta cujo número foi discado até um dos lados desligar
+	Dial-up PC	PC com modem
+	Desktop PC with a modem and no network card: its phone port (Phone0) dials an access server through the telephone network, from the Dial-up app	PC de mesa com modem e sem placa de rede: sua porta de telefone (Phone0) liga para um servidor de acesso pela rede telefônica, no aplicativo Acesso discado
+	Access Server	Servidor de acesso
+	Router that answers dial-up calls: 2 Fast Ethernet ports and 4 modem lines (Phone0-3) that take calls from the telephone network and run PPP with a user name and password	Roteador que atende chamadas de acesso discado: 2 portas Fast Ethernet e 4 linhas de modem (Phone0-3) que recebem chamadas da rede telefônica e executam PPP com usuário e senha
+	Dial-up	Acesso discado
+	Phone Number	Número de telefone
+	Dial	Discar
+	Not connected	Não conectado
+	Enter the number and the account and press Dial.	Digite o número e a conta e pressione Discar.
+	Enter a phone number.	Digite um número de telefone.
+	The modem's phone cable must go to a telephone cloud, and the number must be one of its ports.	O cabo de telefone do modem deve ir a uma nuvem telefônica, e o número deve ser o de uma de suas portas.
+	Telephone numbers (one per port):	Números de telefone (um por porta):
+	Set	Definir

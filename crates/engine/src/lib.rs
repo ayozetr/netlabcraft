@@ -23,6 +23,7 @@ pub mod catalog;
 mod cellular;
 mod cmd;
 mod controller;
+mod dialup;
 mod families;
 mod hardware;
 pub mod home;
@@ -45,6 +46,8 @@ mod tests;
 mod tests_bgp;
 #[cfg(test)]
 mod tests_cell;
+#[cfg(test)]
+mod tests_dialup;
 #[cfg(test)]
 mod tests_families;
 #[cfg(test)]

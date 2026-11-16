@@ -101,6 +101,13 @@ pub static MODELS: &[Model] = &[
         ports: &[run("FastEthernet0/", 0, 1), run("Serial0/0/", 0, 1)],
     },
     Model {
+        id: "Access-Server",
+        kind: DeviceKind::Router,
+        label: "Access Server",
+        description: "Router that answers dial-up calls: 2 Fast Ethernet ports and 4 modem lines (Phone0-3) that take calls from the telephone network and run PPP with a user name and password",
+        ports: &[run("FastEthernet0/", 0, 1), run("Phone", 0, 3)],
+    },
+    Model {
         id: "Router-WAN3",
         kind: DeviceKind::Router,
         label: "Router 3GE+2S",
@@ -227,6 +234,13 @@ pub static MODELS: &[Model] = &[
         ports: &[run("Ethernet", 0, 1), run("Coaxial", 0, 1), run("Phone", 0, 1)],
     },
     Model {
+        id: "PSTN",
+        kind: DeviceKind::Hub,
+        label: "Telephone Cloud",
+        description: "The telephone network (PSTN): 8 phone ports, each with a telephone number you give it; a call joins the port that dials to the port whose number it dialled until one hangs up",
+        ports: &[run("Phone", 0, 7)],
+    },
+    Model {
         id: "DSL-Modem",
         kind: DeviceKind::Hub,
         label: "DSL Modem",
@@ -262,6 +276,13 @@ pub static MODELS: &[Model] = &[
         ports: &[run("Ethernet", 0, 7)],
     },
     Model { id: "PC", kind: DeviceKind::Pc, label: "PC", description: "Desktop PC with one Fast Ethernet port", ports: &[run("FastEthernet", 0, 0)] },
+    Model {
+        id: "PC-Modem",
+        kind: DeviceKind::Pc,
+        label: "Dial-up PC",
+        description: "Desktop PC with a modem and no network card: its phone port (Phone0) dials an access server through the telephone network, from the Dial-up app",
+        ports: &[run("Phone", 0, 0)],
+    },
     Model {
         id: "Laptop",
         kind: DeviceKind::Laptop,
@@ -609,12 +630,17 @@ impl Model {
 impl Model {
     /// A provider cloud: frames go only between the ports mapped to each other.
     pub fn cloud(&self) -> bool {
-        self.id == "Cloud"
+        matches!(self.id, "Cloud" | "PSTN")
+    }
+
+    /// The telephone network: a cloud whose ports have telephone numbers and whose calls join two of them.
+    pub fn pstn(&self) -> bool {
+        self.id == "PSTN"
     }
 
     /// A WAN device (the cloud and the modems), listed apart in the device list.
     pub fn wan(&self) -> bool {
-        matches!(self.id, "Cloud" | "DSL-Modem" | "Cable-Modem")
+        matches!(self.id, "Cloud" | "PSTN" | "DSL-Modem" | "Cable-Modem")
     }
 
     /// A cell tower: a hub-kind device that carries mobile devices' frames to its backhaul port.
@@ -636,6 +662,7 @@ impl Model {
     pub fn name_prefix(&self) -> Option<&'static str> {
         match self.id {
             "Cloud" => Some("Cloud"),
+            "PSTN" => Some("PSTN"),
             "DSL-Modem" | "Cable-Modem" => Some("Modem"),
             "Home-Gateway" => Some("Gateway"),
             "Cell-Tower" => Some("Tower"),

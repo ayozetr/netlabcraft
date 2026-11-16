@@ -56,6 +56,9 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
     if let Some(r) = crate::pppoe::run(s, id, p) {
         return r;
     }
+    if let Some(r) = crate::dialup::run(s, id, p) {
+        return r;
+    }
     if let Some(r) = crate::vpnclient::run(s, id, p) {
         return r;
     }

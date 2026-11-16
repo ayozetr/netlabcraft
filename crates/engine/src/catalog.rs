@@ -121,6 +121,30 @@ pub static CATALOG: &[CommandInfo] = &[
         false
     ),
     c!(
+        "dialup.connect",
+        "Dial-up connect",
+        "",
+        None,
+        r#"{"device": Dial-up PC (a computer whose first port is a modem, Phone0, cabled to a telephone cloud), "number"?: telephone number (digits; spaces, dashes, dots, brackets and a leading + are ignored; default: the last one used), "username"?: account name, "password"?: text (both default to the ones last used)} → {"state", "connected", "number", "carrier", "called", "address", "mask", "gateway", "auth", …} as pppoe.status: the call joins the modem's port in the telephone cloud to the port that has the number (busy if either is in a call), then PPP (LCP, PAP or CHAP, IPCP) runs over it with the access server's modem line. Fails when the number is not in the cloud, is busy, has nothing plugged in, or no modem line answers, or when the account is refused"#,
+        true
+    ),
+    c!(
+        "dialup.disconnect",
+        "Dial-up hang up",
+        "",
+        None,
+        r#"{"device": Dial-up PC} → the status: PPP is closed and the call's pair in the telephone cloud is parted, so the line is free again"#,
+        true
+    ),
+    c!(
+        "dialup.status",
+        "Dial-up status",
+        "",
+        None,
+        r#"{"device": Dial-up PC} → {"state": "disconnected"|"connected"|"lost", "connected", "number", "carrier": true while the call's circuit is up, "called": the number the circuit goes to, "cloud", "username", "server", "address", "mask", "gateway", "auth"}"#,
+        false
+    ),
+    c!(
         "vpnclient.connect",
         "VPN Client connect",
         "",
@@ -627,6 +651,14 @@ pub static CATALOG: &[CommandInfo] = &[
         "",
         None,
         r#"{"device": cloud, "a"?: "Coaxial0", "b"?: "Phone0", "remove"?: true} → {"pairs": [[a, b]…], "ports"}: joins two ports (a frame in one leaves by the other), parts them, or lists the pairs"#,
+        true
+    ),
+    c!(
+        "cloud.number",
+        "Telephone numbers",
+        "",
+        None,
+        r#"{"device": telephone cloud, "port"?: "Phone0", "number"?: "5551001" (digits; null removes it)} → {"numbers": [{"port", "number"}…], "calls": [[a, b]…], "ports"}: gives a phone port its number (one port has each number), or lists the numbers and the calls in progress"#,
         true
     ),
     c!(
