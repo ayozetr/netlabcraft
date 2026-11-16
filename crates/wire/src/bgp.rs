@@ -79,7 +79,7 @@ pub struct Open {
 }
 
 /// The path attributes of the routes an UPDATE announces.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PathAttrs {
     pub origin: u8,
     /// The AS_PATH as one sequence, nearest AS first.
@@ -102,6 +102,26 @@ pub struct PathAttrs {
     pub confed_path: Vec<u32>,
     /// The AS_CONFED_SET segment (RFC 5065).
     pub confed_set: Vec<u32>,
+}
+
+impl Default for PathAttrs {
+    /// An IGP origin, an empty path, an unspecified next hop and nothing optional: what a test or a
+    /// caller overrides field by field.
+    fn default() -> PathAttrs {
+        PathAttrs {
+            origin: ORIGIN_IGP,
+            as_path: Vec::new(),
+            next_hop: Ipv4Addr::UNSPECIFIED,
+            med: None,
+            local_pref: None,
+            as_set: Vec::new(),
+            communities: Vec::new(),
+            originator_id: None,
+            cluster_list: Vec::new(),
+            confed_path: Vec::new(),
+            confed_set: Vec::new(),
+        }
+    }
 }
 
 /// An UPDATE: routes withdrawn, and routes announced with one set of attributes.
