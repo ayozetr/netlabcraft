@@ -10,6 +10,7 @@ mod acl_duplicates;
 mod acl_icmp;
 mod bgp;
 mod bgp_communities;
+mod bgp_password;
 mod bgp_peer_groups;
 mod bgp_reflection;
 mod console_depth;

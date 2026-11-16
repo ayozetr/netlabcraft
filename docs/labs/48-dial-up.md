@@ -1,4 +1,4 @@
-# Lab 47 — Dial-up: a modem, the telephone network and an access server
+# Lab 48 — Dial-up: a modem, the telephone network and an access server
 
 **Course:** CCNA 3 follow-up (WAN access) · **Time:** 45 minutes
 
