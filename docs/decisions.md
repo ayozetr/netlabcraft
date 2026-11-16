@@ -281,13 +281,12 @@ The rules are ours, written to keep a switch's sessions meaningful: a switch hol
 
 Not done, and listed in [gaps.md](gaps.md): remote sessions (RSPAN and ERSPAN, reflector ports), sources that are port-channels, `filter vlan`, the destination's `encapsulation` and `ingress` options, and marking the copies in the event list.
 
-<<<<<<< HEAD
 ## A Softphone is an IP phone that lives on a computer
 
 The Softphone app of a PC's Desktop (our name for the telephone program the reference app ships separately) reuses the IP phone's whole voice path instead of a second one. A PC, laptop or server with `voice.softphone` set registers with a router's call control by the MAC address of its first port, exactly as an IP phone does: over NetLabCraft's own signalling (`PCV1`, UDP 2000) or over SIP (UDP 5060). The router gives it the extension its `ephone` entry names by MAC (or `auto assign`, or its `voice register pool`), so `show ephone`, `show ephone-dn` and `show voice register all` list it with no change on the router side. The simulator treats a device as a voice end point when it is an IP phone or a computer with the app on (`Device::voice_endpoint`), and one run-time state (`Sim::phone`) serves both, so a softphone calls phones and other softphones in every direction and hangs up from either end.
 
 Where it differs from a phone, on purpose: the call manager is the address typed in the app, or else the TFTP server DHCP option 150 gave (`Device::voice_server`); a computer has no voice VLAN, so its voice and signalling leave untagged in the port's access VLAN, marked DSCP EF and CS3 as a phone marks them, with no CoS; a computer that is switched off, or whose app is switched off, forgets its registration and its call; and the setting is saved with the lab (`voice.softphone`, additive, file version unchanged) while a registration and a call are not. Engine commands are separate (`softphone.*`), not extensions of `phone.*`, because the phone commands name IP phones in their documentation and refuse everything else, and a computer needs `softphone.config` to switch the app on. What it leaves out is in [gaps.md](gaps.md) item 10.
-=======
+
 ## Native device windows are immediate viewports, off by default
 
 A device window can open as its own operating-system window (Options ▸ Device windows as separate windows). It uses egui's immediate viewports, not deferred ones: a deferred viewport's callback has to be `'static + Send + Sync`, and the device window mutates the whole `PacketApp` (forms, console sessions, engine commands), so it can only run synchronously inside the main frame, borrowing the app like the in-window one. Both modes draw through one function (`console::contents`), so the tabs cannot drift apart.
@@ -295,4 +294,3 @@ A device window can open as its own operating-system window (Options ▸ Device 
 The option is a runtime check, not a build flag: it is used only when `Context::embed_viewports()` is false. eframe sets that on desktop and leaves it true on the web and in the headless test harness, so those keep the in-window behaviour and the menu entry is greyed out with a hint. The choice is saved by the desktop shell next to the language, and it defaults to off so nothing changes for people who do not ask for it.
 
 Each device has its own viewport id; closing the OS window removes the device window; the title is the device's display name; the size and position are remembered for the session, and the geometry a window opens with is frozen while it is open so feeding the live geometry back into the builder cannot fight the person resizing it. Opening a device whose native window already exists asks the window manager to focus it (which some platforms treat as a hint). Cables as accessible nodes stay in [gaps.md](gaps.md): a cable's segment overlaps the devices it joins and needs its own hit rule first.
->>>>>>> origin/main
