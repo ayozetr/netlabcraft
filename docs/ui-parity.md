@@ -1,6 +1,10 @@
 # UI parity
 
+<<<<<<< HEAD
 > **Last reviewed:** 2026-11-16 · **Last updated:** 2026-11-16 · **Change:** minor (PC desktop: Softphone) · earlier: minor (PC desktop: Netflow Collector) · earlier: minor (PC desktop: VPN Client) · earlier: minor (smart TVs, a sniffer, a smart speaker, a water level sensor and four more router models: 62 models in the device box) · earlier: minor (PC desktop: Traffic Generator, PPPoE Dialer; the server's PPPoE page) · earlier: minor (PC desktop: Telnet/SSH Client, Text Editor, Firewall, IPv6 Firewall) · earlier: minor (the Palette window: outline and fill of drawings; File ▸ Print report pages and compressed PDF) · earlier: minor (re-scored 2026-11-13; M9.10: the cellular network in the UI) · earlier: minor (Resize Shape; canvas devices as accessible nodes, M9.8) · earlier: minor (Constant Delay, the capture filter, origin decisions and absolute start times; instructor windows; touch screens, the phone's Settings, power supplies, the board Programming tab; Programming app and WLC page additions; figures aligned with ROADMAP.md) · **Target:** Cisco Packet Tracer 9.0
+=======
+> **Last reviewed:** 2026-11-16 · **Last updated:** 2026-11-16 · **Change:** minor (device windows can open as native OS windows) · earlier: minor (PC desktop: Netflow Collector) · earlier: minor (PC desktop: VPN Client) · earlier: minor (smart TVs, a sniffer, a smart speaker, a water level sensor and four more router models: 62 models in the device box) · earlier: minor (PC desktop: Traffic Generator, PPPoE Dialer; the server's PPPoE page) · earlier: minor (PC desktop: Telnet/SSH Client, Text Editor, Firewall, IPv6 Firewall) · earlier: minor (the Palette window: outline and fill of drawings; File ▸ Print report pages and compressed PDF) · earlier: minor (re-scored 2026-11-13; M9.10: the cellular network in the UI) · earlier: minor (Resize Shape; canvas devices as accessible nodes, M9.8) · earlier: minor (Constant Delay, the capture filter, origin decisions and absolute start times; instructor windows; touch screens, the phone's Settings, power supplies, the board Programming tab; Programming app and WLC page additions; figures aligned with ROADMAP.md) · **Target:** Cisco Packet Tracer 9.0
+>>>>>>> origin/main
 
 The window, element by element, against the reference app. Part of
 [target-app-parity.md](target-app-parity.md). The arrangement was observed black-box (local
@@ -38,7 +42,8 @@ The window, element by element, against the reference app. Part of
 | Dialogs | open over the workspace | About, Compare with the Answer, PDU information and the Activity Wizard open below the toolbars; IP Configuration and Global Settings laid out on a grid |
 | Language | English plus community files | English and Spanish; every window, tab, page and mode is swept by a test that fails on English text left untranslated ([localization-parity.md](localization-parity.md)) |
 | Accessibility | — | each device on the workspace is an accessible node (`Name, model` and `, selected`, role button): Tab or the arrow keys (device id order) move between them and select, Enter, Space or a screen reader's click opens the device; links and cables are not nodes yet |
-| Not yet | — | scripts in the PC Programming app, device windows as native OS windows |
+| Native device windows | Device windows are separate OS windows | Options ▸ Device windows as separate windows (off by default; desktop builds only, greyed out on the web) opens each device in its own window with the device's name as title; size and position kept for the session |
+| Not yet | — | scripts in the PC Programming app |
 
 ## Revision history
 

@@ -106,6 +106,9 @@ pub enum Mode {
     Simulation,
 }
 
+/// A native window's inner size and, when the platform tells, its position (points).
+pub(crate) type NativeGeometry = ([f32; 2], Option<[f32; 2]>);
+
 /// View state that isn't part of the lab.
 #[derive(Debug, Clone)]
 pub struct UiState {
@@ -122,6 +125,15 @@ pub struct UiState {
     pub pan: egui::Vec2,
     pub zoom: f32,
     pub windows: BTreeMap<DeviceId, console::DeviceWindow>,
+    /// Device windows open as separate operating-system windows (Options menu, saved by the
+    /// desktop shell). Ignored where the backend has no native viewports (the web build).
+    pub native_windows: bool,
+    /// Size and position a device's native window had last, kept for the session.
+    pub(crate) native_geometry: BTreeMap<DeviceId, NativeGeometry>,
+    /// The geometry each open native window was opened with (fixed while it is open).
+    pub(crate) native_start: BTreeMap<DeviceId, NativeGeometry>,
+    /// Native windows to bring to the front on their next frame.
+    pub(crate) raise: std::collections::BTreeSet<DeviceId>,
     pub inspect: Option<DeviceId>,
     pub show_notes: bool,
     /// The Simulation Panel is shown in simulation mode ("Event List" toggle).
@@ -176,6 +188,10 @@ impl Default for UiState {
             pan: egui::Vec2::ZERO,
             zoom: 1.0,
             windows: BTreeMap::new(),
+            native_windows: false,
+            native_geometry: BTreeMap::new(),
+            native_start: BTreeMap::new(),
+            raise: Default::default(),
             inspect: None,
             show_notes: false,
             show_event_list: true,
@@ -931,6 +947,12 @@ impl PacketApp {
                     self.apply_theme(ui.ctx());
                 }
                 ui.checkbox(&mut self.ui.show_grid, tl("Show grid"));
+                // Native windows need viewports: egui embeds them (the web build, headless runs).
+                let embedded = ui.ctx().embed_viewports();
+                let native = ui.add_enabled(!embedded, egui::Checkbox::new(&mut self.ui.native_windows, tl("Device windows as separate windows")));
+                if embedded {
+                    let _ = native.on_disabled_hover_text(tl("Not available in the web version"));
+                }
                 ui.menu_button(tl("Language"), |ui| {
                     for l in i18n::Lang::all() {
                         if ui.radio(i18n::lang() == l, l.name()).clicked() {

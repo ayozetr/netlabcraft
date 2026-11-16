@@ -368,6 +368,8 @@ mod tests {
         assert_eq!(state(&h, p2), Some(netlabcraft_sim::voice::CallState::Ringing));
         assert_eq!(state(&h, pc1), Some(netlabcraft_sim::voice::CallState::Ringback));
         h.state_mut().session.execute("phone.answer", json!({"device": "Phone2"})).unwrap();
+        // The call manager's CONNECT reaches the softphone a moment later.
+        h.state_mut().session.execute("softphone.status", json!({"device": "PC1"})).unwrap();
         h.run_steps(3);
         assert_eq!(state(&h, pc1), Some(netlabcraft_sim::voice::CallState::Connected));
         h.get_by_role_and_label(Role::Button, "Hang up").click();

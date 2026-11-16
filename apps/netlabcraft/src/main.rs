@@ -20,6 +20,8 @@ struct App {
     closing: Closing,
     /// The lab's path last frame, to notice opens and saves for the recent list.
     last_path: Option<String>,
+    /// The "device windows as separate windows" choice last saved.
+    native_saved: bool,
 }
 
 /// Where the recent-files list lives: the platform's configuration folder.
@@ -48,6 +50,18 @@ fn pick_language() {
 fn save_language() {
     if let Some(f) = recent_file() {
         let _ = std::fs::write(f.with_file_name("language"), netlabcraft_ui_egui::i18n::lang().code());
+    }
+}
+
+/// Whether device windows open as their own operating-system windows (off unless chosen).
+fn load_native_windows() -> bool {
+    recent_file().and_then(|f| std::fs::read_to_string(f.with_file_name("native-windows")).ok()).is_some_and(|s| s.trim() == "on")
+}
+
+fn save_native_windows(on: bool) {
+    if let Some(f) = recent_file() {
+        // A lost choice only costs convenience: errors are ignored.
+        let _ = std::fs::write(f.with_file_name("native-windows"), if on { "on" } else { "off" });
     }
 }
 
@@ -187,6 +201,10 @@ impl eframe::App for App {
         if std::mem::take(&mut self.app.ui.lang_changed) {
             save_language();
         }
+        if self.app.ui.native_windows != self.native_saved {
+            self.native_saved = self.app.ui.native_windows;
+            save_native_windows(self.native_saved);
+        }
         if self.app.session.path != self.last_path {
             self.last_path = self.app.session.path.clone();
             if let Some(p) = &self.last_path {
@@ -243,6 +261,8 @@ fn main() -> eframe::Result {
     pick_language();
     let mut app = PacketApp::new(session);
     app.ui.recent = load_recent();
+    let native_saved = load_native_windows();
+    app.ui.native_windows = native_saved;
     // None: a lab opened from the command line goes on the recent list too.
     let last_path = None;
     let title = app.title();
@@ -261,7 +281,7 @@ fn main() -> eframe::Result {
         Box::new(move |cc| {
             netlabcraft_ui_egui::fonts::install(&cc.egui_ctx);
             app.apply_theme(&cc.egui_ctx);
-            Ok(Box::new(App { app, title, closing: Closing::No, last_path }))
+            Ok(Box::new(App { app, title, closing: Closing::No, last_path, native_saved }))
         }),
     )
 }
