@@ -142,9 +142,9 @@ fn an_nssa_originates_type_7_lsas_and_its_border_router_translates_them() {
     assert!(lab.try_run(r2, "area 1 nssa bogus").contains("not an NSSA option"));
     assert!(lab.try_run(r2, "area 0 nssa").starts_with("% The backbone"));
     // Undo one option, then the area.
-    lab.run(r2, "no area 1 nssa no-summary");
+    lab.run(r2, "no area 1 nssa no-summary\nend");
     assert!(lab.run(r2, "show running-config").contains(" area 1 nssa\n"));
-    lab.run(r2, "no area 1 nssa\nend");
+    lab.run(r2, "conf t\nrouter ospf 1\nno area 1 nssa\nend");
     assert!(!lab.run(r2, "show running-config").contains("nssa"));
 }
 

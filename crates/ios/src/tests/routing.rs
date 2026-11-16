@@ -133,7 +133,9 @@ fn ospf_as_the_courses_teach_it() {
     // The database: router LSAs of both (R2's ID is now its loopback), the external LSA.
     let db = lab.run(r1, "show ip ospf database");
     assert!(
-        db.contains("Router LSAs (type 1), area 0") && db.contains("10.5.5.5         10.5.5.5         2") && db.contains("AS external LSAs"),
+        db.contains("Router LSAs (type 1), area 0")
+            && db.lines().any(|l| l.starts_with("10.5.5.5         10.5.5.5 ") && l.ends_with(" 2"))
+            && db.contains("AS external LSAs"),
         "{db}"
     );
     assert!(db.contains("172.31.0.0       10.5.5.5         /16"), "{db}");

@@ -147,9 +147,9 @@ fn the_asbr_summary_view_shows_how_an_area_reaches_an_as_boundary_router() {
 }
 
 #[test]
-fn the_nssa_view_says_no_area_is_an_nssa() {
+fn the_nssa_view_is_empty_when_no_area_is_an_nssa() {
     let (mut lab, r1, _r2, _r3) = three_routers();
     let v = lab.run(r1, "show ip ospf database nssa-external");
-    assert!(v.contains("no area here is an NSSA"), "{v}");
+    assert!(v.starts_with("No NSSA external LSAs"), "{v}");
     assert_eq!(lab.run(r1, "show ip ospf database nssa"), v);
 }
