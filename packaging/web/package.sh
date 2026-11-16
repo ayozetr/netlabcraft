@@ -13,7 +13,11 @@ HERE="$ROOT/packaging/web"
 
 if [[ "${1:-}" != "--skip-build" ]]; then
   command -v trunk >/dev/null || { echo "error: trunk not found (cargo install trunk --locked)" >&2; exit 1; }
-  (cd "$ROOT/apps/netlabcraft-web" && trunk build --release)
+  # The browser build is optimised for size (the host caps one file at 25 MiB); the desktop
+  # packages keep the speed-tuned release profile of the workspace Cargo.toml.
+  (cd "$ROOT/apps/netlabcraft-web" \
+    && CARGO_PROFILE_RELEASE_OPT_LEVEL=z CARGO_PROFILE_RELEASE_LTO=fat CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
+      trunk build --release)
 fi
 
 SITE="$ROOT/dist/web"
