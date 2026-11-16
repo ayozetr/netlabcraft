@@ -52,4 +52,33 @@ pub(crate) fn panel(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
         }
     });
     ui.data_mut(|d| d.insert_temp(id, (a, b)));
+    if dev.catalogue_model().pstn() {
+        numbers(app, ui, dev);
+    }
+}
+
+/// A telephone cloud's numbers: one field per phone port, set with `cloud.number`.
+fn numbers(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
+    ui.separator();
+    ui.label(RichText::new(tl("Telephone numbers (one per port):")).strong());
+    let id = ui.make_persistent_id(("cloud-numbers", dev.id.0));
+    let mut edits: std::collections::BTreeMap<String, String> = ui.data(|d| d.get_temp(id)).unwrap_or_default();
+    let mut set = None;
+    egui::Grid::new(("cloud-number-grid", dev.id.0)).num_columns(3).show(ui, |ui| {
+        for port in dev.ports.iter().map(|p| p.name.clone()) {
+            let saved = dev.phone_numbers.get(&port).cloned().unwrap_or_default();
+            let text = edits.entry(port.clone()).or_insert_with(|| saved.clone());
+            let label = ui.label(&port);
+            ui.add(egui::TextEdit::singleline(text).desired_width(140.0)).labelled_by(label.id);
+            if ui.button(tl("Set")).clicked() {
+                set = Some((port.clone(), text.trim().to_string()));
+            }
+            ui.end_row();
+        }
+    });
+    if let Some((port, text)) = set {
+        let number = if text.is_empty() { serde_json::Value::Null } else { json!(text) };
+        app.run("cloud.number", json!({"device": dev.id.0, "port": port, "number": number}));
+    }
+    ui.data_mut(|d| d.insert_temp(id, edits));
 }

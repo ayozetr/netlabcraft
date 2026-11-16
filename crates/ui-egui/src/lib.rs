@@ -232,7 +232,7 @@ pub fn open_console(app: &mut PacketApp, d: DeviceId) {
 
 /// Opens a host's Desktop: `"prompt"`, `"ip"` (IP Configuration), `"email"`, `"mib"`, `"terminal"`,
 /// `"programming"`, `"telnet"` (Telnet/SSH Client), `"editor"` (Text Editor), `"firewall"`, `"firewall6"`,
-/// `"traffic"` (Traffic Generator), `"pppoe"` (PPPoE Dialer), `"vpn"` (VPN Client), `"netflow"` (Netflow Collector) or the tiles (anything else).
+/// `"traffic"` (Traffic Generator), `"pppoe"` (PPPoE Dialer), `"dialup"` (Dial-up), `"vpn"` (VPN Client), `"netflow"` (Netflow Collector) or the tiles (anything else).
 pub fn open_desktop_app(app: &mut PacketApp, d: DeviceId, which: &str) {
     console::open(app, d);
     if let Some(w) = app.ui.windows.get_mut(&d) {
@@ -251,6 +251,7 @@ pub fn open_desktop_app(app: &mut PacketApp, d: DeviceId, which: &str) {
             "firewall6" => Some(console::DesktopApp::Firewall6),
             "traffic" => Some(console::DesktopApp::TrafficGenerator),
             "pppoe" => Some(console::DesktopApp::PppoeDialer),
+            "dialup" => Some(console::DesktopApp::DialUp),
             "vpn" => Some(console::DesktopApp::VpnClient),
             "netflow" => Some(console::DesktopApp::NetflowCollector),
             "softphone" => Some(console::DesktopApp::Softphone),

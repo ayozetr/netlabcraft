@@ -94,13 +94,13 @@ pub fn gateway_mark(p: &Painter, rect: Rect) {
 
 /// Whether a model is drawn whole by [`wan_icon`] (the cloud and the modems).
 pub fn is_wan(model_id: &str) -> bool {
-    matches!(model_id, "Cloud" | "DSL-Modem" | "Cable-Modem")
+    matches!(model_id, "Cloud" | "PSTN" | "DSL-Modem" | "Cable-Modem")
 }
 
 /// The cloud and the modems.
 pub fn wan_icon(p: &Painter, rect: Rect, model_id: &str, tk: &Tokens) {
     let w = rect.width();
-    if model_id == "Cloud" {
+    if matches!(model_id, "Cloud" | "PSTN") {
         let fill = Color32::from_rgb(0xd9, 0xe6, 0xf5);
         let edge = Color32::from_rgb(0x4a, 0x6f, 0x9c);
         crate::icons::cloud(p, rect.shrink(w * 0.02), fill, edge);

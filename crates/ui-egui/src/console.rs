@@ -72,6 +72,8 @@ pub enum DesktopApp {
     TrafficGenerator,
     /// A PPPoE login to a server on the cable, which gives the device its address.
     PppoeDialer,
+    /// A call through the telephone network to an access server, then PPP with an account.
+    DialUp,
     /// A remote-access VPN to a router: group, key and account, then the address it gave.
     VpnClient,
     /// Lists the flows routers export to this device: top talkers, protocols and the newest flows.
@@ -1184,6 +1186,8 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                             (DesktopApp::NetflowCollector, "Netflow Collector"),
                             (DesktopApp::Softphone, "Softphone"),
                         ]);
+                        // A computer with a modem (a phone port as its first port) also dials.
+                        let dial = dev.ports.first().is_some_and(|p| p.name.starts_with("Phone")).then_some((DesktopApp::DialUp, "Dial-up"));
                         for (app_id, label) in [
                             (DesktopApp::IpConfig, "IP Configuration"),
                             (DesktopApp::Prompt, "Command Prompt"),
@@ -1194,6 +1198,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                         ]
                         .into_iter()
                         .chain(computer.into_iter().flatten())
+                        .chain(dial)
                         .chain(terminal)
                         {
                             let (rect, resp) = ui.allocate_exact_size(vec2(130.0, 150.0), Sense::click());
@@ -1243,6 +1248,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 DesktopApp::Firewall6 => "IPv6 Firewall",
                 DesktopApp::TrafficGenerator => "Traffic Generator",
                 DesktopApp::PppoeDialer => "PPPoE Dialer",
+                DesktopApp::DialUp => "Dial-up",
                 DesktopApp::VpnClient => "VPN Client",
                 DesktopApp::NetflowCollector => "Netflow Collector",
                 DesktopApp::Softphone => "Softphone",
@@ -1399,6 +1405,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 DesktopApp::Firewall6 => crate::host_apps::firewall(app, ui, dev, true),
                 DesktopApp::TrafficGenerator => crate::host_apps::traffic_generator(app, ui, dev),
                 DesktopApp::PppoeDialer => crate::host_apps::pppoe_dialer(app, ui, dev),
+                DesktopApp::DialUp => crate::host_apps::dialup(app, ui, dev),
                 DesktopApp::VpnClient => crate::host_apps::vpn_client(app, ui, dev),
                 DesktopApp::NetflowCollector => crate::host_apps::netflow_collector(app, ui, dev),
                 DesktopApp::Softphone => crate::phone::softphone(app, ui, dev),
@@ -1666,6 +1673,19 @@ pub(crate) fn draw_app_icon(p: &egui::Painter, r: egui::Rect, app: DesktopApp) {
                 for col in 0..3 {
                     let c = egui::pos2(r.left() + r.width() * (0.28 + 0.22 * col as f32), r.top() + r.height() * (0.58 + 0.15 * row as f32));
                     p.circle_filled(c, r.width() * 0.05, if row == 2 && col == 1 { blue } else { light });
+                }
+            }
+        }
+        DesktopApp::DialUp => {
+            // A telephone handset over a row of keys.
+            let blue = egui::Color32::from_rgb(0x2c, 0x7c, 0xc0);
+            let bar = egui::Rect::from_min_size(r.left_top() + vec2(r.width() * 0.1, 0.0), vec2(r.width() * 0.8, r.height() * 0.22));
+            p.rect_filled(bar, 8.0, light);
+            p.rect_stroke(bar, 8.0, egui::Stroke::new(2.0, dark), egui::StrokeKind::Inside);
+            for col in 0..3 {
+                for row in 0..2 {
+                    let c = egui::pos2(r.left() + r.width() * (0.28 + 0.22 * col as f32), r.top() + r.height() * (0.5 + 0.2 * row as f32));
+                    p.circle_filled(c, r.width() * 0.06, if row == 1 && col == 1 { blue } else { light });
                 }
             }
         }

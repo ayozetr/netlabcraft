@@ -535,6 +535,96 @@ pub(crate) fn pppoe_dialer(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device)
     ui.data_mut(|m| m.insert_temp(id, f));
 }
 
+/// The Dial-up app's fields, kept between frames.
+#[derive(Debug, Clone, Default)]
+struct DialupForm {
+    number: String,
+    user: String,
+    password: String,
+    /// The fields were filled from the device's saved settings.
+    loaded: bool,
+}
+
+/// The Dial-up app: telephone number and account, Dial and Hang up, and what the call gave the computer.
+pub(crate) fn dialup(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
+    let id = egui::Id::unique(("dialup_form", dev.id.0));
+    let mut f: DialupForm = ui.data_mut(|m| m.get_temp(id)).unwrap_or_default();
+    let tk = theme::tokens(app.ui.dark);
+    if !f.loaded {
+        f.loaded = true;
+        f.number.clone_from(&dev.pppoe.number);
+        f.user.clone_from(&dev.pppoe.username);
+        f.password.clone_from(&dev.pppoe.password);
+    }
+    let session = dev.pppoe.session.clone();
+    let (mut dial, mut hang_up) = (false, false);
+    ui.add_space(6.0);
+    form_grid(ui, ("dialup_fields", dev.id.0), |ui| {
+        grid_field(ui, tl("Phone Number"), &mut f.number);
+        grid_field(ui, tl("Username"), &mut f.user);
+        let l = ui.label(tl("Password"));
+        ui.add(egui::TextEdit::singleline(&mut f.password).password(true).desired_width(300.0)).labelled_by(l.id);
+        ui.end_row();
+        ui.label("");
+        ui.horizontal(|ui| {
+            dial = ui.add_enabled(session.is_none(), egui::Button::new(tl("Dial"))).clicked();
+            hang_up = ui.add_enabled(session.is_some(), egui::Button::new(tl("Hang up"))).clicked();
+        });
+        ui.end_row();
+    });
+    ui.label(RichText::new(tl("The modem's phone cable must go to a telephone cloud, and the number must be one of its ports.")).color(tk.muted));
+    ui.separator();
+    match &session {
+        None => {
+            ui.label(RichText::new(tl("Not connected")).strong());
+            ui.label(RichText::new(tl("Enter the number and the account and press Dial.")).color(tk.muted));
+        }
+        Some(x) => {
+            let server = app.session.topology.device(x.server).map_or_else(|| "?".to_string(), |s| s.name.clone());
+            let live = app.session.topology.peer(End { device: dev.id, port: 0 }).is_some();
+            if live {
+                ui.label(RichText::new(tl("Connected")).strong().color(tk.ok));
+            } else {
+                ui.label(RichText::new(tl("Connection lost: the cable or the server is gone.")).strong().color(tk.error));
+            }
+            form_grid(ui, ("dialup_session", dev.id.0), |ui| {
+                ui.label(tl("Phone Number"));
+                ui.label(&dev.pppoe.number);
+                ui.end_row();
+                ui.label(tl("Server"));
+                ui.label(server);
+                ui.end_row();
+                ui.label(tl("Address"));
+                ui.label(x.address.to_string());
+                ui.end_row();
+                ui.label(tl("Default Gateway"));
+                ui.label(x.gateway.to_string());
+                ui.end_row();
+                ui.label(tl("Authentication"));
+                ui.label(x.auth.name().to_ascii_uppercase());
+                ui.end_row();
+            });
+        }
+    }
+    let device = dev.id.0;
+    if dial {
+        if f.number.trim().is_empty() {
+            app.ui.status = Some((tl("Enter a phone number.").to_string(), true));
+        } else if f.user.trim().is_empty() {
+            app.ui.status = Some((tl("Enter a user name.").to_string(), true));
+        } else if let Some(r) =
+            app.run("dialup.connect", json!({"device": device, "number": f.number.trim(), "username": f.user.trim(), "password": f.password}))
+        {
+            let server = r.get("server").and_then(Value::as_str).unwrap_or("?").to_string();
+            app.info(trf("Connected to {}", &[&server]));
+        }
+    }
+    if hang_up && app.run("dialup.disconnect", json!({"device": device})).is_some() {
+        app.info(tl("Disconnected"));
+    }
+    ui.data_mut(|m| m.insert_temp(id, f));
+}
+
 /// The VPN Client's fields, kept between frames.
 #[derive(Debug, Clone, Default)]
 struct VpnForm {

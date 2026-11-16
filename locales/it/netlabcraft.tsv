@@ -1662,3 +1662,18 @@ event	write request for	richiesta di scrittura di
 	no server answers at the access point's RADIUS address	nessun server risponde all'indirizzo RADIUS dell'access point
 	the access point can't reach its RADIUS server	l'access point non raggiunge il suo server RADIUS
 	the RADIUS server doesn't know the access point (check the AAA service and its client entry and secret)	il server RADIUS non conosce l'access point (controlla il servizio AAA, la sua voce client e il segreto)
+	Telephone Cloud	Nuvola telefonica
+	The telephone network (PSTN): 8 phone ports, each with a telephone number you give it; a call joins the port that dials to the port whose number it dialled until one hangs up	La rete telefonica (PSTN): 8 porte telefoniche, ciascuna con il numero che le assegni; una chiamata unisce la porta che compone alla porta di cui ha composto il numero finché una non riaggancia
+	Dial-up PC	PC con modem
+	Desktop PC with a modem and no network card: its phone port (Phone0) dials an access server through the telephone network, from the Dial-up app	PC desktop con modem e senza scheda di rete: la sua porta telefonica (Phone0) chiama un server di accesso attraverso la rete telefonica, dall'app Connessione remota
+	Access Server	Server di accesso
+	Router that answers dial-up calls: 2 Fast Ethernet ports and 4 modem lines (Phone0-3) that take calls from the telephone network and run PPP with a user name and password	Router che risponde alle chiamate di accesso remoto: 2 porte Fast Ethernet e 4 linee modem (Phone0-3) che ricevono le chiamate dalla rete telefonica ed eseguono PPP con nome utente e password
+	Dial-up	Connessione remota
+	Phone Number	Numero di telefono
+	Dial	Chiama
+	Not connected	Non connesso
+	Enter the number and the account and press Dial.	Inserisci il numero e l'account e premi Chiama.
+	Enter a phone number.	Inserisci un numero di telefono.
+	The modem's phone cable must go to a telephone cloud, and the number must be one of its ports.	Il cavo telefonico del modem deve andare a una nuvola telefonica e il numero deve essere quello di una delle sue porte.
+	Telephone numbers (one per port):	Numeri di telefono (uno per porta):
+	Set	Imposta

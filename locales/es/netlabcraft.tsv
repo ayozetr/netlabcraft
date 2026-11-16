@@ -1665,3 +1665,18 @@ event	no APN	sin APN
 	no server answers at the access point's RADIUS address	ningún servidor responde en la dirección RADIUS del punto de acceso
 	the access point can't reach its RADIUS server	el punto de acceso no llega a su servidor RADIUS
 	the RADIUS server doesn't know the access point (check the AAA service and its client entry and secret)	el servidor RADIUS no conoce el punto de acceso (revisa el servicio AAA, su entrada de cliente y el secreto)
+	Telephone Cloud	Nube telefónica
+	The telephone network (PSTN): 8 phone ports, each with a telephone number you give it; a call joins the port that dials to the port whose number it dialled until one hangs up	La red telefónica (RTC): 8 puertos de teléfono, cada uno con el número que le des; una llamada une el puerto que marca con el puerto cuyo número marcó hasta que uno cuelga
+	Dial-up PC	PC con módem
+	Desktop PC with a modem and no network card: its phone port (Phone0) dials an access server through the telephone network, from the Dial-up app	PC de sobremesa con módem y sin tarjeta de red: su puerto de teléfono (Phone0) llama a un servidor de acceso por la red telefónica, desde la aplicación Acceso telefónico
+	Access Server	Servidor de acceso
+	Router that answers dial-up calls: 2 Fast Ethernet ports and 4 modem lines (Phone0-3) that take calls from the telephone network and run PPP with a user name and password	Router que atiende llamadas de acceso telefónico: 2 puertos Fast Ethernet y 4 líneas de módem (Phone0-3) que reciben llamadas de la red telefónica y ejecutan PPP con usuario y contraseña
+	Dial-up	Acceso telefónico
+	Phone Number	Número de teléfono
+	Dial	Marcar
+	Not connected	No conectado
+	Enter the number and the account and press Dial.	Escribe el número y la cuenta y pulsa Marcar.
+	Enter a phone number.	Escribe un número de teléfono.
+	The modem's phone cable must go to a telephone cloud, and the number must be one of its ports.	El cable de teléfono del módem debe ir a una nube telefónica, y el número debe ser el de uno de sus puertos.
+	Telephone numbers (one per port):	Números de teléfono (uno por puerto):
+	Set	Fijar

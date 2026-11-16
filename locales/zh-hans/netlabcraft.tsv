@@ -1662,3 +1662,18 @@ event	write request for	写请求
 	no server answers at the access point's RADIUS address	接入点的 RADIUS 地址上没有服务器应答
 	the access point can't reach its RADIUS server	接入点无法访问其 RADIUS 服务器
 	the RADIUS server doesn't know the access point (check the AAA service and its client entry and secret)	RADIUS 服务器不认识该接入点（请检查 AAA 服务、其客户端条目和共享密钥）
+	Telephone Cloud	电话云
+	The telephone network (PSTN): 8 phone ports, each with a telephone number you give it; a call joins the port that dials to the port whose number it dialled until one hangs up	电话网络（PSTN）：8个电话端口，每个端口有您设置的电话号码；一次呼叫会把拨号的端口与被拨号码所在的端口连通，直到一方挂断
+	Dial-up PC	带调制解调器的电脑
+	Desktop PC with a modem and no network card: its phone port (Phone0) dials an access server through the telephone network, from the Dial-up app	带调制解调器、没有网卡的台式电脑：它的电话端口（Phone0）通过电话网络呼叫接入服务器，在拨号应用中操作
+	Access Server	接入服务器
+	Router that answers dial-up calls: 2 Fast Ethernet ports and 4 modem lines (Phone0-3) that take calls from the telephone network and run PPP with a user name and password	接听拨号呼叫的路由器：2个快速以太网端口和4条调制解调器线路（Phone0-3），接收来自电话网络的呼叫，并用用户名和密码运行PPP
+	Dial-up	拨号
+	Phone Number	电话号码
+	Dial	拨号
+	Not connected	未连接
+	Enter the number and the account and press Dial.	输入号码和账户，然后按拨号。
+	Enter a phone number.	请输入电话号码。
+	The modem's phone cable must go to a telephone cloud, and the number must be one of its ports.	调制解调器的电话线必须接到电话云，号码必须是它某个端口的号码。
+	Telephone numbers (one per port):	电话号码（每个端口一个）：
+	Set	设置

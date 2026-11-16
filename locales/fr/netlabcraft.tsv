@@ -1662,3 +1662,18 @@ event	write request for	demande d'écriture de
 	no server answers at the access point's RADIUS address	aucun serveur ne répond à l'adresse RADIUS du point d'accès
 	the access point can't reach its RADIUS server	le point d'accès ne joint pas son serveur RADIUS
 	the RADIUS server doesn't know the access point (check the AAA service and its client entry and secret)	le serveur RADIUS ne connaît pas le point d'accès (vérifiez le service AAA, son entrée client et le secret)
+	Telephone Cloud	Nuage téléphonique
+	The telephone network (PSTN): 8 phone ports, each with a telephone number you give it; a call joins the port that dials to the port whose number it dialled until one hangs up	Le réseau téléphonique (RTC) : 8 ports téléphone, chacun avec le numéro que vous lui donnez ; un appel relie le port qui compose au port dont il a composé le numéro jusqu'à ce que l'un raccroche
+	Dial-up PC	PC avec modem
+	Desktop PC with a modem and no network card: its phone port (Phone0) dials an access server through the telephone network, from the Dial-up app	PC de bureau avec un modem et sans carte réseau : son port téléphone (Phone0) appelle un serveur d'accès par le réseau téléphonique, depuis l'application Accès à distance
+	Access Server	Serveur d'accès
+	Router that answers dial-up calls: 2 Fast Ethernet ports and 4 modem lines (Phone0-3) that take calls from the telephone network and run PPP with a user name and password	Routeur qui répond aux appels d'accès à distance : 2 ports Fast Ethernet et 4 lignes modem (Phone0-3) qui reçoivent les appels du réseau téléphonique et exécutent PPP avec un nom d'utilisateur et un mot de passe
+	Dial-up	Accès à distance
+	Phone Number	Numéro de téléphone
+	Dial	Appeler
+	Not connected	Non connecté
+	Enter the number and the account and press Dial.	Saisissez le numéro et le compte, puis appuyez sur Appeler.
+	Enter a phone number.	Saisissez un numéro de téléphone.
+	The modem's phone cable must go to a telephone cloud, and the number must be one of its ports.	Le câble téléphonique du modem doit aller à un nuage téléphonique, et le numéro doit être celui d'un de ses ports.
+	Telephone numbers (one per port):	Numéros de téléphone (un par port) :
+	Set	Définir
