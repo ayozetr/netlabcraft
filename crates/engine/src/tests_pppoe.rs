@@ -1,8 +1,6 @@
 //! Engine tests for the PPPoE Dialer: discovery over the cable, PAP and CHAP, the address and the
 //! gateway the session gives, and what a disconnect, undo and a saved lab keep.
 
-use netlabcraft_model::PppAuth;
-use netlabcraft_model::pppoe::{PppoeServer, PppoeUser};
 use serde_json::{Value, json};
 
 use crate::Session;
