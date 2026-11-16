@@ -565,6 +565,39 @@ pub static CATALOG: &[CommandInfo] = &[
     ),
     c!("phone.hangup", "Hang up", "", None, r#"{"device": IP phone} → its status: the call ends at both phones"#, false),
     c!(
+        "softphone.config",
+        "Softphone settings",
+        "",
+        None,
+        r#"{"device": PC, laptop or server, "enabled"?: true|false (switch the Softphone on or off), "server"?: "call manager address (empty: the TFTP server DHCP option 150 gave)", "protocol"?: "sip"|"own"} → the Softphone's status (it registers again; the extension is the one the call manager gives its MAC address)"#,
+        true
+    ),
+    c!(
+        "softphone.status",
+        "Softphone screen",
+        "",
+        None,
+        r#"{"device": PC, laptop or server with the Softphone on} → {"address", "mac", "softphone", "call_manager", "tftp", "protocol", "registered", "number", "server", "message", "call": {"state": "dialing"|"ringback"|"ringing"|"connected", "peer", "peer_address", "rtp_sent", "rtp_received"}} (lets it register first)"#,
+        false
+    ),
+    c!(
+        "softphone.dial",
+        "Softphone: dial a number",
+        "",
+        None,
+        r#"{"device": PC with the Softphone on, "number": "1002"} → its status: the far phone or Softphone rings"#,
+        false
+    ),
+    c!(
+        "softphone.answer",
+        "Softphone: answer",
+        "",
+        None,
+        r#"{"device": a PC whose Softphone is ringing} → its status: the call connects and voice packets flow"#,
+        false
+    ),
+    c!("softphone.hangup", "Softphone: hang up", "", None, r#"{"device": PC with the Softphone on} → its status: the call ends at both ends"#, false),
+    c!(
         "device.adapter",
         "Power adapter",
         "",
