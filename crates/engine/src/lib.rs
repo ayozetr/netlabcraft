@@ -250,6 +250,15 @@ impl Session {
         }
         let mut any = false;
         for (device, session) in ended {
+            // A router's dialer keeps its session on the dialer itself.
+            if let Some(dl) = self
+                .topology
+                .device_mut(device)
+                .and_then(|h| h.pppoe_router.dialers.iter_mut().find(|x| x.session.as_ref().is_some_and(|s| s.session.id == session)))
+            {
+                dl.session = None;
+                any = true;
+            }
             if let Some(h) = self.topology.device_mut(device)
                 && h.pppoe.session.as_ref().is_some_and(|x| x.id == session)
             {
