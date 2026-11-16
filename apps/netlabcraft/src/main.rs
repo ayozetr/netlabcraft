@@ -22,6 +22,9 @@ struct App {
     last_path: Option<String>,
     /// The "device windows as separate windows" choice last saved.
     native_saved: bool,
+    /// The native-window geometries as last written (compared as text), and when.
+    geometry_text: String,
+    geometry_at: std::time::Instant,
 }
 
 /// Where the recent-files list lives: the platform's configuration folder.
@@ -63,6 +66,25 @@ fn save_native_windows(on: bool) {
         // A lost choice only costs convenience: errors are ignored.
         let _ = std::fs::write(f.with_file_name("native-windows"), if on { "on" } else { "off" });
     }
+}
+
+/// Where the size and position of each device's native window are kept between sessions.
+fn geometry_file() -> Option<std::path::PathBuf> {
+    recent_file().map(|f| f.with_file_name("native-geometry"))
+}
+
+fn load_native_geometry() -> std::collections::BTreeMap<String, netlabcraft_ui_egui::NativeGeometry> {
+    let text = geometry_file().and_then(|f| std::fs::read_to_string(f).ok()).unwrap_or_default();
+    netlabcraft_ui_egui::native_geometry_from_text(&text)
+}
+
+fn save_native_geometry(text: &str) {
+    let Some(f) = geometry_file() else { return };
+    if let Some(dir) = f.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    // A lost position only costs convenience: errors are ignored.
+    let _ = std::fs::write(f, text);
 }
 
 fn load_recent() -> Vec<String> {
@@ -205,6 +227,14 @@ impl eframe::App for App {
             self.native_saved = self.app.ui.native_windows;
             save_native_windows(self.native_saved);
         }
+        // Where each device's native window sits: written when it changes, at most once a second
+        // while a window is open (it moves with every frame of a drag), and at once after.
+        let geometry = netlabcraft_ui_egui::native_geometry_to_text(&self.app.ui.native_remembered);
+        if geometry != self.geometry_text && (!self.app.ui.native_window_open() || self.geometry_at.elapsed() >= std::time::Duration::from_secs(1)) {
+            save_native_geometry(&geometry);
+            self.geometry_text = geometry;
+            self.geometry_at = std::time::Instant::now();
+        }
         if self.app.session.path != self.last_path {
             self.last_path = self.app.session.path.clone();
             if let Some(p) = &self.last_path {
@@ -263,6 +293,8 @@ fn main() -> eframe::Result {
     app.ui.recent = load_recent();
     let native_saved = load_native_windows();
     app.ui.native_windows = native_saved;
+    app.ui.native_remembered = load_native_geometry();
+    let geometry_text = netlabcraft_ui_egui::native_geometry_to_text(&app.ui.native_remembered);
     // None: a lab opened from the command line goes on the recent list too.
     let last_path = None;
     let title = app.title();
@@ -281,7 +313,7 @@ fn main() -> eframe::Result {
         Box::new(move |cc| {
             netlabcraft_ui_egui::fonts::install(&cc.egui_ctx);
             app.apply_theme(&cc.egui_ctx);
-            Ok(Box::new(App { app, title, closing: Closing::No, last_path, native_saved }))
+            Ok(Box::new(App { app, title, closing: Closing::No, last_path, native_saved, geometry_text, geometry_at: std::time::Instant::now() }))
         }),
     )
 }
