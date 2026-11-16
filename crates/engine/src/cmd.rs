@@ -527,22 +527,9 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             if !dev.ports.get(port).is_some_and(|x| netlabcraft_model::ifname::is_wireless(&x.name)) {
                 return Err(bad("that port is not a radio"));
             }
-            let ssid: String = str_param(p, "ssid")?.trim().chars().take(32).collect();
-            let key = opt_str(p, "key").map(str::to_string).filter(|k| !k.is_empty());
-            if let Some(k) = &key
-                && !(8..=63).contains(&k.chars().count())
-            {
-                return Err(bad("a WPA2 passphrase has 8-63 characters"));
-            }
-            let channel = p.get("channel").and_then(Value::as_u64).map_or(6, |c| c.clamp(1, 13) as u8);
-            // WPA2-Enterprise login (hosts).
-            let user: String = opt_str(p, "user").unwrap_or("").trim().chars().take(64).collect();
-            let password: String = opt_str(p, "password").unwrap_or("").chars().take(64).collect();
-            if !user.is_empty() && !dev.kind.is_host() {
-                return Err(bad("only hosts log in to a WPA2-Enterprise network; set WLANs on the controller (device.wlan)"));
-            }
-            let login = (!user.is_empty()).then_some(netlabcraft_model::wlan::WifiLogin { user, password });
-            let wifi = (!ssid.is_empty()).then_some(netlabcraft_model::Wifi { ssid, key, channel, login });
+            str_param(p, "ssid")?;
+            let old = dev.ports.get(port).and_then(|x| x.wifi.clone());
+            let wifi = crate::home::wifi_from_params(dev.kind.is_host(), p, old.as_ref()).map_err(bad)?;
             s.checkpoint();
             if let Some(x) = s.topology.device_mut(d).and_then(|x| x.ports.get_mut(port)) {
                 x.wifi = wifi;
@@ -551,7 +538,14 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             let end = netlabcraft_model::End { device: d, port };
             let ap = s.topology.wifi_ap_of(end);
             let problem = s.topology.wifi_attempt(end).and_then(|a| a.outcome.err());
-            Ok(json!({"associated_with": ap.map(|e| s.topology.end_label(e)), "problem": problem}))
+            let now = s.topology.device(d).and_then(|x| x.ports.get(port)).and_then(|x| x.wifi.as_ref());
+            Ok(json!({
+                "associated_with": ap.map(|e| s.topology.end_label(e)),
+                "problem": problem,
+                "mode": now.map(|w| w.mode().name()),
+                "encryption": now.filter(|w| w.mode().is_wpa()).map(|w| w.security.encryption.name()),
+                "coverage_m": now.filter(|_| !s.topology.device(d).is_some_and(|x| x.kind.is_host())).map(|w| w.coverage_m()),
+            }))
         }
                 "activity.show" => {
             let mut a = s.topology.activity.clone();

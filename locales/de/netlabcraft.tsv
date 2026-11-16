@@ -813,7 +813,6 @@
 	Part {} from {}	Teil {} von {}
 	pass	bestanden
 	Password	Passwort
-	Password (WPA2-Enterprise)	Passwort (WPA2-Enterprise)
 	Paste	Einfügen
 	Paste (Ctrl+V): a copy of the copied device	Einfügen (Strg+V): eine Kopie des kopierten Geräts
 	Paste the results file	Die Ergebnisdatei einfügen
@@ -1304,7 +1303,6 @@
 	User	Benutzer
 	User name	Benutzername
 	Username	Benutzername
-	Username (WPA2-Enterprise)	Benutzername (WPA2-Enterprise)
 	Users	Benutzer
 	Value	Wert
 	value	Wert
@@ -1378,7 +1376,6 @@
 	WLAN number	WLAN-Nummer
 	WLC1 holds two WLANs (`show wlan`, `show capwap`): Staff checks logins with RADIUS1 (users ana/ana12345 and luis/luis1234) and lands in VLAN 10 (192.168.10.0/24); Guest uses the passphrase invitado123 and lands in VLAN 30 (192.168.30.0/24). The access points tag each WLAN on their trunk to S1, and R1 routes and hands out addresses per VLAN. In Simulation mode, reset and ping from Laptop1 to watch the 802.11 association, the EAP login, the RADIUS exchange, the 4-way handshake and then CCMP-protected data; move Laptop1 next to LAP2 and watch it reassociate, keeping its address.	WLC1 hält zwei WLANs (`show wlan`, `show capwap`): Staff prüft Logins mit RADIUS1 (Benutzer ana/ana12345 und luis/luis1234) und landet in VLAN 10 (192.168.10.0/24); Guest nutzt die Passphrase invitado123 und landet in VLAN 30 (192.168.30.0/24). Die Access Points taggen jedes WLAN auf ihrem Trunk zu S1, und R1 routet und vergibt Adressen je VLAN. Im Simulationsmodus zurücksetzen und von Laptop1 pingen, um die 802.11-Assoziierung, den EAP-Login, den RADIUS-Austausch, den 4-Way-Handshake und dann CCMP-geschützte Daten zu beobachten; Laptop1 neben LAP2 bewegen und beobachten, wie er sich neu assoziiert und seine Adresse behält.
 	WPA2 passphrase	WPA2-Passphrase
-	WPA2 passphrase (empty: open)	WPA2-Passphrase (leer: offen)
 	Write	Schreiben
 	wrong cable: {} and {} need a {} cable, a {} one is plugged in and neither end has auto-MDIX	falsches Kabel: {} und {} brauchen ein {}-Kabel, angesteckt ist ein {}-Kabel, und kein Ende hat Auto-MDIX
 	wrong password	falsches Passwort
@@ -1647,3 +1644,21 @@ event	write request for	Schreibanfrage für
 	Switch the Softphone on	Softphone einschalten
 	The Softphone is off. Switch it on to register with a call server and make calls.	Das Softphone ist ausgeschaltet. Schalten Sie es ein, um sich bei einem Call-Server zu registrieren und Anrufe zu führen.
 	No call server: type its address above, or give option 150 in DHCP	Kein Call-Server: Geben Sie oben seine Adresse ein oder liefern Sie Option 150 über DHCP
+	Disabled	Deaktiviert
+	WEP Key	WEP-Schlüssel
+	PSK Pass Phrase	PSK-Passphrase
+	RADIUS Server Settings	RADIUS-Servereinstellungen
+	Encryption Type	Verschlüsselungsart
+	Coverage Range (meters)	Reichweite (Meter)
+	the network needs a WEP key	das Netz braucht einen WEP-Schlüssel
+	wrong WEP key	falscher WEP-Schlüssel
+	the network needs a WPA passphrase	das Netz braucht eine WPA-Passphrase
+	wrong WPA passphrase	falsche WPA-Passphrase
+	the network needs a username and password (WPA-Enterprise)	das Netz braucht Benutzername und Passwort (WPA-Enterprise)
+	the network uses {} but the host is set to {}	das Netz nutzt {}, der Host ist aber auf {} eingestellt
+	the network encrypts with {} but the host is set to {}	das Netz verschlüsselt mit {}, der Host ist aber auf {} eingestellt
+	the access point has no RADIUS server set	der Access Point hat keinen RADIUS-Server
+	the access point has no management address (give its VLAN interface an address)	der Access Point hat keine Verwaltungsadresse (gib seiner VLAN-Schnittstelle eine Adresse)
+	no server answers at the access point's RADIUS address	unter der RADIUS-Adresse des Access Points antwortet kein Server
+	the access point can't reach its RADIUS server	der Access Point erreicht seinen RADIUS-Server nicht
+	the RADIUS server doesn't know the access point (check the AAA service and its client entry and secret)	der RADIUS-Server kennt den Access Point nicht (prüfe den AAA-Dienst, seinen Client-Eintrag und das Geheimnis)

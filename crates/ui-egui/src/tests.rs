@@ -1063,8 +1063,7 @@ fn form_fields_line_up_whatever_the_label_length() {
         let laptop = h.state().session.topology.resolve("Laptop1").unwrap();
         open_config_page(h.state_mut(), laptop, "port:0");
         h.run_steps(3);
-        let lefts: Vec<f32> =
-            ["SSID", "WPA2 passphrase", "Username (WPA2-Enterprise)", "Password (WPA2-Enterprise)"].iter().map(|l| field_left(&h, l)).collect();
+        let lefts: Vec<f32> = ["SSID", "Username", "Password"].iter().map(|l| field_left(&h, l)).collect();
         assert!(lefts.iter().all(|x| (x - lefts[0]).abs() < 0.5), "Wi-Fi fields out of line (es={spanish}): {lefts:?}");
     }
 }

@@ -813,7 +813,6 @@
 	Part {} from {}	第 {} 部分，共 {}
 	pass	通过
 	Password	密码
-	Password (WPA2-Enterprise)	密码（WPA2 企业级）
 	Paste	粘贴
 	Paste (Ctrl+V): a copy of the copied device	粘贴 (Ctrl+V)：已复制设备的副本
 	Paste the results file	粘贴结果文件
@@ -1304,7 +1303,6 @@
 	User	用户
 	User name	用户名
 	Username	用户名
-	Username (WPA2-Enterprise)	用户名（WPA2 企业级）
 	Users	用户
 	Value	值
 	value	值
@@ -1378,7 +1376,6 @@
 	WLAN number	WLAN 编号
 	WLC1 holds two WLANs (`show wlan`, `show capwap`): Staff checks logins with RADIUS1 (users ana/ana12345 and luis/luis1234) and lands in VLAN 10 (192.168.10.0/24); Guest uses the passphrase invitado123 and lands in VLAN 30 (192.168.30.0/24). The access points tag each WLAN on their trunk to S1, and R1 routes and hands out addresses per VLAN. In Simulation mode, reset and ping from Laptop1 to watch the 802.11 association, the EAP login, the RADIUS exchange, the 4-way handshake and then CCMP-protected data; move Laptop1 next to LAP2 and watch it reassociate, keeping its address.	WLC1 保存两个 WLAN (`show wlan`, `show capwap`)：Staff 通过 RADIUS1 检查登录（用户 ana/ana12345 和 luis/luis1234），并进入 VLAN 10 (192.168.10.0/24)；Guest 使用密码 invitado123，进入 VLAN 30 (192.168.30.0/24)。接入点在其到 S1 的中继上为每个 WLAN 打标记，R1 按 VLAN 路由并分配地址。在模拟模式下，重置后从 Laptop1 ping，可观察 802.11 关联、EAP 登录、RADIUS 交互、四次握手，以及随后受 CCMP 保护的数据；将 Laptop1 移到 LAP2 旁边，观察它重新关联并保留其地址。
 	WPA2 passphrase	WPA2 密码
-	WPA2 passphrase (empty: open)	WPA2 密码（留空：开放）
 	Write	写入
 	wrong cable: {} and {} need a {} cable, a {} one is plugged in and neither end has auto-MDIX	线缆错误：{} 和 {} 需要 {} 线缆，但接的是 {}，且两端都没有 auto-MDIX
 	wrong password	密码错误
@@ -1647,3 +1644,21 @@ event	write request for	写请求
 	Switch the Softphone on	打开软电话
 	The Softphone is off. Switch it on to register with a call server and make calls.	软电话已关闭。打开后可向呼叫服务器注册并拨打电话。
 	No call server: type its address above, or give option 150 in DHCP	无呼叫服务器：请在上方输入其地址，或在 DHCP 中提供选项 150
+	Disabled	已禁用
+	WEP Key	WEP 密钥
+	PSK Pass Phrase	PSK 密码
+	RADIUS Server Settings	RADIUS 服务器设置
+	Encryption Type	加密类型
+	Coverage Range (meters)	覆盖范围（米）
+	the network needs a WEP key	该网络需要 WEP 密钥
+	wrong WEP key	WEP 密钥错误
+	the network needs a WPA passphrase	该网络需要 WPA 密码
+	wrong WPA passphrase	WPA 密码错误
+	the network needs a username and password (WPA-Enterprise)	该网络需要用户名和密码（WPA-Enterprise）
+	the network uses {} but the host is set to {}	网络使用 {}，但主机设置为 {}
+	the network encrypts with {} but the host is set to {}	网络使用 {} 加密，但主机设置为 {}
+	the access point has no RADIUS server set	接入点未设置 RADIUS 服务器
+	the access point has no management address (give its VLAN interface an address)	接入点没有管理地址（请给它的 VLAN 接口设置地址）
+	no server answers at the access point's RADIUS address	接入点的 RADIUS 地址上没有服务器应答
+	the access point can't reach its RADIUS server	接入点无法访问其 RADIUS 服务器
+	the RADIUS server doesn't know the access point (check the AAA service and its client entry and secret)	RADIUS 服务器不认识该接入点（请检查 AAA 服务、其客户端条目和共享密钥）

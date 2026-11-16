@@ -101,13 +101,8 @@ pub struct DeviceWindow {
     gw6: String,
     /// "Static" picked for IPv6, before an address is applied.
     v6_static: bool,
-    /// Wi-Fi form: SSID, WPA2 passphrase, channel.
-    wifi_ssid: String,
-    wifi_key: String,
-    wifi_channel: String,
-    /// WPA2-Enterprise login (hosts).
-    wifi_user: String,
-    wifi_password: String,
+    /// The Wi-Fi form of the radio's page.
+    wifi: crate::wifi_form::WifiForm,
     vlan_id: String,
     vlan_name: String,
     route_net: String,
@@ -792,8 +787,7 @@ struct HomeForm {
     internet_mask: String,
     gateway: String,
     internet_dhcp: bool,
-    ssid: String,
-    key: String,
+    wifi: crate::wifi_form::WifiForm,
 }
 
 impl HomeForm {
@@ -810,7 +804,8 @@ impl HomeForm {
             .map(|(_, y)| std::net::Ipv4Addr::from(u32::from(*y).saturating_add(1)))
             .max()
             .or_else(|| lan.map(|l| std::net::Ipv4Addr::from(u32::from(l.network().addr) + 100)));
-        let wifi = dev.ports.iter().find_map(|p| p.wifi.clone());
+        let mut wifi = crate::wifi_form::WifiForm::default();
+        wifi.load(dev.ports.iter().find_map(|p| p.wifi.as_ref()));
         HomeForm {
             lan: lan.map(|l| l.addr.to_string()).unwrap_or_default(),
             lan_mask: lan.map(|l| l.mask().to_string()).unwrap_or_default(),
@@ -820,8 +815,7 @@ impl HomeForm {
             internet: inet.map(|n| n.addr.to_string()).unwrap_or_default(),
             internet_mask: inet.map(|n| n.mask().to_string()).unwrap_or_default(),
             gateway: gw.map(|g| g.to_string()).unwrap_or_default(),
-            ssid: wifi.as_ref().map(|w| w.ssid.clone()).unwrap_or_default(),
-            key: wifi.and_then(|w| w.key).unwrap_or_default(),
+            wifi,
         }
     }
 }
@@ -864,10 +858,9 @@ fn home_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     }
     ui.separator();
     ui.label(RichText::new(tl("Wireless")).strong());
-    field(ui, tl("SSID"), &mut f.ssid);
-    field(ui, tl("WPA2 passphrase (empty: open)"), &mut f.key);
+    f.wifi.show(ui, true, d.0);
     if ui.button(tl("Save Wireless")).clicked() {
-        actions.push(("device.wireless", json!({"device": d.0, "ssid": f.ssid.trim(), "key": f.key})));
+        actions.push(("device.wireless", f.wifi.params(d.0, "", true)));
     }
     let mut saved = false;
     for (cmd, p) in actions {
@@ -1112,14 +1105,8 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
     {
         ui.add_space(8.0);
         ui.label(RichText::new(tl("Wi-Fi")).strong());
-        if w.wifi_ssid.is_empty()
-            && let Some(wf) = &port.wifi
-        {
-            w.wifi_ssid = wf.ssid.clone();
-            w.wifi_key = wf.key.clone().unwrap_or_default();
-            w.wifi_channel = wf.channel.to_string();
-            w.wifi_user = wf.login.as_ref().map(|l| l.user.clone()).unwrap_or_default();
-            w.wifi_password = wf.login.as_ref().map(|l| l.password.clone()).unwrap_or_default();
+        if !w.wifi.is_loaded() {
+            w.wifi.load(port.wifi.as_ref());
         }
         let ap = dev.kind == DeviceKind::Switch;
         if netlabcraft_model::wlan::is_lap(dev) {
@@ -1131,16 +1118,8 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
             }
             return;
         }
-        field(ui, tl("SSID"), &mut w.wifi_ssid);
-        field(ui, tl("WPA2 passphrase"), &mut w.wifi_key);
-        if ap {
-            field(ui, tl("Channel"), &mut w.wifi_channel);
-        } else {
-            field(ui, tl("Username (WPA2-Enterprise)"), &mut w.wifi_user);
-            field(ui, tl("Password (WPA2-Enterprise)"), &mut w.wifi_password);
-        }
-        let (ssid, key, chan) = (w.wifi_ssid.trim().to_string(), w.wifi_key.trim().to_string(), w.wifi_channel.trim().parse::<u64>().unwrap_or(6));
-        let (user, password) = (w.wifi_user.trim().to_string(), w.wifi_password.clone());
+        w.wifi.show(ui, ap, d.0);
+        let form = w.wifi.clone();
         let assoc = if ap {
             crate::i18n::trf("{} host(s) associated", &[&app.session.topology.wifi_clients(netlabcraft_model::End { device: d, port: i }).len()])
         } else {
@@ -1153,10 +1132,7 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
         };
         ui.label(assoc);
         if ui.button(tl("Apply Wi-Fi")).clicked()
-            && let Some(v) = app.run(
-                "device.wireless",
-                json!({"device": d.0, "port": port.name, "ssid": ssid, "key": key, "channel": chan, "user": user, "password": password}),
-            )
+            && let Some(v) = app.run("device.wireless", form.params(d.0, &port.name, ap))
         {
             let msg = match (v["associated_with"].as_str(), v["problem"].as_str()) {
                 (Some(a), _) => crate::i18n::trf("Associated with {}", &[&a]),

@@ -27,7 +27,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Wi-Fi settings",
         "",
         None,
-        r#"{"device", "port"?: "Wireless0", "ssid": "network name (empty: radio off)", "key"?: "WPA2-PSK passphrase, 8-63 characters (none: open)", "channel"?: 1-13, "user"?: "WPA2-Enterprise username (hosts)", "password"?} → {associated_with, problem}"#,
+        r#"{"device", "port"?: "Wireless0", "ssid": "network name (empty: radio off)", "mode"?: "open"|"wep"|"wpa-psk"|"wpa2-psk"|"wpa-enterprise"|"wpa2-enterprise" (none: WPA2-PSK with a key, else open), "key"?: "WPA-PSK or WPA2-PSK passphrase, 8-63 characters", "wep_key"?: "5 or 13 ASCII characters, or 10 or 26 hex digits", "encryption"?: "aes"|"tkip" (WPA modes, default aes), "channel"?: 1-13, "coverage_m"?: 1-2000 (access points, default 250), "radius_ip"?, "radius_secret"? (access points in an enterprise mode), "user"?: "enterprise username (hosts)", "password"?} → {associated_with, problem, mode, encryption, coverage_m}"#,
         true
     ),
     c!(

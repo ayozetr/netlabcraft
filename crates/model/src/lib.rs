@@ -443,13 +443,49 @@ pub struct Wifi {
     /// Hosts: the username and password a WPA2-Enterprise network checks.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub login: Option<wlan::WifiLogin>,
+    /// How the network is secured, beyond the passphrase in `key`: the mode, the encryption
+    /// type, a WEP key and an access point's RADIUS server. Files from before it existed have
+    /// none, and read as WPA2-PSK with AES when `key` is set, open when it is not.
+    #[serde(default, skip_serializing_if = "wlan::WifiSecurity::is_default")]
+    pub security: wlan::WifiSecurity,
+    /// Access points: the coverage range in centimetres (`None`: [`wlan::DEFAULT_COVERAGE_M`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coverage_cm: Option<u32>,
+}
+
+impl Wifi {
+    /// The security mode in force: the one set, else (a lab file from before the modes)
+    /// WPA2-PSK when there is a passphrase, WPA2-Enterprise when there is only a login, and an
+    /// open network when there is neither.
+    pub fn mode(&self) -> wlan::WifiMode {
+        self.security.mode.unwrap_or(if self.key.is_some() {
+            wlan::WifiMode::Wpa2Psk
+        } else if self.login.is_some() {
+            wlan::WifiMode::Wpa2Enterprise
+        } else {
+            wlan::WifiMode::Open
+        })
+    }
+
+    /// The coverage range in metres.
+    pub fn coverage_m(&self) -> f32 {
+        self.coverage_cm.map_or(wlan::DEFAULT_COVERAGE_M, |c| c as f32 / 100.0)
+    }
+
+    /// How far the radio reaches on the logical map (workspace units).
+    pub fn range_units(&self) -> f32 {
+        match self.coverage_cm {
+            None => WIFI_RANGE,
+            Some(c) => c as f32 * (WIFI_RANGE / (wlan::DEFAULT_COVERAGE_M * 100.0)),
+        }
+    }
 }
 
 fn default_channel() -> u8 {
     6
 }
 
-/// How far (workspace units) a radio reaches.
+/// How far (workspace units) a radio reaches by default: 250 m, at 1.8 units to the metre.
 pub const WIFI_RANGE: f32 = 450.0;
 
 /// Layer-2 framing on a serial link.
@@ -2074,7 +2110,7 @@ impl Device {
         d.ensure_default_vlan();
         if kind == DeviceKind::Iot {
             for p in d.ports.iter_mut().filter(|p| ifname::is_wireless(&p.name)) {
-                p.wifi = Some(Wifi { ssid: iot::HOME_SSID.into(), key: None, channel: 6, login: None });
+                p.wifi = Some(Wifi { ssid: iot::HOME_SSID.into(), key: None, channel: 6, login: None, ..Default::default() });
             }
         }
         d

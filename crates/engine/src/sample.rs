@@ -680,7 +680,7 @@ pub fn build(id: &str) -> Result<Topology> {
                 "enable\nconfigure terminal\ninterface g0/0\nip address 192.168.10.1 255.255.255.0\nno shutdown\nexit\nip dhcp excluded-address 192.168.10.1 192.168.10.9\nip dhcp pool AULA\nnetwork 192.168.10.0 255.255.255.0\ndefault-router 192.168.10.1\nend",
             )?;
             b.type_in("PC1", "ipconfig 192.168.10.5 255.255.255.0 192.168.10.1")?;
-            let wifi = netlabcraft_model::Wifi { ssid: "Aula".into(), key: Some("clase1234".into()), channel: 6, login: None };
+            let wifi = netlabcraft_model::Wifi { ssid: "Aula".into(), key: Some("clase1234".into()), channel: 6, login: None, ..Default::default() };
             let ap = b.t.resolve("AP1").map_err(|e| EngineError::Failed(e.to_string()))?;
             if let Some(p) = b.t.device_mut(ap).and_then(|d| d.ports.get_mut(1)) {
                 p.wifi = Some(wifi.clone());
@@ -746,8 +746,10 @@ pub fn build(id: &str) -> Result<Topology> {
                 key: None,
                 channel: 6,
                 login: Some(netlabcraft_model::wlan::WifiLogin { user: "ana".into(), password: "ana12345".into() }),
+                ..Default::default()
             };
-            let guest = netlabcraft_model::Wifi { ssid: "Guest".into(), key: Some("invitado123".into()), channel: 6, login: None };
+            let guest =
+                netlabcraft_model::Wifi { ssid: "Guest".into(), key: Some("invitado123".into()), channel: 6, login: None, ..Default::default() };
             for (name, x, wifi) in [("Laptop1", 160.0, staff), ("Laptop2", 600.0, guest)] {
                 b.add_model("Laptop-WiFi", name, x, 400.0)?;
                 let id = b.t.resolve(name).map_err(|e| EngineError::Failed(e.to_string()))?;
@@ -1489,7 +1491,7 @@ pub fn build(id: &str) -> Result<Topology> {
             b.add(DeviceKind::Server, "Web", 620.0, 60.0)?;
             b.cable("Web", "g0", "Home", "Ethernet1")?;
             b.type_in("Web", "ipconfig 192.168.0.10 255.255.255.0 192.168.0.1")?;
-            let wifi = netlabcraft_model::Wifi { ssid: "HomeNetwork".into(), key: None, channel: 6, login: None };
+            let wifi = netlabcraft_model::Wifi { ssid: "HomeNetwork".into(), key: None, channel: 6, login: None, ..Default::default() };
             for (name, model, x) in [("Tablet1", "Tablet", 240.0), ("Smartphone1", "Smartphone", 460.0)] {
                 b.add_model(model, name, x, 230.0)?;
                 let id = b.t.resolve(name)?;

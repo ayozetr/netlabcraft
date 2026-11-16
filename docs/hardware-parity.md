@@ -1,6 +1,6 @@
 # Hardware parity
 
-> **Last reviewed:** 2026-11-16 · **Last updated:** 2026-11-16 · **Change:** minor (a PC's Softphone) · earlier: minor (device windows can open as native OS windows) · earlier: minor (the sniffer behind a monitor destination hears a switch's mirrored traffic) · earlier: minor (smart TVs, a sniffer, a smart speaker, a water level sensor and four more router models) · earlier: minor (printing: a report after the picture) · earlier: minor (re-scored 2026-11-13; M9.10: cell towers, the central office server and the cellular radio on tablets and smartphones) · earlier: minor (tablets and smartphones, ten Wi-Fi IoT things, programmable boards and the IoT custom cable, the phone's settings, power supplies, a real PEAP tunnel and central switching; figures aligned) · **Target:** Cisco Packet Tracer 9.0 · also merged with M9.11 (minor (M9.11: BoardScript messages in the interface language))
+> **Last reviewed:** 2026-11-16 · **Last updated:** 2026-11-16 · **Change:** minor (wireless security: WEP, WPA, encryption type, coverage range) · earlier: minor (a PC's Softphone) · earlier: minor (device windows can open as native OS windows) · earlier: minor (the sniffer behind a monitor destination hears a switch's mirrored traffic) · earlier: minor (smart TVs, a sniffer, a smart speaker, a water level sensor and four more router models) · earlier: minor (printing: a report after the picture) · earlier: minor (re-scored 2026-11-13; M9.10: cell towers, the central office server and the cellular radio on tablets and smartphones) · earlier: minor (tablets and smartphones, ten Wi-Fi IoT things, programmable boards and the IoT custom cable, the phone's settings, power supplies, a real PEAP tunnel and central switching; figures aligned) · **Target:** Cisco Packet Tracer 9.0 · also merged with M9.11 (minor (M9.11: BoardScript messages in the interface language))
 
 Two kinds of hardware matter here: the **simulated** hardware (device models, ports, cables,
 modules) and the **real** hardware the app runs on. Part of
@@ -51,6 +51,7 @@ cabling and wireless row (~95%); **host hardware: ~80% ready, 8–14 h** (estima
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-16 | minor | The access point and home router have a coverage range in metres (250 m by default, 1.8 workspace units to the metre) and a security mode, as the reference app's wireless settings do. |
 | 2026-11-16 | minor | The PC desktop's Softphone joins the IP phones row. |
 | 2026-11-15 | minor | The sniffer hears what a switch's monitor session copies to its port. |
 | 2026-11-15 | minor | Four router models (Fast Ethernet and a Gigabit one with serial ports, a modular one with a Fast Ethernet card), a Sniffer, two Smart TVs, a Smart Speaker and a Water Level Sensor; the "TVs, a sniffer" row is whole and a row for the end devices still missing. |
