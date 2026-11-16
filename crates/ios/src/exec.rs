@@ -4020,6 +4020,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::NoBgpConfedPeers
         | Id::BgpNeighborDefaultOriginate
         | Id::NoBgpNeighborDefaultOriginate
+        | Id::BgpNeighborPassword
+        | Id::NoBgpNeighborPassword
         | Id::BgpNeighborRemovePrivate
         | Id::NoBgpNeighborRemovePrivate
         | Id::BgpNeighborSoftReconf
