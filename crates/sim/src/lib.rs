@@ -55,9 +55,9 @@ pub mod ospf;
 pub mod ospf6;
 pub mod ospf_lsdb;
 pub mod pdu;
-pub mod pppoe;
 pub mod peap;
 pub mod pki;
+pub mod pppoe;
 pub mod qos;
 pub mod ravpn;
 
