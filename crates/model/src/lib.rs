@@ -44,6 +44,7 @@ pub mod routing;
 pub mod scenario;
 pub mod security;
 pub mod services;
+pub mod span;
 pub mod voice;
 pub mod vpn;
 pub mod vpnclient;
@@ -2754,6 +2755,7 @@ impl Topology {
                 policy::sanitize_prefix_lists(&mut d.prefix_lists);
                 policy::sanitize_route_maps(&mut d.route_maps);
                 d.fhrp.sanitize();
+                span::sanitize(&mut d.l2.span);
                 d.ensure_default_vlan();
             }
         }

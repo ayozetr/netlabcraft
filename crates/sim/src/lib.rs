@@ -67,6 +67,7 @@ pub mod script;
 pub mod simmode;
 pub mod sip;
 pub mod snmp;
+mod span;
 pub mod stp;
 #[cfg(test)]
 mod tests;
@@ -1490,6 +1491,10 @@ impl Sim {
         if !port_up(t, from) || self.err_disabled_now(from.device, from.port) {
             return false;
         }
+        // A monitor destination carries the copies of its session and nothing else.
+        if t.device(from.device).is_some_and(|d| Sim::span_destination(d, from.port)) {
+            return false;
+        }
         let frame = self.phone_tag(t, from, frame);
         // Over the air an access point reaches every associated host; each keeps what is its own.
         if is_ap_radio(t, from) {
@@ -1513,7 +1518,12 @@ impl Sim {
             return false;
         }
         let wait = std::mem::take(&mut self.tx_delay);
+        // A switch port that is a monitor source also sends a copy of what leaves it.
+        let mirrored = t.device(from.device).filter(|d| Sim::span_active(d)).map(|_| frame.clone());
         self.push_hop(t, self.now + self.hop_delay_after(wait), from, to, frame, hops);
+        if let (Some(copy), Some(d)) = (mirrored, t.device(from.device)) {
+            self.span_copy(t, d, from.port, &copy, false, hops, self.now);
+        }
         true
     }
 
@@ -1708,6 +1718,11 @@ impl Sim {
         if port.shutdown {
             return Err("port is shut down".into());
         }
+        // A monitor destination takes no frames in; a source copies what arrives on it.
+        if Sim::span_destination(d, at.port) {
+            return Err("monitor destination port: it only sends copies and takes no frames in".into());
+        }
+        self.span_copy(t, d, at.port, bytes, true, hops, self.now);
         // A sniffer only listens: the frame is in the event list (its Capture tab reads it from
         // there) and the sniffer answers nothing, whoever the frame was for.
         if d.catalogue_model().sniffer() {

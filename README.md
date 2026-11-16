@@ -93,7 +93,7 @@
   buildings and closets, with copper limits and Wi-Fi range by building.
 - **Switching:** VLANs, trunks, DTP, spanning tree (including rapid-pvst and its guards),
   EtherChannel, VTP, port security, DHCP snooping, dynamic ARP inspection, CDP and LLDP, 802.1p
-  CoS and power over Ethernet.
+  CoS, port mirroring (SPAN) and power over Ethernet.
 - **Routing:** static and floating routes, RIP, OSPF (several areas, stub, authentication),
   EIGRP, BGP (eBGP and iBGP, with prefix lists and route maps), redistribution between RIP, EIGRP, OSPF and BGP with distribute lists, router-on-a-stick, multilayer switching, HSRP, VRRP v2 and v3, GLBP, HDLC and PPP.
 - **IPv6:** addressing, neighbour discovery, SLAAC, DHCPv6, static routes, OSPFv3, EIGRP for IPv6,
@@ -109,7 +109,7 @@
 - **Simulation mode:** an event list replayed on the canvas, simple and complex PDUs, OSI layer
   details, scenarios, capture filters, drop reasons and pcap export.
 - **Console and PC prompt:** every mode a CCNA course uses, with `?` help, Tab completion and
-  output filters (1195 grammar entries in all; see
+  output filters (1204 grammar entries in all; see
   [`docs/command-reference.md`](docs/command-reference.md)); on PCs `ipconfig`, `ping`,
   `tracert`, `nslookup`, `telnet`, `ssh`, `ftp`, `netstat` and more.
 - **Activities:** checks worth points, sections, hints, values per student, time limits, password
@@ -121,8 +121,8 @@ What it doesn't do yet is listed, ranked, in [`docs/gaps.md`](docs/gaps.md).
 
 ## The CCNA lab book
 
-[`docs/labs/`](docs/labs/README.md) holds thirty-eight hands-on labs written for NetLabCraft over the
-topics of the three CCNA courses (four for the first, sixteen for the second and eighteen for
+[`docs/labs/`](docs/labs/README.md) holds thirty-nine hands-on labs written for NetLabCraft over the
+topics of the three CCNA courses (four for the first, seventeen for the second and eighteen for
 the third, the last three of them (BGP, route filtering and redistribution) going a step past the course), plus one on mobile data. Eleven of them are troubleshooting labs where you find and
 fix deliberate faults (VLANs and trunks, routing, OSPF, ACLs, DHCP, NAT, spanning tree, EtherChannel, port security), and two
 teach you to read the OSPF database and spanning-tree views. Each lab lists its topology, addressing, every command to
@@ -214,7 +214,7 @@ estimated it at about 92% ready for real work: about 93% for the first CCNA cour
 second and 91% for the third (re-scored on 2026-11-13 after the 0.2.0 work; the
 method is in [`docs/target-app-parity.md`](docs/target-app-parity.md#audiences)). Next up: more
 labs walked to find console gaps, the last crypto and certificate details (IKE signatures, PEAP,
-a transform set with no cipher), port mirroring for the sniffer and more end devices, device windows as native
+a transform set with no cipher), more end devices, device windows as native
 windows, and more interface languages. Stage, numbers and estimates are in
 [ROADMAP.md](ROADMAP.md); the ranked work list is [`docs/gaps.md`](docs/gaps.md).
 

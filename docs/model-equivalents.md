@@ -1,6 +1,6 @@
 # Model equivalents
 
-> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (smart TVs, a sniffer, a smart speaker, a water level sensor and four more router models) · earlier: minor (cellular radio on Tablet and Smartphone, Cell Tower and Central Office Server) · earlier: minor (Tablet, Smartphone, ten Wi-Fi IoT things, Board SBC and Board MCU; power-supply bays) · **Target:** CCNA course labs
+> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (the sniffer and port mirroring) · earlier: minor (smart TVs, a sniffer, a smart speaker, a water level sensor and four more router models) · earlier: minor (cellular radio on Tablet and Smartphone, Cell Tower and Central Office Server) · earlier: minor (Tablet, Smartphone, ten Wi-Fi IoT things, Board SBC and Board MCU; power-supply bays) · **Target:** CCNA course labs
 
 Course labs name specific vendor models. NetLabCraft's models are its own, named after their
 ports (`GE` Gigabit Ethernet, `FE` Fast Ethernet, `S` serial), and never carry vendor names
@@ -59,7 +59,7 @@ lab has students fit a redundant supply, use a two-bay model.
 | Smartphone | `Smartphone` | SMARTPHONE-PT | `Wireless0`, `Cellular0` | Wi-Fi, or mobile data through a cell tower (Wi-Fi is preferred when connected); a touch home screen with the Desktop's apps. |
 | Cell Tower | `Cell-Tower` | Cell Tower | `Cellular0–5` (sectors), `Ethernet0` (backhaul) | A radio with a coverage range; mobile devices in range attach to it. |
 | Central Office Server | `Central-Office` | Central Office Server | `GigabitEthernet0/0–2` | The provider's data service: admits attached mobile devices, gives each an address from its pool and routes them to the lab (`cellular pool\|apn\|data-plan`). |
-| Sniffer | `Sniffer` | Sniffer | `FastEthernet0` | Records every frame that reaches its port and shows them in its Capture tab; answers nothing. Behind a hub it hears everything; behind a switch only broadcasts, multicasts and flooded frames (no port mirroring yet). |
+| Sniffer | `Sniffer` | Sniffer | `FastEthernet0` | Records every frame that reaches its port and shows them in its Capture tab; answers nothing. Behind a hub it hears everything; behind a switch only broadcasts, multicasts and flooded frames, plus what a `monitor session` copies to its port. |
 | Wi-Fi Laptop | `Laptop-WiFi` | Laptop-PT with a wireless card | `Wireless0` | |
 | IP Phone | `IP-Phone` | 7960 | `FastEthernet0` (network), `FastEthernet1` (PC) | Registers with `telephony-service` on a router, or, set to SIP (Signal with SIP, `phone.configure`), with `voice register`. Needs a PoE switch port or its power adapter. |
 | Smart Sensor | `IoT-Sensor` | The temperature monitor among the course's IoT things | `FastEthernet0` | Reports to a server's IoT service or a Home Gateway. |
@@ -99,6 +99,7 @@ independent project, not affiliated with or endorsed by Cisco.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-15 | minor | The Sniffer row: a switch's monitor session can copy traffic to it. |
 | 2026-11-15 | minor | Router 2FE, Router 2FE+2S, Router 3GE+2S, Modular Router 2FE and the 2-port Fast Ethernet card; Sniffer; Smart TV, Wired Smart TV, Smart Speaker and Water Level Sensor; the "no equivalent yet" list brought up to date. |
 | 2026-11-13 | minor | Cellular radio on Tablet and Smartphone; Cell Tower and Central Office Server rows. |
 | 2026-10-31 | minor | Tablet and Smartphone, ten Wi-Fi IoT things, Board SBC and Board MCU (BoardScript, not Python or JavaScript); power-supply bays per model; the "no equivalent yet" list now names cellular, TVs and the sniffer. |

@@ -308,7 +308,7 @@ pub static MODELS: &[Model] = &[
         id: "Sniffer",
         kind: DeviceKind::Pc,
         label: "Sniffer",
-        description: "Sniffer with one Fast Ethernet port: records every frame that reaches its port (all the traffic behind a hub; broadcasts, multicasts and flooded frames behind a switch) and never answers",
+        description: "Sniffer with one Fast Ethernet port: records every frame that reaches its port (all the traffic behind a hub; behind a switch, broadcasts, multicasts and flooded frames, or whatever a monitor session copies to its port) and never answers",
         ports: &[run("FastEthernet", 0, 0)],
     },
     Model {

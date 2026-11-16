@@ -348,6 +348,128 @@ fn a_sniffer_behind_a_hub_records_what_it_overhears_and_answers_nothing() {
     assert!(sim.trace().iter().all(|e| e.from.device != sn), "the sniffer sent nothing");
 }
 
+/// A switch with three PCs on ports 0 to 2 and a sniffer on port 3, and the name of each port.
+fn mirror_lab() -> (Topology, DeviceId, [DeviceId; 3], DeviceId) {
+    let mut t = Topology::new();
+    let s = add(&mut t, DeviceKind::Switch);
+    let a = host(&mut t, "10.0.0.1/24", None);
+    let b = host(&mut t, "10.0.0.2/24", None);
+    let c = host(&mut t, "10.0.0.3/24", None);
+    let sn = t.add_model(netlabcraft_model::models::find("Sniffer").unwrap(), None, 0.0, 0.0).unwrap();
+    for (i, d) in [a, b, c, sn].into_iter().enumerate() {
+        cable(&mut t, d, 0, s, i);
+    }
+    (t, s, [a, b, c], sn)
+}
+
+fn port_name(t: &Topology, s: DeviceId, i: usize) -> String {
+    t.device(s).unwrap().ports[i].name.clone()
+}
+
+fn mirror(t: &mut Topology, s: DeviceId, source: usize, dir: netlabcraft_model::span::SpanDir, dest: usize) {
+    let mut session = netlabcraft_model::span::SpanSession::new(1);
+    session.ports.insert(port_name(t, s, source), dir);
+    session.destination = Some(port_name(t, s, dest));
+    t.device_mut(s).unwrap().l2.span = vec![session];
+}
+
+#[test]
+fn a_sniffer_on_a_monitor_destination_hears_the_source_port_both_ways() {
+    use netlabcraft_model::span::SpanDir;
+    let (mut t, s, [a, b, c], sn) = mirror_lab();
+    mirror(&mut t, s, 0, SpanDir::Both, 3);
+    let a_mac = t.device(a).unwrap().ports[0].mac.0;
+    let mut sim = Sim::new();
+    // PC1 and PC2 talk: the sniffer on a switch port would hear nothing but for the mirror.
+    assert_eq!(marks(&sim.ping(&t, a, ip("10.0.0.2"), PingOptions { count: 2, ..Default::default() }).unwrap()), "!!");
+    sim.run_for(&t, 1_000_000);
+    let heard: Vec<_> = sim.trace().iter().filter(|e| e.to.device == sn).collect();
+    assert!(heard.iter().all(|e| e.from == End { device: s, port: 3 } && e.dropped.is_none()), "copies leave the destination port and are all taken");
+    let from_a = heard.iter().filter(|e| e.frame.get(6..12) == Some(a_mac.as_slice())).count();
+    let to_a = heard.iter().filter(|e| e.frame.get(0..6) == Some(a_mac.as_slice())).count();
+    assert!(from_a >= 3, "what PC1 sent (the ARP request and two echo requests): {from_a}");
+    assert!(to_a >= 3, "what was sent to PC1 (the ARP reply and two echo replies): {to_a}");
+    assert!(heard.iter().any(|e| e.protocol == Protocol::Icmp) && heard.iter().any(|e| e.protocol == Protocol::Arp));
+    // Traffic that never touches the source port is not copied: the ARP broadcast is flooded to
+    // the source port too (and copied once), but the unicast echoes are not.
+    sim.clear_trace();
+    assert_eq!(marks(&sim.ping(&t, b, ip("10.0.0.3"), PingOptions { count: 2, ..Default::default() }).unwrap()), "!!");
+    sim.run_for(&t, 1_000_000);
+    let heard: Vec<_> = sim.trace().iter().filter(|e| e.to.device == sn).collect();
+    assert_eq!(heard.iter().filter(|e| e.protocol == Protocol::Icmp).count(), 0, "no echo between PC2 and PC3 reaches the sniffer");
+    assert_eq!(
+        heard.iter().filter(|e| e.protocol == Protocol::Arp).count(),
+        1,
+        "the flooded ARP request is copied once, not also flooded to the destination"
+    );
+    assert!(sim.trace().iter().all(|e| e.from.device != sn), "the sniffer sent nothing");
+    let _ = c;
+}
+
+#[test]
+fn a_monitor_session_copies_only_the_direction_it_was_given() {
+    use netlabcraft_model::span::SpanDir;
+    let (mut t, s, [a, ..], sn) = mirror_lab();
+    let a_mac = t.device(a).unwrap().ports[0].mac.0;
+    for (dir, rx) in [(SpanDir::Rx, true), (SpanDir::Tx, false)] {
+        mirror(&mut t, s, 0, dir, 3);
+        let mut sim = Sim::new();
+        assert_eq!(marks(&sim.ping(&t, a, ip("10.0.0.2"), PingOptions { count: 2, ..Default::default() }).unwrap()), "!!");
+        sim.run_for(&t, 1_000_000);
+        sim.run_for(&t, 1_000_000);
+        let heard: Vec<_> = sim.trace().iter().filter(|e| e.to.device == sn).collect();
+        assert!(!heard.is_empty(), "{dir:?} copies something");
+        for e in heard {
+            let sent_by_a = e.frame.get(6..12) == Some(a_mac.as_slice());
+            assert_eq!(sent_by_a, rx, "{dir:?}: a frame the switch received on PC1's port was sent by PC1, one it sent there was not");
+        }
+    }
+}
+
+#[test]
+fn a_vlan_source_copies_the_frames_of_that_vlan_and_nothing_else() {
+    use netlabcraft_model::span::{SpanDir, SpanSession};
+    let (mut t, s, [a, ..], sn) = mirror_lab();
+    let mut session = SpanSession::new(2);
+    session.vlans.insert(VlanId::new(10).unwrap(), SpanDir::Both);
+    session.destination = Some(port_name(&t, s, 3));
+    t.device_mut(s).unwrap().l2.span = vec![session];
+    let mut sim = Sim::new();
+    // Every port is in VLAN 1: nothing in VLAN 10 moves, so nothing is copied.
+    assert_eq!(marks(&sim.ping(&t, a, ip("10.0.0.2"), PingOptions { count: 2, ..Default::default() }).unwrap()), "!!");
+    sim.run_for(&t, 1_000_000);
+    assert_eq!(sim.trace().iter().filter(|e| e.to.device == sn).count(), 0);
+    // Watching VLAN 1 copies what PC1 and PC2 say, however many ports it crosses.
+    let mut session = SpanSession::new(2);
+    session.vlans.insert(VlanId::new(1).unwrap(), SpanDir::Rx);
+    session.destination = Some(port_name(&t, s, 3));
+    t.device_mut(s).unwrap().l2.span = vec![session];
+    let mut sim = Sim::new();
+    assert_eq!(marks(&sim.ping(&t, a, ip("10.0.0.2"), PingOptions { count: 2, ..Default::default() }).unwrap()), "!!");
+    sim.run_for(&t, 1_000_000);
+    let heard = sim.trace().iter().filter(|e| e.to.device == sn && e.protocol == Protocol::Icmp).count();
+    assert_eq!(heard, 4, "two echo requests and two replies, each copied when it arrives");
+}
+
+#[test]
+fn a_monitor_destination_cabled_back_into_the_switch_cannot_loop_for_ever() {
+    use netlabcraft_model::span::SpanDir;
+    let (mut t, s, [a, ..], _sn) = mirror_lab();
+    // The destination (port 3) goes to port 4 of the same switch, which is also watched.
+    let sn_end = t.peer(End { device: s, port: 3 }).unwrap();
+    t.disconnect(sn_end);
+    cable(&mut t, s, 3, s, 4);
+    let mut session = netlabcraft_model::span::SpanSession::new(1);
+    session.ports.insert(port_name(&t, s, 0), SpanDir::Both);
+    session.ports.insert(port_name(&t, s, 4), SpanDir::Both);
+    session.destination = Some(port_name(&t, s, 3));
+    t.device_mut(s).unwrap().l2.span = vec![session];
+    let mut sim = Sim::new();
+    let _ = sim.ping(&t, a, ip("10.0.0.2"), PingOptions { count: 1, ..Default::default() });
+    sim.settle(&t);
+    assert!(sim.queue.is_empty(), "the copies stop at the hop limit instead of circling for ever");
+}
+
 #[test]
 fn dhcp_hands_out_addresses_from_a_pool() {
     use netlabcraft_model::DhcpPool;

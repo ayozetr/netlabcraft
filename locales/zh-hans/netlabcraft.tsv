@@ -1600,7 +1600,7 @@ event	write request for	写请求
 	Router with 2 Fast Ethernet ports and 2 serial WAN ports	带 2 个快速以太网口和 2 个串行 WAN 口的路由器
 	Router with 3 Gigabit Ethernet ports and 2 serial WAN ports	带 3 个千兆以太网口和 2 个串行 WAN 口的路由器
 	Modular router with 2 Fast Ethernet ports and 2 empty module bays (serial, Gigabit and Fast Ethernet cards, fitted while powered off)	带 2 个快速以太网口和 2 个空模块插槽的模块化路由器（串行、千兆和快速以太网卡，需在断电时安装）
-	Sniffer with one Fast Ethernet port: records every frame that reaches its port (all the traffic behind a hub; broadcasts, multicasts and flooded frames behind a switch) and never answers	带 1 个快速以太网口的嗅探器：记录到达其端口的每一帧（集线器后面的全部流量；交换机后面的广播、多播和被泛洪的帧），从不应答
+	Sniffer with one Fast Ethernet port: records every frame that reaches its port (all the traffic behind a hub; behind a switch, broadcasts, multicasts and flooded frames, or whatever a monitor session copies to its port) and never answers	带 1 个快速以太网口的嗅探器：记录到达其端口的每一帧（集线器后面的全部流量；交换机后面的广播、多播和被泛洪的帧，或监控会话复制到其端口的帧），从不应答
 	Wi-Fi smart TV: registers with the IoT service, which switches it on (playing) and off (standby)	Wi-Fi 智能电视：向 IoT 服务注册，由该服务将其开启（播放）和关闭（待机）
 	Smart TV with one Fast Ethernet port: registers with an IoT server, which switches it on (playing) and off (standby)	带 1 个快速以太网口的智能电视：向 IoT 服务器注册，由该服务器将其开启（播放）和关闭（待机）
 	Wi-Fi smart speaker: plays while the IoT service keeps it on	Wi-Fi 智能音箱：IoT 服务使其保持开启时播放
@@ -1610,7 +1610,7 @@ event	write request for	写请求
 	standby	待机
 	% level	% 水位
 	Capture	捕获
-	A sniffer records every frame that reaches its port and answers none of them. Behind a hub it hears all the traffic; behind a switch, only broadcasts, multicasts and the frames the switch floods.	嗅探器记录到达其端口的每一帧，并且不应答任何一帧。在集线器后面它能听到全部流量；在交换机后面，只能听到广播、多播和交换机泛洪的帧。
+	A sniffer records every frame that reaches its port and answers none of them. Behind a hub it hears all the traffic; behind a switch, only broadcasts, multicasts and the frames the switch floods, plus whatever a monitor session on the switch copies to its port.	嗅探器记录到达其端口的每一帧，并且不应答任何一帧。在集线器后面它能听到全部流量；在交换机后面，只能听到广播、多播和交换机泛洪的帧，以及交换机上的监控会话复制到其端口的帧。
 	Frames captured: {}	已捕获的帧：{}
 	Nothing captured yet. Cable the sniffer to a hub or a switch and send some traffic (a ping, or a simple PDU).	尚未捕获任何内容。把嗅探器接到集线器或交换机上并发送一些流量（一次 ping 或一个简单 PDU）。
 	Showing the last {} frames	显示最近 {} 帧

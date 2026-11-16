@@ -77,6 +77,7 @@ labs! {
     lab_35_troubleshoot_port_security => "35-troubleshoot-port-security.md",
     lab_36_bgp => "36-bgp.md",
     lab_37_bgp_prefix_lists_route_maps => "37-bgp-prefix-lists-route-maps.md",
+    lab_38_port_mirroring => "38-port-mirroring.md",
     lab_39_redistribute_and_distribute_lists => "39-redistribute-and-distribute-lists.md",
 }
 

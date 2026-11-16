@@ -433,6 +433,43 @@ fn smart_tvs_over_wifi_and_ethernet_register_and_are_switched_by_the_gateway() {
 }
 
 #[test]
+fn a_sniffer_behind_a_mirror_destination_hears_the_traffic_of_the_source_port() {
+    let mut s = Session::new();
+    for (model, name) in [("Switch 24FE", "SW"), ("PC", "PC1"), ("PC", "PC2"), ("PC", "PC3"), ("Sniffer", "Sniffer1")] {
+        s.execute("device.add", json!({"model": model, "name": name})).unwrap();
+    }
+    for (a, b_port) in [("PC1", "FastEthernet0/1"), ("PC2", "FastEthernet0/2"), ("PC3", "FastEthernet0/3"), ("Sniffer1", "FastEthernet0/4")] {
+        s.execute("link.add", json!({"a": a, "a_port": "FastEthernet0", "b": "SW", "b_port": b_port})).unwrap();
+    }
+    for (pc, n) in [("PC1", 1), ("PC2", 2), ("PC3", 3)] {
+        cli(&mut s, pc, &format!("ipconfig 10.0.0.{n} 255.255.255.0"));
+    }
+    let sn = s.topology.resolve("Sniffer1").unwrap();
+    let icmp_heard = |s: &Session| s.sim.trace().iter().filter(|e| e.to.device == sn && e.protocol == netlabcraft_wire::Protocol::Icmp).count();
+    // Behind a switch the sniffer hears no echo between two other ports.
+    assert_eq!(marks(&mut s, "PC1", "10.0.0.2"), "!!!");
+    assert_eq!(icmp_heard(&s), 0, "no echo reaches a port that is not part of the conversation");
+    // Mirror PC2's port, both ways, to the sniffer's.
+    for line in ["enable", "configure terminal", "monitor session 1 source interface fa0/2", "monitor session 1 destination interface fa0/4", "end"] {
+        let out = cli(&mut s, "SW", line);
+        assert!(!out.contains('%'), "{line}: {out}");
+    }
+    assert!(cli(&mut s, "SW", "show monitor").contains("Destination:   Fa0/4 (link up)"));
+    s.sim.clear_trace();
+    assert_eq!(marks(&mut s, "PC1", "10.0.0.2"), "!!!");
+    assert!(icmp_heard(&s) >= 6, "echo requests into PC2's port and replies out of it: {}", icmp_heard(&s));
+    // PC1 and PC3 talk where the mirror does not reach.
+    s.sim.clear_trace();
+    assert_eq!(marks(&mut s, "PC1", "10.0.0.3"), "!!!");
+    assert_eq!(icmp_heard(&s), 0);
+    assert!(s.sim.trace().iter().all(|e| e.from.device != sn), "the sniffer sent nothing");
+    // The session is part of the lab file.
+    let mut s2 = round_trip(&mut s);
+    cli(&mut s2, "SW", "enable");
+    assert!(cli(&mut s2, "SW", "show running-config").contains("monitor session 1 destination interface FastEthernet0/4"));
+}
+
+#[test]
 fn a_sniffer_on_a_hub_lists_the_frames_between_two_pcs_and_sends_nothing() {
     let mut s = Session::new();
     for (model, name) in [("Hub-8", "Hub1"), ("PC", "PC1"), ("PC", "PC2"), ("Sniffer", "Sniffer1")] {

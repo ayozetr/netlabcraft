@@ -150,6 +150,9 @@ pub struct SwitchL2 {
     /// (`None`: CoS × 8).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cos_dscp: Option<[u8; 8]>,
+    /// `monitor session N …`: port mirroring.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub span: Vec<crate::span::SpanSession>,
 }
 
 impl Default for SwitchL2 {
@@ -171,6 +174,7 @@ impl Default for SwitchL2 {
             loopguard_default: false,
             relay_trust_all: false,
             cos_dscp: None,
+            span: Vec::new(),
         }
     }
 }
@@ -194,6 +198,20 @@ impl SwitchL2 {
     pub fn cos_to_dscp(&self, cos: u8) -> u8 {
         let map = self.cos_dscp.unwrap_or(DEFAULT_COS_DSCP);
         map.get(usize::from(cos & 7)).copied().unwrap_or(0)
+    }
+
+    /// A monitor session by number, created (and kept in order) when it is not there yet.
+    pub fn span_entry(&mut self, id: u8) -> Option<&mut crate::span::SpanSession> {
+        if !self.span.iter().any(|s| s.id == id) {
+            self.span.push(crate::span::SpanSession::new(id));
+            self.span.sort_by_key(|s| s.id);
+        }
+        self.span.iter_mut().find(|s| s.id == id)
+    }
+
+    /// The session whose destination is this port.
+    pub fn span_destination_of(&self, port: &str) -> Option<u8> {
+        self.span.iter().find(|s| s.destination.as_deref() == Some(port)).map(|s| s.id)
     }
 
     /// A reload: the configuration goes back to factory; the SDM template chosen takes effect.
