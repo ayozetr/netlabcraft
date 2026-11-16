@@ -137,8 +137,25 @@ concentrator's own address (`10.43.255.1`). ISP has a host route for `10.43.0.2`
 
 ## Part 3 — A second customer, and traffic between them
 
+CPE2's port is brought up first. The switch port it joins goes through spanning tree's listening
+and learning states, 30 seconds, before it forwards anything, so wait for it (a dialer that asks
+too early hears nobody and says so):
+
 ```console CPE2
 enable
+configure terminal
+interface g0/0
+no shutdown
+end
+```
+
+```lab
+sim.advance {"seconds": 35}
+```
+
+Now CPE2's dialer, with bob's account, and the port joins the pool:
+
+```console CPE2
 configure terminal
 interface dialer 1
 encapsulation ppp
@@ -149,7 +166,6 @@ dialer pool 1
 exit
 ip route 0.0.0.0 0.0.0.0 dialer 1
 interface g0/0
-no shutdown
 pppoe-client dial-pool-number 1
 end
 ```
