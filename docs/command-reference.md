@@ -1018,6 +1018,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `ip proxy-arp` | interface, subinterface | router | Answer ARP for hosts that are reached through this router |
 | `no ip proxy-arp` | interface, subinterface | router | Answer ARP only for this interface's own address |
 | `no mdix auto` | interface | router, switch | Expect the right cable type |
+| `keepalive` | interface | router, switch | Keepalives every 10 seconds again |
+| `keepalive <1-32767>` | interface | router, switch | Seconds between keepalives (shown by `show interfaces`; the simulator sends none) |
+| `no keepalive` | interface | router, switch | No keepalives |
 | `show protocols` | user, privileged | router, switch | Interface status and addresses |
 | `show interfaces description` | user, privileged | router, switch | Interface status and descriptions |
 | `show login` | user, privileged | router, switch | Login blocking state |
@@ -1141,7 +1144,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show vlan id <1-4094>` | user, privileged | switch | One VLAN and its ports |
 | `show vlan summary` | user, privileged | switch | How many VLANs exist |
 | `show dtp` | user, privileged | switch | Trunk negotiation on each port |
-| `show interfaces counters` | user, privileged | switch | Frames and bytes in and out of each port |
+| `show interfaces counters` | user, privileged | router, switch | Frames and bytes in and out of each port |
+| `show interfaces counters errors` | user, privileged | router, switch | Frames each port could not read, and frames it or the device dropped |
+| `clear spanning-tree counters` | privileged | switch | Zero the BPDU counts and the topology-change counts |
 | `switchport trunk encapsulation {dot1q\|isl\|negotiate}` | interface | switch | Trunk tagging (multilayer switches) |
 | `no switchport trunk encapsulation` | interface | switch | Trunk tagging back to the default |
 | `sdm prefer {default\|dual-ipv4-and-ipv6 default\|lanbase-routing\|vlan\|advanced}` | config | switch | Memory template, used from the next reload |

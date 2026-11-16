@@ -371,6 +371,8 @@ pub enum Id {
     L2ShowVlanSummary,
     L2ShowDtp,
     L2ShowCounters,
+    L2ShowCountersErrors,
+    L2ClearStpCounters,
     L2TrunkEncap,
     L2NoTrunkEncap,
     L2SdmPrefer,
@@ -759,6 +761,8 @@ pub enum Id {
     IfProxyArp,
     NoIfProxyArp,
     NoIfMdix,
+    IfKeepalive,
+    NoIfKeepalive,
     SshTimeout,
     SshRetries,
     ShowSsh,
@@ -3825,6 +3829,15 @@ pub static SPECS: &[Spec] = &[
     spec!(IfProxyArp, IFS, Modes::ROUTER, [K("ip"), K("proxy-arp")], "Answer ARP for hosts that are reached through this router"),
     spec!(NoIfProxyArp, IFS, Modes::ROUTER, [K("no"), K("ip"), K("proxy-arp")], "Answer ARP only for this interface's own address"),
     spec!(NoIfMdix, Modes::IF, Modes::BOTH, [K("no"), K("mdix"), K("auto")], "Expect the right cable type"),
+    spec!(IfKeepalive, Modes::IF, Modes::BOTH, [K("keepalive")], "Keepalives every 10 seconds again"),
+    spec!(
+        IfKeepalive,
+        Modes::IF,
+        Modes::BOTH,
+        [K("keepalive"), Arg("<1-32767>")],
+        "Seconds between keepalives (shown by `show interfaces`; the simulator sends none)"
+    ),
+    spec!(NoIfKeepalive, Modes::IF, Modes::BOTH, [K("no"), K("keepalive")], "No keepalives"),
     spec!(ShowProtocols, EXECS, Modes::BOTH, [K("show"), K("protocols")], "Interface status and addresses"),
     spec!(ShowIntDescription, EXECS, Modes::BOTH, [K("show"), K("interfaces"), K("description")], "Interface status and descriptions"),
     spec!(ShowLogin, EXECS, Modes::BOTH, [K("show"), K("login")], "Login blocking state"),
@@ -4267,7 +4280,21 @@ pub static SPECS: &[Spec] = &[
     spec!(L2ShowVlanId, EXECS, Modes::SWITCH.or(Modes::CARD), [K("show"), K("vlan"), K("id"), Arg("<1-4094>")], "One VLAN and its ports"),
     spec!(L2ShowVlanSummary, EXECS, Modes::SWITCH.or(Modes::CARD), [K("show"), K("vlan"), K("summary")], "How many VLANs exist"),
     spec!(L2ShowDtp, EXECS, Modes::SWITCH, [K("show"), K("dtp")], "Trunk negotiation on each port"),
-    spec!(L2ShowCounters, EXECS, Modes::SWITCH, [K("show"), K("interfaces"), K("counters")], "Frames and bytes in and out of each port"),
+    spec!(L2ShowCounters, EXECS, Modes::BOTH, [K("show"), K("interfaces"), K("counters")], "Frames and bytes in and out of each port"),
+    spec!(
+        L2ShowCountersErrors,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("interfaces"), K("counters"), K("errors")],
+        "Frames each port could not read, and frames it or the device dropped"
+    ),
+    spec!(
+        L2ClearStpCounters,
+        Modes::EXEC,
+        Modes::SWITCH,
+        [K("clear"), K("spanning-tree"), K("counters")],
+        "Zero the BPDU counts and the topology-change counts"
+    ),
     spec!(
         L2TrunkEncap,
         Modes::IF,

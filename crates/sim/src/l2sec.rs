@@ -69,6 +69,15 @@ pub struct PortCounters {
     pub out_ucast: u64,
     pub out_mcast: u64,
     pub out_bcast: u64,
+    /// Frames that arrived and could not be read (a frame that does not decode, or a serial
+    /// frame in the other framing than the port's).
+    pub in_errors: u64,
+    /// Frames that arrived and were discarded on purpose: a switch's port rules (VLAN, spanning
+    /// tree, port security, snooping, BPDU guard), an inbound access list, an input QoS policer.
+    pub in_drops: u64,
+    /// Frames that were to leave and were discarded: an outbound access list, an output QoS
+    /// policer, a full queue.
+    pub out_drops: u64,
 }
 
 impl PortCounters {
@@ -98,6 +107,27 @@ pub struct L2State {
     counters: BTreeMap<(DeviceId, usize), PortCounters>,
     /// When `clear counters` last ran on a device (simulated µs); absent: never.
     counters_cleared: BTreeMap<DeviceId, u64>,
+    /// BPDUs per (switch, port, VLAN): sent and received.
+    bpdus: BTreeMap<(DeviceId, usize, u16), BpduCounts>,
+    /// Spanning-tree topology changes per (switch, VLAN).
+    tc: BTreeMap<(DeviceId, u16), TopologyChanges>,
+}
+
+/// BPDUs through one port in one VLAN.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct BpduCounts {
+    pub sent: u64,
+    pub received: u64,
+}
+
+/// A switch's spanning-tree topology changes in one VLAN.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TopologyChanges {
+    pub count: u64,
+    /// When the last one happened (simulated µs).
+    pub last_us: u64,
+    /// The port that started the last one.
+    pub port: usize,
 }
 
 impl L2State {
@@ -109,6 +139,8 @@ impl L2State {
         self.psec_seen.retain(|k, _| k.0 != d);
         self.counters.retain(|k, _| k.0 != d);
         self.counters_cleared.remove(&d);
+        self.bpdus.retain(|k, _| k.0 != d);
+        self.tc.retain(|k, _| k.0 != d);
     }
 }
 
@@ -378,6 +410,94 @@ impl Sim {
     /// Traffic counted through a port.
     pub fn port_counters(&self, d: DeviceId, port: usize) -> PortCounters {
         self.l2.counters.get(&(d, port)).copied().unwrap_or_default()
+    }
+
+    /// Counts one event on a port (`change` bumps the field it is for), within the table bound.
+    pub(crate) fn count_port(&mut self, d: DeviceId, port: usize, change: impl FnOnce(&mut PortCounters)) {
+        if self.l2.counters.len() >= crate::MAX_MAC_ENTRIES && !self.l2.counters.contains_key(&(d, port)) {
+            return;
+        }
+        change(self.l2.counters.entry((d, port)).or_default());
+    }
+
+    /// A frame that arrived on `at` and could not be read.
+    pub(crate) fn count_in_error(&mut self, at: End) {
+        self.count_port(at.device, at.port, |c| c.in_errors = c.in_errors.saturating_add(1));
+    }
+
+    /// A frame that arrived on `at` and was discarded.
+    pub(crate) fn count_in_drop(&mut self, at: End) {
+        self.count_port(at.device, at.port, |c| c.in_drops = c.in_drops.saturating_add(1));
+    }
+
+    /// A frame that was to leave by `at` and was discarded.
+    pub(crate) fn count_out_drop(&mut self, at: End) {
+        self.count_port(at.device, at.port, |c| c.out_drops = c.out_drops.saturating_add(1));
+    }
+
+    /// A packet an input or output service policy dropped, counted on the interface's port.
+    pub(crate) fn count_qos_drop(&mut self, d: &Device, port: usize, input: bool) {
+        if d.ports.get(port).is_none() {
+            return;
+        }
+        let at = End { device: d.id, port };
+        if input {
+            self.count_in_drop(at);
+        } else {
+            self.count_out_drop(at);
+        }
+    }
+
+    /// BPDUs a switch port sent and received in a VLAN.
+    pub fn bpdu_counts(&self, d: DeviceId, port: usize, vlan: VlanId) -> BpduCounts {
+        self.l2.bpdus.get(&(d, port, vlan.get())).copied().unwrap_or_default()
+    }
+
+    /// A switch's topology changes in a VLAN: how many, when the last was and from which port.
+    pub fn topology_changes(&self, d: DeviceId, vlan: VlanId) -> TopologyChanges {
+        self.l2.tc.get(&(d, vlan.get())).copied().unwrap_or_default()
+    }
+
+    /// Notes a topology change at a switch in a VLAN, started by `port`.
+    pub(crate) fn note_topology_change(&mut self, d: DeviceId, vlan: u16, port: usize) {
+        let now = self.now;
+        if self.l2.tc.len() >= crate::MAX_MAC_ENTRIES && !self.l2.tc.contains_key(&(d, vlan)) {
+            return;
+        }
+        let e = self.l2.tc.entry((d, vlan)).or_default();
+        e.count = e.count.saturating_add(1);
+        e.last_us = now;
+        e.port = port;
+    }
+
+    /// Zeroes a switch's spanning-tree counters (`clear spanning-tree counters`).
+    pub fn clear_stp_counters(&mut self, d: DeviceId) {
+        self.l2.bpdus.retain(|k, _| k.0 != d);
+        self.l2.tc.retain(|k, _| k.0 != d);
+    }
+
+    /// Counts a BPDU that crossed a cable, at the sender and the receiver, in the VLAN it
+    /// belongs to (its tag, or the port's native or access VLAN when it has none).
+    pub(crate) fn count_bpdu(&mut self, t: &Topology, from: End, to: End, frame: &[u8]) {
+        if frame.get(0..6) != Some(&netlabcraft_wire::control::STP_GROUP.0[..]) {
+            return;
+        }
+        let Ok(f) = Frame::decode(frame) else { return };
+        for (end, sent) in [(from, true), (to, false)] {
+            let Some(d) = t.device(end.device).filter(|d| d.kind == DeviceKind::Switch || d.is_switchport(end.port)) else { continue };
+            let Some(p) = d.ports.get(end.port) else { continue };
+            let vlan = f.vlan.unwrap_or_else(|| if t.is_trunk(end) { p.switchport.native_vlan.get() } else { p.switchport.access_vlan.get() });
+            let key = (end.device, end.port, vlan);
+            if self.l2.bpdus.len() >= crate::MAX_MAC_ENTRIES && !self.l2.bpdus.contains_key(&key) {
+                continue;
+            }
+            let c = self.l2.bpdus.entry(key).or_default();
+            if sent {
+                c.sent = c.sent.saturating_add(1);
+            } else {
+                c.received = c.received.saturating_add(1);
+            }
+        }
     }
 
     /// Zeroes a device's port counters and notes when (`clear counters`).

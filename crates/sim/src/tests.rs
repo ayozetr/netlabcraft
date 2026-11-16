@@ -1183,3 +1183,45 @@ fn an_end_device_firewall_matches_the_remote_address() {
     });
     assert!(can_ping(&t, a));
 }
+
+#[test]
+fn drops_bpdus_and_topology_changes_are_counted_where_they_happen() {
+    // A frame the switch discards is an input drop of the port it came in by.
+    let mut t = Topology::new();
+    let s = add(&mut t, DeviceKind::Switch);
+    let a = host(&mut t, "10.0.0.1/24", None);
+    let b = host(&mut t, "10.0.0.2/24", None);
+    cable(&mut t, a, 0, s, 0);
+    cable(&mut t, b, 0, s, 1);
+    t.device_mut(s).unwrap().ports[0].switchport.access_vlan = VlanId::new(10).unwrap();
+    let mut sim = Sim::new();
+    let _ = sim.ping(&t, a, ip("10.0.0.2"), PingOptions { count: 2, ..Default::default() });
+    assert!(sim.port_counters(s, 0).in_drops > 0 && sim.port_counters(s, 0).in_errors == 0);
+    assert_eq!(sim.port_counters(s, 1).in_drops, 0);
+    sim.clear_port_counters(s);
+    assert_eq!(sim.port_counters(s, 0).in_drops, 0);
+
+    // A triangle of switches: BPDUs are counted at both ends of a link, and cutting the link to
+    // the root puts the blocked port of the third switch in forwarding: a topology change there.
+    let mut t = Topology::new();
+    let s1 = add(&mut t, DeviceKind::Switch);
+    let s2 = add(&mut t, DeviceKind::Switch);
+    let s3 = add(&mut t, DeviceKind::Switch);
+    cable(&mut t, s1, 24, s2, 24);
+    cable(&mut t, s2, 25, s3, 24);
+    cable(&mut t, s3, 25, s1, 25);
+    let mut sim = Sim::new();
+    let v1 = VlanId::DEFAULT;
+    let _ = sim.spanning_tree(&t, v1);
+    sim.run_for(&t, 10_000_000);
+    assert!(sim.bpdu_counts(s1, 24, v1).sent > 0, "the root's designated port sends");
+    assert!(sim.bpdu_counts(s2, 24, v1).received > 0, "and the far end receives");
+    assert_eq!(sim.topology_changes(s3, v1).count, 0);
+    t.disconnect(End { device: s1, port: 24 });
+    sim.topology_changed(&t);
+    let _ = sim.spanning_tree(&t, v1);
+    let tc = sim.topology_changes(s3, v1);
+    assert_eq!((tc.count, tc.port), (1, 24));
+    sim.clear_stp_counters(s3);
+    assert_eq!(sim.topology_changes(s3, v1).count, 0);
+}

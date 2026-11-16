@@ -12,6 +12,7 @@ mod bgp;
 mod bgp_communities;
 mod bgp_reflection;
 mod console_depth;
+mod error_counters;
 mod families;
 mod inspections;
 mod interface_counters;
