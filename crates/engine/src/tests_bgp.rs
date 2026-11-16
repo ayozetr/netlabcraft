@@ -102,6 +102,7 @@ fn communities_aggregation_and_timers_work_through_the_engine_and_survive_a_save
     again.execute("sim.advance", json!({"seconds": 10})).unwrap();
     let back = cli(&mut again, "R2", "show ip bgp 172.16.1.0");
     assert!(back.contains("communities: 65001:100") && back.contains("local preference 300"), "{back}");
+    cli(&mut again, "R1", "enable");
     let run = cli(&mut again, "R1", "show running-config");
     assert!(run.contains(" neighbor 10.0.12.2 timers 10 30\n neighbor 10.0.12.2 send-community\n"), "{run}");
     assert!(run.contains(" aggregate-address 172.16.0.0 255.255.252.0\n"), "{run}");
