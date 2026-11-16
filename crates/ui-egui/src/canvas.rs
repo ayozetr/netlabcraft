@@ -1157,12 +1157,12 @@ fn cable_node_id(e: End) -> egui::Id {
     egui::Id::unique(("canvas-cable", e.device.0, e.port))
 }
 
-/// What a screen reader says about a cable: its kind and the two ports it joins.
+/// What a screen reader says about a cable: its kind and the two ports it joins, `Cable, kind, A port - B port`.
 fn cable_label(t: &netlabcraft_model::Topology, l: &netlabcraft_model::Link) -> String {
     let end = |e: End| {
         t.device(e.device).map_or(String::new(), |d| format!("{} {}", d.display_name(), d.ports.get(e.port).map_or("", |p| p.name.as_str())))
     };
-    format!("{}, {}, {} {} {}", tl("Cable"), crate::i18n::tr(t.resolved_cable(l).label()), end(l.a), tl("to"), end(l.b))
+    format!("{}, {}, {} - {}", tl("Cable"), crate::i18n::tr(t.resolved_cable(l).label()), end(l.a), end(l.b))
 }
 
 /// Registers each cable shown in this view as a focusable, labelled node, like the devices: Tab

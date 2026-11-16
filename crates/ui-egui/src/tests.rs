@@ -909,6 +909,7 @@ fn spanish_shows_no_text_that_has_a_translation_in_english() {
 
 /// Interface text that reads the same in Spanish.
 const SAME_IN_SPANISH: &[&str] = &[
+    "Cable",
     "Español",
     "AAA",
     "DHCP",
@@ -1940,18 +1941,16 @@ fn cables_are_accessible_nodes_found_by_label_and_open_their_first_device() {
             let d = t.device(e.device).unwrap();
             format!("{} {}", d.display_name(), d.ports[e.port].name)
         };
-        (format!("Cable, {}, {} to {}", t.resolved_cable(l).label(), end(l.a), end(l.b)), l.a.device)
+        (format!("Cable, {}, {} - {}", t.resolved_cable(l).label(), end(l.a), end(l.b)), l.a.device)
     };
     assert!(h.query_by_label(&label).is_some(), "no node labelled {label}");
-    // A screen reader's click opens the device at its first end.
-    h.get_by_label(&label).click();
-    h.run_steps(2);
-    assert_eq!(h.state().ui.selected, Some(first));
-    assert!(h.state().ui.windows.contains_key(&first));
-    // Focus on a cable node highlights it (and only it).
+    // Focus on a cable node highlights it, and Enter opens the device at its first end.
     h.get_by_label(&label).focus();
     h.run_steps(2);
     assert_eq!(h.state().ui.cable_focus.map(|e| e.device), Some(first));
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    assert_eq!(h.state().ui.selected, Some(first));
+    assert!(h.state().ui.windows.contains_key(&first));
     // Mouse use is unchanged: clicking empty workspace still deselects.
     let at = canvas_origin(&h) + egui::vec2(30.0, 30.0);
     click_at(&mut h, at);
