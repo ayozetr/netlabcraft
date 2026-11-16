@@ -1,6 +1,6 @@
 # Pitfalls
 
-> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (a rule that acts at a switch port must cover the timed control frames too) · earlier: minor (policy edits must reach the routing fingerprint) · earlier: minor (BGP needs simulated time) · earlier: minor (a derived-state pitfall (M9.10)) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (four pitfalls from M9.7: counters keyed by position, a stale checksum, a database that lists unreachable routers, a `Rest` that needs a word) · also merged with M9.5, M9.6, M9.8 and M9.11 · earlier: minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
+> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (a rule that acts at a switch port must cover the timed control frames too) · earlier: minor (redistribution is part of every protocol's computation) · earlier: minor (policy edits must reach the routing fingerprint) · earlier: minor (BGP needs simulated time) · earlier: minor (a derived-state pitfall (M9.10)) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (four pitfalls from M9.7: counters keyed by position, a stale checksum, a database that lists unreachable routers, a `Rest` that needs a word) · also merged with M9.5, M9.6, M9.8 and M9.11 · earlier: minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
 
 Mistakes already made here, and the rule that stops each one. Read this before your first change; when you make a
 new mistake worth not repeating, add it in the same change.
@@ -80,6 +80,12 @@ new mistake worth not repeating, add it in the same change.
   routing hellos are queued by `control::queue_at`, straight into `push_hop`. Port mirroring first hooked only
   `emit_hops_in`, so a monitor destination kept sending BPDUs and a source port never copied them. Anything that decides
   what leaves a port (a mirror, a block, a counter) goes in both `emit_hops_in` and `queue_at`.
+- **A routing protocol is computed through its public `compute`, never from the seeded function.** RIP, EIGRP and OSPF
+  take the routes other protocols hand them (`redistribute`) from `redist::seeds`, which itself computes the three with
+  `compute_seeded` until the seeds settle. Calling `compute_seeded` anywhere else, or reading a protocol's routes
+  without the seeds, shows a router that ignores its own `redistribute` lines. A seed has no next hop, so it never
+  appears as a route of the router that redistributes it; that, and taking seeds from routing tables (where the
+  administrative distances have chosen), is what stops a route from coming back to the protocol it came from.
 
 ## Instructor
 

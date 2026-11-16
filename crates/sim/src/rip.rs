@@ -66,6 +66,11 @@ pub struct RipState {
     pub routes: BTreeMap<DeviceId, Vec<RipRoute>>,
     /// Neighbours per router: (their device, their address, our interface).
     pub neighbors: BTreeMap<DeviceId, Vec<(DeviceId, Ipv4Addr, String)>>,
+    /// Routes a router redistributes into RIP and has no better RIP route for: (network, hops
+    /// on this router; advertised with one more).
+    pub originated: BTreeMap<DeviceId, Vec<(Ipv4Net, u8)>>,
+    /// Networks a router's `distribute-list out` keeps out of its updates on an interface.
+    pub suppressed: BTreeMap<(DeviceId, String), Vec<Ipv4Net>>,
     /// Interfaces running RIP per router: (name, network, passive).
     pub interfaces: BTreeMap<DeviceId, Vec<(String, Ipv4Net, bool)>>,
     /// Routes possibly down per router.
@@ -103,6 +108,11 @@ fn rip_ifaces(t: &Topology, d: &Device) -> Vec<(L3If, bool)> {
         .collect()
 }
 
+/// A router's RIP distribute lists.
+fn dist_of(d: &Device) -> &[netlabcraft_model::redist::DistList] {
+    d.rip.as_ref().map_or(&[][..], |r| r.distribute.as_slice())
+}
+
 /// One entry of a router's table while computing: hops, and (interface, next hop) unless connected.
 type Entry = (u8, Option<(L3If, Ipv4Addr, DeviceId)>);
 
@@ -113,6 +123,11 @@ pub fn compute(t: &Topology) -> RipState {
 
 /// [`compute`] with neighbours that are no longer heard but still within their invalid time.
 pub fn compute_with(t: &Topology, held: &[Held]) -> RipState {
+    compute_seeded(t, held, &crate::redist::seeds(t))
+}
+
+/// [`compute_with`] with the routes other protocols give RIP (`redistribute`) worked out already.
+pub fn compute_seeded(t: &Topology, held: &[Held], seeds: &crate::redist::Seeds) -> RipState {
     let mut st = RipState::default();
     let routers: Vec<&Device> = t.devices.iter().filter(|d| d.routes_ip() && d.rip.is_some()).collect();
     let mut ifs: BTreeMap<DeviceId, Vec<(L3If, bool)>> = BTreeMap::new();
@@ -122,7 +137,7 @@ pub fn compute_with(t: &Topology, held: &[Held]) -> RipState {
         ifs.insert(d.id, list);
     }
     // Who hears whom: (router, our interface, their address, their device).
-    let mut adj: BTreeMap<DeviceId, Vec<(L3If, Ipv4Addr, DeviceId)>> = BTreeMap::new();
+    let mut adj: BTreeMap<DeviceId, Vec<(L3If, Ipv4Addr, DeviceId, String)>> = BTreeMap::new();
     for a in &routers {
         for (ia, pa) in ifs.get(&a.id).into_iter().flatten() {
             if *pa {
@@ -139,7 +154,7 @@ pub fn compute_with(t: &Topology, held: &[Held]) -> RipState {
                         && (ib.vlan == ia.vlan || ia.port == crate::SVI_PORT || ib.port == crate::SVI_PORT)
                         && crate::ospf::reaches(t, &reach, b, ib)
                     {
-                        adj.entry(a.id).or_default().push((ia.clone(), ib.net.addr, b.id));
+                        adj.entry(a.id).or_default().push((ia.clone(), ib.net.addr, b.id, ib.name.clone()));
                         st.neighbors.entry(a.id).or_default().push((b.id, ib.net.addr, ia.name.clone()));
                     }
                 }
@@ -152,7 +167,8 @@ pub fn compute_with(t: &Topology, held: &[Held]) -> RipState {
         if adj.get(&h.router).is_some_and(|l| l.iter().any(|x| x.0.name == h.iface && x.1 == h.address)) {
             continue;
         }
-        adj.entry(h.router).or_default().push((ia.clone(), h.address, h.peer));
+        let theirs = ifs.get(&h.peer).into_iter().flatten().find(|(i, _)| i.net.addr == h.address).map_or(String::new(), |(i, _)| i.name.clone());
+        adj.entry(h.router).or_default().push((ia.clone(), h.address, h.peer, theirs));
         st.neighbors.entry(h.router).or_default().push((h.peer, h.address, h.iface.clone()));
     }
     st.held = held.to_vec();
@@ -167,15 +183,23 @@ pub fn compute_with(t: &Topology, held: &[Held]) -> RipState {
         if originate {
             tbl.insert(Ipv4Net::new(Ipv4Addr::UNSPECIFIED, 0), (0, None));
         }
+        // Routes other protocols give RIP: a route of this router's own unless RIP knows better.
+        for (net, hops) in seeds.rip.get(&d.id).into_iter().flatten() {
+            if !tbl.contains_key(net) {
+                tbl.insert(*net, (*hops, None));
+                st.originated.entry(d.id).or_default().push((*net, *hops));
+            }
+        }
         tables.insert(d.id, tbl);
     }
+    let by_id: BTreeMap<DeviceId, &Device> = routers.iter().map(|d| (d.id, *d)).collect();
     // Rounds of updates until nothing changes (at most 16: hop counts stop there).
     for _ in 0..=INFINITY {
         let snapshot = tables.clone();
         let mut changed = false;
         for d in &routers {
             let Some(tbl) = tables.get_mut(&d.id) else { continue };
-            for (ifc, addr, from) in adj.get(&d.id).into_iter().flatten() {
+            for (ifc, addr, from, their_if) in adj.get(&d.id).into_iter().flatten() {
                 for (net, (hops, learned)) in snapshot.get(from).into_iter().flatten() {
                     // Split horizon.
                     if learned.as_ref().is_some_and(|(_, _, back)| *back == d.id) {
@@ -183,6 +207,19 @@ pub fn compute_with(t: &Topology, held: &[Held]) -> RipState {
                     }
                     let h = hops.saturating_add(1);
                     if h >= INFINITY {
+                        continue;
+                    }
+                    // The sender's `distribute-list out` and ours `in`.
+                    if let Some(sender) = by_id.get(from)
+                        && !netlabcraft_model::redist::passes(sender, dist_of(sender), false, Some(their_if.as_str()), *net, u32::from(h))
+                    {
+                        let sup = st.suppressed.entry((*from, their_if.clone())).or_default();
+                        if !sup.contains(net) {
+                            sup.push(*net);
+                        }
+                        continue;
+                    }
+                    if !netlabcraft_model::redist::passes(d, dist_of(d), true, Some(ifc.name.as_str()), *net, u32::from(h)) {
                         continue;
                     }
                     let cand: Entry = (h, Some((ifc.clone(), *addr, *from)));
@@ -221,10 +258,18 @@ pub fn update_entries(st: &RipState, me: DeviceId, out: &str) -> Vec<RipEntry> {
         let metric = if r.iface == out { u32::from(INFINITY) } else { u32::from(r.hops) + 1 };
         entries.push(RipEntry { net: r.net.addr, mask: r.net.mask(), metric });
     }
+    for (net, hops) in st.originated.get(&me).into_iter().flatten() {
+        if !entries.iter().any(|e| e.net == net.addr && e.mask == net.mask()) {
+            entries.push(RipEntry { net: net.addr, mask: net.mask(), metric: u32::from(*hops) + 1 });
+        }
+    }
     for x in st.down.get(&me).into_iter().flatten() {
         if !entries.iter().any(|e| e.net == x.net.addr && e.mask == x.net.mask()) {
             entries.push(RipEntry { net: x.net.addr, mask: x.net.mask(), metric: u32::from(INFINITY) });
         }
+    }
+    if let Some(sup) = st.suppressed.get(&(me, out.to_string())) {
+        entries.retain(|e| !sup.iter().any(|n| n.addr == e.net && n.mask() == e.mask));
     }
     entries
 }

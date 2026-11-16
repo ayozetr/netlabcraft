@@ -303,7 +303,9 @@ mod tests {
             b.redistribute.push(crate::bgp::Source::Connected);
             b.redistribute_maps.insert("connected".into(), "M".into());
             d.bgp = Some(b);
-            d.ospf = Some(crate::Ospf { process: 1, redistribute_static: true, redistribute_map: Some("M".into()), ..crate::Ospf::default() });
+            let mut st = crate::redist::Redist::new(crate::redist::RedistSource::Static);
+            st.route_map = Some("M".into());
+            d.ospf = Some(crate::Ospf { process: 1, redistribute: vec![st], ..crate::Ospf::default() });
         }
         let back = from_json(&to_json(&t).unwrap()).unwrap();
         assert_eq!(back, t);

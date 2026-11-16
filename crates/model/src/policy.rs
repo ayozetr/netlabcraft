@@ -161,6 +161,9 @@ pub struct Sets {
     pub metric: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub weight: Option<u32>,
+    /// `set metric-type type-1|type-2`: the OSPF external type of a redistributed route.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metric_type: Option<u8>,
     /// `set as-path prepend`: the AS numbers put in front of the path.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub prepend: Vec<u32>,
@@ -334,6 +337,7 @@ pub fn sanitize_route_maps(maps: &mut Vec<RouteMap>) {
             c.acls = c.acls.iter().map(|n| clean_name(n)).filter(|n| !n.is_empty()).take(MAX_MATCH_NAMES).collect();
             c.sets.prepend.truncate(MAX_PREPEND);
             c.sets.origin = c.sets.origin.map(|o| o.min(2));
+            c.sets.metric_type = c.sets.metric_type.filter(|t| (1..=2).contains(t));
         }
     }
     maps.retain(|m| !m.name.is_empty());
