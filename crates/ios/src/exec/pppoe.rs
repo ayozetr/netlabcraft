@@ -454,19 +454,19 @@ pub(crate) fn dial_ready(t: &mut Topology, sim: &mut Sim, dev: DeviceId) -> Vec<
                 // Let the last frames of the exchange arrive before the lab says the session is up.
                 sim.run_for(t, SETTLE_US);
                 let Some(server) = t.devices.iter().find(|x| x.ports.iter().any(|q| q.mac == res.server_mac)).map(|x| x.id) else {
-                    out.push(format!("%PPPoE: Dialer{number}: the access concentrator is no longer in the lab"));
+                    out.push(format!("PPPoE: Dialer{number}: the access concentrator is no longer in the lab"));
                     continue;
                 };
                 let session =
                     PppoeSession { server, address: res.address, gateway: res.gateway, auth: res.auth, id: res.session, server_mac: res.server_mac };
                 let line =
-                    format!("%PPPoE: Dialer{number} is up on {name}: address {}, session {}, concentrator {}", res.address, res.session, res.ac_name);
+                    format!("PPPoE: Dialer{number} is up on {name}: address {}, session {}, concentrator {}", res.address, res.session, res.ac_name);
                 if let Some(dl) = t.device_mut(dev).and_then(|x| x.pppoe_router.dialers.iter_mut().find(|x| x.number == number)) {
                     dl.session = Some(DialerSession { port: name, session });
                 }
                 out.push(line);
             }
-            Err(e) => out.push(format!("%PPPoE: Dialer{number} did not connect on {name}: {e}")),
+            Err(e) => out.push(format!("PPPoE: Dialer{number} did not connect on {name}: {e}")),
         }
     }
     sim.topology_changed(t);
