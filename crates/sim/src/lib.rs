@@ -1740,6 +1740,7 @@ impl Sim {
             origin,
         });
         self.l2_count(q.from, q.to, &q.frame);
+        self.count_bpdu(t, q.from, q.to, &q.frame);
         self.explaining = Some(Vec::new());
         self.cause = Some(self.next_event);
         let dropped = if air { self.air_in(t, q.from, q.to, &q.frame, q.hops).err() } else { self.receive(t, q.to, &q.frame, q.hops).err() };
@@ -1775,8 +1776,15 @@ impl Sim {
             return Ok(());
         }
         if ifname::is_serial(&port.name) {
-            let (got, ethertype, payload) = netlabcraft_wire::serial::decode(bytes).map_err(|e| e.to_string())?;
+            let (got, ethertype, payload) = match netlabcraft_wire::serial::decode(bytes) {
+                Ok(v) => v,
+                Err(e) => {
+                    self.count_in_error(at);
+                    return Err(e.to_string());
+                }
+            };
             if got != framing(port) {
+                self.count_in_error(at);
                 return Err(format!(
                     "{} framing on a {} port",
                     if got == netlabcraft_wire::serial::Framing::Ppp { "PPP" } else { "HDLC" },
@@ -1786,13 +1794,19 @@ impl Sim {
             let f = Frame { dst: port.mac, src: MacAddr::ZERO, vlan: None, ethertype, payload };
             return self.l3_in(t, d, at.port, f);
         }
-        let f = Frame::decode(bytes).map_err(|e| e.to_string())?;
+        let f = match Frame::decode(bytes) {
+            Ok(f) => f,
+            Err(e) => {
+                self.count_in_error(at);
+                return Err(e.to_string());
+            }
+        };
         let pcp = netlabcraft_wire::qos::frame_pcp(bytes);
         match d.kind {
             DeviceKind::Switch if port.routed => self.l3_in(t, d, at.port, f),
-            DeviceKind::Switch => self.switch_in(t, d, at.port, f, pcp, hops),
+            DeviceKind::Switch => self.switch_in_counted(t, d, at, f, pcp, hops),
             // A router's switch card switches like a switch.
-            DeviceKind::Router if d.is_switchport(at.port) => self.switch_in(t, d, at.port, f, pcp, hops),
+            DeviceKind::Router if d.is_switchport(at.port) => self.switch_in_counted(t, d, at, f, pcp, hops),
             DeviceKind::Hub if d.is_tower() => self.tower_in(t, d, at.port, bytes, hops),
             DeviceKind::Hub => self.hub_in(t, d, at.port, bytes, hops),
             DeviceKind::Phone => self.phone_in(t, d, at.port, f, hops),
@@ -2045,6 +2059,15 @@ impl Sim {
             return Ok(());
         }
         self.icmp_error(t, d, ifc, ip, Icmp::Unreachable { code: netlabcraft_wire::UNREACH_ADMIN, original: Icmp::quote(raw) });
+        self.bump(d.id, "dropped by an access list");
+        if ifc.port != SVI_PORT {
+            let at = End { device: d.id, port: ifc.port };
+            if inbound {
+                self.count_in_drop(at);
+            } else {
+                self.count_out_drop(at);
+            }
+        }
         Err(format!("denied by access list {} ({})", acl.name, if inbound { "in" } else { "out" }))
     }
 
@@ -2420,10 +2443,17 @@ impl Sim {
         if !self.stp.contains_key(&v) {
             let tree = stp::compute(t, vlan);
             if let Some(prev) = self.stp_prev.remove(&v) {
+                // Switches whose tree changed: a port that is not an edge port started or
+                // stopped forwarding. The port that began it is the first one found.
+                let mut changed: BTreeMap<DeviceId, usize> = BTreeMap::new();
                 for ((dev, p), info) in &tree.ports {
                     let key = (v, *dev, *p);
                     if !info.role.forwards() {
                         self.stp_since.remove(&key);
+                        let was_forwarding = prev.ports.get(&(*dev, *p)).is_some_and(|i| i.role.forwards());
+                        if was_forwarding && !t.device(*dev).is_some_and(|d| l2sec::edge_port(t, d, *p)) {
+                            changed.entry(*dev).or_insert(*p);
+                        }
                         continue;
                     }
                     // An EtherChannel is one port whichever member leads it now.
@@ -2446,12 +2476,18 @@ impl Sim {
                             || (d.rapid_stp && !stp::faces_switch(t, *dev, *p))
                     });
                     let rapid = stp::rapid_link(t, *dev, *p);
+                    if !was && !edge {
+                        changed.entry(*dev).or_insert(*p);
+                    }
                     if !was && !edge && !rapid {
                         self.stp_since.insert(key, self.now);
                     }
                     if !was && !edge && rapid && info.role == stp::Role::Designated && self.rstp_handshakes.len() < 4_096 {
                         self.rstp_handshakes.push(key);
                     }
+                }
+                for (dev, p) in changed {
+                    self.note_topology_change(dev, v, p);
                 }
             }
             self.stp.insert(v, tree);
@@ -2489,6 +2525,16 @@ impl Sim {
     }
 
     // ---- switching (IEEE 802.1D learning, 802.1Q tagging) ----
+
+    /// [`Sim::switch_in`], counting a frame the switch received and did not forward as an input
+    /// drop of the port it came in by.
+    fn switch_in_counted(&mut self, t: &Topology, d: &Device, at: End, f: Frame, pcp: u8, hops: u8) -> Result<(), String> {
+        let r = self.switch_in(t, d, at.port, f, pcp, hops);
+        if r.is_err() {
+            self.count_in_drop(at);
+        }
+        r
+    }
 
     fn switch_in(&mut self, t: &Topology, d: &Device, in_port: usize, f: Frame, pcp: u8, hops: u8) -> Result<(), String> {
         if hops >= MAX_SWITCH_HOPS {
@@ -2963,7 +3009,7 @@ impl Sim {
             }
             // An input service policy: may re-mark the packet, or police it away.
             if !d.qos.applied.is_empty() {
-                marked = self.qos_apply(d, &ifc.name, true, payload.to_vec())?;
+                marked = self.qos_apply(d, &ifc.name, true, payload.to_vec()).inspect_err(|_| self.count_qos_drop(d, ifc.port, true))?;
                 payload = &marked;
             }
             // NAT, outside to inside: undo the translation before deciding where it goes.
@@ -3290,7 +3336,11 @@ impl Sim {
         }
         // Into a GRE tunnel: encapsulated and routed again.
         if vpn::is_tunnel(out.port) {
-            let datagram = if d.qos.applied.is_empty() { datagram } else { self.qos_apply(d, &out.name, false, datagram)? };
+            let datagram = if d.qos.applied.is_empty() {
+                datagram
+            } else {
+                self.qos_apply(d, &out.name, false, datagram).inspect_err(|_| self.count_qos_drop(d, out.port, false))?
+            };
             return self.gre_out(t, d, out, datagram);
         }
         // Protected by a crypto map on this interface: sent to the IPsec peer as ESP.
@@ -3303,7 +3353,11 @@ impl Sim {
         }
         // An output service policy, on the packet as it goes on the wire.
         self.tx_delay = 0;
-        let datagram = if d.qos.applied.is_empty() { datagram } else { self.qos_apply(d, &out.name, false, datagram)? };
+        let datagram = if d.qos.applied.is_empty() {
+            datagram
+        } else {
+            self.qos_apply(d, &out.name, false, datagram).inspect_err(|_| self.count_qos_drop(d, out.port, false))?
+        };
         // A PPPoE session peer: a PPP packet in a session frame, no address to resolve.
         if self.pppoe_tx(t, d, out, nh, &datagram) {
             return Ok(());
