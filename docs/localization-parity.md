@@ -1,6 +1,6 @@
 # Localization parity
 
-> **Last reviewed:** 2026-11-16 · **Last updated:** 2026-11-16 · **Change:** minor (4 rows for the Softphone; 1,632 rows in every catalog) · earlier: minor (2 rows for the native device windows option; 1,628 rows in every catalog) · earlier: minor (12 rows for the Netflow Collector; 1,626 rows in every catalog) · earlier: minor (10 rows for the VPN Client; 1,614 rows in every catalog) · earlier: minor (26 rows for the Traffic Generator and PPPoE Dialer; 1,575 rows in every catalog) · earlier: minor (27 rows for the PC desktop apps; 1,549 rows in every catalog) · earlier: minor (the French, Italian, German, Brazilian Portuguese and Simplified Chinese catalogs) · earlier: major (catalogs move to `locales/<locale>/netlabcraft.tsv`, the languages on offer come from them, a catalog checker) · earlier: minor (M9.11: BoardScript messages in the interface language) · earlier: minor (activity instructions per language; row counts measured again after the instructor-tool, Simulation-mode, end-device, automation and routing rounds) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-11-16 · **Last updated:** 2026-11-16 · **Change:** minor (one PPPoE Dialer row reworded in the six catalogs; 1,632 rows each) · earlier: minor (4 rows for the Softphone; 1,632 rows in every catalog) · earlier: minor (2 rows for the native device windows option; 1,628 rows in every catalog) · earlier: minor (12 rows for the Netflow Collector; 1,626 rows in every catalog) · earlier: minor (10 rows for the VPN Client; 1,614 rows in every catalog) · earlier: minor (26 rows for the Traffic Generator and PPPoE Dialer; 1,575 rows in every catalog) · earlier: minor (27 rows for the PC desktop apps; 1,549 rows in every catalog) · earlier: minor (the French, Italian, German, Brazilian Portuguese and Simplified Chinese catalogs) · earlier: major (catalogs move to `locales/<locale>/netlabcraft.tsv`, the languages on offer come from them, a catalog checker) · earlier: minor (M9.11: BoardScript messages in the interface language) · earlier: minor (activity instructions per language; row counts measured again after the instructor-tool, Simulation-mode, end-device, automation and routing rounds) · **Target:** Cisco Packet Tracer 9.0
 
 Part of [target-app-parity.md](target-app-parity.md), where it counts under Teaching.
 **Localization: ~82% ready, 8–14 h** (estimated).
@@ -23,6 +23,7 @@ storytold Craft apps share their translations through
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-16 | minor | The PPPoE Dialer hint is reworded (a server reached straight or through switches) in the six catalogs; the zh-hans row was checked against GB2312 with a script. Row counts do not change. |
 | 2026-11-16 | minor | The Softphone app adds 4 rows to each of the six catalogs, written clean room, so each has 1,632 (counted the way the earlier rows were: the rows without `@id`; the zh-hans rows checked against GB2312 with a script). |
 
 | 2026-11-16 | minor | The Options entry for native device windows and its web hint add 2 rows to each of the six catalogs, so each has 1,628 rows (counted without `@id`). |

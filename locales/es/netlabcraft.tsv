@@ -1583,7 +1583,7 @@ event	no APN	sin APN
 	Answered	Respondido
 	Lost	Perdido
 	Connect	Conectar
-	The first network port must be cabled straight to a server whose PPPoE service is on.	El primer puerto de red debe estar conectado directamente a un servidor con el servicio PPPoE activado.
+	The first network port must reach a server whose PPPoE service is on, straight or through switches.	El primer puerto de red debe llegar a un servidor con el servicio PPPoE activado, directamente o a través de conmutadores.
 	Disconnected	Desconectado
 	Enter the account and press Connect.	Escribe la cuenta y pulsa Conectar.
 	Connected	Conectado

@@ -4,11 +4,11 @@
 //! with PAP or CHAP (RFC 1334, RFC 1994) and hands the caller an address from its pool, with the
 //! server's own address on that cable as the default gateway. A PC, laptop or server keeps the
 //! account the dialer uses and, while connected, the session. The exchange is carried out by the
-//! engine as one step over the cable (see `docs/gaps.md` for what is not on the wire).
+//! simulator as real PPPoE discovery and PPP session frames (see `docs/gaps.md` for what is left).
 
 use std::net::Ipv4Addr;
 
-use netlabcraft_core::DeviceId;
+use netlabcraft_core::{DeviceId, MacAddr};
 use serde::{Deserialize, Serialize};
 
 use crate::PppAuth;
@@ -100,6 +100,13 @@ pub struct PppoeSession {
     pub gateway: Ipv4Addr,
     /// How the caller proved who it is.
     pub auth: PppAuth,
+    /// The PPPoE session id the concentrator granted. 0 is a session saved before sessions
+    /// were carried on frames: it has nothing on the wire and shows as lost.
+    #[serde(default)]
+    pub id: u16,
+    /// The MAC address of the concentrator's port, where every session frame goes.
+    #[serde(default)]
+    pub server_mac: MacAddr,
 }
 
 /// An end device's PPPoE Dialer: the account it uses and, while connected, the session.

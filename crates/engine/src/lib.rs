@@ -168,6 +168,7 @@ impl Session {
             outcome = Ok(Err(EngineError::Failed(why)));
         }
         self.apply_sim_events();
+        self.apply_pppoe_ended();
         // A new cable or trunk can join switches into a VTP domain.
         if netlabcraft_sim::vtp::sync(&mut self.topology) {
             self.sim.topology_changed(&self.topology);
@@ -236,6 +237,31 @@ impl Session {
             }
         }
         self.changed();
+    }
+
+    /// A PPPoE session its server ended (a PADT or a Terminate-Request) is dropped from the
+    /// lab: the address and the gateway it gave go away with it.
+    fn apply_pppoe_ended(&mut self) {
+        let ended = self.sim.take_pppoe_ended();
+        if ended.is_empty() {
+            return;
+        }
+        let mut any = false;
+        for (device, session) in ended {
+            if let Some(h) = self.topology.device_mut(device)
+                && h.pppoe.session.as_ref().is_some_and(|x| x.id == session)
+            {
+                if let Some(p) = h.ports.first_mut() {
+                    p.ip = None;
+                }
+                h.gateway = None;
+                h.pppoe.session = None;
+                any = true;
+            }
+        }
+        if any {
+            self.changed();
+        }
     }
 
     /// Records the current lab as an undo step (before a change).

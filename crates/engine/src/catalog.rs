@@ -101,7 +101,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "PPPoE connect",
         "",
         None,
-        r#"{"device": PC, laptop or server, "username"?: account name, "password"?: text (both default to the ones last used)} → {"state", "connected", "server", "address", "mask", "gateway", "auth", …}: the device's first port must be cabled straight to a server whose PPPoE service is on; the server checks the account with PAP or CHAP and gives the first free address of its pool, with its own address as the default gateway. Fails when no server answers, the account is refused or the pool is empty; no PPPoE frames are put on the wire"#,
+        r#"{"device": PC, laptop or server, "username"?: account name, "password"?: text (both default to the ones last used)} → {"state", "connected", "server", "address", "mask", "gateway", "auth", …}: the device's first port must reach a server whose PPPoE service is on (straight, or through switches); PADI, PADO, PADR and PADS, then PPP in session frames (LCP, PAP or CHAP, IPCP), cross the cables and show in the event list. The server gives the first free address of its pool, with its own address as the default gateway. Fails when no server answers, the account is refused or the pool is empty"#,
         true
     ),
     c!(
@@ -109,7 +109,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "PPPoE disconnect",
         "",
         None,
-        r#"{"device": PC, laptop or server} → the status: the address and the gateway the session gave are removed"#,
+        r#"{"device": PC, laptop or server} → the status: an LCP Terminate-Request and a PADT go to the server, and the address and the gateway the session gave are removed"#,
         true
     ),
     c!(
@@ -117,7 +117,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "PPPoE status",
         "",
         None,
-        r#"{"device": PC, laptop or server} → {"state": "disconnected"|"connected"|"lost", "connected", "username", "server_found", "server", "address", "mask", "gateway", "auth": "pap"|"chap"}"#,
+        r#"{"device": PC, laptop or server} → {"state": "disconnected"|"connected"|"lost", "connected", "username", "server_found", "server", "address", "mask", "gateway", "auth": "pap"|"chap"}: a connected session is proved by a keep-alive (LCP echo) over it, a disconnected one by a discovery request"#,
         false
     ),
     c!(

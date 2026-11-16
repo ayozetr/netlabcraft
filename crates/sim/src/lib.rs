@@ -57,6 +57,7 @@ pub mod ospf_lsdb;
 pub mod pdu;
 pub mod peap;
 pub mod pki;
+pub mod pppoe;
 pub mod qos;
 pub mod ravpn;
 
@@ -973,6 +974,8 @@ pub struct DevState {
     pub zfw: zfw::ZfwState,
     /// IPv4 fragments waiting for the rest of their datagram.
     pub(crate) reasm: netlabcraft_wire::ipfrag::Reassembly,
+    /// PPPoE: a dialer's inbox while it waits, and a concentrator's negotiations.
+    pub(crate) pppoe: pppoe::State,
 }
 
 /// One frame delivered across a cable.
@@ -1218,6 +1221,8 @@ pub struct Sim {
     mode: simmode::SimMode,
     /// Authentication servers' PEAP logins under way.
     peap_srv: peap::Sessions,
+    /// PPPoE sessions the dialers heard end, for the lab to drop (see [`Sim::take_pppoe_ended`]).
+    pppoe_ended: Vec<(DeviceId, u16)>,
 }
 
 impl Sim {
@@ -2699,6 +2704,10 @@ impl Sim {
         if netlabcraft_wire::control::link_local(f.dst) {
             return Ok(());
         }
+        // PPPoE discovery and session frames, which a dialer takes before it has an address.
+        if f.ethertype == netlabcraft_wire::pppoe::ETHERTYPE_DISCOVERY || f.ethertype == netlabcraft_wire::pppoe::ETHERTYPE_SESSION {
+            return self.pppoe_in(t, d, in_port, &f);
+        }
         // A host (or a router's `ip address dhcp` port) waiting for DHCP takes answers before
         // it has an address.
         if self.state.get(&d.id).is_some_and(|s| s.dhcp_xid.is_some() && (d.kind.is_host() || s.dhcp_port == Some(in_port)))
@@ -3242,6 +3251,8 @@ impl Sim {
         // The IP MTU (`ip mtu`, else the default): larger datagrams are fragmented, or refused
         // when they say "don't fragment".
         let mtu = mtu::ip_mtu(d, out);
+        // A PPPoE session carries at most 1,492 bytes of IP.
+        let mtu = if self.pppoe_peer(t, d, out, nh).is_some() { mtu.min(netlabcraft_wire::pppoe::MRU) } else { mtu };
         if datagram.len() > usize::from(mtu) {
             return self.transmit_mtu(t, d, out, nh, datagram, mtu);
         }
@@ -3261,6 +3272,10 @@ impl Sim {
         // An output service policy, on the packet as it goes on the wire.
         self.tx_delay = 0;
         let datagram = if d.qos.applied.is_empty() { datagram } else { self.qos_apply(d, &out.name, false, datagram)? };
+        // A PPPoE session peer: a PPP packet in a session frame, no address to resolve.
+        if self.pppoe_tx(t, d, out, nh, &datagram) {
+            return Ok(());
+        }
         // A serial link is point to point: no address to resolve.
         if out.port != SVI_PORT && t.is_serial(End { device: d.id, port: out.port }) {
             let frame = Frame { dst: MacAddr::BROADCAST, src: out.mac, vlan: None, ethertype: ETHERTYPE_IPV4, payload: datagram };

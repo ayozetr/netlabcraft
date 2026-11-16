@@ -167,6 +167,7 @@ pub fn protocol_color(p: Protocol) -> Color32 {
         Protocol::Tls => Color32::from_rgb(0x1f, 0x7a, 0x5c),
         Protocol::Ssh => Color32::from_rgb(0x6a, 0x4c, 0x9c),
         Protocol::Cell => Color32::from_rgb(0xc2, 0x5b, 0x2a),
+        Protocol::Pppoe => Color32::from_rgb(0x3d, 0x8f, 0xb8),
         Protocol::Other => Color32::from_rgb(0x88, 0x88, 0x88),
     }
 }

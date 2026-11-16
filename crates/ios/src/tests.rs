@@ -320,6 +320,8 @@ fn ipconfig_names_a_pppoe_address_and_hand_typed_or_released_addresses_end_the_s
         address: "10.0.0.5".parse().unwrap(),
         gateway: "10.0.0.1".parse().unwrap(),
         auth: netlabcraft_model::PppAuth::Pap,
+        id: 1,
+        server_mac: netlabcraft_core::MacAddr::ZERO,
     };
     lab.t.device_mut(a).unwrap().pppoe.username = "ann".into();
     lab.t.device_mut(a).unwrap().pppoe.session = Some(session());
