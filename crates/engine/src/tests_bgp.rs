@@ -62,6 +62,8 @@ fn pair() -> Session {
             "match community TAGGED",
             "set local-preference 300",
             "exit",
+            "route-map PREF permit 20",
+            "exit",
             "interface g0/1",
             "ip address 10.0.12.2 255.255.255.252",
             "no shutdown",

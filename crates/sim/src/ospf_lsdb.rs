@@ -211,7 +211,7 @@ pub fn database(t: &Topology, st: &OspfState, me: DeviceId) -> Vec<Lsa> {
         let Some(r) = rid(*d) else { continue };
         for n in nets {
             let mut lsa = Lsa::new(LsaKind::External, None, n.addr, r, u32::from(n.prefix));
-            lsa.metric = if n.prefix == 0 { 1 } else { 20 };
+            lsa.metric = st.external_metrics.get(&(*d, *n)).map_or(if n.prefix == 0 { 1 } else { 20 }, |m| m.0);
             out.insert(lsa);
         }
     }

@@ -542,7 +542,7 @@ fn originate(d: &Device, base: &[RouteEntry]) -> Vec<Path> {
         let codes: &[char] = match s {
             Source::Connected => &['C'],
             Source::Static => &['S'],
-            Source::Ospf => &['O', 'I', 'E'],
+            Source::Ospf => &['O', 'I', 'E', 'F'],
         };
         let map = b.redistribute_maps.get(s.word()).map(String::as_str);
         for r in base.iter().filter(|r| codes.contains(&r.code)) {
@@ -893,9 +893,15 @@ pub fn standalone_routes(t: &Topology, d: &Device) -> Vec<BgpRoute> {
         let (e, o, r) = (e.remove(&x.id).unwrap_or_default(), o.remove(&x.id).unwrap_or_default(), r.remove(&x.id).unwrap_or_default());
         base.insert(x.id, crate::routing_table_with(t, x, &e, &o, &r, &[]));
     }
-    let an = analyse(t, &base);
+    standalone_all(t, &base).remove(&d.id).unwrap_or_default()
+}
+
+/// BGP's routes for every router given their routing tables without BGP, every session that can
+/// come up counting as Established.
+pub fn standalone_all(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>) -> BTreeMap<DeviceId, Vec<BgpRoute>> {
+    let an = analyse(t, base);
     let settled: BTreeSet<SessKey> = an.peerings.keys().copied().collect();
-    compute(t, &base, &an, &settled).routers.remove(&d.id).map(|v| v.routes).unwrap_or_default()
+    compute(t, base, &an, &settled).routers.into_iter().map(|(id, v)| (id, v.routes)).collect()
 }
 
 /// One end of a session as the lab configures it now: the neighbour statement, when it is still

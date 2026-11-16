@@ -5,7 +5,9 @@
 //! Every router runs SPF (Dijkstra) over the neighbour graph with interface costs (reference
 //! bandwidth 100 Mbit/s: Fast and Gigabit Ethernet cost 1) and installs the networks other routers
 //! advertise. A router with `default-information originate` and a static default route
-//! advertises it (type 2 external, metric 1). Hello/dead timers and LSAs are not simulated yet.
+//! advertises it (type 2 external, metric 1). Routes other protocols hand it (`redistribute`, see
+//! [`crate::redist`]) are external routes of type 1 (the cost to the advertising router is added to the
+//! metric) or type 2 (the metric alone), and an internal route always beats an external one.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::Ipv4Addr;
@@ -23,8 +25,10 @@ pub struct OspfRoute {
     pub via: Ipv4Addr,
     pub iface: String,
     pub cost: u32,
-    /// A type-2 external route (the default route).
+    /// An external route: a redistributed route or the default route.
     pub external: bool,
+    /// An external route of type 1 (its cost includes the way to the router that advertises it).
+    pub type1: bool,
     /// The network is in an area this router has no interface in (an inter-area route).
     pub inter_area: bool,
 }
@@ -59,6 +63,8 @@ pub struct OspfState {
     /// Networks each router injects as external routes (`redistribute static`,
     /// `default-information originate`).
     pub externals: BTreeMap<DeviceId, Vec<Ipv4Net>>,
+    /// The metric and whether it is type 1, of each redistributed external route a router injects.
+    pub external_metrics: BTreeMap<(DeviceId, Ipv4Net), (u32, bool)>,
 }
 
 /// Why a router on the same link is not a neighbour.
@@ -347,6 +353,16 @@ pub(crate) fn l2_reach(t: &Topology, from: End) -> BTreeSet<End> {
 }
 
 pub fn compute(t: &Topology) -> OspfState {
+    compute_seeded(t, &crate::redist::seeds(t))
+}
+
+/// A router's OSPF distribute lists.
+fn dist_of(d: &Device) -> &[netlabcraft_model::redist::DistList] {
+    d.ospf.as_ref().map_or(&[][..], |o| o.distribute.as_slice())
+}
+
+/// [`compute`] with the routes other protocols give OSPF (`redistribute`) worked out already.
+pub fn compute_seeded(t: &Topology, seeds: &crate::redist::Seeds) -> OspfState {
     let mut st = OspfState::default();
     let routers: Vec<&Device> = t.devices.iter().filter(|d| d.routes_ip() && d.ospf.is_some()).collect();
     let mut ifs: BTreeMap<DeviceId, Vec<(L3If, bool)>> = BTreeMap::new();
@@ -453,22 +469,14 @@ pub fn compute(t: &Topology) -> OspfState {
         })
         .map(|d| d.id)
         .collect();
-    // Static routes redistributed into OSPF, per router (the ones in its routing table).
-    let redistributed: BTreeMap<DeviceId, Vec<Ipv4Net>> = routers
-        .iter()
-        .filter(|d| d.ospf.as_ref().is_some_and(|o| o.redistribute_static))
-        .map(|d| {
-            let map = d.ospf.as_ref().and_then(|o| o.redistribute_map.as_deref());
-            let nets: Vec<Ipv4Net> = crate::installed_statics(t, d)
-                .into_iter()
-                .filter(|n| n.prefix > 0)
-                .filter(|n| netlabcraft_model::policy::apply(d, None, map, &netlabcraft_model::policy::Subject { net: *n, metric: 0 }).is_some())
-                .collect();
-            (d.id, nets)
-        })
-        .collect();
-    for (d, nets) in &redistributed {
-        st.externals.entry(*d).or_default().extend(nets.iter().copied());
+    // Routes redistributed into OSPF, per router (worked out from its routing table).
+    let redistributed: BTreeMap<DeviceId, Vec<crate::redist::OspfSeed>> =
+        routers.iter().filter_map(|d| seeds.ospf.get(&d.id).map(|v| (d.id, v.clone()))).collect();
+    for (d, list) in &redistributed {
+        st.externals.entry(*d).or_default().extend(list.iter().map(|x| x.net));
+        for x in list {
+            st.external_metrics.insert((*d, x.net), (x.metric, x.type1));
+        }
     }
     for d in &originators {
         st.externals.entry(*d).or_default().push(Ipv4Net::new(Ipv4Addr::UNSPECIFIED, 0));
@@ -528,17 +536,33 @@ pub fn compute(t: &Topology) -> OspfState {
         let mut routes: BTreeMap<Ipv4Net, OspfRoute> = BTreeMap::new();
         // Other paths of the same cost to a destination, beside the one in `routes`.
         let mut more: BTreeMap<Ipv4Net, Vec<OspfRoute>> = BTreeMap::new();
-        let mut add = |routes: &mut BTreeMap<Ipv4Net, OspfRoute>, cand: OspfRoute| match routes.get(&cand.net) {
-            Some(old) if old.cost == cand.cost && old.external == cand.external => {
-                let list = more.entry(cand.net).or_default();
-                if old.via != cand.via && !list.iter().any(|x| x.via == cand.via) {
-                    list.push(cand);
-                }
+        // Intra-area routes beat inter-area ones, those beat external type 1, then type 2.
+        let rank = |x: &OspfRoute| -> u8 {
+            if !x.external {
+                u8::from(x.inter_area)
+            } else if x.type1 {
+                2
+            } else {
+                3
             }
-            Some(old) if (old.cost, old.via) <= (cand.cost, cand.via) => {}
-            _ => {
-                more.remove(&cand.net);
-                routes.insert(cand.net, cand);
+        };
+        let mut add = |routes: &mut BTreeMap<Ipv4Net, OspfRoute>, cand: OspfRoute| {
+            // `distribute-list in`: what this router will not install.
+            if !netlabcraft_model::redist::passes(r, dist_of(r), true, Some(cand.iface.as_str()), cand.net, cand.cost) {
+                return;
+            }
+            match routes.get(&cand.net) {
+                Some(old) if rank(old) == rank(&cand) && old.cost == cand.cost => {
+                    let list = more.entry(cand.net).or_default();
+                    if old.via != cand.via && !list.iter().any(|x| x.via == cand.via) {
+                        list.push(cand);
+                    }
+                }
+                Some(old) if (rank(old), old.cost, old.via) <= (rank(&cand), cand.cost, cand.via) => {}
+                _ => {
+                    more.remove(&cand.net);
+                    routes.insert(cand.net, cand);
+                }
             }
         };
         for (x, (cx, hops)) in &best {
@@ -561,20 +585,30 @@ pub fn compute(t: &Topology) -> OspfState {
                     if mine.contains(net) {
                         continue;
                     }
-                    let cand = OspfRoute { net: *net, via: *via, iface: ifc.name.clone(), cost: cx.saturating_add(*c), external: false, inter_area };
+                    let cand = OspfRoute {
+                        net: *net,
+                        via: *via,
+                        iface: ifc.name.clone(),
+                        cost: cx.saturating_add(*c),
+                        external: false,
+                        type1: false,
+                        inter_area,
+                    };
                     add(&mut routes, cand);
                 }
-                for net in redistributed.get(x).into_iter().flatten().filter(|_| *x != r.id && stub_area.is_none()) {
-                    if mine.contains(net) {
+                for sd in redistributed.get(x).into_iter().flatten().filter(|_| *x != r.id && stub_area.is_none()) {
+                    if mine.contains(&sd.net) {
                         continue;
                     }
-                    // Type-2 externals keep the metric they were given (20) whatever the path.
-                    let cand = OspfRoute { net: *net, via: *via, iface: ifc.name.clone(), cost: 20, external: true, inter_area: false };
+                    // Type 2 keeps the metric it was given whatever the path; type 1 adds the way to the router.
+                    let cost = if sd.type1 { cx.saturating_add(sd.metric) } else { sd.metric };
+                    let cand =
+                        OspfRoute { net: sd.net, via: *via, iface: ifc.name.clone(), cost, external: true, type1: sd.type1, inter_area: false };
                     add(&mut routes, cand);
                 }
                 if originators.contains(x) && *x != r.id && stub_area.is_none() {
                     let def = Ipv4Net::new(Ipv4Addr::UNSPECIFIED, 0);
-                    let cand = OspfRoute { net: def, via: *via, iface: ifc.name.clone(), cost: 1, external: true, inter_area: false };
+                    let cand = OspfRoute { net: def, via: *via, iface: ifc.name.clone(), cost: 1, external: true, type1: false, inter_area: false };
                     if routes.get(&def).is_none_or(|old| (*cx, cand.via) < (old.cost.saturating_add(*cx), old.via)) {
                         routes.insert(def, cand);
                     }
@@ -588,8 +622,15 @@ pub fn compute(t: &Topology) -> OspfState {
                 if let Some((cx, hops)) = best.get(&b)
                     && let Some((ifc, via)) = hops.first()
                 {
-                    let cand =
-                        OspfRoute { net: def, via: *via, iface: ifc.name.clone(), cost: cx.saturating_add(1), external: false, inter_area: true };
+                    let cand = OspfRoute {
+                        net: def,
+                        via: *via,
+                        iface: ifc.name.clone(),
+                        cost: cx.saturating_add(1),
+                        external: false,
+                        type1: false,
+                        inter_area: true,
+                    };
                     if routes.get(&def).is_none_or(|old| (cand.cost, cand.via) < (old.cost, old.via)) {
                         routes.insert(def, cand);
                     }

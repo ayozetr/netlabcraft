@@ -445,8 +445,20 @@ pub enum Id {
     NoIpOspfMd5Key,
     AreaAuth,
     NoAreaAuth,
-    OspfRedistributeStatic,
-    NoOspfRedistributeStatic,
+    OspfRedistribute,
+    NoOspfRedistribute,
+    RipRedistribute,
+    NoRipRedistribute,
+    EigrpRedistribute,
+    NoEigrpRedistribute,
+    RipDefaultMetric,
+    NoRipDefaultMetric,
+    OspfDefaultMetric,
+    NoOspfDefaultMetric,
+    EigrpDefaultMetric,
+    NoEigrpDefaultMetric,
+    DistList,
+    NoDistList,
     Ipv6RouterOspf,
     NoIpv6RouterOspf,
     Ipv6OspfArea,
@@ -842,6 +854,8 @@ pub enum Id {
     NoRmSetLocalPref,
     RmSetMetric,
     NoRmSetMetric,
+    RmSetMetricType,
+    NoRmSetMetricType,
     RmSetWeight,
     NoRmSetWeight,
     RmSetPrepend,
@@ -1547,21 +1561,22 @@ pub static SPECS: &[Spec] = &[
         [K("no"), K("ip"), K("ospf"), K("message-digest-key"), Arg("<1-255>")],
         "Remove a message-digest key"
     ),
-    spec!(OspfRedistributeStatic, Modes::OSPF, Modes::BOTH, [K("redistribute"), K("static")], "Advertise static routes as external"),
     spec!(
-        OspfRedistributeStatic,
+        OspfRedistribute,
         Modes::OSPF,
         Modes::BOTH,
-        [K("redistribute"), K("static"), Rest("[subnets] [route-map NAME]")],
-        "Advertise static routes as external"
+        [
+            K("redistribute"),
+            Rest("{connected|static|rip|eigrp <1-65535>|bgp <1-4294967295>} [metric <0-16777214>] [metric-type {1|2}] [subnets] [route-map NAME]")
+        ],
+        "Advertise the routes another source gave as external routes"
     ),
-    spec!(NoOspfRedistributeStatic, Modes::OSPF, Modes::BOTH, [K("no"), K("redistribute"), K("static")], "Stop advertising static routes"),
     spec!(
-        NoOspfRedistributeStatic,
+        NoOspfRedistribute,
         Modes::OSPF,
         Modes::BOTH,
-        [K("no"), K("redistribute"), K("static"), Rest("[subnets]")],
-        "Stop advertising static routes"
+        [K("no"), K("redistribute"), Rest("{connected|static|rip|eigrp <1-65535>|bgp <1-4294967295>}")],
+        "Stop advertising the routes of a source"
     ),
     spec!(ClearIpOspf, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("ospf"), K("process")], "Restart OSPF: neighbours and DR elections anew"),
     spec!(ClearIpOspf, Modes::EXEC, Modes::BOTH, [K("clear"), K("ip"), K("ospf"), Arg("<1-65535>"), K("process")], "Restart this OSPF process"),
@@ -2482,6 +2497,20 @@ pub static SPECS: &[Spec] = &[
     spec!(NoRipDefaultOriginate, Modes::RIP, Modes::BOTH, [K("no"), K("default-information"), K("originate")], "Stop advertising the default route"),
     spec!(RipAutoSummary, Modes::RIP, Modes::BOTH, [K("auto-summary")], "Summarise at classful boundaries (kept, not simulated)"),
     spec!(NoRipAutoSummary, Modes::RIP, Modes::BOTH, [K("no"), K("auto-summary")], "Advertise subnets as they are"),
+    spec!(
+        RipRedistribute,
+        Modes::RIP,
+        Modes::BOTH,
+        [K("redistribute"), Rest("{connected|static|ospf <1-65535>|eigrp <1-65535>|bgp <1-4294967295>} [metric <1-16>] [route-map NAME]")],
+        "Advertise the routes another source gave as RIP routes"
+    ),
+    spec!(
+        NoRipRedistribute,
+        Modes::RIP,
+        Modes::BOTH,
+        [K("no"), K("redistribute"), Rest("{connected|static|ospf <1-65535>|eigrp <1-65535>|bgp <1-4294967295>}")],
+        "Stop advertising the routes of a source"
+    ),
     spec!(ShowIpRipDatabase, EXECS, Modes::BOTH, [K("show"), K("ip"), K("rip"), K("database")], "Routes RIP knows"),
     spec!(RouterEigrp, Modes::CONFIG, Modes::BOTH, [K("router"), K("eigrp"), Arg("<1-65535>")], "Start or configure EIGRP in this autonomous system"),
     spec!(NoRouterEigrp, Modes::CONFIG, Modes::BOTH, [K("no"), K("router"), K("eigrp"), Arg("<1-65535>")], "Stop EIGRP"),
@@ -2495,12 +2524,133 @@ pub static SPECS: &[Spec] = &[
     spec!(NoEigrpRouterId, Modes::EIGRP, Modes::BOTH, [K("no"), K("eigrp"), K("router-id")], "Use the highest interface address"),
     spec!(EigrpAutoSummary, Modes::EIGRP, Modes::BOTH, [K("auto-summary")], "Summarise at classful boundaries (kept, not simulated)"),
     spec!(NoEigrpAutoSummary, Modes::EIGRP, Modes::BOTH, [K("no"), K("auto-summary")], "Advertise subnets as they are"),
+    spec!(
+        EigrpRedistribute,
+        Modes::EIGRP,
+        Modes::BOTH,
+        [
+            K("redistribute"),
+            Rest(
+                "{connected|static|rip|ospf <1-65535>|bgp <1-4294967295>} [metric <1-4294967295> <0-4294967295> <0-255> <1-255> <1-65535>] [route-map NAME]"
+            )
+        ],
+        "Advertise the routes another source gave as external EIGRP routes"
+    ),
+    spec!(
+        NoEigrpRedistribute,
+        Modes::EIGRP,
+        Modes::BOTH,
+        [K("no"), K("redistribute"), Rest("{connected|static|rip|ospf <1-65535>|bgp <1-4294967295>}")],
+        "Stop advertising the routes of a source"
+    ),
     spec!(EigrpMaximumPaths, Modes::EIGRP, Modes::BOTH, [K("maximum-paths"), Arg("<1-16>")], "Paths installed per destination"),
     spec!(NoEigrpMaximumPaths, Modes::EIGRP, Modes::BOTH, [K("no"), K("maximum-paths")], "Four paths per destination again"),
     spec!(EigrpVariance, Modes::EIGRP, Modes::BOTH, [K("variance"), Arg("<1-128>")], "Also use feasible successors up to N times the best metric"),
     spec!(NoEigrpVariance, Modes::EIGRP, Modes::BOTH, [K("no"), K("variance")], "Equal-cost paths only"),
     spec!(OspfMaximumPaths, Modes::OSPF, Modes::BOTH, [K("maximum-paths"), Arg("<1-16>")], "Equal-cost paths installed per destination"),
     spec!(NoOspfMaximumPaths, Modes::OSPF, Modes::BOTH, [K("no"), K("maximum-paths")], "Four paths per destination again"),
+    spec!(RipDefaultMetric, Modes::RIP, Modes::BOTH, [K("default-metric"), Arg("<1-16>")], "The hop count of redistributed routes that name none"),
+    spec!(NoRipDefaultMetric, Modes::RIP, Modes::BOTH, [K("no"), K("default-metric")], "Redistributed routes name their own metric again"),
+    spec!(
+        OspfDefaultMetric,
+        Modes::OSPF,
+        Modes::BOTH,
+        [K("default-metric"), Arg("<1-16777214>")],
+        "The metric of redistributed routes that name none"
+    ),
+    spec!(NoOspfDefaultMetric, Modes::OSPF, Modes::BOTH, [K("no"), K("default-metric")], "Redistributed routes get metric 20 again"),
+    spec!(
+        EigrpDefaultMetric,
+        Modes::EIGRP,
+        Modes::BOTH,
+        [K("default-metric"), Arg("<1-4294967295>"), Arg("<0-4294967295>"), Arg("<0-255>"), Arg("<1-255>"), Arg("<1-65535>")],
+        "Bandwidth, delay, reliability, load and MTU of redistributed routes that name none"
+    ),
+    spec!(NoEigrpDefaultMetric, Modes::EIGRP, Modes::BOTH, [K("no"), K("default-metric")], "Redistributed routes name their own metric again"),
+    spec!(
+        DistList,
+        Modes::RIP.or(Modes::EIGRP).or(Modes::OSPF),
+        Modes::BOTH,
+        [K("distribute-list"), K("prefix"), Arg("NAME"), Arg("{in|out}")],
+        "Filter the routes installed or advertised with a prefix list"
+    ),
+    spec!(
+        DistList,
+        Modes::RIP.or(Modes::EIGRP).or(Modes::OSPF),
+        Modes::BOTH,
+        [K("distribute-list"), K("prefix"), Arg("NAME"), Arg("{in|out}"), Rest("<interface>")],
+        "Filter the routes installed or advertised with a prefix list on one interface"
+    ),
+    spec!(
+        DistList,
+        Modes::RIP.or(Modes::EIGRP).or(Modes::OSPF),
+        Modes::BOTH,
+        [K("distribute-list"), Arg("<ACL>"), Arg("{in|out}")],
+        "Filter the routes installed or advertised with an access list"
+    ),
+    spec!(
+        DistList,
+        Modes::RIP.or(Modes::EIGRP).or(Modes::OSPF),
+        Modes::BOTH,
+        [K("distribute-list"), Arg("<ACL>"), Arg("{in|out}"), Rest("<interface>")],
+        "Filter the routes installed or advertised with an access list on one interface"
+    ),
+    spec!(
+        DistList,
+        Modes::RIP.or(Modes::EIGRP).or(Modes::OSPF),
+        Modes::BOTH,
+        [K("distribute-list"), K("route-map"), Arg("NAME"), K("in")],
+        "Filter the routes installed or advertised with a route map"
+    ),
+    spec!(
+        DistList,
+        Modes::RIP.or(Modes::EIGRP).or(Modes::OSPF),
+        Modes::BOTH,
+        [K("distribute-list"), K("route-map"), Arg("NAME"), K("in"), Rest("<interface>")],
+        "Filter the routes installed or advertised with a route map on one interface"
+    ),
+    spec!(
+        NoDistList,
+        Modes::RIP.or(Modes::EIGRP).or(Modes::OSPF),
+        Modes::BOTH,
+        [K("no"), K("distribute-list"), K("prefix"), Arg("NAME"), Arg("{in|out}")],
+        "Stop filtering with a prefix list"
+    ),
+    spec!(
+        NoDistList,
+        Modes::RIP.or(Modes::EIGRP).or(Modes::OSPF),
+        Modes::BOTH,
+        [K("no"), K("distribute-list"), K("prefix"), Arg("NAME"), Arg("{in|out}"), Rest("<interface>")],
+        "Stop filtering with a prefix list on one interface"
+    ),
+    spec!(
+        NoDistList,
+        Modes::RIP.or(Modes::EIGRP).or(Modes::OSPF),
+        Modes::BOTH,
+        [K("no"), K("distribute-list"), Arg("<ACL>"), Arg("{in|out}")],
+        "Stop filtering with an access list"
+    ),
+    spec!(
+        NoDistList,
+        Modes::RIP.or(Modes::EIGRP).or(Modes::OSPF),
+        Modes::BOTH,
+        [K("no"), K("distribute-list"), Arg("<ACL>"), Arg("{in|out}"), Rest("<interface>")],
+        "Stop filtering with an access list on one interface"
+    ),
+    spec!(
+        NoDistList,
+        Modes::RIP.or(Modes::EIGRP).or(Modes::OSPF),
+        Modes::BOTH,
+        [K("no"), K("distribute-list"), K("route-map"), Arg("NAME"), K("in")],
+        "Stop filtering with a route map"
+    ),
+    spec!(
+        NoDistList,
+        Modes::RIP.or(Modes::EIGRP).or(Modes::OSPF),
+        Modes::BOTH,
+        [K("no"), K("distribute-list"), K("route-map"), Arg("NAME"), K("in"), Rest("<interface>")],
+        "Stop filtering with a route map on one interface"
+    ),
     spec!(
         IpHelloEigrp,
         IFS.or(Modes::SVI).or(Modes::TUNNEL),
@@ -2797,6 +2947,14 @@ pub static SPECS: &[Spec] = &[
     spec!(NoRmSetMetric, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("metric")], "Leave the metric alone"),
     spec!(RmSetWeight, Modes::ROUTE_MAP, Modes::BOTH, [K("set"), K("weight"), Arg("<0-65535>")], "Give the paths this weight"),
     spec!(NoRmSetWeight, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("weight")], "Leave the weight alone"),
+    spec!(
+        RmSetMetricType,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("set"), K("metric-type"), Arg("{type-1|type-2}")],
+        "Give the redistributed OSPF routes this external type"
+    ),
+    spec!(NoRmSetMetricType, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("metric-type")], "Leave the external type alone"),
     spec!(
         RmSetPrepend,
         Modes::ROUTE_MAP,
