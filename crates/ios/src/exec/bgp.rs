@@ -7,15 +7,15 @@ use std::net::Ipv4Addr;
 
 use netlabcraft_core::{Ipv4Net, parse_ip};
 use netlabcraft_model::bgp::{
-    Aggregate, Bgp, HOLD_SECS, KEEPALIVE_SECS, MAX_AGGREGATES, MAX_CONFED_PEERS, MAX_MULTIPATH, MAX_NETWORKS, MAX_PEER_GROUPS, MAX_TEXT, Neighbor,
-    PeerGroup, Source, follow,
+    Aggregate, Bgp, HOLD_SECS, KEEPALIVE_SECS, MAX_AGGREGATES, MAX_CONFED_PEERS, MAX_MULTIPATH, MAX_NETWORKS, MAX_PASSWORD, MAX_PEER_GROUPS,
+    MAX_TEXT, Neighbor, PeerGroup, Source, follow,
 };
 use netlabcraft_model::policy::{self, community_text, parse_community};
 use netlabcraft_model::{Device, DeviceKind, Rip, ifname, routing};
 use netlabcraft_sim::DebugKind;
 use netlabcraft_sim::bgp::{BgpView, NeighborView, Path, RouterView, SessionState};
 
-use super::{Ctx, Mode, R};
+use super::{Ctx, Mode, R, line_password};
 use crate::grammar::Id;
 
 fn asn(text: &str) -> Result<u32, String> {
@@ -491,8 +491,21 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
         }
         Id::BgpNeighborDefaultOriginate | Id::NoBgpNeighborDefaultOriginate => {
             let on = id == Id::BgpNeighborDefaultOriginate;
+            let map = if on && !arg(1).is_empty() { Some(policy_name(arg(1))?) } else { None };
             edit(process(c)?, arg(0), |n| {
                 n.default_originate = on;
+                n.default_originate_map = map;
+                Ok(())
+            })?;
+            Ok(String::new())
+        }
+        Id::BgpNeighborPassword | Id::NoBgpNeighborPassword => {
+            let key = if id == Id::BgpNeighborPassword { Some(line_password(arg(1))?) } else { None };
+            if key.as_ref().is_some_and(|k| k.chars().count() > MAX_PASSWORD) {
+                return Err(format!("% A neighbour password is at most {MAX_PASSWORD} characters"));
+            }
+            edit(process(c)?, arg(0), |n| {
+                n.password = key;
                 Ok(())
             })?;
             Ok(String::new())
@@ -634,8 +647,8 @@ fn remote_as_line(who: &str, n: &Neighbor, base: &Neighbor) -> Option<String> {
 
 /// The configuration lines (`neighbor WHO …`, without the leading space) for what `n` sets that
 /// `base` does not already give it: the unconfigured neighbour for a neighbour or a group, the
-/// group's settings for a member. The remote AS, the description and the shutdown are written apart.
-fn neighbor_lines(who: &str, n: &Neighbor, base: &Neighbor) -> Vec<String> {
+/// group's settings for a member (`pw` writes a password). The remote AS, the description and the shutdown are written apart.
+fn neighbor_lines(who: &str, n: &Neighbor, base: &Neighbor, pw: &dyn Fn(&str) -> String) -> Vec<String> {
     let mut v = Vec::new();
     if let Some(u) = n.update_source.as_ref().filter(|u| base.update_source.as_ref() != Some(*u)) {
         v.push(format!("neighbor {who} update-source {u}"));
@@ -658,8 +671,12 @@ fn neighbor_lines(who: &str, n: &Neighbor, base: &Neighbor) -> Vec<String> {
     if n.route_reflector_client && !base.route_reflector_client {
         v.push(format!("neighbor {who} route-reflector-client"));
     }
-    if n.default_originate && !base.default_originate {
-        v.push(format!("neighbor {who} default-originate"));
+    if n.default_originate && (!base.default_originate || n.default_originate_map != base.default_originate_map) {
+        let map = n.default_originate_map.as_ref().map_or(String::new(), |m| format!(" route-map {m}"));
+        v.push(format!("neighbor {who} default-originate{map}"));
+    }
+    if let Some(p) = n.password.as_ref().filter(|p| base.password.as_ref() != Some(*p)) {
+        v.push(format!("neighbor {who} password {}", pw(p)));
     }
     if n.remove_private_as && (!base.remove_private_as || n.remove_private_all != base.remove_private_all) {
         v.push(format!("neighbor {who} remove-private-as{}", if n.remove_private_all { " all" } else { "" }));
@@ -685,6 +702,8 @@ fn neighbor_lines(who: &str, n: &Neighbor, base: &Neighbor) -> Vec<String> {
 /// The BGP section of `show running-config`.
 pub(crate) fn running_config(s: &mut String, d: &Device) {
     let Some(b) = &d.bgp else { return };
+    // With `service password-encryption` a password is written obscured, as a line password is.
+    let pw = |p: &str| if d.access.password_encryption { format!("7 {}", netlabcraft_model::obscure(p)) } else { p.to_string() };
     let _ = writeln!(s, "router bgp {}", b.asn);
     if let Some(id) = b.router_id {
         let _ = writeln!(s, " bgp router-id {id}");
@@ -713,7 +732,7 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
     for g in &b.peer_groups {
         let base = Neighbor::new(Ipv4Addr::UNSPECIFIED);
         let _ = writeln!(s, " neighbor {} peer-group", g.name);
-        for line in remote_as_line(&g.name, &g.conf, &base).into_iter().chain(neighbor_lines(&g.name, &g.conf, &base)) {
+        for line in remote_as_line(&g.name, &g.conf, &base).into_iter().chain(neighbor_lines(&g.name, &g.conf, &base, &pw)) {
             let _ = writeln!(s, " {line}");
         }
     }
@@ -733,7 +752,7 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
         if let Some(text) = &n.description {
             let _ = writeln!(s, " neighbor {who} description {text}");
         }
-        for line in neighbor_lines(&who, n, &base) {
+        for line in neighbor_lines(&who, n, &base, &pw) {
             let _ = writeln!(s, " {line}");
         }
         if n.shutdown {
@@ -1097,8 +1116,13 @@ fn entry(d: &Device, v: &BgpView, addr: &str, mask: Option<&str>) -> Result<Stri
 
 /// What a configuration line sets, without its `neighbor WHO ` start.
 fn settings_of(who: &str, n: &Neighbor, base: &Neighbor) -> Vec<String> {
+    let mask = |_: &str| "******".to_string();
     let start = format!("neighbor {who} ");
-    remote_as_line(who, n, base).into_iter().chain(neighbor_lines(who, n, base)).map(|l| l.strip_prefix(&start).unwrap_or(&l).to_string()).collect()
+    remote_as_line(who, n, base)
+        .into_iter()
+        .chain(neighbor_lines(who, n, base, &mask))
+        .map(|l| l.strip_prefix(&start).unwrap_or(&l).to_string())
+        .collect()
 }
 
 /// `show ip bgp peer-group [NAME]`.
@@ -1207,8 +1231,14 @@ fn neighbors(d: &Device, v: &BgpView, only: Option<&str>) -> Result<String, Stri
         if conf.is_some_and(|c| c.route_reflector_client) {
             options.push("route-reflector-client".to_string());
         }
-        if conf.is_some_and(|c| c.default_originate) {
-            options.push("default-originate".to_string());
+        if let Some(c) = conf.filter(|c| c.default_originate) {
+            options.push(match &c.default_originate_map {
+                Some(m) => format!("default-originate route-map {m}"),
+                None => "default-originate".to_string(),
+            });
+        }
+        if conf.is_some_and(|c| c.password.is_some()) {
+            options.push("MD5 password".to_string());
         }
         if let Some(c) = conf.filter(|c| c.remove_private_as) {
             options.push(format!("remove-private-as{}", if c.remove_private_all { " all" } else { "" }));

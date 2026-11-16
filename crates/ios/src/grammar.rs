@@ -969,6 +969,8 @@ pub enum Id {
     NoBgpConfedPeers,
     BgpNeighborDefaultOriginate,
     NoBgpNeighborDefaultOriginate,
+    BgpNeighborPassword,
+    NoBgpNeighborPassword,
     BgpNeighborRemovePrivate,
     NoBgpNeighborRemovePrivate,
     BgpNeighborSoftReconf,
@@ -2417,15 +2419,15 @@ pub static SPECS: &[Spec] = &[
         AreaNssa,
         Modes::OSPF,
         Modes::BOTH,
-        [K("area"), Arg("<1-4294967295>"), K("nssa"), Rest("[no-summary] [default-information-originate]")],
-        "Border router: no routes from other areas (a default instead) and/or a type 7 default into the area"
+        [K("area"), Arg("<1-4294967295>"), K("nssa"), Rest("[no-summary] [no-redistribution] [default-information-originate]")],
+        "Border router: no routes from other areas (a default instead), no type 7 for its own redistributed routes, and/or a type 7 default into the area"
     ),
     spec!(NoAreaNssa, Modes::OSPF, Modes::BOTH, [K("no"), K("area"), Arg("<1-4294967295>"), K("nssa")], "A normal area again"),
     spec!(
         NoAreaNssa,
         Modes::OSPF,
         Modes::BOTH,
-        [K("no"), K("area"), Arg("<1-4294967295>"), K("nssa"), Rest("[no-summary] [default-information-originate]")],
+        [K("no"), K("area"), Arg("<1-4294967295>"), K("nssa"), Rest("[no-summary] [no-redistribution] [default-information-originate]")],
         "Undo only those options of the NSSA"
     ),
     spec!(
@@ -2450,11 +2452,40 @@ pub static SPECS: &[Spec] = &[
         "Join the backbone through this area to the border router with that router ID"
     ),
     spec!(
+        AreaVirtualLink,
+        Modes::OSPF,
+        Modes::BOTH,
+        [
+            K("area"),
+            Arg("<1-4294967295>"),
+            K("virtual-link"),
+            Arg("A.B.C.D"),
+            Rest(
+                "[hello-interval N] [dead-interval N] [retransmit-interval N] [transmit-delay N] [authentication [message-digest|null]] [authentication-key KEY] [message-digest-key ID md5 KEY]"
+            )
+        ],
+        "The link's timers (both ends must agree on hello and dead) and its own authentication"
+    ),
+    spec!(
         NoAreaVirtualLink,
         Modes::OSPF,
         Modes::BOTH,
         [K("no"), K("area"), Arg("<1-4294967295>"), K("virtual-link"), Arg("A.B.C.D")],
         "Remove the virtual link"
+    ),
+    spec!(
+        NoAreaVirtualLink,
+        Modes::OSPF,
+        Modes::BOTH,
+        [
+            K("no"),
+            K("area"),
+            Arg("<1-4294967295>"),
+            K("virtual-link"),
+            Arg("A.B.C.D"),
+            Rest("hello-interval|dead-interval|retransmit-interval|transmit-delay|authentication|authentication-key|message-digest-key [ID]")
+        ],
+        "Put only that option of the virtual link back to its default"
     ),
     spec!(
         ShowIpOspfVirtualLinks,
@@ -3410,11 +3441,39 @@ pub static SPECS: &[Spec] = &[
         "Send this neighbour a default route whether or not there is one here"
     ),
     spec!(
+        BgpNeighborDefaultOriginate,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("default-originate"), K("route-map"), Arg("NAME")],
+        "Send this neighbour a default route only while a route passes the route map, with the map's changes"
+    ),
+    spec!(
         NoBgpNeighborDefaultOriginate,
         Modes::BGP,
         Modes::BOTH,
         [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("default-originate")],
         "Stop sending the default route"
+    ),
+    spec!(
+        NoBgpNeighborDefaultOriginate,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("default-originate"), K("route-map"), Arg("NAME")],
+        "Stop sending the default route"
+    ),
+    spec!(
+        BgpNeighborPassword,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("password"), Rest("[0|7] PASSWORD")],
+        "Protect the session with a TCP MD5 password; the session comes up only when both ends have the same one"
+    ),
+    spec!(
+        NoBgpNeighborPassword,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("password")],
+        "Remove the session's password"
     ),
     spec!(
         BgpNeighborRemovePrivate,
