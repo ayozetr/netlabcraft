@@ -84,6 +84,7 @@ labs! {
     lab_42_bgp_route_reflectors => "42-bgp-route-reflectors.md",
     lab_43_pppoe_with_routers => "43-pppoe-with-routers.md",
     lab_44_secure_a_wireless_network => "44-secure-a-wireless-network.md",
+    lab_45_ospf_stub_nssa_virtual_link => "45-ospf-stub-nssa-virtual-link.md",
     lab_46_route_tags_and_bgp_peer_groups => "46-route-tags-and-bgp-peer-groups.md",
 }
 

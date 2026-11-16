@@ -424,7 +424,10 @@ pub fn routing_table_with(
     }
     if d.ospf.is_some() {
         for r in ospf_routes {
-            let code = if r.external && r.type1 {
+            let code = if r.external && r.nssa {
+                // A type 7 route: N1 or N2.
+                if r.type1 { 'M' } else { 'N' }
+            } else if r.external && r.type1 {
                 'F'
             } else if r.external {
                 'E'
@@ -1173,6 +1176,8 @@ pub struct Sim {
     /// OSPF's routes, for the topology with this fingerprint.
     ospf_for: u64,
     ospf: Option<ospf::OspfState>,
+    /// The sequence numbers and ages of OSPF's LSAs.
+    lsa_stamps: ospf_lsdb::Stamps,
     ospf6_for: u64,
     ospf6: Option<ospf6::Ospf6State>,
     eigrp6_for: u64,
@@ -2144,6 +2149,7 @@ impl Sim {
         if self.ospf.is_none() || self.ospf_for != f {
             self.ospf_for = f;
             self.ospf = Some(self.ospf_compute(t));
+            self.ospf_restamp(t);
         }
         self.ospf.as_ref().and_then(|s| s.routes.get(&d.id).cloned()).unwrap_or_default()
     }
@@ -2385,6 +2391,7 @@ impl Sim {
         if self.ospf.is_none() || self.ospf_for != f {
             self.ospf_for = f;
             self.ospf = Some(self.ospf_compute(t));
+            self.ospf_restamp(t);
         }
         self.ospf.clone().unwrap_or_default()
     }

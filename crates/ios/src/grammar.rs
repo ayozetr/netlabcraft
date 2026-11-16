@@ -1064,6 +1064,13 @@ pub enum Id {
     AutoCost,
     AreaStub,
     NoAreaStub,
+    AreaNssa,
+    NoAreaNssa,
+    AreaDefaultCost,
+    NoAreaDefaultCost,
+    AreaVirtualLink,
+    NoAreaVirtualLink,
+    ShowIpOspfVirtualLinks,
     AreaRange,
     NoAreaRange,
     ShowIpOspf,
@@ -2398,6 +2405,63 @@ pub static SPECS: &[Spec] = &[
         Modes::BOTH,
         [K("no"), K("area"), Arg("<0-4294967295>"), K("stub"), K("no-summary")],
         "Let routes from other areas in again"
+    ),
+    spec!(
+        AreaNssa,
+        Modes::OSPF,
+        Modes::BOTH,
+        [K("area"), Arg("<1-4294967295>"), K("nssa")],
+        "Not-so-stubby area: its routers' external routes travel as type 7 LSAs, and none come in"
+    ),
+    spec!(
+        AreaNssa,
+        Modes::OSPF,
+        Modes::BOTH,
+        [K("area"), Arg("<1-4294967295>"), K("nssa"), Rest("[no-summary] [default-information-originate]")],
+        "Border router: no routes from other areas (a default instead) and/or a type 7 default into the area"
+    ),
+    spec!(NoAreaNssa, Modes::OSPF, Modes::BOTH, [K("no"), K("area"), Arg("<1-4294967295>"), K("nssa")], "A normal area again"),
+    spec!(
+        NoAreaNssa,
+        Modes::OSPF,
+        Modes::BOTH,
+        [K("no"), K("area"), Arg("<1-4294967295>"), K("nssa"), Rest("[no-summary] [default-information-originate]")],
+        "Undo only those options of the NSSA"
+    ),
+    spec!(
+        AreaDefaultCost,
+        Modes::OSPF,
+        Modes::BOTH,
+        [K("area"), Arg("<1-4294967295>"), K("default-cost"), Arg("<0-16777215>")],
+        "Border router: the metric of the default route it sends into a stub area or NSSA"
+    ),
+    spec!(
+        NoAreaDefaultCost,
+        Modes::OSPF,
+        Modes::BOTH,
+        [K("no"), K("area"), Arg("<1-4294967295>"), K("default-cost")],
+        "Default route metric 1 again"
+    ),
+    spec!(
+        AreaVirtualLink,
+        Modes::OSPF,
+        Modes::BOTH,
+        [K("area"), Arg("<1-4294967295>"), K("virtual-link"), Arg("A.B.C.D")],
+        "Join the backbone through this area to the border router with that router ID"
+    ),
+    spec!(
+        NoAreaVirtualLink,
+        Modes::OSPF,
+        Modes::BOTH,
+        [K("no"), K("area"), Arg("<1-4294967295>"), K("virtual-link"), Arg("A.B.C.D")],
+        "Remove the virtual link"
+    ),
+    spec!(
+        ShowIpOspfVirtualLinks,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("ospf"), K("virtual-links")],
+        "OSPF virtual links and whether they are up"
     ),
     spec!(
         AreaRange,

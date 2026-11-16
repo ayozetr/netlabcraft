@@ -1860,6 +1860,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             }
             let no_summary = words.last().is_some_and(|w| w.starts_with("no-") && "no-summary".starts_with(*w));
             let o = c.dm()?.ospf.as_mut().ok_or("% Not in OSPF mode")?;
+            if spec.id == Id::AreaStub && o.areas.get(&area).is_some_and(|a| a.nssa) {
+                return Err(format!("% Area {area} is an NSSA: take that off first with `no area {area} nssa`"));
+            }
             let a = o.areas.entry(area).or_default();
             match (spec.id == Id::AreaStub, no_summary) {
                 (true, ns) => {
@@ -1871,6 +1874,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 (false, false) => {
                     a.stub = false;
                     a.no_summary = false;
+                    a.default_cost = None;
                 }
             }
             if a.is_default() {
@@ -1900,6 +1904,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::ShowIpOspf => {
             let st = c.sim.ospf_state(c.t);
             Ok(render::ospf_summary(c.d()?, &st))
+        }
+        Id::ShowIpOspfVirtualLinks => {
+            let st = c.sim.ospf_state(c.t);
+            Ok(render::ospf_virtual_links(c.t, c.d()?, &st))
         }
         Id::ShowIpOspfInterface => {
             let st = c.sim.ospf_state(c.t);
@@ -2031,6 +2039,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::IpOspfMd5Key
         | Id::NoIpOspfMd5Key => routing::ospf_if_command(&mut c, spec.id, &args),
         Id::AreaAuth | Id::NoAreaAuth => routing::ospf_area_auth(&mut c, spec.id == Id::AreaAuth, &args),
+        Id::AreaNssa | Id::NoAreaNssa | Id::AreaDefaultCost | Id::NoAreaDefaultCost | Id::AreaVirtualLink | Id::NoAreaVirtualLink => {
+            routing::ospf_area_type(&mut c, spec.id, &args)
+        }
         Id::OspfRedistribute
         | Id::NoOspfRedistribute
         | Id::RipRedistribute

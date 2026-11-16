@@ -36,7 +36,8 @@ fn database_views_show_router_network_summary_and_external_lsas_in_full() {
     let router = lab.run(r2, "show ip ospf database router");
     assert!(router.contains("Router link states, area 0") && router.contains("Router link states, area 1"), "{router}");
     // R2 sits on two broadcast segments, each with a neighbour: a transit link per segment.
-    assert!(router.contains("Router 2.2.2.2, sequence 0x80000001, 1 link"), "{router}");
+    // The sequence number starts at 0x80000001 and goes up when the router originates the LSA again.
+    assert!(router.contains("Router 2.2.2.2, sequence 0x8000000") && router.contains(", 1 link, age "), "{router}");
     assert!(router.contains("transit network, designated router 10.0.0.2 (this router 10.0.0.2), metric 1"), "{router}");
     assert!(lab.run(r2, "show ip ospf database router 1.1.1.1").contains("Router 1.1.1.1"));
     assert!(!lab.run(r2, "show ip ospf database router 1.1.1.1").contains("Router 2.2.2.2"));
@@ -48,7 +49,7 @@ fn database_views_show_router_network_summary_and_external_lsas_in_full() {
     // R1 is only in area 0: it learns area 1's network by a summary LSA from the border router.
     let summary = lab.run(r1, "show ip ospf database summary");
     assert!(summary.contains("Summary link states, area 0"), "{summary}");
-    assert!(summary.contains("Network 10.1.0.0/24, sequence 0x80000001, advertised by 2.2.2.2, metric 1"), "{summary}");
+    assert!(summary.contains("Network 10.1.0.0/24, sequence 0x8000000") && summary.contains("advertised by 2.2.2.2, metric 1, age "), "{summary}");
     let external = lab.run(r1, "show ip ospf database external");
     assert!(external.contains("Network 192.168.50.0/24") && external.contains("advertised by 3.3.3.3, type 2 metric 20"), "{external}");
     // Prefixes of the kind word, an unknown kind, a bad ID and nothing there.
@@ -128,12 +129,13 @@ fn the_asbr_summary_view_shows_how_an_area_reaches_an_as_boundary_router() {
     // R3 redistributes in area 1; R2, the border router, tells area 0 how far R3 is.
     let v = lab.run(r1, "show ip ospf database asbr-summary");
     assert!(v.contains("ASBR summary link states, area 0"), "{v}");
-    assert!(v.contains("AS boundary router 3.3.3.3, sequence 0x80000001, advertised by 2.2.2.2, metric 1"), "{v}");
+    assert!(v.contains("AS boundary router 3.3.3.3, sequence 0x8000000") && v.contains("advertised by 2.2.2.2, metric 1, age "), "{v}");
     assert!(lab.run(r1, "show ip ospf database asbr-summary 3.3.3.3").contains("AS boundary router 3.3.3.3"));
     assert!(lab.run(r1, "show ip ospf database asbr-summary 9.9.9.9").starts_with("No ASBR summary LSAs with link-state ID 9.9.9.9"));
     // The one-line table has a section for it, with the metric.
     let table = lab.run(r1, "show ip ospf database");
-    assert!(table.contains("ASBR summary LSAs (type 4), area 0") && table.contains("3.3.3.3          2.2.2.2          1"), "{table}");
+    assert!(table.contains("ASBR summary LSAs (type 4), area 0"), "{table}");
+    assert!(table.lines().any(|l| l.starts_with("3.3.3.3          2.2.2.2 ") && l.ends_with(" 1")), "{table}");
     // R3 is in the area the ASBR is in: nothing to tell it. The summary view is not mixed up with this one.
     assert!(lab.run(r3, "show ip ospf database asbr-summary").starts_with("No ASBR summary LSAs"));
     assert!(!lab.run(r1, "show ip ospf database summary").contains("AS boundary router"));
@@ -145,9 +147,9 @@ fn the_asbr_summary_view_shows_how_an_area_reaches_an_as_boundary_router() {
 }
 
 #[test]
-fn the_nssa_view_says_no_area_is_an_nssa() {
+fn the_nssa_view_is_empty_when_no_area_is_an_nssa() {
     let (mut lab, r1, _r2, _r3) = three_routers();
     let v = lab.run(r1, "show ip ospf database nssa-external");
-    assert!(v.contains("no area here is an NSSA"), "{v}");
+    assert!(v.starts_with("No NSSA external LSAs"), "{v}");
     assert_eq!(lab.run(r1, "show ip ospf database nssa"), v);
 }
