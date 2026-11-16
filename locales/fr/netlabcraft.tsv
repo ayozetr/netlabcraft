@@ -813,7 +813,6 @@
 	Part {} from {}	Partie {} sur {}
 	pass	réussi
 	Password	Mot de passe
-	Password (WPA2-Enterprise)	Mot de passe (WPA2-Enterprise)
 	Paste	Coller
 	Paste (Ctrl+V): a copy of the copied device	Coller (Ctrl+V) : une copie de l'équipement copié
 	Paste the results file	Collez le fichier de résultats
@@ -1304,7 +1303,6 @@
 	User	Utilisateur
 	User name	Nom d'utilisateur
 	Username	Nom d'utilisateur
-	Username (WPA2-Enterprise)	Nom d'utilisateur (WPA2-Enterprise)
 	Users	Utilisateurs
 	Value	Valeur
 	value	valeur
@@ -1378,7 +1376,6 @@
 	WLAN number	Numéro du WLAN
 	WLC1 holds two WLANs (`show wlan`, `show capwap`): Staff checks logins with RADIUS1 (users ana/ana12345 and luis/luis1234) and lands in VLAN 10 (192.168.10.0/24); Guest uses the passphrase invitado123 and lands in VLAN 30 (192.168.30.0/24). The access points tag each WLAN on their trunk to S1, and R1 routes and hands out addresses per VLAN. In Simulation mode, reset and ping from Laptop1 to watch the 802.11 association, the EAP login, the RADIUS exchange, the 4-way handshake and then CCMP-protected data; move Laptop1 next to LAP2 and watch it reassociate, keeping its address.	WLC1 contient deux WLAN (`show wlan`, `show capwap`) : Staff vérifie les connexions avec RADIUS1 (utilisateurs ana/ana12345 et luis/luis1234) et arrive dans le VLAN 10 (192.168.10.0/24) ; Guest utilise la phrase secrète invitado123 et arrive dans le VLAN 30 (192.168.30.0/24). Les points d'accès étiquettent chaque WLAN sur leur trunk vers S1, et R1 route et distribue les adresses par VLAN. En mode Simulation, réinitialisez et faites un ping depuis Laptop1 pour voir l'association 802.11, la connexion EAP, l'échange RADIUS, la poignée de main en 4 temps puis des données protégées par CCMP ; approchez Laptop1 de LAP2 et regardez-le se réassocier en gardant son adresse.
 	WPA2 passphrase	Phrase secrète WPA2
-	WPA2 passphrase (empty: open)	Phrase secrète WPA2 (vide : ouvert)
 	Write	Écriture
 	wrong cable: {} and {} need a {} cable, a {} one is plugged in and neither end has auto-MDIX	mauvais câble : {} et {} demandent un câble {}, un câble {} est branché et aucune extrémité n'a l'auto-MDIX
 	wrong password	mot de passe incorrect
@@ -1647,3 +1644,21 @@ event	write request for	demande d'écriture de
 	Switch the Softphone on	Activer le softphone
 	The Softphone is off. Switch it on to register with a call server and make calls.	Le softphone est désactivé. Activez-le pour vous enregistrer auprès d'un serveur d'appels et passer des appels.
 	No call server: type its address above, or give option 150 in DHCP	Pas de serveur d'appels : saisissez son adresse ci-dessus ou donnez l'option 150 dans DHCP
+	Disabled	Désactivée
+	WEP Key	Clé WEP
+	PSK Pass Phrase	Phrase secrète PSK
+	RADIUS Server Settings	Paramètres du serveur RADIUS
+	Encryption Type	Type de chiffrement
+	Coverage Range (meters)	Portée de couverture (mètres)
+	the network needs a WEP key	le réseau exige une clé WEP
+	wrong WEP key	clé WEP incorrecte
+	the network needs a WPA passphrase	le réseau exige une phrase secrète WPA
+	wrong WPA passphrase	phrase secrète WPA incorrecte
+	the network needs a username and password (WPA-Enterprise)	le réseau exige un nom d'utilisateur et un mot de passe (WPA-Enterprise)
+	the network uses {} but the host is set to {}	le réseau utilise {} mais l'hôte est réglé sur {}
+	the network encrypts with {} but the host is set to {}	le réseau chiffre en {} mais l'hôte est réglé sur {}
+	the access point has no RADIUS server set	le point d'accès n'a pas de serveur RADIUS
+	the access point has no management address (give its VLAN interface an address)	le point d'accès n'a pas d'adresse de gestion (donnez une adresse à son interface VLAN)
+	no server answers at the access point's RADIUS address	aucun serveur ne répond à l'adresse RADIUS du point d'accès
+	the access point can't reach its RADIUS server	le point d'accès ne joint pas son serveur RADIUS
+	the RADIUS server doesn't know the access point (check the AAA service and its client entry and secret)	le serveur RADIUS ne connaît pas le point d'accès (vérifiez le service AAA, son entrée client et le secret)

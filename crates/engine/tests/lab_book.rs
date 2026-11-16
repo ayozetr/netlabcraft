@@ -82,6 +82,7 @@ labs! {
     lab_40_bgp_communities_aggregation => "40-bgp-communities-aggregation.md",
     lab_41_pppoe => "41-pppoe.md",
     lab_42_bgp_route_reflectors => "42-bgp-route-reflectors.md",
+    lab_44_secure_a_wireless_network => "44-secure-a-wireless-network.md",
 }
 
 /// The cellular lab is not part of a CCNA course, so it has no number (the numbered labs 21 and up

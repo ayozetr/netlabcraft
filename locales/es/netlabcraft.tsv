@@ -382,7 +382,6 @@
 	Save Internet	Guardar Internet
 	Wireless	Inalámbrica
 	SSID	SSID
-	WPA2 passphrase (empty: open)	Clave WPA2 (vacía: abierta)
 	Save Wireless	Guardar Wi-Fi
 	This activity gives each student their own values. Type your name to start.	Esta actividad da a cada alumno sus propios valores. Escribe tu nombre para empezar.
 	Your name	Tu nombre
@@ -624,8 +623,6 @@
 	Joined to {}: offers {} WLAN(s) on channel {}	Unido a {}: ofrece {} WLAN en el canal {}
 	Not joined: no controller answers (check both addresses, the cabling and the default gateways).	Sin unir: ningún controlador responde (revisa ambas direcciones, el cableado y las puertas de enlace).
 	A lightweight AP offers the WLANs of its controller: see its Controller page.	Un AP ligero ofrece las WLAN de su controlador: mira su página Controlador.
-	Username (WPA2-Enterprise)	Usuario (WPA2-Enterprise)
-	Password (WPA2-Enterprise)	Contraseña (WPA2-Enterprise)
 	Not associated: {}	No asociado: {}
 	wrong WPA2 passphrase	frase de paso WPA2 incorrecta
 	the network needs a WPA2 passphrase	la red necesita una frase de paso WPA2
@@ -1650,3 +1647,21 @@ event	no APN	sin APN
 	Switch the Softphone on	Activar el softphone
 	The Softphone is off. Switch it on to register with a call server and make calls.	El softphone está apagado. Actívalo para registrarte en un servidor de llamadas y hacer llamadas.
 	No call server: type its address above, or give option 150 in DHCP	Sin servidor de llamadas: escribe su dirección arriba o da la opción 150 en DHCP
+	Disabled	Desactivada
+	WEP Key	Clave WEP
+	PSK Pass Phrase	Frase de paso PSK
+	RADIUS Server Settings	Ajustes del servidor RADIUS
+	Encryption Type	Tipo de cifrado
+	Coverage Range (meters)	Alcance de cobertura (metros)
+	the network needs a WEP key	la red necesita una clave WEP
+	wrong WEP key	clave WEP incorrecta
+	the network needs a WPA passphrase	la red necesita una frase de paso WPA
+	wrong WPA passphrase	frase de paso WPA incorrecta
+	the network needs a username and password (WPA-Enterprise)	la red necesita usuario y contraseña (WPA-Enterprise)
+	the network uses {} but the host is set to {}	la red usa {} pero el equipo está configurado con {}
+	the network encrypts with {} but the host is set to {}	la red cifra con {} pero el equipo está configurado con {}
+	the access point has no RADIUS server set	el punto de acceso no tiene servidor RADIUS
+	the access point has no management address (give its VLAN interface an address)	el punto de acceso no tiene dirección de gestión (da una dirección a su interfaz VLAN)
+	no server answers at the access point's RADIUS address	ningún servidor responde en la dirección RADIUS del punto de acceso
+	the access point can't reach its RADIUS server	el punto de acceso no llega a su servidor RADIUS
+	the RADIUS server doesn't know the access point (check the AAA service and its client entry and secret)	el servidor RADIUS no conoce el punto de acceso (revisa el servicio AAA, su entrada de cliente y el secreto)

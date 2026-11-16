@@ -63,6 +63,12 @@ const CIPHER_CCMP: u8 = 4;
 /// Status codes (IEEE 802.11 Table 9-50) and reason codes (Table 9-49) the simulator uses.
 pub const STATUS_SUCCESS: u16 = 0;
 pub const STATUS_REFUSED: u16 = 1;
+/// Shared-key authentication failed: the host's WEP key did not answer the challenge.
+pub const STATUS_CHALLENGE_FAILED: u16 = 15;
+/// The cipher suite the host asked for is not the network's (TKIP against AES).
+pub const STATUS_CIPHER_REJECTED: u16 = 24;
+/// The authentication and key management the host asked for is not the network's.
+pub const STATUS_AKMP_REJECTED: u16 = 43;
 pub const REASON_LEAVING: u16 = 3;
 pub const REASON_HANDSHAKE_TIMEOUT: u16 = 15;
 pub const REASON_8021X_FAILED: u16 = 23;
@@ -447,7 +453,7 @@ impl Dot11 {
 
     /// The frame's name and what it says, for the event list.
     pub fn describe(&self) -> String {
-        let auth = |s: u16| if s == STATUS_SUCCESS { "success".to_string() } else { format!("refused (status {s})") };
+        let auth = |s: u16| if s == STATUS_SUCCESS { "success".to_string() } else { format!("refused (status {s}: {})", status_text(s)) };
         match &self.body {
             Body::Beacon(b) => {
                 format!("802.11 beacon: \"{}\" on channel {}{}", b.ssid, b.channel, b.rsn.map(|a| format!(", {}", a.name())).unwrap_or_default())
@@ -660,6 +666,16 @@ pub fn ccmp_decrypt(tk: &[u8; 16], mpdu: &[u8]) -> Result<(Vec<u8>, u64)> {
     }
     out.extend_from_slice(&body);
     Ok((out, pn))
+}
+
+fn status_text(s: u16) -> &'static str {
+    match s {
+        STATUS_REFUSED => "unspecified failure",
+        STATUS_CHALLENGE_FAILED => "challenge failure",
+        STATUS_CIPHER_REJECTED => "cipher suite rejected",
+        STATUS_AKMP_REJECTED => "key management rejected",
+        _ => "other",
+    }
 }
 
 fn reason_text(r: u16) -> &'static str {

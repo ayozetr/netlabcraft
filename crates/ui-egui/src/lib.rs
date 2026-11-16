@@ -46,6 +46,7 @@ mod services;
 mod sniffer_page;
 pub mod theme;
 mod touch;
+mod wifi_form;
 mod wlan_page;
 
 #[cfg(test)]
