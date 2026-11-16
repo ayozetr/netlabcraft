@@ -112,6 +112,11 @@ fn an_enterprise_access_point_asks_its_radius_server() {
     assert!(!joined(&r) && problem(&r).contains("uses WPA2-Enterprise"), "{r}");
     let r = wifi(&mut s, &lt, login("ana", "ana-test-pw", "wpa2-enterprise"));
     assert!(joined(&r), "{r}");
+    // The login really runs on the air and on the wire: RADIUS request, answer, then the handshake.
+    s.execute("sim.advance", json!({"seconds": 5})).unwrap();
+    let lid = s.topology.resolve(&lt).unwrap();
+    let said: String = s.sim.trace().iter().map(|e| format!("{} | {}\n", e.summary, e.dropped.clone().unwrap_or_default())).collect();
+    assert!(s.sim.association(End { device: lid, port: 0 }).is_some_and(|a| a.done), "{said}");
     // A wrong shared secret: the server does not know the access point.
     wifi(&mut s, &ap, json!({"ssid": "Corp", "mode": "wpa2-enterprise", "radius_ip": "10.0.0.10", "radius_secret": "other-secret"}));
     let r = wifi(&mut s, &lt, login("ana", "ana-test-pw", "wpa2-enterprise"));

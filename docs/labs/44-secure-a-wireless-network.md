@@ -140,6 +140,10 @@ run device.wireless {"device": "Laptop1", "ssid": "Office", "mode": "wpa-enterpr
 device.wireless {"device": "Laptop1", "ssid": "Office", "mode": "wpa2-enterprise", "user": "ana", "password": "ana-lab44"}
 ```
 
+```lab
+sim.advance {"seconds": 5}
+```
+
 ```verify
 ping Laptop1 10.44.0.10 => success
 ping Laptop2 10.44.0.10 => failure
