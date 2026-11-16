@@ -1096,6 +1096,26 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 let r = c.iface_ref(name.trim())?;
                 return Ok(render::trunks(c.t, d, Some(r.port)));
             }
+            // `show interfaces gi0/1 counters` and `… counters errors`: the counter tables, one port.
+            for (suffix, errors) in [("counters errors", true), ("counters", false)] {
+                if let Some(name) = lower.strip_suffix(suffix).filter(|n| !n.trim().is_empty() && n.ends_with(char::is_whitespace)) {
+                    let r = c.iface_ref(name.trim())?;
+                    return Ok(l2sec::show_counters(c.sim, c.d()?, Some(r.port), errors));
+                }
+            }
+            // `show interfaces gi0/1 status` and `… description`: the summary tables, one port.
+            if let Some(name) = lower.strip_suffix("status").filter(|n| !n.trim().is_empty() && n.ends_with(char::is_whitespace)) {
+                let d = c.d()?;
+                if !d.switches_frames() {
+                    return Err("% Only switch ports have a status table".into());
+                }
+                let r = c.iface_ref(name.trim())?;
+                return Ok(render::interface_status(c.t, d, Some(r.port)));
+            }
+            if let Some(name) = lower.strip_suffix("description").filter(|n| !n.trim().is_empty() && n.ends_with(char::is_whitespace)) {
+                let r = c.iface_ref(name.trim())?;
+                return Ok(render::int_descriptions(c.t, c.d()?, Some(r)));
+            }
             // `show interfaces fa0/1 switchport`
             if let Some(name) = arg(0).trim().strip_suffix("switchport").filter(|n| !n.trim().is_empty()) {
                 let r = c.iface_ref(name.trim())?;
@@ -1111,7 +1131,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let r = c.iface_ref(arg(0))?;
             Ok(render::interfaces(c.t, c.sim, d, Some(r)))
         }
-        Id::ShowIntStatus => Ok(render::interface_status(c.t, c.d()?)),
+        Id::ShowIntStatus => Ok(render::interface_status(c.t, c.d()?, None)),
         Id::ShowIpInterface => {
             let only = match args.first().map(|a| a.trim()).filter(|a| !a.is_empty()) {
                 Some(a) => Some(c.iface_ref(a)?),
@@ -2310,6 +2330,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::L2ShowVlanSummary
         | Id::L2ShowDtp
         | Id::L2ShowCounters
+        | Id::L2ShowCountersErrors
+        | Id::L2ClearStpCounters
         | Id::L2TrunkEncap
         | Id::L2NoTrunkEncap
         | Id::L2SdmPrefer
@@ -3355,8 +3377,21 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 Ok(())
             })
         }
+        Id::IfKeepalive | Id::NoIfKeepalive => {
+            let secs = if spec.id == Id::NoIfKeepalive {
+                Some(0)
+            } else if arg(0).is_empty() {
+                None
+            } else {
+                Some(arg(0).parse::<u32>().ok().filter(|n| (1..=32_767).contains(n)).ok_or("% 1-32767")?)
+            };
+            c.each_if(|p, _| {
+                p.keepalive = secs;
+                Ok(())
+            })
+        }
         Id::ShowProtocols => Ok(render::protocols(c.t, c.d()?)),
-        Id::ShowIntDescription => Ok(render::int_descriptions(c.t, c.d()?)),
+        Id::ShowIntDescription => Ok(render::int_descriptions(c.t, c.d()?, None)),
         Id::ShowLogin => Ok(render::login_state(c.d()?, c.sim.login_blocked(c.dev))),
         Id::ShowPrivilege => Ok(format!("Current privilege level is {}", if c.cli.mode == Mode::User { 1 } else { 15 })),
         Id::ShowTechSupport => {
@@ -3604,19 +3639,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let r = c.iface_ref(arg(0))?;
             let d = c.d()?;
             let p = d.ports.get(r.port).ok_or("% No such port")?;
-            let e = netlabcraft_model::End { device: d.id, port: r.port };
             Ok(if !netlabcraft_model::ifname::is_serial(&p.name) {
                 render::ethernet_controller(c.t, d, r.port)
             } else {
-                match c.t.dce_of(e) {
-                    None => format!("{}: no cable attached", p.name),
-                    Some(dce) if dce == e => format!(
-                        "{}: DCE end of a serial cable, clock rate {}",
-                        p.name,
-                        p.serial.clock_rate.map_or("not set (the link stays down)".to_string(), |r| r.to_string())
-                    ),
-                    Some(_) => format!("{}: DTE end of a serial cable (clocked by the other end)", p.name),
-                }
+                render::serial_controller(c.t, d, r.port)
             })
         }
         Id::RipVersion

@@ -259,6 +259,15 @@ pub fn running_config(d: &Device) -> String {
         if p.mdix_off {
             let _ = writeln!(s, " no mdix auto");
         }
+        match p.keepalive {
+            Some(0) => {
+                let _ = writeln!(s, " no keepalive");
+            }
+            Some(n) => {
+                let _ = writeln!(s, " keepalive {n}");
+            }
+            None => {}
+        }
         if p.proxy_arp_off {
             let _ = writeln!(s, " no ip proxy-arp");
         }
@@ -830,7 +839,7 @@ fn load_of(octets: u64, elapsed_us: u64, bw_kbit: u32) -> u64 {
 }
 
 /// Simulated microseconds as `h:mm:ss`.
-fn hms(us: u64) -> String {
+pub(crate) fn hms(us: u64) -> String {
     let s = us / 1_000_000;
     format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60)
 }
@@ -930,6 +939,8 @@ pub fn interfaces(t: &Topology, sim: &Sim, d: &Device, only: Option<IfRef>) -> S
                 cnt.out_bcast,
                 cnt.out_mcast
             );
+            let _ = writeln!(s, "  {} input errors, {} input drops, {} output drops", cnt.in_errors, cnt.in_drops, cnt.out_drops);
+            let _ = writeln!(s, "  {}", keepalive_words(p.keepalive));
         }
         for sub in &p.subifs {
             if only.is_some_and(|r| r.sub.is_some_and(|n| n != sub.number)) {
@@ -961,6 +972,15 @@ pub fn interfaces(t: &Topology, sim: &Sim, d: &Device, only: Option<IfRef>) -> S
         s.push_str(&crate::exec::routing::loopback_blocks(d));
     }
     s.trim_end().to_string()
+}
+
+/// The keepalive line of `show interfaces`: the setting (`None`: the default of 10 seconds).
+fn keepalive_words(setting: Option<u32>) -> String {
+    match setting {
+        Some(0) => "Keepalive not set".to_string(),
+        Some(n) => format!("Keepalive set ({n} sec)"),
+        None => "Keepalive set (10 sec)".to_string(),
+    }
 }
 
 /// Trunk ports and what they carry.
@@ -2177,9 +2197,12 @@ pub fn ip_interface(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
 }
 
 /// `show interfaces status` (switches).
-pub fn interface_status(t: &Topology, d: &Device) -> String {
-    let mut s = format!("{:<10} {:<18} {:<13} {:<8} {}\n", "Port", "Description", "State", "VLAN", "Speed");
+pub fn interface_status(t: &Topology, d: &Device, only: Option<usize>) -> String {
+    let mut s = format!("{:<10} {:<18} {:<13} {:<8} {:<7} {:<6} {}\n", "Port", "Description", "State", "VLAN", "Duplex", "Speed", "Type");
     for (i, p) in d.ports.iter().enumerate() {
+        if only.is_some_and(|o| o != i) {
+            continue;
+        }
         let end = End { device: d.id, port: i };
         let state = if p.err_disabled {
             "err-disabled"
@@ -2198,8 +2221,23 @@ pub fn interface_status(t: &Topology, d: &Device) -> String {
             p.switchport.access_vlan.to_string()
         };
         let speed = if p.name.starts_with("GigabitEthernet") { "1000" } else { "100" };
+        // What the link negotiated while it is up; the setting (or auto) while it is not.
+        let (speed, duplex) = match netlabcraft_sim::link_speed(t, end) {
+            Some((sp, du)) => (sp.to_string(), (if du == netlabcraft_model::Duplex::Half { "half" } else { "full" }).to_string()),
+            None => (
+                p.speed.map_or(speed.to_string(), |x| x.to_string()),
+                p.duplex.map_or("auto", |x| if x == netlabcraft_model::Duplex::Half { "half" } else { "full" }).to_string(),
+            ),
+        };
+        let kind = match d.port_medium(i) {
+            Some(netlabcraft_model::cable::Medium::Copper) if netlabcraft_sim::port_max_speed(&p.name) == Some(1000) => "10/100/1000BaseTX",
+            Some(netlabcraft_model::cable::Medium::Copper) => "10/100BaseTX",
+            Some(netlabcraft_model::cable::Medium::Fiber) => "1000BaseX (SFP)",
+            Some(netlabcraft_model::cable::Medium::Combo) => "combo (copper or SFP)",
+            _ => "-",
+        };
         let desc: String = p.description.chars().take(18).collect();
-        let _ = writeln!(s, "{:<10} {:<18} {:<13} {:<8} {speed}", ifname::short(&p.name), desc, state, vlan);
+        let _ = writeln!(s, "{:<10} {:<18} {:<13} {:<8} {:<7} {:<6} {kind}", ifname::short(&p.name), desc, state, vlan, duplex, speed);
     }
     s.trim_end().to_string()
 }
@@ -2282,13 +2320,51 @@ pub fn ethernet_controller(t: &Topology, d: &Device, port: usize) -> String {
     let set = |o: Option<String>| o.unwrap_or_else(|| "auto".into());
     let medium = d.port_medium(port).map_or("copper", |m| m.words());
     let cable = if t.link_at(end).is_some() { format!("\n  Cable:{}", cable_words(t, end).trim_start_matches(" with")) } else { String::new() };
+    let model = d.catalogue_model();
     format!(
-        "{}: Ethernet ({medium}), {link}\n  Speed set to {}, duplex set to {}\n  Auto-MDIX {}{cable}",
+        "{}: Ethernet ({medium}), {link}\n  Hardware: {} ({}); only the speed, duplex and auto-MDIX are simulated\n  Speed set to {}, duplex set to {}\n  Auto-MDIX {}{cable}",
         p.name,
+        model.label,
+        model.id,
         set(p.speed.map(|x| format!("{x} Mb/s"))),
         set(p.duplex.map(|x| if x == netlabcraft_model::Duplex::Half { "half".into() } else { "full".into() })),
         if p.mdix_off { "off" } else { "on" }
     )
+}
+
+/// `show controllers` for a serial port: what the model knows about the cable and the line.
+pub fn serial_controller(t: &Topology, d: &Device, port: usize) -> String {
+    let Some(p) = d.ports.get(port) else { return String::new() };
+    let end = End { device: d.id, port };
+    let model = d.catalogue_model();
+    let mut s = format!("{}: serial interface of the {} ({})\n", p.name, model.label, model.id);
+    match t.dce_of(end) {
+        None => s.push_str("  Cable: none attached\n"),
+        Some(dce) if dce == end => {
+            let rate = p.serial.clock_rate.map_or("not set (the link stays down)".to_string(), |r| format!("{r} bit/s"));
+            let _ = writeln!(s, "  Cable: DCE end of a serial cable, clock rate {rate}");
+        }
+        Some(_) => {
+            let far = t.peer(end).and_then(|e| t.device(e.device).and_then(|x| x.ports.get(e.port))).and_then(|x| x.serial.clock_rate);
+            let _ =
+                writeln!(s, "  Cable: DTE end of a serial cable, clocked by the other end{}", far.map_or(String::new(), |r| format!(" ({r} bit/s)")));
+        }
+    }
+    let state = if p.shutdown {
+        "administratively down".to_string()
+    } else if port_up(t, end) {
+        "up".to_string()
+    } else if t.peer(end).is_none() {
+        "down (no cable)".to_string()
+    } else if let Some(why) = netlabcraft_sim::serial_problem(t, end) {
+        format!("down ({why})")
+    } else {
+        "down".to_string()
+    };
+    let _ = writeln!(s, "  Line: {state}");
+    let _ = writeln!(s, "  Encapsulation: {}", p.serial.encapsulation.name());
+    s.push_str("  Simulated: the cable ends, the clock and the encapsulation; there are no modem signal lines or line errors");
+    s
 }
 
 /// `show ssh`.
@@ -2327,9 +2403,12 @@ pub fn protocols(t: &Topology, d: &Device) -> String {
 }
 
 /// `show interfaces description`.
-pub fn int_descriptions(t: &Topology, d: &Device) -> String {
+pub fn int_descriptions(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
     let mut s = format!("{:<12} {:<22} {:<9} {}\n", "Interface", "Status", "Protocol", "Description");
     for (i, p) in d.ports.iter().enumerate() {
+        if only.is_some_and(|r| r.port != i) {
+            continue;
+        }
         let end = End { device: d.id, port: i };
         let up = port_up(t, end);
         let status = if p.shutdown {
@@ -2339,8 +2418,10 @@ pub fn int_descriptions(t: &Topology, d: &Device) -> String {
         } else {
             "down"
         };
-        let _ = writeln!(s, "{:<12} {:<22} {:<9} {}", ifname::short(&p.name), status, if up { "up" } else { "down" }, p.description);
-        for sub in &p.subifs {
+        if only.is_none_or(|r| r.sub.is_none()) {
+            let _ = writeln!(s, "{:<12} {:<22} {:<9} {}", ifname::short(&p.name), status, if up { "up" } else { "down" }, p.description);
+        }
+        for sub in p.subifs.iter().filter(|x| only.is_none_or(|r| r.sub == Some(x.number))) {
             let _ = writeln!(
                 s,
                 "{:<12} {:<22} {:<9} {}",
@@ -2351,7 +2432,7 @@ pub fn int_descriptions(t: &Topology, d: &Device) -> String {
             );
         }
     }
-    for svi in &d.svis {
+    for svi in d.svis.iter().filter(|_| only.is_none()) {
         let _ = writeln!(s, "{:<12} {:<22} {:<9} {}", format!("Vl{}", svi.vlan), if svi.shutdown { "admin down" } else { "up" }, "", svi.description);
     }
     s.trim_end().to_string()
@@ -2431,7 +2512,7 @@ pub fn ip_traffic(sim: &Sim, dev: netlabcraft_core::DeviceId) -> String {
     let _ = writeln!(s, "  For this device {delivered}");
     let _ = writeln!(s, "  Forwarded      {}", n("forwarded"));
     let _ = writeln!(s, "  Sent (own)     {}", n("sent"));
-    let _ = writeln!(s, "  Dropped: no route {}, TTL expired {}", n("no route"), n("TTL expired"));
+    let _ = writeln!(s, "  Dropped: no route {}, TTL expired {}, access list {}", n("no route"), n("TTL expired"), n("dropped by an access list"));
     s.push_str("Delivered by protocol\n");
     for (k, label) in [
         ("delivered: ICMP echo request", "ICMP echo requests"),

@@ -655,6 +655,10 @@ pub struct Port {
     /// `no mdix auto`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub mdix_off: bool,
+    /// `keepalive N` seconds (`None`: the default, 10; `Some(0)`: `no keepalive`). The simulator
+    /// sends no keepalives; the setting is kept and shown by `show interfaces`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keepalive: Option<u32>,
     /// Routers: `no ip proxy-arp` (the interface and its subinterfaces answer ARP only for their own addresses).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub proxy_arp_off: bool,
@@ -1999,6 +2003,7 @@ impl Device {
                 speed: None,
                 duplex: None,
                 mdix_off: false,
+                keepalive: None,
                 proxy_arp_off: false,
                 dhcp: false,
                 dhcp_router: None,
