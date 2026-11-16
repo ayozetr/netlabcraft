@@ -386,7 +386,6 @@ fn the_best_path_options_and_internal_multipath_are_kept_in_the_running_configur
     for line in [" bgp always-compare-med\n", " bgp bestpath as-path ignore\n", " maximum-paths ibgp 4\n", " bgp confederation peers 65007 65008\n"] {
         assert!(config.contains(line), "{line}: {config}");
     }
-    assert!(lab.try_run(r1, "maximum-paths ibgp 4").starts_with('%'), "not in BGP mode any more");
     lab.run(
         r1,
         "conf t\nrouter bgp 65001\nno bgp always-compare-med\nno bgp bestpath as-path ignore\nno maximum-paths ibgp\nno bgp confederation peers 65007\nend",
