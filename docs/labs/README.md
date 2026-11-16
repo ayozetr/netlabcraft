@@ -1,9 +1,9 @@
 # NetLabCraft lab book
 
-> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (BGP communities, aggregation, timers and lab 40) · earlier: minor (lab 38: capture traffic with port mirroring) · earlier: minor (lab 39: redistribute between routing protocols and filter with a distribute list) · earlier: minor (lab 37: filter routes with a prefix list and a route map) · earlier: minor (lab 36: BGP between two autonomous systems) · earlier: minor (four more labs, 32 to 35: EIGRP, IPv6 routing, EtherChannel faults, port-security faults) · earlier: minor (an unnumbered cellular lab, M9.10) · earlier: minor (four more labs, 28 to 31: OSPF authentication, ICMP in ACLs, spanning-tree views, the OSPF database) · earlier: minor (seven troubleshooting labs, 21 to 27) · earlier: major (created: 20 labs over the three CCNA courses) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (lab 41: PPPoE client and access concentrator) · earlier: minor (BGP communities, aggregation, timers and lab 40) · earlier: minor (lab 38: capture traffic with port mirroring) · earlier: minor (lab 39: redistribute between routing protocols and filter with a distribute list) · earlier: minor (lab 37: filter routes with a prefix list and a route map) · earlier: minor (lab 36: BGP between two autonomous systems) · earlier: minor (four more labs, 32 to 35: EIGRP, IPv6 routing, EtherChannel faults, port-security faults) · earlier: minor (an unnumbered cellular lab, M9.10) · earlier: minor (four more labs, 28 to 31: OSPF authentication, ICMP in ACLs, spanning-tree views, the OSPF database) · earlier: minor (seven troubleshooting labs, 21 to 27) · earlier: major (created: 20 labs over the three CCNA courses) · **Target:** Cisco Packet Tracer 9.0
 
-Forty hands-on labs over the topics of the three CCNA courses, written for NetLabCraft
-from scratch. Labs 1 to 20, 32, 33 and 36 to 40 each build one topic; labs 21 to 29, 34 and 35 are troubleshooting labs: they
+Forty-one hands-on labs over the topics of the three CCNA courses, written for NetLabCraft
+from scratch. Labs 1 to 20, 32, 33 and 36 to 41 each build one topic; labs 21 to 29, 34 and 35 are troubleshooting labs: they
 build a working network, break it with commands, and walk the symptoms, the `show` commands
 that tell the faults apart, and the repairs; labs 30 and 31 are inspection labs that teach
 reading a protocol's own views (spanning-tree roles and states, the OSPF database), the second
@@ -14,7 +14,7 @@ command to type, and what to check with which command.
 Every lab is also a script: its `lab`, `console` and `verify` blocks are run end to end, as
 written, by `crates/engine/tests/lab_book.rs` (straight through the engine) and, for several
 labs, by `apps/netlabcraft-cli/tests/mcp_lab_book.rs` (through `netlabcraft-cli mcp`, the way an
-agent drives it; 16 of the 40). A lab that passes there works when typed by hand.
+agent drives it; 16 of the 41). A lab that passes there works when typed by hand.
 
 ## How to read a lab
 
@@ -78,6 +78,7 @@ One more lab has no number because it belongs to no CCNA course: [Mobile data ov
 | 38 | [Capture traffic with port mirroring](38-port-mirroring.md) | CCNA 2 follow-up | `monitor session` with `source interface`, `source vlan` and `destination interface`, `rx` and `tx`, ranges, the checks a session refuses, a Sniffer on the destination |
 | 39 | [Redistribute between routing protocols and filter with a distribute list](39-redistribute-and-distribute-lists.md) | CCNA 3 follow-up | `redistribute` between RIP and EIGRP, `D EX` routes and distance 170, `default-metric`, a route map on a redistribution, `distribute-list` in and out, `show ip protocols` |
 | 40 | [BGP communities, aggregation and timers](40-bgp-communities-aggregation.md) | CCNA 3 follow-up | `set community` and `send-community`, `ip bgp-community new-format`, community lists and `match community`, `no-export`, `aggregate-address` with `summary-only` and `as-set`, `neighbor … timers` |
+| 41 | [PPPoE client and access concentrator](41-pppoe.md) | CCNA 3 follow-up | PADI, PADO, PADR, PADS and PADT, LCP, CHAP and PAP, IPCP, a session through a switch, IP in session frames |
 
 ## Running the scripts
 
@@ -101,6 +102,7 @@ A failing step names its line in the lab's Markdown.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-16 | minor | Lab 41: PPPoE client and access concentrator (discovery, LCP, CHAP and PAP, IPCP, IP in session frames, PADT), run end to end by the engine. |
 | 2026-11-15 | minor | Four more labs (32 to 35): EIGRP (metrics, passive interfaces, feasible successors, variance, summaries), IPv6 routing (static routes, OSPFv3, a default route), an EtherChannel that will not bundle (three faults) and port security that shuts the wrong port; 32 and 34 also run over MCP. |
 | 2026-11-13 | minor | An unnumbered lab, [Mobile data over a cell tower](cellular-mobile-data.md) (M9.10), run end to end by the engine (`lab_cellular_mobile_data`); it takes no number, because numbers 28 and up went to the troubleshooting and inspection labs. |
 | 2026-11-13 | minor | Four more labs (28 to 31): OSPF authentication faults (a mistyped MD5 key, a different key ID, a different type), an ACL that drops ICMP time-exceeded so traceroute breaks and ping does not, spanning-tree inspection with the new `brief`, `detail` and `interface` views, and reading the OSPF database; 28 to 30 also run over MCP. The engine gaps they turned up are in [gaps.md](../gaps.md)' history. |
