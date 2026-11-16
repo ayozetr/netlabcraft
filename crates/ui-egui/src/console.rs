@@ -76,6 +76,8 @@ pub enum DesktopApp {
     VpnClient,
     /// Lists the flows routers export to this device: top talkers, protocols and the newest flows.
     NetflowCollector,
+    /// An IP phone's screen and dial pad on the computer: registers with a call server and calls.
+    Softphone,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1204,6 +1206,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                             (DesktopApp::PppoeDialer, "PPPoE Dialer"),
                             (DesktopApp::VpnClient, "VPN Client"),
                             (DesktopApp::NetflowCollector, "Netflow Collector"),
+                            (DesktopApp::Softphone, "Softphone"),
                         ]);
                         for (app_id, label) in [
                             (DesktopApp::IpConfig, "IP Configuration"),
@@ -1266,6 +1269,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 DesktopApp::PppoeDialer => "PPPoE Dialer",
                 DesktopApp::VpnClient => "VPN Client",
                 DesktopApp::NetflowCollector => "Netflow Collector",
+                DesktopApp::Softphone => "Softphone",
             };
             let mut close = false;
             egui::Frame::new().fill(tk.bar).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
@@ -1421,6 +1425,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 DesktopApp::PppoeDialer => crate::host_apps::pppoe_dialer(app, ui, dev),
                 DesktopApp::VpnClient => crate::host_apps::vpn_client(app, ui, dev),
                 DesktopApp::NetflowCollector => crate::host_apps::netflow_collector(app, ui, dev),
+                DesktopApp::Softphone => crate::phone::softphone(app, ui, dev),
                 DesktopApp::Settings => {
                     egui::ScrollArea::vertical().id_salt(("settings_scroll", d.0)).auto_shrink([false, true]).show(ui, |ui| {
                         ui.add_space(6.0);
@@ -1669,6 +1674,24 @@ pub(crate) fn draw_app_icon(p: &egui::Painter, r: egui::Rect, app: DesktopApp) {
                 p.rect_stroke(bar, 2.0, egui::Stroke::new(2.0, dark), egui::StrokeKind::Inside);
             }
             p.line_segment([egui::pos2(r.left(), base), egui::pos2(r.right(), base)], egui::Stroke::new(3.0, light));
+        }
+        DesktopApp::Softphone => {
+            // A handset: two rounded ends joined by a bar, over a small dial pad.
+            let blue = egui::Color32::from_rgb(0x2c, 0x7c, 0xc0);
+            let bar = egui::Rect::from_min_size(r.left_top() + vec2(r.width() * 0.1, 0.0), vec2(r.width() * 0.8, r.height() * 0.22));
+            p.rect_filled(bar, 8.0, light);
+            p.rect_stroke(bar, 8.0, egui::Stroke::new(2.0, dark), egui::StrokeKind::Inside);
+            for x in [bar.left(), bar.right() - r.width() * 0.2] {
+                let end = egui::Rect::from_min_size(egui::pos2(x, bar.top()), vec2(r.width() * 0.2, r.height() * 0.4));
+                p.rect_filled(end, 6.0, light);
+                p.rect_stroke(end, 6.0, egui::Stroke::new(2.0, dark), egui::StrokeKind::Inside);
+            }
+            for row in 0..3 {
+                for col in 0..3 {
+                    let c = egui::pos2(r.left() + r.width() * (0.28 + 0.22 * col as f32), r.top() + r.height() * (0.58 + 0.15 * row as f32));
+                    p.circle_filled(c, r.width() * 0.05, if row == 2 && col == 1 { blue } else { light });
+                }
+            }
         }
         DesktopApp::PppoeDialer => {
             // A handset on a coiled line: a rounded plug with the letters PPP.

@@ -233,6 +233,11 @@ impl Sim {
         self.voice.phones.get(&d)
     }
 
+    /// Forgets a device's registration and call (a phone or a Softphone that restarts).
+    pub fn reset_voice(&mut self, d: DeviceId) {
+        self.voice.forget(d);
+    }
+
     /// A router's registered phones and calls.
     pub fn call_agent(&self, d: DeviceId) -> Option<&AgentState> {
         self.voice.agents.get(&d)
@@ -240,8 +245,27 @@ impl Sim {
 
     /// Frames a phone itself sends out of its network port go tagged in the voice VLAN.
     pub(crate) fn phone_tag(&self, t: &Topology, from: End, frame: Vec<u8>) -> Vec<u8> {
-        if from.port != NETWORK_PORT || !t.device(from.device).is_some_and(|d| d.kind == DeviceKind::Phone) {
+        if from.port != NETWORK_PORT {
             return frame;
+        }
+        let Some(dev) = t.device(from.device) else { return frame };
+        if dev.kind != DeviceKind::Phone {
+            // A computer's Softphone sends voice with the same DSCP marks, untagged: it has
+            // no voice VLAN of its own, it sits in its port's access VLAN.
+            if !dev.voice_endpoint() {
+                return frame;
+            }
+            return match Frame::decode(&frame) {
+                Ok(mut f) if f.vlan.is_none() => {
+                    let (cos, dscp) = voice_marking(&f);
+                    if cos == 0 {
+                        return frame;
+                    }
+                    netlabcraft_wire::qos::set_dscp(&mut f.payload, dscp);
+                    f.encode()
+                }
+                _ => frame,
+            };
         }
         match (voice_vlan(t, from.device), Frame::decode(&frame)) {
             (Some(v), Ok(mut f)) if f.vlan.is_none() => {
@@ -304,9 +328,12 @@ impl Sim {
         match d.kind {
             DeviceKind::Router if agent_port == Some(u.dst_port) => Some(self.agent_in(t, d, ip, &u.payload)),
             DeviceKind::Router if Sim::sip_agent_port(d) == Some(u.dst_port) => Some(self.sip_agent_in(t, d, ip, &u.payload)),
-            DeviceKind::Phone if u.dst_port == netlabcraft_model::voice::SIP_PORT && d.voice.sip => Some(self.sip_phone_in(t, d, ip, &u.payload)),
-            DeviceKind::Phone if u.dst_port == SIGNAL_PORT => Some(self.phone_signal_in(t, d, ip, &u.payload)),
-            DeviceKind::Phone if u.dst_port == RTP_PORT => Some(self.rtp_in(d, ip, &u.payload)),
+            // IP phones and computers with a Softphone answer the same way.
+            _ if u.dst_port == netlabcraft_model::voice::SIP_PORT && d.voice_endpoint() && d.voice_sip() => {
+                Some(self.sip_phone_in(t, d, ip, &u.payload))
+            }
+            _ if u.dst_port == SIGNAL_PORT && d.voice_endpoint() => Some(self.phone_signal_in(t, d, ip, &u.payload)),
+            _ if u.dst_port == RTP_PORT && d.voice_endpoint() => Some(self.rtp_in(d, ip, &u.payload)),
             _ => None,
         }
     }
@@ -519,16 +546,17 @@ impl Sim {
     /// change of address or a refusal); phones in a call send their voice packet.
     pub(crate) fn voice_tick(&mut self, t: &Topology) {
         let now = self.now;
-        // A phone that lost its power forgets its registration and its call.
-        for d in t.devices.iter().filter(|d| d.kind == DeviceKind::Phone && t.is_dark(d.id)) {
+        // A phone that lost its power forgets its registration and its call, and so does a
+        // computer that switched its Softphone off or was powered off.
+        for d in t.devices.iter().filter(|d| if d.kind == DeviceKind::Phone { t.is_dark(d.id) } else { !d.voice_endpoint() || t.is_dark(d.id) }) {
             self.voice.phones.remove(&d.id);
         }
-        for d in t.devices.iter().filter(|d| d.kind == DeviceKind::Phone && !t.is_dark(d.id)) {
+        for d in t.devices.iter().filter(|d| d.voice_endpoint() && !t.is_dark(d.id)) {
             let ip = d.ports.get(NETWORK_PORT).and_then(|p| p.ip).map(|n| n.addr);
             let st = self.voice.phones.entry(d.id).or_default();
             // SIP phones register with their registrar (else the TFTP server); the others
             // with the TFTP server DHCP option 150 named.
-            let server = if d.voice.sip { d.voice.sip_server.or(d.voice.tftp) } else { d.voice.tftp };
+            let server = d.voice_server();
             if st.number.is_some() && (st.reg_ip != ip || server.is_none_or(|a| st.agent != Some(a))) {
                 // New address, or another server: register again.
                 st.number = None;
@@ -539,7 +567,7 @@ impl Sim {
             if let (None, Some(_), Some(server), true) = (&st.number, ip, server, due) {
                 st.last_try = Some(now);
                 st.reg_ip = ip;
-                if d.voice.sip {
+                if d.voice_sip() {
                     self.sip_register(t, d, server);
                 } else {
                     let mac = d.ports.get(NETWORK_PORT).map(|p| p.mac).unwrap_or_default();
@@ -568,8 +596,8 @@ impl Sim {
 
     fn phone_device<'a>(&self, t: &'a Topology, dev: DeviceId) -> Result<&'a Device, SimError> {
         let d = t.device(dev).ok_or(SimError::NoDevice(dev))?;
-        if d.kind != DeviceKind::Phone {
-            return Err(SimError::NoSource(format!("{} is not an IP phone", d.name)));
+        if d.kind != DeviceKind::Phone && !d.voice_endpoint() {
+            return Err(SimError::NoSource(format!("{} is not an IP phone and its Softphone is off", d.name)));
         }
         if d.powered_off {
             return Err(SimError::NoSource(format!("{} is switched off", d.name)));
@@ -612,7 +640,7 @@ impl Sim {
             });
             s.message = None;
         }
-        if d.voice.sip {
+        if d.voice_sip() {
             self.sip_dial(t, d, agent, number).map_err(SimError::NoSource)?;
         } else {
             self.phone_send(t, d, agent, message("DIAL", &[number])).map_err(SimError::NoSource)?;
@@ -637,7 +665,7 @@ impl Sim {
         if !hangup && call.state != CallState::Ringing {
             return Err(SimError::NoSource("the phone is not ringing".into()));
         }
-        if d.voice.sip {
+        if d.voice_sip() {
             let ringing_me = call.state == CallState::Ringing;
             self.sip_answer(t, d, agent, &call, hangup).map_err(SimError::NoSource)?;
             if hangup {
