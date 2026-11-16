@@ -140,6 +140,9 @@ pub struct Notification {
 }
 
 /// One BGP message.
+// An UPDATE carries the path attributes inline; boxing them would change every constructor for no gain, since
+// messages are built and dropped one at a time.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Message {
     Open(Open),
