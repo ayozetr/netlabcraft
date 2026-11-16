@@ -795,6 +795,31 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no maximum-paths` |  | router, switch | One path per prefix again |
 | `show ip bgp community <community>... [exact-match]` | user, privileged | router, switch | The paths that carry these communities |
 | `show ip bgp community-list NAME` | user, privileged | router, switch | The paths a community list permits |
+| `neighbor A.B.C.D route-reflector-client` |  | router, switch | Make this internal neighbour a client of this route reflector |
+| `no neighbor A.B.C.D route-reflector-client` |  | router, switch | This neighbour is an ordinary internal neighbour again |
+| `bgp cluster-id {A.B.C.D\|<1-4294967295>}` |  | router, switch | Name the cluster this route reflector serves |
+| `no bgp cluster-id` |  | router, switch | The cluster id is the router id again |
+| `bgp confederation identifier <1-4294967295>` |  | router, switch | The autonomous system the confederation shows to the outside |
+| `no bgp confederation identifier` |  | router, switch | Leave the confederation |
+| `bgp confederation peers <1-4294967295>...` |  | router, switch | Name the other member autonomous systems of the confederation |
+| `no bgp confederation peers` |  | router, switch | Forget every confederation peer |
+| `no bgp confederation peers <1-4294967295>...` |  | router, switch | Forget these confederation peers |
+| `neighbor A.B.C.D default-originate` |  | router, switch | Send this neighbour a default route whether or not there is one here |
+| `no neighbor A.B.C.D default-originate` |  | router, switch | Stop sending the default route |
+| `neighbor A.B.C.D remove-private-as` |  | router, switch | Take private AS numbers out of the paths sent to this external neighbour |
+| `neighbor A.B.C.D remove-private-as all` |  | router, switch | Take every private AS number out, even from a path that has public ones |
+| `no neighbor A.B.C.D remove-private-as` |  | router, switch | Send the AS numbers as they are |
+| `neighbor A.B.C.D soft-reconfiguration inbound` |  | router, switch | Keep what this neighbour sends before the inbound policy, to list it |
+| `no neighbor A.B.C.D soft-reconfiguration inbound` |  | router, switch | Stop keeping what this neighbour sends |
+| `bgp always-compare-med` |  | router, switch | Compare the MED of paths from different neighbouring autonomous systems too |
+| `no bgp always-compare-med` |  | router, switch | Compare the MED only within one neighbouring AS |
+| `bgp bestpath as-path ignore` |  | router, switch | Leave the AS-path length out of the best-path choice |
+| `no bgp bestpath as-path ignore` |  | router, switch | Count the AS-path length again |
+| `maximum-paths ibgp <1-32>` |  | router, switch | Put up to this many equal internal paths in the routing table |
+| `no maximum-paths ibgp` |  | router, switch | One internal path per prefix again |
+| `show ip bgp neighbors A.B.C.D received-routes` | user, privileged | router, switch | What a neighbour sent before the inbound policy (needs soft-reconfiguration inbound) |
+| `show ip bgp regexp <regular expression>` | user, privileged | router, switch | The paths whose AS path matches a regular expression |
+| `show ip bgp filter-list <1-500>` | user, privileged | router, switch | The paths an AS-path list permits |
 | `bandwidth <1-10000000>` | interface | router, switch | The bandwidth EIGRP's metric uses (kbit/s) |
 | `no bandwidth` | interface | router, switch | Bandwidth from the port's speed again |
 | `delay <1-16777215>` | interface | router, switch | The delay EIGRP's metric adds (tens of microseconds) |

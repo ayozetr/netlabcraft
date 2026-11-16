@@ -3877,7 +3877,30 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::BgpMaximumPaths
         | Id::NoBgpMaximumPaths
         | Id::ShowIpBgpCommunity
-        | Id::ShowIpBgpCommunityList => bgp::command(&mut c, spec.id, &args),
+        | Id::ShowIpBgpCommunityList
+        | Id::BgpNeighborRrClient
+        | Id::NoBgpNeighborRrClient
+        | Id::BgpClusterId
+        | Id::NoBgpClusterId
+        | Id::BgpConfedId
+        | Id::NoBgpConfedId
+        | Id::BgpConfedPeers
+        | Id::NoBgpConfedPeers
+        | Id::BgpNeighborDefaultOriginate
+        | Id::NoBgpNeighborDefaultOriginate
+        | Id::BgpNeighborRemovePrivate
+        | Id::NoBgpNeighborRemovePrivate
+        | Id::BgpNeighborSoftReconf
+        | Id::NoBgpNeighborSoftReconf
+        | Id::BgpAlwaysCompareMed
+        | Id::NoBgpAlwaysCompareMed
+        | Id::BgpAsPathIgnore
+        | Id::NoBgpAsPathIgnore
+        | Id::BgpMaximumPathsIbgp
+        | Id::NoBgpMaximumPathsIbgp
+        | Id::ShowIpBgpReceived
+        | Id::ShowIpBgpRegexp
+        | Id::ShowIpBgpFilterList => bgp::command(&mut c, spec.id, &args),
         Id::FlowExportDestination
         | Id::NoFlowExportDestination
         | Id::FlowExportVersion

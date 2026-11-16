@@ -786,6 +786,7 @@ pub fn ip_route_table(d: &Device, table: &[netlabcraft_sim::RouteEntry]) -> Stri
             ('D' | 'X', Some(v), Some(i)) => format!("via {v}, {i} (EIGRP)"),
             ('D', None, Some(i)) => format!("summary, discarded on {i} (EIGRP)"),
             ('B', Some(v), Some(i)) => format!("via {v}, {i} (BGP)"),
+            ('B', None, Some(i)) => format!("summary, discarded on {i} (BGP)"),
             (_, Some(v), _) => format!("via {v}"),
             (_, None, Some(i)) => format!("out {i}"),
             _ => String::new(),

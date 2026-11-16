@@ -80,6 +80,7 @@ labs! {
     lab_38_port_mirroring => "38-port-mirroring.md",
     lab_39_redistribute_and_distribute_lists => "39-redistribute-and-distribute-lists.md",
     lab_40_bgp_communities_aggregation => "40-bgp-communities-aggregation.md",
+    lab_42_bgp_route_reflectors => "42-bgp-route-reflectors.md",
 }
 
 /// The cellular lab is not part of a CCNA course, so it has no number (the numbered labs 21 and up
