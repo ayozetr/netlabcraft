@@ -212,6 +212,10 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                 dev.services = sv;
             }
             s.changed();
+            // A service that was switched off ends the sessions it held.
+            if s.topology.device(d).is_some_and(|x| !x.services.pppoe.on) {
+                crate::pppoe::service_off(s, d);
+            }
             Ok(Value::Null)
         }
         "browser.get" => {

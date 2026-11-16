@@ -483,7 +483,7 @@ pub(crate) fn pppoe_dialer(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device)
         });
         ui.end_row();
     });
-    ui.label(RichText::new(tl("The first network port must be cabled straight to a server whose PPPoE service is on.")).color(tk.muted));
+    ui.label(RichText::new(tl("The first network port must reach a server whose PPPoE service is on, straight or through switches.")).color(tk.muted));
     ui.separator();
     // The cable still reaches the server the session came from?
     let live = session.as_ref().is_some_and(|x| app.session.topology.peer(End { device: dev.id, port: 0 }).is_some_and(|p| p.device == x.server));

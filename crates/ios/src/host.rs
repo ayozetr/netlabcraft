@@ -298,6 +298,8 @@ fn ipconfig(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Ou
         [] => return Outcome { output: show(d), ..Outcome::default() },
         [flag] if flag.eq_ignore_ascii_case("/all") => return Outcome { output: show_all(d), ..Outcome::default() },
         [flag] if flag.eq_ignore_ascii_case("/release") => {
+            // A PPPoE session is ended properly: Terminate-Request and PADT go to the server.
+            sim.pppoe_hangup(t, dev);
             if let Some(d) = t.device_mut(dev) {
                 if let Some(p) = d.ports.first_mut() {
                     p.ip = None;
@@ -355,6 +357,7 @@ fn ipconfig(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Ou
                 Some(s) => Some(parse_ip(s).map_err(|e| e.to_string())?),
                 None => None,
             };
+            sim.pppoe_hangup(t, dev);
             let d = t.device_mut(dev).ok_or("the device no longer exists")?;
             d.dns = dns;
             if let Some(p) = d.ports.first_mut() {

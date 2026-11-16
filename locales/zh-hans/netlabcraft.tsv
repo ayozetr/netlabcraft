@@ -1578,7 +1578,7 @@ event	write request for	写请求
 	Answered	已应答
 	Lost	丢失
 	Connect	连接
-	The first network port must be cabled straight to a server whose PPPoE service is on.	第一个网络端口必须用网线直接连到已开启 PPPoE 服务的服务器。
+	The first network port must reach a server whose PPPoE service is on, straight or through switches.	第一个网络端口必须能连到已开启 PPPoE 服务的服务器，可以直连，也可以经过交换机。
 	Disconnected	未连接
 	Enter the account and press Connect.	请输入账号，然后点击“连接”。
 	Connected	已连接

@@ -197,8 +197,14 @@ mod tests {
         d.services.pppoe.users.push(PppoeUser { name: "ann".into(), password: "pw-test".into() });
         let d = t.device_mut(pc).unwrap();
         d.pppoe.username = "ann".into();
-        d.pppoe.session =
-            Some(PppoeSession { server: srv, address: "10.0.0.5".parse().unwrap(), gateway: "10.0.0.1".parse().unwrap(), auth: crate::PppAuth::Pap });
+        d.pppoe.session = Some(PppoeSession {
+            server: srv,
+            address: "10.0.0.5".parse().unwrap(),
+            gateway: "10.0.0.1".parse().unwrap(),
+            auth: crate::PppAuth::Pap,
+            id: 1,
+            server_mac: netlabcraft_core::MacAddr::ZERO,
+        });
         let back = from_json(&to_json(&t).unwrap()).unwrap();
         assert_eq!(back, t);
         assert!(back.device(pc).unwrap().pppoe.session.is_some());

@@ -125,17 +125,119 @@ fn disconnect_undo_a_lost_cable_and_a_saved_lab() {
     assert_eq!((st["state"].clone(), st["connected"].clone()), (json!("lost"), json!(false)));
 }
 
+/// The summaries of the events so far, one per line.
+fn trace_text(s: &Session) -> String {
+    s.sim.trace().iter().map(|e| e.summary.clone()).collect::<Vec<_>>().join("\n")
+}
+
 #[test]
-fn the_chap_exchange_checks_a_real_md5_response() {
-    let cfg =
-        |auth| PppoeServer { on: true, auth, users: vec![PppoeUser { name: "ann".into(), password: "pw-test".into() }], ..PppoeServer::default() };
-    let chap = cfg(PppAuth::Chap);
-    assert_eq!(crate::pppoe::authenticate(&chap, b"seed", "ann", "pw-test"), Ok(PppAuth::Chap));
-    for (u, p) in [("ann", "pw-tesT"), ("ann", ""), ("eve", "pw-test")] {
-        assert!(crate::pppoe::authenticate(&chap, b"seed", u, p).is_err(), "{u}/{p}");
+fn chap_is_a_real_challenge_and_response_on_the_wire() {
+    let mut s = lab();
+    serve(&mut s, json!({"on": true, "auth": "chap", "pool_start": "10.9.0.100", "pool_size": 3, "users": [{"name": "ann", "password": "pw-test"}]}));
+    assert!(dial(&mut s, "ann", "pw-tesT").is_err());
+    let text = trace_text(&s);
+    assert!(text.contains("CHAP Challenge") && text.contains("CHAP Response (name ann)") && text.contains("CHAP Failure"), "{text}");
+    assert!(!text.contains("CHAP Success"), "{text}");
+    s.sim.clear_trace();
+    dial(&mut s, "ann", "pw-test").unwrap();
+    let text = trace_text(&s);
+    for want in [
+        "PPPoE PADI",
+        "PPPoE PADO: access concentrator SRV1",
+        "PPPoE PADR",
+        "PPPoE PADS: session 0x0001 granted",
+        "LCP Configure-Request (MRU 1492, CHAP, magic number)",
+        "LCP Configure-Ack",
+        "CHAP Success",
+        "IPCP Configure-Nak (address 10.9.0.100)",
+        "IPCP Configure-Ack (address 10.9.0.100)",
+    ] {
+        assert!(text.contains(want), "{want}\n{text}");
     }
-    assert_eq!(crate::pppoe::authenticate(&cfg(PppAuth::Pap), b"seed", "ann", "pw-test"), Ok(PppAuth::Pap));
-    assert!(crate::pppoe::authenticate(&cfg(PppAuth::Pap), b"seed", "ann", "x").is_err());
+}
+
+#[test]
+fn pap_sends_the_name_and_password_and_the_server_answers() {
+    let mut s = lab();
+    serve(&mut s, json!({"on": true, "auth": "pap", "pool_start": "10.9.0.100", "pool_size": 3, "users": [{"name": "ann", "password": "pw-test"}]}));
+    dial(&mut s, "ann", "pw-test").unwrap();
+    let text = trace_text(&s);
+    assert!(text.contains("PAP Authenticate-Request (user ann)") && text.contains("PAP Authenticate-Ack"), "{text}");
+}
+
+#[test]
+fn the_session_crosses_switches_and_carries_ip_as_ppp() {
+    let mut s = Session::new();
+    s.execute("device.add", json!({"kind": "pc"})).unwrap();
+    s.execute("device.add", json!({"kind": "pc"})).unwrap();
+    s.execute("device.add", json!({"kind": "server"})).unwrap();
+    s.execute("device.add", json!({"kind": "switch"})).unwrap();
+    s.execute("link.add", json!({"a": "PC1", "b": "S1"})).unwrap();
+    s.execute("link.add", json!({"a": "PC2", "b": "S1"})).unwrap();
+    s.execute("link.add", json!({"a": "SRV1", "b": "S1"})).unwrap();
+    cli(&mut s, "SRV1", "ipconfig 10.9.0.1 255.255.255.0");
+    serve(
+        &mut s,
+        json!({"on": true, "pool_start": "10.9.0.100", "pool_size": 5, "users": [{"name": "ann", "password": "pw-test"}, {"name": "bob", "password": "pw-two"}]}),
+    );
+    let a = dial(&mut s, "ann", "pw-test").unwrap();
+    assert_eq!((a["state"].clone(), a["address"].clone()), (json!("connected"), json!("10.9.0.100")));
+    let b = s.execute("pppoe.connect", json!({"device": "PC2", "username": "bob", "password": "pw-two"})).unwrap();
+    assert_eq!((b["state"].clone(), b["address"].clone()), (json!("connected"), json!("10.9.0.101")));
+    let id = |s: &Session, name: &str| s.topology.device(s.topology.resolve(name).unwrap()).unwrap().pppoe.session.clone().unwrap().id;
+    assert_ne!(id(&s, "PC1"), id(&s, "PC2"), "each caller has a session of its own");
+    s.sim.clear_trace();
+    assert!(reachable(&mut s));
+    let text = trace_text(&s);
+    assert!(text.contains("PPPoE session 0x0001 carrying ICMP echo request"), "{text}");
+    assert!(text.contains("PPPoE session 0x0001 carrying ICMP echo reply"), "{text}");
+    assert!(!text.contains("ARP who has 10.9.0.1"), "a session needs no ARP: {text}");
+    // The frames went through the switch and are in the capture.
+    assert!(s.sim.trace().iter().any(|e| e.from.device != e.to.device && e.protocol == netlabcraft_wire::Protocol::Pppoe));
+    let pcap = s.pcap();
+    assert!(pcap.windows(2).any(|w| w == [0x88, 0x64]), "the capture holds session frames");
+    // Releasing the address ends the session properly.
+    cli(&mut s, "PC1", "ipconfig /release");
+    s.sim.run_for(&s.topology, 100_000);
+    assert!(trace_text(&s).contains("PPPoE PADT"), "ending a session sends a PADT");
+}
+
+#[test]
+fn disconnect_sends_a_terminate_request_and_a_padt() {
+    let mut s = lab();
+    serve(&mut s, json!({"on": true, "pool_start": "10.9.0.100", "pool_size": 3, "users": [{"name": "ann", "password": "pw-test"}]}));
+    dial(&mut s, "ann", "pw-test").unwrap();
+    s.sim.clear_trace();
+    s.execute("pppoe.disconnect", json!({"device": "PC1"})).unwrap();
+    let text = trace_text(&s);
+    assert!(text.contains("LCP Terminate-Request") && text.contains("PPPoE PADT: session 0x0001 ended"), "{text}");
+    // The concentrator forgot it: a new call gets a session again.
+    let st = dial(&mut s, "ann", "pw-test").unwrap();
+    assert_eq!(st["state"], json!("connected"));
+}
+
+#[test]
+fn switching_the_service_off_ends_the_sessions_with_a_padt() {
+    let mut s = lab();
+    serve(&mut s, json!({"on": true, "pool_start": "10.9.0.100", "pool_size": 3, "users": [{"name": "ann", "password": "pw-test"}]}));
+    dial(&mut s, "ann", "pw-test").unwrap();
+    assert!(reachable(&mut s));
+    serve(&mut s, json!({"on": false}));
+    assert!(trace_text(&s).contains("PPPoE PADT"));
+    let st = s.execute("pppoe.status", json!({"device": "PC1"})).unwrap();
+    assert_eq!((st["state"].clone(), st["address"].clone()), (json!("disconnected"), Value::Null));
+    assert!(cli(&mut s, "PC1", "ipconfig").contains("not set"));
+}
+
+#[test]
+fn a_session_the_server_no_longer_knows_is_lost() {
+    let mut s = lab();
+    serve(&mut s, json!({"on": true, "pool_start": "10.9.0.100", "pool_size": 3, "users": [{"name": "ann", "password": "pw-test"}]}));
+    dial(&mut s, "ann", "pw-test").unwrap();
+    // Take the server away without telling it to end the session: power it off.
+    s.execute("device.power", json!({"device": "SRV1", "on": false})).unwrap();
+    let st = s.execute("pppoe.status", json!({"device": "PC1"})).unwrap();
+    assert_ne!(st["state"], json!("connected"), "{st}");
 }
 
 #[test]

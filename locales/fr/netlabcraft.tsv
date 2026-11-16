@@ -1578,7 +1578,7 @@ event	write request for	demande d'écriture de
 	Answered	Répondu
 	Lost	Perdu
 	Connect	Se connecter
-	The first network port must be cabled straight to a server whose PPPoE service is on.	Le premier port réseau doit être relié directement à un serveur dont le service PPPoE est activé.
+	The first network port must reach a server whose PPPoE service is on, straight or through switches.	Le premier port réseau doit atteindre un serveur dont le service PPPoE est activé, directement ou via des commutateurs.
 	Disconnected	Déconnecté
 	Enter the account and press Connect.	Saisissez le compte et appuyez sur Se connecter.
 	Connected	Connecté
