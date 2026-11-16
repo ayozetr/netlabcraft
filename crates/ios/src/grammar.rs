@@ -2421,15 +2421,15 @@ pub static SPECS: &[Spec] = &[
         AreaNssa,
         Modes::OSPF,
         Modes::BOTH,
-        [K("area"), Arg("<1-4294967295>"), K("nssa"), Rest("[no-summary] [default-information-originate]")],
-        "Border router: no routes from other areas (a default instead) and/or a type 7 default into the area"
+        [K("area"), Arg("<1-4294967295>"), K("nssa"), Rest("[no-summary] [no-redistribution] [default-information-originate]")],
+        "Border router: no routes from other areas (a default instead), no type 7 for its own redistributed routes, and/or a type 7 default into the area"
     ),
     spec!(NoAreaNssa, Modes::OSPF, Modes::BOTH, [K("no"), K("area"), Arg("<1-4294967295>"), K("nssa")], "A normal area again"),
     spec!(
         NoAreaNssa,
         Modes::OSPF,
         Modes::BOTH,
-        [K("no"), K("area"), Arg("<1-4294967295>"), K("nssa"), Rest("[no-summary] [default-information-originate]")],
+        [K("no"), K("area"), Arg("<1-4294967295>"), K("nssa"), Rest("[no-summary] [no-redistribution] [default-information-originate]")],
         "Undo only those options of the NSSA"
     ),
     spec!(
@@ -2454,11 +2454,40 @@ pub static SPECS: &[Spec] = &[
         "Join the backbone through this area to the border router with that router ID"
     ),
     spec!(
+        AreaVirtualLink,
+        Modes::OSPF,
+        Modes::BOTH,
+        [
+            K("area"),
+            Arg("<1-4294967295>"),
+            K("virtual-link"),
+            Arg("A.B.C.D"),
+            Rest(
+                "[hello-interval N] [dead-interval N] [retransmit-interval N] [transmit-delay N] [authentication [message-digest|null]] [authentication-key KEY] [message-digest-key ID md5 KEY]"
+            )
+        ],
+        "The link's timers (both ends must agree on hello and dead) and its own authentication"
+    ),
+    spec!(
         NoAreaVirtualLink,
         Modes::OSPF,
         Modes::BOTH,
         [K("no"), K("area"), Arg("<1-4294967295>"), K("virtual-link"), Arg("A.B.C.D")],
         "Remove the virtual link"
+    ),
+    spec!(
+        NoAreaVirtualLink,
+        Modes::OSPF,
+        Modes::BOTH,
+        [
+            K("no"),
+            K("area"),
+            Arg("<1-4294967295>"),
+            K("virtual-link"),
+            Arg("A.B.C.D"),
+            Rest("hello-interval|dead-interval|retransmit-interval|transmit-delay|authentication|authentication-key|message-digest-key [ID]")
+        ],
+        "Put only that option of the virtual link back to its default"
     ),
     spec!(
         ShowIpOspfVirtualLinks,

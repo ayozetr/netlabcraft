@@ -1313,6 +1313,15 @@ impl Ospf {
         redist::sanitize_dist_lists(&mut self.distribute);
         for a in self.areas.values_mut() {
             a.virtual_links.truncate(MAX_VIRTUAL_LINKS);
+            // Options belong to a link that exists, once each, with a bounded key list.
+            let links = a.virtual_links.clone();
+            a.vlink_opts.retain(|v| links.contains(&v.peer));
+            a.vlink_opts.dedup_by_key(|v| v.peer);
+            for v in &mut a.vlink_opts {
+                while v.md5_keys.len() > MAX_OSPF_MD5_KEYS {
+                    v.md5_keys.pop_first();
+                }
+            }
             // A stub area and an NSSA exclude each other; the stub setting wins in a hostile file.
             if a.stub {
                 a.nssa = false;
@@ -1463,6 +1472,14 @@ pub struct OspfArea {
     /// router, which joins a disconnected area (or the other end) to the backbone.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub virtual_links: Vec<Ipv4Addr>,
+    /// The options typed after `area N virtual-link ROUTER-ID` (timers and authentication), one
+    /// entry per link that has any.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub vlink_opts: Vec<VirtualLinkOpts>,
+    /// `area N nssa no-redistribution` (on the border router): its own redistributed routes
+    /// stay out of the NSSA as type 7 LSAs (they still go to the rest of the network as type 5).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub nssa_no_redist: bool,
     /// `area N range`: the border router advertises these instead of the area's networks
     /// inside them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1471,6 +1488,61 @@ pub struct OspfArea {
     /// unless it sets its own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auth: Option<OspfAuthKind>,
+}
+
+/// The options of one `area N virtual-link ROUTER-ID` line.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VirtualLinkOpts {
+    /// The router ID at the far end.
+    pub peer: Ipv4Addr,
+    /// `hello-interval N` (seconds; 10 when not set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hello: Option<u16>,
+    /// `dead-interval N` (seconds; four hello intervals when not set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dead: Option<u16>,
+    /// `retransmit-interval N` (seconds; 5 when not set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retransmit: Option<u16>,
+    /// `transmit-delay N` (seconds; 1 when not set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transmit_delay: Option<u16>,
+    /// `authentication [message-digest|null]`: the link's own type, which wins over the area's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth: Option<OspfAuthKind>,
+    /// `authentication-key KEY`: the simple password (eight characters count).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth_key: Option<String>,
+    /// `message-digest-key N md5 KEY`, by key id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub md5_keys: BTreeMap<u8, String>,
+}
+
+impl VirtualLinkOpts {
+    /// A link with no option set.
+    pub fn new(peer: Ipv4Addr) -> Self {
+        VirtualLinkOpts {
+            peer,
+            hello: None,
+            dead: None,
+            retransmit: None,
+            transmit_delay: None,
+            auth: None,
+            auth_key: None,
+            md5_keys: BTreeMap::new(),
+        }
+    }
+
+    /// Whether no option is set (the entry can go).
+    pub fn is_empty(&self) -> bool {
+        *self == VirtualLinkOpts::new(self.peer)
+    }
+
+    /// The hello and dead intervals in seconds (10, and four times the hello interval).
+    pub fn timers(&self) -> (u16, u16) {
+        let hello = self.hello.unwrap_or(10);
+        (hello, self.dead.unwrap_or(hello.saturating_mul(4)))
+    }
 }
 
 impl OspfArea {
