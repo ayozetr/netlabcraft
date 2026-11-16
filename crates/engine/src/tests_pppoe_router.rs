@@ -7,6 +7,8 @@ use serde_json::{Value, json};
 use crate::Session;
 
 fn cli(s: &mut Session, dev: &str, line: &str) -> String {
+    // The console of a router starts in user mode: privileged commands need `enable`.
+    s.execute("cli.exec", json!({"device": dev, "line": "enable"})).unwrap();
     s.execute("cli.exec", json!({"device": dev, "line": line})).unwrap()["output"].as_str().unwrap_or_default().to_string()
 }
 
