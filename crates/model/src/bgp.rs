@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 pub const MAX_NEIGHBORS: usize = 64;
 /// Most `network` statements under one BGP process.
 pub const MAX_NETWORKS: usize = 256;
+/// Longest `neighbor … password` kept.
+pub const MAX_PASSWORD: usize = 25;
 /// Longest neighbour description and update-source name kept.
 pub const MAX_TEXT: usize = 80;
 /// The local preference a path gets when nothing sets it.
@@ -125,6 +127,14 @@ pub struct Neighbor {
     /// `default-originate`: send this neighbour a default route whether or not there is one here.
     #[serde(default)]
     pub default_originate: bool,
+    /// `default-originate route-map NAME`: the default route is sent only while some route in this
+    /// router's tables passes the map, and the map's `set` lines change it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_originate_map: Option<String>,
+    /// `password`: the TCP MD5 key of the session; the session comes up only when both ends have
+    /// the same one (or neither has one).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub password: Option<String>,
     /// `remove-private-as`: take private AS numbers out of the path sent to an external neighbour
     /// (only when the whole path is private, unless `remove_private_all`).
     #[serde(default)]
@@ -188,6 +198,8 @@ pub fn follow(n: &mut Neighbor, old: &Neighbor, new: &Neighbor) {
         filter_list_out,
         route_reflector_client,
         default_originate,
+        default_originate_map,
+        password,
         remove_private_as,
         remove_private_all,
         soft_reconfiguration_in,
@@ -220,6 +232,8 @@ impl Neighbor {
             filter_list_out: None,
             route_reflector_client: false,
             default_originate: false,
+            default_originate_map: None,
+            password: None,
             remove_private_as: false,
             remove_private_all: false,
             soft_reconfiguration_in: false,
@@ -238,9 +252,16 @@ fn sanitize_neighbor(n: &mut Neighbor) {
     if let Some((k, h)) = n.timers {
         n.timers = Some((k, if h == 0 { 0 } else { h.max(3) }));
     }
-    for name in
-        [&mut n.prefix_list_in, &mut n.prefix_list_out, &mut n.route_map_in, &mut n.route_map_out, &mut n.filter_list_in, &mut n.filter_list_out]
-    {
+    n.password = n.password.take().map(|p| p.chars().filter(|c| !c.is_control()).take(MAX_PASSWORD).collect::<String>()).filter(|p| !p.is_empty());
+    for name in [
+        &mut n.prefix_list_in,
+        &mut n.prefix_list_out,
+        &mut n.route_map_in,
+        &mut n.route_map_out,
+        &mut n.filter_list_in,
+        &mut n.filter_list_out,
+        &mut n.default_originate_map,
+    ] {
         *name = name.take().map(|x| crate::policy::clean_name(&x)).filter(|x| !x.is_empty());
     }
     if let Some(u) = &mut n.update_source {
