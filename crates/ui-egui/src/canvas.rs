@@ -470,6 +470,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
     // the pointer; they answer the keyboard and assistive technology (Tab, Enter, arrows, a click
     // action from a screen reader).
     device_nodes(app, ui, rect);
+    cable_nodes(app, ui, rect);
     let resp = ui.allocate_rect(rect, Sense::click_and_drag());
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 0.0, tk.canvas);
@@ -534,6 +535,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
     }
     draw_coverage(app, &painter, &view);
     draw_links(app, &painter, &view, &tk);
+    draw_cable_focus(app, &painter, &view, &tk);
     draw_notes(app, &painter, &view, &tk);
     draw_handles(app, &painter, &view, &tk);
     draw_in_progress(app, &painter, &view, ui.input(|i| i.pointer.hover_pos()));
@@ -1147,6 +1149,87 @@ fn device_nodes(app: &mut PacketApp, ui: &mut Ui, canvas: Rect) {
     if let Some(d) = open {
         app.ui.selected = Some(d);
         console::open(app, d);
+    }
+}
+
+/// The widget id of a cable's accessible node: a port holds one cable, so its first end names it.
+fn cable_node_id(e: End) -> egui::Id {
+    egui::Id::unique(("canvas-cable", e.device.0, e.port))
+}
+
+/// What a screen reader says about a cable: its kind and the two ports it joins, `Cable, kind, A port - B port`.
+fn cable_label(t: &netlabcraft_model::Topology, l: &netlabcraft_model::Link) -> String {
+    let end = |e: End| {
+        t.device(e.device).map_or(String::new(), |d| format!("{} {}", d.display_name(), d.ports.get(e.port).map_or("", |p| p.name.as_str())))
+    };
+    format!("{}, {}, {} - {}", tl("Cable"), crate::i18n::tr(t.resolved_cable(l).label()), end(l.a), end(l.b))
+}
+
+/// Registers each cable shown in this view as a focusable, labelled node, like the devices: Tab
+/// moves between them, the arrow keys step to the previous or next cable and Enter, Space or a
+/// screen reader's click opens the device at the cable's first end (as clicking it would) and
+/// says the cable in the status line. The nodes come before the workspace, which takes the
+/// pointer, so the cables' bounding boxes, which overlap the devices, never steal a click.
+fn cable_nodes(app: &mut PacketApp, ui: &mut Ui, canvas: Rect) {
+    let level = app.session.view;
+    let view = View { origin: canvas.min.to_vec2() + app.ui.pan, zoom: app.ui.zoom, level, shown: app.session.topology.shown_map(level) };
+    let t = &app.session.topology;
+    let mut cables: Vec<(End, Rect, String)> = t
+        .links
+        .iter()
+        .filter(|l| view.visible(l.a.device) && view.visible(l.b.device))
+        .filter_map(|l| cable_ends(t, &view, l).map(|(pa, pb)| (l.a, Rect::from_two_pos(pa, pb).expand(6.0), cable_label(t, l))))
+        .collect();
+    cables.sort_by_key(|(e, ..)| (e.device.0, e.port));
+    let mut focused = None;
+    let mut open = None;
+    for (i, (end, rect, label)) in cables.iter().enumerate() {
+        let r = ui.interact(rect.intersect(canvas), cable_node_id(*end), Sense::click());
+        r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label.clone()));
+        if r.clicked() {
+            open = Some((*end, label.clone()));
+        }
+        if r.has_focus() {
+            focused = Some(*end);
+            // The arrows step between cables (in port order), not egui's spatial focus move.
+            ui.memory_mut(|m| {
+                m.set_focus_lock_filter(r.id, egui::EventFilter { horizontal_arrows: true, vertical_arrows: true, ..Default::default() })
+            });
+            let (next, prev) = ui.input_mut(|inp| {
+                let next =
+                    inp.consume_key(egui::Modifiers::NONE, egui::Key::ArrowRight) | inp.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown);
+                let prev = inp.consume_key(egui::Modifiers::NONE, egui::Key::ArrowLeft) | inp.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp);
+                (next, prev)
+            });
+            let target = if next {
+                cables.get(i + 1)
+            } else if prev {
+                i.checked_sub(1).and_then(|j| cables.get(j))
+            } else {
+                None
+            };
+            if let Some((to, ..)) = target {
+                ui.memory_mut(|m| m.request_focus(cable_node_id(*to)));
+                focused = Some(*to);
+            }
+        }
+    }
+    app.ui.cable_focus = focused;
+    if let Some((end, label)) = open {
+        app.ui.selected = Some(end.device);
+        console::open(app, end.device);
+        app.ui.status = Some((label, false));
+    }
+}
+
+/// A highlight along the cable that has the keyboard focus.
+fn draw_cable_focus(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Tokens) {
+    let Some(end) = app.ui.cable_focus else { return };
+    let t = &app.session.topology;
+    if let Some(l) = t.links.iter().find(|l| l.a == end)
+        && let Some((pa, pb)) = cable_ends(t, view, l)
+    {
+        painter.line_segment([pa, pb], Stroke::new((6.0 * view.zoom).max(4.0), tk.selection.gamma_multiply(0.45)));
     }
 }
 
