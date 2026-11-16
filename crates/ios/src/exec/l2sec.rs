@@ -467,7 +467,12 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
         }
         L2ShowVlanSummary => Ok(show_vlan_summary(c.d()?)),
         L2ShowDtp => Ok(show_dtp(c.t, c.d()?)),
-        L2ShowCounters => Ok(show_counters(c.sim, c.d()?)),
+        L2ShowCounters => Ok(show_counters(c.sim, c.d()?, None, false)),
+        L2ShowCountersErrors => Ok(show_counters(c.sim, c.d()?, None, true)),
+        L2ClearStpCounters => {
+            c.sim.clear_stp_counters(c.dev);
+            Ok(String::new())
+        }
         L2TrunkEncap | L2NoTrunkEncap => {
             let d = c.d()?;
             let model = d.catalogue_model();
@@ -848,6 +853,16 @@ fn show_stp_summary(t: &Topology, sim: &Sim, d: &Device, trees: &[(VlanId, netla
     s.trim_end().to_string()
 }
 
+/// The topology-change line of a VLAN's detail view: how many this switch saw, and the last.
+fn stp_changes_line(t: &Topology, sim: &Sim, d: &Device, vlan: VlanId) -> String {
+    let tc = sim.topology_changes(d.id, vlan);
+    if tc.count == 0 {
+        return "No topology change seen since the switch started or the counters were cleared".to_string();
+    }
+    let from = d.ports.get(tc.port).map_or(String::new(), |_| format!(" from {}", netlabcraft_sim::channel::port_label(t, d, tc.port, false)));
+    format!("{} topology changes; the last was {} ago{from}", tc.count, crate::render::hms(sim.now_us().saturating_sub(tc.last_us)))
+}
+
 fn show_stp_detail(t: &Topology, sim: &Sim, d: &Device, vlan: VlanId, tree: &netlabcraft_sim::stp::VlanTree) -> String {
     let Some(me) = tree.bridges.get(&d.id) else { return format!("VLAN{:04}: this switch has no port in the tree", vlan.get()) };
     let mut s = format!("VLAN{:04} ({})\n", vlan.get(), if d.rapid_stp { "rapid spanning tree" } else { "IEEE 802.1D spanning tree" });
@@ -860,6 +875,7 @@ fn show_stp_detail(t: &Topology, sim: &Sim, d: &Device, vlan: VlanId, tree: &net
             writeln!(s, "  Root:         priority {}, address {}; path cost {} through {rp}", me.root.priority, me.root.mac.dotted(), me.root_cost);
     }
     let _ = writeln!(s, "  Timers:       hello 2 s, max age 20 s, forward delay 15 s");
+    let _ = writeln!(s, "  Changes:      {}", stp_changes_line(t, sim, d, vlan));
     for ((dev, p), info) in tree.ports.iter().filter(|((dev, _), i)| *dev == d.id && i.role != Role::Disabled) {
         let _ = dev;
         let Some(port) = d.ports.get(*p) else { continue };
@@ -900,6 +916,8 @@ fn show_stp_detail(t: &Topology, sim: &Sim, d: &Device, vlan: VlanId, tree: &net
         );
         let edge = netlabcraft_sim::l2sec::edge_port(t, d, *p);
         let _ = writeln!(s, "    Path cost {}{}; link type {lt}", info.cost, if port.l2.cost(vlan).is_some() { " (set)" } else { " (from speed)" });
+        let bp = sim.bpdu_counts(d.id, *p, vlan);
+        let _ = writeln!(s, "    BPDUs: sent {}, received {}", bp.sent, bp.received);
         let _ = writeln!(
             s,
             "    Edge port {}; BPDU guard {}; root guard {}; loop guard {}; BPDU filter {}",
@@ -1087,6 +1105,9 @@ fn show_stp_interface_detail(t: &Topology, sim: &Sim, d: &Device, port: usize, t
             |x| x.name(),
         );
         let _ = writeln!(s, "  Link type {lt}");
+        let bp = sim.bpdu_counts(d.id, port, *v);
+        let _ = writeln!(s, "  BPDUs: sent {}, received {}", bp.sent, bp.received);
+        let _ = writeln!(s, "  Topology changes in this VLAN: {}", stp_changes_line(t, sim, d, *v));
     }
     if rows == 0 {
         s.push_str("(this port is in no spanning tree: it is down, or its VLANs have no tree)");
@@ -1235,14 +1256,25 @@ fn show_dtp(t: &Topology, d: &Device) -> String {
     s.trim_end().to_string()
 }
 
-fn show_counters(sim: &Sim, d: &Device) -> String {
+/// `show interfaces counters`: one table of what came in and one of what went out; with `errors`,
+/// the frames a port could not read and the frames it dropped. One port when `only` names it.
+pub(crate) fn show_counters(sim: &Sim, d: &Device, only: Option<usize>, errors: bool) -> String {
+    let ports: Vec<usize> = (0..d.ports.len()).filter(|i| only.is_none_or(|o| o == *i)).collect();
+    if errors {
+        let mut s = format!("{:<10} {:>12} {:>12} {:>12}\n", "Port", "Input errors", "Input drops", "Output drops");
+        for &i in &ports {
+            let c = sim.port_counters(d.id, i);
+            let _ = writeln!(s, "{:<10} {:>12} {:>12} {:>12}", short(d, i), c.in_errors, c.in_drops, c.out_drops);
+        }
+        return s.trim_end().to_string();
+    }
     let mut s = format!("{:<10} {:>12} {:>10} {:>10} {:>10}\n", "Port", "Bytes in", "Unicast", "Multicast", "Broadcast");
-    for (i, _) in d.ports.iter().enumerate() {
+    for &i in &ports {
         let c = sim.port_counters(d.id, i);
         let _ = writeln!(s, "{:<10} {:>12} {:>10} {:>10} {:>10}", short(d, i), c.in_octets, c.in_ucast, c.in_mcast, c.in_bcast);
     }
     let _ = writeln!(s, "\n{:<10} {:>12} {:>10} {:>10} {:>10}", "Port", "Bytes out", "Unicast", "Multicast", "Broadcast");
-    for (i, _) in d.ports.iter().enumerate() {
+    for &i in &ports {
         let c = sim.port_counters(d.id, i);
         let _ = writeln!(s, "{:<10} {:>12} {:>10} {:>10} {:>10}", short(d, i), c.out_octets, c.out_ucast, c.out_mcast, c.out_bcast);
     }
