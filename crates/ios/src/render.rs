@@ -504,14 +504,7 @@ pub fn running_config(d: &Device) -> String {
         for n in &o.networks {
             let _ = writeln!(s, " network {} {} area {}", n.address, n.wildcard, n.area);
         }
-        if o.redistribute_static {
-            match &o.redistribute_map {
-                Some(m) => {
-                    let _ = writeln!(s, " redistribute static subnets route-map {m}");
-                }
-                None => s.push_str(" redistribute static subnets\n"),
-            }
-        }
+        crate::exec::redist::config_lines(&mut s, &o.redistribute, o.default_metric.map(|m| m.to_string()), &o.distribute, true);
         if o.default_originate {
             let _ = writeln!(s, " default-information originate");
         }
@@ -558,6 +551,7 @@ pub fn running_config(d: &Device) -> String {
                 }
             }
         }
+        crate::exec::redist::config_lines(&mut s, &e.redistribute, e.default_metric.map(|m| m.words()), &e.distribute, false);
         if let Some(n) = e.variance {
             let _ = writeln!(s, " variance {n}");
         }
@@ -583,6 +577,7 @@ pub fn running_config(d: &Device) -> String {
         if r.default_originate {
             let _ = writeln!(s, " default-information originate");
         }
+        crate::exec::redist::config_lines(&mut s, &r.redistribute, r.default_metric.map(|m| m.to_string()), &r.distribute, false);
         if !r.auto_summary {
             let _ = writeln!(s, " no auto-summary");
         }
@@ -711,9 +706,17 @@ pub fn ip_route_summary(table: &[netlabcraft_sim::RouteEntry]) -> String {
         ("local", count(&['L']), String::new()),
         ("static", count(&['S']), String::new()),
         ("RIP", count(&['R']), String::new()),
-        ("EIGRP", count(&['D']), String::new()),
+        (
+            "EIGRP",
+            count(&['D', 'X']),
+            if count(&['X']) > 0 { format!("internal {}, external {}", count(&['D']), count(&['X'])) } else { String::new() },
+        ),
         ("BGP", count(&['B']), String::new()),
-        ("OSPF", count(&['O', 'I', 'E']), format!("intra-area {}, inter-area {}, external {}", count(&['O']), count(&['I']), count(&['E']))),
+        (
+            "OSPF",
+            count(&['O', 'I', 'E', 'F']),
+            format!("intra-area {}, inter-area {}, external {}", count(&['O']), count(&['I']), count(&['E', 'F'])),
+        ),
     ];
     let other = table.len().saturating_sub(rows.iter().map(|r| r.1).sum::<usize>());
     let mut s = format!("{:<10} {:<7} Detail\n", "Source", "Routes");
@@ -753,7 +756,7 @@ pub fn ip_route_summary(table: &[netlabcraft_sim::RouteEntry]) -> String {
 
 pub fn ip_route_table(d: &Device, table: &[netlabcraft_sim::RouteEntry]) -> String {
     let mut s = String::from(
-        "Codes: C connected, L local, S static, R RIP, D EIGRP, B BGP, O OSPF, O IA OSPF other area, O E2 OSPF external, O*E2 OSPF external default, O*IA default into a stub area, * the default route\n\n",
+        "Codes: C connected, L local, S static, R RIP, D EIGRP, B BGP, D EX EIGRP external, O OSPF, O IA OSPF other area, O E1 and O E2 OSPF external, O*E2 OSPF external default, O*IA default into a stub area, * the default route\n\n",
     );
     if d.kind == DeviceKind::Switch && !d.ip_routing {
         let _ = writeln!(
@@ -778,8 +781,8 @@ pub fn ip_route_table(d: &Device, table: &[netlabcraft_sim::RouteEntry]) -> Stri
         let what = match (r.code, r.via, &r.iface) {
             ('C', _, Some(i)) => format!("connected, {i}"),
             ('L', _, Some(i)) => format!("local address, {i}"),
-            ('O' | 'E' | 'I', Some(v), Some(i)) => format!("via {v}, {i} (OSPF)"),
-            ('D', Some(v), Some(i)) => format!("via {v}, {i} (EIGRP)"),
+            ('O' | 'E' | 'F' | 'I', Some(v), Some(i)) => format!("via {v}, {i} (OSPF)"),
+            ('D' | 'X', Some(v), Some(i)) => format!("via {v}, {i} (EIGRP)"),
             ('D', None, Some(i)) => format!("summary, discarded on {i} (EIGRP)"),
             ('B', Some(v), Some(i)) => format!("via {v}, {i} (BGP)"),
             (_, Some(v), _) => format!("via {v}"),
@@ -789,6 +792,9 @@ pub fn ip_route_table(d: &Device, table: &[netlabcraft_sim::RouteEntry]) -> Stri
         let code = match r.code {
             'E' if r.net.prefix == 0 => "O*E2".to_string(),
             'E' => "O E2".to_string(),
+            'F' => "O E1".to_string(),
+            'X' if r.net.prefix == 0 => "D*EX".to_string(),
+            'X' => "D EX".to_string(),
             'I' if r.net.prefix == 0 => "O*IA".to_string(),
             'I' => "O IA".to_string(),
             // The default route is starred whoever put it there (S*, R*, D*).
@@ -1472,6 +1478,7 @@ pub fn ip_protocols(
         if r.default_originate {
             s.push_str("  Advertises its default route\n");
         }
+        crate::exec::redist::protocol_lines(&mut s, &r.redistribute, r.default_metric.map(|m| m.to_string()), &r.distribute);
         let _ = write!(
             s,
             "  Automatic summarisation {}; administrative distance 120",
@@ -1567,10 +1574,11 @@ fn eigrp_protocol(d: &Device, st: &netlabcraft_sim::eigrp::EigrpState) -> String
     );
     let heard: Vec<String> = st.neighbors.get(&d.id).into_iter().flatten().map(|n| format!("{} on {}", n.address, ifname::short(&n.iface))).collect();
     let _ = writeln!(s, "  Neighbours: {}", if heard.is_empty() { "none".to_string() } else { heard.join(", ") });
+    crate::exec::redist::protocol_lines(&mut s, &e.redistribute, e.default_metric.map(|m| m.words()), &e.distribute);
     let _ = writeln!(s, "  Load balancing: up to {} paths per destination, variance {}", e.max_paths(), e.variance.unwrap_or(1).max(1));
     let _ = write!(
         s,
-        "  Automatic summarisation {}; administrative distance 90 (internal)",
+        "  Automatic summarisation {}; administrative distance 90 (internal), 170 (external)",
         if e.auto_summary { "on (not simulated: subnets are advertised)" } else { "off" }
     );
     s
@@ -1682,6 +1690,7 @@ fn ospf_protocol(d: &Device, st: &netlabcraft_sim::ospf::OspfState) -> String {
     if o.default_originate {
         s.push_str("  Advertises its default route\n");
     }
+    crate::exec::redist::protocol_lines(&mut s, &o.redistribute, o.default_metric.map(|m| m.to_string()), &o.distribute);
     let _ = writeln!(s, "  Load balancing: up to {} equal-cost paths per destination", o.maximum_paths.unwrap_or(4).max(1));
     let _ = write!(s, "  Administrative distance 110");
     s

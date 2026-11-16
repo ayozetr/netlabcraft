@@ -35,6 +35,8 @@ use crate::{L3If, Sim, l3_ifaces, up_ifaces};
 
 /// Administrative distance of internal EIGRP routes.
 pub const DISTANCE: u8 = 90;
+/// Administrative distance of external EIGRP routes (the ones `redistribute` gave it).
+pub const EXTERNAL_DISTANCE: u8 = 170;
 /// Hold time announced in hellos by default (seconds).
 pub const HOLD_SECS: u16 = netlabcraft_wire::eigrp::HOLD_SECS;
 /// Hello interval by default (seconds).
@@ -122,6 +124,15 @@ pub struct EigrpRoute {
     pub iface: String,
     /// This path's distance (the feasible distance for a successor).
     pub metric: u32,
+    /// An external route: another protocol gave it to EIGRP (`D EX`, distance 170).
+    pub external: bool,
+}
+
+impl EigrpRoute {
+    /// The administrative distance of the route.
+    pub fn distance(&self) -> u8 {
+        if self.external { EXTERNAL_DISTANCE } else { DISTANCE }
+    }
 }
 
 /// One way to a destination in the topology table.
@@ -205,6 +216,13 @@ struct Best {
     hops: u8,
     /// (our interface, neighbour's address, neighbour) unless connected.
     via: Option<(String, Ipv4Addr, DeviceId)>,
+    /// Given to EIGRP by `redistribute`, here or on the router that advertised it.
+    ext: bool,
+}
+
+/// A router's EIGRP distribute lists.
+fn dist_of(d: &Device) -> &[netlabcraft_model::redist::DistList] {
+    d.eigrp.as_ref().map_or(&[][..], |e| e.distribute.as_slice())
 }
 
 /// Who hears whom: (our interface, its bandwidth and delay, their address, their device).
@@ -220,6 +238,11 @@ pub fn compute(t: &Topology) -> EigrpState {
 
 /// [`compute`] with neighbours that are no longer heard but still within their hold time.
 pub fn compute_with(t: &Topology, held: &[Held]) -> EigrpState {
+    compute_seeded(t, held, &crate::redist::seeds(t))
+}
+
+/// [`compute_with`] with the routes other protocols give EIGRP (`redistribute`) worked out already.
+pub fn compute_seeded(t: &Topology, held: &[Held], seeds: &crate::redist::Seeds) -> EigrpState {
     let mut st = EigrpState::default();
     let routers: Vec<&Device> = t.devices.iter().filter(|d| d.routes_ip() && d.eigrp.is_some()).collect();
     let mut ifs: BTreeMap<DeviceId, Vec<(L3If, bool)>> = BTreeMap::new();
@@ -299,10 +322,21 @@ pub fn compute_with(t: &Topology, held: &[Held]) -> EigrpState {
         let mut tbl: BTreeMap<Ipv4Net, Best> = BTreeMap::new();
         for (i, _) in ifs.get(&d.id).into_iter().flatten() {
             let (bw, delay) = if_metrics(d, i);
-            let b = Best { bw, delay: u64::from(delay), metric: metric(bw, u64::from(delay)), hops: 0, via: None };
+            let b = Best { bw, delay: u64::from(delay), metric: metric(bw, u64::from(delay)), hops: 0, via: None, ext: false };
             if tbl.get(&i.net.network()).is_none_or(|old| b.metric < old.metric) {
                 tbl.insert(i.net.network(), b);
             }
+        }
+        // Routes other protocols give EIGRP start from the bandwidth and delay they were given.
+        for sd in seeds.eigrp.get(&d.id).into_iter().flatten() {
+            tbl.entry(sd.net).or_insert(Best {
+                bw: sd.bandwidth,
+                delay: sd.delay,
+                metric: metric(sd.bandwidth, sd.delay),
+                hops: 0,
+                via: None,
+                ext: true,
+            });
         }
         connected.insert(d.id, tbl);
     }
@@ -324,11 +358,16 @@ pub fn compute_with(t: &Topology, held: &[Held]) -> EigrpState {
             }
             view.insert(s, best);
         }
+        // The sender's `distribute-list out` for the interface it speaks on.
+        if let Some(bdev) = t.device(*dev) {
+            let name = l3_ifaces(bdev).into_iter().find(|i| i.net.addr == *addr).map(|i| i.name);
+            view.retain(|n, b| netlabcraft_model::redist::passes(bdev, dist_of(bdev), false, name.as_deref(), *n, b.metric));
+        }
         view.iter()
             .map(|(net, b)| {
                 let nbw = b.bw.min(*bw);
                 let nd = b.delay.saturating_add(u64::from(*delay));
-                (*net, Best { bw: nbw, delay: nd, metric: metric(nbw, nd), hops: b.hops.saturating_add(1), via: None }, b.metric)
+                (*net, Best { bw: nbw, delay: nd, metric: metric(nbw, nd), hops: b.hops.saturating_add(1), via: None, ext: b.ext }, b.metric)
             })
             .collect()
     };
@@ -341,6 +380,9 @@ pub fn compute_with(t: &Topology, held: &[Held]) -> EigrpState {
             for a in adj.get(&d.id).into_iter().flatten() {
                 let Some(from) = snapshot.get(&a.4) else { continue };
                 for (net, mut cand, _) in offer(from, d.id, a) {
+                    if !netlabcraft_model::redist::passes(d, dist_of(d), true, Some(a.0.name.as_str()), net, cand.metric) {
+                        continue;
+                    }
                     cand.via = Some((a.0.name.clone(), a.3, a.4));
                     let better = match tbl.get(&net) {
                         None => true,
@@ -371,15 +413,18 @@ pub fn compute_with(t: &Topology, held: &[Held]) -> EigrpState {
             let mut paths = Vec::new();
             match &best.via {
                 None => {
-                    let name =
-                        ifs.get(&d.id).into_iter().flatten().find(|(i, _)| i.net.network() == *net).map_or(String::new(), |(i, _)| i.name.clone());
+                    let name = if best.ext {
+                        "Redistributed".to_string()
+                    } else {
+                        ifs.get(&d.id).into_iter().flatten().find(|(i, _)| i.net.network() == *net).map_or(String::new(), |(i, _)| i.name.clone())
+                    };
                     paths.push(Path { via: None, iface: name, distance: fd, reported: 0, successor: true, installed: true });
                 }
                 Some((_, addr, _)) => {
                     for a in adj.get(&d.id).into_iter().flatten() {
                         let Some(from) = tables.get(&a.4) else { continue };
                         for (n, cand, reported) in offer(from, d.id, a) {
-                            if n != *net {
+                            if n != *net || !netlabcraft_model::redist::passes(d, dist_of(d), true, Some(a.0.name.as_str()), n, cand.metric) {
                                 continue;
                             }
                             let successor = cand.metric == fd;
@@ -406,7 +451,7 @@ pub fn compute_with(t: &Topology, held: &[Held]) -> EigrpState {
                             p.installed = true;
                             used += 1;
                             if let Some(v) = p.via {
-                                routes.push(EigrpRoute { net: *net, via: v, iface: p.iface.clone(), metric: p.distance });
+                                routes.push(EigrpRoute { net: *net, via: v, iface: p.iface.clone(), metric: p.distance, external: best.ext });
                             }
                         }
                     }
@@ -423,7 +468,7 @@ pub fn compute_with(t: &Topology, held: &[Held]) -> EigrpState {
                     && !sums.iter().any(|(x, _)| *x == s)
                 {
                     sums.push((s, m));
-                    routes.push(EigrpRoute { net: s, via: Ipv4Addr::UNSPECIFIED, iface: NULL0.to_string(), metric: m });
+                    routes.push(EigrpRoute { net: s, via: Ipv4Addr::UNSPECIFIED, iface: NULL0.to_string(), metric: m, external: false });
                 }
             }
         }

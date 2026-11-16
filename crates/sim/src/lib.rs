@@ -60,6 +60,7 @@ pub mod pki;
 pub mod qos;
 pub mod ravpn;
 
+pub mod redist;
 pub mod rip;
 pub mod rip6;
 pub mod script;
@@ -358,13 +359,14 @@ pub(crate) fn phys_up_ifaces(t: &Topology, d: &Device) -> Vec<L3If> {
 /// A routing-table row, as `show ip route` prints it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RouteEntry {
-    /// `C` connected, `L` local address, `S` static, `B` BGP (the protocols' own letters otherwise).
+    /// `C` connected, `L` local address, `S` static, `B` BGP (the protocols' own letters otherwise;
+    /// `X` an external EIGRP route, `F` an OSPF external route of type 1, `E` of type 2).
     pub code: char,
     pub net: Ipv4Net,
     pub via: Option<Ipv4Addr>,
     pub iface: Option<String>,
     /// Administrative distance: 0 connected, 1 static (or as configured), 20 external BGP, 90 EIGRP,
-    /// 110 OSPF, 120 RIP, 200 internal BGP, 254 a default from DHCP.
+    /// 110 OSPF, 120 RIP, 170 external EIGRP, 200 internal BGP, 254 a default from DHCP.
     pub distance: u8,
     /// The protocol's metric (OSPF cost, EIGRP metric, RIP hops; 0 for static routes).
     pub metric: u32,
@@ -403,18 +405,20 @@ pub fn routing_table_with(
         }
         for r in eigrp_routes.iter().filter(|r| r.iface != eigrp::NULL0) {
             learned.push(RouteEntry {
-                code: 'D',
+                code: if r.external { 'X' } else { 'D' },
                 net: r.net,
                 via: Some(r.via),
                 iface: Some(r.iface.clone()),
-                distance: eigrp::DISTANCE,
+                distance: r.distance(),
                 metric: r.metric,
             });
         }
     }
     if d.ospf.is_some() {
         for r in ospf_routes {
-            let code = if r.external {
+            let code = if r.external && r.type1 {
+                'F'
+            } else if r.external {
                 'E'
             } else if r.inter_area {
                 'I'
@@ -500,11 +504,6 @@ fn routing_table_static(t: &Topology, d: &Device) -> Vec<RouteEntry> {
     }
     out.sort_by_key(|r| (r.net.addr, r.net.prefix, r.code));
     out
-}
-
-/// The networks of the static routes a device has in its routing table.
-pub(crate) fn installed_statics(t: &Topology, d: &Device) -> Vec<Ipv4Net> {
-    routing_table_static(t, d).into_iter().filter(|r| r.code == 'S').map(|r| r.net).collect()
 }
 
 fn find_iface<'a>(ifs: &'a [L3If], name: &str) -> Option<&'a L3If> {
@@ -647,7 +646,7 @@ pub fn route_with(
         let usable: Vec<(u32, (L3If, Ipv4Addr))> =
             paths.iter().filter_map(|r| ifs.iter().find(|i| i.name == r.iface).map(|i| (worst / r.metric.max(1), (i.clone(), r.via)))).collect();
         if let Some((i, nh)) = pick_path(&usable, flow) {
-            consider_ad(net.prefix, eigrp::DISTANCE, &i, nh);
+            consider_ad(net.prefix, paths.first().map_or(eigrp::DISTANCE, |r| r.distance()), &i, nh);
         }
     }
     let mut nets: Vec<Ipv4Net> = ospf_routes.iter().filter(|r| r.net.contains(dst)).map(|r| r.net).collect();
