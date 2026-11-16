@@ -60,7 +60,7 @@ impl Sim {
             (EIGRP_HELLO_EVERY_US, 8),
             (EIGRP6_HELLO_EVERY_US, 9),
             (VRRP_EVERY_US, 10),
-            (crate::bgp::KEEPALIVE_EVERY_US, 11),
+            (self.bgp_tick_us(t), 11),
         ] {
             let mut at = (from / every + 1) * every;
             while at <= deadline {

@@ -19,6 +19,39 @@ pub const DEFAULT_LOCAL_PREF: u32 = 100;
 /// The hold time and keepalive interval a session uses (seconds).
 pub const HOLD_SECS: u16 = 180;
 pub const KEEPALIVE_SECS: u16 = 60;
+/// Most `aggregate-address` statements, and the most paths `maximum-paths` accepts.
+pub const MAX_AGGREGATES: usize = 64;
+pub const MAX_MULTIPATH: u8 = 32;
+
+/// `aggregate-address A.B.C.D M.M.M.M [summary-only] [as-set]`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Aggregate {
+    pub net: Ipv4Net,
+    /// Do not advertise the more specific prefixes the aggregate covers.
+    #[serde(default)]
+    pub summary_only: bool,
+    /// Carry the AS numbers of the covered paths in an AS set.
+    #[serde(default)]
+    pub as_set: bool,
+}
+
+/// The keepalive interval and hold time a session uses: what is configured on the neighbour, else
+/// the defaults.
+pub fn timers_of(n: &Neighbor) -> (u16, u16) {
+    n.timers.unwrap_or((KEEPALIVE_SECS, HOLD_SECS))
+}
+
+/// What two neighbours agree on: the hold time is the smaller of the two, and each side sends
+/// keepalives at the interval it configured but never slower than a third of the hold time. A hold
+/// time of 0 on either side turns keepalives and the hold timer off. Returns this side's keepalive
+/// interval and the negotiated hold time.
+pub fn negotiate(mine: (u16, u16), theirs: (u16, u16)) -> (u16, u16) {
+    let hold = mine.1.min(theirs.1);
+    if hold == 0 {
+        return (0, 0);
+    }
+    (mine.0.min(hold / 3), hold)
+}
 
 /// Where `redistribute` takes routes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -71,6 +104,17 @@ pub struct Neighbor {
     pub route_map_in: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub route_map_out: Option<String>,
+    /// `send-community`: attach the communities a path carries when advertising it.
+    #[serde(default)]
+    pub send_community: bool,
+    /// `timers KEEPALIVE HOLD` (seconds); none means 60 and 180.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timers: Option<(u16, u16)>,
+    /// `filter-list N in` / `out`: an AS-path list the paths must pass.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filter_list_in: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filter_list_out: Option<String>,
 }
 
 impl Neighbor {
@@ -88,6 +132,10 @@ impl Neighbor {
             prefix_list_out: None,
             route_map_in: None,
             route_map_out: None,
+            send_community: false,
+            timers: None,
+            filter_list_in: None,
+            filter_list_out: None,
         }
     }
 }
@@ -115,6 +163,12 @@ pub struct Bgp {
     /// `redistribute SOURCE route-map NAME`: the map, by the source's word (`connected`, …).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub redistribute_maps: BTreeMap<String, String>,
+    /// `aggregate-address`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aggregates: Vec<Aggregate>,
+    /// `maximum-paths N`: how many equal external paths enter the routing table (1 when not set).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximum_paths: Option<u8>,
 }
 
 impl Bgp {
@@ -139,6 +193,11 @@ impl Bgp {
         self.neighbors.iter_mut().find(|n| n.addr == addr)
     }
 
+    /// How many equal paths per prefix the routing table takes.
+    pub fn multipath(&self) -> usize {
+        usize::from(self.maximum_paths.unwrap_or(1).clamp(1, MAX_MULTIPATH))
+    }
+
     pub fn local_pref(&self) -> u32 {
         self.default_local_pref.unwrap_or(DEFAULT_LOCAL_PREF)
     }
@@ -155,7 +214,17 @@ impl Bgp {
             if let Some(d) = &mut n.description {
                 *d = d.chars().filter(|c| !c.is_control()).take(MAX_TEXT).collect();
             }
-            for name in [&mut n.prefix_list_in, &mut n.prefix_list_out, &mut n.route_map_in, &mut n.route_map_out] {
+            if let Some((k, h)) = n.timers {
+                n.timers = Some((k, if h == 0 { 0 } else { h.max(3) }));
+            }
+            for name in [
+                &mut n.prefix_list_in,
+                &mut n.prefix_list_out,
+                &mut n.route_map_in,
+                &mut n.route_map_out,
+                &mut n.filter_list_in,
+                &mut n.filter_list_out,
+            ] {
                 *name = name.take().map(|x| crate::policy::clean_name(&x)).filter(|x| !x.is_empty());
             }
             if let Some(u) = &mut n.update_source {
@@ -166,6 +235,13 @@ impl Bgp {
         self.networks.sort();
         self.networks.dedup();
         self.networks.truncate(MAX_NETWORKS);
+        for a in &mut self.aggregates {
+            a.net = a.net.network();
+        }
+        self.aggregates.sort_by_key(|a| a.net);
+        self.aggregates.dedup_by_key(|a| a.net);
+        self.aggregates.truncate(MAX_AGGREGATES);
+        self.maximum_paths = self.maximum_paths.map(|m| m.clamp(1, MAX_MULTIPATH)).filter(|m| *m > 1);
         self.redistribute.sort();
         self.redistribute.dedup();
         let kept: Vec<String> = self.redistribute.iter().map(|r| r.word().to_string()).collect();
@@ -211,11 +287,40 @@ mod tests {
     }
 
     #[test]
+    fn timers_are_negotiated_to_the_smaller_hold_time() {
+        let mut n = Neighbor::new(Ipv4Addr::new(10, 0, 0, 2));
+        assert_eq!(timers_of(&n), (60, 180));
+        n.timers = Some((10, 30));
+        assert_eq!(negotiate(timers_of(&n), (60, 180)), (10, 30));
+        assert_eq!(negotiate((60, 180), (10, 30)), (10, 30), "a third of the hold time at most");
+        assert_eq!(negotiate((60, 180), (60, 0)), (0, 0));
+        assert_eq!(negotiate((60, 180), (60, 180)), (60, 180));
+    }
+
+    #[test]
+    fn aggregates_and_multipath_are_cleaned() {
+        let mut b = Bgp::new(65_001);
+        b.aggregates = vec![
+            Aggregate { net: "10.1.2.3/16".parse().unwrap(), summary_only: true, as_set: false },
+            Aggregate { net: "10.1.0.0/16".parse().unwrap(), summary_only: false, as_set: true },
+        ];
+        b.maximum_paths = Some(200);
+        b.neighbors = vec![Neighbor { timers: Some((5, 1)), ..Neighbor::new(Ipv4Addr::new(10, 0, 0, 2)) }];
+        b.sanitize();
+        assert_eq!(b.aggregates.len(), 1);
+        assert_eq!(b.aggregates[0].net, "10.1.0.0/16".parse::<Ipv4Net>().unwrap());
+        assert_eq!((b.maximum_paths, b.multipath()), (Some(MAX_MULTIPATH), usize::from(MAX_MULTIPATH)));
+        assert_eq!(b.neighbors[0].timers, Some((5, 3)));
+        assert_eq!(Bgp::new(1).multipath(), 1);
+    }
+
+    #[test]
     fn serde_round_trip_leaves_defaults_out() {
         let mut b = Bgp::new(65_001);
         b.neighbor_mut(Ipv4Addr::new(10, 0, 0, 2)).unwrap().remote_as = Some(65_002);
         let json = serde_json::to_string(&b).unwrap();
         assert!(!json.contains("router_id") && !json.contains("update_source"), "{json}");
+        assert!(!json.contains("timers") && !json.contains("aggregates") && !json.contains("maximum_paths"), "{json}");
         assert_eq!(serde_json::from_str::<Bgp>(&json).unwrap(), b);
     }
 }

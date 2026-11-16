@@ -6,7 +6,8 @@ use std::fmt::Write as _;
 use std::net::Ipv4Addr;
 
 use netlabcraft_core::{Ipv4Net, parse_ip};
-use netlabcraft_model::bgp::{Bgp, HOLD_SECS, KEEPALIVE_SECS, MAX_NETWORKS, MAX_TEXT, Neighbor, Source};
+use netlabcraft_model::bgp::{Aggregate, Bgp, HOLD_SECS, KEEPALIVE_SECS, MAX_AGGREGATES, MAX_MULTIPATH, MAX_NETWORKS, MAX_TEXT, Neighbor, Source};
+use netlabcraft_model::policy::{self, community_text, parse_community};
 use netlabcraft_model::{Device, DeviceKind, Rip, ifname, routing};
 use netlabcraft_sim::DebugKind;
 use netlabcraft_sim::bgp::{BgpView, NeighborView, Path, RouterView, SessionState};
@@ -277,6 +278,98 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             }
             Ok(String::new())
         }
+        Id::BgpNeighborSendCommunity | Id::NoBgpNeighborSendCommunity => {
+            let a = peer_address(arg(0))?;
+            if !arg(1).is_empty() && !matches!(arg(1).to_ascii_lowercase().as_str(), "both" | "standard") {
+                return Err("% Only standard communities exist here: say both or standard".into());
+            }
+            existing(process(c)?, a)?.send_community = id == Id::BgpNeighborSendCommunity;
+            Ok(String::new())
+        }
+        Id::BgpNeighborTimers | Id::NoBgpNeighborTimers => {
+            let a = peer_address(arg(0))?;
+            let timers = if id == Id::BgpNeighborTimers {
+                let keepalive = arg(1).trim().parse::<u16>().map_err(|_| "% The keepalive interval is 0-65535 seconds".to_string())?;
+                let hold = arg(2)
+                    .trim()
+                    .parse::<u16>()
+                    .ok()
+                    .filter(|h| *h == 0 || *h >= 3)
+                    .ok_or("% The hold time is 0 (never expires) or 3-65535 seconds")?;
+                Some((keepalive, hold)).filter(|t| *t != (KEEPALIVE_SECS, HOLD_SECS))
+            } else {
+                None
+            };
+            existing(process(c)?, a)?.timers = timers;
+            Ok(String::new())
+        }
+        Id::BgpNeighborFilterList | Id::NoBgpNeighborFilterList => {
+            let a = peer_address(arg(0))?;
+            let name = arg(1)
+                .trim()
+                .parse::<u32>()
+                .ok()
+                .filter(|n| (1..=500).contains(n))
+                .map(|n| n.to_string())
+                .ok_or("% An AS-path list is numbered 1-500")?;
+            let inbound = direction(arg(2))?;
+            let n = existing(process(c)?, a)?;
+            let slot = if inbound { &mut n.filter_list_in } else { &mut n.filter_list_out };
+            if id == Id::BgpNeighborFilterList {
+                *slot = Some(name);
+            } else if slot.as_deref() == Some(name.as_str()) {
+                *slot = None;
+            } else {
+                return Err(format!("% AS-path list {name} is not applied to {a} in that direction"));
+            }
+            Ok(String::new())
+        }
+        Id::BgpAggregate | Id::NoBgpAggregate => {
+            let a = address(arg(0))?;
+            let prefix = netlabcraft_core::mask_to_prefix(address(arg(1))?).ok_or("% The mask must be contiguous, like 255.255.0.0")?;
+            let net = Ipv4Net::new(a, prefix).network();
+            let (mut summary_only, mut as_set) = (false, false);
+            for w in arg(2).split_whitespace() {
+                match w.to_ascii_lowercase().as_str() {
+                    "summary-only" if !summary_only => summary_only = true,
+                    "as-set" if !as_set => as_set = true,
+                    _ => return Err(format!("% Unexpected `{w}`: only summary-only and as-set may follow, once each")),
+                }
+            }
+            let b = process(c)?;
+            if id == Id::BgpAggregate {
+                if !b.aggregates.iter().any(|g| g.net == net) && b.aggregates.len() >= MAX_AGGREGATES {
+                    return Err(format!("% At most {MAX_AGGREGATES} aggregate addresses"));
+                }
+                b.aggregates.retain(|g| g.net != net);
+                b.aggregates.push(Aggregate { net, summary_only, as_set });
+                b.aggregates.sort_by_key(|g| g.net);
+                Ok(String::new())
+            } else {
+                let before = b.aggregates.len();
+                b.aggregates.retain(|g| g.net != net);
+                if b.aggregates.len() == before { Err("% No such aggregate address".into()) } else { Ok(String::new()) }
+            }
+        }
+        Id::BgpMaximumPaths | Id::NoBgpMaximumPaths => {
+            let n = if id == Id::BgpMaximumPaths {
+                arg(0)
+                    .trim()
+                    .parse::<u8>()
+                    .ok()
+                    .filter(|n| (1..=MAX_MULTIPATH).contains(n))
+                    .ok_or_else(|| format!("% The number of paths is 1-{MAX_MULTIPATH}"))?
+            } else {
+                1
+            };
+            process(c)?.maximum_paths = Some(n).filter(|n| *n > 1);
+            Ok(String::new())
+        }
+        Id::ShowIpBgpCommunity | Id::ShowIpBgpCommunityList => {
+            let view = c.sim.bgp_state(c.t);
+            let d = c.d()?;
+            if id == Id::ShowIpBgpCommunity { community_table(d, &view, arg(0)) } else { community_list_table(d, &view, arg(0)) }
+        }
         Id::ClearIpBgpSoft => {
             let which = arg(0).trim();
             if !arg(1).is_empty() {
@@ -353,9 +446,17 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
         if let Some(w) = n.weight {
             let _ = writeln!(s, " neighbor {} weight {w}", n.addr);
         }
+        if let Some((k, h)) = n.timers {
+            let _ = writeln!(s, " neighbor {} timers {k} {h}", n.addr);
+        }
+        if n.send_community {
+            let _ = writeln!(s, " neighbor {} send-community", n.addr);
+        }
         for (word, dir, name) in [
             ("prefix-list", "in", &n.prefix_list_in),
             ("prefix-list", "out", &n.prefix_list_out),
+            ("filter-list", "in", &n.filter_list_in),
+            ("filter-list", "out", &n.filter_list_out),
             ("route-map", "in", &n.route_map_in),
             ("route-map", "out", &n.route_map_out),
         ] {
@@ -369,6 +470,19 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
     }
     for n in &b.networks {
         let _ = writeln!(s, " network {} mask {}", n.addr, n.mask());
+    }
+    for g in &b.aggregates {
+        let _ = writeln!(
+            s,
+            " aggregate-address {} {}{}{}",
+            g.net.addr,
+            g.net.mask(),
+            if g.summary_only { " summary-only" } else { "" },
+            if g.as_set { " as-set" } else { "" }
+        );
+    }
+    if let Some(m) = b.maximum_paths {
+        let _ = writeln!(s, " maximum-paths {m}");
     }
     for r in &b.redistribute {
         let map = b.redistribute_maps.get(r.word()).map_or(String::new(), |m| format!(" route-map {m}"));
@@ -443,6 +557,14 @@ fn origin_char(o: u8) -> char {
 
 fn as_path_text(p: &Path) -> String {
     let mut s = p.as_path.iter().map(u32::to_string).collect::<Vec<_>>().join(" ");
+    if !p.as_set.is_empty() {
+        if !s.is_empty() {
+            s.push(' ');
+        }
+        s.push('{');
+        s.push_str(&p.as_set.iter().map(u32::to_string).collect::<Vec<_>>().join(","));
+        s.push('}');
+    }
     if !s.is_empty() {
         s.push(' ');
     }
@@ -452,23 +574,73 @@ fn as_path_text(p: &Path) -> String {
 
 /// `show ip bgp`.
 fn table(d: &Device, v: &BgpView) -> String {
+    table_of(d, v, |_| true, "the BGP table is empty: nothing is advertised and nothing was learned")
+}
+
+/// The paths of the table that `keep` accepts, laid out as `show ip bgp` does; `none` says why
+/// nothing is listed.
+fn table_of(d: &Device, v: &BgpView, keep: impl Fn(&Path) -> bool, none: &str) -> String {
     let Some(r) = running(d, v) else { return not_running() };
-    if r.paths.is_empty() {
-        return format!("BGP router id {}, local AS {}\n(the BGP table is empty: nothing is advertised and nothing was learned)", r.router_id, r.asn);
+    let shown: Vec<&Path> = r.paths.iter().filter(|p| keep(p)).collect();
+    if shown.is_empty() {
+        return format!("BGP router id {}, local AS {}\n({none})", r.router_id, r.asn);
     }
     let mut s = format!("BGP router id {}, local AS {}\n", r.router_id, r.asn);
-    s.push_str("Status: * usable, > best, i from an internal neighbour    Origin: i IGP, e EGP, ? incomplete\n\n");
+    s.push_str("Status: * usable, > best, m shares the load, i from an internal neighbour    Origin: i IGP, e EGP, ? incomplete\n\n");
     let _ = writeln!(s, "    {:<18} {:<16} {:>6} {:>6} {:>6}  Path", "Network", "Next hop", "Metric", "LocPrf", "Weight");
     let mut last: Option<Ipv4Net> = None;
-    for p in &r.paths {
-        let status =
-            format!("{}{}{}", if p.valid { '*' } else { ' ' }, if p.best { '>' } else { ' ' }, if p.from.is_some() && !p.ebgp { 'i' } else { ' ' });
+    for p in shown {
+        let status = format!(
+            "{}{}{}",
+            if p.valid { '*' } else { ' ' },
+            if p.best {
+                '>'
+            } else if p.multi {
+                'm'
+            } else {
+                ' '
+            },
+            if p.from.is_some() && !p.ebgp { 'i' } else { ' ' }
+        );
         let net = if last == Some(p.net) { String::new() } else { p.net.to_string() };
         last = Some(p.net);
         let _ =
             writeln!(s, "{status} {net:<18} {:<16} {:>6} {:>6} {:>6}  {}", p.next_hop.to_string(), p.med, p.local_pref, p.weight, as_path_text(p));
     }
     s.trim_end().to_string()
+}
+
+/// `show ip bgp community COMMUNITY… [exact-match]`: the paths that carry all of them (or exactly
+/// them).
+fn community_table(d: &Device, v: &BgpView, text: &str) -> Result<String, String> {
+    let mut words: Vec<&str> = text.split_whitespace().collect();
+    let exact = words.last().is_some_and(|w| w.eq_ignore_ascii_case("exact-match"));
+    if exact {
+        words.pop();
+    }
+    if words.is_empty() {
+        return Err("% Name at least one community".into());
+    }
+    let mut want: Vec<u32> = Vec::new();
+    for w in words {
+        want.push(
+            parse_community(w)
+                .ok_or_else(|| format!("% `{w}` is not a community: write AA:NN, a number, or no-export, no-advertise, local-AS or internet"))?,
+        );
+    }
+    want.sort_unstable();
+    want.dedup();
+    let nf = d.bgp_community_new_format;
+    let named = want.iter().map(|c| community_text(*c, nf)).collect::<Vec<_>>().join(" ");
+    let none = format!("no path carries {}{named}", if exact { "exactly " } else { "" });
+    let keep = |p: &Path| if exact { p.communities == want } else { want.iter().all(|c| *c == policy::INTERNET || p.communities.contains(c)) };
+    Ok(table_of(d, v, keep, &none))
+}
+
+/// `show ip bgp community-list NAME`: the paths the list permits.
+fn community_list_table(d: &Device, v: &BgpView, name: &str) -> Result<String, String> {
+    let list = d.community_list(name).ok_or_else(|| format!("% No community list named {name}"))?;
+    Ok(table_of(d, v, |p| list.permits(&p.communities), &format!("the community list {name} permits no path")))
 }
 
 /// `show ip bgp A.B.C.D [M.M.M.M]`.
@@ -525,6 +697,25 @@ fn entry(d: &Device, v: &BgpView, addr: &str, mask: Option<&str>) -> Result<Stri
             p.weight,
             if p.valid { "usable" } else { "next hop unreachable" }
         );
+        if !p.as_set.is_empty() {
+            let _ = writeln!(s, "    AS set {{{}}}", p.as_set.iter().map(u32::to_string).collect::<Vec<_>>().join(","));
+        }
+        if !p.communities.is_empty() {
+            let _ = writeln!(
+                s,
+                "    communities: {}",
+                p.communities.iter().map(|c| community_text(*c, d.bgp_community_new_format)).collect::<Vec<_>>().join(" ")
+            );
+        }
+        if p.multi {
+            let _ = writeln!(s, "    shares the load with the best path (maximum-paths)");
+        }
+        if p.suppressed {
+            let _ = writeln!(s, "    not advertised: an aggregate with summary-only covers it");
+        }
+        if p.valid && p.from.is_some() && p.igp > 0 {
+            let _ = writeln!(s, "    metric to the next hop: {}", p.igp);
+        }
     }
     Ok(s.trim_end().to_string())
 }
@@ -571,8 +762,18 @@ fn neighbors(d: &Device, v: &BgpView, only: Option<&str>) -> Result<String, Stri
             let via = conf.and_then(|c| c.update_source.as_ref()).map_or(String::new(), |u| format!(" (update source {u})"));
             let _ = writeln!(s, "  Local address: {l}{via}");
         }
-        let _ = writeln!(s, "  Hold time {HOLD_SECS} s, keepalive every {KEEPALIVE_SECS} s");
+        if n.hold_secs == 0 {
+            let _ = writeln!(s, "  Hold time 0 s (no keepalives, the session never expires)");
+        } else {
+            let _ = writeln!(s, "  Hold time {} s, keepalive every {} s", n.hold_secs, n.keepalive_secs);
+        }
         let mut options = Vec::new();
+        if conf.is_some_and(|c| c.send_community) {
+            options.push("send-community".to_string());
+        }
+        if let Some((k, h)) = conf.and_then(|c| c.timers) {
+            options.push(format!("timers {k} {h}"));
+        }
         if conf.is_some_and(|c| c.next_hop_self) {
             options.push("next-hop-self".to_string());
         }
@@ -589,11 +790,17 @@ fn neighbors(d: &Device, v: &BgpView, only: Option<&str>) -> Result<String, Stri
             for (what, dir, name) in [
                 ("prefix list", "inbound", &c.prefix_list_in),
                 ("prefix list", "outbound", &c.prefix_list_out),
+                ("AS-path list", "inbound", &c.filter_list_in),
+                ("AS-path list", "outbound", &c.filter_list_out),
                 ("route map", "inbound", &c.route_map_in),
                 ("route map", "outbound", &c.route_map_out),
             ] {
                 if let Some(name) = name {
-                    let known = if what == "prefix list" { d.prefix_list(name).is_some() } else { d.route_map(name).is_some() };
+                    let known = match what {
+                        "prefix list" => d.prefix_list(name).is_some(),
+                        "AS-path list" => d.as_path_list(name).is_some(),
+                        _ => d.route_map(name).is_some(),
+                    };
                     let _ = writeln!(s, "  Policy: {dir} {what} {name}{}", if known { "" } else { " (not defined: lets everything through)" });
                 }
             }

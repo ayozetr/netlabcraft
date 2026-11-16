@@ -45,6 +45,7 @@ pub mod scenario;
 pub mod security;
 pub mod services;
 pub mod span;
+pub mod textmatch;
 pub mod voice;
 pub mod vpn;
 pub mod vpnclient;
@@ -946,6 +947,15 @@ pub struct Device {
     /// Routers: route maps (`route-map`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub route_maps: Vec<policy::RouteMap>,
+    /// Routers: community lists (`ip community-list`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub community_lists: Vec<policy::CommunityList>,
+    /// Routers: AS-path lists (`ip as-path access-list`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub as_path_lists: Vec<policy::AsPathList>,
+    /// Routers: `ip bgp-community new-format` (communities shown as `AA:NN`).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub bgp_community_new_format: bool,
     /// Per-interface EIGRP timers, by interface name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub eigrp_if: BTreeMap<String, EigrpIfConf>,
@@ -2009,6 +2019,9 @@ impl Device {
             bgp: None,
             prefix_lists: Vec::new(),
             route_maps: Vec::new(),
+            community_lists: Vec::new(),
+            as_path_lists: Vec::new(),
+            bgp_community_new_format: false,
             eigrp_if: BTreeMap::new(),
             eigrp_summary: BTreeMap::new(),
             rip6: None,
@@ -2110,6 +2123,9 @@ impl Device {
         self.bgp = None;
         self.prefix_lists.clear();
         self.route_maps.clear();
+        self.community_lists.clear();
+        self.as_path_lists.clear();
+        self.bgp_community_new_format = false;
         self.acls6.clear();
         self.ospf_if.clear();
         self.eigrp_if.clear();
@@ -2754,6 +2770,8 @@ impl Topology {
                 }
                 policy::sanitize_prefix_lists(&mut d.prefix_lists);
                 policy::sanitize_route_maps(&mut d.route_maps);
+                policy::sanitize_community_lists(&mut d.community_lists);
+                policy::sanitize_as_path_lists(&mut d.as_path_lists);
                 d.fhrp.sanitize();
                 span::sanitize(&mut d.l2.span);
                 d.ensure_default_vlan();

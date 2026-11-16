@@ -9,6 +9,7 @@ mod acl_counters;
 mod acl_duplicates;
 mod acl_icmp;
 mod bgp;
+mod bgp_communities;
 mod console_depth;
 mod families;
 mod inspections;
