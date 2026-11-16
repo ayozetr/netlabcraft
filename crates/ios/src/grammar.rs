@@ -97,6 +97,12 @@ impl Modes {
     pub const ROUTE_MAP: Modes = Modes(1 << 53);
     /// `crypto isakmp client configuration group NAME`.
     pub const CLIENT_GROUP: Modes = Modes(1 << 55);
+    /// `bba-group pppoe NAME`.
+    pub const BBA_GROUP: Modes = Modes(1 << 56);
+    /// `interface Virtual-Template N`.
+    pub const VTEMPLATE: Modes = Modes(1 << 57);
+    /// `interface Dialer N`.
+    pub const DIALER: Modes = Modes(1 << 58);
     /// Every command mode, either device.
     pub const ANY_MODE: Modes = Modes(
         63 | 256
@@ -134,7 +140,10 @@ impl Modes {
             | (1 << 51)
             | (1 << 52)
             | (1 << 53)
-            | (1 << 55),
+            | (1 << 55)
+            | (1 << 56)
+            | (1 << 57)
+            | (1 << 58),
     );
     pub const BOTH: Modes = Modes(192);
     /// A router with a switch card (a device flag): the VLAN database and the switching
@@ -546,6 +555,47 @@ pub enum Id {
     NoClientGroup,
     ClientGroupKey,
     ClientGroupPool,
+    BbaGroup,
+    NoBbaGroup,
+    BbaTemplate,
+    NoBbaTemplate,
+    VtIpAddress,
+    VtNoIpAddress,
+    VtIpUnnumbered,
+    VtNoIpUnnumbered,
+    VtPeerPool,
+    VtNoPeerPool,
+    VtPppAuth,
+    VtNoPppAuth,
+    VtMtu,
+    VtNoMtu,
+    VtDescription,
+    VtNoDescription,
+    DlEncapsulation,
+    DlNoEncapsulation,
+    DlIpNegotiated,
+    DlNoIpAddress,
+    DlChapHostname,
+    DlNoChapHostname,
+    DlChapPassword,
+    DlNoChapPassword,
+    DlPapSent,
+    DlNoPapSent,
+    DlPool,
+    DlNoPool,
+    DlMtu,
+    DlNoMtu,
+    DlDescription,
+    DlNoDescription,
+    DlShutdown,
+    DlNoShutdown,
+    PppoeEnable,
+    NoPppoeEnable,
+    PppoeClientDial,
+    NoPppoeClientDial,
+    ShowPppoeSession,
+    ShowPppoeSummary,
+    ClearPppoeAll,
     CryptoDynamicMap,
     NoCryptoDynamicMap,
     CryptoReverseRoute,
@@ -1248,7 +1298,10 @@ const SUBMODES: Modes = Modes::IF
     .or(Modes::TELEPHONY)
     .or(Modes::EPHONE)
     .or(Modes::LOOPBACK)
+    .or(PPPOE_MODES)
     .or(SEC_MODES);
+/// The PPPoE sub-modes of a router.
+const PPPOE_MODES: Modes = Modes::BBA_GROUP.or(Modes::VTEMPLATE).or(Modes::DIALER);
 /// The zone firewall's sub-modes.
 const SEC_MODES: Modes =
     Modes::ZONE.or(Modes::INSPECT_CLASS).or(Modes::INSPECT_POLICY).or(Modes::INSPECT_PCLASS).or(Modes::ZONE_PAIR).or(IKEV2_MODES);
@@ -5108,6 +5161,111 @@ pub static SPECS: &[Spec] = &[
         "The VLANs VTP pruning may stop on this trunk"
     ),
     spec!(SrNoTrunkPruning, Modes::IF, Modes::SWITCH, [K("no"), K("switchport"), K("trunk"), K("pruning"), K("vlan")], "VLANs 2-1001 eligible again"),
+    // ---- PPPoE on routers: the access concentrator and the client ----
+    spec!(BbaGroup, Modes::CONFIG, Modes::ROUTER, [K("bba-group"), K("pppoe"), Arg("NAME")], "Define or edit a group of PPPoE concentrator settings"),
+    spec!(NoBbaGroup, Modes::CONFIG, Modes::ROUTER, [K("no"), K("bba-group"), K("pppoe"), Arg("NAME")], "Delete a PPPoE group"),
+    spec!(
+        BbaTemplate,
+        Modes::BBA_GROUP,
+        Modes::ROUTER,
+        [K("virtual-template"), Arg("<0-255>")],
+        "The virtual template this group builds its sessions from"
+    ),
+    spec!(NoBbaTemplate, Modes::BBA_GROUP, Modes::ROUTER, [K("no"), K("virtual-template")], "The group has no template"),
+    spec!(
+        VtIpAddress,
+        Modes::VTEMPLATE,
+        Modes::ROUTER,
+        [K("ip"), K("address"), Arg("A.B.C.D"), Arg("MASK")],
+        "The concentrator's own address on every session"
+    ),
+    spec!(VtNoIpAddress, Modes::VTEMPLATE, Modes::ROUTER, [K("no"), K("ip"), K("address")], "Remove the template's address"),
+    spec!(VtIpUnnumbered, Modes::VTEMPLATE, Modes::ROUTER, [K("ip"), K("unnumbered"), Rest("INTERFACE")], "Use the address of another interface"),
+    spec!(VtNoIpUnnumbered, Modes::VTEMPLATE, Modes::ROUTER, [K("no"), K("ip"), K("unnumbered")], "Stop borrowing an interface's address"),
+    spec!(
+        VtPeerPool,
+        Modes::VTEMPLATE,
+        Modes::ROUTER,
+        [K("peer"), K("default"), K("ip"), K("address"), K("pool"), Arg("NAME")],
+        "The local pool the callers' addresses come from"
+    ),
+    spec!(
+        VtNoPeerPool,
+        Modes::VTEMPLATE,
+        Modes::ROUTER,
+        [K("no"), K("peer"), K("default"), K("ip"), K("address"), K("pool")],
+        "Hand out no addresses"
+    ),
+    spec!(VtPppAuth, Modes::VTEMPLATE, Modes::ROUTER, [K("ppp"), K("authentication"), Arg("{pap|chap}")], "What a caller must prove"),
+    spec!(VtNoPppAuth, Modes::VTEMPLATE, Modes::ROUTER, [K("no"), K("ppp"), K("authentication")], "Ask callers for no proof"),
+    spec!(VtMtu, Modes::VTEMPLATE, Modes::ROUTER, [K("mtu"), Arg("<576-1492>")], "The largest packet of a session"),
+    spec!(VtNoMtu, Modes::VTEMPLATE, Modes::ROUTER, [K("no"), K("mtu")], "The largest packet is 1492 again"),
+    spec!(VtDescription, Modes::VTEMPLATE, Modes::ROUTER, [K("description"), Rest("LINE")], "Describe the template"),
+    spec!(VtNoDescription, Modes::VTEMPLATE, Modes::ROUTER, [K("no"), K("description")], "Remove the description"),
+    spec!(DlEncapsulation, Modes::DIALER, Modes::ROUTER, [K("encapsulation"), K("ppp")], "Run PPP on this dialer"),
+    spec!(DlNoEncapsulation, Modes::DIALER, Modes::ROUTER, [K("no"), K("encapsulation")], "Stop running PPP on this dialer"),
+    spec!(DlIpNegotiated, Modes::DIALER, Modes::ROUTER, [K("ip"), K("address"), K("negotiated")], "Take the address the concentrator gives"),
+    spec!(DlNoIpAddress, Modes::DIALER, Modes::ROUTER, [K("no"), K("ip"), K("address")], "Take no address from the concentrator"),
+    spec!(
+        DlChapHostname,
+        Modes::DIALER,
+        Modes::ROUTER,
+        [K("ppp"), K("chap"), K("hostname"), Arg("NAME")],
+        "The name this dialer answers a CHAP challenge with"
+    ),
+    spec!(DlNoChapHostname, Modes::DIALER, Modes::ROUTER, [K("no"), K("ppp"), K("chap"), K("hostname")], "Answer with the router's own name"),
+    spec!(
+        DlChapPassword,
+        Modes::DIALER,
+        Modes::ROUTER,
+        [K("ppp"), K("chap"), K("password"), Arg("SECRET")],
+        "The secret this dialer answers a CHAP challenge with"
+    ),
+    spec!(DlNoChapPassword, Modes::DIALER, Modes::ROUTER, [K("no"), K("ppp"), K("chap"), K("password")], "Forget the CHAP secret"),
+    spec!(
+        DlPapSent,
+        Modes::DIALER,
+        Modes::ROUTER,
+        [K("ppp"), K("pap"), K("sent-username"), Arg("NAME"), K("password"), Arg("SECRET")],
+        "The name and secret this dialer sends when the concentrator asks for PAP"
+    ),
+    spec!(DlNoPapSent, Modes::DIALER, Modes::ROUTER, [K("no"), K("ppp"), K("pap"), K("sent-username")], "Send no PAP name"),
+    spec!(DlPool, Modes::DIALER, Modes::ROUTER, [K("dialer"), K("pool"), Arg("<1-255>")], "The pool of ports this dialer dials from"),
+    spec!(DlNoPool, Modes::DIALER, Modes::ROUTER, [K("no"), K("dialer"), K("pool")], "Dial from no pool"),
+    spec!(DlMtu, Modes::DIALER, Modes::ROUTER, [K("mtu"), Arg("<576-1492>")], "The largest packet of the session"),
+    spec!(DlNoMtu, Modes::DIALER, Modes::ROUTER, [K("no"), K("mtu")], "The largest packet is 1492 again"),
+    spec!(DlDescription, Modes::DIALER, Modes::ROUTER, [K("description"), Rest("LINE")], "Describe the dialer"),
+    spec!(DlNoDescription, Modes::DIALER, Modes::ROUTER, [K("no"), K("description")], "Remove the description"),
+    spec!(DlShutdown, Modes::DIALER, Modes::ROUTER, [K("shutdown")], "Take the dialer down: it ends its session"),
+    spec!(DlNoShutdown, Modes::DIALER, Modes::ROUTER, [K("no"), K("shutdown")], "Bring the dialer up: it dials"),
+    spec!(PppoeEnable, Modes::IF, Modes::ROUTER, [K("pppoe"), K("enable")], "Answer PPPoE on this port with the global group"),
+    spec!(PppoeEnable, Modes::IF, Modes::ROUTER, [K("pppoe"), K("enable"), K("group"), Arg("NAME")], "Answer PPPoE on this port with a group"),
+    spec!(NoPppoeEnable, Modes::IF, Modes::ROUTER, [K("no"), K("pppoe"), K("enable")], "Stop answering PPPoE on this port"),
+    spec!(NoPppoeEnable, Modes::IF, Modes::ROUTER, [K("no"), K("pppoe"), K("enable"), K("group"), Arg("NAME")], "Stop answering PPPoE on this port"),
+    spec!(
+        PppoeClientDial,
+        Modes::IF,
+        Modes::ROUTER,
+        [K("pppoe-client"), K("dial-pool-number"), Arg("<1-255>")],
+        "Dial PPPoE from this port for the dialers of a pool"
+    ),
+    spec!(NoPppoeClientDial, Modes::IF, Modes::ROUTER, [K("no"), K("pppoe-client"), K("dial-pool-number")], "Stop dialing from this port"),
+    spec!(
+        ShowPppoeSession,
+        EXECS,
+        Modes::ROUTER,
+        [K("show"), K("pppoe"), K("session")],
+        "PPPoE sessions: the ones this router dialed and the ones it serves"
+    ),
+    spec!(
+        ShowPppoeSession,
+        EXECS,
+        Modes::ROUTER,
+        [K("show"), K("pppoe"), K("session"), K("all")],
+        "PPPoE sessions: the ones this router dialed and the ones it serves"
+    ),
+    spec!(ShowPppoeSummary, EXECS, Modes::ROUTER, [K("show"), K("pppoe"), K("summary")], "PPPoE totals and the ports that answer or dial"),
+    spec!(ClearPppoeAll, Modes::EXEC, Modes::ROUTER, [K("clear"), K("pppoe"), K("all")], "End every PPPoE session of this router"),
 ];
 
 /// Why a line didn't parse. Positions are word indexes.
@@ -5406,6 +5564,9 @@ mod tests {
                 Modes::BGP,
                 Modes::ROUTE_MAP,
                 Modes::CLIENT_GROUP,
+                Modes::BBA_GROUP,
+                Modes::VTEMPLATE,
+                Modes::DIALER,
             ]
             .into_iter()
             .find(|m| s.modes.has(*m))

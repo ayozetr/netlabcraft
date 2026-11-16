@@ -82,6 +82,7 @@ labs! {
     lab_40_bgp_communities_aggregation => "40-bgp-communities-aggregation.md",
     lab_41_pppoe => "41-pppoe.md",
     lab_42_bgp_route_reflectors => "42-bgp-route-reflectors.md",
+    lab_43_pppoe_with_routers => "43-pppoe-with-routers.md",
     lab_44_secure_a_wireless_network => "44-secure-a-wireless-network.md",
 }
 

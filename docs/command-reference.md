@@ -1444,6 +1444,50 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no vtp pruning` | config | switch | Flood every VLAN on every trunk again |
 | `switchport trunk pruning vlan {VLANS\|add VLANS\|remove VLANS\|except VLANS\|none}` | interface | switch | The VLANs VTP pruning may stop on this trunk |
 | `no switchport trunk pruning vlan` | interface | switch | VLANs 2-1001 eligible again |
+| `bba-group pppoe NAME` | config | router | Define or edit a group of PPPoE concentrator settings |
+| `no bba-group pppoe NAME` | config | router | Delete a PPPoE group |
+| `virtual-template <0-255>` |  | router | The virtual template this group builds its sessions from |
+| `no virtual-template` |  | router | The group has no template |
+| `ip address A.B.C.D MASK` |  | router | The concentrator's own address on every session |
+| `no ip address` |  | router | Remove the template's address |
+| `ip unnumbered INTERFACE` |  | router | Use the address of another interface |
+| `no ip unnumbered` |  | router | Stop borrowing an interface's address |
+| `peer default ip address pool NAME` |  | router | The local pool the callers' addresses come from |
+| `no peer default ip address pool` |  | router | Hand out no addresses |
+| `ppp authentication {pap\|chap}` |  | router | What a caller must prove |
+| `no ppp authentication` |  | router | Ask callers for no proof |
+| `mtu <576-1492>` |  | router | The largest packet of a session |
+| `no mtu` |  | router | The largest packet is 1492 again |
+| `description LINE` |  | router | Describe the template |
+| `no description` |  | router | Remove the description |
+| `encapsulation ppp` |  | router | Run PPP on this dialer |
+| `no encapsulation` |  | router | Stop running PPP on this dialer |
+| `ip address negotiated` |  | router | Take the address the concentrator gives |
+| `no ip address` |  | router | Take no address from the concentrator |
+| `ppp chap hostname NAME` |  | router | The name this dialer answers a CHAP challenge with |
+| `no ppp chap hostname` |  | router | Answer with the router's own name |
+| `ppp chap password SECRET` |  | router | The secret this dialer answers a CHAP challenge with |
+| `no ppp chap password` |  | router | Forget the CHAP secret |
+| `ppp pap sent-username NAME password SECRET` |  | router | The name and secret this dialer sends when the concentrator asks for PAP |
+| `no ppp pap sent-username` |  | router | Send no PAP name |
+| `dialer pool <1-255>` |  | router | The pool of ports this dialer dials from |
+| `no dialer pool` |  | router | Dial from no pool |
+| `mtu <576-1492>` |  | router | The largest packet of the session |
+| `no mtu` |  | router | The largest packet is 1492 again |
+| `description LINE` |  | router | Describe the dialer |
+| `no description` |  | router | Remove the description |
+| `shutdown` |  | router | Take the dialer down: it ends its session |
+| `no shutdown` |  | router | Bring the dialer up: it dials |
+| `pppoe enable` | interface | router | Answer PPPoE on this port with the global group |
+| `pppoe enable group NAME` | interface | router | Answer PPPoE on this port with a group |
+| `no pppoe enable` | interface | router | Stop answering PPPoE on this port |
+| `no pppoe enable group NAME` | interface | router | Stop answering PPPoE on this port |
+| `pppoe-client dial-pool-number <1-255>` | interface | router | Dial PPPoE from this port for the dialers of a pool |
+| `no pppoe-client dial-pool-number` | interface | router | Stop dialing from this port |
+| `show pppoe session` | user, privileged | router | PPPoE sessions: the ones this router dialed and the ones it serves |
+| `show pppoe session all` | user, privileged | router | PPPoE sessions: the ones this router dialed and the ones it serves |
+| `show pppoe summary` | user, privileged | router | PPPoE totals and the ports that answer or dial |
+| `clear pppoe all` | privileged | router | End every PPPoE session of this router |
 
 ## Host shell (PCs and servers)
 

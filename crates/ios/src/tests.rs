@@ -434,6 +434,9 @@ fn every_command_survives_hostile_arguments() {
                     "en\nconf t\ncrypto ikev2 profile F",
                     "en\nconf t\ncrypto pki trustpoint T",
                     "en\nconf t\ncrypto pki server S",
+                    "en\nconf t\nbba-group pppoe G",
+                    "en\nconf t\ninterface virtual-template 1",
+                    "en\nconf t\ninterface dialer 1",
                     "en\nconf t\nrouter rip",
                     "en\nconf t\nipv6 router rip R",
                 ] {
@@ -448,6 +451,62 @@ fn every_command_survives_hostile_arguments() {
             }
         }
     }
+}
+
+#[test]
+fn pppoe_on_a_router_is_configured_by_typing_shows_and_replays() {
+    let mut lab = Lab::new();
+    let r1 = lab.add(DeviceKind::Router);
+    lab.run(r1, "en\nconf t\nbba-group pppoe BBA");
+    assert_eq!(lab.prompt(r1), "R1(config-bba-group)#");
+    lab.run(r1, "virtual-template 1\nexit\ninterface virtual-template 1");
+    assert_eq!(lab.prompt(r1), "R1(config-if)#");
+    lab.run(
+        r1,
+        "ip address 10.1.1.1 255.255.255.255
+        peer default ip address pool POOL
+        ppp authentication chap
+        mtu 1400
+        exit
+        ip local pool POOL 10.1.1.2 10.1.1.9
+        interface g0/0
+        pppoe enable group BBA
+        exit
+        interface g0/1
+        pppoe-client dial-pool-number 1
+        exit
+        interface dialer 1
+        encapsulation ppp
+        ip address negotiated
+        ppp chap hostname ann
+        ppp chap password pw-test
+        dialer pool 1
+        mtu 1492
+        end",
+    );
+    let run = lab.run(r1, "show running-config");
+    for want in [
+        "bba-group pppoe BBA\n virtual-template 1\n!",
+        "interface Virtual-Template1\n mtu 1400\n ip address 10.1.1.1 255.255.255.255\n peer default ip address pool POOL\n ppp authentication chap\n!",
+        "interface Dialer1\n mtu 1492\n encapsulation ppp\n ip address negotiated\n dialer pool 1\n ppp chap hostname ann\n ppp chap password pw-test\n!",
+        " pppoe enable group BBA\n",
+        " pppoe-client dial-pool-number 1\n",
+    ] {
+        assert!(run.contains(want), "{want}\n{run}");
+    }
+    let r2 = lab.add(DeviceKind::Router);
+    lab.run(r2, "en\nconf t");
+    for l in run.lines().filter(|l| !l.starts_with('!') && !l.starts_with("hostname")) {
+        lab.try_run(r2, l);
+    }
+    assert_eq!(lab.t.device(r2).unwrap().pppoe_router, lab.t.device(r1).unwrap().pppoe_router);
+    assert!(lab.run(r1, "show pppoe summary").contains("group BBA, template Virtual-Template1"));
+    assert!(lab.run(r1, "show ip interface brief").contains("Dialer1"));
+    lab.run(r1, "conf t");
+    assert!(lab.try_run(r1, "mtu 100").contains('%'), "outside configuration of a template an mtu is refused");
+    lab.run(r1, "no interface dialer 1\nno interface virtual-template 1\nno bba-group pppoe BBA");
+    assert!(lab.t.device(r1).unwrap().pppoe_router.dialers.is_empty());
+    assert!(lab.t.device(r1).unwrap().pppoe_router.groups.is_empty());
 }
 
 #[test]

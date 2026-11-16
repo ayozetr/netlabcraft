@@ -1,6 +1,6 @@
 # Roadmap
 
-> **Last reviewed:** 2026-11-16 · **Last updated:** 2026-11-16 · **Change:** minor (wireless security and lab 44) · earlier: minor (real PPPoE frames and lab 41) · earlier: minor (BGP route reflectors, confederations and lab 42) · earlier: minor (BGP communities, aggregation, timers and lab 40) · earlier: minor (port mirroring and lab 38) · earlier: minor (redistribution, distribute lists and lab 39) · earlier: minor (prefix lists, route maps and lab 37) · earlier: minor (BGP and lab 36) · earlier: minor (labs 32 to 35) · earlier: minor (focus paragraph updated for release 0.2.0; M9.7: four more labs, console depth second round) · earlier: minor (M9.4: seven troubleshooting labs) · earlier: minor (M7 first release done: packages and the release workflow), major (alpha gate 1 met through the lab book; every beta gate met; milestone states and estimates after the security, instructor, Simulation-mode, wireless, end-device, automation and routing rounds) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-11-16 · **Last updated:** 2026-11-16 · **Change:** minor (PPPoE on routers and lab 43) · also merged with minor (wireless security and lab 44) · earlier: minor (real PPPoE frames and lab 41) · earlier: minor (BGP route reflectors, confederations and lab 42) · earlier: minor (BGP communities, aggregation, timers and lab 40) · earlier: minor (port mirroring and lab 38) · earlier: minor (redistribution, distribute lists and lab 39) · earlier: minor (prefix lists, route maps and lab 37) · earlier: minor (BGP and lab 36) · earlier: minor (labs 32 to 35) · earlier: minor (focus paragraph updated for release 0.2.0; M9.7: four more labs, console depth second round) · earlier: minor (M9.4: seven troubleshooting labs) · earlier: minor (M7 first release done: packages and the release workflow), major (alpha gate 1 met through the lab book; every beta gate met; milestone states and estimates after the security, instructor, Simulation-mode, wireless, end-device, automation and routing rounds) · **Target:** Cisco Packet Tracer 9.0
 
 Milestones, the current focus and what comes next. The summary is in
 [`ROADMAP.md`](../ROADMAP.md); the ranked work list is [gaps.md](gaps.md).
@@ -67,6 +67,7 @@ hold.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-16 | minor | PPPoE on routers (a concentrator and a client) and lab 43 (PPPoE with routers) join the lab book (43 labs, 16 over MCP); the gaps table's item 8 narrowed again. |
 | 2026-11-16 | minor | Wireless security settings of access points and home routers (WEP, WPA, WPA2 and enterprise, AES or TKIP, coverage range) and lab 44 join the lab book (43 labs); WPA3 is not in the reference app, not planned. |
 | 2026-11-16 | minor | Real PPPoE frames and lab 41 (PPPoE client and access concentrator) join the lab book (42 labs, 16 over MCP); the gaps table's item 8 narrowed. |
 | 2026-11-16 | minor | BGP route reflectors, confederations and more neighbour options, and lab 42 (BGP route reflectors) join the lab book (42 labs, 16 over MCP); the gaps table's item 9 narrowed again. |

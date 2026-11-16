@@ -1051,6 +1051,10 @@ pub struct Device {
     /// End devices: the PPPoE Dialer's account and session (see [`pppoe`]).
     #[serde(default, skip_serializing_if = "pppoe::PppoeClient::is_default")]
     pub pppoe: pppoe::PppoeClient,
+    /// Routers: PPPoE as an access concentrator (`bba-group pppoe`, virtual templates) and as a
+    /// client (dialer interfaces), with the sessions of the dialers (see [`pppoe`]).
+    #[serde(default, skip_serializing_if = "pppoe::RouterPppoe::is_default")]
+    pub pppoe_router: pppoe::RouterPppoe,
     /// End devices: the VPN Client app's settings (see [`vpnclient`]).
     #[serde(default, skip_serializing_if = "vpnclient::VpnClientSettings::is_default")]
     pub vpn_client: vpnclient::VpnClientSettings,
@@ -2078,6 +2082,7 @@ impl Device {
             firewall: firewall::Firewall::default(),
             host_fw: hostfw::HostFw::default(),
             pppoe: pppoe::PppoeClient::default(),
+            pppoe_router: pppoe::RouterPppoe::default(),
             vpn_client: vpnclient::VpnClientSettings::default(),
             netflow: netflow::Netflow::default(),
             modules: BTreeMap::new(),
@@ -2763,6 +2768,7 @@ impl Topology {
                 d.firewall.sanitize();
                 d.host_fw.sanitize();
                 d.pppoe.sanitize();
+                d.pppoe_router.sanitize();
                 d.vpn_client.sanitize();
                 d.netflow.sanitize();
                 d.services.pppoe.sanitize();

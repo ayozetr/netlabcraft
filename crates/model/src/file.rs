@@ -184,6 +184,33 @@ mod tests {
     }
 
     #[test]
+    fn a_router_pppoe_setup_round_trips_and_a_default_one_is_left_out() {
+        use crate::pppoe::{BbaGroup, DialerSession, PppoeSession};
+        let mut t = Topology::new();
+        let r = t.add_device(DeviceKind::Router, None, 0.0, 0.0).unwrap();
+        assert!(!to_json(&t).unwrap().contains("pppoe"));
+        let d = t.device_mut(r).unwrap();
+        d.pppoe_router.groups.push(BbaGroup { name: "G".into(), template: Some(1) });
+        d.pppoe_router.template_mut(1).unwrap().pool = Some("P".into());
+        d.pppoe_router.enabled.insert("GigabitEthernet0/0".into(), "G".into());
+        d.pppoe_router.dial_ports.insert("GigabitEthernet0/1".into(), 1);
+        d.pppoe_router.dialer_mut(1).unwrap().session = Some(DialerSession {
+            port: "GigabitEthernet0/1".into(),
+            session: PppoeSession {
+                server: r,
+                address: "10.0.0.5".parse().unwrap(),
+                gateway: "10.0.0.1".parse().unwrap(),
+                auth: crate::PppAuth::Chap,
+                id: 2,
+                server_mac: netlabcraft_core::MacAddr::ZERO,
+            },
+        });
+        let back = from_json(&to_json(&t).unwrap()).unwrap();
+        assert_eq!(back, t);
+        assert!(back.device(r).unwrap().pppoe_router.active());
+    }
+
+    #[test]
     fn a_pppoe_account_and_service_round_trip_and_older_files_open_without_them() {
         use crate::pppoe::{PppoeSession, PppoeUser};
         let mut t = Topology::new();
