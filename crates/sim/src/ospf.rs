@@ -746,7 +746,9 @@ pub fn compute_seeded(t: &Topology, seeds: &crate::redist::Seeds) -> OspfState {
             // The router must be reachable: in an area this one is in, or in one that reaches the
             // backbone when this router's own areas do (an area cut off from the backbone knows
             // of no AS boundary router outside it, so it hears no external route from there).
-            if !x_areas.iter().any(|a| my_areas.contains(a)) && !(hears_others && x_areas.iter().any(|a| reaches_backbone(*a))) {
+            let shared = x_areas.iter().any(|a| my_areas.contains(a));
+            let through_backbone = hears_others && x_areas.iter().any(|a| reaches_backbone(*a));
+            if !(shared || through_backbone) {
                 return None;
             }
             let x_nssa: Vec<u32> = x_areas.iter().copied().filter(|a| kind_of(xo, *a) == AreaKind::Nssa).collect();
