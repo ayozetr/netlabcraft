@@ -311,7 +311,9 @@ impl Sim {
             return;
         };
         let taken: BTreeSet<u16> = self.st(d.id).pppoe.neg.keys().copied().collect();
-        let Some(session_id) = (1..u16::MAX).find(|i| !taken.contains(i) && server_session(t, d, *i, client).is_none()) else {
+        let Some(session_id) = (1..u16::MAX)
+            .find(|i| !taken.contains(i) && !t.devices.iter().any(|c| c.pppoe.session.as_ref().is_some_and(|x| x.server == d.id && x.id == *i)))
+        else {
             refuse(&mut *self, tags, "no session id is free");
             return;
         };
@@ -597,6 +599,12 @@ impl Sim {
             && let Some((ac, session_id)) = opened
         {
             self.pppoe_padt(t, d, 0, ac, session_id);
+        }
+        if r.is_err() {
+            // What the failed try left on the wire (a Terminate-Request, a PADT) arrives now, not
+            // in the middle of the next call.
+            let until = self.now.saturating_add(50_000);
+            self.advance(t, until, |_| false);
         }
         self.pppoe_listen(dev, false);
         r
