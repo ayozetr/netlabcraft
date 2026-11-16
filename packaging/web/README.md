@@ -22,6 +22,11 @@ The web build runs entirely on the visitor's device: labs are opened from, and s
 Workers static assets reject any file over **25 MiB**, so a release can't ship a file a common host
 refuses.
 
+The script builds the wasm for size (`opt-level = "z"`, fat LTO and one codegen unit through
+`CARGO_PROFILE_RELEASE_*` environment variables, only for this build); the desktop packages keep the
+workspace's speed-tuned release profile. The 0.6.0 build was 25.2 MB with that profile, over the
+limit, which is why this was added.
+
 ## Required server settings
 
 - **MIME type:** serve `.wasm` as `application/wasm`. Browsers refuse to stream-compile it under
