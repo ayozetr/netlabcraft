@@ -38,6 +38,8 @@ impl Sim {
     pub(crate) fn mgmt_udp_in(&mut self, t: &Topology, d: &Device, ifc: &L3If, ip: &Ipv4, u: &Udp) -> Option<Result<(), String>> {
         let me = ip.dst;
         Some(match (u.dst_port, u.src_port) {
+            // A Netflow Collector listens on the port it was started on.
+            (port, _) if d.kind.is_host() && d.netflow.collector_port == Some(port) => self.netflow_collect(d, ip.src, &u.payload),
             (NTP_PORT, _) | (_, NTP_PORT) => {
                 let n = match Ntp::decode(&u.payload) {
                     Ok(n) => n,

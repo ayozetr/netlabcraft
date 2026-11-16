@@ -1632,3 +1632,15 @@ event	no APN	sin APN
 	Encryption	Cifrado
 	Tunnel packets: {} sent, {} received	Paquetes del túnel: {} enviados, {} recibidos
 	Fill in the form and press Connect.	Rellena el formulario y pulsa Conectar.
+	Netflow Collector	Colector Netflow
+	Listening on UDP port {}	Escuchando en el puerto UDP {}
+	Not listening	Sin escuchar
+	Top talkers	Mayores emisores
+	Protocols	Protocolos
+	Flows	Flujos
+	Packets	Paquetes
+	Exporter	Exportador
+	Datagrams: {}, flows: {}, packets: {}, bytes: {}	Datagramas: {}, flujos: {}, paquetes: {}, bytes: {}
+	No flows received yet. Routers send a flow once it has been quiet for 15 seconds.	Aún no se han recibido flujos. Los routers envían un flujo cuando lleva 15 segundos en silencio.
+	Enter a port from 1 to 65535.	Escribe un puerto del 1 al 65535.
+	Set routers to export here with: ip flow-export destination ADDRESS PORT	Configura los routers para exportar aquí con: ip flow-export destination ADDRESS PORT

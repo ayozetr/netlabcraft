@@ -25,6 +25,10 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `vpnclient.connect` | VPN Client connect |  |  | `{"device": PC, laptop or server, "host"?: the VPN concentrator's address, "group"?: group name, "key"?: group key, "username"?: text, "password"?: text (each defaults to the one last used)} → {"state", "connected", "server", "address", "transforms", "esp", …}: sends a request to UDP port 10000 of the concentrator, a router set up as a remote-access server (a client group with its key and pool, a dynamic map, a crypto map with its authentication and authorization lists on the interface the host reaches). The router checks the group key and the user and gives the first free address of the group's pool; from then on the device's traffic beyond its own subnet goes through an ESP tunnel to the router. Fails when nothing answers or the router refuses; the simulator's own exchange, not IKE with Xauth and mode-config` |
 | `vpnclient.disconnect` | VPN Client disconnect |  |  | `{"device": PC, laptop or server} → the status: the router is told and the tunnel and the VPN address are gone` |
 | `vpnclient.status` | VPN Client status |  |  | `{"device": PC, laptop or server} → {"state": "disconnected"\|"connected", "connected", "host", "group", "username", "server", "address", "transforms", "esp", "encapsulated", "decapsulated"} (the key and the password are never returned)` |
+| `netflow.listen` | Netflow Collector start |  |  | `{"device": PC, laptop or server, "port"?: 1-65535 (default: the one last used, else 2055)} → the collector's state as netflow.flows: opens the UDP port; routers set up with `ip flow-export destination` send it NetFlow version 5 or 9 datagrams. The port is saved with the lab, what was received is not` |
+| `netflow.stop` | Netflow Collector stop |  |  | `{"device": PC, laptop or server} → the collector's state as netflow.flows: closes the port (what was received stays until cleared); fails when it is not listening` |
+| `netflow.flows` | Netflow Collector flows |  |  | `{"device": PC, laptop or server, "limit"?: 1-500 flows to list (default 100, the newest)} → {"listening", "port", "datagrams", "bad_datagrams", "flows_received", "packets", "bytes", "top_talkers": [{"address", "flows", "packets", "bytes"}] (ten source addresses by bytes), "protocols": [{"protocol", "number", "flows", "packets", "bytes"}], "flows": [{"at_ms", "exporter", "version", "src", "dst", "next_hop", "protocol", "src_port", "dst_port", "packets", "bytes", "in_if", "out_if", "tcp_flags", "first_ms", "last_ms"}]} (at most 2000 flows are kept, the oldest go first)` |
+| `netflow.clear` | Netflow Collector clear |  |  | `{"device": PC, laptop or server} → the collector's state as netflow.flows, with nothing received` |
 | `snmp.request` | SNMP request |  |  | `{"device": manager, "target": agent address, "version"?: "2c"\|"3", "community"?: "public" (2c), "user"? (3), "auth"?: "none"\|"md5"\|"sha" (3), "password"? (3, 8+ characters), "operation"?: "get"\|"get-next"\|"set", "oid": "1.3.6.1.2.1.1.5.0", "value"?: for a set} → {"bindings": [{"oid", "value"}], "error"}` |
 | `snmp.traps` | SNMP traps received |  |  | `{"device": a host, "clear"?: true} → {"traps": [{"at_ms", "from", "community", "trap": "linkDown"\|"linkUp"\|"coldStart"\|OID, "bindings": [{"oid", "value"}]}]}` |
 | `server.syslog` | Syslog messages received |  |  | `{"device": server, "clear"?: true} → {"messages": [{"at_ms", "from", "text"}]} (what devices sent its Syslog service, oldest first)` |
@@ -586,6 +590,17 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `logging host A.B.C.D` | config | router, switch | Send log messages to a syslog server |
 | `logging A.B.C.D` | config | router, switch | Send log messages to a syslog server |
 | `no logging host A.B.C.D` | config | router, switch | Stop sending to a syslog server |
+| `ip flow-export destination A.B.C.D <1-65535>` | config | router | Send flow records to a collector (at most two) |
+| `no ip flow-export destination A.B.C.D <1-65535>` | config | router | Stop sending flow records to a collector |
+| `ip flow-export version {5\|9}` | config | router | The format flow records are exported in |
+| `no ip flow-export version` | config | router | Export flow records in version 5 again |
+| `ip flow ingress` | interface, subinterface | router | Count the flows that come in on this interface |
+| `ip route-cache flow` | interface, subinterface | router | Count the flows that come in on this interface |
+| `no ip flow ingress` | interface, subinterface | router | Stop counting the flows that come in on this interface |
+| `no ip route-cache flow` | interface, subinterface | router | Stop counting the flows that come in on this interface |
+| `show ip flow export` | user, privileged | router | Where flow records go and how many were sent |
+| `show ip cache flow` | user, privileged | router | The flows the router is counting |
+| `clear ip flow stats` | privileged | router | Empty the flow cache and its counts |
 | `copy running-config tftp:` | privileged | router, switch | Save the configuration on a TFTP server (asks where) |
 | `copy startup-config tftp:` | privileged | router, switch | Save the startup configuration on a TFTP server (asks where) |
 | `copy tftp: running-config` | privileged | router, switch | Merge a configuration from a TFTP server (asks which) |

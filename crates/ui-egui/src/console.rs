@@ -74,6 +74,8 @@ pub enum DesktopApp {
     PppoeDialer,
     /// A remote-access VPN to a router: group, key and account, then the address it gave.
     VpnClient,
+    /// Lists the flows routers export to this device: top talkers, protocols and the newest flows.
+    NetflowCollector,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1149,6 +1151,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                             (DesktopApp::TrafficGenerator, "Traffic Generator"),
                             (DesktopApp::PppoeDialer, "PPPoE Dialer"),
                             (DesktopApp::VpnClient, "VPN Client"),
+                            (DesktopApp::NetflowCollector, "Netflow Collector"),
                         ]);
                         for (app_id, label) in [
                             (DesktopApp::IpConfig, "IP Configuration"),
@@ -1210,6 +1213,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 DesktopApp::TrafficGenerator => "Traffic Generator",
                 DesktopApp::PppoeDialer => "PPPoE Dialer",
                 DesktopApp::VpnClient => "VPN Client",
+                DesktopApp::NetflowCollector => "Netflow Collector",
             };
             let mut close = false;
             egui::Frame::new().fill(tk.bar).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
@@ -1364,6 +1368,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 DesktopApp::TrafficGenerator => crate::host_apps::traffic_generator(app, ui, dev),
                 DesktopApp::PppoeDialer => crate::host_apps::pppoe_dialer(app, ui, dev),
                 DesktopApp::VpnClient => crate::host_apps::vpn_client(app, ui, dev),
+                DesktopApp::NetflowCollector => crate::host_apps::netflow_collector(app, ui, dev),
                 DesktopApp::Settings => {
                     egui::ScrollArea::vertical().id_salt(("settings_scroll", d.0)).auto_shrink([false, true]).show(ui, |ui| {
                         ui.add_space(6.0);
@@ -1599,6 +1604,19 @@ pub(crate) fn draw_app_icon(p: &egui::Painter, r: egui::Rect, app: DesktopApp) {
                 1.0,
                 dark,
             );
+        }
+        DesktopApp::NetflowCollector => {
+            // Three bars of different heights over a baseline, as a traffic chart.
+            let orange = egui::Color32::from_rgb(0xe0, 0x8a, 0x1e);
+            let base = r.bottom() - r.height() * 0.1;
+            let w = r.width() * 0.2;
+            for (i, h) in [0.45f32, 0.8, 0.6].into_iter().enumerate() {
+                let x = r.left() + r.width() * (0.12 + 0.3 * i as f32);
+                let bar = egui::Rect::from_min_max(egui::pos2(x, base - r.height() * h), egui::pos2(x + w, base));
+                p.rect_filled(bar, 2.0, if i == 1 { orange } else { light });
+                p.rect_stroke(bar, 2.0, egui::Stroke::new(2.0, dark), egui::StrokeKind::Inside);
+            }
+            p.line_segment([egui::pos2(r.left(), base), egui::pos2(r.right(), base)], egui::Stroke::new(3.0, light));
         }
         DesktopApp::PppoeDialer => {
             // A handset on a coiled line: a rounded plug with the letters PPP.

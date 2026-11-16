@@ -18,7 +18,6 @@ devices (gap 6) and more interface languages (gap 7).
 
 | Milestone | State | What it holds |
 |---|---|---|
-| 2026-11-15 | minor | Redistribution between RIP, EIGRP and OSPF, distribute lists and lab 39 (redistribute between routing protocols and filter with a distribute list) join the lab book (lab 38 belongs to another change, so the numbered labs are 1 to 37 and 39); the gaps table's item 9 narrowed again. |
 | **M0 — Foundations** | ✅ 2026-10-29 | Workspace and gates, wire formats, lab model and file format, discrete-event simulator, console, engine with undo and panic guard, egui app in the reference app's arrangement, CLI, MCP, web build. |
 | **M1 — Services and security** | ✅ 2026-10-29 (in the first commit, with M0) | DHCP (server, relay, client), STP, switch VLAN interfaces, OSPF, ACLs, NAT/PAT, passwords and lines, Telnet/SSH, server HTTP/DHCP/DNS and the PC web browser, port security. |
 | **M2 — Layer 2 depth, IPv6 and WAN** | ✅ 2026-10-29 | M2.1 EtherChannel and VTP · M2.2 IPv6 · M2.3 multilayer switch · M2.4 RIP · M2.5 serial WAN links. |
@@ -68,6 +67,7 @@ hold.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-15 | minor | Redistribution between RIP, EIGRP and OSPF, distribute lists and lab 39 (redistribute between routing protocols and filter with a distribute list) join the lab book (lab 38 belongs to another change, so the numbered labs are 1 to 37 and 39); the gaps table's item 9 narrowed again. |
 | 2026-11-13 | minor | Focus paragraph updated for release 0.2.0 (the open gaps). |
 | 2026-11-15 | minor | Prefix lists and route maps, and lab 37 (filter routes with a prefix list and a route map) join the lab book (37 labs, 16 over MCP); the gaps table's item 9 narrowed again. |
 | 2026-11-15 | minor | BGP on routers and lab 36 (BGP between two autonomous systems) join the lab book (36 labs, 16 over MCP); the gaps table's item 9 narrowed. |

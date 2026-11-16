@@ -145,6 +145,38 @@ pub static CATALOG: &[CommandInfo] = &[
         false
     ),
     c!(
+        "netflow.listen",
+        "Netflow Collector start",
+        "",
+        None,
+        r#"{"device": PC, laptop or server, "port"?: 1-65535 (default: the one last used, else 2055)} → the collector's state as netflow.flows: opens the UDP port; routers set up with `ip flow-export destination` send it NetFlow version 5 or 9 datagrams. The port is saved with the lab, what was received is not"#,
+        true
+    ),
+    c!(
+        "netflow.stop",
+        "Netflow Collector stop",
+        "",
+        None,
+        r#"{"device": PC, laptop or server} → the collector's state as netflow.flows: closes the port (what was received stays until cleared); fails when it is not listening"#,
+        true
+    ),
+    c!(
+        "netflow.flows",
+        "Netflow Collector flows",
+        "",
+        None,
+        r#"{"device": PC, laptop or server, "limit"?: 1-500 flows to list (default 100, the newest)} → {"listening", "port", "datagrams", "bad_datagrams", "flows_received", "packets", "bytes", "top_talkers": [{"address", "flows", "packets", "bytes"}] (ten source addresses by bytes), "protocols": [{"protocol", "number", "flows", "packets", "bytes"}], "flows": [{"at_ms", "exporter", "version", "src", "dst", "next_hop", "protocol", "src_port", "dst_port", "packets", "bytes", "in_if", "out_if", "tcp_flags", "first_ms", "last_ms"}]} (at most 2000 flows are kept, the oldest go first)"#,
+        false
+    ),
+    c!(
+        "netflow.clear",
+        "Netflow Collector clear",
+        "",
+        None,
+        r#"{"device": PC, laptop or server} → the collector's state as netflow.flows, with nothing received"#,
+        false
+    ),
+    c!(
         "snmp.request",
         "SNMP request",
         "",
