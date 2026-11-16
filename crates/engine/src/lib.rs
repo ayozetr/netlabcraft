@@ -61,6 +61,8 @@ mod tests_swroute;
 mod tests_traffic;
 #[cfg(test)]
 mod tests_vpnclient;
+#[cfg(test)]
+mod tests_wifisec;
 
 pub use catalog::{CATALOG, CommandInfo};
 pub use netlabcraft_core::DeviceId;

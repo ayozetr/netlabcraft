@@ -6,8 +6,10 @@
 //! running configuration always says what the router does.
 
 use netlabcraft_core::{DeviceId, Ipv4Net, mask_to_prefix, parse_ip};
+use netlabcraft_model::wlan::{Cipher, MAX_COVERAGE_CM, MIN_COVERAGE_CM, WifiLogin, WifiMode, WifiSecurity, check_wep_key};
 use netlabcraft_model::{Topology, Wifi};
 use netlabcraft_sim::Sim;
+use serde_json::Value;
 
 /// The LAN a new home router hands out (`.100` up).
 pub const FACTORY_CONFIG: &str = "\
@@ -54,13 +56,122 @@ pub fn factory(t: &mut Topology, id: DeviceId) {
     let mut scratch = Sim::new();
     let _ = netlabcraft_ios::apply_config(t, &mut scratch, id, FACTORY_CONFIG);
     if let Some(radio) = t.device_mut(id).and_then(|d| d.ports.iter_mut().find(|p| netlabcraft_model::ifname::is_wireless(&p.name))) {
-        radio.wifi = Some(Wifi { ssid: "HomeNetwork".into(), key: None, channel: 6, login: None });
+        radio.wifi = Some(Wifi { ssid: "HomeNetwork".into(), key: None, channel: 6, login: None, ..Default::default() });
     }
     // A home gateway also runs its IoT service, on its LAN address's web port.
     if let Some(d) = t.device_mut(id).filter(|d| netlabcraft_model::iot::can_serve(d)) {
         d.services.http.on = true;
         d.iot.service = true;
     }
+}
+
+/// The Wi-Fi settings a `device.wireless` call asks for, checked; `None` for an empty SSID (the
+/// radio is off). `old` are the radio's present settings: a channel or coverage range not given
+/// stays as it is. Without `mode` the settings read as they did before the modes existed: WPA2-PSK
+/// when there is a passphrase, an open network when there is not.
+pub(crate) fn wifi_from_params(is_host: bool, p: &Value, old: Option<&Wifi>) -> Result<Option<Wifi>, String> {
+    let text = |k: &str| p.get(k).and_then(Value::as_str);
+    let ssid: String = text("ssid").ok_or("`ssid` (text) is required")?.trim().chars().take(32).collect();
+    if ssid.is_empty() {
+        return Ok(None);
+    }
+    let key = text("key").map(str::to_string).filter(|k| !k.is_empty());
+    let wep_key = text("wep_key").unwrap_or("").to_string();
+    let mode = match text("mode").filter(|m| !m.trim().is_empty()) {
+        Some(m) => {
+            Some(WifiMode::parse(m).ok_or_else(|| format!("`mode` is open, wep, wpa-psk, wpa2-psk, wpa-enterprise or wpa2-enterprise, not `{m}`"))?)
+        }
+        None => None,
+    };
+    let encryption = match text("encryption").filter(|m| !m.trim().is_empty()) {
+        Some(e) => Some(Cipher::parse(e).ok_or_else(|| format!("`encryption` is aes or tkip, not `{e}`"))?),
+        None => None,
+    };
+    let channel = p.get("channel").and_then(Value::as_u64).map_or(old.map_or(6, |w| w.channel), |c| c.clamp(1, 13) as u8);
+    let user: String = text("user").unwrap_or("").trim().chars().take(64).collect();
+    let password: String = text("password").unwrap_or("").chars().take(64).collect();
+    if !user.is_empty() && !is_host {
+        return Err("only hosts log in to an enterprise network; the access point is set to a RADIUS server (`radius_ip`), a controller's WLANs with device.wlan".into());
+    }
+    let login = (!user.is_empty()).then_some(WifiLogin { user, password });
+    let radius_ip = match text("radius_ip").map(str::trim).filter(|a| !a.is_empty()) {
+        Some(a) => Some(parse_ip(a).map_err(|e| format!("`radius_ip`: {e}"))?),
+        None => None,
+    };
+    let radius_secret: String = text("radius_secret").unwrap_or("").chars().take(64).collect();
+    if is_host && (radius_ip.is_some() || !radius_secret.is_empty()) {
+        return Err("a host has no RADIUS server: it gives a `user` and `password`; the access point has the server".into());
+    }
+    if let Some(k) = &key
+        && !(8..=63).contains(&k.chars().count())
+    {
+        return Err("a WPA passphrase has 8-63 characters".into());
+    }
+    let mut security = WifiSecurity { mode, ..WifiSecurity::default() };
+    match mode {
+        // Before the modes: the passphrase decides.
+        None => {
+            if !wep_key.is_empty() {
+                return Err("a WEP key needs `mode`: wep".into());
+            }
+            if radius_ip.is_some() {
+                return Err("a RADIUS server needs `mode`: wpa-enterprise or wpa2-enterprise".into());
+            }
+            security.encryption = encryption.unwrap_or_default();
+        }
+        Some(WifiMode::Open) => {
+            if key.is_some() || !wep_key.is_empty() || login.is_some() {
+                return Err("an open network has no key, passphrase or login".into());
+            }
+        }
+        Some(WifiMode::Wep) => {
+            if key.is_some() || login.is_some() {
+                return Err("a WEP network has a WEP key (`wep_key`), not a passphrase or login".into());
+            }
+            check_wep_key(&wep_key)?;
+            security.wep_key = wep_key;
+        }
+        Some(m) if m.is_psk() => {
+            if key.is_none() {
+                return Err("a WPA-PSK or WPA2-PSK network needs its passphrase (`key`, 8-63 characters)".into());
+            }
+            if !wep_key.is_empty() || login.is_some() {
+                return Err("a pre-shared-key network has a passphrase, not a WEP key or login".into());
+            }
+            security.encryption = encryption.unwrap_or_default();
+        }
+        Some(_) => {
+            if key.is_some() || !wep_key.is_empty() {
+                return Err("an enterprise network has a login (hosts) or a RADIUS server (access points), not a passphrase or WEP key".into());
+            }
+            if is_host {
+                if login.is_none() {
+                    return Err("an enterprise network needs the host's `user` and `password`".into());
+                }
+            } else if radius_ip.is_none() || radius_secret.is_empty() {
+                return Err("an enterprise access point needs its RADIUS server (`radius_ip`) and shared secret (`radius_secret`)".into());
+            }
+            security.encryption = encryption.unwrap_or_default();
+            security.radius_ip = radius_ip;
+            security.radius_secret = radius_secret;
+        }
+    }
+    if encryption.is_some_and(|e| e != Cipher::Aes) && mode.is_some_and(|m| !m.is_wpa()) {
+        return Err("only WPA and WPA2 networks have an encryption type".into());
+    }
+    let coverage_cm = match p.get("coverage_m").and_then(Value::as_f64) {
+        None => old.and_then(|w| w.coverage_cm),
+        Some(_) if is_host => return Err("only an access point has a coverage range".into()),
+        Some(m) if !m.is_finite() => return Err("`coverage_m` is a number of metres".into()),
+        Some(m) => {
+            let cm = (m * 100.0).round().clamp(0.0, 1.0e9) as u32;
+            if !(MIN_COVERAGE_CM..=MAX_COVERAGE_CM).contains(&cm) {
+                return Err(format!("the coverage range is {} to {} metres", MIN_COVERAGE_CM / 100, MAX_COVERAGE_CM / 100));
+            }
+            (cm != (netlabcraft_model::wlan::DEFAULT_COVERAGE_M * 100.0) as u32).then_some(cm)
+        }
+    };
+    Ok(Some(Wifi { ssid, key, channel, login, security, coverage_cm }))
 }
 
 /// What the settings page sets.

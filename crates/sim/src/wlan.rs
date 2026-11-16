@@ -41,8 +41,8 @@
 use std::net::Ipv4Addr;
 
 use netlabcraft_core::{DeviceId, MacAddr, VlanId};
-use netlabcraft_model::wlan::{Attempt, WlanSecurity, is_lap, is_wlc, mgmt_addr};
-use netlabcraft_model::{Device, End, Topology, ifname};
+use netlabcraft_model::wlan::{Attempt, Offer, WifiMode, WlanSecurity, is_lap, is_wlc, mgmt_addr};
+use netlabcraft_model::{Device, End, Topology, Wifi, ifname};
 use netlabcraft_wire::capwap::{self, Control};
 use netlabcraft_wire::radius::{ACCESS_ACCEPT, ACCESS_CHALLENGE, RADIUS_PORT, Radius};
 use netlabcraft_wire::wlan::{
@@ -145,6 +145,26 @@ fn akm(s: &WlanSecurity) -> Option<Akm> {
         WlanSecurity::Psk(_) => Some(Akm::Psk),
         WlanSecurity::Enterprise => Some(Akm::Dot1x),
     }
+}
+
+/// The status code with which a standalone access point turns a host away at association: the
+/// host is set for another mode or encryption type than the network's. A host without any
+/// security set keeps going to the handshake, which fails there; controller WLANs are always
+/// WPA2 with AES.
+fn mismatch_status(offer: &Offer, want: &Wifi) -> Option<u16> {
+    if offer.controller.is_some() {
+        return None;
+    }
+    let mine = offer.host_mode(want);
+    if mine == offer.mode {
+        return (offer.mode.is_wpa() && want.security.encryption != offer.cipher).then_some(wlan::STATUS_CIPHER_REJECTED);
+    }
+    (mine != WifiMode::Open).then_some(wlan::STATUS_AKMP_REJECTED)
+}
+
+/// The settings of a host's radio.
+fn wifi_of(t: &Topology, e: End) -> Wifi {
+    t.device(e.device).and_then(|d| d.ports.get(e.port)).and_then(|p| p.wifi.clone()).unwrap_or_default()
 }
 
 /// A hop through the air: between a host's radio and an access point's radio.
@@ -394,8 +414,10 @@ impl Sim {
         self.assoc.retain(|c, _| clients.contains(c));
         for client in clients {
             let attempt = t.wifi_attempt(client);
-            let key =
-                attempt.as_ref().map(|a| format!("{:?}/{}/{:?}/{}", a.ap, a.offer.ssid, a.offer.security, a.outcome.is_ok())).unwrap_or_default();
+            let key = attempt
+                .as_ref()
+                .map(|a| format!("{:?}/{}/{:?}/{:?}/{:?}/{}", a.ap, a.offer.ssid, a.offer.security, a.offer.mode, a.offer.cipher, a.outcome.is_ok()))
+                .unwrap_or_default();
             if self.assoc.get(&client).is_some_and(|a| a.key == key) {
                 continue;
             }
@@ -495,6 +517,8 @@ impl Sim {
     fn mgmt_ap_in(&mut self, t: &Topology, ap: End, client: End, f: &Dot11) -> Result<(), String> {
         let a = self.attempt_of(t, client, ap).ok_or("from a host that is not joining this access point")?;
         let (me, sta) = (port_mac(t, ap), f.addr2);
+        let want = wifi_of(t, client);
+        let mismatch = mismatch_status(&a.offer, &want);
         let seq = self.air_seq();
         let reply = match &f.body {
             Body::ProbeRequest { ssid } if ssid.is_empty() || *ssid == a.offer.ssid => Body::ProbeResponse(Bss {
@@ -505,15 +529,19 @@ impl Sim {
                 timestamp: self.now,
             }),
             Body::ProbeRequest { .. } => return Err("probe for a network this access point doesn't offer".into()),
+            // WEP: a host without the network's key fails the challenge (its WEP key doesn't answer).
+            Body::Auth { transaction: 1, .. } if a.offer.mode == WifiMode::Wep && a.outcome.is_err() => {
+                Body::Auth { algorithm: 0, transaction: 2, status: wlan::STATUS_CHALLENGE_FAILED }
+            }
             Body::Auth { transaction: 1, .. } => Body::Auth { algorithm: 0, transaction: 2, status: wlan::STATUS_SUCCESS },
             Body::AssocRequest { ssid, .. } if *ssid == a.offer.ssid => {
                 let aid = self.assoc.get(&client).map_or(1, |x| x.aid);
-                Body::AssocResponse { status: wlan::STATUS_SUCCESS, aid }
+                Body::AssocResponse { status: mismatch.unwrap_or(wlan::STATUS_SUCCESS), aid }
             }
             Body::AssocRequest { .. } => Body::AssocResponse { status: wlan::STATUS_REFUSED, aid: 0 },
             Body::ReassocRequest { ssid, .. } if *ssid == a.offer.ssid => {
                 let aid = self.assoc.get(&client).map_or(1, |x| x.aid);
-                Body::ReassocResponse { status: wlan::STATUS_SUCCESS, aid }
+                Body::ReassocResponse { status: mismatch.unwrap_or(wlan::STATUS_SUCCESS), aid }
             }
             Body::ReassocRequest { .. } => Body::ReassocResponse { status: wlan::STATUS_REFUSED, aid: 0 },
             Body::Deauth { .. } | Body::Disassoc { .. } => return Ok(()),
@@ -766,6 +794,11 @@ impl Sim {
             }
             (Eapol::Key(k), _) if keyed && k.message() == 4 => Ok(()),
             (Eapol::Eap(r), WlanSecurity::Enterprise) if r.code == EAP_RESPONSE && matches!(r.kind, Some(EAP_IDENTITY | EAP_PEAP)) => {
+                // A standalone access point is its own authenticator: it asks its RADIUS server.
+                if a.offer.controller.is_none() {
+                    let me = t.device(ap.device).ok_or("access point removed")?;
+                    return self.dot1x_request(t, me, me.id, client, &r, a.offer.radius.clone());
+                }
                 // The lightweight AP hands the login to its controller over CAPWAP data.
                 let lap = t.device(ap.device).ok_or("access point removed")?;
                 let wlc = a.offer.controller.and_then(|w| t.device(w)).ok_or("no controller")?;
@@ -903,8 +936,22 @@ impl Sim {
         if r.code != EAP_RESPONSE {
             return Err("EAP from a host that is not a response".into());
         }
-        // A pass-through authenticator: each EAP response goes to the RADIUS server inside an
-        // Access-Request (RFC 3579), with the server's State; the identity starts a new login.
+        self.dot1x_request(t, me, peer.id, client, &r, me.access.radius_servers.first().cloned())
+    }
+
+    /// A pass-through authenticator: each EAP response goes to the RADIUS server inside an
+    /// Access-Request (RFC 3579), with the server's State; the identity starts a new login.
+    /// `me` is the controller (`lap` the access point the host is on) or, on a standalone
+    /// access point, the access point itself (`lap` its own id) with its own RADIUS server.
+    fn dot1x_request(
+        &mut self,
+        t: &Topology,
+        me: &Device,
+        lap: DeviceId,
+        client: End,
+        r: &Eap,
+        server: Option<(Ipv4Addr, String)>,
+    ) -> Result<(), String> {
         if r.kind == Some(EAP_IDENTITY) {
             let user: String = String::from_utf8_lossy(&r.data).chars().take(64).collect();
             if let Some(st) = self.assoc.get_mut(&client) {
@@ -914,10 +961,10 @@ impl Sim {
             }
         }
         let (user, state) = self.assoc.get(&client).map(|a| (a.identity.clone(), a.radius_state.clone())).unwrap_or_default();
-        let Some((server, secret)) = me.access.radius_servers.first().cloned() else {
-            return self.dot1x_result(t, me.id, peer.id, client, r.id, false);
+        let Some((server, secret)) = server else {
+            return self.dot1x_result(t, me.id, lap, client, r.id, false);
         };
-        let (_, src) = mgmt_addr(me).ok_or("the controller has no management address")?;
+        let (_, src) = mgmt_addr(me).ok_or("the authenticator has no management address")?;
         let port = self.next_port();
         self.seq += 1;
         let id = (self.seq % 256) as u8;
@@ -926,7 +973,7 @@ impl Sim {
         if self.dot1x.len() >= 64 {
             self.dot1x.clear();
         }
-        self.dot1x.insert(port, Dot1xWait { wlc: me.id, lap: peer.id, client, id: r.id, authenticator, secret });
+        self.dot1x.insert(port, Dot1xWait { wlc: me.id, lap, client, id: r.id, authenticator, secret });
         self.udp_send(t, me, server, port, RADIUS_PORT, req.encode())
     }
 
@@ -972,6 +1019,11 @@ impl Sim {
         let bssid = port_mac(t, End { device: lap, port: radio });
         let seq = self.air_seq();
         let f = Dot11::from_ap(port_mac(t, client), bssid, bssid, seq, ETHERTYPE_EAPOL, Eapol::Eap(eap).encode());
+        // A standalone access point answers on the air itself.
+        if wlc == lap {
+            self.send_air(End { device: lap, port: radio }, client, f);
+            return Ok(());
+        }
         let (wd, ld) = (wd.clone(), ld.clone());
         self.capwap_send(t, &wd, &ld, capwap::data_encode(&f.encode()), capwap::DATA_PORT)
     }
@@ -984,6 +1036,19 @@ impl Sim {
         let seq = self.air_seq();
         let eap = Eap { code: if ok { EAP_SUCCESS } else { EAP_FAILURE }, id, kind: None, data: Vec::new() };
         let f = Dot11::from_ap(port_mac(t, client), bssid, bssid, seq, ETHERTYPE_EAPOL, Eapol::Eap(eap).encode());
+        if wlc == lap {
+            // A standalone access point: the answer goes out on the air, then the 4-way handshake
+            // (logged in) or the deauthentication (refused).
+            let radio = End { device: lap, port: radio };
+            self.send_air(radio, client, f);
+            if ok {
+                self.start_handshake(t, radio, client);
+            } else {
+                let seq = self.air_seq();
+                self.send_air(radio, client, Dot11::mgmt(port_mac(t, client), bssid, bssid, seq, Body::Deauth { reason: wlan::REASON_8021X_FAILED }));
+            }
+            return Ok(());
+        }
         let (wd, ld) = (wd.clone(), ld.clone());
         self.capwap_send(t, &wd, &ld, capwap::data_encode(&f.encode()), capwap::DATA_PORT)?;
         if !ok {
@@ -1027,8 +1092,10 @@ mod tests {
         t.connect(End { device: pc, port: 0 }, End { device: ap, port: 0 }).unwrap();
         t.device_mut(pc).unwrap().ports[0].ip = Some("10.0.0.1/24".parse().unwrap());
         t.device_mut(lt).unwrap().ports[0].ip = Some("10.0.0.2/24".parse().unwrap());
-        t.device_mut(ap).unwrap().ports[1].wifi = Some(Wifi { ssid: "Lab".into(), key: key.map(str::to_string), channel: 6, login: None });
-        t.device_mut(lt).unwrap().ports[0].wifi = Some(Wifi { ssid: "Lab".into(), key: laptop_key.map(str::to_string), channel: 6, login: None });
+        t.device_mut(ap).unwrap().ports[1].wifi =
+            Some(Wifi { ssid: "Lab".into(), key: key.map(str::to_string), channel: 6, login: None, ..Default::default() });
+        t.device_mut(lt).unwrap().ports[0].wifi =
+            Some(Wifi { ssid: "Lab".into(), key: laptop_key.map(str::to_string), channel: 6, login: None, ..Default::default() });
         (t, pc, lt)
     }
 
@@ -1203,7 +1270,8 @@ mod tests {
         // An access point in the annex's wiring closet reaches it, however far on the map.
         let closet = t.add_place(netlabcraft_model::physical::PlaceKind::Closet, Some("Annex closet"), Some(annex), 0.0, 0.0).unwrap();
         let ap2 = t.add_model(models::find("AccessPoint").unwrap(), Some("AP2"), 9000.0, 9000.0).unwrap();
-        t.device_mut(ap2).unwrap().ports[1].wifi = Some(Wifi { ssid: "Lab".into(), key: Some("secreto123".into()), channel: 11, login: None });
+        t.device_mut(ap2).unwrap().ports[1].wifi =
+            Some(Wifi { ssid: "Lab".into(), key: Some("secreto123".into()), channel: 11, login: None, ..Default::default() });
         t.set_home(ap2, closet, 5.0, 5.0).unwrap();
         assert_eq!(t.wifi_ap_of(client), Some(End { device: ap2, port: 1 }));
         // Back in the main building (whatever the logical distance), AP1 again.
@@ -1250,9 +1318,11 @@ mod tests {
         t.device_mut(pc).unwrap().ports[0].ip = Some("10.0.0.1/24".parse().unwrap());
         t.device_mut(lt).unwrap().ports[0].ip = Some("10.0.0.2/24".parse().unwrap());
         for ap in [ap1, ap2] {
-            t.device_mut(ap).unwrap().ports[1].wifi = Some(Wifi { ssid: "Lab".into(), key: Some("secreto123".into()), channel: 6, login: None });
+            t.device_mut(ap).unwrap().ports[1].wifi =
+                Some(Wifi { ssid: "Lab".into(), key: Some("secreto123".into()), channel: 6, login: None, ..Default::default() });
         }
-        t.device_mut(lt).unwrap().ports[0].wifi = Some(Wifi { ssid: "Lab".into(), key: Some("secreto123".into()), channel: 6, login: None });
+        t.device_mut(lt).unwrap().ports[0].wifi =
+            Some(Wifi { ssid: "Lab".into(), key: Some("secreto123".into()), channel: 6, login: None, ..Default::default() });
         (t, pc, lt)
     }
 

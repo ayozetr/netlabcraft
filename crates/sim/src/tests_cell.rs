@@ -138,7 +138,7 @@ fn a_phone_on_wifi_uses_wifi_and_falls_back_to_cellular_when_wifi_is_gone() {
     let ap = l.t.add_model(models::find("Access Point").unwrap(), None, 10.0, 10.0).unwrap();
     let local = l.t.add_device(DeviceKind::Server, None, 30.0, 10.0).unwrap();
     l.t.connect(End { device: ap, port: 0 }, End { device: local, port: 0 }).unwrap();
-    let wifi = || Some(netlabcraft_model::Wifi { ssid: "home".into(), key: None, channel: 6, login: None });
+    let wifi = || Some(netlabcraft_model::Wifi { ssid: "home".into(), key: None, channel: 6, login: None, ..Default::default() });
     l.t.device_mut(ap).unwrap().ports[1].wifi = wifi();
     l.t.device_mut(local).unwrap().ports[0].ip = Some("192.168.9.10/24".parse().unwrap());
     {
