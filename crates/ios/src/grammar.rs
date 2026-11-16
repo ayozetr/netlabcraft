@@ -959,6 +959,15 @@ pub enum Id {
     ShowNtp,
     LoggingHost,
     NoLoggingHost,
+    FlowExportDestination,
+    NoFlowExportDestination,
+    FlowExportVersion,
+    NoFlowExportVersion,
+    FlowIngress,
+    NoFlowIngress,
+    ShowIpFlowExport,
+    ShowIpCacheFlow,
+    ClearIpFlowStats,
     CopyToTftp,
     CopyFromTftp,
     CopyToFtp,
@@ -2321,6 +2330,47 @@ pub static SPECS: &[Spec] = &[
     spec!(LoggingHost, Modes::CONFIG, Modes::BOTH, [K("logging"), K("host"), Arg("A.B.C.D")], "Send log messages to a syslog server"),
     spec!(LoggingHost, Modes::CONFIG, Modes::BOTH, [K("logging"), Arg("A.B.C.D")], "Send log messages to a syslog server"),
     spec!(NoLoggingHost, Modes::CONFIG, Modes::BOTH, [K("no"), K("logging"), K("host"), Arg("A.B.C.D")], "Stop sending to a syslog server"),
+    spec!(
+        FlowExportDestination,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("ip"), K("flow-export"), K("destination"), Arg("A.B.C.D"), Arg("<1-65535>")],
+        "Send flow records to a collector (at most two)"
+    ),
+    spec!(
+        NoFlowExportDestination,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("no"), K("ip"), K("flow-export"), K("destination"), Arg("A.B.C.D"), Arg("<1-65535>")],
+        "Stop sending flow records to a collector"
+    ),
+    spec!(
+        FlowExportVersion,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("ip"), K("flow-export"), K("version"), Arg("{5|9}")],
+        "The format flow records are exported in"
+    ),
+    spec!(
+        NoFlowExportVersion,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("no"), K("ip"), K("flow-export"), K("version")],
+        "Export flow records in version 5 again"
+    ),
+    spec!(FlowIngress, IFS, Modes::ROUTER, [K("ip"), K("flow"), K("ingress")], "Count the flows that come in on this interface"),
+    spec!(FlowIngress, IFS, Modes::ROUTER, [K("ip"), K("route-cache"), K("flow")], "Count the flows that come in on this interface"),
+    spec!(NoFlowIngress, IFS, Modes::ROUTER, [K("no"), K("ip"), K("flow"), K("ingress")], "Stop counting the flows that come in on this interface"),
+    spec!(
+        NoFlowIngress,
+        IFS,
+        Modes::ROUTER,
+        [K("no"), K("ip"), K("route-cache"), K("flow")],
+        "Stop counting the flows that come in on this interface"
+    ),
+    spec!(ShowIpFlowExport, EXECS, Modes::ROUTER, [K("show"), K("ip"), K("flow"), K("export")], "Where flow records go and how many were sent"),
+    spec!(ShowIpCacheFlow, EXECS, Modes::ROUTER, [K("show"), K("ip"), K("cache"), K("flow")], "The flows the router is counting"),
+    spec!(ClearIpFlowStats, Modes::EXEC, Modes::ROUTER, [K("clear"), K("ip"), K("flow"), K("stats")], "Empty the flow cache and its counts"),
     // Without the server: the copy asks for it, then for the file name.
     spec!(CopyToTftp, Modes::EXEC, Modes::BOTH, [K("copy"), K("running-config"), K("tftp:")], "Save the configuration on a TFTP server (asks where)"),
     spec!(

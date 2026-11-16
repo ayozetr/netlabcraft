@@ -50,6 +50,7 @@ pub mod iot;
 pub mod l2sec;
 pub mod logcfg;
 pub mod mgmt;
+pub mod netflow;
 pub mod ospf;
 pub mod ospf6;
 pub mod ospf_lsdb;
@@ -909,6 +910,9 @@ pub struct DevState {
     /// SNMP agents: notifications waiting to go to the trap hosts, and how many went.
     pub(crate) trap_out: Vec<snmp::TrapEvent>,
     pub traps_sent: u32,
+    /// Routers: the NetFlow cache and export counters; end devices: what the Netflow Collector received.
+    pub nf: netflow::FlowCache,
+    pub nf_in: netflow::Collector,
     /// Hosts: SNMP traps received (newest last).
     pub traps: VecDeque<snmp::ReceivedTrap>,
     /// FTP server connections.
@@ -1534,6 +1538,7 @@ impl Sim {
         self.wlan_sync(t);
         self.cell_sync(t);
         self.flush_syslog(t);
+        self.flush_netflow(t);
         self.flush_traps(t);
         self.voice_tick(t);
         self.bgp_refresh(t);
@@ -2974,6 +2979,7 @@ impl Sim {
                     fwd = tr;
                 }
                 self.bump(d.id, "forwarded");
+                self.netflow_note(d, ifc, &out, nh, &ip, payload.len());
                 let mut bytes = netlabcraft_wire::ipfrag::keep_fragment_bits(payload, qos::keep_ds(payload, fwd.encode()));
                 // `ip tcp adjust-mss` on either interface: SYNs announce no more than that.
                 let mss = [&ifc.name, &out.name].iter().filter_map(|n| d.security.adjust_mss.get(n.as_str()).copied()).min();

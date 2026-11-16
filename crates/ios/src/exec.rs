@@ -23,6 +23,7 @@ pub(crate) mod firewall;
 pub(crate) mod ikev2;
 pub(crate) mod l2sec;
 pub(crate) mod mgmt;
+pub(crate) mod netflow;
 pub(crate) mod pki;
 pub(crate) mod policy;
 pub(crate) mod qos;
@@ -3853,6 +3854,15 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::NoBgpNeighborPrefixList
         | Id::BgpNeighborRouteMap
         | Id::NoBgpNeighborRouteMap => bgp::command(&mut c, spec.id, &args),
+        Id::FlowExportDestination
+        | Id::NoFlowExportDestination
+        | Id::FlowExportVersion
+        | Id::NoFlowExportVersion
+        | Id::FlowIngress
+        | Id::NoFlowIngress
+        | Id::ShowIpFlowExport
+        | Id::ShowIpCacheFlow
+        | Id::ClearIpFlowStats => netflow::command(&mut c, spec.id, &args),
         Id::PrefixListLine
         | Id::NoPrefixList
         | Id::NoPrefixListLine

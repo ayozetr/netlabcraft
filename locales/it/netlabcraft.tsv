@@ -1629,3 +1629,15 @@ event	write request for	richiesta di scrittura di
 	Encryption	Cifratura
 	Tunnel packets: {} sent, {} received	Pacchetti del tunnel: {} inviati, {} ricevuti
 	Fill in the form and press Connect.	Compila il modulo e premi Connetti.
+	Netflow Collector	Collettore Netflow
+	Listening on UDP port {}	In ascolto sulla porta UDP {}
+	Not listening	Non in ascolto
+	Top talkers	Principali mittenti
+	Protocols	Protocolli
+	Flows	Flussi
+	Packets	Pacchetti
+	Exporter	Esportatore
+	Datagrams: {}, flows: {}, packets: {}, bytes: {}	Datagrammi: {}, flussi: {}, pacchetti: {}, byte: {}
+	No flows received yet. Routers send a flow once it has been quiet for 15 seconds.	Nessun flusso ricevuto finora. I router inviano un flusso dopo 15 secondi di inattività.
+	Enter a port from 1 to 65535.	Inserisci una porta da 1 a 65535.
+	Set routers to export here with: ip flow-export destination ADDRESS PORT	Configura i router per esportare qui con: ip flow-export destination ADDRESS PORT
