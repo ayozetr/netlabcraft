@@ -2,8 +2,8 @@
 //! (`interface Loopback N`).
 
 use netlabcraft_core::{Ipv4Net, parse_ip};
-use netlabcraft_model::MAX_DESCRIPTION;
 use netlabcraft_model::routing::loopback_number;
+use netlabcraft_model::{MAX_DESCRIPTION, VirtualLinkOpts};
 
 use super::{Ctx, Mode, R};
 use crate::grammar::Id;
@@ -254,6 +254,98 @@ pub(super) fn ospf_area_auth(c: &mut Ctx, on: bool, args: &[String]) -> R {
     Ok(String::new())
 }
 
+/// Whether a word can follow `authentication` on a virtual link: `message-digest` or `null`.
+fn is_auth_word(w: &str) -> bool {
+    let l = w.to_ascii_lowercase();
+    !l.is_empty() && ("message-digest".starts_with(&l) || "null".starts_with(&l))
+}
+
+/// Takes a number off the words when one comes next.
+fn skip_number(it: &mut std::iter::Peekable<std::str::SplitWhitespace<'_>>) {
+    let _ = it.next_if(|n| n.parse::<u32>().is_ok());
+}
+
+/// The seconds a virtual-link timer takes (1-65535).
+fn vlink_seconds(w: Option<&str>, what: &str) -> Result<u16, String> {
+    w.and_then(|w| w.parse::<u16>().ok()).filter(|n| *n >= 1).ok_or_else(|| format!("% The {what} is 1-65535 seconds"))
+}
+
+/// The options after `area N virtual-link ROUTER-ID`: `hello-interval`, `dead-interval`,
+/// `retransmit-interval`, `transmit-delay`, `authentication [message-digest|null]`,
+/// `authentication-key` and `message-digest-key ID md5 KEY`. With `on` false they are put back
+/// to their defaults (the `no` form).
+fn vlink_options(o: &mut VirtualLinkOpts, text: &str, on: bool) -> Result<(), String> {
+    let mut it = text.split_whitespace().peekable();
+    while let Some(w) = it.next() {
+        match w.to_ascii_lowercase().as_str() {
+            "hello-interval" => {
+                o.hello = if on { Some(vlink_seconds(it.next(), "hello interval")?) } else { None };
+                if !on {
+                    skip_number(&mut it);
+                }
+            }
+            "dead-interval" => {
+                o.dead = if on { Some(vlink_seconds(it.next(), "dead interval")?) } else { None };
+                if !on {
+                    skip_number(&mut it);
+                }
+            }
+            "retransmit-interval" => {
+                o.retransmit = if on { Some(vlink_seconds(it.next(), "retransmit interval")?) } else { None };
+                if !on {
+                    skip_number(&mut it);
+                }
+            }
+            "transmit-delay" => {
+                o.transmit_delay = if on { Some(vlink_seconds(it.next(), "transmit delay")?) } else { None };
+                if !on {
+                    skip_number(&mut it);
+                }
+            }
+            "authentication" => {
+                let word = it.next_if(|n| is_auth_word(n)).unwrap_or("");
+                o.auth = if on { Some(auth_kind_word(word, true)?) } else { None };
+            }
+            "authentication-key" => {
+                if on {
+                    let key = it.next().ok_or("% The password is 1-8 characters")?;
+                    if key.chars().count() > 8 {
+                        return Err("% The password is 1-8 characters".into());
+                    }
+                    o.auth_key = Some(key.to_string());
+                } else {
+                    o.auth_key = None;
+                }
+            }
+            "message-digest-key" => {
+                if on {
+                    let n: u8 = it.next().and_then(|n| n.parse().ok()).filter(|n| *n >= 1).ok_or("% The key id is 1-255")?;
+                    if !it.next().is_some_and(|m| m.eq_ignore_ascii_case("md5")) {
+                        return Err("% Only md5 keys: message-digest-key ID md5 KEY".into());
+                    }
+                    let key = it.next().filter(|k| (1..=16).contains(&k.chars().count())).ok_or("% The key is 1-16 characters")?;
+                    if !o.md5_keys.contains_key(&n) && o.md5_keys.len() >= netlabcraft_model::MAX_OSPF_MD5_KEYS {
+                        return Err("% Too many message-digest keys on this virtual link".into());
+                    }
+                    o.md5_keys.insert(n, key.to_string());
+                } else if let Some(n) = it.next_if(|n| n.parse::<u8>().is_ok()) {
+                    if let Ok(n) = n.parse::<u8>() {
+                        o.md5_keys.remove(&n);
+                    }
+                } else {
+                    o.md5_keys.clear();
+                }
+            }
+            other => {
+                return Err(format!(
+                    "% `{other}` is not a virtual-link option: hello-interval, dead-interval, retransmit-interval, transmit-delay, authentication, authentication-key or message-digest-key"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// `area N nssa [no-summary] [default-information-originate]`, `area N default-cost C` and
 /// `area N virtual-link ROUTER-ID`, and their `no` forms, in router OSPF mode.
 pub(super) fn ospf_area_type(c: &mut Ctx, id: Id, args: &[String]) -> R {
@@ -265,15 +357,17 @@ pub(super) fn ospf_area_type(c: &mut Ctx, id: Id, args: &[String]) -> R {
     let o = c.dm()?.ospf.as_mut().ok_or("% Not in OSPF mode")?;
     match id {
         Id::AreaNssa | Id::NoAreaNssa => {
-            let (mut no_summary, mut originate) = (false, false);
+            let (mut no_summary, mut originate, mut no_redist) = (false, false, false);
             for w in rest.split_whitespace() {
                 let w = w.to_ascii_lowercase();
-                if w.starts_with("no-") && "no-summary".starts_with(&w) {
+                if w.starts_with("no-s") && "no-summary".starts_with(&w) {
                     no_summary = true;
+                } else if w.starts_with("no-r") && "no-redistribution".starts_with(&w) {
+                    no_redist = true;
                 } else if w.starts_with('d') && "default-information-originate".starts_with(&w) {
                     originate = true;
                 } else {
-                    return Err(format!("% `{w}` is not an NSSA option: no-summary or default-information-originate"));
+                    return Err(format!("% `{w}` is not an NSSA option: no-summary, no-redistribution or default-information-originate"));
                 }
             }
             if id == Id::AreaNssa {
@@ -284,15 +378,18 @@ pub(super) fn ospf_area_type(c: &mut Ctx, id: Id, args: &[String]) -> R {
                 a.nssa = true;
                 a.no_summary = no_summary;
                 a.nssa_default = originate;
+                a.nssa_no_redist = no_redist;
             } else if let Some(a) = o.areas.get_mut(&area).filter(|a| a.nssa) {
                 if rest.is_empty() {
                     a.nssa = false;
                     a.no_summary = false;
                     a.nssa_default = false;
+                    a.nssa_no_redist = false;
                     a.default_cost = None;
                 } else {
                     a.no_summary &= !no_summary;
                     a.nssa_default &= !originate;
+                    a.nssa_no_redist &= !no_redist;
                 }
             }
         }
@@ -312,6 +409,10 @@ pub(super) fn ospf_area_type(c: &mut Ctx, id: Id, args: &[String]) -> R {
         }
         Id::AreaVirtualLink => {
             let peer = parse_ip(rest).map_err(|e| format!("% {e}"))?;
+            let extra = args.get(2).map(|a| a.trim()).unwrap_or("");
+            let mut opts =
+                o.areas.get(&area).and_then(|a| a.vlink_opts.iter().find(|v| v.peer == peer)).cloned().unwrap_or_else(|| VirtualLinkOpts::new(peer));
+            vlink_options(&mut opts, extra, true)?;
             let a = o.areas.entry(area).or_default();
             if !a.virtual_links.contains(&peer) {
                 if a.virtual_links.len() >= netlabcraft_model::MAX_VIRTUAL_LINKS {
@@ -319,11 +420,22 @@ pub(super) fn ospf_area_type(c: &mut Ctx, id: Id, args: &[String]) -> R {
                 }
                 a.virtual_links.push(peer);
             }
+            a.vlink_opts.retain(|v| v.peer != peer);
+            if !opts.is_empty() {
+                a.vlink_opts.push(opts);
+            }
         }
         _ => {
             let peer = parse_ip(rest).map_err(|e| format!("% {e}"))?;
+            let extra = args.get(2).map(|a| a.trim()).unwrap_or("");
             if let Some(a) = o.areas.get_mut(&area) {
-                a.virtual_links.retain(|p| *p != peer);
+                if extra.is_empty() {
+                    a.virtual_links.retain(|p| *p != peer);
+                    a.vlink_opts.retain(|v| v.peer != peer);
+                } else if let Some(v) = a.vlink_opts.iter_mut().find(|v| v.peer == peer) {
+                    vlink_options(v, extra, false)?;
+                    a.vlink_opts.retain(|v| !v.is_empty());
+                }
             }
         }
     }

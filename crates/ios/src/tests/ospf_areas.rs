@@ -285,3 +285,115 @@ fn an_lsa_gets_a_new_sequence_number_when_its_router_originates_it_again() {
     lab.sim.run_for(&lab.t, 60_000_000);
     assert_eq!(seq_of(&lab.run(r1, "show ip ospf database router self-originate")), 0x8000_0001);
 }
+
+#[test]
+fn an_nssa_border_router_with_no_redistribution_keeps_its_own_routes_out_of_the_area() {
+    let (mut lab, r1, r2, r3) = chain();
+    lab.run(r2, "conf t\nip route 172.16.0.0 255.255.0.0 10.0.0.99\nrouter ospf 1\nredistribute static subnets\narea 1 nssa\nend");
+    lab.run(r3, "conf t\nrouter ospf 1\narea 1 nssa\nend");
+    let rt = lab.run(r3, "show ip route");
+    assert!(rt.contains("O N2 172.16.0.0/16"), "{rt}");
+    lab.run(r2, "conf t\nrouter ospf 1\narea 1 nssa no-redistribution\nend");
+    let rt = lab.run(r3, "show ip route");
+    assert!(!rt.contains("172.16.0.0"), "{rt}");
+    // The rest of the network still hears it, as an ordinary external route.
+    assert!(lab.run(r1, "show ip route").contains("O E2 172.16.0.0/16"));
+    let t7 = lab.run(r3, "show ip ospf database nssa-external");
+    assert!(!t7.contains("172.16.0.0") && t7.contains("192.168.50.0"), "{t7}");
+    assert!(lab.run(r2, "show ip ospf").contains("no-redistribution"));
+    assert!(lab.run(r2, "show running-config").contains(" area 1 nssa no-redistribution\n"));
+    // The options combine, are checked, and are undone one at a time.
+    lab.run(r2, "conf t\nrouter ospf 1\narea 1 nssa no-summary no-redistribution default-information-originate");
+    assert!(lab.try_run(r2, "area 1 nssa no-r bogus").contains("not an NSSA option"));
+    lab.run(r2, "no area 1 nssa no-redistribution\nend");
+    let run = lab.run(r2, "show running-config");
+    assert!(run.contains(" area 1 nssa no-summary default-information-originate\n"), "{run}");
+    lab.run(r2, "conf t\nrouter ospf 1\nno area 1 nssa\nend");
+    assert!(!lab.run(r2, "show running-config").contains("no-redistribution"));
+}
+
+#[test]
+fn a_virtual_link_has_timers_that_must_agree_and_a_command_line_that_round_trips() {
+    let (mut lab, r1, r2, r3, _r4) = four_routers();
+    lab.run(r2, "conf t\nrouter ospf 1\narea 1 virtual-link 3.3.3.3 hello-interval 5\nend");
+    lab.run(r3, "conf t\nrouter ospf 1\narea 1 virtual-link 2.2.2.2\nend");
+    // The two ends disagree on the hello interval (and so on the dead one, four times it).
+    let vl = lab.run(r2, "show ip ospf virtual-links");
+    assert!(vl.contains("is down") && vl.contains("the hello interval differs (5 s here, 10 s at the far end)"), "{vl}");
+    assert!(!lab.run(r1, "show ip route").contains("192.168.4.0"));
+    lab.run(r3, "conf t\nrouter ospf 1\narea 1 virtual-link 2.2.2.2 hello-interval 5 retransmit-interval 8 transmit-delay 2\nend");
+    let vl = lab.run(r3, "show ip ospf virtual-links");
+    assert!(vl.contains("is up") && vl.contains("Hello 5 s, dead 20 s, retransmit 8 s, transmit delay 2 s, no authentication"), "{vl}");
+    assert!(lab.run(r1, "show ip route").contains("O IA 192.168.4.0/24"));
+    // A dead interval alone is checked too.
+    lab.run(r3, "conf t\nrouter ospf 1\narea 1 virtual-link 2.2.2.2 dead-interval 30\nend");
+    let vl = lab.run(r2, "show ip ospf virtual-links");
+    assert!(vl.contains("the dead interval differs (20 s here, 30 s at the far end)"), "{vl}");
+    lab.run(r3, "conf t\nrouter ospf 1\nno area 1 virtual-link 2.2.2.2 dead-interval\nend");
+    assert!(lab.run(r2, "show ip ospf virtual-links").contains("is up"));
+    // Options are checked.
+    lab.run(r2, "conf t\nrouter ospf 1");
+    assert!(lab.try_run(r2, "area 1 virtual-link 3.3.3.3 hello-interval 0").contains("1-65535 seconds"));
+    assert!(lab.try_run(r2, "area 1 virtual-link 3.3.3.3 hello-interval").contains("1-65535 seconds"));
+    assert!(lab.try_run(r2, "area 1 virtual-link 3.3.3.3 bogus").contains("not a virtual-link option"));
+    assert!(lab.try_run(r2, "area 1 virtual-link 3.3.3.3 authentication-key abcdefghi").contains("1-8 characters"));
+    assert!(lab.try_run(r2, "area 1 virtual-link 3.3.3.3 message-digest-key 1 sha key").contains("Only md5"));
+    assert!(lab.try_run(r2, "area 1 virtual-link 3.3.3.3 message-digest-key 0 md5 key").contains("1-255"));
+    // Nothing of the failed lines stuck.
+    lab.run(r2, "end");
+    assert!(lab.run(r2, "show ip ospf virtual-links").contains("Hello 5 s, dead 20 s, retransmit 5 s, transmit delay 1 s"));
+    // The running config shows the options and accepts them again.
+    lab.run(r2, "conf t\nrouter ospf 1\narea 1 virtual-link 3.3.3.3 dead-interval 25\nend");
+    let run = lab.run(r2, "show running-config");
+    assert!(run.contains(" area 1 virtual-link 3.3.3.3 hello-interval 5 dead-interval 25\n"), "{run}");
+    lab.run(r2, "conf t\nrouter ospf 1\nno area 1 virtual-link 3.3.3.3\nend");
+    assert!(!lab.run(r2, "show running-config").contains("virtual-link"));
+    lab.run(r2, "conf t\nrouter ospf 1\narea 1 virtual-link 3.3.3.3 hello-interval 5 dead-interval 25\nend");
+    assert_eq!(lab.run(r2, "show running-config"), run);
+    // Taking an option off leaves the link and the other options.
+    lab.run(r2, "conf t\nrouter ospf 1\nno area 1 virtual-link 3.3.3.3 dead-interval\nend");
+    assert!(lab.run(r2, "show running-config").contains(" area 1 virtual-link 3.3.3.3 hello-interval 5\n"));
+    lab.run(r2, "conf t\nrouter ospf 1\nno area 1 virtual-link 3.3.3.3 hello-interval\nend");
+    assert!(lab.run(r2, "show running-config").contains(" area 1 virtual-link 3.3.3.3\n"));
+}
+
+#[test]
+fn a_virtual_link_authenticates_with_its_own_password_or_message_digest_key() {
+    let (mut lab, r1, r2, r3, _r4) = four_routers();
+    lab.run(r2, "conf t\nrouter ospf 1\narea 1 virtual-link 3.3.3.3 authentication message-digest message-digest-key 1 md5 first\nend");
+    lab.run(r3, "conf t\nrouter ospf 1\narea 1 virtual-link 2.2.2.2\nend");
+    // One end signs, the other does not.
+    let vl = lab.run(r2, "show ip ospf virtual-links");
+    assert!(vl.contains("is down") && vl.contains("authentication differs: message digest here, none at the far end"), "{vl}");
+    // Both sign, with different keys.
+    lab.run(r3, "conf t\nrouter ospf 1\narea 1 virtual-link 2.2.2.2 authentication message-digest message-digest-key 1 md5 other\nend");
+    let vl = lab.run(r2, "show ip ospf virtual-links");
+    assert!(vl.contains("is down") && vl.contains("the far end has no message-digest key 1 with the same key"), "{vl}");
+    // The same key: up.
+    lab.run(r3, "conf t\nrouter ospf 1\narea 1 virtual-link 2.2.2.2 message-digest-key 1 md5 first\nend");
+    let vl = lab.run(r2, "show ip ospf virtual-links");
+    assert!(vl.contains("is up") && vl.contains("message-digest authentication"), "{vl}");
+    assert!(lab.run(r1, "show ip route").contains("O IA 192.168.4.0/24"));
+    // A new key on one end only is not enough: the highest key id signs.
+    lab.run(r3, "conf t\nrouter ospf 1\narea 1 virtual-link 2.2.2.2 message-digest-key 2 md5 second\nend");
+    assert!(lab.run(r2, "show ip ospf virtual-links").contains("this router has no message-digest key 2 with the same key"));
+    assert!(lab.run(r3, "show ip ospf virtual-links").contains("the far end has no message-digest key 2 with the same key"));
+    lab.run(r2, "conf t\nrouter ospf 1\narea 1 virtual-link 3.3.3.3 message-digest-key 2 md5 second\nend");
+    assert!(lab.run(r3, "show ip ospf virtual-links").contains("is up"));
+    // Take a key off by its id, then all of them.
+    lab.run(r3, "conf t\nrouter ospf 1\nno area 1 virtual-link 2.2.2.2 message-digest-key 2\nend");
+    assert!(!lab.run(r3, "show running-config").contains("message-digest-key 2"));
+    let run = lab.run(r2, "show running-config");
+    assert!(
+        run.contains(" area 1 virtual-link 3.3.3.3 authentication message-digest message-digest-key 1 md5 first message-digest-key 2 md5 second\n"),
+        "{run}"
+    );
+    // A clear-text password.
+    lab.run(r2, "conf t\nrouter ospf 1\nno area 1 virtual-link 3.3.3.3\narea 1 virtual-link 3.3.3.3 authentication authentication-key sesame\nend");
+    lab.run(r3, "conf t\nrouter ospf 1\nno area 1 virtual-link 2.2.2.2\narea 1 virtual-link 2.2.2.2 authentication authentication-key wrong\nend");
+    let vl = lab.run(r2, "show ip ospf virtual-links");
+    assert!(vl.contains("is down") && vl.contains("the clear-text password differs"), "{vl}");
+    lab.run(r3, "conf t\nrouter ospf 1\narea 1 virtual-link 2.2.2.2 authentication-key sesame\nend");
+    let vl = lab.run(r2, "show ip ospf virtual-links");
+    assert!(vl.contains("is up") && vl.contains("simple password authentication"), "{vl}");
+}

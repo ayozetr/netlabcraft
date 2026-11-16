@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::net::Ipv4Addr;
 
 use netlabcraft_core::{DeviceId, Ipv4Net};
-use netlabcraft_model::{Device, DeviceKind, End, NextHop, OspfAuthKind, Topology};
+use netlabcraft_model::{Device, DeviceKind, End, NextHop, OspfArea, OspfAuthKind, Topology, VirtualLinkOpts};
 use netlabcraft_wire::control::{OSPF_OPT_E, OSPF_OPT_N, OspfAuth, OspfAuthSend};
 
 use crate::{L3If, port_up, up_ifaces};
@@ -93,6 +93,59 @@ pub struct VirtualLink {
     pub cost: u32,
     /// Why the link is down (empty when up).
     pub why: String,
+    /// The link's hello and dead intervals, in seconds.
+    pub hello: u16,
+    pub dead: u16,
+    /// The retransmit interval and the transmit delay, in seconds (kept and shown; nothing is
+    /// retransmitted here).
+    pub retransmit: u16,
+    pub delay: u16,
+    /// The authentication the link uses: its own setting, else its transit area's.
+    pub auth: OspfAuthKind,
+}
+
+/// The options of the virtual link to `peer` in an area's settings (all defaults when none).
+pub fn vlink_opts(area: &OspfArea, peer: Ipv4Addr) -> VirtualLinkOpts {
+    area.vlink_opts.iter().find(|v| v.peer == peer).cloned().unwrap_or_else(|| VirtualLinkOpts::new(peer))
+}
+
+/// The authentication type of a virtual link: its own, else the transit area's, else none.
+pub fn vlink_auth(area: &OspfArea, opts: &VirtualLinkOpts) -> OspfAuthKind {
+    opts.auth.or(area.auth).unwrap_or(OspfAuthKind::Null)
+}
+
+/// Why the two ends of a virtual link do not agree: the hello or dead interval differs, or the
+/// authentication (type, password or message-digest key) does. `mine` is this router's line to
+/// `my_peer`, `theirs` the far router's line back.
+fn vlink_mismatch(mine: &OspfArea, my_peer: Ipv4Addr, theirs: &OspfArea, their_peer: Ipv4Addr) -> Option<String> {
+    let (m, t) = (vlink_opts(mine, my_peer), vlink_opts(theirs, their_peer));
+    let ((mh, md), (th, td)) = (m.timers(), t.timers());
+    if mh != th {
+        return Some(format!("the hello interval differs ({mh} s here, {th} s at the far end)"));
+    }
+    if md != td {
+        return Some(format!("the dead interval differs ({md} s here, {td} s at the far end)"));
+    }
+    let (mk, tk) = (vlink_auth(mine, &m), vlink_auth(theirs, &t));
+    if mk != tk {
+        return Some(format!("authentication differs: {} here, {} at the far end", kind_name(mk), kind_name(tk)));
+    }
+    match mk {
+        OspfAuthKind::Null => None,
+        OspfAuthKind::Simple => {
+            let key = |o: &VirtualLinkOpts| o.auth_key.as_deref().unwrap_or("").chars().take(8).collect::<String>();
+            (key(&m) != key(&t)).then(|| "authentication fails: the clear-text password differs".to_string())
+        }
+        OspfAuthKind::Md5 => {
+            let (Some((mi, mkey)), Some((ti, tkey))) = (m.md5_keys.iter().next_back(), t.md5_keys.iter().next_back()) else {
+                return Some("message-digest authentication needs a message-digest-key on both ends".into());
+            };
+            if t.md5_keys.get(mi) != Some(mkey) {
+                return Some(format!("authentication fails: the far end has no message-digest key {mi} with the same key"));
+            }
+            (m.md5_keys.get(ti) != Some(tkey)).then(|| format!("authentication fails: this router has no message-digest key {ti} with the same key"))
+        }
+    }
 }
 
 /// What an area is, from a router's configuration.
@@ -630,6 +683,10 @@ pub fn compute_seeded(t: &Topology, seeds: &crate::redist::Seeds) -> OspfState {
                     if !p.ospf.as_ref().and_then(|po| po.areas.get(area)).is_some_and(|pc| pc.virtual_links.contains(&my_rid)) {
                         return Err(format!("router {peer_id} has no `area {area} virtual-link {my_rid}` line"));
                     }
+                    let theirs = p.ospf.as_ref().map(|po| po.area(*area)).unwrap_or_default();
+                    if let Some(why) = vlink_mismatch(conf, *peer_id, &theirs, my_rid) {
+                        return Err(why);
+                    }
                     let attached = |x: &Device| ifs.get(&x.id).into_iter().flatten().any(|(i, _)| area_of(x, i) == *area);
                     if !attached(a) {
                         return Err(format!("this router has no OSPF interface in transit area {area}"));
@@ -643,7 +700,22 @@ pub fn compute_seeded(t: &Topology, seeds: &crate::redist::Seeds) -> OspfState {
                     Ok(c) => (true, c, String::new()),
                     Err(w) => (false, 0, w),
                 };
-                st.virtual_links.entry(a.id).or_default().push(VirtualLink { area: *area, peer_id: *peer_id, peer, up, cost, why });
+                let opts = vlink_opts(conf, *peer_id);
+                let (hello, dead) = opts.timers();
+                let link = VirtualLink {
+                    area: *area,
+                    peer_id: *peer_id,
+                    peer,
+                    up,
+                    cost,
+                    why,
+                    hello,
+                    dead,
+                    retransmit: opts.retransmit.unwrap_or(5),
+                    delay: opts.transmit_delay.unwrap_or(1),
+                    auth: vlink_auth(conf, &opts),
+                };
+                st.virtual_links.entry(a.id).or_default().push(link);
             }
         }
     }
@@ -758,7 +830,10 @@ pub fn compute_seeded(t: &Topology, seeds: &crate::redist::Seeds) -> OspfState {
             if !(shared || through_backbone) {
                 return None;
             }
-            let x_nssa: Vec<u32> = x_areas.iter().copied().filter(|a| kind_of(xo, *a) == AreaKind::Nssa).collect();
+            // A border router with `no-redistribution` keeps its own routes out of the NSSA.
+            let outside = x_areas.iter().any(|a| kind_of(xo, *a) != AreaKind::Nssa);
+            let x_nssa: Vec<u32> =
+                x_areas.iter().copied().filter(|a| kind_of(xo, *a) == AreaKind::Nssa && !(outside && xo.area(*a).nssa_no_redist)).collect();
             match closed {
                 Some((_, AreaKind::Stub)) => None,
                 Some((a, _)) => x_nssa.contains(&a).then_some(true),
