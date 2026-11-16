@@ -1,6 +1,6 @@
 # Hardware parity
 
-> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (the sniffer behind a monitor destination hears a switch's mirrored traffic) · earlier: minor (smart TVs, a sniffer, a smart speaker, a water level sensor and four more router models) · earlier: minor (printing: a report after the picture) · earlier: minor (re-scored 2026-11-13; M9.10: cell towers, the central office server and the cellular radio on tablets and smartphones) · earlier: minor (tablets and smartphones, ten Wi-Fi IoT things, programmable boards and the IoT custom cable, the phone's settings, power supplies, a real PEAP tunnel and central switching; figures aligned) · **Target:** Cisco Packet Tracer 9.0 · also merged with M9.11 (minor (M9.11: BoardScript messages in the interface language))
+> **Last reviewed:** 2026-11-16 · **Last updated:** 2026-11-16 · **Change:** minor (device windows can open as native OS windows) · earlier: minor (the sniffer behind a monitor destination hears a switch's mirrored traffic) · earlier: minor (smart TVs, a sniffer, a smart speaker, a water level sensor and four more router models) · earlier: minor (printing: a report after the picture) · earlier: minor (re-scored 2026-11-13; M9.10: cell towers, the central office server and the cellular radio on tablets and smartphones) · earlier: minor (tablets and smartphones, ten Wi-Fi IoT things, programmable boards and the IoT custom cable, the phone's settings, power supplies, a real PEAP tunnel and central switching; figures aligned) · **Target:** Cisco Packet Tracer 9.0 · also merged with M9.11 (minor (M9.11: BoardScript messages in the interface language))
 
 Two kinds of hardware matter here: the **simulated** hardware (device models, ports, cables,
 modules) and the **real** hardware the app runs on. Part of
@@ -40,7 +40,7 @@ cabling and wireless row (~95%); **host hardware: ~80% ready, 8–14 h** (estima
 |---|---|---|---|
 | GPU rendering | Desktop toolkit | wgpu through eframe: Vulkan/GL · DirectX 12 · Metal · Vulkan/GL · WebGPU or WebGL2 | At parity in kind; verify on each platform: 2–4 h |
 | High-DPI and display scaling | yes | yes (egui scales with the display) | — |
-| Multiple windows | Device windows are separate OS windows | Device windows float inside the main window | Native windows per device: 4–6 h |
+| Multiple windows | Device windows are separate OS windows | Device windows float inside the main window, or open as separate OS windows with Options ▸ Device windows as separate windows (desktop builds, off by default, not yet seen running on each platform) | Verify on each platform: 1–2 h |
 | Keyboard and mouse | yes | yes; click opens a device, scroll pans, Ctrl+scroll zooms | — |
 | Touch and pen | Limited | egui's touch handling, untested | Verify on a touch screen: 1–2 h |
 | Multi-core | Single simulation thread | Single-threaded discrete-event simulator (deterministic) | Not needed at lab sizes |

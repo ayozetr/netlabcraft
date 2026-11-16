@@ -1048,6 +1048,8 @@
 	Show All/None	全部显示/全部隐藏
 	Show as text	以文本显示
 	Show grid	显示网格
+	Device windows as separate windows	设备窗口独立显示
+	Not available in the web version	网页版不可用
 	shown when it fails	失败时显示
 	Signal with SIP	使用 SIP 的信令
 	Signal {} of 4	信号 {}/4

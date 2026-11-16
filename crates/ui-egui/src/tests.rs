@@ -142,6 +142,19 @@ fn device_windows_show_every_tab() {
 }
 
 #[test]
+fn native_device_windows_fall_back_to_in_window_ones_without_viewports() {
+    // The headless harness embeds viewports, like the web build: the option changes nothing.
+    let mut h = harness(Some("vlans"));
+    h.state_mut().ui.show_notes = false;
+    h.state_mut().ui.native_windows = true;
+    let d = h.state().session.topology.resolve("R1").unwrap();
+    open_console(h.state_mut(), d);
+    h.run_steps(3);
+    assert!(h.state().ui.windows.contains_key(&d));
+    assert!(h.state().ui.native_start.is_empty(), "no native window was opened");
+}
+
+#[test]
 fn the_browser_opens_a_page_by_name() {
     let mut h = harness(Some("services"));
     let pc = h.state().session.topology.resolve("PC1").unwrap();
