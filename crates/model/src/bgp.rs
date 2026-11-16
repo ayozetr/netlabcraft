@@ -24,6 +24,8 @@ pub const MAX_AGGREGATES: usize = 64;
 pub const MAX_MULTIPATH: u8 = 32;
 /// Most member autonomous systems listed in `bgp confederation peers`.
 pub const MAX_CONFED_PEERS: usize = 32;
+/// Most peer groups under one BGP process.
+pub const MAX_PEER_GROUPS: usize = 16;
 
 /// `aggregate-address A.B.C.D M.M.M.M [summary-only] [as-set]`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -134,6 +136,62 @@ pub struct Neighbor {
     /// `show ip bgp neighbors A.B.C.D received-routes` can list it.
     #[serde(default)]
     pub soft_reconfiguration_in: bool,
+    /// `peer-group NAME`: the group this neighbour belongs to. Its settings hold what the group
+    /// gave plus what the neighbour set itself (see [`follow`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peer_group: Option<String>,
+}
+
+/// `neighbor NAME peer-group`: settings the neighbours that join the group take.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PeerGroup {
+    pub name: String,
+    /// The group's settings, in the shape of a neighbour's (its address is not used).
+    pub conf: Neighbor,
+}
+
+impl PeerGroup {
+    pub fn new(name: impl Into<String>) -> PeerGroup {
+        PeerGroup { name: name.into(), conf: Neighbor::new(Ipv4Addr::UNSPECIFIED) }
+    }
+}
+
+fn follow_field<T: PartialEq + Clone>(mine: &mut T, old: &T, new: &T) {
+    if mine == old {
+        *mine = new.clone();
+    }
+}
+
+/// Moves the settings a group can give from `old` to `new` on a member: a setting that still holds
+/// the value it had under `old` takes the one it has under `new`; any other is the member's own
+/// and stays. A member that joins follows from the unconfigured neighbour to the group's settings,
+/// a member that leaves from the group's settings to the unconfigured neighbour, and a change to the
+/// group follows from the old settings to the new ones. The shutdown and the description are the
+/// neighbour's alone.
+pub fn follow(n: &mut Neighbor, old: &Neighbor, new: &Neighbor) {
+    macro_rules! each {
+        ($($f:ident),* $(,)?) => { $( follow_field(&mut n.$f, &old.$f, &new.$f); )* };
+    }
+    each!(
+        remote_as,
+        update_source,
+        next_hop_self,
+        ebgp_multihop,
+        weight,
+        prefix_list_in,
+        prefix_list_out,
+        route_map_in,
+        route_map_out,
+        send_community,
+        timers,
+        filter_list_in,
+        filter_list_out,
+        route_reflector_client,
+        default_originate,
+        remove_private_as,
+        remove_private_all,
+        soft_reconfiguration_in,
+    );
 }
 
 /// Whether an AS number is one of the private ranges (RFC 6996).
@@ -165,7 +223,28 @@ impl Neighbor {
             remove_private_as: false,
             remove_private_all: false,
             soft_reconfiguration_in: false,
+            peer_group: None,
         }
+    }
+}
+
+/// Cleans one neighbour's (or peer group's) settings: bounded text, sane values.
+fn sanitize_neighbor(n: &mut Neighbor) {
+    n.remote_as = n.remote_as.filter(|a| *a >= 1);
+    n.ebgp_multihop = n.ebgp_multihop.filter(|m| *m >= 1);
+    if let Some(d) = &mut n.description {
+        *d = d.chars().filter(|c| !c.is_control()).take(MAX_TEXT).collect();
+    }
+    if let Some((k, h)) = n.timers {
+        n.timers = Some((k, if h == 0 { 0 } else { h.max(3) }));
+    }
+    for name in
+        [&mut n.prefix_list_in, &mut n.prefix_list_out, &mut n.route_map_in, &mut n.route_map_out, &mut n.filter_list_in, &mut n.filter_list_out]
+    {
+        *name = name.take().map(|x| crate::policy::clean_name(&x)).filter(|x| !x.is_empty());
+    }
+    if let Some(u) = &mut n.update_source {
+        *u = u.chars().filter(|c| !c.is_control()).take(MAX_TEXT).collect();
     }
 }
 
@@ -217,6 +296,9 @@ pub struct Bgp {
     /// `bgp bestpath as-path ignore`: leave the AS-path length out of the best-path choice.
     #[serde(default)]
     pub as_path_ignore: bool,
+    /// `neighbor NAME peer-group`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub peer_groups: Vec<PeerGroup>,
 }
 
 impl Bgp {
@@ -239,6 +321,80 @@ impl Bgp {
             self.neighbors.sort_by_key(|n| n.addr);
         }
         self.neighbors.iter_mut().find(|n| n.addr == addr)
+    }
+
+    pub fn group(&self, name: &str) -> Option<&PeerGroup> {
+        self.peer_groups.iter().find(|g| g.name == name)
+    }
+
+    /// The members of a group.
+    pub fn members<'a>(&'a self, name: &'a str) -> impl Iterator<Item = &'a Neighbor> + 'a {
+        self.neighbors.iter().filter(move |n| n.peer_group.as_deref() == Some(name))
+    }
+
+    /// A group by name, added (with no settings) when missing; `None` past [`MAX_PEER_GROUPS`].
+    pub fn group_mut(&mut self, name: &str) -> Option<&mut PeerGroup> {
+        if !self.peer_groups.iter().any(|g| g.name == name) {
+            if self.peer_groups.len() >= MAX_PEER_GROUPS {
+                return None;
+            }
+            self.peer_groups.push(PeerGroup::new(name));
+        }
+        self.peer_groups.iter_mut().find(|g| g.name == name)
+    }
+
+    /// Changes a group's settings, and gives the change to the members that follow it. `None` when
+    /// there is no such group; an error from `f` leaves the members alone.
+    pub fn edit_group(&mut self, name: &str, f: impl FnOnce(&mut Neighbor) -> Result<(), String>) -> Option<Result<(), String>> {
+        let at = self.peer_groups.iter().position(|g| g.name == name)?;
+        let old = self.peer_groups.get(at)?.conf.clone();
+        let done = f(&mut self.peer_groups.get_mut(at)?.conf);
+        if done.is_ok() {
+            let new = self.peer_groups.get(at)?.conf.clone();
+            for n in self.neighbors.iter_mut().filter(|n| n.peer_group.as_deref() == Some(name)) {
+                follow(n, &old, &new);
+            }
+        }
+        Some(done)
+    }
+
+    /// Puts a neighbour in a group (the neighbour is added when missing): it takes every setting of
+    /// the group it has not set itself. Fails when the group does not exist, the neighbour is in
+    /// another group, or the neighbours are too many.
+    pub fn join_group(&mut self, addr: Ipv4Addr, name: &str) -> Result<(), String> {
+        let conf = self.group(name).map(|g| g.conf.clone()).ok_or_else(|| format!("no peer group named {name}"))?;
+        if let Some(other) = self.neighbor(addr).and_then(|n| n.peer_group.clone()).filter(|g| g != name) {
+            return Err(format!("{addr} is in peer group {other} already"));
+        }
+        let n = self.neighbor_mut(addr).ok_or_else(|| format!("at most {MAX_NEIGHBORS} neighbours"))?;
+        follow(n, &Neighbor::new(addr), &conf);
+        n.peer_group = Some(name.to_string());
+        Ok(())
+    }
+
+    /// Takes a neighbour out of its group: what it only had from the group goes, what it set
+    /// itself stays. `false` when it was in none.
+    pub fn leave_group(&mut self, addr: Ipv4Addr) -> bool {
+        let Some(name) = self.neighbor(addr).and_then(|n| n.peer_group.clone()) else { return false };
+        let conf = self.group(&name).map(|g| g.conf.clone());
+        if let Some(n) = self.neighbors.iter_mut().find(|n| n.addr == addr) {
+            if let Some(conf) = conf {
+                follow(n, &conf, &Neighbor::new(addr));
+            }
+            n.peer_group = None;
+        }
+        true
+    }
+
+    /// Deletes a group; its members leave it. `false` when there is no such group.
+    pub fn remove_group(&mut self, name: &str) -> bool {
+        let members: Vec<Ipv4Addr> = self.members(name).map(|n| n.addr).collect();
+        for a in members {
+            self.leave_group(a);
+        }
+        let before = self.peer_groups.len();
+        self.peer_groups.retain(|g| g.name != name);
+        self.peer_groups.len() != before
     }
 
     /// How many equal paths per prefix the routing table takes.
@@ -267,28 +423,22 @@ impl Bgp {
         self.neighbors.sort_by_key(|n| n.addr);
         self.neighbors.dedup_by_key(|n| n.addr);
         self.neighbors.truncate(MAX_NEIGHBORS);
+        self.neighbors.iter_mut().for_each(sanitize_neighbor);
+        self.peer_groups.truncate(MAX_PEER_GROUPS);
+        for g in &mut self.peer_groups {
+            g.name = crate::policy::clean_name(&g.name);
+            sanitize_neighbor(&mut g.conf);
+            g.conf.addr = Ipv4Addr::UNSPECIFIED;
+            g.conf.shutdown = false;
+            g.conf.description = None;
+            g.conf.peer_group = None;
+        }
+        self.peer_groups.retain(|g| !g.name.is_empty() && g.name.parse::<Ipv4Addr>().is_err());
+        let mut seen = std::collections::BTreeSet::new();
+        self.peer_groups.retain(|g| seen.insert(g.name.clone()));
+        let names: Vec<String> = self.peer_groups.iter().map(|g| g.name.clone()).collect();
         for n in &mut self.neighbors {
-            n.remote_as = n.remote_as.filter(|a| *a >= 1);
-            n.ebgp_multihop = n.ebgp_multihop.filter(|m| *m >= 1);
-            if let Some(d) = &mut n.description {
-                *d = d.chars().filter(|c| !c.is_control()).take(MAX_TEXT).collect();
-            }
-            if let Some((k, h)) = n.timers {
-                n.timers = Some((k, if h == 0 { 0 } else { h.max(3) }));
-            }
-            for name in [
-                &mut n.prefix_list_in,
-                &mut n.prefix_list_out,
-                &mut n.route_map_in,
-                &mut n.route_map_out,
-                &mut n.filter_list_in,
-                &mut n.filter_list_out,
-            ] {
-                *name = name.take().map(|x| crate::policy::clean_name(&x)).filter(|x| !x.is_empty());
-            }
-            if let Some(u) = &mut n.update_source {
-                *u = u.chars().filter(|c| !c.is_control()).take(MAX_TEXT).collect();
-            }
+            n.peer_group = n.peer_group.take().filter(|g| names.contains(g));
         }
         self.networks.iter_mut().for_each(|n| *n = n.network());
         self.networks.sort();
@@ -405,6 +555,89 @@ mod tests {
         assert_eq!(serde_json::from_str::<Bgp>(&json).unwrap(), b);
         let plain = serde_json::to_string(&Bgp::new(1)).unwrap();
         assert!(!plain.contains("cluster_id") && !plain.contains("confed") && !plain.contains("maximum_paths_ibgp"), "{plain}");
+    }
+
+    fn grouped() -> Bgp {
+        let mut b = Bgp::new(65_001);
+        let g = b.group_mut("EXT").unwrap();
+        g.conf.remote_as = Some(65_002);
+        g.conf.send_community = true;
+        g.conf.route_map_in = Some("IN".into());
+        b
+    }
+
+    #[test]
+    fn a_member_takes_what_it_has_not_set_and_keeps_its_own() {
+        let mut b = grouped();
+        let (a1, a2) = (Ipv4Addr::new(10, 0, 0, 1), Ipv4Addr::new(10, 0, 0, 2));
+        b.neighbor_mut(a2).unwrap().route_map_in = Some("MINE".into());
+        b.join_group(a1, "EXT").unwrap();
+        b.join_group(a2, "EXT").unwrap();
+        let n1 = b.neighbor(a1).unwrap();
+        assert_eq!((n1.remote_as, n1.send_community, n1.route_map_in.as_deref()), (Some(65_002), true, Some("IN")));
+        let n2 = b.neighbor(a2).unwrap();
+        assert_eq!((n2.remote_as, n2.send_community, n2.route_map_in.as_deref()), (Some(65_002), true, Some("MINE")));
+        assert_eq!(b.members("EXT").count(), 2);
+        assert!(b.join_group(a1, "NOPE").unwrap_err().contains("no peer group"));
+        b.group_mut("OTHER").unwrap();
+        assert!(b.join_group(a1, "OTHER").unwrap_err().contains("already"));
+    }
+
+    #[test]
+    fn a_change_to_the_group_reaches_the_members_that_follow_it() {
+        let mut b = grouped();
+        let (a1, a2) = (Ipv4Addr::new(10, 0, 0, 1), Ipv4Addr::new(10, 0, 0, 2));
+        b.neighbor_mut(a2).unwrap().route_map_in = Some("MINE".into());
+        b.join_group(a1, "EXT").unwrap();
+        b.join_group(a2, "EXT").unwrap();
+        let done = b.edit_group("EXT", |g| {
+            g.route_map_in = Some("NEW".into());
+            g.next_hop_self = true;
+            Ok(())
+        });
+        assert_eq!(done, Some(Ok(())));
+        assert_eq!(b.neighbor(a1).unwrap().route_map_in.as_deref(), Some("NEW"));
+        assert_eq!(b.neighbor(a2).unwrap().route_map_in.as_deref(), Some("MINE"), "its own setting stays");
+        assert!(b.neighbor(a1).unwrap().next_hop_self && b.neighbor(a2).unwrap().next_hop_self);
+        assert!(b.edit_group("missing", |_| Ok(())).is_none());
+        let failed = b.edit_group("EXT", |_| Err("no".into()));
+        assert_eq!(failed, Some(Err("no".to_string())));
+    }
+
+    #[test]
+    fn leaving_a_group_keeps_only_what_the_member_set_itself() {
+        let mut b = grouped();
+        let (a1, a2) = (Ipv4Addr::new(10, 0, 0, 1), Ipv4Addr::new(10, 0, 0, 2));
+        b.neighbor_mut(a2).unwrap().route_map_in = Some("MINE".into());
+        b.join_group(a1, "EXT").unwrap();
+        b.join_group(a2, "EXT").unwrap();
+        assert!(b.leave_group(a1) && !b.leave_group(a1));
+        let n1 = b.neighbor(a1).unwrap();
+        assert_eq!((n1.remote_as, n1.send_community, n1.route_map_in.clone(), n1.peer_group.clone()), (None, false, None, None));
+        assert!(b.remove_group("EXT") && !b.remove_group("EXT"));
+        let n2 = b.neighbor(a2).unwrap();
+        assert_eq!((n2.remote_as, n2.route_map_in.as_deref(), n2.peer_group.clone()), (None, Some("MINE"), None));
+    }
+
+    #[test]
+    fn groups_are_bounded_cleaned_and_round_trip() {
+        let mut b = Bgp::new(65_001);
+        for i in 0..40 {
+            let _ = b.group_mut(&format!("G{i}"));
+        }
+        assert_eq!(b.peer_groups.len(), MAX_PEER_GROUPS);
+        let mut b = grouped();
+        b.neighbor_mut(Ipv4Addr::new(10, 0, 0, 1)).unwrap().peer_group = Some("GONE".into());
+        b.peer_groups.push(PeerGroup::new("EXT"));
+        b.peer_groups.push(PeerGroup::new("10.0.0.9"));
+        b.peer_groups.push(PeerGroup::new(""));
+        b.sanitize();
+        assert_eq!(b.peer_groups.len(), 1);
+        assert_eq!(b.neighbor(Ipv4Addr::new(10, 0, 0, 1)).unwrap().peer_group, None);
+        let json = serde_json::to_string(&b).unwrap();
+        assert_eq!(serde_json::from_str::<Bgp>(&json).unwrap(), b);
+        let plain = serde_json::to_string(&Bgp::new(1)).unwrap();
+        assert!(!plain.contains("peer_group"), "{plain}");
     }
 
     #[test]

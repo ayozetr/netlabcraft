@@ -201,6 +201,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ip route` | user, privileged | router, switch | Routing table |
 | `show ip route {connected\|static\|eigrp\|ospf\|rip\|bgp\|summary}` | user, privileged | router, switch | Only the routes one source gave |
 | `show ip route A.B.C.D A.B.C.D` | user, privileged | router, switch | The route for exactly this network and mask |
+| `show ip route tag <0-4294967295>` | user, privileged | router, switch | The routes that carry this tag |
 | `show ip arp` | user, privileged | router, switch | ARP cache |
 | `show arp` | user, privileged | router, switch, firewall | ARP cache |
 | `show interfaces` | user, privileged | router, switch, firewall | Interface details |
@@ -222,7 +223,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `interface range <interfaces>` | config | router, switch | Configure several interfaces |
 | `interface <interface>` | config | router, switch, firewall | Configure an interface |
 | `no interface <subinterface>` | config | router | Delete a subinterface |
-| `ip route A.B.C.D MASK <next hop or interface> [distance]` | config | router, switch | Add a static route (a distance above the protocol's makes it a backup) |
+| `ip route A.B.C.D MASK <next hop or interface> [distance] [tag <1-4294967295>]` | config | router, switch | Add a static route (a distance above the protocol's makes it a backup, a tag labels it) |
 | `no ip route A.B.C.D MASK <next hop or interface>` | config | router, switch | Remove a static route |
 | `no ip route A.B.C.D MASK` | config | router, switch | Remove static routes |
 | `vlan <1-4094>[,-]` | config | switch | Create or edit VLANs |
@@ -310,7 +311,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip ospf authentication-key` | interface, subinterface | router, switch | Forget the password |
 | `ip ospf message-digest-key <1-255> md5 KEY` | interface, subinterface | router, switch | A message-digest key, by id |
 | `no ip ospf message-digest-key <1-255>` | interface, subinterface | router, switch | Remove a message-digest key |
-| `redistribute {connected\|static\|rip\|eigrp <1-65535>\|bgp <1-4294967295>} [metric <0-16777214>] [metric-type {1\|2}] [subnets] [route-map NAME]` |  | router, switch | Advertise the routes another source gave as external routes |
+| `redistribute {connected\|static\|rip\|eigrp <1-65535>\|bgp <1-4294967295>} [metric <0-16777214>] [metric-type {1\|2}] [tag <0-4294967295>] [subnets] [route-map NAME]` |  | router, switch | Advertise the routes another source gave as external routes |
 | `no redistribute {connected\|static\|rip\|eigrp <1-65535>\|bgp <1-4294967295>}` |  | router, switch | Stop advertising the routes of a source |
 | `clear ip ospf process` | privileged | router, switch | Restart OSPF: neighbours and DR elections anew |
 | `clear ip ospf <1-65535> process` | privileged | router, switch | Restart this OSPF process |
@@ -703,22 +704,26 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no bgp log-neighbor-changes` |  | router, switch | Stop logging session changes |
 | `bgp default local-preference <0-4294967295>` |  | router, switch | The local preference paths get when nothing else sets it |
 | `no bgp default local-preference` |  | router, switch | Local preference 100 again |
-| `neighbor A.B.C.D remote-as <1-4294967295>` |  | router, switch | Name a neighbour and the autonomous system it is in |
+| `neighbor A.B.C.D\|NAME remote-as <1-4294967295>` |  | router, switch | Name a neighbour and the autonomous system it is in |
 | `no neighbor A.B.C.D` |  | router, switch | Remove a neighbour and every setting it had |
 | `no neighbor A.B.C.D remote-as <1-4294967295>` |  | router, switch | Remove a neighbour and every setting it had |
-| `neighbor A.B.C.D update-source <interface>` |  | router, switch | Send the session from the address of this interface |
-| `no neighbor A.B.C.D update-source` |  | router, switch | Send the session from the interface towards the neighbour again |
-| `neighbor A.B.C.D next-hop-self` |  | router, switch | Name this router as the next hop of the paths it sends this neighbour |
-| `no neighbor A.B.C.D next-hop-self` |  | router, switch | Keep the next hop a path came with |
+| `neighbor A.B.C.D\|NAME update-source <interface>` |  | router, switch | Send the session from the address of this interface |
+| `no neighbor A.B.C.D\|NAME update-source` |  | router, switch | Send the session from the interface towards the neighbour again |
+| `neighbor A.B.C.D\|NAME next-hop-self` |  | router, switch | Name this router as the next hop of the paths it sends this neighbour |
+| `no neighbor A.B.C.D\|NAME next-hop-self` |  | router, switch | Keep the next hop a path came with |
 | `neighbor A.B.C.D shutdown` |  | router, switch | Close the session and keep the neighbour configured |
 | `no neighbor A.B.C.D shutdown` |  | router, switch | Open the session again |
 | `neighbor A.B.C.D description <text>` |  | router, switch | A note about this neighbour |
 | `no neighbor A.B.C.D description` |  | router, switch | Remove the note |
-| `neighbor A.B.C.D ebgp-multihop` |  | router, switch | Let an external neighbour be up to 255 routers away |
-| `neighbor A.B.C.D ebgp-multihop <1-255>` |  | router, switch | Let an external neighbour be this many routers away |
-| `no neighbor A.B.C.D ebgp-multihop` |  | router, switch | An external neighbour must be directly connected again |
-| `neighbor A.B.C.D weight <0-65535>` |  | router, switch | The weight of every path learned from this neighbour |
-| `no neighbor A.B.C.D weight` |  | router, switch | Weight 0 again |
+| `neighbor A.B.C.D\|NAME ebgp-multihop` |  | router, switch | Let an external neighbour be up to 255 routers away |
+| `neighbor A.B.C.D\|NAME ebgp-multihop <1-255>` |  | router, switch | Let an external neighbour be this many routers away |
+| `no neighbor A.B.C.D\|NAME ebgp-multihop` |  | router, switch | An external neighbour must be directly connected again |
+| `neighbor A.B.C.D\|NAME weight <0-65535>` |  | router, switch | The weight of every path learned from this neighbour |
+| `no neighbor A.B.C.D\|NAME weight` |  | router, switch | Weight 0 again |
+| `neighbor NAME peer-group` |  | router, switch | Create a peer group: settings its members take unless they set their own |
+| `no neighbor NAME peer-group` |  | router, switch | Delete a peer group; its members stay with what they set themselves |
+| `neighbor A.B.C.D peer-group NAME` |  | router, switch | Put a neighbour in a peer group (it is added when missing) |
+| `no neighbor A.B.C.D peer-group NAME` |  | router, switch | Take a neighbour out of its peer group |
 | `network A.B.C.D` |  | router, switch | Advertise this classful network while it is in the routing table |
 | `network A.B.C.D mask A.B.C.D` |  | router, switch | Advertise this prefix while it is in the routing table |
 | `no network A.B.C.D` |  | router, switch | Stop advertising this classful network |
@@ -731,15 +736,17 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ip bgp summary` | user, privileged | router, switch | Each neighbour's session state and prefix count |
 | `show ip bgp neighbors` | user, privileged | router, switch | Every neighbour in detail |
 | `show ip bgp neighbors A.B.C.D` | user, privileged | router, switch | One neighbour in detail |
+| `show ip bgp peer-group` | user, privileged | router, switch | Every peer group, its settings and its members |
+| `show ip bgp peer-group NAME` | user, privileged | router, switch | One peer group, its settings and its members |
 | `clear ip bgp {*\|A.B.C.D}` | privileged | router, switch | Reset BGP sessions so they start again |
 | `debug ip bgp` | privileged | router, switch | Report the BGP messages this router hears and its session changes |
 | `no debug ip bgp` | privileged | router, switch | Stop reporting BGP |
 | `clear ip bgp {*\|A.B.C.D} soft` | privileged | router, switch | Apply the neighbour policy again without resetting sessions |
 | `clear ip bgp {*\|A.B.C.D} soft {in\|out}` | privileged | router, switch | Apply the neighbour policy again in one direction |
-| `neighbor A.B.C.D prefix-list NAME {in\|out}` |  | router, switch | Filter the prefixes this neighbour sends or is sent with a prefix list |
-| `no neighbor A.B.C.D prefix-list NAME {in\|out}` |  | router, switch | Stop filtering this neighbour with the prefix list |
-| `neighbor A.B.C.D route-map NAME {in\|out}` |  | router, switch | Filter and change the paths this neighbour sends or is sent with a route map |
-| `no neighbor A.B.C.D route-map NAME {in\|out}` |  | router, switch | Stop applying the route map to this neighbour |
+| `neighbor A.B.C.D\|NAME prefix-list NAME {in\|out}` |  | router, switch | Filter the prefixes this neighbour sends or is sent with a prefix list |
+| `no neighbor A.B.C.D\|NAME prefix-list NAME {in\|out}` |  | router, switch | Stop filtering this neighbour with the prefix list |
+| `neighbor A.B.C.D\|NAME route-map NAME {in\|out}` |  | router, switch | Filter and change the paths this neighbour sends or is sent with a route map |
+| `no neighbor A.B.C.D\|NAME route-map NAME {in\|out}` |  | router, switch | Stop applying the route map to this neighbour |
 | `ip prefix-list NAME [seq <1-4294967294>] {permit\|deny} A.B.C.D/LEN [ge <0-32>] [le <0-32>]` | config | router, switch | Add a line to a prefix list |
 | `no ip prefix-list NAME` | config | router, switch | Delete a prefix list |
 | `no ip prefix-list NAME {seq <1-4294967294>\|{permit\|deny} A.B.C.D/LEN [ge <0-32>] [le <0-32>]}` | config | router, switch | Delete one line of a prefix list |
@@ -756,6 +763,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no match ip address [prefix-list] <name> [<name>...]` |  | router, switch | Remove these names from the address match |
 | `match metric <0-4294967295>` |  | router, switch | Match routes with this metric |
 | `no match metric` |  | router, switch | Remove the metric match |
+| `match tag <tag> [<tag>...]` |  | router, switch | Match routes that carry one of these tags |
+| `no match tag` |  | router, switch | Remove the tag match |
 | `set local-preference <0-4294967295>` |  | router, switch | Give the paths this local preference |
 | `no set local-preference` |  | router, switch | Leave the local preference alone |
 | `set metric <0-4294967295>` |  | router, switch | Give the routes this metric |
@@ -764,6 +773,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no set weight` |  | router, switch | Leave the weight alone |
 | `set metric-type {type-1\|type-2}` |  | router, switch | Give the redistributed OSPF routes this external type |
 | `no set metric-type` |  | router, switch | Leave the external type alone |
+| `set tag <0-4294967295>` |  | router, switch | Give the redistributed routes this tag |
+| `no set tag` |  | router, switch | Leave the tag alone |
 | `set as-path prepend <AS> [<AS>...]` |  | router, switch | Put these AS numbers in front of the AS path |
 | `no set as-path prepend` |  | router, switch | Leave the AS path alone |
 | `set ip next-hop A.B.C.D` |  | router, switch | Give the paths this next hop |
@@ -788,14 +799,14 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no match as-path <1-500> [<1-500>...]` |  | router, switch | Remove these lists from the AS-path match |
 | `set community {none \| <community>... [additive]}` |  | router, switch | Give the paths these communities |
 | `no set community` |  | router, switch | Leave the communities alone |
-| `neighbor A.B.C.D send-community` |  | router, switch | Send the communities a path carries to this neighbour |
-| `neighbor A.B.C.D send-community {both\|standard}` |  | router, switch | Send the communities a path carries to this neighbour |
-| `no neighbor A.B.C.D send-community` |  | router, switch | Stop sending communities to this neighbour |
-| `no neighbor A.B.C.D send-community {both\|standard}` |  | router, switch | Stop sending communities to this neighbour |
-| `neighbor A.B.C.D timers <0-65535> <0\|3-65535>` |  | router, switch | Keepalive interval and hold time for this neighbour (seconds) |
-| `no neighbor A.B.C.D timers` |  | router, switch | Keepalive 60 and hold time 180 again |
-| `neighbor A.B.C.D filter-list <1-500> {in\|out}` |  | router, switch | Filter this neighbour's paths with an AS-path list |
-| `no neighbor A.B.C.D filter-list <1-500> {in\|out}` |  | router, switch | Stop filtering with that AS-path list |
+| `neighbor A.B.C.D\|NAME send-community` |  | router, switch | Send the communities a path carries to this neighbour |
+| `neighbor A.B.C.D\|NAME send-community {both\|standard}` |  | router, switch | Send the communities a path carries to this neighbour |
+| `no neighbor A.B.C.D\|NAME send-community` |  | router, switch | Stop sending communities to this neighbour |
+| `no neighbor A.B.C.D\|NAME send-community {both\|standard}` |  | router, switch | Stop sending communities to this neighbour |
+| `neighbor A.B.C.D\|NAME timers <0-65535> <0\|3-65535>` |  | router, switch | Keepalive interval and hold time for this neighbour (seconds) |
+| `no neighbor A.B.C.D\|NAME timers` |  | router, switch | Keepalive 60 and hold time 180 again |
+| `neighbor A.B.C.D\|NAME filter-list <1-500> {in\|out}` |  | router, switch | Filter this neighbour's paths with an AS-path list |
+| `no neighbor A.B.C.D\|NAME filter-list <1-500> {in\|out}` |  | router, switch | Stop filtering with that AS-path list |
 | `aggregate-address A.B.C.D A.B.C.D` |  | router, switch | Advertise one summary while a more specific path exists |
 | `aggregate-address A.B.C.D A.B.C.D [summary-only] [as-set]` |  | router, switch | Advertise one summary while a more specific path exists |
 | `no aggregate-address A.B.C.D A.B.C.D` |  | router, switch | Stop summarising |
@@ -804,8 +815,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no maximum-paths` |  | router, switch | One path per prefix again |
 | `show ip bgp community <community>... [exact-match]` | user, privileged | router, switch | The paths that carry these communities |
 | `show ip bgp community-list NAME` | user, privileged | router, switch | The paths a community list permits |
-| `neighbor A.B.C.D route-reflector-client` |  | router, switch | Make this internal neighbour a client of this route reflector |
-| `no neighbor A.B.C.D route-reflector-client` |  | router, switch | This neighbour is an ordinary internal neighbour again |
+| `neighbor A.B.C.D\|NAME route-reflector-client` |  | router, switch | Make this internal neighbour a client of this route reflector |
+| `no neighbor A.B.C.D\|NAME route-reflector-client` |  | router, switch | This neighbour is an ordinary internal neighbour again |
 | `bgp cluster-id {A.B.C.D\|<1-4294967295>}` |  | router, switch | Name the cluster this route reflector serves |
 | `no bgp cluster-id` |  | router, switch | The cluster id is the router id again |
 | `bgp confederation identifier <1-4294967295>` |  | router, switch | The autonomous system the confederation shows to the outside |
@@ -813,13 +824,13 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `bgp confederation peers <1-4294967295>...` |  | router, switch | Name the other member autonomous systems of the confederation |
 | `no bgp confederation peers` |  | router, switch | Forget every confederation peer |
 | `no bgp confederation peers <1-4294967295>...` |  | router, switch | Forget these confederation peers |
-| `neighbor A.B.C.D default-originate` |  | router, switch | Send this neighbour a default route whether or not there is one here |
-| `no neighbor A.B.C.D default-originate` |  | router, switch | Stop sending the default route |
-| `neighbor A.B.C.D remove-private-as` |  | router, switch | Take private AS numbers out of the paths sent to this external neighbour |
-| `neighbor A.B.C.D remove-private-as all` |  | router, switch | Take every private AS number out, even from a path that has public ones |
-| `no neighbor A.B.C.D remove-private-as` |  | router, switch | Send the AS numbers as they are |
-| `neighbor A.B.C.D soft-reconfiguration inbound` |  | router, switch | Keep what this neighbour sends before the inbound policy, to list it |
-| `no neighbor A.B.C.D soft-reconfiguration inbound` |  | router, switch | Stop keeping what this neighbour sends |
+| `neighbor A.B.C.D\|NAME default-originate` |  | router, switch | Send this neighbour a default route whether or not there is one here |
+| `no neighbor A.B.C.D\|NAME default-originate` |  | router, switch | Stop sending the default route |
+| `neighbor A.B.C.D\|NAME remove-private-as` |  | router, switch | Take private AS numbers out of the paths sent to this external neighbour |
+| `neighbor A.B.C.D\|NAME remove-private-as all` |  | router, switch | Take every private AS number out, even from a path that has public ones |
+| `no neighbor A.B.C.D\|NAME remove-private-as` |  | router, switch | Send the AS numbers as they are |
+| `neighbor A.B.C.D\|NAME soft-reconfiguration inbound` |  | router, switch | Keep what this neighbour sends before the inbound policy, to list it |
+| `no neighbor A.B.C.D\|NAME soft-reconfiguration inbound` |  | router, switch | Stop keeping what this neighbour sends |
 | `bgp always-compare-med` |  | router, switch | Compare the MED of paths from different neighbouring autonomous systems too |
 | `no bgp always-compare-med` |  | router, switch | Compare the MED only within one neighbouring AS |
 | `bgp bestpath as-path ignore` |  | router, switch | Leave the AS-path length out of the best-path choice |
@@ -975,7 +986,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `ip ssh version {1\|2}` | config | router, switch | SSH protocol version |
 | `ipv6 unicast-routing` | config | router, switch | Forward IPv6 and advertise prefixes |
 | `no ipv6 unicast-routing` | config | router, switch | Stop forwarding IPv6 |
-| `ipv6 route X:X::X/<0-128> <next hop and/or interface> [distance]` | config | router, switch | Add an IPv6 static route (with a distance: a backup route) |
+| `ipv6 route X:X::X/<0-128> <next hop and/or interface> [distance] [tag <1-4294967295>]` | config | router, switch | Add an IPv6 static route (with a distance: a backup route) |
 | `no ipv6 route X:X::X/<0-128>` | config | router, switch | Remove IPv6 static routes |
 | `no ipv6 route X:X::X/<0-128> <next hop and/or interface>` | config | router, switch | Remove an IPv6 static route |
 | `ipv6 address X:X::X/<0-128>` | interface, subinterface | router, switch | Add an IPv6 address |

@@ -22,7 +22,7 @@
 use std::collections::BTreeMap;
 
 use netlabcraft_core::{DeviceId, Ipv4Net};
-use netlabcraft_model::policy::{self, Sets, Subject};
+use netlabcraft_model::policy::{self, Attrs, Sets, Subject};
 use netlabcraft_model::redist::{self as conf, RedistSource};
 use netlabcraft_model::{Device, Topology};
 
@@ -44,6 +44,8 @@ pub struct EigrpSeed {
     pub net: Ipv4Net,
     pub bandwidth: u32,
     pub delay: u64,
+    /// The tag the external route carries (0: none).
+    pub tag: u32,
 }
 
 /// A route given to OSPF as an external route.
@@ -53,12 +55,16 @@ pub struct OspfSeed {
     pub metric: u32,
     /// Type 1: the cost to the router that advertises it is added; type 2: the metric alone.
     pub type1: bool,
+    /// The tag the external LSA carries (0: none).
+    pub tag: u32,
 }
 
 /// What each router redistributes into each protocol.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Seeds {
     pub rip: BTreeMap<DeviceId, Vec<RipSeed>>,
+    /// The route tag of each RIP seed (RIP's tag field is 16 bits; 0 is left out).
+    pub rip_tags: BTreeMap<DeviceId, BTreeMap<Ipv4Net, u32>>,
     pub eigrp: BTreeMap<DeviceId, Vec<EigrpSeed>>,
     pub ospf: BTreeMap<DeviceId, Vec<OspfSeed>>,
 }
@@ -152,7 +158,8 @@ fn taken<'a>(d: &Device, line: &conf::Redist, table: &'a [RouteEntry], done: &mu
         if done.contains(&r.net) {
             continue;
         }
-        let Some(sets) = policy::apply(d, None, line.route_map.as_deref(), &Subject { net: r.net, metric: r.metric }) else { continue };
+        let attrs = Attrs { tag: r.tag, ..Attrs::default() };
+        let Some(sets) = policy::apply_with(d, None, line.route_map.as_deref(), &Subject { net: r.net, metric: r.metric }, &attrs) else { continue };
         done.push(r.net);
         out.push((r, sets));
     }
@@ -177,6 +184,7 @@ fn derive(t: &Topology, tables: &BTreeMap<DeviceId, Vec<RouteEntry>>) -> Seeds {
         let Some(table) = tables.get(&d.id) else { continue };
         if let Some(rip) = d.rip.as_ref().filter(|r| !r.redistribute.is_empty()) {
             let mut seeds: Vec<RipSeed> = Vec::new();
+            let mut tags: BTreeMap<Ipv4Net, u32> = BTreeMap::new();
             let mut done = Vec::new();
             for line in &rip.redistribute {
                 for (r, sets) in taken(d, line, table, &mut done) {
@@ -196,19 +204,27 @@ fn derive(t: &Topology, tables: &BTreeMap<DeviceId, Vec<RouteEntry>>) -> Seeds {
                         && !seeds.iter().any(|(n, _)| *n == r.net)
                     {
                         seeds.push((r.net, hops));
+                        // RIP's route tag is 16 bits: what does not fit is cut to them.
+                        let tag = sets.tag.unwrap_or(r.tag) & 0xFFFF;
+                        if tag != 0 {
+                            tags.insert(r.net, tag);
+                        }
                     }
                 }
             }
             seeds.truncate(MAX_SEEDS);
             if !seeds.is_empty() {
                 out.rip.insert(d.id, seeds);
+                if !tags.is_empty() {
+                    out.rip_tags.insert(d.id, tags);
+                }
             }
         }
         if let Some(e) = d.eigrp.as_ref().filter(|e| !e.redistribute.is_empty()) {
             let mut seeds: Vec<EigrpSeed> = Vec::new();
             let mut done = Vec::new();
             for line in &e.redistribute {
-                for (r, _) in taken(d, line, table, &mut done) {
+                for (r, sets) in taken(d, line, table, &mut done) {
                     let given = line.eigrp_metric.or(e.default_metric);
                     let (bandwidth, delay) = match given {
                         Some(m) => (m.bandwidth.max(1), u64::from(m.delay)),
@@ -218,7 +234,7 @@ fn derive(t: &Topology, tables: &BTreeMap<DeviceId, Vec<RouteEntry>>) -> Seeds {
                         },
                         None => continue,
                     };
-                    seeds.push(EigrpSeed { net: r.net, bandwidth, delay });
+                    seeds.push(EigrpSeed { net: r.net, bandwidth, delay, tag: sets.tag.unwrap_or(r.tag) });
                 }
             }
             seeds.truncate(MAX_SEEDS);
@@ -241,7 +257,7 @@ fn derive(t: &Topology, tables: &BTreeMap<DeviceId, Vec<RouteEntry>>) -> Seeds {
                     if !conf::passes(d, &o.distribute, false, None, r.net, metric) {
                         continue;
                     }
-                    seeds.push(OspfSeed { net: r.net, metric, type1 });
+                    seeds.push(OspfSeed { net: r.net, metric, type1, tag: sets.tag.or(line.tag).unwrap_or(r.tag) });
                 }
             }
             seeds.truncate(MAX_SEEDS);

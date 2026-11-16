@@ -101,16 +101,19 @@ pub struct Redist {
     /// `route-map NAME`: which routes pass, and what the map changes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub route_map: Option<String>,
+    /// `tag N` under OSPF: the tag the external routes get (a route map's `set tag` comes first).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag: Option<u32>,
 }
 
 impl Redist {
     pub fn new(source: RedistSource) -> Redist {
-        Redist { source, metric: None, eigrp_metric: None, metric_type: None, route_map: None }
+        Redist { source, metric: None, eigrp_metric: None, metric_type: None, route_map: None, tag: None }
     }
 }
 
 /// The line for a redistribution, as the running configuration writes it (without the leading
-/// space): `redistribute ospf 1 metric 5 metric-type 1 subnets route-map M`.
+/// space): `redistribute ospf 1 metric 5 metric-type 1 tag 7 subnets route-map M`.
 pub fn redistribute_line(r: &Redist, ospf: bool) -> String {
     let mut s = format!("redistribute {}", r.source.words());
     if let Some(m) = &r.eigrp_metric {
@@ -121,6 +124,9 @@ pub fn redistribute_line(r: &Redist, ospf: bool) -> String {
     if ospf {
         if let Some(t) = r.metric_type {
             s.push_str(&format!(" metric-type {t}"));
+        }
+        if let Some(t) = r.tag {
+            s.push_str(&format!(" tag {t}"));
         }
         s.push_str(" subnets");
     }
@@ -253,6 +259,8 @@ mod tests {
         r.metric_type = Some(1);
         r.route_map = Some("M".into());
         assert_eq!(redistribute_line(&r, true), "redistribute ospf 1 metric 5 metric-type 1 subnets route-map M");
+        r.tag = Some(7);
+        assert_eq!(redistribute_line(&r, true), "redistribute ospf 1 metric 5 metric-type 1 tag 7 subnets route-map M");
         assert_eq!(redistribute_line(&Redist::new(RedistSource::Static), false), "redistribute static");
         let mut e = Redist::new(RedistSource::Rip);
         e.eigrp_metric = Some(EigrpMetric { bandwidth: 10_000, delay: 100, reliability: 255, load: 1, mtu: 1500 });

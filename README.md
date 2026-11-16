@@ -109,7 +109,7 @@
 - **Simulation mode:** an event list replayed on the canvas, simple and complex PDUs, OSI layer
   details, scenarios, capture filters, drop reasons and pcap export.
 - **Console and PC prompt:** every mode a CCNA course uses, with `?` help, Tab completion and
-  output filters (1321 grammar entries in all; see
+  output filters (1332 grammar entries in all; see
   [`docs/command-reference.md`](docs/command-reference.md)); on PCs `ipconfig`, `ping`,
   `tracert`, `nslookup`, `telnet`, `ssh`, `ftp`, `netstat` and more.
 - **Activities:** checks worth points, sections, hints, values per student, time limits, password
@@ -121,9 +121,9 @@ What it doesn't do yet is listed, ranked, in [`docs/gaps.md`](docs/gaps.md).
 
 ## The CCNA lab book
 
-[`docs/labs/`](docs/labs/README.md) holds forty-five hands-on labs written for NetLabCraft over the
-topics of the three CCNA courses (four for the first, seventeen for the second and twenty-three for
-the third, the last eight of them (BGP, route filtering, redistribution, communities and timers, route reflectors, PPPoE, PPPoE with routers, OSPF stub, NSSA and virtual-link areas) going a step past the course; one more, on wireless security, follows the first two), plus one on mobile data. Eleven of them are troubleshooting labs where you find and
+[`docs/labs/`](docs/labs/README.md) holds forty-six hands-on labs written for NetLabCraft over the
+topics of the three CCNA courses (four for the first, seventeen for the second and twenty-four for
+the third, the last nine of them (BGP, route filtering, redistribution, communities and timers, route reflectors, PPPoE, PPPoE with routers, OSPF stub, NSSA and virtual-link areas, route tags and BGP peer groups) going a step past the course; one more, on wireless security, follows the first two), plus one on mobile data. Eleven of them are troubleshooting labs where you find and
 fix deliberate faults (VLANs and trunks, routing, OSPF, ACLs, DHCP, NAT, spanning tree, EtherChannel, port security), and two
 teach you to read the OSPF database and spanning-tree views. Each lab lists its topology, addressing, every command to
 type and what to check. Every lab is also a test: the suite runs each one end to end as

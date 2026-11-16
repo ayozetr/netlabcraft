@@ -33,6 +33,8 @@ pub struct OspfRoute {
     pub inter_area: bool,
     /// An external route heard as a type 7 LSA inside a not-so-stubby area (`O N1`, `O N2`).
     pub nssa: bool,
+    /// The tag of an external route (0: none): what the external LSA carries.
+    pub tag: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,6 +75,8 @@ pub struct OspfState {
     /// The router that translates each NSSA's type 7 LSAs into type 5 (RFC 3101 §3.1): the area
     /// border router with the highest router ID.
     pub translators: BTreeMap<u32, DeviceId>,
+    /// The tag of each redistributed external route a router injects (0 is left out).
+    pub external_tags: BTreeMap<(DeviceId, Ipv4Net), u32>,
 }
 
 /// One `area N virtual-link ROUTER-ID` line, and what became of it.
@@ -666,6 +670,9 @@ pub fn compute_seeded(t: &Topology, seeds: &crate::redist::Seeds) -> OspfState {
         st.externals.entry(*d).or_default().extend(list.iter().map(|x| x.net));
         for x in list {
             st.external_metrics.insert((*d, x.net), (x.metric, x.type1));
+            if x.tag != 0 {
+                st.external_tags.insert((*d, x.net), x.tag);
+            }
         }
     }
     for d in &originators {
@@ -824,6 +831,7 @@ pub fn compute_seeded(t: &Topology, seeds: &crate::redist::Seeds) -> OspfState {
                         type1: false,
                         inter_area,
                         nssa: false,
+                        tag: 0,
                     };
                     add(&mut routes, cand);
                 }
@@ -843,6 +851,7 @@ pub fn compute_seeded(t: &Topology, seeds: &crate::redist::Seeds) -> OspfState {
                         type1: sd.type1,
                         inter_area: false,
                         nssa: how == Some(true),
+                        tag: sd.tag,
                     };
                     add(&mut routes, cand);
                 }
@@ -857,6 +866,7 @@ pub fn compute_seeded(t: &Topology, seeds: &crate::redist::Seeds) -> OspfState {
                         type1: false,
                         inter_area: false,
                         nssa: how == Some(true),
+                        tag: 0,
                     };
                     if routes.get(&def).is_none_or(|old| (*cx, cand.via) < (old.cost.saturating_add(*cx), old.via)) {
                         routes.insert(def, cand);
@@ -888,6 +898,7 @@ pub fn compute_seeded(t: &Topology, seeds: &crate::redist::Seeds) -> OspfState {
                             type1: false,
                             inter_area: true,
                             nssa: false,
+                            tag: 0,
                         }
                     } else {
                         // A type 7 default is an external type 2 route with metric 1.
@@ -900,6 +911,7 @@ pub fn compute_seeded(t: &Topology, seeds: &crate::redist::Seeds) -> OspfState {
                             type1: false,
                             inter_area: false,
                             nssa: true,
+                            tag: 0,
                         }
                     };
                     let rank_cost = |x: &OspfRoute| (x.cost, x.via);

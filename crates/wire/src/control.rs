@@ -392,6 +392,8 @@ pub struct RipEntry {
     pub net: Ipv4Addr,
     pub mask: Ipv4Addr,
     pub metric: u32,
+    /// The route tag (version 2 only; 0 in version 1).
+    pub tag: u16,
 }
 
 /// Most entries one RIP message carries.
@@ -402,7 +404,7 @@ pub fn rip_encode(version: u8, entries: &[RipEntry]) -> Vec<u8> {
     let mut v = vec![2, version, 0, 0];
     for e in entries.iter().take(RIP_MAX_ENTRIES) {
         v.extend_from_slice(&2u16.to_be_bytes()); // address family: IP
-        v.extend_from_slice(&[0, 0]); // route tag
+        v.extend_from_slice(&(if version >= 2 { e.tag } else { 0 }).to_be_bytes()); // route tag
         v.extend_from_slice(&e.net.octets());
         v.extend_from_slice(&(if version >= 2 { e.mask } else { Ipv4Addr::UNSPECIFIED }).octets());
         v.extend_from_slice(&[0, 0, 0, 0]); // next hop: the sender
@@ -424,7 +426,14 @@ pub fn rip_decode(b: &[u8]) -> Result<(u8, Vec<RipEntry>)> {
         .as_chunks::<20>()
         .0
         .iter()
-        .filter_map(|c| Some(RipEntry { net: ip_at(c, 4)?, mask: ip_at(c, 8)?, metric: u32::from_be_bytes(c.get(16..20)?.try_into().ok()?) }))
+        .filter_map(|c| {
+            Some(RipEntry {
+                net: ip_at(c, 4)?,
+                mask: ip_at(c, 8)?,
+                metric: u32::from_be_bytes(c.get(16..20)?.try_into().ok()?),
+                tag: u16::from_be_bytes(c.get(2..4)?.try_into().ok()?),
+            })
+        })
         .collect();
     Ok((version, entries))
 }
@@ -554,9 +563,13 @@ mod tests {
 
     #[test]
     fn rip_round_trips() {
-        let e = [RipEntry { net: Ipv4Addr::new(10, 0, 0, 0), mask: Ipv4Addr::new(255, 0, 0, 0), metric: 2 }];
+        let e = [RipEntry { net: Ipv4Addr::new(10, 0, 0, 0), mask: Ipv4Addr::new(255, 0, 0, 0), metric: 2, tag: 0 }];
         assert_eq!(rip_decode(&rip_encode(2, &e)).unwrap(), (2, e.to_vec()));
         assert_eq!(rip_decode(&rip_encode(1, &e)).unwrap().1[0].mask, Ipv4Addr::UNSPECIFIED);
+        // The route tag travels in version 2 and is zero in version 1.
+        let tagged = [RipEntry { tag: 300, ..e[0] }];
+        assert_eq!(rip_decode(&rip_encode(2, &tagged)).unwrap(), (2, tagged.to_vec()));
+        assert_eq!(rip_decode(&rip_encode(1, &tagged)).unwrap().1[0].tag, 0);
         assert_eq!(ipv4_multicast_mac(OSPF_ALL_ROUTERS).to_string(), "01:00:5e:00:00:05");
     }
 }

@@ -75,6 +75,8 @@ pub struct Lsa {
     pub seq: u32,
     /// Seconds since it was last originated (or refreshed).
     pub age: u16,
+    /// External LSA: the route tag it carries (0: none).
+    pub tag: u32,
 }
 
 /// The first sequence number of an LSA (RFC 2328 §12.1.6).
@@ -101,6 +103,7 @@ impl Lsa {
             translator: None,
             seq: INITIAL_SEQ,
             age: 0,
+            tag: 0,
         }
     }
 
@@ -114,7 +117,8 @@ impl Lsa {
     fn digest(&self) -> u64 {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
-        (self.kind, self.area, self.id, self.adv, self.count, &self.links, self.metric, &self.attached, self.type1, self.translator).hash(&mut h);
+        (self.kind, self.area, self.id, self.adv, self.count, &self.links, self.metric, &self.attached, self.type1, self.translator, self.tag)
+            .hash(&mut h);
         h.finish()
     }
 }
@@ -387,6 +391,7 @@ pub fn database(t: &Topology, st: &OspfState, me: DeviceId) -> Vec<Lsa> {
                 let mut lsa = Lsa::new(LsaKind::Nssa, Some(*area), net.addr, ar, u32::from(net.prefix));
                 lsa.metric = st.external_metrics.get(&(*owner, *net)).map_or(if net.prefix == 0 { 1 } else { 20 }, |m| m.0);
                 lsa.type1 = st.external_metrics.get(&(*owner, *net)).is_some_and(|m| m.1);
+                lsa.tag = st.external_tags.get(&(*owner, *net)).copied().unwrap_or(0);
                 // The default route is not translated; the rest is, by the area's border router.
                 lsa.translator = if net.prefix == 0 || !*translated { None } else { st.translators.get(area).and_then(|tr| rid(*tr)) };
                 out.insert(lsa);
@@ -400,6 +405,7 @@ pub fn database(t: &Topology, st: &OspfState, me: DeviceId) -> Vec<Lsa> {
             let m = st.external_metrics.get(&(*owner, *n));
             lsa.metric = m.map_or(if n.prefix == 0 { 1 } else { 20 }, |m| m.0);
             lsa.type1 = m.is_some_and(|m| m.1);
+            lsa.tag = st.external_tags.get(&(*owner, *n)).copied().unwrap_or(0);
             out.insert(lsa);
         }
     }
