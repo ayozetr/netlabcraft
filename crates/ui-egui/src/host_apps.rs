@@ -1,6 +1,6 @@
 //! The computer apps of an end device's Desktop beside the older ones: the Telnet/SSH Client's
 //! form, the Text Editor, the Firewall and IPv6 Firewall, the Traffic Generator, the PPPoE
-//! Dialer and the VPN Client. They act through engine commands (`cli.exec` for the client,
+//! Dialer, the VPN Client and the Netflow Collector. They act through engine commands (`cli.exec` for the client,
 //! `editor.*`, `host.firewall`, `traffic.*`, `pppoe.*`, `vpnclient.*`), like every other panel.
 
 use egui::RichText;
@@ -615,6 +615,125 @@ pub(crate) fn vpn_client(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     }
     if disconnect && app.run("vpnclient.disconnect", json!({"device": device})).is_some() {
         app.info(tl("Disconnected"));
+    }
+    ui.data_mut(|m| m.insert_temp(id, f));
+}
+
+/// The Netflow Collector's port field, kept between frames.
+#[derive(Debug, Clone, Default)]
+struct NetflowForm {
+    port: String,
+    /// The field was filled from the device's saved port.
+    loaded: bool,
+}
+
+/// Most flows the Netflow Collector's list shows (the newest).
+const NETFLOW_SHOWN: usize = 100;
+
+/// The Netflow Collector: the port it listens on, what it has received (top talkers by bytes,
+/// protocols, then the newest flows) and a button that clears it.
+pub(crate) fn netflow_collector(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
+    let id = egui::Id::unique(("netflow_form", dev.id.0));
+    let mut f: NetflowForm = ui.data_mut(|m| m.get_temp(id)).unwrap_or_default();
+    let tk = theme::tokens(app.ui.dark);
+    if !f.loaded {
+        f.loaded = true;
+        f.port = dev.netflow.collector_port.unwrap_or(netlabcraft_wire::netflow::NETFLOW_PORT).to_string();
+    }
+    let listening = dev.netflow.collector_port;
+    let (mut start, mut stop, mut clear) = (false, false, false);
+    ui.add_space(6.0);
+    ui.horizontal(|ui| {
+        let l = ui.label(tl("Port"));
+        ui.add(egui::TextEdit::singleline(&mut f.port).desired_width(80.0)).labelled_by(l.id);
+        start = ui.add_enabled(listening.is_none(), egui::Button::new(tl("Start"))).clicked();
+        stop = ui.add_enabled(listening.is_some(), egui::Button::new(tl("Stop"))).clicked();
+        clear = ui.button(tl("Clear")).clicked();
+    });
+    match listening {
+        Some(p) => ui.label(RichText::new(trf("Listening on UDP port {}", &[&p])).strong().color(tk.ok)),
+        None => ui.label(RichText::new(tl("Not listening")).strong()),
+    };
+    ui.label(RichText::new(tl("Set routers to export here with: ip flow-export destination ADDRESS PORT")).color(tk.muted));
+    ui.separator();
+    let got = app.session.sim.netflow_collected(dev.id);
+    let datagrams = got.map_or(0, |c| c.datagrams);
+    let sum = got.map(netlabcraft_sim::netflow::Collector::summary).unwrap_or_default();
+    let newest: Vec<netlabcraft_sim::netflow::Collected> =
+        got.map(|c| c.records.iter().rev().take(NETFLOW_SHOWN).cloned().collect()).unwrap_or_default();
+    ui.label(
+        RichText::new(trf("Datagrams: {}, flows: {}, packets: {}, bytes: {}", &[&datagrams, &sum.total.flows, &sum.total.packets, &sum.total.bytes]))
+            .strong(),
+    );
+    if newest.is_empty() {
+        ui.label(RichText::new(tl("No flows received yet. Routers send a flow once it has been quiet for 15 seconds.")).color(tk.muted));
+    } else {
+        egui::ScrollArea::vertical().id_salt(("netflow_scroll", dev.id.0)).max_height(260.0).auto_shrink([false, true]).show(ui, |ui| {
+            ui.strong(tl("Top talkers"));
+            egui::Grid::new(("netflow_talkers", dev.id.0)).striped(true).spacing(egui::vec2(14.0, 4.0)).show(ui, |ui| {
+                for h in ["Address", "Flows", "Packets", "Bytes"] {
+                    ui.strong(tl(h));
+                }
+                ui.end_row();
+                for (a, t) in sum.talkers.iter().take(10) {
+                    ui.label(a.to_string());
+                    ui.label(t.flows.to_string());
+                    ui.label(t.packets.to_string());
+                    ui.label(t.bytes.to_string());
+                    ui.end_row();
+                }
+            });
+            ui.add_space(6.0);
+            ui.strong(tl("Protocols"));
+            egui::Grid::new(("netflow_protocols", dev.id.0)).striped(true).spacing(egui::vec2(14.0, 4.0)).show(ui, |ui| {
+                for h in ["Protocol", "Flows", "Packets", "Bytes"] {
+                    ui.strong(tl(h));
+                }
+                ui.end_row();
+                for (n, t) in &sum.protocols {
+                    ui.label(netlabcraft_sim::netflow::protocol_name(*n));
+                    ui.label(t.flows.to_string());
+                    ui.label(t.packets.to_string());
+                    ui.label(t.bytes.to_string());
+                    ui.end_row();
+                }
+            });
+            ui.add_space(6.0);
+            ui.strong(tl("Flows"));
+            egui::Grid::new(("netflow_flows", dev.id.0)).striped(true).spacing(egui::vec2(14.0, 4.0)).show(ui, |ui| {
+                for h in ["Time", "Exporter", "Source", "Destination", "Protocol", "Ports", "Packets", "Bytes"] {
+                    ui.strong(tl(h));
+                }
+                ui.end_row();
+                for c in &newest {
+                    let r = &c.rec;
+                    ui.label(format!("{:.1}", c.at_us as f64 / 1_000_000.0));
+                    ui.label(c.exporter.to_string());
+                    ui.label(r.src.to_string());
+                    ui.label(r.dst.to_string());
+                    ui.label(netlabcraft_sim::netflow::protocol_name(r.protocol));
+                    ui.label(format!("{} > {}", r.src_port, r.dst_port));
+                    ui.label(r.packets.to_string());
+                    ui.label(r.octets.to_string());
+                    ui.end_row();
+                }
+            });
+        });
+    }
+    let device = dev.id.0;
+    if start {
+        match f.port.trim().parse::<u16>() {
+            Ok(p) if p >= 1 => {
+                app.run("netflow.listen", json!({"device": device, "port": p}));
+            }
+            _ => app.ui.status = Some((tl("Enter a port from 1 to 65535.").to_string(), true)),
+        }
+    }
+    if stop {
+        app.run("netflow.stop", json!({"device": device}));
+    }
+    if clear {
+        app.run("netflow.clear", json!({"device": device}));
     }
     ui.data_mut(|m| m.insert_temp(id, f));
 }

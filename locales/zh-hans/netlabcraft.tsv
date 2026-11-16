@@ -1629,3 +1629,15 @@ event	write request for	写请求
 	Encryption	加密
 	Tunnel packets: {} sent, {} received	隧道数据包：已发送 {}，已接收 {}
 	Fill in the form and press Connect.	填写表单并点击连接。
+	Netflow Collector	Netflow 收集器
+	Listening on UDP port {}	正在监听 UDP 端口 {}
+	Not listening	未在监听
+	Top talkers	流量最大的主机
+	Protocols	协议
+	Flows	流
+	Packets	数据包
+	Exporter	导出设备
+	Datagrams: {}, flows: {}, packets: {}, bytes: {}	数据报：{}，流：{}，数据包：{}，字节：{}
+	No flows received yet. Routers send a flow once it has been quiet for 15 seconds.	尚未收到任何流。路由器会在某个流静默 15 秒后发送它。
+	Enter a port from 1 to 65535.	请输入 1 到 65535 之间的端口。
+	Set routers to export here with: ip flow-export destination ADDRESS PORT	将路由器设置为导出到这里：ip flow-export destination ADDRESS PORT

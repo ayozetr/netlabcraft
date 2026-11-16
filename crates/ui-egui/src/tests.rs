@@ -1244,7 +1244,9 @@ fn the_computer_apps_are_on_the_desktop_of_computers_only() {
     for (dev, shown) in [(pc, true), (printer, false)] {
         open_desktop_app(h.state_mut(), dev, "tiles");
         h.run_steps(3);
-        for name in ["Telnet/SSH Client", "Text Editor", "Firewall", "IPv6 Firewall", "Traffic Generator", "PPPoE Dialer", "VPN Client"] {
+        for name in
+            ["Telnet/SSH Client", "Text Editor", "Firewall", "IPv6 Firewall", "Traffic Generator", "PPPoE Dialer", "VPN Client", "Netflow Collector"]
+        {
             assert_eq!(h.query_by_label(name).is_some(), shown, "{name} on device {dev:?}");
         }
         assert!(h.query_by_label("Command Prompt").is_some());
@@ -1453,6 +1455,59 @@ fn the_vpn_client_connects_and_disconnects_from_its_buttons() {
     h.get_by_role_and_label(Role::Button, "Disconnect").click();
     h.run_steps(3);
     assert!(h.state().session.sim.ra_client(pc).is_none());
+}
+
+/// The Netflow Collector starts from its button, lists the flows a router exports to it, and
+/// stops listening.
+#[test]
+fn the_netflow_collector_starts_and_lists_what_routers_export() {
+    use egui::accesskit::Role;
+    let mut h = harness(None);
+    h.state_mut().ui.show_notes = false;
+    let pc2 = {
+        let s = &mut h.state_mut().session;
+        for kind in ["pc", "router", "pc"] {
+            s.execute("device.add", json!({"kind": kind})).unwrap();
+        }
+        s.execute("link.add", json!({"a": "PC1", "b": "R1", "b_port": "g0/0"})).unwrap();
+        s.execute("link.add", json!({"a": "PC2", "b": "R1", "b_port": "g0/1"})).unwrap();
+        s.execute("cli.exec", json!({"device": "PC1", "line": "ipconfig 10.0.0.10 255.255.255.0 10.0.0.1"})).unwrap();
+        s.execute("cli.exec", json!({"device": "PC2", "line": "ipconfig 10.1.0.10 255.255.255.0 10.1.0.1"})).unwrap();
+        let lines = [
+            "interface g0/0",
+            "ip address 10.0.0.1 255.255.255.0",
+            "no shutdown",
+            "ip flow ingress",
+            "exit",
+            "interface g0/1",
+            "ip address 10.1.0.1 255.255.255.0",
+            "no shutdown",
+            "exit",
+            "ip flow-export destination 10.1.0.10 2055",
+        ];
+        s.execute("device.configure", json!({"device": "R1", "lines": lines})).unwrap();
+        s.topology.resolve("PC2").unwrap()
+    };
+    open_desktop_app(h.state_mut(), pc2, "netflow");
+    h.run_steps(3);
+    assert!(h.query_by_label("Not listening").is_some());
+    h.get_by_role_and_label(Role::Button, "Start").click();
+    h.run_steps(3);
+    assert_eq!(h.state().session.topology.device(pc2).unwrap().netflow.collector_port, Some(2055));
+    assert!(h.query_by_label("Listening on UDP port 2055").is_some());
+    {
+        let s = &mut h.state_mut().session;
+        let r = s.execute("net.ping", json!({"from": "PC1", "to": "10.1.0.10", "count": 2})).unwrap();
+        assert!(r["marks"].as_str().unwrap_or_default().contains('!'), "{r}");
+        s.sim.run_for(&s.topology, 20_000_000);
+        s.sim.run_for(&s.topology, 2_000_000);
+    }
+    h.run_steps(3);
+    assert!(h.query_all_by_label("10.0.0.10").next().is_some(), "the exported flow is listed");
+    assert!(h.query_all_by_label("icmp").next().is_some());
+    h.get_by_role_and_label(Role::Button, "Stop").click();
+    h.run_steps(3);
+    assert_eq!(h.state().session.topology.device(pc2).unwrap().netflow.collector_port, None);
 }
 
 /// A server's PPPoE page switches the service on and keeps its pool and accounts.

@@ -30,6 +30,7 @@ mod hostapps;
 pub mod instructor;
 mod iot;
 mod netconf;
+mod netflow;
 mod pdu;
 mod pppoe;
 mod traffic;
@@ -50,6 +51,8 @@ mod tests_families;
 mod tests_hostapps;
 #[cfg(test)]
 mod tests_instructor;
+#[cfg(test)]
+mod tests_netflow;
 #[cfg(test)]
 mod tests_pppoe;
 #[cfg(test)]

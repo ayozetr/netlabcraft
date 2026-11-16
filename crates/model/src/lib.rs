@@ -31,6 +31,7 @@ pub mod iot;
 pub mod l2sec;
 pub mod mgmt;
 pub mod models;
+pub mod netflow;
 pub mod physical;
 pub mod pki;
 pub mod poe;
@@ -1015,6 +1016,10 @@ pub struct Device {
     /// End devices: the VPN Client app's settings (see [`vpnclient`]).
     #[serde(default, skip_serializing_if = "vpnclient::VpnClientSettings::is_default")]
     pub vpn_client: vpnclient::VpnClientSettings,
+    /// Routers: where flows are exported and which interfaces count them; end devices: the Netflow
+    /// Collector's port (see [`netflow`]).
+    #[serde(default, skip_serializing_if = "netflow::Netflow::is_default")]
+    pub netflow: netflow::Netflow,
     /// Modular routers: the card in each bay (bay `0/1` → module id), see [`hardware`].
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub modules: BTreeMap<String, String>,
@@ -1975,6 +1980,7 @@ impl Device {
             host_fw: hostfw::HostFw::default(),
             pppoe: pppoe::PppoeClient::default(),
             vpn_client: vpnclient::VpnClientSettings::default(),
+            netflow: netflow::Netflow::default(),
             modules: BTreeMap::new(),
             powered_off: false,
             adapter: poe::needs_power(model).then_some(false),
@@ -2030,6 +2036,7 @@ impl Device {
         self.snmp = SnmpConf::default();
         self.ntp_servers.clear();
         self.log_hosts.clear();
+        self.netflow.reset_router();
         self.ipv6_routing = false;
         self.ospf6 = None;
         self.eigrp6 = None;
@@ -2658,6 +2665,7 @@ impl Topology {
                 d.host_fw.sanitize();
                 d.pppoe.sanitize();
                 d.vpn_client.sanitize();
+                d.netflow.sanitize();
                 d.services.pppoe.sanitize();
                 services::sanitize_host_files(&mut d.files);
                 d.sanitize_modules();
