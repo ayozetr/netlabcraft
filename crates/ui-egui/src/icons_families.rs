@@ -101,9 +101,15 @@ pub fn is_wan(model_id: &str) -> bool {
 pub fn wan_icon(p: &Painter, rect: Rect, model_id: &str, tk: &Tokens) {
     let w = rect.width();
     if matches!(model_id, "Cloud" | "PSTN") {
-        let fill = Color32::from_rgb(0xd9, 0xe6, 0xf5);
-        let edge = Color32::from_rgb(0x4a, 0x6f, 0x9c);
+        let pstn = model_id == "PSTN";
+        let fill = if pstn { Color32::from_rgb(0xdc, 0xee, 0xe4) } else { Color32::from_rgb(0xd9, 0xe6, 0xf5) };
+        let edge = if pstn { Color32::from_rgb(0x2e, 0x7a, 0x62) } else { Color32::from_rgb(0x4a, 0x6f, 0x9c) };
         crate::icons::cloud(p, rect.shrink(w * 0.02), fill, edge);
+        if model_id == "PSTN" {
+            // The telephone network: a dial and a handset where the cloud has its port marks.
+            crate::icons_network::pstn_mark(p, rect, tk);
+            return;
+        }
         // Three port marks under the cloud: Ethernet, coaxial, phone.
         let y = rect.center().y + w * 0.08;
         p.rect_filled(Rect::from_center_size(pos2(rect.center().x - w * 0.18, y), vec2(w * 0.1, w * 0.08)), 1.0, edge);
@@ -253,11 +259,19 @@ pub fn model_icon(p: &Painter, rect: Rect, kind: netlabcraft_model::DeviceKind, 
         wan_icon(p, rect, model_id, tk);
     } else if is_cellular_net(model_id) {
         cellular_icon(p, rect, model_id, tk);
-    } else if model_id == "PLC" {
-        board_icon(p, rect, true);
+    } else if crate::icons_network::is_network_part(model_id) {
+        crate::icons_network::icon(p, rect, model_id, tk);
+    } else if crate::icons_things::is_thing(model_id) {
+        let wireless = !model_id.starts_with("Part-")
+            && netlabcraft_model::models::find(model_id).is_some_and(|m| m.port_names().iter().any(|n| n.starts_with("Wireless")));
+        crate::icons_things::thing_icon(p, rect, model_id, wireless, tk);
+    } else if model_id == "Firewall-3" {
+        crate::icons::device(p, rect, kind, tk);
+        crate::icons_network::firewall_compact(p, rect, tk);
+    } else if matches!(model_id, "Switch-IND-8" | "Router-IND") {
+        crate::icons::device(p, rect, kind, tk);
+        crate::icons_network::industrial_band(p, rect, model_id == "Router-IND", tk);
         crate::icons_parts::mark(p, rect, model_id);
-    } else if matches!(model_id, "Board-SBC" | "Board-MCU") {
-        board_icon(p, rect, model_id == "Board-SBC");
     } else if matches!(model_id, "Tablet" | "Smartphone") {
         touch_icon(p, rect, model_id == "Tablet");
     } else {
