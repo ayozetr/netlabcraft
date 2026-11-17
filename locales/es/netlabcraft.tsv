@@ -1868,6 +1868,123 @@ furniture	Table	Mesa
 	A cable joins two different devices	Un cable une dos equipos distintos
 	Click a port on a device's front panel, then a port on another device, to cable them · right-click or Esc cancels	Haz clic en un puerto del panel frontal de un equipo y luego en un puerto de otro equipo para unirlos con un cable · clic derecho o Esc cancela
 	From {}: click a port on another device. Right-click or Esc cancels.	Desde {}: haz clic en un puerto de otro equipo. Clic derecho o Esc cancela.
+	Environments	Entornos
+	Location:	Ubicación:
+	View Mode	Modo de vista
+	Change this place's environment	Cambiar el entorno de este lugar
+	Current Time:	Hora actual:
+	Set the time of day	Fijar la hora del día
+	Resume	Reanudar
+	Filter:	Filtro:
+	Search	Buscar
+	No variables match the filter.	Ninguna variable coincide con el filtro.
+	Notes	Notas
+	Simulation Time Scale:	Escala de tiempo de la simulación:
+	minute(s) real equals	minuto(s) real equivale a
+	simulated minute(s)	minuto(s) simulado(s)
+	Keyframe Graph	Gráfico de fotogramas clave
+	Advanced	Avanzado
+	Time Snap:	Ajuste de tiempo:
+	Value Snap:	Ajuste de valor:
+	Click a variable to show it, then click the graph to add or change a point. Right-click a point to remove it.	Haz clic en una variable para mostrarla y luego en el gráfico para añadir o cambiar un punto. Haz clic derecho en un punto para quitarlo.
+	Pick a variable on the left	Elige una variable a la izquierda
+	Time Line:	Línea de tiempo:
+	Time Increment:	Incremento de tiempo:
+	Variable:	Variable:
+	Export File…	Exportar archivo…
+	Import File…	Importar archivo…
+	Remove Custom Environment	Quitar entorno personalizado
+	The place inherits every variable again	El lugar vuelve a heredar todas las variables
+	Previous	Anterior
+	Next	Siguiente
+	Value:	Valor:
+	Add Keyframe	Añadir fotograma clave
+	Inherit Again	Heredar de nuevo
+	Show Notes in View Mode	Mostrar notas en el modo de vista
+	Show All	Mostrar todo
+	Hide All	Ocultar todo
+	Always on Top	Siempre visible
+	Enter a time of day as HH:MM:SS.	Escribe una hora del día como HH:MM:SS.
+	set here	definido aquí
+	from {}	de {}
+	default value	valor predeterminado
+	smart-home room	habitación del hogar inteligente
+	Keyframe {} of {}	Fotograma clave {} de {}
+	Imported an environment: {} variables read, {} skipped	Entorno importado: {} variables leídas, {} omitidas
+	1 second	1 segundo
+	1 minute	1 minuto
+	5 minutes	5 minutos
+	15 minutes	15 minutos
+	1 hour	1 hora
+	Earth Physical Features	Características físicas de la Tierra
+	Electricity	Electricidad
+	Energy	Energía
+	Gases	Gases
+	Gravity	Gravedad
+	Light (Sun)	Luz (Sol)
+	Motion	Movimiento
+	Other	Otros
+	Radiation	Radiación
+	Sound	Sonido
+	Temperature	Temperatura
+	Water	Agua
+	Wind	Viento
+	Elevation	Elevación
+	Soil pH	pH del suelo
+	Soil moisture	Humedad del suelo
+	Soil compaction	Compactación del suelo
+	Composition hardness	Dureza de la composición
+	Voltage	Voltaje
+	Resistance	Resistencia
+	Power	Potencia
+	Heat	Calor
+	Photon flux	Flujo de fotones
+	Flames	Llamas
+	Argon	Argón
+	Carbon monoxide	Monóxido de carbono
+	Carbon dioxide	Dióxido de carbono
+	Helium	Helio
+	Hydrogen	Hidrógeno
+	Methane	Metano
+	Nitrogen	Nitrógeno
+	Oxygen	Oxígeno
+	Ozone	Ozono
+	Propane	Propano
+	Smoke	Humo
+	Electromagnetic radiation	Radiación electromagnética
+	Infrared	Infrarrojo
+	Radiant heat	Calor radiante
+	Sunlight	Luz solar
+	Ultraviolet	Ultravioleta
+	Visible light	Luz visible
+	Luminosity	Luminosidad
+	Moon phase	Fase lunar
+	Motion direction	Dirección del movimiento
+	Motion speed	Velocidad del movimiento
+	Torque	Par de torsión
+	Atmospheric pressure	Presión atmosférica
+	Radiation level	Nivel de radiación
+	Alpha radiation	Radiación alfa
+	Beta radiation	Radiación beta
+	Gamma radiation	Radiación gamma
+	Neutron radiation	Radiación de neutrones
+	Ionization	Ionización
+	Sound pitch	Tono del sonido
+	Sound volume	Volumen del sonido
+	White noise	Ruido blanco
+	Ambient temperature	Temperatura ambiente
+	Clouds	Nubes
+	Humidity	Humedad
+	Rain	Lluvia
+	Snow	Nieve
+	Water level	Nivel del agua
+	Water volume	Volumen de agua
+	Water pH	pH del agua
+	Water temperature	Temperatura del agua
+	Water speed	Velocidad del agua
+	Wind direction	Dirección del viento
+	Wind gusts	Ráfagas de viento
+	Wind speed	Velocidad del viento
 	Components	Componentes
 	Wireless Devices	Dispositivos inalámbricos
 	Home	Hogar

@@ -1865,6 +1865,123 @@ furniture	Table	桌子
 	A cable joins two different devices	一条线缆连接两台不同的设备
 	Click a port on a device's front panel, then a port on another device, to cable them · right-click or Esc cancels	点击设备前面板上的端口，再点击另一台设备的端口，即可用线缆连接它们 · 右键单击或按 Esc 取消
 	From {}: click a port on another device. Right-click or Esc cancels.	从 {} 开始：点击另一台设备上的端口。右键单击或按 Esc 取消。
+	Environments	环境
+	Location:	位置：
+	View Mode	查看模式
+	Change this place's environment	修改此位置的环境
+	Current Time:	当前时间：
+	Set the time of day	设置当天时间
+	Resume	继续
+	Filter:	筛选：
+	Search	搜索
+	No variables match the filter.	没有符合筛选条件的变量。
+	Notes	备注
+	Simulation Time Scale:	模拟时间比例：
+	minute(s) real equals	分钟（实际）相当于
+	simulated minute(s)	分钟（模拟）
+	Keyframe Graph	关键帧图
+	Advanced	高级
+	Time Snap:	时间对齐：
+	Value Snap:	数值对齐：
+	Click a variable to show it, then click the graph to add or change a point. Right-click a point to remove it.	单击变量以显示它，再单击图表添加或修改点。右键单击某个点可将其删除。
+	Pick a variable on the left	请在左侧选择变量
+	Time Line:	时间线：
+	Time Increment:	时间步长：
+	Variable:	变量：
+	Export File…	导出文件…
+	Import File…	导入文件…
+	Remove Custom Environment	删除自定义环境
+	The place inherits every variable again	此位置重新继承所有变量
+	Previous	上一个
+	Next	下一个
+	Value:	数值：
+	Add Keyframe	添加关键帧
+	Inherit Again	重新继承
+	Show Notes in View Mode	在查看模式中显示备注
+	Show All	全部显示
+	Hide All	全部隐藏
+	Always on Top	始终置顶
+	Enter a time of day as HH:MM:SS.	请按 HH:MM:SS 输入时间。
+	set here	此处设置
+	from {}	来自 {}
+	default value	默认值
+	smart-home room	智能家居房间
+	Keyframe {} of {}	关键帧 {}/{}
+	Imported an environment: {} variables read, {} skipped	已导入环境：读取 {} 个变量，跳过 {} 个
+	1 second	1 秒
+	1 minute	1 分钟
+	5 minutes	5 分钟
+	15 minutes	15 分钟
+	1 hour	1 小时
+	Earth Physical Features	地球物理特征
+	Electricity	电力
+	Energy	能量
+	Gases	气体
+	Gravity	重力
+	Light (Sun)	光（太阳）
+	Motion	运动
+	Other	其他
+	Radiation	辐射
+	Sound	声音
+	Temperature	温度
+	Water	水
+	Wind	风
+	Elevation	海拔
+	Soil pH	土壤酸碱度
+	Soil moisture	土壤湿度
+	Soil compaction	土壤紧实度
+	Composition hardness	成分硬度
+	Voltage	电压
+	Resistance	电阻
+	Power	功率
+	Heat	热量
+	Photon flux	光子通量
+	Flames	火焰
+	Argon	氩
+	Carbon monoxide	一氧化碳
+	Carbon dioxide	二氧化碳
+	Helium	氦
+	Hydrogen	氢
+	Methane	甲烷
+	Nitrogen	氮
+	Oxygen	氧
+	Ozone	臭氧
+	Propane	丙烷
+	Smoke	烟雾
+	Electromagnetic radiation	电磁辐射
+	Infrared	红外线
+	Radiant heat	辐射热
+	Sunlight	阳光
+	Ultraviolet	紫外线
+	Visible light	可见光
+	Luminosity	亮度
+	Moon phase	月相
+	Motion direction	运动方向
+	Motion speed	运动速度
+	Torque	扭矩
+	Atmospheric pressure	大气压
+	Radiation level	辐射水平
+	Alpha radiation	阿尔法辐射
+	Beta radiation	贝塔辐射
+	Gamma radiation	伽马辐射
+	Neutron radiation	中子辐射
+	Ionization	电离
+	Sound pitch	音调
+	Sound volume	音量
+	White noise	白噪声
+	Ambient temperature	环境温度
+	Clouds	云量
+	Humidity	湿度
+	Rain	降雨
+	Snow	降雪
+	Water level	水位
+	Water volume	水量
+	Water pH	水的酸碱度
+	Water temperature	水温
+	Water speed	水速
+	Wind direction	风向
+	Wind gusts	阵风
+	Wind speed	风速
 	Components	组件
 	Wireless Devices	无线设备
 	Home	家居
