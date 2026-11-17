@@ -113,4 +113,189 @@ mod t {
         assert_eq!(h.state().ui.bottom.sub, crate::bottom::Sub::Cabling);
         assert!(h.query_by_label("Copper Wall Mount").is_some());
     }
+
+    fn tap(h: &mut Harness<'static, PacketApp>, at: egui::Pos2) {
+        h.input_mut().events.push(egui::Event::PointerMoved(at));
+        for pressed in [true, false] {
+            h.input_mut().events.push(egui::Event::PointerButton {
+                pos: at,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            });
+        }
+        h.run_steps(3);
+    }
+
+    /// Three bare devices in a closet: two switches and a router, none cabled.
+    fn bare() -> Harness<'static, PacketApp> {
+        let mut s = Session::new();
+        for m in ["Switch 24FE", "Switch 24FE", "Router 2GE"] {
+            s.execute("device.add", json!({"model": m})).unwrap();
+        }
+        s.execute("furniture.add", json!({"kind": "rack"})).unwrap();
+        let closet = s.topology.places().iter().find(|p| p.kind == netlabcraft_model::physical::PlaceKind::Closet).map(|p| p.id).unwrap();
+        s.execute("view.enter_place", json!({"id": closet})).unwrap();
+        let mut h = Harness::builder().with_size(egui::vec2(1200.0, 800.0)).build_ui_state(|ui, app: &mut PacketApp| app.ui(ui), PacketApp::new(s));
+        h.run_steps(3);
+        crate::physical::fit(h.state_mut());
+        h.run_steps(3);
+        h
+    }
+
+    /// Where a device's port is drawn.
+    fn socket(h: &Harness<'static, PacketApp>, device: usize, port: usize) -> egui::Pos2 {
+        let id = h.state().session.topology.devices[device].id;
+        let pole = netlabcraft_model::furniture::Pole::Device(netlabcraft_model::End { device: id, port });
+        h.state().ui.physical.closet.seen_ports.iter().find(|(p, _)| *p == pole).map(|(_, r)| r.center()).expect("the socket is drawn")
+    }
+
+    #[test]
+    fn two_clicks_on_ports_cable_them_and_the_tool_stays_picked() {
+        let mut h = bare();
+        h.state_mut().set_tool(Tool::Cable(netlabcraft_model::cable::Cable::Auto));
+        h.run_steps(2);
+        let (a, b) = (socket(&h, 0, 0), socket(&h, 1, 0));
+        tap(&mut h, a);
+        assert!(h.state().ui.physical.closet.wire.is_some(), "the first port is picked");
+        assert!(h.state().session.topology.links.is_empty());
+        tap(&mut h, b);
+        assert_eq!(h.state().session.topology.links.len(), 1, "the cable joins the two ports");
+        assert!(h.state().ui.physical.closet.wire.is_none());
+        assert_eq!(h.state().ui.tool, Tool::Cable(netlabcraft_model::cable::Cable::Auto), "the tool stays for the next cable");
+        let l = &h.state().session.topology.links[0];
+        assert_eq!(
+            (l.a.device, l.a.port, l.b.device, l.b.port),
+            (h.state().session.topology.devices[0].id, 0, h.state().session.topology.devices[1].id, 0)
+        );
+    }
+
+    #[test]
+    fn esc_and_right_click_drop_a_cable_being_made() {
+        let mut h = bare();
+        h.state_mut().set_tool(Tool::Cable(netlabcraft_model::cable::Cable::Auto));
+        h.run_steps(2);
+        let at = socket(&h, 0, 0);
+        tap(&mut h, at);
+        assert!(h.state().ui.physical.closet.wire.is_some());
+        h.input_mut().events.push(egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        });
+        h.run_steps(3);
+        assert!(h.state().ui.physical.closet.wire.is_none());
+        assert_eq!(h.state().ui.tool, Tool::Cable(netlabcraft_model::cable::Cable::Auto), "the first Esc drops the cable, not the tool");
+        // Right-click does the same.
+        let at = socket(&h, 0, 0);
+        tap(&mut h, at);
+        let at = socket(&h, 2, 0);
+        h.input_mut().events.push(egui::Event::PointerMoved(at));
+        for pressed in [true, false] {
+            h.input_mut().events.push(egui::Event::PointerButton {
+                pos: at,
+                button: egui::PointerButton::Secondary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            });
+        }
+        h.run_steps(3);
+        assert!(h.state().ui.physical.closet.wire.is_none());
+        assert!(h.state().session.topology.links.is_empty());
+    }
+
+    #[test]
+    fn a_busy_port_is_refused_with_a_reason_and_no_cable_appears() {
+        let mut h = bare();
+        let names: Vec<String> = h.state().session.topology.devices.iter().map(|d| d.name.clone()).collect();
+        let (a_name, b_name) = (names[0].clone(), names[1].clone());
+        h.state_mut().session.execute("link.add", json!({"a": a_name, "a_port": "fa0/1", "b": b_name, "b_port": "fa0/1"})).unwrap();
+        h.run_steps(2);
+        let busy = h.state().session.topology.links[0].a;
+        let index = h.state().session.topology.devices.iter().position(|d| d.id == busy.device).unwrap();
+        h.state_mut().set_tool(Tool::Cable(netlabcraft_model::cable::Cable::Auto));
+        h.run_steps(2);
+        let at = socket(&h, index, busy.port);
+        tap(&mut h, at);
+        assert!(h.state().ui.physical.closet.wire.is_none(), "a busy port starts no cable");
+        let (msg, error) = h.state().ui.status.clone().expect("the refusal is said");
+        assert!(error && msg.contains("already cabled"), "{msg}");
+        // As the second end it is refused too, and the first stays lit.
+        let at = socket(&h, 2, 0);
+        tap(&mut h, at);
+        assert!(h.state().ui.physical.closet.wire.is_some());
+        let at = socket(&h, index, busy.port);
+        tap(&mut h, at);
+        assert_eq!(h.state().session.topology.links.len(), 1, "no second cable");
+        assert!(h.state().ui.physical.closet.wire.is_some());
+    }
+
+    /// Drags a device-box tile by its label to `to`, in steps, and releases it.
+    fn drag_tile(h: &mut Harness<'static, PacketApp>, label: &str, to: egui::Pos2, esc: bool) {
+        let from = h.get_by_label(label).rect().center();
+        h.input_mut().events.push(egui::Event::PointerMoved(from));
+        h.input_mut().events.push(egui::Event::PointerButton {
+            pos: from,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        });
+        h.run_steps(2);
+        for i in 1..=8 {
+            h.input_mut().events.push(egui::Event::PointerMoved(from + (to - from) * (i as f32 / 8.0)));
+            h.run_steps(1);
+        }
+        assert!(h.state().ui.tile_drag.is_some(), "the tile is being dragged");
+        if esc {
+            h.input_mut().events.push(egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            });
+            h.run_steps(2);
+            assert!(h.state().ui.tile_drag.is_none(), "Esc drops the tile");
+        }
+        h.input_mut().events.push(egui::Event::PointerButton {
+            pos: to,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::NONE,
+        });
+        h.run_steps(3);
+    }
+
+    #[test]
+    fn a_tile_dragged_onto_the_closet_adds_the_passive_device_there() {
+        let mut h = closet();
+        h.run_steps(2);
+        h.get_by_label("Connections").click();
+        h.run_steps(2);
+        h.get_by_label("Structured Cabling").click();
+        h.run_steps(2);
+        let area = h.state().ui.canvas_rect.unwrap();
+        let on_floor = area.max - egui::vec2(60.0, 60.0);
+        // Esc, or letting go outside the workspace, places nothing.
+        drag_tile(&mut h, "Copper Wall Mount", on_floor, true);
+        assert!(h.state().session.topology.physical.fittings.iter().all(|f| f.kind.id() != "copper-wall-mount"));
+        drag_tile(&mut h, "Copper Wall Mount", egui::pos2(300.0, area.max.y + 30.0), false);
+        assert!(h.state().session.topology.physical.fittings.iter().all(|f| f.kind.id() != "copper-wall-mount"));
+        drag_tile(&mut h, "Copper Wall Mount", on_floor, false);
+        assert!(h.state().session.topology.physical.fittings.iter().any(|f| f.kind.id() == "copper-wall-mount"), "dropped on the floor");
+        assert_eq!(h.state().ui.tool, Tool::Select, "dragging does not pick the tile");
+    }
+
+    #[test]
+    fn a_model_tile_dragged_onto_the_logical_workspace_places_the_device() {
+        let mut h = Harness::builder()
+            .with_size(egui::vec2(1200.0, 800.0))
+            .build_ui_state(|ui, app: &mut PacketApp| app.ui(ui), PacketApp::new(Session::new()));
+        h.run_steps(3);
+        let area = h.state().ui.canvas_rect.unwrap();
+        drag_tile(&mut h, "Router 2GE", area.center(), false);
+        assert_eq!(h.state().session.topology.devices.len(), 1, "the router stands where it was released");
+    }
 }

@@ -442,8 +442,10 @@ pub fn perform(app: &mut PacketApp, ctx: &Context, act: Act) {
         Act::DrawingPalette => app.open_drawing_palette(),
         Act::Help => app.ui.help = Some(crate::help::Page::Contents),
         Act::Escape => {
-            // Esc first drops a polygon being placed, then the tool.
-            if app.ui.canvas.poly.is_empty() {
+            // Esc first drops a cable being made in a closet, or a polygon being placed, then the tool.
+            if app.ui.physical.closet.wire.take().is_some() {
+                // The cable tool stays picked for the next cable.
+            } else if app.ui.canvas.poly.is_empty() {
                 app.set_tool(Tool::Select);
             } else {
                 app.ui.canvas.poly.clear();

@@ -550,22 +550,33 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View, ru
     if let Some(target) = app.ui.physical.context {
         resp.context_menu(|ui| context_menu(app, ui, target));
     }
+    // A tile dragged from the device box and released over the workspace.
+    if let Some((model, at)) = app.ui.tile_drop.take()
+        && view.hit_place(at).is_none()
+        && view.hit_device(at).is_none()
+    {
+        place_device(app, view, model, at);
+    }
     if resp.clicked()
         && let Some(p) = pointer
     {
         match app.ui.tool {
             // A device placed while looking at a closet (or a building's rooms) stands there.
-            Tool::Place(model) if view.hit_place(p).is_none() && view.hit_device(p).is_none() => {
-                if view.level.is_none_or(|l| app.session.topology.place(l).is_none_or(|x| x.kind == PlaceKind::City)) {
-                    app.info(tl("Devices stand in wiring closets and buildings: open one first."));
-                    return;
-                }
-                let (x, y) = view.world(p);
-                app.run("device.add", json!({"model": model, "x": x.round(), "y": y.round()}));
-            }
+            Tool::Place(model) if view.hit_place(p).is_none() && view.hit_device(p).is_none() => place_device(app, view, model, p),
             _ => app.ui.selected = view.hit_device(p),
         }
     }
+}
+
+/// Puts a device model where the pointer is, in the place being looked at (a click with the tile
+/// picked, or the tile dropped).
+fn place_device(app: &mut PacketApp, view: &View, model: &'static str, p: Pos2) {
+    if view.level.is_none_or(|l| app.session.topology.place(l).is_none_or(|x| x.kind == PlaceKind::City)) {
+        app.info(tl("Devices stand in wiring closets and buildings: open one first."));
+        return;
+    }
+    let (x, y) = view.world(p);
+    app.run("device.add", json!({"model": model, "x": x.round(), "y": y.round()}));
 }
 
 /// Every place a device may stand in, by its full path (closets; buildings for hosts).

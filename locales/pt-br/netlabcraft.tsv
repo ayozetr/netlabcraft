@@ -1861,3 +1861,7 @@ furniture	Table	Mesa
 	These stay on this computer, in no lab file and nowhere else. Only the name is used, in activity results.	Estes dados ficam neste computador, em nenhum arquivo de laboratório e em nenhum outro lugar. Só o nome é usado, nos resultados das atividades.
 	View Wireless Signals	Ver sinais sem fio
 	View Wireless Signals (Ctrl+Alt+W): faint coverage areas of the access points and a line from each Wi-Fi host to its access point	Ver sinais sem fio (Ctrl+Alt+W): áreas de cobertura discretas dos pontos de acesso e uma linha de cada host Wi-Fi até o seu ponto de acesso
+	{} is already cabled to {}	{} já tem um cabo para {}
+	A cable joins two different devices	Um cabo liga dois dispositivos diferentes
+	Click a port on a device's front panel, then a port on another device, to cable them · right-click or Esc cancels	Clique em uma porta do painel frontal de um dispositivo e depois em uma porta de outro dispositivo para ligá-los com um cabo · clique direito ou Esc cancela
+	From {}: click a port on another device. Right-click or Esc cancels.	De {}: clique em uma porta de outro dispositivo. Clique direito ou Esc cancela.
