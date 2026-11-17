@@ -218,6 +218,10 @@ pub fn cable_problem(t: &Topology, end: End) -> Option<String> {
         return Some(why);
     }
     let l = t.link_at(end)?;
+    // The lab ignores lengths (Preferences ▸ Enable Cable Length Effects is off).
+    if t.physical.ignore_lengths {
+        return None;
+    }
     let (what, max) = match t.resolved_cable(l) {
         netlabcraft_model::cable::Cable::SerialDce | netlabcraft_model::cable::Cable::SerialDte => return None,
         netlabcraft_model::cable::Cable::Fiber => ("fiber", netlabcraft_model::physical::FIBER_MAX_M),

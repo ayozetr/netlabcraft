@@ -526,6 +526,7 @@ pub(crate) fn pppoe_dialer(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device)
             app.ui.status = Some((tl("Enter a user name.").to_string(), true));
         } else if let Some(r) = app.run("pppoe.connect", json!({"device": device, "username": f.user.trim(), "password": f.password})) {
             let server = r.get("server").and_then(Value::as_str).unwrap_or("?").to_string();
+            app.play(crate::sound::Sound::Dial);
             app.info(trf("Connected to {}", &[&server]));
         }
     }
@@ -616,6 +617,7 @@ pub(crate) fn dialup(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
             app.run("dialup.connect", json!({"device": device, "number": f.number.trim(), "username": f.user.trim(), "password": f.password}))
         {
             let server = r.get("server").and_then(Value::as_str).unwrap_or("?").to_string();
+            app.play(crate::sound::Sound::Dial);
             app.info(trf("Connected to {}", &[&server]));
         }
     }
@@ -705,6 +707,7 @@ pub(crate) fn vpn_client(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
             json!({"device": device, "host": f.host.trim(), "group": f.group.trim(), "key": f.key, "username": f.user.trim(), "password": f.password}),
         ) {
             let server = r.get("server").and_then(Value::as_str).unwrap_or("?").to_string();
+            app.play(crate::sound::Sound::Dial);
             app.info(trf("Connected to {}", &[&server]));
         }
     }

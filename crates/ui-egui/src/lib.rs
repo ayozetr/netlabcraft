@@ -43,9 +43,11 @@ pub mod pdu_dialog;
 mod phone;
 mod physical;
 pub mod png;
+pub mod prefs;
 mod programming;
 mod services;
 mod sniffer_page;
+pub mod sound;
 pub mod theme;
 mod touch;
 mod wifi_form;
@@ -54,6 +56,8 @@ mod wlan_page;
 #[cfg(test)]
 mod tests;
 mod tests_families;
+#[cfg(test)]
+mod tests_prefs;
 
 use crate::i18n::tl;
 use icons::Glyph;
@@ -80,6 +84,8 @@ pub enum UiRequest {
     /// Pick an .html file to add to a server's web site; then call
     /// [`PacketApp::web_file_imported`].
     ImportWebFile { device: DeviceId },
+    /// Play a short sound (the bytes of a WAV file); a shell with no way to play one ignores it.
+    PlaySound(Vec<u8>),
     /// Close the app.
     Quit,
 }
@@ -289,6 +295,10 @@ pub struct UiState {
     canvas: canvas::CanvasState,
     /// The physical workspace (drags, menus, dialogs).
     pub physical: physical::PhysState,
+    /// Options ▸ Preferences: what the interface shows and does (the shell keeps it).
+    pub prefs: prefs::Prefs,
+    /// Which of the Preferences, User Profile, Command Log and Algorithm Settings windows are open.
+    pub prefs_ui: prefs::WindowState,
 }
 
 impl UiState {
@@ -345,6 +355,8 @@ impl Default for UiState {
             activity: activity::ActivityView::default(),
             canvas: canvas::CanvasState::default(),
             physical: physical::PhysState::default(),
+            prefs: prefs::Prefs::default(),
+            prefs_ui: prefs::WindowState::default(),
         }
     }
 }
@@ -922,6 +934,8 @@ impl PacketApp {
     fn shortcuts(&mut self, ctx: &egui::Context) {
         let sc = |m, k| KeyboardShortcut::new(m, k);
         let cmd = Modifiers::COMMAND;
+        // Before Paste (Ctrl+V) and the rest: Ctrl+Shift+V is the command log.
+        prefs::shortcuts(self, ctx);
         if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::N))) {
             self.new_lab(None);
         }
@@ -983,6 +997,7 @@ impl PacketApp {
         if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd_shift, Key::B))) {
             self.ui.toolbars.bottom = !self.ui.toolbars.bottom;
         }
+        prefs::late_shortcuts(self, ctx);
         if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::SHIFT, Key::S))) {
             self.ui.mode = Mode::Simulation;
         }
@@ -1046,6 +1061,7 @@ impl PacketApp {
         pdu_dialog::window(self, &ctx);
         self.notes_window(&ctx);
         activity::windows(self, &ctx);
+        prefs::windows(self, &ctx);
         self.about_window(&ctx);
         help::window(self, &ctx);
         overview::viewport_window(self, &ctx);
@@ -1138,6 +1154,7 @@ impl PacketApp {
                 }
             });
             ui.menu_button(tl("Options"), |ui| {
+                prefs::menu_items(self, ui);
                 if ui.checkbox(&mut self.ui.dark, tl("Dark interface")).changed() {
                     self.apply_theme(ui.ctx());
                 }

@@ -99,9 +99,10 @@ impl EventView {
         FILTERS.iter().position(|f| *f == p).and_then(|i| self.filter.get(i)).copied().unwrap_or(true)
     }
 
-    /// How far along its cable the selected frame is drawn (0 = sender, 1 = receiver).
-    pub fn progress(&self, now: f64) -> f32 {
-        if self.playing { (((now - self.step_started) / self.step_seconds.max(0.05)) as f32).clamp(0.0, 1.0) } else { 0.5 }
+    /// How far along its cable the selected frame is drawn (0 = sender, 1 = receiver). Without
+    /// animation (Preferences) it stays in the middle of the cable.
+    pub fn progress(&self, now: f64, animate: bool) -> f32 {
+        if self.playing && animate { (((now - self.step_started) / self.step_seconds.max(0.05)) as f32).clamp(0.0, 1.0) } else { 0.5 }
     }
 
     /// Plays from the first event with an id ≥ `id`.

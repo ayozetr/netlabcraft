@@ -889,7 +889,19 @@ fn export_results(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(bad(format!("format `{format}`: json or csv")));
     }
     let report = crate::cmd::run(s, "activity.check", &json!({}))?;
+    let profile = s.profile.display_name.clone();
     let a = activity(s)?;
+    // An activity nobody started with a name (and with no per-student values) names the student
+    // after the profile, when there is one.
+    let named: Activity;
+    let a = if a.student.is_none() && !profile.is_empty() && a.variables.is_empty() {
+        let mut c = a.clone();
+        c.student = Some(profile);
+        named = c;
+        &named
+    } else {
+        a
+    };
     let time = match p.get("time").and_then(Value::as_str) {
         Some(t) => t.chars().take(64).collect(),
         None => now_utc(),

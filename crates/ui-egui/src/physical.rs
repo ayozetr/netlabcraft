@@ -34,6 +34,8 @@ enum Target {
 pub struct PhysState {
     drag_place: Option<u32>,
     drag_device: Option<DeviceId>,
+    /// Where the dragged place or device would stand without aligning (workspace units).
+    drag_raw: (f32, f32),
     panning: bool,
     context: Option<Target>,
     /// The Rename Place dialog: place and the name being typed.
@@ -169,9 +171,19 @@ fn runs(app: &PacketApp, view: &View) -> Vec<Run> {
     out
 }
 
-/// A cable length for people: metres, or kilometres from 1 km.
-fn length_text(m: u32) -> String {
-    if m >= 1_000 { format!("{:.1} km", f64::from(m) / 1000.0) } else { format!("{m} m") }
+/// A position snapped to half the map grid when aligning is on.
+fn snap(v: f32, on: bool) -> f32 {
+    if on { (v / (GRID / 2.0)).round() * (GRID / 2.0) } else { v }
+}
+
+/// A cable length for people: metres, or kilometres from 1 km; feet, or miles from 1 mile,
+/// when the metric system is off (Preferences).
+fn length_text(m: u32, metric: bool) -> String {
+    if metric {
+        return if m >= 1_000 { format!("{:.1} km", f64::from(m) / 1000.0) } else { format!("{m} m") };
+    }
+    let feet = f64::from(m) / 0.3048;
+    if feet >= 5280.0 { format!("{:.1} mi", feet / 5280.0) } else { format!("{} ft", feet.round()) }
 }
 
 fn segment_distance(p: Pos2, a: Pos2, b: Pos2) -> f32 {
@@ -298,14 +310,40 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
     }
 
     let runs = runs(app, &view);
-    draw_runs(&painter, &view, &runs, &tk);
+    draw_runs(&painter, &view, &runs, app.ui.prefs.metric, &tk);
     draw_places(app, &painter, &view, &tk);
     draw_devices(app, &painter, &view, &tk);
     painter.text(rect.min + vec2(12.0, 10.0), Align2::LEFT_TOP, caption(app), FontId::proportional(17.0), tk.muted);
+    cable_popup(app, &resp, &runs);
     interact(app, ui, &resp, &view, &runs);
 }
 
-fn draw_runs(painter: &egui::Painter, view: &View, runs: &[Run], tk: &Tokens) {
+/// The cables of the run under the pointer, as a tooltip (Preferences ▸ Show Cable Info Popup).
+fn cable_popup(app: &PacketApp, resp: &egui::Response, runs: &[Run]) {
+    if !app.ui.prefs.cable_popup || app.ui.physical.drag_place.is_some() || app.ui.physical.drag_device.is_some() {
+        return;
+    }
+    let Some(at) = resp.hover_pos() else { return };
+    let Some(run) = runs.iter().find(|r| segment_distance(at, r.a, r.b) < 6.0) else { return };
+    let t = &app.session.topology;
+    let metric = app.ui.prefs.metric;
+    resp.clone().on_hover_ui_at_pointer(|ui| {
+        for (end, meters, bad) in run.cables.iter().take(8) {
+            let Some(l) = t.link_at(*end) else { continue };
+            let kind = crate::i18n::tr(t.resolved_cable(l).label());
+            ui.label(format!("{} - {}", t.end_label(l.a), t.end_label(l.b)));
+            ui.label(format!("{kind}, {}", length_text(*meters, metric)));
+            if *bad && let Some(why) = netlabcraft_sim::cable_problem(t, l.a) {
+                ui.label(egui::RichText::new(crate::i18n::tr_any(&why)).color(theme::tokens(app.ui.dark).error));
+            }
+        }
+        if run.cables.len() > 8 {
+            ui.label(crate::i18n::trf("and {} more", &[&(run.cables.len() - 8)]));
+        }
+    });
+}
+
+fn draw_runs(painter: &egui::Painter, view: &View, runs: &[Run], metric: bool, tk: &Tokens) {
     for r in runs {
         let bad = r.cables.iter().any(|c| c.2);
         let color = if bad { tk.link_down } else { tk.cable };
@@ -315,12 +353,15 @@ fn draw_runs(painter: &egui::Painter, view: &View, runs: &[Run], tk: &Tokens) {
             // A cable leaving this place: a dashed stub, labelled at its end with the far side.
             Some(to) => {
                 painter.extend(egui::Shape::dashed_line(&[r.a, r.b], stroke, 6.0, 4.0));
-                (trf("to {}: {}", &[to, &length_text(longest)]), r.b)
+                (trf("to {}: {}", &[to, &length_text(longest, metric)]), r.b)
             }
             None => {
                 painter.line_segment([r.a, r.b], stroke);
-                let text =
-                    if r.cables.len() == 1 { length_text(longest) } else { trf("{} cables, up to {}", &[&r.cables.len(), &length_text(longest)]) };
+                let text = if r.cables.len() == 1 {
+                    length_text(longest, metric)
+                } else {
+                    trf("{} cables, up to {}", &[&r.cables.len(), &length_text(longest, metric)])
+                };
                 (text, r.a + (r.b - r.a) / 2.0)
             }
         };
@@ -407,23 +448,33 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View, ru
         if select && let Some(p) = pointer.and_then(|p| view.hit_place(p)) {
             app.run("edit.checkpoint", json!({}));
             app.ui.physical.drag_place = Some(p);
+            app.ui.physical.drag_raw = view.places.iter().find(|x| x.id == p).map_or((0.0, 0.0), |x| (x.x, x.y));
             app.ui.physical.panning = false;
         } else if select && let Some(d) = pointer.and_then(|p| view.hit_device(p)) {
             app.run("edit.checkpoint", json!({}));
             app.ui.physical.drag_device = Some(d);
+            app.ui.physical.drag_raw = app.session.topology.home_of(d).map_or((0.0, 0.0), |h| (h.x, h.y));
             app.ui.physical.panning = false;
             app.ui.selected = Some(d);
         }
     }
     if resp.dragged() {
         let delta = resp.drag_delta() / view.zoom;
+        // Aligned, the object snaps to the grid while the pointer keeps its true position.
+        let align = app.ui.prefs.align_physical;
+        if app.ui.physical.drag_place.is_some() || app.ui.physical.drag_device.is_some() {
+            app.ui.physical.drag_raw.0 += delta.x;
+            app.ui.physical.drag_raw.1 += delta.y;
+        }
+        let (x, y) = {
+            let (rx, ry) = app.ui.physical.drag_raw;
+            (snap(rx, align), snap(ry, align))
+        };
         if let Some(id) = app.ui.physical.drag_place {
-            if let Some(p) = view.places.iter().find(|p| p.id == id) {
-                app.run("place.move", json!({"id": id, "x": p.x + delta.x, "y": p.y + delta.y, "transient": true}));
-            }
+            app.run("place.move", json!({"id": id, "x": x, "y": y, "transient": true}));
         } else if let Some(d) = app.ui.physical.drag_device {
-            if let (Some(h), Some(place)) = (app.session.topology.home_of(d), app.session.place_view) {
-                app.run("device.place", json!({"device": d.0, "place": place, "x": h.x + delta.x, "y": h.y + delta.y, "transient": true}));
+            if let Some(place) = app.session.place_view {
+                app.run("device.place", json!({"device": d.0, "place": place, "x": x, "y": y, "transient": true}));
             }
         } else if app.ui.physical.panning {
             app.ui.pan += resp.drag_delta();
@@ -542,7 +593,10 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target) {
                 return;
             };
             let len = t.cable_length(&l);
-            ui.label(egui::RichText::new(format!("{} - {}: {}", t.end_label(l.a), t.end_label(l.b), length_text(len.meters))).strong());
+            ui.label(
+                egui::RichText::new(format!("{} - {}: {}", t.end_label(l.a), t.end_label(l.b), length_text(len.meters, app.ui.prefs.metric)))
+                    .strong(),
+            );
             if let Some(why) = netlabcraft_sim::cable_problem(t, l.a) {
                 ui.label(egui::RichText::new(crate::i18n::tr_any(&why)).color(theme::tokens(app.ui.dark).error));
             }
