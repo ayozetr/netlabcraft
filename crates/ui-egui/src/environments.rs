@@ -359,9 +359,8 @@ fn edit_mode(app: &mut PacketApp, ui: &mut egui::Ui, place: u32) {
 pub fn graph_point(rect: Rect, pos: egui::Pos2, v: &Var, time_snap: u32, value_snap: f64, keys: &[Key]) -> (u32, f64) {
     let fx = ((pos.x - rect.left()) / rect.width().max(1.0)).clamp(0.0, 1.0);
     let mut t = (f64::from(fx) * f64::from(DAY_SECONDS)).round() as u32;
-    if time_snap > 0 {
-        t = (t + time_snap / 2) / time_snap * time_snap;
-    }
+    // A snap of 0 is none: the division has no answer and the time stays.
+    t = (t + time_snap / 2).checked_div(time_snap).map_or(t, |q| q * time_snap);
     t = t.min(DAY_SECONDS - 1);
     if let Some(k) = near_key(rect, keys, pos.x) {
         t = k;
