@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 use egui::{Align2, Color32, FontId, Painter, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2, pos2, vec2};
 use netlabcraft_core::DeviceId;
 use netlabcraft_model::cable::{Cable, Medium};
-use netlabcraft_model::furniture::{Cell, FRAME_FOOT, FRAME_HEAD, FittingKind, FurnitureKind, Item, Placed, Pole, RACK_UNIT_H};
+use netlabcraft_model::furniture::{Cell, ClosetLayout, FRAME_FOOT, FRAME_HEAD, FittingKind, FurnitureKind, Item, Placed, Pole, RACK_UNIT_H};
 use netlabcraft_model::{Device, DeviceKind, End, Topology};
 use serde_json::{Value, json};
 
@@ -90,15 +90,92 @@ pub(crate) fn title_plate(p: &Painter, at: Pos2, text: String, tk: &Tokens) -> R
     plate
 }
 
-/// Pans and zooms so the whole closet is in view.
+/// How many rack units tall the fit frames a rack at most: a taller rack runs off the bottom of the view, and the
+/// right or middle button, the wheel and the arrow of the zoom buttons bring the rest in.
+pub(crate) const FIT_UNITS: f32 = 8.0;
+/// The least the fit zooms out to: below it the jacks stop being readable, so the closet scrolls instead.
+pub(crate) const MIN_FIT_ZOOM: f32 = 0.6;
+/// How much of the closet has to stay on the screen when it is panned, in pixels.
+const KEEP_IN_VIEW: f32 = 80.0;
+
+/// What the fit frames: the furniture (the loose items on the floor are not worth shrinking the closet for),
+/// no taller than [`FIT_UNITS`] rack units; a closet with no furniture is framed whole.
+pub(crate) fn fit_box(layout: &ClosetLayout) -> Option<Cell> {
+    let Some((x0, y0, x1, y1)) = layout.frames.iter().map(|f| f.1).fold(None, |acc: Option<(f32, f32, f32, f32)>, c| {
+        Some(match acc {
+            None => (c.x, c.y, c.x + c.w, c.y + c.h),
+            Some((a, b, d, e)) => (a.min(c.x), b.min(c.y), d.max(c.x + c.w), e.max(c.y + c.h)),
+        })
+    }) else {
+        return layout.bounds();
+    };
+    let cap = FRAME_HEAD + FIT_UNITS * RACK_UNIT_H + FRAME_FOOT;
+    Some(Cell { x: x0, y: y0, w: x1 - x0, h: (y1 - y0).min(cap) })
+}
+
+/// Where `b` goes on a workspace of `size` at `zoom`: centred when it fits, else against the top left, always
+/// below the title band. Returns the pan.
+pub(crate) fn place_box(size: Vec2, b: Cell, zoom: f32) -> Vec2 {
+    let free = vec2(size.x, (size.y - TITLE_BAND).max(1.0));
+    let x = if b.w * zoom <= free.x { (free.x - b.w * zoom) / 2.0 } else { 24.0 };
+    let y = if b.h * zoom <= free.y { TITLE_BAND + (free.y - b.h * zoom) / 2.0 } else { TITLE_BAND + 18.0 };
+    vec2(x, y) - vec2(b.x, b.y) * zoom
+}
+
+/// The zoom and the pan that frame `b` on a workspace of `size`: as large as the width allows, no larger than the
+/// height allows, and never below [`MIN_FIT_ZOOM`] (which scrolls instead of shrinking).
+pub(crate) fn fit_view(size: Vec2, b: Cell) -> (f32, Vec2) {
+    let free = vec2(size.x, (size.y - TITLE_BAND).max(1.0));
+    let zoom = (free.x / (b.w + 48.0)).min(free.y / (b.h + 36.0)).clamp(MIN_FIT_ZOOM, 1.8);
+    (zoom, place_box(size, b, zoom))
+}
+
+/// Keeps at least [`KEEP_IN_VIEW`] pixels of the closet `b` (in closet units) on a workspace of `size`, so panning
+/// can never lose it.
+pub(crate) fn clamp_pan(pan: Vec2, zoom: f32, b: Cell, size: Vec2) -> Vec2 {
+    let clamp = |p: f32, lo: f32, hi: f32| p.max(lo).min(hi);
+    vec2(
+        clamp(pan.x, KEEP_IN_VIEW - (b.x + b.w) * zoom, size.x - KEEP_IN_VIEW - b.x * zoom),
+        clamp(pan.y, KEEP_IN_VIEW - (b.y + b.h) * zoom, size.y - KEEP_IN_VIEW - b.y * zoom),
+    )
+}
+
+/// Pans and zooms so the furniture of the closet is in view at a size the jacks can be read at.
 pub(crate) fn fit(app: &mut PacketApp, place: u32) {
-    let Some(b) = app.session.topology.closet_layout(place).bounds() else { return };
+    let Some(b) = fit_box(&app.session.topology.closet_layout(place)) else { return };
     let size = app.ui.canvas.size;
     if size.x < 1.0 || size.y < 1.0 {
         return;
     }
-    // The top strip is kept clear for the closet's title, and the margins are small: the larger the closet is
-    // drawn, the larger its jacks are.
+    (app.ui.zoom, app.ui.pan) = fit_view(size, b);
+}
+
+/// Zoom reset: the true size, the furniture's top left in view.
+pub(crate) fn reset(app: &mut PacketApp, place: u32) {
+    app.ui.zoom = 1.0;
+    let size = app.ui.canvas.size;
+    app.ui.pan = match fit_box(&app.session.topology.closet_layout(place)) {
+        Some(b) if size.x >= 1.0 && size.y >= 1.0 => place_box(size, b, 1.0),
+        _ => vec2(0.0, 0.0),
+    };
+}
+
+/// Brings the pan back if it carried the closet out of view.
+pub(crate) fn keep_in_view(app: &mut PacketApp, place: u32) {
+    let size = app.ui.canvas.size;
+    if let Some(b) = app.session.topology.closet_layout(place).bounds()
+        && size.x >= 1.0
+        && size.y >= 1.0
+    {
+        app.ui.pan = clamp_pan(app.ui.pan, app.ui.zoom, b, size);
+    }
+}
+
+/// Pans and zooms so the whole closet, the loose items too, is in view (the old fit; the tests tap on sockets).
+#[cfg(test)]
+pub(crate) fn fit_all(app: &mut PacketApp, place: u32) {
+    let Some(b) = app.session.topology.closet_layout(place).bounds() else { return };
+    let size = app.ui.canvas.size;
     let free = vec2(size.x, (size.y - TITLE_BAND).max(1.0));
     let zoom = (free.x / (b.w + 48.0)).min(free.y / (b.h + 36.0)).clamp(0.25, 1.8);
     app.ui.zoom = zoom;
@@ -248,7 +325,7 @@ fn socket_block(p: &Painter, cell: Rect, conn: Connector, up: Option<bool>, tk: 
 
 /// Whether a jack cell is too small for its connector to be drawn: it becomes a [`socket_block`].
 fn too_small(cell: Rect) -> bool {
-    cell.width() < 8.0 || cell.height() < 7.0
+    cell.width() < 6.0 || cell.height() < 5.0
 }
 
 /// The per-kind detail a device's front panel carries beside its jacks, in the strip of width `extra` left
@@ -1480,6 +1557,7 @@ mod label_tests {
         s.execute("device.add", serde_json::json!({"model": "Switch-48", "name": "S", "x": 0, "y": 0})).unwrap();
         assert!(too_small(Rect::from_min_size(pos2(0.0, 0.0), vec2(5.0, 3.0))));
         assert!(!too_small(Rect::from_min_size(pos2(0.0, 0.0), vec2(14.0, 10.0))));
+        assert!(!too_small(Rect::from_min_size(pos2(0.0, 0.0), vec2(6.5, 5.5))), "real connectors from a smaller size on");
         let dev = s.topology.find("S").unwrap();
         for zoom in [0.5f32, 0.8, 2.0] {
             let tk = theme::tokens(false);
@@ -1496,6 +1574,39 @@ mod label_tests {
             centres.dedup();
             assert!(centres.len() > 24, "zoom {zoom}: the sockets overlap");
         }
+    }
+
+    #[test]
+    fn the_fit_favours_readable_jacks_over_showing_every_rack_unit() {
+        let rack = Cell { x: 60.0, y: 40.0, w: 340.0, h: FRAME_HEAD + 14.0 * RACK_UNIT_H + FRAME_FOOT };
+        let shelf = Cell { x: 460.0, y: 40.0, w: 800.0, h: 300.0 };
+        let layout = ClosetLayout { frames: vec![(1, rack), (2, shelf)], items: Vec::new() };
+        let b = fit_box(&layout).unwrap();
+        assert_eq!((b.x, b.y, b.w), (60.0, 40.0, 1200.0));
+        assert_eq!(b.h, FRAME_HEAD + FIT_UNITS * RACK_UNIT_H + FRAME_FOOT, "a tall rack is framed {FIT_UNITS} units deep");
+        let size = vec2(1500.0, 530.0);
+        let (zoom, pan) = fit_view(size, b);
+        let whole = (size.y - TITLE_BAND) / (rack.h + 36.0);
+        assert!(zoom >= 1.0 && zoom > whole + 0.2, "zoom {zoom} against {whole} for the whole closet");
+        assert!(pan.y + b.y * zoom >= TITLE_BAND, "the furniture starts below the title band");
+        assert!(pan.x + b.x * zoom >= 0.0 && pan.x + (b.x + b.w) * zoom <= size.x, "the furniture is as wide as the view");
+        // A small window scrolls instead of shrinking the jacks.
+        assert_eq!(fit_view(vec2(300.0, 300.0), b).0, MIN_FIT_ZOOM);
+        // A closet with no furniture is framed by its items.
+        let loose = ClosetLayout { frames: Vec::new(), items: Vec::new() };
+        assert!(fit_box(&loose).is_none());
+    }
+
+    #[test]
+    fn panning_can_never_lose_the_closet() {
+        let b = Cell { x: 60.0, y: 40.0, w: 1200.0, h: 700.0 };
+        let size = vec2(1500.0, 530.0);
+        for pan in [vec2(5000.0, 5000.0), vec2(-9000.0, -9000.0), vec2(0.0, 0.0), vec2(30.0, -120.0)] {
+            let p = clamp_pan(pan, 1.0, b, size);
+            assert!(p.x + b.x < size.x && p.x + b.x + b.w > 0.0, "{pan:?} -> {p:?}");
+            assert!(p.y + b.y < size.y && p.y + b.y + b.h > 0.0, "{pan:?} -> {p:?}");
+        }
+        assert_eq!(clamp_pan(vec2(30.0, -120.0), 1.0, b, size), vec2(30.0, -120.0), "a pan in range is left alone");
     }
 
     #[test]
