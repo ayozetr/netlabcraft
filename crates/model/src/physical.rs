@@ -158,6 +158,14 @@ pub struct Physical {
     /// Devices plugged into a power distribution device's outlets.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub plugs: Vec<Plug>,
+    /// The lab ignores cable lengths: a copper run over [`COPPER_MAX_M`] (or another medium's
+    /// limit) still carries frames. Not set, lengths count, as they always did.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub ignore_lengths: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 impl Physical {
@@ -170,6 +178,7 @@ impl Physical {
             && self.mounts.is_empty()
             && self.patch_wires.is_empty()
             && self.plugs.is_empty()
+            && !self.ignore_lengths
     }
 }
 

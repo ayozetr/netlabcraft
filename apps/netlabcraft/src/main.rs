@@ -27,6 +27,8 @@ struct App {
     /// The native-window geometries as last written (compared as text), and when.
     geometry_text: String,
     geometry_at: f64,
+    /// The preferences as last written (compared as text).
+    prefs_text: String,
 }
 
 /// Where the recent-files list lives: the platform's configuration folder.
@@ -68,6 +70,40 @@ fn save_native_windows(on: bool) {
         // A lost choice only costs convenience: errors are ignored.
         let _ = std::fs::write(f.with_file_name("native-windows"), if on { "on" } else { "off" });
     }
+}
+
+/// The Preferences window's settings, the profile name and the theme, kept between sessions.
+fn load_preferences() -> String {
+    recent_file().and_then(|f| std::fs::read_to_string(f.with_file_name("preferences")).ok()).unwrap_or_default()
+}
+
+fn save_preferences(text: &str) {
+    let Some(f) = recent_file().map(|f| f.with_file_name("preferences")) else { return };
+    if let Some(dir) = f.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    // A lost setting only costs convenience: errors are ignored.
+    let _ = std::fs::write(f, text);
+}
+
+/// Plays a WAV file with the system's player, without waiting for it.
+fn play_wav(bytes: &[u8]) {
+    let path = std::env::temp_dir().join(format!("netlabcraft-sound-{}.wav", std::process::id()));
+    if std::fs::write(&path, bytes).is_err() {
+        return;
+    }
+    let path = path.to_string_lossy();
+    // No sound device or player is not an error worth showing: the tone is a convenience.
+    let _ = if cfg!(target_os = "windows") {
+        netlabcraft_core::process::spawn_detached(
+            "powershell",
+            &["-NoProfile", "-Command", &format!("(New-Object Media.SoundPlayer '{path}').PlaySync()")],
+        )
+    } else if cfg!(target_os = "macos") {
+        netlabcraft_core::process::spawn_detached("afplay", &[&path])
+    } else {
+        netlabcraft_core::process::spawn_detached("paplay", &[&path]).or_else(|_| netlabcraft_core::process::spawn_detached("aplay", &["-q", &path]))
+    };
 }
 
 /// The toolbars the person left shown or hidden (all shown until they choose).
@@ -193,6 +229,7 @@ impl App {
                         }
                     }
                 }
+                UiRequest::PlaySound(bytes) => play_wav(&bytes),
                 UiRequest::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             }
         }
@@ -242,6 +279,11 @@ impl eframe::App for App {
         if self.app.ui.native_windows != self.native_saved {
             self.native_saved = self.app.ui.native_windows;
             save_native_windows(self.native_saved);
+        }
+        let prefs = self.app.preferences_text();
+        if prefs != self.prefs_text {
+            save_preferences(&prefs);
+            self.prefs_text = prefs;
         }
         if self.app.ui.toolbars != self.toolbars_saved {
             self.toolbars_saved = self.app.ui.toolbars;
@@ -312,6 +354,8 @@ fn main() -> eframe::Result {
     pick_language();
     let mut app = PacketApp::new(session);
     app.ui.recent = load_recent();
+    app.load_preferences(&load_preferences());
+    let prefs_text = app.preferences_text();
     let native_saved = load_native_windows();
     app.ui.native_windows = native_saved;
     let toolbars_saved = load_toolbars();
@@ -336,7 +380,17 @@ fn main() -> eframe::Result {
         Box::new(move |cc| {
             netlabcraft_ui_egui::fonts::install(&cc.egui_ctx);
             app.apply_theme(&cc.egui_ctx);
-            Ok(Box::new(App { app, title, closing: Closing::No, last_path, native_saved, toolbars_saved, geometry_text, geometry_at: 0.0 }))
+            Ok(Box::new(App {
+                app,
+                title,
+                closing: Closing::No,
+                last_path,
+                native_saved,
+                toolbars_saved,
+                geometry_text,
+                geometry_at: 0.0,
+                prefs_text,
+            }))
         }),
     )
 }

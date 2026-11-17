@@ -304,7 +304,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Start the activity",
         "",
         None,
-        r#"{"student": "name"} → {"values", "instructions"}: picks this student's variable values"#,
+        r#"{"student"?: "name" (default: the profile's name, see profile.set)} → {"values", "instructions"}: picks this student's variable values"#,
         true
     ),
     c!("activity.lock", "Lock the activity", "", None, r#"{"password"}: the activity can't be changed or its checks seen until unlocked"#, true),
@@ -907,6 +907,55 @@ pub static CATALOG: &[CommandInfo] = &[
         "",
         None,
         r#"{"device", "lines": ["…"] or "text"} → {"applied", "errors"} (configuration mode, the console's own mode untouched)"#,
+        true
+    ),
+    c!(
+        "log.list",
+        "View Command Log",
+        "Options",
+        Some("Ctrl+Shift+V"),
+        r#"{"since"?: entry number (only newer ones), "limit"?: 1-2000 (default 200, the newest)} → {"enabled", "total", "entries": [{n, command, params, ok, error, sim_us, count}]}: every command run this session, oldest first; passwords and keys in the parameters are hidden, long values cut, and a drag that fires one move after another is a single entry with a count; log.* commands are not recorded"#,
+        false
+    ),
+    c!(
+        "log.export",
+        "Export Log",
+        "Options",
+        None,
+        r#"{"path"?: file to write} → {"text", "file_name", "entries", "path"?}: the command log as text, one line per command"#,
+        false
+    ),
+    c!("log.clear", "Clear command log", "", None, r#"{} → {"removed"}"#, false),
+    c!(
+        "log.enable",
+        "Enable Logging",
+        "Options",
+        None,
+        r#"{"on": true|false} → {"on"}: whether commands are recorded in the command log (on at the start of every session)"#,
+        false
+    ),
+    c!(
+        "profile.get",
+        "User Profile",
+        "Options",
+        Some("Ctrl+Shift+U"),
+        r#"{} → {"name"}: the display name kept on this computer (empty: none)"#,
+        false
+    ),
+    c!(
+        "profile.set",
+        "Set display name",
+        "",
+        None,
+        r#"{"name": "up to 64 characters, no control characters; empty clears it"} → {"name"}: names the student in activity results when the activity was not started with a name; never saved in a lab and never sent anywhere"#,
+        false
+    ),
+    c!(
+        "physical.length_effects",
+        "Enable Cable Length Effects",
+        "Options",
+        None,
+        r#"{"on"?: true|false} → {"on"}: whether a cable longer than its medium reaches (copper 100 m, fiber 2 km, coaxial and phone lines their own limits) carries nothing; on unless the lab says otherwise, saved with the lab; without "on" it only reports"#,
         true
     ),
     c!("sim.advance", "Fast forward time", "Simulation", None, r#"{"seconds"?: 30}"#, false),

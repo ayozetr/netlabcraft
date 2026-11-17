@@ -37,6 +37,8 @@ pub struct ActivityView {
     password: String,
     /// The student's name, to start an activity with variables.
     student: String,
+    /// The profile's name was offered in `student` once.
+    name_offered: bool,
     /// The wizard's variables, one per line: `name = value, value, …`.
     variables: String,
     section: String,
@@ -109,6 +111,10 @@ fn instructions(app: &mut PacketApp, ctx: &egui::Context) {
         ctx.request_repaint_after(std::time::Duration::from_millis(500));
     }
     let time_up = app.ui.activity.time_up;
+    // The profile's name is the one to start with, until the student types another.
+    if !std::mem::replace(&mut app.ui.activity.name_offered, true) && app.ui.activity.student.is_empty() {
+        app.ui.activity.student = app.session.profile.display_name.clone();
+    }
     egui::Window::new(tl("Instructions")).open(&mut open).default_size([380.0, 400.0]).anchor(egui::Align2::LEFT_TOP, [12.0, 178.0]).show(
         ctx,
         |ui| {

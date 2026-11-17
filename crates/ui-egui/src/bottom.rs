@@ -197,7 +197,8 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
         let tiles_w = (ui.available_width() - 640.0).max(220.0);
         ui.allocate_ui_with_layout(vec2(tiles_w, ui.available_height()), egui::Layout::top_down(egui::Align::Min), |ui| {
             let q = app.ui.bottom.search.trim().to_lowercase();
-            let all = tiles();
+            let hide_auto = app.ui.prefs.disable_auto_cable;
+            let all: Vec<Tile> = tiles().into_iter().filter(|t| !(hide_auto && t.tool == Tool::Cable(Cable::Auto))).collect();
             let shown: Vec<&Tile> = all
                 .iter()
                 .filter(|m| {
