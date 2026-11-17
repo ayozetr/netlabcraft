@@ -1375,7 +1375,7 @@ impl PacketApp {
             if physical {
                 let on = self.ui.prefs.show_wireless_signals;
                 let (r, resp) = ui.allocate_exact_size(vec2(32.0, 28.0), Sense::click());
-                let label = tl("View Wireless Signals (Ctrl+Alt+W): faint coverage areas of the access points and a line from each Wi-Fi host to its access point");
+                let label = tl("View Wireless Signals (Ctrl+Alt+Shift+W): faint coverage areas of the access points and a line from each Wi-Fi host to its access point");
                 let resp = resp.on_hover_text(label);
                 resp.widget_info(|| egui::WidgetInfo::selected(egui::accesskit::Role::Button, true, on, label));
                 let p = ui.painter_at(r);

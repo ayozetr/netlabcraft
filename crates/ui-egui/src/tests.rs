@@ -2188,9 +2188,8 @@ fn shortcuts_from_the_table_open_categories_pick_tools_and_zoom() {
         (egui::Key::K, Category::Connections, Sub::Cabling),
         (egui::Key::E, Category::Miscellaneous, Sub::Recent),
     ] {
-        // Ctrl+Alt+W is View Wireless Signals, so Wireless Devices is Ctrl+Alt+Shift+W.
-        let mods = if k == egui::Key::W { ctrl_alt | egui::Modifiers::SHIFT } else { ctrl_alt };
-        key(&mut h, k, mods);
+        // Ctrl+Alt+W is Wireless Devices; View Wireless Signals is Ctrl+Alt+Shift+W.
+        key(&mut h, k, ctrl_alt);
         assert_eq!((h.state().ui.bottom.category, h.state().ui.bottom.sub), (cat, sub), "{k:?}");
     }
     key(&mut h, egui::Key::S, ctrl_alt);

@@ -1863,7 +1863,7 @@ furniture	Table	Mesa
 	Additional Info:	Información adicional:
 	These stay on this computer, in no lab file and nowhere else. Only the name is used, in activity results.	Estos datos se quedan en este equipo, en ningún archivo de laboratorio ni en ningún otro sitio. Solo se usa el nombre, en los resultados de las actividades.
 	View Wireless Signals	Ver señales inalámbricas
-	View Wireless Signals (Ctrl+Alt+W): faint coverage areas of the access points and a line from each Wi-Fi host to its access point	Ver señales inalámbricas (Ctrl+Alt+W): áreas de cobertura tenues de los puntos de acceso y una línea desde cada equipo Wi-Fi hasta su punto de acceso
+	View Wireless Signals (Ctrl+Alt+Shift+W): faint coverage areas of the access points and a line from each Wi-Fi host to its access point	Ver señales inalámbricas (Ctrl+Alt+Shift+W): áreas de cobertura tenues de los puntos de acceso y una línea desde cada equipo Wi-Fi hasta su punto de acceso
 	{} is already cabled to {}	{} ya tiene un cable a {}
 	A cable joins two different devices	Un cable une dos equipos distintos
 	Click a port on a device's front panel, then a port on another device, to cable them · right-click or Esc cancels	Haz clic en un puerto del panel frontal de un equipo y luego en un puerto de otro equipo para unirlos con un cable · clic derecho o Esc cancela
