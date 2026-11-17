@@ -114,6 +114,44 @@ mod t {
         assert!(h.query_by_label("Copper Wall Mount").is_some());
     }
 
+    /// Drags with `button` from `from` to `to` in a few steps.
+    fn drag_button(h: &mut Harness<'static, PacketApp>, from: egui::Pos2, to: egui::Pos2, button: egui::PointerButton) {
+        let ev = |pos, pressed| egui::Event::PointerButton { pos, button, pressed, modifiers: egui::Modifiers::NONE };
+        h.input_mut().events.push(egui::Event::PointerMoved(from));
+        h.input_mut().events.push(ev(from, true));
+        h.run_steps(1);
+        for i in 1..=8 {
+            h.input_mut().events.push(egui::Event::PointerMoved(from + (to - from) * (i as f32 / 8.0)));
+            h.run_steps(1);
+        }
+        h.input_mut().events.push(ev(to, false));
+        h.run_steps(2);
+    }
+
+    #[test]
+    fn the_right_and_middle_buttons_pan_the_closet_and_the_left_one_does_not() {
+        let mut h = bare();
+        let r = h.state().ui.canvas_rect.unwrap();
+        let empty = r.min + egui::vec2(r.width() * 0.9, r.height() * 0.8);
+        for button in [egui::PointerButton::Secondary, egui::PointerButton::Middle] {
+            let pan = h.state().ui.pan;
+            drag_button(&mut h, empty, empty - egui::vec2(40.0, 30.0), button);
+            assert!((h.state().ui.pan - (pan - egui::vec2(40.0, 30.0))).length() < 12.0, "{button:?}: {pan:?} -> {:?}", h.state().ui.pan);
+        }
+        // The left button on empty ground pans nothing.
+        let pan = h.state().ui.pan;
+        drag_button(&mut h, empty, empty - egui::vec2(40.0, 30.0), egui::PointerButton::Primary);
+        assert_eq!(h.state().ui.pan, pan);
+        // A right click without movement still opens the context menu.
+        let ev =
+            |pressed| egui::Event::PointerButton { pos: empty, button: egui::PointerButton::Secondary, pressed, modifiers: egui::Modifiers::NONE };
+        h.input_mut().events.push(egui::Event::PointerMoved(empty));
+        h.input_mut().events.push(ev(true));
+        h.input_mut().events.push(ev(false));
+        h.run_steps(3);
+        assert!(h.query_all_by_label("Add to this closet").count() >= 1, "the empty-ground menu is open");
+    }
+
     fn tap(h: &mut Harness<'static, PacketApp>, at: egui::Pos2) {
         h.input_mut().events.push(egui::Event::PointerMoved(at));
         for pressed in [true, false] {
