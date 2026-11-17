@@ -757,6 +757,8 @@ fn the_time_bar_never_overlaps() {
 fn spanish_shows_no_text_that_has_a_translation_in_english() {
     let _es = InSpanish::new();
     let mut seen = std::collections::BTreeSet::new();
+    // What people named their devices is not interface text (a sample has a device called "Home").
+    let mut names = std::collections::BTreeSet::new();
     for sample in ["services", "vlans", "wlc", "iot", "ip-phones", "wifi", "dhcp", "serial-wan", "firewall", "modular", "automation"] {
         let mut h = harness(Some(sample));
         h.state_mut().ui.show_notes = true;
@@ -764,6 +766,7 @@ fn spanish_shows_no_text_that_has_a_translation_in_english() {
         shown_texts(&h, &mut seen);
         h.state_mut().ui.show_notes = false;
         let ids: Vec<_> = h.state().session.topology.devices.iter().map(|d| d.id).collect();
+        names.extend(h.state().session.topology.devices.iter().map(|d| d.name.clone()));
         for d in ids {
             open_console(h.state_mut(), d);
             for tab in [
@@ -894,7 +897,10 @@ fn spanish_shows_no_text_that_has_a_translation_in_english() {
     let es = i18n::spanish();
     // A Spanish word can be an English key too ("Red" is the Spanish for "Network").
     let spanish_words: std::collections::BTreeSet<&str> = es.values().copied().collect();
-    let english: Vec<&String> = seen.iter().filter(|t| !spanish_words.contains(t.as_str()) && es.get(t.as_str()).is_some_and(|s| s != t)).collect();
+    let english: Vec<&String> = seen
+        .iter()
+        .filter(|t| !spanish_words.contains(t.as_str()) && !names.contains(t.as_str()) && es.get(t.as_str()).is_some_and(|s| s != t))
+        .collect();
     assert!(english.is_empty(), "shown in English despite a Spanish row: {english:#?}");
     // And text of this crate shown as it is written: it needs a row, unless it reads the same in
     // both languages (names of protocols, products and commands).
@@ -2237,7 +2243,7 @@ fn the_device_box_has_the_reference_categories_and_their_subgroups() {
     use crate::bottom::{Category, Sub};
     let mut h = harness(None);
     h.run_steps(2);
-    for label in ["Network Devices", "End Devices", "Components", "Connections", "Miscellaneous"] {
+    for label in ["Network Devices", "End Devices", "Components", "Connections", "Miscellaneous Devices"] {
         assert!(h.query_by_label(label).is_some(), "{label}");
     }
     // Legacy has nothing of ours to hold and Multiuser is out of scope: neither is offered.
@@ -2288,7 +2294,7 @@ fn end_devices_are_split_into_hosts_and_the_home_group_and_the_box_remembers_wha
     h.run_steps(2);
     assert!(h.query_by_label("Smart Light").is_some() && h.query_by_label("Laptop").is_none());
     // Nothing placed yet: the Miscellaneous list is empty.
-    h.get_by_label("Miscellaneous").click();
+    h.get_by_label("Miscellaneous Devices").click();
     h.run_steps(2);
     assert_eq!(h.state().ui.bottom.sub, Sub::Recent);
     assert!(h.query_by_label("Smart Light").is_none());
@@ -2304,7 +2310,7 @@ fn end_devices_are_split_into_hosts_and_the_home_group_and_the_box_remembers_wha
     h.get_by_label("Router 3GE").click();
     h.run_steps(2);
     assert_eq!(h.state().ui.bottom.recent, ["Router-3", "Router-4"]);
-    h.get_by_label("Miscellaneous").click();
+    h.get_by_label("Miscellaneous Devices").click();
     h.run_steps(2);
     assert!(h.query_by_label("Router 3GE").is_some() && h.query_by_label("Router 4GE").is_some());
     assert!(h.query_by_label("Router 2GE").is_none());

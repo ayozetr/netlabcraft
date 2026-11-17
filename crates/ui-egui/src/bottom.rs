@@ -32,7 +32,7 @@ impl Category {
             Category::EndDevices => "End Devices",
             Category::Components => "Components",
             Category::Connections => "Connections",
-            Category::Miscellaneous => "Miscellaneous",
+            Category::Miscellaneous => "Miscellaneous Devices",
         }
     }
 

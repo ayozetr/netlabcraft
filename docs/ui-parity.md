@@ -169,7 +169,7 @@ One table in code (`crates/ui-egui/src/shortcuts.rs`, `TABLE`) drives the keys, 
 | `Ctrl+Alt+X` | Sensors | works |
 | `Ctrl+Alt+O` | Connections | works |
 | `Ctrl+Alt+K` | Structured Cabling | works |
-| `Ctrl+Alt+E` | Miscellaneous | works |
+| `Ctrl+Alt+E` | Miscellaneous Devices | works |
 
 **Selection**
 

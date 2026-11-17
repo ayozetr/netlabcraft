@@ -239,7 +239,7 @@ pub static TABLE: &[Shortcut] = &[
     row("Device box", "Sensors", C | A, Key::X, Act::Sensors, Always),
     row("Device box", "Connections", C | A, Key::O, Act::Connections, Always),
     row("Device box", "Structured Cabling", C | A, Key::K, Act::Cabling, Always),
-    row("Device box", "Miscellaneous", C | A, Key::E, Act::Miscellaneous, Always),
+    row("Device box", "Miscellaneous Devices", C | A, Key::E, Act::Miscellaneous, Always),
     // Selection
     row("Selection", "Open Device", 0, Key::Enter, Act::OpenDevice, Idle),
     row("Selection", "Move Device Up", C, Key::ArrowUp, Act::MoveSelected(Dir::Up), Idle),
