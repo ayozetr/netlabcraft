@@ -124,6 +124,8 @@ struct View {
     /// The cluster shown (none: the top level), and how each device appears in it.
     level: Option<u32>,
     shown: std::collections::BTreeMap<DeviceId, Shown>,
+    /// Whether the model and the name are written under each device.
+    labels: (bool, bool),
 }
 
 impl View {
@@ -491,7 +493,13 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
         }
     }
     let level = app.session.view;
-    let view = View { origin: rect.min.to_vec2() + app.ui.pan, zoom: app.ui.zoom, level, shown: app.session.topology.shown_map(level) };
+    let view = View {
+        origin: rect.min.to_vec2() + app.ui.pan,
+        zoom: app.ui.zoom,
+        level,
+        shown: app.session.topology.shown_map(level),
+        labels: app.ui.prefs.labels(),
+    };
     app.ui.pointer = resp.hover_pos().map(|p| view.world(p));
 
     // Grid (Options ▸ Show grid).
@@ -610,10 +618,17 @@ fn draw_coverage(app: &PacketApp, painter: &egui::Painter, view: &View) {
 }
 
 fn draw_links(app: &mut PacketApp, painter: &egui::Painter, view: &View, tk: &Tokens) {
+    let (show_lights, port_labels_always, port_labels_hover) =
+        (app.ui.prefs.show_link_lights, app.ui.prefs.always_port_labels, app.ui.prefs.port_labels_on_hover);
     let ends: Vec<End> = app.session.topology.links.iter().flat_map(|l| [l.a, l.b]).collect();
     let blocked: Vec<End> = ends.into_iter().filter(|e| stp_blocked(app, *e)).collect();
     let t = &app.session.topology;
     let mut lights: Vec<(End, Pos2)> = Vec::new();
+    // The device under the pointer: its cables show their port names when they are not always shown.
+    let hovered: Option<DeviceId> = app.ui.pointer.and_then(|(x, y)| {
+        let at = view.screen(x, y);
+        t.devices.iter().filter(|d| view.visible(d.id)).find(|d| view.device_rect(d).expand(6.0).contains(at)).map(|d| d.id)
+    });
     // Name blocks under the icons, then each port label placed: later labels keep clear of them.
     let mut blocks: Vec<Rect> =
         t.devices.iter().filter(|d| view.visible(d.id)).map(|d| name_block(painter, view, d).expand2(vec2(8.0, 1.0))).collect();
@@ -698,12 +713,15 @@ fn draw_links(app: &mut PacketApp, painter: &egui::Painter, view: &View, tk: &To
             let d = dir * sign;
             let n = vec2(-d.y, d.x);
             let sz = 5.5 * view.zoom.clamp(0.6, 1.4);
-            painter.add(egui::Shape::convex_polygon(
-                vec![light + d * sz, light - d * sz * 0.6 + n * sz * 0.8, light - d * sz * 0.6 - n * sz * 0.8],
-                color,
-                Stroke::NONE,
-            ));
-            if view.zoom >= 0.6 {
+            if show_lights {
+                painter.add(egui::Shape::convex_polygon(
+                    vec![light + d * sz, light - d * sz * 0.6 + n * sz * 0.8, light - d * sz * 0.6 - n * sz * 0.8],
+                    color,
+                    Stroke::NONE,
+                ));
+            }
+            let named = port_labels_always || (port_labels_hover && hovered.is_some_and(|h| h == l.a.device || h == l.b.device));
+            if view.zoom >= 0.6 && named {
                 let name = t.device(end.device).and_then(|d| d.ports.get(end.port)).map(|p| ifname::short(&p.name)).unwrap_or_default();
                 // Side by side cables label outwards; a lone cable labels above.
                 let side = if spread.length() > 0.5 {
@@ -835,7 +853,7 @@ fn draw_devices(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Toke
         painter.rect_filled(block.expand2(vec2(3.0, 0.0)), 4.0, tk.canvas.gamma_multiply(0.82));
         let font = name_font(view);
         let mut y = r.bottom() + 2.0;
-        for line in [crate::i18n::tl(d.catalogue_model().label), d.display_name()] {
+        for line in label_lines(view, d) {
             let galley = painter.layout_no_wrap(line.to_string(), font.clone(), tk.text);
             let label = Align2::CENTER_TOP.anchor_size(pos2(r.center().x, y), galley.size());
             y = label.bottom();
@@ -852,11 +870,23 @@ fn name_font(view: &View) -> FontId {
     FontId::proportional((16.0 * view.zoom).clamp(8.0, 24.0))
 }
 
+/// The lines written under a device: its model, then its name, as far as Preferences show them.
+fn label_lines<'a>(view: &View, d: &'a Device) -> Vec<&'a str> {
+    let mut lines = Vec::new();
+    if view.labels.0 {
+        lines.push(crate::i18n::tl(d.catalogue_model().label));
+    }
+    if view.labels.1 {
+        lines.push(d.display_name());
+    }
+    lines
+}
+
 /// Where a device's two name lines sit on screen.
 fn name_block(painter: &egui::Painter, view: &View, d: &Device) -> Rect {
     let r = view.device_rect(d);
     let font = name_font(view);
-    let (w, h) = [crate::i18n::tl(d.catalogue_model().label), d.display_name()].iter().fold((0.0f32, 0.0f32), |(w, h), line| {
+    let (w, h) = label_lines(view, d).iter().fold((0.0f32, 0.0f32), |(w, h), line| {
         let s = painter.layout_no_wrap(line.to_string(), font.clone(), egui::Color32::WHITE).size();
         (w.max(s.x), h + s.y)
     });
@@ -880,16 +910,42 @@ fn draw_packet(app: &PacketApp, ui: &Ui, painter: &egui::Painter, view: &View, t
         Some((x, y)) => (y, x),
         None => (a, b),
     };
-    let progress = app.ui.events.progress(ui.input(|i| i.time));
+    let animate = app.ui.prefs.show_animation;
+    let progress = app.ui.events.progress(ui.input(|i| i.time), animate);
     let at = pa + (pb - pa) * progress;
     painter.line_segment([pa, pb], Stroke::new((4.0 * view.zoom).max(2.0), theme::protocol_color(ev.protocol).gamma_multiply(0.5)));
-    icons::envelope(painter, at, (22.0 * view.zoom).clamp(14.0, 34.0), theme::protocol_color(ev.protocol), tk.text);
-    if ev.dropped.is_some() && progress >= 0.99 {
+    let size = (22.0 * view.zoom).clamp(14.0, 34.0);
+    icons::envelope(painter, at, size, theme::protocol_color(ev.protocol), tk.text);
+    if app.ui.prefs.show_qos_stamps
+        && let Some(stamp) = qos_stamp(&ev.frame)
+    {
+        let galley = painter.layout_no_wrap(stamp, FontId::proportional(12.0), tk.text);
+        let r = Align2::CENTER_BOTTOM.anchor_size(at - vec2(0.0, size * 0.6), galley.size());
+        painter.rect_filled(r.expand2(vec2(3.0, 1.0)), 3.0, tk.canvas.gamma_multiply(0.85));
+        painter.galley(r.min, galley, tk.text);
+    }
+    if ev.dropped.is_some() && (progress >= 0.99 || !animate) {
         let s = Stroke::new(3.0, tk.error);
         let r = Rect::from_center_size(pb, Vec2::splat(ICON * 0.5 * view.zoom));
         painter.line_segment([r.left_top(), r.right_bottom()], s);
         painter.line_segment([r.right_top(), r.left_bottom()], s);
     }
+}
+
+/// The quality-of-service marks of a frame, as a short stamp: the IPv4 DSCP when it is not 0 and
+/// the 802.1p priority of a tagged frame when it is not 0 (`DSCP ef, CoS 5`).
+pub(crate) fn qos_stamp(frame: &[u8]) -> Option<String> {
+    let f = netlabcraft_wire::Frame::decode(frame).ok()?;
+    let dscp = if f.ethertype == netlabcraft_wire::ETHERTYPE_IPV4 { netlabcraft_wire::qos::dscp(&f.payload) } else { None };
+    let mut parts = Vec::new();
+    if let Some(d) = dscp.filter(|d| *d != 0) {
+        parts.push(format!("DSCP {}", netlabcraft_wire::qos::dscp_name(d)));
+    }
+    let pcp = netlabcraft_wire::qos::frame_pcp(frame);
+    if pcp != 0 {
+        parts.push(format!("CoS {pcp}"));
+    }
+    (!parts.is_empty()).then(|| parts.join(", "))
 }
 
 /// Cluster icons in this view: a cloud with the number of devices inside, and the name under it.
@@ -1095,7 +1151,13 @@ fn device_label(app: &PacketApp, d: &Device) -> String {
 /// (in device id order) and Enter, Space or a screen reader's click opens the device like a click.
 fn device_nodes(app: &mut PacketApp, ui: &mut Ui, canvas: Rect) {
     let level = app.session.view;
-    let view = View { origin: canvas.min.to_vec2() + app.ui.pan, zoom: app.ui.zoom, level, shown: app.session.topology.shown_map(level) };
+    let view = View {
+        origin: canvas.min.to_vec2() + app.ui.pan,
+        zoom: app.ui.zoom,
+        level,
+        shown: app.session.topology.shown_map(level),
+        labels: app.ui.prefs.labels(),
+    };
     let mut shown: Vec<(DeviceId, Rect, String, bool)> = app
         .session
         .topology
@@ -1172,7 +1234,13 @@ fn cable_label(t: &netlabcraft_model::Topology, l: &netlabcraft_model::Link) -> 
 /// pointer, so the cables' bounding boxes, which overlap the devices, never steal a click.
 fn cable_nodes(app: &mut PacketApp, ui: &mut Ui, canvas: Rect) {
     let level = app.session.view;
-    let view = View { origin: canvas.min.to_vec2() + app.ui.pan, zoom: app.ui.zoom, level, shown: app.session.topology.shown_map(level) };
+    let view = View {
+        origin: canvas.min.to_vec2() + app.ui.pan,
+        zoom: app.ui.zoom,
+        level,
+        shown: app.session.topology.shown_map(level),
+        labels: app.ui.prefs.labels(),
+    };
     let t = &app.session.topology;
     let mut cables: Vec<(End, Rect, String)> = t
         .links
@@ -1424,8 +1492,9 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
         }
     }
     if resp.drag_stopped() {
-        // Snap to half the grid so labs stay tidy.
-        let snap = |v: f32| (v / (GRID / 2.0)).round() * (GRID / 2.0);
+        // Aligned (Preferences), snap to half the grid so labs stay tidy.
+        let aligned = app.ui.prefs.align_logical;
+        let snap = |v: f32| if aligned { (v / (GRID / 2.0)).round() * (GRID / 2.0) } else { v };
         let moved: Vec<DeviceId> =
             if app.ui.canvas.drag_group { app.ui.picked.iter().copied().collect() } else { app.ui.canvas.drag.into_iter().collect() };
         for d in moved {
@@ -1552,7 +1621,8 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
         Tool::Place(model) => {
             if hit.is_none() {
                 let (x, y) = view.world(p);
-                let snap = |v: f32| (v / (GRID / 2.0)).round() * (GRID / 2.0);
+                let aligned = app.ui.prefs.align_logical;
+                let snap = |v: f32| if aligned { (v / (GRID / 2.0)).round() * (GRID / 2.0) } else { v };
                 if let Some(v) = app.run("device.add", json!({"model": model, "x": snap(x), "y": snap(y)})) {
                     app.ui.selected = v.get("id").and_then(Value::as_u64).and_then(|i| u32::try_from(i).ok()).map(DeviceId);
                 }
@@ -1714,6 +1784,7 @@ fn pdu_sent(app: &mut PacketApp, v: &Value, first_event: u64) {
         crate::i18n::trf("{} to {} ({}): failed, no answer", &[&sname, &dname, &addr])
     };
     app.ui.status = Some((msg, !ok));
+    app.play(if ok { crate::sound::Sound::Delivered } else { crate::sound::Sound::Dropped });
     // In simulation mode, replay what just happened.
     if app.ui.mode == Mode::Simulation {
         app.ui.events.start_from(first_event + 1);
