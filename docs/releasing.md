@@ -1,6 +1,6 @@
 # Releasing NetLabCraft
 
-> **Last reviewed:** 2026-11-17 · **Last updated:** 2026-11-17 · **Change:** minor (no reference to a repository that is not public) · earlier: minor (consistency pass: revision rows in date order) · also merged with minor (seventh release, 0.7.0) · earlier: minor (sixth release, 0.6.0) · earlier: minor (fifth release, 0.5.0) · earlier: minor (fourth release, 0.4.0) · earlier: minor (a FreeBSD package) · earlier: minor (third release, 0.3.0) · earlier: major (the release pipeline exists and ran end to end; first release)
+> **Last reviewed:** 2026-11-17 · **Last updated:** 2026-11-17 · **Change:** minor (a workflow that regenerates the contributors file in CI) · earlier: minor (no reference to a repository that is not public) · earlier: minor (consistency pass: revision rows in date order) · also merged with minor (seventh release, 0.7.0) · earlier: minor (sixth release, 0.6.0) · earlier: minor (fifth release, 0.5.0) · earlier: minor (fourth release, 0.4.0) · earlier: minor (a FreeBSD package) · earlier: minor (third release, 0.3.0) · earlier: major (the release pipeline exists and ran end to end; first release)
 
 The recipe follows the release playbook the Crafting Apps share: a
 release is whatever is on the `release` branch. Pushing to it makes `.github/workflows/release.yml`
@@ -16,7 +16,10 @@ dry run, with no draft. Dependabot proposes one grouped dependency update a week
 
 1. Bump the version on `main`, through a pull request: `cargo xtask version set X.Y.Z` (the
    workspace version in the root `Cargo.toml` is the single source; `cargo xtask version` prints
-   it). Run `cargo xtask contributors` so About ▸ Contributors is current.
+   it). Refresh About ▸ Contributors: run the `Contributors` workflow on `main` (Actions ▸ Contributors ▸
+   Run workflow), download its `contributors` artifact, copy it over `contributors/contributors.json` and
+   open a pull request. (`cargo xtask contributors` does the same locally, but nothing is built on the
+   maintainer's computer.)
 2. Fast-forward `release` to `main` (`git push origin main:release`). The push runs the workflow,
    which builds every platform and creates the draft release **NetLabCraft vX.Y.Z** (a version with
    a `-pre` suffix is marked as a prerelease). The tag `vX.Y.Z` is created when the draft is
@@ -62,6 +65,7 @@ distributions.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-17 | minor | The `Contributors` workflow regenerates contributors/contributors.json in CI for the release step; it had not been refreshed since 0.2.0. |
 | 2026-11-17 | minor | The recipe no longer points at a playbook in a repository that is not public. |
 | 2026-11-17 | trivial | Revision rows in date order. |
 | 2026-11-17 | minor | Seventh release, 0.7.0, cut with the flow above. |
