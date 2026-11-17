@@ -32,6 +32,7 @@ mod help;
 mod host_apps;
 pub mod i18n;
 pub mod icons;
+mod icons_cable_tiles;
 pub mod icons_families;
 pub mod instructor;
 mod iot_page;
