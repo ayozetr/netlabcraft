@@ -527,13 +527,11 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View, ru
     }
     if resp.double_clicked()
         && let Some(p) = pointer
+        && let Some(d) = view.hit_device(p)
+        && ui.input(|i| i.time) - app.ui.physical.entered > 0.6
     {
-        if let Some(d) = view.hit_device(p)
-            && ui.input(|i| i.time) - app.ui.physical.entered > 0.6
-        {
-            crate::open_console(app, d);
-            return;
-        }
+        crate::open_console(app, d);
+        return;
     }
     if resp.secondary_clicked()
         && let Some(p) = pointer
