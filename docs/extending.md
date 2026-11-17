@@ -1,6 +1,6 @@
 # Extending NetLabCraft
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (first version)
+> **Last reviewed:** 2026-11-17 · **Last updated:** 2026-11-17 · **Change:** minor (how to render the contact sheets through CI) · earlier: minor (first version)
 
 Where each kind of addition goes. Layers are enforced by `cargo xtask layers`; put code at the lowest layer that can
 own it.
@@ -21,3 +21,16 @@ own it.
 
 Docs move with the change: the page's review line and revision history, the numbers in `ROADMAP.md` and
 `docs/target-app-parity.md`, and a `ROADMAP.md` progress-log entry for anything people will notice.
+
+## Looking at drawn art without running the app
+
+Icons, connectors, cable tiles and the closet are drawn in code, so a change to them has to be looked at. The
+`sheets` example (`crates/ui-egui/examples/sheets.rs`) renders them offscreen to PNGs: a contact sheet of every
+device model (large and small), one of the cable tiles, the wiring closet (a rack, a shelf, a table, patch panels, a
+power strip, cables; also zoomed on the rack) and the logical workspace, each in the light and the dark theme. The labs
+are built through engine commands, so a new command or model shows up by adding a line there.
+
+The `Snapshots` workflow (`.github/workflows/snapshots.yml`) runs it on ubuntu with a software Vulkan driver and uploads
+the PNGs as the `snapshots` artifact. It is not a gate. Start it with **Actions ▸ Snapshots ▸ Run workflow**, by putting
+the label `snapshots` on a pull request, or by pushing a branch named `visual/*`; download the artifact from the run page
+or with `gh run download <run-id> -n snapshots -D <directory outside the repository>`. The PNGs are never committed.
