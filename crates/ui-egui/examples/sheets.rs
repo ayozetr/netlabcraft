@@ -51,7 +51,7 @@ fn painted(dir: &str, name: &str, size: (f32, f32), dark: bool, draw: impl Fn(&e
     let tk = theme::tokens(dark);
     let mut harness = egui_kittest::Harness::builder().with_size(vec2(size.0 + 40.0, size.1 + 40.0)).wgpu().build_ui(move |ui| {
         netlabcraft_ui_egui::fonts::install(ui.ctx());
-        ui.ctx().style_mut(|s| s.visuals.panel_fill = tk.canvas);
+        ui.style_mut().visuals.panel_fill = tk.canvas;
         let (resp, painter) = ui.allocate_painter(vec2(size.0, size.1), Sense::hover());
         painter.rect_filled(resp.rect.expand(40.0), 0.0, tk.canvas);
         draw(&painter, resp.rect.min, &tk);
