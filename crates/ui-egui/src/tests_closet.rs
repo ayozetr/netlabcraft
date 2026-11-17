@@ -295,7 +295,7 @@ mod t {
             .build_ui_state(|ui, app: &mut PacketApp| app.ui(ui), PacketApp::new(Session::new()));
         h.run_steps(3);
         let area = h.state().ui.canvas_rect.unwrap();
-        drag_tile(&mut h, "PC", area.center(), false);
-        assert_eq!(h.state().session.topology.devices.len(), 1, "the PC stands where it was released");
+        drag_tile(&mut h, "Router 2GE", area.center(), false);
+        assert_eq!(h.state().session.topology.devices.len(), 1, "the router stands where it was released");
     }
 }
