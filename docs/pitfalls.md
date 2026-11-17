@@ -1,6 +1,6 @@
 # Pitfalls
 
-> **Last reviewed:** 2026-11-17 · **Last updated:** 2026-11-17 · **Change:** minor (tooltips go through `.hint()` so the Font choices reach them) · earlier: minor (a file handed to the system's opener is not a way to print or keep it) · earlier: minor (a galley that carries its own colour ignores the painter's fallback) · earlier: minor (an interface derived from a session record cannot depend on state the device does not hold) · earlier: minor (a wait for frames must look at what already arrived) · earlier: minor (in BGP a confederation session is external for the session and internal for the path) · earlier: minor (a lost path does not end a BGP session at once) · earlier: minor (a rule that acts at a switch port must cover the timed control frames too) · earlier: minor (redistribution is part of every protocol's computation) · earlier: minor (policy edits must reach the routing fingerprint) · earlier: minor (BGP needs simulated time) · earlier: minor (a derived-state pitfall (M9.10)) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (four pitfalls from M9.7: counters keyed by position, a stale checksum, a database that lists unreachable routers, a `Rest` that needs a word) · also merged with M9.5, M9.6, M9.8 and M9.11 · earlier: minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
+> **Last reviewed:** 2026-11-17 · **Last updated:** 2026-11-17 · **Change:** minor (Preferences: Administrative, Show/Hide, Font, Miscellaneous, Answer Tree, Custom Interfaces, Publishers and Image Cleanup tabs) · also merged with minor (a request path cannot hold a space; a raw string ends at `"#`) · also merged with minor (a file handed to the system's opener is not a way to print or keep it) · earlier: minor (a galley that carries its own colour ignores the painter's fallback) · earlier: minor (an interface derived from a session record cannot depend on state the device does not hold) · earlier: minor (a wait for frames must look at what already arrived) · earlier: minor (in BGP a confederation session is external for the session and internal for the path) · earlier: minor (a lost path does not end a BGP session at once) · earlier: minor (a rule that acts at a switch port must cover the timed control frames too) · earlier: minor (redistribution is part of every protocol's computation) · earlier: minor (policy edits must reach the routing fingerprint) · earlier: minor (BGP needs simulated time) · earlier: minor (a derived-state pitfall (M9.10)) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (four pitfalls from M9.7: counters keyed by position, a stale checksum, a database that lists unreachable routers, a `Rest` that needs a word) · also merged with M9.5, M9.6, M9.8 and M9.11 · earlier: minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
 
 Mistakes already made here, and the rule that stops each one. Read this before your first change; when you make a
 new mistake worth not repeating, add it in the same change.
@@ -113,6 +113,13 @@ new mistake worth not repeating, add it in the same change.
   holds per session is derived from the callers' records (`sim::pppoe::calls`) wherever the topology is in hand
   (`up_ifaces`, `route_with`, `routing_table_static`). Do not keep a second copy of a session on the concentrator: it
   would go stale on undo and on a PADT.
+
+- **A value with a space cannot ride in a request path.** The simulator's web server reads the second word of the
+  request line as the path, so `GET /iot/register?name=M1&type=power meter&value=5` arrived as `type=power` with
+  the reading cut off, and no test noticed because no sensor with a two-word type had its reading listed. Encode a
+  space as `+` when the request is built and decode it where the query is read (`iot_report`, `iot_http`).
+- **A raw string ends at the first `"#`.** A command description written as `r#"... "#rrggbb" ..."#` stops inside the
+  text and breaks the whole file. Say `hex rrggbb` in a catalog description, or use `r##"…"##`.
 
 ## Instructor
 

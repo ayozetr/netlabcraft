@@ -176,7 +176,7 @@ fn effective(app: &PacketApp, place: u32, v: &Var, time: u32) -> (f64, String) {
         Some((x, Source::Own)) => (x, tl("set here").to_string()),
         Some((x, Source::Inherited(from))) => (x, trf("from {}", &[&place_name(t, from)])),
         _ => match v.drives.and_then(|w| app.session.sim.environment().and_then(|c| c.reading(w))) {
-            Some(r) => (f64::from(r), tl("smart-home room").to_string()),
+            Some(r) => (v.from_reading(r), tl("smart-home room").to_string()),
             None => (v.default, tl("default value").to_string()),
         },
     }

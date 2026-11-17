@@ -54,7 +54,7 @@ fn draw_state(ui: &mut egui::Ui, what: &str, on: bool, tk: &theme::Tokens) {
     let col = if on { tk.link_up } else { tk.chrome_line };
     let s = egui::Stroke::new(2.0, tk.muted);
     match what {
-        "fan" => {
+        "fan" | "ceiling fan" => {
             p.circle_stroke(c, 30.0, s);
             for k in 0..3 {
                 let a = k as f32 * std::f32::consts::TAU / 3.0;
@@ -64,7 +64,7 @@ fn draw_state(ui: &mut egui::Ui, what: &str, on: bool, tk: &theme::Tokens) {
             }
             p.circle_filled(c, 5.0, tk.muted);
         }
-        "light" => {
+        "light" | "smart led" => {
             p.circle_filled(c - vec2(0.0, 6.0), 20.0, if on { egui::Color32::from_rgb(0xf6, 0xd3, 0x4a) } else { tk.chrome_line });
             p.circle_stroke(c - vec2(0.0, 6.0), 20.0, s);
             p.rect_filled(egui::Rect::from_center_size(c + vec2(0.0, 22.0), vec2(16.0, 10.0)), 2.0, tk.muted);
@@ -95,7 +95,7 @@ fn draw_state(ui: &mut egui::Ui, what: &str, on: bool, tk: &theme::Tokens) {
                 }
             }
         }
-        "heater" | "ac" => {
+        "heater" | "furnace" | "ac" => {
             // A unit with fins; warm red or cool blue lines while it runs.
             let unit = egui::Rect::from_center_size(c + vec2(0.0, 8.0), vec2(54.0, 30.0));
             p.rect_filled(unit, 4.0, tk.chrome_line);
@@ -105,7 +105,7 @@ fn draw_state(ui: &mut egui::Ui, what: &str, on: bool, tk: &theme::Tokens) {
                 p.line_segment([egui::pos2(x, unit.top() + 5.0), egui::pos2(x, unit.bottom() - 5.0)], egui::Stroke::new(1.5, tk.muted));
             }
             if on {
-                let col = if what == "heater" { egui::Color32::from_rgb(0xd6, 0x45, 0x3a) } else { egui::Color32::from_rgb(0x3a, 0x8f, 0xd6) };
+                let col = if what != "ac" { egui::Color32::from_rgb(0xd6, 0x45, 0x3a) } else { egui::Color32::from_rgb(0x3a, 0x8f, 0xd6) };
                 for k in -1..=1 {
                     let x = c.x + k as f32 * 14.0;
                     let pts: Vec<egui::Pos2> =
@@ -128,7 +128,7 @@ fn draw_state(ui: &mut egui::Ui, what: &str, on: bool, tk: &theme::Tokens) {
                 }
             }
         }
-        "sprinkler" => {
+        "sprinkler" | "fire sprinkler" => {
             p.rect_filled(egui::Rect::from_center_size(c + vec2(0.0, 22.0), vec2(10.0, 20.0)), 2.0, tk.muted);
             if on {
                 for k in [-1.0f32, -0.5, 0.0, 0.5, 1.0] {
@@ -152,7 +152,7 @@ fn draw_state(ui: &mut egui::Ui, what: &str, on: bool, tk: &theme::Tokens) {
                 }
             }
         }
-        "speaker" => {
+        "speaker" | "bluetooth speaker" | "music player" => {
             // A cabinet with a tweeter and a woofer; a ring round the woofer while it plays.
             let cabinet = egui::Rect::from_center_size(c, vec2(36.0, 54.0));
             p.rect_filled(cabinet, 5.0, tk.chrome_line);
@@ -162,6 +162,32 @@ fn draw_state(ui: &mut egui::Ui, what: &str, on: bool, tk: &theme::Tokens) {
             if on {
                 p.circle_stroke(c + vec2(0.0, 8.0), 15.0, egui::Stroke::new(2.0, col));
             }
+        }
+        "humidifier" => {
+            // A tank with a nozzle; mist rises while it runs.
+            let tank = egui::Rect::from_center_size(c + vec2(0.0, 12.0), vec2(34.0, 30.0));
+            p.rect_filled(tank, 6.0, tk.chrome_line);
+            p.rect_stroke(tank, 6.0, s, egui::StrokeKind::Inside);
+            p.rect_filled(egui::Rect::from_center_size(c + vec2(0.0, -6.0), vec2(8.0, 8.0)), 2.0, tk.muted);
+            if on {
+                for dx in [-8.0f32, 0.0, 8.0] {
+                    p.circle_filled(c + vec2(dx, -16.0 - dx.abs() * 0.5), 3.0, egui::Color32::from_rgb(0x3a, 0x8f, 0xd6));
+                }
+            }
+        }
+        "appliance" => {
+            // A box with a power symbol: a ring open at the top and a bar through the gap.
+            let body = egui::Rect::from_center_size(c, vec2(46.0, 50.0));
+            p.rect_filled(body, 6.0, tk.chrome_line);
+            p.rect_stroke(body, 6.0, s, egui::StrokeKind::Inside);
+            let ring: Vec<egui::Pos2> = (0..=20)
+                .map(|i| {
+                    let a = -std::f32::consts::FRAC_PI_2 + 0.6 + i as f32 * (std::f32::consts::TAU - 1.2) / 20.0;
+                    c + vec2(a.cos(), a.sin()) * 11.0
+                })
+                .collect();
+            p.add(egui::Shape::line(ring, egui::Stroke::new(3.0, col)));
+            p.line_segment([c + vec2(0.0, -14.0), c + vec2(0.0, -2.0)], egui::Stroke::new(3.0, col));
         }
         "servo" => {
             // A body with its horn: the horn turns while the servo holds an angle.
@@ -220,6 +246,10 @@ fn thing_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut I
                 let unit = if word == "environment" { selected_unit(dev) } else { tl(t.unit).to_string() };
                 ui.label(RichText::new(unit).color(tk.muted));
             }
+            if let (Some(t), Some(v2)) = (what.filter(|t| !t.also.is_empty()), app.session.sim.iot_reading2(&app.session.topology, dev)) {
+                ui.label(RichText::new(trf("and {}", &[&v2])).size(18.0).strong());
+                ui.label(RichText::new(tl(t.also_unit)).color(tk.muted));
+            }
             if is_pressed_toggle(word) {
                 if ui.button(tl("Press")).hint(tl("Flip the switch")).clicked() {
                     app.run("iot.configure", json!({"device": d.0, "press": true}));
@@ -255,6 +285,16 @@ fn thing_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut I
             ui.label(RichText::new(tr_any(img)).monospace());
         }
         level_rows(app, ui, dev, word);
+    }
+    if matches!(what.map(|t| t.what), Some("bluetooth speaker" | "music player")) {
+        let near = match what.map(|t| t.what) {
+            Some("music player") => app.session.topology.paired_speaker(dev),
+            _ => app.session.topology.paired_player(dev),
+        };
+        match near.and_then(|n| app.session.topology.device(n)) {
+            Some(o) => ui.label(trf("Paired with {} (Bluetooth, within range)", &[&o.name])),
+            None => ui.label(RichText::new(tl("Not paired: nothing to pair with is within Bluetooth range")).color(tk.muted)),
+        };
     }
     if let Some(at) = app.session.sim.wired_to(&app.session.topology, d) {
         let words = if is_sensor(dev) { "Wired to {} (its program reads it)" } else { "Wired to {} (its program switches it)" };
@@ -366,7 +406,11 @@ fn server_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut 
             ui.label(crate::i18n::tr(&t.what));
             ui.label(t.address.to_string());
             if t.kind == "sensor" {
-                ui.label(trf("reading {}", &[&t.value.map_or("-".to_string(), |v| v.to_string())]));
+                let first = t.value.map_or("-".to_string(), |v| v.to_string());
+                match t.value2 {
+                    Some(v2) => ui.label(trf("reading {} and {}", &[&first, &v2])),
+                    None => ui.label(trf("reading {}", &[&first])),
+                };
                 ui.label("");
             } else {
                 let state = if t.on { tl("on") } else { tl("off") };
@@ -481,6 +525,7 @@ fn environment_section(app: &mut PacketApp, ui: &mut egui::Ui) {
             &[&r("temperature"), &r("humidity"), &r("soil"), &r("smoke"), &r("co"), &c.light],
         );
         ui.label(line);
+        ui.label(trf("Also: flames {} %, CO2 {} ppm, sound {} dB at {} Hz", &[&r("fire"), &r("co2"), &r("volume"), &r("pitch")]));
     }
     ui.horizontal(|ui| {
         ui.label(trf("Outside: {} degrees", &[&e.outside_temperature]));
@@ -557,6 +602,31 @@ mod tests {
         h.run_steps(2);
         assert_eq!(fan(&h), Some(false));
         assert!(h.query_by_label("If Sensor1 > 30, switch Fan1 on").is_some());
+    }
+
+    #[test]
+    fn a_speaker_says_who_it_is_paired_with_and_a_humiture_monitor_shows_both_readings() {
+        let mut s = Session::new();
+        for (model, name, x) in
+            [("Bluetooth Speaker", "Speaker1", 0), ("Portable Music Player", "Player1", 60), ("Humiture Monitor", "Humiture1", 400)]
+        {
+            s.execute("device.add", json!({"model": model, "name": name, "x": x, "y": 0})).unwrap();
+        }
+        let (speaker, humiture) = (s.topology.resolve("Speaker1").unwrap(), s.topology.resolve("Humiture1").unwrap());
+        let mut h = Harness::builder().with_size(egui::vec2(1200.0, 800.0)).build_ui_state(|ui, app: &mut PacketApp| app.ui(ui), PacketApp::new(s));
+        h.state_mut().ui.show_notes = false;
+        crate::open_console(h.state_mut(), speaker);
+        h.run_steps(3);
+        assert!(h.query_by_label("Paired with Player1 (Bluetooth, within range)").is_some());
+        h.state_mut().ui.windows.clear();
+        crate::open_console(h.state_mut(), humiture);
+        h.run_steps(3);
+        assert!(h.query_by_label("Humidity: 0 %").is_some(), "the second reading: the humidity, set by hand while the room is off");
+        h.state_mut().ui.windows.clear();
+        h.state_mut().session.execute("device.move", json!({"device": "Player1", "x": 900, "y": 0})).unwrap();
+        crate::open_console(h.state_mut(), speaker);
+        h.run_steps(3);
+        assert!(h.query_by_label("Not paired: nothing to pair with is within Bluetooth range").is_some());
     }
 
     fn parts_harness(models: &[(&str, &str)]) -> (Harness<'static, PacketApp>, Vec<netlabcraft_core::DeviceId>) {

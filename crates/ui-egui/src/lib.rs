@@ -45,6 +45,7 @@ mod icons_parts;
 mod icons_parts2;
 mod icons_ports;
 mod icons_things;
+mod icons_things2;
 pub mod instructor;
 mod iot_page;
 mod mail;

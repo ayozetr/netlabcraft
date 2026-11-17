@@ -2022,6 +2022,38 @@ furniture	Table	Mesa
 	Wi-Fi water drain monitor: reports how full a storm drain is (0-100 %)	Monitor de bueiro Wi-Fi: informa o quanto um bueiro está cheio (0-100 %)
 	Air Quality Sensor	Sensor de qualidade do ar
 	Wi-Fi air quality sensor: reports an air quality index (0-500, higher is worse)	Sensor de qualidade do ar Wi-Fi: informa um índice de qualidade do ar (0-500, mais alto é pior)
+	Appliance	Eletrodoméstico
+	Wi-Fi appliance: any mains appliance with a power state, switched on and off by the IoT service	Eletrodoméstico Wi-Fi: qualquer aparelho ligado à rede elétrica com estado de energia, ligado e desligado pelo serviço IoT
+	Bluetooth Speaker	Alto-falante Bluetooth
+	Wi-Fi speaker with Bluetooth: plays while the IoT service keeps it on, or while a music player within 60 m is playing and paired with it	Alto-falante Wi-Fi com Bluetooth: toca enquanto o serviço IoT o mantém ligado, ou enquanto um reprodutor de música a até 60 m está tocando e pareado com ele
+	Ceiling Fan	Ventilador de teto
+	Wi-Fi ceiling fan: while on it stirs the air and cools the room toward the outside temperature	Ventilador de teto Wi-Fi: ligado, movimenta o ar e esfria a sala em direção à temperatura externa
+	Furnace	Caldeira
+	Wi-Fi furnace: heats the room faster than a heater while the IoT service keeps it on	Caldeira Wi-Fi: aquece a sala mais rápido que um aquecedor enquanto o serviço IoT a mantém ligada
+	Humidifier	Umidificador
+	Wi-Fi humidifier: raises the room's humidity while the IoT service keeps it on	Umidificador Wi-Fi: aumenta a umidade da sala enquanto o serviço IoT o mantém ligado
+	Humiture Monitor	Monitor de temperatura e umidade
+	Wi-Fi monitor that reports the temperature (its reading) and the relative humidity (a second reading)	Monitor Wi-Fi que informa a temperatura (sua leitura) e a umidade relativa (uma segunda leitura)
+	Portable Music Player	Reprodutor de música portátil
+	Wi-Fi music player: plays a tone while on, quietly alone and louder through a Bluetooth speaker within 60 m	Reprodutor de música Wi-Fi: toca um tom enquanto ligado, baixo sozinho e mais alto por um alto-falante Bluetooth a até 60 m
+	Sound Frequency Detector	Detector de frequência sonora
+	Wi-Fi sound detector: reports the pitch of the loudest sound in Hz (its reading) and its volume in dB (a second reading)	Detector de som Wi-Fi: informa a altura do som mais forte em Hz (sua leitura) e seu volume em dB (uma segunda leitura)
+	appliance	eletrodoméstico
+	bluetooth speaker	alto-falante Bluetooth
+	ceiling fan	ventilador de teto
+	furnace	caldeira
+	humidifier	umidificador
+	humiture	temperatura e umidade
+	music player	reprodutor de música
+	pitch	altura do som
+	turning	girando
+	burning	em funcionamento
+	misting	umidificando
+	and {}	e {}
+	reading {} and {}	lendo {} e {}
+	Paired with {} (Bluetooth, within range)	Pareado com {} (Bluetooth, ao alcance)
+	Not paired: nothing to pair with is within Bluetooth range	Não pareado: nada para parear ao alcance do Bluetooth
+	Also: flames {} %, CO2 {} ppm, sound {} dB at {} Hz	Também: chamas {} %, CO2 {} ppm, som {} dB a {} Hz
 	Blower Fan	Ventilador industrial
 	Blower fan with one Fast Ethernet port: the IoT server switches it on and off	Ventilador industrial com uma porta Fast Ethernet: o servidor IoT o liga e desliga
 	PLC	CLP

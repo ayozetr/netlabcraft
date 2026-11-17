@@ -89,7 +89,7 @@ fn view(s: &mut Session, place: u32) -> Value {
             && let Some(c) = room
             && let Some(r) = v.drives.and_then(|w| c.reading(w))
         {
-            value = f64::from(r);
+            value = v.from_reading(r);
             source_name = "room";
             from = None;
         }

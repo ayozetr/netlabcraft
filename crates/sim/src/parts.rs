@@ -39,6 +39,14 @@ fn changes(what: &str) -> &'static [(&'static str, Change)] {
             &[("humidity", Change::Add(20.0)), ("water_level", Change::Add(3.0)), ("soil_moisture", Change::Add(30.0)), ("fire", Change::Set(0.0))]
         }
         "speaker" => &[("sound_volume", Change::Floor(70.0)), ("sound_pitch", Change::Set(440.0))],
+        // The second wave of things: the same variables, for a place with the physics off.
+        "furnace" => &[("ambient_temperature", Change::Add(15.0)), ("humidity", Change::Add(-5.0))],
+        "ceiling fan" => &[("ambient_temperature", Change::Add(-3.0))],
+        "humidifier" => &[("humidity", Change::Add(20.0))],
+        "fire sprinkler" => &[("humidity", Change::Add(20.0)), ("fire", Change::Set(0.0))],
+        "car" => &[("carbon_monoxide", Change::Add(60.0)), ("carbon_dioxide", Change::Add(0.05))],
+        "bluetooth speaker" => &[("sound_volume", Change::Floor(75.0)), ("sound_pitch", Change::Set(440.0))],
+        "music player" => &[("sound_volume", Change::Floor(55.0)), ("sound_pitch", Change::Set(440.0))],
         "buzzer" => &[("sound_volume", Change::Floor(80.0)), ("sound_pitch", Change::Set(2_700.0))],
         "alarm" | "siren" => &[("sound_volume", Change::Floor(100.0)), ("sound_pitch", Change::Set(1_000.0))],
         _ => &[],
@@ -123,7 +131,8 @@ impl Sim {
                     && !pv.changed
                     && let Some(r) = var.drives.and_then(|w| self.room_reading(t, w))
                 {
-                    return Some(r);
+                    // The room reads carbon dioxide in ppm and the variable is a percentage.
+                    return Some(generic_whole(var, var.from_reading(r)));
                 }
                 Some(generic_whole(var, pv.value))
             }
@@ -181,7 +190,23 @@ mod tests {
 
     #[test]
     fn every_change_names_a_variable_that_exists() {
-        for what in ["air cooler", "heating element", "ceiling sprinkler", "floor sprinkler", "speaker", "buzzer", "alarm", "siren"] {
+        for what in [
+            "air cooler",
+            "heating element",
+            "ceiling sprinkler",
+            "floor sprinkler",
+            "speaker",
+            "buzzer",
+            "alarm",
+            "siren",
+            "furnace",
+            "ceiling fan",
+            "humidifier",
+            "fire sprinkler",
+            "car",
+            "bluetooth speaker",
+            "music player",
+        ] {
             assert!(!changes(what).is_empty(), "{what}");
             for (id, _) in changes(what) {
                 assert!(var_by_id(id).is_some(), "{what}: {id}");
