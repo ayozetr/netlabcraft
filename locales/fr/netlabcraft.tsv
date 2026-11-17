@@ -697,7 +697,7 @@
 	No events yet. Add a simple PDU (envelope tool) or ping from a console.	Pas encore d'événements. Ajoutez un PDU simple (outil enveloppe) ou faites un ping depuis une console.
 	No files yet: `copy running-config tftp: <this address>` on a router saves one here.	Pas encore de fichiers : `copy running-config tftp: <cette adresse>` sur un routeur en enregistre un ici.
 	No fill	Sans remplissage
-	no function `{}` (there are read, get, time and number)	pas de fonction `{}` (il y a read, get, time et number)
+	no function `{}` (there are read, channel, rgb, get, time and number)	pas de fonction `{}` (il y a read, channel, rgb, get, time et number)
 	no IoT server set	aucun serveur IoT défini
 	no IoT server set on the board (Programming tab)	aucun serveur IoT défini sur la carte (onglet Programmation)
 	no IPv6 route to {}	pas de route IPv6 vers {}
@@ -2075,6 +2075,76 @@ furniture	Table	Table
 	red	rouge
 	showing	affiche
 	blank	vide
+	Air Cooler	Refroidisseur d'air
+	Air cooler wired to a board's pin with an IoT custom cable: cools its environment while the pin is high	Refroidisseur d'air relié à une broche de carte par un câble personnalisé IoT: refroidit son environnement tant que la broche est à l'état haut
+	Alarm	Alarme
+	Alarm wired to a board's pin with an IoT custom cable: sounds its siren and lights up while the pin is high	Alarme reliée à une broche de carte par un câble personnalisé IoT: fait retentir sa sirène et s'allume tant que la broche est à l'état haut
+	Ceiling Sprinkler	Sprinkler de plafond
+	Ceiling sprinkler wired to a board's pin with an IoT custom cable: sprays water from above while the pin is high and puts out flames	Sprinkler de plafond relié à une broche de carte par un câble personnalisé IoT: projette de l'eau d'en haut tant que la broche est à l'état haut et éteint les flammes
+	Floor Sprinkler	Sprinkler de sol
+	Floor sprinkler wired to a board's pin with an IoT custom cable: sprays water from the floor while the pin is high and puts out flames	Sprinkler de sol relié à une broche de carte par un câble personnalisé IoT: projette de l'eau depuis le sol tant que la broche est à l'état haut et éteint les flammes
+	Dimmable LED	LED variable
+	Dimmable LED wired to a board's pin with an IoT custom cable: its brightness follows the level written to the pin (0-100)	LED variable reliée à une broche de carte par un câble personnalisé IoT: sa luminosité suit le niveau écrit sur la broche (0-100)
+	Heating Element	Élément chauffant
+	Heating element wired to a board's pin with an IoT custom cable: warms its environment while the pin is high	Élément chauffant relié à une broche de carte par un câble personnalisé IoT: réchauffe son environnement tant que la broche est à l'état haut
+	RGB LED	LED RVB
+	RGB LED wired to a board's pin with an IoT custom cable: shows the red, green and blue levels written to the pin as one number (0xRRGGBB)	LED RVB reliée à une broche de carte par un câble personnalisé IoT: affiche les niveaux de rouge, de vert et de bleu écrits sur la broche sous la forme d'un seul nombre (0xRRGGBB)
+	Servo	Servomoteur
+	Servo wired to a board's pin with an IoT custom cable: turns to the angle written to the pin (0-180 degrees)	Servomoteur relié à une broche de carte par un câble personnalisé IoT: tourne jusqu'à l'angle écrit sur la broche (0-180 degrés)
+	Speaker	Haut-parleur
+	Speaker wired to a board's pin with an IoT custom cable: plays a tone and raises the sound around it while the pin is high	Haut-parleur relié à une broche de carte par un câble personnalisé IoT: joue une tonalité et augmente le son autour de lui tant que la broche est à l'état haut
+	Flex Sensor	Capteur de flexion
+	Flex sensor wired to a board's pin with an IoT custom cable: reads how far it is bent (0-100 %)	Capteur de flexion relié à une broche de carte par un câble personnalisé IoT: lit son degré de courbure (0-100 %)
+	Generic Environment Sensor	Capteur d'environnement générique
+	Generic environment sensor wired to a board's pin with an IoT custom cable: reads the environment variable you pick, rounded to a whole number	Capteur d'environnement générique relié à une broche de carte par un câble personnalisé IoT: lit la variable d'environnement choisie, arrondie à un entier
+	Generic Sensor	Capteur générique
+	Generic sensor wired to a board's pin with an IoT custom cable: reads a raw analog value you set (-1000 to 1000)	Capteur générique relié à une broche de carte par un câble personnalisé IoT: lit une valeur analogique brute réglée à la main (-1000 à 1000)
+	Humidity sensor wired to a board's pin with an IoT custom cable: reads the relative humidity of its environment (0-100 %)	Capteur d'humidité relié à une broche de carte par un câble personnalisé IoT: lit l'humidité relative de son environnement (0-100 %)
+	Humiture Sensor	Capteur de température et d'humidité
+	Humiture sensor wired to a board's pin with an IoT custom cable: reads the temperature, and the humidity with channel(PIN, 1)	Capteur de température et d'humidité relié à une broche de carte par un câble personnalisé IoT: lit la température, et l'humidité avec channel(PIN, 1)
+	Membrane Potentiometer	Potentiomètre à membrane
+	Membrane potentiometer wired to a board's pin with an IoT custom cable: reads where a finger presses along its strip (0-100 %)	Potentiomètre à membrane relié à une broche de carte par un câble personnalisé IoT: lit l'endroit où un doigt appuie le long de sa bande (0-100 %)
+	Metal Sensor	Capteur de métaux
+	Metal sensor wired to a board's pin with an IoT custom cable: reads 1 while a metal object is near, else 0	Capteur de métaux relié à une broche de carte par un câble personnalisé IoT: lit 1 tant qu'un objet métallique est proche, sinon 0
+	Motion Sensor	Capteur de mouvement
+	Motion sensor wired to a board's pin with an IoT custom cable: reads 1 while something moves in its environment, else 0	Capteur de mouvement relié à une broche de carte par un câble personnalisé IoT: lit 1 tant que quelque chose bouge dans son environnement, sinon 0
+	Push Button Toggle Switch	Interrupteur à bouton poussoir à verrouillage
+	Push button toggle switch wired to a board's pin with an IoT custom cable: latches on at one push and off at the next, reads 1 while on	Interrupteur à bouton poussoir à verrouillage relié à une broche de carte par un câble personnalisé IoT: se verrouille à une pression et se libère à la suivante, lit 1 tant qu'il est actif
+	Rocker Switch	Interrupteur basculant
+	Rocker switch wired to a board's pin with an IoT custom cable: reads 1 in its on position and 0 in its off position	Interrupteur basculant relié à une broche de carte par un câble personnalisé IoT: lit 1 dans sa position marche et 0 dans sa position arrêt
+	Toggle Push Button	Bouton poussoir bistable
+	Toggle push button wired to a board's pin with an IoT custom cable: each press flips its state, reads 1 while on	Bouton poussoir bistable relié à une broche de carte par un câble personnalisé IoT: chaque pression inverse son état, lit 1 tant qu'il est actif
+	Smoke Sensor	Capteur de fumée
+	Smoke sensor wired to a board's pin with an IoT custom cable: reads the smoke level of its environment (0-100 %)	Capteur de fumée relié à une broche de carte par un câble personnalisé IoT: lit le niveau de fumée de son environnement (0-100 %)
+	Temperature Sensor	Capteur de température
+	Temperature sensor wired to a board's pin with an IoT custom cable: reads the temperature of its environment, in degrees	Capteur de température relié à une broche de carte par un câble personnalisé IoT: lit la température de son environnement, en degrés
+	Trip Wire	Fil de détente
+	Trip wire wired to a board's pin with an IoT custom cable: reads 1 while something crosses the line, else 0	Fil de détente relié à une broche de carte par un câble personnalisé IoT: lit 1 tant que quelque chose franchit la ligne, sinon 0
+	Water Detector	Détecteur d'eau
+	Water detector wired to a board's pin with an IoT custom cable: reads 1 while water is present, else 0	Détecteur d'eau relié à une broche de carte par un câble personnalisé IoT: lit 1 tant que de l'eau est présente, sinon 0
+	Water Sensor	Capteur d'eau
+	Water sensor wired to a board's pin with an IoT custom cable: reads the water level, in centimetres	Capteur d'eau relié à une broche de carte par un câble personnalisé IoT: lit le niveau d'eau, en centimètres
+	Wind Sensor	Capteur de vent
+	Wind sensor wired to a board's pin with an IoT custom cable: reads the wind speed, in kilometres per hour	Capteur de vent relié à une broche de carte par un câble personnalisé IoT: lit la vitesse du vent, en kilomètres par heure
+	Humidity Monitor	Moniteur d'humidité
+	Press	Appuyer
+	Flip the switch	Basculer l'interrupteur
+	Reads:	Lit :
+	Humidity: {} %	Humidité : {} %
+	Change the humidity	Changer l'humidité
+	Change the level	Changer le niveau
+	Brightness: {} %	Luminosité : {} %
+	Angle: {} degrees	Angle : {} degrés
+	Colour: #{}	Couleur : #{}
+	% bent	% de courbure
+	% along the strip	% le long de la bande
+	1 = metal near	1 = métal proche
+	1 = crossed	1 = franchi
+	1 = water	1 = eau présente
+	kph	km/h
+	holding an angle	tient un angle
+	idle	au repos
+	{} has no channel {}	{} n'a pas de canal {}
 	Save as PDF...	Enregistrer en PDF...
 	The workspace and a report of the devices on A4 pages, saved as a PDF file	L'espace de travail et un rapport des équipements sur des pages A4, enregistrés dans un fichier PDF
 	The same PDF: save it, open it in a PDF viewer or print it	Le même PDF : enregistrez-le, ouvrez-le dans un lecteur PDF ou imprimez-le

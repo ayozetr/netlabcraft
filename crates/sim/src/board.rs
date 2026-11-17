@@ -9,7 +9,7 @@ use std::net::Ipv4Addr;
 
 use netlabcraft_core::DeviceId;
 use netlabcraft_model::board::{analog, is_board, pins};
-use netlabcraft_model::iot::{is_sensor, thing};
+use netlabcraft_model::iot::{MAX_RGB, is_sensor, thing};
 use netlabcraft_model::{Device, Topology};
 
 use crate::script::{self, Io, Machine};
@@ -54,19 +54,35 @@ impl Io for Pins<'_> {
         if self.t.is_dark(d.id) {
             return Ok(0);
         }
-        let level =
-            if is_sensor(d) { i64::from(self.sim.iot_reading(self.t, d)) } else { i64::from(self.sim.iot.things.get(&d.id).is_some_and(|s| s.on)) };
+        let level = if is_sensor(d) { i64::from(self.sim.iot_reading(self.t, d)) } else { i64::from(self.sim.iot_level(d)) };
         Ok(if analog(pin) { level } else { i64::from(level > 0) })
     }
 
+    fn read_channel(&mut self, pin: &str, channel: i64) -> Result<i64, String> {
+        if channel == 0 {
+            return self.read(pin);
+        }
+        let Some(d) = self.wired(pin) else { return Err(format!("{pin} has no channel {channel}")) };
+        if self.t.is_dark(d.id) {
+            return Ok(0);
+        }
+        if channel == 1 && is_sensor(d) && thing(d).is_some_and(|x| x.what == "humiture") {
+            let level = i64::from(self.sim.iot_second(self.t, d));
+            return Ok(if analog(pin) { level } else { i64::from(level > 0) });
+        }
+        Err(format!("{} has no channel {channel}", d.name))
+    }
+
     fn write(&mut self, pin: &str, level: i64) -> Result<(), String> {
-        let level = level.clamp(-1_000_000, 1_000_000);
+        let level = level.clamp(-i64::from(MAX_RGB), i64::from(MAX_RGB));
         if let Some(d) = self.wired(pin) {
             if is_sensor(d) {
                 return Err(format!("{pin} is wired to {}, a sensor: read it instead", d.name));
             }
-            let id = d.id;
-            self.sim.iot.things.entry(id).or_default().on = level != 0;
+            let t = self.t;
+            if let Some(dev) = t.device(d.id) {
+                self.sim.iot_set_level(dev, level);
+            }
         }
         self.levels.insert(pin.to_string(), level);
         Ok(())

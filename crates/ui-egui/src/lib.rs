@@ -42,6 +42,7 @@ pub mod icons_families;
 pub mod icons_gear;
 mod icons_network;
 mod icons_parts;
+mod icons_parts2;
 mod icons_ports;
 mod icons_things;
 pub mod instructor;

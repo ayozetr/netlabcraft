@@ -697,7 +697,7 @@
 	No events yet. Add a simple PDU (envelope tool) or ping from a console.	Ainda sem eventos. Adicione um PDU simples (ferramenta de envelope) ou dê ping em um console.
 	No files yet: `copy running-config tftp: <this address>` on a router saves one here.	Ainda sem arquivos: `copy running-config tftp: <este endereço>` em um roteador salva um aqui.
 	No fill	Sem preenchimento
-	no function `{}` (there are read, get, time and number)	não há função `{}` (existem read, get, time e number)
+	no function `{}` (there are read, channel, rgb, get, time and number)	não há função `{}` (existem read, channel, rgb, get, time e number)
 	no IoT server set	nenhum servidor IoT definido
 	no IoT server set on the board (Programming tab)	nenhum servidor IoT definido na placa (aba Programação)
 	no IPv6 route to {}	sem rota IPv6 para {}
@@ -2075,6 +2075,76 @@ furniture	Table	Mesa
 	red	vermelho
 	showing	mostrando
 	blank	em branco
+	Air Cooler	Resfriador de ar
+	Air cooler wired to a board's pin with an IoT custom cable: cools its environment while the pin is high	Resfriador de ar ligado a um pino de placa com um cabo personalizado IoT: resfria o ambiente enquanto o pino está em alto
+	Alarm	Alarme
+	Alarm wired to a board's pin with an IoT custom cable: sounds its siren and lights up while the pin is high	Alarme ligado a um pino de placa com um cabo personalizado IoT: toca a sirene e acende enquanto o pino está em alto
+	Ceiling Sprinkler	Sprinkler de teto
+	Ceiling sprinkler wired to a board's pin with an IoT custom cable: sprays water from above while the pin is high and puts out flames	Sprinkler de teto ligado a um pino de placa com um cabo personalizado IoT: borrifa água de cima enquanto o pino está em alto e apaga as chamas
+	Floor Sprinkler	Sprinkler de piso
+	Floor sprinkler wired to a board's pin with an IoT custom cable: sprays water from the floor while the pin is high and puts out flames	Sprinkler de piso ligado a um pino de placa com um cabo personalizado IoT: borrifa água do piso enquanto o pino está em alto e apaga as chamas
+	Dimmable LED	LED dimerizável
+	Dimmable LED wired to a board's pin with an IoT custom cable: its brightness follows the level written to the pin (0-100)	LED dimerizável ligado a um pino de placa com um cabo personalizado IoT: o brilho segue o nível escrito no pino (0-100)
+	Heating Element	Elemento de aquecimento
+	Heating element wired to a board's pin with an IoT custom cable: warms its environment while the pin is high	Elemento de aquecimento ligado a um pino de placa com um cabo personalizado IoT: aquece o ambiente enquanto o pino está em alto
+	RGB LED	LED RGB
+	RGB LED wired to a board's pin with an IoT custom cable: shows the red, green and blue levels written to the pin as one number (0xRRGGBB)	LED RGB ligado a um pino de placa com um cabo personalizado IoT: mostra os níveis de vermelho, verde e azul escritos no pino como um único número (0xRRGGBB)
+	Servo	Servo
+	Servo wired to a board's pin with an IoT custom cable: turns to the angle written to the pin (0-180 degrees)	Servo ligado a um pino de placa com um cabo personalizado IoT: gira até o ângulo escrito no pino (0-180 graus)
+	Speaker	Alto-falante
+	Speaker wired to a board's pin with an IoT custom cable: plays a tone and raises the sound around it while the pin is high	Alto-falante ligado a um pino de placa com um cabo personalizado IoT: toca um tom e aumenta o som ao redor enquanto o pino está em alto
+	Flex Sensor	Sensor de flexão
+	Flex sensor wired to a board's pin with an IoT custom cable: reads how far it is bent (0-100 %)	Sensor de flexão ligado a um pino de placa com um cabo personalizado IoT: lê o quanto está dobrado (0-100 %)
+	Generic Environment Sensor	Sensor de ambiente genérico
+	Generic environment sensor wired to a board's pin with an IoT custom cable: reads the environment variable you pick, rounded to a whole number	Sensor de ambiente genérico ligado a um pino de placa com um cabo personalizado IoT: lê a variável de ambiente escolhida, arredondada para um número inteiro
+	Generic Sensor	Sensor genérico
+	Generic sensor wired to a board's pin with an IoT custom cable: reads a raw analog value you set (-1000 to 1000)	Sensor genérico ligado a um pino de placa com um cabo personalizado IoT: lê um valor analógico bruto definido manualmente (-1000 a 1000)
+	Humidity sensor wired to a board's pin with an IoT custom cable: reads the relative humidity of its environment (0-100 %)	Sensor de umidade ligado a um pino de placa com um cabo personalizado IoT: lê a umidade relativa do seu ambiente (0-100 %)
+	Humiture Sensor	Sensor de temperatura e umidade
+	Humiture sensor wired to a board's pin with an IoT custom cable: reads the temperature, and the humidity with channel(PIN, 1)	Sensor de temperatura e umidade ligado a um pino de placa com um cabo personalizado IoT: lê a temperatura, e a umidade com channel(PIN, 1)
+	Membrane Potentiometer	Potenciômetro de membrana
+	Membrane potentiometer wired to a board's pin with an IoT custom cable: reads where a finger presses along its strip (0-100 %)	Potenciômetro de membrana ligado a um pino de placa com um cabo personalizado IoT: lê onde um dedo pressiona ao longo da sua tira (0-100 %)
+	Metal Sensor	Sensor de metais
+	Metal sensor wired to a board's pin with an IoT custom cable: reads 1 while a metal object is near, else 0	Sensor de metais ligado a um pino de placa com um cabo personalizado IoT: lê 1 enquanto um objeto metálico está perto, senão 0
+	Motion Sensor	Sensor de movimento
+	Motion sensor wired to a board's pin with an IoT custom cable: reads 1 while something moves in its environment, else 0	Sensor de movimento ligado a um pino de placa com um cabo personalizado IoT: lê 1 enquanto algo se move no seu ambiente, senão 0
+	Push Button Toggle Switch	Interruptor de botão com trava
+	Push button toggle switch wired to a board's pin with an IoT custom cable: latches on at one push and off at the next, reads 1 while on	Interruptor de botão com trava ligado a um pino de placa com um cabo personalizado IoT: trava em um toque e destrava no seguinte, lê 1 enquanto ligado
+	Rocker Switch	Interruptor basculante
+	Rocker switch wired to a board's pin with an IoT custom cable: reads 1 in its on position and 0 in its off position	Interruptor basculante ligado a um pino de placa com um cabo personalizado IoT: lê 1 na posição ligada e 0 na posição desligada
+	Toggle Push Button	Botão de alternância
+	Toggle push button wired to a board's pin with an IoT custom cable: each press flips its state, reads 1 while on	Botão de alternância ligado a um pino de placa com um cabo personalizado IoT: cada toque inverte o estado, lê 1 enquanto ligado
+	Smoke Sensor	Sensor de fumaça
+	Smoke sensor wired to a board's pin with an IoT custom cable: reads the smoke level of its environment (0-100 %)	Sensor de fumaça ligado a um pino de placa com um cabo personalizado IoT: lê o nível de fumaça do seu ambiente (0-100 %)
+	Temperature Sensor	Sensor de temperatura
+	Temperature sensor wired to a board's pin with an IoT custom cable: reads the temperature of its environment, in degrees	Sensor de temperatura ligado a um pino de placa com um cabo personalizado IoT: lê a temperatura do seu ambiente, em graus
+	Trip Wire	Fio de tropeço
+	Trip wire wired to a board's pin with an IoT custom cable: reads 1 while something crosses the line, else 0	Fio de tropeço ligado a um pino de placa com um cabo personalizado IoT: lê 1 enquanto algo cruza a linha, senão 0
+	Water Detector	Detector de água
+	Water detector wired to a board's pin with an IoT custom cable: reads 1 while water is present, else 0	Detector de água ligado a um pino de placa com um cabo personalizado IoT: lê 1 enquanto há água, senão 0
+	Water Sensor	Sensor de água
+	Water sensor wired to a board's pin with an IoT custom cable: reads the water level, in centimetres	Sensor de água ligado a um pino de placa com um cabo personalizado IoT: lê o nível da água, em centímetros
+	Wind Sensor	Sensor de vento
+	Wind sensor wired to a board's pin with an IoT custom cable: reads the wind speed, in kilometres per hour	Sensor de vento ligado a um pino de placa com um cabo personalizado IoT: lê a velocidade do vento, em quilômetros por hora
+	Humidity Monitor	Monitor de umidade
+	Press	Pressionar
+	Flip the switch	Alternar o interruptor
+	Reads:	Lê:
+	Humidity: {} %	Umidade: {} %
+	Change the humidity	Alterar a umidade
+	Change the level	Alterar o nível
+	Brightness: {} %	Brilho: {} %
+	Angle: {} degrees	Ângulo: {} graus
+	Colour: #{}	Cor: #{}
+	% bent	% de flexão
+	% along the strip	% ao longo da tira
+	1 = metal near	1 = metal perto
+	1 = crossed	1 = cruzado
+	1 = water	1 = há água
+	kph	km/h
+	holding an angle	mantendo um ângulo
+	idle	em repouso
+	{} has no channel {}	{} não tem o canal {}
 	Save as PDF...	Salvar como PDF...
 	The workspace and a report of the devices on A4 pages, saved as a PDF file	A área de trabalho e um relatório dos dispositivos em páginas A4, salvos como arquivo PDF
 	The same PDF: save it, open it in a PDF viewer or print it	O mesmo PDF: salve, abra em um visualizador de PDF ou imprima
