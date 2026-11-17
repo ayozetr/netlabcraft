@@ -1382,24 +1382,6 @@ impl PacketApp {
                     physical::add_place(self, None);
                 }
             }
-            if physical {
-                let on = self.ui.prefs.show_wireless_signals;
-                let (r, resp) = ui.allocate_exact_size(vec2(32.0, 28.0), Sense::click());
-                let label = tl("View Wireless Signals (Ctrl+Alt+Shift+W): faint coverage areas of the access points and a line from each Wi-Fi host to its access point");
-                let resp = resp.on_hover_text(label);
-                resp.widget_info(|| egui::WidgetInfo::selected(egui::accesskit::Role::Button, true, on, label));
-                let p = ui.painter_at(r);
-                if on {
-                    p.rect_filled(r.shrink(1.5), 7.0, tk.pill);
-                } else if resp.hovered() {
-                    p.rect_filled(r.shrink(1.5), 7.0, tk.pill.gamma_multiply(0.5));
-                }
-                p.rect_stroke(r, 8.0, egui::Stroke::new(1.5, tk.bar_text), egui::StrokeKind::Inside);
-                icons::glyph(&p, egui::Rect::from_center_size(r.center(), vec2(20.0, 20.0)), Glyph::Wireless, tk.pill_text);
-                if resp.clicked() {
-                    self.ui.prefs.show_wireless_signals = !on;
-                }
-            }
             let coords = self.ui.pointer.map_or(String::new(), |(x, y)| format!("x: {}, y: {}", x.round() as i64, y.round() as i64));
             ui.label(RichText::new(coords).color(tk.bar_text).size(15.0));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -1442,6 +1424,24 @@ impl PacketApp {
                         } else {
                             self.leave_cluster(false);
                         }
+                    }
+                }
+                if physical {
+                    let on = self.ui.prefs.show_wireless_signals;
+                    let (r, resp) = ui.allocate_exact_size(vec2(32.0, 28.0), Sense::click());
+                    let label = tl("View Wireless Signals (Ctrl+Alt+Shift+W): faint coverage areas of the access points and a line from each Wi-Fi host to its access point");
+                    let resp = resp.on_hover_text(label);
+                    resp.widget_info(|| egui::WidgetInfo::selected(egui::accesskit::Role::Button, true, on, label));
+                    let p = ui.painter_at(r);
+                    if on {
+                        p.rect_filled(r.shrink(1.5), 7.0, tk.pill);
+                    } else if resp.hovered() {
+                        p.rect_filled(r.shrink(1.5), 7.0, tk.pill.gamma_multiply(0.5));
+                    }
+                    p.rect_stroke(r, 8.0, egui::Stroke::new(1.5, tk.bar_text), egui::StrokeKind::Inside);
+                    icons::glyph(&p, egui::Rect::from_center_size(r.center(), vec2(20.0, 20.0)), Glyph::Wireless, tk.pill_text);
+                    if resp.clicked() {
+                        self.ui.prefs.show_wireless_signals = !on;
                     }
                 }
                 if physical {
