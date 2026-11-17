@@ -82,7 +82,7 @@
 
 ## What it simulates
 
-- **Devices:** 62 models with our own names ([which one to place for a vendor model](docs/model-equivalents.md)):
+- **Devices:** 65 models with our own names ([which one to place for a vendor model](docs/model-equivalents.md)):
   fixed and modular routers, a stateful firewall, access and multilayer switches (some with fiber
   or power over Ethernet), home routers and gateways, access points and a wireless controller, a
   provider cloud, hubs, PCs, laptops, tablets and phones (Wi-Fi or mobile data through cell
