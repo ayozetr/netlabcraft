@@ -255,8 +255,8 @@ fn an_rfid_reader_reads_the_nearest_card_in_range_and_a_beacon_announces_its_id(
     assert!(a > 0 && b > 0 && a != b, "{a} {b}");
     // CardA is 30 units (17 m) away: read. CardB is 250 units (139 m): not.
     assert_eq!(page_of(&mut s, "Reader1")["value"].as_i64(), Some(a));
-    s.execute("iot.configure", json!({"device": "CardA", "value": 4242})).unwrap();
-    assert_eq!(page_of(&mut s, "Reader1")["value"], 4242);
+    s.execute("iot.configure", json!({"device": "CardA", "value": 424})).unwrap();
+    assert_eq!(page_of(&mut s, "Reader1")["value"], 424);
     // Moved out of the 30 m (54 units) range, it is not read; CardB brought in, it is.
     s.execute("device.move", json!({"device": "CardA", "x": 600, "y": 250})).unwrap();
     assert_eq!(page_of(&mut s, "Reader1")["value"], 0);
