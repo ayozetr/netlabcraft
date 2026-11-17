@@ -757,6 +757,8 @@ fn the_time_bar_never_overlaps() {
 fn spanish_shows_no_text_that_has_a_translation_in_english() {
     let _es = InSpanish::new();
     let mut seen = std::collections::BTreeSet::new();
+    // What people named their devices is not interface text (a sample has a device called "Home").
+    let mut names = std::collections::BTreeSet::new();
     for sample in ["services", "vlans", "wlc", "iot", "ip-phones", "wifi", "dhcp", "serial-wan", "firewall", "modular", "automation"] {
         let mut h = harness(Some(sample));
         h.state_mut().ui.show_notes = true;
@@ -764,6 +766,7 @@ fn spanish_shows_no_text_that_has_a_translation_in_english() {
         shown_texts(&h, &mut seen);
         h.state_mut().ui.show_notes = false;
         let ids: Vec<_> = h.state().session.topology.devices.iter().map(|d| d.id).collect();
+        names.extend(h.state().session.topology.devices.iter().map(|d| d.name.clone()));
         for d in ids {
             open_console(h.state_mut(), d);
             for tab in [
@@ -908,7 +911,10 @@ fn spanish_shows_no_text_that_has_a_translation_in_english() {
     let es = i18n::spanish();
     // A Spanish word can be an English key too ("Red" is the Spanish for "Network").
     let spanish_words: std::collections::BTreeSet<&str> = es.values().copied().collect();
-    let english: Vec<&String> = seen.iter().filter(|t| !spanish_words.contains(t.as_str()) && es.get(t.as_str()).is_some_and(|s| s != t)).collect();
+    let english: Vec<&String> = seen
+        .iter()
+        .filter(|t| !spanish_words.contains(t.as_str()) && !names.contains(t.as_str()) && es.get(t.as_str()).is_some_and(|s| s != t))
+        .collect();
     assert!(english.is_empty(), "shown in English despite a Spanish row: {english:#?}");
     // And text of this crate shown as it is written: it needs a row, unless it reads the same in
     // both languages (names of protocols, products and commands).
@@ -2179,6 +2185,29 @@ fn shortcuts_from_the_table_open_categories_pick_tools_and_zoom() {
     assert_eq!((h.state().ui.bottom.category, h.state().ui.bottom.sub), (Category::EndDevices, Sub::Hosts));
     key(&mut h, egui::Key::S, ctrl_alt);
     assert_eq!((h.state().ui.bottom.category, h.state().ui.bottom.sub), (Category::NetworkDevices, Sub::Switches));
+    // Every group of the device box has its own chord.
+    for (k, cat, sub) in [
+        (egui::Key::R, Category::NetworkDevices, Sub::Routers),
+        (egui::Key::U, Category::NetworkDevices, Sub::Hubs),
+        (egui::Key::W, Category::NetworkDevices, Sub::Wireless),
+        (egui::Key::C, Category::NetworkDevices, Sub::Security),
+        (egui::Key::N, Category::NetworkDevices, Sub::Wan),
+        (egui::Key::H, Category::EndDevices, Sub::Home),
+        (egui::Key::T, Category::EndDevices, Sub::SmartCity),
+        (egui::Key::I, Category::EndDevices, Sub::Industrial),
+        (egui::Key::D, Category::EndDevices, Sub::PowerGrid),
+        (egui::Key::B, Category::Components, Sub::Boards),
+        (egui::Key::A, Category::Components, Sub::Actuators),
+        (egui::Key::X, Category::Components, Sub::Sensors),
+        (egui::Key::K, Category::Connections, Sub::Cabling),
+        (egui::Key::E, Category::Miscellaneous, Sub::Recent),
+    ] {
+        // Ctrl+Alt+W is View Wireless Signals, so Wireless Devices is Ctrl+Alt+Shift+W.
+        let mods = if k == egui::Key::W { ctrl_alt | egui::Modifiers::SHIFT } else { ctrl_alt };
+        key(&mut h, k, mods);
+        assert_eq!((h.state().ui.bottom.category, h.state().ui.bottom.sub), (cat, sub), "{k:?}");
+    }
+    key(&mut h, egui::Key::S, ctrl_alt);
     // Ctrl+Alt+O is not Ctrl+O: no Open request went out.
     assert!(h.state_mut().take_requests().iter().all(|r| !matches!(r, crate::UiRequest::Open)));
     // Bare letters pick tools; the Shift chord of the same letter does not.
@@ -2223,4 +2252,82 @@ fn arrow_chords_move_and_select_devices_and_enter_opens_one() {
     assert!(x2 > x, "{x} -> {x2}");
     key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
     assert!(h.state().ui.windows.contains_key(&id));
+}
+
+#[test]
+fn the_device_box_has_the_reference_categories_and_their_subgroups() {
+    use crate::bottom::{Category, Sub};
+    let mut h = harness(None);
+    h.run_steps(2);
+    for label in ["Network Devices", "End Devices", "Components", "Connections", "Miscellaneous Devices"] {
+        assert!(h.query_by_label(label).is_some(), "{label}");
+    }
+    // Legacy has nothing of ours to hold and Multiuser is out of scope: neither is offered.
+    assert!(h.query_by_label("Legacy").is_none() && h.query_by_label("Multiuser").is_none());
+    for cat in Category::ALL {
+        assert!(!cat.subs().is_empty());
+    }
+    for label in ["Routers", "Switches", "Hubs", "Wireless Devices", "Security", "WAN Emulation"] {
+        assert!(h.query_by_label(label).is_some(), "{label}");
+    }
+    h.get_by_label("Components").click();
+    h.run_steps(2);
+    assert_eq!(h.state().ui.bottom.category, Category::Components);
+    for label in ["Boards", "Actuators", "Sensors"] {
+        assert!(h.query_by_label(label).is_some(), "{label}");
+    }
+    assert!(h.query_by_label("Board MCU").is_some(), "Boards is the first subgroup");
+    h.get_by_label("Network Devices").click();
+    h.run_steps(2);
+    h.get_by_label("Wireless Devices").click();
+    h.run_steps(2);
+    assert_eq!(h.state().ui.bottom.sub, Sub::Wireless);
+    for tile in ["Access Point", "Light AP", "WLC", "Home Router", "Home Gateway", "Cell Tower", "Central Office Server"] {
+        assert!(h.query_by_label(tile).is_some(), "{tile}");
+    }
+    assert!(h.query_by_label("Switch 24FE").is_none(), "wireless gear is not under Switches");
+    h.get_by_label("Security").click();
+    h.run_steps(2);
+    assert!(h.query_by_label("Firewall 5GE").is_some());
+    h.get_by_label("Switches").click();
+    h.run_steps(2);
+    assert!(h.query_by_label("Switch 24FE").is_some() && h.query_by_label("Access Point").is_none());
+}
+
+#[test]
+fn end_devices_are_split_into_hosts_and_the_home_group_and_the_box_remembers_what_was_placed() {
+    use crate::bottom::{Category, Sub};
+    let mut h = harness(None);
+    h.run_steps(2);
+    h.get_by_label("End Devices").click();
+    h.run_steps(2);
+    assert_eq!((h.state().ui.bottom.category, h.state().ui.bottom.sub), (Category::EndDevices, Sub::Hosts));
+    for label in ["Home", "Smart City", "Industrial", "Power Grid"] {
+        assert!(h.query_by_label(label).is_some(), "{label}");
+    }
+    assert!(h.query_by_label("Laptop").is_some() && h.query_by_label("Smart Light").is_none());
+    h.get_by_label("Home").click();
+    h.run_steps(2);
+    assert!(h.query_by_label("Smart Light").is_some() && h.query_by_label("Laptop").is_none());
+    // Nothing placed yet: the Miscellaneous list is empty.
+    h.get_by_label("Miscellaneous Devices").click();
+    h.run_steps(2);
+    assert_eq!(h.state().ui.bottom.sub, Sub::Recent);
+    assert!(h.query_by_label("Smart Light").is_none());
+    // Picking models to place puts them first in the list, once each.
+    h.get_by_label("Network Devices").click();
+    h.run_steps(2);
+    h.get_by_label("Router 3GE").click();
+    h.run_steps(2);
+    h.get_by_label("Router 4GE").click();
+    h.run_steps(2);
+    h.get_by_label("Router 3GE").click();
+    h.run_steps(2);
+    h.get_by_label("Router 3GE").click();
+    h.run_steps(2);
+    assert_eq!(h.state().ui.bottom.recent, ["Router-3", "Router-4"]);
+    h.get_by_label("Miscellaneous Devices").click();
+    h.run_steps(2);
+    assert!(h.query_by_label("Router 3GE").is_some() && h.query_by_label("Router 4GE").is_some());
+    assert!(h.query_by_label("Router 2GE").is_none());
 }
