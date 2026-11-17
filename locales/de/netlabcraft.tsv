@@ -192,7 +192,6 @@
 	Authentication	Authentifizierung
 	Auto (by route)	Auto (nach Route)
 	Automatic	Automatisch
-	Automatic: picks the right cable for the two ports you choose	Automatisch: wählt das passende Kabel für die beiden gewählten Ports
 	Automation: RESTCONF from a PC	Automatisierung: RESTCONF von einem PC
 	Back	Zurück
 	Back to the call screen	Zurück zum Anrufbildschirm
@@ -431,7 +430,6 @@
 	fan	Lüfter
 	Fast Forward Time (30 s)	Zeit vorspulen (30 s)
 	Fiber	Glasfaser
-	Fiber: joins fiber ports (SFP uplinks and fiber cards); carries a signal up to 2 km here	Glasfaser: verbindet Glasfaser-Ports (SFP-Uplinks und Glasfaserkarten); überträgt hier ein Signal bis 2 km
 	File	Datei
 	File Manager	Dateimanager
 	File Name	Dateiname
@@ -832,7 +830,6 @@
 	Periodically	Periodisch
 	Permissions	Berechtigungen
 	Phone	Telefon
-	Phone (RJ-11)	Telefon (RJ-11)
 	phone commands run on IP phones	Telefonbefehle laufen auf IP-Telefonen
 	Phone line (RJ-11): joins phone ports (a DSL modem to the phone company's cloud); carries a signal up to 5 km here	Telefonleitung (RJ-11): verbindet Telefon-Ports (ein DSL-Modem mit der Cloud der Telefongesellschaft); überträgt hier ein Signal bis 5 km
 	Phone settings	Telefoneinstellungen
@@ -1720,3 +1717,20 @@ event	write request for	Schreibanfrage für
 	Tab and the arrow keys move between devices and cables; Enter or Space opens the one in focus.	Tab und die Pfeiltasten wechseln zwischen Geräten und Kabeln; Eingabe oder Leertaste öffnet das fokussierte.
 	The Workspace List in the View menu names every device in a table you can move through.	Die Arbeitsbereichsliste im Menü Ansicht nennt jedes Gerät in einer Tabelle, in der man sich bewegen kann.
 	Everything the menus do can also be typed, from the command line or by an agent.	Alles, was die Menüs tun, lässt sich auch eintippen, über die Befehlszeile oder durch einen Agenten.
+	Automatically Choose Connection Type	Verbindungstyp automatisch wählen
+	Single Mode Fiber	Singlemode-Glasfaser
+	Multi Mode Fiber	Multimode-Glasfaser
+	Octal	Oktal
+	IoT Custom Cable	IoT-Kabel individuell
+	USB	USB
+	Automatically choose the connection type: picks the right cable for the two ports you choose	Verbindungstyp automatisch wählen: wählt das passende Kabel für die beiden gewählten Ports
+	Single mode fiber: joins fiber ports whose transceivers are single mode; carries a gigabit signal up to 10 km here	Singlemode-Glasfaser: verbindet Glasfaser-Ports mit Singlemode-Transceivern; trägt hier ein Gigabit-Signal bis 10 km
+	Multi mode fiber: joins fiber ports (SFP uplinks and fiber cards); carries a gigabit signal up to 550 m here	Multimode-Glasfaser: verbindet Glasfaser-Ports (SFP-Uplinks und Glasfaserkarten); trägt hier ein Gigabit-Signal bis 550 m
+	Octal: joins one line of a router's octal card (Card-8A) to the Console port of another router or switch, for reverse-style console access	Oktal: verbindet eine Leitung der Oktalkarte eines Routers (Card-8A) mit dem Console-Port eines anderen Routers oder Switches, für den umgekehrten Konsolenzugang
+	USB: a PC's or laptop's USB port to a router's or switch's USB console port, for the PC's Terminal	USB: vom USB-Port eines PCs oder Laptops zum USB-Konsolenport eines Routers oder Switches, für das Terminal des PCs
+	8-line async card	Asynchrone 8-Leitungs-Karte
+	Eight asynchronous lines for an octal cable: each line reaches the Console port of another router or switch (they are lines, not interfaces)	Acht asynchrone Leitungen für ein Oktalkabel: jede Leitung führt zum Console-Port eines anderen Routers oder Switches (es sind Leitungen, keine Schnittstellen)
+	USB cable: click a PC or laptop (USB) and a router or switch (USB console).	USB-Kabel: Klicken Sie auf einen PC oder Laptop (USB) und einen Router oder Switch (USB-Konsole).
+	Octal cable: click a router with an octal card, then a router or switch (Console).	Oktalkabel: Klicken Sie auf einen Router mit Oktalkarte, dann auf einen Router oder Switch (Console).
+	{} has no octal card or Console port.	{} hat weder eine Oktalkarte noch einen Console-Port.
+	{} has no USB port.	{} hat keinen USB-Port.

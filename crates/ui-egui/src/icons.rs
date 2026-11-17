@@ -781,8 +781,9 @@ pub fn glyph(p: &Painter, rect: Rect, g: Glyph, c: Color32) {
 
 /// The picture of a cable kind on its Connections tile: a cable running corner to corner with
 /// a plug at each end, drawn the way the workspace draws that kind (straight-through solid,
-/// cross-over dashed, fiber orange, console light blue and dashed, serial red with a zigzag and
-/// a clock at the DCE end); the automatic cable carries a small spark.
+/// cross-over dashed, fiber orange (single mode a thin core, multi mode a thick one), console
+/// light blue and dashed, serial red with a zigzag and a clock at the DCE end, octal a fan of
+/// strands, USB a trident); the automatic cable carries a lightning bolt.
 pub fn cable(p: &Painter, rect: Rect, kind: netlabcraft_model::cable::Cable, tk: &Tokens) {
     use netlabcraft_model::cable::Cable;
     let r = rect.shrink(rect.width() * 0.12);
@@ -791,8 +792,8 @@ pub fn cable(p: &Painter, rect: Rect, kind: netlabcraft_model::cable::Cable, tk:
     let b = pos2(r.right() - w * 0.08, r.top() + h * 0.08);
     let width = (rect.width() / 12.0).clamp(1.6, 2.8);
     let color = match kind {
-        Cable::Fiber => tk.fiber_cable,
-        Cable::Console => tk.console_cable,
+        Cable::FiberSingle | Cable::FiberMulti => tk.fiber_cable,
+        Cable::Console | Cable::Octal => tk.console_cable,
         Cable::SerialDce | Cable::SerialDte => tk.serial_cable,
         _ => tk.cable,
     };
@@ -821,11 +822,18 @@ pub fn cable(p: &Painter, rect: Rect, kind: netlabcraft_model::cable::Cable, tk:
             p.line_segment([c, c - vec2(0.0, rad * 0.7)], Stroke::new(1.1, color));
             p.line_segment([c, c + vec2(rad * 0.55, 0.0)], Stroke::new(1.1, color));
         }
-        Cable::Fiber => {
-            // A glow around the core.
+        Cable::FiberSingle => {
+            // One thin bright core in a faint glow.
             p.line_segment([a, b], Stroke::new(width * 2.2, color.gamma_multiply(0.3)));
-            p.line_segment([a, b], s);
+            p.line_segment([a, b], Stroke::new((width * 0.6).max(1.0), color));
         }
+        Cable::FiberMulti => {
+            // A wider glow around a thick core.
+            p.line_segment([a, b], Stroke::new(width * 3.2, color.gamma_multiply(0.3)));
+            p.line_segment([a, b], Stroke::new(width * 1.5, color));
+        }
+        Cable::Octal => crate::icons_families::octal_line(p, a, b, width, tk),
+        Cable::Usb => crate::icons_families::usb_line(p, a, b, width, tk),
         Cable::Straight | Cable::Auto => {
             p.line_segment([a, b], s);
         }
@@ -839,20 +847,18 @@ pub fn cable(p: &Painter, rect: Rect, kind: netlabcraft_model::cable::Cable, tk:
         p.rect_filled(Rect::from_center_size(end, vec2(plug, plug)), 1.5, color);
     }
     if kind == Cable::Auto {
-        // A four-pointed spark above the middle: the right kind is picked for you.
-        let c = pos2(r.left() + w * 0.3, r.top() + h * 0.3);
-        let k = w * 0.16;
+        // A lightning bolt over the cable: the right kind is picked for you.
+        let c = pos2(r.left() + w * 0.34, r.top() + h * 0.34);
+        let k = w * 0.26;
         let pts = vec![
-            c + vec2(0.0, -k),
-            c + vec2(k * 0.25, -k * 0.25),
-            c + vec2(k, 0.0),
-            c + vec2(k * 0.25, k * 0.25),
-            c + vec2(0.0, k),
-            c + vec2(-k * 0.25, k * 0.25),
-            c + vec2(-k, 0.0),
-            c + vec2(-k * 0.25, -k * 0.25),
+            c + vec2(k * 0.25, -k),
+            c + vec2(-k * 0.55, k * 0.1),
+            c + vec2(-k * 0.05, k * 0.1),
+            c + vec2(-k * 0.3, k),
+            c + vec2(k * 0.6, -k * 0.15),
+            c + vec2(k * 0.1, -k * 0.15),
         ];
-        p.add(Shape::closed_line(pts, Stroke::new(1.4, tk.fiber_cable)));
-        p.circle_filled(c, k * 0.3, tk.fiber_cable);
+        p.add(Shape::convex_polygon(pts.clone(), tk.fiber_cable, Stroke::NONE));
+        p.add(Shape::closed_line(pts, Stroke::new(1.0, tk.chrome)));
     }
 }

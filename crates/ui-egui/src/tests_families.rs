@@ -182,7 +182,7 @@ mod t {
         }
         h.get_by_label("Connections").click();
         h.run_steps(2);
-        for c in ["Coaxial", "Phone (RJ-11)"] {
+        for c in ["Coaxial", "Phone"] {
             h.get_by_label(c).scroll_to_me();
             h.run_steps(2);
             assert!(h.query_by_label(c).is_some(), "{c}");

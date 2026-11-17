@@ -1,7 +1,7 @@
 //! Command implementations.
 
 use netlabcraft_core::{DeviceId, parse_ip};
-use netlabcraft_model::cable::{CONSOLE_PORT, Cable, RS232_PORT, is_console_port_name};
+use netlabcraft_model::cable::{CONSOLE_PORT, Cable, RS232_PORT, USB_CONSOLE_PORT, USB_PORT, is_console_port_name, is_usb_port_name};
 use netlabcraft_model::{DeviceKind, End, Shape, file, models};
 use netlabcraft_sim::{PingOptions, Probe};
 use serde_json::{Value, json};
@@ -36,7 +36,7 @@ pub(crate) fn device_param(s: &Session, p: &Value, key: &str) -> Result<DeviceId
     }
 }
 
-fn port_param(s: &Session, dev: DeviceId, name: &str) -> Result<usize> {
+pub(crate) fn port_param(s: &Session, dev: DeviceId, name: &str) -> Result<usize> {
     let d = s.topology.device(dev).ok_or_else(|| EngineError::Failed("no such device".into()))?;
     d.port_index(name).ok_or_else(|| EngineError::Failed(format!("{} has no port {name}", d.name)))
 }
@@ -956,7 +956,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         }
         "view.physical" | "view.logical" | "view.enter_place" | "view.place_up" | "view.intercity" | "place.add" | "place.rename" | "place.move"
         | "place.remove" | "place.list" | "device.place" | "link.length" => physical(s, cmd, p),
-        "device.power" | "device.module.add" | "device.module.remove" | "device.module.list" => crate::hardware::run(s, cmd, p),
+        "device.power" | "device.module.add" | "device.module.remove" | "device.module.list" | "port.transceiver" => crate::hardware::run(s, cmd, p),
         "device.adapter" | "device.power.source" | "phone.configure" | "cloud.map" | "device.psu" => crate::families::run(s, cmd, p),
         "phone.status" | "phone.dial" | "phone.answer" | "phone.hangup" | "softphone.config" | "softphone.status" | "softphone.dial" | "softphone.answer"
         | "softphone.hangup" => crate::voice::run(s, cmd, p),
@@ -1059,28 +1059,34 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             if cable == Cable::IotCustom {
                 return crate::board::link_add(s, a, b, p);
             }
-            let console_named = [opt_str(p, "a_port"), opt_str(p, "b_port")].into_iter().flatten().any(is_console_port_name);
-            if cable == Cable::Console || console_named {
+            if cable == Cable::Octal {
+                return octal_add(s, a, b, p);
+            }
+            let named = [opt_str(p, "a_port"), opt_str(p, "b_port")];
+            let console_named = named.into_iter().flatten().any(is_console_port_name);
+            if cable.is_console_like() || console_named {
                 if a == b {
                     return Err(EngineError::Failed("a cable needs two different devices".into()));
                 }
-                if !matches!(cable, Cable::Console | Cable::Auto) {
+                if !matches!(cable, Cable::Console | Cable::Usb | Cable::Auto) {
                     return Err(EngineError::Failed(format!(
-                        "a {} cable doesn't fit a Console or RS-232 port: pick the console cable",
+                        "a {} cable doesn't fit a Console, RS-232 or USB port: pick the console or USB cable",
                         cable.label().to_lowercase()
                     )));
                 }
+                let usb = cable == Cable::Usb || (cable == Cable::Auto && named.into_iter().flatten().any(is_usb_port_name));
                 let mut t = s.topology.clone();
-                let c = t.connect_console(a, b)?;
+                let c = if usb { t.connect_usb(a, b)? } else { t.connect_console(a, b)? };
                 s.checkpoint();
                 s.topology = t;
                 s.changed();
                 let name = |id| s.topology.device(id).map_or(String::new(), |d| d.name.clone());
+                let (host, dev, id) = if usb { (USB_PORT, USB_CONSOLE_PORT, "usb") } else { (RS232_PORT, CONSOLE_PORT, "console") };
                 return Ok(json!({
-                    "a": format!("{} {RS232_PORT}", name(c.pc)),
-                    "b": format!("{} {CONSOLE_PORT}", name(c.device)),
-                    "cable": "console",
-                    "resolved": "console",
+                    "a": format!("{} {host}", name(c.pc)),
+                    "b": format!("{} {dev}", name(c.device)),
+                    "cable": id,
+                    "resolved": id,
                 }));
             }
             let pa = match opt_str(p, "a_port") {
@@ -1124,11 +1130,23 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             let name = |id| t.device(id).map_or(String::new(), |d| d.name.clone());
             out.extend(t.consoles.iter().map(|c| {
                 let off = t.device(c.pc).is_some_and(|d| d.powered_off) || t.device(c.device).is_some_and(|d| d.powered_off);
+                let (host, dev, id) = if c.usb { (USB_PORT, USB_CONSOLE_PORT, "usb") } else { (RS232_PORT, CONSOLE_PORT, "console") };
                 json!({
-                    "a": format!("{} {RS232_PORT}", name(c.pc)),
-                    "b": format!("{} {CONSOLE_PORT}", name(c.device)),
-                    "cable": "console",
-                    "resolved": "console",
+                    "a": format!("{} {host}", name(c.pc)),
+                    "b": format!("{} {dev}", name(c.device)),
+                    "cable": id,
+                    "resolved": id,
+                    "up": !off,
+                    "problem": Value::Null,
+                })
+            }));
+            out.extend(t.octals.iter().map(|o| {
+                let off = t.device(o.router).is_some_and(|d| d.powered_off) || t.device(o.device).is_some_and(|d| d.powered_off);
+                json!({
+                    "a": format!("{} Async line {}", name(o.router), o.line),
+                    "b": format!("{} {CONSOLE_PORT}", name(o.device)),
+                    "cable": "octal",
+                    "resolved": "octal",
                     "up": !off,
                     "problem": Value::Null,
                 })
@@ -1145,7 +1163,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             let pc_name = dev.name.clone();
             let target = s.topology.console_peer(pc).ok_or_else(|| {
                 EngineError::Failed(format!(
-                    "{pc_name} has no console cable: join its {RS232_PORT} port to a router's or switch's {CONSOLE_PORT} port (link.add with \"cable\": \"console\")"
+                    "{pc_name} has no console cable or USB cable: join its {RS232_PORT} or {USB_PORT} port to a router's or switch's {CONSOLE_PORT} or {USB_CONSOLE_PORT} port (link.add with \"cable\": \"console\" or \"usb\")"
                 ))
             })?;
             let target_name = s.topology.device(target).map_or(String::new(), |d| d.name.clone());
@@ -1153,12 +1171,38 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             let log = s.console(target).log.clone();
             Ok(json!({"device": target_name, "prompt": prompt, "log": log}))
         }
+        "octal.terminal" => {
+            let router = device_param(s, p, "router")?;
+            let line = p.get("line").and_then(Value::as_u64).and_then(|n| u8::try_from(n).ok()).ok_or_else(|| bad("`line` (a number) is required"))?;
+            let rname = s.topology.device(router).map_or(String::new(), |d| d.name.clone());
+            let target = s.topology.octal_at_line(router, line).map(|o| o.device).ok_or_else(|| {
+                EngineError::Failed(format!("line {line} of {rname} has no octal cable (link.add with \"cable\": \"octal\")"))
+            })?;
+            let target_name = s.topology.device(target).map_or(String::new(), |d| d.name.clone());
+            let prompt = prompt_of(s, target);
+            let log = s.console(target).log.clone();
+            Ok(json!({"router": rname, "line": line, "device": target_name, "prompt": prompt, "log": log}))
+        }
         "link.remove" => {
             let d = device_param(s, p, "device")?;
             if let Some(dev) = s.topology.device(d).filter(|x| netlabcraft_model::board::is_board(x))
                 && let Some(pin) = netlabcraft_model::board::find_pin(dev, str_param(p, "port")?)
             {
                 return crate::board::unwire(s, d, &pin);
+            }
+            if s.topology.octal_at_device(d).is_some() && s.topology.console_at(d).is_none() && is_console_port_name(str_param(p, "port")?) {
+                s.checkpoint();
+                s.topology.disconnect_octal(d);
+                s.changed();
+                return Ok(Value::Null);
+            }
+            if let Some(o) = s.topology.octals.iter().find(|o| o.router == d).copied()
+                && str_param(p, "port")?.to_ascii_lowercase().starts_with("async")
+            {
+                s.checkpoint();
+                s.topology.disconnect_octal(o.device);
+                s.changed();
+                return Ok(Value::Null);
             }
             if is_console_port_name(str_param(p, "port")?) {
                 if s.topology.console_at(d).is_none() {
@@ -1586,10 +1630,35 @@ fn probe_json(p: &Probe) -> Value {
     }
 }
 
+/// `link.add` with an octal cable: `a` is the router with the octal card, `b` the device whose
+/// Console port the line reaches (either order); `line` picks the line (the first free one when left out).
+fn octal_add(s: &mut Session, a: DeviceId, b: DeviceId, p: &Value) -> Result<Value> {
+    let line = match p.get("line") {
+        None | Some(Value::Null) => None,
+        Some(v) => Some(v.as_u64().and_then(|n| u8::try_from(n).ok()).ok_or_else(|| bad("`line` must be a number from 0 to 255"))?),
+    };
+    let has_card = |id| s.topology.device(id).is_some_and(|d| d.octal_lines() > 0);
+    let (router, device) = if has_card(a) || !has_card(b) { (a, b) } else { (b, a) };
+    let mut t = s.topology.clone();
+    let o = t.connect_octal(router, device, line)?;
+    s.checkpoint();
+    s.topology = t;
+    s.changed();
+    let name = |id| s.topology.device(id).map_or(String::new(), |d| d.name.clone());
+    Ok(json!({
+        "a": format!("{} Async line {}", name(o.router), o.line),
+        "b": format!("{} {CONSOLE_PORT}", name(o.device)),
+        "cable": "octal",
+        "resolved": "octal",
+        "line": o.line,
+    }))
+}
+
 /// `PC1 RS-232` (or `R1 Console`): the far end of a device's console cable.
 fn console_peer_label(t: &netlabcraft_model::Topology, id: DeviceId) -> Option<String> {
     let c = t.console_at(id)?;
-    let (far, port) = if c.pc == id { (c.device, CONSOLE_PORT) } else { (c.pc, RS232_PORT) };
+    let (host, dev) = if c.usb { (USB_PORT, USB_CONSOLE_PORT) } else { (RS232_PORT, CONSOLE_PORT) };
+    let (far, port) = if c.pc == id { (c.device, dev) } else { (c.pc, host) };
     t.device(far).map(|d| format!("{} {port}", d.name))
 }
 

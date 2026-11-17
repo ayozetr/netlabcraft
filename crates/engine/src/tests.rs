@@ -1326,14 +1326,14 @@ fn cables_have_kinds_that_fit_their_ports() {
     }
     // A fiber cable needs fiber at both ends; the error says which port is not.
     let e = s.execute("link.add", json!({"a": "F1", "a_port": "g0/1", "b": "S1", "b_port": "fa0/1", "cable": "fiber"})).unwrap_err().to_string();
-    assert!(e.contains("a fiber cable needs a fiber port on both ends: S1 Fa0/1 is copper"), "{e}");
+    assert!(e.contains("a multi mode fiber cable needs a fiber port on both ends: S1 Fa0/1 is copper"), "{e}");
     let e = s.execute("link.add", json!({"a": "R2", "b": "S1", "cable": "rope"})).unwrap_err().to_string();
     assert!(e.contains("`cable` must be one of"), "{e}");
     // With no port named, the first port the cable fits is taken (the combo uplink on S1).
     let v = s.execute("link.add", json!({"a": "F1", "b": "S1", "cable": "fiber"})).unwrap();
     assert_eq!(v["a"], "F1 GigabitEthernet0/1");
     assert_eq!(v["b"], "S1 GigabitEthernet0/1");
-    assert_eq!(v["resolved"], "fiber");
+    assert_eq!(v["resolved"], "fiber-multi-mode");
     let v = s.execute("link.add", json!({"a": "PC1", "b": "S1", "b_port": "fa0/2"})).unwrap();
     assert_eq!((v["cable"].as_str(), v["resolved"].as_str()), (Some("auto"), Some("straight-through")));
     // PC to PC with a straight-through: cabled, but down with the reason.
@@ -1432,6 +1432,89 @@ fn a_pc_terminal_reaches_the_console_of_the_device_its_cable_leads_to() {
     s.execute("link.remove", json!({"device": "L1", "port": "RS-232"})).unwrap();
     assert!(s.execute("pc.terminal", json!({"pc": "L1"})).is_err());
     assert!(s.execute("link.remove", json!({"device": "L1", "port": "RS-232"})).is_err());
+}
+
+#[test]
+fn a_usb_cable_opens_the_terminal_like_a_console_cable() {
+    let mut s = Session::new();
+    s.execute("device.add", json!({"model": "Router-3", "name": "R1"})).unwrap();
+    s.execute("device.add", json!({"model": "Laptop", "name": "L1"})).unwrap();
+    s.execute("device.add", json!({"model": "Server", "name": "Srv"})).unwrap();
+    let e = s.execute("link.add", json!({"a": "Srv", "b": "R1", "cable": "usb"})).unwrap_err().to_string();
+    assert!(e.contains("USB cable joins"), "{e}");
+    let v = s.execute("link.add", json!({"a": "R1", "b": "L1", "cable": "usb"})).unwrap();
+    assert_eq!((v["a"].as_str(), v["b"].as_str(), v["cable"].as_str()), (Some("L1 USB"), Some("R1 USB Console"), Some("usb")));
+    assert_eq!(s.execute("pc.terminal", json!({"pc": "L1"})).unwrap()["device"], "R1");
+    let list = s.execute("link.list", json!({})).unwrap();
+    assert_eq!((list[0]["cable"].as_str(), list[0]["a"].as_str()), (Some("usb"), Some("L1 USB")));
+    // Saved with the flag and read back; a plain console cable carries none.
+    let saved = s.execute("file.save", json!({})).unwrap()["json"].as_str().unwrap().to_string();
+    assert!(saved.contains("\"usb\":true"), "{saved}");
+    let mut back = Session::new();
+    back.execute("file.open", json!({"json": saved})).unwrap();
+    assert_eq!(back.topology.consoles, s.topology.consoles);
+    s.execute("link.remove", json!({"device": "L1", "port": "USB"})).unwrap();
+    assert!(s.topology.consoles.is_empty());
+}
+
+#[test]
+fn an_octal_cable_joins_a_card_line_to_a_console_and_the_terminal_follows_it() {
+    let mut s = Session::new();
+    for (name, model) in [("R1", "Router-M2"), ("R2", "Router-3"), ("S1", "Switch-24"), ("PC1", "PC")] {
+        s.execute("device.add", json!({"model": model, "name": name})).unwrap();
+    }
+    let e = s.execute("link.add", json!({"a": "R1", "b": "R2", "cable": "octal"})).unwrap_err().to_string();
+    assert!(e.contains("no octal card"), "{e}");
+    s.execute("device.power", json!({"device": "R1", "on": false})).unwrap();
+    s.execute("device.module.add", json!({"device": "R1", "slot": "0/1", "module": "Card-8A"})).unwrap();
+    s.execute("device.power", json!({"device": "R1", "on": true})).unwrap();
+    let v = s.execute("link.add", json!({"a": "R1", "b": "R2", "cable": "octal"})).unwrap();
+    assert_eq!((v["a"].as_str(), v["b"].as_str(), v["line"].as_u64()), (Some("R1 Async line 0"), Some("R2 Console"), Some(0)));
+    // The far end may be given first; a line may be named.
+    let v = s.execute("link.add", json!({"a": "S1", "b": "R1", "cable": "octal", "line": 4})).unwrap();
+    assert_eq!(v["line"], 4);
+    assert!(s.execute("link.add", json!({"a": "R1", "b": "PC1", "cable": "octal"})).is_err());
+    assert!(s.execute("link.add", json!({"a": "R1", "b": "S1", "cable": "octal", "line": 9})).is_err());
+    let t = s.execute("octal.terminal", json!({"router": "R1", "line": 0})).unwrap();
+    assert_eq!((t["device"].as_str(), t["prompt"].as_str()), (Some("R2"), Some("R2>")));
+    assert!(s.execute("octal.terminal", json!({"router": "R1", "line": 1})).is_err());
+    // The Console port is taken: a rollover cable cannot also use it.
+    assert!(s.execute("link.add", json!({"a": "PC1", "b": "R2", "cable": "console"})).is_err());
+    let list = s.execute("link.list", json!({})).unwrap();
+    assert_eq!(list.as_array().unwrap().iter().filter(|l| l["cable"] == "octal").count(), 2);
+    let saved = s.execute("file.save", json!({})).unwrap()["json"].as_str().unwrap().to_string();
+    let mut back = Session::new();
+    back.execute("file.open", json!({"json": saved})).unwrap();
+    assert_eq!(back.topology.octals, s.topology.octals);
+    s.execute("link.remove", json!({"device": "R2", "port": "Console"})).unwrap();
+    assert_eq!(s.topology.octals.len(), 1);
+    s.execute("link.remove", json!({"device": "R1", "port": "Async 4"})).unwrap();
+    assert!(s.topology.octals.is_empty());
+}
+
+#[test]
+fn fiber_modes_and_transceivers_work_through_commands() {
+    let mut s = Session::new();
+    for (name, model) in [("F1", "Switch-24-SFP"), ("F2", "Switch-24-SFP")] {
+        s.execute("device.add", json!({"model": model, "name": name})).unwrap();
+    }
+    let v = s.execute("link.add", json!({"a": "F1", "b": "F2", "cable": "single-mode"})).unwrap();
+    assert_eq!(v["resolved"], "fiber-single-mode");
+    let ports = s.execute("device.list", json!({})).unwrap();
+    assert_eq!(ports[0]["ports"][24]["problem"].as_str().map(|p| p.contains("cannot drive")), Some(true));
+    for d in ["F1", "F2"] {
+        let v = s.execute("port.transceiver", json!({"device": d, "port": "g0/1", "mode": "single-mode"})).unwrap();
+        assert_eq!(v["mode"], "single-mode");
+    }
+    let ports = s.execute("device.list", json!({})).unwrap();
+    assert_eq!(ports[0]["ports"][24]["problem"], serde_json::Value::Null);
+    assert!(s.execute("port.transceiver", json!({"device": "F1", "port": "fa0/1", "mode": "single-mode"})).is_err());
+    assert!(s.execute("port.transceiver", json!({"device": "F1", "port": "g0/1", "mode": "rope"})).is_err());
+    // A lab saved before the two kinds read its `fiber` cables as multi-mode.
+    let saved = s.execute("file.save", json!({})).unwrap()["json"].as_str().unwrap().replace("fiber-single-mode", "fiber");
+    let mut back = Session::new();
+    back.execute("file.open", json!({"json": saved})).unwrap();
+    assert_eq!(back.topology.links[0].cable, netlabcraft_model::cable::Cable::FiberMulti);
 }
 
 #[test]

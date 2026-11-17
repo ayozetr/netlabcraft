@@ -9,7 +9,16 @@
 //!
 //! Console cables are apart: they join a PC's RS-232 port to a router's or switch's Console
 //! port, which are not network interfaces (no frames, not in the interface tables), and are
-//! kept in [`Topology::consoles`].
+//! kept in [`Topology::consoles`]. A USB cable is the same idea over USB: a PC's or laptop's USB
+//! port to a router's or switch's USB console port, also kept in [`Topology::consoles`] (flagged
+//! `usb`). An octal cable fans one router's octal asynchronous card out to the Console ports of up
+//! to eight devices ([`Topology::octals`]).
+//!
+//! Fiber comes in two kinds. A multi-mode cable (850 nm light, 1000BASE-SX) reaches
+//! [`FIBER_MULTI_MAX_M`] here; a single-mode cable (1310 nm, 1000BASE-LX/LX10) reaches
+//! [`FIBER_SINGLE_MAX_M`]. Each fiber port holds a transceiver that is multi-mode unless its
+//! `single_mode` flag is set; both ends of a fiber link need the same transceiver, and a
+//! multi-mode transceiver cannot drive a single-mode cable (see [`Topology::fiber_problem`]).
 
 use netlabcraft_core::DeviceId;
 use serde::{Deserialize, Serialize};
@@ -19,6 +28,19 @@ use crate::{Device, DeviceKind, End, Link, ModelError, Result, Topology, ifname,
 /// How far a coaxial cable and a phone line carry a signal here (metres).
 pub const COAX_MAX_M: u32 = 500;
 pub const PHONE_MAX_M: u32 = 5_000;
+
+/// How far a multi-mode fiber run carries a gigabit signal (metres; 1000BASE-SX over 50/125 um).
+pub const FIBER_MULTI_MAX_M: u32 = 550;
+/// How far a single-mode fiber run carries a gigabit signal (metres; 1000BASE-LX10).
+pub const FIBER_SINGLE_MAX_M: u32 = 10_000;
+/// The id of the octal asynchronous card of a modular router.
+pub const OCTAL_CARD: &str = "Card-8A";
+/// The asynchronous lines of one octal card.
+pub const OCTAL_LINES: u8 = 8;
+/// The name of a router's or switch's USB console port.
+pub const USB_CONSOLE_PORT: &str = "USB Console";
+/// The name of a PC's or laptop's USB port.
+pub const USB_PORT: &str = "USB";
 
 /// The name of a router's or switch's console port.
 pub const CONSOLE_PORT: &str = "Console";
@@ -36,8 +58,13 @@ pub enum Cable {
     Straight,
     #[serde(rename = "cross-over")]
     Cross,
-    #[serde(rename = "fiber")]
-    Fiber,
+    /// A single-mode fiber cable (1310 nm light, long runs).
+    #[serde(rename = "fiber-single-mode")]
+    FiberSingle,
+    /// A multi-mode fiber cable (850 nm light, short runs). Labs saved before the two kinds
+    /// existed call their fiber cables `fiber`, which reads as this.
+    #[serde(rename = "fiber-multi-mode", alias = "fiber")]
+    FiberMulti,
     /// A rollover cable from a PC's RS-232 port to a device's Console port.
     #[serde(rename = "console")]
     Console,
@@ -56,20 +83,30 @@ pub enum Cable {
     /// An IoT custom cable: a programmable board's pin to a smart thing (not a network link).
     #[serde(rename = "iot-custom")]
     IotCustom,
+    /// An octal cable: a router's octal card to the Console ports of up to eight devices.
+    #[serde(rename = "octal")]
+    Octal,
+    /// A USB cable: a PC's or laptop's USB port to a router's or switch's USB console port.
+    #[serde(rename = "usb")]
+    Usb,
 }
 
 impl Cable {
-    pub const ALL: [Cable; 10] = [
+    /// The Connections tiles, in the order the group shows them.
+    pub const ALL: [Cable; 13] = [
         Cable::Auto,
         Cable::Console,
         Cable::Straight,
         Cable::Cross,
-        Cable::Fiber,
+        Cable::FiberSingle,
+        Cable::FiberMulti,
+        Cable::Phone,
+        Cable::Coaxial,
         Cable::SerialDce,
         Cable::SerialDte,
-        Cable::Coaxial,
-        Cable::Phone,
+        Cable::Octal,
         Cable::IotCustom,
+        Cable::Usb,
     ];
 
     pub fn is_auto(&self) -> bool {
@@ -82,39 +119,46 @@ impl Cable {
             Cable::Auto => "auto",
             Cable::Straight => "straight-through",
             Cable::Cross => "cross-over",
-            Cable::Fiber => "fiber",
+            Cable::FiberSingle => "fiber-single-mode",
+            Cable::FiberMulti => "fiber-multi-mode",
             Cable::Console => "console",
             Cable::SerialDce => "serial-dce",
             Cable::SerialDte => "serial-dte",
             Cable::Coaxial => "coaxial",
             Cable::Phone => "phone",
             Cable::IotCustom => "iot-custom",
+            Cable::Octal => "octal",
+            Cable::Usb => "usb",
         }
     }
 
     /// The name shown on the Connections tile.
     pub fn label(self) -> &'static str {
         match self {
-            Cable::Auto => "Automatic",
+            Cable::Auto => "Automatically Choose Connection Type",
             Cable::Straight => "Copper Straight-Through",
             Cable::Cross => "Copper Cross-Over",
-            Cable::Fiber => "Fiber",
+            Cable::FiberSingle => "Single Mode Fiber",
+            Cable::FiberMulti => "Multi Mode Fiber",
             Cable::Console => "Console",
             Cable::SerialDce => "Serial DCE",
             Cable::SerialDte => "Serial DTE",
             Cable::Coaxial => "Coaxial",
-            Cable::Phone => "Phone (RJ-11)",
-            Cable::IotCustom => "IoT Custom",
+            Cable::Phone => "Phone",
+            Cable::IotCustom => "IoT Custom Cable",
+            Cable::Octal => "Octal",
+            Cable::Usb => "USB",
         }
     }
 
     /// One line on what the cable is for.
     pub fn description(self) -> &'static str {
         match self {
-            Cable::Auto => "Automatic: picks the right cable for the two ports you choose",
+            Cable::Auto => "Automatically choose the connection type: picks the right cable for the two ports you choose",
             Cable::Straight => "Copper straight-through: joins unlike ports (a PC or router to a switch or hub)",
             Cable::Cross => "Copper cross-over: joins like ports (switch to switch, router to router, PC to PC, router to PC)",
-            Cable::Fiber => "Fiber: joins fiber ports (SFP uplinks and fiber cards); carries a signal up to 2 km here",
+            Cable::FiberSingle => "Single mode fiber: joins fiber ports whose transceivers are single mode; carries a gigabit signal up to 10 km here",
+            Cable::FiberMulti => "Multi mode fiber: joins fiber ports (SFP uplinks and fiber cards); carries a gigabit signal up to 550 m here",
             Cable::Console => "Console (rollover): a PC's RS-232 port to a router's or switch's Console port, for the PC's Terminal",
             Cable::SerialDce => "Serial DCE: joins serial ports; the end you click first is the DCE and gives the clock",
             Cable::SerialDte => "Serial DTE: joins serial ports; the end you click first is the DTE, the other end gives the clock",
@@ -123,6 +167,8 @@ impl Cable {
             Cable::IotCustom => {
                 "IoT custom cable: joins a programmable board's pin to a smart thing, which the board's program then reads or switches"
             }
+            Cable::Octal => "Octal: joins one line of a router's octal card (Card-8A) to the Console port of another router or switch, for reverse-style console access",
+            Cable::Usb => "USB: a PC's or laptop's USB port to a router's or switch's USB console port, for the PC's Terminal",
         }
     }
 
@@ -133,13 +179,17 @@ impl Cable {
             "auto" | "automatic" => Cable::Auto,
             "straight" | "straightthrough" | "copperstraightthrough" | "copper" => Cable::Straight,
             "cross" | "crossover" | "coppercrossover" => Cable::Cross,
-            "fiber" | "fibre" => Cable::Fiber,
+            "fiber" | "fibre" | "multimode" | "multimodefiber" | "multimodefibre" | "mmf" | "fibermulti" => Cable::FiberMulti,
+            "singlemode" | "singlemodefiber" | "singlemodefibre" | "smf" | "fibersingle" => Cable::FiberSingle,
+            "octal" | "octalcable" | "async" => Cable::Octal,
+            "usb" | "usbconsole" => Cable::Usb,
             "console" | "rollover" => Cable::Console,
             "serial" | "serialdce" | "dce" => Cable::SerialDce,
             "serialdte" | "dte" => Cable::SerialDte,
             "coaxial" | "coax" => Cable::Coaxial,
             "phone" | "rj11" | "phoneline" | "phonerj11" | "dsl" => Cable::Phone,
-            "iotcustom" | "iot" | "custom" | "pin" => Cable::IotCustom,
+            "iotcustom" | "iotcustomcable" | "iot" | "custom" | "pin" => Cable::IotCustom,
+            "automaticallychooseconnectiontype" => Cable::Auto,
             _ => return None,
         })
     }
@@ -150,6 +200,20 @@ impl Cable {
 
     pub fn is_copper(self) -> bool {
         matches!(self, Cable::Straight | Cable::Cross)
+    }
+
+    pub fn is_fiber(self) -> bool {
+        matches!(self, Cable::FiberSingle | Cable::FiberMulti)
+    }
+
+    /// The cables that join a PC to a console port apart from the network links: console and USB.
+    pub fn is_console_like(self) -> bool {
+        matches!(self, Cable::Console | Cable::Usb)
+    }
+
+    /// The cables kept apart from `links` (console, USB, octal and the IoT custom cable).
+    pub fn is_off_network(self) -> bool {
+        matches!(self, Cable::Console | Cable::Usb | Cable::Octal | Cable::IotCustom)
     }
 }
 
@@ -221,6 +285,20 @@ pub struct ConsoleCable {
     pub pc: DeviceId,
     /// The router or switch (its Console port).
     pub device: DeviceId,
+    /// A USB cable (the PC's USB port to the device's USB console port) instead of a rollover.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub usb: bool,
+}
+
+/// An octal cable: one line of a router's octal card to the Console port of a device.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OctalCable {
+    /// The router with the octal card.
+    pub router: DeviceId,
+    /// The line of the router's octal cards (0 to 7 on the first card).
+    pub line: u8,
+    /// The router or switch whose Console port the line reaches.
+    pub device: DeviceId,
 }
 
 impl Device {
@@ -241,6 +319,19 @@ impl Device {
         self.catalogue_model().has_rs232()
     }
 
+    /// Whether the device takes a USB cable for its console: routers and switches with a command
+    /// line (their USB console port) and PCs and laptops (a USB port), the same devices as the
+    /// rollover console.
+    pub fn has_usb(&self) -> bool {
+        self.has_console() || self.has_rs232()
+    }
+
+    /// How many asynchronous lines the octal cards fitted in the device give (8 per card).
+    pub fn octal_lines(&self) -> u8 {
+        let cards = self.modules.values().filter(|m| m.as_str() == OCTAL_CARD).count();
+        u8::try_from(cards.saturating_mul(OCTAL_LINES as usize)).unwrap_or(u8::MAX)
+    }
+
     /// The console-cable port this device has: `Console`, `RS-232`, or none.
     pub fn console_port_name(&self) -> Option<&'static str> {
         if self.has_console() {
@@ -256,7 +347,13 @@ impl Device {
 /// Whether a port name means the console-cable port (`Console`, `con`, `RS-232`, `rs232`, `com1`).
 pub fn is_console_port_name(name: &str) -> bool {
     let k: String = name.trim().to_ascii_lowercase().chars().filter(|c| c.is_ascii_alphanumeric()).collect();
-    matches!(k.as_str(), "console" | "con" | "con0" | "rs232" | "com" | "com1")
+    matches!(k.as_str(), "console" | "con" | "con0" | "rs232" | "com" | "com1") || is_usb_port_name(name)
+}
+
+/// Whether a port name means the USB port of a PC or the USB console port of a router or switch.
+pub fn is_usb_port_name(name: &str) -> bool {
+    let k: String = name.trim().to_ascii_lowercase().chars().filter(|c| c.is_ascii_alphanumeric()).collect();
+    matches!(k.as_str(), "usb" | "usb0" | "usbconsole")
 }
 
 /// Whether a port is wired as MDI-X (switch and hub ports, the phone's computer port): such a
@@ -315,12 +412,23 @@ impl Topology {
         };
         match cable {
             Cable::Straight | Cable::Cross => need(cable.label().trim_start_matches("Copper ").to_lowercase().as_str(), Medium::copper, "copper"),
-            Cable::Fiber => need("fiber", Medium::fiber, "fiber"),
+            Cable::FiberSingle => need("single mode fiber", Medium::fiber, "fiber"),
+            Cable::FiberMulti => need("multi mode fiber", Medium::fiber, "fiber"),
             Cable::SerialDce | Cable::SerialDte => need("serial", |m| m == Medium::Serial, "serial"),
             Cable::Coaxial => need("coaxial", |m| m == Medium::Coaxial, "coaxial"),
             Cable::Phone => need("phone", |m| m == Medium::Phone, "phone (RJ-11)"),
             Cable::IotCustom => Some(format!(
                 "an IoT custom cable joins a programmable board's pin to a smart thing, not {} and {}",
+                self.short_label(a),
+                self.short_label(b)
+            )),
+            Cable::Usb => Some(format!(
+                "a USB cable joins a PC's {USB_PORT} port to a router's or switch's {USB_CONSOLE_PORT} port, not {} and {}",
+                self.short_label(a),
+                self.short_label(b)
+            )),
+            Cable::Octal => Some(format!(
+                "an octal cable joins a line of a router's octal card to a router's or switch's {CONSOLE_PORT} port, not {} and {}",
                 self.short_label(a),
                 self.short_label(b)
             )),
@@ -359,10 +467,55 @@ impl Topology {
         let (ma, mb) = (self.port_medium(l.a), self.port_medium(l.b));
         match (ma, mb) {
             (Some(Medium::Serial), _) | (_, Some(Medium::Serial)) => Cable::SerialDce,
-            (Some(Medium::Fiber), _) | (_, Some(Medium::Fiber)) => Cable::Fiber,
+            (Some(Medium::Fiber | Medium::Combo), Some(Medium::Fiber | Medium::Combo))
+                if self.single_mode_at(l.a) && self.single_mode_at(l.b) && (ma == Some(Medium::Fiber) || mb == Some(Medium::Fiber)) =>
+            {
+                Cable::FiberSingle
+            }
+            (Some(Medium::Fiber), _) | (_, Some(Medium::Fiber)) => Cable::FiberMulti,
             (Some(Medium::Coaxial), _) | (_, Some(Medium::Coaxial)) => Cable::Coaxial,
             (Some(Medium::Phone), _) | (_, Some(Medium::Phone)) => Cable::Phone,
             _ => copper_needed(self, l.a, l.b),
+        }
+    }
+
+    /// Whether the port holds a single-mode transceiver.
+    pub fn single_mode_at(&self, end: End) -> bool {
+        self.device(end.device).and_then(|d| d.ports.get(end.port)).is_some_and(|p| p.single_mode)
+    }
+
+    /// Why a fiber link carries nothing because of its transceivers, if it doesn't: the two ends
+    /// need the same kind (850 nm multi-mode and 1310 nm single-mode light do not meet), and a
+    /// multi-mode transceiver cannot drive a single-mode cable. A single-mode transceiver over a
+    /// multi-mode cable works (as with a mode-conditioning patch cord) but only as far as
+    /// multi-mode fiber reaches. `None` for anything that is not a fiber cable.
+    pub fn fiber_problem(&self, l: &Link) -> Option<String> {
+        let kind = self.resolved_cable(l);
+        if !kind.is_fiber() {
+            return None;
+        }
+        let (sa, sb) = (self.single_mode_at(l.a), self.single_mode_at(l.b));
+        let word = |single: bool| if single { "single-mode (1310 nm)" } else { "multi-mode (850 nm)" };
+        if sa != sb {
+            return Some(format!(
+                "transceiver mismatch: {} is {} and {} is {}",
+                self.short_label(l.a),
+                word(sa),
+                self.short_label(l.b),
+                word(sb)
+            ));
+        }
+        (kind == Cable::FiberSingle && !sa).then(|| {
+            format!("a multi-mode transceiver ({}) cannot drive a single-mode fiber cable: set the transceivers to single mode", self.short_label(l.a))
+        })
+    }
+
+    /// The longest run the cable at a link carries, in metres (`None`: no limit modelled).
+    pub fn fiber_reach(kind: Cable) -> Option<u32> {
+        match kind {
+            Cable::FiberSingle => Some(FIBER_SINGLE_MAX_M),
+            Cable::FiberMulti => Some(FIBER_MULTI_MAX_M),
+            _ => None,
         }
     }
 
@@ -371,10 +524,13 @@ impl Topology {
     pub fn cable_mismatch(&self, end: End) -> Option<String> {
         let l = self.link_at(end)?;
         if l.cable == Cable::Auto {
-            return None;
+            return self.fiber_problem(l);
         }
         if let Some(why) = self.cable_misfit(l.cable, l.a, l.b) {
             return Some(format!("wrong cable: {why}"));
+        }
+        if l.cable.is_fiber() {
+            return self.fiber_problem(l);
         }
         if !l.cable.is_copper() || auto_mdix(self, l.a) || auto_mdix(self, l.b) {
             return None;
@@ -434,32 +590,117 @@ impl Topology {
 
     /// Joins a PC's RS-232 port and a router's or switch's Console port (either order).
     pub fn connect_console(&mut self, a: DeviceId, b: DeviceId) -> Result<ConsoleCable> {
+        self.connect_console_with(a, b, false)
+    }
+
+    /// Joins a PC's USB port and a router's or switch's USB console port (either order).
+    pub fn connect_usb(&mut self, a: DeviceId, b: DeviceId) -> Result<ConsoleCable> {
+        self.connect_console_with(a, b, true)
+    }
+
+    fn connect_console_with(&mut self, a: DeviceId, b: DeviceId, usb: bool) -> Result<ConsoleCable> {
         let da = self.device(a).ok_or_else(|| ModelError::NoDevice(a.to_string()))?;
         let db = self.device(b).ok_or_else(|| ModelError::NoDevice(b.to_string()))?;
+        let (host_port, dev_port) = if usb { (USB_PORT, USB_CONSOLE_PORT) } else { (RS232_PORT, CONSOLE_PORT) };
         let (pc, dev) = if da.has_rs232() && db.has_console() {
             (da, db)
         } else if db.has_rs232() && da.has_console() {
             (db, da)
         } else {
             let what = |d: &Device| match d.console_port_name() {
+                Some(p) if usb && p == CONSOLE_PORT => format!("{} has a {USB_CONSOLE_PORT} port", d.name),
+                Some(p) if usb => format!("{} has a {USB_PORT} port", d.name),
                 Some(p) => format!("{} has a {p} port", d.name),
-                None => format!("{} has no console or RS-232 port", d.name),
+                None => format!("{} has no console or {} port", d.name, if usb { USB_PORT } else { RS232_PORT }),
             };
             return Err(ModelError::Invalid(format!(
-                "a console cable joins a PC's {RS232_PORT} port to a router's or switch's {CONSOLE_PORT} port: {} and {}",
+                "a {} cable joins a PC's {host_port} port to a router's or switch's {dev_port} port: {} and {}",
+                if usb { "USB" } else { "console" },
                 what(da),
                 what(db)
             )));
         };
         if self.console_at(pc.id).is_some() {
-            return Err(ModelError::PortInUse(pc.name.clone(), RS232_PORT.into()));
+            return Err(ModelError::PortInUse(pc.name.clone(), host_port.into()));
         }
-        if self.console_at(dev.id).is_some() {
-            return Err(ModelError::PortInUse(dev.name.clone(), CONSOLE_PORT.into()));
+        if self.console_at(dev.id).is_some() || self.octal_at_device(dev.id).is_some() {
+            return Err(ModelError::PortInUse(dev.name.clone(), dev_port.into()));
         }
-        let c = ConsoleCable { pc: pc.id, device: dev.id };
+        let c = ConsoleCable { pc: pc.id, device: dev.id, usb };
         self.consoles.push(c);
         Ok(c)
+    }
+
+    /// The octal cable that reaches a device's Console port.
+    pub fn octal_at_device(&self, id: DeviceId) -> Option<&OctalCable> {
+        self.octals.iter().find(|o| o.device == id)
+    }
+
+    /// The octal cable plugged into line `line` of a router's octal cards.
+    pub fn octal_at_line(&self, router: DeviceId, line: u8) -> Option<&OctalCable> {
+        self.octals.iter().find(|o| o.router == router && o.line == line)
+    }
+
+    /// Plugs an octal cable from a router's octal card (line `line`, or the first free one) to
+    /// the Console port of a router or switch.
+    pub fn connect_octal(&mut self, router: DeviceId, device: DeviceId, line: Option<u8>) -> Result<OctalCable> {
+        let r = self.device(router).ok_or_else(|| ModelError::NoDevice(router.to_string()))?;
+        let d = self.device(device).ok_or_else(|| ModelError::NoDevice(device.to_string()))?;
+        let lines = r.octal_lines();
+        if lines == 0 {
+            return Err(ModelError::Invalid(format!(
+                "{} has no octal card: fit a {OCTAL_CARD} in a bay of a modular router (device.module.add) first",
+                r.name
+            )));
+        }
+        if router == device {
+            return Err(ModelError::Invalid("an octal cable needs two different devices".into()));
+        }
+        if !d.has_console() {
+            return Err(ModelError::Invalid(format!("{} has no {CONSOLE_PORT} port: an octal cable ends at a router's or switch's console", d.name)));
+        }
+        if self.console_at(device).is_some() || self.octal_at_device(device).is_some() {
+            return Err(ModelError::PortInUse(d.name.clone(), CONSOLE_PORT.into()));
+        }
+        let line = match line {
+            Some(n) if n < lines => n,
+            Some(n) => {
+                return Err(ModelError::Invalid(format!("{} has lines 0 to {} on its octal cards, not {n}", r.name, lines.saturating_sub(1))));
+            }
+            None => (0..lines)
+                .find(|n| self.octal_at_line(router, *n).is_none())
+                .ok_or_else(|| ModelError::Invalid(format!("all {lines} lines of {}'s octal cards are cabled", r.name)))?,
+        };
+        if self.octal_at_line(router, line).is_some() {
+            return Err(ModelError::PortInUse(r.name.clone(), format!("Async line {line}")));
+        }
+        let o = OctalCable { router, line, device };
+        self.octals.push(o);
+        Ok(o)
+    }
+
+    /// Unplugs the octal cable that reaches a device's Console port.
+    pub fn disconnect_octal(&mut self, device: DeviceId) -> Option<OctalCable> {
+        let i = self.octals.iter().position(|o| o.device == device)?;
+        Some(self.octals.remove(i))
+    }
+
+    /// Drops octal cables a hostile file or a removed card left wrong.
+    pub(crate) fn sanitize_octals(&mut self) {
+        self.octals.truncate(crate::MAX_DEVICES);
+        let mut lines = std::collections::BTreeSet::new();
+        let mut used = std::collections::BTreeSet::new();
+        let consoles: std::collections::BTreeSet<DeviceId> = self.consoles.iter().flat_map(|c| [c.pc, c.device]).collect();
+        let devices = &self.devices;
+        let find = |id: DeviceId| devices.iter().find(|d| d.id == id);
+        self.octals.retain(|o| {
+            o.router != o.device
+                && find(o.router).is_some_and(|r| o.line < r.octal_lines())
+                && find(o.device).is_some_and(|d| d.has_console())
+                && !consoles.contains(&o.device)
+                && lines.insert((o.router, o.line))
+                && used.insert(o.device)
+        });
     }
 
     /// Unplugs the console cable at a device (either end).
@@ -518,23 +759,23 @@ mod tests {
     #[test]
     fn a_cable_joins_only_ports_of_its_medium() {
         let (mut t, [r1, r2, s1, pc1, _, fs]) = lab();
-        let err = t.connect_with(e(fs, 24), e(s1, 0), Cable::Fiber).unwrap_err().to_string();
-        assert_eq!(err, "a fiber cable needs a fiber port on both ends: S1 Fa0/1 is copper");
+        let err = t.connect_with(e(fs, 24), e(s1, 0), Cable::FiberMulti).unwrap_err().to_string();
+        assert_eq!(err, "a multi mode fiber cable needs a fiber port on both ends: S1 Fa0/1 is copper");
         let err = t.connect_with(e(fs, 24), e(r1, 0), Cable::Straight).unwrap_err().to_string();
         assert!(err.contains("needs a copper port") && err.contains("is fiber"), "{err}");
         assert!(t.connect_with(e(r1, 0), e(r2, 0), Cable::SerialDce).unwrap_err().to_string().contains("serial port"));
         assert!(t.connect_with(e(r1, 0), e(pc1, 0), Cable::Console).is_err());
         // Combo uplinks take fiber or copper; automatic picks fiber for a fiber port.
-        t.connect_with(e(fs, 24), e(s1, 24), Cable::Fiber).unwrap();
+        t.connect_with(e(fs, 24), e(s1, 24), Cable::FiberMulti).unwrap();
         t.connect_with(e(fs, 25), e(s1, 25), Cable::Auto).unwrap();
-        assert_eq!(t.resolved_cable(t.link_at(e(fs, 25)).unwrap()), Cable::Fiber);
-        assert!(t.connect_with(e(fs, 0), e(r2, 0), Cable::Fiber).is_err());
+        assert_eq!(t.resolved_cable(t.link_at(e(fs, 25)).unwrap()), Cable::FiberMulti);
+        assert!(t.connect_with(e(fs, 0), e(r2, 0), Cable::FiberMulti).is_err());
         assert!(t.connect_with(e(fs, 0), e(pc1, 0), Cable::Auto).is_ok());
         // Copper to fiber-only: nothing joins them.
         let mut u = lab().0;
         let msg = u.connect_with(e(DeviceId(6), 24), e(DeviceId(1), 0), Cable::Auto).unwrap_err().to_string();
         assert!(msg.contains("no cable joins them"), "{msg}");
-        assert_eq!(u.free_port_for_cable(DeviceId(3), Cable::Fiber, None), Some(24));
+        assert_eq!(u.free_port_for_cable(DeviceId(3), Cable::FiberMulti, None), Some(24));
     }
 
     #[test]
@@ -562,8 +803,8 @@ mod tests {
         assert!(t.connect_console(r2, s1).is_err());
         assert!(t.connect_console(pc1, pc2).is_err());
         t.connect_console(pc2, s1).unwrap();
-        t.consoles.push(ConsoleCable { pc: r2, device: s1 });
-        t.consoles.push(ConsoleCable { pc: DeviceId(99), device: r2 });
+        t.consoles.push(ConsoleCable { pc: r2, device: s1, usb: false });
+        t.consoles.push(ConsoleCable { pc: DeviceId(99), device: r2, usb: false });
         t.sanitize();
         assert_eq!(t.consoles.len(), 2);
         t.remove_device(r1).unwrap();
@@ -580,7 +821,110 @@ mod tests {
         assert_eq!(Cable::parse("crossover"), Some(Cable::Cross));
         assert_eq!(Cable::parse("rollover"), Some(Cable::Console));
         assert_eq!(Cable::parse("coax"), Some(Cable::Coaxial));
+        assert_eq!(Cable::parse("fiber"), Some(Cable::FiberMulti));
+        assert_eq!(Cable::parse("smf"), Some(Cable::FiberSingle));
         assert_eq!(Cable::parse("rope"), None);
         assert!(is_console_port_name("RS-232") && is_console_port_name("Console") && !is_console_port_name("Fa0/1"));
+    }
+
+    #[test]
+    fn the_tiles_come_in_the_reference_order() {
+        let ids: Vec<&str> = Cable::ALL.iter().map(|c| c.label()).collect();
+        assert_eq!(
+            ids,
+            [
+                "Automatically Choose Connection Type",
+                "Console",
+                "Copper Straight-Through",
+                "Copper Cross-Over",
+                "Single Mode Fiber",
+                "Multi Mode Fiber",
+                "Phone",
+                "Coaxial",
+                "Serial DCE",
+                "Serial DTE",
+                "Octal",
+                "IoT Custom Cable",
+                "USB",
+            ]
+        );
+    }
+
+    #[test]
+    fn an_old_fiber_cable_opens_as_multi_mode() {
+        let old: Link = serde_json::from_str(r#"{"a":{"device":1,"port":0},"b":{"device":2,"port":0},"cable":"fiber"}"#).unwrap();
+        assert_eq!(old.cable, Cable::FiberMulti);
+        let single: Link = serde_json::from_str(r#"{"a":{"device":1,"port":0},"b":{"device":2,"port":0},"cable":"fiber-single-mode"}"#).unwrap();
+        assert_eq!(single.cable, Cable::FiberSingle);
+        assert!(serde_json::to_string(&old).unwrap().contains("fiber-multi-mode"));
+    }
+
+    #[test]
+    fn fiber_transceivers_must_match_each_other_and_the_cable() {
+        let (mut t, [_, _, s1, _, _, fs]) = lab();
+        t.connect_with(e(fs, 24), e(s1, 24), Cable::FiberSingle).unwrap();
+        // Multi-mode transceivers cannot drive single-mode fiber.
+        assert!(t.fiber_problem(t.link_at(e(fs, 24)).unwrap()).unwrap().contains("cannot drive a single-mode fiber"));
+        assert!(t.cable_mismatch(e(fs, 24)).is_some());
+        for end in [e(fs, 24), e(s1, 24)] {
+            let (d, p) = (end.device, end.port);
+            t.device_mut(d).unwrap().ports[p].single_mode = true;
+        }
+        assert!(t.cable_mismatch(e(fs, 24)).is_none());
+        // One end single-mode only: the wavelengths do not meet.
+        t.device_mut(s1).unwrap().ports[24].single_mode = false;
+        assert!(t.cable_mismatch(e(fs, 24)).unwrap().contains("transceiver mismatch"));
+        // A multi-mode cable between multi-mode transceivers is fine, and an automatic cable
+        // between two single-mode ones is single-mode fiber.
+        t.disconnect(e(fs, 24));
+        t.connect_with(e(fs, 24), e(s1, 24), Cable::Auto).unwrap();
+        assert_eq!(t.resolved_cable(t.link_at(e(fs, 24)).unwrap()), Cable::FiberMulti);
+        t.device_mut(s1).unwrap().ports[24].single_mode = true;
+        assert_eq!(t.resolved_cable(t.link_at(e(fs, 24)).unwrap()), Cable::FiberSingle);
+        assert_eq!(Topology::fiber_reach(Cable::FiberMulti), Some(550));
+        assert_eq!(Topology::fiber_reach(Cable::FiberSingle), Some(10_000));
+    }
+
+    #[test]
+    fn usb_cables_join_a_pc_to_a_console_like_console_cables() {
+        let (mut t, [r1, r2, s1, pc1, pc2, _]) = lab();
+        let c = t.connect_usb(pc1, r1).unwrap();
+        assert!(c.usb);
+        assert_eq!(t.console_peer(pc1), Some(r1));
+        // A device has one console session: the rollover cable finds its port taken.
+        assert!(matches!(t.connect_console(pc2, r1), Err(ModelError::PortInUse(..))));
+        assert!(t.connect_usb(r2, s1).unwrap_err().to_string().contains("USB cable joins"));
+        let json = serde_json::to_string(&c).unwrap();
+        assert!(json.contains("\"usb\":true"));
+        let plain = ConsoleCable { pc: pc2, device: s1, usb: false };
+        assert!(!serde_json::to_string(&plain).unwrap().contains("usb"));
+        let back: ConsoleCable = serde_json::from_str(&json.replace(",\"usb\":true", "")).unwrap();
+        assert!(!back.usb);
+    }
+
+    #[test]
+    fn octal_cables_need_a_card_and_a_free_console() {
+        let mut t = Topology::new();
+        let m = t.add_model(models::find("Router-M2").unwrap(), None, 0.0, 0.0).unwrap();
+        let r2 = t.add_device(DeviceKind::Router, None, 0.0, 0.0).unwrap();
+        let s1 = t.add_device(DeviceKind::Switch, None, 0.0, 0.0).unwrap();
+        let pc = t.add_device(DeviceKind::Pc, None, 0.0, 0.0).unwrap();
+        assert!(t.connect_octal(m, r2, None).unwrap_err().to_string().contains("no octal card"));
+        t.device_mut(m).unwrap().powered_off = true;
+        t.set_module(m, "0/1", Some(OCTAL_CARD)).unwrap();
+        assert_eq!(t.device(m).unwrap().octal_lines(), 8);
+        assert_eq!(t.connect_octal(m, r2, None).unwrap().line, 0);
+        assert_eq!(t.connect_octal(m, s1, Some(5)).unwrap().line, 5);
+        assert!(t.connect_octal(m, pc, None).unwrap_err().to_string().contains("no Console"));
+        assert!(matches!(t.connect_octal(m, r2, None), Err(ModelError::PortInUse(..))));
+        assert!(t.connect_octal(m, s1, Some(9)).is_err());
+        assert!(t.connect_console(pc, r2).is_err(), "the console is taken by the octal line");
+        t.octals.push(OctalCable { router: m, line: 0, device: s1 });
+        t.octals.push(OctalCable { router: m, line: 12, device: r2 });
+        t.sanitize();
+        assert_eq!(t.octals.len(), 2);
+        // Taking the card out unplugs its lines; removing a device unplugs its cable.
+        t.set_module(m, "0/1", None).unwrap();
+        assert!(t.octals.is_empty());
     }
 }
