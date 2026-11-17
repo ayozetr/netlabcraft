@@ -189,14 +189,27 @@ pub fn pstn_mark(p: &Painter, rect: Rect, tk: &Tokens) {
         a.p.circle_filled(c + egui::vec2(ang.cos(), ang.sin()) * a.w * 0.075, (a.w * 0.014).max(0.8), ink);
     }
     a.p.circle_filled(c, a.w * 0.025, ink);
-    // The handset: a curved bar with an ear piece and a mouth piece hanging from its ends.
-    let h = a.at(0.68, 0.52);
-    let pts: Vec<Pos2> = (0..=10)
-        .map(|i| PI * (1.2 + 0.6 * i as f32 / 10.0))
-        .map(|ang| h + egui::vec2(ang.cos(), ang.sin()) * a.w * 0.16 + egui::vec2(0.0, a.w * 0.06))
+    // The handset, tilted: a thick handle bowed away from the cloud's centre with a fat ear piece and mouth
+    // piece at its ends, each turned toward the caller, outlined in paper so it reads over the cloud.
+    let h = a.at(0.7, 0.5);
+    let ang = -0.6f32;
+    let (ux, uy) = (ang.cos(), ang.sin());
+    let along = egui::vec2(ux, uy);
+    let across = egui::vec2(-uy, ux);
+    let to = |u: f32, v: f32| h + along * (a.w * u) + across * (a.w * v);
+    let half = 0.15f32;
+    let handle: Vec<Pos2> = (0..=10)
+        .map(|i| {
+            let u = -half + 2.0 * half * i as f32 / 10.0;
+            to(u, -0.035 * (1.0 - (u / half).powi(2)))
+        })
         .collect();
-    a.p.add(Shape::line(pts.clone(), Stroke::new((a.w * 0.05).max(1.5), ink)));
-    for end in [pts.first(), pts.last()].into_iter().flatten() {
-        a.p.line_segment([*end, *end + egui::vec2(0.0, a.w * 0.1)], Stroke::new((a.w * 0.085).max(2.0), ink));
+    a.p.add(Shape::line(handle.clone(), Stroke::new(a.w * 0.085 + 2.0, tk.art_paper)));
+    a.p.add(Shape::line(handle, Stroke::new(a.w * 0.065, ink)));
+    for u in [-half, half] {
+        let piece = vec![to(u - 0.06, -0.05), to(u + 0.06, -0.05), to(u + 0.06, 0.1), to(u - 0.06, 0.1)];
+        a.p.add(Shape::convex_polygon(piece.clone(), tk.art_paper, Stroke::new(2.5, tk.art_paper)));
+        a.p.add(Shape::convex_polygon(piece, ink, Stroke::NONE));
+        a.dot(to(u, 0.045), 0.014, tk.art_paper);
     }
 }
