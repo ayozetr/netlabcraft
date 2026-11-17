@@ -13,7 +13,7 @@ to end is in [`labs/`](labs/README.md).
 
 | Number | Value | Kind |
 |---|---|---|
-| Engine commands | **202** | measured: `c!(` entries in `crates/engine/src/catalog.rs` |
+| Engine commands | **204** | measured: `c!(` entries in `crates/engine/src/catalog.rs` |
 | Console grammar entries | **1341** across 45 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
 | Device models | **146** | measured: `MODELS` in `crates/model/src/models.rs` (the fallback model not counted; the 8 router cards are in `MODULES`) |
 | Sample labs | **33** | measured: `SAMPLES` in `crates/engine/src/sample.rs` |

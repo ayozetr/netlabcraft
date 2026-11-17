@@ -14,7 +14,7 @@
 A typical agent session: `file.new` (or `device.add` + `link.add`), configure with `netlabcraft_cli`, verify with `net.ping` / `net.traceroute`, inspect `sim.events`, then `file.save`.
 
 The lab book ([labs/](labs/README.md)) is the worked example: `apps/netlabcraft-cli/tests/mcp_lab_book.rs`
-starts `netlabcraft-cli mcp` and drives eleven of its labs over JSON-RPC, each `lab` block as
+starts `netlabcraft-cli mcp` and drives sixteen of its labs over JSON-RPC, each `lab` block as
 `netlabcraft_run` calls and each `console` block as `netlabcraft_cli` calls.
 
 Other sessions, all through `netlabcraft_run`:
