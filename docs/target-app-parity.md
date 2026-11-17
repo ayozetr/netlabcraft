@@ -16,9 +16,9 @@ to end is in [`labs/`](labs/README.md).
 | Engine commands | **202** | measured: `c!(` entries in `crates/engine/src/catalog.rs` |
 | Console grammar entries | **1341** across 45 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
 | Device models | **100** | measured: `MODELS` in `crates/model/src/models.rs` (the fallback model not counted; the 8 router cards are in `MODULES`) |
-| Sample labs | **32** | measured: `SAMPLES` in `crates/engine/src/sample.rs` |
+| Sample labs | **33** | measured: `SAMPLES` in `crates/engine/src/sample.rs` |
 | Lab-book labs | **48** (+1 unnumbered: the cellular lab) | measured: numbered labs in `docs/labs/` (4 CCNA 1, 17 CCNA 2, 26 CCNA 3 with the BGP, redistribution, PPPoE and OSPF-area labs, and one wireless-security follow-up; labs 21 to 29, 34 and 35 are troubleshooting labs, 30 and 31 inspection labs), all run by `crates/engine/tests/lab_book.rs`, 16 also over MCP by `apps/netlabcraft-cli/tests/mcp_lab_book.rs` |
-| Tests | **770** | measured: sum of "passed" from the CI run on `main` after the last of the nine M9 merges (`cargo test --workspace --lib --bins --tests`, 22 result lines) |
+| Tests | **770** | measured: sum of "passed" from the CI run on `main` after the last of the nine M9 merges (`cargo test --workspace --lib --bins --tests`, 22 result lines); not re-measured since |
 | **Ready for real work** (weighted) | **~92%** | estimated; written weights below (92.5 computed, re-scored 2026-11-13) |
 | **CCNA 1 student** (Introduction to Networks) | **~93%** | estimated; [method](#audiences) |
 | **CCNA 2 student** (Switching, Routing and Wireless Essentials) | **~94%** | estimated; [method](#audiences) |
@@ -136,12 +136,12 @@ first estimate) counted topics as present without weighing their depth or the un
   Simulation mode has every option the course uses: Constant Delay, capturing only chosen
   protocols, absolute start times and the sender's own decisions in the OSI view. What is left
   is walking more labs and the host-app details they turn up.
-- **CCNA 2 (SRWE):** thirteen labs of the book run, four of them troubleshooting labs (VLANs, inter-VLAN routing, STP, EtherChannel,
+- **CCNA 2 (SRWE):** seventeen labs of the book are tagged CCNA 2 and run as written (the course column of [labs/README.md](labs/README.md)), troubleshooting labs among them (VLANs, inter-VLAN routing, STP, EtherChannel,
   DHCP, HSRP, switch security, a WLC, static routes). Wireless is no longer far behind:
   WPA2-Enterprise runs a real PEAP tunnel with EAP over RADIUS, and WLANs can be centrally
   switched; the PEAP key exchange is a toy size and there are no certificates. VRRP follows its
   timers now; GLBP hellos are still not on the wire (their format isn't public).
-- **CCNA 3 (ENSA):** ten labs of the book run, three of them troubleshooting labs (OSPF, ACLs, NAT, GRE over IPsec, QoS, network
+- **CCNA 3 (ENSA):** twenty-six labs of the book are tagged CCNA 3 (fifteen of the course and eleven follow-ups past it) and run as written, troubleshooting labs among them (OSPF, ACLs, NAT, GRE over IPsec, QoS, network
   management, RESTCONF). IPsec runs a real Diffie-Hellman exchange (MODP groups 1 to 16 and 24, and the P-256 and P-384 curves) and real AES, DES and
   3DES with SHA-1, SHA-256 or MD5 HMACs under IKEv1 and IKEv2, with lifetimes and child-SA
   rekeying, and AH on its own is real (tunnel mode); AH bundles with ESP (AH outside ESP) run for real; the IKE SA has a lifetime and is replaced before it runs out. Automation scores 86%:
@@ -152,13 +152,13 @@ first estimate) counted topics as present without weighing their depth or the un
 - **Instructor:** the answer network, assessment tree, initial network, instructions per
   language, connectivity tests, signed results and locks landed. A JSON results
   file embeds the student's network and is replayed to check the claimed score, so a forged
-  score fails (time claims and CSV files are not replayed), and the interface comes in two
-  languages.
+  score fails (time claims and CSV files are not replayed), and the interface comes in seven
+  languages (none reviewed by a native speaker).
 
 ## Stage
 
 **Pre-alpha:** every core workflow works end to end (build a lab, configure by typing, ping,
-watch frames, grade an activity, save), and the 31-lab book (and the cellular lab) runs as written, by the engine and
+watch frames, grade an activity, save), and the 48-lab book (and the cellular lab) runs as written, by the engine and
 over MCP. Every alpha gate and every beta gate is met; packages are built by `release.yml`.
 Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 
