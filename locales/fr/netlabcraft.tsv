@@ -1860,7 +1860,7 @@ furniture	Table	Table
 	Additional Info:	Informations complémentaires :
 	These stay on this computer, in no lab file and nowhere else. Only the name is used, in activity results.	Ces informations restent sur cet ordinateur, dans aucun fichier de labo et nulle part ailleurs. Seul le nom est utilisé, dans les résultats d'activité.
 	View Wireless Signals	Afficher les signaux sans fil
-	View Wireless Signals (Ctrl+Alt+W): faint coverage areas of the access points and a line from each Wi-Fi host to its access point	Afficher les signaux sans fil (Ctrl+Alt+W) : zones de couverture discrètes des points d'accès et une ligne de chaque hôte Wi-Fi vers son point d'accès
+	View Wireless Signals (Ctrl+Alt+Shift+W): faint coverage areas of the access points and a line from each Wi-Fi host to its access point	Afficher les signaux sans fil (Ctrl+Alt+Shift+W) : zones de couverture discrètes des points d'accès et une ligne de chaque hôte Wi-Fi vers son point d'accès
 	{} is already cabled to {}	{} a déjà un câble vers {}
 	A cable joins two different devices	Un câble relie deux équipements différents
 	Click a port on a device's front panel, then a port on another device, to cable them · right-click or Esc cancels	Cliquez sur un port de la face avant d'un équipement, puis sur un port d'un autre équipement, pour les relier par un câble · clic droit ou Échap annule

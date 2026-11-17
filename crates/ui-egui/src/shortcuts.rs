@@ -192,7 +192,7 @@ pub static TABLE: &[Shortcut] = &[
     row("View", "Physical View", S, Key::P, Act::Physical, Idle),
     row("View", "Show Viewport", S, Key::V, Act::Viewport, Idle),
     row("View", "Show Workspace List", S, Key::W, Act::WorkspaceList, Idle),
-    row("View", "View Wireless Signals", C | A, Key::W, Act::WirelessSignals, Idle),
+    row("View", "View Wireless Signals", C | A | S, Key::W, Act::WirelessSignals, Idle),
     row("View", "Main Toolbar", C | S, Key::A, Act::ToolbarMain, Idle),
     row("View", "Secondary Toolbar", C | S, Key::R, Act::ToolbarSecondary, Idle),
     row("View", "Bottom Toolbar", C | S, Key::B, Act::ToolbarBottom, Idle),
@@ -229,7 +229,7 @@ pub static TABLE: &[Shortcut] = &[
     row("Device box", "Routers", C | A, Key::R, Act::Routers, Always),
     row("Device box", "Switches", C | A, Key::S, Act::Switches, Always),
     row("Device box", "Hubs", C | A, Key::U, Act::Hubs, Always),
-    row("Device box", "Wireless Devices", C | A | S, Key::W, Act::Wireless, Always),
+    row("Device box", "Wireless Devices", C | A, Key::W, Act::Wireless, Always),
     row("Device box", "Security", C | A, Key::C, Act::Security, Always),
     row("Device box", "WAN Emulation", C | A, Key::N, Act::Wan, Always),
     row("Device box", "End Devices", C | A, Key::V, Act::EndDevices, Always),
@@ -620,7 +620,7 @@ mod tests {
         assert_eq!(text(Act::Escape), "Esc");
         assert_eq!(text(Act::SelectToward(Dir::Left)), "Shift+Left");
         assert_eq!(text(Act::PduList), "Ctrl+Shift+O");
-        assert_eq!(text(Act::WirelessSignals), "Ctrl+Alt+W");
+        assert_eq!(text(Act::WirelessSignals), "Ctrl+Alt+Shift+W");
     }
 
     #[test]
