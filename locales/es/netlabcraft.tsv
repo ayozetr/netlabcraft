@@ -633,8 +633,6 @@
 	Wi-Fi with a controller: lightweight APs and WPA2-Enterprise	Wi-Fi con controlador: AP ligeros y WPA2-Enterprise
 	Two lightweight access points join the controller WLC1, which offers Staff (WPA2-Enterprise, logins checked by a RADIUS server) and Guest (WPA2-PSK).	Dos puntos de acceso ligeros se unen al controlador WLC1, que ofrece Staff (WPA2-Enterprise, con los inicios de sesión comprobados por un servidor RADIUS) y Guest (WPA2-PSK).
 	WLC1 holds two WLANs (`show wlan`, `show capwap`): Staff checks logins with RADIUS1 (users ana/ana12345 and luis/luis1234) and lands in VLAN 10 (192.168.10.0/24); Guest uses the passphrase invitado123 and lands in VLAN 30 (192.168.30.0/24). The access points tag each WLAN on their trunk to S1, and R1 routes and hands out addresses per VLAN. In Simulation mode, reset and ping from Laptop1 to watch the 802.11 association, the EAP login, the RADIUS exchange, the 4-way handshake and then CCMP-protected data; move Laptop1 next to LAP2 and watch it reassociate, keeping its address.	WLC1 tiene dos WLAN (`show wlan`, `show capwap`): Staff comprueba los inicios de sesión con RADIUS1 (usuarios ana/ana12345 y luis/luis1234) y entra en la VLAN 10 (192.168.10.0/24); Guest usa la frase de paso invitado123 y entra en la VLAN 30 (192.168.30.0/24). Los puntos de acceso etiquetan cada WLAN en su troncal hacia S1, y R1 enruta y reparte direcciones en cada VLAN. En modo Simulación, reinicia y haz ping desde Laptop1 para ver la asociación 802.11, el inicio de sesión EAP, el intercambio RADIUS, el saludo de 4 vías y después los datos protegidos con CCMP; acerca Laptop1 a LAP2 y verás cómo se reasocia sin perder su dirección.
-	Logical Workspace	Espacio de trabajo lógico
-	Physical Workspace	Espacio de trabajo físico
 	Physical workspace	Espacio de trabajo físico
 	Adds a place to the map shown; drag it into position	Añade un lugar al mapa que se muestra; arrástralo a su sitio
 	New City	Nueva ciudad
@@ -1680,3 +1678,48 @@ event	no APN	sin APN
 	The modem's phone cable must go to a telephone cloud, and the number must be one of its ports.	El cable de teléfono del módem debe ir a una nube telefónica, y el número debe ser el de uno de sus puertos.
 	Telephone numbers (one per port):	Números de teléfono (uno por puerto):
 	Set	Fijar
+	Zoom	Zoom
+	Toolbars	Barras de herramientas
+	Main	Principal
+	Secondary	Secundaria
+	Bottom	Inferior
+	Simulation Mode	Modo simulación
+	Realtime Mode	Modo tiempo real
+	Logical View	Vista lógica
+	Physical View	Vista física
+	Show Viewport	Mostrar visor
+	Show Workspace List	Mostrar lista del espacio de trabajo
+	Drawing Palette	Paleta de dibujo
+	Report an Issue	Informar de un problema
+	Opens the issue tracker in your browser	Abre el gestor de incidencias en el navegador
+	Getting Started	Primeros pasos
+	Contents	Contenido
+	Tutorials	Tutoriales
+	Accessibility	Accesibilidad
+	NetLabCraft Help	Ayuda de NetLabCraft
+	Keyboard shortcuts	Atajos de teclado
+	Documentation online	Documentación en línea
+	Command reference	Referencia de comandos
+	Command line	Línea de comandos
+	Agent control (MCP)	Control por agentes (MCP)
+	Lab file format	Formato de archivo de laboratorio
+	Open the lab book	Abrir el libro de prácticas
+	Viewport	Visor
+	The viewport shows the logical view.	El visor muestra la vista lógica.
+	Nothing on the workspace yet.	Aún no hay nada en el espacio de trabajo.
+	Click or drag to move the view of the workspace	Haz clic o arrastra para mover la vista del espacio de trabajo
+	Workspace List	Lista del espacio de trabajo
+	Click a device to select it; double-click to open it.	Haz clic en un dispositivo para seleccionarlo; doble clic para abrirlo.
+	1. Pick a device in the box at the bottom, then click the workspace to place it.	1. Elige un dispositivo en la caja inferior y haz clic en el espacio de trabajo para colocarlo.
+	2. Pick a cable in the same box, click one device, then another, and choose the ports.	2. Elige un cable en la misma caja, haz clic en un dispositivo, luego en otro, y elige los puertos.
+	3. Click a device to open its window: routers and switches have a CLI, computers a Desktop.	3. Haz clic en un dispositivo para abrir su ventana: los routers y switches tienen CLI, los equipos un Escritorio.
+	4. Test the network with Add Simple PDU in the Tools menu: click a source, then a destination.	4. Prueba la red con Añadir PDU simple en el menú Herramientas: haz clic en un origen y luego en un destino.
+	5. Switch to Simulation mode to step through every frame in the event list.	5. Cambia al modo simulación para recorrer cada trama en la lista de eventos.
+	6. Save with Ctrl+S. New from sample in the File menu opens a ready-made lab to explore.	6. Guarda con Ctrl+S. Nuevo desde un ejemplo, en el menú Archivo, abre un laboratorio listo para explorar.
+	The File menu's New from sample opens labs made to be explored: VLANs, routing, wireless and more.	Nuevo desde un ejemplo, en el menú Archivo, abre laboratorios pensados para explorar: VLAN, enrutamiento, redes inalámbricas y más.
+	The lab book has step-by-step exercises, from first device setup to routing protocols.	El libro de prácticas tiene ejercicios paso a paso, desde la primera configuración hasta los protocolos de enrutamiento.
+	Each lab lists the devices to place, the commands to type and what you should see.	Cada práctica indica los dispositivos que colocar, los comandos que escribir y lo que debes ver.
+	Every device on the workspace is announced by a screen reader with its name and model.	Un lector de pantalla anuncia cada dispositivo del espacio de trabajo con su nombre y modelo.
+	Tab and the arrow keys move between devices and cables; Enter or Space opens the one in focus.	Tab y las flechas se mueven entre dispositivos y cables; Intro o Espacio abre el que tiene el foco.
+	The Workspace List in the View menu names every device in a table you can move through.	La lista del espacio de trabajo, en el menú Ver, nombra cada dispositivo en una tabla por la que puedes moverte.
+	Everything the menus do can also be typed, from the command line or by an agent.	Todo lo que hacen los menús también se puede escribir, desde la línea de comandos o con un agente.
