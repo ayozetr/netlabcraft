@@ -199,7 +199,7 @@ fn closet_sheet(dir: &str, dark: bool) {
     });
     // Zoomed on the rack (its first frame): the top units (devices and their jacks), then the lower ones
     // (patch panels, wall mount, power strip).
-    for (name, skip_units) in [("closet-zoom-top", 0.0f32), ("closet-zoom-bottom", 6.0)] {
+    for (name, skip_units) in [("closet-zoom-top", 0.0f32), ("closet-zoom-bottom", 8.0)] {
         let (s, closet) = closet_lab();
         app_sheet(dir, &format!("{name}-{suffix}"), s, (1500.0, 900.0), dark, move |app| {
             app.set_physical(true);
