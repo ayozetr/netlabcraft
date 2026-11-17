@@ -25,6 +25,7 @@ mod closet;
 mod cloud_page;
 mod console;
 mod credits;
+pub mod environments;
 mod events;
 pub mod fonts;
 mod hardware;
@@ -44,7 +45,6 @@ pub mod pdf;
 pub mod pdu_dialog;
 mod phone;
 mod physical;
-pub mod environments;
 pub mod png;
 pub mod prefs;
 mod programming;
@@ -61,9 +61,8 @@ mod wlan_page;
 #[cfg(test)]
 mod tests;
 mod tests_closet;
-mod tests_families;
-#[cfg(test)]
 mod tests_environments;
+mod tests_families;
 #[cfg(test)]
 mod tests_prefs;
 
