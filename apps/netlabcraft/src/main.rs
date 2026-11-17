@@ -229,6 +229,15 @@ impl App {
                         }
                     }
                 }
+                UiRequest::ImportEnvironment { place } => {
+                    if let Some(p) = rfd::FileDialog::new().add_filter("Environment", &["json"]).pick_file() {
+                        match std::fs::read(&p) {
+                            Ok(b) if b.len() <= 1_000_000 => self.app.environment_imported(place, &String::from_utf8_lossy(&b)),
+                            Ok(_) => self.app.ui.status = Some(("That file is too large to be an environment.".into(), true)),
+                            Err(e) => self.app.ui.status = Some((format!("{}: {e}", p.display()), true)),
+                        }
+                    }
+                }
                 UiRequest::PlaySound(bytes) => play_wav(&bytes),
                 UiRequest::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             }

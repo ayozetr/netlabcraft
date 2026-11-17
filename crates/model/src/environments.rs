@@ -100,7 +100,7 @@ pub static VARS: &[Var] = &[
     // Energy
     var("heat", "Heat", ENERGY, "W/m2", 0.0, 0.0, 100_000.0),
     var("photon", "Photon flux", ENERGY, "umol/m2/s", 0.0, 0.0, 5_000.0),
-    var("fire", "Fire", ENERGY, "%", 0.0, 0.0, 100.0),
+    var("fire", "Flames", ENERGY, "%", 0.0, 0.0, 100.0),
     // Gases: the volume shares of dry air, except smoke (obscuration) and carbon monoxide (ppm)
     var("argon", "Argon", GASES, "%", 0.934, 0.0, 100.0),
     sensed(var("carbon_monoxide", "Carbon monoxide", GASES, "ppm", 0.0, 0.0, 1_000.0), "co"),

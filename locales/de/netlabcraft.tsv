@@ -1865,6 +1865,123 @@ furniture	Table	Tisch
 	A cable joins two different devices	Ein Kabel verbindet zwei verschiedene Geräte
 	Click a port on a device's front panel, then a port on another device, to cable them · right-click or Esc cancels	Klicken Sie auf einen Port an der Frontplatte eines Geräts und dann auf einen Port eines anderen Geräts, um beide zu verkabeln · Rechtsklick oder Esc bricht ab
 	From {}: click a port on another device. Right-click or Esc cancels.	Von {}: Klicken Sie auf einen Port eines anderen Geräts. Rechtsklick oder Esc bricht ab.
+	Environments	Umgebungen
+	Location:	Standort:
+	View Mode	Ansichtsmodus
+	Change this place's environment	Umgebung dieses Ortes ändern
+	Current Time:	Aktuelle Zeit:
+	Set the time of day	Tageszeit einstellen
+	Resume	Fortsetzen
+	Filter:	Filter:
+	Search	Suchen
+	No variables match the filter.	Keine Variable passt zum Filter.
+	Notes	Notizen
+	Simulation Time Scale:	Zeitskala der Simulation:
+	minute(s) real equals	Minute(n) real entspricht
+	simulated minute(s)	simulierte Minute(n)
+	Keyframe Graph	Keyframe-Diagramm
+	Advanced	Erweitert
+	Time Snap:	Zeitraster:
+	Value Snap:	Wertraster:
+	Click a variable to show it, then click the graph to add or change a point. Right-click a point to remove it.	Variable anklicken, um sie anzuzeigen, dann ins Diagramm klicken, um einen Punkt hinzuzufügen oder zu ändern. Rechtsklick auf einen Punkt entfernt ihn.
+	Pick a variable on the left	Variable links wählen
+	Time Line:	Zeitleiste:
+	Time Increment:	Zeitschritt:
+	Variable:	Variable:
+	Export File…	Datei exportieren…
+	Import File…	Datei importieren…
+	Remove Custom Environment	Benutzerdefinierte Umgebung entfernen
+	The place inherits every variable again	Der Ort erbt wieder alle Variablen
+	Previous	Zurück
+	Next	Weiter
+	Value:	Wert:
+	Add Keyframe	Keyframe hinzufügen
+	Inherit Again	Wieder erben
+	Show Notes in View Mode	Notizen im Ansichtsmodus zeigen
+	Show All	Alle anzeigen
+	Hide All	Alle ausblenden
+	Always on Top	Immer im Vordergrund
+	Enter a time of day as HH:MM:SS.	Tageszeit als HH:MM:SS eingeben.
+	set here	hier gesetzt
+	from {}	von {}
+	default value	Standardwert
+	smart-home room	Smart-Home-Raum
+	Keyframe {} of {}	Keyframe {} von {}
+	Imported an environment: {} variables read, {} skipped	Umgebung importiert: {} Variablen gelesen, {} übersprungen
+	1 second	1 Sekunde
+	1 minute	1 Minute
+	5 minutes	5 Minuten
+	15 minutes	15 Minuten
+	1 hour	1 Stunde
+	Earth Physical Features	Physikalische Erdmerkmale
+	Electricity	Elektrizität
+	Energy	Energie
+	Gases	Gase
+	Gravity	Schwerkraft
+	Light (Sun)	Licht (Sonne)
+	Motion	Bewegung
+	Other	Sonstiges
+	Radiation	Strahlung
+	Sound	Schall
+	Temperature	Temperatur
+	Water	Wasser
+	Wind	Wind
+	Elevation	Höhe
+	Soil pH	Boden-pH
+	Soil moisture	Bodenfeuchte
+	Soil compaction	Bodenverdichtung
+	Composition hardness	Härte der Zusammensetzung
+	Voltage	Spannung
+	Resistance	Widerstand
+	Power	Leistung
+	Heat	Wärme
+	Photon flux	Photonenfluss
+	Flames	Flammen
+	Argon	Argon
+	Carbon monoxide	Kohlenmonoxid
+	Carbon dioxide	Kohlendioxid
+	Helium	Helium
+	Hydrogen	Wasserstoff
+	Methane	Methan
+	Nitrogen	Stickstoff
+	Oxygen	Sauerstoff
+	Ozone	Ozon
+	Propane	Propan
+	Smoke	Rauch
+	Electromagnetic radiation	Elektromagnetische Strahlung
+	Infrared	Infrarot
+	Radiant heat	Strahlungswärme
+	Sunlight	Sonnenlicht
+	Ultraviolet	Ultraviolett
+	Visible light	Sichtbares Licht
+	Luminosity	Helligkeit
+	Moon phase	Mondphase
+	Motion direction	Bewegungsrichtung
+	Motion speed	Bewegungsgeschwindigkeit
+	Torque	Drehmoment
+	Atmospheric pressure	Luftdruck
+	Radiation level	Strahlungspegel
+	Alpha radiation	Alphastrahlung
+	Beta radiation	Betastrahlung
+	Gamma radiation	Gammastrahlung
+	Neutron radiation	Neutronenstrahlung
+	Ionization	Ionisation
+	Sound pitch	Tonhöhe
+	Sound volume	Lautstärke
+	White noise	Weißes Rauschen
+	Ambient temperature	Umgebungstemperatur
+	Clouds	Wolken
+	Humidity	Luftfeuchtigkeit
+	Rain	Regen
+	Snow	Schnee
+	Water level	Wasserstand
+	Water volume	Wassermenge
+	Water pH	Wasser-pH
+	Water temperature	Wassertemperatur
+	Water speed	Strömungsgeschwindigkeit
+	Wind direction	Windrichtung
+	Wind gusts	Windböen
+	Wind speed	Windgeschwindigkeit
 	Components	Komponenten
 	Wireless Devices	Drahtlosgeräte
 	Home	Zuhause
