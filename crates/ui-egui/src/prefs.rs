@@ -287,8 +287,12 @@ pub fn shortcuts(app: &mut PacketApp, ctx: &egui::Context) {
     if pressed(cmd | Modifiers::SHIFT, Key::M) {
         app.open_algorithm_settings();
     }
-    // Ctrl+Shift+R belongs to the toolbars (View menu): a match that ignores Shift would take it.
-    if !ctx.input(|i| i.modifiers.shift) && pressed(cmd, Key::R) {
+}
+
+/// Preferences (Ctrl+R). Called after the View menu's shortcuts: a match that ignores Shift
+/// would take Ctrl+Shift+R (the secondary toolbar) if this ran first.
+pub fn late_shortcuts(app: &mut PacketApp, ctx: &egui::Context) {
+    if ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::R))) {
         app.open_preferences();
     }
 }

@@ -997,6 +997,7 @@ impl PacketApp {
         if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd_shift, Key::B))) {
             self.ui.toolbars.bottom = !self.ui.toolbars.bottom;
         }
+        prefs::late_shortcuts(self, ctx);
         if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::SHIFT, Key::S))) {
             self.ui.mode = Mode::Simulation;
         }
