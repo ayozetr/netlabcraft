@@ -1,6 +1,5 @@
 //! `cargo xtask contributors [--check]`: regenerate contributors/contributors.json from the git
-//! history (craftrules standards/contributors.md; schema 1, the same fields its contributors.py
-//! writes). The About window bakes it in through crates/ui-egui/build.rs.
+//! history (docs/contributors.md; schema 1). The About window bakes it in through crates/ui-egui/build.rs.
 //!
 //! - A commit counts for a GitHub username when its author email is the username's GitHub noreply
 //!   address (`12345+login@users.noreply.github.com` or `login@users.noreply.github.com`); other
