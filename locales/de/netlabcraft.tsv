@@ -1863,3 +1863,14 @@ furniture	Table	Tisch
 	A cable joins two different devices	Ein Kabel verbindet zwei verschiedene Geräte
 	Click a port on a device's front panel, then a port on another device, to cable them · right-click or Esc cancels	Klicken Sie auf einen Port an der Frontplatte eines Geräts und dann auf einen Port eines anderen Geräts, um beide zu verkabeln · Rechtsklick oder Esc bricht ab
 	From {}: click a port on another device. Right-click or Esc cancels.	Von {}: Klicken Sie auf einen Port eines anderen Geräts. Rechtsklick oder Esc bricht ab.
+	Components	Komponenten
+	Wireless Devices	Drahtlosgeräte
+	Home	Zuhause
+	Smart City	Smart City
+	Industrial	Industrie
+	Power Grid	Stromnetz
+	Boards	Platinen
+	Actuators	Aktoren
+	Sensors	Sensoren
+	Recently Used	Zuletzt verwendet
+	No device placed yet.	Noch kein Gerät platziert.

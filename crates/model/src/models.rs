@@ -26,6 +26,47 @@ pub struct Model {
     pub ports: &'static [PortRun],
 }
 
+/// The groups of the device box (its subcategories): where a model's tile is listed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Group {
+    Routers,
+    Switches,
+    Hubs,
+    /// Access points, controllers, home routers and the cell tower and central office.
+    Wireless,
+    /// Firewalls.
+    Security,
+    /// The clouds and the modems.
+    Wan,
+    EndDevices,
+    Home,
+    SmartCity,
+    Industrial,
+    PowerGrid,
+    Boards,
+    Actuators,
+    Sensors,
+}
+
+impl Model {
+    /// The device box group the model is listed in.
+    pub fn group(&self) -> Group {
+        match self.id {
+            "AccessPoint" | "LAP" | "WLC" | "Home-Router" | "Home-Gateway" | CELL_TOWER | CENTRAL_OFFICE => Group::Wireless,
+            "Firewall-5" => Group::Security,
+            "Board-SBC" | "Board-MCU" => Group::Boards,
+            _ if self.wan() => Group::Wan,
+            _ => match self.kind {
+                DeviceKind::Router => Group::Routers,
+                DeviceKind::Switch => Group::Switches,
+                DeviceKind::Hub => Group::Hubs,
+                DeviceKind::Iot => Group::Home,
+                _ => Group::EndDevices,
+            },
+        }
+    }
+}
+
 impl Model {
     /// A multilayer switch: can route (`ip routing`) and have routed ports (`no switchport`).
     pub fn multilayer(&self) -> bool {
@@ -783,6 +824,24 @@ mod tests {
             assert_eq!(find(m.label).map(|x| x.id), Some(m.id));
         }
         assert_eq!(find("router 3ge").map(|m| m.id), Some("Router-3"));
+    }
+
+    #[test]
+    fn every_model_is_listed_in_the_group_that_fits_it() {
+        let g = |id: &str| find(id).map(|m| m.group());
+        assert_eq!(g("Router-3"), Some(Group::Routers));
+        assert_eq!(g("Central-Office"), Some(Group::Wireless));
+        assert_eq!(g("Cell-Tower"), Some(Group::Wireless));
+        assert_eq!(g("Home-Router"), Some(Group::Wireless));
+        assert_eq!(g("AccessPoint"), Some(Group::Wireless));
+        assert_eq!(g("Switch-24"), Some(Group::Switches));
+        assert_eq!(g("Firewall-5"), Some(Group::Security));
+        assert_eq!(g("Cloud"), Some(Group::Wan));
+        assert_eq!(g("Hub-8"), Some(Group::Hubs));
+        assert_eq!(g("Board-MCU"), Some(Group::Boards));
+        assert_eq!(g("IoT-Light"), Some(Group::Home));
+        assert_eq!(g("PC"), Some(Group::EndDevices));
+        assert_eq!(g("IP-Phone"), Some(Group::EndDevices));
     }
 
     #[test]

@@ -378,7 +378,7 @@ mod setup_and_supplies {
         let mut h = harness("cellular");
         h.state_mut().ui.show_notes = false;
         h.run_steps(2);
-        h.get_by_label("Cellular").click();
+        h.get_by_label("Wireless Devices").click();
         h.run_steps(2);
         for tile in ["Cell Tower", "Central Office Server"] {
             assert!(h.query_by_label(tile).is_some(), "{tile}");

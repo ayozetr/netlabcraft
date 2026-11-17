@@ -1863,3 +1863,14 @@ furniture	Table	Mesa
 	A cable joins two different devices	Um cabo liga dois dispositivos diferentes
 	Click a port on a device's front panel, then a port on another device, to cable them · right-click or Esc cancels	Clique em uma porta do painel frontal de um dispositivo e depois em uma porta de outro dispositivo para ligá-los com um cabo · clique direito ou Esc cancela
 	From {}: click a port on another device. Right-click or Esc cancels.	De {}: clique em uma porta de outro dispositivo. Clique direito ou Esc cancela.
+	Components	Componentes
+	Wireless Devices	Dispositivos sem fio
+	Home	Casa
+	Smart City	Cidade inteligente
+	Industrial	Industrial
+	Power Grid	Rede elétrica
+	Boards	Placas
+	Actuators	Atuadores
+	Sensors	Sensores
+	Recently Used	Usados recentemente
+	No device placed yet.	Nenhum dispositivo colocado ainda.

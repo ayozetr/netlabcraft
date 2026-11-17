@@ -1863,3 +1863,14 @@ furniture	Table	桌子
 	A cable joins two different devices	一条线缆连接两台不同的设备
 	Click a port on a device's front panel, then a port on another device, to cable them · right-click or Esc cancels	点击设备前面板上的端口，再点击另一台设备的端口，即可用线缆连接它们 · 右键单击或按 Esc 取消
 	From {}: click a port on another device. Right-click or Esc cancels.	从 {} 开始：点击另一台设备上的端口。右键单击或按 Esc 取消。
+	Components	组件
+	Wireless Devices	无线设备
+	Home	家居
+	Smart City	智慧城市
+	Industrial	工业
+	Power Grid	电网
+	Boards	开发板
+	Actuators	执行器
+	Sensors	传感器
+	Recently Used	最近使用
+	No device placed yet.	尚未放置任何设备。
