@@ -138,7 +138,7 @@
 	Add Simple PDU (P)	Ajouter un PDU simple (P)
 	Add user	Ajouter un utilisateur
 	Added {} to the web site.	{} ajouté au site web.
-	Added {}. Double-click it to open it.	{} ajouté. Double-cliquez dessus pour l'ouvrir.
+	Added {}. Click it to open it.	{} ajouté. Cliquez dessus pour l'ouvrir.
 	Address	Adresse
 	address	adresse
 	address or device name	adresse ou nom d'équipement
@@ -260,7 +260,7 @@
 	Clear	Effacer
 	Clear the event list	Vider la liste d'événements
 	Click a device or a cable to delete it.	Cliquez sur un équipement ou un câble pour le supprimer.
-	Click a device to configure it · drag to move · Shift+drag or Shift+click to pick several · scroll to pan	Cliquez sur un équipement pour le configurer · glissez pour déplacer · Maj+glisser ou Maj+clic pour en choisir plusieurs · molette pour se déplacer
+	Click a device to configure it · drag to move · drag on empty space to pick several · Shift+click adds · right-drag or scroll to pan	Cliquez sur un équipement pour le configurer · glissez pour déplacer · glissez sur le vide pour en choisir plusieurs · Maj+clic en ajoute · glisser avec le clic droit ou molette pour se déplacer
 	Click the corners of the polygon; double-click or Enter to finish, Esc to cancel.	Cliquez sur les sommets du polygone ; double-clic ou Entrée pour terminer, Échap pour annuler.
 	Click the first device and pick a port.	Cliquez sur le premier équipement et choisissez un port.
 	Click the workspace to place a note. Drag notes to move them; double-click to edit.	Cliquez sur l'espace de travail pour poser une note. Glissez les notes pour les déplacer ; double-clic pour modifier.
@@ -365,7 +365,7 @@
 	Domain Name	Nom de domaine
 	done	terminé
 	door	porte
-	Double-click a place to open it · drag to arrange · right-click for more (move devices, cable lengths)	Double-cliquez sur un lieu pour l'ouvrir · glissez pour organiser · clic droit pour plus (déplacer des équipements, longueurs de câble)
+	Click a place to open it · drag to arrange · right-click for more (move devices, cable lengths)	Cliquez sur un lieu pour l'ouvrir · glissez pour organiser · clic droit pour plus (déplacer des équipements, longueurs de câble)
 	Drag on the workspace to draw freehand.	Glissez sur l'espace de travail pour dessiner à main levée.
 	Drag on the workspace to draw. Drawings sit behind devices; move them with Select.	Glissez sur l'espace de travail pour dessiner. Les dessins sont derrière les équipements ; déplacez-les avec Sélection.
 	Draw Ellipse	Dessiner une ellipse
