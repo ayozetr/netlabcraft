@@ -157,7 +157,9 @@ impl Cable {
             Cable::Auto => "Automatically choose the connection type: picks the right cable for the two ports you choose",
             Cable::Straight => "Copper straight-through: joins unlike ports (a PC or router to a switch or hub)",
             Cable::Cross => "Copper cross-over: joins like ports (switch to switch, router to router, PC to PC, router to PC)",
-            Cable::FiberSingle => "Single mode fiber: joins fiber ports whose transceivers are single mode; carries a gigabit signal up to 10 km here",
+            Cable::FiberSingle => {
+                "Single mode fiber: joins fiber ports whose transceivers are single mode; carries a gigabit signal up to 10 km here"
+            }
             Cable::FiberMulti => "Multi mode fiber: joins fiber ports (SFP uplinks and fiber cards); carries a gigabit signal up to 550 m here",
             Cable::Console => "Console (rollover): a PC's RS-232 port to a router's or switch's Console port, for the PC's Terminal",
             Cable::SerialDce => "Serial DCE: joins serial ports; the end you click first is the DCE and gives the clock",
@@ -167,7 +169,9 @@ impl Cable {
             Cable::IotCustom => {
                 "IoT custom cable: joins a programmable board's pin to a smart thing, which the board's program then reads or switches"
             }
-            Cable::Octal => "Octal: joins one line of a router's octal card (Card-8A) to the Console port of another router or switch, for reverse-style console access",
+            Cable::Octal => {
+                "Octal: joins one line of a router's octal card (Card-8A) to the Console port of another router or switch, for reverse-style console access"
+            }
             Cable::Usb => "USB: a PC's or laptop's USB port to a router's or switch's USB console port, for the PC's Terminal",
         }
     }
@@ -497,16 +501,13 @@ impl Topology {
         let (sa, sb) = (self.single_mode_at(l.a), self.single_mode_at(l.b));
         let word = |single: bool| if single { "single-mode (1310 nm)" } else { "multi-mode (850 nm)" };
         if sa != sb {
-            return Some(format!(
-                "transceiver mismatch: {} is {} and {} is {}",
-                self.short_label(l.a),
-                word(sa),
-                self.short_label(l.b),
-                word(sb)
-            ));
+            return Some(format!("transceiver mismatch: {} is {} and {} is {}", self.short_label(l.a), word(sa), self.short_label(l.b), word(sb)));
         }
         (kind == Cable::FiberSingle && !sa).then(|| {
-            format!("a multi-mode transceiver ({}) cannot drive a single-mode fiber cable: set the transceivers to single mode", self.short_label(l.a))
+            format!(
+                "a multi-mode transceiver ({}) cannot drive a single-mode fiber cable: set the transceivers to single mode",
+                self.short_label(l.a)
+            )
         })
     }
 
@@ -609,7 +610,7 @@ impl Topology {
         } else {
             let what = |d: &Device| match d.console_port_name() {
                 Some(p) if usb && p == CONSOLE_PORT => format!("{} has a {USB_CONSOLE_PORT} port", d.name),
-                Some(p) if usb => format!("{} has a {USB_PORT} port", d.name),
+                Some(_) if usb => format!("{} has a {USB_PORT} port", d.name),
                 Some(p) => format!("{} has a {p} port", d.name),
                 None => format!("{} has no console or {} port", d.name, if usb { USB_PORT } else { RS232_PORT }),
             };

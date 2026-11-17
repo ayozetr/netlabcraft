@@ -79,7 +79,9 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
                 pt.single_mode = single;
             }
             s.changed();
-            Ok(json!({"device": s.topology.device(d).map_or(String::new(), |x| x.name.clone()), "port": s.topology.end_label(end), "mode": if single { "single-mode" } else { "multi-mode" }}))
+            Ok(
+                json!({"device": s.topology.device(d).map_or(String::new(), |x| x.name.clone()), "port": s.topology.end_label(end), "mode": if single { "single-mode" } else { "multi-mode" }}),
+            )
         }
         "device.power" => {
             let d = crate::cmd::device_param(s, p, "device")?;

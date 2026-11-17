@@ -98,7 +98,9 @@ pub fn hint(app: &PacketApp) -> String {
         (Tool::Note, _) => crate::i18n::tl("Click the workspace to place a note. Drag notes to move them; double-click to edit.").into(),
         (Tool::Cable(Cable::Console), None) => crate::i18n::tl("Console cable: click a PC (RS-232) and a router or switch (Console).").into(),
         (Tool::Cable(Cable::Usb), None) => crate::i18n::tl("USB cable: click a PC or laptop (USB) and a router or switch (USB console).").into(),
-        (Tool::Cable(Cable::Octal), None) => crate::i18n::tl("Octal cable: click a router with an octal card, then a router or switch (Console).").into(),
+        (Tool::Cable(Cable::Octal), None) => {
+            crate::i18n::tl("Octal cable: click a router with an octal card, then a router or switch (Console).").into()
+        }
         (Tool::Cable(Cable::IotCustom), None) => crate::i18n::tl("IoT custom cable: click a programmable board and a smart thing.").into(),
         (Tool::Cable(_), Some(Pending::PinCable(d))) => {
             let name = app.session.topology.device(d).map_or(String::new(), |x| x.name.clone());
