@@ -59,6 +59,21 @@ pub struct Tokens {
     pub port_hole: Color32,
     pub port_contact: Color32,
     pub port_activity: Color32,
+    /// The paints the device pictures are drawn with (smart things, components, boards, the near-duplicate
+    /// models): the outline, white plastic, bare metal, glass, the accent colours and the two board greens.
+    pub art_ink: Color32,
+    /// The outline of the pictures: the ink on the light theme, a lighter slate on the dark one so thin parts keep their edge.
+    pub art_edge: Color32,
+    pub art_paper: Color32,
+    pub art_steel: Color32,
+    pub art_glass: Color32,
+    pub art_red: Color32,
+    pub art_amber: Color32,
+    pub art_green: Color32,
+    pub art_blue: Color32,
+    pub art_earth: Color32,
+    pub art_pcb_green: Color32,
+    pub art_pcb_blue: Color32,
 }
 
 pub const LIGHT: Tokens = Tokens {
@@ -101,6 +116,18 @@ pub const LIGHT: Tokens = Tokens {
     port_hole: Color32::from_rgb(0x14, 0x17, 0x1b),
     port_contact: Color32::from_rgb(0xd9, 0xa8, 0x2b),
     port_activity: Color32::from_rgb(0xf2, 0xa3, 0x1b),
+    art_ink: Color32::from_rgb(0x1c, 0x26, 0x34),
+    art_edge: Color32::from_rgb(0x1c, 0x26, 0x34),
+    art_paper: Color32::from_rgb(0xf6, 0xf8, 0xfa),
+    art_steel: Color32::from_rgb(0xa9, 0xb4, 0xc0),
+    art_glass: Color32::from_rgb(0xcf, 0xe6, 0xf5),
+    art_red: Color32::from_rgb(0xd6, 0x45, 0x3a),
+    art_amber: Color32::from_rgb(0xf2, 0xb8, 0x2e),
+    art_green: Color32::from_rgb(0x2e, 0x9e, 0x5a),
+    art_blue: Color32::from_rgb(0x2f, 0x7f, 0xd0),
+    art_earth: Color32::from_rgb(0x8a, 0x5a, 0x2e),
+    art_pcb_green: Color32::from_rgb(0x1f, 0x7a, 0x4a),
+    art_pcb_blue: Color32::from_rgb(0x1f, 0x58, 0x9a),
 };
 
 pub const DARK: Tokens = Tokens {
@@ -143,6 +170,18 @@ pub const DARK: Tokens = Tokens {
     port_hole: Color32::from_rgb(0x0c, 0x0e, 0x11),
     port_contact: Color32::from_rgb(0xe6, 0xb8, 0x3c),
     port_activity: Color32::from_rgb(0xff, 0xb4, 0x3a),
+    art_ink: Color32::from_rgb(0x10, 0x15, 0x1c),
+    art_edge: Color32::from_rgb(0x8a, 0x99, 0xad),
+    art_paper: Color32::from_rgb(0xe8, 0xec, 0xf0),
+    art_steel: Color32::from_rgb(0x9a, 0xa6, 0xb4),
+    art_glass: Color32::from_rgb(0xb4, 0xd2, 0xe6),
+    art_red: Color32::from_rgb(0xea, 0x5a, 0x4e),
+    art_amber: Color32::from_rgb(0xf6, 0xc6, 0x48),
+    art_green: Color32::from_rgb(0x4c, 0xc0, 0x76),
+    art_blue: Color32::from_rgb(0x4a, 0x96, 0xe6),
+    art_earth: Color32::from_rgb(0x9c, 0x6c, 0x3c),
+    art_pcb_green: Color32::from_rgb(0x24, 0x8a, 0x54),
+    art_pcb_blue: Color32::from_rgb(0x2a, 0x68, 0xb0),
 };
 
 pub fn tokens(dark: bool) -> Tokens {

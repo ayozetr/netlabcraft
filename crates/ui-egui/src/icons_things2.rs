@@ -1,27 +1,25 @@
-//! Pictures for the smart things added with the second wave of the device box (original
-//! artwork, drawn in code): home appliances and monitors, then city and industrial things.
-//! Each is a small picture on the thing's puck, in the same palette as `icons_parts`.
+//! Pictures for the smart things added with the second wave of the device box (original artwork,
+//! drawn in code): home appliances and monitors, city things and a signal generator. They are drawn
+//! like the rest of `icons_things`: a silhouette of the thing's own, laid out in fractions of the
+//! icon's width and painted with the theme's `art_*` tokens.
 
-use egui::{Color32, Painter, Pos2, Rect, Shape, Stroke, StrokeKind, pos2, vec2};
+use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
-const DARK: Color32 = Color32::from_rgb(0x2a, 0x33, 0x40);
-const RED: Color32 = Color32::from_rgb(0xd6, 0x45, 0x3a);
-const GREEN: Color32 = Color32::from_rgb(0x2e, 0x8b, 0x57);
-const BLUE: Color32 = Color32::from_rgb(0x3a, 0x8f, 0xd6);
-const YELLOW: Color32 = Color32::from_rgb(0xf6, 0xd3, 0x4a);
-const WHITE: Color32 = Color32::WHITE;
+use egui::{Color32, Pos2, Shape, Stroke, vec2};
 
-/// Whether this module draws the model's picture.
-pub fn draws(model_id: &str) -> bool {
-    HOME.contains(&model_id) || CITY.contains(&model_id)
-}
+use crate::icons_things::Art;
+use crate::theme::shade;
 
-/// The models of the Smart Home group added in this wave.
-const HOME: [&str; 8] =
-    ["IoT-Appliance", "IoT-BTSpeaker", "IoT-CeilingFan", "IoT-Furnace", "IoT-Humidifier", "IoT-Humiture", "IoT-Player", "IoT-SoundDet"];
-
-/// The models of the Smart City, Industrial and Actuators groups added in this wave.
-const CITY: [&str; 12] = [
+/// The models this module draws.
+const MODELS: [&str; 20] = [
+    "IoT-Appliance",
+    "IoT-BTSpeaker",
+    "IoT-CeilingFan",
+    "IoT-Furnace",
+    "IoT-Humidifier",
+    "IoT-Humiture",
+    "IoT-Player",
+    "IoT-SoundDet",
     "IoT-Pressure",
     "IoT-Beacon",
     "IoT-CO2",
@@ -36,336 +34,325 @@ const CITY: [&str; 12] = [
     "IoT-Signal",
 ];
 
-/// Draws the picture of a model on its puck; `false`: not one of this module's models.
-pub fn mark(p: &Painter, rect: Rect, model_id: &str) -> bool {
-    if !draws(model_id) {
-        return false;
-    }
-    let w = rect.width();
-    let c = rect.center() + vec2(0.0, w * 0.12);
-    let line = Stroke::new((w / 24.0).max(1.0), DARK);
+/// Whether this module draws the model's picture.
+pub fn draws(model_id: &str) -> bool {
+    MODELS.contains(&model_id)
+}
+
+/// Draws the picture of one of this module's models.
+pub(crate) fn icon(a: &Art, model_id: &str) {
     match model_id {
-        "IoT-Appliance" => appliance(p, c, w, line),
-        "IoT-BTSpeaker" => {
-            speaker(p, c - vec2(w * 0.07, 0.0), w, line);
-            bluetooth(p, c + vec2(w * 0.14, -w * 0.02), w * 0.2, BLUE);
-        }
-        "IoT-CeilingFan" => ceiling_fan(p, c, w),
-        "IoT-Furnace" => furnace(p, c, w, line),
-        "IoT-Humidifier" => humidifier(p, c, w, line),
-        "IoT-Humiture" => {
-            thermometer(p, c - vec2(w * 0.09, 0.0), w);
-            water_drop(p, c + vec2(w * 0.12, w * 0.03), w * 0.55);
-        }
-        "IoT-Player" => player(p, c, w),
-        "IoT-SoundDet" => equaliser(p, c, w, line),
-        _ => city(p, c, w, line, model_id),
+        "IoT-Appliance" => appliance(a),
+        "IoT-BTSpeaker" => bluetooth_speaker(a),
+        "IoT-CeilingFan" => ceiling_fan(a),
+        "IoT-Furnace" => furnace(a),
+        "IoT-Humidifier" => humidifier(a),
+        "IoT-Humiture" => humiture(a),
+        "IoT-Player" => player(a),
+        "IoT-SoundDet" => sound_detector(a),
+        "IoT-Pressure" => pressure(a),
+        "IoT-Beacon" => beacon(a),
+        "IoT-CO2" => carbon_dioxide(a),
+        "IoT-Fire" => fire_monitor(a),
+        "IoT-FireSprinkler" => fire_sprinkler(a),
+        "IoT-Car" => car(a),
+        "IoT-RFIDCard" => rfid_card(a),
+        "IoT-RFIDReader" => rfid_reader(a),
+        "IoT-LED" => smart_led(a),
+        "IoT-Trip" => trip_sensor(a),
+        "IoT-WindDet" => wind_detector(a),
+        _ => signal_generator(a),
     }
-    true
 }
 
-fn appliance(p: &Painter, c: Pos2, w: f32, line: Stroke) {
-    let body = Rect::from_center_size(c, vec2(w * 0.3, w * 0.34));
-    p.rect_filled(body, w * 0.04, WHITE);
-    p.rect_stroke(body, w * 0.04, line, StrokeKind::Inside);
-    // The power symbol: a ring open at the top and a bar through the gap.
-    let ring: Vec<Pos2> = (0..=16)
-        .map(|i| {
-            let a = -std::f32::consts::FRAC_PI_2 + 0.6 + i as f32 * (std::f32::consts::TAU - 1.2) / 16.0;
-            c + vec2(a.cos(), a.sin()) * w * 0.08
-        })
-        .collect();
-    let power = Stroke::new((w / 20.0).max(1.2), GREEN);
-    p.add(Shape::line(ring, power));
-    p.line_segment([c + vec2(0.0, -w * 0.11), c + vec2(0.0, -w * 0.02)], power);
-}
-
-fn speaker(p: &Painter, c: Pos2, w: f32, line: Stroke) {
-    let cabinet = Rect::from_center_size(c, vec2(w * 0.22, w * 0.34));
-    p.rect_filled(cabinet, w * 0.03, WHITE);
-    p.rect_stroke(cabinet, w * 0.03, line, StrokeKind::Inside);
-    p.circle_filled(c - vec2(0.0, w * 0.1), w * 0.035, DARK);
-    p.circle_filled(c + vec2(0.0, w * 0.06), w * 0.075, DARK);
-}
-
-/// The Bluetooth rune: one stroke through a stem, in a coloured disc.
-fn bluetooth(p: &Painter, c: Pos2, r: f32, col: Color32) {
-    p.circle_filled(c, r, col);
-    let k = r * 0.8;
-    let pts: Vec<Pos2> = [(-0.45, -0.3), (0.45, 0.3), (0.0, 0.7), (0.0, -0.7), (0.45, -0.3), (-0.45, 0.3)]
-        .into_iter()
-        .map(|(x, y): (f32, f32)| c + vec2(x * k, y * k))
-        .collect();
-    p.add(Shape::line(pts, Stroke::new((r / 4.5).max(1.0), WHITE)));
-}
-
-fn ceiling_fan(p: &Painter, c: Pos2, w: f32) {
-    // Seen from below: four broad blades round a hub.
-    for k in 0..4 {
-        let a = k as f32 * std::f32::consts::FRAC_PI_2 + 0.4;
-        let (dir, side) = (vec2(a.cos(), a.sin()), vec2(-a.sin(), a.cos()));
-        let blade = vec![
-            c + dir * w * 0.06 - side * w * 0.025,
-            c + dir * w * 0.2 - side * w * 0.05,
-            c + dir * w * 0.2 + side * w * 0.05,
-            c + dir * w * 0.06 + side * w * 0.04,
+/// A flame as a pair of outlined tongues, its base at `(x, y)` and `size` tall (fractions).
+fn flame(a: &Art, x: f32, y: f32, size: f32) {
+    let t = a.tk;
+    for (k, col) in [(1.0f32, t.art_red), (0.55, t.art_amber)] {
+        let s = size * k;
+        let pts = vec![
+            a.at(x - s * 0.34, y),
+            a.at(x - s * 0.42, y - s * 0.4),
+            a.at(x - s * 0.1, y - s * 0.62),
+            a.at(x, y - s),
+            a.at(x + s * 0.2, y - s * 0.6),
+            a.at(x + s * 0.42, y - s * 0.36),
+            a.at(x + s * 0.34, y),
         ];
-        p.add(Shape::convex_polygon(blade, WHITE, Stroke::new(1.0, DARK)));
-    }
-    p.circle_filled(c, w * 0.05, DARK);
-}
-
-fn furnace(p: &Painter, c: Pos2, w: f32, line: Stroke) {
-    let body = Rect::from_center_size(c, vec2(w * 0.32, w * 0.34));
-    p.rect_filled(body, w * 0.03, WHITE);
-    p.rect_stroke(body, w * 0.03, line, StrokeKind::Inside);
-    let door = Rect::from_center_size(c + vec2(0.0, w * 0.03), vec2(w * 0.2, w * 0.15));
-    p.rect_filled(door, w * 0.02, DARK);
-    // A flame in the door: an outer red tongue and an inner yellow one.
-    let tongue = |size: f32, col: Color32| {
-        let base = door.center_bottom() - vec2(0.0, w * 0.01);
-        p.add(Shape::convex_polygon(
-            vec![
-                base + vec2(-size * 0.5, 0.0),
-                base + vec2(-size * 0.3, -size * 1.0),
-                base + vec2(0.0, -size * 1.5),
-                base + vec2(size * 0.3, -size * 0.9),
-                base + vec2(size * 0.5, 0.0),
-            ],
-            col,
-            Stroke::NONE,
-        ));
-    };
-    tongue(w * 0.07, RED);
-    tongue(w * 0.04, YELLOW);
-    for dx in [-0.09f32, 0.0, 0.09] {
-        p.line_segment([body.center_top() + vec2(dx * w, w * 0.03), body.center_top() + vec2(dx * w, w * 0.07)], line);
+        if k == 1.0 {
+            a.poly(pts, col);
+        } else {
+            a.poly_plain(pts, col);
+        }
     }
 }
 
-/// A water drop of height about `w * k * 0.3`, point up.
-fn water_drop(p: &Painter, c: Pos2, k: f32) {
-    let r = k * 0.12;
-    let mut pts = vec![c + vec2(0.0, -r * 2.2)];
-    pts.extend((0..=10).map(|i| {
-        let a = -0.35 + i as f32 * (std::f32::consts::PI + 0.7) / 10.0;
-        c + vec2(a.cos() * r, a.sin() * r + r * 0.2)
+fn appliance(a: &Art) {
+    let t = a.tk;
+    a.boxed(a.rc(0.2, 0.1, 0.8, 0.9), 0.08, t.art_paper);
+    // The power symbol: a ring open at the top and a bar through the gap.
+    a.arc(a.at(0.5, 0.52), 0.18, -FRAC_PI_2 + 0.6, -FRAC_PI_2 + TAU - 0.6, 0.05, t.art_green);
+    a.line(a.at(0.5, 0.28), a.at(0.5, 0.5), 0.05, t.art_green);
+    a.plain(a.rc(0.28, 0.9, 0.38, 0.95), 0.0, t.art_ink);
+    a.plain(a.rc(0.62, 0.9, 0.72, 0.95), 0.0, t.art_ink);
+    a.dot(a.at(0.69, 0.2), 0.02, t.art_green);
+}
+
+fn bluetooth_speaker(a: &Art) {
+    let t = a.tk;
+    a.boxed(a.rc(0.12, 0.08, 0.58, 0.92), 0.07, shade(t.art_ink, 1.6));
+    a.disc(a.at(0.35, 0.26), 0.07, t.art_steel);
+    a.dot(a.at(0.35, 0.26), 0.025, t.art_ink);
+    a.disc(a.at(0.35, 0.64), 0.16, t.art_steel);
+    a.disc(a.at(0.35, 0.64), 0.1, shade(t.art_ink, 1.2));
+    a.dot(a.at(0.35, 0.64), 0.04, t.art_steel);
+    // The Bluetooth rune, in one stroke, on a blue disc.
+    let c = a.at(0.77, 0.3);
+    a.disc(c, 0.16, t.art_blue);
+    let k = 0.11;
+    let pts: Vec<Pos2> = [(-0.45f32, -0.3f32), (0.45, 0.3), (0.0, 0.7), (0.0, -0.7), (0.45, -0.3), (-0.45, 0.3)]
+        .into_iter()
+        .map(|(x, y)| a.at(0.77 + x * k, 0.3 + y * k))
+        .collect();
+    a.p.add(Shape::line(pts, Stroke::new((a.w * 0.025).max(1.0), Color32::WHITE)));
+}
+
+fn ceiling_fan(a: &Art) {
+    let t = a.tk;
+    // Seen from below: four broad wooden blades round a lamp hub.
+    let c = (0.5f32, 0.5f32);
+    for k in 0..4 {
+        let ang = k as f32 * FRAC_PI_2 + 0.45;
+        let (d, s) = ((ang.cos(), ang.sin()), (-ang.sin(), ang.cos()));
+        let at = |along: f32, across: f32| a.at(c.0 + d.0 * along + s.0 * across, c.1 + d.1 * along + s.1 * across);
+        a.poly(vec![at(0.1, -0.04), at(0.38, -0.08), at(0.4, 0.07), at(0.1, 0.05)], t.art_earth);
+    }
+    a.disc(a.at(c.0, c.1), 0.12, t.art_steel);
+    a.disc(a.at(c.0, c.1), 0.06, t.art_amber);
+}
+
+fn furnace(a: &Art) {
+    let t = a.tk;
+    a.boxed(a.rc(0.14, 0.08, 0.86, 0.9), 0.05, t.art_steel);
+    a.plain(a.rc(0.26, 0.4, 0.74, 0.82), 0.03, t.art_ink);
+    flame(a, 0.5, 0.78, 0.34);
+    for k in 0..3 {
+        a.line(a.at(0.3 + k as f32 * 0.2, 0.16), a.at(0.3 + k as f32 * 0.2, 0.28), 0.03, shade(t.art_steel, 0.7));
+    }
+    a.dot(a.at(0.78, 0.18), 0.025, t.art_red);
+    a.plain(a.rc(0.2, 0.9, 0.3, 0.95), 0.0, t.art_ink);
+    a.plain(a.rc(0.7, 0.9, 0.8, 0.95), 0.0, t.art_ink);
+}
+
+fn humidifier(a: &Art) {
+    let t = a.tk;
+    for x in [0.34, 0.5, 0.66] {
+        a.wave(x, 0.26, 0.04, 0.03, 0.025, t.art_blue);
+    }
+    a.boxed(a.rc(0.44, 0.26, 0.56, 0.4), 0.02, t.art_steel);
+    a.boxed(a.rc(0.2, 0.38, 0.8, 0.9), 0.09, t.art_paper);
+    a.plain(a.rc(0.28, 0.5, 0.72, 0.8), 0.05, t.art_glass);
+    a.plain(a.rc(0.28, 0.64, 0.72, 0.8), 0.05, t.art_blue);
+    a.dot(a.at(0.7, 0.45), 0.02, t.art_green);
+}
+
+fn humiture(a: &Art) {
+    let t = a.tk;
+    // A thermometer and a drop side by side.
+    a.boxed(a.rc(0.12, 0.08, 0.4, 0.8), 0.12, t.art_paper);
+    a.plain(a.rc(0.22, 0.16, 0.3, 0.62), 0.04, t.art_glass);
+    a.plain(a.rc(0.24, 0.38, 0.28, 0.66), 0.0, t.art_red);
+    a.disc(a.at(0.26, 0.72), 0.085, t.art_red);
+    let c = a.at(0.67, 0.62);
+    let mut pts = vec![a.at(0.67, 0.16)];
+    pts.extend((0..=14).map(|i| {
+        let ang = -0.4 + (PI + 0.8) * i as f32 / 14.0;
+        c + vec2(ang.cos(), ang.sin()) * a.w * 0.19
     }));
-    p.add(Shape::convex_polygon(pts, BLUE, Stroke::new(1.0, DARK)));
+    a.poly(pts, t.art_blue);
+    a.arc(a.at(0.67, 0.64), 0.12, 0.5, 1.5, 0.02, Color32::from_white_alpha(170));
 }
 
-fn humidifier(p: &Painter, c: Pos2, w: f32, line: Stroke) {
-    let tank = Rect::from_center_size(c + vec2(0.0, w * 0.07), vec2(w * 0.26, w * 0.2));
-    p.rect_filled(tank, w * 0.05, WHITE);
-    p.rect_stroke(tank, w * 0.05, line, StrokeKind::Inside);
-    p.rect_filled(Rect::from_center_size(tank.center_top() - vec2(0.0, w * 0.02), vec2(w * 0.07, w * 0.05)), w * 0.01, DARK);
-    // Mist: three little wavy lines rising from the nozzle.
-    for dx in [-0.07f32, 0.0, 0.07] {
-        let top = c + vec2(dx * w, -w * 0.06);
-        let pts: Vec<Pos2> = (0..=6).map(|i| top + vec2((i as f32 * 1.6).sin() * w * 0.018, -i as f32 * w * 0.022)).collect();
-        p.add(Shape::line(pts, Stroke::new((w / 28.0).max(1.0), BLUE)));
+fn player(a: &Art) {
+    let t = a.tk;
+    a.boxed(a.rc(0.27, 0.06, 0.73, 0.94), 0.08, shade(t.art_ink, 1.7));
+    a.plain(a.rc(0.33, 0.13, 0.67, 0.4), 0.02, t.art_glass);
+    a.poly_plain(vec![a.at(0.45, 0.19), a.at(0.58, 0.265), a.at(0.45, 0.34)], t.art_ink);
+    a.disc(a.at(0.5, 0.67), 0.16, t.art_steel);
+    a.disc(a.at(0.5, 0.67), 0.06, t.art_ink);
+    a.dot(a.at(0.5, 0.52), 0.015, t.art_steel);
+}
+
+fn sound_detector(a: &Art) {
+    let t = a.tk;
+    a.boxed(a.rc(0.1, 0.2, 0.9, 0.8), 0.06, t.art_paper);
+    a.plain(a.rc(0.16, 0.27, 0.84, 0.73), 0.03, t.art_ink);
+    for (k, h) in [0.2f32, 0.34, 0.42, 0.26, 0.36].into_iter().enumerate() {
+        let x = 0.22 + k as f32 * 0.12;
+        a.plain(a.rc(x, 0.68 - h, x + 0.07, 0.68), 0.0, if h > 0.4 { t.art_amber } else { t.art_green });
+    }
+    a.dot(a.at(0.5, 0.12), 0.04, t.art_steel);
+    a.line(a.at(0.5, 0.16), a.at(0.5, 0.2), 0.03, t.art_steel);
+}
+
+fn pressure(a: &Art) {
+    let t = a.tk;
+    let c = a.at(0.5, 0.5);
+    a.disc(c, 0.42, t.art_steel);
+    a.disc(c, 0.35, t.art_paper);
+    for k in 0..=8 {
+        let ang = PI * 0.8 + k as f32 * PI * 1.4 / 8.0;
+        let d = vec2(ang.cos(), ang.sin());
+        a.p.line_segment([c + d * a.w * 0.27, c + d * a.w * 0.32], Stroke::new(a.lw(), t.art_ink));
+    }
+    let needle = PI * 0.8 + PI * 1.4 * 0.62;
+    a.p.line_segment([c, c + vec2(needle.cos(), needle.sin()) * a.w * 0.26], Stroke::new(a.lw() * 1.6, t.art_red));
+    a.dot(c, 0.04, t.art_ink);
+    a.text(a.at(0.5, 0.74), "kPa", 0.1, t.art_ink);
+}
+
+fn beacon(a: &Art) {
+    let t = a.tk;
+    let c = a.at(0.5, 0.5);
+    a.bar(a.at(0.5, 0.58), a.at(0.5, 0.88), 0.05, t.art_steel);
+    a.boxed(a.rc(0.36, 0.86, 0.64, 0.93), 0.02, t.art_steel);
+    for r in [0.2f32, 0.3, 0.4] {
+        a.arc(c, r, -0.75, 0.75, 0.035, t.art_blue);
+        a.arc(c, r, PI - 0.75, PI + 0.75, 0.035, t.art_blue);
+    }
+    a.disc(c, 0.1, t.art_blue);
+    a.dot(c, 0.035, Color32::WHITE);
+}
+
+fn carbon_dioxide(a: &Art) {
+    let t = a.tk;
+    a.boxed(a.rc(0.1, 0.16, 0.9, 0.84), 0.12, t.art_paper);
+    a.disc(a.at(0.5, 0.5), 0.26, t.art_steel);
+    a.disc(a.at(0.5, 0.5), 0.2, t.art_paper);
+    a.text(a.at(0.5, 0.5), "CO2", 0.15, t.art_ink);
+    a.dot(a.at(0.8, 0.26), 0.03, t.art_green);
+    for k in 0..3 {
+        a.line(a.at(0.17, 0.68 + k as f32 * 0.05), a.at(0.27, 0.68 + k as f32 * 0.05), 0.014, t.art_steel);
     }
 }
 
-fn thermometer(p: &Painter, c: Pos2, w: f32) {
-    let tube = Rect::from_center_size(c - vec2(0.0, w * 0.04), vec2(w * 0.07, w * 0.26));
-    p.rect_filled(tube, w * 0.035, WHITE);
-    p.rect_filled(Rect::from_min_max(pos2(tube.left() + w * 0.02, tube.center().y), pos2(tube.right() - w * 0.02, tube.bottom())), 0.0, RED);
-    p.circle_filled(pos2(c.x, tube.bottom()), w * 0.06, WHITE);
-    p.circle_filled(pos2(c.x, tube.bottom()), w * 0.042, RED);
-}
-
-fn player(p: &Painter, c: Pos2, w: f32) {
-    let body = Rect::from_center_size(c, vec2(w * 0.24, w * 0.36));
-    p.rect_filled(body, w * 0.04, DARK);
-    p.rect_stroke(body, w * 0.04, Stroke::new(1.0, WHITE), StrokeKind::Inside);
-    let screen = Rect::from_center_size(body.center_top() + vec2(0.0, w * 0.09), vec2(w * 0.17, w * 0.1));
-    p.rect_filled(screen, w * 0.01, Color32::from_rgb(0x7f, 0xc8, 0x6a));
-    p.add(Shape::convex_polygon(
-        vec![screen.center() + vec2(-w * 0.02, -w * 0.03), screen.center() + vec2(w * 0.035, 0.0), screen.center() + vec2(-w * 0.02, w * 0.03)],
-        DARK,
-        Stroke::NONE,
-    ));
-    // The click wheel.
-    let wheel = body.center_bottom() - vec2(0.0, w * 0.08);
-    p.circle_filled(wheel, w * 0.06, WHITE);
-    p.circle_filled(wheel, w * 0.02, DARK);
-}
-
-fn equaliser(p: &Painter, c: Pos2, w: f32, line: Stroke) {
-    let face = Rect::from_center_size(c, vec2(w * 0.36, w * 0.28));
-    p.rect_filled(face, w * 0.03, WHITE);
-    p.rect_stroke(face, w * 0.03, line, StrokeKind::Inside);
-    for (i, h) in [0.35f32, 0.7, 1.0, 0.55, 0.8].into_iter().enumerate() {
-        let x = face.left() + w * 0.05 + i as f32 * w * 0.065;
-        let bottom = face.bottom() - w * 0.04;
-        p.rect_filled(Rect::from_min_max(pos2(x - w * 0.02, bottom - h * w * 0.18), pos2(x + w * 0.02, bottom)), 0.0, BLUE);
+fn fire_monitor(a: &Art) {
+    let t = a.tk;
+    flame(a, 0.5, 0.66, 0.6);
+    a.boxed(a.rc(0.2, 0.7, 0.8, 0.9), 0.06, t.art_steel);
+    a.dot(a.at(0.34, 0.8), 0.03, t.art_red);
+    for k in 0..3 {
+        a.line(a.at(0.5 + k as f32 * 0.09, 0.76), a.at(0.5 + k as f32 * 0.09, 0.84), 0.014, t.art_ink);
     }
 }
 
-/// An arc of a circle round `c`, from angle `from` to `to` (radians), as a line.
-fn arc(p: &Painter, c: Pos2, r: f32, from: f32, to: f32, stroke: Stroke) {
-    let pts: Vec<Pos2> = (0..=10)
+fn fire_sprinkler(a: &Art) {
+    let t = a.tk;
+    a.bar(a.at(0.5, 0.05), a.at(0.5, 0.36), 0.05, t.art_steel);
+    a.boxed(a.rc(0.42, 0.34, 0.58, 0.5), 0.03, t.art_steel);
+    a.disc(a.at(0.5, 0.57), 0.04, t.art_red);
+    a.bar(a.at(0.28, 0.66), a.at(0.72, 0.66), 0.035, t.art_steel);
+    for (k, dx) in [-0.22f32, -0.11, 0.0, 0.11, 0.22].into_iter().enumerate() {
+        let end = a.at(0.5 + dx * 1.2, 0.88 + if k % 2 == 0 { 0.02 } else { 0.0 });
+        a.line(a.at(0.5 + dx * 0.5, 0.69), end, 0.02, t.art_blue);
+        a.dot(end, 0.02, t.art_blue);
+    }
+}
+
+fn car(a: &Art) {
+    let t = a.tk;
+    a.blob(&[(0.07, 0.8, 0.03), (0.03, 0.72, 0.025)], shade(t.art_steel, 1.2));
+    a.poly(vec![a.at(0.26, 0.5), a.at(0.34, 0.3), a.at(0.64, 0.3), a.at(0.78, 0.5)], t.art_red);
+    a.poly_plain(vec![a.at(0.33, 0.47), a.at(0.38, 0.35), a.at(0.48, 0.35), a.at(0.48, 0.47)], t.art_glass);
+    a.poly_plain(vec![a.at(0.52, 0.47), a.at(0.52, 0.35), a.at(0.62, 0.35), a.at(0.7, 0.47)], t.art_glass);
+    a.boxed(a.rc(0.1, 0.48, 0.92, 0.74), 0.08, t.art_red);
+    a.plain(a.rc(0.86, 0.54, 0.91, 0.6), 0.01, t.art_amber);
+    for x in [0.28, 0.72] {
+        a.disc(a.at(x, 0.75), 0.1, t.art_ink);
+        a.dot(a.at(x, 0.75), 0.04, t.art_steel);
+    }
+}
+
+fn rfid_card(a: &Art) {
+    let t = a.tk;
+    a.boxed(a.rc(0.1, 0.28, 0.9, 0.74), 0.07, t.art_paper);
+    a.boxed(a.rc(0.18, 0.4, 0.36, 0.58), 0.02, t.art_amber);
+    a.line(a.at(0.18, 0.49), a.at(0.36, 0.49), 0.012, t.art_ink);
+    a.line(a.at(0.27, 0.4), a.at(0.27, 0.58), 0.012, t.art_ink);
+    for r in [0.07f32, 0.12, 0.17] {
+        a.arc(a.at(0.5, 0.51), r, -0.8, 0.8, 0.03, t.art_blue);
+    }
+    a.line(a.at(0.62, 0.64), a.at(0.82, 0.64), 0.014, t.art_steel);
+}
+
+fn rfid_reader(a: &Art) {
+    let t = a.tk;
+    a.boxed(a.rc(0.12, 0.62, 0.88, 0.9), 0.06, shade(t.art_ink, 1.7));
+    a.plain(a.rc(0.2, 0.69, 0.5, 0.83), 0.02, t.art_steel);
+    a.dot(a.at(0.72, 0.76), 0.035, t.art_green);
+    for r in [0.12f32, 0.2, 0.28, 0.36] {
+        a.arc(a.at(0.5, 0.6), r, PI * 1.2, PI * 1.8, 0.03, t.art_blue);
+    }
+}
+
+fn smart_led(a: &Art) {
+    let t = a.tk;
+    // Red, green and blue discs that overlap into white: a colour LED.
+    for (x, y, col) in [(0.38, 0.28, [0xe0u8, 0x30, 0x30]), (0.62, 0.28, [0x30, 0xb0, 0x50]), (0.5, 0.47, [0x30, 0x70, 0xe0])] {
+        a.p.circle_filled(a.at(x, y), a.w * 0.2, Color32::from_rgba_unmultiplied(col[0], col[1], col[2], 200));
+    }
+    a.p.circle_stroke(a.at(0.5, 0.37), a.w * 0.34, a.ink());
+    a.boxed(a.rc(0.34, 0.68, 0.66, 0.78), 0.02, t.art_steel);
+    for x in [0.42, 0.58] {
+        a.line(a.at(x, 0.78), a.at(x, 0.92), 0.03, t.art_steel);
+    }
+    a.dot(a.at(0.82, 0.12), 0.02, t.art_amber);
+}
+
+fn trip_sensor(a: &Art) {
+    let t = a.tk;
+    a.boxed(a.rc(0.1, 0.16, 0.24, 0.9), 0.03, t.art_steel);
+    a.boxed(a.rc(0.76, 0.16, 0.9, 0.9), 0.03, t.art_steel);
+    a.disc(a.at(0.17, 0.28), 0.04, t.art_red);
+    a.disc(a.at(0.83, 0.28), 0.04, t.art_red);
+    for k in 0..5 {
+        let x = 0.3 + k as f32 * 0.1;
+        a.line(a.at(x, 0.28), a.at(x + 0.06, 0.28), 0.025, t.art_red);
+    }
+    // Something crossing the beam.
+    a.disc(a.at(0.5, 0.52), 0.07, t.art_paper);
+    a.poly(vec![a.at(0.42, 0.9), a.at(0.58, 0.9), a.at(0.55, 0.62), a.at(0.45, 0.62)], t.art_paper);
+}
+
+fn wind_detector(a: &Art) {
+    let t = a.tk;
+    let hub = (0.5f32, 0.38f32);
+    a.bar(a.at(hub.0, hub.1), a.at(0.5, 0.88), 0.045, t.art_steel);
+    a.boxed(a.rc(0.34, 0.86, 0.66, 0.93), 0.02, t.art_steel);
+    for k in 0..3 {
+        let ang = k as f32 * TAU / 3.0 - FRAC_PI_2 + 0.3;
+        let tip = (hub.0 + ang.cos() * 0.28, hub.1 + ang.sin() * 0.28);
+        a.line(a.at(hub.0, hub.1), a.at(tip.0, tip.1), 0.025, t.art_ink);
+        a.disc(a.at(tip.0, tip.1), 0.075, t.art_paper);
+    }
+    a.disc(a.at(hub.0, hub.1), 0.045, t.art_ink);
+}
+
+fn signal_generator(a: &Art) {
+    let t = a.tk;
+    a.boxed(a.rc(0.08, 0.18, 0.92, 0.84), 0.06, t.art_steel);
+    a.plain(a.rc(0.14, 0.25, 0.86, 0.58), 0.03, t.art_ink);
+    let pts: Vec<Pos2> = (0..=28)
         .map(|i| {
-            let a = from + (to - from) * i as f32 / 10.0;
-            c + vec2(a.cos(), a.sin()) * r
+            let x = i as f32 / 28.0;
+            a.at(0.17 + x * 0.66, 0.415 + (x * TAU * 2.0).sin() * 0.1)
         })
         .collect();
-    p.add(Shape::line(pts, stroke));
-}
-
-fn city(p: &Painter, c: Pos2, w: f32, line: Stroke, model_id: &str) {
-    let wave = Stroke::new((w / 26.0).max(1.0), BLUE);
-    match model_id {
-        "IoT-Pressure" => {
-            // A round gauge with a needle and ticks along its upper arc.
-            p.circle_filled(c, w * 0.18, WHITE);
-            p.circle_stroke(c, w * 0.18, line);
-            for k in 0..=6 {
-                let a = std::f32::consts::PI * (1.0 + k as f32 / 6.0);
-                let d = vec2(a.cos(), a.sin());
-                p.line_segment([c + d * w * 0.13, c + d * w * 0.16], Stroke::new(1.0, DARK));
-            }
-            p.line_segment([c, c + vec2(w * 0.08, -w * 0.09)], Stroke::new((w / 22.0).max(1.0), RED));
-            p.circle_filled(c, w * 0.025, DARK);
-        }
-        "IoT-Beacon" => {
-            // A dot sending rings to both sides.
-            p.circle_filled(c, w * 0.045, WHITE);
-            for r in [0.1f32, 0.17] {
-                arc(p, c, w * r, -0.7, 0.7, wave);
-                arc(p, c, w * r, std::f32::consts::PI - 0.7, std::f32::consts::PI + 0.7, wave);
-            }
-        }
-        "IoT-CO2" => {
-            p.circle_filled(c, w * 0.18, WHITE);
-            p.circle_stroke(c, w * 0.18, Stroke::new((w / 28.0).max(1.0), GREEN));
-            p.text(c, egui::Align2::CENTER_CENTER, "CO2", egui::FontId::proportional(w * 0.13), DARK);
-        }
-        "IoT-Fire" => flame(p, c, w * 1.6),
-        "IoT-FireSprinkler" => {
-            // A ceiling sprinkler: a pipe, a red glass bulb and a deflector throwing water down.
-            p.line_segment([c + vec2(0.0, -w * 0.2), c + vec2(0.0, -w * 0.08)], Stroke::new((w / 16.0).max(1.5), WHITE));
-            p.circle_filled(c + vec2(0.0, -w * 0.05), w * 0.03, RED);
-            p.line_segment([c + vec2(-w * 0.09, -w * 0.01), c + vec2(w * 0.09, -w * 0.01)], Stroke::new((w / 18.0).max(1.5), WHITE));
-            for k in [-1.0f32, -0.5, 0.0, 0.5, 1.0] {
-                p.line_segment([c + vec2(k * w * 0.05, w * 0.02), c + vec2(k * w * 0.15, w * 0.17)], wave);
-            }
-        }
-        "IoT-Car" => {
-            // A car from the side: body, cabin, windows, wheels and a puff from the exhaust.
-            let body = Rect::from_center_size(c + vec2(0.0, w * 0.03), vec2(w * 0.4, w * 0.1));
-            p.rect_filled(body, w * 0.03, RED);
-            p.add(Shape::convex_polygon(
-                vec![
-                    body.left_top() + vec2(w * 0.08, 0.0),
-                    body.left_top() + vec2(w * 0.13, -w * 0.08),
-                    body.right_top() + vec2(-w * 0.1, -w * 0.08),
-                    body.right_top() + vec2(-w * 0.04, 0.0),
-                ],
-                RED,
-                Stroke::NONE,
-            ));
-            p.rect_filled(
-                Rect::from_center_size(body.center_top() + vec2(0.0, -w * 0.04), vec2(w * 0.13, w * 0.05)),
-                0.0,
-                Color32::from_rgb(0xcf, 0xe8, 0xf7),
-            );
-            for dx in [-0.12f32, 0.12] {
-                p.circle_filled(body.center_bottom() + vec2(dx * w, 0.0), w * 0.045, DARK);
-                p.circle_filled(body.center_bottom() + vec2(dx * w, 0.0), w * 0.018, WHITE);
-            }
-            p.circle_filled(body.left_bottom() + vec2(-w * 0.035, -w * 0.01), w * 0.025, Color32::from_rgb(0xb8, 0xc0, 0xc8));
-        }
-        "IoT-RFIDCard" => {
-            // A card with a chip and a few waves.
-            let card = Rect::from_center_size(c, vec2(w * 0.3, w * 0.2));
-            p.rect_filled(card, w * 0.03, WHITE);
-            p.rect_stroke(card, w * 0.03, line, StrokeKind::Inside);
-            p.rect_filled(Rect::from_center_size(card.left_center() + vec2(w * 0.07, 0.0), vec2(w * 0.07, w * 0.06)), w * 0.01, YELLOW);
-            arc(p, card.right_center() - vec2(w * 0.08, 0.0), w * 0.04, -0.8, 0.8, wave);
-            arc(p, card.right_center() - vec2(w * 0.08, 0.0), w * 0.07, -0.8, 0.8, wave);
-        }
-        "IoT-RFIDReader" => {
-            // A reader plate sending waves upward.
-            let plate = Rect::from_center_size(c + vec2(0.0, w * 0.09), vec2(w * 0.3, w * 0.1));
-            p.rect_filled(plate, w * 0.02, DARK);
-            p.rect_stroke(plate, w * 0.02, Stroke::new(1.0, WHITE), StrokeKind::Inside);
-            for r in [0.07f32, 0.12, 0.17] {
-                arc(
-                    p,
-                    plate.center_top() + vec2(0.0, w * 0.02),
-                    w * r,
-                    -std::f32::consts::PI * 0.8,
-                    -std::f32::consts::PI * 0.2,
-                    Stroke::new((w / 28.0).max(1.0), WHITE),
-                );
-            }
-        }
-        "IoT-LED" => {
-            // Red, green and blue discs that overlap into white: a colour LED.
-            for (dx, dy, col) in [(-0.06f32, -0.04f32, [0xe0, 0x30, 0x30]), (0.06, -0.04, [0x30, 0xb0, 0x50]), (0.0, 0.06, [0x30, 0x70, 0xe0])] {
-                p.circle_filled(c + vec2(dx * w, dy * w), w * 0.1, Color32::from_rgba_unmultiplied(col[0], col[1], col[2], 190));
-            }
-        }
-        "IoT-Trip" => {
-            // Two posts and the beam between them, with a red lamp on each.
-            for dx in [-0.17f32, 0.17] {
-                p.rect_filled(Rect::from_center_size(c + vec2(dx * w, w * 0.03), vec2(w * 0.04, w * 0.22)), w * 0.01, WHITE);
-                p.circle_filled(c + vec2(dx * w, -w * 0.06), w * 0.03, RED);
-            }
-            for k in 0..5 {
-                let x = c.x - w * 0.11 + k as f32 * w * 0.055;
-                p.line_segment([pos2(x, c.y - w * 0.06), pos2(x + w * 0.03, c.y - w * 0.06)], Stroke::new((w / 28.0).max(1.0), RED));
-            }
-        }
-        "IoT-WindDet" => {
-            // An anemometer: three cups on arms round a hub.
-            for k in 0..3 {
-                let a = k as f32 * std::f32::consts::TAU / 3.0 - 1.2;
-                let tip = c + vec2(a.cos(), a.sin()) * w * 0.15;
-                p.line_segment([c, tip], Stroke::new((w / 28.0).max(1.0), WHITE));
-                p.circle_filled(tip, w * 0.045, WHITE);
-                p.circle_stroke(tip, w * 0.045, Stroke::new(1.0, DARK));
-            }
-            p.circle_filled(c, w * 0.03, DARK);
-        }
-        _ => {
-            // IoT-Signal: a sine wave on a dark screen.
-            let screen = Rect::from_center_size(c, vec2(w * 0.38, w * 0.24));
-            p.rect_filled(screen, w * 0.02, DARK);
-            let pts: Vec<Pos2> = (0..=24)
-                .map(|i| {
-                    let t = i as f32 / 24.0;
-                    pos2(
-                        screen.left() + w * 0.02 + t * (screen.width() - w * 0.04),
-                        screen.center().y + (t * std::f32::consts::TAU * 2.0).sin() * w * 0.07,
-                    )
-                })
-                .collect();
-            p.add(Shape::line(pts, Stroke::new((w / 26.0).max(1.0), Color32::from_rgb(0x7f, 0xe0, 0x8a))));
-        }
-    }
-}
-
-/// A flame: a red tongue with a yellow one inside, `k` times a small unit tall.
-fn flame(p: &Painter, c: Pos2, k: f32) {
-    let tongue = |size: f32, col: Color32| {
-        let base = c + vec2(0.0, size * 0.55);
-        p.add(Shape::convex_polygon(
-            vec![
-                base + vec2(-size * 0.4, 0.0),
-                base + vec2(-size * 0.5, -size * 0.45),
-                base + vec2(-size * 0.1, -size * 0.8),
-                base + vec2(0.0, -size * 1.1),
-                base + vec2(size * 0.25, -size * 0.7),
-                base + vec2(size * 0.5, -size * 0.4),
-                base + vec2(size * 0.4, 0.0),
-            ],
-            col,
-            Stroke::NONE,
-        ));
-    };
-    tongue(k * 0.2, RED);
-    tongue(k * 0.11, YELLOW);
+    a.p.add(Shape::line(pts, Stroke::new((a.w * 0.025).max(1.0), t.art_green)));
+    a.disc(a.at(0.24, 0.72), 0.06, t.art_paper);
+    a.disc(a.at(0.42, 0.72), 0.06, t.art_paper);
+    a.line(a.at(0.24, 0.72), a.at(0.26, 0.67), 0.012, t.art_ink);
+    a.line(a.at(0.42, 0.72), a.at(0.45, 0.68), 0.012, t.art_ink);
+    a.disc(a.at(0.78, 0.72), 0.07, t.art_amber);
+    a.dot(a.at(0.78, 0.72), 0.025, t.art_ink);
 }
