@@ -44,6 +44,7 @@ pub mod pdf;
 pub mod pdu_dialog;
 mod phone;
 mod physical;
+pub mod environments;
 pub mod png;
 pub mod prefs;
 mod programming;
@@ -61,6 +62,8 @@ mod wlan_page;
 mod tests;
 mod tests_closet;
 mod tests_families;
+#[cfg(test)]
+mod tests_environments;
 #[cfg(test)]
 mod tests_prefs;
 
@@ -89,6 +92,8 @@ pub enum UiRequest {
     /// Pick an .html file to add to a server's web site; then call
     /// [`PacketApp::web_file_imported`].
     ImportWebFile { device: DeviceId },
+    /// Pick an environment file (JSON) for a place; then call [`PacketApp::environment_imported`].
+    ImportEnvironment { place: u32 },
     /// Play a short sound (the bytes of a WAV file); a shell with no way to play one ignores it.
     PlaySound(Vec<u8>),
     /// Close the app.
@@ -313,6 +318,8 @@ pub struct UiState {
     pub prefs: prefs::Prefs,
     /// Which of the Preferences, User Profile, Command Log and Algorithm Settings windows are open.
     pub prefs_ui: prefs::WindowState,
+    /// Options ▸ Environments: the window's state.
+    pub env_ui: environments::EnvUi,
 }
 
 impl UiState {
@@ -374,6 +381,7 @@ impl Default for UiState {
             physical: physical::PhysState::default(),
             prefs: prefs::Prefs::default(),
             prefs_ui: prefs::WindowState::default(),
+            env_ui: environments::EnvUi::default(),
         }
     }
 }
@@ -1010,6 +1018,7 @@ impl PacketApp {
         self.notes_window(&ctx);
         activity::windows(self, &ctx);
         prefs::windows(self, &ctx);
+        environments::windows(self, &ctx);
         shortcuts::windows(self, &ctx);
         self.about_window(&ctx);
         help::window(self, &ctx);
@@ -1103,6 +1112,7 @@ impl PacketApp {
             });
             ui.menu_button(tl("Options"), |ui| {
                 prefs::menu_items(self, ui);
+                environments::menu_item(self, ui);
                 if ui.checkbox(&mut self.ui.dark, tl("Dark interface")).changed() {
                     self.apply_theme(ui.ctx());
                 }

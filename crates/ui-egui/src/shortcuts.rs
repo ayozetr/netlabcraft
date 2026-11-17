@@ -67,6 +67,7 @@ pub enum Act {
     UserProfile,
     AlgorithmSettings,
     CommandLog,
+    Environments,
     ZoomIn,
     ZoomReset,
     ZoomOut,
@@ -139,8 +140,7 @@ use When::{Always, Idle};
 /// Every shortcut. Written in reading order (by group); [`ordered`] sorts what is read first.
 ///
 /// Not here, because we have nothing for them: Ctrl+Shift+H (dock the Instruction window),
-/// Ctrl+Shift+I (scenario description), Ctrl+Shift+P (Port Monitor), Shift+E (Environment
-/// window), Shift+F (generic container), Shift+H (working closet), Shift+M (Move Object),
+/// Ctrl+Shift+I (scenario description), Ctrl+Shift+P (Port Monitor), Shift+F (generic container), Shift+H (working closet), Shift+M (Move Object),
 /// Shift+N (Navigation panel), Alt+R (Resize), Ctrl+Space and Space (rubber-band and select by
 /// key), Alt+F/E/O/V/T/X/H (open a menu), Y and N for confirmations, and the device boxes for
 /// wireless, security, home, smart city, industrial, power grid, boards, actuators, sensors and
@@ -170,6 +170,7 @@ pub static TABLE: &[Shortcut] = &[
     row("Options", "User Profile…", C | S, Key::U, Act::UserProfile, Always),
     row("Options", "Algorithm Settings", C | S, Key::M, Act::AlgorithmSettings, Always),
     row("Options", "View Command Log", C | S, Key::V, Act::CommandLog, Always),
+    row("Options", "Environments", S, Key::E, Act::Environments, Idle),
     row("Options", "Show grid", S, Key::G, Act::ShowGrid, Idle),
     // View
     row("View", "Zoom In", C, Key::I, Act::ZoomIn, Idle),
@@ -403,6 +404,7 @@ pub fn perform(app: &mut PacketApp, ctx: &Context, act: Act) {
         Act::UserProfile => app.open_user_profile(),
         Act::AlgorithmSettings => app.open_algorithm_settings(),
         Act::CommandLog => app.open_command_log(),
+        Act::Environments => app.open_environments(),
         Act::ZoomIn => app.zoom(Some(1.25)),
         Act::ZoomReset => {
             app.zoom(None);

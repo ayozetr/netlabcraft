@@ -21,6 +21,7 @@ enum Target {
     Lab,
     Config(netlabcraft_engine::DeviceId, bool),
     WebFile(netlabcraft_engine::DeviceId),
+    Environment(u32),
 }
 
 struct WebShell {
@@ -88,6 +89,7 @@ impl eframe::App for WebShell {
                 Target::Config(device, merge) => self.app.text_opened(device, merge, &text),
                 Target::WebFile(device) => self.app.web_file_imported(device, &name, &text),
                 Target::Lab => self.app.open_json(&text, Some(&name)),
+                Target::Environment(place) => self.app.environment_imported(place, &text),
             }
         }
         self.app.ui(ui);
@@ -132,6 +134,17 @@ impl eframe::App for WebShell {
                         if let Some(f) = rfd::AsyncFileDialog::new().add_filter("Web page", &["html", "htm", "txt"]).pick_file().await {
                             let bytes = f.read().await;
                             inbox.lock().push((f.file_name(), String::from_utf8_lossy(&bytes).to_string(), Target::WebFile(device)));
+                            ctx.request_repaint();
+                        }
+                    });
+                }
+                UiRequest::ImportEnvironment { place } => {
+                    let inbox = self.inbox.clone();
+                    let ctx = ui.ctx().clone();
+                    wasm_bindgen_futures::spawn_local(async move {
+                        if let Some(f) = rfd::AsyncFileDialog::new().add_filter("Environment", &["json"]).pick_file().await {
+                            let bytes = f.read().await;
+                            inbox.lock().push((f.file_name(), String::from_utf8_lossy(&bytes).to_string(), Target::Environment(place)));
                             ctx.request_repaint();
                         }
                     });

@@ -1865,3 +1865,120 @@ furniture	Table	Table
 	A cable joins two different devices	Un câble relie deux équipements différents
 	Click a port on a device's front panel, then a port on another device, to cable them · right-click or Esc cancels	Cliquez sur un port de la face avant d'un équipement, puis sur un port d'un autre équipement, pour les relier par un câble · clic droit ou Échap annule
 	From {}: click a port on another device. Right-click or Esc cancels.	Depuis {} : cliquez sur un port d'un autre équipement. Clic droit ou Échap annule.
+	Environments	Environnements
+	Location:	Emplacement :
+	View Mode	Mode affichage
+	Change this place's environment	Modifier l'environnement de ce lieu
+	Current Time:	Heure actuelle :
+	Set the time of day	Régler l'heure de la journée
+	Resume	Reprendre
+	Filter:	Filtre :
+	Search	Rechercher
+	No variables match the filter.	Aucune variable ne correspond au filtre.
+	Notes	Notes
+	Simulation Time Scale:	Échelle de temps de la simulation :
+	minute(s) real equals	minute(s) réelle(s) égale(nt)
+	simulated minute(s)	minute(s) simulée(s)
+	Keyframe Graph	Graphique des images clés
+	Advanced	Avancé
+	Time Snap:	Magnétisme du temps :
+	Value Snap:	Magnétisme de la valeur :
+	Click a variable to show it, then click the graph to add or change a point. Right-click a point to remove it.	Cliquez sur une variable pour l'afficher, puis sur le graphique pour ajouter ou modifier un point. Clic droit sur un point pour le supprimer.
+	Pick a variable on the left	Choisissez une variable à gauche
+	Time Line:	Ligne de temps :
+	Time Increment:	Pas de temps :
+	Variable:	Variable :
+	Export File…	Exporter le fichier…
+	Import File…	Importer un fichier…
+	Remove Custom Environment	Supprimer l'environnement personnalisé
+	The place inherits every variable again	Le lieu hérite à nouveau de toutes les variables
+	Previous	Précédent
+	Next	Suivant
+	Value:	Valeur :
+	Add Keyframe	Ajouter une image clé
+	Inherit Again	Hériter à nouveau
+	Show Notes in View Mode	Afficher les notes en mode affichage
+	Show All	Tout afficher
+	Hide All	Tout masquer
+	Always on Top	Toujours au premier plan
+	Enter a time of day as HH:MM:SS.	Saisissez une heure au format HH:MM:SS.
+	set here	défini ici
+	from {}	depuis {}
+	default	par défaut
+	smart-home room	pièce de la maison connectée
+	Keyframe {} of {}	Image clé {} sur {}
+	Imported an environment: {} variables read, {} skipped	Environnement importé : {} variables lues, {} ignorées
+	1 second	1 seconde
+	1 minute	1 minute
+	5 minutes	5 minutes
+	15 minutes	15 minutes
+	1 hour	1 heure
+	Earth Physical Features	Caractéristiques physiques de la Terre
+	Electricity	Électricité
+	Energy	Énergie
+	Gases	Gaz
+	Gravity	Gravité
+	Light (Sun)	Lumière (Soleil)
+	Motion	Mouvement
+	Other	Autres
+	Radiation	Rayonnement
+	Sound	Son
+	Temperature	Température
+	Water	Eau
+	Wind	Vent
+	Elevation	Altitude
+	Soil pH	pH du sol
+	Soil moisture	Humidité du sol
+	Soil compaction	Compactage du sol
+	Composition hardness	Dureté de la composition
+	Voltage	Tension
+	Resistance	Résistance
+	Power	Puissance
+	Heat	Chaleur
+	Photon flux	Flux de photons
+	Flames	Flammes
+	Argon	Argon
+	Carbon monoxide	Monoxyde de carbone
+	Carbon dioxide	Dioxyde de carbone
+	Helium	Hélium
+	Hydrogen	Hydrogène
+	Methane	Méthane
+	Nitrogen	Azote
+	Oxygen	Oxygène
+	Ozone	Ozone
+	Propane	Propane
+	Smoke	Fumée
+	Electromagnetic radiation	Rayonnement électromagnétique
+	Infrared	Infrarouge
+	Radiant heat	Chaleur rayonnante
+	Sunlight	Lumière du soleil
+	Ultraviolet	Ultraviolet
+	Visible light	Lumière visible
+	Luminosity	Luminosité
+	Moon phase	Phase de la lune
+	Motion direction	Direction du mouvement
+	Motion speed	Vitesse du mouvement
+	Torque	Couple
+	Atmospheric pressure	Pression atmosphérique
+	Radiation level	Niveau de rayonnement
+	Alpha radiation	Rayonnement alpha
+	Beta radiation	Rayonnement bêta
+	Gamma radiation	Rayonnement gamma
+	Neutron radiation	Rayonnement neutronique
+	Ionization	Ionisation
+	Sound pitch	Hauteur du son
+	Sound volume	Volume sonore
+	White noise	Bruit blanc
+	Ambient temperature	Température ambiante
+	Clouds	Nuages
+	Humidity	Humidité
+	Rain	Pluie
+	Snow	Neige
+	Water level	Niveau de l'eau
+	Water volume	Volume d'eau
+	Water pH	pH de l'eau
+	Water temperature	Température de l'eau
+	Water speed	Vitesse de l'eau
+	Wind direction	Direction du vent
+	Wind gusts	Rafales de vent
+	Wind speed	Vitesse du vent

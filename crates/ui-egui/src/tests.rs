@@ -863,6 +863,20 @@ fn spanish_shows_no_text_that_has_a_translation_in_english() {
         h.run_steps(3);
         shown_texts(&h, &mut seen);
     }
+    // The Environments window: View mode, and both tabs of Edit mode with a variable drawn.
+    let mut h = harness(Some("iot"));
+    h.state_mut().ui.show_notes = false;
+    h.state_mut().run("environment.keyframe.add", json!({"variable": "ambient_temperature", "time": "06:00", "value": 10}));
+    h.state_mut().run("environment.set", json!({"notes": "A note", "show_notes": true}));
+    h.state_mut().open_environments();
+    for (edit, tab) in [(false, environments::Tab::Graph), (true, environments::Tab::Graph), (true, environments::Tab::Advanced)] {
+        h.state_mut().ui.env_ui.edit = edit;
+        h.state_mut().ui.env_ui.tab = tab;
+        h.state_mut().ui.env_ui.shown = vec!["ambient_temperature"];
+        h.state_mut().ui.env_ui.selected = Some("ambient_temperature");
+        h.run_steps(3);
+        shown_texts(&h, &mut seen);
+    }
     // The activity windows, About and its credits.
     let mut h = harness(Some("activity-first-router"));
     h.run_steps(2);
