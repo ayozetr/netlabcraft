@@ -8,6 +8,7 @@
 //! * `closet-light.png`, `closet-dark.png`: a wiring closet with a rack, a shelf, a table, patch panels, a
 //!   power strip and cables, built through engine commands;
 //! * `closet-zoom-light.png`, `closet-zoom-dark.png`: the same closet zoomed on the rack, for the connectors;
+//! * `closet-z050-*.png`, `closet-z100-*.png`, `closet-z150-*.png`: the closet at zoom 0.5, 1.0 and 1.5;
 //! * `logical-light.png`, `logical-dark.png`: the logical workspace with a few devices.
 //!
 //! The `snapshots` workflow runs it and uploads the PNGs; nothing here is committed.
@@ -212,6 +213,23 @@ fn closet_sheet(dir: &str, dark: bool) {
     }
 }
 
+/// The same closet at 0.5, 1.0 and 1.5 (the sizes between the fit and the connector close-ups), the furniture's top
+/// left a little inside the view: what a person sees when they zoom the closet with the buttons.
+fn closet_zoom_steps(dir: &str, dark: bool) {
+    let suffix = if dark { "dark" } else { "light" };
+    for (name, zoom) in [("closet-z050", 0.5f32), ("closet-z100", 1.0), ("closet-z150", 1.5)] {
+        let (s, closet) = closet_lab();
+        app_sheet(dir, &format!("{name}-{suffix}"), s, (1500.0, 900.0), dark, move |app| {
+            app.set_physical(true);
+            app.enter_place(closet);
+            let frame = app.session.topology.closet_layout(closet).frames.first().map(|(_, c)| (c.x, c.y));
+            let (x, y) = frame.unwrap_or((0.0, 0.0));
+            app.ui.zoom = zoom;
+            app.ui.pan = vec2(30.0, 60.0) - vec2(x, y) * zoom;
+        });
+    }
+}
+
 fn logical_sheet(dir: &str, dark: bool) {
     let suffix = if dark { "dark" } else { "light" };
     let mut s = Session::new();
@@ -254,6 +272,7 @@ fn main() {
         icons_sheet(&dir, dark);
         cables_sheet(&dir, dark);
         closet_sheet(&dir, dark);
+        closet_zoom_steps(&dir, dark);
         logical_sheet(&dir, dark);
     }
 }

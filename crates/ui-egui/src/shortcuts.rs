@@ -426,10 +426,7 @@ pub fn perform(app: &mut PacketApp, ctx: &Context, act: Act) {
         Act::CommandLog => app.open_command_log(),
         Act::Environments => app.open_environments(),
         Act::ZoomIn => app.zoom(Some(1.25)),
-        Act::ZoomReset => {
-            app.zoom(None);
-            app.ui.pan = egui::Vec2::ZERO;
-        }
+        Act::ZoomReset => app.reset_view(),
         Act::ZoomOut => app.zoom(Some(0.8)),
         Act::ShowGrid => app.ui.show_grid = !app.ui.show_grid,
         Act::Simulation => app.ui.mode = Mode::Simulation,
