@@ -411,7 +411,15 @@ fn draw_wireless(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Tok
     for r in &radios {
         let Some(c) = at(r.device) else { continue };
         let reach = if t.implicit_layout() { r.units } else { r.metres / netlabcraft_model::physical::CITY_UNIT_M };
-        crate::wireless::draw_area(painter, c, reach * view.zoom, crate::wireless::tint(r.channel), &r.ssid, tk.text);
+        crate::wireless::draw_area(
+            painter,
+            c,
+            reach * view.zoom,
+            crate::wireless::tint(r.channel),
+            &r.ssid,
+            tk.text,
+            crate::wireless::Look::of(&app.ui.prefs),
+        );
     }
     for (host, ap) in crate::wireless::associations(t) {
         let (Some(a), Some(b)) = (at(host), at(ap)) else { continue };

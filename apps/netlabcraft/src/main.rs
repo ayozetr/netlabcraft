@@ -208,14 +208,14 @@ impl App {
         for r in self.app.take_requests() {
             match r {
                 UiRequest::Open => {
-                    if let Some(p) = rfd::FileDialog::new().add_filter("NetLabCraft lab", &["nlcraft"]).pick_file() {
+                    if let Some(p) = self.dialog().add_filter("NetLabCraft lab", &["nlcraft"]).pick_file() {
                         self.app.open_path(&p.to_string_lossy());
                     }
                 }
                 UiRequest::Save { path, .. } => {
                     let path = path
                         .map(std::path::PathBuf::from)
-                        .or_else(|| rfd::FileDialog::new().add_filter("NetLabCraft lab", &["nlcraft"]).set_file_name("lab.nlcraft").save_file());
+                        .or_else(|| self.dialog().add_filter("NetLabCraft lab", &["nlcraft"]).set_file_name("lab.nlcraft").save_file());
                     if let Some(p) = path {
                         let p = p.to_string_lossy().to_string();
                         if self.app.run("file.save", json!({"path": p})).is_some() {
@@ -228,7 +228,7 @@ impl App {
                     }
                 }
                 UiRequest::ExportPcap(bytes) => {
-                    if let Some(p) = rfd::FileDialog::new().add_filter("Packet capture", &["pcap"]).set_file_name("capture.pcap").save_file() {
+                    if let Some(p) = self.dialog().add_filter("Packet capture", &["pcap"]).set_file_name("capture.pcap").save_file() {
                         match std::fs::write(&p, &bytes) {
                             Ok(()) => self.app.info(format!("Wrote {} ({} bytes)", p.display(), bytes.len())),
                             Err(e) => self.app.ui.status = Some((format!("{}: {e}", p.display()), true)),
@@ -236,7 +236,7 @@ impl App {
                     }
                 }
                 UiRequest::ExportImage(bytes) => {
-                    if let Some(p) = rfd::FileDialog::new().add_filter("PNG image", &["png"]).set_file_name("workspace.png").save_file() {
+                    if let Some(p) = self.dialog().add_filter("PNG image", &["png"]).set_file_name("workspace.png").save_file() {
                         match std::fs::write(&p, &bytes) {
                             Ok(()) => self.app.info(format!("Wrote {}", p.display())),
                             Err(e) => self.app.ui.status = Some((format!("{}: {e}", p.display()), true)),
@@ -247,7 +247,7 @@ impl App {
                 UiRequest::OpenPdf { name, bytes } => self.open_pdf(&name, &bytes),
                 UiRequest::PrintPdf { name, bytes } => self.print_pdf(&name, &bytes),
                 UiRequest::SaveText { name, text } => {
-                    if let Some(p) = rfd::FileDialog::new().add_filter("Text", &["txt"]).set_file_name(&name).save_file() {
+                    if let Some(p) = self.dialog().add_filter("Text", &["txt"]).set_file_name(&name).save_file() {
                         match std::fs::write(&p, text.as_bytes()) {
                             Ok(()) => self.app.info(format!("Wrote {}", p.display())),
                             Err(e) => self.app.ui.status = Some((format!("{}: {e}", p.display()), true)),
@@ -255,7 +255,7 @@ impl App {
                     }
                 }
                 UiRequest::OpenText { device, merge } => {
-                    if let Some(p) = rfd::FileDialog::new().add_filter("Text", &["txt", "cfg", "conf"]).pick_file() {
+                    if let Some(p) = self.dialog().add_filter("Text", &["txt", "cfg", "conf"]).pick_file() {
                         match std::fs::read(&p) {
                             Ok(b) if b.len() <= 1_000_000 => self.app.text_opened(device, merge, &String::from_utf8_lossy(&b)),
                             Ok(_) => self.app.ui.status = Some(("That file is too large to be a configuration.".into(), true)),
@@ -264,7 +264,7 @@ impl App {
                     }
                 }
                 UiRequest::ImportWebFile { device } => {
-                    if let Some(p) = rfd::FileDialog::new().add_filter("Web page", &["html", "htm", "txt"]).pick_file() {
+                    if let Some(p) = self.dialog().add_filter("Web page", &["html", "htm", "txt"]).pick_file() {
                         let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "page.html".into());
                         match std::fs::read(&p) {
                             Ok(b) if b.len() <= 200_000 => self.app.web_file_imported(device, &name, &String::from_utf8_lossy(&b)),
@@ -274,7 +274,7 @@ impl App {
                     }
                 }
                 UiRequest::ImportEnvironment { place } => {
-                    if let Some(p) = rfd::FileDialog::new().add_filter("Environment", &["json"]).pick_file() {
+                    if let Some(p) = self.dialog().add_filter("Environment", &["json"]).pick_file() {
                         match std::fs::read(&p) {
                             Ok(b) if b.len() <= 1_000_000 => self.app.environment_imported(place, &String::from_utf8_lossy(&b)),
                             Ok(_) => self.app.ui.status = Some(("That file is too large to be an environment.".into(), true)),
@@ -282,15 +282,50 @@ impl App {
                         }
                     }
                 }
+                UiRequest::PickFolder => {
+                    if let Some(p) = self.dialog().pick_folder() {
+                        self.app.folder_picked(&p.to_string_lossy());
+                    }
+                }
+                UiRequest::Backup { stem, folder } => self.backup(&stem, folder.as_deref()),
                 UiRequest::PlaySound(bytes) => play_wav(&bytes),
                 UiRequest::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             }
         }
     }
 
+    /// A file dialog that starts in the user folder (Preferences ▸ Administrative), when it is set
+    /// and exists.
+    fn dialog(&self) -> rfd::FileDialog {
+        let dialog = rfd::FileDialog::new();
+        match self.app.user_folder().map(std::path::Path::new) {
+            Some(dir) if dir.is_dir() => dialog.set_directory(dir),
+            _ => dialog,
+        }
+    }
+
+    /// Writes a backup copy of the open lab: `<stem>-<time>.nlcraft` in the `backups` folder of the
+    /// user folder, or of the settings folder. The engine refuses to replace a file.
+    fn backup(&mut self, stem: &str, folder: Option<&str>) {
+        let base = folder
+            .map(std::path::PathBuf::from)
+            .filter(|f| f.is_dir())
+            .or_else(|| recent_file().and_then(|f| f.parent().map(std::path::Path::to_path_buf)));
+        let Some(dir) = base.map(|b| b.join("backups")) else { return };
+        if let Err(e) = std::fs::create_dir_all(&dir) {
+            self.app.ui.status = Some((format!("{}: {e}", dir.display()), true));
+            return;
+        }
+        let stamp = netlabcraft_engine::instructor::now_utc().replace(':', "-");
+        let path = dir.join(format!("{stem}-{stamp}.nlcraft"));
+        if self.app.run("file.backup", json!({"path": path.to_string_lossy()})).is_some() {
+            self.app.info(trf("Backup written to {}", &[&path.display()]));
+        }
+    }
+
     /// Asks where to keep the report PDF (File ▸ Save as PDF, and the Print window's first choice).
     fn save_pdf(&mut self, name: &str, bytes: &[u8]) {
-        let Some(p) = rfd::FileDialog::new().add_filter("PDF document", &["pdf"]).set_file_name(name).save_file() else { return };
+        let Some(p) = self.dialog().add_filter("PDF document", &["pdf"]).set_file_name(name).save_file() else { return };
         let p = if p.extension().is_none() { p.with_extension("pdf") } else { p };
         match std::fs::write(&p, bytes) {
             Ok(()) => self.app.info(trf("Saved the PDF to {}", &[&p.display()])),
@@ -453,6 +488,7 @@ fn main() -> eframe::Result {
     let mut app = PacketApp::new(session);
     app.ui.recent = load_recent();
     app.ui.print_choices = Some(print_choices());
+    app.ui.prefs_ui.desktop = true;
     app.load_preferences(&load_preferences());
     let prefs_text = app.preferences_text();
     let native_saved = load_native_windows();

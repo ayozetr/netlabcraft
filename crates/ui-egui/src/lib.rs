@@ -8,6 +8,7 @@
 //! [`UiRequest`]s for the shell (desktop or web).
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+use crate::prefs_look::HintExt;
 use std::collections::BTreeMap;
 
 use egui::{Color32, RichText, Sense, vec2};
@@ -54,6 +55,10 @@ mod phone;
 mod physical;
 pub mod png;
 pub mod prefs;
+mod prefs_admin;
+mod prefs_look;
+pub mod prefs_misc;
+mod prefs_tabs;
 mod print;
 mod programming;
 mod services;
@@ -73,6 +78,7 @@ mod tests_environments;
 mod tests_families;
 #[cfg(test)]
 mod tests_prefs;
+mod tests_prefs2;
 
 use crate::i18n::tl;
 use icons::Glyph;
@@ -109,6 +115,12 @@ pub enum UiRequest {
     ImportEnvironment { place: u32 },
     /// Play a short sound (the bytes of a WAV file); a shell with no way to play one ignores it.
     PlaySound(Vec<u8>),
+    /// Ask for a folder (desktop), then call [`PacketApp::folder_picked`].
+    PickFolder,
+    /// Write a backup copy of the open lab (desktop): the shell makes the file name from `stem`
+    /// and the time, in a `backups` folder inside `folder` (or in its settings folder), and runs
+    /// `file.backup`.
+    Backup { stem: String, folder: Option<String> },
     /// Close the app.
     Quit,
 }
@@ -588,7 +600,7 @@ fn tool_button(ui: &mut egui::Ui, g: Glyph, label: &str, selected: bool, enabled
     let tk = theme::tokens(ui.visuals().dark_mode);
     let (rect, resp) = ui.allocate_exact_size(vec2(38.0, 36.0), if enabled { Sense::click() } else { Sense::hover() });
     let label = crate::i18n::tr(label);
-    let resp = resp.on_hover_text(label);
+    let resp = resp.hint(label);
     resp.widget_info(|| egui::WidgetInfo::selected(egui::accesskit::Role::Button, enabled, selected, label));
     let p = ui.painter_at(rect);
     if selected {
@@ -690,7 +702,7 @@ pub(crate) fn play_button(ui: &mut egui::Ui, g: PlayGlyph, label: &str, size: f3
     let tk = theme::tokens(ui.visuals().dark_mode);
     let (rect, resp) = ui.allocate_exact_size(vec2(size, size), Sense::click());
     let label = crate::i18n::tr(label);
-    let resp = resp.on_hover_text(label);
+    let resp = resp.hint(label);
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, label));
     let p = ui.painter_at(rect);
     p.rect_filled(rect.shrink(1.0), 7.0, if resp.hovered() { tk.pill } else { tk.bar });
@@ -1036,6 +1048,9 @@ impl PacketApp {
             egui::Panel::bottom("device_box").frame(chrome).exact_size(160.0).show(ui, |ui| bottom::show(self, ui));
         }
         egui::Panel::bottom("time_bar").frame(bar).show(ui, |ui| self.time_bar(ui));
+        if self.ui.prefs.device_taskbar && !self.ui.windows.is_empty() {
+            egui::Panel::bottom("device_taskbar").frame(bar).show(ui, |ui| prefs_misc::taskbar(self, ui));
+        }
         if self.ui.mode == Mode::Simulation && self.ui.show_event_list {
             egui::Panel::right("simulation_panel").resizable(true).default_size(420.0).show(ui, |ui| events::panel(self, ui));
         }
@@ -1073,7 +1088,7 @@ impl PacketApp {
                 }
                 ui.menu_button(tl("New from sample"), |ui| {
                     for s in sample::SAMPLES {
-                        if ui.button(crate::i18n::tr(s.title)).on_hover_text(crate::i18n::tr(s.description)).clicked() {
+                        if ui.button(crate::i18n::tr(s.title)).hint(crate::i18n::tr(s.description)).clicked() {
                             self.new_lab(Some(s.id));
                         }
                     }
@@ -1089,7 +1104,7 @@ impl PacketApp {
                     ui.menu_button(tl("Open Recent"), |ui| {
                         for p in self.ui.recent.clone() {
                             let name = std::path::Path::new(&p).file_name().map_or(p.clone(), |n| n.to_string_lossy().to_string());
-                            if ui.button(name).on_hover_text(&p).clicked() {
+                            if ui.button(name).hint(&p).clicked() {
                                 self.open_path(&p);
                                 ui.close();
                             }
@@ -1103,17 +1118,15 @@ impl PacketApp {
                 if ui.button(tl("Save As...")).clicked() {
                     self.save(true);
                 }
-                if ui.button(tl("Export Capture (pcap)...")).on_hover_text(tl("The event list as a capture any packet analyser opens")).clicked() {
+                if ui.button(tl("Export Capture (pcap)...")).hint(tl("The event list as a capture any packet analyser opens")).clicked() {
                     self.requests.push(UiRequest::ExportPcap(self.session.pcap()));
                 }
-                let png = ui.button(tl("Export Workspace Image (PNG)...")).on_hover_text(tl("The workspace as a picture, for a report")).clicked();
-                let save_pdf = ui
-                    .button(tl("Save as PDF..."))
-                    .on_hover_text(tl("The workspace and a report of the devices on A4 pages, saved as a PDF file"))
-                    .clicked();
+                let png = ui.button(tl("Export Workspace Image (PNG)...")).hint(tl("The workspace as a picture, for a report")).clicked();
+                let save_pdf =
+                    ui.button(tl("Save as PDF...")).hint(tl("The workspace and a report of the devices on A4 pages, saved as a PDF file")).clicked();
                 let print = ui
                     .add(egui::Button::new(tl("Print...")).shortcut_text(shortcuts::text(shortcuts::Act::Print)))
-                    .on_hover_text(tl("The same PDF: save it, open it in a PDF viewer or print it"))
+                    .hint(tl("The same PDF: save it, open it in a PDF viewer or print it"))
                     .clicked();
                 let pdf = if print {
                     Some(PdfUse::Print)
@@ -1165,12 +1178,12 @@ impl PacketApp {
                 if ui.checkbox(&mut self.ui.dark, tl("Dark interface")).changed() {
                     self.apply_theme(ui.ctx());
                 }
-                ui.checkbox(&mut self.ui.show_grid, tl("Show grid")).on_hover_text(shortcuts::text(shortcuts::Act::ShowGrid));
+                ui.checkbox(&mut self.ui.show_grid, tl("Show grid")).hint(shortcuts::text(shortcuts::Act::ShowGrid));
                 // Native windows need viewports: egui embeds them (the web build, headless runs).
                 let embedded = ui.ctx().embed_viewports();
                 let native = ui.add_enabled(!embedded, egui::Checkbox::new(&mut self.ui.native_windows, tl("Device windows as separate windows")));
                 if embedded {
-                    let _ = native.on_disabled_hover_text(tl("Not available in the web version"));
+                    let _ = native.disabled_hint(tl("Not available in the web version"));
                 }
                 ui.menu_button(tl("Language"), |ui| {
                     for l in i18n::Lang::all() {
@@ -1294,7 +1307,7 @@ impl PacketApp {
                     }
                 }
                 ui.separator();
-                if ui.button(tl("Report an Issue")).on_hover_text(tl("Opens the issue tracker in your browser")).clicked() {
+                if ui.button(tl("Report an Issue")).hint(tl("Opens the issue tracker in your browser")).clicked() {
                     ui.ctx().open_url(egui::OpenUrl::new_tab(help::ISSUES_URL));
                     ui.close();
                 }
@@ -1423,7 +1436,7 @@ impl PacketApp {
             if physical && let Some(kind) = physical::child_kind(self) {
                 let label = physical::new_label(kind);
                 let b = ui.add(egui::Button::new(RichText::new(tl(label)).color(tk.bar_text).size(15.0)).fill(tk.pill.gamma_multiply(0.5)));
-                if b.on_hover_text(tl("Adds a place to the map shown; drag it into position")).clicked() {
+                if b.hint(tl("Adds a place to the map shown; drag it into position")).clicked() {
                     physical::add_place(self, None);
                 }
             }
@@ -1451,7 +1464,7 @@ impl PacketApp {
                 ] {
                     let (r, resp) = ui.allocate_exact_size(vec2(32.0, 28.0), Sense::click());
                     let label = crate::i18n::tr(label);
-                    let resp = resp.on_hover_text(label);
+                    let resp = resp.hint(label);
                     resp.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, label));
                     let p = ui.painter_at(r);
                     if resp.hovered() {
@@ -1474,7 +1487,7 @@ impl PacketApp {
                     let on = self.ui.prefs.show_wireless_signals;
                     let (r, resp) = ui.allocate_exact_size(vec2(32.0, 28.0), Sense::click());
                     let label = tl("View Wireless Signals (Ctrl+Alt+Shift+W): faint coverage areas of the access points and a line from each Wi-Fi host to its access point");
-                    let resp = resp.on_hover_text(label);
+                    let resp = resp.hint(label);
                     resp.widget_info(|| egui::WidgetInfo::selected(egui::accesskit::Role::Button, true, on, label));
                     let p = ui.painter_at(r);
                     if on {
@@ -1503,7 +1516,7 @@ impl PacketApp {
                         ui.label(RichText::new("›").color(tk.bar_text).size(17.0));
                     }
                     let top = ui.add(egui::Label::new(RichText::new(tl("Intercity")).color(tk.bar_text).size(17.0)).sense(Sense::click()));
-                    if top.on_hover_text(tl("Back to the Intercity map")).clicked() && self.session.place_view.is_some() {
+                    if top.hint(tl("Back to the Intercity map")).clicked() && self.session.place_view.is_some() {
                         go = Some(None);
                     }
                     match go {
@@ -1528,7 +1541,7 @@ impl PacketApp {
                     ui.label(RichText::new("›").color(tk.bar_text).size(17.0));
                 }
                 let root = ui.add(egui::Label::new(RichText::new(tl("Root")).color(tk.bar_text).size(17.0)).sense(Sense::click()));
-                if root.on_hover_text(tl("Back to the top level")).clicked() && self.session.view.is_some() {
+                if root.hint(tl("Back to the top level")).clicked() && self.session.view.is_some() {
                     go = Some(None);
                 }
                 match go {
@@ -1554,7 +1567,7 @@ impl PacketApp {
             let white = |ui: &mut egui::Ui, g: Glyph, label: &str| {
                 let (rect, resp) = ui.allocate_exact_size(vec2(32.0, 30.0), Sense::click());
                 let label = crate::i18n::tr(label);
-                let resp = resp.on_hover_text(label);
+                let resp = resp.hint(label);
                 resp.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, label));
                 let p = ui.painter_at(rect);
                 if resp.hovered() {
@@ -1601,7 +1614,7 @@ impl PacketApp {
                 let bar_h = ui.available_height();
                 ui.allocate_ui_with_layout(vec2(room, bar_h), egui::Layout::left_to_right(egui::Align::Center), |ui| {
                     ui.set_max_width(room);
-                    ui.add(egui::Label::new(RichText::new(&msg).color(color).size(13.0)).truncate()).on_hover_text(&msg);
+                    ui.add(egui::Label::new(RichText::new(&msg).color(color).size(13.0)).truncate()).hint(&msg);
                 });
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -1617,7 +1630,7 @@ impl PacketApp {
                 }
                 if storm {
                     ui.label(RichText::new(tl("Switching loop detected")).color(Color32::from_rgb(0xff, 0x9a, 0x9a)))
-                        .on_hover_text(tl("A frame circled the network; there is no spanning tree yet, so avoid redundant switch links"));
+                        .hint(tl("A frame circled the network; there is no spanning tree yet, so avoid redundant switch links"));
                 }
             });
         });

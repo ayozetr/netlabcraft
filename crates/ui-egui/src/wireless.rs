@@ -71,13 +71,41 @@ pub fn tint(channel: u8) -> Color32 {
     PALETTE.get(usize::from(channel) % PALETTE.len()).copied().unwrap_or(Color32::GRAY)
 }
 
-/// A faint disc with a thin rim, and the network name at the top when it fits.
-pub fn draw_area(painter: &Painter, centre: Pos2, radius: f32, color: Color32, ssid: &str, text: Color32) {
+/// How a coverage area is drawn (Preferences ▸ Show/Hide).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Look {
+    /// An outline around the area.
+    pub boundary: bool,
+    /// The colour fades outwards (otherwise a flat disc).
+    pub gradient: bool,
+}
+
+impl Look {
+    pub fn of(prefs: &crate::prefs::Prefs) -> Look {
+        Look { boundary: prefs.wireless_boundary, gradient: prefs.wireless_gradient }
+    }
+}
+
+/// Rings the fade is drawn with: each adds a little colour, so the middle is the densest.
+const FADE_RINGS: u32 = 8;
+
+/// A faint disc (fading toward the edge, with an outline: as `look` says), and the network name
+/// at the top when it fits.
+pub fn draw_area(painter: &Painter, centre: Pos2, radius: f32, color: Color32, ssid: &str, text: Color32, look: Look) {
     if !radius.is_finite() || radius < 1.0 {
         return;
     }
-    painter.circle_filled(centre, radius, color.gamma_multiply(0.09));
-    painter.circle_stroke(centre, radius, Stroke::new(1.0, color.gamma_multiply(0.5)));
+    if look.gradient {
+        for ring in 0..FADE_RINGS {
+            let r = radius * (1.0 - ring as f32 / FADE_RINGS as f32);
+            painter.circle_filled(centre, r, color.gamma_multiply(0.035));
+        }
+    } else {
+        painter.circle_filled(centre, radius, color.gamma_multiply(0.09));
+    }
+    if look.boundary {
+        painter.circle_stroke(centre, radius, Stroke::new(1.0, color.gamma_multiply(0.5)));
+    }
     if radius >= 40.0 && !ssid.is_empty() {
         painter.text(centre - vec2(0.0, radius - 4.0), Align2::CENTER_TOP, ssid, FontId::proportional(12.0), text.gamma_multiply(0.7));
     }

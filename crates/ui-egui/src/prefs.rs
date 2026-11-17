@@ -10,10 +10,14 @@
 //! cable lengths counted, devices opening on their command line), so nothing changes until a
 //! person unchecks a box.
 
+use crate::prefs_look::HintExt;
 use egui::{Key, RichText};
 use serde_json::json;
 
 use crate::i18n::{self, tl, trn};
+use crate::prefs_look::{CliFont, Colors, HintExt, NamedColor};
+use crate::prefs_misc::BufferFull;
+use crate::prefs_tabs::AnswerFilter;
 use crate::sound::Sound;
 use crate::{PacketApp, Tool, UiRequest};
 
@@ -22,7 +26,7 @@ const MAX_TOOLTIP_SECS: f32 = 10.0;
 /// The wait egui uses when the setting is 0.
 const DEFAULT_TOOLTIP_SECS: f32 = 0.5;
 /// Smallest and largest interface text size, in percent.
-const FONT_RANGE: std::ops::RangeInclusive<u16> = 70..=160;
+pub(crate) const FONT_RANGE: std::ops::RangeInclusive<u16> = 70..=160;
 
 /// The Interface, Font and Show/Hide choices.
 #[derive(Debug, Clone, PartialEq)]
@@ -57,6 +61,47 @@ pub struct Prefs {
     pub show_wireless_signals: bool,
     /// Interface text size in percent.
     pub font_percent: u16,
+    // Show/Hide
+    pub hide_physical_tab: bool,
+    pub hide_config_tab: bool,
+    pub hide_cli_tab: bool,
+    pub hide_rs_config_tab: bool,
+    pub hide_rs_cli_tab: bool,
+    pub hide_services_tab: bool,
+    pub hide_desktop_tab: bool,
+    /// The device's own screen tabs (a phone's, a smart thing's).
+    pub hide_gui_tab: bool,
+    pub hide_attributes_tab: bool,
+    pub hide_wireless_cell: bool,
+    pub wireless_boundary: bool,
+    pub wireless_gradient: bool,
+    pub hide_coverage_spin: bool,
+    /// Smart things open with their advanced settings shown.
+    pub advanced_things: bool,
+    // Font
+    pub cli_font: CliFont,
+    /// Command-line size in points (8 is the default).
+    pub cli_pt: u16,
+    /// Tooltip size in points (8 is the default).
+    pub tooltip_pt: u16,
+    pub colors: Colors,
+    // Miscellaneous
+    /// Minutes between automatic backup copies (0: off).
+    pub backup_minutes: u16,
+    pub buffer_full: BufferFull,
+    pub buffer_filtered_only: bool,
+    pub device_taskbar: bool,
+    // Administrative
+    /// Default folder of the Open and Save dialogs and of automatic backups (empty: none).
+    pub user_folder: String,
+    /// The record of the local lock (empty: no password).
+    pub lock_record: String,
+    pub lock_interface: bool,
+    pub lock_showhide: bool,
+    pub lock_custom: bool,
+    pub lock_misc: bool,
+    // Answer Tree
+    pub answer_filter: AnswerFilter,
 }
 
 impl Default for Prefs {
@@ -80,6 +125,35 @@ impl Default for Prefs {
             align_physical: false,
             show_wireless_signals: false,
             font_percent: 100,
+            hide_physical_tab: false,
+            hide_config_tab: false,
+            hide_cli_tab: false,
+            hide_rs_config_tab: false,
+            hide_rs_cli_tab: false,
+            hide_services_tab: false,
+            hide_desktop_tab: false,
+            hide_gui_tab: false,
+            hide_attributes_tab: false,
+            hide_wireless_cell: false,
+            wireless_boundary: true,
+            wireless_gradient: true,
+            hide_coverage_spin: false,
+            advanced_things: false,
+            cli_font: CliFont::Monospace,
+            cli_pt: crate::prefs_look::DEFAULT_PT,
+            tooltip_pt: crate::prefs_look::DEFAULT_PT,
+            colors: Colors::default(),
+            backup_minutes: 0,
+            buffer_full: BufferFull::Prompt,
+            buffer_filtered_only: false,
+            device_taskbar: false,
+            user_folder: String::new(),
+            lock_record: String::new(),
+            lock_interface: false,
+            lock_showhide: false,
+            lock_custom: false,
+            lock_misc: false,
+            answer_filter: AnswerFilter::ShowAll,
         }
     }
 }
@@ -91,8 +165,8 @@ impl Prefs {
     }
 
     /// The yes-or-no settings with the name each has in the saved text.
-    fn flags(&mut self) -> [(&'static str, &mut bool); 16] {
-        [
+    fn flags(&mut self) -> Vec<(&'static str, &mut bool)> {
+        vec![
             ("animation", &mut self.show_animation),
             ("sound", &mut self.play_sound),
             ("model-labels", &mut self.show_model_labels),
@@ -109,6 +183,26 @@ impl Prefs {
             ("cable-popup", &mut self.cable_popup),
             ("align-physical", &mut self.align_physical),
             ("wireless-signals", &mut self.show_wireless_signals),
+            ("hide-physical-tab", &mut self.hide_physical_tab),
+            ("hide-config-tab", &mut self.hide_config_tab),
+            ("hide-cli-tab", &mut self.hide_cli_tab),
+            ("hide-rs-config-tab", &mut self.hide_rs_config_tab),
+            ("hide-rs-cli-tab", &mut self.hide_rs_cli_tab),
+            ("hide-services-tab", &mut self.hide_services_tab),
+            ("hide-desktop-tab", &mut self.hide_desktop_tab),
+            ("hide-gui-tab", &mut self.hide_gui_tab),
+            ("hide-attributes-tab", &mut self.hide_attributes_tab),
+            ("hide-wireless-cell", &mut self.hide_wireless_cell),
+            ("wireless-boundary", &mut self.wireless_boundary),
+            ("wireless-gradient", &mut self.wireless_gradient),
+            ("hide-coverage-spin", &mut self.hide_coverage_spin),
+            ("advanced-things", &mut self.advanced_things),
+            ("buffer-filtered-only", &mut self.buffer_filtered_only),
+            ("device-taskbar", &mut self.device_taskbar),
+            ("lock-interface", &mut self.lock_interface),
+            ("lock-showhide", &mut self.lock_showhide),
+            ("lock-custom", &mut self.lock_custom),
+            ("lock-misc", &mut self.lock_misc),
         ]
     }
 
@@ -120,6 +214,26 @@ impl Prefs {
             out.push_str(&format!("{key}={}\n", if *value { "on" } else { "off" }));
         }
         out.push_str(&format!("tooltip={}\nfont={}\n", self.tooltip_secs, self.font_percent));
+        out.push_str(&format!(
+            "cli-font={}\ncli-size={}\ntooltip-size={}\nbackup={}\nbuffer-full={}\nanswer-filter={}\n",
+            self.cli_font.key(),
+            self.cli_pt,
+            self.tooltip_pt,
+            self.backup_minutes,
+            self.buffer_full.key(),
+            self.answer_filter.key()
+        ));
+        let mut colors = self.colors;
+        for (key, _, color) in colors.slots() {
+            out.push_str(&format!("{key}={}\n", color.key()));
+        }
+        // The folder and the lock record are one line each; a folder with a control character is not kept.
+        if !self.user_folder.is_empty() && !self.user_folder.chars().any(char::is_control) {
+            out.push_str(&format!("user-folder={}\n", self.user_folder));
+        }
+        if !self.lock_record.is_empty() {
+            out.push_str(&format!("lock={}\n", self.lock_record));
+        }
         out
     }
 
@@ -139,7 +253,64 @@ impl Prefs {
                 }
                 return true;
             }
+            "cli-font" => {
+                if let Some(f) = CliFont::from_key(value) {
+                    self.cli_font = f;
+                }
+                return true;
+            }
+            "cli-size" | "tooltip-size" => {
+                if let Some(v) = value.parse::<u16>().ok().filter(|v| crate::prefs_look::TEXT_PT.contains(v)) {
+                    if key == "cli-size" {
+                        self.cli_pt = v;
+                    } else {
+                        self.tooltip_pt = v;
+                    }
+                }
+                return true;
+            }
+            "backup" => {
+                if let Some(v) = value.parse::<u16>().ok().filter(|v| crate::prefs_misc::BACKUP_MINUTES.contains(v)) {
+                    self.backup_minutes = v;
+                }
+                return true;
+            }
+            "buffer-full" => {
+                if let Some(v) = BufferFull::from_key(value) {
+                    self.buffer_full = v;
+                }
+                return true;
+            }
+            "answer-filter" => {
+                if let Some(v) = AnswerFilter::from_key(value) {
+                    self.answer_filter = v;
+                }
+                return true;
+            }
+            "user-folder" => {
+                if value.len() <= 1024 && !value.chars().any(char::is_control) {
+                    self.user_folder = value.to_string();
+                }
+                return true;
+            }
+            "lock" => {
+                if netlabcraft_engine::settings::lock_valid(value) {
+                    self.lock_record = value.to_string();
+                }
+                return true;
+            }
             _ => {}
+        }
+        if key.starts_with("color-") {
+            for (name, _, slot) in self.colors.slots() {
+                if name == key {
+                    if let Some(c) = NamedColor::from_key(value) {
+                        *slot = c;
+                    }
+                    return true;
+                }
+            }
+            return false;
         }
         for (name, flag) in self.flags() {
             if name == key {
@@ -210,6 +381,22 @@ pub struct WindowState {
     pub(crate) info_draft: String,
     /// The style the interface was last set to (tooltip wait in tenths of a second, text size).
     applied: Option<(u32, u16)>,
+    /// The Colors table's choices until Apply.
+    pub(crate) colors_draft: Option<Colors>,
+    /// Set by the desktop shell: it can write backups and pick folders.
+    pub desktop: bool,
+    /// The Administrative tab's fields.
+    pub(crate) pw_draft: String,
+    pub(crate) pw_confirm: String,
+    pub(crate) pw_entry: String,
+    /// The password was entered this session: the locked tabs are open.
+    pub(crate) unlocked: bool,
+    /// What the last password action said, and whether it failed.
+    pub(crate) pw_note: Option<(String, bool)>,
+    /// A device window to bring in front (the taskbar was clicked).
+    pub(crate) raise: Option<netlabcraft_core::DeviceId>,
+    /// The Miscellaneous tab's state: backups, the full event list, filtered buffering.
+    pub(crate) misc: crate::prefs_misc::MiscState,
 }
 
 impl PacketApp {
@@ -233,7 +420,7 @@ impl PacketApp {
     /// Applies what [`PacketApp::preferences_text`] wrote. Hostile or damaged text changes less,
     /// never fails.
     pub fn load_preferences(&mut self, text: &str) {
-        for line in text.lines().take(64) {
+        for line in text.lines().take(200) {
             let Some((key, value)) = line.split_once('=') else { continue };
             let (key, value) = (key.trim(), value.trim());
             match key {
@@ -337,6 +524,7 @@ pub fn menu_items(app: &mut PacketApp, ui: &mut egui::Ui) {
 
 /// Sets the tooltip wait and the text size of the whole interface when they change.
 fn apply_style(app: &mut PacketApp, ctx: &egui::Context) {
+    crate::prefs_look::set_tip_style(&app.ui.prefs);
     let tooltip = (app.ui.prefs.tooltip_secs * 10.0).round() as u32;
     let want = (tooltip, app.ui.prefs.font_percent);
     if app.ui.prefs_ui.applied == Some(want) {
@@ -362,13 +550,14 @@ pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
     profile_window(app, ctx);
     log_window(app, ctx);
     algorithm_window(app, ctx);
+    crate::prefs_misc::run(app, ctx);
 }
 
 /// A checkbox that says what it does when the pointer rests on it.
-fn pref(ui: &mut egui::Ui, value: &mut bool, label: &'static str, hint: Option<&'static str>) -> egui::Response {
+pub(crate) fn pref(ui: &mut egui::Ui, value: &mut bool, label: &'static str, hint: Option<&'static str>) -> egui::Response {
     let r = ui.checkbox(value, tl(label));
     match hint {
-        Some(h) => r.on_hover_text(tl(h)),
+        Some(h) => r.hint(tl(h)),
         None => r,
     }
 }
@@ -387,17 +576,43 @@ fn preferences_window(app: &mut PacketApp, ctx: &egui::Context) {
             }
         });
         ui.separator();
-        match app.ui.prefs_ui.tab {
-            Tab::Interface => interface_tab(app, ui),
-            Tab::ShowHide => show_hide_tab(app, ui),
-            Tab::Font => font_tab(app, ui),
-            _ => {
-                ui.label(tl("Not available yet: NetLabCraft has nothing to set in this tab so far."));
-            }
-        }
+        crate::prefs_admin::lock_bar(app, ui);
+        let tab = app.ui.prefs_ui.tab;
+        let locked = crate::prefs_admin::tab_locked(&app.ui.prefs, &app.ui.prefs_ui, tab);
+        egui::ScrollArea::vertical().id_salt("prefs_tab").auto_shrink([false, false]).max_height((ui.available_height() - 40.0).max(120.0)).show(
+            ui,
+            |ui| {
+                ui.add_enabled_ui(!locked || tab == Tab::Administrative, |ui| match tab {
+                    Tab::Interface => interface_tab(app, ui),
+                    Tab::Administrative => crate::prefs_admin::tab(app, ui),
+                    Tab::ShowHide => crate::prefs_tabs::show_hide_tab(app, ui),
+                    Tab::Font => crate::prefs_look::font_tab(app, ui),
+                    Tab::Miscellaneous => crate::prefs_misc::tab(app, ui),
+                    Tab::AnswerTree => crate::prefs_tabs::answer_tree_tab(app, ui),
+                    Tab::CustomInterfaces => crate::prefs_tabs::custom_interfaces_tab(ui),
+                    Tab::Publishers => crate::prefs_tabs::publishers_tab(ui),
+                    Tab::ImageCleanup => crate::prefs_tabs::image_cleanup_tab(app, ui),
+                });
+            },
+        );
         ui.add_space(8.0);
-        if ui.button(tl("Restore Defaults")).clicked() {
+        let any_locked = Tab::ALL.iter().any(|t| crate::prefs_admin::tab_locked(&app.ui.prefs, &app.ui.prefs_ui, *t));
+        let restore = ui.add_enabled(!any_locked, egui::Button::new(tl("Restore Defaults")));
+        if any_locked {
+            let _ = restore.clone().disabled_hint(tl("Enter the password first: some tabs are locked."));
+        }
+        if restore.clicked() {
+            // The password, its locks and where backups go are kept: they are not looks.
+            let keep = (
+                std::mem::take(&mut app.ui.prefs.lock_record),
+                app.ui.prefs.lock_interface,
+                app.ui.prefs.lock_showhide,
+                app.ui.prefs.lock_custom,
+                app.ui.prefs.lock_misc,
+            );
             app.ui.prefs = Prefs::default();
+            (app.ui.prefs.lock_record, app.ui.prefs.lock_interface, app.ui.prefs.lock_showhide, app.ui.prefs.lock_custom, app.ui.prefs.lock_misc) =
+                keep;
             app.ui.dark = false;
             app.ui.show_grid = false;
             app.apply_theme(ui.ctx());
@@ -442,7 +657,7 @@ fn interface_tab(app: &mut PacketApp, ui: &mut egui::Ui) {
                     let l = ui.label(tl("Tooltip Duration:"));
                     ui.add(egui::DragValue::new(&mut p.tooltip_secs).range(0.0..=MAX_TOOLTIP_SECS).speed(0.1).fixed_decimals(1).suffix(" s"))
                         .labelled_by(l.id)
-                        .on_hover_text(tl("Seconds the pointer rests on something before its tooltip shows. 0 keeps the default (0.5 s)."));
+                        .hint(tl("Seconds the pointer rests on something before its tooltip shows. 0 keeps the default (0.5 s)."));
                 });
 
                 pref(right, &mut p.show_link_lights, "Show Link Lights", None);
@@ -493,10 +708,7 @@ fn interface_tab(app: &mut PacketApp, ui: &mut egui::Ui) {
     ui.label(RichText::new(tl("Logging")).strong());
     egui::Frame::group(ui.style()).show(ui, |ui| {
         let mut logging = app.session.cmd_log.enabled;
-        if ui
-            .checkbox(&mut logging, tl("Enable Logging"))
-            .on_hover_text(tl("Records every command in the command log that View Command Log shows."))
-            .changed()
+        if ui.checkbox(&mut logging, tl("Enable Logging")).hint(tl("Records every command in the command log that View Command Log shows.")).changed()
         {
             app.run("log.enable", json!({"on": logging}));
         }
@@ -515,7 +727,7 @@ fn interface_tab(app: &mut PacketApp, ui: &mut egui::Ui) {
         let embedded = ui.ctx().embed_viewports();
         let native = ui.add_enabled(!embedded, egui::Checkbox::new(&mut app.ui.native_windows, tl("Device windows as separate windows")));
         if embedded {
-            let _ = native.on_disabled_hover_text(tl("Not available in the web version"));
+            let _ = native.disabled_hint(tl("Not available in the web version"));
         }
         egui::ComboBox::from_label(tl("Language")).selected_text(i18n::lang().name()).show_ui(ui, |ui| {
             for l in i18n::Lang::all() {
@@ -525,33 +737,6 @@ fn interface_tab(app: &mut PacketApp, ui: &mut egui::Ui) {
                 }
             }
         });
-    });
-}
-
-fn show_hide_tab(app: &mut PacketApp, ui: &mut egui::Ui) {
-    ui.label(RichText::new(tl("Toolbars")).strong());
-    egui::Frame::group(ui.style()).show(ui, |ui| {
-        let tb = &mut app.ui.toolbars;
-        pref(ui, &mut tb.main, "Main", None);
-        pref(ui, &mut tb.secondary, "Secondary", None);
-        pref(ui, &mut tb.bottom, "Bottom", Some("The device box with the models and the PDU list."));
-    });
-}
-
-fn font_tab(app: &mut PacketApp, ui: &mut egui::Ui) {
-    ui.label(RichText::new(tl("Interface text")).strong());
-    egui::Frame::group(ui.style()).show(ui, |ui| {
-        ui.horizontal(|ui| {
-            let l = ui.label(tl("Text size:"));
-            let mut pct = app.ui.prefs.font_percent;
-            if ui.add(egui::Slider::new(&mut pct, FONT_RANGE).suffix(" %")).labelled_by(l.id).changed() {
-                app.ui.prefs.font_percent = pct;
-            }
-            if ui.button(tl("Reset")).clicked() {
-                app.ui.prefs.font_percent = 100;
-            }
-        });
-        ui.label(RichText::new(tl("Sets the text of menus, buttons and forms. Names drawn on the workspace follow its zoom instead.")).small());
     });
 }
 

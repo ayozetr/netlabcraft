@@ -4,6 +4,7 @@
 //! the answers. It acts through `pc.http_request`, `pc.http_saved`, `netconf.session`,
 //! `controller.devices` and `controller.push`.
 
+use crate::prefs_look::HintExt;
 use egui::RichText;
 use serde_json::{Value, json};
 
@@ -247,7 +248,7 @@ fn netconf_form(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, f: &mut Fo
         }
         None => {
             ui.checkbox(&mut f.keep_open, tl("Keep the session open"))
-                .on_hover_text(tl("Leave the session open after these operations, to hold a lock or work with the candidate"));
+                .hint(tl("Leave the session open after these operations, to hold a lock or work with the candidate"));
         }
     });
     if ui.button(RichText::new(tl("Run session")).strong()).clicked() {
@@ -290,7 +291,7 @@ fn controller(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, f: &mut Form
         ui.add(egui::TextEdit::singleline(&mut f.ctl_seed).desired_width(140.0)).labelled_by(l.id);
         if ui
             .button(tl("Discover"))
-            .on_hover_text(tl("Walk the CDP and LLDP neighbours from this router and manage every router that answers RESTCONF"))
+            .hint(tl("Walk the CDP and LLDP neighbours from this router and manage every router that answers RESTCONF"))
             .clicked()
         {
             let p = json!({"host": dev.id.0, "seed": f.ctl_seed.trim(), "user": f.user.trim(), "password": f.password});
@@ -371,7 +372,7 @@ fn controller(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, f: &mut Form
         }
         if ui
             .button(tl("Read the inventory"))
-            .on_hover_text(tl("Ask every managed router for its hostname, model, software and interfaces over RESTCONF"))
+            .hint(tl("Ask every managed router for its hostname, model, software and interfaces over RESTCONF"))
             .clicked()
         {
             f.ctl_devices = app.run("controller.devices", json!({"host": dev.id.0, "refresh": true}));

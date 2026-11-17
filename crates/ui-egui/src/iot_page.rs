@@ -3,6 +3,7 @@
 //! it, live, and its rules. Every change is an engine command (`iot.configure`, `iot.sync`,
 //! `iot.server`, `iot.switch`).
 
+use crate::prefs_look::HintExt;
 use egui::{RichText, Sense, vec2};
 use netlabcraft_model::Device;
 use netlabcraft_model::iot::{can_serve, is_sensor, thing};
@@ -198,7 +199,7 @@ fn thing_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut I
                 ui.label(RichText::new(tl(t.unit)).color(tk.muted));
             }
             for (label, step) in [("-5", -5), ("-1", -1), ("+1", 1), ("+5", 5)] {
-                if ui.button(label).on_hover_text(tl("Change the reading")).clicked() {
+                if ui.button(label).hint(tl("Change the reading")).clicked() {
                     app.run("iot.configure", json!({"device": d.0, "value": reading.saturating_add(step)}));
                 }
             }
@@ -221,9 +222,18 @@ fn thing_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut I
         (None, Some(m)) => ui.label(RichText::new(tr_any(m)).color(tk.error)),
         (None, None) => ui.label(tl("Not registered yet")),
     };
-    if ui.button(tl("Report now")).on_hover_text(tl("Every smart thing reports to its server over HTTP")).clicked() {
+    if ui.button(tl("Report now")).hint(tl("Every smart thing reports to its server over HTTP")).clicked() {
         app.run("iot.sync", json!({}));
     }
+    // The advanced details: shown open when Preferences ▸ Show/Hide asks for it.
+    egui::CollapsingHeader::new(tl("Advanced")).id_salt(("iot_advanced", d.0)).default_open(app.ui.prefs.advanced_things).show(ui, |ui| {
+        if let Some(p) = dev.ports.first() {
+            ui.label(trf("MAC address: {}", &[&p.mac]));
+            ui.label(trf("IP address: {}", &[&p.ip.map_or_else(|| "-".to_string(), |ip| ip.addr.to_string())]));
+        }
+        ui.label(trf("Default gateway: {}", &[&dev.gateway.map_or_else(|| "-".to_string(), |g| g.to_string())]));
+        ui.label(trf("Reports every {} s", &[&dev.iot.interval]));
+    });
 }
 
 fn server_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut IotForm) {
@@ -232,7 +242,7 @@ fn server_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut 
     if ui.checkbox(&mut on, tl("IoT service")).changed() {
         app.run("iot.server", json!({"device": d.0, "service": on}));
     }
-    if ui.button(tl("Refresh")).on_hover_text(tl("Let the smart things report, then list them")).clicked() {
+    if ui.button(tl("Refresh")).hint(tl("Let the smart things report, then list them")).clicked() {
         app.run("iot.server", json!({"device": d.0}));
     }
     ui.add_space(4.0);
@@ -350,7 +360,7 @@ fn environment_section(app: &mut PacketApp, ui: &mut egui::Ui) {
     let mut on = e.enabled;
     if ui
         .checkbox(&mut on, tl("Physics on (sensors read the room)"))
-        .on_hover_text(tl("Heaters, coolers, fans, windows and sprinklers change the room over simulated time"))
+        .hint(tl("Heaters, coolers, fans, windows and sprinklers change the room over simulated time"))
         .changed()
     {
         app.run("iot.environment", json!({"enabled": on}));
@@ -369,11 +379,11 @@ fn environment_section(app: &mut PacketApp, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         ui.label(trf("Outside: {} degrees", &[&e.outside_temperature]));
         for (label, step) in [("-5", -5), ("-1", -1), ("+1", 1), ("+5", 5)] {
-            if ui.button(label).on_hover_text(tl("Change the outside temperature")).clicked() {
+            if ui.button(label).hint(tl("Change the outside temperature")).clicked() {
                 app.run("iot.environment", json!({"outside_temperature": e.outside_temperature.saturating_add(step).clamp(-50, 100)}));
             }
         }
-        if ui.button(tl("Reset room")).on_hover_text(tl("Start the room again from its starting values")).clicked() {
+        if ui.button(tl("Reset room")).hint(tl("Start the room again from its starting values")).clicked() {
             app.run("iot.environment", json!({"reset": true}));
         }
     });

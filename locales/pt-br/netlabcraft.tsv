@@ -2092,3 +2092,129 @@ furniture	Table	Mesa
 	No PDF viewer found: use Save as PDF	Nenhum visualizador de PDF encontrado: use Salvar como PDF
 	Sent the PDF to the default printer	PDF enviado para a impressora padrão
 	Could not print: {}	Não foi possível imprimir: {}
+	Unlocked until you lock it again or close the program.	Desbloqueado até você bloquear de novo ou fechar o programa.
+	Lock	Bloquear
+	Locked. Enter the password:	Bloqueado. Digite a senha:
+	That is not the password.	Essa não é a senha.
+	Choose Password	Escolher senha
+	Password:	Senha:
+	Confirm:	Confirmar:
+	Enable Password	Ativar senha
+	Disable Password	Desativar senha
+	At least {} characters; both fields must match. Enabling again changes the password.	Pelo menos {} caracteres; os dois campos devem ser iguais. Ativar de novo troca a senha.
+	Only a salted hash is kept, never the password. The lock keeps people out of this window, not out of the preferences file.	Só um hash com sal é guardado, nunca a senha. O bloqueio protege esta janela, não o arquivo de preferências.
+	A password is enabled.	Há uma senha ativada.
+	No password is set: nothing is locked.	Sem senha: nada está bloqueado.
+	Password enabled.	Senha ativada.
+	Password disabled.	Senha desativada.
+	Interface Locking	Bloqueio da interface
+	With a password enabled, the ticked tabs open read-only until it is entered.	Com uma senha ativada, as abas marcadas abrem somente para leitura até ela ser digitada.
+	Lock the Interface tab	Bloquear a aba Interface
+	Lock the Show/Hide tab	Bloquear a aba Mostrar/Ocultar
+	Lock the Custom Interfaces tab	Bloquear a aba Interfaces personalizadas
+	Lock the Miscellaneous tab	Bloquear a aba Diversos
+	There are no Multiuser, IPC or scripting menus to lock.	Não há menus Multiusuário, IPC ou de scripts para bloquear.
+	User Folder	Pasta do usuário
+	Folder:	Pasta:
+	Browse…	Procurar…
+	Not available in the web version: the browser chooses where files go.	Indisponível na versão web: o navegador decide onde os arquivos vão.
+	The Open and Save dialogs start here, and automatic backups are written in a backups folder inside it.	As janelas Abrir e Salvar começam aqui, e os backups automáticos vão para uma pasta backups dentro dela.
+	Monospace (Hack)	Monoespaçada (Hack)
+	Proportional (as the interface)	Proporcional (como a interface)
+	Default	Padrão
+	Black	Preto
+	White	Branco
+	Amber	Âmbar
+	Cyan	Ciano
+	Magenta	Magenta
+	Router console text	Texto do console do roteador
+	Router console background	Fundo do console do roteador
+	PC console text	Texto do console do PC
+	PC console background	Fundo do console do PC
+	Tooltip text	Texto das dicas
+	Tooltip background	Fundo das dicas
+	Router console	Console do roteador
+	PC console	Console do PC
+	Tooltip	Dica
+	Application size:	Tamanho do aplicativo:
+	8 pt is the default (100%). Sets the text of menus, buttons and forms. Names drawn on the workspace follow its zoom instead.	8 pt é o padrão (100%). Ajusta o texto de menus, botões e formulários. Os nomes desenhados na área de trabalho seguem o zoom dela.
+	CLI font:	Fonte da CLI:
+	CLI font size:	Tamanho da fonte da CLI:
+	Used by the CLI tab, the Command Prompt and the Terminal. These are the faces the program carries: it adds no others.	Usada pela aba CLI, pelo Prompt de comando e pelo Terminal. São as fontes que o programa traz: ele não adiciona outras.
+	Sample: Router#show ip route	Exemplo: Router#show ip route
+	Tooltips	Dicas
+	Tooltip font size:	Tamanho da fonte das dicas:
+	Colors	Cores
+	{}: the text and the background are too close in colour to read.	{}: o texto e o fundo têm cores parecidas demais para ler.
+	Reset Colors	Redefinir cores
+	Prompt	Perguntar
+	View the previous events	Ver os eventos anteriores
+	{} minutes	{} minutos
+	Backups	Backups
+	Auto File Backup Interval:	Intervalo do backup automático:
+	Writes a copy of the open lab in the backups folder of the user folder (or of the settings folder), only when the lab changed. Your own file is never touched, and a backup never replaces another.	Grava uma cópia do laboratório aberto na pasta backups da pasta do usuário (ou da de configurações), só quando ele mudou. Seu arquivo nunca é tocado e um backup nunca substitui outro.
+	Not available in the web version: the browser keeps no files for the page.	Indisponível na versão web: o navegador não guarda arquivos para a página.
+	When the event list is full:	Quando a lista de eventos está cheia:
+	The list holds {} events and forgets the oldest ones when it is full.	A lista guarda {} eventos e esquece os mais antigos quando enche.
+	Buffer only the events that pass the filter	Guardar só os eventos que passam no filtro
+	Events the Edit Filters list hides are dropped instead of being kept.	Os eventos que a lista Editar filtros oculta são descartados em vez de guardados.
+	Windows	Janelas
+	Show the device window taskbar	Mostrar a barra de janelas de dispositivos
+	A bar under the workspace lists the open device windows: click one to bring it to the front.	Uma barra sob a área de trabalho lista as janelas abertas: clique numa para trazê-la para a frente.
+	Not applicable	Não se aplica
+	Reload local image files	Recarregar arquivos de imagem locais
+	Labs hold no images, so there is nothing to reload.	Os laboratórios não têm imagens: não há o que recarregar.
+	External network access	Acesso à rede externa
+	Use a proxy	Usar um proxy
+	NetLabCraft makes no network connections of its own, so it has no network access or proxy to set.	O NetLabCraft não faz conexões de rede próprias, então não há acesso à rede nem proxy para ajustar.
+	Event List Full	Lista de eventos cheia
+	The event list holds {} events, its limit. What now?	A lista de eventos tem {} eventos, o limite. O que fazer?
+	Keep going	Continuar
+	The oldest events are forgotten as new ones arrive.	Os eventos mais antigos são esquecidos conforme chegam novos.
+	Previous Events	Eventos anteriores
+	{} events kept from the list that filled up.	{} eventos guardados da lista que encheu.
+	Router	Roteador
+	Switch	Switch
+	End Device	Dispositivo final
+	Device window tabs	Abas das janelas de dispositivo
+	Hide the Physical tab	Ocultar a aba Física
+	Hide the Config tab of every device	Ocultar a aba Config de todos os dispositivos
+	Hide the CLI tab of every device	Ocultar a aba CLI de todos os dispositivos
+	Hide the Config tab of routers and switches	Ocultar a aba Config de roteadores e switches
+	Hide the CLI tab of routers and switches	Ocultar a aba CLI de roteadores e switches
+	Hide the Services tab	Ocultar a aba Serviços
+	Hide the Desktop tab	Ocultar a aba Área de trabalho
+	Hide the screen tabs of phones and smart things	Ocultar as abas de tela de telefones e coisas inteligentes
+	The Phone tab and the IoT tab of a smart thing.	A aba Telefone e a aba IoT de uma coisa inteligente.
+	Hide the Attributes tab	Ocultar a aba Atributos
+	A window never loses all its tabs: if every one were hidden it keeps them.	Uma janela nunca perde todas as abas: se todas fossem ocultadas, ela as mantém.
+	Wireless and other things	Sem fio e outras coisas
+	Hide wireless and cellular pages	Ocultar as páginas sem fio e celulares
+	The Wi-Fi and cellular pages and ports in the Config tab.	As páginas e portas Wi-Fi e celulares da aba Config.
+	Hide legacy equipment	Ocultar equipamentos antigos
+	NetLabCraft has no legacy equipment to hide.	O NetLabCraft não tem equipamentos antigos para ocultar.
+	Show the wireless boundary	Mostrar o limite sem fio
+	View Wireless Signals draws an outline around each radio's coverage.	Ver sinais sem fio desenha um contorno ao redor da cobertura de cada rádio.
+	Fade the wireless colour toward the edge	Esmaecer a cor sem fio em direção à borda
+	View Wireless Signals fills each coverage area with a colour that fades outwards; unchecked, a flat disc.	Ver sinais sem fio preenche cada área com uma cor que esmaece para fora; desmarcado, um disco liso.
+	Hide the coverage range field of Wi-Fi forms	Ocultar o campo de alcance dos formulários Wi-Fi
+	Open smart things with their advanced settings shown	Abrir as coisas inteligentes com as configurações avançadas visíveis
+	The IoT tab of a smart thing opens its Advanced section.	A aba IoT de uma coisa inteligente abre a seção Avançado.
+	Answer Tree Filter	Filtro da árvore de respostas
+	Every item of the Assessment Tree.	Todos os itens da árvore de avaliação.
+	Configuration and address items; the cables are left out.	Itens de configuração e endereço; sem os cabos.
+	Only the items about routers.	Só os itens de roteadores.
+	Only the items about switches.	Só os itens de switches.
+	Only the items about end devices (PCs, servers, phones and the like).	Só os itens de dispositivos finais (PCs, servidores, telefones e similares).
+	The filter applies to the Assessment Tree window of the Activity Wizard. What is hidden is still graded.	O filtro vale para a janela Árvore de avaliação do assistente de atividades. O que está oculto continua valendo nota.
+	Not available: NetLabCraft has no scripted device pages, so a device cannot be given a custom page.	Indisponível: o NetLabCraft não tem páginas de dispositivo com scripts, então um dispositivo não pode ter uma página própria.
+	Not applicable: there are no scripted modules to sign. Activity results carry their own signature, checked by the instructor's Verify Results.	Não se aplica: não há módulos com scripts para assinar. Os resultados da atividade têm assinatura própria, conferida por Verificar resultados do instrutor.
+	Images held by the lab	Imagens do laboratório
+	Image	Imagem
+	The lab holds no images: a lab file is only its devices, cables, places and settings.	O laboratório não tem imagens: um arquivo de laboratório é só dispositivos, cabos, locais e configurações.
+	MAC address: {}	Endereço MAC: {}
+	IP address: {}	Endereço IP: {}
+	Default gateway: {}	Gateway padrão: {}
+	Reports every {} s	Informa a cada {} s
+	Backup written to {}	Backup gravado em {}
+	Application size	Tamanho do aplicativo

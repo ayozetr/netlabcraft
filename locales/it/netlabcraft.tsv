@@ -2092,3 +2092,129 @@ furniture	Table	Tavolo
 	No PDF viewer found: use Save as PDF	Nessun visualizzatore PDF trovato: usa Salva come PDF
 	Sent the PDF to the default printer	PDF inviato alla stampante predefinita
 	Could not print: {}	Impossibile stampare: {}
+	Unlocked until you lock it again or close the program.	Sbloccato finché non lo blocchi di nuovo o chiudi il programma.
+	Lock	Blocca
+	Locked. Enter the password:	Bloccato. Inserisci la password:
+	That is not the password.	Non è la password.
+	Choose Password	Scegli la password
+	Password:	Password:
+	Confirm:	Conferma:
+	Enable Password	Attiva la password
+	Disable Password	Disattiva la password
+	At least {} characters; both fields must match. Enabling again changes the password.	Almeno {} caratteri; i due campi devono coincidere. Attivarla di nuovo cambia la password.
+	Only a salted hash is kept, never the password. The lock keeps people out of this window, not out of the preferences file.	Si conserva solo un hash con salt, mai la password. Il blocco tiene fuori dalla finestra, non dal file delle preferenze.
+	A password is enabled.	Una password è attiva.
+	No password is set: nothing is locked.	Nessuna password: niente è bloccato.
+	Password enabled.	Password attivata.
+	Password disabled.	Password disattivata.
+	Interface Locking	Blocco dell'interfaccia
+	With a password enabled, the ticked tabs open read-only until it is entered.	Con una password attiva, le schede selezionate si aprono in sola lettura finché non la inserisci.
+	Lock the Interface tab	Blocca la scheda Interfaccia
+	Lock the Show/Hide tab	Blocca la scheda Mostra/Nascondi
+	Lock the Custom Interfaces tab	Blocca la scheda Interfacce personalizzate
+	Lock the Miscellaneous tab	Blocca la scheda Varie
+	There are no Multiuser, IPC or scripting menus to lock.	Non ci sono menu Multiutente, IPC o script da bloccare.
+	User Folder	Cartella utente
+	Folder:	Cartella:
+	Browse…	Sfoglia…
+	Not available in the web version: the browser chooses where files go.	Non disponibile nella versione web: il browser decide dove vanno i file.
+	The Open and Save dialogs start here, and automatic backups are written in a backups folder inside it.	Le finestre Apri e Salva partono da qui e i backup automatici vengono scritti in una cartella backups al suo interno.
+	Monospace (Hack)	Monospazio (Hack)
+	Proportional (as the interface)	Proporzionale (come l'interfaccia)
+	Default	Predefinito
+	Black	Nero
+	White	Bianco
+	Amber	Ambra
+	Cyan	Ciano
+	Magenta	Magenta
+	Router console text	Testo della console del router
+	Router console background	Sfondo della console del router
+	PC console text	Testo della console del PC
+	PC console background	Sfondo della console del PC
+	Tooltip text	Testo dei suggerimenti
+	Tooltip background	Sfondo dei suggerimenti
+	Router console	Console del router
+	PC console	Console del PC
+	Tooltip	Suggerimento
+	Application size:	Dimensione dell'applicazione:
+	8 pt is the default (100%). Sets the text of menus, buttons and forms. Names drawn on the workspace follow its zoom instead.	8 pt è il valore predefinito (100%). Imposta il testo di menu, pulsanti e moduli. I nomi disegnati nell'area di lavoro seguono il suo zoom.
+	CLI font:	Carattere della CLI:
+	CLI font size:	Dimensione del carattere della CLI:
+	Used by the CLI tab, the Command Prompt and the Terminal. These are the faces the program carries: it adds no others.	Usato dalla scheda CLI, dal Prompt dei comandi e dal Terminale. Sono i caratteri inclusi nel programma: non ne aggiunge altri.
+	Sample: Router#show ip route	Esempio: Router#show ip route
+	Tooltips	Suggerimenti
+	Tooltip font size:	Dimensione del carattere dei suggerimenti:
+	Colors	Colori
+	{}: the text and the background are too close in colour to read.	{}: testo e sfondo hanno colori troppo simili per essere letti.
+	Reset Colors	Ripristina i colori
+	Prompt	Chiedi
+	View the previous events	Mostra gli eventi precedenti
+	{} minutes	{} minuti
+	Backups	Backup
+	Auto File Backup Interval:	Intervallo del backup automatico:
+	Writes a copy of the open lab in the backups folder of the user folder (or of the settings folder), only when the lab changed. Your own file is never touched, and a backup never replaces another.	Scrive una copia del laboratorio aperto nella cartella backups della cartella utente (o di quella delle impostazioni), solo se è cambiato. Il tuo file non viene mai toccato e un backup non ne sostituisce un altro.
+	Not available in the web version: the browser keeps no files for the page.	Non disponibile nella versione web: il browser non conserva file per la pagina.
+	When the event list is full:	Quando l'elenco eventi è pieno:
+	The list holds {} events and forgets the oldest ones when it is full.	L'elenco contiene {} eventi e dimentica i più vecchi quando è pieno.
+	Buffer only the events that pass the filter	Memorizza solo gli eventi che passano il filtro
+	Events the Edit Filters list hides are dropped instead of being kept.	Gli eventi nascosti dall'elenco Modifica filtri vengono scartati invece di essere conservati.
+	Windows	Finestre
+	Show the device window taskbar	Mostra la barra delle finestre dei dispositivi
+	A bar under the workspace lists the open device windows: click one to bring it to the front.	Una barra sotto l'area di lavoro elenca le finestre aperte: fai clic su una per portarla in primo piano.
+	Not applicable	Non applicabile
+	Reload local image files	Ricarica i file immagine locali
+	Labs hold no images, so there is nothing to reload.	I laboratori non contengono immagini: non c'è nulla da ricaricare.
+	External network access	Accesso alla rete esterna
+	Use a proxy	Usa un proxy
+	NetLabCraft makes no network connections of its own, so it has no network access or proxy to set.	NetLabCraft non effettua connessioni di rete proprie, quindi non c'è accesso alla rete né proxy da impostare.
+	Event List Full	Elenco eventi pieno
+	The event list holds {} events, its limit. What now?	L'elenco eventi contiene {} eventi, il suo limite. Cosa fare?
+	Keep going	Continua
+	The oldest events are forgotten as new ones arrive.	Gli eventi più vecchi vengono dimenticati man mano che ne arrivano di nuovi.
+	Previous Events	Eventi precedenti
+	{} events kept from the list that filled up.	{} eventi conservati dall'elenco che si è riempito.
+	Router	Router
+	Switch	Switch
+	End Device	Dispositivo finale
+	Device window tabs	Schede delle finestre dei dispositivi
+	Hide the Physical tab	Nascondi la scheda Fisico
+	Hide the Config tab of every device	Nascondi la scheda Config di ogni dispositivo
+	Hide the CLI tab of every device	Nascondi la scheda CLI di ogni dispositivo
+	Hide the Config tab of routers and switches	Nascondi la scheda Config di router e switch
+	Hide the CLI tab of routers and switches	Nascondi la scheda CLI di router e switch
+	Hide the Services tab	Nascondi la scheda Servizi
+	Hide the Desktop tab	Nascondi la scheda Desktop
+	Hide the screen tabs of phones and smart things	Nascondi le schede schermo di telefoni e oggetti smart
+	The Phone tab and the IoT tab of a smart thing.	La scheda Telefono e la scheda IoT di un oggetto smart.
+	Hide the Attributes tab	Nascondi la scheda Attributi
+	A window never loses all its tabs: if every one were hidden it keeps them.	Una finestra non perde mai tutte le sue schede: se fossero tutte nascoste, le mantiene.
+	Wireless and other things	Wireless e altro
+	Hide wireless and cellular pages	Nascondi le pagine wireless e cellulari
+	The Wi-Fi and cellular pages and ports in the Config tab.	Le pagine e le porte Wi-Fi e cellulari della scheda Config.
+	Hide legacy equipment	Nascondi le apparecchiature obsolete
+	NetLabCraft has no legacy equipment to hide.	NetLabCraft non ha apparecchiature obsolete da nascondere.
+	Show the wireless boundary	Mostra il confine wireless
+	View Wireless Signals draws an outline around each radio's coverage.	Mostra segnali wireless disegna un contorno intorno alla copertura di ogni radio.
+	Fade the wireless colour toward the edge	Sfuma il colore wireless verso il bordo
+	View Wireless Signals fills each coverage area with a colour that fades outwards; unchecked, a flat disc.	Mostra segnali wireless riempie ogni area con un colore che sfuma verso l'esterno; deselezionato, un disco piatto.
+	Hide the coverage range field of Wi-Fi forms	Nascondi il campo della portata nei moduli Wi-Fi
+	Open smart things with their advanced settings shown	Apri gli oggetti smart con le impostazioni avanzate visibili
+	The IoT tab of a smart thing opens its Advanced section.	La scheda IoT di un oggetto smart apre la sua sezione Avanzate.
+	Answer Tree Filter	Filtro dell'albero delle risposte
+	Every item of the Assessment Tree.	Tutti gli elementi dell'albero di valutazione.
+	Configuration and address items; the cables are left out.	Elementi di configurazione e indirizzo; i cavi sono esclusi.
+	Only the items about routers.	Solo gli elementi dei router.
+	Only the items about switches.	Solo gli elementi degli switch.
+	Only the items about end devices (PCs, servers, phones and the like).	Solo gli elementi dei dispositivi finali (PC, server, telefoni e simili).
+	The filter applies to the Assessment Tree window of the Activity Wizard. What is hidden is still graded.	Il filtro si applica alla finestra Albero di valutazione della procedura guidata delle attività. Ciò che è nascosto viene comunque valutato.
+	Not available: NetLabCraft has no scripted device pages, so a device cannot be given a custom page.	Non disponibile: NetLabCraft non ha pagine dispositivo con script, quindi non si può dare una pagina personalizzata a un dispositivo.
+	Not applicable: there are no scripted modules to sign. Activity results carry their own signature, checked by the instructor's Verify Results.	Non applicabile: non ci sono moduli con script da firmare. I risultati delle attività hanno una propria firma, controllata da Verifica risultati dell'istruttore.
+	Images held by the lab	Immagini contenute nel laboratorio
+	Image	Immagine
+	The lab holds no images: a lab file is only its devices, cables, places and settings.	Il laboratorio non contiene immagini: un file di laboratorio è solo dispositivi, cavi, luoghi e impostazioni.
+	MAC address: {}	Indirizzo MAC: {}
+	IP address: {}	Indirizzo IP: {}
+	Default gateway: {}	Gateway predefinito: {}
+	Reports every {} s	Riferisce ogni {} s
+	Backup written to {}	Backup scritto in {}
+	Application size	Dimensione dell'applicazione

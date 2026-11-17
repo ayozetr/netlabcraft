@@ -2,7 +2,8 @@
 //! Config, Desktop (IP Configuration, Command Prompt), Attributes. Every change goes through
 //! engine commands (`device.configure`, `cli.exec`, `device.rename`), so it can be undone.
 
-use egui::{Key, Modifiers, RichText, Sense, TextStyle, vec2};
+use crate::prefs_look::HintExt;
+use egui::{Key, Modifiers, RichText, Sense, vec2};
 use netlabcraft_core::DeviceId;
 use netlabcraft_model::{Device, DeviceKind, End, SwitchportMode, ifname};
 use netlabcraft_sim::port_up;
@@ -214,12 +215,18 @@ pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
         }
         let mut open = true;
         let pos = [180.0 + 26.0 * (d.0 % 8) as f32, crate::BELOW_VIEW_BAR + 16.0 * (d.0 % 8) as f32];
-        egui::Window::new(dev.display_name())
+        let shown = egui::Window::new(dev.display_name())
             .id(egui::Id::unique(("device", d.0)))
             .open(&mut open)
             .default_size([680.0, 470.0])
             .default_pos(pos)
             .show(ctx, |ui| contents(app, ui, d, &dev));
+        // The taskbar asked for this window: it goes in front of the others.
+        if app.ui.prefs_ui.raise == Some(d)
+            && let Some(r) = &shown
+        {
+            ctx.move_to_top(r.response.layer_id);
+        }
         if !open {
             app.ui.windows.remove(&d);
         }
@@ -277,8 +284,9 @@ fn native_window(app: &mut PacketApp, ctx: &egui::Context, d: DeviceId, dev: &De
 /// window and in a native one.
 fn contents(app: &mut PacketApp, ui: &mut egui::Ui, d: DeviceId, dev: &Device) {
     let Some(w) = app.ui.windows.get_mut(&d) else { return };
+    let prefs = &app.ui.prefs;
     ui.horizontal(|ui| {
-        let tabs: &[(Tab, &str)] = if dev.kind == DeviceKind::Hub {
+        let all: &[(Tab, &str)] = if dev.kind == DeviceKind::Hub {
             &[(Tab::Physical, "Physical"), (Tab::Attributes, "Attributes")]
         } else if dev.catalogue_model().sniffer() {
             &[(Tab::Physical, "Physical"), (Tab::Capture, "Capture"), (Tab::Attributes, "Attributes")]
@@ -304,7 +312,15 @@ fn contents(app: &mut PacketApp, ui: &mut egui::Ui, d: DeviceId, dev: &Device) {
         } else {
             &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Cli, "CLI"), (Tab::Attributes, "Attributes")]
         };
-        for (t, label) in tabs {
+        // The Show/Hide choices leave some tabs out; a window on one that is hidden moves to the first shown.
+        let tabs = crate::prefs_look::visible_tabs(prefs, dev, all);
+        if !tabs.iter().any(|(t, _)| *t == w.tab)
+            && let Some((first, _)) = tabs.first()
+        {
+            w.tab = *first;
+            w.focus = true;
+        }
+        for (t, label) in &tabs {
             if ui.selectable_label(w.tab == *t, RichText::new(crate::i18n::tr(label)).size(15.0)).clicked() {
                 w.tab = *t;
                 w.focus = true;
@@ -358,8 +374,13 @@ pub(crate) fn console(app: &mut PacketApp, ui: &mut egui::Ui, d: DeviceId, dark:
 /// PC's Terminal over a console cable): the same session either way.
 fn console_in(app: &mut PacketApp, ui: &mut egui::Ui, win: DeviceId, d: DeviceId, dark: bool) {
     let tk = theme::tokens(app.ui.dark);
-    let (bg, fg) =
-        if dark { (egui::Color32::from_rgb(0x0c, 0x0c, 0x0c), egui::Color32::from_rgb(0xe8, 0xe8, 0xe8)) } else { (tk.console_bg, tk.console_text) };
+    let colors = app.ui.prefs.colors;
+    let (bg, fg) = if dark {
+        (colors.pc_bg.or(egui::Color32::from_rgb(0x0c, 0x0c, 0x0c)), colors.pc_text.or(egui::Color32::from_rgb(0xe8, 0xe8, 0xe8)))
+    } else {
+        (colors.ios_bg.or(tk.console_bg), colors.ios_text.or(tk.console_text))
+    };
+    let font = crate::prefs_look::cli_font(&app.ui.prefs);
     let input_id = egui::Id::unique(("console_input", win.0, d.0));
     let prompt = {
         let cli = app.session.console(d).cli.clone();
@@ -418,7 +439,7 @@ fn console_in(app: &mut PacketApp, ui: &mut egui::Ui, win: DeviceId, d: DeviceId
 
     let log = app.session.console(d).log.clone();
     let shown = log.strip_suffix(prompt.as_str()).unwrap_or(&log).to_string();
-    let input_h = ui.text_style_height(&TextStyle::Monospace) + 12.0;
+    let input_h = font.size * 1.3 + 12.0;
     let buttons_h = if dark { 0.0 } else { 30.0 };
     egui::Frame::new().fill(bg).stroke(egui::Stroke::new(1.0, tk.chrome_line)).inner_margin(6.0).show(ui, |ui| {
         ui.set_min_width(ui.available_width());
@@ -427,17 +448,17 @@ fn console_in(app: &mut PacketApp, ui: &mut egui::Ui, win: DeviceId, d: DeviceId
             .auto_shrink([false, false])
             .max_height((ui.available_height() - input_h - buttons_h).max(80.0))
             .show(ui, |ui| {
-                ui.add(egui::Label::new(RichText::new(&shown).monospace().color(fg)).wrap_mode(egui::TextWrapMode::Extend).selectable(true));
+                ui.add(egui::Label::new(RichText::new(&shown).font(font.clone()).color(fg)).wrap_mode(egui::TextWrapMode::Extend).selectable(true));
             });
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
-            let label = ui.label(RichText::new(&prompt).monospace().color(fg));
+            let label = ui.label(RichText::new(&prompt).font(font.clone()).color(fg));
             let Some(w) = app.ui.windows.get_mut(&win) else { return };
             let resp = ui
                 .add(
                     egui::TextEdit::singleline(&mut w.input)
                         .id(input_id)
-                        .font(TextStyle::Monospace)
+                        .font(font.clone())
                         .desired_width(f32::INFINITY)
                         .frame(egui::Frame::NONE)
                         .text_color(fg)
@@ -655,6 +676,11 @@ fn config(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     let tk = theme::tokens(app.ui.dark);
     let Some(w) = app.ui.windows.get_mut(&d) else { return };
     let mut page = w.page;
+    let hide_wc = app.ui.prefs.hide_wireless_cell;
+    let hidden_port = |i: usize| dev.ports.get(i).is_some_and(|p| hide_wc && (ifname::is_wireless(&p.name) || ifname::is_cellular(&p.name)));
+    if hide_wc && (matches!(page, ConfigPage::Wireless | ConfigPage::Cellular) || matches!(page, ConfigPage::Port(i) if hidden_port(i))) {
+        page = ConfigPage::Settings;
+    }
     let body_h = 380.0;
     ui.horizontal_top(|ui| {
         egui::Frame::new().stroke(egui::Stroke::new(1.0, tk.text)).inner_margin(2.0).show(ui, |ui| {
@@ -671,12 +697,13 @@ fn config(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                         page = ConfigPage::Home;
                     }
                     let wlc = netlabcraft_model::wlan::is_wlc(dev);
-                    if (wlc || netlabcraft_model::wlan::is_lap(dev))
+                    if !hide_wc
+                        && (wlc || netlabcraft_model::wlan::is_lap(dev))
                         && list_item(ui, tl(if wlc { "Wireless LANs" } else { "Controller" }), page == ConfigPage::Wireless, false).clicked()
                     {
                         page = ConfigPage::Wireless;
                     }
-                    if dev.catalogue_model().cellular() && list_item(ui, tl("Cellular"), page == ConfigPage::Cellular, false).clicked() {
+                    if !hide_wc && dev.catalogue_model().cellular() && list_item(ui, tl("Cellular"), page == ConfigPage::Cellular, false).clicked() {
                         page = ConfigPage::Cellular;
                     }
                     match dev.kind {
@@ -696,6 +723,9 @@ fn config(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                     }
                     list_item(ui, tl("INTERFACE"), false, true);
                     for (i, p) in dev.ports.iter().enumerate() {
+                        if hidden_port(i) {
+                            continue;
+                        }
                         if list_item(ui, &p.name, page == ConfigPage::Port(i), false).clicked() {
                             page = ConfigPage::Port(i);
                         }
@@ -836,6 +866,7 @@ impl HomeForm {
 
 fn home_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     let d = dev.id;
+    let hide_coverage = app.ui.prefs.hide_coverage_spin;
     page_title(ui, "Home Router");
     let id = egui::Id::unique(("home_form", d.0));
     let mut f: HomeForm = ui.data_mut(|m| m.get_temp(id)).unwrap_or_else(|| HomeForm::from_device(dev));
@@ -872,7 +903,7 @@ fn home_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     }
     ui.separator();
     ui.label(RichText::new(tl("Wireless")).strong());
-    f.wifi.show(ui, true, d.0);
+    f.wifi.show(ui, true, d.0, hide_coverage);
     if ui.button(tl("Save Wireless")).clicked() {
         actions.push(("device.wireless", f.wifi.params(d.0, "", true)));
     }
@@ -1038,6 +1069,7 @@ fn routes_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
 fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
     let d = dev.id;
     let Some(port) = dev.ports.get(i).cloned() else { return };
+    let hide_coverage = app.ui.prefs.hide_coverage_spin;
     ui.heading(&port.name);
     // A phone's cellular port has no address to type: its page is Cellular Data, the APN and the status.
     if dev.cell_port() == Some(i) {
@@ -1132,7 +1164,7 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
             }
             return;
         }
-        w.wifi.show(ui, ap, d.0);
+        w.wifi.show(ui, ap, d.0, hide_coverage);
         let form = w.wifi.clone();
         let assoc = if ap {
             crate::i18n::trf("{} host(s) associated", &[&app.session.topology.wifi_clients(netlabcraft_model::End { device: d, port: i }).len()])
@@ -1270,7 +1302,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(tl(title)).color(tk.bar_text).strong());
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        close = ui.button("X").on_hover_text(tl("Close")).clicked();
+                        close = ui.button("X").hint(tl("Close")).clicked();
                     });
                 });
             });

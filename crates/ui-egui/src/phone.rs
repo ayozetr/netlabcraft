@@ -3,6 +3,7 @@
 //! `phone.hangup`, `phone.status`). The same screen and dial pad serve the Softphone app of a
 //! PC's Desktop (`softphone.*` commands).
 
+use crate::prefs_look::HintExt;
 use egui::{RichText, Sense, vec2};
 use netlabcraft_model::{Device, DeviceKind};
 use netlabcraft_sim::voice::CallState;
@@ -47,7 +48,7 @@ pub(crate) fn tab(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
         }
         return;
     }
-    if ui.button(tl("Settings")).on_hover_text(tl("The phone's own settings: protocol, call server, extension, address and voice VLAN")).clicked() {
+    if ui.button(tl("Settings")).hint(tl("The phone's own settings: protocol, call server, extension, address and voice VLAN")).clicked() {
         form = PhoneForm { open: true, ..PhoneForm::default() };
     }
     if let Some(w) = app.ui.windows.get_mut(&d) {
@@ -101,7 +102,7 @@ pub(crate) fn call_screen(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) 
                 for row in [['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9'], ['*', '0', '#']] {
                     for k in row {
                         let b = egui::Button::new(RichText::new(k.to_string()).size(18.0)).min_size(vec2(48.0, 34.0));
-                        if ui.add(b).on_hover_text(trf("Key {}", &[&k])).clicked() {
+                        if ui.add(b).hint(trf("Key {}", &[&k])).clicked() {
                             typed = Some(k);
                         }
                     }
@@ -145,14 +146,14 @@ pub(crate) fn call_screen(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) 
                         }
                     }
                 }
-                if ui.button(tl("Refresh")).on_hover_text(tl("Let the phone register and update its screen")).clicked() {
+                if ui.button(tl("Refresh")).hint(tl("Let the phone register and update its screen")).clicked() {
                     app.run(&cmd("status"), json!({"device": d.0}));
                 }
             });
             let mut sip = dev.voice_sip();
             if ui
                 .checkbox(&mut sip, tl("Signal with SIP"))
-                .on_hover_text(tl("Use SIP (UDP 5060) instead of NetLabCraft's own call-control protocol"))
+                .hint(tl("Use SIP (UDP 5060) instead of NetLabCraft's own call-control protocol"))
                 .changed()
             {
                 let id = if soft { "softphone.config" } else { "phone.configure" };
@@ -185,7 +186,7 @@ pub(crate) fn softphone(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
         ui.label(tl("Call server"));
         ui.add(egui::TextEdit::singleline(text).desired_width(130.0).hint_text(tl("from DHCP")))
             .widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::TextInput, true, tl("Call server")));
-        if ui.button(tl("Apply")).on_hover_text(tl("Empty: the TFTP server DHCP gave (option 150)")).clicked() {
+        if ui.button(tl("Apply")).hint(tl("Empty: the TFTP server DHCP gave (option 150)")).clicked() {
             app.run("softphone.config", json!({"device": d.0, "server": text.trim()}));
         }
         let mac = dev.ports.first().map_or_else(String::new, |p| p.mac.to_string());
@@ -246,7 +247,7 @@ pub(crate) fn settings(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, for
             ui.horizontal(|ui| {
                 ui.add(egui::TextEdit::singleline(&mut form.server).desired_width(130.0).hint_text(tl("from DHCP")))
                     .widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::TextInput, true, tl("Call server")));
-                if ui.button(tl("Apply")).on_hover_text(tl("Empty: the TFTP server DHCP gave (option 150)")).clicked() {
+                if ui.button(tl("Apply")).hint(tl("Empty: the TFTP server DHCP gave (option 150)")).clicked() {
                     app.run("phone.configure", json!({"device": d.0, "server": form.server.trim()}));
                 }
             });
