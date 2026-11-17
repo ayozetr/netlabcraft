@@ -15,7 +15,7 @@ use egui::{Key, RichText};
 use serde_json::json;
 
 use crate::i18n::{self, tl, trn};
-use crate::prefs_look::{CliFont, Colors, HintExt, NamedColor};
+use crate::prefs_look::{CliFont, Colors, NamedColor};
 use crate::prefs_misc::BufferFull;
 use crate::prefs_tabs::AnswerFilter;
 use crate::sound::Sound;
