@@ -87,7 +87,7 @@ pub fn model_marks(p: &Painter, rect: Rect, model_id: &str, multilayer: bool) {
             lap_mark(p, rect);
         }
         "WLC" => wlc_mark(p, rect),
-        "Firewall-5" => firewall_mark(p, rect),
+        "Firewall-5" | "Firewall-3" => firewall_mark(p, rect),
         "Router-M2" | "Router-M3" | "Router-MF2" => modular_mark(p, rect),
         "Sniffer" => crate::icons_families::sniffer_mark(p, rect),
         "IoT-Sensor" => thermometer_mark(p, rect),
@@ -101,7 +101,7 @@ pub fn model_marks(p: &Painter, rect: Rect, model_id: &str, multilayer: bool) {
             access_point_mark(p, rect);
             crate::icons_families::gateway_mark(p, rect);
         }
-        _ => {}
+        _ => crate::icons_parts::mark(p, rect, model_id),
     }
 }
 

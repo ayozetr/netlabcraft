@@ -15,7 +15,7 @@ to end is in [`labs/`](labs/README.md).
 |---|---|---|
 | Engine commands | **202** | measured: `c!(` entries in `crates/engine/src/catalog.rs` |
 | Console grammar entries | **1341** across 45 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
-| Device models | **65** | measured: `MODELS` in `crates/model/src/models.rs` (the fallback model not counted; the 8 router cards are in `MODULES`) |
+| Device models | **100** | measured: `MODELS` in `crates/model/src/models.rs` (the fallback model not counted; the 8 router cards are in `MODULES`) |
 | Sample labs | **32** | measured: `SAMPLES` in `crates/engine/src/sample.rs` |
 | Lab-book labs | **48** (+1 unnumbered: the cellular lab) | measured: numbered labs in `docs/labs/` (4 CCNA 1, 17 CCNA 2, 26 CCNA 3 with the BGP, redistribution, PPPoE and OSPF-area labs, and one wireless-security follow-up; labs 21 to 29, 34 and 35 are troubleshooting labs, 30 and 31 inspection labs), all run by `crates/engine/tests/lab_book.rs`, 16 also over MCP by `apps/netlabcraft-cli/tests/mcp_lab_book.rs` |
 | Tests | **770** | measured: sum of "passed" from the CI run on `main` after the last of the nine M9 merges (`cargo test --workspace --lib --bins --tests`, 22 result lines) |
@@ -178,6 +178,7 @@ Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 | Date | Change | Summary |
 |---|---|---|
 | 2026-11-17 | minor | The Environments window (see [ui-parity.md](ui-parity.md) and [gaps.md](gaps.md) item 14); percentages not re-scored. |
+| 2026-11-17 | minor | Device models 65 → 100 (35 added with the full device box: network, end, smart city, industrial, power grid and component models). Counted from `MODELS`; percentages not re-scored. |
 | 2026-11-17 | minor | Environments (see [gaps.md](gaps.md) item 14 and [hardware-parity.md](hardware-parity.md)): 8 engine commands added, so 202 `c!(` entries; percentages not re-scored. |
 | 2026-11-17 | minor | Device models corrected to 65 (a stale row said 53); a duplicated grammar-entries row removed from the summary. Counted from `MODELS`; percentages not re-scored. |
 | 2026-11-17 | minor | Options ▸ Preferences, User Profile and View Command Log (see [ui-parity.md](ui-parity.md) and [gaps.md](gaps.md) item 12): 7 engine commands added, so 177 `c!(` entries; percentages not re-scored. |

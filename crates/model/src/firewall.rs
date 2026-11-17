@@ -1,4 +1,4 @@
-//! The stateful firewall appliance (model `Firewall-5`): named interfaces with security levels,
+//! The stateful firewall appliance (models `Firewall-5` and `Firewall-3`): named interfaces with security levels,
 //! access rules bound to interfaces, network objects with their own NAT, and a small DHCP
 //! server. The simulator keeps the connection and translation tables.
 //!
@@ -16,6 +16,8 @@ use crate::acl::{AclProto, PortMatch};
 
 /// The catalogue model id.
 pub const FIREWALL_MODEL: &str = "Firewall-5";
+/// The smaller firewall appliance's model id.
+pub const FIREWALL_MODEL_SMALL: &str = "Firewall-3";
 /// Most network objects, access lists, entries per list and DHCP ranges.
 pub const MAX_OBJECTS: usize = 256;
 pub const MAX_LISTS: usize = 64;
@@ -28,7 +30,7 @@ pub const MAX_NAME: usize = 48;
 
 /// Whether a device is the firewall appliance.
 pub fn is_firewall(d: &Device) -> bool {
-    d.kind == crate::DeviceKind::Router && d.model.eq_ignore_ascii_case(FIREWALL_MODEL)
+    d.kind == crate::DeviceKind::Router && (d.model.eq_ignore_ascii_case(FIREWALL_MODEL) || d.model.eq_ignore_ascii_case(FIREWALL_MODEL_SMALL))
 }
 
 /// A name the firewall accepts for an interface, object or list: letters, digits, `-`, `_`

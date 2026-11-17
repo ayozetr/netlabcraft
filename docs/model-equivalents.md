@@ -1,6 +1,6 @@
 # Model equivalents
 
-> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (the Telephone Cloud, the Dial-up PC and the Access Server) · also merged with minor (the sniffer and port mirroring) · earlier: minor (smart TVs, a sniffer, a smart speaker, a water level sensor and four more router models) · earlier: minor (cellular radio on Tablet and Smartphone, Cell Tower and Central Office Server) · earlier: minor (Tablet, Smartphone, ten Wi-Fi IoT things, Board SBC and Board MCU; power-supply bays) · **Target:** CCNA course labs
+> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (the full device box: 35 more models, 100 in all) · earlier: minor (the Telephone Cloud, the Dial-up PC and the Access Server) · also merged with minor (the sniffer and port mirroring) · earlier: minor (smart TVs, a sniffer, a smart speaker, a water level sensor and four more router models) · earlier: minor (cellular radio on Tablet and Smartphone, Cell Tower and Central Office Server) · earlier: minor (Tablet, Smartphone, ten Wi-Fi IoT things, Board SBC and Board MCU; power-supply bays) · **Target:** CCNA course labs
 
 Course labs name specific vendor models. NetLabCraft's models are its own, named after their
 ports (`GE` Gigabit Ethernet, `FE` Fast Ethernet, `S` serial), and never carry vendor names
@@ -14,7 +14,7 @@ column). Commands accept either: `device.add {"model": "Router 3GE"}` or `{"mode
 
 Routers and switches have one or two power-supply bays at the back with one supply fitted from
 the factory (`device.psu`; the Router 2GE, Router 2GE+2S, Router 2FE, Router 2FE+2S, Modular Router 2GE, Modular Router 2FE, Firewall 5GE,
-Switch 8FE, Switch 8FE PoE and WLC have one bay, the other routers and switches two). Where a
+Switch 8FE, Switch 8FE PoE, Firewall 3GE, Bridge 2FE and WLC have one bay, the other routers and switches two). Where a
 lab has students fit a redundant supply, use a two-bay model.
 
 | NetLabCraft model | Id in files | Use it where a lab asks for | Port names | Notes |
@@ -91,8 +91,35 @@ lab has students fit a redundant supply, use a two-bay model.
 | Board MCU | `Board-MCU` | MCU boards | `Wireless0`, pins `D0–D5`, `A0–A1` | Runs BoardScript, as the Board SBC. |
 | Server | `Server` | Server-PT | `GigabitEthernet0` | |
 | Printer | `Printer` | Printer-PT | `FastEthernet0` | |
+| Repeater | `Repeater` | A two-port repeater | `Ethernet0–1` | Regenerates every frame onto the other port, as a hub with two ports does. |
+| Coax Splitter | `Coax-Splitter` | A coaxial splitter | `Coaxial0–2` | Repeats every frame between its coaxial ports; takes coaxial cables only. |
+| Bridge 2FE | `Bridge-2` | A two-port learning bridge | `FastEthernet0/1–0/2` | Same behaviour as a switch with two ports (learning, VLANs, spanning tree). |
+| Industrial Switch 8FE | `Switch-IND-8` | Rugged industrial switches | `FastEthernet0/1–0/8`, `GigabitEthernet0/1–0/2` | Same behaviour as Switch 8FE with two uplinks; no ring protocols. |
+| Industrial Router 2GE+2S | `Router-IND` | Rugged industrial routers | `GigabitEthernet0/0–0/1`, `Serial0/0/0–0/0/1` | Same behaviour as Router 2GE+2S. |
+| Firewall 3GE | `Firewall-3` | A smaller firewall appliance | `GigabitEthernet1/1–1/3` | Same commands as Firewall 5GE with three ports. |
+| Network Controller | `Net-Controller` | The course's network controller server | `GigabitEthernet0` | A server: its Programming tab holds the controller (discover routers, push templates). |
+| VoIP Adapter | `VoIP-Adapter` | An analog phone adapter | `FastEthernet0`, `Phone0` | Behaves as an IP phone (DHCP, option 150, calls); `Phone0` takes an Analog Phone with a phone cable. |
+| Analog Phone | `Analog-Phone` | A plain telephone | `Phone0` | Behaves as an IP phone behind the adapter; no ring voltage or dial pulses, and no direct call over the Telephone Cloud. |
+| Generic Wired | `Generic-Wired` | A generic wired end device | `FastEthernet0` | Behaves as a PC. |
+| Generic Wireless | `Generic-Wireless` | A generic wireless end device | `Wireless0` | Behaves as a Wi-Fi laptop. |
+| Street Light | `IoT-Streetlight` | A smart street light | `Wireless0` | Lit while on. |
+| Traffic Light | `IoT-Traffic` | A smart traffic light | `Wireless0` | Green while on, red while off; no timed cycle. |
+| Parking Sensor | `IoT-Parking` | A parking space sensor | `Wireless0` | Reports 1 or 0. |
+| Water Drain Monitor | `IoT-Drain` | A storm drain level monitor | `Wireless0` | Reports % full. |
+| Air Quality Sensor | `IoT-Air` | An air quality monitor | `Wireless0` | Reports an index (0–500). |
+| Blower Fan | `IoT-Blower` | An industrial blower | `FastEthernet0` | Running or stopped. |
+| PLC | `PLC` | A programmable logic controller | `FastEthernet0`, pins `D0–D7`, `A0–A3` | A board that runs BoardScript, not ladder logic. |
+| Data Historian | `Data-Historian` | A data historian server | `GigabitEthernet0` | A server with the IoT service; keeps the latest reading only, no time series. |
+| HMI Panel | `HMI-Panel` | An operator panel | `FastEthernet0` | A PC (browser, command prompt, IoT monitor); no screen designer. |
+| Battery | `IoT-Battery` | A battery bank | `Wireless0` | Reports % charge; does not charge or discharge. |
+| Power Meter | `IoT-Meter` | A power meter | `Wireless0` | Reports watts. |
+| Solar Panel | `IoT-Solar` | A solar panel | `Wireless0` | Reports watts; no sun cycle. |
+| Wind Turbine | `IoT-Wind` | A wind turbine | `Wireless0` | Reports rpm; no wind model. |
+| Thing | `IoT-Thing` | A generic thing for a board | `Wireless0` | A reading set by hand. |
+| LED, Buzzer, Motor, Relay, LCD | `Part-LED`, `Part-Buzzer`, `Part-Motor`, `Part-Relay`, `Part-LCD` | Board actuators | `Wireless0` (unused) | Wired to a board pin with an IoT custom cable; on while the pin is high. |
+| Button, Potentiometer, Distance Sensor, Light Sensor, Toggle Switch | `Part-Button`, `Part-Pot`, `Part-Ultrasonic`, `Part-Light`, `Part-Switch` | Board sensors | `Wireless0` (unused) | Wired to a board pin with an IoT custom cable; the reading is set by hand in its IoT tab. |
 
-Models a lab names that have no equivalent yet (analog phones and PDAs, routers with other port
+Models a lab names that have no equivalent yet (PDAs, routers with other port
 mixes or built-in radios) are listed in [hardware-parity.md](hardware-parity.md).
 
 Cisco, Catalyst, ISR and Packet Tracer are trademarks of Cisco Systems, Inc. NetLabCraft is an
@@ -102,6 +129,7 @@ independent project, not affiliated with or endorsed by Cisco.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-17 | minor | The full device box: repeater, coaxial splitter, bridge, industrial switch and router, a second firewall, network controller, VoIP adapter and analog phone, generic wired and wireless devices, five smart city things, four industrial ones, four power grid ones, a generic thing, and five actuators and five sensors for boards (35 models, 100 in all). Several are shallow: see [gaps.md](gaps.md) item 16. |
 | 2026-11-16 | minor | Telephone Cloud, Dial-up PC and Access Server rows. |
 | 2026-11-15 | minor | The Sniffer row: a switch's monitor session can copy traffic to it. |
 | 2026-11-15 | minor | Router 2FE, Router 2FE+2S, Router 3GE+2S, Modular Router 2FE and the 2-port Fast Ethernet card; Sniffer; Smart TV, Wired Smart TV, Smart Speaker and Water Level Sensor; the "no equivalent yet" list brought up to date. |

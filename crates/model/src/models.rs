@@ -53,8 +53,13 @@ impl Model {
     pub fn group(&self) -> Group {
         match self.id {
             "AccessPoint" | "LAP" | "WLC" | "Home-Router" | "Home-Gateway" | CELL_TOWER | CENTRAL_OFFICE => Group::Wireless,
-            "Firewall-5" => Group::Security,
-            "Board-SBC" | "Board-MCU" => Group::Boards,
+            "Firewall-5" | "Firewall-3" => Group::Security,
+            "Board-SBC" | "Board-MCU" | "IoT-Thing" => Group::Boards,
+            "IoT-Streetlight" | "IoT-Traffic" | "IoT-Parking" | "IoT-Drain" | "IoT-Air" => Group::SmartCity,
+            "PLC" | "Data-Historian" | "HMI-Panel" | "IoT-Blower" => Group::Industrial,
+            "IoT-Battery" | "IoT-Meter" | "IoT-Solar" | "IoT-Wind" => Group::PowerGrid,
+            "Part-LED" | "Part-Buzzer" | "Part-Motor" | "Part-Relay" | "Part-LCD" => Group::Actuators,
+            "Part-Button" | "Part-Pot" | "Part-Ultrasonic" | "Part-Light" | "Part-Switch" => Group::Sensors,
             _ if self.wan() => Group::Wan,
             _ => match self.kind {
                 DeviceKind::Router => Group::Routers,
@@ -548,6 +553,251 @@ pub static MODELS: &[Model] = &[
         description: "Smart fan with one Fast Ethernet port: registers with an IoT server, which switches it on and off",
         ports: &[run("FastEthernet", 0, 0)],
     },
+    Model {
+        id: "Repeater",
+        kind: DeviceKind::Hub,
+        label: "Repeater",
+        description: "Repeater: regenerates every frame heard on one of its 2 Ethernet ports onto the other",
+        ports: &[run("Ethernet", 0, 1)],
+    },
+    Model {
+        id: "Coax-Splitter",
+        kind: DeviceKind::Hub,
+        label: "Coax Splitter",
+        description: "Coaxial splitter: repeats every frame between its 3 coaxial ports (the coaxial cable of a cable modem line)",
+        ports: &[run("Coaxial", 0, 2)],
+    },
+    Model {
+        id: "Bridge-2",
+        kind: DeviceKind::Switch,
+        label: "Bridge 2FE",
+        description: "Bridge with 2 Fast Ethernet ports: learns the addresses on each side and passes only the frames that must cross",
+        ports: &[run("FastEthernet0/", 1, 2)],
+    },
+    Model {
+        id: "Switch-IND-8",
+        kind: DeviceKind::Switch,
+        label: "Industrial Switch 8FE",
+        description: "Industrial switch with 8 Fast Ethernet + 2 Gigabit Ethernet ports (the Gigabit uplinks take copper or fiber): switches like the other switches",
+        ports: &[run("FastEthernet0/", 1, 8), combo("GigabitEthernet0/", 1, 2)],
+    },
+    Model {
+        id: "Router-IND",
+        kind: DeviceKind::Router,
+        label: "Industrial Router 2GE+2S",
+        description: "Industrial router with 2 Gigabit Ethernet ports and 2 serial WAN ports: routes like the other routers",
+        ports: &[run("GigabitEthernet0/", 0, 1), run("Serial0/0/", 0, 1)],
+    },
+    Model {
+        id: "Firewall-3",
+        kind: DeviceKind::Router,
+        label: "Firewall 3GE",
+        description: "Stateful firewall with 3 Gigabit Ethernet ports: named interfaces with security levels, access rules, object NAT and a DHCP server",
+        ports: &[run("GigabitEthernet1/", 1, 3)],
+    },
+    Model {
+        id: "Net-Controller",
+        kind: DeviceKind::Server,
+        label: "Network Controller",
+        description: "Network controller with one Gigabit Ethernet port: a server whose Programming tab holds the controller that discovers routers and pushes configuration templates",
+        ports: &[run("GigabitEthernet", 0, 0)],
+    },
+    Model {
+        id: "VoIP-Adapter",
+        kind: DeviceKind::Phone,
+        label: "VoIP Adapter",
+        description: "VoIP adapter for analog phones: its Ethernet port (FastEthernet0) goes to the network and takes an address and a call server by DHCP like an IP phone; its phone port (Phone0, RJ-11) takes an analog phone",
+        ports: &[run("FastEthernet", 0, 0), run("Phone", 0, 0)],
+    },
+    Model {
+        id: "Analog-Phone",
+        kind: DeviceKind::Phone,
+        label: "Analog Phone",
+        description: "Analog telephone with one phone port (Phone0, RJ-11): plugged into a VoIP adapter it rings and calls like an IP phone behind it",
+        ports: &[run("Phone", 0, 0)],
+    },
+    Model {
+        id: "Generic-Wired",
+        kind: DeviceKind::Pc,
+        label: "Generic Wired",
+        description: "Generic wired end device with one Fast Ethernet port: behaves as a PC",
+        ports: &[run("FastEthernet", 0, 0)],
+    },
+    Model {
+        id: "Generic-Wireless",
+        kind: DeviceKind::Laptop,
+        label: "Generic Wireless",
+        description: "Generic wireless end device with a Wi-Fi card and no Ethernet port: behaves as a Wi-Fi laptop",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-Streetlight",
+        kind: DeviceKind::Iot,
+        label: "Street Light",
+        description: "Wi-Fi street light: lights the road while the IoT service keeps it on",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-Traffic",
+        kind: DeviceKind::Iot,
+        label: "Traffic Light",
+        description: "Wi-Fi traffic light: shows green while the IoT service keeps it on, red otherwise",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-Parking",
+        kind: DeviceKind::Iot,
+        label: "Parking Sensor",
+        description: "Wi-Fi parking sensor: reports 1 while a car stands on the space, else 0",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-Drain",
+        kind: DeviceKind::Iot,
+        label: "Water Drain Monitor",
+        description: "Wi-Fi water drain monitor: reports how full a storm drain is (0-100 %)",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-Air",
+        kind: DeviceKind::Iot,
+        label: "Air Quality Sensor",
+        description: "Wi-Fi air quality sensor: reports an air quality index (0-500, higher is worse)",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-Blower",
+        kind: DeviceKind::Iot,
+        label: "Blower Fan",
+        description: "Blower fan with one Fast Ethernet port: the IoT server switches it on and off",
+        ports: &[run("FastEthernet", 0, 0)],
+    },
+    Model {
+        id: "PLC",
+        kind: DeviceKind::Iot,
+        label: "PLC",
+        description: "Programmable logic controller with one Fast Ethernet port, 8 digital and 4 analog pins: runs a BoardScript program that reads and switches the things wired to its pins",
+        ports: &[run("FastEthernet", 0, 0)],
+    },
+    Model {
+        id: "Data-Historian",
+        kind: DeviceKind::Server,
+        label: "Data Historian",
+        description: "Data historian with one Gigabit Ethernet port: a server that runs the IoT service; it lists the latest reading of each thing but keeps no history",
+        ports: &[run("GigabitEthernet", 0, 0)],
+    },
+    Model {
+        id: "HMI-Panel",
+        kind: DeviceKind::Pc,
+        label: "HMI Panel",
+        description: "Operator panel (HMI) with one Fast Ethernet port: a PC with browser, command prompt and the IoT monitor to watch and switch things",
+        ports: &[run("FastEthernet", 0, 0)],
+    },
+    Model {
+        id: "IoT-Battery",
+        kind: DeviceKind::Iot,
+        label: "Battery",
+        description: "Wi-Fi battery bank: reports its charge (0-100 %)",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-Meter",
+        kind: DeviceKind::Iot,
+        label: "Power Meter",
+        description: "Wi-Fi power meter: reports the power drawn, in watts",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-Solar",
+        kind: DeviceKind::Iot,
+        label: "Solar Panel",
+        description: "Wi-Fi solar panel: reports the power it produces, in watts",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-Wind",
+        kind: DeviceKind::Iot,
+        label: "Wind Turbine",
+        description: "Wi-Fi wind turbine: reports how fast it turns, in revolutions per minute",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-Thing",
+        kind: DeviceKind::Iot,
+        label: "Thing",
+        description: "Generic thing for a board's pin: a reading you set by hand (-1000 to 1000)",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-LED",
+        kind: DeviceKind::Iot,
+        label: "LED",
+        description: "LED wired to a board's pin with an IoT custom cable: lit while the pin is high",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-Buzzer",
+        kind: DeviceKind::Iot,
+        label: "Buzzer",
+        description: "Buzzer wired to a board's pin with an IoT custom cable: sounds while the pin is high",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-Motor",
+        kind: DeviceKind::Iot,
+        label: "Motor",
+        description: "Motor wired to a board's pin with an IoT custom cable: runs while the pin is high",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-Relay",
+        kind: DeviceKind::Iot,
+        label: "Relay",
+        description: "Relay wired to a board's pin with an IoT custom cable: closed while the pin is high",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-LCD",
+        kind: DeviceKind::Iot,
+        label: "LCD",
+        description: "LCD wired to a board's pin with an IoT custom cable: shows its text while the pin is high",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-Button",
+        kind: DeviceKind::Iot,
+        label: "Button",
+        description: "Push button wired to a board's pin with an IoT custom cable: reads 1 while pressed, else 0",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-Pot",
+        kind: DeviceKind::Iot,
+        label: "Potentiometer",
+        description: "Potentiometer wired to a board's pin with an IoT custom cable: reads how far the knob is turned (0-100 %)",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-Ultrasonic",
+        kind: DeviceKind::Iot,
+        label: "Distance Sensor",
+        description: "Ultrasonic distance sensor wired to a board's pin with an IoT custom cable: reads the distance to the nearest object, in centimetres",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-Light",
+        kind: DeviceKind::Iot,
+        label: "Light Sensor",
+        description: "Light sensor wired to a board's pin with an IoT custom cable: reads the brightness (0-100 %)",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-Switch",
+        kind: DeviceKind::Iot,
+        label: "Toggle Switch",
+        description: "Toggle switch wired to a board's pin with an IoT custom cable: reads 1 while on, else 0",
+        ports: &[run("Wireless", 0, 0)],
+    },
 ];
 
 /// A plug-in card for a modular router's bay: its ports are named after the bay
@@ -722,6 +972,40 @@ impl Model {
             "Tablet" => Some("Tablet"),
             "Smartphone" => Some("Smartphone"),
             "Board-SBC" | "Board-MCU" => Some("Board"),
+            "Repeater" => Some("Repeater"),
+            "Coax-Splitter" => Some("Splitter"),
+            "Bridge-2" => Some("Bridge"),
+            "Switch-IND-8" => Some("IndSwitch"),
+            "Router-IND" => Some("IndRouter"),
+            "Firewall-3" => Some("Firewall"),
+            "Net-Controller" => Some("Controller"),
+            "VoIP-Adapter" => Some("Adapter"),
+            "Analog-Phone" => Some("Phone"),
+            "Generic-Wired" | "Generic-Wireless" => Some("Generic"),
+            "IoT-Streetlight" => Some("Streetlight"),
+            "IoT-Traffic" => Some("Traffic"),
+            "IoT-Parking" => Some("Parking"),
+            "IoT-Drain" => Some("Drain"),
+            "IoT-Air" => Some("Air"),
+            "IoT-Blower" => Some("Blower"),
+            "PLC" => Some("PLC"),
+            "Data-Historian" => Some("Historian"),
+            "HMI-Panel" => Some("HMI"),
+            "IoT-Battery" => Some("Battery"),
+            "IoT-Meter" => Some("Meter"),
+            "IoT-Solar" => Some("Solar"),
+            "IoT-Wind" => Some("Turbine"),
+            "IoT-Thing" => Some("Thing"),
+            "Part-LED" => Some("LED"),
+            "Part-Buzzer" => Some("Buzzer"),
+            "Part-Motor" => Some("Motor"),
+            "Part-Relay" => Some("Relay"),
+            "Part-LCD" => Some("LCD"),
+            "Part-Button" => Some("Button"),
+            "Part-Pot" => Some("Pot"),
+            "Part-Ultrasonic" => Some("Distance"),
+            "Part-Light" => Some("LightSensor"),
+            "Part-Switch" => Some("Toggle"),
             _ => None,
         }
     }
@@ -842,6 +1126,68 @@ mod tests {
         assert_eq!(g("IoT-Light"), Some(Group::Home));
         assert_eq!(g("PC"), Some(Group::EndDevices));
         assert_eq!(g("IP-Phone"), Some(Group::EndDevices));
+        assert_eq!(g("Firewall-3"), Some(Group::Security));
+        assert_eq!(g("Repeater"), Some(Group::Hubs));
+        assert_eq!(g("Bridge-2"), Some(Group::Switches));
+        assert_eq!(g("Switch-IND-8"), Some(Group::Switches));
+        assert_eq!(g("Part-LED"), Some(Group::Actuators));
+        assert_eq!(g("Part-Pot"), Some(Group::Sensors));
+        assert_eq!(g("IoT-Street"), None);
+        assert_eq!(g("IoT-Streetlight"), Some(Group::SmartCity));
+        assert_eq!(g("PLC"), Some(Group::Industrial));
+        assert_eq!(g("IoT-Solar"), Some(Group::PowerGrid));
+        assert_eq!(g("IoT-Thing"), Some(Group::Boards));
+        // Every group holds at least one model, and the count of models is the catalogue's.
+        let groups = [
+            Group::Routers,
+            Group::Switches,
+            Group::Hubs,
+            Group::Wireless,
+            Group::Security,
+            Group::Wan,
+            Group::EndDevices,
+            Group::Home,
+            Group::SmartCity,
+            Group::Industrial,
+            Group::PowerGrid,
+            Group::Boards,
+            Group::Actuators,
+            Group::Sensors,
+        ];
+        for want in groups {
+            assert!(MODELS.iter().any(|m| m.group() == want), "{want:?} is empty");
+        }
+        assert_eq!(MODELS.len(), 100);
+    }
+
+    #[test]
+    fn the_new_end_devices_and_network_devices_have_the_ports_a_lab_expects() {
+        assert_eq!(find("Repeater").unwrap().port_names(), ["Ethernet0", "Ethernet1"]);
+        assert_eq!(find("Coax-Splitter").unwrap().port_names(), ["Coaxial0", "Coaxial1", "Coaxial2"]);
+        assert_eq!(find("Coax-Splitter").unwrap().port_medium("Coaxial1"), Some(Medium::Coaxial));
+        assert_eq!(find("Bridge 2FE").unwrap().port_names(), ["FastEthernet0/1", "FastEthernet0/2"]);
+        assert_eq!(find("Firewall 3GE").unwrap().port_names(), ["GigabitEthernet1/1", "GigabitEthernet1/2", "GigabitEthernet1/3"]);
+        assert_eq!(find("VoIP-Adapter").unwrap().port_medium("Phone0"), Some(Medium::Phone));
+        assert_eq!(find("Analog-Phone").unwrap().kind, DeviceKind::Phone);
+        assert_eq!(find("Generic-Wireless").unwrap().port_medium("Wireless0"), Some(Medium::Wireless));
+        assert_eq!(find("PLC").unwrap().kind, DeviceKind::Iot);
+        assert_eq!(crate::board::pins(find("PLC").unwrap()).len(), 12);
+    }
+
+    #[test]
+    fn every_part_and_thing_has_its_behaviour_and_every_new_name_is_free() {
+        for m in MODELS.iter().filter(|m| m.kind == DeviceKind::Iot && crate::board::pins(m).is_empty()) {
+            assert!(crate::iot::thing_of(m.id).is_some(), "{} has no behaviour", m.id);
+        }
+        for m in MODELS.iter().filter(|m| matches!(m.group(), Group::Actuators | Group::Sensors)) {
+            assert!(m.id.starts_with("Part-"), "{}", m.id);
+        }
+        for id in ["Part-Button", "Part-Pot", "Part-Ultrasonic", "Part-Light", "Part-Switch"] {
+            assert!(crate::iot::thing_of(id).is_some_and(|t| t.sensor), "{id} is read");
+        }
+        for id in ["Part-LED", "Part-Buzzer", "Part-Motor", "Part-Relay", "Part-LCD"] {
+            assert!(crate::iot::thing_of(id).is_some_and(|t| !t.sensor), "{id} is switched");
+        }
     }
 
     #[test]

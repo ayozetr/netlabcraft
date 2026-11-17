@@ -1994,3 +1994,86 @@ furniture	Table	Tisch
 	Recently Used	Zuletzt verwendet
 	No device placed yet.	Noch kein Gerät platziert.
 	Miscellaneous Devices	Verschiedene Geräte
+	Repeater	Repeater
+	Repeater: regenerates every frame heard on one of its 2 Ethernet ports onto the other	Repeater: gibt jeden Frame, den er an einem seiner 2 Ethernet-Ports hört, regeneriert am anderen aus
+	Coax Splitter	Koax-Splitter
+	Coaxial splitter: repeats every frame between its 3 coaxial ports (the coaxial cable of a cable modem line)	Koaxial-Splitter: wiederholt jeden Frame zwischen seinen 3 Koaxial-Ports (das Koaxialkabel einer Kabelmodem-Leitung)
+	Bridge 2FE	Bridge 2FE
+	Bridge with 2 Fast Ethernet ports: learns the addresses on each side and passes only the frames that must cross	Bridge mit 2 Fast-Ethernet-Ports: lernt die Adressen auf jeder Seite und lässt nur Frames durch, die hinüber müssen
+	Industrial Switch 8FE	Industrie-Switch 8FE
+	Industrial switch with 8 Fast Ethernet + 2 Gigabit Ethernet ports (the Gigabit uplinks take copper or fiber): switches like the other switches	Industrie-Switch mit 8 Fast-Ethernet- + 2 Gigabit-Ethernet-Ports (die Gigabit-Uplinks nehmen Kupfer oder Glasfaser): schaltet wie die anderen Switches
+	Industrial Router 2GE+2S	Industrie-Router 2GE+2S
+	Industrial router with 2 Gigabit Ethernet ports and 2 serial WAN ports: routes like the other routers	Industrie-Router mit 2 Gigabit-Ethernet-Ports und 2 seriellen WAN-Ports: routet wie die anderen Router
+	Firewall 3GE	Firewall 3GE
+	Stateful firewall with 3 Gigabit Ethernet ports: named interfaces with security levels, access rules, object NAT and a DHCP server	Zustandsbehaftete Firewall mit 3 Gigabit-Ethernet-Ports: benannte Schnittstellen mit Sicherheitsstufen, Zugriffsregeln, Objekt-NAT und ein DHCP-Server
+	Network Controller	Netzwerk-Controller
+	Network controller with one Gigabit Ethernet port: a server whose Programming tab holds the controller that discovers routers and pushes configuration templates	Netzwerk-Controller mit einem Gigabit-Ethernet-Port: ein Server, dessen Programmierung-Reiter den Controller enthält, der Router entdeckt und Konfigurationsvorlagen verteilt
+	VoIP Adapter	VoIP-Adapter
+	VoIP adapter for analog phones: its Ethernet port (FastEthernet0) goes to the network and takes an address and a call server by DHCP like an IP phone; its phone port (Phone0, RJ-11) takes an analog phone	VoIP-Adapter für analoge Telefone: sein Ethernet-Port (FastEthernet0) geht ins Netz und bezieht Adresse und Anrufserver per DHCP wie ein IP-Telefon; sein Telefonport (Phone0, RJ-11) nimmt ein analoges Telefon auf
+	Analog Phone	Analogtelefon
+	Analog telephone with one phone port (Phone0, RJ-11): plugged into a VoIP adapter it rings and calls like an IP phone behind it	Analogtelefon mit einem Telefonport (Phone0, RJ-11): an einem VoIP-Adapter klingelt und telefoniert es wie ein IP-Telefon dahinter
+	Generic Wired	Generisches Kabelgerät
+	Generic wired end device with one Fast Ethernet port: behaves as a PC	Generisches kabelgebundenes Endgerät mit einem Fast-Ethernet-Port: verhält sich wie ein PC
+	Generic Wireless	Generisches Funkgerät
+	Generic wireless end device with a Wi-Fi card and no Ethernet port: behaves as a Wi-Fi laptop	Generisches drahtloses Endgerät mit WLAN-Karte und ohne Ethernet-Port: verhält sich wie ein WLAN-Laptop
+	Street Light	Straßenlaterne
+	Wi-Fi street light: lights the road while the IoT service keeps it on	WLAN-Straßenlaterne: beleuchtet die Straße, solange der IoT-Dienst sie eingeschaltet lässt
+	Traffic Light	Ampel
+	Wi-Fi traffic light: shows green while the IoT service keeps it on, red otherwise	WLAN-Ampel: zeigt Grün, solange der IoT-Dienst sie eingeschaltet lässt, sonst Rot
+	Parking Sensor	Parkplatzsensor
+	Wi-Fi parking sensor: reports 1 while a car stands on the space, else 0	WLAN-Parkplatzsensor: meldet 1, solange ein Auto auf dem Platz steht, sonst 0
+	Water Drain Monitor	Gully-Monitor
+	Wi-Fi water drain monitor: reports how full a storm drain is (0-100 %)	WLAN-Gully-Monitor: meldet, wie voll ein Regenwassereinlauf ist (0-100 %)
+	Air Quality Sensor	Luftqualitätssensor
+	Wi-Fi air quality sensor: reports an air quality index (0-500, higher is worse)	WLAN-Luftqualitätssensor: meldet einen Luftqualitätsindex (0-500, höher ist schlechter)
+	Blower Fan	Gebläse
+	Blower fan with one Fast Ethernet port: the IoT server switches it on and off	Gebläse mit einem Fast-Ethernet-Port: der IoT-Server schaltet es ein und aus
+	PLC	SPS
+	Programmable logic controller with one Fast Ethernet port, 8 digital and 4 analog pins: runs a BoardScript program that reads and switches the things wired to its pins	Speicherprogrammierbare Steuerung mit einem Fast-Ethernet-Port, 8 digitalen und 4 analogen Pins: führt ein BoardScript-Programm aus, das die an den Pins angeschlossenen Dinge liest und schaltet
+	Data Historian	Datenarchiv
+	Data historian with one Gigabit Ethernet port: a server that runs the IoT service; it lists the latest reading of each thing but keeps no history	Datenarchiv mit einem Gigabit-Ethernet-Port: ein Server, der den IoT-Dienst ausführt; er listet den letzten Messwert jedes Dings, speichert aber keinen Verlauf
+	HMI Panel	HMI-Bedienfeld
+	Operator panel (HMI) with one Fast Ethernet port: a PC with browser, command prompt and the IoT monitor to watch and switch things	Bedienfeld (HMI) mit einem Fast-Ethernet-Port: ein PC mit Browser, Eingabeaufforderung und IoT-Monitor zum Beobachten und Schalten von Dingen
+	Battery	Batterie
+	Wi-Fi battery bank: reports its charge (0-100 %)	WLAN-Batterie: meldet ihren Ladestand (0-100 %)
+	Power Meter	Leistungsmesser
+	Wi-Fi power meter: reports the power drawn, in watts	WLAN-Leistungsmesser: meldet die aufgenommene Leistung in Watt
+	Solar Panel	Solarmodul
+	Wi-Fi solar panel: reports the power it produces, in watts	WLAN-Solarmodul: meldet die erzeugte Leistung in Watt
+	Wind Turbine	Windrad
+	Wi-Fi wind turbine: reports how fast it turns, in revolutions per minute	WLAN-Windrad: meldet seine Drehzahl in Umdrehungen pro Minute
+	Thing	Ding
+	Generic thing for a board's pin: a reading you set by hand (-1000 to 1000)	Allgemeines Ding für einen Platinen-Pin: ein Messwert, den du von Hand setzt (-1000 bis 1000)
+	LED	LED
+	LED wired to a board's pin with an IoT custom cable: lit while the pin is high	LED an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: leuchtet, solange der Pin high ist
+	Buzzer	Summer
+	Buzzer wired to a board's pin with an IoT custom cable: sounds while the pin is high	Summer an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: ertönt, solange der Pin high ist
+	Motor	Motor
+	Motor wired to a board's pin with an IoT custom cable: runs while the pin is high	Motor an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: läuft, solange der Pin high ist
+	Relay	Relais
+	Relay wired to a board's pin with an IoT custom cable: closed while the pin is high	Relais an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: geschlossen, solange der Pin high ist
+	LCD	LCD
+	LCD wired to a board's pin with an IoT custom cable: shows its text while the pin is high	LCD an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: zeigt seinen Text, solange der Pin high ist
+	Button	Taster
+	Push button wired to a board's pin with an IoT custom cable: reads 1 while pressed, else 0	Taster an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: liest 1, solange er gedrückt ist, sonst 0
+	Potentiometer	Potentiometer
+	Potentiometer wired to a board's pin with an IoT custom cable: reads how far the knob is turned (0-100 %)	Potentiometer an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: liest, wie weit der Knopf gedreht ist (0-100 %)
+	Distance Sensor	Abstandssensor
+	Ultrasonic distance sensor wired to a board's pin with an IoT custom cable: reads the distance to the nearest object, in centimetres	Ultraschall-Abstandssensor an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: liest den Abstand zum nächsten Objekt in Zentimetern
+	Light Sensor	Lichtsensor
+	Light sensor wired to a board's pin with an IoT custom cable: reads the brightness (0-100 %)	Lichtsensor an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: liest die Helligkeit (0-100 %)
+	Toggle Switch	Kippschalter
+	Toggle switch wired to a board's pin with an IoT custom cable: reads 1 while on, else 0	Kippschalter an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: liest 1, solange er an ist, sonst 0
+	1 = occupied	1 = belegt
+	% full	% voll
+	index	Index
+	% charge	% Ladung
+	reading	Messwert
+	1 = pressed	1 = gedrückt
+	% turned	% gedreht
+	% brightness	% Helligkeit
+	1 = on	1 = an
+	green	grün
+	red	rot
+	showing	zeigt
+	blank	leer
