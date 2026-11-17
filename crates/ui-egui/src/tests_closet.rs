@@ -60,6 +60,32 @@ mod t {
     }
 
     #[test]
+    fn the_zoom_buttons_zoom_about_the_middle_and_reset_returns_to_true_size() {
+        let mut h = closet();
+        h.run_steps(3);
+        crate::physical::fit(h.state_mut());
+        h.run_steps(2);
+        let mid = h.state().ui.canvas.size / 2.0;
+        let under = |app: &PacketApp| (mid - app.ui.pan) / app.ui.zoom;
+        let before = under(h.state());
+        let zoom = h.state().ui.zoom;
+        h.state_mut().zoom(Some(1.25));
+        h.run_steps(2);
+        assert!(h.state().ui.zoom > zoom);
+        assert!((under(h.state()) - before).length() < 0.5, "the point in the middle of the view stays there");
+        h.state_mut().zoom(Some(0.8));
+        h.state_mut().zoom(Some(0.8));
+        assert!(h.state().ui.zoom < zoom);
+        h.state_mut().reset_view();
+        h.run_steps(2);
+        assert_eq!(h.state().ui.zoom, 1.0);
+        let app = h.state();
+        for (_, c) in &app.session.topology.closet_layout(3).frames {
+            assert!(app.ui.pan.y + c.y >= crate::closet::TITLE_BAND - 0.5, "the furniture starts below the title band at true size");
+        }
+    }
+
+    #[test]
     fn the_closet_follows_the_engine_after_every_change() {
         let mut h = closet();
         h.run_steps(3);
@@ -191,7 +217,8 @@ mod t {
         s.execute("view.enter_place", json!({"id": closet})).unwrap();
         let mut h = Harness::builder().with_size(egui::vec2(1200.0, 800.0)).build_ui_state(|ui, app: &mut PacketApp| app.ui(ui), PacketApp::new(s));
         h.run_steps(3);
-        crate::physical::fit(h.state_mut());
+        let place = h.state().session.place_view.unwrap();
+        crate::closet::fit_all(h.state_mut(), place);
         h.run_steps(3);
         h
     }
