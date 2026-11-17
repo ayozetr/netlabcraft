@@ -20,7 +20,7 @@ L6 depends on a UI toolkit.
 | L4 | `netlabcraft-ios` | Device consoles: the command grammar (`grammar.rs`), dispatch and modes (`exec.rs`), `show` output and running-config (`render.rs`), the PC/server shell (`host.rs`), output filters (`pipe.rs`); `exec/` holds the dispatch for routing, EIGRP for IPv6 (`eigrp6.rs`), BGP (`bgp.rs`), VRRP and GLBP (`fhrp.rs`), switch security and QoS trust, management, VPN, IKEv2 (`ikev2.rs`), QoS, firewall, router security (`security.rs`: zones, inspection, MTU, MSS), automation (`automation.rs`), wireless, voice, the device families (`families.rs`: PoE, the switch card, SIP) the switching and routing leftovers (`swroute.rs`: CoS, EIGRP summaries, RIP timers, RIPng, VTP pruning) and the central office server's cellular commands (`cellular.rs`). |
 | L5 | `netlabcraft-engine` | `Session` (lab + simulator + consoles + undo), the command catalog (`catalog.rs`, `cmd.rs`), sample labs (`sample.rs`); RESTCONF data and edits (`automation.rs`), NETCONF operations (`netconf.rs`) and the controller (`controller.rs`), all applying changes as console lines through the grammar; scenarios and PDUs (`pdu.rs`); power adapters and sources (`families.rs`); programmable boards (`board.rs`); the cellular commands (`cellular.rs`); instructor tools (`instructor.rs`: sealing the answer network, the assessment tree, the initial network, translations, connectivity tests, signed results, locks the engine enforces). The lab book runs through the engine in `tests/lab_book.rs`, whose runner (`tests/labbook/`) reads each `docs/labs/*.md` file's `lab`, `console` and `verify` blocks. |
 | L6 | `netlabcraft-ui-egui` | The egui interface. |
-| L6 | `netlabcraft-mcp` | MCP server over stdio; `apps/netlabcraft-cli/tests/mcp_lab_book.rs` runs eleven lab-book labs through it over JSON-RPC. |
+| L6 | `netlabcraft-mcp` | MCP server over stdio; `apps/netlabcraft-cli/tests/mcp_lab_book.rs` runs sixteen lab-book labs through it over JSON-RPC. |
 | L7 | `apps/netlabcraft`, `apps/netlabcraft-cli`, `apps/netlabcraft-web` | Shells: desktop window and file dialogs, headless CLI, browser. |
 
 ## The simulator
@@ -111,6 +111,8 @@ None known. (Modular exponentiation used to exist twice, in `wire/src/dh.rs` for
 |---|---|---|
 | 2026-11-16 | minor | Modules added for PPPoE: wire `pppoe` (RFC 2516 discovery and session packets and the PPP packets inside them) and sim `pppoe` (the dialer, the concentrator, the data path hooked into `transmit` and `l3_in`). |
 | 2026-11-16 | minor | The BGP modules gain route reflection (wire: ORIGINATOR_ID, CLUSTER_LIST; sim: the client rules and loop checks), confederations (wire: AS_CONFED_SEQUENCE and AS_CONFED_SET; sim: member-AS sessions), neighbour options and an aggregate's discard route (`Null0`). |
+| 2026-11-15 | minor | Model `textmatch` (a bounded matcher for AS-path and community regular expressions); the BGP modules gain communities, aggregation, multipath and timers. |
+| 2026-11-15 | minor | Modules added for BGP: wire `bgp` (RFC 4271 messages), model `bgp` (the process), sim `bgp` (sessions, best paths, `B` routes; `route_with` and `routing_table_with` take BGP's routes), ios `exec/bgp` (the mode, the show views). |
 | 2026-11-13 | minor | Core module list: `sync` and `process`. |
 | 2026-11-13 | minor | Cellular network (M9.10): wire `cell`; model `cellular`; sim `cell`; ios `exec/cellular`; engine `cellular`; `Topology::cell_links` is derived state refreshed after every change. |
 | 2026-11-13 | minor | BoardScript messages are English in `sim` and `engine` and translated at the edge (M9.11): the interface's `tr_any` matches catalog rows, the wrapper rows `line {}: {}` and `stopped: {}` are tried first and translate the message inside them. |
@@ -119,8 +121,6 @@ None known. (Modular exponentiation used to exist twice, in `wire/src/dh.rs` for
 | 2026-11-13 | minor | AH bundled with ESP (M9.5): `sim/src/vpn.rs` keeps the AH half of a bundle (`AhHalf`) next to the ESP one and unwraps AH before ESP on the way in; `sim/src/ikev2.rs` negotiates its child SA; `wire/src/ah.rs` gains `open_transport`. |
 | 2026-11-13 | minor | IKE SA lifetimes and rekeying (M9.5): `sim/src/vpn.rs` keeps an ISAKMP or IKE SA's age and replacement next to the IPsec SA (a phase-1 rekey runs against its own exchange state and is merged when main mode completes); `sim/src/ikev2.rs` rekeys the IKE SA with CREATE_CHILD_SA; `wire/src/ikev2.rs` gains `Keys::rekey_with`. |
 | 2026-11-13 | minor | The MCP lab-book test runs eleven labs, three of them troubleshooting labs. |
-| 2026-11-15 | minor | Model `textmatch` (a bounded matcher for AS-path and community regular expressions); the BGP modules gain communities, aggregation, multipath and timers. |
-| 2026-11-15 | minor | Modules added for BGP: wire `bgp` (RFC 4271 messages), model `bgp` (the process), sim `bgp` (sessions, best paths, `B` routes; `route_with` and `routing_table_with` take BGP's routes), ios `exec/bgp` (the mode, the show views). |
 | 2026-11-13 | minor | Module added: wire `ec` (ECDH over P-256 and P-384, RFC 5903). |
 | 2026-11-13 | minor | Module added: wire `ah` (the Authentication Header, RFC 4302). |
 | 2026-11-13 | minor | Modules added: wire `des` (DES, 3DES, CBC) and `cipher` (AES, DES or 3DES behind one CBC interface). |

@@ -63,8 +63,8 @@ distributions.
 | Date | Change | Summary |
 |---|---|---|
 | 2026-11-17 | minor | Seventh release, 0.7.0, cut with the flow above. |
-| 2026-11-15 | minor | FreeBSD package (`.pkg` and `.tar.gz`) built in CI and added to the release. |
 | 2026-11-16 | minor | Sixth release, 0.6.0, cut with the flow above. |
+| 2026-11-15 | minor | FreeBSD package (`.pkg` and `.tar.gz`) built in CI and added to the release. |
 | 2026-11-15 | minor | Fifth release, 0.5.0, cut with the flow above. |
 | 2026-11-15 | minor | Fourth release, 0.4.0, cut with the flow above; the first with a FreeBSD package. |
 | 2026-11-14 | minor | Third release, 0.3.0, cut with the flow above. |

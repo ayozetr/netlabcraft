@@ -76,11 +76,11 @@ hold.
 | 2026-11-16 | minor | BGP route reflectors, confederations and more neighbour options, and lab 42 (BGP route reflectors) join the lab book (42 labs, 16 over MCP); the gaps table's item 9 narrowed again. |
 | 2026-11-15 | minor | Port mirroring (`monitor session`) and lab 38 (capture traffic with port mirroring) join the lab book (38 labs, 16 over MCP); the gaps table's item 6 narrowed. |
 | 2026-11-15 | minor | Redistribution between RIP, EIGRP and OSPF, distribute lists and lab 39 (redistribute between routing protocols and filter with a distribute list) join the lab book (lab 38 belongs to another change, so the numbered labs are 1 to 37 and 39); the gaps table's item 9 narrowed again. |
-| 2026-11-13 | minor | Focus paragraph updated for release 0.2.0 (the open gaps). |
 | 2026-11-15 | minor | BGP communities, aggregation, timers and lab 40 (BGP communities, aggregation and timers) join the lab book (40 labs, 16 over MCP); the gaps table's item 9 narrowed again. |
 | 2026-11-15 | minor | Prefix lists and route maps, and lab 37 (filter routes with a prefix list and a route map) join the lab book (37 labs, 16 over MCP); the gaps table's item 9 narrowed again. |
 | 2026-11-15 | minor | BGP on routers and lab 36 (BGP between two autonomous systems) join the lab book (36 labs, 16 over MCP); the gaps table's item 9 narrowed. |
 | 2026-11-15 | minor | Four more labs (32 to 35: EIGRP, IPv6 routing, EtherChannel and port-security faults) join the lab book (35 labs, 16 over MCP); the gaps table's item 1 narrowed. |
+| 2026-11-13 | minor | Focus paragraph updated for release 0.2.0 (the open gaps). |
 | 2026-11-13 | minor | M9.7: four more labs (28 to 31) join the lab book (31 labs, 14 over MCP) and the console gaps the first round left are fixed; the gaps table's item 1 narrowed again. |
 | 2026-11-13 | minor | M9.4: seven troubleshooting labs (21 to 27) join the lab book (27 labs, 11 over MCP); the gaps table's item 1 narrowed. |
 | 2026-11-13 | minor | M7 done: the release workflow and packages for Linux, Windows, macOS and the web, tested end to end; the packaged-build gate is met. |

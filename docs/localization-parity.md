@@ -30,7 +30,6 @@ storytold Craft apps share their translations through
 | 2026-11-16 | minor | The Dial-up app, the telephone-number page of the Telephone Cloud and the three new models add 15 rows to each of the six catalogs, written clean room, so each has 1,647 (counted the way the earlier rows were: the rows without `@id`; the zh-hans rows checked against GB2312 with a script). |
 | 2026-11-16 | minor | The PPPoE Dialer hint is reworded (a server reached straight or through switches) in the six catalogs; the zh-hans row was checked against GB2312 with a script. Row counts do not change. |
 | 2026-11-16 | minor | The Softphone app adds 4 rows to each of the six catalogs, written clean room, so each has 1,632 (counted the way the earlier rows were: the rows without `@id`; the zh-hans rows checked against GB2312 with a script). |
-
 | 2026-11-16 | minor | The Options entry for native device windows and its web hint add 2 rows to each of the six catalogs, so each has 1,628 rows (counted without `@id`). |
 | 2026-11-15 | minor | The Netflow Collector app adds 12 rows to each of the six catalogs, written clean room, so each has 1,626 (counted the way the earlier rows were: the rows without `@id`; the zh-hans rows checked against GB2312 with a script). |
 | 2026-11-15 | minor | The VPN Client app adds 10 rows to each of the six catalogs, written clean room, so each has 1,614 rows (measured by counting the rows without `@id`, which also takes in the rows earlier changes added without updating this page; the zh-hans rows checked against GB2312 with a script). |
