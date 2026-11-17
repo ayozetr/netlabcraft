@@ -45,6 +45,21 @@ mod t {
     }
 
     #[test]
+    fn the_fit_keeps_the_furniture_below_the_title_band() {
+        let mut h = closet();
+        h.run_steps(3);
+        crate::physical::fit(h.state_mut());
+        h.run_steps(2);
+        let app = h.state();
+        let layout = app.session.topology.closet_layout(3);
+        assert!(!layout.frames.is_empty());
+        for (_, c) in &layout.frames {
+            let top = app.ui.pan.y + c.y * app.ui.zoom;
+            assert!(top >= crate::closet::TITLE_BAND - 0.5, "a frame starts at {top}, inside the title band");
+        }
+    }
+
+    #[test]
     fn the_closet_follows_the_engine_after_every_change() {
         let mut h = closet();
         h.run_steps(3);
