@@ -1167,7 +1167,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             let pc_name = dev.name.clone();
             let target = s.topology.console_peer(pc).ok_or_else(|| {
                 EngineError::Failed(format!(
-                    "{pc_name} has no console cable or USB cable: join its {RS232_PORT} or {USB_PORT} port to a router's or switch's {CONSOLE_PORT} or {USB_CONSOLE_PORT} port (link.add with \"cable\": \"console\" or \"usb\")"
+                    "{pc_name} has no console cable: join its {RS232_PORT} port to a router's or switch's {CONSOLE_PORT} port (link.add with \"cable\": \"console\")"
                 ))
             })?;
             let target_name = s.topology.device(target).map_or(String::new(), |d| d.name.clone());

@@ -82,10 +82,10 @@ mod t {
         // The device box: the Automatic cable is among the cables until Disable Auto Cable.
         crate::show_connections(h.state_mut(), None);
         h.run_steps(3);
-        assert!(h.query_by_label("Automatic").is_some());
+        assert!(h.query_by_label("Automatically Choose Connection Type").is_some());
         h.state_mut().ui.prefs.disable_auto_cable = true;
         h.run_steps(3);
-        assert!(h.query_by_label("Automatic").is_none());
+        assert!(h.query_by_label("Automatically Choose Connection Type").is_none());
     }
 
     #[test]
