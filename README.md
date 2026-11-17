@@ -144,7 +144,7 @@ cargo run --release -p netlabcraft-cli -- samples             # list the sample 
 cargo xtask ci                                                # fmt, clippy, tests, assets, layering, wasm, parity
 ```
 
-Click a device to open its window; drag to move it; scroll to pan and Ctrl+scroll to zoom.
+Click a device to open its window; drag to move it; drag on empty ground to rubber-band select; scroll or drag with the right or middle button to pan and Ctrl+scroll to zoom. File → Save as PDF… and File → Print… make an A4 report of the lab.
 Choose your language under Options → Language.
 
 ### Install on Linux (your user only)

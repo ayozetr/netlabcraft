@@ -52,7 +52,7 @@ cabling and wireless row (~95%); **host hardware: ~80% ready, 8–14 h** (estima
 | Touch and pen | Limited | egui's touch handling, untested | Verify on a touch screen: 1–2 h |
 | Multi-core | Single simulation thread | Single-threaded discrete-event simulator (deterministic) | Not needed at lab sizes |
 | Accessibility (screen readers) | Partial | AccessKit tree; every widget has an accessible name (checked by the UI tests) | Canvas devices as accessible nodes: 3–5 h |
-| Printing | Print the workspace | ✅ File ▸ Print… makes an A4 PDF: the workspace with the lab's name, then a report of every device, its interfaces and the cables (real text, page numbers, compressed), and opens it in the system's PDF viewer to print (the web build downloads it); File ▸ Export Workspace Image (PNG) for reports | Printing straight to a printer without the PDF viewer is not planned |
+| Printing | Print the workspace | ✅ File ▸ Save as PDF… and File ▸ Print… (Ctrl+P) make an A4 PDF: the workspace with the lab's name, then a report of every device, its interfaces and the cables (real text, page numbers, compressed). Save as PDF… saves it where you choose; Print… opens a window with save, open in the system's PDF viewer (a temporary copy) or send to the default printer with `lp`; the web build downloads the file for both; File ▸ Export Workspace Image (PNG) for reports | Direct printing needs the `lp` command, so it is not offered on Windows or where `lp` is missing |
 
 ## Revision history
 

@@ -49,7 +49,7 @@ To remove your names, delete your entry in a pull request.
     a networked tool fills it (nothing does yet).
   - `cargo xtask contributors --check` fails when the committed file is stale. It is not part of
     `cargo xtask ci` (every commit changes the numbers): refresh it before each release
-    ([`releasing.md`](releasing.md)).
+    ([`releasing.md`](releasing.md)): the `Contributors` workflow (Actions, run by hand) runs it in CI and uploads the file as an artifact.
 - There is no AI-models tab: NetLabCraft's history carries no model trailers to count.
 
 ## Revision history
