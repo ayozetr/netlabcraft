@@ -1219,7 +1219,7 @@ mod label_tests {
     fn painted_text_color(dark: bool, in_rack: bool) -> (Color32, Color32) {
         let tk = theme::tokens(dark);
         let ctx = Context::default();
-        let out = ctx.run_ui(egui::RawInput::default(), |ui| {
+        let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
             let p = ui.ctx().layer_painter(LayerId::background());
             name_plate(&p, pos2(100.0, 100.0), "Switch0".to_string(), 12.0, in_rack, &tk);
         });
@@ -1234,6 +1234,7 @@ mod label_tests {
                 _ => None,
             })
             .unwrap_or(Color32::TRANSPARENT);
+        out.textures_delta.clear();
         let fill = plate_colors(in_rack, &tk).0;
         (text, fill)
     }
