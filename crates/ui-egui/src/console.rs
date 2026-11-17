@@ -170,6 +170,10 @@ pub fn open(app: &mut PacketApp, d: DeviceId) {
             _ => Tab::Desktop,
         };
     }
+    // Without "Use CLI as Device Default Tab", routers, switches and the like open on Config.
+    if new && !app.ui.prefs.cli_default_tab && !dev.kind.is_host() && w.tab == Tab::Cli {
+        w.tab = Tab::Config;
+    }
     if dev.kind == DeviceKind::Hub {
         w.tab = Tab::Physical;
     }

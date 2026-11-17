@@ -133,6 +133,7 @@ pub(crate) fn call_screen(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) 
                     None => {
                         if ui.add_enabled(!dialled.is_empty(), egui::Button::new(tl("Call"))).clicked() {
                             app.run(&cmd("dial"), json!({"device": d.0, "number": dialled}));
+                            app.play(crate::sound::Sound::Ring);
                             if let Some(w) = app.ui.windows.get_mut(&d) {
                                 w.dialled.clear();
                             }

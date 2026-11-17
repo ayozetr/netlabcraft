@@ -66,6 +66,20 @@ fn download(name: &str, bytes: &[u8], mime: &str) {
     let _ = web_sys::Url::revoke_object_url(&url);
 }
 
+/// Plays a WAV file through an audio element (the browser may refuse before the first click).
+fn play_sound(bytes: &[u8]) {
+    let array = js_sys::Uint8Array::from(bytes);
+    let parts = js_sys::Array::new();
+    parts.push(&array.buffer());
+    let opts = web_sys::BlobPropertyBag::new();
+    opts.set_type("audio/wav");
+    let Ok(blob) = web_sys::Blob::new_with_buffer_source_sequence_and_options(&parts, &opts) else { return };
+    let Ok(url) = web_sys::Url::create_object_url_with_blob(&blob) else { return };
+    if let Ok(audio) = web_sys::HtmlAudioElement::new_with_src(&url) {
+        let _ = audio.play();
+    }
+}
+
 impl eframe::App for WebShell {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let pending = std::mem::take(&mut *self.inbox.lock());
@@ -122,6 +136,7 @@ impl eframe::App for WebShell {
                         }
                     });
                 }
+                UiRequest::PlaySound(bytes) => play_sound(&bytes),
                 UiRequest::Quit => {}
             }
         }

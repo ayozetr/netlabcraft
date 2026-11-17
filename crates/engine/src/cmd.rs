@@ -68,6 +68,9 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
     if let Some(r) = crate::cellular::run(s, id, p) {
         return r;
     }
+    if let Some(r) = crate::settings::run(s, id, p) {
+        return r;
+    }
     let cmd = id;
     match id {
         "file.new" => {
@@ -581,9 +584,10 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             Err(bad("the activity is locked: `activity.unlock` with the instructor's password first"))
         }
         "activity.start" => {
-            let who: String = str_param(p, "student")?.trim().chars().take(64).collect();
+            let given = opt_str(p, "student").unwrap_or(s.profile.display_name.as_str());
+            let who: String = given.trim().chars().take(64).collect();
             if who.is_empty() {
-                return Err(bad("give the student's name"));
+                return Err(bad("give the student's name (or set the profile's with `profile.set`)"));
             }
             let mut t = s.topology.clone();
             let a = t.activity.as_mut().ok_or_else(|| bad("this lab has no activity"))?;

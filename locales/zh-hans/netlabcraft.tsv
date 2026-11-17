@@ -1672,6 +1672,70 @@ event	write request for	写请求
 	The modem's phone cable must go to a telephone cloud, and the number must be one of its ports.	调制解调器的电话线必须接到电话云，号码必须是它某个端口的号码。
 	Telephone numbers (one per port):	电话号码（每个端口一个）：
 	Set	设置
+	Preferences…	首选项…
+	Algorithm Settings	算法设置
+	User Profile…	用户资料…
+	View Command Log	查看命令日志
+	Preferences	首选项
+	Administrative	管理
+	Show/Hide	显示/隐藏
+	Font	字体
+	Miscellaneous	其他
+	Answer Tree	答案树
+	Custom Interfaces	自定义界面
+	Publishers	发布者
+	Image Cleanup	图像清理
+	Not available yet: NetLabCraft has nothing to set in this tab so far.	尚不可用：NetLabCraft 在此标签页中暂时没有可设置的内容。
+	Restore Defaults	恢复默认值
+	Customize User Experience	自定义用户体验
+	Show Animation	显示动画
+	Play Sound	播放声音
+	Show Device Model Labels	显示设备型号标签
+	Show Device Name Labels	显示设备名称标签
+	Always Show Port Labels in Logical Workspace	在逻辑工作区始终显示端口标签
+	Disable Auto Cable	禁用自动线缆
+	Use Metric System (uncheck to use imperial)	使用公制（取消勾选则使用英制）
+	Align logical workspace objects	对齐逻辑工作区中的对象
+	Tooltip Duration:	提示持续时间：
+	Show Link Lights	显示链路指示灯
+	Play Telephony Sound	播放电话声音
+	Show QoS Stamps on Packets	在数据包上显示 QoS 标记
+	Show Port Labels When Mouse Over in Logical Workspace	在逻辑工作区鼠标悬停时显示端口标签
+	Enable Cable Length Effects	启用线缆长度影响
+	Use CLI as Device Default Tab	将 CLI 用作设备的默认标签页
+	Show Cable Info Popup in Physical Workspace	在物理工作区显示线缆信息提示
+	Align physical workspace objects	对齐物理工作区中的对象
+	A short tone when a PDU arrives or fails.	PDU 到达或失败时发出一声短音。
+	Leaves the Automatic cable out of the device box: pick the cable type for each connection.	从设备栏中去掉自动线缆：每次连接时自行选择线缆类型。
+	Cable lengths in the physical workspace show in metres and kilometres; unchecked, in feet and miles.	物理工作区中的线缆长度以米和千米显示；取消勾选则以英尺和英里显示。
+	Devices snap to the grid when they are placed or dropped.	设备在放置或松开时会对齐到网格。
+	Seconds the pointer rests on something before its tooltip shows. 0 keeps the default (0.5 s).	指针停在某项上多少秒后才显示提示。0 表示使用默认值（0.5 秒）。
+	Tones for IP phone calls and the Dial-up modem.	IP 电话通话和拨号调制解调器的提示音。
+	The replayed packet carries its DSCP and 802.1p priority when they are not 0.	重放的数据包在 DSCP 和 802.1p 优先级不为 0 时会显示它们。
+	Used when port labels are not always shown: the cables of the device under the pointer show theirs.	当端口标签不是始终显示时生效：指针所在设备的线缆会显示各自的端口标签。
+	A cable longer than its medium reaches (copper 100 m) carries nothing. Saved with the lab.	超过介质传输距离的线缆（铜缆 100 米）无法传输数据。随实验一起保存。
+	Routers, switches and other devices with a command line open on it; unchecked, they open on Config.	带命令行的路由器、交换机等设备默认打开命令行；取消勾选则打开配置页。
+	Places and devices snap to the grid when they are dragged.	地点和设备在拖动时会对齐到网格。
+	Records every command in the command log that View Command Log shows.	把每条命令记入命令日志，可通过“查看命令日志”查看。
+	The device box with the models and the PDU list.	包含设备型号和 PDU 列表的设备栏。
+	Logging	日志
+	Enable Logging	启用日志
+	Export Log…	导出日志…
+	Interface text	界面文字
+	Text size:	文字大小：
+	Reset	重置
+	Sets the text of menus, buttons and forms. Names drawn on the workspace follow its zoom instead.	设置菜单、按钮和表单的文字大小。工作区中绘制的名称则跟随其缩放。
+	User Profile	用户资料
+	Kept on this computer only. It names you in activity results when an activity was not started with a name.	仅保存在此电脑上。在没有指定姓名就开始的活动中，它会作为你的姓名出现在结果里。
+	Display name:	显示名称：
+	Use a nickname if you like: no real name or e-mail address is needed.	可以使用昵称：不需要真实姓名或电子邮件地址。
+	Profile saved.	资料已保存。
+	Command Log	命令日志
+	No commands have been recorded yet.	尚未记录任何命令。
+	Not available yet: NetLabCraft has no simulator-wide algorithm settings.	尚不可用：NetLabCraft 没有适用于整个模拟器的算法设置。
+	The timing options it has are Constant Delay in the Simulation Panel and the timers each device's console sets.	目前的计时选项有模拟面板中的“恒定延迟”，以及各设备控制台设置的定时器。
+	and {} more	另有 {} 条
+@plural	{} command|{} commands	{} 条命令
 	Zoom	缩放
 	Toolbars	工具栏
 	Main	主工具栏

@@ -139,11 +139,19 @@ pub struct Physical {
     pub homes: Vec<Home>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lengths: Vec<CableLength>,
+    /// The lab ignores cable lengths: a copper run over [`COPPER_MAX_M`] (or another medium's
+    /// limit) still carries frames. Not set, lengths count, as they always did.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub ignore_lengths: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 impl Physical {
     pub fn is_default(&self) -> bool {
-        self.places.is_empty() && self.homes.is_empty() && self.lengths.is_empty()
+        self.places.is_empty() && self.homes.is_empty() && self.lengths.is_empty() && !self.ignore_lengths
     }
 }
 
