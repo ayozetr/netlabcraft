@@ -76,6 +76,9 @@ const MAX_STROKE: usize = 4_000;
 
 /// The status-bar hint for the current tool.
 pub fn hint(app: &PacketApp) -> String {
+    if app.session.physical && crate::closet::current(app).is_some() && !matches!(app.ui.tool, Tool::Place(_)) {
+        return crate::i18n::tl("Drag a device onto a rack, shelf or table · drag between two ports to patch them, or from an outlet to a device to plug it in · right-click for more").into();
+    }
     if app.session.physical && !matches!(app.ui.tool, Tool::Place(_)) {
         return crate::i18n::tl("Double-click a place to open it · drag to arrange · right-click for more (move devices, cable lengths)").into();
     }
@@ -1547,6 +1550,11 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
                 {
                     app.ui.editing_note = Some((id, String::new()));
                 }
+            }
+        }
+        Tool::Place(model) if netlabcraft_model::furniture::FittingKind::from_id(model).is_some() => {
+            if hit.is_none() {
+                app.info(crate::i18n::tl("Patch panels and wall mounts stand in a wiring closet: open one in the Physical view first."));
             }
         }
         Tool::Place(model) => {

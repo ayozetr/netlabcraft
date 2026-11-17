@@ -1720,3 +1720,33 @@ event	write request for	写请求
 	Tab and the arrow keys move between devices and cables; Enter or Space opens the one in focus.	Tab 键和方向键在设备和线缆之间移动；回车或空格键打开获得焦点的那个。
 	The Workspace List in the View menu names every device in a table you can move through.	查看菜单中的工作区列表用一张可以浏览的表格列出每个设备。
 	Everything the menus do can also be typed, from the command line or by an agent.	菜单能做的一切也都可以输入，通过命令行或由代理完成。
+	Rename…	重命名…
+	Switch Off	关闭
+	Switch On	打开
+	Take off the furniture	从家具上取下
+	Plug into	插入到
+	Unplug	拔出
+	Remove Patch Wires	移除跳线
+	Drag from this port to another to wire them.	从此端口拖到另一个端口即可连线。
+	Drag from this outlet to a device to plug it in.	从此插座拖到设备上即可接通电源。
+	Add to this closet	添加到此配线间
+	Rename	重命名
+	Name:	名称：
+	{}, {} units	{}，{} 个单元
+	{}, {} levels	{}，{} 层
+	{}, on {}	{}，位于 {}
+	Rack	机架
+	Shelf	层架
+furniture	Table	桌子
+	Copper Patch Panel	铜缆配线架
+	Fiber Patch Panel	光纤配线架
+	Copper Wall Mount	铜缆墙面插座
+	Fiber Wall Mount	光纤墙面插座
+	Power Distribution Device	电源分配设备
+	Copper patch panel: joins device ports through the structured cabling	铜缆配线架：通过结构化布线连接设备端口
+	Fiber patch panel: joins fiber device ports through the structured cabling	光纤配线架：通过结构化布线连接光纤端口
+	Copper wall mount: a wall outlet that carries a link through the building's cabling	铜缆墙面插座：通过楼宇布线传送链路的墙面插座
+	Fiber wall mount: a fiber wall outlet that carries a link through the building's cabling	光纤墙面插座：通过楼宇布线传送链路的光纤墙面插座
+	Structured Cabling	结构化布线
+	Drag a device onto a rack, shelf or table · drag between two ports to patch them, or from an outlet to a device to plug it in · right-click for more	把设备拖到机架、层架或桌子上 · 在两个端口之间拖动即可跳线，从插座拖到设备即可接通电源 · 右键查看更多
+	Patch panels and wall mounts stand in a wiring closet: open one in the Physical view first.	配线架和墙面插座放在配线间里：请先在物理视图中打开一个配线间。

@@ -1,0 +1,1079 @@
+//! The wiring-closet view: racks, shelves and tables with the devices that stand on them, patch
+//! panels, wall mounts and power distribution devices, and every cable drawn from port to port
+//! over the front panels. Everything is drawn in code. The view acts only through engine
+//! commands (`furniture.*`, `passive.*`, `patch.*`, `power.*`, `device.place`).
+//!
+//! Drag a device or a passive device onto furniture to put it there (or off it to take it off);
+//! drag a furniture's name bar to move it; drag from one port to another to patch them; drag from
+//! a power outlet to a device to plug it in. Right-click for the rest.
+
+use std::collections::BTreeMap;
+
+use egui::{Align2, Color32, FontId, Painter, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2, pos2, vec2};
+use netlabcraft_core::DeviceId;
+use netlabcraft_model::cable::{Cable, Medium};
+use netlabcraft_model::furniture::{Cell, FRAME_FOOT, FRAME_HEAD, FittingKind, FurnitureKind, Item, Placed, Pole, RACK_UNIT_H};
+use netlabcraft_model::{Device, DeviceKind, End, Topology};
+use serde_json::{Value, json};
+
+use crate::i18n::{tl, tr, trf};
+use crate::theme::{self, Tokens};
+use crate::{PacketApp, Tool};
+
+/// What a right-click opened a menu on.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Target {
+    Furniture(u32),
+    Item(Item),
+    Port(Pole),
+    Outlet(u32, u32),
+    Cable(End),
+    Empty(f32, f32),
+}
+
+/// What is being dragged.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Drag {
+    Item(Item),
+    Furniture(u32),
+    Wire(Pole),
+    Plug(u32, u32),
+}
+
+/// Something with a name that can be renamed.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Thing {
+    Furniture(u32),
+    Passive(u32),
+}
+
+/// The closet view's own state.
+#[derive(Debug, Clone, Default)]
+pub struct State {
+    drag: Option<Drag>,
+    panning: bool,
+    context: Option<Target>,
+    /// The cable picked by a click.
+    cable: Option<End>,
+    /// The Rename dialog: what and the name being typed.
+    pub rename: Option<(Thing, String)>,
+}
+
+/// A kind of furniture by name (`Table` has its own row: the word also names a data table).
+fn furniture_label(kind: FurnitureKind) -> &'static str {
+    if kind == FurnitureKind::Table { crate::i18n::tlc("furniture", "Table") } else { tl(kind.label()) }
+}
+
+/// The wiring closet being looked at, if any.
+pub(crate) fn current(app: &PacketApp) -> Option<u32> {
+    let place = app.session.place_view?;
+    app.session.topology.place(place).filter(|p| p.kind == netlabcraft_model::physical::PlaceKind::Closet).map(|p| p.id)
+}
+
+/// Pans and zooms so the whole closet is in view.
+pub(crate) fn fit(app: &mut PacketApp, place: u32) {
+    let Some(b) = app.session.topology.closet_layout(place).bounds() else { return };
+    let size = app.ui.canvas.size;
+    if size.x < 1.0 || size.y < 1.0 {
+        return;
+    }
+    let zoom = (size.x / (b.w + 80.0)).min(size.y / (b.h + 80.0)).clamp(0.25, 1.5);
+    app.ui.zoom = zoom;
+    app.ui.pan = (size - vec2(b.w, b.h) * zoom) / 2.0 - vec2(b.x, b.y) * zoom;
+}
+
+/// A drawn scene: where everything is on the screen, for the pointer.
+struct Scene {
+    origin: Vec2,
+    zoom: f32,
+    /// Furniture: its id, the whole frame and its name bar.
+    frames: Vec<(u32, Rect, Rect)>,
+    /// Items: their cells.
+    items: Vec<(Item, Rect)>,
+    /// Sockets of passive devices and devices.
+    ports: Vec<(Pole, Rect)>,
+    /// Outlets of power distribution devices.
+    outlets: Vec<(u32, u32, Rect)>,
+    /// Cables as drawn: one end of each and its polyline.
+    cables: Vec<(End, Vec<Pos2>)>,
+}
+
+impl Scene {
+    fn screen(&self, x: f32, y: f32) -> Pos2 {
+        pos2(x * self.zoom, y * self.zoom) + self.origin
+    }
+
+    fn world(&self, p: Pos2) -> (f32, f32) {
+        let v = (p - self.origin) / self.zoom;
+        (v.x, v.y)
+    }
+
+    fn rect(&self, c: &Cell) -> Rect {
+        Rect::from_min_size(self.screen(c.x, c.y), vec2(c.w, c.h) * self.zoom)
+    }
+
+    fn hit_port(&self, p: Pos2) -> Option<Pole> {
+        self.ports.iter().rev().find(|(_, r)| r.expand(2.0).contains(p)).map(|x| x.0)
+    }
+
+    fn hit_outlet(&self, p: Pos2) -> Option<(u32, u32)> {
+        self.outlets.iter().rev().find(|(_, _, r)| r.expand(2.0).contains(p)).map(|x| (x.0, x.1))
+    }
+
+    fn hit_item(&self, p: Pos2) -> Option<Item> {
+        self.items.iter().rev().find(|(_, r)| r.contains(p)).map(|x| x.0)
+    }
+
+    fn hit_head(&self, p: Pos2) -> Option<u32> {
+        self.frames.iter().rev().find(|(_, _, h)| h.contains(p)).map(|x| x.0)
+    }
+
+    fn frame_at(&self, p: Pos2) -> Option<u32> {
+        self.frames.iter().rev().find(|(_, w, _)| w.contains(p)).map(|x| x.0)
+    }
+
+    fn hit_cable(&self, p: Pos2) -> Option<End> {
+        self.cables
+            .iter()
+            .find(|(_, pts)| pts.windows(2).any(|w| matches!(w, [a, b] if crate::physical::segment_distance(p, *a, *b) < 5.0)))
+            .map(|c| c.0)
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Colours.
+
+const RACK_BLUE: Color32 = Color32::from_rgb(0x1f, 0x5a, 0xa8);
+const RAIL: Color32 = Color32::from_rgb(0x8a, 0x5a, 0x1c);
+const SHELF_DARK: Color32 = Color32::from_rgb(0x2f, 0x32, 0x37);
+const PLATE: Color32 = Color32::from_rgb(0x1c, 0x1f, 0x24);
+
+/// A cable's colour by kind: straight-through green, cross-over orange, fiber gold, console light
+/// blue, serial red, coaxial brown, phone teal, IoT purple.
+pub(crate) fn cable_color(kind: Cable, tk: &Tokens) -> Color32 {
+    if kind.id().contains("fiber") {
+        return Color32::from_rgb(0xd4, 0xa0, 0x17);
+    }
+    match kind {
+        Cable::Straight | Cable::Auto => Color32::from_rgb(0x3f, 0xa3, 0x4d),
+        Cable::Cross => Color32::from_rgb(0xe8, 0x76, 0x0c),
+        Cable::Console => tk.console_cable,
+        Cable::SerialDce | Cable::SerialDte => tk.serial_cable,
+        Cable::Coaxial => Color32::from_rgb(0x8d, 0x6e, 0x63),
+        Cable::Phone => Color32::from_rgb(0x00, 0x89, 0x7b),
+        Cable::IotCustom => tk.iot_cable,
+        _ => tk.cable,
+    }
+}
+
+fn body_color(d: &Device) -> Color32 {
+    let m = d.catalogue_model();
+    if m.wan() {
+        return Color32::from_rgb(0x2f, 0x80, 0x8c);
+    }
+    match d.kind {
+        DeviceKind::Router => Color32::from_rgb(0x2b, 0x30, 0x38),
+        DeviceKind::Switch => Color32::from_rgb(0x44, 0x68, 0x96),
+        DeviceKind::Hub => Color32::from_rgb(0x4d, 0x82, 0xb3),
+        DeviceKind::Phone => Color32::from_rgb(0x40, 0x44, 0x4c),
+        _ => Color32::from_rgb(0x9a, 0xa2, 0xad),
+    }
+}
+
+fn socket_color(m: Option<Medium>, tk: &Tokens) -> Color32 {
+    match m {
+        Some(Medium::Fiber) => Color32::from_rgb(0x1b, 0x5e, 0x20),
+        Some(Medium::Combo) => Color32::from_rgb(0x2a, 0x2a, 0x48),
+        Some(Medium::Console) => tk.console_cable,
+        Some(Medium::Serial) => tk.serial_cable,
+        Some(Medium::Rs232) => Color32::from_rgb(0x55, 0x60, 0x70),
+        Some(Medium::Coaxial) => Color32::from_rgb(0x8d, 0x6e, 0x63),
+        Some(Medium::Phone) => Color32::from_rgb(0x00, 0x89, 0x7b),
+        _ => Color32::from_rgb(0x18, 0x18, 0x18),
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Front panels.
+
+/// `n` socket rectangles in rows inside `area`: at most `max_cols` to a row, row by row.
+fn socket_rects(area: Rect, n: usize, zoom: f32, max_cols: usize) -> Vec<Rect> {
+    if n == 0 {
+        return Vec::new();
+    }
+    let rows = n.div_ceil(max_cols.max(1));
+    let cols = n.div_ceil(rows);
+    let cw = area.width() / cols as f32;
+    let ch = area.height() / rows as f32;
+    let w = (cw * 0.78).clamp(2.0, 16.0 * zoom.max(1.0));
+    let h = (ch * 0.62).clamp(2.0, 12.0 * zoom.max(1.0));
+    (0..n)
+        .map(|i| {
+            let (r, c) = (i / cols, i % cols);
+            Rect::from_center_size(pos2(area.left() + cw * (c as f32 + 0.5), area.top() + ch * (r as f32 + 0.5)), vec2(w, h))
+        })
+        .collect()
+}
+
+/// A device's front panel: its body, a power light, an antenna for a radio and one socket for
+/// every port that takes a cable (as many as the model has). Returns the sockets by port.
+fn device_panel(p: &Painter, t: &Topology, d: &Device, r: Rect, zoom: f32, tk: &Tokens) -> Vec<(usize, Rect)> {
+    let body = body_color(d);
+    let edge = theme::shade(body, 0.55);
+    let rounding = 3.0 * zoom;
+    let radio = (0..d.ports.len()).any(|i| d.port_medium(i) == Some(Medium::Wireless));
+    if radio {
+        for fx in [0.1, 0.9] {
+            let x = r.left() + r.width() * fx;
+            p.line_segment([pos2(x, r.top()), pos2(x, r.top() - 9.0 * zoom)], Stroke::new((3.0 * zoom).max(1.5), edge));
+        }
+    }
+    p.rect_filled(r, rounding, body);
+    p.rect_stroke(r, rounding, Stroke::new(1.0, edge), StrokeKind::Inside);
+    if d.catalogue_model().id.starts_with("Firewall") {
+        p.rect_filled(Rect::from_min_size(r.min, vec2(r.width(), (3.0 * zoom).max(2.0))), 0.0, Color32::from_rgb(0xc8, 0x3a, 0x2e));
+    }
+    let on = !d.powered_off;
+    p.circle_filled(pos2(r.left() + 7.0 * zoom, r.center().y), (2.6 * zoom).max(1.5), if on { tk.link_up } else { Color32::from_gray(0x70) });
+    let ports: Vec<usize> = (0..d.ports.len()).filter(|i| d.port_medium(*i) != Some(Medium::Wireless)).collect();
+    let area = Rect::from_min_max(r.min + vec2(15.0 * zoom, 7.0 * zoom), r.max - vec2(7.0 * zoom, 4.0 * zoom));
+    let max_cols = if area.width() >= 200.0 * zoom.min(1.0) { 24 } else { 12 };
+    let mut out = Vec::new();
+    for (port, sr) in ports.iter().zip(socket_rects(area, ports.len(), zoom, max_cols)) {
+        let end = End { device: d.id, port: *port };
+        p.rect_filled(sr, 1.0, socket_color(d.port_medium(*port), tk));
+        p.rect_stroke(sr, 1.0, Stroke::new(1.0, Color32::from_gray(0xc8)), StrokeKind::Inside);
+        if on && t.link_at(end).is_some() {
+            let up = netlabcraft_sim::port_up(t, end);
+            let led = Rect::from_min_size(pos2(sr.left(), sr.top() - (2.5 * zoom).max(1.5)), vec2(sr.width(), (1.8 * zoom).max(1.0)));
+            p.rect_filled(led, 0.0, if up { tk.link_up } else { tk.link_down });
+        }
+        out.push((*port, sr));
+    }
+    if !on {
+        p.rect_filled(r, rounding, Color32::from_black_alpha(90));
+    }
+    out
+}
+
+/// A patch panel, a wall mount or a power distribution device: its body and one socket (or
+/// outlet) for every port. Returns the sockets in port order.
+fn fitting_panel(p: &Painter, kind: FittingKind, ports: u32, on: bool, plugged: &[u32], r: Rect, zoom: f32, tk: &Tokens) -> Vec<Rect> {
+    let n = ports as usize;
+    let rounding = 3.0 * zoom;
+    match kind {
+        FittingKind::CopperPatchPanel | FittingKind::FiberPatchPanel => {
+            let body = Color32::from_rgb(0xc9, 0xcf, 0xd6);
+            p.rect_filled(r, rounding, body);
+            p.rect_stroke(r, rounding, Stroke::new(1.0, theme::shade(body, 0.6)), StrokeKind::Inside);
+            let area = Rect::from_min_max(r.min + vec2(14.0 * zoom, 8.0 * zoom), r.max - vec2(14.0 * zoom, 5.0 * zoom));
+            let rects = socket_rects(area, n, zoom, if kind.is_fiber() { 12 } else { 24 });
+            for (i, sr) in rects.iter().enumerate() {
+                if kind.is_fiber() {
+                    // A duplex fiber port: two round connectors.
+                    let c = sr.center();
+                    let dx = sr.width() * 0.22;
+                    for s in [-1.0, 1.0] {
+                        p.circle_filled(c + vec2(s * dx, 0.0), (sr.height() * 0.32).max(1.2), Color32::from_rgb(0x1b, 0x5e, 0x20));
+                    }
+                } else {
+                    p.rect_filled(*sr, 1.0, Color32::from_rgb(0x20, 0x22, 0x26));
+                }
+                if zoom >= 0.9 && (i + 1) % 4 == 0 {
+                    p.text(
+                        pos2(sr.center().x, sr.top() - 1.0),
+                        Align2::CENTER_BOTTOM,
+                        (i + 1).to_string(),
+                        FontId::proportional(7.0 * zoom),
+                        Color32::from_gray(0x55),
+                    );
+                }
+            }
+            for x in [r.left() + 5.0 * zoom, r.right() - 5.0 * zoom] {
+                p.circle_filled(pos2(x, r.center().y), (1.8 * zoom).max(1.0), Color32::from_gray(0x7a));
+            }
+            rects
+        }
+        FittingKind::CopperWallMount | FittingKind::FiberWallMount => {
+            // A wall plate: a square faceplate with its jacks in a row.
+            let side = r.height().min(r.width() * 0.5);
+            let plate = Rect::from_center_size(r.center(), vec2(side * (0.9 + 0.25 * n as f32).min(2.2), side));
+            p.rect_filled(plate, 4.0 * zoom, Color32::from_rgb(0xf1, 0xf1, 0xea));
+            p.rect_stroke(plate, 4.0 * zoom, Stroke::new(1.0, Color32::from_gray(0x9a)), StrokeKind::Inside);
+            let area = plate.shrink2(vec2(6.0 * zoom, side * 0.2));
+            let rects = socket_rects(area, n, zoom * 1.4, 4);
+            for sr in &rects {
+                if kind.is_fiber() {
+                    p.rect_filled(*sr, 2.0, Color32::from_rgb(0x1b, 0x5e, 0x20));
+                    p.circle_filled(sr.center(), (sr.height() * 0.28).max(1.0), Color32::from_rgb(0xd8, 0xe8, 0xd4));
+                } else {
+                    p.rect_filled(*sr, 1.0, Color32::from_rgb(0x20, 0x22, 0x26));
+                    p.rect_filled(
+                        Rect::from_center_size(sr.center_bottom() - vec2(0.0, 2.0), vec2(sr.width() * 0.5, 2.0)),
+                        0.0,
+                        Color32::from_gray(0xd0),
+                    );
+                }
+            }
+            rects
+        }
+        FittingKind::PowerStrip => {
+            p.rect_filled(r, rounding, Color32::from_rgb(0x4b, 0x4f, 0x56));
+            p.rect_stroke(r, rounding, Stroke::new(1.0, Color32::from_gray(0x25)), StrokeKind::Inside);
+            // The switch at the left: a rocker with a light.
+            let sw = Rect::from_center_size(pos2(r.left() + 13.0 * zoom, r.center().y), vec2(10.0 * zoom, 16.0 * zoom).min(r.size() * 0.8));
+            p.rect_filled(sw, 2.0, Color32::from_gray(0x20));
+            p.circle_filled(sw.center(), (2.6 * zoom).max(1.5), if on { tk.link_up } else { tk.link_down });
+            let area = Rect::from_min_max(r.min + vec2(26.0 * zoom, 6.0 * zoom), r.max - vec2(8.0 * zoom, 4.0 * zoom));
+            let rects = socket_rects(area, n, zoom, 16);
+            for (i, sr) in rects.iter().enumerate() {
+                let used = plugged.contains(&(i as u32));
+                p.rect_filled(*sr, 2.0, if used { Color32::from_gray(0x10) } else { Color32::from_gray(0x2c) });
+                for dx in [-0.22, 0.22] {
+                    p.rect_filled(
+                        Rect::from_center_size(sr.center() + vec2(sr.width() * dx, -sr.height() * 0.1), vec2(1.6, sr.height() * 0.35)),
+                        0.0,
+                        Color32::from_gray(0xb0),
+                    );
+                }
+            }
+            rects
+        }
+    }
+}
+
+/// A small picture of a passive device for the device box.
+pub(crate) fn fitting_icon(p: &Painter, r: Rect, kind: FittingKind, tk: &Tokens) {
+    let (w, h) = (r.width(), r.height());
+    match kind {
+        FittingKind::CopperPatchPanel | FittingKind::FiberPatchPanel => {
+            let body = Rect::from_center_size(r.center(), vec2(w * 0.96, h * 0.42));
+            p.rect_filled(body, 2.0, Color32::from_rgb(0xc9, 0xcf, 0xd6));
+            p.rect_stroke(body, 2.0, Stroke::new(1.0, Color32::from_gray(0x7a)), StrokeKind::Inside);
+            for i in 0..6 {
+                let c = pos2(body.left() + body.width() * (i as f32 + 0.5) / 6.0, body.center().y);
+                if kind.is_fiber() {
+                    p.circle_filled(c, h * 0.07, Color32::from_rgb(0x1b, 0x5e, 0x20));
+                } else {
+                    p.rect_filled(Rect::from_center_size(c, vec2(w * 0.09, h * 0.14)), 1.0, Color32::from_rgb(0x20, 0x22, 0x26));
+                }
+            }
+        }
+        FittingKind::CopperWallMount | FittingKind::FiberWallMount => {
+            let plate = Rect::from_center_size(r.center(), vec2(w * 0.58, h * 0.8));
+            p.rect_filled(plate, 3.0, Color32::from_rgb(0xf1, 0xf1, 0xea));
+            p.rect_stroke(plate, 3.0, Stroke::new(1.0, tk.muted), StrokeKind::Inside);
+            for dy in [-0.17, 0.17] {
+                let jack = Rect::from_center_size(plate.center() + vec2(0.0, h * dy), vec2(w * 0.3, h * 0.2));
+                p.rect_filled(jack, 1.0, if kind.is_fiber() { Color32::from_rgb(0x1b, 0x5e, 0x20) } else { Color32::from_rgb(0x20, 0x22, 0x26) });
+            }
+        }
+        FittingKind::PowerStrip => {
+            let body = Rect::from_center_size(r.center(), vec2(w * 0.96, h * 0.36));
+            p.rect_filled(body, 2.0, Color32::from_rgb(0x4b, 0x4f, 0x56));
+            for i in 0..5 {
+                let c = pos2(body.left() + body.width() * (i as f32 + 1.0) / 6.5, body.center().y);
+                p.rect_filled(Rect::from_center_size(c, vec2(w * 0.1, h * 0.18)), 1.0, Color32::from_gray(0x2c));
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Furniture.
+
+fn draw_furniture(p: &Painter, kind: FurnitureKind, size: u32, name: &str, whole: Rect, head: Rect, zoom: f32, tk: &Tokens, picked: bool) {
+    let z = zoom;
+    let frame = match kind {
+        FurnitureKind::Shelf => SHELF_DARK,
+        _ => RACK_BLUE,
+    };
+    p.rect_filled(whole, 3.0 * z, frame);
+    let top = head.bottom();
+    let foot = FRAME_FOOT * z;
+    match kind {
+        FurnitureKind::Rack => {
+            let inner = Rect::from_min_max(pos2(whole.left() + 28.0 * z, top), pos2(whole.right() - 28.0 * z, whole.bottom() - foot));
+            p.rect_filled(inner, 0.0, tk.canvas);
+            for side in [inner.left() - 8.0 * z, inner.right()] {
+                let rail = Rect::from_min_max(pos2(side, top), pos2(side + 8.0 * z, inner.bottom()));
+                p.rect_filled(rail, 0.0, RAIL);
+                for u in 0..size {
+                    let y = top + (u as f32 + 0.5) * RACK_UNIT_H * z;
+                    p.circle_filled(pos2(rail.center().x, y), (1.4 * z).max(0.8), Color32::from_gray(0x20));
+                }
+            }
+            for u in 0..size {
+                let y = top + (u as f32 + 0.5) * RACK_UNIT_H * z;
+                p.text(
+                    pos2(whole.left() + 10.0 * z, y),
+                    Align2::CENTER_CENTER,
+                    (u + 1).to_string(),
+                    FontId::proportional((9.0 * z).clamp(6.0, 14.0)),
+                    Color32::from_gray(0xe0),
+                );
+            }
+        }
+        FurnitureKind::Shelf => {
+            for i in 0..size {
+                let y = top + i as f32 * netlabcraft_model::furniture::SHELF_LEVEL_H * z;
+                let level = Rect::from_min_size(
+                    pos2(whole.left() + 16.0 * z, y),
+                    vec2(whole.width() - 32.0 * z, (netlabcraft_model::furniture::SHELF_LEVEL_H - 8.0) * z),
+                );
+                p.rect_filled(level, 0.0, tk.canvas);
+            }
+        }
+        FurnitureKind::Table => {
+            let inner = Rect::from_min_max(pos2(whole.left() + 16.0 * z, top + 8.0 * z), pos2(whole.right() - 16.0 * z, whole.bottom() - foot));
+            p.rect_filled(inner, 0.0, tk.canvas);
+            p.rect_filled(Rect::from_min_max(pos2(whole.left(), top), pos2(whole.right(), top + 8.0 * z)), 0.0, SHELF_DARK);
+        }
+    }
+    p.rect_filled(head, 3.0 * z, theme::shade(frame, 0.8));
+    p.text(head.center(), Align2::CENTER_CENTER, name, FontId::proportional((15.0 * z).clamp(9.0, 24.0)), Color32::WHITE);
+    if picked {
+        p.rect_stroke(whole.expand(3.0), 4.0, Stroke::new(2.0, tk.selection), StrokeKind::Outside);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Cables.
+
+/// A cubic curve from `a` to `b` that leaves each end towards the other one, sideways when they
+/// are far apart across and downwards when they are above each other; `lane` shifts it so
+/// cables side by side stay apart.
+fn curve(a: Pos2, b: Pos2, lane: f32, zoom: f32) -> Vec<Pos2> {
+    let d = b - a;
+    let k = (d.length() * 0.5).clamp(30.0 * zoom, 220.0 * zoom);
+    let (c1, c2) = if d.x.abs() > d.y.abs() * 1.5 {
+        let s = if d.x >= 0.0 { 1.0 } else { -1.0 };
+        (a + vec2(s * k, lane), b + vec2(-s * k, lane))
+    } else {
+        let s = if d.y >= 0.0 { 1.0 } else { -1.0 };
+        (a + vec2(lane, s * k), b + vec2(lane, -s * k))
+    };
+    (0..=28)
+        .map(|i| {
+            let t = i as f32 / 28.0;
+            let u = 1.0 - t;
+            let f = |a: f32, b: f32, c: f32, d: f32| u * u * u * a + 3.0 * u * u * t * b + 3.0 * u * t * t * c + t * t * t * d;
+            pos2(f(a.x, c1.x, c2.x, b.x), f(a.y, c1.y, c2.y, b.y))
+        })
+        .collect()
+}
+
+fn pole_json(t: &Topology, p: Pole) -> Value {
+    match p {
+        Pole::Panel { fitting, port } => json!({"panel": fitting, "port": port.saturating_add(1)}),
+        Pole::Device(e) => {
+            let name = t.device(e.device).and_then(|d| d.ports.get(e.port)).map(|p| p.name.clone()).unwrap_or_default();
+            json!({"device": e.device.0, "port": name})
+        }
+    }
+}
+
+fn item_json(i: Item) -> Value {
+    match i {
+        Item::Device(d) => json!({"device": d.0}),
+        Item::Fitting(f) => json!({"passive": f}),
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Drawing the scene.
+
+/// Draws the closet and returns where everything is.
+fn build(app: &PacketApp, p: &Painter, origin: Vec2, place: u32) -> Scene {
+    let t = &app.session.topology;
+    let tk = theme::tokens(app.ui.dark);
+    let zoom = app.ui.zoom;
+    let layout = t.closet_layout(place);
+    let mut sc = Scene { origin, zoom, frames: Vec::new(), items: Vec::new(), ports: Vec::new(), outlets: Vec::new(), cables: Vec::new() };
+    let picked = |f: u32| app.ui.physical.closet.rename.as_ref().is_some_and(|(th, _)| *th == Thing::Furniture(f));
+    let mut kinds: BTreeMap<u32, FurnitureKind> = BTreeMap::new();
+    for (id, cell) in &layout.frames {
+        let Some(f) = t.furniture_piece(*id) else { continue };
+        kinds.insert(*id, f.kind);
+        let whole = sc.rect(cell);
+        let head = Rect::from_min_size(whole.min, vec2(whole.width(), FRAME_HEAD * zoom));
+        draw_furniture(p, f.kind, f.size, &f.name, whole, head, zoom, &tk, picked(*id));
+        sc.frames.push((*id, whole, head));
+    }
+    let label_h = 15.0 * zoom;
+    let mut panels: BTreeMap<DeviceId, Rect> = BTreeMap::new();
+    let mut strips: BTreeMap<u32, Vec<Rect>> = BTreeMap::new();
+    for placed in &layout.items {
+        let Placed { item, cell, furniture } = *placed;
+        let c = sc.rect(&cell);
+        let in_rack = furniture.and_then(|f| kinds.get(&f)).is_some_and(|k| *k == FurnitureKind::Rack);
+        let panel = if in_rack {
+            Rect::from_min_max(c.min + vec2(0.0, zoom), pos2(c.right(), c.bottom() - label_h))
+        } else {
+            Rect::from_min_size(pos2(c.left() + 8.0 * zoom, c.bottom() - label_h - 64.0 * zoom), vec2(c.width() - 16.0 * zoom, 64.0 * zoom))
+        };
+        if in_rack {
+            // Rack ears: the plate the item is screwed to the rails by.
+            for x in [panel.left() - 5.0 * zoom, panel.right()] {
+                p.rect_filled(Rect::from_min_max(pos2(x, panel.top()), pos2(x + 5.0 * zoom, panel.bottom())), 0.0, Color32::from_gray(0xa8));
+                p.circle_filled(pos2(x + 2.5 * zoom, panel.center().y), (1.2 * zoom).max(0.8), Color32::from_gray(0x40));
+            }
+        }
+        let name = t.item_name(item);
+        match item {
+            Item::Device(d) => {
+                let Some(dev) = t.device(d) else { continue };
+                if app.ui.selected == Some(d) {
+                    p.rect_stroke(panel.expand(4.0), 4.0, Stroke::new(2.0, tk.selection), StrokeKind::Outside);
+                }
+                for (port, sr) in device_panel(p, t, dev, panel, zoom, &tk) {
+                    sc.ports.push((Pole::Device(End { device: d, port }), sr));
+                }
+                panels.insert(d, panel);
+            }
+            Item::Fitting(i) => {
+                let Some(f) = t.fitting(i) else { continue };
+                let plugged: Vec<u32> = t.plugs_in(i).iter().map(|g| g.outlet).collect();
+                let rects = fitting_panel(p, f.kind, f.ports, f.on, &plugged, panel, zoom, &tk);
+                if f.kind == FittingKind::PowerStrip {
+                    for (n, r) in rects.iter().enumerate() {
+                        sc.outlets.push((i, n as u32, *r));
+                    }
+                    strips.insert(i, rects);
+                } else {
+                    for (n, r) in rects.iter().enumerate() {
+                        sc.ports.push((Pole::Panel { fitting: i, port: n as u32 }, *r));
+                    }
+                }
+            }
+        }
+        let galley = p.layout_no_wrap(name, FontId::proportional((12.0 * zoom).clamp(8.0, 20.0)), tk.text);
+        let at = Align2::CENTER_TOP.anchor_size(pos2(c.center().x, c.bottom() - label_h + 1.0), galley.size());
+        p.rect_filled(at.expand2(vec2(3.0, 0.0)), 3.0, if in_rack { PLATE } else { tk.canvas.gamma_multiply(0.85) });
+        p.galley(at.min, galley, if in_rack { Color32::WHITE } else { tk.text });
+        sc.items.push((item, c));
+    }
+    // Power cords: from a strip's outlet up to what is plugged into it.
+    for g in &t.physical.plugs {
+        let (Some(outlet), Some(panel)) = (strips.get(&g.strip).and_then(|v| v.get(g.outlet as usize)), panels.get(&g.device)) else { continue };
+        let pts = curve(outlet.center(), pos2(panel.right() - 6.0 * zoom, panel.center().y), 0.0, zoom);
+        p.add(egui::Shape::line(pts, Stroke::new((1.6 * zoom).max(1.0), Color32::from_gray(0x16))));
+    }
+    // Patch wires: cords between panel ports and drops to device ports.
+    let pole_pos = |pole: Pole| sc.ports.iter().find(|(q, _)| *q == pole).map(|(_, r)| r.center());
+    let mut lanes = 0usize;
+    let mut wires: Vec<(Vec<Pos2>, Color32)> = Vec::new();
+    for w in &t.physical.patch_wires {
+        let (Some(a), Some(b)) = (pole_pos(w.a), pole_pos(w.b)) else { continue };
+        let fiber = [w.a, w.b].iter().any(|q| matches!(q, Pole::Panel { fitting, .. } if t.fitting(*fitting).is_some_and(|f| f.kind.is_fiber())));
+        let color = if fiber { Color32::from_rgb(0xd4, 0xa0, 0x17) } else { Color32::from_rgb(0x6a, 0x7a, 0x8a) };
+        lanes += 1;
+        let lane = ((lanes % 5) as f32 - 2.0) * 4.0 * zoom;
+        wires.push((curve(a, b, lane, zoom), color));
+    }
+    for (pts, color) in wires {
+        p.add(egui::Shape::line(pts, Stroke::new((2.0 * zoom).max(1.0), color)));
+    }
+    // Cables, from port to port, in their kind's colour; one that is flagged has a red halo and
+    // the picked one (or one of the selected device) a bright one.
+    let patched: Vec<(End, End)> = t.patch_paths().iter().map(|x| (x.a, x.b)).collect();
+    let mut cables: Vec<(End, End, Cable, bool)> = Vec::new();
+    for l in &t.links {
+        if patched.iter().any(|(a, b)| (*a == l.a && *b == l.b) || (*a == l.b && *b == l.a)) {
+            continue;
+        }
+        cables.push((l.a, l.b, t.resolved_cable(l), netlabcraft_sim::cable_problem(t, l.a).is_some()));
+    }
+    for c in &t.consoles {
+        let port_of =
+            |id: DeviceId| t.device(id).and_then(|d| d.console_port_name().and_then(|n| d.port_index(n)).map(|port| End { device: id, port }));
+        if let (Some(a), Some(b)) = (port_of(c.pc), port_of(c.device)) {
+            cables.push((a, b, Cable::Console, false));
+        }
+    }
+    let end_pos = |e: End| sc.ports.iter().find(|(q, _)| *q == Pole::Device(e)).map(|(_, r)| r.center());
+    let mut drawn: Vec<(End, Vec<Pos2>)> = Vec::new();
+    let mut stubs: Vec<(Pos2, String, Color32)> = Vec::new();
+    for (n, (a, b, kind, problem)) in cables.iter().enumerate() {
+        let color = cable_color(*kind, &tk);
+        let width = (2.4 * zoom).clamp(1.4, 4.0);
+        let hot = app.ui.physical.closet.cable.is_some_and(|c| c == *a || c == *b);
+        let near = app.ui.selected.is_some_and(|d| d == a.device || d == b.device);
+        match (end_pos(*a), end_pos(*b)) {
+            (Some(pa), Some(pb)) => {
+                let lane = ((n % 7) as f32 - 3.0) * 5.0 * zoom;
+                let pts = curve(pa, pb, lane, zoom);
+                if hot || near {
+                    p.add(egui::Shape::line(pts.clone(), Stroke::new(width + 5.0, tk.selection.gamma_multiply(if hot { 0.7 } else { 0.35 }))));
+                }
+                if *problem {
+                    p.add(egui::Shape::line(pts.clone(), Stroke::new(width + 5.0, tk.link_down.gamma_multiply(0.55))));
+                }
+                p.add(egui::Shape::line(pts.clone(), Stroke::new(width, color)));
+                for q in [pa, pb] {
+                    p.circle_filled(q, width * 0.9, color);
+                }
+                drawn.push((*a, pts));
+            }
+            (one, other) => {
+                // A cable that leaves this closet: a stub up from its port, labelled with the far side.
+                let (here, far) = if one.is_some() { (one, *b) } else { (other, *a) };
+                let Some(pt) = here else { continue };
+                let name = t.device(far.device).map(|d| d.display_name().to_string()).unwrap_or_default();
+                let place_name = t.home_of(far.device).and_then(|h| t.place(h.place)).map(|x| tr(&x.name).to_string()).unwrap_or_default();
+                let tip = pt - vec2(0.0, 34.0 * zoom);
+                let pts = vec![pt, tip];
+                if *problem {
+                    p.add(egui::Shape::line(pts.clone(), Stroke::new(width + 5.0, tk.link_down.gamma_multiply(0.55))));
+                }
+                p.add(egui::Shape::line(pts.clone(), Stroke::new(width, color)));
+                stubs.push((tip, format!("{name} ({place_name})"), color));
+                let own = if one.is_some() { *a } else { *b };
+                drawn.push((own, pts));
+            }
+        }
+    }
+    for (tip, text, color) in stubs {
+        let galley = p.layout_no_wrap(text, FontId::proportional((11.0 * zoom).clamp(8.0, 16.0)), color);
+        let at = Align2::CENTER_BOTTOM.anchor_size(tip, galley.size());
+        p.rect_filled(at.expand2(vec2(3.0, 1.0)), 3.0, tk.canvas.gamma_multiply(0.9));
+        p.galley(at.min, galley, color);
+    }
+    sc.cables = drawn;
+    sc
+}
+
+/// What is being dragged, drawn over the scene: the slot an item would take, or the rubber band.
+fn draw_feedback(app: &PacketApp, p: &Painter, sc: &Scene, pointer: Option<Pos2>) {
+    let (Some(drag), Some(at)) = (app.ui.physical.closet.drag, pointer) else { return };
+    let tk = theme::tokens(app.ui.dark);
+    let t = &app.session.topology;
+    match drag {
+        Drag::Item(item) => {
+            let Some(f) = sc.frame_at(at).and_then(|id| t.furniture_piece(id)) else { return };
+            let (_, wy) = sc.world(at);
+            let Some(slot) = f.slot_at(wy) else { return };
+            let units = t.mount_of(item).map_or(1, |m| m.units);
+            let (w, h) = f.dims();
+            let (x, y, ww, hh) = match f.kind {
+                FurnitureKind::Rack => (f.x + 28.0, f.y + FRAME_HEAD + slot as f32 * RACK_UNIT_H, w - 56.0, units as f32 * RACK_UNIT_H),
+                FurnitureKind::Shelf => (
+                    f.x + 16.0,
+                    f.y + FRAME_HEAD + slot as f32 * netlabcraft_model::furniture::SHELF_LEVEL_H,
+                    w - 32.0,
+                    netlabcraft_model::furniture::SHELF_LEVEL_H - 8.0,
+                ),
+                FurnitureKind::Table => (f.x + 16.0, f.y + FRAME_HEAD, w - 32.0, h - FRAME_HEAD - FRAME_FOOT),
+            };
+            let r = sc.rect(&Cell { x, y, w: ww, h: hh });
+            p.rect_filled(r, 2.0, tk.selection.gamma_multiply(0.18));
+            p.rect_stroke(r, 2.0, Stroke::new(1.5, tk.selection), StrokeKind::Inside);
+        }
+        Drag::Wire(from) => {
+            if let Some((_, r)) = sc.ports.iter().find(|(q, _)| *q == from) {
+                p.add(egui::Shape::line(curve(r.center(), at, 0.0, sc.zoom), Stroke::new(2.0, tk.selection)));
+            }
+        }
+        Drag::Plug(strip, outlet) => {
+            if let Some((_, _, r)) = sc.outlets.iter().find(|(s, o, _)| *s == strip && *o == outlet) {
+                p.add(egui::Shape::line(curve(r.center(), at, 0.0, sc.zoom), Stroke::new(2.0, tk.selection)));
+            }
+        }
+        Drag::Furniture(_) => {}
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The view.
+
+/// Draws the wiring closet and handles the pointer. `rect` is the workspace, `resp` its response.
+pub(crate) fn show(app: &mut PacketApp, ui: &mut Ui, resp: &egui::Response, painter: &Painter, rect: Rect, place: u32) {
+    let origin = rect.min.to_vec2() + app.ui.pan;
+    let pointer = resp.interact_pointer_pos().or_else(|| resp.hover_pos());
+    let sc = build(app, painter, origin, place);
+    draw_feedback(app, painter, &sc, pointer);
+    app.ui.pointer = resp.hover_pos().map(|p| sc.world(p));
+    accessible_nodes(app, ui, &sc, rect);
+    interact(app, ui, resp, &sc, place);
+}
+
+/// A screen-reader node for every piece of furniture and every item, like the logical workspace's.
+fn accessible_nodes(app: &mut PacketApp, ui: &mut Ui, sc: &Scene, canvas: Rect) {
+    let t = &app.session.topology;
+    let mut nodes: Vec<(egui::Id, Rect, String, bool)> = Vec::new();
+    for (id, _, head) in &sc.frames {
+        let Some(f) = t.furniture_piece(*id) else { continue };
+        let label = match f.kind {
+            FurnitureKind::Rack => trf("{}, {} units", &[&f.name, &f.size]),
+            FurnitureKind::Shelf => trf("{}, {} levels", &[&f.name, &f.size]),
+            FurnitureKind::Table => f.name.clone(),
+        };
+        nodes.push((egui::Id::unique(("closet-furniture", *id)), *head, label, false));
+    }
+    for (item, cell) in &sc.items {
+        let name = t.item_name(*item);
+        let label = match t.mount_of(*item).and_then(|m| t.furniture_piece(m.furniture)) {
+            Some(f) => trf("{}, on {}", &[&name, &f.name]),
+            None => name,
+        };
+        let (key, selected) = match item {
+            Item::Device(d) => ((0u8, d.0), app.ui.selected == Some(*d)),
+            Item::Fitting(i) => ((1u8, *i), false),
+        };
+        nodes.push((egui::Id::unique(("closet-item", key.0, key.1)), *cell, label, selected));
+    }
+    let mut select = None;
+    for (id, rect, label, selected) in &nodes {
+        let r = ui.interact(rect.intersect(canvas), *id, Sense::click());
+        r.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, *selected, label.clone()));
+        if r.gained_focus() {
+            select = Some(*id);
+        }
+    }
+    // Moving focus to a device selects it, as on the logical workspace.
+    if let Some(id) = select {
+        for (item, _) in &sc.items {
+            if let Item::Device(d) = item
+                && egui::Id::unique(("closet-item", 0u8, d.0)) == id
+            {
+                app.ui.selected = Some(*d);
+            }
+        }
+    }
+}
+
+fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, sc: &Scene, place: u32) {
+    let pointer = resp.interact_pointer_pos().or_else(|| resp.hover_pos());
+    let select_tool = app.ui.tool == Tool::Select && !ui.input(|i| i.pointer.middle_down());
+    if resp.drag_started() {
+        app.ui.physical.closet.panning = true;
+        if select_tool && let Some(p) = pointer {
+            let drag = if let Some(pole) = sc.hit_port(p) {
+                Some(Drag::Wire(pole))
+            } else if let Some((s, o)) = sc.hit_outlet(p) {
+                Some(Drag::Plug(s, o))
+            } else if let Some(item) = sc.hit_item(p) {
+                Some(Drag::Item(item))
+            } else {
+                sc.hit_head(p).map(Drag::Furniture)
+            };
+            if let Some(d) = drag {
+                if let Drag::Furniture(_) = d {
+                    app.run("edit.checkpoint", json!({}));
+                }
+                if let Drag::Item(Item::Device(dev)) = d {
+                    app.ui.selected = Some(dev);
+                }
+                app.ui.physical.closet.drag = Some(d);
+                app.ui.physical.closet.panning = false;
+            }
+        }
+    }
+    if resp.dragged() {
+        match app.ui.physical.closet.drag {
+            Some(Drag::Furniture(id)) => {
+                let delta = resp.drag_delta() / sc.zoom;
+                if let Some(f) = app.session.topology.furniture_piece(id).cloned() {
+                    app.run("furniture.move", json!({"furniture": id, "x": f.x + delta.x, "y": f.y + delta.y, "transient": true}));
+                }
+            }
+            Some(_) => {}
+            None if app.ui.physical.closet.panning => app.ui.pan += resp.drag_delta(),
+            None => {}
+        }
+    }
+    if resp.drag_stopped() {
+        let at = pointer.or_else(|| ui.input(|i| i.pointer.latest_pos()));
+        let drag = app.ui.physical.closet.drag.take();
+        app.ui.physical.closet.panning = false;
+        if let (Some(drag), Some(at)) = (drag, at) {
+            drop_on(app, sc, drag, at);
+        }
+    }
+    if resp.double_clicked()
+        && let Some(p) = pointer
+        && let Some(Item::Device(d)) = sc.hit_item(p)
+    {
+        crate::open_console(app, d);
+        return;
+    }
+    if resp.secondary_clicked()
+        && let Some(p) = pointer
+    {
+        let (wx, wy) = sc.world(p);
+        app.ui.physical.closet.context = Some(if let Some(pole) = sc.hit_port(p) {
+            Target::Port(pole)
+        } else if let Some((s, o)) = sc.hit_outlet(p) {
+            Target::Outlet(s, o)
+        } else if let Some(item) = sc.hit_item(p) {
+            if let Item::Device(d) = item {
+                app.ui.selected = Some(d);
+            }
+            Target::Item(item)
+        } else if let Some(f) = sc.hit_head(p) {
+            Target::Furniture(f)
+        } else if let Some(e) = sc.hit_cable(p) {
+            Target::Cable(e)
+        } else {
+            Target::Empty(wx, wy)
+        });
+    }
+    if let Some(target) = app.ui.physical.closet.context {
+        resp.context_menu(|ui| context_menu(app, ui, target, place));
+    }
+    if resp.clicked()
+        && let Some(p) = pointer
+    {
+        let hit_item = sc.hit_item(p);
+        if let Tool::Place(id) = app.ui.tool {
+            if hit_item.is_none() {
+                place_tool(app, sc, id, p, place);
+            }
+            return;
+        }
+        app.ui.physical.closet.cable = if hit_item.is_none() && sc.hit_port(p).is_none() { sc.hit_cable(p) } else { None };
+        app.ui.selected = match hit_item {
+            Some(Item::Device(d)) => Some(d),
+            _ => None,
+        };
+    }
+}
+
+/// A drag ended at `at`.
+fn drop_on(app: &mut PacketApp, sc: &Scene, drag: Drag, at: Pos2) {
+    match drag {
+        Drag::Item(item) => {
+            let t = &app.session.topology;
+            let target = sc.frame_at(at).and_then(|id| t.furniture_piece(id).map(|f| (f.id, f.slot_at(sc.world(at).1))));
+            match target {
+                Some((furniture, slot)) => {
+                    let now = t.mount_of(item);
+                    if now.is_some_and(|m| m.furniture == furniture && Some(m.slot) == slot) {
+                        return;
+                    }
+                    let units = now.map_or(1, |m| m.units);
+                    let mut p = item_json(item);
+                    p["furniture"] = json!(furniture);
+                    p["units"] = json!(units);
+                    if let Some(s) = slot {
+                        p["slot"] = json!(s + 1);
+                    }
+                    app.run("furniture.mount", p);
+                }
+                None => {
+                    if t.mount_of(item).is_some() {
+                        app.run("furniture.unmount", item_json(item));
+                    }
+                }
+            }
+        }
+        Drag::Wire(from) => {
+            if let Some(to) = sc.hit_port(at).filter(|q| *q != from) {
+                let t = &app.session.topology;
+                let params = json!({"a": pole_json(t, from), "b": pole_json(t, to)});
+                app.run("patch.wire", params);
+            }
+        }
+        Drag::Plug(strip, outlet) => {
+            if let Some(Item::Device(d)) = sc.hit_item(at) {
+                app.run("power.plug", json!({"device": d.0, "strip": strip, "outlet": outlet.saturating_add(1)}));
+            }
+        }
+        Drag::Furniture(_) => {}
+    }
+}
+
+/// A click with a palette tile picked: a passive device, or a device, goes where it was clicked
+/// (on the furniture there, else on the floor).
+fn place_tool(app: &mut PacketApp, sc: &Scene, id: &'static str, at: Pos2, place: u32) {
+    let (wx, wy) = sc.world(at);
+    let t = &app.session.topology;
+    let spot = sc.frame_at(at).and_then(|f| t.furniture_piece(f).map(|x| (x.id, x.slot_at(wy))));
+    if FittingKind::from_id(id).is_some() {
+        let mut p = json!({"kind": id, "place": place});
+        if let Some((f, slot)) = spot {
+            p["furniture"] = json!(f);
+            if let Some(s) = slot {
+                p["slot"] = json!(s + 1);
+            }
+        }
+        app.run("passive.add", p);
+        return;
+    }
+    if let Some(v) = app.run("device.add", json!({"model": id, "x": wx.round(), "y": wy.round()})) {
+        let dev = v.get("id").and_then(Value::as_u64).and_then(|i| u32::try_from(i).ok());
+        app.ui.selected = dev.map(DeviceId);
+        if let (Some(d), Some((f, slot))) = (dev, spot) {
+            let mut p = json!({"device": d, "furniture": f});
+            if let Some(s) = slot {
+                p["slot"] = json!(s + 1);
+            }
+            app.run("furniture.mount", p);
+        }
+    }
+}
+
+fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target, place: u32) {
+    let t = &app.session.topology;
+    let furniture: Vec<(u32, String)> = t.furniture_in(place).iter().map(|f| (f.id, f.name.clone())).collect();
+    let strips: Vec<(u32, String)> =
+        t.fittings_in(place).iter().filter(|f| f.kind == FittingKind::PowerStrip).map(|f| (f.id, f.name.clone())).collect();
+    match target {
+        Target::Furniture(id) => {
+            let Some(f) = t.furniture_piece(id) else {
+                ui.close();
+                return;
+            };
+            ui.label(egui::RichText::new(&f.name).strong());
+            if ui.button(tl("Rename…")).clicked() {
+                app.ui.physical.closet.rename = Some((Thing::Furniture(id), f.name.clone()));
+                ui.close();
+            }
+            if ui.button(tl("Remove")).clicked() {
+                app.run("furniture.remove", json!({"furniture": id}));
+                ui.close();
+            }
+        }
+        Target::Item(item) => {
+            let name = t.item_name(item);
+            let mounted = t.mount_of(item).is_some();
+            let strip_kind = matches!(item, Item::Fitting(i) if t.fitting(i).is_some_and(|f| f.kind == FittingKind::PowerStrip));
+            ui.label(egui::RichText::new(&name).strong());
+            match item {
+                Item::Device(d) => {
+                    if ui.button(tl("Open Device")).clicked() {
+                        crate::open_console(app, d);
+                        ui.close();
+                    }
+                }
+                Item::Fitting(i) => {
+                    if ui.button(tl("Rename…")).clicked() {
+                        app.ui.physical.closet.rename = Some((Thing::Passive(i), name.clone()));
+                        ui.close();
+                    }
+                    if strip_kind {
+                        let on = t.fitting(i).is_some_and(|f| f.on);
+                        if ui.button(if on { tl("Switch Off") } else { tl("Switch On") }).clicked() {
+                            app.run("power.strip", json!({"strip": i, "on": !on}));
+                            ui.close();
+                        }
+                    }
+                }
+            }
+            ui.menu_button(tl("Move to"), |ui| {
+                for (id, n) in &furniture {
+                    if ui.button(n).clicked() {
+                        let mut p = item_json(item);
+                        p["furniture"] = json!(id);
+                        app.run("furniture.mount", p);
+                        ui.close();
+                    }
+                }
+            });
+            if mounted && ui.button(tl("Take off the furniture")).clicked() {
+                app.run("furniture.unmount", item_json(item));
+                ui.close();
+            }
+            if let Item::Device(d) = item {
+                ui.menu_button(tl("Plug into"), |ui| {
+                    for (id, n) in &strips {
+                        if ui.button(n).clicked() {
+                            app.run("power.plug", json!({"device": d.0, "strip": id}));
+                            ui.close();
+                        }
+                    }
+                });
+                if app.session.topology.plug_of(d).is_some() && ui.button(tl("Unplug")).clicked() {
+                    app.run("power.unplug", json!({"device": d.0}));
+                    ui.close();
+                }
+            } else if let Item::Fitting(i) = item
+                && ui.button(tl("Remove")).clicked()
+            {
+                app.run("passive.remove", json!({"passive": i}));
+                ui.close();
+            }
+        }
+        Target::Port(pole) => {
+            if t.patch_wires_at(pole).is_empty() {
+                ui.label(tl("Drag from this port to another to wire them."));
+            } else if ui.button(tl("Remove Patch Wires")).clicked() {
+                let params = json!({"a": pole_json(t, pole)});
+                app.run("patch.unwire", params);
+                ui.close();
+            }
+        }
+        Target::Outlet(strip, outlet) => {
+            match t.plugs_in(strip).iter().find(|g| g.outlet == outlet).map(|g| g.device) {
+                Some(d) => {
+                    if ui.button(tl("Unplug")).clicked() {
+                        app.run("power.unplug", json!({"device": d.0}));
+                        ui.close();
+                    }
+                }
+                None => {
+                    ui.label(tl("Drag from this outlet to a device to plug it in."));
+                }
+            };
+        }
+        Target::Cable(end) => {
+            let Some(l) = t.link_at(end).copied() else {
+                ui.close();
+                return;
+            };
+            ui.label(egui::RichText::new(format!("{} - {}", t.end_label(l.a), t.end_label(l.b))).strong());
+            if let Some(why) = netlabcraft_sim::cable_problem(t, l.a) {
+                ui.label(egui::RichText::new(crate::i18n::tr_any(&why)).color(theme::tokens(app.ui.dark).error));
+            }
+            if ui.button(tl("Cable Length…")).clicked() {
+                let m = t.cable_length(&l).meters;
+                app.ui.physical.length = Some((l.a, m.to_string()));
+                ui.close();
+            }
+        }
+        Target::Empty(x, y) => {
+            ui.menu_button(tl("Add to this closet"), |ui| {
+                for kind in FurnitureKind::ALL {
+                    if ui.button(furniture_label(kind)).clicked() {
+                        app.run("furniture.add", json!({"kind": kind.id(), "place": place, "x": x.round(), "y": y.round()}));
+                        ui.close();
+                    }
+                }
+                ui.separator();
+                for kind in FittingKind::ALL {
+                    if ui.button(tl(kind.label())).clicked() {
+                        app.run("passive.add", json!({"kind": kind.id(), "place": place}));
+                        ui.close();
+                    }
+                }
+            });
+        }
+    }
+}
+
+/// The Rename dialog.
+pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
+    let Some((thing, mut name)) = app.ui.physical.closet.rename.clone() else { return };
+    let (mut open, mut ok) = (true, false);
+    egui::Window::new(tl("Rename")).id(egui::Id::unique("closet_rename")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
+        let l = ui.label(tl("Name:"));
+        let r = ui.add(egui::TextEdit::singleline(&mut name)).labelled_by(l.id);
+        if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            ok = true;
+        }
+        if ui.button(tl("OK")).clicked() {
+            ok = true;
+        }
+    });
+    app.ui.physical.closet.rename = if ok {
+        match thing {
+            Thing::Furniture(id) => app.run("furniture.rename", json!({"furniture": id, "name": name})),
+            Thing::Passive(id) => app.run("passive.rename", json!({"passive": id, "name": name})),
+        };
+        None
+    } else if open {
+        Some((thing, name))
+    } else {
+        None
+    };
+}

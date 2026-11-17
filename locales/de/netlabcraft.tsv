@@ -1720,3 +1720,33 @@ event	write request for	Schreibanfrage für
 	Tab and the arrow keys move between devices and cables; Enter or Space opens the one in focus.	Tab und die Pfeiltasten wechseln zwischen Geräten und Kabeln; Eingabe oder Leertaste öffnet das fokussierte.
 	The Workspace List in the View menu names every device in a table you can move through.	Die Arbeitsbereichsliste im Menü Ansicht nennt jedes Gerät in einer Tabelle, in der man sich bewegen kann.
 	Everything the menus do can also be typed, from the command line or by an agent.	Alles, was die Menüs tun, lässt sich auch eintippen, über die Befehlszeile oder durch einen Agenten.
+	Rename…	Umbenennen…
+	Switch Off	Ausschalten
+	Switch On	Einschalten
+	Take off the furniture	Vom Möbelstück nehmen
+	Plug into	Einstecken in
+	Unplug	Ausstecken
+	Remove Patch Wires	Patchkabel entfernen
+	Drag from this port to another to wire them.	Von diesem Port zu einem anderen ziehen, um sie zu verbinden.
+	Drag from this outlet to a device to plug it in.	Von dieser Steckdose zu einem Gerät ziehen, um es einzustecken.
+	Add to this closet	Zu diesem Verteilerraum hinzufügen
+	Rename	Umbenennen
+	Name:	Name:
+	{}, {} units	{}, {} Einheiten
+	{}, {} levels	{}, {} Ebenen
+	{}, on {}	{}, auf {}
+	Rack	Rack
+	Shelf	Regal
+furniture	Table	Tisch
+	Copper Patch Panel	Patchfeld (Kupfer)
+	Fiber Patch Panel	Patchfeld (Glasfaser)
+	Copper Wall Mount	Wandanschlussdose (Kupfer)
+	Fiber Wall Mount	Wandanschlussdose (Glasfaser)
+	Power Distribution Device	Stromverteiler
+	Copper patch panel: joins device ports through the structured cabling	Patchfeld (Kupfer): verbindet Geräteanschlüsse über die strukturierte Verkabelung
+	Fiber patch panel: joins fiber device ports through the structured cabling	Patchfeld (Glasfaser): verbindet Glasfaseranschlüsse über die strukturierte Verkabelung
+	Copper wall mount: a wall outlet that carries a link through the building's cabling	Wandanschlussdose (Kupfer): eine Wanddose, die eine Verbindung über die Gebäudeverkabelung führt
+	Fiber wall mount: a fiber wall outlet that carries a link through the building's cabling	Wandanschlussdose (Glasfaser): eine Glasfaser-Wanddose, die eine Verbindung über die Gebäudeverkabelung führt
+	Structured Cabling	Strukturierte Verkabelung
+	Drag a device onto a rack, shelf or table · drag between two ports to patch them, or from an outlet to a device to plug it in · right-click for more	Gerät auf ein Rack, Regal oder einen Tisch ziehen · zwischen zwei Ports ziehen, um sie zu patchen, oder von einer Steckdose zu einem Gerät, um es einzustecken · Rechtsklick für mehr
+	Patch panels and wall mounts stand in a wiring closet: open one in the Physical view first.	Patchfelder und Wanddosen stehen in einem Verteilerraum: Öffnen Sie zuerst einen in der physischen Ansicht.

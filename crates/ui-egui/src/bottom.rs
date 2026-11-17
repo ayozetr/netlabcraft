@@ -3,6 +3,7 @@
 
 use egui::{RichText, Sense, Ui, vec2};
 use netlabcraft_model::cable::Cable;
+use netlabcraft_model::furniture::FittingKind;
 use netlabcraft_model::{DeviceKind, models};
 
 use crate::i18n::tl;
@@ -29,6 +30,8 @@ pub enum Sub {
     Cellular,
     Hosts,
     Cables,
+    /// Patch panels and wall mounts: the passive devices of a structured cabling run.
+    Cabling,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -49,6 +52,14 @@ struct Tile {
     short: &'static str,
     multilayer: bool,
     long: &'static str,
+}
+
+/// Opens the device box on its Structured Cabling items (Ctrl+Alt+K).
+pub fn open_cabling(app: &mut PacketApp) {
+    let b = &mut app.ui.bottom;
+    b.category = Category::Connections;
+    b.sub = Sub::Cabling;
+    b.search.clear();
 }
 
 fn sub_of(kind: DeviceKind) -> Sub {
@@ -79,6 +90,14 @@ fn tiles() -> Vec<Tile> {
             multilayer: m.multilayer(),
         })
         .collect();
+    t.extend(FittingKind::CABLING.iter().map(|&k| Tile {
+        sub: Sub::Cabling,
+        kind: None,
+        tool: Tool::Place(k.id()),
+        short: k.label(),
+        multilayer: false,
+        long: k.description(),
+    }));
     t.extend(Cable::ALL.iter().map(|&c| Tile {
         sub: Sub::Cables,
         kind: None,
@@ -151,7 +170,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                         (Sub::Cellular, "Cellular"),
                     ],
                     Category::EndDevices => &[(Sub::Hosts, "End Devices")],
-                    Category::Connections => &[(Sub::Cables, "Connections")],
+                    Category::Connections => &[(Sub::Cables, "Connections"), (Sub::Cabling, "Structured Cabling")],
                 };
                 for (sub, label) in subs {
                     let sel = b.sub == *sub && b.search.is_empty();
@@ -163,6 +182,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                         Sub::Cellular => crate::icons_families::cellular_icon(p, r, "Cell-Tower", &tk),
                         Sub::Hosts => icons::device(p, r, DeviceKind::Pc, &tk),
                         Sub::Cables => icons::glyph(p, r, Glyph::Cable, tk.glyph),
+                        Sub::Cabling => crate::closet::fitting_icon(p, r, FittingKind::CopperPatchPanel, &tk),
                     };
                     if kind_button(ui, label, sel, draw).clicked() {
                         b.sub = *sub;
@@ -228,6 +248,10 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                             None => {
                                 if let Tool::Cable(c) = tool {
                                     icons::cable(&p, icon, c, &tk);
+                                } else if let Tool::Place(id) = tool
+                                    && let Some(k) = FittingKind::from_id(id)
+                                {
+                                    crate::closet::fitting_icon(&p, icon, k, &tk);
                                 }
                             }
                         }

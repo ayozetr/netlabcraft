@@ -37,7 +37,7 @@ impl Page {
 }
 
 /// Keys and what they do (the action names are menu entries, so they are translated already).
-const SHORTCUTS: [(&str, &str); 15] = [
+const SHORTCUTS: [(&str, &str); 16] = [
     ("Ctrl+N", "New"),
     ("Ctrl+S", "Save"),
     ("Ctrl+C", "Copy"),
@@ -46,6 +46,7 @@ const SHORTCUTS: [(&str, &str); 15] = [
     ("Ctrl+Shift+Z", "Redo"),
     ("Ctrl+G", "Group into Cluster"),
     ("Ctrl+D", "Drawing Palette"),
+    ("Ctrl+Alt+K", "Structured Cabling"),
     ("Shift+S", "Simulation Mode"),
     ("Shift+R", "Realtime Mode"),
     ("Shift+L", "Logical View"),

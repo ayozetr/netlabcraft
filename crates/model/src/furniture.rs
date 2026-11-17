@@ -159,18 +159,10 @@ impl FittingKind {
 
     pub fn description(self) -> &'static str {
         match self {
-            FittingKind::CopperPatchPanel => {
-                "Copper patch panel: ports that join device ports and patch cords through the closet's structured cabling"
-            }
-            FittingKind::FiberPatchPanel => {
-                "Fiber patch panel: duplex fiber ports that join device ports and patch cords through the structured cabling"
-            }
-            FittingKind::CopperWallMount => {
-                "Copper wall mount: a wall outlet that carries a link between a device and a patch panel or another wall mount"
-            }
-            FittingKind::FiberWallMount => {
-                "Fiber wall mount: a fiber wall outlet that carries a link between a device and a patch panel or another wall mount"
-            }
+            FittingKind::CopperPatchPanel => "Copper patch panel: joins device ports through the structured cabling",
+            FittingKind::FiberPatchPanel => "Fiber patch panel: joins fiber device ports through the structured cabling",
+            FittingKind::CopperWallMount => "Copper wall mount: a wall outlet that carries a link through the building's cabling",
+            FittingKind::FiberWallMount => "Fiber wall mount: a fiber wall outlet that carries a link through the building's cabling",
             FittingKind::PowerStrip => "Power distribution device: a power strip; what is plugged into it follows its switch",
         }
     }

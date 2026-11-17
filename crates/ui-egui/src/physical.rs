@@ -40,6 +40,8 @@ pub struct PhysState {
     pub renaming: Option<(u32, String)>,
     /// The Cable Length dialog: one end of the cable and the metres being typed.
     pub length: Option<(End, String)>,
+    /// The wiring-closet view's state (furniture, drags, the Rename dialog).
+    pub(crate) closet: crate::closet::State,
 }
 
 /// What stands for a device at the level shown: itself, or the place (city, building or closet)
@@ -174,7 +176,7 @@ fn length_text(m: u32) -> String {
     if m >= 1_000 { format!("{:.1} km", f64::from(m) / 1000.0) } else { format!("{m} m") }
 }
 
-fn segment_distance(p: Pos2, a: Pos2, b: Pos2) -> f32 {
+pub(crate) fn segment_distance(p: Pos2, a: Pos2, b: Pos2) -> f32 {
     let ab = b - a;
     let len2 = ab.length_sq();
     if len2 <= f32::EPSILON {
@@ -235,6 +237,10 @@ pub fn leave(app: &mut PacketApp, top: bool) {
 
 /// Pans so what this level shows sits in the middle.
 pub fn fit(app: &mut PacketApp) {
+    if let Some(place) = crate::closet::current(app) {
+        crate::closet::fit(app, place);
+        return;
+    }
     let view = View::new(app, Vec2::ZERO);
     let pts: Vec<(f32, f32)> = view.places.iter().map(|p| (p.x, p.y)).chain(view.devices.iter().map(|d| (d.1, d.2))).collect();
     if pts.is_empty() || app.ui.canvas.size.x < 1.0 {
@@ -277,6 +283,12 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
         } else {
             app.ui.pan += scroll;
         }
+    }
+    // A wiring closet is drawn by its own view: furniture, front panels and cables from port to port.
+    if let Some(place) = crate::closet::current(app) {
+        crate::closet::show(app, ui, &resp, &painter, rect, place);
+        painter.text(rect.min + vec2(12.0, 10.0), Align2::LEFT_TOP, caption(app), FontId::proportional(17.0), tk.muted);
+        return;
     }
     let view = View::new(app, rect.min.to_vec2() + app.ui.pan);
     app.ui.pointer = resp.hover_pos().map(|p| view.world(p));
@@ -564,8 +576,9 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target) {
     }
 }
 
-/// The Rename Place and Cable Length dialogs.
+/// The Rename Place and Cable Length dialogs (and the closet's Rename dialog).
 pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
+    crate::closet::windows(app, ctx);
     if let Some((id, mut name)) = app.ui.physical.renaming.clone() {
         let (mut open, mut ok) = (true, false);
         egui::Window::new(tl("Rename Place")).id(egui::Id::unique("place_rename")).open(&mut open).collapsible(false).resizable(false).show(
