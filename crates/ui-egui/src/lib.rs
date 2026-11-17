@@ -10,7 +10,7 @@
 
 use std::collections::BTreeMap;
 
-use egui::{Color32, Key, KeyboardShortcut, Modifiers, RichText, Sense, vec2};
+use egui::{Color32, RichText, Sense, vec2};
 use netlabcraft_core::DeviceId;
 use netlabcraft_engine::{EngineError, Session, sample};
 
@@ -46,6 +46,7 @@ pub mod png;
 pub mod prefs;
 mod programming;
 mod services;
+mod shortcuts;
 mod sniffer_page;
 pub mod sound;
 pub mod theme;
@@ -89,6 +90,9 @@ pub enum UiRequest {
     /// Close the app.
     Quit,
 }
+
+/// How far an arrow key moves the selected device (workspace units).
+pub(crate) const GRID_STEP: f32 = 20.0;
 
 /// The active workspace tool.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -222,6 +226,8 @@ impl Toolbars {
 pub struct UiState {
     pub dark: bool,
     pub show_grid: bool,
+    /// The Open Samples window (Ctrl+Shift+T).
+    pub show_samples: bool,
     /// The toolbars shown (View ▸ Toolbars; the desktop shell saves the choice).
     pub toolbars: Toolbars,
     /// View ▸ Show Viewport: the overview of the workspace you click to pan.
@@ -313,6 +319,7 @@ impl Default for UiState {
         UiState {
             dark: false,
             show_grid: false,
+            show_samples: false,
             toolbars: Toolbars::default(),
             show_viewport: false,
             show_workspace_list: false,
@@ -932,95 +939,19 @@ impl PacketApp {
     }
 
     fn shortcuts(&mut self, ctx: &egui::Context) {
-        let sc = |m, k| KeyboardShortcut::new(m, k);
-        let cmd = Modifiers::COMMAND;
-        // Before Paste (Ctrl+V) and the rest: Ctrl+Shift+V is the command log.
-        prefs::shortcuts(self, ctx);
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::N))) {
-            self.new_lab(None);
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::O))) {
-            self.requests.push(UiRequest::Open);
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd | Modifiers::SHIFT, Key::S))) {
-            self.save(true);
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::S))) {
-            self.save(false);
-        }
-        if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F1)) {
-            self.ui.help = Some(help::Page::Contents);
-        }
-        // Text fields keep their own undo and Delete.
-        if ctx.egui_wants_keyboard_input() {
-            return;
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd | Modifiers::SHIFT, Key::Z)) || i.consume_shortcut(&sc(cmd, Key::Y))) {
-            self.run("edit.redo", json!({}));
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::Z))) {
-            self.run("edit.undo", json!({}));
-        }
-        if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Delete))
-            && let Some(d) = self.ui.selected.take()
-        {
-            self.run("device.remove", json!({"device": d.0}));
-        }
-        if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
-            // Esc first drops a polygon being placed, then the tool.
-            if self.ui.canvas.poly.is_empty() {
-                self.set_tool(Tool::Select);
-            } else {
-                self.ui.canvas.poly.clear();
-            }
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::G))) {
-            self.group_selection();
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::C))) {
-            self.copy();
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::V))) {
-            self.paste();
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::D))) {
-            self.open_drawing_palette();
-        }
-        // Ctrl+Shift+letter before Shift+letter, and both before the bare letters: egui ignores an extra Shift.
-        let cmd_shift = cmd | Modifiers::SHIFT;
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd_shift, Key::A))) {
-            self.ui.toolbars.main = !self.ui.toolbars.main;
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd_shift, Key::R))) {
-            self.ui.toolbars.secondary = !self.ui.toolbars.secondary;
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd_shift, Key::B))) {
-            self.ui.toolbars.bottom = !self.ui.toolbars.bottom;
-        }
-        prefs::late_shortcuts(self, ctx);
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::SHIFT, Key::S))) {
-            self.ui.mode = Mode::Simulation;
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::SHIFT, Key::R))) {
-            self.ui.mode = Mode::Realtime;
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::SHIFT, Key::L))) && self.session.physical {
-            self.set_physical(false);
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::SHIFT, Key::P))) && !self.session.physical {
-            self.set_physical(true);
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::SHIFT, Key::V))) {
-            self.ui.show_viewport = !self.ui.show_viewport;
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::SHIFT, Key::W))) {
-            self.ui.show_workspace_list = !self.ui.show_workspace_list;
-        }
-        for (k, t) in [(Key::I, Tool::Inspect), (Key::P, Tool::Ping), (Key::N, Tool::Note)] {
-            if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, k)) {
-                self.set_tool(t);
-            }
-        }
+        shortcuts::dispatch(self, ctx);
+    }
+
+    /// Asks for a screenshot of the window, to export as a PNG or (`print`) to print.
+    fn request_image(&mut self, ctx: &egui::Context, print: bool) {
+        self.ui.image_pending = true;
+        self.ui.print_pending = print;
+        let slot = self.ui.shot.clone();
+        let ctx2 = ctx.clone();
+        ctx.request_screenshot(move |image| {
+            *slot.lock() = Some(image);
+            ctx2.request_repaint();
+        });
     }
 
     /// Draws the whole app into `ui` (the root of the window).
@@ -1062,6 +993,7 @@ impl PacketApp {
         self.notes_window(&ctx);
         activity::windows(self, &ctx);
         prefs::windows(self, &ctx);
+        shortcuts::windows(self, &ctx);
         self.about_window(&ctx);
         help::window(self, &ctx);
         overview::viewport_window(self, &ctx);
@@ -1081,8 +1013,12 @@ impl PacketApp {
                         }
                     }
                 });
-                if ui.button(tl("Open...")).clicked() {
+                if ui.add(egui::Button::new(tl("Open...")).shortcut_text(shortcuts::text(shortcuts::Act::Open))).clicked() {
                     self.requests.push(UiRequest::Open);
+                }
+                if ui.add(egui::Button::new(tl("Open Samples")).shortcut_text(shortcuts::text(shortcuts::Act::OpenSamples))).clicked() {
+                    self.ui.show_samples = true;
+                    ui.close();
                 }
                 if !self.ui.recent.is_empty() {
                     ui.menu_button(tl("Open Recent"), |ui| {
@@ -1107,18 +1043,12 @@ impl PacketApp {
                 }
                 let png = ui.button(tl("Export Workspace Image (PNG)...")).on_hover_text(tl("The workspace as a picture, for a report")).clicked();
                 let print = ui
-                    .button(tl("Print..."))
+                    .add(egui::Button::new(tl("Print...")).shortcut_text(shortcuts::text(shortcuts::Act::Print)))
                     .on_hover_text(tl("The workspace and a report of the devices on A4 pages, opened in the system's PDF viewer to print"))
                     .clicked();
                 if png || print {
-                    self.ui.image_pending = true;
-                    self.ui.print_pending = print;
-                    let slot = self.ui.shot.clone();
                     let ctx = ui.ctx().clone();
-                    ui.ctx().request_screenshot(move |image| {
-                        *slot.lock() = Some(image);
-                        ctx.request_repaint();
-                    });
+                    self.request_image(&ctx, print);
                 }
                 ui.separator();
                 if ui.button(tl("Exit")).clicked() {
@@ -1158,7 +1088,7 @@ impl PacketApp {
                 if ui.checkbox(&mut self.ui.dark, tl("Dark interface")).changed() {
                     self.apply_theme(ui.ctx());
                 }
-                ui.checkbox(&mut self.ui.show_grid, tl("Show grid"));
+                ui.checkbox(&mut self.ui.show_grid, tl("Show grid")).on_hover_text(shortcuts::text(shortcuts::Act::ShowGrid));
                 // Native windows need viewports: egui embeds them (the web build, headless runs).
                 let embedded = ui.ctx().embed_viewports();
                 let native = ui.add_enabled(!embedded, egui::Checkbox::new(&mut self.ui.native_windows, tl("Device windows as separate windows")));
@@ -1177,14 +1107,14 @@ impl PacketApp {
             });
             ui.menu_button(tl("View"), |ui| {
                 ui.menu_button(tl("Zoom"), |ui| {
-                    if ui.button(tl("Zoom In")).clicked() {
+                    if ui.add(egui::Button::new(tl("Zoom In")).shortcut_text(shortcuts::text(shortcuts::Act::ZoomIn))).clicked() {
                         self.zoom(Some(1.25));
                     }
-                    if ui.button(tl("Zoom Reset")).clicked() {
+                    if ui.add(egui::Button::new(tl("Zoom Reset")).shortcut_text(shortcuts::text(shortcuts::Act::ZoomReset))).clicked() {
                         self.zoom(None);
                         self.ui.pan = egui::Vec2::ZERO;
                     }
-                    if ui.button(tl("Zoom Out")).clicked() {
+                    if ui.add(egui::Button::new(tl("Zoom Out")).shortcut_text(shortcuts::text(shortcuts::Act::ZoomOut))).clicked() {
                         self.zoom(Some(0.8));
                     }
                 });
@@ -1271,9 +1201,13 @@ impl PacketApp {
                 }
             });
             ui.menu_button(tl("Help"), |ui| {
-                for (page, shortcut) in
-                    [(help::Page::GettingStarted, ""), (help::Page::Contents, "F1"), (help::Page::Tutorials, ""), (help::Page::Accessibility, "")]
-                {
+                for (page, shortcut) in [
+                    (help::Page::GettingStarted, ""),
+                    (help::Page::Contents, "F1"),
+                    (help::Page::Tutorials, ""),
+                    (help::Page::Accessibility, ""),
+                    (help::Page::Shortcuts, ""),
+                ] {
                     if ui.add(egui::Button::new(tl(page.title())).shortcut_text(shortcut)).clicked() {
                         self.ui.help = Some(page);
                         ui.close();

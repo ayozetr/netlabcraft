@@ -10,7 +10,7 @@
 //! cable lengths counted, devices opening on their command line), so nothing changes until a
 //! person unchecks a box.
 
-use egui::{Key, KeyboardShortcut, Modifiers, RichText};
+use egui::{Key, RichText};
 use serde_json::json;
 
 use crate::i18n::{self, tl, trn};
@@ -270,30 +270,6 @@ impl PacketApp {
 
     pub fn open_algorithm_settings(&mut self) {
         self.ui.prefs_ui.show_algorithm = true;
-    }
-}
-
-/// Preferences (Ctrl+R), User Profile (Ctrl+Shift+U), View Command Log (Ctrl+Shift+V) and
-/// Algorithm Settings (Ctrl+Shift+M).
-pub fn shortcuts(app: &mut PacketApp, ctx: &egui::Context) {
-    let cmd = Modifiers::COMMAND;
-    let pressed = |m: Modifiers, k: Key| ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(m, k)));
-    if pressed(cmd | Modifiers::SHIFT, Key::V) {
-        app.open_command_log();
-    }
-    if pressed(cmd | Modifiers::SHIFT, Key::U) {
-        app.open_user_profile();
-    }
-    if pressed(cmd | Modifiers::SHIFT, Key::M) {
-        app.open_algorithm_settings();
-    }
-}
-
-/// Preferences (Ctrl+R). Called after the View menu's shortcuts: a match that ignores Shift
-/// would take Ctrl+Shift+R (the secondary toolbar) if this ran first.
-pub fn late_shortcuts(app: &mut PacketApp, ctx: &egui::Context) {
-    if ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::R))) {
-        app.open_preferences();
     }
 }
 

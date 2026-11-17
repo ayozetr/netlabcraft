@@ -90,6 +90,13 @@ fn tiles() -> Vec<Tile> {
     t
 }
 
+/// Shows a category and subcategory of the device box (the Ctrl+Alt+letter shortcuts).
+pub fn show_category(app: &mut PacketApp, cat: Category, sub: Sub) {
+    app.ui.bottom.category = cat;
+    app.ui.bottom.sub = sub;
+    app.ui.bottom.search.clear();
+}
+
 /// A category or subcategory button: a picture, with the name as tooltip.
 fn kind_button(ui: &mut Ui, label: &str, selected: bool, draw: impl FnOnce(&egui::Painter, egui::Rect)) -> egui::Response {
     let tk = theme::tokens(ui.visuals().dark_mode);

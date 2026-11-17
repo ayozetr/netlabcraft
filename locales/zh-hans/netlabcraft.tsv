@@ -1784,3 +1784,34 @@ event	write request for	写请求
 	Tab and the arrow keys move between devices and cables; Enter or Space opens the one in focus.	Tab 键和方向键在设备和线缆之间移动；回车或空格键打开获得焦点的那个。
 	The Workspace List in the View menu names every device in a table you can move through.	查看菜单中的工作区列表用一张可以浏览的表格列出每个设备。
 	Everything the menus do can also be typed, from the command line or by an agent.	菜单能做的一切也都可以输入，通过命令行或由代理完成。
+	Auto Capture / Play	自动捕获 / 播放
+	Bottom Toolbar	底部工具栏
+	Capture / Forward	捕获 / 前进
+	Delete Scenario	删除场景
+	Device box	设备栏
+	Draw Freehand	手绘
+	Fast Forward Time	快进时间
+	Go Back One Level	返回上一级
+	Keys that type a letter are ignored while a text field or the console has the keyboard.	当文本框或控制台正在使用键盘时，输入字母的按键会被忽略。
+	Main Toolbar	主工具栏
+	Move Device Down	向下移动设备
+	Move Device Left	向左移动设备
+	Move Device Right	向右移动设备
+	Move Device Up	向上移动设备
+	Network Information	网络信息
+	New Cluster	新建集群
+	New Scenario	新建场景
+	Open Samples	打开示例
+	Place Note	放置备注
+	Power Cycle Devices	重启设备
+	Scenarios	场景
+	Secondary Toolbar	辅助工具栏
+	Select	选择
+	Select Next Device Down	选择下方的设备
+	Select Next Device Left	选择左侧的设备
+	Select Next Device Right	选择右侧的设备
+	Select Next Device Up	选择上方的设备
+	Selection	选择
+	Show Event List	显示事件列表
+	Simulation Back	模拟后退
+	{} is not available at this level of the Physical view.	{} 在物理视图的此层级不可用。
