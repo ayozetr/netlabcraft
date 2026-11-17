@@ -68,6 +68,9 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
     if let Some(r) = crate::cellular::run(s, id, p) {
         return r;
     }
+    if let Some(r) = crate::closet::run(s, id, p) {
+        return r;
+    }
     let cmd = id;
     match id {
         "file.new" => {

@@ -74,6 +74,12 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
             if dev.powered_off != on {
                 return Ok(json!({"power": if on { "on" } else { "off" }, "changed": false, "errors": []}));
             }
+            if on && s.topology.cut_by_strip(d) {
+                return Err(EngineError::Failed(format!(
+                    "{} is plugged into a power distribution device that is switched off: switch that on first",
+                    dev.name
+                )));
+            }
             if on && dev.no_psu() {
                 return Err(EngineError::Failed(format!("{} has no power supply fitted: fit one in its Physical tab (device.psu) first", dev.name)));
             }
@@ -92,6 +98,24 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
         }
         other => Err(EngineError::UnknownCommand(other.to_string())),
     }
+}
+
+/// Switches a device on or off as the power switch does (a strip's switch, mostly); nothing
+/// happens when it already is, or when it has no power supply fitted. The errors of booting.
+pub(crate) fn set_power(s: &mut Session, d: netlabcraft_core::DeviceId, on: bool) -> Vec<String> {
+    let Some(dev) = s.topology.device(d) else { return Vec::new() };
+    if dev.powered_off != on || (on && (dev.no_psu() || s.topology.cut_by_strip(d))) {
+        return Vec::new();
+    }
+    let mut errors = Vec::new();
+    if on {
+        errors = power_on(s, d);
+    } else if let Some(dev) = s.topology.device_mut(d) {
+        dev.power_off();
+    }
+    s.sim.reset_device(d);
+    s.consoles.remove(&d);
+    errors
 }
 
 /// Boots a switched-off device: factory settings, then the saved configuration (routers and

@@ -21,6 +21,7 @@ pub mod automation;
 mod board;
 pub mod catalog;
 mod cellular;
+mod closet;
 mod cmd;
 mod controller;
 mod dialup;
@@ -46,6 +47,8 @@ mod tests;
 mod tests_bgp;
 #[cfg(test)]
 mod tests_cell;
+#[cfg(test)]
+mod tests_closet;
 #[cfg(test)]
 mod tests_dialup;
 #[cfg(test)]

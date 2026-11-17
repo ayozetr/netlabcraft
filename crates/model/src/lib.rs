@@ -24,6 +24,7 @@ pub mod environment;
 pub mod fhrp;
 pub mod file;
 pub mod firewall;
+pub mod furniture;
 pub mod hardware;
 pub mod hostfw;
 pub mod ifname;
