@@ -1675,6 +1675,70 @@ event	write request for	demande d'écriture de
 	The modem's phone cable must go to a telephone cloud, and the number must be one of its ports.	Le câble téléphonique du modem doit aller à un nuage téléphonique, et le numéro doit être celui d'un de ses ports.
 	Telephone numbers (one per port):	Numéros de téléphone (un par port) :
 	Set	Définir
+	Preferences…	Préférences…
+	Algorithm Settings	Réglages des algorithmes
+	User Profile…	Profil utilisateur…
+	View Command Log	Voir le journal des commandes
+	Preferences	Préférences
+	Administrative	Administratif
+	Show/Hide	Afficher/Masquer
+	Font	Police
+	Miscellaneous	Divers
+	Answer Tree	Arbre des réponses
+	Custom Interfaces	Interfaces personnalisées
+	Publishers	Éditeurs
+	Image Cleanup	Nettoyage des images
+	Not available yet: NetLabCraft has nothing to set in this tab so far.	Pas encore disponible : NetLabCraft n'a encore rien à régler dans cet onglet.
+	Restore Defaults	Rétablir les valeurs par défaut
+	Customize User Experience	Personnaliser l'expérience utilisateur
+	Show Animation	Afficher l'animation
+	Play Sound	Jouer un son
+	Show Device Model Labels	Afficher le modèle des appareils
+	Show Device Name Labels	Afficher le nom des appareils
+	Always Show Port Labels in Logical Workspace	Toujours afficher les noms de port dans l'espace logique
+	Disable Auto Cable	Désactiver le câble automatique
+	Use Metric System (uncheck to use imperial)	Utiliser le système métrique (décocher pour l'impérial)
+	Align logical workspace objects	Aligner les objets de l'espace logique
+	Tooltip Duration:	Durée des info-bulles :
+	Show Link Lights	Afficher les voyants de liaison
+	Play Telephony Sound	Jouer les sons de téléphonie
+	Show QoS Stamps on Packets	Afficher les marques QoS sur les paquets
+	Show Port Labels When Mouse Over in Logical Workspace	Afficher les noms de port au survol dans l'espace logique
+	Enable Cable Length Effects	Activer les effets de la longueur des câbles
+	Use CLI as Device Default Tab	Utiliser la CLI comme onglet par défaut
+	Show Cable Info Popup in Physical Workspace	Afficher l'info-bulle du câble dans l'espace physique
+	Align physical workspace objects	Aligner les objets de l'espace physique
+	A short tone when a PDU arrives or fails.	Une courte tonalité quand une PDU arrive ou échoue.
+	Leaves the Automatic cable out of the device box: pick the cable type for each connection.	Retire le câble automatique de la boîte d'appareils : choisissez le type de câble pour chaque connexion.
+	Cable lengths in the physical workspace show in metres and kilometres; unchecked, in feet and miles.	Les longueurs de câble de l'espace physique s'affichent en mètres et kilomètres ; décoché, en pieds et miles.
+	Devices snap to the grid when they are placed or dropped.	Les appareils s'alignent sur la grille quand on les place ou les dépose.
+	Seconds the pointer rests on something before its tooltip shows. 0 keeps the default (0.5 s).	Secondes d'attente du pointeur sur un élément avant son info-bulle. 0 garde la valeur par défaut (0,5 s).
+	Tones for IP phone calls and the Dial-up modem.	Tonalités pour les appels des téléphones IP et le modem d'accès à distance.
+	The replayed packet carries its DSCP and 802.1p priority when they are not 0.	Le paquet rejoué affiche son DSCP et sa priorité 802.1p lorsqu'ils ne sont pas 0.
+	Used when port labels are not always shown: the cables of the device under the pointer show theirs.	Utilisé quand les noms de port ne sont pas toujours affichés : les câbles de l'appareil sous le pointeur affichent les leurs.
+	A cable longer than its medium reaches (copper 100 m) carries nothing. Saved with the lab.	Un câble plus long que la portée de son support (cuivre, 100 m) ne transmet rien. Enregistré avec le labo.
+	Routers, switches and other devices with a command line open on it; unchecked, they open on Config.	Les routeurs, commutateurs et autres appareils avec ligne de commande s'ouvrent dessus ; décoché, sur Config.
+	Places and devices snap to the grid when they are dragged.	Les lieux et appareils s'alignent sur la grille quand on les déplace.
+	Records every command in the command log that View Command Log shows.	Enregistre chaque commande dans le journal que montre Voir le journal des commandes.
+	The device box with the models and the PDU list.	La boîte d'appareils avec les modèles et la liste des PDU.
+	Logging	Journalisation
+	Enable Logging	Activer la journalisation
+	Export Log…	Exporter le journal…
+	Interface text	Texte de l'interface
+	Text size:	Taille du texte :
+	Reset	Réinitialiser
+	Sets the text of menus, buttons and forms. Names drawn on the workspace follow its zoom instead.	Règle le texte des menus, boutons et formulaires. Les noms dessinés dans l'espace de travail suivent son zoom.
+	User Profile	Profil utilisateur
+	Kept on this computer only. It names you in activity results when an activity was not started with a name.	Conservé uniquement sur cet ordinateur. Il vous nomme dans les résultats d'une activité démarrée sans nom.
+	Display name:	Nom affiché :
+	Use a nickname if you like: no real name or e-mail address is needed.	Vous pouvez utiliser un pseudo : ni nom réel ni adresse e-mail n'est nécessaire.
+	Profile saved.	Profil enregistré.
+	Command Log	Journal des commandes
+	No commands have been recorded yet.	Aucune commande n'a encore été enregistrée.
+	Not available yet: NetLabCraft has no simulator-wide algorithm settings.	Pas encore disponible : NetLabCraft n'a pas de réglages d'algorithmes pour tout le simulateur.
+	The timing options it has are Constant Delay in the Simulation Panel and the timers each device's console sets.	Ses options de temps sont le Délai constant du panneau de simulation et les minuteries réglées par la console de chaque appareil.
+	and {} more	et {} de plus
+@plural	{} command|{} commands	{} commande|{} commandes
 	Zoom	Zoom
 	Toolbars	Barres d'outils
 	Main	Principale
