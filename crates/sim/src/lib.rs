@@ -54,6 +54,7 @@ pub mod netflow;
 pub mod ospf;
 pub mod ospf6;
 pub mod ospf_lsdb;
+pub mod parts;
 pub mod pdu;
 pub mod peap;
 pub mod pki;

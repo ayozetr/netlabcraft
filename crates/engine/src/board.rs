@@ -19,9 +19,8 @@ fn level(s: &Session, dev: &netlabcraft_model::Device, pin: &str) -> i64 {
     let run = s.sim.board(dev.id);
     let wired = dev.board.wires.iter().find(|w| w.pin == pin).and_then(|w| s.topology.device(w.thing));
     match wired {
-        Some(d) if !is_sensor(d) => i64::from(s.sim.iot_thing(d.id).is_some_and(|x| x.on)),
         Some(d) => {
-            let v = i64::from(d.iot.value);
+            let v = i64::from(if is_sensor(d) { s.sim.iot_reading(&s.topology, d) } else { s.sim.iot_level(d) });
             if analog(pin) { v } else { i64::from(v > 0) }
         }
         None => run.and_then(|r| r.levels.get(pin).copied()).unwrap_or(0),

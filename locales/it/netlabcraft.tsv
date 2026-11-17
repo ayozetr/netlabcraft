@@ -697,7 +697,7 @@
 	No events yet. Add a simple PDU (envelope tool) or ping from a console.	Ancora nessun evento. Aggiungi un PDU semplice (strumento busta) o fai un ping da una console.
 	No files yet: `copy running-config tftp: <this address>` on a router saves one here.	Ancora nessun file: `copy running-config tftp: <questo indirizzo>` su un router ne salva uno qui.
 	No fill	Nessun riempimento
-	no function `{}` (there are read, get, time and number)	nessuna funzione `{}` (esistono read, get, time e number)
+	no function `{}` (there are read, channel, rgb, get, time and number)	nessuna funzione `{}` (esistono read, channel, rgb, get, time e number)
 	no IoT server set	nessun server IoT impostato
 	no IoT server set on the board (Programming tab)	nessun server IoT impostato sulla scheda (scheda Programmazione)
 	no IPv6 route to {}	nessuna route IPv6 verso {}
@@ -2107,6 +2107,76 @@ furniture	Table	Tavolo
 	red	rosso
 	showing	mostra
 	blank	vuoto
+	Air Cooler	Raffrescatore d'aria
+	Air cooler wired to a board's pin with an IoT custom cable: cools its environment while the pin is high	Raffrescatore d'aria collegato a un pin di una scheda con un cavo personalizzato IoT: raffredda il suo ambiente finché il pin è alto
+	Alarm	Allarme
+	Alarm wired to a board's pin with an IoT custom cable: sounds its siren and lights up while the pin is high	Allarme collegato a un pin di una scheda con un cavo personalizzato IoT: fa suonare la sirena e si illumina finché il pin è alto
+	Ceiling Sprinkler	Sprinkler a soffitto
+	Ceiling sprinkler wired to a board's pin with an IoT custom cable: sprays water from above while the pin is high and puts out flames	Sprinkler a soffitto collegato a un pin di una scheda con un cavo personalizzato IoT: spruzza acqua dall'alto finché il pin è alto e spegne le fiamme
+	Floor Sprinkler	Sprinkler a pavimento
+	Floor sprinkler wired to a board's pin with an IoT custom cable: sprays water from the floor while the pin is high and puts out flames	Sprinkler a pavimento collegato a un pin di una scheda con un cavo personalizzato IoT: spruzza acqua dal pavimento finché il pin è alto e spegne le fiamme
+	Dimmable LED	LED dimmerabile
+	Dimmable LED wired to a board's pin with an IoT custom cable: its brightness follows the level written to the pin (0-100)	LED dimmerabile collegato a un pin di una scheda con un cavo personalizzato IoT: la luminosità segue il livello scritto sul pin (0-100)
+	Heating Element	Elemento riscaldante
+	Heating element wired to a board's pin with an IoT custom cable: warms its environment while the pin is high	Elemento riscaldante collegato a un pin di una scheda con un cavo personalizzato IoT: riscalda il suo ambiente finché il pin è alto
+	RGB LED	LED RGB
+	RGB LED wired to a board's pin with an IoT custom cable: shows the red, green and blue levels written to the pin as one number (0xRRGGBB)	LED RGB collegato a un pin di una scheda con un cavo personalizzato IoT: mostra i livelli di rosso, verde e blu scritti sul pin come un unico numero (0xRRGGBB)
+	Servo	Servo
+	Servo wired to a board's pin with an IoT custom cable: turns to the angle written to the pin (0-180 degrees)	Servo collegato a un pin di una scheda con un cavo personalizzato IoT: ruota fino all'angolo scritto sul pin (0-180 gradi)
+	Speaker	Altoparlante
+	Speaker wired to a board's pin with an IoT custom cable: plays a tone and raises the sound around it while the pin is high	Altoparlante collegato a un pin di una scheda con un cavo personalizzato IoT: riproduce un tono e alza il suono intorno a sé finché il pin è alto
+	Flex Sensor	Sensore di flessione
+	Flex sensor wired to a board's pin with an IoT custom cable: reads how far it is bent (0-100 %)	Sensore di flessione collegato a un pin di una scheda con un cavo personalizzato IoT: legge quanto è piegato (0-100 %)
+	Generic Environment Sensor	Sensore ambientale generico
+	Generic environment sensor wired to a board's pin with an IoT custom cable: reads the environment variable you pick, rounded to a whole number	Sensore ambientale generico collegato a un pin di una scheda con un cavo personalizzato IoT: legge la variabile d'ambiente scelta, arrotondata a un numero intero
+	Generic Sensor	Sensore generico
+	Generic sensor wired to a board's pin with an IoT custom cable: reads a raw analog value you set (-1000 to 1000)	Sensore generico collegato a un pin di una scheda con un cavo personalizzato IoT: legge un valore analogico grezzo impostato a mano (da -1000 a 1000)
+	Humidity sensor wired to a board's pin with an IoT custom cable: reads the relative humidity of its environment (0-100 %)	Sensore di umidità collegato a un pin di una scheda con un cavo personalizzato IoT: legge l'umidità relativa del suo ambiente (0-100 %)
+	Humiture Sensor	Sensore di temperatura e umidità
+	Humiture sensor wired to a board's pin with an IoT custom cable: reads the temperature, and the humidity with channel(PIN, 1)	Sensore di temperatura e umidità collegato a un pin di una scheda con un cavo personalizzato IoT: legge la temperatura, e l'umidità con channel(PIN, 1)
+	Membrane Potentiometer	Potenziometro a membrana
+	Membrane potentiometer wired to a board's pin with an IoT custom cable: reads where a finger presses along its strip (0-100 %)	Potenziometro a membrana collegato a un pin di una scheda con un cavo personalizzato IoT: legge dove un dito preme lungo la sua striscia (0-100 %)
+	Metal Sensor	Sensore di metalli
+	Metal sensor wired to a board's pin with an IoT custom cable: reads 1 while a metal object is near, else 0	Sensore di metalli collegato a un pin di una scheda con un cavo personalizzato IoT: legge 1 finché un oggetto metallico è vicino, altrimenti 0
+	Motion Sensor	Sensore di movimento
+	Motion sensor wired to a board's pin with an IoT custom cable: reads 1 while something moves in its environment, else 0	Sensore di movimento collegato a un pin di una scheda con un cavo personalizzato IoT: legge 1 finché qualcosa si muove nel suo ambiente, altrimenti 0
+	Push Button Toggle Switch	Interruttore a pulsante bistabile
+	Push button toggle switch wired to a board's pin with an IoT custom cable: latches on at one push and off at the next, reads 1 while on	Interruttore a pulsante bistabile collegato a un pin di una scheda con un cavo personalizzato IoT: si blocca a una pressione e si sblocca alla successiva, legge 1 finché è attivo
+	Rocker Switch	Interruttore a bilanciere
+	Rocker switch wired to a board's pin with an IoT custom cable: reads 1 in its on position and 0 in its off position	Interruttore a bilanciere collegato a un pin di una scheda con un cavo personalizzato IoT: legge 1 nella posizione di acceso e 0 in quella di spento
+	Toggle Push Button	Pulsante a commutazione
+	Toggle push button wired to a board's pin with an IoT custom cable: each press flips its state, reads 1 while on	Pulsante a commutazione collegato a un pin di una scheda con un cavo personalizzato IoT: ogni pressione inverte il suo stato, legge 1 finché è attivo
+	Smoke Sensor	Sensore di fumo
+	Smoke sensor wired to a board's pin with an IoT custom cable: reads the smoke level of its environment (0-100 %)	Sensore di fumo collegato a un pin di una scheda con un cavo personalizzato IoT: legge il livello di fumo del suo ambiente (0-100 %)
+	Temperature Sensor	Sensore di temperatura
+	Temperature sensor wired to a board's pin with an IoT custom cable: reads the temperature of its environment, in degrees	Sensore di temperatura collegato a un pin di una scheda con un cavo personalizzato IoT: legge la temperatura del suo ambiente, in gradi
+	Trip Wire	Filo di inciampo
+	Trip wire wired to a board's pin with an IoT custom cable: reads 1 while something crosses the line, else 0	Filo di inciampo collegato a un pin di una scheda con un cavo personalizzato IoT: legge 1 finché qualcosa attraversa la linea, altrimenti 0
+	Water Detector	Rilevatore d'acqua
+	Water detector wired to a board's pin with an IoT custom cable: reads 1 while water is present, else 0	Rilevatore d'acqua collegato a un pin di una scheda con un cavo personalizzato IoT: legge 1 finché c'è acqua, altrimenti 0
+	Water Sensor	Sensore d'acqua
+	Water sensor wired to a board's pin with an IoT custom cable: reads the water level, in centimetres	Sensore d'acqua collegato a un pin di una scheda con un cavo personalizzato IoT: legge il livello dell'acqua, in centimetri
+	Wind Sensor	Sensore di vento
+	Wind sensor wired to a board's pin with an IoT custom cable: reads the wind speed, in kilometres per hour	Sensore di vento collegato a un pin di una scheda con un cavo personalizzato IoT: legge la velocità del vento, in chilometri orari
+	Humidity Monitor	Monitor di umidità
+	Press	Premi
+	Flip the switch	Cambia lo stato dell'interruttore
+	Reads:	Legge:
+	Humidity: {} %	Umidità: {} %
+	Change the humidity	Cambia l'umidità
+	Change the level	Cambia il livello
+	Brightness: {} %	Luminosità: {} %
+	Angle: {} degrees	Angolo: {} gradi
+	Colour: #{}	Colore: #{}
+	% bent	% di flessione
+	% along the strip	% lungo la striscia
+	1 = metal near	1 = metallo vicino
+	1 = crossed	1 = attraversato
+	1 = water	1 = c'è acqua
+	kph	km/h
+	holding an angle	mantiene un angolo
+	idle	a riposo
+	{} has no channel {}	{} non ha il canale {}
 	Save as PDF...	Salva come PDF...
 	The workspace and a report of the devices on A4 pages, saved as a PDF file	L'area di lavoro e un report dei dispositivi su pagine A4, salvati come file PDF
 	The same PDF: save it, open it in a PDF viewer or print it	Lo stesso PDF: salvalo, aprilo in un visualizzatore PDF o stampalo

@@ -6,7 +6,8 @@ use netlabcraft_core::parse_ip;
 use netlabcraft_model::DeviceKind;
 use netlabcraft_model::environment::{MAX_CO, MAX_CO2, MAX_TEMP, MIN_TEMP, QUANTITIES};
 use netlabcraft_model::iot::{
-    Condition, IotRule, MAX_CONDITIONS, MAX_FREQUENCY, MAX_INTERVAL, MAX_RULES, MAX_VALUE, MIN_VALUE, Op, can_serve, is_sensor, quantity_of, thing,
+    Condition, IotRule, MAX_CONDITIONS, MAX_FREQUENCY, MAX_INTERVAL, MAX_RULES, Op, can_serve, is_pressed_toggle, is_sensor, level_range, room_word,
+    sensor_range, thing,
 };
 use serde_json::{Value, json};
 
@@ -31,6 +32,9 @@ pub(crate) fn thing_page(s: &Session, d: netlabcraft_core::DeviceId) -> Value {
         "brightness": (thing(dev).map(|t| t.what) == Some("smart led")).then(|| dev.iot.brightness.unwrap_or(100)),
         "colour": (thing(dev).map(|t| t.what) == Some("smart led")).then(|| colour_text(dev.iot.colour)),
         "frequency": (thing(dev).map(|t| t.what) == Some("signal")).then_some(dev.iot.frequency),
+        "second": thing(dev).filter(|t| t.what == "humiture").map(|_| s.sim.iot_second(&s.topology, dev)),
+        "variable": thing(dev).filter(|t| t.what == "environment").map(|_| selected_variable(dev)),
+        "level": (!is_sensor(dev) && level_range(thing(dev).map_or("", |t| t.what)).is_some()).then(|| s.sim.iot_level(dev)),
         "interval": dev.iot.interval,
         "registered": st.registered.map(|a| a.to_string()),
         "on": (!is_sensor(dev)).then_some(st.on),
@@ -66,6 +70,24 @@ fn paired(s: &Session, dev: &netlabcraft_model::Device) -> Option<String> {
         _ => None,
     }?;
     s.topology.device(other).map(|d| d.name.clone())
+}
+
+/// The environment variable a generic environment sensor reads (the temperature until one is picked).
+fn selected_variable(dev: &netlabcraft_model::Device) -> &str {
+    if dev.iot.variable.is_empty() { "ambient_temperature" } else { &dev.iot.variable }
+}
+
+/// A whole number in a range, from a parameter.
+fn whole_in(p: &Value, key: &str, lo: i32, hi: i32) -> Result<Option<i32>> {
+    match p.get(key) {
+        None => Ok(None),
+        Some(v) => v
+            .as_i64()
+            .filter(|v| (i64::from(lo)..=i64::from(hi)).contains(v))
+            .and_then(|v| i32::try_from(v).ok())
+            .map(Some)
+            .ok_or_else(|| bad(format!("`{key}` is a whole number from {lo} to {hi}"))),
+    }
 }
 
 /// The room: its settings, and its values now while the physics runs.
@@ -254,14 +276,21 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
                 Some(Value::String(a)) => Some(Some(parse_ip(a.trim()).map_err(|e| bad(e.to_string()))?)),
                 Some(_) => return Err(bad("`server` is an address")),
             };
-            let value = match p.get("value") {
+            let what = s.topology.device(d).and_then(thing).map_or("", |t| t.what);
+            let (lo, hi) = sensor_range(what);
+            let value = whole_in(p, "value", lo, hi)?;
+            let second = whole_in(p, "humidity", 0, 100)?;
+            let level = whole_in(p, "level", 0, netlabcraft_model::iot::MAX_RGB)?;
+            let channels = [whole_in(p, "red", 0, 255)?, whole_in(p, "green", 0, 255)?, whole_in(p, "blue", 0, 255)?];
+            let press = p.get("press").and_then(Value::as_bool).unwrap_or(false);
+            let variable = match p.get("variable") {
                 None => None,
-                Some(v) => Some(
-                    v.as_i64()
-                        .filter(|v| (i64::from(MIN_VALUE)..=i64::from(MAX_VALUE)).contains(v))
-                        .and_then(|v| i32::try_from(v).ok())
-                        .ok_or_else(|| bad(format!("`value` is a whole number from {MIN_VALUE} to {MAX_VALUE}")))?,
+                Some(Value::String(v)) => Some(
+                    netlabcraft_model::environments::find_var(v)
+                        .map(|v| v.id.to_string())
+                        .ok_or_else(|| bad(format!("`variable` is the id or the name of an environment variable, not `{v}`")))?,
                 ),
+                Some(_) => return Err(bad("`variable` is the id or the name of an environment variable")),
             };
             let interval = match p.get("interval") {
                 None => None,
@@ -272,15 +301,37 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
                         .ok_or_else(|| bad(format!("`interval` is 0 (only on change) to {MAX_INTERVAL} seconds")))?,
                 ),
             };
-            if value.is_some() && s.topology.device(d).is_some_and(|x| !is_sensor(x)) {
+            let is_s = s.topology.device(d).is_some_and(is_sensor);
+            if (value.is_some() || press || second.is_some() || variable.is_some()) && !is_s {
                 return Err(bad("only sensors have a reading; the server switches smart devices"));
             }
-            let what = s.topology.device(d).and_then(thing).map(|t| t.what);
+            if second.is_some() && what != "humiture" {
+                return Err(bad("only a humiture sensor has a humidity"));
+            }
+            if variable.is_some() && what != "environment" {
+                return Err(bad("only a generic environment sensor reads a variable you pick"));
+            }
+            if press && !is_pressed_toggle(what) {
+                return Err(bad("only a push button toggle switch and a toggle push button are pressed: set the others with `value`"));
+            }
+            let sets_level = level.is_some() || channels.iter().any(Option::is_some);
+            if sets_level && (is_s || level_range(what).is_none()) {
+                return Err(bad("only a dimmable LED (0-100), a servo (0-180) and an RGB LED have a level"));
+            }
+            if let (Some(l), Some((lo, hi))) = (level, level_range(what))
+                && !(lo..=hi).contains(&l)
+            {
+                return Err(bad(format!("`level` of a {what} is a whole number from {lo} to {hi}")));
+            }
+            if channels.iter().any(Option::is_some) && what != "rgb led" {
+                return Err(bad("only an RGB LED has red, green and blue"));
+            }
+            let value = if press { Some(1 - s.topology.device(d).map_or(0, |x| x.iot.value).clamp(0, 1)) } else { value };
             let brightness = match p.get("brightness") {
                 None => None,
                 Some(v) => Some(
                     v.as_u64()
-                        .filter(|v| *v <= 100 && what == Some("smart led"))
+                        .filter(|v| *v <= 100 && what == "smart led")
                         .and_then(|v| u8::try_from(v).ok())
                         .ok_or_else(|| bad("`brightness` is a whole number from 0 to 100 and only a smart LED has one"))?,
                 ),
@@ -289,7 +340,7 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
                 None => None,
                 Some(v) => Some(
                     v.as_str()
-                        .filter(|_| what == Some("smart led"))
+                        .filter(|_| what == "smart led")
                         .and_then(parse_colour)
                         .ok_or_else(|| bad("`colour` is \"#rrggbb\" and only a smart LED has one"))?,
                 ),
@@ -298,7 +349,7 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
                 None => None,
                 Some(v) => Some(
                     v.as_u64()
-                        .filter(|v| *v <= u64::from(MAX_FREQUENCY) && what == Some("signal"))
+                        .filter(|v| *v <= u64::from(MAX_FREQUENCY) && what == "signal")
                         .and_then(|v| u32::try_from(v).ok())
                         .ok_or_else(|| bad(format!("`frequency` is 0 to {MAX_FREQUENCY} Hz and only a signal generator has one")))?,
                 ),
@@ -310,6 +361,12 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
                 }
                 if let Some(v) = value {
                     dev.iot.value = v;
+                }
+                if let Some(v) = second {
+                    dev.iot.second = v;
+                }
+                if let Some(v) = &variable {
+                    dev.iot.variable = v.clone();
                 }
                 if let Some(i) = interval {
                     dev.iot.interval = i;
@@ -324,12 +381,25 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
                     dev.iot.frequency = f;
                 }
             }
+            if sets_level {
+                // An RGB LED's red, green and blue make one number, 0xRRGGBB.
+                let packed = match channels {
+                    [None, None, None] => level.unwrap_or(0),
+                    [r, g, b] => (r.unwrap_or(0) << 16) | (g.unwrap_or(0) << 8) | b.unwrap_or(0),
+                };
+                if let Some(dev) = s.topology.device(d) {
+                    s.sim.iot_set_level(dev, i64::from(packed));
+                }
+            }
             s.changed();
             // With the physics on, a sensor's new reading is the room's new quantity.
             if let (Some(v), true, Some(w)) = (value, s.topology.environment.enabled, s.topology.device(d).and_then(thing).map(|t| t.what)) {
-                let q = quantity_of(w);
                 s.sim.env_step(&s.topology);
-                s.sim.env_set(&s.topology, q, v);
+                s.sim.env_set(&s.topology, room_word(w), v);
+            }
+            if let (Some(v), true) = (second, s.topology.environment.enabled) {
+                s.sim.env_step(&s.topology);
+                s.sim.env_set(&s.topology, "humidity", v);
             }
             // A new reading goes to the server at once, and the devices hear what it decided.
             s.sim.iot_sync(&s.topology);

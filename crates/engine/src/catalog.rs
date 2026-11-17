@@ -526,7 +526,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Smart thing settings",
         "",
         None,
-        r#"{"device": smart sensor or device, "server"?: "IoT server address (empty: none)", "value"?: sensor reading -1000..1000, "brightness"?: smart LED 0..100, "colour"?: smart LED colour as hex rrggbb or #rrggbb, "frequency"?: signal generator 0..20000 Hz} → {"kind", "server", "value", "value2" (a second reading), "registered", "on", "paired", "message"} (reports at once)"#,
+        r#"{"device": smart sensor or device, "server"?: "IoT server address (empty: none)", "value"?: sensor reading -1000..1000 (0 or 1 for the switches, the metal sensor, the trip wire and the water detector; 0-100 for the flex sensor and the membrane potentiometer), "press"?: true (flips a push button toggle switch or a toggle push button), "humidity"?: 0-100 (a humiture sensor's second reading), "variable"?: environment variable id or name (the generic environment sensor reads it), "level"?: 0-100 (dimmable LED) | 0-180 (servo) | 0-16777215 (RGB LED, 0xRRGGBB), "red"?|"green"?|"blue"?: 0-255 (RGB LED), "brightness"?: smart LED 0..100, "colour"?: smart LED colour as hex rrggbb or #rrggbb, "frequency"?: signal generator 0..20000 Hz} → {"kind", "server", "value", "second", "value2" (a second reading), "variable", "level", "brightness", "colour", "frequency", "registered", "on", "paired", "message"} (reports at once)"#,
         true
     ),
     c!(

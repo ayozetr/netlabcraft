@@ -697,7 +697,7 @@
 	No events yet. Add a simple PDU (envelope tool) or ping from a console.	暂无事件。请添加简单 PDU（信封工具）或在控制台中 ping。
 	No files yet: `copy running-config tftp: <this address>` on a router saves one here.	暂无文件：在路由器上执行 `copy running-config tftp: <此地址>` 即可在此保存一份。
 	No fill	无填充
-	no function `{}` (there are read, get, time and number)	没有函数 `{}`（可用的有 read、get、time 和 number）
+	no function `{}` (there are read, channel, rgb, get, time and number)	没有函数 `{}`（可用的有 read、channel、rgb、get、time 和 number）
 	no IoT server set	未设置 IoT 服务器
 	no IoT server set on the board (Programming tab)	开发板上未设置 IoT 服务器（“编程”选项卡）
 	no IPv6 route to {}	没有到 {} 的 IPv6 路由
@@ -2107,6 +2107,76 @@ furniture	Table	桌子
 	red	红灯
 	showing	显示中
 	blank	空白
+	Air Cooler	空气冷却器
+	Air cooler wired to a board's pin with an IoT custom cable: cools its environment while the pin is high	空气冷却器，用物联网自定义线接到开发板引脚：引脚为高电平时降低所处环境的温度
+	Alarm	报警器
+	Alarm wired to a board's pin with an IoT custom cable: sounds its siren and lights up while the pin is high	报警器，用物联网自定义线接到开发板引脚：引脚为高电平时鸣响警报并亮起
+	Ceiling Sprinkler	天花板喷淋器
+	Ceiling sprinkler wired to a board's pin with an IoT custom cable: sprays water from above while the pin is high and puts out flames	天花板喷淋器，用物联网自定义线接到开发板引脚：引脚为高电平时从上方喷水并扑灭火焰
+	Floor Sprinkler	地面喷淋器
+	Floor sprinkler wired to a board's pin with an IoT custom cable: sprays water from the floor while the pin is high and puts out flames	地面喷淋器，用物联网自定义线接到开发板引脚：引脚为高电平时从地面喷水并扑灭火焰
+	Dimmable LED	可调光 LED
+	Dimmable LED wired to a board's pin with an IoT custom cable: its brightness follows the level written to the pin (0-100)	可调光 LED，用物联网自定义线接到开发板引脚：亮度跟随写入引脚的电平值 (0-100)
+	Heating Element	加热元件
+	Heating element wired to a board's pin with an IoT custom cable: warms its environment while the pin is high	加热元件，用物联网自定义线接到开发板引脚：引脚为高电平时升高所处环境的温度
+	RGB LED	RGB LED
+	RGB LED wired to a board's pin with an IoT custom cable: shows the red, green and blue levels written to the pin as one number (0xRRGGBB)	RGB LED，用物联网自定义线接到开发板引脚：将写入引脚的红、绿、蓝电平合成一个数 (0xRRGGBB) 来显示
+	Servo	舵机
+	Servo wired to a board's pin with an IoT custom cable: turns to the angle written to the pin (0-180 degrees)	舵机，用物联网自定义线接到开发板引脚：转到写入引脚的角度 (0-180 度)
+	Speaker	扬声器
+	Speaker wired to a board's pin with an IoT custom cable: plays a tone and raises the sound around it while the pin is high	扬声器，用物联网自定义线接到开发板引脚：引脚为高电平时播放音调并提高周围的声音
+	Flex Sensor	弯曲传感器
+	Flex sensor wired to a board's pin with an IoT custom cable: reads how far it is bent (0-100 %)	弯曲传感器，用物联网自定义线接到开发板引脚：读取弯曲程度 (0-100 %)
+	Generic Environment Sensor	通用环境传感器
+	Generic environment sensor wired to a board's pin with an IoT custom cable: reads the environment variable you pick, rounded to a whole number	通用环境传感器，用物联网自定义线接到开发板引脚：读取所选的环境变量，四舍五入为整数
+	Generic Sensor	通用传感器
+	Generic sensor wired to a board's pin with an IoT custom cable: reads a raw analog value you set (-1000 to 1000)	通用传感器，用物联网自定义线接到开发板引脚：读取手动设置的原始模拟值 (-1000 至 1000)
+	Humidity sensor wired to a board's pin with an IoT custom cable: reads the relative humidity of its environment (0-100 %)	湿度传感器，用物联网自定义线接到开发板引脚：读取所处环境的相对湿度 (0-100 %)
+	Humiture Sensor	温湿度传感器
+	Humiture sensor wired to a board's pin with an IoT custom cable: reads the temperature, and the humidity with channel(PIN, 1)	温湿度传感器，用物联网自定义线接到开发板引脚：读取温度，用 channel(PIN, 1) 读取湿度
+	Membrane Potentiometer	薄膜电位器
+	Membrane potentiometer wired to a board's pin with an IoT custom cable: reads where a finger presses along its strip (0-100 %)	薄膜电位器，用物联网自定义线接到开发板引脚：读取手指在条带上按压的位置 (0-100 %)
+	Metal Sensor	金属传感器
+	Metal sensor wired to a board's pin with an IoT custom cable: reads 1 while a metal object is near, else 0	金属传感器，用物联网自定义线接到开发板引脚：附近有金属物体时读取 1，否则读取 0
+	Motion Sensor	运动传感器
+	Motion sensor wired to a board's pin with an IoT custom cable: reads 1 while something moves in its environment, else 0	运动传感器，用物联网自定义线接到开发板引脚：所处环境中有物体移动时读取 1，否则读取 0
+	Push Button Toggle Switch	自锁按钮开关
+	Push button toggle switch wired to a board's pin with an IoT custom cable: latches on at one push and off at the next, reads 1 while on	自锁按钮开关，用物联网自定义线接到开发板引脚：按一下接通并锁定，再按一下断开，接通时读取 1
+	Rocker Switch	船型开关
+	Rocker switch wired to a board's pin with an IoT custom cable: reads 1 in its on position and 0 in its off position	船型开关，用物联网自定义线接到开发板引脚：处于接通位置时读取 1，断开位置时读取 0
+	Toggle Push Button	切换按钮
+	Toggle push button wired to a board's pin with an IoT custom cable: each press flips its state, reads 1 while on	切换按钮，用物联网自定义线接到开发板引脚：每按一次状态翻转，接通时读取 1
+	Smoke Sensor	烟雾传感器
+	Smoke sensor wired to a board's pin with an IoT custom cable: reads the smoke level of its environment (0-100 %)	烟雾传感器，用物联网自定义线接到开发板引脚：读取所处环境的烟雾浓度 (0-100 %)
+	Temperature Sensor	温度传感器
+	Temperature sensor wired to a board's pin with an IoT custom cable: reads the temperature of its environment, in degrees	温度传感器，用物联网自定义线接到开发板引脚：读取所处环境的温度，单位为度
+	Trip Wire	绊线
+	Trip wire wired to a board's pin with an IoT custom cable: reads 1 while something crosses the line, else 0	绊线，用物联网自定义线接到开发板引脚：有物体越过该线时读取 1，否则读取 0
+	Water Detector	水检测器
+	Water detector wired to a board's pin with an IoT custom cable: reads 1 while water is present, else 0	水检测器，用物联网自定义线接到开发板引脚：有水时读取 1，否则读取 0
+	Water Sensor	水传感器
+	Water sensor wired to a board's pin with an IoT custom cable: reads the water level, in centimetres	水传感器，用物联网自定义线接到开发板引脚：读取水位，单位为厘米
+	Wind Sensor	风速传感器
+	Wind sensor wired to a board's pin with an IoT custom cable: reads the wind speed, in kilometres per hour	风速传感器，用物联网自定义线接到开发板引脚：读取风速，单位为千米每小时
+	Humidity Monitor	湿度监测器
+	Press	按下
+	Flip the switch	切换开关状态
+	Reads:	读取：
+	Humidity: {} %	湿度：{} %
+	Change the humidity	更改湿度
+	Change the level	更改电平
+	Brightness: {} %	亮度：{} %
+	Angle: {} degrees	角度：{} 度
+	Colour: #{}	颜色：#{}
+	% bent	弯曲 %
+	% along the strip	条带上的位置 %
+	1 = metal near	1 = 附近有金属
+	1 = crossed	1 = 已越过
+	1 = water	1 = 有水
+	kph	千米/时
+	holding an angle	保持在某一角度
+	idle	空闲
+	{} has no channel {}	{} 没有通道 {}
 	Save as PDF...	另存为 PDF...
 	The workspace and a report of the devices on A4 pages, saved as a PDF file	工作区和设备报告，按 A4 页面排版，保存为 PDF 文件
 	The same PDF: save it, open it in a PDF viewer or print it	同一份 PDF：可以保存、在 PDF 查看器中打开或打印

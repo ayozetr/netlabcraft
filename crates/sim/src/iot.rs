@@ -19,7 +19,7 @@ use std::net::Ipv4Addr;
 
 use netlabcraft_core::DeviceId;
 use netlabcraft_model::environment::{Climate, Effects, MAX_STEP_SECONDS, PLAYER_DB, SPEAKER_DB, TONE_HZ};
-use netlabcraft_model::iot::{is_actuator, is_sensor, quantity_of, thing};
+use netlabcraft_model::iot::{is_actuator, is_sensor, room_word, sensor_range, thing};
 use netlabcraft_model::proximity::announced_id;
 use netlabcraft_model::{Device, DeviceKind, Topology};
 
@@ -58,6 +58,9 @@ pub struct ThingState {
     pub registered: Option<Ipv4Addr>,
     /// Smart devices: switched on by the server.
     pub on: bool,
+    /// A dimmable LED's brightness, a servo's angle or an RGB LED's colour, as last set (by a
+    /// board's `write` or by hand); 0 until then.
+    pub level: i32,
     /// Why the last report failed.
     pub message: Option<String>,
     /// Webcams: the still image the server returned.
@@ -126,17 +129,17 @@ impl Sim {
                 continue;
             }
             let n = match what {
-                Some("heater") => &mut fx.heaters,
+                Some("heater") | Some("heating element") => &mut fx.heaters,
                 Some("furnace") => &mut fx.furnaces,
-                Some("ac") => &mut fx.coolers,
+                Some("ac") | Some("air cooler") => &mut fx.coolers,
                 Some("fan") => &mut fx.fans,
                 Some("ceiling fan") => &mut fx.breezes,
                 Some("humidifier") => &mut fx.humidifiers,
-                Some("sprinkler") => &mut fx.sprinklers,
+                Some("sprinkler") | Some("ceiling sprinkler") | Some("floor sprinkler") => &mut fx.sprinklers,
                 Some("fire sprinkler") => &mut fx.fire_sprinklers,
                 Some("car") => &mut fx.cars,
                 Some("window") | Some("garage") => &mut fx.windows_open,
-                Some("light") | Some("smart led") => &mut fx.lamps,
+                Some("light") | Some("smart led") | Some("dimmable led") | Some("rgb led") => &mut fx.lamps,
                 Some("bluetooth speaker") => {
                     fx.sound_db = fx.sound_db.max(SPEAKER_DB);
                     continue;
@@ -149,6 +152,10 @@ impl Sim {
                 _ => continue,
             };
             *n = n.saturating_add(1);
+            // A ceiling or floor sprinkler puts out flames as a fire sprinkler does.
+            if matches!(what, Some("ceiling sprinkler" | "floor sprinkler")) {
+                fx.fire_sprinklers = fx.fire_sprinklers.saturating_add(1);
+            }
         }
         if fx.sound_db > 0 {
             fx.sound_hz = TONE_HZ;
@@ -206,29 +213,39 @@ impl Sim {
             "trip" => return t.trip_reading(d),
             _ => {}
         }
-        // A place (or one above it) that sets the variable decides what the sensor reads.
-        if let Some(v) = self.env_place_reading(t, d, x.what) {
+        // The generic environment sensor and the water detector read what only they read.
+        if let Some(v) = self.part_reading(t, d, x.what) {
+            return v;
+        }
+        // A place (or one above it) that sets the variable, or a part that changes it, decides
+        // what the sensor reads.
+        let word = room_word(x.what);
+        if let Some(v) = self.mapped_reading(t, d, word) {
             return v;
         }
         if t.environment.enabled
             && let Some(c) = self.environment()
-            && let Some(v) = c.reading(x.what)
+            && let Some(v) = c.reading(word)
         {
             return v;
         }
-        d.iot.value
+        let (lo, hi) = sensor_range(x.what);
+        d.iot.value.clamp(lo, hi)
     }
 
-    /// A sensor's second reading, when it has one (a humiture monitor's humidity, a sound
+    /// A sensor's second reading, when it has one (a humiture sensor's humidity, a sound
     /// detector's volume, how many things hear a beacon, a signal generator's frequency).
     pub fn iot_reading2(&self, t: &Topology, d: &Device) -> Option<i32> {
         let x = thing(d)?;
+        if x.what == "humiture" {
+            return Some(self.iot_second(t, d));
+        }
         match x.also {
             "" => None,
             "audience" => Some(t.beacon_audience(d)),
             "frequency" => Some(i32::try_from(d.iot.frequency).unwrap_or(0)),
             w => {
-                if let Some(v) = self.env_place_reading(t, d, w) {
+                if let Some(v) = self.mapped_reading(t, d, w) {
                     return Some(v);
                 }
                 if t.environment.enabled
@@ -245,17 +262,6 @@ impl Sim {
     /// The time of day of the environment clock now, in seconds from midnight.
     pub fn env_time(&self, t: &Topology) -> u32 {
         t.environments.clock.time_at(self.now)
-    }
-
-    /// What the environments of the sensor's place say it reads (`None`: nothing is set there or
-    /// above it, so the room or the sensor's own number answers).
-    fn env_place_reading(&self, t: &Topology, d: &Device, what: &str) -> Option<i32> {
-        let what = quantity_of(what);
-        if t.environments.places.is_empty() {
-            return None;
-        }
-        let place = t.home_of(d.id).map_or_else(|| t.default_place(), |h| h.place);
-        t.env_reading(place, what, self.env_time(t))
     }
 
     /// The things a server's IoT service lists.
@@ -374,6 +380,7 @@ impl Sim {
         // A device wired to a board follows the board's program, not the server.
         let wired = t.board_of(dev).is_some();
         let before = self.iot.things.get(&dev).is_some_and(|s| s.on);
+        let level = self.iot.things.get(&dev).map_or(0, |s| s.level);
         let result = (|| {
             if t.is_dark(dev) {
                 return Err(SimError::NoSource("switched off".into()));
@@ -409,7 +416,7 @@ impl Sim {
         match result {
             Ok((server, on, image)) => {
                 let on = if wired { before } else { on };
-                *st = ThingState { registered: Some(server), on, message: None, image, last_report_us: Some(now) };
+                *st = ThingState { registered: Some(server), on, level, message: None, image, last_report_us: Some(now) };
                 Ok(())
             }
             Err(e) => {

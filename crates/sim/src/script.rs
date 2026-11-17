@@ -23,7 +23,13 @@
 //! ```
 //!
 //! Operators: `+ - * / %`, `== != < > <= >=`, `and`, `or`, `not`, parentheses; `+` joins text.
-//! Functions: `read(PIN)`, `get(TEXT)`, `time()` (seconds of simulated time), `number(TEXT)`.
+//! Functions: `read(PIN)`, `channel(PIN, N)` (a second reading: a humiture sensor's humidity is channel
+//! 1, `channel(PIN, 0)` is `read(PIN)`), `rgb(R, G, B)` (three levels 0-255 as one number, `0xRRGGBB`, what
+//! an RGB LED takes), `get(TEXT)`, `time()` (seconds of simulated time), `number(TEXT)`.
+//!
+//! What `write(PIN, N)` does depends on what the pin is wired to: any smart device is on while `N` is
+//! not 0; a dimmable LED takes a brightness 0-100, a servo an angle 0-180, an RGB LED a colour
+//! `0xRRGGBB`. `read(PIN)` on a device gives the same number back (0 when it is off).
 //!
 //! A program is compiled to a list of steps with jumps, so it can pause at a `sleep` and carry
 //! on later. Each run slice executes at most [`MAX_STEPS`] steps: a loop that never sleeps stops
@@ -80,6 +86,10 @@ impl Val {
 pub trait Io {
     /// A pin's level: the wired sensor's reading or device's state, or what was written.
     fn read(&mut self, pin: &str) -> Result<i64, String>;
+    /// A second reading of a pin's sensor (`channel(PIN, N)`): channel 0 is `read`.
+    fn read_channel(&mut self, pin: &str, channel: i64) -> Result<i64, String> {
+        if channel == 0 { self.read(pin) } else { Err(format!("{pin} has no channel {channel}")) }
+    }
     fn write(&mut self, pin: &str, level: i64) -> Result<(), String>;
     /// An HTTP GET to the board's IoT server: the answer's text.
     fn get(&mut self, path: &str) -> Result<String, String>;
@@ -182,6 +192,10 @@ enum Expr {
     Not(Box<Expr>),
     Bin(&'static str, Box<Expr>, Box<Expr>),
     Read(String),
+    /// `channel(PIN, N)`: a second reading of the pin's sensor (a humiture sensor's humidity is 1).
+    Channel(String, Box<Expr>),
+    /// `rgb(R, G, B)`: three levels (0-255) as one number, `0xRRGGBB`.
+    Rgb(Box<Expr>, Box<Expr>, Box<Expr>),
     Get(Box<Expr>),
     Time,
     Number(Box<Expr>),
@@ -333,10 +347,22 @@ impl Parser {
                 }
                 let e = match lower.as_str() {
                     "read" => Expr::Read(self.pin()?),
+                    "channel" => {
+                        let pin = self.pin()?;
+                        self.expect_sym(",")?;
+                        Expr::Channel(pin, Box::new(self.expr()?))
+                    }
+                    "rgb" => {
+                        let r = self.expr()?;
+                        self.expect_sym(",")?;
+                        let g = self.expr()?;
+                        self.expect_sym(",")?;
+                        Expr::Rgb(Box::new(r), Box::new(g), Box::new(self.expr()?))
+                    }
                     "get" => Expr::Get(Box::new(self.expr()?)),
                     "number" => Expr::Number(Box::new(self.expr()?)),
                     "time" => Expr::Time,
-                    _ => return Err(format!("no function `{n}` (there are read, get, time and number)")),
+                    _ => return Err(format!("no function `{n}` (there are read, channel, rgb, get, time and number)")),
                 };
                 self.expect_sym(")")?;
                 Ok(e)
@@ -677,6 +703,17 @@ impl Ctx<'_> {
                 self.pin_ok(pin)?;
                 Val::Int(self.io.read(pin)?)
             }
+            Expr::Channel(pin, n) => {
+                self.pin_ok(pin)?;
+                let n = self.eval(n)?.int()?;
+                Val::Int(self.io.read_channel(pin, n)?)
+            }
+            Expr::Rgb(r, g, b) => {
+                let r = self.eval(r)?.int()?.clamp(0, 255);
+                let g = self.eval(g)?.int()?.clamp(0, 255);
+                let b = self.eval(b)?.int()?.clamp(0, 255);
+                Val::Int(r * 65_536 + g * 256 + b)
+            }
             Expr::Get(path) => {
                 let path = self.eval(path)?.show();
                 self.request()?;
@@ -783,6 +820,23 @@ mod tests {
         assert_eq!(io.pins.get("D0"), Some(&0));
         assert_eq!(m.log.last().map(String::as_str), Some("warm 30"));
         assert_eq!(m.vars.get("limit"), Some(&Val::Int(20)));
+    }
+
+    #[test]
+    fn rgb_packs_three_levels_and_channel_zero_is_read() {
+        let mut io = Fake::default();
+        io.pins.insert("A0".into(), 7);
+        let m = run("c = rgb(255, 128, 0)\nd = rgb(300, -5, 1)\ne = channel(A0, 0)\nwrite(D0, c)\nstop\n", &mut io);
+        assert_eq!(m.vars.get("c"), Some(&Val::Int(0xff_8000)));
+        assert_eq!(m.vars.get("d"), Some(&Val::Int(0xff_0001)), "levels are kept within 0-255");
+        assert_eq!(m.vars.get("e"), Some(&Val::Int(7)));
+        assert_eq!(io.pins.get("D0"), Some(&0xff_8000));
+        // A pin with no second reading says so, and the functions need their arguments.
+        let m = run("x = channel(A0, 1)\n", &mut io);
+        assert!(matches!(&m.state, RunState::Stopped(Some(w)) if w.contains("A0 has no channel 1")), "{:?}", m.state);
+        for src in ["x = rgb(1, 2)\n", "x = channel(1, 2)\n", "x = channel(A0)\n", "x = rgb()\n"] {
+            assert!(compile(src).is_err(), "{src:?}");
+        }
     }
 
     #[test]

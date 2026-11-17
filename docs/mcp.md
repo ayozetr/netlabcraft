@@ -1,6 +1,6 @@
 # MCP server
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (two more lab-book labs over MCP, 16 in all) · earlier: minor (results replay fields (M9.6)) · earlier: minor (eleven lab-book labs over MCP, was eight) · earlier: minor (the lab book over MCP; sessions for Simulation-mode options, automation depth, boards, power supplies and instructor tools)
+> **Last reviewed:** 2026-11-17 · **Last updated:** 2026-11-17 · **Change:** minor (`iot.configure` parameters of the new components) · also merged with minor (two more lab-book labs over MCP, 16 in all) · earlier: minor (results replay fields (M9.6)) · earlier: minor (eleven lab-book labs over MCP, was eight) · earlier: minor (the lab book over MCP; sessions for Simulation-mode options, automation depth, boards, power supplies and instructor tools)
 
 `netlabcraft-cli mcp [--in LAB] [--sample ID]` speaks the Model Context Protocol (JSON-RPC 2.0, one message per line) on stdin/stdout.
 
@@ -41,7 +41,7 @@ Other sessions, all through `netlabcraft_run`:
   supplies, and `cloud.map` pairs a cloud's ports.
 - **Boards:** `board.program` sets and runs a BoardScript program, `board.status` returns its
   state, variables, pins and output, and `board.wire` (or `link.add` with
-  `"cable": "iot-custom"`) joins a pin to a smart thing.
+  `"cable": "iot-custom"`) joins a pin to a smart thing. The components take more of `iot.configure`: `press` (the push switches), `humidity` (a humiture sensor), `variable` (a generic environment sensor), `level`, or `red`, `green` and `blue` (a dimmable LED, a servo, an RGB LED); BoardScript reads and writes them with `read`, `write`, `channel(PIN, 1)` and `rgb(R, G, B)`.
 - **Instructor tools:** `activity.save_answer`, `activity.answer`, `activity.load_answer` and
   `activity.clear_answer` keep the answer network; `activity.tree`, `activity.weight` and
   `activity.tree_checks` build checks from it; `activity.save_initial`, `activity.load_initial`
@@ -56,6 +56,7 @@ Other sessions, all through `netlabcraft_run`:
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-17 | minor | The components' `iot.configure` parameters and the BoardScript functions `channel` and `rgb` are noted next to the Boards bullet. |
 | 2026-11-15 | minor | Labs 32 (EIGRP) and 34 (an EtherChannel that will not bundle) also run over MCP: 16 in all. |
 | 2026-11-13 | minor | `activity.export_results` embeds the network and `activity.verify_results` replays it (M9.6). |
 | 2026-11-13 | minor | Three troubleshooting labs (22, 24, 26) also run over MCP: eleven in all. |

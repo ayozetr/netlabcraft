@@ -1376,7 +1376,7 @@
 	a pin name (D0, A1…) expected	se esperaba el nombre de un pin (D0, A1…)
 	a value expected	se esperaba un valor
 	`{}` is a word of the language, not a value	`{}` es una palabra del lenguaje, no un valor
-	no function `{}` (there are read, get, time and number)	no existe la función `{}` (hay read, get, time y number)
+	no function `{}` (there are read, channel, rgb, get, time and number)	no existe la función `{}` (hay read, channel, rgb, get, time y number)
 	`{}` where a value was expected	`{}` donde se esperaba un valor
 	the program is longer than {} characters	el programa tiene más de {} caracteres
 	the program has more than {} lines	el programa tiene más de {} líneas
@@ -2110,6 +2110,76 @@ furniture	Table	Mesa
 	red	rojo
 	showing	mostrando
 	blank	en blanco
+	Air Cooler	Enfriador de aire
+	Air cooler wired to a board's pin with an IoT custom cable: cools its environment while the pin is high	Enfriador de aire conectado a un pin de una placa con un cable personalizado IoT: enfría su entorno mientras el pin está en alto
+	Alarm	Alarma
+	Alarm wired to a board's pin with an IoT custom cable: sounds its siren and lights up while the pin is high	Alarma conectada a un pin de una placa con un cable personalizado IoT: hace sonar su sirena y se enciende mientras el pin está en alto
+	Ceiling Sprinkler	Aspersor de techo
+	Ceiling sprinkler wired to a board's pin with an IoT custom cable: sprays water from above while the pin is high and puts out flames	Aspersor de techo conectado a un pin de una placa con un cable personalizado IoT: rocía agua desde arriba mientras el pin está en alto y apaga las llamas
+	Floor Sprinkler	Aspersor de suelo
+	Floor sprinkler wired to a board's pin with an IoT custom cable: sprays water from the floor while the pin is high and puts out flames	Aspersor de suelo conectado a un pin de una placa con un cable personalizado IoT: rocía agua desde el suelo mientras el pin está en alto y apaga las llamas
+	Dimmable LED	LED regulable
+	Dimmable LED wired to a board's pin with an IoT custom cable: its brightness follows the level written to the pin (0-100)	LED regulable conectado a un pin de una placa con un cable personalizado IoT: su brillo sigue el nivel escrito en el pin (0-100)
+	Heating Element	Resistencia calefactora
+	Heating element wired to a board's pin with an IoT custom cable: warms its environment while the pin is high	Resistencia calefactora conectada a un pin de una placa con un cable personalizado IoT: calienta su entorno mientras el pin está en alto
+	RGB LED	LED RGB
+	RGB LED wired to a board's pin with an IoT custom cable: shows the red, green and blue levels written to the pin as one number (0xRRGGBB)	LED RGB conectado a un pin de una placa con un cable personalizado IoT: muestra los niveles de rojo, verde y azul escritos en el pin como un solo número (0xRRGGBB)
+	Servo	Servo
+	Servo wired to a board's pin with an IoT custom cable: turns to the angle written to the pin (0-180 degrees)	Servo conectado a un pin de una placa con un cable personalizado IoT: gira hasta el ángulo escrito en el pin (0-180 grados)
+	Speaker	Altavoz
+	Speaker wired to a board's pin with an IoT custom cable: plays a tone and raises the sound around it while the pin is high	Altavoz conectado a un pin de una placa con un cable personalizado IoT: reproduce un tono y sube el sonido a su alrededor mientras el pin está en alto
+	Flex Sensor	Sensor de flexión
+	Flex sensor wired to a board's pin with an IoT custom cable: reads how far it is bent (0-100 %)	Sensor de flexión conectado a un pin de una placa con un cable personalizado IoT: lee cuánto está doblado (0-100 %)
+	Generic Environment Sensor	Sensor ambiental genérico
+	Generic environment sensor wired to a board's pin with an IoT custom cable: reads the environment variable you pick, rounded to a whole number	Sensor ambiental genérico conectado a un pin de una placa con un cable personalizado IoT: lee la variable de entorno elegida, redondeada a un número entero
+	Generic Sensor	Sensor genérico
+	Generic sensor wired to a board's pin with an IoT custom cable: reads a raw analog value you set (-1000 to 1000)	Sensor genérico conectado a un pin de una placa con un cable personalizado IoT: lee un valor analógico en bruto ajustado a mano (-1000 a 1000)
+	Humidity sensor wired to a board's pin with an IoT custom cable: reads the relative humidity of its environment (0-100 %)	Sensor de humedad conectado a un pin de una placa con un cable personalizado IoT: lee la humedad relativa de su entorno (0-100 %)
+	Humiture Sensor	Sensor de temperatura y humedad
+	Humiture sensor wired to a board's pin with an IoT custom cable: reads the temperature, and the humidity with channel(PIN, 1)	Sensor de temperatura y humedad conectado a un pin de una placa con un cable personalizado IoT: lee la temperatura, y la humedad con channel(PIN, 1)
+	Membrane Potentiometer	Potenciómetro de membrana
+	Membrane potentiometer wired to a board's pin with an IoT custom cable: reads where a finger presses along its strip (0-100 %)	Potenciómetro de membrana conectado a un pin de una placa con un cable personalizado IoT: lee dónde presiona un dedo a lo largo de su tira (0-100 %)
+	Metal Sensor	Sensor de metales
+	Metal sensor wired to a board's pin with an IoT custom cable: reads 1 while a metal object is near, else 0	Sensor de metales conectado a un pin de una placa con un cable personalizado IoT: lee 1 mientras hay un objeto metálico cerca y 0 en caso contrario
+	Motion Sensor	Sensor de movimiento
+	Motion sensor wired to a board's pin with an IoT custom cable: reads 1 while something moves in its environment, else 0	Sensor de movimiento conectado a un pin de una placa con un cable personalizado IoT: lee 1 mientras algo se mueve en su entorno y 0 en caso contrario
+	Push Button Toggle Switch	Interruptor de pulsador con enclavamiento
+	Push button toggle switch wired to a board's pin with an IoT custom cable: latches on at one push and off at the next, reads 1 while on	Interruptor de pulsador con enclavamiento conectado a un pin de una placa con un cable personalizado IoT: se enclava al pulsar y se suelta en la pulsación siguiente, lee 1 mientras está activado
+	Rocker Switch	Interruptor de balancín
+	Rocker switch wired to a board's pin with an IoT custom cable: reads 1 in its on position and 0 in its off position	Interruptor de balancín conectado a un pin de una placa con un cable personalizado IoT: lee 1 en su posición de encendido y 0 en la de apagado
+	Toggle Push Button	Pulsador conmutador
+	Toggle push button wired to a board's pin with an IoT custom cable: each press flips its state, reads 1 while on	Pulsador conmutador conectado a un pin de una placa con un cable personalizado IoT: cada pulsación invierte su estado, lee 1 mientras está activado
+	Smoke Sensor	Sensor de humo
+	Smoke sensor wired to a board's pin with an IoT custom cable: reads the smoke level of its environment (0-100 %)	Sensor de humo conectado a un pin de una placa con un cable personalizado IoT: lee el nivel de humo de su entorno (0-100 %)
+	Temperature Sensor	Sensor de temperatura
+	Temperature sensor wired to a board's pin with an IoT custom cable: reads the temperature of its environment, in degrees	Sensor de temperatura conectado a un pin de una placa con un cable personalizado IoT: lee la temperatura de su entorno, en grados
+	Trip Wire	Cable de disparo
+	Trip wire wired to a board's pin with an IoT custom cable: reads 1 while something crosses the line, else 0	Cable de disparo conectado a un pin de una placa con un cable personalizado IoT: lee 1 mientras algo cruza la línea y 0 en caso contrario
+	Water Detector	Detector de agua
+	Water detector wired to a board's pin with an IoT custom cable: reads 1 while water is present, else 0	Detector de agua conectado a un pin de una placa con un cable personalizado IoT: lee 1 mientras hay agua y 0 en caso contrario
+	Water Sensor	Sensor de agua
+	Water sensor wired to a board's pin with an IoT custom cable: reads the water level, in centimetres	Sensor de agua conectado a un pin de una placa con un cable personalizado IoT: lee el nivel del agua, en centímetros
+	Wind Sensor	Sensor de viento
+	Wind sensor wired to a board's pin with an IoT custom cable: reads the wind speed, in kilometres per hour	Sensor de viento conectado a un pin de una placa con un cable personalizado IoT: lee la velocidad del viento, en kilómetros por hora
+	Humidity Monitor	Monitor de humedad
+	Press	Pulsar
+	Flip the switch	Cambiar el estado del interruptor
+	Reads:	Lee:
+	Humidity: {} %	Humedad: {} %
+	Change the humidity	Cambiar la humedad
+	Change the level	Cambiar el nivel
+	Brightness: {} %	Brillo: {} %
+	Angle: {} degrees	Ángulo: {} grados
+	Colour: #{}	Color: #{}
+	% bent	% de flexión
+	% along the strip	% a lo largo de la tira
+	1 = metal near	1 = metal cerca
+	1 = crossed	1 = cruzado
+	1 = water	1 = hay agua
+	kph	km/h
+	holding an angle	sosteniendo un ángulo
+	idle	en reposo
+	{} has no channel {}	{} no tiene el canal {}
 	Save as PDF...	Guardar como PDF...
 	The workspace and a report of the devices on A4 pages, saved as a PDF file	El espacio de trabajo y un informe de los dispositivos en páginas A4, guardados como archivo PDF
 	The same PDF: save it, open it in a PDF viewer or print it	El mismo PDF: guárdalo, ábrelo en un visor de PDF o imprímelo

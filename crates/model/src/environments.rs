@@ -156,7 +156,7 @@ pub static VARS: &[Var] = &[
     sensed(var("humidity", "Humidity", WATER, "%", 50.0, 0.0, 100.0), "humidity"),
     var("rain", "Rain", WATER, "cm", 0.0, 0.0, 1_000.0),
     var("snow", "Snow", WATER, "cm", 0.0, 0.0, 10_000.0),
-    var("water_level", "Water level", WATER, "cm", 0.0, 0.0, 1_000_000.0),
+    sensed(var("water_level", "Water level", WATER, "cm", 0.0, 0.0, 1_000_000.0), "water depth"),
     var("water_volume", "Water volume", WATER, "L", 0.0, 0.0, 1_000_000_000.0),
     var("water_ph", "Water pH", WATER, "pH", 7.0, 0.0, 14.0),
     var("water_temperature", "Water temperature", WATER, "\u{b0}C", 15.0, -10.0, 120.0),
@@ -180,8 +180,37 @@ pub fn find_var(name: &str) -> Option<&'static Var> {
 
 /// The variable a smart sensor reads (`thermostat` reads the temperature).
 pub fn sensor_var(what: &str) -> Option<&'static Var> {
-    let what = crate::iot::quantity_of(what);
+    let what = crate::iot::room_word(what);
     VARS.iter().find(|v| v.drives == Some(what))
+}
+
+/// What a smart sensor reports for a variable's value: whole units, kept within what that kind of
+/// sensor reports (temperature -50 to 100, carbon monoxide to 1000 ppm, carbon dioxide to 10000
+/// ppm (a share of the air in percent is read in ppm), pressure to 200 kPa, wind to 500 kph, water
+/// depth to 1000 cm, sound pitch to 20000 Hz and volume to 200 dB, the others 0 to 100).
+pub fn sensor_whole(v: &Var, value: f64) -> i32 {
+    let (lo, hi) = match v.id {
+        "ambient_temperature" => (crate::environment::MIN_TEMP, crate::environment::MAX_TEMP),
+        "carbon_monoxide" => (0, crate::environment::MAX_CO),
+        "carbon_dioxide" => (0, crate::environment::MAX_CO2),
+        "atmospheric_pressure" => (0, crate::environment::MAX_KPA),
+        "wind_speed" => (0, 500),
+        "water_level" => (0, 1_000),
+        "sound_pitch" => (0, 20_000),
+        "sound_volume" => (0, 200),
+        _ => (0, 100),
+    };
+    // The carbon dioxide share is kept in percent and read in ppm.
+    let value = value.clamp(v.min, v.max);
+    let value = if v.id == "carbon_dioxide" { value * 10_000.0 } else { value };
+    // `round` of a finite value within a few thousand: the conversion cannot overflow.
+    (value.round() as i32).clamp(lo, hi)
+}
+
+/// What the generic environment sensor reports for any variable: the value rounded to a whole
+/// number within the readings a sensor holds (-1000 to 1000).
+pub fn generic_whole(v: &Var, value: f64) -> i32 {
+    ((value.clamp(v.min, v.max)).round() as i32).clamp(crate::iot::MIN_VALUE, crate::iot::MAX_VALUE)
 }
 
 /// One keyframe: the value at a time of day (seconds from midnight).
@@ -539,21 +568,8 @@ impl Topology {
     pub fn env_reading(&self, place: u32, sensor: &str, time: u32) -> Option<i32> {
         let v = sensor_var(sensor)?;
         let (_, s) = self.env_setting(place, v.id)?;
-        let value = interpolate(&s.keys, time)?.clamp(v.min, v.max);
-        let (lo, hi) = match v.id {
-            "ambient_temperature" => (crate::environment::MIN_TEMP, crate::environment::MAX_TEMP),
-            "carbon_monoxide" => (0, crate::environment::MAX_CO),
-            "carbon_dioxide" => (0, crate::environment::MAX_CO2),
-            "atmospheric_pressure" => (0, crate::environment::MAX_KPA),
-            "wind_speed" => (0, crate::environment::MAX_WIND),
-            "sound_pitch" => (0, 20_000),
-            "sound_volume" => (0, 200),
-            _ => (0, 100),
-        };
-        // The carbon dioxide share is kept in percent and read in ppm.
-        let value = if v.id == "carbon_dioxide" { value * 10_000.0 } else { value };
-        // `round` of a finite value within a few thousand: the conversion cannot overflow.
-        Some((value.round() as i32).clamp(lo, hi))
+        let value = interpolate(&s.keys, time)?;
+        Some(sensor_whole(v, value))
     }
 
     /// Forgets the environments of places that are gone (after a place is removed).
@@ -712,6 +728,17 @@ mod tests {
         assert_eq!(sensor_var("thermostat").map(|v| v.id), Some("ambient_temperature"));
         assert_eq!(sensor_var("soil").map(|v| v.id), Some("soil_moisture"));
         assert!(sensor_var("motion").is_none());
+        assert_eq!(sensor_var("wind").map(|v| v.id), Some("wind_speed"));
+        assert_eq!(sensor_var("water depth").map(|v| v.id), Some("water_level"));
+        let v = |id: &str| var_by_id(id).unwrap();
+        // A sensor reports whole units within what it reports; the generic one reads any variable.
+        assert_eq!(sensor_whole(v("wind_speed"), 612.0), 500);
+        assert_eq!(sensor_whole(v("water_level"), 5_000.0), 1_000);
+        assert_eq!(sensor_whole(v("ambient_temperature"), -20.4), -20);
+        assert_eq!(sensor_whole(v("humidity"), 49.5), 50);
+        assert_eq!(generic_whole(v("gravity"), 9.806_65), 10);
+        assert_eq!(generic_whole(v("ohms"), 500_000_000.0), 1_000);
+        assert_eq!(generic_whole(v("ambient_temperature"), -99.6), -100);
     }
 
     #[test]

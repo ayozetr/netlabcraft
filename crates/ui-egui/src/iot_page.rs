@@ -5,10 +5,11 @@
 
 use egui::{RichText, Sense, vec2};
 use netlabcraft_model::Device;
-use netlabcraft_model::iot::{can_serve, is_sensor, thing};
+use netlabcraft_model::environments::{VARS, var_by_id};
+use netlabcraft_model::iot::{can_serve, is_pressed_toggle, is_sensor, level_range, thing};
 use serde_json::{Value, json};
 
-use crate::i18n::{tl, tr_any, trf};
+use crate::i18n::{tl, tr, tr_any, trf};
 use crate::{PacketApp, theme};
 
 /// The form fields of the IoT tab.
@@ -37,6 +38,15 @@ pub(crate) fn tab(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &m
 
 /// The thing drawn in code: a lamp, a lock, a siren… lit while on.
 fn draw_state(ui: &mut egui::Ui, what: &str, on: bool, tk: &theme::Tokens) {
+    // The components that look like a smart device are drawn as it is.
+    let what = match what {
+        "air cooler" => "ac",
+        "heating element" => "heater",
+        "ceiling sprinkler" | "floor sprinkler" => "sprinkler",
+        "alarm" => "siren",
+        "dimmable led" | "rgb led" => "light",
+        w => w,
+    };
     let (rect, _) = ui.allocate_exact_size(vec2(70.0, 70.0), Sense::hover());
     let p = ui.painter_at(rect);
     let c = rect.center();
@@ -178,6 +188,16 @@ fn draw_state(ui: &mut egui::Ui, what: &str, on: bool, tk: &theme::Tokens) {
             p.add(egui::Shape::line(ring, egui::Stroke::new(3.0, col)));
             p.line_segment([c + vec2(0.0, -14.0), c + vec2(0.0, -2.0)], egui::Stroke::new(3.0, col));
         }
+        "servo" => {
+            // A body with its horn: the horn turns while the servo holds an angle.
+            let body = egui::Rect::from_center_size(c + vec2(0.0, 12.0), vec2(48.0, 28.0));
+            p.rect_filled(body, 4.0, col);
+            p.rect_stroke(body, 4.0, s, egui::StrokeKind::Inside);
+            let hub = c + vec2(10.0, -4.0);
+            p.circle_filled(hub, 5.0, tk.muted);
+            let tip = if on { hub + vec2(20.0, -14.0) } else { hub + vec2(-22.0, 0.0) };
+            p.line_segment([hub, tip], egui::Stroke::new(4.0, tk.muted));
+        }
         "plug" => {
             let face = egui::Rect::from_center_size(c, vec2(44.0, 44.0));
             p.rect_filled(face, 10.0, tk.chrome_line);
@@ -217,22 +237,44 @@ fn thing_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut I
         }
     });
     let reading = app.session.sim.iot_reading(&app.session.topology, dev);
+    let word = what.map_or("", |t| t.what);
     if is_sensor(dev) {
         ui.horizontal(|ui| {
             ui.label(RichText::new(trf("Reading: {}", &[&reading])).size(18.0).strong());
             if let Some(t) = what {
-                ui.label(RichText::new(tl(t.unit)).color(tk.muted));
+                let unit = if word == "environment" { selected_unit(dev) } else { tl(t.unit).to_string() };
+                ui.label(RichText::new(unit).color(tk.muted));
             }
-            if let (Some(t), Some(v2)) = (what, app.session.sim.iot_reading2(&app.session.topology, dev)) {
+            if let (Some(t), Some(v2)) = (what.filter(|t| !t.also.is_empty()), app.session.sim.iot_reading2(&app.session.topology, dev)) {
                 ui.label(RichText::new(trf("and {}", &[&v2])).size(18.0).strong());
                 ui.label(RichText::new(tl(t.also_unit)).color(tk.muted));
             }
-            for (label, step) in [("-5", -5), ("-1", -1), ("+1", 1), ("+5", 5)] {
-                if ui.button(label).on_hover_text(tl("Change the reading")).clicked() {
-                    app.run("iot.configure", json!({"device": d.0, "value": reading.saturating_add(step)}));
+            if is_pressed_toggle(word) {
+                if ui.button(tl("Press")).on_hover_text(tl("Flip the switch")).clicked() {
+                    app.run("iot.configure", json!({"device": d.0, "press": true}));
+                }
+            } else if word != "environment" {
+                for (label, step) in [("-5", -5), ("-1", -1), ("+1", 1), ("+5", 5)] {
+                    if ui.button(label).on_hover_text(tl("Change the reading")).clicked() {
+                        app.run("iot.configure", json!({"device": d.0, "value": reading.saturating_add(step)}));
+                    }
                 }
             }
         });
+        if word == "environment" {
+            environment_picker(app, ui, dev);
+        }
+        if word == "humiture" {
+            let humidity = app.session.sim.iot_second(&app.session.topology, dev);
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(trf("Humidity: {} %", &[&humidity])).size(18.0).strong());
+                for (label, step) in [("-5 %", -5), ("-1 %", -1), ("+1 %", 1), ("+5 %", 5)] {
+                    if ui.button(label).on_hover_text(tl("Change the humidity")).clicked() {
+                        app.run("iot.configure", json!({"device": d.0, "humidity": humidity.saturating_add(step).clamp(0, 100)}));
+                    }
+                }
+            });
+        }
     } else {
         let w = what.map_or("fan", |t| t.what);
         draw_state(ui, w, st.on, &tk);
@@ -241,6 +283,7 @@ fn thing_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut I
         if let Some(img) = &st.image {
             ui.label(RichText::new(tr_any(img)).monospace());
         }
+        level_rows(app, ui, dev, word);
     }
     if matches!(what.map(|t| t.what), Some("bluetooth speaker" | "music player")) {
         let near = match what.map(|t| t.what) {
@@ -264,6 +307,69 @@ fn thing_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut I
     if ui.button(tl("Report now")).on_hover_text(tl("Every smart thing reports to its server over HTTP")).clicked() {
         app.run("iot.sync", json!({}));
     }
+}
+
+/// The unit of the environment variable a generic environment sensor reads.
+fn selected_unit(dev: &Device) -> String {
+    let id = if dev.iot.variable.is_empty() { "ambient_temperature" } else { dev.iot.variable.as_str() };
+    var_by_id(id).map_or_else(String::new, |v| v.unit.to_string())
+}
+
+/// The generic environment sensor: a list of the environment variables to read.
+fn environment_picker(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
+    let d = dev.id;
+    let id = if dev.iot.variable.is_empty() { "ambient_temperature" } else { dev.iot.variable.as_str() };
+    let current = var_by_id(id).map_or(id, |v| v.label);
+    ui.horizontal(|ui| {
+        ui.label(tl("Reads:"));
+        egui::ComboBox::from_id_salt(("env-variable", d.0)).selected_text(tr(current)).show_ui(ui, |ui| {
+            for v in VARS {
+                if ui.selectable_label(v.id == id, tl(v.label)).clicked() {
+                    app.run("iot.configure", json!({"device": d.0, "variable": v.id}));
+                }
+            }
+        });
+    });
+}
+
+/// A dimmable LED, a servo and an RGB LED: their level, changed in steps.
+fn level_rows(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, word: &str) {
+    let d = dev.id;
+    if level_range(word).is_none() {
+        return;
+    }
+    let level = app.session.sim.iot_level(dev);
+    if word == "rgb led" {
+        let channels = [("Red", 16), ("Green", 8), ("Blue", 0)];
+        for (name, shift) in channels {
+            let now = (level >> shift) & 0xff;
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(format!("{} {now}", tl(name))).strong());
+                for (label, step) in [("-16", -16), ("-1", -1), ("+1", 1), ("+16", 16)] {
+                    if ui.button(label).clicked() {
+                        let key = name.to_ascii_lowercase();
+                        app.run("iot.configure", json!({"device": d.0, key: (now + step).clamp(0, 255)}));
+                    }
+                }
+            });
+        }
+        ui.label(trf("Colour: #{}", &[&format!("{level:06x}")]));
+        return;
+    }
+    let (text, steps) = if word == "servo" {
+        (trf("Angle: {} degrees", &[&level]), [("-15", -15), ("-1", -1), ("+1", 1), ("+15", 15)])
+    } else {
+        (trf("Brightness: {} %", &[&level]), [("-10", -10), ("-1", -1), ("+1", 1), ("+10", 10)])
+    };
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(text).size(18.0).strong());
+        let (lo, hi) = level_range(word).unwrap_or((0, 100));
+        for (label, step) in steps {
+            if ui.button(label).on_hover_text(tl("Change the level")).clicked() {
+                app.run("iot.configure", json!({"device": d.0, "level": level.saturating_add(step).clamp(lo, hi)}));
+            }
+        }
+    });
 }
 
 fn server_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut IotForm) {
@@ -505,11 +611,78 @@ mod tests {
         h.state_mut().ui.windows.clear();
         crate::open_console(h.state_mut(), humiture);
         h.run_steps(3);
-        assert!(h.query_by_label("and 50").is_some(), "the second reading: the humidity the room would have");
+        assert!(h.query_by_label("Humidity: 0 %").is_some(), "the second reading: the humidity, set by hand while the room is off");
         h.state_mut().ui.windows.clear();
         h.state_mut().session.execute("device.move", json!({"device": "Player1", "x": 900, "y": 0})).unwrap();
         crate::open_console(h.state_mut(), speaker);
         h.run_steps(3);
         assert!(h.query_by_label("Not paired: nothing to pair with is within Bluetooth range").is_some());
+    }
+
+    fn parts_harness(models: &[(&str, &str)]) -> (Harness<'static, PacketApp>, Vec<netlabcraft_core::DeviceId>) {
+        let mut s = Session::new();
+        let mut ids = Vec::new();
+        for (model, name) in models {
+            s.execute("device.add", json!({"model": model, "name": name})).unwrap();
+            ids.push(s.topology.resolve(name).unwrap());
+        }
+        let mut h = Harness::builder().with_size(egui::vec2(1200.0, 800.0)).build_ui_state(|ui, app: &mut PacketApp| app.ui(ui), PacketApp::new(s));
+        h.state_mut().ui.show_notes = false;
+        (h, ids)
+    }
+
+    #[test]
+    fn the_tab_of_a_dimmable_led_a_switch_and_a_humiture_sensor_change_them() {
+        let (mut h, ids) = parts_harness(&[("Dimmable LED", "Dim1"), ("Toggle Push Button", "Push1"), ("Humiture Sensor", "Hum1")]);
+        crate::open_console(h.state_mut(), ids[0]);
+        h.run_steps(3);
+        assert!(h.query_by_label("Brightness: 0 %").is_some());
+        h.get_by_label("+10").click();
+        h.run_steps(2);
+        assert_eq!(h.state().session.sim.iot_level(h.state().session.topology.device(ids[0]).unwrap()), 10);
+        h.state_mut().ui.windows.clear();
+        crate::open_console(h.state_mut(), ids[1]);
+        h.run_steps(3);
+        h.get_by_label("Press").click();
+        h.run_steps(2);
+        assert_eq!(h.state().session.topology.device(ids[1]).unwrap().iot.value, 1);
+        assert!(h.query_by_label("Reading: 1").is_some());
+        h.state_mut().ui.windows.clear();
+        crate::open_console(h.state_mut(), ids[2]);
+        h.run_steps(3);
+        h.get_by_label("+5 %").click();
+        h.run_steps(2);
+        assert_eq!(h.state().session.topology.device(ids[2]).unwrap().iot.second, 5);
+        assert!(h.query_by_label("Humidity: 5 %").is_some());
+    }
+
+    #[test]
+    fn every_part_shows_its_tab_in_both_themes() {
+        use netlabcraft_model::models::{Group, MODELS};
+        let parts: Vec<(&str, String)> = MODELS
+            .iter()
+            .filter(|m| matches!(m.group(), Group::Actuators | Group::Sensors))
+            .enumerate()
+            .map(|(i, m)| (m.id, format!("P{i}")))
+            .collect();
+        let pairs: Vec<(&str, &str)> = parts.iter().map(|(m, n)| (*m, n.as_str())).collect();
+        let (mut h, ids) = parts_harness(&pairs);
+        let rgb = pairs.iter().position(|(m, _)| *m == "Part-RGBLED").unwrap();
+        let env = pairs.iter().position(|(m, _)| *m == "Part-EnvSensor").unwrap();
+        for dark in [false, true] {
+            h.state_mut().ui.dark = dark;
+            for (i, id) in ids.iter().enumerate() {
+                h.state_mut().ui.windows.clear();
+                crate::open_console(h.state_mut(), *id);
+                h.run_steps(2);
+                assert!(h.query_by_label("IoT server:").is_some(), "{}", pairs[i].0);
+                if i == rgb {
+                    assert!(h.query_by_label("Colour: #000000").is_some());
+                }
+                if i == env {
+                    assert!(h.query_by_label("Reads:").is_some());
+                }
+            }
+        }
     }
 }
