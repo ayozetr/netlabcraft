@@ -20,10 +20,11 @@ pub enum Page {
     Contents,
     Tutorials,
     Accessibility,
+    Shortcuts,
 }
 
 impl Page {
-    pub const ALL: [Page; 4] = [Page::GettingStarted, Page::Contents, Page::Tutorials, Page::Accessibility];
+    pub const ALL: [Page; 5] = [Page::GettingStarted, Page::Contents, Page::Tutorials, Page::Accessibility, Page::Shortcuts];
 
     /// The English title (the menu entry and the page's tab).
     pub fn title(self) -> &'static str {
@@ -32,29 +33,10 @@ impl Page {
             Page::Contents => "Contents",
             Page::Tutorials => "Tutorials",
             Page::Accessibility => "Accessibility",
+            Page::Shortcuts => "Keyboard shortcuts",
         }
     }
 }
-
-/// Keys and what they do (the action names are menu entries, so they are translated already).
-const SHORTCUTS: [(&str, &str); 16] = [
-    ("Ctrl+N", "New"),
-    ("Ctrl+S", "Save"),
-    ("Ctrl+C", "Copy"),
-    ("Ctrl+V", "Paste"),
-    ("Ctrl+Z", "Undo"),
-    ("Ctrl+Shift+Z", "Redo"),
-    ("Ctrl+G", "Group into Cluster"),
-    ("Ctrl+D", "Drawing Palette"),
-    ("Ctrl+Alt+K", "Structured Cabling"),
-    ("Shift+S", "Simulation Mode"),
-    ("Shift+R", "Realtime Mode"),
-    ("Shift+L", "Logical View"),
-    ("Shift+P", "Physical View"),
-    ("Shift+V", "Show Viewport"),
-    ("Shift+W", "Show Workspace List"),
-    ("F1", "Contents"),
-];
 
 fn doc_link(ui: &mut egui::Ui, label: &'static str, file: &str) {
     ui.hyperlink_to(tl(label), format!("{DOCS_URL}/{file}"));
@@ -78,6 +60,7 @@ pub fn window(app: &mut PacketApp, ctx: &egui::Context) {
             Page::Contents => contents(ui, &mut page),
             Page::Tutorials => tutorials(ui),
             Page::Accessibility => accessibility(ui),
+            Page::Shortcuts => crate::shortcuts::page(ui),
         });
     });
     app.ui.help = open.then_some(page);
@@ -95,20 +78,11 @@ fn getting_started(ui: &mut egui::Ui) {
 
 fn contents(ui: &mut egui::Ui, page: &mut Page) {
     ui.heading(tl("Contents"));
-    for p in [Page::GettingStarted, Page::Tutorials, Page::Accessibility] {
+    for p in [Page::GettingStarted, Page::Tutorials, Page::Accessibility, Page::Shortcuts] {
         if ui.link(tl(p.title())).clicked() {
             *page = p;
         }
     }
-    ui.add_space(6.0);
-    ui.strong(tl("Keyboard shortcuts"));
-    egui::Grid::new("help_shortcuts").num_columns(2).spacing([24.0, 2.0]).show(ui, |ui| {
-        for (keys, action) in SHORTCUTS {
-            ui.monospace(keys);
-            ui.label(tl(action));
-            ui.end_row();
-        }
-    });
     ui.add_space(6.0);
     ui.strong(tl("Documentation online"));
     doc_link(ui, "Command reference", "command-reference.md");

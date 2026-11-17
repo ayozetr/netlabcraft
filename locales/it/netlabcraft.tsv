@@ -1781,6 +1781,37 @@ event	write request for	richiesta di scrittura di
 	Tab and the arrow keys move between devices and cables; Enter or Space opens the one in focus.	Tab e le frecce si spostano tra dispositivi e cavi; Invio o Spazio apre quello con il focus.
 	The Workspace List in the View menu names every device in a table you can move through.	L'elenco dell'area di lavoro, nel menu Visualizza, nomina ogni dispositivo in una tabella in cui ci si può spostare.
 	Everything the menus do can also be typed, from the command line or by an agent.	Tutto ciò che fanno i menu si può anche digitare, dalla riga di comando o tramite un agente.
+	Auto Capture / Play	Cattura automatica / Riproduci
+	Bottom Toolbar	Barra inferiore
+	Capture / Forward	Cattura / Avanti
+	Delete Scenario	Elimina scenario
+	Device box	Riquadro dispositivi
+	Draw Freehand	Disegna a mano libera
+	Fast Forward Time	Avanza veloce il tempo
+	Go Back One Level	Torna indietro di un livello
+	Keys that type a letter are ignored while a text field or the console has the keyboard.	I tasti che digitano una lettera vengono ignorati mentre un campo di testo o la console ha la tastiera.
+	Main Toolbar	Barra principale
+	Move Device Down	Sposta dispositivo in basso
+	Move Device Left	Sposta dispositivo a sinistra
+	Move Device Right	Sposta dispositivo a destra
+	Move Device Up	Sposta dispositivo in alto
+	Network Information	Informazioni sulla rete
+	New Cluster	Nuovo cluster
+	New Scenario	Nuovo scenario
+	Open Samples	Apri esempi
+	Place Note	Inserisci nota
+	Power Cycle Devices	Riavvia i dispositivi
+	Scenarios	Scenari
+	Secondary Toolbar	Barra secondaria
+	Select	Seleziona
+	Select Next Device Down	Seleziona il dispositivo successivo sotto
+	Select Next Device Left	Seleziona il dispositivo successivo a sinistra
+	Select Next Device Right	Seleziona il dispositivo successivo a destra
+	Select Next Device Up	Seleziona il dispositivo successivo sopra
+	Selection	Selezione
+	Show Event List	Mostra elenco eventi
+	Simulation Back	Simulazione indietro
+	{} is not available at this level of the Physical view.	{} non è disponibile a questo livello della vista fisica.
 	Automatically Choose Connection Type	Scegli automaticamente il tipo di connessione
 	Single Mode Fiber	Fibra monomodale
 	Multi Mode Fiber	Fibra multimodale

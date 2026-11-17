@@ -1781,6 +1781,37 @@ event	write request for	Schreibanfrage für
 	Tab and the arrow keys move between devices and cables; Enter or Space opens the one in focus.	Tab und die Pfeiltasten wechseln zwischen Geräten und Kabeln; Eingabe oder Leertaste öffnet das fokussierte.
 	The Workspace List in the View menu names every device in a table you can move through.	Die Arbeitsbereichsliste im Menü Ansicht nennt jedes Gerät in einer Tabelle, in der man sich bewegen kann.
 	Everything the menus do can also be typed, from the command line or by an agent.	Alles, was die Menüs tun, lässt sich auch eintippen, über die Befehlszeile oder durch einen Agenten.
+	Auto Capture / Play	Automatische Aufzeichnung / Wiedergabe
+	Bottom Toolbar	Untere Symbolleiste
+	Capture / Forward	Aufzeichnen / Vorwärts
+	Delete Scenario	Szenario löschen
+	Device box	Gerätebox
+	Draw Freehand	Freihand zeichnen
+	Fast Forward Time	Zeit vorspulen
+	Go Back One Level	Eine Ebene zurück
+	Keys that type a letter are ignored while a text field or the console has the keyboard.	Tasten, die einen Buchstaben tippen, werden ignoriert, solange ein Textfeld oder die Konsole die Tastatur hat.
+	Main Toolbar	Hauptsymbolleiste
+	Move Device Down	Gerät nach unten bewegen
+	Move Device Left	Gerät nach links bewegen
+	Move Device Right	Gerät nach rechts bewegen
+	Move Device Up	Gerät nach oben bewegen
+	Network Information	Netzwerkinformationen
+	New Cluster	Neues Cluster
+	New Scenario	Neues Szenario
+	Open Samples	Beispiele öffnen
+	Place Note	Notiz platzieren
+	Power Cycle Devices	Geräte aus- und einschalten
+	Scenarios	Szenarien
+	Secondary Toolbar	Zweite Symbolleiste
+	Select	Auswählen
+	Select Next Device Down	Nächstes Gerät darunter auswählen
+	Select Next Device Left	Nächstes Gerät links auswählen
+	Select Next Device Right	Nächstes Gerät rechts auswählen
+	Select Next Device Up	Nächstes Gerät darüber auswählen
+	Selection	Auswahl
+	Show Event List	Ereignisliste anzeigen
+	Simulation Back	Simulation zurück
+	{} is not available at this level of the Physical view.	{} ist auf dieser Ebene der physischen Ansicht nicht verfügbar.
 	Automatically Choose Connection Type	Verbindungstyp automatisch wählen
 	Single Mode Fiber	Singlemode-Glasfaser
 	Multi Mode Fiber	Multimode-Glasfaser

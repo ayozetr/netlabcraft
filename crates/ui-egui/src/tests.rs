@@ -2152,3 +2152,61 @@ fn the_help_pages_open_from_f1_and_the_menu() {
         assert!(h.query_all_by_label_contains(label).next().is_some(), "{label}");
     }
 }
+
+#[test]
+fn shortcuts_from_the_table_open_categories_pick_tools_and_zoom() {
+    use crate::bottom::{Category, Sub};
+    let mut h = harness(Some("lan"));
+    h.run_steps(2);
+    let ctrl_alt = egui::Modifiers::COMMAND | egui::Modifiers::ALT;
+    key(&mut h, egui::Key::O, ctrl_alt);
+    assert_eq!((h.state().ui.bottom.category, h.state().ui.bottom.sub), (Category::Connections, Sub::Cables));
+    key(&mut h, egui::Key::V, ctrl_alt);
+    assert_eq!((h.state().ui.bottom.category, h.state().ui.bottom.sub), (Category::EndDevices, Sub::Hosts));
+    key(&mut h, egui::Key::S, ctrl_alt);
+    assert_eq!((h.state().ui.bottom.category, h.state().ui.bottom.sub), (Category::NetworkDevices, Sub::Switches));
+    // Ctrl+Alt+O is not Ctrl+O: no Open request went out.
+    assert!(h.state_mut().take_requests().iter().all(|r| !matches!(r, crate::UiRequest::Open)));
+    // Bare letters pick tools; the Shift chord of the same letter does not.
+    key(&mut h, egui::Key::R, egui::Modifiers::NONE);
+    assert_eq!(h.state().ui.tool, Tool::Draw(netlabcraft_model::Shape::Rectangle));
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    assert_eq!(h.state().ui.tool, Tool::Select);
+    key(&mut h, egui::Key::R, egui::Modifiers::SHIFT);
+    assert_eq!(h.state().ui.tool, Tool::Select);
+    assert_eq!(h.state().ui.mode, crate::Mode::Realtime);
+    key(&mut h, egui::Key::S, egui::Modifiers::SHIFT);
+    assert_eq!(h.state().ui.mode, crate::Mode::Simulation);
+    // Zoom and the grid.
+    let z = h.state().ui.zoom;
+    key(&mut h, egui::Key::I, egui::Modifiers::COMMAND);
+    assert!(h.state().ui.zoom > z);
+    key(&mut h, egui::Key::T, egui::Modifiers::COMMAND);
+    assert_eq!(h.state().ui.zoom, 1.0);
+    key(&mut h, egui::Key::G, egui::Modifiers::SHIFT);
+    assert!(h.state().ui.show_grid);
+    // Ctrl+Shift+Z is Redo, not Undo: with nothing to redo it changes nothing.
+    key(&mut h, egui::Key::Z, egui::Modifiers::COMMAND | egui::Modifiers::SHIFT);
+    // Samples window.
+    key(&mut h, egui::Key::T, egui::Modifiers::COMMAND | egui::Modifiers::SHIFT);
+    assert!(h.state().ui.show_samples);
+}
+
+#[test]
+fn arrow_chords_move_and_select_devices_and_enter_opens_one() {
+    let mut h = harness(Some("lan"));
+    h.run_steps(2);
+    let first = h.state().session.topology.devices[0].id;
+    key(&mut h, egui::Key::ArrowRight, egui::Modifiers::SHIFT);
+    assert_eq!(h.state().ui.selected, Some(first));
+    key(&mut h, egui::Key::ArrowRight, egui::Modifiers::SHIFT);
+    let moved = h.state().ui.selected;
+    assert!(moved.is_some());
+    let id = moved.unwrap_or(first);
+    let x = h.state().session.topology.device(id).map_or(0.0, |d| d.x);
+    key(&mut h, egui::Key::ArrowRight, egui::Modifiers::COMMAND);
+    let x2 = h.state().session.topology.device(id).map_or(0.0, |d| d.x);
+    assert!(x2 > x, "{x} -> {x2}");
+    key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+    assert!(h.state().ui.windows.contains_key(&id));
+}

@@ -213,7 +213,14 @@ fn instructions(app: &mut PacketApp, ctx: &egui::Context) {
     if check {
         app.ui.activity.results = app.run("activity.check", json!({}));
     }
-    if reset && app.run("activity.reset", json!({})).is_some() {
+    if reset {
+        self::reset(app, now);
+    }
+}
+
+/// Reset Activity: back to how the lab was opened, with the timer restarted.
+pub(crate) fn reset(app: &mut PacketApp, now: f64) {
+    if app.run("activity.reset", json!({})).is_some() {
         app.ui.activity.results = None;
         app.ui.activity.started = now;
         app.ui.activity.time_up = false;

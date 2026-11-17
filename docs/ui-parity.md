@@ -1,6 +1,6 @@
 # UI parity
 
-> **Last reviewed:** 2026-11-17 · **Last updated:** 2026-11-17 · **Change:** minor (Connections: the tiles in the reference order (Automatically Choose Connection Type first, then Console, Copper Straight-Through, Copper Cross-Over, Single Mode Fiber, Multi Mode Fiber, Phone, Coaxial, Serial DCE, Serial DTE, Octal, IoT Custom Cable, USB), fiber split in two modes, Octal and USB cables) · also merged with minor (device model count: 65, a duplicated summary row removed) · also merged with minor (Physical workspace: wiring closets draw racks, shelves and tables, front panels and cables port to port; Structured Cabling in the device box) · also merged with minor (Options ▸ Preferences, User Profile and View Command Log, with 7 engine commands and 65 catalog rows) · also merged with minor (Menus: Edit lists Copy and Paste, View gains Zoom and Toolbars submenus, the modes and views with shortcuts, Show Viewport and Show Workspace List, Tools gains Drawing Palette, Help gains pages) · earlier: minor (PC desktop: Dial-up app; the Telephone Cloud's numbers) · also merged with minor (cables as accessible nodes, native-window geometry kept between sessions) · earlier: minor (wireless security: WEP, WPA, encryption type, coverage range) · earlier: minor (the PPPoE Dialer reaches a server through switches) · earlier: minor (PC desktop: Softphone) · earlier: minor (device windows can open as native OS windows) · earlier: minor (PC desktop: Netflow Collector) · earlier: minor (PC desktop: VPN Client) · earlier: minor (smart TVs, a sniffer, a smart speaker, a water level sensor and four more router models: 62 models in the device box) · earlier: minor (PC desktop: Traffic Generator, PPPoE Dialer; the server's PPPoE page) · earlier: minor (PC desktop: Telnet/SSH Client, Text Editor, Firewall, IPv6 Firewall) · earlier: minor (the Palette window: outline and fill of drawings; File ▸ Print report pages and compressed PDF) · earlier: minor (re-scored 2026-11-13; M9.10: the cellular network in the UI) · earlier: minor (Resize Shape; canvas devices as accessible nodes, M9.8) · earlier: minor (Constant Delay, the capture filter, origin decisions and absolute start times; instructor windows; touch screens, the phone's Settings, power supplies, the board Programming tab; Programming app and WLC page additions; figures aligned with ROADMAP.md) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-11-17 · **Last updated:** 2026-11-17 · **Change:** minor (Keyboard shortcuts: one table in code, 75 shortcuts, the Open Samples window and a Help page) · also merged with minor (Connections: the tiles in the reference order (Automatically Choose Connection Type first, then Console, Copper Straight-Through, Copper Cross-Over, Single Mode Fiber, Multi Mode Fiber, Phone, Coaxial, Serial DCE, Serial DTE, Octal, IoT Custom Cable, USB), fiber split in two modes, Octal and USB cables) · also merged with minor (device model count: 65, a duplicated summary row removed) · also merged with minor (Physical workspace: wiring closets draw racks, shelves and tables, front panels and cables port to port; Structured Cabling in the device box) · also merged with minor (Options ▸ Preferences, User Profile and View Command Log, with 7 engine commands and 65 catalog rows) · also merged with minor (Menus: Edit lists Copy and Paste, View gains Zoom and Toolbars submenus, the modes and views with shortcuts, Show Viewport and Show Workspace List, Tools gains Drawing Palette, Help gains pages) · earlier: minor (PC desktop: Dial-up app; the Telephone Cloud's numbers) · also merged with minor (cables as accessible nodes, native-window geometry kept between sessions) · earlier: minor (wireless security: WEP, WPA, encryption type, coverage range) · earlier: minor (the PPPoE Dialer reaches a server through switches) · earlier: minor (PC desktop: Softphone) · earlier: minor (device windows can open as native OS windows) · earlier: minor (PC desktop: Netflow Collector) · earlier: minor (PC desktop: VPN Client) · earlier: minor (smart TVs, a sniffer, a smart speaker, a water level sensor and four more router models: 62 models in the device box) · earlier: minor (PC desktop: Traffic Generator, PPPoE Dialer; the server's PPPoE page) · earlier: minor (PC desktop: Telnet/SSH Client, Text Editor, Firewall, IPv6 Firewall) · earlier: minor (the Palette window: outline and fill of drawings; File ▸ Print report pages and compressed PDF) · earlier: minor (re-scored 2026-11-13; M9.10: the cellular network in the UI) · earlier: minor (Resize Shape; canvas devices as accessible nodes, M9.8) · earlier: minor (Constant Delay, the capture filter, origin decisions and absolute start times; instructor windows; touch screens, the phone's Settings, power supplies, the board Programming tab; Programming app and WLC page additions; figures aligned with ROADMAP.md) · **Target:** Cisco Packet Tracer 9.0
 
 The window, element by element, against the reference app. Part of
 [target-app-parity.md](target-app-parity.md). The arrangement was observed black-box (local
@@ -47,10 +47,147 @@ The window, element by element, against the reference app. Part of
 | Native device windows | Device windows are separate OS windows | Options ▸ Device windows as separate windows (off by default; desktop builds only, greyed out on the web) opens each device in its own window with the device's name as title; size and position kept for the session |
 | Not yet | — | scripts in the PC Programming app |
 
+## Keyboard shortcuts
+
+One table in code (`crates/ui-egui/src/shortcuts.rs`, `TABLE`) drives the keys, the shortcut text in the menus and the Help ▸ Keyboard shortcuts page; a new shortcut is a row there and, for a new action, a branch in `perform`. A chord with more modifiers is read before one with fewer (egui lets a shortcut without Shift match with Shift down), and a row marked *idle* is skipped while a text field or the console has the keyboard, so typing a letter never picks a tool. Counted from the table: **75 shortcuts** in 11 groups.
+
+**File**
+
+| Keys | Action | While typing |
+|---|---|---|
+| `Ctrl+N` | New | works |
+| `Ctrl+O` | Open... | works |
+| `Ctrl+Shift+T` | Open Samples | ignored |
+| `Ctrl+S` | Save | works |
+| `Ctrl+Shift+S` | Save As... | works |
+| `Alt+N` | Reset Activity | ignored |
+| `Ctrl+P` | Print... | works |
+
+**Edit**
+
+| Keys | Action | While typing |
+|---|---|---|
+| `Ctrl+C` | Copy | ignored |
+| `Ctrl+V` | Paste | ignored |
+| `Ctrl+Z` | Undo | ignored |
+| `Ctrl+Shift+Z` | Redo | ignored |
+| `Ctrl+Y` | Redo | ignored |
+| `Ctrl+G` | Group into Cluster | ignored |
+| `Shift+U` | New Cluster | ignored |
+| `Delete` | Delete | ignored |
+
+**Options**
+
+| Keys | Action | While typing |
+|---|---|---|
+| `Ctrl+R` | Preferences… | ignored |
+| `Ctrl+Shift+F` | Network Information | ignored |
+| `Ctrl+Shift+U` | User Profile… | works |
+| `Ctrl+Shift+M` | Algorithm Settings | works |
+| `Ctrl+Shift+V` | View Command Log | works |
+| `Shift+G` | Show grid | ignored |
+
+**View**
+
+| Keys | Action | While typing |
+|---|---|---|
+| `Ctrl+I` | Zoom In | ignored |
+| `Ctrl+T` | Zoom Reset | ignored |
+| `Ctrl+U` | Zoom Out | ignored |
+| `Shift+S` | Simulation Mode | ignored |
+| `Shift+R` | Realtime Mode | ignored |
+| `Shift+L` | Logical View | ignored |
+| `Shift+P` | Physical View | ignored |
+| `Shift+V` | Show Viewport | ignored |
+| `Shift+W` | Show Workspace List | ignored |
+| `Ctrl+Shift+A` | Main Toolbar | ignored |
+| `Ctrl+Shift+R` | Secondary Toolbar | ignored |
+| `Ctrl+Shift+B` | Bottom Toolbar | ignored |
+| `Alt+Left` | Go Back One Level | ignored |
+
+**Physical**
+
+| Keys | Action | While typing |
+|---|---|---|
+| `Shift+C` | New City | ignored |
+| `Shift+B` | New Building | ignored |
+| `Shift+J` | New Wiring Closet | ignored |
+
+**Tools**
+
+| Keys | Action | While typing |
+|---|---|---|
+| `Ctrl+W` | Activity Wizard… | ignored |
+| `Ctrl+D` | Drawing Palette | ignored |
+| `Esc` | Select | ignored |
+| `N` | Place Note | ignored |
+| `I` | Inspect | ignored |
+| `P` | Add Simple PDU | ignored |
+| `C` | Add Complex PDU | ignored |
+| `L` | Draw Line | ignored |
+| `R` | Draw Rectangle | ignored |
+| `E` | Draw Ellipse | ignored |
+| `F` | Draw Freehand | ignored |
+
+**Simulation**
+
+| Keys | Action | While typing |
+|---|---|---|
+| `Alt+S` | Power Cycle Devices | ignored |
+| `Alt+D` | Fast Forward Time | ignored |
+| `Alt+B` | Simulation Back | ignored |
+| `Alt+P` | Auto Capture / Play | ignored |
+| `Alt+C` | Capture / Forward | ignored |
+| `Alt+I` | Show Event List | ignored |
+
+**Scenarios**
+
+| Keys | Action | While typing |
+|---|---|---|
+| `Ctrl+Shift+N` | New Scenario | ignored |
+| `Ctrl+Shift+E` | Delete Scenario | ignored |
+| `Ctrl+Shift+O` | Toggle PDU List Window | ignored |
+| `Ctrl+=` | Toggle PDU List Window | ignored |
+
+**Device box**
+
+| Keys | Action | While typing |
+|---|---|---|
+| `Ctrl+Alt+R` | Routers | works |
+| `Ctrl+Alt+S` | Switches | works |
+| `Ctrl+Alt+U` | Hubs | works |
+| `Ctrl+Alt+N` | WAN Emulation | works |
+| `Ctrl+Alt+V` | End Devices | works |
+| `Ctrl+Alt+O` | Connections | works |
+| `Ctrl+Alt+K` | Structured Cabling | works |
+
+**Selection**
+
+| Keys | Action | While typing |
+|---|---|---|
+| `Enter` | Open Device | ignored |
+| `Ctrl+Up` | Move Device Up | ignored |
+| `Ctrl+Down` | Move Device Down | ignored |
+| `Ctrl+Left` | Move Device Left | ignored |
+| `Ctrl+Right` | Move Device Right | ignored |
+| `Shift+Up` | Select Next Device Up | ignored |
+| `Shift+Down` | Select Next Device Down | ignored |
+| `Shift+Left` | Select Next Device Left | ignored |
+| `Shift+Right` | Select Next Device Right | ignored |
+
+**Help**
+
+| Keys | Action | While typing |
+|---|---|---|
+| `F1` | Contents | works |
+
+Not bound, because NetLabCraft has nothing for them (the work is in [gaps.md](gaps.md) item 5): Ctrl+Shift+H (dock the Instruction window), Ctrl+Shift+I (scenario description), Ctrl+Shift+P (Port Monitor), Shift+E (Environment window), Shift+F (generic container), Shift+H (working closet), Shift+M (Move Object), Shift+N (Navigation panel), Alt+R (Resize Shape: shapes resize with their handles), Ctrl+Space and Space (rubber-band selection and selecting a device by key: Shift+drag and the accessibility focus do those), Alt+F, E, O, V, T, X and H (opening a menu by key), Y and N for confirmations (we have no confirmation dialog; N is Place Note), Alt+Left in the logical view outside a cluster, the device boxes for wireless, security, home, smart city, industrial, power grid, boards, actuators, sensors and miscellaneous (our catalogue has no such groups), multiuser, IPC, Pkz, Marvel, cluster association and the tiled background (not features here), and the Text Editor's Ctrl+N, Ctrl+O and Ctrl+S. Ctrl+Insert and Shift+Insert copy and paste in the console and in every text field because the toolkit binds them.
+
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-17 | minor | Keyboard shortcuts: one table (`shortcuts.rs`) with 75 rows replaces the scattered key handlers; Ctrl+Alt+R, S, U, N, V and O open the device box categories; tool, time, scenario, physical, selection and file chords; Open Samples (Ctrl+Shift+T); a Help ▸ Keyboard shortcuts page. The Preferences, User Profile, Algorithm Settings and Command Log keys moved into the table. |
 | 2026-11-17 | minor | Connections: thirteen tiles in the reference order with the automatic one first; fiber split into Single Mode and Multi Mode; Octal and USB tiles with their glyphs and status-bar help; the automatic tile is a lightning bolt. |
 | 2026-11-17 | minor | Wiring closet view: racks, shelves and tables, devices on them by slot, front panels drawn in code, cables port to port in kind colours, patch panels, wall mounts, power distribution devices, the Structured Cabling group of the device box (Ctrl+Alt+K). Not re-scored. |
 | 2026-11-17 | minor | Device box: the model count is 65 (the three Dial-up models are included). |

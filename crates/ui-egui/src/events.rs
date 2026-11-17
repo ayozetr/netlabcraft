@@ -135,7 +135,7 @@ fn advance(app: &mut PacketApp, now: f64) {
     }
 }
 
-fn step(app: &mut PacketApp, forward: bool) {
+pub(crate) fn step(app: &mut PacketApp, forward: bool) {
     app.ui.events.playing = false;
     let cur = app.ui.events.selected;
     let v = &app.ui.events;
@@ -151,6 +151,17 @@ fn step(app: &mut PacketApp, forward: bool) {
     }
 }
 
+/// Play or pause the replay of the frames (the play button, Alt+P).
+pub(crate) fn toggle_play(app: &mut PacketApp) {
+    if app.ui.events.playing {
+        app.ui.events.playing = false;
+    } else {
+        let from = app.ui.events.selected.map_or(0, |s| s + 1);
+        let from = if app.session.sim.trace().iter().any(|e| e.id >= from) { from } else { 0 };
+        app.ui.events.start_from(from);
+    }
+}
+
 /// The three play buttons (back, play/pause, forward), shared by the panel and the time bar.
 pub fn play_controls(app: &mut PacketApp, ui: &mut Ui, size: f32) {
     let playing = app.ui.events.playing;
@@ -159,13 +170,7 @@ pub fn play_controls(app: &mut PacketApp, ui: &mut Ui, size: f32) {
     }
     let (g, label) = if playing { (crate::PlayGlyph::Pause, "Pause") } else { (crate::PlayGlyph::Play, "Play: replay the frames on the workspace") };
     if crate::play_button(ui, g, label, size).clicked() {
-        if playing {
-            app.ui.events.playing = false;
-        } else {
-            let from = app.ui.events.selected.map_or(0, |s| s + 1);
-            let from = if app.session.sim.trace().iter().any(|e| e.id >= from) { from } else { 0 };
-            app.ui.events.start_from(from);
-        }
+        toggle_play(app);
     }
     if crate::play_button(ui, crate::PlayGlyph::Forward, "Forward", size).clicked() {
         step(app, true);
