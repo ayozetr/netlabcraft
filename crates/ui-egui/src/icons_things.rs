@@ -740,7 +740,7 @@ fn buzzer(a: &Art) {
 fn motor(a: &Art) {
     let t = a.tk;
     // The shaft with its key, coming out of the boss in the middle of the mounting plate.
-    a.bar(a.at(0.68, 0.5), a.at(0.95, 0.5), 0.05, t.art_paper);
+    a.bar(a.at(0.68, 0.5), a.at(0.95, 0.5), 0.05, shade(t.art_steel, 1.25));
     a.line(a.at(0.76, 0.485), a.at(0.9, 0.485), 0.012, t.art_edge);
     a.boxed(a.rc(0.62, 0.42, 0.7, 0.58), 0.02, shade(t.art_steel, 0.8));
     // The can: a steel cylinder, lit along the top and shaded along the bottom, with its label.

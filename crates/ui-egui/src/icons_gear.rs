@@ -115,7 +115,7 @@ fn router(a: &Art, m: &Model, n: Ports) {
 /// An Ethernet jack: a light shell with a dark opening, and a strip over it that says the speed.
 fn ethernet_jack(a: &Art, at: Pos2, fast: bool) {
     let (t, w) = (a.tk, a.w);
-    let body = Rect::from_center_size(at, vec2(w * 0.07, w * 0.075));
+    let body = Rect::from_center_size(at, vec2(w * 0.085, w * 0.09));
     a.p.rect_filled(body, 0.0, shade(t.art_paper, 0.9));
     a.p.rect_filled(body.shrink2(vec2(w * 0.016, w * 0.014)), 0.0, t.art_ink);
     let strip = Rect::from_min_size(body.left_top() - vec2(0.0, w * 0.014), vec2(body.width(), (w * 0.014).max(1.0)));
