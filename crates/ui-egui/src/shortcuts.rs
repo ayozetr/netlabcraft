@@ -77,6 +77,7 @@ pub enum Act {
     Physical,
     Viewport,
     WorkspaceList,
+    WirelessSignals,
     ToolbarMain,
     ToolbarSecondary,
     ToolbarBottom,
@@ -180,6 +181,7 @@ pub static TABLE: &[Shortcut] = &[
     row("View", "Physical View", S, Key::P, Act::Physical, Idle),
     row("View", "Show Viewport", S, Key::V, Act::Viewport, Idle),
     row("View", "Show Workspace List", S, Key::W, Act::WorkspaceList, Idle),
+    row("View", "View Wireless Signals", C | A, Key::W, Act::WirelessSignals, Idle),
     row("View", "Main Toolbar", C | S, Key::A, Act::ToolbarMain, Idle),
     row("View", "Secondary Toolbar", C | S, Key::R, Act::ToolbarSecondary, Idle),
     row("View", "Bottom Toolbar", C | S, Key::B, Act::ToolbarBottom, Idle),
@@ -422,6 +424,7 @@ pub fn perform(app: &mut PacketApp, ctx: &Context, act: Act) {
         }
         Act::Viewport => app.ui.show_viewport = !app.ui.show_viewport,
         Act::WorkspaceList => app.ui.show_workspace_list = !app.ui.show_workspace_list,
+        Act::WirelessSignals => app.ui.prefs.show_wireless_signals = !app.ui.prefs.show_wireless_signals,
         Act::ToolbarMain => app.ui.toolbars.main = !app.ui.toolbars.main,
         Act::ToolbarSecondary => app.ui.toolbars.secondary = !app.ui.toolbars.secondary,
         Act::ToolbarBottom => app.ui.toolbars.bottom = !app.ui.toolbars.bottom,
@@ -585,6 +588,7 @@ mod tests {
         assert_eq!(text(Act::Escape), "Esc");
         assert_eq!(text(Act::SelectToward(Dir::Left)), "Shift+Left");
         assert_eq!(text(Act::PduList), "Ctrl+Shift+O");
+        assert_eq!(text(Act::WirelessSignals), "Ctrl+Alt+W");
     }
 
     #[test]

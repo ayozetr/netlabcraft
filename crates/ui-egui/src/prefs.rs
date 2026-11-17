@@ -4,7 +4,7 @@
 //! the desktop shell keeps them between sessions as text ([`PacketApp::preferences_text`] and
 //! [`PacketApp::load_preferences`]); the web build starts from the defaults every time. The ones
 //! that are state of the lab or of the session go through engine commands instead (cable length
-//! effects: `physical.length_effects`; logging: `log.enable`; the display name: `profile.set`).
+//! effects: `physical.length_effects`; logging: `log.enable`; the profile: `profile.set`).
 //!
 //! Defaults keep what NetLabCraft did before these settings existed (aligned logical workspace,
 //! cable lengths counted, devices opening on their command line), so nothing changes until a
@@ -53,6 +53,8 @@ pub struct Prefs {
     pub cable_popup: bool,
     /// Places and devices snap to the grid in the physical workspace.
     pub align_physical: bool,
+    /// View ▸ View Wireless Signals: the radios' coverage drawn under the cables.
+    pub show_wireless_signals: bool,
     /// Interface text size in percent.
     pub font_percent: u16,
 }
@@ -76,6 +78,7 @@ impl Default for Prefs {
             cli_default_tab: true,
             cable_popup: true,
             align_physical: false,
+            show_wireless_signals: false,
             font_percent: 100,
         }
     }
@@ -88,7 +91,7 @@ impl Prefs {
     }
 
     /// The yes-or-no settings with the name each has in the saved text.
-    fn flags(&mut self) -> [(&'static str, &mut bool); 15] {
+    fn flags(&mut self) -> [(&'static str, &mut bool); 16] {
         [
             ("animation", &mut self.show_animation),
             ("sound", &mut self.play_sound),
@@ -105,6 +108,7 @@ impl Prefs {
             ("cli-tab", &mut self.cli_default_tab),
             ("cable-popup", &mut self.cable_popup),
             ("align-physical", &mut self.align_physical),
+            ("wireless-signals", &mut self.show_wireless_signals),
         ]
     }
 
@@ -200,23 +204,28 @@ pub struct WindowState {
     pub show_profile: bool,
     pub show_log: bool,
     pub show_algorithm: bool,
+    /// The User Profile window's fields while it is open (OK saves them, Cancel drops them).
     pub(crate) name_draft: String,
+    pub(crate) email_draft: String,
+    pub(crate) info_draft: String,
     /// The style the interface was last set to (tooltip wait in tenths of a second, text size).
     applied: Option<(u32, u16)>,
 }
 
 impl PacketApp {
     /// What the desktop shell keeps between sessions: the settings, the theme, the grid, whether
-    /// commands are logged and the profile's display name, as `key=value` lines.
+    /// commands are logged and the profile (name, e-mail, info), as `key=value` lines.
     pub fn preferences_text(&self) -> String {
         let on = |b: bool| if b { "on" } else { "off" };
         let mut out = self.ui.prefs.to_text();
         out.push_str(&format!(
-            "dark={}\ngrid={}\nlogging={}\nname={}\n",
+            "dark={}\ngrid={}\nlogging={}\nname={}\nemail={}\ninfo={}\n",
             on(self.ui.dark),
             on(self.ui.show_grid),
             on(self.session.cmd_log.enabled),
-            self.session.profile.display_name
+            self.session.profile.display_name,
+            self.session.profile.email,
+            escape_line(&self.session.profile.info)
         ));
         out
     }
@@ -232,6 +241,8 @@ impl PacketApp {
                 "grid" => self.ui.show_grid = value == "on",
                 "logging" => self.session.cmd_log.enabled = value != "off",
                 "name" => self.session.profile.display_name = netlabcraft_engine::settings::clean_name(value),
+                "email" => self.session.profile.email = netlabcraft_engine::settings::clean_email(value),
+                "info" => self.session.profile.info = netlabcraft_engine::settings::clean_info(&unescape_line(value)),
                 _ => {
                     self.ui.prefs.apply(key, value);
                 }
@@ -261,6 +272,8 @@ impl PacketApp {
 
     pub fn open_user_profile(&mut self) {
         self.ui.prefs_ui.name_draft = self.session.profile.display_name.clone();
+        self.ui.prefs_ui.email_draft = self.session.profile.email.clone();
+        self.ui.prefs_ui.info_draft = self.session.profile.info.clone();
         self.ui.prefs_ui.show_profile = true;
     }
 
@@ -271,6 +284,34 @@ impl PacketApp {
     pub fn open_algorithm_settings(&mut self) {
         self.ui.prefs_ui.show_algorithm = true;
     }
+}
+
+/// Text on one line: `\` and newlines written as `\\` and `\n`, so a several-line value fits a
+/// `key=value` line of the preferences file.
+fn escape_line(text: &str) -> String {
+    text.replace('\\', "\\\\").replace('\n', "\\n")
+}
+
+/// The reverse of [`escape_line`]; a backslash before anything else is kept as it is.
+fn unescape_line(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('n') => out.push('\n'),
+            Some('\\') => out.push('\\'),
+            Some(other) => {
+                out.push('\\');
+                out.push(other);
+            }
+            None => out.push('\\'),
+        }
+    }
+    out
 }
 
 /// The four items at the top of the Options menu.
@@ -519,27 +560,38 @@ fn profile_window(app: &mut PacketApp, ctx: &egui::Context) {
         return;
     }
     let mut open = true;
-    let mut save = false;
+    let (mut ok, mut cancel) = (false, false);
     egui::Window::new(tl("User Profile")).open(&mut open).collapsible(false).resizable(false).default_pos(crate::BELOW_TOOLBARS).show(ctx, |ui| {
-        ui.label(tl("Kept on this computer only. It names you in activity results when an activity was not started with a name."));
-        ui.horizontal(|ui| {
-            let l = ui.label(tl("Display name:"));
-            let r = ui.add(egui::TextEdit::singleline(&mut app.ui.prefs_ui.name_draft).desired_width(220.0)).labelled_by(l.id);
-            if r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
-                save = true;
-            }
+        let ui_state = &mut app.ui.prefs_ui;
+        egui::Grid::new("profile_fields").num_columns(2).spacing([8.0, 6.0]).show(ui, |ui| {
+            let l = ui.label(tl("Name:"));
+            let r = ui.add(egui::TextEdit::singleline(&mut ui_state.name_draft).desired_width(260.0)).labelled_by(l.id);
+            ok |= r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+            ui.end_row();
+            let l = ui.label(tl("E-Mail:"));
+            let r = ui.add(egui::TextEdit::singleline(&mut ui_state.email_draft).desired_width(260.0)).labelled_by(l.id);
+            ok |= r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+            ui.end_row();
         });
-        ui.label(RichText::new(tl("Use a nickname if you like: no real name or e-mail address is needed.")).small());
-        if ui.button(tl("Save")).clicked() {
-            save = true;
-        }
+        let l = ui.label(tl("Additional Info:"));
+        ui.add(egui::TextEdit::multiline(&mut ui_state.info_draft).desired_width(f32::INFINITY).desired_rows(6)).labelled_by(l.id);
+        ui.label(
+            RichText::new(tl("These stay on this computer, in no lab file and nowhere else. Only the name is used, in activity results.")).small(),
+        );
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            cancel = ui.button(tl("Cancel")).clicked();
+            ok |= ui.button(tl("OK")).clicked();
+        });
     });
-    if save {
-        let name = app.ui.prefs_ui.name_draft.clone();
-        if app.run("profile.set", json!({"name": name})).is_some() {
-            app.ui.prefs_ui.name_draft = app.session.profile.display_name.clone();
+    if ok {
+        let (name, email, info) = (app.ui.prefs_ui.name_draft.clone(), app.ui.prefs_ui.email_draft.clone(), app.ui.prefs_ui.info_draft.clone());
+        if app.run("profile.set", json!({"name": name, "email": email, "info": info})).is_some() {
             app.info(tl("Profile saved."));
+            open = false;
         }
+    }
+    if cancel {
+        open = false;
     }
     app.ui.prefs_ui.show_profile = open;
 }

@@ -1726,9 +1726,6 @@ event	write request for	Schreibanfrage für
 	Reset	Zurücksetzen
 	Sets the text of menus, buttons and forms. Names drawn on the workspace follow its zoom instead.	Legt den Text von Menüs, Schaltflächen und Formularen fest. Im Arbeitsbereich gezeichnete Namen folgen stattdessen dessen Zoom.
 	User Profile	Benutzerprofil
-	Kept on this computer only. It names you in activity results when an activity was not started with a name.	Bleibt nur auf diesem Computer. Er nennt Sie in den Ergebnissen einer Aktivität, die ohne Namen gestartet wurde.
-	Display name:	Anzeigename:
-	Use a nickname if you like: no real name or e-mail address is needed.	Ein Spitzname genügt: Weder ein echter Name noch eine E-Mail-Adresse ist nötig.
 	Profile saved.	Profil gespeichert.
 	Command Log	Befehlsprotokoll
 	No commands have been recorded yet.	Es wurde noch kein Befehl aufgezeichnet.
@@ -1859,6 +1856,11 @@ furniture	Table	Tisch
 	Structured Cabling	Strukturierte Verkabelung
 	Drag a device onto a rack, shelf or table · drag between two ports to patch them, or from an outlet to a device to plug it in · right-click for more	Gerät auf ein Rack, Regal oder einen Tisch ziehen · zwischen zwei Ports ziehen, um sie zu patchen, oder von einer Steckdose zu einem Gerät, um es einzustecken · Rechtsklick für mehr
 	Patch panels and wall mounts stand in a wiring closet: open one in the Physical view first.	Patchfelder und Wanddosen stehen in einem Verteilerraum: Öffnen Sie zuerst einen in der physischen Ansicht.
+	E-Mail:	E-Mail:
+	Additional Info:	Zusätzliche Informationen:
+	These stay on this computer, in no lab file and nowhere else. Only the name is used, in activity results.	Diese Angaben bleiben auf diesem Computer, in keiner Labordatei und sonst nirgends. Nur der Name wird verwendet, in den Aktivitätsergebnissen.
+	View Wireless Signals	Drahtlossignale anzeigen
+	View Wireless Signals (Ctrl+Alt+W): faint coverage areas of the access points and a line from each Wi-Fi host to its access point	Drahtlossignale anzeigen (Strg+Alt+W): blasse Abdeckungsbereiche der Access Points und eine Linie von jedem WLAN-Host zu seinem Access Point
 	{} is already cabled to {}	{} hat bereits ein Kabel zu {}
 	A cable joins two different devices	Ein Kabel verbindet zwei verschiedene Geräte
 	Click a port on a device's front panel, then a port on another device, to cable them · right-click or Esc cancels	Klicken Sie auf einen Port an der Frontplatte eines Geräts und dann auf einen Port eines anderen Geräts, um beide zu verkabeln · Rechtsklick oder Esc bricht ab

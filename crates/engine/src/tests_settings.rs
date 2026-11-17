@@ -2,7 +2,7 @@
 
 use serde_json::json;
 
-use crate::settings::{MAX_LOG, clean_name};
+use crate::settings::{MAX_EMAIL, MAX_INFO, MAX_LOG, clean_email, clean_info, clean_name};
 use crate::{Session, settings};
 
 fn lab() -> Session {
@@ -108,6 +108,40 @@ fn the_profile_name_is_cleaned_and_names_the_student() {
     s.execute("activity.start", json!({})).unwrap();
     assert_eq!(s.topology.activity.as_ref().unwrap().student.as_deref(), Some("Ana"));
     assert!(s.execute("profile.set", json!({})).is_err());
+}
+
+#[test]
+fn the_profile_holds_an_email_and_info_that_stay_local_and_out_of_results() {
+    assert_eq!(clean_email("  user@example.test \n"), "user@example.test");
+    assert_eq!(clean_email(&"x".repeat(500)).chars().count(), MAX_EMAIL);
+    assert_eq!(clean_info("one\r\ntwo\u{7}\n\n"), "one\ntwo");
+    assert_eq!(clean_info(&"y".repeat(5000)).chars().count(), MAX_INFO);
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "activity-first-router"})).unwrap();
+    let got = s.execute("profile.get", json!({})).unwrap();
+    assert_eq!((got["name"].as_str(), got["email"].as_str(), got["info"].as_str()), (Some(""), Some(""), Some("")));
+    s.execute("profile.set", json!({"name": "Test User", "email": "user@example.test", "info": "Group A\nBench 3"})).unwrap();
+    // A call that names one field leaves the others.
+    s.execute("profile.set", json!({"email": "other@example.test"})).unwrap();
+    let got = s.execute("profile.get", json!({})).unwrap();
+    assert_eq!(got["name"], "Test User");
+    assert_eq!(got["email"], "other@example.test");
+    assert_eq!(got["info"], "Group A\nBench 3");
+    assert!(s.execute("profile.set", json!({"email": 5})).is_err());
+    assert!(s.execute("profile.set", json!({"info": ""})).is_ok());
+    assert_eq!(s.profile.info, "");
+    // Only the name reaches the results and the lab file.
+    s.execute("profile.set", json!({"info": "Group A", "email": "user@example.test"})).unwrap();
+    let results = s.execute("activity.export_results", json!({"format": "json"})).unwrap()["text"].as_str().unwrap().to_string();
+    assert!(results.contains("Test User") && !results.contains("example.test") && !results.contains("Group A"), "{results}");
+    let saved = netlabcraft_model::file::to_json(&s.topology).unwrap_or_default();
+    assert!(!saved.contains("example.test") && !saved.contains("Group A"));
+    // The command log hides them, so an exported log does not carry them.
+    let log = s.cmd_log.text();
+    assert!(log.contains("profile.set") && !log.contains("example.test") && !log.contains("Group A"), "{log}");
+    // A new lab keeps them.
+    s.execute("file.new", json!({"sample": "activity-first-router"})).unwrap();
+    assert_eq!(s.profile.email, "user@example.test");
 }
 
 #[test]

@@ -1729,9 +1729,6 @@ event	no APN	sin APN
 	Reset	Restablecer
 	Sets the text of menus, buttons and forms. Names drawn on the workspace follow its zoom instead.	Cambia el texto de menús, botones y formularios. Los nombres dibujados en el área de trabajo siguen su zoom.
 	User Profile	Perfil de usuario
-	Kept on this computer only. It names you in activity results when an activity was not started with a name.	Solo se guarda en este equipo. Te nombra en los resultados de una actividad que no se inició con un nombre.
-	Display name:	Nombre para mostrar:
-	Use a nickname if you like: no real name or e-mail address is needed.	Puedes usar un apodo: no hace falta un nombre real ni un correo electrónico.
 	Profile saved.	Perfil guardado.
 	Command Log	Registro de comandos
 	No commands have been recorded yet.	Aún no se ha registrado ningún comando.
@@ -1862,6 +1859,11 @@ furniture	Table	Mesa
 	Structured Cabling	Cableado estructurado
 	Drag a device onto a rack, shelf or table · drag between two ports to patch them, or from an outlet to a device to plug it in · right-click for more	Arrastra un dispositivo a un bastidor, estante o mesa · arrastra entre dos puertos para parchearlos, o de una toma a un dispositivo para enchufarlo · clic derecho para más
 	Patch panels and wall mounts stand in a wiring closet: open one in the Physical view first.	Los paneles de parcheo y las rosetas de pared van en un armario de cableado: abre uno en la vista física primero.
+	E-Mail:	Correo electrónico:
+	Additional Info:	Información adicional:
+	These stay on this computer, in no lab file and nowhere else. Only the name is used, in activity results.	Estos datos se quedan en este equipo, en ningún archivo de laboratorio ni en ningún otro sitio. Solo se usa el nombre, en los resultados de las actividades.
+	View Wireless Signals	Ver señales inalámbricas
+	View Wireless Signals (Ctrl+Alt+W): faint coverage areas of the access points and a line from each Wi-Fi host to its access point	Ver señales inalámbricas (Ctrl+Alt+W): áreas de cobertura tenues de los puntos de acceso y una línea desde cada equipo Wi-Fi hasta su punto de acceso
 	{} is already cabled to {}	{} ya tiene un cable a {}
 	A cable joins two different devices	Un cable une dos equipos distintos
 	Click a port on a device's front panel, then a port on another device, to cable them · right-click or Esc cancels	Haz clic en un puerto del panel frontal de un equipo y luego en un puerto de otro equipo para unirlos con un cable · clic derecho o Esc cancela

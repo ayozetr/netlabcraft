@@ -54,6 +54,7 @@ pub mod sound;
 pub mod theme;
 mod touch;
 mod wifi_form;
+mod wireless;
 mod wlan_page;
 
 #[cfg(test)]
@@ -1168,6 +1169,10 @@ impl PacketApp {
                 if check_item(ui, self.ui.show_workspace_list, tl("Show Workspace List"), "Shift+W") {
                     self.ui.show_workspace_list = !self.ui.show_workspace_list;
                 }
+                if check_item(ui, self.ui.prefs.show_wireless_signals, tl("View Wireless Signals"), &shortcuts::text(shortcuts::Act::WirelessSignals))
+                {
+                    self.ui.prefs.show_wireless_signals = !self.ui.prefs.show_wireless_signals;
+                }
             });
             ui.menu_button(tl("Tools"), |ui| {
                 if ui.add_enabled(!self.session.physical, egui::Button::new(tl("Drawing Palette")).shortcut_text("Ctrl+D")).clicked() {
@@ -1363,6 +1368,24 @@ impl PacketApp {
                 let b = ui.add(egui::Button::new(RichText::new(tl(label)).color(tk.bar_text).size(15.0)).fill(tk.pill.gamma_multiply(0.5)));
                 if b.on_hover_text(tl("Adds a place to the map shown; drag it into position")).clicked() {
                     physical::add_place(self, None);
+                }
+            }
+            if physical {
+                let on = self.ui.prefs.show_wireless_signals;
+                let (r, resp) = ui.allocate_exact_size(vec2(32.0, 28.0), Sense::click());
+                let label = tl("View Wireless Signals (Ctrl+Alt+W): faint coverage areas of the access points and a line from each Wi-Fi host to its access point");
+                let resp = resp.on_hover_text(label);
+                resp.widget_info(|| egui::WidgetInfo::selected(egui::accesskit::Role::Button, true, on, label));
+                let p = ui.painter_at(r);
+                if on {
+                    p.rect_filled(r.shrink(1.5), 7.0, tk.pill);
+                } else if resp.hovered() {
+                    p.rect_filled(r.shrink(1.5), 7.0, tk.pill.gamma_multiply(0.5));
+                }
+                p.rect_stroke(r, 8.0, egui::Stroke::new(1.5, tk.bar_text), egui::StrokeKind::Inside);
+                icons::glyph(&p, egui::Rect::from_center_size(r.center(), vec2(20.0, 20.0)), Glyph::Wireless, tk.pill_text);
+                if resp.clicked() {
+                    self.ui.prefs.show_wireless_signals = !on;
                 }
             }
             let coords = self.ui.pointer.map_or(String::new(), |(x, y)| format!("x: {}, y: {}", x.round() as i64, y.round() as i64));
