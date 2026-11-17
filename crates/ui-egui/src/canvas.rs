@@ -748,16 +748,15 @@ fn draw_links(app: &mut PacketApp, painter: &egui::Painter, view: &View, tk: &To
             } else {
                 tk.link_up
             };
-            // A small triangle pointing along the cable, away from the device.
+            // The port's light: a lit round lamp on the cable, ringed in the workspace colour so it stands out
+            // from the line, with a highlight.
             let d = dir * sign;
             let n = vec2(-d.y, d.x);
-            let sz = 5.5 * view.zoom.clamp(0.6, 1.4);
+            let sz = 4.6 * view.zoom.clamp(0.6, 1.4);
             if show_lights {
-                painter.add(egui::Shape::convex_polygon(
-                    vec![light + d * sz, light - d * sz * 0.6 + n * sz * 0.8, light - d * sz * 0.6 - n * sz * 0.8],
-                    color,
-                    Stroke::NONE,
-                ));
+                painter.circle_filled(light, sz + 1.6, tk.canvas);
+                painter.circle_filled(light, sz, color);
+                painter.circle_filled(light - vec2(sz * 0.3, sz * 0.3), sz * 0.3, egui::Color32::from_white_alpha(150));
             }
             let named = port_labels_always || (port_labels_hover && hovered.is_some_and(|h| h == l.a.device || h == l.b.device));
             if view.zoom >= 0.6 && named {
@@ -886,8 +885,10 @@ fn draw_devices(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Toke
             painter.rect_stroke(r.expand(9.0), 10.0, Stroke::new(2.0, tk.text), StrokeKind::Outside);
         }
         if app.ui.selected == Some(d.id) || app.ui.picked.contains(&d.id) {
-            painter.rect_filled(r.expand(6.0), 8.0, tk.selection.gamma_multiply(0.15));
-            painter.rect_stroke(r.expand(6.0), 8.0, Stroke::new(1.5, tk.selection), StrokeKind::Outside);
+            // A soft glow, a tinted fill and a crisp ring: the selection reads on any icon colour.
+            painter.rect_stroke(r.expand(9.0), 11.0, Stroke::new(3.0, tk.selection.gamma_multiply(0.18)), StrokeKind::Outside);
+            painter.rect_filled(r.expand(6.0), 8.0, tk.selection.gamma_multiply(0.12));
+            painter.rect_stroke(r.expand(6.0), 8.0, Stroke::new(2.0, tk.selection), StrokeKind::Outside);
         }
         if matches!(app.ui.canvas.pending, Some(Pending::CableFrom(e)) if e.device == d.id)
             || matches!(app.ui.canvas.pending, Some(Pending::ConsoleCable(x) | Pending::PinCable(x) | Pending::PingFrom(x)) if x == d.id)
@@ -908,14 +909,19 @@ fn draw_devices(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Toke
         // Two centred lines under the icon: model, then name, on a soft plate of the workspace
         // colour so cables running under them don't cross the letters.
         let block = name_block(painter, view, d);
-        painter.rect_filled(block.expand2(vec2(3.0, 0.0)), 4.0, tk.canvas.gamma_multiply(0.82));
+        if block.width() > 0.0 {
+            painter.rect_filled(block.expand2(vec2(4.0, 1.0)), 5.0, tk.canvas.gamma_multiply(0.86));
+        }
         let font = name_font(view);
         let mut y = r.bottom() + 2.0;
-        for line in label_lines(view, d) {
-            let galley = painter.layout_no_wrap(line.to_string(), font.clone(), tk.text);
+        // The model line is quieter than the name under it when both are shown.
+        let both = view.labels.0 && view.labels.1;
+        for (i, line) in label_lines(view, d).into_iter().enumerate() {
+            let color = if both && i == 0 { tk.muted } else { tk.text };
+            let galley = painter.layout_no_wrap(line.to_string(), font.clone(), color);
             let label = Align2::CENTER_TOP.anchor_size(pos2(r.center().x, y), galley.size());
             y = label.bottom();
-            painter.galley(label.min, galley, tk.text);
+            painter.galley(label.min, galley, color);
         }
     }
 }
@@ -1012,8 +1018,10 @@ fn draw_clusters(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Tok
     for c in t.clusters_in(view.level) {
         let r = view.cluster_rect(c);
         if app.ui.picked_clusters.contains(&c.id) {
-            painter.rect_filled(r.expand(6.0), 8.0, tk.selection.gamma_multiply(0.15));
-            painter.rect_stroke(r.expand(6.0), 8.0, Stroke::new(1.5, tk.selection), StrokeKind::Outside);
+            // A soft glow, a tinted fill and a crisp ring: the selection reads on any icon colour.
+            painter.rect_stroke(r.expand(9.0), 11.0, Stroke::new(3.0, tk.selection.gamma_multiply(0.18)), StrokeKind::Outside);
+            painter.rect_filled(r.expand(6.0), 8.0, tk.selection.gamma_multiply(0.12));
+            painter.rect_stroke(r.expand(6.0), 8.0, Stroke::new(2.0, tk.selection), StrokeKind::Outside);
         }
         icons::cloud(painter, r, tk.cluster, theme::shade(tk.cluster, 0.55));
         let inside = view.shown.values().filter(|s| **s == Shown::Cluster(c.id)).count();

@@ -302,7 +302,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
     // A wiring closet is drawn by its own view: furniture, front panels and cables from port to port.
     if let Some(place) = crate::closet::current(app) {
         crate::closet::show(app, ui, &resp, &painter, rect, place);
-        painter.text(rect.min + vec2(12.0, 10.0), Align2::LEFT_TOP, caption(app), FontId::proportional(17.0), tk.muted);
+        crate::closet::title_plate(&painter, rect.min + vec2(12.0, 8.0), caption(app), &tk);
         return;
     }
     let view = View::new(app, rect.min.to_vec2() + app.ui.pan);
