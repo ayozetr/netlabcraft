@@ -602,6 +602,15 @@ pub static MODULES: &[Module] = &[
         medium: None,
         switched: true,
     },
+    Module {
+        id: "Card-8A",
+        label: "8-line async card",
+        description: "Eight asynchronous lines for an octal cable: each line reaches the Console port of another router or switch (they are lines, not interfaces)",
+        port_type: "Async",
+        port_count: 0,
+        medium: None,
+        switched: false,
+    },
 ];
 
 /// A card by its id or its shown name.

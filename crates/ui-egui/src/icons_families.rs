@@ -449,6 +449,42 @@ pub fn pin_line(p: &Painter, a: Pos2, b: Pos2, width: f32, tk: &Tokens) {
     }
 }
 
+/// An octal cable: a trunk that fans out into eight thin strands at the far end.
+pub fn octal_line(p: &Painter, a: Pos2, b: Pos2, width: f32, tk: &Tokens) {
+    let color = tk.console_cable;
+    let d = (b - a).normalized();
+    let n = vec2(-d.y, d.x);
+    let fan = a + (b - a) * 0.55;
+    p.line_segment([a, fan], Stroke::new(width * 1.6, color));
+    let spread = (b - a).length() * 0.2;
+    for i in 0..8 {
+        let off = (i as f32 / 7.0 - 0.5) * 2.0 * spread;
+        p.line_segment([fan, b + n * off], Stroke::new((width * 0.5).max(0.8), color));
+    }
+}
+
+/// A USB cable: a stem ending in the trident mark (a circle, a square and an arrowhead).
+pub fn usb_line(p: &Painter, a: Pos2, b: Pos2, width: f32, tk: &Tokens) {
+    let color = tk.cable;
+    let s = Stroke::new(width, color);
+    p.line_segment([a, b], s);
+    let d = (b - a).normalized();
+    let n = vec2(-d.y, d.x);
+    let len = (b - a).length();
+    let at = a + (b - a) * 0.5;
+    let reach = len * 0.2;
+    // Side branches: a circle one way, a square the other.
+    let up = at + d * reach * 0.4 + n * reach;
+    let down = at - d * reach * 0.1 - n * reach;
+    p.line_segment([at, up], s);
+    p.line_segment([at, down], s);
+    p.circle_filled(up, width * 1.4, color);
+    p.rect_filled(Rect::from_center_size(down, vec2(width * 2.4, width * 2.4)), 0.5, color);
+    // The arrowhead at the far end.
+    let tip = b + d * width;
+    p.add(Shape::convex_polygon(vec![tip, tip - d * width * 3.0 + n * width * 1.6, tip - d * width * 3.0 - n * width * 1.6], color, Stroke::NONE));
+}
+
 /// A programmable board's icon: a green (single-board computer) or blue (microcontroller)
 /// circuit board with a chip and a row of pins.
 pub fn board_icon(p: &Painter, rect: Rect, sbc: bool) {

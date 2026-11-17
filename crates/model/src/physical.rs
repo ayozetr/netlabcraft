@@ -13,6 +13,7 @@ use std::collections::BTreeSet;
 use netlabcraft_core::DeviceId;
 use serde::{Deserialize, Serialize};
 
+use crate::furniture::{Fitting, Furniture, Mount, PatchWire, Plug};
 use crate::{End, Link, MAX_DEVICES, MAX_NAME, ModelError, Result, Topology, finite};
 
 /// Most places in a lab.
@@ -23,9 +24,6 @@ pub const MAX_LENGTHS: usize = 10_000;
 pub const MAX_CABLE_M: u32 = 20_000_000;
 /// Longest copper Ethernet run that still carries a signal, in metres.
 pub const COPPER_MAX_M: u32 = 100;
-/// Longest fiber run that still carries a signal here, in metres (multimode at gigabit speed
-/// reaches a few hundred metres, single-mode many kilometres: one generous figure for both).
-pub const FIBER_MAX_M: u32 = 2000;
 /// Two ends in the same closet (or the same room).
 pub const SAME_PLACE_M: u32 = 3;
 /// Two ends in different closets or rooms of one building.
@@ -142,6 +140,21 @@ pub struct Physical {
     pub homes: Vec<Home>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lengths: Vec<CableLength>,
+    /// Racks, shelves and tables standing in wiring closets.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub furniture: Vec<Furniture>,
+    /// Passive devices: patch panels and power distribution devices.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fittings: Vec<Fitting>,
+    /// What stands on which furniture, and where on it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mounts: Vec<Mount>,
+    /// Patch wires: panel port to panel port, panel port to a device port.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub patch_wires: Vec<PatchWire>,
+    /// Devices plugged into a power distribution device's outlets.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub plugs: Vec<Plug>,
     /// The lab ignores cable lengths: a copper run over [`COPPER_MAX_M`] (or another medium's
     /// limit) still carries frames. Not set, lengths count, as they always did.
     #[serde(default, skip_serializing_if = "is_false")]
@@ -154,7 +167,15 @@ fn is_false(b: &bool) -> bool {
 
 impl Physical {
     pub fn is_default(&self) -> bool {
-        self.places.is_empty() && self.homes.is_empty() && self.lengths.is_empty() && !self.ignore_lengths
+        self.places.is_empty()
+            && self.homes.is_empty()
+            && self.lengths.is_empty()
+            && self.furniture.is_empty()
+            && self.fittings.is_empty()
+            && self.mounts.is_empty()
+            && self.patch_wires.is_empty()
+            && self.plugs.is_empty()
+            && !self.ignore_lengths
     }
 }
 
@@ -175,7 +196,7 @@ pub struct Length {
     pub manual: bool,
 }
 
-fn clean_name(name: &str) -> Option<String> {
+pub(crate) fn clean_name(name: &str) -> Option<String> {
     let n: String = name.trim().chars().filter(|c| !c.is_control()).take(MAX_NAME).collect();
     let n = n.trim().to_string();
     (!n.is_empty()).then_some(n)
@@ -379,6 +400,7 @@ impl Topology {
             }
             None => self.physical.homes.retain(|h| !gone.contains(&h.place)),
         }
+        self.prune_furniture();
         Ok(p)
     }
 
@@ -403,6 +425,8 @@ impl Topology {
             Some(h) => *h = home,
             None => self.physical.homes.push(home),
         }
+        // Furniture and power strips are tied to a closet: a device that left one is off them.
+        self.reconcile_places();
         Ok(())
     }
 
@@ -466,6 +490,7 @@ impl Topology {
         self.physical.homes.retain(|h| devices.contains(&h.device));
         let links = &self.links;
         self.physical.lengths.retain(|c| links.iter().any(|l| same_cable(l, c)));
+        self.prune_furniture();
     }
 
     /// Repairs the physical side of a hostile file: repeated ids, wrong nesting, unknown
@@ -524,6 +549,7 @@ impl Topology {
                 && links.iter().any(|l| same_cable(l, c))
                 && seen.insert(if c.a <= c.b { (c.a, c.b) } else { (c.b, c.a) })
         });
+        self.sanitize_furniture();
     }
 }
 

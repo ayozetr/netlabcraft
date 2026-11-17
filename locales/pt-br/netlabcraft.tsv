@@ -192,7 +192,6 @@
 	Authentication	Autenticação
 	Auto (by route)	Auto (pela rota)
 	Automatic	Automático
-	Automatic: picks the right cable for the two ports you choose	Automático: escolhe o cabo certo para as duas portas selecionadas
 	Automation: RESTCONF from a PC	Automação: RESTCONF a partir de um PC
 	Back	Voltar
 	Back to the call screen	Voltar à tela de chamada
@@ -431,7 +430,6 @@
 	fan	ventilador
 	Fast Forward Time (30 s)	Avançar o tempo rapidamente (30 s)
 	Fiber	Fibra
-	Fiber: joins fiber ports (SFP uplinks and fiber cards); carries a signal up to 2 km here	Fibra: liga portas de fibra (uplinks SFP e placas de fibra); transporta sinal até 2 km aqui
 	File	Arquivo
 	File Manager	Gerenciador de arquivos
 	File Name	Nome do arquivo
@@ -832,7 +830,6 @@
 	Periodically	Periodicamente
 	Permissions	Permissões
 	Phone	Telefone
-	Phone (RJ-11)	Telefone (RJ-11)
 	phone commands run on IP phones	os comandos de telefone são executados em telefones IP
 	Phone line (RJ-11): joins phone ports (a DSL modem to the phone company's cloud); carries a signal up to 5 km here	Linha telefônica (RJ-11): liga portas de telefone (um modem DSL à nuvem da operadora); transporta sinal até 5 km aqui
 	Phone settings	Configurações do telefone
@@ -1815,3 +1812,50 @@ event	write request for	requisição de escrita de
 	Show Event List	Mostrar lista de eventos
 	Simulation Back	Voltar na simulação
 	{} is not available at this level of the Physical view.	{} não está disponível neste nível da visão física.
+	Automatically Choose Connection Type	Escolher automaticamente o tipo de conexão
+	Single Mode Fiber	Fibra monomodo
+	Multi Mode Fiber	Fibra multimodo
+	Octal	Octal
+	IoT Custom Cable	Cabo IoT personalizado
+	USB	USB
+	Automatically choose the connection type: picks the right cable for the two ports you choose	Escolher automaticamente o tipo de conexão: escolhe o cabo certo para as duas portas selecionadas
+	Single mode fiber: joins fiber ports whose transceivers are single mode; carries a gigabit signal up to 10 km here	Fibra monomodo: liga portas de fibra cujos transceptores são monomodo; aqui leva um sinal gigabit até 10 km
+	Multi mode fiber: joins fiber ports (SFP uplinks and fiber cards); carries a gigabit signal up to 550 m here	Fibra multimodo: liga portas de fibra (uplinks SFP e placas de fibra); aqui leva um sinal gigabit até 550 m
+	Octal: joins one line of a router's octal card (Card-8A) to the Console port of another router or switch, for reverse-style console access	Octal: liga uma linha da placa octal de um roteador (Card-8A) à porta Console de outro roteador ou switch, para acesso de console reverso
+	USB: a PC's or laptop's USB port to a router's or switch's USB console port, for the PC's Terminal	USB: da porta USB de um PC ou notebook à porta de console USB de um roteador ou switch, para o Terminal do PC
+	8-line async card	Placa assíncrona de 8 linhas
+	Eight asynchronous lines for an octal cable: each line reaches the Console port of another router or switch (they are lines, not interfaces)	Oito linhas assíncronas para um cabo octal: cada linha chega à porta Console de outro roteador ou switch (são linhas, não interfaces)
+	USB cable: click a PC or laptop (USB) and a router or switch (USB console).	Cabo USB: clique em um PC ou notebook (USB) e em um roteador ou switch (console USB).
+	Octal cable: click a router with an octal card, then a router or switch (Console).	Cabo octal: clique em um roteador com placa octal e depois em um roteador ou switch (Console).
+	{} has no octal card or Console port.	{} não tem placa octal nem porta Console.
+	{} has no USB port.	{} não tem porta USB.
+	Rename…	Renomear…
+	Switch Off	Desligar
+	Switch On	Ligar
+	Take off the furniture	Tirar do móvel
+	Plug into	Ligar em
+	Unplug	Desligar da tomada
+	Remove Patch Wires	Remover os cabos de patch
+	Drag from this port to another to wire them.	Arraste desta porta para outra para ligá-las.
+	Drag from this outlet to a device to plug it in.	Arraste desta tomada para um dispositivo para ligá-lo.
+	Add to this closet	Adicionar a este armário
+	Rename	Renomear
+	Name:	Nome:
+	{}, {} units	{}, {} unidades
+	{}, {} levels	{}, {} níveis
+	{}, on {}	{}, em {}
+	Rack	Rack
+	Shelf	Prateleira
+furniture	Table	Mesa
+	Copper Patch Panel	Patch panel de cobre
+	Fiber Patch Panel	Patch panel de fibra
+	Copper Wall Mount	Tomada de parede de cobre
+	Fiber Wall Mount	Tomada de parede de fibra
+	Power Distribution Device	Unidade de distribuição de energia
+	Copper patch panel: joins device ports through the structured cabling	Patch panel de cobre: liga portas de dispositivos pelo cabeamento estruturado
+	Fiber patch panel: joins fiber device ports through the structured cabling	Patch panel de fibra: liga portas de fibra pelo cabeamento estruturado
+	Copper wall mount: a wall outlet that carries a link through the building's cabling	Tomada de parede de cobre: uma tomada que leva um enlace pelo cabeamento do prédio
+	Fiber wall mount: a fiber wall outlet that carries a link through the building's cabling	Tomada de parede de fibra: uma tomada de fibra que leva um enlace pelo cabeamento do prédio
+	Structured Cabling	Cabeamento estruturado
+	Drag a device onto a rack, shelf or table · drag between two ports to patch them, or from an outlet to a device to plug it in · right-click for more	Arraste um dispositivo para um rack, prateleira ou mesa · arraste entre duas portas para fazer o patch, ou de uma tomada para um dispositivo para ligá-lo · clique direito para mais
+	Patch panels and wall mounts stand in a wiring closet: open one in the Physical view first.	Patch panels e tomadas de parede ficam em um armário de fiação: abra um na visualização física primeiro.

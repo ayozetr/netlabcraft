@@ -502,7 +502,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Fit a card",
         "",
         None,
-        r#"{"device", "slot": "0/1", "module": "Card-2S|Card-4S|Card-1GE|Card-2GE|Card-1FE|Card-1GF"} → {"slots", "added": [port names]}: modular routers, switched off"#,
+        r#"{"device", "slot": "0/1", "module": "Card-2S|Card-4S|Card-1GE|Card-2GE|Card-1FE|Card-1GF|Card-8A"} → {"slots", "added": [port names]}: modular routers, switched off"#,
         true
     ),
     c!(
@@ -511,6 +511,14 @@ pub static CATALOG: &[CommandInfo] = &[
         "",
         None,
         r#"{"device", "slot": "0/1"} → {"slots", "removed": [port names]}: switched off; cables on the card's ports are unplugged"#,
+        true
+    ),
+    c!(
+        "port.transceiver",
+        "Fiber transceiver",
+        "",
+        None,
+        r#"{"device", "port": "fiber or combo port", "mode": "multi-mode" (850 nm, the default) | "single-mode" (1310 nm)} → {"device", "port", "mode"}: the transceiver in the port; both ends of a fiber link need the same one, and a single mode fiber cable needs single-mode transceivers"#,
         true
     ),
     c!(
@@ -777,6 +785,84 @@ pub static CATALOG: &[CommandInfo] = &[
         r#"{"device", "port": "interface", "meters": 1-20000000 | null (the length the places give)} → {"meters", "manual", "problem"} (copper over 100 m carries nothing)"#,
         true
     ),
+    c!(
+        "closet.list",
+        "List a wiring closet",
+        "",
+        None,
+        r#"{"place"?: closet number (default: the closet being viewed)} → {"place", "furniture": [{"id", "kind", "name", "size", "items": [{"device" | "passive": name, "slot" (from 1), "units"}]}], "passive": [{"id", "kind", "name", "ports", "on", "furniture", "slot", "plugged": [{"device", "outlet"}]}], "loose": [names standing on the floor], "wires": [{"a", "b"}], "paths": [{"a", "b"}] (devices cabled through patch panels)}"#,
+        false
+    ),
+    c!(
+        "furniture.add",
+        "Add furniture",
+        "",
+        None,
+        r#"{"kind": "rack" | "shelf" | "table", "name"?, "place"?: wiring closet number, "size"?: rack units 4-48 (default 12) or shelf levels 1-8 (default 4), "x"?, "y"?} → {"id", "name", "kind", "size", "place"}: furniture stands only in wiring closets"#,
+        true
+    ),
+    c!("furniture.rename", "Rename furniture", "", None, r#"{"furniture": name or number, "name"}"#, true),
+    c!("furniture.move", "Move furniture", "", None, r#"{"furniture", "x", "y", "transient"?: false}: where it stands in the closet"#, true),
+    c!("furniture.remove", "Remove furniture", "", None, r#"{"furniture"}: what stood on it stays in the closet, loose"#, true),
+    c!(
+        "furniture.mount",
+        "Put on furniture",
+        "",
+        None,
+        r#"{"device" | "passive": name or number, "furniture": name or number, "slot"?: rack unit or shelf level counted from 1 at the top (default: the first free one), "units"?: 1-4 rack units (default 1)} → {"furniture", "slot", "units"}: the item moves into the furniture's closet; a rack takes no overlapping units, a shelf level holds 4 items, a table 8"#,
+        true
+    ),
+    c!("furniture.unmount", "Take off furniture", "", None, r#"{"device" | "passive"}: it stays in the closet, loose"#, true),
+    c!(
+        "passive.add",
+        "Add a passive device",
+        "",
+        None,
+        r#"{"kind": "copper-patch-panel" | "fiber-patch-panel" | "copper-wall-mount" | "fiber-wall-mount" | "power-strip", "name"?, "place"?, "ports"?: ports or outlets (panels 4-48, wall mounts 1-4, power strip 2-16), "furniture"?, "slot"?, "units"?} → {"id", "name", "kind", "ports", "place"}"#,
+        true
+    ),
+    c!("passive.rename", "Rename a passive device", "", None, r#"{"passive": name or number, "name"}"#, true),
+    c!(
+        "passive.remove",
+        "Remove a passive device",
+        "",
+        None,
+        r#"{"passive"}: with its patch wires (a cable they carried is unplugged) and its plugs"#,
+        true
+    ),
+    c!(
+        "patch.wire",
+        "Patch wire",
+        "",
+        None,
+        r#"{"a", "b"}, each {"panel": passive name, "port": from 1} or {"device": name, "port": "Fa0/1"}: a patch cord joins two panel or wall-mount ports, a drop joins one to a free device port of the same medium (copper or fiber), all in one closet; a drop at each end of a cord is a patch path and cables the two devices (an automatic cable) → {"cables": [the ends cabled]}"#,
+        true
+    ),
+    c!(
+        "patch.unwire",
+        "Remove a patch wire",
+        "",
+        None,
+        r#"{"a", "b"?}: the wire between the two ends, or with no `b` every wire at `a`; a cable the wire's path carried is unplugged"#,
+        true
+    ),
+    c!(
+        "power.plug",
+        "Plug into a power strip",
+        "",
+        None,
+        r#"{"device", "strip": power distribution device, "outlet"?: from 1 (default: the first free one)} → {"strip", "outlet"}: the device and the strip stand in one closet; plugged into a strip that is off, the device switches off"#,
+        true
+    ),
+    c!("power.unplug", "Unplug from a power strip", "", None, r#"{"device"}"#, true),
+    c!(
+        "power.strip",
+        "Power strip switch",
+        "",
+        None,
+        r#"{"strip": power distribution device, "on": true|false or "on"|"off"} → {"on", "devices"}: the devices plugged into it switch off or boot from their saved configuration as with device.power; one plugged into a strip that is off cannot be switched on"#,
+        true
+    ),
     c!("view.enter_cluster", "Open cluster", "", None, r#"{"id"} → {"cluster", "path": [{"id", "name"}]}"#, false),
     c!("view.up", "Back to the parent cluster", "", None, r#"{} → {"cluster", "path"}"#, false),
     c!("view.root", "Back to the top level", "", None, r#"{} → {"cluster": null, "path": []}"#, false),
@@ -796,16 +882,23 @@ pub static CATALOG: &[CommandInfo] = &[
         "Connect with a cable",
         "Insert",
         None,
-        r#"{"a": "device", "a_port"?: "interface", "b": "device", "b_port"?: "interface", "cable"?: "auto" (default) | "straight-through" | "cross-over" | "fiber" | "console" | "serial-dce" | "serial-dte"} → {"a", "b", "cable", "resolved"}: a cable joins two ports of its medium; a console cable joins a PC's RS-232 port to a router's or switch's Console port"#,
+        r#"{"a": "device", "a_port"?: "interface", "b": "device", "b_port"?: "interface", "cable"?: "auto" (default) | "console" | "straight-through" | "cross-over" | "fiber-single-mode" | "fiber-multi-mode" | "phone" | "coaxial" | "serial-dce" | "serial-dte" | "octal" | "iot-custom" | "usb" ("fiber" reads as multi-mode), "line"?: 0-7 (octal)} → {"a", "b", "cable", "resolved"}: a cable joins two ports of its medium; a console cable joins a PC's RS-232 port to a router's or switch's Console port, a USB cable a PC's USB port to a router's or switch's USB console port, an octal cable a line of a router's octal card (Card-8A) to another router's or switch's Console port (a is the router with the card unless only b has one)"#,
         true
     ),
-    c!("link.remove", "Remove cable", "Edit", None, r#"{"device", "port": "interface", or "Console" / "RS-232" for a console cable}"#, true),
+    c!(
+        "link.remove",
+        "Remove cable",
+        "Edit",
+        None,
+        r#"{"device", "port": "interface", or "Console" / "RS-232" / "USB" for a console or USB cable, "Console" on the far device or "Async" on the card's router for an octal cable}"#,
+        true
+    ),
     c!(
         "link.list",
         "List cables",
         "",
         None,
-        r#"{} → [{"a", "b", "cable", "resolved", "up", "problem"}] (console cables: cable "console", resolved "console")"#,
+        r#"{} → [{"a", "b", "cable", "resolved", "up", "problem"}] (console cables: cable "console", resolved "console"; USB cables "usb"; octal cables "octal")"#,
         false
     ),
     c!(
@@ -814,6 +907,14 @@ pub static CATALOG: &[CommandInfo] = &[
         "",
         None,
         r#"{"pc": "PC or laptop"} → {"device", "prompt", "log"}: the router or switch its console cable leads to; type into it with cli.exec on that device (the same console its CLI tab shows)"#,
+        false
+    ),
+    c!(
+        "octal.terminal",
+        "Terminal (octal cable)",
+        "",
+        None,
+        r#"{"router": "router with an octal card", "line": 0-7} → {"router", "line", "device", "prompt", "log"}: the router or switch an octal cable reaches from that line of the card; type into it with cli.exec on that device (reverse-telnet style access from a router's own console is not modelled)"#,
         false
     ),
     c!("cli.exec", "Type a command", "", None, r#"{"device", "line"} → {"output", "prompt", "clear"}"#, true),

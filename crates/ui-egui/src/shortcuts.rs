@@ -109,6 +109,7 @@ pub enum Act {
     Wan,
     EndDevices,
     Connections,
+    Cabling,
     OpenDevice,
     MoveSelected(Dir),
     SelectToward(Dir),
@@ -218,6 +219,7 @@ pub static TABLE: &[Shortcut] = &[
     row("Device box", "WAN Emulation", C | A, Key::N, Act::Wan, Always),
     row("Device box", "End Devices", C | A, Key::V, Act::EndDevices, Always),
     row("Device box", "Connections", C | A, Key::O, Act::Connections, Always),
+    row("Device box", "Structured Cabling", C | A, Key::K, Act::Cabling, Always),
     // Selection
     row("Selection", "Open Device", 0, Key::Enter, Act::OpenDevice, Idle),
     row("Selection", "Move Device Up", C, Key::ArrowUp, Act::MoveSelected(Dir::Up), Idle),
@@ -486,6 +488,7 @@ pub fn perform(app: &mut PacketApp, ctx: &Context, act: Act) {
         Act::Wan => show_category(app, Category::NetworkDevices, Sub::Wan),
         Act::EndDevices => show_category(app, Category::EndDevices, Sub::Hosts),
         Act::Connections => show_category(app, Category::Connections, Sub::Cables),
+        Act::Cabling => crate::bottom::open_cabling(app),
         Act::OpenDevice => {
             if let Some(d) = app.ui.selected {
                 crate::console::open(app, d);

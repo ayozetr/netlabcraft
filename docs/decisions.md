@@ -70,7 +70,7 @@ IPv6 neighbour discovery holds the packet, on routers too, so the first IPv6 pin
 
 ## Cable types
 
-Links carry a kind: automatic (resolves to the right kind for the two ports, today's behaviour and the default in old files), copper straight-through, copper cross-over, fiber, console, serial DCE, serial DTE. Ports have a medium (copper, fiber, combo, serial, wireless, console, RS-232) and a cable only joins ports of its medium. Routers and switches do auto-MDIX unless `no mdix auto`; hosts and hubs don't, so a wrong copper cable leaves the link down and says why. Serial DTE puts the DCE at the far end. Console cables join a PC's RS-232 port to a device's Console port and are not network links. Copper reaches 100 m, fiber 2000 m.
+Links carry a kind: automatic (resolves to the right kind for the two ports, today's behaviour and the default in old files), copper straight-through, copper cross-over, single mode fiber, multi mode fiber (an old `fiber` reads as multi mode), console, USB, octal, serial DCE, serial DTE. Ports have a medium (copper, fiber, combo, serial, wireless, console, RS-232) and a cable only joins ports of its medium. Routers and switches do auto-MDIX unless `no mdix auto`; hosts and hubs don't, so a wrong copper cable leaves the link down and says why. Serial DTE puts the DCE at the far end. Console and USB cables join a PC's RS-232 or USB port to a device's Console or USB console port and are not network links, and neither is an octal cable (a line of a router's octal card to a device's Console port). Copper reaches 100 m, multi mode fiber 550 m, single mode fiber 10 km; a fiber port's transceiver (multi mode by default) must match the far end and the cable.
 
 ## Renamed to NetLabCraft
 

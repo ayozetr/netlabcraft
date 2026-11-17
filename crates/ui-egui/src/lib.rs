@@ -21,6 +21,7 @@ mod board_page;
 mod bottom;
 mod canvas;
 mod cell_page;
+mod closet;
 mod cloud_page;
 mod console;
 mod credits;
@@ -56,6 +57,7 @@ mod wlan_page;
 
 #[cfg(test)]
 mod tests;
+mod tests_closet;
 mod tests_families;
 #[cfg(test)]
 mod tests_prefs;
