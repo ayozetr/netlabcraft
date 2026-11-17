@@ -249,6 +249,7 @@ pub fn thing_icon(p: &Painter, rect: Rect, model_id: &str, wireless: bool, tk: &
         "Board-SBC" => board_sbc(&a),
         "Board-MCU" => board_mcu(&a),
         "PLC" => plc(&a),
+        _ if crate::icons_things2::draws(model_id) => crate::icons_things2::icon(&a, model_id),
         _ => {
             if !crate::icons_parts2::draw(&a, model_id) {
                 cube(&a);

@@ -4,10 +4,10 @@
 
 use netlabcraft_core::parse_ip;
 use netlabcraft_model::DeviceKind;
-use netlabcraft_model::environment::{MAX_CO, MAX_TEMP, MIN_TEMP, QUANTITIES};
+use netlabcraft_model::environment::{MAX_CO, MAX_CO2, MAX_TEMP, MIN_TEMP, QUANTITIES};
 use netlabcraft_model::iot::{
-    Condition, IotRule, MAX_CONDITIONS, MAX_INTERVAL, MAX_RULES, Op, can_serve, is_pressed_toggle, is_sensor, level_range, room_word, sensor_range,
-    thing,
+    Condition, IotRule, MAX_CONDITIONS, MAX_FREQUENCY, MAX_INTERVAL, MAX_RULES, Op, can_serve, is_pressed_toggle, is_sensor, level_range, room_word,
+    sensor_range, thing,
 };
 use serde_json::{Value, json};
 
@@ -27,6 +27,11 @@ pub(crate) fn thing_page(s: &Session, d: netlabcraft_core::DeviceId) -> Value {
         "what": thing(dev).map(|t| t.what),
         "server": dev.iot.server.map(|a| a.to_string()),
         "value": is_sensor(dev).then(|| s.sim.iot_reading(&s.topology, dev)),
+        "value2": s.sim.iot_reading2(&s.topology, dev),
+        "paired": paired(s, dev),
+        "brightness": (thing(dev).map(|t| t.what) == Some("smart led")).then(|| dev.iot.brightness.unwrap_or(100)),
+        "colour": (thing(dev).map(|t| t.what) == Some("smart led")).then(|| colour_text(dev.iot.colour)),
+        "frequency": (thing(dev).map(|t| t.what) == Some("signal")).then_some(dev.iot.frequency),
         "second": thing(dev).filter(|t| t.what == "humiture").map(|_| s.sim.iot_second(&s.topology, dev)),
         "variable": thing(dev).filter(|t| t.what == "environment").map(|_| selected_variable(dev)),
         "level": (!is_sensor(dev) && level_range(thing(dev).map_or("", |t| t.what)).is_some()).then(|| s.sim.iot_level(dev)),
@@ -36,6 +41,35 @@ pub(crate) fn thing_page(s: &Session, d: netlabcraft_core::DeviceId) -> Value {
         "image": st.image,
         "message": st.message,
     })
+}
+
+/// A smart LED's colour as `#rrggbb` (warm white when none is set).
+pub(crate) fn colour_text(c: Option<[u8; 3]>) -> String {
+    let [r, g, b] = c.unwrap_or(WARM_WHITE);
+    format!("#{r:02x}{g:02x}{b:02x}")
+}
+
+/// What a smart LED shines when no colour is set.
+pub(crate) const WARM_WHITE: [u8; 3] = [0xff, 0xe4, 0xb5];
+
+/// `#rrggbb` (or `rrggbb`) as a colour.
+fn parse_colour(text: &str) -> Option<[u8; 3]> {
+    let hex = text.trim().trim_start_matches('#');
+    if hex.len() != 6 || !hex.is_ascii() {
+        return None;
+    }
+    let byte = |i: usize| hex.get(i..i + 2).and_then(|h| u8::from_str_radix(h, 16).ok());
+    Some([byte(0)?, byte(2)?, byte(4)?])
+}
+
+/// The name of the thing a Bluetooth speaker or a music player is paired with, when one is near.
+fn paired(s: &Session, dev: &netlabcraft_model::Device) -> Option<String> {
+    let other = match thing(dev).map(|t| t.what) {
+        Some("bluetooth speaker") => s.topology.paired_player(dev),
+        Some("music player") => s.topology.paired_speaker(dev),
+        _ => None,
+    }?;
+    s.topology.device(other).map(|d| d.name.clone())
 }
 
 /// The environment variable a generic environment sensor reads (the temperature until one is picked).
@@ -70,7 +104,7 @@ pub(crate) fn environment(s: &Session) -> Value {
     json!({
         "enabled": e.enabled,
         "outside": {"temperature": e.outside_temperature, "humidity": e.outside_humidity, "light": e.outside_light},
-        "start": {"temperature": e.temperature, "humidity": e.humidity, "soil": e.soil, "smoke": e.smoke, "co": e.co, "motion": e.motion},
+        "start": {"temperature": e.temperature, "humidity": e.humidity, "soil": e.soil, "smoke": e.smoke, "co": e.co, "motion": e.motion, "fire": e.fire, "co2": e.co2},
         "room": room,
     })
 }
@@ -103,10 +137,12 @@ fn set_environment(s: &mut Session, p: &Value) -> Result<Value> {
     let smoke = whole("smoke", 0, 100)?;
     let co = whole("co", 0, MAX_CO)?;
     let motion = whole("motion", 0, 1)?;
+    let fire = whole("fire", 0, 100)?;
+    let co2 = whole("co2", 0, MAX_CO2)?;
     let out_t = whole("outside_temperature", MIN_TEMP, MAX_TEMP)?;
     let out_h = whole("outside_humidity", 0, 100)?;
     let out_l = whole("outside_light", 0, 100)?;
-    let touched = [temperature, humidity, soil, smoke, co, motion, out_t, out_h, out_l].iter().any(Option::is_some);
+    let touched = [temperature, humidity, soil, smoke, co, motion, fire, co2, out_t, out_h, out_l].iter().any(Option::is_some);
     if enabled.is_some() || touched || reset {
         s.checkpoint();
         let e = &mut s.topology.environment;
@@ -125,6 +161,8 @@ fn set_environment(s: &mut Session, p: &Value) -> Result<Value> {
         set(&mut e.smoke, smoke);
         set(&mut e.co, co);
         set(&mut e.motion, motion);
+        set(&mut e.fire, fire);
+        set(&mut e.co2, co2);
         set(&mut e.outside_temperature, out_t);
         set(&mut e.outside_humidity, out_h);
         set(&mut e.outside_light, out_l);
@@ -135,7 +173,16 @@ fn set_environment(s: &mut Session, p: &Value) -> Result<Value> {
         // The values given now are also the room's values now.
         if s.topology.environment.enabled {
             s.sim.env_step(&s.topology);
-            for (q, v) in [("temperature", temperature), ("humidity", humidity), ("soil", soil), ("smoke", smoke), ("co", co), ("motion", motion)] {
+            for (q, v) in [
+                ("temperature", temperature),
+                ("humidity", humidity),
+                ("soil", soil),
+                ("smoke", smoke),
+                ("co", co),
+                ("motion", motion),
+                ("fire", fire),
+                ("co2", co2),
+            ] {
                 if let Some(v) = v {
                     s.sim.env_set(&s.topology, q, v);
                 }
@@ -160,7 +207,7 @@ pub(crate) fn server(s: &Session, d: netlabcraft_core::DeviceId) -> Value {
         .sim
         .iot_registry(d)
         .iter()
-        .map(|e| json!({"name": e.name, "kind": e.kind, "what": e.what, "address": e.address.to_string(), "value": e.value, "on": e.on, "image": e.image}))
+        .map(|e| json!({"name": e.name, "kind": e.kind, "what": e.what, "address": e.address.to_string(), "value": e.value, "value2": e.value2, "on": e.on, "image": e.image}))
         .collect();
     let rules: Vec<Value> = dev.iot.rules.iter().map(rule_json).collect();
     json!({"device": dev.name, "service": dev.iot.service, "rules": rules, "things": things})
@@ -280,6 +327,33 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
                 return Err(bad("only an RGB LED has red, green and blue"));
             }
             let value = if press { Some(1 - s.topology.device(d).map_or(0, |x| x.iot.value).clamp(0, 1)) } else { value };
+            let brightness = match p.get("brightness") {
+                None => None,
+                Some(v) => Some(
+                    v.as_u64()
+                        .filter(|v| *v <= 100 && what == "smart led")
+                        .and_then(|v| u8::try_from(v).ok())
+                        .ok_or_else(|| bad("`brightness` is a whole number from 0 to 100 and only a smart LED has one"))?,
+                ),
+            };
+            let colour = match p.get("colour") {
+                None => None,
+                Some(v) => Some(
+                    v.as_str()
+                        .filter(|_| what == "smart led")
+                        .and_then(parse_colour)
+                        .ok_or_else(|| bad("`colour` is \"#rrggbb\" and only a smart LED has one"))?,
+                ),
+            };
+            let frequency = match p.get("frequency") {
+                None => None,
+                Some(v) => Some(
+                    v.as_u64()
+                        .filter(|v| *v <= u64::from(MAX_FREQUENCY) && what == "signal")
+                        .and_then(|v| u32::try_from(v).ok())
+                        .ok_or_else(|| bad(format!("`frequency` is 0 to {MAX_FREQUENCY} Hz and only a signal generator has one")))?,
+                ),
+            };
             s.checkpoint();
             if let Some(dev) = s.topology.device_mut(d) {
                 if let Some(a) = server {
@@ -296,6 +370,15 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
                 }
                 if let Some(i) = interval {
                     dev.iot.interval = i;
+                }
+                if let Some(b) = brightness {
+                    dev.iot.brightness = Some(b);
+                }
+                if let Some(c) = colour {
+                    dev.iot.colour = Some(c);
+                }
+                if let Some(f) = frequency {
+                    dev.iot.frequency = f;
                 }
             }
             if sets_level {

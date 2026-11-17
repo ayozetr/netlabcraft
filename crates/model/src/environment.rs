@@ -20,6 +20,19 @@ pub const HEATER_CEILING: i32 = 40;
 pub const AC_FLOOR: i32 = 10;
 /// Carbon monoxide, in ppm.
 pub const MAX_CO: i32 = 1_000;
+/// Carbon dioxide, in ppm; the air outside holds [`OUTSIDE_CO2`] and the room leaks toward it.
+pub const MAX_CO2: i32 = 10_000;
+pub const OUTSIDE_CO2: i32 = 420;
+/// Atmospheric pressure the room starts at (kPa, sea level) and the highest it reads.
+pub const SEA_LEVEL_KPA: i32 = 101;
+pub const MAX_KPA: i32 = 200;
+/// The fastest wind the room reads (kph).
+pub const MAX_WIND: i32 = 500;
+/// What a smart device that makes sound adds to the room: a music player alone, a speaker
+/// (or a player paired with one), and the one pitch they all play (A above middle C, Hz).
+pub const PLAYER_DB: u32 = 55;
+pub const SPEAKER_DB: u32 = 75;
+pub const TONE_HZ: u32 = 440;
 /// The most smart devices of one kind the physics counts (more add no more).
 pub const MAX_EFFECTS: u32 = 16;
 /// The longest stretch one call steps (seconds of simulated time); a longer one is cut.
@@ -38,6 +51,9 @@ pub struct Environment {
     pub smoke: i32,
     pub co: i32,
     pub motion: i32,
+    /// Flames (percent) and carbon dioxide (ppm) when the room starts.
+    pub fire: i32,
+    pub co2: i32,
     /// What lies outside: degrees, percent humidity, percent daylight.
     pub outside_temperature: i32,
     pub outside_humidity: i32,
@@ -54,6 +70,8 @@ impl Default for Environment {
             smoke: 0,
             co: 0,
             motion: 0,
+            fire: 0,
+            co2: OUTSIDE_CO2,
             outside_temperature: 15,
             outside_humidity: 60,
             outside_light: 60,
@@ -75,6 +93,8 @@ impl Environment {
         }
         self.co = self.co.clamp(0, MAX_CO);
         self.motion = self.motion.clamp(0, 1);
+        self.fire = self.fire.clamp(0, 100);
+        self.co2 = self.co2.clamp(0, MAX_CO2);
     }
 }
 
@@ -87,6 +107,17 @@ pub struct Effects {
     pub sprinklers: u32,
     pub windows_open: u32,
     pub lamps: u32,
+    /// Ceiling fans stir the air: they pull the temperature toward the outside's.
+    pub breezes: u32,
+    pub furnaces: u32,
+    pub humidifiers: u32,
+    /// Fire sprinklers that are spraying (switched on, or seeing flames).
+    pub fire_sprinklers: u32,
+    /// Cars whose engine runs: they add carbon monoxide and carbon dioxide.
+    pub cars: u32,
+    /// The loudest thing playing (dB) and its pitch (Hz); 0: silence.
+    pub sound_db: u32,
+    pub sound_hz: u32,
 }
 
 impl Effects {
@@ -105,6 +136,13 @@ pub struct Climate {
     pub co_m: i64,
     pub light: i64,
     pub motion: i64,
+    pub co2_m: i64,
+    pub fire_m: i64,
+    /// Whole values: what is playing now, the pressure and the wind (not simulated further).
+    pub sound_db: i64,
+    pub sound_hz: i64,
+    pub pressure: i64,
+    pub wind: i64,
 }
 
 /// Moves `from` toward `to` by a share of the gap (`1/div`), at least a thousandth so it always
@@ -135,6 +173,12 @@ impl Climate {
             co_m: milli(e.co),
             light: 0,
             motion: i64::from(e.motion),
+            co2_m: milli(e.co2),
+            fire_m: milli(e.fire),
+            sound_db: 0,
+            sound_hz: 0,
+            pressure: i64::from(SEA_LEVEL_KPA),
+            wind: 0,
         };
         c.light = c.light_level(e, &Effects::default());
         c
@@ -151,12 +195,25 @@ impl Climate {
         let open = fx.windows_open > 0;
         let (heat, cool, fans, sprinklers) =
             (Effects::capped(fx.heaters), Effects::capped(fx.coolers), Effects::capped(fx.fans), Effects::capped(fx.sprinklers));
+        let (breezes, furnaces, humidifiers, hoses, cars) = (
+            Effects::capped(fx.breezes),
+            Effects::capped(fx.furnaces),
+            Effects::capped(fx.humidifiers),
+            Effects::capped(fx.fire_sprinklers),
+            Effects::capped(fx.cars),
+        );
         // Temperature: leaks toward the outside, a heater adds 1.2 degrees a minute (up to a
         // ceiling), an air conditioner removes 1.5 a minute (down to a floor).
         let mut t = self.temperature_m.saturating_add(leak(self.temperature_m, milli(e.outside_temperature), if open { 300 } else { 1_800 }));
-        if heat > 0 && t < milli(HEATER_CEILING) {
-            t = t.saturating_add(heat.saturating_mul(20));
+        if (heat > 0 || furnaces > 0) && t < milli(HEATER_CEILING) {
+            t = t.saturating_add(heat.saturating_mul(20)).saturating_add(furnaces.saturating_mul(30));
         }
+        // A ceiling fan only mixes the air: it brings the room toward the outside, never past it.
+        if breezes > 0 && t > milli(e.outside_temperature) {
+            t = t.saturating_sub(breezes.saturating_mul(8).min(t.saturating_sub(milli(e.outside_temperature))));
+        }
+        // Flames warm the room a little.
+        t = t.saturating_add(self.fire_m / 5_000);
         if cool > 0 && t > milli(AC_FLOOR) {
             t = t.saturating_sub(cool.saturating_mul(25));
         }
@@ -166,6 +223,7 @@ impl Climate {
             .humidity_m
             .saturating_add(leak(self.humidity_m, milli(e.outside_humidity), if open { 300 } else { 1_200 }))
             .saturating_add(sprinklers.saturating_mul(10))
+            .saturating_add(humidifiers.saturating_mul(15))
             .saturating_sub(cool.saturating_mul(5))
             .saturating_sub(fans.saturating_mul(3));
         self.humidity_m = h.clamp(0, 100_000);
@@ -173,8 +231,20 @@ impl Climate {
         self.soil_m = self.soil_m.saturating_sub(1).saturating_add(sprinklers.saturating_mul(40)).clamp(0, 100_000);
         // Smoke and carbon monoxide: only fresh air clears them (a fan, an open window).
         let clear = fans.saturating_mul(50).saturating_add(if open { 30 } else { 0 }).saturating_add(2);
-        self.smoke_m = self.smoke_m.saturating_sub(clear).clamp(0, 100_000);
-        self.co_m = self.co_m.saturating_sub(clear.saturating_mul(10)).clamp(0, milli(MAX_CO));
+        // Flames burn on until a fire sprinkler puts them out, and make smoke and carbon monoxide.
+        self.fire_m = self.fire_m.saturating_sub(hoses.saturating_mul(3_000)).clamp(0, 100_000);
+        self.smoke_m = self.smoke_m.saturating_add(self.fire_m / 200).saturating_sub(clear).clamp(0, 100_000);
+        self.co_m = self
+            .co_m
+            .saturating_add(self.fire_m / 100)
+            .saturating_add(cars.saturating_mul(500))
+            .saturating_sub(clear.saturating_mul(10))
+            .clamp(0, milli(MAX_CO));
+        // Carbon dioxide: a running car adds 5 ppm a second; the room leaks toward the outside air.
+        let co2_leak = leak(self.co2_m, milli(OUTSIDE_CO2), if open { 150 } else { 600 });
+        self.co2_m = self.co2_m.saturating_add(co2_leak).saturating_add(cars.saturating_mul(5_000)).clamp(0, milli(MAX_CO2));
+        self.sound_db = i64::from(fx.sound_db.min(200));
+        self.sound_hz = if fx.sound_db > 0 { i64::from(fx.sound_hz) } else { 0 };
         self.light = self.light_level(e, fx);
     }
 
@@ -182,12 +252,18 @@ impl Climate {
     /// `smoke`, `co`, `motion`) reads; `None`: the room has no such quantity.
     pub fn reading(&self, what: &str) -> Option<i32> {
         Some(match what {
-            "temperature" | "thermostat" => whole(self.temperature_m),
+            "temperature" | "thermostat" | "humiture" => whole(self.temperature_m),
             "humidity" => whole(self.humidity_m),
             "soil" => whole(self.soil_m),
             "smoke" => whole(self.smoke_m),
             "co" => whole(self.co_m),
             "motion" => i32::try_from(self.motion).unwrap_or(0),
+            "co2" => whole(self.co2_m),
+            "fire" => whole(self.fire_m),
+            "volume" => i32::try_from(self.sound_db).unwrap_or(0),
+            "pitch" => i32::try_from(self.sound_hz).unwrap_or(0),
+            "pressure" => i32::try_from(self.pressure).unwrap_or(0),
+            "wind" => i32::try_from(self.wind).unwrap_or(0),
             _ => return None,
         })
     }
@@ -201,6 +277,10 @@ impl Climate {
             "smoke" => self.smoke_m = milli(v.clamp(0, 100)),
             "co" => self.co_m = milli(v.clamp(0, MAX_CO)),
             "motion" => self.motion = i64::from(v.clamp(0, 1)),
+            "co2" => self.co2_m = milli(v.clamp(0, MAX_CO2)),
+            "fire" => self.fire_m = milli(v.clamp(0, 100)),
+            "pressure" => self.pressure = i64::from(v.clamp(0, MAX_KPA)),
+            "wind" => self.wind = i64::from(v.clamp(0, MAX_WIND)),
             _ => return false,
         }
         true
@@ -208,7 +288,7 @@ impl Climate {
 }
 
 /// The names `Climate::set`, `Climate::reading` and the `iot.environment` command use.
-pub const QUANTITIES: [&str; 6] = ["temperature", "humidity", "soil", "smoke", "co", "motion"];
+pub const QUANTITIES: [&str; 12] = ["temperature", "humidity", "soil", "smoke", "co", "motion", "co2", "fire", "pressure", "wind", "volume", "pitch"];
 
 #[cfg(test)]
 mod tests {
@@ -277,5 +357,71 @@ mod tests {
         e.sanitize();
         assert_eq!((e.temperature, e.humidity, e.co, e.motion, e.outside_light), (MAX_TEMP, 0, MAX_CO, 1, 100));
         assert!(Environment::default().is_default());
+    }
+
+    #[test]
+    fn furnace_heats_faster_than_a_heater_and_a_ceiling_fan_only_goes_as_far_as_the_outside() {
+        let e = Environment { enabled: true, temperature: 15, outside_temperature: 15, ..Environment::default() };
+        let (mut heater, mut furnace) = (Climate::from_settings(&e), Climate::from_settings(&e));
+        run(&mut heater, &e, &Effects { heaters: 1, ..Effects::default() }, 300);
+        run(&mut furnace, &e, &Effects { furnaces: 1, ..Effects::default() }, 300);
+        assert!(furnace.temperature_m > heater.temperature_m, "{} against {}", furnace.temperature_m, heater.temperature_m);
+        let hot = Environment { enabled: true, temperature: 30, outside_temperature: 20, ..Environment::default() };
+        let mut c = Climate::from_settings(&hot);
+        run(&mut c, &hot, &Effects { breezes: 16, ..Effects::default() }, 86_400);
+        assert_eq!(c.reading("temperature"), Some(20), "a fan brings the room to the outside's temperature and stops there");
+        let (mut shut, mut stirred) = (Climate::from_settings(&hot), Climate::from_settings(&hot));
+        run(&mut shut, &hot, &Effects::default(), 600);
+        run(&mut stirred, &hot, &Effects { breezes: 1, ..Effects::default() }, 600);
+        assert!(stirred.temperature_m < shut.temperature_m);
+    }
+
+    #[test]
+    fn a_humidifier_raises_the_humidity_and_it_stays_in_range() {
+        let e = Environment { enabled: true, humidity: 40, outside_humidity: 40, ..Environment::default() };
+        let (mut plain, mut misty) = (Climate::from_settings(&e), Climate::from_settings(&e));
+        run(&mut plain, &e, &Effects::default(), 600);
+        run(&mut misty, &e, &Effects { humidifiers: 1, ..Effects::default() }, 600);
+        assert!(misty.humidity_m > plain.humidity_m + 5_000, "{} against {}", misty.humidity_m, plain.humidity_m);
+        run(&mut misty, &e, &Effects { humidifiers: 16, ..Effects::default() }, 86_400);
+        assert_eq!(misty.reading("humidity"), Some(100));
+    }
+
+    #[test]
+    fn a_running_car_makes_carbon_monoxide_and_dioxide_that_fresh_air_clears() {
+        let e = Environment { enabled: true, ..Environment::default() };
+        let mut c = Climate::from_settings(&e);
+        assert_eq!(c.reading("co2"), Some(OUTSIDE_CO2));
+        run(&mut c, &e, &Effects { cars: 1, ..Effects::default() }, 300);
+        assert!(c.reading("co").unwrap_or(0) > 100 && c.reading("co2").unwrap_or(0) > 1_000, "{:?} {:?}", c.reading("co"), c.reading("co2"));
+        run(&mut c, &e, &Effects { cars: 16, ..Effects::default() }, 86_400);
+        assert!(c.reading("co").unwrap_or(0) <= MAX_CO && c.reading("co2").unwrap_or(0) <= MAX_CO2);
+        run(&mut c, &e, &Effects { fans: 1, windows_open: 1, ..Effects::default() }, 86_400);
+        assert_eq!(c.reading("co"), Some(0));
+        assert_eq!(c.reading("co2"), Some(OUTSIDE_CO2), "the room leaks back to the outside air");
+    }
+
+    #[test]
+    fn flames_burn_until_a_fire_sprinkler_puts_them_out_and_they_make_smoke() {
+        let e = Environment { enabled: true, fire: 40, ..Environment::default() };
+        let mut c = Climate::from_settings(&e);
+        run(&mut c, &e, &Effects::default(), 60);
+        assert_eq!(c.reading("fire"), Some(40), "nothing puts the flames out");
+        assert!(c.reading("smoke").unwrap_or(0) > 0 && c.reading("co").unwrap_or(0) > 0);
+        run(&mut c, &e, &Effects { fire_sprinklers: 1, ..Effects::default() }, 30);
+        assert_eq!(c.reading("fire"), Some(0));
+        assert!(c.set("fire", 500) && c.reading("fire") == Some(100) && c.set("co2", 99_999) && c.reading("co2") == Some(MAX_CO2));
+    }
+
+    #[test]
+    fn sound_is_what_is_playing_now() {
+        let e = Environment { enabled: true, ..Environment::default() };
+        let mut c = Climate::from_settings(&e);
+        c.step_second(&e, &Effects { sound_db: SPEAKER_DB, sound_hz: TONE_HZ, ..Effects::default() });
+        assert_eq!((c.reading("volume"), c.reading("pitch")), (Some(75), Some(440)));
+        c.step_second(&e, &Effects::default());
+        assert_eq!((c.reading("volume"), c.reading("pitch")), (Some(0), Some(0)), "silence has no pitch");
+        assert_eq!(c.reading("pressure"), Some(SEA_LEVEL_KPA));
+        assert!(c.set("wind", 9_999) && c.reading("wind") == Some(MAX_WIND) && !c.set("volume", 3));
     }
 }

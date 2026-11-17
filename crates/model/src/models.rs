@@ -545,6 +545,62 @@ pub static MODELS: &[Model] = &[
         ports: &[run("Wireless", 0, 0)],
     },
     Model {
+        id: "IoT-Appliance",
+        kind: DeviceKind::Iot,
+        label: "Appliance",
+        description: "Wi-Fi appliance: any mains appliance with a power state, switched on and off by the IoT service",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-BTSpeaker",
+        kind: DeviceKind::Iot,
+        label: "Bluetooth Speaker",
+        description: "Wi-Fi speaker with Bluetooth: plays while the IoT service keeps it on, or while a music player within 60 m is playing and paired with it",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-CeilingFan",
+        kind: DeviceKind::Iot,
+        label: "Ceiling Fan",
+        description: "Wi-Fi ceiling fan: while on it stirs the air and cools the room toward the outside temperature",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-Furnace",
+        kind: DeviceKind::Iot,
+        label: "Furnace",
+        description: "Wi-Fi furnace: heats the room faster than a heater while the IoT service keeps it on",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-Humidifier",
+        kind: DeviceKind::Iot,
+        label: "Humidifier",
+        description: "Wi-Fi humidifier: raises the room's humidity while the IoT service keeps it on",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-Humiture",
+        kind: DeviceKind::Iot,
+        label: "Humiture Monitor",
+        description: "Wi-Fi monitor that reports the temperature (its reading) and the relative humidity (a second reading)",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-Player",
+        kind: DeviceKind::Iot,
+        label: "Portable Music Player",
+        description: "Wi-Fi music player: plays a tone while on, quietly alone and louder through a Bluetooth speaker within 60 m",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-SoundDet",
+        kind: DeviceKind::Iot,
+        label: "Sound Frequency Detector",
+        description: "Wi-Fi sound detector: reports the pitch of the loudest sound in Hz (its reading) and its volume in dB (a second reading)",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
         id: "Board-SBC",
         kind: DeviceKind::Iot,
         label: "Board SBC",
@@ -1176,6 +1232,14 @@ impl Model {
             "VoIP-Adapter" => Some("Adapter"),
             "Analog-Phone" => Some("Phone"),
             "Generic-Wired" | "Generic-Wireless" => Some("Generic"),
+            "IoT-Appliance" => Some("Appliance"),
+            "IoT-BTSpeaker" => Some("BTSpeaker"),
+            "IoT-CeilingFan" => Some("CeilingFan"),
+            "IoT-Furnace" => Some("Furnace"),
+            "IoT-Humidifier" => Some("Humidifier"),
+            "IoT-Humiture" => Some("Humiture"),
+            "IoT-Player" => Some("Player"),
+            "IoT-SoundDet" => Some("SoundDet"),
             "IoT-Streetlight" => Some("Streetlight"),
             "IoT-Traffic" => Some("Traffic"),
             "IoT-Parking" => Some("Parking"),
@@ -1377,7 +1441,7 @@ mod tests {
         for want in groups {
             assert!(MODELS.iter().any(|m| m.group() == want), "{want:?} is empty");
         }
-        assert_eq!(MODELS.len(), 126);
+        assert_eq!(MODELS.len(), 134);
     }
 
     #[test]

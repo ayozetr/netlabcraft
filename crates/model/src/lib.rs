@@ -39,6 +39,7 @@ pub mod pki;
 pub mod poe;
 pub mod policy;
 pub mod pppoe;
+pub mod proximity;
 pub mod psu;
 pub mod qos;
 pub mod redist;

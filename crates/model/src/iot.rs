@@ -172,7 +172,19 @@ pub struct Iot {
     pub service: bool,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub rules: Vec<IotRule>,
+    /// Smart LEDs: how bright it shines, in percent (`None`: full).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub brightness: Option<u8>,
+    /// Smart LEDs: the colour it shines, red, green, blue (`None`: warm white).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub colour: Option<[u8; 3]>,
+    /// Signal generators: the frequency it outputs, in hertz.
+    #[serde(skip_serializing_if = "is_zero_u32")]
+    pub frequency: u32,
 }
+
+/// The highest frequency a signal generator outputs (Hz).
+pub const MAX_FREQUENCY: u32 = 20_000;
 
 fn is_zero(v: &i32) -> bool {
     *v == 0
@@ -195,6 +207,8 @@ impl Iot {
             self.variable.clear();
         }
         self.interval = self.interval.min(MAX_INTERVAL);
+        self.frequency = self.frequency.min(MAX_FREQUENCY);
+        self.brightness = self.brightness.map(|b| b.min(100));
         self.rules.truncate(MAX_RULES);
         for r in &mut self.rules {
             r.sensor = r.sensor.chars().take(MAX_NAME).collect();
@@ -220,11 +234,17 @@ pub struct Thing {
     pub unit: &'static str,
     pub on_word: &'static str,
     pub off_word: &'static str,
+    /// A second reading some sensors report next to the first (`humidity` beside a humiture
+    /// monitor's temperature); empty: none. The word names the quantity, like `what`.
+    pub also: &'static str,
+    pub also_unit: &'static str,
 }
 
 /// The smart things, by model id.
 pub fn thing_of(model_id: &str) -> Option<Thing> {
-    let t = |what, sensor, unit, on_word, off_word| Some(Thing { what, sensor, unit, on_word, off_word });
+    let t = |what, sensor, unit, on_word, off_word| Some(Thing { what, sensor, unit, on_word, off_word, also: "", also_unit: "" });
+    // A sensor that reports two readings.
+    let t2 = |what, unit, also, also_unit| Some(Thing { what, sensor: true, unit, on_word: "", off_word: "", also, also_unit });
     match model_id {
         "IoT-Sensor" => t("temperature", true, "degrees", "", ""),
         "IoT-Motion" => t("motion", true, "1 = movement", "", ""),
@@ -257,6 +277,14 @@ pub fn thing_of(model_id: &str) -> Option<Thing> {
         "IoT-Meter" => t("power meter", true, "W", "", ""),
         "IoT-Solar" => t("solar panel", true, "W", "", ""),
         "IoT-Wind" => t("wind turbine", true, "rpm", "", ""),
+        "IoT-Appliance" => t("appliance", false, "", "running", "off"),
+        "IoT-BTSpeaker" => t("bluetooth speaker", false, "", "playing", "quiet"),
+        "IoT-CeilingFan" => t("ceiling fan", false, "", "turning", "stopped"),
+        "IoT-Furnace" => t("furnace", false, "", "burning", "off"),
+        "IoT-Humidifier" => t("humidifier", false, "", "misting", "off"),
+        "IoT-Humiture" => t("humiture", true, "degrees", "", ""),
+        "IoT-Player" => t("music player", false, "", "playing", "stopped"),
+        "IoT-SoundDet" => t2("pitch", "Hz", "volume", "dB"),
         "IoT-Thing" => t("thing", true, "reading", "", ""),
         "Part-LED" => t("led", false, "", "lit", "dark"),
         "Part-Buzzer" => t("buzzer", false, "", "sounding", "quiet"),
@@ -421,6 +449,32 @@ mod tests {
         assert_eq!(Op::parse("?"), None);
         assert!(thing_of("IoT-Webcam").is_some_and(|t| !t.sensor) && thing_of("Router-3").is_none());
         assert!(thing_of("IoT-Thermostat").is_some_and(|t| t.sensor) && thing_of("IoT-Garage").is_some_and(|t| t.on_word == "open"));
+    }
+
+    #[test]
+    fn the_second_wave_of_home_things_are_switched_or_read_as_they_say() {
+        for id in ["IoT-Appliance", "IoT-BTSpeaker", "IoT-CeilingFan", "IoT-Furnace", "IoT-Humidifier", "IoT-Player"] {
+            assert!(thing_of(id).is_some_and(|t| !t.sensor && !t.on_word.is_empty() && t.also.is_empty()), "{id} is switched on and off");
+        }
+        assert!(
+            thing_of("IoT-SoundDet").is_some_and(|t| t.sensor && t.also == "volume" && !t.also_unit.is_empty()),
+            "the detector reports two readings"
+        );
+        // The humiture monitor keeps its humidity in the second reading every humiture sensor has.
+        assert!(thing_of("IoT-Humiture").is_some_and(|t| t.sensor && t.what == "humiture" && t.also.is_empty()));
+        assert_eq!(room_word("humiture"), "temperature");
+        assert_eq!(room_word("pitch"), "pitch");
+    }
+
+    #[test]
+    fn a_smart_leds_settings_are_trimmed_and_kept_only_when_set() {
+        let mut i = Iot { brightness: Some(250), frequency: 1 << 30, colour: Some([1, 2, 3]), ..Iot::default() };
+        i.sanitize();
+        assert_eq!((i.brightness, i.frequency), (Some(100), MAX_FREQUENCY));
+        let json = serde_json::to_string(&Iot::default()).unwrap();
+        assert_eq!(json, "{}", "nothing new is written for a thing that does not use it");
+        let back: Iot = serde_json::from_str(&serde_json::to_string(&i).unwrap()).unwrap();
+        assert_eq!(back, i);
     }
 
     #[test]

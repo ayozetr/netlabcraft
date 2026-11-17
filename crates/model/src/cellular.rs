@@ -179,7 +179,7 @@ impl Device {
 
 /// A device's place on a city map: (city, x, y) in metres. A device in a building is where the
 /// building's icon is; a device in a closet, where its building is.
-fn city_position(t: &Topology, d: &Device) -> Option<(u32, f32, f32)> {
+pub(crate) fn city_position(t: &Topology, d: &Device) -> Option<(u32, f32, f32)> {
     let h = t.home_of(d.id)?;
     let place = t.place(h.place)?;
     match place.kind {

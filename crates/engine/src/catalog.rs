@@ -526,7 +526,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Smart thing settings",
         "",
         None,
-        r#"{"device": smart sensor or device, "server"?: "IoT server address (empty: none)", "value"?: sensor reading -1000..1000 (0 or 1 for the switches, the metal sensor, the trip wire and the water detector; 0-100 for the flex sensor and the membrane potentiometer), "press"?: true (flips a push button toggle switch or a toggle push button), "humidity"?: 0-100 (a humiture sensor's second reading), "variable"?: environment variable id or name (the generic environment sensor reads it), "level"?: 0-100 (dimmable LED) | 0-180 (servo) | 0-16777215 (RGB LED, 0xRRGGBB), "red"?|"green"?|"blue"?: 0-255 (RGB LED)} → {"kind", "server", "value", "second", "variable", "level", "registered", "on", "message"} (reports at once)"#,
+        r#"{"device": smart sensor or device, "server"?: "IoT server address (empty: none)", "value"?: sensor reading -1000..1000 (0 or 1 for the switches, the metal sensor, the trip wire and the water detector; 0-100 for the flex sensor and the membrane potentiometer), "press"?: true (flips a push button toggle switch or a toggle push button), "humidity"?: 0-100 (a humiture sensor's second reading), "variable"?: environment variable id or name (the generic environment sensor reads it), "level"?: 0-100 (dimmable LED) | 0-180 (servo) | 0-16777215 (RGB LED, 0xRRGGBB), "red"?|"green"?|"blue"?: 0-255 (RGB LED), "brightness"?: smart LED 0..100, "colour"?: smart LED colour as hex rrggbb or #rrggbb, "frequency"?: signal generator 0..20000 Hz} → {"kind", "server", "value", "second", "value2" (a second reading), "variable", "level", "brightness", "colour", "frequency", "registered", "on", "paired", "message"} (reports at once)"#,
         true
     ),
     c!(
@@ -558,7 +558,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "IoT environment",
         "",
         None,
-        r#"{"enabled"?: true|false, "temperature"?: -50..100, "humidity"?: 0..100, "soil"?: 0..100, "smoke"?: 0..100, "co"?: 0..1000, "motion"?: 0|1, "outside_temperature"?, "outside_humidity"?, "outside_light"?: 0..100, "reset"?: true} → {"enabled", "outside", "start", "room"}: the smart things' shared room; while enabled, heaters, air conditioners, fans, sprinklers, windows, garages and lamps change it over simulated time and the sensors read it (given values are set now and become the starting values)"#,
+        r#"{"enabled"?: true|false, "temperature"?: -50..100, "humidity"?: 0..100, "soil"?: 0..100, "smoke"?: 0..100, "co"?: 0..1000, "motion"?: 0|1, "fire"?: 0..100, "co2"?: 0..10000, "outside_temperature"?, "outside_humidity"?, "outside_light"?: 0..100, "reset"?: true} → {"enabled", "outside", "start", "room"}: the smart things' shared room; while enabled, heaters, furnaces, air conditioners, fans, ceiling fans, humidifiers, sprinklers, fire sprinklers, running cars, windows, garages, lamps and anything playing sound change it over simulated time and the sensors read it (given values are set now and become the starting values)"#,
         true
     ),
     c!("iot.sync", "IoT reports", "", None, r#"{} → {"things": [...]}: every smart thing reports to its server over HTTP (sensors first)"#, false),
