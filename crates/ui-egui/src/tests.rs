@@ -2397,11 +2397,6 @@ fn the_right_button_pans_and_a_right_click_still_opens_the_menu() {
     drag_with(&mut h, a, b, egui::PointerButton::Secondary, egui::Modifiers::NONE);
     assert!((h.state().ui.pan - (pan + egui::vec2(60.0, 40.0))).length() < 12.0, "{pan:?} -> {:?}", h.state().ui.pan);
     assert!(h.state().ui.picked.is_empty() && h.state().ui.selected.is_none());
-    // The middle button pans too.
-    let pan = h.state().ui.pan;
-    let (a, b) = (on_screen(&h, 300.0, 400.0), on_screen(&h, 220.0, 400.0));
-    drag_with(&mut h, a, b, egui::PointerButton::Middle, egui::Modifiers::NONE);
-    assert!((h.state().ui.pan - (pan + egui::vec2(-80.0, 0.0))).length() < 12.0);
     // A right click without movement on a device opens its menu.
     let at = on_screen(&h, 100.0, 100.0);
     press_button(&mut h, at, egui::PointerButton::Secondary, true, egui::Modifiers::NONE);

@@ -528,7 +528,7 @@
 	Ascending	Ascendente
 	Descending	Descendente
 	Several picked: drag one to move them all · Ctrl+G groups them into a cluster	Varios elegidos: arrastra uno para moverlos todos · Ctrl+G los agrupa en un clúster
-	Click a device to configure it · drag to move · Shift+drag or Shift+click to pick several · scroll to pan	Haz clic en un equipo para configurarlo · arrastra para moverlo · Mayús+arrastrar o Mayús+clic para elegir varios · rueda para desplazarte
+	Click a device to configure it · drag to move · drag on empty space to pick several · Shift+click adds · right-drag or scroll to pan	Haz clic en un equipo para configurarlo · arrastra para moverlo · arrastra en vacío para elegir varios · Mayús+clic añade · arrastra con el botón derecho o rueda para desplazarte
 	Drag on the workspace to draw freehand.	Arrastra en el espacio de trabajo para dibujar a mano alzada.
 	Click the corners of the polygon; double-click or Enter to finish, Esc to cancel.	Haz clic en las esquinas del polígono; doble clic o Intro para terminar, Esc para cancelar.
 	A polygon needs at least three corners.	Un polígono necesita al menos tres esquinas.
@@ -642,7 +642,7 @@
 	Intercity	Interurbano
 	Back to the Intercity map	Volver al mapa interurbano
 	Click a place to open it · drag to arrange · right-click for more (move devices, cable lengths)	Haz clic en un lugar para abrirlo · arrastra para colocar · clic derecho para más (mover dispositivos, longitud de cables)
-	Added {}. Double-click it to open it.	Se ha añadido {}. Haz doble clic para abrirlo.
+	Added {}. Click it to open it.	Se ha añadido {}. Haz clic para abrirlo.
 	Intercity: the cities of the lab	Interurbano: las ciudades del laboratorio
 	City	Ciudad
 	Building	Edificio

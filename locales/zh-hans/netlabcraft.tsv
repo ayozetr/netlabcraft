@@ -138,7 +138,7 @@
 	Add Simple PDU (P)	添加简单 PDU (P)
 	Add user	添加用户
 	Added {} to the web site.	已将 {} 添加到网站。
-	Added {}. Double-click it to open it.	已添加 {}。双击即可打开。
+	Added {}. Click it to open it.	已添加 {}。点击即可打开。
 	Address	地址
 	address	地址
 	address or device name	地址或设备名称
@@ -260,7 +260,7 @@
 	Clear	清除
 	Clear the event list	清除事件列表
 	Click a device or a cable to delete it.	点击设备或线缆即可将其删除。
-	Click a device to configure it · drag to move · Shift+drag or Shift+click to pick several · scroll to pan	点击设备进行配置 · 拖动以移动 · Shift+拖动或 Shift+点击可多选 · 滚动以平移
+	Click a device to configure it · drag to move · drag on empty space to pick several · Shift+click adds · right-drag or scroll to pan	点击设备进行配置 · 拖动以移动 · 在空白处拖动可多选 · Shift+点击可追加 · 右键拖动或滚动以平移
 	Click the corners of the polygon; double-click or Enter to finish, Esc to cancel.	点击多边形的各个顶点；双击或按 Enter 完成，按 Esc 取消。
 	Click the first device and pick a port.	点击第一台设备并选择端口。
 	Click the workspace to place a note. Drag notes to move them; double-click to edit.	点击工作区放置注释。拖动注释可移动；双击可编辑。

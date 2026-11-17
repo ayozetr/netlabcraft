@@ -138,7 +138,7 @@
 	Add Simple PDU (P)	Aggiungi PDU semplice (P)
 	Add user	Aggiungi utente
 	Added {} to the web site.	{} aggiunto al sito web.
-	Added {}. Double-click it to open it.	{} aggiunto. Fai doppio clic per aprirlo.
+	Added {}. Click it to open it.	{} aggiunto. Fai clic per aprirlo.
 	Address	Indirizzo
 	address	indirizzo
 	address or device name	indirizzo o nome del dispositivo
@@ -260,7 +260,7 @@
 	Clear	Cancella
 	Clear the event list	Svuota l'elenco eventi
 	Click a device or a cable to delete it.	Fai clic su un dispositivo o un cavo per eliminarlo.
-	Click a device to configure it · drag to move · Shift+drag or Shift+click to pick several · scroll to pan	Fai clic su un dispositivo per configurarlo · trascina per spostare · Shift+trascina o Shift+clic per sceglierne più d'uno · scorri per spostare la vista
+	Click a device to configure it · drag to move · drag on empty space to pick several · Shift+click adds · right-drag or scroll to pan	Fai clic su un dispositivo per configurarlo · trascina per spostare · trascina sullo spazio vuoto per sceglierne più d'uno · Shift+clic ne aggiunge · trascina con il tasto destro o scorri per spostare la vista
 	Click the corners of the polygon; double-click or Enter to finish, Esc to cancel.	Fai clic sui vertici del poligono; doppio clic o Invio per finire, Esc per annullare.
 	Click the first device and pick a port.	Fai clic sul primo dispositivo e scegli una porta.
 	Click the workspace to place a note. Drag notes to move them; double-click to edit.	Fai clic sull'area di lavoro per inserire una nota. Trascina le note per spostarle; doppio clic per modificarle.
