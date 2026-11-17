@@ -1,6 +1,6 @@
 # MCP server
 
-> **Last reviewed:** 2026-11-17 · **Last updated:** 2026-11-17 · **Change:** minor (`iot.configure` parameters of the new components) · also merged with minor (two more lab-book labs over MCP, 16 in all) · earlier: minor (results replay fields (M9.6)) · earlier: minor (eleven lab-book labs over MCP, was eight) · earlier: minor (the lab book over MCP; sessions for Simulation-mode options, automation depth, boards, power supplies and instructor tools)
+> **Last reviewed:** 2026-11-17 · **Last updated:** 2026-11-17 · **Change:** minor (consistency pass: the lab-book paragraph says sixteen labs run over MCP, as the test does) · earlier: minor (`iot.configure` parameters of the new components) · also merged with minor (two more lab-book labs over MCP, 16 in all) · earlier: minor (results replay fields (M9.6)) · earlier: minor (eleven lab-book labs over MCP, was eight) · earlier: minor (the lab book over MCP; sessions for Simulation-mode options, automation depth, boards, power supplies and instructor tools)
 
 `netlabcraft-cli mcp [--in LAB] [--sample ID]` speaks the Model Context Protocol (JSON-RPC 2.0, one message per line) on stdin/stdout.
 
@@ -14,7 +14,7 @@
 A typical agent session: `file.new` (or `device.add` + `link.add`), configure with `netlabcraft_cli`, verify with `net.ping` / `net.traceroute`, inspect `sim.events`, then `file.save`.
 
 The lab book ([labs/](labs/README.md)) is the worked example: `apps/netlabcraft-cli/tests/mcp_lab_book.rs`
-starts `netlabcraft-cli mcp` and drives eleven of its labs over JSON-RPC, each `lab` block as
+starts `netlabcraft-cli mcp` and drives sixteen of its labs over JSON-RPC, each `lab` block as
 `netlabcraft_run` calls and each `console` block as `netlabcraft_cli` calls.
 
 Other sessions, all through `netlabcraft_run`:
@@ -56,6 +56,7 @@ Other sessions, all through `netlabcraft_run`:
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-17 | minor | The lab-book paragraph said eleven labs over MCP; `mcp_lab_book.rs` runs sixteen. The command ids named here were checked against the catalog. |
 | 2026-11-17 | minor | The components' `iot.configure` parameters and the BoardScript functions `channel` and `rgb` are noted next to the Boards bullet. |
 | 2026-11-15 | minor | Labs 32 (EIGRP) and 34 (an EtherChannel that will not bundle) also run over MCP: 16 in all. |
 | 2026-11-13 | minor | `activity.export_results` embeds the network and `activity.verify_results` replays it (M9.6). |
