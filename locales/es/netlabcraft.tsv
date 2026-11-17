@@ -591,8 +591,6 @@
 	Source port	Puerto de origen
 	Destination port	Puerto de destino
 	Print...	Imprimir...
-	The workspace and a report of the devices on A4 pages, opened in the system's PDF viewer to print	El espacio de trabajo y un informe de los dispositivos en páginas A4, abiertas en el visor de PDF del sistema para imprimirlas
-	Opened the page in the PDF viewer: print it from there.	Se abrió la página en el visor de PDF: imprímela desde ahí.
 	Version	Versión
 	User	Usuario
 	Authentication	Autenticación
@@ -2150,3 +2148,20 @@ furniture	Table	Mesa
 	holding an angle	sosteniendo un ángulo
 	idle	en reposo
 	{} has no channel {}	{} no tiene el canal {}
+	Save as PDF...	Guardar como PDF...
+	The workspace and a report of the devices on A4 pages, saved as a PDF file	El espacio de trabajo y un informe de los dispositivos en páginas A4, guardados como archivo PDF
+	The same PDF: save it, open it in a PDF viewer or print it	El mismo PDF: guárdalo, ábrelo en un visor de PDF o imprímelo
+	Print	Imprimir
+	The report is ready as a PDF. What do you want to do with it?	El informe está listo como PDF. ¿Qué quieres hacer con él?
+	Choose where to keep the file	Elige dónde guardar el archivo
+	Open in the PDF viewer	Abrir en el visor de PDF
+	Opens a temporary copy in the program your system uses for PDF files	Abre una copia temporal en el programa que tu sistema usa para los archivos PDF
+	This system has no program to open files with: use Save as PDF	Este sistema no tiene ningún programa para abrir archivos: usa Guardar como PDF
+	Print directly	Imprimir directamente
+	Sends the file to the default printer	Envía el archivo a la impresora predeterminada
+	Direct printing needs the lp command, which this system does not have: save the PDF or open it in a viewer	La impresión directa necesita el comando lp, que este sistema no tiene: guarda el PDF o ábrelo en un visor
+	Saved the PDF to {}	PDF guardado en {}
+	Opened {} in the PDF viewer. This temporary copy is deleted when NetLabCraft closes: use Save as PDF to keep the file	Se abrió {} en el visor de PDF. Esta copia temporal se borra al cerrar NetLabCraft: usa Guardar como PDF para conservar el archivo
+	No PDF viewer found: use Save as PDF	No se encontró ningún visor de PDF: usa Guardar como PDF
+	Sent the PDF to the default printer	PDF enviado a la impresora predeterminada
+	Could not print: {}	No se pudo imprimir: {}

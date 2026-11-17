@@ -14,6 +14,8 @@ use egui::{Color32, RichText, Sense, vec2};
 use netlabcraft_core::DeviceId;
 use netlabcraft_engine::{EngineError, Session, sample};
 
+pub use print::{PdfUse, PrintChoices, PrintJob};
+
 use serde_json::{Value, json};
 
 pub mod activity;
@@ -53,6 +55,7 @@ mod phone;
 mod physical;
 pub mod png;
 pub mod prefs;
+mod print;
 mod programming;
 mod services;
 mod shortcuts;
@@ -88,9 +91,15 @@ pub enum UiRequest {
     SaveText { name: String, text: String },
     /// Ask where to write a PNG image of the workspace.
     ExportImage(Vec<u8>),
-    /// Print a one-page PDF of the workspace (the desktop opens it in the system's PDF viewer;
-    /// the web build downloads it).
-    Print(Vec<u8>),
+    /// Keep the report PDF: ask where to write it (desktop) or download it (web). `name` is the
+    /// suggested file name.
+    SavePdf { name: String, bytes: Vec<u8> },
+    /// Open the report PDF in the system's PDF viewer (desktop; only after
+    /// [`UiState::print_choices`] says a viewer exists).
+    OpenPdf { name: String, bytes: Vec<u8> },
+    /// Send the report PDF to the default printer (desktop; only when
+    /// [`PrintChoices::direct_unavailable`] is `None`).
+    PrintPdf { name: String, bytes: Vec<u8> },
     /// Pick a text file for a device: its startup configuration (`merge: false`) or lines to
     /// merge into the running configuration; then call [`PacketApp::text_opened`].
     OpenText { device: DeviceId, merge: bool },
@@ -310,8 +319,13 @@ pub struct UiState {
     /// Where the workspace was drawn last frame (points), and a screenshot asked for it.
     pub canvas_rect: Option<egui::Rect>,
     pub image_pending: bool,
-    /// The pending screenshot is for File ▸ Print (a PDF), not for the PNG export.
-    pub print_pending: bool,
+    /// The pending screenshot is for a PDF (File ▸ Save as PDF or Print), not for the PNG export.
+    pub pdf_for: Option<PdfUse>,
+    /// What the shell can do with a PDF besides saving it; `None` (the web build) makes Print
+    /// download the file like Save as PDF.
+    pub print_choices: Option<PrintChoices>,
+    /// A PDF waiting in the Print window for the person's choice.
+    pub print_job: Option<PrintJob>,
     /// Where the screenshot lands when it is ready.
     pub shot: std::sync::Arc<netlabcraft_core::sync::Mutex<Option<std::sync::Arc<egui::ColorImage>>>>,
     /// Activity instructions and wizard.
@@ -379,7 +393,9 @@ impl Default for UiState {
             lang_changed: false,
             canvas_rect: None,
             image_pending: false,
-            print_pending: false,
+            pdf_for: None,
+            print_choices: None,
+            print_job: None,
             shot: Default::default(),
             activity: activity::ActivityView::default(),
             canvas: canvas::CanvasState::default(),
@@ -966,10 +982,10 @@ impl PacketApp {
         shortcuts::dispatch(self, ctx);
     }
 
-    /// Asks for a screenshot of the window, to export as a PNG or (`print`) to print.
-    fn request_image(&mut self, ctx: &egui::Context, print: bool) {
+    /// Asks for a screenshot of the window, to export as a PNG or (`pdf`) to make the report PDF.
+    fn request_image(&mut self, ctx: &egui::Context, pdf: Option<PdfUse>) {
         self.ui.image_pending = true;
-        self.ui.print_pending = print;
+        self.ui.pdf_for = pdf;
         let slot = self.ui.shot.clone();
         let ctx2 = ctx.clone();
         ctx.request_screenshot(move |image| {
@@ -1025,6 +1041,7 @@ impl PacketApp {
         prefs::windows(self, &ctx);
         environments::windows(self, &ctx);
         shortcuts::windows(self, &ctx);
+        print::window(self, &ctx);
         self.about_window(&ctx);
         help::window(self, &ctx);
         overview::viewport_window(self, &ctx);
@@ -1074,13 +1091,24 @@ impl PacketApp {
                     self.requests.push(UiRequest::ExportPcap(self.session.pcap()));
                 }
                 let png = ui.button(tl("Export Workspace Image (PNG)...")).on_hover_text(tl("The workspace as a picture, for a report")).clicked();
+                let save_pdf = ui
+                    .button(tl("Save as PDF..."))
+                    .on_hover_text(tl("The workspace and a report of the devices on A4 pages, saved as a PDF file"))
+                    .clicked();
                 let print = ui
                     .add(egui::Button::new(tl("Print...")).shortcut_text(shortcuts::text(shortcuts::Act::Print)))
-                    .on_hover_text(tl("The workspace and a report of the devices on A4 pages, opened in the system's PDF viewer to print"))
+                    .on_hover_text(tl("The same PDF: save it, open it in a PDF viewer or print it"))
                     .clicked();
-                if png || print {
+                let pdf = if print {
+                    Some(PdfUse::Print)
+                } else if save_pdf {
+                    Some(PdfUse::Save)
+                } else {
+                    None
+                };
+                if png || pdf.is_some() {
                     let ctx = ui.ctx().clone();
-                    self.request_image(&ctx, print);
+                    self.request_image(&ctx, pdf);
                 }
                 ui.separator();
                 if ui.button(tl("Exit")).clicked() {
@@ -1630,12 +1658,14 @@ impl PacketApp {
             }
         }
         let (w, h) = (u32::try_from(x1 - x0).unwrap_or(0), u32::try_from(y1 - y0).unwrap_or(0));
-        if std::mem::take(&mut self.ui.print_pending) {
+        if let Some(usage) = self.ui.pdf_for.take() {
             let rgb: Vec<u8> = rgba.as_chunks::<4>().0.iter().flat_map(|[r, g, b, _]| [*r, *g, *b]).collect();
             let title = self.session.title();
             let title = title.trim_end_matches(" •");
             let created = netlabcraft_engine::instructor::now_utc();
-            self.requests.push(UiRequest::Print(pdf::document(title, &created, &self.session.topology, w, h, &rgb)));
+            let name = print::pdf_file_name(title);
+            let bytes = pdf::document(title, &created, &self.session.topology, w, h, &rgb);
+            self.pdf_ready(usage, name, bytes);
         } else {
             self.requests.push(UiRequest::ExportImage(png::encode(w, h, &rgba)));
         }

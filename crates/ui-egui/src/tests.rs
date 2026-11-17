@@ -246,22 +246,110 @@ fn exporting_the_workspace_crops_the_screenshot_to_a_png() {
     assert!(!h.state().ui.image_pending);
 }
 
+/// Hands the app the screenshot a PDF is waiting for, and returns every request raised so far.
+fn deliver_shot(h: &mut Harness<'static, PacketApp>) -> Vec<UiRequest> {
+    let img = egui::ColorImage::filled([1200, 800], egui::Color32::LIGHT_BLUE);
+    h.state_mut().ui.image_pending = true;
+    *h.state().ui.shot.lock() = Some(std::sync::Arc::new(img));
+    h.run_steps(1);
+    h.state_mut().take_requests()
+}
+
+fn pdf_of(requests: &[UiRequest]) -> Option<&[u8]> {
+    requests.iter().find_map(|r| match r {
+        UiRequest::SavePdf { bytes, .. } | UiRequest::OpenPdf { bytes, .. } | UiRequest::PrintPdf { bytes, .. } => Some(bytes.as_slice()),
+        _ => None,
+    })
+}
+
 #[test]
 fn printing_makes_a_one_page_pdf_of_the_workspace() {
     let mut h = harness(Some("lan"));
     h.run_steps(2);
-    let img = egui::ColorImage::filled([1200, 800], egui::Color32::LIGHT_BLUE);
     h.state_mut().ui.image_pending = true;
-    h.state_mut().ui.print_pending = true;
-    *h.state().ui.shot.lock() = Some(std::sync::Arc::new(img));
-    h.run_steps(1);
-    let pdf = h.state_mut().take_requests().into_iter().find_map(|r| match r {
-        UiRequest::Print(b) => Some(b),
+    h.state_mut().ui.pdf_for = Some(PdfUse::Print);
+    let requests = deliver_shot(&mut h);
+    // No shell choices (the web build): Print saves, like Save as PDF.
+    let name = requests.iter().find_map(|r| match r {
+        UiRequest::SavePdf { name, .. } => Some(name.clone()),
         _ => None,
     });
-    let pdf = pdf.expect("a page to print");
+    assert_eq!(name.as_deref(), Some("Untitled lab.pdf"));
+    let pdf = pdf_of(&requests).expect("a page to keep");
     assert!(pdf.starts_with(b"%PDF-1.4") && pdf.windows(7).any(|w| w == b"/Count "));
-    assert!(!h.state().ui.print_pending && !h.state().ui.image_pending);
+    assert!(h.state().ui.pdf_for.is_none() && !h.state().ui.image_pending && h.state().ui.print_job.is_none());
+}
+
+#[test]
+fn the_file_menu_has_save_as_pdf_and_it_saves_the_report() {
+    let mut h = harness(Some("lan"));
+    h.run_steps(2);
+    h.get_by_label("File").click();
+    h.run_steps(2);
+    assert!(h.query_by_label("Save as PDF...").is_some());
+    h.get_by_label("Save as PDF...").click();
+    h.run_steps(2);
+    assert!(h.state().ui.pdf_for == Some(PdfUse::Save) || h.state().ui.pdf_for.is_none());
+    let requests = deliver_shot(&mut h);
+    assert!(requests.iter().any(|r| matches!(r, UiRequest::SavePdf { name, .. } if name.ends_with(".pdf"))));
+    assert!(pdf_of(&requests).is_some_and(|b| b.starts_with(b"%PDF")));
+    // Save as PDF never opens the Print window, even where the shell offers one.
+    assert!(h.state().ui.print_job.is_none());
+}
+
+#[test]
+fn the_print_window_offers_save_open_and_print() {
+    let mut h = harness(Some("lan"));
+    h.state_mut().ui.print_choices = Some(PrintChoices { viewer: true, direct_unavailable: None });
+    h.run_steps(2);
+    key(&mut h, egui::Key::P, egui::Modifiers::COMMAND);
+    let requests = deliver_shot(&mut h);
+    // Nothing leaves until the person chooses.
+    assert!(pdf_of(&requests).is_none());
+    assert!(h.state().ui.print_job.is_some());
+    h.run_steps(2);
+    assert!(h.query_by_label("Save as PDF...").is_some());
+    assert!(h.query_by_label("Open in the PDF viewer").is_some());
+    assert!(h.query_by_label("Print directly").is_some());
+    h.get_by_label("Open in the PDF viewer").click();
+    h.run_steps(2);
+    let requests = h.state_mut().take_requests();
+    assert!(requests.iter().any(|r| matches!(r, UiRequest::OpenPdf { .. })));
+    assert!(pdf_of(&requests).is_some_and(|b| b.starts_with(b"%PDF")));
+    assert!(h.state().ui.print_job.is_none());
+}
+
+#[test]
+fn the_print_window_can_print_directly_or_save() {
+    let mut h = harness(Some("lan"));
+    h.state_mut().ui.print_choices = Some(PrintChoices { viewer: false, direct_unavailable: None });
+    h.run_steps(2);
+    h.state_mut().ui.pdf_for = Some(PdfUse::Print);
+    deliver_shot(&mut h);
+    h.run_steps(2);
+    h.get_by_label("Print directly").click();
+    h.run_steps(2);
+    assert!(h.state_mut().take_requests().iter().any(|r| matches!(r, UiRequest::PrintPdf { .. })));
+    h.state_mut().ui.pdf_for = Some(PdfUse::Print);
+    deliver_shot(&mut h);
+    h.run_steps(2);
+    h.get_by_label("Save as PDF...").click();
+    h.run_steps(2);
+    assert!(h.state_mut().take_requests().iter().any(|r| matches!(r, UiRequest::SavePdf { .. })));
+}
+
+#[test]
+fn print_directly_is_disabled_with_a_reason_when_there_is_no_printer_command() {
+    let mut h = harness(Some("lan"));
+    h.state_mut().ui.print_choices = Some(PrintChoices { viewer: true, direct_unavailable: Some("no lp".into()) });
+    h.run_steps(2);
+    h.state_mut().ui.pdf_for = Some(PdfUse::Print);
+    deliver_shot(&mut h);
+    h.run_steps(2);
+    h.get_by_label("Print directly").click();
+    h.run_steps(2);
+    assert!(pdf_of(&h.state_mut().take_requests()).is_none());
+    assert!(h.state().ui.print_job.is_some());
 }
 
 #[test]
