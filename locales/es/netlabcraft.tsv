@@ -1686,7 +1686,6 @@ event	no APN	sin APN
 	Custom Interfaces	Interfaces personalizadas
 	Publishers	Editores
 	Image Cleanup	Limpieza de imágenes
-	Not available yet: NetLabCraft has nothing to set in this tab so far.	Aún no disponible: NetLabCraft todavía no tiene nada que ajustar en esta pestaña.
 	Restore Defaults	Restaurar valores predeterminados
 	Customize User Experience	Personalizar la experiencia de usuario
 	Show Animation	Mostrar animación
@@ -1723,7 +1722,6 @@ event	no APN	sin APN
 	Enable Logging	Activar el registro
 	Export Log…	Exportar el registro…
 	Interface text	Texto de la interfaz
-	Text size:	Tamaño del texto:
 	Reset	Restablecer
 	Sets the text of menus, buttons and forms. Names drawn on the workspace follow its zoom instead.	Cambia el texto de menús, botones y formularios. Los nombres dibujados en el área de trabajo siguen su zoom.
 	User Profile	Perfil de usuario
@@ -2291,3 +2289,4 @@ furniture	Table	Mesa
 	Reports every {} s	Informa cada {} s
 	Backup written to {}	Copia guardada en {}
 	Application size	Tamaño de la aplicación
+	Enter the password first: some tabs are locked.	Escribe antes la contraseña: algunas pestañas están bloqueadas.

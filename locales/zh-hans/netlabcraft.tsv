@@ -1683,7 +1683,6 @@ event	write request for	写请求
 	Custom Interfaces	自定义界面
 	Publishers	发布者
 	Image Cleanup	图像清理
-	Not available yet: NetLabCraft has nothing to set in this tab so far.	尚不可用：NetLabCraft 在此标签页中暂时没有可设置的内容。
 	Restore Defaults	恢复默认值
 	Customize User Experience	自定义用户体验
 	Show Animation	显示动画
@@ -1720,7 +1719,6 @@ event	write request for	写请求
 	Enable Logging	启用日志
 	Export Log…	导出日志…
 	Interface text	界面文字
-	Text size:	文字大小：
 	Reset	重置
 	Sets the text of menus, buttons and forms. Names drawn on the workspace follow its zoom instead.	设置菜单、按钮和表单的文字大小。工作区中绘制的名称则跟随其缩放。
 	User Profile	用户资料
@@ -2288,3 +2286,4 @@ furniture	Table	桌子
 	Reports every {} s	每 {} 秒上报一次
 	Backup written to {}	备份已写入 {}
 	Application size	程序字号
+	Enter the password first: some tabs are locked.	请先输入密码：部分标签页已锁定。

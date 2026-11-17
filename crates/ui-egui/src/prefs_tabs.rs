@@ -28,7 +28,7 @@ impl AnswerFilter {
     pub fn key(self) -> &'static str {
         match self {
             AnswerFilter::ShowAll => "all",
-            AnswerFilter::Default => "default",
+            AnswerFilter::Default => "standard",
             AnswerFilter::Router => "router",
             AnswerFilter::Switch => "switch",
             AnswerFilter::EndDevice => "end",

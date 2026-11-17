@@ -1683,7 +1683,6 @@ event	write request for	Schreibanfrage für
 	Custom Interfaces	Benutzerdefinierte Oberflächen
 	Publishers	Herausgeber
 	Image Cleanup	Bildbereinigung
-	Not available yet: NetLabCraft has nothing to set in this tab so far.	Noch nicht verfügbar: In diesem Reiter gibt es in NetLabCraft bisher nichts einzustellen.
 	Restore Defaults	Standardwerte wiederherstellen
 	Customize User Experience	Benutzererfahrung anpassen
 	Show Animation	Animation anzeigen
@@ -1720,7 +1719,6 @@ event	write request for	Schreibanfrage für
 	Enable Logging	Protokollierung aktivieren
 	Export Log…	Protokoll exportieren…
 	Interface text	Oberflächentext
-	Text size:	Textgröße:
 	Reset	Zurücksetzen
 	Sets the text of menus, buttons and forms. Names drawn on the workspace follow its zoom instead.	Legt den Text von Menüs, Schaltflächen und Formularen fest. Im Arbeitsbereich gezeichnete Namen folgen stattdessen dessen Zoom.
 	User Profile	Benutzerprofil
@@ -2288,3 +2286,4 @@ furniture	Table	Tisch
 	Reports every {} s	Meldet alle {} s
 	Backup written to {}	Sicherung geschrieben nach {}
 	Application size	Größe der Anwendung
+	Enter the password first: some tabs are locked.	Gib zuerst das Passwort ein: Einige Register sind gesperrt.

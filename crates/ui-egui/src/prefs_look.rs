@@ -101,7 +101,7 @@ impl NamedColor {
 
     pub fn key(self) -> &'static str {
         match self {
-            NamedColor::Default => "default",
+            NamedColor::Default => "theme",
             NamedColor::Black => "black",
             NamedColor::White => "white",
             NamedColor::Green => "green",

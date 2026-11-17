@@ -66,7 +66,7 @@ mod t {
         ] {
             h.get_by_label(tab).click();
             h.run_steps(2);
-            assert!(h.query_by_label(shows).is_some(), "{tab}");
+            assert!(h.query_all_by_label(shows).next().is_some(), "{tab}");
         }
         // The two tabs with nothing to set say so, honestly.
         for (tab, note) in [("Custom Interfaces", "Not available"), ("Publishers", "Not applicable")] {

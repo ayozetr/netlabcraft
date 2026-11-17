@@ -263,8 +263,9 @@ mod t {
     fn the_font_tab_maps_points_and_applies_the_colour_table_only_on_apply() {
         let mut h = harness("two-subnets");
         open_tab(&mut h, "Font");
-        assert!(h.query_by_label("Application size:").is_some() && h.query_by_label("CLI font size:").is_some());
-        assert!(h.query_by_label("Tooltip font size:").is_some());
+        for label in ["Application size:", "CLI font size:", "Tooltip font size:"] {
+            assert!(h.query_all_by_label(label).next().is_some(), "{label}");
+        }
         h.state_mut().ui.prefs.font_percent = 125;
         h.state_mut().ui.prefs.cli_pt = 10;
         h.state_mut().ui.prefs.tooltip_pt = 12;
@@ -347,7 +348,7 @@ mod t {
         assert!(h.state().session.sim.trace().is_empty());
         assert_eq!(h.state().ui.prefs_ui.misc.previous.len(), n);
         assert!(h.query_by_label_contains("events kept from the list").is_some());
-        // Prompt: it asks once, and Keep going leaves the list alone.
+        // Prompt: it asks once per filling, and Keep going leaves the list alone.
         let mut h = setup(BufferFull::Prompt);
         buffer_check(h.state_mut(), true);
         h.run_steps(2);
@@ -356,8 +357,10 @@ mod t {
         h.run_steps(2);
         assert!(h.query_by_label("Event List Full").is_none() && !h.state().session.sim.trace().is_empty());
         buffer_check(h.state_mut(), true);
-        h.run_steps(2);
-        assert!(h.query_by_label("Event List Full").is_none(), "asked once per filling");
+        assert!(h.state().ui.prefs_ui.misc.full_prompt);
+        h.state_mut().ui.prefs_ui.misc.full_prompt = false;
+        buffer_check(h.state_mut(), true);
+        assert!(!h.state().ui.prefs_ui.misc.full_prompt, "asked once per filling");
         buffer_check(h.state_mut(), false);
         buffer_check(h.state_mut(), true);
         h.run_steps(2);
@@ -492,7 +495,7 @@ mod t {
         let mut h = harness("two-subnets");
         open_tab(&mut h, "Image Cleanup");
         for col in ["Remove", "Type", "Size", "Image"] {
-            assert!(h.query_by_label(col).is_some(), "{col}");
+            assert!(h.query_all_by_label(col).next().is_some(), "{col}");
         }
         assert!(h.query_by_label_contains("The lab holds no images").is_some());
     }
