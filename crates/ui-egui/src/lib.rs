@@ -38,6 +38,7 @@ mod icons_cable_tiles;
 pub mod icons_families;
 mod icons_network;
 mod icons_parts;
+mod icons_parts2;
 mod icons_ports;
 mod icons_things;
 pub mod instructor;
