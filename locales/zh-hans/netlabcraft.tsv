@@ -1859,3 +1859,7 @@ furniture	Table	桌子
 	Structured Cabling	结构化布线
 	Drag a device onto a rack, shelf or table · drag between two ports to patch them, or from an outlet to a device to plug it in · right-click for more	把设备拖到机架、层架或桌子上 · 在两个端口之间拖动即可跳线，从插座拖到设备即可接通电源 · 右键查看更多
 	Patch panels and wall mounts stand in a wiring closet: open one in the Physical view first.	配线架和墙面插座放在配线间里：请先在物理视图中打开一个配线间。
+	{} is already cabled to {}	{} 已连接到 {}
+	A cable joins two different devices	一条线缆连接两台不同的设备
+	Click a port on a device's front panel, then a port on another device, to cable them · right-click or Esc cancels	点击设备前面板上的端口，再点击另一台设备的端口，即可用线缆连接它们 · 右键单击或按 Esc 取消
+	From {}: click a port on another device. Right-click or Esc cancels.	从 {} 开始：点击另一台设备上的端口。右键单击或按 Esc 取消。
