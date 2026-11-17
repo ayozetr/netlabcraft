@@ -177,7 +177,7 @@ Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-11-17 | minor | The Preferences tabs (see [ui-parity.md](ui-parity.md) and [gaps.md](gaps.md) item 12): 2 engine commands added, so 204 `c!(` entries; each of the six catalogs has 2,274 three-column lines (counted with awk, `@id` rows included). Percentages not re-scored. |
+| 2026-11-17 | minor | The Preferences tabs (see [ui-parity.md](ui-parity.md) and [gaps.md](gaps.md) item 12): 2 engine commands added, so 204 `c!(` entries; each of the six catalogs has 2,273 three-column lines (counted with awk, `@id` rows included). Percentages not re-scored. |
 | 2026-11-17 | minor | Device models 100 → 126 (26 more components: nine actuators and seventeen sensors). Counted from `MODELS`; percentages not re-scored. |
 | 2026-11-17 | minor | Consistency pass: counts measured again from the code (202 engine commands, 1341 grammar entries across 45 modes, 100 models, 33 sample labs, 48 numbered labs: 4 CCNA 1, 17 CCNA 2 and 26 CCNA 3, 87 keyboard shortcuts, 2,062 rows in each of the six catalogs); the audience bullets, the stage text and the interface languages say what the code does; a duplicated NetFlow row removed; the test count is marked not re-measured. Percentages not re-scored. |
 | 2026-11-17 | minor | The Environments window (see [ui-parity.md](ui-parity.md) and [gaps.md](gaps.md) item 14); percentages not re-scored. |
