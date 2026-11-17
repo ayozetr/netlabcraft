@@ -53,6 +53,12 @@ pub struct Tokens {
     /// The physical view's ground, and the fill of its places (cities, buildings, closets).
     pub ground: Color32,
     pub place: Color32,
+    /// The connectors drawn on front panels in the closet: the metal housing, the dark opening,
+    /// the gold contacts and the amber activity light.
+    pub port_rim: Color32,
+    pub port_hole: Color32,
+    pub port_contact: Color32,
+    pub port_activity: Color32,
 }
 
 pub const LIGHT: Tokens = Tokens {
@@ -91,6 +97,10 @@ pub const LIGHT: Tokens = Tokens {
     cluster: Color32::from_rgb(0xcf, 0xe2, 0xf6),
     ground: Color32::from_rgb(0xf3, 0xf6, 0xee),
     place: Color32::from_rgb(0xe6, 0xdc, 0xc8),
+    port_rim: Color32::from_rgb(0xb4, 0xba, 0xc2),
+    port_hole: Color32::from_rgb(0x14, 0x17, 0x1b),
+    port_contact: Color32::from_rgb(0xd9, 0xa8, 0x2b),
+    port_activity: Color32::from_rgb(0xf2, 0xa3, 0x1b),
 };
 
 pub const DARK: Tokens = Tokens {
@@ -129,6 +139,10 @@ pub const DARK: Tokens = Tokens {
     cluster: Color32::from_rgb(0x3a, 0x58, 0x78),
     ground: Color32::from_rgb(0x1f, 0x25, 0x22),
     place: Color32::from_rgb(0x6a, 0x63, 0x58),
+    port_rim: Color32::from_rgb(0x8b, 0x92, 0x9c),
+    port_hole: Color32::from_rgb(0x0c, 0x0e, 0x11),
+    port_contact: Color32::from_rgb(0xe6, 0xb8, 0x3c),
+    port_activity: Color32::from_rgb(0xff, 0xb4, 0x3a),
 };
 
 pub fn tokens(dark: bool) -> Tokens {
@@ -213,4 +227,47 @@ pub fn shade(c: Color32, f: f32) -> Color32 {
         (if f >= 1.0 { v + (255.0 - v) * (f - 1.0) } else { v * f }).clamp(0.0, 255.0) as u8
     };
     Color32::from_rgb(m(c.r()), m(c.g()), m(c.b()))
+}
+
+/// The relative luminance of a colour (WCAG 2.x), from 0 (black) to 1 (white).
+pub fn luminance(c: Color32) -> f32 {
+    let lin = |v: u8| {
+        let v = f32::from(v) / 255.0;
+        if v <= 0.039_28 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+    };
+    0.2126 * lin(c.r()) + 0.7152 * lin(c.g()) + 0.0722 * lin(c.b())
+}
+
+/// The contrast ratio of two colours (WCAG 2.x), from 1 (the same) to 21 (black on white).
+pub fn contrast(a: Color32, b: Color32) -> f32 {
+    let (la, lb) = (luminance(a), luminance(b));
+    (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
+}
+
+/// Near-white or near-black text, whichever reads better over `fill`.
+pub fn readable_on(fill: Color32) -> Color32 {
+    let (light, dark) = (Color32::from_rgb(0xf4, 0xf6, 0xf8), Color32::from_rgb(0x14, 0x17, 0x1b));
+    if contrast(light, fill) >= contrast(dark, fill) { light } else { dark }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn contrast_is_symmetric_and_spans_one_to_twenty_one() {
+        assert!((contrast(Color32::BLACK, Color32::WHITE) - 21.0).abs() < 0.05);
+        assert!((contrast(Color32::RED, Color32::RED) - 1.0).abs() < 1e-4);
+        let (a, b) = (Color32::from_rgb(10, 80, 160), Color32::from_rgb(240, 200, 20));
+        assert!((contrast(a, b) - contrast(b, a)).abs() < 1e-4);
+    }
+
+    #[test]
+    fn readable_text_contrasts_with_every_fill() {
+        for fill in
+            [Color32::BLACK, Color32::WHITE, LIGHT.canvas, DARK.canvas, Color32::from_rgb(0x1c, 0x1f, 0x24), Color32::from_rgb(0x44, 0x68, 0x96)]
+        {
+            assert!(contrast(readable_on(fill), fill) >= 4.5, "{fill:?}");
+        }
+    }
 }

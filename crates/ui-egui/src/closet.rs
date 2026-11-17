@@ -17,6 +17,7 @@ use netlabcraft_model::{Device, DeviceKind, End, Topology};
 use serde_json::{Value, json};
 
 use crate::i18n::{tl, tr, trf};
+use crate::icons_ports::{self, Connector};
 use crate::theme::{self, Tokens};
 use crate::{PacketApp, Tool};
 
@@ -185,19 +186,6 @@ fn body_color(d: &Device) -> Color32 {
     }
 }
 
-fn socket_color(m: Option<Medium>, tk: &Tokens) -> Color32 {
-    match m {
-        Some(Medium::Fiber) => Color32::from_rgb(0x1b, 0x5e, 0x20),
-        Some(Medium::Combo) => Color32::from_rgb(0x2a, 0x2a, 0x48),
-        Some(Medium::Console) => tk.console_cable,
-        Some(Medium::Serial) => tk.serial_cable,
-        Some(Medium::Rs232) => Color32::from_rgb(0x55, 0x60, 0x70),
-        Some(Medium::Coaxial) => Color32::from_rgb(0x8d, 0x6e, 0x63),
-        Some(Medium::Phone) => Color32::from_rgb(0x00, 0x89, 0x7b),
-        _ => Color32::from_rgb(0x18, 0x18, 0x18),
-    }
-}
-
 // ---------------------------------------------------------------------------------------------
 // Front panels.
 
@@ -220,8 +208,9 @@ fn socket_rects(area: Rect, n: usize, zoom: f32, max_cols: usize) -> Vec<Rect> {
         .collect()
 }
 
-/// A device's front panel: its body, a power light, an antenna for a radio and one socket for
-/// every port that takes a cable (as many as the model has). Returns the sockets by port.
+/// A device's front panel: its body, a power light, an antenna for a radio, one connector drawn as
+/// its real jack for every port that takes a cable (as many as the model has) and a power inlet.
+/// Returns the sockets by port.
 fn device_panel(p: &Painter, t: &Topology, d: &Device, r: Rect, zoom: f32, tk: &Tokens) -> Vec<(usize, Rect)> {
     let body = body_color(d);
     let edge = theme::shade(body, 0.55);
@@ -234,26 +223,46 @@ fn device_panel(p: &Painter, t: &Topology, d: &Device, r: Rect, zoom: f32, tk: &
         }
     }
     p.rect_filled(r, rounding, body);
+    // A lit top edge and a shaded foot give the plate some depth.
+    let lit = Stroke::new(1.0, theme::shade(body, 1.3));
+    p.line_segment([pos2(r.left() + rounding, r.top() + 1.0), pos2(r.right() - rounding, r.top() + 1.0)], lit);
+    p.rect_filled(
+        Rect::from_min_max(pos2(r.left() + 1.0, r.bottom() - 2.0 * zoom), pos2(r.right() - 1.0, r.bottom() - 0.5)),
+        0.0,
+        theme::shade(body, 0.82),
+    );
     p.rect_stroke(r, rounding, Stroke::new(1.0, edge), StrokeKind::Inside);
     if d.catalogue_model().id.starts_with("Firewall") {
         p.rect_filled(Rect::from_min_size(r.min, vec2(r.width(), (3.0 * zoom).max(2.0))), 0.0, Color32::from_rgb(0xc8, 0x3a, 0x2e));
     }
     let on = !d.powered_off;
     p.circle_filled(pos2(r.left() + 7.0 * zoom, r.center().y), (2.6 * zoom).max(1.5), if on { tk.link_up } else { Color32::from_gray(0x70) });
-    let ports: Vec<usize> = (0..d.ports.len()).filter(|i| d.port_medium(*i) != Some(Medium::Wireless)).collect();
-    let area = Rect::from_min_max(r.min + vec2(15.0 * zoom, 7.0 * zoom), r.max - vec2(7.0 * zoom, 4.0 * zoom));
-    let max_cols = if area.width() >= 200.0 * zoom.min(1.0) { 24 } else { 12 };
+    let inlet = icons_ports::has_inlet(d.kind);
+    let ports: Vec<(usize, Connector)> = (0..d.ports.len())
+        .filter_map(|i| d.ports.get(i).and_then(|pt| icons_ports::connector_for(&pt.name, d.port_medium(i))).map(|c| (i, c)))
+        .collect();
+    let right = if inlet { 27.0 * zoom } else { 7.0 * zoom };
+    let area = Rect::from_min_max(r.min + vec2(15.0 * zoom, 8.0 * zoom), r.max - vec2(right, 4.0 * zoom));
+    if inlet {
+        icons_ports::draw(p, Connector::Inlet, icons_ports::inlet_rect(r, zoom), false, tk);
+    }
+    let max_cols = if ports.len() <= 12 {
+        12
+    } else if ports.len() <= 28 {
+        ports.len().div_ceil(2)
+    } else {
+        24
+    };
     let mut out = Vec::new();
-    for (port, sr) in ports.iter().zip(socket_rects(area, ports.len(), zoom, max_cols)) {
+    for ((port, conn), cell) in ports.iter().zip(socket_rects(area, ports.len(), zoom, max_cols)) {
         let end = End { device: d.id, port: *port };
-        p.rect_filled(sr, 1.0, socket_color(d.port_medium(*port), tk));
-        p.rect_stroke(sr, 1.0, Stroke::new(1.0, Color32::from_gray(0xc8)), StrokeKind::Inside);
-        if on && t.link_at(end).is_some() {
-            let up = netlabcraft_sim::port_up(t, end);
-            let led = Rect::from_min_size(pos2(sr.left(), sr.top() - (2.5 * zoom).max(1.5)), vec2(sr.width(), (1.8 * zoom).max(1.0)));
-            p.rect_filled(led, 0.0, if up { tk.link_up } else { tk.link_down });
+        let jack = icons_ports::fit(*conn, cell);
+        icons_ports::draw(p, *conn, jack, false, tk);
+        if matches!(conn, Connector::Rj45 | Connector::Combo | Connector::Sfp) {
+            let up = (on && t.link_at(end).is_some()).then(|| netlabcraft_sim::port_up(t, end));
+            icons_ports::jack_lights(p, jack, up, zoom, tk);
         }
-        out.push((*port, sr));
+        out.push((*port, cell));
     }
     if !on {
         p.rect_filled(r, rounding, Color32::from_black_alpha(90));
@@ -274,16 +283,8 @@ fn fitting_panel(p: &Painter, kind: FittingKind, ports: u32, on: bool, plugged: 
             let area = Rect::from_min_max(r.min + vec2(14.0 * zoom, 8.0 * zoom), r.max - vec2(14.0 * zoom, 5.0 * zoom));
             let rects = socket_rects(area, n, zoom, if kind.is_fiber() { 12 } else { 24 });
             for (i, sr) in rects.iter().enumerate() {
-                if kind.is_fiber() {
-                    // A duplex fiber port: two round connectors.
-                    let c = sr.center();
-                    let dx = sr.width() * 0.22;
-                    for s in [-1.0, 1.0] {
-                        p.circle_filled(c + vec2(s * dx, 0.0), (sr.height() * 0.32).max(1.2), Color32::from_rgb(0x1b, 0x5e, 0x20));
-                    }
-                } else {
-                    p.rect_filled(*sr, 1.0, Color32::from_rgb(0x20, 0x22, 0x26));
-                }
+                let conn = if kind.is_fiber() { Connector::Lc } else { Connector::Rj45 };
+                icons_ports::draw(p, conn, icons_ports::fit(conn, *sr), false, tk);
                 if zoom >= 0.9 && (i + 1).is_multiple_of(4) {
                     p.text(
                         pos2(sr.center().x, sr.top() - 1.0),
@@ -308,17 +309,8 @@ fn fitting_panel(p: &Painter, kind: FittingKind, ports: u32, on: bool, plugged: 
             let area = plate.shrink2(vec2(6.0 * zoom, side * 0.2));
             let rects = socket_rects(area, n, zoom * 1.4, 4);
             for sr in &rects {
-                if kind.is_fiber() {
-                    p.rect_filled(*sr, 2.0, Color32::from_rgb(0x1b, 0x5e, 0x20));
-                    p.circle_filled(sr.center(), (sr.height() * 0.28).max(1.0), Color32::from_rgb(0xd8, 0xe8, 0xd4));
-                } else {
-                    p.rect_filled(*sr, 1.0, Color32::from_rgb(0x20, 0x22, 0x26));
-                    p.rect_filled(
-                        Rect::from_center_size(sr.center_bottom() - vec2(0.0, 2.0), vec2(sr.width() * 0.5, 2.0)),
-                        0.0,
-                        Color32::from_gray(0xd0),
-                    );
-                }
+                let conn = if kind.is_fiber() { Connector::Lc } else { Connector::Rj45 };
+                icons_ports::draw(p, conn, icons_ports::fit(conn, *sr), false, tk);
             }
             rects
         }
@@ -333,14 +325,7 @@ fn fitting_panel(p: &Painter, kind: FittingKind, ports: u32, on: bool, plugged: 
             let rects = socket_rects(area, n, zoom, 16);
             for (i, sr) in rects.iter().enumerate() {
                 let used = plugged.contains(&(i as u32));
-                p.rect_filled(*sr, 2.0, if used { Color32::from_gray(0x10) } else { Color32::from_gray(0x2c) });
-                for dx in [-0.22, 0.22] {
-                    p.rect_filled(
-                        Rect::from_center_size(sr.center() + vec2(sr.width() * dx, -sr.height() * 0.1), vec2(1.6, sr.height() * 0.35)),
-                        0.0,
-                        Color32::from_gray(0xb0),
-                    );
-                }
+                icons_ports::draw(p, Connector::Outlet, icons_ports::fit(Connector::Outlet, *sr), used, tk);
             }
             rects
         }
@@ -485,6 +470,27 @@ fn item_json(i: Item) -> Value {
     }
 }
 
+/// The fill of an item's name plate and the colour of its text: a dark plate in a rack (light text), the
+/// canvas elsewhere (the theme's text). The text colour always contrasts with the fill.
+fn plate_colors(in_rack: bool, tk: &Tokens) -> (Color32, Color32) {
+    let fill = if in_rack { PLATE } else { tk.canvas };
+    let text = if in_rack { theme::readable_on(PLATE) } else { tk.text };
+    (fill, text)
+}
+
+/// An item's name on its plate, centred under `top`. The text is laid out in the colour that reads over
+/// the plate: a galley that carries its own colour ignores the one `Painter::galley` is given, which once
+/// left dark text on a dark plate.
+fn name_plate(p: &Painter, top: Pos2, name: String, size: f32, in_rack: bool, tk: &Tokens) -> Rect {
+    let (fill, text) = plate_colors(in_rack, tk);
+    let galley = p.layout_no_wrap(name, FontId::proportional(size), text);
+    let at = Align2::CENTER_TOP.anchor_size(top, galley.size());
+    let plate = at.expand2(vec2(3.0, 0.0));
+    p.rect_filled(plate, 3.0, if in_rack { fill } else { fill.gamma_multiply(0.85) });
+    p.galley(at.min, galley, text);
+    plate
+}
+
 // ---------------------------------------------------------------------------------------------
 // Drawing the scene.
 
@@ -552,16 +558,17 @@ fn build(app: &PacketApp, p: &Painter, origin: Vec2, place: u32) -> Scene {
                 }
             }
         }
-        let galley = p.layout_no_wrap(name, FontId::proportional((12.0 * zoom).clamp(8.0, 20.0)), tk.text);
-        let at = Align2::CENTER_TOP.anchor_size(pos2(c.center().x, c.bottom() - label_h + 1.0), galley.size());
-        p.rect_filled(at.expand2(vec2(3.0, 0.0)), 3.0, if in_rack { PLATE } else { tk.canvas.gamma_multiply(0.85) });
-        p.galley(at.min, galley, if in_rack { Color32::WHITE } else { tk.text });
+        name_plate(p, pos2(c.center().x, c.bottom() - label_h + 1.0), name, (12.0 * zoom).clamp(8.0, 20.0), in_rack, &tk);
         sc.items.push((item, c));
     }
     // Power cords: from a strip's outlet up to what is plugged into it.
     for g in &t.physical.plugs {
         let (Some(outlet), Some(panel)) = (strips.get(&g.strip).and_then(|v| v.get(g.outlet as usize)), panels.get(&g.device)) else { continue };
-        let pts = curve(outlet.center(), pos2(panel.right() - 6.0 * zoom, panel.center().y), 0.0, zoom);
+        let end = match t.device(g.device) {
+            Some(d) if icons_ports::has_inlet(d.kind) => icons_ports::inlet_rect(*panel, zoom).center(),
+            _ => pos2(panel.right() - 6.0 * zoom, panel.center().y),
+        };
+        let pts = curve(outlet.center(), end, 0.0, zoom);
         p.add(egui::Shape::line(pts, Stroke::new((1.6 * zoom).max(1.0), Color32::from_gray(0x16))));
     }
     // Patch wires: cords between panel ports and drops to device ports.
@@ -639,10 +646,12 @@ fn build(app: &PacketApp, p: &Painter, origin: Vec2, place: u32) -> Scene {
         }
     }
     for (tip, text, color) in stubs {
-        let galley = p.layout_no_wrap(text, FontId::proportional((11.0 * zoom).clamp(8.0, 16.0)), color);
+        let galley = p.layout_no_wrap(text, FontId::proportional((11.0 * zoom).clamp(8.0, 16.0)), tk.text);
         let at = Align2::CENTER_BOTTOM.anchor_size(tip, galley.size());
-        p.rect_filled(at.expand2(vec2(3.0, 1.0)), 3.0, tk.canvas.gamma_multiply(0.9));
-        p.galley(at.min, galley, color);
+        let plate = at.expand2(vec2(3.0, 1.0));
+        p.rect_filled(plate, 3.0, tk.canvas.gamma_multiply(0.92));
+        p.rect_stroke(plate, 3.0, Stroke::new(1.2, color), StrokeKind::Inside);
+        p.galley(at.min, galley, tk.text);
     }
     sc.cables = drawn;
     sc
@@ -1199,4 +1208,55 @@ pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
     } else {
         None
     };
+}
+
+#[cfg(test)]
+mod label_tests {
+    use super::*;
+    use egui::{Context, LayerId, Shape};
+
+    /// The colour the first text on a frame is painted in (the galley's own, else the fallback).
+    fn painted_text_color(dark: bool, in_rack: bool) -> (Color32, Color32) {
+        let tk = theme::tokens(dark);
+        let ctx = Context::default();
+        let out = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let p = ui.ctx().layer_painter(LayerId::background());
+            name_plate(&p, pos2(100.0, 100.0), "Switch0".to_string(), 12.0, in_rack, &tk);
+        });
+        let text = out
+            .shapes
+            .iter()
+            .find_map(|s| match &s.shape {
+                Shape::Text(t) => {
+                    let own = t.galley.job.sections.first().map(|x| x.format.color).unwrap_or(Color32::PLACEHOLDER);
+                    Some(if own == Color32::PLACEHOLDER { t.fallback_color } else { own })
+                }
+                _ => None,
+            })
+            .unwrap_or(Color32::TRANSPARENT);
+        let fill = plate_colors(in_rack, &tk).0;
+        (text, fill)
+    }
+
+    #[test]
+    fn the_name_on_a_plate_contrasts_with_the_plate_in_both_themes() {
+        for dark in [false, true] {
+            for in_rack in [false, true] {
+                let (text, fill) = painted_text_color(dark, in_rack);
+                assert_ne!(text, Color32::TRANSPARENT, "the name was not painted");
+                assert!(theme::contrast(text, fill) >= 4.5, "dark={dark} in_rack={in_rack}: {text:?} on {fill:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn plate_colors_always_contrast() {
+        for dark in [false, true] {
+            for in_rack in [false, true] {
+                let tk = theme::tokens(dark);
+                let (fill, text) = plate_colors(in_rack, &tk);
+                assert!(theme::contrast(text, fill) >= 4.5);
+            }
+        }
+    }
 }
