@@ -18,6 +18,8 @@ pub const MAX_VALUE: i32 = 1_000;
 /// The longest report interval (seconds); a new thing reports every [`DEFAULT_INTERVAL`].
 pub const MAX_INTERVAL: u32 = 3_600;
 pub const DEFAULT_INTERVAL: u32 = 5;
+/// The largest level of an RGB LED: red, green and blue as one number (`0xRRGGBB`).
+pub const MAX_RGB: i32 = 0xFF_FFFF;
 
 /// How a condition compares a reading.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -159,6 +161,12 @@ pub struct Iot {
     /// Smart things: report every N seconds of simulated time (0: only when changed or asked).
     #[serde(skip_serializing_if = "is_zero_u32")]
     pub interval: u32,
+    /// A sensor with a second reading (the humiture sensor's humidity), by hand.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub second: i32,
+    /// The generic environment sensor: the id of the environment variable it reads.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub variable: String,
     /// Servers and home gateways: the IoT service is on.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub service: bool,
@@ -182,6 +190,10 @@ impl Iot {
     /// Caps what a hostile file could hold.
     pub fn sanitize(&mut self) {
         self.value = self.value.clamp(MIN_VALUE, MAX_VALUE);
+        self.second = self.second.clamp(MIN_VALUE, MAX_VALUE);
+        if crate::environments::var_by_id(&self.variable).is_none() {
+            self.variable.clear();
+        }
         self.interval = self.interval.min(MAX_INTERVAL);
         self.rules.truncate(MAX_RULES);
         for r in &mut self.rules {
@@ -256,8 +268,95 @@ pub fn thing_of(model_id: &str) -> Option<Thing> {
         "Part-Ultrasonic" => t("distance", true, "cm", "", ""),
         "Part-Light" => t("light level", true, "% brightness", "", ""),
         "Part-Switch" => t("toggle", true, "1 = on", "", ""),
+        "Part-AirCooler" => t("air cooler", false, "", "cooling", "off"),
+        "Part-Alarm" => t("alarm", false, "", "sounding", "quiet"),
+        "Part-CeilingSprinkler" => t("ceiling sprinkler", false, "", "watering", "off"),
+        "Part-FloorSprinkler" => t("floor sprinkler", false, "", "watering", "off"),
+        "Part-DimLED" => t("dimmable led", false, "", "lit", "dark"),
+        "Part-HeatingElement" => t("heating element", false, "", "heating", "off"),
+        "Part-RGBLED" => t("rgb led", false, "", "lit", "dark"),
+        "Part-Servo" => t("servo", false, "", "holding an angle", "idle"),
+        "Part-Speaker" => t("speaker", false, "", "playing", "quiet"),
+        "Part-Flex" => t("flex", true, "% bent", "", ""),
+        "Part-EnvSensor" => t("environment", true, "reading", "", ""),
+        "Part-Generic" => t("analog", true, "reading", "", ""),
+        "Part-Humidity" => t("humidity", true, "% humidity", "", ""),
+        "Part-Humiture" => t("humiture", true, "degrees", "", ""),
+        "Part-Membrane" => t("membrane", true, "% along the strip", "", ""),
+        "Part-Metal" => t("metal", true, "1 = metal near", "", ""),
+        "Part-Motion" => t("motion", true, "1 = movement", "", ""),
+        "Part-LatchSwitch" => t("latching switch", true, "1 = on", "", ""),
+        "Part-Rocker" => t("rocker switch", true, "1 = on", "", ""),
+        "Part-PushToggle" => t("push toggle", true, "1 = on", "", ""),
+        "Part-Smoke" => t("smoke", true, "% smoke", "", ""),
+        "Part-Temp" => t("temperature", true, "degrees", "", ""),
+        "Part-Trip" => t("trip wire", true, "1 = crossed", "", ""),
+        "Part-WaterDetector" => t("water present", true, "1 = water", "", ""),
+        "Part-WaterLevel" => t("water depth", true, "cm", "", ""),
+        "Part-Wind" => t("wind", true, "kph", "", ""),
         _ => None,
     }
+}
+
+/// The levels an actuator takes when a board writes its pin (`None`: it is only on or off). A
+/// dimmable LED is 0-100 %, a servo 0-180 degrees, an RGB LED one number, `0xRRGGBB`.
+pub fn level_range(what: &str) -> Option<(i32, i32)> {
+    match what {
+        "dimmable led" => Some((0, 100)),
+        "servo" => Some((0, 180)),
+        "rgb led" => Some((0, MAX_RGB)),
+        _ => None,
+    }
+}
+
+/// What an actuator shows for its state: 0 when it is off, else its level (the top of its range
+/// until one is set); a servo always holds an angle. Actuators with no level show 1 when on.
+pub fn shown_level(what: &str, on: bool, level: i32) -> i32 {
+    match level_range(what) {
+        None => i32::from(on),
+        Some((lo, hi)) => {
+            let level = level.clamp(lo, hi);
+            if what == "servo" {
+                level
+            } else if !on {
+                0
+            } else if level == 0 {
+                hi
+            } else {
+                level
+            }
+        }
+    }
+}
+
+/// The readings a sensor can hold: flags are 0 or 1, strips and bends 0-100 %, every other
+/// sensor `MIN_VALUE` to `MAX_VALUE`.
+pub fn sensor_range(what: &str) -> (i32, i32) {
+    match what {
+        "metal" | "trip wire" | "water present" | "latching switch" | "rocker switch" | "push toggle" => (0, 1),
+        "flex" | "membrane" => (0, 100),
+        _ => (MIN_VALUE, MAX_VALUE),
+    }
+}
+
+/// A sensor that flips between 0 and 1 each time it is pressed (`iot.configure` with `press`).
+pub fn is_pressed_toggle(what: &str) -> bool {
+    matches!(what, "latching switch" | "push toggle")
+}
+
+/// The word the smart room's physics uses for what a sensor reads (`thermostat` and `humiture`
+/// read the temperature, a trip wire the motion).
+pub fn room_word(what: &str) -> &str {
+    match what {
+        "thermostat" | "humiture" => "temperature",
+        "trip wire" => "motion",
+        w => w,
+    }
+}
+
+/// Whether a thing's reading is a yes-or-no flag.
+pub fn is_flag(what: &str) -> bool {
+    sensor_range(what) == (0, 1)
 }
 
 /// The smart thing a device is.
@@ -322,5 +421,73 @@ mod tests {
         assert_eq!(Op::parse("?"), None);
         assert!(thing_of("IoT-Webcam").is_some_and(|t| !t.sensor) && thing_of("Router-3").is_none());
         assert!(thing_of("IoT-Thermostat").is_some_and(|t| t.sensor) && thing_of("IoT-Garage").is_some_and(|t| t.on_word == "open"));
+    }
+
+    #[test]
+    fn levels_ranges_and_words_of_the_components() {
+        assert_eq!(level_range("dimmable led"), Some((0, 100)));
+        assert_eq!(level_range("servo"), Some((0, 180)));
+        assert_eq!(level_range("rgb led"), Some((0, MAX_RGB)));
+        assert_eq!(level_range("led"), None);
+        // Off shows 0; on with no level set shows the top of the range; a servo always holds its angle.
+        assert_eq!(shown_level("dimmable led", false, 40), 0);
+        assert_eq!(shown_level("dimmable led", true, 40), 40);
+        assert_eq!(shown_level("dimmable led", true, 0), 100);
+        assert_eq!(shown_level("dimmable led", true, 900), 100);
+        assert_eq!(shown_level("servo", false, 90), 90);
+        assert_eq!(shown_level("rgb led", true, 0), MAX_RGB);
+        assert_eq!(shown_level("led", true, 7), 1);
+        assert_eq!(shown_level("led", false, 7), 0);
+        assert_eq!(sensor_range("trip wire"), (0, 1));
+        assert_eq!(sensor_range("flex"), (0, 100));
+        assert_eq!(sensor_range("temperature"), (MIN_VALUE, MAX_VALUE));
+        assert!(is_flag("metal") && is_flag("rocker switch") && !is_flag("flex"));
+        assert!(is_pressed_toggle("push toggle") && is_pressed_toggle("latching switch") && !is_pressed_toggle("rocker switch"));
+        assert_eq!(room_word("humiture"), "temperature");
+        assert_eq!(room_word("trip wire"), "motion");
+        assert_eq!(room_word("thermostat"), "temperature");
+        assert_eq!(room_word("smoke"), "smoke");
+        // A file naming a variable that does not exist, or a second reading out of range.
+        let mut i = Iot { variable: "no_such".into(), second: 5_000, ..Iot::default() };
+        i.sanitize();
+        assert_eq!((i.variable.as_str(), i.second), ("", MAX_VALUE));
+        let mut i = Iot { variable: "wind_speed".into(), ..Iot::default() };
+        i.sanitize();
+        assert_eq!(i.variable, "wind_speed");
+        // Every new part is a smart thing of the right sort.
+        for id in [
+            "Part-AirCooler",
+            "Part-Alarm",
+            "Part-CeilingSprinkler",
+            "Part-FloorSprinkler",
+            "Part-DimLED",
+            "Part-HeatingElement",
+            "Part-RGBLED",
+            "Part-Servo",
+            "Part-Speaker",
+        ] {
+            assert!(thing_of(id).is_some_and(|t| !t.sensor), "{id}");
+        }
+        for id in [
+            "Part-Flex",
+            "Part-EnvSensor",
+            "Part-Generic",
+            "Part-Humidity",
+            "Part-Humiture",
+            "Part-Membrane",
+            "Part-Metal",
+            "Part-Motion",
+            "Part-LatchSwitch",
+            "Part-Rocker",
+            "Part-PushToggle",
+            "Part-Smoke",
+            "Part-Temp",
+            "Part-Trip",
+            "Part-WaterDetector",
+            "Part-WaterLevel",
+            "Part-Wind",
+        ] {
+            assert!(thing_of(id).is_some_and(|t| t.sensor), "{id}");
+        }
     }
 }

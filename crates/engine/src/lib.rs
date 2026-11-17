@@ -64,6 +64,8 @@ mod tests_instructor;
 #[cfg(test)]
 mod tests_netflow;
 #[cfg(test)]
+mod tests_parts;
+#[cfg(test)]
 mod tests_pppoe;
 #[cfg(test)]
 mod tests_pppoe_router;
