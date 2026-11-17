@@ -781,7 +781,6 @@
 	Open PC1 > Desktop > Web Browser and go to www.netlabcraft.lab. Edit the pages in Server0 > Services > HTTP. Try `ping www.netlabcraft.lab` and `nslookup www.netlabcraft.lab` in a Command Prompt.	打开 PC1 > 桌面 > Web 浏览器，访问 www.netlabcraft.lab。在 Server0 > 服务 > HTTP 中编辑页面。在命令提示符中试试 `ping www.netlabcraft.lab` 和 `nslookup www.netlabcraft.lab`。
 	Open Recent	最近打开
 	Open...	打开...
-	Opened the page in the PDF viewer: print it from there.	已在 PDF 查看器中打开该页面：请从那里打印。
 	Opened {}	已打开 {}
 	Operation	操作
 	Operations (one per blank-line block)	操作（每个空行分隔的块为一项）
@@ -1225,7 +1224,6 @@
 	The score does not match what the embedded network earns: this file is forged or damaged.	得分与内嵌网络应得的分数不符：此文件被伪造或已损坏。
 	the server answered {}	服务器应答 {}
 	the web service is off	Web 服务已关闭
-	The workspace and a report of the devices on A4 pages, opened in the system's PDF viewer to print	工作区和设备报告，按 A4 页面排版，在系统的 PDF 查看器中打开后打印
 	The workspace as a picture, for a report	以图片形式导出工作区，用于报告
 	There is no startup configuration to export yet (Save first).	尚无可导出的启动配置（请先保存）。
 	Thermostat	恒温器
@@ -2077,3 +2075,20 @@ furniture	Table	桌子
 	red	红灯
 	showing	显示中
 	blank	空白
+	Save as PDF...	另存为 PDF...
+	The workspace and a report of the devices on A4 pages, saved as a PDF file	工作区和设备报告，按 A4 页面排版，保存为 PDF 文件
+	The same PDF: save it, open it in a PDF viewer or print it	同一份 PDF：可以保存、在 PDF 查看器中打开或打印
+	Print	打印
+	The report is ready as a PDF. What do you want to do with it?	报告已生成 PDF。您想如何处理？
+	Choose where to keep the file	选择文件的保存位置
+	Open in the PDF viewer	在 PDF 查看器中打开
+	Opens a temporary copy in the program your system uses for PDF files	在系统用于 PDF 文件的程序中打开临时副本
+	This system has no program to open files with: use Save as PDF	此系统没有可打开文件的程序：请使用另存为 PDF
+	Print directly	直接打印
+	Sends the file to the default printer	将文件发送到默认打印机
+	Direct printing needs the lp command, which this system does not have: save the PDF or open it in a viewer	直接打印需要 lp 命令，但此系统没有：请保存 PDF 或在查看器中打开
+	Saved the PDF to {}	PDF 已保存到 {}
+	Opened {} in the PDF viewer. This temporary copy is deleted when NetLabCraft closes: use Save as PDF to keep the file	已在 PDF 查看器中打开 {}。此临时副本会在 NetLabCraft 关闭时删除：要保留文件，请使用另存为 PDF
+	No PDF viewer found: use Save as PDF	未找到 PDF 查看器：请使用另存为 PDF
+	Sent the PDF to the default printer	已将 PDF 发送到默认打印机
+	Could not print: {}	无法打印：{}
