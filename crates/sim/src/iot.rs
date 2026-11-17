@@ -173,6 +173,12 @@ impl Sim {
     /// What a smart sensor reads: the room's quantity while the physics is on, else its own
     /// number.
     pub fn iot_reading(&self, t: &Topology, d: &Device) -> i32 {
+        // A place (or one above it) that sets the variable decides what the sensor reads.
+        if let Some(x) = thing(d)
+            && let Some(v) = self.env_place_reading(t, d, x.what)
+        {
+            return v;
+        }
         if t.environment.enabled
             && let Some(x) = thing(d)
             && let Some(c) = self.environment()
@@ -181,6 +187,21 @@ impl Sim {
             return v;
         }
         d.iot.value
+    }
+
+    /// The time of day of the environment clock now, in seconds from midnight.
+    pub fn env_time(&self, t: &Topology) -> u32 {
+        t.environments.clock.time_at(self.now)
+    }
+
+    /// What the environments of the sensor's place say it reads (`None`: nothing is set there or
+    /// above it, so the room or the sensor's own number answers).
+    fn env_place_reading(&self, t: &Topology, d: &Device, what: &str) -> Option<i32> {
+        if t.environments.places.is_empty() {
+            return None;
+        }
+        let place = t.home_of(d.id).map_or_else(|| t.default_place(), |h| h.place);
+        t.env_reading(place, what, self.env_time(t))
     }
 
     /// The things a server's IoT service lists.

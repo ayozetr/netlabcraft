@@ -21,6 +21,7 @@ pub mod cellular;
 pub mod cloud;
 pub mod drawing;
 pub mod environment;
+pub mod environments;
 pub mod fhrp;
 pub mod file;
 pub mod firewall;
@@ -2401,6 +2402,9 @@ pub struct Topology {
     /// The smart things' shared room: its physics settings and starting values.
     #[serde(default, skip_serializing_if = "environment::Environment::is_default")]
     pub environment: environment::Environment,
+    /// The environments of the places (the Environments window): the clock and what each place sets.
+    #[serde(default, skip_serializing_if = "environments::Environments::is_default")]
+    pub environments: environments::Environments,
     /// Worked out from the lab by [`Topology::cell_refresh`], never saved: each cellular
     /// device's link to its tower and what the central office made of its attach.
     #[serde(skip)]
@@ -2592,6 +2596,7 @@ impl Topology {
             clusters: Vec::new(),
             activity: None,
             environment: environment::Environment::default(),
+            environments: environments::Environments::default(),
             physical: physical::Physical::default(),
             scenarios: scenario::Scenarios::default(),
             cell_links: BTreeMap::new(),
@@ -2982,6 +2987,7 @@ impl Topology {
         self.sanitize_octals();
         self.sanitize_wires();
         self.sanitize_physical();
+        self.sanitize_environments();
         self.cell_refresh();
         let ids: Vec<DeviceId> = self.devices.iter().map(|d| d.id).collect();
         self.scenarios.sanitize(&ids);
