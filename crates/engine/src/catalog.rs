@@ -962,7 +962,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "User Profile",
         "Options",
         Some("Ctrl+Shift+U"),
-        r#"{} → {"name"}: the display name kept on this computer (empty: none)"#,
+        r#"{} → {"name", "email", "info"}: the profile kept on this computer (empty: none); never saved in a lab and never sent anywhere"#,
         false
     ),
     c!(
@@ -970,7 +970,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Set display name",
         "",
         None,
-        r#"{"name": "up to 64 characters, no control characters; empty clears it"} → {"name"}: names the student in activity results when the activity was not started with a name; never saved in a lab and never sent anywhere"#,
+        r#"{"name"?: "up to 64 characters, no control characters; empty clears it", "email"?: "up to 120 characters, no spaces", "info"?: "up to 1000 characters, newlines allowed"} → {"name", "email", "info"}: sets the fields given (at least one). Only the name is used: it names the student in activity results when the activity was not started with a name. None is saved in a lab or sent anywhere"#,
         false
     ),
     c!(

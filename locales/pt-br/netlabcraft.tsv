@@ -1726,9 +1726,6 @@ event	write request for	requisição de escrita de
 	Reset	Redefinir
 	Sets the text of menus, buttons and forms. Names drawn on the workspace follow its zoom instead.	Define o texto de menus, botões e formulários. Os nomes desenhados na área de trabalho seguem o zoom dela.
 	User Profile	Perfil do usuário
-	Kept on this computer only. It names you in activity results when an activity was not started with a name.	Fica só neste computador. Ele nomeia você nos resultados de uma atividade iniciada sem nome.
-	Display name:	Nome de exibição:
-	Use a nickname if you like: no real name or e-mail address is needed.	Você pode usar um apelido: não é preciso nome real nem e-mail.
 	Profile saved.	Perfil salvo.
 	Command Log	Registro de comandos
 	No commands have been recorded yet.	Nenhum comando foi registrado ainda.
@@ -1859,6 +1856,11 @@ furniture	Table	Mesa
 	Structured Cabling	Cabeamento estruturado
 	Drag a device onto a rack, shelf or table · drag between two ports to patch them, or from an outlet to a device to plug it in · right-click for more	Arraste um dispositivo para um rack, prateleira ou mesa · arraste entre duas portas para fazer o patch, ou de uma tomada para um dispositivo para ligá-lo · clique direito para mais
 	Patch panels and wall mounts stand in a wiring closet: open one in the Physical view first.	Patch panels e tomadas de parede ficam em um armário de fiação: abra um na visualização física primeiro.
+	E-Mail:	E-mail:
+	Additional Info:	Informações adicionais:
+	These stay on this computer, in no lab file and nowhere else. Only the name is used, in activity results.	Estes dados ficam neste computador, em nenhum arquivo de laboratório e em nenhum outro lugar. Só o nome é usado, nos resultados das atividades.
+	View Wireless Signals	Ver sinais sem fio
+	View Wireless Signals (Ctrl+Alt+W): faint coverage areas of the access points and a line from each Wi-Fi host to its access point	Ver sinais sem fio (Ctrl+Alt+W): áreas de cobertura discretas dos pontos de acesso e uma linha de cada host Wi-Fi até o seu ponto de acesso
 	{} is already cabled to {}	{} já tem um cabo para {}
 	A cable joins two different devices	Um cabo liga dois dispositivos diferentes
 	Click a port on a device's front panel, then a port on another device, to cable them · right-click or Esc cancels	Clique em uma porta do painel frontal de um dispositivo e depois em uma porta de outro dispositivo para ligá-los com um cabo · clique direito ou Esc cancela

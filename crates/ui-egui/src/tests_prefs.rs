@@ -118,15 +118,103 @@ mod t {
     }
 
     #[test]
-    fn the_profile_window_saves_a_display_name_that_the_activity_offers() {
+    fn the_profile_window_saves_its_fields_with_ok_and_the_name_is_what_the_activity_offers() {
         let mut h = harness("activity-first-router");
         h.state_mut().open_user_profile();
         h.run_steps(3);
-        h.state_mut().ui.prefs_ui.name_draft = "  Ana  ".into();
-        h.get_by_label("Save").click();
+        // The window says in one line that the fields stay on this computer.
+        assert!(h.query_by_label_contains("stay on this computer").is_some());
+        for label in ["Name:", "E-Mail:", "Additional Info:"] {
+            assert!(h.query_by_label(label).is_some(), "{label}");
+        }
+        let ui = &mut h.state_mut().ui.prefs_ui;
+        ui.name_draft = "  Test User  ".into();
+        ui.email_draft = "user@example.test".into();
+        ui.info_draft = "Group A\nBench 3".into();
+        h.get_by_label("OK").click();
         h.run_steps(2);
-        assert_eq!(h.state().session.profile.display_name, "Ana");
-        assert!(h.state().preferences_text().contains("name=Ana"));
+        let p = &h.state().session.profile;
+        assert_eq!((p.display_name.as_str(), p.email.as_str(), p.info.as_str()), ("Test User", "user@example.test", "Group A\nBench 3"));
+        assert!(!h.state().ui.prefs_ui.show_profile, "OK closes the window");
+        let text = h.state().preferences_text();
+        assert!(text.contains("name=Test User") && text.contains("email=user@example.test") && text.contains("info=Group A\\nBench 3"), "{text}");
+        // Only the name reaches the activity.
+        let a = h.state_mut().run("activity.start", json!({}));
+        assert!(a.is_some());
+        let student = h.state().session.topology.activity.as_ref().and_then(|a| a.student.clone());
+        assert_eq!(student.as_deref(), Some("Test User"));
+    }
+
+    #[test]
+    fn cancel_in_the_profile_window_drops_what_was_typed() {
+        let mut h = harness("two-subnets");
+        h.state_mut().session.profile.display_name = "Test User".into();
+        h.state_mut().open_user_profile();
+        h.run_steps(3);
+        assert_eq!(h.state().ui.prefs_ui.name_draft, "Test User");
+        let ui = &mut h.state_mut().ui.prefs_ui;
+        ui.name_draft = "Someone Else".into();
+        ui.email_draft = "other@example.test".into();
+        ui.info_draft = "changed".into();
+        h.get_by_label("Cancel").click();
+        h.run_steps(2);
+        assert!(!h.state().ui.prefs_ui.show_profile);
+        let p = &h.state().session.profile;
+        assert_eq!((p.display_name.as_str(), p.email.as_str(), p.info.as_str()), ("Test User", "", ""));
+        // Opening it again shows what is kept, not the dropped draft.
+        h.state_mut().open_user_profile();
+        assert_eq!(h.state().ui.prefs_ui.email_draft, "");
+    }
+
+    #[test]
+    fn an_old_preferences_file_without_the_new_profile_fields_still_loads() {
+        let mut h = harness("two-subnets");
+        h.state_mut().load_preferences("dark=on\nname=Test User\nfont=120\n");
+        let app = h.state();
+        assert!(app.ui.dark && app.ui.prefs.font_percent == 120);
+        assert_eq!(app.session.profile.display_name, "Test User");
+        assert_eq!((app.session.profile.email.as_str(), app.session.profile.info.as_str()), ("", ""));
+        assert!(!app.ui.prefs.show_wireless_signals);
+    }
+
+    #[test]
+    fn view_wireless_signals_is_a_ui_setting_kept_in_the_preferences() {
+        let mut h = harness("wifi");
+        h.run_steps(2);
+        assert!(!h.state().ui.prefs.show_wireless_signals);
+        for dark in [false, true] {
+            h.state_mut().ui.dark = dark;
+            h.state_mut().ui.prefs.show_wireless_signals = true;
+            h.run_steps(3);
+            h.state_mut().ui.prefs.show_wireless_signals = false;
+        }
+        // The shortcut toggles it, in the logical view too.
+        let chord = |h: &mut Harness<'static, PacketApp>| {
+            h.input_mut().events.push(egui::Event::Key {
+                key: egui::Key::W,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::COMMAND | egui::Modifiers::ALT,
+            });
+            h.run_steps(2);
+        };
+        chord(&mut h);
+        assert!(h.state().ui.prefs.show_wireless_signals);
+        let text = h.state().preferences_text();
+        assert!(text.contains("wireless-signals=on"), "{text}");
+        let mut fresh = harness("wifi");
+        fresh.state_mut().load_preferences(&text);
+        assert!(fresh.state().ui.prefs.show_wireless_signals);
+        // In the physical view the bar has the button; clicking it turns the signals off.
+        h.state_mut().set_physical(true);
+        h.run_steps(3);
+        h.get_by_label_contains("View Wireless Signals").click();
+        h.run_steps(2);
+        assert!(!h.state().ui.prefs.show_wireless_signals);
+        h.get_by_label_contains("View Wireless Signals").click();
+        h.run_steps(2);
+        assert!(h.state().ui.prefs.show_wireless_signals);
     }
 
     #[test]
@@ -159,6 +247,9 @@ mod t {
         app.ui.dark = true;
         app.session.cmd_log.enabled = false;
         app.session.profile.display_name = "Ana".into();
+        app.session.profile.email = "user@example.test".into();
+        app.session.profile.info = "line one\nline two \\ end".into();
+        app.ui.prefs.show_wireless_signals = true;
         let text = app.preferences_text();
         let mut fresh = harness("two-subnets");
         fresh.state_mut().load_preferences(&text);
@@ -166,10 +257,13 @@ mod t {
         assert!(b.ui.prefs.align_physical && b.ui.prefs.font_percent == 130 && b.ui.dark);
         assert!(!b.session.cmd_log.enabled);
         assert_eq!(b.session.profile.display_name, "Ana");
+        assert_eq!(b.session.profile.email, "user@example.test");
+        assert_eq!(b.session.profile.info, "line one\nline two \\ end");
+        assert!(b.ui.prefs.show_wireless_signals);
         assert_eq!(b.preferences_text(), text);
         // Hostile text changes nothing and does not panic.
         let mut junk = harness("two-subnets");
-        junk.state_mut().load_preferences("=\n\u{0}=x\nfont=-1\nname=\u{7}\ndark");
+        junk.state_mut().load_preferences("=\n\u{0}=x\nfont=-1\nname=\u{7}\nemail=\u{7}\ninfo=\\\ndark");
         assert_eq!(junk.state().ui.prefs, crate::prefs::Prefs::default());
     }
 
