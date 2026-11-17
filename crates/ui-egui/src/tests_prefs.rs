@@ -19,7 +19,7 @@ mod t {
     }
 
     fn check(h: &mut Harness<'static, PacketApp>, label: &str) {
-        h.get_by_role_and_label(Role::CheckBox, label).click();
+        h.get_by_role_and_label(Role::CheckBox, label).click_accesskit();
         h.run_steps(2);
     }
 
@@ -52,22 +52,32 @@ mod t {
     }
 
     #[test]
-    fn the_other_tabs_are_there_and_say_when_they_have_nothing() {
+    fn every_tab_renders_what_it_holds() {
         let mut h = harness("two-subnets");
         h.state_mut().open_preferences();
         h.run_steps(3);
-        for tab in ["Administrative", "Miscellaneous", "Answer Tree", "Custom Interfaces", "Publishers", "Image Cleanup"] {
+        for (tab, shows) in [
+            ("Administrative", "Choose Password"),
+            ("Miscellaneous", "Backups"),
+            ("Answer Tree", "Answer Tree Filter"),
+            ("Image Cleanup", "Images held by the lab"),
+            ("Show/Hide", "Device window tabs"),
+            ("Font", "Application size:"),
+        ] {
             h.get_by_label(tab).click();
             h.run_steps(2);
-            assert!(h.query_by_label_contains("Not available yet").is_some(), "{tab}");
+            assert!(h.query_all_by_label(shows).next().is_some(), "{tab}");
+        }
+        // The two tabs with nothing to set say so, honestly.
+        for (tab, note) in [("Custom Interfaces", "Not available"), ("Publishers", "Not applicable")] {
+            h.get_by_label(tab).click();
+            h.run_steps(2);
+            assert!(h.query_by_label_contains(note).is_some(), "{tab}");
         }
         h.get_by_label("Show/Hide").click();
         h.run_steps(2);
         check(&mut h, "Bottom");
         assert!(!h.state().ui.toolbars.bottom);
-        h.get_by_label("Font").click();
-        h.run_steps(2);
-        assert!(h.query_all_by_label("Text size:").next().is_some());
     }
 
     #[test]

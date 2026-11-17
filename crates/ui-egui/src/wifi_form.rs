@@ -62,7 +62,7 @@ impl WifiForm {
     /// Draws the form. `ap`: an access point or home router (it has a channel, a coverage range
     /// and a RADIUS server), else a host (it has a login). `salt` tells this form's pickers
     /// from another window's.
-    pub(crate) fn show(&mut self, ui: &mut egui::Ui, ap: bool, salt: u32) {
+    pub(crate) fn show(&mut self, ui: &mut egui::Ui, ap: bool, salt: u32, hide_coverage: bool) {
         field(ui, tl("SSID"), &mut self.ssid);
         if ap {
             ui.horizontal(|ui| {
@@ -77,7 +77,9 @@ impl WifiForm {
                     .response
                     .labelled_by(l.id);
             });
-            field(ui, tl("Coverage Range (meters)"), &mut self.coverage);
+            if !hide_coverage {
+                field(ui, tl("Coverage Range (meters)"), &mut self.coverage);
+            }
         }
         ui.horizontal(|ui| {
             let _ = form_label(ui, tl("Authentication"), LABEL_W);

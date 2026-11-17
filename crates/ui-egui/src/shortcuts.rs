@@ -13,6 +13,7 @@
 //!   the keyboard, so typing a letter never picks a tool.
 //! - No two rows share a chord.
 
+use crate::prefs_look::HintExt;
 use std::sync::OnceLock;
 
 use egui::{Context, Key, KeyboardShortcut, Modifiers};
@@ -550,7 +551,7 @@ pub fn windows(app: &mut PacketApp, ctx: &Context) {
     egui::Window::new(tl("Open Samples")).open(&mut open).default_width(360.0).default_pos(crate::BELOW_TOOLBARS).show(ctx, |ui| {
         egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
             for s in netlabcraft_engine::sample::SAMPLES {
-                if ui.button(crate::i18n::tr(s.title)).on_hover_text(crate::i18n::tr(s.description)).clicked() {
+                if ui.button(crate::i18n::tr(s.title)).hint(crate::i18n::tr(s.description)).clicked() {
                     pick = Some(s.id);
                 }
             }

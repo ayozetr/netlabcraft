@@ -162,3 +162,60 @@ fn cable_length_effects_can_be_switched_off_for_a_lab() {
     assert!(s.undo());
     assert!(netlabcraft_sim::cable_problem(&s.topology, l.a).is_some());
 }
+
+#[test]
+fn a_backup_copy_never_replaces_a_file_and_leaves_the_lab_unsaved() {
+    let dir = std::env::temp_dir().join(format!("nlc-backup-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("copy.nlcraft");
+    let path_text = path.to_string_lossy().to_string();
+    let mut s = lab();
+    s.dirty = true;
+    let r = s.execute("file.backup", json!({"path": path_text})).unwrap();
+    assert!(r["bytes"].as_u64().unwrap() > 100, "{r}");
+    assert!(s.dirty && s.path.is_none(), "a backup is not a save");
+    let written = std::fs::read_to_string(&path).unwrap();
+    assert!(netlabcraft_model::file::from_json(&written).is_ok());
+    // A second call to the same name is refused and the file is as it was.
+    std::fs::write(&path, "mine").unwrap();
+    assert!(s.execute("file.backup", json!({"path": path_text})).is_err());
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "mine");
+    // Programmatic calls never ask: no path is an error.
+    assert!(s.execute("file.backup", json!({})).is_err());
+    assert!(s.execute("file.backup", json!({"path": "  "})).is_err());
+    // Backups are not noise in the command log.
+    assert!(!s.cmd_log.entries().any(|e| e.command == "file.backup"));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn pruning_the_event_list_keeps_only_the_protocols_asked_for() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "two-subnets"})).unwrap();
+    s.execute("net.ping", json!({"from": "PC1", "to": "10.0.2.10"})).unwrap();
+    let before = s.sim.trace().len();
+    assert!(before > 2 && s.sim.trace().iter().any(|e| e.protocol.name() != "ICMP"));
+    assert!(s.execute("sim.prune_events", json!({})).is_err());
+    let r = s.execute("sim.prune_events", json!({"keep": ["icmp"]})).unwrap();
+    assert!(r["removed"].as_u64().unwrap() > 0, "{r}");
+    assert!(s.sim.trace().len() < before && s.sim.trace().iter().all(|e| e.protocol.name() == "ICMP"));
+    assert_eq!(s.execute("sim.prune_events", json!({"keep": []})).unwrap()["events"], 0);
+}
+
+#[test]
+fn the_preferences_lock_keeps_a_salted_hash_never_the_password() {
+    let a = settings::lock_record("correct horse", "entropy one");
+    let b = settings::lock_record("correct horse", "entropy two");
+    assert!(!a.contains("correct") && !a.contains("horse"), "{a}");
+    assert_ne!(a, b, "the salt differs, so equal passwords do not give equal records");
+    assert!(settings::lock_valid(&a) && a.starts_with("nlc1$"));
+    assert!(settings::lock_check(&a, "correct horse") && settings::lock_check(&b, "correct horse"));
+    for wrong in ["", "correct hors", "Correct horse", "correct horse "] {
+        assert!(!settings::lock_check(&a, wrong), "{wrong:?}");
+    }
+    // Damaged or hostile records check nothing and ask for little work.
+    let huge = format!("nlc1$4000000000${}${}", "0".repeat(40), "0".repeat(40));
+    for junk in ["", "nlc1", "nlc1$1$x$y", "nlc2$30000$00$00", huge.as_str(), "a$b$c$d$e"] {
+        assert!(!settings::lock_valid(junk) && !settings::lock_check(junk, "x"), "{junk}");
+    }
+}

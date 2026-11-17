@@ -1683,7 +1683,6 @@ event	write request for	写请求
 	Custom Interfaces	自定义界面
 	Publishers	发布者
 	Image Cleanup	图像清理
-	Not available yet: NetLabCraft has nothing to set in this tab so far.	尚不可用：NetLabCraft 在此标签页中暂时没有可设置的内容。
 	Restore Defaults	恢复默认值
 	Customize User Experience	自定义用户体验
 	Show Animation	显示动画
@@ -1720,7 +1719,6 @@ event	write request for	写请求
 	Enable Logging	启用日志
 	Export Log…	导出日志…
 	Interface text	界面文字
-	Text size:	文字大小：
 	Reset	重置
 	Sets the text of menus, buttons and forms. Names drawn on the workspace follow its zoom instead.	设置菜单、按钮和表单的文字大小。工作区中绘制的名称则跟随其缩放。
 	User Profile	用户资料
@@ -2194,3 +2192,130 @@ furniture	Table	桌子
 	No PDF viewer found: use Save as PDF	未找到 PDF 查看器：请使用另存为 PDF
 	Sent the PDF to the default printer	已将 PDF 发送到默认打印机
 	Could not print: {}	无法打印：{}
+	Unlocked until you lock it again or close the program.	已解锁，直到再次锁定或关闭程序。
+	Lock	锁定
+	Locked. Enter the password:	已锁定。请输入密码：
+	That is not the password.	密码不正确。
+	Choose Password	设置密码
+	Password:	密码：
+	Confirm:	确认：
+	Enable Password	启用密码
+	Disable Password	停用密码
+	At least {} characters; both fields must match. Enabling again changes the password.	至少 {} 个字符，两个输入框必须一致。再次启用会更换密码。
+	Only a salted hash is kept, never the password. The lock keeps people out of this window, not out of the preferences file.	只保存加盐的哈希值，从不保存密码。锁定只能挡住此窗口，挡不住偏好设置文件。
+	A password is enabled.	已启用密码。
+	No password is set: nothing is locked.	未设置密码，没有锁定任何内容。
+	Password enabled.	已启用密码。
+	Password disabled.	已停用密码。
+	Interface Locking	界面锁定
+	With a password enabled, the ticked tabs open read-only until it is entered.	启用密码后，勾选的标签页在输入密码前只能查看。
+	Lock the Interface tab	锁定“界面”标签页
+	Lock the Show/Hide tab	锁定“显示/隐藏”标签页
+	Lock the Custom Interfaces tab	锁定“自定义界面”标签页
+	Lock the Miscellaneous tab	锁定“其他”标签页
+	There are no Multiuser, IPC or scripting menus to lock.	没有需要锁定的多用户、IPC 或脚本菜单。
+	User Folder	用户文件夹
+	Folder:	文件夹：
+	Browse…	浏览…
+	Not available in the web version: the browser chooses where files go.	网页版不可用：文件保存位置由浏览器决定。
+	The Open and Save dialogs start here, and automatic backups are written in a backups folder inside it.	“打开”和“保存”对话框从这里开始，自动备份写入其中的 backups 文件夹。
+	Monospace (Hack)	等宽字体 (Hack)
+	Proportional (as the interface)	比例字体（与界面相同）
+	Default	默认
+	Black	黑色
+	White	白色
+	Amber	琥珀色
+	Cyan	青色
+	Magenta	洋红色
+	Router console text	路由器控制台文字
+	Router console background	路由器控制台背景
+	PC console text	电脑控制台文字
+	PC console background	电脑控制台背景
+	Tooltip text	提示文字
+	Tooltip background	提示背景
+	Router console	路由器控制台
+	PC console	电脑控制台
+	Tooltip	提示
+	Application size:	程序字号：
+	8 pt is the default (100%). Sets the text of menus, buttons and forms. Names drawn on the workspace follow its zoom instead.	8 磅为默认值（100%）。设置菜单、按钮和表单的文字大小；工作区中绘制的名称则跟随其缩放。
+	CLI font:	命令行字体：
+	CLI font size:	命令行字号：
+	Used by the CLI tab, the Command Prompt and the Terminal. These are the faces the program carries: it adds no others.	用于 CLI 标签页、命令提示符和终端。这些是程序自带的字体，不会添加其他字体。
+	Sample: Router#show ip route	示例：Router#show ip route
+	Tooltips	提示
+	Tooltip font size:	提示字号：
+	Colors	颜色
+	{}: the text and the background are too close in colour to read.	{}：文字与背景颜色太接近，无法辨认。
+	Reset Colors	重置颜色
+	Prompt	询问
+	View the previous events	查看之前的事件
+	{} minutes	{} 分钟
+	Backups	备份
+	Auto File Backup Interval:	自动备份间隔：
+	Writes a copy of the open lab in the backups folder of the user folder (or of the settings folder), only when the lab changed. Your own file is never touched, and a backup never replaces another.	仅在实验发生变化时，把当前实验的副本写入用户文件夹（或设置文件夹）下的 backups 文件夹。不会改动你自己的文件，备份也不会覆盖其他备份。
+	Not available in the web version: the browser keeps no files for the page.	网页版不可用：浏览器不会为页面保存文件。
+	When the event list is full:	事件列表已满时：
+	The list holds {} events and forgets the oldest ones when it is full.	列表最多保存 {} 个事件，满了以后会丢弃最旧的事件。
+	Buffer only the events that pass the filter	只缓存通过过滤器的事件
+	Events the Edit Filters list hides are dropped instead of being kept.	被“编辑过滤器”列表隐藏的事件会被丢弃，而不是保留。
+	Windows	窗口
+	Show the device window taskbar	显示设备窗口任务栏
+	A bar under the workspace lists the open device windows: click one to bring it to the front.	工作区下方的栏列出已打开的设备窗口，单击其中一个可将其置于最前。
+	Not applicable	不适用
+	Reload local image files	重新加载本地图片文件
+	Labs hold no images, so there is nothing to reload.	实验不包含图片，没有需要重新加载的内容。
+	External network access	外部网络访问
+	Use a proxy	使用代理
+	NetLabCraft makes no network connections of its own, so it has no network access or proxy to set.	NetLabCraft 自身不建立任何网络连接，因此没有网络访问或代理可设置。
+	Event List Full	事件列表已满
+	The event list holds {} events, its limit. What now?	事件列表已达上限 {} 个事件。接下来怎么办？
+	Keep going	继续
+	The oldest events are forgotten as new ones arrive.	新事件到来时，最旧的事件会被丢弃。
+	Previous Events	之前的事件
+	{} events kept from the list that filled up.	从已满的列表中保留了 {} 个事件。
+	Router	路由器
+	Switch	交换机
+	End Device	终端设备
+	Device window tabs	设备窗口标签页
+	Hide the Physical tab	隐藏“物理”标签页
+	Hide the Config tab of every device	隐藏所有设备的“配置”标签页
+	Hide the CLI tab of every device	隐藏所有设备的 CLI 标签页
+	Hide the Config tab of routers and switches	隐藏路由器和交换机的“配置”标签页
+	Hide the CLI tab of routers and switches	隐藏路由器和交换机的 CLI 标签页
+	Hide the Services tab	隐藏“服务”标签页
+	Hide the Desktop tab	隐藏“桌面”标签页
+	Hide the screen tabs of phones and smart things	隐藏电话和智能设备的屏幕标签页
+	The Phone tab and the IoT tab of a smart thing.	电话标签页以及智能设备的物联网标签页。
+	Hide the Attributes tab	隐藏“属性”标签页
+	A window never loses all its tabs: if every one were hidden it keeps them.	窗口不会失去全部标签页：如果全部被隐藏，则保留它们。
+	Wireless and other things	无线及其他
+	Hide wireless and cellular pages	隐藏无线和蜂窝页面
+	The Wi-Fi and cellular pages and ports in the Config tab.	“配置”标签页中的 Wi-Fi 和蜂窝页面及端口。
+	Hide legacy equipment	隐藏旧设备
+	NetLabCraft has no legacy equipment to hide.	NetLabCraft 没有可隐藏的旧设备。
+	Show the wireless boundary	显示无线边界
+	View Wireless Signals draws an outline around each radio's coverage.	“查看无线信号”会在每个无线电的覆盖范围外画出轮廓。
+	Fade the wireless colour toward the edge	无线颜色向边缘渐变
+	View Wireless Signals fills each coverage area with a colour that fades outwards; unchecked, a flat disc.	“查看无线信号”用向外渐淡的颜色填充每个覆盖区域；取消勾选则为纯色圆盘。
+	Hide the coverage range field of Wi-Fi forms	隐藏 Wi-Fi 表单中的覆盖范围输入框
+	Open smart things with their advanced settings shown	打开智能设备时显示高级设置
+	The IoT tab of a smart thing opens its Advanced section.	智能设备的物联网标签页会展开“高级”部分。
+	Answer Tree Filter	答案树过滤器
+	Every item of the Assessment Tree.	评估树的所有项目。
+	Configuration and address items; the cables are left out.	配置和地址项目，不含线缆。
+	Only the items about routers.	仅路由器相关的项目。
+	Only the items about switches.	仅交换机相关的项目。
+	Only the items about end devices (PCs, servers, phones and the like).	仅终端设备（电脑、服务器、电话等）相关的项目。
+	The filter applies to the Assessment Tree window of the Activity Wizard. What is hidden is still graded.	过滤器作用于活动向导中的评估树窗口。被隐藏的项目仍然计分。
+	Not available: NetLabCraft has no scripted device pages, so a device cannot be given a custom page.	不可用：NetLabCraft 没有脚本化的设备页面，因此无法为设备指定自定义页面。
+	Not applicable: there are no scripted modules to sign. Activity results carry their own signature, checked by the instructor's Verify Results.	不适用：没有需要签名的脚本模块。活动结果带有自己的签名，由讲师的“验证结果”检查。
+	Images held by the lab	实验中的图片
+	Image	图片
+	The lab holds no images: a lab file is only its devices, cables, places and settings.	实验不包含图片：实验文件只包含设备、线缆、场所和设置。
+	MAC address: {}	MAC 地址：{}
+	IP address: {}	IP 地址：{}
+	Default gateway: {}	默认网关：{}
+	Reports every {} s	每 {} 秒上报一次
+	Backup written to {}	备份已写入 {}
+	Application size	程序字号
+	Enter the password first: some tabs are locked.	请先输入密码：部分标签页已锁定。

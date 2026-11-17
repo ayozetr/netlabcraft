@@ -1,6 +1,7 @@
 //! Activities in the window: the instructions with the score (students) and the Activity
 //! Wizard (instructors). Both act through the `activity.*` commands.
 
+use crate::prefs_look::HintExt;
 use egui::{Color32, RichText};
 use serde_json::{Value, json};
 
@@ -156,11 +157,7 @@ fn instructions(app: &mut PacketApp, ctx: &egui::Context) {
                 check = ui.add_enabled(!time_up, egui::Button::new(tl("Check Results"))).clicked();
                 reset = ui.add_enabled(app.session.activity_start.is_some(), egui::Button::new(tl("Reset Activity"))).clicked();
                 let detail = app.ui.activity.results.as_ref().is_some_and(|r| r["detail"] != false);
-                if ui
-                    .add_enabled(detail, egui::Button::new(tl("Compare")))
-                    .on_hover_text(tl("Each check's answer next to what your lab has"))
-                    .clicked()
-                {
+                if ui.add_enabled(detail, egui::Button::new(tl("Compare"))).hint(tl("Each check's answer next to what your lab has")).clicked() {
                     app.ui.activity.show_compare = true;
                 }
             });
@@ -356,7 +353,7 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
                 let mut score_only = a.score_only;
                 if ui
                     .checkbox(&mut score_only, tl("Students see the score only"))
-                    .on_hover_text(tl("While locked, Check Results doesn't say which checks passed"))
+                    .hint(tl("While locked, Check Results doesn't say which checks passed"))
                     .changed()
                 {
                     run.push(("activity.set", json!({"score_only": score_only})));
@@ -367,7 +364,7 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
                 ui.add(egui::TextEdit::singleline(&mut v.password).password(true).desired_width(140.0)).labelled_by(l.id);
                 if ui
                     .add_enabled(!v.password.is_empty(), egui::Button::new(tl("Lock the activity")))
-                    .on_hover_text(tl("Students can't change the activity or see its checks until it is unlocked"))
+                    .hint(tl("Students can't change the activity or see its checks until it is unlocked"))
                     .clicked()
                 {
                     run.push(("activity.lock", json!({"password": v.password})));
@@ -380,7 +377,7 @@ fn wizard(app: &mut PacketApp, ctx: &egui::Context) {
         ui.horizontal(|ui| {
             if ui
                 .button(tl("Capture answers from this lab"))
-                .on_hover_text(tl("Every configuration line of the routers and switches, and every PC address, becomes a check"))
+                .hint(tl("Every configuration line of the routers and switches, and every PC address, becomes a check"))
                 .clicked()
             {
                 if activity.is_none() {

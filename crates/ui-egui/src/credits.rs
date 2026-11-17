@@ -3,6 +3,7 @@
 //! contributors/contributors.json and people.toml (docs/contributors.md); nothing is read at run
 //! time.
 
+use crate::prefs_look::HintExt;
 use std::cmp::Ordering;
 
 use egui::RichText;
@@ -228,7 +229,7 @@ pub fn contributors_ui(ui: &mut egui::Ui) {
                 }
             }
         });
-        if ui.button(tl(if v.ascending { "Ascending" } else { "Descending" })).on_hover_text(tl("Reverse the order")).clicked() {
+        if ui.button(tl(if v.ascending { "Ascending" } else { "Descending" })).hint(tl("Reverse the order")).clicked() {
             v.ascending = !v.ascending;
         }
         ui.separator();
@@ -253,7 +254,7 @@ pub fn contributors_ui(ui: &mut egui::Ui) {
                     if i > 0 {
                         ui.label(RichText::new("·").weak());
                     }
-                    ui.hyperlink_to(c.name(v.names), format!("https://github.com/{}", c.login)).on_hover_text(c.summary());
+                    ui.hyperlink_to(c.name(v.names), format!("https://github.com/{}", c.login)).hint(c.summary());
                 }
             });
         }
@@ -266,7 +267,7 @@ fn table(ui: &mut egui::Ui, list: &[&Contributor], v: &mut View) {
         for k in SortKey::ALL {
             // The default fonts have no arrow glyphs: + / - mark the sorted column and its direction.
             let arrow = if v.key == k { if v.ascending { " +" } else { " -" } } else { "" };
-            if ui.button(RichText::new(format!("{}{arrow}", tl(k.label().1))).strong()).on_hover_text(tl(k.label().0)).clicked() {
+            if ui.button(RichText::new(format!("{}{arrow}", tl(k.label().1))).strong()).hint(tl(k.label().0)).clicked() {
                 if v.key == k {
                     v.ascending = !v.ascending;
                 } else {
@@ -277,7 +278,7 @@ fn table(ui: &mut egui::Ui, list: &[&Contributor], v: &mut View) {
         }
         ui.end_row();
         for c in list {
-            ui.hyperlink_to(c.name(v.names), format!("https://github.com/{}", c.login)).on_hover_text(c.summary());
+            ui.hyperlink_to(c.name(v.names), format!("https://github.com/{}", c.login)).hint(c.summary());
             ui.label(group(c.prs));
             ui.label(group(c.commits));
             ui.label(group(c.lines_added));

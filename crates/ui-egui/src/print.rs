@@ -6,6 +6,7 @@
 //! sets none and so downloads the file) and, when there is a choice, shows a small window with the
 //! three ways out: save the file, open it in the system's PDF viewer, or send it to a printer.
 
+use crate::prefs_look::HintExt;
 use egui::{Context, RichText};
 
 use crate::i18n::tl;
@@ -72,22 +73,22 @@ pub fn window(app: &mut PacketApp, ctx: &Context) {
         ui.label(tl("The report is ready as a PDF. What do you want to do with it?"));
         ui.label(RichText::new(&name).small());
         ui.add_space(4.0);
-        if ui.button(tl("Save as PDF...")).on_hover_text(tl("Choose where to keep the file")).clicked() {
+        if ui.button(tl("Save as PDF...")).hint(tl("Choose where to keep the file")).clicked() {
             pick = Some(Choice::Save);
         }
         let viewer = ui.add_enabled(choices.viewer, egui::Button::new(tl("Open in the PDF viewer")));
         let viewer = if choices.viewer {
-            viewer.on_hover_text(tl("Opens a temporary copy in the program your system uses for PDF files"))
+            viewer.hint(tl("Opens a temporary copy in the program your system uses for PDF files"))
         } else {
-            viewer.on_disabled_hover_text(tl("This system has no program to open files with: use Save as PDF"))
+            viewer.disabled_hint(tl("This system has no program to open files with: use Save as PDF"))
         };
         if viewer.clicked() {
             pick = Some(Choice::Open);
         }
         let direct = ui.add_enabled(choices.direct_unavailable.is_none(), egui::Button::new(tl("Print directly")));
         let direct = match &choices.direct_unavailable {
-            Some(why) => direct.on_disabled_hover_text(crate::i18n::tr(why)),
-            None => direct.on_hover_text(tl("Sends the file to the default printer")),
+            Some(why) => direct.disabled_hint(crate::i18n::tr(why)),
+            None => direct.hint(tl("Sends the file to the default printer")),
         };
         if direct.clicked() {
             pick = Some(Choice::Print);

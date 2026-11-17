@@ -9,6 +9,7 @@
 //! only reads the lab and sends them. What is active, the snaps and the filter belong to the
 //! window and are not saved with the lab.
 
+use crate::prefs_look::HintExt;
 use std::collections::BTreeSet;
 
 use egui::{Align2, Color32, FontId, Rect, RichText, Sense, Stroke, pos2, vec2};
@@ -238,7 +239,7 @@ fn location(app: &mut PacketApp, ui: &mut egui::Ui, place: u32) {
             if ui.button(tl("View Mode")).clicked() {
                 app.ui.env_ui.edit = false;
             }
-        } else if ui.button(tl("Edit")).on_hover_text(tl("Change this place's environment")).clicked() {
+        } else if ui.button(tl("Edit")).hint(tl("Change this place's environment")).clicked() {
             app.ui.env_ui.edit = true;
         }
     });
@@ -270,7 +271,7 @@ fn view_mode(app: &mut PacketApp, ui: &mut egui::Ui, place: u32) {
             }
         } else {
             ui.label(RichText::new(env::format_time(time)).strong().monospace());
-            if ui.button(tl("Edit")).on_hover_text(tl("Set the time of day")).clicked() {
+            if ui.button(tl("Edit")).hint(tl("Set the time of day")).clicked() {
                 app.ui.env_ui.editing_time = true;
                 app.ui.env_ui.time_text = env::format_time(time);
             }
@@ -570,7 +571,7 @@ fn advanced_tab(app: &mut PacketApp, ui: &mut egui::Ui, place: u32) {
         if ui.button(tl("Import File…")).clicked() {
             app.requests.push(UiRequest::ImportEnvironment { place });
         }
-        if ui.button(tl("Remove Custom Environment")).on_hover_text(tl("The place inherits every variable again")).clicked() {
+        if ui.button(tl("Remove Custom Environment")).hint(tl("The place inherits every variable again")).clicked() {
             app.run("environment.clear", json!({"place": place}));
         }
     });

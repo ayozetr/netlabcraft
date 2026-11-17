@@ -1,6 +1,7 @@
 //! The cloud's port pairs in its Physical tab: which port each frame leaves by, a Part button
 //! per pair and two port pickers to join two more. Every change is `cloud.map`.
 
+use crate::prefs_look::HintExt;
 use egui::RichText;
 use netlabcraft_model::Device;
 use serde_json::json;
@@ -18,7 +19,7 @@ pub(crate) fn panel(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
             let what = trf("Part {} from {}", &[a, b]);
             let r = ui.button(tl("Part"));
             r.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, what.clone()));
-            if r.on_hover_text(what.clone()).clicked() {
+            if r.hint(what.clone()).clicked() {
                 part = Some((a.clone(), b.clone()));
             }
         });

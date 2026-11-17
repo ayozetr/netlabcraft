@@ -1,6 +1,7 @@
 //! The Config tab's wireless page: a controller's WLANs and RADIUS server, or the controller a
 //! lightweight access point joins. Every change goes through engine commands.
 
+use crate::prefs_look::HintExt;
 use egui::RichText;
 use netlabcraft_model::Device;
 use netlabcraft_model::wlan::{WlanSecurity, is_wlc, lap_channel, mgmt_addr};
@@ -87,9 +88,8 @@ pub fn show(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
             field(ui, tl("WPA2 passphrase"), &mut f.key);
         }
         field(ui, tl("VLAN (optional)"), &mut f.vlan);
-        ui.checkbox(&mut f.central, tl("Central switching (through the controller)")).on_hover_text(tl(
-            "The access points tunnel the hosts' traffic to the controller over CAPWAP, and the controller bridges it into the VLAN",
-        ));
+        ui.checkbox(&mut f.central, tl("Central switching (through the controller)"))
+            .hint(tl("The access points tunnel the hosts' traffic to the controller over CAPWAP, and the controller bridges it into the VLAN"));
         if ui.button(tl("Save WLAN")).clicked() {
             let sec = ["open", "psk", "enterprise"].get(f.security).copied().unwrap_or("open");
             let id = f.id.trim().parse::<u64>().unwrap_or(0);

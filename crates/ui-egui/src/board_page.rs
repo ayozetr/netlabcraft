@@ -3,6 +3,7 @@
 //! in code for the Physical tab. Every change is an engine command (`board.program`,
 //! `board.wire`, `board.status`).
 
+use crate::prefs_look::HintExt;
 use egui::{Color32, RichText, Sense, vec2};
 use netlabcraft_model::Device;
 use serde_json::{Value, json};
@@ -45,18 +46,18 @@ pub(crate) fn tab(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &m
         if let Some(line) = st["line"].as_u64().filter(|_| state == "running") {
             ui.label(RichText::new(trf("at line {}", &[&line])).color(tk.muted));
         }
-        if ui.button(tl("Run")).on_hover_text(tl("Save the program and run it from the top")).clicked() {
+        if ui.button(tl("Run")).hint(tl("Save the program and run it from the top")).clicked() {
             let src = form.source.clone();
             app.run("board.program", json!({"device": d.0, "source": src, "run": true}));
         }
         if ui.add_enabled(state == "running", egui::Button::new(tl("Stop"))).clicked() {
             app.run("board.program", json!({"device": d.0, "run": false}));
         }
-        if ui.button(tl("Save")).on_hover_text(tl("Keep the program without running it")).clicked() {
+        if ui.button(tl("Save")).hint(tl("Keep the program without running it")).clicked() {
             let src = form.source.clone();
             app.run("board.program", json!({"device": d.0, "source": src}));
         }
-        if ui.button(tl("Example")).on_hover_text(tl("Put a short example program in the editor")).clicked() {
+        if ui.button(tl("Example")).hint(tl("Put a short example program in the editor")).clicked() {
             form.source = EXAMPLE.to_string();
         }
     });

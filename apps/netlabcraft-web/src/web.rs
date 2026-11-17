@@ -154,6 +154,8 @@ impl eframe::App for WebShell {
                     });
                 }
                 UiRequest::PlaySound(bytes) => play_sound(&bytes),
+                // The browser keeps no folders or backups for the page.
+                UiRequest::PickFolder | UiRequest::Backup { .. } => {}
                 UiRequest::Quit => {}
             }
         }

@@ -1,6 +1,7 @@
 //! A server's Services tab (HTTP, DHCP, DNS) and the PC's Web Browser. Changes are applied with
 //! the `server.services` command (undoable); pages are fetched with `browser.get`.
 
+use crate::prefs_look::HintExt;
 use std::net::Ipv4Addr;
 
 use egui::{RichText, Ui, vec2};
@@ -247,7 +248,7 @@ fn http(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mu
     }
     ui.horizontal(|ui| {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button(tl("Import")).on_hover_text(tl("Add an .html file from your computer")).clicked() {
+            if ui.button(tl("Import")).hint(tl("Add an .html file from your computer")).clicked() {
                 app.requests.push(crate::UiRequest::ImportWebFile { device: d });
             }
             if ui.button(tl("New File")).clicked() {
@@ -462,11 +463,11 @@ pub fn browser(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, forms: &mut Servic
     let tk = theme::tokens(app.ui.dark);
     let mut go: Option<String> = None;
     ui.horizontal(|ui| {
-        if ui.add_enabled(forms.pos > 0, egui::Button::new("<")).on_hover_text(tl("Back")).clicked() {
+        if ui.add_enabled(forms.pos > 0, egui::Button::new("<")).hint(tl("Back")).clicked() {
             forms.pos -= 1;
             go = forms.history.get(forms.pos).cloned();
         }
-        if ui.add_enabled(forms.pos + 1 < forms.history.len(), egui::Button::new(">")).on_hover_text(tl("Forward")).clicked() {
+        if ui.add_enabled(forms.pos + 1 < forms.history.len(), egui::Button::new(">")).hint(tl("Forward")).clicked() {
             forms.pos += 1;
             go = forms.history.get(forms.pos).cloned();
         }
