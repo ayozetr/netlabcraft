@@ -2026,6 +2026,38 @@ furniture	Table	桌子
 	Wi-Fi water drain monitor: reports how full a storm drain is (0-100 %)	Wi-Fi 排水井监测器：报告雨水井的水位（0-100 %）
 	Air Quality Sensor	空气质量传感器
 	Wi-Fi air quality sensor: reports an air quality index (0-500, higher is worse)	Wi-Fi 空气质量传感器：报告空气质量指数（0-500，越高越差）
+	Appliance	家用电器
+	Wi-Fi appliance: any mains appliance with a power state, switched on and off by the IoT service	Wi-Fi 家用电器：任何带有电源状态的市电设备，由物联网服务开启和关闭
+	Bluetooth Speaker	蓝牙音箱
+	Wi-Fi speaker with Bluetooth: plays while the IoT service keeps it on, or while a music player within 60 m is playing and paired with it	带蓝牙的 Wi-Fi 音箱：物联网服务保持其开启时播放，或 60 米内与其配对的音乐播放器正在播放时播放
+	Ceiling Fan	吊扇
+	Wi-Fi ceiling fan: while on it stirs the air and cools the room toward the outside temperature	Wi-Fi 吊扇：开启时搅动空气，使房间温度向室外温度降低
+	Furnace	暖炉
+	Wi-Fi furnace: heats the room faster than a heater while the IoT service keeps it on	Wi-Fi 暖炉：物联网服务保持其开启时，比取暖器更快地加热房间
+	Humidifier	加湿器
+	Wi-Fi humidifier: raises the room's humidity while the IoT service keeps it on	Wi-Fi 加湿器：物联网服务保持其开启时提高房间湿度
+	Humiture Monitor	温湿度监测器
+	Wi-Fi monitor that reports the temperature (its reading) and the relative humidity (a second reading)	Wi-Fi 监测器：报告温度（其读数）和相对湿度（第二个读数）
+	Portable Music Player	便携音乐播放器
+	Wi-Fi music player: plays a tone while on, quietly alone and louder through a Bluetooth speaker within 60 m	Wi-Fi 音乐播放器：开启时播放一个音调，单独播放声音较小，通过 60 米内的蓝牙音箱播放则更响
+	Sound Frequency Detector	声音频率检测器
+	Wi-Fi sound detector: reports the pitch of the loudest sound in Hz (its reading) and its volume in dB (a second reading)	Wi-Fi 声音检测器：报告最响声音的音调（赫兹，其读数）及其音量（分贝，第二个读数）
+	appliance	家用电器
+	bluetooth speaker	蓝牙音箱
+	ceiling fan	吊扇
+	furnace	暖炉
+	humidifier	加湿器
+	humiture	温湿度
+	music player	音乐播放器
+	pitch	音调
+	turning	转动中
+	burning	运行中
+	misting	加湿中
+	and {}	和 {}
+	reading {} and {}	读取 {} 和 {}
+	Paired with {} (Bluetooth, within range)	已与 {} 配对（蓝牙，在范围内）
+	Not paired: nothing to pair with is within Bluetooth range	未配对：蓝牙范围内没有可配对的设备
+	Also: flames {} %, CO2 {} ppm, sound {} dB at {} Hz	另外：火焰 {} %，CO2 {} ppm，声音 {} dB，{} Hz
 	Blower Fan	鼓风机
 	Blower fan with one Fast Ethernet port: the IoT server switches it on and off	带 1 个快速以太网端口的鼓风机：物联网服务器负责开关
 	PLC	PLC

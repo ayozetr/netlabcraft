@@ -1,6 +1,6 @@
 # Model equivalents
 
-> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (the full device box: 35 more models, 100 in all) · earlier: minor (the Telephone Cloud, the Dial-up PC and the Access Server) · also merged with minor (the sniffer and port mirroring) · earlier: minor (smart TVs, a sniffer, a smart speaker, a water level sensor and four more router models) · earlier: minor (cellular radio on Tablet and Smartphone, Cell Tower and Central Office Server) · earlier: minor (Tablet, Smartphone, ten Wi-Fi IoT things, Board SBC and Board MCU; power-supply bays) · **Target:** CCNA course labs
+> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (Smart Home: eight more things, 108 models in all) · also merged with minor (the full device box: 35 more models, 100 in all) · earlier: minor (the Telephone Cloud, the Dial-up PC and the Access Server) · also merged with minor (the sniffer and port mirroring) · earlier: minor (smart TVs, a sniffer, a smart speaker, a water level sensor and four more router models) · earlier: minor (cellular radio on Tablet and Smartphone, Cell Tower and Central Office Server) · earlier: minor (Tablet, Smartphone, ten Wi-Fi IoT things, Board SBC and Board MCU; power-supply bays) · **Target:** CCNA course labs
 
 Course labs name specific vendor models. NetLabCraft's models are its own, named after their
 ports (`GE` Gigabit Ethernet, `FE` Fast Ethernet, `S` serial), and never carry vendor names
@@ -87,6 +87,14 @@ lab has students fit a redundant supply, use a two-bay model.
 | Water Level Sensor | `IoT-Water` | The course's water level monitor | `Wireless0` | Reports % of a tank filled. |
 | Smart Plug | `IoT-Plug` | The course's power outlet | `Wireless0` | Powered while on. |
 | Garage Door | `IoT-Garage` | The course's garage door | `Wireless0` | On opens, off closes. |
+| Appliance | `IoT-Appliance` | A generic mains appliance | `Wireless0` | Switched on and off; its power state is all it has (no load, no energy use). |
+| Bluetooth Speaker | `IoT-BTSpeaker` | A Bluetooth speaker | `Wireless0` | Plays while on, or while a Portable Music Player within 60 m is playing (it pairs with the nearest one by distance). |
+| Ceiling Fan | `IoT-CeilingFan` | A ceiling fan | `Wireless0` | While on it cools the room toward the outside temperature (it never goes below it). |
+| Furnace | `IoT-Furnace` | A furnace | `Wireless0` | While on it heats the room faster than a Heater (up to the same ceiling). |
+| Humidifier | `IoT-Humidifier` | A humidifier | `Wireless0` | While on it raises the room's humidity. |
+| Humiture Monitor | `IoT-Humiture` | A temperature and humidity monitor | `Wireless0` | Reports the temperature as its reading and the humidity as a second reading. |
+| Portable Music Player | `IoT-Player` | A portable music player | `Wireless0` | Plays one tone (440 Hz) while on: 55 dB alone, 75 dB with a Bluetooth Speaker paired. |
+| Sound Frequency Detector | `IoT-SoundDet` | A sound frequency detector | `Wireless0` | Reports the pitch (Hz) of what is playing as its reading and the volume (dB) as a second reading. |
 | Board SBC | `Board-SBC` | SBC boards | `FastEthernet0`, pins `D0–D7`, `A0–A3` | Runs BoardScript, not Python or JavaScript: course programs have to be written again in it. IoT custom cables join pins to things. |
 | Board MCU | `Board-MCU` | MCU boards | `Wireless0`, pins `D0–D5`, `A0–A1` | Runs BoardScript, as the Board SBC. |
 | Server | `Server` | Server-PT | `GigabitEthernet0` | |
@@ -129,6 +137,7 @@ independent project, not affiliated with or endorsed by Cisco.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-17 | minor | Smart Home: Appliance, Bluetooth Speaker, Ceiling Fan, Furnace, Humidifier, Humiture Monitor, Portable Music Player and Sound Frequency Detector. |
 | 2026-11-17 | minor | The full device box: repeater, coaxial splitter, bridge, industrial switch and router, a second firewall, network controller, VoIP adapter and analog phone, generic wired and wireless devices, five smart city things, four industrial ones, four power grid ones, a generic thing, and five actuators and five sensors for boards (35 models, 100 in all). Several are shallow: see [gaps.md](gaps.md) item 16. |
 | 2026-11-16 | minor | Telephone Cloud, Dial-up PC and Access Server rows. |
 | 2026-11-15 | minor | The Sniffer row: a switch's monitor session can copy traffic to it. |

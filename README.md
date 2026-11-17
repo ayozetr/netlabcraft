@@ -82,13 +82,13 @@
 
 ## What it simulates
 
-- **Devices:** 100 models with our own names ([which one to place for a vendor model](docs/model-equivalents.md)):
+- **Devices:** 108 models with our own names ([which one to place for a vendor model](docs/model-equivalents.md)):
   fixed, modular and industrial routers, two stateful firewalls, access, bridge and multilayer switches
   (some with fiber or power over Ethernet), home routers and gateways, access points and a wireless
   controller, a provider cloud with a telephone cloud and an access server for Dial-up, hubs, a repeater and a coaxial splitter, PCs (one with a modem for Dial-up), laptops, tablets and
   phones (Wi-Fi or mobile data through cell towers), servers (a network controller and a data
   historian among them), a printer, a sniffer, IP phones and analog phones with a VoIP adapter,
-  smart-home, smart-city, industrial and power-grid things (smart TVs among them), programmable
+  smart-home (a furnace, a humidifier and a Bluetooth speaker among them), smart-city, industrial and power-grid things (smart TVs among them), programmable
   boards and a PLC, and actuators and sensors that wire to a board's pins; the device box is
   grouped as the reference app's is.
 - **Cables:** automatic, straight-through, cross-over, single mode and multi mode fiber, console,

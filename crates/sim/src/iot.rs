@@ -4,7 +4,8 @@
 //!
 //! Requests are plain HTTP GETs to the service's web port (80), our own small interface:
 //!
-//! - `GET /iot/register?name=N&kind=sensor&type=T&value=V` (a sensor reports its reading) or
+//! - `GET /iot/register?name=N&kind=sensor&type=T&value=V[&value2=W]` (a sensor reports its
+//!   reading, and a second one when it has two) or
 //!   `…&kind=device&type=T` (a smart device registers); the answer is `registered`.
 //! - `GET /iot/state?name=N`: a smart device asks whether it should be on; the answer is `on`
 //!   or `off` (a webcam that is on also gets its still image's text on a second line).
@@ -17,8 +18,9 @@ use std::collections::BTreeMap;
 use std::net::Ipv4Addr;
 
 use netlabcraft_core::DeviceId;
-use netlabcraft_model::environment::{Climate, Effects, MAX_STEP_SECONDS};
-use netlabcraft_model::iot::{is_actuator, is_sensor, thing};
+use netlabcraft_model::environment::{Climate, Effects, MAX_STEP_SECONDS, PLAYER_DB, SPEAKER_DB, TONE_HZ};
+use netlabcraft_model::iot::{is_actuator, is_sensor, quantity_of, thing};
+use netlabcraft_model::proximity::announced_id;
 use netlabcraft_model::{Device, DeviceKind, Topology};
 
 use crate::{Sim, SimError};
@@ -39,6 +41,8 @@ pub struct IotEntry {
     pub address: Ipv4Addr,
     /// The last reading (sensors).
     pub value: Option<i32>,
+    /// The second reading of a sensor that has one (a humiture monitor's humidity).
+    pub value2: Option<i32>,
     /// Switched on (devices).
     pub on: bool,
     /// Webcams: the text of the last still image.
@@ -113,20 +117,41 @@ impl Sim {
     /// What the running smart devices do to the room right now.
     fn env_effects(&self, t: &Topology) -> Effects {
         let mut fx = Effects::default();
+        // Flames in the room make a fire sprinkler spray whether or not the server asked.
+        let burning = self.iot.env.as_ref().is_some_and(|r| r.climate.fire_m > 0);
         for d in t.devices.iter().filter(|d| is_actuator(d) && !t.is_dark(d.id)) {
-            if !self.iot.things.get(&d.id).is_some_and(|s| s.on) {
+            let what = thing(d).map(|x| x.what);
+            let on = self.iot.things.get(&d.id).is_some_and(|s| s.on) || (what == Some("fire sprinkler") && burning);
+            if !on {
                 continue;
             }
-            let n = match thing(d).map(|x| x.what) {
+            let n = match what {
                 Some("heater") => &mut fx.heaters,
+                Some("furnace") => &mut fx.furnaces,
                 Some("ac") => &mut fx.coolers,
                 Some("fan") => &mut fx.fans,
+                Some("ceiling fan") => &mut fx.breezes,
+                Some("humidifier") => &mut fx.humidifiers,
                 Some("sprinkler") => &mut fx.sprinklers,
+                Some("fire sprinkler") => &mut fx.fire_sprinklers,
+                Some("car") => &mut fx.cars,
                 Some("window") | Some("garage") => &mut fx.windows_open,
-                Some("light") => &mut fx.lamps,
+                Some("light") | Some("smart led") => &mut fx.lamps,
+                Some("bluetooth speaker") => {
+                    fx.sound_db = fx.sound_db.max(SPEAKER_DB);
+                    continue;
+                }
+                // A player alone is quiet; paired with a speaker in range it plays loud.
+                Some("music player") => {
+                    fx.sound_db = fx.sound_db.max(if t.paired_speaker(d).is_some() { SPEAKER_DB } else { PLAYER_DB });
+                    continue;
+                }
                 _ => continue,
             };
             *n = n.saturating_add(1);
+        }
+        if fx.sound_db > 0 {
+            fx.sound_hz = TONE_HZ;
         }
         fx
     }
@@ -173,20 +198,48 @@ impl Sim {
     /// What a smart sensor reads: the room's quantity while the physics is on, else its own
     /// number.
     pub fn iot_reading(&self, t: &Topology, d: &Device) -> i32 {
+        let Some(x) = thing(d) else { return d.iot.value };
+        // Things that read who is near them answer from where things are, not from a variable.
+        match x.what {
+            "rfid reader" => return t.rfid_reading(d),
+            "rfid card" | "beacon" => return announced_id(d),
+            "trip" => return t.trip_reading(d),
+            _ => {}
+        }
         // A place (or one above it) that sets the variable decides what the sensor reads.
-        if let Some(x) = thing(d)
-            && let Some(v) = self.env_place_reading(t, d, x.what)
-        {
+        if let Some(v) = self.env_place_reading(t, d, x.what) {
             return v;
         }
         if t.environment.enabled
-            && let Some(x) = thing(d)
             && let Some(c) = self.environment()
             && let Some(v) = c.reading(x.what)
         {
             return v;
         }
         d.iot.value
+    }
+
+    /// A sensor's second reading, when it has one (a humiture monitor's humidity, a sound
+    /// detector's volume, how many things hear a beacon, a signal generator's frequency).
+    pub fn iot_reading2(&self, t: &Topology, d: &Device) -> Option<i32> {
+        let x = thing(d)?;
+        match x.also {
+            "" => None,
+            "audience" => Some(t.beacon_audience(d)),
+            "frequency" => Some(i32::try_from(d.iot.frequency).unwrap_or(0)),
+            w => {
+                if let Some(v) = self.env_place_reading(t, d, w) {
+                    return Some(v);
+                }
+                if t.environment.enabled
+                    && let Some(v) = self.environment().and_then(|c| c.reading(w))
+                {
+                    return Some(v);
+                }
+                // Nothing sets it: the variable's ordinary value.
+                netlabcraft_model::environments::sensor_var(w).map(|v| v.default.round() as i32)
+            }
+        }
     }
 
     /// The time of day of the environment clock now, in seconds from midnight.
@@ -197,6 +250,7 @@ impl Sim {
     /// What the environments of the sensor's place say it reads (`None`: nothing is set there or
     /// above it, so the room or the sensor's own number answers).
     fn env_place_reading(&self, t: &Topology, d: &Device, what: &str) -> Option<i32> {
+        let what = quantity_of(what);
         if t.environments.places.is_empty() {
             return None;
         }
@@ -229,8 +283,10 @@ impl Sim {
         match what {
             "register" => {
                 let kind = if query(q, "kind") == Some("sensor") { "sensor" } else { "device" };
-                let thing_type: String = query(q, "type").unwrap_or(if kind == "sensor" { "sensor" } else { "device" }).chars().take(16).collect();
+                let thing_type: String =
+                    query(q, "type").unwrap_or(if kind == "sensor" { "sensor" } else { "device" }).replace('+', " ").chars().take(24).collect();
                 let value = query(q, "value").and_then(|v| v.parse::<i32>().ok());
+                let value2 = query(q, "value2").and_then(|v| v.parse::<i32>().ok());
                 let (at, new) = match list.iter().position(|e| e.name == name) {
                     Some(i) => (i, false),
                     None if list.len() >= MAX_THINGS => return Some(("503 Service Unavailable", "too many things".into())),
@@ -241,6 +297,7 @@ impl Sim {
                             what: thing_type.clone(),
                             address: src,
                             value: None,
+                            value2: None,
                             on: false,
                             image: None,
                             seen_us: now,
@@ -255,6 +312,7 @@ impl Sim {
                     e.what = thing_type;
                     e.address = src;
                     e.value = value.or(e.value);
+                    e.value2 = value2.or(e.value2);
                     e.seen_us = now;
                 }
                 // A device new to the server takes what the rules say of the current readings;
@@ -321,9 +379,11 @@ impl Sim {
                 return Err(SimError::NoSource("switched off".into()));
             }
             let server = d.iot.server.ok_or_else(|| SimError::NoSource("no IoT server set".into()))?;
-            let what = thing(d).map_or("thing", |x| x.what);
+            // A space would end the request's path (the server reads the second word of the request line).
+            let what = thing(d).map_or("thing", |x| x.what).replace(' ', "+");
             let path = if is_sensor(d) {
-                format!("/iot/register?name={}&kind=sensor&type={what}&value={reading}", d.name)
+                let second = self.iot_reading2(t, d).map(|v| format!("&value2={v}")).unwrap_or_default();
+                format!("/iot/register?name={}&kind=sensor&type={what}&value={reading}{second}", d.name)
             } else {
                 format!("/iot/register?name={}&kind=device&type={what}", d.name)
             };

@@ -38,6 +38,7 @@ mod icons_cable_tiles;
 pub mod icons_families;
 mod icons_parts;
 mod icons_ports;
+mod icons_things2;
 pub mod instructor;
 mod iot_page;
 mod mail;

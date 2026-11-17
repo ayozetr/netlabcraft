@@ -74,6 +74,14 @@ pub struct Var {
     pub drives: Option<&'static str>,
 }
 
+impl Var {
+    /// A smart sensor's whole reading in this variable's unit: the carbon dioxide sensor reads
+    /// ppm and the variable is a percentage, the others read the variable's own unit.
+    pub fn from_reading(&self, reading: i32) -> f64 {
+        if self.id == "carbon_dioxide" { f64::from(reading) / 10_000.0 } else { f64::from(reading) }
+    }
+}
+
 const fn var(id: &'static str, label: &'static str, group: &'static str, unit: &'static str, default: f64, min: f64, max: f64) -> Var {
     Var { id, label, group, unit, default, min, max, drives: None }
 }
@@ -100,11 +108,11 @@ pub static VARS: &[Var] = &[
     // Energy
     var("heat", "Heat", ENERGY, "W/m2", 0.0, 0.0, 100_000.0),
     var("photon", "Photon flux", ENERGY, "umol/m2/s", 0.0, 0.0, 5_000.0),
-    var("fire", "Flames", ENERGY, "%", 0.0, 0.0, 100.0),
+    sensed(var("fire", "Flames", ENERGY, "%", 0.0, 0.0, 100.0), "fire"),
     // Gases: the volume shares of dry air, except smoke (obscuration) and carbon monoxide (ppm)
     var("argon", "Argon", GASES, "%", 0.934, 0.0, 100.0),
     sensed(var("carbon_monoxide", "Carbon monoxide", GASES, "ppm", 0.0, 0.0, 1_000.0), "co"),
-    var("carbon_dioxide", "Carbon dioxide", GASES, "%", 0.042, 0.0, 100.0),
+    sensed(var("carbon_dioxide", "Carbon dioxide", GASES, "%", 0.042, 0.0, 100.0), "co2"),
     var("helium", "Helium", GASES, "%", 0.000_524, 0.0, 100.0),
     var("hydrogen", "Hydrogen", GASES, "%", 0.000_055, 0.0, 100.0),
     var("methane", "Methane", GASES, "%", 0.000_19, 0.0, 100.0),
@@ -129,7 +137,7 @@ pub static VARS: &[Var] = &[
     var("motion_speed", "Motion speed", MOTION, "m/s", 0.0, 0.0, 1_000.0),
     var("torque", "Torque", MOTION, "N m", 0.0, 0.0, 1_000_000.0),
     // Other
-    var("atmospheric_pressure", "Atmospheric pressure", OTHER, "kPa", 101.325, 0.0, 200.0),
+    sensed(var("atmospheric_pressure", "Atmospheric pressure", OTHER, "kPa", 101.325, 0.0, 200.0), "pressure"),
     // Radiation
     var("radiation_level", "Radiation level", RADIATION, "mrem/h", 0.01, 0.0, 1_000_000.0),
     var("alpha", "Alpha radiation", RADIATION, "cpm", 0.0, 0.0, 1_000_000.0),
@@ -138,8 +146,8 @@ pub static VARS: &[Var] = &[
     var("neutron", "Neutron radiation", RADIATION, "cpm", 0.0, 0.0, 1_000_000.0),
     var("ionization", "Ionization", RADIATION, "%", 0.0, 0.0, 100.0),
     // Sound
-    var("sound_pitch", "Sound pitch", SOUND, "Hz", 0.0, 0.0, 20_000.0),
-    var("sound_volume", "Sound volume", SOUND, "dB", 0.0, 0.0, 200.0),
+    sensed(var("sound_pitch", "Sound pitch", SOUND, "Hz", 0.0, 0.0, 20_000.0), "pitch"),
+    sensed(var("sound_volume", "Sound volume", SOUND, "dB", 0.0, 0.0, 200.0), "volume"),
     var("white_noise", "White noise", SOUND, "dB", 0.0, 0.0, 200.0),
     // Temperature
     sensed(var("ambient_temperature", "Ambient temperature", TEMPERATURE, "\u{b0}C", 15.0, -100.0, 150.0), "temperature"),
@@ -156,7 +164,7 @@ pub static VARS: &[Var] = &[
     // Wind
     var("wind_direction", "Wind direction", WIND, "deg", 0.0, 0.0, 360.0),
     var("wind_gusts", "Wind gusts", WIND, "%", 0.0, 0.0, 100.0),
-    var("wind_speed", "Wind speed", WIND, "kph", 0.0, 0.0, 500.0),
+    sensed(var("wind_speed", "Wind speed", WIND, "kph", 0.0, 0.0, 500.0), "wind"),
 ];
 
 /// A variable by id.
@@ -172,7 +180,7 @@ pub fn find_var(name: &str) -> Option<&'static Var> {
 
 /// The variable a smart sensor reads (`thermostat` reads the temperature).
 pub fn sensor_var(what: &str) -> Option<&'static Var> {
-    let what = if what == "thermostat" { "temperature" } else { what };
+    let what = crate::iot::quantity_of(what);
     VARS.iter().find(|v| v.drives == Some(what))
 }
 
@@ -535,8 +543,15 @@ impl Topology {
         let (lo, hi) = match v.id {
             "ambient_temperature" => (crate::environment::MIN_TEMP, crate::environment::MAX_TEMP),
             "carbon_monoxide" => (0, crate::environment::MAX_CO),
+            "carbon_dioxide" => (0, crate::environment::MAX_CO2),
+            "atmospheric_pressure" => (0, crate::environment::MAX_KPA),
+            "wind_speed" => (0, crate::environment::MAX_WIND),
+            "sound_pitch" => (0, 20_000),
+            "sound_volume" => (0, 200),
             _ => (0, 100),
         };
+        // The carbon dioxide share is kept in percent and read in ppm.
+        let value = if v.id == "carbon_dioxide" { value * 10_000.0 } else { value };
         // `round` of a finite value within a few thousand: the conversion cannot overflow.
         Some((value.round() as i32).clamp(lo, hi))
     }

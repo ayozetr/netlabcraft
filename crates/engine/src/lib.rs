@@ -72,6 +72,8 @@ mod tests_settings;
 #[cfg(test)]
 mod tests_swroute;
 #[cfg(test)]
+mod tests_things;
+#[cfg(test)]
 mod tests_traffic;
 #[cfg(test)]
 mod tests_vpnclient;

@@ -2026,6 +2026,38 @@ furniture	Table	Tisch
 	Wi-Fi water drain monitor: reports how full a storm drain is (0-100 %)	WLAN-Gully-Monitor: meldet, wie voll ein Regenwassereinlauf ist (0-100 %)
 	Air Quality Sensor	Luftqualitätssensor
 	Wi-Fi air quality sensor: reports an air quality index (0-500, higher is worse)	WLAN-Luftqualitätssensor: meldet einen Luftqualitätsindex (0-500, höher ist schlechter)
+	Appliance	Haushaltsgerät
+	Wi-Fi appliance: any mains appliance with a power state, switched on and off by the IoT service	WLAN-Haushaltsgerät: ein beliebiges Netzgerät mit Ein-/Aus-Zustand, das der IoT-Dienst ein- und ausschaltet
+	Bluetooth Speaker	Bluetooth-Lautsprecher
+	Wi-Fi speaker with Bluetooth: plays while the IoT service keeps it on, or while a music player within 60 m is playing and paired with it	WLAN-Lautsprecher mit Bluetooth: spielt, solange der IoT-Dienst ihn eingeschaltet lässt, oder solange ein Musikplayer im Umkreis von 60 m spielt und mit ihm gekoppelt ist
+	Ceiling Fan	Deckenventilator
+	Wi-Fi ceiling fan: while on it stirs the air and cools the room toward the outside temperature	WLAN-Deckenventilator: eingeschaltet wälzt er die Luft um und kühlt den Raum bis zur Außentemperatur
+	Furnace	Heizofen
+	Wi-Fi furnace: heats the room faster than a heater while the IoT service keeps it on	WLAN-Heizofen: heizt den Raum schneller als ein Heizgerät, solange der IoT-Dienst ihn eingeschaltet lässt
+	Humidifier	Luftbefeuchter
+	Wi-Fi humidifier: raises the room's humidity while the IoT service keeps it on	WLAN-Luftbefeuchter: erhöht die Luftfeuchtigkeit im Raum, solange der IoT-Dienst ihn eingeschaltet lässt
+	Humiture Monitor	Temperatur- und Feuchtemonitor
+	Wi-Fi monitor that reports the temperature (its reading) and the relative humidity (a second reading)	WLAN-Monitor, der die Temperatur (seine Messung) und die relative Luftfeuchtigkeit (eine zweite Messung) meldet
+	Portable Music Player	Tragbarer Musikplayer
+	Wi-Fi music player: plays a tone while on, quietly alone and louder through a Bluetooth speaker within 60 m	WLAN-Musikplayer: spielt eingeschaltet einen Ton, allein leise und über einen Bluetooth-Lautsprecher im Umkreis von 60 m lauter
+	Sound Frequency Detector	Tonfrequenzdetektor
+	Wi-Fi sound detector: reports the pitch of the loudest sound in Hz (its reading) and its volume in dB (a second reading)	WLAN-Schalldetektor: meldet die Tonhöhe des lautesten Geräuschs in Hz (seine Messung) und dessen Lautstärke in dB (eine zweite Messung)
+	appliance	Gerät
+	bluetooth speaker	Bluetooth-Lautsprecher
+	ceiling fan	Deckenventilator
+	furnace	Heizofen
+	humidifier	Luftbefeuchter
+	humiture	Temperatur und Feuchte
+	music player	Musikplayer
+	pitch	Tonhöhe
+	turning	dreht sich
+	burning	heizt
+	misting	sprüht Nebel
+	and {}	und {}
+	reading {} and {}	liest {} und {}
+	Paired with {} (Bluetooth, within range)	Gekoppelt mit {} (Bluetooth, in Reichweite)
+	Not paired: nothing to pair with is within Bluetooth range	Nicht gekoppelt: nichts zum Koppeln in Bluetooth-Reichweite
+	Also: flames {} %, CO2 {} ppm, sound {} dB at {} Hz	Außerdem: Flammen {} %, CO2 {} ppm, Schall {} dB bei {} Hz
 	Blower Fan	Gebläse
 	Blower fan with one Fast Ethernet port: the IoT server switches it on and off	Gebläse mit einem Fast-Ethernet-Port: der IoT-Server schaltet es ein und aus
 	PLC	SPS
