@@ -1,6 +1,6 @@
 # Extending NetLabCraft
 
-> **Last reviewed:** 2026-11-17 · **Last updated:** 2026-11-17 · **Change:** minor (how to render the contact sheets through CI) · earlier: minor (first version)
+> **Last reviewed:** 2026-11-17 · **Last updated:** 2026-11-17 · **Change:** minor (the closet sheets at three zooms) · earlier: minor (how to render the contact sheets through CI) · earlier: minor (first version)
 
 Where each kind of addition goes. Layers are enforced by `cargo xtask layers`; put code at the lowest layer that can
 own it.
@@ -27,7 +27,7 @@ Docs move with the change: the page's review line and revision history, the numb
 Icons, connectors, cable tiles and the closet are drawn in code, so a change to them has to be looked at. The
 `sheets` example (`crates/ui-egui/examples/sheets.rs`) renders them offscreen to PNGs: a contact sheet of every
 device model (large and small), one of the cable tiles, the wiring closet (a rack, a shelf, a table, patch panels, a
-power strip, cables; also zoomed on the rack) and the logical workspace, each in the light and the dark theme. The labs
+power strip, cables; also zoomed on the rack and at 0.5, 1.0 and 1.5) and the logical workspace, each in the light and the dark theme. The labs
 are built through engine commands, so a new command or model shows up by adding a line there.
 
 The `Snapshots` workflow (`.github/workflows/snapshots.yml`) runs it on ubuntu with a software Vulkan driver and uploads
