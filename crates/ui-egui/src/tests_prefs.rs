@@ -195,7 +195,7 @@ mod t {
                 physical_key: None,
                 pressed: true,
                 repeat: false,
-                modifiers: egui::Modifiers::COMMAND | egui::Modifiers::ALT,
+                modifiers: egui::Modifiers::COMMAND | egui::Modifiers::ALT | egui::Modifiers::SHIFT,
             });
             h.run_steps(2);
         };
