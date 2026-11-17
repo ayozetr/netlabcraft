@@ -211,7 +211,8 @@ pub fn port_up(t: &Topology, end: End) -> bool {
 
 /// Why the cable at a port carries nothing, if it doesn't: the wrong kind of cable (a
 /// straight-through between like ports, or a cross-over between unlike ones, with no
-/// auto-MDIX at either end), or longer than its medium reaches (copper 100 m, fiber 2 km).
+/// auto-MDIX at either end), fiber transceivers that don't suit each other or the cable, or longer
+/// than its medium reaches (copper 100 m, multi-mode fiber 550 m, single-mode fiber 10 km).
 /// Serial cables stand for leased lines and have no length limit here.
 pub fn cable_problem(t: &Topology, end: End) -> Option<String> {
     if let Some(why) = t.cable_mismatch(end) {
@@ -224,7 +225,8 @@ pub fn cable_problem(t: &Topology, end: End) -> Option<String> {
     }
     let (what, max) = match t.resolved_cable(l) {
         netlabcraft_model::cable::Cable::SerialDce | netlabcraft_model::cable::Cable::SerialDte => return None,
-        netlabcraft_model::cable::Cable::Fiber => ("fiber", netlabcraft_model::physical::FIBER_MAX_M),
+        netlabcraft_model::cable::Cable::FiberSingle => ("single-mode fiber", netlabcraft_model::cable::FIBER_SINGLE_MAX_M),
+        netlabcraft_model::cable::Cable::FiberMulti => ("multi-mode fiber", netlabcraft_model::cable::FIBER_MULTI_MAX_M),
         netlabcraft_model::cable::Cable::Coaxial => ("coaxial", netlabcraft_model::cable::COAX_MAX_M),
         netlabcraft_model::cable::Cable::Phone => ("phone line", netlabcraft_model::cable::PHONE_MAX_M),
         _ if t.is_serial(end) => return None,

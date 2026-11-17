@@ -192,6 +192,7 @@ impl Topology {
         }
         self.physical.lengths = lengths;
         self.prune_physical();
+        self.sanitize_octals();
         Ok(changed)
     }
 }

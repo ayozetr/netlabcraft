@@ -100,6 +100,10 @@ pub fn hint(app: &PacketApp) -> String {
         (Tool::Draw(_), _) => crate::i18n::tl("Drag on the workspace to draw. Drawings sit behind devices; move them with Select.").into(),
         (Tool::Note, _) => crate::i18n::tl("Click the workspace to place a note. Drag notes to move them; double-click to edit.").into(),
         (Tool::Cable(Cable::Console), None) => crate::i18n::tl("Console cable: click a PC (RS-232) and a router or switch (Console).").into(),
+        (Tool::Cable(Cable::Usb), None) => crate::i18n::tl("USB cable: click a PC or laptop (USB) and a router or switch (USB console).").into(),
+        (Tool::Cable(Cable::Octal), None) => {
+            crate::i18n::tl("Octal cable: click a router with an octal card, then a router or switch (Console).").into()
+        }
         (Tool::Cable(Cable::IotCustom), None) => crate::i18n::tl("IoT custom cable: click a programmable board and a smart thing.").into(),
         (Tool::Cable(_), Some(Pending::PinCable(d))) => {
             let name = app.session.topology.device(d).map_or(String::new(), |x| x.name.clone());
@@ -418,6 +422,15 @@ fn hit_console(app: &PacketApp, view: &View, p: Pos2) -> Option<DeviceId> {
     })
 }
 
+/// The octal cable under the pointer: the device at its Console end.
+fn hit_octal(app: &PacketApp, view: &View, p: Pos2) -> Option<DeviceId> {
+    let t = &app.session.topology;
+    t.octals.iter().filter(|o| view.visible(o.router) && view.visible(o.device)).find_map(|o| {
+        let (a, b) = (t.device(o.router)?, t.device(o.device)?);
+        (segment_distance(p, view.screen(a.x, a.y), view.screen(b.x, b.y)) < 6.0).then_some(o.device)
+    })
+}
+
 fn hit_link(app: &PacketApp, view: &View, p: Pos2) -> Option<End> {
     let t = &app.session.topology;
     t.links.iter().filter(|l| view.visible(l.a.device) && view.visible(l.b.device)).find_map(|l| {
@@ -685,8 +698,11 @@ fn draw_links(app: &mut PacketApp, painter: &egui::Painter, view: &View, tk: &To
                 Cable::Cross => {
                     painter.extend(egui::Shape::dashed_line(&[pa, pb], Stroke::new(width, tk.cable), 10.0 * view.zoom, 5.0 * view.zoom));
                 }
-                Cable::Fiber => {
-                    painter.line_segment([pa, pb], Stroke::new(width, tk.fiber_cable));
+                Cable::FiberSingle => {
+                    painter.line_segment([pa, pb], Stroke::new(width * 0.7, tk.fiber_cable));
+                }
+                Cable::FiberMulti => {
+                    painter.line_segment([pa, pb], Stroke::new(width * 1.3, tk.fiber_cable));
                 }
                 Cable::Coaxial => crate::icons_families::coax_line(painter, pa, pb, width, tk),
                 Cable::Phone => crate::icons_families::phone_line(painter, pa, pb, width, tk),
@@ -760,8 +776,27 @@ fn draw_links(app: &mut PacketApp, painter: &egui::Painter, view: &View, tk: &To
     for c in t.consoles.iter().filter(|c| view.visible(c.pc) && view.visible(c.device)) {
         let (Some(a), Some(b)) = (t.device(c.pc), t.device(c.device)) else { continue };
         let (pa, pb) = (view.screen(a.x, a.y), view.screen(b.x, b.y));
+        if c.usb {
+            // A USB cable is solid, in the copper colour, with its trident at the PC.
+            crate::icons_families::usb_line(painter, pb, pa, (2.0 * view.zoom).max(1.0), tk);
+            continue;
+        }
         let stroke = Stroke::new((2.0 * view.zoom).max(1.0), tk.console_cable);
         painter.extend(egui::Shape::dashed_line(&[pa, pb], stroke, 5.0 * view.zoom, 4.0 * view.zoom));
+    }
+    // Octal cables: a fan of strands from the router's card to each console it reaches, the line
+    // number beside the middle.
+    for o in t.octals.iter().filter(|o| view.visible(o.router) && view.visible(o.device)) {
+        let (Some(a), Some(b)) = (t.device(o.router), t.device(o.device)) else { continue };
+        let (pa, pb) = (view.screen(a.x, a.y), view.screen(b.x, b.y));
+        let stroke = Stroke::new((1.6 * view.zoom).max(1.0), tk.console_cable);
+        painter.extend(egui::Shape::dashed_line(&[pa, pb], stroke, 2.0 * view.zoom, 3.0 * view.zoom));
+        let len = (pb - pa).length();
+        if len > 1.0 {
+            let d = (pb - pa) / len;
+            let at = pa + (pb - pa) * 0.5 + vec2(-d.y, d.x) * 10.0 * view.zoom;
+            painter.text(at, Align2::CENTER_CENTER, format!("L{}", o.line), egui::FontId::proportional(11.0 * view.zoom.clamp(0.7, 1.3)), tk.text);
+        }
     }
     // IoT custom cables: short purple dashes from a board's pin to its smart thing, the pin
     // named by the board.
@@ -1636,8 +1671,8 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
                 }
             }
         }
-        Tool::Cable(Cable::Console) => match hit {
-            Some(d) => console_click(app, d),
+        Tool::Cable(k @ (Cable::Console | Cable::Usb | Cable::Octal)) => match hit {
+            Some(d) => console_click(app, d, k),
             None => app.ui.canvas.cancel(),
         },
         Tool::Cable(Cable::IotCustom) => match hit {
@@ -1674,6 +1709,8 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
                 app.run("link.remove", json!({"device": end.device.0, "port": port}));
             } else if let Some(pc) = hit_console(app, view, p) {
                 app.run("link.remove", json!({"device": pc.0, "port": netlabcraft_model::cable::RS232_PORT}));
+            } else if let Some(dev) = hit_octal(app, view, p) {
+                app.run("link.remove", json!({"device": dev.0, "port": netlabcraft_model::cable::CONSOLE_PORT}));
             } else if let Some((board, pin)) = hit_wire(app, view, p) {
                 app.run("link.remove", json!({"device": board.0, "port": pin}));
             }
@@ -1937,18 +1974,27 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, d: DeviceId) {
     }
 }
 
-/// The console cable tool: each device has one console-cable port, so a click picks it.
-fn console_click(app: &mut PacketApp, d: DeviceId) {
+/// The console, USB and octal cable tools: each device has one console-cable port, so a click
+/// picks it (an octal cable starts at a router with an octal card).
+fn console_click(app: &mut PacketApp, d: DeviceId, kind: Cable) {
     let Some(dev) = app.session.topology.device(d) else { return };
-    if dev.console_port_name().is_none() {
-        let msg = crate::i18n::trf("{} has no Console or RS-232 port.", &[&dev.name]);
+    let fits = match kind {
+        Cable::Octal => dev.octal_lines() > 0 || dev.has_console(),
+        _ => dev.console_port_name().is_some(),
+    };
+    if !fits {
+        let msg = match kind {
+            Cable::Octal => crate::i18n::trf("{} has no octal card or Console port.", &[&dev.name]),
+            Cable::Usb => crate::i18n::trf("{} has no USB port.", &[&dev.name]),
+            _ => crate::i18n::trf("{} has no Console or RS-232 port.", &[&dev.name]),
+        };
         app.ui.status = Some((msg, true));
         return;
     }
     match app.ui.canvas.pending {
         Some(Pending::ConsoleCable(a)) if a != d => {
             app.ui.canvas.pending = None;
-            if let Some(v) = app.run("link.add", json!({"a": a.0, "b": d.0, "cable": "console"})) {
+            if let Some(v) = app.run("link.add", json!({"a": a.0, "b": d.0, "cable": kind.id()})) {
                 let msg = format!("Connected {} and {}", v["a"].as_str().unwrap_or(""), v["b"].as_str().unwrap_or(""));
                 app.info(msg);
             }

@@ -62,6 +62,27 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
             }
             Ok(out)
         }
+        "port.transceiver" => {
+            let d = crate::cmd::device_param(s, p, "device")?;
+            let single = match text(p, "mode")?.to_ascii_lowercase().replace(['-', ' ', '_'], "").as_str() {
+                "singlemode" | "single" | "smf" | "lx" => true,
+                "multimode" | "multi" | "mmf" | "sx" => false,
+                _ => return Err(bad("`mode` must be \"multi-mode\" or \"single-mode\"")),
+            };
+            let port = crate::cmd::port_param(s, d, text(p, "port")?)?;
+            let end = netlabcraft_model::End { device: d, port };
+            if !matches!(s.topology.port_medium(end), Some(netlabcraft_model::cable::Medium::Fiber | netlabcraft_model::cable::Medium::Combo)) {
+                return Err(EngineError::Failed(format!("{} takes no transceiver: only fiber and combo ports do", s.topology.end_label(end))));
+            }
+            s.checkpoint();
+            if let Some(pt) = s.topology.device_mut(d).and_then(|x| x.ports.get_mut(port)) {
+                pt.single_mode = single;
+            }
+            s.changed();
+            Ok(
+                json!({"device": s.topology.device(d).map_or(String::new(), |x| x.name.clone()), "port": s.topology.end_label(end), "mode": if single { "single-mode" } else { "multi-mode" }}),
+            )
+        }
         "device.power" => {
             let d = crate::cmd::device_param(s, p, "device")?;
             let on = match p.get("on") {

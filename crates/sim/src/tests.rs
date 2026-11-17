@@ -1065,17 +1065,33 @@ fn straight_and_cross_over_cables_need_auto_mdix_or_the_right_kind() {
 }
 
 #[test]
-fn fiber_reaches_two_kilometres_and_copper_a_hundred_metres() {
+fn fiber_reaches_as_far_as_its_mode_and_copper_a_hundred_metres() {
     use netlabcraft_model::cable::Cable;
     let mut t = Topology::new();
     let a = t.add_model(netlabcraft_model::models::find("Switch-24-SFP").unwrap(), None, 0.0, 0.0).unwrap();
     let b = add(&mut t, DeviceKind::Switch);
     let (ea, eb) = (End { device: a, port: 24 }, End { device: b, port: 24 });
-    t.connect_with(ea, eb, Cable::Fiber).unwrap();
-    t.set_cable_length(ea, Some(1500)).unwrap();
+    t.connect_with(ea, eb, Cable::FiberMulti).unwrap();
+    t.set_cable_length(ea, Some(500)).unwrap();
     assert!(port_up(&t, ea), "{:?}", cable_problem(&t, ea));
-    t.set_cable_length(ea, Some(2500)).unwrap();
-    assert!(cable_problem(&t, ea).unwrap().contains("fiber, max 2000 m"));
+    t.set_cable_length(ea, Some(600)).unwrap();
+    assert!(cable_problem(&t, ea).unwrap().contains("multi-mode fiber, max 550 m"));
+    // Single-mode fiber needs single-mode transceivers at both ends, and then reaches 10 km.
+    t.disconnect(ea);
+    t.connect_with(ea, eb, Cable::FiberSingle).unwrap();
+    t.set_cable_length(ea, Some(8_000)).unwrap();
+    assert!(cable_problem(&t, ea).unwrap().contains("cannot drive a single-mode fiber"));
+    for e in [ea, eb] {
+        t.device_mut(e.device).unwrap().ports[e.port].single_mode = true;
+    }
+    assert!(port_up(&t, ea), "{:?}", cable_problem(&t, ea));
+    t.set_cable_length(ea, Some(12_000)).unwrap();
+    assert!(cable_problem(&t, ea).unwrap().contains("single-mode fiber, max 10000 m"));
+    // One end single-mode, the other multi-mode: down at any length.
+    t.set_cable_length(ea, Some(10)).unwrap();
+    t.device_mut(b).unwrap().ports[24].single_mode = false;
+    assert!(cable_problem(&t, ea).unwrap().contains("transceiver mismatch"));
+    assert!(!port_up(&t, ea));
     let (ca, cb) = (End { device: a, port: 0 }, End { device: b, port: 0 });
     t.connect_with(ca, cb, Cable::Cross).unwrap();
     t.set_cable_length(ca, Some(150)).unwrap();

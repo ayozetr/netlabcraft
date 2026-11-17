@@ -192,7 +192,6 @@
 	Authentication	Autenticazione
 	Auto (by route)	Auto (per route)
 	Automatic	Automatico
-	Automatic: picks the right cable for the two ports you choose	Automatico: sceglie il cavo giusto per le due porte selezionate
 	Automation: RESTCONF from a PC	Automazione: RESTCONF da un PC
 	Back	Indietro
 	Back to the call screen	Torna alla schermata di chiamata
@@ -431,7 +430,6 @@
 	fan	ventola
 	Fast Forward Time (30 s)	Avanza veloce (30 s)
 	Fiber	Fibra
-	Fiber: joins fiber ports (SFP uplinks and fiber cards); carries a signal up to 2 km here	Fibra: collega porte in fibra (uplink SFP e schede in fibra); trasporta un segnale fino a 2 km qui
 	File	File
 	File Manager	Gestione file
 	File Name	Nome file
@@ -832,7 +830,6 @@
 	Periodically	Periodicamente
 	Permissions	Permessi
 	Phone	Telefono
-	Phone (RJ-11)	Telefono (RJ-11)
 	phone commands run on IP phones	i comandi del telefono funzionano sui telefoni IP
 	Phone line (RJ-11): joins phone ports (a DSL modem to the phone company's cloud); carries a signal up to 5 km here	Linea telefonica (RJ-11): collega porte telefoniche (un modem DSL al cloud della compagnia telefonica); trasporta un segnale fino a 5 km qui
 	Phone settings	Impostazioni del telefono
@@ -1784,6 +1781,23 @@ event	write request for	richiesta di scrittura di
 	Tab and the arrow keys move between devices and cables; Enter or Space opens the one in focus.	Tab e le frecce si spostano tra dispositivi e cavi; Invio o Spazio apre quello con il focus.
 	The Workspace List in the View menu names every device in a table you can move through.	L'elenco dell'area di lavoro, nel menu Visualizza, nomina ogni dispositivo in una tabella in cui ci si può spostare.
 	Everything the menus do can also be typed, from the command line or by an agent.	Tutto ciò che fanno i menu si può anche digitare, dalla riga di comando o tramite un agente.
+	Automatically Choose Connection Type	Scegli automaticamente il tipo di connessione
+	Single Mode Fiber	Fibra monomodale
+	Multi Mode Fiber	Fibra multimodale
+	Octal	Octal
+	IoT Custom Cable	Cavo IoT personalizzato
+	USB	USB
+	Automatically choose the connection type: picks the right cable for the two ports you choose	Scegli automaticamente il tipo di connessione: sceglie il cavo giusto per le due porte selezionate
+	Single mode fiber: joins fiber ports whose transceivers are single mode; carries a gigabit signal up to 10 km here	Fibra monomodale: collega porte in fibra con transceiver monomodali; qui porta un segnale gigabit fino a 10 km
+	Multi mode fiber: joins fiber ports (SFP uplinks and fiber cards); carries a gigabit signal up to 550 m here	Fibra multimodale: collega porte in fibra (uplink SFP e schede in fibra); qui porta un segnale gigabit fino a 550 m
+	Octal: joins one line of a router's octal card (Card-8A) to the Console port of another router or switch, for reverse-style console access	Octal: collega una linea della scheda octal di un router (Card-8A) alla porta Console di un altro router o switch, per l'accesso console inverso
+	USB: a PC's or laptop's USB port to a router's or switch's USB console port, for the PC's Terminal	USB: dalla porta USB di un PC o portatile alla porta console USB di un router o switch, per il Terminale del PC
+	8-line async card	Scheda asincrona a 8 linee
+	Eight asynchronous lines for an octal cable: each line reaches the Console port of another router or switch (they are lines, not interfaces)	Otto linee asincrone per un cavo octal: ogni linea raggiunge la porta Console di un altro router o switch (sono linee, non interfacce)
+	USB cable: click a PC or laptop (USB) and a router or switch (USB console).	Cavo USB: fai clic su un PC o portatile (USB) e su un router o switch (console USB).
+	Octal cable: click a router with an octal card, then a router or switch (Console).	Cavo octal: fai clic su un router con scheda octal, poi su un router o switch (Console).
+	{} has no octal card or Console port.	{} non ha né una scheda octal né una porta Console.
+	{} has no USB port.	{} non ha una porta USB.
 	Rename…	Rinomina…
 	Switch Off	Spegni
 	Switch On	Accendi

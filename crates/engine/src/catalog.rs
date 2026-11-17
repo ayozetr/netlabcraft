@@ -502,7 +502,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Fit a card",
         "",
         None,
-        r#"{"device", "slot": "0/1", "module": "Card-2S|Card-4S|Card-1GE|Card-2GE|Card-1FE|Card-1GF"} → {"slots", "added": [port names]}: modular routers, switched off"#,
+        r#"{"device", "slot": "0/1", "module": "Card-2S|Card-4S|Card-1GE|Card-2GE|Card-1FE|Card-1GF|Card-8A"} → {"slots", "added": [port names]}: modular routers, switched off"#,
         true
     ),
     c!(
@@ -511,6 +511,14 @@ pub static CATALOG: &[CommandInfo] = &[
         "",
         None,
         r#"{"device", "slot": "0/1"} → {"slots", "removed": [port names]}: switched off; cables on the card's ports are unplugged"#,
+        true
+    ),
+    c!(
+        "port.transceiver",
+        "Fiber transceiver",
+        "",
+        None,
+        r#"{"device", "port": "fiber or combo port", "mode": "multi-mode" (850 nm, the default) | "single-mode" (1310 nm)} → {"device", "port", "mode"}: the transceiver in the port; both ends of a fiber link need the same one, and a single mode fiber cable needs single-mode transceivers"#,
         true
     ),
     c!(
@@ -874,16 +882,23 @@ pub static CATALOG: &[CommandInfo] = &[
         "Connect with a cable",
         "Insert",
         None,
-        r#"{"a": "device", "a_port"?: "interface", "b": "device", "b_port"?: "interface", "cable"?: "auto" (default) | "straight-through" | "cross-over" | "fiber" | "console" | "serial-dce" | "serial-dte"} → {"a", "b", "cable", "resolved"}: a cable joins two ports of its medium; a console cable joins a PC's RS-232 port to a router's or switch's Console port"#,
+        r#"{"a": "device", "a_port"?: "interface", "b": "device", "b_port"?: "interface", "cable"?: "auto" (default) | "console" | "straight-through" | "cross-over" | "fiber-single-mode" | "fiber-multi-mode" | "phone" | "coaxial" | "serial-dce" | "serial-dte" | "octal" | "iot-custom" | "usb" ("fiber" reads as multi-mode), "line"?: 0-7 (octal)} → {"a", "b", "cable", "resolved"}: a cable joins two ports of its medium; a console cable joins a PC's RS-232 port to a router's or switch's Console port, a USB cable a PC's USB port to a router's or switch's USB console port, an octal cable a line of a router's octal card (Card-8A) to another router's or switch's Console port (a is the router with the card unless only b has one)"#,
         true
     ),
-    c!("link.remove", "Remove cable", "Edit", None, r#"{"device", "port": "interface", or "Console" / "RS-232" for a console cable}"#, true),
+    c!(
+        "link.remove",
+        "Remove cable",
+        "Edit",
+        None,
+        r#"{"device", "port": "interface", or "Console" / "RS-232" / "USB" for a console or USB cable, "Console" on the far device or "Async" on the card's router for an octal cable}"#,
+        true
+    ),
     c!(
         "link.list",
         "List cables",
         "",
         None,
-        r#"{} → [{"a", "b", "cable", "resolved", "up", "problem"}] (console cables: cable "console", resolved "console")"#,
+        r#"{} → [{"a", "b", "cable", "resolved", "up", "problem"}] (console cables: cable "console", resolved "console"; USB cables "usb"; octal cables "octal")"#,
         false
     ),
     c!(
@@ -892,6 +907,14 @@ pub static CATALOG: &[CommandInfo] = &[
         "",
         None,
         r#"{"pc": "PC or laptop"} → {"device", "prompt", "log"}: the router or switch its console cable leads to; type into it with cli.exec on that device (the same console its CLI tab shows)"#,
+        false
+    ),
+    c!(
+        "octal.terminal",
+        "Terminal (octal cable)",
+        "",
+        None,
+        r#"{"router": "router with an octal card", "line": 0-7} → {"router", "line", "device", "prompt", "log"}: the router or switch an octal cable reaches from that line of the card; type into it with cli.exec on that device (reverse-telnet style access from a router's own console is not modelled)"#,
         false
     ),
     c!("cli.exec", "Type a command", "", None, r#"{"device", "line"} → {"output", "prompt", "clear"}"#, true),

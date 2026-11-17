@@ -656,6 +656,9 @@ pub struct Port {
     /// `no mdix auto`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub mdix_off: bool,
+    /// Fiber ports: the transceiver is single-mode (1310 nm) instead of multi-mode (850 nm).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub single_mode: bool,
     /// `keepalive N` seconds (`None`: the default, 10; `Some(0)`: `no keepalive`). The simulator
     /// sends no keepalives; the setting is kept and shown by `show interfaces`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2113,6 +2116,7 @@ impl Device {
                 speed: None,
                 duplex: None,
                 mdix_off: false,
+                single_mode: false,
                 keepalive: None,
                 proxy_arp_off: false,
                 dhcp: false,
@@ -2371,6 +2375,9 @@ pub struct Topology {
     /// Console cables (a PC's RS-232 port to a device's Console port): not network links.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub consoles: Vec<cable::ConsoleCable>,
+    /// Octal cables (a line of a router's octal card to a device's Console port): not network links.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub octals: Vec<cable::OctalCable>,
     /// The next device id (ids are never reused).
     pub next_id: u32,
     /// Free text shown with the lab (instructions, notes).
@@ -2578,6 +2585,7 @@ impl Topology {
             devices: Vec::new(),
             links: Vec::new(),
             consoles: Vec::new(),
+            octals: Vec::new(),
             next_id: 1,
             notes: String::new(),
             annotations: Vec::new(),
@@ -2657,6 +2665,7 @@ impl Topology {
         let i = self.devices.iter().position(|d| d.id == id).ok_or_else(|| ModelError::NoDevice(id.to_string()))?;
         self.links.retain(|l| l.a.device != id && l.b.device != id);
         self.consoles.retain(|c| c.pc != id && c.device != id);
+        self.octals.retain(|o| o.router != id && o.device != id);
         for d in &mut self.devices {
             d.board.wires.retain(|w| w.thing != id);
         }
@@ -2967,10 +2976,10 @@ impl Topology {
                 && valid(l.b)
                 && used.insert((l.a.device, l.a.port))
                 && used.insert((l.b.device, l.b.port))
-                && l.cable != cable::Cable::Console
-                && l.cable != cable::Cable::IotCustom
+                && !l.cable.is_off_network()
         });
         self.sanitize_consoles();
+        self.sanitize_octals();
         self.sanitize_wires();
         self.sanitize_physical();
         self.cell_refresh();

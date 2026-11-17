@@ -624,25 +624,25 @@ fn every_cable_tile_picks_its_cable_and_cables_ports_of_its_kind() {
     h.run_steps(2);
     for c in Cable::ALL {
         h.get_by_label(c.label()).scroll_to_me();
-        // Let the scroll settle (ten tiles take a third row).
+        // Let the scroll settle (thirteen tiles take a third row).
         h.run_steps(12);
         h.get_by_label(c.label()).click();
         h.run_steps(1);
         assert_eq!(h.state().ui.tool, Tool::Cable(c), "{}", c.label());
     }
     // Fiber: the port menu offers the fiber and combo ports.
-    h.get_by_label("Fiber").scroll_to_me();
+    h.get_by_label("Multi Mode Fiber").scroll_to_me();
     h.run_steps(12);
-    h.get_by_label("Fiber").click();
+    h.get_by_label("Multi Mode Fiber").click();
     h.run_steps(1);
-    h.get_by_label("Fiber").scroll_to_me();
+    h.get_by_label("Multi Mode Fiber").scroll_to_me();
     h.run_steps(12);
-    h.get_by_label("Fiber").click();
+    h.get_by_label("Multi Mode Fiber").click();
     h.run_steps(1);
     assert_eq!(h.state().ui.tool, Tool::Select);
-    h.get_by_label("Fiber").scroll_to_me();
+    h.get_by_label("Multi Mode Fiber").scroll_to_me();
     h.run_steps(12);
-    h.get_by_label("Fiber").click();
+    h.get_by_label("Multi Mode Fiber").click();
     h.run_steps(1);
     click_at(&mut h, fiber_sw);
     assert!(h.query_by_label("FastEthernet0/1  (other cable type)").is_some());
@@ -657,7 +657,7 @@ fn every_cable_tile_picks_its_cable_and_cables_ports_of_its_kind() {
     h.run_steps(12);
     let t = &h.state().session.topology;
     assert_eq!(t.links.len(), 1);
-    assert_eq!(t.links[0].cable, Cable::Fiber);
+    assert_eq!(t.links[0].cable, Cable::FiberMulti);
     // Console: a click on each device, then the PC's Terminal types into the router.
     h.get_by_label("Console").scroll_to_me();
     h.run_steps(12);

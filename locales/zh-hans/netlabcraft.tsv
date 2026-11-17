@@ -192,7 +192,6 @@
 	Authentication	认证
 	Auto (by route)	自动（按路由）
 	Automatic	自动
-	Automatic: picks the right cable for the two ports you choose	自动：为您选择的两个端口选取合适的线缆
 	Automation: RESTCONF from a PC	自动化：从 PC 使用 RESTCONF
 	Back	返回
 	Back to the call screen	返回通话界面
@@ -431,7 +430,6 @@
 	fan	风扇
 	Fast Forward Time (30 s)	快进时间（30 秒）
 	Fiber	光纤
-	Fiber: joins fiber ports (SFP uplinks and fiber cards); carries a signal up to 2 km here	光纤：连接光纤端口（SFP 上行链路和光纤卡）；此处信号可传输 2 公里
 	File	文件
 	File Manager	文件管理器
 	File Name	文件名
@@ -832,7 +830,6 @@
 	Periodically	定期
 	Permissions	权限
 	Phone	电话
-	Phone (RJ-11)	电话 (RJ-11)
 	phone commands run on IP phones	电话命令在 IP 电话上运行
 	Phone line (RJ-11): joins phone ports (a DSL modem to the phone company's cloud); carries a signal up to 5 km here	电话线 (RJ-11)：连接电话端口（DSL 调制解调器到电话公司的云）；此处信号可传输 5 公里
 	Phone settings	电话设置
@@ -1784,6 +1781,23 @@ event	write request for	写请求
 	Tab and the arrow keys move between devices and cables; Enter or Space opens the one in focus.	Tab 键和方向键在设备和线缆之间移动；回车或空格键打开获得焦点的那个。
 	The Workspace List in the View menu names every device in a table you can move through.	查看菜单中的工作区列表用一张可以浏览的表格列出每个设备。
 	Everything the menus do can also be typed, from the command line or by an agent.	菜单能做的一切也都可以输入，通过命令行或由代理完成。
+	Automatically Choose Connection Type	自动选择连接类型
+	Single Mode Fiber	单模光纤
+	Multi Mode Fiber	多模光纤
+	Octal	八路
+	IoT Custom Cable	IoT 自定义线缆
+	USB	USB
+	Automatically choose the connection type: picks the right cable for the two ports you choose	自动选择连接类型：为您选择的两个端口选取合适的线缆
+	Single mode fiber: joins fiber ports whose transceivers are single mode; carries a gigabit signal up to 10 km here	单模光纤：连接收发器为单模的光纤端口；此处千兆信号可传输 10 公里
+	Multi mode fiber: joins fiber ports (SFP uplinks and fiber cards); carries a gigabit signal up to 550 m here	多模光纤：连接光纤端口（SFP 上行链路和光纤卡）；此处千兆信号可传输 550 米
+	Octal: joins one line of a router's octal card (Card-8A) to the Console port of another router or switch, for reverse-style console access	八路线缆：将路由器八路卡（Card-8A）的一条线路连接到另一台路由器或交换机的控制台端口，用于反向控制台访问
+	USB: a PC's or laptop's USB port to a router's or switch's USB console port, for the PC's Terminal	USB：将电脑或笔记本的 USB 端口连接到路由器或交换机的 USB 控制台端口，供电脑的终端使用
+	8-line async card	8 线异步卡
+	Eight asynchronous lines for an octal cable: each line reaches the Console port of another router or switch (they are lines, not interfaces)	用于八路线缆的八条异步线路：每条线路连接到另一台路由器或交换机的控制台端口（它们是线路，不是接口）
+	USB cable: click a PC or laptop (USB) and a router or switch (USB console).	USB 线缆：点击一台电脑或笔记本（USB）和一台路由器或交换机（USB 控制台）。
+	Octal cable: click a router with an octal card, then a router or switch (Console).	八路线缆：先点击带八路卡的路由器，再点击一台路由器或交换机（控制台）。
+	{} has no octal card or Console port.	{} 没有八路卡或控制台端口。
+	{} has no USB port.	{} 没有 USB 端口。
 	Rename…	重命名…
 	Switch Off	关闭
 	Switch On	打开
