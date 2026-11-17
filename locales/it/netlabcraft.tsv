@@ -2064,6 +2064,11 @@ furniture	Table	Tavolo
 	Wi-Fi tripwire: reports 1 while something that moves (a car, a card, a phone, a tablet, a laptop) is within 50 m, else 0	Sensore di passaggio Wi-Fi: segnala 1 finché qualcosa che si muove (un'auto, una tessera, un telefono, un tablet, un portatile) è entro 50 m, altrimenti 0
 	Wind Detector	Rilevatore di vento
 	Wi-Fi anemometer: reports the wind speed in kph (the room is calm; an environment can set a wind)	Anemometro Wi-Fi: segnala la velocità del vento in km/h (la stanza è calma; un ambiente può impostare un vento)
+	Signal Generator	Generatore di segnali
+	Wi-Fi signal generator: outputs a level (its reading, -1000 to 1000) at a frequency (a second reading, 0 to 20000 Hz) that other things read through the IoT service	Generatore di segnali Wi-Fi: emette un livello (la sua lettura, da -1000 a 1000) a una frequenza (una seconda lettura, da 0 a 20000 Hz) che gli altri oggetti leggono tramite il servizio IoT
+	signal	segnale
+	level	livello
+	Frequency (Hz):	Frequenza (Hz):
 	pressure	pressione
 	beacon	beacon
 	fire	fuoco

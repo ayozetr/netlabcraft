@@ -2064,6 +2064,11 @@ furniture	Table	桌子
 	Wi-Fi tripwire: reports 1 while something that moves (a car, a card, a phone, a tablet, a laptop) is within 50 m, else 0	Wi-Fi 绊线传感器：50 米内有移动的物体（汽车、卡、手机、平板电脑、笔记本电脑）时报告 1，否则为 0
 	Wind Detector	风速检测器
 	Wi-Fi anemometer: reports the wind speed in kph (the room is calm; an environment can set a wind)	Wi-Fi 风速计：报告风速（千米/时）（房间无风；环境可设置风速）
+	Signal Generator	信号发生器
+	Wi-Fi signal generator: outputs a level (its reading, -1000 to 1000) at a frequency (a second reading, 0 to 20000 Hz) that other things read through the IoT service	Wi-Fi 信号发生器：输出一个电平（其读数，-1000 到 1000）和一个频率（第二个读数，0 到 20000 Hz），其他设备可通过物联网服务读取
+	signal	信号
+	level	电平
+	Frequency (Hz):	频率（Hz）：
 	pressure	气压
 	beacon	信标
 	fire	火

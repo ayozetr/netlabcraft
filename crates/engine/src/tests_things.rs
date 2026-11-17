@@ -304,3 +304,27 @@ fn a_smart_led_takes_a_brightness_and_a_colour_and_lights_the_room() {
     assert_eq!((led.iot.brightness, led.iot.colour), (Some(40), Some([0x30, 0x70, 0xe0])));
     assert!(back.find("Home").unwrap().iot.brightness.is_none());
 }
+
+#[test]
+fn a_signal_generator_outputs_a_level_and_a_frequency_that_a_rule_reads() {
+    let mut s = home();
+    add(&mut s, "Signal Generator", "Gen1", 450);
+    add(&mut s, "Appliance", "Kettle1", 520);
+    s.execute("iot.configure", json!({"device": "Gen1", "value": 300, "frequency": 440})).unwrap();
+    let p = page(&mut s, "Gen1");
+    assert_eq!((p["value"].as_i64(), p["value2"].as_i64(), p["frequency"].as_i64()), (Some(300), Some(440), Some(440)), "{p}");
+    // The service lists both numbers, and a rule on the level switches another thing.
+    s.execute("iot.server", json!({"device": "Home", "rules": [{"sensor": "Gen1", "above": 200, "actuator": "Kettle1"}]})).unwrap();
+    assert_eq!(page(&mut s, "Kettle1")["on"], true);
+    s.execute("iot.configure", json!({"device": "Gen1", "value": 100})).unwrap();
+    assert_eq!(page(&mut s, "Kettle1")["on"], false, "the level fell under the rule's 200");
+    let list = s.execute("iot.server", json!({"device": "Home"})).unwrap();
+    let row = list["things"].as_array().unwrap().iter().find(|t| t["name"] == "Gen1").unwrap();
+    assert_eq!((row["value"].as_i64(), row["value2"].as_i64()), (Some(100), Some(440)), "{list}");
+    // Only a generator has a frequency, and it stops at 20 kHz.
+    assert!(s.execute("iot.configure", json!({"device": "Gen1", "frequency": 20_001})).is_err());
+    assert!(s.execute("iot.configure", json!({"device": "Kettle1", "frequency": 5})).is_err());
+    assert!(s.execute("iot.configure", json!({"device": "Gen1", "value": 5_000})).is_err());
+    let back = netlabcraft_model::file::from_json(&netlabcraft_model::file::to_json(&s.topology).unwrap()).unwrap();
+    assert_eq!(back.find("Gen1").unwrap().iot.frequency, 440);
+}

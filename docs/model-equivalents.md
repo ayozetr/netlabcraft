@@ -1,6 +1,6 @@
 # Model equivalents
 
-> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (Smart City: eleven more things; the Smart Sensor, Humidity Sensor and CO Detector are listed in Smart City too, and the Smart LED in three groups) · also merged with minor (Smart Home: eight more things, 108 models in all) · also merged with minor (the full device box: 35 more models, 100 in all) · earlier: minor (the Telephone Cloud, the Dial-up PC and the Access Server) · also merged with minor (the sniffer and port mirroring) · earlier: minor (smart TVs, a sniffer, a smart speaker, a water level sensor and four more router models) · earlier: minor (cellular radio on Tablet and Smartphone, Cell Tower and Central Office Server) · earlier: minor (Tablet, Smartphone, ten Wi-Fi IoT things, Board SBC and Board MCU; power-supply bays) · **Target:** CCNA course labs
+> **Last reviewed:** 2026-11-17 · **Last updated:** 2026-11-17 · **Change:** minor (Smart City and Industrial: twelve more things; the Smart Sensor, Humidity Sensor and CO Detector are listed in Smart City too, and the Smart LED in three groups) · also merged with minor (Smart Home: eight more things, 108 models in all) · also merged with minor (the full device box: 35 more models, 100 in all) · earlier: minor (the Telephone Cloud, the Dial-up PC and the Access Server) · also merged with minor (the sniffer and port mirroring) · earlier: minor (smart TVs, a sniffer, a smart speaker, a water level sensor and four more router models) · earlier: minor (cellular radio on Tablet and Smartphone, Cell Tower and Central Office Server) · earlier: minor (Tablet, Smartphone, ten Wi-Fi IoT things, Board SBC and Board MCU; power-supply bays) · **Target:** CCNA course labs
 
 Course labs name specific vendor models. NetLabCraft's models are its own, named after their
 ports (`GE` Gigabit Ethernet, `FE` Fast Ethernet, `S` serial), and never carry vendor names
@@ -127,6 +127,7 @@ lab has students fit a redundant supply, use a two-bay model.
 | Trip Sensor | `IoT-Trip` | A tripwire or light-beam sensor | `Wireless0` | Reports 1 while a car, a card, a smartphone, a tablet or a laptop is within 50 m, else 0. |
 | Wind Detector | `IoT-WindDet` | An anemometer | `Wireless0` | Reports kph: calm in the room, or the place's `wind_speed`; a reading set by hand sets the room's. |
 | Blower Fan | `IoT-Blower` | An industrial blower | `FastEthernet0` | Running or stopped. |
+| Signal Generator | `IoT-Signal` | A signal generator | `Wireless0` | Outputs a level (its reading, set by hand, -1000 to 1000) and a frequency (a second reading, 0 to 20000 Hz); other things read both through the IoT service, and a rule can act on the level. |
 | PLC | `PLC` | A programmable logic controller | `FastEthernet0`, pins `D0–D7`, `A0–A3` | A board that runs BoardScript, not ladder logic. |
 | Data Historian | `Data-Historian` | A data historian server | `GigabitEthernet0` | A server with the IoT service; keeps the latest reading only, no time series. |
 | HMI Panel | `HMI-Panel` | An operator panel | `FastEthernet0` | A PC (browser, command prompt, IoT monitor); no screen designer. |
@@ -148,7 +149,7 @@ independent project, not affiliated with or endorsed by Cisco.
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-11-17 | minor | Smart City: Atmospheric Pressure Monitor, Beacon, Carbon Dioxide Detector, Fire Monitor, Fire Sprinkler, Old Car, RFID Card, RFID Reader, Smart LED, Trip Sensor and Wind Detector; the equivalents of a temperature monitor, a humidity monitor and a CO detector are also listed in Smart City. |
+| 2026-11-17 | minor | Smart City and Industrial: Atmospheric Pressure Monitor, Beacon, Carbon Dioxide Detector, Fire Monitor, Fire Sprinkler, Old Car, RFID Card, RFID Reader, Smart LED, Trip Sensor and Wind Detector, and an Industrial Signal Generator; the equivalents of a temperature monitor, a humidity monitor and a CO detector are also listed in Smart City. |
 | 2026-11-17 | minor | Smart Home: Appliance, Bluetooth Speaker, Ceiling Fan, Furnace, Humidifier, Humiture Monitor, Portable Music Player and Sound Frequency Detector. |
 | 2026-11-17 | minor | The full device box: repeater, coaxial splitter, bridge, industrial switch and router, a second firewall, network controller, VoIP adapter and analog phone, generic wired and wireless devices, five smart city things, four industrial ones, four power grid ones, a generic thing, and five actuators and five sensors for boards (35 models, 100 in all). Several are shallow: see [gaps.md](gaps.md) item 16. |
 | 2026-11-16 | minor | Telephone Cloud, Dial-up PC and Access Server rows. |

@@ -284,6 +284,7 @@ pub fn thing_of(model_id: &str) -> Option<Thing> {
         "IoT-LED" => t("smart led", false, "", "shining", "dark"),
         "IoT-Trip" => t("trip", true, "1 = something near", "", ""),
         "IoT-WindDet" => t("wind", true, "kph", "", ""),
+        "IoT-Signal" => t2("signal", "level", "frequency", "Hz"),
         "IoT-Thing" => t("thing", true, "reading", "", ""),
         "Part-LED" => t("led", false, "", "lit", "dark"),
         "Part-Buzzer" => t("buzzer", false, "", "sounding", "quiet"),

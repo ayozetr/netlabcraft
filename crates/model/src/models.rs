@@ -58,7 +58,7 @@ impl Model {
             "IoT-Streetlight" | "IoT-Traffic" | "IoT-Parking" | "IoT-Drain" | "IoT-Air" => Group::SmartCity,
             "IoT-Pressure" | "IoT-Beacon" | "IoT-CO2" | "IoT-Fire" | "IoT-FireSprinkler" | "IoT-Car" | "IoT-RFIDCard" | "IoT-RFIDReader"
             | "IoT-LED" | "IoT-Trip" | "IoT-WindDet" => Group::SmartCity,
-            "PLC" | "Data-Historian" | "HMI-Panel" | "IoT-Blower" => Group::Industrial,
+            "PLC" | "Data-Historian" | "HMI-Panel" | "IoT-Blower" | "IoT-Signal" => Group::Industrial,
             "IoT-Battery" | "IoT-Meter" | "IoT-Solar" | "IoT-Wind" => Group::PowerGrid,
             "Part-LED" | "Part-Buzzer" | "Part-Motor" | "Part-Relay" | "Part-LCD" => Group::Actuators,
             "Part-Button" | "Part-Pot" | "Part-Ultrasonic" | "Part-Light" | "Part-Switch" => Group::Sensors,
@@ -685,6 +685,13 @@ pub static MODELS: &[Model] = &[
         ports: &[run("Wireless", 0, 0)],
     },
     Model {
+        id: "IoT-Signal",
+        kind: DeviceKind::Iot,
+        label: "Signal Generator",
+        description: "Wi-Fi signal generator: outputs a level (its reading, -1000 to 1000) at a frequency (a second reading, 0 to 20000 Hz) that other things read through the IoT service",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
         id: "Board-SBC",
         kind: DeviceKind::Iot,
         label: "Board SBC",
@@ -1153,6 +1160,7 @@ impl Model {
             "IoT-LED" => Some("SmartLED"),
             "IoT-Trip" => Some("Trip"),
             "IoT-WindDet" => Some("WindDet"),
+            "IoT-Signal" => Some("Signal"),
             "IoT-Streetlight" => Some("Streetlight"),
             "IoT-Traffic" => Some("Traffic"),
             "IoT-Parking" => Some("Parking"),
@@ -1328,7 +1336,7 @@ mod tests {
         for want in groups {
             assert!(MODELS.iter().any(|m| m.group() == want), "{want:?} is empty");
         }
-        assert_eq!(MODELS.len(), 119);
+        assert_eq!(MODELS.len(), 120);
     }
 
     #[test]
@@ -1354,6 +1362,8 @@ mod tests {
             assert!(crate::iot::thing_of(id).is_some_and(|t| !t.sensor), "{id} is switched");
         }
         assert!(crate::iot::thing_of("IoT-Beacon").is_some_and(|t| t.also == "audience"));
+        assert_eq!(find("IoT-Signal").unwrap().group(), Group::Industrial);
+        assert!(crate::iot::thing_of("IoT-Signal").is_some_and(|t| t.sensor && t.also == "frequency"));
     }
 
     #[test]
