@@ -431,7 +431,7 @@ pub fn tile_ghost(app: &PacketApp, ctx: &egui::Context) {
     let Some((_, name)) = &app.ui.tile_drag else { return };
     let Some(at) = ctx.input(|i| i.pointer.latest_pos()) else { return };
     let tk = theme::tokens(app.ui.dark);
-    let p = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("tile_ghost")));
+    let p = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::unique("tile_ghost")));
     let rect = egui::Rect::from_center_size(at, vec2(96.0, 28.0));
     p.rect_filled(rect, 8.0, tk.pill.gamma_multiply(0.35));
     p.rect_stroke(rect, 8.0, egui::Stroke::new(1.5, tk.pill), egui::StrokeKind::Inside);

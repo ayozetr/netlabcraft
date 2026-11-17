@@ -175,7 +175,8 @@ mod t {
         let mut h = bare();
         h.state_mut().set_tool(Tool::Cable(netlabcraft_model::cable::Cable::Auto));
         h.run_steps(2);
-        tap(&mut h, socket(&h, 0, 0));
+        let at = socket(&h, 0, 0);
+        tap(&mut h, at);
         assert!(h.state().ui.physical.closet.wire.is_some());
         h.input_mut().events.push(egui::Event::Key {
             key: egui::Key::Escape,
@@ -188,7 +189,8 @@ mod t {
         assert!(h.state().ui.physical.closet.wire.is_none());
         assert_eq!(h.state().ui.tool, Tool::Cable(netlabcraft_model::cable::Cable::Auto), "the first Esc drops the cable, not the tool");
         // Right-click does the same.
-        tap(&mut h, socket(&h, 0, 0));
+        let at = socket(&h, 0, 0);
+        tap(&mut h, at);
         let at = socket(&h, 2, 0);
         h.input_mut().events.push(egui::Event::PointerMoved(at));
         for pressed in [true, false] {
@@ -215,14 +217,17 @@ mod t {
         let index = h.state().session.topology.devices.iter().position(|d| d.id == busy.device).unwrap();
         h.state_mut().set_tool(Tool::Cable(netlabcraft_model::cable::Cable::Auto));
         h.run_steps(2);
-        tap(&mut h, socket(&h, index, busy.port));
+        let at = socket(&h, index, busy.port);
+        tap(&mut h, at);
         assert!(h.state().ui.physical.closet.wire.is_none(), "a busy port starts no cable");
         let (msg, error) = h.state().ui.status.clone().expect("the refusal is said");
         assert!(error && msg.contains("already cabled"), "{msg}");
         // As the second end it is refused too, and the first stays lit.
-        tap(&mut h, socket(&h, 2, 0));
+        let at = socket(&h, 2, 0);
+        tap(&mut h, at);
         assert!(h.state().ui.physical.closet.wire.is_some());
-        tap(&mut h, socket(&h, index, busy.port));
+        let at = socket(&h, index, busy.port);
+        tap(&mut h, at);
         assert_eq!(h.state().session.topology.links.len(), 1, "no second cable");
         assert!(h.state().ui.physical.closet.wire.is_some());
     }

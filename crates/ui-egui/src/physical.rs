@@ -533,14 +533,14 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View, ru
         && view.hit_place(at).is_none()
         && view.hit_device(at).is_none()
     {
-        place_device(app, &view, model, at);
+        place_device(app, view, model, at);
     }
     if resp.clicked()
         && let Some(p) = pointer
     {
         match app.ui.tool {
             // A device placed while looking at a closet (or a building's rooms) stands there.
-            Tool::Place(model) if view.hit_place(p).is_none() && view.hit_device(p).is_none() => place_device(app, &view, model, p),
+            Tool::Place(model) if view.hit_place(p).is_none() && view.hit_device(p).is_none() => place_device(app, view, model, p),
             _ => app.ui.selected = view.hit_device(p),
         }
     }
