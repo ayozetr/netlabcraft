@@ -38,6 +38,7 @@ pub mod icons;
 mod icons_box;
 mod icons_cable_tiles;
 pub mod icons_families;
+pub mod icons_gear;
 mod icons_network;
 mod icons_parts;
 mod icons_parts2;

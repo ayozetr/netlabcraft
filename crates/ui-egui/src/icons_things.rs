@@ -7,7 +7,8 @@
 //!
 //! Everything is laid out in fractions of the icon's width and painted with the theme's `art_*` tokens,
 //! with one outline weight and one grounding shadow so the models read as a set from 28 px up. The small
-//! Wi-Fi marker in the corner says the thing is wireless.
+//! Wi-Fi marker says the thing is wireless; it has a corner of its own (the picture is drawn smaller, bottom left,
+//! to leave it room) so it never covers the artwork.
 
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
@@ -147,19 +148,45 @@ impl<'a> Art<'a> {
         self.p.add(Shape::convex_polygon(ellipse(self.at(0.5, 0.93), self.w * 0.34, self.w * 0.045), Color32::from_black_alpha(34), Stroke::NONE));
     }
 
-    /// The Wi-Fi marker in the top right corner.
+    /// The Wi-Fi marker, centred on [`WIFI_AT`]: a dot and two waves with a pale halo so they read over any
+    /// background. `self` is the whole icon, not the shrunken picture, and the marker stays inside [`wifi_slot`].
     pub(crate) fn wifi(&self) {
-        let c = self.at(0.87, 0.17);
+        let c = self.at(WIFI_AT.0, WIFI_AT.1);
         let halo = Color32::from_white_alpha(150);
-        for (r, a) in [(0.06f32, 0.8f32), (0.105, 0.7)] {
-            self.arc(c, r, -FRAC_PI_2 - a, -FRAC_PI_2 + a, 0.05, halo);
+        let waves = [(0.051f32, 0.8f32), (0.09, 0.7)];
+        for (r, a) in waves {
+            self.arc(c, r, -FRAC_PI_2 - a, -FRAC_PI_2 + a, 0.042, halo);
         }
-        self.p.circle_filled(c, self.w * 0.04, halo);
-        for (r, a) in [(0.06f32, 0.8f32), (0.105, 0.7)] {
-            self.arc(c, r, -FRAC_PI_2 - a, -FRAC_PI_2 + a, 0.028, self.tk.art_green);
+        self.p.circle_filled(c, self.w * 0.034, halo);
+        for (r, a) in waves {
+            self.arc(c, r, -FRAC_PI_2 - a, -FRAC_PI_2 + a, 0.024, self.tk.art_green);
         }
-        self.dot(c, 0.028, self.tk.art_green);
+        self.dot(c, 0.024, self.tk.art_green);
     }
+}
+
+/// How much of the icon's width a wireless thing's picture takes: it is drawn in the bottom left corner of the
+/// icon at this scale, so the Wi-Fi marker has the top right corner to itself and never covers the artwork.
+pub(crate) const WIFI_ART_SCALE: f32 = 0.84;
+/// Where the Wi-Fi marker's centre is, as fractions of the icon's width from its top left corner.
+pub(crate) const WIFI_AT: (f32, f32) = (0.921, 0.111);
+/// How far the marker's waves and halo reach from its centre, as fractions of the icon's width: left, right, up, down
+/// (what the tests hold the drawn marker to).
+#[cfg(test)]
+pub(crate) const WIFI_REACH: (f32, f32, f32, f32) = (0.079, 0.079, 0.111, 0.034);
+
+/// The box a wireless thing's picture is drawn in: [`WIFI_ART_SCALE`] of the icon, in its bottom left corner.
+pub(crate) fn wifi_art_rect(r: Rect) -> Rect {
+    let side = r.width() * WIFI_ART_SCALE;
+    Rect::from_min_size(pos2(r.left(), r.bottom() - side), vec2(side, side))
+}
+
+/// The box the Wi-Fi marker stays inside: the top right corner of the icon, clear of [`wifi_art_rect`].
+#[cfg(test)]
+pub(crate) fn wifi_slot(r: Rect) -> Rect {
+    let w = r.width();
+    let (x, y) = WIFI_AT;
+    Rect::from_min_max(r.min + vec2(w * (x - WIFI_REACH.0), w * (y - WIFI_REACH.2)), r.min + vec2(w * (x + WIFI_REACH.1), w * (y + WIFI_REACH.3)))
 }
 
 pub(crate) fn ellipse(c: Pos2, rx: f32, ry: f32) -> Vec<Pos2> {
@@ -171,9 +198,10 @@ pub(crate) fn half_disc(c: Pos2, r: f32) -> Vec<Pos2> {
     (0..=16).map(|i| PI + PI * i as f32 / 16.0).map(|a| c + vec2(a.cos(), a.sin()) * r).collect()
 }
 
-/// Draws the picture of a smart thing, component or board filling `rect`. `wireless` adds the Wi-Fi marker.
+/// Draws the picture of a smart thing, component or board filling `rect`. `wireless` adds the Wi-Fi marker, in
+/// a corner of its own: the picture is drawn smaller to leave room for it.
 pub fn thing_icon(p: &Painter, rect: Rect, model_id: &str, wireless: bool, tk: &Tokens) {
-    let a = Art::new(p, rect, tk);
+    let a = Art::new(p, if wireless { wifi_art_rect(rect) } else { rect }, tk);
     a.ground();
     match model_id {
         "IoT-Sensor" => sensor(&a),
@@ -228,7 +256,7 @@ pub fn thing_icon(p: &Painter, rect: Rect, model_id: &str, wireless: bool, tk: &
         }
     }
     if wireless {
-        a.wifi();
+        Art::new(p, rect, tk).wifi();
     }
 }
 
@@ -249,16 +277,17 @@ fn sensor(a: &Art) {
 
 fn motion(a: &Art) {
     let t = a.tk;
-    let c = a.at(0.5, 0.66);
-    a.arc(c, 0.4, PI + 0.3, TAU - 0.3, 0.025, t.art_amber);
-    a.arc(c, 0.34, PI + 0.5, TAU - 0.5, 0.02, t.art_amber);
-    a.poly(half_disc(c, a.w * 0.28), t.art_paper);
-    for k in 1..4 {
-        let ang = PI + k as f32 * PI / 4.0;
-        a.line(c, c + vec2(ang.cos(), ang.sin()) * a.w * 0.28, 0.012, t.art_steel);
+    let c = a.at(0.46, 0.66);
+    // What it detects: short arcs on the side the lens faces.
+    for k in 0..2 {
+        a.arc(a.at(0.46, 0.5), 0.36 + k as f32 * 0.08, -0.95, -0.15, 0.025, t.art_amber);
     }
-    a.boxed(a.rc(0.18, 0.66, 0.82, 0.84), 0.05, t.art_steel);
-    a.dot(a.at(0.7, 0.75), 0.025, t.art_red);
+    // The lens: a smooth glass dome with a curved glint, over the housing.
+    a.poly(half_disc(c, a.w * 0.27), t.art_glass);
+    a.arc(c, 0.19, PI + 0.5, PI + 1.35, 0.028, t.art_paper);
+    a.dot(c - vec2(0.0, a.w * 0.1), 0.03, t.art_ink);
+    a.boxed(a.rc(0.16, 0.66, 0.76, 0.84), 0.05, t.art_steel);
+    a.dot(a.at(0.66, 0.75), 0.025, t.art_red);
 }
 
 fn smoke(a: &Art) {
@@ -714,16 +743,24 @@ fn buzzer(a: &Art) {
 
 fn motor(a: &Art) {
     let t = a.tk;
-    a.bar(a.at(0.66, 0.5), a.at(0.94, 0.5), 0.05, t.art_paper);
-    a.plain(a.rc(0.04, 0.34, 0.14, 0.4), 0.0, t.art_amber);
-    a.plain(a.rc(0.04, 0.6, 0.14, 0.66), 0.0, t.art_amber);
-    a.boxed(a.rc(0.12, 0.26, 0.5, 0.74), 0.05, t.art_steel);
-    a.boxed(a.rc(0.5, 0.3, 0.7, 0.7), 0.03, shade(t.art_steel, 0.75));
-    for k in 0..3 {
-        let x = 0.54 + k as f32 * 0.05;
-        a.line(a.at(x, 0.33), a.at(x, 0.67), 0.012, t.art_ink);
+    // The shaft with its key, coming out of the boss in the middle of the mounting plate.
+    a.bar(a.at(0.68, 0.5), a.at(0.95, 0.5), 0.05, shade(t.art_steel, 1.25));
+    a.line(a.at(0.76, 0.485), a.at(0.9, 0.485), 0.012, t.art_edge);
+    a.boxed(a.rc(0.62, 0.42, 0.7, 0.58), 0.02, shade(t.art_steel, 0.8));
+    // The can: a steel cylinder, lit along the top and shaded along the bottom, with its label.
+    a.boxed(a.rc(0.14, 0.3, 0.56, 0.7), 0.05, t.art_steel);
+    a.plain(a.rc(0.17, 0.35, 0.53, 0.4), 0.01, shade(t.art_steel, 1.3));
+    a.plain(a.rc(0.17, 0.62, 0.53, 0.67), 0.01, shade(t.art_steel, 0.72));
+    a.text(a.at(0.35, 0.5), "M", 0.2, t.art_ink);
+    // The rear end cap and the two terminals on it.
+    a.boxed(a.rc(0.08, 0.34, 0.14, 0.66), 0.03, shade(t.art_steel, 0.7));
+    a.plain(a.rc(0.02, 0.38, 0.08, 0.43), 0.0, t.art_amber);
+    a.plain(a.rc(0.02, 0.57, 0.08, 0.62), 0.0, t.art_amber);
+    // The mounting plate: a tall flange with a screw hole at each corner.
+    a.boxed(a.rc(0.56, 0.2, 0.63, 0.8), 0.02, shade(t.art_steel, 0.85));
+    for y in [0.26, 0.74] {
+        a.dot(a.at(0.595, y), 0.018, t.art_ink);
     }
-    a.text(a.at(0.31, 0.5), "M", 0.22, t.art_ink);
 }
 
 fn relay(a: &Art) {
@@ -981,5 +1018,60 @@ mod tests {
             out.shapes.len()
         };
         assert!(count(true) > count(false));
+    }
+
+    /// The box of every shape a painting closure adds.
+    fn boxes(paint: impl FnOnce(&egui::Painter)) -> Vec<Rect> {
+        let ctx = Context::default();
+        let mut paint = Some(paint);
+        let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+            if let Some(f) = paint.take() {
+                f(&ui.ctx().layer_painter(LayerId::background()));
+            }
+        });
+        out.textures_delta.clear();
+        out.shapes.iter().map(|s| s.shape.visual_bounding_rect()).collect()
+    }
+
+    #[test]
+    fn the_wifi_marker_has_a_corner_of_its_own_and_never_covers_the_picture() {
+        let cell = Rect::from_min_size(pos2(100.0, 100.0), vec2(64.0, 64.0));
+        assert!(cell.contains_rect(wifi_slot(cell)));
+        assert!(!wifi_art_rect(cell).intersects(wifi_slot(cell)), "the slot and the picture's box overlap");
+        for dark in [false, true] {
+            let tk = theme::tokens(dark);
+            let marker = boxes(|p| Art::new(p, cell, &tk).wifi());
+            assert!(!marker.is_empty());
+            let marker_area = marker.iter().fold(Rect::NOTHING, |a, r| a.union(*r));
+            assert!(wifi_slot(cell).expand(1.0).contains_rect(marker_area), "the marker leaves its slot: {marker_area:?}");
+            let mut covered = Vec::new();
+            for m in
+                MODELS.iter().filter(|m| m.ports.iter().any(|r| r.prefix.starts_with("Wireless")) && is_thing(m.id) && !m.id.starts_with("Part-"))
+            {
+                let all = boxes(|p| thing_icon(p, cell, m.id, true, &tk));
+                let picture = all[..all.len() - marker.len()].iter().fold(Rect::NOTHING, |a, r| a.union(*r));
+                if picture.shrink(0.5).intersects(marker_area) {
+                    covered.push(format!("{} {picture:?}", m.id));
+                }
+            }
+            assert!(covered.is_empty(), "the Wi-Fi marker covers the picture of {covered:?} (dark={dark})");
+        }
+    }
+
+    #[test]
+    fn every_router_and_switch_model_looks_different() {
+        for dark in [false, true] {
+            let mut seen: BTreeMap<String, &str> = BTreeMap::new();
+            let checked = MODELS
+                .iter()
+                .filter(|m| crate::icons_gear::is_gear(m.id) || matches!(m.id, "Firewall-5" | "Firewall-3" | "Switch-IND-8" | "Router-IND"));
+            for m in checked {
+                let (look, _) = painted(m, dark);
+                if let Some(other) = seen.insert(look, m.id) {
+                    panic!("{} and {other} are drawn the same (dark={dark})", m.id);
+                }
+            }
+            assert!(seen.len() >= 18, "only {} models were checked", seen.len());
+        }
     }
 }

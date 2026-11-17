@@ -88,68 +88,12 @@ pub fn model_marks(p: &Painter, rect: Rect, model_id: &str, multilayer: bool) {
         }
         "WLC" => wlc_mark(p, rect),
         "Firewall-5" | "Firewall-3" => firewall_mark(p, rect),
-        "Router-M2" | "Router-M3" | "Router-MF2" => modular_mark(p, rect),
         "Sniffer" => crate::icons_families::sniffer_mark(p, rect),
-        "IoT-Sensor" => thermometer_mark(p, rect),
-        "IoT-Device" => fan_mark(p, rect),
-        "IoT-Motion" | "IoT-Smoke" | "IoT-Light" | "IoT-Door" | "IoT-Siren" | "IoT-Webcam" | "IoT-TVE" => {
-            crate::icons_families::iot_mark(p, rect, model_id)
-        }
-        "IoT-Thermostat" | "IoT-Heater" | "IoT-AC" | "IoT-Humidity" | "IoT-Window" | "IoT-Soil" | "IoT-Sprinkler" | "IoT-CO" | "IoT-Plug"
-        | "IoT-Garage" | "IoT-TV" | "IoT-Speaker" | "IoT-Water" => crate::icons_families::wifi_thing_mark(p, rect, model_id),
         "Home-Gateway" => {
             access_point_mark(p, rect);
             crate::icons_families::gateway_mark(p, rect);
         }
         _ => crate::icons_parts::mark(p, rect, model_id),
-    }
-}
-
-/// A smart sensor: a thermometer on the puck.
-pub fn thermometer_mark(p: &Painter, rect: Rect) {
-    let w = rect.width();
-    let c = rect.center() + vec2(0.0, w * 0.12);
-    let red = Color32::from_rgb(0xd6, 0x45, 0x3a);
-    let tube = Rect::from_center_size(c - vec2(0.0, w * 0.06), vec2(w * 0.1, w * 0.3));
-    p.rect_filled(tube, w * 0.05, Color32::WHITE);
-    p.rect_filled(Rect::from_min_max(pos2(tube.left() + w * 0.025, tube.center().y), pos2(tube.right() - w * 0.025, tube.bottom())), 0.0, red);
-    p.circle_filled(pos2(c.x, tube.bottom()), w * 0.08, Color32::WHITE);
-    p.circle_filled(pos2(c.x, tube.bottom()), w * 0.055, red);
-}
-
-/// A smart device: a three-bladed fan on the puck.
-pub fn fan_mark(p: &Painter, rect: Rect) {
-    let w = rect.width();
-    let c = rect.center() + vec2(0.0, w * 0.12);
-    p.circle_filled(c, w * 0.21, Color32::WHITE);
-    let blade = Color32::from_rgb(0x2f, 0x5d, 0x7c);
-    for k in 0..3 {
-        let a = k as f32 * std::f32::consts::TAU / 3.0;
-        let tip = c + vec2(a.cos(), a.sin()) * w * 0.18;
-        let side = c + vec2((a + 0.7).cos(), (a + 0.7).sin()) * w * 0.13;
-        p.add(Shape::convex_polygon(vec![c, tip, side], blade, Stroke::NONE));
-    }
-    p.circle_filled(c, w * 0.035, blade);
-}
-
-/// A modular router: a row of card bays on the drum's side band, one holding a card (a lit
-/// plate with two sockets), the others blank.
-pub fn modular_mark(p: &Painter, rect: Rect) {
-    let w = rect.width();
-    let plate = Color32::from_rgb(0x2b, 0x31, 0x3a);
-    let card = Color32::from_rgb(0xd9, 0xb2, 0x4c);
-    let y = rect.center().y + w * 0.16;
-    let (bw, bh) = (w * 0.2, w * 0.11);
-    for k in 0..3 {
-        let x = rect.center().x + (k as f32 - 1.0) * (bw + w * 0.04);
-        let bay = Rect::from_center_size(pos2(x, y), vec2(bw, bh));
-        p.rect_filled(bay, w * 0.015, if k == 0 { card } else { plate });
-        if k == 0 {
-            for s in [-1.0, 1.0] {
-                p.rect_filled(Rect::from_center_size(pos2(x + s * bw * 0.22, y), vec2(bw * 0.28, bh * 0.45)), 0.0, plate);
-            }
-        }
-        p.rect_stroke(bay, w * 0.015, Stroke::new((w / 60.0).max(0.5), Color32::WHITE), StrokeKind::Inside);
     }
 }
 
