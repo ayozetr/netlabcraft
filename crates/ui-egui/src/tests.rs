@@ -552,12 +552,9 @@ fn the_physical_view_opens_places_and_goes_back() {
         assert!(h.state().session.physical);
         assert_eq!(h.state().session.place_view, None);
         assert!(h.query_by_label("Home City").is_some() || h.query_by_label("Intercity").is_some());
-        // Into the city (double-click its icon), then into its building.
+        // Into the city (one click on its icon), then into its building.
         for (id, kind) in [(1, "city"), (2, "building")] {
             let at = place_on_screen(&h, id);
-            press(&mut h, at, true, egui::Modifiers::NONE);
-            press(&mut h, at, false, egui::Modifiers::NONE);
-            h.run_steps(1);
             press(&mut h, at, true, egui::Modifiers::NONE);
             press(&mut h, at, false, egui::Modifiers::NONE);
             h.run_steps(2);
@@ -2329,4 +2326,132 @@ fn end_devices_are_split_into_hosts_and_the_home_group_and_the_box_remembers_wha
     h.run_steps(2);
     assert!(h.query_by_label("Router 3GE").is_some() && h.query_by_label("Router 4GE").is_some());
     assert!(h.query_by_label("Router 2GE").is_none());
+}
+
+fn press_button(h: &mut Harness<'static, PacketApp>, at: egui::Pos2, button: egui::PointerButton, pressed: bool, modifiers: egui::Modifiers) {
+    h.input_mut().events.push(egui::Event::PointerMoved(at));
+    h.input_mut().events.push(egui::Event::PointerButton { pos: at, button, pressed, modifiers });
+}
+
+/// Presses `button` at `from`, moves in steps to `to` and releases.
+fn drag_with(h: &mut Harness<'static, PacketApp>, from: egui::Pos2, to: egui::Pos2, button: egui::PointerButton, modifiers: egui::Modifiers) {
+    press_button(h, from, button, true, modifiers);
+    h.run_steps(1);
+    for i in 1..=8 {
+        let p = from + (to - from) * (i as f32 / 8.0);
+        h.input_mut().events.push(egui::Event::PointerMoved(p));
+        h.run_steps(1);
+    }
+    press_button(h, to, button, false, modifiers);
+    h.run_steps(2);
+}
+
+fn three_pcs() -> Harness<'static, PacketApp> {
+    let mut s = Session::new();
+    for (x, y) in [(100.0, 100.0), (220.0, 100.0), (500.0, 300.0)] {
+        s.execute("device.add", json!({"kind": "pc", "x": x, "y": y})).unwrap();
+    }
+    let mut h = Harness::builder().with_size(egui::vec2(1200.0, 800.0)).build_ui_state(|ui, app: &mut PacketApp| app.ui(ui), PacketApp::new(s));
+    h.run_steps(2);
+    h
+}
+
+#[test]
+fn dragging_on_empty_space_draws_a_band_and_picks_what_it_touches() {
+    let mut h = three_pcs();
+    let (pc1, pc2, pc3) = {
+        let t = &h.state().session.topology;
+        (t.resolve("PC1").unwrap(), t.resolve("PC2").unwrap(), t.resolve("PC3").unwrap())
+    };
+    let pan = h.state().ui.pan;
+    // The left button, no Shift: from below-left of PC1 and PC2 up past them.
+    let (a, b) = (on_screen(&h, 40.0, 190.0), on_screen(&h, 290.0, 40.0));
+    drag_with(&mut h, a, b, egui::PointerButton::Primary, egui::Modifiers::NONE);
+    assert_eq!(h.state().ui.pan, pan, "the left button does not pan");
+    assert_eq!(h.state().ui.picked.iter().copied().collect::<Vec<_>>(), vec![pc1, pc2]);
+    // Dragging one picked device moves both, in one undo step.
+    let before: Vec<(f32, f32)> = [pc1, pc2].iter().map(|d| h.state().session.topology.device(*d).map(|d| (d.x, d.y)).unwrap()).collect();
+    let (from, to) = (on_screen(&h, 100.0, 100.0), on_screen(&h, 100.0, 100.0) + egui::vec2(60.0, 40.0));
+    drag_with(&mut h, from, to, egui::PointerButton::Primary, egui::Modifiers::NONE);
+    let after: Vec<(f32, f32)> = [pc1, pc2].iter().map(|d| h.state().session.topology.device(*d).map(|d| (d.x, d.y)).unwrap()).collect();
+    for (b, a) in before.iter().zip(&after) {
+        assert!(a.0 - b.0 > 30.0 && a.1 - b.1 > 20.0, "{b:?} -> {a:?}");
+    }
+    assert_eq!(after[1].0 - after[0].0, before[1].0 - before[0].0);
+    h.state_mut().run("edit.undo", json!({}));
+    h.run_steps(2);
+    let undone: Vec<(f32, f32)> = [pc1, pc2].iter().map(|d| h.state().session.topology.device(*d).map(|d| (d.x, d.y)).unwrap()).collect();
+    assert_eq!(undone, before, "one undo step puts both back");
+    // A band that only partly covers PC3 selects it; the old pick is replaced.
+    let (a, b) = (on_screen(&h, 400.0, 200.0), on_screen(&h, 490.0, 290.0));
+    drag_with(&mut h, a, b, egui::PointerButton::Primary, egui::Modifiers::NONE);
+    assert_eq!(h.state().ui.selected, Some(pc3));
+    assert!(h.state().ui.picked.is_empty());
+}
+
+#[test]
+fn the_right_button_pans_and_a_right_click_still_opens_the_menu() {
+    let mut h = three_pcs();
+    let pan = h.state().ui.pan;
+    let (a, b) = (on_screen(&h, 300.0, 400.0), on_screen(&h, 360.0, 440.0));
+    drag_with(&mut h, a, b, egui::PointerButton::Secondary, egui::Modifiers::NONE);
+    assert!((h.state().ui.pan - (pan + egui::vec2(60.0, 40.0))).length() < 12.0, "{pan:?} -> {:?}", h.state().ui.pan);
+    assert!(h.state().ui.picked.is_empty() && h.state().ui.selected.is_none());
+    // The middle button pans too.
+    let pan = h.state().ui.pan;
+    let (a, b) = (on_screen(&h, 300.0, 400.0), on_screen(&h, 220.0, 400.0));
+    drag_with(&mut h, a, b, egui::PointerButton::Middle, egui::Modifiers::NONE);
+    assert!((h.state().ui.pan - (pan + egui::vec2(-80.0, 0.0))).length() < 12.0);
+    // A right click without movement on a device opens its menu.
+    let at = on_screen(&h, 100.0, 100.0);
+    press_button(&mut h, at, egui::PointerButton::Secondary, true, egui::Modifiers::NONE);
+    press_button(&mut h, at, egui::PointerButton::Secondary, false, egui::Modifiers::NONE);
+    h.run_steps(3);
+    assert!(h.query_all_by_label("Delete").count() >= 1, "the device menu is open");
+}
+
+#[test]
+fn a_place_opens_with_a_click_and_moves_with_a_drag() {
+    let mut h = harness(Some("lan"));
+    h.run_steps(2);
+    h.get_by_label("Physical").click();
+    h.run_steps(2);
+    let at = place_on_screen(&h, 1);
+    let before = h.state().session.topology.place(1).map(|p| (p.x, p.y)).unwrap();
+    drag_with(&mut h, at, at + egui::vec2(80.0, 50.0), egui::PointerButton::Primary, egui::Modifiers::NONE);
+    assert_eq!(h.state().session.place_view, None, "a drag does not open it");
+    let after = h.state().session.topology.place(1).map(|p| (p.x, p.y)).unwrap();
+    assert_ne!(before, after, "a drag moves it");
+    // A right click opens the menu, not the place.
+    let at = place_on_screen(&h, 1);
+    press_button(&mut h, at, egui::PointerButton::Secondary, true, egui::Modifiers::NONE);
+    press_button(&mut h, at, egui::PointerButton::Secondary, false, egui::Modifiers::NONE);
+    h.run_steps(3);
+    assert_eq!(h.state().session.place_view, None);
+    assert!(h.query_all_by_label("Open").count() >= 1, "the place menu is open");
+    // The right button drag pans the map without moving anything.
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    let (pan, place) = (h.state().ui.pan, h.state().session.topology.place(1).map(|p| (p.x, p.y)));
+    let empty = h.state().ui.canvas_rect.unwrap().center() + egui::vec2(200.0, 150.0);
+    drag_with(&mut h, empty, empty + egui::vec2(30.0, 20.0), egui::PointerButton::Secondary, egui::Modifiers::NONE);
+    assert!((h.state().ui.pan - (pan + egui::vec2(30.0, 20.0))).length() < 12.0);
+    assert_eq!(h.state().session.topology.place(1).map(|p| (p.x, p.y)), place);
+}
+
+#[test]
+fn the_wireless_signals_button_sits_at_the_right_end_of_the_physical_bar() {
+    let mut h = harness(Some("lan"));
+    h.run_steps(2);
+    h.get_by_label("Physical").click();
+    h.run_steps(2);
+    let label =
+        "View Wireless Signals (Ctrl+Alt+Shift+W): faint coverage areas of the access points and a line from each Wi-Fi host to its access point";
+    let wifi = h.get_by_label(label).rect();
+    let home = h.get_by_label("Navigation: back to the start of the workspace").rect();
+    assert!(wifi.center().x > 600.0, "in the right half: {wifi:?}");
+    assert!(wifi.right() <= home.left() + 40.0 && wifi.center().x > h.get_by_label("Physical").rect().right());
+    assert!(!h.state().ui.prefs.show_wireless_signals);
+    h.get_by_label(label).click();
+    h.run_steps(2);
+    assert!(h.state().ui.prefs.show_wireless_signals);
 }

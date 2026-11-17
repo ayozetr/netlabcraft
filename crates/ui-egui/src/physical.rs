@@ -37,6 +37,9 @@ pub struct PhysState {
     /// Where the dragged place or device would stand without aligning (workspace units).
     drag_raw: (f32, f32),
     panning: bool,
+    /// When (input time) a click last opened a place, so the second click of a double click does not
+    /// also open whatever stands under the pointer on the new map.
+    entered: f64,
     context: Option<Target>,
     /// The Rename Place dialog: place and the name being typed.
     pub renaming: Option<(u32, String)>,
@@ -229,11 +232,11 @@ pub fn add_place(app: &mut PacketApp, at: Option<(f32, f32)>) {
     }
     if let Some(v) = app.run("place.add", p) {
         let name = v.get("name").and_then(Value::as_str).unwrap_or_default().to_string();
-        app.info(trf("Added {}. Double-click it to open it.", &[&name]));
+        app.info(trf("Added {}. Click it to open it.", &[&name]));
     }
 }
 
-/// Opens a place (double-click, menu, path bar).
+/// Opens a place (click, menu, path bar).
 pub fn enter(app: &mut PacketApp, id: u32) {
     if app.run("view.enter_place", json!({"id": id})).is_some() {
         fit(app);
@@ -476,9 +479,11 @@ fn draw_devices(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Toke
 fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View, runs: &[Run]) {
     let pointer = resp.interact_pointer_pos().or_else(|| resp.hover_pos());
     if resp.drag_started() {
+        // The right or middle button pans; the left button moves what it grabbed, or does nothing on empty ground.
+        let pan_button = ui.input(|i| i.pointer.middle_down() || i.pointer.secondary_down());
         let st = &mut app.ui.physical;
-        st.panning = true;
-        let select = app.ui.tool == Tool::Select && !ui.input(|i| i.pointer.middle_down());
+        st.panning = pan_button;
+        let select = app.ui.tool == Tool::Select && !pan_button;
         if select && let Some(p) = pointer.and_then(|p| view.hit_place(p)) {
             app.run("edit.checkpoint", json!({}));
             app.ui.physical.drag_place = Some(p);
@@ -523,11 +528,9 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View, ru
     if resp.double_clicked()
         && let Some(p) = pointer
     {
-        if let Some(id) = view.hit_place(p) {
-            enter(app, id);
-            return;
-        }
-        if let Some(d) = view.hit_device(p) {
+        if let Some(d) = view.hit_device(p)
+            && ui.input(|i| i.time) - app.ui.physical.entered > 0.6
+        {
             crate::open_console(app, d);
             return;
         }
@@ -560,6 +563,12 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View, ru
     if resp.clicked()
         && let Some(p) = pointer
     {
+        // One click opens a city, a building or a closet.
+        if let Some(id) = view.hit_place(p) {
+            app.ui.physical.entered = ui.input(|i| i.time);
+            enter(app, id);
+            return;
+        }
         match app.ui.tool {
             // A device placed while looking at a closet (or a building's rooms) stands there.
             Tool::Place(model) if view.hit_place(p).is_none() && view.hit_device(p).is_none() => place_device(app, view, model, p),

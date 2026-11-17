@@ -91,7 +91,7 @@ pub fn hint(app: &PacketApp) -> String {
         return crate::i18n::tl("Drag a device onto a rack, shelf or table · drag between two ports to patch them, or from an outlet to a device to plug it in · right-click for more").into();
     }
     if app.session.physical && !matches!(app.ui.tool, Tool::Place(_)) {
-        return crate::i18n::tl("Double-click a place to open it · drag to arrange · right-click for more (move devices, cable lengths)").into();
+        return crate::i18n::tl("Click a place to open it · drag to arrange · right-click for more (move devices, cable lengths)").into();
     }
     match (app.ui.tool, app.ui.canvas.pending) {
         (Tool::Select, _) if app.session.topology.devices.is_empty() => {
@@ -100,9 +100,10 @@ pub fn hint(app: &PacketApp) -> String {
         (Tool::Select, _) if !app.ui.picked.is_empty() || !app.ui.picked_clusters.is_empty() => {
             crate::i18n::tl("Several picked: drag one to move them all · Ctrl+G groups them into a cluster").into()
         }
-        (Tool::Select, _) => {
-            crate::i18n::tl("Click a device to configure it · drag to move · Shift+drag or Shift+click to pick several · scroll to pan").into()
-        }
+        (Tool::Select, _) => crate::i18n::tl(
+            "Click a device to configure it · drag to move · drag on empty space to pick several · Shift+click adds · right-drag or scroll to pan",
+        )
+        .into(),
         (Tool::Place(m), _) => crate::i18n::trf("Click the workspace to place a {}. Esc to stop.", &[&m]),
         (Tool::Draw(netlabcraft_model::Shape::Freehand), _) => crate::i18n::tl("Drag on the workspace to draw freehand.").into(),
         (Tool::Draw(netlabcraft_model::Shape::Polygon), _) => {
@@ -586,8 +587,9 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
     draw_devices(app, &painter, &view, &tk);
     if let (Some(a), Some(b)) = (app.ui.canvas.band, ui.input(|i| i.pointer.hover_pos())) {
         let r = Rect::from_two_pos(a, b);
-        painter.rect_filled(r, 0.0, tk.selection.gamma_multiply(0.08));
-        painter.rect_stroke(r, 0.0, Stroke::new(1.0, tk.selection), StrokeKind::Inside);
+        // A thin dash-dot outline, no fill.
+        let outline = [r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom(), r.left_top()];
+        painter.extend(egui::Shape::dashed_line_with_offset(&outline, Stroke::new(1.0, tk.text), &[6.0, 1.5], &[3.0, 3.0], 0.0));
     }
 
     // A cable being drawn follows the pointer.
@@ -1023,14 +1025,25 @@ fn draw_clusters(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Tok
     }
 }
 
-/// A rectangle dragged out with Shift picks the devices and clusters inside it.
-fn finish_band(app: &mut PacketApp, view: &View, a: Pos2, b: Pos2) {
+/// A rectangle dragged out on empty ground picks the devices and clusters it touches, fully or
+/// partly. With Shift held it adds to the picked set; otherwise it replaces it.
+fn finish_band(app: &mut PacketApp, view: &View, a: Pos2, b: Pos2, additive: bool) {
     let r = Rect::from_two_pos(a, b);
     let t = &app.session.topology;
-    let devs: Vec<DeviceId> = t.devices.iter().filter(|d| view.visible(d.id) && r.contains(view.screen(d.x, d.y))).map(|d| d.id).collect();
-    let cls: Vec<u32> = t.clusters_in(view.level).filter(|c| r.contains(view.screen(c.x, c.y))).map(|c| c.id).collect();
-    if let Some(s) = app.ui.selected.take() {
-        app.ui.picked.insert(s);
+    let devs: Vec<DeviceId> = t.devices.iter().filter(|d| view.visible(d.id) && r.intersects(view.device_rect(d))).map(|d| d.id).collect();
+    let cls: Vec<u32> = t.clusters_in(view.level).filter(|c| r.intersects(view.cluster_rect(c))).map(|c| c.id).collect();
+    if additive {
+        if let Some(s) = app.ui.selected.take() {
+            app.ui.picked.insert(s);
+        }
+    } else {
+        app.ui.selected = None;
+        app.ui.picked.clear();
+        app.ui.picked_clusters.clear();
+        if let ([d], []) = (devs.as_slice(), cls.as_slice()) {
+            app.ui.selected = Some(*d);
+            return;
+        }
     }
     app.ui.picked.extend(devs);
     app.ui.picked_clusters.extend(cls);
@@ -1359,7 +1372,8 @@ fn draw_cable_focus(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &
 
 fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
     let pointer = resp.interact_pointer_pos().or_else(|| resp.hover_pos());
-    let middle = ui.input(|i| i.pointer.middle_down());
+    // The middle and right buttons pan (a right click without movement still opens the context menu).
+    let middle = ui.input(|i| i.pointer.middle_down() || i.pointer.secondary_down());
     let shift = ui.input(|i| i.modifiers.shift);
 
     // Freehand: the path is recorded while dragging.
@@ -1509,7 +1523,8 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
             app.run("edit.checkpoint", json!({}));
             app.ui.canvas.drag_note = Some(n);
             app.ui.canvas.panning = false;
-        } else if select && shift {
+        } else if select {
+            // Empty ground with the Select tool: a rubber band.
             app.ui.canvas.band = pointer;
             app.ui.canvas.panning = false;
         }
@@ -1566,7 +1581,7 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
         c.drag_group = false;
         c.panning = false;
         if let (Some(a), Some(b)) = (c.band.take(), pointer) {
-            finish_band(app, view, a, b);
+            finish_band(app, view, a, b, shift);
         }
     }
 
