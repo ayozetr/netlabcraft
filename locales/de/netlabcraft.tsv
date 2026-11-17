@@ -781,7 +781,6 @@
 	Open PC1 > Desktop > Web Browser and go to www.netlabcraft.lab. Edit the pages in Server0 > Services > HTTP. Try `ping www.netlabcraft.lab` and `nslookup www.netlabcraft.lab` in a Command Prompt.	PC1 > Desktop > Webbrowser öffnen und www.netlabcraft.lab aufrufen. Die Seiten unter Server0 > Dienste > HTTP bearbeiten. In einer Eingabeaufforderung `ping www.netlabcraft.lab` und `nslookup www.netlabcraft.lab` ausprobieren.
 	Open Recent	Zuletzt geöffnet
 	Open...	Öffnen...
-	Opened the page in the PDF viewer: print it from there.	Die Seite im PDF-Viewer geöffnet: von dort drucken.
 	Opened {}	{} geöffnet
 	Operation	Operation
 	Operations (one per blank-line block)	Operationen (eine pro Block, durch Leerzeile getrennt)
@@ -1225,7 +1224,6 @@
 	The score does not match what the embedded network earns: this file is forged or damaged.	Die Punktzahl stimmt nicht mit dem überein, was das eingebettete Netz erreicht: diese Datei ist gefälscht oder beschädigt.
 	the server answered {}	der Server antwortete {}
 	the web service is off	der Webdienst ist aus
-	The workspace and a report of the devices on A4 pages, opened in the system's PDF viewer to print	Der Arbeitsbereich und ein Bericht der Geräte auf A4-Seiten, im PDF-Viewer des Systems zum Drucken geöffnet
 	The workspace as a picture, for a report	Der Arbeitsbereich als Bild, für einen Bericht
 	There is no startup configuration to export yet (Save first).	Es gibt noch keine Startkonfiguration zum Exportieren (zuerst speichern).
 	Thermostat	Thermostat
@@ -2077,3 +2075,20 @@ furniture	Table	Tisch
 	red	rot
 	showing	zeigt
 	blank	leer
+	Save as PDF...	Als PDF speichern...
+	The workspace and a report of the devices on A4 pages, saved as a PDF file	Der Arbeitsbereich und ein Bericht der Geräte auf A4-Seiten, als PDF-Datei gespeichert
+	The same PDF: save it, open it in a PDF viewer or print it	Dasselbe PDF: speichern, in einem PDF-Viewer öffnen oder drucken
+	Print	Drucken
+	The report is ready as a PDF. What do you want to do with it?	Der Bericht liegt als PDF vor. Was möchten Sie damit tun?
+	Choose where to keep the file	Wählen Sie, wo die Datei gespeichert wird
+	Open in the PDF viewer	Im PDF-Viewer öffnen
+	Opens a temporary copy in the program your system uses for PDF files	Öffnet eine temporäre Kopie in dem Programm, das Ihr System für PDF-Dateien verwendet
+	This system has no program to open files with: use Save as PDF	Dieses System hat kein Programm zum Öffnen von Dateien: Verwenden Sie „Als PDF speichern“
+	Print directly	Direkt drucken
+	Sends the file to the default printer	Sendet die Datei an den Standarddrucker
+	Direct printing needs the lp command, which this system does not have: save the PDF or open it in a viewer	Direktes Drucken benötigt den Befehl lp, den dieses System nicht hat: Speichern Sie das PDF oder öffnen Sie es in einem Viewer
+	Saved the PDF to {}	PDF gespeichert unter {}
+	Opened {} in the PDF viewer. This temporary copy is deleted when NetLabCraft closes: use Save as PDF to keep the file	{} im PDF-Viewer geöffnet. Diese temporäre Kopie wird beim Beenden von NetLabCraft gelöscht: Verwenden Sie „Als PDF speichern“, um die Datei zu behalten
+	No PDF viewer found: use Save as PDF	Kein PDF-Viewer gefunden: Verwenden Sie „Als PDF speichern“
+	Sent the PDF to the default printer	PDF an den Standarddrucker gesendet
+	Could not print: {}	Drucken nicht möglich: {}

@@ -409,7 +409,7 @@ pub fn perform(app: &mut PacketApp, ctx: &Context, act: Act) {
         Act::Save => app.save(false),
         Act::SaveAs => app.save(true),
         Act::ResetActivity => crate::activity::reset(app, ctx.input(|i| i.time)),
-        Act::Print => app.request_image(ctx, true),
+        Act::Print => app.request_image(ctx, Some(crate::PdfUse::Print)),
         Act::Copy => app.copy(),
         Act::Paste => app.paste(),
         Act::Undo => {

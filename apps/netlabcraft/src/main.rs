@@ -3,7 +3,8 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 use netlabcraft_engine::Session;
-use netlabcraft_ui_egui::{PacketApp, Toolbars, UiRequest};
+use netlabcraft_ui_egui::i18n::{tr, trf};
+use netlabcraft_ui_egui::{PacketApp, PrintChoices, Toolbars, UiRequest};
 use serde_json::json;
 
 /// What to do with unsaved changes when the window closes.
@@ -29,6 +30,55 @@ struct App {
     geometry_at: f64,
     /// The preferences as last written (compared as text).
     prefs_text: String,
+    /// The copies of the report PDF made for the viewer or the printer.
+    temp: TempFiles,
+}
+
+/// A folder in the system's temporary folder for the PDF copies handed to a viewer or a printer; it
+/// is deleted, with everything in it, when the app closes (so no print file is left behind).
+struct TempFiles(std::path::PathBuf);
+
+impl TempFiles {
+    fn new() -> Self {
+        TempFiles(std::env::temp_dir().join(format!("netlabcraft-{}", std::process::id())))
+    }
+
+    /// Writes `bytes` as `name` in the folder (made on first use, private to the user) and says where.
+    fn write(&self, name: &str, bytes: &[u8]) -> Result<std::path::PathBuf, String> {
+        let mut dir = std::fs::DirBuilder::new();
+        dir.recursive(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt as _;
+            dir.mode(0o700);
+        }
+        dir.create(&self.0).map_err(|e| format!("{}: {e}", self.0.display()))?;
+        let file = std::path::Path::new(name).file_name().map_or_else(|| "workspace.pdf".into(), std::ffi::OsString::from);
+        let path = self.0.join(file);
+        std::fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+        Ok(path)
+    }
+}
+
+impl Drop for TempFiles {
+    fn drop(&mut self) {
+        // The viewer may still hold a copy (Windows refuses): a leftover temp file is not an error.
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// Whether `program` is a file in one of the folders of `PATH`.
+fn on_path(program: &str) -> bool {
+    std::env::var_os("PATH").is_some_and(|p| std::env::split_paths(&p).any(|d| d.join(program).is_file()))
+}
+
+/// What File ▸ Print… can offer on this system: a program to open the file with, and `lp` (CUPS)
+/// to print it straight away.
+fn print_choices() -> PrintChoices {
+    let viewer = cfg!(any(windows, target_os = "macos")) || on_path("xdg-open");
+    let direct_unavailable = (cfg!(windows) || !on_path("lp"))
+        .then(|| "Direct printing needs the lp command, which this system does not have: save the PDF or open it in a viewer".to_string());
+    PrintChoices { viewer, direct_unavailable }
 }
 
 /// Where the recent-files list lives: the platform's configuration folder.
@@ -193,15 +243,9 @@ impl App {
                         }
                     }
                 }
-                UiRequest::Print(bytes) => {
-                    // No print API here: the system's PDF viewer prints (and previews) it.
-                    let path = std::env::temp_dir().join(format!("netlabcraft-print-{}.pdf", std::process::id()));
-                    let opened = std::fs::write(&path, &bytes).map_err(|e| e.to_string()).and_then(|()| open_with_system(&path));
-                    match opened {
-                        Ok(()) => self.app.info(netlabcraft_ui_egui::i18n::tr("Opened the page in the PDF viewer: print it from there.").to_string()),
-                        Err(e) => self.app.ui.status = Some((format!("{}: {e}", path.display()), true)),
-                    }
-                }
+                UiRequest::SavePdf { name, bytes } => self.save_pdf(&name, &bytes),
+                UiRequest::OpenPdf { name, bytes } => self.open_pdf(&name, &bytes),
+                UiRequest::PrintPdf { name, bytes } => self.print_pdf(&name, &bytes),
                 UiRequest::SaveText { name, text } => {
                     if let Some(p) = rfd::FileDialog::new().add_filter("Text", &["txt"]).set_file_name(&name).save_file() {
                         match std::fs::write(&p, text.as_bytes()) {
@@ -241,6 +285,51 @@ impl App {
                 UiRequest::PlaySound(bytes) => play_wav(&bytes),
                 UiRequest::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             }
+        }
+    }
+
+    /// Asks where to keep the report PDF (File ▸ Save as PDF, and the Print window's first choice).
+    fn save_pdf(&mut self, name: &str, bytes: &[u8]) {
+        let Some(p) = rfd::FileDialog::new().add_filter("PDF document", &["pdf"]).set_file_name(name).save_file() else { return };
+        let p = if p.extension().is_none() { p.with_extension("pdf") } else { p };
+        match std::fs::write(&p, bytes) {
+            Ok(()) => self.app.info(trf("Saved the PDF to {}", &[&p.display()])),
+            Err(e) => self.app.ui.status = Some((format!("{}: {e}", p.display()), true)),
+        }
+    }
+
+    /// Opens a temporary copy in the system's PDF viewer; without one, falls back to the save dialog.
+    fn open_pdf(&mut self, name: &str, bytes: &[u8]) {
+        match self.temp.write(name, bytes) {
+            Err(e) => self.app.ui.status = Some((e, true)),
+            Ok(path) => match open_with_system(&path) {
+                Ok(()) => self.app.info(trf(
+                    "Opened {} in the PDF viewer. This temporary copy is deleted when NetLabCraft closes: use Save as PDF to keep the file",
+                    &[&path.display()],
+                )),
+                Err(_) => {
+                    let _ = std::fs::remove_file(&path);
+                    self.app.ui.status = Some((tr("No PDF viewer found: use Save as PDF").to_string(), true));
+                    self.save_pdf(name, bytes);
+                }
+            },
+        }
+    }
+
+    /// Sends the report to the default printer with `lp`, then deletes the copy made for it.
+    fn print_pdf(&mut self, name: &str, bytes: &[u8]) {
+        let path = match self.temp.write(name, bytes) {
+            Ok(p) => p,
+            Err(e) => {
+                self.app.ui.status = Some((e, true));
+                return;
+            }
+        };
+        let sent = netlabcraft_core::process::run("lp", &[&path.to_string_lossy()], std::time::Duration::from_secs(20));
+        let _ = std::fs::remove_file(&path);
+        match sent {
+            Ok(_) => self.app.info(tr("Sent the PDF to the default printer").to_string()),
+            Err(e) => self.app.ui.status = Some((trf("Could not print: {}", &[&e.trim()]), true)),
         }
     }
 
@@ -363,6 +452,7 @@ fn main() -> eframe::Result {
     pick_language();
     let mut app = PacketApp::new(session);
     app.ui.recent = load_recent();
+    app.ui.print_choices = Some(print_choices());
     app.load_preferences(&load_preferences());
     let prefs_text = app.preferences_text();
     let native_saved = load_native_windows();
@@ -399,6 +489,7 @@ fn main() -> eframe::Result {
                 geometry_text,
                 geometry_at: 0.0,
                 prefs_text,
+                temp: TempFiles::new(),
             }))
         }),
     )
