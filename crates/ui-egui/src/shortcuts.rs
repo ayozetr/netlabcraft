@@ -238,13 +238,13 @@ pub const GROUPS: [&str; 11] = ["File", "Edit", "Options", "View", "Physical", "
 fn modifiers(m: u8) -> Modifiers {
     let mut r = Modifiers::NONE;
     if m & C != 0 {
-        r = r | Modifiers::COMMAND;
+        r |= Modifiers::COMMAND;
     }
     if m & A != 0 {
-        r = r | Modifiers::ALT;
+        r |= Modifiers::ALT;
     }
     if m & S != 0 {
-        r = r | Modifiers::SHIFT;
+        r |= Modifiers::SHIFT;
     }
     r
 }
