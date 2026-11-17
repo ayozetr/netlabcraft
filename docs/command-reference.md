@@ -181,8 +181,8 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `log.export` | Export Log | Options |  | `{"path"?: file to write} → {"text", "file_name", "entries", "path"?}: the command log as text, one line per command` |
 | `log.clear` | Clear command log |  |  | `{} → {"removed"}` |
 | `log.enable` | Enable Logging | Options |  | `{"on": true\|false} → {"on"}: whether commands are recorded in the command log (on at the start of every session)` |
-| `profile.get` | User Profile | Options | Ctrl+Shift+U | `{} → {"name"}: the display name kept on this computer (empty: none)` |
-| `profile.set` | Set display name |  |  | `{"name": "up to 64 characters, no control characters; empty clears it"} → {"name"}: names the student in activity results when the activity was not started with a name; never saved in a lab and never sent anywhere` |
+| `profile.get` | User Profile | Options | Ctrl+Shift+U | `{} → {"name", "email", "info"}: the profile kept on this computer (empty: none); never saved in a lab and never sent anywhere` |
+| `profile.set` | Set display name |  |  | `{"name"?: "up to 64 characters, no control characters; empty clears it", "email"?: "up to 120 characters, no spaces", "info"?: "up to 1000 characters, newlines allowed"} → {"name", "email", "info"}: sets the fields given (at least one). Only the name is used: it names the student in activity results when the activity was not started with a name. None is saved in a lab or sent anywhere` |
 | `physical.length_effects` | Enable Cable Length Effects | Options |  | `{"on"?: true\|false} → {"on"}: whether a cable longer than its medium reaches (copper 100 m, fiber 2 km, coaxial and phone lines their own limits) carries nothing; on unless the lab says otherwise, saved with the lab; without "on" it only reports` |
 | `sim.advance` | Fast forward time | Simulation |  | `{"seconds"?: 30}` |
 | `sim.reset` | Reset simulation | Simulation |  | `{} (forget ARP/MAC tables and events)` |

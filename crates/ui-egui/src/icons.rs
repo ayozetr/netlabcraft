@@ -548,6 +548,7 @@ pub enum Glyph {
     Freeform,
     Polygon,
     Cluster,
+    Wireless,
 }
 
 /// Draws a glyph in `rect` with colour `c`.
@@ -762,6 +763,21 @@ pub fn glyph(p: &Painter, rect: Rect, g: Glyph, c: Color32) {
             ];
             p.add(Shape::convex_polygon(pts.clone(), c.gamma_multiply(0.35), Stroke::NONE));
             p.add(Shape::closed_line(pts, Stroke::new(1.8, c)));
+        }
+        Glyph::Wireless => {
+            // A dot with three arcs of radio waves above it.
+            let base = pos2(r.center().x, r.bottom() - h * 0.1);
+            p.circle_filled(base, w * 0.08, c);
+            for k in 1..=3 {
+                let radius = w * 0.26 * k as f32;
+                let pts: Vec<Pos2> = (0..=10)
+                    .map(|i| {
+                        let a = -std::f32::consts::FRAC_PI_2 - 0.85 + 1.7 * i as f32 / 10.0;
+                        base + vec2(a.cos(), a.sin()) * radius
+                    })
+                    .collect();
+                p.add(Shape::line(pts, s));
+            }
         }
         Glyph::Cluster => {
             cloud(p, Rect::from_center_size(r.center(), vec2(w, w * 0.7)), c, c);
