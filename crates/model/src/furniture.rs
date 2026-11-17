@@ -212,11 +212,7 @@ impl FittingKind {
     /// fiber; a combo port takes either).
     pub fn takes(self, medium: crate::cable::Medium) -> bool {
         use crate::cable::Medium;
-        match (self.is_fiber(), medium) {
-            (_, Medium::Combo) => true,
-            (true, Medium::Fiber) | (false, Medium::Copper) => true,
-            _ => false,
-        }
+        matches!((self.is_fiber(), medium), (_, Medium::Combo) | (true, Medium::Fiber) | (false, Medium::Copper))
     }
 }
 

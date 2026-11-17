@@ -279,7 +279,7 @@ fn fitting_panel(p: &Painter, kind: FittingKind, ports: u32, on: bool, plugged: 
                 } else {
                     p.rect_filled(*sr, 1.0, Color32::from_rgb(0x20, 0x22, 0x26));
                 }
-                if zoom >= 0.9 && (i + 1) % 4 == 0 {
+                if zoom >= 0.9 && (i + 1).is_multiple_of(4) {
                     p.text(
                         pos2(sr.center().x, sr.top() - 1.0),
                         Align2::CENTER_BOTTOM,
@@ -698,9 +698,11 @@ pub(crate) fn show(app: &mut PacketApp, ui: &mut Ui, resp: &egui::Response, pain
 }
 
 /// A screen-reader node for every piece of furniture and every item, like the logical workspace's.
+/// The nodes take focus (Tab, the screen reader's cursor) but no pointer events, so the drags and
+/// menus of the view are not in their way; Enter on a device in focus opens it.
 fn accessible_nodes(app: &mut PacketApp, ui: &mut Ui, sc: &Scene, canvas: Rect) {
     let t = &app.session.topology;
-    let mut nodes: Vec<(egui::Id, Rect, String, bool)> = Vec::new();
+    let mut nodes: Vec<(egui::Id, Rect, String, bool, Option<Item>)> = Vec::new();
     for (id, _, head) in &sc.frames {
         let Some(f) = t.furniture_piece(*id) else { continue };
         let label = match f.kind {
@@ -708,7 +710,7 @@ fn accessible_nodes(app: &mut PacketApp, ui: &mut Ui, sc: &Scene, canvas: Rect) 
             FurnitureKind::Shelf => trf("{}, {} levels", &[&f.name, &f.size]),
             FurnitureKind::Table => f.name.clone(),
         };
-        nodes.push((egui::Id::unique(("closet-furniture", *id)), *head, label, false));
+        nodes.push((egui::Id::unique(("closet-furniture", *id)), *head, label, false, None));
     }
     for (item, cell) in &sc.items {
         let name = t.item_name(*item);
@@ -720,25 +722,26 @@ fn accessible_nodes(app: &mut PacketApp, ui: &mut Ui, sc: &Scene, canvas: Rect) 
             Item::Device(d) => ((0u8, d.0), app.ui.selected == Some(*d)),
             Item::Fitting(i) => ((1u8, *i), false),
         };
-        nodes.push((egui::Id::unique(("closet-item", key.0, key.1)), *cell, label, selected));
+        nodes.push((egui::Id::unique(("closet-item", key.0, key.1)), *cell, label, selected, Some(*item)));
     }
-    let mut select = None;
-    for (id, rect, label, selected) in &nodes {
-        let r = ui.interact(rect.intersect(canvas), *id, Sense::click());
+    let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
+    let (mut focus, mut open) = (None, None);
+    for (id, rect, label, selected, item) in &nodes {
+        let r = ui.interact(rect.intersect(canvas), *id, Sense::focusable_noninteractive());
         r.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, true, *selected, label.clone()));
         if r.gained_focus() {
-            select = Some(*id);
+            focus = *item;
+        }
+        if r.has_focus() && enter {
+            open = *item;
         }
     }
     // Moving focus to a device selects it, as on the logical workspace.
-    if let Some(id) = select {
-        for (item, _) in &sc.items {
-            if let Item::Device(d) = item
-                && egui::Id::unique(("closet-item", 0u8, d.0)) == id
-            {
-                app.ui.selected = Some(*d);
-            }
-        }
+    if let Some(Item::Device(d)) = focus {
+        app.ui.selected = Some(d);
+    }
+    if let Some(Item::Device(d)) = open {
+        crate::open_console(app, d);
     }
 }
 
