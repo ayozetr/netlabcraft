@@ -229,6 +229,10 @@ fn logical_sheet(dir: &str, dark: bool) {
     add(&mut s, "IP-Phone", "PH1", 790.0, 520.0);
     add(&mut s, "Smartphone", "SP1", 760.0, 640.0);
     add(&mut s, "IoT-Light", "LIGHT1", 880.0, 370.0);
+    add(&mut s, "IoT-Thermostat", "THERM1", 900.0, 230.0);
+    add(&mut s, "IoT-Plug", "PLUG1", 1010.0, 370.0);
+    add(&mut s, "IoT-Door", "DOOR1", 1010.0, 520.0);
+    add(&mut s, "IoT-Webcam", "CAM1", 900.0, 520.0);
     link(&mut s, "R1", 0, "CORE", 0, "straight-through");
     link(&mut s, "CORE", 1, "SW1", 0, "straight-through");
     link(&mut s, "CORE", 2, "SW2", 0, "straight-through");
@@ -240,7 +244,7 @@ fn logical_sheet(dir: &str, dark: bool) {
     link(&mut s, "PH1", 0, "SW2", 2, "straight-through");
     link(&mut s, "FW1", 0, "R1", 1, "straight-through");
     link(&mut s, "R1", 2, "NET", 0, "serial-dce");
-    app_sheet(dir, &format!("logical-{suffix}"), s, (1100.0, 760.0), dark, |_| {});
+    app_sheet(dir, &format!("logical-{suffix}"), s, (1200.0, 760.0), dark, |_| {});
 }
 
 fn main() {

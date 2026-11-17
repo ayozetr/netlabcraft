@@ -76,6 +76,20 @@ pub(crate) fn current(app: &PacketApp) -> Option<u32> {
     app.session.topology.place(place).filter(|p| p.kind == netlabcraft_model::physical::PlaceKind::Closet).map(|p| p.id)
 }
 
+/// The strip at the top of the workspace that holds the closet's title; the fit keeps the furniture below it.
+pub(crate) const TITLE_BAND: f32 = 40.0;
+
+/// Draws the title of the closet (`Wiring closet: Main Wiring Closet`) at the top left of the workspace, on a
+/// plate of its own so it reads over any furniture, and returns the plate.
+pub(crate) fn title_plate(p: &Painter, at: Pos2, text: String, tk: &Tokens) -> Rect {
+    let galley = p.layout_no_wrap(text, FontId::proportional(16.0), tk.text);
+    let plate = Align2::LEFT_TOP.anchor_size(at, galley.size()).expand2(vec2(9.0, 4.0));
+    p.rect_filled(plate, 5.0, tk.canvas);
+    p.rect_stroke(plate, 5.0, Stroke::new(1.0, tk.chrome_line), StrokeKind::Inside);
+    p.galley(plate.min + vec2(9.0, 4.0), galley, tk.text);
+    plate
+}
+
 /// Pans and zooms so the whole closet is in view.
 pub(crate) fn fit(app: &mut PacketApp, place: u32) {
     let Some(b) = app.session.topology.closet_layout(place).bounds() else { return };
@@ -83,9 +97,12 @@ pub(crate) fn fit(app: &mut PacketApp, place: u32) {
     if size.x < 1.0 || size.y < 1.0 {
         return;
     }
-    let zoom = (size.x / (b.w + 80.0)).min(size.y / (b.h + 80.0)).clamp(0.25, 1.5);
+    // The top strip is kept clear for the closet's title, and the margins are small: the larger the closet is
+    // drawn, the larger its jacks are.
+    let free = vec2(size.x, (size.y - TITLE_BAND).max(1.0));
+    let zoom = (free.x / (b.w + 48.0)).min(free.y / (b.h + 36.0)).clamp(0.25, 1.8);
     app.ui.zoom = zoom;
-    app.ui.pan = (size - vec2(b.w, b.h) * zoom) / 2.0 - vec2(b.x, b.y) * zoom;
+    app.ui.pan = vec2((free.x - b.w * zoom) / 2.0, TITLE_BAND + (free.y - b.h * zoom) / 2.0) - vec2(b.x, b.y) * zoom;
 }
 
 /// A drawn scene: where everything is on the screen, for the pointer.
@@ -208,6 +225,169 @@ fn socket_rects(area: Rect, n: usize, zoom: f32, max_cols: usize) -> Vec<Rect> {
         .collect()
 }
 
+/// What a socket is drawn as when its cell is too small for a connector to be told apart: a block in the
+/// connector's colour with a dark opening, and a lit edge when the link is up (or red when it is down).
+fn socket_block(p: &Painter, cell: Rect, conn: Connector, up: Option<bool>, tk: &Tokens) {
+    let fill = match conn {
+        Connector::Rj45 | Connector::Combo => tk.port_rim,
+        Connector::Console => tk.console_cable,
+        Connector::Serial => tk.serial_cable,
+        Connector::Sfp | Connector::Lc => tk.tile_blue,
+        Connector::Coax => tk.tile_gold,
+        Connector::Usb | Connector::Rs232 | Connector::Rj11 => tk.tile_grey,
+        Connector::Inlet | Connector::Outlet => tk.port_hole,
+    };
+    let r = cell.expand2(vec2(0.0, cell.height() * 0.3));
+    p.rect_filled(r, 0.5, fill);
+    p.rect_filled(r.shrink2(vec2(r.width() * 0.22, r.height() * 0.22)), 0.0, tk.port_hole);
+    if let Some(up) = up {
+        let strip = Rect::from_min_max(r.left_top(), pos2(r.right(), r.top() + (r.height() * 0.22).max(1.0)));
+        p.rect_filled(strip, 0.0, if up { tk.link_up } else { tk.link_down });
+    }
+}
+
+/// Whether a jack cell is too small for its connector to be drawn: it becomes a [`socket_block`].
+fn too_small(cell: Rect) -> bool {
+    cell.width() < 8.0 || cell.height() < 7.0
+}
+
+/// The per-kind detail a device's front panel carries beside its jacks, in the strip of width `extra` left
+/// of the power inlet (`right` is what the inlet and the margin take): a router's vents (and a modular
+/// router's blank slots), a firewall's grille, an access point's ring, a server's drive bays, a PC's optical
+/// drive and power button, a printer's tray, a phone's keypad, a laptop's hinge. Returns `extra`.
+fn front_detail(p: &Painter, d: &Device, r: Rect, zoom: f32, right: f32, tk: &Tokens) -> f32 {
+    let m = d.catalogue_model();
+    let id = m.id;
+    let z = zoom;
+    let body = body_color(d);
+    let dark = theme::shade(body, 0.4);
+    let light = theme::shade(body, 1.4);
+    let extra = if id.starts_with("Firewall") {
+        28.0
+    } else if m.wan() {
+        0.0
+    } else {
+        match d.kind {
+            DeviceKind::Router if id.contains("-M") => 34.0,
+            DeviceKind::Router => 22.0,
+            DeviceKind::Server => 46.0,
+            DeviceKind::Pc => 36.0,
+            DeviceKind::Printer => 30.0,
+            DeviceKind::Phone => 24.0,
+            DeviceKind::Switch if matches!(id, "AccessPoint" | "LAP" | "Home-Router" | "Home-Gateway") => 24.0,
+            _ => 0.0,
+        }
+    };
+    if d.kind == DeviceKind::Laptop {
+        p.rect_filled(Rect::from_min_size(r.min + vec2(4.0 * z, 1.5 * z), vec2(r.width() - 8.0 * z, (2.0 * z).max(1.0))), 0.0, light);
+        p.circle_filled(pos2(r.center().x, r.top() + 2.5 * z), (0.9 * z).max(0.7), dark);
+    }
+    if extra <= 0.0 {
+        return 0.0;
+    }
+    let x1 = r.right() - right * 0.9;
+    let det = Rect::from_min_max(pos2(x1 - extra * z + 3.0 * z, r.top() + 4.5 * z), pos2(x1 - 2.0 * z, r.bottom() - 3.5 * z));
+    if det.width() < 3.0 || det.height() < 3.0 {
+        return extra * z;
+    }
+    let line = Stroke::new((1.0 * z).max(0.8), dark);
+    let steps = |n: usize, f: &mut dyn FnMut(usize, f32)| {
+        for i in 0..n {
+            f(i, (i as f32 + 0.5) / n as f32);
+        }
+    };
+    if id.starts_with("Firewall") {
+        // A louvred grille.
+        steps(6, &mut |_, f| {
+            let x = det.left() + det.width() * f;
+            p.line_segment([pos2(x - 1.2 * z, det.bottom()), pos2(x + 1.2 * z, det.top())], line);
+        });
+        p.rect_filled(Rect::from_min_max(det.left_bottom() - vec2(0.0, 2.0 * z), det.right_bottom()), 0.0, Color32::from_rgb(0xc8, 0x3a, 0x2e));
+    } else {
+        match d.kind {
+            DeviceKind::Router if id.contains("-M") => {
+                // Module slots: two blank plates with their screws and one carrying a lit card.
+                steps(3, &mut |i, f| {
+                    let w = det.width() / 3.0 - 1.5 * z;
+                    let slot = Rect::from_min_size(pos2(det.left() + det.width() * (f - 0.5 / 3.0) + 0.5 * z, det.top()), vec2(w, det.height()));
+                    p.rect_filled(slot, 1.0, if i == 0 { Color32::from_rgb(0xd9, 0xb2, 0x4c) } else { theme::shade(body, 0.7) });
+                    p.rect_stroke(slot, 1.0, line, StrokeKind::Inside);
+                    if i > 0 {
+                        for y in [slot.top() + 2.0 * z, slot.bottom() - 2.0 * z] {
+                            p.circle_filled(pos2(slot.center().x, y), (0.8 * z).max(0.6), light);
+                        }
+                    }
+                });
+            }
+            DeviceKind::Router => {
+                steps(4, &mut |_, f| {
+                    let y = det.top() + det.height() * f;
+                    p.line_segment([pos2(det.left() + 2.0 * z, y), pos2(det.right() - 2.0 * z, y)], Stroke::new((1.4 * z).max(0.8), dark));
+                });
+            }
+            DeviceKind::Server => {
+                // Four drive bays with a handle and a light each.
+                steps(4, &mut |_, f| {
+                    let w = det.width() / 4.0 - 1.5 * z;
+                    let bay = Rect::from_min_size(pos2(det.left() + det.width() * (f - 0.125) + 0.4 * z, det.top()), vec2(w, det.height()));
+                    p.rect_filled(bay, 1.0, dark);
+                    p.rect_filled(
+                        Rect::from_min_size(bay.left_top() + vec2(0.0, bay.height() * 0.55), vec2(bay.width(), (1.6 * z).max(1.0))),
+                        0.0,
+                        light,
+                    );
+                    p.circle_filled(bay.center_top() + vec2(0.0, 2.0 * z), (0.8 * z).max(0.6), tk.link_up);
+                });
+            }
+            DeviceKind::Pc => {
+                // An optical drive slot over a power button.
+                let slot = Rect::from_min_size(det.left_top() + vec2(0.0, 1.0 * z), vec2(det.width(), det.height() * 0.3));
+                p.rect_filled(slot, 1.0, dark);
+                p.rect_filled(Rect::from_center_size(slot.center(), vec2(slot.width() * 0.8, (1.2 * z).max(1.0))), 0.0, light);
+                p.circle_filled(pos2(det.left() + det.width() * 0.25, det.bottom() - det.height() * 0.28), (2.2 * z).max(1.5), dark);
+                p.circle_stroke(
+                    pos2(det.left() + det.width() * 0.25, det.bottom() - det.height() * 0.28),
+                    (2.2 * z).max(1.5),
+                    Stroke::new(0.8, light),
+                );
+                for k in 0..2 {
+                    p.rect_filled(
+                        Rect::from_center_size(
+                            pos2(det.right() - (3.0 + 5.0 * k as f32) * z, det.bottom() - det.height() * 0.28),
+                            vec2(3.0 * z, 1.8 * z),
+                        ),
+                        0.0,
+                        dark,
+                    );
+                }
+            }
+            DeviceKind::Printer => {
+                // A paper tray with a sheet in it.
+                p.rect_filled(det, 1.0, dark);
+                let sheet = det.shrink2(vec2(2.0 * z, det.height() * 0.2));
+                p.rect_filled(sheet, 0.0, Color32::from_gray(0xee));
+                p.line_segment([sheet.left_center(), sheet.right_center()], Stroke::new(0.8, Color32::from_gray(0x90)));
+            }
+            DeviceKind::Phone => {
+                // A keypad.
+                steps(3, &mut |_, fx| {
+                    steps(3, &mut |_, fy| {
+                        p.circle_filled(pos2(det.left() + det.width() * fx, det.top() + det.height() * fy), (1.0 * z).max(0.8), light);
+                    });
+                });
+            }
+            _ => {
+                // An access point: a ring light under its antennas.
+                let c = det.center();
+                let rad = (det.height() * 0.4).min(det.width() * 0.4);
+                p.circle_stroke(c, rad, Stroke::new((1.4 * z).max(1.0), light));
+                p.circle_filled(c, rad * 0.4, tk.link_up);
+            }
+        }
+    }
+    extra * z
+}
+
 /// A device's front panel: its body, a power light, an antenna for a radio, one connector drawn as
 /// its real jack for every port that takes a cable (as many as the model has) and a power inlet.
 /// Returns the sockets by port.
@@ -238,11 +418,12 @@ fn device_panel(p: &Painter, t: &Topology, d: &Device, r: Rect, zoom: f32, tk: &
     let on = !d.powered_off;
     p.circle_filled(pos2(r.left() + 7.0 * zoom, r.center().y), (2.6 * zoom).max(1.5), if on { tk.link_up } else { Color32::from_gray(0x70) });
     let inlet = icons_ports::has_inlet(d.kind);
+    let right = if inlet { 27.0 * zoom } else { 7.0 * zoom };
+    let extra = front_detail(p, d, r, zoom, right, tk);
     let ports: Vec<(usize, Connector)> = (0..d.ports.len())
         .filter_map(|i| d.ports.get(i).and_then(|pt| icons_ports::connector_for(&pt.name, d.port_medium(i))).map(|c| (i, c)))
         .collect();
-    let right = if inlet { 27.0 * zoom } else { 7.0 * zoom };
-    let area = Rect::from_min_max(r.min + vec2(15.0 * zoom, 8.0 * zoom), r.max - vec2(right, 4.0 * zoom));
+    let area = Rect::from_min_max(r.min + vec2(15.0 * zoom, 7.0 * zoom), r.max - vec2(right + extra, 3.0 * zoom));
     if inlet {
         icons_ports::draw(p, Connector::Inlet, icons_ports::inlet_rect(r, zoom), false, tk);
     }
@@ -256,11 +437,15 @@ fn device_panel(p: &Painter, t: &Topology, d: &Device, r: Rect, zoom: f32, tk: &
     let mut out = Vec::new();
     for ((port, conn), cell) in ports.iter().zip(socket_rects(area, ports.len(), zoom, max_cols)) {
         let end = End { device: d.id, port: *port };
-        let jack = icons_ports::fit(*conn, cell);
-        icons_ports::draw(p, *conn, jack, false, tk);
-        if matches!(conn, Connector::Rj45 | Connector::Combo | Connector::Sfp) {
-            let up = (on && t.link_at(end).is_some()).then(|| netlabcraft_sim::port_up(t, end));
-            icons_ports::jack_lights(p, jack, up, zoom, tk);
+        let up = (on && t.link_at(end).is_some()).then(|| netlabcraft_sim::port_up(t, end));
+        if too_small(cell) {
+            socket_block(p, cell, *conn, up, tk);
+        } else {
+            let jack = icons_ports::fit(*conn, cell);
+            icons_ports::draw(p, *conn, jack, false, tk);
+            if matches!(conn, Connector::Rj45 | Connector::Combo | Connector::Sfp) {
+                icons_ports::jack_lights(p, jack, up, zoom, tk);
+            }
         }
         out.push((*port, cell));
     }
@@ -284,7 +469,11 @@ fn fitting_panel(p: &Painter, kind: FittingKind, ports: u32, on: bool, plugged: 
             let rects = socket_rects(area, n, zoom, if kind.is_fiber() { 12 } else { 24 });
             for (i, sr) in rects.iter().enumerate() {
                 let conn = if kind.is_fiber() { Connector::Lc } else { Connector::Rj45 };
-                icons_ports::draw(p, conn, icons_ports::fit(conn, *sr), false, tk);
+                if too_small(*sr) {
+                    socket_block(p, *sr, conn, None, tk);
+                } else {
+                    icons_ports::draw(p, conn, icons_ports::fit(conn, *sr), false, tk);
+                }
                 if zoom >= 0.9 && (i + 1).is_multiple_of(4) {
                     p.text(
                         pos2(sr.center().x, sr.top() - 1.0),
@@ -512,6 +701,8 @@ fn build(app: &PacketApp, p: &Painter, origin: Vec2, place: u32) -> Scene {
         sc.frames.push((*id, whole, head));
     }
     let label_h = 15.0 * zoom;
+    // The name plates are drawn last of all but the far-side labels, so a cable runs under a plate and never over one.
+    let mut plates: Vec<(Pos2, String, f32, bool)> = Vec::new();
     let mut panels: BTreeMap<DeviceId, Rect> = BTreeMap::new();
     let mut strips: BTreeMap<u32, Vec<Rect>> = BTreeMap::new();
     for placed in &layout.items {
@@ -558,7 +749,7 @@ fn build(app: &PacketApp, p: &Painter, origin: Vec2, place: u32) -> Scene {
                 }
             }
         }
-        name_plate(p, pos2(c.center().x, c.bottom() - label_h + 1.0), name, (12.0 * zoom).clamp(8.0, 20.0), in_rack, &tk);
+        plates.push((pos2(c.center().x, c.bottom() - label_h + 1.0), name, (12.0 * zoom).clamp(8.0, 20.0), in_rack));
         sc.items.push((item, c));
     }
     // Power cords: from a strip's outlet up to what is plugged into it.
@@ -644,6 +835,9 @@ fn build(app: &PacketApp, p: &Painter, origin: Vec2, place: u32) -> Scene {
                 drawn.push((own, pts));
             }
         }
+    }
+    for (top, name, size, in_rack) in plates {
+        name_plate(p, top, name, size, in_rack, &tk);
     }
     for (tip, text, color) in stubs {
         let galley = p.layout_no_wrap(text, FontId::proportional((11.0 * zoom).clamp(8.0, 16.0)), tk.text);
@@ -1249,6 +1443,58 @@ mod label_tests {
                 assert_ne!(text, Color32::TRANSPARENT, "the name was not painted");
                 assert!(theme::contrast(text, fill) >= 4.5, "dark={dark} in_rack={in_rack}: {text:?} on {fill:?}");
             }
+        }
+    }
+
+    #[test]
+    fn the_title_is_drawn_on_a_plate_that_holds_its_text_in_both_themes() {
+        for dark in [false, true] {
+            let tk = theme::tokens(dark);
+            let ctx = Context::default();
+            let mut plate = Rect::NOTHING;
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                let p = ui.ctx().layer_painter(LayerId::background());
+                plate = title_plate(&p, pos2(12.0, 8.0), "Wiring closet: Main Wiring Closet".to_string(), &tk);
+            });
+            let mut backing = Rect::NOTHING;
+            let mut text = Rect::NOTHING;
+            for s in &out.shapes {
+                match &s.shape {
+                    Shape::Rect(r) if r.fill == tk.canvas => backing = backing.union(r.rect),
+                    Shape::Text(t) => text = text.union(t.visual_bounding_rect()),
+                    _ => {}
+                }
+            }
+            out.textures_delta.clear();
+            assert!(text.is_positive(), "the title was not painted");
+            assert!(backing.contains_rect(text), "dark={dark}: the title is not on its plate: {text:?} vs {backing:?}");
+            assert!(plate.contains_rect(text));
+            assert!(theme::contrast(tk.text, tk.canvas) >= 4.5, "dark={dark}");
+        }
+    }
+
+    #[test]
+    fn small_jacks_become_blocks_and_every_port_keeps_its_socket() {
+        use netlabcraft_engine::Session;
+        let mut s = Session::new();
+        s.execute("device.add", serde_json::json!({"model": "Switch-48", "name": "S", "x": 0, "y": 0})).unwrap();
+        assert!(too_small(Rect::from_min_size(pos2(0.0, 0.0), vec2(5.0, 3.0))));
+        assert!(!too_small(Rect::from_min_size(pos2(0.0, 0.0), vec2(14.0, 10.0))));
+        let dev = s.topology.find("S").unwrap();
+        for zoom in [0.5f32, 0.8, 2.0] {
+            let tk = theme::tokens(false);
+            let ctx = Context::default();
+            let mut sockets = Vec::new();
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                let p = ui.ctx().layer_painter(LayerId::background());
+                sockets = device_panel(&p, &s.topology, dev, Rect::from_min_size(pos2(10.0, 10.0), vec2(300.0 * zoom, 30.0 * zoom)), zoom, &tk);
+            });
+            out.textures_delta.clear();
+            assert!(sockets.len() >= 48, "zoom {zoom}: {} sockets", sockets.len());
+            let mut centres: Vec<(i32, i32)> = sockets.iter().map(|(_, r)| (r.center().x as i32, r.center().y as i32)).collect();
+            centres.sort_unstable();
+            centres.dedup();
+            assert!(centres.len() > 24, "zoom {zoom}: the sockets overlap");
         }
     }
 
