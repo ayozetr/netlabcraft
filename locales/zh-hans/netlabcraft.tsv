@@ -1904,7 +1904,7 @@ furniture	Table	桌子
 	Enter a time of day as HH:MM:SS.	请按 HH:MM:SS 输入时间。
 	set here	此处设置
 	from {}	来自 {}
-	default	默认
+	default value	默认值
 	smart-home room	智能家居房间
 	Keyframe {} of {}	关键帧 {}/{}
 	Imported an environment: {} variables read, {} skipped	已导入环境：读取 {} 个变量，跳过 {} 个

@@ -1907,7 +1907,7 @@ furniture	Table	Mesa
 	Enter a time of day as HH:MM:SS.	Escribe una hora del día como HH:MM:SS.
 	set here	definido aquí
 	from {}	de {}
-	default	predeterminado
+	default value	valor predeterminado
 	smart-home room	habitación del hogar inteligente
 	Keyframe {} of {}	Fotograma clave {} de {}
 	Imported an environment: {} variables read, {} skipped	Entorno importado: {} variables leídas, {} omitidas

@@ -108,8 +108,8 @@ mod t {
         let mut h = harness("iot");
         h.state_mut().open_environments();
         h.run_steps(3);
-        assert_eq!(h.query_all_by_label("Edit").count(), 2, "the place's and the clock's");
-        h.query_all_by_label("Edit").next().unwrap().click();
+        assert_eq!(h.query_all_by_label("Edit").count(), 3, "the menu's, the place's and the clock's");
+        h.query_all_by_label("Edit").nth(1).unwrap().click();
         h.run_steps(3);
         assert!(h.state().ui.env_ui.edit);
         for label in
@@ -136,11 +136,11 @@ mod t {
         h.state_mut().ui.env_ui.edit = true;
         h.run_steps(3);
         assert!(!has(&h, "Pick a variable on the left"), "painted text is not a node");
-        h.get_by_label("Humidity").click();
+        h.get_by_label("Elevation").click();
         h.run_steps(3);
-        assert_eq!(h.state().ui.env_ui.selected, Some("humidity"));
-        assert_eq!(h.state().ui.env_ui.shown, ["humidity"]);
-        h.get_by_label("Humidity").click();
+        assert_eq!(h.state().ui.env_ui.selected, Some("elevation"));
+        assert_eq!(h.state().ui.env_ui.shown, ["elevation"]);
+        h.get_by_label("Elevation").click();
         h.run_steps(3);
         assert!(h.state().ui.env_ui.shown.is_empty() && h.state().ui.env_ui.selected.is_none());
         // Drawn in both themes without trouble, with keyframes on it.

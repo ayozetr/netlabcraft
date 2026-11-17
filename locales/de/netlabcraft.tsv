@@ -1904,7 +1904,7 @@ furniture	Table	Tisch
 	Enter a time of day as HH:MM:SS.	Tageszeit als HH:MM:SS eingeben.
 	set here	hier gesetzt
 	from {}	von {}
-	default	Standard
+	default value	Standardwert
 	smart-home room	Smart-Home-Raum
 	Keyframe {} of {}	Keyframe {} von {}
 	Imported an environment: {} variables read, {} skipped	Umgebung importiert: {} Variablen gelesen, {} übersprungen

@@ -1904,7 +1904,7 @@ furniture	Table	Mesa
 	Enter a time of day as HH:MM:SS.	Digite uma hora do dia como HH:MM:SS.
 	set here	definido aqui
 	from {}	de {}
-	default	padrão
+	default value	valor padrão
 	smart-home room	sala da casa inteligente
 	Keyframe {} of {}	Quadro-chave {} de {}
 	Imported an environment: {} variables read, {} skipped	Ambiente importado: {} variáveis lidas, {} ignoradas

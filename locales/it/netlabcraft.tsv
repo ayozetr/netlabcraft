@@ -1904,7 +1904,7 @@ furniture	Table	Tavolo
 	Enter a time of day as HH:MM:SS.	Inserisci un'ora del giorno come HH:MM:SS.
 	set here	impostato qui
 	from {}	da {}
-	default	predefinito
+	default value	valore predefinito
 	smart-home room	stanza della casa intelligente
 	Keyframe {} of {}	Fotogramma chiave {} di {}
 	Imported an environment: {} variables read, {} skipped	Ambiente importato: {} variabili lette, {} ignorate

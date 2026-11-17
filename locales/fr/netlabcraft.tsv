@@ -1904,7 +1904,7 @@ furniture	Table	Table
 	Enter a time of day as HH:MM:SS.	Saisissez une heure au format HH:MM:SS.
 	set here	défini ici
 	from {}	depuis {}
-	default	par défaut
+	default value	valeur par défaut
 	smart-home room	pièce de la maison connectée
 	Keyframe {} of {}	Image clé {} sur {}
 	Imported an environment: {} variables read, {} skipped	Environnement importé : {} variables lues, {} ignorées

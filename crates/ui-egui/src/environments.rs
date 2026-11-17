@@ -144,18 +144,18 @@ pub fn fmt(v: f64) -> String {
 }
 
 fn place_name(t: &Topology, id: u32) -> String {
-    if id == INTERCITY { tl("Intercity").to_string() } else { t.place(id).map(|p| p.name).unwrap_or_default() }
+    if id == INTERCITY { tl("Intercity").to_string() } else { t.place(id).map(|p| tr(&p.name).to_string()).unwrap_or_default() }
 }
 
 /// The places as a tree, depth first: id, name and depth (0 is the Intercity map).
 pub fn place_items(t: &Topology) -> Vec<(u32, String, usize)> {
     let mut out = vec![(INTERCITY, tl("Intercity").to_string(), 0)];
     for city in t.places_in(None) {
-        out.push((city.id, city.name.clone(), 1));
+        out.push((city.id, tr(&city.name).to_string(), 1));
         for building in t.places_in(Some(city.id)) {
-            out.push((building.id, building.name.clone(), 2));
+            out.push((building.id, tr(&building.name).to_string(), 2));
             for closet in t.places_in(Some(building.id)) {
-                out.push((closet.id, closet.name.clone(), 3));
+                out.push((closet.id, tr(&closet.name).to_string(), 3));
             }
         }
     }
@@ -176,7 +176,7 @@ fn effective(app: &PacketApp, place: u32, v: &Var, time: u32) -> (f64, String) {
         Some((x, Source::Inherited(from))) => (x, trf("from {}", &[&place_name(t, from)])),
         _ => match v.drives.and_then(|w| app.session.sim.environment().and_then(|c| c.reading(w))) {
             Some(r) => (f64::from(r), tl("smart-home room").to_string()),
-            None => (v.default, tl("default").to_string()),
+            None => (v.default, tl("default value").to_string()),
         },
     }
 }
