@@ -113,7 +113,7 @@ fn the_profile_name_is_cleaned_and_names_the_student() {
 #[test]
 fn cable_length_effects_can_be_switched_off_for_a_lab() {
     let mut s = lab();
-    let l = s.topology.links[0].clone();
+    let l = s.topology.links[0];
     let port = s.topology.device(l.a.device).unwrap().ports[l.a.port].name.clone();
     s.execute("link.length", json!({"device": l.a.device.0, "port": port, "meters": 500})).unwrap();
     assert!(netlabcraft_sim::cable_problem(&s.topology, l.a).is_some());

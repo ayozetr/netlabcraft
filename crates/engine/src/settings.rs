@@ -264,7 +264,7 @@ fn length_effects(s: &mut Session, p: &Value) -> Result<Value> {
         None | Some(Value::Null) => {}
         Some(v) => {
             let on = v.as_bool().ok_or_else(|| bad("`on` is true or false"))?;
-            if s.topology.physical.ignore_lengths != !on {
+            if s.topology.physical.ignore_lengths == on {
                 s.checkpoint();
                 s.topology.physical.ignore_lengths = !on;
                 s.changed();
