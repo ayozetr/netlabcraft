@@ -39,7 +39,7 @@ impl<'a> Art<'a> {
     }
 
     pub(crate) fn ink(&self) -> Stroke {
-        Stroke::new(self.lw(), self.tk.art_ink)
+        Stroke::new(self.lw(), self.tk.art_edge)
     }
 
     /// A point of the icon, `x` and `y` as fractions of its width.
@@ -102,7 +102,7 @@ impl<'a> Art<'a> {
 
     /// A rod: a dark line with a lighter one along it.
     pub(crate) fn bar(&self, from: Pos2, to: Pos2, wid: f32, col: Color32) {
-        self.line(from, to, wid + 0.04, self.tk.art_ink);
+        self.line(from, to, wid + 0.04, self.tk.art_edge);
         self.line(from, to, wid, col);
     }
 
@@ -135,7 +135,7 @@ impl<'a> Art<'a> {
     /// Overlapping discs drawn as one outlined blob (a cloud, a puff of smoke).
     pub(crate) fn blob(&self, discs: &[(f32, f32, f32)], fill: Color32) {
         for (x, y, r) in discs {
-            self.p.circle_filled(self.at(*x, *y), self.w * r + self.lw(), self.tk.art_ink);
+            self.p.circle_filled(self.at(*x, *y), self.w * r + self.lw(), self.tk.art_edge);
         }
         for (x, y, r) in discs {
             self.p.circle_filled(self.at(*x, *y), self.w * r, fill);

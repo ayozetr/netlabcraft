@@ -62,6 +62,8 @@ pub struct Tokens {
     /// The paints the device pictures are drawn with (smart things, components, boards, the near-duplicate
     /// models): the outline, white plastic, bare metal, glass, the accent colours and the two board greens.
     pub art_ink: Color32,
+    /// The outline of the pictures: the ink on the light theme, a lighter slate on the dark one so thin parts keep their edge.
+    pub art_edge: Color32,
     pub art_paper: Color32,
     pub art_steel: Color32,
     pub art_glass: Color32,
@@ -115,6 +117,7 @@ pub const LIGHT: Tokens = Tokens {
     port_contact: Color32::from_rgb(0xd9, 0xa8, 0x2b),
     port_activity: Color32::from_rgb(0xf2, 0xa3, 0x1b),
     art_ink: Color32::from_rgb(0x1c, 0x26, 0x34),
+    art_edge: Color32::from_rgb(0x1c, 0x26, 0x34),
     art_paper: Color32::from_rgb(0xf6, 0xf8, 0xfa),
     art_steel: Color32::from_rgb(0xa9, 0xb4, 0xc0),
     art_glass: Color32::from_rgb(0xcf, 0xe6, 0xf5),
@@ -168,6 +171,7 @@ pub const DARK: Tokens = Tokens {
     port_contact: Color32::from_rgb(0xe6, 0xb8, 0x3c),
     port_activity: Color32::from_rgb(0xff, 0xb4, 0x3a),
     art_ink: Color32::from_rgb(0x10, 0x15, 0x1c),
+    art_edge: Color32::from_rgb(0x8a, 0x99, 0xad),
     art_paper: Color32::from_rgb(0xe8, 0xec, 0xf0),
     art_steel: Color32::from_rgb(0x9a, 0xa6, 0xb4),
     art_glass: Color32::from_rgb(0xb4, 0xd2, 0xe6),
