@@ -247,13 +247,13 @@ fn an_rfid_reader_reads_the_nearest_card_in_range_and_a_beacon_announces_its_id(
     let mut s = home();
     add(&mut s, "RFID Reader", "Reader1", 450);
     add(&mut s, "RFID Card", "CardA", 480);
-    add(&mut s, "RFID Card", "CardB", 800);
+    add(&mut s, "RFID Card", "CardB", 700);
     add(&mut s, "Beacon", "Beacon1", 520);
     let page_of = |s: &mut Session, n: &str| page(s, n);
     // A card announces a unique id until one is set by hand.
     let (a, b) = (page_of(&mut s, "CardA")["value"].as_i64().unwrap(), page_of(&mut s, "CardB")["value"].as_i64().unwrap());
     assert!(a > 0 && b > 0 && a != b, "{a} {b}");
-    // CardA is 30 units (17 m) away: read. CardB is 350 units (194 m): not.
+    // CardA is 30 units (17 m) away: read. CardB is 250 units (139 m): not.
     assert_eq!(page_of(&mut s, "Reader1")["value"].as_i64(), Some(a));
     s.execute("iot.configure", json!({"device": "CardA", "value": 4242})).unwrap();
     assert_eq!(page_of(&mut s, "Reader1")["value"], 4242);
@@ -310,11 +310,12 @@ fn a_signal_generator_outputs_a_level_and_a_frequency_that_a_rule_reads() {
     let mut s = home();
     add(&mut s, "Signal Generator", "Gen1", 450);
     add(&mut s, "Appliance", "Kettle1", 520);
+    // A rule acts when a reading changes, so it is in place before the generator's level is set.
+    s.execute("iot.server", json!({"device": "Home", "rules": [{"sensor": "Gen1", "above": 200, "actuator": "Kettle1"}]})).unwrap();
     s.execute("iot.configure", json!({"device": "Gen1", "value": 300, "frequency": 440})).unwrap();
     let p = page(&mut s, "Gen1");
     assert_eq!((p["value"].as_i64(), p["value2"].as_i64(), p["frequency"].as_i64()), (Some(300), Some(440), Some(440)), "{p}");
-    // The service lists both numbers, and a rule on the level switches another thing.
-    s.execute("iot.server", json!({"device": "Home", "rules": [{"sensor": "Gen1", "above": 200, "actuator": "Kettle1"}]})).unwrap();
+    // The service lists both numbers, and the rule on the level has switched the other thing.
     assert_eq!(page(&mut s, "Kettle1")["on"], true);
     s.execute("iot.configure", json!({"device": "Gen1", "value": 100})).unwrap();
     assert_eq!(page(&mut s, "Kettle1")["on"], false, "the level fell under the rule's 200");
