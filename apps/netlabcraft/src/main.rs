@@ -3,7 +3,7 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 use netlabcraft_engine::Session;
-use netlabcraft_ui_egui::{PacketApp, UiRequest};
+use netlabcraft_ui_egui::{PacketApp, Toolbars, UiRequest};
 use serde_json::json;
 
 /// What to do with unsaved changes when the window closes.
@@ -22,6 +22,8 @@ struct App {
     last_path: Option<String>,
     /// The "device windows as separate windows" choice last saved.
     native_saved: bool,
+    /// The toolbars shown (View ▸ Toolbars) as last saved.
+    toolbars_saved: Toolbars,
     /// The native-window geometries as last written (compared as text), and when.
     geometry_text: String,
     geometry_at: f64,
@@ -102,6 +104,20 @@ fn play_wav(bytes: &[u8]) {
     } else {
         netlabcraft_core::process::spawn_detached("paplay", &[&path]).or_else(|_| netlabcraft_core::process::spawn_detached("aplay", &["-q", &path]))
     };
+}
+
+/// The toolbars the person left shown or hidden (all shown until they choose).
+fn load_toolbars() -> Toolbars {
+    recent_file().and_then(|f| std::fs::read_to_string(f.with_file_name("toolbars")).ok()).map_or_else(Toolbars::default, |t| Toolbars::from_text(&t))
+}
+
+fn save_toolbars(t: Toolbars) {
+    let Some(f) = recent_file().map(|f| f.with_file_name("toolbars")) else { return };
+    if let Some(dir) = f.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    // A lost choice only costs convenience: errors are ignored.
+    let _ = std::fs::write(f, t.to_text());
 }
 
 /// Where the size and position of each device's native window are kept between sessions.
@@ -269,6 +285,10 @@ impl eframe::App for App {
             save_preferences(&prefs);
             self.prefs_text = prefs;
         }
+        if self.app.ui.toolbars != self.toolbars_saved {
+            self.toolbars_saved = self.app.ui.toolbars;
+            save_toolbars(self.toolbars_saved);
+        }
         // Where each device's native window sits: written when it changes, at most once a second
         // while a window is open (it moves with every frame of a drag), and at once after.
         let now = ctx.input(|i| i.time);
@@ -338,6 +358,8 @@ fn main() -> eframe::Result {
     let prefs_text = app.preferences_text();
     let native_saved = load_native_windows();
     app.ui.native_windows = native_saved;
+    let toolbars_saved = load_toolbars();
+    app.ui.toolbars = toolbars_saved;
     app.ui.native_remembered = load_native_geometry();
     let geometry_text = netlabcraft_ui_egui::native_geometry_to_text(&app.ui.native_remembered);
     // None: a lab opened from the command line goes on the recent list too.
@@ -358,7 +380,17 @@ fn main() -> eframe::Result {
         Box::new(move |cc| {
             netlabcraft_ui_egui::fonts::install(&cc.egui_ctx);
             app.apply_theme(&cc.egui_ctx);
-            Ok(Box::new(App { app, title, closing: Closing::No, last_path, native_saved, geometry_text, geometry_at: 0.0, prefs_text }))
+            Ok(Box::new(App {
+                app,
+                title,
+                closing: Closing::No,
+                last_path,
+                native_saved,
+                toolbars_saved,
+                geometry_text,
+                geometry_at: 0.0,
+                prefs_text,
+            }))
         }),
     )
 }

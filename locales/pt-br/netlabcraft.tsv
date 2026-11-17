@@ -622,7 +622,6 @@
 	Lock the activity so students can't open the answer network; with a password it is encrypted in the file.	Bloqueie a atividade para os alunos não abrirem a rede do gabarito; com senha, ela é criptografada no arquivo.
 	locked	bloqueado
 	Logical	Lógico
-	Logical Workspace	Área de trabalho lógica
 	login from {} refused by access-class {}	login de {} recusado pela access-class {}
 	Looking for {}	Procurando {}
 	loop: the frame crossed {} hubs or switches	loop: o quadro passou por {} hubs ou switches
@@ -838,7 +837,6 @@
 	Phone line (RJ-11): joins phone ports (a DSL modem to the phone company's cloud); carries a signal up to 5 km here	Linha telefônica (RJ-11): liga portas de telefone (um modem DSL à nuvem da operadora); transporta sinal até 5 km aqui
 	Phone settings	Configurações do telefone
 	Physical	Física
-	Physical Workspace	Área de trabalho física
 	Physical workspace	Área de trabalho física
 	Physics on (sensors read the room)	Física ativada (os sensores leem o ambiente)
 	Pick a card in the list first, then click an empty bay.	Escolha antes uma placa na lista e clique em um compartimento vazio.
@@ -1726,10 +1724,6 @@ event	write request for	requisição de escrita de
 	Logging	Registro
 	Enable Logging	Ativar o registro
 	Export Log…	Exportar o registro…
-	Toolbars	Barras de ferramentas
-	Main Toolbar	Barra principal
-	Secondary Toolbar	Barra secundária
-	Bottom Toolbar	Barra inferior
 	Interface text	Texto da interface
 	Text size:	Tamanho do texto:
 	Reset	Redefinir
@@ -1745,3 +1739,48 @@ event	write request for	requisição de escrita de
 	The timing options it has are Constant Delay in the Simulation Panel and the timers each device's console sets.	As opções de tempo disponíveis são o Atraso constante no painel de simulação e os temporizadores definidos pelo console de cada dispositivo.
 	and {} more	e mais {}
 @plural	{} command|{} commands	{} comando|{} comandos
+	Zoom	Zoom
+	Toolbars	Barras de ferramentas
+	Main	Principal
+	Secondary	Secundária
+	Bottom	Inferior
+	Simulation Mode	Modo de simulação
+	Realtime Mode	Modo em tempo real
+	Logical View	Visão lógica
+	Physical View	Visão física
+	Show Viewport	Mostrar visualizador
+	Show Workspace List	Mostrar lista da área de trabalho
+	Drawing Palette	Paleta de desenho
+	Report an Issue	Relatar um problema
+	Opens the issue tracker in your browser	Abre o rastreador de problemas no navegador
+	Getting Started	Primeiros passos
+	Contents	Conteúdo
+	Tutorials	Tutoriais
+	Accessibility	Acessibilidade
+	NetLabCraft Help	Ajuda do NetLabCraft
+	Keyboard shortcuts	Atalhos de teclado
+	Documentation online	Documentação on-line
+	Command reference	Referência de comandos
+	Command line	Linha de comando
+	Agent control (MCP)	Controle por agentes (MCP)
+	Lab file format	Formato de arquivo de laboratório
+	Open the lab book	Abrir o livro de práticas
+	Viewport	Visualizador
+	The viewport shows the logical view.	O visualizador mostra a visão lógica.
+	Nothing on the workspace yet.	Ainda não há nada na área de trabalho.
+	Click or drag to move the view of the workspace	Clique ou arraste para mover a visão da área de trabalho
+	Workspace List	Lista da área de trabalho
+	Click a device to select it; double-click to open it.	Clique em um dispositivo para selecioná-lo; clique duas vezes para abri-lo.
+	1. Pick a device in the box at the bottom, then click the workspace to place it.	1. Escolha um dispositivo na caixa inferior e clique na área de trabalho para colocá-lo.
+	2. Pick a cable in the same box, click one device, then another, and choose the ports.	2. Escolha um cabo na mesma caixa, clique em um dispositivo, depois em outro, e escolha as portas.
+	3. Click a device to open its window: routers and switches have a CLI, computers a Desktop.	3. Clique em um dispositivo para abrir sua janela: roteadores e switches têm CLI, computadores têm uma Área de trabalho.
+	4. Test the network with Add Simple PDU in the Tools menu: click a source, then a destination.	4. Teste a rede com Adicionar PDU simples no menu Ferramentas: clique em uma origem e depois em um destino.
+	5. Switch to Simulation mode to step through every frame in the event list.	5. Passe para o modo de simulação para percorrer cada quadro na lista de eventos.
+	6. Save with Ctrl+S. New from sample in the File menu opens a ready-made lab to explore.	6. Salve com Ctrl+S. Novo a partir de exemplo, no menu Arquivo, abre um laboratório pronto para explorar.
+	The File menu's New from sample opens labs made to be explored: VLANs, routing, wireless and more.	Novo a partir de exemplo, no menu Arquivo, abre laboratórios feitos para explorar: VLANs, roteamento, redes sem fio e mais.
+	The lab book has step-by-step exercises, from first device setup to routing protocols.	O livro de práticas tem exercícios passo a passo, da primeira configuração aos protocolos de roteamento.
+	Each lab lists the devices to place, the commands to type and what you should see.	Cada prática lista os dispositivos a colocar, os comandos a digitar e o que você deve ver.
+	Every device on the workspace is announced by a screen reader with its name and model.	Um leitor de tela anuncia cada dispositivo da área de trabalho com seu nome e modelo.
+	Tab and the arrow keys move between devices and cables; Enter or Space opens the one in focus.	Tab e as setas movem entre dispositivos e cabos; Enter ou Espaço abre o que está em foco.
+	The Workspace List in the View menu names every device in a table you can move through.	A lista da área de trabalho, no menu Exibir, nomeia cada dispositivo em uma tabela pela qual você pode navegar.
+	Everything the menus do can also be typed, from the command line or by an agent.	Tudo o que os menus fazem também pode ser digitado, pela linha de comando ou por um agente.

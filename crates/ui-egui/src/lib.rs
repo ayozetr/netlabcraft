@@ -27,6 +27,7 @@ mod credits;
 mod events;
 pub mod fonts;
 mod hardware;
+mod help;
 mod host_apps;
 pub mod i18n;
 pub mod icons;
@@ -35,6 +36,7 @@ pub mod instructor;
 mod iot_page;
 mod mail;
 mod mib;
+mod overview;
 mod palette;
 pub mod pdf;
 pub mod pdu_dialog;
@@ -171,11 +173,63 @@ pub fn native_geometry_from_text(text: &str) -> BTreeMap<String, NativeGeometry>
     out
 }
 
+/// Which toolbars View ▸ Toolbars shows: the main bar (file, edit, zoom), the secondary bar (tools) and the
+/// bottom bar (the device box). All three are shown until the person hides one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Toolbars {
+    pub main: bool,
+    pub secondary: bool,
+    pub bottom: bool,
+}
+
+impl Default for Toolbars {
+    fn default() -> Self {
+        Toolbars { main: true, secondary: true, bottom: true }
+    }
+}
+
+impl Toolbars {
+    /// The choice as text, one `name on|off` line per bar. The desktop shell keeps it between sessions.
+    pub fn to_text(self) -> String {
+        let word = |on: bool| if on { "on" } else { "off" };
+        format!("main {}\nsecondary {}\nbottom {}\n", word(self.main), word(self.secondary), word(self.bottom))
+    }
+
+    /// What `to_text` wrote. Damaged or hostile text keeps the default (shown) for what it does not say clearly.
+    pub fn from_text(text: &str) -> Toolbars {
+        let mut t = Toolbars::default();
+        for line in text.lines().take(16) {
+            let mut words = line.split_whitespace();
+            let (Some(name), Some(value)) = (words.next(), words.next()) else { continue };
+            let on = match value {
+                "on" => true,
+                "off" => false,
+                _ => continue,
+            };
+            match name {
+                "main" => t.main = on,
+                "secondary" => t.secondary = on,
+                "bottom" => t.bottom = on,
+                _ => {}
+            }
+        }
+        t
+    }
+}
+
 /// View state that isn't part of the lab.
 #[derive(Debug, Clone)]
 pub struct UiState {
     pub dark: bool,
     pub show_grid: bool,
+    /// The toolbars shown (View ▸ Toolbars; the desktop shell saves the choice).
+    pub toolbars: Toolbars,
+    /// View ▸ Show Viewport: the overview of the workspace you click to pan.
+    pub show_viewport: bool,
+    /// View ▸ Show Workspace List: every device with its name, model and type.
+    pub show_workspace_list: bool,
+    /// The Help window's page, while it is open.
+    pub(crate) help: Option<help::Page>,
     pub tool: Tool,
     pub mode: Mode,
     pub selected: Option<DeviceId>,
@@ -259,6 +313,10 @@ impl Default for UiState {
         UiState {
             dark: false,
             show_grid: false,
+            toolbars: Toolbars::default(),
+            show_viewport: false,
+            show_workspace_list: false,
+            help: None,
             tool: Tool::Select,
             mode: Mode::Realtime,
             selected: None,
@@ -476,6 +534,11 @@ pub struct PacketApp {
 }
 
 /// A square toolbar button with a glyph; `label` is its tooltip and accessible name.
+/// A menu row that is on or off (highlighted when on) with its shortcut shown at the right; true when clicked.
+fn check_item(ui: &mut egui::Ui, on: bool, label: &str, shortcut: &str) -> bool {
+    ui.add(egui::Button::new(label).shortcut_text(shortcut).selected(on)).clicked()
+}
+
 fn tool_button(ui: &mut egui::Ui, g: Glyph, label: &str, selected: bool, enabled: bool) -> egui::Response {
     let tk = theme::tokens(ui.visuals().dark_mode);
     let (rect, resp) = ui.allocate_exact_size(vec2(38.0, 36.0), if enabled { Sense::click() } else { Sense::hover() });
@@ -850,6 +913,17 @@ impl PacketApp {
         self.ui.canvas.cancel();
     }
 
+    /// Tools ▸ Drawing Palette: picks a drawing tool, which shows the Palette window (a drawing tool already
+    /// picked stays). The physical view has no drawings.
+    pub fn open_drawing_palette(&mut self) {
+        if self.session.physical {
+            return;
+        }
+        if !matches!(self.ui.tool, Tool::Draw(s) if s != netlabcraft_model::Shape::Text) {
+            self.set_tool(Tool::Draw(netlabcraft_model::Shape::Rectangle));
+        }
+    }
+
     fn zoom(&mut self, factor: Option<f32>) {
         self.ui.zoom = match factor {
             Some(f) => (self.ui.zoom * f).clamp(0.25, 3.0),
@@ -873,6 +947,9 @@ impl PacketApp {
         }
         if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::S))) {
             self.save(false);
+        }
+        if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F1)) {
+            self.ui.help = Some(help::Page::Contents);
         }
         // Text fields keep their own undo and Delete.
         if ctx.egui_wants_keyboard_input() {
@@ -906,13 +983,42 @@ impl PacketApp {
         if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::V))) {
             self.paste();
         }
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::D))) {
+            self.open_drawing_palette();
+        }
+        // Ctrl+Shift+letter before Shift+letter, and both before the bare letters: egui ignores an extra Shift.
+        let cmd_shift = cmd | Modifiers::SHIFT;
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd_shift, Key::A))) {
+            self.ui.toolbars.main = !self.ui.toolbars.main;
+        }
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd_shift, Key::R))) {
+            self.ui.toolbars.secondary = !self.ui.toolbars.secondary;
+        }
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd_shift, Key::B))) {
+            self.ui.toolbars.bottom = !self.ui.toolbars.bottom;
+        }
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::SHIFT, Key::S))) {
+            self.ui.mode = Mode::Simulation;
+        }
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::SHIFT, Key::R))) {
+            self.ui.mode = Mode::Realtime;
+        }
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::SHIFT, Key::L))) && self.session.physical {
+            self.set_physical(false);
+        }
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::SHIFT, Key::P))) && !self.session.physical {
+            self.set_physical(true);
+        }
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::SHIFT, Key::V))) {
+            self.ui.show_viewport = !self.ui.show_viewport;
+        }
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::SHIFT, Key::W))) {
+            self.ui.show_workspace_list = !self.ui.show_workspace_list;
+        }
         for (k, t) in [(Key::I, Tool::Inspect), (Key::P, Tool::Ping), (Key::N, Tool::Note)] {
             if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, k)) {
                 self.set_tool(t);
             }
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::SHIFT, Key::S))) {
-            self.ui.mode = if self.ui.mode == Mode::Realtime { Mode::Simulation } else { Mode::Realtime };
         }
     }
 
@@ -925,14 +1031,14 @@ impl PacketApp {
         let chrome = egui::Frame::new().fill(tk.chrome).inner_margin(egui::Margin::symmetric(6, 4));
         let bar = egui::Frame::new().fill(tk.bar).inner_margin(egui::Margin::symmetric(6, 3));
         egui::Panel::top("menu").show(ui, |ui| self.menu_bar(ui));
-        if self.ui.prefs.show_main_toolbar {
+        if self.ui.toolbars.main {
             egui::Panel::top("toolbar").frame(chrome.stroke(egui::Stroke::new(1.0, tk.chrome_line))).show(ui, |ui| self.main_toolbar(ui));
         }
-        if self.ui.prefs.show_tools_toolbar {
+        if self.ui.toolbars.secondary {
             egui::Panel::top("tools").frame(chrome.stroke(egui::Stroke::new(1.0, tk.chrome_line))).show(ui, |ui| self.tool_bar(ui));
         }
         egui::Panel::top("workspace_bar").frame(bar).show(ui, |ui| self.workspace_bar(ui));
-        if self.ui.prefs.show_device_box {
+        if self.ui.toolbars.bottom {
             egui::Panel::bottom("device_box").frame(chrome).exact_size(160.0).show(ui, |ui| bottom::show(self, ui));
         }
         egui::Panel::bottom("time_bar").frame(bar).show(ui, |ui| self.time_bar(ui));
@@ -956,6 +1062,9 @@ impl PacketApp {
         activity::windows(self, &ctx);
         prefs::windows(self, &ctx);
         self.about_window(&ctx);
+        help::window(self, &ctx);
+        overview::viewport_window(self, &ctx);
+        overview::list_window(self, &ctx);
     }
 
     fn menu_bar(&mut self, ui: &mut egui::Ui) {
@@ -1016,10 +1125,17 @@ impl PacketApp {
                 }
             });
             ui.menu_button(tl("Edit"), |ui| {
-                if ui.add_enabled(self.session.can_undo(), egui::Button::new(tl("Undo"))).clicked() {
+                if ui.add_enabled(self.ui.selected.is_some(), egui::Button::new(tl("Copy")).shortcut_text("Ctrl+C")).clicked() {
+                    self.copy();
+                }
+                if ui.add_enabled(self.ui.clipboard.is_some(), egui::Button::new(tl("Paste")).shortcut_text("Ctrl+V")).clicked() {
+                    self.paste();
+                }
+                ui.separator();
+                if ui.add_enabled(self.session.can_undo(), egui::Button::new(tl("Undo")).shortcut_text("Ctrl+Z")).clicked() {
                     self.run("edit.undo", json!({}));
                 }
-                if ui.add_enabled(self.session.can_redo(), egui::Button::new(tl("Redo"))).clicked() {
+                if ui.add_enabled(self.session.can_redo(), egui::Button::new(tl("Redo")).shortcut_text("Ctrl+Shift+Z")).clicked() {
                     self.run("edit.redo", json!({}));
                 }
                 ui.separator();
@@ -1059,26 +1175,58 @@ impl PacketApp {
                 });
             });
             ui.menu_button(tl("View"), |ui| {
-                if ui.button(tl("Zoom In")).clicked() {
-                    self.zoom(Some(1.25));
+                ui.menu_button(tl("Zoom"), |ui| {
+                    if ui.button(tl("Zoom In")).clicked() {
+                        self.zoom(Some(1.25));
+                    }
+                    if ui.button(tl("Zoom Reset")).clicked() {
+                        self.zoom(None);
+                        self.ui.pan = egui::Vec2::ZERO;
+                    }
+                    if ui.button(tl("Zoom Out")).clicked() {
+                        self.zoom(Some(0.8));
+                    }
+                });
+                ui.menu_button(tl("Toolbars"), |ui| {
+                    if check_item(ui, self.ui.toolbars.main, tl("Main"), "Ctrl+Shift+A") {
+                        self.ui.toolbars.main = !self.ui.toolbars.main;
+                    }
+                    if check_item(ui, self.ui.toolbars.secondary, tl("Secondary"), "Ctrl+Shift+R") {
+                        self.ui.toolbars.secondary = !self.ui.toolbars.secondary;
+                    }
+                    if check_item(ui, self.ui.toolbars.bottom, tl("Bottom"), "Ctrl+Shift+B") {
+                        self.ui.toolbars.bottom = !self.ui.toolbars.bottom;
+                    }
+                });
+                ui.separator();
+                if check_item(ui, self.ui.mode == Mode::Simulation, tl("Simulation Mode"), "Shift+S") {
+                    self.ui.mode = Mode::Simulation;
                 }
-                if ui.button(tl("Zoom Reset")).clicked() {
-                    self.zoom(None);
-                    self.ui.pan = egui::Vec2::ZERO;
-                }
-                if ui.button(tl("Zoom Out")).clicked() {
-                    self.zoom(Some(0.8));
+                if check_item(ui, self.ui.mode == Mode::Realtime, tl("Realtime Mode"), "Shift+R") {
+                    self.ui.mode = Mode::Realtime;
                 }
                 ui.separator();
                 let physical = self.session.physical;
-                if ui.add_enabled(physical, egui::Button::new(tl("Logical Workspace"))).clicked() {
+                if check_item(ui, !physical, tl("Logical View"), "Shift+L") && physical {
                     self.set_physical(false);
                 }
-                if ui.add_enabled(!physical, egui::Button::new(tl("Physical Workspace"))).clicked() {
+                if check_item(ui, physical, tl("Physical View"), "Shift+P") && !physical {
                     self.set_physical(true);
+                }
+                ui.separator();
+                if check_item(ui, self.ui.show_viewport, tl("Show Viewport"), "Shift+V") {
+                    self.ui.show_viewport = !self.ui.show_viewport;
+                }
+                if check_item(ui, self.ui.show_workspace_list, tl("Show Workspace List"), "Shift+W") {
+                    self.ui.show_workspace_list = !self.ui.show_workspace_list;
                 }
             });
             ui.menu_button(tl("Tools"), |ui| {
+                if ui.add_enabled(!self.session.physical, egui::Button::new(tl("Drawing Palette")).shortcut_text("Ctrl+D")).clicked() {
+                    self.open_drawing_palette();
+                    ui.close();
+                }
+                ui.separator();
                 if ui.button(tl("Inspect")).clicked() {
                     self.set_tool(Tool::Inspect);
                     ui.close();
@@ -1122,6 +1270,20 @@ impl PacketApp {
                 }
             });
             ui.menu_button(tl("Help"), |ui| {
+                for (page, shortcut) in
+                    [(help::Page::GettingStarted, ""), (help::Page::Contents, "F1"), (help::Page::Tutorials, ""), (help::Page::Accessibility, "")]
+                {
+                    if ui.add(egui::Button::new(tl(page.title())).shortcut_text(shortcut)).clicked() {
+                        self.ui.help = Some(page);
+                        ui.close();
+                    }
+                }
+                ui.separator();
+                if ui.button(tl("Report an Issue")).on_hover_text(tl("Opens the issue tracker in your browser")).clicked() {
+                    ui.ctx().open_url(egui::OpenUrl::new_tab(help::ISSUES_URL));
+                    ui.close();
+                }
+                ui.separator();
                 if ui.button(tl("About")).clicked() {
                     self.ui.show_about = true;
                     ui.close();

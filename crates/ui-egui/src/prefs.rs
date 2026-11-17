@@ -55,9 +55,6 @@ pub struct Prefs {
     pub align_physical: bool,
     /// Interface text size in percent.
     pub font_percent: u16,
-    pub show_main_toolbar: bool,
-    pub show_tools_toolbar: bool,
-    pub show_device_box: bool,
 }
 
 impl Default for Prefs {
@@ -80,9 +77,6 @@ impl Default for Prefs {
             cable_popup: true,
             align_physical: false,
             font_percent: 100,
-            show_main_toolbar: true,
-            show_tools_toolbar: true,
-            show_device_box: true,
         }
     }
 }
@@ -94,7 +88,7 @@ impl Prefs {
     }
 
     /// The yes-or-no settings with the name each has in the saved text.
-    fn flags(&mut self) -> [(&'static str, &mut bool); 18] {
+    fn flags(&mut self) -> [(&'static str, &mut bool); 15] {
         [
             ("animation", &mut self.show_animation),
             ("sound", &mut self.play_sound),
@@ -111,9 +105,6 @@ impl Prefs {
             ("cli-tab", &mut self.cli_default_tab),
             ("cable-popup", &mut self.cable_popup),
             ("align-physical", &mut self.align_physical),
-            ("toolbar-main", &mut self.show_main_toolbar),
-            ("toolbar-tools", &mut self.show_tools_toolbar),
-            ("device-box", &mut self.show_device_box),
         ]
     }
 
@@ -518,10 +509,10 @@ fn interface_tab(app: &mut PacketApp, ui: &mut egui::Ui) {
 fn show_hide_tab(app: &mut PacketApp, ui: &mut egui::Ui) {
     ui.label(RichText::new(tl("Toolbars")).strong());
     egui::Frame::group(ui.style()).show(ui, |ui| {
-        let p = &mut app.ui.prefs;
-        pref(ui, &mut p.show_main_toolbar, "Main Toolbar", None);
-        pref(ui, &mut p.show_tools_toolbar, "Secondary Toolbar", None);
-        pref(ui, &mut p.show_device_box, "Bottom Toolbar", Some("The device box with the models and the PDU list."));
+        let tb = &mut app.ui.toolbars;
+        pref(ui, &mut tb.main, "Main", None);
+        pref(ui, &mut tb.secondary, "Secondary", None);
+        pref(ui, &mut tb.bottom, "Bottom", Some("The device box with the models and the PDU list."));
     });
 }
 
@@ -637,8 +628,7 @@ mod tests {
 
     #[test]
     fn preferences_round_trip_as_text() {
-        let mut p =
-            Prefs { play_sound: true, align_logical: false, tooltip_secs: 1.5, font_percent: 120, show_device_box: false, ..Prefs::default() };
+        let mut p = Prefs { play_sound: true, align_logical: false, tooltip_secs: 1.5, font_percent: 120, ..Prefs::default() };
         let text = p.to_text();
         let mut q = Prefs::default();
         for line in text.lines() {

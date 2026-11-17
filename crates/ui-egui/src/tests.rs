@@ -2011,3 +2011,144 @@ fn cables_are_accessible_nodes_found_by_label_and_open_their_first_device() {
     click_at(&mut h, at);
     assert_eq!(h.state().ui.selected, None);
 }
+
+#[test]
+fn copy_and_paste_work_from_the_keyboard_and_are_in_the_edit_menu() {
+    let mut h = harness(Some("lan"));
+    h.run_steps(3);
+    let first = h.state().session.topology.devices[0].id;
+    let before = h.state().session.topology.devices.len();
+    h.state_mut().ui.selected = Some(first);
+    key(&mut h, egui::Key::C, egui::Modifiers::COMMAND);
+    assert_eq!(h.state().ui.clipboard, Some(first));
+    key(&mut h, egui::Key::V, egui::Modifiers::COMMAND);
+    assert_eq!(h.state().session.topology.devices.len(), before + 1);
+    h.get_by_label("Edit").click();
+    h.run_steps(2);
+    assert!(h.query_all_by_label_contains("Paste").next().is_some());
+    assert!(h.query_all_by_label_contains("Redo").next().is_some());
+}
+
+#[test]
+fn toolbars_hide_and_show_with_their_shortcuts_and_the_choice_is_kept_as_text() {
+    let mut h = harness(Some("lan"));
+    h.run_steps(3);
+    assert_eq!(h.state().ui.toolbars, Toolbars::default());
+    assert!(h.query_by_label("Router 3GE").is_some());
+    let both = egui::Modifiers::COMMAND | egui::Modifiers::SHIFT;
+    key(&mut h, egui::Key::B, both);
+    assert!(!h.state().ui.toolbars.bottom && h.state().ui.toolbars.main && h.state().ui.toolbars.secondary);
+    assert!(h.query_by_label("Router 3GE").is_none(), "the device box is hidden");
+    key(&mut h, egui::Key::A, both);
+    key(&mut h, egui::Key::R, both);
+    assert!(!h.state().ui.toolbars.main && !h.state().ui.toolbars.secondary);
+    // The modes did not change: Ctrl+Shift+R is not Shift+R.
+    assert_eq!(h.state().ui.mode, Mode::Realtime);
+    for k in [egui::Key::A, egui::Key::R, egui::Key::B] {
+        key(&mut h, k, both);
+    }
+    assert_eq!(h.state().ui.toolbars, Toolbars::default());
+    let t = Toolbars { main: false, secondary: true, bottom: false };
+    assert_eq!(Toolbars::from_text(&t.to_text()), t);
+    // Hostile text keeps what it does not say clearly.
+    assert_eq!(Toolbars::from_text("main maybe\nbottom off\n\u{0}\nsecondary"), Toolbars { main: true, secondary: true, bottom: false });
+}
+
+#[test]
+fn view_shortcuts_switch_modes_and_views_without_picking_tools() {
+    let mut h = harness(Some("lan"));
+    h.run_steps(3);
+    key(&mut h, egui::Key::S, egui::Modifiers::SHIFT);
+    assert_eq!(h.state().ui.mode, Mode::Simulation);
+    key(&mut h, egui::Key::R, egui::Modifiers::SHIFT);
+    assert_eq!(h.state().ui.mode, Mode::Realtime);
+    key(&mut h, egui::Key::P, egui::Modifiers::SHIFT);
+    assert!(h.state().session.physical);
+    assert_eq!(h.state().ui.tool, Tool::Select, "Shift+P is not the simple PDU key");
+    key(&mut h, egui::Key::L, egui::Modifiers::SHIFT);
+    assert!(!h.state().session.physical);
+}
+
+#[test]
+fn the_view_menu_lists_the_view_entries() {
+    let mut h = harness(Some("lan"));
+    h.run_steps(3);
+    h.get_by_label("View").click();
+    h.run_steps(2);
+    for label in ["Zoom", "Toolbars", "Simulation Mode", "Realtime Mode", "Logical View", "Physical View", "Show Viewport", "Show Workspace List"] {
+        assert!(h.query_all_by_label_contains(label).next().is_some(), "{label}");
+    }
+}
+
+#[test]
+fn the_viewport_pans_the_workspace_when_clicked() {
+    let mut h = harness(Some("lan"));
+    h.run_steps(3);
+    key(&mut h, egui::Key::V, egui::Modifiers::SHIFT);
+    assert!(h.state().ui.show_viewport);
+    h.run_steps(2);
+    let title = h.get_by_label("Viewport").rect();
+    let (pan, zoom) = (h.state().ui.pan, h.state().ui.zoom);
+    click(&mut h, title.center() + egui::vec2(0.0, 60.0));
+    assert_ne!(h.state().ui.pan, pan);
+    assert_eq!(h.state().ui.zoom, zoom);
+    key(&mut h, egui::Key::V, egui::Modifiers::SHIFT);
+    assert!(!h.state().ui.show_viewport);
+}
+
+#[test]
+fn the_workspace_list_names_every_device_and_a_click_selects_one() {
+    let mut h = harness(Some("lan"));
+    h.run_steps(3);
+    key(&mut h, egui::Key::W, egui::Modifiers::SHIFT);
+    assert!(h.state().ui.show_workspace_list);
+    h.run_steps(2);
+    let devices: Vec<_> = h.state().session.topology.devices.iter().map(|d| (d.id, d.display_name().to_string())).collect();
+    for (_, name) in &devices {
+        assert!(h.query_by_label(name).is_some(), "{name} is listed");
+    }
+    let (id, name) = devices[devices.len() - 1].clone();
+    h.get_by_label(&name).click();
+    h.run_steps(2);
+    assert_eq!(h.state().ui.selected, Some(id));
+}
+
+#[test]
+fn the_drawing_palette_opens_from_its_shortcut() {
+    let mut h = harness(None);
+    h.run_steps(2);
+    assert!(h.query_by_label("No fill").is_none());
+    key(&mut h, egui::Key::D, egui::Modifiers::COMMAND);
+    assert!(matches!(h.state().ui.tool, Tool::Draw(_)));
+    assert!(h.query_by_label("No fill").is_some());
+}
+
+#[test]
+fn the_help_pages_open_from_f1_and_the_menu() {
+    assert_eq!(help::ISSUES_URL, "https://github.com/ayozetr/netlabcraft/issues/new");
+    for spanish in [false, true] {
+        let _lang = spanish.then(InSpanish::new);
+        let mut h = harness(None);
+        h.run_steps(2);
+        assert!(h.state().ui.help.is_none());
+        key(&mut h, egui::Key::F1, egui::Modifiers::NONE);
+        assert_eq!(h.state().ui.help, Some(help::Page::Contents));
+        let mut seen = std::collections::BTreeSet::new();
+        for page in help::Page::ALL {
+            h.state_mut().ui.help = Some(page);
+            h.run_steps(2);
+            shown_texts(&h, &mut seen);
+        }
+        let want = if spanish { "Atajos de teclado" } else { "Keyboard shortcuts" };
+        assert!(seen.contains(want), "{seen:?}");
+        let tutorial = if spanish { "Abrir el libro de prácticas" } else { "Open the lab book" };
+        assert!(seen.contains(tutorial));
+    }
+    let mut h = harness(None);
+    h.run_steps(2);
+    h.get_by_label("Help").click();
+    h.run_steps(2);
+    for label in ["Getting Started", "Contents", "Tutorials", "Accessibility", "Report an Issue", "About"] {
+        assert!(h.query_all_by_label_contains(label).next().is_some(), "{label}");
+    }
+}

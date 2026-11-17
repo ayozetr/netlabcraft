@@ -63,8 +63,8 @@ mod t {
         }
         h.get_by_label("Show/Hide").click();
         h.run_steps(2);
-        check(&mut h, "Bottom Toolbar");
-        assert!(!h.state().ui.prefs.show_device_box);
+        check(&mut h, "Bottom");
+        assert!(!h.state().ui.toolbars.bottom);
         h.get_by_label("Font").click();
         h.run_steps(2);
         assert!(h.query_all_by_label("Text size:").next().is_some());
@@ -75,10 +75,10 @@ mod t {
         let mut h = harness("two-subnets");
         h.run_steps(3);
         assert!(h.query_by_label("Delete (Del)").is_some());
-        h.state_mut().ui.prefs.show_tools_toolbar = false;
+        h.state_mut().ui.toolbars.secondary = false;
         h.run_steps(3);
         assert!(h.query_by_label("Delete (Del)").is_none());
-        h.state_mut().ui.prefs.show_tools_toolbar = true;
+        h.state_mut().ui.toolbars.secondary = true;
         // The device box: the Automatic cable is among the cables until Disable Auto Cable.
         crate::show_connections(h.state_mut(), None);
         h.run_steps(3);
