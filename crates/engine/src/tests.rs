@@ -1449,7 +1449,7 @@ fn a_usb_cable_opens_the_terminal_like_a_console_cable() {
     assert_eq!((list[0]["cable"].as_str(), list[0]["a"].as_str()), (Some("usb"), Some("L1 USB")));
     // Saved with the flag and read back; a plain console cable carries none.
     let saved = s.execute("file.save", json!({})).unwrap()["json"].as_str().unwrap().to_string();
-    assert!(saved.contains("\"usb\":true"), "{saved}");
+    assert!(saved.contains("\"usb\": true"), "{saved}");
     let mut back = Session::new();
     back.execute("file.open", json!({"json": saved})).unwrap();
     assert_eq!(back.topology.consoles, s.topology.consoles);
