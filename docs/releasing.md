@@ -1,8 +1,8 @@
 # Releasing NetLabCraft
 
-> **Last reviewed:** 2026-11-17 · **Last updated:** 2026-11-17 · **Change:** minor (consistency pass: revision rows in date order) · also merged with minor (seventh release, 0.7.0) · earlier: minor (sixth release, 0.6.0) · earlier: minor (fifth release, 0.5.0) · earlier: minor (fourth release, 0.4.0) · earlier: minor (a FreeBSD package) · earlier: minor (third release, 0.3.0) · earlier: major (the release pipeline exists and ran end to end; first release)
+> **Last reviewed:** 2026-11-17 · **Last updated:** 2026-11-17 · **Change:** minor (no reference to a repository that is not public) · earlier: minor (consistency pass: revision rows in date order) · also merged with minor (seventh release, 0.7.0) · earlier: minor (sixth release, 0.6.0) · earlier: minor (fifth release, 0.5.0) · earlier: minor (fourth release, 0.4.0) · earlier: minor (a FreeBSD package) · earlier: minor (third release, 0.3.0) · earlier: major (the release pipeline exists and ran end to end; first release)
 
-The recipe follows the shared Crafting Apps playbook (`release/playbook.md` in craftrules): a
+The recipe follows the release playbook the Crafting Apps share: a
 release is whatever is on the `release` branch. Pushing to it makes `.github/workflows/release.yml`
 build every platform and attach the files to a **draft** GitHub Release, which a maintainer
 publishes once every job is green. Builds are **not code-signed or notarized yet** (see below).
@@ -62,6 +62,7 @@ distributions.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-17 | minor | The recipe no longer points at a playbook in a repository that is not public. |
 | 2026-11-17 | trivial | Revision rows in date order. |
 | 2026-11-17 | minor | Seventh release, 0.7.0, cut with the flow above. |
 | 2026-11-16 | minor | Sixth release, 0.6.0, cut with the flow above. |
