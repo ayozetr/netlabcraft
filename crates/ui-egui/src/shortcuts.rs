@@ -303,7 +303,8 @@ pub fn dispatch(app: &mut PacketApp, ctx: &Context) {
         if typing && r.when == When::Idle {
             continue;
         }
-        if r.key == Key::Enter && r.mods == 0 && focused {
+        // Enter also finishes a polygon being drawn: the canvas takes it then.
+        if r.key == Key::Enter && r.mods == 0 && (focused || !app.ui.canvas.poly.is_empty()) {
             continue;
         }
         if ctx.input_mut(|i| i.consume_shortcut(&r.shortcut())) {
