@@ -355,7 +355,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Assessment tree",
         "",
         None,
-        r#"{} → {"items": [{"key", "device", "kind": "config"|"address"|"cable", "text", "points" (0: not graded), "feedback"}], "points"}: what the answer network holds, per device"#,
+        r#"{} → {"items": [{"key", "device", "device_kind": "router"|"switch"|"end"|"other", "kind": "config"|"address"|"cable", "text", "points" (0: not graded), "feedback"}], "points"}: what the answer network holds, per device"#,
         false
     ),
     c!(
@@ -435,6 +435,14 @@ pub static CATALOG: &[CommandInfo] = &[
     c!("file.new", "New lab", "File", Some("Ctrl+N"), r#"{"sample"?: "sample id (see sample.list)"}"#, false),
     c!("file.open", "Open lab…", "File", Some("Ctrl+O"), r#"{"json": "lab file contents"} or {"path": "file (desktop/CLI)"}"#, false),
     c!("file.save", "Save lab", "File", Some("Ctrl+S"), r#"{"path"?: "file to write (desktop/CLI)"} → {"json"}"#, false),
+    c!(
+        "file.backup",
+        "Backup copy",
+        "",
+        None,
+        r#"{"path": "file to write (desktop/CLI); it must not exist"} → {"path", "bytes"}: writes a copy of the open lab without changing its path or its unsaved mark, and never replaces a file"#,
+        false
+    ),
     c!(
         "file.export_pcap",
         "Export capture (pcap)…",
@@ -1048,6 +1056,14 @@ pub static CATALOG: &[CommandInfo] = &[
     c!("sim.advance", "Fast forward time", "Simulation", None, r#"{"seconds"?: 30}"#, false),
     c!("sim.reset", "Reset simulation", "Simulation", None, "{} (forget ARP/MAC tables and events)", false),
     c!("sim.clear_events", "Clear event list", "Simulation", None, "{}", false),
+    c!(
+        "sim.prune_events",
+        "Keep only some events",
+        "",
+        None,
+        r#"{"keep": ["ARP", "ICMP", …] (protocol names as the event list shows them)} → {"removed", "events"}: drops the recorded events of every other protocol"#,
+        false
+    ),
     c!("sim.events", "Event list", "", None, r#"{"since"?: event id, "limit"?: 200} → [{id, at_us, from, to, protocol, summary, dropped}]"#, false),
     c!("sim.status", "Simulation status", "", None, "{} → {time_us, events, storm, constant_delay_us, capture}", false),
     c!(

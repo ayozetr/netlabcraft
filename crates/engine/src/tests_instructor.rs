@@ -117,6 +117,10 @@ fn the_assessment_tree_weighs_items_and_becomes_checks() {
     assert!(kinds("config") >= 5 && kinds("address") == 2 && kinds("cable") == 4, "{tree}");
     assert!(items.iter().any(|i| i["device"] == "R1" && i["text"] == "hostname r1"), "{tree}");
     assert!(items.iter().all(|i| i["key"].as_str().unwrap().len() == 16), "keys are opaque hashes");
+    // Each item says what kind of device it is about, for the Answer Tree filter.
+    let of = |k: &str| items.iter().filter(|i| i["device_kind"] == k).count();
+    assert!(of("router") >= 1 && of("end") >= 2 && of("router") + of("switch") + of("end") + of("other") == items.len(), "{tree}");
+    assert!(items.iter().filter(|i| i["device"] == "R1").all(|i| i["device_kind"] == "router"), "{tree}");
     let total = tree["points"].as_u64().unwrap();
     assert_eq!(total, items.len() as u64);
     // Not graded, three points with a hint.

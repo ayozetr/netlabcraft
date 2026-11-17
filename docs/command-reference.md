@@ -56,7 +56,7 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `activity.answer` | Answer Network |  |  | `{} → {"lab": the answer network as a lab file's JSON, "devices", "links", "scheme"}` |
 | `activity.load_answer` | Edit the answer network |  |  | `{}: puts the answer network in the workspace (the activity stays); `activity.save_answer` keeps the changes` |
 | `activity.clear_answer` | Remove the answer network |  |  | `{}` |
-| `activity.tree` | Assessment tree |  |  | `{} → {"items": [{"key", "device", "kind": "config"\|"address"\|"cable", "text", "points" (0: not graded), "feedback"}], "points"}: what the answer network holds, per device` |
+| `activity.tree` | Assessment tree |  |  | `{} → {"items": [{"key", "device", "device_kind": "router"\|"switch"\|"end"\|"other", "kind": "config"\|"address"\|"cable", "text", "points" (0: not graded), "feedback"}], "points"}: what the answer network holds, per device` |
 | `activity.weight` | Set an item's points |  |  | `{"key": tree item, "points"?: 0-1000 (0: not graded), "feedback"?: hint when it fails}` |
 | `activity.tree_checks` | Make checks from the assessment tree |  |  | `{} → {"checks", "points"}: the graded tree items replace the configuration, address and cable checks (pings and command checks stay)` |
 | `activity.save_initial` | Save as the initial network |  |  | `{} → {"devices"}: the lab as it is now is where the student starts (Reset Activity returns to it)` |
@@ -71,6 +71,7 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `file.new` | New lab | File | Ctrl+N | `{"sample"?: "sample id (see sample.list)"}` |
 | `file.open` | Open lab… | File | Ctrl+O | `{"json": "lab file contents"} or {"path": "file (desktop/CLI)"}` |
 | `file.save` | Save lab | File | Ctrl+S | `{"path"?: "file to write (desktop/CLI)"} → {"json"}` |
+| `file.backup` | Backup copy |  |  | `{"path": "file to write (desktop/CLI); it must not exist"} → {"path", "bytes"}: writes a copy of the open lab without changing its path or its unsaved mark, and never replaces a file` |
 | `file.export_pcap` | Export capture (pcap)… | File |  | `{"path"?: "file to write", "link"?: "ethernet" (default) \| "802.11" (the Wi-Fi hops as they crossed the air)} → {"frames", "bytes"}` |
 | `edit.undo` | Undo | Edit | Ctrl+Z | `{}` |
 | `edit.redo` | Redo | Edit | Ctrl+Y | `{}` |
@@ -187,6 +188,7 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `sim.advance` | Fast forward time | Simulation |  | `{"seconds"?: 30}` |
 | `sim.reset` | Reset simulation | Simulation |  | `{} (forget ARP/MAC tables and events)` |
 | `sim.clear_events` | Clear event list | Simulation |  | `{}` |
+| `sim.prune_events` | Keep only some events |  |  | `{"keep": ["ARP", "ICMP", …] (protocol names as the event list shows them)} → {"removed", "events"}: drops the recorded events of every other protocol` |
 | `sim.events` | Event list |  |  | `{"since"?: event id, "limit"?: 200} → [{id, at_us, from, to, protocol, summary, dropped}]` |
 | `sim.status` | Simulation status |  |  | `{} → {time_us, events, storm, constant_delay_us, capture}` |
 | `sim.constant_delay` | Constant Delay | Simulation |  | `{"on": true\|false, "us"?: hop time in µs (1-1000000, default 1000)} → {"on", "us"}: every hop then takes the same simulated time, whatever queues would add` |
