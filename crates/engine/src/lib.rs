@@ -34,6 +34,7 @@ mod netconf;
 mod netflow;
 mod pdu;
 mod pppoe;
+pub mod settings;
 mod traffic;
 mod voice;
 mod vpnclient;
@@ -60,6 +61,8 @@ mod tests_netflow;
 mod tests_pppoe;
 #[cfg(test)]
 mod tests_pppoe_router;
+#[cfg(test)]
+mod tests_settings;
 #[cfg(test)]
 mod tests_swroute;
 #[cfg(test)]
@@ -141,6 +144,10 @@ pub struct Session {
     pub place_view: Option<u32>,
     /// The last burst each device's Traffic Generator sent (not part of the lab).
     pub(crate) traffic: BTreeMap<DeviceId, traffic::TrafficRun>,
+    /// The commands run this session (kept when a lab is opened; not part of the lab).
+    pub cmd_log: settings::CommandLog,
+    /// The person at the keyboard (kept when a lab is opened; not part of the lab).
+    pub profile: settings::Profile,
 }
 
 impl Session {
@@ -181,7 +188,7 @@ impl Session {
             self.sim.topology_changed(&self.topology);
         }
         self.print_console_messages();
-        match outcome {
+        let result = match outcome {
             Ok(r) => r,
             Err(_) => {
                 log::error!("command `{id}` panicked; restoring the lab");
@@ -190,7 +197,10 @@ impl Session {
                 self.revision += 1;
                 Err(EngineError::Panic(id.to_string()))
             }
-        }
+        };
+        let now = self.sim.now_us();
+        self.cmd_log.record(id, &params, &result, now);
+        result
     }
 
     /// Prints messages devices raised (link changes, debug output…) on their consoles, after
@@ -335,7 +345,8 @@ impl Session {
         let start = t.activity.is_some().then(|| t.clone());
         let mut t = t;
         t.cell_refresh();
-        *self = Session { topology: t, path, revision: self.revision + 1, activity_start: start, ..Session::default() };
+        let (cmd_log, profile) = (std::mem::take(&mut self.cmd_log), std::mem::take(&mut self.profile));
+        *self = Session { topology: t, path, revision: self.revision + 1, activity_start: start, cmd_log, profile, ..Session::default() };
         // The links as they are now are the starting point for link messages.
         self.sim.topology_changed(&self.topology);
     }

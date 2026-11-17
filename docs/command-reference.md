@@ -47,7 +47,7 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `activity.add_check` | Add check |  |  | `{"type": "config"\|"ping"\|"host-address"\|"output", "device" (or "from"), "line" \| "to"+"succeed"? \| "address"+"gateway"? \| "command"+"contains", "points"?: 1, "label"?, "feedback"?: hint shown when it fails, "section"?: the part it counts towards (the device by default)}` |
 | `activity.remove_check` | Remove check |  |  | `{"index": n}` |
 | `activity.clear` | Remove the activity |  |  | `{}` |
-| `activity.start` | Start the activity |  |  | `{"student": "name"} → {"values", "instructions"}: picks this student's variable values` |
+| `activity.start` | Start the activity |  |  | `{"student"?: "name" (default: the profile's name, see profile.set)} → {"values", "instructions"}: picks this student's variable values` |
 | `activity.lock` | Lock the activity |  |  | `{"password"}: the activity can't be changed or its checks seen until unlocked` |
 | `activity.unlock` | Unlock the activity |  |  | `{"password"}` |
 | `activity.check` | Check Results | Extensions |  | `{} → {"results": [{"label", "points", "passed", "feedback", "section"}] and "sections": [{"name", "score", "total", "percent"}] (both empty when locked with score_only), "score", "total", "percent", "detail"}` |
@@ -152,6 +152,13 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `net.ping` | Ping | Simulation |  | `{"from": "device", "to": "IPv4 or IPv6 address", "count"?: 4} → {"probes", "text"}` |
 | `net.traceroute` | Traceroute | Simulation |  | `{"from": "device", "to": "IPv4 or IPv6 address"} → {"hops", "text"}` |
 | `device.configure` | Apply configuration lines |  |  | `{"device", "lines": ["…"] or "text"} → {"applied", "errors"} (configuration mode, the console's own mode untouched)` |
+| `log.list` | View Command Log | Options | Ctrl+Shift+V | `{"since"?: entry number (only newer ones), "limit"?: 1-2000 (default 200, the newest)} → {"enabled", "total", "entries": [{n, command, params, ok, error, sim_us, count}]}: every command run this session, oldest first; passwords and keys in the parameters are hidden, long values cut, and a drag that fires one move after another is a single entry with a count; log.* commands are not recorded` |
+| `log.export` | Export Log | Options |  | `{"path"?: file to write} → {"text", "file_name", "entries", "path"?}: the command log as text, one line per command` |
+| `log.clear` | Clear command log |  |  | `{} → {"removed"}` |
+| `log.enable` | Enable Logging | Options |  | `{"on": true\|false} → {"on"}: whether commands are recorded in the command log (on at the start of every session)` |
+| `profile.get` | User Profile | Options | Ctrl+Shift+U | `{} → {"name"}: the display name kept on this computer (empty: none)` |
+| `profile.set` | Set display name |  |  | `{"name": "up to 64 characters, no control characters; empty clears it"} → {"name"}: names the student in activity results when the activity was not started with a name; never saved in a lab and never sent anywhere` |
+| `physical.length_effects` | Enable Cable Length Effects | Options |  | `{"on"?: true\|false} → {"on"}: whether a cable longer than its medium reaches (copper 100 m, fiber 2 km, coaxial and phone lines their own limits) carries nothing; on unless the lab says otherwise, saved with the lab; without "on" it only reports` |
 | `sim.advance` | Fast forward time | Simulation |  | `{"seconds"?: 30}` |
 | `sim.reset` | Reset simulation | Simulation |  | `{} (forget ARP/MAC tables and events)` |
 | `sim.clear_events` | Clear event list | Simulation |  | `{}` |
