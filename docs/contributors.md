@@ -1,6 +1,6 @@
 # Contributors
 
-> **Last reviewed:** 2026-11-17 · **Last updated:** 2026-11-17 · **Change:** minor (no reference to a repository that is not public) · earlier: minor (co-authors credited)
+> **Last reviewed:** 2026-11-17 · **Last updated:** 2026-11-17 · **Change:** minor (consistency pass: the Contributors workflow is named in the refresh step) · earlier: minor (no reference to a repository that is not public) · earlier: minor (co-authors credited)
 
 NetLabCraft credits contributors the way the other Crafting Apps do: by GitHub username, with names
 that people choose for themselves. This page is the decision and how to use it.
@@ -56,6 +56,7 @@ To remove your names, delete your entry in a pull request.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-17 | minor | Consistency pass: the refresh step names the `Contributors` workflow, as releasing.md does. |
 | 2026-11-17 | minor | No more links to a `craftrules` repository (it is not public): the page describes the standard itself and the add-yourself block. |
 | 2026-10-31 | minor | Co-authors from `Co-authored-by` trailers are credited in About ▸ Contributors. |
 | 2026-10-30 | major | Created: the craftrules decision, how to credit yourself, current state. |
