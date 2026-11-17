@@ -197,13 +197,19 @@ fn closet_sheet(dir: &str, dark: bool) {
         app.set_physical(true);
         app.enter_place(closet);
     });
-    let (s, closet) = closet_lab();
-    app_sheet(dir, &format!("closet-zoom-{suffix}"), s, (1500.0, 900.0), dark, move |app| {
-        app.set_physical(true);
-        app.enter_place(closet);
-        app.ui.zoom = 2.4;
-        app.ui.pan = vec2(-60.0, -10.0);
-    });
+    // Zoomed on the rack (its first frame): the top units (devices and their jacks), then the lower ones
+    // (patch panels, wall mount, power strip).
+    for (name, skip_units) in [("closet-zoom-top", 0.0f32), ("closet-zoom-bottom", 6.0)] {
+        let (s, closet) = closet_lab();
+        app_sheet(dir, &format!("{name}-{suffix}"), s, (1500.0, 900.0), dark, move |app| {
+            app.set_physical(true);
+            app.enter_place(closet);
+            let frame = app.session.topology.closet_layout(closet).frames.first().map(|(_, c)| (c.x, c.y));
+            let (x, y) = frame.unwrap_or((0.0, 0.0));
+            app.ui.zoom = 2.2;
+            app.ui.pan = vec2(30.0, 10.0) - vec2(x, y + 36.0 + skip_units * 44.0) * 2.2;
+        });
+    }
 }
 
 fn logical_sheet(dir: &str, dark: bool) {
