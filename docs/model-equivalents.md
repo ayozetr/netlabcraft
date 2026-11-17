@@ -1,6 +1,6 @@
 # Model equivalents
 
-> **Last reviewed:** 2026-11-15 · **Last updated:** 2026-11-15 · **Change:** minor (the full device box: 35 more models, 100 in all) · earlier: minor (the Telephone Cloud, the Dial-up PC and the Access Server) · also merged with minor (the sniffer and port mirroring) · earlier: minor (smart TVs, a sniffer, a smart speaker, a water level sensor and four more router models) · earlier: minor (cellular radio on Tablet and Smartphone, Cell Tower and Central Office Server) · earlier: minor (Tablet, Smartphone, ten Wi-Fi IoT things, Board SBC and Board MCU; power-supply bays) · **Target:** CCNA course labs
+> **Last reviewed:** 2026-11-17 · **Last updated:** 2026-11-17 · **Change:** minor (26 more component models: nine actuators and seventeen sensors, 126 in all; the Buzzer shown under its reference name, Piezo Speaker) · also merged with minor (the full device box: 35 more models, 100 in all) · earlier: minor (the Telephone Cloud, the Dial-up PC and the Access Server) · also merged with minor (the sniffer and port mirroring) · earlier: minor (smart TVs, a sniffer, a smart speaker, a water level sensor and four more router models) · earlier: minor (cellular radio on Tablet and Smartphone, Cell Tower and Central Office Server) · earlier: minor (Tablet, Smartphone, ten Wi-Fi IoT things, Board SBC and Board MCU; power-supply bays) · **Target:** CCNA course labs
 
 Course labs name specific vendor models. NetLabCraft's models are its own, named after their
 ports (`GE` Gigabit Ethernet, `FE` Fast Ethernet, `S` serial), and never carry vendor names
@@ -76,7 +76,7 @@ lab has students fit a redundant supply, use a two-bay model.
 | Thermostat | `IoT-Thermostat` | The course's thermostat | `Wireless0` | Reports degrees. Wi-Fi things join the home gateway's `HomeNetwork` when placed. |
 | Heater | `IoT-Heater` | The course's heater (furnace) | `Wireless0` | Switched on and off; doesn't change a thermostat's reading. |
 | Air Conditioner | `IoT-AC` | The course's air conditioner | `Wireless0` | Switched on and off; doesn't change a thermostat's reading. |
-| Humidity Sensor | `IoT-Humidity` | The course's humidity monitor | `Wireless0` | Reports % humidity. |
+| Humidity Monitor | `IoT-Humidity` | The course's humidity monitor | `Wireless0` | Reports % humidity. (Renamed from Humidity Sensor, the name now of the component below; lab files keep the id.) |
 | Smart Window | `IoT-Window` | The course's window | `Wireless0` | On opens, off closes. |
 | Soil Moisture Sensor | `IoT-Soil` | The course's soil moisture sensor | `Wireless0` | Reports % moisture. |
 | Lawn Sprinkler | `IoT-Sprinkler` | The course's lawn sprinkler | `Wireless0` | Waters while on. |
@@ -116,8 +116,35 @@ lab has students fit a redundant supply, use a two-bay model.
 | Solar Panel | `IoT-Solar` | A solar panel | `Wireless0` | Reports watts; no sun cycle. |
 | Wind Turbine | `IoT-Wind` | A wind turbine | `Wireless0` | Reports rpm; no wind model. |
 | Thing | `IoT-Thing` | A generic thing for a board | `Wireless0` | A reading set by hand. |
-| LED, Buzzer, Motor, Relay, LCD | `Part-LED`, `Part-Buzzer`, `Part-Motor`, `Part-Relay`, `Part-LCD` | Board actuators | `Wireless0` (unused) | Wired to a board pin with an IoT custom cable; on while the pin is high. |
+| LED, Motor, Relay, LCD | `Part-LED`, `Part-Motor`, `Part-Relay`, `Part-LCD` | Board actuators | `Wireless0` (unused) | Wired to a board pin with an IoT custom cable; on while the pin is high. |
+| Buzzer | `Part-Buzzer` | Piezo Speaker | `Wireless0` (unused) | Our Buzzer is the reference app's Piezo Speaker. Sounds while the pin is high, and raises the sound volume (80 dB) and pitch (2700 Hz) of its place. |
+| Air Cooler | `Part-AirCooler` | Air Cooler | `Wireless0` (unused) | Lowers the temperature (5 degrees) and the humidity (10 %) of its place while on; with the smart room's physics running it counts as a cooler. |
+| Alarm | `Part-Alarm` | Alarm | `Wireless0` (unused) | A siren with a lit state: sounds and lights up while on; sound volume 100 dB, pitch 1000 Hz in its place. |
+| Ceiling Sprinkler | `Part-CeilingSprinkler` | Ceiling Sprinkler | `Wireless0` (unused) | While on: humidity +30 %, rain +2 cm and water level +1 cm in its place, and the flames (`fire`) go out. |
+| Floor Sprinkler | `Part-FloorSprinkler` | Floor Sprinkler | `Wireless0` (unused) | While on: humidity +20 %, water level +3 cm and soil moisture +30 %, and the flames go out. |
+| Dimmable LED | `Part-DimLED` | Dimmable LED | `Wireless0` (unused) | Brightness 0-100: `write(PIN, 40)`; on with no level set is 100. |
+| Heating Element | `Part-HeatingElement` | Heating Element | `Wireless0` (unused) | Raises the temperature (10 degrees) and lowers the humidity (5 %) of its place while on; counts as a heater in the smart room. |
+| RGB LED | `Part-RGBLED` | RGB LED | `Wireless0` (unused) | Red, green and blue as one number: `write(PIN, rgb(255, 128, 0))`; on with no colour set is white. |
+| Servo | `Part-Servo` | Servo | `Wireless0` (unused) | Angle 0-180 degrees: `write(PIN, 90)`; it always holds an angle. |
+| Speaker | `Part-Speaker` | Speaker | `Wireless0` (unused) | Plays while on, and raises the sound volume (70 dB) and pitch (440 Hz) of its place. |
 | Button, Potentiometer, Distance Sensor, Light Sensor, Toggle Switch | `Part-Button`, `Part-Pot`, `Part-Ultrasonic`, `Part-Light`, `Part-Switch` | Board sensors | `Wireless0` (unused) | Wired to a board pin with an IoT custom cable; the reading is set by hand in its IoT tab. |
+| Flex Sensor | `Part-Flex` | Flex Sensor | `Wireless0` (unused) | How far it is bent, 0-100 %, set by hand. |
+| Generic Environment Sensor | `Part-EnvSensor` | Generic Environment Sensor | `Wireless0` (unused) | Reads the environment variable you pick (any of the 57), rounded to a whole number within -1000 to 1000; a variable no place sets reads its default. |
+| Generic Sensor | `Part-Generic` | Generic Sensor | `Wireless0` (unused) | A raw analog value you set, -1000 to 1000. |
+| Humidity Sensor | `Part-Humidity` | Humidity Sensor | `Wireless0` (unused) | The humidity of its place (0-100 %): what the place sets, with the running parts' changes, else the room's, else its own number. |
+| Humiture Sensor | `Part-Humiture` | Humiture Sensor | `Wireless0` (unused) | The temperature on its pin and the humidity with `channel(PIN, 1)`. |
+| Membrane Potentiometer | `Part-Membrane` | Membrane Potentiometer | `Wireless0` (unused) | The position of a press along its strip, 0-100 %, set by hand. |
+| Metal Sensor | `Part-Metal` | Metal Sensor | `Wireless0` (unused) | A proximity flag, 0 or 1, set by hand: it detects no object in the room. |
+| Motion Sensor | `Part-Motion` | Motion Sensor | `Wireless0` (unused) | 1 while the room's motion is set, else its own flag. |
+| Push Button Toggle Switch | `Part-LatchSwitch` | Push Button Toggle Switch | `Wireless0` (unused) | A latching push switch: each press (`iot.configure` with `press`, the Press button) flips it between 0 and 1. |
+| Rocker Switch | `Part-Rocker` | Rocker Switch | `Wireless0` (unused) | Two positions, 0 and 1, set by hand. |
+| Toggle Push Button | `Part-PushToggle` | Toggle Push Button | `Wireless0` (unused) | A push button that flips its state at each press, 0 or 1. |
+| Smoke Sensor | `Part-Smoke` | Smoke Sensor | `Wireless0` (unused) | The smoke level of its place (0-100 %). |
+| Temperature Sensor | `Part-Temp` | Temperature Sensor | `Wireless0` (unused) | The temperature of its place, in degrees. |
+| Trip Wire | `Part-Trip` | Trip Wire | `Wireless0` (unused) | A line-crossing flag, 0 or 1; follows the room's motion while its physics runs. |
+| Water Detector | `Part-WaterDetector` | Water Detector | `Wireless0` (unused) | 1 while its place has water (a water level or rain set, or a sprinkler on), else 0 or its own flag. |
+| Water Sensor | `Part-WaterLevel` | Water Sensor | `Wireless0` (unused) | The water level of its place, in centimetres. |
+| Wind Sensor | `Part-Wind` | Wind Sensor | `Wireless0` (unused) | The wind speed of its place, in kph. |
 
 Models a lab names that have no equivalent yet (PDAs, routers with other port
 mixes or built-in radios) are listed in [hardware-parity.md](hardware-parity.md).
@@ -129,6 +156,7 @@ independent project, not affiliated with or endorsed by Cisco.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-17 | minor | Twenty-six components: Air Cooler, Alarm, Ceiling Sprinkler, Floor Sprinkler, Dimmable LED, Heating Element, RGB LED, Servo and Speaker (actuators) and Flex Sensor, Generic Environment Sensor, Generic Sensor, Humidity Sensor, Humiture Sensor, Membrane Potentiometer, Metal Sensor, Motion Sensor, Push Button Toggle Switch, Rocker Switch, Toggle Push Button, Smoke Sensor, Temperature Sensor, Trip Wire, Water Detector, Water Sensor and Wind Sensor (sensors); 126 models in all. The Buzzer is listed as the Piezo Speaker; the Wi-Fi Humidity Sensor is now the Humidity Monitor. Several are shallow: see [gaps.md](gaps.md) item 16. |
 | 2026-11-17 | minor | The full device box: repeater, coaxial splitter, bridge, industrial switch and router, a second firewall, network controller, VoIP adapter and analog phone, generic wired and wireless devices, five smart city things, four industrial ones, four power grid ones, a generic thing, and five actuators and five sensors for boards (35 models, 100 in all). Several are shallow: see [gaps.md](gaps.md) item 16. |
 | 2026-11-16 | minor | Telephone Cloud, Dial-up PC and Access Server rows. |
 | 2026-11-15 | minor | The Sniffer row: a switch's monitor session can copy traffic to it. |

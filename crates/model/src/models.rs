@@ -59,7 +59,19 @@ impl Model {
             "PLC" | "Data-Historian" | "HMI-Panel" | "IoT-Blower" => Group::Industrial,
             "IoT-Battery" | "IoT-Meter" | "IoT-Solar" | "IoT-Wind" => Group::PowerGrid,
             "Part-LED" | "Part-Buzzer" | "Part-Motor" | "Part-Relay" | "Part-LCD" => Group::Actuators,
+            "Part-AirCooler"
+            | "Part-Alarm"
+            | "Part-CeilingSprinkler"
+            | "Part-FloorSprinkler"
+            | "Part-DimLED"
+            | "Part-HeatingElement"
+            | "Part-RGBLED"
+            | "Part-Servo"
+            | "Part-Speaker" => Group::Actuators,
             "Part-Button" | "Part-Pot" | "Part-Ultrasonic" | "Part-Light" | "Part-Switch" => Group::Sensors,
+            "Part-Flex" | "Part-EnvSensor" | "Part-Generic" | "Part-Humidity" | "Part-Humiture" | "Part-Membrane" | "Part-Metal" | "Part-Motion"
+            | "Part-LatchSwitch" | "Part-Rocker" | "Part-PushToggle" | "Part-Smoke" | "Part-Temp" | "Part-Trip" | "Part-WaterDetector"
+            | "Part-WaterLevel" | "Part-Wind" => Group::Sensors,
             _ if self.wan() => Group::Wan,
             _ => match self.kind {
                 DeviceKind::Router => Group::Routers,
@@ -458,7 +470,7 @@ pub static MODELS: &[Model] = &[
     Model {
         id: "IoT-Humidity",
         kind: DeviceKind::Iot,
-        label: "Humidity Sensor",
+        label: "Humidity Monitor",
         description: "Wi-Fi humidity sensor: reports the air's relative humidity (0-100 %)",
         ports: &[run("Wireless", 0, 0)],
     },
@@ -798,6 +810,188 @@ pub static MODELS: &[Model] = &[
         description: "Toggle switch wired to a board's pin with an IoT custom cable: reads 1 while on, else 0",
         ports: &[run("Wireless", 0, 0)],
     },
+    Model {
+        id: "Part-AirCooler",
+        kind: DeviceKind::Iot,
+        label: "Air Cooler",
+        description: "Air cooler wired to a board's pin with an IoT custom cable: cools its environment while the pin is high",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-Alarm",
+        kind: DeviceKind::Iot,
+        label: "Alarm",
+        description: "Alarm wired to a board's pin with an IoT custom cable: sounds its siren and lights up while the pin is high",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-CeilingSprinkler",
+        kind: DeviceKind::Iot,
+        label: "Ceiling Sprinkler",
+        description: "Ceiling sprinkler wired to a board's pin with an IoT custom cable: sprays water from above while the pin is high and puts out flames",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-FloorSprinkler",
+        kind: DeviceKind::Iot,
+        label: "Floor Sprinkler",
+        description: "Floor sprinkler wired to a board's pin with an IoT custom cable: sprays water from the floor while the pin is high and puts out flames",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-DimLED",
+        kind: DeviceKind::Iot,
+        label: "Dimmable LED",
+        description: "Dimmable LED wired to a board's pin with an IoT custom cable: its brightness follows the level written to the pin (0-100)",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-HeatingElement",
+        kind: DeviceKind::Iot,
+        label: "Heating Element",
+        description: "Heating element wired to a board's pin with an IoT custom cable: warms its environment while the pin is high",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-RGBLED",
+        kind: DeviceKind::Iot,
+        label: "RGB LED",
+        description: "RGB LED wired to a board's pin with an IoT custom cable: shows the red, green and blue levels written to the pin as one number (0xRRGGBB)",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-Servo",
+        kind: DeviceKind::Iot,
+        label: "Servo",
+        description: "Servo wired to a board's pin with an IoT custom cable: turns to the angle written to the pin (0-180 degrees)",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-Speaker",
+        kind: DeviceKind::Iot,
+        label: "Speaker",
+        description: "Speaker wired to a board's pin with an IoT custom cable: plays a tone and raises the sound around it while the pin is high",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-Flex",
+        kind: DeviceKind::Iot,
+        label: "Flex Sensor",
+        description: "Flex sensor wired to a board's pin with an IoT custom cable: reads how far it is bent (0-100 %)",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-EnvSensor",
+        kind: DeviceKind::Iot,
+        label: "Generic Environment Sensor",
+        description: "Generic environment sensor wired to a board's pin with an IoT custom cable: reads the environment variable you pick, rounded to a whole number",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-Generic",
+        kind: DeviceKind::Iot,
+        label: "Generic Sensor",
+        description: "Generic sensor wired to a board's pin with an IoT custom cable: reads a raw analog value you set (-1000 to 1000)",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-Humidity",
+        kind: DeviceKind::Iot,
+        label: "Humidity Sensor",
+        description: "Humidity sensor wired to a board's pin with an IoT custom cable: reads the relative humidity of its environment (0-100 %)",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-Humiture",
+        kind: DeviceKind::Iot,
+        label: "Humiture Sensor",
+        description: "Humiture sensor wired to a board's pin with an IoT custom cable: reads the temperature, and the humidity with channel(PIN, 1)",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-Membrane",
+        kind: DeviceKind::Iot,
+        label: "Membrane Potentiometer",
+        description: "Membrane potentiometer wired to a board's pin with an IoT custom cable: reads where a finger presses along its strip (0-100 %)",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-Metal",
+        kind: DeviceKind::Iot,
+        label: "Metal Sensor",
+        description: "Metal sensor wired to a board's pin with an IoT custom cable: reads 1 while a metal object is near, else 0",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-Motion",
+        kind: DeviceKind::Iot,
+        label: "Motion Sensor",
+        description: "Motion sensor wired to a board's pin with an IoT custom cable: reads 1 while something moves in its environment, else 0",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-LatchSwitch",
+        kind: DeviceKind::Iot,
+        label: "Push Button Toggle Switch",
+        description: "Push button toggle switch wired to a board's pin with an IoT custom cable: latches on at one push and off at the next, reads 1 while on",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-Rocker",
+        kind: DeviceKind::Iot,
+        label: "Rocker Switch",
+        description: "Rocker switch wired to a board's pin with an IoT custom cable: reads 1 in its on position and 0 in its off position",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-PushToggle",
+        kind: DeviceKind::Iot,
+        label: "Toggle Push Button",
+        description: "Toggle push button wired to a board's pin with an IoT custom cable: each press flips its state, reads 1 while on",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-Smoke",
+        kind: DeviceKind::Iot,
+        label: "Smoke Sensor",
+        description: "Smoke sensor wired to a board's pin with an IoT custom cable: reads the smoke level of its environment (0-100 %)",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-Temp",
+        kind: DeviceKind::Iot,
+        label: "Temperature Sensor",
+        description: "Temperature sensor wired to a board's pin with an IoT custom cable: reads the temperature of its environment, in degrees",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-Trip",
+        kind: DeviceKind::Iot,
+        label: "Trip Wire",
+        description: "Trip wire wired to a board's pin with an IoT custom cable: reads 1 while something crosses the line, else 0",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-WaterDetector",
+        kind: DeviceKind::Iot,
+        label: "Water Detector",
+        description: "Water detector wired to a board's pin with an IoT custom cable: reads 1 while water is present, else 0",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-WaterLevel",
+        kind: DeviceKind::Iot,
+        label: "Water Sensor",
+        description: "Water sensor wired to a board's pin with an IoT custom cable: reads the water level, in centimetres",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "Part-Wind",
+        kind: DeviceKind::Iot,
+        label: "Wind Sensor",
+        description: "Wind sensor wired to a board's pin with an IoT custom cable: reads the wind speed, in kilometres per hour",
+        ports: &[run("Wireless", 0, 0)],
+    },
 ];
 
 /// A plug-in card for a modular router's bay: its ports are named after the bay
@@ -1006,6 +1200,32 @@ impl Model {
             "Part-Ultrasonic" => Some("Distance"),
             "Part-Light" => Some("LightSensor"),
             "Part-Switch" => Some("Toggle"),
+            "Part-AirCooler" => Some("AirCooler"),
+            "Part-Alarm" => Some("Alarm"),
+            "Part-CeilingSprinkler" => Some("CeilingSprinkler"),
+            "Part-FloorSprinkler" => Some("FloorSprinkler"),
+            "Part-DimLED" => Some("DimLED"),
+            "Part-HeatingElement" => Some("HeatingElement"),
+            "Part-RGBLED" => Some("RGBLED"),
+            "Part-Servo" => Some("Servo"),
+            "Part-Speaker" => Some("Speaker"),
+            "Part-Flex" => Some("Flex"),
+            "Part-EnvSensor" => Some("EnvSensor"),
+            "Part-Generic" => Some("GenericSensor"),
+            "Part-Humidity" => Some("HumiditySensor"),
+            "Part-Humiture" => Some("Humiture"),
+            "Part-Membrane" => Some("Membrane"),
+            "Part-Metal" => Some("MetalSensor"),
+            "Part-Motion" => Some("MotionSensor"),
+            "Part-LatchSwitch" => Some("PushSwitch"),
+            "Part-Rocker" => Some("Rocker"),
+            "Part-PushToggle" => Some("ToggleButton"),
+            "Part-Smoke" => Some("SmokeSensor"),
+            "Part-Temp" => Some("TempSensor"),
+            "Part-Trip" => Some("TripWire"),
+            "Part-WaterDetector" => Some("WaterDetector"),
+            "Part-WaterLevel" => Some("WaterSensor"),
+            "Part-Wind" => Some("WindSensor"),
             _ => None,
         }
     }
@@ -1157,7 +1377,7 @@ mod tests {
         for want in groups {
             assert!(MODELS.iter().any(|m| m.group() == want), "{want:?} is empty");
         }
-        assert_eq!(MODELS.len(), 100);
+        assert_eq!(MODELS.len(), 126);
     }
 
     #[test]
@@ -1182,12 +1402,17 @@ mod tests {
         for m in MODELS.iter().filter(|m| matches!(m.group(), Group::Actuators | Group::Sensors)) {
             assert!(m.id.starts_with("Part-"), "{}", m.id);
         }
-        for id in ["Part-Button", "Part-Pot", "Part-Ultrasonic", "Part-Light", "Part-Switch"] {
-            assert!(crate::iot::thing_of(id).is_some_and(|t| t.sensor), "{id} is read");
+        for m in MODELS.iter().filter(|m| m.group() == Group::Sensors) {
+            assert!(crate::iot::thing_of(m.id).is_some_and(|t| t.sensor), "{} is read", m.id);
         }
-        for id in ["Part-LED", "Part-Buzzer", "Part-Motor", "Part-Relay", "Part-LCD"] {
-            assert!(crate::iot::thing_of(id).is_some_and(|t| !t.sensor), "{id} is switched");
+        for m in MODELS.iter().filter(|m| m.group() == Group::Actuators) {
+            assert!(crate::iot::thing_of(m.id).is_some_and(|t| !t.sensor), "{} is switched", m.id);
         }
+        // The component list the device box shows: nine new actuators and seventeen new sensors.
+        assert_eq!(MODELS.iter().filter(|m| m.group() == Group::Actuators).count(), 14);
+        assert_eq!(MODELS.iter().filter(|m| m.group() == Group::Sensors).count(), 22);
+        assert_eq!(find("Humidity Sensor").map(|m| m.id), Some("Part-Humidity"));
+        assert_eq!(find("Humidity Monitor").map(|m| m.id), Some("IoT-Humidity"));
     }
 
     #[test]

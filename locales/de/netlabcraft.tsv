@@ -697,7 +697,7 @@
 	No events yet. Add a simple PDU (envelope tool) or ping from a console.	Noch keine Ereignisse. Ein einfaches PDU hinzufügen (Umschlag-Werkzeug) oder von einer Konsole pingen.
 	No files yet: `copy running-config tftp: <this address>` on a router saves one here.	Noch keine Dateien: `copy running-config tftp: <diese Adresse>` auf einem Router speichert hier eine.
 	No fill	Keine Füllung
-	no function `{}` (there are read, get, time and number)	keine Funktion `{}` (es gibt read, get, time und number)
+	no function `{}` (there are read, channel, rgb, get, time and number)	keine Funktion `{}` (es gibt read, channel, rgb, get, time und number)
 	no IoT server set	kein IoT-Server gesetzt
 	no IoT server set on the board (Programming tab)	kein IoT-Server am Board gesetzt (Registerkarte Programmierung)
 	no IPv6 route to {}	keine IPv6-Route nach {}
@@ -2075,6 +2075,76 @@ furniture	Table	Tisch
 	red	rot
 	showing	zeigt
 	blank	leer
+	Air Cooler	Luftkühler
+	Air cooler wired to a board's pin with an IoT custom cable: cools its environment while the pin is high	Luftkühler an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: kühlt seine Umgebung, solange der Pin high ist
+	Alarm	Alarm
+	Alarm wired to a board's pin with an IoT custom cable: sounds its siren and lights up while the pin is high	Alarm an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: lässt seine Sirene ertönen und leuchtet, solange der Pin high ist
+	Ceiling Sprinkler	Deckensprinkler
+	Ceiling sprinkler wired to a board's pin with an IoT custom cable: sprays water from above while the pin is high and puts out flames	Deckensprinkler an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: versprüht Wasser von oben, solange der Pin high ist, und löscht Flammen
+	Floor Sprinkler	Bodensprinkler
+	Floor sprinkler wired to a board's pin with an IoT custom cable: sprays water from the floor while the pin is high and puts out flames	Bodensprinkler an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: versprüht Wasser vom Boden aus, solange der Pin high ist, und löscht Flammen
+	Dimmable LED	Dimmbare LED
+	Dimmable LED wired to a board's pin with an IoT custom cable: its brightness follows the level written to the pin (0-100)	Dimmbare LED an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: seine Helligkeit folgt dem auf den Pin geschriebenen Wert (0-100)
+	Heating Element	Heizelement
+	Heating element wired to a board's pin with an IoT custom cable: warms its environment while the pin is high	Heizelement an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: wärmt seine Umgebung, solange der Pin high ist
+	RGB LED	RGB-LED
+	RGB LED wired to a board's pin with an IoT custom cable: shows the red, green and blue levels written to the pin as one number (0xRRGGBB)	RGB-LED an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: zeigt die als eine Zahl (0xRRGGBB) auf den Pin geschriebenen Rot-, Grün- und Blauwerte
+	Servo	Servo
+	Servo wired to a board's pin with an IoT custom cable: turns to the angle written to the pin (0-180 degrees)	Servo an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: dreht sich auf den auf den Pin geschriebenen Winkel (0-180 Grad)
+	Speaker	Lautsprecher
+	Speaker wired to a board's pin with an IoT custom cable: plays a tone and raises the sound around it while the pin is high	Lautsprecher an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: spielt einen Ton und erhöht den Schall in seiner Umgebung, solange der Pin high ist
+	Flex Sensor	Biegesensor
+	Flex sensor wired to a board's pin with an IoT custom cable: reads how far it is bent (0-100 %)	Biegesensor an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: liest, wie stark er gebogen ist (0-100 %)
+	Generic Environment Sensor	Allgemeiner Umgebungssensor
+	Generic environment sensor wired to a board's pin with an IoT custom cable: reads the environment variable you pick, rounded to a whole number	Allgemeiner Umgebungssensor an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: liest die gewählte Umgebungsvariable, auf eine ganze Zahl gerundet
+	Generic Sensor	Allgemeiner Sensor
+	Generic sensor wired to a board's pin with an IoT custom cable: reads a raw analog value you set (-1000 to 1000)	Allgemeiner Sensor an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: liest einen von Hand eingestellten analogen Rohwert (-1000 bis 1000)
+	Humidity sensor wired to a board's pin with an IoT custom cable: reads the relative humidity of its environment (0-100 %)	Feuchtesensor an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: liest die relative Luftfeuchtigkeit seiner Umgebung (0-100 %)
+	Humiture Sensor	Temperatur-Feuchte-Sensor
+	Humiture sensor wired to a board's pin with an IoT custom cable: reads the temperature, and the humidity with channel(PIN, 1)	Temperatur-Feuchte-Sensor an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: liest die Temperatur und die Feuchtigkeit mit channel(PIN, 1)
+	Membrane Potentiometer	Folienpotentiometer
+	Membrane potentiometer wired to a board's pin with an IoT custom cable: reads where a finger presses along its strip (0-100 %)	Folienpotentiometer an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: liest, wo ein Finger entlang des Streifens drückt (0-100 %)
+	Metal Sensor	Metallsensor
+	Metal sensor wired to a board's pin with an IoT custom cable: reads 1 while a metal object is near, else 0	Metallsensor an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: liest 1, solange ein Metallobjekt in der Nähe ist, sonst 0
+	Motion Sensor	Bewegungssensor
+	Motion sensor wired to a board's pin with an IoT custom cable: reads 1 while something moves in its environment, else 0	Bewegungssensor an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: liest 1, solange sich etwas in seiner Umgebung bewegt, sonst 0
+	Push Button Toggle Switch	Rastender Taster-Schalter
+	Push button toggle switch wired to a board's pin with an IoT custom cable: latches on at one push and off at the next, reads 1 while on	Rastender Taster-Schalter an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: rastet bei einem Druck ein und beim nächsten aus, liest 1, solange er an ist
+	Rocker Switch	Wippschalter
+	Rocker switch wired to a board's pin with an IoT custom cable: reads 1 in its on position and 0 in its off position	Wippschalter an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: liest 1 in der Ein-Stellung und 0 in der Aus-Stellung
+	Toggle Push Button	Umschalttaster
+	Toggle push button wired to a board's pin with an IoT custom cable: each press flips its state, reads 1 while on	Umschalttaster an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: jeder Druck wechselt den Zustand, liest 1, solange er an ist
+	Smoke Sensor	Rauchsensor
+	Smoke sensor wired to a board's pin with an IoT custom cable: reads the smoke level of its environment (0-100 %)	Rauchsensor an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: liest den Rauchpegel seiner Umgebung (0-100 %)
+	Temperature Sensor	Temperatursensor
+	Temperature sensor wired to a board's pin with an IoT custom cable: reads the temperature of its environment, in degrees	Temperatursensor an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: liest die Temperatur seiner Umgebung in Grad
+	Trip Wire	Stolperdraht
+	Trip wire wired to a board's pin with an IoT custom cable: reads 1 while something crosses the line, else 0	Stolperdraht an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: liest 1, solange etwas die Linie kreuzt, sonst 0
+	Water Detector	Wassermelder
+	Water detector wired to a board's pin with an IoT custom cable: reads 1 while water is present, else 0	Wassermelder an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: liest 1, solange Wasser vorhanden ist, sonst 0
+	Water Sensor	Wassersensor
+	Water sensor wired to a board's pin with an IoT custom cable: reads the water level, in centimetres	Wassersensor an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: liest den Wasserstand in Zentimetern
+	Wind Sensor	Windsensor
+	Wind sensor wired to a board's pin with an IoT custom cable: reads the wind speed, in kilometres per hour	Windsensor an einen Platinen-Pin mit einem benutzerdefinierten IoT-Kabel angeschlossen: liest die Windgeschwindigkeit in Kilometern pro Stunde
+	Humidity Monitor	Feuchtemonitor
+	Press	Drücken
+	Flip the switch	Schalter umlegen
+	Reads:	Liest:
+	Humidity: {} %	Feuchtigkeit: {} %
+	Change the humidity	Feuchtigkeit ändern
+	Change the level	Wert ändern
+	Brightness: {} %	Helligkeit: {} %
+	Angle: {} degrees	Winkel: {} Grad
+	Colour: #{}	Farbe: #{}
+	% bent	% gebogen
+	% along the strip	% entlang des Streifens
+	1 = metal near	1 = Metall in der Nähe
+	1 = crossed	1 = überschritten
+	1 = water	1 = Wasser da
+	kph	km/h
+	holding an angle	hält einen Winkel
+	idle	ruht
+	{} has no channel {}	{} hat keinen Kanal {}
 	Save as PDF...	Als PDF speichern...
 	The workspace and a report of the devices on A4 pages, saved as a PDF file	Der Arbeitsbereich und ein Bericht der Geräte auf A4-Seiten, als PDF-Datei gespeichert
 	The same PDF: save it, open it in a PDF viewer or print it	Dasselbe PDF: speichern, in einem PDF-Viewer öffnen oder drucken
