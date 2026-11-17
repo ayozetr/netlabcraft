@@ -26,7 +26,7 @@
 
 <p align="center">
   <img src="docs/images/hero-multilayer.png" alt="NetLabCraft's main window: a multilayer switch in the middle routes between four PCs in two VLANs and reaches a router and a server above it; menus and two toolbars on top, the device box, scenario list and PDU table at the bottom" width="100%">
-  <br><sub><b>Inter-VLAN routing on a multilayer switch</b>: one of the thirty-one sample labs (<code>File → New → Sample</code>), built entirely from NetLabCraft commands.</sub>
+  <br><sub><b>Inter-VLAN routing on a multilayer switch</b>: one of the thirty-three sample labs (<code>File → New → Sample</code>), built entirely from NetLabCraft commands.</sub>
 </p>
 
 <p align="center">
@@ -85,15 +85,16 @@
 - **Devices:** 100 models with our own names ([which one to place for a vendor model](docs/model-equivalents.md)):
   fixed, modular and industrial routers, two stateful firewalls, access, bridge and multilayer switches
   (some with fiber or power over Ethernet), home routers and gateways, access points and a wireless
-  controller, a provider cloud, hubs, a repeater and a coaxial splitter, PCs, laptops, tablets and
+  controller, a provider cloud with a telephone cloud and an access server for Dial-up, hubs, a repeater and a coaxial splitter, PCs (one with a modem for Dial-up), laptops, tablets and
   phones (Wi-Fi or mobile data through cell towers), servers (a network controller and a data
   historian among them), a printer, a sniffer, IP phones and analog phones with a VoIP adapter,
   smart-home, smart-city, industrial and power-grid things (smart TVs among them), programmable
   boards and a PLC, and actuators and sensors that wire to a board's pins; the device box is
   grouped as the reference app's is.
-- **Cables:** automatic, straight-through, cross-over, fiber, console, serial, coaxial, phone and
-  IoT cables; a wrong one leaves the link down and says why. The physical view has cities,
-  buildings and closets, with copper limits and Wi-Fi range by building.
+- **Cables:** automatic, straight-through, cross-over, single mode and multi mode fiber, console,
+  serial, coaxial, phone, octal, USB and IoT cables; a wrong one leaves the link down and says why.
+  The physical view has cities, buildings and wiring closets (racks, shelves, patch panels, wall
+  mounts and power strips), with copper limits and Wi-Fi range by building.
 - **Switching:** VLANs, trunks, DTP, spanning tree (including rapid-pvst and its guards),
   EtherChannel, VTP, port security, DHCP snooping, dynamic ARP inspection, CDP and LLDP, 802.1p
   CoS, port mirroring (SPAN) and power over Ethernet.
@@ -112,7 +113,7 @@
 - **Simulation mode:** an event list replayed on the canvas, simple and complex PDUs, OSI layer
   details, scenarios, capture filters, drop reasons and pcap export.
 - **Console and PC prompt:** every mode a CCNA course uses, with `?` help, Tab completion and
-  output filters (1338 grammar entries in all; see
+  output filters (1341 grammar entries in all; see
   [`docs/command-reference.md`](docs/command-reference.md)); on PCs `ipconfig`, `ping`,
   `tracert`, `nslookup`, `telnet`, `ssh`, `ftp`, `netstat` and more.
 - **Activities:** checks worth points, sections, hints, values per student, time limits, password
@@ -124,13 +125,13 @@ What it doesn't do yet is listed, ranked, in [`docs/gaps.md`](docs/gaps.md).
 
 ## The CCNA lab book
 
-[`docs/labs/`](docs/labs/README.md) holds forty-seven hands-on labs written for NetLabCraft over the
-topics of the three CCNA courses (four for the first, seventeen for the second and twenty-four for
-the third, the last nine of them (BGP, route filtering, redistribution, communities and timers, route reflectors, PPPoE, PPPoE with routers, OSPF stub, NSSA and virtual-link areas, route tags and BGP peer groups) going a step past the course; one more, on wireless security, follows the first two), plus one on mobile data. Eleven of them are troubleshooting labs where you find and
+[`docs/labs/`](docs/labs/README.md) holds forty-eight hands-on labs written for NetLabCraft over the
+topics of the three CCNA courses (four for the first, seventeen for the second and twenty-six for
+the third, the last eleven of them (BGP, route filtering, redistribution, communities and timers, route reflectors, PPPoE, PPPoE with routers, OSPF stub, NSSA and virtual-link areas, route tags and BGP peer groups, BGP passwords, Dial-up) going a step past the course; one more, on wireless security, follows the first two), plus one on mobile data. Eleven of them are troubleshooting labs where you find and
 fix deliberate faults (VLANs and trunks, routing, OSPF, ACLs, DHCP, NAT, spanning tree, EtherChannel, port security), and two
 teach you to read the OSPF database and spanning-tree views. Each lab lists its topology, addressing, every command to
 type and what to check. Every lab is also a test: the suite runs each one end to end as
-written, and eight of them through the MCP server, so a lab that passes there works when typed
+written, and sixteen of them through the MCP server, so a lab that passes there works when typed
 by hand.
 
 ## Quick start

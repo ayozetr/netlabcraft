@@ -1,6 +1,6 @@
 # Roadmap
 
-> **Last reviewed:** 2026-11-16 · **Last updated:** 2026-11-16 · **Change:** minor (BGP session passwords, a route map on `default-originate` and lab 47) · also merged with minor (OSPF stub, NSSA and virtual-link areas, LSA ages and lab 45) · also merged with minor (route tags and BGP peer groups, lab 46) · also merged with minor (PPPoE on routers and lab 43) · also merged with minor (wireless security and lab 44) · earlier: minor (real PPPoE frames and lab 41) · earlier: minor (BGP route reflectors, confederations and lab 42) · earlier: minor (BGP communities, aggregation, timers and lab 40) · earlier: minor (port mirroring and lab 38) · earlier: minor (redistribution, distribute lists and lab 39) · earlier: minor (prefix lists, route maps and lab 37) · earlier: minor (BGP and lab 36) · earlier: minor (labs 32 to 35) · earlier: minor (focus paragraph updated for release 0.2.0; M9.7: four more labs, console depth second round) · earlier: minor (M9.4: seven troubleshooting labs) · earlier: minor (M7 first release done: packages and the release workflow), major (alpha gate 1 met through the lab book; every beta gate met; milestone states and estimates after the security, instructor, Simulation-mode, wireless, end-device, automation and routing rounds) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-11-17 · **Last updated:** 2026-11-17 · **Change:** minor (consistency pass: the beta gate counts the 48 numbered labs and 16 over MCP, the current focus lists gaps 1 to 16, the packaging hold wording dropped) · earlier: minor (BGP session passwords, a route map on `default-originate` and lab 47) · also merged with minor (OSPF stub, NSSA and virtual-link areas, LSA ages and lab 45) · also merged with minor (route tags and BGP peer groups, lab 46) · also merged with minor (PPPoE on routers and lab 43) · also merged with minor (wireless security and lab 44) · earlier: minor (real PPPoE frames and lab 41) · earlier: minor (BGP route reflectors, confederations and lab 42) · earlier: minor (BGP communities, aggregation, timers and lab 40) · earlier: minor (port mirroring and lab 38) · earlier: minor (redistribution, distribute lists and lab 39) · earlier: minor (prefix lists, route maps and lab 37) · earlier: minor (BGP and lab 36) · earlier: minor (labs 32 to 35) · earlier: minor (focus paragraph updated for release 0.2.0; M9.7: four more labs, console depth second round) · earlier: minor (M9.4: seven troubleshooting labs) · earlier: minor (M7 first release done: packages and the release workflow), major (alpha gate 1 met through the lab book; every beta gate met; milestone states and estimates after the security, instructor, Simulation-mode, wireless, end-device, automation and routing rounds) · **Target:** Cisco Packet Tracer 9.0
 
 Milestones, the current focus and what comes next. The summary is in
 [`ROADMAP.md`](../ROADMAP.md); the ranked work list is [gaps.md](gaps.md).
@@ -11,8 +11,10 @@ The CCNA lab book runs end to end, by the engine and over MCP, and the leftovers
 earlier rounds landed (security, instructor tools, Simulation mode, wireless, end devices,
 automation, switching and routing). The focus now is depth where it is honestly thin: more labs
 walked to find console gaps (gap 1), the last crypto and certificate details (gaps 2 and 3),
-the room's depth for the IoT things (gap 4), cables as accessible nodes (gap 5), more end
-devices (gap 6) and more interface languages (gap 7).
+the depth of the IoT things and of the Environments they read (gaps 4 and 14), the workspace
+leftovers (gap 5), more end devices and routers (gap 6), a native speaker's review of each
+interface language (gap 7), and the slices of PPPoE, BGP, the PC apps, the remote-access VPN,
+Preferences, wiring closets, the device box and the new models that gaps 8 to 13, 15 and 16 list.
 
 ## Milestones
 
@@ -42,8 +44,8 @@ the reference app:
    BPDUs, OSPF, RIP and more, with pcap export), with complex PDUs, PDU details in OSI layers,
    Constant Delay and a capture filter.
 3. A packaged build exists for Linux, Windows and macOS: **met** (`release.yml` builds them; not signed yet).
-   Until it is lifted, Linux users install from source with `packaging/linux/install.sh`, and
-   everyone else builds with Cargo.
+   Linux users can also install from source with `packaging/linux/install.sh`, and anyone can
+   build with Cargo.
 
 **Total to alpha:** gates 1 and 2 are met; every alpha gate is met.
 
@@ -51,22 +53,23 @@ the reference app:
 
 1. A CCNA-style lab book (VLANs, inter-VLAN routing, DHCP, OSPF, ACLs, NAT, IPv6, WAN, switch
    security, HSRP) runs end to end by hand and through MCP (gaps table, item 1): **met**.
-   [docs/labs/](labs/README.md) holds 27 original labs (4 for CCNA 1, 13 for CCNA 2, 10 for
-   CCNA 3; labs 21 to 27 are troubleshooting labs, added in M9.4); each one's blocks run as
-   written in `crates/engine/tests/lab_book.rs`, and 11 of them over `netlabcraft-cli mcp` in `apps/netlabcraft-cli/tests/mcp_lab_book.rs`. The fixes they
+   [docs/labs/](labs/README.md) holds 48 numbered original labs (4 for CCNA 1, 17 for CCNA 2, 26 for
+   CCNA 3 and one wireless-security lab for both of the first two, counted by the course column of
+   the table; 11 are troubleshooting labs and 2 inspection labs) and one unnumbered cellular lab; each one's blocks run as
+   written in `crates/engine/tests/lab_book.rs`, and 16 of them over `netlabcraft-cli mcp` in `apps/netlabcraft-cli/tests/mcp_lab_book.rs`. The fixes they
    turned up landed with regression tests (M8.1).
 2. Activities with scoring: met.
 3. Spanish interface: met (every window, tab and page, checked by tests).
 4. Wireless LANs: met (access points, home routers, WLC with lightweight APs, WPA2-PSK and
    Enterprise with group keys).
 
-**Total to beta:** every gate is met; beta follows alpha, so it waits on the same packaging
-hold.
+**Total to beta:** every gate is met; the stage label stays the owner's decision.
 
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-17 | minor | Consistency pass: the beta gate counts the 48 numbered labs (4, 17 and 26 by course) and 16 over MCP, the current focus lists gaps 1 to 16, and the packaging hold wording is dropped (packages are built). |
 | 2026-11-16 | minor | BGP session passwords and a route map on `default-originate`, and lab 47 join the lab book (47 labs). |
 | 2026-11-16 | minor | OSPF NSSA and virtual-link areas, LSA sequence numbers and ages, and lab 45 (OSPF stub, NSSA and virtual-link areas) join the lab book (45 labs, 16 over MCP); the gaps table's item 1 narrowed. |
 | 2026-11-16 | minor | Route tags and BGP peer groups and lab 46 join the lab book (46 labs). |
@@ -76,11 +79,11 @@ hold.
 | 2026-11-16 | minor | BGP route reflectors, confederations and more neighbour options, and lab 42 (BGP route reflectors) join the lab book (42 labs, 16 over MCP); the gaps table's item 9 narrowed again. |
 | 2026-11-15 | minor | Port mirroring (`monitor session`) and lab 38 (capture traffic with port mirroring) join the lab book (38 labs, 16 over MCP); the gaps table's item 6 narrowed. |
 | 2026-11-15 | minor | Redistribution between RIP, EIGRP and OSPF, distribute lists and lab 39 (redistribute between routing protocols and filter with a distribute list) join the lab book (lab 38 belongs to another change, so the numbered labs are 1 to 37 and 39); the gaps table's item 9 narrowed again. |
-| 2026-11-13 | minor | Focus paragraph updated for release 0.2.0 (the open gaps). |
 | 2026-11-15 | minor | BGP communities, aggregation, timers and lab 40 (BGP communities, aggregation and timers) join the lab book (40 labs, 16 over MCP); the gaps table's item 9 narrowed again. |
 | 2026-11-15 | minor | Prefix lists and route maps, and lab 37 (filter routes with a prefix list and a route map) join the lab book (37 labs, 16 over MCP); the gaps table's item 9 narrowed again. |
 | 2026-11-15 | minor | BGP on routers and lab 36 (BGP between two autonomous systems) join the lab book (36 labs, 16 over MCP); the gaps table's item 9 narrowed. |
 | 2026-11-15 | minor | Four more labs (32 to 35: EIGRP, IPv6 routing, EtherChannel and port-security faults) join the lab book (35 labs, 16 over MCP); the gaps table's item 1 narrowed. |
+| 2026-11-13 | minor | Focus paragraph updated for release 0.2.0 (the open gaps). |
 | 2026-11-13 | minor | M9.7: four more labs (28 to 31) join the lab book (31 labs, 14 over MCP) and the console gaps the first round left are fixed; the gaps table's item 1 narrowed again. |
 | 2026-11-13 | minor | M9.4: seven troubleshooting labs (21 to 27) join the lab book (27 labs, 11 over MCP); the gaps table's item 1 narrowed. |
 | 2026-11-13 | minor | M7 done: the release workflow and packages for Linux, Windows, macOS and the web, tested end to end; the packaged-build gate is met. |
