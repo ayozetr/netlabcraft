@@ -622,7 +622,6 @@
 	Lock the activity so students can't open the answer network; with a password it is encrypted in the file.	Blocca l'attività perché gli studenti non possano aprire la rete di risposta; con una password viene cifrata nel file.
 	locked	bloccata
 	Logical	Logico
-	Logical Workspace	Area di lavoro logica
 	login from {} refused by access-class {}	accesso da {} rifiutato dall'access-class {}
 	Looking for {}	Ricerca di {}
 	loop: the frame crossed {} hubs or switches	loop: il frame ha attraversato {} hub o switch
@@ -838,7 +837,6 @@
 	Phone line (RJ-11): joins phone ports (a DSL modem to the phone company's cloud); carries a signal up to 5 km here	Linea telefonica (RJ-11): collega porte telefoniche (un modem DSL al cloud della compagnia telefonica); trasporta un segnale fino a 5 km qui
 	Phone settings	Impostazioni del telefono
 	Physical	Fisico
-	Physical Workspace	Area di lavoro fisica
 	Physical workspace	Area di lavoro fisica
 	Physics on (sensors read the room)	Fisica attiva (i sensori leggono la stanza)
 	Pick a card in the list first, then click an empty bay.	Scegli prima una scheda nell'elenco, poi fai clic su uno slot vuoto.
@@ -1677,3 +1675,48 @@ event	write request for	richiesta di scrittura di
 	The modem's phone cable must go to a telephone cloud, and the number must be one of its ports.	Il cavo telefonico del modem deve andare a una nuvola telefonica e il numero deve essere quello di una delle sue porte.
 	Telephone numbers (one per port):	Numeri di telefono (uno per porta):
 	Set	Imposta
+	Zoom	Zoom
+	Toolbars	Barre degli strumenti
+	Main	Principale
+	Secondary	Secondaria
+	Bottom	Inferiore
+	Simulation Mode	Modalità simulazione
+	Realtime Mode	Modalità tempo reale
+	Logical View	Vista logica
+	Physical View	Vista fisica
+	Show Viewport	Mostra anteprima
+	Show Workspace List	Mostra elenco dell'area di lavoro
+	Drawing Palette	Tavolozza di disegno
+	Report an Issue	Segnala un problema
+	Opens the issue tracker in your browser	Apre il tracker dei problemi nel browser
+	Getting Started	Per iniziare
+	Contents	Indice
+	Tutorials	Esercitazioni
+	Accessibility	Accessibilità
+	NetLabCraft Help	Guida di NetLabCraft
+	Keyboard shortcuts	Scorciatoie da tastiera
+	Documentation online	Documentazione online
+	Command reference	Riferimento dei comandi
+	Command line	Riga di comando
+	Agent control (MCP)	Controllo tramite agenti (MCP)
+	Lab file format	Formato dei file di laboratorio
+	Open the lab book	Apri il libro delle esercitazioni
+	Viewport	Anteprima
+	The viewport shows the logical view.	L'anteprima mostra la vista logica.
+	Nothing on the workspace yet.	Non c'è ancora nulla nell'area di lavoro.
+	Click or drag to move the view of the workspace	Fai clic o trascina per spostare la vista dell'area di lavoro
+	Workspace List	Elenco dell'area di lavoro
+	Click a device to select it; double-click to open it.	Fai clic su un dispositivo per selezionarlo; doppio clic per aprirlo.
+	1. Pick a device in the box at the bottom, then click the workspace to place it.	1. Scegli un dispositivo nella casella in basso, poi fai clic sull'area di lavoro per posizionarlo.
+	2. Pick a cable in the same box, click one device, then another, and choose the ports.	2. Scegli un cavo nella stessa casella, fai clic su un dispositivo, poi su un altro, e scegli le porte.
+	3. Click a device to open its window: routers and switches have a CLI, computers a Desktop.	3. Fai clic su un dispositivo per aprire la sua finestra: router e switch hanno una CLI, i computer un Desktop.
+	4. Test the network with Add Simple PDU in the Tools menu: click a source, then a destination.	4. Prova la rete con Aggiungi PDU semplice nel menu Strumenti: fai clic su un'origine, poi su una destinazione.
+	5. Switch to Simulation mode to step through every frame in the event list.	5. Passa alla modalità simulazione per seguire ogni frame nell'elenco degli eventi.
+	6. Save with Ctrl+S. New from sample in the File menu opens a ready-made lab to explore.	6. Salva con Ctrl+S. Nuovo da esempio, nel menu File, apre un laboratorio pronto da esplorare.
+	The File menu's New from sample opens labs made to be explored: VLANs, routing, wireless and more.	Nuovo da esempio, nel menu File, apre laboratori fatti per essere esplorati: VLAN, routing, wireless e altro.
+	The lab book has step-by-step exercises, from first device setup to routing protocols.	Il libro delle esercitazioni ha esercizi passo passo, dalla prima configurazione ai protocolli di routing.
+	Each lab lists the devices to place, the commands to type and what you should see.	Ogni laboratorio elenca i dispositivi da posizionare, i comandi da digitare e ciò che dovresti vedere.
+	Every device on the workspace is announced by a screen reader with its name and model.	Uno screen reader annuncia ogni dispositivo dell'area di lavoro con nome e modello.
+	Tab and the arrow keys move between devices and cables; Enter or Space opens the one in focus.	Tab e le frecce si spostano tra dispositivi e cavi; Invio o Spazio apre quello con il focus.
+	The Workspace List in the View menu names every device in a table you can move through.	L'elenco dell'area di lavoro, nel menu Visualizza, nomina ogni dispositivo in una tabella in cui ci si può spostare.
+	Everything the menus do can also be typed, from the command line or by an agent.	Tutto ciò che fanno i menu si può anche digitare, dalla riga di comando o tramite un agente.

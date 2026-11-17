@@ -622,7 +622,6 @@
 	Lock the activity so students can't open the answer network; with a password it is encrypted in the file.	锁定练习，使学生无法打开答案网络；设置密码后，文件中的内容会被加密。
 	locked	已锁定
 	Logical	逻辑
-	Logical Workspace	逻辑工作区
 	login from {} refused by access-class {}	来自 {} 的登录被 access-class {} 拒绝
 	Looking for {}	正在查找 {}
 	loop: the frame crossed {} hubs or switches	环路：帧经过了 {} 台集线器或交换机
@@ -838,7 +837,6 @@
 	Phone line (RJ-11): joins phone ports (a DSL modem to the phone company's cloud); carries a signal up to 5 km here	电话线 (RJ-11)：连接电话端口（DSL 调制解调器到电话公司的云）；此处信号可传输 5 公里
 	Phone settings	电话设置
 	Physical	物理
-	Physical Workspace	物理工作区
 	Physical workspace	物理工作区
 	Physics on (sensors read the room)	已开启物理模型（传感器读取房间状态）
 	Pick a card in the list first, then click an empty bay.	请先在列表中选择一张板卡，然后点击空插槽。
@@ -1677,3 +1675,48 @@ event	write request for	写请求
 	The modem's phone cable must go to a telephone cloud, and the number must be one of its ports.	调制解调器的电话线必须接到电话云，号码必须是它某个端口的号码。
 	Telephone numbers (one per port):	电话号码（每个端口一个）：
 	Set	设置
+	Zoom	缩放
+	Toolbars	工具栏
+	Main	主工具栏
+	Secondary	辅助工具栏
+	Bottom	底部工具栏
+	Simulation Mode	模拟模式
+	Realtime Mode	实时模式
+	Logical View	逻辑视图
+	Physical View	物理视图
+	Show Viewport	显示视口
+	Show Workspace List	显示工作区列表
+	Drawing Palette	绘图调色板
+	Report an Issue	报告问题
+	Opens the issue tracker in your browser	在浏览器中打开问题跟踪页面
+	Getting Started	入门
+	Contents	目录
+	Tutorials	教程
+	Accessibility	无障碍
+	NetLabCraft Help	NetLabCraft 帮助
+	Keyboard shortcuts	键盘快捷键
+	Documentation online	在线文档
+	Command reference	命令参考
+	Command line	命令行
+	Agent control (MCP)	代理控制 (MCP)
+	Lab file format	实验文件格式
+	Open the lab book	打开实验手册
+	Viewport	视口
+	The viewport shows the logical view.	视口显示逻辑视图。
+	Nothing on the workspace yet.	工作区中还没有任何内容。
+	Click or drag to move the view of the workspace	单击或拖动以移动工作区的视图
+	Workspace List	工作区列表
+	Click a device to select it; double-click to open it.	单击设备可选中它；双击可打开它。
+	1. Pick a device in the box at the bottom, then click the workspace to place it.	1. 在底部的设备框中选一个设备，然后单击工作区来放置它。
+	2. Pick a cable in the same box, click one device, then another, and choose the ports.	2. 在同一个框中选一根线缆，先单击一个设备，再单击另一个，然后选择端口。
+	3. Click a device to open its window: routers and switches have a CLI, computers a Desktop.	3. 单击设备可打开它的窗口：路由器和交换机有命令行，计算机有桌面。
+	4. Test the network with Add Simple PDU in the Tools menu: click a source, then a destination.	4. 用工具菜单中的添加简单 PDU 测试网络：先单击源，再单击目的。
+	5. Switch to Simulation mode to step through every frame in the event list.	5. 切换到模拟模式，在事件列表中逐帧查看。
+	6. Save with Ctrl+S. New from sample in the File menu opens a ready-made lab to explore.	6. 按 Ctrl+S 保存。文件菜单中的从示例新建会打开一个现成的实验供你探索。
+	The File menu's New from sample opens labs made to be explored: VLANs, routing, wireless and more.	文件菜单中的从示例新建会打开专为探索而做的实验：VLAN、路由、无线等。
+	The lab book has step-by-step exercises, from first device setup to routing protocols.	实验手册有分步练习，从最初的设备设置到路由协议。
+	Each lab lists the devices to place, the commands to type and what you should see.	每个实验都列出要放置的设备、要输入的命令和应当看到的结果。
+	Every device on the workspace is announced by a screen reader with its name and model.	屏幕阅读器会读出工作区中每个设备的名称和型号。
+	Tab and the arrow keys move between devices and cables; Enter or Space opens the one in focus.	Tab 键和方向键在设备和线缆之间移动；回车或空格键打开获得焦点的那个。
+	The Workspace List in the View menu names every device in a table you can move through.	查看菜单中的工作区列表用一张可以浏览的表格列出每个设备。
+	Everything the menus do can also be typed, from the command line or by an agent.	菜单能做的一切也都可以输入，通过命令行或由代理完成。
