@@ -866,9 +866,11 @@ fn accessible_nodes(app: &mut PacketApp, ui: &mut Ui, sc: &Scene, canvas: Rect) 
 
 fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, sc: &Scene, place: u32) {
     let pointer = resp.interact_pointer_pos().or_else(|| resp.hover_pos());
-    let select_tool = app.ui.tool == Tool::Select && !ui.input(|i| i.pointer.middle_down());
     if resp.drag_started() {
-        app.ui.physical.closet.panning = true;
+        // The right or middle button pans; the left button moves what it grabbed, or does nothing on empty ground.
+        let pan_button = ui.input(|i| i.pointer.middle_down() || i.pointer.secondary_down());
+        app.ui.physical.closet.panning = pan_button;
+        let select_tool = app.ui.tool == Tool::Select && !pan_button;
         if select_tool && let Some(p) = pointer {
             let drag = if let Some(pole) = sc.hit_port(p) {
                 Some(Drag::Wire(pole))
