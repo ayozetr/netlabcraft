@@ -44,6 +44,7 @@ pub fn pins(model: &models::Model) -> Vec<String> {
     let (digital, analog) = match model.id {
         "Board-SBC" => (8, 4),
         "Board-MCU" => (6, 2),
+        "PLC" => (8, 4),
         _ => (0, 0),
     };
     (0..digital).map(|n| format!("D{n}")).chain((0..analog).map(|n| format!("A{n}"))).collect()

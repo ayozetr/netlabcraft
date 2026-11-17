@@ -23,6 +23,21 @@ fn every_command_survives_empty_and_hostile_params() {
 }
 
 #[test]
+fn every_model_can_be_added_by_id_and_by_shown_name_and_then_removed() {
+    for m in netlabcraft_model::models::MODELS {
+        for name in [m.id, m.label] {
+            let mut s = Session::new();
+            s.execute("device.add", json!({"model": name, "name": "X1"})).unwrap();
+            let d = s.topology.resolve("X1").unwrap();
+            assert_eq!(s.topology.device(d).unwrap().catalogue_model().id, m.id, "{name}");
+            assert_eq!(s.topology.device(d).unwrap().ports.len(), m.port_names().len(), "{name}");
+            s.execute("device.remove", json!({"device": "X1"})).unwrap();
+            assert!(s.topology.devices.is_empty());
+        }
+    }
+}
+
+#[test]
 fn every_sample_builds_and_its_hosts_reach_each_other() {
     // Labs that block some traffic on purpose.
     let blocked = [("nat-acl", "PC2", "Web")];

@@ -253,6 +253,9 @@ pub fn model_icon(p: &Painter, rect: Rect, kind: netlabcraft_model::DeviceKind, 
         wan_icon(p, rect, model_id, tk);
     } else if is_cellular_net(model_id) {
         cellular_icon(p, rect, model_id, tk);
+    } else if model_id == "PLC" {
+        board_icon(p, rect, true);
+        crate::icons_parts::mark(p, rect, model_id);
     } else if matches!(model_id, "Board-SBC" | "Board-MCU") {
         board_icon(p, rect, model_id == "Board-SBC");
     } else if matches!(model_id, "Tablet" | "Smartphone") {
