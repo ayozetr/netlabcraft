@@ -1,5 +1,6 @@
 //! The topology canvas: devices, cables, link lights, and the packets of the event list.
 
+use crate::prefs_look::HintExt;
 use egui::{Align2, FontId, Id, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2, pos2, vec2};
 use netlabcraft_core::DeviceId;
 use netlabcraft_model::cable::Cable;
@@ -573,7 +574,15 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
     if app.ui.prefs.show_wireless_signals {
         for r in crate::wireless::radios(&app.session.topology).iter().filter(|r| view.visible(r.device)) {
             if let Some(d) = app.session.topology.device(r.device) {
-                crate::wireless::draw_area(&painter, view.screen(d.x, d.y), r.units * view.zoom, crate::wireless::tint(r.channel), &r.ssid, tk.text);
+                crate::wireless::draw_area(
+                    &painter,
+                    view.screen(d.x, d.y),
+                    r.units * view.zoom,
+                    crate::wireless::tint(r.channel),
+                    &r.ssid,
+                    tk.text,
+                    crate::wireless::Look::of(&app.ui.prefs),
+                );
             }
         }
     }
@@ -2110,7 +2119,7 @@ fn port_menu(app: &mut PacketApp, ui: &Ui) {
                         None if app.session.topology.cable_misfit(kind, first.unwrap_or(end), end).is_some() => {
                             let why = app.session.topology.cable_misfit(kind, first.unwrap_or(end), end).unwrap_or_default();
                             ui.add_enabled(false, egui::Button::new(format!("{}  ({})", p.name, crate::i18n::tl("other cable type"))))
-                                .on_disabled_hover_text(why);
+                                .disabled_hint(why);
                         }
                         None => {
                             if ui.button(&p.name).clicked() {

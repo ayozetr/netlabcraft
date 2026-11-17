@@ -1683,7 +1683,6 @@ event	write request for	demande d'écriture de
 	Custom Interfaces	Interfaces personnalisées
 	Publishers	Éditeurs
 	Image Cleanup	Nettoyage des images
-	Not available yet: NetLabCraft has nothing to set in this tab so far.	Pas encore disponible : NetLabCraft n'a encore rien à régler dans cet onglet.
 	Restore Defaults	Rétablir les valeurs par défaut
 	Customize User Experience	Personnaliser l'expérience utilisateur
 	Show Animation	Afficher l'animation
@@ -1720,7 +1719,6 @@ event	write request for	demande d'écriture de
 	Enable Logging	Activer la journalisation
 	Export Log…	Exporter le journal…
 	Interface text	Texte de l'interface
-	Text size:	Taille du texte :
 	Reset	Réinitialiser
 	Sets the text of menus, buttons and forms. Names drawn on the workspace follow its zoom instead.	Règle le texte des menus, boutons et formulaires. Les noms dessinés dans l'espace de travail suivent son zoom.
 	User Profile	Profil utilisateur
@@ -2245,3 +2243,130 @@ furniture	Table	Table
 	No PDF viewer found: use Save as PDF	Aucun lecteur PDF trouvé : utilisez Enregistrer en PDF
 	Sent the PDF to the default printer	PDF envoyé à l'imprimante par défaut
 	Could not print: {}	Impression impossible : {}
+	Unlocked until you lock it again or close the program.	Déverrouillé jusqu'à un nouveau verrouillage ou la fermeture du programme.
+	Lock	Verrouiller
+	Locked. Enter the password:	Verrouillé. Saisissez le mot de passe :
+	That is not the password.	Ce n'est pas le mot de passe.
+	Choose Password	Choisir un mot de passe
+	Password:	Mot de passe :
+	Confirm:	Confirmer :
+	Enable Password	Activer le mot de passe
+	Disable Password	Désactiver le mot de passe
+	At least {} characters; both fields must match. Enabling again changes the password.	Au moins {} caractères ; les deux champs doivent correspondre. Activer à nouveau change le mot de passe.
+	Only a salted hash is kept, never the password. The lock keeps people out of this window, not out of the preferences file.	Seul un hachage salé est conservé, jamais le mot de passe. Le verrou protège cette fenêtre, pas le fichier de préférences.
+	A password is enabled.	Un mot de passe est activé.
+	No password is set: nothing is locked.	Aucun mot de passe : rien n'est verrouillé.
+	Password enabled.	Mot de passe activé.
+	Password disabled.	Mot de passe désactivé.
+	Interface Locking	Verrouillage de l'interface
+	With a password enabled, the ticked tabs open read-only until it is entered.	Avec un mot de passe activé, les onglets cochés s'ouvrent en lecture seule jusqu'à sa saisie.
+	Lock the Interface tab	Verrouiller l'onglet Interface
+	Lock the Show/Hide tab	Verrouiller l'onglet Afficher/Masquer
+	Lock the Custom Interfaces tab	Verrouiller l'onglet Interfaces personnalisées
+	Lock the Miscellaneous tab	Verrouiller l'onglet Divers
+	There are no Multiuser, IPC or scripting menus to lock.	Il n'y a aucun menu multiutilisateur, IPC ou script à verrouiller.
+	User Folder	Dossier utilisateur
+	Folder:	Dossier :
+	Browse…	Parcourir…
+	Not available in the web version: the browser chooses where files go.	Indisponible dans la version web : le navigateur choisit où vont les fichiers.
+	The Open and Save dialogs start here, and automatic backups are written in a backups folder inside it.	Les boîtes Ouvrir et Enregistrer démarrent ici, et les sauvegardes automatiques vont dans un dossier backups à l'intérieur.
+	Monospace (Hack)	Chasse fixe (Hack)
+	Proportional (as the interface)	Proportionnelle (comme l'interface)
+	Default	Par défaut
+	Black	Noir
+	White	Blanc
+	Amber	Ambre
+	Cyan	Cyan
+	Magenta	Magenta
+	Router console text	Texte de la console du routeur
+	Router console background	Fond de la console du routeur
+	PC console text	Texte de la console du PC
+	PC console background	Fond de la console du PC
+	Tooltip text	Texte des info-bulles
+	Tooltip background	Fond des info-bulles
+	Router console	Console du routeur
+	PC console	Console du PC
+	Tooltip	Info-bulle
+	Application size:	Taille de l'application :
+	8 pt is the default (100%). Sets the text of menus, buttons and forms. Names drawn on the workspace follow its zoom instead.	8 pt est la valeur par défaut (100 %). Règle le texte des menus, boutons et formulaires. Les noms dessinés dans l'espace de travail suivent son zoom.
+	CLI font:	Police de la CLI :
+	CLI font size:	Taille de la police de la CLI :
+	Used by the CLI tab, the Command Prompt and the Terminal. These are the faces the program carries: it adds no others.	Utilisée par l'onglet CLI, l'Invite de commandes et le Terminal. Ce sont les polices fournies avec le programme : il n'en ajoute pas d'autres.
+	Sample: Router#show ip route	Exemple : Router#show ip route
+	Tooltips	Info-bulles
+	Tooltip font size:	Taille de la police des info-bulles :
+	Colors	Couleurs
+	{}: the text and the background are too close in colour to read.	{} : le texte et le fond ont des couleurs trop proches pour être lus.
+	Reset Colors	Réinitialiser les couleurs
+	Prompt	Demander
+	View the previous events	Voir les événements précédents
+	{} minutes	{} minutes
+	Backups	Sauvegardes
+	Auto File Backup Interval:	Intervalle de sauvegarde automatique :
+	Writes a copy of the open lab in the backups folder of the user folder (or of the settings folder), only when the lab changed. Your own file is never touched, and a backup never replaces another.	Écrit une copie du labo ouvert dans le dossier backups du dossier utilisateur (ou de celui des réglages), seulement s'il a changé. Votre fichier n'est jamais touché et une sauvegarde n'en remplace jamais une autre.
+	Not available in the web version: the browser keeps no files for the page.	Indisponible dans la version web : le navigateur ne conserve aucun fichier pour la page.
+	When the event list is full:	Quand la liste des événements est pleine :
+	The list holds {} events and forgets the oldest ones when it is full.	La liste contient {} événements et oublie les plus anciens quand elle est pleine.
+	Buffer only the events that pass the filter	Ne mémoriser que les événements qui passent le filtre
+	Events the Edit Filters list hides are dropped instead of being kept.	Les événements masqués par la liste Modifier les filtres sont supprimés au lieu d'être conservés.
+	Windows	Fenêtres
+	Show the device window taskbar	Afficher la barre des fenêtres d'appareils
+	A bar under the workspace lists the open device windows: click one to bring it to the front.	Une barre sous l'espace de travail liste les fenêtres ouvertes : cliquez sur l'une pour la passer au premier plan.
+	Not applicable	Sans objet
+	Reload local image files	Recharger les fichiers image locaux
+	Labs hold no images, so there is nothing to reload.	Les labos ne contiennent pas d'images : rien à recharger.
+	External network access	Accès au réseau externe
+	Use a proxy	Utiliser un proxy
+	NetLabCraft makes no network connections of its own, so it has no network access or proxy to set.	NetLabCraft n'établit aucune connexion réseau de lui-même : il n'y a donc ni accès réseau ni proxy à régler.
+	Event List Full	Liste des événements pleine
+	The event list holds {} events, its limit. What now?	La liste des événements contient {} événements, sa limite. Que faire ?
+	Keep going	Continuer
+	The oldest events are forgotten as new ones arrive.	Les événements les plus anciens sont oubliés à l'arrivée des nouveaux.
+	Previous Events	Événements précédents
+	{} events kept from the list that filled up.	{} événements conservés de la liste qui s'est remplie.
+	Router	Routeur
+	Switch	Commutateur
+	End Device	Terminal
+	Device window tabs	Onglets des fenêtres d'appareil
+	Hide the Physical tab	Masquer l'onglet Physique
+	Hide the Config tab of every device	Masquer l'onglet Config de tous les appareils
+	Hide the CLI tab of every device	Masquer l'onglet CLI de tous les appareils
+	Hide the Config tab of routers and switches	Masquer l'onglet Config des routeurs et commutateurs
+	Hide the CLI tab of routers and switches	Masquer l'onglet CLI des routeurs et commutateurs
+	Hide the Services tab	Masquer l'onglet Services
+	Hide the Desktop tab	Masquer l'onglet Bureau
+	Hide the screen tabs of phones and smart things	Masquer les onglets d'écran des téléphones et objets connectés
+	The Phone tab and the IoT tab of a smart thing.	L'onglet Téléphone et l'onglet IoT d'un objet connecté.
+	Hide the Attributes tab	Masquer l'onglet Attributs
+	A window never loses all its tabs: if every one were hidden it keeps them.	Une fenêtre ne perd jamais tous ses onglets : si tous étaient masqués, elle les garde.
+	Wireless and other things	Sans fil et autres
+	Hide wireless and cellular pages	Masquer les pages sans fil et cellulaires
+	The Wi-Fi and cellular pages and ports in the Config tab.	Les pages et ports Wi-Fi et cellulaires de l'onglet Config.
+	Hide legacy equipment	Masquer les équipements anciens
+	NetLabCraft has no legacy equipment to hide.	NetLabCraft n'a pas d'équipement ancien à masquer.
+	Show the wireless boundary	Afficher la limite sans fil
+	View Wireless Signals draws an outline around each radio's coverage.	Afficher les signaux sans fil dessine un contour autour de la couverture de chaque radio.
+	Fade the wireless colour toward the edge	Estomper la couleur sans fil vers le bord
+	View Wireless Signals fills each coverage area with a colour that fades outwards; unchecked, a flat disc.	Afficher les signaux sans fil remplit chaque zone d'une couleur qui s'estompe vers l'extérieur ; décoché, un disque uni.
+	Hide the coverage range field of Wi-Fi forms	Masquer le champ de portée des formulaires Wi-Fi
+	Open smart things with their advanced settings shown	Ouvrir les objets connectés avec leurs réglages avancés affichés
+	The IoT tab of a smart thing opens its Advanced section.	L'onglet IoT d'un objet connecté ouvre sa section Avancé.
+	Answer Tree Filter	Filtre de l'arbre des réponses
+	Every item of the Assessment Tree.	Tous les éléments de l'arbre d'évaluation.
+	Configuration and address items; the cables are left out.	Éléments de configuration et d'adresse ; sans les câbles.
+	Only the items about routers.	Uniquement les éléments des routeurs.
+	Only the items about switches.	Uniquement les éléments des commutateurs.
+	Only the items about end devices (PCs, servers, phones and the like).	Uniquement les éléments des terminaux (PC, serveurs, téléphones et similaires).
+	The filter applies to the Assessment Tree window of the Activity Wizard. What is hidden is still graded.	Le filtre s'applique à la fenêtre Arbre d'évaluation de l'assistant d'activité. Ce qui est masqué reste noté.
+	Not available: NetLabCraft has no scripted device pages, so a device cannot be given a custom page.	Indisponible : NetLabCraft n'a pas de pages d'appareil scriptées, on ne peut donc pas donner de page personnalisée à un appareil.
+	Not applicable: there are no scripted modules to sign. Activity results carry their own signature, checked by the instructor's Verify Results.	Sans objet : il n'y a pas de modules scriptés à signer. Les résultats d'activité portent leur propre signature, vérifiée par Vérifier les résultats de l'instructeur.
+	Images held by the lab	Images contenues dans le labo
+	Image	Image
+	The lab holds no images: a lab file is only its devices, cables, places and settings.	Le labo ne contient pas d'images : un fichier de labo n'est que ses appareils, câbles, lieux et réglages.
+	MAC address: {}	Adresse MAC : {}
+	IP address: {}	Adresse IP : {}
+	Default gateway: {}	Passerelle par défaut : {}
+	Reports every {} s	Rapporte toutes les {} s
+	Backup written to {}	Sauvegarde écrite dans {}
+	Application size	Taille de l'application
+	Enter the password first: some tabs are locked.	Saisissez d'abord le mot de passe : certains onglets sont verrouillés.

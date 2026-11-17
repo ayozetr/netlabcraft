@@ -1,6 +1,7 @@
 //! The MIB Browser on a host's Desktop: SNMP get, get-next, set and a walk (SNMPv2c or
 //! SNMPv3), through the `snmp.request` command, and the traps agents sent the host.
 
+use crate::prefs_look::HintExt;
 use egui::RichText;
 use serde_json::json;
 
@@ -137,7 +138,7 @@ pub fn app(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 }
             }
         }
-        if ui.button(tl("Walk")).on_hover_text(tl("get-next from the OID until its branch ends")).clicked() {
+        if ui.button(tl("Walk")).hint(tl("get-next from the OID until its branch ends")).clicked() {
             let prefix = f.oid.trim().trim_end_matches(".0").to_string();
             let mut at = prefix.clone();
             for _ in 0..64 {
@@ -183,7 +184,7 @@ fn traps(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     ui.separator();
     ui.horizontal(|ui| {
         ui.label(RichText::new(format!("{} ({})", tl("Traps"), list.len())).strong());
-        if !list.is_empty() && ui.button(tl("Clear")).on_hover_text(tl("Forget the traps received")).clicked() {
+        if !list.is_empty() && ui.button(tl("Clear")).hint(tl("Forget the traps received")).clicked() {
             app.run("snmp.traps", json!({"device": dev.id.0, "clear": true}));
         }
     });

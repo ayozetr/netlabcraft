@@ -1,6 +1,8 @@
 //! What a session holds besides the lab: the command log (`log.list`, `log.export`, `log.clear`,
-//! `log.enable`), the local profile (`profile.get`, `profile.set`) and whether cable lengths
-//! count (`physical.length_effects`).
+//! `log.enable`), the local profile (`profile.get`, `profile.set`), whether cable lengths
+//! count (`physical.length_effects`), a backup copy of the open lab (`file.backup`), pruning the
+//! event list (`sim.prune_events`) and the record the Preferences window's local lock keeps
+//! ([`lock_record`], [`lock_check`]).
 //!
 //! The log and the profile belong to the person at the keyboard, not to the lab: opening or
 //! starting a lab keeps them. Neither is saved in a lab file. The profile is a display name, an
@@ -10,6 +12,7 @@
 
 use std::collections::VecDeque;
 
+use netlabcraft_wire::sha1::{pbkdf2_sha1, sha1};
 use serde_json::{Value, json};
 
 use crate::{EngineError, Result, Session};
@@ -134,7 +137,7 @@ impl CommandLog {
 
     /// Notes a command that ran (never a `log.*` command, and nothing while logging is off).
     pub(crate) fn record(&mut self, id: &str, params: &Value, result: &Result<Value>, sim_us: u64) {
-        if !self.enabled || id.starts_with("log.") {
+        if !self.enabled || id.starts_with("log.") || id == "file.backup" {
             return;
         }
         let tidy_params = clip(&tidy(params, 0).to_string(), MAX_PARAMS_CHARS);
@@ -241,6 +244,8 @@ pub(crate) fn run(s: &mut Session, id: &str, p: &Value) -> Option<Result<Value>>
         "profile.get" => Some(Ok(profile_json(s))),
         "profile.set" => Some(set_profile(s, p)),
         "physical.length_effects" => Some(length_effects(s, p)),
+        "file.backup" => Some(backup(s, p)),
+        "sim.prune_events" => Some(prune_events(s, p)),
         _ => None,
     }
 }
@@ -320,4 +325,80 @@ fn length_effects(s: &mut Session, p: &Value) -> Result<Value> {
         }
     }
     Ok(json!({"on": !s.topology.physical.ignore_lengths}))
+}
+
+/// A copy of the open lab written to `path`, which must not exist: a backup never replaces a
+/// file. The lab keeps its path and its unsaved mark (unlike `file.save`).
+fn backup(s: &mut Session, p: &Value) -> Result<Value> {
+    let path = p
+        .get("path")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|x| !x.is_empty())
+        .ok_or_else(|| bad("`path` (the file to write) is required"))?;
+    if std::path::Path::new(path).exists() {
+        return Err(EngineError::Failed(format!("{path}: exists already; a backup never replaces a file")));
+    }
+    let text = netlabcraft_model::file::to_json(&s.topology)?;
+    crate::cmd::write_file(path, text.as_bytes())?;
+    Ok(json!({"path": path, "bytes": text.len()}))
+}
+
+/// Drops the events whose protocol is not in `keep` (protocol names as the event list shows them).
+fn prune_events(s: &mut Session, p: &Value) -> Result<Value> {
+    let keep: Vec<String> = p
+        .get("keep")
+        .and_then(Value::as_array)
+        .ok_or_else(|| bad("`keep` (a list of protocol names) is required"))?
+        .iter()
+        .filter_map(|v| v.as_str().map(str::to_string))
+        .collect();
+    let removed = s.sim.prune_trace_to(&keep);
+    if removed > 0 {
+        s.revision += 1;
+    }
+    Ok(json!({"removed": removed, "events": s.sim.trace().len()}))
+}
+
+/// PBKDF2 rounds of the Preferences lock. It only slows a guess made against a copy of the
+/// preferences file; the lock is not a security boundary (see `docs/gaps.md`).
+pub const LOCK_ROUNDS: u32 = 30_000;
+/// The most rounds a stored record may ask for (a damaged or hostile file must not stall the app).
+const MAX_LOCK_ROUNDS: u32 = 200_000;
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn lock_hash(password: &str, salt: &str, rounds: u32) -> String {
+    hex(&pbkdf2_sha1(password.as_bytes(), format!("netlabcraft lock\0{salt}").as_bytes(), rounds, 20))
+}
+
+/// A record that proves a password without holding it: `nlc1$rounds$salt$hash`. `entropy` is
+/// anything that differs from one call to the next (the time, a counter): it makes the salt.
+pub fn lock_record(password: &str, entropy: &str) -> String {
+    let salt = hex(&sha1(format!("netlabcraft lock salt\0{entropy}").as_bytes()));
+    format!("nlc1${LOCK_ROUNDS}${salt}${}", lock_hash(password, &salt, LOCK_ROUNDS))
+}
+
+/// The parts of a record, when it reads.
+fn lock_parts(record: &str) -> Option<(u32, &str, &str)> {
+    let mut it = record.split('$');
+    let (tag, rounds, salt, hash) = (it.next()?, it.next()?, it.next()?, it.next()?);
+    let rounds: u32 = rounds.parse().ok().filter(|r| (1..=MAX_LOCK_ROUNDS).contains(r))?;
+    let plain = |t: &str| t.len() == 40 && t.bytes().all(|b| b.is_ascii_hexdigit());
+    (tag == "nlc1" && it.next().is_none() && plain(salt) && plain(hash)).then_some((rounds, salt, hash))
+}
+
+/// Whether `record` reads as one this module wrote.
+pub fn lock_valid(record: &str) -> bool {
+    lock_parts(record).is_some()
+}
+
+/// Whether `password` is the one `record` was made for.
+pub fn lock_check(record: &str, password: &str) -> bool {
+    let Some((rounds, salt, hash)) = lock_parts(record) else { return false };
+    let got = lock_hash(password, salt, rounds);
+    // Every byte is compared, so the time does not say how much of a guess was right.
+    got.len() == hash.len() && got.bytes().zip(hash.bytes()).fold(0u8, |acc, (a, b)| acc | (a ^ b)) == 0
 }

@@ -3,6 +3,7 @@
 //! server (address pool, APN, data plan, the devices admitted) or a cell tower (its sectors).
 //! Every change is an engine command (`cell.settings`, `cell.core`).
 
+use crate::prefs_look::HintExt;
 use egui::{RichText, Sense, vec2};
 use netlabcraft_model::cellular::{CELL_RANGE, NoLink};
 use netlabcraft_model::{Device, End, ifname};
@@ -83,7 +84,7 @@ fn radio_status(app: &PacketApp, ui: &mut egui::Ui, dev: &Device) {
 pub(crate) fn phone_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     let d = dev.id;
     let mut on = !dev.cell.data_off;
-    if ui.checkbox(&mut on, tl("Cellular Data")).on_hover_text(tl("Switch the cellular radio's data connection on or off")).changed() {
+    if ui.checkbox(&mut on, tl("Cellular Data")).hint(tl("Switch the cellular radio's data connection on or off")).changed() {
         app.run("cell.settings", json!({"device": d.0, "data": on}));
     }
     let (fid, mut f) = form(ui, dev);
@@ -140,7 +141,7 @@ pub(crate) fn service_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device)
         app.run("cell.core", json!({"device": d.0, "apn": f.apn.trim()}));
     }
     let mut plan = !dev.cell.plan_off;
-    if ui.checkbox(&mut plan, tl("Data plan on")).on_hover_text(tl("With the plan off the server refuses every attach")).changed() {
+    if ui.checkbox(&mut plan, tl("Data plan on")).hint(tl("With the plan off the server refuses every attach")).changed() {
         app.run("cell.core", json!({"device": d.0, "plan": plan}));
     }
     ui.separator();

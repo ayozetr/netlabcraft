@@ -174,6 +174,8 @@ pub struct TreeItem {
     /// Stable and opaque (a salted hash): the weights are kept under it.
     pub key: String,
     pub device: String,
+    /// What the device is, for filtering the tree: `router`, `switch`, `end` (a host) or `other`.
+    pub device_kind: &'static str,
     /// `config`, `address` or `cable`.
     pub kind: &'static str,
     /// What it is, as the instructor reads it.
@@ -196,7 +198,13 @@ pub fn tree(answer: &Topology, a: &Activity) -> Vec<TreeItem> {
         let points = w.map_or(1, |w| w.points);
         let feedback = w.map(|w| w.feedback.clone()).unwrap_or_default();
         let check = Check { label, points: points.max(1), section: dev.name.clone(), feedback: feedback.clone(), kind: check_kind };
-        out.push(TreeItem { key, device: dev.name.clone(), kind, text, points, feedback, check });
+        let device_kind = match dev.kind {
+            DeviceKind::Router => "router",
+            DeviceKind::Switch => "switch",
+            k if k.is_host() => "end",
+            _ => "other",
+        };
+        out.push(TreeItem { key, device: dev.name.clone(), device_kind, kind, text, points, feedback, check });
     };
     for d in &answer.devices {
         match d.kind {
@@ -688,7 +696,7 @@ fn tree_json(items: &[TreeItem]) -> Value {
     json!(
         items
             .iter()
-            .map(|i| json!({"key": i.key, "device": i.device, "kind": i.kind, "text": i.text, "points": i.points, "feedback": i.feedback}))
+            .map(|i| json!({"key": i.key, "device": i.device, "device_kind": i.device_kind, "kind": i.kind, "text": i.text, "points": i.points, "feedback": i.feedback}))
             .collect::<Vec<_>>()
     )
 }

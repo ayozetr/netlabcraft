@@ -2,6 +2,7 @@
 //! tree, connectivity tests, results files, the networks, languages and locks parts of the
 //! Activity Wizard. Everything acts through the `activity.*` commands.
 
+use crate::prefs_look::HintExt;
 use std::collections::BTreeMap;
 
 use egui::{Align2, Color32, FontId, Rect, RichText, Stroke, pos2, vec2};
@@ -146,20 +147,24 @@ fn tree_window(app: &mut PacketApp, ctx: &egui::Context) {
         }
     }
     let Some((_, tree)) = app.ui.activity.tools.tree.clone() else { return };
-    let items = tree["items"].as_array().cloned().unwrap_or_default();
+    let filter = app.ui.prefs.answer_filter;
+    let items: Vec<Value> = tree["items"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|i| filter.shows(i["device_kind"].as_str().unwrap_or("other"), i["kind"].as_str().unwrap_or("")))
+        .collect();
+    let shown_points: u64 = items.iter().map(|i| i["points"].as_u64().unwrap_or(0)).sum();
     let mut open = true;
     let mut run: Vec<(&'static str, Value)> = Vec::new();
     let hints = &mut app.ui.activity.tools.hints;
     egui::Window::new(tl("Assessment Tree")).open(&mut open).default_size([620.0, 480.0]).default_pos([380.0, 120.0]).show(ctx, |ui| {
         ui.label(tl("What the answer network holds, device by device. Untick what isn't graded, set the points and a hint, then make the checks."));
         let graded = items.iter().filter(|i| i["points"].as_u64().unwrap_or(0) > 0).count();
-        ui.label(RichText::new(trf("{} of {} items graded, {} points", &[&graded, &items.len(), &tree["points"].as_u64().unwrap_or(0)])).strong());
+        ui.label(RichText::new(trf("{} of {} items graded, {} points", &[&graded, &items.len(), &shown_points])).strong());
         ui.horizontal(|ui| {
-            if ui
-                .button(tl("Make checks from the tree"))
-                .on_hover_text(tl("The graded items replace the configuration, address and cable checks"))
-                .clicked()
-            {
+            if ui.button(tl("Make checks from the tree")).hint(tl("The graded items replace the configuration, address and cable checks")).clicked() {
                 run.push(("activity.tree_checks", json!({})));
             }
         });
@@ -297,7 +302,7 @@ pub fn student_row(app: &mut PacketApp, ui: &mut egui::Ui, elapsed: u64) {
         if ui.button(tl("Connectivity Tests")).clicked() {
             app.ui.activity.tools.show_connectivity = true;
         }
-        if ui.button(tl("Save results (JSON)")).on_hover_text(tl("A signed file with your name, the time and your score, to hand in")).clicked() {
+        if ui.button(tl("Save results (JSON)")).hint(tl("A signed file with your name, the time and your score, to hand in")).clicked() {
             export = Some("json");
         }
         if ui.button(tl("Save results (CSV)")).clicked() {
@@ -398,7 +403,7 @@ pub fn wizard_sections(
             }
             if ui
                 .add_enabled(a.initial.is_some(), egui::Button::new(tl("Edit the initial network")))
-                .on_hover_text(tl("Puts it in the workspace; save it again when done"))
+                .hint(tl("Puts it in the workspace; save it again when done"))
                 .clicked()
             {
                 run.push(("activity.load_initial", json!({})));

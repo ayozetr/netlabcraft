@@ -2,6 +2,7 @@
 //! with its bays and the card list. Everything acts through engine commands (`device.power`,
 //! `device.module.add`, `device.module.remove`).
 
+use crate::prefs_look::HintExt;
 use egui::{RichText, Sense, vec2};
 use netlabcraft_model::{Device, models};
 use serde_json::json;
@@ -57,7 +58,7 @@ pub(crate) fn panel(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     ui.horizontal_wrapped(|ui| {
         for m in models::MODULES {
             let picked = selected == Some(m.id);
-            if ui.selectable_label(picked, tr(m.label)).on_hover_text(tr(m.description)).clicked()
+            if ui.selectable_label(picked, tr(m.label)).hint(tr(m.description)).clicked()
                 && let Some(w) = app.ui.windows.get_mut(&dev.id)
             {
                 w.card = if picked { None } else { Some(m.id) };
@@ -83,7 +84,7 @@ fn power_supply(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, tk: &theme
         let (rect, resp) = ui.allocate_exact_size(vec2(46.0, 24.0), Sense::click());
         let label = if plugged { tl("Power adapter: plugged in (click to unplug)") } else { tl("Power adapter: unplugged (click to plug in)") };
         resp.widget_info(|| egui::WidgetInfo::selected(egui::accesskit::Role::Button, true, plugged, label));
-        let resp = resp.on_hover_text(label);
+        let resp = resp.hint(label);
         let p = ui.painter_at(rect);
         // A plug with two prongs; its cord reaches the socket when plugged in.
         let body = egui::Rect::from_center_size(rect.center() + vec2(if plugged { 6.0 } else { -6.0 }, 0.0), vec2(14.0, 14.0));
@@ -123,7 +124,7 @@ fn power_supplies(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, tk: &the
                 trf("Power supply {}: empty bay (click to fit one)", &[&bay])
             };
             resp.widget_info(|| egui::WidgetInfo::selected(egui::accesskit::Role::Button, true, *fitted, label.clone()));
-            let resp = resp.on_hover_text(label);
+            let resp = resp.hint(label);
             let p = ui.painter_at(rect);
             if *fitted {
                 p.rect_filled(rect, 3.0, tk.bar);
@@ -230,7 +231,7 @@ fn chassis(ui: &mut egui::Ui, dev: &Device, up: &[bool], armed: bool, tk: &theme
             None => trf("Bay {}: empty", &[slot]),
         };
         resp.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, label.clone()));
-        let resp = resp.on_hover_text(label);
+        let resp = resp.hint(label);
         if resp.clicked() {
             *clicked = Some(slot);
         }

@@ -1,6 +1,7 @@
 //! View ▸ Show Viewport (a small map of the workspace you click to pan) and View ▸ Show Workspace List (every
 //! device with its name, model and type).
 
+use crate::prefs_look::HintExt;
 use egui::{Rect, Sense, Stroke, StrokeKind, pos2, vec2};
 use netlabcraft_model::Shown;
 
@@ -76,7 +77,7 @@ pub fn viewport_window(app: &mut PacketApp, ctx: &egui::Context) {
             painter.rect_filled(frame, 0.0, tk.selection.gamma_multiply(0.12));
             painter.rect_stroke(frame, 0.0, Stroke::new(1.5, tk.selection), StrokeKind::Inside);
         }
-        let resp = resp.on_hover_text(tl("Click or drag to move the view of the workspace"));
+        let resp = resp.hint(tl("Click or drag to move the view of the workspace"));
         if (resp.clicked() || resp.dragged())
             && let Some(at) = resp.interact_pointer_pos()
             && scale > 0.0

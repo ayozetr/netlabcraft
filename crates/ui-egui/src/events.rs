@@ -1,6 +1,7 @@
 //! The Simulation Panel: the event list (every frame that crossed a cable), play controls,
 //! filters, and the PDU information window (layer by layer, plus the bytes).
 
+use crate::prefs_look::HintExt;
 use egui::{RichText, Ui};
 use netlabcraft_wire::{Arp, ArpOp, ETHERTYPE_ARP, ETHERTYPE_IPV4, Frame, Icmp, Ipv4, PROTO_ICMP, PROTO_UDP, Protocol, Udp};
 use serde_json::json;
@@ -95,7 +96,12 @@ impl Default for EventView {
 }
 
 impl EventView {
-    fn visible(&self, p: Protocol) -> bool {
+    /// The protocol names the filter lets through.
+    pub(crate) fn kept_protocols(&self) -> Vec<String> {
+        FILTERS.iter().zip(self.filter.iter()).filter(|(_, on)| **on).map(|(p, _)| p.name().to_string()).collect()
+    }
+
+    pub(crate) fn visible(&self, p: Protocol) -> bool {
         FILTERS.iter().position(|f| *f == p).and_then(|i| self.filter.get(i)).copied().unwrap_or(true)
     }
 
@@ -258,7 +264,7 @@ pub fn panel(app: &mut PacketApp, ui: &mut Ui) {
                         ];
                         let width: f32 = cols.iter().map(|c| c.1).sum();
                         let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, row_h), egui::Sense::click());
-                        let resp = resp.on_hover_text(match &dropped {
+                        let resp = resp.hint(match &dropped {
                             Some(why) => format!("{summary}\n{}", crate::i18n::trf("Dropped: {}", &[&crate::i18n::tr_any(why)])),
                             None => summary,
                         });
@@ -309,7 +315,7 @@ pub fn panel(app: &mut PacketApp, ui: &mut Ui) {
     egui::ScrollArea::vertical().id_salt("sim_controls").auto_shrink([false, true]).show(ui, |ui| {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            if crate::navy_button(ui, "Reset Simulation").on_hover_text(tl("Clear the event list")).clicked() {
+            if crate::navy_button(ui, "Reset Simulation").hint(tl("Clear the event list")).clicked() {
                 app.run("sim.clear_events", json!({}));
                 app.ui.events.selected = None;
                 app.ui.events.playing = false;
@@ -333,14 +339,14 @@ pub fn panel(app: &mut PacketApp, ui: &mut Ui) {
         // Slow on the left, fast on the right, as a speed slider reads.
         let mut speed = 2.1 - app.ui.events.step_seconds;
         ui.spacing_mut().slider_width = ui.available_width() - 10.0;
-        if ui.add(egui::Slider::new(&mut speed, 0.1..=2.0).show_value(false)).on_hover_text(tl("Play speed")).changed() {
+        if ui.add(egui::Slider::new(&mut speed, 0.1..=2.0).show_value(false)).hint(tl("Play speed")).changed() {
             app.ui.events.step_seconds = 2.1 - speed;
         }
         // Constant delay: every hop takes the same simulated time (the engine keeps the option).
         let mut constant = app.session.sim.constant_delay().is_some();
         if ui
             .checkbox(&mut constant, tl("Constant Delay"))
-            .on_hover_text(tl("Every hop takes the same simulated time (1 ms), whatever queues would add"))
+            .hint(tl("Every hop takes the same simulated time (1 ms), whatever queues would add"))
             .changed()
         {
             app.run("sim.constant_delay", json!({"on": constant}));
@@ -385,7 +391,7 @@ pub fn panel(app: &mut PacketApp, ui: &mut Ui) {
         let mut only = app.session.sim.capture_filter().is_some();
         if ui
             .checkbox(&mut only, tl("Capture only the visible events"))
-            .on_hover_text(tl("Events of hidden protocols are neither recorded nor exported to pcap; turning it on also removes them from the list"))
+            .hint(tl("Events of hidden protocols are neither recorded nor exported to pcap; turning it on also removes them from the list"))
             .changed()
         {
             set_capture(app, only, true);

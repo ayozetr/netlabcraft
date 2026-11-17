@@ -106,6 +106,14 @@ impl Sim {
         before.saturating_sub(self.trace.len())
     }
 
+    /// Drops the recorded events whose protocol is not in `keep` (names as `Protocol::name`, any
+    /// case). Returns how many.
+    pub fn prune_trace_to(&mut self, keep: &[String]) -> usize {
+        let before = self.trace.len();
+        self.trace.retain(|e| keep.iter().any(|k| k.eq_ignore_ascii_case(e.protocol.name())));
+        before.saturating_sub(self.trace.len())
+    }
+
     /// After an event was handled: kept for a watching PDU, and dropped from the list when the
     /// capture filter leaves its protocol out.
     pub(crate) fn after_delivery(&mut self) {

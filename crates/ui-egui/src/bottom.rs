@@ -1,6 +1,7 @@
 //! The bottom box: device-type selection (categories, search, model tiles) on the left, the
 //! scenario and its PDU list on the right.
 
+use crate::prefs_look::HintExt;
 use egui::{RichText, Sense, Ui, vec2};
 use netlabcraft_model::DeviceKind;
 use netlabcraft_model::cable::Cable;
@@ -222,7 +223,7 @@ fn kind_button(ui: &mut Ui, label: &str, selected: bool, draw: impl FnOnce(&egui
     let tk = theme::tokens(ui.visuals().dark_mode);
     let (rect, resp) = ui.allocate_exact_size(vec2(40.0, 36.0), Sense::click());
     let label = crate::i18n::tr(label);
-    let resp = resp.on_hover_text(label);
+    let resp = resp.hint(label);
     resp.widget_info(|| egui::WidgetInfo::selected(egui::accesskit::Role::Button, true, selected, label));
     let p = ui.painter_at(rect);
     if selected {
@@ -323,7 +324,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                         let (rect, resp) = ui.allocate_exact_size(vec2(76.0, 56.0), Sense::click_and_drag());
                         // Cable names, model names and every description are interface text.
                         let (short, long) = (crate::i18n::tl(m.short), crate::i18n::tl(m.long));
-                        let resp = resp.on_hover_text(long);
+                        let resp = resp.hint(long);
                         resp.widget_info(|| egui::WidgetInfo::selected(egui::accesskit::Role::Button, true, selected, short));
                         let p = ui.painter_at(rect);
                         let fill = if selected {
@@ -410,7 +411,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 let (r, info) = ui.allocate_exact_size(vec2(32.0, 32.0), Sense::click());
-                let info = info.on_hover_text(tl("Scenarios hold the PDUs you send, so a lab can be re-tested"));
+                let info = info.hint(tl("Scenarios hold the PDUs you send, so a lab can be re-tested"));
                 info.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, tl("Scenario information")));
                 ui.painter().circle_filled(r.center(), 15.0, tk.bar);
                 ui.painter().circle_filled(r.center(), 10.0, egui::Color32::WHITE);
@@ -438,11 +439,11 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 ui.add_space(18.0);
-                if crate::navy_button(ui, "New").on_hover_text(tl("Start a new scenario with an empty PDU list")).clicked() {
+                if crate::navy_button(ui, "New").hint(tl("Start a new scenario with an empty PDU list")).clicked() {
                     app.run("scenario.new", serde_json::json!({}));
                 }
                 ui.add_space(18.0);
-                if crate::navy_button(ui, "Delete").on_hover_text(tl("Delete this scenario and its PDUs")).clicked() {
+                if crate::navy_button(ui, "Delete").hint(tl("Delete this scenario and its PDUs")).clicked() {
                     app.run("scenario.delete", serde_json::json!({}));
                 }
             });
@@ -453,7 +454,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
         });
         ui.separator();
         if app.ui.bottom.hide_pdus {
-            if crate::navy_button(ui, "Fire All").on_hover_text(tl("Send every PDU in the list again")).clicked() {
+            if crate::navy_button(ui, "Fire All").hint(tl("Send every PDU in the list again")).clicked() {
                 for i in 0..app.session.topology.scenarios.pdus().len() {
                     canvas::fire(app, i);
                 }
@@ -487,12 +488,12 @@ fn pdu_list(app: &mut PacketApp, ui: &mut Ui) {
                 let (r, resp) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::click());
                 resp.widget_info(|| egui::WidgetInfo::labeled(egui::accesskit::Role::Button, true, crate::i18n::trf("Fire PDU {}", &[&pdu.num])));
                 ui.painter().circle_filled(r.center(), 6.0, color);
-                if resp.on_hover_text(tl("Fire again")).clicked() {
+                if resp.hint(tl("Fire again")).clicked() {
                     fire = Some(i);
                 }
                 let status = ui.label(RichText::new(tl(status)).color(color));
                 if !pdu.note.is_empty() {
-                    status.on_hover_text(crate::i18n::tr_any(&pdu.note));
+                    status.hint(crate::i18n::tr_any(&pdu.note));
                 }
                 ui.label(name(pdu.source));
                 let dest = match pdu.target {
