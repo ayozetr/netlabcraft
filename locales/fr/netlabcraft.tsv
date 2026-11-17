@@ -781,7 +781,6 @@
 	Open PC1 > Desktop > Web Browser and go to www.netlabcraft.lab. Edit the pages in Server0 > Services > HTTP. Try `ping www.netlabcraft.lab` and `nslookup www.netlabcraft.lab` in a Command Prompt.	Ouvrez PC1 > Desktop > Web Browser et allez sur www.netlabcraft.lab. Modifiez les pages dans Server0 > Services > HTTP. Essayez `ping www.netlabcraft.lab` et `nslookup www.netlabcraft.lab` dans une invite de commandes.
 	Open Recent	Ouvrir un fichier récent
 	Open...	Ouvrir...
-	Opened the page in the PDF viewer: print it from there.	Page ouverte dans le lecteur PDF : imprimez-la depuis là.
 	Opened {}	{} ouvert
 	Operation	Opération
 	Operations (one per blank-line block)	Opérations (une par bloc séparé par une ligne vide)
@@ -1225,7 +1224,6 @@
 	The score does not match what the embedded network earns: this file is forged or damaged.	Le score ne correspond pas à ce que le réseau intégré rapporte : ce fichier est falsifié ou endommagé.
 	the server answered {}	le serveur a répondu {}
 	the web service is off	le service web est désactivé
-	The workspace and a report of the devices on A4 pages, opened in the system's PDF viewer to print	L'espace de travail et un rapport des équipements sur des pages A4, ouverts dans le lecteur PDF du système pour être imprimés
 	The workspace as a picture, for a report	L'espace de travail en image, pour un rapport
 	There is no startup configuration to export yet (Save first).	Il n'y a pas encore de configuration de démarrage à exporter (enregistrez d'abord).
 	Thermostat	Thermostat
@@ -2077,3 +2075,20 @@ furniture	Table	Table
 	red	rouge
 	showing	affiche
 	blank	vide
+	Save as PDF...	Enregistrer en PDF...
+	The workspace and a report of the devices on A4 pages, saved as a PDF file	L'espace de travail et un rapport des équipements sur des pages A4, enregistrés dans un fichier PDF
+	The same PDF: save it, open it in a PDF viewer or print it	Le même PDF : enregistrez-le, ouvrez-le dans un lecteur PDF ou imprimez-le
+	Print	Imprimer
+	The report is ready as a PDF. What do you want to do with it?	Le rapport est prêt au format PDF. Que voulez-vous en faire ?
+	Choose where to keep the file	Choisissez où conserver le fichier
+	Open in the PDF viewer	Ouvrir dans le lecteur PDF
+	Opens a temporary copy in the program your system uses for PDF files	Ouvre une copie temporaire dans le programme que votre système utilise pour les fichiers PDF
+	This system has no program to open files with: use Save as PDF	Ce système n'a aucun programme pour ouvrir des fichiers : utilisez Enregistrer en PDF
+	Print directly	Imprimer directement
+	Sends the file to the default printer	Envoie le fichier à l'imprimante par défaut
+	Direct printing needs the lp command, which this system does not have: save the PDF or open it in a viewer	L'impression directe nécessite la commande lp, que ce système n'a pas : enregistrez le PDF ou ouvrez-le dans un lecteur
+	Saved the PDF to {}	PDF enregistré dans {}
+	Opened {} in the PDF viewer. This temporary copy is deleted when NetLabCraft closes: use Save as PDF to keep the file	{} ouvert dans le lecteur PDF. Cette copie temporaire est supprimée à la fermeture de NetLabCraft : utilisez Enregistrer en PDF pour conserver le fichier
+	No PDF viewer found: use Save as PDF	Aucun lecteur PDF trouvé : utilisez Enregistrer en PDF
+	Sent the PDF to the default printer	PDF envoyé à l'imprimante par défaut
+	Could not print: {}	Impression impossible : {}
