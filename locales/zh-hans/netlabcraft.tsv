@@ -2040,6 +2040,57 @@ furniture	Table	桌子
 	Wi-Fi music player: plays a tone while on, quietly alone and louder through a Bluetooth speaker within 60 m	Wi-Fi 音乐播放器：开启时播放一个音调，单独播放声音较小，通过 60 米内的蓝牙音箱播放则更响
 	Sound Frequency Detector	声音频率检测器
 	Wi-Fi sound detector: reports the pitch of the loudest sound in Hz (its reading) and its volume in dB (a second reading)	Wi-Fi 声音检测器：报告最响声音的音调（赫兹，其读数）及其音量（分贝，第二个读数）
+	Atmospheric Pressure Monitor	大气压监测器
+	Wi-Fi barometer: reports the atmospheric pressure in kPa (the room is at sea-level pressure; an environment can set another)	Wi-Fi 气压计：报告大气压（千帕）（房间处于海平面气压；环境可设置其他值）
+	Beacon	信标
+	Wi-Fi beacon: announces its id (its reading) to the smart things within 100 m, and reports how many hear it as a second reading	Wi-Fi 信标：向 100 米内的智能设备广播其编号（其读数），并以第二个读数报告有多少设备收到
+	Carbon Dioxide Detector	二氧化碳检测器
+	Wi-Fi carbon dioxide detector: reports the CO2 level in parts per million (fresh air is about 420)	Wi-Fi 二氧化碳检测器：报告二氧化碳浓度（ppm）（新鲜空气约为 420）
+	Fire Monitor	火灾监测器
+	Wi-Fi fire monitor: reports how much of the room is in flames (0-100 %)	Wi-Fi 火灾监测器：报告房间着火的程度（0-100 %）
+	Fire Sprinkler	消防喷淋器
+	Wi-Fi fire sprinkler: sprays on its own while the room is in flames, and when the IoT service switches it on; the flames go down while it sprays	Wi-Fi 消防喷淋器：房间着火时自动喷水，物联网服务将其开启时也喷水；喷水期间火势减弱
+	Old Car	老爷车
+	A car you can move on the map: while its engine is on (the IoT service switches it) it adds carbon monoxide and carbon dioxide to the room, and a trip sensor sees it pass	可在地图上移动的汽车：发动机开启时（由物联网服务开启）向房间排放一氧化碳和二氧化碳，绊线传感器能看到它经过
+	RFID Card	RFID 卡
+	Wi-Fi tag that announces its card id (its reading, set by hand); an RFID reader within 30 m reads it	Wi-Fi 标签：广播其卡号（其读数，手动设置）；30 米内的 RFID 读卡器可读取
+	RFID Reader	RFID 读卡器
+	Wi-Fi RFID reader: reports the id of the nearest RFID card within 30 m, or 0 when there is none	Wi-Fi RFID 读卡器：报告 30 米内最近的 RFID 卡的卡号，没有则为 0
+	Smart LED	智能 LED
+	Wi-Fi dimmable colour LED: shines while the IoT service keeps it on, at the brightness and colour set in its IoT tab	Wi-Fi 可调光彩色 LED：物联网服务保持其开启时发光，亮度和颜色在其物联网选项卡中设置
+	Trip Sensor	绊线传感器
+	Wi-Fi tripwire: reports 1 while something that moves (a car, a card, a phone, a tablet, a laptop) is within 50 m, else 0	Wi-Fi 绊线传感器：50 米内有移动的物体（汽车、卡、手机、平板电脑、笔记本电脑）时报告 1，否则为 0
+	Wind Detector	风速检测器
+	Wi-Fi anemometer: reports the wind speed in kph (the room is calm; an environment can set a wind)	Wi-Fi 风速计：报告风速（千米/时）（房间无风；环境可设置风速）
+	Signal Generator	信号发生器
+	Wi-Fi signal generator: outputs a level (its reading, -1000 to 1000) at a frequency (a second reading, 0 to 20000 Hz) that other things read through the IoT service	Wi-Fi 信号发生器：输出一个电平（其读数，-1000 到 1000）和一个频率（第二个读数，0 到 20000 Hz），其他设备可通过物联网服务读取
+	signal	信号
+	level	电平
+	Frequency (Hz):	频率（Hz）：
+	pressure	气压
+	beacon	信标
+	fire	火
+	fire sprinkler	消防喷淋器
+	car	汽车
+	rfid card	RFID 卡
+	rfid reader	RFID 读卡器
+	smart led	智能 LED
+	trip	绊线传感器
+	wind	风
+	id announced	广播的编号
+	things in range	范围内的设备
+	ppm CO2	ppm 二氧化碳
+	% flames	% 火焰
+	card id	卡号
+	card id (0: none)	卡号（0：无）
+	1 = something near	1 = 附近有物体
+	spraying	喷水中
+	ready	待命
+	engine on	发动机开启
+	engine off	发动机关闭
+	shining	发光中
+	Brightness (%):	亮度（%）：
+	Colour:	颜色：
 	appliance	家用电器
 	bluetooth speaker	蓝牙音箱
 	ceiling fan	吊扇

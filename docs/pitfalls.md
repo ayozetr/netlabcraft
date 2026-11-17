@@ -1,6 +1,6 @@
 # Pitfalls
 
-> **Last reviewed:** 2026-11-17 · **Last updated:** 2026-11-17 · **Change:** minor (a request path cannot hold a space; a raw string ends at `"#`) · also merged with minor (a file handed to the system's opener is not a way to print or keep it) · earlier: minor (a galley that carries its own colour ignores the painter's fallback) · earlier: minor (an interface derived from a session record cannot depend on state the device does not hold) · earlier: minor (a wait for frames must look at what already arrived) · earlier: minor (in BGP a confederation session is external for the session and internal for the path) · earlier: minor (a lost path does not end a BGP session at once) · earlier: minor (a rule that acts at a switch port must cover the timed control frames too) · earlier: minor (redistribution is part of every protocol's computation) · earlier: minor (policy edits must reach the routing fingerprint) · earlier: minor (BGP needs simulated time) · earlier: minor (a derived-state pitfall (M9.10)) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (four pitfalls from M9.7: counters keyed by position, a stale checksum, a database that lists unreachable routers, a `Rest` that needs a word) · also merged with M9.5, M9.6, M9.8 and M9.11 · earlier: minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
+> **Last reviewed:** 2026-11-17 · **Last updated:** 2026-11-17 · **Change:** minor (a model listed in more than one device-box group) · also merged with minor (a request path cannot hold a space; a raw string ends at `"#`) · also merged with minor (a file handed to the system's opener is not a way to print or keep it) · earlier: minor (a galley that carries its own colour ignores the painter's fallback) · earlier: minor (an interface derived from a session record cannot depend on state the device does not hold) · earlier: minor (a wait for frames must look at what already arrived) · earlier: minor (in BGP a confederation session is external for the session and internal for the path) · earlier: minor (a lost path does not end a BGP session at once) · earlier: minor (a rule that acts at a switch port must cover the timed control frames too) · earlier: minor (redistribution is part of every protocol's computation) · earlier: minor (policy edits must reach the routing fingerprint) · earlier: minor (BGP needs simulated time) · earlier: minor (a derived-state pitfall (M9.10)) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (four pitfalls from M9.7: counters keyed by position, a stale checksum, a database that lists unreachable routers, a `Rest` that needs a word) · also merged with M9.5, M9.6, M9.8 and M9.11 · earlier: minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
 
 Mistakes already made here, and the rule that stops each one. Read this before your first change; when you make a
 new mistake worth not repeating, add it in the same change.
@@ -120,6 +120,13 @@ new mistake worth not repeating, add it in the same change.
   space as `+` when the request is built and decode it where the query is read (`iot_report`, `iot_http`).
 - **A raw string ends at the first `"#`.** A command description written as `r#"... "#rrggbb" ..."#` stops inside the
   text and breaks the whole file. Say `hex rrggbb` in a catalog description, or use `r##"…"##`.
+
+## Device box
+
+- **A model with a tile in more than one group is found more than once by a search.** Tiles are made per (model, group), so
+  a search that filters the tiles by name lists the Smart LED three times. Search results keep the first tile of each tool
+  (`bottom::show`), and the group test compares each subgroup's tiles with the models that list it, not with the models
+  whose first group it is.
 
 ## Instructor
 

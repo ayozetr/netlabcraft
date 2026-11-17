@@ -1,6 +1,6 @@
 # Model equivalents
 
-> **Last reviewed:** 2026-11-17 · **Last updated:** 2026-11-17 · **Change:** minor (Smart Home: eight more things, 134 models in all) · also merged with minor (26 more component models: nine actuators and seventeen sensors, 126 in all; the Buzzer shown under its reference name, Piezo Speaker) · also merged with minor (the full device box: 35 more models, 100 in all) · earlier: minor (the Telephone Cloud, the Dial-up PC and the Access Server) · also merged with minor (the sniffer and port mirroring) · earlier: minor (smart TVs, a sniffer, a smart speaker, a water level sensor and four more router models) · earlier: minor (cellular radio on Tablet and Smartphone, Cell Tower and Central Office Server) · earlier: minor (Tablet, Smartphone, ten Wi-Fi IoT things, Board SBC and Board MCU; power-supply bays) · **Target:** CCNA course labs
+> **Last reviewed:** 2026-11-17 · **Last updated:** 2026-11-17 · **Change:** minor (Smart City and Industrial: twelve more things; the Smart Sensor, Humidity Sensor and CO Detector are listed in Smart City too, and the Smart LED in three groups) · also merged with minor (Smart Home: eight more things, 134 models in all) · also merged with minor (26 more component models: nine actuators and seventeen sensors, 126 in all; the Buzzer shown under its reference name, Piezo Speaker) · also merged with minor (the full device box: 35 more models, 100 in all) · earlier: minor (the Telephone Cloud, the Dial-up PC and the Access Server) · also merged with minor (the sniffer and port mirroring) · earlier: minor (smart TVs, a sniffer, a smart speaker, a water level sensor and four more router models) · earlier: minor (cellular radio on Tablet and Smartphone, Cell Tower and Central Office Server) · earlier: minor (Tablet, Smartphone, ten Wi-Fi IoT things, Board SBC and Board MCU; power-supply bays) · **Target:** CCNA course labs
 
 Course labs name specific vendor models. NetLabCraft's models are its own, named after their
 ports (`GE` Gigabit Ethernet, `FE` Fast Ethernet, `S` serial), and never carry vendor names
@@ -76,11 +76,11 @@ lab has students fit a redundant supply, use a two-bay model.
 | Thermostat | `IoT-Thermostat` | The course's thermostat | `Wireless0` | Reports degrees. Wi-Fi things join the home gateway's `HomeNetwork` when placed. |
 | Heater | `IoT-Heater` | The course's heater (furnace) | `Wireless0` | Switched on and off; doesn't change a thermostat's reading. |
 | Air Conditioner | `IoT-AC` | The course's air conditioner | `Wireless0` | Switched on and off; doesn't change a thermostat's reading. |
-| Humidity Monitor | `IoT-Humidity` | The course's humidity monitor | `Wireless0` | Reports % humidity. (Renamed from Humidity Sensor, the name now of the component below; lab files keep the id.) |
+| Humidity Monitor | `IoT-Humidity` | The course's humidity monitor | `Wireless0` | Reports % humidity. (Renamed from Humidity Sensor, the name now of the component below; lab files keep the id.) Also listed in Smart City. |
 | Smart Window | `IoT-Window` | The course's window | `Wireless0` | On opens, off closes. |
 | Soil Moisture Sensor | `IoT-Soil` | The course's soil moisture sensor | `Wireless0` | Reports % moisture. |
 | Lawn Sprinkler | `IoT-Sprinkler` | The course's lawn sprinkler | `Wireless0` | Waters while on. |
-| CO Detector | `IoT-CO` | The course's carbon monoxide detector | `Wireless0` | Reports ppm CO. |
+| CO Detector | `IoT-CO` | The course's carbon monoxide detector | `Wireless0` | Reports ppm CO. Also listed in Smart City. |
 | Smart TV | `IoT-TV` | TV-PT, over Wi-Fi | `Wireless0` | Registers with the IoT service, which switches it on (playing) and off (standby). Joins the home gateway's `HomeNetwork` when placed. |
 | Wired Smart TV | `IoT-TVE` | TV-PT, on a cable | `FastEthernet0` | As the Smart TV, on Ethernet. |
 | Smart Speaker | `IoT-Speaker` | The course's home speaker | `Wireless0` | Plays while on. |
@@ -115,7 +115,19 @@ lab has students fit a redundant supply, use a two-bay model.
 | Parking Sensor | `IoT-Parking` | A parking space sensor | `Wireless0` | Reports 1 or 0. |
 | Water Drain Monitor | `IoT-Drain` | A storm drain level monitor | `Wireless0` | Reports % full. |
 | Air Quality Sensor | `IoT-Air` | An air quality monitor | `Wireless0` | Reports an index (0–500). |
+| Atmospheric Pressure Monitor | `IoT-Pressure` | An atmospheric pressure monitor | `Wireless0` | Reports kPa: the room is at sea-level pressure (101), or the place's `atmospheric_pressure`; a reading set by hand sets the room's. |
+| Beacon | `IoT-Beacon` | A Bluetooth-like proximity beacon | `Wireless0` | Reports its id (a reading set by hand; its device number plus one until then) and, as a second reading, how many smart things are within 100 m. |
+| Carbon Dioxide Detector | `IoT-CO2` | A carbon dioxide detector | `Wireless0` | Reports ppm CO2: 420 in fresh air, more while a car runs (the room's, not per spot). |
+| Fire Monitor | `IoT-Fire` | A fire monitor | `Wireless0` | Reports the room's flames (0–100 %), or the place's `fire`. |
+| Fire Sprinkler | `IoT-FireSprinkler` | A fire sprinkler | `Wireless0` | Sprays on its own while the room is in flames (and when the IoT service switches it on); each second it takes 3 points off the flames. |
+| Old Car | `IoT-Car` | A car that can be moved on the map | `Wireless0` | While its engine is on it adds 0.5 ppm CO and 5 ppm CO2 a second to the room; it is a point that a trip sensor sees. |
+| RFID Card | `IoT-RFIDCard` | An RFID card or tag | `Wireless0` | Announces its card id (a reading set by hand; its device number plus one until then) to a reader within 30 m. |
+| RFID Reader | `IoT-RFIDReader` | An RFID reader | `Wireless0` | Reports the id of the nearest card within 30 m, or 0. |
+| Smart LED | `IoT-LED` | A dimmable colour LED | `Wireless0` | Switched on and off; brightness (0–100 %) and colour are set in its IoT tab; one model shown in Smart City, Industrial and Actuators. |
+| Trip Sensor | `IoT-Trip` | A tripwire or light-beam sensor | `Wireless0` | Reports 1 while a car, a card, a smartphone, a tablet or a laptop is within 50 m, else 0. |
+| Wind Detector | `IoT-WindDet` | An anemometer | `Wireless0` | Reports kph: calm in the room, or the place's `wind_speed`; a reading set by hand sets the room's. |
 | Blower Fan | `IoT-Blower` | An industrial blower | `FastEthernet0` | Running or stopped. |
+| Signal Generator | `IoT-Signal` | A signal generator | `Wireless0` | Outputs a level (its reading, set by hand, -1000 to 1000) and a frequency (a second reading, 0 to 20000 Hz); other things read both through the IoT service, and a rule can act on the level. |
 | PLC | `PLC` | A programmable logic controller | `FastEthernet0`, pins `D0–D7`, `A0–A3` | A board that runs BoardScript, not ladder logic. |
 | Data Historian | `Data-Historian` | A data historian server | `GigabitEthernet0` | A server with the IoT service; keeps the latest reading only, no time series. |
 | HMI Panel | `HMI-Panel` | An operator panel | `FastEthernet0` | A PC (browser, command prompt, IoT monitor); no screen designer. |
@@ -164,6 +176,7 @@ independent project, not affiliated with or endorsed by Cisco.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-17 | minor | Smart City and Industrial: Atmospheric Pressure Monitor, Beacon, Carbon Dioxide Detector, Fire Monitor, Fire Sprinkler, Old Car, RFID Card, RFID Reader, Smart LED, Trip Sensor and Wind Detector, and an Industrial Signal Generator; the equivalents of a temperature monitor, a humidity monitor and a CO detector are also listed in Smart City. |
 | 2026-11-17 | minor | Smart Home: Appliance, Bluetooth Speaker, Ceiling Fan, Furnace, Humidifier, Humiture Monitor, Portable Music Player and Sound Frequency Detector. |
 | 2026-11-17 | minor | Twenty-six components: Air Cooler, Alarm, Ceiling Sprinkler, Floor Sprinkler, Dimmable LED, Heating Element, RGB LED, Servo and Speaker (actuators) and Flex Sensor, Generic Environment Sensor, Generic Sensor, Humidity Sensor, Humiture Sensor, Membrane Potentiometer, Metal Sensor, Motion Sensor, Push Button Toggle Switch, Rocker Switch, Toggle Push Button, Smoke Sensor, Temperature Sensor, Trip Wire, Water Detector, Water Sensor and Wind Sensor (sensors); 126 models in all. The Buzzer is listed as the Piezo Speaker; the Wi-Fi Humidity Sensor is now the Humidity Monitor. Several are shallow: see [gaps.md](gaps.md) item 16. |
 | 2026-11-17 | minor | The full device box: repeater, coaxial splitter, bridge, industrial switch and router, a second firewall, network controller, VoIP adapter and analog phone, generic wired and wireless devices, five smart city things, four industrial ones, four power grid ones, a generic thing, and five actuators and five sensors for boards (35 models, 100 in all). Several are shallow: see [gaps.md](gaps.md) item 16. |
