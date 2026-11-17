@@ -1801,3 +1801,33 @@ event	no APN	sin APN
 	Octal cable: click a router with an octal card, then a router or switch (Console).	Cable octal: pulsa un router con tarjeta octal y después un router o switch (Console).
 	{} has no octal card or Console port.	{} no tiene tarjeta octal ni puerto Console.
 	{} has no USB port.	{} no tiene puerto USB.
+	Rename…	Renombrar…
+	Switch Off	Apagar
+	Switch On	Encender
+	Take off the furniture	Quitar del mueble
+	Plug into	Enchufar en
+	Unplug	Desenchufar
+	Remove Patch Wires	Quitar los cables de parcheo
+	Drag from this port to another to wire them.	Arrastra desde este puerto a otro para conectarlos.
+	Drag from this outlet to a device to plug it in.	Arrastra desde esta toma a un dispositivo para enchufarlo.
+	Add to this closet	Añadir a este armario
+	Rename	Renombrar
+	Name:	Nombre:
+	{}, {} units	{}, {} unidades
+	{}, {} levels	{}, {} niveles
+	{}, on {}	{}, en {}
+	Rack	Bastidor
+	Shelf	Estante
+furniture	Table	Mesa
+	Copper Patch Panel	Panel de parcheo de cobre
+	Fiber Patch Panel	Panel de parcheo de fibra
+	Copper Wall Mount	Roseta de pared de cobre
+	Fiber Wall Mount	Roseta de pared de fibra
+	Power Distribution Device	Regleta de distribución de energía
+	Copper patch panel: joins device ports through the structured cabling	Panel de parcheo de cobre: une puertos de dispositivos mediante el cableado estructurado
+	Fiber patch panel: joins fiber device ports through the structured cabling	Panel de parcheo de fibra: une puertos de fibra mediante el cableado estructurado
+	Copper wall mount: a wall outlet that carries a link through the building's cabling	Roseta de pared de cobre: una toma de pared que lleva un enlace por el cableado del edificio
+	Fiber wall mount: a fiber wall outlet that carries a link through the building's cabling	Roseta de pared de fibra: una toma de pared de fibra que lleva un enlace por el cableado del edificio
+	Structured Cabling	Cableado estructurado
+	Drag a device onto a rack, shelf or table · drag between two ports to patch them, or from an outlet to a device to plug it in · right-click for more	Arrastra un dispositivo a un bastidor, estante o mesa · arrastra entre dos puertos para parchearlos, o de una toma a un dispositivo para enchufarlo · clic derecho para más
+	Patch panels and wall mounts stand in a wiring closet: open one in the Physical view first.	Los paneles de parcheo y las rosetas de pared van en un armario de cableado: abre uno en la vista física primero.

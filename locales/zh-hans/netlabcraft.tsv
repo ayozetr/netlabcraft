@@ -1798,3 +1798,33 @@ event	write request for	写请求
 	Octal cable: click a router with an octal card, then a router or switch (Console).	八路线缆：先点击带八路卡的路由器，再点击一台路由器或交换机（控制台）。
 	{} has no octal card or Console port.	{} 没有八路卡或控制台端口。
 	{} has no USB port.	{} 没有 USB 端口。
+	Rename…	重命名…
+	Switch Off	关闭
+	Switch On	打开
+	Take off the furniture	从家具上取下
+	Plug into	插入到
+	Unplug	拔出
+	Remove Patch Wires	移除跳线
+	Drag from this port to another to wire them.	从此端口拖到另一个端口即可连线。
+	Drag from this outlet to a device to plug it in.	从此插座拖到设备上即可接通电源。
+	Add to this closet	添加到此配线间
+	Rename	重命名
+	Name:	名称：
+	{}, {} units	{}，{} 个单元
+	{}, {} levels	{}，{} 层
+	{}, on {}	{}，位于 {}
+	Rack	机架
+	Shelf	层架
+furniture	Table	桌子
+	Copper Patch Panel	铜缆配线架
+	Fiber Patch Panel	光纤配线架
+	Copper Wall Mount	铜缆墙面插座
+	Fiber Wall Mount	光纤墙面插座
+	Power Distribution Device	电源分配设备
+	Copper patch panel: joins device ports through the structured cabling	铜缆配线架：通过结构化布线连接设备端口
+	Fiber patch panel: joins fiber device ports through the structured cabling	光纤配线架：通过结构化布线连接光纤端口
+	Copper wall mount: a wall outlet that carries a link through the building's cabling	铜缆墙面插座：通过楼宇布线传送链路的墙面插座
+	Fiber wall mount: a fiber wall outlet that carries a link through the building's cabling	光纤墙面插座：通过楼宇布线传送链路的光纤墙面插座
+	Structured Cabling	结构化布线
+	Drag a device onto a rack, shelf or table · drag between two ports to patch them, or from an outlet to a device to plug it in · right-click for more	把设备拖到机架、层架或桌子上 · 在两个端口之间拖动即可跳线，从插座拖到设备即可接通电源 · 右键查看更多
+	Patch panels and wall mounts stand in a wiring closet: open one in the Physical view first.	配线架和墙面插座放在配线间里：请先在物理视图中打开一个配线间。

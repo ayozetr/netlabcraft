@@ -1,4 +1,4 @@
-//! The `.nlcraft` lab file: UTF-8 JSON, `{"format":"netlabcraft","version":9,"topology":{…}}`.
+//! The `.nlcraft` lab file: UTF-8 JSON, `{"format":"netlabcraft","version":10,"topology":{…}}`.
 //! Readers accept older versions and refuse newer ones; loading always sanitizes.
 
 use serde::{Deserialize, Serialize};
@@ -12,13 +12,14 @@ pub const FORMAT: &str = "netlabcraft";
 /// 5: end devices may carry a `host_fw` (the Firewall app's IPv4 and IPv6 rule lists).
 /// 6: end devices may carry a `pppoe` account and session, and servers a `pppoe` service in `services`.
 /// 7: end devices may carry the VPN Client's settings (`vpn_client`), and routers a remote-access VPN server in `crypto.ra`.
+/// 9: the physical section may carry furniture, passive devices (patch panels, wall mounts, power distribution devices), where things stand on furniture, patch wires and power plugs (`furniture`, `fittings`, `mounts`, `patch_wires`, `plugs`). Older files have none and open as before.
 /// 8: devices may carry NetFlow settings (`netflow`: a router's export destinations, version and counting interfaces, an end device's collector port).
-/// 9: two fiber cables, `fiber-single-mode` and `fiber-multi-mode` (an older `fiber` cable reads as multi-mode), a port's `single_mode` transceiver, USB cables (`usb` on a `consoles` entry) and octal cables (`octals`).
+/// 10: two fiber cables, `fiber-single-mode` and `fiber-multi-mode` (an older `fiber` cable reads as multi-mode), a port's `single_mode` transceiver, USB cables (`usb` on a `consoles` entry) and octal cables (`octals`).
 /// Older files still open (their phones get the port; a drawing with only `color` draws as it always did;
 /// a device without `host_fw` has its firewall off; one without `pppoe` has no account and no session;
 /// one without `vpn_client` or `crypto.ra` has no VPN client settings and no remote-access server;
 /// one without `netflow` exports nothing and runs no collector).
-pub const VERSION: u32 = 9;
+pub const VERSION: u32 = 10;
 pub const EXTENSION: &str = "nlcraft";
 
 /// Largest lab file accepted (hostile input).
@@ -138,7 +139,8 @@ mod tests {
         assert!(from_json(r#"{"format":"netlabcraft","version":7,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
         assert!(from_json(r#"{"format":"netlabcraft","version":8,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
         assert!(from_json(r#"{"format":"netlabcraft","version":9,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
-        assert!(from_json(r#"{"format":"netlabcraft","version":10,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_err());
+        assert!(from_json(r#"{"format":"netlabcraft","version":10,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
+        assert!(from_json(r#"{"format":"netlabcraft","version":11,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_err());
     }
 
     #[test]

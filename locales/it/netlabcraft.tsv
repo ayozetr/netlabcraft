@@ -1798,3 +1798,33 @@ event	write request for	richiesta di scrittura di
 	Octal cable: click a router with an octal card, then a router or switch (Console).	Cavo octal: fai clic su un router con scheda octal, poi su un router o switch (Console).
 	{} has no octal card or Console port.	{} non ha né una scheda octal né una porta Console.
 	{} has no USB port.	{} non ha una porta USB.
+	Rename…	Rinomina…
+	Switch Off	Spegni
+	Switch On	Accendi
+	Take off the furniture	Togli dal mobile
+	Plug into	Collega a
+	Unplug	Scollega
+	Remove Patch Wires	Rimuovi i cavi di permutazione
+	Drag from this port to another to wire them.	Trascina da questa porta a un'altra per collegarle.
+	Drag from this outlet to a device to plug it in.	Trascina da questa presa a un dispositivo per collegarlo.
+	Add to this closet	Aggiungi a questo armadio
+	Rename	Rinomina
+	Name:	Nome:
+	{}, {} units	{}, {} unità
+	{}, {} levels	{}, {} livelli
+	{}, on {}	{}, su {}
+	Rack	Rack
+	Shelf	Scaffale
+furniture	Table	Tavolo
+	Copper Patch Panel	Pannello di permutazione in rame
+	Fiber Patch Panel	Pannello di permutazione in fibra
+	Copper Wall Mount	Presa a muro in rame
+	Fiber Wall Mount	Presa a muro in fibra
+	Power Distribution Device	Unità di distribuzione dell'alimentazione
+	Copper patch panel: joins device ports through the structured cabling	Pannello di permutazione in rame: collega le porte dei dispositivi tramite il cablaggio strutturato
+	Fiber patch panel: joins fiber device ports through the structured cabling	Pannello di permutazione in fibra: collega le porte in fibra tramite il cablaggio strutturato
+	Copper wall mount: a wall outlet that carries a link through the building's cabling	Presa a muro in rame: una presa che porta un collegamento attraverso il cablaggio dell'edificio
+	Fiber wall mount: a fiber wall outlet that carries a link through the building's cabling	Presa a muro in fibra: una presa in fibra che porta un collegamento attraverso il cablaggio dell'edificio
+	Structured Cabling	Cablaggio strutturato
+	Drag a device onto a rack, shelf or table · drag between two ports to patch them, or from an outlet to a device to plug it in · right-click for more	Trascina un dispositivo su un rack, uno scaffale o un tavolo · trascina tra due porte per permutarle, o da una presa a un dispositivo per collegarlo · clic destro per altro
+	Patch panels and wall mounts stand in a wiring closet: open one in the Physical view first.	I pannelli di permutazione e le prese a muro stanno in un armadio di cablaggio: apri prima un armadio nella vista fisica.

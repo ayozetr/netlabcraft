@@ -21,6 +21,7 @@ mod board_page;
 mod bottom;
 mod canvas;
 mod cell_page;
+mod closet;
 mod cloud_page;
 mod console;
 mod credits;
@@ -55,6 +56,7 @@ mod wlan_page;
 
 #[cfg(test)]
 mod tests;
+mod tests_closet;
 mod tests_families;
 #[cfg(test)]
 mod tests_prefs;
@@ -985,6 +987,10 @@ impl PacketApp {
         }
         if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd, Key::D))) {
             self.open_drawing_palette();
+        }
+        // Ctrl+Alt+K opens the Structured Cabling items of the device box.
+        if ctx.input_mut(|i| i.consume_shortcut(&sc(cmd | Modifiers::ALT, Key::K))) {
+            bottom::open_cabling(self);
         }
         // Ctrl+Shift+letter before Shift+letter, and both before the bare letters: egui ignores an extra Shift.
         let cmd_shift = cmd | Modifiers::SHIFT;

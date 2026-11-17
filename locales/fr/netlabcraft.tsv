@@ -1798,3 +1798,33 @@ event	write request for	demande d'écriture de
 	Octal cable: click a router with an octal card, then a router or switch (Console).	Câble octal : cliquez sur un routeur avec une carte octale, puis sur un routeur ou commutateur (Console).
 	{} has no octal card or Console port.	{} n'a ni carte octale ni port Console.
 	{} has no USB port.	{} n'a pas de port USB.
+	Rename…	Renommer…
+	Switch Off	Éteindre
+	Switch On	Allumer
+	Take off the furniture	Retirer du meuble
+	Plug into	Brancher sur
+	Unplug	Débrancher
+	Remove Patch Wires	Retirer les câbles de brassage
+	Drag from this port to another to wire them.	Faites glisser de ce port vers un autre pour les relier.
+	Drag from this outlet to a device to plug it in.	Faites glisser de cette prise vers un appareil pour le brancher.
+	Add to this closet	Ajouter à cette armoire
+	Rename	Renommer
+	Name:	Nom :
+	{}, {} units	{}, {} unités
+	{}, {} levels	{}, {} niveaux
+	{}, on {}	{}, sur {}
+	Rack	Baie
+	Shelf	Étagère
+furniture	Table	Table
+	Copper Patch Panel	Panneau de brassage cuivre
+	Fiber Patch Panel	Panneau de brassage fibre
+	Copper Wall Mount	Prise murale cuivre
+	Fiber Wall Mount	Prise murale fibre
+	Power Distribution Device	Bloc de distribution d'alimentation
+	Copper patch panel: joins device ports through the structured cabling	Panneau de brassage cuivre : relie des ports d'appareils par le câblage structuré
+	Fiber patch panel: joins fiber device ports through the structured cabling	Panneau de brassage fibre : relie des ports fibre par le câblage structuré
+	Copper wall mount: a wall outlet that carries a link through the building's cabling	Prise murale cuivre : une prise qui porte une liaison par le câblage du bâtiment
+	Fiber wall mount: a fiber wall outlet that carries a link through the building's cabling	Prise murale fibre : une prise fibre qui porte une liaison par le câblage du bâtiment
+	Structured Cabling	Câblage structuré
+	Drag a device onto a rack, shelf or table · drag between two ports to patch them, or from an outlet to a device to plug it in · right-click for more	Faites glisser un appareil sur une baie, une étagère ou une table · faites glisser entre deux ports pour les brasser, ou d'une prise vers un appareil pour le brancher · clic droit pour plus
+	Patch panels and wall mounts stand in a wiring closet: open one in the Physical view first.	Les panneaux de brassage et les prises murales se trouvent dans une armoire de câblage : ouvrez-en une dans la vue physique d'abord.

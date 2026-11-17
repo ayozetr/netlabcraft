@@ -1798,3 +1798,33 @@ event	write request for	requisição de escrita de
 	Octal cable: click a router with an octal card, then a router or switch (Console).	Cabo octal: clique em um roteador com placa octal e depois em um roteador ou switch (Console).
 	{} has no octal card or Console port.	{} não tem placa octal nem porta Console.
 	{} has no USB port.	{} não tem porta USB.
+	Rename…	Renomear…
+	Switch Off	Desligar
+	Switch On	Ligar
+	Take off the furniture	Tirar do móvel
+	Plug into	Ligar em
+	Unplug	Desligar da tomada
+	Remove Patch Wires	Remover os cabos de patch
+	Drag from this port to another to wire them.	Arraste desta porta para outra para ligá-las.
+	Drag from this outlet to a device to plug it in.	Arraste desta tomada para um dispositivo para ligá-lo.
+	Add to this closet	Adicionar a este armário
+	Rename	Renomear
+	Name:	Nome:
+	{}, {} units	{}, {} unidades
+	{}, {} levels	{}, {} níveis
+	{}, on {}	{}, em {}
+	Rack	Rack
+	Shelf	Prateleira
+furniture	Table	Mesa
+	Copper Patch Panel	Patch panel de cobre
+	Fiber Patch Panel	Patch panel de fibra
+	Copper Wall Mount	Tomada de parede de cobre
+	Fiber Wall Mount	Tomada de parede de fibra
+	Power Distribution Device	Unidade de distribuição de energia
+	Copper patch panel: joins device ports through the structured cabling	Patch panel de cobre: liga portas de dispositivos pelo cabeamento estruturado
+	Fiber patch panel: joins fiber device ports through the structured cabling	Patch panel de fibra: liga portas de fibra pelo cabeamento estruturado
+	Copper wall mount: a wall outlet that carries a link through the building's cabling	Tomada de parede de cobre: uma tomada que leva um enlace pelo cabeamento do prédio
+	Fiber wall mount: a fiber wall outlet that carries a link through the building's cabling	Tomada de parede de fibra: uma tomada de fibra que leva um enlace pelo cabeamento do prédio
+	Structured Cabling	Cabeamento estruturado
+	Drag a device onto a rack, shelf or table · drag between two ports to patch them, or from an outlet to a device to plug it in · right-click for more	Arraste um dispositivo para um rack, prateleira ou mesa · arraste entre duas portas para fazer o patch, ou de uma tomada para um dispositivo para ligá-lo · clique direito para mais
+	Patch panels and wall mounts stand in a wiring closet: open one in the Physical view first.	Patch panels e tomadas de parede ficam em um armário de fiação: abra um na visualização física primeiro.
