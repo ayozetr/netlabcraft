@@ -280,6 +280,10 @@ pub struct UiState {
     pub bottom: bottom::BoxState,
     /// The pointer over the workspace, in workspace units.
     pub pointer: Option<(f32, f32)>,
+    /// A device-box tile being dragged to the workspace: the model or passive device id and its name.
+    pub tile_drag: Option<(&'static str, &'static str)>,
+    /// A tile released over the workspace, to be placed there: the id and where (screen position).
+    pub tile_drop: Option<(&'static str, egui::Pos2)>,
     /// The device Copy put on the clipboard.
     pub clipboard: Option<DeviceId>,
     /// The workspace note being edited, and its text.
@@ -352,6 +356,8 @@ impl Default for UiState {
             complex: None,
             bottom: bottom::BoxState::default(),
             pointer: None,
+            tile_drag: None,
+            tile_drop: None,
             clipboard: None,
             editing_note: None,
             selected_note: None,
@@ -921,6 +927,7 @@ impl PacketApp {
     pub fn set_tool(&mut self, t: Tool) {
         self.ui.tool = t;
         self.ui.canvas.cancel();
+        self.ui.physical.closet.wire = None;
     }
 
     /// Tools ▸ Drawing Palette: picks a drawing tool, which shows the Palette window (a drawing tool already
@@ -962,7 +969,13 @@ impl PacketApp {
         let ctx = ui.ctx().clone();
         let tk = theme::tokens(self.ui.dark);
         self.take_screenshot(&ctx);
-        self.shortcuts(&ctx);
+        // Esc drops a tile being dragged from the device box before it does anything else.
+        let dropped_tile = self.ui.tile_drag.is_some() && ctx.input(|i| i.key_pressed(egui::Key::Escape));
+        if dropped_tile {
+            self.ui.tile_drag = None;
+        } else {
+            self.shortcuts(&ctx);
+        }
         let chrome = egui::Frame::new().fill(tk.chrome).inner_margin(egui::Margin::symmetric(6, 4));
         let bar = egui::Frame::new().fill(tk.bar).inner_margin(egui::Margin::symmetric(6, 3));
         egui::Panel::top("menu").show(ui, |ui| self.menu_bar(ui));
@@ -1000,6 +1013,7 @@ impl PacketApp {
         self.about_window(&ctx);
         help::window(self, &ctx);
         overview::viewport_window(self, &ctx);
+        bottom::tile_ghost(self, &ctx);
         overview::list_window(self, &ctx);
     }
 

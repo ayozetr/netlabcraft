@@ -227,7 +227,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                         let tool = m.tool;
                         let selected = app.ui.tool == tool;
                         // Room for a name on two lines (`Modular Router 3GE`).
-                        let (rect, resp) = ui.allocate_exact_size(vec2(76.0, 56.0), Sense::click());
+                        let (rect, resp) = ui.allocate_exact_size(vec2(76.0, 56.0), Sense::click_and_drag());
                         // Cable names, model names and every description are interface text.
                         let (short, long) = (crate::i18n::tl(m.short), crate::i18n::tl(m.long));
                         let resp = resp.on_hover_text(long);
@@ -281,6 +281,21 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                         p.galley(egui::pos2(rect.center().x, top), galley, tk.text);
                         if resp.clicked() {
                             app.set_tool(if selected { Tool::Select } else { tool });
+                        }
+                        // A model or a passive device can also be dragged onto the workspace; a cable tile cannot.
+                        if let Tool::Place(id) = tool {
+                            if resp.drag_started() {
+                                app.ui.tile_drag = Some((id, short));
+                            }
+                            if resp.drag_stopped() && app.ui.tile_drag.take().is_some() {
+                                let at = ui.input(|i| i.pointer.latest_pos());
+                                // Released outside the workspace: nothing is placed.
+                                if let (Some(at), Some(area)) = (at, app.ui.canvas_rect)
+                                    && area.contains(at)
+                                {
+                                    app.ui.tile_drop = Some((id, at));
+                                }
+                            }
                         }
                     }
                 });
@@ -409,4 +424,16 @@ fn pdu_list(app: &mut PacketApp, ui: &mut Ui) {
     if let Some(num) = delete {
         app.run("pdu.delete", serde_json::json!({"num": num}));
     }
+}
+
+/// The tile being dragged from the device box, drawn under the pointer.
+pub fn tile_ghost(app: &PacketApp, ctx: &egui::Context) {
+    let Some((_, name)) = &app.ui.tile_drag else { return };
+    let Some(at) = ctx.input(|i| i.pointer.latest_pos()) else { return };
+    let tk = theme::tokens(app.ui.dark);
+    let p = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::unique("tile_ghost")));
+    let rect = egui::Rect::from_center_size(at, vec2(96.0, 28.0));
+    p.rect_filled(rect, 8.0, tk.pill.gamma_multiply(0.35));
+    p.rect_stroke(rect, 8.0, egui::Stroke::new(1.5, tk.pill), egui::StrokeKind::Inside);
+    p.text(rect.center(), egui::Align2::CENTER_CENTER, *name, egui::FontId::proportional(11.0), tk.text);
 }

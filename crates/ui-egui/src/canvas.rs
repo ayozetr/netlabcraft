@@ -76,6 +76,17 @@ const MAX_STROKE: usize = 4_000;
 
 /// The status-bar hint for the current tool.
 pub fn hint(app: &PacketApp) -> String {
+    if app.session.physical && crate::closet::current(app).is_some() && matches!(app.ui.tool, Tool::Cable(_)) {
+        return match app.ui.physical.closet.wire {
+            Some(first) => {
+                crate::i18n::trf("From {}: click a port on another device. Right-click or Esc cancels.", &[&app.session.topology.pole_label(first)])
+            }
+            None => {
+                crate::i18n::tl("Click a port on a device's front panel, then a port on another device, to cable them · right-click or Esc cancels")
+                    .into()
+            }
+        };
+    }
     if app.session.physical && crate::closet::current(app).is_some() && !matches!(app.ui.tool, Tool::Place(_)) {
         return crate::i18n::tl("Drag a device onto a rack, shelf or table · drag between two ports to patch them, or from an outlet to a device to plug it in · right-click for more").into();
     }
@@ -1599,6 +1610,14 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
         resp.context_menu(|ui| note_menu(app, ui, n));
     }
 
+    // A tile dragged from the device box and released over the workspace.
+    if let Some((model, at)) = app.ui.tile_drop.take() {
+        if netlabcraft_model::furniture::FittingKind::from_id(model).is_some() {
+            app.info(crate::i18n::tl("Patch panels and wall mounts stand in a wiring closet: open one in the Physical view first."));
+        } else {
+            place_model(app, view, model, at);
+        }
+    }
     if !resp.clicked() {
         return;
     }
@@ -1663,12 +1682,7 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
         }
         Tool::Place(model) => {
             if hit.is_none() {
-                let (x, y) = view.world(p);
-                let aligned = app.ui.prefs.align_logical;
-                let snap = |v: f32| if aligned { (v / (GRID / 2.0)).round() * (GRID / 2.0) } else { v };
-                if let Some(v) = app.run("device.add", json!({"model": model, "x": snap(x), "y": snap(y)})) {
-                    app.ui.selected = v.get("id").and_then(Value::as_u64).and_then(|i| u32::try_from(i).ok()).map(DeviceId);
-                }
+                place_model(app, view, model, p);
             }
         }
         Tool::Cable(k @ (Cable::Console | Cable::Usb | Cable::Octal)) => match hit {
@@ -1971,6 +1985,16 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, d: DeviceId) {
         app.run("device.remove", json!({"device": d.0}));
         app.ui.selected = None;
         ui.close();
+    }
+}
+
+/// Places a device model where the pointer is (a click with the tile picked, or the tile dropped).
+fn place_model(app: &mut PacketApp, view: &View, model: &'static str, p: Pos2) {
+    let (x, y) = view.world(p);
+    let aligned = app.ui.prefs.align_logical;
+    let snap = |v: f32| if aligned { (v / (GRID / 2.0)).round() * (GRID / 2.0) } else { v };
+    if let Some(v) = app.run("device.add", json!({"model": model, "x": snap(x), "y": snap(y)})) {
+        app.ui.selected = v.get("id").and_then(Value::as_u64).and_then(|i| u32::try_from(i).ok()).map(DeviceId);
     }
 }
 

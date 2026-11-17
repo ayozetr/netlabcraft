@@ -55,6 +55,11 @@ pub struct State {
     context: Option<Target>,
     /// The cable picked by a click.
     cable: Option<End>,
+    /// The port a click with a cable tool started a cable at.
+    pub(crate) wire: Option<Pole>,
+    /// Where the sockets were drawn last frame (the tests click on them).
+    #[cfg(test)]
+    pub(crate) seen_ports: Vec<(Pole, Rect)>,
     /// The Rename dialog: what and the name being typed.
     pub rename: Option<(Thing, String)>,
 }
@@ -643,8 +648,116 @@ fn build(app: &PacketApp, p: &Painter, origin: Vec2, place: u32) -> Scene {
     sc
 }
 
+/// Marks the slot (rack units, shelf level or the table top) something dropped there would take.
+fn slot_highlight(p: &Painter, sc: &Scene, f: &netlabcraft_model::furniture::Furniture, slot: u32, units: u32, tk: &Tokens) {
+    let (w, h) = f.dims();
+    let (x, y, ww, hh) = match f.kind {
+        FurnitureKind::Rack => (f.x + 28.0, f.y + FRAME_HEAD + slot as f32 * RACK_UNIT_H, w - 56.0, units as f32 * RACK_UNIT_H),
+        FurnitureKind::Shelf => (
+            f.x + 16.0,
+            f.y + FRAME_HEAD + slot as f32 * netlabcraft_model::furniture::SHELF_LEVEL_H,
+            w - 32.0,
+            netlabcraft_model::furniture::SHELF_LEVEL_H - 8.0,
+        ),
+        FurnitureKind::Table => (f.x + 16.0, f.y + FRAME_HEAD, w - 32.0, h - FRAME_HEAD - FRAME_FOOT),
+    };
+    let r = sc.rect(&Cell { x, y, w: ww, h: hh });
+    p.rect_filled(r, 2.0, tk.selection.gamma_multiply(0.18));
+    p.rect_stroke(r, 2.0, Stroke::new(1.5, tk.selection), StrokeKind::Inside);
+}
+
+/// A cable being made by clicks: the first port lit, a line to the pointer in the cable's colour,
+/// and the ports the cable cannot join to it dimmed.
+fn draw_cable_feedback(app: &PacketApp, p: &Painter, sc: &Scene, pointer: Option<Pos2>) {
+    let (Tool::Cable(kind), Some(first)) = (app.ui.tool, app.ui.physical.closet.wire) else { return };
+    let tk = theme::tokens(app.ui.dark);
+    let t = &app.session.topology;
+    if let Some((_, r)) = sc.ports.iter().find(|(q, _)| *q == first) {
+        p.rect_stroke(r.expand(2.0), 2.0, Stroke::new(2.0, tk.selection), StrokeKind::Outside);
+        if let Some(at) = pointer {
+            p.add(egui::Shape::line(curve(r.center(), at, 0.0, sc.zoom), Stroke::new(2.5, cable_color(kind, &tk))));
+        }
+    }
+    for (pole, r) in &sc.ports {
+        if *pole != first && port_refusal(t, kind, first, *pole).is_some() {
+            p.rect_filled(*r, 2.0, tk.ground.gamma_multiply(0.6));
+        }
+    }
+}
+
+/// Why a cable of `kind` cannot go between these two ports, if it cannot (a busy device port, or
+/// the cable not fitting the two). Panel ports are left to the patch wire command.
+fn port_refusal(t: &Topology, kind: Cable, a: Pole, b: Pole) -> Option<String> {
+    if let Some(why) = busy(t, a).or_else(|| busy(t, b)) {
+        return Some(why);
+    }
+    let (Pole::Device(ea), Pole::Device(eb)) = (a, b) else { return None };
+    if ea.device == eb.device {
+        return Some(tl("A cable joins two different devices").into());
+    }
+    let generic = !matches!(kind, Cable::Console | Cable::Usb | Cable::Octal | Cable::IotCustom);
+    if generic && let Some(why) = t.cable_misfit(kind, ea, eb) {
+        return Some(crate::i18n::tr_any(&why));
+    }
+    None
+}
+
+/// Why a device port cannot start a cable: it already has one.
+fn busy(t: &Topology, pole: Pole) -> Option<String> {
+    let Pole::Device(e) = pole else { return None };
+    let peer = t.peer(e)?;
+    Some(trf("{} is already cabled to {}", &[&t.end_label(e), &t.end_label(peer)]))
+}
+
+/// A click on a port with a cable tool: the first one starts the cable, the second finishes it
+/// (a device-to-device cable through `link.add`, anything with a patch panel port through
+/// `patch.wire`, as a drag does).
+fn cable_click(app: &mut PacketApp, sc: &Scene, kind: Cable, at: Pos2) {
+    let Some(pole) = sc.hit_port(at) else { return };
+    let Some(first) = app.ui.physical.closet.wire else {
+        match busy(&app.session.topology, pole) {
+            Some(why) => app.ui.status = Some((why, true)),
+            None => app.ui.physical.closet.wire = Some(pole),
+        }
+        return;
+    };
+    if first == pole {
+        app.ui.physical.closet.wire = None;
+        return;
+    }
+    let t = &app.session.topology;
+    if let Some(why) = port_refusal(t, kind, first, pole) {
+        app.ui.status = Some((why, true));
+        return;
+    }
+    let made = match (first, pole) {
+        (Pole::Device(a), Pole::Device(b)) => {
+            let name = |e: End| t.device(e.device).and_then(|d| d.ports.get(e.port)).map(|p| p.name.clone()).unwrap_or_default();
+            let params = json!({"a": a.device.0, "a_port": name(a), "b": b.device.0, "b_port": name(b), "cable": kind.id()});
+            app.run("link.add", params)
+        }
+        _ => {
+            let params = json!({"a": pole_json(t, first), "b": pole_json(t, pole)});
+            app.run("patch.wire", params)
+        }
+    };
+    // The tool stays picked for the next cable; a refused pair leaves the first port lit.
+    if made.is_some() {
+        app.ui.physical.closet.wire = None;
+    }
+}
+
 /// What is being dragged, drawn over the scene: the slot an item would take, or the rubber band.
 fn draw_feedback(app: &PacketApp, p: &Painter, sc: &Scene, pointer: Option<Pos2>) {
+    draw_cable_feedback(app, p, sc, pointer);
+    // A tile from the device box over a rack, shelf or table: the slot it would take.
+    if app.ui.tile_drag.is_some()
+        && let Some(at) = pointer
+        && let Some(f) = sc.frame_at(at).and_then(|id| app.session.topology.furniture_piece(id))
+        && let Some(slot) = f.slot_at(sc.world(at).1)
+    {
+        slot_highlight(p, sc, f, slot, 1, &theme::tokens(app.ui.dark));
+    }
     let (Some(drag), Some(at)) = (app.ui.physical.closet.drag, pointer) else { return };
     let tk = theme::tokens(app.ui.dark);
     let t = &app.session.topology;
@@ -654,20 +767,7 @@ fn draw_feedback(app: &PacketApp, p: &Painter, sc: &Scene, pointer: Option<Pos2>
             let (_, wy) = sc.world(at);
             let Some(slot) = f.slot_at(wy) else { return };
             let units = t.mount_of(item).map_or(1, |m| m.units);
-            let (w, h) = f.dims();
-            let (x, y, ww, hh) = match f.kind {
-                FurnitureKind::Rack => (f.x + 28.0, f.y + FRAME_HEAD + slot as f32 * RACK_UNIT_H, w - 56.0, units as f32 * RACK_UNIT_H),
-                FurnitureKind::Shelf => (
-                    f.x + 16.0,
-                    f.y + FRAME_HEAD + slot as f32 * netlabcraft_model::furniture::SHELF_LEVEL_H,
-                    w - 32.0,
-                    netlabcraft_model::furniture::SHELF_LEVEL_H - 8.0,
-                ),
-                FurnitureKind::Table => (f.x + 16.0, f.y + FRAME_HEAD, w - 32.0, h - FRAME_HEAD - FRAME_FOOT),
-            };
-            let r = sc.rect(&Cell { x, y, w: ww, h: hh });
-            p.rect_filled(r, 2.0, tk.selection.gamma_multiply(0.18));
-            p.rect_stroke(r, 2.0, Stroke::new(1.5, tk.selection), StrokeKind::Inside);
+            slot_highlight(p, sc, f, slot, units, &tk);
         }
         Drag::Wire(from) => {
             if let Some((_, r)) = sc.ports.iter().find(|(q, _)| *q == from) {
@@ -691,7 +791,17 @@ pub(crate) fn show(app: &mut PacketApp, ui: &mut Ui, resp: &egui::Response, pain
     let origin = rect.min.to_vec2() + app.ui.pan;
     let pointer = resp.interact_pointer_pos().or_else(|| resp.hover_pos());
     let sc = build(app, painter, origin, place);
-    draw_feedback(app, painter, &sc, pointer);
+    #[cfg(test)]
+    {
+        app.ui.physical.closet.seen_ports = sc.ports.clone();
+    }
+    // The pointer while a tile is dragged in from the device box (the canvas is not hovered then).
+    let feedback_at = if app.ui.tile_drag.is_some() { ui.input(|i| i.pointer.latest_pos()) } else { pointer };
+    draw_feedback(app, painter, &sc, feedback_at);
+    // A tile released here goes where it was dropped: onto the slot there, else the floor.
+    if let Some((id, at)) = app.ui.tile_drop.take() {
+        place_tool(app, &sc, id, at, place);
+    }
     app.ui.pointer = resp.hover_pos().map(|p| sc.world(p));
     accessible_nodes(app, ui, &sc, rect);
     interact(app, ui, resp, &sc, place);
@@ -800,7 +910,13 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, sc: &Scene, pla
         crate::open_console(app, d);
         return;
     }
+    // Right-click drops a cable being made; the tool stays picked.
+    let cancelled = resp.secondary_clicked() && app.ui.physical.closet.wire.take().is_some();
+    if cancelled {
+        app.ui.physical.closet.context = None;
+    }
     if resp.secondary_clicked()
+        && !cancelled
         && let Some(p) = pointer
     {
         let (wx, wy) = sc.world(p);
@@ -828,6 +944,10 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, sc: &Scene, pla
         && let Some(p) = pointer
     {
         let hit_item = sc.hit_item(p);
+        if let Tool::Cable(kind) = app.ui.tool {
+            cable_click(app, sc, kind, p);
+            return;
+        }
         if let Tool::Place(id) = app.ui.tool {
             if hit_item.is_none() {
                 place_tool(app, sc, id, p, place);

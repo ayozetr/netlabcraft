@@ -1859,3 +1859,7 @@ furniture	Table	Tavolo
 	Structured Cabling	Cablaggio strutturato
 	Drag a device onto a rack, shelf or table · drag between two ports to patch them, or from an outlet to a device to plug it in · right-click for more	Trascina un dispositivo su un rack, uno scaffale o un tavolo · trascina tra due porte per permutarle, o da una presa a un dispositivo per collegarlo · clic destro per altro
 	Patch panels and wall mounts stand in a wiring closet: open one in the Physical view first.	I pannelli di permutazione e le prese a muro stanno in un armadio di cablaggio: apri prima un armadio nella vista fisica.
+	{} is already cabled to {}	{} ha già un cavo verso {}
+	A cable joins two different devices	Un cavo collega due dispositivi diversi
+	Click a port on a device's front panel, then a port on another device, to cable them · right-click or Esc cancels	Fai clic su una porta del pannello frontale di un dispositivo e poi su una porta di un altro dispositivo per collegarli con un cavo · clic destro o Esc annulla
+	From {}: click a port on another device. Right-click or Esc cancels.	Da {}: fai clic su una porta di un altro dispositivo. Clic destro o Esc annulla.
