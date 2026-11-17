@@ -579,6 +579,70 @@ pub static CATALOG: &[CommandInfo] = &[
         false
     ),
     c!(
+        "environment.get",
+        "Environments",
+        "Options",
+        Some("Shift+E"),
+        r#"{"place"?: place number, name or "intercity" (default: the first wiring closet)} → {"place": {id, name, kind}, "path": [the places from the Intercity map down to it], "time": "HH:MM:SS", "seconds", "clock": {paused, real_minutes, sim_minutes}, "notes", "show_notes", "variables": [{id, label, group, unit, value, source: "own"|"inherited"|"default"|"room", from, default, min, max, drives, keys: [{time, seconds, value}]}]}: the surroundings of a place at the environment clock's time now. A place that sets nothing inherits from the place it stands in (closet, building, city, Intercity), then the default (an ordinary physical constant or 0); "room" is the smart-home room's live reading for what its sensors read."#,
+        false
+    ),
+    c!(
+        "environment.set",
+        "Set an environment variable",
+        "",
+        None,
+        r#"{"place"?, "variable"?: id or label, "value"?: number within the variable's range (a constant for the whole day: its keyframes are replaced), "notes"?: text (up to 4000 characters), "show_notes"?: true|false} → environment.get; one undo step. Needs a variable and its value, or notes, or show_notes"#,
+        true
+    ),
+    c!(
+        "environment.clear",
+        "Clear an environment variable",
+        "",
+        None,
+        r#"{"place"?, "variable"?: id or label (none: every variable of the place)} → environment.get: the place inherits again; one undo step"#,
+        true
+    ),
+    c!(
+        "environment.keyframe.add",
+        "Add an environment keyframe",
+        "",
+        None,
+        r#"{"place"?, "variable", "time": "HH:MM:SS" or seconds from midnight (0-86399), "value": number within the variable's range} → environment.get: adds a keyframe or changes the one at that time (at most 288 per variable); between keyframes the value moves in a straight line, and after the last it moves toward the first of the next day; one undo step"#,
+        true
+    ),
+    c!(
+        "environment.keyframe.remove",
+        "Remove an environment keyframe",
+        "",
+        None,
+        r#"{"place"?, "variable", "time"} → environment.get: removes the keyframe at that time; the variable is inherited again when none is left; one undo step"#,
+        true
+    ),
+    c!(
+        "environment.clock",
+        "Environment clock",
+        "",
+        None,
+        r#"{"time"?: "HH:MM:SS" or seconds from midnight (set the time of day now), "paused"?: true|false, "real_minutes"?: 1-1440, "sim_minutes"?: 1-1440 (every `real_minutes` of simulated lab time pass `sim_minutes` in the environment; the time shown does not jump when the ratio changes)} → environment.get. The clock follows the lab's simulated time (it starts at 08:00:00); one undo step when something changes"#,
+        true
+    ),
+    c!(
+        "environment.export",
+        "Export environment",
+        "",
+        None,
+        r#"{"place"?} → {"place", "file": suggested file name, "text"}: the variables and notes the place sets itself, as a JSON file of its own (format "netlabcraft-environment", docs/file-format.md); the app saves it with a dialog"#,
+        false
+    ),
+    c!(
+        "environment.import",
+        "Import environment",
+        "",
+        None,
+        r#"{"place"?, "text": contents of an exported environment, "merge"?: true (only replace the variables the file names; default: replace everything the place sets)} → environment.get plus "imported": {variables, skipped}: unknown variables are skipped and values are clamped to their range; one undo step"#,
+        true
+    ),
+    c!(
         "phone.status",
         "Phone screen",
         "",
