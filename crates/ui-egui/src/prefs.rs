@@ -287,7 +287,8 @@ pub fn shortcuts(app: &mut PacketApp, ctx: &egui::Context) {
     if pressed(cmd | Modifiers::SHIFT, Key::M) {
         app.open_algorithm_settings();
     }
-    if pressed(cmd, Key::R) {
+    // Ctrl+Shift+R belongs to the toolbars (View menu): a match that ignores Shift would take it.
+    if !ctx.input(|i| i.modifiers.shift) && pressed(cmd, Key::R) {
         app.open_preferences();
     }
 }
