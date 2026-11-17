@@ -80,9 +80,6 @@ pub fn model_marks(p: &Painter, rect: Rect, model_id: &str, multilayer: bool) {
     if multilayer {
         multilayer_mark(p, rect);
     }
-    if crate::icons_things2::mark(p, rect, model_id) {
-        return;
-    }
     match model_id {
         "AccessPoint" | "Home-Router" => access_point_mark(p, rect),
         "LAP" => {
