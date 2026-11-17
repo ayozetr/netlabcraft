@@ -89,7 +89,8 @@ mod t {
         h.run_steps(2);
         for cat in Category::ALL {
             for &sub in cat.subs() {
-                let want: Vec<&str> = models::MODELS.iter().filter(|m| Sub::of_group(m.group()) == sub).map(|m| m.label).collect();
+                let want: Vec<&str> =
+                    models::MODELS.iter().filter(|m| m.groups().into_iter().any(|g| Sub::of_group(g) == sub)).map(|m| m.label).collect();
                 if matches!(sub, Sub::Recent | Sub::Cables | Sub::Cabling) {
                     continue;
                 }
@@ -101,6 +102,32 @@ mod t {
                 assert!(h.query_all_by_label(i18n::tl(want[0])).next().is_some(), "{sub:?}: {}", want[0]);
             }
         }
+    }
+
+    /// One model, three tiles: the smart LED is listed in Smart City, Industrial and Actuators, and
+    /// a search names it once.
+    #[test]
+    fn a_model_listed_in_several_groups_has_a_tile_in_each_and_one_in_a_search() {
+        use crate::bottom::{Category, Sub};
+        for sub in [Sub::SmartCity, Sub::Industrial, Sub::Actuators] {
+            assert!(crate::bottom::tile_names(sub).contains(&"Smart LED"), "{sub:?}");
+        }
+        assert!(!crate::bottom::tile_names(Sub::Home).contains(&"Smart LED"));
+        // The temperature, humidity and carbon monoxide monitors are in Smart City as well.
+        let city = crate::bottom::tile_names(Sub::SmartCity);
+        for name in ["Smart Sensor", "Humidity Sensor", "CO Detector", "Street Light"] {
+            assert!(city.contains(&name), "{name}");
+        }
+        assert_eq!(crate::bottom::tile_names(Sub::Home).iter().filter(|n| **n == "Smart Sensor").count(), 1);
+        let mut h = harness("lan");
+        h.state_mut().ui.show_notes = false;
+        h.state_mut().ui.bottom.category = Category::Components;
+        h.state_mut().ui.bottom.search = "smart led".into();
+        h.run_steps(3);
+        assert_eq!(h.query_all_by_label("Smart LED").count(), 1, "one tile for a model that has three");
+        // Placing from any of its tiles gives the same model.
+        h.state_mut().session.execute("device.add", json!({"model": "Smart LED", "name": "Lamp1"})).unwrap();
+        assert_eq!(h.state().session.topology.find("Lamp1").unwrap().catalogue_model().id, "IoT-LED");
     }
 
     #[test]

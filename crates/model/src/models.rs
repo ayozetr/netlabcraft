@@ -56,6 +56,8 @@ impl Model {
             "Firewall-5" | "Firewall-3" => Group::Security,
             "Board-SBC" | "Board-MCU" | "IoT-Thing" => Group::Boards,
             "IoT-Streetlight" | "IoT-Traffic" | "IoT-Parking" | "IoT-Drain" | "IoT-Air" => Group::SmartCity,
+            "IoT-Pressure" | "IoT-Beacon" | "IoT-CO2" | "IoT-Fire" | "IoT-FireSprinkler" | "IoT-Car" | "IoT-RFIDCard" | "IoT-RFIDReader"
+            | "IoT-LED" | "IoT-Trip" | "IoT-WindDet" => Group::SmartCity,
             "PLC" | "Data-Historian" | "HMI-Panel" | "IoT-Blower" => Group::Industrial,
             "IoT-Battery" | "IoT-Meter" | "IoT-Solar" | "IoT-Wind" => Group::PowerGrid,
             "Part-LED" | "Part-Buzzer" | "Part-Motor" | "Part-Relay" | "Part-LCD" => Group::Actuators,
@@ -73,6 +75,23 @@ impl Model {
 }
 
 impl Model {
+    /// The other groups the model is also listed in (a model is one model, shown in more than one
+    /// subgroup of the device box where the reference app lists the same thing in several): the
+    /// smart LED is a city, an industrial and an actuator thing; the temperature, humidity and
+    /// carbon monoxide monitors are city things too.
+    pub fn extra_groups(&self) -> &'static [Group] {
+        match self.id {
+            "IoT-LED" => &[Group::Industrial, Group::Actuators],
+            "IoT-Sensor" | "IoT-Humidity" | "IoT-CO" => &[Group::SmartCity],
+            _ => &[],
+        }
+    }
+
+    /// Every group the model is listed in: its own first, then the extra ones.
+    pub fn groups(&self) -> Vec<Group> {
+        std::iter::once(self.group()).chain(self.extra_groups().iter().copied()).collect()
+    }
+
     /// A multilayer switch: can route (`ip routing`) and have routed ports (`no switchport`).
     pub fn multilayer(&self) -> bool {
         self.id.starts_with("Switch-ML") || self.home_router()
@@ -589,6 +608,83 @@ pub static MODELS: &[Model] = &[
         ports: &[run("Wireless", 0, 0)],
     },
     Model {
+        id: "IoT-Pressure",
+        kind: DeviceKind::Iot,
+        label: "Atmospheric Pressure Monitor",
+        description: "Wi-Fi barometer: reports the atmospheric pressure in kPa (the room is at sea-level pressure; an environment can set another)",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-Beacon",
+        kind: DeviceKind::Iot,
+        label: "Beacon",
+        description: "Wi-Fi beacon: announces its id (its reading) to the smart things within 100 m, and reports how many hear it as a second reading",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-CO2",
+        kind: DeviceKind::Iot,
+        label: "Carbon Dioxide Detector",
+        description: "Wi-Fi carbon dioxide detector: reports the CO2 level in parts per million (fresh air is about 420)",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-Fire",
+        kind: DeviceKind::Iot,
+        label: "Fire Monitor",
+        description: "Wi-Fi fire monitor: reports how much of the room is in flames (0-100 %)",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-FireSprinkler",
+        kind: DeviceKind::Iot,
+        label: "Fire Sprinkler",
+        description: "Wi-Fi fire sprinkler: sprays on its own while the room is in flames, and when the IoT service switches it on; the flames go down while it sprays",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-Car",
+        kind: DeviceKind::Iot,
+        label: "Old Car",
+        description: "A car you can move on the map: while its engine is on (the IoT service switches it) it adds carbon monoxide and carbon dioxide to the room, and a trip sensor sees it pass",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-RFIDCard",
+        kind: DeviceKind::Iot,
+        label: "RFID Card",
+        description: "Wi-Fi tag that announces its card id (its reading, set by hand); an RFID reader within 30 m reads it",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-RFIDReader",
+        kind: DeviceKind::Iot,
+        label: "RFID Reader",
+        description: "Wi-Fi RFID reader: reports the id of the nearest RFID card within 30 m, or 0 when there is none",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-LED",
+        kind: DeviceKind::Iot,
+        label: "Smart LED",
+        description: "Wi-Fi dimmable colour LED: shines while the IoT service keeps it on, at the brightness and colour set in its IoT tab",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-Trip",
+        kind: DeviceKind::Iot,
+        label: "Trip Sensor",
+        description: "Wi-Fi tripwire: reports 1 while something that moves (a car, a card, a phone, a tablet, a laptop) is within 50 m, else 0",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "IoT-WindDet",
+        kind: DeviceKind::Iot,
+        label: "Wind Detector",
+        description: "Wi-Fi anemometer: reports the wind speed in kph (the room is calm; an environment can set a wind)",
+        ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
         id: "Board-SBC",
         kind: DeviceKind::Iot,
         label: "Board SBC",
@@ -1046,6 +1142,17 @@ impl Model {
             "IoT-Humiture" => Some("Humiture"),
             "IoT-Player" => Some("Player"),
             "IoT-SoundDet" => Some("SoundDet"),
+            "IoT-Pressure" => Some("Pressure"),
+            "IoT-Beacon" => Some("Beacon"),
+            "IoT-CO2" => Some("CO2"),
+            "IoT-Fire" => Some("FireMonitor"),
+            "IoT-FireSprinkler" => Some("FireSprinkler"),
+            "IoT-Car" => Some("Car"),
+            "IoT-RFIDCard" => Some("Card"),
+            "IoT-RFIDReader" => Some("Reader"),
+            "IoT-LED" => Some("SmartLED"),
+            "IoT-Trip" => Some("Trip"),
+            "IoT-WindDet" => Some("WindDet"),
             "IoT-Streetlight" => Some("Streetlight"),
             "IoT-Traffic" => Some("Traffic"),
             "IoT-Parking" => Some("Parking"),
@@ -1221,7 +1328,32 @@ mod tests {
         for want in groups {
             assert!(MODELS.iter().any(|m| m.group() == want), "{want:?} is empty");
         }
-        assert_eq!(MODELS.len(), 108);
+        assert_eq!(MODELS.len(), 119);
+    }
+
+    #[test]
+    fn a_model_can_be_listed_in_more_than_one_group_and_the_first_is_its_own() {
+        let groups = |id: &str| find(id).unwrap().groups();
+        assert_eq!(groups("IoT-LED"), [Group::SmartCity, Group::Industrial, Group::Actuators]);
+        assert_eq!(groups("IoT-Sensor"), [Group::Home, Group::SmartCity]);
+        assert_eq!(groups("IoT-Humidity"), [Group::Home, Group::SmartCity]);
+        assert_eq!(groups("IoT-CO"), [Group::Home, Group::SmartCity]);
+        assert_eq!(groups("IoT-Streetlight"), [Group::SmartCity]);
+        assert_eq!(groups("Router-3"), [Group::Routers]);
+        for m in MODELS {
+            assert_eq!(m.groups().first(), Some(&m.group()), "{}", m.id);
+            let mut seen = std::collections::BTreeSet::new();
+            assert!(m.groups().iter().all(|g| seen.insert(format!("{g:?}"))), "{} lists a group twice", m.id);
+        }
+        // The city group holds the new things; the reading and switched ones are as the framework says.
+        for id in ["IoT-Pressure", "IoT-Beacon", "IoT-CO2", "IoT-Fire", "IoT-RFIDCard", "IoT-RFIDReader", "IoT-Trip", "IoT-WindDet"] {
+            assert_eq!(find(id).unwrap().group(), Group::SmartCity, "{id}");
+            assert!(crate::iot::thing_of(id).is_some_and(|t| t.sensor), "{id} reports a reading");
+        }
+        for id in ["IoT-FireSprinkler", "IoT-Car", "IoT-LED"] {
+            assert!(crate::iot::thing_of(id).is_some_and(|t| !t.sensor), "{id} is switched");
+        }
+        assert!(crate::iot::thing_of("IoT-Beacon").is_some_and(|t| t.also == "audience"));
     }
 
     #[test]

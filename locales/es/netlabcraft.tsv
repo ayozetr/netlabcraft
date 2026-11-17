@@ -2045,6 +2045,52 @@ furniture	Table	Mesa
 	Wi-Fi music player: plays a tone while on, quietly alone and louder through a Bluetooth speaker within 60 m	Reproductor de música Wi-Fi: reproduce un tono mientras está encendido, bajito solo y más fuerte por un altavoz Bluetooth a menos de 60 m
 	Sound Frequency Detector	Detector de frecuencia de sonido
 	Wi-Fi sound detector: reports the pitch of the loudest sound in Hz (its reading) and its volume in dB (a second reading)	Detector de sonido Wi-Fi: informa del tono del sonido más fuerte en Hz (su lectura) y de su volumen en dB (una segunda lectura)
+	Atmospheric Pressure Monitor	Monitor de presión atmosférica
+	Wi-Fi barometer: reports the atmospheric pressure in kPa (the room is at sea-level pressure; an environment can set another)	Barómetro Wi-Fi: informa de la presión atmosférica en kPa (la sala está a presión a nivel del mar; un entorno puede fijar otra)
+	Beacon	Baliza
+	Wi-Fi beacon: announces its id (its reading) to the smart things within 100 m, and reports how many hear it as a second reading	Baliza Wi-Fi: anuncia su id (su lectura) a las cosas inteligentes a menos de 100 m e informa de cuántas la oyen como segunda lectura
+	Carbon Dioxide Detector	Detector de dióxido de carbono
+	Wi-Fi carbon dioxide detector: reports the CO2 level in parts per million (fresh air is about 420)	Detector Wi-Fi de dióxido de carbono: informa del nivel de CO2 en partes por millón (el aire limpio ronda 420)
+	Fire Monitor	Monitor de incendios
+	Wi-Fi fire monitor: reports how much of the room is in flames (0-100 %)	Monitor Wi-Fi de incendios: informa de cuánto de la sala está en llamas (0-100 %)
+	Fire Sprinkler	Rociador contra incendios
+	Wi-Fi fire sprinkler: sprays on its own while the room is in flames, and when the IoT service switches it on; the flames go down while it sprays	Rociador Wi-Fi contra incendios: rocía solo mientras la sala está en llamas y cuando el servicio IoT lo enciende; las llamas bajan mientras rocía
+	Old Car	Coche antiguo
+	A car you can move on the map: while its engine is on (the IoT service switches it) it adds carbon monoxide and carbon dioxide to the room, and a trip sensor sees it pass	Un coche que puedes mover por el mapa: con el motor encendido (lo enciende el servicio IoT) añade monóxido y dióxido de carbono a la sala, y un sensor de paso lo ve pasar
+	RFID Card	Tarjeta RFID
+	Wi-Fi tag that announces its card id (its reading, set by hand); an RFID reader within 30 m reads it	Etiqueta Wi-Fi que anuncia su id de tarjeta (su lectura, fijada a mano); un lector RFID a menos de 30 m la lee
+	RFID Reader	Lector RFID
+	Wi-Fi RFID reader: reports the id of the nearest RFID card within 30 m, or 0 when there is none	Lector RFID Wi-Fi: informa del id de la tarjeta RFID más cercana a menos de 30 m, o 0 si no hay ninguna
+	Smart LED	LED inteligente
+	Wi-Fi dimmable colour LED: shines while the IoT service keeps it on, at the brightness and colour set in its IoT tab	LED Wi-Fi regulable y de color: brilla mientras el servicio IoT lo mantiene encendido, con el brillo y el color fijados en su pestaña IoT
+	Trip Sensor	Sensor de paso
+	Wi-Fi tripwire: reports 1 while something that moves (a car, a card, a phone, a tablet, a laptop) is within 50 m, else 0	Sensor de paso Wi-Fi: informa de 1 mientras algo que se mueve (un coche, una tarjeta, un teléfono, una tableta, un portátil) está a menos de 50 m, y de 0 si no
+	Wind Detector	Detector de viento
+	Wi-Fi anemometer: reports the wind speed in kph (the room is calm; an environment can set a wind)	Anemómetro Wi-Fi: informa de la velocidad del viento en km/h (la sala está en calma; un entorno puede fijar un viento)
+	pressure	presión
+	beacon	baliza
+	fire	fuego
+	fire sprinkler	rociador contra incendios
+	car	coche
+	rfid card	tarjeta RFID
+	rfid reader	lector RFID
+	smart led	LED inteligente
+	trip	sensor de paso
+	wind	viento
+	id announced	id anunciado
+	things in range	cosas al alcance
+	ppm CO2	ppm de CO2
+	% flames	% de llamas
+	card id	id de tarjeta
+	card id (0: none)	id de tarjeta (0: ninguna)
+	1 = something near	1 = hay algo cerca
+	spraying	rociando
+	ready	lista
+	engine on	motor encendido
+	engine off	motor apagado
+	shining	encendido
+	Brightness (%):	Brillo (%):
+	Colour:	Color:
 	appliance	electrodoméstico
 	bluetooth speaker	altavoz Bluetooth
 	ceiling fan	ventilador de techo

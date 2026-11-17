@@ -149,3 +149,158 @@ fn the_new_settings_refuse_the_wrong_thing_and_hostile_values() {
     let back = netlabcraft_model::file::from_json(&netlabcraft_model::file::to_json(&s.topology).unwrap()).unwrap();
     assert_eq!((back.environment.fire, back.environment.co2), (20, 800));
 }
+
+#[test]
+fn the_city_sensors_read_the_room_and_what_a_place_sets() {
+    let mut s = home();
+    for (model, name, x) in [
+        ("Atmospheric Pressure Monitor", "Baro1", 450),
+        ("Wind Detector", "Wind1", 500),
+        ("Carbon Dioxide Detector", "CO2a", 550),
+        ("Fire Monitor", "Fire1", 600),
+    ] {
+        add(&mut s, model, name, x);
+    }
+    // The room is at sea-level pressure, calm, with fresh air and no flames.
+    let read = |s: &mut Session, name: &str| page(s, name)["value"].as_i64().unwrap();
+    assert_eq!([read(&mut s, "Baro1"), read(&mut s, "Wind1"), read(&mut s, "CO2a"), read(&mut s, "Fire1")], [101, 0, 420, 0]);
+    // A reading set by hand sets the room.
+    s.execute("iot.configure", json!({"device": "Wind1", "value": 35})).unwrap();
+    assert_eq!(read(&mut s, "Wind1"), 35);
+    s.execute("iot.environment", json!({"fire": 40, "co2": 900})).unwrap();
+    // (Simulated time passes a little with every report, and fresh air thins the carbon dioxide.)
+    assert_eq!(read(&mut s, "Fire1"), 40);
+    assert!((read(&mut s, "CO2a") - 900).abs() <= 5);
+    // A place that sets a variable decides for the sensors in it: the share of carbon dioxide is
+    // a percentage and the sensor reads parts per million.
+    s.execute("environment.set", json!({"place": "intercity", "variable": "carbon_dioxide", "value": 0.1})).unwrap();
+    s.execute("environment.set", json!({"place": "intercity", "variable": "atmospheric_pressure", "value": 95.4})).unwrap();
+    s.execute("environment.set", json!({"place": "intercity", "variable": "wind_speed", "value": 60})).unwrap();
+    s.execute("environment.set", json!({"place": "intercity", "variable": "fire", "value": 12})).unwrap();
+    assert_eq!([read(&mut s, "Baro1"), read(&mut s, "Wind1"), read(&mut s, "CO2a"), read(&mut s, "Fire1")], [95, 60, 1000, 12]);
+    // The Environments window shows the room's carbon dioxide as a percentage too.
+    s.execute("environment.clear", json!({"place": "intercity"})).unwrap();
+    let g = s.execute("environment.get", json!({"place": "intercity"})).unwrap();
+    let co2 = g["variables"].as_array().unwrap().iter().find(|v| v["id"] == "carbon_dioxide").unwrap();
+    assert_eq!(co2["source"], "room");
+    assert!((co2["value"].as_f64().unwrap() - 0.09).abs() < 0.001, "about 900 ppm as a percentage: {co2}");
+}
+
+#[test]
+fn a_running_car_fills_the_room_with_carbon_monoxide_and_dioxide_and_a_trip_sensor_sees_it() {
+    let mut s = home();
+    add(&mut s, "Old Car", "Car1", 450);
+    add(&mut s, "Carbon Dioxide Detector", "CO2a", 520);
+    add(&mut s, "CO Detector", "CO1", 560);
+    add(&mut s, "Trip Sensor", "Trip1", 600);
+    let value = |s: &mut Session, name: &str| page(s, name)["value"].as_i64().unwrap();
+    assert_eq!(value(&mut s, "CO1"), 0);
+    // The car is 150 units, 83 m, from the trip sensor: out of its 50 m.
+    assert_eq!(value(&mut s, "Trip1"), 0);
+    switch(&mut s, "Car1", true);
+    s.execute("sim.advance", json!({"seconds": 300})).unwrap();
+    assert!(value(&mut s, "CO1") > 100, "carbon monoxide: {}", value(&mut s, "CO1"));
+    assert!(value(&mut s, "CO2a") > 1_000, "carbon dioxide: {}", value(&mut s, "CO2a"));
+    // The engine off, the car adds nothing more.
+    switch(&mut s, "Car1", false);
+    let (co, co2) = (value(&mut s, "CO1"), value(&mut s, "CO2a"));
+    s.execute("sim.advance", json!({"seconds": 300})).unwrap();
+    assert!(value(&mut s, "CO1") <= co && value(&mut s, "CO2a") <= co2);
+    // Drive it up to the sensor: it is seen, and not seen again once it has gone.
+    s.execute("device.move", json!({"device": "Car1", "x": 640, "y": 250})).unwrap();
+    assert_eq!(value(&mut s, "Trip1"), 1);
+    s.execute("device.move", json!({"device": "Car1", "x": 100, "y": 250})).unwrap();
+    assert_eq!(value(&mut s, "Trip1"), 0);
+    // A tablet walking past is seen too; one far away is not.
+    s.execute("device.add", json!({"model": "Tablet", "name": "Tab1", "x": 620, "y": 250})).unwrap();
+    assert_eq!(value(&mut s, "Trip1"), 1);
+    s.execute("device.move", json!({"device": "Tab1", "x": 2_000, "y": 250})).unwrap();
+    assert_eq!(value(&mut s, "Trip1"), 0);
+}
+
+#[test]
+fn a_fire_sprinkler_sprays_on_its_own_while_there_are_flames_and_puts_them_out() {
+    let mut s = home();
+    add(&mut s, "Fire Sprinkler", "Hose1", 450);
+    add(&mut s, "Fire Monitor", "Fire1", 520);
+    assert_eq!(page(&mut s, "Hose1")["active"], false, "no flames: it waits");
+    s.execute("iot.environment", json!({"fire": 40})).unwrap();
+    assert_eq!(page(&mut s, "Hose1")["active"], true, "flames: it sprays although the server never switched it on");
+    assert_eq!(page(&mut s, "Hose1")["on"], false);
+    assert!((34..=40).contains(&page(&mut s, "Fire1")["value"].as_i64().unwrap()), "the flames have hardly begun to go down");
+    s.execute("sim.advance", json!({"seconds": 30})).unwrap();
+    assert_eq!(page(&mut s, "Fire1")["value"], 0, "the flames are out");
+    assert_eq!(page(&mut s, "Hose1")["active"], false);
+    // Without it, the flames burn on and make smoke.
+    let mut burning = home();
+    burning.execute("iot.environment", json!({"fire": 40})).unwrap();
+    burning.execute("sim.advance", json!({"seconds": 30})).unwrap();
+    assert_eq!(room(&mut burning, "fire"), 40);
+    assert!(room(&mut burning, "smoke") > 0);
+    // The server can switch it on by hand too.
+    switch(&mut s, "Hose1", true);
+    assert_eq!(page(&mut s, "Hose1")["active"], true);
+}
+
+#[test]
+fn an_rfid_reader_reads_the_nearest_card_in_range_and_a_beacon_announces_its_id() {
+    let mut s = home();
+    add(&mut s, "RFID Reader", "Reader1", 450);
+    add(&mut s, "RFID Card", "CardA", 480);
+    add(&mut s, "RFID Card", "CardB", 800);
+    add(&mut s, "Beacon", "Beacon1", 520);
+    let page_of = |s: &mut Session, n: &str| page(s, n);
+    // A card announces a unique id until one is set by hand.
+    let (a, b) = (page_of(&mut s, "CardA")["value"].as_i64().unwrap(), page_of(&mut s, "CardB")["value"].as_i64().unwrap());
+    assert!(a > 0 && b > 0 && a != b, "{a} {b}");
+    // CardA is 30 units (17 m) away: read. CardB is 350 units (194 m): not.
+    assert_eq!(page_of(&mut s, "Reader1")["value"].as_i64(), Some(a));
+    s.execute("iot.configure", json!({"device": "CardA", "value": 4242})).unwrap();
+    assert_eq!(page_of(&mut s, "Reader1")["value"], 4242);
+    // Moved out of the 30 m (54 units) range, it is not read; CardB brought in, it is.
+    s.execute("device.move", json!({"device": "CardA", "x": 600, "y": 250})).unwrap();
+    assert_eq!(page_of(&mut s, "Reader1")["value"], 0);
+    s.execute("device.move", json!({"device": "CardB", "x": 470, "y": 250})).unwrap();
+    assert_eq!(page_of(&mut s, "Reader1")["value"].as_i64(), Some(b));
+    // The beacon reports its own id and how many smart things hear it (within 100 m, 180 units).
+    s.execute("iot.configure", json!({"device": "Beacon1", "value": 77})).unwrap();
+    let beacon = page_of(&mut s, "Beacon1");
+    assert_eq!((beacon["value"].as_i64(), beacon["value2"].as_i64()), (Some(77), Some(3)), "the reader and both cards hear it: {beacon}");
+    s.execute("device.move", json!({"device": "Beacon1", "x": 2_500, "y": 250})).unwrap();
+    assert_eq!(page_of(&mut s, "Beacon1")["value2"], 0);
+    // The server hears each reading through the usual report.
+    let list = s.execute("iot.server", json!({"device": "Home"})).unwrap();
+    assert!(list["things"].as_array().unwrap().iter().any(|t| t["name"] == "Reader1" && t["value"] == b), "{list}");
+}
+
+#[test]
+fn a_smart_led_takes_a_brightness_and_a_colour_and_lights_the_room() {
+    let mut s = home();
+    add(&mut s, "Smart LED", "Led1", 450);
+    let p = page(&mut s, "Led1");
+    assert_eq!((p["brightness"].as_i64(), p["colour"].as_str()), (Some(100), Some("#ffe4b5")), "{p}");
+    let before = room(&mut s, "light");
+    switch(&mut s, "Led1", true);
+    s.execute("iot.configure", json!({"device": "Led1", "brightness": 40, "colour": "#3070e0"})).unwrap();
+    s.execute("sim.advance", json!({"seconds": 2})).unwrap();
+    let p = page(&mut s, "Led1");
+    assert_eq!((p["brightness"].as_i64(), p["colour"].as_str(), p["active"].as_bool()), (Some(40), Some("#3070e0"), Some(true)), "{p}");
+    assert!(room(&mut s, "light") > before);
+    for bad in [
+        json!({"brightness": 101}),
+        json!({"brightness": -1}),
+        json!({"colour": "red"}),
+        json!({"colour": "#12345"}),
+        json!({"colour": "#12345é"}),
+        json!({"colour": 5}),
+    ] {
+        let mut p = bad.clone();
+        p["device"] = json!("Led1");
+        assert!(s.execute("iot.configure", p).is_err(), "{bad}");
+    }
+    // The settings are saved with the lab, and a thing that never set them writes nothing.
+    let back = netlabcraft_model::file::from_json(&netlabcraft_model::file::to_json(&s.topology).unwrap()).unwrap();
+    let led = back.find("Led1").unwrap();
+    assert_eq!((led.iot.brightness, led.iot.colour), (Some(40), Some([0x30, 0x70, 0xe0])));
+    assert!(back.find("Home").unwrap().iot.brightness.is_none());
+}

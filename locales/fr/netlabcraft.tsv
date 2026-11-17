@@ -2042,6 +2042,52 @@ furniture	Table	Table
 	Wi-Fi music player: plays a tone while on, quietly alone and louder through a Bluetooth speaker within 60 m	Lecteur de musique Wi-Fi : joue une tonalité allumé, doucement seul et plus fort via une enceinte Bluetooth à moins de 60 m
 	Sound Frequency Detector	Détecteur de fréquence sonore
 	Wi-Fi sound detector: reports the pitch of the loudest sound in Hz (its reading) and its volume in dB (a second reading)	Détecteur de son Wi-Fi : signale la hauteur du son le plus fort en Hz (sa mesure) et son volume en dB (une seconde mesure)
+	Atmospheric Pressure Monitor	Moniteur de pression atmosphérique
+	Wi-Fi barometer: reports the atmospheric pressure in kPa (the room is at sea-level pressure; an environment can set another)	Baromètre Wi-Fi : signale la pression atmosphérique en kPa (la pièce est à la pression du niveau de la mer ; un environnement peut en fixer une autre)
+	Beacon	Balise
+	Wi-Fi beacon: announces its id (its reading) to the smart things within 100 m, and reports how many hear it as a second reading	Balise Wi-Fi : annonce son identifiant (sa mesure) aux objets connectés à moins de 100 m et signale combien l'entendent en seconde mesure
+	Carbon Dioxide Detector	Détecteur de dioxyde de carbone
+	Wi-Fi carbon dioxide detector: reports the CO2 level in parts per million (fresh air is about 420)	Détecteur Wi-Fi de dioxyde de carbone : signale le niveau de CO2 en parties par million (l'air frais en contient environ 420)
+	Fire Monitor	Moniteur d'incendie
+	Wi-Fi fire monitor: reports how much of the room is in flames (0-100 %)	Moniteur d'incendie Wi-Fi : signale la part de la pièce en flammes (0-100 %)
+	Fire Sprinkler	Sprinkler anti-incendie
+	Wi-Fi fire sprinkler: sprays on its own while the room is in flames, and when the IoT service switches it on; the flames go down while it sprays	Sprinkler anti-incendie Wi-Fi : arrose de lui-même tant que la pièce est en flammes, et quand le service IoT l'allume ; les flammes reculent pendant qu'il arrose
+	Old Car	Voiture ancienne
+	A car you can move on the map: while its engine is on (the IoT service switches it) it adds carbon monoxide and carbon dioxide to the room, and a trip sensor sees it pass	Une voiture que l'on déplace sur la carte : moteur allumé (le service IoT l'allume), elle ajoute du monoxyde et du dioxyde de carbone à la pièce, et un capteur de passage la voit passer
+	RFID Card	Carte RFID
+	Wi-Fi tag that announces its card id (its reading, set by hand); an RFID reader within 30 m reads it	Étiquette Wi-Fi qui annonce son identifiant de carte (sa mesure, réglée à la main) ; un lecteur RFID à moins de 30 m la lit
+	RFID Reader	Lecteur RFID
+	Wi-Fi RFID reader: reports the id of the nearest RFID card within 30 m, or 0 when there is none	Lecteur RFID Wi-Fi : signale l'identifiant de la carte RFID la plus proche à moins de 30 m, ou 0 s'il n'y en a aucune
+	Smart LED	LED connectée
+	Wi-Fi dimmable colour LED: shines while the IoT service keeps it on, at the brightness and colour set in its IoT tab	LED Wi-Fi couleur et variable : brille tant que le service IoT la maintient allumée, à la luminosité et à la couleur réglées dans son onglet IoT
+	Trip Sensor	Capteur de passage
+	Wi-Fi tripwire: reports 1 while something that moves (a car, a card, a phone, a tablet, a laptop) is within 50 m, else 0	Capteur de passage Wi-Fi : signale 1 tant qu'un objet mobile (une voiture, une carte, un téléphone, une tablette, un portable) est à moins de 50 m, sinon 0
+	Wind Detector	Détecteur de vent
+	Wi-Fi anemometer: reports the wind speed in kph (the room is calm; an environment can set a wind)	Anémomètre Wi-Fi : signale la vitesse du vent en km/h (la pièce est calme ; un environnement peut fixer un vent)
+	pressure	pression
+	beacon	balise
+	fire	feu
+	fire sprinkler	sprinkler anti-incendie
+	car	voiture
+	rfid card	carte RFID
+	rfid reader	lecteur RFID
+	smart led	LED connectée
+	trip	capteur de passage
+	wind	vent
+	id announced	identifiant annoncé
+	things in range	objets à portée
+	ppm CO2	ppm de CO2
+	% flames	% de flammes
+	card id	identifiant de carte
+	card id (0: none)	identifiant de carte (0 : aucune)
+	1 = something near	1 = quelque chose à proximité
+	spraying	arrose
+	ready	prêt
+	engine on	moteur allumé
+	engine off	moteur éteint
+	shining	allumée
+	Brightness (%):	Luminosité (%) :
+	Colour:	Couleur :
 	appliance	appareil
 	bluetooth speaker	enceinte Bluetooth
 	ceiling fan	ventilateur de plafond

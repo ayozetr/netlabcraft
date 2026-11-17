@@ -34,6 +34,7 @@ pub(crate) fn thing_page(s: &Session, d: netlabcraft_core::DeviceId) -> Value {
         "interval": dev.iot.interval,
         "registered": st.registered.map(|a| a.to_string()),
         "on": (!is_sensor(dev)).then_some(st.on),
+        "active": (!is_sensor(dev)).then(|| s.sim.iot_active(&s.topology, dev)),
         "image": st.image,
         "message": st.message,
     })

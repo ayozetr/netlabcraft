@@ -114,17 +114,21 @@ fn apply_rules(d: &Device, list: &mut [IotEntry], sensor: Option<&str>) {
 }
 
 impl Sim {
+    /// Whether a smart device is doing its work now: switched on by the server, or (a fire
+    /// sprinkler) seeing flames in the room, which it puts out whether or not the server asked.
+    pub fn iot_active(&self, t: &Topology, d: &Device) -> bool {
+        if !is_actuator(d) || t.is_dark(d.id) {
+            return false;
+        }
+        let burning = self.iot.env.as_ref().is_some_and(|r| r.climate.fire_m > 0);
+        self.iot.things.get(&d.id).is_some_and(|s| s.on) || (burning && thing(d).is_some_and(|x| x.what == "fire sprinkler"))
+    }
+
     /// What the running smart devices do to the room right now.
     fn env_effects(&self, t: &Topology) -> Effects {
         let mut fx = Effects::default();
-        // Flames in the room make a fire sprinkler spray whether or not the server asked.
-        let burning = self.iot.env.as_ref().is_some_and(|r| r.climate.fire_m > 0);
-        for d in t.devices.iter().filter(|d| is_actuator(d) && !t.is_dark(d.id)) {
+        for d in t.devices.iter().filter(|d| is_actuator(d) && self.iot_active(t, d)) {
             let what = thing(d).map(|x| x.what);
-            let on = self.iot.things.get(&d.id).is_some_and(|s| s.on) || (what == Some("fire sprinkler") && burning);
-            if !on {
-                continue;
-            }
             let n = match what {
                 Some("heater") => &mut fx.heaters,
                 Some("furnace") => &mut fx.furnaces,
