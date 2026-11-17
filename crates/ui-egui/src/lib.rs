@@ -972,10 +972,27 @@ impl PacketApp {
     }
 
     fn zoom(&mut self, factor: Option<f32>) {
-        self.ui.zoom = match factor {
-            Some(f) => (self.ui.zoom * f).clamp(0.25, 3.0),
+        let old = self.ui.zoom;
+        let new = match factor {
+            Some(f) => (old * f).clamp(0.25, 3.0),
             None => 1.0,
         };
+        // In the wiring closet the buttons zoom about the middle of the workspace, so what is in view stays in view.
+        let mid = self.ui.canvas.size / 2.0;
+        if crate::closet::current(self).is_some() && old > 0.0 && mid.x > 0.0 {
+            self.ui.pan = mid - (mid - self.ui.pan) * (new / old);
+        }
+        self.ui.zoom = new;
+    }
+
+    /// Zoom Reset: the true size and the start of the workspace (in a wiring closet, the furniture's top left).
+    fn reset_view(&mut self) {
+        if let Some(place) = crate::closet::current(self) {
+            crate::closet::reset(self, place);
+        } else {
+            self.zoom(None);
+            self.ui.pan = egui::Vec2::ZERO;
+        }
     }
 
     fn shortcuts(&mut self, ctx: &egui::Context) {
@@ -1172,8 +1189,7 @@ impl PacketApp {
                         self.zoom(Some(1.25));
                     }
                     if ui.add(egui::Button::new(tl("Zoom Reset")).shortcut_text(shortcuts::text(shortcuts::Act::ZoomReset))).clicked() {
-                        self.zoom(None);
-                        self.ui.pan = egui::Vec2::ZERO;
+                        self.reset_view();
                     }
                     if ui.add(egui::Button::new(tl("Zoom Out")).shortcut_text(shortcuts::text(shortcuts::Act::ZoomOut))).clicked() {
                         self.zoom(Some(0.8));
@@ -1326,8 +1342,7 @@ impl PacketApp {
                 self.zoom(Some(1.25));
             }
             if tool_button(ui, Glyph::ZoomReset, "Zoom Reset", false, true).clicked() {
-                self.zoom(None);
-                self.ui.pan = egui::Vec2::ZERO;
+                self.reset_view();
             }
             if tool_button(ui, Glyph::ZoomOut, "Zoom Out", false, true).clicked() {
                 self.zoom(Some(0.8));
@@ -1446,8 +1461,7 @@ impl PacketApp {
                     p.rect_stroke(r, 8.0, egui::Stroke::new(1.5, tk.bar_text), egui::StrokeKind::Inside);
                     icons::glyph(&p, egui::Rect::from_center_size(r.center(), vec2(20.0, 20.0)), g, tk.pill_text);
                     if resp.clicked() && g == Glyph::ZoomReset {
-                        self.ui.pan = egui::Vec2::ZERO;
-                        self.ui.zoom = 1.0;
+                        self.reset_view();
                     }
                     if resp.clicked() && g == Glyph::Undo {
                         if physical {
