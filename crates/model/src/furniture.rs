@@ -100,6 +100,7 @@ pub struct Furniture {
     /// The wiring closet it stands in.
     pub place: u32,
     pub kind: FurnitureKind,
+    #[serde(default)]
     pub name: String,
     /// Where it stands in the closet (closet units).
     #[serde(default)]
@@ -230,6 +231,7 @@ pub struct Fitting {
     pub id: u32,
     pub place: u32,
     pub kind: FittingKind,
+    #[serde(default)]
     pub name: String,
     /// Where it stands when it is not on furniture.
     #[serde(default)]
