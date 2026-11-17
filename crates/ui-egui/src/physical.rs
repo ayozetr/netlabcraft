@@ -321,6 +321,9 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
         }
     }
 
+    if app.ui.prefs.show_wireless_signals {
+        draw_wireless(app, &painter, &view, &tk);
+    }
     let runs = runs(app, &view);
     draw_runs(&painter, &view, &runs, app.ui.prefs.metric, &tk);
     draw_places(app, &painter, &view, &tk);
@@ -391,6 +394,25 @@ fn draw_runs(painter: &egui::Painter, view: &View, runs: &[Run], metric: bool, t
         painter.rect_filled(bg, 4.0, tk.ground);
         painter.rect_stroke(bg, 4.0, Stroke::new(1.0, color), StrokeKind::Inside);
         painter.galley(bg.min + vec2(4.0, 2.0), galley, color);
+    }
+}
+
+/// View Wireless Signals: each radio standing here covers a faint disc (metres on a map with a
+/// layout, the logical range without one), tinted by its channel, and the hosts that are
+/// associated with it (`wifi_ap_of`, walls included) get a thin line to it.
+fn draw_wireless(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Tokens) {
+    let t = &app.session.topology;
+    let at = |id: DeviceId| view.devices.iter().find(|d| d.0 == id).map(|d| view.screen(d.1, d.2));
+    let radios = crate::wireless::radios(t);
+    for r in &radios {
+        let Some(c) = at(r.device) else { continue };
+        let reach = if t.implicit_layout() { r.units } else { r.metres / netlabcraft_model::physical::CITY_UNIT_M };
+        crate::wireless::draw_area(painter, c, reach * view.zoom, crate::wireless::tint(r.channel), &r.ssid, tk.text);
+    }
+    for (host, ap) in crate::wireless::associations(t) {
+        let (Some(a), Some(b)) = (at(host), at(ap)) else { continue };
+        let channel = radios.iter().find(|r| r.device == ap).map_or(6, |r| r.channel);
+        crate::wireless::draw_line(painter, a, b, crate::wireless::tint(channel));
     }
 }
 

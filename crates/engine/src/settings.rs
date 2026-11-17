@@ -3,9 +3,10 @@
 //! count (`physical.length_effects`).
 //!
 //! The log and the profile belong to the person at the keyboard, not to the lab: opening or
-//! starting a lab keeps them. Neither is saved in a lab file. The profile is one display name
-//! kept on this computer; it names the student in activity results when the activity has not been
-//! started with a name, and it is never sent anywhere.
+//! starting a lab keeps them. Neither is saved in a lab file. The profile is a display name, an
+//! e-mail address and a few lines of additional information, all kept on this computer and never
+//! sent anywhere; only the name is used (it names the student in activity results when the
+//! activity has not been started with a name).
 
 use std::collections::VecDeque;
 
@@ -27,6 +28,10 @@ const MAX_ITEMS: usize = 16;
 const MAX_DEPTH: usize = 6;
 /// Longest display name, in characters.
 pub const MAX_NAME: usize = 64;
+/// Longest e-mail address, in characters.
+pub const MAX_EMAIL: usize = 120;
+/// Longest additional information, in characters (newlines count).
+pub const MAX_INFO: usize = 1000;
 /// The name `log.export` suggests for the file.
 pub const LOG_FILE_NAME: &str = "netlabcraft-command-log.txt";
 
@@ -76,10 +81,10 @@ fn clip(text: &str, max: usize) -> String {
     out
 }
 
-/// A parameter whose value is a secret: it is written as `***`.
+/// A parameter whose value is a secret (or the profile's private text): it is written as `***`.
 fn secret_key(key: &str) -> bool {
     let k = key.to_ascii_lowercase();
-    ["password", "secret", "passphrase", "key", "community", "token"].iter().any(|s| k.contains(s))
+    ["password", "secret", "passphrase", "key", "community", "token"].iter().any(|s| k.contains(s)) || k == "email" || k == "info"
 }
 
 /// The parameters made short and safe to keep: long strings and lists cut, secrets hidden.
@@ -189,10 +194,29 @@ impl CommandLog {
     }
 }
 
-/// The person using this computer. Local only: one display name and nothing else.
+/// The person using this computer. Local only: never sent anywhere, never saved in a lab file, and
+/// only the display name is used (by activity results).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Profile {
     pub display_name: String,
+    /// An e-mail address the person typed; not checked, not used.
+    pub email: String,
+    /// Free text, several lines; not used.
+    pub info: String,
+}
+
+/// An e-mail address made safe: no whitespace or control characters, at most [`MAX_EMAIL`]
+/// characters.
+pub fn clean_email(email: &str) -> String {
+    email.chars().filter(|c| !c.is_control() && !c.is_whitespace()).take(MAX_EMAIL).collect()
+}
+
+/// Additional information made safe: control characters out except newlines (`\r\n` counts as
+/// one), trailing space trimmed, at most [`MAX_INFO`] characters.
+pub fn clean_info(info: &str) -> String {
+    let text = info.replace("\r\n", "\n").replace('\r', "\n");
+    let kept: String = text.chars().filter(|c| *c == '\n' || !c.is_control()).take(MAX_INFO).collect();
+    kept.trim().to_string()
 }
 
 /// A display name made safe: control characters out, spaces trimmed and squeezed, at most
@@ -214,7 +238,7 @@ pub(crate) fn run(s: &mut Session, id: &str, p: &Value) -> Option<Result<Value>>
         "log.export" => Some(export(s, p)),
         "log.clear" => Some(Ok(json!({"removed": s.cmd_log.clear()}))),
         "log.enable" => Some(enable(s, p)),
-        "profile.get" => Some(Ok(json!({"name": s.profile.display_name}))),
+        "profile.get" => Some(Ok(profile_json(s))),
         "profile.set" => Some(set_profile(s, p)),
         "physical.length_effects" => Some(length_effects(s, p)),
         _ => None,
@@ -253,10 +277,34 @@ fn enable(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({"on": on}))
 }
 
+fn profile_json(s: &Session) -> Value {
+    json!({"name": s.profile.display_name, "email": s.profile.email, "info": s.profile.info})
+}
+
+/// A text parameter that may be left out (`None`), or an error when it is not text.
+fn text_field<'a>(p: &'a Value, key: &str) -> Result<Option<&'a str>> {
+    match p.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(v) => v.as_str().map(Some).ok_or_else(|| bad(format!("`{key}` is text"))),
+    }
+}
+
+/// Sets the fields given (`name`, `email`, `info`; empty text clears one); the others stay.
 fn set_profile(s: &mut Session, p: &Value) -> Result<Value> {
-    let name = p.get("name").and_then(Value::as_str).ok_or_else(|| bad("`name` (text; empty clears it) is required"))?;
-    s.profile.display_name = clean_name(name);
-    Ok(json!({"name": s.profile.display_name}))
+    let (name, email, info) = (text_field(p, "name")?, text_field(p, "email")?, text_field(p, "info")?);
+    if name.is_none() && email.is_none() && info.is_none() {
+        return Err(bad("give `name`, `email` or `info` (text; empty clears it)"));
+    }
+    if let Some(n) = name {
+        s.profile.display_name = clean_name(n);
+    }
+    if let Some(e) = email {
+        s.profile.email = clean_email(e);
+    }
+    if let Some(i) = info {
+        s.profile.info = clean_info(i);
+    }
+    Ok(profile_json(s))
 }
 
 fn length_effects(s: &mut Session, p: &Value) -> Result<Value> {

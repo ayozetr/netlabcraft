@@ -1726,9 +1726,6 @@ event	write request for	写请求
 	Reset	重置
 	Sets the text of menus, buttons and forms. Names drawn on the workspace follow its zoom instead.	设置菜单、按钮和表单的文字大小。工作区中绘制的名称则跟随其缩放。
 	User Profile	用户资料
-	Kept on this computer only. It names you in activity results when an activity was not started with a name.	仅保存在此电脑上。在没有指定姓名就开始的活动中，它会作为你的姓名出现在结果里。
-	Display name:	显示名称：
-	Use a nickname if you like: no real name or e-mail address is needed.	可以使用昵称：不需要真实姓名或电子邮件地址。
 	Profile saved.	资料已保存。
 	Command Log	命令日志
 	No commands have been recorded yet.	尚未记录任何命令。
@@ -1859,3 +1856,8 @@ furniture	Table	桌子
 	Structured Cabling	结构化布线
 	Drag a device onto a rack, shelf or table · drag between two ports to patch them, or from an outlet to a device to plug it in · right-click for more	把设备拖到机架、层架或桌子上 · 在两个端口之间拖动即可跳线，从插座拖到设备即可接通电源 · 右键查看更多
 	Patch panels and wall mounts stand in a wiring closet: open one in the Physical view first.	配线架和墙面插座放在配线间里：请先在物理视图中打开一个配线间。
+	E-Mail:	电子邮件：
+	Additional Info:	附加信息：
+	These stay on this computer, in no lab file and nowhere else. Only the name is used, in activity results.	这些信息只保存在本电脑上，不会写入任何实验文件，也不会出现在别处。只有名称会用于活动结果。
+	View Wireless Signals	查看无线信号
+	View Wireless Signals (Ctrl+Alt+W): faint coverage areas of the access points and a line from each Wi-Fi host to its access point	查看无线信号（Ctrl+Alt+W）：显示接入点的淡色覆盖范围，并从每台 Wi-Fi 主机连线到其接入点

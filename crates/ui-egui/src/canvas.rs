@@ -558,6 +558,13 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
         paint_shape(&painter, &view, &preview, &tk);
     }
     draw_coverage(app, &painter, &view);
+    if app.ui.prefs.show_wireless_signals {
+        for r in crate::wireless::radios(&app.session.topology).iter().filter(|r| view.visible(r.device)) {
+            if let Some(d) = app.session.topology.device(r.device) {
+                crate::wireless::draw_area(&painter, view.screen(d.x, d.y), r.units * view.zoom, crate::wireless::tint(r.channel), &r.ssid, tk.text);
+            }
+        }
+    }
     draw_links(app, &painter, &view, &tk);
     draw_cable_focus(app, &painter, &view, &tk);
     draw_notes(app, &painter, &view, &tk);
