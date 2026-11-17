@@ -2,20 +2,53 @@
 //! scenario and its PDU list on the right.
 
 use egui::{RichText, Sense, Ui, vec2};
+use netlabcraft_model::DeviceKind;
 use netlabcraft_model::cable::Cable;
 use netlabcraft_model::furniture::FittingKind;
-use netlabcraft_model::{DeviceKind, models};
+use netlabcraft_model::models::{self, Group};
 
 use crate::i18n::tl;
 use crate::icons::{self, Glyph};
 use crate::{PacketApp, Tool, canvas, theme};
 
+/// The categories of the device box. The reference app also has Multiuser (out of scope here) and
+/// Legacy (nothing of ours belongs in it), so neither is offered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Category {
     #[default]
     NetworkDevices,
     EndDevices,
+    Components,
     Connections,
+    /// The devices placed most recently.
+    Miscellaneous,
+}
+
+impl Category {
+    /// The name the interface shows (and its tooltip).
+    pub fn label(self) -> &'static str {
+        match self {
+            Category::NetworkDevices => "Network Devices",
+            Category::EndDevices => "End Devices",
+            Category::Components => "Components",
+            Category::Connections => "Connections",
+            Category::Miscellaneous => "Miscellaneous Devices",
+        }
+    }
+
+    pub const ALL: [Category; 5] =
+        [Category::NetworkDevices, Category::EndDevices, Category::Components, Category::Connections, Category::Miscellaneous];
+
+    /// The subcategories, in the order the box lists them.
+    pub fn subs(self) -> &'static [Sub] {
+        match self {
+            Category::NetworkDevices => &[Sub::Routers, Sub::Switches, Sub::Hubs, Sub::Wireless, Sub::Security, Sub::Wan],
+            Category::EndDevices => &[Sub::Hosts, Sub::Home, Sub::SmartCity, Sub::Industrial, Sub::PowerGrid],
+            Category::Components => &[Sub::Boards, Sub::Actuators, Sub::Sensors],
+            Category::Connections => &[Sub::Cables, Sub::Cabling],
+            Category::Miscellaneous => &[Sub::Recent],
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -24,15 +57,74 @@ pub enum Sub {
     Routers,
     Switches,
     Hubs,
+    /// Access points, controllers, home routers, the cell tower and the central office.
+    Wireless,
+    Security,
     /// The cloud and the modems.
     Wan,
-    /// The cell tower and the central office server.
-    Cellular,
+    /// PCs, laptops, servers, printers, phones, tablets, smartphones, a sniffer.
     Hosts,
+    Home,
+    SmartCity,
+    Industrial,
+    PowerGrid,
+    Boards,
+    Actuators,
+    Sensors,
     Cables,
     /// Patch panels and wall mounts: the passive devices of a structured cabling run.
     Cabling,
+    /// The devices placed most recently.
+    Recent,
 }
+
+impl Sub {
+    /// The name the interface shows (and its tooltip).
+    pub fn label(self) -> &'static str {
+        match self {
+            Sub::Routers => "Routers",
+            Sub::Switches => "Switches",
+            Sub::Hubs => "Hubs",
+            Sub::Wireless => "Wireless Devices",
+            Sub::Security => "Security",
+            Sub::Wan => "WAN Emulation",
+            Sub::Hosts => "End Devices",
+            Sub::Home => "Home",
+            Sub::SmartCity => "Smart City",
+            Sub::Industrial => "Industrial",
+            Sub::PowerGrid => "Power Grid",
+            Sub::Boards => "Boards",
+            Sub::Actuators => "Actuators",
+            Sub::Sensors => "Sensors",
+            Sub::Cables => "Connections",
+            Sub::Cabling => "Structured Cabling",
+            Sub::Recent => "Recently Used",
+        }
+    }
+
+    /// The subcategory a model group is listed under.
+    pub fn of_group(g: Group) -> Sub {
+        match g {
+            Group::Routers => Sub::Routers,
+            Group::Switches => Sub::Switches,
+            Group::Hubs => Sub::Hubs,
+            Group::Wireless => Sub::Wireless,
+            Group::Security => Sub::Security,
+            Group::Wan => Sub::Wan,
+            Group::EndDevices => Sub::Hosts,
+            Group::Home => Sub::Home,
+            Group::SmartCity => Sub::SmartCity,
+            Group::Industrial => Sub::Industrial,
+            Group::PowerGrid => Sub::PowerGrid,
+            Group::Boards => Sub::Boards,
+            Group::Actuators => Sub::Actuators,
+            Group::Sensors => Sub::Sensors,
+        }
+    }
+}
+
+/// The most devices the Miscellaneous list remembers.
+pub const RECENT_MAX: usize = 16;
 
 #[derive(Debug, Clone, Default)]
 pub struct BoxState {
@@ -41,6 +133,20 @@ pub struct BoxState {
     pub search: String,
     /// The PDU list is shown (Toggle PDU List Window).
     pub hide_pdus: bool,
+    /// Model ids of the devices placed most recently, newest first (the Miscellaneous list).
+    pub recent: Vec<&'static str>,
+}
+
+impl BoxState {
+    /// Notes that a device of a model was placed (picked to place, or dropped).
+    pub fn remember(&mut self, id: &'static str) {
+        if models::find(id).is_none() {
+            return;
+        }
+        self.recent.retain(|r| *r != id);
+        self.recent.insert(0, id);
+        self.recent.truncate(RECENT_MAX);
+    }
 }
 
 /// A tile in the model list.
@@ -62,27 +168,12 @@ pub fn open_cabling(app: &mut PacketApp) {
     b.search.clear();
 }
 
-fn sub_of(kind: DeviceKind) -> Sub {
-    match kind {
-        DeviceKind::Router => Sub::Routers,
-        DeviceKind::Switch => Sub::Switches,
-        DeviceKind::Hub => Sub::Hubs,
-        _ => Sub::Hosts,
-    }
-}
-
 /// Every model of the catalogue, plus one tile per cable kind.
 fn tiles() -> Vec<Tile> {
     let mut t: Vec<Tile> = models::MODELS
         .iter()
         .map(|m| Tile {
-            sub: if m.wan() {
-                Sub::Wan
-            } else if m.cellular() {
-                Sub::Cellular
-            } else {
-                sub_of(m.kind)
-            },
+            sub: Sub::of_group(m.group()),
             kind: Some(m.kind),
             tool: Tool::Place(m.id),
             short: m.label,
@@ -138,17 +229,16 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
     let tk = theme::tokens(app.ui.dark);
     ui.horizontal_top(|ui| {
         // Categories, search, subcategories.
-        ui.allocate_ui_with_layout(vec2(250.0, ui.available_height()), egui::Layout::top_down(egui::Align::Min), |ui| {
+        ui.allocate_ui_with_layout(vec2(292.0, ui.available_height()), egui::Layout::top_down(egui::Align::Min), |ui| {
             ui.horizontal(|ui| {
                 let b = &mut app.ui.bottom;
-                for (cat, g, label, sub) in [
-                    (Category::NetworkDevices, Glyph::NetworkDevices, "Network Devices", Sub::Routers),
-                    (Category::EndDevices, Glyph::EndDevices, "End Devices", Sub::Hosts),
-                    (Category::Connections, Glyph::Connections, "Connections", Sub::Cables),
-                ] {
-                    if kind_button(ui, label, b.category == cat && b.search.is_empty(), |p, r| icons::glyph(p, r, g, tk.glyph)).clicked() {
+                for cat in Category::ALL {
+                    let first = cat.subs().first().copied().unwrap_or_default();
+                    if kind_button(ui, cat.label(), b.category == cat && b.search.is_empty(), |p, r| crate::icons_box::category_icon(p, r, cat, &tk))
+                        .clicked()
+                    {
                         b.category = cat;
-                        b.sub = sub;
+                        b.sub = first;
                         b.search.clear();
                     }
                 }
@@ -168,31 +258,10 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
             });
             ui.horizontal(|ui| {
                 let b = &mut app.ui.bottom;
-                let subs: &[(Sub, &str)] = match b.category {
-                    Category::NetworkDevices => &[
-                        (Sub::Routers, "Routers"),
-                        (Sub::Switches, "Switches"),
-                        (Sub::Hubs, "Hubs"),
-                        (Sub::Wan, "WAN Emulation"),
-                        (Sub::Cellular, "Cellular"),
-                    ],
-                    Category::EndDevices => &[(Sub::Hosts, "End Devices")],
-                    Category::Connections => &[(Sub::Cables, "Connections"), (Sub::Cabling, "Structured Cabling")],
-                };
-                for (sub, label) in subs {
-                    let sel = b.sub == *sub && b.search.is_empty();
-                    let draw = |p: &egui::Painter, r: egui::Rect| match sub {
-                        Sub::Routers => icons::device(p, r, DeviceKind::Router, &tk),
-                        Sub::Switches => icons::device(p, r, DeviceKind::Switch, &tk),
-                        Sub::Hubs => icons::device(p, r, DeviceKind::Hub, &tk),
-                        Sub::Wan => crate::icons_families::wan_icon(p, r, "Cloud", &tk),
-                        Sub::Cellular => crate::icons_families::cellular_icon(p, r, "Cell-Tower", &tk),
-                        Sub::Hosts => icons::device(p, r, DeviceKind::Pc, &tk),
-                        Sub::Cables => icons::glyph(p, r, Glyph::Cable, tk.glyph),
-                        Sub::Cabling => crate::closet::fitting_icon(p, r, FittingKind::CopperPatchPanel, &tk),
-                    };
-                    if kind_button(ui, label, sel, draw).clicked() {
-                        b.sub = *sub;
+                for &sub in b.category.subs() {
+                    let sel = b.sub == sub && b.search.is_empty();
+                    if kind_button(ui, sub.label(), sel, |p, r| crate::icons_box::sub_icon(p, r, sub, &tk)).clicked() {
+                        b.sub = sub;
                         b.search.clear();
                     }
                 }
@@ -206,22 +275,27 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
             let q = app.ui.bottom.search.trim().to_lowercase();
             let hide_auto = app.ui.prefs.disable_auto_cable;
             let all: Vec<Tile> = tiles().into_iter().filter(|t| !(hide_auto && t.tool == Tool::Cable(Cable::Auto))).collect();
-            let shown: Vec<&Tile> = all
-                .iter()
-                .filter(|m| {
-                    if q.is_empty() {
-                        m.sub == app.ui.bottom.sub
-                    } else {
-                        [m.short, m.long, crate::i18n::tl(m.short), crate::i18n::tl(m.long)].iter().any(|x| x.to_lowercase().contains(&q))
-                    }
-                })
-                .collect();
+            let shown: Vec<&Tile> = if q.is_empty() && app.ui.bottom.sub == Sub::Recent {
+                // Most recent first, one tile per model.
+                app.ui.bottom.recent.iter().filter_map(|&id| all.iter().find(|t| t.tool == Tool::Place(id))).collect()
+            } else {
+                all.iter()
+                    .filter(|m| {
+                        if q.is_empty() {
+                            m.sub == app.ui.bottom.sub
+                        } else {
+                            [m.short, m.long, crate::i18n::tl(m.short), crate::i18n::tl(m.long)].iter().any(|x| x.to_lowercase().contains(&q))
+                        }
+                    })
+                    .collect()
+            };
             // Rows of tiles that wrap, scrolled up and down, so every model of a group is in reach.
             let room = (ui.available_height() - 30.0).max(60.0);
             egui::ScrollArea::vertical().id_salt("model_tiles").max_height(room).auto_shrink([false, true]).show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     if shown.is_empty() {
-                        ui.label(RichText::new(tl("No device matches.")).color(tk.muted));
+                        let none = if q.is_empty() && app.ui.bottom.sub == Sub::Recent { "No device placed yet." } else { "No device matches." };
+                        ui.label(RichText::new(tl(none)).color(tk.muted));
                     }
                     for m in &shown {
                         let tool = m.tool;
@@ -281,6 +355,9 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                         p.galley(egui::pos2(rect.center().x, top), galley, tk.text);
                         if resp.clicked() {
                             app.set_tool(if selected { Tool::Select } else { tool });
+                            if let (false, Tool::Place(id)) = (selected, tool) {
+                                app.ui.bottom.remember(id);
+                            }
                         }
                         // A model or a passive device can also be dragged onto the workspace; a cable tile cannot.
                         if let Tool::Place(id) = tool {
@@ -294,6 +371,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                                     && area.contains(at)
                                 {
                                     app.ui.tile_drop = Some((id, at));
+                                    app.ui.bottom.remember(id);
                                 }
                             }
                         }
