@@ -63,25 +63,22 @@ fn doc_link(ui: &mut egui::Ui, label: &'static str, file: &str) {
 pub fn window(app: &mut PacketApp, ctx: &egui::Context) {
     let Some(mut page) = app.ui.help else { return };
     let mut open = true;
-    egui::Window::new(tl("NetLabCraft Help")).id(egui::Id::new("help")).open(&mut open).default_width(520.0).default_pos(crate::BELOW_TOOLBARS).show(
-        ctx,
-        |ui| {
-            ui.horizontal(|ui| {
-                for p in Page::ALL {
-                    if ui.selectable_label(page == p, tl(p.title())).clicked() {
-                        page = p;
-                    }
+    egui::Window::new(tl("NetLabCraft Help")).open(&mut open).default_width(520.0).default_pos(crate::BELOW_TOOLBARS).show(ctx, |ui| {
+        ui.horizontal(|ui| {
+            for p in Page::ALL {
+                if ui.selectable_label(page == p, tl(p.title())).clicked() {
+                    page = p;
                 }
-            });
-            ui.separator();
-            egui::ScrollArea::vertical().max_height(380.0).show(ui, |ui| match page {
-                Page::GettingStarted => getting_started(ui),
-                Page::Contents => contents(ui, &mut page),
-                Page::Tutorials => tutorials(ui),
-                Page::Accessibility => accessibility(ui),
-            });
-        },
-    );
+            }
+        });
+        ui.separator();
+        egui::ScrollArea::vertical().max_height(380.0).show(ui, |ui| match page {
+            Page::GettingStarted => getting_started(ui),
+            Page::Contents => contents(ui, &mut page),
+            Page::Tutorials => tutorials(ui),
+            Page::Accessibility => accessibility(ui),
+        });
+    });
     app.ui.help = open.then_some(page);
 }
 
