@@ -200,6 +200,12 @@ fn tiles() -> Vec<Tile> {
     t
 }
 
+/// The names of the tiles a subcategory lists, in order.
+#[cfg(test)]
+pub(crate) fn tile_names(sub: Sub) -> Vec<&'static str> {
+    tiles().into_iter().filter(|t| t.sub == sub).map(|t| t.short).collect()
+}
+
 /// Shows a category and subcategory of the device box (the Ctrl+Alt+letter shortcuts).
 pub fn show_category(app: &mut PacketApp, cat: Category, sub: Sub) {
     app.ui.bottom.category = cat;

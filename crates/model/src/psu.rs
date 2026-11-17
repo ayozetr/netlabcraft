@@ -10,8 +10,8 @@ use crate::{Device, DeviceKind, models};
 /// How many power-supply bays a model has (0: none, it is powered another way).
 pub fn bays(model: &models::Model) -> usize {
     match model.id {
-        "Router-2" | "Router-WAN" | "Router-M2" | "Router-FE2" | "Router-FE2S" | "Router-MF2" | "Firewall-5" | "Switch-8" | "Switch-8-PoE"
-        | "WLC" => 1,
+        "Router-2" | "Router-WAN" | "Router-M2" | "Router-FE2" | "Router-FE2S" | "Router-MF2" | "Firewall-5" | "Firewall-3" | "Bridge-2"
+        | "Switch-8" | "Switch-8-PoE" | "WLC" => 1,
         "AccessPoint" | "LAP" | "Home-Router" | "Home-Gateway" => 0,
         _ if matches!(model.kind, DeviceKind::Router | DeviceKind::Switch) => 2,
         _ => 0,

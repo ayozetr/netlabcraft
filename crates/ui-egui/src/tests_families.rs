@@ -66,6 +66,43 @@ mod t {
         assert!(missing.is_empty(), "no Spanish row for: {missing:#?}");
     }
 
+    /// Every model is placed and drawn on the workspace.
+    #[test]
+    fn every_model_is_placed_and_drawn() {
+        let mut s = Session::new();
+        for (i, m) in models::MODELS.iter().enumerate() {
+            s.execute("device.add", json!({"model": m.id, "x": (i % 10) * 90, "y": (i / 10) * 90})).unwrap();
+        }
+        assert_eq!(s.topology.devices.len(), models::MODELS.len());
+        let mut h = Harness::builder().with_size(egui::vec2(1200.0, 800.0)).build_ui_state(|ui, app: &mut PacketApp| app.ui(ui), PacketApp::new(s));
+        h.run_steps(3);
+        h.state_mut().ui.dark = true;
+        h.run_steps(2);
+    }
+
+    /// Every model has its tile in the device box, under its group.
+    #[test]
+    fn every_model_is_listed_in_its_group_of_the_device_box() {
+        use crate::bottom::{Category, Sub};
+        let mut h = harness("lan");
+        h.state_mut().ui.show_notes = false;
+        h.run_steps(2);
+        for cat in Category::ALL {
+            for &sub in cat.subs() {
+                let want: Vec<&str> = models::MODELS.iter().filter(|m| Sub::of_group(m.group()) == sub).map(|m| m.label).collect();
+                if matches!(sub, Sub::Recent | Sub::Cables | Sub::Cabling) {
+                    continue;
+                }
+                assert!(!want.is_empty(), "{sub:?} lists nothing");
+                h.state_mut().ui.bottom.category = cat;
+                h.state_mut().ui.bottom.sub = sub;
+                h.run_steps(2);
+                assert_eq!(crate::bottom::tile_names(sub), want, "{sub:?}");
+                assert!(h.query_all_by_label(i18n::tl(want[0])).next().is_some(), "{sub:?}: {}", want[0]);
+            }
+        }
+    }
+
     #[test]
     fn the_physical_tab_shows_a_switch_card() {
         let mut h = harness("switch-card");

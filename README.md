@@ -82,12 +82,15 @@
 
 ## What it simulates
 
-- **Devices:** 65 models with our own names ([which one to place for a vendor model](docs/model-equivalents.md)):
-  fixed and modular routers, a stateful firewall, access and multilayer switches (some with fiber
-  or power over Ethernet), home routers and gateways, access points and a wireless controller, a
-  provider cloud, hubs, PCs, laptops, tablets and phones (Wi-Fi or mobile data through cell
-  towers), servers, a printer, a sniffer, IP phones, twenty-two IoT things (smart TVs among them) and two
-  programmable boards.
+- **Devices:** 100 models with our own names ([which one to place for a vendor model](docs/model-equivalents.md)):
+  fixed, modular and industrial routers, two stateful firewalls, access, bridge and multilayer switches
+  (some with fiber or power over Ethernet), home routers and gateways, access points and a wireless
+  controller, a provider cloud, hubs, a repeater and a coaxial splitter, PCs, laptops, tablets and
+  phones (Wi-Fi or mobile data through cell towers), servers (a network controller and a data
+  historian among them), a printer, a sniffer, IP phones and analog phones with a VoIP adapter,
+  smart-home, smart-city, industrial and power-grid things (smart TVs among them), programmable
+  boards and a PLC, and actuators and sensors that wire to a board's pins; the device box is
+  grouped as the reference app's is.
 - **Cables:** automatic, straight-through, cross-over, fiber, console, serial, coaxial, phone and
   IoT cables; a wrong one leaves the link down and says why. The physical view has cities,
   buildings and closets, with copper limits and Wi-Fi range by building.

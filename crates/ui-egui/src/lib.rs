@@ -34,6 +34,7 @@ pub mod i18n;
 pub mod icons;
 mod icons_box;
 mod icons_cable_tiles;
+mod icons_parts;
 pub mod icons_families;
 pub mod instructor;
 mod iot_page;

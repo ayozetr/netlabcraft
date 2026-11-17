@@ -1877,3 +1877,86 @@ furniture	Table	桌子
 	Recently Used	最近使用
 	No device placed yet.	尚未放置任何设备。
 	Miscellaneous Devices	其他设备
+	Repeater	中继器
+	Repeater: regenerates every frame heard on one of its 2 Ethernet ports onto the other	中继器：把从 2 个以太网端口之一收到的每个帧再生后转发到另一个端口
+	Coax Splitter	同轴分配器
+	Coaxial splitter: repeats every frame between its 3 coaxial ports (the coaxial cable of a cable modem line)	同轴分配器：在其 3 个同轴端口之间转发每个帧（有线调制解调器线路的同轴电缆）
+	Bridge 2FE	网桥 2FE
+	Bridge with 2 Fast Ethernet ports: learns the addresses on each side and passes only the frames that must cross	2 个快速以太网端口的网桥：学习两侧的地址，只放行必须跨越的帧
+	Industrial Switch 8FE	工业交换机 8FE
+	Industrial switch with 8 Fast Ethernet + 2 Gigabit Ethernet ports (the Gigabit uplinks take copper or fiber): switches like the other switches	8 个快速以太网 + 2 个千兆以太网端口的工业交换机（千兆上行口可接铜缆或光纤）：交换方式与其他交换机相同
+	Industrial Router 2GE+2S	工业路由器 2GE+2S
+	Industrial router with 2 Gigabit Ethernet ports and 2 serial WAN ports: routes like the other routers	2 个千兆以太网端口和 2 个串行广域网端口的工业路由器：路由方式与其他路由器相同
+	Firewall 3GE	防火墙 3GE
+	Stateful firewall with 3 Gigabit Ethernet ports: named interfaces with security levels, access rules, object NAT and a DHCP server	3 个千兆以太网端口的状态防火墙：带安全级别的命名接口、访问规则、对象 NAT 和 DHCP 服务器
+	Network Controller	网络控制器
+	Network controller with one Gigabit Ethernet port: a server whose Programming tab holds the controller that discovers routers and pushes configuration templates	带 1 个千兆以太网端口的网络控制器：一台服务器，其“编程”标签页里的控制器可发现路由器并下发配置模板
+	VoIP Adapter	VoIP 适配器
+	VoIP adapter for analog phones: its Ethernet port (FastEthernet0) goes to the network and takes an address and a call server by DHCP like an IP phone; its phone port (Phone0, RJ-11) takes an analog phone	模拟电话的 VoIP 适配器：以太网端口（FastEthernet0）接入网络，像 IP 电话一样通过 DHCP 获得地址和呼叫服务器；电话端口（Phone0，RJ-11）可接模拟电话
+	Analog Phone	模拟电话
+	Analog telephone with one phone port (Phone0, RJ-11): plugged into a VoIP adapter it rings and calls like an IP phone behind it	带 1 个电话端口（Phone0，RJ-11）的模拟电话：接到 VoIP 适配器后，像其后的 IP 电话一样振铃和呼叫
+	Generic Wired	通用有线设备
+	Generic wired end device with one Fast Ethernet port: behaves as a PC	带 1 个快速以太网端口的通用有线终端设备：行为与 PC 相同
+	Generic Wireless	通用无线设备
+	Generic wireless end device with a Wi-Fi card and no Ethernet port: behaves as a Wi-Fi laptop	带 Wi-Fi 网卡、无以太网端口的通用无线终端设备：行为与 Wi-Fi 笔记本相同
+	Street Light	路灯
+	Wi-Fi street light: lights the road while the IoT service keeps it on	Wi-Fi 路灯：物联网服务保持其开启时照亮道路
+	Traffic Light	交通信号灯
+	Wi-Fi traffic light: shows green while the IoT service keeps it on, red otherwise	Wi-Fi 交通信号灯：物联网服务保持其开启时显示绿灯，否则显示红灯
+	Parking Sensor	车位传感器
+	Wi-Fi parking sensor: reports 1 while a car stands on the space, else 0	Wi-Fi 车位传感器：车位上有车时报告 1，否则报告 0
+	Water Drain Monitor	排水井监测器
+	Wi-Fi water drain monitor: reports how full a storm drain is (0-100 %)	Wi-Fi 排水井监测器：报告雨水井的水位（0-100 %）
+	Air Quality Sensor	空气质量传感器
+	Wi-Fi air quality sensor: reports an air quality index (0-500, higher is worse)	Wi-Fi 空气质量传感器：报告空气质量指数（0-500，越高越差）
+	Blower Fan	鼓风机
+	Blower fan with one Fast Ethernet port: the IoT server switches it on and off	带 1 个快速以太网端口的鼓风机：物联网服务器负责开关
+	PLC	PLC
+	Programmable logic controller with one Fast Ethernet port, 8 digital and 4 analog pins: runs a BoardScript program that reads and switches the things wired to its pins	带 1 个快速以太网端口、8 个数字引脚和 4 个模拟引脚的可编程逻辑控制器：运行 BoardScript 程序，读取并控制接在引脚上的设备
+	Data Historian	数据历史库
+	Data historian with one Gigabit Ethernet port: a server that runs the IoT service; it lists the latest reading of each thing but keeps no history	带 1 个千兆以太网端口的数据历史库：运行物联网服务的服务器；列出每个设备的最新读数，但不保存历史记录
+	HMI Panel	HMI 面板
+	Operator panel (HMI) with one Fast Ethernet port: a PC with browser, command prompt and the IoT monitor to watch and switch things	带 1 个快速以太网端口的操作员面板（HMI）：带浏览器、命令提示符和物联网监视器的 PC，用于查看和控制设备
+	Battery	蓄电池
+	Wi-Fi battery bank: reports its charge (0-100 %)	Wi-Fi 蓄电池：报告电量（0-100 %）
+	Power Meter	功率计
+	Wi-Fi power meter: reports the power drawn, in watts	Wi-Fi 功率计：报告消耗的功率，单位为瓦
+	Solar Panel	太阳能板
+	Wi-Fi solar panel: reports the power it produces, in watts	Wi-Fi 太阳能板：报告发电功率，单位为瓦
+	Wind Turbine	风力发电机
+	Wi-Fi wind turbine: reports how fast it turns, in revolutions per minute	Wi-Fi 风力发电机：报告转速，单位为转每分钟
+	Thing	物件
+	Generic thing for a board's pin: a reading you set by hand (-1000 to 1000)	用于开发板引脚的通用物件：手动设置的读数（-1000 到 1000）
+	LED	LED
+	LED wired to a board's pin with an IoT custom cable: lit while the pin is high	LED，用物联网自定义线接到开发板引脚：引脚为高电平时点亮
+	Buzzer	蜂鸣器
+	Buzzer wired to a board's pin with an IoT custom cable: sounds while the pin is high	蜂鸣器，用物联网自定义线接到开发板引脚：引脚为高电平时鸣响
+	Motor	电机
+	Motor wired to a board's pin with an IoT custom cable: runs while the pin is high	电机，用物联网自定义线接到开发板引脚：引脚为高电平时转动
+	Relay	继电器
+	Relay wired to a board's pin with an IoT custom cable: closed while the pin is high	继电器，用物联网自定义线接到开发板引脚：引脚为高电平时闭合
+	LCD	LCD
+	LCD wired to a board's pin with an IoT custom cable: shows its text while the pin is high	LCD，用物联网自定义线接到开发板引脚：引脚为高电平时显示文字
+	Button	按钮
+	Push button wired to a board's pin with an IoT custom cable: reads 1 while pressed, else 0	按钮，用物联网自定义线接到开发板引脚：按下时读取 1，否则读取 0
+	Potentiometer	电位器
+	Potentiometer wired to a board's pin with an IoT custom cable: reads how far the knob is turned (0-100 %)	电位器，用物联网自定义线接到开发板引脚：读取旋钮转过的程度（0-100 %）
+	Distance Sensor	距离传感器
+	Ultrasonic distance sensor wired to a board's pin with an IoT custom cable: reads the distance to the nearest object, in centimetres	超声波距离传感器，用物联网自定义线接到开发板引脚：读取到最近物体的距离，单位为厘米
+	Light Sensor	光线传感器
+	Light sensor wired to a board's pin with an IoT custom cable: reads the brightness (0-100 %)	光线传感器，用物联网自定义线接到开发板引脚：读取亮度（0-100 %）
+	Toggle Switch	拨动开关
+	Toggle switch wired to a board's pin with an IoT custom cable: reads 1 while on, else 0	拨动开关，用物联网自定义线接到开发板引脚：打开时读取 1，否则读取 0
+	1 = occupied	1 = 有车
+	% full	% 满
+	index	指数
+	% charge	% 电量
+	reading	读数
+	1 = pressed	1 = 按下
+	% turned	% 旋转
+	% brightness	% 亮度
+	1 = on	1 = 开
+	green	绿灯
+	red	红灯
+	showing	显示中
+	blank	空白
