@@ -2038,6 +2038,57 @@ furniture	Table	Mesa
 	Wi-Fi music player: plays a tone while on, quietly alone and louder through a Bluetooth speaker within 60 m	Reprodutor de música Wi-Fi: toca um tom enquanto ligado, baixo sozinho e mais alto por um alto-falante Bluetooth a até 60 m
 	Sound Frequency Detector	Detector de frequência sonora
 	Wi-Fi sound detector: reports the pitch of the loudest sound in Hz (its reading) and its volume in dB (a second reading)	Detector de som Wi-Fi: informa a altura do som mais forte em Hz (sua leitura) e seu volume em dB (uma segunda leitura)
+	Atmospheric Pressure Monitor	Monitor de pressão atmosférica
+	Wi-Fi barometer: reports the atmospheric pressure in kPa (the room is at sea-level pressure; an environment can set another)	Barômetro Wi-Fi: informa a pressão atmosférica em kPa (a sala está à pressão do nível do mar; um ambiente pode definir outra)
+	Beacon	Beacon
+	Wi-Fi beacon: announces its id (its reading) to the smart things within 100 m, and reports how many hear it as a second reading	Beacon Wi-Fi: anuncia seu id (sua leitura) às coisas inteligentes a até 100 m e informa quantas o ouvem como segunda leitura
+	Carbon Dioxide Detector	Detector de dióxido de carbono
+	Wi-Fi carbon dioxide detector: reports the CO2 level in parts per million (fresh air is about 420)	Detector Wi-Fi de dióxido de carbono: informa o nível de CO2 em partes por milhão (o ar fresco tem cerca de 420)
+	Fire Monitor	Monitor de incêndio
+	Wi-Fi fire monitor: reports how much of the room is in flames (0-100 %)	Monitor de incêndio Wi-Fi: informa quanto da sala está em chamas (0-100 %)
+	Fire Sprinkler	Sprinkler contra incêndio
+	Wi-Fi fire sprinkler: sprays on its own while the room is in flames, and when the IoT service switches it on; the flames go down while it sprays	Sprinkler Wi-Fi contra incêndio: borrifa sozinho enquanto a sala está em chamas e quando o serviço IoT o liga; as chamas diminuem enquanto borrifa
+	Old Car	Carro antigo
+	A car you can move on the map: while its engine is on (the IoT service switches it) it adds carbon monoxide and carbon dioxide to the room, and a trip sensor sees it pass	Um carro que você move no mapa: com o motor ligado (o serviço IoT o liga) acrescenta monóxido e dióxido de carbono à sala, e um sensor de passagem o vê passar
+	RFID Card	Cartão RFID
+	Wi-Fi tag that announces its card id (its reading, set by hand); an RFID reader within 30 m reads it	Etiqueta Wi-Fi que anuncia o id do cartão (sua leitura, definida à mão); um leitor RFID a até 30 m a lê
+	RFID Reader	Leitor RFID
+	Wi-Fi RFID reader: reports the id of the nearest RFID card within 30 m, or 0 when there is none	Leitor RFID Wi-Fi: informa o id do cartão RFID mais próximo a até 30 m, ou 0 se não houver nenhum
+	Smart LED	LED inteligente
+	Wi-Fi dimmable colour LED: shines while the IoT service keeps it on, at the brightness and colour set in its IoT tab	LED Wi-Fi colorido e com intensidade ajustável: brilha enquanto o serviço IoT o mantém ligado, com o brilho e a cor definidos na aba IoT
+	Trip Sensor	Sensor de passagem
+	Wi-Fi tripwire: reports 1 while something that moves (a car, a card, a phone, a tablet, a laptop) is within 50 m, else 0	Sensor de passagem Wi-Fi: informa 1 enquanto algo que se move (um carro, um cartão, um telefone, um tablet, um notebook) está a até 50 m, senão 0
+	Wind Detector	Detector de vento
+	Wi-Fi anemometer: reports the wind speed in kph (the room is calm; an environment can set a wind)	Anemômetro Wi-Fi: informa a velocidade do vento em km/h (a sala está calma; um ambiente pode definir um vento)
+	Signal Generator	Gerador de sinais
+	Wi-Fi signal generator: outputs a level (its reading, -1000 to 1000) at a frequency (a second reading, 0 to 20000 Hz) that other things read through the IoT service	Gerador de sinais Wi-Fi: emite um nível (sua leitura, de -1000 a 1000) a uma frequência (uma segunda leitura, de 0 a 20000 Hz) que outras coisas leem pelo serviço IoT
+	signal	sinal
+	level	nível
+	Frequency (Hz):	Frequência (Hz):
+	pressure	pressão
+	beacon	beacon
+	fire	fogo
+	fire sprinkler	sprinkler contra incêndio
+	car	carro
+	rfid card	cartão RFID
+	rfid reader	leitor RFID
+	smart led	LED inteligente
+	trip	sensor de passagem
+	wind	vento
+	id announced	id anunciado
+	things in range	coisas ao alcance
+	ppm CO2	ppm de CO2
+	% flames	% de chamas
+	card id	id do cartão
+	card id (0: none)	id do cartão (0: nenhum)
+	1 = something near	1 = há algo perto
+	spraying	borrifando
+	ready	pronto
+	engine on	motor ligado
+	engine off	motor desligado
+	shining	acesa
+	Brightness (%):	Brilho (%):
+	Colour:	Cor:
 	appliance	eletrodoméstico
 	bluetooth speaker	alto-falante Bluetooth
 	ceiling fan	ventilador de teto

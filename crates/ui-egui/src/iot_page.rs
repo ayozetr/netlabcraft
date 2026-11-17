@@ -38,7 +38,7 @@ pub(crate) fn tab(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &m
 }
 
 /// The thing drawn in code: a lamp, a lock, a siren… lit while on.
-fn draw_state(ui: &mut egui::Ui, what: &str, on: bool, tk: &theme::Tokens) {
+fn draw_state(ui: &mut egui::Ui, what: &str, on: bool, tk: &theme::Tokens, tint: Option<egui::Color32>) {
     // The components that look like a smart device are drawn as it is.
     let what = match what {
         "air cooler" => "ac",
@@ -65,7 +65,7 @@ fn draw_state(ui: &mut egui::Ui, what: &str, on: bool, tk: &theme::Tokens) {
             p.circle_filled(c, 5.0, tk.muted);
         }
         "light" | "smart led" => {
-            p.circle_filled(c - vec2(0.0, 6.0), 20.0, if on { egui::Color32::from_rgb(0xf6, 0xd3, 0x4a) } else { tk.chrome_line });
+            p.circle_filled(c - vec2(0.0, 6.0), 20.0, if on { tint.unwrap_or(egui::Color32::from_rgb(0xf6, 0xd3, 0x4a)) } else { tk.chrome_line });
             p.circle_stroke(c - vec2(0.0, 6.0), 20.0, s);
             p.rect_filled(egui::Rect::from_center_size(c + vec2(0.0, 22.0), vec2(16.0, 10.0)), 2.0, tk.muted);
         }
@@ -217,6 +217,44 @@ fn draw_state(ui: &mut egui::Ui, what: &str, on: bool, tk: &theme::Tokens) {
     }
 }
 
+/// The colour a smart LED shows: its colour, dimmed toward the unlit grey by its brightness.
+fn led_colour(dev: &Device, on: bool, tk: &theme::Tokens) -> egui::Color32 {
+    let [r, g, b] = dev.iot.colour.unwrap_or([0xff, 0xe4, 0xb5]);
+    let lit = f32::from(dev.iot.brightness.unwrap_or(100)) / 100.0;
+    let off = tk.chrome_line;
+    let mix = |a: u8, o: u8| (f32::from(o) + (f32::from(a) - f32::from(o)) * if on { lit } else { 0.0 }).round().clamp(0.0, 255.0) as u8;
+    egui::Color32::from_rgb(mix(r, off.r()), mix(g, off.g()), mix(b, off.b()))
+}
+
+/// A smart LED's brightness and colour: engine commands, like every other setting.
+fn led_controls(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
+    let mut rgb = dev.iot.colour.unwrap_or([0xff, 0xe4, 0xb5]);
+    let mut brightness = dev.iot.brightness.unwrap_or(100);
+    ui.horizontal(|ui| {
+        let l = ui.label(tl("Brightness (%):"));
+        let changed = ui.add(egui::DragValue::new(&mut brightness).range(0..=100)).labelled_by(l.id).changed();
+        ui.label(tl("Colour:"));
+        let picked = ui.color_edit_button_srgb(&mut rgb).changed();
+        if changed {
+            app.run("iot.configure", json!({"device": dev.id.0, "brightness": brightness}));
+        }
+        if picked {
+            app.run("iot.configure", json!({"device": dev.id.0, "colour": format!("#{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2])}));
+        }
+    });
+}
+
+/// A signal generator's frequency.
+fn generator_controls(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
+    let mut hz = dev.iot.frequency;
+    ui.horizontal(|ui| {
+        let l = ui.label(tl("Frequency (Hz):"));
+        if ui.add(egui::DragValue::new(&mut hz).range(0..=netlabcraft_model::iot::MAX_FREQUENCY)).labelled_by(l.id).changed() {
+            app.run("iot.configure", json!({"device": dev.id.0, "frequency": hz}));
+        }
+    });
+}
+
 fn thing_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut IotForm) {
     let tk = theme::tokens(app.ui.dark);
     let d = dev.id;
@@ -278,13 +316,22 @@ fn thing_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut I
         }
     } else {
         let w = what.map_or("fan", |t| t.what);
-        draw_state(ui, w, st.on, &tk);
+        // A fire sprinkler also works on its own, when it sees flames.
+        let active = app.session.sim.iot_active(&app.session.topology, dev);
+        let tint = (w == "smart led").then(|| led_colour(dev, active, &tk));
+        draw_state(ui, w, active, &tk, tint);
         let words = what.map_or(("Running (switched on by the server)", "Stopped"), |t| (t.on_word, t.off_word));
-        ui.label(RichText::new(tl(if st.on { words.0 } else { words.1 })).strong());
+        ui.label(RichText::new(tl(if active { words.0 } else { words.1 })).strong());
+        if w == "smart led" {
+            led_controls(app, ui, dev);
+        }
         if let Some(img) = &st.image {
             ui.label(RichText::new(tr_any(img)).monospace());
         }
         level_rows(app, ui, dev, word);
+    }
+    if what.is_some_and(|t| t.what == "signal") {
+        generator_controls(app, ui, dev);
     }
     if matches!(what.map(|t| t.what), Some("bluetooth speaker" | "music player")) {
         let near = match what.map(|t| t.what) {

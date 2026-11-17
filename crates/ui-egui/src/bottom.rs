@@ -171,15 +171,19 @@ pub fn open_cabling(app: &mut PacketApp) {
 
 /// Every model of the catalogue, plus one tile per cable kind.
 fn tiles() -> Vec<Tile> {
+    // One tile per group a model is listed in: the smart LED is one model with a tile in Smart
+    // City, in Industrial and in Actuators.
     let mut t: Vec<Tile> = models::MODELS
         .iter()
-        .map(|m| Tile {
-            sub: Sub::of_group(m.group()),
-            kind: Some(m.kind),
-            tool: Tool::Place(m.id),
-            short: m.label,
-            long: m.description,
-            multilayer: m.multilayer(),
+        .flat_map(|m| {
+            m.groups().into_iter().map(move |g| Tile {
+                sub: Sub::of_group(g),
+                kind: Some(m.kind),
+                tool: Tool::Place(m.id),
+                short: m.label,
+                long: m.description,
+                multilayer: m.multilayer(),
+            })
         })
         .collect();
     t.extend(FittingKind::CABLING.iter().map(|&k| Tile {
@@ -282,7 +286,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
             let q = app.ui.bottom.search.trim().to_lowercase();
             let hide_auto = app.ui.prefs.disable_auto_cable;
             let all: Vec<Tile> = tiles().into_iter().filter(|t| !(hide_auto && t.tool == Tool::Cable(Cable::Auto))).collect();
-            let shown: Vec<&Tile> = if q.is_empty() && app.ui.bottom.sub == Sub::Recent {
+            let mut shown: Vec<&Tile> = if q.is_empty() && app.ui.bottom.sub == Sub::Recent {
                 // Most recent first, one tile per model.
                 app.ui.bottom.recent.iter().filter_map(|&id| all.iter().find(|t| t.tool == Tool::Place(id))).collect()
             } else {
@@ -296,6 +300,15 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
                     })
                     .collect()
             };
+            // A search lists a model once, though it has a tile in more than one group.
+            if !q.is_empty() {
+                let mut seen: Vec<Tool> = Vec::new();
+                shown.retain(|t| {
+                    let first = !seen.contains(&t.tool);
+                    seen.push(t.tool);
+                    first
+                });
+            }
             // Rows of tiles that wrap, scrolled up and down, so every model of a group is in reach.
             let room = (ui.available_height() - 30.0).max(60.0);
             egui::ScrollArea::vertical().id_salt("model_tiles").max_height(room).auto_shrink([false, true]).show(ui, |ui| {
