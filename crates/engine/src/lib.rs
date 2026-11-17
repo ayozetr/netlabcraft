@@ -25,6 +25,7 @@ mod closet;
 mod cmd;
 mod controller;
 mod dialup;
+mod envs;
 mod families;
 mod hardware;
 pub mod home;
@@ -52,6 +53,8 @@ mod tests_cell;
 mod tests_closet;
 #[cfg(test)]
 mod tests_dialup;
+#[cfg(test)]
+mod tests_envs;
 #[cfg(test)]
 mod tests_families;
 #[cfg(test)]

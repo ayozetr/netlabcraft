@@ -401,6 +401,7 @@ impl Topology {
             None => self.physical.homes.retain(|h| !gone.contains(&h.place)),
         }
         self.prune_furniture();
+        self.prune_environments();
         Ok(p)
     }
 
