@@ -9,6 +9,10 @@
 //!   port at each end of a patch cord, each through its own drop, is a *patch path*: the two devices are cabled through the panels, so
 //!   the path makes an ordinary cable between them (the devices behave as if cabled directly) and
 //!   removing a wire of the path unplugs it again.
+//! * A **backbone** is a cord between two panel or wall mount ports that stand in two different
+//!   places (closet to closet, building to building). It is stored as a patch cord whose ends
+//!   are in different places, so a drop, a backbone and a drop make a patch path like any other:
+//!   the two devices, each in its own closet, are cabled through it.
 //! * A **power distribution device** has outlets. A device plugged into one follows the strip's
 //!   power switch: switching the strip off switches the device off, and the device cannot be
 //!   switched on while the strip is off.
@@ -21,7 +25,7 @@ use std::collections::BTreeSet;
 use netlabcraft_core::DeviceId;
 use serde::{Deserialize, Serialize};
 
-use crate::physical::clean_name;
+use crate::physical::{PlaceKind, clean_name};
 use crate::{End, Link, ModelError, Result, Topology, finite};
 
 /// Most pieces of furniture in a lab.
@@ -276,6 +280,11 @@ impl FittingKind {
         })
     }
 
+    /// A wall mount: a wall outlet, which also stands on the walls of a building's rooms.
+    pub fn is_wall_mount(self) -> bool {
+        matches!(self, FittingKind::CopperWallMount | FittingKind::FiberWallMount)
+    }
+
     /// A patch panel or a wall mount: it has ports that patch wires join.
     pub fn is_cabling(self) -> bool {
         self != FittingKind::PowerStrip
@@ -414,7 +423,7 @@ impl PatchWire {
         self.is_cord() == other.is_cord() && (other.has(self.a) || other.has(self.b))
     }
 
-    fn is_cord(&self) -> bool {
+    pub fn is_cord(&self) -> bool {
         matches!((self.a, self.b), (Pole::Panel { .. }, Pole::Panel { .. }))
     }
 
@@ -551,8 +560,22 @@ impl Topology {
         }
     }
 
+    fn building_ids(&self) -> BTreeSet<u32> {
+        self.places().iter().filter(|p| p.kind == PlaceKind::Building).map(|p| p.id).collect()
+    }
+
     fn closet_ids(&self) -> BTreeSet<u32> {
         self.places().iter().filter(|p| p.kind.holds_things()).map(|p| p.id).collect()
+    }
+
+    /// Whether a passive device of this kind may stand in `place`: a wiring closet or a container,
+    /// and for a wall mount a building too (its rooms).
+    fn fitting_place_of(&self, kind: FittingKind, place: u32) -> Result<()> {
+        let p = self.place(place).ok_or_else(|| ModelError::Invalid(format!("no place {place}")))?;
+        if p.kind.holds_things() || (p.kind == PlaceKind::Building && kind.is_wall_mount()) {
+            return Ok(());
+        }
+        Err(ModelError::Invalid("passive devices stand in a wiring closet or a container (a wall mount in a building too)".into()))
     }
 
     fn closet_of(&self, place: u32) -> Result<()> {
@@ -844,7 +867,7 @@ impl Topology {
 
     /// Adds a patch panel or a power distribution device to a closet; returns its id.
     pub fn add_fitting(&mut self, kind: FittingKind, name: Option<&str>, place: u32, x: f32, y: f32, ports: Option<u32>) -> Result<u32> {
-        self.closet_of(place)?;
+        self.fitting_place_of(kind, place)?;
         if self.physical.fittings.len() >= MAX_FITTINGS {
             return Err(ModelError::Invalid(format!("at most {MAX_FITTINGS} passive devices")));
         }
@@ -948,6 +971,17 @@ impl Topology {
     /// between two free device ports, they are cabled (an automatic cable); the ends of the
     /// cables made are returned.
     pub fn add_patch_wire(&mut self, a: Pole, b: Pole) -> Result<Vec<End>> {
+        self.add_wire(a, b, false)
+    }
+
+    /// Joins a panel or wall mount port to one in another place with a backbone cable. When this
+    /// completes a path between two free device ports (a drop at each end), they are cabled; the
+    /// ends of the cables made are returned.
+    pub fn add_backbone(&mut self, a: Pole, b: Pole) -> Result<Vec<End>> {
+        self.add_wire(a, b, true)
+    }
+
+    fn add_wire(&mut self, a: Pole, b: Pole, backbone: bool) -> Result<Vec<End>> {
         if a == b {
             return Err(ModelError::Invalid("a patch wire joins two different ports".into()));
         }
@@ -969,8 +1003,20 @@ impl Topology {
         if let Some(p) = [a, b].into_iter().find(|p| self.physical.patch_wires.iter().any(|w| w.clashes(&wire) && w.has(*p))) {
             return Err(ModelError::Invalid(format!("{} is already wired", self.pole_label(p))));
         }
-        if self.pole_place(a) != self.pole_place(b) {
-            return Err(ModelError::Invalid("both ends of a patch wire stand in the same wiring closet".into()));
+        let (place_a, place_b) = (self.pole_place(a), self.pole_place(b));
+        if backbone {
+            if !wire.is_cord() {
+                return Err(ModelError::Invalid("a backbone joins two patch panel or wall mount ports".into()));
+            }
+            if place_a == place_b {
+                return Err(ModelError::Invalid("a backbone joins two different places: a patch cord joins ports in one closet".into()));
+            }
+        } else if place_a != place_b {
+            return Err(ModelError::Invalid(if wire.is_cord() {
+                "both ends of a patch wire stand in the same wiring closet: a cable to another place is a backbone".into()
+            } else {
+                "both ends of a patch wire stand in the same wiring closet".into()
+            }));
         }
         if self.physical.patch_wires.len() >= MAX_PATCH_WIRES {
             return Err(ModelError::Invalid(format!("at most {MAX_PATCH_WIRES} patch wires")));
@@ -1036,6 +1082,17 @@ impl Topology {
     /// removed wire's path carried is unplugged. Whether a wire was removed.
     pub fn remove_patch_wire(&mut self, a: Pole, b: Option<Pole>) -> bool {
         let gone: Vec<PatchWire> = self.physical.patch_wires.iter().filter(|w| w.has(a) && b.is_none_or(|b| w.has(b))).copied().collect();
+        self.remove_wires(gone)
+    }
+
+    /// Removes the backbone at `a` (or the one between `a` and `b`); drops and patch cords at the
+    /// port stay. Whether a backbone was removed.
+    pub fn remove_backbone(&mut self, a: Pole, b: Option<Pole>) -> bool {
+        let gone: Vec<PatchWire> = self.backbones().into_iter().filter(|w| w.has(a) && b.is_none_or(|b| w.has(b))).collect();
+        self.remove_wires(gone)
+    }
+
+    fn remove_wires(&mut self, gone: Vec<PatchWire>) -> bool {
         if gone.is_empty() {
             return false;
         }
@@ -1047,6 +1104,38 @@ impl Topology {
             }
         }
         true
+    }
+
+    /// Whether a patch wire is a backbone: a cord whose two ends stand in different places.
+    pub fn is_backbone(&self, w: &PatchWire) -> bool {
+        w.is_cord() && self.pole_place(w.a) != self.pole_place(w.b)
+    }
+
+    /// Every backbone cable of the lab.
+    pub fn backbones(&self) -> Vec<PatchWire> {
+        self.physical.patch_wires.iter().filter(|w| self.is_backbone(w)).copied().collect()
+    }
+
+    /// The backbone that goes from a port of this place, if any: the port's own end first.
+    pub fn backbone_at(&self, p: Pole) -> Option<(Pole, Pole)> {
+        self.backbones().into_iter().find(|w| w.has(p)).map(|w| if w.a == p { (w.a, w.b) } else { (w.b, w.a) })
+    }
+
+    /// The first port of a panel or wall mount that no patch cord or backbone is wired to.
+    pub fn first_free_cord_port(&self, fitting: u32) -> Option<u32> {
+        let f = self.fitting(fitting).filter(|f| f.kind.is_cabling())?;
+        (0..f.ports).find(|port| {
+            let p = Pole::Panel { fitting, port: *port };
+            self.physical.patch_wires.iter().all(|w| !(w.is_cord() && w.has(p)))
+        })
+    }
+
+    /// The backbone a cable runs through, as `(near end, far end)` panel ports in the order of the
+    /// cable's two ends (none: the cable does not go through a backbone).
+    pub fn backbone_of_link(&self, l: &Link) -> Option<(Pole, Pole)> {
+        let path = self.patch_paths().into_iter().find(|p| (p.a == l.a && p.b == l.b) || (p.a == l.b && p.b == l.a))?;
+        let cord = path.wires.iter().find(|w| self.is_backbone(w))?;
+        Some((cord.a, cord.b))
     }
 
     /// Every pair of devices cabled through patch panels: a drop, a patch cord and a drop.
@@ -1212,7 +1301,9 @@ impl Topology {
             .physical
             .patch_wires
             .iter()
-            .filter(|w| self.pole_place(w.a).is_none() || self.pole_place(w.a) != self.pole_place(w.b))
+            .filter(|w| {
+                self.pole_place(w.a).is_none() || self.pole_place(w.b).is_none() || (!w.is_cord() && self.pole_place(w.a) != self.pole_place(w.b))
+            })
             .copied()
             .collect();
         for w in moved {
@@ -1223,9 +1314,10 @@ impl Topology {
     /// Forgets what refers to places, devices or passive devices that are gone.
     pub(crate) fn prune_furniture(&mut self) {
         let closets = self.closet_ids();
+        let buildings = self.building_ids();
         self.physical.furniture.retain(|f| closets.contains(&f.place));
         self.physical.floor_lists.retain(|p| closets.contains(p));
-        self.physical.fittings.retain(|f| closets.contains(&f.place));
+        self.physical.fittings.retain(|f| closets.contains(&f.place) || (f.kind.is_wall_mount() && buildings.contains(&f.place)));
         let mounts: Vec<Mount> =
             self.physical.mounts.iter().filter(|m| self.item_exists(m.item) && self.furniture_piece(m.furniture).is_some()).copied().collect();
         self.physical.mounts = mounts;
@@ -1255,6 +1347,7 @@ impl Topology {
     /// Repairs the furniture side of a hostile file.
     pub(crate) fn sanitize_furniture(&mut self) {
         let closets = self.closet_ids();
+        let buildings = self.building_ids();
         let ph = &mut self.physical;
         ph.furniture.truncate(MAX_FURNITURE);
         let mut seen = BTreeSet::new();
@@ -1283,7 +1376,7 @@ impl Topology {
         ph.floor_lists.dedup();
         ph.fittings.truncate(MAX_FITTINGS);
         let mut seen = BTreeSet::new();
-        ph.fittings.retain(|f| closets.contains(&f.place) && seen.insert(f.id));
+        ph.fittings.retain(|f| (closets.contains(&f.place) || (f.kind.is_wall_mount() && buildings.contains(&f.place))) && seen.insert(f.id));
         for f in &mut ph.fittings {
             f.name = clean_name(&f.name).unwrap_or_else(|| format!("{} {}", f.kind.label(), f.id));
             f.x = finite(f.x);
@@ -1326,7 +1419,8 @@ impl Topology {
                 && !matches!((w.a, w.b), (Pole::Device(_), Pole::Device(_)))
                 && self.pole_ok(w.a)
                 && self.pole_ok(w.b)
-                && self.pole_place(w.a) == self.pole_place(w.b)
+                && (w.is_cord() || self.pole_place(w.a) == self.pole_place(w.b))
+                && !(w.is_cord() && self.check_media(w.a, w.b).is_err())
                 && !kept.iter().any(|k| k.clashes(&w));
             if ok {
                 kept.push(w);
@@ -2092,5 +2186,143 @@ mod tests {
         let mut v: serde_json::Value = serde_json::from_str(&file::to_json(&t).unwrap()).unwrap();
         v["topology"]["physical"]["floor_lists"] = serde_json::json!([3, 3, 1, 77]);
         assert_eq!(file::from_json(&v.to_string()).unwrap().physical.floor_lists, vec![3]);
+    }
+
+    /// Two closets, a switch in each and a patch panel in each: the drops are wired, the backbone is not.
+    fn two_closets() -> (Topology, DeviceId, DeviceId, u32, u32, u32) {
+        use crate::physical::DEFAULT_BUILDING;
+        let (mut t, a, b, _) = lab();
+        let c2 = t.add_place(PlaceKind::Closet, Some("Annex"), Some(DEFAULT_BUILDING), 0.0, 0.0).unwrap();
+        t.set_home(b, c2, 10.0, 10.0).unwrap();
+        let p1 = t.add_fitting(FittingKind::CopperPatchPanel, None, DEFAULT_CLOSET, 0.0, 0.0, None).unwrap();
+        let p2 = t.add_fitting(FittingKind::CopperPatchPanel, None, c2, 0.0, 0.0, None).unwrap();
+        t.add_patch_wire(Pole::Device(End { device: a, port: 0 }), Pole::Panel { fitting: p1, port: 0 }).unwrap();
+        t.add_patch_wire(Pole::Device(End { device: b, port: 0 }), Pole::Panel { fitting: p2, port: 4 }).unwrap();
+        (t, a, b, p1, p2, c2)
+    }
+
+    #[test]
+    fn a_backbone_cables_two_devices_standing_in_two_closets() {
+        let (mut t, a, b, p1, p2, c2) = two_closets();
+        let (ea, eb) = (End { device: a, port: 0 }, End { device: b, port: 0 });
+        assert!(t.link_at(ea).is_none(), "the drops alone carry nothing");
+        let (pa, pb) = (Pole::Panel { fitting: p1, port: 0 }, Pole::Panel { fitting: p2, port: 4 });
+        // A patch cord does not leave its closet; a backbone does.
+        let e = t.add_patch_wire(pa, pb).unwrap_err().to_string();
+        assert!(e.contains("backbone"), "{e}");
+        let made = t.add_backbone(pa, pb).unwrap();
+        assert_eq!(made.len(), 1, "the path is complete: the devices are cabled");
+        let l = *t.link_at(ea).unwrap();
+        assert!(l.a == eb || l.b == eb);
+        assert!(t.link_is_patched(&l));
+        assert_eq!(t.backbones().len(), 1);
+        let (near, far) = t.backbone_of_link(&l).unwrap();
+        assert!((near, far) == (pa, pb) || (near, far) == (pb, pa));
+        assert_eq!(t.backbone_at(pb), Some((pb, pa)));
+        assert_eq!(t.pole_place(pb), Some(c2));
+        assert_eq!(t.run_length(a, b).meters, t.cable_length(&l).meters);
+        // Removing the backbone unplugs the cable and keeps the drops.
+        assert!(t.remove_backbone(pa, None));
+        assert!(t.link_at(ea).is_none() && t.link_at(eb).is_none());
+        assert_eq!(t.physical.patch_wires.len(), 2);
+        assert!(!t.remove_backbone(pa, None), "nothing left to remove");
+        // The drops can go in last: the path completes with the second one.
+        let (mut t, a, b, p1, p2, _) = two_closets();
+        t.remove_patch_wire(Pole::Device(End { device: b, port: 0 }), None);
+        t.add_backbone(Pole::Panel { fitting: p1, port: 3 }, Pole::Panel { fitting: p2, port: 4 }).unwrap();
+        t.remove_patch_wire(Pole::Device(End { device: a, port: 0 }), None);
+        t.add_patch_wire(Pole::Device(End { device: a, port: 1 }), Pole::Panel { fitting: p1, port: 3 }).unwrap();
+        assert!(t.link_at(End { device: a, port: 1 }).is_none());
+        let made = t.add_patch_wire(Pole::Device(End { device: b, port: 2 }), Pole::Panel { fitting: p2, port: 4 }).unwrap();
+        assert_eq!(made.len(), 1, "the second drop closes the path");
+        assert!(t.link_at(End { device: b, port: 2 }).is_some());
+    }
+
+    #[test]
+    fn a_backbone_follows_the_rules_of_the_cabling() {
+        let (mut t, _, _, p1, p2, c2) = two_closets();
+        let port = |f: u32, n: u32| Pole::Panel { fitting: f, port: n };
+        // Two different places, two panel ports of one medium, each port used once.
+        let q1 = t.add_fitting(FittingKind::CopperPatchPanel, None, DEFAULT_CLOSET, 0.0, 0.0, None).unwrap();
+        assert!(t.add_backbone(port(p1, 1), port(q1, 1)).is_err(), "one closet is not a backbone");
+        assert!(t.add_backbone(port(p1, 1), port(p1, 1)).is_err());
+        assert!(t.add_backbone(port(p1, 1), Pole::Device(End { device: DeviceId(1), port: 3 })).is_err());
+        let fiber = t.add_fitting(FittingKind::FiberPatchPanel, None, c2, 0.0, 0.0, None).unwrap();
+        assert!(t.add_backbone(port(p1, 1), port(fiber, 0)).is_err(), "copper does not join fiber");
+        assert!(t.add_backbone(port(p1, 99), port(p2, 1)).is_err());
+        t.add_backbone(port(p1, 1), port(p2, 1)).unwrap();
+        assert!(t.add_backbone(port(p1, 1), port(p2, 2)).is_err() && t.add_backbone(port(p1, 2), port(p2, 1)).is_err(), "a port takes one backbone");
+        t.add_patch_wire(port(p1, 5), port(q1, 5)).unwrap();
+        assert!(t.add_backbone(port(p1, 5), port(p2, 5)).is_err(), "a port takes one cord, or one backbone");
+        assert_eq!(t.first_free_cord_port(p1), Some(0), "port 1 and 5 are taken, 0 has only a drop");
+        assert_eq!(t.first_free_cord_port(fiber), Some(0));
+        assert_eq!(t.first_free_cord_port(999), None);
+        // A wall mount in a room (a container in the building) is a backbone end like a panel.
+        let room = t.add_place(PlaceKind::Container, Some("Room 2"), Some(crate::physical::DEFAULT_BUILDING), 0.0, 0.0).unwrap();
+        let wall = t.add_fitting(FittingKind::CopperWallMount, None, room, 0.0, 0.0, None).unwrap();
+        t.add_backbone(port(wall, 0), port(p1, 7)).unwrap();
+        assert_eq!(t.backbones().len(), 2);
+        // A power strip has no ports to wire.
+        let strip = t.add_fitting(FittingKind::PowerStrip, None, room, 0.0, 0.0, None).unwrap();
+        assert!(t.add_backbone(port(strip, 0), port(p1, 9)).is_err());
+        // Taking a panel away takes its backbone with it.
+        t.remove_fitting(p2).unwrap();
+        assert_eq!(t.backbones().len(), 1);
+        t.remove_place(room).unwrap();
+        assert!(t.backbones().is_empty(), "so does taking the place away");
+    }
+
+    #[test]
+    fn a_backbone_is_saved_and_a_hostile_one_is_repaired() {
+        let (mut t, a, b, p1, p2, _) = two_closets();
+        t.add_backbone(Pole::Panel { fitting: p1, port: 0 }, Pole::Panel { fitting: p2, port: 4 }).unwrap();
+        let text = file::to_json(&t).unwrap();
+        let back = file::from_json(&text).unwrap();
+        assert_eq!(back, t);
+        assert_eq!(back.backbones().len(), 1);
+        assert!(back.link_at(End { device: a, port: 0 }).is_some_and(|l| l.a.device == b || l.b.device == b));
+        let mut v: serde_json::Value = serde_json::from_str(&text).unwrap();
+        let wires = v["topology"]["physical"]["patch_wires"].as_array().unwrap().clone();
+        let pole = |f: u32, port: u32| serde_json::json!({"panel": {"fitting": f, "port": port}});
+        let mut hostile = wires.clone();
+        hostile.push(serde_json::json!({"a": pole(p1, 6), "b": pole(999, 0)}));
+        hostile.push(serde_json::json!({"a": pole(p1, 0), "b": pole(p2, 9)}));
+        hostile.push(serde_json::json!({"a": pole(p2, 11), "b": pole(p1, 12)}));
+        hostile.push(serde_json::json!({"a": pole(p2, 11), "b": pole(p1, 13)}));
+        v["topology"]["physical"]["patch_wires"] = serde_json::Value::Array(hostile);
+        let r = file::from_json(&v.to_string()).unwrap();
+        assert_eq!(r.backbones().len(), 2, "the one to a missing panel and the second use of a port are dropped: {:?}", r.physical.patch_wires);
+    }
+
+    #[test]
+    fn a_wall_mount_stands_in_a_room_of_a_building_and_a_backbone_reaches_the_closet() {
+        use crate::physical::DEFAULT_BUILDING;
+        let mut t = Topology::new();
+        let pc = t.add_device(DeviceKind::Pc, None, 0.0, 0.0).unwrap();
+        let sw = t.add_device(DeviceKind::Switch, None, 100.0, 0.0).unwrap();
+        // The PC stands in a room of the building (a host may), the switch in the closet.
+        t.set_home(pc, DEFAULT_BUILDING, 5.0, 5.0).unwrap();
+        let wall = t.add_fitting(FittingKind::CopperWallMount, None, DEFAULT_BUILDING, 0.0, 0.0, Some(2)).unwrap();
+        assert!(
+            t.add_fitting(FittingKind::CopperPatchPanel, None, DEFAULT_BUILDING, 0.0, 0.0, None).is_err(),
+            "only a wall mount stands on a room's wall"
+        );
+        assert!(t.add_fitting(FittingKind::PowerStrip, None, DEFAULT_BUILDING, 0.0, 0.0, None).is_err());
+        assert!(t.add_fitting(FittingKind::CopperWallMount, None, crate::physical::DEFAULT_CITY, 0.0, 0.0, None).is_err(), "not in a city");
+        let panel = t.add_fitting(FittingKind::CopperPatchPanel, None, DEFAULT_CLOSET, 0.0, 0.0, None).unwrap();
+        t.add_patch_wire(Pole::Device(End { device: pc, port: 0 }), Pole::Panel { fitting: wall, port: 0 }).unwrap();
+        t.add_patch_wire(Pole::Device(End { device: sw, port: 0 }), Pole::Panel { fitting: panel, port: 3 }).unwrap();
+        assert!(
+            t.add_patch_wire(Pole::Device(End { device: sw, port: 1 }), Pole::Panel { fitting: wall, port: 1 }).is_err(),
+            "a drop stays in its place"
+        );
+        let made = t.add_backbone(Pole::Panel { fitting: wall, port: 0 }, Pole::Panel { fitting: panel, port: 3 }).unwrap();
+        assert_eq!(made.len(), 1);
+        assert!(t.link_at(End { device: pc, port: 0 }).is_some(), "the PC in the room reaches the switch in the closet");
+        let again = file::from_json(&file::to_json(&t).unwrap()).unwrap();
+        assert_eq!(again, t, "the wall mount in the building survives a save");
+        // A building that goes takes its wall mounts and their backbones along.
+        t.remove_place(DEFAULT_BUILDING).unwrap();
+        assert!(t.physical.fittings.is_empty() && t.backbones().is_empty());
     }
 }

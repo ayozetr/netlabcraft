@@ -61,6 +61,7 @@ pub mod sla;
 pub mod span;
 pub mod textmatch;
 pub mod track;
+pub mod usb;
 pub mod voice;
 pub mod vpn;
 pub mod vpnclient;
@@ -978,6 +979,12 @@ pub struct Device {
     /// Routers and switches: the configuration archive (kept in flash, so a reload keeps it).
     #[serde(default, skip_serializing_if = "is_default")]
     pub archive: archive::Archive,
+    /// A USB stick's files (empty on every other device).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub usb: usb::Stick,
+    /// A printer's jobs (empty on every other device).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub printer: usb::Printer,
     /// Switches: multiple spanning tree (`spanning-tree mode mst`, which also sets `rapid_stp`).
     #[serde(default, skip_serializing_if = "is_default")]
     pub mst: mst::Mst,
@@ -2284,6 +2291,8 @@ impl Device {
             rapid_stp: false,
             igmp: igmp::Igmp::default(),
             archive: archive::Archive::default(),
+            printer: usb::Printer::default(),
+            usb: if model.id == usb::STICK_MODEL { usb::Stick::fresh() } else { usb::Stick::default() },
             mst: mst::Mst::default(),
             startup: None,
             dhcp_pools: Vec::new(),
@@ -2524,6 +2533,9 @@ pub struct Topology {
     /// Octal cables (a line of a router's octal card to a device's Console port): not network links.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub octals: Vec<cable::OctalCable>,
+    /// USB data cables (a host's USB port to a printer, a board, a stick…): not network links.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub usbs: Vec<usb::UsbCable>,
     /// The next device id (ids are never reused).
     pub next_id: u32,
     /// Free text shown with the lab (instructions, notes).
@@ -2741,6 +2753,7 @@ impl Topology {
             links: Vec::new(),
             consoles: Vec::new(),
             octals: Vec::new(),
+            usbs: Vec::new(),
             next_id: 1,
             notes: String::new(),
             annotations: Vec::new(),
@@ -2824,6 +2837,7 @@ impl Topology {
         self.links.retain(|l| l.a.device != id && l.b.device != id);
         self.consoles.retain(|c| c.pc != id && c.device != id);
         self.octals.retain(|o| o.router != id && o.device != id);
+        self.usbs.retain(|c| c.host != id && c.device != id);
         for d in &mut self.devices {
             d.board.wires.retain(|w| w.thing != id);
         }
@@ -3144,6 +3158,7 @@ impl Topology {
         });
         self.sanitize_consoles();
         self.sanitize_octals();
+        self.sanitize_usb();
         self.sanitize_wires();
         self.sanitize_physical();
         self.sanitize_backdrops();

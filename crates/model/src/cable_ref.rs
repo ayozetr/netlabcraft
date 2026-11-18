@@ -23,6 +23,8 @@ pub enum CableRef {
     Console(DeviceId),
     /// An octal line, by the router or switch at its Console end.
     Octal(DeviceId),
+    /// A USB data cable, by the USB device (a printer, board or stick) at its far end.
+    Usb(DeviceId),
     /// An IoT custom cable, by the board and the smart thing it reaches.
     Pin { board: DeviceId, thing: DeviceId },
 }
@@ -61,6 +63,7 @@ impl Topology {
         let mut out: Vec<CableRef> = self.links.iter().map(|l| CableRef::Link(l.a)).collect();
         out.extend(self.consoles.iter().map(|c| CableRef::Console(c.device)));
         out.extend(self.octals.iter().map(|o| CableRef::Octal(o.device)));
+        out.extend(self.usbs.iter().map(|c| CableRef::Usb(c.device)));
         for b in &self.devices {
             out.extend(b.board.wires.iter().map(|w| CableRef::Pin { board: b.id, thing: w.thing }));
         }
@@ -92,6 +95,16 @@ impl Topology {
                     b_label: format!("{} {dev}", name(c.device)?),
                 })
             }
+            CableRef::Usb(device) => {
+                let c = self.usb_of_device(device)?;
+                Some(CableInfo {
+                    kind: Cable::Usb,
+                    a: c.host,
+                    b: c.device,
+                    a_label: format!("{} USB{}", name(c.host)?, u16::from(c.host_port) + 1),
+                    b_label: format!("{} {USB_PORT}", name(c.device)?),
+                })
+            }
             CableRef::Octal(device) => {
                 let o = self.octals.iter().find(|o| o.device == device)?;
                 Some(CableInfo {
@@ -119,6 +132,7 @@ impl Topology {
             }
             CableRef::Console(device) => self.consoles.iter().any(|c| c.device == device).then(|| (device, CONSOLE_PORT.to_string())),
             CableRef::Octal(device) => self.octals.iter().any(|o| o.device == device).then(|| (device, CONSOLE_PORT.to_string())),
+            CableRef::Usb(device) => self.usb_of_device(device).map(|_| (device, USB_PORT.to_string())),
             CableRef::Pin { board, thing } => {
                 let w = self.device(board)?.board.wires.iter().find(|w| w.thing == thing)?;
                 Some((board, w.pin.clone()))

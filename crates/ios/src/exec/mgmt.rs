@@ -120,6 +120,50 @@ fn flash_name(w: &str) -> Result<String, String> {
     Ok(n.to_string())
 }
 
+/// The USB stick this device has mounted, or why it has none.
+fn mounted_stick(c: &Ctx<'_>) -> Result<netlabcraft_core::DeviceId, String> {
+    if c.d()?.usb_host_ports() == 0 {
+        return Err("% This device has no USB port".into());
+    }
+    let plugged = c.t.usbs_of_host(c.dev).into_iter().find(|u| c.t.device(u.device).is_some_and(Device::is_usb_stick));
+    match plugged {
+        None => Err("% No USB stick is plugged into this device".into()),
+        Some(u) if u.ejected => Err("% The USB stick is ejected: mount it first (usb.mount)".into()),
+        Some(u) => match c.t.usb_problem(&u) {
+            Some(why) => Err(format!("% The USB stick does not answer: {why}")),
+            None => Ok(u.device),
+        },
+    }
+}
+
+/// `show usb`: the port and what is plugged into it.
+fn show_usb(t: &netlabcraft_model::Topology, dev: netlabcraft_core::DeviceId) -> String {
+    let Some(d) = t.device(dev) else { return String::new() };
+    let ports = d.usb_host_ports();
+    if ports == 0 {
+        return "% This device has no USB port".into();
+    }
+    let mut s = format!("USB ports: {ports}");
+    for port in 0..ports {
+        let n = u16::from(port) + 1;
+        let Some(c) = t.usb_in_port(dev, port) else {
+            let _ = write!(s, "\nPort {n}: empty");
+            continue;
+        };
+        let Some(x) = t.device(c.device) else { continue };
+        let state = match (t.usb_problem(c), c.ejected) {
+            (Some(why), _) => format!("not working ({why})"),
+            (None, true) => "ejected".to_string(),
+            (None, false) => "mounted".to_string(),
+        };
+        let _ = write!(s, "\nPort {n}: {} ({}), {state}", x.name, x.catalogue_model().label);
+        if x.is_usb_stick() {
+            let _ = write!(s, ", {} files, {} bytes", x.usb.files.len(), x.usb.used());
+        }
+    }
+    s
+}
+
 /// The configuration lines of these settings, for `show running-config`.
 pub fn running_config(s: &mut String, d: &Device) {
     let m = &d.mgmt;
@@ -305,6 +349,11 @@ pub(super) fn command(c: &mut Ctx<'_>, id: Id, args: &[String]) -> R {
             let used: u64 = flash_files(d).iter().map(|f| f.1).sum();
             let total = 268_435_456u64;
             let nv = d.startup.as_ref().map_or(0, |s| s.len() as u64);
+            let usb =
+                c.t.stick_of_host(c.dev).and_then(|s| c.t.device(s)).map(|s| netlabcraft_model::usb::STICK_CAPACITY.saturating_sub(s.usb.used()));
+            let usb_row = usb.map_or(String::new(), |free| {
+                format!("\n{:<10} {:>11} {:>11}  {:<7} {}", "usbflash0:", netlabcraft_model::usb::STICK_CAPACITY, free, "usbflash", "read/write")
+            });
             Ok(format!(
                 "{:<10} {:>11} {:>11}  {:<7} {}\n{:<10} {:>11} {:>11}  {:<7} {}\n{:<10} {:>11} {:>11}  {:<7} {}\n{:<10} {:>11} {:>11}  {:<7} {}",
                 "Name",
@@ -327,7 +376,7 @@ pub(super) fn command(c: &mut Ctx<'_>, id: Id, args: &[String]) -> R {
                 "-",
                 "network",
                 "read/write",
-            ))
+            ) + &usb_row)
         }
         Id::BootSystem => {
             let name = flash_name(arg(0).trim())?;
@@ -435,6 +484,54 @@ pub(super) fn command(c: &mut Ctx<'_>, id: Id, args: &[String]) -> R {
             let text = String::from_utf8_lossy(&bytes).into_owned();
             let size = store_fetched(c, &local, &text)?;
             Ok(format!("Fetched ftp://{server}/{name} into flash:{local} ({size} bytes)"))
+        }
+        Id::ShowUsb => Ok(show_usb(c.t, c.dev)),
+        Id::DirUsb => {
+            let stick = mounted_stick(c)?;
+            let files = c.t.device(stick).map(|d| d.usb.clone()).unwrap_or_default();
+            let mut s = format!("Directory of usbflash0:/\n{:<4} {:>10}  {}\n", "#", "Bytes", "Name");
+            for (i, f) in files.files.iter().enumerate() {
+                let _ = writeln!(s, "{:<4} {:>10}  {}", i + 1, f.size(), f.name);
+            }
+            let _ = write!(
+                s,
+                "{} bytes free of {}",
+                netlabcraft_model::usb::STICK_CAPACITY.saturating_sub(files.used()),
+                netlabcraft_model::usb::STICK_CAPACITY
+            );
+            Ok(s)
+        }
+        Id::CopyFlashUsb => {
+            let words: Vec<&str> = arg(0).split_whitespace().collect();
+            let (file, remote) = match words.as_slice() {
+                [f] => (*f, *f),
+                [f, r] => (*f, *r),
+                _ => return Err("% copy flash: usbflash0: <file> [name on the stick]".into()),
+            };
+            let name = flash_name(file)?;
+            let remote = flash_name(remote)?;
+            let stick = mounted_stick(c)?;
+            let (text, size) = flash_content(c.d()?, &name)?;
+            let dev = c.t.device_mut(stick).ok_or("% The USB stick is gone")?;
+            dev.usb.put(&remote, &text).map_err(|e| format!("% {e}"))?;
+            Ok(format!("Copied flash:{name} ({size} bytes) to usbflash0:{remote}"))
+        }
+        Id::CopyUsbFlash => {
+            let words: Vec<&str> = arg(0).split_whitespace().collect();
+            let (file, local) = match words.as_slice() {
+                [f] => (*f, *f),
+                [f, l] => (*f, *l),
+                _ => return Err("% copy usbflash0: flash: <file> [name in flash]".into()),
+            };
+            let stick = mounted_stick(c)?;
+            let local = flash_name(local)?;
+            let text =
+                c.t.device(stick)
+                    .and_then(|d| d.usb.find(file.strip_prefix("usbflash0:").unwrap_or(file)))
+                    .map(|f| f.text.clone())
+                    .ok_or_else(|| format!("% usbflash0:{file}: no such file"))?;
+            let size = store_fetched(c, &local, &text)?;
+            Ok(format!("Copied usbflash0:{file} into flash:{local} ({size} bytes)"))
         }
         Id::CopyHttpRun | Id::CopyHttpStart | Id::CopyHttpFlash => {
             let words: Vec<&str> = arg(0).split_whitespace().collect();

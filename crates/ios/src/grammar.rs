@@ -352,6 +352,10 @@ pub enum Id {
     CopyHttpRun,
     CopyHttpStart,
     CopyHttpFlash,
+    ShowUsb,
+    DirUsb,
+    CopyFlashUsb,
+    CopyUsbFlash,
     DhcpLease,
     NoDhcpLease,
     DhcpDomain,
@@ -2557,6 +2561,8 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowFlash, EXECS, Modes::BOTH, [K("show"), K("flash:")], "Files in flash memory"),
     spec!(ShowFlash, EXECS, Modes::BOTH, [K("show"), K("flash")], "Files in flash memory"),
     spec!(ShowFlash, Modes::EXEC, Modes::BOTH, [K("dir"), K("flash:")], "Files in flash memory"),
+    spec!(ShowUsb, EXECS, Modes::BOTH, [K("show"), K("usb")], "The USB port and what is plugged into it"),
+    spec!(DirUsb, Modes::EXEC, Modes::BOTH, [K("dir"), K("usbflash0:")], "Files on the USB stick"),
     spec!(
         ServiceTimestamps,
         Modes::CONFIG,
@@ -2708,6 +2714,20 @@ pub static SPECS: &[Spec] = &[
         Modes::BOTH,
         [K("copy"), K("ftp:"), K("flash:"), Rest("<address> <file> [name in flash]")],
         "Copy a file from an FTP server into flash"
+    ),
+    spec!(
+        CopyFlashUsb,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("flash:"), K("usbflash0:"), Rest("<file> [name on the stick]")],
+        "Copy a flash file onto the USB stick"
+    ),
+    spec!(
+        CopyUsbFlash,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("usbflash0:"), K("flash:"), Rest("<file> [name in flash]")],
+        "Copy a file of the USB stick into flash"
     ),
     spec!(
         CopyHttpRun,
@@ -5108,7 +5128,8 @@ pub static SPECS: &[Spec] = &[
     spec!(NoLinePassword, Modes::LINE, Modes::BOTH, [K("no"), K("password")], "Remove the line password"),
     spec!(Login, Modes::LINE, Modes::BOTH, [K("login")], "Ask for the line password"),
     spec!(NoLogin, Modes::LINE, Modes::BOTH, [K("no"), K("login")], "Don't ask for a password"),
-    spec!(Accepted, Modes::LINE, Modes::BOTH, [K("exec-timeout"), Rest("<minutes> [<seconds>]")], "Idle timeout (accepted, not simulated)"),
+    spec!(Knob, Modes::LINE, Modes::BOTH, [K("exec-timeout"), Rest("<minutes> [<seconds>]")], "Minutes of silence after which the session is closed"),
+    spec!(NoKnob, Modes::LINE, Modes::BOTH, [K("no"), K("exec-timeout")], "Return this setting to its default"),
     spec!(Accepted, Modes::LINE, Modes::BOTH, [K("logging"), K("synchronous")], "Keep messages from breaking your typing (accepted)"),
     spec!(Knob, Modes::CONFIG, Modes::BOTH, [K("service"), K("sequence-numbers")], "Number every log message"),
     spec!(NoKnob, Modes::CONFIG, Modes::BOTH, [K("no"), K("service"), K("sequence-numbers")], "Return this setting to its default"),
@@ -5448,7 +5469,7 @@ pub static SPECS: &[Spec] = &[
     spec!(NoKnob, Modes::LINE, Modes::BOTH, [K("no"), K("modem"), Arg("{inout|in|out}")], "Return this setting to its default"),
     spec!(Knob, Modes::LINE, Modes::BOTH, [K("exec")], "Start an EXEC session on this line (on)"),
     spec!(NoKnob, Modes::LINE, Modes::BOTH, [K("no"), K("exec")], "Turn this off (it is on by default)"),
-    spec!(Knob, Modes::LINE, Modes::BOTH, [K("session-timeout"), Arg("<0-35791>")], "Minutes an outgoing session may sit idle"),
+    spec!(Knob, Modes::LINE, Modes::BOTH, [K("session-timeout"), Arg("<0-35791>")], "Minutes an outgoing session may sit idle before it is closed"),
     spec!(NoKnob, Modes::LINE, Modes::BOTH, [K("no"), K("session-timeout")], "Return this setting to its default"),
     spec!(Knob, Modes::LINE, Modes::BOTH, [K("absolute-timeout"), Arg("<0-35791>")], "Minutes after which the line logs out"),
     spec!(NoKnob, Modes::LINE, Modes::BOTH, [K("no"), K("absolute-timeout")], "Return this setting to its default"),
