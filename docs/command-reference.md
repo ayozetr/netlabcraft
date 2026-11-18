@@ -1589,10 +1589,10 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `switchport port-security mac-address H.H.H` | interface | switch | Allow this address |
 | `show port-security` | user, privileged | switch | Secured ports |
 | `show port-security {interface X \| address}` | user, privileged | switch | Secured ports |
-| `telnet A.B.C.D` | user, privileged | router, switch | Log in to another device with Telnet |
+| `telnet A.B.C.D\|NAME` | user, privileged | router, switch | Log in to another device with Telnet, by address or name |
 | `telnet A.B.C.D <port>` | user, privileged | router | Open a session on a port: 23, or 2000 plus a line of a router's octal card (reverse Telnet to the device behind it) |
 | `clear line <1-16>` | privileged | router | End the reverse Telnet session held on a line of an octal card |
-| `ssh -l USER A.B.C.D` | user, privileged | router, switch | Log in to another device with SSH |
+| `ssh -l USER A.B.C.D\|NAME` | user, privileged | router, switch | Log in to another device with SSH, by address or name |
 | `show ip ssh` | user, privileged | router, switch | SSH status |
 | `show ssh` | user, privileged | router, switch | SSH sessions open to this device |
 | `ip ssh time-out <1-120>` | config | router, switch | Seconds an SSH login may take |

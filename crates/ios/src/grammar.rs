@@ -5200,7 +5200,7 @@ pub static SPECS: &[Spec] = &[
     spec!(PortSecMac, Modes::IF, Modes::SWITCH, [K("switchport"), K("port-security"), K("mac-address"), Arg("H.H.H")], "Allow this address"),
     spec!(ShowPortSecurity, EXECS, Modes::SWITCH, [K("show"), K("port-security")], "Secured ports"),
     spec!(ShowPortSecurity, EXECS, Modes::SWITCH, [K("show"), K("port-security"), Rest("{interface X | address}")], "Secured ports"),
-    spec!(Telnet, EXECS, Modes::BOTH, [K("telnet"), Arg("A.B.C.D")], "Log in to another device with Telnet"),
+    spec!(Telnet, EXECS, Modes::BOTH, [K("telnet"), Arg("A.B.C.D|NAME")], "Log in to another device with Telnet, by address or name"),
     spec!(
         TelnetPort,
         EXECS,
@@ -5215,7 +5215,7 @@ pub static SPECS: &[Spec] = &[
         [K("clear"), K("line"), Arg("<1-16>")],
         "End the reverse Telnet session held on a line of an octal card"
     ),
-    spec!(Ssh, EXECS, Modes::BOTH, [K("ssh"), Rest("-l USER A.B.C.D")], "Log in to another device with SSH"),
+    spec!(Ssh, EXECS, Modes::BOTH, [K("ssh"), Rest("-l USER A.B.C.D|NAME")], "Log in to another device with SSH, by address or name"),
     spec!(ShowIpSsh, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ssh")], "SSH status"),
     spec!(ShowSsh, EXECS, Modes::BOTH, [K("show"), K("ssh")], "SSH sessions open to this device"),
     spec!(SshTimeout, Modes::CONFIG, Modes::BOTH, [K("ip"), K("ssh"), K("time-out"), Arg("<1-120>")], "Seconds an SSH login may take"),
