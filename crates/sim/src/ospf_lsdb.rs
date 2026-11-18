@@ -497,7 +497,7 @@ pub(crate) fn keep_elections(old: &OspfState, new: &mut OspfState) {
 pub const FLOOD_HOP_US: u64 = 10_000;
 /// How long a withdrawn LSA stays in the other routers' databases at MaxAge before every router has
 /// acknowledged the flush and removed it.
-pub const FLUSH_US: u64 = 2_000_000;
+pub const FLUSH_US: u64 = 500_000;
 
 /// How many adjacencies away each router is from `me`, counting only the adjacencies LSAs of
 /// `area` travel over (every one for an AS-external LSA).
