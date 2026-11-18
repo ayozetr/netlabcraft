@@ -7770,12 +7770,24 @@ pub static SPECS: &[Spec] = &[
         [K("no"), K("authentication"), K("event"), K("fail"), K("action"), K("authorize"), K("vlan")],
         "No auth-fail VLAN"
     ),
-    spec!(Knob, Modes::IF, Modes::SWITCH, [K("dot1x"), K("timeout"), K("tx-period"), Arg("<1-65535>")], "Seconds between the switch's identity requests"),
+    spec!(
+        Knob,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("dot1x"), K("timeout"), K("tx-period"), Arg("<1-65535>")],
+        "Seconds between the switch's identity requests"
+    ),
     spec!(NoKnob, Modes::IF, Modes::SWITCH, [K("no"), K("dot1x"), K("timeout"), K("tx-period")], "Back to 30 seconds"),
     spec!(ShowDot1x, EXECS, Modes::SWITCH, [K("show"), K("dot1x")], "Whether 802.1X is on and how many ports it controls"),
     spec!(ShowDot1xAll, EXECS, Modes::SWITCH, [K("show"), K("dot1x"), K("all")], "Every port 802.1X controls and who is logged in on it"),
     spec!(ShowDot1xInterface, EXECS, Modes::SWITCH, [K("show"), K("dot1x"), K("interface"), Rest("<interface>")], "One port's 802.1X state"),
-    spec!(Dot1xReauth, Modes::EXEC, Modes::SWITCH, [K("dot1x"), K("re-authenticate"), K("interface"), Rest("<interface>")], "Make the host on a port log in again"),
+    spec!(
+        Dot1xReauth,
+        Modes::EXEC,
+        Modes::SWITCH,
+        [K("dot1x"), K("re-authenticate"), K("interface"), Rest("<interface>")],
+        "Make the host on a port log in again"
+    ),
 ];
 
 /// Why a line didn't parse. Positions are word indexes.

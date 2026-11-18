@@ -462,19 +462,18 @@ impl Sim {
             }
             a.phase = Phase::Running;
         }
-        let (user, state) = self
-            .state
-            .get(&d.id)
-            .and_then(|s| s.dot1x.get(&port))
-            .map(|a| (a.identity.clone(), a.radius_state.clone()))
-            .unwrap_or_default();
+        let (user, state) =
+            self.state.get(&d.id).and_then(|s| s.dot1x.get(&port)).map(|a| (a.identity.clone(), a.radius_state.clone())).unwrap_or_default();
         self.debug_log(d.id, DebugKind::Dot1x, &format!("{name}: EAP response from {from} (identity `{user}`) goes to the authentication server"));
         let refuse = |me: &mut Sim, why: &str| {
             me.debug_log(d.id, DebugKind::Dot1x, &format!("{name}: {why}: the login of `{user}` is refused"));
             me.dot1x_finish(t, d, port, r.id, false);
         };
         if !method_ready(d) {
-            refuse(self, "no authentication method is configured (aaa new-model, a radius-server host and aaa authentication dot1x default group radius)");
+            refuse(
+                self,
+                "no authentication method is configured (aaa new-model, a radius-server host and aaa authentication dot1x default group radius)",
+            );
             return Ok(());
         }
         let Some((server, secret)) = d.access.radius_servers.first().cloned() else {
@@ -571,7 +570,13 @@ impl Sim {
                     s.result = None;
                 }
                 self.debug_log(d.id, DebugKind::Dot1x, &format!("the switch asks for an identity: answering `{}`", login.user));
-                self.supplicant_send(t, d, port, f.src, Eap { code: EAP_RESPONSE, id: q.id, kind: Some(EAP_IDENTITY), data: login.user.clone().into_bytes() });
+                self.supplicant_send(
+                    t,
+                    d,
+                    port,
+                    f.src,
+                    Eap { code: EAP_RESPONSE, id: q.id, kind: Some(EAP_IDENTITY), data: login.user.clone().into_bytes() },
+                );
                 Ok(())
             }
             Eapol::Eap(q) if q.code == EAP_REQUEST && q.kind == Some(EAP_PEAP) => {

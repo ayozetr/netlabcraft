@@ -82,7 +82,8 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
         Id::ShowDot1xInterface => {
             let r = c.iface_ref(arg(0).trim())?;
             let d = c.d()?;
-            port_block(c, d, r.port).ok_or_else(|| "% 802.1X does not control that port (dot1x system-auth-control and authentication port-control)".to_string())
+            port_block(c, d, r.port)
+                .ok_or_else(|| "% 802.1X does not control that port (dot1x system-auth-control and authentication port-control)".to_string())
         }
         Id::Dot1xReauth => {
             let r = c.iface_ref(arg(0).trim())?;

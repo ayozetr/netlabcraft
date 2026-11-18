@@ -205,7 +205,11 @@ fn supplicant(s: &mut Session, p: &Value) -> Result<Value> {
     } else {
         let user = text(p, "user").ok_or_else(|| bad("`user` (the login name) is required, or `clear`: true"))?;
         let password = p.get("password").and_then(Value::as_str).unwrap_or_default();
-        let mut l = netlabcraft_model::wlan::WifiLogin { user: user.chars().take(64).collect(), password: password.chars().take(64).collect(), ..Default::default() };
+        let mut l = netlabcraft_model::wlan::WifiLogin {
+            user: user.chars().take(64).collect(),
+            password: password.chars().take(64).collect(),
+            ..Default::default()
+        };
         // The trust settings stay as they were when only the credentials change.
         if let Some(old) = s.topology.device(d).and_then(|x| x.ports.get(port)).and_then(|x| x.supplicant.clone()) {
             l.validate_server = old.validate_server;
@@ -231,7 +235,9 @@ fn supplicant(s: &mut Session, p: &Value) -> Result<Value> {
 fn status(s: &mut Session, p: &Value) -> Result<Value> {
     let d = crate::cmd::device_param(s, p, "device")?;
     let dev = s.topology.device(d).ok_or_else(|| bad("no such device"))?;
-    let named_wired = text(p, "port").is_some_and(|n| crate::cmd::port_param(s, d, n).ok().and_then(|i| dev.ports.get(i)).is_some_and(|x| !netlabcraft_model::ifname::is_wireless(&x.name)));
+    let named_wired = text(p, "port").is_some_and(|n| {
+        crate::cmd::port_param(s, d, n).ok().and_then(|i| dev.ports.get(i)).is_some_and(|x| !netlabcraft_model::ifname::is_wireless(&x.name))
+    });
     let has_radio = dev.ports.iter().any(|x| netlabcraft_model::ifname::is_wireless(&x.name));
     if named_wired || (text(p, "port").is_none() && !has_radio) {
         let port = wired_port(s, d, p)?;

@@ -53,7 +53,8 @@ fn supplicant(s: &mut Session, password: &str) {
 
 fn marks(s: &mut Session) -> String {
     let _ = s.execute("net.ping", json!({"from": "PC1", "to": "10.0.0.10", "count": 2}));
-    s.execute("net.ping", json!({"from": "PC1", "to": "10.0.0.10", "count": 2})).map_or_else(|_| "can't send".into(), |v: Value| v["marks"].as_str().unwrap_or_default().to_string())
+    s.execute("net.ping", json!({"from": "PC1", "to": "10.0.0.10", "count": 2}))
+        .map_or_else(|_| "can't send".into(), |v: Value| v["marks"].as_str().unwrap_or_default().to_string())
 }
 
 #[test]
