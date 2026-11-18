@@ -119,6 +119,7 @@ labs! {
     lab_78_policy_based_routing => "78-policy-based-routing.md",
     lab_81_mst_regions => "81-mst-regions.md",
     lab_82_igmp_snooping => "82-igmp-snooping.md",
+    lab_86_storm_control_and_udld => "86-storm-control-and-udld.md",
 }
 
 /// The cellular lab is not part of a CCNA course, so it has no number (the numbered labs 21 and up

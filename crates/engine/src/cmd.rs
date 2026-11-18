@@ -1322,6 +1322,16 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             s.changed();
             Ok(Value::Null)
         }
+        "link.one_way" => {
+            let d = device_param(s, p, "device")?;
+            let port = port_param(s, d, str_param(p, "port")?)?;
+            let end = End { device: d, port };
+            let cut = p.get("cut").and_then(Value::as_bool).unwrap_or(true);
+            s.checkpoint();
+            s.topology.set_tx_cut(end, cut)?;
+            s.changed();
+            Ok(json!({"port": s.topology.end_label(end), "cut": cut}))
+        }
         "cli.exec" => {
             let d = device_param(s, p, "device")?;
             let line = str_param(p, "line")?;

@@ -428,6 +428,19 @@ pub enum Id {
     L2NoRecoveryCause,
     L2RecoveryInterval,
     L2NoRecoveryInterval,
+    StormLevel,
+    NoStormLevel,
+    StormAction,
+    NoStormAction,
+    ShowStormControl,
+    UdldGlobal,
+    NoUdldGlobal,
+    UdldMessageTime,
+    UdldReset,
+    UdldPort,
+    UdldPortAggressive,
+    NoUdldPort,
+    ShowUdld,
     L2ShowErrDisabled,
     L2ShowRecovery,
     L2DetectCause,
@@ -5425,26 +5438,83 @@ pub static SPECS: &[Spec] = &[
     spec!(NoKnob, KNOB_IF, Modes::SWITCH, [K("no"), K("power"), K("efficient-ethernet")], "Return this setting to its default"),
     spec!(Knob, KNOB_IF, Modes::SWITCH, [K("channel-protocol"), Arg("{lacp|pagp}")], "Protocol that bundles this port"),
     spec!(NoKnob, KNOB_IF, Modes::SWITCH, [K("no"), K("channel-protocol"), Arg("{lacp|pagp}")], "Return this setting to its default"),
-    spec!(Knob, KNOB_IF, Modes::SWITCH, [K("udld"), K("port")], "Detect one-way links on this port"),
-    spec!(NoKnob, KNOB_IF, Modes::SWITCH, [K("no"), K("udld"), K("port")], "Return this setting to its default"),
-    spec!(Knob, KNOB_IF, Modes::SWITCH, [K("udld"), K("port"), K("aggressive")], "Detect one-way links on this port and shut it"),
-    spec!(NoKnob, KNOB_IF, Modes::SWITCH, [K("no"), K("udld"), K("port"), K("aggressive")], "Return this setting to its default"),
     spec!(
-        Knob,
+        StormLevel,
         KNOB_IF,
         Modes::SWITCH,
-        [K("storm-control"), Arg("{broadcast|multicast|unicast}"), K("level"), Arg("<0.00-100.00>")],
-        "Traffic level that starts a storm response"
+        [K("storm-control"), Arg("{broadcast|multicast|unicast}"), K("level"), Rest("{<0.00-100.00>|bps N|pps N} [FALLING]")],
+        "Level of this kind of traffic (percent of the link, bits or packets a second) above which the excess is dropped; a second level says when the storm ends"
     ),
     spec!(
-        NoKnob,
+        NoStormLevel,
         KNOB_IF,
         Modes::SWITCH,
         [K("no"), K("storm-control"), Arg("{broadcast|multicast|unicast}"), K("level")],
-        "Return this setting to its default"
+        "No limit for this kind of traffic"
     ),
-    spec!(Knob, KNOB_IF, Modes::SWITCH, [K("storm-control"), K("action"), Arg("{shutdown|trap}")], "What to do when a storm is detected"),
-    spec!(NoKnob, KNOB_IF, Modes::SWITCH, [K("no"), K("storm-control"), K("action"), Arg("{shutdown|trap}")], "Return this setting to its default"),
+    spec!(
+        StormAction,
+        KNOB_IF,
+        Modes::SWITCH,
+        [K("storm-control"), K("action"), Arg("{shutdown|trap}")],
+        "Err-disable the port, or log the storm, when a level is passed"
+    ),
+    spec!(NoStormAction, KNOB_IF, Modes::SWITCH, [K("no"), K("storm-control"), K("action"), Arg("{shutdown|trap}")], "Only drop the excess"),
+    spec!(NoStormAction, KNOB_IF, Modes::SWITCH, [K("no"), K("storm-control"), K("action")], "Only drop the excess"),
+    spec!(
+        UdldGlobal,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("udld"), Arg("{enable|aggressive}")],
+        "Run UDLD on every port that has no setting of its own (aggressive also shuts a port whose neighbour falls silent)"
+    ),
+    spec!(
+        NoUdldGlobal,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("udld"), Arg("{enable|aggressive}")],
+        "Stop running UDLD on the ports that have no setting of their own"
+    ),
+    spec!(
+        UdldMessageTime,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("udld"), K("message"), K("time"), Arg("<1-90>")],
+        "Seconds between UDLD probes (15 by default)"
+    ),
+    spec!(UdldReset, Modes::EXEC, Modes::SWITCH, [K("udld"), K("reset")], "Bring back the ports UDLD shut down"),
+    spec!(
+        UdldPort,
+        KNOB_IF,
+        Modes::SWITCH,
+        [K("udld"), K("port")],
+        "Detect one-way links on this port: probes are sent and heard, and a one-way link shuts the port"
+    ),
+    spec!(
+        UdldPortAggressive,
+        KNOB_IF,
+        Modes::SWITCH,
+        [K("udld"), K("port"), K("aggressive")],
+        "As `udld port`, and a neighbour that was heard and goes silent shuts the port too"
+    ),
+    spec!(NoUdldPort, KNOB_IF, Modes::SWITCH, [K("no"), K("udld"), K("port")], "No UDLD on this port, whatever the switch-wide setting says"),
+    spec!(
+        NoUdldPort,
+        KNOB_IF,
+        Modes::SWITCH,
+        [K("no"), K("udld"), K("port"), K("aggressive")],
+        "No UDLD on this port, whatever the switch-wide setting says"
+    ),
+    spec!(ShowUdld, EXECS, Modes::SWITCH, [K("show"), K("udld")], "Each UDLD port, its neighbour and whether the link works both ways"),
+    spec!(ShowUdld, EXECS, Modes::SWITCH, [K("show"), K("udld"), Rest("<interface>")], "One port's UDLD state"),
+    spec!(ShowStormControl, EXECS, Modes::SWITCH, [K("show"), K("storm-control")], "Each port's storm-control levels and what it measured"),
+    spec!(
+        ShowStormControl,
+        EXECS,
+        Modes::SWITCH,
+        [K("show"), K("storm-control"), Rest("<interface>|broadcast|multicast|unicast")],
+        "One port's, or one kind of traffic's, storm-control state"
+    ),
     spec!(Knob, KNOB_IF, Modes::SWITCH, [K("switchport"), K("protected")], "Do not forward to other protected ports"),
     spec!(NoKnob, KNOB_IF, Modes::SWITCH, [K("no"), K("switchport"), K("protected")], "Return this setting to its default"),
     spec!(Knob, KNOB_IF, Modes::SWITCH, [K("switchport"), K("block"), Arg("{unicast|multicast}")], "Do not flood unknown traffic out of this port"),
@@ -6481,14 +6551,20 @@ pub static SPECS: &[Spec] = &[
         L2RecoveryCause,
         Modes::CONFIG,
         Modes::SWITCH,
-        [K("errdisable"), K("recovery"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|all}")],
+        [K("errdisable"), K("recovery"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|storm-control|udld|all}")],
         "Bring ports shut for this reason back by themselves"
     ),
     spec!(
         L2NoRecoveryCause,
         Modes::CONFIG,
         Modes::SWITCH,
-        [K("no"), K("errdisable"), K("recovery"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|all}")],
+        [
+            K("no"),
+            K("errdisable"),
+            K("recovery"),
+            K("cause"),
+            Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|storm-control|udld|all}")
+        ],
         "Ports shut for this reason wait for shutdown / no shutdown"
     ),
     spec!(
@@ -6505,14 +6581,20 @@ pub static SPECS: &[Spec] = &[
         L2DetectCause,
         Modes::CONFIG,
         Modes::SWITCH,
-        [K("errdisable"), K("detect"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|all}")],
+        [K("errdisable"), K("detect"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|storm-control|udld|all}")],
         "Shut ports for this cause again (detection is on unless turned off)"
     ),
     spec!(
         L2NoDetectCause,
         Modes::CONFIG,
         Modes::SWITCH,
-        [K("no"), K("errdisable"), K("detect"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|all}")],
+        [
+            K("no"),
+            K("errdisable"),
+            K("detect"),
+            K("cause"),
+            Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|storm-control|udld|all}")
+        ],
         "Stop shutting ports for this cause: the frame is still dropped, the port stays up"
     ),
     spec!(L2ShowErrDetect, EXECS, Modes::SWITCH, [K("show"), K("errdisable"), K("detect")], "Which causes shut a port"),

@@ -81,6 +81,7 @@ pub mod sip;
 pub mod sla;
 pub mod snmp;
 mod span;
+pub mod storm;
 pub mod stp;
 #[cfg(test)]
 mod tests;
@@ -88,6 +89,7 @@ mod tests;
 mod tests_cell;
 #[cfg(test)]
 mod tests_lang;
+pub mod udld;
 pub mod v6;
 pub mod voice;
 pub mod vpn;
@@ -1421,6 +1423,11 @@ pub struct Sim {
     peap_srv: peap::Sessions,
     /// PPPoE sessions the dialers heard end, for the lab to drop (see [`Sim::take_pppoe_ended`]).
     pppoe_ended: Vec<(DeviceId, u16)>,
+    /// Storm control: what each port took in, by kind of traffic.
+    storm_win: BTreeMap<(DeviceId, usize, netlabcraft_model::l2sec::StormKind), storm::Window>,
+    /// UDLD: the last probe each switch port heard, and the ports UDLD shut.
+    udld_heard: BTreeMap<(DeviceId, usize), udld::Heard>,
+    udld_shut: std::collections::BTreeSet<(DeviceId, usize)>,
 }
 
 impl Sim {
@@ -2865,6 +2872,7 @@ impl Sim {
             }
             return Err(format!("port blocked by spanning tree (VLAN {vlan})"));
         }
+        self.storm_in(t, d, in_port, vlan, &f)?;
         self.l2_switch_in(d, in_port, vlan, &f)?;
         let f = self.snoop_option82(d, in_port, vlan, f)?;
         let (f, cos) = self.mls_qos_in(t, d, in_port, f, pcp);

@@ -22,10 +22,16 @@ pub enum ErrCause {
     DhcpRateLimit,
     /// More ARP messages per second than `ip arp inspection limit rate` allows.
     ArpInspection,
+    /// Broadcast, multicast or unknown-unicast traffic above its `storm-control` level, with
+    /// `storm-control action shutdown`.
+    StormControl,
+    /// UDLD found a link that works in one direction only.
+    Udld,
 }
 
 impl ErrCause {
-    pub const ALL: [ErrCause; 4] = [ErrCause::Bpduguard, ErrCause::DhcpRateLimit, ErrCause::ArpInspection, ErrCause::PsecureViolation];
+    pub const ALL: [ErrCause; 6] =
+        [ErrCause::Bpduguard, ErrCause::DhcpRateLimit, ErrCause::ArpInspection, ErrCause::PsecureViolation, ErrCause::StormControl, ErrCause::Udld];
 
     /// The keyword `errdisable recovery cause` takes.
     pub fn name(self) -> &'static str {
@@ -34,6 +40,8 @@ impl ErrCause {
             ErrCause::Bpduguard => "bpduguard",
             ErrCause::DhcpRateLimit => "dhcp-rate-limit",
             ErrCause::ArpInspection => "arp-inspection",
+            ErrCause::StormControl => "storm-control",
+            ErrCause::Udld => "udld",
         }
     }
 
@@ -161,7 +169,15 @@ pub struct SwitchL2 {
     /// still dropped).
     #[serde(skip_serializing_if = "BTreeSet::is_empty")]
     pub detect_off: BTreeSet<ErrCause>,
+    /// `udld enable` (normal) or `udld aggressive`: UDLD on every port that has no setting of its own.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub udld: Option<UdldMode>,
+    /// `udld message time N`: seconds between UDLD probes.
+    pub udld_interval: u32,
 }
+
+/// Seconds between UDLD probes unless `udld message time` says otherwise.
+pub const UDLD_INTERVAL: u32 = 15;
 
 impl Default for SwitchL2 {
     fn default() -> Self {
@@ -185,6 +201,8 @@ impl Default for SwitchL2 {
             span: Vec::new(),
             static_bindings: Vec::new(),
             detect_off: BTreeSet::new(),
+            udld: None,
+            udld_interval: UDLD_INTERVAL,
         }
     }
 }
@@ -386,6 +404,204 @@ pub struct PortL2 {
     /// 2-1001).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prune_eligible: Option<netlabcraft_core::VlanSet>,
+    /// `storm-control …`: levels per kind of traffic and what happens above them.
+    #[serde(skip_serializing_if = "StormCtl::is_default")]
+    pub storm: StormCtl,
+    /// `udld port [aggressive]` (true: aggressive), `no udld port` (false); `None` follows the
+    /// switch-wide setting.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub udld: Option<UdldMode>,
+}
+
+/// The kinds of traffic `storm-control` measures.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum StormKind {
+    Broadcast,
+    Multicast,
+    /// Unicast frames to a destination the switch has not learned.
+    Unicast,
+}
+
+impl StormKind {
+    pub const ALL: [StormKind; 3] = [StormKind::Broadcast, StormKind::Multicast, StormKind::Unicast];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            StormKind::Broadcast => "broadcast",
+            StormKind::Multicast => "multicast",
+            StormKind::Unicast => "unicast",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<StormKind> {
+        let l = s.trim().to_ascii_lowercase();
+        StormKind::ALL.into_iter().find(|k| k.name() == l)
+    }
+}
+
+/// What a storm-control level is measured in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum StormUnit {
+    /// Hundredths of a percent of the link's speed (2050 is 20.5 %).
+    Percent,
+    /// Bits per second.
+    Bps,
+    /// Packets per second.
+    Pps,
+}
+
+/// One kind's `storm-control … level`: the rising threshold that starts the response and the
+/// falling one that ends it (the rising one when none is given), in one unit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct StormLevel {
+    pub unit: StormUnit,
+    pub rising: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub falling: Option<u64>,
+}
+
+/// What happens above the level.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum StormAction {
+    /// The excess is dropped until the traffic falls (the default).
+    #[default]
+    Filter,
+    /// The port is err-disabled (cause `storm-control`).
+    Shutdown,
+    /// The excess is dropped and a message goes to the log.
+    Trap,
+}
+
+impl StormAction {
+    pub fn name(self) -> &'static str {
+        match self {
+            StormAction::Filter => "filter",
+            StormAction::Shutdown => "shutdown",
+            StormAction::Trap => "trap",
+        }
+    }
+}
+
+/// A port's `storm-control` settings.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(default)]
+pub struct StormCtl {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub broadcast: Option<StormLevel>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub multicast: Option<StormLevel>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unicast: Option<StormLevel>,
+    pub action: StormAction,
+}
+
+impl StormCtl {
+    pub fn is_default(&self) -> bool {
+        *self == StormCtl::default()
+    }
+
+    pub fn level(&self, kind: StormKind) -> Option<StormLevel> {
+        match kind {
+            StormKind::Broadcast => self.broadcast,
+            StormKind::Multicast => self.multicast,
+            StormKind::Unicast => self.unicast,
+        }
+    }
+
+    pub fn set(&mut self, kind: StormKind, level: Option<StormLevel>) {
+        match kind {
+            StormKind::Broadcast => self.broadcast = level,
+            StormKind::Multicast => self.multicast = level,
+            StormKind::Unicast => self.unicast = level,
+        }
+    }
+}
+
+/// UDLD on a port.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum UdldMode {
+    /// Off on this port, whatever the switch says.
+    Off,
+    /// Probes are sent and heard; a link that is one-way is shut down.
+    Normal,
+    /// As normal, and a neighbour that was heard and goes silent also shuts the port down.
+    Aggressive,
+}
+
+/// Writes a percent in hundredths the way it is typed (`40`, `20.5`, `0.25`).
+pub fn percent_text(hundredths: u64) -> String {
+    let whole = hundredths / 100;
+    let frac = hundredths % 100;
+    match (frac / 10, frac % 10) {
+        (0, 0) => whole.to_string(),
+        (t, 0) => format!("{whole}.{t}"),
+        (t, u) => format!("{whole}.{t}{u}"),
+    }
+}
+
+/// Reads a percent (`0` to `100`, up to two decimals) as hundredths.
+pub fn parse_percent(text: &str) -> Option<u64> {
+    let (whole, frac) = text.split_once('.').unwrap_or((text, ""));
+    if whole.is_empty() || whole.len() > 3 || frac.len() > 2 || !whole.chars().chain(frac.chars()).all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let w: u64 = whole.parse().ok()?;
+    let f: u64 = if frac.is_empty() { 0 } else { format!("{frac:0<2}").parse().ok()? };
+    let v = w * 100 + f;
+    (v <= 10_000).then_some(v)
+}
+
+impl StormLevel {
+    /// The words after `level`, as typed: `40`, `20.5 10`, `bps 1000000 500000`, `pps 100`.
+    pub fn text(&self) -> String {
+        let one = |v: u64| match self.unit {
+            StormUnit::Percent => percent_text(v),
+            _ => v.to_string(),
+        };
+        let head = match self.unit {
+            StormUnit::Percent => String::new(),
+            StormUnit::Bps => "bps ".to_string(),
+            StormUnit::Pps => "pps ".to_string(),
+        };
+        match self.falling {
+            Some(f) => format!("{head}{} {}", one(self.rising), one(f)),
+            None => format!("{head}{}", one(self.rising)),
+        }
+    }
+
+    /// Reads the words after `level`.
+    pub fn parse(words: &[&str]) -> Result<StormLevel, String> {
+        let (unit, nums) = match words.first().map(|w| w.to_ascii_lowercase()).as_deref() {
+            Some("bps") => (StormUnit::Bps, words.get(1..).unwrap_or(&[])),
+            Some("pps") => (StormUnit::Pps, words.get(1..).unwrap_or(&[])),
+            _ => (StormUnit::Percent, words),
+        };
+        let read = |w: &str| -> Result<u64, String> {
+            match unit {
+                StormUnit::Percent => parse_percent(w).ok_or_else(|| "The level is a percent from 0.00 to 100.00".to_string()),
+                _ => w
+                    .parse::<u64>()
+                    .ok()
+                    .filter(|n| (1..=100_000_000_000).contains(n))
+                    .ok_or_else(|| "The level is a number of bits or packets per second, from 1".to_string()),
+            }
+        };
+        match nums {
+            [r] => Ok(StormLevel { unit, rising: read(r)?, falling: None }),
+            [r, f] => {
+                let (rising, falling) = (read(r)?, read(f)?);
+                if falling > rising {
+                    return Err("The falling level cannot be above the rising one".into());
+                }
+                Ok(StormLevel { unit, rising, falling: Some(falling) })
+            }
+            _ => Err("Give one level, or a rising and a falling one".into()),
+        }
+    }
 }
 
 impl PortL2 {
