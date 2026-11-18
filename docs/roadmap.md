@@ -53,10 +53,10 @@ the reference app:
 
 1. A CCNA-style lab book (VLANs, inter-VLAN routing, DHCP, OSPF, ACLs, NAT, IPv6, WAN, switch
    security, HSRP) runs end to end by hand and through MCP (gaps table, item 1): **met**.
-   [docs/labs/](labs/README.md) holds 49 numbered original labs (4 for CCNA 1, 17 for CCNA 2, 27 for
-   CCNA 3 and one wireless-security lab for both of the first two, counted by the course column of
-   the table; 11 are troubleshooting labs and 2 inspection labs) and one unnumbered cellular lab; each one's blocks run as
-   written in `crates/engine/tests/lab_book.rs`, and 16 of them over `netlabcraft-cli mcp` in `apps/netlabcraft-cli/tests/mcp_lab_book.rs`. The fixes they
+   [docs/labs/](labs/README.md) holds 63 numbered original labs (4 for CCNA 1, 24 for CCNA 2, 32 for
+   CCNA 3, one wireless-security lab for both of the first two and two board-programming labs, counted by the course column of
+   the table; 19 are troubleshooting labs and 6 labs on reading output) and one unnumbered cellular lab; each one's blocks run as
+   written in `crates/engine/tests/lab_book.rs`, and 19 of them over `netlabcraft-cli mcp` in `apps/netlabcraft-cli/tests/mcp_lab_book.rs`. The fixes they
    turned up landed with regression tests (M8.1).
 2. Activities with scoring: met.
 3. Spanish interface: met (every window, tab and page, checked by tests).
@@ -73,6 +73,7 @@ the reference app:
 | 2026-11-16 | minor | BGP session passwords and a route map on `default-originate`, and lab 47 join the lab book (47 labs). |
 | 2026-11-16 | minor | OSPF NSSA and virtual-link areas, LSA sequence numbers and ages, and lab 45 (OSPF stub, NSSA and virtual-link areas) join the lab book (45 labs, 16 over MCP); the gaps table's item 1 narrowed. |
 | 2026-11-16 | minor | Route tags and BGP peer groups and lab 46 join the lab book (46 labs). |
+| 2026-11-18 | minor | Labs 61 to 72 join the lab book: the beta gate counts 63 numbered labs (4, 24 and 32 by course, and three follow-ups) and 19 over MCP. The console has a `debug` framework. |
 | 2026-11-16 | minor | PPPoE on routers (a concentrator and a client) and lab 43 (PPPoE with routers) join the lab book (43 labs, 16 over MCP); the gaps table's item 8 narrowed again. |
 | 2026-11-16 | minor | Wireless security settings of access points and home routers (WEP, WPA, WPA2 and enterprise, AES or TKIP, coverage range) and lab 44 join the lab book (43 labs); WPA3 is not in the reference app, not planned. |
 | 2026-11-16 | minor | Real PPPoE frames and lab 41 (PPPoE client and access concentrator) join the lab book (42 labs, 16 over MCP); the gaps table's item 8 narrowed. |

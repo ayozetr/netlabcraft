@@ -729,8 +729,52 @@ fn qos_map_named_like_type(words: &[&str]) -> Option<(Id, usize)> {
     }
 }
 
-/// Runs one line typed at a device.
+/// Runs one line typed at a device. A reload that was scheduled (`reload in|at`) and whose time
+/// has come happens first, to this device or to any other one; the console says so.
 pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line: &str) -> Outcome {
+    let said = fire_due_reloads(t, sim, dev, cli);
+    let mut out = execute_line(t, sim, dev, cli, line);
+    if !said.is_empty() {
+        out.output = if out.output.is_empty() { said } else { format!("{said}\n{}", out.output) };
+        out.changed = true;
+    }
+    out
+}
+
+/// Restarts the devices whose scheduled reload time has come (the one typed at keeps its session).
+fn fire_due_reloads(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli) -> String {
+    let mut said: Vec<String> = Vec::new();
+    for id in sim.take_due_reloads() {
+        let Some(name) = t.device(id).map(|d| d.name.clone()) else { continue };
+        let mut other = Cli::default();
+        let mut c = Ctx { t: &mut *t, sim: &mut *sim, dev: id, cli: if id == dev { &mut *cli } else { &mut other } };
+        let how = c.reload().unwrap_or_else(|e| e);
+        if id == dev {
+            said.push(format!("The scheduled reload took place: {name} restarted. {how}"));
+        }
+    }
+    said.join("\n")
+}
+
+/// The first word of a line, replaced by what an `alias` in this mode says it stands for.
+fn expand_alias(d: &Device, mode: &Mode, command: &str) -> Option<String> {
+    if d.knobs.global.is_empty() {
+        return None;
+    }
+    let scope = match mode {
+        Mode::User | Mode::Exec => "exec",
+        Mode::Config => "configure",
+        Mode::Iface(_) | Mode::Svi(_) | Mode::Loopback(_) => "interface",
+        _ => return None,
+    };
+    let first = command.split_whitespace().next()?;
+    let line = d.knobs.get(netlabcraft_model::knobs::Scope::Global, &format!("alias {scope} {first}"))?;
+    let text = line.splitn(4, ' ').nth(3)?;
+    let rest = command.trim_start().get(first.len()..).unwrap_or("");
+    Some(format!("{text}{rest}"))
+}
+
+fn execute_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line: &str) -> Outcome {
     let Some(d) = t.device(dev) else { return Outcome { output: "% That device no longer exists".into(), ..Outcome::default() } };
     let line = line.trim_end_matches(['\r', '\n']);
     if cli.remote.is_some() {
@@ -832,6 +876,8 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, li
         Some((c, f)) => (c, Some(f)),
         None => (trimmed, None),
     };
+    let expanded = t.device(dev).and_then(|d| expand_alias(d, &cli.mode, command));
+    let command = expanded.as_deref().unwrap_or(command);
     let output = match (dispatch(t, sim, dev, cli, command), filter) {
         (Ok(s), Some(f)) => crate::pipe::apply(&s, f).unwrap_or_else(|e| e),
         (Ok(s), None) => s,
@@ -866,6 +912,45 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, li
         sim.topology_changed(t);
     }
     Outcome { output, changed, clear: false }
+}
+
+/// `reload in`: minutes (`45`) or `hh:mm`, as seconds.
+fn reload_delay(text: &str) -> Result<u64, String> {
+    let bad = || "% Give the delay in minutes (`45`) or as hh:mm (`1:30`), from 1 minute to 24 days".to_string();
+    let minutes = match text.split_once(':') {
+        Some((h, m)) => {
+            let (h, m): (u64, u64) = (h.parse().map_err(|_| bad())?, m.parse().map_err(|_| bad())?);
+            if m > 59 {
+                return Err(bad());
+            }
+            h.saturating_mul(60).saturating_add(m)
+        }
+        None => text.parse().map_err(|_| bad())?,
+    };
+    if !(1..=34_560).contains(&minutes) {
+        return Err(bad());
+    }
+    Ok(minutes * 60)
+}
+
+/// `reload at hh:mm`: seconds until the device clock next shows that time of day (a whole day
+/// when it shows it now).
+fn reload_until(text: &str, now: i64) -> Result<u64, String> {
+    let bad = || "% Give the time as hh:mm (24 hours), like `reload at 23:30`".to_string();
+    let (h, m) = text.split_once(':').ok_or_else(bad)?;
+    let (h, m): (i64, i64) = (h.parse().map_err(|_| bad())?, m.parse().map_err(|_| bad())?);
+    if !(0..24).contains(&h) || !(0..60).contains(&m) {
+        return Err(bad());
+    }
+    let wait = (h * 3_600 + m * 60 - now.rem_euclid(86_400)).rem_euclid(86_400);
+    Ok(if wait == 0 { 86_400 } else { wait as u64 })
+}
+
+/// `1 day 2 hours 3 minutes 4 seconds`, leaving out what is zero.
+fn reload_span(secs: u64) -> String {
+    let parts = [(secs / 86_400, "day"), (secs / 3_600 % 24, "hour"), (secs / 60 % 60, "minute"), (secs % 60, "second")];
+    let text: Vec<String> = parts.iter().filter(|(n, _)| *n > 0).map(|(n, w)| format!("{n} {w}{}", if *n == 1 { "" } else { "s" })).collect();
+    if text.is_empty() { "0 seconds".to_string() } else { text.join(" ") }
 }
 
 fn remember(cli: &mut Cli, line: &str) {
@@ -1365,11 +1450,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::DebugTopic | Id::NoDebugTopic | Id::UndebugAll | Id::ShowDebugging => debug::command(&mut c, spec, &args),
         Id::DebugIpOspf | Id::NoDebugIpOspf => {
             let what = arg(0).trim().to_ascii_lowercase();
-            let pick = ["adj", "events", "hello", "lsa-generation", "flood", "packet"]
+            let pick = ["adj", "events", "hello", "lsa-generation", "flood", "packet", "retransmission"]
                 .into_iter()
                 .find(|w| !what.is_empty() && w.starts_with(what.as_str()));
             if !what.is_empty() && pick.is_none() {
-                return Err("% debug ip ospf adj, events, hello, lsa-generation, flood or packet".into());
+                return Err("% debug ip ospf adj, events, hello, lsa-generation, flood, packet or retransmission".into());
             }
             let on = spec.id == Id::DebugIpOspf;
             let (kinds, note): (&[DebugKind], &str) = match pick {
@@ -1378,6 +1463,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 Some("lsa-generation") => (&[DebugKind::OspfLsa], "the LSAs this router originates and flushes are reported"),
                 Some("flood") => (&[DebugKind::OspfFlood], "the LSAs sent and received in updates are reported"),
                 Some("packet") => (&[DebugKind::OspfPacket], "every OSPF packet this router hears is reported"),
+                Some("retransmission") => (&[DebugKind::OspfRxmt], "updates and descriptions sent again are reported"),
                 Some(_) => (&[DebugKind::OspfHello], "the hellos this router hears are reported"),
                 None => (
                     &[
@@ -1387,6 +1473,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                         DebugKind::OspfLsa,
                         DebugKind::OspfFlood,
                         DebugKind::OspfPacket,
+                        DebugKind::OspfRxmt,
                     ],
                     "all of it",
                 ),
@@ -1397,7 +1484,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(if on {
                 format!("OSPF debugging is on: {note}.")
             } else {
-                format!("OSPF debugging is off ({}).", pick.unwrap_or("hello, adj, events, lsa-generation, flood and packet"))
+                format!("OSPF debugging is off ({}).", pick.unwrap_or("hello, adj, events, lsa-generation, flood, packet and retransmission"))
             })
         }
         Id::ShowClock => {
@@ -1502,6 +1589,28 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok("Startup configuration erased; the next reload starts from factory settings.".into())
         }
         Id::Reload => c.reload(),
+        Id::ReloadIn | Id::ReloadAt => {
+            let (now, _) = c.sim.clock(c.dev);
+            let secs = if spec.id == Id::ReloadIn { reload_delay(arg(0))? } else { reload_until(arg(0), now)? };
+            let reason: String = arg(1).chars().filter(|ch| !ch.is_control()).take(80).collect();
+            c.sim.schedule_reload(c.dev, secs.saturating_mul(1_000_000), reason);
+            Ok(format!("The device will reload in {} (at {}).", reload_span(secs), crate::clock::stamp(now.saturating_add(secs as i64))))
+        }
+        Id::ReloadCancel => {
+            Ok(if c.sim.cancel_reload(c.dev) { "The scheduled reload is cancelled.".to_string() } else { "No reload is scheduled.".to_string() })
+        }
+        Id::ShowReload => {
+            let (now, _) = c.sim.clock(c.dev);
+            Ok(match c.sim.reload_pending(c.dev) {
+                None => "No reload is scheduled.".to_string(),
+                Some((left, why)) => {
+                    let secs = left / 1_000_000;
+                    let reason = if why.is_empty() { String::new() } else { format!("\nReason: {why}") };
+                    format!("The device reloads in {} (at {}).{reason}", reload_span(secs), crate::clock::stamp(now.saturating_add(secs as i64)))
+                }
+            })
+        }
+        Id::ShowAliases => Ok(knobs::aliases(c.d()?)),
         Id::ClearMac => {
             c.sim.clear_macs(c.dev);
             Ok(String::new())
@@ -2186,6 +2295,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::NoIpOspfHello
         | Id::IpOspfDead
         | Id::NoIpOspfDead
+        | Id::IpOspfRetransmit
+        | Id::NoIpOspfRetransmit
+        | Id::IpOspfTransmitDelay
+        | Id::NoIpOspfTransmitDelay
         | Id::IpOspfNetwork
         | Id::NoIpOspfNetwork
         | Id::IpOspfAuth
@@ -4643,7 +4756,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::ShowOspfNeighbor => {
             let st = c.sim.ospf_state(c.t);
-            let all = render::ospf_neighbors(c.t, c.d()?, &st);
+            let all = render::ospf_neighbors(c.t, c.d()?, &st, &*c.sim);
             let want = arg(0).trim();
             if want.is_empty() {
                 return Ok(all);

@@ -358,7 +358,7 @@ pub(super) fn ospf_area_type(c: &mut Ctx, id: Id, args: &[String]) -> R {
     let o = c.dm()?.ospf.as_mut().ok_or("% Not in OSPF mode")?;
     match id {
         Id::AreaNssa | Id::NoAreaNssa => {
-            let (mut no_summary, mut originate, mut no_redist, mut always) = (false, false, false, false);
+            let (mut no_summary, mut originate, mut no_redist, mut always, mut only) = (false, false, false, false, false);
             let mut words = rest.split_whitespace();
             while let Some(w) = words.next() {
                 let w = w.to_ascii_lowercase();
@@ -369,6 +369,8 @@ pub(super) fn ospf_area_type(c: &mut Ctx, id: Id, args: &[String]) -> R {
                         return Err("% translate type7 always".into());
                     }
                     always = true;
+                } else if w == "nssa-only" {
+                    only = true;
                 } else if w.starts_with("no-s") && "no-summary".starts_with(&w) {
                     no_summary = true;
                 } else if w.starts_with("no-r") && "no-redistribution".starts_with(&w) {
@@ -377,7 +379,7 @@ pub(super) fn ospf_area_type(c: &mut Ctx, id: Id, args: &[String]) -> R {
                     originate = true;
                 } else {
                     return Err(format!(
-                        "% `{w}` is not an NSSA option: no-summary, no-redistribution, default-information-originate or translate type7 always"
+                        "% `{w}` is not an NSSA option: no-summary, no-redistribution, default-information-originate, nssa-only or translate type7 always"
                     ));
                 }
             }
@@ -391,6 +393,7 @@ pub(super) fn ospf_area_type(c: &mut Ctx, id: Id, args: &[String]) -> R {
                 a.nssa_default = originate;
                 a.nssa_no_redist = no_redist;
                 a.nssa_translate_always = always;
+                a.nssa_default_only = only;
             } else if let Some(a) = o.areas.get_mut(&area).filter(|a| a.nssa) {
                 if rest.is_empty() {
                     a.nssa = false;
@@ -398,12 +401,14 @@ pub(super) fn ospf_area_type(c: &mut Ctx, id: Id, args: &[String]) -> R {
                     a.nssa_default = false;
                     a.nssa_no_redist = false;
                     a.nssa_translate_always = false;
+                    a.nssa_default_only = false;
                     a.default_cost = None;
                 } else {
                     a.no_summary &= !no_summary;
                     a.nssa_default &= !originate;
                     a.nssa_no_redist &= !no_redist;
                     a.nssa_translate_always &= !always;
+                    a.nssa_default_only &= !only;
                 }
             }
         }
@@ -492,6 +497,16 @@ pub(super) fn ospf_if_command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             each_ospf_if(c, |e| e.dead = Some(s))
         }
         Id::NoIpOspfDead => each_ospf_if(c, |e| e.dead = None),
+        Id::IpOspfRetransmit => {
+            let s = secs(arg(0))?;
+            each_ospf_if(c, |e| e.retransmit = Some(s))
+        }
+        Id::NoIpOspfRetransmit => each_ospf_if(c, |e| e.retransmit = None),
+        Id::IpOspfTransmitDelay => {
+            let s = secs(arg(0))?;
+            each_ospf_if(c, |e| e.transmit_delay = Some(s))
+        }
+        Id::NoIpOspfTransmitDelay => each_ospf_if(c, |e| e.transmit_delay = None),
         Id::IpOspfAuth => {
             let kind = auth_kind_word(arg(0), true)?;
             each_ospf_if(c, |e| e.auth = Some(kind))
@@ -832,7 +847,12 @@ pub(super) fn ospf_neighbor_detail(c: &mut Ctx) -> R {
         let prio = peer.zip(their_if.as_ref()).and_then(|(p, i)| p.ospf_if.get(i).and_then(|x| x.priority)).unwrap_or(1);
         let (hello, dead) = netlabcraft_sim::ospf::timers(&d, &n.iface);
         let _ = writeln!(s, "Neighbour {} ({name}), interface address {}", n.router_id, n.address);
-        let _ = writeln!(s, "    On {}, area {}, state FULL, role {role}", n.iface, seg.map_or(0, |g| g.area));
+        let state = c.sim.ospf_neighbor_state(d.id, &n.iface, n.router_id).map_or("FULL", netlabcraft_sim::ospf_flood::NbrState::word);
+        let _ = writeln!(s, "    On {}, area {}, state {state}, role {role}", n.iface, seg.map_or(0, |g| g.area));
+        if let Some(r) = c.sim.ospf_neighbor(d.id, &n.iface, n.router_id) {
+            let (req, rxmt) = r.pending();
+            let _ = writeln!(s, "    {req} LSAs in the request list, {rxmt} in the retransmission list, {} packets sent again", r.rxmt_sent);
+        }
         let _ = writeln!(s, "    Priority {prio}; segment DR {}, BDR {}", show_addr(seg.and_then(|g| g.dr)), show_addr(seg.and_then(|g| g.bdr)));
         let _ = writeln!(s, "    Hello every {hello} s, declared dead after {dead} s of silence");
     }
