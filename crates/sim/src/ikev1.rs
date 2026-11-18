@@ -159,6 +159,8 @@ pub struct V1State {
     pub ah_spi_peer: u32,
     /// With RSA signatures: the subject of the certificate the peer proved itself with.
     pub peer_cert: String,
+    /// With RSA signatures: the authorities the peer's certificate requests named.
+    pub peer_wants: crate::pki::Wanted,
     /// Perfect forward secrecy: the group of quick mode's own Diffie-Hellman exchange for the
     /// IPsec keys now being negotiated or in use (0: none, the keys come from SKEYID_d alone).
     pub pfs: u16,
@@ -186,8 +188,6 @@ fn dh_secret(group: u16, private: &[u8], peer: &[u8]) -> Option<Vec<u8>> {
         (None, Some(c)) => c.shared(private, peer),
         (None, None) => None,
     }
-    /// With RSA signatures: the authorities the peer's certificate requests named.
-    pub peer_wants: crate::pki::Wanted,
 }
 
 /// Why opening a message failed.
