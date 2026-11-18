@@ -111,7 +111,7 @@ fn process_and_neighbour_settings_are_kept_replaced_and_written_back() {
         assert!(run.contains(line), "{line}: {run}");
     }
     assert!(!run.contains("warning-only") && !run.contains("synchronization"), "replaced or never kept: {run}");
-    lab.run(r1, "conf t\nrouter bgp 65001\nno bgp fast-external-fallover\nno bgp deterministic-med\nbgp client-to-client reflection\nno neighbor 10.0.12.2 allowas-in");
+    lab.run(r1, "conf t\nrouter bgp 65001\nno bgp fast-external-fallover\nno bgp deterministic-med\nbgp client-to-client reflection\nno neighbor 10.0.12.2 allowas-in\nend");
     let run = lab.run(r1, "show running-config");
     assert!(!run.contains("fast-external-fallover") || run.contains("no bgp fast-external-fallover"));
     assert!(!run.contains("deterministic-med") && !run.contains("no bgp client-to-client") && !run.contains("allowas-in"), "{run}");
