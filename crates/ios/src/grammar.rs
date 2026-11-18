@@ -5287,7 +5287,13 @@ pub static SPECS: &[Spec] = &[
         [K("instance"), Arg("<1-15>"), K("vlan"), Arg("<1-4094>[,-]")],
         "Map VLANs to an instance (each VLAN is in one instance)"
     ),
-    spec!(NoMstInstance, Modes::MST, Modes::SWITCH, [K("no"), K("instance"), Arg("<1-15>")], "Delete an instance; its VLANs go back to the common tree"),
+    spec!(
+        NoMstInstance,
+        Modes::MST,
+        Modes::SWITCH,
+        [K("no"), K("instance"), Arg("<1-15>")],
+        "Delete an instance; its VLANs go back to the common tree"
+    ),
     spec!(
         MstPriority,
         Modes::CONFIG,

@@ -820,7 +820,17 @@ fn port_state(sim: &Sim, d: &Device, p: usize, vlan: VlanId, role: Role) -> &'st
 fn show_stp_summary(t: &Topology, sim: &Sim, d: &Device, trees: &[(VlanId, netlabcraft_sim::stp::VlanTree)], totals_only: bool) -> String {
     let l = &d.l2;
     let mut s = String::new();
-    let _ = writeln!(s, "Mode:                 {}", if d.mst.on { "mst" } else if d.rapid_stp { "rapid-pvst" } else { "pvst" });
+    let _ = writeln!(
+        s,
+        "Mode:                 {}",
+        if d.mst.on {
+            "mst"
+        } else if d.rapid_stp {
+            "rapid-pvst"
+        } else {
+            "pvst"
+        }
+    );
     let roots: Vec<String> =
         trees.iter().filter(|(_, tr)| tr.bridges.get(&d.id).is_some_and(|b| b.root == b.id)).map(|(v, _)| format!("VLAN{:04}", v.get())).collect();
     let _ = writeln!(s, "Root bridge of:       {}", if roots.is_empty() { "none".to_string() } else { roots.join(", ") });
