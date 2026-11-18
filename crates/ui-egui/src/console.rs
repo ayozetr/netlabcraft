@@ -6,7 +6,6 @@ use crate::prefs_look::HintExt;
 use egui::{Key, Modifiers, RichText, Sense, vec2};
 use netlabcraft_core::DeviceId;
 use netlabcraft_model::{Device, DeviceKind, End, SwitchportMode, ifname};
-use netlabcraft_sim::port_up;
 use serde_json::{Value, json};
 
 use crate::i18n::tl;
@@ -528,82 +527,9 @@ fn physical(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
         crate::board_page::physical(app, ui, dev);
         return;
     }
-    let tk = theme::tokens(app.ui.dark);
     crate::hardware::panel(app, ui, dev);
     ui.label(RichText::new(crate::i18n::trf("{}: {} ports", &[&crate::i18n::tl(dev.catalogue_model().label), &dev.ports.len()])).strong());
-    let per_row = 13usize;
-    let rows = dev.ports.len().div_ceil(per_row).max(1);
-    let size = vec2(ui.available_width().min(640.0), 40.0 + rows as f32 * 56.0);
-    let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
-    let p = ui.painter_at(rect);
-    p.rect_filled(rect, 6.0, egui::Color32::from_rgb(0x3a, 0x40, 0x48));
-    p.rect_filled(rect.shrink(4.0), 4.0, egui::Color32::from_rgb(0x55, 0x5d, 0x68));
-    let led_power = rect.left_top() + vec2(18.0, 18.0);
-    p.circle_filled(
-        led_power,
-        4.0,
-        if dev.powered_off { egui::Color32::from_rgb(0x2a, 0x2a, 0x2a) } else { egui::Color32::from_rgb(0x7c, 0xf0, 0x7c) },
-    );
-    p.text(led_power + vec2(10.0, 0.0), egui::Align2::LEFT_CENTER, "PWR", egui::FontId::proportional(10.0), egui::Color32::WHITE);
-    let mut hovered = None;
-    // PoE switches: a bar under each port that can give power, lit while it powers a device.
-    let poe = netlabcraft_model::poe::budget_mw(dev.catalogue_model()).map(|_| app.session.topology.power_inline(dev.id));
-    for (i, port) in dev.ports.iter().enumerate() {
-        let (row, col) = (i / per_row, i % per_row);
-        let cell = egui::Rect::from_min_size(rect.left_top() + vec2(20.0 + col as f32 * 46.0, 36.0 + row as f32 * 56.0), vec2(38.0, 46.0));
-        let socket = egui::Rect::from_min_size(cell.min + vec2(5.0, 12.0), vec2(28.0, 20.0));
-        let end = End { device: dev.id, port: i };
-        let (cabled, up) = (app.session.topology.peer(end).is_some(), port_up(&app.session.topology, end));
-        if port.name.starts_with("Coaxial") {
-            // A threaded F connector.
-            p.circle_filled(socket.center(), 9.0, egui::Color32::from_rgb(0xc8, 0xa2, 0x4a));
-            p.circle_filled(socket.center(), if cabled { 5.0 } else { 3.0 }, egui::Color32::from_rgb(0x1a, 0x1c, 0x20));
-        } else {
-            // An RJ-11 phone socket is narrower than an RJ-45.
-            let socket = if port.name.starts_with("Phone") { socket.shrink2(vec2(6.0, 2.0)) } else { socket };
-            p.rect_filled(socket, 2.0, egui::Color32::from_rgb(0x1a, 0x1c, 0x20));
-            if cabled {
-                p.rect_filled(socket.shrink(4.0), 1.0, egui::Color32::from_rgb(0x4a, 0x90, 0xd0));
-            }
-        }
-        let led = if up {
-            tk.link_up
-        } else if cabled {
-            egui::Color32::from_rgb(0xe8, 0xa3, 0x1c)
-        } else {
-            egui::Color32::from_rgb(0x2a, 0x2a, 0x2a)
-        };
-        p.circle_filled(socket.center_top() - vec2(0.0, 6.0), 3.5, led);
-        if let Some(rows) = &poe
-            && port.name.starts_with("FastEthernet")
-        {
-            let on = rows.iter().any(|r| r.port == i && r.device.is_some());
-            let bar = egui::Rect::from_min_size(socket.left_bottom() + vec2(4.0, 1.5), vec2(socket.width() - 8.0, 2.5));
-            p.rect_filled(bar, 1.0, if on { egui::Color32::from_rgb(0xf2, 0xc2, 0x3a) } else { egui::Color32::from_rgb(0x6a, 0x5a, 0x2a) });
-        }
-        p.text(
-            cell.center_bottom() - vec2(0.0, 6.0),
-            egui::Align2::CENTER_CENTER,
-            ifname::short(&port.name),
-            egui::FontId::proportional(9.5),
-            egui::Color32::WHITE,
-        );
-        if ui.rect_contains_pointer(cell) {
-            hovered = Some(i);
-        }
-    }
-    if let Some(i) = hovered
-        && let Some(port) = dev.ports.get(i)
-    {
-        let end = End { device: dev.id, port: i };
-        let peer = app.session.topology.peer(end).map_or("nothing".to_string(), |e| app.session.topology.end_label(e));
-        ui.label(crate::i18n::trf(
-            "{}: {} · cabled to {}",
-            &[&port.name, &crate::i18n::tl(if port_up(&app.session.topology, end) { "link up" } else { "link down" }), &peer],
-        ));
-    } else {
-        ui.label(RichText::new(tl("Point at a port to see what is plugged in. Cables are made with the Connections tool.")).color(tk.muted));
-    }
+    crate::front_panel::show(app, ui, dev);
 }
 
 fn attributes(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {

@@ -30,6 +30,7 @@ mod console;
 mod credits;
 pub mod environments;
 mod events;
+mod front_panel;
 pub mod fonts;
 mod hardware;
 mod help;

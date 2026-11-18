@@ -266,7 +266,7 @@ pub(crate) fn cable_color(kind: Cable, tk: &Tokens) -> Color32 {
     }
 }
 
-fn body_color(d: &Device) -> Color32 {
+pub(crate) fn body_color(d: &Device) -> Color32 {
     let m = d.catalogue_model();
     if m.wan() {
         return Color32::from_rgb(0x2f, 0x80, 0x8c);
@@ -311,7 +311,7 @@ fn socket_block(p: &Painter, cell: Rect, conn: Connector, up: Option<bool>, tk: 
         Connector::Serial => tk.serial_cable,
         Connector::Sfp | Connector::Lc => tk.tile_blue,
         Connector::Coax => tk.tile_gold,
-        Connector::Usb | Connector::Rs232 | Connector::Rj11 => tk.tile_grey,
+        Connector::Usb | Connector::Rs232 | Connector::Rj11 | Connector::Pin | Connector::Radio => tk.tile_grey,
         Connector::Inlet | Connector::Outlet => tk.port_hole,
     };
     let r = cell.expand2(vec2(0.0, cell.height() * 0.3));

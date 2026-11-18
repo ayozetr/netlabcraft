@@ -248,17 +248,17 @@ fn chassis(ui: &mut egui::Ui, dev: &Device, up: &[bool], armed: bool, tk: &theme
             Some(c) => {
                 p.rect_filled(bay, 3.0, tk.bar);
                 let n = c.port_count.max(1) as f32;
-                let serial = c.port_type == "Serial";
+                let cell_w = (bay.width() / n - 4.0).min(40.0);
                 for k in 0..c.port_count {
                     let cx = bay.left() + (k as f32 + 0.5) * bay.width() / n;
-                    let socket =
-                        egui::Rect::from_center_size(egui::pos2(cx, bay.center().y - 6.0), if serial { vec2(22.0, 12.0) } else { vec2(16.0, 14.0) });
-                    p.rect_filled(socket, if serial { 5.0 } else { 1.5 }, tk.console_bg);
+                    let name = format!("{}{slot}/{k}", c.port_type);
+                    let conn = crate::icons_ports::panel_connector(&name, c.medium);
+                    let cell = egui::Rect::from_center_size(egui::pos2(cx, bay.center().y - 4.0), vec2(cell_w, 26.0));
+                    let socket = crate::icons_ports::draw_in(&p, conn, cell, false, tk);
                     // A switch card's ports: a link light over each socket.
                     if c.switched {
-                        let name = format!("{}{slot}/{k}", c.port_type);
                         let lit = dev.ports.iter().position(|x| x.name == name).is_some_and(|i| up.get(i).copied().unwrap_or(false));
-                        p.circle_filled(socket.center_top() - vec2(0.0, 5.0), 2.5, if lit { tk.ok } else { tk.muted });
+                        p.circle_filled(socket.center_top() - vec2(0.0, 4.0), 2.5, if lit { tk.ok } else { tk.muted });
                     }
                 }
                 p.text(bay.center_bottom() - vec2(0.0, 9.0), egui::Align2::CENTER_CENTER, tr(c.label), egui::FontId::proportional(10.0), tk.bar_text);
