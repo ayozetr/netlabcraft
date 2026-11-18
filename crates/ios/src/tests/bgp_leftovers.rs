@@ -82,8 +82,9 @@ fn without_the_default_ipv4_unicast_a_neighbour_must_be_activated() {
 fn process_and_neighbour_settings_are_kept_replaced_and_written_back() {
     let (mut lab, r1, _r2) = pair();
     lab.run(r1, "conf t\nrouter bgp 65001");
-    let said = lab.run(r1, "bgp deterministic-med");
+    let said = lab.run(r1, "bgp bestpath compare-routerid");
     assert!(said.contains("Accepted"), "a setting with no effect says so: {said}");
+    assert!(lab.run(r1, "bgp deterministic-med").is_empty(), "one the simulation reads says nothing");
     assert!(lab.run(r1, "bgp bestpath med missing-as-worst").is_empty(), "one the simulation reads says nothing");
     lab.run(r1, "bgp bestpath as-path multipath-relax\nno bgp fast-external-fallover\nno bgp client-to-client reflection\nno synchronization");
     lab.run(r1, "neighbor 10.0.12.2 version 4\nneighbor 10.0.12.2 maximum-prefix 100 80 warning-only\nneighbor 10.0.12.2 maximum-prefix 200\nneighbor 10.0.12.2 allowas-in 2");
@@ -97,6 +98,7 @@ fn process_and_neighbour_settings_are_kept_replaced_and_written_back() {
     let run = lab.run(r1, "show running-config");
     for line in [
         " bgp deterministic-med\n",
+        " bgp bestpath compare-routerid\n",
         " bgp bestpath med missing-as-worst\n",
         " bgp bestpath as-path multipath-relax\n",
         " no bgp fast-external-fallover\n",
@@ -111,10 +113,16 @@ fn process_and_neighbour_settings_are_kept_replaced_and_written_back() {
         assert!(run.contains(line), "{line}: {run}");
     }
     assert!(!run.contains("warning-only") && !run.contains("synchronization"), "replaced or never kept: {run}");
-    lab.run(r1, "conf t\nrouter bgp 65001\nno bgp fast-external-fallover\nno bgp deterministic-med\nbgp client-to-client reflection\nno neighbor 10.0.12.2 allowas-in\nend");
+    lab.run(r1, "conf t\nrouter bgp 65001\nno bgp fast-external-fallover\nno bgp deterministic-med\nno bgp bestpath compare-routerid\nbgp client-to-client reflection\nno neighbor 10.0.12.2 allowas-in\nend");
     let run = lab.run(r1, "show running-config");
     assert!(!run.contains("fast-external-fallover") || run.contains("no bgp fast-external-fallover"));
-    assert!(!run.contains("deterministic-med") && !run.contains("no bgp client-to-client") && !run.contains("allowas-in"), "{run}");
+    assert!(
+        !run.contains("deterministic-med")
+            && !run.contains("compare-routerid")
+            && !run.contains("no bgp client-to-client")
+            && !run.contains("allowas-in"),
+        "{run}"
+    );
     // Everything survives a save and a reload.
     lab.run(r1, "copy running-config startup-config\nreload");
     lab.run(r1, "en");
