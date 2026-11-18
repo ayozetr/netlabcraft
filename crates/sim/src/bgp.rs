@@ -83,6 +83,8 @@ const MAX_HOPS: u8 = 16;
 const MAX_AS_SET: usize = 32;
 /// Most member autonomous systems kept in a confederation path.
 const MAX_CONFED_PATH: usize = 32;
+/// Most routes route dampening keeps a record of.
+const MAX_DAMPED: usize = 8_192;
 /// Most prefixes in one UPDATE.
 const PER_UPDATE: usize = 200;
 /// The TCP port the side that opened the connection uses.
@@ -193,6 +195,8 @@ pub struct Path {
     pub confed: bool,
     /// Made by an `aggregate-address`.
     pub aggregate: bool,
+    /// Held down by route dampening: not used, not advertised, listed with `d`.
+    pub damped: bool,
 }
 
 impl Path {
@@ -204,6 +208,47 @@ impl Path {
     /// The AS path length best-path selection compares: an AS set counts as one.
     pub fn path_len(&self) -> usize {
         self.as_path.len() + usize::from(!self.as_set.is_empty())
+    }
+}
+
+/// A route that route dampening watches: the router, the neighbour and the prefix.
+pub type DampKey = (DeviceId, Ipv4Addr, Ipv4Net);
+
+/// What dampening knows about one external route (RFC 2439).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Flap {
+    /// The penalty at `at`; it halves every half-life.
+    pub penalty: u32,
+    pub at: u64,
+    /// Times the neighbour withdrew the route.
+    pub flaps: u32,
+    /// When the first withdrawal was seen (µs).
+    pub since: u64,
+    /// The neighbour advertises the route now.
+    pub present: bool,
+    /// A hash of what the route carried when last seen: a change of it is a flap of the lesser kind.
+    pub sig: u64,
+    pub suppressed: bool,
+    /// When a suppressed route is used again (µs).
+    pub reuse_at: u64,
+    pub params: conf::DampParams,
+}
+
+impl Flap {
+    /// The penalty at simulated time `now`.
+    pub fn penalty_at(&self, now: u64) -> u32 {
+        self.params.decayed(self.penalty, now.saturating_sub(self.at))
+    }
+
+    /// Adds to the penalty (after letting it decay) and suppresses the route when it passes the limit.
+    fn add(&mut self, amount: u32, now: u64) {
+        let total = self.penalty_at(now).saturating_add(amount).min(self.params.max_penalty());
+        self.penalty = total;
+        self.at = now;
+        if total > u32::from(self.params.suppress) || self.suppressed {
+            self.suppressed = true;
+            self.reuse_at = now.saturating_add(self.params.time_to_reuse(total));
+        }
     }
 }
 
@@ -316,6 +361,8 @@ pub struct Runtime {
     pub held: BTreeMap<SessKey, (u64, Peering)>,
     /// Why a session went down when it was not the lab that said so.
     pub down_why: BTreeMap<SessKey, &'static str>,
+    /// The external routes of the routers that run `bgp dampening`.
+    pub damp: BTreeMap<DampKey, Flap>,
 }
 
 /// What `show ip bgp …` reads: states refined by the time spent, counters and uptimes.
@@ -325,6 +372,8 @@ pub struct BgpView {
     pub counters: BTreeMap<SessKey, Counters>,
     pub since: BTreeMap<SessKey, u64>,
     pub now: u64,
+    /// What route dampening knows about each external route its routers watch.
+    pub flaps: BTreeMap<DampKey, Flap>,
 }
 
 /// The router id: configured, else the highest loopback or interface address.
@@ -750,6 +799,7 @@ fn originate(d: &Device, base: &[RouteEntry]) -> Vec<Path> {
             confed_path: Vec::new(),
             confed: false,
             aggregate: false,
+            damped: false,
         })
         .collect()
 }
@@ -797,9 +847,28 @@ fn aggregate_paths(ab: &conf::Bgp, paths: &[Path]) -> Vec<Path> {
             confed_path: Vec::new(),
             confed: false,
             aggregate: true,
+            damped: false,
         });
     }
     out
+}
+
+/// What `bgp dampening` asks of a path: its values, or `None` when the router does not dampen it
+/// (a route map that does not permit it). A map that is named but not defined permits everything.
+fn damp_params(d: &Device, p: &Path) -> Option<conf::DampParams> {
+    let cfg = d.bgp.as_ref()?.dampening.as_ref()?;
+    let Some(map) = cfg.route_map.as_deref().filter(|m| d.route_map(m).is_some()) else { return Some(cfg.params) };
+    let seen = policy::Attrs { communities: &p.communities, as_path: &p.as_path, as_set: &p.as_set, ..policy::Attrs::default() };
+    let sets = policy::apply_with(d, None, Some(map), &Subject { net: p.net, metric: p.med }, &seen)?;
+    Some(sets.dampening.unwrap_or(cfg.params))
+}
+
+/// A hash of what a path carries, to notice that it was advertised again with other attributes.
+fn path_signature(p: &Path) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (&p.as_path, &p.as_set, p.next_hop, p.origin, p.med, &p.communities).hash(&mut h);
+    h.finish()
 }
 
 /// A `summary-only` aggregate covers this prefix with a shorter one.
@@ -960,6 +1029,8 @@ fn export(a: &Device, ab: &conf::Bgp, n: &conf::Neighbor, p: &Peering, path: &Pa
         confed_path,
         confed_set: Vec::new(),
         ext_communities,
+        mp_reach6: None,
+        mp_unreach6: Vec::new(),
     })
 }
 
@@ -1125,6 +1196,7 @@ fn import(b: &Device, m: &conf::Neighbor, p: &Peering, attrs: &msg::PathAttrs, f
         confed_path: attrs.confed_path.clone(),
         confed: p.confed,
         aggregate: false,
+        damped: false,
     })
 }
 
@@ -1139,7 +1211,13 @@ fn live<'a>(an: &'a Analysis, settled: &BTreeSet<SessKey>, key: &SessKey) -> Opt
 }
 
 /// Every router's paths and routes, once the sessions in `settled` are Established.
-pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &Analysis, settled: &BTreeSet<SessKey>) -> BgpState {
+pub fn compute(
+    t: &Topology,
+    base: &BTreeMap<DeviceId, Vec<RouteEntry>>,
+    an: &Analysis,
+    settled: &BTreeSet<SessKey>,
+    damped: &BTreeSet<DampKey>,
+) -> BgpState {
     let routers: Vec<&Device> = t.devices.iter().filter(|d| d.bgp.is_some() && d.routes_ip()).collect();
     let rids: BTreeMap<DeviceId, Ipv4Addr> = routers.iter().map(|d| (d.id, router_id(d))).collect();
     let ifs: BTreeMap<DeviceId, Vec<L3If>> = routers.iter().map(|d| (d.id, up_ifaces(t, d))).collect();
@@ -1151,7 +1229,9 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
         for p in rib.get(&d.id).into_iter().flat_map(|m| m.values()) {
             let mut p = p.clone();
             let hop = resolve_metric(table, mine, p.next_hop);
-            p.valid = hop.is_some();
+            // A route held down by dampening is listed but never used.
+            p.damped = p.from.is_some_and(|f| damped.contains(&(d.id, f, p.net)));
+            p.valid = hop.is_some() && !p.damped;
             p.igp = hop.as_ref().map_or(0, |h| h.2);
             p.resolved = hop.map(|h| (h.0, h.1));
             v.push(p);
@@ -1360,7 +1440,7 @@ pub fn standalone_routes(t: &Topology, d: &Device) -> Vec<BgpRoute> {
 pub fn standalone_all(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>) -> BTreeMap<DeviceId, Vec<BgpRoute>> {
     let an = analyse(t, base);
     let settled: BTreeSet<SessKey> = an.peerings.keys().copied().collect();
-    compute(t, base, &an, &settled).routers.into_iter().map(|(id, v)| (id, v.routes)).collect()
+    compute(t, base, &an, &settled, &BTreeSet::new()).routers.into_iter().map(|(id, v)| (id, v.routes)).collect()
 }
 
 /// One end of a session as the lab configures it now: the neighbour statement, when it is still
@@ -1430,11 +1510,16 @@ impl Sim {
             self.bgp.analysis = an;
         }
         let settled: BTreeSet<SessKey> = self.bgp.up_at.iter().filter(|(_, at)| now.saturating_sub(**at) >= SETUP_US).map(|(k, _)| *k).collect();
-        if !fresh && settled == self.bgp.settled {
+        let reused = self.bgp_damp_tick();
+        if !fresh && !reused && settled == self.bgp.settled {
             return;
         }
         self.bgp.settled = settled;
-        let new = compute(t, &self.bgp.base, &self.bgp.analysis, &self.bgp.settled);
+        let mut new = compute(t, &self.bgp.base, &self.bgp.analysis, &self.bgp.settled, &self.bgp_damped());
+        // Withdrawals the new tables show are flaps; a route they push over the limit is held down.
+        if self.bgp_damp_update(t, &new) {
+            new = compute(t, &self.bgp.base, &self.bgp.analysis, &self.bgp.settled, &self.bgp_damped());
+        }
         self.bgp.state = Some(new.clone());
         for k in started {
             self.bgp_start(t, k);
@@ -1481,10 +1566,108 @@ impl Sim {
     pub(crate) fn bgp_next_expiry(&self) -> Option<u64> {
         let setup = self.bgp.up_at.iter().filter(|(k, _)| !self.bgp.settled.contains(*k)).map(|(_, at)| at.saturating_add(SETUP_US)).min();
         let hold = self.bgp.held.values().map(|(until, _)| *until).min();
-        match (setup, hold) {
-            (Some(a), Some(b)) => Some(a.min(b)),
-            (a, b) => a.or(b),
+        let reuse = self.bgp.damp.values().filter(|f| f.suppressed).map(|f| f.reuse_at).min();
+        [setup, hold, reuse].into_iter().flatten().min()
+    }
+
+    /// The routes dampening holds down now.
+    fn bgp_damped(&self) -> BTreeSet<DampKey> {
+        self.bgp.damp.iter().filter(|(_, f)| f.suppressed).map(|(k, _)| *k).collect()
+    }
+
+    /// Ends the suppression of the routes whose time has come and forgets the ones that have
+    /// decayed to nothing. True when a route became usable.
+    fn bgp_damp_tick(&mut self) -> bool {
+        let now = self.now;
+        let mut reused = false;
+        for f in self.bgp.damp.values_mut() {
+            if f.suppressed && now >= f.reuse_at {
+                f.suppressed = false;
+                reused = true;
+            }
         }
+        // A route that is gone, not held down and below half the reuse limit has no history worth keeping.
+        self.bgp.damp.retain(|_, f| f.present || f.suppressed || f.penalty_at(now) >= u32::from(f.params.reuse) / 2);
+        reused
+    }
+
+    /// Looks at the external paths each router that runs `bgp dampening` has learned: a path that
+    /// is gone since the last look collects the flap penalty, one that came back with other
+    /// attributes the lesser one. True when the set of held-down routes changed.
+    fn bgp_damp_update(&mut self, t: &Topology, st: &BgpState) -> bool {
+        let before = self.bgp_damped();
+        let now = self.now;
+        self.bgp.damp.retain(|k, _| t.device(k.0).and_then(|d| d.bgp.as_ref()).is_some_and(|b| b.dampening.is_some()));
+        for d in &t.devices {
+            if d.bgp.as_ref().is_none_or(|b| b.dampening.is_none()) {
+                continue;
+            }
+            let Some(view) = st.routers.get(&d.id) else { continue };
+            // Every external path the neighbours advertise, and the ones among them dampening watches.
+            let mut advertised: BTreeSet<(Ipv4Addr, Ipv4Net)> = BTreeSet::new();
+            let mut seen: BTreeMap<(Ipv4Addr, Ipv4Net), (u64, conf::DampParams)> = BTreeMap::new();
+            for p in view.paths.iter().filter(|p| p.ebgp && !p.confed) {
+                let Some(from) = p.from else { continue };
+                advertised.insert((from, p.net));
+                if let Some(params) = damp_params(d, p) {
+                    seen.insert((from, p.net), (path_signature(p), params));
+                }
+            }
+            // A route the route map no longer permits is not dampened any more: its record goes, and
+            // its disappearance is not a flap.
+            self.bgp.damp.retain(|k, _| k.0 != d.id || seen.contains_key(&(k.1, k.2)) || !advertised.contains(&(k.1, k.2)));
+            for ((from, net), (sig, params)) in &seen {
+                let key = (d.id, *from, *net);
+                if let Some(f) = self.bgp.damp.get_mut(&key) {
+                    f.params = *params;
+                    if !f.present {
+                        f.present = true;
+                    } else if f.sig != *sig {
+                        f.add(conf::CHANGE_PENALTY, now);
+                    }
+                    f.sig = *sig;
+                } else if self.bgp.damp.len() < MAX_DAMPED {
+                    let f =
+                        Flap { penalty: 0, at: now, flaps: 0, since: 0, present: true, sig: *sig, suppressed: false, reuse_at: 0, params: *params };
+                    self.bgp.damp.insert(key, f);
+                }
+            }
+            for (key, f) in self.bgp.damp.iter_mut().filter(|(k, _)| k.0 == d.id) {
+                if f.present && !advertised.contains(&(key.1, key.2)) {
+                    f.present = false;
+                    f.add(conf::FLAP_PENALTY, now);
+                    if f.flaps == 0 {
+                        f.since = now;
+                    }
+                    f.flaps = f.flaps.saturating_add(1);
+                }
+            }
+        }
+        before != self.bgp_damped()
+    }
+
+    /// `clear ip bgp dampening [PREFIX]`: forgets the penalties of a router's routes (one prefix,
+    /// or all) and lets the held-down routes be used again. Returns how many routes had history.
+    pub fn bgp_clear_dampening(&mut self, t: &Topology, dev: DeviceId, only: Option<Ipv4Net>) -> usize {
+        self.bgp_refresh(t);
+        let keys: Vec<DampKey> = self.bgp.damp.keys().filter(|k| k.0 == dev && only.is_none_or(|n| n == k.2)).copied().collect();
+        let had = keys.iter().filter(|k| self.bgp.damp.get(k).is_some_and(|f| f.flaps > 0 || f.suppressed)).count();
+        for k in keys {
+            if let Some(f) = self.bgp.damp.get_mut(&k) {
+                if f.present {
+                    // Still advertised: keep watching it, with a clean sheet.
+                    f.penalty = 0;
+                    f.flaps = 0;
+                    f.suppressed = false;
+                    f.at = self.now;
+                } else {
+                    self.bgp.damp.remove(&k);
+                }
+            }
+        }
+        self.bgp.state = None;
+        self.bgp_refresh(t);
+        had
     }
 
     /// How often keepalives are due: every second when some neighbour has its own timers, else
@@ -1513,7 +1696,7 @@ impl Sim {
         }
         let Some(d) = t.device(key.0) else { return };
         let hold_secs = d.bgp.as_ref().and_then(|b| b.neighbor(key.1)).map_or(conf::HOLD_SECS, |n| timers_at(t, key, n).1);
-        let open = msg::Message::Open(msg::Open { asn: self.bgp_open_as(key, d), hold_secs, bgp_id: router_id(d) });
+        let open = msg::Message::Open(msg::Open { asn: self.bgp_open_as(key, d), hold_secs, bgp_id: router_id(d), ipv6_unicast: false });
         let now = self.now;
         self.bgp_send(t, key, &open, now.saturating_add(1_000_000));
         self.bgp_send(t, key, &msg::Message::Keepalive, now.saturating_add(2_000_000));
@@ -1728,7 +1911,7 @@ impl Sim {
                 }
             }
         }
-        BgpView { routers, counters: self.bgp.counters.clone(), since: self.bgp.since.clone(), now }
+        BgpView { routers, counters: self.bgp.counters.clone(), since: self.bgp.since.clone(), now, flaps: self.bgp.damp.clone() }
     }
 }
 
@@ -1742,6 +1925,27 @@ mod tests {
 
     fn rank_n(cands: Vec<Path>, multi: usize) -> Vec<Path> {
         rank(cands, &Rank { multi, ..Rank::default() })
+    }
+
+    #[test]
+    fn flaps_collect_a_penalty_that_decays_and_holds_the_route_down_past_the_limit() {
+        let params = conf::DampParams::default();
+        let mut f = Flap { penalty: 0, at: 0, flaps: 0, since: 0, present: true, sig: 0, suppressed: false, reuse_at: 0, params };
+        f.add(conf::FLAP_PENALTY, 0);
+        f.add(conf::FLAP_PENALTY, 0);
+        assert!(!f.suppressed, "2000 does not pass a limit of 2000");
+        f.add(conf::FLAP_PENALTY, 0);
+        assert!(f.suppressed);
+        assert!((30 * 60_000_000..30 * 60_000_000 + 10).contains(&f.reuse_at), "{}", f.reuse_at);
+        assert_eq!(f.penalty_at(15 * 60_000_000), 1_500);
+        // A later flap adds to what is left and moves the reuse time.
+        f.add(conf::CHANGE_PENALTY, 15 * 60_000_000);
+        assert_eq!(f.penalty, 2_000);
+        assert!(f.reuse_at > 30 * 60_000_000);
+        for _ in 0..40 {
+            f.add(conf::FLAP_PENALTY, 15 * 60_000_000);
+        }
+        assert_eq!(f.penalty, params.max_penalty());
     }
 
     /// A router that runs BGP in `asn`.
@@ -1779,6 +1983,7 @@ mod tests {
             confed_path: Vec::new(),
             confed: false,
             aggregate: false,
+            damped: false,
         }
     }
 

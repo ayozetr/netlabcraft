@@ -108,7 +108,7 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
         Id::ShowMacAging => {
             let d = c.d()?;
             let secs = knob_number(d, "mac address-table aging-time").or_else(|| knob_number(d, "mac-address-table aging-time")).unwrap_or(300);
-            Ok(format!("Aging time: {secs} seconds (0 never ages an address)\nThe simulator keeps a learned address until the table is cleared."))
+            Ok(format!("Aging time: {secs} seconds (0 never ages an address)\nA learned address that stays silent longer than that is forgotten."))
         }
         Id::More => match arg(0).to_ascii_lowercase().as_str() {
             "system:running-config" => c.d().map(crate::render::running_config),

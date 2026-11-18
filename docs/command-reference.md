@@ -1151,6 +1151,18 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ip bgp neighbors A.B.C.D received-routes` | user, privileged | router, switch | What a neighbour sent before the inbound policy (needs soft-reconfiguration inbound) |
 | `timers bgp <0-65535> <0\|3-65535>` |  | router, switch | Keepalive interval and hold time of every neighbour that has none of its own (seconds) |
 | `no timers bgp` |  | router, switch | Keepalive 60 and hold time 180 again |
+| `bgp dampening` |  | router, switch | Penalise flapping external routes and hold them down (half-life 15 minutes, reuse 750, suppress 2000, at most 60 minutes) |
+| `bgp dampening <1-45> <1-20000> <1-20000> <1-255>` |  | router, switch | Dampen with a half-life (minutes), a reuse limit, a suppress limit and a longest suppression (minutes) |
+| `bgp dampening route-map NAME` |  | router, switch | Dampen only the routes this route map permits, with its set dampening values |
+| `no bgp dampening` |  | router, switch | Stop dampening and forget the penalties |
+| `no bgp dampening <1-45> <1-20000> <1-20000> <1-255> \| route-map NAME` |  | router, switch | Stop dampening and forget the penalties |
+| `set dampening <1-45> <1-20000> <1-20000> <1-255>` |  | router, switch | Dampen the matched routes with a half-life, a reuse limit, a suppress limit and a longest suppression |
+| `no set dampening` |  | router, switch | Dampen the matched routes with the default values |
+| `show ip bgp dampened-paths` | user, privileged | router, switch | The routes dampening holds down, with the penalty and when they are used again |
+| `show ip bgp flap-statistics` | user, privileged | router, switch | The routes that flapped: how often, the penalty and whether they are held down |
+| `clear ip bgp dampening` | privileged | router, switch | Forget every penalty and use the held-down routes again |
+| `clear ip bgp dampening A.B.C.D` | privileged | router, switch | Forget the penalty of the route to this network |
+| `clear ip bgp dampening A.B.C.D MASK` | privileged | router, switch | Forget the penalty of the route to this network and mask |
 | `show ip bgp neighbors A.B.C.D advertised-routes` | user, privileged | router, switch | What this router sends a neighbour after the outbound policy |
 | `show ip bgp neighbors A.B.C.D routes` | user, privileged | router, switch | The paths accepted from a neighbour after the inbound policy |
 | `show ip bgp regexp <regular expression>` | user, privileged | router, switch | The paths whose AS path matches a regular expression |

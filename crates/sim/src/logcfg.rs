@@ -14,11 +14,15 @@ pub struct LogCfg {
     pub trap: u8,
     /// `logging monitor`: what terminal-monitor sessions see.
     pub monitor: u8,
+    /// `service sequence-numbers`: every message carries its number.
+    pub seq: bool,
+    /// `logging rate-limit N [except LEVEL]`: messages a second, and the severity let through whatever the rate.
+    pub rate: Option<(u32, u8)>,
 }
 
 impl Default for LogCfg {
     fn default() -> LogCfg {
-        LogCfg { ts_log: None, ts_debug: None, console: 7, buffered: 7, trap: 6, monitor: 7 }
+        LogCfg { ts_log: None, ts_debug: None, console: 7, buffered: 7, trap: 6, monitor: 7, seq: false, rate: None }
     }
 }
 
@@ -32,8 +36,22 @@ impl LogCfg {
             buffered: m.logging_buffered.unwrap_or(7),
             trap: m.logging_trap.unwrap_or(6),
             monitor: m.logging_monitor.unwrap_or(7),
+            seq: d.knobs.global.get("service sequence-numbers").is_some_and(|l| !l.starts_with("no ")),
+            rate: rate_limit(d),
         }
     }
+}
+
+/// `logging rate-limit 10 [except errors]`: the limit and the severity that is never held back.
+fn rate_limit(d: &Device) -> Option<(u32, u8)> {
+    let line = d.knobs.global.get("logging rate-limit")?;
+    let mut words = line.split_whitespace().skip(2).filter(|w| !matches!(*w, "all" | "console"));
+    let limit: u32 = words.next()?.parse().ok().filter(|n| *n > 0)?;
+    let except = match words.next() {
+        Some("except") => words.next().and_then(netlabcraft_model::mgmt::severity_from).unwrap_or(0),
+        _ => 0,
+    };
+    Some((limit, except))
 }
 
 /// The severity of a message: debug output is 7 (debugging), links going down and failures 3

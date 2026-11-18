@@ -13,9 +13,22 @@ pub use netlabcraft_wire::lldp::{CAP_BRIDGE, CAP_ROUTER, Lldp};
 
 use crate::port_up;
 
-/// Advertisements every 30 s, kept four times as long.
-pub const LLDP_EVERY_US: u64 = 30_000_000;
+/// The control tick LLDP is considered at; each device sends at its own timer (`lldp timer`).
+pub const LLDP_EVERY_US: u64 = 1_000_000;
+/// Seconds between advertisements by default.
+pub const DEFAULT_TIMER_SECS: u64 = 30;
+/// Seconds a neighbour keeps an advertisement by default (`lldp holdtime`).
 pub const HOLD_SECS: u16 = 120;
+
+/// Seconds between the device's advertisements (`lldp timer`).
+pub fn timer_secs(d: &Device) -> u64 {
+    crate::knob_number(d, "lldp timer").filter(|n| *n > 0).unwrap_or(DEFAULT_TIMER_SECS)
+}
+
+/// Seconds a neighbour keeps the device's advertisement (`lldp holdtime`).
+pub fn hold_secs(d: &Device) -> u16 {
+    crate::knob_number(d, "lldp holdtime").map_or(HOLD_SECS, |n| u16::try_from(n).unwrap_or(u16::MAX))
+}
 
 /// One neighbour heard on one of our ports.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,7 +53,7 @@ pub fn advertisement(d: &Device, port: usize) -> Option<Lldp> {
     Some(Lldp {
         chassis: d.ports.first().map_or(MacAddr([0; 6]), |f| f.mac),
         port: p.name.clone(),
-        ttl: HOLD_SECS,
+        ttl: hold_secs(d),
         system_name: d.name.clone(),
         description: format!("NetLabCraft {} {}", d.catalogue_model().label, env!("CARGO_PKG_VERSION")),
         caps,

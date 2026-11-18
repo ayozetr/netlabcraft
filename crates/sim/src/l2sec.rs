@@ -23,7 +23,7 @@ use netlabcraft_model::{Device, DeviceKind, End, Topology, ifname};
 use netlabcraft_wire::dhcp::{self, Dhcp, DhcpKind};
 use netlabcraft_wire::{Arp, ArpOp, ETHERTYPE_ARP, ETHERTYPE_IPV4, Frame, Ipv4, PROTO_UDP, Udp};
 
-use crate::{MAC_AGING_US, PortEvent, Sim, port_up};
+use crate::{PortEvent, Sim, port_up};
 
 /// LACP state bits, for reports.
 pub use netlabcraft_wire::lacp;
@@ -396,7 +396,7 @@ impl Sim {
             .state
             .get(&d.id)
             .and_then(|st| st.macs.get(&(vlan.get(), msg.client_mac)))
-            .filter(|e| now.saturating_sub(e.learned_us) < MAC_AGING_US)
+            .filter(|e| now.saturating_sub(e.learned_us) < crate::mac_aging_us(d))
             .map(|e| e.port);
         let Some(port) = port else { return };
         // Only an untrusted port is checked later; a client behind a trusted port needs none.
