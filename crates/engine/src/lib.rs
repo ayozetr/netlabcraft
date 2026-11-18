@@ -90,6 +90,8 @@ mod tests_swroute;
 #[cfg(test)]
 mod tests_things;
 #[cfg(test)]
+mod tests_track;
+#[cfg(test)]
 mod tests_traffic;
 #[cfg(test)]
 mod tests_vpnclient;
@@ -207,6 +209,7 @@ impl Session {
         }
         self.apply_sim_events();
         self.apply_pppoe_ended();
+        self.apply_track();
         // A new cable or trunk can join switches into a VTP domain.
         if netlabcraft_sim::vtp::sync(&mut self.topology) {
             self.sim.topology_changed(&self.topology);
@@ -329,6 +332,16 @@ impl Session {
             }
         }
         if any {
+            self.changed();
+        }
+    }
+
+    /// Moves the settled state of every tracked object along (delays included) and, when one
+    /// changed, refreshes what follows it: static routes and HSRP and VRRP priorities.
+    fn apply_track(&mut self) {
+        let now = self.sim.now_us();
+        let changed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| netlabcraft_sim::track::tick(&mut self.topology, now))).unwrap_or(false);
+        if changed {
             self.changed();
         }
     }

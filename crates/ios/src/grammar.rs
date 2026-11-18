@@ -107,6 +107,8 @@ impl Modes {
     pub const KEYCHAIN: Modes = Modes(1 << 59);
     /// `key N` inside a key chain.
     pub const KEYCHAIN_KEY: Modes = Modes(1 << 60);
+    /// `track N …`: a tracked object.
+    pub const TRACK: Modes = Modes(1 << 61);
     /// Every command mode, either device.
     pub const ANY_MODE: Modes = Modes(
         63 | 256
@@ -149,7 +151,8 @@ impl Modes {
             | (1 << 57)
             | (1 << 58)
             | (1 << 59)
-            | (1 << 60),
+            | (1 << 60)
+            | (1 << 61),
     );
     pub const BOTH: Modes = Modes(192);
     /// A router with a switch card (a device flag): the VLAN database and the switching
@@ -1360,6 +1363,19 @@ pub enum Id {
     SrNoVtpPruning,
     SrTrunkPruning,
     SrNoTrunkPruning,
+    // Object tracking (exec/track.rs).
+    TrackInterface,
+    TrackIpRoute,
+    TrackSla,
+    TrackList,
+    TrackEnter,
+    NoTrack,
+    TrackDelay,
+    NoTrackDelay,
+    TrackObject,
+    TrackObjectNot,
+    NoTrackObject,
+    ShowTrack,
 }
 
 use Tok::{Arg, K, Rest};
@@ -1382,6 +1398,7 @@ const SUBMODES: Modes = Modes::IF
     .or(Modes::ROUTE_MAP)
     .or(Modes::KEYCHAIN)
     .or(Modes::KEYCHAIN_KEY)
+    .or(Modes::TRACK)
     .or(VPN_MODES)
     .or(QOS_MODES)
     .or(Modes::OBJECT)
@@ -1528,8 +1545,8 @@ pub static SPECS: &[Spec] = &[
         IpRoute,
         Modes::CONFIG,
         Modes::BOTH,
-        [K("ip"), K("route"), Arg("A.B.C.D"), Arg("MASK"), Rest("<next hop or interface> [distance] [tag <1-4294967295>]")],
-        "Add a static route (a distance above the protocol's makes it a backup, a tag labels it)"
+        [K("ip"), K("route"), Arg("A.B.C.D"), Arg("MASK"), Rest("<next hop or interface> [distance] [tag <1-4294967295>] [track <1-1000>] [permanent]")],
+        "Add a static route (a distance above the protocol's makes it a backup, a tag labels it, track ties it to a tracked object)"
     ),
     spec!(
         NoIpRoute,
@@ -6496,6 +6513,63 @@ pub static SPECS: &[Spec] = &[
         "The VLANs VTP pruning may stop on this trunk"
     ),
     spec!(SrNoTrunkPruning, Modes::IF, Modes::SWITCH, [K("no"), K("switchport"), K("trunk"), K("pruning"), K("vlan")], "VLANs 2-1001 eligible again"),
+    spec!(
+        TrackInterface,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("track"), Arg("<1-1000>"), K("interface"), Rest("<interface> {line-protocol|ip routing}")],
+        "Track whether an interface works (or routes IP)"
+    ),
+    spec!(
+        TrackIpRoute,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("track"), Arg("<1-1000>"), K("ip"), K("route"), Arg("A.B.C.D/<0-32>"), K("reachability")],
+        "Track whether the routing table has a prefix"
+    ),
+    spec!(
+        TrackIpRoute,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("track"), Arg("<1-1000>"), K("ip"), K("route"), Arg("A.B.C.D"), Arg("MASK"), K("reachability")],
+        "Track whether the routing table has a prefix"
+    ),
+    spec!(
+        TrackSla,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("track"), Arg("<1-1000>"), K("ip"), K("sla"), Arg("<1-2147483647>")],
+        "Track an IP SLA operation (up while its last probe succeeded)"
+    ),
+    spec!(
+        TrackSla,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("track"), Arg("<1-1000>"), K("ip"), K("sla"), Arg("<1-2147483647>"), Arg("{reachability|state}")],
+        "Track an IP SLA operation: its reachability (a slow probe counts) or its state"
+    ),
+    spec!(
+        TrackList,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("track"), Arg("<1-1000>"), K("list"), K("boolean"), Arg("{and|or}")],
+        "Track several objects together"
+    ),
+    spec!(TrackEnter, Modes::CONFIG, Modes::BOTH, [K("track"), Arg("<1-1000>")], "Edit a tracked object"),
+    spec!(NoTrack, Modes::CONFIG, Modes::BOTH, [K("no"), K("track"), Arg("<1-1000>")], "Delete a tracked object"),
+    spec!(
+        TrackDelay,
+        Modes::TRACK,
+        Modes::BOTH,
+        [K("delay"), Rest("{up|down} <0-180> [{up|down} <0-180>]")],
+        "Wait this many seconds before reporting a change of state"
+    ),
+    spec!(NoTrackDelay, Modes::TRACK, Modes::BOTH, [K("no"), K("delay")], "Report changes at once"),
+    spec!(TrackObject, Modes::TRACK, Modes::BOTH, [K("object"), Arg("<1-1000>")], "Add an object to the list"),
+    spec!(TrackObjectNot, Modes::TRACK, Modes::BOTH, [K("object"), Arg("<1-1000>"), K("not")], "Add an object to the list, negated"),
+    spec!(NoTrackObject, Modes::TRACK, Modes::BOTH, [K("no"), K("object"), Arg("<1-1000>")], "Take an object out of the list"),
+    spec!(ShowTrack, EXECS, Modes::BOTH, [K("show"), K("track")], "Every tracked object, its state and what follows it"),
+    spec!(ShowTrack, EXECS, Modes::BOTH, [K("show"), K("track"), Arg("<1-1000>")], "One tracked object"),
     // ---- PPPoE on routers: the access concentrator and the client ----
     spec!(BbaGroup, Modes::CONFIG, Modes::ROUTER, [K("bba-group"), K("pppoe"), Arg("NAME")], "Define or edit a group of PPPoE concentrator settings"),
     spec!(NoBbaGroup, Modes::CONFIG, Modes::ROUTER, [K("no"), K("bba-group"), K("pppoe"), Arg("NAME")], "Delete a PPPoE group"),
@@ -6907,6 +6981,7 @@ mod tests {
                 Modes::DIALER,
                 Modes::KEYCHAIN,
                 Modes::KEYCHAIN_KEY,
+                Modes::TRACK,
             ]
             .into_iter()
             .find(|m| s.modes.has(*m))

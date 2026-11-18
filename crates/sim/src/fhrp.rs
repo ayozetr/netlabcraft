@@ -336,6 +336,7 @@ pub fn fingerprint(t: &Topology) -> u64 {
     for d in routers(t) {
         d.id.hash(&mut h);
         d.fhrp.hash(&mut h);
+        format!("{:?}", d.track).hash(&mut h);
         for (i, p) in d.ports.iter().enumerate() {
             (p.shutdown, p.err_disabled, p.ip, port_up(t, End { device: d.id, port: i })).hash(&mut h);
             format!("{:?}", p.ipv6).hash(&mut h);

@@ -37,6 +37,7 @@ pub(crate) mod security;
 pub(crate) mod span;
 pub(crate) mod sweep;
 pub(crate) mod swroute;
+pub(crate) mod track;
 pub(crate) mod voice;
 mod vpn;
 mod wlan;
@@ -164,6 +165,8 @@ pub enum Mode {
     KeyChain(String),
     /// `R1(config-keychain-key)#`: the key chain's name and the key's number.
     KeyChainKey(String, u32),
+    /// `R1(config-track)#`: the tracked object's number.
+    Track(u32),
 }
 
 impl Mode {
@@ -216,6 +219,7 @@ impl Mode {
             Mode::PkiServer(_) => Modes::PKI_SERVER,
             Mode::KeyChain(_) => Modes::KEYCHAIN,
             Mode::KeyChainKey(..) => Modes::KEYCHAIN_KEY,
+            Mode::Track(_) => Modes::TRACK,
         }
     }
 }
@@ -596,6 +600,7 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::PkiServer(_) => format!("{n}(cs-server)#"),
         Mode::KeyChain(_) => format!("{n}(config-keychain)#"),
         Mode::KeyChainKey(..) => format!("{n}(config-keychain-key)#"),
+        Mode::Track(_) => format!("{n}(config-track)#"),
         Mode::VoiceRegGlobal => format!("{n}(config-register-global)#"),
         Mode::VoiceRegDn(_) => format!("{n}(config-register-dn)#"),
         Mode::VoiceRegPool(_) => format!("{n}(config-register-pool)#"),
@@ -917,6 +922,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::PkiServer(_)
                 | Mode::KeyChain(_)
                 | Mode::KeyChainKey(..)
+                | Mode::Track(_)
                 | Mode::VoiceRegGlobal
                 | Mode::VoiceRegDn(_)
                 | Mode::VoiceRegPool(_)
@@ -997,6 +1003,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::PkiTrustpoint(_)
                 | Mode::PkiServer(_)
                 | Mode::KeyChain(_)
+                | Mode::Track(_)
                 | Mode::VoiceRegGlobal
                 | Mode::VoiceRegDn(_)
                 | Mode::VoiceRegPool(_) => Mode::Config,
@@ -1715,6 +1722,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let d = c.d()?;
             let idx = d.port_index(arg(1));
             let name = match idx.and_then(|i| d.ports.get(i)) {
+                // A number is a tracked object (`track N …`), not an interface.
+                _ if track::object_word(arg(1)).is_some() => arg(1).trim().to_string(),
                 Some(p) => p.name.clone(),
                 None if arg(1).to_ascii_lowercase().starts_with("vlan") && arg(1).get(4..).is_some_and(|n| n.parse::<u16>().is_ok()) => {
                     format!("Vlan{}", arg(1).get(4..).unwrap_or(""))
@@ -2232,6 +2241,18 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::NoAcceptLifetime
         | Id::NoSendLifetime
         | Id::ShowKeyChain => keychain::command(&mut c, spec.id, &args),
+        Id::TrackInterface
+        | Id::TrackIpRoute
+        | Id::TrackSla
+        | Id::TrackList
+        | Id::TrackEnter
+        | Id::NoTrack
+        | Id::TrackDelay
+        | Id::NoTrackDelay
+        | Id::TrackObject
+        | Id::TrackObjectNot
+        | Id::NoTrackObject
+        | Id::ShowTrack => track::command(&mut c, spec.id, &args),
         Id::BbaGroup
         | Id::NoBbaGroup
         | Id::BbaTemplate
@@ -5457,6 +5478,14 @@ impl Ctx<'_> {
         if n.network() != n {
             return Err(format!("% {n} has host bits set; the network is {}", n.network()));
         }
+        let (target, permanent, track) = match target {
+            Some(t) => {
+                let (rest, permanent, track) = routing::split_route_flags(t)?;
+                (Some(rest), permanent, track)
+            }
+            None => (None, false, None),
+        };
+        let target = target.as_deref();
         let (target, distance, tag) = match target {
             Some(t) => {
                 let (t, tag) = routing::split_tag(t)?;
@@ -5495,6 +5524,10 @@ impl Ctx<'_> {
         if add {
             let Some(via) = via else { return Err("% Give a next-hop address or an exit interface".into()) };
             let route = StaticRoute { net: n, via, distance, tag };
+            let key = netlabcraft_model::track::route_key(&route.net, &route.via);
+            if track.is_some() && d.track.route_track.len() >= netlabcraft_model::track::MAX_BOUND_ROUTES {
+                return Err("% Too many routes follow a tracked object".into());
+            }
             // One route per network and next hop: typing it again changes its distance.
             d.routes.retain(|r| !(r.net == route.net && r.via == route.via));
             if !d.routes.contains(&route) {
@@ -5504,11 +5537,29 @@ impl Ctx<'_> {
                 d.routes.push(route);
                 d.routes.sort();
             }
+            d.track.route_track.remove(&key);
+            d.track.permanent.remove(&key);
+            if let Some(id) = track {
+                d.track.route_track.insert(key.clone(), id);
+            }
+            if permanent {
+                d.track.permanent.insert(key);
+            }
         } else {
+            let gone: Vec<String> = d
+                .routes
+                .iter()
+                .filter(|r| r.net == n && via.as_ref().is_none_or(|v| *v == r.via))
+                .map(|r| netlabcraft_model::track::route_key(&r.net, &r.via))
+                .collect();
             let before = d.routes.len();
             d.routes.retain(|r| !(r.net == n && via.as_ref().is_none_or(|v| *v == r.via)));
             if d.routes.len() == before {
                 return Err("% No such static route".into());
+            }
+            for key in gone {
+                d.track.route_track.remove(&key);
+                d.track.permanent.remove(&key);
             }
         }
         Ok(String::new())

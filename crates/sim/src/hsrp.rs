@@ -67,6 +67,10 @@ impl Role {
 
 /// Whether an interface (by name, as typed in `standby … track`) is up.
 pub(crate) fn tracked_up(t: &Topology, d: &Device, name: &str) -> bool {
+    // A number names a tracked object (`standby 1 track 5`), not an interface.
+    if let Ok(id) = name.trim().parse::<u32>() {
+        return crate::track::is_up(t, d, id);
+    }
     match d.port_index(name) {
         Some(i) => d.ports.get(i).is_some_and(|p| !p.shutdown && !p.err_disabled) && port_up(t, End { device: d.id, port: i }),
         // A VLAN interface or subinterface: up when it is among the device's working ones.
@@ -195,6 +199,7 @@ pub fn fingerprint(t: &Topology) -> u64 {
             (s.vlan, s.ip, s.shutdown, &s.standby).hash(&mut h);
         }
         d.mgmt.hsrp_v2.hash(&mut h);
+        format!("{:?}", d.track).hash(&mut h);
     }
     h.finish()
 }
