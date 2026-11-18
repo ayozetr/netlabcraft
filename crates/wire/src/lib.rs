@@ -66,6 +66,7 @@ pub mod x509;
 pub mod xml;
 // Secure transports for automation (TLS under RESTCONF, SSH under NETCONF).
 pub mod modp;
+pub mod mst;
 pub mod ssh;
 pub mod tls;
 
@@ -1073,6 +1074,10 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
             Ok(e) => (Protocol::Eapol, format!("{}{tag}", e.describe())),
             Err(e) => (Protocol::Eapol, format!("EAPOL ({e}){tag}")),
         },
+        len if len <= 1_500 && f.payload.get(3..7) == Some(&[0, 0, 3, 2][..]) && mst::MstBpdu::decode(&f.payload).is_ok() => {
+            let text = mst::MstBpdu::decode(&f.payload).map(|b| b.describe()).unwrap_or_default();
+            (Protocol::Stp, format!("{text}{tag}"))
+        }
         len if len <= 1_500 && f.payload.starts_with(&[0x42, 0x42, 0x03]) => match control::Bpdu::decode(&f.payload) {
             Ok(b) => match b.rstp {
                 Some(flags) => (
