@@ -243,6 +243,32 @@ pub fn cable_problem(t: &Topology, end: End) -> Option<String> {
         .map(|b| format!("fiber loses {:.1} dB, over the {:.1} dB the transceivers tolerate", b.loss_db, b.budget_db))
 }
 
+/// Why a cable carries nothing, if it doesn't: a device with no power, a shut down or err-disabled
+/// port, a serial line that is not clocked or framed alike, ports fixed at different speeds, or
+/// the cable itself ([`cable_problem`]). `None` when nothing stops it (or the link is unknown).
+pub fn link_why_down(t: &Topology, l: &netlabcraft_model::Link) -> Option<String> {
+    for e in [l.a, l.b] {
+        let Some(dev) = t.device(e.device) else { continue };
+        if t.is_dark(e.device) {
+            return Some(format!("{} is switched off or has no power", dev.name));
+        }
+        let Some(port) = dev.ports.get(e.port) else { continue };
+        if port.shutdown {
+            return Some(format!("{} is shut down", t.end_label(e)));
+        }
+        if port.err_disabled {
+            return Some(format!("{} is err-disabled", t.end_label(e)));
+        }
+    }
+    if let Some(why) = serial_problem(t, l.a) {
+        return Some(why.to_string());
+    }
+    if speed_mismatch(t, l.a) {
+        return Some("the two ends are fixed at different speeds".to_string());
+    }
+    cable_problem(t, l.a)
+}
+
 /// The fastest an Ethernet port goes, in Mbit/s, from its type (`None`: not Ethernet).
 pub fn port_max_speed(name: &str) -> Option<u32> {
     match netlabcraft_model::ifname::parse(name)?.kind {
