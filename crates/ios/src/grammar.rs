@@ -488,6 +488,12 @@ pub enum Id {
     NoIpv6RouterOspf,
     Ipv6OspfArea,
     NoIpv6OspfArea,
+    Ospfv3AuthIpsec,
+    Ospfv3AuthNull,
+    NoOspfv3Auth,
+    Ospf6AreaAuthIpsec,
+    Ospf6AreaAuthNull,
+    NoOspf6AreaAuth,
     ShowIpv6OspfNeighbor,
     ShowIpv6Ospf,
     ShowIpProtocols,
@@ -3707,6 +3713,36 @@ pub static SPECS: &[Spec] = &[
         Modes::BOTH,
         [K("no"), K("ipv6"), K("ospf"), Arg("<1-65535>"), K("area"), Arg("<0-4294967295>")],
         "Stop OSPFv3 on this interface"
+    ),
+    spec!(
+        Ospfv3AuthIpsec,
+        ANY_IF,
+        Modes::BOTH,
+        [K("ospfv3"), K("authentication"), K("ipsec"), K("spi"), Arg("<256-4294967295>"), Arg("{md5|sha1}"), Rest("[0] KEY")],
+        "Protect OSPFv3 packets here with an AH header (the key is 32 hex digits for md5, 40 for sha1)"
+    ),
+    spec!(Ospfv3AuthNull, ANY_IF, Modes::BOTH, [K("ospfv3"), K("authentication"), K("null")], "No AH header here, whatever the area says"),
+    spec!(NoOspfv3Auth, ANY_IF, Modes::BOTH, [K("no"), K("ospfv3"), K("authentication")], "Use the area's protection again"),
+    spec!(
+        Ospf6AreaAuthIpsec,
+        Modes::OSPF6,
+        Modes::BOTH,
+        [K("area"), Arg("<0-4294967295>"), K("authentication"), K("ipsec"), K("spi"), Arg("<256-4294967295>"), Arg("{md5|sha1}"), Rest("[0] KEY")],
+        "Protect the OSPFv3 packets of every interface in the area with an AH header"
+    ),
+    spec!(
+        Ospf6AreaAuthNull,
+        Modes::OSPF6,
+        Modes::BOTH,
+        [K("area"), Arg("<0-4294967295>"), K("authentication"), K("null")],
+        "No AH header in this area unless an interface sets one"
+    ),
+    spec!(
+        NoOspf6AreaAuth,
+        Modes::OSPF6,
+        Modes::BOTH,
+        [K("no"), K("area"), Arg("<0-4294967295>"), K("authentication")],
+        "Take the area's OSPFv3 protection off"
     ),
     spec!(ShowIpv6OspfNeighbor, EXECS, Modes::BOTH, [K("show"), K("ipv6"), K("ospf"), K("neighbor")], "OSPFv3 neighbours"),
     spec!(Ipv6RouterEigrp, Modes::CONFIG, Modes::BOTH, [K("ipv6"), K("router"), K("eigrp"), Arg("<1-65535>")], "Start or configure EIGRP for IPv6"),

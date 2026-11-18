@@ -4273,6 +4273,35 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 Ok(())
             })
         }
+        Id::Ospfv3AuthIpsec | Id::Ospfv3AuthNull | Id::NoOspfv3Auth => {
+            let auth = match spec.id {
+                Id::Ospfv3AuthIpsec => Some(ospf6_auth(arg(0), arg(1), arg(2))?),
+                Id::Ospfv3AuthNull => Some(netlabcraft_model::Ospf6Auth::Null),
+                _ => None,
+            };
+            c.each_v6(|v6, _, _| {
+                v6.ospf_auth = auth.clone();
+                Ok(())
+            })
+        }
+        Id::Ospf6AreaAuthIpsec | Id::Ospf6AreaAuthNull | Id::NoOspf6AreaAuth => {
+            let area: u32 = arg(0).parse().map_err(|_| "% Area number 0-4294967295")?;
+            let auth = match spec.id {
+                Id::Ospf6AreaAuthIpsec => Some(ospf6_auth(arg(1), arg(2), arg(3))?),
+                Id::Ospf6AreaAuthNull => Some(netlabcraft_model::Ospf6Auth::Null),
+                _ => None,
+            };
+            let o = c.dm()?.ospf6.as_mut().ok_or("% Not in OSPFv3 mode")?;
+            match auth {
+                Some(a) => {
+                    o.area_auth.insert(area, a);
+                }
+                None => {
+                    o.area_auth.remove(&area);
+                }
+            }
+            Ok(String::new())
+        }
         Id::ShowIpv6OspfNeighbor => {
             let st = c.sim.ospf6_state(c.t);
             Ok(render::ospf6_neighbors(c.t, c.d()?, &st))
@@ -5643,4 +5672,31 @@ fn vtp_bump(d: &mut Device, before: &std::collections::BTreeMap<VlanId, String>)
     if d.vtp.mode == netlabcraft_model::VtpMode::Server && d.vlans != *before {
         d.vtp.revision = d.vtp.revision.saturating_add(1);
     }
+}
+
+/// The AH settings an `ospfv3 authentication ipsec spi N md5|sha1 [0] KEY` line gives: the SPI is
+/// at least 256 (the lower numbers are reserved), the key is hexadecimal, 32 digits for md5 and
+/// 40 for sha1.
+fn ospf6_auth(spi: &str, alg: &str, key: &str) -> Result<netlabcraft_model::Ospf6Auth, String> {
+    use netlabcraft_model::{Ospf6Auth, Ospf6AuthAlg};
+    let spi: u32 = spi.parse().ok().filter(|n| *n >= 256).ok_or("% The SPI is 256-4294967295")?;
+    let alg = match alg.to_ascii_lowercase().as_str() {
+        "md5" => Ospf6AuthAlg::Md5,
+        "sha1" => Ospf6AuthAlg::Sha1,
+        _ => return Err("% The algorithm is md5 or sha1".into()),
+    };
+    let mut words = key.split_whitespace();
+    let first = words.next().unwrap_or("");
+    let text = if first == "0" {
+        words.next().unwrap_or("")
+    } else if first == "7" {
+        return Err("% Encrypted (type 7) keys are not read: give the key as hexadecimal digits".into());
+    } else {
+        first
+    };
+    let want = if alg == Ospf6AuthAlg::Md5 { 32 } else { 40 };
+    if text.len() != want || !text.chars().all(|ch| ch.is_ascii_hexdigit()) || words.next().is_some() {
+        return Err(format!("% The key is {want} hexadecimal digits for {}", if want == 32 { "md5" } else { "sha1" }));
+    }
+    Ok(Ospf6Auth::Ipsec { spi, alg, key: text.to_ascii_lowercase() })
 }

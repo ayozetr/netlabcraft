@@ -25,6 +25,7 @@ mod line_protocol;
 mod name_resolution;
 mod nat_timeouts;
 mod nat_verbose;
+mod ospf6_auth;
 mod ospf_areas;
 mod ospf_database;
 mod ospf_debug;
