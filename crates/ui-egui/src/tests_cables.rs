@@ -148,4 +148,30 @@ mod t {
         assert!(h.query_all_by_label("Down").next().is_some());
         assert!(h.query_all_by_label_contains("is shut down").next().is_some());
     }
+
+    #[test]
+    fn a_fiber_cable_shows_its_loss_budget_and_the_splice_buttons_change_it() {
+        let mut s = Session::new();
+        for n in ["F1", "F2"] {
+            s.execute("device.add", json!({"model": "Switch-24-SFP", "name": n})).unwrap();
+        }
+        s.execute("link.add", json!({"a": "F1", "b": "F2", "cable": "multi-mode"})).unwrap();
+        s.execute("link.length", json!({"device": "F1", "port": "g0/1", "meters": 550})).unwrap();
+        let end = s.topology.links[0].a;
+        let mut h = Harness::builder().with_size(egui::vec2(1200.0, 800.0)).build_ui_state(|ui, app: &mut PacketApp| app.ui(ui), PacketApp::new(s));
+        h.state_mut().ui.cable_window = Some(end);
+        h.run_steps(3);
+        assert!(h.query_all_by_label("Loss budget").next().is_some());
+        assert!(h.query_all_by_label_contains("degraded").next().is_some(), "550 m of multi-mode leaves under a decibel");
+        h.get_by_label("More splices").click();
+        h.run_steps(3);
+        assert_eq!(h.state().session.topology.splices_on(&h.state().session.topology.links[0]), 1);
+        h.get_by_label("More splices").click();
+        h.run_steps(3);
+        assert!(h.query_all_by_label("over the budget").next().is_some());
+        assert!(h.query_all_by_label("Down").next().is_some());
+        h.get_by_label("Fewer splices").click();
+        h.run_steps(3);
+        assert_eq!(h.state().session.topology.splices_on(&h.state().session.topology.links[0]), 1);
+    }
 }

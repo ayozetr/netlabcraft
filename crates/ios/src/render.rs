@@ -45,6 +45,7 @@ pub fn running_config(d: &Device) -> String {
     if !d.ntp_servers.is_empty() || !d.log_hosts.is_empty() || s.len() != before {
         let _ = writeln!(s, "!");
     }
+    crate::exec::knobs::global_config(&mut s, d);
     if d.ipv6_routing {
         let _ = writeln!(s, "ipv6 unicast-routing\n!");
     }
@@ -274,6 +275,9 @@ pub fn running_config(d: &Device) -> String {
         if p.mdix_off {
             let _ = writeln!(s, " no mdix auto");
         }
+        if p.single_mode {
+            let _ = writeln!(s, " transceiver type single-mode");
+        }
         match p.keepalive {
             Some(0) => {
                 let _ = writeln!(s, " no keepalive");
@@ -390,6 +394,7 @@ pub fn running_config(d: &Device) -> String {
         crate::exec::qos::service_policy_lines(&mut s, d, &p.name);
         crate::exec::security::iface_lines(&mut s, d, &p.name);
         crate::exec::netflow::iface_lines(&mut s, d, &p.name);
+        crate::exec::knobs::iface_lines(&mut s, d, &p.name);
         // Routers write both states: their ports start shut, so a replay must say which are up.
         if p.shutdown {
             let _ = writeln!(s, " shutdown");
@@ -421,6 +426,7 @@ pub fn running_config(d: &Device) -> String {
             crate::exec::qos::service_policy_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
             crate::exec::security::iface_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
             crate::exec::netflow::iface_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
+            crate::exec::knobs::iface_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
             if sub.shutdown {
                 let _ = writeln!(s, " shutdown");
             }
@@ -450,6 +456,7 @@ pub fn running_config(d: &Device) -> String {
         crate::exec::fhrp::iface_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
         ospf_if_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
         crate::exec::qos::service_policy_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
+        crate::exec::knobs::iface_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
         let _ = writeln!(s, "{}", if svi.shutdown { " shutdown" } else { " no shutdown" });
         let _ = writeln!(s, "!");
     }
@@ -730,6 +737,7 @@ pub fn running_config(d: &Device) -> String {
         if let Some(a) = &line.access_class {
             let _ = writeln!(s, " access-class {a} in");
         }
+        crate::exec::knobs::line_lines(&mut s, d, if name == "line con 0" { "con" } else { "vty" });
         let _ = writeln!(s, "!");
     }
     s.push_str("end");
@@ -2335,6 +2343,40 @@ pub fn ip_interface(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
 }
 
 /// `show interfaces status` (switches).
+pub fn interface_transceivers(t: &Topology, d: &Device) -> String {
+    use netlabcraft_model::cable::Medium;
+    use netlabcraft_model::physical::BudgetState;
+    let mut s = format!("{:<10} {:<20} {:<10} {:<8} {:<8} {:<8} {}\n", "Port", "Transceiver", "Length", "Loss", "Budget", "Margin", "State");
+    let mut any = false;
+    for (i, p) in d.ports.iter().enumerate() {
+        if !matches!(d.port_medium(i), Some(Medium::Fiber | Medium::Combo)) {
+            continue;
+        }
+        any = true;
+        let end = End { device: d.id, port: i };
+        let kind = if p.single_mode { "single-mode 1310 nm" } else { "multi-mode 850 nm" };
+        let cols = match t.link_at(end).and_then(|l| t.fiber_budget(l)) {
+            Some(b) => (
+                format!("{} m", b.meters),
+                format!("{:.1} dB", b.loss_db),
+                format!("{:.1} dB", b.budget_db),
+                format!("{:.1} dB", b.margin_db()),
+                match b.state() {
+                    BudgetState::Ok => "ok",
+                    BudgetState::Degraded => "degraded",
+                    BudgetState::Over => "over budget",
+                },
+            ),
+            None => ("-".to_string(), "-".to_string(), "-".to_string(), "-".to_string(), "no fiber cable"),
+        };
+        let _ = writeln!(s, "{:<10} {:<20} {:<10} {:<8} {:<8} {:<8} {}", ifname::short(&p.name), kind, cols.0, cols.1, cols.2, cols.3, cols.4);
+    }
+    if !any {
+        s.push_str("No fiber or combo ports on this device\n");
+    }
+    s
+}
+
 pub fn interface_status(t: &Topology, d: &Device, only: Option<usize>) -> String {
     let mut s = format!("{:<10} {:<18} {:<13} {:<8} {:<7} {:<6} {}\n", "Port", "Description", "State", "VLAN", "Duplex", "Speed", "Type");
     for (i, p) in d.ports.iter().enumerate() {

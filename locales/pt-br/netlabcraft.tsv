@@ -220,6 +220,14 @@
 	cable	cabo
 	Cable Length	Comprimento do cabo
 	Cable Length…	Comprimento do cabo…
+	Loss budget	Orçamento de perdas
+	within the budget	dentro do orçamento
+	degraded: little margin left	degradado: pouca margem
+	over the budget	acima do orçamento
+	{} dB lost of {} dB ({} connectors, {} splices)	{} dB perdidos de {} dB ({} conectores, {} emendas)
+	More splices	Mais emendas
+	Fewer splices	Menos emendas
+	fiber loses {} dB, over the {} dB the transceivers tolerate	a fibra perde {} dB, mais que os {} dB que os transceptores toleram
 	Resize…	Redimensionar…
 	Resize	Redimensionar
 	Units ({} to {}):	Unidades ({} a {}):
