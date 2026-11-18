@@ -205,3 +205,19 @@ fn debug_ip_pim_and_mpacket_report_what_the_router_does() {
     n.lab.run(n.src, "ping -n 1 239.1.1.1");
     assert!(!n.lab.run(n.r1, "show logging").contains("Multicast packet debug"));
 }
+
+#[test]
+fn a_router_can_ping_a_group() {
+    let mut n = net("sparse-mode");
+    n.lab.run(n.rcv, "igmp join 239.1.1.1");
+    // R2 is on the receiver's LAN; R1 reaches it through the tree.
+    let near = n.lab.run(n.r2, "ping 239.1.1.1");
+    assert!(near.contains('!'), "{near}\n{}", dump(&n.lab));
+    let far = n.lab.run(n.r1, "ping 239.1.1.1");
+    assert!(far.contains('!'), "{far}\n{}", dump(&n.lab));
+    let m2 = n.lab.run(n.r2, "show ip mroute 239.1.1.1");
+    assert!(m2.contains("(10.0.12.1, 239.1.1.1)") || m2.contains("(10.1.1.1, 239.1.1.1)"), "{m2}");
+    // With routing off a router has nowhere to send a group's packets.
+    n.lab.run(n.r1, "conf t\nno ip multicast-routing\nend");
+    assert!(!n.lab.try_run(n.r1, "ping 239.1.1.1").contains('!'));
+}

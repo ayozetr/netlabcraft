@@ -3875,6 +3875,9 @@ impl Sim {
         if ip.dst.is_multicast() && d.kind.is_host() {
             return self.send_multicast(t, d, &ip);
         }
+        if ip.dst.is_multicast() && d.routes_ip() {
+            return self.mcast_originate(t, d, ip);
+        }
         let policy = self.policy_route(t, d, None, &ip);
         let mark = policy.as_ref().and_then(|p| p.dscp);
         let routed = match policy.and_then(|p| p.route) {
@@ -4642,6 +4645,12 @@ impl Sim {
             && let Some(i) = self.host_multicast_iface(t, d)
         {
             return Ok(i.net.addr);
+        }
+        // A multicast router sends to a group out of its interfaces that run PIM.
+        if dst.is_multicast()
+            && let Some(a) = self.router_multicast_source(t, d)
+        {
+            return Ok(a);
         }
         let mut ifs = l3_ifaces_all(d);
         ifs.retain(|i| i.vrf == self.cur_vrf);

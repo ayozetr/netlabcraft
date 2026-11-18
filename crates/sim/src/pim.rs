@@ -342,7 +342,9 @@ impl Sim {
         let nodes = self.pim_tree(t, &net, src, group, false);
         let node = nodes.get(&d.id).cloned().unwrap_or_default();
         let key = (d.id, src, group);
-        if node.iif.as_deref() != Some(ifc.name.as_str()) {
+        // A packet this router sends itself starts the tree: no reverse path to check.
+        let local_source = node.owner;
+        if !local_source && node.iif.as_deref() != Some(ifc.name.as_str()) {
             let n = self.pim.counts.entry(key).or_default();
             n.rpf_failed = n.rpf_failed.saturating_add(1);
             self.bump(d.id, "multicast dropped: reverse path check");
@@ -351,7 +353,7 @@ impl Sim {
             self.mdebug(d, &format!("{src} to {group} dropped on {}: {why}", ifc.name));
             return Err(why);
         }
-        if sparse && node.connected {
+        if sparse && (node.connected || local_source) {
             let rp = d.pim.rp_for(&d.acls, group);
             let Some(rp) = rp else {
                 self.bump(d.id, "multicast dropped: no rendezvous point");
@@ -374,7 +376,7 @@ impl Sim {
         let n = self.pim.counts.entry(key).or_default();
         n.forwarded = n.forwarded.saturating_add(1);
         n.bytes = n.bytes.saturating_add(wire_len);
-        if d.pim.has_joined(group) {
+        if d.pim.has_joined(group) && !local_source {
             let _ = self.local_in(t, d, ifc, ip.clone());
         }
         if ip.ttl <= 1 {
@@ -406,6 +408,28 @@ impl Sim {
         };
         self.mdebug(d, &text);
         Ok(())
+    }
+
+    /// The address a router sources its own multicast packets from: its first interface that
+    /// runs PIM and is up (a loopback only when no other does).
+    pub(crate) fn router_multicast_source(&self, t: &Topology, d: &Device) -> Option<Ipv4Addr> {
+        if !d.routes_ip() || !d.pim.routing {
+            return None;
+        }
+        let ifs: Vec<L3If> = up_ifaces(t, d).into_iter().filter(|i| d.pim.iface(&i.name).is_some()).collect();
+        ifs.iter().find(|i| !crate::loopback::is_loopback(i.port)).or(ifs.first()).map(|i| i.net.addr)
+    }
+
+    /// A multicast packet this router originates goes out as if it had come from a source on the
+    /// interface that has the packet's source address.
+    pub(crate) fn mcast_originate(&mut self, t: &Topology, d: &Device, ip: Ipv4) -> Result<(), String> {
+        if !d.pim.routing {
+            return Err("multicast routing is off here (`ip multicast-routing`)".into());
+        }
+        let Some(ifc) = up_ifaces(t, d).into_iter().find(|i| i.net.addr == ip.src && d.pim.iface(&i.name).is_some()) else {
+            return Err(format!("no interface that runs PIM has the address {}", ip.src));
+        };
+        self.mcast_in(t, d, &ifc, ip)
     }
 
     /// The first router of a source tells the rendezvous point the source exists.
