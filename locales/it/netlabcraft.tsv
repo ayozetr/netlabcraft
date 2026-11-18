@@ -2379,3 +2379,30 @@ furniture	Table	Tavolo
 	{}, {} rows of hooks	{}, {} file di ganci
 	Hang on a Peg	Appendi a un gancio
 	Take off the Peg	Stacca dal gancio
+	Up	Attivo
+	Down	Inattivo
+	Properties…	Proprietà…
+	Open First Device	Apri il primo dispositivo
+	Open Second Device	Apri il secondo dispositivo
+	Show Info	Mostra informazioni
+	Kind	Tipo
+	First end	Prima estremità
+	Second end	Seconda estremità
+	Status	Stato
+	Why it is down	Perché è inattivo
+	Transceivers	Transceiver
+	set by hand	impostata a mano
+	from where the devices stand	dalla posizione dei dispositivi
+	Both ends single-mode	Entrambe le estremità monomodali
+	Both ends multi-mode	Entrambe le estremità multimodali
+	Delete Cable	Elimina cavo
+	Cable Properties	Proprietà del cavo
+	single-mode (1310 nm)	monomodale (1310 nm)
+	multi-mode (850 nm)	multimodale (850 nm)
+	{} is switched off or has no power	{} è spento o senza alimentazione
+	{} is shut down	{} è disattivata
+	{} is err-disabled	{} è in err-disabled
+	the two ends are fixed at different speeds	le due estremità sono fissate a velocità diverse
+	no clock rate on the DCE end	nessun clock rate sull'estremità DCE
+	the two ends use different encapsulations	le due estremità usano incapsulamenti diversi
+	PPP authentication failed (check the usernames and passwords)	autenticazione PPP non riuscita (controlla utenti e password)
