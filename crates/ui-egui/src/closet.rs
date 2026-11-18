@@ -63,6 +63,8 @@ pub struct State {
     pub(crate) seen_ports: Vec<(Pole, Rect)>,
     /// The Rename dialog: what and the name being typed.
     pub rename: Option<(Thing, String)>,
+    /// The Resize dialog: the rack or shelf and the size being typed.
+    pub resize: Option<(u32, String)>,
 }
 
 /// A kind of furniture by name (`Table` has its own row: the word also names a data table).
@@ -1126,6 +1128,30 @@ fn accessible_nodes(app: &mut PacketApp, ui: &mut Ui, sc: &Scene, canvas: Rect) 
             open = *item;
         }
     }
+    // Every port is a node of its own: Tab to a port and Enter starts a cable there, Tab to
+    // another and Enter finishes it (the same two steps as the two clicks of the cable tool).
+    let mut start = None;
+    for (pole, rect) in &sc.ports {
+        let visible = rect.intersect(canvas);
+        if visible.width() <= 0.0 || visible.height() <= 0.0 {
+            continue;
+        }
+        let text = match pole {
+            Pole::Device(e) => t.end_label(*e),
+            Pole::Panel { fitting, port } => format!("{} {}", t.fitting(*fitting).map_or(String::new(), |f| f.name.clone()), port.saturating_add(1)),
+        };
+        let label = trf("Port, {}", &[&text]);
+        let id = egui::Id::unique(("closet-port", format!("{pole:?}")));
+        let r = ui.interact(visible, id, Sense::focusable_noninteractive());
+        r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label.clone()));
+        if r.has_focus() && enter {
+            start = Some(rect.center());
+        }
+    }
+    if let Some(at) = start {
+        let kind = if let Tool::Cable(k) = app.ui.tool { k } else { Cable::Auto };
+        cable_click(app, sc, kind, at);
+    }
     // Moving focus to a device selects it, as on the logical workspace.
     if let Some(Item::Device(d)) = focus {
         app.ui.selected = Some(d);
@@ -1241,6 +1267,10 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, sc: &Scene, pla
             Some(Item::Device(d)) => Some(d),
             _ => None,
         };
+        match app.ui.physical.closet.cable {
+            Some(end) => crate::cable_window::select(app, end),
+            None => app.ui.selected_cable = None,
+        }
     }
 }
 
@@ -1332,6 +1362,10 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target, place: u32) {
             ui.label(egui::RichText::new(&f.name).strong());
             if ui.button(tl("Rename…")).clicked() {
                 app.ui.physical.closet.rename = Some((Thing::Furniture(id), f.name.clone()));
+                ui.close();
+            }
+            if f.kind != FurnitureKind::Table && ui.button(tl("Resize…")).clicked() {
+                app.ui.physical.closet.resize = Some((id, f.size.to_string()));
                 ui.close();
             }
             if ui.button(tl("Remove")).clicked() {
@@ -1430,11 +1464,7 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target, place: u32) {
             if let Some(why) = netlabcraft_sim::cable_problem(t, l.a) {
                 ui.label(egui::RichText::new(crate::i18n::tr_any(&why)).color(theme::tokens(app.ui.dark).error));
             }
-            if ui.button(tl("Cable Length…")).clicked() {
-                let m = t.cable_length(&l).meters;
-                app.ui.physical.length = Some((l.a, m.to_string()));
-                ui.close();
-            }
+            crate::cable_window::menu_items(app, ui, l.a, true);
         }
         Target::Empty(x, y) => {
             ui.menu_button(tl("Add to this closet"), |ui| {
@@ -1456,8 +1486,45 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target, place: u32) {
     }
 }
 
-/// The Rename dialog.
+/// The Resize dialog of a rack (units) or a shelf (levels).
+fn resize_window(app: &mut PacketApp, ctx: &egui::Context) {
+    let Some((id, mut text)) = app.ui.physical.closet.resize.clone() else { return };
+    let Some(f) = app.session.topology.furniture_piece(id) else {
+        app.ui.physical.closet.resize = None;
+        return;
+    };
+    let (rack, name) = (f.kind == FurnitureKind::Rack, f.name.clone());
+    let (lo, hi) = f.kind.size_range();
+    let (mut open, mut ok) = (true, false);
+    egui::Window::new(tl("Resize")).id(egui::Id::unique("closet_resize")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
+        ui.label(egui::RichText::new(&name).strong());
+        let l = ui.label(if rack { trf("Units ({} to {}):", &[&lo, &hi]) } else { trf("Levels ({} to {}):", &[&lo, &hi]) });
+        let r = ui.add(egui::TextEdit::singleline(&mut text)).labelled_by(l.id);
+        if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            ok = true;
+        }
+        if ui.button(tl("OK")).clicked() {
+            ok = true;
+        }
+    });
+    app.ui.physical.closet.resize = if ok {
+        match text.trim().parse::<u32>() {
+            Ok(size) => {
+                app.run("furniture.resize", json!({"furniture": id, "size": size}));
+            }
+            Err(_) => app.ui.status = Some((tl("Enter a whole number").to_string(), true)),
+        }
+        None
+    } else if open {
+        Some((id, text))
+    } else {
+        None
+    };
+}
+
+/// The Rename and Resize dialogs.
 pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
+    resize_window(app, ctx);
     let Some((thing, mut name)) = app.ui.physical.closet.rename.clone() else { return };
     let (mut open, mut ok) = (true, false);
     egui::Window::new(tl("Rename")).id(egui::Id::unique("closet_rename")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {

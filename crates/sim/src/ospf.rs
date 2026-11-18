@@ -335,10 +335,12 @@ pub fn hello_problem(d: &Device, ifc: &L3If, h: &netlabcraft_wire::control::Ospf
     kind_problem(area_kind(d, area), AreaKind::from_options(h.options))
 }
 
-/// The authentication type an interface uses: its own setting, else its area's, else none.
+/// The authentication type an interface uses: its own setting, a key chain it names, else its
+/// area's, else none.
 pub fn auth_kind(d: &Device, ifc: &L3If) -> OspfAuthKind {
-    if_conf(d, &ifc.name)
-        .auth
+    let c = if_conf(d, &ifc.name);
+    c.auth
+        .or_else(|| c.key_chain.as_ref().map(|_| OspfAuthKind::Md5))
         .or_else(|| d.ospf.as_ref().and_then(|o| o.areas.get(&area_of(d, ifc))).and_then(|a| a.auth))
         .unwrap_or(OspfAuthKind::Null)
 }
@@ -351,26 +353,61 @@ fn kind_name(k: OspfAuthKind) -> &'static str {
     }
 }
 
+/// The time the analytic OSPF state reads a device's key chains against (see
+/// [`Device::clock_unix`]).
+pub fn analysis_clock(d: &Device) -> i64 {
+    d.clock_unix.unwrap_or(crate::DEFAULT_CLOCK)
+}
+
+/// The message-digest keys an interface signs with at `now` (Unix seconds), newest first: every
+/// `message-digest-key` it holds, or the one key of its key chain that signs now. A router
+/// that holds several sends one copy of each packet per key, so a neighbour that has only an
+/// older key still hears it while the keys are being rolled over.
+pub fn md5_sign_keys<'a>(d: &'a Device, name: &str, now: i64) -> Vec<(u8, &'a str)> {
+    let Some(c) = d.ospf_if.get(name) else { return Vec::new() };
+    match &c.key_chain {
+        Some(chain) => d.key_chains.get(chain).and_then(|k| k.signing(now)).into_iter().collect(),
+        None => c.md5_keys.iter().rev().map(|(id, k)| (*id, k.as_str())).collect(),
+    }
+}
+
+/// The key a packet that names key `id` is checked against at `now`, if the interface accepts
+/// that key.
+pub fn md5_accept_key<'a>(d: &'a Device, name: &str, now: i64, id: u8) -> Option<&'a str> {
+    let c = d.ospf_if.get(name)?;
+    match &c.key_chain {
+        Some(chain) => d.key_chains.get(chain)?.accepting(now).into_iter().find(|(n, _)| *n == id).map(|(_, k)| k),
+        None => c.md5_keys.get(&id).map(String::as_str),
+    }
+}
+
 /// What this interface signs its OSPF packets with, `at` being the simulated time in
-/// microseconds (the digest's sequence number counts seconds and never goes back). An
-/// interface set to message digests with no key sends unsigned packets, which no neighbour
-/// accepts.
-pub fn auth_send<'a>(d: &'a Device, ifc: &L3If, at: u64) -> OspfAuthSend<'a> {
+/// microseconds (the digest's sequence number counts seconds and never goes back) and `now` the
+/// device's clock in Unix seconds (a key chain's lifetimes read it). One entry per copy of the
+/// packet to send: several when message-digest keys are being rolled over. An interface set to
+/// message digests with no usable key sends unsigned packets, which no neighbour accepts.
+pub fn auth_sends<'a>(d: &'a Device, ifc: &L3If, at: u64, now: i64) -> Vec<OspfAuthSend<'a>> {
     let c = d.ospf_if.get(&ifc.name);
     match auth_kind(d, ifc) {
-        OspfAuthKind::Null => OspfAuthSend::Null,
-        OspfAuthKind::Simple => OspfAuthSend::Simple(c.and_then(|c| c.auth_key.as_deref()).unwrap_or("")),
-        OspfAuthKind::Md5 => match c.and_then(|c| c.md5_keys.iter().next_back()) {
-            Some((id, key)) => OspfAuthSend::Md5 { key_id: *id, key, seq: u32::try_from(at / 1_000_000).unwrap_or(u32::MAX).max(1) },
-            None => OspfAuthSend::Null,
-        },
+        OspfAuthKind::Null => vec![OspfAuthSend::Null],
+        OspfAuthKind::Simple => vec![OspfAuthSend::Simple(c.and_then(|c| c.auth_key.as_deref()).unwrap_or(""))],
+        OspfAuthKind::Md5 => {
+            let seq = u32::try_from(at / 1_000_000).unwrap_or(u32::MAX).max(1);
+            let keys = md5_sign_keys(d, &ifc.name, now);
+            if keys.is_empty() {
+                vec![OspfAuthSend::Null]
+            } else {
+                keys.into_iter().map(|(key_id, key)| OspfAuthSend::Md5 { key_id, key, seq }).collect()
+            }
+        }
     }
 }
 
 /// Why an OSPF packet that arrived on `ifc` fails this router's authentication, if it does:
 /// the type differs from the interface's, the password differs, or the digest does not verify
-/// under the key the packet names (the digest is recomputed over the packet).
-pub fn auth_problem(d: &Device, ifc: &L3If, packet: &[u8]) -> Option<String> {
+/// under the key the packet names (the digest is recomputed over the packet). `now` is the
+/// device's clock in Unix seconds, which a key chain's accept lifetimes read.
+pub fn auth_problem(d: &Device, ifc: &L3If, packet: &[u8], now: i64) -> Option<String> {
     let want = auth_kind(d, ifc);
     let c = if_conf(d, &ifc.name);
     let Some(got) = netlabcraft_wire::control::ospf_auth_of(packet) else { return Some("unknown authentication type in the packet".into()) };
@@ -383,8 +420,11 @@ pub fn auth_problem(d: &Device, ifc: &L3If, packet: &[u8]) -> Option<String> {
             }
             (mine != pw).then(|| "the clear-text password differs".to_string())
         }
-        (OspfAuthKind::Md5, OspfAuth::Md5 { key_id, .. }) => match c.md5_keys.get(&key_id) {
-            None => Some(format!("no message-digest key {key_id} on the receiving interface")),
+        (OspfAuthKind::Md5, OspfAuth::Md5 { key_id, .. }) => match md5_accept_key(d, &ifc.name, now, key_id) {
+            None => Some(match &c.key_chain {
+                Some(chain) => format!("key chain {chain} has no key {key_id} valid for receiving now"),
+                None => format!("no message-digest key {key_id} on the receiving interface"),
+            }),
             Some(key) => {
                 (!netlabcraft_wire::control::ospf_md5_verify(packet, key)).then(|| format!("the message digest does not verify under key {key_id}"))
             }
@@ -398,6 +438,34 @@ pub fn auth_problem(d: &Device, ifc: &L3If, packet: &[u8]) -> Option<String> {
             Some(format!("the packet uses {} authentication, the receiving interface expects {}", kind_name(theirs), kind_name(w)))
         }
     }
+}
+
+/// Why a message-digest packet is a replay: the sequence number it carries is below the highest
+/// one already heard from the same sender under the same key (`last`). Equal numbers pass, since
+/// several packets leave in one second. A packet that is not a message-digest one is never a
+/// replay.
+pub fn replay_problem(last: Option<u32>, packet: &[u8]) -> Option<String> {
+    let OspfAuth::Md5 { seq, .. } = netlabcraft_wire::control::ospf_auth_of(packet)? else { return None };
+    let last = last?;
+    (seq < last).then(|| format!("sequence number {seq} is below {last}, the last one heard: a replayed packet"))
+}
+
+/// One direction of the authentication check between two routers on a link: a probe signed as
+/// `from` would sign it (once per key, as the packet is sent) is checked the way `to` checks
+/// it, and one copy that passes is enough. The reason, when none does, is the newest key's.
+fn one_way(from: &Device, ifa: &L3If, to: &Device, ifb: &L3If, probe: &[u8]) -> Option<String> {
+    let (now_from, now_to) = (analysis_clock(from), analysis_clock(to));
+    let mut first = None;
+    for sign in auth_sends(from, ifa, 1_000_000, now_from) {
+        let packet = netlabcraft_wire::control::ospf_authenticate(probe.to_vec(), &sign);
+        match auth_problem(to, ifb, &packet, now_to) {
+            None => return None,
+            Some(why) => {
+                first.get_or_insert(why);
+            }
+        }
+    }
+    first
 }
 
 /// Why two routers on one link can't form an adjacency over authentication: a hello of each,
@@ -419,12 +487,10 @@ fn auth_mismatch(a: &Device, ia: &L3If, b: &Device, ib: &L3If) -> Option<String>
         neighbors: Vec::new(),
     }
     .encode();
-    let there = netlabcraft_wire::control::ospf_authenticate(probe.clone(), &auth_send(a, ia, 1_000_000));
-    if let Some(why) = auth_problem(b, ib, &there) {
+    if let Some(why) = one_way(a, ia, b, ib, &probe) {
         return Some(format!("authentication fails: the neighbour rejects this router's packets ({why})"));
     }
-    let here = netlabcraft_wire::control::ospf_authenticate(probe, &auth_send(b, ib, 1_000_000));
-    auth_problem(a, ia, &here).map(|why| format!("authentication fails: this router rejects the neighbour's packets ({why})"))
+    one_way(b, ib, a, ia, &probe).map(|why| format!("authentication fails: this router rejects the neighbour's packets ({why})"))
 }
 
 /// The network an interface puts in its router's LSA: a loopback stands for one host (a /32
@@ -1040,6 +1106,10 @@ pub fn fingerprint(t: &Topology) -> u64 {
                 format!("{:?}{:?}", d.community_lists, d.as_path_lists).hash(&mut h);
             }
             d.eigrp_summary.hash(&mut h);
+            if !d.key_chains.is_default() {
+                // Key chains and the clock they are read against decide which keys a router uses.
+                format!("{:?}{:?}", d.key_chains, d.clock_unix).hash(&mut h);
+            }
             d.tunnels.hash(&mut h);
             format!("{:?}", d.loopbacks).hash(&mut h);
             for s in &d.svis {
@@ -1048,4 +1118,40 @@ pub fn fingerprint(t: &Topology) -> u64 {
         }
     }
     h.finish()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn hello() -> Vec<u8> {
+        netlabcraft_wire::control::OspfHello {
+            options: OSPF_OPT_E,
+            router_id: Ipv4Addr::new(1, 1, 1, 1),
+            area: 0,
+            mask: Ipv4Addr::UNSPECIFIED,
+            hello_secs: 10,
+            dead_secs: 40,
+            priority: 1,
+            dr: Ipv4Addr::UNSPECIFIED,
+            bdr: Ipv4Addr::UNSPECIFIED,
+            neighbors: Vec::new(),
+        }
+        .encode()
+    }
+
+    fn signed(seq: u32) -> Vec<u8> {
+        netlabcraft_wire::control::ospf_authenticate(hello(), &OspfAuthSend::Md5 { key_id: 1, key: "sk-test", seq })
+    }
+
+    #[test]
+    fn a_sequence_number_below_the_last_one_heard_is_a_replay() {
+        assert!(replay_problem(Some(5), &signed(4)).is_some_and(|w| w.contains("replayed")));
+        assert!(replay_problem(Some(5), &signed(5)).is_none(), "several packets leave in one second");
+        assert!(replay_problem(Some(5), &signed(6)).is_none());
+        assert!(replay_problem(None, &signed(1)).is_none(), "nothing heard yet");
+        let plain = netlabcraft_wire::control::ospf_authenticate(hello(), &OspfAuthSend::Null);
+        assert!(replay_problem(Some(5), &plain).is_none());
+        assert!(replay_problem(Some(5), &[1, 2, 3]).is_none(), "a truncated packet is not a replay");
+    }
 }

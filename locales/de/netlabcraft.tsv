@@ -220,6 +220,11 @@
 	cable	Kabel
 	Cable Length	Kabellänge
 	Cable Length…	Kabellänge…
+	Resize…	Größe ändern…
+	Resize	Größe ändern
+	Units ({} to {}):	Einheiten ({} bis {}):
+	Levels ({} to {}):	Ebenen ({} bis {}):
+	Enter a whole number	Gib eine ganze Zahl ein
 	Cable Modem	Kabelmodem
 	Cable modem: bridges its coaxial port (Coaxial0) to its Ethernet port (Ethernet1)	Kabelmodem: verbindet seinen Koaxial-Port (Coaxial0) mit seinem Ethernet-Port (Ethernet1)
 	cable too long: {} m copper, max 100 m	Kabel zu lang: {} m Kupfer, max. 100 m
@@ -941,7 +946,9 @@
 	Reset Activity	Aktivität zurücksetzen
 	Reset room	Raum zurücksetzen
 	Reset Simulation	Simulation zurücksetzen
-	Resize Shape (not available yet)	Form ändern (noch nicht verfügbar)
+	Resize Shape (Alt+R)	Form ändern (Alt+R)
+	Resize Shape (Alt+R): drawings are in the logical view	Form ändern (Alt+R): Zeichnungen gibt es nur in der logischen Ansicht
+	Resize Shape: click a rectangle, ellipse or line, then drag its handles. Esc to stop.	Form ändern: Rechteck, Ellipse oder Linie anklicken und dann an den Griffen ziehen. Esc beendet.
 	Resource Records	Resource Records
 	Response headers	Antwort-Header
 	RESTCONF (HTTP)	RESTCONF (HTTP)
@@ -1041,6 +1048,18 @@
 	Show All/None	Alle/Keine anzeigen
 	Show as text	Als Text anzeigen
 	Show grid	Raster anzeigen
+	Grid Preferences	Rastereinstellungen
+	Grid Preferences…	Rastereinstellungen…
+	Grid Scale	Rastermaßstab
+	Set the grid spacing, in metres, for each level of the physical workspace. A level's grid is drawn once its box is checked.	Legt den Rasterabstand in Metern für jede Ebene des physischen Arbeitsbereichs fest. Das Raster einer Ebene wird gezeichnet, sobald ihr Kästchen markiert ist.
+	Grid-X (m)	Raster X (m)
+	Grid-Y (m)	Raster Y (m)
+	Generic Container	Allgemeiner Container
+	A wiring closet has no scale, so it has no grid.	Ein Verteilerschrank hat keinen Maßstab und damit kein Raster.
+	Grid Line Color	Farbe der Rasterlinien
+	Select Grid Color	Rasterfarbe wählen
+	Grid color {}	Rasterfarbe {}
+	{}: zoom in to see the lines	{}: zum Anzeigen der Linien vergrößern
 	Device windows as separate windows	Geräte in eigenen Fenstern
 	Not available in the web version	In der Web-Version nicht verfügbar
 	shown when it fails	bei Fehlschlag angezeigt
@@ -1780,6 +1799,7 @@ event	write request for	Schreibanfrage für
 	Delete Scenario	Szenario löschen
 	Device box	Gerätebox
 	Draw Freehand	Freihand zeichnen
+	Resize Shape	Form ändern
 	Fast Forward Time	Zeit vorspulen
 	Go Back One Level	Eine Ebene zurück
 	Keys that type a letter are ignored while a text field or the console has the keyboard.	Tasten, die einen Buchstaben tippen, werden ignoriert, solange ein Textfeld oder die Konsole die Tastatur hat.
@@ -2370,3 +2390,42 @@ furniture	Table	Tisch
 	Backup written to {}	Sicherung geschrieben nach {}
 	Application size	Größe der Anwendung
 	Enter the password first: some tabs are locked.	Gib zuerst das Passwort ein: Einige Register sind gesperrt.
+	Port, {}	Port, {}
+	Language:	Sprache:
+	Program ({})	Programm ({})
+	Up	Aktiv
+	Down	Inaktiv
+	Properties…	Eigenschaften…
+	Open First Device	Erstes Gerät öffnen
+	Open Second Device	Zweites Gerät öffnen
+	Show Info	Info anzeigen
+	Kind	Art
+	First end	Erstes Ende
+	Second end	Zweites Ende
+	Status	Status
+	Why it is down	Grund für den Ausfall
+	Transceivers	Transceiver
+	set by hand	von Hand gesetzt
+	from where the devices stand	nach der Position der Geräte
+	Both ends single-mode	Beide Enden Singlemode
+	Both ends multi-mode	Beide Enden Multimode
+	Delete Cable	Kabel löschen
+	Cable Properties	Kabeleigenschaften
+	single-mode (1310 nm)	Singlemode (1310 nm)
+	multi-mode (850 nm)	Multimode (850 nm)
+	{} is switched off or has no power	{} ist ausgeschaltet oder ohne Strom
+	{} is shut down	{} ist abgeschaltet
+	{} is err-disabled	{} ist err-disabled
+	the two ends are fixed at different speeds	die beiden Enden sind auf unterschiedliche Geschwindigkeiten festgelegt
+	no clock rate on the DCE end	keine Taktrate am DCE-Ende
+	the two ends use different encapsulations	die beiden Enden verwenden unterschiedliche Kapselungen
+	PPP authentication failed (check the usernames and passwords)	PPP-Authentifizierung fehlgeschlagen (Benutzernamen und Kennwörter prüfen)
+	Each place has its own physics	Jeder Ort hat seine eigene Physik
+	Parts change the place they stand in by rates, and the place settles back when they stop	Geräte verändern ihren Ort mit einer Rate, und der Ort kehrt zurück, wenn sie anhalten
+	Pairing code:	Kopplungscode:
+	Profile:	Profil:
+	Music (A2DP)	Musik (A2DP)
+	Headset	Headset
+	Card id (hex):	Karten-ID (hex):
+	Report crossings of the wire	Überquerungen des Drahts melden
+	Wire angle (degrees):	Winkel des Drahts (Grad):

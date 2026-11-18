@@ -220,6 +220,11 @@
 	cable	câble
 	Cable Length	Longueur du câble
 	Cable Length…	Longueur du câble…
+	Resize…	Redimensionner…
+	Resize	Redimensionner
+	Units ({} to {}):	Unités ({} à {}) :
+	Levels ({} to {}):	Niveaux ({} à {}) :
+	Enter a whole number	Saisissez un nombre entier
 	Cable Modem	Modem câble
 	Cable modem: bridges its coaxial port (Coaxial0) to its Ethernet port (Ethernet1)	Modem câble : relie son port coaxial (Coaxial0) à son port Ethernet (Ethernet1)
 	cable too long: {} m copper, max 100 m	câble trop long : {} m de cuivre, 100 m maximum
@@ -941,7 +946,9 @@
 	Reset Activity	Réinitialiser l'activité
 	Reset room	Réinitialiser la pièce
 	Reset Simulation	Réinitialiser la simulation
-	Resize Shape (not available yet)	Redimensionner la forme (pas encore disponible)
+	Resize Shape (Alt+R)	Redimensionner la forme (Alt+R)
+	Resize Shape (Alt+R): drawings are in the logical view	Redimensionner la forme (Alt+R) : les dessins n'existent que dans la vue logique
+	Resize Shape: click a rectangle, ellipse or line, then drag its handles. Esc to stop.	Redimensionner la forme : cliquez un rectangle, une ellipse ou une ligne, puis faites glisser ses poignées. Échap pour arrêter.
 	Resource Records	Enregistrements de ressources
 	Response headers	En-têtes de réponse
 	RESTCONF (HTTP)	RESTCONF (HTTP)
@@ -1041,6 +1048,18 @@
 	Show All/None	Tout afficher/masquer
 	Show as text	Afficher en texte
 	Show grid	Afficher la grille
+	Grid Preferences	Préférences de la grille
+	Grid Preferences…	Préférences de la grille…
+	Grid Scale	Échelle de la grille
+	Set the grid spacing, in metres, for each level of the physical workspace. A level's grid is drawn once its box is checked.	Fixe l'espacement de la grille, en mètres, pour chaque niveau de l'espace de travail physique. La grille d'un niveau est tracée dès que sa case est cochée.
+	Grid-X (m)	Grille X (m)
+	Grid-Y (m)	Grille Y (m)
+	Generic Container	Conteneur générique
+	A wiring closet has no scale, so it has no grid.	Une baie de brassage n'a pas d'échelle, donc pas de grille.
+	Grid Line Color	Couleur des lignes de la grille
+	Select Grid Color	Choisir la couleur de la grille
+	Grid color {}	Couleur de la grille {}
+	{}: zoom in to see the lines	{} : zoomez pour voir les lignes
 	Device windows as separate windows	Fenêtres d'appareil séparées
 	Not available in the web version	Indisponible dans la version web
 	shown when it fails	affiché en cas d'échec
@@ -1780,6 +1799,7 @@ event	write request for	demande d'écriture de
 	Delete Scenario	Supprimer le scénario
 	Device box	Boîte d'équipements
 	Draw Freehand	Dessiner à main levée
+	Resize Shape	Redimensionner la forme
 	Fast Forward Time	Avance rapide du temps
 	Go Back One Level	Remonter d'un niveau
 	Keys that type a letter are ignored while a text field or the console has the keyboard.	Les touches qui saisissent une lettre sont ignorées tant qu'un champ de texte ou la console a le clavier.
@@ -2370,3 +2390,42 @@ furniture	Table	Table
 	Backup written to {}	Sauvegarde écrite dans {}
 	Application size	Taille de l'application
 	Enter the password first: some tabs are locked.	Saisissez d'abord le mot de passe : certains onglets sont verrouillés.
+	Port, {}	Port, {}
+	Language:	Langue :
+	Program ({})	Programme ({})
+	Up	Actif
+	Down	Inactif
+	Properties…	Propriétés…
+	Open First Device	Ouvrir le premier appareil
+	Open Second Device	Ouvrir le second appareil
+	Show Info	Afficher les infos
+	Kind	Type
+	First end	Première extrémité
+	Second end	Seconde extrémité
+	Status	État
+	Why it is down	Pourquoi il est coupé
+	Transceivers	Transceivers
+	set by hand	fixée à la main
+	from where the devices stand	d'après l'emplacement des appareils
+	Both ends single-mode	Les deux extrémités monomode
+	Both ends multi-mode	Les deux extrémités multimode
+	Delete Cable	Supprimer le câble
+	Cable Properties	Propriétés du câble
+	single-mode (1310 nm)	monomode (1310 nm)
+	multi-mode (850 nm)	multimode (850 nm)
+	{} is switched off or has no power	{} est éteint ou sans alimentation
+	{} is shut down	{} est désactivé
+	{} is err-disabled	{} est en err-disabled
+	the two ends are fixed at different speeds	les deux extrémités sont fixées à des vitesses différentes
+	no clock rate on the DCE end	pas de débit d'horloge côté DCE
+	the two ends use different encapsulations	les deux extrémités utilisent des encapsulations différentes
+	PPP authentication failed (check the usernames and passwords)	échec de l'authentification PPP (vérifiez les noms d'utilisateur et les mots de passe)
+	Each place has its own physics	Chaque lieu a sa propre physique
+	Parts change the place they stand in by rates, and the place settles back when they stop	Les appareils modifient leur lieu selon un débit, et le lieu revient à sa valeur quand ils s'arrêtent
+	Pairing code:	Code d'appairage :
+	Profile:	Profil :
+	Music (A2DP)	Musique (A2DP)
+	Headset	Casque
+	Card id (hex):	Id de la carte (hex) :
+	Report crossings of the wire	Signaler les franchissements du fil
+	Wire angle (degrees):	Angle du fil (degrés) :

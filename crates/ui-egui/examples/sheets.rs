@@ -13,6 +13,9 @@
 //!   family (hub, PoE and SFP switches, routers with serial ports and a module card, firewall, access point, home
 //!   router, server, PC, laptop, printer, IP phone, modems, clouds, cell tower, central office, an IoT thing and the
 //!   boards), built through engine commands, with the real connector drawn for every port;
+//! * `grid-window-*.png`: the Intercity map with the Grid Preferences window open (the four-squares button on the
+//!   bar), every level's grid ticked; `grid-intercity-*.png`, `grid-city-*.png`, `grid-building-*.png`: the grid of each
+//!   level with its spacing at the corner; `grid-colour-*.png`: the window with the colour palette open;
 //! * `logical-light.png`, `logical-dark.png`: the logical workspace with a few devices.
 //!
 //! The `snapshots` workflow runs it and uploads the PNGs; nothing here is committed.
@@ -22,7 +25,7 @@ use egui::{Align2, FontId, Pos2, Rect, Sense, Stroke, StrokeKind, pos2, vec2};
 use netlabcraft_engine::Session;
 use netlabcraft_model::cable::Cable;
 use netlabcraft_model::models::MODELS;
-use netlabcraft_ui_egui::{PacketApp, theme};
+use netlabcraft_ui_egui::{GridLevel, PacketApp, theme};
 use serde_json::{Value, json};
 
 /// Runs a command; a refusal is printed (the sheet is still rendered) and gives `Null`.
@@ -345,6 +348,40 @@ fn logical_sheet(dir: &str, dark: bool) {
     app_sheet(dir, &format!("logical-{suffix}"), s, (1200.0, 760.0), dark, |_| {});
 }
 
+/// The physical workspace with the grid of every level ticked: the window, the colour palette and each level.
+fn grid_sheets(dir: &str, dark: bool) {
+    let suffix = if dark { "dark" } else { "light" };
+    let lab = || {
+        let mut s = Session::new();
+        cmd(&mut s, "file.new", json!({"sample": "lan"}));
+        s
+    };
+    let on = |app: &mut PacketApp| {
+        for l in GridLevel::ALL {
+            app.ui.prefs.grid.set_on(l, true);
+        }
+        app.set_physical(true);
+    };
+    app_sheet(dir, &format!("grid-window-{suffix}"), lab(), (1200.0, 760.0), dark, move |app| {
+        on(app);
+        app.open_grid_preferences();
+    });
+    app_sheet(dir, &format!("grid-colour-{suffix}"), lab(), (1200.0, 760.0), dark, move |app| {
+        on(app);
+        app.ui.prefs.grid.color = [0x3c, 0x78, 0xc8];
+        app.open_grid_preferences();
+        app.open_grid_colours();
+    });
+    for (name, place) in [("grid-intercity", None), ("grid-city", Some(1)), ("grid-building", Some(2))] {
+        app_sheet(dir, &format!("{name}-{suffix}"), lab(), (1200.0, 760.0), dark, move |app| {
+            on(app);
+            if let Some(p) = place {
+                app.enter_place(p);
+            }
+        });
+    }
+}
+
 fn main() {
     let dir = std::env::args().nth(1).unwrap_or_else(|| "sheets".to_string());
     std::fs::create_dir_all(&dir).expect("output directory");
@@ -355,5 +392,6 @@ fn main() {
         closet_zoom_steps(&dir, dark);
         device_physical_sheets(&dir, dark);
         logical_sheet(&dir, dark);
+        grid_sheets(&dir, dark);
     }
 }

@@ -8,7 +8,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 use netlabcraft_core::{DeviceId, Ipv6Net};
-use netlabcraft_model::{Device, DeviceKind, End, Topology};
+use netlabcraft_model::{Device, DeviceKind, End, Ospf6Auth, Ospf6AuthAlg, Topology};
+use netlabcraft_wire::ah::Ah;
+use netlabcraft_wire::ipv6::Ipv6;
+use netlabcraft_wire::ospf6::{ALL_SPF_ROUTERS6, Hello6, PROTO_OSPF};
+use netlabcraft_wire::suite::Integ;
 
 use crate::v6::{L3If6, conf6, routes6, up_ifaces6};
 use crate::{SVI_PORT, port_up};
@@ -40,6 +44,94 @@ pub struct Ospf6State {
     pub routes: BTreeMap<DeviceId, Vec<Ospf6Route>>,
     /// Per router: (interface, area, cost, passive).
     pub interfaces: BTreeMap<DeviceId, Vec<(String, u32, u32, bool)>>,
+    /// Per router: the routers it shares a link and an area with but did not become neighbours
+    /// with over authentication: (our interface, their router ID, why).
+    pub refused: BTreeMap<DeviceId, Vec<(String, Ipv4Addr, String)>>,
+}
+
+/// The protection an interface puts on its OSPFv3 packets: its own setting, else its area's.
+/// `None` for no protection (including an explicit `null`).
+pub fn auth_of<'a>(d: &'a Device, ifc: &L3If6, area: u32) -> Option<&'a Ospf6Auth> {
+    let own = conf6(d, ifc).and_then(|c| c.ospf_auth.as_ref());
+    own.or_else(|| d.ospf6.as_ref().and_then(|o| o.area_auth.get(&area))).filter(|a| !matches!(a, Ospf6Auth::Null))
+}
+
+/// The integrity algorithm and key bytes of an IPsec setting. The key is hexadecimal; a lab
+/// file that holds anything else gets the text's own bytes.
+pub fn ah_suite(alg: Ospf6AuthAlg, key: &str) -> (Integ, Vec<u8>) {
+    let integ = match alg {
+        Ospf6AuthAlg::Md5 => Integ::HmacMd5_96,
+        Ospf6AuthAlg::Sha1 => Integ::HmacSha1_96,
+    };
+    let digits: Vec<u8> = key.bytes().filter_map(|b| char::from(b).to_digit(16).and_then(|v| u8::try_from(v).ok())).collect();
+    let bytes = if digits.len() == key.len() && digits.len().is_multiple_of(2) {
+        digits.chunks(2).map(|p| (p.first().copied().unwrap_or(0) << 4) | p.get(1).copied().unwrap_or(0)).collect()
+    } else {
+        key.as_bytes().to_vec()
+    };
+    (integ, bytes)
+}
+
+/// The packet an OSPFv3 router sends: the protocol-89 packet from the link-local address to
+/// `ff02::5`, wrapped in an authentication header when the interface has one (`seq` is the
+/// header's sequence number).
+pub fn wrap(src: Ipv6Addr, payload: Vec<u8>, auth: Option<&Ospf6Auth>, seq: u32) -> Ipv6 {
+    let plain = Ipv6 { hop_limit: 1, next_header: PROTO_OSPF, src, dst: ALL_SPF_ROUTERS6, payload };
+    match auth {
+        Some(Ospf6Auth::Ipsec { spi, alg, key }) => {
+            let (integ, bytes) = ah_suite(*alg, key);
+            Ah::protect_transport6(integ, &bytes, &plain, *spi, seq)
+        }
+        _ => plain,
+    }
+}
+
+/// Why a router whose interface is protected by `rx` rejects a packet that `packet` is, if it
+/// does: an authentication header it did not ask for, none when it wants one, another SPI, or
+/// a check value that does not verify under its key.
+pub fn receive_problem(rx: Option<&Ospf6Auth>, packet: &Ipv6) -> Option<String> {
+    let has_ah = packet.next_header == netlabcraft_wire::ah::PROTO_AH;
+    match (rx, has_ah) {
+        (None, false) => None,
+        (None, true) => Some("the packet carries an AH header but this interface has no OSPFv3 authentication".into()),
+        (Some(Ospf6Auth::Ipsec { .. }), false) => Some("the packet has no AH header but this interface requires one".into()),
+        (Some(Ospf6Auth::Ipsec { spi, alg, key }), true) => {
+            let (integ, bytes) = ah_suite(*alg, key);
+            match Ah::open_transport6(packet, integ, &bytes, *spi) {
+                Ok(_) => None,
+                Err(netlabcraft_wire::WireError::Checksum(_)) => Some("the AH integrity check value does not verify (the keys differ)".into()),
+                Err(_) => Some(format!("the AH header names another SPI or is malformed (this interface expects SPI {spi})")),
+            }
+        }
+        (Some(Ospf6Auth::Null), _) => None,
+    }
+}
+
+/// Why two interfaces on one link can't become OSPFv3 neighbours over authentication: a hello
+/// from each, protected the way its sender protects it, is checked the way the other end checks it.
+fn auth_mismatch(a: &Device, ia: &L3If6, area_a: u32, b: &Device, ib: &L3If6, area_b: u32) -> Option<String> {
+    let (ea, eb) = (auth_of(a, ia, area_a), auth_of(b, ib, area_b));
+    if ea.is_none() && eb.is_none() {
+        return None;
+    }
+    let probe = |from: &L3If6| {
+        Hello6 {
+            router_id: Ipv4Addr::UNSPECIFIED,
+            area: 0,
+            interface_id: 1,
+            priority: 1,
+            dr: Ipv4Addr::UNSPECIFIED,
+            bdr: Ipv4Addr::UNSPECIFIED,
+            neighbors: Vec::new(),
+        }
+        .encode(from.link_local, ALL_SPF_ROUTERS6)
+    };
+    let there = wrap(ia.link_local, probe(ia), ea, 1);
+    if let Some(why) = receive_problem(eb, &there) {
+        return Some(format!("authentication fails: the neighbour rejects this router's packets ({why})"));
+    }
+    let here = wrap(ib.link_local, probe(ib), eb, 1);
+    receive_problem(ea, &here).map(|why| format!("authentication fails: this router rejects the neighbour's packets ({why})"))
 }
 
 /// The router ID: configured, else the highest IPv4 interface address. OSPFv3 doesn't start
@@ -112,6 +204,10 @@ pub fn compute(t: &Topology) -> Ospf6State {
                 for (ib, area_b, pb) in ifs.get(&b.id).into_iter().flatten() {
                     let same_vlan = ib.vlan == ia.vlan || ia.port == SVI_PORT || ib.port == SVI_PORT;
                     if !*pb && area_a == area_b && same_vlan && reaches(t, &r, b, ib) {
+                        if let Some(why) = auth_mismatch(a, ia, *area_a, b, ib, *area_b) {
+                            st.refused.entry(a.id).or_default().push((ia.name.clone(), rid, why));
+                            continue;
+                        }
                         adj.entry(a.id).or_default().push((b.id, ia.clone(), ib.link_local, cost(ia)));
                         st.neighbors.entry(a.id).or_default().push(Neighbor6 {
                             device: b.id,

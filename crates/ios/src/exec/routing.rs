@@ -483,7 +483,18 @@ pub(super) fn ospf_if_command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             let kind = auth_kind_word(arg(0), true)?;
             each_ospf_if(c, |e| e.auth = Some(kind))
         }
-        Id::NoIpOspfAuth => each_ospf_if(c, |e| e.auth = None),
+        Id::NoIpOspfAuth => each_ospf_if(c, |e| {
+            e.auth = None;
+            e.key_chain = None;
+        }),
+        Id::IpOspfKeyChain => {
+            let name = arg(0).to_string();
+            let known = c.d()?.key_chains.get(&name).is_some();
+            let note = if known { String::new() } else { format!("Note: key chain {name} does not exist yet (`key chain {name}`)") };
+            each_ospf_if(c, |e| e.key_chain = Some(name.clone()))?;
+            Ok(note)
+        }
+        Id::NoIpOspfKeyChain => each_ospf_if(c, |e| e.key_chain = None),
         Id::IpOspfAuthKey => {
             let key = arg(0).to_string();
             if key.chars().count() > 8 {

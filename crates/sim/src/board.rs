@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use std::net::Ipv4Addr;
 
 use netlabcraft_core::DeviceId;
-use netlabcraft_model::board::{analog, is_board, pins};
+use netlabcraft_model::board::{Language, analog, is_board, pins};
 use netlabcraft_model::iot::{MAX_RGB, is_sensor, thing};
 use netlabcraft_model::{Device, Topology};
 
@@ -127,9 +127,13 @@ impl Sim {
             self.iot.boards.insert(d, BoardRun { message: Some(why.clone()), ..BoardRun::default() });
             return Err(SimError::NoSource(why));
         }
-        match script::compile(&dev.board.program) {
-            Ok(p) => {
-                self.iot.boards.insert(d, BoardRun { machine: Some(Machine::new(p, self.now)), ..BoardRun::default() });
+        let built = match dev.board.language {
+            Language::BoardScript => script::compile(&dev.board.program).map(|p| Machine::new(p, self.now)),
+            lang => crate::lang::compile(lang, &dev.board.program).map(|vm| Machine::new_lang(vm, self.now)),
+        };
+        match built {
+            Ok(m) => {
+                self.iot.boards.insert(d, BoardRun { machine: Some(m), ..BoardRun::default() });
                 self.board_slice(t, d);
                 Ok(())
             }

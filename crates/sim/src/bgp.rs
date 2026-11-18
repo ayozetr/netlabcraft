@@ -55,7 +55,7 @@ use netlabcraft_wire::Ipv4;
 use netlabcraft_wire::bgp as msg;
 use netlabcraft_wire::tcp::{self, Tcp};
 
-use crate::{L3If, RouteEntry, Sim, up_ifaces};
+use crate::{DebugKind, L3If, RouteEntry, Sim, up_ifaces};
 
 /// Why a session whose two ends have different MD5 passwords stays down.
 pub const AUTH_FAILED: &str = "TCP MD5 authentication failed: the password differs or is missing at one end";
@@ -1376,7 +1376,7 @@ impl Sim {
     }
 
     fn bgp_debug(&self, d: DeviceId) -> bool {
-        self.state.get(&d).is_some_and(|s| s.debug_bgp)
+        self.state.get(&d).is_some_and(|s| s.debug_on(DebugKind::Bgp))
     }
 
     /// Logs the sessions that came up or went down, and sends what changed.
