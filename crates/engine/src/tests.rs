@@ -1773,3 +1773,52 @@ fn resizing_a_drawing_is_bounded_normalised_and_undone() {
     let text = s.execute("note.add", json!({"x": 0, "y": 0, "text": "hi"})).unwrap()["id"].as_u64().unwrap();
     assert!(s.execute("note.resize", json!({"id": text, "x": 0, "y": 0, "w": 10, "h": 10})).is_err());
 }
+
+#[test]
+fn the_console_sets_the_transceiver_and_shows_the_loss_budget() {
+    let mut s = Session::new();
+    for (name, model) in [("F1", "Switch-24-SFP"), ("F2", "Switch-24-SFP")] {
+        s.execute("device.add", json!({"model": model, "name": name})).unwrap();
+    }
+    s.execute("link.add", json!({"a": "F1", "b": "F2", "cable": "single-mode"})).unwrap();
+    let run = |s: &mut Session, dev: &str, line: &str| {
+        s.execute("cli.exec", json!({"device": dev, "line": line})).unwrap()["output"].as_str().unwrap().to_string()
+    };
+    for dev in ["F1", "F2"] {
+        run(&mut s, dev, "enable");
+        run(&mut s, dev, "configure terminal");
+        run(&mut s, dev, "interface g0/1");
+        assert_eq!(run(&mut s, dev, "transceiver type single-mode"), "");
+        run(&mut s, dev, "end");
+    }
+    let f1 = s.topology.find("F1").unwrap();
+    assert!(f1.ports[24].single_mode, "the console command set the transceiver, as port.transceiver does");
+    assert!(run(&mut s, "F1", "show running-config").contains(" transceiver type single-mode"));
+    let table = run(&mut s, "F1", "show interfaces transceiver");
+    assert!(table.contains("Gi0/1") && table.contains("single-mode 1310 nm") && table.contains("ok"), "{table}");
+    // Splices eat the budget: ten kilometres with four splices is over it, and the link is down.
+    s.execute("link.length", json!({"device": "F1", "port": "g0/1", "meters": 10000})).unwrap();
+    let up = |s: &Session| {
+        let end = netlabcraft_model::End { device: s.topology.resolve("F1").unwrap(), port: 24 };
+        netlabcraft_sim::port_up(&s.topology, end)
+    };
+    assert!(up(&s));
+    let v = s.execute("link.splices", json!({"device": "F1", "port": "g0/1", "count": 4})).unwrap();
+    assert_eq!((v["budget"]["state"].as_str(), v["up"].as_bool()), (Some("over"), Some(false)), "{v}");
+    assert!(v["why_down"].as_str().is_some_and(|w| w.contains("dB")), "{v}");
+    assert!(run(&mut s, "F1", "show interfaces transceiver").contains("over budget"));
+    s.execute("link.splices", json!({"device": "F1", "port": "g0/1", "count": 3})).unwrap();
+    assert!(up(&s), "degraded, but it still carries traffic");
+    // The multi-mode transceiver comes back with `no`, and a copper port takes none.
+    run(&mut s, "F1", "configure terminal");
+    run(&mut s, "F1", "interface g0/1");
+    run(&mut s, "F1", "no transceiver type");
+    assert!(!s.topology.find("F1").unwrap().ports[24].single_mode);
+    run(&mut s, "F1", "interface fa0/1");
+    assert!(run(&mut s, "F1", "transceiver type single-mode").contains("takes no transceiver"));
+    assert!(run(&mut s, "F1", "transceiver type rope").starts_with('%'));
+    // Bad parameters of link.splices.
+    assert!(s.execute("link.splices", json!({"device": "F1", "port": "g0/1", "count": 51})).is_err());
+    assert!(s.execute("link.splices", json!({"device": "F1", "port": "g0/1"})).is_err());
+    assert!(s.execute("link.splices", json!({"device": "F1", "port": "fa0/1", "count": 1})).is_err());
+}

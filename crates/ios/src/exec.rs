@@ -23,6 +23,7 @@ pub(crate) mod fhrp;
 pub(crate) mod firewall;
 pub(crate) mod ikev2;
 pub(crate) mod keychain;
+pub(crate) mod knobs;
 pub(crate) mod l2sec;
 pub(crate) mod mgmt;
 pub(crate) mod netflow;
@@ -1166,6 +1167,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let r = c.iface_ref(arg(0))?;
             Ok(render::interfaces(c.t, c.sim, d, Some(r)))
         }
+        Id::ShowIntTransceiver => Ok(render::interface_transceivers(c.t, c.d()?)),
         Id::ShowIntStatus => Ok(render::interface_status(c.t, c.d()?, None)),
         Id::ShowIpInterface => {
             let only = match args.first().map(|a| a.trim()).filter(|a| !a.is_empty()) {
@@ -3488,6 +3490,33 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 Ok(())
             })
         }
+        Id::IfTransceiver => {
+            let removed = line.split_whitespace().next().is_some_and(|w| w.eq_ignore_ascii_case("no"));
+            let single = if removed {
+                false
+            } else {
+                match arg(0).to_ascii_lowercase().as_str() {
+                    "single-mode" => true,
+                    "multi-mode" => false,
+                    _ => return Err("% multi-mode or single-mode".into()),
+                }
+            };
+            let ifs = match &c.cli.mode {
+                Mode::Iface(ifs) => ifs.clone(),
+                _ => return Err("% Not in interface mode".into()),
+            };
+            let d = c.d()?;
+            for r in &ifs {
+                if !matches!(d.port_medium(r.port), Some(netlabcraft_model::cable::Medium::Fiber | netlabcraft_model::cable::Medium::Combo)) {
+                    let name = d.ports.get(r.port).map_or(String::new(), |p| p.name.clone());
+                    return Err(format!("% {name} takes no transceiver: only fiber and combo ports do"));
+                }
+            }
+            c.each_if(|p, _| {
+                p.single_mode = single;
+                Ok(())
+            })
+        }
         Id::IfMdix | Id::NoIfMdix => {
             let off = spec.id == Id::NoIfMdix;
             c.each_if(|p, _| {
@@ -4679,6 +4708,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(if warn { "Login is on but the line has no password yet: it won't ask for one until you set it.".into() } else { String::new() })
         }
         Id::Accepted => Ok("Accepted (not simulated yet).".into()),
+        Id::Knob | Id::NoKnob => knobs::command(&mut c, spec, &args),
         Id::BannerMotd => {
             let text = arg(0);
             let mut chars = text.chars();

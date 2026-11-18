@@ -242,7 +242,13 @@ pub fn cable_problem(t: &Topology, end: End) -> Option<String> {
         _ => ("copper", netlabcraft_model::physical::COPPER_MAX_M),
     };
     let len = t.cable_length(l);
-    (len.meters > max).then(|| format!("cable too long: {} m {what}, max {max} m", len.meters))
+    if len.meters > max {
+        return Some(format!("cable too long: {} m {what}, max {max} m", len.meters));
+    }
+    // Fiber that reaches far enough can still lose too much light to its connectors and splices.
+    t.fiber_budget(l)
+        .filter(|b| b.state() == netlabcraft_model::physical::BudgetState::Over)
+        .map(|b| format!("fiber loses {:.1} dB, over the {:.1} dB the transceivers tolerate", b.loss_db, b.budget_db))
 }
 
 /// Why a cable carries nothing, if it doesn't: a device with no power, a shut down or err-disabled
@@ -3602,6 +3608,9 @@ impl Sim {
             let (pool, allowed) = Sim::fw_dhcp_pool(d, ifc)?;
             (pool, Some(allowed))
         } else {
+            if d.knobs.is_off("service dhcp") {
+                return Err("the DHCP service is turned off (no service dhcp)".to_string());
+            }
             let p = d
                 .dhcp_pools
                 .iter()
