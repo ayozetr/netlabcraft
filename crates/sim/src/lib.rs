@@ -954,6 +954,11 @@ pub struct DevState {
     pub debug_packet_acl: Option<String>,
     /// Messages waiting for the terminal-monitor sessions of this device.
     monitor: Vec<String>,
+    /// The highest message-digest sequence number heard from each sender, by (port, sender
+    /// address, key id): a packet below it is a replay.
+    ospf_seq: BTreeMap<(String, Ipv4Addr, u8), u32>,
+    /// OSPF packets thrown away as replays.
+    pub ospf_replays: u32,
     /// Log lines waiting to go to syslog servers.
     syslog_out: Vec<String>,
     /// Syslog servers: messages received (µs, sender, text).
@@ -2921,6 +2926,25 @@ impl Sim {
             let debug = self.state.get(&d.id).map_or((false, false, false, false), |s| {
                 (s.debug_on(DebugKind::Rip), s.debug_on(DebugKind::OspfHello), s.debug_on(DebugKind::OspfAdj), s.debug_on(DebugKind::OspfEvents))
             });
+            // Message-digest packets carry a sequence number that never goes back: one below the
+            // highest heard from that sender under that key is a replay and is thrown away.
+            if ip.protocol == netlabcraft_wire::control::PROTO_OSPF
+                && d.ospf.is_some()
+                && let Some(netlabcraft_wire::control::OspfAuth::Md5 { key_id, seq, .. }) = netlabcraft_wire::control::ospf_auth_of(&ip.payload)
+                && ospf::auth_problem(d, ifc, &ip.payload, self.clock(d.id).0).is_none()
+            {
+                let key = (ifc.name.clone(), ip.src, key_id);
+                let last = self.state.get(&d.id).and_then(|s| s.ospf_seq.get(&key).copied());
+                if let Some(why) = ospf::replay_problem(last, &ip.payload) {
+                    let state = self.st(d.id);
+                    state.ospf_replays = state.ospf_replays.saturating_add(1);
+                    if debug.2 || debug.3 {
+                        self.log(d.id, &format!("OSPF packet: dropped from {} on {}: {why}", ip.src, ifc.name));
+                    }
+                    return Ok(());
+                }
+                self.st(d.id).ospf_seq.insert(key, seq);
+            }
             if (debug.1 || debug.2 || debug.3)
                 && ip.protocol == netlabcraft_wire::control::PROTO_OSPF
                 && d.ospf.is_some()
@@ -2940,7 +2964,7 @@ impl Sim {
                 }
                 // Why the sender can't become a neighbour: an adjacency matter, and (when the
                 // hello was rejected) an event too.
-                let problem = ospf::auth_problem(d, ifc, &ip.payload)
+                let problem = ospf::auth_problem(d, ifc, &ip.payload, self.clock(d.id).0)
                     .map(|why| format!("authentication fails: {why}"))
                     .or_else(|| ospf::hello_problem(d, ifc, &h));
                 if let Some(why) = problem {
