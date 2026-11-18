@@ -120,7 +120,14 @@ pub struct CryptoMapEntry {
     /// `reverse-route` in a dynamic map entry.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub reverse_route: bool,
+    /// `set pfs groupN`: the Diffie-Hellman group of the fresh exchange that gives every new
+    /// set of IPsec keys (perfect forward secrecy); `None` derives them from the IKE SA alone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pfs: Option<u16>,
 }
+
+/// The Diffie-Hellman groups `set pfs` accepts, all of them computed for real.
+pub const PFS_GROUPS: [u16; 8] = [2, 5, 14, 15, 16, 19, 20, 24];
 
 /// An IPsec SA lifetime: seconds, kilobytes, or neither set (the defaults then apply).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
