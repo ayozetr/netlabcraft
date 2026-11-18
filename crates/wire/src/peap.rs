@@ -1,303 +1,128 @@
-//! The PEAP tunnel of WPA2-Enterprise logins, as a small self-contained TLS-like protocol.
+//! PEAP (EAP method 25) as the simulator carries it: a real TLS 1.2 session (`crate::tls`, the
+//! same handshake a router's secure web server speaks, with the server's X.509 certificate chain
+//! and a Diffie-Hellman exchange in the 2048-bit RFC 3526 group) inside EAP messages, and an
+//! inner EAP login inside the tunnel.
 //!
-//! PEAP (EAP method 25) wraps an inner EAP login in a TLS tunnel between the host and the
-//! authentication server, so the password never crosses the air or the wire readable. This
-//! module is **not TLS**: no certificates, no cipher-suite negotiation. It keeps TLS's shape so
-//! the exchange reads as it would and its secrecy is real:
+//! What this module holds is what is PEAP's own:
 //!
-//! - Records as TLS has them: content type (22 handshake, 23 application data, 21 alert),
-//!   version 3.3, a 16-bit length, the body.
-//! - A handshake of three messages: the client hello (32-byte random, Diffie-Hellman public
-//!   value), the server hello (random, public value, the server's name standing in for its
-//!   certificate) and the server's Finished, then the client's Finished. Finished messages hold
-//!   12 bytes of PRF over the transcript, as TLS 1.0/1.1 does (RFC 2246 §7.4.9).
-//! - The key exchange is Diffie-Hellman in MODP group 14 (RFC 3526, 2048 bits: [`DH_GROUP`]),
-//!   the same big-integer code IKE and TLS use, with 256-bit private values and the peer's
-//!   value checked to be in range.
-//! - Keys come from the TLS 1.0 PRF style, with P_SHA1 only: the master secret, then a key
-//!   block (client and server AES-128 keys and HMAC-SHA1 keys), and the EAP master session key
-//!   (RFC 5216 §2.3's "client EAP encryption" label), whose first 32 bytes are the PMK.
-//! - Application data is protected MAC-then-encrypt, TLS 1.1 style: HMAC-SHA1 over the
-//!   sequence number, type, length and plaintext, then AES-128-CBC with an explicit IV and TLS
-//!   padding.
+//! - The message layout (RFC 5216 §3.1): a flags byte (length included, more fragments, start,
+//!   version 0), a four-byte total length on the first fragment of a fragmented message, and the
+//!   TLS bytes. [`fragments`] cuts a TLS flight into messages of at most [`FRAGMENT`] bytes, the
+//!   receiver acknowledges each one but the last with an empty response ([`ack`]), and
+//!   [`reassemble`] puts the flight back together.
+//! - The key the tunnel exports, `PRF(master secret, "client EAP encryption", client random |
+//!   server random)` (RFC 5216 §2.3), whose first 32 bytes are the pairwise master key (see
+//!   `Tls::export`).
+//! - The inner method, EAP-GTC (RFC 3748 §5.6: the password in the clear, which is why it needs
+//!   the tunnel) after an inner identity exchange, and its result as a PEAPv0 Result TLV (EAP
+//!   type 33, TLV type 3: 1 success, 2 failure).
 //!
-//! Inside the tunnel the inner method is EAP-GTC (RFC 3748 §5.6: the password in the clear,
-//! which is why it needs the tunnel), after an inner identity exchange; the result travels as
-//! a PEAPv0 Result TLV (EAP type 33, TLV type 3: 1 success, 2 failure).
+//! Left out: PEAPv1 and cryptobinding, session resumption, client certificates, and inner
+//! methods other than GTC.
 
-use crate::aes::{Aes128, cbc_decrypt, cbc_encrypt};
-use crate::dh;
-use crate::sha1::{hmac_sha1, sha1};
-use crate::sha256::sha256;
-use crate::{Result, WireError, be16};
+use crate::{Result, WireError, be16, tls};
 
 /// PEAP's data flags: length included, more fragments, start; the low bits are the version (0).
 pub const FLAG_LENGTH: u8 = 0x80;
 pub const FLAG_MORE: u8 = 0x40;
 pub const FLAG_START: u8 = 0x20;
-/// TLS record content types.
-pub const REC_ALERT: u8 = 21;
-pub const REC_HANDSHAKE: u8 = 22;
-pub const REC_APP_DATA: u8 = 23;
-/// Handshake message types.
-pub const HS_CLIENT_HELLO: u8 = 1;
-pub const HS_SERVER_HELLO: u8 = 2;
-pub const HS_FINISHED: u8 = 20;
-/// Inner EAP methods: Generic Token Card, and PEAPv0's TLV extensions.
+
 pub const EAP_GTC: u8 = 6;
 pub const EAP_TLV: u8 = 33;
-/// The Result TLV and its values.
+
 pub const TLV_RESULT: u16 = 3;
 pub const RESULT_SUCCESS: u16 = 1;
 pub const RESULT_FAILURE: u16 = 2;
-/// The Diffie-Hellman group: MODP group 14 (RFC 3526 §3), a 2048-bit prime.
-pub const DH_GROUP: u16 = 14;
-/// Longest Diffie-Hellman value a hello carries, in bytes.
-const MAX_PUBLIC: usize = 512;
-/// Most records one PEAP message carries, and the longest record body.
-const MAX_RECORDS: usize = 16;
-const MAX_RECORD: usize = 4096;
+
+/// The label of the exported key (RFC 5216 §2.3).
+pub const KEY_LABEL: &str = "client EAP encryption";
+
+/// Most TLS bytes in one message (the rest of a longer flight follows in later messages).
+pub const FRAGMENT: usize = 900;
+/// Most TLS bytes of one reassembled flight.
+pub const MAX_FLIGHT: usize = 32 * 1024;
+/// Most TLVs read from one inner message.
+const MAX_TLVS: usize = 16;
 
 fn t() -> WireError {
     WireError::Truncated("peap")
 }
 
-/// A private value (256 bits) made from a seed.
-pub fn dh_secret(seed: &[u8]) -> Vec<u8> {
-    sha256(seed).to_vec()
-}
-
-/// The public value of a private one: g^x mod p, 256 bytes.
-pub fn dh_public(secret: &[u8]) -> Vec<u8> {
-    dh::modp(DH_GROUP).map(|g| g.public(secret)).unwrap_or_default()
-}
-
-/// The shared value from the peer's public value; `None` for a value that is not valid in the
-/// group.
-pub fn dh_shared(peer_public: &[u8], secret: &[u8]) -> Option<Vec<u8>> {
-    dh::modp(DH_GROUP)?.shared(secret, peer_public)
-}
-
-/// TLS 1.0's P_hash with HMAC-SHA1 (RFC 2246 §5): `len` bytes from `secret`, `label`, `seed`.
-pub fn prf(secret: &[u8], label: &str, seed: &[u8], len: usize) -> Vec<u8> {
-    let seed: Vec<u8> = label.as_bytes().iter().chain(seed).copied().collect();
-    let mut out = Vec::with_capacity(len + 20);
-    let mut a = hmac_sha1(secret, &seed).to_vec();
-    while out.len() < len {
-        let block = hmac_sha1(secret, &[a.as_slice(), &seed].concat());
-        out.extend_from_slice(&block);
-        a = hmac_sha1(secret, &a).to_vec();
-    }
-    out.truncate(len);
-    out
-}
-
-/// One TLS-like record.
+/// One PEAP message: its flags, the total length it announces (first fragment of a fragmented
+/// message) and its TLS bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Record {
-    pub kind: u8,
-    pub body: Vec<u8>,
+pub struct Part<'a> {
+    pub flags: u8,
+    pub total: Option<usize>,
+    pub tls: &'a [u8],
 }
 
-impl Record {
-    pub fn encode(&self) -> Vec<u8> {
-        let body = self.body.get(..self.body.len().min(MAX_RECORD)).unwrap_or_default();
-        let mut v = vec![self.kind, 3, 3];
-        v.extend_from_slice(&(body.len() as u16).to_be_bytes());
-        v.extend_from_slice(body);
-        v
-    }
-
-    /// Every record in `b`.
-    pub fn decode_all(b: &[u8]) -> Result<Vec<Record>> {
-        let mut out = Vec::new();
-        let mut at = 0;
-        while at < b.len() {
-            if out.len() >= MAX_RECORDS {
-                return Err(WireError::Unsupported("peap", "too many records".into()));
-            }
-            let kind = *b.get(at).ok_or_else(t)?;
-            if !matches!(kind, REC_ALERT | REC_HANDSHAKE | REC_APP_DATA) {
-                return Err(WireError::Unsupported("peap", format!("record type {kind}")));
-            }
-            let len = usize::from(be16(b, at + 3).ok_or_else(t)?);
-            let body = b.get(at + 5..at + 5 + len).ok_or_else(t)?.to_vec();
-            out.push(Record { kind, body });
-            at += 5 + len;
+/// A message with these flags, the announced total length when `total` is given, and TLS bytes.
+pub fn message(flags: u8, total: Option<usize>, tls: &[u8]) -> Vec<u8> {
+    let mut v = Vec::with_capacity(tls.len() + 5);
+    match total {
+        Some(n) => {
+            v.push(flags | FLAG_LENGTH);
+            v.extend_from_slice(&u32::try_from(n).unwrap_or(u32::MAX).to_be_bytes());
         }
-        Ok(out)
+        None => v.push(flags & !FLAG_LENGTH),
     }
-}
-
-/// One handshake message: type, 24-bit length, body.
-pub fn handshake(kind: u8, body: &[u8]) -> Vec<u8> {
-    let len = body.len().min(0xff_ffff);
-    let mut v = vec![kind, (len >> 16) as u8, (len >> 8) as u8, len as u8];
-    v.extend_from_slice(body.get(..len).unwrap_or_default());
+    v.extend_from_slice(tls);
     v
 }
 
-/// The handshake messages in a handshake record's body: (type, body).
-pub fn handshakes(b: &[u8]) -> Result<Vec<(u8, Vec<u8>)>> {
-    let mut out = Vec::new();
-    let mut at = 0;
-    while at < b.len() && out.len() < MAX_RECORDS {
-        let kind = *b.get(at).ok_or_else(t)?;
-        let len = (usize::from(*b.get(at + 1).ok_or_else(t)?) << 16) | usize::from(be16(b, at + 2).ok_or_else(t)?);
-        out.push((kind, b.get(at + 4..at + 4 + len).ok_or_else(t)?.to_vec()));
-        at += 4 + len;
-    }
-    Ok(out)
+/// The server's start message: no TLS bytes yet.
+pub fn start() -> Vec<u8> {
+    vec![FLAG_START]
 }
 
-/// A hello: the 32-byte random, the Diffie-Hellman public value, and (server) its name.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Hello {
-    pub random: [u8; 32],
-    pub public: Vec<u8>,
-    pub name: String,
+/// The empty response that acknowledges a fragment.
+pub fn ack() -> Vec<u8> {
+    vec![0]
 }
 
-impl Hello {
-    pub fn encode(&self) -> Vec<u8> {
-        let name = self.name.as_bytes().get(..self.name.len().min(64)).unwrap_or_default();
-        let public = self.public.get(..self.public.len().min(MAX_PUBLIC)).unwrap_or_default();
-        let mut v = self.random.to_vec();
-        v.extend_from_slice(&(public.len() as u16).to_be_bytes());
-        v.extend_from_slice(public);
-        v.push(name.len() as u8);
-        v.extend_from_slice(name);
-        v
-    }
-
-    pub fn decode(b: &[u8]) -> Result<Hello> {
-        let random: [u8; 32] = b.get(..32).and_then(|r| r.try_into().ok()).ok_or_else(t)?;
-        let plen = usize::from(be16(b, 32).ok_or_else(t)?);
-        if plen > MAX_PUBLIC {
-            return Err(WireError::Unsupported("peap", "key share too long".into()));
-        }
-        let public = b.get(34..34 + plen).ok_or_else(t)?.to_vec();
-        let n = usize::from(*b.get(34 + plen).ok_or_else(t)?);
-        let name = String::from_utf8_lossy(b.get(35 + plen..35 + plen + n).ok_or_else(t)?).into_owned();
-        Ok(Hello { random, public, name })
-    }
-}
-
-/// The keys of one tunnel, both directions, and its record sequence numbers.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Keys {
-    pub master: Vec<u8>,
-    client_key: [u8; 16],
-    server_key: [u8; 16],
-    client_mac: [u8; 20],
-    server_mac: [u8; 20],
-    pub client_seq: u64,
-    pub server_seq: u64,
-}
-
-impl Keys {
-    /// From the shared Diffie-Hellman value and both randoms.
-    pub fn derive(shared: &[u8], client_random: &[u8; 32], server_random: &[u8; 32]) -> Keys {
-        let randoms = [&client_random[..], &server_random[..]].concat();
-        let master = prf(shared, "master secret", &randoms, 48);
-        let block = prf(&master, "key expansion", &[&server_random[..], &client_random[..]].concat(), 72);
-        let take = |a: usize| -> [u8; 20] {
-            let mut k = [0u8; 20];
-            k.copy_from_slice(block.get(a..a + 20).unwrap_or(&[0; 20]));
-            k
-        };
-        let key = |a: usize| -> [u8; 16] {
-            let mut k = [0u8; 16];
-            k.copy_from_slice(block.get(a..a + 16).unwrap_or(&[0; 16]));
-            k
-        };
-        Keys { client_mac: take(0), server_mac: take(20), client_key: key(40), server_key: key(56), master, client_seq: 0, server_seq: 0 }
-    }
-
-    /// The 12-byte verify data of a Finished message over the transcript so far.
-    pub fn finished(&self, client: bool, transcript: &[u8]) -> Vec<u8> {
-        prf(&self.master, if client { "client finished" } else { "server finished" }, &sha1(transcript), 12)
-    }
-
-    /// The EAP master session key (64 bytes); its first 32 are the WPA2 pairwise master key.
-    pub fn msk(&self, client_random: &[u8; 32], server_random: &[u8; 32]) -> Vec<u8> {
-        prf(&self.master, "client EAP encryption", &[&client_random[..], &server_random[..]].concat(), 64)
-    }
-
-    fn mac(key: &[u8], seq: u64, plain: &[u8]) -> [u8; 20] {
-        let mut h = seq.to_be_bytes().to_vec();
-        h.push(REC_APP_DATA);
-        h.extend_from_slice(&[3, 3]);
-        h.extend_from_slice(&(plain.len() as u16).to_be_bytes());
-        h.extend_from_slice(plain);
-        hmac_sha1(key, &h)
-    }
-
-    /// An application-data record from one side (`client`), with this explicit IV.
-    pub fn seal(&mut self, client: bool, plain: &[u8], iv: [u8; 16]) -> Record {
-        let plain = plain.get(..plain.len().min(MAX_RECORD - 64)).unwrap_or_default();
-        let (key, mac, seq) =
-            if client { (self.client_key, self.client_mac, &mut self.client_seq) } else { (self.server_key, self.server_mac, &mut self.server_seq) };
-        let tag = Keys::mac(&mac, *seq, plain);
-        *seq = seq.saturating_add(1);
-        let mut data = plain.to_vec();
-        data.extend_from_slice(&tag);
-        // TLS padding: n+1 bytes of value n, to a whole block.
-        let pad = 15 - (data.len() % 16);
-        data.extend(std::iter::repeat_n(pad as u8, pad + 1));
-        let mut body = iv.to_vec();
-        body.extend(cbc_encrypt(&Aes128::new(&key), &iv, &data));
-        Record { kind: REC_APP_DATA, body }
-    }
-
-    /// The plaintext of an application-data record from one side (`client`), checked.
-    pub fn open(&mut self, client: bool, r: &Record) -> Result<Vec<u8>> {
-        let bad = |why: &str| WireError::Unsupported("peap", why.to_string());
-        if r.kind != REC_APP_DATA {
-            return Err(bad("not application data"));
-        }
-        let iv: [u8; 16] = r.body.get(..16).and_then(|x| x.try_into().ok()).ok_or_else(t)?;
-        let ct = r.body.get(16..).unwrap_or_default();
-        if ct.is_empty() || !ct.len().is_multiple_of(16) {
-            return Err(bad("record not a whole number of blocks"));
-        }
-        let (key, mac, seq) =
-            if client { (self.client_key, self.client_mac, &mut self.client_seq) } else { (self.server_key, self.server_mac, &mut self.server_seq) };
-        let data = cbc_decrypt(&Aes128::new(&key), &iv, ct);
-        let pad = usize::from(*data.last().ok_or_else(t)?);
-        let end = data.len().checked_sub(pad + 1 + 20).ok_or_else(|| bad("bad padding"))?;
-        if data.get(end + 20..data.len().saturating_sub(1)).is_none_or(|p| p.iter().any(|&x| usize::from(x) != pad)) {
-            return Err(bad("bad padding"));
-        }
-        let plain = data.get(..end).ok_or_else(t)?;
-        let tag = data.get(end..end + 20).ok_or_else(t)?;
-        if Keys::mac(&mac, *seq, plain) != tag {
-            return Err(bad("record MAC check failed"));
-        }
-        *seq = seq.saturating_add(1);
-        Ok(plain.to_vec())
-    }
-}
-
-/// PEAP's data: flags, then the records (the length field is left out: messages are never
-/// fragmented here).
-pub fn peap_data(flags: u8, records: &[Record]) -> Vec<u8> {
-    let mut v = vec![flags & !(FLAG_LENGTH | FLAG_MORE)];
-    for r in records {
-        v.extend(r.encode());
-    }
-    v
-}
-
-/// The flags and the records of PEAP's data (a length field, when flagged, is skipped).
-pub fn parse_peap(data: &[u8]) -> Result<(u8, Vec<Record>)> {
+/// The parts of a message's data.
+pub fn parse(data: &[u8]) -> Result<Part<'_>> {
     let flags = *data.first().ok_or_else(t)?;
-    if flags & FLAG_MORE != 0 {
-        return Err(WireError::Unsupported("peap", "fragmented messages".into()));
+    if flags & FLAG_LENGTH != 0 {
+        let total = data.get(1..5).and_then(|b| <[u8; 4]>::try_from(b).ok()).map(u32::from_be_bytes).ok_or_else(t)?;
+        let total = usize::try_from(total).unwrap_or(usize::MAX);
+        if total > MAX_FLIGHT {
+            return Err(WireError::Unsupported("peap", format!("a flight of {total} bytes")));
+        }
+        Ok(Part { flags, total: Some(total), tls: data.get(5..).ok_or_else(t)? })
+    } else {
+        Ok(Part { flags, total: None, tls: data.get(1..).ok_or_else(t)? })
     }
-    let start = if flags & FLAG_LENGTH != 0 { 5 } else { 1 };
-    let rest = data.get(start..).ok_or_else(t)?;
-    Ok((flags, Record::decode_all(rest)?))
+}
+
+/// A TLS flight as messages: one when it fits in [`FRAGMENT`] bytes, else the first with the
+/// length and the more-fragments flag, then the rest.
+pub fn fragments(tls: &[u8]) -> Vec<Vec<u8>> {
+    if tls.len() <= FRAGMENT {
+        return vec![message(0, None, tls)];
+    }
+    let pieces: Vec<&[u8]> = tls.chunks(FRAGMENT).collect();
+    let last = pieces.len().saturating_sub(1);
+    pieces
+        .iter()
+        .enumerate()
+        .map(|(i, p)| {
+            let more = if i < last { FLAG_MORE } else { 0 };
+            message(more, (i == 0).then_some(tls.len()), p)
+        })
+        .collect()
+}
+
+/// Adds a message's TLS bytes to what has arrived of a fragmented flight; the whole flight when
+/// this was the last fragment, `None` while more are to come.
+pub fn reassemble(buf: &mut Vec<u8>, part: &Part<'_>) -> Result<Option<Vec<u8>>> {
+    if buf.len().saturating_add(part.tls.len()) > MAX_FLIGHT {
+        buf.clear();
+        return Err(WireError::Unsupported("peap", "a flight that is too long".into()));
+    }
+    buf.extend_from_slice(part.tls);
+    if part.flags & FLAG_MORE != 0 { Ok(None) } else { Ok(Some(std::mem::take(buf))) }
 }
 
 /// A Result TLV (PEAPv0 inner EAP type 33): mandatory, type 3, length 2, the result.
@@ -311,7 +136,7 @@ pub fn result_tlv(ok: bool) -> Vec<u8> {
 /// The result a TLV list carries, when it has a Result TLV.
 pub fn tlv_result(b: &[u8]) -> Option<bool> {
     let mut at = 0;
-    for _ in 0..MAX_RECORDS {
+    for _ in 0..MAX_TLVS {
         let kind = be16(b, at)? & 0x3fff;
         let len = usize::from(be16(b, at + 2)?);
         if kind == TLV_RESULT {
@@ -324,37 +149,19 @@ pub fn tlv_result(b: &[u8]) -> Option<bool> {
 
 /// What a PEAP message shows on the wire, for the event list.
 pub fn describe(data: &[u8]) -> String {
-    match parse_peap(data) {
-        Ok((flags, records)) if records.is_empty() => {
-            if flags & FLAG_START != 0 {
+    match parse(data) {
+        Ok(p) if p.tls.is_empty() => {
+            if p.flags & FLAG_START != 0 {
                 "start".into()
             } else {
                 "acknowledgement".into()
             }
         }
-        Ok((_, records)) => {
-            let parts: Vec<String> = records
-                .iter()
-                .map(|r| match r.kind {
-                    REC_HANDSHAKE => {
-                        let names: Vec<&str> = handshakes(&r.body)
-                            .unwrap_or_default()
-                            .iter()
-                            .map(|(k, _)| match *k {
-                                HS_CLIENT_HELLO => "client hello",
-                                HS_SERVER_HELLO => "server hello",
-                                HS_FINISHED => "finished",
-                                _ => "handshake message",
-                            })
-                            .collect();
-                        format!("TLS handshake ({})", names.join(", "))
-                    }
-                    REC_APP_DATA => format!("TLS application data, {} encrypted bytes", r.body.len()),
-                    _ => "TLS alert".into(),
-                })
-                .collect();
-            parts.join(" + ")
-        }
+        Ok(p) if p.flags & FLAG_MORE != 0 => match p.total {
+            Some(n) => format!("TLS fragment, first {} of {n} bytes", p.tls.len()),
+            None => format!("TLS fragment, {} bytes, more to come", p.tls.len()),
+        },
+        Ok(p) => tls::describe(p.tls),
         Err(e) => format!("unreadable ({e})"),
     }
 }
@@ -364,85 +171,51 @@ mod tests {
     use super::*;
 
     #[test]
-    fn diffie_hellman_agrees_and_the_prf_is_stable() {
-        let (a, b) = (dh_secret(b"alice"), dh_secret(b"bob"));
-        let (pa, pb) = (dh_public(&a), dh_public(&b));
-        // A real 2048-bit group: 256-byte values, both ends agree, bad values are refused.
-        assert_eq!((pa.len(), pb.len()), (256, 256));
-        assert_ne!(pa, pb);
-        let shared = dh_shared(&pb, &a).unwrap();
-        assert_eq!((shared.len(), Some(shared)), (256, dh_shared(&pa, &b)));
-        assert_eq!(dh_shared(&[0; 256], &a), None);
-        assert_eq!(dh_shared(&[], &a), None);
-        // The group is the RFC 3526 one, by its generator: 2^1 is the public value of secret 1.
-        assert_eq!(dh_public(&[1]), dh::modp(DH_GROUP).unwrap().public(&[1]));
-        let p = prf(b"secret", "label", b"seed", 45);
-        assert_eq!(p.len(), 45);
-        assert_eq!(prf(b"secret", "label", b"seed", 20), p[..20]);
-        assert_ne!(prf(b"secret", "other", b"seed", 20), p[..20]);
+    fn a_short_flight_is_one_message_and_a_long_one_is_cut_and_put_back() {
+        let short = vec![7u8; 300];
+        assert_eq!(fragments(&short), vec![[&[0u8][..], &short].concat()]);
+        let long: Vec<u8> = (0..2500u32).map(|i| (i % 251) as u8).collect();
+        let parts = fragments(&long);
+        assert_eq!(parts.len(), 3);
+        let first = parse(&parts[0]).unwrap();
+        assert_eq!((first.flags, first.total, first.tls.len()), (FLAG_LENGTH | FLAG_MORE, Some(2500), FRAGMENT));
+        assert_eq!(parse(&parts[1]).unwrap().flags, FLAG_MORE);
+        assert_eq!(parse(&parts[2]).unwrap().flags, 0);
+        let mut buf = Vec::new();
+        assert_eq!(reassemble(&mut buf, &parse(&parts[0]).unwrap()).unwrap(), None);
+        assert_eq!(reassemble(&mut buf, &parse(&parts[1]).unwrap()).unwrap(), None);
+        assert_eq!(reassemble(&mut buf, &parse(&parts[2]).unwrap()).unwrap(), Some(long));
+        assert!(buf.is_empty());
+        assert_eq!(fragments(&[1u8; FRAGMENT]).len(), 1);
+        assert_eq!(fragments(&[1u8; FRAGMENT + 1]).len(), 2);
     }
 
     #[test]
-    fn records_seal_and_open_and_refuse_tampering_and_replays() {
-        let (cr, sr) = ([1u8; 32], [2u8; 32]);
-        let mut client = Keys::derive(&[0x12, 0x34], &cr, &sr);
-        let mut server = client.clone();
-        assert_eq!(client.finished(true, b"x").len(), 12);
-        assert_ne!(client.finished(true, b"x"), client.finished(false, b"x"));
-        assert_eq!(client.msk(&cr, &sr).len(), 64);
-        for (n, msg) in [&b""[..], b"ana", b"a sixteen bytes!", &[7u8; 300]].into_iter().enumerate() {
-            let r = client.seal(true, msg, [n as u8; 16]);
-            assert!(!r.body.windows(msg.len().max(1)).any(|w| w == msg) || msg.is_empty());
-            let back = Record::decode_all(&r.encode()).unwrap();
-            assert_eq!(server.open(true, &back[0]).unwrap(), msg);
+    fn start_ack_and_describe() {
+        assert_eq!(describe(&start()), "start");
+        assert_eq!(describe(&ack()), "acknowledgement");
+        let (_c, hello) = tls::Tls::client(b"peap describe");
+        assert!(describe(&message(0, None, &hello)).contains("ClientHello"));
+        let parts = fragments(&[0x16u8; 2000]);
+        assert_eq!(describe(&parts[0]), "TLS fragment, first 900 of 2000 bytes");
+        assert!(describe(&parts[1]).contains("more to come"));
+        assert!(describe(&[]).starts_with("unreadable"));
+    }
+
+    #[test]
+    fn hostile_messages_are_refused_not_fatal() {
+        let data = fragments(&[5u8; 2000])[0].clone();
+        for n in 0..data.len().min(8) {
+            let _ = parse(&data[..n]);
+            let _ = describe(&data[..n]);
         }
-        // A changed byte, a record played again, the other direction's keys.
-        let r = client.seal(true, b"ana12345", [9; 16]);
-        let mut bad = r.clone();
-        let n = bad.body.len() - 20;
-        bad.body[n] ^= 1;
-        assert!(server.clone().open(true, &bad).is_err());
-        assert!(server.clone().open(false, &r).is_err());
-        assert_eq!(server.open(true, &r).unwrap(), b"ana12345");
-        assert!(server.open(true, &r).is_err(), "replay: the sequence number moved on");
-        // Other keys.
-        let mut other = Keys::derive(&[0x54, 0x32], &cr, &sr);
-        assert!(other.open(true, &client.seal(true, b"x", [0; 16])).is_err());
-    }
-
-    #[test]
-    fn peap_data_round_trips_and_every_truncation_is_refused_not_fatal() {
-        let hello = Hello { random: [5; 32], public: vec![77; 256], name: "RADIUS1".into() };
-        assert_eq!(Hello::decode(&hello.encode()).unwrap(), hello);
-        let mut keys = Keys::derive(&[99], &[0; 32], &[1; 32]);
-        let records = vec![
-            Record { kind: REC_HANDSHAKE, body: [handshake(HS_SERVER_HELLO, &hello.encode()), handshake(HS_FINISHED, &[3; 12])].concat() },
-            keys.seal(false, b"inner", [4; 16]),
-        ];
-        let data = peap_data(0, &records);
-        let (flags, back) = parse_peap(&data).unwrap();
-        assert_eq!((flags, back.clone()), (0, records));
-        let hs = handshakes(&back[0].body).unwrap();
-        assert_eq!(hs.iter().map(|h| h.0).collect::<Vec<_>>(), vec![HS_SERVER_HELLO, HS_FINISHED]);
-        assert_eq!(describe(&data), "TLS handshake (server hello, finished) + TLS application data, 48 encrypted bytes");
-        assert_eq!(describe(&[FLAG_START]), "start");
-        assert_eq!(describe(&[0]), "acknowledgement");
+        assert!(parse(&message(FLAG_LENGTH, Some(10_000_000), b"x")).is_err());
+        let mut buf = vec![0u8; MAX_FLIGHT];
+        assert!(reassemble(&mut buf, &Part { flags: FLAG_MORE, total: None, tls: b"xx" }).is_err());
+        assert!(buf.is_empty());
         assert_eq!(tlv_result(&result_tlv(true)), Some(true));
         assert_eq!(tlv_result(&result_tlv(false)), Some(false));
         assert_eq!(tlv_result(&[0, 1]), None);
-        for n in 0..data.len() {
-            let _ = parse_peap(&data[..n]);
-            let _ = describe(&data[..n]);
-            let _ = handshakes(data.get(1..n).unwrap_or_default());
-        }
-        for n in 0..hello.encode().len() {
-            assert!(Hello::decode(&hello.encode()[..n]).is_err());
-        }
-        let sealed = keys.seal(true, b"x", [0; 16]);
-        for n in 0..sealed.body.len() {
-            let _ = keys.clone().open(true, &Record { kind: REC_APP_DATA, body: sealed.body[..n].to_vec() });
-        }
-        assert!(parse_peap(&[FLAG_MORE]).is_err());
-        assert!(Record::decode_all(&[99, 3, 3, 0, 0]).is_err());
+        assert_eq!(tlv_result(&[]), None);
     }
 }
