@@ -1228,6 +1228,10 @@ pub enum Id {
     BgpAddressFamilyOther,
     BgpAddressFamily6,
     ShowBgpIpv6Summary,
+    ShowBgpIpv6Table,
+    ShowBgpIpv6Prefix,
+    ShowBgpIpv6Neighbors,
+    ShowBgpIpv6Advertised,
     BgpNeighborDistribute,
     NoBgpNeighborDistribute,
     BgpPeerGroup,
@@ -5034,6 +5038,41 @@ pub static SPECS: &[Spec] = &[
         "Each neighbour's session state and IPv6 prefix count"
     ),
     spec!(
+        ShowBgpIpv6Table,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("bgp"), K("ipv6"), K("unicast")],
+        "Every IPv6 path BGP knows, the best of each prefix marked"
+    ),
+    spec!(
+        ShowBgpIpv6Prefix,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("bgp"), K("ipv6"), K("unicast"), Arg("X:X::X[/LEN]")],
+        "The paths to one IPv6 destination or prefix"
+    ),
+    spec!(
+        ShowBgpIpv6Neighbors,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("bgp"), K("ipv6"), K("unicast"), K("neighbors")],
+        "Every neighbour activated for IPv6, in detail"
+    ),
+    spec!(
+        ShowBgpIpv6Neighbors,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("bgp"), K("ipv6"), K("unicast"), K("neighbors"), Arg("A.B.C.D|X:X::X")],
+        "One neighbour activated for IPv6, in detail"
+    ),
+    spec!(
+        ShowBgpIpv6Advertised,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("bgp"), K("ipv6"), K("unicast"), K("neighbors"), Arg("A.B.C.D|X:X::X"), K("advertised-routes")],
+        "The IPv6 prefixes this router sends one neighbour"
+    ),
+    spec!(
         BgpNeighborDistribute,
         Modes::BGP,
         Modes::BOTH,
@@ -6163,7 +6202,7 @@ pub static SPECS: &[Spec] = &[
         ShowIpv6Route,
         EXECS,
         Modes::BOTH,
-        [K("show"), K("ipv6"), K("route"), Arg("{connected|static|ospf|eigrp}")],
+        [K("show"), K("ipv6"), K("route"), Arg("{connected|static|ospf|eigrp|bgp}")],
         "Only the IPv6 routes one source gave"
     ),
     spec!(ClearCounters, Modes::EXEC, Modes::BOTH, [K("clear"), K("counters")], "Reset interface counters"),

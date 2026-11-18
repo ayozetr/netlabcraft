@@ -2088,7 +2088,8 @@ fn dispatch_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, 
                 _ if "static".starts_with(&which) => &["S "],
                 _ if "ospf".starts_with(&which) => &["O ", "OI ", "OE2"],
                 _ if "eigrp".starts_with(&which) => &["D "],
-                _ => return Err("% connected, static, ospf or eigrp".into()),
+                _ if "bgp".starts_with(&which) => &["B "],
+                _ => return Err("% connected, static, ospf, eigrp or bgp".into()),
             };
             let mut lines = full.lines();
             let head: Vec<&str> = lines.by_ref().take_while(|l| l.starts_with("Codes") || l.starts_with("IPv6 forwarding")).collect();
@@ -4814,6 +4815,10 @@ fn dispatch_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, 
         | Id::BgpAddressFamily
         | Id::BgpAddressFamily6
         | Id::ShowBgpIpv6Summary
+        | Id::ShowBgpIpv6Table
+        | Id::ShowBgpIpv6Prefix
+        | Id::ShowBgpIpv6Neighbors
+        | Id::ShowBgpIpv6Advertised
         | Id::BgpExitAddressFamily
         | Id::BgpAddressFamilyOther => {
             // A plain address family, or leaving one, ends a VRF's address family.

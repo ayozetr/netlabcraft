@@ -1246,6 +1246,11 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `address-family <other address family>` |  | router, switch | Only IPv4 and IPv6 unicast are simulated |
 | `show bgp ipv6 unicast summary` | user, privileged | router, switch | Each neighbour's session state and IPv6 prefix count |
 | `show bgp ipv6 summary` | user, privileged | router, switch | Each neighbour's session state and IPv6 prefix count |
+| `show bgp ipv6 unicast` | user, privileged | router, switch | Every IPv6 path BGP knows, the best of each prefix marked |
+| `show bgp ipv6 unicast X:X::X[/LEN]` | user, privileged | router, switch | The paths to one IPv6 destination or prefix |
+| `show bgp ipv6 unicast neighbors` | user, privileged | router, switch | Every neighbour activated for IPv6, in detail |
+| `show bgp ipv6 unicast neighbors A.B.C.D\|X:X::X` | user, privileged | router, switch | One neighbour activated for IPv6, in detail |
+| `show bgp ipv6 unicast neighbors A.B.C.D\|X:X::X advertised-routes` | user, privileged | router, switch | The IPv6 prefixes this router sends one neighbour |
 | `neighbor A.B.C.D\|NAME distribute-list <1-99>\|NAME {in\|out}` |  | router, switch | Filter the prefixes of this neighbour with a standard access list |
 | `no neighbor A.B.C.D\|NAME distribute-list <1-99>\|NAME {in\|out}` |  | router, switch | Stop filtering this neighbour's prefixes with the list |
 | `bandwidth <1-10000000>` | interface | router, switch | The bandwidth EIGRP's metric uses (kbit/s) |
@@ -1790,7 +1795,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show inventory` | user, privileged | router, switch | Hardware |
 | `delete flash:vlan.dat` | privileged | switch | Delete the VLAN database (takes effect at reload) |
 | `show ipv6 interface <interface>` | user, privileged | router, switch | One interface's IPv6 settings |
-| `show ipv6 route {connected\|static\|ospf\|eigrp}` | user, privileged | router, switch | Only the IPv6 routes one source gave |
+| `show ipv6 route {connected\|static\|ospf\|eigrp\|bgp}` | user, privileged | router, switch | Only the IPv6 routes one source gave |
 | `clear counters` | privileged | router, switch | Reset interface counters |
 | `show sessions` | user, privileged | router, switch | Telnet and SSH sessions opened from here |
 | `show hosts` | user, privileged | router, switch | Name lookup settings |
