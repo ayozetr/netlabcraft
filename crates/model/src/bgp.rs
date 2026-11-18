@@ -49,6 +49,15 @@ pub fn timers_of(n: &Neighbor) -> (u16, u16) {
     n.timers.unwrap_or((KEEPALIVE_SECS, HOLD_SECS))
 }
 
+/// `neighbor … maximum-prefix N [threshold] [restart M] [warning-only]`: the most prefixes the
+/// neighbour may send, and whether going over it only warns (the session stays up).
+pub fn max_prefix(n: &Neighbor) -> Option<(u32, bool)> {
+    let line = n.options.get("maximum-prefix")?;
+    let mut words = line.split_whitespace().skip(1);
+    let limit = words.next()?.parse::<u32>().ok()?;
+    Some((limit, words.any(|w| w == "warning-only")))
+}
+
 /// What two neighbours agree on: the hold time is the smaller of the two, and each side sends
 /// keepalives at the interval it configured but never slower than a third of the hold time. A hold
 /// time of 0 on either side turns keepalives and the hold timer off. Returns this side's keepalive
